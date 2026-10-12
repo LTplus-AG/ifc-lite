@@ -29,7 +29,7 @@ import { reconcileRuns } from './run-reconcile';
 import type { CapturedRun, ReconcileOutcome } from './run-reconcile-types';
 import { revisionPair, runClash, runIds, type LoadedModel, type RevisionPair } from './revision-pair.test-support';
 import { bindSavedAnalysisRun, portableAnalysisRun } from './saved-analysis-run-binding';
-import { decodeSavedAnalysisRun, type SavedAnalysisRun } from './saved-analysis-run-schema';
+import { decodeSavedAnalysisRun, type SavedAnalysisRun } from '@ifc-lite/sdk/review';
 
 const RULES: ClashRule[] = [
   { id: 'WALLS', name: 'Wall clearance', a: 'IfcWall', mode: 'clearance', clearance: 0.3, reportTouch: true },

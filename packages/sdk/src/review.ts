@@ -17,3 +17,21 @@ export { snapshotFrom, type ReviewSnapshot } from './review/snapshot.js';
 export { NativeReviewCaptures } from './review/native-captures.js';
 export type { NativeReviewModel, ReviewCaptureToken } from './review/capture-types.js';
 export { readNativeReview } from './review/native-snapshot.js';
+
+// Shared portable wire contract consumed by viewer save/import and native Review (#7372).
+export { decodeSavedAnalysisRun } from './review/portable-analysis.js';
+export type { SavedAnalysisRun, SavedClashRef, SavedDistance, SavedRunClash, SavedRunModel, SavedRunValidationReport } from './review/portable-analysis.js';
+
+export { SAVED_VALIDATION_LIMITS, isSavedValidationElement, validateSavedValidationElements } from './review/portable-validation-evidence.js';
+export type { SavedValidationElement, SavedValidationDefinition, SavedValidationElements } from './review/portable-validation-evidence.js';
+
+export { bindSavedAnalysisModels } from './review/portable-analysis-binding.js';
+export type { BindRefusalCode, BindRefusal } from './review/portable-analysis-binding.js';
+
+export * from './review/portable-automation-provenance.js';
+export * from './review/portable-report-metadata.js';
+export { reportBlockSourceKind, validateIdsReportBlock } from './review/portable-ids-report.js';
+export type { IdsReportCheckSummary, IdsReportRuleSummary, IdsReportCardinality, IdsReportVariant, IdsReportBlock } from './review/portable-ids-report.js';
+export { validateManualReportBlock } from './review/portable-manual-report.js';
+export type { ManualReportVerdict, ManualReportCounts, ManualReportItem, ManualReportBlock } from './review/portable-manual-report.js';
+export * from './review/portable-saved-validation.js';

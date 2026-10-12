@@ -4,23 +4,16 @@
 
 /** Immutable validation evidence (#6500). Only report snapshots are saved;
  * runtime entity ids and live model/store references never travel with them. */
-import { isAutomationReportProvenance, sameReportEvidence, type AutomationReportProvenance } from '../../flow/report-provenance';
+import { type AutomationReportProvenance } from '../../flow/report-provenance';
 import type { ValidationReport } from '@ifc-lite/ids';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { rememberValidationElements } from './element-evidence';
 import { idsReportBlockFromReport } from '../../document/ids-report.js';
-import { validateIdsReportBlock, type IdsReportBlock } from '../../document/ids-report-types.js';
-import { validateManualReportBlock, type ManualReportBlock } from '../../document/manual-report-types.js';
-import type { DocumentValidationError } from '../../document/types.js';
+import { type IdsReportBlock } from '../../document/ids-report-types.js';
 import { rememberReportModelScope, reportModelScope, type ReportModelScope } from '../../document/report-provenance.js';
 
-export type ValidationReportSnapshot = IdsReportBlock | ManualReportBlock;
-export interface SavedValidationReport {
-  id: string;
-  name: string;
-  snapshot: ValidationReportSnapshot;
-  automation?: AutomationReportProvenance;
-}
+import type { SavedValidationReport, ValidationReportSnapshot } from '@ifc-lite/sdk/review';
+export { validateSavedReport, type SavedValidationReport, type ValidationReportSnapshot } from '@ifc-lite/sdk/review';
 /** Names, scope and timestamp distinguish repeated runs of one check. */
 export function savedReportLabel(entry: SavedValidationReport): string {
   return [entry.name, entry.snapshot.reportModels?.map((model) => model.name).join(', '), entry.snapshot.generatedAt].filter(Boolean).join(' · ');
@@ -53,23 +46,6 @@ export function savedReportWithProvenance(entry: SavedValidationReport): SavedVa
   const automation = entry.automation ?? entry.snapshot.automation;
   return { ...structuredClone(entry), ...(automation ? { automation: structuredClone(automation),
     snapshot: { ...structuredClone(entry.snapshot), automation: structuredClone(automation) } } : {}) };
-}
-
-export function validateSavedReport(value: unknown): value is SavedValidationReport {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
-  const entry = value as Record<string, unknown>;
-  if (typeof entry.id !== 'string' || !entry.id || typeof entry.name !== 'string' || !entry.name.trim()) return false;
-  if (entry.automation !== undefined && !isAutomationReportProvenance(entry.automation)) return false;
-  const raw = entry.snapshot;
-  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return false;
-  const block = raw as Record<string, unknown>;
-  if (typeof block.id !== 'string' || !block.id || typeof block.generatedAt !== 'string' || !Number.isFinite(Date.parse(block.generatedAt))) return false;
-  if (entry.automation !== undefined && block.automation !== undefined && !sameReportEvidence(entry.automation, block.automation)) return false;
-  const errors: DocumentValidationError[] = [];
-  if (block.kind === 'ids-report') validateIdsReportBlock(block, 'snapshot', errors);
-  else if (block.kind === 'manual-report') validateManualReportBlock(block, 'snapshot', errors);
-  else return false;
-  return errors.length === 0;
 }
 
 export function newSavedReport(snapshot: ValidationReportSnapshot, name?: string, automation?: AutomationReportProvenance): SavedValidationReport {

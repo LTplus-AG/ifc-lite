@@ -390,3 +390,15 @@ Native Review bounds separate `presentationComplete` (all retained rows and text
 Hosts must call `abandon(token)` when native evaluation throws, and use `abandon(token, "aborted")` on cancellation before rethrowing the original failure. `begin` releases refused proof reservations itself. Successful completion calls `finish(token, report)` exactly once. Credential overflow remains a permanent owner-local security refusal; ordinary source, ownership, permission, producer, or capacity failure does not disable later genuine capture attempts.
 
 Native Review `modelIds` selects whole captured target sets independently of current authorization. A wholly permitted capture outside the request is omitted; a capture spanning requested and excluded models is refused as a whole. Permission revocation remains fail-closed after source hashing. Hash reuse follows the actual source object, including models that share a host owner. An older delayed proof cannot revive a newer same-context capture after retention eviction.
+
+#### Portable report contracts
+
+The Review entry point shares the viewer's existing `SavedAnalysisRun` and
+`SavedValidationReport` contracts. Use `decodeSavedAnalysisRun` or
+`validateSavedReport` to validate an imported payload; use
+`bindSavedAnalysisModels` with actual source, edit, and placement evidence to
+bind a saved analysis scope. Full-content source hashes remain distinct from
+legacy sampled fingerprints. A valid payload remains historical evidence:
+validation does not make its execution attested, its freshness current, or its
+manual answers the result of a native evaluation. The codecs perform no save
+or model mutation.

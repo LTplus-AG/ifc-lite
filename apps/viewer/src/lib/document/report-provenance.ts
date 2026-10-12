@@ -2,38 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { isAutomationReportProvenance, type AutomationReportProvenance } from '../flow/report-provenance';
-import type { DocumentValidationError } from './types.js';
 import { blockTitleFields, type BlockTitle } from './block-title.js';
 
-/** Source identity is evidence about the original run, never a live selector. */
-export interface ReportModelScope { name: string; fingerprint?: string }
-/** The author's choice to print or omit a report's stamp rows (#6566, #6678).
- * Absent means shown, so every document saved before the choice printed the same. */
-export interface ReportStampChoice {
-  showStamp?: boolean;
-}
-export interface ReportProvenance extends ReportStampChoice {
-  savedReportId?: string;
-  /** Captured workflow execution identity; travels with the evidence, never a live binding. */
-  automation?: AutomationReportProvenance;
-  reportModels?: ReportModelScope[];
-}
-
-export function validateReportProvenance(block: Record<string, unknown>, at: string, errors: DocumentValidationError[]): void {
-  if (block.showStamp !== undefined && typeof block.showStamp !== 'boolean') errors.push({ path: `${at}.showStamp`, message: 'expected a boolean' });
-  if (block.automation !== undefined && !isAutomationReportProvenance(block.automation)) {
-    errors.push({ path: `${at}.automation`, message: 'expected valid workflow report provenance' });
-  }
-  if (block.savedReportId !== undefined && (typeof block.savedReportId !== 'string' || !block.savedReportId)) {
-    errors.push({ path: `${at}.savedReportId`, message: 'expected a non-empty string' });
-  }
-  if (block.reportModels !== undefined && (!Array.isArray(block.reportModels) || !block.reportModels.every((model: unknown) => {
-    if (typeof model !== 'object' || model === null || Array.isArray(model)) return false;
-    const m = model as Record<string, unknown>;
-    return typeof m.name === 'string' && m.name.trim().length > 0 && (m.fingerprint === undefined || (typeof m.fingerprint === 'string' && m.fingerprint.length > 0));
-  }))) errors.push({ path: `${at}.reportModels`, message: 'expected non-empty model names and optional non-empty fingerprints' });
-}
+import type { ReportModelScope, ReportStampChoice, ReportProvenance } from '@ifc-lite/sdk/review';
+export { validateReportProvenance, type ReportModelScope, type ReportStampChoice, type ReportProvenance } from '@ifc-lite/sdk/review';
 
 export function reportScopeText(block: ReportProvenance): string {
   return block.reportModels?.map((model) => model.name).join(', ') ?? '';

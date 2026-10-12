@@ -1,0 +1,179 @@
+{
+  "actualCameraIdentity": true,
+  "artifacts": [
+    {
+      "bytes": 60331,
+      "capture": "supplemental response from unchanged Vite/source after qualification",
+      "path": "packages/renderer/src/camera.ts",
+      "sha256": "a0b911b30d40444341b4305e98595e22ad528bd247972ebc8c3c67b1c8116803",
+      "status": 200
+    },
+    {
+      "bytes": 58652,
+      "capture": "supplemental response from unchanged Vite/source after qualification",
+      "path": "packages/renderer/src/camera-controls.ts",
+      "sha256": "9e2fecd53a2146117c710b15ce8afc6a48e23cded3d4efc6608454841e72458c",
+      "status": 200
+    },
+    {
+      "bytes": 21249,
+      "capture": "supplemental response from unchanged Vite/source after qualification",
+      "path": "packages/renderer/src/camera-zoom.ts",
+      "sha256": "b479303dd0b0132d49d9b7e6a514b08613ba61f9fecc1280be9f6da0bc838bb8",
+      "status": 200
+    },
+    {
+      "bytes": 38324,
+      "capture": "supplemental response from unchanged Vite/source after qualification",
+      "path": "packages/renderer/src/relative-to-eye.ts",
+      "sha256": "49e4910f646b4292f23f3d2f12e0f350d20a8ba4e66bdce587a66795b9d3c292",
+      "status": 200
+    },
+    {
+      "bytes": 9979156,
+      "capture": "supplemental response from unchanged Vite/source after qualification",
+      "path": "packages/wasm/pkg/ifc-lite_bg.wasm",
+      "sha256": "3912d1046cf6507e7ef6f85a0492a0e54fbb31ae711b85c6e46b6313ffd63312",
+      "status": 200
+    }
+  ],
+  "dpr": 1.5,
+  "errors": [],
+  "gpu": {
+    "architecture": "blackwell",
+    "description": "",
+    "device": "",
+    "isFallbackAdapter": false,
+    "vendor": "nvidia"
+  },
+  "home": {
+    "available": true,
+    "position": {
+      "x": 27.599999999999998,
+      "y": 20.65884578227997,
+      "z": 17.599999999999998
+    },
+    "rendered": true,
+    "target": {
+      "x": 6,
+      "y": 2.6588457822799683,
+      "z": -4
+    }
+  },
+  "initial": {
+    "position": {
+      "x": 27.599999999999998,
+      "y": 20.65884578227997,
+      "z": 17.599999999999998
+    },
+    "target": {
+      "x": 6,
+      "y": 2.6588457822799683,
+      "z": -4
+    }
+  },
+  "orbit": {
+    "available": false,
+    "magnitude": 1131693543.287378,
+    "pose": {
+      "position": {
+        "x": 245195216.09267363,
+        "y": 602035896.3170547,
+        "z": 1131693543.287378
+      },
+      "target": {
+        "x": 371780271.24388754,
+        "y": 251775217.38222134,
+        "z": 550916522.1759285
+      }
+    }
+  },
+  "pick": {
+    "expressId": 59753,
+    "geometryItemId": 59737,
+    "modelIndex": 0,
+    "worldXYZ": {
+      "x": 8.143614496203334,
+      "y": 4.4693770976224485,
+      "z": -1.7983385790751463
+    }
+  },
+  "recovered": {
+    "available": true,
+    "pose": {
+      "position": {
+        "x": 281303603.0745574,
+        "y": 502124037.65089357,
+        "z": 966026898.0153372
+      },
+      "target": {
+        "x": 389834464.7348294,
+        "y": 201819288.04914072,
+        "z": 468083199.539908
+      }
+    },
+    "rendered": true
+  },
+  "recovery": [
+    {
+      "after": 1073615841.1762333,
+      "available": false,
+      "before": 1131693543.287378
+    },
+    {
+      "after": 1018442024.1706455,
+      "available": false,
+      "before": 1073615841.1762333
+    },
+    {
+      "after": 966026898.0153372,
+      "available": true,
+      "before": 1018442024.1706455
+    }
+  ],
+  "selectionVisible": true,
+  "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) T3Code(Alpha)/0.0.45 Chrome/152.0.7977.130 Electron/44.4.2 Safari/537.36",
+  "utc": "2026-10-12T18:32:21.129Z",
+  "wheel": {
+    "boundary": {
+      "position": {
+        "x": 792093085.965689,
+        "y": 602035896.3170547,
+        "z": 971229336.8977277
+      },
+      "target": {
+        "x": 371780271.24388754,
+        "y": 251775217.38222134,
+        "z": 550916522.1759285
+      }
+    },
+    "count": 600,
+    "failedRenders": 0,
+    "unavailable": 0
+  },
+  "worseningRefused": true,
+  "sourceCommit": "74ea3eb181650e18f8b665e0b3e2fc61e3418167",
+  "sourceHashes": {
+    "packages/renderer/src/camera.ts": "59b9679f0b2a2495a197a6425e9dfaded0308831c9020e47f760fb1a021c9e37",
+    "packages/renderer/src/camera-zoom.ts": "14ecc24c0175e7e4703de092a3a4749774f30624d7fffd4f8bc2a823df0ba093",
+    "packages/renderer/src/camera-controls.ts": "6d261d27231e9b105793d5563de9d047aef017b755b367b7cf5a44564c94afb3",
+    "packages/wasm/pkg/ifc-lite_bg.wasm": "3912d1046cf6507e7ef6f85a0492a0e54fbb31ae711b85c6e46b6313ffd63312"
+  },
+  "fixture": {
+    "path": "tests/models/ara3d/AC20-FZK-Haus.ifc",
+    "sha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+    "displayedElements": 82
+  },
+  "runtimeOrigin": "official npm @ifc-lite/wasm@10.4.0 fetched before qualification; not compiled from checkout Rust",
+  "tests": {
+    "cameraSuite": {
+      "pass": 324,
+      "fail": 0
+    },
+    "inversePriorHead": {
+      "pass": 7,
+      "fail": 2
+    },
+    "fullTypecheck": "prior source only; review correction awaits rerun/CI"
+  }
+}

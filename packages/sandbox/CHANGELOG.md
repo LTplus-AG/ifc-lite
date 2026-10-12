@@ -1,5 +1,16 @@
 # @ifc-lite/sandbox
 
+## 2.12.0
+
+### Minor Changes
+
+- [#7476](https://github.com/LTplus-AG/ifc-lite/pull/7476) [`0eeb6cb`](https://github.com/LTplus-AG/ifc-lite/commit/0eeb6cb8e6c752ba33e249820fc1f776493fc515) Thanks [@louistrue](https://github.com/louistrue)! - Expose network-denial dispatch provenance so durable BCF hosts distinguish preflight refusal from a redirect received after a possible committed write.
+
+### Patch Changes
+
+- Updated dependencies [[`d656e9a`](https://github.com/LTplus-AG/ifc-lite/commit/d656e9ab00d4d89e04846aa4b44ef9ccaea6a44b)]:
+  - @ifc-lite/sdk@9.2.0
+
 ## 2.11.0
 
 ### Minor Changes

@@ -1,5 +1,11 @@
 # @ifc-lite/load-trace
 
+## 0.3.0
+
+### Minor Changes
+
+- [#7478](https://github.com/LTplus-AG/ifc-lite/pull/7478) [`9f03019`](https://github.com/LTplus-AG/ifc-lite/commit/9f03019ca64237a2a0805bf2b47031de317b706e) Thanks [@louistrue](https://github.com/louistrue)! - Count worker output transfers at the sender and publish terminal counters before worker shutdown; include parser WASM ingress in traced loads.
+
 ## 0.2.0
 
 ### Minor Changes

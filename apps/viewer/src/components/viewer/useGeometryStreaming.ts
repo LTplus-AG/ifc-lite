@@ -64,6 +64,7 @@ export function applyFederationOffsetToShard(
 
 import { refitCompletedStreamBounds } from './streamingCompletionBounds.js';
 import { usePlacementMutationDrain } from './usePlacementMutationDrain.js';
+import { useFinalizationRecoveryWake } from './useFinalizationRecoveryWake.js';
 import type { UseGeometryStreamingParams } from './geometry-streaming-params.js';
 export type { UseGeometryStreamingParams } from './geometry-streaming-params.js';
 
@@ -123,7 +124,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     onGeometryReleased,
   } = params;
 
-  // ─── Tracking refs ───────────────────────────────────────────────────
+  const [finalizeWake, wakeAfterFailure] = useFinalizationRecoveryWake(gpuRecoveryEpoch);
   const processedMeshIdsRef = useRef<Set<string>>(new Set());
   const lastGeometryLengthRef = useRef(0);
   const lastGeometryRef = useRef<MeshData[] | null>(null);
@@ -138,10 +139,9 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
   const lastFitPolicyKindRef = useRef<'compact' | 'linear' | null>(null);
   const prevIsStreamingRef = useRef(isStreaming);
   const pendingFinalizeRef = useRef<{
-    geometry: typeof geometry; replacement: number; scene: ReturnType<NonNullable<typeof rendererRef.current>['getScene']>;
+    renderer: NonNullable<typeof rendererRef.current>; geometry: typeof geometry; replacement: number; scene: ReturnType<NonNullable<typeof rendererRef.current>['getScene']>;
     trace: ReturnType<typeof activeLoadTrace>; running: boolean; attempts: number;
   } | null>(null);
-
   // A scheduled drain is not a completed finalization. Keep its same-load
   // ownership across recovery cleanup, but never finalize a replacement load.
   useEffect(() => {
@@ -153,14 +153,14 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     }
     if (pending && (isStreaming ||
       pending.replacement !== geometryReplacementVersion ||
-      pending.scene !== rendererRef.current?.getScene())) {
+      pending.renderer !== rendererRef.current || pending.scene !== rendererRef.current?.getScene())) {
       pendingFinalizeRef.current = null;
       prevIsStreamingRef.current = isStreaming;
     } else if (pending && !pending.running) {
       // Same-load array changes retain the drain; explicit replacement rebuilds the Scene.
       pending.geometry = geometry;
     }
-  }, [geometry, geometryReplacementVersion, isStreaming, rendererRef]);
+  }, [geometry, geometryReplacementVersion, isStreaming, rendererRef.current, isInitialized, gpuRecoveryEpoch]);
   useEffect(() => () => { pendingFinalizeRef.current = null; }, []);
   const lastContentVersionRef = useRef(geometryContentVersion ?? 0);
   const prevModelCountRef = useRef(modelCount);
@@ -562,7 +562,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     // A slow renderer init can outlast the stream: remember it was seen so its end still finalizes (#7032).
     if (!renderer || !isInitialized || !renderer.getGPUDevice()) { if (isStreaming) prevIsStreamingRef.current = true; return; }
     if (!isStreaming && (prevIsStreamingRef.current || pendingFinalizeRef.current)) {
-      const pending = pendingFinalizeRef.current ?? { geometry, replacement: geometryReplacementVersion,
+      const pending = pendingFinalizeRef.current ?? { renderer, geometry, replacement: geometryReplacementVersion,
         scene: renderer.getScene(), trace: activeLoadTrace(), running: false, attempts: 0 };
       pendingFinalizeRef.current = pending;
       if (pending.running) return;
@@ -581,7 +581,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
       const startFinalize = () => {
         timeoutId = globalThis.setTimeout(() => {
           const r = rendererRef.current;
-          if (!r || pendingFinalizeRef.current !== pending || r.getScene() !== pending.scene) return;
+          if (!r || pending.renderer !== r || pendingFinalizeRef.current !== pending || r.getScene() !== pending.scene) return;
 
           tracePhaseOnce(trace, 'stream.queueDrain').record('stream.queueDrain', drainStart, performance.now());
           console.log('[GeomStream] Streaming ended — starting finalize');
@@ -624,7 +624,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
               r.getScene().finalizeStreamingAsync(dev, pipe, undefined, attemptTrace));
             if (!completion) { pending.running = false; return; }
             void completion.then(() => {
-              if (pendingFinalizeRef.current !== pending || r.getScene() !== pending.scene) return;
+              if (pendingFinalizeRef.current !== pending || rendererRef.current !== r || r.getScene() !== pending.scene) return;
               pendingFinalizeRef.current = null;
               const batchCount = r.getScene().getBatchedMeshes().length;
               let totalIdx = 0;
@@ -637,8 +637,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
               r.requestRender();
             }, (error: unknown) => {
               pending.running = false;
-              // No background retry loop: a later recovery epoch or geometry/
-              // lifecycle dependency change re-arms this retained intent.
+              if (pendingFinalizeRef.current === pending && rendererRef.current === r && r.getScene() === pending.scene) wakeAfterFailure(gpuRecoveryEpoch);
               console.warn('[GeomStream] Finalization failed; retaining same-load retry:', error);
             });
           }
@@ -647,7 +646,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
 
       const waitForQueueDrain = () => {
         const currentRenderer = rendererRef.current;
-        if (!currentRenderer || pendingFinalizeRef.current !== pending || currentRenderer.getScene() !== pending.scene) return;
+        if (!currentRenderer || pending.renderer !== currentRenderer || pendingFinalizeRef.current !== pending || currentRenderer.getScene() !== pending.scene) return;
         if (!currentRenderer.getScene().hasQueuedMeshes()) {
           startFinalize();
           return;
@@ -665,7 +664,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
       };
     }
     prevIsStreamingRef.current = isStreaming;
-  }, [isStreaming, isInitialized, gpuRecoveryEpoch, geometry, geometryReplacementVersion, releaseGeometryAfterFinalize, onGeometryReleased]);
+  }, [isStreaming, isInitialized, gpuRecoveryEpoch, finalizeWake, geometry, geometryReplacementVersion, releaseGeometryAfterFinalize, onGeometryReleased, wakeAfterFailure]);
 
   // ─── Mesh color updates (style/material deferred colors) ─────────────
   useEffect(() => {

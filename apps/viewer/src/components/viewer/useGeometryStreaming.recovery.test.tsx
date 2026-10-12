@@ -22,6 +22,7 @@ interface State {
   meshes: MeshData[];
   streaming: boolean;
   epoch: number;
+  renderer?: Renderer;
   replacement?: number;
   translations?: Map<number, [number, number, number]>;
   rotations?: Map<number, { angle: number; pivot: [number, number, number] }>;
@@ -51,6 +52,7 @@ function Viewport({ renderer }: { renderer: Renderer }) {
   const clearRemovals = useCallback(() => setState((current) => ({ ...current, removals: undefined })), []);
   const prune = useCallback((ids: Set<number>) => setState((current) => ({ ...current, meshes: current.meshes.filter((mesh) => !ids.has(mesh.expressId)) })), []);
   const rendererRef = useRef<Renderer | null>(renderer);
+  rendererRef.current = state.renderer ?? renderer;
   const geometryBoundsRef = useRef({ min: { x: -100, y: -100, z: -100 }, max: { x: 100, y: 100, z: 100 } });
   const clearColorRef = useRef<[number, number, number, number]>([0, 0, 0, 1]);
   useGeometryStreaming(Object.assign({
@@ -91,7 +93,7 @@ function fixture(federated = false) {
     normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]),
     indices: new Uint32Array([0, 1, 2]), color: [0.5, 0.5, 0.5, 1], ifcType: 'IfcWall',
   } as MeshData));
-  return { ...native, meshes, available(value: boolean) { available = value; } };
+  return { ...native, meshes, renderer, available(value: boolean) { available = value; } };
 }
 
 const indices = (scene: ReturnType<typeof fixture>['scene']) =>
@@ -415,11 +417,46 @@ it('retains ownership while an actual failed finalizer acknowledgement is held a
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)); });
     assert.equal(calls, 1, 'a recovery rerender cannot launch a second attempt before the first acknowledgement');
     await act(async () => { release(); await held; });
-    await act(async () => { update((current) => ({ ...current, epoch: 2 })); });
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)); });
-    assert.equal(calls, 2, 'a later event retries the acknowledged failure');
+    assert.equal(calls, 2, 'the recovery already observed during the real failed attempt retries after acknowledgement');
     assert.equal(native.scene.hasStreamingFragments(), false);
     assert.equal(indices(native.scene), 6);
     assert.equal(tracer.latest()?.spans.filter(span => span.name === 'scene.finalize' && span.attrs?.error === true).length, 1);
   } finally { release(); native.scene.finalizeStreamingAsync = finalize; native.device.createBuffer = allocate; cleanup(); }
+});
+
+
+it('ignores an actual successful finalizer acknowledgement after the renderer owner is replaced (#6993)', async () => {
+  const native = fixture();
+  await act(async () => { update({ meshes: native.meshes, streaming: true, epoch: 0 }); });
+  native.scene.flushPending(native.device, native.pipeline);
+  const finalize = native.scene.finalizeStreamingAsync;
+  const clearCaches = native.renderer.clearCaches;
+  let release: () => void = () => { throw new Error('Success acknowledgement not held'); };
+  const held = new Promise<void>(resolve => { release = resolve; });
+  let completed = false, calls = 0, obsoleteCacheMutations = 0;
+  native.scene.finalizeStreamingAsync = (...args) => {
+    calls++;
+    return finalize.apply(native.scene, args).then(async () => { completed = true; await held; });
+  };
+  native.renderer.clearCaches = () => { obsoleteCacheMutations++; };
+  try {
+    await act(async () => { update({ meshes: native.meshes, streaming: false, epoch: 0 }); });
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)); });
+    assert.equal(completed, true, 'the real Scene already completed allocation and consolidation');
+    assert.equal(native.scene.hasStreamingFragments(), false);
+    assert.equal(indices(native.scene), 6);
+    obsoleteCacheMutations = 0;
+    // The GPU-frame facade changes identity while deliberately exposing the
+    // same actual Scene: scene equality alone cannot establish host ownership.
+    const replacement = { ...native.renderer } as unknown as Renderer;
+    await act(async () => { update(current => ({ ...current, renderer: replacement })); });
+    await act(async () => { release(); await held; });
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)); });
+    assert.equal(calls, 1);
+    assert.equal(obsoleteCacheMutations, 0, 'a stale successful callback must not clear the old renderer caches');
+    assert.equal(indices(native.scene), 6);
+  } finally {
+    release(); native.scene.finalizeStreamingAsync = finalize; native.renderer.clearCaches = clearCaches; cleanup();
+  }
 });

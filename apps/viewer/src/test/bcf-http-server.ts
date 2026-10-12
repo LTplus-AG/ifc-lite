@@ -71,7 +71,7 @@ function topicFields(value: unknown): Record<string, unknown> | undefined {
   return value;
 }
 
-export async function startLocalBcfServer(options: { token?: string; echoWriteToken?: boolean; afterWriteStatus?: 303 | 409 | 500; guidPrefix?: string } = {}): Promise<{
+export async function startLocalBcfServer(options: { token?: string; echoWriteToken?: boolean; afterWriteStatus?: 303 | 409 | 500; guidPrefix?: string; commentResponseTopicGuid?: string } = {}): Promise<{
   baseUrl: string;
   state: LocalBcfState;
   close: () => Promise<void>;
@@ -93,9 +93,12 @@ export async function startLocalBcfServer(options: { token?: string; echoWriteTo
       response.destroy();
     } else {
       // A real response channel may echo credentials while retaining the original effect.
-      const outgoing = options.echoWriteToken && record(value)
+      const echoed = options.echoWriteToken && record(value)
         ? { ...value, [typeof value.comment === 'string' ? 'comment' : 'description']: `Server echoed ${token}` }
         : value;
+      // Override only the actual response DTO; independently retained relationships stay intact.
+      const outgoing = options.commentResponseTopicGuid !== undefined && record(echoed) && typeof echoed.comment === 'string'
+        ? { ...echoed, topic_guid: options.commentResponseTopicGuid } : echoed;
       if (options.afterWriteStatus === 303) response.setHeader('location', 'https://redirect.invalid/');
       json(response, options.afterWriteStatus && options.afterWriteStatus >= 400
         ? { message: options.echoWriteToken ? `Server echoed ${token}` : 'Retained write response failed' }

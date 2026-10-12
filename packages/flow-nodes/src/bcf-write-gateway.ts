@@ -21,6 +21,8 @@ import { classifyWriteError } from './bcf-publication.js';
 import type { Ctx } from './host.js';
 import { redactDeep, redactText } from './secrets.js';
 
+const RECEIPT_IDS = ['guid', 'topic_guid', 'viewpoint_guid', 'reply_to_comment_guid'] as const;
+
 /** What a node is about to write, without the bearer token. */
 export interface BcfWriteIntent {
   readonly nodeType: string;
@@ -56,11 +58,18 @@ export async function sendBcfWrite<T extends { guid: string }>(
   const redaction = new Map(secrets.filter(secret => secret.length > 0).flatMap(secret =>
     [...new Set([secret, JSON.stringify(secret).slice(1, -1)])].map(value => [value, '[REDACTED]'] as const)));
   const checkedReceipt = (result: T): T => {
-    if (!result || typeof result.guid !== 'string' || result.guid.length === 0) {
+    if (!result || typeof result !== 'object') {
       throw new Error('BCF server receipt has no valid identifier; the server outcome is unknown.');
     }
-    if ([...redaction.keys()].some(secret => result.guid.includes(secret))) {
-      throw new Error('BCF server receipt contains credential text; the server outcome is unknown.');
+    for (const field of RECEIPT_IDS) {
+      const value: unknown = Reflect.get(result, field);
+      if (field !== 'guid' && (value === undefined || value === null)) continue;
+      if (typeof value !== 'string' || value.length === 0) {
+        throw new Error('BCF server receipt has no valid identifier; the server outcome is unknown.');
+      }
+      if ([...redaction.keys()].some(secret => value.includes(secret))) {
+        throw new Error('BCF server receipt contains credential text; the server outcome is unknown.');
+      }
     }
     return result;
   };
@@ -68,12 +77,15 @@ export async function sendBcfWrite<T extends { guid: string }>(
   // gateway returns its own receipt without forwarding this callback.
   const checkedSend = async (): Promise<T> => checkedReceipt(await send());
   const redactedReceipt = (result: T): T => {
-    const guid = checkedReceipt(result).guid;
-    const fields = { ...result };
-    Reflect.deleteProperty(fields, 'guid');
-    // `guid` is a fixed protocol key, not echoed credential data. Even a bearer
-    // equal to this key must leave the validated identifier usable downstream.
-    return Object.assign(redactDeep(fields, redaction), { guid });
+    const fields = { ...checkedReceipt(result) };
+    for (const field of RECEIPT_IDS) Reflect.deleteProperty(fields, field);
+    const redacted = redactDeep(fields, redaction);
+    // Protocol identifier keys are not echoed credentials. Keep every present
+    // identifier unchanged, including nullable optional relationship identifiers.
+    for (const field of RECEIPT_IDS) {
+      if (field === 'guid' || Object.hasOwn(result, field)) Reflect.set(redacted, field, Reflect.get(result, field));
+    }
+    return redacted;
   };
   if (gateway) {
     try { return redactedReceipt(await gateway.write(intent, checkedSend, secrets)); }

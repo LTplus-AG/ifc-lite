@@ -53,6 +53,31 @@ async function setup(options: Parameters<typeof startLocalBcfServer>[0] = {}) {
   return { peer, directory, graph, document, run, write };
 }
 
+it.each(['literal', 'Player'] as const)('direct %s bearer refuses a credential-bearing comment relationship without altering it (#7476)', async source => {
+  const token = 'beef';
+  const { peer, graph, document, run, write } = await setup({ token, guidPrefix: 'cafe',
+    commentResponseTopicGuid: 'beef0000-0000-4000-8000-000000000001' });
+  expect((await write('bcf.createTopic', { title: 'Clean parent', token })).code).toBe(0);
+  const topicGuid = [...peer.state.topics.keys()][0];
+  const doc: FlowDocument = { ...document('bcf.addComment', { topicGuid, comment: 'Clean relation',
+    token: source === 'literal' ? token : 'unused-default' }),
+    inputs: source === 'Player' ? [{ nodeId: 'write', param: 'token', label: 'BCF token', kind: 'scalar' }] : [],
+    outputs: [{ nodeId: 'write', port: 'created', label: 'Comment' }] };
+  await writeFile(graph, JSON.stringify(doc));
+  const result = await run(['run', graph, model, '--no-tracking', '--json',
+    ...(source === 'Player' ? ['--input', `write.token=${token}`] : [])]);
+  expect(peer.state.acceptedWrites).toBe(2);
+  expect(peer.state.receivedWriteAttempts).toBe(2);
+  const retained = peer.state.topics.get(topicGuid)!;
+  expect(retained.comments).toHaveLength(1);
+  expect(retained.comments[0].topic_guid).toBe(topicGuid);
+  expect(retained.comments[0].guid.startsWith('cafe')).toBe(true);
+  expect(result.code).toBe(1);
+  expect(result.stdout + result.stderr).toContain('outcome unknown');
+  expect(result.stdout + result.stderr).not.toContain(token);
+  // The direct host owns no journal; this test makes no duplicate-prevention claim.
+}, 60_000);
+
 it.each([['bcf.createTopic', 'literal'], ['bcf.createTopic', 'Player'],
   ['bcf.addComment', 'literal'], ['bcf.addComment', 'Player']] as const)(
   'redacts actual successful %s response bearer echo from %s credentials (#7374)', async (type, source) => {

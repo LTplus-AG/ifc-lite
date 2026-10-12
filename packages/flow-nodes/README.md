@@ -87,11 +87,16 @@ mutation approval remain native host responsibilities. See the
 
 Both create operations enrol the actual resolved bearer, including short literal
 and Player values. Successful DTO data, dynamic keys and outward diagnostics
-redact raw and JSON-escaped bearer occurrences. The primary `guid` is validated
+redact raw and JSON-escaped bearer occurrences. The primary `guid` and optional
+comment `topic_guid`, `viewpoint_guid` and `reply_to_comment_guid` are validated
 before an owned gateway saves the receipt and before any returned receipt is
-emitted. A credential-bearing GUID leaves the retained server effect uncertain;
-it is never silently renamed or retried. Clean GUID values and the fixed `guid`
-protocol key stay exact, even when a short bearer equals part of that key.
+emitted. A credential-bearing identifier leaves the retained server effect
+uncertain; it is never silently renamed or retried. Clean identifier values,
+nullable optional relationships and their fixed protocol keys stay exact, even
+when a short bearer equals part of a key. Browser intent admission validates a
+closed schema and checks credential values and dynamic keys, so a bearer such
+as `id` does not reject fixed names such as `topicGuid`. Unknown fields and
+credential values, URL credentials and Authorization/Bearer syntax stay refused.
 A fixed protocol field name is not server-echoed credential data. Gateway errors preserve the host's refusal
 or recovery message as a plain `Error`, without its original class or cause.
 Direct sends use dispatch provenance: a preflight denial is definite; a refused

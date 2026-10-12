@@ -82,6 +82,26 @@ test('a known bearer in Flow payload is refused before browser persistence or ef
   assert.equal(await readPublication(id), undefined);
 });
 
+test('#7476 browser schema-key exemptions never admit credential values or fields in the wrong context', async t => {
+  const peer = await connectPeer(t, { token: 'id', guidPrefix: 'cafe' });
+  const gateway = createViewerBcfWriteGateway();
+  const clean = intent(peer.baseUrl, { title: 'Clean topic' });
+  for (const bad of [
+    { ...clean, payload: { title: 'Contains id credential' } },
+    { ...clean, payload: { title: 'Clean topic', id: 'unknown field' } },
+    { ...clean, id: 'unknown intent field' },
+    { ...clean, baseUrl: peer.baseUrl.replace('http://', 'http://user:password@') },
+    { ...clean, payload: { title: 'Authorization: Bearer 12345678' } },
+  ]) {
+    await assert.rejects(gateway.write(bad, () => peer.connection.client.createTopic(LOCAL_BCF_PROJECT, { title: 'Clean topic' }), ['id']), /credentials/);
+    assert.equal(peer.state.receivedWriteAttempts, 0);
+  }
+  assert.equal(await readPublication(flowPublicationId({ serverUrl: peer.baseUrl, projectId: LOCAL_BCF_PROJECT })), undefined);
+  const created = await gateway.write(clean, () => peer.connection.client.createTopic(LOCAL_BCF_PROJECT, { title: 'Clean topic' }), ['id']);
+  assert.equal(peer.state.acceptedWrites, 1);
+  assert.equal(peer.state.topics.get(created.guid)?.topic.title, 'Clean topic');
+});
+
 for (const status of [401, 503]) {
   test(`#7374 browser Flow returns no literal bearer in HTTP ${status} diagnostics, detail or causes`, async t => {
     const token = 'literal"token\\path';
@@ -218,11 +238,10 @@ test('#7374 a registered browser BCF node journals preflight denial as failed an
 
 for (const kind of ['browser', 'own-client'] as const) {
   for (const source of ['literal', 'Player'] as const) {
-    for (const credentialGuid of [true, false]) {
-      test(`#7476 ${kind} gateway preserves ${source} identifier semantics (credential GUID: ${credentialGuid})`, async t => {
-        const token = 'beef';
-        const peer = await connectPeer(t, { token, guidPrefix: credentialGuid ? token : 'cafe' });
-        const hostname = `${kind}-${source.toLowerCase()}-${credentialGuid ? 'blocked' : 'clean'}.bcf-peer.test`;
+    for (const [token, credentialGuid] of [['beef', true], ['beef', false], ['id', false]] as const) {
+      test(`#7476 ${kind} gateway preserves ${source} identifier semantics (credential GUID: ${credentialGuid}, bearer: ${token})`, async t => {
+        const peer = await connectPeer(t, { token, guidPrefix: credentialGuid ? token : 'cafe', echoWriteToken: token === 'id' });
+        const hostname = `${kind}-${source.toLowerCase()}-${token === 'id' ? 'short' : credentialGuid ? 'blocked' : 'clean'}.bcf-peer.test`;
         const baseUrl = `https://${hostname}/bcf`;
         const parsed = parseCapabilities([`network.fetch:${hostname}`]);
         assert.ok(parsed.ok);
@@ -270,7 +289,7 @@ for (const kind of ['browser', 'own-client'] as const) {
         const retained = [...peer.state.topics.values()][0];
         assert.ok(retained.topic.guid.startsWith(credentialGuid ? token : 'cafe'));
         assert.equal(retained.comments.length, credentialGuid ? 0 : 1);
-        assert.equal(inspect(result, { depth: null }).includes(token), false, 'structural GUIDs are never emitted with a substituted bearer');
+        if (token !== 'id') assert.equal(inspect(result, { depth: null }).includes(token), false, 'structural GUIDs are never emitted with a substituted bearer');
         assert.equal(result.ok, !credentialGuid);
         const record = (await readPublication(flowPublicationId({ serverUrl: baseUrl, projectId: LOCAL_BCF_PROJECT })))?.record;
         if (credentialGuid) {
@@ -287,6 +306,22 @@ for (const kind of ['browser', 'own-client'] as const) {
           assert.equal(retained.comments[0].topic_guid, retained.topic.guid);
           assert.deepEqual(result.outputs.get('write')?.get('guids'), { kind: 'list', items: [retained.topic.guid] },
             'the exact clean server identifier reaches downstream output');
+          const created = result.outputs.get('comment')?.get('created');
+          assert.ok(created?.kind === 'list', 'the comment output is lifted over the topic GUID list');
+          assert.equal(created.items.length, 1);
+          const dto = created.items[0];
+          assert.ok(dto && typeof dto === 'object');
+          assert.equal(Reflect.get(dto, 'topic_guid'), retained.topic.guid, 'the returned relationship identifier remains exact');
+          if (token === 'id') {
+            assert.equal(retained.topic.title, 'Clean topic');
+            assert.equal(retained.comments[0].comment, 'Clean relation');
+            assert.equal(Reflect.get(dto, 'comment'), 'Server echoed [REDACTED]');
+            const topics = result.outputs.get('write')?.get('topics');
+            assert.ok(topics?.kind === 'list');
+            const topic = topics.items[0];
+            assert.ok(topic && typeof topic === 'object');
+            assert.equal(Reflect.get(topic, 'description'), 'Server echoed [REDACTED]');
+          }
           if (kind === 'browser') {
             assert.equal(record?.entries[0].receipt?.remoteGuid, retained.topic.guid);
             assert.equal(record?.entries[1].receipt?.remoteGuid, retained.comments[0].guid);
@@ -295,4 +330,46 @@ for (const kind of ['browser', 'own-client'] as const) {
       });
     }
   }
+}
+
+for (const source of ['literal', 'Player'] as const) {
+  test(`#7476 registered browser ${source} comment refuses a credential-bearing response relationship before receipt settlement`, async t => {
+    const token = 'beef';
+    const peer = await connectPeer(t, { token, guidPrefix: 'cafe',
+      commentResponseTopicGuid: 'beef0000-0000-4000-8000-000000000001' });
+    const parent = await peer.connection.client.createTopic(LOCAL_BCF_PROJECT, { title: 'Clean parent' });
+    const hostname = `relationship-${source.toLowerCase()}.bcf-peer.test`;
+    const baseUrl = `https://${hostname}/bcf`;
+    const grants = parseCapabilities([`network.fetch:${hostname}`]);
+    assert.ok(grants.ok);
+    const doc: FlowDocument = { flowVersion: 1, id: 'relationship', name: 'Relationship',
+      capabilities: [`network.fetch:${hostname}`], edges: [],
+      inputs: source === 'Player' ? [{ nodeId: 'write', param: 'token', label: 'BCF token', kind: 'scalar' }] : [],
+      nodes: [{ id: 'write', type: 'bcf.addComment', params: { baseUrl, projectId: LOCAL_BCF_PROJECT,
+        topicGuid: parent.guid, comment: 'Clean relation', token: source === 'literal' ? token : 'unused-default' } }],
+      outputs: [{ nodeId: 'write', port: 'created', label: 'Comment' }] };
+    const host: FlowHost = { bim: createBimContext({ backend: new LocalBackend(useViewerStore) }),
+      grants: grants.value, networkGrants: grants.value, bcfWrites: createViewerBcfWriteGateway(),
+      networkTransport: (url, init) => {
+        assert.equal(url.origin, `https://${hostname}`);
+        return fetch(peer.baseUrl + url.pathname.replace(/^\/bcf/, '') + url.search, init);
+      } };
+    const options = { host, registry: createStandardRegistry(), features: BROWSER_FEATURES,
+      ...(source === 'Player' ? { inputs: { 'write.token': token } } : {}) };
+    const result = await runFlow(doc, options);
+    assert.equal(peer.state.acceptedWrites, 2);
+    const retained = peer.state.topics.get(parent.guid)!;
+    assert.equal(retained.comments.length, 1);
+    assert.equal(retained.comments[0].topic_guid, parent.guid, 'the retained effect is independent of the overridden response DTO');
+    assert.ok(retained.comments[0].guid.startsWith('cafe'));
+    assert.equal(result.ok, false);
+    assert.match(result.reports[0].error ?? '', /outcome.*unknown/);
+    assert.equal(result.outputs.get('write')?.get('created'), undefined);
+    assert.equal(inspect(result, { depth: null }).includes(token), false);
+    const record = (await readPublication(flowPublicationId({ serverUrl: baseUrl, projectId: LOCAL_BCF_PROJECT })))?.record;
+    assert.equal(record?.entries[0].state, 'uncertain');
+    assert.equal(record?.entries[0].receipt, undefined);
+    assert.equal((await runFlow(doc, options)).ok, false);
+    assert.equal(peer.state.receivedWriteAttempts, 2, 'an identical unresolved comment is never resent');
+  });
 }

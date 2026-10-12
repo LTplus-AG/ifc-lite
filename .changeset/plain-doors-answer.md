@@ -9,3 +9,7 @@ detail URL and causes; local preflight and gateway messages retain redacted text
 Only valid 4xx refusals, except409, prove a definite server refusal.
 
 Refuse credential-bearing server GUIDs as unknown outcomes before owned receipt settlement or output; preserve clean primary GUIDs and their fixed protocol key for downstream nodes.
+
+Apply the same identifier boundary to optional comment relationship GUIDs, and
+validate browser intent schemas without mistaking fixed protocol keys for short
+bearer values.

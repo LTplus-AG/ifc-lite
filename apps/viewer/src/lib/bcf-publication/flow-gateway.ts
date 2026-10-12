@@ -21,6 +21,10 @@ import { inFlightEntries, mutatePublication } from './outbox-store.js';
 import type { BcfPublication, OutboxEntry, PublicationTarget } from './outbox-types.js';
 
 const UNRESOLVED = new Set<OutboxEntry['state']>(['queued', 'sending', 'uncertain', 'blocked']);
+const INTENT_KEYS = ['nodeType', 'operation', 'baseUrl', 'version', 'projectId', 'topicGuid', 'payload'];
+const TOPIC_KEYS = ['title', 'topic_type', 'topic_status', 'priority', 'labels', 'assigned_to', 'stage', 'description', 'due_date'];
+const COMMENT_KEYS = ['comment', 'viewpoint_guid', 'reply_to_comment_guid'];
+const SCHEMA_KEYS = new Set([...INTENT_KEYS, ...TOPIC_KEYS, ...COMMENT_KEYS]);
 
 export function flowPublicationId(target: Pick<PublicationTarget, 'serverUrl' | 'projectId'>): string {
   return `flow-${digestStrings([`s:${normalizeServerUrl(target.serverUrl)}`, `p:${target.projectId}`])}`;
@@ -38,13 +42,49 @@ function host(url: string): string {
   catch (error) { console.warn('[BCF outbox] Flow base URL is not absolute', error); return url; }
 }
 
+/** Fixed schema names are protocol, but credential values and unknown fields cannot be journalled. */
+function admitIntent(intent: BcfWriteIntent, secrets: readonly string[]): void {
+  const refuse = (): never => { throw new BcfWriteRefusedError('BCF publication refused: invalid intent; credentials must not enter durable state.'); };
+  const isText = (value: unknown): value is string => typeof value === 'string' && value.length > 0;
+  if (!intent || typeof intent !== 'object' || Object.keys(intent).some(key => !INTENT_KEYS.includes(key))
+    || !isText(intent.baseUrl) || !isText(intent.version) || !isText(intent.projectId)
+    || !['createTopic', 'createComment'].includes(intent.operation)) refuse();
+  const comment = intent.operation === 'createComment';
+  if (intent.nodeType !== (comment ? 'bcf.addComment' : 'bcf.createTopic')
+    || (comment ? !isText(intent.topicGuid) : intent.topicGuid !== undefined)) refuse();
+  const payload = intent.payload;
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)
+    || Object.keys(payload).some(key => !(comment ? COMMENT_KEYS : TOPIC_KEYS).includes(key))
+    || !isText(Reflect.get(payload, comment ? 'comment' : 'title'))) refuse();
+  for (const [key, value] of Object.entries(payload)) {
+    if (value === undefined || value === null) continue;
+    if (key === 'labels' ? !Array.isArray(value) || !value.every(item => typeof item === 'string') : typeof value !== 'string') refuse();
+  }
+  let url: URL;
+  try { url = new URL(intent.baseUrl); } catch { return refuse(); }
+  if (url.username || url.password) refuse();
+  const serialized = JSON.stringify(intent);
+  if (/authorization\s*:\s*bearer\s+|"Bearer (?=[A-Za-z0-9._~+\/=-]*[0-9._~+\/=-])[A-Za-z0-9._~+\/=-]{8,}"|[?&](?:access_token|token|password|secret)=|"(?:authorization|password|access_token|token|secret)"\s*:/i.test(serialized)) refuse();
+  const encoded = secrets.filter(secret => secret.length > 0).map(secret => JSON.stringify(secret).slice(1, -1));
+  const reject = (value: unknown) => {
+    const text = JSON.stringify(value);
+    if (text !== undefined && encoded.some(secret => text.includes(secret))) refuse();
+  };
+  const pending: unknown[] = [intent];
+  while (pending.length) {
+    const value = pending.pop();
+    if (Array.isArray(value)) { for (const item of value) pending.push(item); }
+    else if (value && typeof value === 'object') {
+      for (const [key, item] of Object.entries(value)) { if (!SCHEMA_KEYS.has(key)) reject(key); pending.push(item); }
+    } else reject(value);
+  }
+}
+
 export function createViewerBcfWriteGateway(now: () => Date = () => new Date()): BcfWriteGateway {
   return {
     async write<T extends { guid: string }>(intent: BcfWriteIntent, send: () => Promise<T>, secrets: readonly string[] = []): Promise<T> {
       const sensitive = secrets.filter(secret => secret.length > 0);
-      if (sensitive.some(secret => JSON.stringify(intent).includes(JSON.stringify(secret).slice(1, -1)))) {
-        throw new BcfWriteRefusedError('BCF publication refused: credentials must not enter durable state.');
-      }
+      admitIntent(intent, sensitive);
       const target: PublicationTarget = { serverUrl: normalizeServerUrl(intent.baseUrl), projectId: intent.projectId, userId: '' };
       const id = flowPublicationId(target);
       const topicKey = intent.topicGuid ?? '';

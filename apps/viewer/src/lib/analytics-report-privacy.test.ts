@@ -4,10 +4,11 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import type { CapturedNetworkRequest, PostHogConfig } from 'posthog-js';
+import type { CapturedNetworkRequest } from 'posthog-js';
 // Exercise the installed SDK's real configuration selection, including its
 // initial-performance fallback. SDK upgrades must preserve this privacy boundary.
 import { buildNetworkRequestOptions } from 'posthog-js/lib/src/extensions/replay/external/config.js';
+import { defaultConfig } from 'posthog-js/lib/src/posthog-core.js';
 import { maskReportNetworkRequest, reportReplayPrivacy } from './analytics-report-privacy.js';
 
 function request(name: string, isInitial = false): CapturedNetworkRequest {
@@ -38,8 +39,8 @@ describe('report session replay network privacy (#7495)', () => {
     assert.equal(input.requestHeaders?.cookie, 'owner-session', 'does not mutate SDK input');
   });
   it('real SDK rejects remote body/header enablement and suppresses sensitive replay entries', () => {
-    const options = buildNetworkRequestOptions({ api_host: 'https://eu.i.posthog.com',
-      session_recording: reportReplayPrivacy } as PostHogConfig,
+    const options = buildNetworkRequestOptions({ ...defaultConfig(), api_host: 'https://eu.i.posthog.com',
+      session_recording: reportReplayPrivacy },
     { recordBody: true, recordHeaders: true, recordPerformance: true });
     assert.equal(options.recordBody, false);
     assert.equal(options.recordHeaders, false);

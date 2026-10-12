@@ -90,6 +90,9 @@ clones; structured-clone byte counts remain estimates. Parser WASM scans
 report typed-array ingress through the same counter registry, while an
 entity-index handoff avoids that scan.
 
+Timing consumers check every present upload-mode declaration; a timed
+environment tag cannot override a legacy count declaration in imported data.
+
 Structural GPU cohorts can enable `?perf.benchmarkUploads=1` before loading a
 model. The viewer then calls `SceneContents.flushPending` with its optional
 `deterministicUploads` argument: each mesh produces its own streaming fragment,

@@ -18,11 +18,11 @@ and finalization chunks differ, demonstrating that those boundaries no longer
 define fragment grouping. The GPU fields count actual native allocations and
 successful submissions from the shared static-upload helper.
 
-Aggregate `gpu.writeBytes` includes mutable table updates and varies between
-these runs. It remains scheduling-dependent. Static geometry and instance
-uploads have separate `gpu.staticUpload` counters; uniforms also remain
-scheduling-dependent. The initial aggregate-write variance was retained and
-led to this separation, rather than widening an exact-count tolerance.
+Aggregate `gpu.writeBytes` also repeats within each committed fixture pair.
+It includes mutable table updates, so those pairs alone do not establish
+schedule-independent aggregate writes. Static geometry and instance uploads
+have separate `gpu.staticUpload` counters; uniforms and mutable table writes
+remain scheduling work rather than part of the structural upload contract.
 
 `source-binding.json` pins the six renderer/viewer runtime owners and the
 production index. The unchanged WASM runtime comes from the exact-base green
@@ -42,3 +42,6 @@ original qualification inputs; this comment-only producer edit does not
 change upload behavior. A later cold A/B consumer guard also rejects a count
 mode observed in the trace, even when the harness requested timed uploads.
 These post-qualification edits do not represent another native GPU cohort.
+The later imported-evidence guard checks both supported upload-mode tags:
+a timed environment tag cannot hide a legacy count or invalid declaration.
+It does not change the native viewer workload or the retained cohort.

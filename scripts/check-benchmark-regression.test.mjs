@@ -93,6 +93,31 @@ test('#6993 count-only GPU results cannot be compared as timings, even in adviso
   }
 });
 
+for (const legacyMode of ['count', 'unknown', null]) {
+  test(`#6993 a timed environment tag cannot hide legacy upload mode ${legacyMode}`, () => {
+    const dir = benchTree({ current: ALL_METRICS, baseline: ALL_METRICS,
+      extra: { environment: { uploadMode: 'timed' }, loadCounters: { uploadMode: legacyMode } } });
+    try {
+      const { code, out } = runBench(dir);
+      assert.equal(code, 1, out);
+      assert.match(out, /not a timing workload/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+}
+
+test('#6993 matching timed environment and legacy tags remain valid timing inputs', () => {
+  const dir = benchTree({ current: ALL_METRICS, baseline: ALL_METRICS,
+    extra: { environment: { uploadMode: 'timed' }, loadCounters: { uploadMode: 'timed' } } });
+  try {
+    const { code, out } = runBench(dir);
+    assert.equal(code, 0, out);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('benchmark: a harness fault is reported even when a REGRESSION exits first', () => {
   // Without --advisory a regression took `process.exit(1)` before the harness
   // faults were printed, so a run with both reported only the SOFTER problem.

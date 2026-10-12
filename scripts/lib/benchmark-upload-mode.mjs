@@ -4,8 +4,9 @@
 
 /** Count cohorts exercise different fragment grouping and cannot qualify latency. */
 export function requireTimingUploads(payload) {
-  const mode = payload?.environment?.uploadMode ?? payload?.loadCounters?.uploadMode ?? 'timed';
-  if (mode !== 'timed') {
-    throw new Error(`GPU upload mode ${String(mode)} is not a timing workload; use count results only for structural comparisons.`);
+  for (const mode of [payload?.environment?.uploadMode, payload?.loadCounters?.uploadMode]) {
+    if (mode !== undefined && mode !== 'timed') {
+      throw new Error(`GPU upload mode ${String(mode)} is not a timing workload; use count results only for structural comparisons.`);
+    }
   }
 }

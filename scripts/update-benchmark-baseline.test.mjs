@@ -61,6 +61,34 @@ test('#6993 count-only GPU results cannot overwrite the timing baseline', () => 
   }
 });
 
+for (const legacyMode of ['count', 'unknown', null]) {
+  test(`#6993 a timed environment tag cannot admit legacy upload mode ${legacyMode} into the baseline`, () => {
+    const dir = tree([{ file: 'x.ifc', metrics: { totalWallClockMs: 1 },
+      environment: { uploadMode: 'timed' }, loadCounters: { uploadMode: legacyMode } }]);
+    try {
+      const before = readFileSync(join(dir, 'tests', 'benchmark', 'baseline.json'));
+      const { code, out } = run(dir);
+      assert.equal(code, 1, out);
+      assert.match(out, /not a timing workload/);
+      assert.deepEqual(readFileSync(join(dir, 'tests', 'benchmark', 'baseline.json')), before);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+}
+
+test('#6993 matching timed environment and legacy tags can update the timing baseline', () => {
+  const dir = tree([{ file: 'x.ifc', metrics: { totalWallClockMs: 1 },
+    environment: { uploadMode: 'timed' }, loadCounters: { uploadMode: 'timed' } }]);
+  try {
+    const { code, out } = run(dir);
+    assert.equal(code, 0, out);
+    assert.equal(baselineOf(dir)['x.ifc'].metrics.totalWallClockMs, 1);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('#6993 a GPU-lost sample keeps the previous baseline entry; a clean one replaces it', () => {
   const dir = tree([
     { file: 'x.ifc', timestamp: '2026-10-10', metrics: { totalWallClockMs: 900 }, gpuHealth: lost },

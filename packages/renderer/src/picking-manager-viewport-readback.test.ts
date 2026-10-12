@@ -219,3 +219,22 @@ for (const path of ['point', 'gpu-rectangle', 'cpu-box-and-points'] as const) {
       'even synchronous CPU box hits must not survive an unavailable camera');
   });
 }
+
+// A recovered frame is available again, but it must not resurrect hits captured
+// before the unsupported pose. Ordinary supported camera moves retain their
+// existing CPU-box policy above; only invalidation discards those hits (#7493).
+for (const outcome of ['resolve', 'reject'] as const) {
+  it(`rejects CPU rectangle hits after invalidation and recovery on ${outcome} (#7493)`, async t => {
+    t.mock.method(console, 'warn', () => {});
+    const h = readbackFixture('cpu-box-and-points');
+    const position = h.camera.getPosition();
+    const pending = h.begin();
+    assert.equal(h.submissions.length, 1);
+    h.camera.setPosition(1_000_000_001, 0, 0);
+    h.camera.setPosition(position.x, position.y, position.z);
+    assert.equal(h.camera.getRelativeToEyeFrame().isAvailable(), true);
+    if (outcome === 'resolve') h.finish();
+    else h.fail();
+    assert.deepEqual(await pending, new Set(), 'recovery must not revive pre-invalidation box hits');
+  });
+}

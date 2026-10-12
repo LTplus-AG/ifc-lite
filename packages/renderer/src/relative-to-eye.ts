@@ -191,11 +191,15 @@ export class RelativeToEyeFrame {
   private viewProj: Mat4 = MathUtils.identity();
   private renderEpoch = 0;
   private available = true;
+  private invalidationEpoch = 0;
 
   /** Unsupported camera poses must never expose a previous frame as current. */
-  invalidate(): void { this.available = false; this.renderEpoch++; }
+  invalidate(): void { this.available = false; this.renderEpoch++; this.invalidationEpoch++; }
 
   isAvailable(): boolean { return this.available; }
+
+  /** Detect an unsupported pose even if recovery precedes a pending readback. */
+  getInvalidationEpoch(): number { return this.invalidationEpoch; }
 
   private requireAvailable(): void {
     if (!this.available) throw new RangeError('RTE camera frame is outside the supported envelope.');

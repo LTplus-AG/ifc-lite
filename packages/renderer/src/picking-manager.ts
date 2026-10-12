@@ -15,7 +15,7 @@ import type { MeshData } from '@ifc-lite/geometry';
 import type { PickOptions, PickResult, PickClipState } from './types.js';
 import type { PointPickNode } from './point-picker.js';
 import type { GpuUploadOutcome } from './gpu-upload-guard.js';
-import { capturePointRteSnapshot, isPointRteSnapshotCurrent, isPointRteFrameAvailable } from './pick-rte-snapshot.js';
+import { capturePointRteSnapshot, isPointRteSnapshotCurrent, isPointRteFrameAvailable, pointRteInvalidationEpoch } from './pick-rte-snapshot.js';
 import { computeDrawingBufferSize } from './renderer-viewport.js';
 import { pickPieceKey, planPickMeshHydration } from './pick-mesh-budget.js';
 
@@ -73,9 +73,10 @@ export class PickingManager {
     }
 
     /** A readback belongs to its picker installation and CSS mapping (#6881/#6882). */
-    private isPickRequestCurrent(viewport: PickViewport, pickerEpoch: number): boolean {
+    private isPickRequestCurrent(viewport: PickViewport, pickerEpoch: number, invalidationEpoch: number | undefined): boolean {
         const current = this.pickViewport();
         return isPointRteFrameAvailable(this.camera)
+            && pointRteInvalidationEpoch(this.camera) === invalidationEpoch
             && this.pickerEpoch === pickerEpoch && current !== null
             && current.width === viewport.width && current.height === viewport.height
             && current.scaleX === viewport.scaleX && current.scaleY === viewport.scaleY;
@@ -166,6 +167,7 @@ export class PickingManager {
         }
 
         const picker = this.picker, pickerEpoch = this.pickerEpoch;
+        const invalidationEpoch = pointRteInvalidationEpoch(this.camera);
         // Scale CSS pixel coordinates to pick-texture texels (see pickViewport).
         const viewport = this.pickViewport();
         if (!viewport) {
@@ -234,7 +236,7 @@ export class PickingManager {
             clip,
             pointRteSnapshot,
         );
-        if (!this.isPickRequestCurrent(viewport, pickerEpoch)) return null;
+        if (!this.isPickRequestCurrent(viewport, pickerEpoch, invalidationEpoch)) return null;
         if (pointRteSnapshot
             && !isPointRteSnapshotCurrent(this.camera, pointRteSnapshot)) {
             return null;
@@ -281,6 +283,7 @@ export class PickingManager {
     ): Promise<Set<number>> {
         if (!this.picker || !isPointRteFrameAvailable(this.camera)) return new Set();
         const picker = this.picker, pickerEpoch = this.pickerEpoch;
+        const invalidationEpoch = pointRteInvalidationEpoch(this.camera);
         const viewport = this.pickViewport();
         if (!viewport) return new Set();
         const sx0 = x0 * viewport.scaleX, sy0 = y0 * viewport.scaleY;
@@ -340,9 +343,9 @@ export class PickingManager {
                 // branch could not throw at all before the point pass was added,
                 // so degrade to them instead of failing the whole rectangle select.
                 console.warn('[PickingManager] point-cloud rect pick failed; returning current-viewport bounding-box hits only:', err);
-                return this.isPickRequestCurrent(viewport, pickerEpoch) ? boxHits : new Set();
+                return this.isPickRequestCurrent(viewport, pickerEpoch, invalidationEpoch) ? boxHits : new Set();
             }
-            if (!this.isPickRequestCurrent(viewport, pickerEpoch)) return new Set();
+            if (!this.isPickRequestCurrent(viewport, pickerEpoch, invalidationEpoch)) return new Set();
             if (pointRteSnapshot && !isPointRteSnapshotCurrent(this.camera, pointRteSnapshot)) {
                 return boxHits;
             }
@@ -366,7 +369,7 @@ export class PickingManager {
             clip,
             pointRteSnapshot,
         );
-        return !this.isPickRequestCurrent(viewport, pickerEpoch)
+        return !this.isPickRequestCurrent(viewport, pickerEpoch, invalidationEpoch)
             || (pointRteSnapshot && !isPointRteSnapshotCurrent(this.camera, pointRteSnapshot))
             ? new Set()
             : hits;

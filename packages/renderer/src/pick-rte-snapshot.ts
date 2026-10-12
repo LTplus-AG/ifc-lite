@@ -9,6 +9,7 @@ interface RteCamera {
   getRelativeToEyeFrame?: () => {
     snapshot(): RelativeToEyeSnapshot;
     isAvailable?: () => boolean;
+    getInvalidationEpoch?: () => number;
     getRenderEpoch(): number;
   };
 }
@@ -17,6 +18,12 @@ interface RteCamera {
 export function isPointRteFrameAvailable(camera: Camera): boolean {
   const rteCamera: RteCamera = camera;
   return rteCamera.getRelativeToEyeFrame?.().isAvailable?.() !== false;
+}
+
+/** Ordinary navigation leaves this unchanged; an unavailable frame advances it. */
+export function pointRteInvalidationEpoch(camera: Camera): number | undefined {
+  const rteCamera: RteCamera = camera;
+  return rteCamera.getRelativeToEyeFrame?.().getInvalidationEpoch?.();
 }
 
 /** Test doubles predating #5049 have no RTE frame; production Camera does. */

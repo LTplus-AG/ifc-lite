@@ -373,3 +373,66 @@ for (const source of ['literal', 'Player'] as const) {
     assert.equal(peer.state.receivedWriteAttempts, 2, 'an identical unresolved comment is never resent');
   });
 }
+
+// #7476: public raw callbacks bypass sendBcfWrite, so the host must validate before markDone too.
+for (const field of ['guid', 'topic_guid', 'viewpoint_guid', 'reply_to_comment_guid'] as const) {
+  test(`#7476 raw browser callback refuses credential-bearing ${field} after a retained effect and blocks replay`, async t => {
+    const token = 'beef';
+    const unsafe = 'beef0000-0000-4000-8000-000000000999';
+    const peer = await connectPeer(t, {
+      token, guidPrefix: field === 'guid' ? 'beef' : 'cafe',
+      ...(field === 'topic_guid' ? { commentResponseTopicGuid: unsafe } : {}),
+      ...(field === 'viewpoint_guid' ? { commentResponseViewpointGuid: unsafe } : {}),
+      ...(field === 'reply_to_comment_guid' ? { commentResponseReplyToCommentGuid: unsafe } : {}),
+    });
+    const parent = field === 'guid' ? undefined : await peer.connection.client.createTopic(LOCAL_BCF_PROJECT, { title: 'Parent topic' });
+    const gateway = createViewerBcfWriteGateway();
+    const write: BcfWriteIntent = parent ? { nodeType: 'bcf.addComment', operation: 'createComment', baseUrl: peer.baseUrl,
+      version: '2.1', projectId: LOCAL_BCF_PROJECT, topicGuid: parent.guid, payload: { comment: 'Safe comment' } }
+      : intent(peer.baseUrl, { title: 'Safe topic' });
+    const send = () => parent ? peer.connection.client.createComment(LOCAL_BCF_PROJECT, parent.guid, { comment: 'Safe comment' })
+      : peer.connection.client.createTopic(LOCAL_BCF_PROJECT, { title: 'Safe topic' });
+    let returned: unknown;
+    let failure: unknown;
+    try { returned = await gateway.write(write, send, [token]); } catch (error) { failure = error; }
+    const count = parent ? 2 : 1;
+    assert.equal(peer.state.receivedWrites, count);
+    assert.equal(peer.state.acceptedWrites, count);
+    const retained = [...peer.state.topics.values()][0];
+    assert.ok(retained);
+    if (parent) {
+      assert.equal(retained.comments.length, 1);
+      assert.equal(retained.comments[0].topic_guid, parent.guid, 'independent retained relationship remains the actual parent');
+      assert.equal(retained.comments[0].comment, 'Safe comment');
+    } else assert.equal(retained.topic.title, 'Safe topic');
+    assert.ok(failure instanceof Error, 'the retained effect must remain unknown');
+    assert.match(failure.message, /outcome unknown/);
+    assert.equal(returned, undefined, 'no unsafe receipt DTO is returned');
+    const id = flowPublicationId({ serverUrl: peer.baseUrl, projectId: LOCAL_BCF_PROJECT });
+    const record = (await readPublication(id))?.record;
+    assert.equal(record?.entries[0].state, 'uncertain');
+    assert.equal(record?.entries[0].receipt, undefined);
+    assert.equal(inspect(record, { depth: null }).includes(token), false);
+    await assert.rejects(createViewerBcfWriteGateway().write(write, send, [token]), /identical earlier write/);
+    assert.equal(peer.state.receivedWrites, count, 'fresh gateway cannot replay the retained effect');
+  });
+}
+
+test('#7476 raw browser callback accepts clean primary and nullable optional relationship identifiers', async t => {
+  const peer = await connectPeer(t, { token: 'beef', guidPrefix: 'cafe', commentResponseViewpointGuid: null, commentResponseReplyToCommentGuid: null });
+  const parent = await peer.connection.client.createTopic(LOCAL_BCF_PROJECT, { title: 'Parent topic' });
+  const write: BcfWriteIntent = { nodeType: 'bcf.addComment', operation: 'createComment', baseUrl: peer.baseUrl,
+    version: '2.1', projectId: LOCAL_BCF_PROJECT, topicGuid: parent.guid, payload: { comment: 'Safe comment' } };
+  const result = await createViewerBcfWriteGateway().write(write,
+    () => peer.connection.client.createComment(LOCAL_BCF_PROJECT, parent.guid, { comment: 'Safe comment' }), ['beef']);
+  assert.equal(peer.state.acceptedWrites, 2);
+  const retained = peer.state.topics.get(parent.guid)?.comments[0];
+  assert.ok(retained);
+  assert.equal(result.guid, retained.guid);
+  assert.equal(result.topic_guid, parent.guid);
+  assert.equal(result.viewpoint_guid, null);
+  assert.equal(result.reply_to_comment_guid, null);
+  const record = (await readPublication(flowPublicationId({ serverUrl: peer.baseUrl, projectId: LOCAL_BCF_PROJECT })))?.record;
+  assert.equal(record?.entries[0].state, 'done');
+  assert.equal(record?.entries[0].receipt?.remoteGuid, retained.guid);
+});

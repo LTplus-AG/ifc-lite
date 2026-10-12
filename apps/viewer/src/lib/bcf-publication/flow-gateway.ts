@@ -110,7 +110,14 @@ export function createViewerBcfWriteGateway(now: () => Date = () => new Date()):
       inFlightEntries.add(entryId);
       try {
         const result = await send();
-        if (sensitive.some(secret => result.guid.includes(secret))) throw new Error('BCF server receipt contains a credential.');
+        if (!result || typeof result !== 'object') throw new Error('BCF server receipt has no valid identifier.');
+        const representations = sensitive.flatMap(secret => [...new Set([secret, JSON.stringify(secret).slice(1, -1)])]);
+        for (const field of ['guid', 'topic_guid', 'viewpoint_guid', 'reply_to_comment_guid']) {
+          const value: unknown = Reflect.get(result, field);
+          if (field !== 'guid' && (value === undefined || value === null)) continue;
+          if (typeof value !== 'string' || value.length === 0) throw new Error('BCF server receipt has no valid identifier.');
+          if (representations.some(secret => value.includes(secret))) throw new Error('BCF server receipt contains a credential.');
+        }
         await settle(id, entryId, entry => markDone(entry, { remoteGuid: result.guid, at: now().toISOString(), evidence: 'response' }));
         return result;
       } catch (error) {

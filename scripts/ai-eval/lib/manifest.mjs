@@ -20,7 +20,8 @@ import { recordingErrors } from './recording.mjs';
 const readJson = path => JSON.parse(readFileSync(path, 'utf8'));
 export const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 
-const EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/;
+// Start at the maximal local-part boundary, rather than retrying every suffix.
+const EMAIL = /(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/;
 const CREDENTIAL = /\b(?:sk-(?:ant-)?[A-Za-z0-9_-]{16,}|AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{30,}|xox[abpr]-[A-Za-z0-9-]{10,})\b/;
 const STEP_FILE_NAME = /FILE_NAME\(\s*'(?:[^']|'')*'\s*,\s*'(?:[^']|'')*'\s*,\s*(\([^)]*\)|\$)\s*,\s*(\([^)]*\)|\$)/;
 const hasText = list => /'(?:[^']|'')+'/.test(list);

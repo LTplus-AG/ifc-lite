@@ -24,7 +24,18 @@ const stream = (kind, value) => {
     : [{ choices: [{ delta: { content: value } }] }, { choices: [{ delta: {}, finish_reason: 'stop' }], usage: { prompt_tokens: 2, completion_tokens: 5 } }];
   return events.map(event => `data: ${JSON.stringify(event)}\n\n`).join('') + 'data: [DONE]\n\n';
 };
-async function peer(kind, key, status, echo) {
+const unicode = value => value.split('').map(char => `\\u${char.charCodeAt(0).toString(16).padStart(4, '0')}`).join('');
+function unicodeSplitStream(kind, key) {
+  const parts = [key.slice(0, Math.floor(key.length / 2)), key.slice(Math.floor(key.length / 2))];
+  const deltas = parts.map(part => {
+    const event = kind === 'anthropic'
+      ? { type: 'content_block_delta', delta: { type: 'text_delta', text: part } }
+      : { choices: [{ delta: { content: part } }] };
+    return `data: ${JSON.stringify(event).replace(JSON.stringify(part), `"${unicode(part)}"`)}\n\n`;
+  });
+  return deltas.join('') + 'data: [DONE]\n\n';
+}
+async function peer(kind, key, status, echo, encoding = 'plain') {
   const observed = [];
   const server = http.createServer(async (request, response) => {
     let body = '';
@@ -32,9 +43,13 @@ async function peer(kind, key, status, echo) {
     observed.push({ method: request.method,
       authenticated: kind === 'anthropic' ? request.headers['x-api-key'] === key : request.headers.authorization === `Bearer ${key}`,
       payloadCredentialFree: !body.includes(key) });
-    response.writeHead(status, { 'Content-Type': status === 200 ? 'text/event-stream' : 'text/plain' });
+    response.writeHead(status, { 'Content-Type': status === 200 ? 'text/event-stream' : encoding === 'unicode-json' ? 'application/json' : 'text/plain' });
     const text = echo ? `Controlled upstream echo ${key}` : 'No findings.';
-    response.end(status === 200 ? stream(kind, text) : text);
+    if (encoding === 'unicode-json') response.end(`{"error":{"message":"${unicode(key)}"}}`);
+    else if (encoding === 'unicode-split') response.end(unicodeSplitStream(kind, key));
+    else if (encoding === 'unbroken') response.end('x'.repeat(524_288));
+    else if (encoding === 'oversized') response.end('x,'.repeat(524_288) + 'x');
+    else response.end(status === 200 ? stream(kind, text) : text);
   });
   server.listen(0, '127.0.0.1'); await once(server, 'listening');
   const address = server.address();
@@ -53,10 +68,10 @@ function requestOptions(provider) {
 }
 
 // #6928: real authenticated HTTP responses, not an injected provider return.
-for (const kind of ['openai', 'anthropic']) for (const status of [200, 500]) {
+for (const kind of ['openai', 'anthropic']) for (const status of [200, 500]) for (const encoding of ['plain', status === 500 ? 'unicode-json' : 'unicode-split']) {
   for (const key of ['ownedQ7m2y5z8_opaqueProof', 'owned"quote\\backslash', 'xy!']) {
-    test(`#6928 ${kind} HTTP${status} credential echo is refused before live output exists (${key.length} chars)`, { timeout: 5000 }, async () => {
-      const remote = await peer(kind, key, status, true);
+    test(`#6928 ${kind} HTTP${status} ${encoding} credential echo is refused before live output exists (${key.length} chars)`, { timeout: 5000 }, async () => {
+      const remote = await peer(kind, key, status, true, encoding);
       try {
         let result, error;
         try { result = await runLive(requestOptions({ kind, url: remote.url, model: 'controlled', key })); }
@@ -81,10 +96,10 @@ async function child(args, env) {
   try { const [code] = await once(childProcess, 'close'); return { code, stdout, stderr }; }
   finally { clearTimeout(timeout); }
 }
-for (const status of [200, 500]) for (const echo of [true, false]) {
-  test(`#6928 actual CLI HTTP${status} ${echo ? 'refuses an echoed credential without files or logs' : 'persists clean usage and response unchanged'}`, { timeout: 10000 }, async () => {
+for (const status of [200, 500]) for (const echo of [true, false]) for (const encoding of echo ? ['plain', status === 500 ? 'unicode-json' : 'unicode-split'] : ['plain']) {
+  test(`#6928 actual CLI HTTP${status} ${encoding} ${echo ? 'refuses an echoed credential without files or logs' : 'persists clean usage and response unchanged'}`, { timeout: 10000 }, async () => {
     const key = 'ownedQ7m2y5z8_opaqueProof';
-    const remote = await peer('openai', key, status, echo);
+    const remote = await peer('openai', key, status, echo, encoding);
     const dir = await mkdtemp(join(tmpdir(), 'ifclite-live-credential-'));
     try {
       const requests = join(dir, 'requests.json'), out = join(dir, 'result');
@@ -128,4 +143,40 @@ test('#6928 actual dry-run refuses a configured credential in provider metadata 
     assert.equal(dryRunOutcome.stderr.trim(), 'live evaluation plan: refusing to write (configured provider credential)');
     assert.equal(generatedOutputContainsCredential(dryRunOutcome.stdout + dryRunOutcome.stderr, key), false);
   } finally { await remote.close(); }
+});
+
+// The response reader enforces a byte bound before JSON/SSE inspection.
+test('#6928 a real oversized HTTP error is refused before output parsing or persistence', { timeout: 5000 }, async () => {
+  const key = 'ownedQ7m2y5z8_opaqueProof';
+  const remote = await peer('openai', key, 500, false, 'oversized');
+  try {
+    let result, error;
+    try { result = await runLive(requestOptions({ kind: 'openai', url: remote.url, model: 'controlled', key })); }
+    catch (failure) { error = failure; }
+    assert.deepEqual(remote.observed, [{ method: 'POST', authenticated: true, payloadCredentialFree: true }]);
+    assert.equal(result, undefined);
+    assert.ok(error instanceof Error);
+    assert.match(error.message, /credential inspection bound/);
+    assert.equal(generatedOutputContainsCredential(String(error), key), false);
+  } finally { await remote.close(); }
+});
+
+// A within-bound non-email response must not consume quadratic privacy-scan work.
+test('#6928 actual CLI preserves a bounded unbroken HTTP error without a privacy-scan hang', { timeout: 10000 }, async () => {
+  const key = 'ownedQ7m2y5z8_opaqueProof';
+  const remote = await peer('openai', key, 500, false, 'unbroken');
+  const dir = await mkdtemp(join(tmpdir(), 'ifclite-live-unbroken-'));
+  try {
+    const requests = join(dir, 'requests.json'), out = join(dir, 'result');
+    await writeFile(requests, JSON.stringify(captured));
+    const observed = await child(['--providers', 'openai', '--tasks', 'clash-summary', '--requests', requests, '--out', out],
+      { IFCLITE_AI_EVAL_LIVE: '1', IFCLITE_AI_EVAL_OPENAI_URL: remote.url, IFCLITE_AI_EVAL_OPENAI_MODEL: 'controlled', OPENAI_API_KEY: key });
+    assert.deepEqual(remote.observed, [{ method: 'POST', authenticated: true, payloadCredentialFree: true }]);
+    assert.equal(observed.code, 0, 'a within-bound safe response must finish before the owned child deadline');
+    const files = await readdir(join(out, 'recordings'));
+    assert.equal(files.length, 1);
+    const recording = readJson(join(out, 'recordings', files[0]));
+    assert.equal(recording.response.body, 'x'.repeat(2000));
+    assert.equal(generatedOutputContainsCredential({ recording, stdout: observed.stdout, stderr: observed.stderr }, key), false);
+  } finally { await remote.close(); await rm(dir, { recursive: true, force: true }); }
 });

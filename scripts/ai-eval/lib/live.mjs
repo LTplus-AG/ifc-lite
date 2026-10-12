@@ -19,6 +19,50 @@ import { privacyFindings } from './manifest.mjs';
 
 export const FIXED_SETTINGS = Object.freeze({ temperature: 0 });
 const ANTHROPIC_VERSION = '2023-06-01';
+const RESPONSE_TEXT_LIMIT = 1_048_576;
+const OUTPUT_INSPECTION_LIMIT = 33_554_432;
+
+class ResponseInspectionBound extends Error {
+  constructor() { super('Provider response exceeds the credential inspection bound'); }
+}
+
+async function responseText(response) {
+  if (!response.body) return '';
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let bytes = 0;
+  let text = '';
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) return text + decoder.decode();
+      bytes += value.byteLength;
+      if (bytes > RESPONSE_TEXT_LIMIT) {
+        try { await reader.cancel(); } catch { throw new ResponseInspectionBound(); }
+        throw new ResponseInspectionBound();
+      }
+      text += decoder.decode(value, { stream: true });
+    }
+  } finally { reader.releaseLock(); }
+}
+
+/** Decode JSON string literals only: no recursive object parsing or nesting walk. */
+function decodedCredential(text, knownSecrets) {
+  if (text.length > OUTPUT_INSPECTION_LIMIT) throw new Error('Evaluation output exceeds the credential inspection bound');
+  for (let index = 0; index < text.length; index++) {
+    if (text[index] !== '"') continue;
+    const start = index++;
+    for (; index < text.length && text[index] !== '"'; index++) {
+      if (text[index] === '\\') index++;
+    }
+    if (index === text.length) throw new Error('Evaluation output has an unsupported quoted string');
+    let value;
+    try { value = JSON.parse(text.slice(start, index + 1)); }
+    catch { throw new Error('Evaluation output has an unsupported JSON string'); }
+    if (knownSecrets.some(secret => value.includes(secret))) return true;
+  }
+  return false;
+}
 
 /** Default endpoints; each can be pointed elsewhere (a free OpenAI-compatible host, a local mock) via env. */
 export const DEFAULT_URLS = { anthropic: 'https://api.anthropic.com/v1/messages', openai: 'https://api.openai.com/v1/chat/completions' };
@@ -59,20 +103,23 @@ function authHeaders(kind, key) {
 /** Refuse to persist anything that looks like a credential or personal address. */
 export function assertNoSecrets(value, where, knownSecrets = []) {
   const serialized = JSON.stringify(value);
-  for (const secret of knownSecrets) {
-    if (typeof secret !== 'string' || !secret) continue;
+  const sensitive = knownSecrets.filter(secret => typeof secret === 'string' && secret);
+  const candidates = typeof value === 'string' ? [value, serialized] : [serialized];
+  for (const secret of sensitive) {
     const escaped = JSON.stringify(secret).slice(1, -1);
-    const candidates = typeof value === 'string' ? [value, serialized] : [serialized];
     if (candidates.some(candidate => candidate.includes(secret) || candidate.includes(escaped))) {
       throw new Error(`${where}: refusing to write (configured provider credential)`);
     }
+  }
+  if (sensitive.length && candidates.some(candidate => decodedCredential(candidate, sensitive))) {
+    throw new Error(`${where}: refusing to write (configured provider credential)`);
   }
   const findings = privacyFindings(serialized, 'json');
   if (findings.length) throw new Error(`${where}: refusing to write (${findings.join('; ')})`);
 }
 
 /** One provider call; returns the recording-shaped response plus its usage receipt. */
-export async function callProvider({ provider, task, request, settings, fetchImpl, now }) {
+export async function callProvider({ provider, task, request, settings, fetchImpl, now, knownSecrets = [] }) {
   const wire = wireRequest(provider.kind, { model: provider.model, request, settings });
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), settings.timeoutMs);
@@ -85,14 +132,17 @@ export async function callProvider({ provider, task, request, settings, fetchImp
     const response = await fetchImpl(provider.url, { method: 'POST', signal: controller.signal, redirect: 'manual',
       headers: { 'Content-Type': 'application/json', ...wire.headers, ...authHeaders(provider.kind, provider.key) }, body: JSON.stringify(wire.body) });
     status = response.status;
-    text = await response.text();
+    text = await responseText(response);
   } catch (error) {
+    if (error instanceof ResponseInspectionBound) throw error;
     failure = controller.signal.aborted ? 'timeout' : `network error: ${error instanceof Error ? error.name : 'unknown'}`;
   } finally { clearTimeout(timer); }
   const finishedAt = now();
+  if (text.length > RESPONSE_TEXT_LIMIT) throw new Error('Provider response exceeds the credential inspection bound');
   // Check the actual response before parsing SSE or constructing a receipt.
   // Providers can echo opaque credentials that the generic scanner cannot know.
-  assertNoSecrets(text, 'provider response', [provider.key]);
+  const sensitive = [provider.key, ...knownSecrets];
+  assertNoSecrets(text, 'provider response', sensitive);
   const ok = status === 200 && failure === null;
   const events = ok ? parseEvents(sseData(text)) : null;
   const folded = events ? foldEvents(provider.kind, events) : { text: '', finishReason: null, usage: null };
@@ -105,7 +155,7 @@ export async function callProvider({ provider, task, request, settings, fetchImp
   const response = ok ? { status, events, done: /data:\s*\[DONE\]/.test(text) }
     : { status: status || 599, body: (failure ?? text).slice(0, 2000) };
   const result = { response, receipt, folded, outcome };
-  assertNoSecrets(result, 'provider result', [provider.key]);
+  assertNoSecrets(result, 'provider result', sensitive);
   return result;
 }
 
@@ -117,6 +167,7 @@ export async function callProvider({ provider, task, request, settings, fetchImp
 export async function runLive({ manifest, captured, providers, tasks, repeats, fetchImpl, now = Date.now, runId }) {
   const settings = { ...FIXED_SETTINGS, maxOutputTokens: manifest.liveEvaluation.maxOutputTokens, timeoutMs: manifest.liveEvaluation.timeoutMs };
   const budget = manifest.liveEvaluation.budget;
+  const knownSecrets = providers.map(provider => provider.key);
   if (!Number.isInteger(repeats) || repeats < 1) throw new Error(`--repeats must be a whole number of at least 1, got ${repeats}`);
   if (repeats > manifest.liveEvaluation.maxRepeats) throw new Error(`--repeats ${repeats} exceeds the manifest limit of ${manifest.liveEvaluation.maxRepeats}`);
   const recordings = [];
@@ -133,7 +184,7 @@ export async function runLive({ manifest, captured, providers, tasks, repeats, f
     for (const provider of providers) for (let repeat = 1; repeat <= repeats; repeat++) {
       if (receipts.length + 1 > budget.maxRequests) { stopped = `request budget of ${budget.maxRequests} reached`; break; }
       if (checkRunBudget(receipts, budget).violations.length) { stopped = 'output token budget reached'; break; }
-      const call = await callProvider({ provider, task, request: entry.request, settings, fetchImpl, now });
+      const call = await callProvider({ provider, task, request: entry.request, settings, fetchImpl, now, knownSecrets });
       receipts.push(call.receipt);
       const id = `${runId}-${task.id}-${provider.kind}-${repeat}`;
       const recording = { $schema: '../../../recording.schema.json', version: 1, id: `live-${id}`.toLowerCase().replace(/[^a-z0-9-]/g, '-').slice(0, 80), task: task.id, scene: entry.scene,

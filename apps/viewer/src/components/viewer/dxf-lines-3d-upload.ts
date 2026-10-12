@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { useEffect, type RefObject } from 'react';
 import { runGpuUpload } from './gpu-upload-guard.js';
 import type { AnchoredRendererLineVertices } from '@/lib/renderer/line-overlay-rte';
 
@@ -52,4 +53,18 @@ export function uploadDxfLines3DGuarded(
   if (!uploaded) {
     renderer.setLineOverlay('dxf', null);
   }
+}
+
+/** Retry retained authored underlays after renderer replacement, even when their source is unchanged (#6993/#7484). */
+export function useDxfRendererOverlay(
+  rendererRef: RefObject<DxfLines3DUploadTarget | null>,
+  vertices: Parameters<typeof uploadDxfLines3DGuarded>[1],
+  isInitialized: boolean,
+  gpuRecoveryEpoch: number,
+): void {
+  useEffect(() => {
+    const renderer = rendererRef.current;
+    if (!renderer || !isInitialized) return;
+    uploadDxfLines3DGuarded(renderer, vertices);
+  }, [rendererRef, vertices, isInitialized, gpuRecoveryEpoch]);
 }

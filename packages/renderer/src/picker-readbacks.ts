@@ -24,6 +24,20 @@ export function releaseReadbacks(...buffers: GPUBuffer[]): void {
 export class PickerReadbackOwner {
   private readonly pending = new Set<GPUBuffer>();
 
+  deviceLost = false;
+
+  constructor(device: GPUDevice) {
+    // Observe this exact device, including intentional destruction. A map may
+    // already have resolved when loss invalidates its mapped range (#6881).
+    // Minimal host/test devices may omit the asynchronous loss signal.
+    if (device.lost && typeof device.lost.then === 'function') {
+      void device.lost.then(() => {
+        this.deviceLost = true;
+        this.destroy();
+      });
+    }
+  }
+
   track(...buffers: readonly GPUBuffer[]): void {
     for (const buffer of buffers) this.pending.add(buffer);
   }

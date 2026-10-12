@@ -15,6 +15,7 @@
 import type { Capability } from '@ifc-lite/extensions';
 import type { FlowHost } from '@ifc-lite/flow-nodes';
 import type { FlowAiService } from '@ifc-lite/flow-nodes/ai';
+import { createNativeBcfWriteGateway } from '@ifc-lite/flow-nodes/bcf-publication-node';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { createDataAccessor } from '@ifc-lite/ids/bridge';
 import { createBimContext, type BimContext } from '@ifc-lite/sdk';
@@ -33,7 +34,7 @@ export interface CliFlowSession {
   active(): HeadlessModel;
 }
 
-export function createCliFlowSession(initial: HeadlessModel, networkGrants: readonly Capability[], ai?: FlowAiService): CliFlowSession {
+export function createCliFlowSession(initial: HeadlessModel, networkGrants: readonly Capability[], ai?: FlowAiService, publication: { directory?: string; secrets?: readonly string[] } = {}): CliFlowSession {
   let active = initial;
   const host: FlowHost = {
     get bim() { return active.bim; },
@@ -43,6 +44,7 @@ export function createCliFlowSession(initial: HeadlessModel, networkGrants: read
     // trusted local run is still not trusted to reach a host the graph never
     // declared (see `FlowHost.networkGrants`).
     networkGrants,
+    bcfWrites: createNativeBcfWriteGateway(publication),
     get defaultModelId() { return active.bim.model.activeId() ?? undefined; },
     // `table.joinByKey`'s tag/property strategies reuse `@ifc-lite/mutations`'
     // csv-match.ts index builder, which needs the raw entity table + mutation

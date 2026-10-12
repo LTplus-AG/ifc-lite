@@ -98,6 +98,25 @@ creation does not run the graph, infer inputs from script text or bypass native
 preflight and capability grants. Proposals allow at most 100 inputs, enum choices
 per input and file slots, within the overall proposal size limit.
 
+## BCF create recovery
+
+CLI Flow hosts durably record `bcf.createTopic` and `bcf.addComment`
+intent before contacting the server. A lost response or process interruption
+leaves an unresolved intent; rerunning the same target and payload is refused
+until explicit recovery. The stored intent contains no bearer token. Known
+credentials accidentally used in payload text are refused before storage or
+sending, including resolved Player token inputs.
+
+Use the [CLI recovery commands](cli.md) to
+list intents, check the original target with fresh permissions, and select a
+real matching GUID. Trim-equivalent free text remains a manual candidate;
+rewritten or omitted fields leave the check unavailable. Only a complete empty enumeration with an explicit full-read-visibility assertion proves absence. The assertion means the authorized read sees the full target collection under the same access scope as the original write; token presence alone is not proof. Without it, empty checks remain unavailable. Anonymous public servers remain supported. Older markerless proofs cannot authorize a release. A complete absent check needs a separate confirmation
+before a deliberate later send. Recovery never automatically sends a create.
+Custom native hosts use the Node-only
+`@ifc-lite/flow-nodes/bcf-publication-node` gateway; its directory must support
+exclusive hard links and fsync. The viewer retains its BCF Drafts & publication
+controls in browser storage.
+
 ## Spreadsheet connectors
 
 `table.readCsv` / `table.writeCsv` and `table.readXlsx` / `table.writeXlsx`

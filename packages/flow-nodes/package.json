@@ -20,6 +20,11 @@
       "types": "./dist/bcf-publication.d.ts",
       "import": "./dist/bcf-publication.js",
       "default": "./dist/bcf-publication.js"
+    },
+    "./bcf-publication-node": {
+      "types": "./dist/bcf-publication-node.d.ts",
+      "import": "./dist/bcf-publication-node.js",
+      "default": "./dist/bcf-publication-node.js"
     }
   },
   "scripts": {

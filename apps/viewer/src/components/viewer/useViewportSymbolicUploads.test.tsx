@@ -113,9 +113,10 @@ for (const channel of ['annotation', 'alignment', 'grid'] as const) {
     const ui = mount(native, initial);
     const positiveVertexCount = native.lines[channel].vertexCount;
     assert.equal(positiveVertexCount, 4, 'actual two source partitions reached their buffer owner');
-    const cpu = structuredClone(twoLines);
+
     if (channel === 'annotation') native.faultWriteAfter(2); else native.faultAfter(2);
     const replacement = { ...initial, [channel]: structuredClone(twoLines) };
+    const cpu = structuredClone(replacement[channel]);
     await act(async () => ui.update(replacement, 0));
     console.info('overlay-prerequisites', JSON.stringify({ case: channel, positiveVertexCount, faults: native.failures, actualWrites: native.writes.length }));
     assert.equal(native.failures.length, 1, 'the actual GPU boundary refused the replacement after the positive upload');
@@ -123,10 +124,11 @@ for (const channel of ['annotation', 'alignment', 'grid'] as const) {
     assert.equal(native.lines[channel].vertexCount, 0, 'completed partial partitions are dropped');
     assert.equal(native.live.size, native.persistentBuffers, 'failed replacement retains no drawable line buffers');
     if (channel === 'annotation') assert.equal(ui.count.current, 0);
-    assert.deepEqual(twoLines, cpu, 'the CPU source is retained without rewriting coordinates');
+    assert.deepEqual(replacement[channel], cpu, 'the actual faulted CPU input retains its coordinates');
     native.recover();
     await act(async () => ui.update(replacement, 1));
     assert.equal(native.lines[channel].vertexCount, 4);
+    assert.deepEqual(replacement[channel], cpu, 'successful retry also preserves the same CPU input');
     assert.ok(ui.ui.querySelector('canvas'));
     assert.equal(ui.errors(), 0);
   });
@@ -138,19 +140,21 @@ for (const kind of ['fills', 'texts'] as const) {
     const ui = mount(native, initial);
     const positiveGeometry = native[kind].hasGeometry();
     assert.ok(positiveGeometry, 'the real pipeline accepted the fixture first');
-    const source = structuredClone(initial);
+
     native.faultAfter(2);
     const replacement = structuredClone(initial);
+    const source = structuredClone(replacement);
     await act(async () => ui.update(replacement, 0));
     console.info('overlay-prerequisites', JSON.stringify({ case: kind, positiveGeometry, faults: native.failures, actualWrites: native.writes.length }));
     assert.equal(native.failures.length, 1, 'the real resource allocation reached the injected refusal');
     assert.equal(ui.errors(), 0);
     assert.equal(native[kind].hasGeometry(), false, 'no partial symbolic layer remains drawable');
     assert.equal(native.live.size, native.persistentBuffers, 'no replacement allocation leaks');
-    assert.deepEqual(initial, source, 'CPU rich data survives the failed upload');
+    assert.deepEqual(replacement, source, 'the actual faulted CPU rich data survives the failed upload');
     native.recover();
     await act(async () => ui.update(replacement, 1));
     assert.ok(native[kind].hasGeometry(), 'recovery must restore actual retained symbolic data');
+    assert.deepEqual(replacement, source, 'successful retry preserves that same CPU input');
     assert.ok(ui.ui.querySelector('canvas'));
   });
 }

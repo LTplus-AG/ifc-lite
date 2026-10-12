@@ -73,7 +73,7 @@ import { useDxfUnderlays3DLines } from '../../hooks/useDxfUnderlay.js';
 import { useLandXmlRendererOverlay } from '../../hooks/useLandXmlOverlayLines.js';
 import { useCentrelineRendererOverlay } from '../../hooks/useCentrelineRendererOverlay.js';
 import { selectPickedGlobalId, toggleGlobalIdInSelection } from './viewport-selection.js';
-import { uploadDxfLines3DGuarded } from './dxf-lines-3d-upload.js';
+import { useDxfRendererOverlay } from './dxf-lines-3d-upload.js';
 import { useViewportSymbolicUploads } from './useViewportSymbolicUploads.js';
 import { subscribeViewportHealth } from './device-loss-report.js';
 import { useAuthoringOverlay } from './useAuthoringOverlay.js';
@@ -1293,20 +1293,8 @@ export function Viewport({
   // drawing panel's underlay. Only line paths are lifted to 3D; fills/text
   // are not (see dxfUnderlayToWorldLines3D's doc).
   const dxfLines3D = useDxfUnderlays3DLines(coordinateInfo);
-  useEffect(() => {
-    const renderer = rendererRef.current;
-    if (!renderer || !isInitialized) return;
-    // PR #2114 review: createBuffer/writeBuffer can throw on device loss or
-    // GPU memory pressure. This effect re-runs on every dxfLines3D change
-    // (a DXF underlay toggle, opacity edit, or reload), so an unguarded
-    // throw here is not a one-off. `uploadDxfLines3DGuarded` contains it via
-    // `runGpuUpload` (same guard as the geometry-streaming upload sites,
-    // warns once per call site, not once per re-run) and drops the
-    // underlay on failure instead of drawing from a half-uploaded buffer.
-    uploadDxfLines3DGuarded(renderer, dxfLines3D);
-  }, [dxfLines3D, isInitialized]);
-
-  useLandXmlRendererOverlay(rendererRef, isInitialized);
+  useDxfRendererOverlay(rendererRef, dxfLines3D, isInitialized, gpuRecoveryEpoch);
+  useLandXmlRendererOverlay(rendererRef, isInitialized, gpuRecoveryEpoch);
   useCentrelineRendererOverlay(rendererRef, isInitialized, gpuRecoveryEpoch);
 
   // ===== Streaming progress =====

@@ -1,0 +1,23 @@
+{
+  "head": "185a3abb1135a3a178153a25c6c754ae4bf94a1f",
+  "command": "pnpm typecheck",
+  "exit": 0,
+  "turboRestored": true,
+  "turboSha256": "ab83f4e5b07a3f52f31185258a4e6e7fc9b7ee9a60bcee7d7d256a5b87db37a9",
+  "testSources": 4052,
+  "packages": 66,
+  "targetedTests": {
+    "pass": 102,
+    "fail": 0
+  },
+  "preFixMutation": {
+    "pass": 100,
+    "fail": 2,
+    "failures": "Only new point and rectangle device-loss regressions"
+  },
+  "logs": {
+    "full-typecheck.log": "84e52bd834f5a6c0966166d9f42720a99508ba3e6614262afa98e8ab4f974e87",
+    "device-loss-tests.log": "2b41388a12774f0090d8199beb7ee8383590b03a38fcb5fe32e8ea6de5b662d9",
+    "device-loss-red-tests.log": "67407ab687f343c9f9eb0b185f7d75f6c50f760e1638829062d17afe5c14951c"
+  }
+}

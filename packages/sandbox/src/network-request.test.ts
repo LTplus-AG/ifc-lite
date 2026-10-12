@@ -38,10 +38,10 @@ describe('network-request — https + exact-host grant gate', () => {
     ).rejects.toThrow(/https/);
   });
 
-  it('rejects an https host with no matching grant', async () => {
+  it('rejects an https host with no matching grant before dispatch (#7374)', async () => {
     await expect(
       coreNetworkRequest({ url: 'https://api.example.com/', method: 'GET', timeoutMs: 1000, maxBytes: 1024 }, []),
-    ).rejects.toThrow(NetworkDeniedError);
+    ).rejects.toMatchObject({ name: 'NetworkDeniedError', dispatched: false });
   });
 
   it('accepts an exact-host grant match (hostname parsed via new URL)', () => {
@@ -143,11 +143,11 @@ describe('network-request — mechanics against a real local http server', () =>
     await new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));
   });
 
-  it('refuses a redirect rather than following it', async () => {
+  it('refuses a received redirect without claiming preflight refusal (#7374)', async () => {
     const url = new URL(`${baseUrl}/redirect`);
     await expect(
       executeUngatedRequest(url, { method: 'GET', timeoutMs: 2000, maxBytes: 1024 * 1024 }),
-    ).rejects.toThrow(NetworkDeniedError);
+    ).rejects.toMatchObject({ name: 'NetworkDeniedError', dispatched: true });
   });
 
   it('caps an oversize response body mid-stream without buffering it whole first', async () => {

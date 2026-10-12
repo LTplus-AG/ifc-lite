@@ -18,6 +18,8 @@
  */
 
 import type { BcfApiClient, BcfCommentWriteDto, BcfRequestOptions, BcfTopicWriteDto, BcfViewpointDto } from '@ifc-lite/bcf-api';
+import { classifyWriteError } from '@ifc-lite/flow-nodes/bcf-publication';
+export { classifyWriteError } from '@ifc-lite/flow-nodes/bcf-publication';
 import { normalizeServerUrl, sameOwnedFields } from './outbox-plan.js';
 import { preflightPublication, type PreflightReport } from './outbox-preflight.js';
 import { markBlocked, markDone, markFailed, markSending, markUncertain, replaceEntry, waitingOn } from './outbox-state.js';
@@ -55,27 +57,6 @@ export interface DispatchReport {
   waiting: string[];
 }
 
-/** HTTP status from a BCF/Foundation API error, without loading the connector eagerly. */
-function httpStatus(error: unknown): number | undefined {
-  return error instanceof Error && /ApiError$|AuthenticationError$/.test(error.name)
-    && typeof (error as Error & { status?: unknown }).status === 'number' ? (error as Error & { status: number }).status : undefined;
-}
-
-/**
- * Definite only when the server answered with a refusal that applies nothing.
- * 5xx (a proxy timeout can follow a commit), 409 (the effect may already
- * exist) and anything without a status (lost connection, abort, timeout,
- * unreadable body) leave the outcome unknown.
- */
-export function classifyWriteError(error: unknown, at: string): { state: 'failed' | 'uncertain'; failure: OutboxFailure } {
-  const status = httpStatus(error);
-  const message = error instanceof Error ? error.message : String(error);
-  if (status === undefined || status === 0) return { state: 'uncertain', failure: { code: 'no-response', message, at } };
-  if (status >= 500) return { state: 'uncertain', failure: { code: 'server-error', message, status, at } };
-  if (status === 409) return { state: 'uncertain', failure: { code: 'conflict-exists', message, status, at } };
-  const code: OutboxFailure['code'] = status === 401 ? 'auth' : status === 403 ? 'permission' : 'rejected';
-  return { state: 'failed', failure: { code, message, status, at } };
-}
 
 function remoteTopic(record: BcfPublication, entry: OutboxEntry): { guid?: string; actions?: string[] } {
   if (entry.remoteTopicGuid) return { guid: entry.remoteTopicGuid };

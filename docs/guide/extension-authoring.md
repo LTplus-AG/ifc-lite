@@ -441,3 +441,26 @@ The signature commits to a canonical hash of the bundle contents + the `signedAt
 - [Extensions](extensions.md) — install and use extensions
 - [Flavors](flavors.md) — bundle your extensions into a shareable profile
 - [CLI reference](cli.md#ext-extension-toolkit) — every `ext` subcommand with flags
+
+For native integrations, `NetworkDeniedError.dispatched` from
+`@ifc-lite/sandbox/network` is `false` for a URL/scheme/host refusal before
+network dispatch, `true` for a refused redirect response, and otherwise
+unqualified. A refused redirect does not prove that a POST had no effect;
+preserve unresolved write intent instead of retrying automatically.
+
+Direct BCF create errors expose safe failure class and valid HTTP status instead of
+remote response bodies, detail URLs or causes. Local preflight diagnostics and
+publication gateway refusal/recovery text are retained after actual bearer
+redaction. An actual non-2xx redirect response remains uncertain even when the
+HTTP client reports it as an API error; it never authorizes an automatic retry.
+
+BCF write receipts keep the validated primary `guid` and optional comment
+`topic_guid`, `viewpoint_guid` and `reply_to_comment_guid` values and their fixed
+protocol keys unchanged, including null optional relationships. If the server
+returns an identifier containing the actual bearer, the
+write reports an unknown outcome before owned receipt settlement or output;
+there is no automatic retry. DTO data and dynamic keys remain redacted. A short
+bearer matching part of the fixed protocol field name does not rename that key.
+The browser journal validates closed intent/payload schemas and inspects known
+credential values and dynamic keys; fixed names such as `topicGuid` are protocol
+names. Unknown fields and credential values or syntax remain refused.

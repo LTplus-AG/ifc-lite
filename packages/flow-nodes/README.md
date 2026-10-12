@@ -82,3 +82,26 @@ field/value constraints. Its portable `model.changes` output cites captured
 rows and expected values, and performs no writes. Current-state validation and
 mutation approval remain native host responsibilities. See the
 [AI node and checkpoint contract](../../docs/guide/flow.md#ai-nodes-and-review-checkpoints).
+
+## BCF write response boundary
+
+Both create operations enrol the actual resolved bearer, including short literal
+and Player values. Successful DTO data, dynamic keys and outward diagnostics
+redact raw and JSON-escaped bearer occurrences. The primary `guid` and optional
+comment `topic_guid`, `viewpoint_guid` and `reply_to_comment_guid` are validated
+before an owned gateway saves the receipt and before any returned receipt is
+emitted. A credential-bearing identifier leaves the retained server effect
+uncertain; it is never silently renamed or retried. Clean identifier values,
+nullable optional relationships and their fixed protocol keys stay exact, even
+when a short bearer equals part of a key. Browser intent admission validates a
+closed schema and checks credential values and dynamic keys, so a bearer such
+as `id` does not reject fixed names such as `topicGuid`. Unknown fields and
+credential values, URL credentials and Authorization/Bearer syntax stay refused.
+A fixed protocol field name is not server-echoed credential data. Gateway errors preserve the host's refusal
+or recovery message as a plain `Error`, without its original class or cause.
+Direct sends use dispatch provenance: a preflight denial is definite; a refused
+redirect, HTTP 409, HTTP 5xx or missing response remains uncertain and never retries.
+Direct remote failures expose only the safe failure class and valid HTTP status;
+remote response bodies, detail URLs and error causes are discarded. Known local
+preflight diagnostics and gateway refusal/recovery text are retained after
+redacting the actual bearer, without carrying their original error cause.

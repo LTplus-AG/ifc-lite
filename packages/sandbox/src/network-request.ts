@@ -77,7 +77,8 @@ export interface NetworkResponse {
 }
 
 export class NetworkDeniedError extends Error {
-  constructor(message: string) {
+  /** false proves preflight refusal; true means a response was received; absent is unqualified. */
+  constructor(message: string, readonly dispatched?: boolean) {
     super(message);
     this.name = 'NetworkDeniedError';
   }
@@ -121,13 +122,13 @@ export function isHostGranted(grants: readonly Capability[], hostname: string): 
 
 function assertEndpointAndGranted(url: URL, grants: readonly Capability[], rawUrl: string, authorizedOrigin?: string): void {
   try { assertNetworkEndpoint(rawUrl, authorizedOrigin); }
-  catch (error) { throw new NetworkDeniedError(`network.fetch refused: ${error instanceof Error ? error.message : 'Invalid endpoint'}`); }
+  catch (error) { throw new NetworkDeniedError(`network.fetch refused: ${error instanceof Error ? error.message : 'Invalid endpoint'}`, false); }
   const exact = url.protocol === 'http:' ? createLoopbackHostGrant(url.hostname) : undefined;
   const allowed = exact ? grants.some(grant => grant.scope === exact.scope && grant.action === exact.action
     && grant.target?.segments.length === 1 && grant.target.segments[0].kind === 'literal'
     && grant.target.segments[0].value === url.hostname) : isHostGranted(grants, url.hostname);
   if (!allowed) {
-    throw new NetworkDeniedError(`network.fetch refused: host "${url.hostname}" is not covered by a granted network.fetch:<host> capability`);
+    throw new NetworkDeniedError(`network.fetch refused: host "${url.hostname}" is not covered by a granted network.fetch:<host> capability`, false);
   }
 }
 
@@ -259,10 +260,10 @@ export async function executeUngatedRequest(
   // 304 Not Modified is a conditional-request answer (If-None-Match), not a
   // redirect: it has no `Location` and nothing to follow.
   if (response.status >= 300 && response.status < 400 && !(response.status === 304 && init.allowNotModified)) {
-    throw new NetworkDeniedError(`network.fetch refused: server responded with a redirect (${response.status}); redirects are not followed`);
+    throw new NetworkDeniedError(`network.fetch refused: server responded with a redirect (${response.status}); redirects are not followed`, true);
   }
   if (response.type === 'opaqueredirect') {
-    throw new NetworkDeniedError('network.fetch refused: server responded with a redirect; redirects are not followed');
+    throw new NetworkDeniedError('network.fetch refused: server responded with a redirect; redirects are not followed', true);
   }
 
   const { bytes, truncated } = await readCappedBody(response, init.maxBytes);
@@ -287,7 +288,7 @@ export async function coreNetworkRequest(
   try {
     url = new URL(init.url);
   } catch {
-    throw new NetworkDeniedError(`network.fetch refused: "${init.url}" is not a valid URL`);
+    throw new NetworkDeniedError(`network.fetch refused: "${init.url}" is not a valid URL`, false);
   }
   assertEndpointAndGranted(url, grants, init.url, init.loopbackHttpOrigin);
   // `total > NaN` is always false, so a NaN cap would read the whole body:

@@ -91,10 +91,14 @@ export function accountWorkerMessages<W extends MessageEndpoint>(
     if (!isTraceControl(message)) {
       const list = transferSet(transfer);
       const est = estimateCloneBytes(message, (b) => list.has(b));
+      // A transfer list can move a buffer that is not reachable from the
+      // payload. Count the list itself before postMessage detaches it (#6993).
+      let transferBytes = 0;
+      for (const value of list) if (value instanceof ArrayBuffer) transferBytes += value.byteLength;
       const prefix = prefixOf();
       registry.add(`${prefix}.out.count`);
       registry.add(`${prefix}.out.cloneBytes`, est.cloneBytes);
-      registry.add(`${prefix}.out.transferBytes`, est.transferBytes);
+      registry.add(`${prefix}.out.transferBytes`, transferBytes);
       registry.add(`${prefix}.out.sharedBytes`, est.sharedBytes);
     }
     nativePost(message, transfer);
@@ -112,4 +116,21 @@ export function accountWorkerMessages<W extends MessageEndpoint>(
     registry.add(`${prefix}.in.sharedBytes`, est.sharedBytes);
   });
   return worker;
+}
+
+/** Attach sender-side accounting once tracing is enabled in a worker (#6993).
+ * Publish increments before each output: the host may terminate this realm
+ * immediately on receipt of a terminal message. Trace-control posts bypass
+ * accounting and flushing, so publishing counters cannot recurse. */
+export function accountWorkerOutput(
+  endpoint: MessageEndpoint, registry: PerfCounterRegistry, flush: () => void,
+): void {
+  const nativePost = endpoint.postMessage.bind(endpoint);
+  const port = accountWorkerMessages({
+    postMessage(message: unknown, transfer?: unknown) {
+      if (!isTraceControl(message)) flush();
+      nativePost(message, transfer);
+    },
+  }, 'worker', registry);
+  endpoint.postMessage = port.postMessage;
 }

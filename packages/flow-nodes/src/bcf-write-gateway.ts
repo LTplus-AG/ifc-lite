@@ -15,9 +15,13 @@
  * instead of reporting a plain failure.
  */
 
-import { BcfApiError, type BcfCommentWriteDto, type BcfTopicWriteDto } from '@ifc-lite/bcf-api';
+import type { BcfCommentWriteDto, BcfTopicWriteDto } from '@ifc-lite/bcf-api';
 import { NetworkDeniedError } from '@ifc-lite/sandbox';
+import { classifyWriteError } from './bcf-publication.js';
 import type { Ctx } from './host.js';
+import { redactDeep, redactText } from './secrets.js';
+
+const RECEIPT_IDS = ['guid', 'topic_guid', 'viewpoint_guid', 'reply_to_comment_guid'] as const;
 
 /** What a node is about to write, without the bearer token. */
 export interface BcfWriteIntent {
@@ -38,7 +42,7 @@ export interface BcfWriteIntent {
  * calling `send` when an identical earlier write is still unresolved.
  */
 export interface BcfWriteGateway {
-  write<T extends { guid: string }>(intent: BcfWriteIntent, send: () => Promise<T>): Promise<T>;
+  write<T extends { guid: string }>(intent: BcfWriteIntent, send: () => Promise<T>, secrets?: readonly string[]): Promise<T>;
 }
 
 /** Send one write through the host gateway, or directly with explicit unknown-outcome reporting. */
@@ -46,18 +50,65 @@ export async function sendBcfWrite<T extends { guid: string }>(
   ctx: Ctx,
   intent: BcfWriteIntent,
   send: () => Promise<T>,
+  secrets: readonly string[] = [],
 ): Promise<T> {
   const gateway = ctx.host.bcfWrites;
-  if (gateway) return gateway.write(intent, send);
+  // Enrol the actual resolved bearer, including short literal/Player values.
+  // Structural identifiers cannot be redacted without changing the object they name.
+  const redaction = new Map(secrets.filter(secret => secret.length > 0).flatMap(secret =>
+    [...new Set([secret, JSON.stringify(secret).slice(1, -1)])].map(value => [value, '[REDACTED]'] as const)));
+  const checkedReceipt = (result: T): T => {
+    if (!result || typeof result !== 'object') {
+      throw new Error('BCF server receipt has no valid identifier; the server outcome is unknown.');
+    }
+    for (const field of RECEIPT_IDS) {
+      const value: unknown = Reflect.get(result, field);
+      if (field !== 'guid' && (value === undefined || value === null)) continue;
+      if (typeof value !== 'string' || value.length === 0) {
+        throw new Error('BCF server receipt has no valid identifier; the server outcome is unknown.');
+      }
+      if ([...redaction.keys()].some(secret => value.includes(secret))) {
+        throw new Error('BCF server receipt contains credential text; the server outcome is unknown.');
+      }
+    }
+    return result;
+  };
+  // Check before an owned gateway settles the real send, and also when another
+  // gateway returns its own receipt without forwarding this callback.
+  const checkedSend = async (): Promise<T> => checkedReceipt(await send());
+  const redactedReceipt = (result: T): T => {
+    const fields = { ...checkedReceipt(result) };
+    for (const field of RECEIPT_IDS) Reflect.deleteProperty(fields, field);
+    const redacted = redactDeep(fields, redaction);
+    // Protocol identifier keys are not echoed credentials. Keep every present
+    // identifier unchanged, including nullable optional relationship identifiers.
+    for (const field of RECEIPT_IDS) {
+      if (field === 'guid' || Object.hasOwn(result, field)) Reflect.set(redacted, field, Reflect.get(result, field));
+    }
+    return redacted;
+  };
+  if (gateway) {
+    try { return redactedReceipt(await gateway.write(intent, checkedSend, secrets)); }
+    catch (error) {
+      // Keep host-owned recovery/refusal semantics; never propagate an opaque raw cause.
+      throw new Error(redactText(error instanceof Error ? error.message : String(error), redaction));
+    }
+  }
   try {
-    return await send();
+    return redactedReceipt(await checkedSend());
   } catch (err) {
-    // An HTTP status is a definite answer, and a denied request never left the host.
-    if (err instanceof BcfApiError || err instanceof NetworkDeniedError) throw err;
-    const reason = err instanceof Error ? err.message : String(err);
-    throw new Error(
-      `${intent.nodeType}: outcome unknown — the server may have applied this ${intent.operation} before the connection failed (${reason}). Check the project before running this node again.`,
-      { cause: err },
-    );
+    // Use the same dispatch/status provenance as both durable publication hosts.
+    const classified = classifyWriteError(err, new Date().toISOString());
+    if (err instanceof NetworkDeniedError && err.dispatched === false) {
+      // This diagnostic is produced locally before dispatch; preserve it without its cause.
+      throw new Error(`${intent.nodeType}: ${redactText(err.message, redaction)}`);
+    }
+    const status = classified.failure.status === undefined ? '' : `, HTTP ${classified.failure.status}`;
+    const context = `${classified.failure.code}${status}`;
+    const message = classified.state === 'failed'
+      ? `${intent.nodeType}: request refused (${context}).`
+      : `${intent.nodeType}: outcome unknown — the server may have applied this ${intent.operation} (${context}). Check the project before running this node again.`;
+    // Server bodies/URLs and the original cause may echo a literal/Player bearer.
+    throw new Error(redactText(message, redaction));
   }
 }

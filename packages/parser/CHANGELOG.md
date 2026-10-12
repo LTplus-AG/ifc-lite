@@ -1,5 +1,19 @@
 # @ifc-lite/parser
 
+## 9.5.0
+
+### Minor Changes
+
+- [#7464](https://github.com/LTplus-AG/ifc-lite/pull/7464) [`e8d3d6c`](https://github.com/LTplus-AG/ifc-lite/commit/e8d3d6cf23aee7ed529d884c7c4f4a21cf6b50d3) Thanks [@louistrue](https://github.com/louistrue)! - Resolve occurrence quantity Units and their dependencies against an optional current native mutation view, so edits, replacement, deletion and Undo no longer retain stale source physical metadata ([#7379](https://github.com/LTplus-AG/ifc-lite/issues/7379)).
+  
+  Throw `OccurrenceQuantityReadError` when the current quantity inventory is unreadable or exceeds its bounds, so consumers can distinguish unavailable coverage from verified absence.
+
+### Patch Changes
+
+- [#7478](https://github.com/LTplus-AG/ifc-lite/pull/7478) [`9f03019`](https://github.com/LTplus-AG/ifc-lite/commit/9f03019ca64237a2a0805bf2b47031de317b706e) Thanks [@louistrue](https://github.com/louistrue)! - Count worker output transfers at the sender and publish terminal counters before worker shutdown; include parser WASM ingress in traced loads.
+- Updated dependencies [[`9f03019`](https://github.com/LTplus-AG/ifc-lite/commit/9f03019ca64237a2a0805bf2b47031de317b706e)]:
+  - @ifc-lite/load-trace@0.3.0
+
 ## 9.4.0
 
 ### Minor Changes

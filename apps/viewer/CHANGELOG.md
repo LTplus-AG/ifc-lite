@@ -1,5 +1,27 @@
 # @ifc-lite/viewer
 
+## 5.1.1
+
+### Patch Changes
+
+- Updated dependencies [[`9f03019`](https://github.com/LTplus-AG/ifc-lite/commit/9f03019ca64237a2a0805bf2b47031de317b706e), [`90c40f4`](https://github.com/LTplus-AG/ifc-lite/commit/90c40f410bc0fd5203a55892c013827d796624f9), [`e8d3d6c`](https://github.com/LTplus-AG/ifc-lite/commit/e8d3d6cf23aee7ed529d884c7c4f4a21cf6b50d3), [`7cb1fa4`](https://github.com/LTplus-AG/ifc-lite/commit/7cb1fa4ed4140e383de4626306cd8932bcff1711), [`f221e64`](https://github.com/LTplus-AG/ifc-lite/commit/f221e64e0bc1829ccf5271b3fd1deb877d9cc2d3), [`d656e9a`](https://github.com/LTplus-AG/ifc-lite/commit/d656e9ab00d4d89e04846aa4b44ef9ccaea6a44b), [`0eeb6cb`](https://github.com/LTplus-AG/ifc-lite/commit/0eeb6cb8e6c752ba33e249820fc1f776493fc515), [`0eeb6cb`](https://github.com/LTplus-AG/ifc-lite/commit/0eeb6cb8e6c752ba33e249820fc1f776493fc515)]:
+  - @ifc-lite/load-trace@0.3.0
+  - @ifc-lite/parser@9.5.0
+  - @ifc-lite/geometry@7.8.1
+  - @ifc-lite/renderer@6.3.0
+  - @ifc-lite/bcf@5.0.1
+  - @ifc-lite/ids-agent@0.2.2
+  - @ifc-lite/ids@3.3.2
+  - @ifc-lite/semantic@0.2.1
+  - @ifc-lite/sdk@9.2.0
+  - @ifc-lite/flow-nodes@0.8.0
+  - @ifc-lite/sandbox@2.12.0
+  - @ifc-lite/cache@3.7.2
+  - @ifc-lite/ids-authoring@0.2.2
+  - @ifc-lite/rules@0.7.2
+  - @ifc-lite/mcp@0.24.1
+  - @ifc-lite/lists@3.1.2
+
 ## 5.1.0
 
 ### Minor Changes

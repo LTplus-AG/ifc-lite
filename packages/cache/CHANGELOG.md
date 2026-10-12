@@ -1,5 +1,13 @@
 # @ifc-lite/cache
 
+## 3.7.2
+
+### Patch Changes
+
+- Updated dependencies [[`9f03019`](https://github.com/LTplus-AG/ifc-lite/commit/9f03019ca64237a2a0805bf2b47031de317b706e), [`7cb1fa4`](https://github.com/LTplus-AG/ifc-lite/commit/7cb1fa4ed4140e383de4626306cd8932bcff1711)]:
+  - @ifc-lite/load-trace@0.3.0
+  - @ifc-lite/geometry@7.8.1
+
 ## 3.7.1
 
 ### Patch Changes

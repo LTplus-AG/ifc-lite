@@ -1,5 +1,11 @@
 # @ifc-lite/bcf
 
+## 5.0.1
+
+### Patch Changes
+
+- [#7488](https://github.com/LTplus-AG/ifc-lite/pull/7488) [`7cb1fa4`](https://github.com/LTplus-AG/ifc-lite/commit/7cb1fa4ed4140e383de4626306cd8932bcff1711) Thanks [@dependabot](https://github.com/apps/dependabot)! - Update the n3 runtime dependency in @ifc-lite/semantic and the optional @tauri-apps/api dependency in @ifc-lite/geometry. Refresh happy-dom development dependencies in @ifc-lite/bcf, @ifc-lite/embed-sdk and @ifc-lite/ids, and the @anthropic-ai/sdk development dependency in @ifc-lite/ids-agent.
+
 ## 5.0.0
 
 ### Major Changes

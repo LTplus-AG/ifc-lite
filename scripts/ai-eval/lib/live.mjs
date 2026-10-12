@@ -57,8 +57,17 @@ function authHeaders(kind, key) {
 }
 
 /** Refuse to persist anything that looks like a credential or personal address. */
-export function assertNoSecrets(value, where) {
-  const findings = privacyFindings(JSON.stringify(value), 'json');
+export function assertNoSecrets(value, where, knownSecrets = []) {
+  const serialized = JSON.stringify(value);
+  for (const secret of knownSecrets) {
+    if (typeof secret !== 'string' || !secret) continue;
+    const escaped = JSON.stringify(secret).slice(1, -1);
+    const candidates = typeof value === 'string' ? [value, serialized] : [serialized];
+    if (candidates.some(candidate => candidate.includes(secret) || candidate.includes(escaped))) {
+      throw new Error(`${where}: refusing to write (configured provider credential)`);
+    }
+  }
+  const findings = privacyFindings(serialized, 'json');
   if (findings.length) throw new Error(`${where}: refusing to write (${findings.join('; ')})`);
 }
 
@@ -81,6 +90,9 @@ export async function callProvider({ provider, task, request, settings, fetchImp
     failure = controller.signal.aborted ? 'timeout' : `network error: ${error instanceof Error ? error.name : 'unknown'}`;
   } finally { clearTimeout(timer); }
   const finishedAt = now();
+  // Check the actual response before parsing SSE or constructing a receipt.
+  // Providers can echo opaque credentials that the generic scanner cannot know.
+  assertNoSecrets(text, 'provider response', [provider.key]);
   const ok = status === 200 && failure === null;
   const events = ok ? parseEvents(sseData(text)) : null;
   const folded = events ? foldEvents(provider.kind, events) : { text: '', finishReason: null, usage: null };
@@ -92,7 +104,9 @@ export async function callProvider({ provider, task, request, settings, fetchImp
     ...(folded.usage ? { inputTokens: folded.usage.inputTokens, outputTokens: folded.usage.outputTokens } : {}) };
   const response = ok ? { status, events, done: /data:\s*\[DONE\]/.test(text) }
     : { status: status || 599, body: (failure ?? text).slice(0, 2000) };
-  return { response, receipt, folded, outcome };
+  const result = { response, receipt, folded, outcome };
+  assertNoSecrets(result, 'provider result', [provider.key]);
+  return result;
 }
 
 /**
@@ -135,6 +149,6 @@ export async function runLive({ manifest, captured, providers, tasks, repeats, f
     if (stopped) break;
   }
   const run = checkRunBudget(receipts, budget);
-  assertNoSecrets({ recordings, receipts, results }, 'live evaluation output');
+  assertNoSecrets({ recordings, receipts, results }, 'live evaluation output', providers.map(provider => provider.key));
   return { runId, settings, recordings, receipts, results, run, stopped };
 }

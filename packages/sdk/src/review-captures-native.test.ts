@@ -543,3 +543,61 @@ it('#7372 settled inventory added during an actual native read hash cannot appea
     f.unchanged();
   } finally { release(); if (pending) await Promise.allSettled([pending]); source.withMaterializedAsync = original; }
 }, 30_000);
+
+
+it('#7372 requested native inventory change cannot evade the read fence by evicting an unrequested context', async () => {
+  const a = await fixture(2, 'building-architecture.ifc', 'requested-A');
+  const b = await fixture(2, 'building-architecture.ifc', 'unrequested-B');
+  const models = () => [a.model, b.model];
+  const allowed = (id: string) => models().some(model => model.id === id);
+  const produce = async (f: typeof a, definition = f.xml) => {
+    const token = await a.captures.begin('ids', definition, f.models(), models, allowed);
+    expect(token).not.toBeNull();
+    const report = await f.native(definition);
+    expect(report.specificationResults.every(spec => !spec.error)).toBe(true);
+    expect(report.specificationResults.some(spec => spec.failedCount > 0)).toBe(true);
+    a.captures.finish(token, report);
+    return validationFindings({ report, stale: false }, f.models());
+  };
+  // The excluded B context is oldest; both independent native models produce
+  // actual failing rows before testing the asynchronous inventory boundary.
+  const bFacts = await produce(b); expect(bFacts.findings.length).toBe(b.actualRows.findings.length);
+  const firstFacts = await produce(a);
+  const read = () => readNativeReview(a.captures, models,
+    { sources: ['validation'], modelIds: [a.model.id], maxFindings: 512 }, allowed);
+  const before = await read();
+  expect(before.runs).toHaveLength(1);
+  expect(before.findings.length).toBe(firstFacts.findings.length);
+  expect(before.bounds.nativeCoverageComplete).toBe(true);
+  const source = a.store.source, original = source.withMaterializedAsync.bind(source);
+  let release: () => void = () => { /* No proof await precedes barrier setup. */ };
+  let pending: ReturnType<typeof read> | undefined;
+  try {
+    let reached: () => void = () => { throw new Error('Actual A source barrier not installed'); };
+    const ready = new Promise<void>(resolve => { reached = resolve; });
+    const pause = new Promise<void>(resolve => { release = resolve; }); let first = true;
+    source.withMaterializedAsync = async <T,>(fn: (bytes: Uint8Array) => Promise<T>): Promise<T> => {
+      const actual = await original(fn);
+      if (first) { first = false; reached(); await pause; }
+      return actual;
+    };
+    pending = read(); await ready;
+    const distinct = await produce(a, a.title('New requested A context evicts unrequested B'));
+    expect(distinct.findings.length).toBe(firstFacts.findings.length);
+    release(); const invalidated = await pending;
+    expect(invalidated.sources).toEqual([{ source: 'validation', state: 'unavailable', refusal: 'capture-bound' }]);
+    expect(invalidated.bounds).toMatchObject({ knownFindings: null, omittedFindings: null,
+      nativeCoverageComplete: false, presentationComplete: false });
+    expect(invalidated.findings).toEqual([]); expect(invalidated.provenance).toEqual([]);
+    const fresh = await read();
+    expect(fresh.runs.map(run => run.label)).toEqual([before.runs[0].label, 'New requested A context evicts unrequested B']);
+    expect(fresh.findings.length).toBe(firstFacts.findings.length + distinct.findings.length);
+    expect(fresh.provenance).toHaveLength(2);
+    expect(fresh.provenance[0]).toEqual(before.provenance[0]);
+    expect(fresh.latestAttempt?.proof?.runId).toBe(fresh.provenance[1].runId);
+    expect(fresh.retention?.inventoryOmitted).toBe(true);
+    expect(fresh.bounds).toMatchObject({ knownFindings: fresh.findings.length, omittedFindings: 0,
+      nativeCoverageComplete: false, presentationComplete: true });
+    a.unchanged(); b.unchanged();
+  } finally { release(); if (pending) await Promise.allSettled([pending]); source.withMaterializedAsync = original; }
+}, 30_000);

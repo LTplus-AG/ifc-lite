@@ -201,7 +201,7 @@ export class NativeReviewCaptures {
     // No await follows this final live ownership/permission pass. Earlier
     // captures must also be checked after later captures have finished hashing.
     if (this.retention.settled.size !== retained.length
-      || pending.some(item => this.retention.settled.get(item.capture.attempt.token.runId) !== item.capture)) {
+      || retained.some(capture => this.retention.settled.get(capture.attempt.token.runId) !== capture)) {
       return project({ runs: [], findings: [], provenance: [], coverage: [], availability: 'unavailable', refusal: 'capture-bound' });
     }
     if (retained.some(capture => capture.targets.some(target => !allowed(target.model.id)))) {

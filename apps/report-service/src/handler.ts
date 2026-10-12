@@ -289,7 +289,7 @@ export function createHandler(
       else {
         console.error(
           "[report-service] request failed",
-          error instanceof Error ? error.name : "Unknown",
+          "request_failed",
         );
         json(
           res,

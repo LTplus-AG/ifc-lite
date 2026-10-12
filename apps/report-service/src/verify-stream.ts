@@ -18,7 +18,7 @@ export async function verifyModelStream(
   let partHash = createHash("sha256");
   const fullHash = createHash("sha256");
   const cancel = () => {
-    void reader.cancel("Verification cancelled").catch(error => console.warn("[report-service] verification stream cancellation failed", error instanceof Error ? error.name : "Unknown"));
+    void reader.cancel("Verification cancelled").catch(() => console.warn("[report-service] verification stream cancellation failed"));
   };
   signal.addEventListener("abort", cancel, { once: true });
   const finishPart = () => {
@@ -58,7 +58,7 @@ export async function verifyModelStream(
     return fullHash.digest("hex");
   } finally {
     signal.removeEventListener("abort", cancel);
-    await reader.cancel().catch(error => console.warn("[report-service] verification stream cancellation failed", error instanceof Error ? error.name : "Unknown"));
+    await reader.cancel().catch(() => console.warn("[report-service] verification stream cancellation failed"));
     reader.releaseLock();
   }
 }

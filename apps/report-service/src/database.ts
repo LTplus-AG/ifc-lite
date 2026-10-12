@@ -4,8 +4,14 @@
 
 import pg, { type PoolClient } from "pg";
 export type Db = Pick<pg.Pool, "query" | "connect">;
-export function openDatabase(url: string): pg.Pool {
-  return new pg.Pool({ connectionString: url, max: 6 });
+export function openDatabase(url: string, onIdleError?: () => void): pg.Pool {
+  const pool = new pg.Pool({ connectionString: url, max: 6 });
+  // pg otherwise emits an unhandled error with the client/config attached.
+  pool.on("error", () => {
+    console.error("[report-service] database connection failed");
+    onIdleError?.();
+  });
+  return pool;
 }
 export async function transaction<T>(
   db: Db,

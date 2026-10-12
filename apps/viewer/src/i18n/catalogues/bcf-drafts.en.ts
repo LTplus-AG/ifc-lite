@@ -16,7 +16,7 @@ export const bcfDraftsEn = {
   'bcfDrafts.dialog.title': 'BCF drafts & publication',
   'bcfDrafts.dialog.batch': 'Draft batch',
   'bcfDrafts.dialog.noBatches': 'No draft batches yet',
-  'bcfDrafts.dialog.empty': 'Draft topics from a clash grouping workspace or from selected clashes, or import a .bcfzip.',
+  'bcfDrafts.dialog.empty': 'Draft topics from a clash grouping workspace or from selected clashes, or import a BCF archive.',
   'bcfDrafts.dialog.merge': { one: 'Merge selected ({count})', other: 'Merge selected ({count})' },
 
   'bcfDrafts.create.fromGroups': { one: 'Draft BCF topic from {count} group', other: 'Draft BCF topics from {count} groups' },
@@ -76,7 +76,7 @@ export const bcfDraftsEn = {
   'bcfDrafts.reconcile.draftUnplaced': 'Draft a new topic from them',
   'bcfDrafts.reconcile.unplacedTitle': 'New matches',
 
-  'bcfDrafts.archive.import': 'Import .bcfzip',
+  'bcfDrafts.archive.import': 'Import BCF archive',
   'bcfDrafts.archive.export': 'Export .bcf',
   'bcfDrafts.archive.imported': { one: 'Imported {count} draft batch', other: 'Imported {count} draft batches' },
   'bcfDrafts.archive.unmapped': { one: '{count} topic had no readable clash mapping and was imported without findings.', other: '{count} topics had no readable clash mapping and were imported without findings.' },

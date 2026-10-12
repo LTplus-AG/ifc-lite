@@ -54,6 +54,9 @@ export function emitCameraInteracted(kind: CameraGestureKind): void {
 
 export function emitFileDownloaded(filename: string): void {
   if (typeof window === 'undefined') return;
-  const kind = filename.includes('.') ? filename.slice(filename.lastIndexOf('.') + 1).toLowerCase() : 'file';
+  const extension = filename.includes('.') ? filename.slice(filename.lastIndexOf('.') + 1).toLowerCase() : 'file';
+  // BCF's download extension changed for Solibri interoperability (#6459),
+  // while the existing tour/analytics archive-format identifier stays bcfzip.
+  const kind = extension === 'bcf' ? 'bcfzip' : extension;
   window.dispatchEvent(new CustomEvent(EVENT_FILE_DOWNLOADED, { detail: { kind } }));
 }

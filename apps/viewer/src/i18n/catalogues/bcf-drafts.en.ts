@@ -77,7 +77,7 @@ export const bcfDraftsEn = {
   'bcfDrafts.reconcile.unplacedTitle': 'New matches',
 
   'bcfDrafts.archive.import': 'Import .bcfzip',
-  'bcfDrafts.archive.export': 'Export .bcfzip',
+  'bcfDrafts.archive.export': 'Export .bcf',
   'bcfDrafts.archive.imported': { one: 'Imported {count} draft batch', other: 'Imported {count} draft batches' },
   'bcfDrafts.archive.unmapped': { one: '{count} topic had no readable clash mapping and was imported without findings.', other: '{count} topics had no readable clash mapping and were imported without findings.' },
   'bcfDrafts.archive.droppedFindings': { one: '{count} reviewed topic lost its link to its review card; its clash findings were imported, its other reviewed findings were not.', other: '{count} reviewed topics lost their link to their review cards; their clash findings were imported, their other reviewed findings were not.' },

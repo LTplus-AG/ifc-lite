@@ -69,7 +69,7 @@ import { captureModelTagInputs, rememberModelTagInputs, type ClashModelTagInputs
 import { allElementsRule, rememberRunRequest, type ClashRunRequest } from '@/lib/clash/run-request';
 import { posthog, trackExportCompleted } from '@/lib/analytics';
 import { errorCaptureProps } from '@/lib/load-errors';
-import { downloadBlob, dataUrlToBytes } from '@/lib/export/download';
+import { bcfExportFilename, downloadBlob, dataUrlToBytes } from '@/lib/export/download';
 import { nextFrameOrTimeout } from '@/utils/frameWait';
 
 /**
@@ -1194,7 +1194,7 @@ export function useClash() {
           ...(snapshotProvider ? { snapshotProvider } : {}),
         });
         const blob = await writeBCF(project);
-        downloadBlob(blob, 'clashes.bcfzip');
+        downloadBlob(blob, bcfExportFilename('clashes'));
         trackExportCompleted({ format: 'bcfzip', surface: 'clash_results' });
       } finally {
         getGlobalRenderer()?.requestRender();

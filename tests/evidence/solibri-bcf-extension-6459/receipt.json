@@ -1,0 +1,90 @@
+{
+  "date": "2026-10-12",
+  "solibri_build": "26.9.0.123",
+  "route": "Communication > New Presentation > From BCF File; matching filename filter used",
+  "public_kit_url": "https://github.com/user-attachments/files/32345129/bcf-3612-solibri-bisection-kit.zip",
+  "model_sha256": "3ff9b10bd00c7b96dded51e7ca5a6b69efbea38b049adcdd05fcd247de7e70d5",
+  "extension_controls": [
+    {
+      "source": "A0-ifclite-original.bcfzip",
+      "extension": "bcfzip",
+      "sha256": "a50d2e8190ff2a9676a0a97f5db9ee055962a7eddcb1f94f0287e13c124e08d2",
+      "topics": 0
+    },
+    {
+      "source": "A0-ifclite-original.bcfzip",
+      "extension": "bcf",
+      "sha256": "a50d2e8190ff2a9676a0a97f5db9ee055962a7eddcb1f94f0287e13c124e08d2",
+      "topics": 1
+    },
+    {
+      "source": "S0-solibri-original.bcf",
+      "extension": "bcf",
+      "sha256": "e3a0f0da182877e1bdbffbc343f240560eef8939ac55aa1082ce032110add973",
+      "topics": 1
+    },
+    {
+      "source": "S0-solibri-original.bcf",
+      "extension": "bcfzip",
+      "sha256": "e3a0f0da182877e1bdbffbc343f240560eef8939ac55aa1082ce032110add973",
+      "topics": 0
+    }
+  ],
+  "matching_model_A0": {
+    "topics": 1,
+    "selected_components": 1,
+    "comment": "Test comment",
+    "comment_linked_to_viewpoint": true,
+    "camera_restore": "observed",
+    "section_cut": "observed; remove-section control revealed full roof at unchanged camera; reselecting issue restored the cut"
+  },
+  "matching_model_S0": {
+    "topics": 1,
+    "selected_components": 1,
+    "camera_restore": "observed",
+    "blue_component_color": "observed",
+    "no_section_cut": "expected: source has zero ClippingPlanes",
+    "comments": "source has no comments"
+  },
+  "fresh_changed_viewer_export": {
+    "filename": "Building-Architecture_Topics.bcf",
+    "bytes": 35957,
+    "sha256": "fd7d859f190e5e357ba9fc71e95ca819b5cfe5bf9000a95da755b58a00881c1a",
+    "bcf_topics": 1,
+    "same_bytes_bcfzip_topics": 0,
+    "selected_components": 1,
+    "linked_comments": 1,
+    "clipping_planes": 1,
+    "camera_selection_plane_comment_snapshot_semantics_match_A0": true
+  },
+  "qualification_producer_sha256": {
+    "apps/viewer/src/components/viewer/BCFPanel.tsx": "f25af2f8ae0c0541019d8d60d22fbb329ff7d05d2d509070453a8ee14c3b37c6",
+    "apps/viewer/src/lib/export/download.ts": "4bfcea5520f6eb2c9b0582c6609ff02b3b09c6724bf1f409fef3205d5e4e5e33",
+    "apps/viewer/src/lib/bcf-drafts/archive-activity.ts": "72d373d550cc9afb5e6b37080b59986917d2d0bdcf85305426937e35857eb1de",
+    "packages/bcf/src/writer.ts": "691d260b87aea73993d310adb66963ed1e4d53fc85cb560a06ed92313ff7062e",
+    "packages/bcf/src/writer-archive.ts": "de4143d8ad78ff1e419a68ea4dded8015319f0d407f2b1312f625b21bfff4809"
+  },
+  "private_screenshot_sha256": {
+    "A0-matching-model-without-section.png": "dcd8cce4305f651b5dc82a01bd0cffa129f661e5a22ab275fdbdbef1a1aeaefa",
+    "A0-bcf-import.png": "4d10fc390e94f223e36ef7741c812ad643a39e6c7bdd2d5b804acfb381946f54",
+    "A0-matching-model-restored.png": "7695c696c56a138c1e0366247903613c1b81723a231130ae979eaf70eee5b37a",
+    "A0-matching-model-view.png": "6e4cfb3d1be20fe02b5ba99ac2ebe8bb0d9e8c56f227a2a5847e52efc9a4c64e",
+    "S0-bcfzip-input.png": "a039733fad04d8a231bb8ae886fd339cc76984cc19cfbe33404912425fa0d54c",
+    "S0-bcf-import.png": "f24eafcf10aadcb3d7a9303d853407197a047b0230d1a519e681deee2c9154ce",
+    "A0-bcfzip-import.png": "9f2babf05d529389845389c4238e88580334697d4a0fb2f6660aa581d0015e04",
+    "S0-bcf-input.png": "6c037484c8ef3250e73fce69ffd5c712d89cdded2a22b35266f4f3f949477b33",
+    "S0-bcfzip-import.png": "4b96f29c8a9dc327c2bd35b3440b61e52a4aa480063b2a57c77f4f35b8fa5e06",
+    "current-export-bcfzip-negative.png": "fb65e2c2847f0843c8fc53ff3f522665775e013892c13039d475d9500e61387b",
+    "current-viewer-export-input.png": "949c72f1c7729ba39b0318484b09a9ccce3cc5c990d9d32b6b7847d64fe0a9ec",
+    "A0-bcf-input.png": "b64ef2149efa38da1f8f96fca79dcda328802967d4f7e5d81c69e838edd72a22",
+    "current-viewer-export-native.png": "1d3e36c22ca98c1f12ff8796f8c96b505455bf2dd9178d84b4cd1ffe702ed9be",
+    "S0-matching-model-view.png": "10591c9ce6b200fbf9007c6625fb7060052d64da157a8ba2925a9b205a243762",
+    "solibri-version.png": "71164f617c8aa33ab5e014f62002822290e4e8851596f7eac4e3a2c1d2e08e66",
+    "A0-bcfzip-input.png": "9cfc3e1bf15a0c1b670102932b8eb559c9fba0a83001b5577f3e865128d4b608"
+  },
+  "limitations": [
+    "Executed on Solibri 26.9.0.123, not historical 26.6.1.",
+    "Native geometry fixtures, screenshots and Solibri project copies are retained privately; no account or license details are published.",
+    "Native vendor execution covers BCF 2.1; BCF 3.0 is covered by real ZIP round-trip component tests and the official extension contract."
+  ]
+}

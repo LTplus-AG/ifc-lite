@@ -79,8 +79,8 @@ Voice rules (strict):
 Tool etiquette:
 - Prefer tool calls over guessing — query_entities, get_entity, properties_unique, materials_list, geometry_volume/area, model_audit, bsdd_* are all available.
 - MUTATION IS ALLOWED. The full read+write surface is wired here, not just read-only. When the user asks to set, change, add, delete, create, batch-edit, etc., go ahead — call entity_set_property, entity_set_attribute, entity_create, entity_delete, entity_delete_property, mutation_batch directly. Don't refuse, don't ask "are you sure?", don't suggest they "run this in the stdio MCP instead". Browser-local model, undo via mutation_undo, save via model_save.
-- BCF authoring is also live: bcf_topic_create, bcf_topic_update, bcf_topic_close, bcf_viewpoint_create. The .bcfzip auto-stages after every BCF call — the user just clicks the pill.
-- Clash detection: for a general "find/run clashes" request on the single loaded model, call clash_check with NO a/b (every element vs every other). clash_matrix is INTER-discipline only (MEP×structure, HVAC×arch, …) and returns nothing on a single-discipline or architectural model — use it ONLY when the user explicitly asks for the discipline matrix. To turn clashes into BCF, call clash_bcf_export (rich topics: framed viewpoint + clashing components + severity/distance metadata) — NOT bcf_topic_create. It stages its own .bcfzip pill, so don't call bcf_export after.
+- BCF authoring is also live: bcf_topic_create, bcf_topic_update, bcf_topic_close, bcf_viewpoint_create. The .bcf auto-stages after every BCF call — the user just clicks the pill.
+- Clash detection: for a general "find/run clashes" request on the single loaded model, call clash_check with NO a/b (every element vs every other). clash_matrix is INTER-discipline only (MEP×structure, HVAC×arch, …) and returns nothing on a single-discipline or architectural model — use it ONLY when the user explicitly asks for the discipline matrix. To turn clashes into BCF, call clash_bcf_export (rich topics: framed viewpoint + clashing components + severity/distance metadata) — NOT bcf_topic_create. It stages its own .bcf pill, so don't call bcf_export after.
 - The 3D viewer is INLINE on this page. When the user asks any 3D action (open, isolate, colorize, section, fly to, etc.), call viewer_open / viewer_* DIRECTLY. Do NOT call viewer_ask first. viewer_ask is only for when YOU are proactively suggesting the viewer.
 - Quote real GlobalIds + values when you cite something. Don't paraphrase.
 
@@ -91,7 +91,7 @@ File attachments (IDS specs etc.):
 Downloads (very important):
 - When a tool produces a file (bcf_export, model_save, export_ifc/csv/json, ids_validate), the playground UI automatically renders an inline "Get .bcf" / "Save IFC" / etc. button under that tool call. The user clicks it explicitly — files NEVER download automatically.
 - Don't tell the user "the file is in the Downloads panel" or "click the download button" — the button is right there, redundant. Just confirm what was produced in 1 line.
-- BCF auto-stages: every bcf_topic_* / bcf_viewpoint_create call already produces a fresh .bcfzip pill. DO NOT call bcf_export afterwards just to "create" the download — it's already there. Only call bcf_export if the user explicitly asks to re-export with custom settings.
+- BCF auto-stages: every bcf_topic_* / bcf_viewpoint_create call already produces a fresh .bcf pill. DO NOT call bcf_export afterwards just to "create" the download — it's already there. Only call bcf_export if the user explicitly asks to re-export with custom settings.
 - After mutations, if the user is wrapping up, suggest model_save ONCE so they can grab the edited IFC. Don't keep re-suggesting.`;
 
 // ── message model ──────────────────────────────────────────────────────────
@@ -618,7 +618,7 @@ function MessageView({ msg }: { msg: ChatMessage }): ReactNode {
   }
   // The auto-staged BCF bundle reuses ONE fileId across many tool calls
   // (topic_create → topic_update → viewpoint_create → bcf_export all bump
-  // the same blob). Render the inline `Get .bcfzip` pill only on the LAST
+  // the same blob). Render the inline `Get .bcf` pill only on the LAST
   // call that produced each fileId, otherwise we get a wall of duplicate
   // download buttons that all point at the same artifact.
   const lastDownloadIdx = new Map<string, number>();

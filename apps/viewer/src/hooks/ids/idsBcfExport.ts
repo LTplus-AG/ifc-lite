@@ -16,7 +16,7 @@ import type { ValidationReport } from '@ifc-lite/ids';
 import type { EntityBoundsInput, IDSBCFExportOptions } from '@ifc-lite/bcf';
 import { createBCFFromIDSReport, writeBCF } from '@ifc-lite/bcf';
 import type { GeometryResult } from '@ifc-lite/geometry';
-import { downloadBlob } from '@/lib/export/download';
+import { bcfExportFilename, downloadBlob } from '@/lib/export/download';
 import { IDS_BCF_MAX_TOPICS, idsBcfSnapshotTargets } from '@/lib/ids/bcf-topic-estimate';
 import { getEntityBounds } from '@/utils/viewportUtils';
 import { getGlobalRenderer } from '@/hooks/useBCF';
@@ -214,7 +214,7 @@ export async function runIdsBcfExport({
   setBcfExportProgress({ phase: 'writing', current: 1, total: 2, message: 'Writing BCF file...' });
 
   const blob = await writeBCF(bcfProject);
-  downloadBlob(blob, `ids-report-${new Date().toISOString().split('T')[0]}.bcfzip`);
+  downloadBlob(blob, bcfExportFilename(`ids-report-${new Date().toISOString().split('T')[0]}`));
   trackExportCompleted({ format: 'bcfzip', surface: 'ids_panel' });
 
   // Phase 5: Load into BCF panel if requested

@@ -21,7 +21,7 @@ export async function removeUpload(
       [row.id],
     );
     const current = result.rows[0];
-    if (!current) return;
+    if (!current || current.status === "aborted") return;
     if (
       actor === "retention" &&
       current.expires_at > new Date() &&
@@ -34,8 +34,17 @@ export async function removeUpload(
       await storage.abort(current.object_key, current.multipart_id);
     await storage.delete(current.object_key);
     await tx.query(
-      "UPDATE report_uploads SET status='aborted',reserved_bytes=0,input=jsonb_set(input,'{name}','\"deleted\"'::jsonb) WHERE id=$1",
+      `UPDATE report_uploads SET status='aborted',reserved_bytes=0,
+        input='{"name":"deleted","size":0,"type":"application/octet-stream","confidentiality":"none","uploadConsent":true}'::jsonb,
+        parts='{}'::jsonb,authorizations='{}'::jsonb,multipart_id=NULL,
+        object_checksum=NULL,completed_at=NULL,object_key='deleted/'||id::text
+        WHERE id=$1`,
       [current.id],
+    );
+    // Keep the deletion/security event trail, not former model fingerprints.
+    await tx.query(
+      "UPDATE report_audit SET detail='{}'::jsonb WHERE report_id=$1 AND action IN ('upload_consent','upload_verification_queued','upload_verified','upload_verification_failed')",
+      [current.report_id],
     );
     await audit(tx, current.report_id, "model_deleted", actor);
   });
@@ -59,19 +68,21 @@ export async function deleteReport(
   id: string,
   ownerId: string,
 ): Promise<void> {
-  await transaction(db, async (tx) => {
+  const authorized = await transaction(db, async (tx) => {
     const locked = await tx.query<ReportRow>(
       "SELECT * FROM model_reports WHERE id=$1 AND session_id=$2 FOR UPDATE",
       [id, ownerId],
     );
-    if (!locked.rows[0]) return;
+    if (!locked.rows[0]) return false;
     await tx.query(
       "UPDATE model_reports SET status='deleted',agreement=NULL,agreement_pdf=NULL,custom_nda=NULL,draft='{}'::jsonb WHERE id=$1",
       [id],
     );
     await tx.query("DELETE FROM report_outbox WHERE report_id=$1", [id]);
     await audit(tx, id, "report_deletion_requested", ownerId);
+    return true;
   });
+  if (!authorized) return;
   // Durable tombstone commits before storage I/O. Retention retries failures.
   const uploads = await db.query<UploadRow>(
     "SELECT * FROM report_uploads WHERE report_id=$1",

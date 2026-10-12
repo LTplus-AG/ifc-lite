@@ -23,7 +23,7 @@ import {
   completeUpload,
   uploadRow,
 } from "../src/uploads.js";
-import { removeUpload, deleteReport } from "../src/maintenance.js";
+import { removeUpload, deleteReport, sweep } from "../src/maintenance.js";
 const enabled = Boolean(
   process.env.REPORT_TEST_DATABASE_URL && process.env.REPORT_TEST_S3_ENDPOINT,
 );
@@ -184,7 +184,62 @@ describe.skipIf(!enabled)(
       expect((await ownedReport(db, report.id, owner)).status).toBe(
         "submitted",
       );
+      // #7498: wrong-owner deletion must stop before all storage operations.
+      const snapshot = async () => ({
+        reports: (
+          await db.query("SELECT * FROM model_reports WHERE id=$1", [report.id])
+        ).rows,
+        uploads: (
+          await db.query("SELECT * FROM report_uploads WHERE report_id=$1", [
+            report.id,
+          ])
+        ).rows,
+        audit: (
+          await db.query(
+            "SELECT * FROM report_audit WHERE report_id=$1 ORDER BY id",
+            [report.id],
+          )
+        ).rows,
+      });
+      const before = await snapshot();
+      const deleteSpy = vi.spyOn(storage, "delete");
+      const abortSpy = vi.spyOn(storage, "abort");
+      try {
+        await deleteReport(db, storage, report.id, "wrong-owner");
+        expect(deleteSpy).not.toHaveBeenCalled();
+        expect(abortSpy).not.toHaveBeenCalled();
+        expect(await snapshot()).toEqual(before);
+        expect((await storage.head(row.object_key)).size).toBe(bytes.length);
+        expect(
+          await storage.verify(row.object_key, bytes.length, row.parts),
+        ).toBe(createHash("sha256").update(bytes).digest("hex"));
+      } finally {
+        deleteSpy.mockRestore();
+        abortSpy.mockRestore();
+      }
       await removeUpload(db, storage, row, owner.id);
+      const sanitized = (
+        await db.query("SELECT * FROM report_uploads WHERE id=$1", [row.id])
+      ).rows[0];
+      expect(sanitized).toMatchObject({
+        status: "aborted",
+        multipart_id: null,
+        object_checksum: null,
+        completed_at: null,
+        parts: {},
+        authorizations: {},
+        object_key: `deleted/${row.id}`,
+        input: { name: "deleted", size: 0, confidentiality: "none" },
+      });
+      expect(Number(sanitized.reserved_bytes)).toBe(0);
+      expect(
+        (
+          await db.query(
+            "SELECT detail FROM report_audit WHERE report_id=$1 AND action='upload_verified'",
+            [report.id],
+          )
+        ).rows,
+      ).toEqual([{ detail: {} }]);
       await deleteReport(db, storage, report.id, owner.id);
       await expect(
         client.send(
@@ -224,7 +279,7 @@ describe.skipIf(!enabled)(
       ).rejects.toThrow(/allowance/i);
     });
 
-    it("rejects actual object corruption and expired part capabilities, then cleans up cancelled multipart state", async () => {
+    it("rejects actual object corruption and expired part capabilities, then deletes the completed object", async () => {
       const report = await createReport(db, config, owner, {
         clientRequestId: randomUUID(),
         title: "Corruption acceptance",
@@ -298,9 +353,78 @@ describe.skipIf(!enabled)(
       );
       await expect(submitReport(db, report.id, owner, false)).rejects.toThrow();
       await deleteReport(db, storage, report.id, owner.id);
+      await expect(storage.head(row.object_key)).rejects.toThrow();
+    }, 30000);
+    it("#7498 cancels a live multipart upload and retains retry identifiers until deletion succeeds", async () => {
+      const report = await createReport(db, config, owner, {
+        clientRequestId: randomUUID(),
+        title: "Cancellation",
+        description: "",
+        diagnostics: {
+          errorCode: "cancel",
+          appVersion: "test",
+          buildSha: "test",
+        },
+        visibility: "private",
+      });
+      const bytes = Buffer.from("private partial model");
+      const upload = await startUpload(db, storage, config, report.id, owner, {
+        name: "private-original.ifc",
+        size: bytes.length,
+        type: "application/octet-stream",
+        confidentiality: "none",
+        uploadConsent: true,
+      });
+      const row = await uploadRow(db, report.id, upload.id, owner);
+      const sha256 = createHash("sha256").update(bytes).digest("base64");
+      const capability = await authorizePart(db, storage, row, 1, sha256);
+      expect(
+        (
+          await fetch(capability.url, {
+            method: "PUT",
+            headers: { "x-amz-checksum-sha256": sha256 },
+            body: bytes,
+          })
+        ).ok,
+      ).toBe(true);
+      expect(
+        await storage.parts(row.object_key, row.multipart_id!),
+      ).toHaveLength(1);
+      // A real provider deletion failure is simulated at the transport seam;
+      // actual multipart abort has already happened and must be safely retried.
+      const deletion = vi
+        .spyOn(storage, "delete")
+        .mockRejectedValueOnce(new Error("provider unavailable"));
+      try {
+        await expect(
+          deleteReport(db, storage, report.id, owner.id),
+        ).rejects.toThrow(/provider unavailable/);
+      } finally {
+        deletion.mockRestore();
+      }
+      const pending = (
+        await db.query("SELECT * FROM report_uploads WHERE id=$1", [row.id])
+      ).rows[0];
+      expect(pending.object_key).toBe(row.object_key);
+      expect(pending.multipart_id).toBe(row.multipart_id);
+      expect(pending.parts).toEqual({ "1": sha256 });
+      expect(pending.status).not.toBe("aborted");
+      await sweep(db, storage);
       await expect(
         storage.parts(row.object_key, row.multipart_id!),
       ).rejects.toThrow();
+      await expect(storage.head(row.object_key)).rejects.toThrow();
+      const cleaned = (
+        await db.query("SELECT * FROM report_uploads WHERE id=$1", [row.id])
+      ).rows[0];
+      expect(cleaned).toMatchObject({
+        status: "aborted",
+        multipart_id: null,
+        parts: {},
+        authorizations: {},
+      });
+      expect(cleaned.input.name).toBe("deleted");
+      expect(cleaned.object_key).not.toBe(row.object_key);
     }, 30000);
     it("does not revive an upload when deletion overlaps object-store initialization", async () => {
       const report = await createReport(db, config, owner, {

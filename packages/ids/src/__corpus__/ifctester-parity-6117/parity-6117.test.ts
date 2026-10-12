@@ -45,6 +45,8 @@ async function verdictFor(idsFile: string): Promise<string> {
     entityCount: 0,
   });
   expect(report.specificationResults).toHaveLength(1);
+  // An error (a specification that could not be evaluated) is not a verdict (#7482).
+  expect(report.specificationResults[0]!.error).toBeUndefined();
   return report.specificationResults[0]!.status;
 }
 

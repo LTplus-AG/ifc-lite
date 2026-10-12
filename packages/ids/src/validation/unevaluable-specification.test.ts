@@ -116,15 +116,21 @@ describe('a specification that throws (validateIDS)', () => {
     }
   });
 
-  it("still ends the run on a host's cancellation", async () => {
-    const abort = new DOMException('The operation was aborted.', 'AbortError');
+  it.each([
+    ['a DOMException', new DOMException('The operation was aborted.', 'AbortError')],
+    ["an Error named AbortError (Node's own)", Object.assign(new Error('aborted'), { name: 'AbortError' })],
+  ])("still ends the run on a host's cancellation: %s", async (_, abort) => {
     await expect(validateIDS(doc, modelThatThrowsOnDoors(abort), modelInfo)).rejects.toBe(abort);
   });
 
-  it("lets an exception from the host's onProgress end the run instead of failing a specification", async () => {
+  it.each([
+    ['an Error', new Error('progress view went away')],
+    ['undefined', undefined],
+    ['NaN', NaN],
+    ['a string', 'stop'],
+  ])("lets an exception from the host's onProgress end the run instead of failing a specification: %s", async (_, hostFailure) => {
     // Thrown while the first specification checks its walls, so from inside
     // its evaluation: the per-specification catch must not take it.
-    const hostFailure = new Error('progress view went away');
     const onProgress = (progress: ValidationProgress) => {
       if (progress.phase === 'validating') throw hostFailure;
     };

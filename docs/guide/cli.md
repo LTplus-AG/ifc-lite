@@ -1411,8 +1411,8 @@ Every check reports one of three outcomes, never folded together:
 - **`error`** — the check could **not** be run: an unreadable/empty/corrupt
   model, an unreadable or unparsable IDS/rules file, an IDS document
   declaring zero specifications, a rule set declaring zero rules, or a rule
-  the engine itself could not evaluate. An unevaluable check is never
-  counted as a pass.
+  or IDS specification the engine itself could not evaluate. An unevaluable
+  check is never counted as a pass, nor as a violation.
 
 The overall **verdict** is `pass` only when every declared check on every
 declared model passed. An unreadable model, an empty IDS ruleset/rule set,

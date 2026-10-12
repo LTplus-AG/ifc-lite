@@ -28,9 +28,13 @@ export function unevaluableSpecificationResult(
   };
 }
 
-/** A host's cancellation, which ends the run instead of failing one specification (as in `runRuleSet`). */
+/**
+ * A host's cancellation, which ends the run instead of failing one
+ * specification: any error named `AbortError` (a DOMException, Node's own
+ * AbortError, or the parser's fallback), the test `useIDS` already uses.
+ */
 export function isAbortError(err: unknown): boolean {
-  return err instanceof DOMException && err.name === 'AbortError';
+  return err instanceof Error && err.name === 'AbortError';
 }
 
 /** The host's `onProgress`, able to say whether an error is one it threw itself. */
@@ -59,6 +63,7 @@ export function guardHostProgress<T>(
         throw error;
       }
     },
-    { threw: (err: unknown) => thrown !== undefined && thrown.error === err }
+    // Object.is, so that even a thrown NaN is recognised as the host's.
+    { threw: (err: unknown) => thrown !== undefined && Object.is(thrown.error, err) }
   );
 }

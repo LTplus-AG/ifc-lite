@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * An entity facet whose name is an `xs:enumeration` (IFCWALL, IFCDOOR)
+ * #7481: an entity facet whose name is an `xs:enumeration` (IFCWALL, IFCDOOR)
  * collected its candidates with `ids.push(...getEntitiesByType(value))`.
  * Spreading a type's ids as call arguments throws a RangeError once the
  * type has more than about 125,000 instances (the bound is the engine's

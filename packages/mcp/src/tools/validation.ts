@@ -25,6 +25,7 @@ import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import { resolveSafePath } from '../safe-path.js';
 import type { ToolContext } from '../context.js';
 import { buildIdsAccessor } from './ids-accessor.js';
+import { nativeReviewModel, reviewCaptures, reviewAccess } from './review-captures.js';
 import { buildDropCensusIssues, dropCensusJson } from './drop-census-issues.js';
 
 const idsValidate: Tool = {
@@ -52,23 +53,33 @@ const idsValidate: Tool = {
     // is the byte-identical no-visibility-view path (#5184).
     const accessor = buildIdsAccessor(m.store, m.backend.getMutationView() ?? undefined);
     const locale = (input.locale as SupportedLocale | undefined) ?? 'en';
-    const report = await validateIDS(
-      idsDoc,
-      accessor,
-      { modelId: m.id, schemaVersion: m.store.schemaVersion, entityCount: m.store.entityCount },
-      {
-        translator: createTranslationService(locale),
-        onProgress: (p) => {
-          ctx.progress.report(p.percentage / 100, `Validating ${p.phase} (${p.specificationIndex + 1}/${p.totalSpecifications})`, 100);
+    const captures = reviewCaptures(ctx);
+    const capture = await captures.begin('ids', xml, [nativeReviewModel(m)], reviewAccess(ctx, 'validate').models, reviewAccess(ctx, 'validate').allowed, ctx.signal);
+    try {
+      if (ctx.signal.aborted) throw new DOMException('Validation aborted', 'AbortError');
+      const report = await validateIDS(
+        idsDoc,
+        accessor,
+        { modelId: m.id, schemaVersion: m.store.schemaVersion, entityCount: m.store.entityCount },
+        {
+          translator: createTranslationService(locale),
+          onProgress: (p) => {
+            ctx.progress.report(p.percentage / 100, `Validating ${p.phase} (${p.specificationIndex + 1}/${p.totalSpecifications})`, 100);
+          },
         },
-      },
-    );
+      );
 
-    const summary = summarizeIdsReport(report);
-    return okResult(
-      `IDS: ${summary.passedSpecifications}/${summary.totalSpecifications} specs passed; ${summary.failedEntities} entity failures.`,
-      { summary, report },
-    );
+      if (ctx.signal.aborted) throw new DOMException('Validation aborted', 'AbortError');
+      captures.finish(capture, report);
+      const summary = summarizeIdsReport(report);
+      return okResult(
+        `IDS: ${summary.passedSpecifications}/${summary.totalSpecifications} specs passed; ${summary.failedEntities} entity failures.`,
+        { summary, report },
+      );
+    } catch (error) {
+      captures.abandon(capture, ctx.signal.aborted ? 'aborted' : 'producer-failed');
+      throw error;
+    }
   },
 };
 

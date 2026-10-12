@@ -310,3 +310,10 @@ only `model.read` and `network.ai`. The current read scope and model allowlist
 still apply; the separate `resume_flow` requires current mutate authorization.
 MCP responses and checkpoint budgets include provider usage receipts without
 prompts, replies or credentials; receipt history survives subsequent pauses.
+
+`review_findings` reads actual retained IDS/information Review facts with `read`
+permission. Native producer capture binds full source SHA-256, definition/run
+provenance and exact model ownership; scope revocation suppresses the whole
+multi-model envelope. No editor, artifact or decision is created. Unsupported
+sources, incomplete overlays and bounded output stay explicit. See
+[the captured native Review contract](../../docs/guide/mcp.md#captured-native-review-reads).

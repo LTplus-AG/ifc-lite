@@ -9,6 +9,7 @@ import { geometryTools } from './geometry.js';
 import { clashTools } from './clash.js';
 import { validationTools } from './validation.js';
 import { checkRulesTools } from './check-rules.js';
+import { reviewFindingsTools } from './review-findings.js';
 import { mutationTools } from './mutate.js';
 import { bcfTools } from './bcf.js';
 import { bsddTools } from './bsdd.js';
@@ -65,6 +66,7 @@ export function buildDefaultToolRegistry(): ToolRegistry {
   registry.registerAll(clashTools);
   registry.registerAll(validationTools);
   registry.registerAll(checkRulesTools);
+  registry.registerAll(reviewFindingsTools);
   registry.registerAll(mutationTools);
   registry.registerAll(bcfTools);
   registry.registerAll(bsddTools);

@@ -111,7 +111,7 @@ describe.skipIf(!enabled)(
             "Failed cleanup must not leave the PG pool keeping the process alive",
           ).toBe(false);
           expect(result.code).toBe(1);
-          expect(result.output).toContain("AccessDenied");
+          expect(result.output.trim()).toBe("report_qualification_failed");
         } finally {
           proxy.closeAllConnections();
           await new Promise<void>((resolve) => proxy.close(() => resolve()));

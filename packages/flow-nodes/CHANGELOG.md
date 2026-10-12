@@ -1,5 +1,29 @@
 # @ifc-lite/flow-nodes
 
+## 0.8.0
+
+### Minor Changes
+
+- [#7476](https://github.com/LTplus-AG/ifc-lite/pull/7476) [`0eeb6cb`](https://github.com/LTplus-AG/ifc-lite/commit/0eeb6cb8e6c752ba33e249820fc1f776493fc515) Thanks [@louistrue](https://github.com/louistrue)! - Share BCF dispatch provenance across browser and direct hosts; redact actual literal and Player bearer values from response DTOs and outward gateway diagnostics.
+  
+  Direct remote diagnostics retain safe failure class/status while discarding body,
+  detail URL and causes; local preflight and gateway messages retain redacted text.
+  Only valid 4xx refusals, except409, prove a definite server refusal.
+  
+  Refuse credential-bearing server GUIDs as unknown outcomes before owned receipt settlement or output; preserve clean primary GUIDs and their fixed protocol key for downstream nodes.
+  
+  Apply the same identifier boundary to optional comment relationship GUIDs, and
+  validate browser intent schemas without mistaking fixed protocol keys for short
+  bearer values.
+
+### Patch Changes
+
+- Updated dependencies [[`7cb1fa4`](https://github.com/LTplus-AG/ifc-lite/commit/7cb1fa4ed4140e383de4626306cd8932bcff1711), [`f221e64`](https://github.com/LTplus-AG/ifc-lite/commit/f221e64e0bc1829ccf5271b3fd1deb877d9cc2d3), [`d656e9a`](https://github.com/LTplus-AG/ifc-lite/commit/d656e9ab00d4d89e04846aa4b44ef9ccaea6a44b), [`0eeb6cb`](https://github.com/LTplus-AG/ifc-lite/commit/0eeb6cb8e6c752ba33e249820fc1f776493fc515)]:
+  - @ifc-lite/ids@3.3.2
+  - @ifc-lite/sdk@9.2.0
+  - @ifc-lite/sandbox@2.12.0
+  - @ifc-lite/ids-authoring@0.2.2
+
 ## 0.7.1
 
 ### Patch Changes

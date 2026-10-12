@@ -32,8 +32,13 @@ device count and upload counts are not accepted benchmark measurements.
 Repeatable GPU upload counts remain pending under #6993; this slice does not
 close that issue or claim a throughput improvement.
 
-`inverse.json` binds the six runtime owners to their source digests. All nine
+`inverse.json` binds the six runtime owners to their source digests. All ten
 focused cases pass before and after restoring those owners. Replacing all six
-owners with the recorded base produces six genuine assertions and three
+owners with the recorded base produces seven genuine assertions and three
 passing controls, without loader or type errors. This demonstrates behavior
 coverage rather than the presence of particular source text.
+
+The parser worker regression now also runs the actual WASM engine without a
+handoff. Removing only the parser's meter attachment yields one genuine byte
+assertion with four passing controls; restoring it returns five passes. The
+successful handoff's zero-ingress check is paired with that positive control.

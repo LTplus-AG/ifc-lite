@@ -12,6 +12,8 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { existsSync, readFileSync } from 'node:fs';
+import { initSync } from '@ifc-lite/wasm';
 import { createLoadTracer, enableWorkerTrace, isTraceSpansMessage } from '@ifc-lite/load-trace';
 import { IfcParser } from './index.js';
 import { WorkerParser } from './worker-parser.js';
@@ -123,6 +125,22 @@ describe('parser.worker.ts load-trace spans (#6979)', () => {
     await settle();
     expect(posted.map(typeOf)).toContain('complete');
     expect(posted.some(isTraceSpansMessage)).toBe(false);
+  }, 30_000);
+
+  it.skipIf(!existsSync(new URL('../../wasm/pkg/ifc-lite_bg.wasm', import.meta.url)))('counts the actual WASM scan when no entity index is handed over (#6993; pnpm build:wasm)', async () => {
+    const wasmBytes = new Uint8Array(readFileSync(new URL('../../wasm/pkg/ifc-lite_bg.wasm', import.meta.url)));
+    initSync({ module: wasmBytes.buffer });
+    const load = createLoadTracer({ enabled: true, sink: null }).startLoad('native-scan');
+    enableWorkerTrace({ postMessage: post }, load, 'parser');
+    const source = sharedSource();
+    post({ type: 'parse', id: 'native-no-handoff', source, waitForEntityIndex: false });
+    await settle();
+    expect(posted.map(typeOf)).not.toContain('error');
+    const counters = posted.filter(isTraceSpansMessage).map((m) => m.payload.counters ?? {});
+    const sum = (name: string) => counters.reduce((n, c) => n + (c[name] ?? 0), 0);
+    expect(sum('wasm.bytesIn')).toBe(source.byteLength);
+    expect(sum('wasm.scanEntitiesFastBytes.calls')).toBe(1);
+    expect(sum('wasm.scanEntitiesFastBytes.bytes')).toBe(source.byteLength);
   }, 30_000);
 });
 

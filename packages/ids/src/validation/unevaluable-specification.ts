@@ -31,11 +31,17 @@ export function unevaluableSpecificationResult(
 /**
  * A host's cancellation, which ends the run instead of failing one
  * specification: anything thrown with the name `AbortError` (a DOMException,
- * Node's own AbortError, the parser's fallback, or a plain abort reason such
- * as `{ name: 'AbortError' }` that `signal.throwIfAborted()` can throw).
+ * Node's own AbortError, the parser's fallback, or any abort reason
+ * `signal.throwIfAborted()` throws, an object such as `{ name: 'AbortError' }`
+ * or a function named `AbortError`).
  */
 export function isAbortError(err: unknown): boolean {
-  return typeof err === 'object' && err !== null && 'name' in err && err.name === 'AbortError';
+  return (
+    err !== null &&
+    (typeof err === 'object' || typeof err === 'function') &&
+    'name' in err &&
+    err.name === 'AbortError'
+  );
 }
 
 /** The host's `onProgress`, able to say whether an error is one it threw itself. */

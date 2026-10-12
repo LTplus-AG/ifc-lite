@@ -875,3 +875,13 @@ reserve a 16 MiB booking until their acknowledgement, exposed separately as
 `warming` and `warmingReservedBytes`; unknown or oversized heaps
 are rejected before idle admission.
 It is not a measurement of actual process memory.
+
+Browser hosts can pass `wasmModulePromise: cachedSharedWasmModule(wasmUrl)`
+to `WorkerParser.parseColumnar` from `@ifc-lite/parser/browser`. This joins only
+an existing canonical per-binary acquisition while the parser starts immediately.
+It does not start a download when there is no shared acquisition: the original
+scanner initialization and index-handoff fast path remain in effect. A
+request-tagged control message delivers the module after compilation. The
+parser awaits it only for its own scan; a successful pre-pass index handoff
+avoids both the wait and scanner initialization. Cancellation settles immediately
+while compilation is pending. An already compiled `wasmModule` is also accepted.

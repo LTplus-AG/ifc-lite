@@ -6481,6 +6481,7 @@
     "WorkerCountInputs: interface",
     "WorkerCountResult: interface",
     "applySpatialPlacement: function",
+    "cachedSharedWasmModule: function",
     "computeWorkerCount: function",
     "createPlatformBridge: function",
     "decodeInstancedShard: function",

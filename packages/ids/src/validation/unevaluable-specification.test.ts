@@ -35,6 +35,13 @@ const doc: IDSDocument = {
   specifications: [namedSpec('walls', 'IFCWALL'), namedSpec('doors', 'IFCDOOR'), namedSpec('slabs', 'IFCSLAB')],
 };
 
+/** A proxy that throws on every operation, even reading a property or its prototype. */
+function revokedProxy(): object {
+  const { proxy, revoke } = Proxy.revocable({}, {});
+  revoke();
+  return proxy;
+}
+
 /** Two walls and a slab; reading the doors throws `error`. */
 function modelThatThrowsOnDoors(error: unknown): IFCDataAccessor {
   const base = createMockAccessor([
@@ -74,6 +81,24 @@ describe('a specification that throws (validateIDS)', () => {
     const report = await validateIDS(doc, modelThatThrowsOnDoors('no doors'), modelInfo);
     expect(report.specificationResults[1].error).toBe('Specification could not be evaluated: no doors');
     expect(report.specificationResults[2].status).toBe('pass');
+  });
+
+  it.each([
+    ['an object without a prototype', () => Object.create(null), 'the thrown object cannot be converted to text'],
+    ['an object whose toString throws', () => ({ toString: () => { throw new Error('no text'); } }), 'the thrown object cannot be converted to text'],
+    ['a revoked proxy', () => revokedProxy(), 'the thrown object cannot be converted to text'],
+    [
+      'an Error whose message getter throws',
+      () => Object.defineProperty(new Error(), 'message', { get: () => { throw new Error('no message'); } }),
+      'the thrown object cannot be converted to text',
+    ],
+    ['a symbol', () => Symbol('no doors'), 'Symbol(no doors)'],
+  ])('gives a value that cannot be printed a stable reason and keeps the other verdicts: %s', async (_, thrown, reason) => {
+    const report = await validateIDS(doc, modelThatThrowsOnDoors(thrown()), modelInfo);
+    const [walls, doors, slabs] = report.specificationResults;
+    expect([walls.error, walls.applicableCount]).toEqual([undefined, 2]);
+    expect([doors.status, doors.error]).toEqual(['fail', `Specification could not be evaluated: ${reason}`]);
+    expect([slabs.error, slabs.status]).toEqual([undefined, 'pass']);
   });
 
   it('does not let a later specification pass an element whose property sets could not be read', async () => {
@@ -130,6 +155,8 @@ describe('a specification that throws (validateIDS)', () => {
     ['undefined', undefined],
     ['NaN', NaN],
     ['a string', 'stop'],
+    ['an object without a prototype', Object.create(null)],
+    ['a revoked proxy', revokedProxy()],
   ])("lets an exception from the host's onProgress end the run instead of failing a specification: %s", async (_, hostFailure) => {
     // Thrown while the first specification checks its walls, so from inside
     // its evaluation: the per-specification catch must not take it.

@@ -259,8 +259,8 @@ export async function validateIDS(
     } catch (err) {
       // A specification that cannot be evaluated (a rejected `xs:pattern`, #4259,
       // or any other error) fails with the reason and the run goes on (#7482);
-      // a host's cancellation or an exception from its onProgress ends it.
-      if (isAbortError(err) || onProgress?.threw(err)) throw err;
+      // an exception from the host's onProgress (checked first) or its cancellation ends it.
+      if (onProgress?.threw(err) || isAbortError(err)) throw err;
       result = unevaluableSpecificationResult(spec, err);
     }
 

@@ -15,8 +15,17 @@
  *   thrown by `signal.throwIfAborted()` after the native accessor has
  *   enumerated ends the run with that exact reason, and the parsed model
  *   validates again afterwards exactly as before.
+ * - On the committed sample `building-architecture.ifc` (walls, slabs, walls:
+ *   4/3/4), a value that cannot be printed (`Object.create(null)`), thrown
+ *   after the real slab enumeration, fails only the slab specification with a
+ *   stable reason; the wall specifications before and after it keep their
+ *   native results. Formatting that reason used to throw a TypeError and
+ *   reject the whole run.
  */
 
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { IfcParser } from '@ifc-lite/parser';
 import { UnsafeRegexPatternError } from '@ifc-lite/regex-guard';
 import { parseIDS } from '../parser/xml-parser.js';
@@ -115,5 +124,40 @@ describe('host failures on a real parsed model (#7482)', () => {
 
     const after = outcome(await validateIDS(parseIDS(IDS), createDataAccessor(store), modelInfo));
     expect(after).toEqual(before);
+  });
+
+  it('a value that cannot be printed, thrown after the real slab enumeration of the sample model, fails only the slab specification', async () => {
+    const sample = join(dirname(fileURLToPath(import.meta.url)), '../../../../apps/viewer/public/samples/building-architecture.ifc');
+    const bytes = readFileSync(sample);
+    const store = await new IfcParser().parseColumnar(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer);
+    const modelInfo = { modelId: 'building-architecture', schemaVersion: String(store.schemaVersion ?? 'IFC4'), entityCount: 0 };
+    const doc = parseIDS(`<?xml version="1.0" encoding="UTF-8"?>
+<ids xmlns="http://standards.buildingsmart.org/IDS" xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <info><title>Unprintable value</title></info>
+  <specifications>${spec('Walls have a Name', 'IFCWALL')}${spec('Slabs have a Name', 'IFCSLAB')}${spec('Walls have a GlobalId', 'IFCWALL').replace(
+    '<simpleValue>Name</simpleValue>',
+    '<simpleValue>GlobalId</simpleValue>'
+  )}
+  </specifications>
+</ids>`);
+
+    const native = createDataAccessor(store);
+    const baseline = outcome(await validateIDS(doc, native, modelInfo));
+    expect(baseline.map(([, status, applicable]) => [status, applicable])).toEqual([['pass', 4], ['pass', 3], ['pass', 4]]);
+
+    const unprintable = Object.create(null);
+    const report = await validateIDS(doc, {
+      ...createDataAccessor(store),
+      getEntitiesByType: (type: string) => {
+        const ids = native.getEntitiesByType(type); // the real enumeration runs first
+        if (type.toUpperCase() === 'IFCSLAB') throw unprintable;
+        return ids;
+      },
+    }, modelInfo);
+
+    const [walls, slabs, wallsAgain] = outcome(report);
+    expect(walls).toEqual(baseline[0]);
+    expect(slabs).toEqual(['Slabs have a Name', 'fail', 0, 0, 0, 'Specification could not be evaluated: the thrown object cannot be converted to text']);
+    expect(wallsAgain).toEqual(baseline[2]);
   });
 });

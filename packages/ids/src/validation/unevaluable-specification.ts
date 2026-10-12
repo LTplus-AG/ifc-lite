@@ -15,7 +15,6 @@ export function unevaluableSpecificationResult(
   spec: IDSSpecification,
   err: unknown
 ): IDSSpecificationResult {
-  const message = err instanceof Error ? err.message : String(err);
   return {
     specification: spec,
     status: 'fail',
@@ -24,8 +23,23 @@ export function unevaluableSpecificationResult(
     failedCount: 0,
     passRate: 0,
     entityResults: [],
-    error: `Specification could not be evaluated: ${message}`,
+    error: `Specification could not be evaluated: ${describeThrown(err)}`,
   };
+}
+
+/**
+ * The reason text for a thrown value, which never throws itself: a value
+ * that cannot be converted to text (`Object.create(null)`, a throwing
+ * `toString` or `message`, a revoked proxy) is named by its kind, so its
+ * specification still gets a stable diagnostic and the run goes on.
+ */
+function describeThrown(err: unknown): string {
+  try {
+    return err instanceof Error ? String(err.message) : String(err);
+  } catch {
+    // Converting the value to text threw; `typeof` cannot.
+    return `the thrown ${err === null ? 'null' : typeof err} cannot be converted to text`;
+  }
 }
 
 /**
@@ -33,15 +47,17 @@ export function unevaluableSpecificationResult(
  * specification: anything thrown with the name `AbortError` (a DOMException,
  * Node's own AbortError, the parser's fallback, or any abort reason
  * `signal.throwIfAborted()` throws, an object such as `{ name: 'AbortError' }`
- * or a function named `AbortError`).
+ * or a function named `AbortError`). Never throws: a value whose name cannot
+ * even be read (a revoked proxy, a throwing getter) is not a cancellation.
  */
 export function isAbortError(err: unknown): boolean {
-  return (
-    err !== null &&
-    (typeof err === 'object' || typeof err === 'function') &&
-    'name' in err &&
-    err.name === 'AbortError'
-  );
+  if (err === null || (typeof err !== 'object' && typeof err !== 'function')) return false;
+  try {
+    return 'name' in err && err.name === 'AbortError';
+  } catch {
+    // Reading the name threw, so this is no cancellation; it fails its specification.
+    return false;
+  }
 }
 
 /** The host's `onProgress`, able to say whether an error is one it threw itself. */

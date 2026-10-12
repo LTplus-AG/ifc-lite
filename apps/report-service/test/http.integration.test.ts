@@ -107,7 +107,11 @@ describe.skipIf(!enabled)('#7495 real HTTP ownership, consent and publication bo
         expect(await (await fetch(base + "/capabilities")).json()).toEqual({
           submissionsEnabled: false,
         });
-        for (const headers of [{}, { "X-Ifclite-Qualification": "wrong" }]) {
+        const deniedHeaders: Record<string, string>[] = [
+          {},
+          { "X-Ifclite-Qualification": "wrong" },
+        ];
+        for (const headers of deniedHeaders) {
           const blocked = await fetch(base + "/session", { headers });
           expect(blocked.status).toBe(503);
           expect(blocked.headers.get("set-cookie")).toBeNull();

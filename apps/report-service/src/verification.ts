@@ -90,7 +90,7 @@ export async function verifyNext(db: Db, storage: ModelStorage): Promise<void> {
     );
     if (!lock.rows[0]?.locked) return;
     const candidates = await lease.query<UploadRow>(
-      "SELECT u.* FROM report_uploads u JOIN model_reports r ON r.id=u.report_id WHERE u.status='verifying' AND u.expires_at>now() AND r.status='draft' AND r.expires_at>now() ORDER BY u.expires_at LIMIT 1",
+      "SELECT u.* FROM report_uploads u JOIN model_reports r ON r.id=u.report_id WHERE u.status='verifying' AND u.verification_after<=now() AND u.expires_at>now() AND r.status='draft' AND r.expires_at>now() ORDER BY u.expires_at LIMIT 1",
     );
     const row = candidates.rows[0];
     if (!row) return;
@@ -109,9 +109,16 @@ export async function verifyNext(db: Db, storage: ModelStorage): Promise<void> {
       )
         return;
       errorCode =
-        error instanceof Error && /^model_[a-z_]+$/.test(error.message)
+        error instanceof Error &&
+        [
+          "model_part_checksum_mismatch",
+          "model_size_exceeded",
+          "model_size_truncated",
+          "model_part_count_mismatch",
+          "model_size_mismatch",
+        ].includes(error.message)
           ? error.message
-          : "model_verification_failed";
+          : undefined;
     }
     await transaction(db, async (tx) => {
       const parent = await tx.query<ReportRow>(
@@ -132,16 +139,16 @@ export async function verifyNext(db: Db, storage: ModelStorage): Promise<void> {
         return;
       if (checksum) {
         await tx.query(
-          "UPDATE report_uploads SET status='ready',object_checksum=$2,completed_at=now(),expires_at=now()+interval '30 days' WHERE id=$1",
+          "UPDATE report_uploads SET status='ready',verification_after=NULL,object_checksum=$2,completed_at=now(),expires_at=now()+interval '30 days' WHERE id=$1",
           [row.id, checksum],
         );
         await audit(tx, row.report_id, "upload_verified", "byte-verifier", {
           sha256: checksum,
           bytes: row.input.size,
         });
-      } else {
+      } else if (errorCode) {
         await tx.query(
-          "UPDATE report_uploads SET status='failed',expires_at=now() WHERE id=$1",
+          "UPDATE report_uploads SET status='failed',verification_after=NULL,expires_at=now() WHERE id=$1",
           [row.id],
         );
         await audit(
@@ -150,6 +157,22 @@ export async function verifyNext(db: Db, storage: ModelStorage): Promise<void> {
           "upload_verification_failed",
           "byte-verifier",
           { code: errorCode },
+        );
+      } else {
+        // Provider/read failures are not evidence of corrupt model bytes. Keep
+        // durable state retryable, with a 10s..15min backoff and original expiry.
+        await tx.query(
+          `UPDATE report_uploads SET
+            verification_after=now()+make_interval(secs => LEAST(900,10*power(2,LEAST(verification_attempts,7)))::integer),
+            verification_attempts=LEAST(verification_attempts+1,1000000)
+            WHERE id=$1`,
+          [row.id],
+        );
+        await audit(
+          tx,
+          row.report_id,
+          "upload_verification_retry",
+          "byte-verifier",
         );
       }
     });

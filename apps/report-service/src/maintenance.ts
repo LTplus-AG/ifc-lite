@@ -37,13 +37,14 @@ export async function removeUpload(
       `UPDATE report_uploads SET status='aborted',reserved_bytes=0,
         input='{"name":"deleted","size":0,"type":"application/octet-stream","confidentiality":"none","uploadConsent":true}'::jsonb,
         parts='{}'::jsonb,authorizations='{}'::jsonb,multipart_id=NULL,
-        object_checksum=NULL,completed_at=NULL,object_key='deleted/'||id::text
+        object_checksum=NULL,completed_at=NULL,object_key='deleted/'||id::text,
+        verification_attempts=0,verification_after=NULL
         WHERE id=$1`,
       [current.id],
     );
     // Keep the deletion/security event trail, not former model fingerprints.
     await tx.query(
-      "UPDATE report_audit SET detail='{}'::jsonb WHERE report_id=$1 AND action IN ('upload_consent','upload_verification_queued','upload_verified','upload_verification_failed')",
+      "UPDATE report_audit SET detail='{}'::jsonb WHERE report_id=$1 AND action IN ('upload_consent','upload_verification_queued','upload_verified','upload_verification_failed','upload_verification_retry')",
       [current.report_id],
     );
     await audit(tx, current.report_id, "model_deleted", actor);

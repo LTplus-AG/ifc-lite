@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { randomUUID, createHash } from "node:crypto";
+import { createServer } from "node:http";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   S3Client,
@@ -425,6 +426,131 @@ describe.skipIf(!enabled)(
       });
       expect(cleaned.input.name).toBe("deleted");
       expect(cleaned.object_key).not.toBe(row.object_key);
+    }, 30000);
+    it("#7498 retries transient GetObject failures with durable capped backoff and verifies the original bytes", async () => {
+      const report = await createReport(db, config, owner, {
+        clientRequestId: randomUUID(),
+        title: "Retry read",
+        description: "",
+        diagnostics: {
+          errorCode: "retry",
+          appVersion: "test",
+          buildSha: "test",
+        },
+        visibility: "private",
+      });
+      const bytes = Buffer.from("durable original IFC fixture bytes");
+      const sha256 = createHash("sha256").update(bytes).digest("base64");
+      const upload = await startUpload(db, storage, config, report.id, owner, {
+        name: "retry.ifc",
+        size: bytes.length,
+        type: "application/octet-stream",
+        confidentiality: "none",
+        uploadConsent: true,
+      });
+      const row = await uploadRow(db, report.id, upload.id, owner);
+      const capability = await authorizePart(db, storage, row, 1, sha256);
+      expect(
+        (
+          await fetch(capability.url, {
+            method: "PUT",
+            headers: { "x-amz-checksum-sha256": sha256 },
+            body: bytes,
+          })
+        ).ok,
+      ).toBe(true);
+      await completeUpload(db, storage, row, owner);
+      expect((await storage.head(row.object_key)).size).toBe(bytes.length);
+      const originalExpiry = (await uploadRow(db, report.id, upload.id, owner))
+        .expires_at;
+      const requests: {
+        method: string | undefined;
+        path: string | undefined;
+      }[] = [];
+      // Real SDK HTTP requests receive provider-shaped 503s; no storage method
+      // is mocked and the completed object remains in the actual S3 fixture.
+      const unavailable = createServer((request, response) => {
+        requests.push({ method: request.method, path: request.url });
+        response.writeHead(503, { "Content-Type": "application/xml" });
+        response.end(
+          "<Error><Code>SlowDown</Code><Message>Try later</Message></Error>",
+        );
+      });
+      await new Promise<void>((resolve) =>
+        unavailable.listen(0, "127.0.0.1", resolve),
+      );
+      const address = unavailable.address();
+      if (!address || typeof address === "string")
+        throw new Error("Fixture did not bind");
+      const transient = new ModelStorage({
+        ...config,
+        endpoint: `http://127.0.0.1:${address.port}`,
+      });
+      const replacementDb = openDatabase(config.databaseUrl);
+      const replacementStorage = new ModelStorage(config);
+      try {
+        await verifyNext(db, transient);
+        expect(requests.length).toBeGreaterThan(0);
+        expect(
+          requests.every(
+            (request) =>
+              request.method === "GET" &&
+              request.path?.includes(row.object_key),
+          ),
+        ).toBe(true);
+        const pending = (
+          await db.query("SELECT * FROM report_uploads WHERE id=$1", [row.id])
+        ).rows[0];
+        expect(pending.status).toBe("verifying");
+        expect(pending.verification_attempts).toBe(1);
+        expect(pending.verification_after.getTime()).toBeGreaterThan(
+          Date.now(),
+        );
+        expect(pending.expires_at).toEqual(originalExpiry);
+        await expect(
+          submitReport(db, report.id, owner, false),
+        ).rejects.toThrow();
+        const requestCount = requests.length;
+        await verifyNext(replacementDb, transient);
+        expect(requests).toHaveLength(requestCount);
+        // Exercise the cap after a persisted history of failures without
+        // sleeping through hours of backoff in the qualification job.
+        await db.query(
+          "UPDATE report_uploads SET verification_attempts=20,verification_after=now()-interval '1 second' WHERE id=$1",
+          [row.id],
+        );
+        await verifyNext(replacementDb, transient);
+        const cap = (
+          await db.query(
+            "SELECT extract(epoch FROM verification_after-now())::float AS delay FROM report_uploads WHERE id=$1",
+            [row.id],
+          )
+        ).rows[0].delay;
+        expect(cap).toBeGreaterThan(890);
+        expect(cap).toBeLessThanOrEqual(900);
+        await db.query(
+          "UPDATE report_uploads SET verification_after=now()-interval '1 second' WHERE id=$1",
+          [row.id],
+        );
+        await verifyNext(replacementDb, replacementStorage);
+        const ready = await uploadRow(db, report.id, upload.id, owner);
+        expect(ready.status).toBe("ready");
+        const verified = await db.query<{ object_checksum: string | null }>(
+          "SELECT object_checksum FROM report_uploads WHERE id=$1",
+          [row.id],
+        );
+        expect(verified.rows[0]?.object_checksum).toBe(
+          createHash("sha256").update(bytes).digest("hex"),
+        );
+        await deleteReport(db, storage, report.id, owner.id);
+      } finally {
+        transient.close();
+        replacementStorage.close();
+        await replacementDb.end();
+        await new Promise<void>((resolve, reject) =>
+          unavailable.close((error) => (error ? reject(error) : resolve())),
+        );
+      }
     }, 30000);
     it("does not revive an upload when deletion overlaps object-store initialization", async () => {
       const report = await createReport(db, config, owner, {

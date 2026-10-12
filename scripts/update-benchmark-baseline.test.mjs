@@ -14,7 +14,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -25,6 +25,11 @@ const OLD = { timestamp: '2026-01-01', environment: 'github-actions', metrics: {
 function tree(results) {
   const dir = mkdtempSync(join(tmpdir(), 'bench-baseline-'));
   mkdirSync(join(dir, 'scripts'), { recursive: true });
+  const uploadHelper = join(HERE, 'lib', 'benchmark-upload-mode.mjs');
+  if (existsSync(uploadHelper)) {
+    mkdirSync(join(dir, 'scripts', 'lib'), { recursive: true });
+    copyFileSync(uploadHelper, join(dir, 'scripts', 'lib', 'benchmark-upload-mode.mjs'));
+  }
   mkdirSync(join(dir, 'tests', 'benchmark', 'benchmark-results'), { recursive: true });
   copyFileSync(join(HERE, 'update-benchmark-baseline.mjs'), join(dir, 'scripts', 'update-benchmark-baseline.mjs'));
   writeFileSync(join(dir, 'tests', 'benchmark', 'baseline.json'), JSON.stringify({ 'x.ifc': OLD, 'y.ifc': OLD }));
@@ -42,6 +47,19 @@ function run(dir) {
 const baselineOf = (dir) => JSON.parse(readFileSync(join(dir, 'tests', 'benchmark', 'baseline.json'), 'utf-8'));
 
 const lost = { contaminated: true, reasons: ['GPU device lost 1x'] };
+
+test('#6993 count-only GPU results cannot overwrite the timing baseline', () => {
+  const dir = tree([{ file: 'x.ifc', metrics: { totalWallClockMs: 1 }, environment: { uploadMode: 'count' } }]);
+  try {
+    const before = readFileSync(join(dir, 'tests', 'benchmark', 'baseline.json'));
+    const { code, out } = run(dir);
+    assert.equal(code, 1, out);
+    assert.match(out, /not a timing workload/);
+    assert.deepEqual(readFileSync(join(dir, 'tests', 'benchmark', 'baseline.json')), before);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
 
 test('#6993 a GPU-lost sample keeps the previous baseline entry; a clean one replaces it', () => {
   const dir = tree([

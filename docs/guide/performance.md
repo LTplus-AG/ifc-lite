@@ -90,6 +90,15 @@ clones; structured-clone byte counts remain estimates. Parser WASM scans
 report typed-array ingress through the same counter registry, while an
 entity-index handoff avoids that scan.
 
+Structural GPU cohorts can enable `?perf.benchmarkUploads=1` before loading a
+model. The viewer then calls `SceneContents.flushPending` with its optional
+`deterministicUploads` argument: each mesh produces its own streaming fragment,
+and each frame is bounded by mesh count and index volume. This removes arrival
+timing from fragment grouping. The ordinary time-budgeted policy remains the
+default. Count cohorts have a different transient upload workload, so their
+latency metrics cannot be compared with timing runs or recorded as a timing
+baseline. Device-loss samples still require the existing contamination checks.
+
 ## Client vs Server Performance
 
 | | Client (WASM) | Server (Rust) |

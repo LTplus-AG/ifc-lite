@@ -17,6 +17,7 @@ interface ViewerBenchmarkResult {
     runtime: 'browser-wasm';
     cacheMode: string;
     buildMode: string;
+    uploadMode: 'timed' | 'count';
   };
   metrics: ViewerBenchmarkMetrics;
   /** #6956: where each span-capable metric came from, and any span/regex disagreement. */
@@ -185,7 +186,8 @@ test.describe('Viewer Performance Benchmarks', () => {
       await benchmarkPage.settleLoadCounters();
 
       // Get baseline for this file
-      const baselineMetrics = baseline[fileName]?.metrics || null;
+      const countCohort = benchmarkPage.getUploadMode() === 'count';
+      const baselineMetrics = countCohort ? null : baseline[fileName]?.metrics || null;
 
       // Check thresholds
       const thresholdResult = checkThresholds(metrics, baselineMetrics, thresholds);
@@ -252,7 +254,9 @@ test.describe('Viewer Performance Benchmarks', () => {
         }
       } else {
         console.log(`\n--- No Baseline Available ---`);
-        console.log(`  This run will be used as the baseline for future comparisons.`);
+        console.log(countCohort
+          ? '  Count cohort: timings describe a different upload workload and are not compared.'
+          : '  This run will be used as the baseline for future comparisons.');
       }
 
       if (thresholdResult.violations.length > 0) {
@@ -285,7 +289,7 @@ test.describe('Viewer Performance Benchmarks', () => {
       console.log(`${'='.repeat(80)}\n`);
 
       // Save results
-      const outputDir = join(process.cwd(), 'tests/benchmark/benchmark-results');
+      const outputDir = join(process.cwd(), 'tests/benchmark', countCohort ? 'benchmark-count-results' : 'benchmark-results');
       if (!existsSync(outputDir)) {
         mkdirSync(outputDir, { recursive: true });
       }
@@ -298,6 +302,7 @@ test.describe('Viewer Performance Benchmarks', () => {
           runtime: 'browser-wasm',
           cacheMode: process.env.VIEWER_BENCHMARK_CACHE_MODE ?? 'default',
           buildMode: process.env.VIEWER_BENCHMARK_BUILD_MODE ?? 'dev',
+          uploadMode: benchmarkPage.getUploadMode(),
         },
         metrics,
         loadTrace: {

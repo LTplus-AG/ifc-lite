@@ -21,7 +21,7 @@ export interface LoadTraceSnapshotJson {
   attrs: Record<string, unknown>;
   start: number;
   end: number | null;
-  spans: Array<{ name: string; thread: string; start: number; end: number | null; milestone?: boolean }>;
+  spans: Array<{ name: string; thread: string; start: number; end: number | null; milestone?: boolean; attrs?: Record<string, unknown> }>;
   /** #6957 structural counters for this load (see LoadTraceSnapshot.counters). */
   counters?: Record<string, number>;
   workerCounters?: Record<string, Record<string, number>>;
@@ -54,8 +54,12 @@ export function countersFromLoadTrace(snapshot: LoadTraceSnapshotJson | null): L
   if (!snapshot?.counters) return null;
   const structural: Record<string, number> = {};
   const scheduling: Record<string, number> = {};
+  const flushes = snapshot.spans.filter((span) => span.name === 'scene.flushPending');
+  const fixedUploads = flushes.length > 0 && flushes.every((span) => span.attrs?.uploadMode === 'count');
+  const uploadCounters = new Set(['gpu.buffers', 'gpu.bufferBytes', 'gpu.mappedUploadBytes', 'gpu.staticUpload.count', 'gpu.staticUpload.bytes']);
   for (const name of Object.keys(snapshot.counters).sort()) {
-    const bucket = SCHEDULING_DEPENDENT_PREFIXES.some((p) => name.startsWith(p)) ? scheduling : structural;
+    const timed = SCHEDULING_DEPENDENT_PREFIXES.some((p) => name.startsWith(p));
+    const bucket = timed && !(fixedUploads && uploadCounters.has(name)) ? scheduling : structural;
     bucket[name] = snapshot.counters[name];
   }
   return { structural, scheduling, workerCounters: snapshot.workerCounters ?? {}, mainThread: snapshot.mainThread ?? null };
@@ -63,7 +67,7 @@ export function countersFromLoadTrace(snapshot: LoadTraceSnapshotJson | null): L
 
 /** The counters that must stop moving before a load's counters are recorded. */
 export function settleKey(snapshot: LoadTraceSnapshotJson | null): string {
-  const counters = { ...(snapshot?.counters ?? {}) };
+  const counters = { ...snapshot?.counters };
   for (const name of PER_FRAME_COUNTERS) delete counters[name];
   return JSON.stringify(counters);
 }

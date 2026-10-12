@@ -14,6 +14,7 @@ import {
   type LoadTraceSnapshotJson,
   type SpanRegexDisagreement,
 } from './load-trace-metrics.js';
+import { requireTimingUploads } from '../../scripts/lib/benchmark-upload-mode.mjs';
 
 /** Where the viewer publishes its span tree under `?perfTrace=1` (apps/viewer/src/lib/perf/loadTrace.ts). */
 const LOAD_TRACE_GLOBAL = '__IFC_LITE_LOAD_TRACE__';
@@ -77,6 +78,7 @@ export class ViewerBenchmarkPage {
   private metricSources: Partial<Record<string, MetricSource>> = {};
   private spanRegexDisagreements: SpanRegexDisagreement[] = [];
   private geomWorkers: number | null = null;
+  private uploadMode: 'timed' | 'count' = 'timed';
 
   /**
    * Defaults to the same port `playwright.config.ts` serves on. It used to be a
@@ -289,6 +291,19 @@ export class ViewerBenchmarkPage {
       (globalThis as unknown as { __IFC_LITE_PERF_TRACE?: number }).__IFC_LITE_PERF_TRACE = 1;
     });
 
+    const uploadEnv = process.env.VIEWER_BENCHMARK_GPU_UPLOADS;
+    if (uploadEnv !== undefined && uploadEnv !== '0' && uploadEnv !== '1') {
+      throw new Error('VIEWER_BENCHMARK_GPU_UPLOADS must be "1" (count cohort) or "0" (timing cohort).');
+    }
+    this.uploadMode = uploadEnv === '1' ? 'count' : 'timed';
+    if (this.uploadMode === 'count') {
+      await this.page.addInitScript((pinSizing) => {
+        const realm = globalThis as unknown as { __IFC_LITE_BENCHMARK_UPLOADS?: number; __IFC_LITE_BATCH_SIZING?: unknown };
+        realm.__IFC_LITE_BENCHMARK_UPLOADS = 1;
+        if (pinSizing) realm.__IFC_LITE_BATCH_SIZING = { targetMs: 8000, minJobs: 64, maxJobs: 64 };
+      }, process.env.VIEWER_BENCHMARK_BATCH_SIZING === undefined);
+    }
+
     // #6957: pin the geometry worker count so structural counters (messages,
     // copies, uploads) compare across runs and machines. `auto` keeps the
     // engine heuristic; `?geomWorkers=` is the viewer's own override.
@@ -358,6 +373,7 @@ export class ViewerBenchmarkPage {
    * base build that predates the spans) are this page's own, never a copy (#7032).
    */
   async loadUntilReady(filePath: string, timeoutMs: number) {
+    requireTimingUploads({ environment: { uploadMode: this.uploadMode } });
     await this.loadFile(filePath, false);
     await this.waitForCompletion(timeoutMs, true);
   }
@@ -782,6 +798,10 @@ export class ViewerBenchmarkPage {
    */
   getLoadCounters(): { geomWorkers: number | null; counters: LoadCounters | null } {
     return { geomWorkers: this.geomWorkers, counters: countersFromLoadTrace(this.loadTrace) };
+  }
+
+  getUploadMode(): 'timed' | 'count' {
+    return this.uploadMode === 'count' || this.loadTrace?.spans.some((span) => span.attrs?.uploadMode === 'count') ? 'count' : 'timed';
   }
 
   getMetricSources(): Partial<Record<string, MetricSource>> {

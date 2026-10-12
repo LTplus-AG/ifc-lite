@@ -57,7 +57,7 @@ export interface SceneContents {
   // ─── Streaming queue and GPU upload ──────────────────────────────────
   queueMeshes(meshes: MeshData[]): void;
   hasQueuedMeshes(): boolean;
-  flushPending(device: GPUDevice, pipeline: RenderPipeline, budgetMs?: number, trace?: LoadTrace): boolean;
+  flushPending(device: GPUDevice, pipeline: RenderPipeline, budgetMs?: number, trace?: LoadTrace, deterministicUploads?: boolean): boolean;
   appendToBatches(
     meshDataArray: MeshData[],
     device: GPUDevice,

@@ -2,6 +2,25 @@
 
 This directory contains performance benchmarks for IFC-Lite geometry processing and rendering.
 
+## Structural GPU count cohorts (#6993)
+
+Set `VIEWER_BENCHMARK_GPU_UPLOADS=1` before running the viewer benchmark to
+use per-mesh streaming fragments instead of time-dependent grouping. Each
+flush is bounded by mesh count and index volume. The harness pins four
+geometry workers and, unless explicitly overridden, fixed-size geometry jobs.
+Run both FZK and Snowdon twice with the same build and settings and compare
+the GPU allocation and `gpu.staticUpload` count/byte counters. The aggregate
+`gpu.writeBytes` also includes mutable table updates and remains scheduling
+dependent. Retain device-loss samples as
+invalid observations; they cannot establish repeatability.
+
+Count results carry `environment.uploadMode: "count"` and are written to
+`benchmark-count-results/`. They describe a different transient upload
+workload and cannot establish a latency win. The timing comparison, baseline
+writer and cold A/B harness refuse count-mode samples. Normal runs keep the
+time-budgeted policy. The viewer URL equivalent is
+`?perfTrace=1&geomWorkers=4&perf.benchmarkUploads=1`.
+
 ## Quick Start
 
 ### Run Default Benchmark

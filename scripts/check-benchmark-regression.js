@@ -24,6 +24,7 @@
 import { existsSync, readFileSync, readdirSync, writeFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join, resolve } from 'path';
+import { requireTimingUploads } from './lib/benchmark-upload-mode.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -132,6 +133,7 @@ function loadResults() {
   return files.map((name) => {
     const path = join(resultsDir, name);
     const payload = loadJson(path);
+    requireTimingUploads(payload);
     return { name, path, payload };
   });
 }

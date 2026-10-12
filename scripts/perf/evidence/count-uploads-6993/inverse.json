@@ -1,0 +1,85 @@
+{
+  "base": "d8c43687b9d9a08a0fda209efa637a89c5fa1845",
+  "before": [
+    0,
+    0,
+    0
+  ],
+  "inverse": [
+    1,
+    1,
+    1
+  ],
+  "restored": [
+    0,
+    0,
+    0
+  ],
+  "owners": [
+    {
+      "path": "packages/renderer/src/scene.ts",
+      "sha256": "a3402a67bda505f033b3eca9819f2bfccc86c517f5817b4070174e465cf3107e",
+      "restored": true
+    },
+    {
+      "path": "packages/renderer/src/scene-contents.ts",
+      "sha256": "9b74d105823eddd6cafa08f3c005b68f837b3377cba614e2bb3347f718c96087",
+      "restored": true
+    },
+    {
+      "path": "packages/renderer/src/gpu-static-upload.ts",
+      "sha256": "0a398a345c41afaa0281e671d911a789e32e0bc555480f40fde3fa8ccb65d68b",
+      "restored": true
+    },
+    {
+      "path": "packages/renderer/src/scene-flush.ts",
+      "sha256": "b064aa5579f26613e461c7cae50370509dcfa747be11c02b1e6f389f2cd4323d",
+      "restored": true
+    },
+    {
+      "path": "apps/viewer/src/lib/model-placement/bounds-revision.ts",
+      "sha256": "4902b3ec0b47db25a73ffadf7fac46d5b88ab57beeab3b93837a6317a35e39f4",
+      "restored": true
+    },
+    {
+      "path": "apps/viewer/src/lib/perf/flags.ts",
+      "sha256": "3246fb51baef8939053806c8df93137cb5b861dd2560ae92225ef679cbf90cec",
+      "restored": true
+    },
+    {
+      "path": "tests/benchmark/load-trace-metrics.ts",
+      "sha256": "8d7016f2f853b0f7c6b915c509942d844382a78504d65eb24e25116f4099d0fa",
+      "restored": true
+    },
+    {
+      "path": "tests/benchmark/viewer-benchmark-page.ts",
+      "sha256": "6723878d9617aa0151b68c7b54dd06d55ff23aefc3d7243274b2bd6257c53cdd",
+      "restored": true
+    },
+    {
+      "path": "tests/benchmark/viewer-benchmark.spec.ts",
+      "sha256": "52310fe2daeec1e0508a449c4eb2b7d88fdb118d3916475d87cd3041d6be29a7",
+      "restored": true
+    },
+    {
+      "path": "scripts/check-benchmark-regression.js",
+      "sha256": "0b7630cc599fe4a71c400a924dee4d63da004fffa809edb7e1d08336b907bec1",
+      "restored": true
+    },
+    {
+      "path": "scripts/update-benchmark-baseline.mjs",
+      "sha256": "42b78e0590a9e9e9192cdb7b9e82bd62d836dceedfedfbeea0b4fc91ba4a0b0b",
+      "restored": true
+    },
+    {
+      "path": "scripts/lib/benchmark-upload-mode.mjs",
+      "sha256": "7532fcfa35391389d583068cadb2c8612dbd7e73d7e55acbf48b3c4c2a476dcd",
+      "restored": true
+    },
+    {
+      "path": "scripts/lib/benchmark-upload-mode.d.mts",
+      "sha256": "f033f2ec4e6540e73a7e8214a8f9bde178e27ef55cb33a3a785a1c2a8c7178eb",
+      "restored": true
+    }
+  ]
+}

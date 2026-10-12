@@ -1,0 +1,29 @@
+{
+  "owners": [
+    {
+      "path": "packages/renderer/src/scene.ts",
+      "sha256": "a3402a67bda505f033b3eca9819f2bfccc86c517f5817b4070174e465cf3107e"
+    },
+    {
+      "path": "packages/renderer/src/scene-flush.ts",
+      "sha256": "b064aa5579f26613e461c7cae50370509dcfa747be11c02b1e6f389f2cd4323d"
+    },
+    {
+      "path": "packages/renderer/src/scene-contents.ts",
+      "sha256": "9b74d105823eddd6cafa08f3c005b68f837b3377cba614e2bb3347f718c96087"
+    },
+    {
+      "path": "packages/renderer/src/gpu-static-upload.ts",
+      "sha256": "0a398a345c41afaa0281e671d911a789e32e0bc555480f40fde3fa8ccb65d68b"
+    },
+    {
+      "path": "apps/viewer/src/lib/model-placement/bounds-revision.ts",
+      "sha256": "4902b3ec0b47db25a73ffadf7fac46d5b88ab57beeab3b93837a6317a35e39f4"
+    },
+    {
+      "path": "apps/viewer/src/lib/perf/flags.ts",
+      "sha256": "3246fb51baef8939053806c8df93137cb5b861dd2560ae92225ef679cbf90cec"
+    }
+  ],
+  "viewerIndexSha256": "94660371f9685145e6e77585e1ad462e6f7be1b1aa16238f48dda6a839aadd41"
+}

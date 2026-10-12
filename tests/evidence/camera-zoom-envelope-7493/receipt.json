@@ -1,0 +1,279 @@
+{
+  "artifacts": [
+    {
+      "bytes": 46282,
+      "observedInResourceTiming": true,
+      "sha256": "9eb20ae1e79447ae495e63da121aee27e34d9dafb2311e15369fff0185e4e259",
+      "status": 200,
+      "url": "[qualification-origin]/@fs[checkout]/packages/parser/src/index.ts"
+    },
+    {
+      "bytes": 60282,
+      "capture": "supplemental response after qualification; unchanged Vite process and source",
+      "observedInResourceTiming": false,
+      "sha256": "811b3efeae5d93dbf953726e4aa7cb4b5117d6a005f61aa0cca8c84ef959340d",
+      "status": 200,
+      "url": "[qualification-origin]/@fs[checkout]/packages/renderer/src/camera.ts"
+    },
+    {
+      "bytes": 58652,
+      "capture": "supplemental response after qualification; unchanged Vite process and source",
+      "observedInResourceTiming": false,
+      "sha256": "9e2fecd53a2146117c710b15ce8afc6a48e23cded3d4efc6608454841e72458c",
+      "status": 200,
+      "url": "[qualification-origin]/@fs[checkout]/packages/renderer/src/camera-controls.ts"
+    },
+    {
+      "bytes": 19932,
+      "capture": "supplemental response after qualification; unchanged Vite process and source",
+      "observedInResourceTiming": false,
+      "sha256": "f51e62cfcccb1f33fae1ac6a663ea909547c913450d641b5a253c1965bff99a0",
+      "status": 200,
+      "url": "[qualification-origin]/@fs[checkout]/packages/renderer/src/camera-zoom.ts"
+    },
+    {
+      "bytes": 38324,
+      "capture": "supplemental response after qualification; unchanged Vite process and source",
+      "observedInResourceTiming": false,
+      "sha256": "49e4910f646b4292f23f3d2f12e0f350d20a8ba4e66bdce587a66795b9d3c292",
+      "status": 200,
+      "url": "[qualification-origin]/@fs[checkout]/packages/renderer/src/relative-to-eye.ts"
+    },
+    {
+      "bytes": 514622,
+      "capture": "supplemental response after qualification; unchanged Vite process and source",
+      "observedInResourceTiming": false,
+      "sha256": "f6037393dde5dc41b994948d3bf16e110698840a81ea6d5d23a15f2870c27747",
+      "status": 200,
+      "url": "[qualification-origin]/@fs[checkout]/packages/renderer/src/index.ts"
+    },
+    {
+      "bytes": 837293,
+      "capture": "supplemental response after qualification; unchanged Vite process and source",
+      "observedInResourceTiming": false,
+      "sha256": "1b40a35867747ca240f49f655af7ef7f2352377304601c472b143fbac675ce3d",
+      "status": 200,
+      "url": "[qualification-origin]/@fs[checkout]/packages/wasm/pkg/ifc-lite.js"
+    },
+    {
+      "bytes": 9979156,
+      "capture": "supplemental response after qualification; unchanged Vite process and source",
+      "observedInResourceTiming": false,
+      "sha256": "3912d1046cf6507e7ef6f85a0492a0e54fbb31ae711b85c6e46b6313ffd63312",
+      "status": 200,
+      "url": "[qualification-origin]/@fs[checkout]/packages/wasm/pkg/ifc-lite_bg.wasm"
+    }
+  ],
+  "baseline": {
+    "available": true,
+    "pick": null,
+    "position": {
+      "x": 27.599999999999998,
+      "y": 20.65884578227997,
+      "z": 17.599999999999998
+    },
+    "rendered": true,
+    "stats": {
+      "batchesAtLod1": 0,
+      "batchesContributionCulled": 0,
+      "batchesDrawn": 17,
+      "batchesFrustumCulled": 0,
+      "batchesNotResident": 0,
+      "drawCalls": 17,
+      "instancedContributionCulled": 0,
+      "instancedDrawn": 0,
+      "instancedFrustumCulled": 0,
+      "timestamp": 58987.43999993801
+    },
+    "target": {
+      "x": 6,
+      "y": 2.6588457822799683,
+      "z": -4
+    }
+  },
+  "boundary": {
+    "available": true,
+    "failedRenderAt": null,
+    "position": {
+      "x": 792093085.965689,
+      "y": 602035896.3170547,
+      "z": 971229336.8977277
+    },
+    "rejectedAt": 344,
+    "rendered": true,
+    "target": {
+      "x": 371780271.24388754,
+      "y": 251775217.38222134,
+      "z": 550916522.1759285
+    },
+    "unavailableAt": null
+  },
+  "cameraModuleIdentity": true,
+  "environment": {
+    "adapter": {
+      "architecture": "blackwell",
+      "description": "",
+      "vendor": "nvidia"
+    },
+    "dpr": 1.5,
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) T3Code(Alpha)/0.0.45 Chrome/152.0.7977.130 Electron/44.4.2 Safari/537.36"
+  },
+  "errors": [],
+  "finishedAt": "2026-10-12T18:10:14.437Z",
+  "recovered": {
+    "available": true,
+    "picks": [
+      {
+        "hit": {
+          "expressId": 59753,
+          "geometryItemId": 59737,
+          "modelIndex": 0,
+          "worldXYZ": {
+            "x": 8.184516260352126,
+            "y": 4.479275682639507,
+            "z": -1.815483739647874
+          }
+        },
+        "x": 357.27606201171875,
+        "y": 321.66668701171875
+      },
+      {
+        "hit": {
+          "expressId": 59753,
+          "geometryItemId": 59737,
+          "modelIndex": 0,
+          "worldXYZ": {
+            "x": 5.150466463871631,
+            "y": 3.7449613447134418,
+            "z": -0.5437883197043156
+          }
+        },
+        "x": 285.820849609375,
+        "y": 321.66668701171875
+      },
+      {
+        "hit": {
+          "expressId": 59753,
+          "geometryItemId": 59737,
+          "modelIndex": 0,
+          "worldXYZ": {
+            "x": 11.003599140290842,
+            "y": 5.161557544812185,
+            "z": -2.997090182414169
+          }
+        },
+        "x": 428.7312744140625,
+        "y": 321.66668701171875
+      },
+      {
+        "hit": {
+          "expressId": 59753,
+          "geometryItemId": 59737,
+          "modelIndex": 0,
+          "worldXYZ": {
+            "x": 10.218932613636333,
+            "y": 3.3046005466299135,
+            "z": 0.21893261363633343
+          }
+        },
+        "x": 357.27606201171875,
+        "y": 386.00002441406247
+      }
+    ],
+    "position": {
+      "x": 27.599999999999998,
+      "y": 20.65884578227997,
+      "z": 17.599999999999998
+    },
+    "rendered": true,
+    "stats": {
+      "batchesAtLod1": 0,
+      "batchesContributionCulled": 0,
+      "batchesDrawn": 17,
+      "batchesFrustumCulled": 0,
+      "batchesNotResident": 0,
+      "drawCalls": 52,
+      "instancedContributionCulled": 0,
+      "instancedDrawn": 0,
+      "instancedFrustumCulled": 0,
+      "timestamp": 93068.33000004292
+    },
+    "target": {
+      "x": 6,
+      "y": 2.6588457822799683,
+      "z": -4
+    }
+  },
+  "reverse": {
+    "available": true,
+    "moved": true,
+    "position": {
+      "x": 752488431.0121095,
+      "y": 571934100.9872042,
+      "z": 922667868.4372531
+    },
+    "rendered": true,
+    "target": {
+      "x": 353191257.0263982,
+      "y": 239186455.9991124,
+      "z": 523370694.4515438
+    }
+  },
+  "source": "acae65bcd7c3e901f2b4355f1a96e0743d0da0d4",
+  "startedAt": "2026-10-12T18:08:49.760Z",
+  "issue": 7493,
+  "fixture": {
+    "path": "tests/models/ara3d/AC20-FZK-Haus.ifc",
+    "sha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+    "displayedElements": 82
+  },
+  "selectionAfterNativeClick": {
+    "name": "Dach-2",
+    "ifcType": "IfcSlab",
+    "expressId": 59753
+  },
+  "procedure": [
+    "Canonical ?model= load of the public FZK IFC into a fresh T3 preview tab.",
+    "Observe actual Viewport renderer ref through React fiber; no camera or renderer methods replaced.",
+    "Dispatch 600 synthetic canvas WheelEvents, deltaY=120, cursor at60%/40%; check RTE availability each step and renderWithResult every20steps.",
+    "Dispatch one reverse wheel event; verify pose changes and actual rendering succeeds.",
+    "Click native Home button, allow400ms then call camera.update(400) to ensure background-preview animation completion; render actual scene.",
+    "Use CSS-pixel GPU picking and native canvas click to select Dach-2."
+  ],
+  "limitations": [
+    "Bounded functional qualification, not a benchmark or reproduction of the original private model/input-device timing.",
+    "Original replay identifies rapid repeated ~5% zoom-out; wheel deltas and physical input source were not recorded.",
+    "Baseline pick was a device-pixel probe and returned null; recovery picks use the documented CSS coordinates. No same-pick before/after assertion is claimed.",
+    "Supplemental artifact hashes were fetched after observations from unchanged source/server; no worker response interception is claimed.",
+    "WASM is official npm @ifc-lite/wasm@10.4.0, not compiled from this checkout's Rust."
+  ],
+  "validation": {
+    "cameraTests": {
+      "pass": 322,
+      "fail": 0
+    },
+    "regressionsOnBase": {
+      "pass": 1,
+      "fail": 6
+    },
+    "rootTypecheck": {
+      "exit": 0,
+      "testFiles": 4049,
+      "packages": 64
+    }
+  },
+  "localFileHashes": {
+    "packages/renderer/src/camera.ts": "022f8e47b4f5a462000450b6f63c5426a2d170eb8b21a322f5a58ecd86478c3e",
+    "packages/renderer/src/camera-controls.ts": "6d261d27231e9b105793d5563de9d047aef017b755b367b7cf5a44564c94afb3",
+    "packages/renderer/src/camera-zoom.ts": "30fd8a61ba3e4299ab28c9bc7640ab6fd247450f205324c1d1b63214a47fd53c",
+    "packages/renderer/src/relative-to-eye.ts": "266f79983a366594b8163f7c635c10b4df8a47783ece1edeba1e0dcf4a5f77e5",
+    "packages/parser/src/index.ts": "315306c3186f1bad256df6a82086dda166e9150ea3554656f9f9e79a7b141257",
+    "packages/wasm/pkg/ifc-lite.js": "867c2ef0d1980e309381ed723c9f963e85b585fdda52dfddfc51c18a2ff545ad",
+    "packages/wasm/pkg/ifc-lite_bg.wasm": "3912d1046cf6507e7ef6f85a0492a0e54fbb31ae711b85c6e46b6313ffd63312"
+  },
+  "sourceTrees": {
+    "packages/renderer/src": "a3d4bfbe91be18074a5b5f5c1c1d152d1f1e7d70",
+    "packages/parser/src": "d083a48ba6bb512b46151eaf4dbaa945a7eedcd6",
+    "packages/geometry/src": "8c5064e4b0176c1b021e43df9a8115778d51feac"
+  }
+}

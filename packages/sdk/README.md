@@ -91,6 +91,12 @@ coverage when native evaluated counts cover the population. Existing
 model-name card keys do not establish durable source or captured-run identity.
 See the [SDK guide](https://ifclite.dev/docs/guide/scripting-sdk/#native-review-normalization).
 
+`clashFindings`, `clashGlobalId`, `clashDisciplineCandidates`, and
+`clashOccurrenceKey` share the existing viewer clash projection and occurrence
+identity. `savedValidationFacts` projects saved IDS failure rows; callers supply
+actual re-examination outcomes. Imported rows remain historical and incomplete,
+and discipline candidates remain hints rather than verified responsibilities.
+
 ## Links
 
 - Docs: https://ifclite.dev/docs/

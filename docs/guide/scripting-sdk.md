@@ -97,6 +97,16 @@ create an artifact or make a human decision. Validation statuses and BCF topic
 statuses remain native facts. A historical resolution candidate remains a
 candidate.
 
+`clashFindings` preserves native clash statuses and revision coverage: stale or
+truncated runs cannot establish that a historical clash disappeared.
+`clashGlobalId` separates the IFC GlobalId from an occurrence suffix, while
+`clashOccurrenceKey` retains both model-qualified occurrences. Discipline
+candidates from `clashDisciplineCandidates` are hints, not responsibility
+assignments. `savedValidationFacts` projects actual saved IDS failure rows;
+saved evidence remains historical and incomplete, and callers supply any
+current re-examination outcomes. These helpers share the viewer's existing
+behavior and do not verify portable source identity.
+
 ```ts
 import { snapshotFrom, validationFindings, type ReviewModel } from '@ifc-lite/sdk/review';
 import type { ValidationReport } from '@ifc-lite/ids';

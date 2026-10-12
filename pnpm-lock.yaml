@@ -1060,6 +1060,9 @@ importers:
         specifier: workspace:^
         version: link:../wasm
     devDependencies:
+      '@ifc-lite/bcf-api':
+        specifier: workspace:^
+        version: link:../bcf-api
       '@types/node':
         specifier: ^26.6.4
         version: 26.6.5

@@ -92,6 +92,29 @@ v0 ops mirror `bim.mutate`'s method names exactly: `setProperty`, `setAttribute`
 
 Determinism: the same model plus the same op sequence yields byte-identical reward lines (sorted arrays, no timestamps, fixed-precision floats).
 
+## Durable Flow BCF writes
+
+Flow BCF API creates persist a credential-free intent before sending in
+`IFCLITE_BCF_OUTBOX_DIR` (default `~/.ifc-lite/bcf-outbox`). Preserve
+this directory across restarts. Unknown outcomes block identical writes until review:
+
+```bash
+ifc-lite flow bcf list
+ifc-lite flow bcf check <entryId> --allow-host bcf.example.com --token-env BCF_TOKEN
+# Only if this read sees the full collection in the original write access scope:
+ifc-lite flow bcf check <entryId> --allow-host bcf.example.com --token-env BCF_TOKEN --confirm-full-read-access
+ifc-lite flow bcf reconcile <entryId> --guid <checkedGuid>
+# Only after a complete empty check with explicitly confirmed full read visibility:
+ifc-lite flow bcf confirm-absent <entryId>
+```
+
+Check reads the recorded target using a fresh explicit host grant and an environment
+variable reference for the token. Review the actual server object before reconciling a
+checked candidate. Reconciliation records its GUID durably and never sends a write.
+Only an explicitly full-visibility complete empty check permits `confirm-absent`, which releases the
+intent for a later deliberate rerun and sends nothing itself. Unavailable or ambiguous
+checks do not permit release. Token presence is not proof of visibility: `--confirm-full-read-access` asserts that this authorized read sees the full target collection under the same access scope as the original write. Omit `--token-env` for a genuinely public server; the visibility assertion remains required for absence. The journal retains this proof marker, without storing credential or principal identity. Older markerless absent checks stay readable but require a fresh asserted check before release. Storage errors and secret-bearing payloads refuse the effect.
+
 ## Links
 
 - Docs: https://ifclite.dev/docs/

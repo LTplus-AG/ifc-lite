@@ -6377,6 +6377,9 @@
     "BcfPublicationFailure: interface",
     "classifyWriteError: function"
   ],
+  "@ifc-lite/flow-nodes/bcf-publication-node": [
+    "createNativeBcfWriteGateway: function"
+  ],
   "@ifc-lite/flow/checkpoint": [
     "CheckpointError: class",
     "CheckpointErrorCode: type",

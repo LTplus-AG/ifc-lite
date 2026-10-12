@@ -26,7 +26,7 @@ import type {
 } from '../types.js';
 import { checkFacet, facetPasses, filterByFacet } from '../facets/index.js';
 import { ApplicabilityPropertyIndex } from './property-index.js';
-import { UnsafeRegexPatternError } from '@ifc-lite/regex-guard';
+import { isAbortError, unevaluableSpecificationResult } from './unevaluable-specification.js';
 import { formatFailureReason, formatRequirementDescription } from './format-failure-reason.js';
 import { boundedPassRate } from './pass-rate.js';
 import { requirementsToCheck } from './prohibited-specification.js';
@@ -257,11 +257,11 @@ export async function validateIDS(
         }
       );
     } catch (err) {
-      // An `xs:pattern` facet's pattern was rejected by the ReDoS guard
-      // (`@ifc-lite/regex-guard`): surface as a FAILED specification with
-      // the reason, never as a silent pass — see issue #4259.
-      if (!(err instanceof UnsafeRegexPatternError)) throw err;
-      result = unsafePatternResult(spec, err);
+      // A specification that cannot be evaluated (an `xs:pattern` the ReDoS
+      // guard rejected, #4259, or any other error) fails with the reason,
+      // and the run goes on; only a host's cancellation ends it.
+      if (isAbortError(err)) throw err;
+      result = unevaluableSpecificationResult(spec, err);
     }
 
     specificationResults.push(result);
@@ -287,23 +287,6 @@ export async function validateIDS(
     timestamp: new Date(),
     summary,
     specificationResults,
-  };
-}
-
-/** Build the failed-specification result for a rejected `xs:pattern`. */
-function unsafePatternResult(
-  spec: IDSSpecification,
-  err: UnsafeRegexPatternError
-): IDSSpecificationResult {
-  return {
-    specification: spec,
-    status: 'fail',
-    applicableCount: 0,
-    passedCount: 0,
-    failedCount: 0,
-    passRate: 0,
-    entityResults: [],
-    error: `Specification could not be evaluated: ${err.message}`,
   };
 }
 

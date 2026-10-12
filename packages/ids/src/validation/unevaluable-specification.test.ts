@@ -3,17 +3,18 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * One specification that throws used to end the whole run: `validateIDS`
- * caught only `UnsafeRegexPatternError` per specification and rethrew
- * anything else, so every other specification's verdict was lost. Now the
- * specification that cannot be evaluated fails with the reason and the
- * others are reported, as `runRuleSet` does; a host's cancellation
- * (`AbortError`) still ends the run.
+ * #7482: one specification that throws used to end the whole run:
+ * `validateIDS` caught only `UnsafeRegexPatternError` per specification and
+ * rethrew anything else, so every other specification's verdict was lost.
+ * Now the specification that cannot be evaluated fails with the reason and
+ * the others are reported, as `runRuleSet` does. A host's cancellation
+ * (`AbortError`) and an exception from the host's own `onProgress` still end
+ * the run: they are host failures, not an unevaluable check.
  */
 
 import { validateIDS } from './validator.js';
 import { createMockAccessor } from '../facets/test-helpers.js';
-import type { IDSDocument, IDSModelInfo, IDSSpecification, IFCDataAccessor } from '../types.js';
+import type { IDSDocument, IDSModelInfo, IDSSpecification, IFCDataAccessor, ValidationProgress } from '../types.js';
 
 const modelInfo: IDSModelInfo = { modelId: 'test-model', schemaVersion: 'IFC4', entityCount: 3 };
 
@@ -118,5 +119,27 @@ describe('a specification that throws (validateIDS)', () => {
   it("still ends the run on a host's cancellation", async () => {
     const abort = new DOMException('The operation was aborted.', 'AbortError');
     await expect(validateIDS(doc, modelThatThrowsOnDoors(abort), modelInfo)).rejects.toBe(abort);
+  });
+
+  it("lets an exception from the host's onProgress end the run instead of failing a specification", async () => {
+    // Thrown while the first specification checks its walls, so from inside
+    // its evaluation: the per-specification catch must not take it.
+    const hostFailure = new Error('progress view went away');
+    const onProgress = (progress: ValidationProgress) => {
+      if (progress.phase === 'validating') throw hostFailure;
+    };
+    await expect(validateIDS(doc, modelThatThrowsOnDoors(new Error('unused')), modelInfo, { onProgress })).rejects.toBe(
+      hostFailure
+    );
+  });
+
+  it('keeps reporting progress through the guard', async () => {
+    const phases: string[] = [];
+    const report = await validateIDS(doc, modelThatThrowsOnDoors(new Error('door index unavailable')), modelInfo, {
+      onProgress: (progress) => phases.push(progress.phase),
+    });
+    expect(report.specificationResults.map((r) => r.status)).toEqual(['fail', 'fail', 'pass']);
+    expect(phases).toContain('validating');
+    expect(phases.at(-1)).toBe('complete');
   });
 });

@@ -32,3 +32,33 @@ export function unevaluableSpecificationResult(
 export function isAbortError(err: unknown): boolean {
   return err instanceof DOMException && err.name === 'AbortError';
 }
+
+/** The host's `onProgress`, able to say whether an error is one it threw itself. */
+export type HostProgressCallback<T> = ((progress: T) => void) & {
+  /** Whether `err` is what the callback threw: a host failure, which ends the run (#7482). */
+  threw(err: unknown): boolean;
+};
+
+/**
+ * Wrap the host's `onProgress` so that an exception from the callback
+ * itself, raised while a specification is being evaluated, propagates
+ * instead of becoming that specification's error: a host callback
+ * failure is not an unevaluable check.
+ */
+export function guardHostProgress<T>(
+  onProgress: ((progress: T) => void) | undefined
+): HostProgressCallback<T> | undefined {
+  if (!onProgress) return undefined;
+  let thrown: { error: unknown } | undefined;
+  return Object.assign(
+    (progress: T) => {
+      try {
+        onProgress(progress);
+      } catch (error) {
+        thrown = { error };
+        throw error;
+      }
+    },
+    { threw: (err: unknown) => thrown !== undefined && thrown.error === err }
+  );
+}

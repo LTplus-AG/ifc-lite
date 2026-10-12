@@ -26,7 +26,7 @@ import type {
 } from '../types.js';
 import { checkFacet, facetPasses, filterByFacet } from '../facets/index.js';
 import { ApplicabilityPropertyIndex } from './property-index.js';
-import { isAbortError, unevaluableSpecificationResult } from './unevaluable-specification.js';
+import { guardHostProgress, isAbortError, unevaluableSpecificationResult } from './unevaluable-specification.js';
 import { formatFailureReason, formatRequirementDescription } from './format-failure-reason.js';
 import { boundedPassRate } from './pass-rate.js';
 import { requirementsToCheck } from './prohibited-specification.js';
@@ -202,7 +202,7 @@ export async function validateIDS(
   modelInfo: ValidationModelInfo,
   options: ValidatorOptions = {}
 ): Promise<IDSValidationReport> {
-  const { onProgress } = options;
+  const onProgress = guardHostProgress(options.onProgress);
   assertIds11Allowed(document, options.preview, 'validateIDS'); // ADR-011: no silent 1.1 skips
   const cachedAccessor = createCachedAccessor(accessor);
   const descriptionCache: DescriptionCache = new Map();
@@ -257,10 +257,10 @@ export async function validateIDS(
         }
       );
     } catch (err) {
-      // A specification that cannot be evaluated (an `xs:pattern` the ReDoS
-      // guard rejected, #4259, or any other error) fails with the reason,
-      // and the run goes on; only a host's cancellation ends it.
-      if (isAbortError(err)) throw err;
+      // A specification that cannot be evaluated (a rejected `xs:pattern`, #4259,
+      // or any other error) fails with the reason and the run goes on (#7482);
+      // a host's cancellation or an exception from its onProgress ends it.
+      if (isAbortError(err) || onProgress?.threw(err)) throw err;
       result = unevaluableSpecificationResult(spec, err);
     }
 

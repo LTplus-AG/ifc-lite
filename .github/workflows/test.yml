@@ -748,6 +748,19 @@ jobs:
           python: ${{ needs.changes.outputs.python == 'true' && 'full' || 'none' }}
           rust: ${{ needs.changes.outputs.rust }}
           browser: ${{ steps.browser.outputs.needed }}
+      # #7495: report integration witnesses must run against real durable
+      # services on BOTH oracle sides. Missing prerequisites are not evidence.
+      - name: Detect changed report integration witnesses
+        id: report-integration
+        run: |
+          if git diff --name-only --diff-filter=d origin/main...HEAD -- 'apps/report-service/test/*.integration.test.ts' | grep -q .; then
+            echo "needed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Provision report integration witnesses
+        if: steps.report-integration.outputs.needed == 'true'
+        uses: ./.github/actions/setup-report-integration
       - name: Prove the changed tests observe the production change
         # `&&` binds tighter than `||`: python is tested first so a PR that
         # changes both keeps the wheel builds' 85 minutes (which also covers
@@ -759,6 +772,11 @@ jobs:
           # runner's SwiftShader device, and a skip never counts as observation.
           E2E_GPU_STRICT: '0'
         run: node scripts/check-test-revert-oracle.mjs --base origin/main --ci --json
+      - name: Remove owned report oracle prerequisites
+        if: always() && steps.report-integration.outputs.needed == 'true'
+        uses: ./.github/actions/setup-report-integration
+        with:
+          state: stop
 
   typecheck:
     name: Typecheck

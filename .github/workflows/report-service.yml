@@ -6,6 +6,7 @@ on:
       - 'apps/report-service/**'
       - 'packages/report-contract/**'
       - '.github/workflows/report-service.yml'
+      - '.github/actions/setup-report-integration/**'
       - 'pnpm-lock.yaml'
   workflow_dispatch:
 
@@ -20,18 +21,6 @@ jobs:
   storage-integration:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    services:
-      postgres:
-        image: postgres:17-alpine
-        env:
-          POSTGRES_USER: report_test
-          POSTGRES_PASSWORD: local-ci-only
-          POSTGRES_DB: reports
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U report_test -d reports"
-          --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
@@ -40,32 +29,12 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile --ignore-scripts
-      - name: Install licensed receipt font for acceptance tests
-        run: sudo apt-get update && sudo apt-get install -y fonts-dejavu-core
-      - name: Start disposable checksum-capable S3 storage
-        run: |
-          docker run -d --name report-s3 --cpus 2 --memory 1g \
-            -p 127.0.0.1:9000:9000 \
-            -e RUSTFS_ACCESS_KEY=report-ci-access \
-            -e RUSTFS_SECRET_KEY=local-ci-only-storage-secret \
-            -e RUSTFS_SSE_S3_MASTER_KEY="$(openssl rand -base64 32)" \
-            -e RUSTFS_CONSOLE_ENABLE=false \
-            rustfs/rustfs@sha256:1803faef57627e2d9c2e7d89d655d712ddded5389040054987163043fecb6a3c /data
-          for attempt in $(seq 1 30); do
-            if curl --fail --silent http://127.0.0.1:9000/health; then exit 0; fi
-            sleep 2
-          done
-          docker logs report-s3
-          exit 1
+      - name: Provision real report integration prerequisites
+        uses: ./.github/actions/setup-report-integration
       - name: Real database and multipart storage qualification
-        env:
-          REPORT_REQUIRE_INTEGRATION: 'true'
-          REPORT_TEST_FONT_FILE: /usr/share/fonts/truetype/dejavu/DejaVuSans.ttf
-          REPORT_TEST_DATABASE_URL: postgres://report_test:local-ci-only@127.0.0.1:5432/reports
-          REPORT_TEST_S3_ENDPOINT: http://127.0.0.1:9000
-          REPORT_TEST_S3_ACCESS_KEY_ID: report-ci-access
-          REPORT_TEST_S3_SECRET_ACCESS_KEY: local-ci-only-storage-secret
         run: pnpm test --filter=@ifc-lite/report-service --filter=@ifc-lite/report-contract --concurrency=1 --env-mode=loose
-      - name: Remove disposable storage
+      - name: Remove owned report integration prerequisites
         if: always()
-        run: docker rm -f report-s3 || true
+        uses: ./.github/actions/setup-report-integration
+        with:
+          state: stop

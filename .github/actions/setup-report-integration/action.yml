@@ -1,0 +1,104 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+name: Report integration fixtures
+description: Start or remove isolated PostgreSQL, encrypted S3 and receipt-font test prerequisites
+inputs:
+  state:
+    description: start or stop
+    required: false
+    default: start
+runs:
+  using: composite
+  steps:
+    - name: Validate fixture lifecycle request
+      shell: bash
+      env:
+        FIXTURE_STATE: ${{ inputs.state }}
+      run: |
+        case "$FIXTURE_STATE" in start|stop) ;; *) echo 'Invalid report fixture state' >&2; exit 2;; esac
+    - name: Install licensed receipt font
+      if: ${{ inputs.state == 'start' }}
+      shell: bash
+      run: |
+        if [ ! -f /usr/share/fonts/truetype/dejavu/DejaVuSans.ttf ]; then
+          sudo apt-get update
+          sudo apt-get install -y fonts-dejavu-core
+        fi
+    - name: Start isolated durable report fixtures
+      if: ${{ inputs.state == 'start' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        report_fixture_owner="${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${RANDOM}"
+        report_pg_container="ifclite-report-pg-${report_fixture_owner}"
+        report_s3_container="ifclite-report-s3-${report_fixture_owner}"
+        # Persist ownership before allocation so the always() cleanup handles
+        # partial startup failures without touching another job's containers.
+        {
+          echo "REPORT_TEST_FIXTURE_OWNER=$report_fixture_owner"
+          echo "REPORT_TEST_POSTGRES_CONTAINER=$report_pg_container"
+          echo "REPORT_TEST_S3_CONTAINER=$report_s3_container"
+        } >> "$GITHUB_ENV"
+        report_db_password="$(openssl rand -hex 24)"
+        report_s3_password="$(openssl rand -hex 32)"
+        report_sse_key="$(openssl rand -base64 32)"
+        echo "::add-mask::$report_db_password"
+        echo "::add-mask::$report_s3_password"
+        echo "::add-mask::$report_sse_key"
+        docker run -d --name "$report_pg_container" --cpus 1 --memory 512m \
+          --label "ifclite.report-test-owner=$report_fixture_owner" \
+          -p 127.0.0.1::5432 \
+          -e POSTGRES_USER=report_test -e POSTGRES_DB=reports \
+          -e "POSTGRES_PASSWORD=$report_db_password" postgres:17-alpine
+        docker run -d --name "$report_s3_container" --cpus 1 --memory 1g \
+          --label "ifclite.report-test-owner=$report_fixture_owner" \
+          -p 127.0.0.1::9000 \
+          -e RUSTFS_ACCESS_KEY=report-ci-access \
+          -e "RUSTFS_SECRET_KEY=$report_s3_password" \
+          -e "RUSTFS_SSE_S3_MASTER_KEY=$report_sse_key" \
+          -e RUSTFS_CONSOLE_ENABLE=false \
+          rustfs/rustfs@sha256:1803faef57627e2d9c2e7d89d655d712ddded5389040054987163043fecb6a3c /data
+        report_pg_binding="$(docker port "$report_pg_container" 5432/tcp)"
+        report_s3_binding="$(docker port "$report_s3_container" 9000/tcp)"
+        report_pg_port="${report_pg_binding##*:}"
+        report_s3_port="${report_s3_binding##*:}"
+        report_ready=false
+        for attempt in $(seq 1 30); do
+          if docker exec "$report_pg_container" pg_isready -U report_test -d reports >/dev/null && \
+             curl --fail --silent "http://127.0.0.1:$report_s3_port/health" >/dev/null; then
+            report_ready=true
+            break
+          fi
+          sleep 2
+        done
+        if [ "$report_ready" != true ]; then
+          echo 'Report fixture health deadline exceeded' >&2
+          docker logs "$report_pg_container"
+          docker logs "$report_s3_container"
+          exit 1
+        fi
+        {
+          echo 'REPORT_REQUIRE_INTEGRATION=true'
+          echo 'REPORT_TEST_FONT_FILE=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'
+          echo "REPORT_TEST_DATABASE_URL=postgres://report_test:$report_db_password@127.0.0.1:$report_pg_port/reports"
+          echo "REPORT_TEST_S3_ENDPOINT=http://127.0.0.1:$report_s3_port"
+          echo 'REPORT_TEST_S3_ACCESS_KEY_ID=report-ci-access'
+          echo "REPORT_TEST_S3_SECRET_ACCESS_KEY=$report_s3_password"
+        } >> "$GITHUB_ENV"
+    - name: Remove owned report fixtures
+      if: ${{ inputs.state == 'stop' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        for report_container in "${REPORT_TEST_POSTGRES_CONTAINER:-}" "${REPORT_TEST_S3_CONTAINER:-}"; do
+          if [ -z "$report_container" ]; then continue; fi
+          if ! report_owner="$(docker inspect --format '{{ index .Config.Labels "ifclite.report-test-owner" }}' "$report_container" 2>/dev/null)"; then
+            continue
+          fi
+          if [ "$report_owner" != "${REPORT_TEST_FIXTURE_OWNER:-}" ]; then
+            echo 'Refusing to remove a report fixture owned by another job' >&2
+            exit 1
+          fi
+          docker rm -f -v "$report_container"
+        done

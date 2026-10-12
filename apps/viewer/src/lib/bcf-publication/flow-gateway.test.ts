@@ -12,7 +12,12 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { inspect } from 'node:util';
 import { BcfApiClient, BcfApiError, type BcfTopicWriteDto } from '@ifc-lite/bcf-api';
-import type { BcfWriteIntent } from '@ifc-lite/flow-nodes';
+import { BROWSER_FEATURES, createStandardRegistry, type BcfWriteIntent, type FlowHost } from '@ifc-lite/flow-nodes';
+import { runFlow, type FlowDocument } from '@ifc-lite/flow';
+import { parseCapabilities } from '@ifc-lite/extensions';
+import { createBimContext } from '@ifc-lite/sdk';
+import { LocalBackend } from '@/sdk/local-backend';
+import { useViewerStore } from '@/store';
 import { connectPeer } from '@/test/bcf-publication-fixture';
 import { LOCAL_BCF_PROJECT, LOCAL_BCF_TOKEN } from '@/test/bcf-http-server';
 import { checkEntry, resolveWithCandidate } from './outbox-check';
@@ -157,4 +162,56 @@ test('a retained POST answered with a typed BcfApiError303 remains uncertain unt
   assert.ok(await resolveWithCandidate(id, entryId, guid));
   assert.equal((await readPublication(id))?.record.entries[0].receipt?.remoteGuid, guid);
   assert.equal(peer.state.receivedWrites, 1, 'authorized GET and manual settlement never retry the POST');
+});
+
+test('#7374 a registered browser BCF node journals preflight denial as failed and permits repaired grants', async t => {
+  const peer = await connectPeer(t);
+  const baseUrl = 'https://denied-bcf.example.test/bcf';
+  const parse = (host: string) => {
+    const result = parseCapabilities([`network.fetch:${host}`]);
+    assert.ok(result.ok);
+    return result.value;
+  };
+  const gateway = createViewerBcfWriteGateway();
+  const bim = createBimContext({ backend: new LocalBackend(useViewerStore) });
+  const registry = createStandardRegistry();
+  let transports = 0;
+  const host: FlowHost = {
+    bim, bcfWrites: gateway, grants: parse('bcf-peer.example.test'),
+    networkGrants: parse('bcf-peer.example.test'),
+    networkTransport: (url, init) => {
+      transports++;
+      assert.equal(url.origin, 'https://denied-bcf.example.test');
+      return fetch(peer.baseUrl + url.pathname.replace(/^\/bcf/, '') + url.search, init);
+    },
+  };
+  const doc: FlowDocument = {
+    flowVersion: 1, id: 'browser-preflight', name: 'Browser preflight',
+    capabilities: ['network.fetch:bcf-peer.example.test'], inputs: [], outputs: [], edges: [],
+    nodes: [{ id: 'write', type: 'bcf.createTopic', params: {
+      baseUrl, projectId: LOCAL_BCF_PROJECT, token: LOCAL_BCF_TOKEN,
+      title: 'Denied before dispatch', status: 'Open',
+    } }],
+  };
+  const denied = await runFlow(doc, { host, registry, features: BROWSER_FEATURES });
+  assert.equal(peer.state.receivedWrites, 0);
+  assert.equal(peer.state.acceptedWrites, 0);
+  assert.equal(transports, 0, 'the canonical grant preflight never invoked transport');
+  assert.equal(denied.ok, false);
+  const id = flowPublicationId({ serverUrl: baseUrl, projectId: LOCAL_BCF_PROJECT });
+  const failed = (await readPublication(id))?.record;
+  assert.equal(failed?.entries.length, 1);
+  assert.equal(failed?.entries[0].state, 'failed');
+  assert.equal(failed?.entries[0].failure?.code, 'permission');
+  const repairedGrants = parse('denied-bcf.example.test');
+  const repaired = await runFlow({ ...doc, capabilities: ['network.fetch:denied-bcf.example.test'] },
+    { host: { ...host, grants: repairedGrants, networkGrants: repairedGrants }, registry, features: BROWSER_FEATURES });
+  assert.equal(peer.state.acceptedWrites, 1);
+  assert.equal(peer.state.topics.size, 1);
+  assert.equal(transports, 1);
+  assert.equal(repaired.ok, true);
+  const settled = (await readPublication(id))?.record;
+  assert.equal(settled?.entries.length, 2);
+  assert.equal(settled?.entries[1].state, 'done');
+  assert.equal(settled?.entries[1].receipt?.remoteGuid, [...peer.state.topics.keys()][0]);
 });

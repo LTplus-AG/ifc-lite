@@ -1,0 +1,203 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import { createHash, randomUUID } from 'node:crypto';
+import { createServer } from 'node:http';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import type { ReportReceipt, ReportSession } from '@ifc-lite/report-contract';
+import type { Config } from '../src/config.js';
+import { openDatabase, migrate } from '../src/database.js';
+import { createHandler } from '../src/handler.js';
+import { ModelStorage } from '../src/storage.js';
+
+const enabled = Boolean(process.env.REPORT_TEST_DATABASE_URL);
+if (process.env.REPORT_REQUIRE_INTEGRATION === 'true' && !enabled)
+  throw new Error('Mandatory real HTTP report integration database is missing');
+
+describe.skipIf(!enabled)('#7495 real HTTP ownership, consent and publication boundaries', () => {
+  const agreementText = 'LTplus AG protects models supplied for this test report.';
+  const config: Config = {
+    origin: 'https://viewer.example.com', port: 0,
+    databaseUrl: process.env.REPORT_TEST_DATABASE_URL ?? '',
+    storageProvider: 'Unused test storage', storageLocation: 'Local test host', backupDisclosure: 'No backups',
+    bucket: 'unused-http-tests', region: 'us-east-1', endpoint: 'http://127.0.0.1:1',
+    accessKeyId: 'unused', secretAccessKey: 'unused',
+    admissionSecret: randomUUID(), adminToken: randomUUID(),
+    githubAppId: '1', githubInstallationId: '1', githubPrivateKey: 'unused', githubRepository: 'owner/repo',
+    agreement: {
+      version: 'http-test-v1', text: agreementText,
+      sha256: createHash('sha256').update(agreementText).digest('hex'),
+      issuer: 'LTplus AG', jurisdiction: 'Switzerland', signingEnabled: false,
+    },
+    maxDailyReports: 20, maxDailyBytes: 4 * 1024 ** 3, maxStorageBytes: 100 * 1024 ** 3,
+  };
+  const db = openDatabase(config.databaseUrl);
+  // No permitted route in these cases contacts storage. An accidentally admitted
+  // upload fails against a closed local port rather than any real model bucket.
+  const handler = createHandler(db, new ModelStorage(config), config);
+  const server = createServer((req, res) => { void handler(req, res); });
+  let base = '';
+  const sessionIds: string[] = [];
+  interface Browser { cookie: string; csrf: string; id: string }
+  async function browser(headers: Record<string, string> = {}): Promise<Browser> {
+    const response = await fetch(`${base}/session`, { headers });
+    expect(response.status).toBe(200);
+    const cookieHeader = response.headers.get('set-cookie');
+    expect(cookieHeader).toMatch(/HttpOnly; Secure; SameSite=Strict/);
+    const cookie = cookieHeader!.split(';')[0]!;
+    const id = createHash('sha256').update(cookie.split('=')[1]!).digest('hex');
+    sessionIds.push(id);
+    const value = await response.json() as ReportSession;
+    return { cookie, csrf: value.csrfToken, id };
+  }
+  function request(owner: Browser, path: string, method = 'GET', input?: unknown, overrides: Record<string, string> = {}) {
+    return fetch(base + path, {
+      method, headers: {
+        Cookie: owner.cookie, Origin: config.origin, 'X-CSRF-Token': owner.csrf,
+        'Content-Type': 'application/json', ...overrides,
+      },
+      ...(input === undefined ? {} : { body: JSON.stringify(input) }),
+    });
+  }
+  function draft() {
+    return {
+      clientRequestId: randomUUID(), title: 'HTTP reviewed report', description: 'Only this reviewed text may be published.',
+      diagnostics: { errorCode: 'fixture', appVersion: 'test', buildSha: 'test' }, visibility: 'private',
+    };
+  }
+  async function create(owner: Browser): Promise<ReportReceipt> {
+    const response = await request(owner, '/drafts', 'POST', draft());
+    expect(response.status).toBe(201);
+    return await response.json() as ReportReceipt;
+  }
+  beforeAll(async () => {
+    await migrate(db);
+    await new Promise<void>((resolve, reject) => {
+      server.once('error', reject);
+      server.listen(0, '127.0.0.1', resolve);
+    });
+    const address = server.address();
+    if (!address || typeof address === 'string') throw new Error('HTTP fixture did not bind TCP');
+    base = `http://127.0.0.1:${address.port}/api/reports`;
+  });
+  afterAll(async () => {
+    await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+    try {
+      // Restrict cleanup to browser identities created by this suite.
+      await db.query('DELETE FROM report_outbox WHERE report_id IN (SELECT id FROM model_reports WHERE session_id=ANY($1::text[]))', [sessionIds]);
+      await db.query('DELETE FROM report_audit WHERE report_id IN (SELECT id FROM model_reports WHERE session_id=ANY($1::text[])) OR actor=ANY($1::text[])', [sessionIds]);
+      await db.query('DELETE FROM report_uploads WHERE report_id IN (SELECT id FROM model_reports WHERE session_id=ANY($1::text[]))', [sessionIds]);
+      await db.query('DELETE FROM model_reports WHERE session_id=ANY($1::text[])', [sessionIds]);
+      await db.query('DELETE FROM report_admission WHERE key IN (SELECT admission FROM report_sessions WHERE id=ANY($1::text[]))', [sessionIds]);
+      await db.query('DELETE FROM report_sessions WHERE id=ANY($1::text[])', [sessionIds]);
+    } finally { await db.end(); }
+  });
+
+  it('rejects cross-origin session admission before issuing cookies or consuming quota', async () => {
+    const anchor = await browser(); // Direct clients may omit both browser headers.
+    const count = async () => (await db.query<{ count: string }>(
+      'SELECT count(*) FROM report_sessions WHERE admission=(SELECT admission FROM report_sessions WHERE id=$1)',
+      [anchor.id],
+    )).rows[0]!.count;
+    const before = await count();
+    const rejected: Record<string, string>[] = [
+      { Origin: 'https://attacker.example' },
+      { Origin: 'https://sub.viewer.example.com', 'Sec-Fetch-Site': 'same-site' },
+      { 'Sec-Fetch-Site': 'cross-site' }, // Cross-origin img may omit Origin.
+      { 'Sec-Fetch-Site': 'same-site' },
+      { Origin: 'null', 'Sec-Fetch-Site': 'none' },
+    ];
+    for (const headers of rejected) {
+      const response = await fetch(`${base}/session`, { headers });
+      expect(response.status).toBe(403);
+      expect(response.headers.get('set-cookie')).toBeNull();
+      expect(await count()).toBe(before);
+    }
+    // Preserve normal browser fetch, direct navigation and explicit same-origin requests.
+    await browser({ 'Sec-Fetch-Site': 'same-origin' });
+    await browser({ 'Sec-Fetch-Site': 'none' });
+    await browser({ Origin: config.origin, 'Sec-Fetch-Site': 'same-origin' });
+    expect(Number(await count())).toBe(Number(before) + 3);
+  });
+
+  it('rejects wrong origin, wrong/missing CSRF and absent owner before creating a draft', async () => {
+    const owner = await browser();
+    const deniedHeaders: Record<string, string>[] = [
+      { Origin: 'https://attacker.example' },
+      { 'X-CSRF-Token': 'invalid' },
+      { 'X-CSRF-Token': '' },
+    ];
+    for (const headers of deniedHeaders)
+      expect((await request(owner, '/drafts', 'POST', draft(), headers)).status).toBe(403);
+    expect((await request(owner, '/drafts', 'POST', draft(), { Cookie: '' })).status).toBe(401);
+    const rows = await db.query('SELECT id FROM model_reports WHERE session_id=$1', [owner.id]);
+    expect(rows.rowCount).toBe(0);
+    expect((await create(owner)).status).toBe('draft');
+  });
+
+  it('denies another owner both private report and existing agreement PDF', async () => {
+    const owner = await browser(); const stranger = await browser(); const report = await create(owner);
+    config.agreement.signingEnabled = true;
+    try {
+      const acceptance = await request(owner, `/${report.id}/consent`, 'POST', {
+        agreementSha256: config.agreement.sha256, signerName: 'Example Signer', signerEmail: 'signer@example.com',
+        organization: 'Example Organisation', authorityConfirmed: true, accepted: true,
+      });
+      expect(acceptance.status).toBe(200);
+      const pdf = await request(owner, `/${report.id}/agreement.pdf`);
+      expect(pdf.status).toBe(200);
+      expect(pdf.headers.get('content-type')).toBe('application/pdf');
+      expect(Buffer.from(await pdf.arrayBuffer()).subarray(0, 5).toString()).toBe('%PDF-');
+      for (const path of [`/${report.id}`, `/${report.id}/agreement.pdf`])
+        expect((await request(stranger, path)).status).toBe(404);
+      expect((await request(stranger, `/${report.id}`, 'DELETE')).status).toBe(404);
+      expect((await request(owner, `/${report.id}`)).status).toBe(200);
+    } finally { config.agreement.signingEnabled = false; }
+  });
+
+  it('queues GitHub publication only after explicit submit and makes repeat submit idempotent', async () => {
+    const owner = await browser(); const report = await create(owner);
+    const queued = () => db.query('SELECT report_id FROM report_outbox WHERE report_id=$1', [report.id]);
+    expect((await queued()).rowCount).toBe(0);
+    expect((await request(owner, `/${report.id}`)).status).toBe(200);
+    expect((await queued()).rowCount).toBe(0);
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const response = await request(owner, `/${report.id}/submit`, 'POST', {});
+      expect(response.status).toBe(202);
+      expect(await response.json()).toEqual({ id: report.id, status: 'submitted' });
+    }
+    expect((await queued()).rowCount).toBe(1);
+    const rows = await db.query('SELECT issue_url FROM model_reports WHERE id=$1', [report.id]);
+    expect(rows.rows[0]?.issue_url).toBeNull();
+  });
+
+  it('requires standard approval and keeps custom NDA pending until authenticated maintainer review', async () => {
+    const owner = await browser(); const report = await create(owner);
+    const upload = { name: 'private.ifc', size: 20, type: 'application/octet-stream', confidentiality: 'standard', uploadConsent: true };
+    expect((await request(owner, `/${report.id}/uploads`, 'POST', upload)).status).toBe(409);
+    const pending = await request(owner, `/${report.id}/custom-nda`, 'POST', { message: 'Contact model-owner@example.com privately before upload.' });
+    expect(pending.status).toBe(200);
+    expect((await request(owner, `/${report.id}/submit`, 'POST', {})).status).toBe(409);
+    expect((await request(owner, `/${report.id}/uploads`, 'POST', { ...upload, confidentiality: 'custom' })).status).toBe(409);
+    const approval = { accepted: true, signedAgreementReference: 'private-agreement-reference' };
+    expect((await request(owner, `/admin/${report.id}/custom-nda`, 'POST', approval)).status).toBe(401);
+    const accepted = await request(owner, `/admin/${report.id}/custom-nda`, 'POST', approval, { Authorization: `Bearer ${config.adminToken}` });
+    expect(accepted.status).toBe(200);
+    const resumed = await request(owner, `/${report.id}`);
+    expect(await resumed.json()).toMatchObject({ id: report.id, status: 'draft', customNdaStatus: 'approved' });
+    expect((await db.query('SELECT id FROM report_uploads WHERE report_id=$1', [report.id])).rowCount).toBe(0);
+    expect((await db.query('SELECT report_id FROM report_outbox WHERE report_id=$1', [report.id])).rowCount).toBe(0);
+  });
+
+  it('rejects expired report access and expired sessions rather than renewing ownership silently', async () => {
+    const owner = await browser(); const report = await create(owner);
+    await db.query("UPDATE model_reports SET expires_at=now()-interval '1 second' WHERE id=$1", [report.id]);
+    expect((await request(owner, `/${report.id}`)).status).toBe(404);
+    expect((await request(owner, `/${report.id}/submit`, 'POST', {})).status).toBe(404);
+    const live = await create(owner);
+    await db.query("UPDATE report_sessions SET expires_at=now()-interval '1 second' WHERE id=$1", [owner.id]);
+    expect((await request(owner, `/${live.id}`)).status).toBe(401);
+    expect((await request(owner, `/${live.id}/submit`, 'POST', {})).status).toBe(401);
+  });
+});

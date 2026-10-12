@@ -6,6 +6,7 @@ import { offerErrorReport } from './error-reports/context';
 import posthogClient from 'posthog-js';
 import { isAnalyticsOptedOut, persistAnalyticsOptOut } from './analytics-consent.js';
 import { scrubEvent } from './analytics-scrub.js';
+import { reportReplayPrivacy } from './analytics-report-privacy.js';
 import { scrubUiEvent, type UiEventName, type UiEventProperties } from './analytics-ui-events.js';
 import { scrubExportEvent, type ExportCompletedProperties } from './analytics-export-events.js';
 import { shouldSuppressWasmSkewNoise } from './wasm-version-skew.js';
@@ -184,6 +185,7 @@ if (enabled) {
       // third-party noise, and tag the geometry error family. See scrubEvent
       // in ./analytics-scrub.ts.
       before_send: beforeSend,
+      session_recording: reportReplayPrivacy,
     });
     if (isAnalyticsOptedOut()) posthogClient.opt_out_capturing();
     // Register build attribution as super-properties so every event (incl.

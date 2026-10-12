@@ -15,9 +15,11 @@
  * instead of reporting a plain failure.
  */
 
-import { BcfApiError, type BcfCommentWriteDto, type BcfTopicWriteDto } from '@ifc-lite/bcf-api';
+import type { BcfCommentWriteDto, BcfTopicWriteDto } from '@ifc-lite/bcf-api';
 import { NetworkDeniedError } from '@ifc-lite/sandbox';
+import { classifyWriteError } from './bcf-publication.js';
 import type { Ctx } from './host.js';
+import { redactDeep, redactText } from './secrets.js';
 
 /** What a node is about to write, without the bearer token. */
 export interface BcfWriteIntent {
@@ -38,7 +40,7 @@ export interface BcfWriteIntent {
  * calling `send` when an identical earlier write is still unresolved.
  */
 export interface BcfWriteGateway {
-  write<T extends { guid: string }>(intent: BcfWriteIntent, send: () => Promise<T>): Promise<T>;
+  write<T extends { guid: string }>(intent: BcfWriteIntent, send: () => Promise<T>, secrets?: readonly string[]): Promise<T>;
 }
 
 /** Send one write through the host gateway, or directly with explicit unknown-outcome reporting. */
@@ -46,18 +48,35 @@ export async function sendBcfWrite<T extends { guid: string }>(
   ctx: Ctx,
   intent: BcfWriteIntent,
   send: () => Promise<T>,
+  secrets: readonly string[] = [],
 ): Promise<T> {
   const gateway = ctx.host.bcfWrites;
-  if (gateway) return gateway.write(intent, send);
+  // Enrol the actual resolved bearer, including short literal/Player values.
+  // Redact only after the gateway has validated and saved the original receipt.
+  const redaction = new Map(secrets.filter(secret => secret.length > 0).flatMap(secret =>
+    [...new Set([secret, JSON.stringify(secret).slice(1, -1)])].map(value => [value, '[REDACTED]'] as const)));
+  if (gateway) {
+    try { return redactDeep(await gateway.write(intent, send, secrets), redaction); }
+    catch (error) {
+      // Keep host-owned recovery/refusal semantics; never propagate an opaque raw cause.
+      throw new Error(redactText(error instanceof Error ? error.message : String(error), redaction));
+    }
+  }
   try {
-    return await send();
+    return redactDeep(await send(), redaction);
   } catch (err) {
-    // An HTTP status is a definite answer, and a denied request never left the host.
-    if (err instanceof BcfApiError || err instanceof NetworkDeniedError) throw err;
-    const reason = err instanceof Error ? err.message : String(err);
-    throw new Error(
-      `${intent.nodeType}: outcome unknown — the server may have applied this ${intent.operation} before the connection failed (${reason}). Check the project before running this node again.`,
-      { cause: err },
-    );
+    // Use the same dispatch/status provenance as both durable publication hosts.
+    const classified = classifyWriteError(err, new Date().toISOString());
+    if (err instanceof NetworkDeniedError && err.dispatched === false) {
+      // This diagnostic is produced locally before dispatch; preserve it without its cause.
+      throw new Error(`${intent.nodeType}: ${redactText(err.message, redaction)}`);
+    }
+    const status = classified.failure.status === undefined ? '' : `, HTTP ${classified.failure.status}`;
+    const context = `${classified.failure.code}${status}`;
+    const message = classified.state === 'failed'
+      ? `${intent.nodeType}: request refused (${context}).`
+      : `${intent.nodeType}: outcome unknown — the server may have applied this ${intent.operation} (${context}). Check the project before running this node again.`;
+    // Server bodies/URLs and the original cause may echo a literal/Player bearer.
+    throw new Error(redactText(message, redaction));
   }
 }

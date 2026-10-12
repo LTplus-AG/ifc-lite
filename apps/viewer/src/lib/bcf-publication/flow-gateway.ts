@@ -12,6 +12,7 @@
  */
 
 import type { BcfWriteGateway, BcfWriteIntent } from '@ifc-lite/flow-nodes';
+import { BcfApiError } from '@ifc-lite/bcf-api';
 import { digestStrings } from '../bcf-drafts/draft-footer.js';
 import { classifyWriteError } from './outbox-dispatch.js';
 import { entryDigest, normalizeServerUrl } from './outbox-plan.js';
@@ -39,7 +40,11 @@ function host(url: string): string {
 
 export function createViewerBcfWriteGateway(now: () => Date = () => new Date()): BcfWriteGateway {
   return {
-    async write<T extends { guid: string }>(intent: BcfWriteIntent, send: () => Promise<T>): Promise<T> {
+    async write<T extends { guid: string }>(intent: BcfWriteIntent, send: () => Promise<T>, secrets: readonly string[] = []): Promise<T> {
+      const sensitive = secrets.filter(secret => secret.length > 0);
+      if (sensitive.some(secret => JSON.stringify(intent).includes(JSON.stringify(secret).slice(1, -1)))) {
+        throw new BcfWriteRefusedError('BCF publication refused: credentials must not enter durable state.');
+      }
       const target: PublicationTarget = { serverUrl: normalizeServerUrl(intent.baseUrl), projectId: intent.projectId, userId: '' };
       const id = flowPublicationId(target);
       const topicKey = intent.topicGuid ?? '';
@@ -65,13 +70,26 @@ export function createViewerBcfWriteGateway(now: () => Date = () => new Date()):
       inFlightEntries.add(entryId);
       try {
         const result = await send();
+        if (sensitive.some(secret => result.guid.includes(secret))) throw new Error('BCF server receipt contains a credential.');
         await settle(id, entryId, entry => markDone(entry, { remoteGuid: result.guid, at: now().toISOString(), evidence: 'response' }));
         return result;
       } catch (error) {
         const classified = classifyWriteError(error, now().toISOString());
+        for (const secret of sensitive) {
+          for (const representation of new Set([secret, JSON.stringify(secret).slice(1, -1)])) {
+            classified.failure.message = classified.failure.message.split(representation).join('[redacted]');
+          }
+        }
         await settle(id, entryId, entry => classified.state === 'failed' ? markFailed(entry, classified.failure) : markUncertain(entry, classified.failure));
-        if (classified.state === 'failed') throw error;
-        throw new Error(`${intent.nodeType}: outcome unknown — the server may have applied this ${intent.operation} (${classified.failure.message}). It is recorded in BCF → Drafts & publication; check the server there before running this node again.`, { cause: error });
+        if (classified.state === 'failed') {
+          if (sensitive.length === 0) throw error;
+          // Remote detail and causes can echo literal/Player tokens unknown to
+          // the host's secret map. Return only the already redacted diagnostic.
+          throw error instanceof BcfApiError
+            ? new BcfApiError(classified.failure.message, { status: error.status, url: target.serverUrl })
+            : new Error(classified.failure.message);
+        }
+        throw new Error(`${intent.nodeType}: outcome unknown — the server may have applied this ${intent.operation} (${classified.failure.message}). It is recorded in BCF → Drafts & publication; check the server there before running this node again.`);
       } finally {
         inFlightEntries.delete(entryId);
       }

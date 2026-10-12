@@ -29,6 +29,8 @@ export interface LocalBcfState {
   loseResponsesOfWrites: Set<number>;
   acceptedWrites: number;
   receivedWrites: number;
+  /** Includes write requests refused by authentication before routing. */
+  receivedWriteAttempts: number;
 }
 
 /** Server-assigned timestamps use the peer's clock, as a real server's do. */
@@ -69,31 +71,41 @@ function topicFields(value: unknown): Record<string, unknown> | undefined {
   return value;
 }
 
-export async function startLocalBcfServer(): Promise<{
+export async function startLocalBcfServer(options: { token?: string; echoWriteToken?: boolean; afterWriteStatus?: 303 | 409 | 500 } = {}): Promise<{
   baseUrl: string;
   state: LocalBcfState;
   close: () => Promise<void>;
 }> {
   const state: LocalBcfState = { topics: new Map(), writesAllowed: true, tokenValid: true,
-    loseNextWriteResponse: false, loseResponsesOfWrites: new Set(), acceptedWrites: 0, receivedWrites: 0 };
+    loseNextWriteResponse: false, loseResponsesOfWrites: new Set(), acceptedWrites: 0, receivedWrites: 0, receivedWriteAttempts: 0 };
   let baseUrl = '';
+  const token = options.token ?? LOCAL_BCF_TOKEN;
   const commit = (response: ServerResponse, value: unknown, status = 201): void => {
     state.acceptedWrites += 1;
     if (state.loseNextWriteResponse || state.loseResponsesOfWrites.has(state.acceptedWrites)) {
       state.loseNextWriteResponse = false;
       response.destroy();
-    } else json(response, value, status);
+    } else {
+      // A real response channel may echo credentials while retaining the original effect.
+      const outgoing = options.echoWriteToken && record(value)
+        ? { ...value, [typeof value.comment === 'string' ? 'comment' : 'description']: `Server echoed ${token}` }
+        : value;
+      json(response, options.afterWriteStatus && options.afterWriteStatus >= 400
+        ? { message: options.echoWriteToken ? `Server echoed ${token}` : 'Retained write response failed' }
+        : outgoing, options.afterWriteStatus ?? status);
+    }
   };
   const handle = async (request: IncomingMessage, response: ServerResponse): Promise<void> => {
     const url = new URL(request.url ?? '/', baseUrl);
     const method = request.method ?? 'GET';
+    if ((method === 'POST' || method === 'PUT') && url.pathname.includes('/topics')) state.receivedWriteAttempts += 1;
     if (method === 'OPTIONS') { response.writeHead(204); response.end(); return; }
     if (url.pathname === '/bcf/2.1/auth') {
       json(response, { oauth2_auth_url: `${baseUrl}/oauth/authorize`, oauth2_token_url: `${baseUrl}/oauth/token` }); return;
     }
     if (url.pathname === '/bcf/versions') { json(response, { versions: [{ version_id: '2.1' }] }); return; }
-    if (!state.tokenValid || request.headers.authorization !== `Bearer ${LOCAL_BCF_TOKEN}`) {
-      json(response, { message: 'Local test token rejected' }, 401); return;
+    if (!state.tokenValid || request.headers.authorization !== `Bearer ${token}`) {
+      json(response, { message: options.echoWriteToken ? `Server echoed ${token}` : 'Local test token rejected' }, 401); return;
     }
     if (url.pathname === '/bcf/2.1/current-user') {
       json(response, { id: LOCAL_BCF_USER, name: 'Local coordinator' }); return;

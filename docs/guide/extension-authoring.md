@@ -441,3 +441,9 @@ The signature commits to a canonical hash of the bundle contents + the `signedAt
 - [Extensions](extensions.md) — install and use extensions
 - [Flavors](flavors.md) — bundle your extensions into a shareable profile
 - [CLI reference](cli.md#ext-extension-toolkit) — every `ext` subcommand with flags
+
+For native integrations, `NetworkDeniedError.dispatched` from
+`@ifc-lite/sandbox/network` is `false` for a URL/scheme/host refusal before
+network dispatch, `true` for a refused redirect response, and otherwise
+unqualified. A refused redirect does not prove that a POST had no effect;
+preserve unresolved write intent instead of retrying automatically.

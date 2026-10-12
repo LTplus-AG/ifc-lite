@@ -156,7 +156,7 @@ export const bcfNodes: FlowNodeDef[] = [
       for (const write of writes) {
         try {
           const intent: BcfWriteIntent = { ...target, nodeType: 'bcf.createTopic', operation: 'createTopic', payload: write };
-          topics.push(await sendBcfWrite(ctx, intent, () => client.createTopic(projectId, write)));
+          topics.push(await sendBcfWrite(ctx, intent, () => client.createTopic(projectId, write), typeof p.token === 'string' ? [p.token.trim()] : []));
         } catch (err) {
           // Name what already exists on the server, so a rerun does not duplicate it blindly.
           if (topics.length === 0) throw err;
@@ -196,7 +196,7 @@ export const bcfNodes: FlowNodeDef[] = [
       const replyTo = text(p.replyToCommentGuid);
       const payload = replyTo ? { comment, reply_to_comment_guid: replyTo } : { comment };
       const intent: BcfWriteIntent = { ...writeTarget(p, projectId), nodeType: 'bcf.addComment', operation: 'createComment', topicGuid, payload };
-      const created = await sendBcfWrite(ctx, intent, () => client.createComment(projectId, topicGuid, payload));
+      const created = await sendBcfWrite(ctx, intent, () => client.createComment(projectId, topicGuid, payload), typeof p.token === 'string' ? [p.token.trim()] : []);
       return { guid: created.guid, created };
     }),
   },

@@ -9,7 +9,9 @@
 import '@/test/setup-dom.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { BcfApiError, type BcfTopicWriteDto } from '@ifc-lite/bcf-api';
+import { createServer } from 'node:http';
+import { inspect } from 'node:util';
+import { BcfApiClient, BcfApiError, type BcfTopicWriteDto } from '@ifc-lite/bcf-api';
 import type { BcfWriteIntent } from '@ifc-lite/flow-nodes';
 import { connectPeer } from '@/test/bcf-publication-fixture';
 import { LOCAL_BCF_PROJECT } from '@/test/bcf-http-server';
@@ -62,3 +64,62 @@ test('an HTTP refusal is a definite failure: the node gets the server error and 
   assert.equal(peer.state.receivedWrites, 2, 'a definite refusal does not block a rerun');
   assert.equal(peer.state.topics.size, 0);
 });
+
+// #7374: the canonical node passes its resolved literal/Player bearer ephemerally.
+test('a known bearer in Flow payload is refused before browser persistence or effect', async t => {
+  const peer = await connectPeer(t);
+  const gateway = createViewerBcfWriteGateway();
+  const payload = { title: 'Accidental local-test-token content' };
+  await assert.rejects(gateway.write(intent(peer.baseUrl, payload),
+    () => peer.connection.client.createTopic(LOCAL_BCF_PROJECT, payload), ['local-test-token']), /credentials must not enter durable state/);
+  assert.equal(peer.state.receivedWrites, 0);
+  const id = flowPublicationId({ serverUrl: peer.baseUrl, projectId: LOCAL_BCF_PROJECT });
+  assert.equal(await readPublication(id), undefined);
+});
+
+for (const status of [401, 503]) {
+  test(`#7374 browser Flow returns no literal bearer in HTTP ${status} diagnostics, detail or causes`, async t => {
+    const token = 'literal"token\\path';
+    const echoed = status === 401 ? token : JSON.stringify(token).slice(1, -1);
+    let requests = 0;
+    const server = createServer((request, response) => {
+      response.setHeader('Access-Control-Allow-Origin', '*');
+      response.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+      response.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+      if (request.method === 'OPTIONS') { response.writeHead(204); response.end(); return; }
+      requests++;
+      assert.equal(request.headers.authorization, `Bearer ${token}`);
+      response.writeHead(status, { 'content-type': 'application/json' });
+      response.end(JSON.stringify({ message: `Invalid bearer ${echoed}` }));
+    });
+    await new Promise<void>((ready, reject) => {
+      server.once('error', reject);
+      server.listen(0, '127.0.0.1', () => { server.removeListener('error', reject); ready(); });
+    });
+    t.after(() => new Promise<void>((closed, reject) => {
+      server.close(error => error ? reject(error) : closed()); server.closeAllConnections();
+    }));
+    const address = server.address();
+    assert.ok(address && typeof address !== 'string');
+    const baseUrl = `http://127.0.0.1:${address.port}/bcf`;
+    const client = new BcfApiClient({ baseUrl, getAccessToken: () => token });
+    const payload = { title: `HTTP ${status} recovery` };
+    const gateway = createViewerBcfWriteGateway();
+    await assert.rejects(gateway.write(intent(baseUrl, payload),
+      () => client.createTopic(LOCAL_BCF_PROJECT, payload), [token]), (error: unknown) => {
+      assert.ok(error instanceof Error);
+      assert.equal(error.message.includes(token), false);
+      assert.equal(error.message.includes(JSON.stringify(token).slice(1, -1)), false);
+      assert.equal(error.cause, undefined, 'a raw remote error must not escape as a cause');
+      assert.equal(inspect(error).includes(token), false, 'the returned error and cause contain no raw token');
+      assert.equal(inspect(error).includes(JSON.stringify(token).slice(1, -1)), false, 'encoded tokens cannot bypass redaction');
+      assert.match(error.message, /\[redacted\]/);
+      if (status === 401) assert.ok(error instanceof BcfApiError && error.status === 401 && error.isAuthError);
+      return true;
+    });
+    const record = (await readPublication(flowPublicationId({ serverUrl: baseUrl, projectId: LOCAL_BCF_PROJECT })))?.record;
+    assert.equal(record?.entries[0].state, status === 401 ? 'failed' : 'uncertain');
+    assert.equal(JSON.stringify(record).includes(JSON.stringify(token).slice(1, -1)), false);
+    assert.equal(requests, 1, 'the real client sent only the original request');
+  });
+}

@@ -6373,6 +6373,10 @@
     "FlowAiService: interface",
     "aiNodes: const"
   ],
+  "@ifc-lite/flow-nodes/bcf-publication": [
+    "BcfPublicationFailure: interface",
+    "classifyWriteError: function"
+  ],
   "@ifc-lite/flow/checkpoint": [
     "CheckpointError: class",
     "CheckpointErrorCode: type",

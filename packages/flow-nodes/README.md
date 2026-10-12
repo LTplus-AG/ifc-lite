@@ -82,3 +82,12 @@ field/value constraints. Its portable `model.changes` output cites captured
 rows and expected values, and performs no writes. Current-state validation and
 mutation approval remain native host responsibilities. See the
 [AI node and checkpoint contract](../../docs/guide/flow.md#ai-nodes-and-review-checkpoints).
+
+## BCF write response boundary
+
+Both create operations enrol the actual resolved bearer, including short literal
+and Player values. Successful DTOs and outward diagnostic messages redact raw
+and JSON-escaped bearer occurrences. Gateway errors preserve the host's refusal
+or recovery message as a plain `Error`, without its original class or cause.
+Direct sends use dispatch provenance: a preflight denial is definite; a refused
+redirect, HTTP409, HTTP5xx or missing response remains uncertain and never retries.

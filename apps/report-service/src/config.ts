@@ -55,10 +55,27 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
     throw new Error(
       "Approved agreement does not match a complete, non-draft template",
     );
+  const version = env.REPORT_AGREEMENT_VERSION?.trim() || "unapproved";
+  if (
+    approval &&
+    (!/^[a-z0-9][a-z0-9._-]{0,127}$/i.test(version) ||
+      /^(unapproved|draft|placeholder|todo)(?:$|[._-])/i.test(version))
+  )
+    throw new Error(
+      "REPORT_AGREEMENT_VERSION must identify the approved agreement version",
+    );
   const secret = required("REPORT_ADMISSION_SECRET");
   const adminToken = required("REPORT_ADMIN_TOKEN");
   if (secret.length < 32 || adminToken.length < 32)
     throw new Error("Report secrets must have at least 32 characters");
+  const inlineKey = env.REPORT_GITHUB_PRIVATE_KEY;
+  const keyFile = env.REPORT_GITHUB_PRIVATE_KEY_FILE?.trim();
+  if (Boolean(inlineKey?.trim()) === Boolean(keyFile))
+    throw new Error(
+      "Configure exactly one of REPORT_GITHUB_PRIVATE_KEY or REPORT_GITHUB_PRIVATE_KEY_FILE",
+    );
+  const githubPrivateKey = keyFile ? readFileSync(keyFile, "utf8") : inlineKey!;
+  if (!githubPrivateKey.trim()) throw new Error("GitHub App private key is empty");
   const githubRepository = required("REPORT_GITHUB_REPOSITORY");
   if (!/^[\w.-]+\/[\w.-]+$/.test(githubRepository))
     throw new Error("Invalid GitHub repository");
@@ -88,13 +105,10 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
     adminToken,
     githubAppId: required("REPORT_GITHUB_APP_ID"),
     githubInstallationId: required("REPORT_GITHUB_INSTALLATION_ID"),
-    githubPrivateKey: readFileSync(
-      required("REPORT_GITHUB_PRIVATE_KEY_FILE"),
-      "utf8",
-    ),
+    githubPrivateKey,
     githubRepository,
     agreement: {
-      version: env.REPORT_AGREEMENT_VERSION ?? "unapproved",
+      version,
       sha256,
       text,
       issuer: "LTplus AG",

@@ -114,12 +114,22 @@ export async function acceptAgreement(
       "report_state",
       "An editable report is required.",
     );
-    if (report.agreement?.agreementSha256 === input.agreementSha256)
+    if (report.agreement) {
+      requireCondition(
+        report.agreement.agreementSha256 === input.agreementSha256 &&
+          report.agreement.signerName === input.signerName &&
+          report.agreement.signerEmail === input.signerEmail &&
+          report.agreement.organization === input.organization,
+        409,
+        "agreement_immutable",
+        "This report already has an agreement with different acceptance details. Start a new report to change them.",
+      );
       return {
         acceptedAt: String(report.agreement.acceptedAt),
         agreementSha256: input.agreementSha256,
         pdfUrl: `/api/reports/${id}/agreement.pdf`,
       };
+    }
     await tx.query(
       "UPDATE model_reports SET agreement=$2,agreement_pdf=$3 WHERE id=$1",
       [id, JSON.stringify({ ...record, pdfSha256 }), Buffer.from(pdf)],

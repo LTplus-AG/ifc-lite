@@ -124,6 +124,37 @@ describe.skipIf(!enabled)("#7495 approved agreement durable binding", () => {
     expect(
       (await acceptAgreement(db, config, report.id, owner, input)).acceptedAt,
     ).toBe(receipt.acceptedAt);
+    for (const change of [
+      { signerName: "Different Signer" },
+      { signerEmail: "different@example.com" },
+      { organization: "Different Organisation" },
+    ]) {
+      await expect(
+        acceptAgreement(db, config, report.id, owner, { ...input, ...change }),
+      ).rejects.toThrow(/different acceptance details/);
+    }
+    const replacement = {
+      ...config,
+      agreement: {
+        ...config.agreement,
+        version: "test-v2",
+        text: text + " Revised.",
+        sha256: createHash("sha256").update(text + " Revised.").digest("hex"),
+      },
+    };
+    await expect(
+      acceptAgreement(db, replacement, report.id, owner, {
+        ...input,
+        agreementSha256: replacement.agreement.sha256,
+      }),
+    ).rejects.toThrow(/different acceptance details/);
+    const unchanged = (
+      await db.query<{ agreement_pdf: Buffer }>(
+        "SELECT agreement_pdf FROM model_reports WHERE id=$1", [report.id],
+      )
+    ).rows[0]!;
+    expect(createHash("sha256").update(unchanged.agreement_pdf).digest("hex"))
+      .toBe(stored.agreement.pdfSha256);
   });
   it("fails configuration for a changed or still-draft supposedly approved document", async () => {
     const path = join(directory, "agreement.txt");
@@ -140,5 +171,63 @@ describe.skipIf(!enabled)("#7495 approved agreement durable binding", () => {
     expect(() =>
       loadConfig({ ...env, REPORT_APPROVED_AGREEMENT_SHA256: "0".repeat(64) }),
     ).toThrow(/match/i);
+  });
+  it("#7497 requires an explicit approved version before enabling signing", async () => {
+    const path = join(directory, "approved-agreement.txt");
+    const keyPath = join(directory, "fixture-key.txt");
+    await writeFile(path, text);
+    await writeFile(keyPath, "test-only key; signing is not invoked");
+    const env: NodeJS.ProcessEnv = {
+      REPORT_VIEWER_ORIGIN: "https://viewer.example.com",
+      REPORT_AGREEMENT_FILE: path,
+      REPORT_APPROVED_AGREEMENT_SHA256: digest,
+      REPORT_AGREEMENT_FONT_FILE: process.env.REPORT_TEST_FONT_FILE,
+      REPORT_ADMISSION_SECRET: "a".repeat(32),
+      REPORT_ADMIN_TOKEN: "b".repeat(32),
+      REPORT_GITHUB_REPOSITORY: "owner/repo",
+      REPORT_STORAGE_PROVIDER: "test",
+      REPORT_STORAGE_LOCATION: "test",
+      REPORT_BACKUP_DISCLOSURE: "none",
+      REPORT_DATABASE_URL: "postgres://localhost/test",
+      REPORT_S3_BUCKET: "test",
+      REPORT_S3_REGION: "test",
+      REPORT_S3_ACCESS_KEY_ID: "test",
+      REPORT_S3_SECRET_ACCESS_KEY: "test",
+      REPORT_GITHUB_APP_ID: "1",
+      REPORT_GITHUB_INSTALLATION_ID: "1",
+      REPORT_GITHUB_PRIVATE_KEY_FILE: keyPath,
+    };
+    for (const version of [
+      undefined, "", "  ", "unapproved", "UNAPPROVED", "draft-v1", "{{version}}",
+    ]) {
+      expect(() => loadConfig({ ...env, REPORT_AGREEMENT_VERSION: version }))
+        .toThrow(/approved agreement version/);
+    }
+    const approved = loadConfig({
+      ...env, REPORT_AGREEMENT_VERSION: "2026-10-12.v1",
+    });
+    expect(approved.agreement.signingEnabled).toBe(true);
+    expect(approved.agreement.version).toBe("2026-10-12.v1");
+    await validateAgreementFont(approved);
+    const disabled = loadConfig({
+      ...env, REPORT_APPROVED_AGREEMENT_SHA256: undefined,
+    });
+    expect(disabled.agreement.signingEnabled).toBe(false);
+    // #7497: hosts providing secret environment values need no file wrapper.
+    const inlineKey = "-----BEGIN PRIVATE KEY-----\nfixture-only\n-----END PRIVATE KEY-----\n";
+    const inline = {
+      ...env,
+      REPORT_APPROVED_AGREEMENT_SHA256: undefined,
+      REPORT_GITHUB_PRIVATE_KEY_FILE: undefined,
+      REPORT_GITHUB_PRIVATE_KEY: inlineKey,
+    };
+    expect(loadConfig(inline).githubPrivateKey).toBe(inlineKey);
+    expect(disabled.githubPrivateKey).toBe("test-only key; signing is not invoked");
+    expect(() => loadConfig({ ...inline, REPORT_GITHUB_PRIVATE_KEY_FILE: keyPath }))
+      .toThrow(/exactly one/);
+    expect(() => loadConfig({ ...inline, REPORT_GITHUB_PRIVATE_KEY: undefined }))
+      .toThrow(/exactly one/);
+    expect(() => loadConfig({ ...inline, REPORT_GITHUB_PRIVATE_KEY: "  " }))
+      .toThrow(/exactly one/);
   });
 });

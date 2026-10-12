@@ -19,7 +19,7 @@ describe("#7495 model reporting invariants", () => {
     expect(parsed.getSubject()).toBe(
       "Report 125be751-2d65-4323-8f52-030926151929",
     );
-    expect(parsed.getCreationDate().toISOString()).toBe(
+    expect(parsed.getCreationDate()?.toISOString()).toBe(
       "2026-10-12T12:00:00.000Z",
     );
   });

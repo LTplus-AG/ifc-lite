@@ -44,6 +44,11 @@ export function captureZoomState(state: CameraInternalState, pivot: Vec3 | null)
  * Do not clamp axes separately: that would rotate the viewing direction. */
 export function acceptZoomStep(state: CameraInternalState, pivot: Vec3 | null, before: ReturnType<typeof captureZoomState>): boolean {
   if (canAdmitZoomPose(state.camera, before)) return true;
+  // Orthographic centred zoom changes only scale, so it cannot worsen an
+  // existing coordinate violation. Keep cursor translations on the strict gate.
+  if (state.projectionMode === 'orthographic' && Number.isFinite(poseMagnitude(state.camera))
+    && (['x', 'y', 'z'] as const).every(axis => state.camera.position[axis] === before.position[axis]
+      && state.camera.target[axis] === before.target[axis])) return true;
   Object.assign(state.camera.position, before.position);
   Object.assign(state.camera.target, before.target);
   state.orthoSize = before.orthoSize;

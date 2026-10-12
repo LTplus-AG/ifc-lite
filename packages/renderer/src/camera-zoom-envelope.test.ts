@@ -110,6 +110,27 @@ describe('#7493 repeated zoom stays inside the renderer camera envelope', () => 
     assert.ok(camera.getTarget().x < before.target.x);
   });
 
+  it('preserves centred orthographic scale outside the envelope without admitting worse translation', () => {
+    const camera = new Camera();
+    camera.setProjectionMode('orthographic');
+    camera.setPosition(2 * LIMIT, 0, 100);
+    camera.setTarget(2 * LIMIT, 0, 0);
+    camera.setOrthoSize(100);
+    const original = pose(camera);
+    camera.zoom(120);
+    assert.equal(camera.getOrthoSize(), 110.00000000000001);
+    assert.deepEqual(camera.getPosition(), original.position);
+    assert.deepEqual(camera.getTarget(), original.target);
+    assert.equal(camera.getRelativeToEyeFrame().isAvailable(), false, 'scale-only does not claim recovery');
+    const scaled = pose(camera);
+    camera.zoom(120, false, 0, 300, 800, 600);
+    assert.deepEqual(pose(camera), scaled, 'worsening cursor translation still rolls back the scale');
+    camera.zoom(-120);
+    assert.ok(camera.getOrthoSize() < scaled.size, 'centred reverse scale still works');
+    assert.deepEqual(camera.getPosition(), original.position);
+    assert.deepEqual(camera.getTarget(), original.target);
+  });
+
   it('keeps high-offset georeferenced zoom equivalent to the local pose', () => {
     const local = new Camera();
     const translated = new Camera();

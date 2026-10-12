@@ -4,8 +4,9 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { elementKey, resolveElement, splitElementKey } from './identity';
-import { element, fakeModel } from './test-support';
+import { resolveElement } from './identity';
+import { buildCards } from './cards';
+import { element, fakeModel, finding } from './test-support';
 
 const arch = fakeModel('m1', 'arch.ifc', ['W1', 'W2']);
 const mep = fakeModel('m2', 'mep.ifc', ['P1', 'W1']);
@@ -45,6 +46,17 @@ test('a native identity failure overrules a GlobalId match', () => {
   assert.equal(resolveElement({ ...element('W2', 'arch.ifc', 'm1'), nativeUnresolved: 'unmatched' }, [arch]).state, 'missing');
 });
 
-test('element keys round-trip even when a file name contains the separator-adjacent characters', () => {
-  assert.deepEqual(splitElementKey(elementKey('a b/c.ifc', '0abc$_')), { modelName: 'a b/c.ifc', globalId: '0abc$_' });
+// #7372: exercise the public card owner rather than exporting an unused key decoder.
+test('card identity preserves distinct file names and shared GlobalIds across scene reloads', () => {
+  const names = ['a b/c.ifc', 'ab/c.ifc'];
+  const models = names.map((name, index) => fakeModel(`scene-${index}`, name, ['0abc$_']));
+  const findings = names.map((name, index) => finding(`native-${index}`, 'validation', [element('0abc$_', name)]));
+  const first = buildCards(findings, models);
+  assert.equal(first.cards.length, 2, 'different named owners never merge on the shared GlobalId');
+  assert.equal(new Set(first.cards.map(card => card.key)).size, 2);
+  assert.deepEqual(first.cards.flatMap(card => card.elements.map(item => item.modelName)).sort(), names);
+  assert.ok(first.cards.every(card => card.identity === 'validated' && card.elements[0].globalId === '0abc$_'));
+  const reloaded = buildCards(findings, names.map((name, index) => fakeModel(`reloaded-${index}`, name, ['0abc$_'])));
+  assert.deepEqual(reloaded.cards.map(card => card.key), first.cards.map(card => card.key), 'scene ids never replace file identity');
+  assert.ok(reloaded.cards.every(card => card.elements[0].resolvedModelId?.startsWith('reloaded-')));
 });

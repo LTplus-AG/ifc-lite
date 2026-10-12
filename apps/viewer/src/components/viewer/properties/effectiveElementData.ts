@@ -16,6 +16,7 @@
 import type { IfcQuery } from '@ifc-lite/query';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { effectivePropertySets, effectiveQuantitySets } from './effectiveSets';
+import { readOccurrenceQuantityResult } from './readOccurrenceQuantityResult';
 import type { PropertySet, QuantitySet } from './encodingUtils';
 
 export interface EffectiveElementData {
@@ -23,6 +24,8 @@ export interface EffectiveElementData {
   attributes: Map<string, string | number | boolean>;
   psets: PropertySet[];
   qsets: QuantitySet[];
+  quantityStatus: 'available' | 'unavailable';
+  quantityReason: string | null;
 }
 
 export function effectiveElementData(
@@ -34,9 +37,11 @@ export function effectiveElementData(
   const attributes = new Map<string, string | number | boolean>();
   for (const attr of node?.allAttributes() ?? []) attributes.set(attr.name, attr.value);
   for (const attr of view?.getAttributeMutationsForEntity(expressId) ?? []) attributes.set(attr.name, attr.value);
+  const quantities = readOccurrenceQuantityResult(() => effectiveQuantitySets(view, expressId,
+    (baseId) => query?.entity(baseId).quantities() ?? []));
   return {
     attributes,
     psets: effectivePropertySets(view, expressId, () => node?.properties() ?? []),
-    qsets: effectiveQuantitySets(view, expressId, (baseId) => query?.entity(baseId).quantities() ?? []),
+    qsets: quantities.quantities, quantityStatus: quantities.status, quantityReason: quantities.reason,
   };
 }

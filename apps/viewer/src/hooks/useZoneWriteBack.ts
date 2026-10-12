@@ -38,6 +38,7 @@
 
 import { useCallback } from 'react';
 import { QuantityType, PropertyValueType } from '@ifc-lite/data';
+import { OccurrenceQuantityReadError } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
 import { canMutate, mutationPermission, type MutationDenialReason } from '@/store/mutation-permission';
 import { resolveEntityRef } from '@/store/resolveEntityRef';
@@ -183,6 +184,17 @@ export function applyZoneWriteBack(zoneSet: ZoneSet, basis: VolumeBasis): ZoneWr
   const contexts = new Map<string, ModelContext | null>();
   const results: Array<ElementWriteBack | null> = [];
   const touchedModels = new Set<string>();
+  const quantityReads = new Map<number, ReturnType<typeof quantitySetsWithStatusFor>>();
+  // Validate all inventories before the first edit. A later bounded refusal
+  // must not leave earlier elements changed without a completed run receipt.
+  for (const [globalId, record] of state.zoneAssignments) {
+    const ref = resolveEntityRef(globalId);
+    const context = writableContextFor(ref.modelId, contexts);
+    if (!context || (!record[zoneSet.id]?.touchedZoneIds.length && !context.view.hasChanges(ref.expressId))) continue;
+    const read = quantitySetsWithStatusFor(context, ref.expressId);
+    if (read.ownUnavailable) throw new OccurrenceQuantityReadError('Native occurrence quantities are unavailable for write-back');
+    quantityReads.set(globalId, read);
+  }
 
   for (const [globalId, record] of state.zoneAssignments) {
     const assignment = record[zoneSet.id];
@@ -197,7 +209,7 @@ export function applyZoneWriteBack(zoneSet: ZoneSet, basis: VolumeBasis): ZoneWr
       // EARLIER session and re-imported is not reachable this cheaply; the
       // panel's Remove sweeps unconditionally for exactly that.
       if (context && context.view.hasChanges(ref.expressId)) {
-        if (sweepZoneSets(context, ref.expressId, zoneSet.id) > 0) touchedModels.add(ref.modelId);
+        if (sweepZoneSets(context, ref.expressId, zoneSet.id, quantityReads.get(globalId)?.quantitySets) > 0) touchedModels.add(ref.modelId);
       }
       results.push(null);
       continue;
@@ -210,7 +222,8 @@ export function applyZoneWriteBack(zoneSet: ZoneSet, basis: VolumeBasis): ZoneWr
     // ONE read of the entity's quantity sets per element, serving both the
     // declared basis and the stale-zone-qset sweep below. Each read is an
     // on-demand extraction, so asking twice would double the run's cost.
-    const quantityRead = quantitySetsWithStatusFor(context, ref.expressId);
+    const quantityRead = quantityReads.get(globalId) ?? quantitySetsWithStatusFor(context, ref.expressId);
+    if (quantityRead.ownUnavailable) throw new OccurrenceQuantityReadError('Native occurrence quantities are unavailable for write-back');
     const qsets = quantityRead.quantitySets;
     const facts = zoneFactsFor(globalId, assignment, zoneNameById, basis, context.declaredUnitsAvailable === false ? null : context.volumeSiScale, qsets, proved, apportioned, quantityRead.inheritedUnavailable);
     // Read-only explicit quantities can remain physical without project units,
@@ -297,38 +310,32 @@ export function removeZoneWriteBack(zoneSet: ZoneSet): ZoneWriteBackRemoval {
   if (collidesByName(zoneSet)) return { removed: 0, modelIds: [], blocked: 'duplicate-set-name' };
   const contexts = new Map<string, ModelContext | null>();
   const touchedModels = new Set<string>();
-  let removed = 0;
-
+  const targets = new Map<string, { context: ModelContext; modelId: string; expressId: number }>();
+  const addTarget = (modelId: string, expressId: number) => {
+    const context = writableContextFor(modelId, contexts);
+    if (context) targets.set(`${modelId}:${expressId}`, { context, modelId, expressId });
+  };
   for (const [globalId] of state.zoneAssignments) {
     const ref = resolveEntityRef(globalId);
-    const context = writableContextFor(ref.modelId, contexts);
-    if (!context) continue;
-    if (sweepZoneSets(context, ref.expressId, zoneSet.id) === 0) continue;
-    touchedModels.add(ref.modelId);
-    removed++;
+    addTarget(ref.modelId, ref.expressId);
   }
-
-  // The assignment cache holds only elements the renderer has geometry for, so
-  // an element whose geometry was released to reclaim memory (#2183) has left
-  // it while its property set has not. Every element THIS SESSION wrote to is
-  // still named in its model's mutation history, which is an in-memory walk
-  // with no extraction behind it, so the two together cover everything the
-  // feature can have produced. What remains out of reach is an element written
-  // in an EARLIER session whose geometry is not loaded now; loading the model's
-  // geometry brings it back into the first pass.
+  // Geometry may have been released since a prior run. Session mutation
+  // history still names its output, so preserve those removal targets too.
   for (const [modelId, view] of state.mutationViews) {
-    const context = writableContextFor(modelId, contexts);
-    if (!context) continue;
-    const seen = new Set<number>();
     for (const mutation of view.getMutations()) {
-      if (!mutation.psetName?.startsWith(ZONE_SET_NAME_PREFIX)
-        && !mutation.psetName?.startsWith(ZONE_QUANTITY_SET_NAME_PREFIX)) continue;
-      if (seen.has(mutation.entityId)) continue;
-      seen.add(mutation.entityId);
-      if (sweepZoneSets(context, mutation.entityId, zoneSet.id) === 0) continue;
-      touchedModels.add(modelId);
-      removed++;
+      if (mutation.psetName?.startsWith(ZONE_SET_NAME_PREFIX)
+        || mutation.psetName?.startsWith(ZONE_QUANTITY_SET_NAME_PREFIX)) addTarget(modelId, mutation.entityId);
     }
+  }
+  // Removal is also an edit: finish every bounded inventory before deleting
+  // anything, and never interpret a refused quantity inventory as empty.
+  const inventories = [...targets.values()].map(target => ({ ...target,
+    qsets: quantitySetsFor(target.context, target.expressId) }));
+  let removed = 0;
+  for (const { context, modelId, expressId, qsets } of inventories) {
+    if (sweepZoneSets(context, expressId, zoneSet.id, qsets) === 0) continue;
+    touchedModels.add(modelId);
+    removed++;
   }
 
   const modelIds = [...touchedModels];

@@ -1837,14 +1837,12 @@ jobs:
       # Every test runs against that artifact's dist/ exactly as before; only
       # the redundant rebuild is gone.
       #
-      # `--concurrency=4`: without the build edges, `--only` lets turbo start
-      # every package's suite at once (default 10 tasks) on a 4-vCPU runner;
-      # each vitest then forks its own workers, and wall-clock-sensitive
-      # tests started tripping their 5 s default (bcf XSD conformance,
-      # timing-ladder's "100x more expensive" ladder, parser's 65536-name
-      # scan). One task per core keeps the no-rebuild win without the
-      # contention that the sequential build graph used to prevent.
-      - run: pnpm exec turbo test --only --concurrency=4 --filter=!@ifc-lite/viewer --filter=!@ifc-lite/provenance
+      # Vitest creates its own worker pool inside each package task. On the
+      # four-core runner, overlapping four pools still exceeded unchanged 5 s
+      # deadlines in unrelated parser and IDS invariants (#7471). Run one
+      # package suite at a time; its own worker pool may use the runner.
+      # Keep the artifact-only path, package selectors, tests and deadlines.
+      - run: pnpm exec turbo test --only --concurrency=1 --filter=!@ifc-lite/viewer --filter=!@ifc-lite/provenance
       - name: Integration tests (parse → quantities → export)
         # Step-scoped timeout: a hung harness must fail fast here, not
         # silently consume the whole job budget.

@@ -50,7 +50,11 @@ export function zoneQuantitySources(s: ViewerState) {
       source = { store, query: store ? new IfcQuery(store) : null, units };
       models.set(ref.modelId, source);
     }
-    const own = effectiveElementData(ref.expressId, source.query, view).qsets;
+    const data = effectiveElementData(ref.expressId, source.query, view);
+    if (data.quantityStatus === 'unavailable') return { quantities: [], scale: null,
+      unitStatus: 'unavailable' as const, unitReason: data.quantityReason,
+      reason: data.quantityReason, status: 'unavailable' as const };
+    const own = data.qsets;
     const current = source.store && view
       ? readCurrentTypeQuantities(source.store, ref.expressId, view) : null;
     const quantities = current

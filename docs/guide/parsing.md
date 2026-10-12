@@ -201,7 +201,8 @@ for (const pset of psets) {
   }
 }
 
-// Extract quantities
+// Extract quantities; an optional third native mutation view resolves current member Units.
+// Unknown or deleted explicit Units retain raw magnitudes without an assumed SI basis.
 const qsets = extractQuantitiesOnDemand(store, wallId);
 for (const qset of qsets) {
   console.log(`Quantity Set: ${qset.name}`);
@@ -877,9 +878,21 @@ Unavailable project context leaves implicit property and quantity values raw, wi
 a physical suffix or display-unit conversion. Dimensionless rows remain readable.
 A quantity with an independently resolved explicit native Unit retains its own
 symbol and canonical SI scale, including display overrides. Current view records
-are consulted even when the store has no source buffer. These display rules do
-not provide live occurrence-member Unit dependency reads; that separate limitation
-is tracked in #7379.
+are consulted even when the store has no source buffer.
+
+For occurrence quantities, pass the native mutation view as the optional third
+argument to `extractQuantitiesOnDemand(store, expressId, view)`. It reads current
+member `Unit` dependencies, including edits, replacement, deletion and Undo.
+An unresolved explicit unit leaves the value raw instead of substituting SI.
+Current inventory reads are bounded to 256 sets, 4,096 members and 512 unit
+dependency reads. Oversized unit records are also refused. If a bound is exceeded
+or a set's member list is unreadable, the reader throws
+`OccurrenceQuantityReadError`; consumers should report unavailable coverage
+instead of displaying an empty result as verified absence. Synchronous SDK and
+export callers may propagate this typed error and fail the operation explicitly;
+consumers with per-element coverage contracts must report unavailable rows.
+Source-only two-argument
+reads retain their existing behavior.
 
 ```typescript
 import { readCurrentProjectUnits, type IfcDataStore } from '@ifc-lite/parser';

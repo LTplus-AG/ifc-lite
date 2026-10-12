@@ -90,6 +90,8 @@ const psets = extractPropertiesOnDemand(store, wallId);
 //   [{ name: 'Pset_WallCommon', properties: [{ name: 'FireRating', value: 'REI 60' }, ...] }]
 
 const qsets = extractQuantitiesOnDemand(store, wallId);
+// Pass a native mutation view to resolve current occurrence member Units and dependencies.
+// const currentQsets = extractQuantitiesOnDemand(store, wallId, mutationView);
 //   [{ name: 'Qto_WallBaseQuantities', quantities: [{ name: 'Length', value: 5.0 }, ...] }]
 
 const material = extractMaterialsOnDemand(store, wallId);
@@ -100,6 +102,13 @@ const classifications = extractClassificationsOnDemand(store, wallId);
 // const currentClassifications = extractClassificationsOnDemand(store, wallId, mutationView);
 //   [{ system: 'Uniclass 2015', identification: 'Pr_60_10_32', name: 'External walls', ... }]
 ```
+
+Current occurrence quantity reads with a native mutation view throw
+`OccurrenceQuantityReadError` when their complete inventory cannot be read within
+the 256-set / 4,096-member / 512-unit-read bounds, a unit record is oversized,
+or a member list is unreadable. Report this as
+unavailable coverage instead of treating it as an empty inventory. Source-only
+two-argument reads retain their existing behavior.
 
 ## Georeferencing
 

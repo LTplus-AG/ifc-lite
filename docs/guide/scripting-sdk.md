@@ -88,6 +88,34 @@ if (wall) {
 
 The declaration survives the effective property overlay, collaboration mirror/peer application, and IFC export/reimport. Without `dataType`, the existing string/boolean/integer/real inference remains unchanged. This optional argument belongs to the direct SDK and CLI `eval`/`run` API; the sandbox script bridge retains its existing four-argument contract.
 
+## Native Review normalization
+
+`@ifc-lite/sdk/review` contains the pure finding and coordination-card
+normalization used by the viewer. Hosts supply their actual native reports and
+model lookup functions; these helpers do not run an analysis, edit a model,
+create an artifact or make a human decision. Validation statuses and BCF topic
+statuses remain native facts. A historical resolution candidate remains a
+candidate.
+
+```ts
+import { snapshotFrom, validationFindings, type ReviewModel } from '@ifc-lite/sdk/review';
+import type { ValidationReport } from '@ifc-lite/ids';
+
+function nativeValidationReview(report: ValidationReport, models: readonly ReviewModel[], stale: boolean) {
+  return snapshotFrom([{ kind: 'validation', collect: currentModels =>
+    validationFindings({ report, stale }, currentModels) }], models);
+}
+```
+
+A native validation run that evaluates fewer applicable elements than it
+found carries an explicit incomplete/truncated gap. Omitting passing detail
+rows from an otherwise fully evaluated run does not imply incomplete coverage.
+A failed collector contributes an explicit `failed` entry. Missing native
+inputs are not a completed clean analysis; the host must report their source
+availability separately. Existing viewer card keys use a model name and IFC
+GlobalId and refuse ambiguous loaded owners. Those display/navigation keys
+are not proof of source-byte identity or portable captured-run provenance.
+
 ## Running scripts from the CLI
 
 ### `eval` — one-liners

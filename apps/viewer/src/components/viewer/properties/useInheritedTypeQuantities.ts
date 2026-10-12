@@ -10,9 +10,13 @@ import type { QuantitySet } from './encodingUtils';
 
 /** Occurrence-first quantities and explicit current native type coverage (#7353). */
 export function useInheritedTypeQuantities(own: QuantitySet[], store: IfcDataStore | null,
-  expressId: number | undefined, view: MutablePropertyView | null | undefined) {
+  expressId: number | undefined, view: MutablePropertyView | null | undefined,
+  ownCoverage: 'available' | 'unavailable' = 'available') {
   const revision = view?.getMutationRevision();
   return useMemo(() => {
+    // Unknown occurrence overrides cannot promote inherited defaults (#7379).
+    if (ownCoverage === 'unavailable') return { quantities: own, status: 'unavailable' as const,
+      reason: 'Occurrence quantity precedence is unavailable' };
     const current = store?.source.byteLength && view && expressId !== undefined
       ? readCurrentTypeQuantities(store, expressId, view) : null;
     const quantities = withInheritedTypeQuantities(own, store, expressId, RelationshipType.DefinesByType,
@@ -20,5 +24,5 @@ export function useInheritedTypeQuantities(own: QuantitySet[], store: IfcDataSto
         : extractTypeQuantitiesOnDemand(source as IfcDataStore, id)?.quantities) as QuantitySet[] | undefined);
     const status: CurrentTypeQuantityResult['status'] = current?.status ?? 'available';
     return { quantities, status, reason: current?.reason ?? null };
-  }, [own, store, expressId, view, revision]);
+  }, [own, store, expressId, view, revision, ownCoverage]);
 }

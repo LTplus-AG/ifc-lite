@@ -51,6 +51,7 @@ export const propertiesPanelEn = {
   // PropertiesPanel: tab empty states + section labels
   'properties.panel.noPropertySets': 'No property sets',
   'properties.panel.noQuantities': 'No quantities',
+  'properties.panel.occurrenceUnavailable': 'Occurrence quantities are unavailable ({reason}).',
   'properties.panel.selectEntityForRawStep': 'Select an entity to inspect raw STEP arguments',
   'properties.panel.occurrencePropertiesHeading': 'Occurrence Properties:',
   'properties.panel.typePropertiesHeading': 'Type Properties:',

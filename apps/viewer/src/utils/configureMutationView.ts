@@ -114,7 +114,7 @@ export function configureMutationView(
 
   if (dataStore.onDemandQuantityMap && dataStore.source?.length > 0) {
     mutationView.setQuantityExtractor((entityId: number) => {
-      return extractQuantitiesOnDemand(dataStore, entityId);
+      return extractQuantitiesOnDemand(dataStore, entityId, mutationView);
     });
   }
 

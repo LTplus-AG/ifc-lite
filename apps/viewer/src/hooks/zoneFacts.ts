@@ -17,7 +17,7 @@
  */
 
 import { MutablePropertyView } from '@ifc-lite/mutations';
-import { readCurrentProjectUnits, readCurrentTypeQuantities, type IfcDataStore, type TypeQuantityInfo } from '@ifc-lite/parser';
+import { OccurrenceQuantityReadError, readCurrentProjectUnits, readCurrentTypeQuantities, type IfcDataStore, type TypeQuantityInfo } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
 import { resolveEntityRef } from '@/store/resolveEntityRef';
 import { configureMutationView } from '@/utils/configureMutationView';
@@ -91,9 +91,17 @@ type NativeQuantitySets = Array<ReturnType<MutablePropertyView['getQuantitiesFor
   | TypeQuantityInfo['quantities'][number]>;
 
 export function quantitySetsWithStatusFor(context: ModelContext, expressId: number): {
-  quantitySets: NativeQuantitySets; inheritedUnavailable: boolean;
+  quantitySets: NativeQuantitySets; inheritedUnavailable: boolean; ownUnavailable: boolean;
 } {
-  const own = context.view.getQuantitiesForEntity(expressId);
+  let own: NativeQuantitySets;
+  try {
+    own = context.view.getQuantitiesForEntity(expressId);
+  } catch (error) {
+    if (!(error instanceof OccurrenceQuantityReadError)) throw error;
+    // Unknown occurrence overrides cannot promote inherited defaults. This
+    // status is consumed per element by the table and write-back contracts.
+    return { quantitySets: [], inheritedUnavailable: false, ownUnavailable: true };
+  }
   const inherited = context.store
     ? readCurrentTypeQuantities(context.store, expressId, context.view) : null;
   // Refused inherited data never replaces a native occurrence quantity.
@@ -101,11 +109,13 @@ export function quantitySetsWithStatusFor(context: ModelContext, expressId: numb
     ? [...own, ...inherited.value.quantities] : own;
   // Preserve raw occurrence-first order even when project units are unknown.
   // The nullable declared-unit context controls physical interpretation later.
-  return { quantitySets: quantities, inheritedUnavailable: inherited?.status === 'unavailable' };
+  return { quantitySets: quantities, inheritedUnavailable: inherited?.status === 'unavailable', ownUnavailable: false };
 }
 
 export function quantitySetsFor(context: ModelContext, expressId: number): NativeQuantitySets {
-  return quantitySetsWithStatusFor(context, expressId).quantitySets;
+  const read = quantitySetsWithStatusFor(context, expressId);
+  if (read.ownUnavailable) throw new OccurrenceQuantityReadError('Native occurrence quantities are unavailable');
+  return read.quantitySets;
 }
 
 /** Resolve the whole-element total on `basis`, plus the quantity name it came
@@ -245,7 +255,7 @@ export function gatherZoneFacts(zoneSet: ZoneSet, basis: VolumeBasis): ZoneFacts
     if (!context) continue;
     const quantityRead = quantitySetsWithStatusFor(context, ref.expressId);
     const qsets = quantityRead.quantitySets;
-    const facts = zoneFactsFor(globalId, assignment, zoneNameById, basis, context.declaredUnitsAvailable === false ? null : context.volumeSiScale, qsets, proved, apportioned, quantityRead.inheritedUnavailable);
+    const facts = zoneFactsFor(globalId, assignment, zoneNameById, basis, context.declaredUnitsAvailable === false ? null : context.volumeSiScale, qsets, proved, apportioned, quantityRead.inheritedUnavailable || quantityRead.ownUnavailable);
     rows.push({
       globalId,
       modelId: ref.modelId,

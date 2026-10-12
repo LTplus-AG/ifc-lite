@@ -32,5 +32,6 @@
     "details": "Owned Vite5197 returned HTTP200 locally, but T3 native preview localhost navigation failed and the page reported chrome-error://chromewebdata/. A retry also failed. No final-source native run is claimed. Owned server stopped and temporary public fixture copy removed.",
     "priorNativeSource": "74ea3eb181650e18f8b665e0b3e2fc61e3418167",
     "priorReceipt": "recovery-receipt.json"
-  }
+  },
+  "nativeGapResolvedBy": "windows-native-final.json: exact-source controlled Windows Chrome DPR1/2, physical console NVIDIA Blackwell"
 }

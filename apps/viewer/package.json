@@ -19,8 +19,8 @@
     "check:templates": "tsc -p src/lib/scripts/templates/tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.132.0",
-    "@aws-sdk/client-s3": "^3.1147.0",
+    "@anthropic-ai/sdk": "^0.132.1",
+    "@aws-sdk/client-s3": "^3.1148.0",
     "@codemirror/autocomplete": "^6.20.3",
     "@codemirror/commands": "^6.11.1",
     "@codemirror/lang-javascript": "^6.2.5",
@@ -100,12 +100,12 @@
     "geotiff": "^3.0.5",
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.8",
-    "lucide-react": "^1.52.0",
+    "lucide-react": "^1.54.0",
     "maplibre-gl": "^6.13.0",
     "parquet-wasm": "^0.9.0",
     "pdfjs-dist": "6.3.289",
     "postcss": "^8.5.29",
-    "posthog-js": "^1.438.2",
+    "posthog-js": "^1.438.3",
     "proj4": "^2.22.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
@@ -123,7 +123,7 @@
     "@ifc-lite/ids-agent": "workspace:^"
   },
   "devDependencies": {
-    "@happy-dom/global-registrator": "^20.14.5",
+    "@happy-dom/global-registrator": "^20.14.6",
     "@svgr/core": "^8.1.0",
     "@svgr/plugin-jsx": "^8.1.0",
     "@tailwindcss/postcss": "^4.3.3",
@@ -135,7 +135,7 @@
     "@webgpu/types": "^0.1.74",
     "ajv": "^8.17.1",
     "fake-indexeddb": "^6.2.5",
-    "happy-dom": "^20.14.5",
+    "happy-dom": "^20.14.6",
     "jszip": "^3.10.2",
     "oxigraph": "^0.5.11",
     "playwright-core": "1.64.0",
@@ -143,7 +143,7 @@
     "tsx": "^4.23.15",
     "typescript": "^6.0.3",
     "unplugin-icons": "^24.0.0",
-    "vite": "^8.3.3",
+    "vite": "^8.3.4",
     "vite-plugin-static-copy": "^4.1.1",
     "vite-plugin-top-level-await": "^1.6.0",
     "vite-plugin-wasm": "^3.6.0"

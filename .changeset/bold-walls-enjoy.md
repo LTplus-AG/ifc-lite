@@ -1,5 +1,5 @@
 ---
-"@ifc-lite/load-trace": patch
+"@ifc-lite/load-trace": minor
 "@ifc-lite/parser": patch
 "@ifc-lite/geometry": patch
 ---

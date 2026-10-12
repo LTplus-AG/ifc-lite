@@ -91,7 +91,7 @@ test('BCF panel archive records native publication and retains authored topic id
 
 test('draft archive publication preserves real finding membership on native reimport (#7140)', async () => {
   const batch = await mountDraft();
-  click(button('Export .bcfzip'));
+  click(button('Export .bcf'));
   running();
   await finished();
   assert.equal(jobs()[0].outcome, 'completed');
@@ -124,7 +124,7 @@ test('draft failed publication is Failed with native toast and no escaped reject
   URL.createObjectURL = () => { throw new Error('Browser refused draft publication'); };
   mock.method(console, 'error', () => undefined);
   const errors = mock.method(toast, 'error', () => undefined);
-  click(button('Export .bcfzip'));
+  click(button('Export .bcf'));
   running();
   await finished();
   assert.equal(jobs()[0].outcome, 'failed');
@@ -160,7 +160,7 @@ test('closing and reopening BCF panel preserves native background exports and se
 
 test('closing the drafts dialog leaves its real archive publication running to completion (#7140)', async () => {
   const batch = await mountDraft();
-  click(button('Export .bcfzip'));
+  click(button('Export .bcf'));
   const id = running();
   cleanup();
   await finished();
@@ -176,8 +176,8 @@ test('absent native project and draft selection do not create fictitious archive
   click(button('Export BCF'));
   cleanup();
   render(<><BCFDraftsDialog open onOpenChange={() => undefined} /><ActivityTrayList /></>);
-  assert.equal(button('Export .bcfzip').disabled, true);
-  click(button('Export .bcfzip'));
+  assert.equal(button('Export .bcf').disabled, true);
+  click(button('Export .bcf'));
   await act(async () => { await Promise.resolve(); });
   assert.equal(jobs().length, 0);
   assert.equal(archives.length, 0);
@@ -196,8 +196,8 @@ for (const name of ['', '   ']) test(`unnamed native BCF project ${JSON.stringif
   await finished();
   assert.equal(jobs()[0].outcome, 'completed');
   assert.equal(filenames.length, 1);
-  assert.ok(filenames[0].endsWith('.bcfzip'));
-  assert.equal(jobs()[0].subject, filenames[0].slice(0, -'.bcfzip'.length));
+  assert.ok(filenames[0].endsWith('.bcf'));
+  assert.equal(jobs()[0].subject, filenames[0].slice(0, -'.bcf'.length));
   const restored = await readBCF(await archives[0].arrayBuffer());
   assert.deepEqual([...restored.topics.keys()], batch.topics.map(topic => topic.guid));
 });
@@ -207,7 +207,7 @@ test('non-Error native draft download refusal is Failed and reports export-speci
   URL.createObjectURL = blob => { assert.ok(blob instanceof Blob, 'actual native ZIP reached browser publication'); throw 'Browser refused draft publication'; };
   mock.method(console, 'error', () => undefined);
   const errors = mock.method(toast, 'error', () => undefined);
-  click(button('Export .bcfzip'));
+  click(button('Export .bcf'));
   running();
   await finished();
   assert.equal(jobs()[0].outcome, 'failed');

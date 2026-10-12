@@ -20,10 +20,18 @@ function normalizedScreenRight(forward: Vec3, up: Vec3): Vec3 {
 
 interface ZoomPose { position: Vec3; target: Vec3 }
 
-/** #7493: a finite pose can still exceed the renderer's source envelope. */
-export function isSupportedZoomPose(pose: ZoomPose): boolean {
-  return [pose.position, pose.target].every(point =>
-    [point.x, point.y, point.z].every(value => Number.isFinite(value) && Math.abs(value) <= MAX_RTE_SOURCE_ABS_METRES));
+/** Largest absolute coordinate; invalid coordinates cannot be admitted. */
+function poseMagnitude(pose: ZoomPose): number {
+  const values = [pose.position.x, pose.position.y, pose.position.z, pose.target.x, pose.target.y, pose.target.z];
+  return values.every(Number.isFinite) ? Math.max(...values.map(Math.abs)) : Infinity;
+}
+
+/** #7493: prevent zoom leaving the envelope, but preserve recovery after another
+ * control has moved outside it. Each recovery step must strictly reduce excess. */
+export function canAdmitZoomPose(next: ZoomPose, before: ZoomPose): boolean {
+  const magnitude = poseMagnitude(next);
+  return magnitude <= MAX_RTE_SOURCE_ABS_METRES
+    || (Number.isFinite(magnitude) && Number.isFinite(poseMagnitude(before)) && magnitude < poseMagnitude(before));
 }
 
 export function captureZoomState(state: CameraInternalState, pivot: Vec3 | null) {
@@ -35,7 +43,7 @@ export function captureZoomState(state: CameraInternalState, pivot: Vec3 | null)
  * The unchanged frame remains usable and the opposite gesture can recover.
  * Do not clamp axes separately: that would rotate the viewing direction. */
 export function acceptZoomStep(state: CameraInternalState, pivot: Vec3 | null, before: ReturnType<typeof captureZoomState>): boolean {
-  if (isSupportedZoomPose(state.camera)) return true;
+  if (canAdmitZoomPose(state.camera, before)) return true;
   Object.assign(state.camera.position, before.position);
   Object.assign(state.camera.target, before.target);
   state.orthoSize = before.orthoSize;

@@ -36,6 +36,30 @@ describe('#7493 repeated zoom stays inside the renderer camera envelope', () => 
     });
   }
 
+  for (const surface of [false, true]) {
+    it(`recovers incrementally after an orbit leaves the envelope (surface=${surface})`, () => {
+      const camera = new Camera();
+      camera.setPosition(792093085.965689, 602035896.3170547, 971229336.8977277);
+      camera.setTarget(371780271.24388754, 251775217.38222134, 550916522.1759285);
+      assertSupported(camera);
+      camera.orbit(100, 0);
+      const magnitude = () => Math.max(...[camera.getPosition(), camera.getTarget()].flatMap(p => [Math.abs(p.x), Math.abs(p.y), Math.abs(p.z)]));
+      assert.ok(magnitude() > LIMIT, 'real orbit must reproduce the review trigger');
+      const outside = pose(camera);
+      camera.zoom(120);
+      assert.deepEqual(pose(camera), outside, 'zoom-out must not worsen an already unsupported pose');
+      for (let i = 0; i < 60 && magnitude() > LIMIT; i++) {
+        const before = magnitude();
+        camera.zoom(-120, false, 400, 300, 800, 600, false, surface ? { x: 0, y: 0, z: 0 } : undefined);
+        assert.ok(magnitude() < before, 'each recovery notch must reduce envelope excess');
+      }
+      assertSupported(camera);
+      camera.fitToBounds({ x: -10, y: -10, z: -10 }, { x: 10, y: 10, z: 10 });
+      assertSupported(camera);
+      assert.ok(magnitude() < 100, 'Home/fit remains a direct recovery');
+    });
+  }
+
   it('rolls back a rejected fast dolly, including the external orbit pivot', () => {
     const camera = new Camera();
     const control = new Camera();

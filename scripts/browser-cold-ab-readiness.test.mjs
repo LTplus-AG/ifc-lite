@@ -78,7 +78,7 @@ test('the cold A/B script still loads and its sample runner exists (child proces
 });
 
 /** A Playwright `Page` double: enough surface for setup + one load. */
-function fakePage({ spans, legacyLines }) {
+function fakePage({ spans, legacyLines, snapshot = null }) {
   const initScripts = [];
   const consoleHandlers = [];
   const done = new Set();
@@ -102,7 +102,7 @@ function fakePage({ spans, legacyLines }) {
       if (arg && typeof arg === 'object' && 'names' in arg) {
         return spans ? { ended: done.size > 0, done: [...done], failed: [] } : null;
       }
-      if (typeof arg === 'string') return null;
+      if (typeof arg === 'string') return snapshot;
       return true;
     },
   };
@@ -138,6 +138,17 @@ test('loadUntilReady() completes a sample from the span tree', async () => {
   await bp.loadUntilReady('model.ifc', 2000);
   assert.equal(bp.getMetrics().canvasHasContent, true);
   assertReadinessTiming(bp.getMetrics().metadataRenderReadyMs);
+});
+
+test('#6993 cold A/B rejects a viewer count cohort even when the harness requested timed uploads', async () => {
+  const ViewerBenchmarkPage = await loadPage();
+  const snapshot = {
+    loadId: 'count-cohort', attrs: {}, start: 0, end: 3,
+    spans: [{ name: 'scene.flushPending', thread: 'main', start: 1, end: 2, attrs: { uploadMode: 'count' } }],
+  };
+  const bp = new ViewerBenchmarkPage(fakePage({ spans: true, legacyLines: [], snapshot }), 'http://localhost:0');
+  await bp.setup();
+  await assert.rejects(bp.loadUntilReady('model.ifc', 2000), /count.*not a timing workload/);
 });
 
 test('loadUntilReady() falls back to the console lines for a base build that predates the span API', async () => {

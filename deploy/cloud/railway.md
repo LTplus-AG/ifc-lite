@@ -102,9 +102,37 @@ configured-session checks. Both authorization routes return the expected vendor
 host, production callback and S256 PKCE; cancellation cleans up each transaction.
 These checks do not exchange a vendor code or prove a real file import.
 
-The viewer flag and fixed Vercel rewrite are prepared but are not yet live on
-the public viewer. After required checks, review and merge, activate the
-production viewer and run real sign-in/import acceptance with consenting users
-who have the relevant subscriptions and project access. The deployment operator
-does not need their own Autodesk subscription. Keep this qualification status
-separate from real vendor import acceptance.
+## Live viewer and account-holder imports (2026-10-12)
+
+The hosted viewer flag and fixed Vercel rewrite are live at
+`https://www.ifclite.com`. Both session routes return HTTP 200,
+`configured: true` and `Cache-Control: no-store`. The account holder completed
+vendor sign-in and supplied screenshots of real Cloud Sources imports in their
+regular Chrome profile, with viewer footer v5.1.0:
+
+| Source | Observed native import | Displayed elements | Displayed triangles |
+| --- | --- | --- | --- |
+| Dropbox | Architectural model renders; LOADED, Ready and WebGPU | 1.4K | 367.6K |
+| OneDrive | Wall/window model renders; LOADED, Ready and WebGPU | 2 | 24 |
+
+No error is visible in either screenshot. Dropbox counts are rounded UI values,
+not exact integers. Private account names, paths, model files and screenshots
+are kept out of this public runbook; the accountable maintainer retains the
+original supplied screenshots and their digests. The shared T3 browser uses a
+separate unsigned profile, so its session state is not the account holder's
+Chrome state.
+
+Controlled HTTPS probes in that unsigned profile also reject incorrect CSRF
+(403), cancel prepared transactions (200), and fail closed on cancelled,
+error and expired-transaction callbacks while remaining signed out. These are
+real deployed-gateway probes with controlled callback input, not vendor
+consent-policy or refresh-token acceptance. They make no successful vendor code
+exchange claim.
+
+The real authentication, listing and native-import items now have live evidence.
+The wider acceptance checklist above still needs its remaining account/policy
+and lifecycle runs: real access-token expiry/refresh, denied tenant consent,
+cancelled popup, signout during transfer, empty-account guidance, safe-log audit
+and container restart. Do not infer those outcomes from the successful imports
+or the controlled callback probes. #6840 remains open until that acceptance is
+reconciled.

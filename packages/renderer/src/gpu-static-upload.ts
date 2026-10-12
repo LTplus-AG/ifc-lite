@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { perfTally } from '@ifc-lite/load-trace';
+
 /**
  * The ONE way the renderer creates a GPU buffer pre-filled with static
  * geometry (vertex, index and per-instance data) — issue #5429.
@@ -53,6 +55,7 @@ export function createStaticGpuBuffer(
   try {
     const payload = bytes.byteLength === size ? bytes : padTo(bytes, size);
     device.queue.writeBuffer(buffer, 0, payload);
+    perfTally('gpu.staticUpload', payload.byteLength);
   } catch (error) {
     // Never orphan the allocation: the caller only learns about buffers this
     // function RETURNS, so one that failed to fill is ours to release.

@@ -1,0 +1,236 @@
+✔ #7032: the executable cold A/B requires renderer finalization through the benchmark page (566.416232ms)
+✔ the cold A/B and the benchmark page modules exist (0.182362ms)
+✔ the cold A/B script still loads and its sample runner exists (child process: fixture-less run refuses with its own message) (342.415936ms)
+✔ setup() switches span tracing on before boot, the flag the viewer reads to publish __IFC_LITE_LOAD_TRACE__ (15.768902ms)
+✔ loadUntilReady() completes a sample from the span tree (6.512091ms)
+✔ #6993 cold A/B rejects a viewer count cohort even when the harness requested timed uploads (5.555659ms)
+✔ loadUntilReady() falls back to the console lines for a base build that predates the span API (5.509103ms)
+✔ loadUntilReady() fails finitely when the viewer never reports readiness (52.859252ms)
+✔ runColdSample() runs setup, the caller checks, then loadUntilReady with metadata/render readiness required, all on the page itself (6.831445ms)
+✔ #6993 count-only GPU results cannot be compared as timings, even in advisory mode (24.211457ms)
+✖ #6993 a timed environment tag cannot hide legacy upload mode count (27.995723ms)
+✖ #6993 a timed environment tag cannot hide legacy upload mode unknown (25.487517ms)
+✖ #6993 a timed environment tag cannot hide legacy upload mode null (26.181385ms)
+✔ #6993 matching timed environment and legacy tags remain valid timing inputs (25.402292ms)
+✔ benchmark: a harness fault is reported even when a REGRESSION exits first (22.31907ms)
+✔ benchmark: a metric absent from BOTH sides is ordinary, not a failure (21.833639ms)
+✔ benchmark: a metric the BASELINE had and this run LOST fails, even with --advisory (22.6196ms)
+✔ benchmark: a threshold regression does NOT suppress the harness check (25.202672ms)
+✔ benchmark: a renamed fixture matching NO baseline fails rather than reporting clean (22.879907ms)
+✔ benchmark: ONE model of two missing its baseline is still not a clean bill of health (25.192064ms)
+✔ benchmark: a fully-compared healthy run still gets its clean headline (23.722033ms)
+✔ benchmark: the markdown report is written BEFORE the gate exits (23.348748ms)
+✔ benchmark: the MARKDOWN refuses a verdict too, not just the console (24.90166ms)
+✔ benchmark #6993: a sample that lost its GPU device is excluded, not compared as a regression (24.708149ms)
+✔ benchmark #6993: when EVERY model lost its GPU device it is a no-verdict WARNING, exit 0, never a pass (48.987023ms)
+✔ benchmark #6993: a genuine harness fault stays fatal even beside a GPU-lost model (22.766504ms)
+✔ benchmark #6993: a GPU-lost model stays visible at the top even when the headline is a regression (30.348063ms)
+✔ benchmark #6993 review: GPU-lost + clean + renamed — the headline names BOTH not-compared models, never "the rest" as compared (21.927085ms)
+✔ #6993 count-only GPU results cannot overwrite the timing baseline (24.913671ms)
+✖ #6993 a timed environment tag cannot admit legacy upload mode count into the baseline (20.930224ms)
+✖ #6993 a timed environment tag cannot admit legacy upload mode unknown into the baseline (22.498724ms)
+✖ #6993 a timed environment tag cannot admit legacy upload mode null into the baseline (23.732143ms)
+✔ #6993 matching timed environment and legacy tags can update the timing baseline (23.306929ms)
+✔ #6993 a GPU-lost sample keeps the previous baseline entry; a clean one replaces it (20.9325ms)
+✔ #6993 when every sample lost its GPU device all previous entries are kept and the run still succeeds (23.334278ms)
+✔ #6993 GPU upload counters become structural only when every observed flush used count mode (0.64447ms)
+✔ #6957 the benchmark pins four geometry workers by default through ?geomWorkers (3010.241468ms)
+✔ #6957 the result records repeatable structural counters apart from scheduling-dependent ones (1007.436116ms)
+✔ #6957 a viewer without counters records null rather than an empty, healthy-looking block (1001.621075ms)
+✔ #6957 counters are recorded once they stop moving, not at the load root's end (1003.638255ms)
+ℹ tests 40
+ℹ suites 0
+ℹ pass 34
+ℹ fail 6
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 6106.294957
+
+✖ failing tests:
+
+test at scripts/check-benchmark-regression.test.mjs:97:3
+✖ #6993 a timed environment tag cannot hide legacy upload mode count (27.995723ms)
+  AssertionError [ERR_ASSERTION]: Benchmark regression check
+  ================================================================================
+
+  x.ifc
+    Result source: viewer-x.json
+    Baseline environment: github-actions
+    - firstBatchWaitMs: 100ms vs 100ms (0.0%)  ✅
+    - firstVisibleGeometryMs: 100ms vs 100ms (0.0%)  ✅
+    - streamCompleteMs: 100ms vs 100ms (0.0%)  ✅
+    - spatialReadyMs: 100ms vs 100ms (0.0%)  ✅
+    - metadataCompleteMs: 100ms vs 100ms (0.0%)  ✅
+    - totalWallClockMs: 100ms vs 100ms (0.0%)  ✅
+
+  ================================================================================
+
+  No threshold regressions detected.
+
+
+  0 !== 1
+
+      at TestContext.<anonymous> (file:///home/louistrue/.t3/worktrees/ifc-lite/t3code-b95d33a9/scripts/check-benchmark-regression.test.mjs:102:14)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 1,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at scripts/check-benchmark-regression.test.mjs:97:3
+✖ #6993 a timed environment tag cannot hide legacy upload mode unknown (25.487517ms)
+  AssertionError [ERR_ASSERTION]: Benchmark regression check
+  ================================================================================
+
+  x.ifc
+    Result source: viewer-x.json
+    Baseline environment: github-actions
+    - firstBatchWaitMs: 100ms vs 100ms (0.0%)  ✅
+    - firstVisibleGeometryMs: 100ms vs 100ms (0.0%)  ✅
+    - streamCompleteMs: 100ms vs 100ms (0.0%)  ✅
+    - spatialReadyMs: 100ms vs 100ms (0.0%)  ✅
+    - metadataCompleteMs: 100ms vs 100ms (0.0%)  ✅
+    - totalWallClockMs: 100ms vs 100ms (0.0%)  ✅
+
+  ================================================================================
+
+  No threshold regressions detected.
+
+
+  0 !== 1
+
+      at TestContext.<anonymous> (file:///home/louistrue/.t3/worktrees/ifc-lite/t3code-b95d33a9/scripts/check-benchmark-regression.test.mjs:102:14)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 1,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at scripts/check-benchmark-regression.test.mjs:97:3
+✖ #6993 a timed environment tag cannot hide legacy upload mode null (26.181385ms)
+  AssertionError [ERR_ASSERTION]: Benchmark regression check
+  ================================================================================
+
+  x.ifc
+    Result source: viewer-x.json
+    Baseline environment: github-actions
+    - firstBatchWaitMs: 100ms vs 100ms (0.0%)  ✅
+    - firstVisibleGeometryMs: 100ms vs 100ms (0.0%)  ✅
+    - streamCompleteMs: 100ms vs 100ms (0.0%)  ✅
+    - spatialReadyMs: 100ms vs 100ms (0.0%)  ✅
+    - metadataCompleteMs: 100ms vs 100ms (0.0%)  ✅
+    - totalWallClockMs: 100ms vs 100ms (0.0%)  ✅
+
+  ================================================================================
+
+  No threshold regressions detected.
+
+
+  0 !== 1
+
+      at TestContext.<anonymous> (file:///home/louistrue/.t3/worktrees/ifc-lite/t3code-b95d33a9/scripts/check-benchmark-regression.test.mjs:102:14)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 1,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at scripts/update-benchmark-baseline.test.mjs:65:3
+✖ #6993 a timed environment tag cannot admit legacy upload mode count into the baseline (20.930224ms)
+  AssertionError [ERR_ASSERTION]: Baseline written to /tmp/bench-baseline-uyrxWw/tests/benchmark/baseline.json
+  Updated 1 entry:
+    - x.ifc
+  Preserved 1 existing entry: y.ifc
+
+
+  0 !== 1
+
+      at TestContext.<anonymous> (file:///home/louistrue/.t3/worktrees/ifc-lite/t3code-b95d33a9/scripts/update-benchmark-baseline.test.mjs:71:14)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 1,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at scripts/update-benchmark-baseline.test.mjs:65:3
+✖ #6993 a timed environment tag cannot admit legacy upload mode unknown into the baseline (22.498724ms)
+  AssertionError [ERR_ASSERTION]: Baseline written to /tmp/bench-baseline-uY9wP6/tests/benchmark/baseline.json
+  Updated 1 entry:
+    - x.ifc
+  Preserved 1 existing entry: y.ifc
+
+
+  0 !== 1
+
+      at TestContext.<anonymous> (file:///home/louistrue/.t3/worktrees/ifc-lite/t3code-b95d33a9/scripts/update-benchmark-baseline.test.mjs:71:14)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 1,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at scripts/update-benchmark-baseline.test.mjs:65:3
+✖ #6993 a timed environment tag cannot admit legacy upload mode null into the baseline (23.732143ms)
+  AssertionError [ERR_ASSERTION]: Baseline written to /tmp/bench-baseline-oks3Rg/tests/benchmark/baseline.json
+  Updated 1 entry:
+    - x.ifc
+  Preserved 1 existing entry: y.ifc
+
+
+  0 !== 1
+
+      at TestContext.<anonymous> (file:///home/louistrue/.t3/worktrees/ifc-lite/t3code-b95d33a9/scripts/update-benchmark-baseline.test.mjs:71:14)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 1,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

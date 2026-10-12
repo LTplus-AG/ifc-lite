@@ -63,6 +63,15 @@ export interface PerfFlagDefinition {
 
 export const PERF_FLAGS = [
   {
+    id: 'benchmarkUploads',
+    kind: 'kill-switch',
+    owner: '@louistrue',
+    removalCondition: 'Keep while structural benchmark cohorts require schedule-independent streaming fragments; delete with those cohorts (#6993).',
+    introducedAt: '2026-10-12',
+    default: false,
+    bindings: { global: '__IFC_LITE_BENCHMARK_UPLOADS', urlParam: 'perf.benchmarkUploads', benchmarkEnv: 'VIEWER_BENCHMARK_GPU_UPLOADS' },
+  },
+  {
     id: 'batchSizing',
     kind: 'kill-switch',
     owner: '@louistrue',

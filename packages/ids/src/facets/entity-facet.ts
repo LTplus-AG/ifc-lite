@@ -264,7 +264,9 @@ export function filterByEntityFacet(
     }
     const ids: number[] = [];
     for (const value of constraint.values) {
-      ids.push(...accessor.getEntitiesByType(value));
+      // One push per id: spreading a type's ids as call arguments throws
+      // a RangeError once a type has more than about 125,000 instances.
+      for (const id of accessor.getEntitiesByType(value)) ids.push(id);
     }
     return ids;
   }

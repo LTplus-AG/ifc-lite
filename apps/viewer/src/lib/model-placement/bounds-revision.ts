@@ -4,6 +4,7 @@
 import type { Renderer } from '@ifc-lite/renderer';
 import { uploadFlushBudgetMs } from '../upload-flush-budget';
 import { activeLoadTrace } from '../perf/activeLoadTrace';
+import { readPerfFlag } from '../perf/flags';
 
 const listeners = new Set<() => void>();
 let revision = 0;
@@ -24,7 +25,8 @@ export function publishPlacementBounds(): void {
  * Each slice that uploads is a `scene.flushPending` span on the streaming load (#6979). */
 export function flushPlacementGeometry(scene: ReturnType<Renderer['getScene']>, device: GPUDevice,
   pipeline: NonNullable<ReturnType<Renderer['getPipeline']>>, interacting = false): boolean {
-  const flushed = scene.flushPending(device, pipeline, uploadFlushBudgetMs(interacting), activeLoadTrace());
+  const mode = readPerfFlag('benchmarkUploads');
+  const flushed = scene.flushPending(device, pipeline, uploadFlushBudgetMs(interacting), activeLoadTrace(), mode === true || mode === 1);
   if (flushed) publishPlacementBounds();
   return flushed;
 }

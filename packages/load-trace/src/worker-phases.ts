@@ -3,6 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { TraceAttrs } from './types.js';
+import { perfCounters, type PerfCounterRegistry } from './counters.js';
+import { accountWorkerOutput, type MessageEndpoint } from './messages.js';
 import {
   createWorkerSpanRecorder,
   TRACE_ENABLE_MESSAGE,
@@ -46,18 +48,32 @@ export interface WorkerPhaseTraceOptions {
   post: (message: TraceSpansMessage) => void;
   now?: () => number;
   timeOrigin?: number;
+  counters?: PerfCounterRegistry;
+  /** Worker global; sender accounting starts only after the enable request. */
+  endpoint?: () => MessageEndpoint;
 }
 
 export function createWorkerPhaseTrace(options: WorkerPhaseTraceOptions): WorkerPhaseTrace {
   let recorder: WorkerSpanRecorder | null = null;
   let stepName: string | null = null;
   let stepToken = -1;
+  const counters = options.counters ?? perfCounters;
+  let countedEndpoint: MessageEndpoint | undefined;
   const trace: WorkerPhaseTrace = {
     get enabled() { return recorder !== null; },
     accept(data) {
       if ((data as { type?: unknown } | null)?.type !== TRACE_ENABLE_MESSAGE) return false;
       const thread = (data as { thread?: unknown }).thread;
       recorder = createWorkerSpanRecorder(typeof thread === 'string' ? thread : 'worker', options.now, options.timeOrigin);
+      stepName = null;
+      stepToken = -1;
+      counters.enable();
+      counters.drain();
+      const endpoint = options.endpoint?.();
+      if (endpoint && endpoint !== countedEndpoint) {
+        accountWorkerOutput(endpoint, counters, () => trace.flush());
+        countedEndpoint = endpoint;
+      }
       return true;
     },
     begin: (name, attrs) => recorder?.begin(name, attrs) ?? -1,
@@ -87,8 +103,12 @@ export function createWorkerPhaseTrace(options: WorkerPhaseTraceOptions): Worker
       stepToken = name === null ? -1 : recorder.begin(name);
     },
     flush() {
-      const payload = recorder?.drain();
-      if (payload) options.post({ type: TRACE_SPANS_MESSAGE, payload });
+      if (!recorder) return;
+      const payload = recorder.drain();
+      const moved = counters.drain();
+      if (!payload && !moved) return;
+      const out = payload ?? { thread: recorder.thread, timeOrigin: options.timeOrigin ?? performance.timeOrigin, spans: [] };
+      options.post({ type: TRACE_SPANS_MESSAGE, payload: moved ? { ...out, counters: moved } : out });
     },
   };
   return trace;

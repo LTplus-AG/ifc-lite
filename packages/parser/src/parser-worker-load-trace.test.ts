@@ -103,6 +103,13 @@ describe('parser.worker.ts load-trace spans (#6979)', () => {
     expect(names).not.toContain('columnar.complete');
     const parse = spans.find((s) => s.name === 'parser.parse')!;
     expect(parse.attrs).toEqual({ entities: 2 });
+    // #6993: exact sender accounting includes the final transport before the
+    // host terminates this worker, rather than inferring transfers on receipt.
+    const counters = posted.filter(isTraceSpansMessage).map((m) => m.payload.counters ?? {});
+    const sum = (name: string) => counters.reduce((total, c) => total + (c[name] ?? 0), 0);
+    expect(sum('msg.worker.out.count')).toBe(posted.filter((m) => !isTraceSpansMessage(m)).length);
+    expect(sum('msg.worker.out.transferBytes')).toBeGreaterThan(0);
+    expect(sum('wasm.bytesIn')).toBe(0); // a handed-over entity index skips WASM scanning
     for (const s of spans) {
       expect(s.end).toBeGreaterThanOrEqual(s.start);
       expect(s.start).toBeGreaterThanOrEqual(parse.start);

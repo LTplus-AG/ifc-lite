@@ -70,6 +70,17 @@ surfaces behind their actual entry point.
 
 ## Structural counters and long frames per load (#6957)
 
+Sender-side accounting (#6993) now distinguishes actual worker transfer lists
+from the host's received-buffer estimate. Both worker trace factories use the
+same message meter and publish increments before data messages, so a terminal
+transport survives immediate host termination. Parser phase traces also carry
+WASM ingress; a successful entity-index handoff avoids that scan. The
+[real-model receipt](evidence/worker-accounting-6993/README.md) records both
+the canonical load and a separate actual parser scan. Lesson: receiving an
+ArrayBuffer does not prove it was transferred, and flushing before constructing
+the terminal message cannot account for that message. This is instrumentation
+qualification, with no throughput verdict; GPU count repeatability remains open.
+
 Under `?perfTrace=1` and in every benchmark run, each load's span tree also
 carries counters (`LoadTraceSnapshot.counters`): full source copies, worker
 messages and their clone/transfer/shared bytes per direction, typed-array

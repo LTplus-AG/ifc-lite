@@ -82,6 +82,14 @@ that event to complete and publish its named span along with pending counters.
 Plain `flush()` publishes only spans that have already ended. The geometry
 prepass follows this contract so its scan remains visible in load traces.
 
+Worker trace factories also accept `endpoint: () => self` for sender-side
+message accounting. Each thread publishes `msg.worker.out.transferBytes`
+from its actual transfer lists before buffers detach and before the host can
+terminate it. Received buffer bytes alone cannot distinguish transfers from
+clones; structured-clone byte counts remain estimates. Parser WASM scans
+report typed-array ingress through the same counter registry, while an
+entity-index handoff avoids that scan.
+
 ## Client vs Server Performance
 
 | | Client (WASM) | Server (Rust) |

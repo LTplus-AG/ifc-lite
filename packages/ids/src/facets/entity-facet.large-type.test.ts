@@ -66,5 +66,5 @@ describe('entity facet with a list naming a type of more than 125,000 instances'
     expect(result.error).toBeUndefined();
     expect(result.applicableCount).toBe(WALLS + 1);
     expect(result.status).toBe('pass');
-  }, 30_000);
+  });
 });

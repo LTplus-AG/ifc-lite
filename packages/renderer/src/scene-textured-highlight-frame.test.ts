@@ -14,6 +14,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import { Scene } from './scene.js';
+import { Renderer } from './index.js';
 import { uploadIndividualMesh } from './individual-mesh-upload.js';
 import { interleaveTexturedVertices } from './textured-vertices.js';
 import type { MeshData } from '@ifc-lite/geometry';
@@ -96,7 +97,40 @@ function seed(): { scene: Scene; piece: MeshData } {
   return { scene, piece };
 }
 
+/** The frame the renderer builds selection/hover copies in. */
+function rendererFrame(scene: Scene, piece: MeshData) {
+  return (Renderer.prototype as unknown as { individualMeshFrame(this: { scene: Scene }, m: MeshData): Parameters<typeof uploadIndividualMesh>[2] })
+    .individualMeshFrame.call({ scene }, piece);
+}
+
 describe('textured selection highlight is built in the textured draw frame', () => {
+  it('the renderer builds a textured piece in its textured frame, unquantized', () => {
+    const { scene, piece } = seed();
+    scene.setQuantizedBatches(true);
+    const frame = rendererFrame(scene, piece);
+    assert.deepStrictEqual(frame, { sharedOrigin: scene.getTexturedMeshes()[0].origin, quantized: false });
+    assert.deepStrictEqual(highlightVertices(piece, frame).positions, positionsOf(interleaveTexturedVertices(piece)!, 9));
+    const colour = scene.getMeshDataPieces(1)![0];
+    assert.deepStrictEqual(rendererFrame(scene, colour).sharedOrigin, scene.getSharedFrameOrigin(colour.modelIndex, colour));
+  });
+
+  it('keeps matching after an appearance preview re-installs the pieces as copies', () => {
+    for (const end of ['cancel', 'commit'] as const) {
+      const { scene, piece } = seed();
+      const { device } = fakeDevice();
+      const api = scene.appearancePreview(device, fakePipeline);
+      const token = api.begin({ expressId: 2, modelIndex: 0 });
+      const rgba = new Uint8Array([0, 0, 255, 255]);
+      api.update(token, [{ ...piece, texture: { rgba, width: 1, height: 1, repeatS: true, repeatT: true } }]);
+      const during = scene.getMeshDataPieces(2)![0];
+      assert.deepStrictEqual(rendererFrame(scene, during).sharedOrigin, scene.getTexturedMeshes()[0].origin, `during ${end}`);
+      if (end === 'cancel') api.cancel(token); else api.commit(token);
+      const after = scene.getMeshDataPieces(2)![0];
+      assert.strictEqual(scene.getTexturedMeshes().length, 1);
+      assert.deepStrictEqual(rendererFrame(scene, after).sharedOrigin, scene.getTexturedMeshes()[0].origin, `after ${end}`);
+    }
+  });
+
   it('reports the textured drawable origin, and none for a colour-batch piece', () => {
     const { scene, piece } = seed();
     assert.deepStrictEqual(scene.getTexturedDrawOrigin(piece), scene.getTexturedMeshes()[0].origin);

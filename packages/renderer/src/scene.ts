@@ -159,7 +159,10 @@ export class Scene {
   private meshDataMap: Map<number, MeshData[]> = new Map();         // Map expressId -> MeshData[] (for lazy buffer creation, accumulates multiple pieces)
   private boundingBoxes: Map<number, BoundingBox> = new Map();      // Map expressId -> bounding box (computed lazily)
   private texturedMeshes: TexturedMesh[] = [];                      // #961: IFC surface-textured meshes (own buffers/texture/bindGroup)
-  private texturedByMeshData = new WeakMap<MeshData, TexturedMesh>(); // placed MeshData -> the textured drawable uploaded from it
+  /** The `positions` each textured drawable was uploaded from. Matched by the
+   *  array, not the MeshData: the appearance preview installs `{...part}`
+   *  copies, which share the array but not the object identity. */
+  private texturedSourcePositions = new WeakMap<TexturedMesh, MeshData['positions']>();
   /** #1781: GPU textures shared across meshes, keyed by `MeshTextureRef.textureId`
    *  (one `IfcImageTexture` → one upload, sampled by every face set mapping it).
    *  Refcounted: entries die when the last referencing mesh is removed / on clear(). */
@@ -564,8 +567,9 @@ export class Scene {
    *  unquantized, so a highlight/hover copy must use that frame — the batch
    *  frame lands a few f32 ulps off and z-fights the texture. */
   getTexturedDrawOrigin(meshData: MeshData): readonly [number, number, number] | null {
-    const tm = this.texturedByMeshData.get(this.derivedMeshProvenance.placedSourceFor(meshData, this.modelTranslations));
-    return tm && this.texturedMeshes.includes(tm) ? tm.origin : null;
+    const positions = this.derivedMeshProvenance.placedSourceFor(meshData, this.modelTranslations).positions;
+    const tm = this.texturedMeshes.find((m) => m.expressId === meshData.expressId && this.texturedSourcePositions.get(m) === positions);
+    return tm ? tm.origin : null;
   }
 
   /** Whether THIS mesh's source batch renders quantized — drives the hydrated-mesh
@@ -3521,7 +3525,7 @@ export class Scene {
         ...(sharedTextureKey !== undefined ? { sharedTextureKey } : {}),
       }, meshData.modelIndex ?? 0);
       this.texturedMeshes.push(drawable);
-      this.texturedByMeshData.set(this.derivedMeshProvenance.placedSourceFor(meshData, this.modelTranslations), drawable);
+      this.texturedSourcePositions.set(drawable, meshData.positions);
     } catch (error) {
       vertexBuffer?.destroy();
       indexBuffer?.destroy();

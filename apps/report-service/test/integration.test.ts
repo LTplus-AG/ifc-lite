@@ -25,6 +25,7 @@ describe.skipIf(!enabled)(
   () => {
     const bucket = `report-test-${randomUUID()}`;
     const config: Config = {
+  submissionsEnabled: true,
       storageProvider: "Local test S3",
       storageLocation: "Local development machine",
       backupDisclosure: "No backups",

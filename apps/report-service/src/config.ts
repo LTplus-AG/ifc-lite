@@ -7,6 +7,8 @@ import { trustedProxyList } from "./admission.js";
 import { readFileSync } from "node:fs";
 import type { ReportAgreement } from "@ifc-lite/report-contract";
 export interface Config {
+  submissionsEnabled: boolean;
+  qualificationToken?: string;
   trustedProxyCidrs?: string[];
   agreementFont?: Uint8Array;
   storageProvider: string;
@@ -68,6 +70,16 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
   const adminToken = required("REPORT_ADMIN_TOKEN");
   if (secret.length < 32 || adminToken.length < 32)
     throw new Error("Report secrets must have at least 32 characters");
+  const qualificationToken = env.REPORT_QUALIFICATION_TOKEN?.trim();
+  if (
+    qualificationToken &&
+    (qualificationToken.length < 32 ||
+      qualificationToken === secret ||
+      qualificationToken === adminToken)
+  )
+    throw new Error(
+      "REPORT_QUALIFICATION_TOKEN must be a separate secret of at least 32 characters",
+    );
   const inlineKey = env.REPORT_GITHUB_PRIVATE_KEY;
   const keyFile = env.REPORT_GITHUB_PRIVATE_KEY_FILE?.trim();
   if (Boolean(inlineKey?.trim()) === Boolean(keyFile))
@@ -75,7 +87,8 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
       "Configure exactly one of REPORT_GITHUB_PRIVATE_KEY or REPORT_GITHUB_PRIVATE_KEY_FILE",
     );
   const githubPrivateKey = keyFile ? readFileSync(keyFile, "utf8") : inlineKey!;
-  if (!githubPrivateKey.trim()) throw new Error("GitHub App private key is empty");
+  if (!githubPrivateKey.trim())
+    throw new Error("GitHub App private key is empty");
   const githubRepository = required("REPORT_GITHUB_REPOSITORY");
   if (!/^[\w.-]+\/[\w.-]+$/.test(githubRepository))
     throw new Error("Invalid GitHub repository");
@@ -85,6 +98,8 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
     .filter(Boolean);
   trustedProxyList(trustedProxyCidrs);
   return {
+    submissionsEnabled: env.REPORT_SUBMISSIONS_ENABLED === "true",
+    qualificationToken,
     trustedProxyCidrs,
     agreementFont: approval
       ? readFileSync(required("REPORT_AGREEMENT_FONT_FILE"))

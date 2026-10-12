@@ -16,6 +16,7 @@ if (process.env.REPORT_REQUIRE_INTEGRATION === "true" && !enabled)
   throw new Error("Mandatory publication integration database is missing");
 describe.skipIf(!enabled)("#7495 publication deletion serialization", () => {
   const config: Config = {
+  submissionsEnabled: true,
     storageProvider: "Local test S3",
     storageLocation: "Local development machine",
     backupDisclosure: "No backups",

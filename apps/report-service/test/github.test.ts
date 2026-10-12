@@ -8,6 +8,7 @@ import type { Config } from "../src/config.js";
 import type { ReportRow } from "../src/reports.js";
 const keys = generateKeyPairSync("rsa", { modulusLength: 2048 });
 const config: Config = {
+  submissionsEnabled: true,
   origin: "https://viewer.example.com",
   port: 0,
   databaseUrl: "unused",

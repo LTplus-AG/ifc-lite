@@ -37,3 +37,9 @@ Supply the GitHub App signing key through exactly one protected secret source: a
 Approved NDA signing also requires an explicit `REPORT_AGREEMENT_VERSION` identifying the reviewed version. Missing, blank, draft or placeholder versions fail startup when approval is configured. Leave approval unset until the owner approves the exact text and version.
 
 Verification distinguishesproven byte-integrity failures from provider/network errors. Transient reads and verification deadlines remain unpublished and retry with a PostgreSQL-persisted exponential delay from 10 seconds to 15 minutes; the original pending-upload expiry still applies. Shutdown cancellation leaves the work pending. A successful retry must read and hash the actual object before it becomes ready.
+
+## Launch gate
+
+Public submissions default to disabled. Only the exact value `REPORT_SUBMISSIONS_ENABLED=true` enables new user sessions and new report content. `GET /api/reports/capabilities` reports availability without allocating a session. Disabled new-session/content requests receive `503 submissions_disabled`. Existing owners can still recover their session, read their reports and delete them; normal ownership, Origin and CSRF checks continue to apply. Health and authenticated admin operations are independent of the launch gate.
+
+Before public launch, an operator may configure a separate `REPORT_QUALIFICATION_TOKEN` of at least 32 characters and send it as the `X-Ifclite-Qualification` header for protected qualification requests. It must differ from admin/admission secrets. Keep this credential server/operator-only: never put it in viewer configuration, browser bundles, URLs or logs. The bypass permits admission, not cross-origin or CSRF bypass. Removing the token disables qualification access without disabling existing-owner deletion.

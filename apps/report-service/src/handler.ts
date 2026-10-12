@@ -15,7 +15,7 @@ import {
 import type { Config } from "./config.js";
 import { type Db } from "./database.js";
 import { ReportError, requireCondition } from "./errors.js";
-import { session, requireMutation } from "./sessions.js";
+import { session, requireMutation, secretEquals } from "./sessions.js";
 import {
   createReport,
   requestCustomAgreement,
@@ -63,7 +63,28 @@ export function createHandler(
         await admin(db, storage, config, req, res, path);
         return;
       }
-      const sessionRequest = path === "/api/reports/session" && method === "GET";
+      const qualification = req.headers["x-ifclite-qualification"];
+      const admitted =
+        config.submissionsEnabled ||
+        Boolean(
+          config.qualificationToken &&
+          typeof qualification === "string" &&
+          secretEquals(qualification, config.qualificationToken),
+        );
+      if (path === "/api/reports/capabilities" && method === "GET") {
+        json(res, { submissionsEnabled: admitted });
+        return;
+      }
+      // Disabling admission must not remove existing owners' read/delete rights.
+      if (method !== "GET" && method !== "DELETE")
+        requireCondition(
+          admitted,
+          503,
+          "submissions_disabled",
+          "Reporting is not accepting new submissions yet.",
+        );
+      const sessionRequest =
+        path === "/api/reports/session" && method === "GET";
       if (sessionRequest) {
         // Same-origin GET fetches may omit Origin. Browser metadata still rejects
         // cross-origin embeds before they can consume the session admission quota.
@@ -82,12 +103,26 @@ export function createHandler(
         config,
         req,
         res,
-        sessionRequest,
-      );
+        sessionRequest && admitted,
+      ).catch((error) => {
+        if (
+          sessionRequest &&
+          !admitted &&
+          error instanceof ReportError &&
+          error.code === "session_expired"
+        )
+          throw new ReportError(
+            503,
+            "submissions_disabled",
+            "Reporting is not accepting new submissions yet.",
+          );
+        throw error;
+      });
       if (method !== "GET") requireMutation(config, req, owner);
       if (path === "/api/reports/session" && method === "GET") {
         json(res, {
           csrfToken: owner.csrf,
+          submissionsEnabled: admitted,
           limits: REPORT_LIMITS,
           agreement: config.agreement,
           storage: {
@@ -287,10 +322,7 @@ export function createHandler(
       if (error instanceof ReportError)
         json(res, { error: error.code, message: error.message }, error.status);
       else {
-        console.error(
-          "[report-service] request failed",
-          "request_failed",
-        );
+        console.error("[report-service] request failed", "request_failed");
         json(
           res,
           {

@@ -18,6 +18,7 @@ if (process.env.REPORT_REQUIRE_INTEGRATION === 'true' && !enabled)
 describe.skipIf(!enabled)('#7495 real HTTP ownership, consent and publication boundaries', () => {
   const agreementText = 'LTplus AG protects models supplied for this test report.';
   const config: Config = {
+    submissionsEnabled: true,
     origin: 'https://viewer.example.com', port: 0,
     databaseUrl: process.env.REPORT_TEST_DATABASE_URL ?? '',
     storageProvider: 'Unused test storage', storageLocation: 'Local test host', backupDisclosure: 'No backups',
@@ -94,7 +95,116 @@ describe.skipIf(!enabled)('#7495 real HTTP ownership, consent and publication bo
     } finally { await db.end(); }
   });
 
-  it('rejects cross-origin session admission before issuing cookies or consuming quota', async () => {
+  it("#7495 launch gate blocks public admission and content while preserving owner deletion", async () => {
+      const owner = await browser();
+      const report = await create(owner);
+      const before = (
+        await db.query("SELECT count(*) AS count FROM report_sessions")
+      ).rows[0].count;
+      config.submissionsEnabled = false;
+      config.qualificationToken = "qualification-only-secret-".repeat(2);
+      try {
+        expect(await (await fetch(base + "/capabilities")).json()).toEqual({
+          submissionsEnabled: false,
+        });
+        for (const headers of [{}, { "X-Ifclite-Qualification": "wrong" }]) {
+          const blocked = await fetch(base + "/session", { headers });
+          expect(blocked.status).toBe(503);
+          expect(blocked.headers.get("set-cookie")).toBeNull();
+        }
+        expect(
+          (await db.query("SELECT count(*) AS count FROM report_sessions"))
+            .rows[0].count,
+        ).toBe(before);
+        expect((await request(owner, "/drafts", "POST", draft())).status).toBe(
+          503,
+        );
+        expect(
+          (await request(owner, `/${report.id}/submit`, "POST", {})).status,
+        ).toBe(503);
+        expect((await request(owner, `/${report.id}`)).status).toBe(200);
+        const recovered = await request(owner, "/session");
+        expect(recovered.status).toBe(200);
+        expect(await recovered.json()).toMatchObject({
+          csrfToken: owner.csrf,
+          submissionsEnabled: false,
+        });
+        expect(
+          (
+            await request(owner, `/${report.id}`, "DELETE", undefined, {
+              Origin: "https://attacker.example",
+            })
+          ).status,
+        ).toBe(403);
+        expect((await request(owner, `/${report.id}`, "DELETE")).status).toBe(
+          200,
+        );
+        expect(
+          (
+            await db.query("SELECT status FROM model_reports WHERE id=$1", [
+              report.id,
+            ])
+          ).rows[0].status,
+        ).toBe("deleted");
+        expect(
+          (await fetch(base.replace("/api/reports", "") + "/healthz")).status,
+        ).toBe(200);
+        expect((await fetch(base + "/admin/reports")).status).toBe(401);
+      expect((await fetch(base + "/admin/pending", {
+        headers: { Authorization: `Bearer ${config.adminToken}` },
+      })).status).toBe(200);
+      } finally {
+        config.submissionsEnabled = true;
+        config.qualificationToken = undefined;
+      }
+    });
+    it("#7495 qualification credential permits protected tests without bypassing origin or CSRF", async () => {
+      config.submissionsEnabled = false;
+      config.qualificationToken = "qualification-only-secret-".repeat(2);
+      const headers = { "X-Ifclite-Qualification": config.qualificationToken };
+      try {
+        expect(
+          await (await fetch(base + "/capabilities", { headers })).json(),
+        ).toEqual({ submissionsEnabled: true });
+        const owner = await browser(headers);
+        const rejected = await request(owner, "/drafts", "POST", draft(), {
+          ...headers,
+          Origin: "https://attacker.example",
+        });
+        expect(rejected.status).toBe(403);
+        expect(
+          (
+            await request(owner, "/drafts", "POST", draft(), {
+              ...headers,
+              "X-CSRF-Token": "wrong",
+            })
+          ).status,
+        ).toBe(403);
+        const created = await request(
+          owner,
+          "/drafts",
+          "POST",
+          draft(),
+          headers,
+        );
+        expect(created.status).toBe(201);
+        expect(await created.text()).not.toContain(config.qualificationToken);
+        // Explicit public enable still preserves the same-origin guard.
+        config.submissionsEnabled = true;
+        expect(
+          (
+            await request(owner, "/drafts", "POST", draft(), {
+              Origin: "https://attacker.example",
+            })
+          ).status,
+        ).toBe(403);
+      } finally {
+        config.submissionsEnabled = true;
+        config.qualificationToken = undefined;
+      }
+    });
+
+    it('rejects cross-origin session admission before issuing cookies or consuming quota', async () => {
     const anchor = await browser(); // Direct clients may omit both browser headers.
     const count = async () => (await db.query<{ count: string }>(
       'SELECT count(*) FROM report_sessions WHERE admission=(SELECT admission FROM report_sessions WHERE id=$1)',

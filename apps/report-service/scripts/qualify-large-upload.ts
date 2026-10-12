@@ -43,6 +43,7 @@ async function qualify(): Promise<void> {
     return value;
   };
   const config: Config = {
+    submissionsEnabled: true,
     origin: "https://qualification.invalid",
     port: 0,
     databaseUrl: required("REPORT_TEST_DATABASE_URL"),

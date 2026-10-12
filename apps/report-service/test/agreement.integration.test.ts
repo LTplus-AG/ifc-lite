@@ -34,6 +34,7 @@ describe.skipIf(!enabled)("#7495 approved agreement durable binding", () => {
     await migrate(db);
     directory = await mkdtemp(join(tmpdir(), "ifclite-agreement-test-"));
     config = {
+      submissionsEnabled: true,
       origin: "https://viewer.example.com",
       port: 0,
       databaseUrl: process.env.REPORT_TEST_DATABASE_URL ?? "",
@@ -213,6 +214,34 @@ describe.skipIf(!enabled)("#7495 approved agreement durable binding", () => {
       ...env, REPORT_APPROVED_AGREEMENT_SHA256: undefined,
     });
     expect(disabled.agreement.signingEnabled).toBe(false);
+    expect(disabled.submissionsEnabled).toBe(false);
+    expect(
+      loadConfig({
+        ...env,
+        REPORT_APPROVED_AGREEMENT_SHA256: undefined,
+        REPORT_SUBMISSIONS_ENABLED: "TRUE",
+      }).submissionsEnabled,
+    ).toBe(false);
+    expect(
+      loadConfig({
+        ...env,
+        REPORT_APPROVED_AGREEMENT_SHA256: undefined,
+        REPORT_SUBMISSIONS_ENABLED: "true",
+      }).submissionsEnabled,
+    ).toBe(true);
+    for (const token of [
+      "short",
+      env.REPORT_ADMIN_TOKEN,
+      env.REPORT_ADMISSION_SECRET,
+    ]) {
+      expect(() =>
+        loadConfig({
+          ...env,
+          REPORT_APPROVED_AGREEMENT_SHA256: undefined,
+          REPORT_QUALIFICATION_TOKEN: token,
+        }),
+      ).toThrow(/separate secret/);
+    }
     // #7497: hosts providing secret environment values need no file wrapper.
     const inlineKey = "-----BEGIN PRIVATE KEY-----\nfixture-only\n-----END PRIVATE KEY-----\n";
     const inline = {

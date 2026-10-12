@@ -181,4 +181,22 @@ describe("#7495 GitHub App transport and ambiguity recovery", () => {
     expect(bodies[0]).toContain("Evidence for first");
     expect(bodies[1]).toContain("Evidence for second");
   });
+  it("does not treat markers quoted in another App-created report as its own receipt", async () => {
+    const original = report("original");
+    const other = report("other");
+    other.draft.description = publicIssueBody(original);
+    let creates = 0;
+    const transport: typeof fetch = async (input, init) => {
+      if (parsedUrl(input).pathname.includes("/access_tokens")) return Response.json({ token: "token" });
+      if (init?.method === "POST") {
+        creates++;
+        expect(JSON.parse(String(init.body)).body).toBe(publicIssueBody(original));
+        return Response.json({ html_url: "https://github.com/owner/repo/issues/2" });
+      }
+      return Response.json([{ body: publicIssueBody(other), created_at: new Date().toISOString(), performed_via_github_app: { id: 123 }, html_url: "https://github.com/owner/repo/issues/1" }]);
+    };
+    expect(await new GithubIssues(config, transport).findOrCreate(original)).toBe("https://github.com/owner/repo/issues/2");
+    expect(creates).toBe(1);
+  });
+
 });

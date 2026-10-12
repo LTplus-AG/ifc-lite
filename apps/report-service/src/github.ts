@@ -94,7 +94,9 @@ export class GithubIssues {
           trustedApp &&
           "body" in issue &&
           typeof issue.body === "string" &&
-          issue.body.includes(`<!-- ifclite-error:${report.fingerprint} -->`) &&
+          // User descriptions may quote another report's marker. Only the
+          // terminal service-authored footer identifies this report.
+          issue.body.endsWith(`<!-- ifclite-report:${report.id} -->\n<!-- ifclite-error:${report.fingerprint} -->`) &&
           "html_url" in issue &&
           typeof issue.html_url === "string"
         )

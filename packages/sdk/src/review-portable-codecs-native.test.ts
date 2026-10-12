@@ -7,7 +7,7 @@ import { beforeAll, expect, it } from 'vitest';
 import { IfcParser } from '@ifc-lite/parser';
 import { parseIDS, validateIDS, type ValidationReport } from '@ifc-lite/ids';
 import { createDataAccessor } from '@ifc-lite/ids/bridge';
-import * as portable from '@ifc-lite/sdk/review';
+import * as portable from './review.js';
 
 const samples = new URL('../../../apps/viewer/public/samples/', import.meta.url);
 const modelKey = 'saved-architecture-source';

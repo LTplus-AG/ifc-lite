@@ -23,6 +23,7 @@
 import { existsSync, readFileSync, readdirSync, writeFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join, resolve } from 'path';
+import { requireTimingUploads } from './lib/benchmark-upload-mode.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -71,6 +72,7 @@ function main() {
   const skipped = [];
   for (const name of files) {
     const payload = loadJson(join(resultsDir, name));
+    requireTimingUploads(payload);
     if (!payload.file || !payload.metrics) {
       throw new Error(`Result ${name} is missing "file" or "metrics"; refusing to write a partial baseline.`);
     }

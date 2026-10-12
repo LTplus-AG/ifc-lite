@@ -1,0 +1,160 @@
+{
+  "base": "d8c43687b9d9a08a0fda209efa637a89c5fa1845",
+  "wasmSha256": "3912d1046cf6507e7ef6f85a0492a0e54fbb31ae711b85c6e46b6313ffd63312",
+  "runtime": "T3 Code Electron 44.4.2 / Chrome152.0.7977.130, Windows",
+  "gpu": {
+    "vendor": "nvidia",
+    "architecture": "blackwell",
+    "fallback": false
+  },
+  "settings": {
+    "geomWorkers": 4,
+    "minJobs": 64,
+    "maxJobs": 64,
+    "meshCache": 0,
+    "benchmarkUploads": true
+  },
+  "fixtures": [
+    {
+      "key": "FZK",
+      "path": "tests/models/ara3d/AC20-FZK-Haus.ifc",
+      "sha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+      "runs": [
+        {
+          "iteration": 1,
+          "finished": true,
+          "attrs": {
+            "cacheTier": "none",
+            "journey": "J1",
+            "loadPath": "wasm",
+            "modelKind": "primary",
+            "workerCount": 4
+          },
+          "counters": {
+            "gpu.buffers": 701,
+            "gpu.bufferBytes": 27969768,
+            "gpu.staticUpload.count": 452,
+            "gpu.staticUpload.bytes": 1283640,
+            "msg.worker.out.transferBytes": 2598250,
+            "wasm.bytesIn": 14790543
+          },
+          "finalize": {
+            "batches": 15,
+            "chunks": 1,
+            "ephemeral": false,
+            "fragments": 203
+          },
+          "flushCount": 1,
+          "allFlushesCountMode": true,
+          "deviceLost": 0,
+          "deviceReplacements": 0,
+          "mutableWriteBytes": 1440520
+        },
+        {
+          "iteration": 2,
+          "finished": true,
+          "attrs": {
+            "cacheTier": "none",
+            "journey": "J1",
+            "loadPath": "wasm",
+            "modelKind": "primary",
+            "workerCount": 4
+          },
+          "counters": {
+            "gpu.buffers": 701,
+            "gpu.bufferBytes": 27969768,
+            "gpu.staticUpload.count": 452,
+            "gpu.staticUpload.bytes": 1283640,
+            "msg.worker.out.transferBytes": 2598250,
+            "wasm.bytesIn": 14790543
+          },
+          "finalize": {
+            "batches": 15,
+            "chunks": 2,
+            "ephemeral": false,
+            "fragments": 203
+          },
+          "flushCount": 1,
+          "allFlushesCountMode": true,
+          "deviceLost": 0,
+          "deviceReplacements": 0,
+          "mutableWriteBytes": 1440520
+        }
+      ],
+      "repeat": true
+    },
+    {
+      "key": "Snowdon",
+      "path": "tests/models/various/01_Snowdon_Towers_Sample_Structural(1).ifc",
+      "sha256": "fab102eb5f9152bc7053d7e4920a8b75d0d34683c834078f0735c88308eb00a4",
+      "runs": [
+        {
+          "iteration": 1,
+          "finished": true,
+          "attrs": {
+            "cacheTier": "none",
+            "journey": "J1",
+            "loadPath": "wasm",
+            "modelKind": "primary",
+            "workerCount": 4
+          },
+          "counters": {
+            "gpu.buffers": 28289,
+            "gpu.bufferBytes": 62469436,
+            "gpu.staticUpload.count": 19083,
+            "gpu.staticUpload.bytes": 32422124,
+            "msg.worker.out.transferBytes": 29684518,
+            "wasm.bytesIn": 54112588
+          },
+          "finalize": {
+            "batches": 37,
+            "chunks": 5,
+            "ephemeral": false,
+            "fragments": 8436
+          },
+          "flushCount": 21,
+          "allFlushesCountMode": true,
+          "deviceLost": 0,
+          "deviceReplacements": 0,
+          "mutableWriteBytes": 33015900
+        },
+        {
+          "iteration": 2,
+          "finished": true,
+          "attrs": {
+            "cacheTier": "none",
+            "journey": "J1",
+            "loadPath": "wasm",
+            "modelKind": "primary",
+            "workerCount": 4
+          },
+          "counters": {
+            "gpu.buffers": 28289,
+            "gpu.bufferBytes": 62469436,
+            "gpu.staticUpload.count": 19083,
+            "gpu.staticUpload.bytes": 32422124,
+            "msg.worker.out.transferBytes": 29684518,
+            "wasm.bytesIn": 54112588
+          },
+          "finalize": {
+            "batches": 37,
+            "chunks": 5,
+            "ephemeral": false,
+            "fragments": 8436
+          },
+          "flushCount": 21,
+          "allFlushesCountMode": true,
+          "deviceLost": 0,
+          "deviceReplacements": 0,
+          "mutableWriteBytes": 33015900
+        }
+      ],
+      "repeat": true
+    }
+  ],
+  "limitations": [
+    "Count-only structural qualification, not a latency or throughput comparison.",
+    "gpu.writeBytes includes mutable table writes and remains scheduling-dependent.",
+    "Finalized renderer fragments/batches are recorded; no CPU mesh byte-identity claim is inferred from counts."
+  ]
+}

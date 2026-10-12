@@ -31,7 +31,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs';
+import { copyFileSync, mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -50,6 +50,11 @@ const ALL_METRICS = {
 function benchTree({ current, baseline, baselineKey = 'x.ifc', extra = {} }) {
   const dir = mkdtempSync(join(tmpdir(), 'bench-'));
   mkdirSync(join(dir, 'scripts'), { recursive: true });
+  const uploadHelper = join(HERE, 'lib', 'benchmark-upload-mode.mjs');
+  if (existsSync(uploadHelper)) {
+    mkdirSync(join(dir, 'scripts', 'lib'), { recursive: true });
+    copyFileSync(uploadHelper, join(dir, 'scripts', 'lib', 'benchmark-upload-mode.mjs'));
+  }
   mkdirSync(join(dir, 'tests', 'benchmark', 'benchmark-results'), { recursive: true });
   writeFileSync(
     join(dir, 'scripts', 'check-benchmark-regression.js'),
@@ -76,6 +81,42 @@ function runBench(dir, { advisory = true } = {}) {
   );
   return { code: res.status, out: `${res.stdout ?? ''}${res.stderr ?? ''}` };
 }
+
+test('#6993 count-only GPU results cannot be compared as timings, even in advisory mode', () => {
+  const dir = benchTree({ current: ALL_METRICS, baseline: ALL_METRICS, extra: { environment: { uploadMode: 'count' } } });
+  try {
+    const { code, out } = runBench(dir);
+    assert.equal(code, 1, out);
+    assert.match(out, /not a timing workload/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+for (const legacyMode of ['count', 'unknown', null]) {
+  test(`#6993 a timed environment tag cannot hide legacy upload mode ${legacyMode}`, () => {
+    const dir = benchTree({ current: ALL_METRICS, baseline: ALL_METRICS,
+      extra: { environment: { uploadMode: 'timed' }, loadCounters: { uploadMode: legacyMode } } });
+    try {
+      const { code, out } = runBench(dir);
+      assert.equal(code, 1, out);
+      assert.match(out, /not a timing workload/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+}
+
+test('#6993 matching timed environment and legacy tags remain valid timing inputs', () => {
+  const dir = benchTree({ current: ALL_METRICS, baseline: ALL_METRICS,
+    extra: { environment: { uploadMode: 'timed' }, loadCounters: { uploadMode: 'timed' } } });
+  try {
+    const { code, out } = runBench(dir);
+    assert.equal(code, 0, out);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
 
 test('benchmark: a harness fault is reported even when a REGRESSION exits first', () => {
   // Without --advisory a regression took `process.exit(1)` before the harness

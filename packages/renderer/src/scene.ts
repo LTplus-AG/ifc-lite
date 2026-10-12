@@ -11,6 +11,7 @@ import { createInstancedRteDeltaStream, invalidateInstancedRteDeltas, type Insta
 import { materializeInstances } from './scene-instance-materialization.js';
 import { InstanceSuppression } from './scene-instance-suppression.js';
 import { createSceneBatch } from './scene-batch-upload.js';
+import { flushQueuedMeshes } from './scene-flush.js';
 import { createStaticGpuBuffer } from './gpu-static-upload.js';
 import { createSceneAppearancePreview, rebindSceneAppearanceAccess, type SceneAppearanceAccess } from './scene-appearance-preview.js';
 import { AppearanceBuckets } from './scene-appearance-buckets.js';
@@ -146,59 +147,7 @@ export interface TexturedMesh {
 export type { InstancedTemplateGPU } from './scene-instance-types.js';
 const EMPTY_INSTANCED_TEMPLATES: readonly InstancedTemplateGPU[] = [];
 
-/**
- * Pure helper: compute the exclusive end index of the next flushPending()
- * append chunk, starting at `readIndex` and bounded by BOTH mesh count
- * (`hardEnd`, computed by the caller) and index volume (`maxIndicesPerAppend`).
- * Always takes at least one mesh past `readIndex` -- a single oversize mesh is
- * split upstream by splitMeshForStreaming, so the volume cap never blocks the
- * first mesh of a chunk.
- *
- * Non-finite-safe by construction: every non-finite `next` (a malformed mesh
- * reporting NaN, +Infinity, or -Infinity for `indices.length`) closes the
- * chunk explicitly instead of being folded into the running `chunkIndices`
- * total. Only NaN would have made a naive cap check `chunkIndices + next >
- * maxIndicesPerAppend` silently `false` forever (`NaN > cap` is always
- * `false`); +Infinity actually made that same check fire immediately
- * (`chunkIndices + Infinity > cap` is `true`), closing the chunk after a
- * single oversize mesh instead of growing it unbounded. The current
- * `!(chunkIndices + next <= maxIndicesPerAppend)` form below rejects both
- * NaN and +Infinity explicitly rather than relying on that asymmetry.
- * -Infinity needed a separate, explicit check: `-Infinity <= cap` is always
- * `true`, so `!(... <= cap)` lets it straight through, and folding it into
- * `chunkIndices` would poison the running total to -Infinity permanently,
- * keeping the cap vacuous for every mesh after it, not just the malformed
- * one.
- */
-export function computeFlushChunkEnd(
-  getIndicesLength: (meshIndex: number) => number,
-  readIndex: number,
-  hardEnd: number,
-  maxIndicesPerAppend: number,
-): number {
-  let chunkEnd = readIndex;
-  let chunkIndices = 0;
-  while (chunkEnd < hardEnd) {
-    const next = getIndicesLength(chunkEnd);
-    if (!Number.isFinite(next)) {
-      // A malformed mesh reporting a non-finite indices.length (NaN, +/-Infinity)
-      // must close the chunk here rather than being folded into chunkIndices:
-      // `chunkIndices += -Infinity` would poison the running total to -Infinity
-      // permanently, making `!(chunkIndices + next <= maxIndicesPerAppend)`
-      // false forever and letting the volume cap never fire again for the
-      // rest of this chunk. Always take at least the first mesh past
-      // readIndex (same progress guarantee as the NaN case below).
-      if (chunkEnd === readIndex) chunkEnd++;
-      break;
-    }
-    if (chunkEnd > readIndex && !(chunkIndices + next <= maxIndicesPerAppend)) {
-      break;
-    }
-    chunkIndices += next;
-    chunkEnd++;
-  }
-  return chunkEnd;
-}
+export { computeFlushChunkEnd } from './scene-flush.js';
 
 export class Scene {
   private meshes: Mesh[] = [];
@@ -1908,78 +1857,18 @@ export class Scene {
    *   host with nothing else to serve may drain faster (#6436).
    * @param trace The streaming load's trace (#6979): a call that uploaded
    *   anything records one `scene.flushPending` span.
+   * @param deterministicUploads Benchmark-only per-mesh fragments with count
+   *   and index-volume bounds. These totals describe a different timing workload.
    * @returns true if any meshes were processed (caller should render)
    */
-  flushPending(device: GPUDevice, pipeline: RenderPipeline, budgetMs = 12, trace?: LoadTrace): boolean {
-    if (!this.hasQueuedMeshes()) return false;
-
-    // Drain the queue in chunks bounded by BOTH mesh count AND triangle volume,
-    // yielding the frame back at the TOP of the loop. The mesh-count-only chunker
-    // could merge a 512-mesh chunk of high-poly meshes (e.g. 899 Velux roof
-    // windows at 7624 tris each → ~3.9M tris) in ONE indivisible mergeGeometry +
-    // GPU buffer upload copy — hundreds of ms that parked the main thread
-    // past the 16s stream watchdog. Capping each appendToBatches by index volume
-    // keeps every synchronous slice ≈ one bounded fragment merge (~12-15ms).
-    const MAX_MESHES_PER_FLUSH = 4096;
-    const MESHES_PER_APPEND = 512;
-    const MAX_INDICES_PER_APPEND = Scene.STREAMING_FRAGMENT_MAX_INDICES;
-    const start = performance.now();
-    let processed = 0;
-
-    while (this.meshQueueReadIndex < this.meshQueue.length && processed < MAX_MESHES_PER_FLUSH) {
-      // Yield once the budget is spent (after at least one append) so the main
-      // thread returns to the worker-message pump and the watchdog never trips.
-      if (processed > 0 && performance.now() - start >= budgetMs) {
-        break;
-      }
-
-      const hardEnd = Math.min(
-        this.meshQueue.length,
-        this.meshQueueReadIndex + MESHES_PER_APPEND,
-        this.meshQueueReadIndex + (MAX_MESHES_PER_FLUSH - processed),
-      );
-      const chunkEnd = computeFlushChunkEnd(
-        (i) => this.meshQueue[i].indices.length,
-        this.meshQueueReadIndex,
-        hardEnd,
-        MAX_INDICES_PER_APPEND,
-      );
-
-      // Defensive, not reachable today: chunkEnd is provably > meshQueueReadIndex
-      // here because hardEnd is provably > meshQueueReadIndex whenever this outer
-      // loop iterates, via three invariants that hold simultaneously above:
-      //   (1) this.meshQueue.length > this.meshQueueReadIndex -- the outer while
-      //       condition that got us into this iteration;
-      //   (2) this.meshQueueReadIndex + MESHES_PER_APPEND, and MESHES_PER_APPEND
-      //       (512) is a positive constant;
-      //   (3) this.meshQueueReadIndex + (MAX_MESHES_PER_FLUSH - processed), and
-      //       processed < MAX_MESHES_PER_FLUSH -- the other half of the outer
-      //       while condition -- so that term is >= readIndex + 1 too.
-      // hardEnd is the min of all three, so hardEnd >= readIndex + 1, and
-      // computeFlushChunkEnd always advances by at least one past readIndex.
-      // If a future change breaks any one of those three invariants, hardEnd
-      // could collapse to readIndex and the loop would spin the main thread at
-      // 100% CPU doing zero allocation -- the exact signature that made #2379
-      // expensive to diagnose. This break turns that failure mode into "flush
-      // stops early" instead.
-      if (chunkEnd === this.meshQueueReadIndex) break;
-
-      const chunk = this.meshQueue.slice(this.meshQueueReadIndex, chunkEnd);
-      this.meshQueueReadIndex = chunkEnd;
+  flushPending(device: GPUDevice, pipeline: RenderPipeline, budgetMs = 12, trace?: LoadTrace, deterministicUploads = false): boolean {
+    const result = flushQueuedMeshes(this.meshQueue, this.meshQueueReadIndex, (chunk, nextReadIndex) => {
+      this.meshQueueReadIndex = nextReadIndex;
       this.appendToBatches(chunk, device, pipeline, true);
-      processed += chunk.length;
-    }
-
-    if (this.meshQueueReadIndex >= this.meshQueue.length) {
-      this.meshQueue.length = 0;
-      this.meshQueueReadIndex = 0;
-    } else if (this.meshQueueReadIndex >= 8192 && this.meshQueueReadIndex * 2 >= this.meshQueue.length) {
-      this.meshQueue = this.meshQueue.slice(this.meshQueueReadIndex);
-      this.meshQueueReadIndex = 0;
-    }
-
-    if (processed > 0 && trace?.enabled) trace.record('scene.flushPending', start, performance.now(), { meshes: processed, queued: this.meshQueue.length - this.meshQueueReadIndex });
-    return processed > 0;
+    }, { budgetMs, trace, deterministicUploads, maxIndicesPerAppend: Scene.STREAMING_FRAGMENT_MAX_INDICES });
+    this.meshQueue = result.queue;
+    this.meshQueueReadIndex = result.readIndex;
+    return result.processed > 0;
   }
 
   /**

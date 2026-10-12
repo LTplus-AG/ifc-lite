@@ -1,0 +1,48 @@
+✔ #7032: the executable cold A/B requires renderer finalization through the benchmark page (568.34608ms)
+✔ the cold A/B and the benchmark page modules exist (0.154029ms)
+✔ the cold A/B script still loads and its sample runner exists (child process: fixture-less run refuses with its own message) (343.814882ms)
+✔ setup() switches span tracing on before boot, the flag the viewer reads to publish __IFC_LITE_LOAD_TRACE__ (15.252462ms)
+✔ loadUntilReady() completes a sample from the span tree (6.430171ms)
+✔ #6993 cold A/B rejects a viewer count cohort even when the harness requested timed uploads (5.501096ms)
+✔ loadUntilReady() falls back to the console lines for a base build that predates the span API (4.797595ms)
+✔ loadUntilReady() fails finitely when the viewer never reports readiness (53.711791ms)
+✔ runColdSample() runs setup, the caller checks, then loadUntilReady with metadata/render readiness required, all on the page itself (7.256359ms)
+✔ #6993 count-only GPU results cannot be compared as timings, even in advisory mode (23.688405ms)
+✔ #6993 a timed environment tag cannot hide legacy upload mode count (24.683707ms)
+✔ #6993 a timed environment tag cannot hide legacy upload mode unknown (23.002621ms)
+✔ #6993 a timed environment tag cannot hide legacy upload mode null (21.538782ms)
+✔ #6993 matching timed environment and legacy tags remain valid timing inputs (25.17999ms)
+✔ benchmark: a harness fault is reported even when a REGRESSION exits first (24.817825ms)
+✔ benchmark: a metric absent from BOTH sides is ordinary, not a failure (24.306061ms)
+✔ benchmark: a metric the BASELINE had and this run LOST fails, even with --advisory (22.328792ms)
+✔ benchmark: a threshold regression does NOT suppress the harness check (23.893511ms)
+✔ benchmark: a renamed fixture matching NO baseline fails rather than reporting clean (23.529971ms)
+✔ benchmark: ONE model of two missing its baseline is still not a clean bill of health (23.986308ms)
+✔ benchmark: a fully-compared healthy run still gets its clean headline (22.803208ms)
+✔ benchmark: the markdown report is written BEFORE the gate exits (22.250793ms)
+✔ benchmark: the MARKDOWN refuses a verdict too, not just the console (22.904795ms)
+✔ benchmark #6993: a sample that lost its GPU device is excluded, not compared as a regression (25.037417ms)
+✔ benchmark #6993: when EVERY model lost its GPU device it is a no-verdict WARNING, exit 0, never a pass (49.46589ms)
+✔ benchmark #6993: a genuine harness fault stays fatal even beside a GPU-lost model (23.16774ms)
+✔ benchmark #6993: a GPU-lost model stays visible at the top even when the headline is a regression (24.634824ms)
+✔ benchmark #6993 review: GPU-lost + clean + renamed — the headline names BOTH not-compared models, never "the rest" as compared (26.401776ms)
+✔ #6993 count-only GPU results cannot overwrite the timing baseline (22.916422ms)
+✔ #6993 a timed environment tag cannot admit legacy upload mode count into the baseline (23.927151ms)
+✔ #6993 a timed environment tag cannot admit legacy upload mode unknown into the baseline (21.034916ms)
+✔ #6993 a timed environment tag cannot admit legacy upload mode null into the baseline (21.175175ms)
+✔ #6993 matching timed environment and legacy tags can update the timing baseline (26.793873ms)
+✔ #6993 a GPU-lost sample keeps the previous baseline entry; a clean one replaces it (24.611408ms)
+✔ #6993 when every sample lost its GPU device all previous entries are kept and the run still succeeds (24.330581ms)
+✔ #6993 GPU upload counters become structural only when every observed flush used count mode (0.763394ms)
+✔ #6957 the benchmark pins four geometry workers by default through ?geomWorkers (3006.657957ms)
+✔ #6957 the result records repeatable structural counters apart from scheduling-dependent ones (1001.901413ms)
+✔ #6957 a viewer without counters records null rather than an empty, healthy-looking block (1001.671717ms)
+✔ #6957 counters are recorded once they stop moving, not at the load root's end (1003.405006ms)
+ℹ tests 40
+ℹ suites 0
+ℹ pass 40
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 6096.494245

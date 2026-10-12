@@ -81,6 +81,16 @@ ArrayBuffer does not prove it was transferred, and flushing before constructing
 the terminal message cannot account for that message. This is instrumentation
 qualification, with no throughput verdict; GPU count repeatability remains open.
 
+The bounded count cohort (#6993) uses one streaming fragment per mesh, with
+mesh-count and index-volume bounds. Actual production FZK/Snowdon pairs
+[repeat allocation and static-upload totals](evidence/count-uploads-6993/README.md)
+despite different drain/finalization boundaries. Mutable table writes still
+vary, so the shared static-buffer uploader has a distinct counter instead of
+classifying all non-uniform writes as structural. Count-mode samples carry a
+different workload and are refused by timing/baseline consumers. Lesson:
+removing the clock budget does not make arbitrary fragment grouping or mutable
+GPU writes structural. This is count qualification, not a throughput win.
+
 Under `?perfTrace=1` and in every benchmark run, each load's span tree also
 carries counters (`LoadTraceSnapshot.counters`): full source copies, worker
 messages and their clone/transfer/shared bytes per direction, typed-array

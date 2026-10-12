@@ -1,0 +1,19 @@
+{
+  "base": "90c40f410bc0fd5203a55892c013827d796624f9",
+  "command": [
+    "node",
+    "--test",
+    "scripts/check-benchmark-regression.test.mjs",
+    "scripts/update-benchmark-baseline.test.mjs",
+    "scripts/viewer-benchmark-load-counters.test.mjs",
+    "scripts/browser-cold-ab-readiness.test.mjs"
+  ],
+  "before": 0,
+  "inverse": 1,
+  "restored": 0,
+  "owner": {
+    "path": "scripts/lib/benchmark-upload-mode.mjs",
+    "sha256": "a4239353e6bc985443c7debcf70e1923fdd0acd0a3078f8c0d479543008b447b",
+    "restored": true
+  }
+}

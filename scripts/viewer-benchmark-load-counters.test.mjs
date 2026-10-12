@@ -9,6 +9,7 @@ import assert from 'node:assert/strict';
 import { tsImport } from 'tsx/esm/api';
 
 const { ViewerBenchmarkPage } = await tsImport('../tests/benchmark/viewer-benchmark-page.ts', import.meta.url);
+const { countersFromLoadTrace } = await tsImport('../tests/benchmark/load-trace-metrics.ts', import.meta.url);
 
 const MAIN_THREAD = {
   supported: { loaf: true, longtask: true },
@@ -34,6 +35,19 @@ const SNAPSHOT = {
   workerCounters: { 'geom-0': { 'wasm.bytesIn': 3_000_000 } },
   mainThread: MAIN_THREAD,
 };
+
+test('#6993 GPU upload counters become structural only when every observed flush used count mode', () => {
+  const flush = (count) => ({ name: 'scene.flushPending', thread: 'main', start: 1000, end: 1001, attrs: count ? { uploadMode: 'count' } : {} });
+  const countOnly = countersFromLoadTrace({ ...SNAPSHOT, counters: { ...SNAPSHOT.counters, 'gpu.writeBytes': 128, 'gpu.staticUpload.bytes': 64 }, spans: [flush(true), flush(true)] });
+  assert.equal(countOnly.structural['gpu.buffers'], 40);
+  assert.equal(countOnly.scheduling['gpu.uniformWriteBytes'], 5120);
+  assert.equal(countOnly.scheduling['gpu.writeBytes'], 128, 'mutable writes still depend on update timing');
+  assert.equal(countOnly.structural['gpu.staticUpload.bytes'], 64);
+  const mixed = countersFromLoadTrace({ ...SNAPSHOT, spans: [flush(true), flush(false)] });
+  assert.equal(mixed.scheduling['gpu.buffers'], 40);
+  assert.equal(mixed.structural['gpu.buffers'], undefined);
+  assert.equal(countersFromLoadTrace({ ...SNAPSHOT, spans: [] }).scheduling['gpu.buffers'], 40);
+});
 
 function fakePage(snapshot) {
   const visited = [];

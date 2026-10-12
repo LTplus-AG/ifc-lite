@@ -189,6 +189,7 @@ export class ModelStorage {
           Key: key,
           UploadId: id,
         }),
+        { abortSignal: AbortSignal.timeout(30000) },
       );
     } catch (error) {
       if (!(error instanceof Error && error.name === "NoSuchUpload"))
@@ -198,6 +199,7 @@ export class ModelStorage {
   async delete(key: string): Promise<void> {
     await this.client.send(
       new DeleteObjectCommand({ Bucket: this.config.bucket, Key: key }),
+      { abortSignal: AbortSignal.timeout(30000) },
     );
   }
   download(key: string, name: string): Promise<string> {

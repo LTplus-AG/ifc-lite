@@ -38,7 +38,8 @@ export async function removeUpload(
         input='{"name":"deleted","size":0,"type":"application/octet-stream","confidentiality":"none","uploadConsent":true}'::jsonb,
         parts='{}'::jsonb,authorizations='{}'::jsonb,multipart_id=NULL,
         object_checksum=NULL,completed_at=NULL,object_key='deleted/'||id::text,
-        verification_attempts=0,verification_after=NULL
+        verification_attempts=0,verification_after=NULL,
+        deletion_attempts=0,deletion_after=NULL
         WHERE id=$1`,
       [current.id],
     );
@@ -52,10 +53,23 @@ export async function removeUpload(
 }
 export async function sweep(db: Db, storage: ModelStorage): Promise<void> {
   const uploads = await db.query<UploadRow>(
-    "SELECT u.* FROM report_uploads u JOIN model_reports r ON r.id=u.report_id WHERE u.status!='aborted' AND (u.expires_at<now() OR r.expires_at<now() OR r.status='deleted') LIMIT 20",
+    "SELECT u.* FROM report_uploads u JOIN model_reports r ON r.id=u.report_id WHERE u.status!='aborted' AND u.deletion_after<=now() AND (u.expires_at<now() OR r.expires_at<now() OR r.status='deleted') ORDER BY u.deletion_after,u.id LIMIT 20",
   );
-  for (const row of uploads.rows)
-    await removeUpload(db, storage, row, "retention");
+  for (const row of uploads.rows) {
+    try {
+      await removeUpload(db, storage, row, "retention");
+    } catch {
+      // Provider errors may contain object keys or request URLs. Persist only
+      // retry timing, and keep unrelated erasure work moving past this row.
+      console.error("report_retention_storage_retry");
+      await db.query(
+        `UPDATE report_uploads SET deletion_attempts=LEAST(deletion_attempts+1,30),
+          deletion_after=now()+make_interval(secs=>LEAST(900,10*power(2,LEAST(deletion_attempts,7)))::int)
+          WHERE id=$1 AND status!='aborted'`,
+        [row.id],
+      );
+    }
+  }
   await db.query(
     "UPDATE model_reports SET status='deleted',agreement=NULL,agreement_pdf=NULL,custom_nda=NULL,draft='{}'::jsonb WHERE expires_at<now() AND NOT EXISTS(SELECT 1 FROM report_uploads u WHERE u.report_id=model_reports.id AND u.status!='aborted')",
   );

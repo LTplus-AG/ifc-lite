@@ -5,6 +5,7 @@
  * CI uses the smaller real multipart integration test. Never uploads a user file.
  * Run after the root Turbo service build using root pnpm exec tsx <this file>.
  * Requires REPORT_TEST_* environment and --fixture <approved public IFC path>.
+ * --small-only runs bounded fixture transport/cleanup qualification without 616 MiB.
  */
 import { readFile } from "node:fs/promises";
 import { createHash, randomUUID } from "node:crypto";
@@ -86,10 +87,15 @@ const owner = { id: randomUUID(), csrf: randomUUID(), admission: randomUUID() };
 let reportId: string | undefined;
 let sampleTimer: ReturnType<typeof setInterval> | undefined;
 const measurements: Record<string, unknown>[] = [];
-await migrate(db);
-await client.send(new CreateBucketCommand({ Bucket: config.bucket }));
+let bucketCreated = false;
 try {
-  for (const totalBytes of [fixture.length, 616 * 1024 ** 2]) {
+  await migrate(db);
+  await client.send(new CreateBucketCommand({ Bucket: config.bucket }));
+  bucketCreated = true;
+  const sizes = process.argv.includes("--small-only")
+    ? [fixture.length]
+    : [fixture.length, 616 * 1024 ** 2];
+  for (const totalBytes of sizes) {
     const synthetic = totalBytes !== fixture.length;
     const report = await createReport(db, config, owner, {
       clientRequestId: randomUUID(),
@@ -151,6 +157,7 @@ try {
       peakRss = Math.max(peakRss, process.memoryUsage().rss);
       if (offset === 0) {
         await db.end();
+        storage.close();
         db = openDatabase(config.databaseUrl);
         storage = new ModelStorage(config);
         const persisted = await uploadRow(db, report.id, upload.id, owner);
@@ -188,8 +195,19 @@ try {
   console.log(JSON.stringify({ status: "passed", measurements }, null, 2));
 } finally {
   clearInterval(sampleTimer);
-  if (reportId) await deleteReport(db, storage, reportId, owner.id);
-  await client.send(new DeleteBucketCommand({ Bucket: config.bucket }));
-  await db.end();
-  client.destroy();
+  try {
+    if (reportId) await deleteReport(db, storage, reportId, owner.id);
+  } finally {
+    try {
+      if (bucketCreated)
+        await client.send(new DeleteBucketCommand({ Bucket: config.bucket }));
+    } finally {
+      try {
+        await db.end();
+      } finally {
+        storage.close();
+        client.destroy();
+      }
+    }
+  }
 }

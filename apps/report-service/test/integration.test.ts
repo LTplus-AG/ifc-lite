@@ -10,9 +10,7 @@ import {
   CreateBucketCommand,
   HeadObjectCommand,
   PutObjectCommand,
-  UploadPartCommand,
 } from "@aws-sdk/client-s3";
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { openDatabase, migrate } from "../src/database.js";
 import type { Config } from "../src/config.js";
 import { loadFeature } from "./feature-loader.js";
@@ -340,25 +338,21 @@ describe.skipIf(!enabled)(
         uploadConsent: true,
       });
       const row = await uploadRow(db, report.id, upload.id, owner);
-      const expired = await getSignedUrl(
-        client,
-        new UploadPartCommand({
-          Bucket: bucket,
-          Key: row.object_key,
-          UploadId: row.multipart_id!,
-          PartNumber: 1,
-          ChecksumSHA256: sha256,
-          ContentLength: bytes.length,
-        }),
-        {
-          expiresIn: 1,
-          unhoistableHeaders: new Set(["x-amz-checksum-sha256"]),
-        },
-      );
-      await new Promise((resolve) => setTimeout(resolve, 2100));
+      let expired: Awaited<ReturnType<typeof authorizePart>>;
+      const signingTime = Date.now() - 10 * 60 * 1000;
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(signingTime);
+      try {
+        // Exercise production signing/authorization without a five-minute wait.
+        expired = await authorizePart(db, storage, row, 1, sha256);
+        expect(new Date(expired.expiresAt).getTime()).toBe(signingTime + 300000);
+        expect(new URL(expired.url).searchParams.get("X-Amz-Expires")).toBe("300");
+      } finally {
+        vi.useRealTimers();
+      }
       expect(
         (
-          await fetch(expired, {
+          await fetch(expired.url, {
             method: "PUT",
             headers: { "x-amz-checksum-sha256": sha256 },
             body: bytes,
@@ -464,6 +458,67 @@ describe.skipIf(!enabled)(
       });
       expect(cleaned.input.name).toBe("deleted");
       expect(cleaned.object_key).not.toBe(row.object_key);
+    }, 30000);
+    storageCase("#7498 retention failures back off durably without starving later uploads or metadata erasure", async () => {
+      const rows: Awaited<ReturnType<typeof uploadRow>>[] = [];
+      const marker = randomUUID();
+      const retentionOwner = { id: randomUUID(), csrf: randomUUID(), admission: randomUUID() };
+      const failedKeys = new Set<string>();
+      const actualDelete = storage.delete.bind(storage);
+      const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+      const deletion = vi.spyOn(storage, "delete").mockImplementation(async (key) => {
+        if (failedKeys.has(key)) throw new Error("private-object-sentinel");
+        await actualDelete(key);
+      });
+      try {
+        // Fill one complete batch with failing objects; the healthy 21st row
+        // must become eligible on the next sweep rather than starve forever.
+        for (let i = 0; i < 21; i++) {
+          const report = await createReport(db, { ...config, maxDailyReports: 100 }, retentionOwner, {
+            clientRequestId: randomUUID(), title: "Retention fixture", description: "",
+            diagnostics: { errorCode: "retention", appVersion: "test", buildSha: "test" }, visibility: "private",
+          });
+          const key = `retention/${randomUUID()}`;
+          await client.send(new PutObjectCommand({ Bucket: bucket, Key: key, Body: Buffer.from("synthetic"), ServerSideEncryption: "AES256" }));
+          const inserted = await db.query(
+            `INSERT INTO report_uploads(id,report_id,object_key,input,status,reserved_bytes,expires_at,deletion_after)
+             VALUES($1,$2,$3,$4,'ready',9,now()-interval '1 day',now()-interval '1 day'+$5*interval '1 second') RETURNING *`,
+            [randomUUID(), report.id, key, JSON.stringify({ name: "private.ifc", size: 9, type: "application/octet-stream", confidentiality: "none", uploadConsent: true }), i],
+          );
+          rows.push(inserted.rows[0]);
+          if (i < 20) failedKeys.add(key);
+        }
+        await db.query("INSERT INTO report_sessions VALUES($1,'csrf','peer',now()-interval '1 second')", [marker]);
+        await db.query("INSERT INTO report_admission(key,day) VALUES($1,CURRENT_DATE-32)", [marker]);
+        await db.query("INSERT INTO report_audit(action,actor,at) VALUES('fixture',$1,now()-interval '91 days')", [marker]);
+        await sweep(db, storage);
+        const pending = (await db.query("SELECT * FROM report_uploads WHERE id=$1", [rows[0]!.id])).rows[0];
+        expect(pending.deletion_attempts).toBe(1);
+        expect(pending.deletion_after.getTime()).toBeGreaterThan(Date.now());
+        expect(pending.object_key).toBe(rows[0]!.object_key);
+        expect(pending.reserved_bytes).toBe("9");
+        for (const table of ["report_sessions", "report_admission", "report_audit"]) {
+          const column = table === "report_sessions" ? "id" : table === "report_admission" ? "key" : "actor";
+          expect((await db.query(`SELECT 1 FROM ${table} WHERE ${column}=$1`, [marker])).rowCount).toBe(0);
+        }
+        // A fresh storage adapter uses the same durable retry schedule.
+        const replacement = new ModelStorage(config);
+        try { await sweep(db, replacement); } finally { replacement.close(); }
+        await expect(storage.head(rows[20]!.object_key)).rejects.toThrow();
+        expect((await storage.head(rows[0]!.object_key)).size).toBe(9);
+        expect(logged.mock.calls.every((args) => args.length === 1 && args[0] === "report_retention_storage_retry")).toBe(true);
+        expect(logged).toHaveBeenCalledTimes(20);
+        await db.query("UPDATE report_uploads SET deletion_attempts=29,deletion_after=now()-interval '1 second' WHERE id=$1", [rows[0]!.id]);
+        await sweep(db, storage);
+        const capped = (await db.query("SELECT deletion_attempts,deletion_after FROM report_uploads WHERE id=$1", [rows[0]!.id])).rows[0];
+        expect(capped.deletion_attempts).toBe(30);
+        expect(capped.deletion_after.getTime()-Date.now()).toBeLessThanOrEqual(900000);
+        expect(capped.deletion_after.getTime()-Date.now()).toBeGreaterThan(890000);
+      } finally {
+        deletion.mockRestore();
+        logged.mockRestore();
+        for (const row of rows) await removeUpload(db, storage, row, "fixture-cleanup");
+      }
     }, 30000);
     storageCase("#7498 retries transient GetObject failures with durable capped backoff and verifies the original bytes", async () => {
       const report = await createReport(db, config, owner, {

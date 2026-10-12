@@ -262,11 +262,19 @@ export function filterByEntityFacet(
     ) {
       return undefined;
     }
+    // Applicability selects a set: an entity is one candidate however many
+    // listed values return it (a class listed twice, in the same or another
+    // case, or type lists that overlap in the accessor). First-listed order.
     const ids: number[] = [];
+    const seen = new Set<number>();
     for (const value of constraint.values) {
       // One push per id: spreading a type's ids as call arguments throws
       // a RangeError once a type has more than about 125,000 instances.
-      for (const id of accessor.getEntitiesByType(value)) ids.push(id);
+      for (const id of accessor.getEntitiesByType(value)) {
+        if (seen.has(id)) continue;
+        seen.add(id);
+        ids.push(id);
+      }
     }
     return ids;
   }

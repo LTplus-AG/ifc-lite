@@ -311,6 +311,7 @@ dependencies = [
  "ifc-lite-core",
  "ifc-lite-geometry",
  "ifc-lite-processing",
+ "nalgebra",
  "rustc-hash",
  "serde",
  "serde_json",

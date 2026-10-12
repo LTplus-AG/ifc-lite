@@ -12,6 +12,7 @@ import { checkRulesTools } from './check-rules.js';
 import { reviewFindingsTools } from './review-findings.js';
 import { mutationTools } from './mutate.js';
 import { bcfTools } from './bcf.js';
+import { bcfPublicationTools } from './bcf-publication.js';
 import { bsddTools } from './bsdd.js';
 import { diffTools } from './diff.js';
 import { exportTools } from './export.js';
@@ -69,6 +70,7 @@ export function buildDefaultToolRegistry(): ToolRegistry {
   registry.registerAll(reviewFindingsTools);
   registry.registerAll(mutationTools);
   registry.registerAll(bcfTools);
+  registry.registerAll(bcfPublicationTools);
   registry.registerAll(bsddTools);
   registry.registerAll(diffTools);
   registry.registerAll(exportTools);

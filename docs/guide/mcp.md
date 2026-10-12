@@ -675,3 +675,69 @@ during an awaited source hash. Credential work is bounded to 256 input entries p
 16,384 UTF-8 bytes per value and 1,048,576 bytes per owner; overflow permanently
 refuses that owner's Review reads without discarding previously known values.
 Refused sources report unknown finding counts, not zero. Capture reservations are bounded synchronously before proof work; final ownership, permission and evidence checks still run after hashing. Excess admission preserves already retained native facts and provenance. Capacity overflow is transient; credential enrollment overflow is the permanent security refusal described above.
+
+## Durable Flow BCF publication recovery
+
+`run_flow` and `resume_flow` route `bcf.createTopic` / `bcf.addComment` through
+the native durable publication gateway. The credential-free journal lives at
+`IFCLITE_BCF_OUTBOX_DIR` or `~/.ifc-lite/bcf-outbox`. Local MCP and CLI share it;
+authenticated callers use separate stable namespaces derived from their
+principal, so a new transport session retains the same recovery state.
+Preserve this directory across process restarts. Unresolved writes refuse an
+identical send even when the server committed before the response was lost.
+
+`bcf_publications_list` requires read permission and returns `entries`, including
+intent, state and any receipt. Recovery requires mutate permission:
+
+1. Call `bcf_publication_check` with `entry_id`, current `capabilities` such as
+   `network.fetch:bcf.example.com`, and optional `token_env`. Reading that token
+   requires its exact `secret.read:<NAME>` capability. The check reads the
+   original server target and durably records manual candidate GUIDs, including
+   trim-equivalent free text. Rewritten or omitted payload fields make unmatched
+   objects unavailable rather than proving absence. Revoked
+   grants never inherit authorization from the original run.
+2. Review the matching candidates, then call `bcf_publication_reconcile` with
+   `entry_id` and one exact `candidate_guid`. It binds the previously checked
+   server identity to the original target and payload and saves a receipt.
+   Arbitrary GUIDs and live send ownership are refused.
+3. Restarting preserves that receipt. A separately reviewed next publication
+   uses its own intent; recovery never blindly resends the uncertain create.
+
+Checks and reconciliation are denied in read-only mode. Tokens are neither
+persisted nor returned; a publication payload containing a known run secret is
+refused before sending. Successful BCF response DTOs redact the actual resolved
+bearer, including literal and Player tokens, after the original receipt is saved.
+The browser content library and external vendor/OAuth
+acceptance remain separate from this native recovery lifecycle.
+
+A remote HTTP session must carry a stable authenticated principal for BCF
+publication or recovery. A session id alone is insufficient: replacing it
+would lose the recovery boundary. Such a session can still run ordinary model
+flows, but cannot write BCF publications or inspect the local CLI journal.
+
+When the caller explicitly supplies `confirm_full_read_access: true` and the
+latest complete successful check proves the server collection is empty,
+`bcf_publication_confirm_absent` with `entry_id` records a separate explicit
+absence decision. It requires mutate permission, sends no write and permits
+only a later deliberate Flow run to send the same intent again. An absent check
+alone never releases a create; a newer unavailable or denied check invalidates
+the earlier absence evidence. Live send ownership also blocks this decision.
+
+Native BCF listing is bounded: `bcf_publications_list` accepts `limit` (1–1000)
+and the preceding `cursor`, and returns `{entries,nextCursor?}`. Follow every
+`nextCursor`, including empty progress pages; the pages are not a snapshot
+across concurrent inserts. Recovery by known `entry_id` remains available when
+new-create capacity is exhausted; existing immutable receipts are retained.
+
+If a sending process cannot be identified on this machine, `bcf_publication_check`
+requires an operator to establish that the old process has stopped and explicitly
+pass `confirm_owner_stopped: true`. This assertion is persisted, never overrides
+an observed live sender, and does not send or retry a create. `token_env` requires
+its exact `secret.read:<NAME>` grant and may contain a short nonempty bearer.
+
+An empty read without this explicit full-scope confirmation is `unavailable`,
+even with a bearer token. Tokens never imply full visibility. Filtered, partial
+or incomparable reads cannot safely release a write; old persisted absence
+records without the confirmation marker remain readable but cannot authorize
+release. Only a caller who knows the original write’s complete access scope
+should make this assertion; live vendor authorization is not qualified.

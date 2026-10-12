@@ -317,3 +317,53 @@ provenance and exact model ownership; scope revocation suppresses the whole
 multi-model envelope. No editor, artifact or decision is created. Unsupported
 sources, incomplete overlays and bounded output stay explicit. See
 [the captured native Review contract](../../docs/guide/mcp.md#captured-native-review-reads).
+
+Native Flow `bcf.createTopic` and `bcf.addComment` writes use a durable,
+credential-free publication journal. Local MCP and CLI share
+`IFCLITE_BCF_OUTBOX_DIR` (default `~/.ifc-lite/bcf-outbox`); authenticated MCP
+principals get stable, separate hashed namespaces across sessions. Keep the
+journal when restarting: a committed write whose response was lost remains
+unresolved and blocks an identical send.
+
+Use `bcf_publications_list` to inspect intents and receipts. With mutate
+permission, `bcf_publication_check` reads the original target and stores actual
+matching candidates; supply current `capabilities`, including the target's
+`network.fetch:<host>` and exact `secret.read:<NAME>` when using `token_env`.
+A separate `bcf_publication_reconcile` binds `entry_id` to one checked
+`candidate_guid` without sending a write. Neither command retries an uncertain
+create, and reconciliation refuses arbitrary GUIDs or live send ownership.
+Checks and reconciliation are unavailable to read-only callers. These native
+recovery tools do not replace the viewer's BCF content library or qualify an
+external vendor's OAuth/API behavior.
+Remote sessions without a stable authenticated principal refuse BCF publication
+and recovery; ordinary model flows remain available. A transient session id
+never replaces the durable principal boundary.
+Checks keep trim-equivalent free text as manual candidates. Rewritten or
+omitted fields leave unmatched objects unavailable; they cannot prove absence.
+After a complete successful check finds an empty server collection and the caller
+explicitly supplies `confirm_full_read_access: true` for the original write’s
+full access scope,
+`bcf_publication_confirm_absent` explicitly releases that `entry_id` for a
+separately reviewed later run. This mutate-only decision never sends a write;
+a newer failed check or live sender blocks it. Checking alone never retries.
+Successful BCF outputs redact the actual resolved bearer, including literal
+and Player tokens, after the original durable receipt is saved.
+
+Native BCF listing is bounded: `bcf_publications_list` accepts `limit` (1–1000)
+and the preceding `cursor`, and returns `{entries,nextCursor?}`. Follow every
+`nextCursor`, including empty progress pages; the pages are not a snapshot
+across concurrent inserts. Recovery by known `entry_id` remains available when
+new-create capacity is exhausted; existing immutable receipts are retained.
+
+If a sending process cannot be identified on this machine, `bcf_publication_check`
+requires an operator to establish that the old process has stopped and explicitly
+pass `confirm_owner_stopped: true`. This assertion is persisted, never overrides
+an observed live sender, and does not send or retry a create. `token_env` requires
+its exact `secret.read:<NAME>` grant and may contain a short nonempty bearer.
+
+An empty read without this explicit full-scope confirmation is `unavailable`,
+even with a bearer token. Tokens never imply full visibility. Filtered, partial
+or incomparable reads cannot safely release a write; old persisted absence
+records without the confirmation marker remain readable but cannot authorize
+release. Only a caller who knows the original write’s complete access scope
+should make this assertion; live vendor authorization is not qualified.

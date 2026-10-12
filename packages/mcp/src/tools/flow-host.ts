@@ -13,6 +13,7 @@
 
 import type { Capability } from '@ifc-lite/extensions';
 import type { FlowHost } from '@ifc-lite/flow-nodes';
+import { createNativeBcfWriteGateway } from '@ifc-lite/flow-nodes/bcf-publication-node';
 import type { LoadedModel, ModelRegistry, ToolContext } from '../context.js';
 import { deriveModelId, loadIfcModelFromBytes } from '../loader.js';
 import { buildIdsAccessor } from './ids-accessor.js';
@@ -26,10 +27,11 @@ function freeModelId(registry: ModelRegistry, base: string): string {
   return id;
 }
 
-export function createMcpFlowHost(initial: LoadedModel, registry: ModelRegistry, networkGrants: readonly Capability[], services: Pick<FlowHost, 'ai' | 'grants'> = {}, context?: ToolContext): FlowHost {
+export function createMcpFlowHost(initial: LoadedModel, registry: ModelRegistry, networkGrants: readonly Capability[], services: Pick<FlowHost, 'ai' | 'grants'> = {}, context?: ToolContext, publication: Parameters<typeof createNativeBcfWriteGateway>[0] = {}): FlowHost {
   let active = initial;
   return {
     ...services,
+    bcfWrites: createNativeBcfWriteGateway(publication),
     ...(context ? {
       review: { snapshot: request => readNativeReview(reviewCaptures(context), reviewAccess(context, 'read').models, request,
         reviewAccess(context, 'read').allowed) } satisfies NonNullable<FlowHost['review']>,

@@ -79,6 +79,7 @@ import { flowAiConfig } from '@ifc-lite/ai/chat-completions';
 import { aiNodes } from '@ifc-lite/flow-nodes/ai';
 import { reviewCaptures } from './review-captures.js';
 import { createMcpFlowHost } from './flow-host.js';
+import { mcpPublicationNamespace } from './bcf-publication.js';
 import type { Tool } from './types.js';
 import { okResult, paginate, resolveModel } from './util.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
@@ -301,7 +302,9 @@ async function executeFlow(input: Record<string, unknown>, ctx: ToolContext, res
     const review = await prepareMcpFlowReview(input, ctx, model, runDoc, registry, rawInputs, resuming, readOnly);
     // `networkGrants` is the graph's own declared capabilities (module doc);
     // `model.openFromSource` can switch the host to a model it opened.
-    const host = createMcpFlowHost(model, ctx.registry, capsResult.value, { ai: review.ai, grants: capsResult.value }, ctx);
+    const host = createMcpFlowHost(model, ctx.registry, capsResult.value, { ai: review.ai, grants: capsResult.value }, ctx,
+      { namespace: mcpPublicationNamespace(ctx, doc.nodes.some(node => node.type === 'bcf.createTopic' || node.type === 'bcf.addComment')),
+        secrets: [...secretValues.values()] });
     const resume = await review.claim();
     let result: RunResult;
     try { result = await runFlow(runDoc, {

@@ -1,0 +1,37 @@
+{
+  "base": "90c40f410bc0fd5203a55892c013827d796624f9",
+  "before": 0,
+  "inverse": 1,
+  "restored": 0,
+  "owners": [
+    {
+      "path": "apps/viewer/src/components/viewer/Viewport.tsx",
+      "sha256": "2fff36a73eee9ba563f1c58d461b83bf20eca922d9b8d2ffe42d5684000dc8bd",
+      "restored": true
+    },
+    {
+      "path": "apps/viewer/src/components/viewer/useGeometryStreaming.ts",
+      "sha256": "e658fdc9c545da9aaf62b7702f39e96f8f460c51b426912af6984061982fbee0",
+      "restored": true
+    },
+    {
+      "path": "apps/viewer/src/components/viewer/geometry-streaming-params.ts",
+      "sha256": "76dafa6efaea304a6f115e08e44b3f436b198cbcce8286b246c4142cfd6b4d33",
+      "restored": true
+    },
+    {
+      "path": "apps/viewer/src/components/viewer/useMeshEditDrain.ts",
+      "sha256": "01cadbd592964c5700601c3573aef52a36608a266fcda3b77acdb5cf036ec037",
+      "restored": true
+    },
+    {
+      "path": "apps/viewer/src/components/viewer/useColorOverlaySync.ts",
+      "sha256": "d03d76e36fbfb21924fb30b3bd24bbde1175e20e5e1fef68e53f610abf4f4d7b",
+      "restored": true
+    }
+  ],
+  "wasmSha256": "3912d1046cf6507e7ef6f85a0492a0e54fbb31ae711b85c6e46b6313ffd63312",
+  "productionIndexSha256": "0668b4a6ea8750acdcfb1abee4c3451aa3ace3a2bfdc73c4806395e47a538d12",
+  "qualification": "Native current-source forced loss, bounded hold, canonical FZK file input; identity matched exact-base healthy control",
+  "screenshotSha256": "23808e52218a9f186a500d9d97aef8847d69fd115b412f1f3fc5cf6e66f7133f"
+}

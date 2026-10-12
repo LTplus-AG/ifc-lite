@@ -1,0 +1,35 @@
+{
+  "baseCommit": "90c40f410bc0fd5203a55892c013827d796624f9",
+  "candidateOwners": [
+    {
+      "path": "apps/viewer/src/components/viewer/Viewport.tsx",
+      "sha256": "2fff36a73eee9ba563f1c58d461b83bf20eca922d9b8d2ffe42d5684000dc8bd"
+    },
+    {
+      "path": "apps/viewer/src/components/viewer/useGeometryStreaming.ts",
+      "sha256": "35227202e74eb2a6405cf17b8217bcf04db71a6004b15e3cac61671ee554f2a5"
+    },
+    {
+      "path": "apps/viewer/src/components/viewer/geometry-streaming-params.ts",
+      "sha256": "76dafa6efaea304a6f115e08e44b3f436b198cbcce8286b246c4142cfd6b4d33"
+    }
+  ],
+  "wasmSha256": "3912d1046cf6507e7ef6f85a0492a0e54fbb31ae711b85c6e46b6313ffd63312",
+  "baseBuild": "frozen root Turbo viewer production build at base commit",
+  "candidateBuild": "root Turbo viewer production build using candidateOwners",
+  "qualification": "controlled native GPU loss through T3 preview; no timing acceptance",
+  "screenshots": [
+    {
+      "path": "healthy.png",
+      "sha256": "988571474d845ff7cc2bc3d7ab8c95d1eb514fd245f7890a7c9010487bd52acb"
+    },
+    {
+      "path": "base-lost.png",
+      "sha256": "4602a6ea1600c3f778785ed11eadf2401be1c0c2d6866f59718a8f916713ac1a"
+    },
+    {
+      "path": "candidate-recovered.png",
+      "sha256": "ef2384ccb68c79ca1778e815a2e101f5890bdb71973b04a2823b0282e4c0ab7a"
+    }
+  ]
+}

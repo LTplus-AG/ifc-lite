@@ -111,8 +111,13 @@ export class WorldLineBuffer {
       if (usableFloats === 0) continue;
       const data = usableFloats === source.length ? source : source.subarray(0, usableFloats);
       const buffer = device.createBuffer({ size: data.byteLength, usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST });
-      device.queue.writeBuffer(buffer, 0, data);
-      this.partitions.push({ buffer, count: usableFloats / 3, anchor });
+      try {
+        device.queue.writeBuffer(buffer, 0, data);
+        this.partitions.push({ buffer, count: usableFloats / 3, anchor });
+      } catch (error) {
+        buffer.destroy();
+        throw error;
+      }
     }
   }
 

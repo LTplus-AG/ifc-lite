@@ -68,16 +68,16 @@ import {
   useSymbolicAnnotationsRichData,
   type SectionClipForGrid,
 } from '../../hooks/useSymbolicAnnotations.js';
-import { symbolicLineVertexData } from '../../hooks/symbolic-line-channels.js';
 import { useAlignmentLines3D } from '../../hooks/useAlignmentLines3D.js';
 import { useDxfUnderlays3DLines } from '../../hooks/useDxfUnderlay.js';
 import { useLandXmlRendererOverlay } from '../../hooks/useLandXmlOverlayLines.js';
 import { useCentrelineRendererOverlay } from '../../hooks/useCentrelineRendererOverlay.js';
 import { selectPickedGlobalId, toggleGlobalIdInSelection } from './viewport-selection.js';
 import { uploadDxfLines3DGuarded } from './dxf-lines-3d-upload.js';
+import { useViewportSymbolicUploads } from './useViewportSymbolicUploads.js';
 import { subscribeViewportHealth } from './device-loss-report.js';
 import { useAuthoringOverlay } from './useAuthoringOverlay.js';
-import { anchorWorldLineVertices, rendererLineVertexData } from '@/lib/renderer/line-overlay-rte';
+import { anchorWorldLineVertices } from '@/lib/renderer/line-overlay-rte';
 import { useTranslation } from '@/i18n';
 import { createCentreSurfaceZoom } from './zoomSurface.js';
 
@@ -1276,38 +1276,15 @@ export function Viewport({
     gridSectionClip,
     fallbackY: annotationFallbackY,
   });
-  useEffect(() => {
-    const renderer = rendererRef.current;
-    if (!renderer || !isInitialized) return;
-    const v = symbolicLineChannels.annotation;
-    const vertices = symbolicLineVertexData(v);
-    renderer.setLineOverlay('annotation', vertices.length === 0 ? null : v);
-    annotationLineVertexCountRef.current = vertices.length / 3;
-  }, [symbolicLineChannels.annotation, isInitialized]);
-  // IfcAlignment centerlines use a separate buffer; see useAlignmentLines3D.
+  // Each independent symbolic upload is contained and replayed on device recovery.
   const alignmentVertices3D = useAlignmentLines3D();
-  useEffect(() => {
-    const renderer = rendererRef.current;
-    if (!renderer || !isInitialized) return;
-    const empty = rendererLineVertexData(alignmentVertices3D).length === 0;
-    renderer.setLineOverlay('alignment', empty ? null : alignmentVertices3D);
-  }, [alignmentVertices3D, isInitialized]);
-
-  // Structural-grid (IfcGridAxis) lines draw ONLY from `useSymbolicAnnotations`
-  // (issue #3368: a second independent extractor, `useGridLines3D`, used to
-  // double-draw every axis, leave #862's section-clipping inert since it was
-  // unclipped, and go stale in elevation under a nonzero `originShift` since
-  // it skipped the TS-side rebase — see `useSymbolicAnnotations.ts`'s
-  // `effectiveGridEnabled` branch, which already clips and rebases). They
-  // upload to their OWN 'grid' channel rather than the 'annotation' buffer
-  // (issue #3359): `CHANNEL_EXPANDS_MODEL_BOUNDS.annotation` is `true` but
-  // `.grid` is `false` (grid axes extend past the model envelope, issue #967).
-  useEffect(() => {
-    const renderer = rendererRef.current;
-    if (!renderer || !isInitialized) return;
-    const v = symbolicLineChannels.grid;
-    renderer.setLineOverlay('grid', !ifcGridVisible || symbolicLineVertexData(v).length === 0 ? null : v);
-  }, [symbolicLineChannels.grid, ifcGridVisible, isInitialized]);
+  useViewportSymbolicUploads({
+    rendererRef, isInitialized, gpuRecoveryEpoch,
+    annotation: symbolicLineChannels.annotation, alignment: alignmentVertices3D,
+    grid: symbolicLineChannels.grid, gridVisible: ifcGridVisible,
+    annotationCountRef: annotationLineVertexCountRef,
+    fills: annotationFills3D, texts: annotationTexts3D,
+  });
 
   // DXF reference-layer line paths in the 3D viewport (issue #2043,
   // follow-up to #1782/#1929's 2D-only DXF underlay). Gated by each
@@ -1331,26 +1308,6 @@ export function Viewport({
 
   useLandXmlRendererOverlay(rendererRef, isInitialized);
   useCentrelineRendererOverlay(rendererRef, isInitialized, gpuRecoveryEpoch);
-
-  // Upload IfcAnnotation text + fill data for the WebGPU symbolic overlay
-  // pipelines. Map the hook's per-annotation records into the SymbolicFillInput
-  // / SymbolicTextInput shape the renderer expects. Empty arrays clear cleanly.
-  useEffect(() => {
-    const renderer = rendererRef.current;
-    if (!renderer || !isInitialized) return;
-    // Passed straight through: AnnotationFill3D is structurally assignable to
-    // SymbolicFillInput, and the renderer copies field by field, so a mapper
-    // here would only be a hand-written field list to forget `definesExtent`
-    // from. Required on the record, so the compiler catches an omission at the
-    // push site instead.
-    renderer.uploadAnnotationFills3D(annotationFills3D);
-  }, [annotationFills3D, isInitialized]);
-
-  useEffect(() => {
-    const renderer = rendererRef.current;
-    if (!renderer || !isInitialized) return;
-    renderer.uploadAnnotationTexts3D(annotationTexts3D);
-  }, [annotationTexts3D, isInitialized]);
 
   // ===== Streaming progress =====
   const isStreaming = useViewerStore((state) => state.geometryStreamingActive);
@@ -1515,7 +1472,7 @@ export function Viewport({
     rendererRef,
     isInitialized,
     geometry,
-    geometryVersion, geometryReplacementVersion, geometryContentVersion,
+    geometryVersion, geometryReplacementVersion, geometryContentVersion, gpuRecoveryEpoch,
     appearanceSourceGeometry,
     coordinateInfo,
     isStreaming,

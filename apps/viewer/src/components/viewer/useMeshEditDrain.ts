@@ -39,6 +39,7 @@ import { geometryMeshKey } from './geometry-mesh-key';
 export interface MeshEditDrainParams {
   rendererRef: MutableRefObject<Renderer | null>;
   isInitialized: boolean;
+  gpuRecoveryEpoch?: number;
   isStreaming: boolean;
   geometry: MeshData[] | null;
   pendingMeshRemovals: Set<number> | null;
@@ -54,7 +55,7 @@ export interface MeshEditDrainParams {
 
 export function useMeshEditDrain(params: MeshEditDrainParams): void {
   const {
-    rendererRef, isInitialized, isStreaming, geometry,
+    rendererRef, isInitialized, gpuRecoveryEpoch = 0, isStreaming, geometry,
     pendingMeshRemovals, clearPendingMeshRemovals, pruneGeometryMeshes,
     lastGeometryLengthRef, lastGeometryRef, processedMeshIdsRef, geometryReplacementVersion, lastReplacementVersionRef,
   } = params;
@@ -101,7 +102,7 @@ export function useMeshEditDrain(params: MeshEditDrainParams): void {
       renderer.requestRender();
     }
     clearPendingMeshRemovals();
-  }, [pendingMeshRemovals, isInitialized, clearPendingMeshRemovals, pruneGeometryMeshes]);
+  }, [pendingMeshRemovals, isInitialized, gpuRecoveryEpoch, clearPendingMeshRemovals, pruneGeometryMeshes]);
 
   // ─── Re-meshed elements (replaceEntityMeshes) ─────────────────────────
   useEffect(() => {
@@ -151,7 +152,7 @@ export function useMeshEditDrain(params: MeshEditDrainParams): void {
     renderer.clearCaches();
     renderer.requestRender();
     clearPendingMeshEdits();
-  }, [pendingMeshEdits, geometry, geometryReplacementVersion, isInitialized, isStreaming, clearPendingMeshEdits]);
+  }, [pendingMeshEdits, geometry, geometryReplacementVersion, isInitialized, gpuRecoveryEpoch, isStreaming, clearPendingMeshEdits]);
 
   // Declared AFTER the edit drain, so that drain still reads the tick of the
   // previous committed render, the one the main effect last consumed.

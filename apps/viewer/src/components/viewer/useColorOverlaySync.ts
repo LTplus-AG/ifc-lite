@@ -86,6 +86,7 @@ function isMeshed(scene: SceneContents, expressId: number): boolean {
 export interface UseColorOverlaySyncParams {
   rendererRef: MutableRefObject<Renderer | null>;
   isInitialized: boolean;
+  gpuRecoveryEpoch?: number;
   pendingColorUpdates: ColorMap | null;
   clearPendingColorUpdates: () => void;
   /**
@@ -98,6 +99,7 @@ export interface UseColorOverlaySyncParams {
 export function useColorOverlaySync({
   rendererRef,
   isInitialized,
+  gpuRecoveryEpoch = 0,
   pendingColorUpdates,
   clearPendingColorUpdates,
   geometryVersion,
@@ -138,7 +140,7 @@ export function useColorOverlaySync({
     }
     // rendererRef is a ref; re-running on its identity would be meaningless.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingColorUpdates, isInitialized, clearPendingColorUpdates, recordAwaitingMesh]);
+  }, [pendingColorUpdates, isInitialized, gpuRecoveryEpoch, clearPendingColorUpdates, recordAwaitingMesh]);
 
   // ─── Catch up meshes that streamed in after the flush ────────────────
   const settledGeometryVersion = useDebouncedValue(geometryVersion, REPAINT_DEBOUNCE_MS);
@@ -178,5 +180,5 @@ export function useColorOverlaySync({
     return () => clearTimeout(timer);
     // rendererRef is a ref; re-running on its identity would be meaningless.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settledGeometryVersion, isInitialized, recordAwaitingMesh]);
+  }, [settledGeometryVersion, isInitialized, gpuRecoveryEpoch, recordAwaitingMesh]);
 }

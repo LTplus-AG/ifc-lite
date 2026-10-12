@@ -91,6 +91,26 @@ different workload and are refused by timing/baseline consumers. Lesson:
 removing the clock budget does not make arbitrary fragment grouping or mutable
 GPU writes structural. This is count qualification, not a throughput win.
 
+The recovery replay qualification (#6993, folded #7164) found a correctness
+hole after device replacement: geometry arriving while the device was absent
+was never uploaded if the source stopped changing. The streaming hook now
+observes the existing recovery epoch and retains a missed stream completion.
+The same publication retries queued moves, rotations, colours, removals and
+remeshed slots across the extracted renderer drains.
+A subsequent normal entity-move allocation refusal exposed a sibling-effect
+hole: rebatching was contained, but the annotation line upload still escaped
+React and unmounted the viewport. Independent symbolic line/fill/text effects
+now use the same upload guard and recovery epoch. Resource owners release
+unregistered allocations before propagating failure. This is failure
+containment and resource ownership, with no throughput claim.
+The [native GPU receipt](evidence/recovery-replay-6993/README.md) compares the
+exact base, healthy control and candidate through the canonical file loader.
+The candidate restores the healthy scene's geometry and appearance identity;
+the base remains empty after the same controlled loss. Lesson: replacing a
+device does not wake source-driven effects by itself. Forced-loss samples
+remain contaminated for performance measurement, and this does not explain
+the original unforced SwiftShader loss.
+
 Under `?perfTrace=1` and in every benchmark run, each load's span tree also
 carries counters (`LoadTraceSnapshot.counters`): full source copies, worker
 messages and their clone/transfer/shared bytes per direction, typed-array

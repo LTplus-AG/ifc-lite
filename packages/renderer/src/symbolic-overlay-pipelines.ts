@@ -14,6 +14,7 @@
  * the result is ear-clipped.
  */
 
+import { uploadFillPartition } from './symbolic-fill-upload.js';
 import { haloGlyphQuad, SymbolicTextAtlas } from './symbolic-text-atlas.js';
 import {
   SYMBOLIC_FILL_WGSL,
@@ -240,19 +241,9 @@ export class SymbolicFillPipeline {
   private addPartition(stream: number[], origin?: [number, number, number]): void {
     if (stream.length === 0 || !this.bindGroupLayout) return;
     const data = new Float32Array(stream);
-    const vertexBuffer = this.device.createBuffer({ label: 'symbolic-fill-vbuf', size: data.byteLength, usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST });
-    this.device.queue.writeBuffer(vertexBuffer, 0, data);
-    const uniformBuffer = this.device.createBuffer({
-      label: 'symbolic-fill-partition-camera', size: 160,
-      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-    });
-    const bindGroup = this.device.createBindGroup({
-      label: 'symbolic-fill-partition-bg', layout: this.bindGroupLayout,
-      entries: [{ binding: 0, resource: { buffer: uniformBuffer } }],
-    });
-    this.partitions.push({
-      vertexBuffer, vertexCount: data.length / (FILL_VERTEX_STRIDE_BYTES / 4), origin,
-      uniformBuffer, bindGroup,
+    uploadFillPartition(this.device, this.bindGroupLayout, data, (vertexBuffer, uniformBuffer, bindGroup) => {
+      this.partitions.push({ vertexBuffer, uniformBuffer, bindGroup,
+        vertexCount: data.length / (FILL_VERTEX_STRIDE_BYTES / 4), origin });
     });
   }
 

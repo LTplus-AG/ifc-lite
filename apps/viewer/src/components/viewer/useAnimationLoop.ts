@@ -1,6 +1,8 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import { offerErrorReport } from '@/lib/error-reports/context';
 import { flushPlacementGeometry } from '@/lib/model-placement/bounds-revision';
 /**
  * THE render loop for the 3D viewport.
@@ -242,6 +244,7 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
         } catch (err) {
           if (!renderErrorLogged) {
             renderErrorLogged = true;
+            offerErrorReport({ errorCode: 'renderer_frame_failed' });
             // The dirty flag was consumed on the way in, so this failed frame
             // spent it. Ask for one more, or an idle viewer stays on the stale
             // frame until the user happens to interact. Deliberately inside the

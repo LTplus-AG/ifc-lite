@@ -312,6 +312,9 @@ importers:
       '@ifc-lite/renderer':
         specifier: workspace:^
         version: link:../../packages/renderer
+      '@ifc-lite/report-contract':
+        specifier: workspace:^
+        version: link:../../packages/report-contract
       '@ifc-lite/rules':
         specifier: workspace:^
         version: link:../../packages/rules

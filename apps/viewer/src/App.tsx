@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { ErrorReportHost } from './components/error-report/ErrorReportHost';
 /**
  * Main application component.
  *
@@ -119,6 +120,8 @@ export function App({ sourceProviders }: AppProps = {}) {
   }
 
   return (
+    <>
+    {import.meta.env.VITE_MODEL_REPORTS_ENABLED === 'true' && <ErrorReportHost />}
     <BimProvider>
       <ExtensionHostProvider>
         <SourceHostProvider additionalProviders={sourceProviders}>
@@ -132,6 +135,7 @@ export function App({ sourceProviders }: AppProps = {}) {
         </SourceHostProvider>
       </ExtensionHostProvider>
     </BimProvider>
+    </>
   );
 }
 

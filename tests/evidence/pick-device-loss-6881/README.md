@@ -34,7 +34,13 @@ Bounded root `pnpm test --filter=@ifc-lite/renderer --only --concurrency=1` pass
 `tsx --test src/renderer-render-paths.test.ts` and restored byte-for-byte afterward.
 The two new tests cover point and rectangle readbacks plus exactly-once cleanup;
 existing tests preserve propagation of live-device OperationError. Changed-file
-oxlint and module-size checks passed. Full root typecheck and CI remain pending.
+oxlint and module-size checks passed. Restoring only the pre-fix production files
+causes exactly the two new regressions to fail (100 pass / 2 fail); all source and
+script bytes were restored afterward. Literal full root `pnpm typecheck` passed at
+`185a3abb1135a3a178153a25c6c754ae4bf94a1f`, including 4,052 test files across
+66 packages. Temporary Turbo concurrency 1 was restored byte-for-byte.
+`validation.json` records the source identity, outcomes and log hashes. CI remains
+pending; this evidence update changes no production source.
 
 Performance verdict: no speedup claimed or measured. This lifecycle-only follow-up
 adds one loss observer per picker and boolean guards, with unchanged shaders, GPU

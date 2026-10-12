@@ -1,0 +1,113 @@
+{
+  "baseline": {
+    "bounds": {
+      "max": {
+        "x": 15,
+        "y": 106.31769156455994,
+        "z": 3
+      },
+      "min": {
+        "x": -3,
+        "y": 99,
+        "z": -13
+      }
+    },
+    "model": "AC20-FZK-Haus.ifc",
+    "pick": {
+      "expressId": 59753,
+      "geometryItemId": 59737,
+      "modelIndex": 0,
+      "worldXYZ": {
+        "x": 8.18451626035213,
+        "y": 104.47927570035954,
+        "z": -1.8154837396478705
+      }
+    },
+    "view": {
+      "fov": 0.7853981633974483,
+      "position": {
+        "x": 27.6,
+        "y": 120.6588458,
+        "z": 17.6
+      },
+      "projectionMode": "perspective",
+      "target": {
+        "x": 6,
+        "y": 102.6588458,
+        "z": -4
+      },
+      "up": {
+        "x": 0,
+        "y": 1,
+        "z": 0
+      }
+    }
+  },
+  "invalid": {
+    "available": false,
+    "point": null,
+    "rectangle": []
+  },
+  "invalidClick": {
+    "errors": [],
+    "selection": null
+  },
+  "recovered": {
+    "available": true,
+    "pick": {
+      "expressId": 59753,
+      "geometryItemId": 59737,
+      "modelIndex": 0,
+      "worldXYZ": {
+        "x": 8.18451626035213,
+        "y": 104.47927570035954,
+        "z": -1.8154837396478705
+      }
+    },
+    "stats": {
+      "adapter": {
+        "architecture": "blackwell",
+        "vendor": "nvidia"
+      },
+      "cpuBytes": 1065816,
+      "frame": {
+        "batchesAtLod1": 0,
+        "batchesContributionCulled": 0,
+        "batchesDrawn": 17,
+        "batchesFrustumCulled": 0,
+        "batchesNotResident": 0,
+        "drawCalls": 52,
+        "instancedContributionCulled": 0,
+        "instancedDrawn": 0,
+        "instancedFrustumCulled": 0,
+        "timestamp": 98605.99500000477
+      },
+      "gpu": {
+        "batches": 669480,
+        "instanced": 0,
+        "meshes": 1298368,
+        "textured": 0,
+        "total": 1967848
+      },
+      "gpuTiming": {
+        "epoch": 0,
+        "errors": 0,
+        "frames": [],
+        "mode": "disabled",
+        "overwritten": 0,
+        "sampled": 0,
+        "skipped": 0
+      },
+      "pointCloudPoints": 0
+    }
+  },
+  "scope": "Native GPU functional check with public FZK fixture and deliberately invalid camera pose; not a reproduction of the original 616 MB model trigger.",
+  "fixture": {
+    "cataloguePath": "tests/models/ara3d/AC20-FZK-Haus.ifc",
+    "sha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+    "placement": "Existing 100 m vertical model placement retained; camera framed on the resulting scene bounds."
+  },
+  "baseCommit": "425230a0351681863bbea800c27518850bbc3294",
+  "recordedAt": "2026-10-12",
+  "negativeControl": "Before the guard, four regression cases fail: GPU point admission, GPU rectangle admission, CPU rectangle admission, and stale CPU hits after camera invalidation."
+}

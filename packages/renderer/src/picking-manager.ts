@@ -15,7 +15,7 @@ import type { MeshData } from '@ifc-lite/geometry';
 import type { PickOptions, PickResult, PickClipState } from './types.js';
 import type { PointPickNode } from './point-picker.js';
 import type { GpuUploadOutcome } from './gpu-upload-guard.js';
-import { capturePointRteSnapshot, isPointRteSnapshotCurrent } from './pick-rte-snapshot.js';
+import { capturePointRteSnapshot, isPointRteSnapshotCurrent, isPointRteFrameAvailable } from './pick-rte-snapshot.js';
 import { computeDrawingBufferSize } from './renderer-viewport.js';
 import { pickPieceKey, planPickMeshHydration } from './pick-mesh-budget.js';
 
@@ -75,7 +75,8 @@ export class PickingManager {
     /** A readback belongs to its picker installation and CSS mapping (#6881/#6882). */
     private isPickRequestCurrent(viewport: PickViewport, pickerEpoch: number): boolean {
         const current = this.pickViewport();
-        return this.pickerEpoch === pickerEpoch && current !== null
+        return isPointRteFrameAvailable(this.camera)
+            && this.pickerEpoch === pickerEpoch && current !== null
             && current.width === viewport.width && current.height === viewport.height
             && current.scaleX === viewport.scaleX && current.scaleY === viewport.scaleY;
     }
@@ -160,7 +161,7 @@ export class PickingManager {
      * These are scaled internally to match the actual canvas pixel dimensions.
      */
     async pick(x: number, y: number, options?: PickOptions, clip?: PickClipState | null): Promise<PickResult | null> {
-        if (!this.picker) {
+        if (!this.picker || !isPointRteFrameAvailable(this.camera)) {
             return null;
         }
 
@@ -278,7 +279,7 @@ export class PickingManager {
         options?: PickOptions,
         clip?: PickClipState | null,
     ): Promise<Set<number>> {
-        if (!this.picker) return new Set();
+        if (!this.picker || !isPointRteFrameAvailable(this.camera)) return new Set();
         const picker = this.picker, pickerEpoch = this.pickerEpoch;
         const viewport = this.pickViewport();
         if (!viewport) return new Set();

@@ -15,16 +15,8 @@ import {
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { openDatabase, migrate } from "../src/database.js";
 import type { Config } from "../src/config.js";
-import { verifyNext } from "../src/verification.js";
-import { ModelStorage } from "../src/storage.js";
+import { loadFeature } from "./feature-loader.js";
 import { createReport, ownedReport, submitReport } from "../src/reports.js";
-import {
-  startUpload,
-  authorizePart,
-  completeUpload,
-  uploadRow,
-} from "../src/uploads.js";
-import { removeUpload, deleteReport, sweep } from "../src/maintenance.js";
 const enabled = Boolean(
   process.env.REPORT_TEST_DATABASE_URL && process.env.REPORT_TEST_S3_ENDPOINT,
 );
@@ -66,7 +58,34 @@ describe.skipIf(!enabled)(
       maxStorageBytes: 100 * 1024 ** 3,
     };
     const db = openDatabase(config.databaseUrl);
-    const storage = new ModelStorage(config);
+    let storage: InstanceType<typeof import("../src/storage.js").ModelStorage>;
+    let ModelStorage: typeof import("../src/storage.js").ModelStorage;
+    let verifyNext: typeof import("../src/verification.js").verifyNext;
+    let startUpload: typeof import("../src/uploads.js").startUpload;
+    let authorizePart: typeof import("../src/uploads.js").authorizePart;
+    let completeUpload: typeof import("../src/uploads.js").completeUpload;
+    let uploadRow: typeof import("../src/uploads.js").uploadRow;
+    let removeUpload: typeof import("../src/maintenance.js").removeUpload;
+    let deleteReport: typeof import("../src/maintenance.js").deleteReport;
+    let sweep: typeof import("../src/maintenance.js").sweep;
+    let available = false;
+    function storageCase(
+      name: string,
+      run: () => Promise<void>,
+      timeout?: number,
+    ) {
+      it(
+        name,
+        async () => {
+          expect(
+            available,
+            "The verified private-upload feature must be available",
+          ).toBe(true);
+          await run();
+        },
+        timeout,
+      );
+    }
     const owner = {
       id: `integration-${randomUUID()}`,
       csrf: "csrf",
@@ -82,14 +101,33 @@ describe.skipIf(!enabled)(
       },
     });
     beforeAll(async () => {
+      const [verification, models, uploads, maintenance] = await Promise.all([
+        loadFeature(
+          "../src/verification.js",
+          () => import("../src/verification.js"),
+        ),
+        loadFeature("../src/storage.js", () => import("../src/storage.js")),
+        loadFeature("../src/uploads.js", () => import("../src/uploads.js")),
+        loadFeature(
+          "../src/maintenance.js",
+          () => import("../src/maintenance.js"),
+        ),
+      ]);
+      if (!verification || !models || !uploads || !maintenance) return;
+      ({ ModelStorage } = models);
+      ({ verifyNext } = verification);
+      ({ startUpload, authorizePart, completeUpload, uploadRow } = uploads);
+      ({ removeUpload, deleteReport, sweep } = maintenance);
+      storage = new ModelStorage(config);
       await migrate(db);
       await client.send(new CreateBucketCommand({ Bucket: bucket }));
+      available = true;
     });
     afterAll(async () => {
       await db.end();
       client.destroy();
     });
-    it("persists multipart ownership, resumes exact parts, verifies and deletes real bytes", async () => {
+    storageCase("persists multipart ownership, resumes exact parts, verifies and deletes real bytes", async () => {
       const input = {
         clientRequestId: randomUUID(),
         title: "Real upload acceptance",
@@ -248,7 +286,7 @@ describe.skipIf(!enabled)(
         ),
       ).rejects.toThrow();
     }, 30000);
-    it("refuses standard NDA upload before exact template approval and enforces durable quota", async () => {
+    storageCase("refuses standard NDA upload before exact template approval and enforces durable quota", async () => {
       const input = {
         clientRequestId: randomUUID(),
         title: "NDA gate",
@@ -280,7 +318,7 @@ describe.skipIf(!enabled)(
       ).rejects.toThrow(/allowance/i);
     });
 
-    it("rejects actual object corruption and expired part capabilities, then deletes the completed object", async () => {
+    storageCase("rejects actual object corruption and expired part capabilities, then deletes the completed object", async () => {
       const report = await createReport(db, config, owner, {
         clientRequestId: randomUUID(),
         title: "Corruption acceptance",
@@ -356,7 +394,7 @@ describe.skipIf(!enabled)(
       await deleteReport(db, storage, report.id, owner.id);
       await expect(storage.head(row.object_key)).rejects.toThrow();
     }, 30000);
-    it("#7498 cancels a live multipart upload and retains retry identifiers until deletion succeeds", async () => {
+    storageCase("#7498 cancels a live multipart upload and retains retry identifiers until deletion succeeds", async () => {
       const report = await createReport(db, config, owner, {
         clientRequestId: randomUUID(),
         title: "Cancellation",
@@ -427,7 +465,7 @@ describe.skipIf(!enabled)(
       expect(cleaned.input.name).toBe("deleted");
       expect(cleaned.object_key).not.toBe(row.object_key);
     }, 30000);
-    it("#7498 retries transient GetObject failures with durable capped backoff and verifies the original bytes", async () => {
+    storageCase("#7498 retries transient GetObject failures with durable capped backoff and verifies the original bytes", async () => {
       const report = await createReport(db, config, owner, {
         clientRequestId: randomUUID(),
         title: "Retry read",
@@ -552,7 +590,7 @@ describe.skipIf(!enabled)(
         );
       }
     }, 30000);
-    it("does not revive an upload when deletion overlaps object-store initialization", async () => {
+    storageCase("does not revive an upload when deletion overlaps object-store initialization", async () => {
       const report = await createReport(db, config, owner, {
         clientRequestId: randomUUID(),
         title: "Initialization race",

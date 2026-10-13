@@ -15,7 +15,7 @@ import type { Config } from "../src/config.js";
 import { ModelStorage } from "../src/storage.js";
 import { GithubIssues } from "../src/github.js";
 import { createReport, submitReport, ownedReport, receipt } from "../src/reports.js";
-import { deleteReport } from "../src/maintenance.js";
+import { deleteReport, sweep } from "../src/maintenance.js";
 import { publishOne } from "../src/publication.js";
 const enabled = Boolean(process.env.REPORT_TEST_DATABASE_URL);
 if (process.env.REPORT_REQUIRE_INTEGRATION === "true" && !enabled)
@@ -211,6 +211,31 @@ describe.skipIf(!enabled)("#7495 publication deletion serialization", () => {
       await expect(intentFeature!.commitPublicationIntent(pool, id, 30)).rejects.toThrow("github_publication_intent_timeout");
       expect((await db.query("SELECT count(*)::int n FROM report_publication_intents WHERE report_id=$1", [id])).rows[0].n).toBe(0);
     } finally { held.release(); await pool.end(); }
+  });
+
+  it("#7495 retention preserves unresolved publication intents and expires only old completed or orphaned intents", async () => {
+    const create = (title: string) => createReport(db, config, owner, {
+      clientRequestId: randomUUID(), title, description: "Synthetic retention qualification",
+      diagnostics: { errorCode: "retention", appVersion: "test", buildSha: "test" }, visibility: "private",
+    });
+    const submitted = await create("Unresolved publication");
+    await submitReport(db, submitted.id, owner, false);
+    const published = await create("Completed publication");
+    await db.query("UPDATE model_reports SET status='published' WHERE id=$1", [published.id]);
+    const deleted = await create("Abandoned publication");
+    await deleteReport(db, storage, deleted.id, owner.id);
+    const orphan = randomUUID();
+    const recent = randomUUID();
+    const ids = [submitted.id, published.id, deleted.id, orphan, recent];
+    for (const id of ids) {
+      await db.query("INSERT INTO report_publication_intents(report_id,created_at) VALUES($1,now()-make_interval(days=>$2))", [id, id === recent ? 1 : 91]);
+    }
+    await sweep(db, storage);
+    const retained = await db.query<{ report_id: string }>(
+      "SELECT report_id FROM report_publication_intents WHERE report_id=ANY($1::uuid[]) ORDER BY report_id", [ids],
+    );
+    expect(retained.rows.map(row => row.report_id)).toEqual([submitted.id, recent].sort());
+    expect(receipt(await ownedReport(db, submitted.id, owner))).toMatchObject({ status: "submitted", publicationHold: "review_required" });
   });
 
 });

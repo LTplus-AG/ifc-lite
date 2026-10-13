@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ids xmlns="http://standards.buildingsmart.org/IDS" xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <info><title>Enumerations with 1 and 0</title></info>
+  <specifications>
+    <specification name="Flag in {true} xs:boolean (control)" ifcVersion="IFC2X3 IFC4 IFC4X3_ADD2">
+      <applicability minOccurs="0" maxOccurs="unbounded"><entity><name><simpleValue>IFCWALL</simpleValue></name></entity></applicability>
+      <requirements><property dataType="IFCBOOLEAN"><propertySet><simpleValue>Probe_Set</simpleValue></propertySet><baseName><simpleValue>Flag</simpleValue></baseName><value><xs:restriction base="xs:boolean"><xs:enumeration value="true"/></xs:restriction></value></property></requirements>
+    </specification>
+    <specification name="Flag in {1} xs:boolean" ifcVersion="IFC2X3 IFC4 IFC4X3_ADD2">
+      <applicability minOccurs="0" maxOccurs="unbounded"><entity><name><simpleValue>IFCWALL</simpleValue></name></entity></applicability>
+      <requirements><property dataType="IFCBOOLEAN"><propertySet><simpleValue>Probe_Set</simpleValue></propertySet><baseName><simpleValue>Flag</simpleValue></baseName><value><xs:restriction base="xs:boolean"><xs:enumeration value="1"/></xs:restriction></value></property></requirements>
+    </specification>
+    <specification name="Flag in {0} xs:boolean (must fail)" ifcVersion="IFC2X3 IFC4 IFC4X3_ADD2">
+      <applicability minOccurs="0" maxOccurs="unbounded"><entity><name><simpleValue>IFCWALL</simpleValue></name></entity></applicability>
+      <requirements><property dataType="IFCBOOLEAN"><propertySet><simpleValue>Probe_Set</simpleValue></propertySet><baseName><simpleValue>Flag</simpleValue></baseName><value><xs:restriction base="xs:boolean"><xs:enumeration value="0"/></xs:restriction></value></property></requirements>
+    </specification>
+    <specification name="Off in {0} xs:boolean" ifcVersion="IFC2X3 IFC4 IFC4X3_ADD2">
+      <applicability minOccurs="0" maxOccurs="unbounded"><entity><name><simpleValue>IFCWALL</simpleValue></name></entity></applicability>
+      <requirements><property dataType="IFCBOOLEAN"><propertySet><simpleValue>Probe_Set</simpleValue></propertySet><baseName><simpleValue>Off</simpleValue></baseName><value><xs:restriction base="xs:boolean"><xs:enumeration value="0"/></xs:restriction></value></property></requirements>
+    </specification>
+    <specification name="Flag in {1, 0} xs:boolean" ifcVersion="IFC2X3 IFC4 IFC4X3_ADD2">
+      <applicability minOccurs="0" maxOccurs="unbounded"><entity><name><simpleValue>IFCWALL</simpleValue></name></entity></applicability>
+      <requirements><property dataType="IFCBOOLEAN"><propertySet><simpleValue>Probe_Set</simpleValue></propertySet><baseName><simpleValue>Flag</simpleValue></baseName><value><xs:restriction base="xs:boolean"><xs:enumeration value="1"/><xs:enumeration value="0"/></xs:restriction></value></property></requirements>
+    </specification>
+    <specification name="Flag in {1} xs:boolean, no dataType" ifcVersion="IFC2X3 IFC4 IFC4X3_ADD2">
+      <applicability minOccurs="0" maxOccurs="unbounded"><entity><name><simpleValue>IFCWALL</simpleValue></name></entity></applicability>
+      <requirements><property><propertySet><simpleValue>Probe_Set</simpleValue></propertySet><baseName><simpleValue>Flag</simpleValue></baseName><value><xs:restriction base="xs:boolean"><xs:enumeration value="1"/></xs:restriction></value></property></requirements>
+    </specification>
+    <specification name="Flag in {1} xs:boolean, prohibited" ifcVersion="IFC2X3 IFC4 IFC4X3_ADD2">
+      <applicability minOccurs="0" maxOccurs="unbounded"><entity><name><simpleValue>IFCWALL</simpleValue></name></entity></applicability>
+      <requirements><property cardinality="prohibited"><propertySet><simpleValue>Probe_Set</simpleValue></propertySet><baseName><simpleValue>Flag</simpleValue></baseName><value><xs:restriction base="xs:boolean"><xs:enumeration value="1"/></xs:restriction></value></property></requirements>
+    </specification>
+    <specification name="Flag in {1} xs:string" ifcVersion="IFC2X3 IFC4 IFC4X3_ADD2">
+      <applicability minOccurs="0" maxOccurs="unbounded"><entity><name><simpleValue>IFCWALL</simpleValue></name></entity></applicability>
+      <requirements><property dataType="IFCBOOLEAN"><propertySet><simpleValue>Probe_Set</simpleValue></propertySet><baseName><simpleValue>Flag</simpleValue></baseName><value><xs:restriction base="xs:string"><xs:enumeration value="1"/></xs:restriction></value></property></requirements>
+    </specification>
+    <specification name="Flag in {true} xs:string (control)" ifcVersion="IFC2X3 IFC4 IFC4X3_ADD2">
+      <applicability minOccurs="0" maxOccurs="unbounded"><entity><name><simpleValue>IFCWALL</simpleValue></name></entity></applicability>
+      <requirements><property dataType="IFCBOOLEAN"><propertySet><simpleValue>Probe_Set</simpleValue></propertySet><baseName><simpleValue>Flag</simpleValue></baseName><value><xs:restriction base="xs:string"><xs:enumeration value="true"/></xs:restriction></value></property></requirements>
+    </specification>
+    <specification name="Flag in {1} xs:integer" ifcVersion="IFC2X3 IFC4 IFC4X3_ADD2">
+      <applicability minOccurs="0" maxOccurs="unbounded"><entity><name><simpleValue>IFCWALL</simpleValue></name></entity></applicability>
+      <requirements><property dataType="IFCBOOLEAN"><propertySet><simpleValue>Probe_Set</simpleValue></propertySet><baseName><simpleValue>Flag</simpleValue></baseName><value><xs:restriction base="xs:integer"><xs:enumeration value="1"/></xs:restriction></value></property></requirements>
+    </specification>
+    <specification name="Flag in {0, 1, 2} xs:integer" ifcVersion="IFC2X3 IFC4 IFC4X3_ADD2">
+      <applicability minOccurs="0" maxOccurs="unbounded"><entity><name><simpleValue>IFCWALL</simpleValue></name></entity></applicability>
+      <requirements><property dataType="IFCBOOLEAN"><propertySet><simpleValue>Probe_Set</simpleValue></propertySet><baseName><simpleValue>Flag</simpleValue></baseName><value><xs:restriction base="xs:integer"><xs:enumeration value="0"/><xs:enumeration value="1"/><xs:enumeration value="2"/></xs:restriction></value></property></requirements>
+    </specification>
+    <specification name="Off in {0} xs:integer" ifcVersion="IFC2X3 IFC4 IFC4X3_ADD2">
+      <applicability minOccurs="0" maxOccurs="unbounded"><entity><name><simpleValue>IFCWALL</simpleValue></name></entity></applicability>
+      <requirements><property dataType="IFCBOOLEAN"><propertySet><simpleValue>Probe_Set</simpleValue></propertySet><baseName><simpleValue>Off</simpleValue></baseName><value><xs:restriction base="xs:integer"><xs:enumeration value="0"/></xs:restriction></value></property></requirements>
+    </specification>
+    <specification name="Count (IFCINTEGER 1) in {1} xs:integer (control)" ifcVersion="IFC2X3 IFC4 IFC4X3_ADD2">
+      <applicability minOccurs="0" maxOccurs="unbounded"><entity><name><simpleValue>IFCWALL</simpleValue></name></entity></applicability>
+      <requirements><property dataType="IFCINTEGER"><propertySet><simpleValue>Probe_Set</simpleValue></propertySet><baseName><simpleValue>Count</simpleValue></baseName><value><xs:restriction base="xs:integer"><xs:enumeration value="1"/></xs:restriction></value></property></requirements>
+    </specification>
+    <specification name="Count (IFCINTEGER 1) in {true} xs:boolean (control)" ifcVersion="IFC2X3 IFC4 IFC4X3_ADD2">
+      <applicability minOccurs="0" maxOccurs="unbounded"><entity><name><simpleValue>IFCWALL</simpleValue></name></entity></applicability>
+      <requirements><property><propertySet><simpleValue>Probe_Set</simpleValue></propertySet><baseName><simpleValue>Count</simpleValue></baseName><value><xs:restriction base="xs:boolean"><xs:enumeration value="true"/></xs:restriction></value></property></requirements>
+    </specification>
+  </specifications>
+</ids>

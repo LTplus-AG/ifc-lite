@@ -1,0 +1,33 @@
+IFC2X3 | audit: valid, 0 errors, 0 warnings
+Flag = true (control): pass, applicable 1, failed 0
+Flag = 1: fail, applicable 1, failed 1 (actual true, expected "1")
+Off = 0: fail, applicable 1, failed 1 (actual false, expected "0")
+Flag = 1, optional: fail, applicable 1, failed 1 (actual true, expected "1")
+Flag = 1, prohibited (no dataType): pass, applicable 1, failed 0
+Logical = 1: fail, applicable 1, failed 1 (actual true, expected "1")
+Flag = 0 (must fail): fail, applicable 1, failed 1 (actual true, expected "0")
+Task IsMilestone = 1: fail, applicable 1, failed 1 (actual ?, expected "1")
+Walls with Flag = 1 named Required: pass, applicable 0, failed 0
+Tasks with IsMilestone = 1 named Required: pass, applicable 0, failed 0
+IFC4 | audit: valid, 0 errors, 0 warnings
+Flag = true (control): pass, applicable 1, failed 0
+Flag = 1: fail, applicable 1, failed 1 (actual true, expected "1")
+Off = 0: fail, applicable 1, failed 1 (actual false, expected "0")
+Flag = 1, optional: fail, applicable 1, failed 1 (actual true, expected "1")
+Flag = 1, prohibited (no dataType): pass, applicable 1, failed 0
+Logical = 1: fail, applicable 1, failed 1 (actual true, expected "1")
+Flag = 0 (must fail): fail, applicable 1, failed 1 (actual true, expected "0")
+Task IsMilestone = 1: fail, applicable 1, failed 1 (actual true, expected "1")
+Walls with Flag = 1 named Required: pass, applicable 0, failed 0
+Tasks with IsMilestone = 1 named Required: pass, applicable 0, failed 0
+IFC4X3_ADD2 | audit: valid, 0 errors, 0 warnings
+Flag = true (control): pass, applicable 1, failed 0
+Flag = 1: fail, applicable 1, failed 1 (actual true, expected "1")
+Off = 0: fail, applicable 1, failed 1 (actual false, expected "0")
+Flag = 1, optional: fail, applicable 1, failed 1 (actual true, expected "1")
+Flag = 1, prohibited (no dataType): pass, applicable 1, failed 0
+Logical = 1: fail, applicable 1, failed 1 (actual true, expected "1")
+Flag = 0 (must fail): fail, applicable 1, failed 1 (actual true, expected "0")
+Task IsMilestone = 1: fail, applicable 1, failed 1 (actual true, expected "1")
+Walls with Flag = 1 named Required: pass, applicable 0, failed 0
+Tasks with IsMilestone = 1 named Required: pass, applicable 0, failed 0

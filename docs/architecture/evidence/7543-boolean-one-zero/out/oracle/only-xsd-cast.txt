@@ -1,0 +1,66 @@
+[revert-oracle] does this branch's test actually observe this branch's change?
+  repo:  <repo>
+  base:  upstream/main
+  head:  HEAD
+  --only narrowed the revert set from 3 to 1 production file(s)
+  files: 3 production, 3 test, 67 ignored, 0 inert
+  observer: tests (runtime change in packages/ids/src/constraints/xsd-cast.ts)
+  runner: packages\ids -> vitest run --reporter=default src\constraints\boolean-one-zero.test.ts
+  runner: packages\ids -> vitest run --reporter=default src\constraints\constraints.test.ts
+  runner: packages\ids -> vitest run --reporter=default src\validation\boolean-one-zero.parsed-model.test.ts
+
+[1/3] baseline: running the branch's own tests, unmodified
+  [baseline] packages\ids (vitest) -> pass (pass 16, fail 0, total 16, exit 0, 2248ms)
+  [baseline] packages\ids (vitest) -> pass (pass 69, fail 0, total 69, exit 0, 1831ms)
+  [baseline] packages\ids (vitest) -> pass (pass 10, fail 0, total 10, exit 0, 2172ms)
+
+[2/3] reverting the production change
+  reverted: packages/ids/src/constraints/xsd-cast.ts
+
+[3/3] re-running the same tests with production reverted
+  [reverted] packages\ids (vitest) -> load-failure (pass 2, fail 14, total 16, exit 1, 2576ms)
+  [reverted] packages\ids (vitest) -> load-failure (pass 58, fail 11, total 69, exit 1, 3511ms)
+  [reverted] packages\ids (vitest) -> load-failure (pass 0, fail 10, total 10, exit 1, 2430ms)
+
+  --- last lines of the failing reverted run ---
+  |  ❯ src/facets/property-facet.ts:308:5
+  |  ❯ checkPropertyInPset src/facets/property-facet.ts:307:41
+  |  ❯ checkPropertyFacet src/facets/property-facet.ts:240:20
+  |  ❯ both src/constraints/boolean-one-zero.test.ts:205:5
+  |
+  | ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[11/14]⎯
+  |
+  |  FAIL  src/constraints/boolean-one-zero.test.ts > facets with 1 and 0 on a mock accessor (#7543) > a boolean attribute passes with 1 and fails with 0
+  | AssertionError: expected false to be true // Object.is equality
+  |
+  | - Expected
+  | + Received
+  |
+  | - true
+  | + false
+  |
+  |  ❯ src/constraints/boolean-one-zero.test.ts:227:35
+  |     225|     const attribute = (value: string) =>
+  |     226|       checkAttributeFacet({ type: 'attribute', name: sv('IsMilestone')…
+  |     227|     expect(attribute('1').passed).toBe(true);
+  |        |                                   ^
+  |     228|     const failed = attribute('0');
+  |     229|     expect(failed.passed).toBe(false);
+  |
+  | ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[12/14]⎯
+  restored: forward re-applied the patch; `git status --porcelain` is empty
+
+==============================================================================
+  ! REVERT-BROKE-BUILD  <-- NO ASSERTION RAN; DECLARE A --mutation
+==============================================================================
+  observer:  tests
+  reverted:  packages/ids/src/constraints/xsd-cast.ts
+  tests run: packages/ids/src/constraints/boolean-one-zero.test.ts
+             packages/ids/src/constraints/constraints.test.ts
+             packages/ids/src/validation/boolean-one-zero.parsed-model.test.ts
+  baseline:  pass: 95 passed / 95 collected
+  reverted:  load-failure: 60 passed, 35 failed / 95 collected
+
+  reverting production left packages/ids/src/constraints/boolean-one-zero.test.ts unable to compile or load, so no assertion ran (TypeError: xsdBooleanValue is not a function).
+
+  NEXT: Re-run with --mutation <patch>: hand-write a reverse patch that removes ONLY the behavioural lines and keeps the test-only exports / signatures the test file imports. A blunt whole-file revert deletes the seam the test enters through, and a dead import is not a RED.

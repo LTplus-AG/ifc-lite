@@ -1,0 +1,9 @@
+diff --git a/packages/ids/src/constraints/comparators.ts b/packages/ids/src/constraints/comparators.ts
+index c9eb096..5e31008 100644
+--- a/packages/ids/src/constraints/comparators.ts
++++ b/packages/ids/src/constraints/comparators.ts
+@@ -44,3 +44,3 @@ export function isStrictNumericLiteral(value: string): boolean {
+ export function isBooleanLiteral(value: string): boolean {
+-  return value === 'true' || value === 'false';
++  return xsdBooleanValue(value) !== undefined;
+ }

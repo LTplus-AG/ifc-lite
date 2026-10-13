@@ -1,0 +1,42 @@
+[revert-oracle] does this branch's test actually observe this branch's change?
+  repo:  <repo>
+  base:  upstream/main
+  head:  HEAD
+  files: 3 production, 3 test, 67 ignored, 0 inert
+  observer: tests (runtime change in packages/ids/src/constraints/comparators.ts (+2 more))
+  runner: packages\ids -> vitest run --reporter=default src\constraints\boolean-one-zero.test.ts
+  runner: packages\ids -> vitest run --reporter=default src\constraints\constraints.test.ts
+  runner: packages\ids -> vitest run --reporter=default src\validation\boolean-one-zero.parsed-model.test.ts
+
+[1/3] baseline: running the branch's own tests, unmodified
+  [baseline] packages\ids (vitest) -> pass (pass 16, fail 0, total 16, exit 0, 2648ms)
+  [baseline] packages\ids (vitest) -> pass (pass 69, fail 0, total 69, exit 0, 2256ms)
+  [baseline] packages\ids (vitest) -> pass (pass 10, fail 0, total 10, exit 0, 2810ms)
+
+[2/3] reverting the production change
+  reverted: packages/ids/src/constraints/comparators.ts
+  reverted: packages/ids/src/constraints/xsd-cast.ts
+  reverted: packages/ids/src/constraints/xsd-lexical.ts
+
+[3/3] re-running the same tests with production reverted
+  [reverted] packages\ids (vitest) -> assertion-failure (pass 7, fail 9, total 16, exit 1, 2022ms)
+  [reverted] packages\ids (vitest) -> assertion-failure (pass 67, fail 2, total 69, exit 1, 2103ms)
+  [reverted] packages\ids (vitest) -> assertion-failure (pass 0, fail 10, total 10, exit 1, 2763ms)
+  restored: forward re-applied the patch; `git status --porcelain` is empty
+
+==============================================================================
+  ✔ OBSERVED
+==============================================================================
+  observer:  tests
+  reverted:  packages/ids/src/constraints/comparators.ts
+             packages/ids/src/constraints/xsd-cast.ts
+             packages/ids/src/constraints/xsd-lexical.ts
+  tests run: packages/ids/src/constraints/boolean-one-zero.test.ts
+             packages/ids/src/constraints/constraints.test.ts
+             packages/ids/src/validation/boolean-one-zero.parsed-model.test.ts
+  baseline:  pass: 95 passed / 95 collected
+  reverted:  assertion-failure: 74 passed, 21 failed / 95 collected
+
+  reverting production turned an assertion RED in packages/ids/src/constraints/boolean-one-zero.test.ts; that file has a green, attributable baseline.
+
+  NOTE: 3 production files were reverted together, so this tick may be earned by one of them. Re-run with --only <path> per file to find the unobserved ones.

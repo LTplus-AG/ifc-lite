@@ -1,0 +1,41 @@
+[revert-oracle] does this branch's test actually observe this branch's change?
+  repo:  <repo>
+  base:  upstream/main
+  head:  HEAD
+  files: 3 production, 3 test, 67 ignored, 0 inert
+  observer: tests (runtime change in packages/ids/src/constraints/comparators.ts (+2 more))
+  runner: packages\ids -> vitest run --reporter=default src\constraints\boolean-one-zero.test.ts
+  runner: packages\ids -> vitest run --reporter=default src\constraints\constraints.test.ts
+  runner: packages\ids -> vitest run --reporter=default src\validation\boolean-one-zero.parsed-model.test.ts
+  mutation: docs/architecture/evidence/7543-boolean-one-zero/mutations/is-boolean-literal.patch (10 lines, reverse-applied)
+
+[1/3] baseline: running the branch's own tests, unmodified
+  [baseline] packages\ids (vitest) -> pass (pass 16, fail 0, total 16, exit 0, 2101ms)
+  [baseline] packages\ids (vitest) -> pass (pass 69, fail 0, total 69, exit 0, 3042ms)
+  [baseline] packages\ids (vitest) -> pass (pass 10, fail 0, total 10, exit 0, 3130ms)
+
+[2/3] reverting the production change
+  reverted: packages/ids/src/constraints/comparators.ts
+  reverted: packages/ids/src/constraints/xsd-cast.ts
+  reverted: packages/ids/src/constraints/xsd-lexical.ts
+
+[3/3] re-running the same tests with production reverted
+  [reverted] packages\ids (vitest) -> pass (pass 16, fail 0, total 16, exit 0, 2580ms)
+  [reverted] packages\ids (vitest) -> pass (pass 69, fail 0, total 69, exit 0, 2132ms)
+  [reverted] packages\ids (vitest) -> pass (pass 10, fail 0, total 10, exit 0, 3679ms)
+  restored: forward re-applied the patch; `git status --porcelain` is empty
+
+==============================================================================
+  ✘ UNOBSERVED  <-- FINDING
+==============================================================================
+  observer:  tests
+  reverted:  packages/ids/src/constraints/comparators.ts
+             packages/ids/src/constraints/xsd-cast.ts
+             packages/ids/src/constraints/xsd-lexical.ts
+  tests run: packages/ids/src/constraints/boolean-one-zero.test.ts
+             packages/ids/src/constraints/constraints.test.ts
+             packages/ids/src/validation/boolean-one-zero.parsed-model.test.ts
+  baseline:  pass: 95 passed / 95 collected
+  reverted:  pass: 95 passed, 0 failed / 95 collected
+
+  all 3 changed executable test file(s) passed before and after the revert.

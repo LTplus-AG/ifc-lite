@@ -1,0 +1,39 @@
+@ifc-lite/ids build: head
+IDSL-SPEC-001 | applicability true, requirement 1
+  lint: no finding
+  checker, specification S: pass, applicable 1, failed 0
+IDSL-SPEC-001 | applicability true, requirement true (control)
+  lint: warning: requirement 1 is already guaranteed by applicability facet 2, so it can never fail
+  checker, specification S: pass, applicable 1, failed 0
+IDSL-SPEC-002 | applicability true, requirement 1
+  lint: error: requirement 1 excludes every element that applicability facet 2 selects; no applicable element can pass
+  checker, specification S: pass, applicable 1, failed 0
+IDSL-SPEC-002 | applicability 1, requirement true
+  lint: error: requirement 1 excludes every element that applicability facet 2 selects; no applicable element can pass
+  checker, specification S: pass, applicable 1, failed 0
+IDSL-SPEC-002 | requirements true and 1
+  lint: error: requirement 2 and requirement 1 constrain the same property to values with nothing in common
+  checker, specification S: pass, applicable 1, failed 0
+IDSL-SPEC-002 | applicability enumeration {1} (xs:boolean), requirement true
+  lint: error: requirement 1 excludes every element that applicability facet 2 selects; no applicable element can pass
+  checker, specification S: pass, applicable 1, failed 0
+IDSL-SPEC-002 | applicability true, requirement false (control)
+  lint: error: requirement 1 excludes every element that applicability facet 2 selects; no applicable element can pass
+  checker, specification S: fail, applicable 1, failed 1
+IDSL-SPEC-003 | applicability true and 1, requirement Name
+  lint: warning: applicability facet 3 and applicability facet 2 cannot both hold; the specification never applies
+  checker, specification S: pass, applicable 1, failed 0
+IDSL-SPEC-003 | applicability true and false, requirement Name (control)
+  lint: warning: applicability facet 3 and applicability facet 2 cannot both hold; the specification never applies
+  checker, specification S: pass, applicable 0, failed 0
+IDSL-SPEC-006 | specification A requires true, B requires 1
+  lint: warning: requirement 1 of "B" conflicts with "A", which selects the same elements
+  checker, specification A: pass, applicable 1, failed 0
+  checker, specification B: pass, applicable 1, failed 0
+IDSL-SPEC-006 | specification A requires true, B requires false (control)
+  lint: warning: requirement 1 of "B" conflicts with "A", which selects the same elements
+  checker, specification A: pass, applicable 1, failed 0
+  checker, specification B: fail, applicable 1, failed 1
+IDSL-VAL-005 | requirement 1
+  lint: no finding
+  checker, specification S: pass, applicable 1, failed 0

@@ -1,0 +1,348 @@
+=== main IFC2X3/boolean-one-zero
+  Flag = true (control): pass, applicable 1, failed 0
+  Flag = 1: fail, applicable 1, failed 1
+  Off = 0: fail, applicable 1, failed 1
+  Flag = 1, optional: fail, applicable 1, failed 1
+  Flag = 1, prohibited (no dataType): pass, applicable 1, failed 0
+  Logical = 1: fail, applicable 1, failed 1
+  Flag = 0 (must fail): fail, applicable 1, failed 1
+  Task IsMilestone = 1: fail, applicable 1, failed 1
+  Walls with Flag = 1 named Required: pass, applicable 0, failed 0
+  Tasks with IsMilestone = 1 named Required: pass, applicable 0, failed 0
+=== main IFC2X3/enumeration
+  Flag in {true} xs:boolean (control): pass, applicable 1, failed 0
+  Flag in {1} xs:boolean: fail, applicable 1, failed 1
+  Flag in {0} xs:boolean (must fail): fail, applicable 1, failed 1
+  Off in {0} xs:boolean: fail, applicable 1, failed 1
+  Flag in {1, 0} xs:boolean: fail, applicable 1, failed 1
+  Flag in {1} xs:boolean, no dataType: fail, applicable 1, failed 1
+  Flag in {1} xs:boolean, prohibited: pass, applicable 1, failed 0
+  Flag in {1} xs:string: fail, applicable 1, failed 1
+  Flag in {true} xs:string (control): pass, applicable 1, failed 0
+  Flag in {1} xs:integer: fail, applicable 1, failed 1
+  Flag in {0, 1, 2} xs:integer: fail, applicable 1, failed 1
+  Off in {0} xs:integer: fail, applicable 1, failed 1
+  Count (IFCINTEGER 1) in {1} xs:integer (control): pass, applicable 1, failed 0
+  Count (IFCINTEGER 1) in {true} xs:boolean (control): fail, applicable 1, failed 1
+=== main IFC2X3/wall-sv
+  Flag = 1: fail, applicable 1, failed 1
+  Off = 0: fail, applicable 1, failed 1
+  Flag = 1 optional: fail, applicable 1, failed 1
+  Flag = 1 prohibited: pass, applicable 1, failed 0
+  Logical = 1: fail, applicable 1, failed 1
+  Flag = 0: fail, applicable 1, failed 1
+  Flag = 1 selects the wall: pass, applicable 0, failed 0
+  Flag = 0 selects nothing: pass, applicable 0, failed 0
+=== main IFC2X3/wall-sv-p
+  Flag = 1: fail, applicable 1, failed 1
+  Off = 0: fail, applicable 1, failed 1
+  Flag = 1 optional: fail, applicable 1, failed 1
+  Flag = 1 prohibited: pass, applicable 1, failed 0
+  Logical = 1: fail, applicable 1, failed 1
+  Flag = 0: fail, applicable 1, failed 1
+  Flag = 1 selects the wall: pass, applicable 0, failed 0
+  Flag = 0 selects nothing: pass, applicable 0, failed 0
+=== main IFC2X3/wall-enum
+  Flag in 1: fail, applicable 1, failed 1
+  Off in 0: fail, applicable 1, failed 1
+  Flag in 0: fail, applicable 1, failed 1
+  Flag in 1 and 0 prohibited: pass, applicable 1, failed 0
+  Flag in 1 selects the wall: pass, applicable 0, failed 0
+  Flag in 0 selects nothing: pass, applicable 0, failed 0
+=== main IFC2X3/wall-enum-p
+  Flag in 1: fail, applicable 1, failed 1
+  Off in 0: fail, applicable 1, failed 1
+  Flag in 0: fail, applicable 1, failed 1
+  Flag in 1 and 0 prohibited: pass, applicable 1, failed 0
+  Flag in 1 selects the wall: pass, applicable 0, failed 0
+  Flag in 0 selects nothing: pass, applicable 0, failed 0
+=== main IFC4/boolean-one-zero
+  Flag = true (control): pass, applicable 1, failed 0
+  Flag = 1: fail, applicable 1, failed 1
+  Off = 0: fail, applicable 1, failed 1
+  Flag = 1, optional: fail, applicable 1, failed 1
+  Flag = 1, prohibited (no dataType): pass, applicable 1, failed 0
+  Logical = 1: fail, applicable 1, failed 1
+  Flag = 0 (must fail): fail, applicable 1, failed 1
+  Task IsMilestone = 1: fail, applicable 1, failed 1
+  Walls with Flag = 1 named Required: pass, applicable 0, failed 0
+  Tasks with IsMilestone = 1 named Required: pass, applicable 0, failed 0
+=== main IFC4/enumeration
+  Flag in {true} xs:boolean (control): pass, applicable 1, failed 0
+  Flag in {1} xs:boolean: fail, applicable 1, failed 1
+  Flag in {0} xs:boolean (must fail): fail, applicable 1, failed 1
+  Off in {0} xs:boolean: fail, applicable 1, failed 1
+  Flag in {1, 0} xs:boolean: fail, applicable 1, failed 1
+  Flag in {1} xs:boolean, no dataType: fail, applicable 1, failed 1
+  Flag in {1} xs:boolean, prohibited: pass, applicable 1, failed 0
+  Flag in {1} xs:string: fail, applicable 1, failed 1
+  Flag in {true} xs:string (control): pass, applicable 1, failed 0
+  Flag in {1} xs:integer: fail, applicable 1, failed 1
+  Flag in {0, 1, 2} xs:integer: fail, applicable 1, failed 1
+  Off in {0} xs:integer: fail, applicable 1, failed 1
+  Count (IFCINTEGER 1) in {1} xs:integer (control): pass, applicable 1, failed 0
+  Count (IFCINTEGER 1) in {true} xs:boolean (control): fail, applicable 1, failed 1
+=== main IFC4/wall-sv
+  Flag = 1: fail, applicable 1, failed 1
+  Off = 0: fail, applicable 1, failed 1
+  Flag = 1 optional: fail, applicable 1, failed 1
+  Flag = 1 prohibited: pass, applicable 1, failed 0
+  Logical = 1: fail, applicable 1, failed 1
+  Flag = 0: fail, applicable 1, failed 1
+  Flag = 1 selects the wall: pass, applicable 0, failed 0
+  Flag = 0 selects nothing: pass, applicable 0, failed 0
+=== main IFC4/wall-sv-p
+  Flag = 1: fail, applicable 1, failed 1
+  Off = 0: fail, applicable 1, failed 1
+  Flag = 1 optional: fail, applicable 1, failed 1
+  Flag = 1 prohibited: pass, applicable 1, failed 0
+  Logical = 1: fail, applicable 1, failed 1
+  Flag = 0: fail, applicable 1, failed 1
+  Flag = 1 selects the wall: pass, applicable 0, failed 0
+  Flag = 0 selects nothing: pass, applicable 0, failed 0
+=== main IFC4/wall-enum
+  Flag in 1: fail, applicable 1, failed 1
+  Off in 0: fail, applicable 1, failed 1
+  Flag in 0: fail, applicable 1, failed 1
+  Flag in 1 and 0 prohibited: pass, applicable 1, failed 0
+  Flag in 1 selects the wall: pass, applicable 0, failed 0
+  Flag in 0 selects nothing: pass, applicable 0, failed 0
+=== main IFC4/wall-enum-p
+  Flag in 1: fail, applicable 1, failed 1
+  Off in 0: fail, applicable 1, failed 1
+  Flag in 0: fail, applicable 1, failed 1
+  Flag in 1 and 0 prohibited: pass, applicable 1, failed 0
+  Flag in 1 selects the wall: pass, applicable 0, failed 0
+  Flag in 0 selects nothing: pass, applicable 0, failed 0
+=== main IFC4X3_ADD2/boolean-one-zero
+  Flag = true (control): pass, applicable 1, failed 0
+  Flag = 1: fail, applicable 1, failed 1
+  Off = 0: fail, applicable 1, failed 1
+  Flag = 1, optional: fail, applicable 1, failed 1
+  Flag = 1, prohibited (no dataType): pass, applicable 1, failed 0
+  Logical = 1: fail, applicable 1, failed 1
+  Flag = 0 (must fail): fail, applicable 1, failed 1
+  Task IsMilestone = 1: fail, applicable 1, failed 1
+  Walls with Flag = 1 named Required: pass, applicable 0, failed 0
+  Tasks with IsMilestone = 1 named Required: pass, applicable 0, failed 0
+=== main IFC4X3_ADD2/enumeration
+  Flag in {true} xs:boolean (control): pass, applicable 1, failed 0
+  Flag in {1} xs:boolean: fail, applicable 1, failed 1
+  Flag in {0} xs:boolean (must fail): fail, applicable 1, failed 1
+  Off in {0} xs:boolean: fail, applicable 1, failed 1
+  Flag in {1, 0} xs:boolean: fail, applicable 1, failed 1
+  Flag in {1} xs:boolean, no dataType: fail, applicable 1, failed 1
+  Flag in {1} xs:boolean, prohibited: pass, applicable 1, failed 0
+  Flag in {1} xs:string: fail, applicable 1, failed 1
+  Flag in {true} xs:string (control): pass, applicable 1, failed 0
+  Flag in {1} xs:integer: fail, applicable 1, failed 1
+  Flag in {0, 1, 2} xs:integer: fail, applicable 1, failed 1
+  Off in {0} xs:integer: fail, applicable 1, failed 1
+  Count (IFCINTEGER 1) in {1} xs:integer (control): pass, applicable 1, failed 0
+  Count (IFCINTEGER 1) in {true} xs:boolean (control): fail, applicable 1, failed 1
+=== main IFC4X3_ADD2/wall-sv
+  Flag = 1: fail, applicable 1, failed 1
+  Off = 0: fail, applicable 1, failed 1
+  Flag = 1 optional: fail, applicable 1, failed 1
+  Flag = 1 prohibited: pass, applicable 1, failed 0
+  Logical = 1: fail, applicable 1, failed 1
+  Flag = 0: fail, applicable 1, failed 1
+  Flag = 1 selects the wall: pass, applicable 0, failed 0
+  Flag = 0 selects nothing: pass, applicable 0, failed 0
+=== main IFC4X3_ADD2/wall-sv-p
+  Flag = 1: fail, applicable 1, failed 1
+  Off = 0: fail, applicable 1, failed 1
+  Flag = 1 optional: fail, applicable 1, failed 1
+  Flag = 1 prohibited: pass, applicable 1, failed 0
+  Logical = 1: fail, applicable 1, failed 1
+  Flag = 0: fail, applicable 1, failed 1
+  Flag = 1 selects the wall: pass, applicable 0, failed 0
+  Flag = 0 selects nothing: pass, applicable 0, failed 0
+=== main IFC4X3_ADD2/wall-enum
+  Flag in 1: fail, applicable 1, failed 1
+  Off in 0: fail, applicable 1, failed 1
+  Flag in 0: fail, applicable 1, failed 1
+  Flag in 1 and 0 prohibited: pass, applicable 1, failed 0
+  Flag in 1 selects the wall: pass, applicable 0, failed 0
+  Flag in 0 selects nothing: pass, applicable 0, failed 0
+=== main IFC4X3_ADD2/wall-enum-p
+  Flag in 1: fail, applicable 1, failed 1
+  Off in 0: fail, applicable 1, failed 1
+  Flag in 0: fail, applicable 1, failed 1
+  Flag in 1 and 0 prohibited: pass, applicable 1, failed 0
+  Flag in 1 selects the wall: pass, applicable 0, failed 0
+  Flag in 0 selects nothing: pass, applicable 0, failed 0
+=== head IFC2X3/boolean-one-zero
+  Flag = true (control): pass, applicable 1, failed 0
+  Flag = 1: pass, applicable 1, failed 0
+  Off = 0: pass, applicable 1, failed 0
+  Flag = 1, optional: pass, applicable 1, failed 0
+  Flag = 1, prohibited (no dataType): fail, applicable 1, failed 1
+  Logical = 1: pass, applicable 1, failed 0
+  Flag = 0 (must fail): fail, applicable 1, failed 1
+  Task IsMilestone = 1: fail, applicable 1, failed 1
+  Walls with Flag = 1 named Required: fail, applicable 1, failed 1
+  Tasks with IsMilestone = 1 named Required: pass, applicable 0, failed 0
+=== head IFC2X3/enumeration
+  Flag in {true} xs:boolean (control): pass, applicable 1, failed 0
+  Flag in {1} xs:boolean: pass, applicable 1, failed 0
+  Flag in {0} xs:boolean (must fail): fail, applicable 1, failed 1
+  Off in {0} xs:boolean: pass, applicable 1, failed 0
+  Flag in {1, 0} xs:boolean: pass, applicable 1, failed 0
+  Flag in {1} xs:boolean, no dataType: pass, applicable 1, failed 0
+  Flag in {1} xs:boolean, prohibited: fail, applicable 1, failed 1
+  Flag in {1} xs:string: pass, applicable 1, failed 0
+  Flag in {true} xs:string (control): pass, applicable 1, failed 0
+  Flag in {1} xs:integer: pass, applicable 1, failed 0
+  Flag in {0, 1, 2} xs:integer: pass, applicable 1, failed 0
+  Off in {0} xs:integer: pass, applicable 1, failed 0
+  Count (IFCINTEGER 1) in {1} xs:integer (control): pass, applicable 1, failed 0
+  Count (IFCINTEGER 1) in {true} xs:boolean (control): fail, applicable 1, failed 1
+=== head IFC2X3/wall-sv
+  Flag = 1: pass, applicable 1, failed 0
+  Off = 0: pass, applicable 1, failed 0
+  Flag = 1 optional: pass, applicable 1, failed 0
+  Flag = 1 prohibited: fail, applicable 1, failed 1
+  Logical = 1: pass, applicable 1, failed 0
+  Flag = 0: fail, applicable 1, failed 1
+  Flag = 1 selects the wall: fail, applicable 1, failed 1
+  Flag = 0 selects nothing: pass, applicable 0, failed 0
+=== head IFC2X3/wall-sv-p
+  Flag = 1: pass, applicable 1, failed 0
+  Off = 0: pass, applicable 1, failed 0
+  Flag = 1 optional: pass, applicable 1, failed 0
+  Flag = 1 prohibited: fail, applicable 1, failed 1
+  Logical = 1: pass, applicable 1, failed 0
+  Flag = 0: fail, applicable 1, failed 1
+  Flag = 1 selects the wall: fail, applicable 1, failed 1
+  Flag = 0 selects nothing: pass, applicable 0, failed 0
+=== head IFC2X3/wall-enum
+  Flag in 1: pass, applicable 1, failed 0
+  Off in 0: pass, applicable 1, failed 0
+  Flag in 0: fail, applicable 1, failed 1
+  Flag in 1 and 0 prohibited: fail, applicable 1, failed 1
+  Flag in 1 selects the wall: fail, applicable 1, failed 1
+  Flag in 0 selects nothing: pass, applicable 0, failed 0
+=== head IFC2X3/wall-enum-p
+  Flag in 1: pass, applicable 1, failed 0
+  Off in 0: pass, applicable 1, failed 0
+  Flag in 0: fail, applicable 1, failed 1
+  Flag in 1 and 0 prohibited: fail, applicable 1, failed 1
+  Flag in 1 selects the wall: fail, applicable 1, failed 1
+  Flag in 0 selects nothing: pass, applicable 0, failed 0
+=== head IFC4/boolean-one-zero
+  Flag = true (control): pass, applicable 1, failed 0
+  Flag = 1: pass, applicable 1, failed 0
+  Off = 0: pass, applicable 1, failed 0
+  Flag = 1, optional: pass, applicable 1, failed 0
+  Flag = 1, prohibited (no dataType): fail, applicable 1, failed 1
+  Logical = 1: pass, applicable 1, failed 0
+  Flag = 0 (must fail): fail, applicable 1, failed 1
+  Task IsMilestone = 1: pass, applicable 1, failed 0
+  Walls with Flag = 1 named Required: fail, applicable 1, failed 1
+  Tasks with IsMilestone = 1 named Required: fail, applicable 1, failed 1
+=== head IFC4/enumeration
+  Flag in {true} xs:boolean (control): pass, applicable 1, failed 0
+  Flag in {1} xs:boolean: pass, applicable 1, failed 0
+  Flag in {0} xs:boolean (must fail): fail, applicable 1, failed 1
+  Off in {0} xs:boolean: pass, applicable 1, failed 0
+  Flag in {1, 0} xs:boolean: pass, applicable 1, failed 0
+  Flag in {1} xs:boolean, no dataType: pass, applicable 1, failed 0
+  Flag in {1} xs:boolean, prohibited: fail, applicable 1, failed 1
+  Flag in {1} xs:string: pass, applicable 1, failed 0
+  Flag in {true} xs:string (control): pass, applicable 1, failed 0
+  Flag in {1} xs:integer: pass, applicable 1, failed 0
+  Flag in {0, 1, 2} xs:integer: pass, applicable 1, failed 0
+  Off in {0} xs:integer: pass, applicable 1, failed 0
+  Count (IFCINTEGER 1) in {1} xs:integer (control): pass, applicable 1, failed 0
+  Count (IFCINTEGER 1) in {true} xs:boolean (control): fail, applicable 1, failed 1
+=== head IFC4/wall-sv
+  Flag = 1: pass, applicable 1, failed 0
+  Off = 0: pass, applicable 1, failed 0
+  Flag = 1 optional: pass, applicable 1, failed 0
+  Flag = 1 prohibited: fail, applicable 1, failed 1
+  Logical = 1: pass, applicable 1, failed 0
+  Flag = 0: fail, applicable 1, failed 1
+  Flag = 1 selects the wall: fail, applicable 1, failed 1
+  Flag = 0 selects nothing: pass, applicable 0, failed 0
+=== head IFC4/wall-sv-p
+  Flag = 1: pass, applicable 1, failed 0
+  Off = 0: pass, applicable 1, failed 0
+  Flag = 1 optional: pass, applicable 1, failed 0
+  Flag = 1 prohibited: fail, applicable 1, failed 1
+  Logical = 1: pass, applicable 1, failed 0
+  Flag = 0: fail, applicable 1, failed 1
+  Flag = 1 selects the wall: fail, applicable 1, failed 1
+  Flag = 0 selects nothing: pass, applicable 0, failed 0
+=== head IFC4/wall-enum
+  Flag in 1: pass, applicable 1, failed 0
+  Off in 0: pass, applicable 1, failed 0
+  Flag in 0: fail, applicable 1, failed 1
+  Flag in 1 and 0 prohibited: fail, applicable 1, failed 1
+  Flag in 1 selects the wall: fail, applicable 1, failed 1
+  Flag in 0 selects nothing: pass, applicable 0, failed 0
+=== head IFC4/wall-enum-p
+  Flag in 1: pass, applicable 1, failed 0
+  Off in 0: pass, applicable 1, failed 0
+  Flag in 0: fail, applicable 1, failed 1
+  Flag in 1 and 0 prohibited: fail, applicable 1, failed 1
+  Flag in 1 selects the wall: fail, applicable 1, failed 1
+  Flag in 0 selects nothing: pass, applicable 0, failed 0
+=== head IFC4X3_ADD2/boolean-one-zero
+  Flag = true (control): pass, applicable 1, failed 0
+  Flag = 1: pass, applicable 1, failed 0
+  Off = 0: pass, applicable 1, failed 0
+  Flag = 1, optional: pass, applicable 1, failed 0
+  Flag = 1, prohibited (no dataType): fail, applicable 1, failed 1
+  Logical = 1: pass, applicable 1, failed 0
+  Flag = 0 (must fail): fail, applicable 1, failed 1
+  Task IsMilestone = 1: pass, applicable 1, failed 0
+  Walls with Flag = 1 named Required: fail, applicable 1, failed 1
+  Tasks with IsMilestone = 1 named Required: fail, applicable 1, failed 1
+=== head IFC4X3_ADD2/enumeration
+  Flag in {true} xs:boolean (control): pass, applicable 1, failed 0
+  Flag in {1} xs:boolean: pass, applicable 1, failed 0
+  Flag in {0} xs:boolean (must fail): fail, applicable 1, failed 1
+  Off in {0} xs:boolean: pass, applicable 1, failed 0
+  Flag in {1, 0} xs:boolean: pass, applicable 1, failed 0
+  Flag in {1} xs:boolean, no dataType: pass, applicable 1, failed 0
+  Flag in {1} xs:boolean, prohibited: fail, applicable 1, failed 1
+  Flag in {1} xs:string: pass, applicable 1, failed 0
+  Flag in {true} xs:string (control): pass, applicable 1, failed 0
+  Flag in {1} xs:integer: pass, applicable 1, failed 0
+  Flag in {0, 1, 2} xs:integer: pass, applicable 1, failed 0
+  Off in {0} xs:integer: pass, applicable 1, failed 0
+  Count (IFCINTEGER 1) in {1} xs:integer (control): pass, applicable 1, failed 0
+  Count (IFCINTEGER 1) in {true} xs:boolean (control): fail, applicable 1, failed 1
+=== head IFC4X3_ADD2/wall-sv
+  Flag = 1: pass, applicable 1, failed 0
+  Off = 0: pass, applicable 1, failed 0
+  Flag = 1 optional: pass, applicable 1, failed 0
+  Flag = 1 prohibited: fail, applicable 1, failed 1
+  Logical = 1: pass, applicable 1, failed 0
+  Flag = 0: fail, applicable 1, failed 1
+  Flag = 1 selects the wall: fail, applicable 1, failed 1
+  Flag = 0 selects nothing: pass, applicable 0, failed 0
+=== head IFC4X3_ADD2/wall-sv-p
+  Flag = 1: pass, applicable 1, failed 0
+  Off = 0: pass, applicable 1, failed 0
+  Flag = 1 optional: pass, applicable 1, failed 0
+  Flag = 1 prohibited: fail, applicable 1, failed 1
+  Logical = 1: pass, applicable 1, failed 0
+  Flag = 0: fail, applicable 1, failed 1
+  Flag = 1 selects the wall: fail, applicable 1, failed 1
+  Flag = 0 selects nothing: pass, applicable 0, failed 0
+=== head IFC4X3_ADD2/wall-enum
+  Flag in 1: pass, applicable 1, failed 0
+  Off in 0: pass, applicable 1, failed 0
+  Flag in 0: fail, applicable 1, failed 1
+  Flag in 1 and 0 prohibited: fail, applicable 1, failed 1
+  Flag in 1 selects the wall: fail, applicable 1, failed 1
+  Flag in 0 selects nothing: pass, applicable 0, failed 0
+=== head IFC4X3_ADD2/wall-enum-p
+  Flag in 1: pass, applicable 1, failed 0
+  Off in 0: pass, applicable 1, failed 0
+  Flag in 0: fail, applicable 1, failed 1
+  Flag in 1 and 0 prohibited: fail, applicable 1, failed 1
+  Flag in 1 selects the wall: fail, applicable 1, failed 1
+  Flag in 0 selects nothing: pass, applicable 0, failed 0

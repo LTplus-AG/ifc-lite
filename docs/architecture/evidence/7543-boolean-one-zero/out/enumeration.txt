@@ -1,0 +1,120 @@
+main IFC2X3 | audit: error, 5 issues
+  audit error E_RESTRICTION_BASE_MISMATCH on "Flag in {1} xs:string"
+  audit error E_RESTRICTION_BASE_MISMATCH on "Flag in {true} xs:string (control)"
+  audit error E_RESTRICTION_BASE_MISMATCH on "Flag in {1} xs:integer"
+  audit error E_RESTRICTION_BASE_MISMATCH on "Flag in {0, 1, 2} xs:integer"
+  audit error E_RESTRICTION_BASE_MISMATCH on "Off in {0} xs:integer"
+  Flag in {true} xs:boolean (control): pass, applicable 1, failed 0
+  Flag in {1} xs:boolean: fail, applicable 1, failed 1
+  Flag in {0} xs:boolean (must fail): fail, applicable 1, failed 1
+  Off in {0} xs:boolean: fail, applicable 1, failed 1
+  Flag in {1, 0} xs:boolean: fail, applicable 1, failed 1
+  Flag in {1} xs:boolean, no dataType: fail, applicable 1, failed 1
+  Flag in {1} xs:boolean, prohibited: pass, applicable 1, failed 0
+  Flag in {1} xs:string: fail, applicable 1, failed 1
+  Flag in {true} xs:string (control): pass, applicable 1, failed 0
+  Flag in {1} xs:integer: fail, applicable 1, failed 1
+  Flag in {0, 1, 2} xs:integer: fail, applicable 1, failed 1
+  Off in {0} xs:integer: fail, applicable 1, failed 1
+  Count (IFCINTEGER 1) in {1} xs:integer (control): pass, applicable 1, failed 0
+  Count (IFCINTEGER 1) in {true} xs:boolean (control): fail, applicable 1, failed 1
+head IFC2X3 | audit: error, 5 issues
+  audit error E_RESTRICTION_BASE_MISMATCH on "Flag in {1} xs:string"
+  audit error E_RESTRICTION_BASE_MISMATCH on "Flag in {true} xs:string (control)"
+  audit error E_RESTRICTION_BASE_MISMATCH on "Flag in {1} xs:integer"
+  audit error E_RESTRICTION_BASE_MISMATCH on "Flag in {0, 1, 2} xs:integer"
+  audit error E_RESTRICTION_BASE_MISMATCH on "Off in {0} xs:integer"
+  Flag in {true} xs:boolean (control): pass, applicable 1, failed 0
+  Flag in {1} xs:boolean: pass, applicable 1, failed 0
+  Flag in {0} xs:boolean (must fail): fail, applicable 1, failed 1
+  Off in {0} xs:boolean: pass, applicable 1, failed 0
+  Flag in {1, 0} xs:boolean: pass, applicable 1, failed 0
+  Flag in {1} xs:boolean, no dataType: pass, applicable 1, failed 0
+  Flag in {1} xs:boolean, prohibited: fail, applicable 1, failed 1
+  Flag in {1} xs:string: pass, applicable 1, failed 0
+  Flag in {true} xs:string (control): pass, applicable 1, failed 0
+  Flag in {1} xs:integer: pass, applicable 1, failed 0
+  Flag in {0, 1, 2} xs:integer: pass, applicable 1, failed 0
+  Off in {0} xs:integer: pass, applicable 1, failed 0
+  Count (IFCINTEGER 1) in {1} xs:integer (control): pass, applicable 1, failed 0
+  Count (IFCINTEGER 1) in {true} xs:boolean (control): fail, applicable 1, failed 1
+main IFC4 | audit: error, 5 issues
+  audit error E_RESTRICTION_BASE_MISMATCH on "Flag in {1} xs:string"
+  audit error E_RESTRICTION_BASE_MISMATCH on "Flag in {true} xs:string (control)"
+  audit error E_RESTRICTION_BASE_MISMATCH on "Flag in {1} xs:integer"
+  audit error E_RESTRICTION_BASE_MISMATCH on "Flag in {0, 1, 2} xs:integer"
+  audit error E_RESTRICTION_BASE_MISMATCH on "Off in {0} xs:integer"
+  Flag in {true} xs:boolean (control): pass, applicable 1, failed 0
+  Flag in {1} xs:boolean: fail, applicable 1, failed 1
+  Flag in {0} xs:boolean (must fail): fail, applicable 1, failed 1
+  Off in {0} xs:boolean: fail, applicable 1, failed 1
+  Flag in {1, 0} xs:boolean: fail, applicable 1, failed 1
+  Flag in {1} xs:boolean, no dataType: fail, applicable 1, failed 1
+  Flag in {1} xs:boolean, prohibited: pass, applicable 1, failed 0
+  Flag in {1} xs:string: fail, applicable 1, failed 1
+  Flag in {true} xs:string (control): pass, applicable 1, failed 0
+  Flag in {1} xs:integer: fail, applicable 1, failed 1
+  Flag in {0, 1, 2} xs:integer: fail, applicable 1, failed 1
+  Off in {0} xs:integer: fail, applicable 1, failed 1
+  Count (IFCINTEGER 1) in {1} xs:integer (control): pass, applicable 1, failed 0
+  Count (IFCINTEGER 1) in {true} xs:boolean (control): fail, applicable 1, failed 1
+head IFC4 | audit: error, 5 issues
+  audit error E_RESTRICTION_BASE_MISMATCH on "Flag in {1} xs:string"
+  audit error E_RESTRICTION_BASE_MISMATCH on "Flag in {true} xs:string (control)"
+  audit error E_RESTRICTION_BASE_MISMATCH on "Flag in {1} xs:integer"
+  audit error E_RESTRICTION_BASE_MISMATCH on "Flag in {0, 1, 2} xs:integer"
+  audit error E_RESTRICTION_BASE_MISMATCH on "Off in {0} xs:integer"
+  Flag in {true} xs:boolean (control): pass, applicable 1, failed 0
+  Flag in {1} xs:boolean: pass, applicable 1, failed 0
+  Flag in {0} xs:boolean (must fail): fail, applicable 1, failed 1
+  Off in {0} xs:boolean: pass, applicable 1, failed 0
+  Flag in {1, 0} xs:boolean: pass, applicable 1, failed 0
+  Flag in {1} xs:boolean, no dataType: pass, applicable 1, failed 0
+  Flag in {1} xs:boolean, prohibited: fail, applicable 1, failed 1
+  Flag in {1} xs:string: pass, applicable 1, failed 0
+  Flag in {true} xs:string (control): pass, applicable 1, failed 0
+  Flag in {1} xs:integer: pass, applicable 1, failed 0
+  Flag in {0, 1, 2} xs:integer: pass, applicable 1, failed 0
+  Off in {0} xs:integer: pass, applicable 1, failed 0
+  Count (IFCINTEGER 1) in {1} xs:integer (control): pass, applicable 1, failed 0
+  Count (IFCINTEGER 1) in {true} xs:boolean (control): fail, applicable 1, failed 1
+main IFC4X3_ADD2 | audit: error, 5 issues
+  audit error E_RESTRICTION_BASE_MISMATCH on "Flag in {1} xs:string"
+  audit error E_RESTRICTION_BASE_MISMATCH on "Flag in {true} xs:string (control)"
+  audit error E_RESTRICTION_BASE_MISMATCH on "Flag in {1} xs:integer"
+  audit error E_RESTRICTION_BASE_MISMATCH on "Flag in {0, 1, 2} xs:integer"
+  audit error E_RESTRICTION_BASE_MISMATCH on "Off in {0} xs:integer"
+  Flag in {true} xs:boolean (control): pass, applicable 1, failed 0
+  Flag in {1} xs:boolean: fail, applicable 1, failed 1
+  Flag in {0} xs:boolean (must fail): fail, applicable 1, failed 1
+  Off in {0} xs:boolean: fail, applicable 1, failed 1
+  Flag in {1, 0} xs:boolean: fail, applicable 1, failed 1
+  Flag in {1} xs:boolean, no dataType: fail, applicable 1, failed 1
+  Flag in {1} xs:boolean, prohibited: pass, applicable 1, failed 0
+  Flag in {1} xs:string: fail, applicable 1, failed 1
+  Flag in {true} xs:string (control): pass, applicable 1, failed 0
+  Flag in {1} xs:integer: fail, applicable 1, failed 1
+  Flag in {0, 1, 2} xs:integer: fail, applicable 1, failed 1
+  Off in {0} xs:integer: fail, applicable 1, failed 1
+  Count (IFCINTEGER 1) in {1} xs:integer (control): pass, applicable 1, failed 0
+  Count (IFCINTEGER 1) in {true} xs:boolean (control): fail, applicable 1, failed 1
+head IFC4X3_ADD2 | audit: error, 5 issues
+  audit error E_RESTRICTION_BASE_MISMATCH on "Flag in {1} xs:string"
+  audit error E_RESTRICTION_BASE_MISMATCH on "Flag in {true} xs:string (control)"
+  audit error E_RESTRICTION_BASE_MISMATCH on "Flag in {1} xs:integer"
+  audit error E_RESTRICTION_BASE_MISMATCH on "Flag in {0, 1, 2} xs:integer"
+  audit error E_RESTRICTION_BASE_MISMATCH on "Off in {0} xs:integer"
+  Flag in {true} xs:boolean (control): pass, applicable 1, failed 0
+  Flag in {1} xs:boolean: pass, applicable 1, failed 0
+  Flag in {0} xs:boolean (must fail): fail, applicable 1, failed 1
+  Off in {0} xs:boolean: pass, applicable 1, failed 0
+  Flag in {1, 0} xs:boolean: pass, applicable 1, failed 0
+  Flag in {1} xs:boolean, no dataType: pass, applicable 1, failed 0
+  Flag in {1} xs:boolean, prohibited: fail, applicable 1, failed 1
+  Flag in {1} xs:string: pass, applicable 1, failed 0
+  Flag in {true} xs:string (control): pass, applicable 1, failed 0
+  Flag in {1} xs:integer: pass, applicable 1, failed 0
+  Flag in {0, 1, 2} xs:integer: pass, applicable 1, failed 0
+  Off in {0} xs:integer: pass, applicable 1, failed 0
+  Count (IFCINTEGER 1) in {1} xs:integer (control): pass, applicable 1, failed 0
+  Count (IFCINTEGER 1) in {true} xs:boolean (control): fail, applicable 1, failed 1

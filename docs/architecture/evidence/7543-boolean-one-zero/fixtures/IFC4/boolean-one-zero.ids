@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ids xmlns="http://standards.buildingsmart.org/IDS" xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <info><title>Boolean 1 and 0</title></info>
+  <specifications>
+    <specification name="Flag = true (control)" ifcVersion="IFC2X3 IFC4 IFC4X3_ADD2">
+      <applicability minOccurs="0" maxOccurs="unbounded"><entity><name><simpleValue>IFCWALL</simpleValue></name></entity></applicability>
+      <requirements><property dataType="IFCBOOLEAN"><propertySet><simpleValue>Probe_Set</simpleValue></propertySet><baseName><simpleValue>Flag</simpleValue></baseName><value><simpleValue>true</simpleValue></value></property></requirements>
+    </specification>
+    <specification name="Flag = 1" ifcVersion="IFC2X3 IFC4 IFC4X3_ADD2">
+      <applicability minOccurs="0" maxOccurs="unbounded"><entity><name><simpleValue>IFCWALL</simpleValue></name></entity></applicability>
+      <requirements><property dataType="IFCBOOLEAN"><propertySet><simpleValue>Probe_Set</simpleValue></propertySet><baseName><simpleValue>Flag</simpleValue></baseName><value><simpleValue>1</simpleValue></value></property></requirements>
+    </specification>
+    <specification name="Off = 0" ifcVersion="IFC2X3 IFC4 IFC4X3_ADD2">
+      <applicability minOccurs="0" maxOccurs="unbounded"><entity><name><simpleValue>IFCWALL</simpleValue></name></entity></applicability>
+      <requirements><property dataType="IFCBOOLEAN"><propertySet><simpleValue>Probe_Set</simpleValue></propertySet><baseName><simpleValue>Off</simpleValue></baseName><value><simpleValue>0</simpleValue></value></property></requirements>
+    </specification>
+    <specification name="Flag = 1, optional" ifcVersion="IFC2X3 IFC4 IFC4X3_ADD2">
+      <applicability minOccurs="0" maxOccurs="unbounded"><entity><name><simpleValue>IFCWALL</simpleValue></name></entity></applicability>
+      <requirements><property dataType="IFCBOOLEAN" cardinality="optional"><propertySet><simpleValue>Probe_Set</simpleValue></propertySet><baseName><simpleValue>Flag</simpleValue></baseName><value><simpleValue>1</simpleValue></value></property></requirements>
+    </specification>
+    <specification name="Flag = 1, prohibited (no dataType)" ifcVersion="IFC2X3 IFC4 IFC4X3_ADD2">
+      <applicability minOccurs="0" maxOccurs="unbounded"><entity><name><simpleValue>IFCWALL</simpleValue></name></entity></applicability>
+      <requirements><property cardinality="prohibited"><propertySet><simpleValue>Probe_Set</simpleValue></propertySet><baseName><simpleValue>Flag</simpleValue></baseName><value><simpleValue>1</simpleValue></value></property></requirements>
+    </specification>
+    <specification name="Logical = 1" ifcVersion="IFC2X3 IFC4 IFC4X3_ADD2">
+      <applicability minOccurs="0" maxOccurs="unbounded"><entity><name><simpleValue>IFCWALL</simpleValue></name></entity></applicability>
+      <requirements><property dataType="IFCLOGICAL"><propertySet><simpleValue>Probe_Set</simpleValue></propertySet><baseName><simpleValue>Logical</simpleValue></baseName><value><simpleValue>1</simpleValue></value></property></requirements>
+    </specification>
+    <specification name="Flag = 0 (must fail)" ifcVersion="IFC2X3 IFC4 IFC4X3_ADD2">
+      <applicability minOccurs="0" maxOccurs="unbounded"><entity><name><simpleValue>IFCWALL</simpleValue></name></entity></applicability>
+      <requirements><property dataType="IFCBOOLEAN"><propertySet><simpleValue>Probe_Set</simpleValue></propertySet><baseName><simpleValue>Flag</simpleValue></baseName><value><simpleValue>0</simpleValue></value></property></requirements>
+    </specification>
+    <specification name="Task IsMilestone = 1" ifcVersion="IFC2X3 IFC4 IFC4X3_ADD2">
+      <applicability minOccurs="0" maxOccurs="unbounded"><entity><name><simpleValue>IFCTASK</simpleValue></name></entity></applicability>
+      <requirements><attribute><name><simpleValue>IsMilestone</simpleValue></name><value><simpleValue>1</simpleValue></value></attribute></requirements>
+    </specification>
+    <specification name="Walls with Flag = 1 named Required" ifcVersion="IFC2X3 IFC4 IFC4X3_ADD2">
+      <applicability minOccurs="0" maxOccurs="unbounded"><entity><name><simpleValue>IFCWALL</simpleValue></name></entity><property dataType="IFCBOOLEAN"><propertySet><simpleValue>Probe_Set</simpleValue></propertySet><baseName><simpleValue>Flag</simpleValue></baseName><value><simpleValue>1</simpleValue></value></property></applicability>
+      <requirements><attribute><name><simpleValue>Name</simpleValue></name><value><simpleValue>Required</simpleValue></value></attribute></requirements>
+    </specification>
+    <specification name="Tasks with IsMilestone = 1 named Required" ifcVersion="IFC2X3 IFC4 IFC4X3_ADD2">
+      <applicability minOccurs="0" maxOccurs="unbounded"><entity><name><simpleValue>IFCTASK</simpleValue></name></entity><attribute><name><simpleValue>IsMilestone</simpleValue></name><value><simpleValue>1</simpleValue></value></attribute></applicability>
+      <requirements><attribute><name><simpleValue>Name</simpleValue></name><value><simpleValue>Required</simpleValue></value></attribute></requirements>
+    </specification>
+  </specifications>
+</ids>

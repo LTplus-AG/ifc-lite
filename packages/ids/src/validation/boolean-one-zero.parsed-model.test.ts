@@ -7,14 +7,15 @@
  * lexical space is {true, false, 1, 0}) must match the IFCBOOLEAN value the
  * parser reads, in a requirement and in an applicability, under every schema.
  *
- * Two kinds of model:
+ * Three kinds of model:
  * - buildingSMART's own corpus pairs for booleans (property 2/3, attribute
  *   3/3: a `.F.` value checked with `false`), with `false` swapped for `0`
  *   (must pass) and for `1` (must fail);
  * - a synthetic wall per schema, where an applicability on `Flag = 1` goes
  *   through `validateIDS` and its applicability property index, and where a
  *   prohibited `Flag = 1` (no dataType) passed the wall on main although the
- *   wall holds that value;
+ *   wall holds that value; the same again with `1` and `0` in an
+ *   `xs:enumeration`;
  * - a synthetic task (IFC4, IFC4X3_ADD2), where an attribute applicability
  *   on `IsMilestone = 0` selected nothing on main.
  */
@@ -119,6 +120,36 @@ END-ISO-10303-21;
       // never selected and the specification passed with nothing applicable.
       'Flag = 1 selects the wall': 'fail, applicable 1, failed 1',
       'Flag = 0 selects nothing': 'pass, applicable 0, failed 0',
+    });
+  });
+
+  // The same values listed in an xs:enumeration, which matched nothing on main either.
+  const en = (...values: string[]) =>
+    `<xs:restriction base="xs:boolean">${values.map((v) => `<xs:enumeration value="${v}"/>`).join('')}</xs:restriction>`;
+  const enumerationIds = `<?xml version="1.0" encoding="UTF-8"?>
+<ids xmlns="http://standards.buildingsmart.org/IDS" xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <info><title>#7543 enumerations</title></info>
+  <specifications>${[
+    spec('Flag in 1', wall, prop('IFCBOOLEAN', 'Flag', en('1'))),
+    spec('Off in 0', wall, prop('IFCBOOLEAN', 'Off', en('0'))),
+    spec('Flag in 0', wall, prop('IFCBOOLEAN', 'Flag', en('0'))),
+    spec('Flag in 1 and 0 prohibited', wall, prop('', 'Flag', en('1', '0'), 'prohibited')),
+    spec('Flag in 1 selects the wall', wall + prop('IFCBOOLEAN', 'Flag', en('1')), named),
+    spec('Flag in 0 selects nothing', wall + prop('IFCBOOLEAN', 'Flag', en('0')), named),
+  ].join('')}
+  </specifications>
+</ids>`;
+
+  it.each(['IFC2X3', 'IFC4', 'IFC4X3_ADD2'])('%s: an enumeration that lists 1 or 0', async (schema) => {
+    const report = await validate(ifc(schema), enumerationIds);
+    expect(Object.fromEntries(report.specificationResults.map((r) => [r.specification.name, verdict(r)]))).toEqual({
+      'Flag in 1': 'pass, applicable 1, failed 0',
+      'Off in 0': 'pass, applicable 1, failed 0',
+      'Flag in 0': 'fail, applicable 1, failed 1',
+      // The wall holds Flag = true, which the list names, so the prohibition fails it.
+      'Flag in 1 and 0 prohibited': 'fail, applicable 1, failed 1',
+      'Flag in 1 selects the wall': 'fail, applicable 1, failed 1',
+      'Flag in 0 selects nothing': 'pass, applicable 0, failed 0',
     });
   });
 });

@@ -14,15 +14,36 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { matchConstraint } from './index.js';
+import { getConstraintMismatchReason, matchConstraint } from './index.js';
 import { literalCastsUnder, literalCastsUnderAnyType, ifcMeasureToXsdTypes } from './xsd-cast.js';
 import { isValidLexicalForXsType } from './xsd-lexical.js';
+import { auditIDSStructure } from '../audit/index.js';
+import { parseIDS } from '../parser/xml-parser.js';
 import { checkAttributeFacet } from '../facets/attribute-facet.js';
 import { checkPropertyFacet, propertyFacetPasses } from '../facets/property-facet.js';
 import { createMockAccessor } from '../facets/test-helpers.js';
 import type { IDSConstraint, IDSPropertyFacet, IDSSimpleValue } from '../types.js';
 
 const sv = (value: string): IDSSimpleValue => ({ type: 'simpleValue', value });
+
+/** An IDS whose one requirement is the IFCBOOLEAN property `Probe_Set.Flag`, with this `<value>` content. */
+const idsWithValue = (value: string): string => `<?xml version="1.0" encoding="UTF-8"?>
+<ids xmlns="http://standards.buildingsmart.org/IDS" xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <info><title>#7543</title></info>
+  <specifications>
+    <specification name="S" ifcVersion="IFC4">
+      <applicability minOccurs="0" maxOccurs="unbounded"><entity><name><simpleValue>IFCWALL</simpleValue></name></entity></applicability>
+      <requirements><property dataType="IFCBOOLEAN"><propertySet><simpleValue>Probe_Set</simpleValue></propertySet><baseName><simpleValue>Flag</simpleValue></baseName><value>${value}</value></property></requirements>
+    </specification>
+  </specifications>
+</ids>`;
+
+/** The value constraint that `parseIDS` reads from `idsWithValue(value)`. */
+function parsedValue(value: string): IDSConstraint {
+  const facet = parseIDS(idsWithValue(value)).specifications[0].requirements[0].facet;
+  if (facet.type !== 'property' || facet.value === undefined) throw new Error('fixture');
+  return facet.value;
+}
 
 /**
  * Literals around the four valid ones: case, sign, leading zeros, empty, other
@@ -86,6 +107,74 @@ describe('xs:boolean literals 1 and 0 (#7543)', () => {
     const constraint: IDSConstraint = sv('1');
     expect(matchConstraint(constraint, 'true', { stringOnly: true })).toBe(false);
     expect(matchConstraint(constraint, '1', { stringOnly: true })).toBe(true);
+  });
+
+  it('an enumeration that lists 1 or 0 matches the boolean it names', () => {
+    const en = (values: string[], base?: string): IDSConstraint => ({ type: 'enumeration', values, ...(base ? { base } : {}) });
+    // Matching does not read the base, as it already did not for numbers.
+    // IfcTester (ifctester 0.8.3 on IfcOpenShell 0.8.4) also passes a stored
+    // true against 1 listed under xs:string or xs:integer.
+    for (const base of [undefined, 'xs:boolean', 'xs:string', 'xs:integer']) {
+      const at = String(base);
+      expect(matchConstraint(en(['1'], base), true), at).toBe(true);
+      expect(matchConstraint(en(['0'], base), false), at).toBe(true);
+      expect(matchConstraint(en(['1', '0'], base), false), at).toBe(true);
+      expect(matchConstraint(en(['1'], base), false), at).toBe(false);
+      expect(matchConstraint(en(['0'], base), true), at).toBe(false);
+    }
+    // Unchanged: a number is compared as a number, text as text.
+    expect(matchConstraint(en(['1'], 'xs:integer'), 1)).toBe(true);
+    expect(matchConstraint(en(['1'], 'xs:boolean'), 'true')).toBe(false);
+    expect(matchConstraint(en(['1'], 'xs:boolean'), true, { stringOnly: true })).toBe(false);
+  });
+
+  it('getConstraintMismatchReason: once a listed 1 matches the stored boolean, the reason comes from the other facet', () => {
+    // An enumeration with a pattern beside it, built by hand.
+    const withPattern: IDSConstraint = {
+      type: 'enumeration', values: ['1'], base: 'xs:boolean',
+      and: [{ type: 'pattern', pattern: 'x', base: 'xs:boolean' }],
+    };
+    expect(getConstraintMismatchReason(withPattern, true)).toBe('"true" does not match pattern "x"');
+    // Parsed: an enumeration with an xs:length beside it. The value still fails.
+    const withLength = parsedValue('<xs:restriction base="xs:boolean"><xs:enumeration value="1"/><xs:length value="3"/></xs:restriction>');
+    if (withLength.type !== 'enumeration' || withLength.and?.length !== 1) throw new Error('fixture');
+    expect(matchConstraint(withLength, true)).toBe(false);
+    expect(getConstraintMismatchReason(withLength, true)).toBe(getConstraintMismatchReason(withLength.and[0], true));
+    // Unchanged: a parsed restriction puts an xs:pattern first, so the reason is the pattern's.
+    const patternFirst = parsedValue('<xs:restriction base="xs:boolean"><xs:enumeration value="1"/><xs:pattern value="x"/></xs:restriction>');
+    expect(getConstraintMismatchReason(patternFirst, true)).toBe('"true" does not match pattern "x"');
+  });
+
+  it('an xs:pattern is still matched against the text true or false', () => {
+    const pattern = (value: string): IDSConstraint => ({ type: 'pattern', pattern: value, base: 'xs:boolean' });
+    expect(matchConstraint(pattern('true'), true)).toBe(true);
+    expect(matchConstraint(pattern('false'), false)).toBe(true);
+    expect(matchConstraint(pattern('1'), true)).toBe(false);
+    expect(matchConstraint(pattern('0'), false)).toBe(false);
+  });
+});
+
+describe('the audit keeps its answers (#7543)', () => {
+  // The audit's xs:boolean check reads the shared table now. The regex it
+  // replaced read the value as text, so a value that is not a string (a
+  // caller can put one into a parsed document) must keep that answer.
+  const xml = idsWithValue('<xs:restriction base="xs:boolean"><xs:enumeration value="true"/></xs:restriction>');
+  /** The `E_RESTRICTION_VALUE_MISMATCH` issues for the enumeration holding only `value`. */
+  async function mismatches(value: unknown): Promise<number> {
+    const doc = parseIDS(xml);
+    const facet = doc.specifications[0].requirements[0].facet;
+    if (facet.type !== 'property' || facet.value?.type !== 'enumeration') throw new Error('fixture');
+    Object.assign(facet.value, { values: [value] });
+    return (await auditIDSStructure(doc)).issues.filter((i) => i.code === 'E_RESTRICTION_VALUE_MISMATCH').length;
+  }
+
+  it('an xs:boolean enumeration value that is not a string is read as text, as before', async () => {
+    expect(await mismatches('1')).toBe(0);
+    expect(await mismatches(1)).toBe(0);
+    expect(await mismatches(true)).toBe(0);
+    // The check still runs: these were flagged before and still are.
+    expect(await mismatches(2)).toBe(1);
+    expect(await mismatches('TRUE')).toBe(1);
   });
 });
 

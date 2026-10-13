@@ -1,0 +1,103 @@
+builds: old = 20e2a5d6b, new = head
+inputs: 174 strings, 21 values that are not strings, 17 xsd types, 20 stored values, 489840 validateIDS specifications
+
+| function | calls | same | changed | of which outside the 1/0 class | old returned, new threw | old threw, new returned | both threw |
+|---|---|---|---|---|---|---|---|
+| literalCastsUnder (module) | 3315 | 3298 | 0 | 0 | 0 | 0 | 17 |
+| literalCastsUnderAnyType (module) | 1365 | 1360 | 0 | 0 | 0 | 0 | 5 |
+| isBooleanLiteral (module) | 195 | 195 | 0 | 0 | 0 | 0 | 0 |
+| compareBoolean (module) | 3900 | 3900 | 0 | 0 | 0 | 0 | 0 |
+| isValidLexicalForXsType (module) | 3315 | 3229 | 12 | 12 | 2 | 0 | 72 |
+| matchConstraint | 136400 | 126104 | 0 | 0 | 0 | 0 | 10296 |
+| getConstraintMismatchReason | 34100 | 33380 | 0 | 0 | 0 | 0 | 720 |
+| formatConstraint | 1705 | 1681 | 0 | 0 | 0 | 0 | 24 |
+| checkPropertyFacet | 332160 | 332160 | 0 | 0 | 0 | 0 | 0 |
+| checkFacet (property) | 332160 | 332160 | 0 | 0 | 0 | 0 | 0 |
+| propertyFacetPasses (module) | 332160 | 332160 | 0 | 0 | 0 | 0 | 0 |
+| checkAttributeFacet | 49824 | 49824 | 0 | 0 | 0 | 0 | 0 |
+| validateIDS (per specification) | 489840 | 489840 | 0 | 0 | 0 | 0 | 0 |
+| auditIDSDocument | 169 | 169 | 0 | 0 | 0 | 0 | 0 |
+| auditIDSStructure | 169 | 169 | 0 | 0 | 0 | 0 | 0 |
+| auditIDSStructure (value not a string) | 21 | 6 | 12 | 12 | 0 | 0 | 3 |
+
+compareBoolean's changes: 0 return true now (the literal names the stored boolean); 0 went from undefined to false; 0 other.
+
+changed outcomes, first samples per function:
+- isValidLexicalForXsType (module)
+    (1, "xs:boolean"): 20e2a5d6b false, head true
+    (0, "xs:boolean"): 20e2a5d6b false, head true
+    (-0, "xs:boolean"): 20e2a5d6b false, head true
+    (true, "xs:boolean"): 20e2a5d6b false, head true
+    (false, "xs:boolean"): 20e2a5d6b false, head true
+    (1n, "xs:boolean"): 20e2a5d6b false, head true
+- auditIDSStructure (value not a string)
+    value 1: 20e2a5d6b {"status":"error","issues":["error:E_RESTRICTION_VALUE_MISMATCH:specifications[0].requirements[0].value","error:E_RESTRICTION_VALUE_MISMATCH:specifications[1].requirements[0].value"]}, head {"status":"valid","issues":[]}
+    value 0: 20e2a5d6b {"status":"error","issues":["error:E_RESTRICTION_VALUE_MISMATCH:specifications[0].requirements[0].value","error:E_RESTRICTION_VALUE_MISMATCH:specifications[1].requirements[0].value"]}, head {"status":"valid","issues":[]}
+    value -0: 20e2a5d6b {"status":"error","issues":["error:E_RESTRICTION_VALUE_MISMATCH:specifications[0].requirements[0].value","error:E_RESTRICTION_VALUE_MISMATCH:specifications[1].requirements[0].value"]}, head {"status":"valid","issues":[]}
+    value true: 20e2a5d6b {"status":"error","issues":["error:E_RESTRICTION_VALUE_MISMATCH:specifications[0].requirements[0].value","error:E_RESTRICTION_VALUE_MISMATCH:specifications[1].requirements[0].value"]}, head {"status":"valid","issues":[]}
+    value false: 20e2a5d6b {"status":"error","issues":["error:E_RESTRICTION_VALUE_MISMATCH:specifications[0].requirements[0].value","error:E_RESTRICTION_VALUE_MISMATCH:specifications[1].requirements[0].value"]}, head {"status":"valid","issues":[]}
+    value 1n: 20e2a5d6b {"status":"error","issues":["error:E_RESTRICTION_VALUE_MISMATCH:specifications[0].requirements[0].value","error:E_RESTRICTION_VALUE_MISMATCH:specifications[1].requirements[0].value"]}, head {"status":"valid","issues":[]}
+
+threw on both builds, by function and error, with the first inputs:
+  1 x literalCastsUnder (module) | TypeError: Cannot read properties of null (reading 'length'): (null, "xs:double")
+  1 x literalCastsUnder (module) | TypeError: Cannot read properties of undefined (reading 'length'): ("__undefined", "xs:double")
+  5 x literalCastsUnder (module) | TypeError: Cannot convert a Symbol value to a string: (Symbol(1), "xs:integer") ; (Symbol(1), "xs:duration")
+  5 x literalCastsUnder (module) | TypeError: Cannot convert object to primitive value: (Object.create(null), "xs:integer") ; (Object.create(null), "xs:duration")
+  5 x literalCastsUnder (module) | Error: toString throws: ({ toString() throws }, "xs:integer") ; ({ toString() throws }, "xs:duration")
+  1 x literalCastsUnderAnyType (module) | TypeError: Cannot read properties of null (reading 'length'): (null, ["xs:double"])
+  1 x literalCastsUnderAnyType (module) | TypeError: Cannot read properties of undefined (reading 'length'): ("__undefined", ["xs:double"])
+  1 x literalCastsUnderAnyType (module) | TypeError: Cannot convert a Symbol value to a string: (Symbol(1), ["xs:integer"])
+  1 x literalCastsUnderAnyType (module) | TypeError: Cannot convert object to primitive value: (Object.create(null), ["xs:integer"])
+  1 x literalCastsUnderAnyType (module) | Error: toString throws: ({ toString() throws }, ["xs:integer"])
+  51 x isValidLexicalForXsType (module) | TypeError: value.split is not a function: (1, "xs:double") ; (1, "xs:float")
+  3 x isValidLexicalForXsType (module) | TypeError: Cannot read properties of null (reading 'split'): (null, "xs:double") ; (null, "xs:float")
+  3 x isValidLexicalForXsType (module) | TypeError: Cannot read properties of undefined (reading 'split'): ("__undefined", "xs:double") ; ("__undefined", "xs:float")
+  5 x isValidLexicalForXsType (module) | TypeError: Cannot convert a Symbol value to a string: (Symbol(1), "xs:integer") ; (Symbol(1), "xs:duration")
+  5 x isValidLexicalForXsType (module) | TypeError: Cannot convert object to primitive value: (Object.create(null), "xs:integer") ; (Object.create(null), "xs:duration")
+  5 x isValidLexicalForXsType (module) | Error: toString throws: ({ toString() throws }, "xs:integer") ; ({ toString() throws }, "xs:duration")
+  612 x matchConstraint | TypeError: expected.toUpperCase is not a function: (simpleValue 1, true, {"caseInsensitive":true}) ; (simpleValue 1, true, {"caseInsensitive":true,"stringOnly":true})
+  8568 x matchConstraint | TypeError: v.toUpperCase is not a function: (enumeration [1] base undefined, true, "__undefined") ; (enumeration [1] base undefined, true, {"caseInsensitive":true})
+  306 x getConstraintMismatchReason | TypeError: v.toUpperCase is not a function: (enumeration [1] and pattern "x", true) ; (enumeration [1] and pattern "x", false)
+  18 x matchConstraint | TypeError: Cannot read properties of null (reading 'length'): (simpleValue null, true, "__undefined") ; (simpleValue null, false, "__undefined")
+  540 x matchConstraint | TypeError: Cannot read properties of null (reading 'toUpperCase'): (simpleValue null, true, {"caseInsensitive":true}) ; (simpleValue null, true, {"caseInsensitive":true,"stringOnly":true})
+  18 x getConstraintMismatchReason | TypeError: Cannot read properties of null (reading 'toUpperCase'): (enumeration [null] and pattern "x", true) ; (enumeration [null] and pattern "x", false)
+  18 x matchConstraint | TypeError: Cannot read properties of undefined (reading 'length'): (simpleValue "__undefined", true, "__undefined") ; (simpleValue "__undefined", false, "__undefined")
+  540 x matchConstraint | TypeError: Cannot read properties of undefined (reading 'toUpperCase'): (simpleValue "__undefined", true, {"caseInsensitive":true}) ; (simpleValue "__undefined", true, {"caseInsensitive":true,"stringOnly":true})
+  18 x getConstraintMismatchReason | TypeError: Cannot read properties of undefined (reading 'toUpperCase'): (enumeration ["__undefined"] and pattern "x", true) ; (enumeration ["__undefined"] and pattern "x", false)
+  126 x getConstraintMismatchReason | TypeError: Cannot convert a Symbol value to a string: (simpleValue Symbol(1), true) ; (simpleValue Symbol(1), false)
+  8 x formatConstraint | TypeError: Cannot convert a Symbol value to a string: (simpleValue Symbol(1)) ; (enumeration [Symbol(1)] base undefined)
+  126 x getConstraintMismatchReason | TypeError: Cannot convert object to primitive value: (simpleValue Object.create(null), true) ; (simpleValue Object.create(null), false)
+  8 x formatConstraint | TypeError: Cannot convert object to primitive value: (simpleValue Object.create(null)) ; (enumeration [Object.create(null)] base undefined)
+  126 x getConstraintMismatchReason | Error: toString throws: (simpleValue { toString() throws }, true) ; (simpleValue { toString() throws }, false)
+  8 x formatConstraint | Error: toString throws: (simpleValue { toString() throws }) ; (enumeration [{ toString() throws }] base undefined)
+  1 x auditIDSStructure (value not a string) | TypeError: Cannot convert a Symbol value to a string: value Symbol(1)
+  1 x auditIDSStructure (value not a string) | TypeError: Cannot convert object to primitive value: value Object.create(null)
+  1 x auditIDSStructure (value not a string) | Error: toString throws: value { toString() throws }
+
+outside the class, narrowed, widened or thrown differently (26):
+  isValidLexicalForXsType (module) (1, "xs:boolean"): 20e2a5d6b false, head true
+  isValidLexicalForXsType (module) (0, "xs:boolean"): 20e2a5d6b false, head true
+  isValidLexicalForXsType (module) (-0, "xs:boolean"): 20e2a5d6b false, head true
+  isValidLexicalForXsType (module) (true, "xs:boolean"): 20e2a5d6b false, head true
+  isValidLexicalForXsType (module) (false, "xs:boolean"): 20e2a5d6b false, head true
+  isValidLexicalForXsType (module) (1n, "xs:boolean"): 20e2a5d6b false, head true
+  isValidLexicalForXsType (module) (0n, "xs:boolean"): 20e2a5d6b false, head true
+  isValidLexicalForXsType (module) (["1"], "xs:boolean"): 20e2a5d6b false, head true
+  isValidLexicalForXsType (module) ([1], "xs:boolean"): 20e2a5d6b false, head true
+  isValidLexicalForXsType (module) ({ toString() returns "1" }, "xs:boolean"): 20e2a5d6b false, head true
+  isValidLexicalForXsType (module) (new String("1"), "xs:boolean"): 20e2a5d6b false, head true
+  isValidLexicalForXsType (module) (new String("true"), "xs:boolean"): 20e2a5d6b false, head true
+  NARROWED isValidLexicalForXsType (module) (Object.create(null), "xs:boolean"): 20e2a5d6b false, head threw TypeError: Cannot convert object to primitive value
+  NARROWED isValidLexicalForXsType (module) ({ toString() throws }, "xs:boolean"): 20e2a5d6b false, head threw Error: toString throws
+  auditIDSStructure (value not a string) value 1: 20e2a5d6b {"status":"error","issues":["error:E_RESTRICTION_VALUE_MISMATCH:specifications[0].requirements[0].value","error:E_RESTRICTION_VALUE_MISMATCH:specifications[1].requirements[0].value"]}, head {"status":"valid","issues":[]}
+  auditIDSStructure (value not a string) value 0: 20e2a5d6b {"status":"error","issues":["error:E_RESTRICTION_VALUE_MISMATCH:specifications[0].requirements[0].value","error:E_RESTRICTION_VALUE_MISMATCH:specifications[1].requirements[0].value"]}, head {"status":"valid","issues":[]}
+  auditIDSStructure (value not a string) value -0: 20e2a5d6b {"status":"error","issues":["error:E_RESTRICTION_VALUE_MISMATCH:specifications[0].requirements[0].value","error:E_RESTRICTION_VALUE_MISMATCH:specifications[1].requirements[0].value"]}, head {"status":"valid","issues":[]}
+  auditIDSStructure (value not a string) value true: 20e2a5d6b {"status":"error","issues":["error:E_RESTRICTION_VALUE_MISMATCH:specifications[0].requirements[0].value","error:E_RESTRICTION_VALUE_MISMATCH:specifications[1].requirements[0].value"]}, head {"status":"valid","issues":[]}
+  auditIDSStructure (value not a string) value false: 20e2a5d6b {"status":"error","issues":["error:E_RESTRICTION_VALUE_MISMATCH:specifications[0].requirements[0].value","error:E_RESTRICTION_VALUE_MISMATCH:specifications[1].requirements[0].value"]}, head {"status":"valid","issues":[]}
+  auditIDSStructure (value not a string) value 1n: 20e2a5d6b {"status":"error","issues":["error:E_RESTRICTION_VALUE_MISMATCH:specifications[0].requirements[0].value","error:E_RESTRICTION_VALUE_MISMATCH:specifications[1].requirements[0].value"]}, head {"status":"valid","issues":[]}
+  auditIDSStructure (value not a string) value 0n: 20e2a5d6b {"status":"error","issues":["error:E_RESTRICTION_VALUE_MISMATCH:specifications[0].requirements[0].value","error:E_RESTRICTION_VALUE_MISMATCH:specifications[1].requirements[0].value"]}, head {"status":"valid","issues":[]}
+  auditIDSStructure (value not a string) value ["1"]: 20e2a5d6b {"status":"error","issues":["error:E_RESTRICTION_VALUE_MISMATCH:specifications[0].requirements[0].value","error:E_RESTRICTION_VALUE_MISMATCH:specifications[1].requirements[0].value"]}, head {"status":"valid","issues":[]}
+  auditIDSStructure (value not a string) value [1]: 20e2a5d6b {"status":"error","issues":["error:E_RESTRICTION_VALUE_MISMATCH:specifications[0].requirements[0].value","error:E_RESTRICTION_VALUE_MISMATCH:specifications[1].requirements[0].value"]}, head {"status":"valid","issues":[]}
+  auditIDSStructure (value not a string) value { toString() returns "1" }: 20e2a5d6b {"status":"error","issues":["error:E_RESTRICTION_VALUE_MISMATCH:specifications[0].requirements[0].value","error:E_RESTRICTION_VALUE_MISMATCH:specifications[1].requirements[0].value"]}, head {"status":"valid","issues":[]}
+  auditIDSStructure (value not a string) value new String("1"): 20e2a5d6b {"status":"error","issues":["error:E_RESTRICTION_VALUE_MISMATCH:specifications[0].requirements[0].value","error:E_RESTRICTION_VALUE_MISMATCH:specifications[1].requirements[0].value"]}, head {"status":"valid","issues":[]}
+  auditIDSStructure (value not a string) value new String("true"): 20e2a5d6b {"status":"error","issues":["error:E_RESTRICTION_VALUE_MISMATCH:specifications[0].requirements[0].value","error:E_RESTRICTION_VALUE_MISMATCH:specifications[1].requirements[0].value"]}, head {"status":"valid","issues":[]}

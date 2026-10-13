@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ids xmlns="http://standards.buildingsmart.org/IDS" xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <info><title>#7543 enumerations</title></info>
+  <specifications>
+    <specification name="Flag in 1" ifcVersion="IFC2X3 IFC4 IFC4X3_ADD2">
+      <applicability minOccurs="0" maxOccurs="unbounded"><entity><name><simpleValue>IFCWALL</simpleValue></name></entity></applicability>
+      <requirements><property dataType="IFCBOOLEAN"><propertySet><simpleValue>Probe_Set</simpleValue></propertySet><baseName><simpleValue>Flag</simpleValue></baseName><value><xs:restriction base="xs:boolean"><xs:enumeration value="1"/></xs:restriction></value></property></requirements>
+    </specification>
+    <specification name="Off in 0" ifcVersion="IFC2X3 IFC4 IFC4X3_ADD2">
+      <applicability minOccurs="0" maxOccurs="unbounded"><entity><name><simpleValue>IFCWALL</simpleValue></name></entity></applicability>
+      <requirements><property dataType="IFCBOOLEAN"><propertySet><simpleValue>Probe_Set</simpleValue></propertySet><baseName><simpleValue>Off</simpleValue></baseName><value><xs:restriction base="xs:boolean"><xs:enumeration value="0"/></xs:restriction></value></property></requirements>
+    </specification>
+    <specification name="Flag in 0" ifcVersion="IFC2X3 IFC4 IFC4X3_ADD2">
+      <applicability minOccurs="0" maxOccurs="unbounded"><entity><name><simpleValue>IFCWALL</simpleValue></name></entity></applicability>
+      <requirements><property dataType="IFCBOOLEAN"><propertySet><simpleValue>Probe_Set</simpleValue></propertySet><baseName><simpleValue>Flag</simpleValue></baseName><value><xs:restriction base="xs:boolean"><xs:enumeration value="0"/></xs:restriction></value></property></requirements>
+    </specification>
+    <specification name="Flag in 1 and 0 prohibited" ifcVersion="IFC2X3 IFC4 IFC4X3_ADD2">
+      <applicability minOccurs="0" maxOccurs="unbounded"><entity><name><simpleValue>IFCWALL</simpleValue></name></entity></applicability>
+      <requirements><property cardinality="prohibited"><propertySet><simpleValue>Probe_Set</simpleValue></propertySet><baseName><simpleValue>Flag</simpleValue></baseName><value><xs:restriction base="xs:boolean"><xs:enumeration value="1"/><xs:enumeration value="0"/></xs:restriction></value></property></requirements>
+    </specification>
+    <specification name="Flag in 1 selects the wall" ifcVersion="IFC2X3 IFC4 IFC4X3_ADD2">
+      <applicability minOccurs="0" maxOccurs="unbounded"><entity><name><simpleValue>IFCWALL</simpleValue></name></entity><property dataType="IFCBOOLEAN"><propertySet><simpleValue>Probe_Set</simpleValue></propertySet><baseName><simpleValue>Flag</simpleValue></baseName><value><xs:restriction base="xs:boolean"><xs:enumeration value="1"/></xs:restriction></value></property></applicability>
+      <requirements><attribute><name><simpleValue>Name</simpleValue></name><value><simpleValue>Required</simpleValue></value></attribute></requirements>
+    </specification>
+    <specification name="Flag in 0 selects nothing" ifcVersion="IFC2X3 IFC4 IFC4X3_ADD2">
+      <applicability minOccurs="0" maxOccurs="unbounded"><entity><name><simpleValue>IFCWALL</simpleValue></name></entity><property dataType="IFCBOOLEAN"><propertySet><simpleValue>Probe_Set</simpleValue></propertySet><baseName><simpleValue>Flag</simpleValue></baseName><value><xs:restriction base="xs:boolean"><xs:enumeration value="0"/></xs:restriction></value></property></applicability>
+      <requirements><attribute><name><simpleValue>Name</simpleValue></name><value><simpleValue>Required</simpleValue></value></attribute></requirements>
+    </specification>
+  </specifications>
+</ids>

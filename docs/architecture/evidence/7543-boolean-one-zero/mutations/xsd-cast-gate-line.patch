@@ -1,0 +1,13 @@
+diff --git a/packages/ids/src/constraints/xsd-cast.ts b/packages/ids/src/constraints/xsd-cast.ts
+index c147e1ba7..27d4f3301 100644
+--- a/packages/ids/src/constraints/xsd-cast.ts
++++ b/packages/ids/src/constraints/xsd-cast.ts
+@@ -107,7 +107,7 @@ export function literalCastsUnder(value: string, xsdType: string): boolean {
+       // xsd-cast-specials.test.ts, which are representatives.
+       return isWhollyNumeric(value) || XSD_NUMERIC_SPECIALS.has(value);
+     case 'xs:boolean':
+-      return value === 'true' || value === 'false';
++      return xsdBooleanValue(value) !== undefined;
+     case 'xs:duration':
+       return DURATION_RE.test(value);
+     case 'xs:string':

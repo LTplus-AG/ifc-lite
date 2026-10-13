@@ -75,6 +75,12 @@ export interface NodeRunContext<H> {
 /** Plain outputs keyed by port name, each in the shape the port's `access` declares. */
 export type NodeOutputs = Readonly<Record<string, unknown>>;
 
+interface NodeRequirements {
+  readonly backend?: readonly string[];
+  readonly network?: boolean;
+  readonly secrets?: readonly string[];
+}
+
 export interface NodeDef<H = unknown, P = Readonly<Record<string, unknown>>> {
   /** Stable id, e.g. `model.queryByType`. */
   readonly type: string;
@@ -105,11 +111,10 @@ export interface NodeDef<H = unknown, P = Readonly<Record<string, unknown>>> {
   /** Headless behaviour when a required backend feature is absent: `noop` runs as no-op. */
   readonly headless?: 'run' | 'noop';
   /** Host prerequisites the availability check tests for. */
-  readonly requires?: {
-    readonly backend?: readonly string[];
-    readonly network?: boolean;
-    readonly secrets?: readonly string[];
-  };
+  readonly requires?: NodeRequirements;
+  /** Pure additional host prerequisites from resolved defaults/Player params.
+   * Checked before any node executes, and again at the node's execution. */
+  readonly requiresForParams?: (params: Readonly<Record<string, unknown>>) => NodeRequirements;
   /** Name of the `item` input whose `EntityRef` value keys lanes (defaults to the first entity item port). */
   readonly laneKeyPort?: string;
   /**
@@ -166,4 +171,15 @@ export function resolveParams(def: NodeDef<unknown>, given: Readonly<Record<stri
     out[p.name] = v === undefined ? p.default : v;
   }
   return out;
+}
+
+/** Internal shared default/Player resolution; undefined overrides never erase a value. */
+export function resolveNodeParams(def: NodeDef<unknown>, nodeId: string,
+  given: Readonly<Record<string, unknown>> | undefined, inputs: Readonly<Record<string, unknown>> | undefined) {
+  const overrides: Record<string, unknown> = {};
+  for (const param of def.params) {
+    const value = inputs?.[`${nodeId}.${param.name}`];
+    if (value !== undefined) overrides[param.name] = value;
+  }
+  return resolveParams(def, { ...given, ...overrides });
 }

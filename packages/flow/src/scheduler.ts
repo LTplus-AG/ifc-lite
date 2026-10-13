@@ -16,12 +16,12 @@
  */
 
 import { consumeReviewedResume, graphDigest, registerPausedRun } from './checkpoint-record.js';
-import { nodeAvailability, type HostFeatures } from './availability.js';
+import { nodeAvailability, preflightParameterRequirements, type HostFeatures } from './availability.js';
 import { digest, digestFlowData } from './digest.js';
 import type { FlowDocument } from './document.js';
 import { topologicalOrder } from './order.js';
 import { assemble, planLift, type LiftPlan } from './lift.js';
-import { resolveParams, type LaneTracking, type LogLevel, type NodeOutputs, type NodeRegistry } from './registry.js';
+import { resolveNodeParams, type LaneTracking, type LogLevel, type NodeOutputs, type NodeRegistry } from './registry.js';
 import { ORPHAN_NODE_ID, removeOrphanedSets, removeSet, trackingKeyOf } from './orphans.js';
 import { noopOutputs, prepareInputs } from './prepare.js';
 import { emptyTrackedSet, planTracking, type TrackingPlan, type TrackingStore } from './tracking.js';
@@ -129,6 +129,7 @@ export async function runFlow<H>(doc: FlowDocument, opts: RunOptions<H>): Promis
   const runGraphDigest = graphDigest(doc, opts.inputs ?? {}, registry);
   const resume = opts.resume ? consumeReviewedResume(opts.resume, doc, opts.inputs ?? {}, registry) : undefined;
   const order = topologicalOrder(doc);
+  preflightParameterRequirements(doc, registry, opts.features, opts.inputs, new Set<string>(resume?.keys()));
   const outputs = new Map<string, Map<string, FlowData>>();
   const reports: NodeReport[] = [];
   const log: RunLogEntry[] = [];
@@ -176,15 +177,10 @@ export async function runFlow<H>(doc: FlowDocument, opts: RunOptions<H>): Promis
       fail(problems.join('; '));
       continue;
     }
-    const overrides: Record<string, unknown> = {};
-    for (const p of def.params) {
-      const v = opts.inputs?.[`${nodeId}.${p.name}`];
-      if (v !== undefined) overrides[p.name] = v;
-    }
-    const params = resolveParams(def, { ...node.params, ...overrides });
+    const params = resolveNodeParams(def, nodeId, node.params, opts.inputs);
     const lacing = node.lacing ?? 'shortest';
     if (opts.features) {
-      const avail = nodeAvailability(def, node.type, opts.features);
+      const avail = nodeAvailability(def, node.type, opts.features, params);
       if (avail.status === 'unavailable') {
         fail(avail.reasons.join('; '));
         continue;

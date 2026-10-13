@@ -9,7 +9,7 @@
  */
 
 import type { FlowDocument } from './document.js';
-import type { NodeDef, NodeRegistry } from './registry.js';
+import { resolveNodeParams, type NodeDef, type NodeRegistry } from './registry.js';
 import { referencedSecrets } from './secret-refs.js';
 
 export interface HostFeatures {
@@ -30,30 +30,36 @@ export interface NodeAvailability {
   readonly reasons: readonly string[];
 }
 
-export function nodeAvailability(def: NodeDef<unknown> | undefined, type: string, features: HostFeatures): { status: AvailabilityStatus; reasons: string[] } {
+export function nodeAvailability(def: NodeDef<unknown> | undefined, type: string, features: HostFeatures, params?: Readonly<Record<string, unknown>>): { status: AvailabilityStatus; reasons: string[] } {
   if (!def) return { status: 'unknown', reasons: [`unknown node type "${type}"`] };
   const reasons: string[] = [];
-  const req = def.requires;
+  // Type-only palette checks have no instance params; preserve their static
+  // availability. Document/runtime checks pass the resolved parameter object.
+  const derived = params === undefined ? undefined : def.requiresForParams?.(params);
+  const req = { backend: [...new Set([...(def.requires?.backend ?? []), ...(derived?.backend ?? [])])],
+    network: def.requires?.network || derived?.network,
+    secrets: [...new Set([...(def.requires?.secrets ?? []), ...(derived?.secrets ?? [])])] };
   let backendMissing = false;
-  for (const f of req?.backend ?? []) {
+  for (const f of req.backend) {
     if (!features.backend.has(f)) {
       backendMissing = true;
       reasons.push(`backend feature "${f}" is not available on this host`);
     }
   }
-  if (req?.network && !features.network) reasons.push('no network bridge on this host');
-  for (const s of req?.secrets ?? []) {
+  if (req.network && !features.network) reasons.push('no network bridge on this host');
+  for (const s of req.secrets) {
     if (!features.secrets.has(s)) reasons.push(`secret "${s}" is not available on this host`);
   }
   if (reasons.length === 0) return { status: 'ok', reasons };
   // Only a missing backend feature can be a no-op (a viewer colorize with no
   // viewer); a missing secret or network is a real inability.
-  const onlyBackend = backendMissing && reasons.length === (req?.backend ?? []).filter((f) => !features.backend.has(f)).length;
+  const onlyBackend = backendMissing && reasons.length === (req.backend).filter((f) => !features.backend.has(f)).length;
   if (onlyBackend && def.headless === 'noop') return { status: 'noop', reasons };
   return { status: 'unavailable', reasons };
 }
 
-export function checkAvailability(doc: FlowDocument, registry: NodeRegistry<unknown>, features: HostFeatures): NodeAvailability[] {
+export function checkAvailability(doc: FlowDocument, registry: NodeRegistry<unknown>, features: HostFeatures,
+  options: { inputs?: Readonly<Record<string, unknown>>; restored?: ReadonlySet<string> } = {}): NodeAvailability[] {
   // A `{{secret:NAME}}` in a node's params is a requirement of THAT node
   // instance, not of its type, so it is checked here rather than through
   // `def.requires`. Missing, it is a real inability, never a no-op.
@@ -75,9 +81,27 @@ export function checkAvailability(doc: FlowDocument, registry: NodeRegistry<unkn
     missingSecrets.set(ref.nodeId, reasons);
   }
   return doc.nodes.map((n) => {
-    const { status, reasons } = nodeAvailability(registry.get(n.type), n.type, features);
+    // Planning may skip restored ids; the scheduler supplies only a validated
+    // resume receipt. This option itself never authorizes execution or resume.
+    if (options.restored?.has(n.id)) return { nodeId: n.id, type: n.type, status: 'ok', reasons: [] };
+    const def = registry.get(n.type);
+    const params = def ? resolveNodeParams(def, n.id, n.params, options.inputs) : {};
+    const { status, reasons } = nodeAvailability(def, n.type, features, params);
     const secretReasons = [...(missingSecrets.get(n.id) ?? [])];
     if (secretReasons.length === 0 || status === 'unknown') return { nodeId: n.id, type: n.type, status, reasons };
     return { nodeId: n.id, type: n.type, status: 'unavailable', reasons: [...reasons, ...secretReasons] };
   });
+}
+
+/** Internal whole-graph preflight for explicitly parameter-dependent services.
+ * Static-only definitions retain their existing per-node runtime semantics.
+ * No transaction or validation of arbitrary future node output is promised. */
+export function preflightParameterRequirements(doc: FlowDocument, registry: NodeRegistry<unknown>,
+  features: HostFeatures | undefined, inputs: Readonly<Record<string, unknown>> | undefined,
+  restored: ReadonlySet<string>) {
+  if (!features) return;
+  const relevant = { ...doc, nodes: doc.nodes.filter(node => registry.get(node.type)?.requiresForParams !== undefined) };
+  const unavailable = checkAvailability(relevant, registry, features, { inputs, restored })
+    .filter(node => node.status === 'unavailable');
+  if (unavailable.length) throw new Error(`Flow cannot run on this host: ${unavailable.map(node => `${node.nodeId}: ${node.reasons.join('; ')}`).join(' | ')}`);
 }

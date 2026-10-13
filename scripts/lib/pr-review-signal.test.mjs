@@ -108,9 +108,11 @@ test('the REAL test.yml derives the lane names the REAL rollup publishes', () =>
     'Provenance tests',
     'Rust tests',
     'Rust crate semver',
-    // #6361: the smoke lane is two file shards, each a distinct check run.
-    'Viewer E2E smoke (1/2)',
-    'Viewer E2E smoke (2/2)',
+    // #7538: four unchanged-budget smoke shards each publish a distinct check run.
+    'Viewer E2E smoke (1/4)',
+    'Viewer E2E smoke (2/4)',
+    'Viewer E2E smoke (3/4)',
+    'Viewer E2E smoke (4/4)',
     // #7360: every expanded context remains required at sixteen shards.
     ...Array.from({ length: 16 }, (_, index) => `Viewer tests (shard ${index})`),
     'Docs checks (docs-only PRs)',
@@ -128,7 +130,7 @@ test('the REAL test.yml derives the lane names the REAL rollup publishes', () =>
   ]) {
     assert.ok(names.includes(observed), `derived set is missing the observed lane "${observed}"`);
   }
-  assert.equal(names.length, 39);
+  assert.equal(names.length, 41);
 });
 
 test('FAIL CLOSED: an empty workflow file is NO_WORKFLOW_TEXT, not an empty lane set', () => {

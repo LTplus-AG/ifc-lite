@@ -263,10 +263,16 @@ test('#7500 Escape and outside pointer events while sending cannot abort or dele
     await settle(); click(button('Review report')); click(button('Send report')); await settle();
     assert.ok(submitSignal);
     act(() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
-    act(() => document.body.dispatchEvent(new PointerEvent('pointerdown', { pointerType: 'mouse', bubbles: true })));
+    act(() => {
+      // Radix completes an outside pointer gesture on click; do not leave a
+      // half-gesture pending until the later explicit Close button.
+      document.body.dispatchEvent(new PointerEvent('pointerdown', { pointerType: 'mouse', bubbles: true }));
+      document.body.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
     await settle();
     assert.equal(submitSignal.aborted, false); assert.equal(deletes, 0); assert.equal(closes, 0);
     finish(Response.json({ id: 'busy-report', status: 'submitted' })); await settle();
+    assert.equal(closes, 0, 'ignored busy interactions cannot close after completion');
     click(button('Close')); await settle();
     assert.equal(closes, 1); assert.equal(deletes, 0); assert.equal(pendingReport(), 'busy-report');
   } finally { finish(Response.json({ id: 'busy-report', status: 'submitted' })); await settle(); forgetReport('busy-report'); }

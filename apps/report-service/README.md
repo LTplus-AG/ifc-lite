@@ -4,7 +4,7 @@ A separate Node service for user-reviewed GitHub reports and optional confidenti
 
 ## Deployment
 
-This first HTTP layer is queued-only. Startup runs retention and model verification, but no GitHub publisher. The separate transport layer and #7517 durable retry recovery must be qualified before startup publication is restored. Do not deploy this layer as a rollback over the existing N deployment. New user submissions, NDA signing and public model sharing remain subject to their separate launch gates.
+HTTP submissions remain queued-only. The issue transport and durable retry recovery code are present, but startup registers only retention and model verification. Restoring the GitHub publisher requires qualification of the complete publication path and a runtime witness. Do not deploy this layer as a rollback over the existing N deployment. New user submissions, NDA signing and public model sharing remain subject to their separate launch gates.
 
 Required disclosure configuration: `REPORT_STORAGE_PROVIDER`, `REPORT_STORAGE_LOCATION`, and `REPORT_BACKUP_DISCLOSURE`. These describe actual deployment; Switzerland is the legal recipient jurisdiction, not an inferred hosting location.
 
@@ -24,11 +24,11 @@ Ordinary private upload consent permits only diagnosing and verifying the report
 
 Custom agreements remain manual review requests. `GET /api/reports/admin/pending` lists the latest 100 reports; `GET /api/reports/admin/:id` retrieves private reviewed details and the custom agreement reference. Both require the configured maintainer bearer and are audited. `POST /api/reports/admin/:id/custom-nda` with authenticated administrator bearer and `{accepted:true,signedAgreementReference:"private document reference"}` records completed review and unlocks the requested upload. The service does not pretend a user-supplied document was automatically signed.
 
-Private model access uses `POST /api/reports/admin/:id/download`, returning a 60-second URL. Public sharing is explicitly unavailable in capabilities and rejected by the server until a separate publication/scanning flow is qualified. This layer queues reviewed content without creating GitHub issues. The later publisher must include only reviewed title/description/diagnostics and an opaque report ID, excluding model filename, model bytes, agreement and contact details.
+Private model access uses `POST /api/reports/admin/:id/download`, returning a 60-second URL. Public sharing is explicitly unavailable in capabilities and rejected by the server until a separate publication/scanning flow is qualified. No publisher is registered at startup, so HTTP submissions only queue reviewed content. The dormant issue transport includes only reviewed title/description/diagnostics and an opaque report ID, excluding model filename, model bytes, agreement and contact details.
 
 ## Recovery and deletion
 
-Uploads resume using the same durable report/upload IDs and reselected source file; each part's checksum must match. Completion verifies actual storage part numbers and sizes, any available returned checksums, and stored object size; the background verifier then hashes the actual bytes before marking ready. Lost complete responses reconcile using object HEAD. GitHub issue-create recovery is deliberately outside this queued-only layer. The later durable publisher must prove lost-response reconciliation against the actual App author and durable intent before it can run. Generic error categories must not merge unrelated reports.
+Uploads resume using the same durable report/upload IDs and reselected source file; each part's checksum must match. Completion verifies actual storage part numbers and sizes, any available returned checksums, and stored object size; the background verifier then hashes the actual bytes before marking ready. Lost complete responses reconcile using object HEAD. The dormant issue transport includes lost-response reconciliation against the actual App author and independently committed publication intent. Startup publication remains disabled until the complete publication path has its runtime qualification. Generic error categories must not merge unrelated reports.
 
 Models and report details expire after 30 days; incomplete uploads after one day. Independent bounded workers run retention and model verification every ten seconds. Submitted reports remain in the outbox; no publisher is registered. Shutdown cancels verification reads and leaves interrupted work available for retry. Owner DELETE removes private report content and model, but cannot retract an already-public GitHub issue. Storage failures retain cleanup work rather than falsely recording deletion. Audit events expire after 90 days. Backups/object versions must be configured and disclosed separately; the service cannot erase unmanaged backups. Alert on cleanup failures, outbox age and storage quotas before public launch.
 
@@ -49,8 +49,8 @@ Before public launch, an operator may configure a separate `REPORT_QUALIFICATION
 
 ## Dormant publication transport
 
-The transport now includes the issue-create recovery implementation qualified in
-#7517. Before a POST it commits an opaque report-ID intent through an independent
+The transport now includes the issue-create recovery implementation qualified
+in #7517. Before a POST it commits an opaque report-ID intent through an independent
 database connection, while retaining the publisher's parent/outbox locks. A lost
 response, outer transaction rollback or restart cannot authorize a second POST.
 Retries reconcile the exact terminal marker against the authenticated App's

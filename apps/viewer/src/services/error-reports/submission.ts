@@ -58,6 +58,5 @@ export class ReportSubmission {
       await this.client.request(`/${encodeURIComponent(this.receipt.id)}`, 'DELETE');
       forgetReport(this.receipt.id);
     }
-    rememberReport(undefined);
   }
 }

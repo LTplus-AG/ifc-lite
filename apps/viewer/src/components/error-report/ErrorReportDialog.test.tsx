@@ -12,6 +12,8 @@ import type { ReportSession } from '@ifc-lite/report-contract';
 import { ReportClient } from '@/services/error-reports/client';
 import { forgetReport, pendingReport, recentReport, rememberReport } from '@/lib/error-reports/pending';
 import { checksum } from '@/services/error-reports/upload';
+import { ReportSubmission } from '@/services/error-reports/submission';
+import { ErrorReportHost } from './ErrorReportHost';
 import { ErrorReportDialog } from './ErrorReportDialog';
 import { emptyAttachment, validAttachment } from './ReportAttachment';
 
@@ -215,18 +217,7 @@ test('#7495 a deletion failure remains retryable and never claims completion', a
   assert.ok(document.body.textContent?.includes('Private data deletion confirmed'));
 });
 
-test('#7495 closing an unavailable recovery does not delete the existing report', async () => {
-  const methods: string[] = []; let closes = 0;
-  const transport: typeof fetch = async (value, options) => {
-    methods.push(options?.method ?? 'GET');
-    return String(value).endsWith('/session') ? Response.json(session) : Response.json({ message: 'Temporarily unavailable' }, { status: 503 });
-  };
-  render(<ErrorReportDialog context={{ errorCode: 'report_resume', resumeReportId: 'owned-report' }} onClose={() => { closes++; }} client={new ReportClient(transport)} />);
-  await settle();
-  click(button('Close')); await settle();
-  assert.equal(closes, 1);
-  assert.deepEqual(methods, ['GET', 'GET']);
-});
+
 
 for (const [status, code] of [[404, 'report_missing'], [503, 'service_unavailable']] as const) {
   test(`#7500 closing recovery after ${status} preserves data and only forgets a known missing report`, async () => {
@@ -306,4 +297,38 @@ test('#7500 resumed completed upload rejects a same-name same-size model with di
     assert.ok(document.body.textContent?.includes('selected model differs'));
     assert.deepEqual(writes, []);
   } finally { forgetReport('resume-source'); }
+});
+
+
+test('#7500 cancelling an older failed submission deletes only its own recovery reference', async () => {
+  const draft = { clientRequestId: 'old-request', title: 'Older report', description: '', diagnostics: { errorCode: 'load_failed', appVersion: 'test', buildSha: 'test' }, visibility: 'private' as const };
+  const deleted: string[] = []; let closes = 0;
+  const server = createServer((request, response) => {
+    response.setHeader('Content-Type', 'application/json');
+    if (request.url?.endsWith('/session')) response.end(JSON.stringify(session));
+    else if (request.method === 'DELETE') { deleted.push(request.url ?? ''); response.end(JSON.stringify({ id: 'older-report', status: 'deleted' })); }
+    else if (request.url?.endsWith('/older-report/submit')) { response.statusCode = 503; response.end(JSON.stringify({ error: 'service_unavailable', message: 'Retry later' })); }
+    else if (request.url?.endsWith('/drafts')) response.end(JSON.stringify({ id: 'newer-report', status: 'draft' }));
+    else if (request.url?.endsWith('/newer-report/submit')) response.end(JSON.stringify({ id: 'newer-report', status: 'submitted' }));
+    else response.end(JSON.stringify({ id: 'older-report', status: 'draft', draft }));
+  });
+  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+  const address = server.address(); assert.ok(address && typeof address !== 'string');
+  const client = new ReportClient((value, options) => fetch(`http://127.0.0.1:${address.port}` + String(value), options));
+  try {
+    render(<ErrorReportDialog context={{ errorCode: 'report_resume', resumeReportId: 'older-report' }} onClose={() => { closes++; }} client={client} />);
+    await settle(); click(button('Review report')); click(button('Send report')); await settle();
+    assert.ok(document.body.textContent?.includes('Retry later'));
+    const newer = new ReportSubmission({ draft: { ...draft, clientRequestId: 'new-request', title: 'Newer report' }, confidentiality: 'none', publicModelConfirmed: false }, client);
+    await newer.send(new AbortController().signal, () => {});
+    assert.equal(pendingReport(), 'newer-report');
+    click(button('Cancel and delete draft')); await settle();
+    assert.deepEqual(deleted, ['/api/reports/older-report']); assert.equal(closes, 1);
+    assert.equal(pendingReport(), 'newer-report'); assert.equal(recentReport(), 'newer-report');
+    cleanup(); render(<ErrorReportHost />);
+    assert.ok(document.body.textContent?.includes('View recent report'));
+  } finally {
+    forgetReport('older-report'); forgetReport('newer-report');
+    server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve()));
+  }
 });

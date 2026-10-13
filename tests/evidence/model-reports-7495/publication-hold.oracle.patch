@@ -77,3 +77,12 @@
      uploadedParts: parts.map((part) => ({
        ...part,
        sha256: part.sha256 || row.parts[String(part.partNumber)] || "",
+--- a/apps/viewer/src/services/error-reports/submission.ts
++++ b/apps/viewer/src/services/error-reports/submission.ts
+@@ -58,6 +58,5 @@
+       await this.client.request(`/${encodeURIComponent(this.receipt.id)}`, 'DELETE');
+       forgetReport(this.receipt.id);
+     }
+-    rememberReport(undefined);
+   }
+ }

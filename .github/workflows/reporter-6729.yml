@@ -94,6 +94,7 @@ jobs:
                   '../../tests/e2e/reporter-6729.e2e.spec.ts',
                   '../../tests/e2e/reporter-6729.browser.ts',
                   '../../apps/viewer/src/vite-env.d.ts',
+                  '../../apps/viewer/src/webhid-types.d.ts',
               ],
               'include': [], 'exclude': [],
           }

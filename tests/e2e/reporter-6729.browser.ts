@@ -89,7 +89,12 @@ export async function captureProbeFrame() {
   const renderer = getGlobalRenderer();
   if (!renderer) throw new Error('Production renderer unavailable');
   const frame = await renderer.captureColorFrame();
-  const witness = classifyViewportWitness({ frame, lossEvidence: null, strict: true });
+  // The renderer owns clamped pixel bytes; this bounded copy preserves their
+  // values while satisfying the existing witness's Uint8Array contract.
+  const witness = classifyViewportWitness({
+    frame: frame ? { width: frame.width, height: frame.height, rgba: new Uint8Array(frame.rgba) } : null,
+    lossEvidence: null, strict: true,
+  });
   const png = await host.__ifc_lite_capture_color_frame__?.();
   if (!png?.startsWith('data:image/png;base64,')) throw new Error('Real production renderer color readback unavailable');
   return { before, after: readProbe(), png, witness };

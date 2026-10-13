@@ -25,8 +25,10 @@ uses canonical store-backed entity resolution without removing occluders.
 The workflow runs exclusively on a GitHub-hosted Ubuntu runner using real
 Chrome and software WebGPU/SwiftShader. GPU and page failures are retained;
 no GPU assertion is waived and a missing/skipped witness cannot qualify. A
-production color readback proves model pixels were produced; UI compositor
-screenshots alone can be blank on software WebGPU. Frame presence does not
+production color readback records actual renderer pixels. Non-background
+variation alone can also reflect grid/overlays; image review must establish
+assembly visibility. UI compositor screenshots alone can be blank on software
+WebGPU. Frame presence does not
 prove correct geometry, clipping, picking, surface occlusion or outlines.
 Actual source/tree, browser/GPU diagnostics and built WASM hashes accompany
 the observations. The probe uses an isolated source server of that checkout,

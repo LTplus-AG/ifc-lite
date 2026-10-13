@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { mkdirSync, writeFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import type { ViewerBenchmarkPage } from './viewer-benchmark-page';
 
@@ -46,7 +47,8 @@ export async function withBenchmarkFailureDiagnostics<T>(
     }
     const outputDir = options.outputDir ?? join(process.cwd(), 'tests/benchmark',
       process.env.VIEWER_BENCHMARK_GPU_UPLOADS === '1' ? 'benchmark-count-results' : 'benchmark-results');
-    const prefix = join(outputDir, `failure-${fileName.replace(/[^a-zA-Z0-9]/g, '_')}`);
+    const stem = fileName.replace(/[^a-zA-Z0-9]/g, '_').slice(0, 64);
+    const prefix = join(outputDir, `failure-${stem}-${randomUUID()}`);
     try {
       mkdirSync(outputDir, { recursive: true });
       writeFileSync(`${prefix}.console.log`, consoleLogs.join('\n'));

@@ -242,3 +242,8 @@ for (const name of ['parser.complete', 'cache.storeReady', 'geometry.streamCompl
    });
   }
 }
+
+
+test('#7005 ended root with empty spans and persuasive console cannot complete a sample', async () => {
+  await assert.rejects(measure({ ...SNAPSHOT, spans: [] }, 25, LOGS), /Timed out awaiting metadata/);
+});

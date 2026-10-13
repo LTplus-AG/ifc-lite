@@ -1,0 +1,41 @@
+{
+  "issue": 7005,
+  "priorSource": "9960729561d0a9547a67b63af19c966426f01e0d",
+  "priorRequiredCi": "https://github.com/LTplus-AG/ifc-lite/actions/runs/38341580669",
+  "priorRequiredCiResult": "success; original source run, not a rerun",
+  "fix": "Bounded readable failure stem plus a fresh UUID preserves distinct names and repeated attempts. Exact original filename stays in the payload.",
+  "validation": {
+    "focusedRootNode": {
+      "passed": 69,
+      "failed": 0,
+      "skipped": 0
+    },
+    "benchmarkRegressionChecker": {
+      "passed": 19,
+      "failed": 0,
+      "skipped": 0
+    },
+    "rootTypecheck": {
+      "passed": true,
+      "testFiles": 4076,
+      "packages": 66
+    },
+    "sourceTextGuard": "PASS; no exceptions or allowlist changes"
+  },
+  "reviewedNonDefects": [
+    "An ended root with no spans cannot pass canonical readiness, even when console completion claims success; actual ViewerBenchmarkPage regression confirms timeout.",
+    "Retired console-only fields are outside the checker and spec six-metric threshold set. The baseline is unchanged."
+  ],
+  "sha256": {
+    "tests/benchmark/benchmark-failure-diagnostics.ts": "bd392a8c8b68a53c5f4d84b56c81ebab6b3c1d2ab0e4644b490623f17d5a16cc",
+    "scripts/benchmark-failure-diagnostics.test.mjs": "98cc497904d8fff9f879b653448e3cb412fd1aa850a32bce60436f38e14812b0",
+    "scripts/viewer-benchmark-span-metrics.test.mjs": "c2dd381b660d0ad5cf9d9e26f4372fe25287556cab647e1ec7c9ca49f5b30f2e"
+  },
+  "pending": [
+    "Required CI and actual review for this follow-up.",
+    "Positive live qualification remains blocked by the preserved Snowdon GPU loss under peer ownership."
+  ],
+  "limitations": [
+    "No new hosted run, native GPU test, baseline or acceptance change."
+  ]
+}

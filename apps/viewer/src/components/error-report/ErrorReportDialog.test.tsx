@@ -279,13 +279,14 @@ test('#7500 Escape and outside pointer events while sending cannot abort or dele
 });
 
 test('#7500 resumed completed upload rejects a same-name same-size model with different bytes before submission', async () => {
-  const writes: string[] = [];
+  const writes: string[] = []; let uploadReads = 0;
   const upload = { id: 'upload', status: 'verifying', partBytes: 4, partCount: 1, uploadedParts: [], sourceParts: [{ partNumber: 1, size: 4, sha256: await checksum(new TextEncoder().encode('real').buffer) }] };
   const transport: typeof fetch = async (value, options) => {
     const path = String(value);
     if (options?.method !== 'GET') writes.push(path);
     if (path.endsWith('/session')) return Response.json(session);
-    if (path.includes('/uploads/')) return Response.json(upload);
+    if (path.includes('/uploads/')) return Response.json({ ...upload, status: ++uploadReads > 1 ? 'ready' : 'verifying' });
+    if (path.endsWith('/submit')) return Response.json({ id: 'resume-source', status: 'submitted' });
     return Response.json({ id: 'resume-source', status: 'draft', upload, uploadSource: { name: 'same.ifc', size: 4, confidentiality: 'none' }, draft: { clientRequestId: 'request', title: 'Reviewed source', description: '', diagnostics: { errorCode: 'load_failed', appVersion: 'test', buildSha: 'test' }, visibility: 'private' } });
   };
   try {

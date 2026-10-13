@@ -1,5 +1,22 @@
 # @ifc-lite/flow-nodes
 
+## 0.9.0
+
+### Minor Changes
+
+- [#7461](https://github.com/LTplus-AG/ifc-lite/pull/7461) [`cf190f4`](https://github.com/LTplus-AG/ifc-lite/commit/cf190f42dfbd830fb1fd21046ff3ce5993acd9e2) Thanks [@louistrue](https://github.com/louistrue)! - Persist native Flow BCF intents before effects and refuse duplicate unresolved creates across CLI restarts; add explicit checked-GUID and confirmed-absence recovery.
+  
+  Require explicit full-collection visibility before native/CLI absence recovery; persist the operator proof marker and refuse release from older unmarked absence checks while retaining anonymous candidate checks.
+
+- [#7477](https://github.com/LTplus-AG/ifc-lite/pull/7477) [`b5e0626`](https://github.com/LTplus-AG/ifc-lite/commit/b5e0626725cb6233fef25c8ce69d354146dad310) Thanks [@louistrue](https://github.com/louistrue)! - Retain native IDS/information Review facts with full source/run provenance and expose bounded, read-only host-provided Flow reads with whole-target scope filtering and explicit unsupported/incomplete source states. Bound concurrent producer admission and known-credential enrollment, and preserve unknown counts when a read is refused.
+
+### Patch Changes
+
+- Updated dependencies [[`eb1a1ce`](https://github.com/LTplus-AG/ifc-lite/commit/eb1a1ce20f80c0b5a71fc73f4e4d25043997db6d), [`d3afa55`](https://github.com/LTplus-AG/ifc-lite/commit/d3afa5541ad6b97e8338a3a74927670b6faf9e26), [`b5e0626`](https://github.com/LTplus-AG/ifc-lite/commit/b5e0626725cb6233fef25c8ce69d354146dad310)]:
+  - @ifc-lite/ids@3.3.3
+  - @ifc-lite/sdk@9.3.0
+  - @ifc-lite/ids-authoring@0.2.3
+
 ## 0.8.0
 
 ### Minor Changes

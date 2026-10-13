@@ -68,16 +68,16 @@ import {
   useSymbolicAnnotationsRichData,
   type SectionClipForGrid,
 } from '../../hooks/useSymbolicAnnotations.js';
-import { symbolicLineVertexData } from '../../hooks/symbolic-line-channels.js';
 import { useAlignmentLines3D } from '../../hooks/useAlignmentLines3D.js';
 import { useDxfUnderlays3DLines } from '../../hooks/useDxfUnderlay.js';
 import { useLandXmlRendererOverlay } from '../../hooks/useLandXmlOverlayLines.js';
 import { useCentrelineRendererOverlay } from '../../hooks/useCentrelineRendererOverlay.js';
 import { selectPickedGlobalId, toggleGlobalIdInSelection } from './viewport-selection.js';
-import { uploadDxfLines3DGuarded } from './dxf-lines-3d-upload.js';
+import { useDxfRendererOverlay } from './dxf-lines-3d-upload.js';
+import { useViewportSymbolicUploads } from './useViewportSymbolicUploads.js';
 import { subscribeViewportHealth } from './device-loss-report.js';
 import { useAuthoringOverlay } from './useAuthoringOverlay.js';
-import { anchorWorldLineVertices, rendererLineVertexData } from '@/lib/renderer/line-overlay-rte';
+import { useClashRendererOverlays } from './useClashRendererOverlays';
 import { useTranslation } from '@/i18n';
 import { createCentreSurfaceZoom } from './zoomSurface.js';
 
@@ -484,61 +484,7 @@ export function Viewport({
   // animation loop reads the latest without re-subscribing.
   const clashHighlightColors = useViewerStore((s) => s.clashHighlightColors);
   const clashHighlightColorsRef = useLatestRef(clashHighlightColors);
-  // Focused-clash indicator (#1277/#1402): prefer the real CONTACT geometry
-  // (shared-face polygon outlines / intersection lines) when available, and fall
-  // back to the AABB box otherwise. Both draw on the same overlay line buffer, so
-  // a single effect drives exactly one of them (no buffer race). Cleared on
-  // teardown. On by default; the clash settings toggle hides it.
-  const clashOverlapBox = useViewerStore((s) => s.clashOverlapBox);
-  const clashContactLines = useViewerStore((s) => s.clashContactLines);
-  const showClashRegionBox = useViewerStore((s) => s.showClashRegionBox);
-  useEffect(() => {
-    const renderer = rendererRef.current;
-    if (!renderer) return;
-    if (showClashRegionBox && clashContactLines && clashContactLines.vertices.length > 0) {
-      // No colour: the renderer draws the overlap in its theme's
-      // `clashOverlap` and recolours it on a theme switch (#5490).
-      renderer.setClashContactLines({ vertices: anchorWorldLineVertices(clashContactLines.vertices) });
-    } else if (showClashRegionBox && clashOverlapBox) {
-      renderer.setClashOverlapBox(clashOverlapBox);
-    } else {
-      renderer.setClashContactLines(null);
-    }
-    // isInitialized: if a clash is focused before the renderer mounts, this effect
-    // bails early; depend on it so the indicator is (re)sent once it is ready.
-  }, [clashOverlapBox, clashContactLines, showClashRegionBox, isInitialized]);
-  // The focused clash's TRUE intersection volume (BIMcollab Zoom / Solibri
-  // style opaque solid), when the kernel resolved one. Independent of the
-  // box/lines buffer above — the solid draws through its own pipeline so it
-  // can be a real depth-tested 3D volume rather than a line list.
-  const clashSolidMesh = useViewerStore((s) => s.clashSolidMesh);
-  const clashSolidStatus = useViewerStore((s) => s.clashSolidStatus);
-  const clashSelectedId = useViewerStore((s) => s.clashSelectedId);
-  useEffect(() => {
-    const renderer = rendererRef.current;
-    if (!renderer) return;
-    // Defence in depth, not the primary fix (#2574 review): `clashSelectedId`
-    // and `clashSolidStatus`/`clashSolidMesh` are reset together by every
-    // current teardown path via `setClashSelectedId` / `clearClashSolid` /
-    // `clearClash` (clashSlice.ts, all three bump `clashSolidRequestSeq`), so
-    // `clashSolidStatus` should never read `'solid'` while nothing is
-    // selected. The `!== null` is the real predicate, not truthiness: a clash
-    // id is `${ruleId} ${lo} ${hi}` and is never `''`, so the two agree today,
-    // but `null` is the value teardown writes and the one worth naming.
-    // Gating the actual
-    // draw on `clashSelectedId` too means that even a future path that resets
-    // one without the other — or a resolved compute that lands after some
-    // teardown nobody's added the invalidation to yet — still can't leave an
-    // orphaned opaque solid on screen with no clash focused.
-    if (clashSelectedId !== null && clashSolidStatus === 'solid' && clashSolidMesh) {
-      renderer.setClashIntersectionSolid({
-        positions: clashSolidMesh.positions,
-        indices: clashSolidMesh.indices,
-      });
-    } else {
-      renderer.setClashIntersectionSolid(null);
-    }
-  }, [clashSelectedId, clashSolidMesh, clashSolidStatus, isInitialized]);
+  useClashRendererOverlays(rendererRef, isInitialized, gpuRecoveryEpoch);
   const activeToolRef = useRef<string>(activeTool);
   const activeMeasurementRef = useLatestRef(activeMeasurement);
   const snapEnabledRef = useLatestRef(snapEnabled);
@@ -1276,38 +1222,15 @@ export function Viewport({
     gridSectionClip,
     fallbackY: annotationFallbackY,
   });
-  useEffect(() => {
-    const renderer = rendererRef.current;
-    if (!renderer || !isInitialized) return;
-    const v = symbolicLineChannels.annotation;
-    const vertices = symbolicLineVertexData(v);
-    renderer.setLineOverlay('annotation', vertices.length === 0 ? null : v);
-    annotationLineVertexCountRef.current = vertices.length / 3;
-  }, [symbolicLineChannels.annotation, isInitialized]);
-  // IfcAlignment centerlines use a separate buffer; see useAlignmentLines3D.
+  // Each independent symbolic upload is contained and replayed on device recovery.
   const alignmentVertices3D = useAlignmentLines3D();
-  useEffect(() => {
-    const renderer = rendererRef.current;
-    if (!renderer || !isInitialized) return;
-    const empty = rendererLineVertexData(alignmentVertices3D).length === 0;
-    renderer.setLineOverlay('alignment', empty ? null : alignmentVertices3D);
-  }, [alignmentVertices3D, isInitialized]);
-
-  // Structural-grid (IfcGridAxis) lines draw ONLY from `useSymbolicAnnotations`
-  // (issue #3368: a second independent extractor, `useGridLines3D`, used to
-  // double-draw every axis, leave #862's section-clipping inert since it was
-  // unclipped, and go stale in elevation under a nonzero `originShift` since
-  // it skipped the TS-side rebase — see `useSymbolicAnnotations.ts`'s
-  // `effectiveGridEnabled` branch, which already clips and rebases). They
-  // upload to their OWN 'grid' channel rather than the 'annotation' buffer
-  // (issue #3359): `CHANNEL_EXPANDS_MODEL_BOUNDS.annotation` is `true` but
-  // `.grid` is `false` (grid axes extend past the model envelope, issue #967).
-  useEffect(() => {
-    const renderer = rendererRef.current;
-    if (!renderer || !isInitialized) return;
-    const v = symbolicLineChannels.grid;
-    renderer.setLineOverlay('grid', !ifcGridVisible || symbolicLineVertexData(v).length === 0 ? null : v);
-  }, [symbolicLineChannels.grid, ifcGridVisible, isInitialized]);
+  useViewportSymbolicUploads({
+    rendererRef, isInitialized, gpuRecoveryEpoch,
+    annotation: symbolicLineChannels.annotation, alignment: alignmentVertices3D,
+    grid: symbolicLineChannels.grid, gridVisible: ifcGridVisible,
+    annotationCountRef: annotationLineVertexCountRef,
+    fills: annotationFills3D, texts: annotationTexts3D,
+  });
 
   // DXF reference-layer line paths in the 3D viewport (issue #2043,
   // follow-up to #1782/#1929's 2D-only DXF underlay). Gated by each
@@ -1316,41 +1239,9 @@ export function Viewport({
   // drawing panel's underlay. Only line paths are lifted to 3D; fills/text
   // are not (see dxfUnderlayToWorldLines3D's doc).
   const dxfLines3D = useDxfUnderlays3DLines(coordinateInfo);
-  useEffect(() => {
-    const renderer = rendererRef.current;
-    if (!renderer || !isInitialized) return;
-    // PR #2114 review: createBuffer/writeBuffer can throw on device loss or
-    // GPU memory pressure. This effect re-runs on every dxfLines3D change
-    // (a DXF underlay toggle, opacity edit, or reload), so an unguarded
-    // throw here is not a one-off. `uploadDxfLines3DGuarded` contains it via
-    // `runGpuUpload` (same guard as the geometry-streaming upload sites,
-    // warns once per call site, not once per re-run) and drops the
-    // underlay on failure instead of drawing from a half-uploaded buffer.
-    uploadDxfLines3DGuarded(renderer, dxfLines3D);
-  }, [dxfLines3D, isInitialized]);
-
-  useLandXmlRendererOverlay(rendererRef, isInitialized);
+  useDxfRendererOverlay(rendererRef, dxfLines3D, isInitialized, gpuRecoveryEpoch);
+  useLandXmlRendererOverlay(rendererRef, isInitialized, gpuRecoveryEpoch);
   useCentrelineRendererOverlay(rendererRef, isInitialized, gpuRecoveryEpoch);
-
-  // Upload IfcAnnotation text + fill data for the WebGPU symbolic overlay
-  // pipelines. Map the hook's per-annotation records into the SymbolicFillInput
-  // / SymbolicTextInput shape the renderer expects. Empty arrays clear cleanly.
-  useEffect(() => {
-    const renderer = rendererRef.current;
-    if (!renderer || !isInitialized) return;
-    // Passed straight through: AnnotationFill3D is structurally assignable to
-    // SymbolicFillInput, and the renderer copies field by field, so a mapper
-    // here would only be a hand-written field list to forget `definesExtent`
-    // from. Required on the record, so the compiler catches an omission at the
-    // push site instead.
-    renderer.uploadAnnotationFills3D(annotationFills3D);
-  }, [annotationFills3D, isInitialized]);
-
-  useEffect(() => {
-    const renderer = rendererRef.current;
-    if (!renderer || !isInitialized) return;
-    renderer.uploadAnnotationTexts3D(annotationTexts3D);
-  }, [annotationTexts3D, isInitialized]);
 
   // ===== Streaming progress =====
   const isStreaming = useViewerStore((state) => state.geometryStreamingActive);
@@ -1515,7 +1406,7 @@ export function Viewport({
     rendererRef,
     isInitialized,
     geometry,
-    geometryVersion, geometryReplacementVersion, geometryContentVersion,
+    geometryVersion, geometryReplacementVersion, geometryContentVersion, gpuRecoveryEpoch,
     appearanceSourceGeometry,
     coordinateInfo,
     isStreaming,

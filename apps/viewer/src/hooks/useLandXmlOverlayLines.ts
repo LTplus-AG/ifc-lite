@@ -3,7 +3,6 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { useEffect, useMemo, type RefObject } from 'react';
-import type { Renderer } from '@ifc-lite/renderer';
 import { useViewerStore } from '../store/index.js';
 import { collectLandXmlOverlaySpans, overlaySpanVertices } from './ingest/landXmlOverlaySpans.js';
 import { runGpuUpload } from '@/components/viewer/gpu-upload-guard';
@@ -176,13 +175,14 @@ export function useLandXmlOverlayLines(): RendererLineVertices {
 
 /** Keep the renderer's terrain channel synchronized with authored LandXML lines. */
 export function useLandXmlRendererOverlay(
-  rendererRef: RefObject<Renderer | null>,
+  rendererRef: RefObject<LandXmlOverlayUploadTarget | null>,
   isInitialized: boolean,
+  gpuRecoveryEpoch: number,
 ): void {
   const vertices = useLandXmlOverlayLines();
   useEffect(() => {
     const renderer = rendererRef.current;
     if (!renderer || !isInitialized) return;
     uploadLandXmlOverlayGuarded(renderer, vertices);
-  }, [vertices, isInitialized, rendererRef]);
+  }, [vertices, isInitialized, rendererRef, gpuRecoveryEpoch]);
 }

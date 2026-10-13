@@ -102,6 +102,17 @@ default. Count cohorts have a different transient upload workload, so their
 latency metrics cannot be compared with timing runs or recorded as a timing
 baseline. Device-loss samples still require the existing contamination checks.
 
+When a device is replaced during a load, the viewer retries retained source
+geometry and pending instanced shards even if no later source update arrives.
+A stream that ends while the device is absent is finalized after recovery.
+Queued moves, rotations, colours, removals and remeshed slots also retry.
+Independent annotation, alignment and grid lines, annotation fills and texts
+retain their CPU inputs for the same recovery retry. A failed symbolic upload
+is contained and its partial GPU layer is cleared instead of unmounting the
+viewport.
+Recovery restores renderability; a device-loss run remains contaminated and
+cannot serve as a timing baseline.
+
 ## Client vs Server Performance
 
 | | Client (WASM) | Server (Rust) |

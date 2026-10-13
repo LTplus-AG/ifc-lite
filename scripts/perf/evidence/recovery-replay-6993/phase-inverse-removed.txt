@@ -1,0 +1,310 @@
+@ifc-lite/viewer:test: cache bypass, force executing 2145ea0f224b8b6a
+@ifc-lite/viewer:test:
+@ifc-lite/viewer:test: > @ifc-lite/viewer@5.1.0 test /home/louistrue/.t3/worktrees/ifc-lite/t3code-b95d33a9/apps/viewer
+@ifc-lite/viewer:test: > tsx --import ./src/test/vite-module-hooks.mjs --test --test-timeout=120000 --test-concurrency=1 $(find src -type f \( -name '*.test.ts' -o -name '*.test.tsx' \) | sort | awk -v p="${TEST_PATTERN:-.}" '$0 ~ p' | awk -v s="${TEST_SHARD:-0}" -v n="${TEST_SHARDS:-1}" '{h=0; for(i=1;i<=length($0);i++) h=(h*31+index(" !\"#$%&()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[]^_abcdefghijklmnopqrstuvwxyz{|}~", substr($0,i,1)))%1000003} h%n==s')
+@ifc-lite/viewer:test:
+@ifc-lite/viewer:test: ✖ replays unchanged source geometry that arrived while the GPU was lost (#6993) (27.909037ms)
+@ifc-lite/viewer:test: [GeomSync] stream transition complete geometryLength=2 queued=false batches=0
+@ifc-lite/viewer:test: [GeomStream] Streaming ended — starting finalize
+@ifc-lite/viewer:test: [GeomSync] finalize start geometryLength=2 releaseAfterFinalize=false
+@ifc-lite/viewer:test: [GeomSync] new file currentLength=2 lastLength=0 releaseAfterFinalize=false
+@ifc-lite/viewer:test: ✖ finalizes a stream that ended during device loss after recovery (#6993) (52.479358ms)
+@ifc-lite/viewer:test: ✔ does not duplicate meshes already owned by the recovered Scene (#6993) (13.488228ms)
+@ifc-lite/viewer:test: ✖ replays a pending primary instanced shard after recovery (#6993) (9.495918ms)
+@ifc-lite/viewer:test: [GeomSync] new file currentLength=2 lastLength=0 releaseAfterFinalize=false
+@ifc-lite/viewer:test: ✖ replays a pending federated instanced shard after recovery (#6993) (8.684443ms)
+@ifc-lite/viewer:test: [GeomSync] new file currentLength=2 lastLength=0 releaseAfterFinalize=false
+@ifc-lite/viewer:test: ✖ retries a pending translation after device recovery (#6993) (12.166498ms)
+@ifc-lite/viewer:test: [GeomSync] new file currentLength=2 lastLength=0 releaseAfterFinalize=false
+@ifc-lite/viewer:test: ✖ retries a pending rotation after device recovery (#6993) (9.04899ms)
+@ifc-lite/viewer:test: [GeomSync] new file currentLength=2 lastLength=0 releaseAfterFinalize=false
+@ifc-lite/viewer:test: ✖ retries a pending mesh-color after device recovery (#6993) (9.923406ms)
+@ifc-lite/viewer:test: [GeomSync] new file currentLength=2 lastLength=0 releaseAfterFinalize=false
+@ifc-lite/viewer:test: ✖ retries a pending overlay after device recovery (#6993) (8.852886ms)
+@ifc-lite/viewer:test: [GeomSync] new file currentLength=2 lastLength=0 releaseAfterFinalize=false
+@ifc-lite/viewer:test: ✖ retries a pending removal after device recovery (#6993) (7.99053ms)
+@ifc-lite/viewer:test: [GeomSync] new file currentLength=2 lastLength=0 releaseAfterFinalize=false
+@ifc-lite/viewer:test: ✖ retries an in-place remeshed source slot after device recovery (#6993) (7.688098ms)
+@ifc-lite/viewer:test: [gpu] rebuildPendingBatches:translations failed (device lost or out of GPU memory); skipping this batch and continuing to render: Error: GPU device lost during placement rebuild
+@ifc-lite/viewer:test:     at Object.native.device.createBuffer (/home/louistrue/.t3/worktrees/ifc-lite/t3code-b95d33a9/apps/viewer/src/components/viewer/useGeometryStreaming.recovery.test.tsx:212:48)
+@ifc-lite/viewer:test:     at createStaticGpuBuffer (/home/louistrue/.t3/worktrees/ifc-lite/t3code-b95d33a9/packages/renderer/src/gpu-static-upload.ts:53:25)
+@ifc-lite/viewer:test:     at createSceneBatch (/home/louistrue/.t3/worktrees/ifc-lite/t3code-b95d33a9/packages/renderer/src/scene-batch-upload.ts:94:28)
+@ifc-lite/viewer:test:     at Scene.createBatchedMesh (/home/louistrue/.t3/worktrees/ifc-lite/t3code-b95d33a9/packages/renderer/src/scene.ts:2422:20)
+@ifc-lite/viewer:test:     at Object.create (/home/louistrue/.t3/worktrees/ifc-lite/t3code-b95d33a9/packages/renderer/src/scene.ts:1260:68)
+@ifc-lite/viewer:test:     at rebuildSceneBatches (/home/louistrue/.t3/worktrees/ifc-lite/t3code-b95d33a9/packages/renderer/src/scene-batch-rebuild.ts:34:30)
+@ifc-lite/viewer:test:     at Scene.rebuildPendingBatches (/home/louistrue/.t3/worktrees/ifc-lite/t3code-b95d33a9/packages/renderer/src/scene.ts:1259:5)
+@ifc-lite/viewer:test:     at <anonymous> (/home/louistrue/.t3/worktrees/ifc-lite/t3code-b95d33a9/apps/viewer/src/components/viewer/useGeometryStreaming.ts:850:25)
+@ifc-lite/viewer:test:     at runGpuUpload (/home/louistrue/.t3/worktrees/ifc-lite/t3code-b95d33a9/apps/viewer/src/components/viewer/gpu-upload-guard.ts:81:12)
+@ifc-lite/viewer:test:     at <anonymous> (/home/louistrue/.t3/worktrees/ifc-lite/t3code-b95d33a9/apps/viewer/src/components/viewer/useGeometryStreaming.ts:848:25)
+@ifc-lite/viewer:test: [GeomSync] new file currentLength=2 lastLength=0 releaseAfterFinalize=false
+@ifc-lite/viewer:test: ✖ retries a failed GPU rebuild without applying a translation twice (#6993) (17.197191ms)
+@ifc-lite/viewer:test: [gpu] rebuildPendingBatches:rotations failed (device lost or out of GPU memory); skipping this batch and continuing to render: Error: GPU device lost during placement rebuild
+@ifc-lite/viewer:test:     at Object.native.device.createBuffer (/home/louistrue/.t3/worktrees/ifc-lite/t3code-b95d33a9/apps/viewer/src/components/viewer/useGeometryStreaming.recovery.test.tsx:212:48)
+@ifc-lite/viewer:test:     at createStaticGpuBuffer (/home/louistrue/.t3/worktrees/ifc-lite/t3code-b95d33a9/packages/renderer/src/gpu-static-upload.ts:53:25)
+@ifc-lite/viewer:test:     at createSceneBatch (/home/louistrue/.t3/worktrees/ifc-lite/t3code-b95d33a9/packages/renderer/src/scene-batch-upload.ts:94:28)
+@ifc-lite/viewer:test:     at Scene.createBatchedMesh (/home/louistrue/.t3/worktrees/ifc-lite/t3code-b95d33a9/packages/renderer/src/scene.ts:2422:20)
+@ifc-lite/viewer:test:     at Object.create (/home/louistrue/.t3/worktrees/ifc-lite/t3code-b95d33a9/packages/renderer/src/scene.ts:1260:68)
+@ifc-lite/viewer:test:     at rebuildSceneBatches (/home/louistrue/.t3/worktrees/ifc-lite/t3code-b95d33a9/packages/renderer/src/scene-batch-rebuild.ts:34:30)
+@ifc-lite/viewer:test:     at Scene.rebuildPendingBatches (/home/louistrue/.t3/worktrees/ifc-lite/t3code-b95d33a9/packages/renderer/src/scene.ts:1259:5)
+@ifc-lite/viewer:test:     at <anonymous> (/home/louistrue/.t3/worktrees/ifc-lite/t3code-b95d33a9/apps/viewer/src/components/viewer/useGeometryStreaming.ts:890:25)
+@ifc-lite/viewer:test:     at runGpuUpload (/home/louistrue/.t3/worktrees/ifc-lite/t3code-b95d33a9/apps/viewer/src/components/viewer/gpu-upload-guard.ts:81:12)
+@ifc-lite/viewer:test:     at <anonymous> (/home/louistrue/.t3/worktrees/ifc-lite/t3code-b95d33a9/apps/viewer/src/components/viewer/useGeometryStreaming.ts:888:25)
+@ifc-lite/viewer:test: [GeomSync] new file currentLength=2 lastLength=0 releaseAfterFinalize=false
+@ifc-lite/viewer:test: ✖ retries a failed GPU rebuild without applying a rotation twice (#6993) (8.574165ms)
+@ifc-lite/viewer:test: [GeomSync] stream transition complete geometryLength=2 queued=true batches=0
+@ifc-lite/viewer:test: [GeomStream] Streaming ended — starting finalize
+@ifc-lite/viewer:test: [GeomSync] finalize start geometryLength=2 releaseAfterFinalize=false
+@ifc-lite/viewer:test: [GeomStream] computeBounds: 0ms
+@ifc-lite/viewer:test: [GeomStream] finalizeStreamingAsync complete: 1ms → 1 consolidated batches, 0.0M triangles
+@ifc-lite/viewer:test: [GeomSync] finalize complete elapsed=1ms batches=1 queued=false
+@ifc-lite/viewer:test: [GeomSync] new file currentLength=2 lastLength=0 releaseAfterFinalize=false
+@ifc-lite/viewer:test: ✔ restarts finalization cancelled by a recovery epoch while the queue is draining (#6993) (89.84439ms)
+@ifc-lite/viewer:test: ✖ does not merge an already-applied placement delta into a later edit during failed uploads (#6993) (9.03135ms)
+@ifc-lite/viewer:test: ℹ tests 15
+@ifc-lite/viewer:test: ℹ suites 0
+@ifc-lite/viewer:test: ℹ pass 2
+@ifc-lite/viewer:test: ℹ fail 13
+@ifc-lite/viewer:test: ℹ cancelled 0
+@ifc-lite/viewer:test: ℹ skipped 0
+@ifc-lite/viewer:test: ℹ todo 0
+@ifc-lite/viewer:test: ℹ duration_ms 4800.263438
+@ifc-lite/viewer:test:
+@ifc-lite/viewer:test: ✖ failing tests:
+@ifc-lite/viewer:test:
+@ifc-lite/viewer:test: test at src/components/viewer/useGeometryStreaming.recovery.test.tsx:1:4325
+@ifc-lite/viewer:test: ✖ replays unchanged source geometry that arrived while the GPU was lost (#6993) (27.909037ms)
+@ifc-lite/viewer:test:   AssertionError [ERR_ASSERTION]: recovery must upload both source triangles without another source update
+@ifc-lite/viewer:test:
+@ifc-lite/viewer:test:   0 !== 6
+@ifc-lite/viewer:test:
+@ifc-lite/viewer:test:       at TestContext.<anonymous> (/home/louistrue/.t3/worktrees/ifc-lite/t3code-b95d33a9/apps/viewer/src/components/viewer/useGeometryStreaming.recovery.test.tsx:108:10)
+@ifc-lite/viewer:test:       at async Test.run (node:internal/test_runner/test:1409:7)
+@ifc-lite/viewer:test:       at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+@ifc-lite/viewer:test:     generatedMessage: false,
+@ifc-lite/viewer:test:     code: 'ERR_ASSERTION',
+@ifc-lite/viewer:test:     actual: 0,
+@ifc-lite/viewer:test:     expected: 6,
+@ifc-lite/viewer:test:     operator: 'strictEqual',
+@ifc-lite/viewer:test:     diff: 'simple'
+@ifc-lite/viewer:test:   }
+@ifc-lite/viewer:test:
+@ifc-lite/viewer:test: test at src/components/viewer/useGeometryStreaming.recovery.test.tsx:1:4938
+@ifc-lite/viewer:test: ✖ finalizes a stream that ended during device loss after recovery (#6993) (52.479358ms)
+@ifc-lite/viewer:test:   AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+@ifc-lite/viewer:test:
+@ifc-lite/viewer:test:   0 !== 6
+@ifc-lite/viewer:test:
+@ifc-lite/viewer:test:       at TestContext.<anonymous> (/home/louistrue/.t3/worktrees/ifc-lite/t3code-b95d33a9/apps/viewer/src/components/viewer/useGeometryStreaming.recovery.test.tsx:124:10)
+@ifc-lite/viewer:test:       at async Test.run (node:internal/test_runner/test:1409:7)
+@ifc-lite/viewer:test:       at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+@ifc-lite/viewer:test:     generatedMessage: true,
+@ifc-lite/viewer:test:     code: 'ERR_ASSERTION',
+@ifc-lite/viewer:test:     actual: 0,
+@ifc-lite/viewer:test:     expected: 6,
+@ifc-lite/viewer:test:     operator: 'strictEqual',
+@ifc-lite/viewer:test:     diff: 'simple'
+@ifc-lite/viewer:test:   }
+@ifc-lite/viewer:test:
+@ifc-lite/viewer:test: test at src/components/viewer/useGeometryStreaming.recovery.test.tsx:1:6274
+@ifc-lite/viewer:test: ✖ replays a pending primary instanced shard after recovery (#6993) (9.495918ms)
+@ifc-lite/viewer:test:   AssertionError [ERR_ASSERTION]: the encoded instance must reach the real Scene
+@ifc-lite/viewer:test:       at TestContext.<anonymous> (/home/louistrue/.t3/worktrees/ifc-lite/t3code-b95d33a9/apps/viewer/src/components/viewer/useGeometryStreaming.recovery.test.tsx:149:12)
+@ifc-lite/viewer:test:       at async Test.run (node:internal/test_runner/test:1409:7)
+@ifc-lite/viewer:test:       at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+@ifc-lite/viewer:test:     generatedMessage: false,
+@ifc-lite/viewer:test:     code: 'ERR_ASSERTION',
+@ifc-lite/viewer:test:     actual: undefined,
+@ifc-lite/viewer:test:     expected: true,
+@ifc-lite/viewer:test:     operator: '==',
+@ifc-lite/viewer:test:     diff: 'simple'
+@ifc-lite/viewer:test:   }
+@ifc-lite/viewer:test:
+@ifc-lite/viewer:test: test at src/components/viewer/useGeometryStreaming.recovery.test.tsx:1:6274
+@ifc-lite/viewer:test: ✖ replays a pending federated instanced shard after recovery (#6993) (8.684443ms)
+@ifc-lite/viewer:test:   AssertionError [ERR_ASSERTION]: the encoded instance must reach the real Scene
+@ifc-lite/viewer:test:       at TestContext.<anonymous> (/home/louistrue/.t3/worktrees/ifc-lite/t3code-b95d33a9/apps/viewer/src/components/viewer/useGeometryStreaming.recovery.test.tsx:149:12)
+@ifc-lite/viewer:test:       at async Test.run (node:internal/test_runner/test:1409:7)
+@ifc-lite/viewer:test:       at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+@ifc-lite/viewer:test:     generatedMessage: false,
+@ifc-lite/viewer:test:     code: 'ERR_ASSERTION',
+@ifc-lite/viewer:test:     actual: undefined,
+@ifc-lite/viewer:test:     expected: true,
+@ifc-lite/viewer:test:     operator: '==',
+@ifc-lite/viewer:test:     diff: 'simple'
+@ifc-lite/viewer:test:   }
+@ifc-lite/viewer:test:
+@ifc-lite/viewer:test: test at src/components/viewer/useGeometryStreaming.recovery.test.tsx:1:7296
+@ifc-lite/viewer:test: ✖ retries a pending translation after device recovery (#6993) (12.166498ms)
+@ifc-lite/viewer:test:   AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+@ifc-lite/viewer:test:
+@ifc-lite/viewer:test:   0 !== 5
+@ifc-lite/viewer:test:
+@ifc-lite/viewer:test:       at TestContext.<anonymous> (/home/louistrue/.t3/worktrees/ifc-lite/t3code-b95d33a9/apps/viewer/src/components/viewer/useGeometryStreaming.recovery.test.tsx:174:66)
+@ifc-lite/viewer:test:       at async Test.run (node:internal/test_runner/test:1409:7)
+@ifc-lite/viewer:test:       at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+@ifc-lite/viewer:test:     generatedMessage: true,
+@ifc-lite/viewer:test:     code: 'ERR_ASSERTION',
+@ifc-lite/viewer:test:     actual: 0,
+@ifc-lite/viewer:test:     expected: 5,
+@ifc-lite/viewer:test:     operator: 'strictEqual',
+@ifc-lite/viewer:test:     diff: 'simple'
+@ifc-lite/viewer:test:   }
+@ifc-lite/viewer:test:
+@ifc-lite/viewer:test: test at src/components/viewer/useGeometryStreaming.recovery.test.tsx:1:7296
+@ifc-lite/viewer:test: ✖ retries a pending rotation after device recovery (#6993) (9.04899ms)
+@ifc-lite/viewer:test:   AssertionError [ERR_ASSERTION]: the triangle must rotate from the XY plane into the YZ plane
+@ifc-lite/viewer:test:       at TestContext.<anonymous> (/home/louistrue/.t3/worktrees/ifc-lite/t3code-b95d33a9/apps/viewer/src/components/viewer/useGeometryStreaming.recovery.test.tsx:177:14)
+@ifc-lite/viewer:test:       at async Test.run (node:internal/test_runner/test:1409:7)
+@ifc-lite/viewer:test:       at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+@ifc-lite/viewer:test:     generatedMessage: false,
+@ifc-lite/viewer:test:     code: 'ERR_ASSERTION',
+@ifc-lite/viewer:test:     actual: false,
+@ifc-lite/viewer:test:     expected: true,
+@ifc-lite/viewer:test:     operator: '==',
+@ifc-lite/viewer:test:     diff: 'simple'
+@ifc-lite/viewer:test:   }
+@ifc-lite/viewer:test:
+@ifc-lite/viewer:test: test at src/components/viewer/useGeometryStreaming.recovery.test.tsx:1:7296
+@ifc-lite/viewer:test: ✖ retries a pending mesh-color after device recovery (#6993) (9.923406ms)
+@ifc-lite/viewer:test:   AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+@ifc-lite/viewer:test:   + actual - expected
+@ifc-lite/viewer:test:
+@ifc-lite/viewer:test:     [
+@ifc-lite/viewer:test:   +   0.5,
+@ifc-lite/viewer:test:   +   0.5,
+@ifc-lite/viewer:test:   +   0.5,
+@ifc-lite/viewer:test:       1,
+@ifc-lite/viewer:test:   -   0,
+@ifc-lite/viewer:test:   -   0,
+@ifc-lite/viewer:test:   -   1
+@ifc-lite/viewer:test:     ]
+@ifc-lite/viewer:test:
+@ifc-lite/viewer:test:       at TestContext.<anonymous> (/home/louistrue/.t3/worktrees/ifc-lite/t3code-b95d33a9/apps/viewer/src/components/viewer/useGeometryStreaming.recovery.test.tsx:180:44)
+@ifc-lite/viewer:test:       at async Test.run (node:internal/test_runner/test:1409:7)
+@ifc-lite/viewer:test:       at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+@ifc-lite/viewer:test:     generatedMessage: true,
+@ifc-lite/viewer:test:     code: 'ERR_ASSERTION',
+@ifc-lite/viewer:test:     actual: [ 0.5, 0.5, 0.5, 1 ],
+@ifc-lite/viewer:test:     expected: [ 1, 0, 0, 1 ],
+@ifc-lite/viewer:test:     operator: 'deepStrictEqual',
+@ifc-lite/viewer:test:     diff: 'simple'
+@ifc-lite/viewer:test:   }
+@ifc-lite/viewer:test:
+@ifc-lite/viewer:test: test at src/components/viewer/useGeometryStreaming.recovery.test.tsx:1:7296
+@ifc-lite/viewer:test: ✖ retries a pending overlay after device recovery (#6993) (8.852886ms)
+@ifc-lite/viewer:test:   AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+@ifc-lite/viewer:test:   + actual - expected
+@ifc-lite/viewer:test:
+@ifc-lite/viewer:test:   + undefined
+@ifc-lite/viewer:test:   - [
+@ifc-lite/viewer:test:   -   0,
+@ifc-lite/viewer:test:   -   1,
+@ifc-lite/viewer:test:   -   0,
+@ifc-lite/viewer:test:   -   1
+@ifc-lite/viewer:test:   - ]
+@ifc-lite/viewer:test:
+@ifc-lite/viewer:test:       at TestContext.<anonymous> (/home/louistrue/.t3/worktrees/ifc-lite/t3code-b95d33a9/apps/viewer/src/components/viewer/useGeometryStreaming.recovery.test.tsx:181:41)
+@ifc-lite/viewer:test:       at async Test.run (node:internal/test_runner/test:1409:7)
+@ifc-lite/viewer:test:       at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+@ifc-lite/viewer:test:     generatedMessage: true,
+@ifc-lite/viewer:test:     code: 'ERR_ASSERTION',
+@ifc-lite/viewer:test:     actual: undefined,
+@ifc-lite/viewer:test:     expected: [ 0, 1, 0, 1 ],
+@ifc-lite/viewer:test:     operator: 'deepStrictEqual',
+@ifc-lite/viewer:test:     diff: 'simple'
+@ifc-lite/viewer:test:   }
+@ifc-lite/viewer:test:
+@ifc-lite/viewer:test: test at src/components/viewer/useGeometryStreaming.recovery.test.tsx:1:7296
+@ifc-lite/viewer:test: ✖ retries a pending removal after device recovery (#6993) (7.99053ms)
+@ifc-lite/viewer:test:   AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+@ifc-lite/viewer:test:
+@ifc-lite/viewer:test:   true !== false
+@ifc-lite/viewer:test:
+@ifc-lite/viewer:test:       at TestContext.<anonymous> (/home/louistrue/.t3/worktrees/ifc-lite/t3code-b95d33a9/apps/viewer/src/components/viewer/useGeometryStreaming.recovery.test.tsx:183:14)
+@ifc-lite/viewer:test:       at async Test.run (node:internal/test_runner/test:1409:7)
+@ifc-lite/viewer:test:       at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+@ifc-lite/viewer:test:     generatedMessage: true,
+@ifc-lite/viewer:test:     code: 'ERR_ASSERTION',
+@ifc-lite/viewer:test:     actual: true,
+@ifc-lite/viewer:test:     expected: false,
+@ifc-lite/viewer:test:     operator: 'strictEqual',
+@ifc-lite/viewer:test:     diff: 'simple'
+@ifc-lite/viewer:test:   }
+@ifc-lite/viewer:test:
+@ifc-lite/viewer:test: test at src/components/viewer/useGeometryStreaming.recovery.test.tsx:1:8942
+@ifc-lite/viewer:test: ✖ retries an in-place remeshed source slot after device recovery (#6993) (7.688098ms)
+@ifc-lite/viewer:test:   AssertionError [ERR_ASSERTION]: the replacement triangle must reach the Scene
+@ifc-lite/viewer:test:
+@ifc-lite/viewer:test:   1 !== 3
+@ifc-lite/viewer:test:
+@ifc-lite/viewer:test:       at TestContext.<anonymous> (/home/louistrue/.t3/worktrees/ifc-lite/t3code-b95d33a9/apps/viewer/src/components/viewer/useGeometryStreaming.recovery.test.tsx:201:10)
+@ifc-lite/viewer:test:       at async Test.run (node:internal/test_runner/test:1409:7)
+@ifc-lite/viewer:test:       at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+@ifc-lite/viewer:test:     generatedMessage: false,
+@ifc-lite/viewer:test:     code: 'ERR_ASSERTION',
+@ifc-lite/viewer:test:     actual: 1,
+@ifc-lite/viewer:test:     expected: 3,
+@ifc-lite/viewer:test:     operator: 'strictEqual',
+@ifc-lite/viewer:test:     diff: 'simple'
+@ifc-lite/viewer:test:   }
+@ifc-lite/viewer:test:
+@ifc-lite/viewer:test: test at src/components/viewer/useGeometryStreaming.recovery.test.tsx:1:9852
+@ifc-lite/viewer:test: ✖ retries a failed GPU rebuild without applying a translation twice (#6993) (17.197191ms)
+@ifc-lite/viewer:test:   AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+@ifc-lite/viewer:test:
+@ifc-lite/viewer:test:   true !== false
+@ifc-lite/viewer:test:
+@ifc-lite/viewer:test:       at TestContext.<anonymous> (/home/louistrue/.t3/worktrees/ifc-lite/t3code-b95d33a9/apps/viewer/src/components/viewer/useGeometryStreaming.recovery.test.tsx:223:12)
+@ifc-lite/viewer:test:       at async Test.run (node:internal/test_runner/test:1409:7)
+@ifc-lite/viewer:test:       at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+@ifc-lite/viewer:test:     generatedMessage: true,
+@ifc-lite/viewer:test:     code: 'ERR_ASSERTION',
+@ifc-lite/viewer:test:     actual: true,
+@ifc-lite/viewer:test:     expected: false,
+@ifc-lite/viewer:test:     operator: 'strictEqual',
+@ifc-lite/viewer:test:     diff: 'simple'
+@ifc-lite/viewer:test:   }
+@ifc-lite/viewer:test:
+@ifc-lite/viewer:test: test at src/components/viewer/useGeometryStreaming.recovery.test.tsx:1:9852
+@ifc-lite/viewer:test: ✖ retries a failed GPU rebuild without applying a rotation twice (#6993) (8.574165ms)
+@ifc-lite/viewer:test:   AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+@ifc-lite/viewer:test:
+@ifc-lite/viewer:test:   true !== false
+@ifc-lite/viewer:test:
+@ifc-lite/viewer:test:       at TestContext.<anonymous> (/home/louistrue/.t3/worktrees/ifc-lite/t3code-b95d33a9/apps/viewer/src/components/viewer/useGeometryStreaming.recovery.test.tsx:223:12)
+@ifc-lite/viewer:test:       at async Test.run (node:internal/test_runner/test:1409:7)
+@ifc-lite/viewer:test:       at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+@ifc-lite/viewer:test:     generatedMessage: true,
+@ifc-lite/viewer:test:     code: 'ERR_ASSERTION',
+@ifc-lite/viewer:test:     actual: true,
+@ifc-lite/viewer:test:     expected: false,
+@ifc-lite/viewer:test:     operator: 'strictEqual',
+@ifc-lite/viewer:test:     diff: 'simple'
+@ifc-lite/viewer:test:   }
+@ifc-lite/viewer:test:
+@ifc-lite/viewer:test: test at src/components/viewer/useGeometryStreaming.recovery.test.tsx:1:11732
+@ifc-lite/viewer:test: ✖ does not merge an already-applied placement delta into a later edit during failed uploads (#6993) (9.03135ms)
+@ifc-lite/viewer:test:   AssertionError [ERR_ASSERTION]: the next edit adds only its new delta
+@ifc-lite/viewer:test:
+@ifc-lite/viewer:test:   12 !== 7
+@ifc-lite/viewer:test:
+@ifc-lite/viewer:test:       at TestContext.<anonymous> (/home/louistrue/.t3/worktrees/ifc-lite/t3code-b95d33a9/apps/viewer/src/components/viewer/useGeometryStreaming.recovery.test.tsx:251:10)
+@ifc-lite/viewer:test:       at async Test.run (node:internal/test_runner/test:1409:7)
+@ifc-lite/viewer:test:       at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+@ifc-lite/viewer:test:     generatedMessage: false,
+@ifc-lite/viewer:test:     code: 'ERR_ASSERTION',
+@ifc-lite/viewer:test:     actual: 12,
+@ifc-lite/viewer:test:     expected: 7,
+@ifc-lite/viewer:test:     operator: 'strictEqual',
+@ifc-lite/viewer:test:     diff: 'simple'
+@ifc-lite/viewer:test:   }
+@ifc-lite/viewer:test:  ELIFECYCLE  Test failed. See above for more details.
+@ifc-lite/viewer#test:  ERROR  command (/home/louistrue/.t3/worktrees/ifc-lite/t3code-b95d33a9/apps/viewer) /home/louistrue/.nvm/versions/node/v24.21.0/bin/pnpm run test exited (1)
+
+ Tasks:    55 successful, 56 total
+Cached:    54 cached, 56 total
+  Time:    1m20.925s
+Failed:    @ifc-lite/viewer#test
+
+ ERROR  run failed: command  exited (1)
+ ELIFECYCLE  Test failed. See above for more details.

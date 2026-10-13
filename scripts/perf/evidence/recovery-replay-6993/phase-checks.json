@@ -1,0 +1,9 @@
+[
+  {"check":"hooks","command":["pnpm","test","--filter=@ifc-lite/viewer","--concurrency=1","--env-mode=loose"],"exit":0},
+  {"check":"typecheck","command":["pnpm","typecheck"],"exit":0},
+  {"check":"lint","command":["pnpm","lint"],"exit":0},
+  {"check":"gates","command":["node","scripts/check-module-size.mjs"],"exit":0},
+  {"check":"license","command":["node","scripts/add-license-headers.mjs","--check"],"exit":0},
+  {"check":"source-tests","command":["node","scripts/check-source-text-assertions.mjs"],"exit":0},
+  {"check":"docs-generated","command":["pnpm","docs:check-generated"],"exit":0}
+]

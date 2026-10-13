@@ -8,7 +8,7 @@ import { afterEach, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { cleanup, click, render } from '@/test/render.js';
-import type { ReportSession } from '@ifc-lite/report-contract';
+import type { ReportReceipt, ReportSession } from '@ifc-lite/report-contract';
 import { ReportClient } from '@/services/error-reports/client';
 import { forgetReport, pendingReport, recentReport, rememberReport } from '@/lib/error-reports/pending';
 import { checksum } from '@/services/error-reports/upload';
@@ -249,7 +249,7 @@ for (const [status, code] of [[404, 'report_missing'], [503, 'service_unavailabl
     const transport: typeof fetch = (value, options) => fetch(endpoint + String(value), options);
     try {
       render(<ErrorReportDialog context={{ errorCode: 'report_resume', resumeReportId: 'stale-recovery' }} onClose={() => { closes++; }} client={new ReportClient(transport)} />);
-      await waitFor(() => [...document.querySelectorAll('button')].some(item => item.textContent === 'Close'), 'unavailable recovery can close'); click(button('Close')); await waitFor(() => closes === 1, 'recovery closes');
+      await waitFor(() => methods.length === 2 && !!document.querySelector('output')?.textContent?.includes('Reporting is unavailable right now'), 'unavailable recovery completes its actual request'); click(button('Close')); await waitFor(() => closes === 1, 'recovery closes');
       assert.equal(closes, 1); assert.deepEqual(methods, ['GET', 'GET']);
       assert.equal(pendingReport(), status === 404 ? undefined : 'stale-recovery');
       assert.equal(recentReport(), status === 404 ? undefined : 'stale-recovery');
@@ -321,7 +321,7 @@ test('#7500 cancelling an older failed submission deletes only its own recovery 
     if (!fixtureCors(request, response)) return;
     response.setHeader('Content-Type', 'application/json');
     if (request.url?.endsWith('/session')) response.end(JSON.stringify(session));
-    else if (request.method === 'DELETE') { deleted.push(request.url ?? ''); response.end(JSON.stringify({ id: 'older-report', status: 'deleted' })); }
+    else if (request.method === 'DELETE') { deleted.push(request.url ?? ''); response.end(JSON.stringify({ id: request.url?.split('/').at(-1), status: 'deleted' })); }
     else if (request.url?.endsWith('/older-report/submit')) { response.statusCode = 503; response.end(JSON.stringify({ error: 'service_unavailable', message: 'Retry later' })); }
     else if (request.url?.endsWith('/drafts')) response.end(JSON.stringify({ id: 'newer-report', status: 'draft' }));
     else if (request.url?.endsWith('/newer-report/submit')) response.end(JSON.stringify({ id: 'newer-report', status: 'submitted' }));
@@ -343,8 +343,13 @@ test('#7500 cancelling an older failed submission deletes only its own recovery 
     assert.equal(pendingReport(), 'newer-report'); assert.equal(recentReport(), 'newer-report');
     cleanup(); render(<ErrorReportHost />);
     assert.ok(document.body.textContent?.includes('View recent report'));
+    const confirmedDeleted = await client.request<ReportReceipt>('/newer-report', 'DELETE');
+    await act(async () => { await new ReportSubmission(newer.reviewed, client, confirmedDeleted).cancel(); });
+    assert.equal(pendingReport(), undefined); assert.equal(recentReport(), undefined);
+    assert.deepEqual(deleted, ['/api/reports/older-report', '/api/reports/newer-report'], 'known deleted cancellation makes no further DELETE');
+
   } finally {
-    forgetReport('older-report'); forgetReport('newer-report');
+    act(() => { forgetReport('older-report'); forgetReport('newer-report'); });
     server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve()));
   }
 });
@@ -379,7 +384,7 @@ for (const mode of ['automatic publication', 'manual status refresh'] as const) 
     assert.ok(document.querySelector('a[href="https://github.com/LTplus-AG/ifc-lite/issues/7495"]'));
     assert.equal(pendingReport(), 'pub-B'); assert.equal(recentReport(), 'pub-B');
   } finally {
-    forgetReport('pub-A'); forgetReport('pub-B');
+    act(() => { forgetReport('pub-A'); forgetReport('pub-B'); });
     server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve()));
   }
 });

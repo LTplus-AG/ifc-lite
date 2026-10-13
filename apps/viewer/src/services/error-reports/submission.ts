@@ -54,7 +54,8 @@ export class ReportSubmission {
   async cancel(): Promise<void> {
     // Reconcile a lost create response by its idempotency key before deleting.
     if (this.started && !this.receipt) this.receipt = await this.client.request<ReportReceipt>('/drafts', 'POST', this.reviewed.draft);
-    if (this.receipt && !['submitted', 'published', 'deleted'].includes(this.receipt.status)) {
+    if (this.receipt?.status === 'deleted') { forgetReport(this.receipt.id); return; }
+    if (this.receipt && !['submitted', 'published'].includes(this.receipt.status)) {
       await this.client.request(`/${encodeURIComponent(this.receipt.id)}`, 'DELETE');
       forgetReport(this.receipt.id);
     }

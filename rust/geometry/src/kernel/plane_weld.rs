@@ -17,10 +17,10 @@
 
 use super::arrangement::Tri;
 use super::near_band::NearBand;
-use lift::exact_on_plane_weld;
 
 mod incidence;
 mod lift;
+mod lateral;
 
 pub use diag::take_plane_weld_stats;
 
@@ -112,7 +112,7 @@ mod diag {
 /// earlier operands re-reconcile against what the later ones settled on, and
 /// that is what closes the case one pass opens.
 ///
-/// Only PARTLY, and the limit is invisible from here: [`exact_on_plane_weld`]
+/// Only PARTLY, and the limit is invisible from here: [`lift::exact_on_plane_weld`]
 /// emits the moved vertex on the 2⁻³⁶ grid while its host gate refuses any
 /// triangle off the 2⁻¹⁶ operand grid, so a just-welded triangle is silently
 /// REFUSED as a host for the rest of the call. The reverse direction and every
@@ -149,7 +149,7 @@ mod diag {
 /// (see [`promote_cutter_verts_onto_host_faces`]), and a whole-operand one is
 /// not a no-op either, a plane being infinite. The lever that would work,
 /// keying host faces by PLANE, moves which triangle supplies
-/// [`exact_on_plane_weld`]'s edge basis — hence welded coordinates, hence the
+/// [`lift::exact_on_plane_weld`]'s edge basis — hence welded coordinates, hence the
 /// determinism manifests: its own change. Exposure is NOT as narrow as the
 /// census (zero unions on AC20-FZK-Haus, ISSUE_129, ISSUE_053, FM_ARC_DigitalHub)
 /// suggests: besides an explicit `.UNION.` IfcBooleanResult, `build_cutter_union`
@@ -319,29 +319,7 @@ fn promote<const KEEP_INCIDENCE: bool>(cutter: &mut [Tri], host: &[Tri]) -> usiz
             // off every grid and force the BigRational tier on every predicate
             // that sees it.
             if let Some((_, d, f)) = best {
-                if let Some(mut w) = exact_on_plane_weld(*v, faces[f].t) {
-                    // #7292: edge-basis quantization must not move the weld
-                    // farther in-plane than the noise band in that direction.
-                    // In mm files the old unit-free step shifts a flush side
-                    // by micrometres and leaves metres of the host uncut.
-                    let face = &faces[f];
-                    let scale = d / face.nn;
-                    let drift = [0, 1, 2].map(|k| w[k] - (v[k] - scale * face.n[k]));
-                    let drift2 = drift[0] * drift[0] + drift[1] * drift[1] + drift[2] * drift[2];
-                    // The face band measures NORMAL uncertainty. Lateral drift
-                    // must use its own direction: at native mm coordinates a
-                    // Y-ULP can exceed a mostly-Z plane band (#7292/#7468).
-                    let lateral_band2 = band.scaled_band2(drift, drift2);
-                    if !drift2.is_finite() || drift2 * drift2 > lateral_band2 {
-                        // Preserve every already-admitted ordinary weld. Only
-                        // a rejected axis-face candidate tries its exact foot.
-                        let Some(foot)=lift::exact_axis_plane_foot(*v,face.t) else {continue;};
-                        let fallback_drift=[0,1,2].map(|k|foot[k]-(v[k]-scale*face.n[k]));
-                        let fallback_drift2=fallback_drift.iter().map(|d|d*d).sum::<f64>();
-                        let fallback_band2=band.scaled_band2(fallback_drift,fallback_drift2);
-                        if !fallback_drift2.is_finite() || fallback_drift2*fallback_drift2>fallback_band2 {continue;}
-                        w=foot;
-                    }
+                if let Some(w) = lateral::bounded_weld(*v, &faces[f], d, &band) {
                     if KEEP_INCIDENCE && guard.refuses(&w, f, &on) {
                         continue; // #6940
                     }
@@ -359,7 +337,7 @@ fn promote<const KEEP_INCIDENCE: bool>(cutter: &mut [Tri], host: &[Tri]) -> usiz
 
 /// A host triangle as the weld reads it: its plane and that plane's band.
 struct Face {
-    /// `t[0]` anchors the plane; all three are [`exact_on_plane_weld`]'s
+    /// `t[0]` anchors the plane; all three are [`lift::exact_on_plane_weld`]'s
     /// edge basis.
     t: Tri,
     n: [f64; 3], // raw (unnormalised) plane normal

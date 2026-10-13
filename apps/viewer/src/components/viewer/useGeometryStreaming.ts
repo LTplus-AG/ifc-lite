@@ -146,7 +146,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
   // ownership across recovery cleanup, but never finalize a replacement load.
   useEffect(() => {
     const pending = pendingFinalizeRef.current;
-    if (!geometry || geometry.length === 0) {
+    if (!geometry || (geometry.length === 0 && (pending?.geometry?.length ?? 0) > 0)) {
       pendingFinalizeRef.current = null;
       prevIsStreamingRef.current = isStreaming;
       return;

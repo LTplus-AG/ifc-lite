@@ -48,7 +48,7 @@ test('#7495 abort never requests another part or finalization', async () => {
 
 test('#7495 resumed verification waits for server-confirmed ready without sending model bytes again', async () => {
   let reads = 0;
-  const remote: ModelUpload = { id: 'upload', status: 'verifying', partBytes: 4, partCount: 1, uploadedParts: [] };
+  const remote: ModelUpload = { id: 'upload', status: 'verifying', partBytes: 4, partCount: 1, uploadedParts: [], sourceParts: [{ partNumber: 1, size: 4, sha256: await checksum(new TextEncoder().encode('real').buffer) }] };
   const transport: typeof fetch = async (_input, options) => {
     assert.equal(options?.method, 'GET');
     reads++;
@@ -56,4 +56,12 @@ test('#7495 resumed verification waits for server-confirmed ready without sendin
   };
   await uploadModel(new ReportClient(transport), 'report', remote, new File(['real'], 'real.ifc'), new AbortController().signal, () => {});
   assert.equal(reads, 2);
+});
+
+for (const status of ['ready', 'verifying'] as const) test(`#7495 ${status} retry rejects a reselected revision with the same name and size`, async () => {
+  const remote: ModelUpload = { id: 'upload', status, partBytes: 4, partCount: 1, uploadedParts: [], sourceParts: [{ partNumber: 1, size: 4, sha256: await checksum(new TextEncoder().encode('real').buffer) }] };
+  let writes = 0;
+  const transport: typeof fetch = async (_input, options) => { if (options?.method !== 'GET') writes++; return Response.json(remote); };
+  await assert.rejects(uploadModel(new ReportClient(transport), 'report', remote, new File(['fake'], 'same.ifc'), new AbortController().signal, () => {}), /differs/);
+  assert.equal(writes, 0);
 });

@@ -2,14 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { rememberReport } from '@/lib/error-reports/pending';
+import { forgetReport, rememberReport } from '@/lib/error-reports/pending';
 import { useEffect, useRef, useState } from 'react';
 import type { ReportDiagnostics, ReportReceipt, ReportSession } from '@ifc-lite/report-contract';
 import { useTranslation } from '@/i18n';
 import type { ReportContext } from '@/lib/error-reports/context';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { ReportClient, safeAgreementUrl, safeIssueUrl } from '@/services/error-reports/client';
+import { ReportClient, ReportRequestError, safeAgreementUrl, safeIssueUrl } from '@/services/error-reports/client';
 import { ReportSubmission, type ReviewedReport } from '@/services/error-reports/submission';
 import { emptyAttachment, ReportAttachment, validAttachment, type AttachmentChoice } from './ReportAttachment';
 
@@ -29,6 +29,8 @@ export function ErrorReportDialog({ context, onClose, client: injectedClient }: 
   const [review, setReview] = useState<ReviewedReport>();
   const [existing, setExisting] = useState<ReportReceipt>();
   const [receipt, setReceipt] = useState<ReportReceipt>();
+  const [deleteState, setDeleteState] = useState<'idle' | 'confirm' | 'deleting'>('idle');
+  const deleting = useRef(false);
   const [publicationPending, setPublicationPending] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -50,13 +52,17 @@ export function ErrorReportDialog({ context, onClose, client: injectedClient }: 
         restoreReceipt(restored);
       }
     }).catch(reason => {
-      if (!controller.signal.aborted) { console.warn('[error-report] Session unavailable', reason); setUnavailable(true); setSession(undefined); setRestoring(false); }
+      if (!controller.signal.aborted) {
+        if (context.resumeReportId && reason instanceof ReportRequestError && reason.status === 404 && reason.code === 'report_missing') forgetReport(context.resumeReportId);
+        console.warn('[error-report] Session unavailable', reason);
+        setUnavailable(true); setSession(undefined); setRestoring(false);
+      }
     });
     return () => { controller.abort(); abort.current?.abort(); };
   }, [client]);
 
   useEffect(() => {
-    if (receipt?.status !== 'submitted' || receipt.publicationHold) return;
+    if (receipt?.status !== 'submitted' || receipt.publicationHold || deleteState !== 'idle') return;
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout>;
     let attempts = 0;
@@ -75,11 +81,13 @@ export function ErrorReportDialog({ context, onClose, client: injectedClient }: 
     };
     timer = setTimeout(() => { void poll(); }, 3000);
     return () => { clearTimeout(timer); controller.abort(); };
-  }, [client, receipt?.id, receipt?.status, receipt?.publicationHold]);
+  }, [client, receipt?.id, receipt?.status, receipt?.publicationHold, deleteState]);
 
   function restoreReceipt(restored: ReportReceipt) {
     setRestoring(false);
+    if (restored.status === 'deleted') { forgetReport(restored.id); setReceipt(restored); return; }
     if (['submitted', 'published', 'manual_review'].includes(restored.status)) {
+      rememberReport(restored.id);
       if (restored.status === 'published') rememberReport(undefined);
       setReceipt(restored); return;
     }
@@ -89,6 +97,20 @@ export function ErrorReportDialog({ context, onClose, client: injectedClient }: 
     setAttachment({ ...emptyAttachment, visibility: restored.draft.visibility,
       confidentiality: restored.customNdaStatus === 'approved' ? 'custom' : restored.uploadSource?.confidentiality ?? 'none',
       uploadConsent: !!restored.uploadSource });
+  }
+  async function deletePrivateReport() {
+    if (!receipt || deleting.current) return;
+    deleting.current = true; setDeleteState('deleting'); setError('');
+    try {
+      const deleted = await client.request<ReportReceipt>(`/${encodeURIComponent(receipt.id)}`, 'DELETE');
+      if (deleted.status !== 'deleted' || deleted.id !== receipt.id) throw new Error('Deletion was not confirmed. Please retry.');
+      forgetReport(receipt.id);
+      setReceipt({ ...deleted, issueUrl: deleted.issueUrl ?? receipt.issueUrl });
+      setDeleteState('idle');
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Deletion failed');
+      setDeleteState('confirm');
+    } finally { deleting.current = false; }
   }
   async function refreshReceipt() {
     if (!receipt) return;
@@ -121,32 +143,48 @@ export function ErrorReportDialog({ context, onClose, client: injectedClient }: 
       if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : 'Request failed');
     }).finally(() => { setBusy(false); inFlight.current = undefined; });
   }
+  async function closeDialog() {
+    if (deleting.current || inFlight.current) return;
+    // Closing preserves an existing report; deletion requires its labelled action.
+    abort.current?.abort();
+    await inFlight.current;
+    onClose();
+  }
   async function cancel() {
+    if (deleting.current) return;
     if (receipt) { onClose(); return; }
     abort.current?.abort();
     await inFlight.current;
     try {
       if (submission.current) await submission.current.cancel();
-      else if (context.resumeReportId) { await client.request(`/${encodeURIComponent(context.resumeReportId)}`, 'DELETE'); rememberReport(undefined); }
+      else if (context.resumeReportId) { await client.request(`/${encodeURIComponent(context.resumeReportId)}`, 'DELETE'); forgetReport(context.resumeReportId); }
       onClose();
     }
     catch (reason) { setError(reason instanceof Error ? reason.message : 'Cancellation failed'); }
   }
   const issueUrl = safeIssueUrl(receipt?.issueUrl);
   const agreementUrl = safeAgreementUrl(submission.current?.agreementReceipt?.pdfUrl ?? (receipt?.agreementAccepted ? `/api/reports/${receipt.id}/agreement.pdf` : undefined));
-  return <Dialog open onOpenChange={open => { if (!open) void cancel(); }}>
-    <DialogContent className="ph-no-capture ph-mask max-h-[90vh] overflow-y-auto" hideCloseButton={busy}>
-      <DialogHeader><DialogTitle>{t(receipt?.status === 'manual_review' ? 'errorReport.ndaRequestReceived' : receipt ? 'errorReport.sent' : review ? 'errorReport.reviewTitle' : 'errorReport.invite')}</DialogTitle>
-        <DialogDescription>{t(receipt?.status === 'manual_review' ? 'errorReport.manual' : receipt ? 'errorReport.receivedDescription' : 'errorReport.intro')}</DialogDescription></DialogHeader>
+  return <Dialog open onOpenChange={open => { if (!open) void closeDialog(); }}>
+    <DialogContent className="ph-no-capture ph-mask max-h-[90vh] overflow-y-auto" hideCloseButton={busy || deleteState === 'deleting'} onEscapeKeyDown={event => { if (inFlight.current || deleting.current) event.preventDefault(); }} onPointerDownOutside={event => { if (inFlight.current || deleting.current) event.preventDefault(); }}>
+      <DialogHeader><DialogTitle>{t(receipt?.status === 'deleted' ? 'errorReport.deletedTitle' : receipt?.status === 'manual_review' ? 'errorReport.ndaRequestReceived' : receipt ? 'errorReport.sent' : review ? 'errorReport.reviewTitle' : 'errorReport.invite')}</DialogTitle>
+        <DialogDescription>{t(receipt?.status === 'deleted' ? 'errorReport.deletedDescription' : receipt?.status === 'manual_review' ? 'errorReport.manual' : receipt ? 'errorReport.receivedDescription' : 'errorReport.intro')}</DialogDescription></DialogHeader>
       {receipt ? <div className="space-y-3">
         <p>{t('errorReport.receipt', { id: receipt.id })}</p>
-        {receipt.status === 'submitted' && <><output>{t(receipt.publicationHold ? 'errorReport.publicationHeld' : publicationPending ? 'errorReport.publicationPending' : 'errorReport.publishing')}</output><Button variant="outline" onClick={() => { void refreshReceipt(); }}>{t('errorReport.checkStatus')}</Button></>}
-        {receipt.status === 'manual_review' && <><Button variant="outline" onClick={() => { void refreshReceipt(); }}>{t('errorReport.checkStatus')}</Button></>}
+        {receipt.status === 'submitted' && deleteState === 'idle' && <><output>{t(receipt.publicationHold ? 'errorReport.publicationHeld' : publicationPending ? 'errorReport.publicationPending' : 'errorReport.publishing')}</output><Button variant="outline" onClick={() => { void refreshReceipt(); }}>{t('errorReport.checkStatus')}</Button></>}
+        {receipt.status === 'manual_review' && deleteState === 'idle' && <><Button variant="outline" onClick={() => { void refreshReceipt(); }}>{t('errorReport.checkStatus')}</Button></>}
         {error && <p role="alert">{error}</p>}
         {issueUrl && <a href={issueUrl} target="_blank" rel="noreferrer">{t('errorReport.issue')}</a>}
-        {agreementUrl && <a className="block" href={agreementUrl} target="_blank" rel="noreferrer">{t('errorReport.agreementReceipt')}</a>}
-        <Button onClick={onClose}>{t('errorReport.close')}</Button>
-      </div> : !session || restoring ? <output>{t(unavailable ? 'errorReport.unavailable' : 'errorReport.loading')}</output> : <>
+        {receipt.status !== 'deleted' && agreementUrl && <a className="block" href={agreementUrl} target="_blank" rel="noreferrer">{t('errorReport.agreementReceipt')}</a>}
+        {receipt.status !== 'deleted' && (deleteState === 'idle' ? <Button variant="outline" onClick={() => { setError(''); setDeleteState('confirm'); }}>{t('errorReport.deletePrivate')}</Button> : <div className="space-y-2 rounded border border-destructive/40 p-3">
+          <p>{t('errorReport.deleteConfirm')}</p>
+          <p>{t('errorReport.deletePublicUnchanged')}</p>
+          <p>{t('errorReport.deleteRetention')}</p>
+          {session && <p>{t('errorReport.deletion', { days: session.storage.deletionDays })} {session.storage.backupDisclosure}</p>}
+          <Button variant="destructive" disabled={deleteState === 'deleting'} onClick={() => { void deletePrivateReport(); }}>{t(deleteState === 'deleting' ? 'errorReport.deleting' : 'errorReport.confirmDelete')}</Button>
+          <Button variant="outline" disabled={deleteState === 'deleting'} onClick={() => setDeleteState('idle')}>{t('errorReport.keepReport')}</Button>
+        </div>)}
+        <Button disabled={deleteState === 'deleting'} onClick={onClose}>{t('errorReport.close')}</Button>
+      </div> : !session || restoring ? <div><output>{t(unavailable ? 'errorReport.unavailable' : 'errorReport.loading')}</output>{unavailable && <Button onClick={() => { void closeDialog(); }}>{t('errorReport.close')}</Button>}</div> : <>
         {!review ? <div className="space-y-3 text-sm">
           <p>{t('errorReport.publicText')}</p>
           <label className="block">{t('errorReport.title')}<input className="block w-full rounded border bg-background p-2" disabled={!!existing} value={title} maxLength={180} onChange={event => setTitle(event.target.value)} /></label>

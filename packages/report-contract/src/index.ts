@@ -72,6 +72,8 @@ export interface ModelUpload {
   partCount: number;
   status: "uploading" | "verifying" | "ready" | "aborted" | "failed";
   uploadedParts: UploadedPart[];
+  /** Authorized source hashes; available after multipart completion as well. */
+  sourceParts?: Array<Pick<UploadedPart, "partNumber" | "size" | "sha256">>;
 }
 export interface UploadInput {
   name: string;

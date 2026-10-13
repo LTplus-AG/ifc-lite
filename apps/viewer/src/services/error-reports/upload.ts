@@ -12,16 +12,16 @@ export async function checksum(bytes: ArrayBuffer): Promise<string> {
 export async function uploadModel(client: ReportClient, reportId: string, initial: ModelUpload, file: File, signal: AbortSignal, progress: (done: number) => void): Promise<void> {
   const path = `/${encodeURIComponent(reportId)}/uploads/${encodeURIComponent(initial.id)}`;
   const remote = await client.request<ModelUpload>(path, 'GET', undefined, signal);
-  if (remote.status === 'ready') { progress(file.size); return; }
-  if (remote.status === 'verifying') { progress(file.size); await verifyCompletion(client, path, remote, signal); return; }
-  if (remote.status !== 'uploading' || !Number.isSafeInteger(remote.partBytes) || remote.partBytes < 1 || remote.partBytes > 64 * 1024 ** 2 || remote.partCount !== Math.ceil(file.size / remote.partBytes)) throw new Error('The upload cannot be resumed');
+  const completed = remote.status === 'ready' || remote.status === 'verifying';
+  if ((!completed && remote.status !== 'uploading') || !Number.isSafeInteger(remote.partBytes) || remote.partBytes < 1 || remote.partBytes > 64 * 1024 ** 2 || remote.partCount !== Math.ceil(file.size / remote.partBytes)) throw new Error('The upload cannot be resumed');
   let done = 0;
   for (let partNumber = 1; partNumber <= remote.partCount; partNumber++) {
     signal.throwIfAborted();
     const start = (partNumber - 1) * remote.partBytes;
     const bytes = await file.slice(start, Math.min(file.size, start + remote.partBytes)).arrayBuffer();
     const sha256 = await checksum(bytes);
-    const previous = remote.uploadedParts.find(part => part.partNumber === partNumber);
+    const previous = (completed ? remote.sourceParts : remote.uploadedParts)?.find(part => part.partNumber === partNumber);
+    if (completed && !previous) throw new Error('The completed model source cannot be verified');
     if (previous && (previous.sha256 !== sha256 || previous.size !== bytes.byteLength)) throw new Error('The selected model differs from the uploaded model');
     if (!previous) {
       const part = await client.request<PartAuthorization>(`${path}/parts`, 'POST', { partNumber, sha256 }, signal);
@@ -30,8 +30,8 @@ export async function uploadModel(client: ReportClient, reportId: string, initia
     done += bytes.byteLength;
     progress(done);
   }
-  const completed = await client.request<ModelUpload>(`${path}/complete`, 'POST', {}, signal);
-  await verifyCompletion(client, path, completed, signal);
+  const status = completed ? remote : await client.request<ModelUpload>(`${path}/complete`, 'POST', {}, signal);
+  await verifyCompletion(client, path, status, signal);
 }
 
 async function verifyCompletion(client: ReportClient, path: string, initial: ModelUpload, signal: AbortSignal): Promise<void> {

@@ -41,5 +41,5 @@ export function dismissErrorReport(): void {
   prompt = null; emit();
 }
 export function clearLoadReport(): void {
-  if (!prompt?.open) { prompt = null; emit(); }
+  if (prompt && !prompt.open && !prompt.context.resumeReportId && (prompt.context.sourceFile || prompt.context.errorCode === 'load_failed')) { prompt = null; emit(); }
 }

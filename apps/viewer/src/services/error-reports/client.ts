@@ -4,6 +4,9 @@
 
 import type { ReportSession } from '@ifc-lite/report-contract';
 
+export class ReportRequestError extends Error {
+  constructor(message: string, readonly status: number, readonly code?: string) { super(message); this.name = 'ReportRequestError'; }
+}
 export class ReportClient {
   private csrfToken = '';
   constructor(private readonly transport: typeof fetch = globalThis.fetch.bind(globalThis), private readonly base = '/api/reports') {}
@@ -20,14 +23,16 @@ export class ReportClient {
       ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
     });
     if (!response.ok) {
+      let code: string | undefined;
       let message = `Reporting request failed (${response.status})`;
       if (response.headers.get('content-type')?.includes('application/json')) {
         try {
           const body: unknown = await response.json();
+          if (typeof body === 'object' && body !== null && 'error' in body && typeof body.error === 'string' && /^[a-zA-Z0-9_-]{1,160}$/.test(body.error)) code = body.error;
           if (typeof body === 'object' && body !== null && 'message' in body && typeof body.message === 'string' && body.message.length > 0 && body.message.length <= 500 && [...body.message].every(character => { const code = character.charCodeAt(0); return code >= 32 || code === 9 || code === 10 || code === 13; })) message = body.message;
         } catch { console.warn('[error-report] Service returned an invalid error response'); }
       }
-      throw new Error(message);
+      throw new ReportRequestError(message, response.status, code);
     }
     if (response.status === 204) return undefined as T;
     return await response.json() as T;

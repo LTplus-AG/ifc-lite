@@ -7,6 +7,7 @@ import { it } from 'node:test';
 import { Renderer, type DeviceRecoveryResult } from '@ifc-lite/renderer';
 import type { MeshData } from '@ifc-lite/geometry';
 import { recoveryAllocationDevice } from '@/test/recovery-allocation-device';
+import { retainedStreamAnimation } from '@/test/retained-stream-animation';
 
 it('#6993 actual nonzero queue cursor and append-only tail resume exactly once after staged replacement', { timeout: 10_000 }, async () => {
   // Stated invariant: 1,025 distinct indexed triangles exceed one canonical
@@ -18,6 +19,7 @@ it('#6993 actual nonzero queue cursor and append-only tail resume exactly once a
     color: [0.2, 0.4, 0.6, 1], modelIndex: 0 }));
   const tail = [meshes[0], meshes[0], meshes[1], meshes[1], meshes[1]];
   const allocation = recoveryAllocationDevice(), renderer = new Renderer(allocation.canvas);
+  let animation: ReturnType<typeof retainedStreamAnimation> | undefined;
   let unsubscribe = () => { /* Installed after actual init. */ };
   let resolve!: (value: DeviceRecoveryResult) => void, reject!: (error: unknown) => void;
   const outcome = new Promise<DeviceRecoveryResult>((done, fail) => { resolve = done; reject = fail; });
@@ -31,15 +33,21 @@ it('#6993 actual nonzero queue cursor and append-only tail resume exactly once a
     unsubscribe = renderer.onDeviceLost(() => { void renderer.recoverDevice().then(resolve, reject); });
     allocation.holdReplacementPipelines(); allocation.loseInitialDevice('Controlled cursor-prefix loss');
     assert.equal(await Promise.race([allocation.replacementRequested.then(() => 'replacement'), outcome]), 'replacement');
-    renderer.render(); assert.equal(renderer.getGPUDevice(), null);
+    animation = retainedStreamAnimation(renderer, allocation.canvas);
+    animation.step(); assert.equal(animation.invocations, 1); assert.equal(animation.uploads, 0);
+    assert.equal(renderer.getGPUDevice(), null);
     assert.equal(scene.getAllMeshDataExpressIds().length, 512, 'frame while request is held cannot consume the suffix');
     allocation.releaseReplacement(); await allocation.pipelineRequested;
-    scene.queueMeshes(tail); renderer.render(); assert.equal(renderer.getGPUDevice(), null);
+    scene.queueMeshes(tail); animation.step();
+    assert.equal(animation.invocations, 2); assert.equal(animation.uploads, 0);
+    assert.equal(renderer.getGPUDevice(), null);
     assert.equal(scene.getAllMeshDataExpressIds().length, 512, 'frame while pipeline is held cannot consume the newly appended tail');
     allocation.releaseReplacementPipelines(); assert.deepEqual(await outcome, { ok: true, omissions: [] });
     const replacement = renderer.getGPUDevice(), restoredPipeline = renderer.getPipeline(); assert.ok(replacement); assert.ok(restoredPipeline);
     assert.equal(scene.getAllMeshDataExpressIds().length, 512, 'commit restores uploaded prefix and leaves cursor suffix pending');
-    for (let i = 0; scene.hasQueuedMeshes() && i < 8; i++) scene.flushPending(replacement, restoredPipeline, 0);
+    for (let i = 0; scene.hasQueuedMeshes() && i < 8; i++) animation.step();
+    assert.ok(animation.invocations > 2, 'postcommit drain is driven by actual foreground callbacks');
+    assert.ok(animation.uploads > 0, 'canonical queue flush publishes actual placement bounds after commit');
     assert.equal(scene.hasQueuedMeshes(), false); await scene.finalizeStreamingAsync(replacement, restoredPipeline);
     const pieces = scene.getAllMeshDataExpressIds().flatMap(id => scene.getMeshDataPieces(id) ?? []);
     assert.equal(pieces.length, meshes.length + tail.length, 'all source rows and repeated tail occurrences remain');
@@ -47,5 +55,9 @@ it('#6993 actual nonzero queue cursor and append-only tail resume exactly once a
     assert.equal(scene.getBatchedMeshes().reduce((sum, batch) => sum + batch.indexCount, 0), (meshes.length + tail.length) * 3,
       'pending cursor is neither replayed nor skipped during replacement');
     assert.ok(scene.getBatchedMeshes().every(batch => allocation.live.has(batch.vertexBuffer)));
-  } finally { unsubscribe(); renderer.destroy(); allocation.restore(); }
+  } finally {
+    animation?.dispose(); unsubscribe();
+    allocation.releaseReplacement(); allocation.releaseReplacementPipelines();
+    renderer.destroy(); allocation.restore();
+  }
 });

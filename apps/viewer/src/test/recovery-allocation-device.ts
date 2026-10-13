@@ -25,6 +25,35 @@ export function recoveryAllocationDevice(options: { extraRecoveryAttempt?: boole
   const limits = { maxBufferSize: 1 << 30, maxStorageBufferBindingSize: 1 << 30,
     maxTextureDimension2D: 4096, maxSampleCount: 1 };
   const pipeline = () => ({ getBindGroupLayout() { return {}; } });
+  // Encoder/pass primitives only. The real Renderer still chooses passes,
+  // binds its buffers, draws, finishes and submits; no shader execution occurs.
+  const encoding = { passes: 0, draws: 0, submissions: 0 };
+  const commandEncoder = () => {
+    let finished = false, activePass = false;
+    const beginPass = () => {
+      if (finished || activePass) throw new Error('Allocation encoder pass lifetime violation');
+      activePass = true; encoding.passes++;
+      return {
+        setPipeline() {}, setBindGroup() {}, setVertexBuffer() {}, setIndexBuffer() {},
+        setViewport() {}, setScissorRect() {}, setBlendConstant() {}, setStencilReference() {},
+        draw() { encoding.draws++; }, drawIndexed() { encoding.draws++; },
+        dispatchWorkgroups() {}, dispatchWorkgroupsIndirect() {},
+        end() {
+          if (!activePass) throw new Error('Allocation pass already ended');
+          activePass = false;
+        },
+      };
+    };
+    return {
+      beginRenderPass: beginPass, beginComputePass: beginPass,
+      copyBufferToBuffer() {}, copyTextureToBuffer() {}, copyTextureToTexture() {},
+      clearBuffer() {}, resolveQuerySet() {},
+      finish() {
+        if (finished || activePass) throw new Error('Allocation encoder finish lifetime violation');
+        finished = true; return {};
+      },
+    };
+  };
   const devices = losses.map((loss, deviceIndex) => ({
     limits, features: new Set(), lost: loss.promise,
     destroy() { loss.resolve({ reason: 'destroyed', message: 'Owned allocation device teardown' }); },
@@ -50,8 +79,9 @@ export function recoveryAllocationDevice(options: { extraRecoveryAttempt?: boole
       if (deviceIndex > 0 && holdPipelines) { pipelineRequested.resolve(); await pipelineReleased.promise; }
       return pipeline();
     },
+    createCommandEncoder: commandEncoder,
     pushErrorScope() {}, popErrorScope: async () => null,
-    queue: { writeBuffer() {}, writeTexture() {}, copyExternalImageToTexture() {}, submit() {} },
+    queue: { writeBuffer() {}, writeTexture() {}, copyExternalImageToTexture() {}, submit() { encoding.submissions++; }, onSubmittedWorkDone: async () => {} },
   } as unknown as GPUDevice));
   let deviceRequests = 0;
   const gpu = {
@@ -83,7 +113,7 @@ export function recoveryAllocationDevice(options: { extraRecoveryAttempt?: boole
     if (kind !== 'webgpu') throw new Error('Only the production WebGPU context is supported at this boundary');
     return context;
   } });
-  return { canvas, devices, live, replacementRequested: requested.promise,
+  return { canvas, devices, live, encoding, replacementRequested: requested.promise,
     deviceRequestCount: () => deviceRequests,
     loseInitialDevice(message: string) { losses[0].resolve({ reason: 'unknown', message }); },
     pipelineRequested: pipelineRequested.promise, stagedVertices,

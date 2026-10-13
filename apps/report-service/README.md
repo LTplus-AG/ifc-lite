@@ -45,3 +45,24 @@ Verification distinguishes proven byte-integrity failures from provider/network 
 Public submissions default to disabled. Only the exact value `REPORT_SUBMISSIONS_ENABLED=true` enables new user sessions and new report content. `GET /api/reports/capabilities` reports availability without allocating a session. Disabled new-session/content requests receive `503 submissions_disabled`. Existing owners can still recover their session, read their reports and delete them; normal ownership, Origin and CSRF checks continue to apply. Health and authenticated admin operations are independent of the launch gate.
 
 Before public launch, an operator may configure a separate `REPORT_QUALIFICATION_TOKEN` of at least 32 characters and send it as the `X-Ifclite-Qualification` header for protected qualification requests. It must differ from admin/admission secrets. Keep this credential server/operator-only: never put it in viewer configuration, browser bundles, URLs or logs. The bypass permits admission, not cross-origin or CSRF bypass. Removing the token disables qualification access without disabling existing-owner deletion.
+
+
+## Dormant publication transport
+
+The transport now includes the issue-create recovery implementation qualified in
+#7517. Before a POST it commits an opaque report-ID intent through an independent
+database connection, while retaining the publisher's parent/outbox locks. A lost
+response, outer transaction rollback or restart cannot authorize a second POST.
+Retries reconcile the exact terminal marker against the authenticated App's
+canonical numeric bot identity; optional App metadata must agree when supplied.
+An empty or unavailable listing leaves `publicationHold: "review_required"` on
+the owner receipt. There is no automatic reset of an ambiguous intent. Completed
+or abandoned intents are retained for 90 days, and submitted intents are retained
+while their report remains submitted. Deletion of private report data does not
+undo an already-public issue.
+
+This layer deliberately leaves startup publication disabled. Local loopback
+protocol and PostgreSQL tests are not a new production qualification. Existing
+live #7517 evidence retains its original source binding. Existing-issue comments,
+PostHog correlation, viewer hold messaging and deployment activation belong to
+their later layers. Do not enable this transport or deploy it over N as a rollback.

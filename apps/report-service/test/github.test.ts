@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { describe, expect, it } from "vitest";
 import { generateKeyPairSync, verify } from "node:crypto";
+import { createServer } from "node:http";
 import { GithubIssues, publicIssueBody } from "../src/github.js";
 import type { Config } from "../src/config.js";
 import type { ReportRow } from "../src/reports.js";
@@ -63,6 +64,23 @@ function report(id: string): ReportRow {
     fingerprint: `fingerprint-${id}`,
   };
 }
+const app = { id: 123, slug: "ifc-lite-reviewed-reports" };
+// Actual issue-author shape from the synthetic live qualification (#7495).
+const bot = { id: 341635942, login: "ifc-lite-reviewed-reports[bot]", type: "Bot" };
+function identityResponse(url: URL, init?: RequestInit): Response | undefined {
+  if (url.pathname === "/app") {
+    const jwt = new Headers(init?.headers).get("Authorization")!.slice(7).split(".");
+    expect(verify("RSA-SHA256", Buffer.from(`${jwt[0]}.${jwt[1]}`), keys.publicKey, Buffer.from(jwt[2]!, "base64url"))).toBe(true);
+    expect(JSON.parse(Buffer.from(jwt[1]!, "base64url").toString()).iss).toBe(config.githubAppId);
+    expect(init?.redirect).toBe("error");
+    return Response.json(app);
+  }
+  if (url.pathname === "/users/ifc-lite-reviewed-reports%5Bbot%5D") {
+    expect(init?.redirect).toBe("error");
+    return Response.json(bot);
+  }
+  return undefined;
+}
 function parsedUrl(input: Parameters<typeof fetch>[0]): URL {
   return new URL(
     typeof input === "string"
@@ -71,6 +89,41 @@ function parsedUrl(input: Parameters<typeof fetch>[0]): URL {
         ? input.href
         : input.url,
   );
+}
+// Real HTTP boundary: a successful create can lose its socket before any response.
+async function httpBridge(transport: typeof fetch) {
+  const errors: unknown[] = [];
+  const server = createServer(async (req, res) => {
+    try {
+      const chunks: Buffer[] = [];
+      for await (const chunk of req) chunks.push(Buffer.from(chunk));
+      const headers = new Headers();
+      for (const [key, value] of Object.entries(req.headers)) {
+        if (Array.isArray(value)) value.forEach(item => headers.append(key, item));
+        else if (value !== undefined) headers.set(key, value);
+      }
+      const response = await transport(`https://api.github.com${req.url}`, {
+        method: req.method, headers, redirect: "error",
+        ...(chunks.length ? { body: Buffer.concat(chunks).toString() } : {}),
+      });
+      res.writeHead(response.status, Object.fromEntries(response.headers));
+      res.end(Buffer.from(await response.arrayBuffer()));
+    } catch (error) {
+      errors.push(error);
+      res.destroy();
+    }
+  });
+  await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("missing test address");
+  const fetcher: typeof fetch = (input, init) => {
+    const url = parsedUrl(input);
+    return fetch(`http://127.0.0.1:${address.port}${url.pathname}${url.search}`, init);
+  };
+  return { fetcher, errors, close: () => new Promise<void>((resolve, reject) => {
+    server.closeAllConnections();
+    server.close(error => error ? reject(error) : resolve());
+  }) };
 }
 describe("#7495 GitHub App transport and ambiguity recovery", () => {
   it("does not disclose attachment names or signed agreement identities in GitHub", () => {
@@ -97,7 +150,7 @@ describe("#7495 GitHub App transport and ambiguity recovery", () => {
     expect(text).toContain("ifclite-report:report");
     expect(text).not.toContain("private@example.com");
   });
-  it("authenticates App JWT and reconciles a create whose response was lost without duplicating issue", async () => {
+  it.each([null, { id: 123 }])("authenticates App JWT and reconciles a lost issue response with optional metadata %j without duplicates", async (metadata) => {
     const item = report("report-one");
     let saved: Record<string, unknown> | undefined;
     let creates = 0;
@@ -120,6 +173,7 @@ describe("#7495 GitHub App transport and ambiguity recovery", () => {
         ).toBe("123");
         return Response.json({ token: "installation-token" });
       }
+      const identity = identityResponse(url, init); if (identity) return identity;
       expect(url.pathname).toBe("/repos/owner/repo/issues");
       expect(new Headers(init?.headers).get("Authorization")).toBe(
         "Bearer installation-token",
@@ -138,18 +192,21 @@ describe("#7495 GitHub App transport and ambiguity recovery", () => {
                 ...saved,
                 html_url: "https://github.com/owner/repo/issues/10",
                 created_at: new Date().toISOString(),
-                performed_via_github_app: { id: 123 },
+                performed_via_github_app: metadata,
+                user: bot,
               },
             ]
           : [],
       );
     };
-    const github = new GithubIssues(config, transport);
-    await expect(github.findOrCreate(item)).rejects.toThrow("response lost");
-    expect(await github.findOrCreate(item)).toBe(
-      "https://github.com/owner/repo/issues/10",
-    );
-    expect(creates).toBe(1);
+    const bridge = await httpBridge(transport);
+    try {
+      const github = new GithubIssues(config, bridge.fetcher);
+      await expect(github.findOrCreate(item, async () => {})).rejects.toThrow();
+      expect(await github.findOrCreate(item, async () => {})).toBe("https://github.com/owner/repo/issues/10");
+      expect(creates).toBe(1);
+      expect(bridge.errors.map(String)).toEqual(["TypeError: network response lost after creation"]);
+    } finally { await bridge.close(); }
   });
   it("does not accept a marker forged by another App or collapse another reviewed report", async () => {
     const first = report("first");
@@ -159,6 +216,7 @@ describe("#7495 GitHub App transport and ambiguity recovery", () => {
       const url = parsedUrl(input);
       if (url.pathname.includes("/access_tokens"))
         return Response.json({ token: "token" });
+      const identity = identityResponse(url, init); if (identity) return identity;
       if (init?.method === "POST") {
         const payload = JSON.parse(String(init.body));
         bodies.push(payload.body);
@@ -171,13 +229,14 @@ describe("#7495 GitHub App transport and ambiguity recovery", () => {
           body: `<!-- ifclite-error:${first.fingerprint} -->`,
           created_at: new Date().toISOString(),
           performed_via_github_app: { id: 999 },
+          user: bot,
           html_url: "https://github.com/owner/repo/issues/forged",
         },
       ]);
     };
     const github = new GithubIssues(config, transport);
-    await github.findOrCreate(first);
-    await github.findOrCreate(second);
+    await github.findOrCreate(first, async () => {});
+    await github.findOrCreate(second, async () => {});
     expect(bodies).toHaveLength(2);
     expect(bodies[0]).toContain("Evidence for first");
     expect(bodies[1]).toContain("Evidence for second");
@@ -189,15 +248,102 @@ describe("#7495 GitHub App transport and ambiguity recovery", () => {
     let creates = 0;
     const transport: typeof fetch = async (input, init) => {
       if (parsedUrl(input).pathname.includes("/access_tokens")) return Response.json({ token: "token" });
+      const identity = identityResponse(parsedUrl(input), init); if (identity) return identity;
       if (init?.method === "POST") {
         creates++;
         expect(JSON.parse(String(init.body)).body).toBe(publicIssueBody(original));
         return Response.json({ html_url: "https://github.com/owner/repo/issues/2" });
       }
-      return Response.json([{ body: publicIssueBody(other), created_at: new Date().toISOString(), performed_via_github_app: { id: 123 }, html_url: "https://github.com/owner/repo/issues/1" }]);
+      return Response.json([{ body: publicIssueBody(other), created_at: new Date().toISOString(), performed_via_github_app: { id: 123 }, user: bot, html_url: "https://github.com/owner/repo/issues/1" }]);
     };
-    expect(await new GithubIssues(config, transport).findOrCreate(original)).toBe("https://github.com/owner/repo/issues/2");
+    expect(await new GithubIssues(config, transport).findOrCreate(original, async () => {})).toBe("https://github.com/owner/repo/issues/2");
     expect(creates).toBe(1);
+  });
+
+  it.each([
+    { label: "same login, wrong numeric ID", user: { ...bot, id: 77 }, metadata: null },
+    { label: "same ID, foreign login", user: { ...bot, login: "foreign[bot]" }, metadata: null },
+    { label: "non-Bot author", user: { ...bot, type: "User" }, metadata: null },
+    { label: "string author ID", user: { ...bot, id: String(bot.id) }, metadata: null },
+    { label: "missing author despite matching App metadata", user: null, metadata: { id: app.id } },
+    { label: "contradictory App metadata", user: bot, metadata: { id: 999 } },
+  ])("#7495 rejects $label rather than reconciling a forged footer", async ({ user, metadata }) => {
+    const item = report("trusted-author"); let creates = 0;
+    const transport: typeof fetch = async (input, init) => {
+      const url = parsedUrl(input);
+      if (url.pathname.endsWith("/access_tokens")) return Response.json({ token: "token" });
+      const identity = identityResponse(url, init); if (identity) return identity;
+      if (init?.method === "POST") { creates++; return Response.json({ html_url: "https://github.com/owner/repo/issues/20" }); }
+      return Response.json([{ user, performed_via_github_app: metadata, body: publicIssueBody(item), created_at: new Date().toISOString(), html_url: "https://github.com/owner/repo/issues/19" }]);
+    };
+    expect(await new GithubIssues(config, transport).findOrCreate(item, async () => {})).toBe("https://github.com/owner/repo/issues/20");
+    expect(creates).toBe(1);
+  });
+
+  it.each([
+    { label: "foreign authenticated App", app: { ...app, id: 999 }, user: bot },
+    { label: "unsafe App slug", app: { ...app, slug: "../foreign" }, user: bot },
+    { label: "non-numeric bot ID", app, user: { ...bot, id: "341635942" } },
+    { label: "wrong canonical bot login", app, user: { ...bot, login: "other[bot]" } },
+    { label: "non-Bot canonical user", app, user: { ...bot, type: "User" } },
+  ])("#7495 holds publication when identity resolution returns $label", async ({ app: returnedApp, user }) => {
+    const repositoryRequests: string[] = [];
+    const transport: typeof fetch = async (input) => {
+      const url = parsedUrl(input);
+      if (url.pathname.endsWith("/access_tokens")) return Response.json({ token: "token" });
+      if (url.pathname === "/app") return Response.json(returnedApp);
+      if (url.pathname.startsWith("/users/")) return Response.json(user);
+      repositoryRequests.push(url.pathname); return Response.json([]);
+    };
+    await expect(new GithubIssues(config, transport).findOrCreate(report("identity-failure"), async () => {})).rejects.toThrow(/github_(app|bot)_identity_invalid/);
+    expect(repositoryRequests).toEqual([]);
+  });
+
+  it.each(["/app", "/users/ifc-lite-reviewed-reports%5Bbot%5D"])(
+    "#7495 holds publication when identity endpoint %s is unavailable",
+    async (failedPath) => {
+      let repositoryRequests = 0;
+      const transport: typeof fetch = async (input, init) => {
+        const url = parsedUrl(input);
+        if (url.pathname.endsWith("/access_tokens")) return Response.json({ token: "token" });
+        if (url.pathname === failedPath) return Response.json({}, { status: 503 });
+        const identity = identityResponse(url, init);
+        if (identity) return identity;
+        repositoryRequests++;
+        return Response.json([]);
+      };
+      await expect(new GithubIssues(config, transport).findOrCreate(report("unavailable"), async () => {}))
+        .rejects.toThrow(/github_(app|bot)_identity_unavailable/);
+      expect(repositoryRequests).toBe(0);
+    },
+  );
+
+  it.each(["https://github.com/other/repo/issues/1", "https://github.com/owner/repo/issues/01", "https://github.com/owner/repo/pull/1"])(
+    "#7495 rejects a create receipt outside the exact configured issue destination: %s", async (html_url) => {
+      const transport: typeof fetch = async (input, init) => {
+        const url = parsedUrl(input);
+        if (url.pathname.endsWith("/access_tokens")) return Response.json({ token: "token" });
+        const identity = identityResponse(url, init); if (identity) return identity;
+        expect(init?.redirect).toBe("error");
+        return Response.json(init?.method === "POST" ? { html_url } : []);
+      };
+      await expect(new GithubIssues(config, transport).findOrCreate(report("moved"), async () => {})).rejects.toThrow("github_create_invalid");
+    },
+  );
+  it("#7495 does not follow an HTTP redirect when posting reviewed content", async () => {
+    let redirectsFollowed = 0;
+    const bridge = await httpBridge(async (input, init) => {
+      const url = parsedUrl(input);
+      if (url.pathname === "/unexpected") { redirectsFollowed++; return Response.json({}); }
+      if (url.pathname.endsWith("/access_tokens")) return Response.json({ token: "token" });
+      const identity = identityResponse(url, init); if (identity) return identity;
+      return init?.method === "POST" ? new Response(null, { status: 307, headers: { Location: "/unexpected" } }) : Response.json([]);
+    });
+    try {
+      await expect(new GithubIssues(config, bridge.fetcher).findOrCreate(report("redirect"), async () => {})).rejects.toThrow();
+      expect(redirectsFollowed).toBe(0);
+      expect(bridge.errors).toEqual([]);
+    } finally { await bridge.close(); }
   });
 
 });

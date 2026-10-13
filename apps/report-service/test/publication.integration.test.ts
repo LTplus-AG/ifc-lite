@@ -3,12 +3,18 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { beforeAll, afterAll, describe, it, expect, vi } from "vitest";
-import { randomUUID } from "node:crypto";
+import pg from "pg";
+import { spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
+import { createServer } from "node:http";
+import { loadFeature } from './feature-loader.js';
+const intentFeature = await loadFeature('../src/publication-intent.js', () => import('../src/publication-intent.js'));
+import { generateKeyPairSync, randomUUID } from "node:crypto";
 import { openDatabase, migrate } from "../src/database.js";
 import type { Config } from "../src/config.js";
 import { ModelStorage } from "../src/storage.js";
 import { GithubIssues } from "../src/github.js";
-import { createReport, submitReport } from "../src/reports.js";
+import { createReport, submitReport, ownedReport, receipt } from "../src/reports.js";
 import { deleteReport } from "../src/maintenance.js";
 import { publishOne } from "../src/publication.js";
 const enabled = Boolean(process.env.REPORT_TEST_DATABASE_URL);
@@ -131,6 +137,80 @@ describe.skipIf(!enabled)("#7495 publication deletion serialization", () => {
     await publishOne(db, github);
     expect(create).not.toHaveBeenCalled();
     expect((await db.query("SELECT status FROM model_reports WHERE id=$1", [report.id])).rows[0]?.status).toBe("submitted");
+  });
+  it("#7495 committed intent survives worker rollback/restart and missing issue listing", async () => {
+    const issueUrl = "https://github.com/owner/repo/issues/7495";
+    const keys = generateKeyPairSync("rsa", { modulusLength: 2048 });
+    const liveConfig = { ...config, databaseUrl: url.toString(), githubPrivateKey: keys.privateKey.export({ type: "pkcs8", format: "pem" }).toString() };
+    const report = await createReport(db, config, owner, {
+      clientRequestId: randomUUID(), title: "Delayed GitHub listing", description: "Synthetic retry",
+      diagnostics: { errorCode: "retry", appVersion: "test", buildSha: "test" }, visibility: "private",
+    });
+    await submitReport(db, report.id, owner, false);
+    let posts = 0, visible = false;
+    let saved: Record<string, unknown> | undefined;
+    const server = createServer(async (req, res) => {
+      let body = ""; for await (const chunk of req) body += chunk;
+      res.setHeader("Content-Type", "application/json");
+      if (req.url === "/app") { res.end(JSON.stringify({ id: 1, slug: "ifc-lite-reviewed-reports" })); return; }
+      if (req.url?.startsWith("/users/")) { res.end(JSON.stringify({ id: 341635942, login: "ifc-lite-reviewed-reports[bot]", type: "Bot" })); return; }
+      if (req.url?.endsWith("access_tokens")) { res.end(JSON.stringify({ token: "test" })); return; }
+      if (req.url === "/repos/owner/repo/issues/7495") { res.end(JSON.stringify({ html_url: issueUrl, state: "open", title: "Existing target" })); return; }
+      if (req.method === "POST") {
+        posts++;
+        saved = { ...JSON.parse(body), html_url: issueUrl,
+          created_at: new Date().toISOString(), performed_via_github_app: null,
+          user: { id: 341635942, login: "ifc-lite-reviewed-reports[bot]", type: "Bot" } };
+        res.destroy(); return;
+      }
+      res.end(JSON.stringify(visible && saved ? [saved] : []));
+    });
+    await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address(); if (!address || typeof address === "string") throw new Error("Missing listener");
+    const endpoint = `http://127.0.0.1:${address.port}`;
+    const worker = () => new Promise<number | null>((resolve, reject) => {
+      const child = spawn(process.execPath, ["--import", "tsx", fileURLToPath(new URL("./fixtures/publication-worker.mjs", import.meta.url))], {
+        env: { ...process.env, REPORT_PUBLICATION_TEST_CONFIG: JSON.stringify(liveConfig), REPORT_PUBLICATION_TEST_ENDPOINT: endpoint }, stdio: "pipe",
+      });
+      const deadline = setTimeout(() => child.kill("SIGKILL"), 10000);
+      child.stdout?.resume(); child.stderr?.resume();
+      child.once("error", error => { clearTimeout(deadline); reject(error); });
+      child.once("exit", code => { clearTimeout(deadline); resolve(code); });
+    });
+    try {
+      // Real DB failure rolls back the publisher's transaction after accepted POST.
+      await db.query(`CREATE OR REPLACE FUNCTION fail_retry_update() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'qualification transaction rollback'; END $$`);
+      await db.query(`CREATE TRIGGER fail_retry_update BEFORE UPDATE ON report_outbox FOR EACH ROW EXECUTE FUNCTION fail_retry_update()`);
+      expect(await worker()).toBe(1);
+      expect(posts).toBe(1);
+      expect((await db.query("SELECT count(*)::int n FROM report_publication_intents WHERE report_id=$1", [report.id])).rows[0].n).toBe(1);
+      await db.query("DROP TRIGGER fail_retry_update ON report_outbox");
+      // A fresh process sees an empty listing and must hold rather than POST again.
+      expect(await worker()).toBe(0);
+      expect(posts).toBe(1);
+      expect(receipt(await ownedReport(db, report.id, owner))).toMatchObject({ status: "submitted", publicationHold: "review_required" });
+      expect((await db.query("SELECT last_error FROM report_outbox WHERE report_id=$1", [report.id])).rows[0].last_error).toBe("github_publication_review_required");
+      visible = true;
+      await db.query("UPDATE report_outbox SET available_at=now() WHERE report_id=$1", [report.id]);
+      expect(await worker()).toBe(0);
+      expect(posts).toBe(1);
+      expect(receipt(await ownedReport(db, report.id, owner))).toMatchObject({ status: "published", issueUrl });
+      expect(receipt(await ownedReport(db, report.id, owner)).publicationHold).toBeUndefined();
+    } finally {
+      await db.query("DROP TRIGGER IF EXISTS fail_retry_update ON report_outbox");
+      server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve()));
+    }
+  }, 20000);
+
+  it("#7495 fails closed when the independent intent connection cannot be acquired", async () => {
+    expect(intentFeature, "durable intent helper must be available").toBeDefined();
+    const pool = new pg.Pool({ connectionString: url.toString(), max: 1 });
+    const held = await pool.connect();
+    const id = randomUUID();
+    try {
+      await expect(intentFeature!.commitPublicationIntent(pool, id, 30)).rejects.toThrow("github_publication_intent_timeout");
+      expect((await db.query("SELECT count(*)::int n FROM report_publication_intents WHERE report_id=$1", [id])).rows[0].n).toBe(0);
+    } finally { held.release(); await pool.end(); }
   });
 
 });

@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { audit, transaction, type Db } from "./database.js";
+import { commitPublicationIntent } from "./publication-intent.js";
 import type { GithubIssues } from "./github.js";
 import type { ReportRow } from "./reports.js";
 export async function publishOne(db: Db, github: GithubIssues): Promise<void> {
@@ -33,8 +34,13 @@ export async function publishOne(db: Db, github: GithubIssues): Promise<void> {
         "SELECT issue_url FROM report_fingerprints WHERE fingerprint=$1",
         [report.fingerprint],
       );
+      const beforeCreate = async () => {
+        if (report.expires_at <= new Date()) throw new Error("github_report_expired");
+        await commitPublicationIntent(db, report.id);
+        if (report.expires_at <= new Date()) throw new Error("github_report_expired");
+      };
       const url =
-        known.rows[0]?.issue_url ?? (await github.findOrCreate(report));
+        known.rows[0]?.issue_url ?? (await github.findOrCreate(report, beforeCreate));
       await tx.query(
         "INSERT INTO report_fingerprints(fingerprint,issue_url) VALUES($1,$2) ON CONFLICT DO NOTHING",
         [report.fingerprint, url],

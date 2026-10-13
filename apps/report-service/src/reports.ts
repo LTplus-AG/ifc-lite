@@ -23,6 +23,7 @@ export interface ReportRow {
   custom_nda: { status: string; message: string } | null;
   issue_url: string | null;
   fingerprint: string;
+  publication_hold?: boolean;
 }
 export interface UploadRow {
   id: string;
@@ -42,7 +43,9 @@ export async function ownedReport(
   owner: Session,
 ): Promise<ReportRow> {
   const r = await db.query<ReportRow>(
-    "SELECT * FROM model_reports WHERE id=$1 AND session_id=$2 AND expires_at>now()",
+    `SELECT r.*, (r.status='submitted' AND EXISTS(
+      SELECT 1 FROM report_publication_intents i WHERE i.report_id=r.id
+    )) AS publication_hold FROM model_reports r WHERE id=$1 AND session_id=$2 AND expires_at>now()`,
     [id, owner.id],
   );
   requireCondition(
@@ -57,6 +60,7 @@ export function receipt(r: ReportRow): ReportReceipt {
   return {
     id: r.id,
     status: r.status,
+    ...(r.publication_hold ? { publicationHold: "review_required" as const } : {}),
     ...(r.issue_url ? { issueUrl: r.issue_url } : {}),
   };
 }

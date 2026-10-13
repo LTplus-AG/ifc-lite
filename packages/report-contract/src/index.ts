@@ -82,6 +82,7 @@ export interface UploadInput {
   publicModelConfirmed?: boolean;
 }
 export interface ReportReceipt {
+  publicationHold?: "review_required";
   id: string;
   status: "draft" | "manual_review" | "submitted" | "published" | "deleted";
   issueUrl?: string;

@@ -76,6 +76,12 @@ export async function sweep(db: Db, storage: ModelStorage): Promise<void> {
   await db.query("DELETE FROM report_sessions WHERE expires_at<now()");
   await db.query("DELETE FROM report_admission WHERE day<CURRENT_DATE-31");
   await db.query("DELETE FROM report_audit WHERE at<now()-interval '90 days'");
+  await db.query(`DELETE FROM report_publication_intents WHERE report_id IN (
+    SELECT i.report_id FROM report_publication_intents i
+    WHERE i.created_at<now()-interval '90 days'
+      AND NOT EXISTS(SELECT 1 FROM model_reports r WHERE r.id=i.report_id AND r.status='submitted')
+    LIMIT 100
+  )`);
 }
 export async function deleteReport(
   db: Db,

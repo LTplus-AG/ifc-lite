@@ -70,6 +70,10 @@ export async function migrate(db: Db): Promise<void> {
     CREATE TABLE IF NOT EXISTS report_outbox (
       report_id uuid PRIMARY KEY REFERENCES model_reports(id), attempts integer NOT NULL DEFAULT 0,
       available_at timestamptz NOT NULL DEFAULT now(), lease_until timestamptz, last_error text);
+    -- No FK: committed using a second connection while publisher owns the parent
+    -- row lock. Only opaque IDs; survives parent transaction/process rollback.
+    CREATE TABLE IF NOT EXISTS report_publication_intents (
+      report_id uuid PRIMARY KEY, created_at timestamptz NOT NULL DEFAULT now());
     CREATE TABLE IF NOT EXISTS report_fingerprints (fingerprint text PRIMARY KEY, issue_url text NOT NULL);
     CREATE TABLE IF NOT EXISTS report_audit (id bigserial PRIMARY KEY, report_id uuid, action text NOT NULL, actor text NOT NULL, detail jsonb NOT NULL DEFAULT '{}', at timestamptz NOT NULL DEFAULT now());
     CREATE INDEX IF NOT EXISTS report_uploads_expiry ON report_uploads(expires_at);

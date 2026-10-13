@@ -70,5 +70,16 @@
     },
     "sourceRestoredByteExact": true,
     "restoredAggregateGuardExitCode": 0
+  },
+  "reviewSignalCompanion": {
+    "originalHead": "c43e7e1f0c3b6ddf430574e562042df27d176776",
+    "originalJob": "https://github.com/LTplus-AG/ifc-lite/actions/runs/38328131825/job/115071468777",
+    "originalResult": "154 passed,1 failed: expanded lane count39 differed from old pinned38",
+    "correction": "Add explicit Node guards identity to expected published lanes; count39 preserves tripwire",
+    "command": "node --test scripts/check-pr-review-signal.test.mjs scripts/lib/pr-review-signal.test.mjs scripts/lib/review-provenance.test.mjs",
+    "passed": 155,
+    "failed": 0,
+    "skipped": 0,
+    "semanticGuards": "All four rerun and passed; workflow bytes unchanged"
   }
 }

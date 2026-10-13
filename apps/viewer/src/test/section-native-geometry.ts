@@ -42,9 +42,10 @@ export function sectionNativeGeometry(t: TestContext) {
           } finally { mesh.free(); }
         }
       } finally { collection.free(); }
-      const shard = decodeInstancedShard(partition.takeShard());
+      const shardBytes = partition.takeShard();
+      const shard = decodeInstancedShard(shardBytes);
       assert.ok(meshes.length > 0); assert.ok(shard.instances.length > 0, 'Real native IFNS is mandatory');
-      return { source, meshes, shard, coordinateInfo: new CoordinateHandler().processMeshes(meshes) };
+      return { source, meshes, shard, shardBytes, coordinateInfo: new CoordinateHandler().processMeshes(meshes) };
     } finally { partition.free(); }
   } finally { api.clearPrePassCache(); api.free(); }
 }

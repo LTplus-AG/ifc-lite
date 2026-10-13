@@ -1,0 +1,29 @@
+--- a/apps/report-service/src/github-comments.ts
++++ b/apps/report-service/src/github-comments.ts
+@@ -20,13 +20,13 @@
+     const comments: unknown = await response.json();
+     if (!Array.isArray(comments)) throw new Error('github_comment_list_invalid');
+     for (const comment of comments) {
+-      if (isRecord(comment) && (isRecord(comment.performed_via_github_app) && comment.performed_via_github_app.id === author.appId) && typeof comment.body === 'string' && comment.body.endsWith(marker)) return issueUrl;
++      if (isRecord(comment) && hasTrustedAppAuthor(comment, author) && typeof comment.body === 'string' && comment.body.endsWith(marker)) return issueUrl;
+     }
+     if (comments.length < 100) break;
+     if (page === 10) throw new Error('github_comment_reconciliation_limit');
+   }
+   if (!beforeCreate) throw new Error('github_publication_authorization_required');
+-  // Qualification mutation: omit independently committed pre-POST intent.
++  await beforeCreate();
+   const response = await fetcher(endpoint, { method: 'POST', headers, body: JSON.stringify({ body }), signal: AbortSignal.timeout(20000), redirect: 'error' });
+   if (!response.ok) throw new Error('github_comment_create_failed');
+   const comment: unknown = await response.json();
+--- a/apps/report-service/src/issue-binding.ts
++++ b/apps/report-service/src/issue-binding.ts
+@@ -30,7 +30,7 @@
+   requireCondition(payload && mac && !extra && target.verificationToken.length <= 4096, 400, 'issue_target_invalid', 'Check the issue destination again.');
+   const expected = signature(config, payload);
+   const supplied = Buffer.from(mac, 'base64url');
+-  // Qualification mutation: accept an unsigned destination payload.
++  requireCondition(supplied.length === expected.length && timingSafeEqual(supplied, expected), 400, 'issue_target_invalid', 'Check the issue destination again.');
+   let parsed: unknown;
+   try { parsed = JSON.parse(Buffer.from(payload, 'base64url').toString()); }
+   catch { throw new Error('issue_binding_invalid_json'); }

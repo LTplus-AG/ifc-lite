@@ -2,9 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import type { ReportCorrelation } from "@ifc-lite/report-contract";
+
 /** User-initiated reports retain at most one failed source, never its copied bytes. */
 export interface ReportContext {
   errorCode: string;
+  correlation?: ReportCorrelation;
   sourceFile?: File;
   resumeReportId?: string;
 }
@@ -42,4 +45,15 @@ export function dismissErrorReport(): void {
 }
 export function clearLoadReport(): void {
   if (prompt && !prompt.open && !prompt.context.resumeReportId && (prompt.context.sourceFile || prompt.context.errorCode === 'load_failed')) { prompt = null; emit(); }
+}
+
+/** Match the exact failed source; never correlate another concurrent load. */
+export function attachLoadCorrelation(file: File, correlation: ReportCorrelation): void {
+  if (!prompt || prompt.open || prompt.context.sourceFile !== file) return;
+  prompt = { ...prompt, context: { ...prompt.context, correlation } }; emit();
+}
+/** Only the invitation created for this capture may receive its correlation. */
+export function attachContextCorrelation(context: ReportContext, correlation: ReportCorrelation): void {
+  if (!prompt || prompt.open || prompt.context !== context) return;
+  prompt = { ...prompt, context: { ...context, correlation } }; emit();
 }

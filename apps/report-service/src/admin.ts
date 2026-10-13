@@ -39,7 +39,7 @@ export async function admin(
   const detail = /^\/api\/reports\/admin\/([^/]+)$/.exec(path);
   if (detail && isUuid(detail[1]) && req.method === "GET") {
     const result = await db.query(
-      "SELECT id,status,created_at,expires_at,issue_url,draft,agreement,custom_nda FROM model_reports WHERE id=$1 AND expires_at>now() AND status!='deleted'",
+      "SELECT id,status,created_at,expires_at,issue_url,draft,agreement,custom_nda,issue_binding FROM model_reports WHERE id=$1 AND expires_at>now() AND status!='deleted'",
       [detail[1]],
     );
     requireCondition(

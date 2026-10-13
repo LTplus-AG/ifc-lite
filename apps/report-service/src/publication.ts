@@ -40,7 +40,9 @@ export async function publishOne(db: Db, github: GithubIssues): Promise<void> {
         if (report.expires_at <= new Date()) throw new Error("github_report_expired");
       };
       const url =
-        known.rows[0]?.issue_url ?? (await github.findOrCreate(report, beforeCreate));
+        known.rows[0]?.issue_url ?? (report.issue_binding
+          ? await github.addToIssue(report, report.issue_binding.issueUrl, beforeCreate)
+          : await github.findOrCreate(report, beforeCreate));
       await tx.query(
         "INSERT INTO report_fingerprints(fingerprint,issue_url) VALUES($1,$2) ON CONFLICT DO NOTHING",
         [report.fingerprint, url],

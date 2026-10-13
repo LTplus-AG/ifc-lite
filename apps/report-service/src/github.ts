@@ -5,6 +5,7 @@
 import { createSign } from "node:crypto";
 import type { Config } from "./config.js";
 import { authenticatedAppAuthor, hasTrustedAppAuthor } from "./github-author.js";
+import { findOrCreateComment } from "./github-comments.js";
 import type { ReportRow } from "./reports.js";
 function encode(value: unknown): string {
   return Buffer.from(JSON.stringify(value)).toString("base64url");
@@ -59,6 +60,25 @@ export class GithubIssues {
   private validIssueUrl(value: string): boolean {
     const prefix = `https://github.com/${this.config.githubRepository}/issues/`;
     return value.startsWith(prefix) && /^[1-9]\d*$/.test(value.slice(prefix.length));
+  }
+  async inspectIssue(issueUrl: string): Promise<{ issueUrl: string; title: string }> {
+    const prefix = `https://github.com/${this.config.githubRepository}/issues/`;
+    if (!issueUrl.startsWith(prefix) || !/^[1-9]\d*$/.test(issueUrl.slice(prefix.length))) throw new Error("github_target_invalid");
+    const response = await this.fetcher(`https://api.github.com/repos/${this.config.githubRepository}/issues/${issueUrl.slice(prefix.length)}`, {
+      headers: { Authorization: `Bearer ${await this.token()}`, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" },
+      signal: AbortSignal.timeout(20000), redirect: "error",
+    });
+    if (!response.ok) throw new Error("github_target_unavailable");
+    const issue: unknown = await response.json();
+    if (!issue || typeof issue !== "object" || !("html_url" in issue) || issue.html_url !== issueUrl ||
+      "pull_request" in issue || !("state" in issue) || issue.state !== "open" || !("title" in issue) || typeof issue.title !== "string") throw new Error("github_target_invalid");
+    return { issueUrl, title: issue.title.slice(0, 300) };
+  }
+  async addToIssue(report: ReportRow, issueUrl: string, beforeCreate?: () => Promise<void>): Promise<string> {
+    await this.inspectIssue(issueUrl);
+    const token = await this.token();
+    const author = await authenticatedAppAuthor(this.config, this.fetcher, this.jwt(), token);
+    return findOrCreateComment(this.config, this.fetcher, token, author, report, issueUrl, `### ${report.draft.title}\n\n${publicIssueBody(report)}`, beforeCreate);
   }
   async findOrCreate(report: ReportRow, beforeCreate?: () => Promise<void>): Promise<string> {
     const token = await this.token();

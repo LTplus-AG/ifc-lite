@@ -350,4 +350,33 @@ describe("#7495 GitHub App transport and ambiguity recovery", () => {
     } finally { await bridge.close(); }
   });
 
+  it.each([
+    { label: "canonical bot with null metadata", user: bot, metadata: null, reconciles: true },
+    { label: "foreign author with matching App metadata", user: { ...bot, id: 77 }, metadata: { id: app.id }, reconciles: false },
+    { label: "canonical bot with contradictory metadata", user: bot, metadata: { id: 999 }, reconciles: false },
+  ])("#7495 real HTTP comment recovery trusts $label", async ({ user, metadata, reconciles }) => {
+    const item = report("comment-author");
+    const issueUrl = "https://github.com/owner/repo/issues/7495";
+    let posts = 0, authorizations = 0;
+    const bridge = await httpBridge(async (input, init) => {
+      const url = parsedUrl(input);
+      if (url.pathname.endsWith("/access_tokens")) return Response.json({ token: "token" });
+      const identity = identityResponse(url, init); if (identity) return identity;
+      if (url.pathname.endsWith("/comments")) {
+        if (init?.method === "POST") { posts++; return Response.json({ html_url: issueUrl + "#issuecomment-1" }); }
+        return Response.json([{ body: publicIssueBody(item), user, performed_via_github_app: metadata }]);
+      }
+      return Response.json({ html_url: issueUrl, state: "open", title: "Reviewed target" });
+    });
+    const authorize = async () => { authorizations++; throw new Error("github_publication_review_required"); };
+    try {
+      const publication = new GithubIssues(config, bridge.fetcher).addToIssue(item, issueUrl, authorize);
+      if (reconciles) await expect(publication).resolves.toBe(issueUrl);
+      else await expect(publication).rejects.toThrow("github_publication_review_required");
+      expect(authorizations).toBe(reconciles ? 0 : 1);
+      expect(posts).toBe(0);
+      expect(bridge.errors).toEqual([]);
+    } finally { await bridge.close(); }
+  });
+
 });

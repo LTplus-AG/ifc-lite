@@ -793,6 +793,13 @@ jobs:
           # Once the dialog is on main, ordinary whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- apps/viewer/src/components/error-report/ErrorReportDialog.tsx | grep -Fxq 'apps/viewer/src/components/error-report/ErrorReportDialog.tsx'; then
             oracle_args+=(--mutation tests/evidence/model-reports-7495/publication-hold.oracle.patch)
+          # New reviewed-destination/comment modules must remain importable.
+          # Restore unsafe author attribution, omit durable pre-POST intent and
+          # accept a forged target MAC; actual behavioral assertions turn red.
+          # All changed tests run on both sides. Once comments are on main,
+          # the ordinary whole-change revert resumes automatically.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- apps/report-service/src/github-comments.ts | grep -Fxq 'apps/report-service/src/github-comments.ts'; then
+            oracle_args+=(--mutation apps/report-service/test/fixtures/issue-binding.oracle.patch)
           fi
           node scripts/check-test-revert-oracle.mjs "${oracle_args[@]}"
       - name: Remove owned report oracle prerequisites

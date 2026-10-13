@@ -177,13 +177,13 @@ test.describe('Viewer Performance Benchmarks', () => {
       const timeoutMs = fileSizeMB > 200 ? 600000 : fileSizeMB > 50 ? 300000 : 180000; // 10min / 5min / 3min
 
       console.log(`Waiting for completion (timeout: ${timeoutMs / 1000}s)...`);
-      await withBenchmarkFailureDiagnostics(benchmarkPage, fileName, () => benchmarkPage.waitForCompletion(timeoutMs));
-
-      // Extract metrics
-      const metrics = benchmarkPage.getMetrics();
-      // #6957: structural counters keep moving after the load root ends
-      // (deferred GPU uploads), so record them once they have settled.
-      await benchmarkPage.settleLoadCounters();
+      const metrics = await withBenchmarkFailureDiagnostics(benchmarkPage, fileName, async () => {
+        await benchmarkPage.waitForCompletion(timeoutMs);
+        const metrics = benchmarkPage.getMetrics();
+        // #6957: deferred GPU uploads keep counters moving after the root ends.
+        await benchmarkPage.settleLoadCounters();
+        return metrics;
+      });
 
       // Get baseline for this file
       const countCohort = benchmarkPage.getUploadMode() === 'count';

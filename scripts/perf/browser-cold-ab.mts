@@ -249,15 +249,17 @@ for (let iter = 1; iter <= ITERS; iter++) {
           if (!a) return null;
           const fallback = 'isFallbackAdapter' in a && typeof a.isFallbackAdapter === 'boolean'
             ? a.isFallbackAdapter : a.info?.isFallbackAdapter;
-          return { architecture: a.info?.architecture ?? '', fallback: Boolean(fallback) };
+          return { architecture: a.info?.architecture ?? '', fallback: typeof fallback === 'boolean' ? fallback : null };
         }), CLOSE_TIMEOUT_MS, 'gpu adapter diagnostics').catch((error) => {
           console.warn('browser-cold-ab: adapter diagnostics failed', error);
           return null;
         });
         record.gpuAdapter = adapter;
-        if (!warnedSoftwareAdapter && (!adapter || adapter.fallback || adapter.architecture === 'swiftshader')) {
+        if (!warnedSoftwareAdapter && (!adapter || adapter.fallback !== false || adapter.architecture === 'swiftshader')) {
           warnedSoftwareAdapter = true;
-          console.warn(`browser-cold-ab: WARNING ${adapter ? `software WebGPU adapter (${adapter.architecture || 'fallback'})` : 'no WebGPU adapter'}; timings are not real-GPU numbers. For a real GPU from WSL use a Windows Chrome launcher (see scripts/perf/frame-gpu-chrome.ts).`);
+          const diagnostic = !adapter ? 'no WebGPU adapter' : adapter.fallback === true || adapter.architecture === 'swiftshader'
+            ? `software WebGPU adapter (${adapter.architecture || 'fallback'})` : `unknown WebGPU fallback status (${adapter.architecture || 'unspecified architecture'})`;
+          console.warn(`browser-cold-ab: WARNING ${diagnostic}; timings are not qualified as real-GPU numbers. For a real GPU from WSL use a Windows Chrome launcher (see scripts/perf/frame-gpu-chrome.ts).`);
         }
         // Separate visual artifact, captured after the observed timing boundary.
         await page.screenshot({ path: join(RESULTS_DIR,

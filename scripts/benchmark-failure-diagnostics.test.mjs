@@ -47,7 +47,7 @@ for (const mode of ['rejected', 'unresponsive']) {
     const receipt = JSON.parse(readFileSync(join(options.outputDir, 'failure-model_ifc.json'), 'utf8'));
     assert.equal(receipt.trace, null, 'never present a stale cached trace as freshly captured');
     assert.equal(receipt.collectionErrors.length, 1);
-    assert.match(receipt.collectionErrors[0].message, /page closed|capture timed out/);
+    assert.equal(receipt.collectionErrors[0].message, mode === 'rejected' ? 'page closed' : 'Failure trace capture timed out');
     assert.equal(receipt.error.message, original.message);
   });
 }

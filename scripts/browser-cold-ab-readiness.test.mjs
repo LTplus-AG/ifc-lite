@@ -55,6 +55,7 @@ test('#7032: the executable cold A/B requires renderer finalization through the 
         if (finalize === 'complete') {
           assertReadinessTiming(sample.metadataRenderReadyMs);
           assert.equal(sample.gpuAdapter.architecture, 'test-transport', 'adapter probe must run after upload');
+          assert.equal(sample.gpuAdapter.fallback, null, '#7005 absent adapter fallback fields remain unknown');
         }
         else assert.match(sample.error, /Timed out awaiting.*renderer finalize/);
       }

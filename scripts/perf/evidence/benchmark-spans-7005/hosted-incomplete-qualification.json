@@ -1,0 +1,36 @@
+{
+  "issue": 7005,
+  "originalRun": "https://github.com/LTplus-AG/ifc-lite/actions/runs/38339686250",
+  "attempt": 1,
+  "source": "c5af60af0d02ac647ad11d8c27dee168d7412d73",
+  "base": "46d34e457c2d6f02a17ef05f0b1572803c17d30e",
+  "result": {
+    "passed": 1,
+    "failed": 1,
+    "skipped": 0
+  },
+  "failedModel": "01_Snowdon_Towers_Sample_Structural(1).ifc",
+  "error": "Timed out awaiting metadata, geometry, renderer finalize and allocated canvas; sample incomplete",
+  "diagnosticCollectionErrors": [],
+  "rootEnded": true,
+  "completedRequiredSpans": [
+    "parser.complete",
+    "geometry.streamComplete"
+  ],
+  "missingRequiredSpan": "scene.finalize",
+  "loaderCompletionsInsideRoot": true,
+  "gpu": {
+    "gpu.devices": 1,
+    "gpu.deviceLost": 1,
+    "gpu.deviceReplacements": null
+  },
+  "artifactHashes": {
+    "viewer-AC20_FZK_Haus_ifc.json": "ab308d30b207660b8598a172678413093fd7c96d355e58e933867613a1df9e05",
+    "failure-01_Snowdon_Towers_Sample_Structural_1__ifc.json": "c0c1634c2443630ef6efdefd4f7b8b523db868683214a0a1a6b9b1211a12fc5f",
+    "viewer-AC20_FZK_Haus_ifc.console.log": "c3a0c40a8f7fc733e98aaa7901e533970a9c8d014e4b3e9a77fdad1f4a12d052",
+    "failure-01_Snowdon_Towers_Sample_Structural_1__ifc.console.log": "32816e5690940e1b6edb975437d4ef3955a6539a7a62f5406dba57e42863baf7"
+  },
+  "verdict": "Readiness correctly refused incomplete renderer state; this is failed positive acceptance, not a successful sample. Metadata and geometry completed, and console reports 17,380 meshes. Unrecovered SwiftShader loss cause is not proved.",
+  "coordination": "https://github.com/LTplus-AG/ifc-lite/issues/6993#issuecomment-6137396214",
+  "next": "Preserve peer GPU recovery ownership; no blind rerun or weakened readiness. Final live positive acceptance remains blocked."
+}

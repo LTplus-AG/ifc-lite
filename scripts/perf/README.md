@@ -1498,7 +1498,8 @@ are timed in JS. Diagnose there with:
   **user-facing** truth (time-to-first-paint, time-to-complete).
 - **Console `[stream]` timeline** (`packages/geometry/src/geometry-parallel.ts`)
   and `[useIfc] TOTAL LOAD TIME` lines: `meta @`, `styles @`, `entity-index @`,
-  worker-ready, first-batch. The CI benchmark scrapes these.
+  worker-ready, first-batch. These are diagnostics; CI timing and readiness
+  use canonical load-trace spans. Count-only console fields remain available.
 - **`?perfMem=1`** -> `memoryAccounting` `[mem-summary]` (JS heap, per-worker WASM
   heap, geometry bytes, transport bytes; `apps/viewer/src/lib/perf/memoryAccounting.ts`).
 - **CI viewer benchmark** (`.github/workflows/benchmark.yml`, advisory): 6 load

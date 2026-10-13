@@ -72,6 +72,34 @@ jobs:
           save-if: 'false'
       - name: Build exact viewer dependency graph and WASM
         run: pnpm build --filter=@ifc-lite/viewer... --concurrency=2 --force
+      - name: Typecheck through the root Turbo graph
+        run: pnpm typecheck
+      - name: Typecheck the actual probe sources without emitting
+        # Supplemental only AFTER the root graph has built/typechecked its
+        # workspace siblings. Preserve the viewer's baseUrl and alias paths.
+        run: |
+          python3 - <<'PY'
+          import json, pathlib
+          config = {
+              'extends': '../../apps/viewer/tsconfig.json',
+              'compilerOptions': {
+                  'strict': True, 'noEmit': True, 'composite': False,
+                  'declaration': False, 'declarationMap': False,
+                  'allowImportingTsExtensions': True,
+                  'types': ['node', '@webgpu/types'],
+                  'typeRoots': ['../../node_modules/@types', '../../apps/viewer/node_modules', '../../packages/renderer/node_modules'],
+              },
+              'files': [
+                  '../../tests/e2e/reporter-6729.config.ts',
+                  '../../tests/e2e/reporter-6729.e2e.spec.ts',
+                  '../../tests/e2e/reporter-6729.browser.ts',
+                  '../../apps/viewer/src/vite-env.d.ts',
+              ],
+              'include': [], 'exclude': [],
+          }
+          pathlib.Path('test-results/reporter-6729-provenance/tsconfig.probe.json').write_text(json.dumps(config, indent=2))
+          PY
+          pnpm exec tsc -p test-results/reporter-6729-provenance/tsconfig.probe.json
       - name: Record actual built WASM bytes
         run: |
           python3 - <<'PY'

@@ -32,6 +32,11 @@ Actual source/tree, browser/GPU diagnostics and built WASM hashes accompany
 the observations. The probe uses an isolated source server of that checkout,
 never a preview borrowed from another process. The built viewer dependency
 graph supplies the real package/WASM runtime.
+The hosted workflow runs literal root `pnpm typecheck` after building, then
+checks the three probe TypeScript files and viewer ambient declarations using
+an ephemeral config extending the viewer config. Viewer aliases are retained;
+the supplemental check emits no JavaScript or declarations. Its configuration
+is retained with the provenance. Neither check has been run locally.
 
 Review captured coordinates and assembly placement before implementing the
 independent pinned IfcOpenShell triangle/clearance witness. That second stage

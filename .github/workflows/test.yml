@@ -1962,7 +1962,7 @@ jobs:
   # regressions — unit suites mock the WASM boundary and the Rust tests
   # exercise a different mesh pipeline (#858/#957).
   viewer-e2e:
-    name: Viewer E2E smoke (${{ matrix.shard }}/2)
+    name: Viewer E2E smoke (${{ matrix.shard }}/4)
     needs: [changes, build]
     # PR-only: see the `push:` trigger comment. The post-merge run repeats the
     # cheap unit lanes that catch cross-PR collisions, not the whole matrix.
@@ -1973,7 +1973,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2]
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -2036,7 +2036,7 @@ jobs:
         # The test command must end before the 20-minute job limit so its
         # failure summary and test-results artifact survive a slow/hung test.
         # The list reporter also names completed tests while the job runs.
-        run: timeout --signal=INT --kill-after=30s 13m pnpm test:e2e:ci --shard=${{ matrix.shard }}/2 --reporter=list
+        run: timeout --signal=INT --kill-after=30s 13m pnpm test:e2e:ci --shard=${{ matrix.shard }}/4 --reporter=list
       - name: Upload assistant browser evidence
         if: always() && hashFiles('test-results/**/assistant-*.png', 'test-results/*assistant-context*/video.webm') != ''
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

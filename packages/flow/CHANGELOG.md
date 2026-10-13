@@ -1,5 +1,11 @@
 # @ifc-lite/flow
 
+## 0.7.0
+
+### Minor Changes
+
+- [#7544](https://github.com/LTplus-AG/ifc-lite/pull/7544) [`96fb15a`](https://github.com/LTplus-AG/ifc-lite/commit/96fb15a4354da15452cc3870bfb7a7938b021f33) Thanks [@louistrue](https://github.com/louistrue)! - Allow nodes to declare pure parameter-dependent host requirements. Resolve defaults and Player inputs consistently, reject unsupported dynamic prerequisites before earlier graph effects, and preserve static-only runtime checks and validated reviewed resumes.
+
 ## 0.6.0
 
 ### Minor Changes

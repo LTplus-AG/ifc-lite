@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { it, expect } from "vitest";
 import { spawn } from "node:child_process";
+import { createServer } from "node:net";
 import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
@@ -75,8 +76,26 @@ it.skipIf(!databaseUrl)("#7495 idle PostgreSQL errors exit safely without client
   const url = new URL(databaseUrl!);
   url.searchParams.set("application_name", marker);
   const admin = openDatabase(databaseUrl!);
-  const running = launch({ REPORT_DATABASE_URL: url.toString() });
+  const reservation = createServer();
+  await new Promise<void>((resolve, reject) => {
+    reservation.once("error", reject); reservation.listen(0, "127.0.0.1", resolve);
+  });
+  const address = reservation.address();
+  if (!address || typeof address === "string") throw new Error("Health port reservation failed");
+  const port = address.port;
+  await new Promise<void>((resolve, reject) => reservation.close(error => error ? reject(error) : resolve()));
+  const running = launch({ REPORT_DATABASE_URL: url.toString(), PORT: String(port) });
   try {
+    // A PostgreSQL backend can be idle between startup transaction queries
+    // while still checked out. Actual HTTP readiness proves migration finished.
+    let healthy = false;
+    for (let attempt = 0; attempt < 100; attempt++) {
+      try { healthy = (await fetch(`http://127.0.0.1:${port}/healthz`, { signal: AbortSignal.timeout(300) })).ok; }
+      catch (error) { if (!(error instanceof TypeError || error instanceof DOMException)) throw error; }
+      if (healthy) break;
+      await delay(25);
+    }
+    expect(healthy).toBe(true);
     let pid: number | undefined;
     for (let attempt = 0; attempt < 100; attempt++) {
       const result = await admin.query<{ pid: number }>(
@@ -100,7 +119,64 @@ it.skipIf(!databaseUrl)("#7495 idle PostgreSQL errors exit safely without client
     expect(result.output).not.toContain(url.password);
   } finally {
     if (running.child.exitCode === null) running.child.kill("SIGKILL");
-    await running.done;
-    await admin.end();
+    try { await running.done; } finally { await admin.end(); }
   }
 }, 15000);
+
+
+for (const mode of ["checked-out", "idle"] as const) {
+  it.skipIf(!databaseUrl)(`#7495 actual ${mode} PostgreSQL client error stays categorical and notifies shutdown once`, async () => {
+    const marker = "PRIVATE_CLIENT_" + randomUUID();
+    const url = new URL(databaseUrl!);
+    url.searchParams.set("application_name", marker);
+    const admin = openDatabase(databaseUrl!);
+    const child = spawn(process.execPath, [
+      "--import", import.meta.resolve("tsx"),
+      fileURLToPath(new URL("./fixtures/checked-out-database.mjs", import.meta.url)),
+    ], { env: { PATH: process.env.PATH, HOME: process.env.HOME, REPORT_TEST_DATABASE_URL: url.toString(), OWN_DATABASE_MODE: mode }, stdio: ["ignore", "pipe", "pipe", "ipc"] });
+    if (!child.stdout || !child.stderr) {
+      child.kill("SIGKILL");
+      await admin.end();
+      throw new Error("Privacy fixture requires captured stdout and stderr");
+    }
+    const timeout = setTimeout(() => child.kill("SIGKILL"), 10000);
+    let output = "";
+    const messages: Record<string, unknown>[] = [];
+    child.stdout.on("data", (chunk: Buffer) => { output += chunk.toString(); });
+    child.stderr.on("data", (chunk: Buffer) => { output += chunk.toString(); });
+    child.on("message", (message: unknown) => {
+      if (message && typeof message === "object") messages.push(message as Record<string, unknown>);
+    });
+    const done = new Promise<number | null>((resolve, reject) => {
+      child.once("error", reject); child.once("close", code => resolve(code));
+    });
+    try {
+      let ready: Record<string, unknown> | undefined;
+      for (let attempt = 0; attempt < 100; attempt++) {
+        ready = messages.find(message => message.ready === true);
+        if (ready || child.exitCode !== null) break;
+        await delay(25);
+      }
+      expect(ready?.idleCount).toBe(mode === "idle" ? 1 : 0);
+      expect(typeof ready?.pid).toBe("number");
+      const observed = await admin.query<{ state: string }>(
+        "SELECT state FROM pg_stat_activity WHERE pid=$1 AND application_name=$2", [ready!.pid, marker],
+      );
+      expect(observed.rows[0]?.state).toBe(mode === "idle" ? "idle" : "idle in transaction");
+      const killed = await admin.query<{ killed: boolean }>(
+        "SELECT pg_terminate_backend(pid) AS killed FROM pg_stat_activity WHERE pid=$1 AND application_name=$2", [ready!.pid, marker],
+      );
+      expect(killed.rows).toEqual([{ killed: true }]);
+      expect(await done).toBe(1);
+      expect(output).toBe("[report-service] database connection failed\n");
+      expect(output).not.toContain(marker);
+      expect(output).not.toContain(url.password);
+      expect(messages.filter(message => 'notifications' in message)).toEqual([{ notifications: 1 }]);
+      if (mode === "checked-out") expect(messages).toContainEqual({ rejected: true });
+    } finally {
+      clearTimeout(timeout);
+      if (child.exitCode === null) child.kill("SIGKILL");
+      try { await done; } finally { await admin.end(); }
+    }
+  }, 15000);
+}

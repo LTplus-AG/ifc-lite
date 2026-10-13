@@ -1,6 +1,8 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import { errorReportEn } from './catalogues/error-report.en';
 import { structuralReviewEn } from './catalogues/structural-review.en';
 import { groupReviewEn } from './catalogues/group-review.en';
 
@@ -158,6 +160,7 @@ import { zonesPanelEn } from './catalogues/zones-panel.en';
 export const en = {
   ...zoneEmissionEn,
   ...newIfcEn,
+  ...errorReportEn,
   ...structuralReviewEn,
   ...groupReviewEn,
   ...semanticEn,

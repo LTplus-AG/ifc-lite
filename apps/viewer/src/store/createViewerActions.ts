@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { clearLoadReport } from '../lib/error-reports/context';
 /** Cross-slice viewer actions. Domain state stays in its owning slice; this
  * composition seam preserves reset side effects and workspace routing. */
 import type { StateCreator } from 'zustand';
@@ -67,6 +68,7 @@ export const createViewerActions: StateCreator<ViewerState, [], [], ViewerAction
   // Reset all viewer state when loading new file
   // Note: Does NOT clear models - use clearAllModels() for that
   resetViewerState: () => {
+    clearLoadReport();
     invalidateVisibleBasketCache();
     const [set, get] = args;
     // Drop the persisted "last section mode" (localStorage, survives closing

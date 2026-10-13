@@ -67,6 +67,11 @@ export function uploadDto(
     partBytes: REPORT_LIMITS.partBytes,
     partCount: Math.ceil(row.input.size / REPORT_LIMITS.partBytes),
     status: row.status === "initializing" ? "uploading" : row.status,
+    sourceParts: Object.entries(row.parts).map(([number, sha256]) => ({
+      partNumber: Number(number),
+      size: Math.min(REPORT_LIMITS.partBytes, row.input.size - (Number(number) - 1) * REPORT_LIMITS.partBytes),
+      sha256,
+    })),
     uploadedParts: parts.map((part) => ({
       ...part,
       sha256: part.sha256 || row.parts[String(part.partNumber)] || "",

@@ -1,0 +1,124 @@
+--- a/apps/viewer/src/components/error-report/ErrorReportDialog.tsx
++++ b/apps/viewer/src/components/error-report/ErrorReportDialog.tsx
+@@ -62,7 +62,7 @@
+   }, [client]);
+ 
+   useEffect(() => {
+-    if (receipt?.status !== 'submitted' || deleteState !== 'idle') return;
++    if (receipt?.status !== 'submitted' || receipt.publicationHold || deleteState !== 'idle') return;
+     const controller = new AbortController();
+     let timer: ReturnType<typeof setTimeout>;
+     let attempts = 0;
+@@ -71,7 +71,7 @@
+       try {
+         const next = await client.request<ReportReceipt>(`/${encodeURIComponent(receipt.id)}`, 'GET', undefined, controller.signal);
+         if (controller.signal.aborted) return;
+-        // Qualification mutation: keep polling a held receipt.
++        if (next.publicationHold) { setReceipt(next); return; }
+         if (next.status === 'published') { completeReport(next.id); setReceipt(next); return; }
+         if (++attempts >= 20) { setPublicationPending(true); return; }
+         timer = setTimeout(() => { void poll(); }, 3000);
+@@ -164,13 +164,13 @@
+   }
+   const issueUrl = safeIssueUrl(receipt?.issueUrl);
+   const agreementUrl = safeAgreementUrl(submission.current?.agreementReceipt?.pdfUrl ?? (receipt?.agreementAccepted ? `/api/reports/${receipt.id}/agreement.pdf` : undefined));
+-  return <Dialog open onOpenChange={open => { if (!open) void cancel(); }}>
+-    <DialogContent className="ph-no-capture ph-mask max-h-[90vh] overflow-y-auto" hideCloseButton={busy || deleteState === 'deleting'} onEscapeKeyDown={event => { if (deleting.current) event.preventDefault(); }} onPointerDownOutside={event => { if (deleting.current) event.preventDefault(); }}>
++  return <Dialog open onOpenChange={open => { if (!open) void closeDialog(); }}>
++    <DialogContent className="ph-no-capture ph-mask max-h-[90vh] overflow-y-auto" hideCloseButton={busy || deleteState === 'deleting'} onEscapeKeyDown={event => { if (inFlight.current || deleting.current) event.preventDefault(); }} onPointerDownOutside={event => { if (inFlight.current || deleting.current) event.preventDefault(); }}>
+       <DialogHeader><DialogTitle>{t(receipt?.status === 'deleted' ? 'errorReport.deletedTitle' : receipt?.status === 'manual_review' ? 'errorReport.ndaRequestReceived' : receipt ? 'errorReport.sent' : review ? 'errorReport.reviewTitle' : 'errorReport.invite')}</DialogTitle>
+         <DialogDescription>{t(receipt?.status === 'deleted' ? 'errorReport.deletedDescription' : receipt?.status === 'manual_review' ? 'errorReport.manual' : receipt ? 'errorReport.receivedDescription' : 'errorReport.intro')}</DialogDescription></DialogHeader>
+       {receipt ? <div className="space-y-3">
+         <p>{t('errorReport.receipt', { id: receipt.id })}</p>
+-        {receipt.status === 'submitted' && deleteState === 'idle' && <><output>{t(publicationPending ? 'errorReport.publicationPending' : 'errorReport.publishing')}</output><Button variant="outline" onClick={() => { void refreshReceipt(); }}>{t('errorReport.checkStatus')}</Button></>}
++        {receipt.status === 'submitted' && deleteState === 'idle' && <><output>{t(receipt.publicationHold ? 'errorReport.publicationHeld' : publicationPending ? 'errorReport.publicationPending' : 'errorReport.publishing')}</output><Button variant="outline" onClick={() => { void refreshReceipt(); }}>{t('errorReport.checkStatus')}</Button></>}
+         {receipt.status === 'manual_review' && deleteState === 'idle' && <><Button variant="outline" onClick={() => { void refreshReceipt(); }}>{t('errorReport.checkStatus')}</Button></>}
+         {error && <p role="alert">{error}</p>}
+         {issueUrl && <a href={issueUrl} target="_blank" rel="noreferrer">{t('errorReport.issue')}</a>}
+@@ -184,7 +184,7 @@
+           <Button variant="outline" disabled={deleteState === 'deleting'} onClick={() => setDeleteState('idle')}>{t('errorReport.keepReport')}</Button>
+         </div>)}
+         <Button disabled={deleteState === 'deleting'} onClick={onClose}>{t('errorReport.close')}</Button>
+-      </div> : !session || restoring ? <div><output>{t(unavailable ? 'errorReport.unavailable' : 'errorReport.loading')}</output>{unavailable && <Button onClick={() => { void cancel(); }}>{t('errorReport.close')}</Button>}</div> : <>
++      </div> : !session || restoring ? <div><output>{t(unavailable ? 'errorReport.unavailable' : 'errorReport.loading')}</output>{unavailable && <Button onClick={() => { void closeDialog(); }}>{t('errorReport.close')}</Button>}</div> : <>
+         {!review ? <div className="space-y-3 text-sm">
+           <p>{t('errorReport.publicText')}</p>
+           <label className="block">{t('errorReport.title')}<input className="block w-full rounded border bg-background p-2" disabled={!!existing} value={title} maxLength={180} onChange={event => setTitle(event.target.value)} /></label>
+--- a/apps/viewer/src/lib/error-reports/context.ts
++++ b/apps/viewer/src/lib/error-reports/context.ts
+@@ -41,5 +41,5 @@
+   prompt = null; emit();
+ }
+ export function clearLoadReport(): void {
+-  if (!prompt?.open) { prompt = null; emit(); }
++  if (prompt && !prompt.open && !prompt.context.resumeReportId && (prompt.context.sourceFile || prompt.context.errorCode === 'load_failed')) { prompt = null; emit(); }
+ }
+--- a/apps/viewer/src/services/error-reports/upload.ts
++++ b/apps/viewer/src/services/error-reports/upload.ts
+@@ -14,7 +14,6 @@
+   const remote = await client.request<ModelUpload>(path, 'GET', undefined, signal);
+   const completed = remote.status === 'ready' || remote.status === 'verifying';
+   if ((!completed && remote.status !== 'uploading') || !Number.isSafeInteger(remote.partBytes) || remote.partBytes < 1 || remote.partBytes > 64 * 1024 ** 2 || remote.partCount !== Math.ceil(file.size / remote.partBytes)) throw new Error('The upload cannot be resumed');
+-  if (completed) { await verifyCompletion(client, path, remote, signal); return; }
+   let done = 0;
+   for (let partNumber = 1; partNumber <= remote.partCount; partNumber++) {
+     signal.throwIfAborted();
+--- a/apps/report-service/src/uploads.ts
++++ b/apps/report-service/src/uploads.ts
+@@ -67,6 +67,11 @@
+     partBytes: REPORT_LIMITS.partBytes,
+     partCount: Math.ceil(row.input.size / REPORT_LIMITS.partBytes),
+     status: row.status === "initializing" ? "uploading" : row.status,
++    sourceParts: Object.entries(row.parts).map(([number, sha256]) => ({
++      partNumber: Number(number),
++      size: Math.min(REPORT_LIMITS.partBytes, row.input.size - (Number(number) - 1) * REPORT_LIMITS.partBytes),
++      sha256,
++    })),
+     uploadedParts: parts.map((part) => ({
+       ...part,
+       sha256: part.sha256 || row.parts[String(part.partNumber)] || "",
+--- a/apps/viewer/src/services/error-reports/submission.ts
++++ b/apps/viewer/src/services/error-reports/submission.ts
+@@ -59,6 +59,5 @@
+       await this.client.request(`/${encodeURIComponent(this.receipt.id)}`, 'DELETE');
+       forgetReport(this.receipt.id);
+     }
+-    rememberReport(undefined);
+   }
+ }
+--- a/apps/viewer/src/lib/error-reports/pending.ts
++++ b/apps/viewer/src/lib/error-reports/pending.ts
+@@ -22,7 +22,7 @@
+   if (recentInMemory === id) recentInMemory = undefined;
+   if (typeof sessionStorage !== 'undefined') {
+     try {
+-      sessionStorage.removeItem(KEY);
++      if (sessionStorage.getItem(KEY) === id) sessionStorage.removeItem(KEY);
+       if (sessionStorage.getItem(RECENT_KEY) === id) sessionStorage.removeItem(RECENT_KEY);
+     } catch (error) { console.warn('[error-report] Cannot remove report reference', error); }
+   }
+@@ -38,7 +38,7 @@
+     }
+   }
+   if (typeof sessionStorage !== 'undefined') {
+-    try { sessionStorage.removeItem(KEY); }
++    try { if (sessionStorage.getItem(KEY) === id) sessionStorage.removeItem(KEY); }
+     catch (error) { console.warn('[error-report] Cannot complete report reference', error); }
+   }
+   notifyRecent();
+@@ -51,14 +51,13 @@
+     return id && /^[a-zA-Z0-9-]{1,100}$/.test(id) ? id : undefined;
+   } catch (error) { console.warn('[error-report] Cannot read pending report', error); return undefined; }
+ }
+-export function rememberReport(id: string | undefined, onlyIfVacant = false): void {
++export function rememberReport(id: string, onlyIfVacant = false): void {
+   const current = pendingReport();
+   if (onlyIfVacant && current && current !== id) return;
+   if (id) recentInMemory = id;
+   if (typeof sessionStorage === 'undefined') { notifyRecent(); return; }
+   try {
+     if (id) { sessionStorage.setItem(KEY, id); sessionStorage.setItem(RECENT_KEY, id); }
+-    else sessionStorage.removeItem(KEY);
+ 
+   }
+   catch (error) { console.warn('[error-report] Cannot retain report reference', error); }

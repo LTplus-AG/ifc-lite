@@ -1,0 +1,33 @@
+{
+  "recordedAt": "2026-10-12T23:07:50.169749+00:00",
+  "deployedSource": "187e08c9e07eed30698d59279bd0dec071685a88",
+  "deploymentId": "a67f5f17-f71b-43d8-860d-4a2de6b457cc",
+  "status": "SUCCESS",
+  "sourceManifestSha256": "8a287bcaf70abe34e4688323e982d34d3f93586e1c21c5b9a044b74498f63846",
+  "region": "Amsterdam",
+  "deployedJavascriptFilesMatchingQualifiedBuild": 23,
+  "accessChecksPassed": 19,
+  "normalPublicationChecksPassed": 15,
+  "publicSubmissionsEnabled": false,
+  "ndaSigningEnabled": false,
+  "publicSharingEnabled": false,
+  "scannerAndRestoreActivated": false,
+  "syntheticIssue": "https://github.com/LTplus-AG/ifc-lite/issues/7524",
+  "syntheticIssueClosed": true,
+  "createdIssues": 1,
+  "additionalIssuesOnRetries": 0,
+  "githubAppId": 5290746,
+  "authenticatedBotUserId": 341635942,
+  "optionalIssueAppAttributionWasNull": true,
+  "reportDeleted": true,
+  "durableIntentCountAfterReportDeletion": 1,
+  "pendingOutboxCount": 0,
+  "ownedSessionsRemoved": 1,
+  "initialDirectListingLag": "Initial newest-issues listing omitted the just-created issue; the original failure is preserved privately. Later noncreating reads confirmed exactly one matching closed issue. No create was rerun.",
+  "limits": [
+    "Remote outbound POST calls were not instrumented; this receipt establishes observed unique issue and idempotent submission results.",
+    "Actual App plus local PostgreSQL separately qualified lost-response and empty-list reconciliation with one instrumented create. That proof is not represented as remote fault injection.",
+    "PostHog live lookup returned unmatched; a positive linked existing-error target is not qualified.",
+    "No user model, personal error content or approved NDA was included."
+  ]
+}

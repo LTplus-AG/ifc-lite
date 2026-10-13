@@ -14,6 +14,7 @@
 import { isWhollyNumeric } from '@ifc-lite/encoding';
 import type { IDS11ToleranceRule } from '../preview/types.js';
 import { equalsWithIds11Tolerance } from '../preview/tolerance.js';
+import { xsdBooleanValue } from './xsd-cast.js';
 
 /**
  * Whether an IDS literal could ever match through `compareNumeric` —
@@ -41,7 +42,7 @@ export function isStrictNumericLiteral(value: string): boolean {
 
 /** Whether an IDS literal could ever match through `compareBoolean`. */
 export function isBooleanLiteral(value: string): boolean {
-  return value === 'true' || value === 'false';
+  return xsdBooleanValue(value) !== undefined;
 }
 
 /**
@@ -97,26 +98,30 @@ export function compareNumeric(
 }
 
 /**
- * Compare an IDS boolean literal to a stored value. Per IDS 1.0 spec
- * the literal MUST be lowercase `true` / `false`; uppercase or
- * numeric forms (`1` / `0`) are malformed and never match.
+ * Compare an IDS boolean literal to a stored value. The literal is read
+ * in the xs:boolean lexical space, `true` / `false` / `1` / `0`
+ * (`xsdBooleanValue`); uppercase forms (`TRUE`) are not in it and never
+ * match. The numeric forms name a boolean only against a stored boolean:
+ * a text value that reads `true` is compared as text, so `1` does not
+ * match it (#ISSUE).
  *
  * Returns:
- *   - `true` / `false` when both sides resolve to a boolean, OR
- *   - `undefined` when neither side is a recognised boolean — caller
- *     should fall through to other comparators.
+ *   - `true` / `false` when the literal is an xs:boolean, OR
+ *   - `undefined` when it is not, so the caller falls through to the
+ *     other comparators.
  */
 export function compareBoolean(
   expected: string,
   actual: string | number | boolean
 ): boolean | undefined {
-  if (expected !== 'true' && expected !== 'false') {
+  const expectedValue = xsdBooleanValue(expected);
+  if (expectedValue === undefined) {
     // Expected isn't a valid boolean literal — caller falls through.
     return undefined;
   }
 
   if (typeof actual === 'boolean') {
-    return expected === 'true' ? actual === true : actual === false;
+    return actual === expectedValue;
   }
 
   if (actual === 'true' || actual === 'false') {

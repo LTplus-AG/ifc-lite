@@ -42,6 +42,26 @@ import {
  */
 export const XSD_NUMERIC_SPECIALS = new Set(['NaN', '+INF', '-INF']);
 
+/**
+ * The xs:boolean lexical space and the value each literal names. XML Schema
+ * Part 2 (3.2.2.1) defines it as {true, false, 1, 0}, with 1 and 0 meaning
+ * true and false. The audit (`xsd-lexical.ts`, upstream `XmlRegex` parity)
+ * already accepted all four; the audit, the cast gate and `compareBoolean`
+ * now all read them from here (#ISSUE). `TRUE` / `False` are not
+ * in it (buildingSMART corpus: invalid-booleans_must_be_specified_as_lowercase_strings).
+ */
+const XSD_BOOLEAN_LITERALS: ReadonlyMap<string, boolean> = new Map([
+  ['true', true],
+  ['false', false],
+  ['1', true],
+  ['0', false],
+]);
+
+/** The boolean an xs:boolean literal names, or `undefined` when it is not one. */
+export function xsdBooleanValue(literal: string): boolean | undefined {
+  return XSD_BOOLEAN_LITERALS.get(literal);
+}
+
 const INTEGER_RE = /^[+-]?\d+$/;
 const DURATION_RE =
   /^-?P(?:\d+Y)?(?:\d+M)?(?:\d+D)?(?:T(?:\d+H)?(?:\d+M)?(?:\d+(?:\.\d+)?S)?)?$/;
@@ -87,7 +107,7 @@ export function literalCastsUnder(value: string, xsdType: string): boolean {
       // xsd-cast-specials.test.ts, which are representatives.
       return isWhollyNumeric(value) || XSD_NUMERIC_SPECIALS.has(value);
     case 'xs:boolean':
-      return value === 'true' || value === 'false';
+      return xsdBooleanValue(value) !== undefined;
     case 'xs:duration':
       return DURATION_RE.test(value);
     case 'xs:string':

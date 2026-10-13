@@ -68,14 +68,14 @@ describe('matchConstraint — simpleValue', () => {
 
   it('matches boolean true (strict lowercase per IDS spec)', () => {
     expect(matchConstraint(sv('true'), true)).toBe(true);
-    // Numeric `1` / `0` are NOT valid boolean literals per IDS 1.0.
-    expect(matchConstraint(sv('1'), true)).toBe(false);
+    // `1` / `0` are in the xs:boolean lexical space (#ISSUE).
+    expect(matchConstraint(sv('1'), true)).toBe(true);
     expect(matchConstraint(sv('false'), true)).toBe(false);
   });
 
   it('matches boolean false (strict lowercase per IDS spec)', () => {
     expect(matchConstraint(sv('false'), false)).toBe(true);
-    expect(matchConstraint(sv('0'), false)).toBe(false);
+    expect(matchConstraint(sv('0'), false)).toBe(true);
     expect(matchConstraint(sv('true'), false)).toBe(false);
   });
 

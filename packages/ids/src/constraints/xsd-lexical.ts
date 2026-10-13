@@ -11,7 +11,7 @@
  * enumeration value and a bound under the same base cannot disagree.
  */
 
-import { XSD_NUMERIC_SPECIALS } from './xsd-cast.js';
+import { XSD_NUMERIC_SPECIALS, xsdBooleanValue } from './xsd-cast.js';
 import { isValidXsdDateTimeLiteral, isXsdDateTimeBase } from './xsd-datetime.js';
 
 /**
@@ -28,7 +28,6 @@ const XS_VALUE_REGEX: Record<string, RegExp> = {
   'xs:double': /^([-+]?[0-9]*(?:\.[0-9]*)?([eE][-+]?[0-9]+)?|NaN|\+INF|-INF)$/,
   'xs:float': /^([-+]?[0-9]*(?:\.[0-9]*)?([eE][-+]?[0-9]+)?|NaN|\+INF|-INF)$/,
   'xs:decimal': /^([-+]?[0-9]*(?:\.[0-9]*)?([eE][-+]?[0-9]+)?|NaN|\+INF|-INF)$/,
-  'xs:boolean': /^(true|false|0|1)$/,
   // The date family is absent on purpose: its value space is a calendar, not a
   // digit-run shape, so it goes through `isValidXsdDateTimeLiteral` (#3721).
   'xs:duration': /^[-+]?P(\d+Y)?(\d+M)?(\d+D)?(T(\d+H)?(\d+M)?(\d+S)?)?$/,
@@ -36,6 +35,8 @@ const XS_VALUE_REGEX: Record<string, RegExp> = {
 
 export function isValidLexicalForXsType(value: string, base: string): boolean {
   if (isXsdDateTimeBase(base)) return isValidXsdDateTimeLiteral(value, base);
+  // One xs:boolean table for the audit, the cast gate and `compareBoolean` (#ISSUE).
+  if (base === 'xs:boolean') return xsdBooleanValue(value) !== undefined;
   const rx = XS_VALUE_REGEX[base];
   if (!rx) return true; // base we don't recognise → don't fabricate errors
   if (base === 'xs:double' || base === 'xs:float' || base === 'xs:decimal') {

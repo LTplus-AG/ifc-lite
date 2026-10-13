@@ -5,7 +5,7 @@
 /** Memory allocation boundary only. Renderer.init/recoverDevice, pipelines,
  * loss subscriptions and Scene restoration remain their production methods.
  * This does not simulate a driver, shader execution or submitted frames. */
-export function recoveryAllocationDevice(options: { extraRecoveryAttempt?: boolean } = {}) {
+export function recoveryAllocationDevice(options: { extraRecoveryAttempt?: boolean; replacementMaxBufferSize?: number } = {}) {
   function deferred<T>() {
     let resolve!: (value: T) => void;
     const promise = new Promise<T>(done => { resolve = done; });
@@ -22,6 +22,7 @@ export function recoveryAllocationDevice(options: { extraRecoveryAttempt?: boole
   let holdPipelines = false, failVertexAfter: number | null = null;
   const stagedVertices: GPUBuffer[] = [];
   const live = new Set<GPUBuffer>();
+  const contents = new WeakMap<GPUBuffer, ArrayBuffer>();
   const limits = { maxBufferSize: 1 << 30, maxStorageBufferBindingSize: 1 << 30,
     maxTextureDimension2D: 4096, maxSampleCount: 1 };
   const pipeline = () => ({ getBindGroupLayout() { return {}; } });
@@ -55,7 +56,9 @@ export function recoveryAllocationDevice(options: { extraRecoveryAttempt?: boole
     };
   };
   const devices = losses.map((loss, deviceIndex) => ({
-    limits, features: new Set(), lost: loss.promise,
+    limits: deviceIndex > 0 && options.replacementMaxBufferSize !== undefined
+      ? { ...limits, maxBufferSize: options.replacementMaxBufferSize } : limits,
+    features: new Set(), lost: loss.promise,
     destroy() { loss.resolve({ reason: 'destroyed', message: 'Owned allocation device teardown' }); },
     createBuffer(descriptor: GPUBufferDescriptor) {
       const staged = deviceIndex > 0 && failVertexAfter !== null && (descriptor.usage & GPUBufferUsage.VERTEX) !== 0;
@@ -67,6 +70,7 @@ export function recoveryAllocationDevice(options: { extraRecoveryAttempt?: boole
       const buffer = { size: descriptor.size, usage: descriptor.usage, label: descriptor.label ?? '',
         getMappedRange() { return bytes; }, unmap() {}, destroy() { live.delete(buffer as unknown as GPUBuffer); } };
       live.add(buffer as unknown as GPUBuffer);
+      contents.set(buffer as unknown as GPUBuffer, bytes);
       if (staged) stagedVertices.push(buffer as unknown as GPUBuffer);
       return buffer;
     },
@@ -81,12 +85,33 @@ export function recoveryAllocationDevice(options: { extraRecoveryAttempt?: boole
     },
     createCommandEncoder: commandEncoder,
     pushErrorScope() {}, popErrorScope: async () => null,
-    queue: { writeBuffer() {}, writeTexture() {}, copyExternalImageToTexture() {}, submit() { encoding.submissions++; }, onSubmittedWorkDone: async () => {} },
+    queue: {
+      writeBuffer(buffer: GPUBuffer, offset: number, data: ArrayBuffer | SharedArrayBuffer | ArrayBufferView,
+        dataOffset = 0, size?: number) {
+        const target = contents.get(buffer);
+        if (!target || !live.has(buffer)) throw new Error('Allocation write has no live buffer owner');
+        const view = ArrayBuffer.isView(data);
+        // GPUQueue counts typed-array offsets/sizes in elements; DataView and
+        // ArrayBuffer inputs use bytes. Snapshot only the requested source span.
+        const unit = view && !(data instanceof DataView) && 'BYTES_PER_ELEMENT' in data
+          && typeof data.BYTES_PER_ELEMENT === 'number' ? data.BYTES_PER_ELEMENT : 1;
+        const start = dataOffset * unit;
+        const length = size === undefined ? data.byteLength - start : size * unit;
+        if (![offset, dataOffset, size ?? 0].every(value => Number.isSafeInteger(value) && value >= 0)
+          || !Number.isSafeInteger(start) || !Number.isSafeInteger(length) || length < 0
+          || start + length > data.byteLength || offset + length > target.byteLength
+          || offset % 4 !== 0 || length % 4 !== 0) throw new RangeError('Allocation writeBuffer span is invalid');
+        const source = view ? new Uint8Array(data.buffer, data.byteOffset + start, length)
+          : new Uint8Array(data, start, length);
+        new Uint8Array(target).set(source, offset);
+      },
+      writeTexture() {}, copyExternalImageToTexture() {}, submit() { encoding.submissions++; }, onSubmittedWorkDone: async () => {} },
   } as unknown as GPUDevice));
   let deviceRequests = 0;
   const gpu = {
     getPreferredCanvasFormat: () => 'bgra8unorm',
-    requestAdapter: async () => ({ limits, features: new Set(), info: {},
+    requestAdapter: async () => ({ limits: deviceRequests > 0 && options.replacementMaxBufferSize !== undefined
+      ? { ...limits, maxBufferSize: options.replacementMaxBufferSize } : limits, features: new Set(), info: {},
       requestDevice: async () => {
         const index = deviceRequests++;
         if (index >= devices.length) throw new Error('The bounded allocation device attempts were exhausted');
@@ -113,7 +138,13 @@ export function recoveryAllocationDevice(options: { extraRecoveryAttempt?: boole
     if (kind !== 'webgpu') throw new Error('Only the production WebGPU context is supported at this boundary');
     return context;
   } });
-  return { canvas, devices, live, encoding, replacementRequested: requested.promise,
+  return { canvas, devices, live, encoding,
+    bufferBytes(buffer: GPUBuffer) {
+      const bytes = contents.get(buffer);
+      if (!bytes || !live.has(buffer)) throw new Error('Allocation read has no live buffer owner');
+      return bytes.slice(0);
+    },
+    replacementRequested: requested.promise,
     deviceRequestCount: () => deviceRequests,
     loseInitialDevice(message: string) { losses[0].resolve({ reason: 'unknown', message }); },
     pipelineRequested: pipelineRequested.promise, stagedVertices,

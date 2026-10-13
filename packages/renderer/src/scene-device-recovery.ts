@@ -186,6 +186,7 @@ export function repartitionHydratedRecoveryBucket(
   const hash = key.lastIndexOf('#'), baseKey = hash >= 0 ? key.slice(0, hash) : key;
   const shells: BatchedMesh[] = [], keys: string[] = [];
   host.buckets.delete(key);
+  const streamed = host.streamedBucketKeys.delete(key);
   for (let index = 0; index < chunks.length; index++) {
     const targetKey = nextRecoveryBucketKey(host, baseKey);
     const parts = chunks[index];
@@ -195,6 +196,7 @@ export function repartitionHydratedRecoveryBucket(
     );
     target.key = targetKey; target.meshData = parts; target.batchedMesh = nextShell;
     target.vertexBytes = bucketVertexBytes(parts); host.buckets.set(targetKey, target);
+    if (streamed) host.streamedBucketKeys.add(targetKey);
     for (const part of parts) host.meshDataBucket.set(part, target);
     shells.push(nextShell); keys.push(targetKey);
   }
@@ -269,6 +271,7 @@ function restoreFlatBuckets(
     // bucket and every meshDataBucket edge still describe the complete model.
     host.buckets.delete(originalKey);
     host.dirtyBuckets.delete(originalKey);
+    const streamed = host.streamedBucketKeys.delete(originalKey);
     for (let index = 0; index < staged.length; index++) {
       const { key, parts, batch } = staged[index];
       const target = index === 0 ? bucket : { key, meshData: [], batchedMesh: null, vertexBytes: 0 };
@@ -279,6 +282,7 @@ function restoreFlatBuckets(
       host.buckets.set(key, target);
       for (const part of parts) host.meshDataBucket.set(part, target);
       if (dirty) host.dirtyBuckets.add(key);
+      if (streamed) host.streamedBucketKeys.add(key);
       restored.push(batch);
     }
     host.activeBucketKey.set(baseKey, staged.at(-1)!.key);

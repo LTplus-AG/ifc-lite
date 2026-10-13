@@ -31,6 +31,8 @@ export const errorReportEn = {
   'errorReport.customOption': 'Request review of my own NDA before uploading',
   'errorReport.customContact': 'Private contact details and NDA request',
   'errorReport.uploadConsent': 'I have permission to share this model with LTplus AG to investigate this report.',
+  'errorReport.ndaRequestReceived': 'Your NDA review request has been received',
+  'errorReport.publicationHeld': 'GitHub may already have received your report. Publication is paused for review to avoid a duplicate. You can check its status later.',
   'errorReport.manual': 'Your NDA request is awaiting maintainer review. No model was uploaded.',
   'errorReport.review': 'Review report',
   'errorReport.reviewTitle': 'Review before sending',

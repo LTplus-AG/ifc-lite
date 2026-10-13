@@ -56,7 +56,7 @@ export function ErrorReportDialog({ context, onClose, client: injectedClient }: 
   }, [client]);
 
   useEffect(() => {
-    if (receipt?.status !== 'submitted') return;
+    if (receipt?.status !== 'submitted' || receipt.publicationHold) return;
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout>;
     let attempts = 0;
@@ -65,6 +65,7 @@ export function ErrorReportDialog({ context, onClose, client: injectedClient }: 
       try {
         const next = await client.request<ReportReceipt>(`/${encodeURIComponent(receipt.id)}`, 'GET', undefined, controller.signal);
         if (controller.signal.aborted) return;
+        if (next.publicationHold) { setReceipt(next); return; }
         if (next.status === 'published') { rememberReport(undefined); setReceipt(next); return; }
         if (++attempts >= 20) { setPublicationPending(true); return; }
         timer = setTimeout(() => { void poll(); }, 3000);
@@ -74,7 +75,7 @@ export function ErrorReportDialog({ context, onClose, client: injectedClient }: 
     };
     timer = setTimeout(() => { void poll(); }, 3000);
     return () => { clearTimeout(timer); controller.abort(); };
-  }, [client, receipt?.id, receipt?.status]);
+  }, [client, receipt?.id, receipt?.status, receipt?.publicationHold]);
 
   function restoreReceipt(restored: ReportReceipt) {
     setRestoring(false);
@@ -135,12 +136,12 @@ export function ErrorReportDialog({ context, onClose, client: injectedClient }: 
   const agreementUrl = safeAgreementUrl(submission.current?.agreementReceipt?.pdfUrl ?? (receipt?.agreementAccepted ? `/api/reports/${receipt.id}/agreement.pdf` : undefined));
   return <Dialog open onOpenChange={open => { if (!open) void cancel(); }}>
     <DialogContent className="ph-no-capture ph-mask max-h-[90vh] overflow-y-auto" hideCloseButton={busy}>
-      <DialogHeader><DialogTitle>{t(receipt ? 'errorReport.sent' : review ? 'errorReport.reviewTitle' : 'errorReport.invite')}</DialogTitle>
-        <DialogDescription>{t(receipt ? 'errorReport.receivedDescription' : 'errorReport.intro')}</DialogDescription></DialogHeader>
+      <DialogHeader><DialogTitle>{t(receipt?.status === 'manual_review' ? 'errorReport.ndaRequestReceived' : receipt ? 'errorReport.sent' : review ? 'errorReport.reviewTitle' : 'errorReport.invite')}</DialogTitle>
+        <DialogDescription>{t(receipt?.status === 'manual_review' ? 'errorReport.manual' : receipt ? 'errorReport.receivedDescription' : 'errorReport.intro')}</DialogDescription></DialogHeader>
       {receipt ? <div className="space-y-3">
         <p>{t('errorReport.receipt', { id: receipt.id })}</p>
-        {receipt.status === 'submitted' && <><output>{t(publicationPending ? 'errorReport.publicationPending' : 'errorReport.publishing')}</output><Button variant="outline" onClick={() => { void refreshReceipt(); }}>{t('errorReport.checkStatus')}</Button></>}
-        {receipt.status === 'manual_review' && <><p>{t('errorReport.manual')}</p><Button variant="outline" onClick={() => { void refreshReceipt(); }}>{t('errorReport.checkStatus')}</Button></>}
+        {receipt.status === 'submitted' && <><output>{t(receipt.publicationHold ? 'errorReport.publicationHeld' : publicationPending ? 'errorReport.publicationPending' : 'errorReport.publishing')}</output><Button variant="outline" onClick={() => { void refreshReceipt(); }}>{t('errorReport.checkStatus')}</Button></>}
+        {receipt.status === 'manual_review' && <><Button variant="outline" onClick={() => { void refreshReceipt(); }}>{t('errorReport.checkStatus')}</Button></>}
         {error && <p role="alert">{error}</p>}
         {issueUrl && <a href={issueUrl} target="_blank" rel="noreferrer">{t('errorReport.issue')}</a>}
         {agreementUrl && <a className="block" href={agreementUrl} target="_blank" rel="noreferrer">{t('errorReport.agreementReceipt')}</a>}
@@ -165,7 +166,7 @@ export function ErrorReportDialog({ context, onClose, client: injectedClient }: 
           <p>{review.file || existing?.uploadSource ? t('errorReport.source', { name: review.file?.name ?? existing!.uploadSource!.name, size: review.file?.size ?? existing!.uploadSource!.size }) : t('errorReport.noModel')}</p>
           {review.file && <p>{t(review.draft.visibility === 'private' ? 'errorReport.privateHelp' : 'errorReport.publicHelp')}</p>}
           {review.file && <div><p>{t('errorReport.privateReview')}</p>
-            {review.acceptance && <p>{review.acceptance.signerName} · {review.acceptance.signerEmail} · {review.acceptance.organization}<br />{session.agreement.version} · {review.acceptance.agreementSha256}</p>}
+            {review.acceptance && <p>{review.acceptance.signerName} · {review.acceptance.signerEmail} · {review.acceptance.organization}<br />{session.agreement.version}</p>}
             {review.confidentiality === 'custom' && <p className="whitespace-pre-wrap">{review.customNdaMessage}</p>}
           </div>}
           {!busy && !submission.current && <p>{t('errorReport.notUploaded')}</p>}

@@ -116,3 +116,54 @@ test('#7495 known errors prefill an editable plain-language title while the desc
     cleanup();
   }
 });
+
+test('#7495 publication hold stops automatic polling but preserves manual status checks', async () => {
+  let reads = 0;
+  const transport: typeof fetch = async value => {
+    if (String(value).endsWith('/session')) return Response.json(session);
+    reads++;
+    return Response.json({ id: 'held-report', status: 'submitted', ...(reads > 1 ? { publicationHold: 'review_required' } : {}) });
+  };
+  render(<ErrorReportDialog context={{ errorCode: 'report_resume', resumeReportId: 'held-report' }} onClose={() => {}} client={new ReportClient(transport)} />);
+  await settle();
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 3100)); });
+  assert.equal(reads, 2);
+  assert.ok(document.body.textContent?.includes('Publication is paused for review'));
+  assert.ok(!document.body.textContent?.includes('Creating the GitHub issue'));
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 3100)); });
+  assert.equal(reads, 2, 'held report causes no further automatic status request');
+  click(button('Check review status'));
+  await settle();
+  assert.equal(reads, 3, 'manual status check remains available');
+});
+
+test('#7495 custom NDA receipt identifies a request rather than a submitted error report', async () => {
+  const transport: typeof fetch = async value => Response.json(String(value).endsWith('/session') ? session : { id: 'nda-request', status: 'manual_review' });
+  render(<ErrorReportDialog context={{ errorCode: 'report_resume', resumeReportId: 'nda-request' }} onClose={() => {}} client={new ReportClient(transport)} />);
+  await settle();
+  assert.ok(document.body.textContent?.includes('Your NDA review request has been received'));
+  assert.ok(document.body.textContent?.includes('No model was uploaded'));
+  assert.ok(!document.body.textContent?.includes('Your report has been received'));
+});
+
+
+test('#7495 standard NDA review shows signer and version without displaying its technical digest', async () => {
+  const signingSession = { ...session, agreement: { ...session.agreement, signingEnabled: true } };
+  render(<ErrorReportDialog context={{ errorCode: 'load_failed', sourceFile: new File(['ifc'], 'private.ifc') }} onClose={() => {}} client={new ReportClient(async () => Response.json(signingSession))} />);
+  await settle();
+  click(input('Use the model from this failed load'));
+  const select = document.querySelector('select');
+  assert.ok(select);
+  act(() => { select.value = 'standard'; select.dispatchEvent(new Event('change', { bubbles: true })); });
+  enter(input('Your full name'), 'Model Owner');
+  enter(input('Your email'), 'owner@example.test');
+  enter(input('Your organization'), 'Example Company');
+  click(input('I have authority to share this model'));
+  click(input('I have permission to share this model'));
+  click(button('Review report'));
+  await settle();
+  assert.ok(document.body.textContent?.includes('Model Owner'));
+  assert.ok(document.body.textContent?.includes('owner@example.test'));
+  assert.ok(document.body.textContent?.includes(signingSession.agreement.version));
+  assert.ok(!document.body.textContent?.includes(signingSession.agreement.sha256));
+});

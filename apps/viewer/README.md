@@ -23,3 +23,9 @@ and NDA availability. Enabling the viewer flag does not enable NDA signing or
 public model publication. Those capabilities remain controlled by the service.
 Keep the flag unset while the service is unavailable; rebuilding without the
 flag disables invitations without changing existing server-side reports.
+
+A report receipt distinguishes durable submission from GitHub publication.
+If the service returns a publication hold after an ambiguous GitHub response,
+the dialog stops automatic status requests and explains the pause; the user
+can still check its status manually. A custom NDA request has its own receipt
+and does not upload the model while awaiting maintainer review.

@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import '@/test/setup-dom.js';
+import { createServer } from 'node:http';
 import { afterEach, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
@@ -231,17 +232,23 @@ for (const [status, code] of [[404, 'report_missing'], [503, 'service_unavailabl
   test(`#7500 closing recovery after ${status} preserves data and only forgets a known missing report`, async () => {
     const methods: string[] = []; let closes = 0;
     rememberReport('stale-recovery');
-    const transport: typeof fetch = async (value, options) => {
-      methods.push(options?.method ?? 'GET');
-      return String(value).endsWith('/session') ? Response.json(session) : Response.json({ error: code, message: 'Unavailable' }, { status });
-    };
+    const server = createServer((request, response) => {
+      methods.push(request.method ?? 'GET');
+      response.setHeader('Content-Type', 'application/json');
+      if (request.url?.endsWith('/session')) response.end(JSON.stringify(session));
+      else { response.statusCode = status; response.end(JSON.stringify({ error: code, message: 'Unavailable' })); }
+    });
+    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address(); assert.ok(address && typeof address !== 'string');
+    const endpoint = `http://127.0.0.1:${address.port}`;
+    const transport: typeof fetch = (value, options) => fetch(endpoint + String(value), options);
     try {
       render(<ErrorReportDialog context={{ errorCode: 'report_resume', resumeReportId: 'stale-recovery' }} onClose={() => { closes++; }} client={new ReportClient(transport)} />);
       await settle(); click(button('Close')); await settle();
       assert.equal(closes, 1); assert.deepEqual(methods, ['GET', 'GET']);
       assert.equal(pendingReport(), status === 404 ? undefined : 'stale-recovery');
       assert.equal(recentReport(), status === 404 ? undefined : 'stale-recovery');
-    } finally { forgetReport('stale-recovery'); }
+    } finally { forgetReport('stale-recovery'); server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())); }
   });
 }
 

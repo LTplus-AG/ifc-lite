@@ -110,3 +110,18 @@ and report incomplete/unsupported/bounded coverage. These live captures do not
 claim portable historical recovery. See [the native capture contract](../../docs/guide/scripting-sdk.md#native-review-capture-lifecycle).
 
 Native Review capture retention separates 32 pending operations from 32 settled producer/definition/source contexts. Successful reruns replace matching contexts; failures abandon pending reservations and preserve earlier matching facts as historical evidence. Distinct-context eviction reports unknown omitted history rather than complete coverage. Operation ordering is established before source proof awaits. See [the retention and failure contract](../../docs/guide/scripting-sdk.md#native-review-capture-lifecycle).
+
+### Portable saved evidence
+
+The `@ifc-lite/sdk/review` entry point owns the existing viewer saved-analysis
+and saved-validation wire contracts. `decodeSavedAnalysisRun` validates a saved
+analysis run, and `validateSavedReport` validates an IDS, rules, or manual report
+envelope. The same contracts are used by viewer save, backup import, and report
+validation. Import validation preserves the original report dates, source
+identities, coverage gaps, and unknown or stale freshness.
+
+`bindSavedAnalysisModels` requires an unambiguous source match and the caller's
+actual edit and placement evidence. A payload join key or model name is not a
+durable model identity. Parsing a manual report retains historical answers;
+it does not run a checklist or resolve a finding. These codecs do not persist
+reports, change model state, or certify that an imported report was executed.

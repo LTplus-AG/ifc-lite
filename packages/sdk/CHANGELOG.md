@@ -1,5 +1,20 @@
 # @ifc-lite/sdk
 
+## 9.3.0
+
+### Minor Changes
+
+- [#7510](https://github.com/LTplus-AG/ifc-lite/pull/7510) [`d3afa55`](https://github.com/LTplus-AG/ifc-lite/commit/d3afa5541ad6b97e8338a3a74927670b6faf9e26) Thanks [@louistrue](https://github.com/louistrue)! - Share the existing saved-analysis, IDS and manual report codecs through the Review SDK. Viewer save, import and source binding now consume the same wire validators, preserving legacy evidence and refusal semantics.
+
+- [#7477](https://github.com/LTplus-AG/ifc-lite/pull/7477) [`b5e0626`](https://github.com/LTplus-AG/ifc-lite/commit/b5e0626725cb6233fef25c8ce69d354146dad310) Thanks [@louistrue](https://github.com/louistrue)! - Retain native IDS/information Review facts with full source/run provenance and expose bounded, read-only host-provided Flow reads with whole-target scope filtering and explicit unsupported/incomplete source states. Bound concurrent producer admission and known-credential enrollment, and preserve unknown counts when a read is refused.
+
+### Patch Changes
+
+- Updated dependencies [[`eb1a1ce`](https://github.com/LTplus-AG/ifc-lite/commit/eb1a1ce20f80c0b5a71fc73f4e4d25043997db6d)]:
+  - @ifc-lite/ids@3.3.3
+  - @ifc-lite/ids-authoring@0.2.3
+  - @ifc-lite/lists@3.1.3
+
 ## 9.2.0
 
 ### Minor Changes

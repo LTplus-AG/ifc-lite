@@ -188,14 +188,22 @@ describe.skipIf(!enabled)("#7495 publication deletion serialization", () => {
       // A fresh process sees an empty listing and must hold rather than POST again.
       expect(await worker()).toBe(0);
       expect(posts).toBe(1);
-      expect(receipt(await ownedReport(db, report.id, owner))).toMatchObject({ status: "submitted", publicationHold: "review_required" });
+      const held = await ownedReport(db, report.id, owner);
+      const heldReceipt = { id: report.id, status: "submitted", publicationHold: "review_required" };
+      expect(receipt(held)).toEqual(heldReceipt);
+      // #7495 idempotent create/submit must preserve the same owner hold receipt.
+      expect(await createReport(db, config, owner, held.draft)).toEqual(heldReceipt);
+      expect(await submitReport(db, report.id, owner, false)).toEqual(heldReceipt);
       expect((await db.query("SELECT last_error FROM report_outbox WHERE report_id=$1", [report.id])).rows[0].last_error).toBe("github_publication_review_required");
       visible = true;
       await db.query("UPDATE report_outbox SET available_at=now() WHERE report_id=$1", [report.id]);
       expect(await worker()).toBe(0);
       expect(posts).toBe(1);
-      expect(receipt(await ownedReport(db, report.id, owner))).toMatchObject({ status: "published", issueUrl });
-      expect(receipt(await ownedReport(db, report.id, owner)).publicationHold).toBeUndefined();
+      const published = await ownedReport(db, report.id, owner);
+      const publishedReceipt = { id: report.id, status: "published", issueUrl };
+      expect(receipt(published)).toEqual(publishedReceipt);
+      expect(await createReport(db, config, owner, published.draft)).toEqual(publishedReceipt);
+      expect(await submitReport(db, report.id, owner, false)).toEqual(publishedReceipt);
     } finally {
       await db.query("DROP TRIGGER IF EXISTS fail_retry_update ON report_outbox");
       server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve()));

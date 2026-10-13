@@ -226,12 +226,16 @@ describe("#7495 GitHub App transport and ambiguity recovery", () => {
       }
       return Response.json([
         {
-          body: `<!-- ifclite-error:${first.fingerprint} -->`,
+          body: publicIssueBody(first),
           created_at: new Date().toISOString(),
           performed_via_github_app: { id: 999 },
           user: bot,
-          html_url: "https://github.com/owner/repo/issues/forged",
+          html_url: "https://github.com/owner/repo/issues/99",
         },
+        ...bodies.map((body, index) => ({
+          body, created_at: new Date().toISOString(), performed_via_github_app: null,
+          user: bot, html_url: `https://github.com/owner/repo/issues/${index + 1}`,
+        })),
       ]);
     };
     const github = new GithubIssues(config, transport);

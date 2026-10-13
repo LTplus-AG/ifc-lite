@@ -379,7 +379,8 @@ export class ViewerBenchmarkPage {
     this.loadEndTime = await waitForMetadataRenderReadiness({
       trace: () => this.probeLoadTrace(), logs: () => this.consoleLogs,
       canvasReady: () => this.checkCanvasHasContent(), now: () => Date.now(),
-      pause: () => this.page.waitForTimeout(100), timeoutMs, requireRootEnd: !requireMetadataRender,
+      pause: () => this.page.waitForTimeout(100), timeoutMs,
+      completionMode: requireMetadataRender ? 'metadata-render' : 'load-root',
     });
     this.metrics.renderCompleteMs = this.loadEndTime - this.loadStartTime;
     this.metrics.canvasHasContent = true;

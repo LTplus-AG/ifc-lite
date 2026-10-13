@@ -49,7 +49,7 @@ const SNAPSHOT = {
   ],
 };
 
-function fakePage(snapshot) {
+function fakePage(snapshot, canvasReady = true) {
   const listeners = [];
   const initScripts = [];
   return {
@@ -72,18 +72,18 @@ function fakePage(snapshot) {
         g.__IFC_LITE_LOAD_TRACE__ = { latest: () => snapshot };
         try { return fn(arg); } finally { delete g.__IFC_LITE_LOAD_TRACE__; }
       }
-      return true;
+      return canvasReady;
     },
   };
 }
 
-async function measure(snapshot, timeoutMs = 5_000, logs = LOGS) {
-  const page = fakePage(snapshot);
+async function measure(snapshot, timeoutMs = 5_000, logs = LOGS, requireMetadataRender = false, canvasReady = true) {
+  const page = fakePage(snapshot, canvasReady);
   const bench = new ViewerBenchmarkPage(page);
   await bench.setup();
   for (const line of logs) page.emit(line);
   await bench.loadFile('AC20-FZK-Haus.ifc', false);
-  await bench.waitForCompletion(timeoutMs);
+  await bench.waitForCompletion(timeoutMs, requireMetadataRender);
   return { page, metrics: bench.getMetrics() };
 }
 
@@ -226,7 +226,7 @@ test('#7005 deferred renderer completion may follow the loader root', async () =
   assert.equal(metrics.totalWallClockMs, 320);
   assert.equal(metrics.canvasHasContent, true);
   await assert.rejects(measure({ ...snapshot, spans: snapshot.spans.map(span =>
-    span.name === 'scene.finalize' ? { ...span, end: null } : span) }, 25), /Timed out/);
+    span.name === 'scene.finalize' ? { ...span, end: null } : span) }, 25, LOGS, true), /Timed out/);
 });
 
 for (const name of ['parser.complete', 'cache.storeReady', 'geometry.streamComplete']) {
@@ -244,6 +244,25 @@ for (const name of ['parser.complete', 'cache.storeReady', 'geometry.streamCompl
 }
 
 
-test('#7005 ended root with empty spans and persuasive console cannot complete a sample', async () => {
-  await assert.rejects(measure({ ...SNAPSHOT, spans: [] }, 25, LOGS), /Timed out awaiting metadata/);
+test('#7005 default root completion preserves partial metrics while cold readiness rejects empty spans', async () => {
+  const snapshot = { ...SNAPSHOT, spans: [] };
+  const { metrics } = await measure(snapshot, 25, LOGS);
+  assert.equal(metrics.totalWallClockMs, 403);
+  assert.equal(metrics.streamCompleteMs, null, 'console completion cannot manufacture missing span timing');
+  assert.equal(metrics.metadataRenderReadyMs, null, 'root completion makes no cold readiness claim');
+  await assert.rejects(measure(snapshot, 25, LOGS, true), /Timed out awaiting metadata/);
+});
+
+test('#7005 default and cold modes retain their distinct renderer and root requirements', async () => {
+  const noFinalize = { ...SNAPSHOT, spans: SNAPSHOT.spans.filter(span => span.name !== 'scene.finalize') };
+  assert.equal((await measure(noFinalize, 25)).metrics.totalWallClockMs, 403);
+  await assert.rejects(measure(noFinalize, 25, LOGS, true), /Timed out/);
+  const openRoot = { ...SNAPSHOT, end: null };
+  await assert.rejects(measure(openRoot, 25), /Timed out awaiting ended load root/);
+  const cold = await measure(openRoot, 25, LOGS, true);
+  assert.equal(cold.metrics.totalWallClockMs, null);
+  assert.equal(cold.metrics.streamCompleteMs, 301);
+  for (const requireMetadataRender of [false, true]) {
+    await assert.rejects(measure(SNAPSHOT, 25, LOGS, requireMetadataRender, false), /Timed out/);
+  }
 });

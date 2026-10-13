@@ -1,0 +1,50 @@
+{
+  "issue": 7005,
+  "reviewFinding": 4254577994,
+  "baseline": "46d34e457c2d6f02a17ef05f0b1572803c17d30e",
+  "affectedSources": [
+    "e56e2134f6d35affe81b8ff0c80df62ebf901cb4",
+    "c5af60af0d02ac647ad11d8c27dee168d7412d73",
+    "eb4a1e9f59ec0f43718dd4b6e4bca3d7b7d7212d"
+  ],
+  "correction": "The PR inadvertently applied the cold/frame metadata-render predicate to the default CI benchmark. Baseline default completion required an ended load root and allocated canvas; only cold/frame readiness required metadata, geometry and scene.finalize. Restore those separate contracts, while removing console completion fallback and preserving trace validation.",
+  "historicalEvidenceCorrections": {
+    "admission-diagnostics-qualification.json": "The deadline was unchanged, but the default completion predicate was strengthened. The claim that no readiness requirements changed was incorrect.",
+    "hosted-incomplete-qualification.json": "The raw Snowdon failure remains authentic, including device loss and missing scene.finalize. The new default predicate introduced by this PR caused the timeout. This was not an unchanged baseline gate. GPU-contaminated baseline samples can finish under root/canvas completion and are excluded from timing comparison.",
+    "failure-artifact-review-qualification.json": "An ended valid root with no child spans can satisfy default completion and provides totalWallClockMs. It cannot satisfy the stronger cold/frame predicate. The earlier regression encoded the unintended default requirement."
+  },
+  "preservedOriginalRuns": [
+    "https://github.com/LTplus-AG/ifc-lite/actions/runs/38338258168",
+    "https://github.com/LTplus-AG/ifc-lite/actions/runs/38339686250"
+  ],
+  "runtimeObservation": "Unrecovered device loss is real; its causal mechanism is not proven. GPU recovery ownership remains with the other thread. Restoring default completion does not establish healthy-device or visible-pixel qualification.",
+  "freshRunPolicy": "One new exact-source hosted qualification is justified after correcting this actual harness defect. Preserve prior failed runs; do not retry unchanged source or relax established cold/frame requirements.",
+  "validation": {
+    "rootTypecheck": {
+      "passed": true,
+      "testFiles": 4076,
+      "packages": 66
+    },
+    "pairedModes": "Actual ViewerBenchmarkPage: default accepts ended-root/missing-finalize, cold rejects; default rejects open root, cold accepts completed metadata/geometry/finalize; both reject unallocated canvas. Empty child spans yield default totalWallClockMs, never manufactured streamCompleteMs. Existing spec assertions stay unchanged.",
+    "uuidRemovalOracle": {
+      "removed": {
+        "passed": 0,
+        "failed": 1,
+        "skipped": 0,
+        "assertion": "2 != 6 artifacts"
+      },
+      "exactRestoration": {
+        "passed": 6,
+        "failed": 0,
+        "skipped": 0
+      }
+    },
+    "sourceTextGuard": "PASS; no exemptions",
+    "focusedRootNode": {
+      "passed": 75,
+      "failed": 0,
+      "skipped": 0
+    },
+    "changedFileLint": "PASS"
+  }
+}

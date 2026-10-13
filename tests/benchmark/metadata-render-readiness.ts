@@ -98,8 +98,9 @@ export function observedReadinessFollowsCompletion(observedMs: unknown, completi
 const RENDERER_INIT_FAILED = /\[Viewport\] Renderer init failed/;
 
 /**
- * Metadata + geometry + renderer finalize + allocated canvas; no WebGPU
- * pixel-readback claim (#3978). Signals come from the load-trace spans.
+ * Completion modes preserve their distinct contracts: cold/frame qualification
+ * requires metadata + geometry + renderer finalize; the default viewer benchmark
+ * requires an ended load root. Both require an allocated canvas, not pixel readback.
  */
 export async function waitForMetadataRenderReadiness(options: {
   trace: () => Promise<LoadTraceProbe | null>;
@@ -108,7 +109,7 @@ export async function waitForMetadataRenderReadiness(options: {
   now: () => number;
   pause: () => Promise<void>;
   timeoutMs: number;
-  requireRootEnd?: boolean;
+  completionMode?: 'load-root' | 'metadata-render';
 }): Promise<number> {
   const start = options.now();
   let traceSeen = false;
@@ -131,9 +132,11 @@ export async function waitForMetadataRenderReadiness(options: {
     const metadata = done.has(metadataSpan);
     const geometry = done.has('geometry.streamComplete');
     const renderer = done.has('scene.finalize');
-    if (metadata && geometry && renderer && (!options.requireRootEnd || probe?.ended) && await options.canvasReady()) return options.now();
+    const complete = options.completionMode === 'load-root' ? probe?.ended : metadata && geometry && renderer;
+    if (complete && await options.canvasReady()) return options.now();
     await options.pause();
   }
   if (!traceSeen) throw new Error('Missing benchmark load trace: require a viewer built after #6979 with perfTrace enabled (#7005)');
-  throw new Error('Timed out awaiting metadata, geometry, renderer finalize and allocated canvas; sample incomplete');
+  const required = options.completionMode === 'load-root' ? 'ended load root' : 'metadata, geometry, renderer finalize';
+  throw new Error(`Timed out awaiting ${required} and allocated canvas; sample incomplete`);
 }

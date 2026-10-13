@@ -25,6 +25,47 @@ const INTENT_KEYS = ['nodeType', 'operation', 'baseUrl', 'version', 'projectId',
 const TOPIC_KEYS = ['title', 'topic_type', 'topic_status', 'priority', 'labels', 'assigned_to', 'stage', 'description', 'due_date'];
 const COMMENT_KEYS = ['comment', 'viewpoint_guid', 'reply_to_comment_guid'];
 const SCHEMA_KEYS = new Set([...INTENT_KEYS, ...TOPIC_KEYS, ...COMMENT_KEYS]);
+const PAYLOAD_KEYS = new Set([...TOPIC_KEYS, ...COMMENT_KEYS]);
+const JOURNAL_KEYS = new Set([...SCHEMA_KEYS, 'id', 'origin', 'target', 'createdAt', 'updatedAt', 'entries',
+  'batchId', 'batchName', 'imported', 'serverUrl', 'projectName', 'userId', 'remoteTopicGuid', 'dependsOn',
+  'subject', 'digest', 'state', 'attempts', 'queuedAt', 'sentAt', 'receipt', 'failure', 'blocked', 'check',
+  'force', 'baseline', 'remoteGuid', 'at', 'evidence', 'topicActions', 'code', 'message', 'status',
+  'result', 'candidates', 'note', 'guid', 'author', 'date']);
+
+/** These candidates are built from the closed outbox schema, never arbitrary server DTOs. */
+function assertJournalValues(value: BcfPublication | string, secrets: readonly string[]): void {
+  const representations = secrets.flatMap(secret => [secret, JSON.stringify(secret).slice(1, -1)]);
+  const pending: Array<{ value: unknown; payload: boolean; rootPayload: boolean }> = [{ value, payload: false, rootPayload: false }];
+  const visited = new WeakMap<object, number>();
+  while (pending.length) {
+    const frame = pending.pop()!;
+    const item = frame.value;
+    const scalar = typeof item === 'string' ? item : item === null || typeof item !== 'object' ? JSON.stringify(item) : undefined;
+    if (scalar !== undefined && representations.some(secret => scalar.includes(secret))) {
+      throw new BcfWriteRefusedError('BCF publication refused: generated journal metadata contains a credential.');
+    }
+    if (item && typeof item === 'object') {
+      const scope = frame.payload ? frame.rootPayload ? 2 : 4 : 1;
+      if (((visited.get(item) ?? 0) & scope) !== 0) continue;
+      visited.set(item, (visited.get(item) ?? 0) | scope);
+    }
+    if (Array.isArray(item)) for (const child of item) pending.push({ ...frame, value: child });
+    else if (item && typeof item === 'object') for (const [key, child] of Object.entries(item)) {
+      const fixedKey = frame.payload ? frame.rootPayload && PAYLOAD_KEYS.has(key) : JOURNAL_KEYS.has(key);
+      if (!fixedKey) pending.push({ value: key, payload: false, rootPayload: false });
+      const rootPayload = !frame.payload && (key === 'payload' || key === 'baseline');
+      pending.push({ value: child, payload: frame.payload || rootPayload, rootPayload });
+    }
+  }
+}
+
+function safeEntryId(secrets: readonly string[]): string {
+  for (let draw = 0; draw < 16; draw++) {
+    const id = crypto.randomUUID();
+    if (secrets.every(secret => !id.includes(secret) && !id.includes(JSON.stringify(secret).slice(1, -1)))) return id;
+  }
+  throw new BcfWriteRefusedError('BCF publication refused: no credential-free journal identifier was available.');
+}
 
 export function flowPublicationId(target: Pick<PublicationTarget, 'serverUrl' | 'projectId'>): string {
   return `flow-${digestStrings([`s:${normalizeServerUrl(target.serverUrl)}`, `p:${target.projectId}`])}`;
@@ -64,7 +105,7 @@ function admitIntent(intent: BcfWriteIntent, secrets: readonly string[]): void {
   try { url = new URL(intent.baseUrl); } catch { return refuse(); }
   if (url.username || url.password) refuse();
   const serialized = JSON.stringify(intent);
-  if (/authorization\s*:\s*bearer\s+|"Bearer (?=[A-Za-z0-9._~+\/=-]*[0-9._~+\/=-])[A-Za-z0-9._~+\/=-]{8,}"|[?&](?:access_token|token|password|secret)=|"(?:authorization|password|access_token|token|secret)"\s*:/i.test(serialized)) refuse();
+  if (/authorization\s*:\s*bearer\s+|"Bearer (?=[A-Za-z0-9._~+/=-]*[0-9._~+/=-])[A-Za-z0-9._~+/=-]{8,}"|[?&](?:access_token|token|password|secret)=|"(?:authorization|password|access_token|token|secret)"\s*:/i.test(serialized)) refuse();
   const encoded = secrets.filter(secret => secret.length > 0).map(secret => JSON.stringify(secret).slice(1, -1));
   const reject = (value: unknown) => {
     const text = JSON.stringify(value);
@@ -90,7 +131,7 @@ export function createViewerBcfWriteGateway(now: () => Date = () => new Date()):
       const topicKey = intent.topicGuid ?? '';
       const payload = JSON.parse(JSON.stringify(intent.payload)) as Record<string, unknown>;
       const digest = entryDigest(target, intent.operation, topicKey, payload);
-      const entryId = crypto.randomUUID();
+      const entryId = safeEntryId(sensitive);
       const at = now().toISOString();
       let unresolved: OutboxEntry | undefined;
       const claimed = await mutatePublication(id, current => {
@@ -99,10 +140,12 @@ export function createViewerBcfWriteGateway(now: () => Date = () => new Date()):
         if (unresolved) return null;
         const entry: OutboxEntry = { id: entryId, operation: intent.operation, topicGuid: '', ...(intent.topicGuid ? { remoteTopicGuid: intent.topicGuid } : {}),
           payload, digest, state: 'sending', attempts: 1, queuedAt: at, sentAt: at };
-        return { ...record, updatedAt: at, entries: [...record.entries, entry] };
+        const next = { ...record, updatedAt: at, entries: [...record.entries, entry] };
+        assertJournalValues(next, sensitive);
+        return next;
       });
       if (unresolved) {
-        throw new BcfWriteRefusedError(`${intent.nodeType}: an identical earlier write to ${host(intent.baseUrl)} (queued ${unresolved.queuedAt}) has an unknown outcome. Open BCF → Drafts & publication and check the server before running this node again.`);
+        throw new BcfWriteRefusedError(`${intent.nodeType}: an identical earlier write to ${host(intent.baseUrl)} has an unknown outcome. Open BCF → Drafts & publication and check the server before running this node again.`);
       }
       if (!claimed?.entries.some(entry => entry.id === entryId)) {
         throw new BcfWriteRefusedError(`${intent.nodeType}: the write intent could not be recorded in browser storage, so nothing was sent.`);
@@ -118,7 +161,7 @@ export function createViewerBcfWriteGateway(now: () => Date = () => new Date()):
           if (typeof value !== 'string' || value.length === 0) throw new Error('BCF server receipt has no valid identifier.');
           if (representations.some(secret => value.includes(secret))) throw new Error('BCF server receipt contains a credential.');
         }
-        await settle(id, entryId, entry => markDone(entry, { remoteGuid: result.guid, at: now().toISOString(), evidence: 'response' }));
+        await settle(id, entryId, entry => markDone(entry, { remoteGuid: result.guid, at: now().toISOString(), evidence: 'response' }), sensitive);
         return result;
       } catch (error) {
         const classified = classifyWriteError(error, now().toISOString());
@@ -127,7 +170,7 @@ export function createViewerBcfWriteGateway(now: () => Date = () => new Date()):
             classified.failure.message = classified.failure.message.split(representation).join('[redacted]');
           }
         }
-        await settle(id, entryId, entry => classified.state === 'failed' ? markFailed(entry, classified.failure) : markUncertain(entry, classified.failure));
+        await settle(id, entryId, entry => classified.state === 'failed' ? markFailed(entry, classified.failure) : markUncertain(entry, classified.failure), sensitive);
         if (classified.state === 'failed') {
           if (sensitive.length === 0) throw error;
           // Remote detail and causes can echo literal/Player tokens unknown to
@@ -145,10 +188,16 @@ export function createViewerBcfWriteGateway(now: () => Date = () => new Date()):
 }
 
 /** Record the attempt's own answer; if storage refuses, the entry stays `sending` and becomes `uncertain` on reload. */
-async function settle(id: string, entryId: string, apply: (entry: OutboxEntry) => OutboxEntry): Promise<void> {
+async function settle(id: string, entryId: string, apply: (entry: OutboxEntry) => OutboxEntry, secrets: readonly string[]): Promise<void> {
   const saved = await mutatePublication(id, current => {
     const entry = current?.entries.find(item => item.id === entryId);
-    return current && entry?.state === 'sending' ? replaceEntry(current, apply(entry), new Date().toISOString()) : null;
+    if (!current || entry?.state !== 'sending') return null;
+    const next = replaceEntry(current, apply(entry), new Date().toISOString());
+    try { assertJournalValues(next, secrets); }
+    catch {
+      throw new Error('BCF write outcome unknown — the server may have applied the write, but its answer could not be safely recorded. Check the server before sending again.');
+    }
+    return next;
   });
   if (!saved) console.warn('[BCF outbox] Flow write receipt could not be saved; the entry will be treated as uncertain');
 }

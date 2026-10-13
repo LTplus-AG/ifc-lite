@@ -73,7 +73,7 @@ function topicFields(value: unknown): Record<string, unknown> | undefined {
   return value;
 }
 
-export async function startLocalBcfServer(options: { anonymousReadVisibility?: 'filtered' | 'full'; allowAnonymousWrites?: boolean; token?: string; echoWriteToken?: boolean; afterWriteStatus?: 303 | 409 | 500; guidPrefix?: string; commentResponseTopicGuid?: string; commentResponseViewpointGuid?: string | null; commentResponseReplyToCommentGuid?: string | null } = {}): Promise<{
+export async function startLocalBcfServer(options: { port?: number; anonymousReadVisibility?: 'filtered' | 'full'; allowAnonymousWrites?: boolean; token?: string; echoWriteToken?: boolean; afterWriteStatus?: 303 | 409 | 500; guidPrefix?: string; commentResponseTopicGuid?: string; commentResponseViewpointGuid?: string | null; commentResponseReplyToCommentGuid?: string | null } = {}): Promise<{
   baseUrl: string;
   state: LocalBcfState;
   close: () => Promise<void>;
@@ -246,7 +246,7 @@ export async function startLocalBcfServer(options: { anonymousReadVisibility?: '
   });
   await new Promise<void>((resolve, reject) => {
     server.once('error', reject);
-    server.listen(0, '127.0.0.1', () => { server.removeListener('error', reject); resolve(); });
+    server.listen(options.port ?? 0, '127.0.0.1', () => { server.removeListener('error', reject); resolve(); });
   });
   const address = server.address();
   if (!address || typeof address === 'string') throw new Error('Local BCF server has no TCP address');

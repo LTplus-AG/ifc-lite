@@ -800,6 +800,12 @@ jobs:
           # the ordinary whole-change revert resumes automatically.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- apps/report-service/src/github-comments.ts | grep -Fxq 'apps/report-service/src/github-comments.ts'; then
             oracle_args+=(--mutation apps/report-service/test/fixtures/issue-binding.oracle.patch)
+          # Keep the new quarantine module loadable while removing historical
+          # NDA refusal and complete-scan requirements. Real PostgreSQL/S3
+          # lifecycle assertions must fail; every changed test runs both sides.
+          # Once quarantine is on main, ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- apps/report-service/src/public-quarantine.ts | grep -Fxq 'apps/report-service/src/public-quarantine.ts'; then
+            oracle_args+=(--mutation apps/report-service/test/fixtures/public-quarantine.oracle.patch)
           fi
           node scripts/check-test-revert-oracle.mjs "${oracle_args[@]}"
       - name: Remove owned report oracle prerequisites

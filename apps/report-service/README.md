@@ -79,3 +79,40 @@ Before enabling, qualify the configured PostHog query shape/read scopes with a r
 The resolver uses PostHog’s dynamically added `events.issue_id`, not the historical `properties.$exception_issue_id`. The [pinned upstream database mapping](https://github.com/PostHog/posthog/blob/8c409d41eb190b96d4e0eaaef5fae11a2009c1cc/posthog/hogql/database/database.py#L3091) resolves current fingerprint ownership and is installed for ordinary project queries; the base `EventsTable` declaration alone omits these dynamic fields. Issue retrieval requires [`error_tracking:read`](https://posthog.com/docs/api/error-tracking-3). These source checks still require live verification against the configured project.
 
 Operational routing, historical hosted receipts and activation gaps are tracked in the [deployment runbook](../../deploy/reports/railway.md). Before restoring a production snapshot, stop the entire API and all workers and complete the [independent deletion/outbox reconciliation procedure](../../deploy/reports/recovery.md). The admission flag alone does not pause workers; restore acceptance remains outstanding.
+
+### Public model quarantine foundation (not enabled)
+
+The public sharing capability remains `false`; the HTTP draft endpoint still
+rejects public attachments. This foundation does not publish models or qualify a
+malware scanner. Private support uploads retain their existing limits and consent.
+
+A future public submission must carry separate versioned permission covering
+redistribution authority, review of confidential content, irreversible downloaded
+copies, and posting a download link. A standard or custom NDA already attached to
+that report prevents public sharing even when a later upload selects no NDA.
+Initial public admission is `.ifc` up to 1 GiB; the scanner must independently
+verify uncompressed STEP format rather than trust the filename.
+
+After canonical actual-byte verification, submission binds a private quarantine
+job to the full SHA-256, byte count, consent, policy and expiry. Only a trusted
+scanner worker can lease the job; leases expire after 20 minutes and stop after
+three attempts. A clean result must name the qualified immutable scanner image,
+fresh signatures (at most 24 hours old), STEP format, exact bytes and complete scan. Infection,
+inconclusive/limited scans, changed bytes, stale signatures and stale worker
+leases cannot advance it. A second maintainer review must explicitly approve
+redistribution and confidentiality of the same hash. Malware clearance alone
+proves neither permission nor privacy.
+
+Deletion or withdrawal commits revocation before storage cleanup. Scan results
+cannot revive a revoked report; private hashes, consent and review evidence are
+erased. Provider cleanup failures retain the existing upload record and capacity
+reservation for retry.
+
+Still required before enabling this capability: the isolated no-network scanner
+runner with qualified signature updates and resource limits, real clean IFC and
+EICAR refusal evidence, immutable separate public copies verified against the
+approved hash, opaque-token delivery with revocation/retention and bandwidth
+limits, reviewed viewer consent, and idempotent public-link publication. The
+quarantine integration tests use real PostgreSQL and S3 bytes but synthetic
+trusted-worker attestations; they prove lifecycle invariants, not malware
+clearance or safe public delivery. No new hosting resources are provisioned here.

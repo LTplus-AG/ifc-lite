@@ -87,6 +87,7 @@ export interface UploadInput {
   confidentiality: "none" | "standard" | "custom";
   uploadConsent: true;
   publicModelConfirmed?: boolean;
+  publicSharingConsent?: PublicSharingConsent;
 }
 export interface ReportReceipt {
   publicationHold?: "review_required";
@@ -225,4 +226,20 @@ export function isUploadInput(
 export function isReportCorrelation(value: unknown): value is ReportCorrelation {
   return isRecord(value) && isUuid(value.eventId) && isUuid(value.sessionId) && boundedText(value.buildSha, 80) &&
     Object.keys(value).every(key => ["eventId", "sessionId", "buildSha"].includes(key));
+}
+
+/** Separate from purpose-bound private support consent. Never inferred from visibility. */
+export interface PublicSharingConsent {
+  version: "public-model-v1";
+  authorityConfirmed: true;
+  redistributionReviewed: true;
+  confidentialContentReviewed: true;
+  downloadedCopiesCannotBeRecalled: true;
+  publishDownloadLink: true;
+}
+export function isPublicSharingConsent(value: unknown): value is PublicSharingConsent {
+  return isRecord(value) && value.version === "public-model-v1" &&
+    value.authorityConfirmed === true && value.redistributionReviewed === true &&
+    value.confidentialContentReviewed === true && value.downloadedCopiesCannotBeRecalled === true &&
+    value.publishDownloadLink === true && Object.keys(value).length === 6;
 }

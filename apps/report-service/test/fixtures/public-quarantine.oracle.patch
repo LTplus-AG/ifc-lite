@@ -1,0 +1,20 @@
+--- a/apps/report-service/src/public-quarantine.ts
++++ b/apps/report-service/src/public-quarantine.ts
+@@ -53,7 +53,7 @@
+ export function requirePublicConsent(report: ReportRow, input: UploadInput): void {
+   requireCondition(
+     input.publicModelConfirmed === true && isPublicSharingConsent(input.publicSharingConsent) &&
+-      input.confidentiality === "none",
++      input.confidentiality === "none" && !report.agreement && !report.custom_nda,
+     400, "public_consent", "Public sharing requires reviewed redistribution permission and no confidentiality agreement on this report.",
+   );
+   requireCondition(/\.ifc$/i.test(input.name) && input.size <= PUBLIC_MAX_BYTES,
+@@ -109,7 +109,7 @@
+ function cleanEvidence(scan: ScanEvidence, job: QuarantineRow, qualifiedImage: string): boolean {
+   const finished = Date.parse(scan.finishedAt);
+   const signatures = Date.parse(scan.signaturesAt);
+-  return scan.outcome === "clean" && scan.format === "ifc-step" && scan.sha256 === job.sha256 &&
++  return scan.outcome === "clean" && scan.format === "ifc-step" && scan.complete === true && scan.sha256 === job.sha256 &&
+     scan.byteSize === Number(job.byte_size) && scan.policyVersion === job.policy_version &&
+     /^sha256:[a-f0-9]{64}$/.test(qualifiedImage) && scan.imageDigest === qualifiedImage &&
+     scan.engineVersion.length <= 80 && /^\d+\.\d+\.\d+(?:[.-][a-zA-Z0-9.-]+)?$/.test(scan.engineVersion) && /^\d{1,12}$/.test(scan.signatureVersion) &&

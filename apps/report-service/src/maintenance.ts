@@ -4,6 +4,7 @@
 
 import { audit, transaction, type Db } from "./database.js";
 import type { ModelStorage } from "./storage.js";
+import { revokePublicQuarantine } from "./public-quarantine.js";
 import type { ReportRow, UploadRow } from "./reports.js";
 export async function removeUpload(
   db: Db,
@@ -11,6 +12,17 @@ export async function removeUpload(
   row: UploadRow,
   actor: string,
 ): Promise<void> {
+  // Revoke before provider I/O: an unavailable object store must never roll back
+  // the owner's withdrawal. The existing durable upload row retains cleanup work.
+  await transaction(db, async (tx) => {
+    const parent = await tx.query<{ status: string; expires_at: Date }>(
+      "SELECT status,expires_at FROM model_reports WHERE id=$1 FOR UPDATE", [row.report_id]);
+    const uploads = await tx.query<UploadRow>("SELECT * FROM report_uploads WHERE id=$1 FOR UPDATE", [row.id]);
+    const current = uploads.rows[0];
+    if (!current || (actor === "retention" && current.expires_at > new Date() &&
+      parent.rows[0]?.status !== "deleted" && parent.rows[0]!.expires_at > new Date())) return;
+    await revokePublicQuarantine(tx, row.report_id);
+  });
   await transaction(db, async (tx) => {
     const parent = await tx.query<{ status: string; expires_at: Date }>(
       "SELECT status,expires_at FROM model_reports WHERE id=$1 FOR UPDATE",
@@ -99,6 +111,7 @@ export async function deleteReport(
       "UPDATE model_reports SET status='deleted',agreement=NULL,agreement_pdf=NULL,custom_nda=NULL,issue_binding=NULL,draft='{}'::jsonb WHERE id=$1",
       [id],
     );
+    await revokePublicQuarantine(tx, id);
     await tx.query("DELETE FROM report_outbox WHERE report_id=$1", [id]);
     await audit(tx, id, "report_deletion_requested", ownerId);
     return true;

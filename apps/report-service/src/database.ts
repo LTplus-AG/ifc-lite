@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import pg, { type PoolClient } from "pg";
+import { migratePublicQuarantine } from "./public-schema.js";
 export type Db = Pick<pg.Pool, "query" | "connect">;
 export function openDatabase(url: string, onConnectionError?: () => void): pg.Pool {
   const pool = new pg.Pool({ connectionString: url, max: 6 });
@@ -82,6 +83,7 @@ export async function migrate(db: Db): Promise<void> {
     CREATE INDEX IF NOT EXISTS report_uploads_expiry ON report_uploads(expires_at);
     CREATE INDEX IF NOT EXISTS model_reports_expiry ON model_reports(expires_at);
   `);
+    await migratePublicQuarantine(tx);
   });
 }
 export async function audit(

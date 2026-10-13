@@ -32,8 +32,8 @@ for (const [corruptServedWasm, dirtyWorkingTree] of [[false, false], [true, fals
     git(['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-qm', 'fixture']);
     if (dirtyWorkingTree) writeFileSync(join(repo, 'uncommitted-source.txt'), 'uncommitted');
     // Build tools are bounded stubs; git worktree registration and shell traps are real.
-    writeFileSync(join(bin, 'pnpm'), '#!/bin/sh\nif [ \"$1\" = install ]; then exit 0; fi\nmkdir -p apps/viewer/dist/assets\ncp packages/wasm/pkg/ifc-lite_bg.wasm apps/viewer/dist/assets/ifc-lite_bg-test.wasm\nif [ \"$WRAPPER_CORRUPT_WASM\" = 1 ]; then printf wrong-engine > apps/viewer/dist/assets/ifc-lite_bg-test.wasm; fi\n', { mode: 0o755 });
-    writeFileSync(join(bin, 'node'), `#!/bin/sh\nexec '${process.execPath}' \"$@\"\n`, { mode: 0o755 });
+    writeFileSync(join(bin, 'pnpm'), '#!/bin/sh\nif [ "$1" = install ]; then exit 0; fi\nmkdir -p apps/viewer/dist/assets\ncp packages/wasm/pkg/ifc-lite_bg.wasm apps/viewer/dist/assets/ifc-lite_bg-test.wasm\nif [ "$WRAPPER_CORRUPT_WASM" = 1 ]; then printf wrong-engine > apps/viewer/dist/assets/ifc-lite_bg-test.wasm; fi\n', { mode: 0o755 });
+    writeFileSync(join(bin, 'node'), `#!/bin/sh\nexec '${process.execPath}' "$@"\n`, { mode: 0o755 });
     writeFileSync(join(bin, 'wasm-pack'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
     writeFileSync(join(bin, 'npx'), `#!/bin/sh
 previous=''

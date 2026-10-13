@@ -1,0 +1,39 @@
+{
+  "issue": 7005,
+  "pullRequest": 7533,
+  "priorHead": "8d92e66bbd7bd187fc34b730adbc507d9065b2b0",
+  "originalCiFailure": {
+    "run": 38336473390,
+    "job": 115099012176,
+    "cause": "Four counter fixtures returned true instead of executing the span readiness callback."
+  },
+  "fix": "Execute actual serialized callback with required loader spans and allocated canvas; reject loader completion outside ended root while permitting independently awaited renderer finalization after root.",
+  "validation": {
+    "focusedTests": {
+      "passed": 59,
+      "failed": 0,
+      "skipped": 0
+    },
+    "guardRemovalOracle": {
+      "passed": 15,
+      "assertionFailures": 6,
+      "restoredPassed": 21,
+      "restoration": "Exact production bytes restored"
+    },
+    "rootTypecheck": {
+      "passed": true,
+      "testFiles": 4070,
+      "packages": 66
+    }
+  },
+  "sha256": {
+    "tests/benchmark/load-trace-metrics.ts": "cdda6428012e55910103095e7e66437fd5b97434d13bab197c12fcca88a33d01",
+    "tests/benchmark/metadata-render-readiness.ts": "c675587ea11908fe9c475703df6e6674520116a69c6bf10fa533a1cff9ec11b8",
+    "scripts/viewer-benchmark-span-metrics.test.mjs": "84d0a58ca4fb5ffb23727e7cdcd60ec482e4e98418af66cd651b67cb1a5c4631",
+    "scripts/viewer-benchmark-load-counters.test.mjs": "9bdc419bf57acd91fa37854f078b694d78f52dff56e57db5e273ffd60d0efa47"
+  },
+  "limitations": [
+    "Prior hosted functional import proof covers prior head only; final source needs a fresh hosted run.",
+    "No GPU performance, pixel or healthy-device claim."
+  ]
+}

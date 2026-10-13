@@ -219,3 +219,26 @@ test('#7005 malformed span timing and reversed pool clock are refused', () => {
     { name: 'geometry.firstBatch', start: 1000, end: 1100 },
   ] }), /Invalid benchmark span clock/);
 });
+
+test('#7005 deferred renderer completion may follow the loader root', async () => {
+  const snapshot = { ...SNAPSHOT, end: 1320 };
+  const { metrics } = await measure(snapshot, 100);
+  assert.equal(metrics.totalWallClockMs, 320);
+  assert.equal(metrics.canvasHasContent, true);
+  await assert.rejects(measure({ ...snapshot, spans: snapshot.spans.map(span =>
+    span.name === 'scene.finalize' ? { ...span, end: null } : span) }, 25), /Timed out/);
+});
+
+for (const name of ['parser.complete', 'cache.storeReady', 'geometry.streamComplete']) {
+  for (const boundary of ['before', 'after']) {
+   test(`#7005 ${name} cannot complete ${boundary} the loader root`, async () => {
+     const snapshot = { ...SNAPSHOT, spans: [
+       ...SNAPSHOT.spans.filter(span => span.name !== name),
+       { name, thread: 'main', start: boundary === 'before' ? SNAPSHOT.start - 1 : SNAPSHOT.start,
+         end: boundary === 'after' ? SNAPSHOT.end + 1 : SNAPSHOT.end },
+     ] };
+     assert.throws(() => metricsFromLoadTrace(snapshot), /loader completion outside load root/);
+     await assert.rejects(measure(snapshot, 25), /Loader completion outside load root/);
+   });
+  }
+}

@@ -7,6 +7,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { tsImport } from 'tsx/esm/api';
+import { runInNewContext } from 'node:vm';
 
 const { ViewerBenchmarkPage } = await tsImport('../tests/benchmark/viewer-benchmark-page.ts', import.meta.url);
 const { countersFromLoadTrace } = await tsImport('../tests/benchmark/load-trace-metrics.ts', import.meta.url);
@@ -24,7 +25,12 @@ const SNAPSHOT = {
   timeOrigin: 0,
   start: 1000,
   end: 1400,
-  spans: [{ id: 0, name: 'geometry.streamComplete', thread: 'main', start: 1000, end: 1300, parentId: null, milestone: true }],
+  spans: [
+    { id: 0, name: 'geometry.streamComplete', thread: 'main', start: 1000, end: 1300, parentId: null, milestone: true },
+    { id: 1, name: 'parser.complete', thread: 'main', start: 1000, end: 1200, parentId: null, milestone: true },
+    // Renderer finalization may finish after the loader root (#7005).
+    { id: 2, name: 'scene.finalize', thread: 'main', start: 1390, end: 1450, parentId: null },
+  ],
   counters: {
     'msg.geometry.out.count': 12,
     'gpu.uniformWriteBytes': 5120,
@@ -51,6 +57,14 @@ test('#6993 GPU upload counters become structural only when every observed flush
 
 function fakePage(snapshot) {
   const visited = [];
+  // Execute the real serialized page callbacks, including span readiness and
+  // canvas allocation. Returning `true` for unknown probes hid contract drift.
+  const realm = {
+    __IFC_LITE_LOAD_TRACE__: {
+      latest: () => typeof snapshot === 'function' ? snapshot() : snapshot,
+    },
+    document: { querySelector: (selector) => selector === 'canvas' ? { width: 800, height: 600 } : null },
+  };
   return {
     visited,
     on() {},
@@ -60,9 +74,8 @@ function fakePage(snapshot) {
     async waitForLoadState() {},
     async waitForTimeout() {},
     locator() { return { first() { return { async setInputFiles() {} }; } }; },
-    async evaluate(_fn, arg) {
-      if (arg !== '__IFC_LITE_LOAD_TRACE__') return true;
-      return typeof snapshot === 'function' ? snapshot() : snapshot;
+    async evaluate(fn, arg) {
+      return runInNewContext(`(${fn.toString()})(argument)`, { ...realm, argument: arg });
     },
   };
 }
@@ -123,4 +136,15 @@ test('#6957 counters are recorded once they stop moving, not at the load root\'s
   };
   const { recorded } = await run(growing, undefined);
   assert.equal(recorded.counters.scheduling['gpu.buffers'], 50);
+});
+
+
+test('#7005 counter collection rejects a failed renderer span despite complete geometry and healthy counters', async () => {
+  const failed = {
+    ...SNAPSHOT,
+    spans: SNAPSHOT.spans.map(span => span.name === 'scene.finalize'
+      ? { ...span, end: null, attrs: { error: true } }
+      : span),
+  };
+  await assert.rejects(run(failed, undefined), /Renderer failed before metadata\/render readiness/);
 });

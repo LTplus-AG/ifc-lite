@@ -109,6 +109,13 @@ export function metricsFromLoadTrace(snapshot: LoadTraceSnapshotJson | null): Sp
   for (const span of snapshot.spans) {
     if (!span || typeof span.name !== 'string' || !Number.isFinite(span.start) || (span.end !== null &&
         (!Number.isFinite(span.end) || span.end < span.start))) throw new Error('Invalid benchmark load span');
+    // Match the serialized readiness callback's loader clock contract.
+    // scene.finalize is independently awaited and can follow trace.finish.
+    if (span.end !== null && snapshot.end !== null &&
+        ['parser.complete', 'cache.storeReady', 'geometry.streamComplete'].includes(span.name) &&
+        (span.start < snapshot.start || span.end > snapshot.end)) {
+      throw new Error('Invalid benchmark span clock relationship: loader completion outside load root');
+    }
   }
   const out: SpanMetrics = {};
   if (snapshot.end !== null) out.totalWallClockMs = Math.round(snapshot.end - snapshot.start);

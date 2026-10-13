@@ -61,6 +61,13 @@ export function probePageLoadTrace({ key, names }: { key: string; names: readonl
       return { ended: false, done, failed, invalid: 'Malformed load trace span' };
     }
     if (span.name === 'parser.failed' || span.attrs?.error === true) failed.push(span.name);
+    // Loader-owned completions precede trace.finish. Renderer finalization
+    // is deferred separately and may legitimately finish after the root.
+    if (span.end !== null && snapshot.end !== null &&
+        ['parser.complete', 'cache.storeReady', 'geometry.streamComplete'].includes(span.name) &&
+        (span.start < snapshot.start || span.end > snapshot.end)) {
+      return { ended: false, done, failed, invalid: 'Loader completion outside load root' };
+    }
     if (span.end !== null && names.includes(span.name)) done.push(span.name);
   }
   return {

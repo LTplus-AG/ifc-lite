@@ -10,6 +10,8 @@ COPY examples ./examples
 RUN pnpm install --frozen-lockfile && pnpm build --filter=@ifc-lite/report-service... \
     && pnpm --filter=@ifc-lite/report-service deploy --legacy --prod /service
 FROM node:24-bookworm-slim
+RUN apt-get update && apt-get install -y --no-install-recommends fonts-dejavu-core \
+    && rm -rf /var/lib/apt/lists/*
 ENV NODE_ENV=production PORT=3005
 WORKDIR /service
 COPY --from=build --chown=node:node /service ./

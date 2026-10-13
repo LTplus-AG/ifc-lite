@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { offerErrorReport } from '@/lib/error-reports/context';
 /**
  * Error boundary for `React.lazy` chunk roots.
  *
@@ -94,6 +95,7 @@ export class ChunkErrorBoundary extends Component<
     // real bug with an auto-recovered one, and the render path below would tell
     // the user their tab was out of date when it was not.
     const chunk = isStaleDeploymentError(error);
+    if (!chunk) offerErrorReport({ errorCode: 'component_render_error' });
     console.error(`[chunk-boundary] "${this.props.label}" failed`, error, info);
     // Reported explicitly so it lands as HANDLED rather than as an uncaught
     // error-level exception. When a skew reload is in flight the before_send

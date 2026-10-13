@@ -15,6 +15,8 @@ import { composeInstancedOverrideColor } from './instanced-override-color.js';
 import { BATCH_CONSTANTS } from './constants.js';
 import { createSceneBatchShell } from './scene-batch-upload.js';
 import { createStaticGpuBuffer } from './gpu-static-upload.js';
+import { retainedStreamingFragments } from './scene-streaming-recovery.js';
+import type { ModelTranslations } from './model-translation.js';
 
 export interface RecoveryBucket {
   key: string;
@@ -34,6 +36,9 @@ export interface SceneRecoveryHost {
   finalizeInProgress: boolean;
   streamingFragments: BatchedMesh[];
   pendingBatchKeys: Set<string>;
+  streamedBucketKeys: Set<string>;
+  meshQueue: MeshData[];
+  meshQueueReadIndex: number;
   appearanceController?: { hasActiveDrafts(): boolean };
   appearanceBuckets?: { forget(): void };
   authoredGeneration: number;
@@ -69,7 +74,7 @@ export interface SceneRecoveryHost {
   meshDataMap: Map<number, MeshData[]>;
   colorOverrides: ReadonlyMap<number, readonly [number, number, number, number]> | null;
   appearanceAccessState?: unknown;
-  modelTranslations: { registerDrawable<T>(drawable: T, modelIndex: number): T };
+  modelTranslations: Pick<ModelTranslations, 'registerDrawable' | 'get' | 'getYaw' | 'placeInstances'>;
   dropAllPartialCaches(): void;
   releaseColorOverrideGpu(): void;
   releaseTexturedMeshTexture(mesh: Pick<TexturedMesh, 'texture' | 'sharedTextureKey'>): void;
@@ -100,7 +105,7 @@ function recoveryBlocker(host: SceneRecoveryHost): Exclude<SceneDeviceRecoveryPr
     return { ok: false, reason: 'cpu-geometry-released' };
   }
   if (
-    host.finalizeInProgress || host.streamingFragments.length > 0 || host.pendingBatchKeys.size > 0 ||
+    host.finalizeInProgress || !retainedStreamingFragments(host) || host.pendingBatchKeys.size > 0 ||
     host.appearanceController?.hasActiveDrafts()
   ) {
     return { ok: false, reason: 'scene-not-settled' };
@@ -135,6 +140,9 @@ export function discardSceneGpuResourcesForRecovery(
   host.meshes = [];
   for (const batch of host.batchedMeshes) if (!evicted.has(batch)) destroyGpuResources(batch);
   host.batchedMeshes = [...evicted];
+  // CPU-backed stream pieces are restored from their existing buckets, while
+  // the untouched pending queue resumes only after replacement readiness.
+  host.streamingFragments = [];
   for (const bucket of host.buckets.values()) {
     if (!bucket.batchedMesh || !evicted.has(bucket.batchedMesh)) bucket.batchedMesh = null;
   }
@@ -178,6 +186,7 @@ export function repartitionHydratedRecoveryBucket(
   const hash = key.lastIndexOf('#'), baseKey = hash >= 0 ? key.slice(0, hash) : key;
   const shells: BatchedMesh[] = [], keys: string[] = [];
   host.buckets.delete(key);
+  const streamed = host.streamedBucketKeys.delete(key);
   for (let index = 0; index < chunks.length; index++) {
     const targetKey = nextRecoveryBucketKey(host, baseKey);
     const parts = chunks[index];
@@ -187,6 +196,7 @@ export function repartitionHydratedRecoveryBucket(
     );
     target.key = targetKey; target.meshData = parts; target.batchedMesh = nextShell;
     target.vertexBytes = bucketVertexBytes(parts); host.buckets.set(targetKey, target);
+    if (streamed) host.streamedBucketKeys.add(targetKey);
     for (const part of parts) host.meshDataBucket.set(part, target);
     shells.push(nextShell); keys.push(targetKey);
   }
@@ -261,6 +271,7 @@ function restoreFlatBuckets(
     // bucket and every meshDataBucket edge still describe the complete model.
     host.buckets.delete(originalKey);
     host.dirtyBuckets.delete(originalKey);
+    const streamed = host.streamedBucketKeys.delete(originalKey);
     for (let index = 0; index < staged.length; index++) {
       const { key, parts, batch } = staged[index];
       const target = index === 0 ? bucket : { key, meshData: [], batchedMesh: null, vertexBytes: 0 };
@@ -271,6 +282,7 @@ function restoreFlatBuckets(
       host.buckets.set(key, target);
       for (const part of parts) host.meshDataBucket.set(part, target);
       if (dirty) host.dirtyBuckets.add(key);
+      if (streamed) host.streamedBucketKeys.add(key);
       restored.push(batch);
     }
     host.activeBucketKey.set(baseKey, staged.at(-1)!.key);
@@ -284,6 +296,11 @@ function restoreInstancedTemplates(host: SceneRecoveryHost, device: GPUDevice): 
   for (let slot = 0; slot < host.instancedTemplateCpu.length; slot++) {
     const cpu = host.instancedTemplateCpu[slot];
     if (!cpu) continue;
+    // A public placement may have changed while the prior device was absent.
+    // Use the canonical immutable basis and current pose before uploading; a
+    // stable retry must not copy an old IFNS matrix into the replacement GPU.
+    host.modelTranslations.placeInstances(cpu.instanceData, cpu.modelIndex, INSTANCE_STRIDE_BYTES,
+      cpu.canonicalAnchors, cpu.canonicalMatrixTranslations);
     let vertexBuffer: GPUBuffer | undefined, indexBuffer: GPUBuffer | undefined, instanceBuffer: GPUBuffer | undefined;
     let rteDeltas: InstancedRteDeltaStream | undefined;
     try {

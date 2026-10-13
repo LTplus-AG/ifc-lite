@@ -4,7 +4,7 @@
 
 ## Parties and report
 
-The recipient is **LTplus AG, Switzerland** (LTplus). The disclosing party is the person or organisation identified in the acceptance record (Discloser). The record identifies the representative, report reference, agreement version, exact text digest and acceptance time. Each representative confirms authority to act for the identified party.
+The recipient is **LTplus AG, Bolligenstrasse 24A, 3006 Bern, Switzerland**, represented by **Louis Trümpler, founder**, contact **info@lt.plus** (LTplus). The disclosing party is the person or organisation identified in the acceptance record (Discloser). The record identifies the representative, report reference, agreement version, exact text digest and acceptance time. Each representative confirms authority to act for the identified party.
 
 ## Purpose and confidential material
 

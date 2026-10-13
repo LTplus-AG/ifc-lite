@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { offerErrorReport } from '@/lib/error-reports/context';
 import type { RenderDegradationInfo } from '@ifc-lite/renderer';
 import { posthog } from '@/lib/analytics';
 import {
@@ -98,6 +99,7 @@ export function reportDeviceLost(
 ): void {
   if (reported) return;
   reported = true;
+  offerErrorReport({ errorCode: 'gpu_device_lost' });
 
   console.warn('[Viewport] GPU device lost:', info.reason, info.message);
 
@@ -182,6 +184,7 @@ export function reportPersistentRenderDegradation(
 ): void {
   if (degradationReported) return;
   degradationReported = true;
+  offerErrorReport({ errorCode: 'persistent_render_degradation' });
 
   console.warn(
     '[Viewport] rendering degraded without recovering:',

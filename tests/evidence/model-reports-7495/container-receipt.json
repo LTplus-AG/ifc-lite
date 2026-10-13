@@ -1,0 +1,13 @@
+{
+  "recordedAt": "2026-10-12T17:16:06.308Z",
+  "image": "sha256:cbc979f9c10b7563c04693253d726eb43f89eebc8153f9db7236fa1bf7f445be",
+  "sourceCommit": "ec341a4f5b20418a525aa2e6444030a55d4244b8",
+  "nonRootUid": "1000",
+  "health": 200,
+  "session": 200,
+  "foreignOrigin": 403,
+  "ndaSigningEnabled": false,
+  "receiptFontPresent": true,
+  "privateNetwork": true,
+  "scope": "Built Docker runtime with isolated local PostgreSQL schema. No live GitHub publication or production storage."
+}

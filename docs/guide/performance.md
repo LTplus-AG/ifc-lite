@@ -105,6 +105,13 @@ baseline. Device-loss samples still require the existing contamination checks.
 When a device is replaced during a load, the viewer retries retained source
 geometry and pending instanced shards even if no later source update arrives.
 A stream that ends while the device is absent is finalized after recovery.
+Already uploaded streaming fragments can recover when their original CPU owners
+remain retained. Replacement pipelines and geometry are staged before the device
+becomes available to frame or stream-end consumers; the pending cursor resumes
+once after that commit. A source clear, replacement, active finalizer or released
+CPU geometry prevents this retained-stream recovery. With performance tracing
+enabled, `gpu.recovery.outcome.*` counters and a categorical recovery console
+message record the actual result, even when the load span has already ended.
 Queued moves, rotations, colours, removals and remeshed slots also retry.
 Independent annotation, alignment and grid lines, annotation fills and texts
 retain their CPU inputs for the same recovery retry. A failed symbolic upload

@@ -8,7 +8,8 @@
  * `export_ifc` writes a STEP file (with any pending mutations applied),
  * `export_csv` and `export_json` produce tabular dumps, and `export_glb` /
  * `export_obj` export geometry via the Rust mesh pipeline (wasm, headless).
- * `export_ifcx` and `export_pdf_report` remain stubbed pending the IFC5 / PDF stack.
+ * `export_ifcx` and `export_usd` export the current model via Rust too;
+ * `export_pdf_report` remains stubbed pending the PDF stack.
  */
 
 import { writeFile, readFile } from 'node:fs/promises';
@@ -21,8 +22,9 @@ import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import { resolveSafePath } from '../safe-path.js';
 
 /**
- * Run `fn` over the model's raw IFC bytes for the wasm exporters: prefer the
- * in-memory source, fall back to disk.
+ * Run `fn` over the current model's IFC bytes for the wasm exporters: bake
+ * pending edits through the same STEP exporter as export_ifc, otherwise prefer
+ * the in-memory source and fall back to disk.
  *
  * Scoped rather than returning the buffer (#2183): each Rust exporter below
  * takes the WHOLE file, so the source really is materialised — but only for the
@@ -32,6 +34,10 @@ async function withIfcBytes<T>(
   m: ReturnType<typeof resolveModel>,
   fn: (bytes: Uint8Array) => Promise<T>,
 ): Promise<T> {
+  if (m.backend.getMutationView()?.hasPendingChanges()) {
+    const content = m.bim.export.ifc(undefined, { includeMutations: true });
+    return fn(typeof content === 'string' ? new TextEncoder().encode(content) : content);
+  }
   if (m.store.source.byteLength > 0) return m.store.source.withMaterializedAsync(fn);
   if (m.filePath) return fn(await readFile(m.filePath));
   throw new ToolExecutionError({

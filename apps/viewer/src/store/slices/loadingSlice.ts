@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { clearLoadReport } from '../../lib/error-reports/context';
 /**
  * Loading state slice
  */
@@ -112,7 +113,10 @@ export const createLoadingSlice: StateCreator<LoadingSlice, [], [], LoadingSlice
   // the only other writer of `lastLoadRetry` is `showLoadError`, which sets
   // both together, so this is the one place a stale retry could otherwise
   // survive its error and attach itself to whatever sets a new one next.
-  setError: (error) => set(error === null ? { error, lastLoadRetry: null } : { error }),
+  setError: (error) => {
+    if (error === null) clearLoadReport();
+    set(error === null ? { error, lastLoadRetry: null } : { error });
+  },
   setActiveStreamCanceller: (activeStreamCanceller) => set({ activeStreamCanceller }),
   setActiveLoadCanceller: (activeLoadCanceller) => set({ activeLoadCanceller }),
   noteLoadCancelled: () => set((state) => ({ loadCancelSeq: state.loadCancelSeq + 1 })),

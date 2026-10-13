@@ -208,14 +208,18 @@ describe.skipIf(!enabled)(
           createHash("sha256").update("changed").digest("base64"),
         ),
       ).rejects.toThrow();
-      expect((await completeUpload(db, storage, row, owner)).status).toBe(
-        "verifying",
-      );
+      const expectedSourceParts = [0, 16 * 1024 ** 2].map((offset, index) => {
+        const part = bytes.subarray(offset, Math.min(bytes.length, offset + 16 * 1024 ** 2));
+        return { partNumber: index + 1, size: part.length, sha256: createHash("sha256").update(part).digest("base64") };
+      });
+      const verifyingSource = await completeUpload(db, storage, row, owner);
+      expect(verifyingSource.status).toBe("verifying");
+      expect(verifyingSource.sourceParts).toEqual(expectedSourceParts);
       await verifyNext(db, storage);
       row = await uploadRow(db, report.id, upload.id, owner);
-      expect((await completeUpload(db, storage, row, owner)).status).toBe(
-        "ready",
-      );
+      const readySource = await completeUpload(db, storage, row, owner);
+      expect(readySource.status).toBe("ready");
+      expect(readySource.sourceParts).toEqual(expectedSourceParts);
       expect((await submitReport(db, report.id, owner, false)).status).toBe(
         "submitted",
       );

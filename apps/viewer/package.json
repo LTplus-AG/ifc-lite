@@ -60,6 +60,7 @@
     "@ifc-lite/plugin-api": "workspace:^",
     "@ifc-lite/pointcloud": "workspace:^",
     "@ifc-lite/query": "workspace:^",
+    "@ifc-lite/report-contract": "workspace:^",
     "@ifc-lite/renderer": "workspace:^",
     "@ifc-lite/rules": "workspace:^",
     "@ifc-lite/sandbox": "workspace:^",

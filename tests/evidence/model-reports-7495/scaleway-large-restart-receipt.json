@@ -1,0 +1,17 @@
+{
+  "recordedAt": "2026-10-12T17:56:37.025Z",
+  "sourceCommit": "7dcad350d26fe5d5791155c612c342de2d2c976a",
+  "provider": "Scaleway",
+  "region": "fr-par",
+  "bytes": 645922816,
+  "parts": 39,
+  "sha256": "98218ce3a868846c6cc84110a9d84bbb4f7d4ecd9bc384fee9e8ff2ab909c2f6",
+  "firstPid": 27585,
+  "secondPid": 27633,
+  "killedAfterFirstPart": true,
+  "sameCookieCsrfReportUpload": true,
+  "actualServiceVerification": true,
+  "deletionConfirmed": true,
+  "peakRssBytes": 356175872,
+  "scope": "Actual service subprocess restart with local isolated PostgreSQL and live private Paris storage; explicitly synthetic transfer, no GitHub publisher or production API"
+}

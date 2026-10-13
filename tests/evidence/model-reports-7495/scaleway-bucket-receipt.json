@@ -1,0 +1,47 @@
+{
+  "recordedAt": "2026-10-12T17:39:22.878Z",
+  "bucket": "ifclite-private-model-reports-par",
+  "region": "fr-par",
+  "cors": [
+    {
+      "AllowedMethods": [
+        "PUT"
+      ],
+      "AllowedOrigins": [
+        "https://www.ifclite.com",
+        "https://ifclite.com"
+      ],
+      "AllowedHeaders": [
+        "content-type",
+        "x-amz-checksum-sha256"
+      ],
+      "ExposeHeaders": [
+        "ETag",
+        "x-amz-checksum-sha256"
+      ],
+      "MaxAgeSeconds": 300
+    }
+  ],
+  "encryption": {
+    "Rules": [
+      {
+        "ApplyServerSideEncryptionByDefault": {
+          "SSEAlgorithm": "AES256"
+        },
+        "BucketKeyEnabled": false
+      }
+    ]
+  },
+  "lifecycle": [
+    {
+      "Status": "Enabled",
+      "ID": "abort-incomplete-after-1-day",
+      "Filter": {
+        "Prefix": ""
+      },
+      "AbortIncompleteMultipartUpload": {
+        "DaysAfterInitiation": 1
+      }
+    }
+  ]
+}

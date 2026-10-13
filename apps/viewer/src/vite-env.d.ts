@@ -6,6 +6,8 @@
 /// <reference types="unplugin-icons/types/react" />
 
 interface ImportMetaEnv {
+  /** Enable reviewed model reports only after the report service is deployed and qualified. */
+  readonly VITE_MODEL_REPORTS_ENABLED?: string;
   /** Same-origin cookie-backed Dropbox and Microsoft cloud sign-in. */
   readonly VITE_CLOUD_HOSTED?: string;
   readonly VITE_AUTODESK_CLIENT_ID?: string;

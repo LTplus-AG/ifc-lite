@@ -2,8 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { perfCount } from '@ifc-lite/load-trace';
+import { perfCount, perfCounters } from '@ifc-lite/load-trace';
 import { WebGPUDevice } from './device.js';
+import { acquireStreamingRecoveryLease, restoredGpuRollback } from './scene-streaming-recovery.js';
+import type { SceneRecoveryHost } from './scene-device-recovery.js';
 import type { RenderPipeline } from './pipeline.js';
 import type { PointCloudRenderer, ResolvedPointCloudRenderOptions } from './pointcloud/point-cloud-renderer.js';
 import type { Scene } from './scene.js';
@@ -83,12 +85,20 @@ export function recoverRendererDevice(host: RendererRecoveryHost): Promise<Devic
   host.ready = false;
   host.deviceLostGeneration = generation;
   host.rejectReadyWaiters(rendererDeviceLostError());
+  perfCount('gpu.recovery.attempts');
   const run = host.initChain.then(
     () => recoverRendererDeviceOnce(host, generation),
     () => recoverRendererDeviceOnce(host, generation),
   );
   host.initChain = run.then(() => undefined, () => undefined);
   host.recovery.inFlight = run;
+  const reportOutcome = (outcome: DeviceRecoveryFailureReason | 'restored' | 'rejected') => {
+    perfCount(`gpu.recovery.outcome.${outcome}`);
+    // The load root can already be closed. Preserve the bounded typed category
+    // in opt-in console diagnostics too, never as a timing/completion fallback.
+    if (perfCounters.enabled) console.info('[Renderer] Device recovery outcome:', outcome);
+  };
+  void run.then(result => reportOutcome(result.ok ? 'restored' : result.reason), () => reportOutcome('rejected'));
   const clearInFlight = () => {
     if (host.recovery.inFlight === run) host.recovery.inFlight = null;
   };
@@ -115,6 +125,19 @@ async function recoverRendererDeviceOnce(
   if (generation !== host.initGeneration || host.destroyed) {
     return { ok: false, reason: 'renderer-destroyed' };
   }
+  const scene = host.scene;
+  const sceneHost = scene as unknown as SceneRecoveryHost;
+  const lease = acquireStreamingRecoveryLease(sceneHost);
+  let rollbackRestoredGpu: (() => void) | null = null;
+  const sourceValid = () => host.scene === scene && (!lease || lease.valid());
+  const sourceRefused = (): DeviceRecoveryResult => {
+    host.deviceLost = true; host.ready = false;
+    rollbackRestoredGpu?.();
+    // Do not clear CPU state belonging to a newer load. Replacement pipelines
+    // remain private until commit; normal frame/stream consumers see no device.
+    host.teardown(false);
+    return { ok: false, reason: 'scene-not-settled' };
+  };
 
   for (const omission of host.overlays.recoveryOmissions()) host.recovery.omissions.add(omission);
   if (host.recovery.lostReferenceImages) host.recovery.omissions.add('reference-images');
@@ -130,7 +153,9 @@ async function recoverRendererDeviceOnce(
 
   let phase: 'device' | 'scene' = 'scene';
   try {
-    host.scene.discardGpuResourcesForRecovery();
+    if (!sourceValid()) return sourceRefused();
+    scene.discardGpuResourcesForRecovery();
+    if (lease && !lease.discarded()) return sourceRefused();
     host.teardown(false);
     host.device = new WebGPUDevice();
     // #6993: the re-upload path, counted where it happens. Recovery builds a
@@ -153,6 +178,7 @@ async function recoverRendererDeviceOnce(
     if (host.deviceLossSequence !== lossSequence) {
       throw new Error('Replacement GPU device was lost during initialization');
     }
+    if (!sourceValid()) return sourceRefused();
     const initializedPreparation = host.scene.prepareDeviceRecovery();
     if (!initializedPreparation.ok) {
       host.deviceLost = true;
@@ -162,11 +188,15 @@ async function recoverRendererDeviceOnce(
     }
     if (host.recovery.quantizedBatchesRequested && host.pipeline) {
       const quantized = await host.pipeline.ensureQuantizedPipelines();
+      if (!sourceValid()) return sourceRefused();
       host.scene.setQuantizedBatches(quantized);
     }
     phase = 'scene';
     if (!host.pipeline) throw new Error('Replacement render pipeline was not initialized');
+    if (!sourceValid()) return sourceRefused();
     host.scene.restoreGpuResourcesAfterRecovery(host.device.getDevice(), host.pipeline);
+    rollbackRestoredGpu = restoredGpuRollback(sceneHost);
+    if (lease && !lease.restored()) return sourceRefused();
     // A loss which settles during the synchronous restore cannot run its
     // device.lost callback until this continuation yields. Let it latch before
     // readiness is published, then revalidate because the yield also permits a
@@ -179,10 +209,12 @@ async function recoverRendererDeviceOnce(
     if (host.deviceLossSequence !== lossSequence) {
       throw new Error('Replacement GPU device was lost during scene restore');
     }
+    if (!sourceValid()) return sourceRefused();
     const restoredPreparation = host.scene.prepareDeviceRecovery();
     if (!restoredPreparation.ok) {
       host.deviceLost = true;
       host.ready = false;
+      rollbackRestoredGpu?.();
       host.teardown(false);
       return restoredPreparation;
     }
@@ -191,6 +223,7 @@ async function recoverRendererDeviceOnce(
     // readiness is observable, so fit-to-view and sections cannot retain the
     // vanished layers' extents.
     host.refreshPlacementBounds();
+    if (!sourceValid()) return sourceRefused();
     host.deviceLost = false;
     host.deviceLostInfo = null;
     host.recovery.lostReferenceImages = false;
@@ -205,6 +238,7 @@ async function recoverRendererDeviceOnce(
     host.deviceLost = true;
     host.ready = false;
     try {
+      rollbackRestoredGpu?.();
       host.teardown(false);
     } catch (teardownError) {
       console.warn('[Renderer] Failed to dispose a partial recovery attempt:', teardownError);

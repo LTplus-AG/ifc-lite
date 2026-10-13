@@ -17,7 +17,7 @@ import { formatLocaleDate } from '@/i18n/intlFormat';
 import { useViewerStore } from '@/store';
 import { bindSavedAnalysisRun, type BindRefusal, type BindRefusalCode } from '@/lib/compare/saved-analysis-run-binding';
 import { deleteSavedAnalysisRun, useSavedAnalysisRuns } from '@/lib/compare/saved-analysis-runs';
-import type { SavedAnalysisRun } from '@/lib/compare/saved-analysis-run-schema';
+import type { SavedAnalysisRun } from '@ifc-lite/sdk/review';
 import type { RunKind } from '@/lib/compare/run-reconcile-types';
 
 const REFUSALS = {

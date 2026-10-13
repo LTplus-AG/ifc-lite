@@ -16,10 +16,7 @@ export function contrastRatio(a: readonly number[], b: readonly number[]): numbe
 }
 
 
-/** Opaque sRGB document colours; named/alpha/short forms are intentionally excluded. */
-export function isRgbColor(value: unknown): value is string {
-  return typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value);
-}
+export { isRgbColor } from '@ifc-lite/sdk/review';
 
 /** The 0..1 channels of an opaque `#RRGGBB` colour. */
 export function rgbChannels(hex: string): number[] {

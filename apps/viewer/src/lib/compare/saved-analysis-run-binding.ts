@@ -32,14 +32,14 @@ import { displayedTranslation, placementFor } from '@/lib/model-placement/state'
 import { equalTranslation } from '@/lib/model-placement/translation';
 import { recordReportRuleSet, reportRuleSetOf } from '@/lib/validation/report-rule-set';
 import type { CapturedRun } from './run-reconcile-types';
-import type { SavedAnalysisRun, SavedClashRef, SavedDistance, SavedRunClash, SavedRunModel, SavedRunValidationReport } from './saved-analysis-run-schema';
+import type { SavedAnalysisRun, SavedClashRef, SavedDistance, SavedRunClash, SavedRunModel, SavedRunValidationReport } from '@ifc-lite/sdk/review';
 
 type BindingState = Pick<ViewerState, 'models' | 'mutationVersion' | 'geometryContentVersion' | 'modelPlacement' | 'hasChanges'>;
 
 /** Why a capture cannot be saved; `model` names the model a run could never be matched to again. */
 export type SaveRefusal = { reason: 'modelClosed' | 'empty' } | { reason: 'sourceUnknown'; model: string };
-export type BindRefusalCode = 'runEdited' | 'frameChanged' | 'modelSetChanged' | 'modelEdited' | 'sourceUnknown' | 'modelMissing' | 'modelReplaced' | 'modelAmbiguous' | 'modelMoved';
-export interface BindRefusal { code: BindRefusalCode; model?: string; before?: number; open?: number }
+export type { BindRefusalCode, BindRefusal } from '@ifc-lite/sdk/review';
+import { bindSavedAnalysisModels, type BindRefusal } from '@ifc-lite/sdk/review';
 
 const distanceOf = (value: number): SavedDistance =>
   Number.isFinite(value) ? value : Number.isNaN(value) ? 'NaN' : value > 0 ? 'Infinity' : '-Infinity';
@@ -147,51 +147,18 @@ export function portableAnalysisRun(run: CapturedRun, state: BindingState, now =
     ruleSet: content ? { file: content.file, rules: [...content.rules] } : null } };
 }
 
-function sameSource(saved: SavedRunModel, open: { sourceFingerprint?: string; sourceContentHash?: string }): boolean {
-  // The full-content hash decides whenever both sides have it; the sampled fingerprint only when one side lacks it.
-  if (saved.sourceContentHash && open.sourceContentHash) return saved.sourceContentHash === open.sourceContentHash;
-  return !!saved.sourceFingerprint && saved.sourceFingerprint === open.sourceFingerprint;
-}
-
-/** Resolve each saved model to one open model, or every reason it cannot be. */
-export function bindSavedModels(saved: Pick<SavedAnalysisRun, 'models' | 'edited' | 'placementRecorded' | 'frame'>, state: BindingState):
-  { ok: true; ids: Map<string, string> } | { ok: false; refusals: BindRefusal[] } {
-  const refusals: BindRefusal[] = [];
-  if (saved.edited) refusals.push({ code: 'runEdited' });
-  // In its session a placement-stamped run goes stale when the realignment or the open-model set changes
-  // (`isAnalysisStale`); a reopened run gets a fresh stamp, so either difference refuses here instead.
-  if (saved.frame) {
-    if ((state.modelPlacement.realignedFrameKey ?? null) !== saved.frame.realignedFrameKey) refusals.push({ code: 'frameChanged' });
-    if (state.models.size !== saved.frame.openModels) refusals.push({ code: 'modelSetChanged', before: saved.frame.openModels, open: state.models.size });
-  }
-  const ids = new Map<string, string>();
-  const claimed = new Map<string, string>();
-  // The frame's other models are bound like the examined ones (same file, open once, unedited, unmoved), never used by the run.
-  for (const model of [...saved.models, ...saved.frame?.others ?? []]) {
-    if (!model.sourceContentHash && !model.sourceFingerprint) { refusals.push({ code: 'sourceUnknown', model: model.name }); continue; }
-    const matches = [...state.models].filter(([, open]) => sameSource(model, open)).map(([id]) => id);
-    if (matches.length === 0) {
-      refusals.push({ code: [...state.models.values()].some(open => open.name === model.name) ? 'modelReplaced' : 'modelMissing', model: model.name });
-      continue;
-    }
-    // Two open copies of one file, or two saved models claiming one open model: neither has an identity.
-    if (matches.length > 1 || claimed.has(matches[0])) { refusals.push({ code: 'modelAmbiguous', model: model.name }); continue; }
-    const id = matches[0];
-    claimed.set(id, model.key);
-    // Unsaved edits mean the open model no longer is the file its source identity names.
-    if (state.hasChanges(id)) { refusals.push({ code: 'modelEdited', model: model.name }); continue; }
-    if (saved.placementRecorded) {
+/** Adapt canonical viewer placement and read-only edit evidence to the shared source binder. */
+export function bindSavedModels(saved: Pick<SavedAnalysisRun, 'models' | 'edited' | 'placementRecorded' | 'frame'>, state: BindingState) {
+  return bindSavedAnalysisModels(saved, {
+    models: state.models,
+    realignedFrameKey: state.modelPlacement.realignedFrameKey,
+    hasChanges: id => state.hasChanges(id),
+    placementMatches: (id, recorded) => {
       const rotation = placementFor(state.modelPlacement, id).rotation;
-      // A placement-stamped run without a model's placement cannot show the model has not moved.
-      if (!model.placement || !equalTranslation(model.placement.translation, displayedTranslation(state.modelPlacement, id))
-        || model.placement.angle !== rotation.angle || !equalTranslation(model.placement.pivot, rotation.pivot)) {
-        refusals.push({ code: 'modelMoved', model: model.name });
-        continue;
-      }
-    }
-    ids.set(model.key, id);
-  }
-  return refusals.length ? { ok: false, refusals } : { ok: true, ids };
+      return equalTranslation(recorded.translation, displayedTranslation(state.modelPlacement, id))
+        && recorded.angle === rotation.angle && equalTranslation(recorded.pivot, rotation.pivot);
+    },
+  });
 }
 
 /** A stamp no state can match: the run was already stale when saved, and reopening it does not make it current. */

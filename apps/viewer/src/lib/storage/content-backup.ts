@@ -15,7 +15,7 @@ import type { AssistantRecipe } from '../assistant/reuse/recipe.js';
 import type { AssistantPreferences } from '../assistant/reuse/preferences.js';
 import type { SavedValidationReport } from '../validation/reports/history.js';
 import type { SavedComparison } from '../compare/savedComparisonSchema.js';
-import type { SavedAnalysisRun } from '../compare/saved-analysis-run-schema.js';
+import type { SavedAnalysisRun } from '@ifc-lite/sdk/review';
 import type { DocumentSpec } from '../document/types.js';
 import { contentTransaction, transactionDone, requestValue, type ContentRow, type MigrationRow, type RecoveryRow } from './content-database.js';
 import type { ContentCommitReceipt } from './content-library.js';

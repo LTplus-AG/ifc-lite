@@ -13,7 +13,7 @@ import { getGlobalRenderer } from '@/hooks/useBCF';
 /** Canonical live placed section extent shared by scene hooks and alignment cuts. */
 export function placementCoordinateInfo(source: CoordinateInfo | undefined,
   models: ReadonlyMap<string, FederatedModel>, placement: PlacementState): CoordinateInfo | undefined {
-    if (!source || (!placement.placements.size && !placement.preview)) return source;
+    if (!source) return source;
     const renderer = getGlobalRenderer(), indices = modelIndices(models);
     const min = { x: Infinity, y: Infinity, z: Infinity }, max = { x: -Infinity, y: -Infinity, z: -Infinity };
     for (const [id, model] of models) {

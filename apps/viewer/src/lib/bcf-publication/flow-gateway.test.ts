@@ -18,11 +18,17 @@ import { parseCapabilities } from '@ifc-lite/extensions';
 import { createBimContext } from '@ifc-lite/sdk';
 import { LocalBackend } from '@/sdk/local-backend';
 import { useViewerStore } from '@/store';
-import { connectPeer } from '@/test/bcf-publication-fixture';
+import { connectPeer as connectLoopbackPeer } from '@/test/bcf-publication-fixture';
 import { LOCAL_BCF_PROJECT, LOCAL_BCF_TOKEN } from '@/test/bcf-http-server';
 import { checkEntry, resolveWithCandidate } from './outbox-check';
 import { createViewerBcfWriteGateway, flowPublicationId } from './flow-gateway';
 import { readPublication } from './outbox-store';
+
+// #7374: this file runs serially on one shard. Stable endpoint/digest inputs
+// cannot accidentally collide with the short bearer used by positive cases.
+// An occupied declared port is a setup failure, never a silent fallback.
+const connectPeer = (t: Parameters<typeof connectLoopbackPeer>[0], options: Parameters<typeof connectLoopbackPeer>[1] = {}) =>
+  connectLoopbackPeer(t, { ...options, port: 38423 });
 
 function intent(baseUrl: string, payload: BcfTopicWriteDto): BcfWriteIntent {
   return { nodeType: 'bcf.createTopic', operation: 'createTopic', baseUrl, version: '2.1', projectId: LOCAL_BCF_PROJECT, payload };

@@ -31,7 +31,7 @@ export { TEXT_SIZE_MIN, TEXT_SIZE_MAX } from './text-typography.js';
 export type { TextFont } from './text-typography.js';
 
 export { reportBlockSourceKind } from './ids-report-types.js';
-export type { IdsReportBlock, IdsReportCardinality, IdsReportCheckSummary, IdsReportRuleSummary, IdsReportSetRow, IdsReportVariant, ReportSourceKind } from './ids-report-types.js';
+export type { IdsReportBlock, IdsReportCardinality, IdsReportCheckSummary, IdsReportRuleSummary, IdsReportVariant } from './ids-report-types.js';
 
 /** A block that can sit two-up in a row (#4940); an unpaired half block prints full width. */
 export type BlockWidth = 'full' | 'half';
@@ -248,10 +248,7 @@ export function migrateDocumentSpec(raw: unknown): unknown {
   return { ...raw, version, blocks: migrateDocumentListBlocks(raw.blocks) };
 }
 
-export interface DocumentValidationError {
-  path: string;
-  message: string;
-}
+export type DocumentValidationError = import('@ifc-lite/sdk/review').PortableReportValidationError;
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 const isString = (v: unknown): v is string => typeof v === 'string';

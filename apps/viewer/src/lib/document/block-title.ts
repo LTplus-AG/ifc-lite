@@ -4,27 +4,9 @@
 
 import { contrastRatio, isRgbColor, rgbChannels } from '../color-contrast';
 import { readableInkOn } from '../table-header-style';
-import type { DocumentValidationError } from './types.js';
-
-/** Heading text size in points: absent prints the default; the bounds match the chart text size (6-24). */
-export const BLOCK_TITLE_SIZE_MIN = 6;
-export const BLOCK_TITLE_SIZE_MAX = 24;
+import { BLOCK_TITLE_SIZE_MIN, BLOCK_TITLE_SIZE_MAX, type BlockTitle, type BlockHeaderStyleFields } from '@ifc-lite/sdk/review';
+export { BLOCK_TITLE_SIZE_MIN, BLOCK_TITLE_SIZE_MAX, validateBlockTitle, type BlockTitle, type BlockHeaderStyleFields } from '@ifc-lite/sdk/review';
 export const BLOCK_TITLE_SIZE_DEFAULT = 11;
-
-/** How the heading looks, shared by every block kind that has one (#6632). Absent fields print as before. */
-export interface BlockHeaderStyleFields {
-  /** Heading text size, `BLOCK_TITLE_SIZE_MIN`-`BLOCK_TITLE_SIZE_MAX` points. */
-  titleFontSize?: number;
-  /** Heading ink in `#RRGGBB`; absent is black, or black/white by contrast when a background is set. */
-  titleTextColor?: string;
-  /** Heading strip background in `#RRGGBB`; absent is transparent paper. */
-  titleBackgroundColor?: string;
-}
-
-/** Authored presentation belongs to the document, independently of its source (#6547). */
-export interface BlockTitle extends BlockHeaderStyleFields {
-  title?: string;
-}
 
 const HEADER_STYLE_KEYS = ['titleFontSize', 'titleTextColor', 'titleBackgroundColor'] as const;
 
@@ -94,17 +76,6 @@ export function blockTitle(block: BlockTitle, fallback = '', singleLine = true):
   const authored = block.title?.trim() ?? '';
   // Existing table titles retain their pre-#6547 line-break behavior.
   return (singleLine ? authored.replace(/\s*[\r\n]+\s*/g, ' ') : authored) || fallback;
-}
-
-export function validateBlockTitle(block: Record<string, unknown>, at: string, errors: DocumentValidationError[]): void {
-  if (block.title !== undefined && typeof block.title !== 'string') errors.push({ path: `${at}.title`, message: 'expected a string' });
-  const size = block.titleFontSize;
-  if (size !== undefined && (typeof size !== 'number' || !Number.isFinite(size) || size < BLOCK_TITLE_SIZE_MIN || size > BLOCK_TITLE_SIZE_MAX)) {
-    errors.push({ path: `${at}.titleFontSize`, message: `expected a number between ${BLOCK_TITLE_SIZE_MIN} and ${BLOCK_TITLE_SIZE_MAX}` });
-  }
-  for (const key of ['titleTextColor', 'titleBackgroundColor'] as const) {
-    if (block[key] !== undefined && !isRgbColor(block[key])) errors.push({ path: `${at}.${key}`, message: 'expected an RGB colour in #RRGGBB form' });
-  }
 }
 
 /** Additional heading space for content that previously had no heading. */

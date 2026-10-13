@@ -12,7 +12,7 @@
 import { create } from 'zustand';
 import type { ContentDefinition } from '../storage/content-migration.js';
 import { createContentLibrary, initialContentStatus, type ContentStatus } from '../storage/content-library.js';
-import { decodeSavedAnalysisRun, type SavedAnalysisRun } from './saved-analysis-run-schema.js';
+import { decodeSavedAnalysisRun, type SavedAnalysisRun } from '@ifc-lite/sdk/review';
 
 /** Never written by an older viewer; the migration finds nothing and only records its marker. */
 export const analysisRunsContent: ContentDefinition<SavedAnalysisRun> = {

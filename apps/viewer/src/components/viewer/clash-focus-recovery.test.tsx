@@ -31,12 +31,20 @@ function owner() {
     GPUShaderStage: { VERTEX: 1, FRAGMENT: 2 }, GPUColorWrite: { ALL: 15 } });
   const live = new Set<GPUBuffer>();
   const writes: Array<{ label: string; values: number[] }> = [];
+  const faults: Array<{ label: string; phase: 'allocation' | 'write' }> = [];
+  let pendingFault: (typeof faults)[number] | null = null;
+  function refuse(label: string, phase: 'allocation' | 'write') {
+    if (pendingFault?.label !== label || pendingFault.phase !== phase) return;
+    faults.push(pendingFault); pendingFault = null;
+    throw new RangeError(`GPU allocation refused during ${phase}: ${label}`);
+  }
   // Only native allocation/queue boundaries are substituted. Actual production
   // RendererOverlays, Section2DOverlayRenderer and ClashSolidPipeline own every
   // upload, clear and destroy below; no provider/geometry result is mocked.
   const device = { limits: { minUniformBufferOffsetAlignment: 256 },
     createBuffer(descriptor: GPUBufferDescriptor) {
-      const buffer = { label: descriptor.label ?? '', size: descriptor.size,
+      if (descriptor.usage & GPUBufferUsage.VERTEX) refuse(descriptor.label ?? '', 'allocation');
+      const buffer = { label: descriptor.label ?? '', size: descriptor.size, usage: descriptor.usage,
         destroy() { live.delete(buffer as unknown as GPUBuffer); } } as unknown as GPUBuffer;
       live.add(buffer); return buffer;
     },
@@ -44,6 +52,7 @@ function owner() {
     createPipelineLayout() { return {}; }, createBindGroup() { return {}; },
     createRenderPipeline() { return { getBindGroupLayout() { return {}; } }; },
     queue: { writeBuffer(buffer: GPUBuffer, _offset: number, data: Float32Array) {
+      if (buffer.usage & GPUBufferUsage.VERTEX) refuse(buffer.label, 'write');
       writes.push({ label: buffer.label, values: Array.from(data) });
     } },
   } as unknown as GPUDevice;
@@ -54,11 +63,58 @@ function owner() {
     requestRender() { /* Dirty scheduling is independent of the upload contract. */ } });
   overlays.init(device, 'bgra8unorm', 1);
   disposals.push(() => overlays.destroy());
-  return { overlays, writes, live, recover() {
+  return { overlays, writes, live, faults,
+    failNext(label: string, phase: 'allocation' | 'write') { pendingFault = { label, phase }; }, recover() {
     overlays.destroy(); assert.equal(live.size, 0, 'every old GPU buffer is disposed');
     overlays.init(device, 'bgra8unorm', 1);
     assert.deepEqual(overlays.recoveryOmissions(), [], 'replacement owners genuinely start empty');
   } };
+}
+
+for (const models of [1, 2]) for (const channel of ['contact', 'box'] as const)
+for (const target of ['lines', 'solid'] as const) for (const phase of ['allocation', 'write'] as const) {
+  it(`#7484 focused ${channel}/${target} ${phase} refusal keeps ${models}-model viewport mounted and retries retained input`, async () => {
+    const sourceModels = Array.from({ length: models }, (_, index) => fixtureModel(`m${index}`, { idOffset: index * 1_000_000 }));
+    const vertices = [10, 20, 30, 40, 50, 60];
+    const positions = new Float64Array([10, 20, 30, 11, 20, 30, 10, 21, 30, 10, 20, 31]);
+    const indices = new Uint32Array([0, 2, 1, 0, 1, 3, 0, 3, 2, 1, 2, 3]);
+    const solid = { positions, indices };
+    useViewerStore.setState({ ...fixtureModels(...sourceModels), clashSelectedId: 'retained-clash',
+      clashContactLines: channel === 'contact' ? { vertices } : null,
+      clashOverlapBox: { min: [10, 20, 30], max: [40, 50, 60] },
+      showClashRegionBox: true, clashSolidStatus: 'solid', clashSolidMesh: solid });
+    const modelOwner = useViewerStore.getState().models;
+    const original = { vertices: vertices.slice(), positions: positions.slice(), indices: indices.slice() };
+    const native = owner();
+    let recover: () => void = () => { throw new Error('unmounted'); };
+    function Probe() {
+      const [epoch, setEpoch] = useState(0); recover = () => setEpoch(value => value + 1);
+      useClashRendererOverlays(useRef(native.overlays), true, epoch);
+      return <canvas />;
+    }
+    const ui = render(<Probe />);
+    const uploads = () => native.writes.filter(write => write.label === '' || write.label === 'clash-solid-vbuf');
+    const first = structuredClone(uploads());
+    assert.equal(first.length, 2, 'real line and indexed tetrahedron uploads precede the fault');
+    native.recover();
+    const faultLabel = target === 'lines' ? '' : 'clash-solid-vbuf';
+    const refusedAt = uploads().length;
+    native.failNext(faultLabel, phase);
+    await assert.doesNotReject(async () => { await act(async () => recover()); },
+      'real clash buffer refusal must not escape the mounted viewport effect');
+    assert.deepEqual(native.faults, [{ label: faultLabel, phase }], 'the production owner reached the fault boundary');
+    assert.ok(ui.querySelector('canvas'), 'viewport survives either sibling failure');
+    assert.equal([...native.live].filter(buffer => buffer.label === faultLabel && (buffer.usage & GPUBufferUsage.VERTEX)).length, 0,
+      'clear disposes any newly allocated partial clash buffer');
+    assert.deepEqual(uploads().slice(refusedAt), first.filter(write => write.label !== faultLabel),
+      'the independent sibling still uploads its original geometry');
+    assert.equal(useViewerStore.getState().models, modelOwner);
+    assert.equal(useViewerStore.getState().clashSolidMesh, solid);
+    assert.deepEqual(vertices, original.vertices); assert.deepEqual(positions, original.positions); assert.deepEqual(indices, original.indices);
+    native.recover(); const written = uploads().length;
+    await act(async () => recover());
+    assert.deepEqual(uploads().slice(written), first, 'a later recovery uploads the exact retained line and solid coordinates');
+  });
 }
 
 for (const models of [1, 2]) for (const channel of ['contact', 'box'] as const) {

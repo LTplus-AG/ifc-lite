@@ -5,6 +5,7 @@ import { useEffect, type RefObject } from 'react';
 import type { Renderer } from '@ifc-lite/renderer';
 import { useViewerStore } from '@/store';
 import { anchorWorldLineVertices } from '@/lib/renderer/line-overlay-rte';
+import { uploadGuarded } from './gpu-owned-upload.js';
 
 /** #6993/#7484: retained focus is CPU-owned; both GPU owners are replaced on
  * recovery even when focused inputs and initialization state stay identical.
@@ -25,15 +26,17 @@ export function useClashRendererOverlays(
   useEffect(() => {
     const renderer = rendererRef.current;
     if (!renderer) return;
-    if (showClashRegionBox && clashContactLines && clashContactLines.vertices.length > 0) {
-      // No colour: the renderer draws the overlap in its theme's
-      // `clashOverlap` and recolours it on a theme switch (#5490).
-      renderer.setClashContactLines({ vertices: anchorWorldLineVertices(clashContactLines.vertices) });
-    } else if (showClashRegionBox && clashOverlapBox) {
-      renderer.setClashOverlapBox(clashOverlapBox);
-    } else {
-      renderer.setClashContactLines(null);
-    }
+    uploadGuarded('clashFocus:lines', () => {
+      if (showClashRegionBox && clashContactLines && clashContactLines.vertices.length > 0) {
+        // No colour: the renderer draws the overlap in its theme's
+        // `clashOverlap` and recolours it on a theme switch (#5490).
+        renderer.setClashContactLines({ vertices: anchorWorldLineVertices(clashContactLines.vertices) });
+      } else if (showClashRegionBox && clashOverlapBox) {
+        renderer.setClashOverlapBox(clashOverlapBox);
+      } else {
+        renderer.setClashContactLines(null);
+      }
+    }, () => renderer.setClashContactLines(null));
     // isInitialized: if a clash is focused before the renderer mounts, this effect
     // bails early; depend on it so the indicator is (re)sent once it is ready.
   }, [clashOverlapBox, clashContactLines, showClashRegionBox, isInitialized, gpuRecoveryEpoch]);
@@ -60,13 +63,15 @@ export function useClashRendererOverlays(
     // one without the other — or a resolved compute that lands after some
     // teardown nobody's added the invalidation to yet — still can't leave an
     // orphaned opaque solid on screen with no clash focused.
-    if (clashSelectedId !== null && clashSolidStatus === 'solid' && clashSolidMesh) {
-      renderer.setClashIntersectionSolid({
-        positions: clashSolidMesh.positions,
-        indices: clashSolidMesh.indices,
-      });
-    } else {
-      renderer.setClashIntersectionSolid(null);
-    }
+    uploadGuarded('clashFocus:solid', () => {
+      if (clashSelectedId !== null && clashSolidStatus === 'solid' && clashSolidMesh) {
+        renderer.setClashIntersectionSolid({
+          positions: clashSolidMesh.positions,
+          indices: clashSolidMesh.indices,
+        });
+      } else {
+        renderer.setClashIntersectionSolid(null);
+      }
+    }, () => renderer.setClashIntersectionSolid(null));
   }, [clashSelectedId, clashSolidMesh, clashSolidStatus, isInitialized, gpuRecoveryEpoch]);
 }

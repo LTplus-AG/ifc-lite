@@ -5,17 +5,10 @@
 import { useEffect, type MutableRefObject } from 'react';
 import type { Renderer, SymbolicFillInput, SymbolicTextInput } from '@ifc-lite/renderer';
 import { rendererLineVertexData, type RendererLineVertices } from '@/lib/renderer/line-overlay-rte';
-import { runGpuUpload } from './gpu-upload-guard.js';
+import { uploadGuarded } from './gpu-owned-upload.js';
 
 type UploadTarget = Pick<Renderer, 'setLineOverlay' | 'uploadAnnotationFills3D' | 'uploadAnnotationTexts3D'>;
 type RendererRef = MutableRefObject<UploadTarget | null>;
-
-/** A failed sibling effect must not unmount the viewport or draw a partial layer (#6993). */
-function uploadGuarded(label: string, upload: () => void, clear: () => void): boolean {
-  const uploaded = runGpuUpload(label, () => { upload(); return true; }) ?? false;
-  if (!uploaded) runGpuUpload(`${label}:clear`, clear);
-  return uploaded;
-}
 
 function useLineUpload(
   rendererRef: RendererRef, initialized: boolean, epoch: number,

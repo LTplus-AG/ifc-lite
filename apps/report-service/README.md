@@ -20,7 +20,7 @@ Admission is durable across recreated browser sessions. Daily quotas apply to an
 
 ## Confidentiality
 
-Ordinary private upload consent permits only diagnosing and verifying the reported defect. Standard and custom NDA workflows are optional. For standard acceptance, set `REPORT_AGREEMENT_FILE`, `REPORT_AGREEMENT_VERSION`, and `REPORT_APPROVED_AGREEMENT_SHA256` only after the owner reviews and approves that exact text. Missing approval disables signing while reports and ordinary private uploads still work. A mismatched digest, draft marker or placeholder fails startup. The issuer is LTplus AG, Switzerland; hosting geography is a separate deployment fact. Accepted text version/digest, signer declarations, server date and PDF digest are retained. The PDF records electronic acceptance; it is not a qualified digital signature or verified identity claim. Approved signing additionally requires `REPORT_AGREEMENT_FONT_FILE`, a licensed Unicode font covering the approved text and supported signer names. The supplied Docker image includes DejaVu Sans at `/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf` and its package licence. Startup verifies template glyph coverage before enabling signing; the PDF embeds a subset. Unsupported signer characters are rejected clearly before acceptance, never replaced silently.
+Ordinary private upload consent permits only diagnosing and verifying the reported defect. Standard and custom NDA workflows are optional. The owner approved the exact [LTplus AG agreement](../../legal/model-report-confidentiality-agreement-2026-10-13.v2.txt), version `2026-10-13.v2`, SHA-256 `8977cc03be648645f5b4f568cc9506beddd07f42547e25ace1da530cba37bbbb`, for later automated issuance. The container includes those exact text bytes at `/service/legal/model-report-confidentiality-agreement-2026-10-13.v2.txt`. Configure `REPORT_AGREEMENT_FILE`, `REPORT_AGREEMENT_VERSION`, and `REPORT_APPROVED_AGREEMENT_SHA256` only after the separate technical launch gates pass; the image sets none of these values. Missing approval disables signing while reports and ordinary private uploads still work. A mismatched digest, draft marker or placeholder fails startup. Approved text must contain exactly one `Agreement version:` declaration matching the configured version. The issuer is LTplus AG, Switzerland; hosting geography is a separate deployment fact. Accepted text version/digest, signer declarations, server date and PDF digest are retained. The PDF records electronic acceptance; it is not a qualified digital signature or verified identity claim. Approved signing additionally requires `REPORT_AGREEMENT_FONT_FILE`, a licensed Unicode font covering the approved text and supported signer names. The supplied Docker image includes DejaVu Sans at `/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf` and its package licence. Startup verifies template glyph coverage before enabling signing; the PDF embeds a subset. Unsupported signer characters are rejected clearly before acceptance, never replaced silently.
 
 Custom agreements remain manual review requests. `GET /api/reports/admin/pending` lists the latest 100 reports; `GET /api/reports/admin/:id` retrieves private reviewed details and the custom agreement reference. Both require the configured maintainer bearer and are audited. `POST /api/reports/admin/:id/custom-nda` with authenticated administrator bearer and `{accepted:true,signedAgreementReference:"private document reference"}` records completed review and unlocks the requested upload. The service does not pretend a user-supplied document was automatically signed.
 
@@ -36,7 +36,7 @@ Run checks through root `pnpm typecheck` and `pnpm test --filter=@ifc-lite/repor
 
 Supply the GitHub App signing key through exactly one protected secret source: a PEM file path or the inline PEM with actual newlines. The environment option supports Railway without a startup file wrapper; never configure both or print/commit the key.
 
-Approved NDA signing also requires an explicit `REPORT_AGREEMENT_VERSION` identifying the reviewed version. Missing, blank, draft or placeholder versions fail startup when approval is configured. Leave approval unset until the owner approves the exact text and version.
+Approved NDA signing requires an explicit `REPORT_AGREEMENT_VERSION` matching the exact text’s declaration. Missing, blank, draft, placeholder, mismatched or undeclared versions fail startup when approval is configured. Owner approval of v2 is complete; leave the runtime approval unset until complete-source, private access, provider disclosure, custody, retention, deletion, backup and restore qualification passes. The historical [v1-era draft](../../legal/model-report-confidentiality-draft.md) remains unchanged as evidence and is not the approved runtime asset.
 
 Verification distinguishes proven byte-integrity failures from provider/network errors. Transient reads and verification deadlines remain unpublished and retry with a PostgreSQL-persisted exponential delay from 10 seconds to 15 minutes; the original pending-upload expiry still applies. Shutdown cancellation leaves the work pending. A successful retry must read and hash the actual object before it becomes ready.
 
@@ -79,3 +79,68 @@ Before enabling, qualify the configured PostHog query shape/read scopes with a r
 The resolver uses PostHog’s dynamically added `events.issue_id`, not the historical `properties.$exception_issue_id`. The [pinned upstream database mapping](https://github.com/PostHog/posthog/blob/8c409d41eb190b96d4e0eaaef5fae11a2009c1cc/posthog/hogql/database/database.py#L3091) resolves current fingerprint ownership and is installed for ordinary project queries; the base `EventsTable` declaration alone omits these dynamic fields. Issue retrieval requires [`error_tracking:read`](https://posthog.com/docs/api/error-tracking-3). These source checks still require live verification against the configured project.
 
 Operational routing, historical hosted receipts and activation gaps are tracked in the [deployment runbook](../../deploy/reports/railway.md). Before restoring a production snapshot, stop the entire API and all workers and complete the [independent deletion/outbox reconciliation procedure](../../deploy/reports/recovery.md). The admission flag alone does not pause workers; restore acceptance remains outstanding.
+
+### Public model quarantine foundation (not enabled)
+
+Production configuration leaves public sharing disabled; no environment variable
+enables it. The delivery protocol can be exercised only with explicitly injected
+qualification configuration. It does not qualify a malware scanner. Private
+support uploads retain their existing limits and consent.
+
+A future public submission must carry separate versioned permission covering
+redistribution authority, review of confidential content, irreversible downloaded
+copies, and posting a download link. A standard or custom NDA already attached to
+that report prevents public sharing even when a later upload selects no NDA.
+Initial public admission is `.ifc` up to 1 GiB; the scanner must independently
+verify uncompressed STEP format rather than trust the filename.
+
+After canonical actual-byte verification, submission binds a private quarantine
+job to the full SHA-256, byte count, consent, policy and expiry. Only a trusted
+scanner worker can lease the job; leases expire after 20 minutes and stop after
+three attempts. A clean result must name the qualified immutable scanner image,
+fresh signatures (at most 24 hours old), STEP format, exact bytes and complete scan. Infection,
+inconclusive/limited scans, changed bytes, stale signatures and stale worker
+leases cannot advance it. A second maintainer review must explicitly approve
+redistribution and confidentiality of the same hash. Malware clearance alone
+proves neither permission nor privacy.
+
+Deletion or withdrawal commits revocation before storage cleanup. Scan results
+cannot revive a revoked report; private hashes, consent and review evidence are
+erased. Provider cleanup failures retain the existing upload record and capacity
+reservation for retry.
+
+Approved, published reports can now be copied into a separate immutable object
+in the same private bucket. Conditional creation plus a full destination reread
+must match the approved SHA-256 and byte count, including after an ambiguous
+provider response. Consent, current signatures and review are checked again after
+copying. Original and copy each reserve storage capacity until confirmed deletion.
+Three bounded copy attempts precede a hold; expired leases cannot publish.
+
+`GET /api/reports/public/<independent-256-bit-token>` streams the pinned copy with
+a generic `model.ifc` filename. It exposes neither original filename, report UUID,
+object key nor presigned URL. Shared database leases bound concurrent transfers;
+a daily byte budget conservatively charges whole files even for interrupted
+requests. Downloads time out after 15 minutes, reject range requests, and have
+no-store/no-referrer headers. Owner-authenticated, CSRF-protected
+`DELETE /api/reports/:id/public-model` immediately prevents fresh downloads while
+keeping the private support original. Admission durably pins the specific report
+and immutable object before provider open. Already-admitted downloads may finish;
+saved copies cannot be recalled. Withdrawal/deletion/expiry deny fresh admission
+immediately, while physical copy deletion and quota release wait for matching
+transfer completion/disconnect or its bounded lease expiry (16 minutes from
+admission, including the one-minute margin beyond the 15-minute transfer deadline).
+Lease removal failure or process death retains that bounded hold. Legacy leases
+without object identity conservatively hold copy cleanup until their recorded
+expiry; no existing active transfer is inferred safe to delete during upgrade.
+Deletion/expiry also revoke access; cleanup retries provider
+failures without releasing storage quota early. Restores must keep public workers
+and delivery disabled until deletion/withdrawal tombstones are reconciled.
+
+Still required before enabling: an isolated scanner runner with qualified
+signature updates and resource limits, real clean IFC and EICAR refusal evidence,
+actual deployment-provider immutable-copy and bounded-download qualification,
+reviewed viewer consent, and idempotent public-link publication. The integration
+tests use real PostgreSQL/S3 bytes and actual HTTP delivery but synthetic trusted
+scanner attestations; they do not establish malware clearance. Conditional copy
+behavior proven against local RustFS is not evidence for Scaleway. No new hosting
+resources are provisioned here.

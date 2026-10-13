@@ -25,6 +25,18 @@ runs:
           sudo apt-get update
           sudo apt-get install -y fonts-dejavu-core
         fi
+    - name: Install independent agreement PDF text oracle
+      if: ${{ inputs.state == 'start' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        if ! command -v pdftotext >/dev/null; then
+          sudo apt-get update
+          sudo apt-get install -y poppler-utils
+        fi
+        report_pdf_extractor="$(command -v pdftotext)"
+        test -x "$report_pdf_extractor"
+        echo "REPORT_TEST_PDFTOTEXT=$report_pdf_extractor" >> "$GITHUB_ENV"
     - name: Start isolated durable report fixtures
       if: ${{ inputs.state == 'start' }}
       shell: bash

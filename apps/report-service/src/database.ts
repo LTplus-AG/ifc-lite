@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import pg, { type PoolClient } from "pg";
+import { migratePublicQuarantine } from "./public-schema.js";
 export type Db = Pick<pg.Pool, "query" | "connect">;
 export function openDatabase(url: string, onConnectionError?: () => void): pg.Pool {
   const pool = new pg.Pool({ connectionString: url, max: 6 });
@@ -44,6 +45,10 @@ export async function transaction<T>(
     client.release();
   }
 }
+/** All private uploads and immutable public copies reserve from the same capacity. */
+export async function lockStorageCapacity(tx: PoolClient): Promise<void> {
+  await tx.query("SELECT pg_advisory_xact_lock(hashtext('report-upload-capacity'))");
+}
 export async function migrate(db: Db): Promise<void> {
   await transaction(db, async (tx) => {
     await tx.query(
@@ -82,6 +87,7 @@ export async function migrate(db: Db): Promise<void> {
     CREATE INDEX IF NOT EXISTS report_uploads_expiry ON report_uploads(expires_at);
     CREATE INDEX IF NOT EXISTS model_reports_expiry ON model_reports(expires_at);
   `);
+    await migratePublicQuarantine(tx);
   });
 }
 export async function audit(

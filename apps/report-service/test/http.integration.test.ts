@@ -114,6 +114,17 @@ describe.skipIf(!enabled)('#7495 real HTTP ownership, consent and publication bo
     expect(Number(persisted.rows[0]!.count)).toBe(2);
   });
 
+  it("#7495 quarantine foundation does not activate public admission or advertise delivery", async () => {
+    const owner = await browser();
+    const capabilities = await (await request(owner, '/session')).json() as ReportSession;
+    expect(capabilities.storage.publicSharingEnabled).toBe(false);
+    const input = { ...draft(), visibility: 'public' };
+    const denied = await request(owner, '/drafts', 'POST', input);
+    expect(denied.status).toBe(409);
+    expect((await denied.json() as { error: string }).error).toBe('public_unavailable');
+    expect((await db.query('SELECT id FROM model_reports WHERE client_key=$1', [input.clientRequestId])).rows).toEqual([]);
+  });
+
   it("#7495 launch gate blocks public admission and content while preserving owner deletion", async () => {
       const owner = await browser();
       const report = await create(owner);

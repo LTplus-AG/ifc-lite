@@ -10,8 +10,9 @@ import {
   type UploadedPart,
 } from "@ifc-lite/report-contract";
 import type { Config } from "./config.js";
-import { transaction, audit, type Db } from "./database.js";
+import { transaction, audit, lockStorageCapacity, type Db } from "./database.js";
 import { requireCondition } from "./errors.js";
+import { requirePublicConsent } from "./public-quarantine.js";
 import { ownedReport, type UploadRow, type ReportRow } from "./reports.js";
 import type { Session } from "./sessions.js";
 import type { ModelStorage } from "./storage.js";
@@ -88,9 +89,7 @@ export async function startUpload(
   input: UploadInput,
 ): Promise<ModelUpload> {
   const row = await transaction(db, async (tx) => {
-    await tx.query(
-      "SELECT pg_advisory_xact_lock(hashtext('report-upload-capacity'))",
-    );
+    await lockStorageCapacity(tx);
     const rows = await tx.query<ReportRow>(
       "SELECT * FROM model_reports WHERE id=$1 AND session_id=$2 AND expires_at>now() FOR UPDATE",
       [id, owner.id],
@@ -117,14 +116,7 @@ export async function startUpload(
       "custom_agreement_pending",
       "Your custom agreement needs maintainer review.",
     );
-    requireCondition(
-      report.draft.visibility !== "public" ||
-        (input.publicModelConfirmed === true &&
-          input.confidentiality === "none"),
-      400,
-      "public_consent",
-      "Public sharing needs explicit permission and cannot carry a confidentiality agreement.",
-    );
+    if (report.draft.visibility === "public") requirePublicConsent(report, input);
     const prior = await tx.query<UploadRow>(
       "SELECT * FROM report_uploads WHERE report_id=$1",
       [id],
@@ -142,7 +134,8 @@ export async function startUpload(
           (key) =>
             prior.rows[0]!.input[key as keyof UploadInput] ===
             input[key as keyof UploadInput],
-        ) && !["aborted", "failed"].includes(prior.rows[0].status),
+        ) && (report.draft.visibility !== "public" || prior.rows[0].input.publicSharingConsent?.version === input.publicSharingConsent?.version) &&
+          !["aborted", "failed"].includes(prior.rows[0].status),
         409,
         "upload_exists",
         "This report already has a different upload.",
@@ -150,7 +143,7 @@ export async function startUpload(
       return prior.rows[0];
     }
     const usage = await tx.query<{ bytes: string }>(
-      "SELECT COALESCE(sum(reserved_bytes),0) AS bytes FROM report_uploads WHERE status != 'aborted'",
+      "SELECT (SELECT COALESCE(sum(reserved_bytes),0) FROM report_uploads WHERE status != 'aborted') + (SELECT COALESCE(sum(reserved_bytes),0) FROM report_public_copies) AS bytes",
     );
     requireCondition(
       Number(usage.rows[0]?.bytes) + input.size <= config.maxStorageBytes,

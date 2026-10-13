@@ -8,6 +8,12 @@ import { readFileSync } from "node:fs";
 import type { ReportAgreement } from "@ifc-lite/report-contract";
 export interface Config {
   submissionsEnabled: boolean;
+  /** Deliberately absent from loadConfig until the scanner/delivery deployment is qualified. */
+  publicSharing?: {
+    scannerImageDigest: string;
+    maxDailyDownloadBytes: number;
+    maxConcurrentDownloads: number;
+  };
   qualificationToken?: string;
   posthog?: { host: string; projectId: string; apiKey: string };
   trustedProxyCidrs?: string[];
@@ -71,6 +77,13 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
     throw new Error(
       "REPORT_AGREEMENT_VERSION must identify the approved agreement version",
     );
+  if (approval) {
+    const declarations = [...text.matchAll(/^Agreement version:([^\r\n]*)$/gm)];
+    if (declarations.length !== 1 || declarations[0]?.[1]?.trim() !== version)
+      throw new Error(
+        "Approved agreement version declaration must match REPORT_AGREEMENT_VERSION",
+      );
+  }
   const secret = required("REPORT_ADMISSION_SECRET");
   const adminToken = required("REPORT_ADMIN_TOKEN");
   if (secret.length < 32 || adminToken.length < 32)

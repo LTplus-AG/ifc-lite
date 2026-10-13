@@ -38,10 +38,15 @@ import type { ModelStorage } from "./storage.js";
 import { body, json } from "./http.js";
 import { resolveIssueTarget } from "./issue-binding.js";
 import { admin } from "./admin.js";
+import type { PublicModelStorage } from "./public-storage.js";
+import { publicModelReceipt, withdrawPublicModel } from "./public-release.js";
+import { downloadPublicModel } from "./public-download.js";
+import { PUBLIC_MAX_BYTES } from "./public-quarantine.js";
 export function createHandler(
   db: Db,
   storage: ModelStorage,
   config: Config,
+  publicStorage?: PublicModelStorage,
 ): (req: IncomingMessage, res: ServerResponse) => Promise<void> {
   return async (req, res) => {
     res.setHeader("Cache-Control", "no-store");
@@ -61,6 +66,12 @@ export function createHandler(
         "not_found",
         "Not found.",
       );
+      const publicDownload = /^\/api\/reports\/public\/([a-f0-9]{64})$/.exec(path);
+      if (publicDownload) {
+        requireCondition(publicStorage && config.publicSharing, 404, "not_found", "Not found.");
+        await downloadPublicModel(db, publicStorage, config, publicDownload[1]!, req, res);
+        return;
+      }
       if (path.startsWith("/api/reports/admin/")) {
         await admin(db, storage, config, req, res, path);
         return;
@@ -134,7 +145,8 @@ export function createHandler(
             backupDisclosure: config.backupDisclosure,
             retentionDays: 30,
             deletionDays: 7,
-            publicSharingEnabled: false,
+            publicSharingEnabled: Boolean(config.publicSharing && publicStorage),
+            publicMaxFileBytes: PUBLIC_MAX_BYTES,
           },
         });
         return;
@@ -154,7 +166,7 @@ export function createHandler(
           "Review the report fields.",
         );
         requireCondition(
-          input.visibility === "private",
+          input.visibility === "private" || Boolean(config.publicSharing && publicStorage),
           409,
           "public_unavailable",
           "Public model sharing is not yet available.",
@@ -175,6 +187,7 @@ export function createHandler(
         json(res, {
           ...receipt(report),
           draft: report.draft,
+          publicModel: report.draft.visibility === "public" ? await publicModelReceipt(db, config, id) : undefined,
           customNdaStatus: report.custom_nda?.status,
           agreementAccepted: Boolean(
             report.agreement?.agreementSha256 === config.agreement.sha256,
@@ -186,6 +199,7 @@ export function createHandler(
                   name: uploads.rows[0].input.name,
                   size: uploads.rows[0].input.size,
                   confidentiality: uploads.rows[0].input.confidentiality,
+                  publicSharingConsent: uploads.rows[0].input.publicSharingConsent,
                 },
               }
             : {}),
@@ -195,6 +209,11 @@ export function createHandler(
       if (action === "" && method === "DELETE") {
         await deleteReport(db, storage, id, owner.id);
         json(res, { id, status: "deleted" });
+        return;
+      }
+      if (action === "public-model" && method === "DELETE") {
+        await withdrawPublicModel(db, id, owner.id);
+        json(res, { ...receipt(report), publicModel: { state: "withdrawn" } });
         return;
       }
       if (action === "consent" && method === "POST") {
@@ -316,12 +335,8 @@ export function createHandler(
         );
         json(
           res,
-          await submitReport(
-            db,
-            id,
-            owner,
-            input.publicModelConfirmed === true,
-          ),
+          { ...await submitReport(db, id, owner, input.publicModelConfirmed === true),
+            publicModel: report.draft.visibility === "public" ? await publicModelReceipt(db, config, id) : undefined },
           202,
         );
         return;

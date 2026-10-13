@@ -5,6 +5,7 @@
 import { describe, expect, it } from "vitest";
 import {
   isDraftInput,
+  isPublicSharingConsent,
   isReportCorrelation,
   isUploadInput,
   isAgreementAcceptance,
@@ -57,6 +58,17 @@ describe("#7495 public report boundary", () => {
       isUploadInput({ ...upload, size: REPORT_LIMITS.maxFileBytes + 1 }),
     ).toBe(false);
     expect(isUploadInput({ ...upload, name: "../model.ifc" })).toBe(false);
+  });
+  it("public model permission needs each reviewed choice and rejects unrelated private data", () => {
+    const consent = { version: "public-model-v1", authorityConfirmed: true, redistributionReviewed: true,
+      confidentialContentReviewed: true, downloadedCopiesCannotBeRecalled: true, publishDownloadLink: true };
+    expect(isPublicSharingConsent?.(consent)).toBe(true);
+    for (const key of Object.keys(consent)) {
+      expect(isPublicSharingConsent?.({ ...consent, [key]: undefined })).toBe(false);
+      expect(isPublicSharingConsent?.({ ...consent, [key]: false })).toBe(false);
+    }
+    expect(isPublicSharingConsent?.({ ...consent, filename: "private.ifc" })).toBe(false);
+    expect(isPublicSharingConsent?.({ ...consent, version: "future-policy" })).toBe(false);
   });
   it("requires exact digest, authority and acceptance for a standard agreement", () => {
     const acceptance = {

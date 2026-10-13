@@ -48,7 +48,8 @@ export interface ReportSession {
     backupDisclosure: string;
     retentionDays: number;
     deletionDays: number;
-    publicSharingEnabled: false;
+    publicSharingEnabled: boolean;
+    publicMaxFileBytes?: number;
   };
 }
 export interface AgreementAcceptanceInput {
@@ -87,9 +88,16 @@ export interface UploadInput {
   confidentiality: "none" | "standard" | "custom";
   uploadConsent: true;
   publicModelConfirmed?: boolean;
+  publicSharingConsent?: PublicSharingConsent;
+}
+export interface PublicModelReceipt {
+  state: "quarantined" | "review" | "preparing" | "available" | "withdrawn" | "held";
+  downloadUrl?: string;
+  expiresAt?: string;
 }
 export interface ReportReceipt {
   publicationHold?: "review_required";
+  publicModel?: PublicModelReceipt;
   issueDestination?: Pick<VerifiedIssueTarget, "issueUrl" | "title">;
   id: string;
   status: "draft" | "manual_review" | "submitted" | "published" | "deleted";
@@ -100,6 +108,7 @@ export interface ReportReceipt {
     name: string;
     size: number;
     confidentiality: "none" | "standard" | "custom";
+    publicSharingConsent?: PublicSharingConsent;
   };
   agreementAccepted?: boolean;
   customNdaStatus?: "pending" | "approved";
@@ -225,4 +234,20 @@ export function isUploadInput(
 export function isReportCorrelation(value: unknown): value is ReportCorrelation {
   return isRecord(value) && isUuid(value.eventId) && isUuid(value.sessionId) && boundedText(value.buildSha, 80) &&
     Object.keys(value).every(key => ["eventId", "sessionId", "buildSha"].includes(key));
+}
+
+/** Separate from purpose-bound private support consent. Never inferred from visibility. */
+export interface PublicSharingConsent {
+  version: "public-model-v1";
+  authorityConfirmed: true;
+  redistributionReviewed: true;
+  confidentialContentReviewed: true;
+  downloadedCopiesCannotBeRecalled: true;
+  publishDownloadLink: true;
+}
+export function isPublicSharingConsent(value: unknown): value is PublicSharingConsent {
+  return isRecord(value) && value.version === "public-model-v1" &&
+    value.authorityConfirmed === true && value.redistributionReviewed === true &&
+    value.confidentialContentReviewed === true && value.downloadedCopiesCannotBeRecalled === true &&
+    value.publishDownloadLink === true && Object.keys(value).length === 6;
 }

@@ -12,6 +12,7 @@ import type { Config } from "./config.js";
 import { audit, transaction, type Db } from "./database.js";
 import { verifyIssueBinding, type IssueBinding } from "./issue-binding.js";
 import { requireCondition } from "./errors.js";
+import { queuePublicScan } from "./public-quarantine.js";
 import type { Session } from "./sessions.js";
 export interface ReportRow {
   id: string;
@@ -37,6 +38,7 @@ export interface UploadRow {
     "initializing" | "uploading" | "verifying" | "ready" | "aborted" | "failed";
   parts: Record<string, string>;
   authorizations: Record<string, number>;
+  object_checksum?: string | null;
   expires_at: Date;
 }
 // Every existing-report receipt uses the same durable publication hold projection.
@@ -163,6 +165,8 @@ export async function submitReport(
         "Confirm public model sharing explicitly.",
       );
     }
+    if (report.draft.visibility === "public" && uploads.rows[0]?.status === "ready")
+      await queuePublicScan(tx, report, uploads.rows[0]);
     await tx.query("UPDATE model_reports SET status='submitted' WHERE id=$1", [
       id,
     ]);

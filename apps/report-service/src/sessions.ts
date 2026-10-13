@@ -10,7 +10,7 @@ import {
 } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { admissionAddress } from "./admission.js";
-import type { Db } from "./database.js";
+import { transaction, type Db } from "./database.js";
 import type { Config } from "./config.js";
 import { requireCondition } from "./errors.js";
 export interface Session {
@@ -53,26 +53,32 @@ export async function session(
   const admission = createHmac("sha256", config.admissionSecret)
     .update(admissionAddress(req, config.trustedProxyCidrs ?? []))
     .digest("hex");
-  const count = await db.query<{ count: string }>(
-    "SELECT count(*) FROM report_sessions WHERE admission=$1 AND expires_at>now()",
-    [admission],
-  );
-  requireCondition(
-    Number(count.rows[0]?.count) < 100,
-    429,
-    "session_limit",
-    "Please try again later.",
-  );
   const token = randomBytes(32).toString("hex");
   const result = {
     id: createHash("sha256").update(token).digest("hex"),
     csrf: randomBytes(32).toString("hex"),
     admission,
   };
-  await db.query(
-    "INSERT INTO report_sessions(id,csrf,admission,expires_at) VALUES($1,$2,$3,now()+interval '30 days')",
-    [result.id, result.csrf, result.admission],
-  );
+  await transaction(db, async (tx) => {
+    // Serialize count-and-create for the verified peer across service replicas.
+    await tx.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
+      `report-session:${admission}`,
+    ]);
+    const count = await tx.query<{ count: string }>(
+      "SELECT count(*) FROM report_sessions WHERE admission=$1 AND expires_at>now()",
+      [admission],
+    );
+    requireCondition(
+      Number(count.rows[0]?.count) < 100,
+      429,
+      "session_limit",
+      "Please try again later.",
+    );
+    await tx.query(
+      "INSERT INTO report_sessions(id,csrf,admission,expires_at) VALUES($1,$2,$3,now()+interval '30 days')",
+      [result.id, result.csrf, result.admission],
+    );
+  });
   res.setHeader(
     "Set-Cookie",
     `__Host-ifclite_report=${token}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=2592000`,

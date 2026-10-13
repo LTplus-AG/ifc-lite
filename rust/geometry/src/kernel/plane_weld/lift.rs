@@ -67,3 +67,36 @@ pub(super) fn exact_on_plane_weld(v: [f64; 3], [t0, t1, t2]: Tri) -> Option<[f64
     }
     Some(out)
 }
+
+/// An exact axis-plane foot, tried ONLY after the ordinary lift exceeds its
+/// lateral bound. Original finite/grid/magnitude/basis checks still apply.
+pub(super) fn exact_axis_plane_foot(v: [f64; 3], t: Tri) -> Option<[f64; 3]> {
+    exact_on_plane_weld(v,t)?;
+    for k in 0..3 {
+        if t[0][k] == t[1][k] && t[0][k] == t[2][k] {
+            let mut out=v;out[k]=t[0][k];return Some(out);
+        }
+    }
+    None
+}
+#[cfg(test)]
+mod tests {
+    use super::exact_axis_plane_foot;
+    // Actual capture #7468 host868018, stage13. The only exact orthogonal
+    // projection onto X=0 retains the other two captured coordinates.
+    #[test]
+    fn captured_axis_plane_7468_preserves_tangent_coordinates() {
+        let v=[-0.000030517578125,145.0,2700.0];let t=[[0.0,145.0,0.0],[0.0,135.0,0.0],[0.0,135.0,3250.0]];
+        assert_eq!(exact_axis_plane_foot(v,t),Some([0.0,v[1],v[2]]));
+    }
+    #[test]
+    fn captured_axis_plane_7468_preserves_noninteger_tangent_coordinate() {
+        let v=[3729.999755859375,-0.0001068115234375,65.0];let t=[[0.0,0.0,0.0],[3750.0,0.0,0.0],[3750.0,0.0,3900.0]];
+        assert_eq!(exact_axis_plane_foot(v,t),Some([v[0],0.0,v[2]]));
+    }
+    #[test]
+    fn axis_plane_7468_keeps_degenerate_and_off_grid_refusal() {
+        assert!(exact_axis_plane_foot([0.0,0.0,0.0],[[0.0,0.0,0.0];3]).is_none());
+        assert!(exact_axis_plane_foot([0.001,0.0,0.0],[[0.123,0.0,0.0],[0.123,1.0,0.0],[0.123,0.0,1.0]]).is_none());
+    }
+}

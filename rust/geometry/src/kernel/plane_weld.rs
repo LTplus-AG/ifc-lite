@@ -319,17 +319,28 @@ fn promote<const KEEP_INCIDENCE: bool>(cutter: &mut [Tri], host: &[Tri]) -> usiz
             // off every grid and force the BigRational tier on every predicate
             // that sees it.
             if let Some((_, d, f)) = best {
-                if let Some(w) = exact_on_plane_weld(*v, faces[f].t) {
+                if let Some(mut w) = exact_on_plane_weld(*v, faces[f].t) {
                     // #7292: edge-basis quantization must not move the weld
-                    // farther in-plane than the noise band that admitted it.
+                    // farther in-plane than the noise band in that direction.
                     // In mm files the old unit-free step shifts a flush side
                     // by micrometres and leaves metres of the host uncut.
                     let face = &faces[f];
                     let scale = d / face.nn;
                     let drift = [0, 1, 2].map(|k| w[k] - (v[k] - scale * face.n[k]));
                     let drift2 = drift[0] * drift[0] + drift[1] * drift[1] + drift[2] * drift[2];
-                    if !drift2.is_finite() || drift2 > face.band2 {
-                        continue;
+                    // The face band measures NORMAL uncertainty. Lateral drift
+                    // must use its own direction: at native mm coordinates a
+                    // Y-ULP can exceed a mostly-Z plane band (#7292/#7468).
+                    let lateral_band2 = band.scaled_band2(drift, drift2);
+                    if !drift2.is_finite() || drift2 * drift2 > lateral_band2 {
+                        // Preserve every already-admitted ordinary weld. Only
+                        // a rejected axis-face candidate tries its exact foot.
+                        let Some(foot)=lift::exact_axis_plane_foot(*v,face.t) else {continue;};
+                        let fallback_drift=[0,1,2].map(|k|foot[k]-(v[k]-scale*face.n[k]));
+                        let fallback_drift2=fallback_drift.iter().map(|d|d*d).sum::<f64>();
+                        let fallback_band2=band.scaled_band2(fallback_drift,fallback_drift2);
+                        if !fallback_drift2.is_finite() || fallback_drift2*fallback_drift2>fallback_band2 {continue;}
+                        w=foot;
                     }
                     if KEEP_INCIDENCE && guard.refuses(&w, f, &on) {
                         continue; // #6940

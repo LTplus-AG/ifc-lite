@@ -1,5 +1,11 @@
 # @ifc-lite/renderer
 
+## 6.3.2
+
+### Patch Changes
+
+- [#7484](https://github.com/LTplus-AG/ifc-lite/pull/7484) [`f57c67b`](https://github.com/LTplus-AG/ifc-lite/commit/f57c67bb72483396223c6e04b5a910b930433ac9) Thanks [@louistrue](https://github.com/louistrue)! - Release newly allocated symbolic fill and line buffers when upload or ownership registration fails. The viewer also contains sibling symbolic upload failures and retries retained CPU overlays on graphics-device recovery.
+
 ## 6.3.1
 
 ### Patch Changes

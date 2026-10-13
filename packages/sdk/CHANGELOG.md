@@ -1,5 +1,11 @@
 # @ifc-lite/sdk
 
+## 9.4.0
+
+### Minor Changes
+
+- [#7528](https://github.com/LTplus-AG/ifc-lite/pull/7528) [`46d34e4`](https://github.com/LTplus-AG/ifc-lite/commit/46d34e457c2d6f02a17ef05f0b1572803c17d30e) Thanks [@louistrue](https://github.com/louistrue)! - Expose the viewer's canonical clash and saved-validation finding normalizers through the Review subpath. Preserve native statuses, historical evidence, incomplete coverage, and model-qualified occurrence identity.
+
 ## 9.3.0
 
 ### Minor Changes

@@ -8,8 +8,8 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -51,4 +51,41 @@ test('the verdict is the median per-pair ratio, not a ratio of cross-session med
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+
+// #7005: actual CLI refusals happen before any physical-session/browser work.
+// A missing model is a deliberate downstream stop even if admission regresses.
+test('#7005 frame rig admits both source revisions before touching model or host', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'frame-span-source-'));
+  const minimum = '272ebd8615d038dc20dd8aec4e3bb88d1acf9fa7';
+  const git = (...args) => execFileSync('git', args, { cwd: ROOT, encoding: 'utf8' }).trim();
+  const head = git('rev-parse', 'HEAD');
+  const previous = git('rev-parse', `${minimum}^`);
+  const receipt = join(dir, 'source-revisions.json');
+  const run = (...args) => spawnSync(TSX, ['scripts/perf/frame-gpu-rig.mts',
+    join(dir, 'missing.ifc'), '--out-dir', dir, ...args],
+    { cwd: ROOT, encoding: 'utf8', timeout: 10_000 });
+  try {
+    for (const args of [[], ['--branch-revision', previous],
+      ['--branch-revision', head, '--dist-base', dir],
+      ['--branch-revision', head, '--dist-base', dir, '--base-revision', previous]]) {
+      const result = run(...args);
+      assert.ifError(result.error);
+      assert.notEqual(result.status, 0);
+      assert.match(result.stderr, /source revision is required|must include #6979/);
+      assert.doesNotMatch(result.stderr, /model not found/);
+      assert.equal(existsSync(receipt), false, 'inadmissible sources must not receive a receipt');
+    }
+    for (const base of [false, true]) {
+      const result = run('--branch-revision', 'HEAD', ...(base
+        ? ['--dist-base', dir, '--base-revision', minimum] : []));
+      assert.ifError(result.error);
+      assert.equal(result.status, 2);
+      assert.match(result.stderr, /model not found/);
+      assert.deepEqual(JSON.parse(readFileSync(receipt, 'utf8')), {
+        branch: head, base: base ? minimum : null,
+      });
+    }
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });

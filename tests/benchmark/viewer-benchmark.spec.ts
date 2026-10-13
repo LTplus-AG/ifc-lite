@@ -7,6 +7,7 @@ import { writeFileSync, existsSync, mkdirSync, readFileSync } from 'fs';
 import { join, isAbsolute } from 'path';
 import { ViewerBenchmarkPage, ViewerBenchmarkMetrics } from './viewer-benchmark-page';
 import { readGpuHealth, type GpuHealth } from './gpu-health';
+import { withBenchmarkFailureDiagnostics } from './benchmark-failure-diagnostics';
 import { measureInteractionCommits, type InteractionCommits } from './interaction-commits';
 
 interface ViewerBenchmarkResult {
@@ -69,8 +70,8 @@ function loadBaseline(): Baseline {
   if (existsSync(baselinePath)) {
     try {
       return JSON.parse(readFileSync(baselinePath, 'utf-8'));
-    } catch (e) {
-      console.warn('Failed to load baseline, starting fresh');
+    } catch (error) {
+      console.warn('Failed to load baseline, starting fresh', error);
       return {};
     }
   }
@@ -176,7 +177,7 @@ test.describe('Viewer Performance Benchmarks', () => {
       const timeoutMs = fileSizeMB > 200 ? 600000 : fileSizeMB > 50 ? 300000 : 180000; // 10min / 5min / 3min
 
       console.log(`Waiting for completion (timeout: ${timeoutMs / 1000}s)...`);
-      await benchmarkPage.waitForCompletion(timeoutMs);
+      await withBenchmarkFailureDiagnostics(benchmarkPage, fileName, () => benchmarkPage.waitForCompletion(timeoutMs));
 
       // Extract metrics
       const metrics = benchmarkPage.getMetrics();

@@ -11,7 +11,8 @@
  *
  *   pnpm --filter @ifc-lite/viewer build
  *   flock /tmp/ifclite-perf.lock npx tsx scripts/perf/frame-gpu-rig.mts \
- *     tests/models/ara3d/AC20-FZK-Haus.ifc --pairs 3 [--dist-base <base dist>]
+ *     tests/models/ara3d/AC20-FZK-Haus.ifc --pairs 3 --branch-revision <built revision> \
+ *     [--dist-base <base dist> --base-revision <base built revision>]
  *
  * Per sample: a fresh Windows Chrome (random CDP port, throwaway profile),
  * the production build served same-origin with the model at
@@ -31,6 +32,7 @@
  * a previous run. Neither needs Chrome.
  */
 
+import { requireSpanSource } from './browser-span-source.mjs';
 import { chromium, type Browser, type Page } from '@playwright/test';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, isAbsolute, join, resolve } from 'node:path';
@@ -39,7 +41,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import type { CDPSession } from '@playwright/test';
 import type { AddressInfo } from 'node:net';
 import { frameProbeInitScript, type FrameProbeHandle, type FrameRecord } from '../../tests/benchmark/frames/frame-probe.ts';
-import { FRAME_BUDGET_MS, realGpuFrameRows, type BrowserFramesRow } from '../../tests/benchmark/frames/frame-stats.ts';
+import { FRAME_BUDGET_MS, realGpuFrameRows } from '../../tests/benchmark/frames/frame-stats.ts';
 import { hoverSweep, orbitGesture, type CanvasRect, type CdpInput } from '../../tests/benchmark/frames/frame-scenarios.ts';
 import { startStaticServer } from './browser-static-server.js';
 import { closeBrowserWithTimeout, raceWithTimeout } from './browser-cold-teardown.js';
@@ -52,7 +54,7 @@ import { formatSummary, interleavedSchedule, summarizeSamples, type SampleRecord
 
 const ROOT = resolve(fileURLToPath(new URL('.', import.meta.url)), '../..');
 const argv = process.argv.slice(2);
-const VALUE_FLAGS = new Set(['--dist-base', '--dist-branch', '--pairs', '--out-dir', '--chrome', '--orbit-frames', '--hover-frames', '--summarize', '--timeout-ms']);
+const VALUE_FLAGS = new Set(['--branch-revision', '--base-revision', '--dist-base', '--dist-branch', '--pairs', '--out-dir', '--chrome', '--orbit-frames', '--hover-frames', '--summarize', '--timeout-ms']);
 const flag = (name: string) => { const i = argv.indexOf(name); return i === -1 ? null : argv[i + 1] ?? null; };
 const positional = argv.filter((arg, i) => !arg.startsWith('--') && !VALUE_FLAGS.has(argv[i - 1] ?? ''));
 const fail = (message: string): never => { console.error(`frame-gpu-rig: ${message}`); process.exit(2); };
@@ -83,14 +85,22 @@ if (summarizeFrom) {
   process.exit(0);
 }
 
+// #7005: admit every supplied build before model, host or browser work.
+// Offline plan/summarize intentionally need neither source history nor builds.
+const sourceRevisions = {
+  branch: requireSpanSource(ROOT, flag('--branch-revision')),
+  base: DIST_BASE ? requireSpanSource(ROOT, flag('--base-revision')) : null,
+};
+const OUT_DIR = resolve(ROOT, flag('--out-dir') ?? `scripts/perf/.frame-gpu-rig-results/run-${Date.now()}`);
+mkdirSync(OUT_DIR, { recursive: true });
+writeFileSync(join(OUT_DIR, 'source-revisions.json'), JSON.stringify(sourceRevisions, null, 2) + '\n');
+
 if (positional.length !== 1) fail('pass exactly one model file');
 const MODEL = isAbsolute(positional[0]) ? positional[0] : resolve(ROOT, positional[0]);
 if (!existsSync(MODEL)) fail(`model not found: ${MODEL} (public fixtures: \`pnpm fixtures\`)`);
 for (const dist of [DIST_BRANCH, DIST_BASE]) if (dist && !existsSync(join(dist, 'index.html'))) fail(`not a viewer build: ${dist}`);
 const FIXTURE = basename(MODEL).replace(/\.[^.]+$/, '');
 const CHROME = findWindowsChrome(flag('--chrome'));
-const OUT_DIR = resolve(ROOT, flag('--out-dir') ?? `scripts/perf/.frame-gpu-rig-results/run-${Date.now()}`);
-mkdirSync(OUT_DIR, { recursive: true });
 const JSONL = join(OUT_DIR, 'runs.jsonl');
 const MODEL_PATH = `/__frame-rig/${encodeURIComponent(basename(MODEL))}`;
 

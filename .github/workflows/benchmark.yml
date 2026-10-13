@@ -185,7 +185,7 @@ jobs:
       # sure only this run's output is present (results are gitignored run
       # artifacts, but clear defensively in case one ever gets committed).
       - name: Clear stale benchmark results
-        run: rm -f tests/benchmark/benchmark-results/viewer-*.json tests/benchmark/benchmark-results/viewer-*.console.log
+        run: rm -f tests/benchmark/benchmark-results/viewer-*.json tests/benchmark/benchmark-results/viewer-*.console.log tests/benchmark/benchmark-results/failure-*.json tests/benchmark/benchmark-results/failure-*.console.log
 
       - name: Run viewer benchmark
         id: benchmark
@@ -256,6 +256,8 @@ jobs:
           path: |
             tests/benchmark/benchmark-results/viewer-*.json
             tests/benchmark/benchmark-results/viewer-*.console.log
+            tests/benchmark/benchmark-results/failure-*.json
+            tests/benchmark/benchmark-results/failure-*.console.log
           retention-days: 30
           if-no-files-found: error
 

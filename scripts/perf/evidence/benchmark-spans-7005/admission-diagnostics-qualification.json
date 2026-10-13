@@ -1,0 +1,50 @@
+{
+  "issue": 7005,
+  "base": "46d34e457c2d6f02a17ef05f0b1572803c17d30e",
+  "reason": "Complete source admission for the frame rig and preserve failed readiness evidence before final qualification.",
+  "priorHostedFailure": {
+    "run": "https://github.com/LTplus-AG/ifc-lite/actions/runs/38338258168",
+    "source": "e56e2134f6d35affe81b8ff0c80df62ebf901cb4",
+    "passed": 1,
+    "failed": 1,
+    "skipped": 0,
+    "failure": "Snowdon timed out at unchanged 180-second readiness deadline; previous success-only capture did not retain its raw trace. Cause unknown.",
+    "logSha256": "140bcbbed11fc2e37e785b8499910ed8477b1b0fc53cdbe6472a3961a858deed"
+  },
+  "validation": {
+    "rootTypecheck": {
+      "passed": true,
+      "testFiles": 4076,
+      "packages": 66
+    },
+    "focusedRootNode": {
+      "passed": 67,
+      "failed": 0,
+      "skipped": 0
+    },
+    "changedFileLint": "PASS; warning-free",
+    "moduleSize": "PASS",
+    "testWiring": "PASS"
+  },
+  "behavior": [
+    "Every frame-rig build needs an explicit post-migration source revision before host/browser work; offline plan/summarize are unchanged.",
+    "Failure trace collection is bounded to five seconds, logs diagnostic collection failures, and rethrows the original readiness error.",
+    "Failed artifacts use a separate failure prefix and cannot become successful samples.",
+    "No readiness thresholds, load deadlines or performance baselines changed."
+  ],
+  "sha256": {
+    "scripts/perf/frame-gpu-rig.mts": "a47c5a771c1658d952202973fe220e80d20374103f0ce3a1eaa5c095a00e22fb",
+    "tests/benchmark/benchmark-failure-diagnostics.ts": "60a3b453b5b4684b4bc07210f1ca7de3f2c7e9348b354577a3da89096b4a80e8",
+    "tests/benchmark/viewer-benchmark-page.ts": "8be2cb9b896a061d2ca9671b0657b4e4c87de0b9ec1debd821bd9961a04eb2a8",
+    "tests/benchmark/viewer-benchmark.spec.ts": "727ac2e282207a3c4657e391e648138d712e76bcb772c8867c174d0dea670f1b",
+    ".github/workflows/benchmark.yml": "b78affeb999ab4201676e10f7256b99de14a11b21045046e8387efc2666b5bd6"
+  },
+  "pending": [
+    "Fresh final-head required CI and actual reviews.",
+    "Hosted functional imports on final source."
+  ],
+  "limitations": [
+    "Current main includes peer GPU recovery and SDK changes; the rebase is not proof of the old Snowdon failure cause.",
+    "No physical GPU, pixel, healthy-device or performance verdict."
+  ]
+}

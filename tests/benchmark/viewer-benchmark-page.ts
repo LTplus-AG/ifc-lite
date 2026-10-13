@@ -385,7 +385,7 @@ export class ViewerBenchmarkPage {
     this.metrics.canvasHasContent = true;
     if (requireMetadataRender) {
       this.metrics.metadataRenderReadyMs = this.metrics.renderCompleteMs;
-      await this.readLoadTrace();
+      await this.refreshLoadTrace();
       this.parseMetrics();
       return;
     }
@@ -405,7 +405,7 @@ export class ViewerBenchmarkPage {
     }
 
     // The span tree is the only timing source.
-    await this.readLoadTrace();
+    await this.refreshLoadTrace();
     this.parseMetrics();
   }
 
@@ -422,7 +422,7 @@ export class ViewerBenchmarkPage {
     let last = '';
     let quiet = 0;
     for (;;) {
-      await this.readLoadTrace();
+      await this.refreshLoadTrace();
       const key = settleKey(this.loadTrace);
       quiet = key === last ? quiet + 1 : 0;
       last = key;
@@ -445,7 +445,7 @@ export class ViewerBenchmarkPage {
   }
 
   /** Pull the latest load's span tree out of the page (null when tracing is unavailable). */
-  private async readLoadTrace(): Promise<void> {
+  async refreshLoadTrace(): Promise<void> {
     try {
       this.loadTrace = await this.page.evaluate(
         (key: string) => {

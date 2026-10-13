@@ -289,7 +289,11 @@ rendered vs idle frames (a frame that called `getCurrentTexture`), and
   `onSubmittedWorkDone` latency. Absolute frame time drifts between sessions,
   so pass `--dist-base <base build>` for counterbalanced base/branch pairs and
   read the paired ratio. Serialise timed runs:
-  `flock /tmp/ifclite-perf.lock npx tsx scripts/perf/frame-gpu-rig.mts tests/models/ara3d/AC20-FZK-Haus.ifc --pairs 3`.
+  `flock /tmp/ifclite-perf.lock npx tsx scripts/perf/frame-gpu-rig.mts tests/models/ara3d/AC20-FZK-Haus.ifc --pairs 3 --branch-revision <built-revision>`.
+  With `--dist-base`, also pass `--base-revision <base-built-revision>`. Both
+  revisions must include #6979 and are recorded before host/browser work. This
+  checks source ancestry; retain independent build/hash receipts binding each
+  dist to its declared revision. Offline `--plan` and `--summarize` need no revisions.
 
 ## Viewer JS is gated on raw bytes, not brotli (#7007)
 

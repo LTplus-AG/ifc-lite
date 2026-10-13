@@ -113,3 +113,33 @@ it('#7510 public SDK saved-report validator accepts partial actual native failur
   invalidRate.snapshot.summary.passRate = 101;
   expect(portable.validateSavedReport?.(JSON.parse(JSON.stringify(invalidRate)))).toBe(false);
 });
+
+it('#7372 SDK saved finding projection preserves actual native failure identity and incomplete history', () => {
+  // beforeAll independently parsed the authored IFC and executed its IDS. Prove
+  // the retained failure is still an actual producer result before projection.
+  const nativeRows = report.specificationResults.flatMap(spec => spec.entityResults);
+  expect(nativeRows.some(row => row.globalId === failure.GlobalId && !row.passed)).toBe(true);
+  expect(failuresObserved).toBeGreaterThan(0);
+  const saved = validation();
+  const projected = portable.savedValidationFacts?.(saved);
+  expect(projected?.findings.map(finding => ({
+    source: finding.source, nativeStatus: finding.nativeStatus, title: finding.title,
+    detail: finding.detail, lifecycle: finding.lifecycle, elements: finding.elements,
+    evidence: finding.evidence,
+  }))).toEqual([{
+    source: 'validation', nativeStatus: failure.nativeStatus, title: failure.title,
+    detail: failure.detail, lifecycle: 'not-evaluated',
+    elements: [{ globalId: failure.GlobalId, modelId: null, modelName: failure.modelName,
+      ifcType: failure.ifcType, ...(failure.Name !== undefined ? { name: failure.Name } : {}) }],
+    evidence: { kind: 'saved-validation', reportId: saved.id, rowId: failure.id },
+  }]);
+  expect(projected?.runs).toHaveLength(1);
+  expect(projected?.runs[0]).toMatchObject({ source: 'validation', temporal: 'historical', complete: false });
+  expect(projected?.runs[0].incomplete.some(gap => gap.code === 'partial-source')).toBe(true);
+  const legacy = validation();
+  if (legacy.snapshot.kind !== 'ids-report') throw new Error('The actual saved IDS fixture is unavailable');
+  delete legacy.snapshot.elementEvidence;
+  const countOnly = portable.savedValidationFacts?.(legacy);
+  expect(countOnly?.findings).toEqual([]);
+  expect(countOnly?.runs[0]).toMatchObject({ temporal: 'historical', complete: false });
+});

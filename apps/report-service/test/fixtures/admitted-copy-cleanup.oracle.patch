@@ -1,0 +1,30 @@
+diff --git a/apps/report-service/src/public-release.ts b/apps/report-service/src/public-release.ts
+index 1fbed965b..f1f73efb9 100644
+--- a/apps/report-service/src/public-release.ts
++++ b/apps/report-service/src/public-release.ts
+@@ -137,7 +137,10 @@ export async function promotePublicModel(db: Db, storage: PublicModelStorage, co
+ export async function cleanupPublicCopies(db: Db, storage: PublicModelStorage): Promise<void> {
+   const rows = await db.query<PublicCopyRow>(`SELECT c.* FROM report_public_copies c JOIN model_reports r ON r.id=c.report_id
+     WHERE c.reserved_bytes>0 AND (c.state IN ('revoked','held') OR c.expires_at<now() OR r.status='deleted' OR r.expires_at<now())
+-      AND c.cleanup_after<=now() AND (c.lease_until IS NULL OR c.lease_until<now()) ORDER BY c.cleanup_after LIMIT 20`);
++      AND c.cleanup_after<=now() AND (c.lease_until IS NULL OR c.lease_until<now())
++      AND NOT EXISTS (SELECT 1 FROM report_public_download_leases l WHERE l.expires_at>now()
++        AND (l.report_id IS NULL OR l.object_key IS NULL OR (l.report_id=c.report_id AND l.object_key=c.object_key)))
++      ORDER BY c.cleanup_after LIMIT 20`);
+   for (const candidate of rows.rows) {
+     try {
+       await transaction(db, async (tx) => {
+@@ -146,6 +149,13 @@ export async function cleanupPublicCopies(db: Db, storage: PublicModelStorage):
+         const parent = parents.rows[0];
+         if (!row || Number(row.reserved_bytes) === 0 || (row.lease_until && row.lease_until.getTime() > Date.now()) ||
+           (!['revoked', 'held'].includes(row.state) && row.expires_at.getTime() > Date.now() && parent?.status !== 'deleted' && parent!.expires_at.getTime() > Date.now())) return;
++        // Re-check after the canonical parent→copy locks: admission may have
++        // committed its pin after the initial candidate query. Legacy unscoped
++        // rows conservatively defer cleanup until their recorded expiry.
++        const transfer = await tx.query(`SELECT 1 FROM report_public_download_leases
++          WHERE expires_at>now() AND (report_id IS NULL OR object_key IS NULL OR
++            (report_id=$1 AND object_key=$2)) LIMIT 1`, [row.report_id, row.object_key]);
++        if (transfer.rowCount) return;
+         await storage.delete(row.object_key);
+         await tx.query(`UPDATE report_public_copies SET state=CASE WHEN state='held' THEN 'held' ELSE 'revoked' END,
+           reserved_bytes=0,sha256=NULL,etag=NULL,byte_size=0,lease_id=NULL,lease_until=NULL,

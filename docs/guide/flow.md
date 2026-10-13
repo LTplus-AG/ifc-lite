@@ -1085,7 +1085,9 @@ Supplied historical `review.snapshot` inputs work in CLI and viewer Flow.
 An instance with neither `savedAnalysisRuns` nor `savedValidationReports`
 requests native session captures, which those hosts do not support. They refuse
 that graph before earlier model writes or publications; MCP supports native
-session reads. Declared Player overrides and parameter defaults choose the same
+session reads. External hosts providing native Review must advertise
+`review.native` alongside `review`; historical-only hosts need only `review`.
+Declared Player overrides and parameter defaults choose the same
 mode at preflight and execution. An explicit empty or null historical value
 stays in historical mode and is validated by the reader, never silently changed
 to a native request.

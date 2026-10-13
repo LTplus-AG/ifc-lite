@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { isRecord } from '@ifc-lite/report-contract';
+import { GITHUB_RECONCILIATION_PAGE_LIMIT, hasNextGithubPage } from './github-pagination.js';
 import type { Config } from './config.js';
 import type { ReportRow } from './reports.js';
 import { hasTrustedAppAuthor, type GithubAppAuthor } from './github-author.js';
@@ -14,7 +15,7 @@ export async function findOrCreateComment(config: Config, fetcher: typeof fetch,
   const marker = `<!-- ifclite-report:${report.id} -->\n<!-- ifclite-error:${report.fingerprint} -->`;
   // GitHub comments enumerate in creation order. Never create after an incomplete
   // reconciliation window: old/high-volume issues must hold for maintainer review.
-  for (let page = 1; page <= 10; page++) {
+  for (let page = 1; page <= GITHUB_RECONCILIATION_PAGE_LIMIT; page++) {
     const response = await fetcher(`${endpoint}?per_page=100&page=${page}`, { headers, signal: AbortSignal.timeout(20000), redirect: 'error' });
     if (!response.ok) throw new Error('github_comment_list_failed');
     const comments: unknown = await response.json();
@@ -22,8 +23,7 @@ export async function findOrCreateComment(config: Config, fetcher: typeof fetch,
     for (const comment of comments) {
       if (isRecord(comment) && hasTrustedAppAuthor(comment, author) && typeof comment.body === 'string' && comment.body.endsWith(marker)) return issueUrl;
     }
-    if (comments.length < 100) break;
-    if (page === 10) throw new Error('github_comment_reconciliation_limit');
+    if (!hasNextGithubPage(response, page, 'github_comment_reconciliation_limit')) break;
   }
   if (!beforeCreate) throw new Error('github_publication_authorization_required');
   await beforeCreate();

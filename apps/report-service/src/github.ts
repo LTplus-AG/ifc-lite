@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { createSign } from "node:crypto";
+import { GITHUB_RECONCILIATION_PAGE_LIMIT, hasNextGithubPage } from './github-pagination.js';
 import type { Config } from "./config.js";
 import { authenticatedAppAuthor, hasTrustedAppAuthor } from "./github-author.js";
 import { findOrCreateComment } from "./github-comments.js";
@@ -91,7 +92,7 @@ export class GithubIssues {
     };
     // Search API indexing is asynchronous. Enumerate recent issues directly to
     // reconcile ambiguous create responses before allowing another POST.
-    for (let page = 1; page <= 10; page++) {
+    for (let page = 1; page <= GITHUB_RECONCILIATION_PAGE_LIMIT; page++) {
       const response = await this.fetcher(
         `https://api.github.com/repos/${this.config.githubRepository}/issues?state=all&sort=created&direction=desc&per_page=100&page=${page}`,
         { headers, signal: AbortSignal.timeout(20000), redirect: "error" },
@@ -122,8 +123,8 @@ export class GithubIssues {
         )
           return issue.html_url;
       }
-      if (issues.length < 100 || reachedEarlierIssues) break;
-      if (page === 10) throw new Error("github_reconciliation_limit");
+      if (reachedEarlierIssues) break;
+      if (!hasNextGithubPage(response, page, "github_reconciliation_limit")) break;
     }
     if (!beforeCreate) throw new Error("github_publication_authorization_required");
     await beforeCreate();

@@ -165,7 +165,13 @@ describe.skipIf(!enabled)("#7495 publication deletion serialization", () => {
           user: { id: 341635942, login: "ifc-lite-reviewed-reports[bot]", type: "Bot" } };
         res.destroy(); return;
       }
-      res.end(JSON.stringify(visible && saved ? [saved] : []));
+      if (visible && saved) {
+        const page = Number(new URL(req.url ?? '/', 'http://fixture').searchParams.get('page'));
+        if (page === 1) {
+          res.setHeader('Link', `<https://api.github.com${req.url?.split('?')[0]}?per_page=100&page=2>; rel="next"`);
+          res.end(JSON.stringify(Array.from({ length: 99 }, (_, id) => ({ id, body: 'Unrelated', created_at: new Date().toISOString() }))));
+        } else res.end(JSON.stringify([saved]));
+      } else res.end(JSON.stringify([]));
     });
     await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
     const address = server.address(); if (!address || typeof address === "string") throw new Error("Missing listener");

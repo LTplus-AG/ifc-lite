@@ -68,7 +68,7 @@ describe('matchConstraint — simpleValue', () => {
 
   it('matches boolean true (strict lowercase per IDS spec)', () => {
     expect(matchConstraint(sv('true'), true)).toBe(true);
-    // `1` / `0` are in the xs:boolean lexical space (#ISSUE).
+    // `1` / `0` are in the xs:boolean lexical space (#7543).
     expect(matchConstraint(sv('1'), true)).toBe(true);
     expect(matchConstraint(sv('false'), true)).toBe(false);
   });

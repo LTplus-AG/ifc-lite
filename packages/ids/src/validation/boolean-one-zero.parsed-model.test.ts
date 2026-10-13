@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * #ISSUE on parsed models: a boolean written as `1` or `0` (the xs:boolean
+ * #7543 on parsed models: a boolean written as `1` or `0` (the xs:boolean
  * lexical space is {true, false, 1, 0}) must match the IFCBOOLEAN value the
  * parser reads, in a requirement and in an applicability, under every schema.
  *
@@ -51,7 +51,7 @@ async function corpusWith(pair: string, literal: string): Promise<IDSValidationR
 const verdict = (r: IDSValidationReport['specificationResults'][number]) =>
   `${r.status}, applicable ${r.applicableCount}, failed ${r.failedCount}`;
 
-describe('buildingSMART boolean corpus pairs with 0 and 1 (#ISSUE)', () => {
+describe('buildingSMART boolean corpus pairs with 0 and 1 (#7543)', () => {
   const PAIRS = [
     'property/pass-booleans_must_be_specified_as_lowercase_strings_2_3',
     'attribute/pass-booleans_must_be_specified_as_lowercase_strings_3_3',
@@ -64,7 +64,7 @@ describe('buildingSMART boolean corpus pairs with 0 and 1 (#ISSUE)', () => {
   });
 });
 
-describe('a parsed wall with Flag = IFCBOOLEAN(.T.) under each schema (#ISSUE)', () => {
+describe('a parsed wall with Flag = IFCBOOLEAN(.T.) under each schema (#7543)', () => {
   const gid = (n: number) => String(n).padStart(22, '0');
   const ifc = (schema: string) => `ISO-10303-21;
 HEADER;FILE_DESCRIPTION((''),'2;1');FILE_NAME('t','',(''),(''),'','','');FILE_SCHEMA(('${schema}'));ENDSEC;
@@ -90,7 +90,7 @@ END-ISO-10303-21;
     </specification>`;
   const ids = `<?xml version="1.0" encoding="UTF-8"?>
 <ids xmlns="http://standards.buildingsmart.org/IDS" xmlns:xs="http://www.w3.org/2001/XMLSchema">
-  <info><title>#ISSUE</title></info>
+  <info><title>#7543</title></info>
   <specifications>${[
     spec('Flag = 1', wall, prop('IFCBOOLEAN', 'Flag', sv('1'))),
     spec('Off = 0', wall, prop('IFCBOOLEAN', 'Off', sv('0'))),
@@ -123,7 +123,7 @@ END-ISO-10303-21;
   });
 });
 
-describe('a parsed task with IsMilestone = IFCBOOLEAN(.F.) (#ISSUE)', () => {
+describe('a parsed task with IsMilestone = IFCBOOLEAN(.F.) (#7543)', () => {
   const gid = (n: number) => String(n).padStart(22, '0');
   // IFC4 and IFC4X3 IfcTask: GlobalId, OwnerHistory, Name, Description, ObjectType,
   // Identification, LongDescription, Status, WorkMethod, IsMilestone, Priority,
@@ -139,7 +139,7 @@ END-ISO-10303-21;
   const milestone = (value: string) => `<attribute><name>${sv('IsMilestone')}</name><value>${sv(value)}</value></attribute>`;
   const ids = `<?xml version="1.0" encoding="UTF-8"?>
 <ids xmlns="http://standards.buildingsmart.org/IDS" xmlns:xs="http://www.w3.org/2001/XMLSchema">
-  <info><title>#ISSUE</title></info>
+  <info><title>#7543</title></info>
   <specifications>
     <specification name="IsMilestone = 0 selects the task" ifcVersion="IFC4 IFC4X3_ADD2">
       <applicability minOccurs="0" maxOccurs="unbounded"><entity><name>${sv('IFCTASK')}</name></entity>${milestone('0')}</applicability>

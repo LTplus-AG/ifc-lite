@@ -35,7 +35,7 @@ const XS_VALUE_REGEX: Record<string, RegExp> = {
 
 export function isValidLexicalForXsType(value: string, base: string): boolean {
   if (isXsdDateTimeBase(base)) return isValidXsdDateTimeLiteral(value, base);
-  // One xs:boolean table for the audit, the cast gate and `compareBoolean` (#ISSUE).
+  // One xs:boolean table for the audit, the cast gate and `compareBoolean` (#7543).
   if (base === 'xs:boolean') return xsdBooleanValue(value) !== undefined;
   const rx = XS_VALUE_REGEX[base];
   if (!rx) return true; // base we don't recognise → don't fabricate errors

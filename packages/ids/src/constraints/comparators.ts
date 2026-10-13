@@ -103,7 +103,7 @@ export function compareNumeric(
  * (`xsdBooleanValue`); uppercase forms (`TRUE`) are not in it and never
  * match. The numeric forms name a boolean only against a stored boolean:
  * a text value that reads `true` is compared as text, so `1` does not
- * match it (#ISSUE).
+ * match it (#7543).
  *
  * Returns:
  *   - `true` / `false` when the literal is an xs:boolean, OR

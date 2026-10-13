@@ -47,7 +47,7 @@ export const XSD_NUMERIC_SPECIALS = new Set(['NaN', '+INF', '-INF']);
  * Part 2 (3.2.2.1) defines it as {true, false, 1, 0}, with 1 and 0 meaning
  * true and false. The audit (`xsd-lexical.ts`, upstream `XmlRegex` parity)
  * already accepted all four; the audit, the cast gate and `compareBoolean`
- * now all read them from here (#ISSUE). `TRUE` / `False` are not
+ * now all read them from here (#7543). `TRUE` / `False` are not
  * in it (buildingSMART corpus: invalid-booleans_must_be_specified_as_lowercase_strings).
  */
 const XSD_BOOLEAN_LITERALS: ReadonlyMap<string, boolean> = new Map([

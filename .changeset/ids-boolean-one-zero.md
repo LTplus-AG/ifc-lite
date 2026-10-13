@@ -2,7 +2,7 @@
 "@ifc-lite/ids": patch
 ---
 
-An IDS boolean written as `1` or `0` now matches the boolean it names (#ISSUE). IDS 1.0 lists `true`, `false`, `0` and `1` as valid boolean values (`Documentation/DataTypes.md`), the xs:boolean lexical space of XML Schema Part 2 (3.2.2.1), and `auditIDSDocument` already accepted all four, but the checker took only `true` and `false`, so a `simpleValue` of `1` or `0` on an IFCBOOLEAN property, or on a boolean attribute such as `IfcTask.IsMilestone`, matched nothing. For such a value:
+An IDS boolean written as `1` or `0` now matches the boolean it names (#7543). IDS 1.0 lists `true`, `false`, `0` and `1` as valid boolean values (`Documentation/DataTypes.md`), the xs:boolean lexical space of XML Schema Part 2 (3.2.2.1), and `auditIDSDocument` already accepted all four, but the checker took only `true` and `false`, so a `simpleValue` of `1` or `0` on an IFCBOOLEAN property, or on a boolean attribute such as `IfcTask.IsMilestone`, matched nothing. For such a value:
 
 - a required requirement now passes an element holding that boolean (it failed every element);
 - an optional requirement now passes it too;

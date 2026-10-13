@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * #ISSUE: the xs:boolean lexical space is {true, false, 1, 0} (XML Schema
+ * #7543: the xs:boolean lexical space is {true, false, 1, 0} (XML Schema
  * Part 2, 3.2.2.1), and the audit accepted all four, but the cast gate and
  * `compareBoolean` took only `true` / `false`. A boolean written as `1` or
  * `0` passed the audit and then matched nothing: a requirement failed every
@@ -31,7 +31,7 @@ const sv = (value: string): IDSSimpleValue => ({ type: 'simpleValue', value });
  */
 const NEAR_MISSES = ['TRUE', 'True', 'FALSE', 'False', 'T', 'F', 'yes', 'no', '01', '00', '10', '+1', '-0', '1.0', '0.0', '1e0', '', '١'];
 
-describe('xs:boolean literals 1 and 0 (#ISSUE)', () => {
+describe('xs:boolean literals 1 and 0 (#7543)', () => {
   it('the cast gate accepts exactly the four xs:boolean literals', () => {
     for (const v of ['true', 'false', '1', '0']) expect(literalCastsUnder(v, 'xs:boolean'), v).toBe(true);
     for (const v of NEAR_MISSES) expect(literalCastsUnder(v, 'xs:boolean'), JSON.stringify(v)).toBe(false);
@@ -89,7 +89,7 @@ describe('xs:boolean literals 1 and 0 (#ISSUE)', () => {
   });
 });
 
-describe('facets with 1 and 0 on a mock accessor (#ISSUE)', () => {
+describe('facets with 1 and 0 on a mock accessor (#7543)', () => {
   const accessor = createMockAccessor([
     {
       expressId: 1,

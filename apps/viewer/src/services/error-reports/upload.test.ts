@@ -31,8 +31,8 @@ test('#7495 resumed upload checks original bytes and transfers only missing boun
 
 test('#7495 a same-sized different model cannot resume an existing upload', async () => {
   const remote: ModelUpload = { id: 'upload', status: 'uploading', partBytes: 4, partCount: 1, uploadedParts: [{ partNumber: 1, size: 4, etag: 'etag', sha256: await checksum(new TextEncoder().encode('real').buffer) }] };
-  let writes = 0;
-  const transport: typeof fetch = async (_input, options) => { if (options?.method !== 'GET') writes++; return Response.json(remote); };
+  let writes = 0, reads = 0;
+  const transport: typeof fetch = async (_input, options) => { if (options?.method !== 'GET') writes++; return Response.json({ ...remote, status: ++reads > 1 ? 'ready' : remote.status }); };
   await assert.rejects(uploadModel(new ReportClient(transport), 'report', remote, new File(['fake'], 'same.ifc'), new AbortController().signal, () => {}), /differs/);
   assert.equal(writes, 0);
 });
@@ -60,8 +60,8 @@ test('#7495 resumed verification waits for server-confirmed ready without sendin
 
 for (const status of ['ready', 'verifying'] as const) test(`#7495 ${status} retry rejects a reselected revision with the same name and size`, async () => {
   const remote: ModelUpload = { id: 'upload', status, partBytes: 4, partCount: 1, uploadedParts: [], sourceParts: [{ partNumber: 1, size: 4, sha256: await checksum(new TextEncoder().encode('real').buffer) }] };
-  let writes = 0;
-  const transport: typeof fetch = async (_input, options) => { if (options?.method !== 'GET') writes++; return Response.json(remote); };
+  let writes = 0, reads = 0;
+  const transport: typeof fetch = async (_input, options) => { if (options?.method !== 'GET') writes++; return Response.json({ ...remote, status: ++reads > 1 ? 'ready' : remote.status }); };
   await assert.rejects(uploadModel(new ReportClient(transport), 'report', remote, new File(['fake'], 'same.ifc'), new AbortController().signal, () => {}), /differs/);
   assert.equal(writes, 0);
 });

@@ -787,6 +787,12 @@ jobs:
           # Once publication.ts is on main, normal whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- apps/report-service/src/publication.ts | grep -Fxq 'apps/report-service/src/publication.ts'; then
             oracle_args+=(--mutation apps/report-service/test/fixtures/publication-intent.oracle.patch)
+          # Keep new report UI imports available while removing only held-
+          # receipt polling/copy behavior. Its mounted behavioral witness must
+          # turn red; all changed tests still run on both oracle sides.
+          # Once the dialog is on main, ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- apps/viewer/src/components/error-report/ErrorReportDialog.tsx | grep -Fxq 'apps/viewer/src/components/error-report/ErrorReportDialog.tsx'; then
+            oracle_args+=(--mutation tests/evidence/model-reports-7495/publication-hold.oracle.patch)
           fi
           node scripts/check-test-revert-oracle.mjs "${oracle_args[@]}"
       - name: Remove owned report oracle prerequisites

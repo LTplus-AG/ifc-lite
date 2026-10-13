@@ -1,0 +1,29 @@
+--- a/apps/viewer/src/components/error-report/ErrorReportDialog.tsx
++++ b/apps/viewer/src/components/error-report/ErrorReportDialog.tsx
+@@ -56,7 +56,7 @@
+   }, [client]);
+ 
+   useEffect(() => {
+-    if (receipt?.status !== 'submitted') return;
++    if (receipt?.status !== 'submitted' || receipt.publicationHold) return;
+     const controller = new AbortController();
+     let timer: ReturnType<typeof setTimeout>;
+     let attempts = 0;
+@@ -65,7 +65,7 @@
+       try {
+         const next = await client.request<ReportReceipt>(`/${encodeURIComponent(receipt.id)}`, 'GET', undefined, controller.signal);
+         if (controller.signal.aborted) return;
+-        // Qualification mutation: keep polling a held receipt.
++        if (next.publicationHold) { setReceipt(next); return; }
+         if (next.status === 'published') { rememberReport(undefined); setReceipt(next); return; }
+         if (++attempts >= 20) { setPublicationPending(true); return; }
+         timer = setTimeout(() => { void poll(); }, 3000);
+@@ -140,7 +140,7 @@
+         <DialogDescription>{t(receipt?.status === 'manual_review' ? 'errorReport.manual' : receipt ? 'errorReport.receivedDescription' : 'errorReport.intro')}</DialogDescription></DialogHeader>
+       {receipt ? <div className="space-y-3">
+         <p>{t('errorReport.receipt', { id: receipt.id })}</p>
+-        {receipt.status === 'submitted' && <><output>{t(publicationPending ? 'errorReport.publicationPending' : 'errorReport.publishing')}</output><Button variant="outline" onClick={() => { void refreshReceipt(); }}>{t('errorReport.checkStatus')}</Button></>}
++        {receipt.status === 'submitted' && <><output>{t(receipt.publicationHold ? 'errorReport.publicationHeld' : publicationPending ? 'errorReport.publicationPending' : 'errorReport.publishing')}</output><Button variant="outline" onClick={() => { void refreshReceipt(); }}>{t('errorReport.checkStatus')}</Button></>}
+         {receipt.status === 'manual_review' && <><Button variant="outline" onClick={() => { void refreshReceipt(); }}>{t('errorReport.checkStatus')}</Button></>}
+         {error && <p role="alert">{error}</p>}
+         {issueUrl && <a href={issueUrl} target="_blank" rel="noreferrer">{t('errorReport.issue')}</a>}

@@ -68,8 +68,13 @@ renderer.onDeviceLost(async () => {
 scene in place, preserving the `Renderer`, camera, IFC geometry, model
 placements, visibility, selection and colour overrides. Concurrent calls share
 one attempt. It returns a typed failure instead of presenting an incomplete
-scene when CPU geometry has been released, streaming has not settled, cold
-geometry cannot be restored, or public `addMesh()` content has no CPU source.
+scene when CPU geometry has been released, a finalizer or authoring transaction
+is active, cold geometry cannot be restored, or public `addMesh()` content has
+no CPU source. Retained streaming fragments are rebuilt from their CPU owners;
+the pending queue resumes from its existing cursor only after recovery commits.
+Frame and stream-end consumers cannot access the staged replacement device.
+Clearing or replacing the source during an awaited recovery refuses that attempt
+without consuming the new load's queue. Append-only pending arrivals are retained.
 Point clouds, reference images and transient overlay layers are reported in
 `omissions` when they must be reloaded by the host.
 

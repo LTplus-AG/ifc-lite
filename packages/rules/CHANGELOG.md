@@ -1,5 +1,11 @@
 # @ifc-lite/rules
 
+## 0.7.4
+
+### Patch Changes
+
+- [#7555](https://github.com/LTplus-AG/ifc-lite/pull/7555) [`af57b69`](https://github.com/LTplus-AG/ifc-lite/commit/af57b6917c9aa049514c3cf35ae5b38d7ad36ea1) Thanks [@louistrue](https://github.com/louistrue)! - Validate required filter-rule JSON fields before saved/imported queries reach typed editors and evaluators. Preserve legacy existence normalization and native numeric quantity/elevation operands. Ref [#7554](https://github.com/LTplus-AG/ifc-lite/issues/7554).
+
 ## 0.7.3
 
 ### Patch Changes

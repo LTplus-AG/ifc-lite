@@ -6,7 +6,7 @@
  * A type object keeps its quantity sets in the same `HasPropertySets` list as
  * its property sets (`SET OF IfcPropertySetDefinition`), and IDS treats a
  * quantity set as a property set. The bridge read only the type's
- * `IfcPropertySet`s (#ISSUE), so a `Qto_WallBaseQuantities` requirement met
+ * `IfcPropertySet`s (#7542), so a `Qto_WallBaseQuantities` requirement met
  * only by the `IfcWallType` failed on its walls and on the type itself, and a
  * property applicability on it selected only walls with their own set.
  *
@@ -101,7 +101,7 @@ const facet = (pset: string, name: string, value?: string, dataType = 'IFCLENGTH
 });
 const length = (value?: string) => facet('Qto_WallBaseQuantities', 'Length', value);
 
-describe('IDS: quantity sets held by a type object are inherited (#ISSUE)', () => {
+describe('IDS: quantity sets held by a type object are inherited (#7542)', () => {
   for (const schema of SCHEMAS) {
     it(`${schema}: a quantity only the type holds passes on the occurrence and on the type`, async () => {
       const a = await accessorFor({ schema });

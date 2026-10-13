@@ -2,7 +2,7 @@
 "@ifc-lite/ids": patch
 ---
 
-IDS now sees the quantity sets a type object holds (#ISSUE). `IfcTypeObject.HasPropertySets` lists `IfcElementQuantity` sets beside `IfcPropertySet`s, and IDS treats a quantity set as a property set, but the bridge read only the type's property sets. A requirement such as `Qto_WallBaseQuantities.Length` met only by the `IfcWallType` failed on its walls with the set reported missing, a property applicability on that quantity left those walls out, and the same requirement on the type object itself failed. Now:
+IDS now sees the quantity sets a type object holds (#7542). `IfcTypeObject.HasPropertySets` lists `IfcElementQuantity` sets beside `IfcPropertySet`s, and IDS treats a quantity set as a property set, but the bridge read only the type's property sets. A requirement such as `Qto_WallBaseQuantities.Length` met only by the `IfcWallType` failed on its walls with the set reported missing, a property applicability on that quantity left those walls out, and the same requirement on the type object itself failed. Now:
 
 - An occurrence inherits its type's quantity sets on both parse paths (the source-backed reader, and on a server-parsed store the quantity table under the type's id), converted to SI with the occurrence's project units or the quantity's own `Unit`.
 - The occurrence's own quantity of the same name wins, and an occurrence set of the same name gains the type's other quantities: the per-item rule type property sets already follow.

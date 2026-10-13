@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Type-held quantity sets on server-parsed stores (#ISSUE). The source-backed
+ * Type-held quantity sets on server-parsed stores (#7542). The source-backed
  * `extractTypeQuantitiesOnDemand` returns null without a `source` buffer, so
  * the bridge reads the prebuilt quantity table under the element's type id,
  * where the server materialises the type's `HasPropertySets` quantity sets
@@ -67,7 +67,7 @@ const facet = (name: string, value?: string): IDSPropertyFacet => ({
   ...(value === undefined ? {} : { value: sv(value) }),
 });
 
-describe('IDS type-held quantity sets on server-parsed stores (#ISSUE)', () => {
+describe('IDS type-held quantity sets on server-parsed stores (#7542)', () => {
   it('resolves a quantity only the type holds', () => {
     const accessor = createDataAccessor(serverStore());
     expect(checkPropertyFacet(facet('Length', '5'), WALL, accessor).passed).toBe(true);

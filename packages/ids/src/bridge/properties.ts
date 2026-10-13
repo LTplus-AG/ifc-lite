@@ -220,7 +220,7 @@ function inheritedPropertySets(
   const inheritedPsets =
     extractTypePropertiesOnDemand(store, expressId)?.properties ??
     typePropertySetsFromTable(store, expressId);
-  // The type's quantity sets are inherited like its property sets (#ISSUE):
+  // The type's quantity sets are inherited like its property sets (#7542):
   // `IfcTypeObject.HasPropertySets` holds both. Same two parse paths. The type
   // is resolved here and read once per type (`typeOwnQuantitySets`), so a
   // typed element whose type holds no quantity set adds next to no work.
@@ -256,7 +256,7 @@ function inheritedPropertySets(
 }
 
 /**
- * A type object's property sets and quantity sets as one list (#ISSUE). A
+ * A type object's property sets and quantity sets as one list (#7542). A
  * quantity set named like one of the type's property sets adds the quantities
  * that set lacks, and the property set keeps a same-named item: the per-item
  * rule `mergeInheritedPropertySets` applies between an occurrence and its type.
@@ -291,7 +291,7 @@ function typePropertySetsFromTable(
   return (psets ?? []) as unknown as Array<{ name: string; properties: RawProp[] }>;
 }
 
-/** Type-inherited quantity sets for server-parsed stores (#ISSUE): the prebuilt
+/** Type-inherited quantity sets for server-parsed stores (#7542): the prebuilt
  *  quantity table for the type id. [] for WASM stores. */
 function typeQuantitySetsFromTable(store: IfcDataStore, expressId: number): QuantitySetRecord[] {
   const typeId = serverTypeId(store, expressId);
@@ -300,7 +300,7 @@ function typeQuantitySetsFromTable(store: IfcDataStore, expressId: number): Quan
 }
 
 /** A type object's own `HasPropertySets`, property and quantity sets
- *  (#ISSUE), converted to SI like any other property set (#7395). */
+ *  (#7542), converted to SI like any other property set (#7395). */
 function typeEntityOwnSets(
   store: IfcDataStore,
   expressId: number,
@@ -320,7 +320,7 @@ const typeOwnQuantityCache = new WeakMap<IfcDataStore, Map<number, TypeOwnQuanti
 
 /**
  * A type object's own quantity sets, read from the source once per store and
- * type (#ISSUE). Every occurrence inherits them, so without the memo each one
+ * type (#7542). Every occurrence inherits them, so without the memo each one
  * would decode the type entity again, also when the type holds no quantity
  * set. Safe to share: the reader derives only from the immutable source and
  * entity index, and `quantitySetInfo` copies what it projects.

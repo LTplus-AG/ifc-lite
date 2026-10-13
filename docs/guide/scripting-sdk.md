@@ -424,3 +424,6 @@ permission leases. Legacy or ambiguous evidence remains explicitly unbound.
 proof separately. Imported findings stay historical and not evaluated, with
 incomplete native coverage. No analysis, editor, persistence or scene mutation
 is performed.
+
+Portable `bounds` describe the supplied finding inventory, while cards and totals describe only the visible rows. A zero row limit retains the original records and reports hidden findings. Saved omissions, source gaps, truncated clash/IDS evaluation, or missing failed detail keep complete inventory and omission counts unknown and `presentationComplete` false; imported evidence never establishes complete native coverage.
+Non-IDS saved report kinds retain their original records but expose `unsupported-kind` binding and no projected findings; a matching model source alone does not certify manual element identity or evaluation.

@@ -105,8 +105,15 @@ export async function readPortableReview(captures: NativeReviewCaptures, liveMod
         && value.charCodeAt(512) >= 0xDC00 && value.charCodeAt(512) <= 0xDFFF;
       return value.slice(0, split ? 511 : 512);
     };
+    // Bounds describe the complete supplied finding inventory, not merely the
+    // retained rows. Source truncation or gaps keep population/omission unknown.
     const inventoryKnown = reports.filter(() => selected.includes('validation')).every(saved =>
-      saved.snapshot.kind === 'ids-report' && saved.snapshot.elementEvidence !== undefined);
+      saved.snapshot.kind === 'ids-report' && saved.snapshot.elementEvidence !== undefined
+      && saved.snapshot.elementEvidence.omitted === 0 && saved.snapshot.elementEvidence.gaps.length === 0)
+      && analyses.filter(saved => selected.includes(saved.kind === 'clash' ? 'clash' : 'validation')).every(saved =>
+        saved.kind === 'clash' ? !saved.result.truncated : saved.report.specificationResults.every(spec =>
+          !spec.error && !spec.setResultsTruncated && spec.passedCount + spec.failedCount === spec.applicableCount
+          && spec.entityResults.reduce((failed, row) => failed + Number(!row.passed), 0) === spec.failedCount));
     const visible = findings.slice(0, cap);
     for (const finding of visible) {
       finding.title = text(finding.title); finding.detail = finding.detail.map(text);

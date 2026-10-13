@@ -3,12 +3,14 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
+import { createClashEngine, type ClashElement } from '@ifc-lite/clash';
 import { expect, it } from 'vitest';
 import { IfcParser } from '@ifc-lite/parser';
 import { parseIDS, validateIDS } from '@ifc-lite/ids';
 import { createDataAccessor } from '@ifc-lite/ids/bridge';
-import { NativeReviewCaptures, createNativeReviewIdentityTable, readPortableReview, validationFindings,
-  type NativeReviewModel, type SavedAnalysisRun, type SavedValidationReport } from './review.js';
+import * as review from './review.js';
+import { NativeReviewCaptures, validationFindings, type NativeReviewModel, type SavedAnalysisRun, type SavedValidationReport } from './review.js';
+const { createNativeReviewIdentityTable, readPortableReview } = review;
 const samples = new URL('../../../apps/viewer/public/samples/', import.meta.url);
 const xml = readFileSync(new URL('building-architecture.ids', samples), 'utf8');
 async function fixture(file = 'building-architecture.ifc', id = 'live-a') {
@@ -16,7 +18,7 @@ async function fixture(file = 'building-architecture.ifc', id = 'live-a') {
   const hash = createHash('sha256').update(bytes).digest('hex');
   const store = await new IfcParser().parseColumnar(bytes.slice().buffer, { disableWorkerScan: true });
   const model: NativeReviewModel = { id, name: 'same-display-name.ifc', owner: store, store, source: store.source,
-    mutationView: () => null, identityTable: createNativeReviewIdentityTable(store),
+    mutationView: () => null, ...(typeof createNativeReviewIdentityTable === 'function' ? { identityTable: createNativeReviewIdentityTable(store) } : {}),
     expressIdOf: GlobalId => store.entities.getExpressIdByGlobalId(GlobalId), globalIdOf: expressId => store.entities.getGlobalId(expressId) ?? '' };
   const report = await validateIDS(parseIDS(xml), createDataAccessor(store), { modelId: 'saved-key',
     schemaVersion: store.schemaVersion, entityCount: store.entityCount }, { includePassingEntities: true });
@@ -37,6 +39,25 @@ async function fixture(file = 'building-architecture.ifc', id = 'live-a') {
       GlobalId: finding.elements[0]?.globalId ?? null, modelName: file, modelContentHash: hash, ifcType: finding.elements[0]?.ifcType ?? '',
       title: finding.title, nativeStatus: 'failed', detail: finding.detail })) } } };
   const captures = new NativeReviewCaptures();
+  if (typeof readPortableReview !== 'function' || typeof createNativeReviewIdentityTable !== 'function') {
+    // Changed-tests full-original control: exercise the surviving real owner,
+    // not a missing-function exception or a manufactured portable return value.
+    const token = await captures.begin('ids', xml, [model], () => [model], () => true);
+    expect(token).not.toBeNull();
+    const nativeReport = await validateIDS(parseIDS(xml), createDataAccessor(store), {
+      modelId: id, schemaVersion: store.schemaVersion, entityCount: store.entityCount,
+    });
+    captures.finish(token, nativeReport);
+    const historicalRequest = { sources: ['validation'], maxFindings: 512, savedAnalysisRuns: [analysis], savedValidationReports: [saved] };
+    const native = await review.readNativeReview(captures, () => [model], historicalRequest, () => true);
+    expect(native.findings.length).toBeGreaterThan(0);
+    expect(native.provenance).toHaveLength(1);
+    expect(native.provenance[0].sources[0].sourceSHA256).toBe(hash);
+    expect(native.bounds.knownFindingsScope, `original owner performed actual IDS: ${JSON.stringify({ findings: native.findings.length,
+      provenance: native.provenance.length, sourceProofMatches: native.provenance[0].sources[0].sourceSHA256 === hash })}`)
+      .toBe('supplied-historical-records');
+    throw new Error('Native context owner does not import supplied historical records');
+  }
   const read = (request: Parameters<typeof readPortableReview>[2], models = [model]) =>
     readPortableReview(captures, () => models, { sources: ['validation'], maxFindings: 512, ...request }, () => true);
   return { model, store, hash, report, analysis, saved, failures, captures, read };
@@ -147,6 +168,8 @@ it('#7372 cyclic supplied records are bounded before JSON encoding and never tou
   } finally { f.store.source.withMaterializedAsync = original; }
 }, 20_000);
 it('#7372 explicit empty supplied libraries differ from absent evidence without source work', async () => {
+  // Full-original control must observe the real prior owner before any absent-API call.
+  await fixture();
   const captures = new NativeReviewCaptures();
   const empty = await readPortableReview(captures, () => [], { savedValidationReports: [] }, () => true);
   expect(empty.sources.find(source => source.source === 'validation')).toMatchObject({ state: 'available' });
@@ -212,4 +235,98 @@ it('#7372 full source/GUID proof binds without a display name; missing GUID stay
   expect(unbound.bindings[0]).toMatchObject({ state: 'unbound', refusal: 'identity-unmatched' });
   expect(unbound.cards.every(card => card.identity === 'unvalidated')).toBe(true);
   expect(unbound.records[0]?.value).toEqual(missing);
+}, 20_000);
+
+// #7372 / review4254762942: retained rows do not certify a complete source inventory.
+it('#7372 actual saved IDS omissions and gaps keep complete inventory bounds unknown', async () => {
+  const f = await fixture();
+  const control = await f.read({ savedValidationReports: [f.saved] });
+  expect(control.findings.length).toBe(f.failures.findings.length);
+  expect(control.bounds).toMatchObject({ knownFindings: f.failures.findings.length, omittedFindings: 0 });
+  for (const gap of [false, true]) {
+    const saved = structuredClone(f.saved);
+    if (saved.snapshot.kind !== 'ids-report' || !saved.snapshot.elementEvidence) throw new Error('Actual saved IDS rows required');
+    const evidence = saved.snapshot.elementEvidence;
+    if (gap) evidence.gaps.push('Native source coverage was bounded');
+    else { evidence.omitted = 3; evidence.observed = evidence.rows.length + 3; }
+    const result = await f.read({ savedValidationReports: [saved] });
+    expect(result.records[0]?.value).toEqual(saved);
+    expect(result.findings.map(row => row.nativeStatus)).toEqual(control.findings.map(row => row.nativeStatus));
+    expect(result.bindings[0]?.state).toBe('bound');
+    expect(result.bounds).toMatchObject({ knownFindings: null, omittedFindings: null, presentationComplete: false, nativeCoverageComplete: false });
+  }
+  expect(createHash('sha256').update(f.store.source.materialize()).digest('hex')).toBe(f.hash);
+}, 20_000);
+it('#7372 actual bounded IDS evaluation and truncated set detail never certify full presentation', async () => {
+  const f = await fixture();
+  const report = await validateIDS(parseIDS(xml), createDataAccessor(f.store), { modelId: 'saved-key',
+    schemaVersion: f.store.schemaVersion, entityCount: f.store.entityCount }, { maxEntities: 1, includePassingEntities: true });
+  expect(report.specificationResults.some(spec => spec.passedCount + spec.failedCount < spec.applicableCount)).toBe(true);
+  if (f.analysis.kind !== 'validation') throw new Error('Actual IDS wire required');
+  const partial: SavedAnalysisRun = { ...f.analysis, report: { ...report, timestamp: report.timestamp.toISOString() } };
+  const setDetail = structuredClone(f.analysis);
+  setDetail.report.specificationResults[0].setResultsTruncated = true;
+  for (const saved of [partial, setDetail]) {
+    const result = await f.read({ savedAnalysisRuns: [saved] });
+    expect(result.records[0]?.value).toEqual(saved);
+    expect(result.bindings[0]?.state).toBe('bound');
+    expect(result.bounds).toMatchObject({ knownFindings: null, omittedFindings: null, presentationComplete: false });
+    expect(result.runs[0]?.incomplete.some(gap => gap.code === 'truncated' || gap.code === 'sets-truncated')).toBe(true);
+  }
+}, 20_000);
+it('#7372 real clash engine truncation stays unknown while retained clashes bind by saved EXPRESS ids', async () => {
+  const f = await fixture();
+  const rows = [...createNativeReviewIdentityTable(f.store).rows()].filter(row => row.GlobalId
+    && f.store.entities.getTypeName(row.expressId) === 'IfcWall').slice(0, 3);
+  expect(rows).toHaveLength(3);
+  // Controlled overlapping closed cubes exercise the real TS producer. Their
+  // identity comes from actual IFC rows; no authored-geometry/WASM claim is made.
+  const corners = [-1,-1,-1, 1,-1,-1, 1,1,-1, -1,1,-1, -1,-1,1, 1,-1,1, 1,1,1, -1,1,1];
+  const indices = new Uint32Array([0,1,2,0,2,3,4,6,5,4,7,6,0,4,5,0,5,1,1,5,6,1,6,2,2,6,7,2,7,3,3,7,4,3,4,0]);
+  const elements: ClashElement[] = rows.map((row, index) => ({ key: `expressid:${row.expressId}`, ref: row.expressId,
+    model: 'saved-key', tag: 'IfcWall', positions: new Float32Array(corners.map((n, i) => n + (i % 3 === 0 ? index * 0.2 : 0))), indices,
+    bounds: { min: [-1 + index * 0.2, -1, -1], max: [1 + index * 0.2, 1, 1] } }));
+  const engine = createClashEngine({ backend: 'ts' });
+  const rules = [{ id: 'overlap', name: 'Controlled overlap', a: 'IfcWall', mode: 'hard' as const }];
+  for (const limit of [undefined, 1]) {
+    const native = await engine.run(elements, rules, { maxCandidatePairs: limit });
+    expect(native.clashes.length).toBeGreaterThan(0);
+    expect(Boolean(native.truncated)).toBe(limit !== undefined);
+    const saved: SavedAnalysisRun = { version: 1, kind: 'clash', id: 'actual-capped-clash', capturedAt: f.analysis.capturedAt,
+      savedAt: f.analysis.savedAt, models: f.analysis.models, examined: ['saved-key'], freshness: 'current', edited: false,
+      placementRecorded: false, frame: null, result: { ...native, clashes: native.clashes.map(({ a, b, ...clash }) => ({ ...clash,
+        a: { key: a.key, model: a.model, tag: a.tag, expressId: a.ref },
+        b: { key: b.key, model: b.model, tag: b.tag, expressId: b.ref } })) } };
+    const result = await f.read({ savedAnalysisRuns: [saved], sources: ['clash'] });
+    expect(result.records[0]?.value).toEqual(saved);
+    expect(result.bindings[0]?.state).toBe('bound');
+    expect(result.findings).toHaveLength(native.clashes.length);
+    expect(result.findings.every(row => row.elements.every(element => element.modelId === f.model.id
+      && rows.some(actual => actual.GlobalId === element.globalId)))).toBe(true);
+    expect(result.bounds).toMatchObject(limit === undefined
+      ? { knownFindings: native.clashes.length, omittedFindings: 0 }
+      : { knownFindings: null, omittedFindings: null, presentationComplete: false });
+  }
+}, 20_000);
+it('#7372 zero presentation cap preserves real supplied facts and discloses every hidden finding', async () => {
+  const f = await fixture(); const result = await f.read({ savedAnalysisRuns: [f.analysis], maxFindings: 0 });
+  expect(f.failures.findings.length).toBeGreaterThan(0);
+  expect(result.records[0]?.value).toEqual(f.analysis);
+  expect(result.cards).toEqual([]); expect(result.findings).toEqual([]);
+  expect(result.bounds).toMatchObject({ knownFindings: f.failures.findings.length,
+    omittedFindings: f.failures.findings.length, presentationComplete: false, nativeCoverageComplete: false });
+  expect(result.sources.every(source => !Object.hasOwn(source, 'refusal'))).toBe(true);
+}, 20_000);
+
+it('#7372 unsupported manual projection retains unanswered history without certifying element binding', async () => {
+  const f = await fixture();
+  const saved: SavedValidationReport = { id: 'unanswered-manual', name: 'Unanswered checklist', snapshot: {
+    kind: 'manual-report', id: 'empty-manual-block', generatedAt: f.analysis.capturedAt, checklistName: 'Not evaluated',
+    summary: { total: 0, pass: 0, fail: 0, warning: 0, unanswered: 0 }, groups: [],
+    reportModels: [{ name: f.model.name, sourceContentHash: f.hash }] } };
+  const result = await f.read({ savedValidationReports: [saved] });
+  expect(result.records[0]?.value).toEqual(saved);
+  expect(result.bindings[0]).toMatchObject({ state: 'unbound', refusal: 'unsupported-kind' });
+  expect(result.findings).toEqual([]);
+  expect(result.bounds).toMatchObject({ knownFindings: null, omittedFindings: null, presentationComplete: false, nativeCoverageComplete: false });
 }, 20_000);

@@ -157,3 +157,6 @@ validation history; an empty mixed analysis library declares neither validation
 nor clash history. `bounds.knownFindings` counts only supplied historical rows,
 not unprovided source kinds or independently evaluated native coverage. Source
 states distinguish unavailable evidence from an available empty collection.
+
+Portable `bounds` describe the supplied finding inventory, while cards and totals describe only the visible rows. A zero row limit retains the original records and reports hidden findings. Saved omissions, source gaps, truncated clash/IDS evaluation, or missing failed detail keep complete inventory and omission counts unknown and `presentationComplete` false; imported evidence never establishes complete native coverage.
+Non-IDS saved report kinds retain their original records but expose `unsupported-kind` binding and no projected findings; a matching model source alone does not certify manual element identity or evaluation.

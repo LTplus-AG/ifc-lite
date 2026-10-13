@@ -8,7 +8,7 @@ import { isFullSourceSHA256 } from './portable-source-contract.js';
 import { clashGlobalId } from './clash.js';
 
 export type PortableBindingRefusal = 'source-identity-missing' | 'source-unmatched' | 'source-ambiguous'
-  | 'identity-unmatched' | 'identity-conflict' | 'model-edited' | 'edit-state-unknown' | 'scope-unknown';
+  | 'identity-unmatched' | 'identity-conflict' | 'model-edited' | 'edit-state-unknown' | 'scope-unknown' | 'unsupported-kind';
 function source(hash: unknown, owners: readonly PortableOwner[]): PortableOwner | PortableBindingRefusal {
   if (!isFullSourceSHA256(hash)) return 'source-identity-missing';
   const matches = owners.filter(owner => owner.sourceSHA256 === hash);
@@ -61,7 +61,7 @@ export function validationBinding(saved: SavedValidationReport, owners: readonly
     if (hashes.has(owner.sourceSHA256)) return 'source-ambiguous';
     hashes.add(owner.sourceSHA256);
   }
-  if (saved.snapshot.kind !== 'ids-report') return null;
+  if (saved.snapshot.kind !== 'ids-report') return 'unsupported-kind';
   for (const row of saved.snapshot.elementEvidence?.rows ?? []) {
     const owner = source(row.modelContentHash, owners);
     if (typeof owner === 'string') return owner;

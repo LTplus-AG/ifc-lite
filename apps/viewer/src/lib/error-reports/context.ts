@@ -23,8 +23,8 @@ export function offerErrorReport(context: ReportContext, explicit = false): void
   const now = Date.now();
   for (const [code, until] of dismissed) if (until <= now) dismissed.delete(code);
   if (!explicit && !context.resumeReportId && dismissed.has(context.errorCode)) return;
-  // An error during reporting must never replace the file the user reviewed.
-  if (prompt?.open || (prompt?.context.sourceFile && context.errorCode === 'unhandled_viewer_error')) return;
+  // Keep the failed source until review, an explicit choice or another failed file.
+  if (prompt?.open || (prompt?.context.sourceFile && !context.sourceFile && !explicit && !context.resumeReportId)) return;
   prompt = { context, open: false };
   emit();
 }

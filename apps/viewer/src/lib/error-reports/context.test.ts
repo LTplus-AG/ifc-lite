@@ -42,3 +42,28 @@ test('#7495 Not now suppresses repeated invitations without suppressing other er
   offerErrorReport({ errorCode: 'repeating_global_error' }, true);
   assert.equal(getReportPrompt()?.context.errorCode, 'repeating_global_error');
 });
+
+// PR #7500: unrelated renderer/component errors must not discard load evidence.
+test('#7500 fileless follow-up errors preserve the failed model until a deliberate replacement', () => {
+  const failed = new File(['failed model'], 'failed-model.ifc');
+  showLoadError(() => {}, () => {}, 'Cannot load model', 'load_failed', null, failed);
+  for (const errorCode of ['gpu_device_lost', 'renderer_frame_failed', 'component_render_error']) {
+    offerErrorReport({ errorCode });
+    assert.equal(getReportPrompt()?.context.sourceFile, failed, `${errorCode} must preserve the attachment option`);
+    assert.equal(getReportPrompt()?.context.errorCode, 'load_failed', 'the invitation retains the original failure');
+  }
+
+  const replacement = new File(['another failed model'], 'replacement.ifc');
+  offerErrorReport({ errorCode: 'another_load_failed', sourceFile: replacement });
+  assert.equal(getReportPrompt()?.context.sourceFile, replacement, 'a new failed file can replace an unopened invitation');
+  offerErrorReport({ errorCode: 'gpu_device_lost' }, true);
+  assert.equal(getReportPrompt()?.context.errorCode, 'gpu_device_lost', 'an explicit choice can replace the invitation');
+  assert.equal(getReportPrompt()?.context.sourceFile, undefined);
+
+  offerErrorReport({ errorCode: 'new_load_failed', sourceFile: replacement });
+  offerErrorReport({ errorCode: 'report_resume', resumeReportId: 'owned-resume' });
+  assert.equal(getReportPrompt()?.context.resumeReportId, 'owned-resume', 'resuming owned work retains its existing replacement semantics');
+  openErrorReport();
+  offerErrorReport({ errorCode: 'opened_load_failed', sourceFile: failed }, true);
+  assert.equal(getReportPrompt()?.context.resumeReportId, 'owned-resume', 'an opened review is never replaced');
+});

@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import '@/test/setup-dom.js';
-import { createServer } from 'node:http';
+import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { afterEach, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
@@ -23,6 +23,19 @@ const session: ReportSession = {
   agreement: { version: 'draft', sha256: 'a'.repeat(64), text: 'Agreement text', issuer: 'LTplus AG', jurisdiction: 'Switzerland', signingEnabled: false },
 };
 afterEach(cleanup);
+function fixtureCors(request: IncomingMessage, response: ServerResponse): boolean {
+  response.setHeader('Access-Control-Allow-Origin', window.location.origin);
+  response.setHeader('Access-Control-Allow-Credentials', 'true');
+  response.setHeader('Access-Control-Allow-Headers', 'Content-Type,X-CSRF-Token');
+  response.setHeader('Access-Control-Allow-Methods', 'GET,POST,DELETE,OPTIONS');
+  if (request.method === 'OPTIONS') { response.statusCode = 204; response.end(); return false; }
+  return true;
+}
+async function waitFor(check: () => boolean, message: string): Promise<void> {
+  const deadline = Date.now() + 5000;
+  while (!check() && Date.now() < deadline) await settle();
+  assert.ok(check(), message);
+}
 async function settle() { await act(async () => { await new Promise(resolve => setTimeout(resolve, 10)); }); }
 function button(text: string): HTMLButtonElement {
   const result = [...document.querySelectorAll('button')].find(element => element.textContent === text);
@@ -224,6 +237,7 @@ for (const [status, code] of [[404, 'report_missing'], [503, 'service_unavailabl
     const methods: string[] = []; let closes = 0;
     rememberReport('stale-recovery');
     const server = createServer((request, response) => {
+    if (!fixtureCors(request, response)) return;
       methods.push(request.method ?? 'GET');
       response.setHeader('Content-Type', 'application/json');
       if (request.url?.endsWith('/session')) response.end(JSON.stringify(session));
@@ -235,7 +249,7 @@ for (const [status, code] of [[404, 'report_missing'], [503, 'service_unavailabl
     const transport: typeof fetch = (value, options) => fetch(endpoint + String(value), options);
     try {
       render(<ErrorReportDialog context={{ errorCode: 'report_resume', resumeReportId: 'stale-recovery' }} onClose={() => { closes++; }} client={new ReportClient(transport)} />);
-      await settle(); click(button('Close')); await settle();
+      await waitFor(() => [...document.querySelectorAll('button')].some(item => item.textContent === 'Close'), 'unavailable recovery can close'); click(button('Close')); await waitFor(() => closes === 1, 'recovery closes');
       assert.equal(closes, 1); assert.deepEqual(methods, ['GET', 'GET']);
       assert.equal(pendingReport(), status === 404 ? undefined : 'stale-recovery');
       assert.equal(recentReport(), status === 404 ? undefined : 'stale-recovery');
@@ -304,6 +318,7 @@ test('#7500 cancelling an older failed submission deletes only its own recovery 
   const draft = { clientRequestId: 'old-request', title: 'Older report', description: '', diagnostics: { errorCode: 'load_failed', appVersion: 'test', buildSha: 'test' }, visibility: 'private' as const };
   const deleted: string[] = []; let closes = 0;
   const server = createServer((request, response) => {
+    if (!fixtureCors(request, response)) return;
     response.setHeader('Content-Type', 'application/json');
     if (request.url?.endsWith('/session')) response.end(JSON.stringify(session));
     else if (request.method === 'DELETE') { deleted.push(request.url ?? ''); response.end(JSON.stringify({ id: 'older-report', status: 'deleted' })); }
@@ -317,18 +332,54 @@ test('#7500 cancelling an older failed submission deletes only its own recovery 
   const client = new ReportClient((value, options) => fetch(`http://127.0.0.1:${address.port}` + String(value), options));
   try {
     render(<ErrorReportDialog context={{ errorCode: 'report_resume', resumeReportId: 'older-report' }} onClose={() => { closes++; }} client={client} />);
-    await settle(); click(button('Review report')); click(button('Send report')); await settle();
-    assert.ok(document.body.textContent?.includes('Retry later'));
+    await waitFor(() => [...document.querySelectorAll('button')].some(item => item.textContent === 'Review report'), 'owned draft restores');
+    click(button('Review report')); click(button('Send report'));
+    await waitFor(() => !!document.body.textContent?.includes('Retry later'), 'failed send remains cancellable');
     const newer = new ReportSubmission({ draft: { ...draft, clientRequestId: 'new-request', title: 'Newer report' }, confidentiality: 'none', publicModelConfirmed: false }, client);
     await newer.send(new AbortController().signal, () => {});
     assert.equal(pendingReport(), 'newer-report');
-    click(button('Cancel and delete draft')); await settle();
+    click(button('Cancel and delete draft')); await waitFor(() => closes === 1, 'older report cancellation completes');
     assert.deepEqual(deleted, ['/api/reports/older-report']); assert.equal(closes, 1);
     assert.equal(pendingReport(), 'newer-report'); assert.equal(recentReport(), 'newer-report');
     cleanup(); render(<ErrorReportHost />);
     assert.ok(document.body.textContent?.includes('View recent report'));
   } finally {
     forgetReport('older-report'); forgetReport('newer-report');
+    server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve()));
+  }
+});
+
+
+for (const mode of ['automatic publication', 'manual status refresh'] as const) test(`#7500 older ${mode} keeps a newer pending report recoverable`, async () => {
+  const draft = { clientRequestId: 'request', title: 'Reviewed report', description: '', diagnostics: { errorCode: 'load_failed', appVersion: 'test', buildSha: 'test' }, visibility: 'private' as const };
+  let published = false;
+  const server = createServer((request, response) => {
+    if (!fixtureCors(request, response)) return;
+    const id = request.url?.startsWith('/A/') ? 'pub-A' : 'pub-B';
+    response.setHeader('Content-Type', 'application/json');
+    if (request.url?.endsWith('/session')) response.end(JSON.stringify(session));
+    else if (request.url?.endsWith('/drafts')) response.end(JSON.stringify({ id, status: 'draft' }));
+    else if (request.url?.endsWith('/submit')) response.end(JSON.stringify({ id, status: 'submitted' }));
+    else response.end(JSON.stringify({ id, status: id === 'pub-A' && published ? 'published' : 'submitted', ...(id === 'pub-A' && published ? { issueUrl: 'https://github.com/LTplus-AG/ifc-lite/issues/7495' } : {}) }));
+  });
+  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+  const address = server.address(); assert.ok(address && typeof address !== 'string');
+  const client = (scope: string) => new ReportClient((value, options) => fetch(`http://127.0.0.1:${address.port}/${scope}` + String(value), options));
+  const oldClient = client('A'), newClient = client('B');
+  try {
+    await oldClient.session();
+    await new ReportSubmission({ draft, confidentiality: 'none', publicModelConfirmed: false }, oldClient).send(new AbortController().signal, () => {});
+    render(<ErrorReportDialog context={{ errorCode: 'report_resume', resumeReportId: 'pub-A' }} onClose={() => {}} client={oldClient} />);
+    await waitFor(() => [...document.querySelectorAll('button')].some(item => item.textContent === 'Check review status'), 'older report restores'); await newClient.session();
+    await new ReportSubmission({ draft: { ...draft, clientRequestId: 'new-request' }, confidentiality: 'none', publicModelConfirmed: false }, newClient).send(new AbortController().signal, () => {});
+    published = true;
+    if (mode === 'automatic publication') await act(async () => { await new Promise(resolve => setTimeout(resolve, 3100)); });
+    else click(button('Check review status'));
+    await waitFor(() => !!document.querySelector('a[href="https://github.com/LTplus-AG/ifc-lite/issues/7495"]'), 'older publication reaches its link');
+    assert.ok(document.querySelector('a[href="https://github.com/LTplus-AG/ifc-lite/issues/7495"]'));
+    assert.equal(pendingReport(), 'pub-B'); assert.equal(recentReport(), 'pub-B');
+  } finally {
+    forgetReport('pub-A'); forgetReport('pub-B');
     server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve()));
   }
 });

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { forgetReport, rememberReport } from '@/lib/error-reports/pending';
+import { completeReport, forgetReport, rememberReport } from '@/lib/error-reports/pending';
 import { useEffect, useRef, useState } from 'react';
 import type { ReportDiagnostics, ReportReceipt, ReportSession } from '@ifc-lite/report-contract';
 import { useTranslation } from '@/i18n';
@@ -72,7 +72,7 @@ export function ErrorReportDialog({ context, onClose, client: injectedClient }: 
         const next = await client.request<ReportReceipt>(`/${encodeURIComponent(receipt.id)}`, 'GET', undefined, controller.signal);
         if (controller.signal.aborted) return;
         if (next.publicationHold) { setReceipt(next); return; }
-        if (next.status === 'published') { rememberReport(undefined); setReceipt(next); return; }
+        if (next.status === 'published') { completeReport(next.id); setReceipt(next); return; }
         if (++attempts >= 20) { setPublicationPending(true); return; }
         timer = setTimeout(() => { void poll(); }, 3000);
       } catch (reason) {
@@ -87,8 +87,8 @@ export function ErrorReportDialog({ context, onClose, client: injectedClient }: 
     setRestoring(false);
     if (restored.status === 'deleted') { forgetReport(restored.id); setReceipt(restored); return; }
     if (['submitted', 'published', 'manual_review'].includes(restored.status)) {
-      rememberReport(restored.id);
-      if (restored.status === 'published') rememberReport(undefined);
+      if (restored.status === 'published') completeReport(restored.id);
+      else rememberReport(restored.id, true);
       setReceipt(restored); return;
     }
     if (!restored.draft || restored.status !== 'draft') throw new Error('Report cannot be resumed');

@@ -15,7 +15,7 @@
          if (controller.signal.aborted) return;
 -        // Qualification mutation: keep polling a held receipt.
 +        if (next.publicationHold) { setReceipt(next); return; }
-         if (next.status === 'published') { rememberReport(undefined); setReceipt(next); return; }
+         if (next.status === 'published') { completeReport(next.id); setReceipt(next); return; }
          if (++attempts >= 20) { setPublicationPending(true); return; }
          timer = setTimeout(() => { void poll(); }, 3000);
 @@ -164,13 +164,13 @@
@@ -86,3 +86,39 @@
 -    rememberReport(undefined);
    }
  }
+--- a/apps/viewer/src/lib/error-reports/pending.ts
++++ b/apps/viewer/src/lib/error-reports/pending.ts
+@@ -22,7 +22,7 @@
+   if (recentInMemory === id) recentInMemory = undefined;
+   if (typeof sessionStorage !== 'undefined') {
+     try {
+-      sessionStorage.removeItem(KEY);
++      if (sessionStorage.getItem(KEY) === id) sessionStorage.removeItem(KEY);
+       if (sessionStorage.getItem(RECENT_KEY) === id) sessionStorage.removeItem(RECENT_KEY);
+     } catch (error) { console.warn('[error-report] Cannot remove report reference', error); }
+   }
+@@ -38,7 +38,7 @@
+     }
+   }
+   if (typeof sessionStorage !== 'undefined') {
+-    try { sessionStorage.removeItem(KEY); }
++    try { if (sessionStorage.getItem(KEY) === id) sessionStorage.removeItem(KEY); }
+     catch (error) { console.warn('[error-report] Cannot complete report reference', error); }
+   }
+   notifyRecent();
+@@ -51,14 +51,13 @@
+     return id && /^[a-zA-Z0-9-]{1,100}$/.test(id) ? id : undefined;
+   } catch (error) { console.warn('[error-report] Cannot read pending report', error); return undefined; }
+ }
+-export function rememberReport(id: string | undefined, onlyIfVacant = false): void {
++export function rememberReport(id: string, onlyIfVacant = false): void {
+   const current = pendingReport();
+   if (onlyIfVacant && current && current !== id) return;
+   if (id) recentInMemory = id;
+   if (typeof sessionStorage === 'undefined') { notifyRecent(); return; }
+   try {
+     if (id) { sessionStorage.setItem(KEY, id); sessionStorage.setItem(RECENT_KEY, id); }
+-    else sessionStorage.removeItem(KEY);
+ 
+   }
+   catch (error) { console.warn('[error-report] Cannot retain report reference', error); }

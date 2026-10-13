@@ -8,13 +8,13 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { cleanup, render, click } from '@/test/render.js';
 import { clearLoadReport, dismissErrorReport, getReportPrompt, offerErrorReport } from '@/lib/error-reports/context';
-import { forgetReport, rememberReport } from '@/lib/error-reports/pending';
+import { completeReport, forgetReport, rememberReport } from '@/lib/error-reports/pending';
 import { ErrorReportHost } from './ErrorReportHost';
 afterEach(() => { cleanup(); dismissErrorReport(); forgetReport('managed-report'); forgetReport('older-report'); });
 
 test('#7495 closing a published report leaves a management entry until its private data is deleted', () => {
   rememberReport('managed-report');
-  rememberReport(undefined);
+  completeReport('managed-report');
   dismissErrorReport();
   const ui = render(<ErrorReportHost />);
   assert.ok([...ui.querySelectorAll('button')].some(button => button.textContent === 'View recent report'));

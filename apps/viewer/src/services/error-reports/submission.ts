@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { forgetReport, rememberReport } from '@/lib/error-reports/pending';
+import { completeReport, forgetReport, rememberReport } from '@/lib/error-reports/pending';
 import type { AgreementAcceptanceInput, AgreementReceipt, ModelUpload, ReportDraftInput, ReportReceipt, UploadInput } from '@ifc-lite/report-contract';
 import { ReportClient } from './client';
 import { uploadModel } from './upload';
@@ -48,7 +48,7 @@ export class ReportSubmission {
     }
     this.receipt = await this.client.request<ReportReceipt>(`${path}/submit`, 'POST', { publicModelConfirmed: review.publicModelConfirmed }, signal);
     if (!['submitted', 'published'].includes(this.receipt.status)) throw new Error('The report is not yet submitted');
-    rememberReport(this.receipt.status === 'published' ? undefined : this.receipt.id);
+    if (this.receipt.status === 'published') completeReport(this.receipt.id);
     return this.receipt;
   }
   async cancel(): Promise<void> {

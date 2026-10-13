@@ -28,6 +28,21 @@ export function forgetReport(id: string): void {
   }
   notifyRecent();
 }
+/** Completion may clear only its own pending reference; keep private management. */
+export function completeReport(id: string): void {
+  if (!recentReport()) {
+    recentInMemory = id;
+    if (typeof sessionStorage !== 'undefined') {
+      try { sessionStorage.setItem(RECENT_KEY, id); }
+      catch (error) { console.warn('[error-report] Cannot retain completed report reference', error); }
+    }
+  }
+  if (typeof sessionStorage !== 'undefined') {
+    try { if (sessionStorage.getItem(KEY) === id) sessionStorage.removeItem(KEY); }
+    catch (error) { console.warn('[error-report] Cannot complete report reference', error); }
+  }
+  notifyRecent();
+}
 /** Only a report identifier is stored. Text, model names, bytes and signer identity stay off browser storage. */
 export function pendingReport(): string | undefined {
   if (typeof sessionStorage === 'undefined') return;
@@ -36,12 +51,14 @@ export function pendingReport(): string | undefined {
     return id && /^[a-zA-Z0-9-]{1,100}$/.test(id) ? id : undefined;
   } catch (error) { console.warn('[error-report] Cannot read pending report', error); return undefined; }
 }
-export function rememberReport(id: string | undefined): void {
+export function rememberReport(id: string, onlyIfVacant = false): void {
+  const current = pendingReport();
+  if (onlyIfVacant && current && current !== id) return;
   if (id) recentInMemory = id;
   if (typeof sessionStorage === 'undefined') { notifyRecent(); return; }
   try {
     if (id) { sessionStorage.setItem(KEY, id); sessionStorage.setItem(RECENT_KEY, id); }
-    else sessionStorage.removeItem(KEY);
+
   }
   catch (error) { console.warn('[error-report] Cannot retain report reference', error); }
   notifyRecent();

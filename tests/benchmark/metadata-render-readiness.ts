@@ -15,8 +15,7 @@ export async function probeMetadataRenderTrace(page: Page): Promise<LoadTracePro
   try {
     return await page.evaluate(probePageLoadTrace, { key: '__IFC_LITE_LOAD_TRACE__', names: [...READINESS_SPANS] });
   } catch (error) {
-    console.warn('[Benchmark] could not probe the load trace', error);
-    return null;
+    throw new Error('Cannot read required benchmark load trace (#7005)', { cause: error });
   }
 }
 
@@ -29,6 +28,7 @@ export interface LoadTraceProbe {
   done: string[];
   /** Failure markers from every span, including unfinished work. */
   failed: string[];
+  invalid?: string;
 }
 
 /**
@@ -43,15 +43,23 @@ export const READINESS_SPANS = ['parser.complete', 'parser.failed', 'cache.store
  * its module closure. Completion filtering must never hide failures (#7180).
  */
 export function probePageLoadTrace({ key, names }: { key: string; names: readonly string[] }): LoadTraceProbe | null {
-  type Span = { name: string; end: number | null; attrs?: Record<string, unknown> };
+  type Span = { name: string; start: number; end: number | null; attrs?: Record<string, unknown> };
   const api = (globalThis as unknown as Record<string, {
-    latest?: () => { end: number | null; spans: Span[]; attrs?: { loadPath?: unknown } } | null;
+    latest?: () => { start: number; end: number | null; spans: Span[]; attrs?: { loadPath?: unknown; error?: unknown } } | null;
   } | undefined>)[key];
   const snapshot = api?.latest?.() ?? null;
   if (!snapshot) return null;
+  if (!Number.isFinite(snapshot.start) || !Array.isArray(snapshot.spans) || (snapshot.end !== null &&
+      (snapshot.end < snapshot.start || typeof snapshot.end !== 'number' || !Number.isFinite(snapshot.end)))) {
+    return { ended: false, done: [], failed: [], invalid: 'Malformed load trace root or spans' };
+  }
   const done: string[] = [];
-  const failed: string[] = [];
+  const failed: string[] = snapshot.attrs?.error === true ? ['load'] : [];
   for (const span of snapshot.spans) {
+    if (!span || typeof span.name !== 'string' || !Number.isFinite(span.start) ||
+        (span.end !== null && (span.end < span.start || typeof span.end !== 'number' || !Number.isFinite(span.end)))) {
+      return { ended: false, done, failed, invalid: 'Malformed load trace span' };
+    }
     if (span.name === 'parser.failed' || span.attrs?.error === true) failed.push(span.name);
     if (span.end !== null && names.includes(span.name)) done.push(span.name);
   }
@@ -76,22 +84,6 @@ export function observedReadinessFollowsCompletion(observedMs: unknown, completi
 }
 
 /**
- * TODO(remove-by: first release after 2026-10-06, i.e. one after #6977, with
- * the regex fallback in viewer-benchmark-page.ts; #7005): console lines for a
- * viewer build that predates the spans. `browser-cold-ab.mts` serves an older base
- * build with THIS harness, so until the base side carries #6977 (no trace at
- * all) and #6979 (`scene.finalize`), readiness falls back to them.
- */
-function legacyReadiness(logs: readonly string[]) {
-  return {
-    metadataFailed: logs.some(log => /\[useIfc\].*(?:metadata|Data model) (?:parse|parsing) failed/i.test(log)),
-    metadata: logs.some(log => /\[useIfc\] (?:Native )?(?:metadata|Data model) (?:parse|parsing) complete/i.test(log)),
-    geometry: logs.some(log => /\[useIfc\] (?:Native )?(?:Stream complete|Geometry streaming complete)/i.test(log)),
-    renderer: logs.some(log => /\[GeomStream\] finalizeStreamingAsync complete:/.test(log)),
-  };
-}
-
-/**
  * Renderer initialisation has no span: the renderer starts at boot, before any
  * load (and so any trace) exists. Its failure line stays the one console
  * signal readiness reads on every build, to fail fast instead of timing out.
@@ -109,16 +101,19 @@ export async function waitForMetadataRenderReadiness(options: {
   now: () => number;
   pause: () => Promise<void>;
   timeoutMs: number;
+  requireRootEnd?: boolean;
 }): Promise<number> {
   const start = options.now();
+  let traceSeen = false;
   while (options.now() - start < options.timeoutMs) {
     const probe = await options.trace();
     const logs = options.logs();
-    const legacy = legacyReadiness(logs);
+    if (probe?.invalid) throw new Error(`Invalid benchmark load trace: ${probe.invalid}`);
+    if (probe) traceSeen = true;
     const done = new Set(probe?.done ?? []);
     const failed = new Set(probe?.failed ?? []);
     const metadataSpan = metadataCompletionSpan(probe?.loadPath);
-    if (done.has('parser.failed') || failed.has('parser.failed') || failed.has(metadataSpan) || (!probe && legacy.metadataFailed)) {
+    if (done.has('parser.failed') || failed.has('parser.failed') || failed.has(metadataSpan)) {
       throw new Error('Metadata failed before metadata/render readiness');
     }
     if (failed.has('geometry.streamComplete')) throw new Error('Geometry failed before metadata/render readiness');
@@ -126,13 +121,12 @@ export async function waitForMetadataRenderReadiness(options: {
       throw new Error('Renderer failed before metadata/render readiness');
     }
     if (failed.size > 0) throw new Error(`Load failed before metadata/render readiness: ${[...failed].join(', ')}`);
-    const metadata = probe ? done.has(metadataSpan) : legacy.metadata;
-    const geometry = probe ? done.has('geometry.streamComplete') : legacy.geometry;
-    // A present probe is authoritative for every completion, including the
-    // renderer; retained console lines belong only to the no-probe fallback.
-    const renderer = probe ? done.has('scene.finalize') : legacy.renderer;
-    if (metadata && geometry && renderer && await options.canvasReady()) return options.now();
+    const metadata = done.has(metadataSpan);
+    const geometry = done.has('geometry.streamComplete');
+    const renderer = done.has('scene.finalize');
+    if (metadata && geometry && renderer && (!options.requireRootEnd || probe?.ended) && await options.canvasReady()) return options.now();
     await options.pause();
   }
+  if (!traceSeen) throw new Error('Missing benchmark load trace: require a viewer built after #6979 with perfTrace enabled (#7005)');
   throw new Error('Timed out awaiting metadata, geometry, renderer finalize and allocated canvas; sample incomplete');
 }

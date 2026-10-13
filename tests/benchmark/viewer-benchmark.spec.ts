@@ -20,10 +20,9 @@ interface ViewerBenchmarkResult {
     uploadMode: 'timed' | 'count';
   };
   metrics: ViewerBenchmarkMetrics;
-  /** #6956: where each span-capable metric came from, and any span/regex disagreement. */
+  /** #7005: whether each metric had a canonical load span. */
   loadTrace: {
     sources: Partial<Record<string, string>>;
-    disagreements: Array<{ metric: string; span: number; regex: number; toleranceMs: number }>;
   };
   /** #6957: pinned worker count, structural counters and the long-frame summary of the load. */
   loadCounters: ReturnType<ViewerBenchmarkPage['getLoadCounters']>;
@@ -307,7 +306,6 @@ test.describe('Viewer Performance Benchmarks', () => {
         metrics,
         loadTrace: {
           sources: benchmarkPage.getMetricSources(),
-          disagreements: benchmarkPage.getSpanRegexDisagreements(),
         },
         loadCounters: benchmarkPage.getLoadCounters(),
         gpuHealth,

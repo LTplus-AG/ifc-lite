@@ -32,5 +32,5 @@ test('#6956 span metrics keep each console metric\'s epoch', () => {
     streamCompleteMs: 301,
     geometryStreamingMs: 301,
   });
-  assert.deepEqual(metricsFromLoadTrace(null), {});
+  assert.throws(() => metricsFromLoadTrace(null), /Missing benchmark load trace/);
 });

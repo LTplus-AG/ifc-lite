@@ -43,7 +43,7 @@ test('#7032: the executable cold A/B requires renderer finalization through the 
       const run = spawnSync(process.execPath, [
         '--import', 'tsx', '--import', fileURLToPath(new URL('./test-support/cold-ab/register.mjs', import.meta.url)),
         fileURLToPath(COLD_AB), fixture, '--dist-branch', directory,
-        '--iters', '1', '--port', String(port), '--timeout-ms', '100', '--results-dir', results,
+        '--branch-revision', 'HEAD', '--iters', '1', '--port', String(port), '--timeout-ms', '100', '--results-dir', results,
       ], { encoding: 'utf8', timeout: 30_000, env: { ...process.env, COLD_AB_FINALIZE: finalize, COLD_AB_CALLS: calls } });
       assert.equal(run.status, finalize === 'complete' ? 0 : 1, run.stderr + run.stdout);
       assert.equal(readFileSync(calls, 'utf8').trim().split('\n').length, 2,
@@ -78,7 +78,7 @@ test('the cold A/B script still loads and its sample runner exists (child proces
 });
 
 /** A Playwright `Page` double: enough surface for setup + one load. */
-function fakePage({ spans, legacyLines, snapshot = null }) {
+function fakePage({ spans, legacyLines, snapshot = { loadId: 'test', attrs: {}, start: 0, end: 1, spans: SPAN_SPANS.map(name => ({ name, thread: 'main', start: 0, end: 1 })) } }) {
   const initScripts = [];
   const consoleHandlers = [];
   const done = new Set();
@@ -151,7 +151,7 @@ test('#6993 cold A/B rejects a viewer count cohort even when the harness request
   await assert.rejects(bp.loadUntilReady('model.ifc', 2000), /count.*not a timing workload/);
 });
 
-test('loadUntilReady() falls back to the console lines for a base build that predates the span API', async () => {
+test('#7005 loadUntilReady refuses a pre-span base despite complete console lines', async () => {
   const ViewerBenchmarkPage = await loadPage();
   const bp = new ViewerBenchmarkPage(fakePage({ spans: false, legacyLines: [
     '[useIfc] Data model parsing complete for model.ifc: 265ms',
@@ -159,15 +159,14 @@ test('loadUntilReady() falls back to the console lines for a base build that pre
     '[GeomStream] finalizeStreamingAsync complete: 10ms → 2 consolidated batches',
   ] }), 'http://localhost:0');
   await bp.setup();
-  await bp.loadUntilReady('model.ifc', 2000);
-  assert.equal(bp.getMetrics().canvasHasContent, true);
+  await assert.rejects(bp.loadUntilReady('model.ifc', 25), /Missing benchmark load trace/);
 });
 
 test('loadUntilReady() fails finitely when the viewer never reports readiness', async () => {
   const ViewerBenchmarkPage = await loadPage();
   const bp = new ViewerBenchmarkPage(fakePage({ spans: false, legacyLines: [] }), 'http://localhost:0');
   await bp.setup();
-  await assert.rejects(bp.loadUntilReady('model.ifc', 50), /Timed out/);
+  await assert.rejects(bp.loadUntilReady('model.ifc', 50), /Missing benchmark load trace/);
 });
 
 test('runColdSample() runs setup, the caller checks, then loadUntilReady with metadata/render readiness required, all on the page itself', async () => {

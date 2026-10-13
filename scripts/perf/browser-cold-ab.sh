@@ -59,6 +59,13 @@ while [ $# -gt 0 ]; do
   esac
 done
 
+# Refuse pre-span sources before fetching fixtures or building anything (#7005).
+BRANCH_SHA="$(node scripts/perf/browser-span-source.mjs "$ROOT" HEAD)"
+BASE_SHA=""
+if [ -n "$BASE_REF" ]; then
+  BASE_SHA="$(node scripts/perf/browser-span-source.mjs "$ROOT" "$BASE_REF")"
+fi
+
 if [ -z "$FIXTURES_CSV" ]; then
   FIXTURES_CSV="tests/models/ara3d/AC20-FZK-Haus.ifc,tests/models/various/01_Snowdon_Towers_Sample_Structural(1).ifc"
   echo "browser-cold-ab.sh: no --fixtures given, defaulting to the two public CI fixtures" >&2
@@ -100,7 +107,7 @@ if [ ! -d apps/viewer/dist ]; then
   exit 1
 fi
 
-CMD_ARGS=("${FIXTURES[@]}" --dist-branch apps/viewer/dist --iters "$ITERS")
+CMD_ARGS=("${FIXTURES[@]}" --dist-branch apps/viewer/dist --branch-revision "$BRANCH_SHA" --iters "$ITERS")
 [ -n "$CORPUS" ] && CMD_ARGS+=(--corpus "$CORPUS")
 if [ "${#EXTRA_ARGS[@]}" -gt 0 ]; then
   CMD_ARGS+=("${EXTRA_ARGS[@]}")
@@ -111,7 +118,6 @@ fi
 # what a repeatability check or a --fault-inject-ms harness self-test wants,
 # and it skips the second install+build entirely.
 if [ -n "$BASE_REF" ]; then
-  BASE_SHA="$(git rev-parse "$BASE_REF")"
   echo "browser-cold-ab.sh: base=$BASE_SHA ($BASE_REF)  branch=$(git rev-parse --short HEAD)" >&2
 
   TMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/ifc-browser-ab.XXXXXX")"
@@ -139,7 +145,7 @@ if [ -n "$BASE_REF" ]; then
   elif [ -n "$(git status --porcelain)" ]; then
     BRANCH_LABEL="${BRANCH_LABEL}-dirty"
   fi
-  CMD_ARGS+=(--dist-base "$BASE_WT/apps/viewer/dist" --base-label "$BASE_SHA" --branch-label "$BRANCH_LABEL")
+  CMD_ARGS+=(--dist-base "$BASE_WT/apps/viewer/dist" --base-revision "$BASE_SHA" --base-label "$BASE_SHA" --branch-label "$BRANCH_LABEL")
 else
   echo "browser-cold-ab.sh: no --base and no origin/main — running self-mode (repeatability only, no base build)." >&2
 fi

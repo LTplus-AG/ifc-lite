@@ -282,8 +282,7 @@ export class ViewerBenchmarkPage {
     }
 
     // #6956: turn on the viewer's load tracer so metrics and load completion
-    // come from its span tree (window.__IFC_LITE_LOAD_TRACE__); the console
-    // regexes stay as the fallback for one release (#7005).
+    // come exclusively from its span tree (window.__IFC_LITE_LOAD_TRACE__).
     await this.page.addInitScript(() => {
       (globalThis as unknown as { __IFC_LITE_PERF_TRACE?: number }).__IFC_LITE_PERF_TRACE = 1;
     });
@@ -366,8 +365,7 @@ export class ViewerBenchmarkPage {
    * One cold sample as `scripts/perf/browser-cold-ab.mts` drives it: upload at
    * once, then wait for metadata + geometry + renderer finalize + canvas. The
    * cold A/B calls only this, so its tracing setup (`setup()`) and readiness
-   * logic (`waitForMetadataRenderReadiness`, with the console fallback for a
-   * base build that predates the spans) are this page's own, never a copy (#7032).
+   * logic (`waitForMetadataRenderReadiness`) are this page's own, never a copy (#7032).
    */
   async loadUntilReady(filePath: string, timeoutMs: number) {
     requireTimingUploads({ environment: { uploadMode: this.uploadMode } });
@@ -377,80 +375,21 @@ export class ViewerBenchmarkPage {
   }
 
   async waitForCompletion(timeoutMs: number = 600000, requireMetadataRender = false) {
+    const startTime = Date.now();
+    this.loadEndTime = await waitForMetadataRenderReadiness({
+      trace: () => this.probeLoadTrace(), logs: () => this.consoleLogs,
+      canvasReady: () => this.checkCanvasHasContent(), now: () => Date.now(),
+      pause: () => this.page.waitForTimeout(100), timeoutMs, requireRootEnd: !requireMetadataRender,
+    });
+    this.metrics.renderCompleteMs = this.loadEndTime - this.loadStartTime;
+    this.metrics.canvasHasContent = true;
     if (requireMetadataRender) {
-      this.loadEndTime = await waitForMetadataRenderReadiness({
-        trace: () => this.probeLoadTrace(), logs: () => this.consoleLogs, canvasReady: () => this.checkCanvasHasContent(),
-        now: () => Date.now(), pause: () => this.page.waitForTimeout(100), timeoutMs,
-      });
-      this.metrics.metadataRenderReadyMs = this.loadEndTime - this.loadStartTime;
-      this.metrics.renderCompleteMs = this.metrics.metadataRenderReadyMs;
-      this.metrics.canvasHasContent = true;
+      this.metrics.metadataRenderReadyMs = this.metrics.renderCompleteMs;
       await this.readLoadTrace();
       this.parseMetrics();
       return;
     }
-    const startTime = Date.now();
-    let renderCompleteTime: number | null = null;
-
-    // Wait for the load's root span to end (#6979) AND actual rendering
-    while (Date.now() - startTime < timeoutMs) {
-      const probe = await this.probeLoadTrace();
-      // TODO(remove-by: first release after 2026-10-06 (one after #6977), #7005):
-      // console completion lines, read only when the page exposes no load trace.
-      const hasStreamingComplete = this.consoleLogs.some(log =>
-        log.includes('[useIfc] Geometry streaming complete')
-      );
-      const hasDataModelComplete = this.consoleLogs.some(log =>
-        log.includes('[useIfc] Data model parsing complete') ||
-        log.includes('[ColumnarParser] Parsed')
-      );
-      const hasTotalLoadTime = this.consoleLogs.some(log =>
-        log.includes('[useIfc] TOTAL LOAD TIME')
-      );
-      const hasUnifiedSummary = this.consoleLogs.some(log =>
-        log.includes('[useIfc]') && log.includes('meshes') && log.includes('first:') && log.includes('total:')
-      );
-      // Primary-path definitive end-of-load marker (current viewer format):
-      //   [ifc-lite] <file> (327.0MB) → 39146 meshes, 12345k verts in 11.9s
-      const hasFinalSummary = this.consoleLogs.some(log =>
-        /\[ifc-lite\].*→\s*\d[\d,]*\s*meshes.*in\s*[\d.]+s/.test(log)
-      );
-
-      // Check canvas has actual content
-      const canvasReady = await this.checkCanvasHasContent();
-
-      const loadComplete = probe
-        ? probe.ended
-        : (hasStreamingComplete && hasDataModelComplete && hasTotalLoadTime)
-          || hasUnifiedSummary
-          || hasFinalSummary
-          || (hasStreamingComplete && hasDataModelComplete);
-      if (loadComplete) {
-        // Record when we see completion in logs
-        if (!renderCompleteTime) {
-          renderCompleteTime = Date.now();
-        }
-        
-        // Wait for canvas to actually have content (GPU flush)
-        if (canvasReady) {
-          this.loadEndTime = Date.now();
-          this.metrics.canvasHasContent = true;
-          // Additional wait for any pending GPU operations
-          await this.page.waitForTimeout(200);
-          break;
-        }
-      }
-
-      // Wait a bit before checking again
-      await this.page.waitForTimeout(100);
-    }
-
-    // Time from load start until the canvas actually showed content (the
-    // Playwright-observed render completion, distinct from the app's own
-    // totalWallClockMs log).
-    if (renderCompleteTime && this.loadEndTime) {
-      this.metrics.renderCompleteMs = this.loadEndTime - this.loadStartTime;
-    }
+    await this.page.waitForTimeout(200);
 
     // Best-effort wait for the steady-state render-stats line — it fires
     // after the scene settles (queue drain + fragment finalize), which is
@@ -465,7 +404,7 @@ export class ViewerBenchmarkPage {
       await this.page.waitForTimeout(250);
     }
 
-    // Span tree first, console logs as the fallback.
+    // The span tree is the only timing source.
     await this.readLoadTrace();
     this.parseMetrics();
   }
@@ -516,8 +455,7 @@ export class ViewerBenchmarkPage {
         LOAD_TRACE_GLOBAL,
       );
     } catch (err) {
-      console.warn('[Benchmark] could not read the load-trace span tree; using console regexes only', err);
-      this.loadTrace = null;
+      throw new Error('Cannot read required benchmark load-trace span tree (#7005)', { cause: err });
     }
   }
 
@@ -542,7 +480,10 @@ export class ViewerBenchmarkPage {
     }
 
     // Count-only diagnostics remain available without parsing any timing values.
-    const firstBatch = logs.match(/\[useIfc\] (?:Native )?Batch #1: (\d+) meshes/);
+    // The first logged worker batch supplies only its mesh count; timestamps
+    // are neither parsed nor used to order diagnostic records.
+    const firstBatch = logs.match(/\[useIfc\] (?:Native )?Batch #1: (\d+) meshes/)
+      ?? logs.match(/\[stream\] worker\[\d+\] first batch @ [^\n]*?\((\d+) meshes\)/);
     if (firstBatch) {
       this.metrics.firstBatchMeshes = Number(firstBatch[1]);
       this.metrics.firstBatchNumber = 1;

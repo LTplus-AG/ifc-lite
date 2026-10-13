@@ -1,0 +1,43 @@
+{
+  "issue": 7005,
+  "base": "7eeffbb960596669f1a4cb5e0d01e980999e20f6",
+  "publication": {
+    "workflow": "https://github.com/LTplus-AG/ifc-lite/actions/runs/38333269170",
+    "attempt": 1,
+    "result": "success",
+    "migrationRevision": "272ebd8615d038dc20dd8aec4e3bb88d1acf9fa7",
+    "precedingMigrationRelease": "v10.4.0",
+    "followupReleasePR": 7494
+  },
+  "validation": {
+    "rootTypecheck": "PASS; literal pnpm typecheck; includes browser-cold-ab.mts and benchmark TS through scripts/perf/tsconfig.frames.json",
+    "focusedNodeTests": {
+      "tests": 68,
+      "passed": 68,
+      "skipped": 0
+    },
+    "productionRevert": {
+      "tests": 68,
+      "passed": 53,
+      "failed": 15,
+      "skipped": 0,
+      "restoration": "exact saved production bytes restored; focused suite rerun"
+    }
+  },
+  "limits": [
+    "Hosted real-model FZK/Snowdon functional qualification pending; no GPU, pixel, speed, or timing-ratchet claim.",
+    "Source ancestry admission does not prove arbitrary supplied dist provenance.",
+    "Count-only console extraction and renderer failure diagnostics remain intentionally.",
+    "Retired console-only timing fields remain null in the result schema."
+  ],
+  "sha256": {
+    "tests/benchmark/viewer-benchmark-page.ts": "a7036768ebbf6aae0f67c70fffa5c3bef12216ef651d0233e95659b9b6ce1289",
+    "tests/benchmark/load-trace-metrics.ts": "6338e7e33c7ffdf2b31e281d671cee011b7bea44c0ce711a11dcc30409d24549",
+    "tests/benchmark/metadata-render-readiness.ts": "f0155dc755b8ff48ef954c3f062ebdc567c2732ffccab68b90c6251a83528adc",
+    "scripts/perf/browser-cold-ab.mts": "6ce526d3996fca2805cb0761c8f0e2c68913652fdf23f726621a2b81ca6cc640",
+    "scripts/perf/browser-cold-ab.sh": "c583e2426a93922ef86b7707792cc653b9727fd08ecdb1969d89df38183e67bd",
+    "scripts/perf/browser-span-source.mjs": "5e100862d845163d30ec4a2d10a6940614570d454633a7a5587c968fbc2cf4b3",
+    "scripts/perf/browser-span-source.d.mts": "9a15bee167d1f498c1c1d560cb0b446ab3127b160ddf0530072c8774a07caf7d",
+    "scripts/perf/tsconfig.frames.json": "917b6da354da798913ce7a3c4892fc00e9723ba16dae82846e75089744a07aa6"
+  }
+}

@@ -26,6 +26,7 @@
     "../../tests/benchmark/viewer-benchmark-page.ts",
     "../../tests/benchmark/viewer-benchmark.spec.ts",
     "./frame-gpu-rig.mts",
+    "./browser-cold-ab.mts",
     "../../tests/benchmark/frames/frame-rig.spec.ts"
   ],
   "include": [],

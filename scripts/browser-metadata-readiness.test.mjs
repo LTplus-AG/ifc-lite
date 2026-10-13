@@ -81,12 +81,12 @@ test('#6979 a scene.finalize span that ended in error fails readiness', async ()
   await assert.rejects(waitForMetadataRenderReadiness(scenario({ finalizeError: true })), /Renderer failed/);
 });
 
-// TODO(remove-by: first release after 2026-10-06, #7005): builds without a load trace.
-test('#6979 legacy fallback: a page without a load trace still completes from console lines', async () => {
-  assert.equal(await waitForMetadataRenderReadiness(scenario({ legacy: true })), 265);
+// #7005: console timing/completion is never an alternate acceptance path.
+test('#7005 a page without a load trace refuses console completion', async () => {
+  await assert.rejects(waitForMetadataRenderReadiness(scenario({ legacy: true })), /Missing benchmark load trace/);
 });
-test('#6979 legacy fallback: console metadata failure still fails a page without a load trace', async () => {
-  await assert.rejects(waitForMetadataRenderReadiness(scenario({ legacy: true, failedAt: 250 })), /Metadata failed/);
+test('#7005 missing trace remains explicit even with a console metadata failure', async () => {
+  await assert.rejects(waitForMetadataRenderReadiness(scenario({ legacy: true, failedAt: 250 })), /Missing benchmark load trace/);
 });
 
 // #7036: cache restores the actual store and emits cache.storeReady; no parser runs.
@@ -164,4 +164,25 @@ test('#7180 page callback allows ordinary unfinished work without waiting for ro
   } finally {
     delete globalThis[key];
   }
+});
+
+
+test('#7005 invalid trace clocks and root failure cannot certify readiness', async () => {
+  const key = '__7005_probe_invalid';
+  const valid = { start: 0, end: 30, attrs: {}, spans: READINESS_SPANS.filter(name => name !== 'parser.failed').map(name => ({ name, start: 0, end: 10 })) };
+  try {
+    for (const snapshot of [
+      { ...valid, start: NaN }, { ...valid, end: -1 },
+      { ...valid, spans: [{ name: 'scene.finalize', start: 10, end: 5 }] },
+    ]) {
+      globalThis[key] = { latest: () => snapshot };
+      const input = scenario({ canvasAt: 0 });
+      input.trace = async () => probePageLoadTrace({ key, names: READINESS_SPANS });
+      await assert.rejects(waitForMetadataRenderReadiness(input), /Invalid benchmark load trace/);
+    }
+    globalThis[key] = { latest: () => ({ ...valid, attrs: { error: true } }) };
+    const input = scenario({ canvasAt: 0 });
+    input.trace = async () => probePageLoadTrace({ key, names: READINESS_SPANS });
+    await assert.rejects(waitForMetadataRenderReadiness(input), /Load failed.*load/);
+  } finally { delete globalThis[key]; }
 });

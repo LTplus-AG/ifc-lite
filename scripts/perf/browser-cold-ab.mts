@@ -15,7 +15,7 @@
  *
  * Example: npx tsx scripts/perf/browser-cold-ab.mts model.ifc
  *   --dist-branch apps/viewer/dist --iters 5 --headed
- *   --browser-executable /path/to/chrome
+ *   --branch-revision <built-source-sha> --browser-executable /path/to/chrome
  * Use --fault-inject-ms 2000 --fault-inject-side branch to exercise delay detection.
  * --close-timeout-ms bounds context/browser teardown per sample (default 30000);
  * a close() that never settles is reported as a named failure, not a hang (#4116).
@@ -28,6 +28,7 @@ import { chromium, type Browser, type BrowserContext, type Page } from '@playwri
 import { startStaticServer } from './browser-static-server.js';
 import { runColdSample } from './browser-cold-sample.js';
 import { browserFixtureKey, validateBrowserFixtures } from './browser-cold-fixtures.js';
+import { requireSpanSource } from './browser-span-source.mjs';
 import { prepareBrowserOutputs } from './browser-cold-outputs.js';
 import { closeBrowserWithTimeout, closeContextWithTimeout, raceWithTimeout } from './browser-cold-teardown.js';
 import { existsSync, readFileSync, statSync, writeFileSync, appendFileSync } from 'node:fs';
@@ -55,7 +56,7 @@ function flag(name: string): string | null {
 }
 const FLAGS_WITH_VALUE = new Set([
   '--browser-executable', '--corpus', '--iters', '--dist-base', '--dist-branch', '--port',
-  '--base-label', '--branch-label', '--jsonl', '--report-json', '--results-dir',
+  '--base-revision', '--branch-revision', '--base-label', '--branch-label', '--jsonl', '--report-json', '--results-dir',
   '--fault-inject-ms', '--fault-inject-side', '--fault-inject-pattern', '--timeout-ms', '--close-timeout-ms',
 ]);
 function isFlagValue(i: number): boolean {
@@ -146,7 +147,12 @@ if (fixtures.length === 0) {
 
 validateBrowserFixtures(fixtures);
 if (BASE_LABEL === BRANCH_LABEL) throw new Error('Base and branch labels must differ');
+const sourceRevisions = {
+  branch: requireSpanSource(ROOT, flag('--branch-revision')),
+  base: DIST_BASE ? requireSpanSource(ROOT, flag('--base-revision')) : null,
+};
 prepareBrowserOutputs(RESULTS_DIR, JSONL_OUT, REPORT_JSON);
+writeFileSync(join(RESULTS_DIR, 'source-revisions.json'), JSON.stringify(sourceRevisions, null, 2) + '\n');
 
 // ---------------------------------------------------------------------------
 // Minimal static server, root swappable between rounds without a restart —
@@ -240,7 +246,10 @@ for (let iter = 1; iter <= ITERS; iter++) {
         // load than a real GPU does. Say so once, and archive it with the sample.
         const adapter = await raceWithTimeout(page.evaluate(async () => {
           const a = await navigator.gpu?.requestAdapter();
-          return a ? { architecture: a.info?.architecture ?? '', fallback: Boolean(a.isFallbackAdapter ?? a.info?.isFallbackAdapter) } : null;
+          if (!a) return null;
+          const fallback = 'isFallbackAdapter' in a && typeof a.isFallbackAdapter === 'boolean'
+            ? a.isFallbackAdapter : a.info?.isFallbackAdapter;
+          return { architecture: a.info?.architecture ?? '', fallback: Boolean(fallback) };
         }), CLOSE_TIMEOUT_MS, 'gpu adapter diagnostics').catch((error) => {
           console.warn('browser-cold-ab: adapter diagnostics failed', error);
           return null;

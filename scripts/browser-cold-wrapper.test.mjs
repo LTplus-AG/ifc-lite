@@ -17,6 +17,9 @@ for (const [corruptServedWasm, dirtyWorkingTree] of [[false, false], [true, fals
   mkdirSync(bin);
   writeFileSync(join(repo, '.gitignore'), 'packages/wasm/pkg/\napps/viewer/dist/\n');
   copyFileSync(resolve('scripts/perf/browser-cold-ab.sh'), join(repo, 'scripts/perf/browser-cold-ab.sh'));
+  // This test isolates build/cleanup; real ancestry admission is exercised by
+  // browser-span-source.test.mjs against actual Git commits.
+  writeFileSync(join(repo, 'scripts/perf/browser-span-source.mjs'), "import {execFileSync} from 'node:child_process'; console.log(execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim());\n");
   writeFileSync(join(repo, 'scripts/build-wasm.sh'), '#!/bin/sh\nmkdir -p packages/wasm/pkg\nprintf fixture-wasm > packages/wasm/pkg/ifc-lite_bg.wasm\n');
   const git = args => {
     const result = spawnSync('git', args, { cwd: repo, encoding: 'utf8' });

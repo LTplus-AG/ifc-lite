@@ -1,0 +1,9 @@
+$ node docs/architecture/evidence/7537-entity-list-distinct-ids/mock-validate-cost.mjs packages/ids/.evidence-builds/main packages/ids/.evidence-builds/a2f319158 packages/ids/.evidence-builds/head
+1 specification (IFCWALL, IFCDOOR; Name required), mock accessor:
+  packages/ids/.evidence-builds/main: 145 ms; each specification pass 300001
+  packages/ids/.evidence-builds/a2f319158: 155 ms; each specification pass 300001
+  packages/ids/.evidence-builds/head: 150 ms; each specification pass 300001
+20 specifications (IFCWALL, IFCDOOR; Name required), mock accessor:
+  packages/ids/.evidence-builds/main: 1888 ms; each specification pass 300001
+  packages/ids/.evidence-builds/a2f319158: 2189 ms; each specification pass 300001
+  packages/ids/.evidence-builds/head: 2207 ms; each specification pass 300001

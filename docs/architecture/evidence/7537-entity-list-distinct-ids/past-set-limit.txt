@@ -1,0 +1,6 @@
+$ node docs/architecture/evidence/7537-entity-list-distinct-ids/past-set-limit.mjs packages/ids/.evidence-builds/main
+packages/ids/.evidence-builds/main: returned 16777220 ids (sum 140737530298371, first 0, last 0) in 286 ms; peak memory 0.73 GB
+$ node docs/architecture/evidence/7537-entity-list-distinct-ids/past-set-limit.mjs packages/ids/.evidence-builds/a2f319158
+packages/ids/.evidence-builds/a2f319158: threw RangeError: Set maximum size exceeded after 2785 ms; peak memory 1.06 GB
+$ node docs/architecture/evidence/7537-entity-list-distinct-ids/past-set-limit.mjs packages/ids/.evidence-builds/head
+packages/ids/.evidence-builds/head: returned 16777219 ids (sum 140737530298371, first 0, last 16777218) in 2829 ms; peak memory 1.06 GB

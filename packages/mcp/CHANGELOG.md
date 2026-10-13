@@ -1,5 +1,13 @@
 # @ifc-lite/mcp
 
+## 0.26.2
+
+### Patch Changes
+
+- [#7556](https://github.com/LTplus-AG/ifc-lite/pull/7556) [`572aae3`](https://github.com/LTplus-AG/ifc-lite/commit/572aae328182b8b35e155bffcd3a4a269bfbc59f) Thanks [@louistrue](https://github.com/louistrue)! - Include pending session creates, edits, and deletions in MCP IFCX, USD, GLB, and OBJ exports without exporting and reloading IFC first.
+- Updated dependencies [[`af57b69`](https://github.com/LTplus-AG/ifc-lite/commit/af57b6917c9aa049514c3cf35ae5b38d7ad36ea1)]:
+  - @ifc-lite/rules@0.7.4
+
 ## 0.26.1
 
 ### Patch Changes

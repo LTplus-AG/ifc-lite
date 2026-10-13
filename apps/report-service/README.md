@@ -4,7 +4,7 @@ A separate Node service for user-reviewed GitHub reports and optional confidenti
 
 ## Deployment
 
-HTTP submissions remain queued-only. The issue transport and durable retry recovery code are present, but startup registers only retention and model verification. Restoring the GitHub publisher requires qualification of the complete publication path and a runtime witness. Do not deploy this layer as a rollback over the existing N deployment. New user submissions, NDA signing and public model sharing remain subject to their separate launch gates.
+HTTP submissions queue reviewed reports. Startup registers independent retention, model verification and GitHub publication workers. The publisher uses the qualified durable-intent and canonical-author transport for issues and reviewed existing-issue comments. This startup source unit requires its own runtime qualification before deployment; do not replace the existing qualified N deployment with an unqualified build. New user submissions, NDA signing and public model sharing remain subject to their separate launch gates.
 
 Required disclosure configuration: `REPORT_STORAGE_PROVIDER`, `REPORT_STORAGE_LOCATION`, and `REPORT_BACKUP_DISCLOSURE`. These describe actual deployment; Switzerland is the legal recipient jurisdiction, not an inferred hosting location.
 
@@ -24,13 +24,13 @@ Ordinary private upload consent permits only diagnosing and verifying the report
 
 Custom agreements remain manual review requests. `GET /api/reports/admin/pending` lists the latest 100 reports; `GET /api/reports/admin/:id` retrieves private reviewed details and the custom agreement reference. Both require the configured maintainer bearer and are audited. `POST /api/reports/admin/:id/custom-nda` with authenticated administrator bearer and `{accepted:true,signedAgreementReference:"private document reference"}` records completed review and unlocks the requested upload. The service does not pretend a user-supplied document was automatically signed.
 
-Private model access uses `POST /api/reports/admin/:id/download`, returning a 60-second URL. Public sharing is explicitly unavailable in capabilities and rejected by the server until a separate publication/scanning flow is qualified. No publisher is registered at startup, so HTTP submissions only queue reviewed content. The dormant issue transport includes only reviewed title/description/diagnostics and an opaque report ID, excluding model filename, model bytes, agreement and contact details.
+Private model access uses `POST /api/reports/admin/:id/download`, returning a 60-second URL. Public sharing is explicitly unavailable in capabilities and rejected by the server until a separate publication/scanning flow is qualified. The publisher includes only reviewed title/description/diagnostics and an opaque report ID, excluding model filename, model bytes, agreement and contact details.
 
 ## Recovery and deletion
 
-Uploads resume using the same durable report/upload IDs and reselected source file; each part's checksum must match. Completion verifies actual storage part numbers and sizes, any available returned checksums, and stored object size; the background verifier then hashes the actual bytes before marking ready. Lost complete responses reconcile using object HEAD. The dormant issue transport includes lost-response reconciliation against the actual App author and independently committed publication intent. Startup publication remains disabled until the complete publication path has its runtime qualification. Generic error categories must not merge unrelated reports.
+Uploads resume using the same durable report/upload IDs and reselected source file; each part's checksum must match. Completion verifies actual storage part numbers and sizes, any available returned checksums, and stored object size; the background verifier then hashes the actual bytes before marking ready. Lost complete responses reconcile using object HEAD. GitHub issue/comment recovery reconciles the canonical App-author marker against an independently committed publication intent. Generic error categories must not merge unrelated reports.
 
-Models and report details expire after 30 days; incomplete uploads after one day. Independent bounded workers run retention and model verification every ten seconds. Submitted reports remain in the outbox; no publisher is registered. Shutdown cancels verification reads and leaves interrupted work available for retry. Owner DELETE removes private report content and model, but cannot retract an already-public GitHub issue. Storage failures retain cleanup work rather than falsely recording deletion. Audit events expire after 90 days. Backups/object versions must be configured and disclosed separately; the service cannot erase unmanaged backups. Alert on cleanup failures, outbox age and storage quotas before public launch.
+Models and report details expire after 30 days; incomplete uploads after one day. Independent bounded workers run retention and model verification every ten seconds. The publisher processes eligible submitted reports from the outbox without blocking retention or model verification. Shutdown cancels verification reads and leaves interrupted work available for retry. Owner DELETE removes private report content and model, but cannot retract an already-public GitHub issue. Storage failures retain cleanup work rather than falsely recording deletion. Audit events expire after 90 days. Backups/object versions must be configured and disclosed separately; the service cannot erase unmanaged backups. Alert on cleanup failures, outbox age and storage quotas before public launch.
 
 Run checks through root `pnpm typecheck` and `pnpm test --filter=@ifc-lite/report-service --filter=@ifc-lite/report-contract`. Integration tests need real PostgreSQL and an isolated checksum-capable S3 bucket. No production deployment, account provisioning, live signing or live model transfer is implied by local tests.
 
@@ -47,24 +47,27 @@ Public submissions default to disabled. Only the exact value `REPORT_SUBMISSIONS
 Before public launch, an operator may configure a separate `REPORT_QUALIFICATION_TOKEN` of at least 32 characters and send it as the `X-Ifclite-Qualification` header for protected qualification requests. It must differ from admin/admission secrets. Keep this credential server/operator-only: never put it in viewer configuration, browser bundles, URLs or logs. The bypass permits admission, not cross-origin or CSRF bypass. Removing the token disables qualification access without disabling existing-owner deletion.
 
 
-## Dormant publication transport
+## Publication transport
 
-The transport now includes the issue-create recovery implementation qualified
+The transport includes the issue-create recovery implementation qualified
 in #7517. Before a POST it commits an opaque report-ID intent through an independent
 database connection, while retaining the publisher's parent/outbox locks. A lost
 response, outer transaction rollback or restart cannot authorize a second POST.
 Retries reconcile the exact terminal marker against the authenticated App's
 canonical numeric bot identity; optional App metadata must agree when supplied.
 An empty or unavailable listing leaves `publicationHold: "review_required"` on
-the owner receipt. There is no automatic reset of an ambiguous intent. Completed
+the owner receipt. Every committed intent permits at most one POST attempt. A definite HTTP rejection, an expiry after intent, or a crash before sending also requires maintainer review; there is no automatic intent reset. Completed
 or abandoned intents are retained for 90 days, and submitted intents are retained
 while their report remains submitted. Deletion of private report data does not
 undo an already-public issue.
 
-This layer deliberately leaves startup publication disabled. Local loopback
-protocol and PostgreSQL tests are not a new production qualification. Existing
-live #7517 evidence retains its original source binding. This layer adds existing-issue comments and explicit PostHog correlation.
-Live PostHog acceptance and deployment activation remain unqualified. Do not enable this transport or deploy it over N as a rollback.
+Startup runs the publisher on the same bounded worker cadence as retention and
+verification. The real-process loopback/PostgreSQL witness must qualify this
+registration; local tests do not establish a new production qualification.
+Existing live #7517 evidence retains its original source binding. Live PostHog
+acceptance and deployment activation remain separate qualifications. New user
+submissions, NDA signing and public model sharing remain disabled until their
+launch gates are complete.
 ### Verified existing-issue destination
 
 Optional `REPORT_POSTHOG_HOST` (exact PostHog Cloud app origin), `REPORT_POSTHOG_PROJECT_ID` and server-only `REPORT_POSTHOG_API_KEY` enable an explicit lookup of the exact captured exception. Grant only the read scopes needed for event queries and error-tracking issue details. No lookup runs until the user asks. The service verifies the event UUID, session, build, recent timestamp, resolved PostHog issue and its sole linked open GitHub issue in the configured repository. Generic error categories are never deduplication keys. Unavailable, ambiguous or unmatched lookups leave the user an explicit choice to retry or create a separate issue.

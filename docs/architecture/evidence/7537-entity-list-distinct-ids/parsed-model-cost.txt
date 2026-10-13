@@ -1,0 +1,54 @@
+# run 1
+$ node docs/architecture/evidence/7537-entity-list-distinct-ids/parsed-model-cost.mjs 130000 20 packages/ids/.evidence-builds/main packages/ids/.evidence-builds/a2f319158 packages/ids/.evidence-builds/head 2>/dev/null
+130000 walls and a door, 20 specifications (IFCWALL, IFCDOOR; Pset_WallCommon.IsExternal required):
+  packages/ids/.evidence-builds/main: 2152 ms; each specification fail 130001/130000/1
+  packages/ids/.evidence-builds/a2f319158: 2172 ms; each specification fail 130001/130000/1
+  packages/ids/.evidence-builds/head: 2226 ms; each specification fail 130001/130000/1
+# run 2
+$ node docs/architecture/evidence/7537-entity-list-distinct-ids/parsed-model-cost.mjs 130000 20 packages/ids/.evidence-builds/main packages/ids/.evidence-builds/a2f319158 packages/ids/.evidence-builds/head 2>/dev/null
+130000 walls and a door, 20 specifications (IFCWALL, IFCDOOR; Pset_WallCommon.IsExternal required):
+  packages/ids/.evidence-builds/main: 2119 ms; each specification fail 130001/130000/1
+  packages/ids/.evidence-builds/a2f319158: 2228 ms; each specification fail 130001/130000/1
+  packages/ids/.evidence-builds/head: 2201 ms; each specification fail 130001/130000/1
+# run 3
+$ node docs/architecture/evidence/7537-entity-list-distinct-ids/parsed-model-cost.mjs 130000 20 packages/ids/.evidence-builds/main packages/ids/.evidence-builds/a2f319158 packages/ids/.evidence-builds/head 2>/dev/null
+130000 walls and a door, 20 specifications (IFCWALL, IFCDOOR; Pset_WallCommon.IsExternal required):
+  packages/ids/.evidence-builds/main: 2158 ms; each specification fail 130001/130000/1
+  packages/ids/.evidence-builds/a2f319158: 2214 ms; each specification fail 130001/130000/1
+  packages/ids/.evidence-builds/head: 2234 ms; each specification fail 130001/130000/1
+# run 1
+$ node docs/architecture/evidence/7537-entity-list-distinct-ids/parsed-model-cost.mjs 20000 20 packages/ids/.evidence-builds/main packages/ids/.evidence-builds/a2f319158 packages/ids/.evidence-builds/head 2>/dev/null
+20000 walls and a door, 20 specifications (IFCWALL, IFCDOOR; Pset_WallCommon.IsExternal required):
+  packages/ids/.evidence-builds/main: 265 ms; each specification fail 20001/20000/1
+  packages/ids/.evidence-builds/a2f319158: 277 ms; each specification fail 20001/20000/1
+  packages/ids/.evidence-builds/head: 275 ms; each specification fail 20001/20000/1
+# run 2
+$ node docs/architecture/evidence/7537-entity-list-distinct-ids/parsed-model-cost.mjs 20000 20 packages/ids/.evidence-builds/main packages/ids/.evidence-builds/a2f319158 packages/ids/.evidence-builds/head 2>/dev/null
+20000 walls and a door, 20 specifications (IFCWALL, IFCDOOR; Pset_WallCommon.IsExternal required):
+  packages/ids/.evidence-builds/main: 264 ms; each specification fail 20001/20000/1
+  packages/ids/.evidence-builds/a2f319158: 280 ms; each specification fail 20001/20000/1
+  packages/ids/.evidence-builds/head: 276 ms; each specification fail 20001/20000/1
+# run 3
+$ node docs/architecture/evidence/7537-entity-list-distinct-ids/parsed-model-cost.mjs 20000 20 packages/ids/.evidence-builds/main packages/ids/.evidence-builds/a2f319158 packages/ids/.evidence-builds/head 2>/dev/null
+20000 walls and a door, 20 specifications (IFCWALL, IFCDOOR; Pset_WallCommon.IsExternal required):
+  packages/ids/.evidence-builds/main: 268 ms; each specification fail 20001/20000/1
+  packages/ids/.evidence-builds/a2f319158: 280 ms; each specification fail 20001/20000/1
+  packages/ids/.evidence-builds/head: 277 ms; each specification fail 20001/20000/1
+# run 1
+$ node docs/architecture/evidence/7537-entity-list-distinct-ids/parsed-model-cost.mjs 130000 1 packages/ids/.evidence-builds/main packages/ids/.evidence-builds/a2f319158 packages/ids/.evidence-builds/head 2>/dev/null
+130000 walls and a door, 1 specification (IFCWALL, IFCDOOR; Pset_WallCommon.IsExternal required):
+  packages/ids/.evidence-builds/main: 1113 ms; each specification fail 130001/130000/1
+  packages/ids/.evidence-builds/a2f319158: 1115 ms; each specification fail 130001/130000/1
+  packages/ids/.evidence-builds/head: 1104 ms; each specification fail 130001/130000/1
+# run 2
+$ node docs/architecture/evidence/7537-entity-list-distinct-ids/parsed-model-cost.mjs 130000 1 packages/ids/.evidence-builds/main packages/ids/.evidence-builds/a2f319158 packages/ids/.evidence-builds/head 2>/dev/null
+130000 walls and a door, 1 specification (IFCWALL, IFCDOOR; Pset_WallCommon.IsExternal required):
+  packages/ids/.evidence-builds/main: 1136 ms; each specification fail 130001/130000/1
+  packages/ids/.evidence-builds/a2f319158: 1126 ms; each specification fail 130001/130000/1
+  packages/ids/.evidence-builds/head: 1128 ms; each specification fail 130001/130000/1
+# run 3
+$ node docs/architecture/evidence/7537-entity-list-distinct-ids/parsed-model-cost.mjs 130000 1 packages/ids/.evidence-builds/main packages/ids/.evidence-builds/a2f319158 packages/ids/.evidence-builds/head 2>/dev/null
+130000 walls and a door, 1 specification (IFCWALL, IFCDOOR; Pset_WallCommon.IsExternal required):
+  packages/ids/.evidence-builds/main: 1140 ms; each specification fail 130001/130000/1
+  packages/ids/.evidence-builds/a2f319158: 1151 ms; each specification fail 130001/130000/1
+  packages/ids/.evidence-builds/head: 1150 ms; each specification fail 130001/130000/1

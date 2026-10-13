@@ -1,0 +1,122 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+name: Reporter 6729 hosted functional probe
+
+# Path-limited PR bootstrap qualifies the new workflow before it is registered
+# on main. Manual execution remains available after default-branch admission.
+# This is evidence collection, never a deployment or issue-closure gate.
+on:
+  workflow_dispatch:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+    paths:
+      - '.github/workflows/reporter-6729.yml'
+      - 'tests/e2e/reporter-6729.browser.ts'
+      - 'tests/e2e/reporter-6729.config.ts'
+      - 'tests/e2e/reporter-6729.e2e.spec.ts'
+      - 'tests/evidence/reporter-6729/README.md'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: reporter-6729-hosted-functional-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  E2E_GPU_STRICT: '1'
+  REPORTER_6729_IFC: test-results/reporter-6729-fixture/out_visible.ifc
+
+jobs:
+  functional:
+    # Literal hosted selector: never consume the shared physical host.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Record exact source and scope
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+        run: |
+          python3 - <<'PY'
+          import json, os, pathlib, subprocess
+          out = pathlib.Path('test-results/reporter-6729-provenance')
+          out.mkdir(parents=True)
+          head = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
+          assert head == os.environ['EXPECTED_SHA'], 'checkout did not match dispatched source'
+          data = {'head': head, 'tree': subprocess.check_output(['git', 'rev-parse', 'HEAD^{tree}'], text=True).strip(),
+                  'runId': os.environ['GITHUB_RUN_ID'], 'runAttempt': os.environ['GITHUB_RUN_ATTEMPT'],
+                  'eventName': os.environ['GITHUB_EVENT_NAME'],
+                  'checkoutKind': 'PR synthetic merge' if os.environ['GITHUB_EVENT_NAME'] == 'pull_request' else 'dispatched workflow ref',
+                  'scope': 'Hosted SOFTWARE_SWIFTSHADER functional observations only; occlusion verdict pending; no physical GPU/performance/full-original identity acceptance',
+                  'runnerImage': os.environ.get('ImageOS'), 'runnerImageVersion': os.environ.get('ImageVersion')}
+          (out / 'source.json').write_text(json.dumps(data, indent=2))
+          PY
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Install actual Chrome and browser dependencies explicitly
+        run: pnpm exec playwright install --with-deps chrome
+      - uses: ./.github/actions/setup-wasm-build
+        with:
+          cache-prefix: reporter-6729
+          save-if: 'false'
+      - name: Build exact viewer dependency graph and WASM
+        run: pnpm build --filter=@ifc-lite/viewer... --concurrency=2 --force
+      - name: Record actual built WASM bytes
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, pathlib
+          root = pathlib.Path('packages/wasm/pkg')
+          files = sorted([*root.glob('*.wasm'), *root.glob('*.js')])
+          assert any(p.suffix == '.wasm' for p in files), 'real WASM runtime absent'
+          data = {str(p): {'bytes': p.stat().st_size, 'sha256': hashlib.sha256(p.read_bytes()).hexdigest()} for p in files}
+          pathlib.Path('test-results/reporter-6729-provenance/wasm.json').write_text(json.dumps(data, indent=2))
+          PY
+      - name: Fetch immutable authentic reduced reporter attachment
+        run: |
+          python3 - <<'PY'
+          import hashlib, pathlib, urllib.request
+          url = 'https://github.com/user-attachments/files/33384683/out_visible.ifc.txt'
+          with urllib.request.urlopen(url, timeout=30) as response:
+              data = response.read(65537)
+          assert len(data) == 22701, 'authentic reporter fixture size mismatch'
+          assert hashlib.sha256(data).hexdigest() == 'cc6fbbf632c2779891e485c3297d437b1d8555448934b8c8b5a3cce5326553a2', 'reporter fixture hash mismatch'
+          path = pathlib.Path('test-results/reporter-6729-fixture/out_visible.ifc')
+          path.parent.mkdir(parents=True)
+          path.write_bytes(data)
+          PY
+      - name: Capture canonical import and real matched renderer frames
+        run: timeout --signal=INT --kill-after=30s 7m pnpm exec playwright test --config=tests/e2e/reporter-6729.config.ts
+      - name: Require complete witness, never skipped fixture acceptance
+        run: |
+          python3 - <<'PY'
+          import json, pathlib
+          files = list(pathlib.Path('test-results/reporter-6729').rglob('reporter-6729-report.json'))
+          assert len(files) == 1, 'missing or ambiguous actual browser witness'
+          report = json.loads(files[0].read_text())
+          assert report['status'] == 'FUNCTIONAL_FRAMES_CAPTURED_OCCLUSION_VERDICT_PENDING', 'incomplete functional evidence'
+          assert len(report['frames']) == 36 and not report['errors'], 'missing frames or actual runtime failures'
+          results = json.loads(pathlib.Path('test-results/reporter-6729-results.json').read_text())
+          assert results['stats']['expected'] == 1 and results['stats']['skipped'] == 0 and results['stats']['unexpected'] == 0, 'skip/failure is not reporter qualification'
+          PY
+      - name: Retain real evidence and failure context
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: reporter-6729-functional-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            test-results/reporter-6729/
+            test-results/reporter-6729-results.json
+            test-results/reporter-6729-provenance/
+          if-no-files-found: error
+          retention-days: 3

@@ -38,7 +38,7 @@ Supply the GitHub App signing key through exactly one protected secret source: a
 
 Approved NDA signing also requires an explicit `REPORT_AGREEMENT_VERSION` identifying the reviewed version. Missing, blank, draft or placeholder versions fail startup when approval is configured. Leave approval unset until the owner approves the exact text and version.
 
-Verification distinguishesproven byte-integrity failures from provider/network errors. Transient reads and verification deadlines remain unpublished and retry with a PostgreSQL-persisted exponential delay from 10 seconds to 15 minutes; the original pending-upload expiry still applies. Shutdown cancellation leaves the work pending. A successful retry must read and hash the actual object before it becomes ready.
+Verification distinguishes proven byte-integrity failures from provider/network errors. Transient reads and verification deadlines remain unpublished and retry with a PostgreSQL-persisted exponential delay from 10 seconds to 15 minutes; the original pending-upload expiry still applies. Shutdown cancellation leaves the work pending. A successful retry must read and hash the actual object before it becomes ready.
 
 ## Launch gate
 

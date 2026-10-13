@@ -95,6 +95,23 @@ describe.skipIf(!enabled)('#7495 real HTTP ownership, consent and publication bo
     } finally { await db.end(); }
   });
 
+  it('#7495 accepts case-insensitive JSON media types and parameter whitespace without widening accepted types', async () => {
+    const owner = await browser();
+    for (const mediaType of ['Application/JSON', 'application/json ; charset=utf-8']) {
+      const response = await request(owner, '/drafts', 'POST', draft(), { 'Content-Type': mediaType });
+      expect(response.status).toBe(201);
+      const created = await response.json() as ReportReceipt;
+      expect((await request(owner, `/${created.id}`)).status).toBe(200);
+    }
+    for (const mediaType of ['text/plain', 'application/json-patch+json', '']) {
+      const response = await request(owner, '/drafts', 'POST', draft(), { 'Content-Type': mediaType });
+      expect(response.status).toBe(415);
+      expect(await response.json()).toMatchObject({ error: 'json_required' });
+    }
+    const persisted = await db.query<{ count: string }>('SELECT count(*) FROM model_reports WHERE session_id=$1', [owner.id]);
+    expect(Number(persisted.rows[0]!.count)).toBe(2);
+  });
+
   it("#7495 launch gate blocks public admission and content while preserving owner deletion", async () => {
       const owner = await browser();
       const report = await create(owner);

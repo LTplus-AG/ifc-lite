@@ -6,7 +6,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { ReportError, requireCondition } from "./errors.js";
 export async function body(req: IncomingMessage): Promise<unknown> {
   requireCondition(
-    req.headers["content-type"]?.split(";")[0] === "application/json",
+    req.headers["content-type"]?.split(";")[0]?.trim().toLowerCase() === "application/json",
     415,
     "json_required",
     "JSON request required.",

@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * #ISSUE on real parsed models (IfcParser + createDataAccessor).
+ * #7537 on real parsed models (IfcParser + createDataAccessor).
  *
  * The same three walls (W-3 has no Name; W-1 and W-2 carry
  * Pset_WallCommon.IsExternal) and a door, written as IFC2X3, IFC4 and
@@ -123,7 +123,7 @@ const SCHEMAS = [
   ['IFC4X3_ADD2', 'IFC4X3'],
 ] as const;
 
-describe('a class listed twice on real parsed models (#ISSUE)', () => {
+describe('a class listed twice on real parsed models (#7537)', () => {
   it.each(SCHEMAS)('%s: each wall is counted and reported once', async (schema, parsedAs) => {
     const { accessor, modelInfo, schemaVersion } = await parse(new TextEncoder().encode(step(schema)));
     expect(schemaVersion).toBe(parsedAs);

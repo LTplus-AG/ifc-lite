@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * #ISSUE: an entity facet whose name lists a class more than once
+ * #7537: an entity facet whose name lists a class more than once
  * (`xs:enumeration` IFCWALL, IFCWALL) collected that class's ids once per
  * listed value. Every wall became a candidate twice, so the specification
  * counted and reported it twice (applicable 6 for 3 walls, two rows per
@@ -37,7 +37,7 @@ const model = (): IFCDataAccessor =>
     { expressId: 4, type: 'IfcDoor', name: 'D-1' },
   ]);
 
-describe('filterByEntityFacet with a class listed more than once (#ISSUE)', () => {
+describe('filterByEntityFacet with a class listed more than once (#7537)', () => {
   it('returns each wall once for IFCWALL, IFCWALL', () => {
     expect(filterByEntityFacet(listed('IFCWALL', 'IFCWALL'), model())).toEqual([1, 2, 3]);
   });
@@ -73,7 +73,7 @@ describe('filterByEntityFacet with a class listed more than once (#ISSUE)', () =
   });
 });
 
-describe('validateIDS with a class listed twice (#ISSUE)', () => {
+describe('validateIDS with a class listed twice (#7537)', () => {
   const modelInfo: IDSModelInfo = { modelId: 'listed-twice', schemaVersion: 'IFC4', entityCount: 4 };
 
   const spec = (overrides: Partial<IDSSpecification> = {}): IDSSpecification => ({

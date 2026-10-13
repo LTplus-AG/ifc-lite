@@ -3,6 +3,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { beforeAll, afterAll, describe, expect, it } from "vitest";
 import { createHash, randomUUID } from "node:crypto";
+import { execFile } from "node:child_process";
+import { accessSync, constants } from "node:fs";
+import { promisify } from "node:util";
 import { readFile, mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -13,15 +16,17 @@ import { PDFDocument } from "pdf-lib";
 import { openDatabase, migrate } from "../src/database.js";
 import { loadConfig, type Config } from "../src/config.js";
 import { createReport } from "../src/reports.js";
-import { acceptAgreement, validateAgreementFont } from "../src/agreement.js";
+import { acceptAgreement, agreementPdf, validateAgreementFont } from "../src/agreement.js";
 import { createHandler } from "../src/handler.js";
 import { ModelStorage } from "../src/storage.js";
+const pdfExtractor = process.env.REPORT_TEST_PDFTOTEXT;
 const enabled = Boolean(
-  process.env.REPORT_TEST_DATABASE_URL && process.env.REPORT_TEST_FONT_FILE,
+  process.env.REPORT_TEST_DATABASE_URL && process.env.REPORT_TEST_FONT_FILE && pdfExtractor,
 );
+if (pdfExtractor) accessSync(pdfExtractor, constants.X_OK);
 if (process.env.REPORT_REQUIRE_INTEGRATION === "true" && !enabled)
   throw new Error(
-    "Mandatory agreement integration needs REPORT_TEST_DATABASE_URL and REPORT_TEST_FONT_FILE",
+    "Mandatory agreement integration needs REPORT_TEST_DATABASE_URL, REPORT_TEST_FONT_FILE and executable REPORT_TEST_PDFTOTEXT",
   );
 describe.skipIf(!enabled)("#7495 approved agreement durable binding", () => {
   const db = openDatabase(process.env.REPORT_TEST_DATABASE_URL ?? "");
@@ -64,6 +69,25 @@ describe.skipIf(!enabled)("#7495 approved agreement durable binding", () => {
       REPORT_GITHUB_INSTALLATION_ID: "1",
       REPORT_GITHUB_PRIVATE_KEY_FILE: keyPath,
     };
+  }
+  async function requireCompleteRenderedAgreement(bytes: Uint8Array): Promise<void> {
+    if (!pdfExtractor) throw new Error("Missing independent PDF text extractor");
+    const path = join(directory, `rendered-${randomUUID()}.pdf`);
+    await writeFile(path, bytes);
+    try {
+      const { stdout } = await promisify(execFile)(pdfExtractor, ["-enc", "UTF-8", path, "-"], {
+        timeout: 15_000, maxBuffer: 1024 * 1024,
+      });
+      // Poppler inserts line/page whitespace. NFC preserves Unicode meaning;
+      // punctuation and every non-whitespace character remain significant.
+      const normalize = (value: string) => value.normalize("NFC").replace(/\s+/gu, " ").trim();
+      const marker = "Electronic acceptance receipt";
+      const end = stdout.indexOf(marker);
+      if (end < 0 || normalize(stdout.slice(0, end)) !== normalize(text))
+        throw new Error("Rendered PDF must contain the complete approved agreement");
+    } finally {
+      await rm(path, { force: true });
+    }
   }
   beforeAll(async () => {
     await migrate(db);
@@ -133,6 +157,12 @@ describe.skipIf(!enabled)("#7495 approved agreement durable binding", () => {
     );
     const pdf = await PDFDocument.load(stored.agreement_pdf);
     expect(pdf.getPageCount()).toBeGreaterThan(1);
+    await requireCompleteRenderedAgreement(stored.agreement_pdf);
+    // #7559: prove the external oracle rejects a real PDF missing the last clause.
+    const complete = text.trimEnd();
+    const omitted = complete.slice(0, complete.lastIndexOf("\n"));
+    const incompletePdf = await agreementPdf(omitted, stored.agreement, config.agreementFont);
+    await expect(requireCompleteRenderedAgreement(incompletePdf)).rejects.toThrow(/complete approved agreement/);
     expect(pdf.getSubject()).toBe(`Report ${report.id}`);
     expect(pdf.getAuthor()).toBe("LTplus AG");
     expect(
@@ -224,6 +254,7 @@ describe.skipIf(!enabled)("#7495 approved agreement durable binding", () => {
       expect(stored.rows[0]?.agreement).toMatchObject({ version, agreementSha256: digest, signerName: input.signerName });
       expect(bytes.equals(stored.rows[0]!.agreement_pdf)).toBe(true);
       expect((await PDFDocument.load(bytes)).getPageCount()).toBeGreaterThan(1);
+      await requireCompleteRenderedAgreement(bytes);
       const repeated = await request(`/${reportId}/consent`, "POST", input);
       expect(repeated.status).toBe(200);
       expect(await repeated.json()).toEqual(receipt);

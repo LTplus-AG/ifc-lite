@@ -1846,13 +1846,10 @@ export class Scene {
     return this.meshQueueReadIndex < this.meshQueue.length;
   }
 
-  /** True while un-finalised streaming fragments are still being drawn. An
-   *  element appended during streaming (e.g. an authored IfcSpace) renders as
-   *  such a fragment AND accumulates in its colour bucket; once the bucket is
-   *  re-batched (e.g. by a move) the fragment becomes a stale duplicate, so the
-   *  caller should `finalizeStreaming` to merge fragments away. */
+  /** True while GPU fragments or retained streamed buckets await finalization.
+   * Recovery retires old-device fragments without retiring their CPU owner. */
   hasStreamingFragments(): boolean {
-    return this.streamingFragments.length > 0;
+    return this.streamingFragments.length > 0 || this.streamedBucketKeys.size > 0;
   }
 
   /** True while a finalize rebuild (sync or time-sliced) is mid-flight —
@@ -1953,7 +1950,7 @@ export class Scene {
    * re-grouped by their CURRENT colour.
    */
   finalizeStreaming(device: GPUDevice, pipeline: RenderPipeline): void {
-    if (this.streamingFragments.length === 0) return;
+    if (!this.hasStreamingFragments()) return;
     this.finalizeInProgress = true;
     try {
       this.finalizeStreamingInner(device, pipeline);
@@ -2056,7 +2053,7 @@ export class Scene {
       trace?.end(span);
       return Promise.resolve();
     }
-    if (this.streamingFragments.length === 0) { trace?.end(span); return Promise.resolve(); }
+    if (!this.hasStreamingFragments()) { trace?.end(span); return Promise.resolve(); }
     // Mark the rebuild as in-flight: the preamble empties streamingFragments
     // synchronously, so settle-sensitive consumers need this flag until the
     // time-sliced rebuild swaps the new batch array in.

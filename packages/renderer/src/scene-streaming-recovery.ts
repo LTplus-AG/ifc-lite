@@ -95,7 +95,7 @@ function bucketOwnership(host: SceneRecoveryHost) {
  * It does not persist a history, allocate an editor, or copy geometry bytes.
  */
 export function acquireStreamingRecoveryLease(host: SceneRecoveryHost) {
-  if (!host.streamingFragments.length && host.meshQueueReadIndex >= host.meshQueue.length) return null;
+  if (!host.streamingFragments.length && !host.streamedBucketKeys.size && host.meshQueueReadIndex >= host.meshQueue.length) return null;
   const queue = host.meshQueue, cursor = host.meshQueueReadIndex, prefix = queue.slice();
   const pieces = bucketPieces(host), flat = rows(host.meshDataMap), occurrences = rows(host.instancedEntityMap);
   const templates = host.instancedTemplateCpu, templateRows = templates.slice();

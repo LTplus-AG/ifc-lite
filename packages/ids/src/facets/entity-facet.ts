@@ -15,6 +15,7 @@ import type { FacetCheckResult } from './index.js';
 import { matchConstraint, formatConstraint } from '../constraints/index.js';
 import { IFC2X3_MAPPED_ALIASES, rowsForOccurrence } from './ifc2x3-type-mapping.js';
 import { matchPredefinedType } from './predefined-type-match.js';
+import { distinctIds } from './distinct-ids.js';
 import { assertGuardedRegexPattern } from '@ifc-lite/regex-guard';
 
 /** IFC entity NAME comparisons are case-insensitive per IDS spec. Predefined
@@ -262,18 +263,21 @@ export function filterByEntityFacet(
     ) {
       return undefined;
     }
-    const ids: number[] = [];
-    for (const value of constraint.values) {
-      // One push per id: spreading a type's ids as call arguments throws
-      // a RangeError once a type has more than about 125,000 instances.
-      for (const id of accessor.getEntitiesByType(value)) ids.push(id);
-    }
-    return ids;
+    // Applicability selects a set: an entity is one candidate however many
+    // listed values return it (a class listed twice, in the same or another
+    // case, or type lists that overlap in the accessor). First-listed order,
+    // and any number of ids, as before (#7537).
+    return distinctIds(typeLists(accessor, constraint.values));
   }
 
   // For patterns, we need to check all entity types
   // Return undefined to indicate full scan needed
   return undefined;
+}
+
+/** Each listed class's ids, asked for only once the previous list has been read. */
+function* typeLists(accessor: IFCDataAccessor, values: readonly string[]): Generator<number[]> {
+  for (const value of values) yield accessor.getEntitiesByType(value);
 }
 
 /**

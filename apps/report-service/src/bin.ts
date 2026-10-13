@@ -7,9 +7,11 @@ import { validateAgreementFont } from "./agreement.js";
 import { loadConfig } from "./config.js";
 import { openDatabase, migrate } from "./database.js";
 import { ModelStorage } from "./storage.js";
+import { GithubIssues } from "./github.js";
 import { createHandler } from "./handler.js";
 import { verifyNext } from "./verification.js";
 import { sweep } from "./maintenance.js";
+import { publishOne } from "./publication.js";
 
 type Worker = { stop: () => Promise<void> };
 let db: ReturnType<typeof openDatabase> | undefined;
@@ -19,7 +21,7 @@ const workers: Worker[] = [];
 let closing: Promise<void> | undefined;
 
 function worker(
-  name: "retention" | "verification",
+  name: "retention" | "verification" | "publisher",
   run: () => Promise<void>,
 ): Worker {
   let active: Promise<void> | undefined;
@@ -73,6 +75,7 @@ async function start(): Promise<void> {
   if (closing) return;
   const models = new ModelStorage(config);
   storage = models;
+  const github = new GithubIssues(config);
   const handler = createHandler(database, models, config);
   server = createServer((req, res) => { void handler(req, res); });
   server.requestTimeout = 30000;
@@ -81,13 +84,10 @@ async function start(): Promise<void> {
     console.error("[report-service] listener failed");
     void shutdown(true);
   });
-  // TODO(remove-by: #7517 durable retry qualification with a runtime witness,
-  // owner: @louistrue, tracking: #7495): keep GitHub publication dormant here.
-  // HTTP submission only queues reviewed content; this layer must not replace
-  // a deployment that already includes the qualified publication-recovery fix.
   workers.push(
     worker("retention", () => sweep(database, models)),
     worker("verification", () => verifyNext(database, models)),
+    worker("publisher", () => publishOne(database, github)),
   );
   server.listen(config.port, "0.0.0.0");
 }

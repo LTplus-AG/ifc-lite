@@ -401,6 +401,8 @@ Hosts must call `abandon(token)` when native evaluation throws, and use `abandon
 
 Native Review `modelIds` selects whole captured target sets independently of current authorization. A wholly permitted capture outside the request is omitted; a capture spanning requested and excluded models is refused as a whole. Permission revocation remains fail-closed after source hashing. Hash reuse follows the actual source object, including models that share a host owner. An older delayed proof cannot revive a newer same-context capture after retention eviction.
 
+Native capture admission and portable reads share the existing text budget: object-property names and string values both count toward 1,048,576 UTF-16 code units, with a 16,384 UTF-16 code-unit limit per key or value. A report that exceeds it is refused as `capture-bound` at native `finish`; the independent analysis report is retained by its producer, and the Review capture records unknown inventory rather than silently truncating it.
+
 ### Portable report contracts
 
 The Review entry point shares the viewer's existing `SavedAnalysisRun` and

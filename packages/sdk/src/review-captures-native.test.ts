@@ -601,3 +601,71 @@ it('#7372 requested native inventory change cannot evade the read fence by evict
     a.unchanged(); b.unchanged();
   } finally { release(); if (pending) await Promise.allSettled([pending]); source.withMaterializedAsync = original; }
 }, 30_000);
+
+// #7372 / review4261650112: prepare exactly two legal IDS producer reports,
+// solving the boundary from the first report's actual shape, never searching.
+it('#7372 native capture key text shares the unchanged aggregate admission budget', async () => {
+  const f = await fixture();
+  const seed = await f.native();
+  const index = seed.specificationResults.findIndex(spec => spec.failedCount > 0);
+  const bodies = [...f.xml.matchAll(/<specification\b[^>]*>[\s\S]*?<\/specification>/g)].map(match => match[0]);
+  const body = bodies[index];
+  if (index < 0 || !body) throw new Error('Actual failed authored IDS specification required');
+  const document = (padding: number) => f.xml.replace(/<specifications>[\s\S]*?<\/specifications>/,
+    `<specifications>${Array.from({ length: 128 }, (_, i) => body.replace(/name="[^"]*"/,
+      `name="key-budget-${i}:${'N'.repeat(padding)}"`)).join('')}</specifications>`);
+  const measure = (value: unknown) => {
+    const pending = [{ value, depth: 0 }];
+    let values = 0, keys = 0, work = 0, copies = 0, maxString = 0;
+    while (pending.length) {
+      const item = pending.pop();
+      if (!item || ++work > 100_000 || item.depth > 24) throw new Error('Native report violates old work/depth prerequisite');
+      const v = item.value;
+      if (typeof v === 'string') {
+        values += v.length; maxString = Math.max(maxString, v.length);
+        if (/^key-budget-\d+:N*$/.test(v)) copies++;
+      } else if (v instanceof Date) {
+        if (!Number.isFinite(v.getTime())) throw new Error('Native timestamp invalid');
+      } else if (typeof v === 'number') {
+        if (!Number.isFinite(v)) throw new Error('Native numeric result invalid');
+      }
+      else if (v !== null && typeof v === 'object') {
+        const names = Array.isArray(v) ? [] : Object.keys(v);
+        keys += names.reduce((sum, name) => sum + name.length, 0);
+        maxString = Math.max(maxString, ...names.map(name => name.length));
+        const children = Array.isArray(v) ? v : Object.values(v);
+        if (children.length > 10_000 || pending.length + children.length > 100_000) throw new Error('Native report violates old breadth prerequisite');
+        for (const child of children) pending.push({ value: child, depth: item.depth + 1 });
+      } else if (v !== null && v !== undefined && typeof v !== 'boolean') throw new Error('Native result contains unsupported value');
+    }
+    return { values, keys, work, copies, maxString };
+  };
+  const shortDefinition = document(0);
+  const shortToken = await f.captures.begin('ids', shortDefinition, f.models(), f.models, f.allowed);
+  expect(shortToken).not.toBeNull();
+  const short = await f.native(shortDefinition);
+  expect(short.specificationResults).toHaveLength(128);
+  expect(short.specificationResults.every(spec => !spec.error && spec.failedCount > 0)).toBe(true);
+  const low = measure(short);
+  expect(low.copies).toBe(256); // source.document plus each actual specification result
+  expect(low.values + low.keys).toBeLessThan(1_048_576);
+  f.captures.finish(shortToken, short);
+  expect((await f.read()).latestAttempt?.state).toBe('succeeded');
+  const padding = Math.floor((1_048_576 - low.values - Math.ceil(low.keys / 2)) / low.copies);
+  if (padding <= 0 || low.keys <= 2 * low.copies) throw new Error('Analytic native key-only boundary unavailable');
+  const definition = document(padding);
+  const token = await f.captures.begin('ids', definition, f.models(), f.models, f.allowed);
+  expect(token).not.toBeNull();
+  const report = await f.native(definition), actual = measure(report);
+  expect(report.specificationResults.every(spec => !spec.error && spec.failedCount > 0)).toBe(true);
+  expect(actual.work).toBe(low.work); expect(actual.keys).toBe(low.keys); expect(actual.copies).toBe(low.copies);
+  expect(actual.values).toBe(low.values + padding * low.copies);
+  expect(actual.values).toBeLessThanOrEqual(1_048_576); expect(actual.maxString).toBeLessThanOrEqual(16_384);
+  expect(actual.values + actual.keys).toBeGreaterThan(1_048_576);
+  const original = structuredClone(report);
+  f.captures.finish(token, report);
+  const refused = await f.read();
+  expect(refused.latestAttempt).toMatchObject({ state: 'refused', refusal: 'capture-bound' });
+  expect(refused.bounds.nativeCoverageComplete).toBe(false);
+  expect(report).toEqual(original); f.unchanged();
+}, 30_000);

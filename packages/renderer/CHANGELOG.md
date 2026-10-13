@@ -1,5 +1,11 @@
 # @ifc-lite/renderer
 
+## 6.3.3
+
+### Patch Changes
+
+- [#7548](https://github.com/LTplus-AG/ifc-lite/pull/7548) [`8f37748`](https://github.com/LTplus-AG/ifc-lite/commit/8f377482d8b394241a29ea986e8dc259ab6fa298) Thanks [@louistrue](https://github.com/louistrue)! - Restore CPU-backed streaming fragments after device loss before resuming the existing pending queue. Keep replacement devices private until restoration commits, reject changed source ownership, and record opt-in categorical recovery outcomes.
+
 ## 6.3.2
 
 ### Patch Changes

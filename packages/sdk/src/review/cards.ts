@@ -81,7 +81,7 @@ export function buildCards<Message extends ReviewMessage>(findings: readonly Rev
       if (resolution.state !== 'resolved') {
         return { ...element, key: null, resolution: resolution.state, expressId: null, resolvedModelId: null };
       }
-      return { ...element, modelName: resolution.modelName, key: elementKey(resolution.modelName, element.globalId),
+      return { ...element, modelName: resolution.modelName, key: elementKey(resolution.modelName, element.globalId, models.find(model => model.id === resolution.modelId)?.sourceIdentity),
         resolution: 'resolved', expressId: resolution.expressId, resolvedModelId: resolution.modelId };
     });
     const validated = elements.length > 0 && elements.every(element => element.key !== null);

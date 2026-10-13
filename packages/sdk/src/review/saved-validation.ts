@@ -11,6 +11,8 @@ import { typeDisciplines } from './disciplines.js';
  */
 export function savedValidationFacts<Message extends ReviewMessage = ReviewMessage>(saved: SavedValidationReport,
   options: { incomplete?: RunGap<Message>[];
+    /** Host-verified full source and GUID proof; absent preserves legacy name-only handling. */
+    identityAvailable?: (row: SavedValidationElement) => boolean;
     outcome?: (row: SavedValidationElement) => { lifecycle: FindingLifecycle; notes?: Message[] } | undefined } = {}): FindingSourceResult<Message> {
   const snapshot = saved.snapshot;
   if (snapshot.kind !== 'ids-report') return { runs: [], findings: [] };
@@ -22,7 +24,7 @@ export function savedValidationFacts<Message extends ReviewMessage = ReviewMessa
       ...(captured?.gaps.map(detail => ({ code: 'partial-source' as const, detail })) ?? [])] };
   return { runs: [run], findings: (captured?.rows ?? []).map(row => {
     const outcome = options.outcome?.(row);
-    const identityAvailable = !!row.GlobalId && !!row.modelName;
+    const identityAvailable = !!row.GlobalId && (!!row.modelName || options.identityAvailable?.(row) === true);
     return { id: JSON.stringify([run.id, row.id]),
       lineage: JSON.stringify(['saved-validation', snapshot.sourceName, row.specificationId, row.modelName, row.GlobalId, row.id]),
       source: 'validation', run, elements: row.GlobalId ? [{ globalId: row.GlobalId, modelId: null, modelName: row.modelName,

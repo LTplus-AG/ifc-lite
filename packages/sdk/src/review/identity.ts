@@ -14,6 +14,7 @@
  */
 
 import type { FindingElement, ReviewModel } from './types.js';
+import { isFullSourceSHA256 } from './portable-source-contract.js';
 
 export type ElementResolution =
   | { state: 'resolved'; modelId: string; modelName: string; expressId: number }
@@ -43,12 +44,15 @@ export function resolveElement(element: FindingElement, models: readonly ReviewM
   // Legacy name-based card keys cannot distinguish two loaded models with the same name.
   // A name and GlobalId match does not prove the same source bytes or revision.
   const sameName = models.filter(other => other.name === model.name);
-  if (sameName.length > 1) return { state: 'ambiguous', modelNames: sameName.map(other => other.name) };
+  const sourceScoped = isFullSourceSHA256(model.sourceIdentity)
+    && models.filter(other => other.sourceIdentity === model.sourceIdentity).length === 1;
+  if (sameName.length > 1 && !sourceScoped) return { state: 'ambiguous', modelNames: sameName.map(other => other.name) };
   return { state: 'resolved', modelId: model.id, modelName: model.name, expressId };
 }
 
 /** Legacy name-based display/navigation key, stable only while name and GlobalId stay unchanged.
  * It does not prove source identity or revision equality across sessions. */
-export function elementKey(modelName: string, globalId: string): string {
+export function elementKey(modelName: string, globalId: string, sourceIdentity?: string): string {
+  if (isFullSourceSHA256(sourceIdentity)) return `sha256:${sourceIdentity}\u001f${globalId}`;
   return `${modelName}\u001f${globalId}`;
 }

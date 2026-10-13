@@ -38,4 +38,7 @@ export * from './review/portable-saved-validation.js';
 
 export { clashFindings, clashGlobalId } from './review/clash.js';
 export { clashDisciplineCandidates, clashOccurrenceKey } from './review/clash-identity.js';
+export { createNativeReviewIdentityTable } from './review/native-identity-table.js';
 export { savedValidationFacts } from './review/saved-validation.js';
+
+export { readPortableReview } from './review/portable-snapshot.js';

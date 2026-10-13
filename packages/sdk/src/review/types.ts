@@ -133,6 +133,8 @@ export interface FindingSourceResult<Message extends ReviewMessage = ReviewMessa
 
 /** A model as the review layer sees it: identity plus a GlobalId lookup. */
 export interface ReviewModel {
+  /** Full source identity verified by the host for this read. Omit for legacy name-only models. */
+  sourceIdentity?: string;
   id: string;
   name: string;
   /** Returns a positive express id, or a value <= 0 when the GlobalId is not in the model. */

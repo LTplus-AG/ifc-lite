@@ -412,3 +412,15 @@ legacy sampled fingerprints. A valid payload remains historical evidence:
 validation does not make its execution attested, its freshness current, or its
 manual answers the result of a native evaluation. The codecs perform no save
 or model mutation.
+
+
+For supplied history, pass `createNativeReviewIdentityTable(store)` with each
+`NativeReviewModel` and call
+`readPortableReview(captures, liveModels, request, allowed)`. The request accepts
+`savedAnalysisRuns` and `savedValidationReports`. The reader verifies full source
+SHA-256 and duplicate-checked identity columns under current owner, revision and
+permission leases. Legacy or ambiguous evidence remains explicitly unbound.
+`records` retains original bounded native facts; `bindings` describes identity
+proof separately. Imported findings stay historical and not evaluated, with
+incomplete native coverage. No analysis, editor, persistence or scene mutation
+is performed.

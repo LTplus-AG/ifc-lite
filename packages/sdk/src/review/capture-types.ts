@@ -11,6 +11,17 @@ export interface NativeReviewModel extends ReviewModel {
   readonly store: object;
   readonly source: IfcSourceBytes;
   mutationView(): { getMutationRevision(): number } | null;
+  /** Actual columnar rows, preserving duplicate GUIDs/EXPRESS identities.
+   * A point lookup cannot establish multiplicity. Missing support stays unknown.
+   */
+  readonly identityTable?: {
+    readonly owner: object;
+    readonly expressIdColumn: Uint32Array;
+    readonly GlobalIdColumn: Uint32Array;
+    readonly stringTable: object;
+    readonly count: number;
+    rows(): Iterable<{ expressId: number; GlobalId: string }>;
+  };
 }
 
 export interface ReviewSourceProof {

@@ -18,6 +18,13 @@ export function reviewValueFits(value: unknown): boolean {
     } else if (x instanceof Date) {
       if (!Number.isFinite(x.getTime())) return false;
     } else if (x !== null && typeof x === 'object') {
+      if (!Array.isArray(x)) {
+        const keys = Object.keys(x);
+        if (keys.length > 10_000) return false;
+        for (const key of keys) {
+          if (key.length > 16_384 || (text += key.length) > 1_048_576) return false;
+        }
+      }
       const children = Array.isArray(x) ? x : Object.values(x);
       if (children.length > 10_000 || pending.length + children.length > 100_000) return false;
       for (const child of children) pending.push({ value: child, depth: item.depth + 1 });

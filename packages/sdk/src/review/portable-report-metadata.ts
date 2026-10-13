@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { isAutomationReportProvenance, type AutomationReportProvenance } from './portable-automation-provenance.js';
+import { isFullSourceSHA256 } from './portable-source-contract.js';
 export interface PortableReportValidationError { path: string; message: string }
 
 /** Opaque sRGB document colours; named/alpha/short forms are intentionally excluded. */
@@ -41,7 +42,7 @@ export function validateBlockTitle(block: Record<string, unknown>, at: string, e
 }
 
 /** Source identity is evidence about the original run, never a live selector. */
-export interface ReportModelScope { name: string; fingerprint?: string }
+export interface ReportModelScope { name: string; fingerprint?: string; sourceContentHash?: string }
 /** The author's choice to print or omit a report's stamp rows (#6566, #6678).
  * Absent means shown, so every document saved before the choice printed the same. */
 export interface ReportStampChoice {
@@ -65,6 +66,8 @@ export function validateReportProvenance(block: Record<string, unknown>, at: str
   if (block.reportModels !== undefined && (!Array.isArray(block.reportModels) || !block.reportModels.every((model: unknown) => {
     if (typeof model !== 'object' || model === null || Array.isArray(model)) return false;
     const m = model as Record<string, unknown>;
-    return typeof m.name === 'string' && m.name.trim().length > 0 && (m.fingerprint === undefined || (typeof m.fingerprint === 'string' && m.fingerprint.length > 0));
+    return typeof m.name === 'string' && m.name.trim().length > 0
+      && (m.fingerprint === undefined || (typeof m.fingerprint === 'string' && m.fingerprint.length > 0))
+      && (m.sourceContentHash === undefined || isFullSourceSHA256(m.sourceContentHash));
   }))) errors.push({ path: `${at}.reportModels`, message: 'expected non-empty model names and optional non-empty fingerprints' });
 }

@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /** Canonical saved failure evidence wire contract shared by document import and native Review (#7372). */
+import { isFullSourceSHA256 } from './portable-source-contract.js';
 export const SAVED_VALIDATION_LIMITS = {
   rows: 2_000, sourceRows: 50_000, rowBytes: 8_192, totalBytes: 1_048_576,
   text: 1_024, checks: 1_024, definitionBytes: 131_072,
@@ -15,7 +16,7 @@ const CHECK_LIMIT = SAVED_VALIDATION_LIMITS.checks;
 const DEFINITION_BYTE_LIMIT = SAVED_VALIDATION_LIMITS.definitionBytes;
 const DIGEST = /^xxh64:[0-9a-f]{16}$/;
 const EVIDENCE_FIELDS = new Set(['version', 'rows', 'observed', 'omitted', 'gaps', 'definition']);
-const ROW_FIELDS = new Set(['id', 'specificationId', 'GlobalId', 'modelName', 'modelFingerprint', 'ifcType', 'Name', 'title', 'nativeStatus', 'detail', 'signature']);
+const ROW_FIELDS = new Set(['id', 'specificationId', 'GlobalId', 'modelName', 'modelFingerprint', 'modelContentHash', 'ifcType', 'Name', 'title', 'nativeStatus', 'detail', 'signature']);
 
 export interface SavedValidationElement {
   /** Identity within this immutable capture, independent of ephemeral express/model ids. */
@@ -24,6 +25,8 @@ export interface SavedValidationElement {
   GlobalId: string | null;
   modelName: string | null;
   modelFingerprint?: string;
+  /** Optional producer-captured full source identity; absence remains historical/unbound. */
+  modelContentHash?: string;
   ifcType: string;
   Name?: string;
   title: string;
@@ -69,6 +72,7 @@ const count = (value: unknown): value is number => Number.isSafeInteger(value) &
 export function isSavedValidationElement(value: unknown): value is SavedValidationElement {
   if (!record(value) || Object.keys(value).some(key => !ROW_FIELDS.has(key)) || !text(value.id, 128) || !text(value.specificationId) || (value.GlobalId !== null && !text(value.GlobalId, 200))
     || (value.modelName !== null && !text(value.modelName)) || (value.modelFingerprint !== undefined && !text(value.modelFingerprint, 256))
+    || (value.modelContentHash !== undefined && !isFullSourceSHA256(value.modelContentHash))
     || !text(value.ifcType, 200) || (value.Name !== undefined && (typeof value.Name !== 'string' || value.Name.length > TEXT_LIMIT))
     || typeof value.title !== 'string' || value.title.length > TEXT_LIMIT
     || (value.nativeStatus !== 'failed' && value.nativeStatus !== 'warning') || !Array.isArray(value.detail)

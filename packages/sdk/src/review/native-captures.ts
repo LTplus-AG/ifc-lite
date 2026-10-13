@@ -4,19 +4,13 @@
 
 import type { ValidationReport } from '@ifc-lite/ids';
 import { CaptureRetention, type OwnedTarget as Target } from './capture-retention.js';
+import { targetState } from './capture-ownership.js';
 import { validationFindings } from './validation.js';
 import { reviewSHA256, reviewValueFits, reviewContainsSecret } from './capture-budget.js';
 import type { NativeReviewModel, NativeReviewResult, ReviewCaptureToken, ReviewRunProvenance,
   ReviewSourceProof } from './capture-types.js';
 
 
-
-function targetState(target: Target, models: readonly NativeReviewModel[]) {
-  const live = models.find(model => model.id === target.model.id);
-  const replaced = !live || live.owner !== target.model.owner || live.store !== target.model.store || live.source !== target.model.source;
-  return { replaced, stale: replaced || live?.mutationView() !== target.view
-    || (target.view?.getMutationRevision() ?? 0) !== target.revision };
-}
 
 /** Actual producer-start ownership, never a reconstructed last-result fingerprint. */
 export class NativeReviewCaptures {
@@ -58,6 +52,14 @@ export class NativeReviewCaptures {
     const serialized = JSON.stringify(value);
     return typeof serialized === 'string'
       && !reviewContainsSecret(serialized, [...this.credentials]);
+  }
+
+  /** Supplied history cannot bypass the actual session owner's admission or
+   * credential enrollment. Recheck the final envelope after every source await.
+   */
+  portableEvidenceRefusal(value: unknown): 'work-bound' | 'sensitive-input' | null {
+    if (this.capacity === 0 || this.credentialBound) return 'work-bound';
+    return this.acceptsEvidence(value) ? null : 'sensitive-input';
   }
 
   private protect(result: NativeReviewResult): void {

@@ -131,3 +131,29 @@ actual edit and placement evidence. A payload join key or model name is not a
 durable model identity. Parsing a manual report retains historical answers;
 it does not run a checklist or resolve a finding. These codecs do not persist
 reports, change model state, or certify that an imported report was executed.
+
+
+Native host adapters supply `createNativeReviewIdentityTable(store)` alongside
+actual source/owner/revision capabilities. The table preserves every columnar
+EXPRESS/GlobalId row and its owning StringTable, including duplicates; callers
+revalidate physical references and apply bounded enumeration. It never creates
+an editor or reparses a source entity. `readPortableReview` reads supplied saved
+wire formats as imported historical evidence, independently of captured native
+execution; full-source matching does not promote execution or coverage claims.
+
+`readPortableReview(captures, liveModels, request, allowed)` projects supplied
+`savedAnalysisRuns` and `savedValidationReports` through the same codecs and
+normalizers. `records` preserves bounded original native counts, definitions,
+coverage, placement/frame and provenance; `bindings` reports source/element
+identity separately. Bound imported cards use the verified full source hash plus
+IFC GlobalId, so renaming or reordering models does not change their identity and
+the same GlobalId in different source files remains distinct. This binding does
+not attest saved placement, a new native execution, freshness or a human decision.
+Legacy name-based card keys remain for callers without verified source identity.
+
+Supplied analysis libraries advertise only the record kinds they contain. An
+explicit empty saved-validation-report collection declares available empty
+validation history; an empty mixed analysis library declares neither validation
+nor clash history. `bounds.knownFindings` counts only supplied historical rows,
+not unprovided source kinds or independently evaluated native coverage. Source
+states distinguish unavailable evidence from an available empty collection.

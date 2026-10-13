@@ -1,6 +1,9 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { clashOccurrenceKey as manualClashOccurrenceKey } from '@ifc-lite/sdk/review';
+export { clashOccurrenceKey as manualClashOccurrenceKey } from '@ifc-lite/sdk/review';
+
 
 import { clashReviewKey, type Clash } from '@ifc-lite/clash';
 
@@ -161,14 +164,6 @@ export function removeResolvedManualClashMember(
 /** Identify one occurrence without sacrificing the durable review-key fallback. */
 export function manualClashMember(clash: Clash): ManualClashMember {
   return { reviewKey: clashReviewKey(clash), occurrenceKey: manualClashOccurrenceKey(clash) };
-}
-
-export function manualClashOccurrenceKey(clash: Pick<Clash, 'rule' | 'a' | 'b'>): string {
-  const elements = [clash.a, clash.b]
-    .map((element) => [element.model, element.key] as const)
-    .sort(([modelA, keyA], [modelB, keyB]) =>
-      modelA < modelB ? -1 : modelA > modelB ? 1 : keyA < keyB ? -1 : keyA > keyB ? 1 : 0);
-  return JSON.stringify([clash.rule, ...elements]);
 }
 
 /** Default to the most frequent shared element name, then a numbered label. */

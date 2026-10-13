@@ -2,17 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { DISCIPLINES, matchesSelector, type Clash } from '@ifc-lite/clash';
-
-/** Native selector candidates are hints, never a verified responsibility mapping. */
-export function clashDisciplineCandidates(clash: Pick<Clash, 'a' | 'b'>) {
-  function candidates(tag: string): string[] {
-    return Object.values(DISCIPLINES)
-      .filter(discipline => matchesSelector(tag, discipline.selector))
-      .map(discipline => discipline.code);
-  }
-  return { a: candidates(clash.a.tag), b: candidates(clash.b.tag) };
-}
+export { clashDisciplineCandidates } from '@ifc-lite/sdk/review';
 
 export const CLASH_TAXONOMY_LIMITATIONS =
   'Default taxonomy: native status (detection type) and severity plus discipline pairs. ' +

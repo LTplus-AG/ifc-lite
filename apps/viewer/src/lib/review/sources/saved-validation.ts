@@ -6,8 +6,8 @@
 import type { TranslatableMessage, TranslationKey } from '@/i18n';
 import type { SavedValidationReport } from '../../validation/reports/history';
 import { reexamineSavedValidation, type CurrentValidationRun, type Reexamination, type ReexaminationGap, type RowReexamination } from '../../validation/reports/reexamine';
-import type { FindingLifecycle, FindingRun, FindingSourceResult, RunGap } from '../types';
-import { typeDisciplines } from './disciplines';
+import type { FindingLifecycle, FindingSourceResult, RunGap } from '../types';
+import { savedValidationFacts } from '@ifc-lite/sdk/review';
 
 /** A candidate is never a decision: the saved native status is kept verbatim either way.
  * `changed` stays distinct from `persisting`, so different failed requirements are never shown as the same failure. */
@@ -53,26 +53,15 @@ export function savedValidationFindings(reports: readonly SavedValidationReport[
     if (snapshot.kind !== 'ids-report') continue;
     const captured = snapshot.elementEvidence;
     const reexamined = captured ? reexamineSavedValidation(snapshot, current) : null;
-    const run: FindingRun = { id: JSON.stringify(['saved-validation', saved.id]), source: 'validation', temporal: 'historical',
-      label: snapshot.sourceName, capturedAt: snapshot.generatedAt, complete: false,
-      models: snapshot.reportModels?.map(model => model.name) ?? [],
-      incomplete: [...reexaminationGaps(reexamined), ...(captured?.gaps.map(detail => ({ code: 'partial-source' as const, detail })) ?? [])] };
-    result.runs.push(run);
-    for (const row of captured?.rows ?? []) {
-      const outcome = reexamined?.compatible ? reexamined.rows.get(row.id) : undefined;
-      result.findings.push({ id: JSON.stringify([run.id, row.id]),
-        lineage: JSON.stringify(['saved-validation', snapshot.sourceName, row.specificationId, row.modelName, row.GlobalId, row.id]),
-        source: 'validation', run, elements: row.GlobalId ? [{ globalId: row.GlobalId, modelId: null, modelName: row.modelName,
-          ifcType: row.ifcType, ...(row.Name !== undefined ? { name: row.Name } : {}),
-          ...(!row.modelName ? { nativeUnresolved: 'unmatched' as const } : {}) }] : [],
-        nativeStatus: row.nativeStatus, title: row.title, detail: [...row.detail,
-          ...(row.modelFingerprint ? [`source fingerprint ${row.modelFingerprint}`] : []),
-          ...(!row.GlobalId || !row.modelName ? ['Saved durable identity unavailable'] : [])],
-        ...(outcome ? { notes: [outcomeNote(outcome)] } : {}),
-        lifecycle: outcome ? LIFECYCLE[outcome.state] : 'not-evaluated', disciplines: typeDisciplines(row.ifcType), storeys: [],
-        evidence: { kind: 'saved-validation', reportId: saved.id, rowId: row.id },
-      });
-    }
+    const facts = savedValidationFacts<TranslatableMessage>(saved, {
+      incomplete: reexaminationGaps(reexamined),
+      outcome: row => {
+        const outcome = reexamined?.compatible ? reexamined.rows.get(row.id) : undefined;
+        return outcome ? { lifecycle: LIFECYCLE[outcome.state], notes: [outcomeNote(outcome)] } : undefined;
+      },
+    });
+    result.runs.push(...facts.runs);
+    result.findings.push(...facts.findings);
   }
   return result;
 }

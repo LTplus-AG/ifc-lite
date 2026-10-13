@@ -35,3 +35,7 @@ export type { IdsReportCheckSummary, IdsReportRuleSummary, IdsReportCardinality,
 export { validateManualReportBlock } from './review/portable-manual-report.js';
 export type { ManualReportVerdict, ManualReportCounts, ManualReportItem, ManualReportBlock } from './review/portable-manual-report.js';
 export * from './review/portable-saved-validation.js';
+
+export { clashFindings, clashGlobalId } from './review/clash.js';
+export { clashDisciplineCandidates, clashOccurrenceKey } from './review/clash-identity.js';
+export { savedValidationFacts } from './review/saved-validation.js';

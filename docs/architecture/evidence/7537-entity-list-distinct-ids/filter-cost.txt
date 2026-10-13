@@ -1,0 +1,13 @@
+$ node docs/architecture/evidence/7537-entity-list-distinct-ids/filter-cost.mjs packages/ids/.evidence-builds/main packages/ids/.evidence-builds/a2f319158 packages/ids/.evidence-builds/head
+[IFCWALL]
+  packages/ids/.evidence-builds/main: 300000 ids, 2.7 ms
+  packages/ids/.evidence-builds/a2f319158: 300000 ids, 16.1 ms
+  packages/ids/.evidence-builds/head: 300000 ids, 16.6 ms
+[IFCWALL,IFCDOOR]
+  packages/ids/.evidence-builds/main: 300001 ids, 2.7 ms
+  packages/ids/.evidence-builds/a2f319158: 300001 ids, 16.1 ms
+  packages/ids/.evidence-builds/head: 300001 ids, 16.6 ms
+[IFCWALL,IFCWALL]
+  packages/ids/.evidence-builds/main: 600000 ids, 5.1 ms
+  packages/ids/.evidence-builds/a2f319158: 300000 ids, 20.0 ms
+  packages/ids/.evidence-builds/head: 300000 ids, 20.3 ms

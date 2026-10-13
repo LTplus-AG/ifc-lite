@@ -1,0 +1,2135 @@
+{
+  "utc": "2026-10-12T19:32:48.647Z",
+  "scope": "Current-main real-model same-submission oracle; functional only, no hover timing verdict",
+  "head": "25fb5cc840ab88c54d4166430e800062c8ec5e15",
+  "session": {
+    "monitors": 1,
+    "connectState": 0,
+    "remoteMetric": 0,
+    "consoleSession": 2,
+    "currentSession": 2,
+    "protocol": 0
+  },
+  "runs": [
+    {
+      "fixture": "ara3d/AC20-FZK-Haus.ifc",
+      "requestedDpr": 1,
+      "dpr": 1.0000000298023224,
+      "visible": "visible",
+      "focused": true,
+      "gpu": {
+        "vendor": "nvidia",
+        "architecture": "blackwell",
+        "isFallbackAdapter": false
+      },
+      "startPose": {
+        "position": {
+          "x": 27.599999999999998,
+          "y": 20.65884578227997,
+          "z": 17.599999999999998
+        },
+        "target": {
+          "x": 6,
+          "y": 2.6588457822799683,
+          "z": -4
+        },
+        "matrix": [
+          1.5352022647857666,
+          -0.8666521906852722,
+          0,
+          -0.6092076897621155,
+          0,
+          2.079965353012085,
+          0,
+          -0.5076730847358704,
+          -1.5352022647857666,
+          -0.8666521906852722,
+          0,
+          -0.6092076897621155,
+          -15.352023124694824,
+          -3.7970025539398193,
+          0.03545588627457619,
+          38.02412796020508
+        ]
+      },
+      "endPose": {
+        "position": {
+          "x": 27.599999999999998,
+          "y": 20.65884578227997,
+          "z": 17.599999999999998
+        },
+        "target": {
+          "x": 6,
+          "y": 2.6588457822799683,
+          "z": -4
+        },
+        "matrix": [
+          1.5352022647857666,
+          -0.8666521906852722,
+          0,
+          -0.6092076897621155,
+          0,
+          2.079965353012085,
+          0,
+          -0.5076730847358704,
+          -1.5352022647857666,
+          -0.8666521906852722,
+          0,
+          -0.6092076897621155,
+          -15.352023124694824,
+          -3.7970025539398193,
+          0.03545588627457619,
+          38.02412796020508
+        ]
+      },
+      "viewport": {
+        "x": 213.4479217529297,
+        "y": 128.6666717529297,
+        "width": 714.5521240234375,
+        "height": 643.3333740234375,
+        "framebufferWidth": 715,
+        "framebufferHeight": 643
+      },
+      "models": [
+        {
+          "name": "AC20-FZK-Haus.ifc",
+          "meshes": 317,
+          "triangles": 33356,
+          "vertices": 57706
+        }
+      ],
+      "loadTrace": {
+        "attrs": {
+          "journey": "J4",
+          "modelKind": "federated",
+          "workerCount": 8,
+          "loadPath": "wasm",
+          "cacheTier": "none"
+        },
+        "completedSpans": [
+          "file.read",
+          "source.unwrap",
+          "source.fingerprint",
+          "engine.init",
+          "placement.identityReady",
+          "parser.start",
+          "parser.worker",
+          "geometry.pool",
+          "worker.init",
+          "worker.init",
+          "worker.init",
+          "worker.init",
+          "worker.init",
+          "worker.init",
+          "worker.init",
+          "worker.init",
+          "worker.init",
+          "geometry.entityIndex",
+          "prepass.styles",
+          "prepass.scan",
+          "prepass.complete",
+          "geometry.firstBatch",
+          "geometry.firstChunk",
+          "geometry.firstChunk",
+          "geometry.firstChunk",
+          "geometry.firstChunk",
+          "geometry.firstChunk",
+          "geometry.firstChunk",
+          "geometry.firstChunk",
+          "geometry.firstChunk",
+          "geometry.streamComplete",
+          "parser.entityIndexWait",
+          "columnar.scanning",
+          "columnar.building",
+          "columnar.parsing-entities",
+          "columnar.parsing-geometry-names",
+          "columnar.parsing-relationships",
+          "columnar.building-entities",
+          "columnar.extracting-units",
+          "parser.spatialReady.serialize",
+          "parser.hydratePartial",
+          "parser.spatialReady",
+          "columnar.building-hierarchy",
+          "columnar.parsing-property-refs",
+          "columnar.parsing-associations",
+          "parser.transport.serialize",
+          "parser.parse",
+          "parser.hydrate",
+          "parser.complete",
+          "load.finalize",
+          "search.tier1",
+          "camera.fit",
+          "instanced.decode",
+          "instanced.upload",
+          "instanced.decode",
+          "instanced.upload",
+          "instanced.decode",
+          "instanced.upload",
+          "instanced.decode",
+          "instanced.upload",
+          "instanced.decode",
+          "instanced.upload",
+          "instanced.decode",
+          "instanced.upload",
+          "instanced.decode",
+          "instanced.upload",
+          "instanced.decode",
+          "instanced.upload",
+          "instanced.decode",
+          "instanced.upload",
+          "instanced.decode",
+          "instanced.upload",
+          "instanced.decode",
+          "instanced.upload",
+          "instanced.decode",
+          "instanced.upload",
+          "instanced.decode",
+          "instanced.upload",
+          "instanced.decode",
+          "instanced.upload",
+          "instanced.decode",
+          "instanced.upload",
+          "instanced.decode",
+          "instanced.upload",
+          "bvh.build"
+        ]
+      },
+      "samples": [
+        {
+          "index": 0,
+          "x": 357,
+          "y": 321,
+          "width": 715,
+          "height": 643,
+          "viewProjection": [
+            1.5352022647857666,
+            -0.8666521906852722,
+            0,
+            -0.6092076897621155,
+            0,
+            2.079965353012085,
+            0,
+            -0.5076730847358704,
+            -1.5352022647857666,
+            -0.8666521906852722,
+            0,
+            -0.6092076897621155,
+            0,
+            0,
+            0.03545588627457619,
+            0
+          ],
+          "cameraWorld": [
+            27.599999999999998,
+            20.65884578227997,
+            17.599999999999998
+          ],
+          "actualDepthBits": 982634963,
+          "actualId": 15,
+          "fullDepthBits": 982634963,
+          "fullId": 15,
+          "oraclePick": {
+            "expressId": 59753,
+            "modelIndex": 0,
+            "worldXYZ": {
+              "x": 8.184540640343712,
+              "y": 4.479295999299556,
+              "z": -1.8154593596562876
+            },
+            "geometryItemId": 59737
+          },
+          "actualPick": {
+            "expressId": 59753,
+            "modelIndex": 0,
+            "worldXYZ": {
+              "x": 8.184540640343712,
+              "y": 4.479295999299556,
+              "z": -1.8154593596562876
+            },
+            "geometryItemId": 59737
+          }
+        },
+        {
+          "index": 1,
+          "x": 214,
+          "y": 192,
+          "width": 715,
+          "height": 643,
+          "viewProjection": [
+            1.5352022647857666,
+            -0.8666521906852722,
+            0,
+            -0.6092076897621155,
+            0,
+            2.079965353012085,
+            0,
+            -0.5076730847358704,
+            -1.5352022647857666,
+            -0.8666521906852722,
+            0,
+            -0.6092076897621155,
+            0,
+            0,
+            0.03545588627457619,
+            0
+          ],
+          "cameraWorld": [
+            27.599999999999998,
+            20.65884578227997,
+            17.599999999999998
+          ],
+          "actualDepthBits": 0,
+          "actualId": 0,
+          "fullDepthBits": 0,
+          "fullId": 0,
+          "oraclePick": null,
+          "actualPick": null
+        },
+        {
+          "index": 2,
+          "x": 500,
+          "y": 450,
+          "width": 715,
+          "height": 643,
+          "viewProjection": [
+            1.5352022647857666,
+            -0.8666521906852722,
+            0,
+            -0.6092076897621155,
+            0,
+            2.079965353012085,
+            0,
+            -0.5076730847358704,
+            -1.5352022647857666,
+            -0.8666521906852722,
+            0,
+            -0.6092076897621155,
+            0,
+            0,
+            0.03545588627457619,
+            0
+          ],
+          "cameraWorld": [
+            27.599999999999998,
+            20.65884578227997,
+            17.599999999999998
+          ],
+          "actualDepthBits": 982673702,
+          "actualId": 103,
+          "fullDepthBits": 982673702,
+          "fullId": 103,
+          "oraclePick": {
+            "expressId": 389,
+            "modelIndex": 0,
+            "worldXYZ": {
+              "x": 14.29183401787029,
+              "y": -0.0004325092925903107,
+              "z": -3.9784366288918704
+            },
+            "geometryItemId": 237
+          },
+          "actualPick": {
+            "expressId": 389,
+            "modelIndex": 0,
+            "worldXYZ": {
+              "x": 14.29183401787029,
+              "y": -0.0004325092925903107,
+              "z": -3.9784366288918704
+            },
+            "geometryItemId": 237
+          }
+        },
+        {
+          "index": 3,
+          "x": 0,
+          "y": 0,
+          "width": 715,
+          "height": 643,
+          "viewProjection": [
+            1.5352022647857666,
+            -0.8666521906852722,
+            0,
+            -0.6092076897621155,
+            0,
+            2.079965353012085,
+            0,
+            -0.5076730847358704,
+            -1.5352022647857666,
+            -0.8666521906852722,
+            0,
+            -0.6092076897621155,
+            0,
+            0,
+            0.03545588627457619,
+            0
+          ],
+          "cameraWorld": [
+            27.599999999999998,
+            20.65884578227997,
+            17.599999999999998
+          ],
+          "actualDepthBits": 0,
+          "actualId": 0,
+          "fullDepthBits": 0,
+          "fullId": 0,
+          "oraclePick": null,
+          "actualPick": null
+        },
+        {
+          "index": 4,
+          "x": 714,
+          "y": 642,
+          "width": 715,
+          "height": 643,
+          "viewProjection": [
+            1.5352022647857666,
+            -0.8666521906852722,
+            0,
+            -0.6092076897621155,
+            0,
+            2.079965353012085,
+            0,
+            -0.5076730847358704,
+            -1.5352022647857666,
+            -0.8666521906852722,
+            0,
+            -0.6092076897621155,
+            0,
+            0,
+            0.03545588627457619,
+            0
+          ],
+          "cameraWorld": [
+            27.599999999999998,
+            20.65884578227997,
+            17.599999999999998
+          ],
+          "actualDepthBits": 0,
+          "actualId": 0,
+          "fullDepthBits": 0,
+          "fullId": 0,
+          "oraclePick": null,
+          "actualPick": null
+        },
+        {
+          "index": 5,
+          "x": 357,
+          "y": 321,
+          "width": 715,
+          "height": 643,
+          "viewProjection": [
+            1.5352022647857666,
+            -0.8666521906852722,
+            0,
+            -0.6092076897621155,
+            0,
+            2.079965353012085,
+            0,
+            -0.5076730847358704,
+            -1.5352022647857666,
+            -0.8666521906852722,
+            0,
+            -0.6092076897621155,
+            0,
+            0,
+            0.03545588627457619,
+            0
+          ],
+          "cameraWorld": [
+            27.599999999999998,
+            20.65884578227997,
+            17.599999999999998
+          ],
+          "actualDepthBits": 982634963,
+          "actualId": 15,
+          "fullDepthBits": 982634963,
+          "fullId": 15,
+          "oraclePick": {
+            "expressId": 59753,
+            "modelIndex": 0,
+            "worldXYZ": {
+              "x": 8.184540640343712,
+              "y": 4.479295999299556,
+              "z": -1.8154593596562876
+            },
+            "geometryItemId": 59737
+          },
+          "actualPick": {
+            "expressId": 59753,
+            "modelIndex": 0,
+            "worldXYZ": {
+              "x": 8.184540640343712,
+              "y": 4.479295999299556,
+              "z": -1.8154593596562876
+            },
+            "geometryItemId": 59737
+          }
+        },
+        {
+          "index": 6,
+          "x": 214,
+          "y": 192,
+          "width": 715,
+          "height": 643,
+          "viewProjection": [
+            1.5352022647857666,
+            -0.8666521906852722,
+            0,
+            -0.6092076897621155,
+            0,
+            2.079965353012085,
+            0,
+            -0.5076730847358704,
+            -1.5352022647857666,
+            -0.8666521906852722,
+            0,
+            -0.6092076897621155,
+            0,
+            0,
+            0.03545588627457619,
+            0
+          ],
+          "cameraWorld": [
+            27.599999999999998,
+            20.65884578227997,
+            17.599999999999998
+          ],
+          "actualDepthBits": 0,
+          "actualId": 0,
+          "fullDepthBits": 0,
+          "fullId": 0,
+          "oraclePick": null,
+          "actualPick": null
+        }
+      ],
+      "controls": [
+        {
+          "kind": "serial",
+          "x": 0.5,
+          "y": 0.5,
+          "result": {
+            "expressId": 59753,
+            "modelIndex": 0,
+            "worldXYZ": {
+              "x": 8.184540640343712,
+              "y": 4.479295999299556,
+              "z": -1.8154593596562876
+            },
+            "geometryItemId": 59737
+          }
+        },
+        {
+          "kind": "serial",
+          "x": 0.3,
+          "y": 0.3,
+          "result": null
+        },
+        {
+          "kind": "serial",
+          "x": 0.7,
+          "y": 0.7,
+          "result": {
+            "expressId": 389,
+            "modelIndex": 0,
+            "worldXYZ": {
+              "x": 14.29183401787029,
+              "y": -0.0004325092925903107,
+              "z": -3.9784366288918704
+            },
+            "geometryItemId": 237
+          }
+        },
+        {
+          "kind": "serial",
+          "x": 0,
+          "y": 0,
+          "result": null
+        },
+        {
+          "kind": "serial",
+          "x": 1,
+          "y": 1,
+          "result": null
+        },
+        {
+          "kind": "overlap",
+          "results": [
+            {
+              "expressId": 59753,
+              "modelIndex": 0,
+              "worldXYZ": {
+                "x": 8.184540640343712,
+                "y": 4.479295999299556,
+                "z": -1.8154593596562876
+              },
+              "geometryItemId": 59737
+            },
+            null
+          ]
+        }
+      ],
+      "matching": true,
+      "gpuErrors": []
+    },
+    {
+      "fixture": "ara3d/AC20-FZK-Haus.ifc",
+      "requestedDpr": 2,
+      "dpr": 2.0000000596046448,
+      "visible": "visible",
+      "focused": true,
+      "gpu": {
+        "vendor": "nvidia",
+        "architecture": "blackwell",
+        "isFallbackAdapter": false
+      },
+      "startPose": {
+        "position": {
+          "x": 27.599999999999998,
+          "y": 20.65884578227997,
+          "z": 17.599999999999998
+        },
+        "target": {
+          "x": 6,
+          "y": 2.6588457822799683,
+          "z": -4
+        },
+        "matrix": [
+          1.5374711751937866,
+          -0.8666521906852722,
+          0,
+          -0.6092076897621155,
+          0,
+          2.079965353012085,
+          0,
+          -0.5076730847358704,
+          -1.5374711751937866,
+          -0.8666521906852722,
+          0,
+          -0.6092076897621155,
+          -15.374711990356445,
+          -3.7970025539398193,
+          0.03545588627457619,
+          38.02412796020508
+        ]
+      },
+      "endPose": {
+        "position": {
+          "x": 27.599999999999998,
+          "y": 20.65884578227997,
+          "z": 17.599999999999998
+        },
+        "target": {
+          "x": 6,
+          "y": 2.6588457822799683,
+          "z": -4
+        },
+        "matrix": [
+          1.5374711751937866,
+          -0.8666521906852722,
+          0,
+          -0.6092076897621155,
+          0,
+          2.079965353012085,
+          0,
+          -0.5076730847358704,
+          -1.5374711751937866,
+          -0.8666521906852722,
+          0,
+          -0.6092076897621155,
+          -15.374711990356445,
+          -3.7970025539398193,
+          0.03545588627457619,
+          38.02412796020508
+        ]
+      },
+      "viewport": {
+        "x": 213.4479217529297,
+        "y": 128.6666717529297,
+        "width": 714.5521240234375,
+        "height": 643.3333740234375,
+        "framebufferWidth": 1429,
+        "framebufferHeight": 1287
+      },
+      "models": [
+        {
+          "name": "AC20-FZK-Haus.ifc",
+          "meshes": 317,
+          "triangles": 33356,
+          "vertices": 57706
+        }
+      ],
+      "loadTrace": {
+        "attrs": {
+          "journey": "J4",
+          "modelKind": "federated",
+          "workerCount": 8,
+          "loadPath": "wasm",
+          "cacheTier": "none"
+        },
+        "completedSpans": [
+          "file.read",
+          "source.unwrap",
+          "source.fingerprint",
+          "engine.init",
+          "placement.identityReady",
+          "geometry.pool",
+          "parser.start",
+          "parser.worker",
+          "worker.init",
+          "worker.init",
+          "worker.init",
+          "worker.init",
+          "worker.init",
+          "worker.init",
+          "worker.init",
+          "worker.init",
+          "worker.init",
+          "geometry.entityIndex",
+          "prepass.styles",
+          "prepass.scan",
+          "prepass.complete",
+          "geometry.firstBatch",
+          "geometry.firstChunk",
+          "geometry.firstChunk",
+          "geometry.firstChunk",
+          "geometry.firstChunk",
+          "geometry.firstChunk",
+          "geometry.firstChunk",
+          "geometry.firstChunk",
+          "geometry.firstChunk",
+          "geometry.streamComplete",
+          "parser.entityIndexWait",
+          "columnar.scanning",
+          "columnar.building",
+          "columnar.parsing-entities",
+          "columnar.parsing-geometry-names",
+          "columnar.parsing-relationships",
+          "columnar.building-entities",
+          "columnar.extracting-units",
+          "parser.spatialReady.serialize",
+          "parser.hydratePartial",
+          "parser.spatialReady",
+          "columnar.building-hierarchy",
+          "columnar.parsing-property-refs",
+          "columnar.parsing-associations",
+          "parser.transport.serialize",
+          "parser.parse",
+          "parser.hydrate",
+          "parser.complete",
+          "load.finalize",
+          "search.tier1",
+          "camera.fit",
+          "instanced.decode",
+          "instanced.upload",
+          "instanced.decode",
+          "instanced.upload",
+          "instanced.decode",
+          "instanced.upload",
+          "instanced.decode",
+          "instanced.upload",
+          "instanced.decode",
+          "instanced.upload",
+          "instanced.decode",
+          "instanced.upload",
+          "instanced.decode",
+          "instanced.upload",
+          "instanced.decode",
+          "instanced.upload",
+          "instanced.decode",
+          "instanced.upload",
+          "instanced.decode",
+          "instanced.upload",
+          "instanced.decode",
+          "instanced.upload",
+          "instanced.decode",
+          "instanced.upload",
+          "instanced.decode",
+          "instanced.upload",
+          "instanced.decode",
+          "instanced.upload",
+          "instanced.decode",
+          "instanced.upload",
+          "instanced.decode",
+          "instanced.upload",
+          "bvh.build"
+        ]
+      },
+      "samples": [
+        {
+          "index": 0,
+          "x": 357,
+          "y": 321,
+          "width": 715,
+          "height": 643,
+          "viewProjection": [
+            1.5374711751937866,
+            -0.8666521906852722,
+            0,
+            -0.6092076897621155,
+            0,
+            2.079965353012085,
+            0,
+            -0.5076730847358704,
+            -1.5374711751937866,
+            -0.8666521906852722,
+            0,
+            -0.6092076897621155,
+            0,
+            0,
+            0.03545588627457619,
+            0
+          ],
+          "cameraWorld": [
+            27.599999999999998,
+            20.65884578227997,
+            17.599999999999998
+          ],
+          "actualDepthBits": 982634950,
+          "actualId": 15,
+          "fullDepthBits": 982634950,
+          "fullId": 15,
+          "oraclePick": {
+            "expressId": 59753,
+            "modelIndex": 0,
+            "worldXYZ": {
+              "x": 8.184514228683398,
+              "y": 4.4792739895822,
+              "z": -1.8154857713166024
+            },
+            "geometryItemId": 59737
+          },
+          "actualPick": {
+            "expressId": 59753,
+            "modelIndex": 0,
+            "worldXYZ": {
+              "x": 8.184514228683398,
+              "y": 4.4792739895822,
+              "z": -1.8154857713166024
+            },
+            "geometryItemId": 59737
+          }
+        },
+        {
+          "index": 1,
+          "x": 214,
+          "y": 192,
+          "width": 715,
+          "height": 643,
+          "viewProjection": [
+            1.5374711751937866,
+            -0.8666521906852722,
+            0,
+            -0.6092076897621155,
+            0,
+            2.079965353012085,
+            0,
+            -0.5076730847358704,
+            -1.5374711751937866,
+            -0.8666521906852722,
+            0,
+            -0.6092076897621155,
+            0,
+            0,
+            0.03545588627457619,
+            0
+          ],
+          "cameraWorld": [
+            27.599999999999998,
+            20.65884578227997,
+            17.599999999999998
+          ],
+          "actualDepthBits": 0,
+          "actualId": 0,
+          "fullDepthBits": 0,
+          "fullId": 0,
+          "oraclePick": null,
+          "actualPick": null
+        },
+        {
+          "index": 2,
+          "x": 500,
+          "y": 450,
+          "width": 715,
+          "height": 643,
+          "viewProjection": [
+            1.5374711751937866,
+            -0.8666521906852722,
+            0,
+            -0.6092076897621155,
+            0,
+            2.079965353012085,
+            0,
+            -0.5076730847358704,
+            -1.5374711751937866,
+            -0.8666521906852722,
+            0,
+            -0.6092076897621155,
+            0,
+            0,
+            0.03545588627457619,
+            0
+          ],
+          "cameraWorld": [
+            27.599999999999998,
+            20.65884578227997,
+            17.599999999999998
+          ],
+          "actualDepthBits": 982673702,
+          "actualId": 103,
+          "fullDepthBits": 982673702,
+          "fullId": 103,
+          "oraclePick": {
+            "expressId": 389,
+            "modelIndex": 0,
+            "worldXYZ": {
+              "x": 14.285731781377311,
+              "y": -0.0004325092925903107,
+              "z": -3.9723343923988885
+            },
+            "geometryItemId": 237
+          },
+          "actualPick": {
+            "expressId": 389,
+            "modelIndex": 0,
+            "worldXYZ": {
+              "x": 14.285731781377311,
+              "y": -0.0004325092925903107,
+              "z": -3.9723343923988885
+            },
+            "geometryItemId": 237
+          }
+        },
+        {
+          "index": 3,
+          "x": 0,
+          "y": 0,
+          "width": 715,
+          "height": 643,
+          "viewProjection": [
+            1.5374711751937866,
+            -0.8666521906852722,
+            0,
+            -0.6092076897621155,
+            0,
+            2.079965353012085,
+            0,
+            -0.5076730847358704,
+            -1.5374711751937866,
+            -0.8666521906852722,
+            0,
+            -0.6092076897621155,
+            0,
+            0,
+            0.03545588627457619,
+            0
+          ],
+          "cameraWorld": [
+            27.599999999999998,
+            20.65884578227997,
+            17.599999999999998
+          ],
+          "actualDepthBits": 0,
+          "actualId": 0,
+          "fullDepthBits": 0,
+          "fullId": 0,
+          "oraclePick": null,
+          "actualPick": null
+        },
+        {
+          "index": 4,
+          "x": 714,
+          "y": 642,
+          "width": 715,
+          "height": 643,
+          "viewProjection": [
+            1.5374711751937866,
+            -0.8666521906852722,
+            0,
+            -0.6092076897621155,
+            0,
+            2.079965353012085,
+            0,
+            -0.5076730847358704,
+            -1.5374711751937866,
+            -0.8666521906852722,
+            0,
+            -0.6092076897621155,
+            0,
+            0,
+            0.03545588627457619,
+            0
+          ],
+          "cameraWorld": [
+            27.599999999999998,
+            20.65884578227997,
+            17.599999999999998
+          ],
+          "actualDepthBits": 0,
+          "actualId": 0,
+          "fullDepthBits": 0,
+          "fullId": 0,
+          "oraclePick": null,
+          "actualPick": null
+        },
+        {
+          "index": 5,
+          "x": 357,
+          "y": 321,
+          "width": 715,
+          "height": 643,
+          "viewProjection": [
+            1.5374711751937866,
+            -0.8666521906852722,
+            0,
+            -0.6092076897621155,
+            0,
+            2.079965353012085,
+            0,
+            -0.5076730847358704,
+            -1.5374711751937866,
+            -0.8666521906852722,
+            0,
+            -0.6092076897621155,
+            0,
+            0,
+            0.03545588627457619,
+            0
+          ],
+          "cameraWorld": [
+            27.599999999999998,
+            20.65884578227997,
+            17.599999999999998
+          ],
+          "actualDepthBits": 982634950,
+          "actualId": 15,
+          "fullDepthBits": 982634950,
+          "fullId": 15,
+          "oraclePick": {
+            "expressId": 59753,
+            "modelIndex": 0,
+            "worldXYZ": {
+              "x": 8.184514228683398,
+              "y": 4.4792739895822,
+              "z": -1.8154857713166024
+            },
+            "geometryItemId": 59737
+          },
+          "actualPick": {
+            "expressId": 59753,
+            "modelIndex": 0,
+            "worldXYZ": {
+              "x": 8.184514228683398,
+              "y": 4.4792739895822,
+              "z": -1.8154857713166024
+            },
+            "geometryItemId": 59737
+          }
+        },
+        {
+          "index": 6,
+          "x": 214,
+          "y": 192,
+          "width": 715,
+          "height": 643,
+          "viewProjection": [
+            1.5374711751937866,
+            -0.8666521906852722,
+            0,
+            -0.6092076897621155,
+            0,
+            2.079965353012085,
+            0,
+            -0.5076730847358704,
+            -1.5374711751937866,
+            -0.8666521906852722,
+            0,
+            -0.6092076897621155,
+            0,
+            0,
+            0.03545588627457619,
+            0
+          ],
+          "cameraWorld": [
+            27.599999999999998,
+            20.65884578227997,
+            17.599999999999998
+          ],
+          "actualDepthBits": 0,
+          "actualId": 0,
+          "fullDepthBits": 0,
+          "fullId": 0,
+          "oraclePick": null,
+          "actualPick": null
+        }
+      ],
+      "controls": [
+        {
+          "kind": "serial",
+          "x": 0.5,
+          "y": 0.5,
+          "result": {
+            "expressId": 59753,
+            "modelIndex": 0,
+            "worldXYZ": {
+              "x": 8.184514228683398,
+              "y": 4.4792739895822,
+              "z": -1.8154857713166024
+            },
+            "geometryItemId": 59737
+          }
+        },
+        {
+          "kind": "serial",
+          "x": 0.3,
+          "y": 0.3,
+          "result": null
+        },
+        {
+          "kind": "serial",
+          "x": 0.7,
+          "y": 0.7,
+          "result": {
+            "expressId": 389,
+            "modelIndex": 0,
+            "worldXYZ": {
+              "x": 14.285731781377311,
+              "y": -0.0004325092925903107,
+              "z": -3.9723343923988885
+            },
+            "geometryItemId": 237
+          }
+        },
+        {
+          "kind": "serial",
+          "x": 0,
+          "y": 0,
+          "result": null
+        },
+        {
+          "kind": "serial",
+          "x": 1,
+          "y": 1,
+          "result": null
+        },
+        {
+          "kind": "overlap",
+          "results": [
+            {
+              "expressId": 59753,
+              "modelIndex": 0,
+              "worldXYZ": {
+                "x": 8.184514228683398,
+                "y": 4.4792739895822,
+                "z": -1.8154857713166024
+              },
+              "geometryItemId": 59737
+            },
+            null
+          ]
+        }
+      ],
+      "matching": true,
+      "gpuErrors": []
+    },
+    {
+      "fixture": "buildingsmart/Building-Architecture.ifc",
+      "requestedDpr": 1,
+      "dpr": 1.0000000298023224,
+      "visible": "visible",
+      "focused": true,
+      "gpu": {
+        "vendor": "nvidia",
+        "architecture": "blackwell",
+        "isFallbackAdapter": false
+      },
+      "startPose": {
+        "position": {
+          "x": 15.610000395774842,
+          "y": 11.850654184818268,
+          "z": 6.510000133514405
+        },
+        "target": {
+          "x": 4.450000166893005,
+          "y": 2.5506539940834045,
+          "z": -4.650000095367432
+        },
+        "matrix": [
+          1.5352022647857666,
+          -0.8666521906852722,
+          0,
+          -0.6092076897621155,
+          0,
+          2.079965353012085,
+          0,
+          -0.5076730847358704,
+          -1.5352022647857666,
+          -0.8666521906852722,
+          0,
+          -0.6092076897621155,
+          -13.970341682434082,
+          -5.478601932525635,
+          0.01831887662410736,
+          19.491931915283203
+        ]
+      },
+      "endPose": {
+        "position": {
+          "x": 15.610000395774842,
+          "y": 11.850654184818268,
+          "z": 6.510000133514405
+        },
+        "target": {
+          "x": 4.450000166893005,
+          "y": 2.5506539940834045,
+          "z": -4.650000095367432
+        },
+        "matrix": [
+          1.5352022647857666,
+          -0.8666521906852722,
+          0,
+          -0.6092076897621155,
+          0,
+          2.079965353012085,
+          0,
+          -0.5076730847358704,
+          -1.5352022647857666,
+          -0.8666521906852722,
+          0,
+          -0.6092076897621155,
+          -13.970341682434082,
+          -5.478601932525635,
+          0.01831887662410736,
+          19.491931915283203
+        ]
+      },
+      "viewport": {
+        "x": 213.4479217529297,
+        "y": 128.6666717529297,
+        "width": 714.5521240234375,
+        "height": 643.3333740234375,
+        "framebufferWidth": 715,
+        "framebufferHeight": 643
+      },
+      "models": [
+        {
+          "name": "Building-Architecture.ifc",
+          "meshes": 14,
+          "triangles": 1170,
+          "vertices": 1884
+        }
+      ],
+      "loadTrace": {
+        "attrs": {
+          "journey": "J4",
+          "modelKind": "federated",
+          "loadPath": "wasm",
+          "cacheTier": "none"
+        },
+        "completedSpans": [
+          "file.read",
+          "source.unwrap",
+          "source.fingerprint",
+          "engine.init",
+          "placement.identityReady",
+          "geometry.streamComplete",
+          "parser.start",
+          "parser.worker",
+          "parser.wasmInit",
+          "columnar.scanning",
+          "columnar.building",
+          "columnar.parsing-entities",
+          "columnar.parsing-geometry-names",
+          "columnar.parsing-relationships",
+          "columnar.building-entities",
+          "columnar.extracting-units",
+          "parser.spatialReady.serialize",
+          "parser.hydratePartial",
+          "parser.spatialReady",
+          "columnar.building-hierarchy",
+          "columnar.parsing-property-refs",
+          "columnar.parsing-associations",
+          "parser.transport.serialize",
+          "parser.parse",
+          "parser.hydrate",
+          "parser.complete",
+          "load.finalize",
+          "search.tier1",
+          "camera.fit",
+          "bvh.build"
+        ]
+      },
+      "samples": [
+        {
+          "index": 0,
+          "x": 357,
+          "y": 321,
+          "width": 715,
+          "height": 643,
+          "viewProjection": [
+            1.5352022647857666,
+            -0.8666521906852722,
+            0,
+            -0.6092076897621155,
+            0,
+            2.079965353012085,
+            0,
+            -0.5076730847358704,
+            -1.5352022647857666,
+            -0.8666521906852722,
+            0,
+            -0.6092076897621155,
+            0,
+            0,
+            0.01831887662410736,
+            0
+          ],
+          "cameraWorld": [
+            15.610000395774842,
+            11.850654184818268,
+            6.510000133514405
+          ],
+          "actualDepthBits": 983487389,
+          "actualId": 7,
+          "fullDepthBits": 983487389,
+          "fullId": 7,
+          "oraclePick": {
+            "expressId": 425,
+            "modelIndex": 0,
+            "worldXYZ": {
+              "x": 6.400186467519896,
+              "y": 4.175809094425042,
+              "z": -2.6998137947405407
+            },
+            "geometryItemId": 441
+          },
+          "actualPick": {
+            "expressId": 425,
+            "modelIndex": 0,
+            "worldXYZ": {
+              "x": 6.400186467519896,
+              "y": 4.175809094425042,
+              "z": -2.6998137947405407
+            },
+            "geometryItemId": 441
+          }
+        },
+        {
+          "index": 1,
+          "x": 214,
+          "y": 192,
+          "width": 715,
+          "height": 643,
+          "viewProjection": [
+            1.5352022647857666,
+            -0.8666521906852722,
+            0,
+            -0.6092076897621155,
+            0,
+            2.079965353012085,
+            0,
+            -0.5076730847358704,
+            -1.5352022647857666,
+            -0.8666521906852722,
+            0,
+            -0.6092076897621155,
+            0,
+            0,
+            0.01831887662410736,
+            0
+          ],
+          "cameraWorld": [
+            15.610000395774842,
+            11.850654184818268,
+            6.510000133514405
+          ],
+          "actualDepthBits": 0,
+          "actualId": 0,
+          "fullDepthBits": 0,
+          "fullId": 0,
+          "oraclePick": null,
+          "actualPick": null
+        },
+        {
+          "index": 2,
+          "x": 500,
+          "y": 450,
+          "width": 715,
+          "height": 643,
+          "viewProjection": [
+            1.5352022647857666,
+            -0.8666521906852722,
+            0,
+            -0.6092076897621155,
+            0,
+            2.079965353012085,
+            0,
+            -0.5076730847358704,
+            -1.5352022647857666,
+            -0.8666521906852722,
+            0,
+            -0.6092076897621155,
+            0,
+            0,
+            0.01831887662410736,
+            0
+          ],
+          "cameraWorld": [
+            15.610000395774842,
+            11.850654184818268,
+            6.510000133514405
+          ],
+          "actualDepthBits": 982489821,
+          "actualId": 3,
+          "fullDepthBits": 982489821,
+          "fullId": 3,
+          "oraclePick": {
+            "expressId": 291,
+            "modelIndex": 0,
+            "worldXYZ": {
+              "x": 8.59977061193192,
+              "y": 0.9681412835849095,
+              "z": -4.85669001355401
+            },
+            "geometryItemId": 308
+          },
+          "actualPick": {
+            "expressId": 291,
+            "modelIndex": 0,
+            "worldXYZ": {
+              "x": 8.59977061193192,
+              "y": 0.9681412835849095,
+              "z": -4.85669001355401
+            },
+            "geometryItemId": 308
+          }
+        },
+        {
+          "index": 3,
+          "x": 0,
+          "y": 0,
+          "width": 715,
+          "height": 643,
+          "viewProjection": [
+            1.5352022647857666,
+            -0.8666521906852722,
+            0,
+            -0.6092076897621155,
+            0,
+            2.079965353012085,
+            0,
+            -0.5076730847358704,
+            -1.5352022647857666,
+            -0.8666521906852722,
+            0,
+            -0.6092076897621155,
+            0,
+            0,
+            0.01831887662410736,
+            0
+          ],
+          "cameraWorld": [
+            15.610000395774842,
+            11.850654184818268,
+            6.510000133514405
+          ],
+          "actualDepthBits": 0,
+          "actualId": 0,
+          "fullDepthBits": 0,
+          "fullId": 0,
+          "oraclePick": null,
+          "actualPick": null
+        },
+        {
+          "index": 4,
+          "x": 714,
+          "y": 642,
+          "width": 715,
+          "height": 643,
+          "viewProjection": [
+            1.5352022647857666,
+            -0.8666521906852722,
+            0,
+            -0.6092076897621155,
+            0,
+            2.079965353012085,
+            0,
+            -0.5076730847358704,
+            -1.5352022647857666,
+            -0.8666521906852722,
+            0,
+            -0.6092076897621155,
+            0,
+            0,
+            0.01831887662410736,
+            0
+          ],
+          "cameraWorld": [
+            15.610000395774842,
+            11.850654184818268,
+            6.510000133514405
+          ],
+          "actualDepthBits": 0,
+          "actualId": 0,
+          "fullDepthBits": 0,
+          "fullId": 0,
+          "oraclePick": null,
+          "actualPick": null
+        },
+        {
+          "index": 5,
+          "x": 357,
+          "y": 321,
+          "width": 715,
+          "height": 643,
+          "viewProjection": [
+            1.5352022647857666,
+            -0.8666521906852722,
+            0,
+            -0.6092076897621155,
+            0,
+            2.079965353012085,
+            0,
+            -0.5076730847358704,
+            -1.5352022647857666,
+            -0.8666521906852722,
+            0,
+            -0.6092076897621155,
+            0,
+            0,
+            0.01831887662410736,
+            0
+          ],
+          "cameraWorld": [
+            15.610000395774842,
+            11.850654184818268,
+            6.510000133514405
+          ],
+          "actualDepthBits": 983487389,
+          "actualId": 7,
+          "fullDepthBits": 983487389,
+          "fullId": 7,
+          "oraclePick": {
+            "expressId": 425,
+            "modelIndex": 0,
+            "worldXYZ": {
+              "x": 6.400186467519896,
+              "y": 4.175809094425042,
+              "z": -2.6998137947405407
+            },
+            "geometryItemId": 441
+          },
+          "actualPick": {
+            "expressId": 425,
+            "modelIndex": 0,
+            "worldXYZ": {
+              "x": 6.400186467519896,
+              "y": 4.175809094425042,
+              "z": -2.6998137947405407
+            },
+            "geometryItemId": 441
+          }
+        },
+        {
+          "index": 6,
+          "x": 214,
+          "y": 192,
+          "width": 715,
+          "height": 643,
+          "viewProjection": [
+            1.5352022647857666,
+            -0.8666521906852722,
+            0,
+            -0.6092076897621155,
+            0,
+            2.079965353012085,
+            0,
+            -0.5076730847358704,
+            -1.5352022647857666,
+            -0.8666521906852722,
+            0,
+            -0.6092076897621155,
+            0,
+            0,
+            0.01831887662410736,
+            0
+          ],
+          "cameraWorld": [
+            15.610000395774842,
+            11.850654184818268,
+            6.510000133514405
+          ],
+          "actualDepthBits": 0,
+          "actualId": 0,
+          "fullDepthBits": 0,
+          "fullId": 0,
+          "oraclePick": null,
+          "actualPick": null
+        }
+      ],
+      "controls": [
+        {
+          "kind": "serial",
+          "x": 0.5,
+          "y": 0.5,
+          "result": {
+            "expressId": 425,
+            "modelIndex": 0,
+            "worldXYZ": {
+              "x": 6.400186467519896,
+              "y": 4.175809094425042,
+              "z": -2.6998137947405407
+            },
+            "geometryItemId": 441
+          }
+        },
+        {
+          "kind": "serial",
+          "x": 0.3,
+          "y": 0.3,
+          "result": null
+        },
+        {
+          "kind": "serial",
+          "x": 0.7,
+          "y": 0.7,
+          "result": null
+        },
+        {
+          "kind": "serial",
+          "x": 0,
+          "y": 0,
+          "result": null
+        },
+        {
+          "kind": "serial",
+          "x": 1,
+          "y": 1,
+          "result": null
+        },
+        {
+          "kind": "overlap",
+          "results": [
+            {
+              "expressId": 425,
+              "modelIndex": 0,
+              "worldXYZ": {
+                "x": 6.400186467519896,
+                "y": 4.175809094425042,
+                "z": -2.6998137947405407
+              },
+              "geometryItemId": 441
+            },
+            null
+          ]
+        }
+      ],
+      "matching": true,
+      "gpuErrors": []
+    },
+    {
+      "fixture": "buildingsmart/Building-Architecture.ifc",
+      "requestedDpr": 2,
+      "dpr": 2.0000000596046448,
+      "visible": "visible",
+      "focused": true,
+      "gpu": {
+        "vendor": "nvidia",
+        "architecture": "blackwell",
+        "isFallbackAdapter": false
+      },
+      "startPose": {
+        "position": {
+          "x": 15.610000395774842,
+          "y": 11.850654184818268,
+          "z": 6.510000133514405
+        },
+        "target": {
+          "x": 4.450000166893005,
+          "y": 2.5506539940834045,
+          "z": -4.650000095367432
+        },
+        "matrix": [
+          1.5374711751937866,
+          -0.8666521906852722,
+          0,
+          -0.6092076897621155,
+          0,
+          2.079965353012085,
+          0,
+          -0.5076730847358704,
+          -1.5374711751937866,
+          -0.8666521906852722,
+          0,
+          -0.6092076897621155,
+          -13.990987777709961,
+          -5.478601932525635,
+          0.01831887662410736,
+          19.491931915283203
+        ]
+      },
+      "endPose": {
+        "position": {
+          "x": 15.610000395774842,
+          "y": 11.850654184818268,
+          "z": 6.510000133514405
+        },
+        "target": {
+          "x": 4.450000166893005,
+          "y": 2.5506539940834045,
+          "z": -4.650000095367432
+        },
+        "matrix": [
+          1.5374711751937866,
+          -0.8666521906852722,
+          0,
+          -0.6092076897621155,
+          0,
+          2.079965353012085,
+          0,
+          -0.5076730847358704,
+          -1.5374711751937866,
+          -0.8666521906852722,
+          0,
+          -0.6092076897621155,
+          -13.990987777709961,
+          -5.478601932525635,
+          0.01831887662410736,
+          19.491931915283203
+        ]
+      },
+      "viewport": {
+        "x": 213.4479217529297,
+        "y": 128.6666717529297,
+        "width": 714.5521240234375,
+        "height": 643.3333740234375,
+        "framebufferWidth": 1429,
+        "framebufferHeight": 1287
+      },
+      "models": [
+        {
+          "name": "Building-Architecture.ifc",
+          "meshes": 14,
+          "triangles": 1170,
+          "vertices": 1884
+        }
+      ],
+      "loadTrace": {
+        "attrs": {
+          "journey": "J4",
+          "modelKind": "federated",
+          "loadPath": "wasm",
+          "cacheTier": "none"
+        },
+        "completedSpans": [
+          "file.read",
+          "source.unwrap",
+          "source.fingerprint",
+          "engine.init",
+          "placement.identityReady",
+          "geometry.streamComplete",
+          "parser.start",
+          "parser.worker",
+          "parser.wasmInit",
+          "columnar.scanning",
+          "columnar.building",
+          "columnar.parsing-entities",
+          "columnar.parsing-geometry-names",
+          "columnar.parsing-relationships",
+          "columnar.building-entities",
+          "columnar.extracting-units",
+          "parser.spatialReady.serialize",
+          "parser.hydratePartial",
+          "parser.spatialReady",
+          "columnar.building-hierarchy",
+          "columnar.parsing-property-refs",
+          "columnar.parsing-associations",
+          "parser.transport.serialize",
+          "parser.parse",
+          "parser.hydrate",
+          "parser.complete",
+          "load.finalize",
+          "search.tier1",
+          "camera.fit",
+          "bvh.build"
+        ]
+      },
+      "samples": [
+        {
+          "index": 0,
+          "x": 357,
+          "y": 321,
+          "width": 715,
+          "height": 643,
+          "viewProjection": [
+            1.5374711751937866,
+            -0.8666521906852722,
+            0,
+            -0.6092076897621155,
+            0,
+            2.079965353012085,
+            0,
+            -0.5076730847358704,
+            -1.5374711751937866,
+            -0.8666521906852722,
+            0,
+            -0.6092076897621155,
+            0,
+            0,
+            0.01831887662410736,
+            0
+          ],
+          "cameraWorld": [
+            15.610000395774842,
+            11.850654184818268,
+            6.510000133514405
+          ],
+          "actualDepthBits": 983487410,
+          "actualId": 7,
+          "fullDepthBits": 983487410,
+          "fullId": 7,
+          "oraclePick": {
+            "expressId": 425,
+            "modelIndex": 0,
+            "worldXYZ": {
+              "x": 6.400205048390781,
+              "y": 4.1758245784844155,
+              "z": -2.699795213869656
+            },
+            "geometryItemId": 441
+          },
+          "actualPick": {
+            "expressId": 425,
+            "modelIndex": 0,
+            "worldXYZ": {
+              "x": 6.400205048390781,
+              "y": 4.1758245784844155,
+              "z": -2.699795213869656
+            },
+            "geometryItemId": 441
+          }
+        },
+        {
+          "index": 1,
+          "x": 214,
+          "y": 192,
+          "width": 715,
+          "height": 643,
+          "viewProjection": [
+            1.5374711751937866,
+            -0.8666521906852722,
+            0,
+            -0.6092076897621155,
+            0,
+            2.079965353012085,
+            0,
+            -0.5076730847358704,
+            -1.5374711751937866,
+            -0.8666521906852722,
+            0,
+            -0.6092076897621155,
+            0,
+            0,
+            0.01831887662410736,
+            0
+          ],
+          "cameraWorld": [
+            15.610000395774842,
+            11.850654184818268,
+            6.510000133514405
+          ],
+          "actualDepthBits": 0,
+          "actualId": 0,
+          "fullDepthBits": 0,
+          "fullId": 0,
+          "oraclePick": null,
+          "actualPick": null
+        },
+        {
+          "index": 2,
+          "x": 500,
+          "y": 450,
+          "width": 715,
+          "height": 643,
+          "viewProjection": [
+            1.5374711751937866,
+            -0.8666521906852722,
+            0,
+            -0.6092076897621155,
+            0,
+            2.079965353012085,
+            0,
+            -0.5076730847358704,
+            -1.5374711751937866,
+            -0.8666521906852722,
+            0,
+            -0.6092076897621155,
+            0,
+            0,
+            0.01831887662410736,
+            0
+          ],
+          "cameraWorld": [
+            15.610000395774842,
+            11.850654184818268,
+            6.510000133514405
+          ],
+          "actualDepthBits": 982494157,
+          "actualId": 3,
+          "fullDepthBits": 982494157,
+          "fullId": 3,
+          "oraclePick": {
+            "expressId": 291,
+            "modelIndex": 0,
+            "worldXYZ": {
+              "x": 8.599785956206135,
+              "y": 0.9731527996439802,
+              "z": -4.848242585471706
+            },
+            "geometryItemId": 308
+          },
+          "actualPick": {
+            "expressId": 291,
+            "modelIndex": 0,
+            "worldXYZ": {
+              "x": 8.599785956206135,
+              "y": 0.9731527996439802,
+              "z": -4.848242585471706
+            },
+            "geometryItemId": 308
+          }
+        },
+        {
+          "index": 3,
+          "x": 0,
+          "y": 0,
+          "width": 715,
+          "height": 643,
+          "viewProjection": [
+            1.5374711751937866,
+            -0.8666521906852722,
+            0,
+            -0.6092076897621155,
+            0,
+            2.079965353012085,
+            0,
+            -0.5076730847358704,
+            -1.5374711751937866,
+            -0.8666521906852722,
+            0,
+            -0.6092076897621155,
+            0,
+            0,
+            0.01831887662410736,
+            0
+          ],
+          "cameraWorld": [
+            15.610000395774842,
+            11.850654184818268,
+            6.510000133514405
+          ],
+          "actualDepthBits": 0,
+          "actualId": 0,
+          "fullDepthBits": 0,
+          "fullId": 0,
+          "oraclePick": null,
+          "actualPick": null
+        },
+        {
+          "index": 4,
+          "x": 714,
+          "y": 642,
+          "width": 715,
+          "height": 643,
+          "viewProjection": [
+            1.5374711751937866,
+            -0.8666521906852722,
+            0,
+            -0.6092076897621155,
+            0,
+            2.079965353012085,
+            0,
+            -0.5076730847358704,
+            -1.5374711751937866,
+            -0.8666521906852722,
+            0,
+            -0.6092076897621155,
+            0,
+            0,
+            0.01831887662410736,
+            0
+          ],
+          "cameraWorld": [
+            15.610000395774842,
+            11.850654184818268,
+            6.510000133514405
+          ],
+          "actualDepthBits": 0,
+          "actualId": 0,
+          "fullDepthBits": 0,
+          "fullId": 0,
+          "oraclePick": null,
+          "actualPick": null
+        },
+        {
+          "index": 5,
+          "x": 357,
+          "y": 321,
+          "width": 715,
+          "height": 643,
+          "viewProjection": [
+            1.5374711751937866,
+            -0.8666521906852722,
+            0,
+            -0.6092076897621155,
+            0,
+            2.079965353012085,
+            0,
+            -0.5076730847358704,
+            -1.5374711751937866,
+            -0.8666521906852722,
+            0,
+            -0.6092076897621155,
+            0,
+            0,
+            0.01831887662410736,
+            0
+          ],
+          "cameraWorld": [
+            15.610000395774842,
+            11.850654184818268,
+            6.510000133514405
+          ],
+          "actualDepthBits": 983487410,
+          "actualId": 7,
+          "fullDepthBits": 983487410,
+          "fullId": 7,
+          "oraclePick": {
+            "expressId": 425,
+            "modelIndex": 0,
+            "worldXYZ": {
+              "x": 6.400205048390781,
+              "y": 4.1758245784844155,
+              "z": -2.699795213869656
+            },
+            "geometryItemId": 441
+          },
+          "actualPick": {
+            "expressId": 425,
+            "modelIndex": 0,
+            "worldXYZ": {
+              "x": 6.400205048390781,
+              "y": 4.1758245784844155,
+              "z": -2.699795213869656
+            },
+            "geometryItemId": 441
+          }
+        },
+        {
+          "index": 6,
+          "x": 214,
+          "y": 192,
+          "width": 715,
+          "height": 643,
+          "viewProjection": [
+            1.5374711751937866,
+            -0.8666521906852722,
+            0,
+            -0.6092076897621155,
+            0,
+            2.079965353012085,
+            0,
+            -0.5076730847358704,
+            -1.5374711751937866,
+            -0.8666521906852722,
+            0,
+            -0.6092076897621155,
+            0,
+            0,
+            0.01831887662410736,
+            0
+          ],
+          "cameraWorld": [
+            15.610000395774842,
+            11.850654184818268,
+            6.510000133514405
+          ],
+          "actualDepthBits": 0,
+          "actualId": 0,
+          "fullDepthBits": 0,
+          "fullId": 0,
+          "oraclePick": null,
+          "actualPick": null
+        }
+      ],
+      "controls": [
+        {
+          "kind": "serial",
+          "x": 0.5,
+          "y": 0.5,
+          "result": {
+            "expressId": 425,
+            "modelIndex": 0,
+            "worldXYZ": {
+              "x": 6.400205048390781,
+              "y": 4.1758245784844155,
+              "z": -2.699795213869656
+            },
+            "geometryItemId": 441
+          }
+        },
+        {
+          "kind": "serial",
+          "x": 0.3,
+          "y": 0.3,
+          "result": null
+        },
+        {
+          "kind": "serial",
+          "x": 0.7,
+          "y": 0.7,
+          "result": null
+        },
+        {
+          "kind": "serial",
+          "x": 0,
+          "y": 0,
+          "result": null
+        },
+        {
+          "kind": "serial",
+          "x": 1,
+          "y": 1,
+          "result": null
+        },
+        {
+          "kind": "overlap",
+          "results": [
+            {
+              "expressId": 425,
+              "modelIndex": 0,
+              "worldXYZ": {
+                "x": 6.400205048390781,
+                "y": 4.1758245784844155,
+                "z": -2.699795213869656
+              },
+              "geometryItemId": 441
+            },
+            null
+          ]
+        }
+      ],
+      "matching": true,
+      "gpuErrors": []
+    }
+  ],
+  "errors": [],
+  "cleanup": null,
+  "sources": {
+    "packages/renderer/src/picker.ts": "1d031c4a0408fa8214dff9e6251f6acf690d42fe9972c3806ba1c7cfc93ac960",
+    "packages/renderer/src/picker-readbacks.ts": "5e833c8eec929801ba696439417626271a2aaf8a5177a754df784e322f071e22",
+    "packages/renderer/src/picker-depth-sample.ts": "f9ac5a3bf640c5a7645828505bd0032d24b2cef7e7325fdaff46fca464ac6f71",
+    "packages/renderer/src/pick-world-position.ts": "0d50d0f0479e3645e5f2daeb2faabcea7ff9f06943ed3a986c11156a54164eb3",
+    "packages/wasm/pkg/ifc-lite_bg.wasm": "3912d1046cf6507e7ef6f85a0492a0e54fbb31ae711b85c6e46b6313ffd63312"
+  },
+  "profile": "C:\\Users\\louistrue\\AppData\\Local\\Temp\\ifclite-frame-rig-d8cc5a4e3df5"
+}

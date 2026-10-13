@@ -9,7 +9,8 @@ import { AI_FEATURE, type FlowAiService } from '@ifc-lite/flow-nodes/ai';
 import { headlessFeatures, usableSecretNames } from '@ifc-lite/flow-nodes';
 
 export function mcpFlowFeatures() {
-  const features = headlessFeatures(usableSecretNames(process.env));
+  const headless = headlessFeatures(usableSecretNames(process.env));
+  const features = { ...headless, backend: new Set([...headless.backend, 'review']) };
   return flowAiConfig(process.env) ? { ...features, backend: new Set([...features.backend, AI_FEATURE]) } : features;
 }
 

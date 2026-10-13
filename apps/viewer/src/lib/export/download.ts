@@ -110,6 +110,16 @@ export function buildExportFilename(
 }
 
 /**
+ * BCF 2.1/3.0 use .bcf in Solibri's filename-based importer (#6459).
+ * A byte-identical .bcfzip can silently import zero topics there, including
+ * Solibri's own archive. This changes the suggested name, never ZIP contents.
+ * Keep the policy here with the shared filename sanitizer and length budget.
+ */
+export function bcfExportFilename(baseName: string): string {
+  return buildExportFilename(baseName.replace(/\.bcf(?:zip)?$/i, ''), 'bcf');
+}
+
+/**
  * The download filename for anything exported FROM a model: the model's name
  * without its source extension, plus an optional `suffix`, as `ext`
  * (`Haus.ifc` + `_visible` + `glb` -> `Haus_visible.glb`). Every model export

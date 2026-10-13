@@ -388,6 +388,7 @@ export class MCPServer {
     const ctx: ToolContext = {
       registry: this.registry,
       scope: this.scope,
+      currentScope: () => this.scope,
       progress,
       log: this.logger,
       signal: ctl.signal,
@@ -470,6 +471,7 @@ export class MCPServer {
     return {
       registry: this.registry,
       scope: this.scope,
+      currentScope: () => this.scope,
       progress: { report() { /* no progress for resource/prompt access */ } },
       log: this.logger,
       signal: new AbortController().signal,

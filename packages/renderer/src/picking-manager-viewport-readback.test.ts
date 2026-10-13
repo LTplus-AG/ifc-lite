@@ -190,3 +190,51 @@ it('rejects captured CPU box hits on failed obsolete picker (#6881 lifecycle)', 
   h.fail();
   assert.deepEqual(await pending, new Set());
 });
+
+// #7493: production clicks reached snapshot() after navigation invalidated the
+// RTE frame. Admission must precede both GPU submission and CPU box projection.
+for (const path of ['point', 'gpu-rectangle', 'cpu-box-and-points'] as const) {
+  it(`refuses ${path} outside the camera envelope and resumes after recovery (#7493)`, async () => {
+    const h = readbackFixture(path);
+    const position = h.camera.getPosition();
+    h.camera.setPosition(1_000_000_001, position.y, position.z);
+    assert.equal(h.camera.getRelativeToEyeFrame().isAvailable(), false);
+    assert.deepEqual(await h.begin(), path === 'point' ? null : new Set());
+    assert.equal(h.submissions.length, 0, 'an invalid camera must not submit a pick pass');
+    h.camera.setPosition(position.x, position.y, position.z);
+    const pending = h.begin();
+    assert.equal(h.submissions.length, 1, 'a recovered camera must admit picking again');
+    h.finish();
+    assert.deepEqual(await pending, path === 'point' ? { expressId: BOX_ID, modelIndex: 0 }
+      : new Set(path === 'cpu-box-and-points' ? [BOX_ID, POINT_ID] : [BOX_ID]));
+  });
+
+  it(`rejects ${path} readback if the camera leaves its envelope (#7493)`, async () => {
+    const h = readbackFixture(path);
+    const pending = h.begin();
+    assert.equal(h.submissions.length, 1);
+    h.camera.setPosition(1_000_000_001, 0, 0);
+    h.finish();
+    assert.deepEqual(await pending, path === 'point' ? null : new Set(),
+      'even synchronous CPU box hits must not survive an unavailable camera');
+  });
+}
+
+// A recovered frame is available again, but it must not resurrect hits captured
+// before the unsupported pose. Ordinary supported camera moves retain their
+// existing CPU-box policy above; only invalidation discards those hits (#7493).
+for (const outcome of ['resolve', 'reject'] as const) {
+  it(`rejects CPU rectangle hits after invalidation and recovery on ${outcome} (#7493)`, async t => {
+    t.mock.method(console, 'warn', () => {});
+    const h = readbackFixture('cpu-box-and-points');
+    const position = h.camera.getPosition();
+    const pending = h.begin();
+    assert.equal(h.submissions.length, 1);
+    h.camera.setPosition(1_000_000_001, 0, 0);
+    h.camera.setPosition(position.x, position.y, position.z);
+    assert.equal(h.camera.getRelativeToEyeFrame().isAvailable(), true);
+    if (outcome === 'resolve') h.finish();
+    else h.fail();
+    assert.deepEqual(await pending, new Set(), 'recovery must not revive pre-invalidation box hits');
+  });
+}

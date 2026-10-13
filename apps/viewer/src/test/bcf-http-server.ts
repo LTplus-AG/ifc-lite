@@ -25,6 +25,8 @@ export interface LocalBcfState {
   tokenValid: boolean;
   /** Close the connection after the next accepted write is committed. */
   loseNextWriteResponse: boolean;
+  /** Drop one actual write request before storing any effect. */
+  dropNextWriteBeforeCommit: boolean;
   /** Accepted-write ordinals (1-based) whose responses are dropped after commit. */
   loseResponsesOfWrites: Set<number>;
   acceptedWrites: number;
@@ -71,13 +73,13 @@ function topicFields(value: unknown): Record<string, unknown> | undefined {
   return value;
 }
 
-export async function startLocalBcfServer(options: { token?: string; echoWriteToken?: boolean; afterWriteStatus?: 303 | 409 | 500; guidPrefix?: string; commentResponseTopicGuid?: string; commentResponseViewpointGuid?: string | null; commentResponseReplyToCommentGuid?: string | null } = {}): Promise<{
+export async function startLocalBcfServer(options: { port?: number; anonymousReadVisibility?: 'filtered' | 'full'; allowAnonymousWrites?: boolean; token?: string; echoWriteToken?: boolean; afterWriteStatus?: 303 | 409 | 500; guidPrefix?: string; commentResponseTopicGuid?: string; commentResponseViewpointGuid?: string | null; commentResponseReplyToCommentGuid?: string | null } = {}): Promise<{
   baseUrl: string;
   state: LocalBcfState;
   close: () => Promise<void>;
 }> {
   const state: LocalBcfState = { topics: new Map(), writesAllowed: true, tokenValid: true,
-    loseNextWriteResponse: false, loseResponsesOfWrites: new Set(), acceptedWrites: 0, receivedWrites: 0, receivedWriteAttempts: 0 };
+    dropNextWriteBeforeCommit: false, loseNextWriteResponse: false, loseResponsesOfWrites: new Set(), acceptedWrites: 0, receivedWrites: 0, receivedWriteAttempts: 0 };
   let baseUrl = '';
   const token = options.token ?? LOCAL_BCF_TOKEN;
   if (options.guidPrefix !== undefined && !/^[0-9a-f]{4}$/.test(options.guidPrefix)) {
@@ -118,7 +120,14 @@ export async function startLocalBcfServer(options: { token?: string; echoWriteTo
       json(response, { oauth2_auth_url: `${baseUrl}/oauth/authorize`, oauth2_token_url: `${baseUrl}/oauth/token` }); return;
     }
     if (url.pathname === '/bcf/versions') { json(response, { versions: [{ version_id: '2.1' }] }); return; }
-    if (!state.tokenValid || request.headers.authorization !== `Bearer ${token}`) {
+    const anonymous = request.headers.authorization === undefined;
+    if (anonymous && method === 'GET' && options.anonymousReadVisibility === 'filtered'
+      && /^\/bcf\/2\.1\/projects\/[^/]+\/topics(?:\/[^/]+\/comments)?$/.test(url.pathname)) {
+      json(response, []); return;
+    }
+    const anonymousAllowed = anonymous && (method === 'GET' && options.anonymousReadVisibility === 'full'
+      || options.allowAnonymousWrites && method === 'POST');
+    if (!anonymousAllowed && (!state.tokenValid || request.headers.authorization !== `Bearer ${token}`)) {
       json(response, { message: options.echoWriteToken ? `Server echoed ${token}` : 'Local test token rejected' }, 401); return;
     }
     if (url.pathname === '/bcf/2.1/current-user') {
@@ -140,6 +149,10 @@ export async function startLocalBcfServer(options: { token?: string; echoWriteTo
     const write = method === 'POST' || method === 'PUT';
     if (write) {
       state.receivedWrites += 1;
+      if (state.dropNextWriteBeforeCommit) {
+        state.dropNextWriteBeforeCommit = false;
+        response.destroy(); return;
+      }
       if (!state.writesAllowed) { json(response, { message: 'Project write permission revoked' }, 403); return; }
     }
     if (parts.length === 5) {
@@ -233,7 +246,7 @@ export async function startLocalBcfServer(options: { token?: string; echoWriteTo
   });
   await new Promise<void>((resolve, reject) => {
     server.once('error', reject);
-    server.listen(0, '127.0.0.1', () => { server.removeListener('error', reject); resolve(); });
+    server.listen(options.port ?? 0, '127.0.0.1', () => { server.removeListener('error', reject); resolve(); });
   });
   const address = server.address();
   if (!address || typeof address === 'string') throw new Error('Local BCF server has no TCP address');

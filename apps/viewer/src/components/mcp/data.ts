@@ -254,7 +254,7 @@ export const RECIPES: McpRecipe[] = [
     title: 'BCF every door under 80 cm',
     family: 'author',
     prompt:
-      'Find every IfcDoor whose OverallWidth < 0.80m. For each, create a BCF topic with priority=Major and a viewpoint that selects only that door. Export the .bcfzip when done.',
+      'Find every IfcDoor whose OverallWidth < 0.80m. For each, create a BCF topic with priority=Major and a viewpoint that selects only that door. Export the .bcf when done.',
     uses: ['query_entities', 'bcf_topic_create', 'bcf_viewpoint_create', 'bcf_export'],
   },
   {
@@ -438,7 +438,7 @@ const PARAM_FALLBACKS: Record<string, Array<Omit<ParamRow, 'required'>> & { requ
       { name: 'guid', type: 'string', description: 'Topic to attach the viewpoint to.' },
       { name: 'selection_global_ids', type: 'string[]' },
     ],
-    bcf_export: [{ name: 'file_path', type: 'string', description: 'Output .bcfzip path.' }],
+    bcf_export: [{ name: 'file_path', type: 'string', description: 'Output BCF archive path (.bcf recommended for Solibri).' }],
     bsdd_search: [{ name: 'query', type: 'string', description: 'Free-text search across all bSDD dictionaries.' }],
     bsdd_class: [{ name: 'ifc_type', type: 'string', description: 'IFC entity name, e.g. "IfcWall".' }],
     bsdd_property_sets: [{ name: 'ifc_type', type: 'string' }],
@@ -618,7 +618,7 @@ export const EXAMPLES: Record<string, Record<string, unknown>> = {
   bcf_topic_update: { guid: '7e87d7f4-...', comment: 'Confirmed with the structural team.' },
   bcf_topic_close: { guid: '7e87d7f4-...' },
   bcf_viewpoint_create: { guid: '7e87d7f4-...', selection_global_ids: ['1AQAupaRP1txwK1AGiN61V'] },
-  bcf_export: { file_path: '/tmp/topics.bcfzip' },
+  bcf_export: { file_path: '/tmp/topics.bcf' },
   bsdd_search: { query: 'wall' },
   bsdd_class: { ifc_type: 'IfcWall' },
   bsdd_property_sets: { ifc_type: 'IfcWall' },

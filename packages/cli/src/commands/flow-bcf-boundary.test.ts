@@ -14,6 +14,7 @@ import { startLocalBcfServer, LOCAL_BCF_PROJECT, LOCAL_BCF_TOKEN } from '../../.
 
 const here = dirname(fileURLToPath(import.meta.url));
 const preload = resolve(here, '../test/bcf-publication-preload.mjs');
+const ownerFixture = resolve(here, '../test/bcf-clean-owner-preload.mjs');
 const executable = resolve(here, '../../dist/index.js');
 const model = resolve(here, '../../../../apps/viewer/public/samples/hello-wall.ifc');
 const cleanup: Array<() => Promise<void>> = [];
@@ -26,8 +27,9 @@ async function setup(options: Parameters<typeof startLocalBcfServer>[0] = {}) {
   cleanup.push(peer.close);
   const graph = join(directory, 'write.flow.json');
   const run = (args: string[]) => new Promise<{ code: number | null; stdout: string; stderr: string }>((done, reject) => {
-    const child = spawn(process.execPath, ['--import', preload, executable, 'flow', ...args], {
-      env: { ...process.env, IFCLITE_TEST_BCF_PEER: peer.baseUrl, BCF_TOKEN: options.token ?? LOCAL_BCF_TOKEN },
+    const child = spawn(process.execPath, [...(process.platform === 'linux' ? ['--import', ownerFixture] : []), '--import', preload, executable, 'flow', ...args], {
+      env: { ...process.env, IFCLITE_TEST_BCF_PEER: peer.baseUrl, BCF_TOKEN: options.token ?? LOCAL_BCF_TOKEN,
+        IFCLITE_BCF_OUTBOX_DIR: join(directory, 'outbox') },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     const deadline = setTimeout(() => {
@@ -75,7 +77,7 @@ it.each(['literal', 'Player'] as const)('direct %s bearer refuses a credential-b
   expect(result.code).toBe(1);
   expect(result.stdout + result.stderr).toContain('outcome unknown');
   expect(result.stdout + result.stderr).not.toContain(token);
-  // The direct host owns no journal; this test makes no duplicate-prevention claim.
+  // Native CLI uses its own isolated journal; this response-boundary case makes no replay claim.
 }, 60_000);
 
 it.each([['bcf.createTopic', 'literal'], ['bcf.createTopic', 'Player'],

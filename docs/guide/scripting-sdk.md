@@ -359,3 +359,34 @@ of assignments with distinct OwnerHistory, Name or Description. Their separate
 semantics cannot be represented by this complete-member-list update; reading
 and safe deletion remain supported.
 Specialized Structural groups retain their separate authoring methods.
+
+## Native Review capture lifecycle
+
+The Review leaf's `NativeReviewCaptures` and `readNativeReview` serve actual
+native hosts. A host supplies `NativeReviewModel` handles with the real source,
+owner/store identity, read-only GlobalId lookups and current overlay revision.
+`begin` captures source and definition proof before evaluation; `finish` retains
+the native report; `readNativeReview` produces the common bounded native host read.
+Captures with unavailable proof refuse explicitly, and partial overlays cannot
+confirm complete effective-state coverage. These live captures are distinct
+from portable saved facts; see the lifecycle contract below.
+
+Capture start and projection take a callback that enumerates the current host-owned models and a live permission predicate. They revalidate every captured owner, store, source, mutation view and monotonic revision after all awaited hashes. The bounded projection runs synchronously inside that final check. `presentationComplete` describes response clipping; `nativeCoverageComplete` describes the retained native runs, including their freshness and evaluation coverage.
+
+A native host that resolves Flow credentials calls `enrollCredentials` with only
+its already authorized values before execution. Credentials remain in bounded
+owner-local memory; `begin`, `finish` and `read` refuse sensitive capture/envelope
+content. `acceptsEvidence` also guards the final card projection's current display
+metadata. Exceeding the credential bound fails the owner closed without dropping
+previously known values. Concurrent `begin` calls reserve pending capacity before proof work and recheck ownership and permission synchronously after hashing.
+
+Successful reruns replace the same producer/definition/full-source ownership context only after settlement. Relative ordering follows operation initiation, before proof hashing; older asynchronous completion cannot replace newer success or clear a newer refusal. Producer failure or cancellation releases its pending reservation. A proven newer failed attempt keeps earlier matching facts under their original run ID and completion time as historical, incomplete evidence, including when the older proof completes after the newer failure. If that failure proof is replaced by a later operation before an older pending proof can establish exact context equality, the older capture is conservatively omitted as `capture-bound`, with unknown historical coverage instead of a guessed match. `latestAttempt` reports the latest operation outcome and its proof when available; failure before proof does not invent a matching definition or source identity. A later genuine operation can recover transient refusal.
+
+Distinct contexts use bounded oldest-settled retention. Eviction sets `retention.inventoryOmitted`; omitted historical run counts remain unknown. `bounds.knownFindingsScope` is `retained-current-contexts`, so retained row counts never claim a complete historical inventory. If an older proof-pending operation outlives eviction of potentially newer context evidence, its later capture is conservatively refused as `capture-bound`; its independent native report remains intact. This uncertainty uses only a flag on the bounded pending record; `retention.captureRefusal` discloses the resulting `capture-bound` omission without relabelling a newer successful operation. Reads do not change retention or analysis state. If a retained context is replaced or evicted while a read awaits its source proof, that read returns `capture-bound` unavailability rather than claiming older rows as current; a later read can project the newer facts.
+
+Native Review bounds separate `presentationComplete` (all retained rows and text fit the response limits) from `nativeCoverageComplete` (the retained native runs are complete and fresh, with no omitted capture inventory). A complete presentation can still describe a stale or partially evaluated run. Both checks use current model ownership and permissions after source hashing; access revoked during that await suppresses the entire captured target envelope.
+
+
+Hosts must call `abandon(token)` when native evaluation throws, and use `abandon(token, "aborted")` on cancellation before rethrowing the original failure. `begin` releases refused proof reservations itself. Successful completion calls `finish(token, report)` exactly once. Credential overflow remains a permanent owner-local security refusal; ordinary source, ownership, permission, producer, or capacity failure does not disable later genuine capture attempts.
+
+Native Review `modelIds` selects whole captured target sets independently of current authorization. A wholly permitted capture outside the request is omitted; a capture spanning requested and excluded models is refused as a whole. Permission revocation remains fail-closed after source hashing. Hash reuse follows the actual source object, including models that share a host owner. An older delayed proof cannot revive a newer same-context capture after retention eviction.

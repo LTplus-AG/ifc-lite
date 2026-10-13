@@ -89,7 +89,6 @@ export class ApplicabilityPropertyIndex {
     for (let i = 0; i < entityIds.length; i++) {
       const id = entityIds[i];
       if (this.indexed.has(id)) continue;
-      this.indexed.add(id);
       newCount++;
       // The first fold-in over a large candidate set is real CPU work
       // (pset extraction per entity) — keep the host UI painting and
@@ -132,6 +131,11 @@ export class ApplicabilityPropertyIndex {
           }
         }
       }
+      // Marked only once folded: if reading its sets threw, the run goes on
+      // to the next specification (validateIDS), and an entity marked
+      // before the fold would be missing from every bucket, so narrow()
+      // would drop it and that specification could pass it unchecked.
+      this.indexed.add(id);
     }
   }
 

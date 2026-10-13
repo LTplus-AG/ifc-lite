@@ -77,6 +77,7 @@ import { mcpFlowFeatures } from './flow-ai.js';
 import { prepareMcpFlowReview, restoredMcpNodes } from './flow-review-host.js';
 import { flowAiConfig } from '@ifc-lite/ai/chat-completions';
 import { aiNodes } from '@ifc-lite/flow-nodes/ai';
+import { reviewCaptures } from './review-captures.js';
 import { createMcpFlowHost } from './flow-host.js';
 import type { Tool } from './types.js';
 import { okResult, paginate, resolveModel } from './util.js';
@@ -294,12 +295,13 @@ async function executeFlow(input: Record<string, unknown>, ctx: ToolContext, res
     const secretValues = new Map(resolveSecretValues(doc, process.env));
     const aiConfig = flowAiConfig(process.env);
     if (aiConfig) secretValues.set('IFC_LITE_AI_API_KEY', aiConfig.apiKey);
+    reviewCaptures(ctx).enrollCredentials([...secretValues.values()]);
     const redaction = buildRedactionMap(secretValues);
     const runDoc = interpolateSecrets(doc, secretValues);
     const review = await prepareMcpFlowReview(input, ctx, model, runDoc, registry, rawInputs, resuming, readOnly);
     // `networkGrants` is the graph's own declared capabilities (module doc);
     // `model.openFromSource` can switch the host to a model it opened.
-    const host = createMcpFlowHost(model, ctx.registry, capsResult.value, { ai: review.ai, grants: capsResult.value });
+    const host = createMcpFlowHost(model, ctx.registry, capsResult.value, { ai: review.ai, grants: capsResult.value }, ctx);
     const resume = await review.claim();
     let result: RunResult;
     try { result = await runFlow(runDoc, {

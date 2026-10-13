@@ -95,7 +95,7 @@ describe('playground clash_bcf_export writes world-coordinate cameras (#4879)', 
       assert.equal(out.isError, false, JSON.stringify(out));
       const fileId = (out.structured as { fileId: string }).fileId;
       const file = playgroundFiles.list().find((f) => f.id === fileId);
-      assert.ok(file, 'the export staged a .bcfzip');
+      assert.ok(file, 'the export staged a .bcf');
       const project = await readBCF(await file.blob.arrayBuffer());
 
       const cameras = [...project.topics.values()].flatMap((t) => t.viewpoints.map((vp) => vp.perspectiveCamera));

@@ -4,7 +4,7 @@
 
 /**
  * BCF tour: select a problem, raise a topic with an auto-attached snapshot,
- * capture a second viewpoint, and export the .bcfzip. Topics and viewpoints
+ * capture a second viewpoint, and export the .bcf. Topics and viewpoints
  * are the user's data - deliberately NO cleanup anywhere in this tour.
  * Target: about 3 minutes.
  */
@@ -16,7 +16,7 @@ import type { TourDefinition } from '../types';
 export const BCF_TOUR: TourDefinition = {
   id: 'bcf',
   title: 'Raise topics with BCF',
-  description: 'Flag a problem, capture viewpoints, and export a .bcfzip your whole team can open.',
+  description: 'Flag a problem, capture viewpoints, and export a .bcf your whole team can open.',
   minutes: 3,
   version: 1,
   panel: 'bcf',
@@ -94,9 +94,9 @@ export const BCF_TOUR: TourDefinition = {
       panel: 'bcf',
       placement: 'left',
       title: 'Export BCF',
-      body: 'Click the download icon in the header. The .bcfzip opens in Revit, Navisworks, Solibri, and other BCF tools; a returned one imports via the button next to it.',
+      body: 'Click the download icon in the header. The .bcf opens in Revit, Navisworks, Solibri, and other BCF tools; a returned one imports via the button next to it.',
       // The export funnels through downloadBlob -> the shared download choke
-      // point, which emits the file-downloaded event with the extension.
+      // point, which emits the file-downloaded event with the BCF archive kind.
       gate: { event: EVENT_FILE_DOWNLOADED, eventKind: 'bcfzip', hintAfterMs: 30_000 },
     },
   ],

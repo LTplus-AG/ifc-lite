@@ -6,7 +6,7 @@
  * Zoom toward the surface under the cursor (#5393).
  *
  * Plain wheel zoom anchors on the plane through the orbit target and dollies
- * the target forward by half of every step (`CameraControls.zoomPerspective`,
+ * the target forward by half of every step (`zoomPerspective`,
  * the anti-"Zeno" dolly), so its step has no relation to how far the surface
  * under the cursor is: repeated notches pass straight through a pipe or a
  * small building into empty space.

@@ -18,6 +18,7 @@ import { ensureWasm } from '@/test/scan-slab-fixture';
 import { seedZoneExport } from '@/test/zone-export-fixture';
 import { parseIfc } from '@/test/authoring-sample-fixture';
 import { editedModelBytes } from '@/lib/export/edited-model-bytes';
+import { assertSameNativeIfcGraph } from '@/test/native-ifc-graph';
 import { captureSelectionGrounding } from './selection-grounding';
 import { nativeZoneEmissionEvidence } from './zone-emission-evidence';
 import { prepareZoneEmission } from './zone-emission-review';
@@ -122,6 +123,8 @@ test('#7322 native federated evaluation emits only explicitly chosen model and s
   assert.equal(zones.length, 2); assert.deepEqual(zones.map(row => row.attributes[7]).sort(), ['Independent native sections', 'Renamed native sections']);
 });
 test('#7322 imported marked outputs are retained while externally referenced current-session outputs refuse replacement', async t => {
+  // #7347: cross export seconds without replacing native scheduling timers.
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-10-12T12:00:00Z') });
   const f = await seed(t); if (!f) return;
   prepareZoneEmission(useViewerStore, proposal()).commit('native first output');
   const view = useViewerStore.getState().mutationViews.get('bonsai')!, zone = view.getNewEntities().find(row => row.type === 'IfcSpatialZone'); assert.ok(zone);
@@ -138,5 +141,10 @@ test('#7322 imported marked outputs are retained while externally referenced cur
   assert.ok([...saved.entityIndex.byType.get('IFCRELASSIGNSTOGROUP') ?? []].some(id => (effectiveMetadataRecord(saved, id)!.attributes[4] as number[]).includes(zone.expressId)), 'actual exported unrelated relationship references the prior zone');
   recomputeZoneAssignmentsNow(); const evidence = nativeZoneEmissionEvidence(useViewerStore.getState(), 'bonsai');
   assert.ok(evidence.choices.some(row => row.reason?.includes('referenced outside')), JSON.stringify(evidence));
-  const bytes = editedModelBytes(f.store, view); assert.throws(() => proposal(), /available/); assert.deepEqual(editedModelBytes(f.store, view), bytes);
+  const bytes = editedModelBytes(f.store, view);
+  t.mock.timers.tick(1000);
+  assert.throws(() => proposal(), /available/);
+  const after = editedModelBytes(f.store, view);
+  assert.notDeepEqual(after, bytes, 'independent native exports cross an actual FILE_NAME timestamp boundary');
+  await assertSameNativeIfcGraph(after, bytes);
 });

@@ -6377,6 +6377,9 @@
     "BcfPublicationFailure: interface",
     "classifyWriteError: function"
   ],
+  "@ifc-lite/flow-nodes/bcf-publication-node": [
+    "createNativeBcfWriteGateway: function"
+  ],
   "@ifc-lite/flow/checkpoint": [
     "CheckpointError: class",
     "CheckpointErrorCode: type",
@@ -9904,7 +9907,10 @@
     "FindingSource: interface",
     "FindingSourceKind: type",
     "FindingSourceResult: interface",
+    "NativeReviewCaptures: class",
+    "NativeReviewModel: interface",
     "RUN_GAP_CODES: const",
+    "ReviewCaptureToken: interface",
     "ReviewFinding: interface",
     "ReviewModel: interface",
     "ReviewSnapshot: interface",
@@ -9914,6 +9920,7 @@
     "bcfFindings: function",
     "buildCards: function",
     "elementKey: function",
+    "readNativeReview: function",
     "resolveElement: function",
     "snapshotFrom: function",
     "totalsForCards: function",

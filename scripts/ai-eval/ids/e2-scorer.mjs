@@ -98,6 +98,12 @@ export async function createE2Scorer(options = {}) {
       passed: result.passedCount,
       failed: result.failedCount,
     }));
+    // A specification that could not be evaluated is 'fail' with an error: the
+    // candidate is unscorable, not a fail verdict (#7482).
+    const unevaluable = validation.specificationResults.filter(result => result.error);
+    if (unevaluable.length > 0) {
+      return { ...base, verdict: null, agreement: false, error: `candidate could not be evaluated: ${unevaluable.map(result => result.error).join('; ')}`, specifications };
+    }
     const verdict = specifications.some(spec => spec.status === 'fail') ? 'fail' : 'pass';
     return { ...base, verdict, agreement: verdict === e2Case.expected, error: null, specifications };
   }

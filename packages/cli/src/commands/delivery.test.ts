@@ -112,6 +112,29 @@ const VACUOUS_IDS = [
 // check, so this must report `fail` (not `error`, not `pass`).
 const REQUIRED_BUT_ABSENT_IDS = VACUOUS_IDS.replace('minOccurs="0"', '');
 
+// Two specifications against CLEAN_IFC: the project must have a Name (passes),
+// and the storey's Name must match a catastrophic-backtracking `xs:pattern`,
+// which the ReDoS guard refuses, so `@ifc-lite/ids` reports that
+// specification as could-not-be-evaluated (`error` set, status 'fail'; #7482).
+const UNEVALUABLE_IDS = [
+  '<?xml version="1.0" encoding="utf-8"?>',
+  '<ids xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://standards.buildingsmart.org/IDS http://standards.buildingsmart.org/IDS/1.0/ids.xsd" xmlns="http://standards.buildingsmart.org/IDS">',
+  '  <specifications>',
+  '    <specification name="Project has a Name" ifcVersion="IFC4">',
+  '      <applicability><entity><name><simpleValue>IFCPROJECT</simpleValue></name></entity></applicability>',
+  '      <requirements><attribute><name><simpleValue>Name</simpleValue></name></attribute></requirements>',
+  '    </specification>',
+  '    <specification name="Storey name pattern" ifcVersion="IFC4">',
+  '      <applicability><entity><name><simpleValue>IFCBUILDINGSTOREY</simpleValue></name></entity></applicability>',
+  '      <requirements>',
+  '        <attribute><name><simpleValue>Name</simpleValue></name><value><xs:restriction base="xs:string"><xs:pattern value="(a+)+b"/></xs:restriction></value></attribute>',
+  '      </requirements>',
+  '    </specification>',
+  '  </specifications>',
+  '</ids>',
+  '',
+].join('\n');
+
 // An IDS document declaring zero <specification> elements at all.
 const ZERO_SPEC_IDS = [
   '<?xml version="1.0" encoding="utf-8"?>',
@@ -383,6 +406,25 @@ describe('deliveryCommand', () => {
     const report = jsonWritten(write) as { verdict: string; checks: Array<{ status: string }> };
     expect(report.checks[0].status).toBe('pass');
     expect(report.verdict).toBe('pass');
+    process.exitCode = 0;
+  });
+
+  it('an IDS specification the validator could not evaluate reports error with its reason, not fail (#7482)', async () => {
+    const dir = tmpDir();
+    writeFileSync(join(dir, 'model.ifc'), CLEAN_IFC);
+    writeFileSync(join(dir, 'unevaluable.ids'), UNEVALUABLE_IDS);
+    const recipePath = writeRecipe(dir, { models: ['model.ifc'], ids: ['unevaluable.ids'] });
+    const write = silenceOutput();
+    await deliveryCommand([recipePath, '--json']);
+    const report = jsonWritten(write) as {
+      verdict: string;
+      checks: Array<{ status: string; error?: string; erroredSpecifications?: number; passedSpecifications?: number; failedSpecifications?: number }>;
+    };
+    const [check] = report.checks;
+    expect(check.status).toBe('error'); // could not be run, not a violation
+    expect([check.erroredSpecifications, check.passedSpecifications, check.failedSpecifications]).toEqual([1, 1, 0]);
+    expect(check.error).toMatch(/^1 of 2 specification\(s\) could not be evaluated \(Specification could not be evaluated: /);
+    expect(report.verdict).toBe('fail');
     process.exitCode = 0;
   });
 

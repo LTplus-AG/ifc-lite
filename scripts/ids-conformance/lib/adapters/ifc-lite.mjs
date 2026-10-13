@@ -62,7 +62,9 @@ export async function createIfcLiteAdapter(options = {}) {
       if (report.specificationResults.length !== 1) {
         throw new Error(`expected one specification, got ${report.specificationResults.length}`);
       }
-      const status = report.specificationResults[0].status;
+      const { status, error } = report.specificationResults[0];
+      // A specification that could not be evaluated is 'fail' with an error: not a verdict.
+      if (error) throw new Error(error);
       if (status !== 'pass' && status !== 'fail') throw new Error(`unexpected status ${status}`);
       return status;
     },

@@ -26,7 +26,7 @@ import type {
 } from '../types.js';
 import { checkFacet, facetPasses, filterByFacet } from '../facets/index.js';
 import { ApplicabilityPropertyIndex } from './property-index.js';
-import { UnsafeRegexPatternError } from '@ifc-lite/regex-guard';
+import { guardHostProgress, isAbortError, unevaluableSpecificationResult } from './unevaluable-specification.js';
 import { formatFailureReason, formatRequirementDescription } from './format-failure-reason.js';
 import { boundedPassRate } from './pass-rate.js';
 import { requirementsToCheck } from './prohibited-specification.js';
@@ -202,7 +202,7 @@ export async function validateIDS(
   modelInfo: ValidationModelInfo,
   options: ValidatorOptions = {}
 ): Promise<IDSValidationReport> {
-  const { onProgress } = options;
+  const onProgress = guardHostProgress(options.onProgress);
   assertIds11Allowed(document, options.preview, 'validateIDS'); // ADR-011: no silent 1.1 skips
   const cachedAccessor = createCachedAccessor(accessor);
   const descriptionCache: DescriptionCache = new Map();
@@ -257,11 +257,11 @@ export async function validateIDS(
         }
       );
     } catch (err) {
-      // An `xs:pattern` facet's pattern was rejected by the ReDoS guard
-      // (`@ifc-lite/regex-guard`): surface as a FAILED specification with
-      // the reason, never as a silent pass — see issue #4259.
-      if (!(err instanceof UnsafeRegexPatternError)) throw err;
-      result = unsafePatternResult(spec, err);
+      // A specification that cannot be evaluated (a rejected `xs:pattern`, #4259,
+      // or any other error) fails with the reason and the run goes on (#7482);
+      // an exception from the host's onProgress (checked first) or its cancellation ends it.
+      if (onProgress?.threw(err) || isAbortError(err)) throw err;
+      result = unevaluableSpecificationResult(spec, err);
     }
 
     specificationResults.push(result);
@@ -287,23 +287,6 @@ export async function validateIDS(
     timestamp: new Date(),
     summary,
     specificationResults,
-  };
-}
-
-/** Build the failed-specification result for a rejected `xs:pattern`. */
-function unsafePatternResult(
-  spec: IDSSpecification,
-  err: UnsafeRegexPatternError
-): IDSSpecificationResult {
-  return {
-    specification: spec,
-    status: 'fail',
-    applicableCount: 0,
-    passedCount: 0,
-    failedCount: 0,
-    passRate: 0,
-    entityResults: [],
-    error: `Specification could not be evaluated: ${err.message}`,
   };
 }
 

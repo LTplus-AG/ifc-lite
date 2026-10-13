@@ -49,7 +49,7 @@ export class Picker {
   private maxMeshes: number = 100000; // Support up to 100K meshes (was 10K)
   /** Set by `destroy()`; makes it idempotent and turns `pick`/`pickRect` into no-ops. */
   private destroyed = false;
-  private readonly readbacks = new PickerReadbackOwner();
+  private readonly readbacks: PickerReadbackOwner;
   private pointPicker: PointPicker | null = null;
   // Flat meshes each bind a dynamic 256-byte slot: RTE view projection +
   // model linear transform + clip state + split drawable origin. A single
@@ -62,6 +62,7 @@ export class Picker {
   constructor(device: WebGPUDevice, width: number = 1, height: number = 1) {
     this.webgpuDevice = device;
     this.device = device.getDevice();
+    this.readbacks = new PickerReadbackOwner(this.device);
     this.depthSample = new PickDepthSample(this.device);
 
     // Create textures for picking
@@ -330,10 +331,8 @@ export class Picker {
    * For point hits, expressId is the federated globalId of the asset
    * (already correct for hover/selection plumbing — no remapping needed).
    *
-   * Returns null once `destroy()` has run — every texture and buffer below is
-   * already freed, so the `mapAsync` readback could only reject. Also returns
-   * null if the device dies *during* the readback, which no entry guard can
-   * pre-empt (see {@link isReadbackAbort}).
+   * Returns null after picker teardown or device loss, including loss between
+   * successful mapping and consumption of the mapped range (#6881).
    */
   async pick(
     x: number,
@@ -348,7 +347,7 @@ export class Picker {
     clip?: PickClipState | null,
     pointRteSnapshot?: RelativeToEyeSnapshot,
   ): Promise<PickResult | null> {
-    if (this.destroyed) return null;
+    if (this.destroyed || this.readbacks.deviceLost) return null;
     const encoder = this.renderPickPass(
       width, height, meshes, viewProj, pointNodes, pointSizing, instancedTemplates, clip, pointRteSnapshot,
     );
@@ -386,12 +385,12 @@ export class Picker {
       this.readbacks.track(...depthResources);
       this.device.queue.submit([encoder.finish()]);
       await readBuffer.mapAsync(GPUMapMode.READ);
-      if (this.destroyed) return null;
+      if (this.destroyed || this.readbacks.deviceLost) return null;
       const bytes = readBuffer.getMappedRange();
       sample = new Uint32Array(bytes, 0, 1)[0];
       depth = new Float32Array(bytes, 4, 1)[0];
     } catch (err) {
-      if (!isReadbackAbort(err)) throw err;
+      if (!this.readbacks.deviceLost && !isReadbackAbort(err)) throw err;
       return null;
     } finally {
       this.readbacks.release(readBuffer, ...depthResources);
@@ -451,7 +450,7 @@ export class Picker {
     clip?: PickClipState | null,
     pointRteSnapshot?: RelativeToEyeSnapshot,
   ): Promise<Set<number>> {
-    if (this.destroyed) return new Set();
+    if (this.destroyed || this.readbacks.deviceLost) return new Set();
     // Normalise + clip rect to texture bounds.
     const lx = Math.max(0, Math.floor(Math.min(x0, x1)));
     const ly = Math.max(0, Math.floor(Math.min(y0, y1)));
@@ -485,7 +484,7 @@ export class Picker {
       );
       this.device.queue.submit([encoder.finish()]);
       await readBuffer.mapAsync(1);
-      if (this.destroyed) return new Set();
+      if (this.destroyed || this.readbacks.deviceLost) return new Set();
       const view = new Uint32Array(readBuffer.getMappedRange());
       const ids = new Set<number>();
       const stridePx = rowStride / 4;
@@ -513,7 +512,7 @@ export class Picker {
       }
       return ids;
     } catch (err) {
-      if (!isReadbackAbort(err)) throw err;
+      if (!this.readbacks.deviceLost && !isReadbackAbort(err)) throw err;
       return new Set();
     } finally {
       this.readbacks.release(readBuffer);

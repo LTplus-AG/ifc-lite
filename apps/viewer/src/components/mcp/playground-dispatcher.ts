@@ -86,7 +86,7 @@ export type { AnthropicInputSchema, AnthropicToolDef } from './playground-tool-d
 import { getThreeWebglVerdict } from './three-webgl-support';
 import { playgroundFiles } from './playground-files';
 import { playgroundUploads } from './playground-uploads';
-import { sanitizeFilename } from '../../lib/export/download';
+import { bcfExportFilename, sanitizeFilename } from '../../lib/export/download';
 import { playgroundCostTools } from './playground-cost';
 import { effectiveEntities, effectiveEntityCount, effectiveGlobalIdLookup, effectiveTypeCounts } from './playground-effective';
 import { playgroundContainmentChain, playgroundSpatialHierarchy } from './playground-spatial';
@@ -189,8 +189,8 @@ function getBcfProject(): BCFProject {
 }
 
 /**
- * Auto-stage a fresh `.bcfzip` blob in playgroundFiles after every BCF
- * mutation. This way the chat shows a `Get .bcfzip` button on EVERY BCF
+ * Auto-stage a fresh `.bcf` archive in playgroundFiles after every BCF
+ * mutation. This way the chat shows a `Get .bcf` button on EVERY BCF
  * call — the user doesn't have to wait for the agent to remember to
  * call bcf_export. We re-use the same fileId across calls so the
  * sidebar Downloads panel shows ONE always-current entry instead of
@@ -206,7 +206,7 @@ async function autoStageBcfDownload(): Promise<NonNullable<ToolDispatchResult['d
   const blob = await writeBCF(project);
   // Drop the previous staged copy so the panel only ever shows the latest.
   if (stagedBcfFileId) playgroundFiles.remove(stagedBcfFileId);
-  const filename = coerceFilename(undefined, 'bcfzip', 'topics');
+  const filename = coerceFilename(undefined, 'bcf', 'topics');
   const file = playgroundFiles.add({
     filename,
     mimeType: 'application/zip',
@@ -224,7 +224,7 @@ async function autoStageBcfDownload(): Promise<NonNullable<ToolDispatchResult['d
     filename,
     mimeType: 'application/zip',
     size: blob.size,
-    label: 'Get .bcfzip',
+    label: 'Get .bcf',
   };
 }
 
@@ -887,7 +887,7 @@ const IMPLS: Record<string, ToolImpl> = { ...playgroundCostTools,
       ...(maxTopics != null ? { maxTopics } : {}),
     });
 
-    const filename = coerceFilename(args.file_path as string | undefined, 'bcfzip', 'clashes');
+    const filename = coerceFilename(args.file_path as string | undefined, 'bcf', 'clashes');
     const blob = await writeBCF(project);
     const file = playgroundFiles.add({
       filename,
@@ -908,7 +908,7 @@ const IMPLS: Record<string, ToolImpl> = { ...playgroundCostTools,
         groupBy,
         clashes: result.summary.total,
       },
-      download: { fileId: file.id, filename, mimeType: 'application/zip', size: blob.size, label: 'Get .bcfzip' },
+      download: { fileId: file.id, filename, mimeType: 'application/zip', size: blob.size, label: 'Get .bcf' },
     };
   },
 
@@ -1047,7 +1047,7 @@ const IMPLS: Record<string, ToolImpl> = { ...playgroundCostTools,
     };
   },
 
-  // ── BCF (in-session project; bcf_export stages a .bcfzip download) ─────
+  // ── BCF (in-session project; bcf_export stages a .bcf download) ─────
   // NOTE: BCF tool text outputs print the FULL guid every time. Truncating
   // (`guid.slice(0,8)…`) breaks the agent loop — the agent only sees the
   // text content, so a follow-up bcf_viewpoint_create / bcf_topic_update
@@ -1134,7 +1134,7 @@ const IMPLS: Record<string, ToolImpl> = { ...playgroundCostTools,
   },
   async bcf_export(_m, args) {
     const project = getBcfProject();
-    const filename = coerceFilename(args.file_path as string | undefined, 'bcfzip', 'topics');
+    const filename = coerceFilename(args.file_path as string | undefined, 'bcf', 'topics');
     const blob = await writeBCF(project);
     const file = playgroundFiles.add({
       filename, mimeType: 'application/zip', size: blob.size, blob,
@@ -1143,7 +1143,7 @@ const IMPLS: Record<string, ToolImpl> = { ...playgroundCostTools,
     return {
       text: `Bundled ${filename} (${formatBytes(blob.size)}, ${project.topics.size} topic(s)).`,
       structured: { fileId: file.id, filename, bytes: blob.size, topics: project.topics.size },
-      download: { fileId: file.id, filename, mimeType: 'application/zip', size: blob.size, label: 'Get .bcfzip' },
+      download: { fileId: file.id, filename, mimeType: 'application/zip', size: blob.size, label: 'Get .bcf' },
     };
   },
 
@@ -1769,17 +1769,17 @@ function resolveIdsXml(args: Record<string, unknown>): string | null {
  *
  * The agent loves to invent filenames like `wall_fire_rating.ids` when the
  * user asks "save the wall fire ratings" — but `model_save` writes IFC,
- * `bcf_export` writes BCFZIP, `ids_validate` writes a JSON report. Trusting
+ * `bcf_export` writes a BCF archive, `ids_validate` writes a JSON report. Trusting
  * the agent's extension means the user clicks Save IFC and gets a `.ids`
  * file the OS won't recognise. Always enforce.
  *
  *   coerceFilename('wall_fire_rating.ids', 'ifc')   → 'wall_fire_rating.ifc'
  *   coerceFilename('/tmp/foo.bar/baz.csv', 'json')  → 'baz.json'
- *   coerceFilename(undefined, 'bcfzip', 'topics')   → 'topics.bcfzip'
+ *   coerceFilename(undefined, 'bcf', 'topics')   → 'topics.bcf'
  */
 function coerceFilename(
   raw: string | undefined,
-  ext: 'ifc' | 'bcfzip' | 'csv' | 'json',
+  ext: 'ifc' | 'bcf' | 'csv' | 'json',
   fallbackBase: string,
 ): string {
   // Lift the basename out of any path the agent supplied.
@@ -1788,7 +1788,7 @@ function coerceFilename(
   // Drop any extension already on it (incl. multi-dot like .bcf.zip).
   base = base.replace(/\.(ifc|ifczip|bcfzip|bcf|zip|csv|json|tsv|xml|ids|gltf|glb|ifcx|pdf)$/i, '');
   base = sanitizeFilename(base, { fallback: fallbackBase }); // shared OS-safe sanitiser
-  return `${base}.${ext}`;
+  return ext === 'bcf' ? bcfExportFilename(base) : `${base}.${ext}`;
 }
 
 /** Resolve (left, right) diff models from the dispatch context. The agent

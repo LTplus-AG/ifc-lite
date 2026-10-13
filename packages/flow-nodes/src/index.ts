@@ -23,6 +23,7 @@ import { viewerNodes } from './viewer-nodes.js';
 import { writeNodes } from './write-nodes.js';
 import { xlsxNodes } from './xlsx-nodes.js';
 import { sessionNodes } from './session-nodes.js';
+import { reviewSnapshotNode } from './review-node.js';
 
 export { isModelSelector, parseTagRules, parseCheckJobs, matchesFilename, AUTOMATION_FEATURES } from './session-contracts.js';
 export type { ModelSelector, SessionModel, SessionModels, FilenameTagRule, ResourceSource, CheckJob, DocumentMapping, SessionAutomationHost } from './session-contracts.js';
@@ -72,6 +73,7 @@ export function createStandardRegistry(): NodeRegistry<FlowHost> {
     ...documentsNodes,
     openModelNode,
     ...sessionNodes,
+    reviewSnapshotNode,
   ]);
 }
 

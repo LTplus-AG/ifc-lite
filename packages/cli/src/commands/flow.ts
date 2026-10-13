@@ -67,10 +67,11 @@ import { flowAiConfig } from '@ifc-lite/ai/chat-completions';
 import { sourceDigestOf } from '@ifc-lite/flow/checkpoint-file';
 import { checkDistinctDestinations, checkPauseDestination, checkpointNodes, claimForResume, failResume, finishResume, PAUSED_FOR_REVIEW, preparePause, reportPause, reviewCommand, savePause, type Resume } from './flow-review.js';
 import { createCliFlowSession } from './flow-host.js';
+import { flowBcfCommand } from './flow-bcf.js';
 import { fatal, getAllFlags, hasFlag, printJson } from '../output.js';
 import { defaultTrackingPath, FileTrackingStore } from './flow-tracking.js';
 
-const USAGE = 'Usage: ifc-lite flow <run|resume|describe|validate|review> <graph.flow.json> [<model.ifc>] [--input k=v]... [--out F] [--tracking F | --no-tracking] [--checkpoint F] [--json]';
+const USAGE = 'Usage: ifc-lite flow <run|resume|describe|validate|review> <graph.flow.json> [<model.ifc>] [--input k=v]... [--out F] [--tracking F | --no-tracking] [--checkpoint F] [--json]; or ifc-lite flow bcf <list|check|reconcile|confirm-absent>';
 
 /** The standard nodes plus the AI nodes, so an AI graph reports what it lacks instead of an unknown type. */
 function cliRegistry(): ReturnType<typeof createStandardRegistry> {
@@ -173,6 +174,7 @@ function summarize(result: RunResult) {
 
 export async function flowCommand(args: string[]): Promise<void> {
   const sub = args[0];
+  if (sub === 'bcf') return flowBcfCommand(args.slice(1));
   const positional = positionalArgs(args.slice(1));
   const json = hasFlag(args, '--json');
   const registry = cliRegistry();
@@ -284,7 +286,9 @@ export async function flowCommand(args: string[]): Promise<void> {
   const aiConfig = flowAiConfig(process.env);
   const budget = restoreRootBudget(resume?.checkpoint.budget) ?? createRootBudget(requestedBudget);
   const initialModel = await createHeadlessContext(modelPath);
-  const session = createCliFlowSession(initialModel, capsResult.value, aiConfig ? createCliAiService(aiConfig, budget) : undefined);
+  const session = createCliFlowSession(initialModel, capsResult.value, aiConfig ? createCliAiService(aiConfig, budget) : undefined, {
+    secrets: [...secretValues.values(), ...(aiConfig ? [aiConfig.apiKey] : [])],
+  });
   const host = session.host;
 
 

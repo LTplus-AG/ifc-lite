@@ -93,15 +93,17 @@ it('#7510 public SDK analysis codec restores actual native IDS rows and refuses 
   expect(portable.decodeSavedAnalysisRun?.(JSON.parse(JSON.stringify(broken)))).toBeNull();
 });
 
-it('#7510 public SDK saved-report codec retains partial native failure identity and rejects fabricated coverage', () => {
+it('#7510 public SDK saved-report validator accepts partial actual native failures and refuses inconsistent coverage/identity', () => {
   const snapshot: portable.SavedValidationReport = JSON.parse(JSON.stringify(validation()));
   expect(portable.validateSavedReport?.(snapshot)).toBe(true);
-  if (snapshot.snapshot.kind !== 'ids-report') throw new Error('The fixture snapshot is not IDS');
-  expect(snapshot.snapshot.summary.failed).toBe(report.summary.totalEntitiesFailed);
-  expect(snapshot.snapshot.elementEvidence).toMatchObject({ rows: [{ GlobalId: failure.GlobalId,
-    specificationId: failure.specificationId, nativeStatus: failure.nativeStatus }], observed: failuresObserved,
-    omitted: failuresObserved - 1 });
-  expect(snapshot.snapshot.elementEvidence?.definition).toBeUndefined();
+  for (const field of ['GlobalId', 'specificationId'] as const) {
+    const invalidIdentity: portable.SavedValidationReport = JSON.parse(JSON.stringify(validation()));
+    if (invalidIdentity.snapshot.kind !== 'ids-report') throw new Error('The fixture snapshot is not IDS');
+    const row = invalidIdentity.snapshot.elementEvidence?.rows[0];
+    if (!row) throw new Error('No actual native failure evidence');
+    row[field] = '';
+    expect(portable.validateSavedReport?.(JSON.parse(JSON.stringify(invalidIdentity))), field).toBe(false);
+  }
   const dishonest = validation();
   if (dishonest.snapshot.kind !== 'ids-report' || !dishonest.snapshot.elementEvidence) throw new Error('No native snapshot evidence');
   dishonest.snapshot.elementEvidence.omitted = failuresObserved;

@@ -17,7 +17,7 @@ import { createNativeBcfWriteGateway } from '@ifc-lite/flow-nodes/bcf-publicatio
 import type { LoadedModel, ModelRegistry, ToolContext } from '../context.js';
 import { deriveModelId, loadIfcModelFromBytes } from '../loader.js';
 import { buildIdsAccessor } from './ids-accessor.js';
-import { readNativeReview } from '@ifc-lite/sdk/review';
+import { readNativeReview, readPortableReview } from '@ifc-lite/sdk/review';
 import { nativeReviewModel, reviewCaptures, reviewAccess } from './review-captures.js';
 
 /** `base`, or `base_2`, `base_3`, … — the first id the registry does not hold yet. */
@@ -33,8 +33,12 @@ export function createMcpFlowHost(initial: LoadedModel, registry: ModelRegistry,
     ...services,
     bcfWrites: createNativeBcfWriteGateway(publication),
     ...(context ? {
-      review: { snapshot: request => readNativeReview(reviewCaptures(context), reviewAccess(context, 'read').models, request,
-        reviewAccess(context, 'read').allowed) } satisfies NonNullable<FlowHost['review']>,
+      review: { snapshot: request => {
+        const access = reviewAccess(context, 'read');
+        const read = request.savedAnalysisRuns !== undefined || request.savedValidationReports !== undefined
+          ? readPortableReview : readNativeReview;
+        return read(reviewCaptures(context), access.models, request, access.allowed);
+      } } satisfies NonNullable<FlowHost['review']>,
       validationCapture: {
         begin: (definition, signal) => reviewCaptures(context).begin('ids', definition, [nativeReviewModel(active)], reviewAccess(context, 'validate').models, reviewAccess(context, 'validate').allowed, signal),
         finish: (token, report) => reviewCaptures(context).finish(token, report),

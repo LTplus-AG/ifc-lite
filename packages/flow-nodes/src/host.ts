@@ -20,7 +20,7 @@ import type { BimContext, EntityData, EntityRef as SdkEntityRef } from '@ifc-lit
 import type { EntityRef } from '@ifc-lite/flow';
 import type { EntityTable } from '@ifc-lite/data';
 import type { IFCDataAccessor, ValidationReport } from '@ifc-lite/ids';
-import type { readNativeReview, ReviewCaptureToken } from '@ifc-lite/sdk/review';
+import type { readNativeReview, readPortableReview, ReviewCaptureToken } from '@ifc-lite/sdk/review';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { SessionAutomationHost } from './session-contracts.js';
 import type { BcfWriteGateway } from './bcf-write-gateway.js';
@@ -59,7 +59,7 @@ export interface FlowHost {
   readonly ai?: FlowAiService;
   readonly automation?: SessionAutomationHost;
   /** Actual host-native findings. An absent provider is explicitly unsupported. */
-  readonly review?: { snapshot(request: { sources?: unknown; modelIds?: unknown; maxFindings?: unknown }): ReturnType<typeof readNativeReview> };
+  readonly review?: { snapshot(request: { sources?: unknown; modelIds?: unknown; maxFindings?: unknown; savedAnalysisRuns?: unknown; savedValidationReports?: unknown }): ReturnType<typeof readNativeReview> | ReturnType<typeof readPortableReview> };
   /** Producer-start provenance capture; optional so existing hosts retain their IDS behavior. */
   readonly validationCapture?: {
     begin(definition: string, signal?: AbortSignal): Promise<ReviewCaptureToken | null>;

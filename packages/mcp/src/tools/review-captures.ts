@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { NativeReviewCaptures, type NativeReviewModel } from '@ifc-lite/sdk/review';
+import { NativeReviewCaptures, createNativeReviewIdentityTable, type NativeReviewModel } from '@ifc-lite/sdk/review';
 import { modelAllowed, scopeAllows } from '../auth/scope.js';
 import type { LoadedModel, ModelRegistry, ToolContext } from '../context.js';
 
@@ -24,6 +24,7 @@ export function reviewCaptures(ctx: ToolContext): NativeReviewCaptures {
 export function nativeReviewModel(model: LoadedModel): NativeReviewModel {
   return { id: model.id, name: model.name, owner: model, store: model.store, source: model.store.source,
     mutationView: () => model.backend.getMutationView(),
+    identityTable: createNativeReviewIdentityTable(model.store),
     expressIdOf: GlobalId => model.store.entities.getExpressIdByGlobalId(GlobalId),
     globalIdOf: expressId => model.bim.entity({ modelId: model.id, expressId })?.globalId ?? '' };
 }

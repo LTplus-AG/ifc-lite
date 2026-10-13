@@ -283,7 +283,7 @@ async function executeFlow(input: Record<string, unknown>, ctx: ToolContext, res
       });
     }
     const restored = await restoredMcpNodes(input, ctx, resuming);
-    const unavailable = checkAvailability(doc, registry, mcpFlowFeatures())
+    const unavailable = checkAvailability(doc, registry, mcpFlowFeatures(), { inputs: rawInputs, restored })
       .filter((node) => !restored.has(node.nodeId) && (node.status === 'unknown' || node.status === 'unavailable'));
     if (unavailable.length) throw new ToolExecutionError({
       code: ToolErrorCode.UNSUPPORTED_OPERATION,

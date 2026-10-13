@@ -1763,3 +1763,15 @@ The `semantic` command reads JSON/SPARQL providers, generates shared profile art
 | `semantic` | Shared semantic profiles, SHACL and JSON/SPARQL providers |
 | `flow` | Evaluate a node graph headlessly; pause and resume reviewed AI proposals |
 <!-- END GENERATED: cli-commands -->
+
+
+A Flow graph can use `review.snapshot` with `savedAnalysisRuns` or
+`savedValidationReports` JSON params to inspect supplied historical evidence
+against the currently loaded IFC. Source binding uses actual full-source and
+columnar identity evidence without creating a mutation editor. The CLI does not
+retain native session analyses across process restarts: a call without supplied
+inputs is explicitly unsupported, and supplied provenance remains imported and
+historical with incomplete native coverage. Export the graph with those params
+and run it through the existing `ifc-lite flow run` command.
+
+Unsupported native Review mode is refused before graph effects on CLI/viewer hosts. Supplied historical parameters and Player overrides remain supported; MCP additionally supports captured native Review. Validated restored nodes are not executed or required to reacquire their former services.

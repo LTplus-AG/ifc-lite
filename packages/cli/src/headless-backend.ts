@@ -499,6 +499,9 @@ export class HeadlessBackend implements BimBackend {
     );
   }
 
+  /** Inspect an existing overlay without allocating a StoreEditor (#7372). */
+  getMutationView(): MutablePropertyView | null { return this.mutationView; }
+
   /**
    * The overlay every write goes through, created on first use by
    * `getOrCreateStoreEditor` so its extractors are wired exactly once.

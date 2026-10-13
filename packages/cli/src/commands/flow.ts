@@ -79,7 +79,8 @@ function cliRegistry(): ReturnType<typeof createStandardRegistry> {
 }
 
 function cliFeatures(): ReturnType<typeof headlessFeatures> {
-  const features = headlessFeatures(usableSecretNames(process.env));
+  const base = headlessFeatures(usableSecretNames(process.env));
+  const features = { ...base, backend: new Set([...base.backend, 'review']) };
   return flowAiConfig(process.env) ? { ...features, backend: new Set([...features.backend, AI_FEATURE]) } : features;
 }
 
@@ -248,7 +249,7 @@ export async function flowCommand(args: string[]): Promise<void> {
   // A resume's restored nodes are not executed again, so they need no host
   // service: replaying a reviewed AI proposal needs no provider.
   const restored = new Set(sub === 'resume' ? await checkpointNodes(checkpointPath!) : []);
-  const unavailable = checkAvailability(doc, registry, cliFeatures())
+  const unavailable = checkAvailability(doc, registry, cliFeatures(), { inputs, restored })
     .filter((node) => !restored.has(node.nodeId) && (node.status === 'unknown' || node.status === 'unavailable'));
   if (unavailable.length) fatal(`Flow cannot run on this host: ${unavailable.map((node) => `${node.nodeId}: ${node.reasons.join('; ')}`).join(' | ')}`);
   const reviewsAhead = doc.nodes.some((n) => registry.get(n.type)?.review && !restored.has(n.id));

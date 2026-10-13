@@ -8,7 +8,7 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { useViewerStore } from '@/store';
 import { effectiveStoreyId } from '../effective-storey';
-import { snapshotFrom as collectSnapshot, type ReviewSnapshot as SharedReviewSnapshot } from '@ifc-lite/sdk/review';
+import { snapshotFrom as collectSnapshot, type ReviewSnapshot as SharedReviewSnapshot, createNativeReviewIdentityTable, type NativeReviewModel } from '@ifc-lite/sdk/review';
 import type { TranslatableMessage } from '@/i18n';
 import { FINDING_SOURCES } from './sources';
 import type { FindingSource, ReviewModel } from './types';
@@ -28,10 +28,13 @@ export function reviewModel(id: string, name: string, store: IfcDataStore, view?
   };
 }
 
-export function liveReviewModels(): ReviewModel[] {
+export function liveReviewModels(): NativeReviewModel[] {
   const state = useViewerStore.getState();
   return [...state.models.values()].flatMap(model => model.ifcDataStore
-    ? [reviewModel(model.id, model.name, model.ifcDataStore, state.mutationViews.get(model.id))] : []);
+    ? [{ ...reviewModel(model.id, model.name, model.ifcDataStore, state.mutationViews.get(model.id)),
+      owner: model, store: model.ifcDataStore, source: model.ifcDataStore.source,
+      mutationView: () => useViewerStore.getState().mutationViews.get(model.id) ?? null,
+      identityTable: createNativeReviewIdentityTable(model.ifcDataStore) }] : []);
 }
 
 export function snapshotFrom(sources: readonly FindingSource[], models: readonly ReviewModel[]): ReviewSnapshot {

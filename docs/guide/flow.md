@@ -1065,10 +1065,30 @@ runs, settles actual reports on success, and abandons its reservation on produce
 failure or cancellation. Hosts without a `review` service report the backend
 capability unavailable instead of synthesizing findings. The MCP `run_flow` and
 `propose_flow` host provides this service; see [captured native Review reads](mcp.md#captured-native-review-reads).
-The CLI and viewer hosts do not yet bind it. See [the capture and retention contract](scripting-sdk.md#native-review-capture-lifecycle).
-Portable historical recovery and the remaining host bindings stay under #7372.
+CLI and viewer hosts support supplied historical inputs as described below;
+native session capture reads remain unavailable there. See [the capture and retention contract](scripting-sdk.md#native-review-capture-lifecycle).
+Remaining native session bindings stay under #7372.
+
+
+`review.snapshot` accepts optional JSON params `savedAnalysisRuns` and
+`savedValidationReports`, preserving the portable saved wire contracts across
+export/import and a model reload. Supplied evidence is historical, not an
+attested execution; missing full-source/identity proof stays not evaluated and
+native coverage is incomplete. MCP's existing captured mode remains available
+when both params are omitted. CLI and viewer hosts explicitly support supplied
+historical inputs only. Every Review read still requires `model.read`; it never
+reruns an analysis or creates an editor/artifact.
 
 ### Parameter-dependent host prerequisites
+
+Supplied historical `review.snapshot` inputs work in CLI and viewer Flow.
+An instance with neither `savedAnalysisRuns` nor `savedValidationReports`
+requests native session captures, which those hosts do not support. They refuse
+that graph before earlier model writes or publications; MCP supports native
+session reads. Declared Player overrides and parameter defaults choose the same
+mode at preflight and execution. An explicit empty or null historical value
+stays in historical mode and is validated by the reader, never silently changed
+to a native request.
 
 For node authors, optional pure `NodeDef.requiresForParams` returns additional
 host requirements from resolved parameters; these are combined with static

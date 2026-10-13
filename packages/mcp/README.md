@@ -318,6 +318,15 @@ multi-model envelope. No editor, artifact or decision is created. Unsupported
 sources, incomplete overlays and bounded output stay explicit. See
 [the captured native Review contract](../../docs/guide/mcp.md#captured-native-review-reads).
 
+
+`review_findings` can read supplied `saved_analysis_runs` or
+`saved_validation_reports` using the canonical portable codecs and full-source,
+duplicate-preserving identity binding. This is a separate historical read mode;
+without either input the existing captured native read remains. Imported
+provenance never attests execution or complete native coverage. Read scope,
+current permissions/ownership and known-credential guards still apply. See
+[the supplied-input contract](../../docs/guide/mcp.md#supplied-historical-review-inputs).
+
 Native Flow `bcf.createTopic` and `bcf.addComment` writes use a durable,
 credential-free publication journal. Local MCP and CLI share
 `IFCLITE_BCF_OUTBOX_DIR` (default `~/.ifc-lite/bcf-outbox`); authenticated MCP

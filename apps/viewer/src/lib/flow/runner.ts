@@ -20,6 +20,9 @@
 import { parseCapabilities } from '@ifc-lite/extensions';
 import { runFlow, checkAvailability, type FlowData, type HostFeatures, type FlowDocument, type MemoCache, type RunResult } from '@ifc-lite/flow';
 import { BROWSER_FEATURES, AUTOMATION_FEATURES, createStandardRegistry, invalidateGlobalIdIndex, referencedSecrets, type FlowHost } from '@ifc-lite/flow-nodes';
+import { NativeReviewCaptures, readPortableReview } from '@ifc-lite/sdk/review';
+import { liveReviewModels } from '../review/collect.js';
+import { useViewerStore } from '@/store/index.js';
 import type { BimContext } from '@ifc-lite/sdk';
 import { publishFlowParamDefs } from './param-kinds.js';
 import { BrowserTrackingStore } from './persistence.js';
@@ -109,12 +112,19 @@ export async function runFlowInViewer(input: ViewerRunInput): Promise<RunResult>
   // "trusted, no gate" mode in the browser). A CORS-blocked `http.request`
   // surfaces its own explicit error (see `network-request.ts`'s
   // `describeFetchFailure`) rather than an empty success.
+  const captures = new NativeReviewCaptures();
   const host: FlowHost = {
     bim: input.bim,
     grants: parsed.value,
     networkGrants: parsed.value,
     defaultModelId: input.bim.model.activeId() ?? undefined,
     bcfWrites,
+    review: { snapshot(request) {
+      if (request.savedAnalysisRuns === undefined && request.savedValidationReports === undefined) {
+        throw new Error("review.snapshot: the viewer supports supplied historical inputs; native session captures are unavailable");
+      }
+      return readPortableReview(captures, liveReviewModels, request, id => !!useViewerStore.getState().models.get(id)?.ifcDataStore);
+    } },
     ...(input.tables ? { tables: input.tables } : {}),
     ...(input.openModel ? { openModel: input.openModel } : {}),
     ...(input.automation ? { automation: input.automation } : {}),
@@ -123,7 +133,7 @@ export async function runFlowInViewer(input: ViewerRunInput): Promise<RunResult>
   if (input.doc.nodes.some((n) => n.type.startsWith('ai.'))) await ensureFlowAiNodes();
   const features = viewerFlowFeatures(!!input.automation, !!input.ai);
   // Restored nodes do not run again, so a replayed AI proposal needs no AI service.
-  const unavailable = checkAvailability(input.doc, flowRegistry(), features)
+  const unavailable = checkAvailability(input.doc, flowRegistry(), features, { inputs: input.inputs, restored: new Set(input.resume?.keys()) })
     .filter((n) => !input.resume?.has(n.nodeId) && (n.status === 'unknown' || n.status === 'unavailable'));
   if (unavailable.length) throw new Error(unavailable.map((n) => `${n.nodeId}: ${n.reasons.join(', ')}`).join('; '));
   const tracking = new BrowserTrackingStore(input.doc.id, input.pin);
@@ -150,7 +160,7 @@ export async function runFlowInViewer(input: ViewerRunInput): Promise<RunResult>
 }
 
 export function viewerFlowFeatures(automation: boolean, ai = false): HostFeatures {
-  return { ...BROWSER_FEATURES, backend: new Set([...BROWSER_FEATURES.backend, ...(automation ? AUTOMATION_FEATURES : []), ...(ai ? ['ai'] : [])]) };
+  return { ...BROWSER_FEATURES, backend: new Set([...BROWSER_FEATURES.backend, 'review', ...(automation ? AUTOMATION_FEATURES : []), ...(ai ? ['ai'] : [])]) };
 }
 
 /** Log entries about the tracking store itself carry this in place of a node id. */

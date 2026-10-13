@@ -637,7 +637,9 @@ an editor, write an artifact, publish a record or make a human decision.
 Arguments are `sources` (default all known kinds), optional `model_ids`, and
 `max_findings` (default 128, maximum 512). Validation includes both IDS and
 information-rule reports; clash, comparison, BCF and linked sources are explicit
-`unsupported` host inputs in this layer. Validation without a captured producer
+`unsupported` captured native host inputs. Supplied historical analysis runs
+can include clash records; see [Supplied historical Review inputs](#supplied-historical-review-inputs)
+below. Validation without a captured producer
 is `not-run`, with unknown totals rather than a fabricated complete empty run.
 
 Every retained run has a unique producer capture ID, definition SHA-256, full
@@ -662,7 +664,7 @@ rendered card totals. Titles, descriptions, labels and other presentation detail
 retain their native values under separate capture limits. Capture work is bounded to 64 models, 64 MiB of source
 bytes, 256 specifications, 100,000 native value nodes, 1,048,576 native text characters. At most 32 operations may be awaiting proof or native producer settlement, independently of the 32 retained successful contexts. A refused capture produces explicit unavailability, leaving
 the independent native analysis result intact. Portable saved input and the
-viewer source provider remain a follow-up under #7372.
+CLI/viewer source providers use the separate supplied historical mode below.
 
 Successful reruns replace the same producer/definition/full-source ownership context only after settlement. Relative ordering follows operation initiation, before proof hashing; older asynchronous completion cannot replace newer success or clear a newer refusal. Producer failure or cancellation releases its pending reservation. A proven newer failed attempt keeps earlier matching facts under their original run ID and completion time as historical, incomplete evidence, even when the earlier source proof completes later. If a later operation replaces that failure proof before an older pending capture can establish equality, the older capture is conservatively omitted with `capture-bound` and unknown historical coverage. `latestAttempt` reports the latest operation outcome and its proof when available; failure before proof does not invent a matching definition or source identity. A later genuine operation can recover transient refusal.
 
@@ -678,6 +680,38 @@ during an awaited source hash. Credential work is bounded to 256 input entries p
 16,384 UTF-8 bytes per value and 1,048,576 bytes per owner; overflow permanently
 refuses that owner's Review reads without discarding previously known values.
 Refused sources report unknown finding counts, not zero. Capture reservations are bounded synchronously before proof work; final ownership, permission and evidence checks still run after hashing. Excess admission preserves already retained native facts and provenance. Capacity overflow is transient; credential enrollment overflow is the permanent security refusal described above.
+
+
+### Supplied historical Review inputs
+
+`review_findings` accepts optional `saved_analysis_runs` and
+`saved_validation_reports` arrays containing the existing portable saved wire
+formats. Supplying either selects the historical reader for that call; omitting
+both retains the captured native reader. Selectors and row limits remain the
+same. Imported evidence does not attest execution or become current merely
+because a payload claimed current freshness: provenance is `imported`, lifecycle
+is historical/not evaluated, and native coverage remains incomplete.
+
+Binding uses the full source SHA-256 and duplicate-checked actual identity
+columns of authorized loaded models. Sampled fingerprints and last-write GUID
+maps do not establish uniqueness. Missing proof/capability, duplicate identities,
+source replacement, edits, permission revocation and work bounds remain explicit.
+The read never reparses each row, creates an editor, reruns analyses, saves an
+artifact or changes the scene. Known credentials and owner admission retain the
+same pre/final refusal boundary as captured native reads.
+
+The registered Flow `review.snapshot` accepts the corresponding optional JSON
+params `savedAnalysisRuns` and `savedValidationReports`. MCP supports captured
+native reads when those params are absent. CLI and viewer Flow hosts support the
+supplied historical mode and explicitly refuse unsupported native session reads;
+they do not fabricate an empty native result.
+
+Supplied analysis libraries advertise only the record kinds they contain. An
+explicit empty saved-validation-report collection declares available empty
+validation history; an empty mixed analysis library declares neither validation
+nor clash history. `bounds.knownFindings` counts only supplied historical rows,
+not unprovided source kinds or independently evaluated native coverage. Source
+states distinguish unavailable evidence from an available empty collection.
 
 ## Durable Flow BCF publication recovery
 
@@ -744,3 +778,5 @@ or incomparable reads cannot safely release a write; old persisted absence
 records without the confirmation marker remain readable but cannot authorize
 release. Only a caller who knows the original write’s complete access scope
 should make this assertion; live vendor authorization is not qualified.
+
+Unsupported native Review mode is refused before graph effects on CLI/viewer hosts. Supplied historical parameters and Player overrides remain supported; MCP additionally supports captured native Review. Validated restored nodes are not executed or required to reacquire their former services.

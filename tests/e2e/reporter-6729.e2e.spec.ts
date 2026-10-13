@@ -1,11 +1,12 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-import { test, expect } from '@playwright/test';
+import { test, expect, type CDPSession } from '@playwright/test';
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
+import { performance as nodePerformance } from 'node:perf_hooks';
 import { startViewerDevServer } from './viewer-dev-server.js';
 import { decodePng } from './federation-control-triplet.rendering.js';
 import { classifyViewportWitness } from './viewport-witness.js';
@@ -17,6 +18,11 @@ const FIXTURE_SHA = 'cc6fbbf632c2779891e485c3297d437b1d8555448934b8c8b5a3cce5326
 const FIXTURE_BYTES = 22701;
 const fixture = resolve(process.env.REPORTER_6729_IFC ?? 'test-results/reporter-6729-fixture/out_visible.ifc');
 type Snapshot = ReturnType<typeof Probe.readProbe>;
+type LifecycleSample = {
+  stage: string; nodeNowMs: number; receivedAtEpochMs: number;
+  lifecycle: ReturnType<typeof Probe.readRendererLifecycle> | null;
+  processInfo: unknown; diagnosticError?: string;
+};
 
 test('authentic reduced reporter model imports and yields matched software WebGPU frames (#6729)', async ({ page, browser }, info) => {
   // Repository fixture contract: absent files skip; the dedicated workflow
@@ -27,10 +33,16 @@ test('authentic reduced reporter model imports and yields matched software WebGP
   expect(createHash('sha256').update(bytes).digest('hex')).toBe(FIXTURE_SHA);
   expect(process.env.E2E_GPU_STRICT, 'this software functional witness must waive no GPU checks').toBe('1');
   const errors: string[] = [];
-  const consoleRows: Array<{ type: string; text: string }> = [];
-  page.on('pageerror', error => errors.push(error.message));
+  const consoleRows: Array<{ type: string; text: string; receivedAtEpochMs: number; nodeNowMs: number }> = [];
+  const lifecycleSamples: LifecycleSample[] = [];
+  page.on('pageerror', error => {
+    errors.push(error.message);
+    consoleRows.push({ type: 'pageerror', text: error.message,
+      receivedAtEpochMs: Date.now(), nodeNowMs: nodePerformance.now() });
+  });
   page.on('console', message => {
-    consoleRows.push({ type: message.type(), text: message.text() });
+    consoleRows.push({ type: message.type(), text: message.text(),
+      receivedAtEpochMs: Date.now(), nodeNowMs: nodePerformance.now() });
     if (DEVICE_LOST_SIGNAL.test(message.text()) || message.type() === 'error') errors.push(message.text());
   });
   // Existing real-device destruction control is available for a separately
@@ -39,12 +51,18 @@ test('authentic reduced reporter model imports and yields matched software WebGP
   const report: {
     status: string; scope: string; fixtureSHA: string; browser: string;
     observed?: Snapshot; displayedElementCount?: string; gpuDiagnostics?: unknown; confirmedBackend?: string;
+    timebase: { nodeTimeOriginMs: number; epochClock: string; browserClock: string };
+    setupConfound: string; lifecycleSamples: LifecycleSample[];
     frames: Array<{ name: string; requested: CameraViewpoint; observed: Snapshot; pngSHA: string;
       rawWitness: ReturnType<typeof classifyViewportWitness>; pngWitness: ReturnType<typeof classifyViewportWitness> }>;
     errors: string[]; console: typeof consoleRows;
   } = {
     status: 'INCOMPLETE', scope: 'Reduced authentic fixture requested hosted software functional evidence; backend must be observed; no independent occlusion verdict, physical GPU, performance or full-original GUID acceptance',
     fixtureSHA: FIXTURE_SHA, browser: browser.version(), frames: [], errors, console: consoleRows,
+    timebase: { nodeTimeOriginMs: nodePerformance.timeOrigin, epochClock: 'Date.now milliseconds',
+      browserClock: 'samples carry browser performance.timeOrigin and performance.now; sampling times differ from event times' },
+    setupConfound: 'Private Vite DEV source server; bootstrap uses React.StrictMode. This is a recorded confound, not an established loss cause.',
+    lifecycleSamples,
   };
   const server = await startViewerDevServer('reporter-6729');
   const moduleUrl = `/@fs/${fileURLToPath(new URL('./reporter-6729.browser.ts', import.meta.url))}`;
@@ -52,20 +70,40 @@ test('authentic reduced reporter model imports and yields matched software WebGP
     const probe: typeof Probe = await import(url);
     return probe.readProbe();
   }, moduleUrl);
+  let cdp: CDPSession | undefined;
+  const sample = async (stage: string) => {
+    const row: LifecycleSample = { stage, nodeNowMs: nodePerformance.now(), receivedAtEpochMs: Date.now(),
+      lifecycle: null, processInfo: null };
+    lifecycleSamples.push(row);
+    try {
+      row.lifecycle = await page.evaluate(async url => {
+        const probe: typeof Probe = await import(url);
+        return probe.readRendererLifecycle();
+      }, moduleUrl);
+      if (!cdp) throw new Error('Browser CDP session unavailable for lifecycle sample');
+      row.processInfo = await cdp.send('SystemInfo.getProcessInfo');
+    } catch (error) {
+      row.diagnosticError = error instanceof Error ? error.message : String(error);
+      errors.push(`Lifecycle sample ${stage} failed: ${row.diagnosticError}`);
+      console.warn(`Reporter #6729 lifecycle sample ${stage} failed:`, row.diagnosticError);
+    }
+  };
   try {
-    const cdp = await browser.newBrowserCDPSession();
-    try { report.gpuDiagnostics = await cdp.send('SystemInfo.getInfo'); }
-    finally { await cdp.detach(); }
+    cdp = await browser.newBrowserCDPSession();
+    report.gpuDiagnostics = await cdp.send('SystemInfo.getInfo');
     expect(JSON.stringify(report.gpuDiagnostics), 'actual browser GPU diagnostics identify the requested software adapter').toMatch(/swiftshader/i);
     report.confirmedBackend = 'SOFTWARE_SWIFTSHADER_CDP_DESCRIPTOR';
     await page.goto(server.url);
+    await sample('before-canonical-import');
     await page.locator('#file-input-open').setInputFiles(fixture);
+    await sample('after-file-input-submission');
     await expect.poll(async () => {
       const state = await read();
       if (state.error) throw new Error(`Viewer import failed: ${state.error}`);
       return !state.loading && state.loadState === 'complete' && state.models === 1 && state.meshCount > 0 && state.camera !== null;
     }, { timeout: 120_000, message: 'canonical real IFC import completes with loaded geometry' }).toBe(true);
     report.observed = await read();
+    await sample('after-cpu-load-complete');
     report.displayedElementCount = await page.getByText(/^[\d.,KkMm]+\s+elements$/).first().innerText();
     const loaded = report.observed;
     expect(loaded.error).toBeNull();
@@ -122,10 +160,16 @@ test('authentic reduced reporter model imports and yields matched software WebGP
           // Await painted production frames after existing selection/camera effects.
           await page.evaluate(() => new Promise<void>(resolveFrame => requestAnimationFrame(() => requestAnimationFrame(() => resolveFrame()))));
           const name = `${pose.name}-zoom${zoom}-${projectionMode}-${selection}`;
-          const capture = await page.evaluate(async url => {
-            const probe: typeof Probe = await import(url);
-            return probe.captureProbeFrame();
-          }, moduleUrl);
+          await sample(`${name}-before-capture`);
+          let capture: Awaited<ReturnType<typeof Probe.captureProbeFrame>>;
+          try {
+            capture = await page.evaluate(async url => {
+              const probe: typeof Probe = await import(url);
+              return probe.captureProbeFrame();
+            }, moduleUrl);
+          } finally {
+            await sample(`${name}-after-capture-attempt`);
+          }
           // Render epoch can advance between captures; actual camera geometry
           // and matrices must remain the same across both real readbacks.
           expect(capture.before.camera?.position).toEqual(capture.after.camera?.position);
@@ -160,6 +204,15 @@ test('authentic reduced reporter model imports and yields matched software WebGP
   } finally {
     // Preserve partial observations and failures, never convert a failed run
     // into successful acceptance or discard a device-loss report.
+    await sample('terminal-before-server-close');
+    if (cdp) {
+      try { await cdp.detach(); }
+      catch (error) {
+        errors.push(`Browser CDP detach failed: ${error instanceof Error ? error.message : String(error)}`);
+        console.warn('Reporter #6729 browser CDP detach failed:', error);
+      }
+    }
+    if (errors.length > 0) report.status = 'INCOMPLETE';
     const body = JSON.stringify(report, null, 2);
     writeFileSync(info.outputPath('reporter-6729-report.json'), body);
     await info.attach('reporter-6729-report', { body, contentType: 'application/json' });

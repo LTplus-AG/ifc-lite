@@ -125,7 +125,14 @@ jobs:
           path.write_bytes(data)
           PY
       - name: Capture canonical import and real matched renderer frames
-        run: timeout --signal=INT --kill-after=30s 7m pnpm exec playwright test --config=tests/e2e/reporter-6729.config.ts
+        # Documented Playwright browser-process logging, in a fresh unsigned
+        # context containing only the pinned public reporter fixture. No keys,
+        # saved accounts or authenticated storage state are supplied.
+        env:
+          DEBUG: pw:browser
+        run: |
+          set -o pipefail
+          timeout --signal=INT --kill-after=30s 7m pnpm exec playwright test --config=tests/e2e/reporter-6729.config.ts 2>&1 | tee test-results/reporter-6729-provenance/browser-process.log
       - name: Require complete witness, never skipped fixture acceptance
         run: |
           python3 - <<'PY'

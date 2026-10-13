@@ -15,6 +15,38 @@ export const reporterNuts = [
   { alias: 'nutB', expressId: 193266, guid: '0JNJzI9ezD2fgLYDAbsL$P' },
 ] as const;
 
+const observedObjects = new WeakMap<object, number>();
+let nextObjectId = 1;
+function objectId(value: object | null): number | null {
+  if (!value) return null;
+  const prior = observedObjects.get(value);
+  if (prior !== undefined) return prior;
+  const id = nextObjectId++;
+  observedObjects.set(value, id);
+  return id;
+}
+
+/** Bounded samples; object IDs describe observed JS identity, not GPU serials. */
+export function readRendererLifecycle() {
+  const renderer = getGlobalRenderer();
+  const device = renderer?.getGPUDevice() ?? null;
+  const state = useViewerStore.getState();
+  return {
+    browserNowMs: performance.now(), browserTimeOriginMs: performance.timeOrigin,
+    developmentBuild: import.meta.env.DEV,
+    rendererObjectId: objectId(renderer), deviceObjectId: objectId(device),
+    objectIdentityScope: 'probe-local WeakMap IDs; hidden/lost device handles are null',
+    ready: renderer?.isReady() ?? false, lost: renderer?.isDeviceLost() ?? null,
+    deviceAvailable: device !== null,
+    renderEpoch: renderer?.getCamera().getRelativeToEyeFrame().getRenderEpoch() ?? null,
+    diagnostics: renderer?.getDiagnostics() ?? null,
+    frameStats: renderer?.getFrameStats() ?? null,
+    residentGpuBytes: renderer?.getScene().getResidentGpuBytes() ?? null,
+    adapter: renderer?.getAdapterInfo() ?? null,
+    loading: state.loading, error: state.error, models: state.models.size,
+  };
+}
+
 export function readProbe() {
   const state = useViewerStore.getState();
   const renderer = getGlobalRenderer();

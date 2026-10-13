@@ -40,6 +40,16 @@ an ephemeral config extending the viewer config. Viewer aliases are retained;
 the supplemental check emits no JavaScript or declarations. Its configuration
 is retained with the provenance. Neither check has been run locally.
 
+The instrumentation records browser and Node clock origins, timed console
+observations, renderer readiness/loss flags, probe-local object identity IDs,
+actual render epochs, resident-byte/frame diagnostics, and Chrome process
+snapshots before/after import and capture attempts. The source server's DEV
+mode and React StrictMode are explicit confounds. Documented Playwright
+`DEBUG=pw:browser` retains browser-process logs for this fresh unsigned context
+and already-public fixture. No authenticated state or keys are supplied.
+These observations never clear prior errors: any loss or diagnostic failure
+still fails qualification, including when recovery later reports success.
+
 Review captured coordinates and assembly placement before implementing the
 independent pinned IfcOpenShell triangle/clearance witness. That second stage
 is deliberately absent. The existing synthetic depth tests remain separate

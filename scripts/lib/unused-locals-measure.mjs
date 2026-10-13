@@ -127,4 +127,3 @@ export function countViolations(repoRoot, dir) {
     return { count: result.count, unmeasurable: false };
   }
 }
-

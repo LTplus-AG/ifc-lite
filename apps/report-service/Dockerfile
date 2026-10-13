@@ -15,6 +15,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends fonts-dejavu-co
 ENV NODE_ENV=production PORT=3005
 WORKDIR /service
 COPY --from=build --chown=node:node /service ./
+COPY --chown=node:node legal/model-report-confidentiality-agreement-2026-10-13.v2.txt ./legal/
 USER node
 EXPOSE 3005
 CMD ["node", "dist/bin.js"]

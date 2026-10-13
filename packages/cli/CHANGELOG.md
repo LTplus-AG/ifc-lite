@@ -1,5 +1,24 @@
 # @ifc-lite/cli
 
+## 0.40.0
+
+### Minor Changes
+
+- [#7461](https://github.com/LTplus-AG/ifc-lite/pull/7461) [`cf190f4`](https://github.com/LTplus-AG/ifc-lite/commit/cf190f42dfbd830fb1fd21046ff3ce5993acd9e2) Thanks [@louistrue](https://github.com/louistrue)! - Persist native Flow BCF intents before effects and refuse duplicate unresolved creates across CLI restarts; add explicit checked-GUID and confirmed-absence recovery.
+  
+  Require explicit full-collection visibility before native/CLI absence recovery; persist the operator proof marker and refuse release from older unmarked absence checks while retaining anonymous candidate checks.
+
+### Patch Changes
+
+- [#7490](https://github.com/LTplus-AG/ifc-lite/pull/7490) [`eb1a1ce`](https://github.com/LTplus-AG/ifc-lite/commit/eb1a1ce20f80c0b5a71fc73f4e4d25043997db6d) Thanks [@madsik](https://github.com/madsik)! - One specification that throws no longer ends the whole `validateIDS` run ([#7482](https://github.com/LTplus-AG/ifc-lite/issues/7482)). Only a rejected `xs:pattern` (`UnsafeRegexPatternError`) used to be caught per specification; any other error rejected the run and discarded every other specification's verdict. Now an error from evaluating a specification fails that specification with `error: "Specification could not be evaluated: <reason>"`, as a rejected pattern always did (a thrown value that cannot be converted to text, such as `Object.create(null)`, is named by its kind, so formatting the reason can never end the run), and the other specifications are reported, as `runRuleSet` in `@ifc-lite/rules` already does. A host's cancellation (anything thrown with the name `AbortError`, including an object or function abort reason from `signal.throwIfAborted()`) and an exception thrown by the host's own `onProgress` callback end the run, so a host callback failure is never reported as a specification verdict. One callback case changes: on the previous release, an `UnsafeRegexPatternError` thrown by the host's own `onProgress` while a specification validated was caught as that specification's evaluation error (the catch tested only the class, not where the error came from), so each specification it reached was reported as failed with the host's message and the run went on; it now ends the run with the original exception, like any other callback exception. A genuinely rejected IDS pattern still fails only its own specification. The applicability property index that the specifications of a run share now marks an entity as indexed only once its property sets are folded in, so an entity whose sets could not be read is not silently left out of a later specification. A specification with `error` set is an evaluation error, not a `fail` verdict: the buildingSMART corpus, preview, writer round-trip and IfcTester parity tests, the conformance and AI-eval scorers, and `ifc-lite delivery` (whose IDS check now reports `error`, with `erroredSpecifications` and the reasons, as its rules check already does) all treat it so.
+- Updated dependencies [[`cf190f4`](https://github.com/LTplus-AG/ifc-lite/commit/cf190f42dfbd830fb1fd21046ff3ce5993acd9e2), [`eb1a1ce`](https://github.com/LTplus-AG/ifc-lite/commit/eb1a1ce20f80c0b5a71fc73f4e4d25043997db6d), [`d3afa55`](https://github.com/LTplus-AG/ifc-lite/commit/d3afa5541ad6b97e8338a3a74927670b6faf9e26), [`b5e0626`](https://github.com/LTplus-AG/ifc-lite/commit/b5e0626725cb6233fef25c8ce69d354146dad310), [`deb7154`](https://github.com/LTplus-AG/ifc-lite/commit/deb7154ca3a3a4dfe16cd1a847f84db828485d61)]:
+  - @ifc-lite/flow-nodes@0.9.0
+  - @ifc-lite/ids@3.3.3
+  - @ifc-lite/sdk@9.3.0
+  - @ifc-lite/mcp@0.25.0
+  - @ifc-lite/ids-authoring@0.2.3
+  - @ifc-lite/rules@0.7.3
+
 ## 0.39.1
 
 ### Patch Changes

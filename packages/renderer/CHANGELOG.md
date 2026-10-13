@@ -1,5 +1,17 @@
 # @ifc-lite/renderer
 
+## 6.3.1
+
+### Patch Changes
+
+- [#7505](https://github.com/LTplus-AG/ifc-lite/pull/7505) [`aaae237`](https://github.com/LTplus-AG/ifc-lite/commit/aaae237bf49ffc452c6962d44094c57b8cbfe1ce) Thanks [@louistrue](https://github.com/louistrue)! - Refuse zoom steps outside the supported camera coordinate envelope while preserving the last usable pose and reverse zoom.
+
+- [#7506](https://github.com/LTplus-AG/ifc-lite/pull/7506) [`e296053`](https://github.com/LTplus-AG/ifc-lite/commit/e2960537766a7e8232f383ed1c4395c760b6c0bb) Thanks [@louistrue](https://github.com/louistrue)! - Return no selection when GPU device loss invalidates a completed pick readback, releasing pending buffers exactly once while preserving live-device errors.
+
+- [#7496](https://github.com/LTplus-AG/ifc-lite/pull/7496) [`7bb49aa`](https://github.com/LTplus-AG/ifc-lite/commit/7bb49aa004417f9a2a115f11bf7786716d496954) Thanks [@louistrue](https://github.com/louistrue)! - Reject point and rectangle selection while the camera is outside the supported coordinate envelope, including readbacks that complete after camera invalidation. Picking resumes when the camera returns to a supported pose.
+
+- [#7504](https://github.com/LTplus-AG/ifc-lite/pull/7504) [`41e8fb4`](https://github.com/LTplus-AG/ifc-lite/commit/41e8fb44d8d542fa60d0f9ecbe3585a49e7efb6e) Thanks [@louistrue](https://github.com/louistrue)! - Selecting or hovering an element with an IFC surface texture now tints it solidly instead of z-fighting the texture in patches ([#7503](https://github.com/LTplus-AG/ifc-lite/issues/7503)). The highlight copy was built in the model's colour-batch frame, but textured geometry draws its raw positions against its own origin and is never quantized, so the copy landed a few f32 ulps off the surface it covers. Highlight and hover copies of textured pieces are now built in the textured drawable's own frame and are bit-coincident with it.
+
 ## 6.3.0
 
 ### Minor Changes

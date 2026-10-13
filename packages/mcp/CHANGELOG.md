@@ -1,5 +1,20 @@
 # @ifc-lite/mcp
 
+## 0.25.0
+
+### Minor Changes
+
+- [#7480](https://github.com/LTplus-AG/ifc-lite/pull/7480) [`deb7154`](https://github.com/LTplus-AG/ifc-lite/commit/deb7154ca3a3a4dfe16cd1a847f84db828485d61) Thanks [@louistrue](https://github.com/louistrue)! - Expose bounded read-only native Review facts from actual IDS, information-rule and Flow producers. Bind current model ownership and principal scope, enroll known authorized Flow credentials before execution, and release pending capture reservations on failure or cancellation without claiming earlier native facts as the latest successful attempt.
+
+### Patch Changes
+
+- Updated dependencies [[`cf190f4`](https://github.com/LTplus-AG/ifc-lite/commit/cf190f42dfbd830fb1fd21046ff3ce5993acd9e2), [`eb1a1ce`](https://github.com/LTplus-AG/ifc-lite/commit/eb1a1ce20f80c0b5a71fc73f4e4d25043997db6d), [`d3afa55`](https://github.com/LTplus-AG/ifc-lite/commit/d3afa5541ad6b97e8338a3a74927670b6faf9e26), [`b5e0626`](https://github.com/LTplus-AG/ifc-lite/commit/b5e0626725cb6233fef25c8ce69d354146dad310)]:
+  - @ifc-lite/flow-nodes@0.9.0
+  - @ifc-lite/ids@3.3.3
+  - @ifc-lite/sdk@9.3.0
+  - @ifc-lite/ids-authoring@0.2.3
+  - @ifc-lite/rules@0.7.3
+
 ## 0.24.1
 
 ### Patch Changes

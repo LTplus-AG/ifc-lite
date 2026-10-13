@@ -58,6 +58,7 @@ exit 17
       assert.equal(existsSync(marker), false, 'mismatched artifacts must not launch the harness');
     } else {
       assert.ok(existsSync(marker), 'child actually received a live base distribution');
+      // @source-text-assertion-ok child-process output artifact, not source text; verifies the actual forwarded revision label
       assert.match(readFileSync(labelMarker, 'utf8'), dirtyWorkingTree ? /^[a-f0-9]{40}-dirty$/ : /^supplied-branch-dist$/);
       assert.equal(existsSync(readFileSync(marker, 'utf8')), false, 'temporary base distribution was removed');
     }

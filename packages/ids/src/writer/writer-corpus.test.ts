@@ -54,6 +54,8 @@ async function verdicts(doc: IDSDocument, ifcPath: string): Promise<string[]> {
   const bytes = readFileSync(ifcPath);
   const store = await new IfcParser().parseColumnar(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer, { disableWorkerScan: true });
   const report = await validateIDS(doc, createDataAccessor(store), { modelId: 'corpus', schemaVersion: store.schemaVersion || 'IFC4', entityCount: store.entityCount });
+  // An error (a specification that could not be evaluated) is not a verdict to compare (#7482).
+  expect(report.specificationResults.map((spec) => spec.error)).toEqual(report.specificationResults.map(() => undefined));
   return report.specificationResults.map((spec) => `${spec.status}:${spec.applicableCount}:${spec.passedCount}:${spec.failedCount}`);
 }
 

@@ -60,6 +60,8 @@ describe('proposed upstream corpus cases', () => {
       const report = await validateIDS(parseIDS(c.ids, c.options), createDataAccessor(store), {
         modelId: c.id, schemaVersion: String(store.schemaVersion ?? 'IFC4'), entityCount: 0,
       }, c.options);
+      // An error (a specification that could not be evaluated) is not a verdict.
+      expect(report.specificationResults.map((r) => r.error)).toEqual([undefined]);
       expect(report.specificationResults.map((r) => r.status)).toEqual([c.expected]);
     });
   }

@@ -1,0 +1,26 @@
+{
+  "name": "@ifc-lite/report-service",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Private model reports and reviewed GitHub issue submission",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@ifc-lite/report-contract": "workspace:^",
+    "@aws-sdk/client-s3": "^3.1148.0",
+    "@aws-sdk/s3-request-presigner": "^3.1148.0",
+    "pg": "^8.16.3",
+    "pdf-lib": "^1.17.1",
+    "@pdf-lib/fontkit": "^1.1.1"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.15.5",
+    "@types/node": "^26.6.4",
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.3"
+  }
+}

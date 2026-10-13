@@ -622,3 +622,56 @@ only `model.read` and `network.ai`. The current read scope and model allowlist
 still apply; the separate `resume_flow` requires current mutate authorization.
 MCP responses and checkpoint budgets include provider usage receipts without
 prompts, replies or credentials; receipt history survives subsequent pauses.
+
+## Captured native Review reads
+
+`review_findings` is a `read` tool, available in read-only configurations without
+validation, mutation or export permission. It reads facts retained by actual
+`ids_validate`, `check_rules` and Flow `ids.validate` producers in the same
+registry, transport session and principal. It does not rerun an analysis, create
+an editor, write an artifact, publish a record or make a human decision.
+
+Arguments are `sources` (default all known kinds), optional `model_ids`, and
+`max_findings` (default 128, maximum 512). Validation includes both IDS and
+information-rule reports; clash, comparison, BCF and linked sources are explicit
+`unsupported` host inputs in this layer. Validation without a captured producer
+is `not-run`, with unknown totals rather than a fabricated complete empty run.
+
+Every retained run has a unique producer capture ID, definition SHA-256, full
+raw-source SHA-256 and byte length for each actual target, native specification
+counts and completion time. The sampled model fingerprint remains a separate
+rule-target/cache identity. Reads check the original owner/store/source handles
+and monotonic overlay revision. A changed or replaced source retains its native
+facts as incomplete; replaced source identities cannot bind through a reused
+session model ID. Runs captured with pre-existing overlay edits are
+`partial-source` because these native producer inputs do not prove complete
+effective-overlay attribute/property coverage.
+
+The caller's model scope applies to the entire native target envelope. If a
+multi-model run contains an excluded target, its rows, names, proof digests,
+coverage and run metadata are all withheld. A principal refresh cannot inherit
+another principal's captures. Selection of a subset of a multi-model run also
+withholds that run rather than inventing per-model applicability counts.
+
+Output reports exact retained finding counts and omitted rows separately from
+rendered card totals. Titles, descriptions, labels and other presentation detail are limited to
+512 characters per field with clipping reported; source/element identity fields
+retain their native values under separate capture limits. Capture work is bounded to 64 models, 64 MiB of source
+bytes, 256 specifications, 100,000 native value nodes, 1,048,576 native text characters. At most 32 operations may be awaiting proof or native producer settlement, independently of the 32 retained successful contexts. A refused capture produces explicit unavailability, leaving
+the independent native analysis result intact. Portable saved input and the
+viewer source provider remain a follow-up under #7372.
+
+Successful reruns replace the same producer/definition/full-source ownership context only after settlement. Relative ordering follows operation initiation, before proof hashing; older asynchronous completion cannot replace newer success or clear a newer refusal. Producer failure or cancellation releases its pending reservation. A proven newer failed attempt keeps earlier matching facts under their original run ID and completion time as historical, incomplete evidence, even when the earlier source proof completes later. If a later operation replaces that failure proof before an older pending capture can establish equality, the older capture is conservatively omitted with `capture-bound` and unknown historical coverage. `latestAttempt` reports the latest operation outcome and its proof when available; failure before proof does not invent a matching definition or source identity. A later genuine operation can recover transient refusal.
+
+Distinct contexts use bounded oldest-settled retention. Eviction sets `retention.inventoryOmitted`; omitted historical run counts remain unknown. `bounds.knownFindingsScope` is `retained-current-contexts`, so retained row counts never claim a complete historical inventory. If an older proof-pending operation outlives eviction of potentially newer context evidence, its later capture is conservatively refused as `capture-bound`; its independent native report remains intact. This uncertainty uses only a flag on the bounded pending record; `retention.captureRefusal` discloses the resulting `capture-bound` omission without relabelling a newer successful operation. Reads do not change retention or analysis state. If a retained context is replaced or evicted while a read awaits its source proof, that read returns `capture-bound` unavailability rather than claiming older rows as current; a later read can project the newer facts.
+
+Native Review bounds separate `presentationComplete` (all retained rows and text fit the response limits) from `nativeCoverageComplete` (the retained native runs are complete and fresh, with no omitted capture inventory). A complete presentation can still describe a stale or partially evaluated run. Both checks use current model ownership and permissions after source hashing; access revoked during that await suppresses the entire captured target envelope.
+
+Known credentials resolved by an authorized native Flow run are enrolled in
+private owner memory before the graph executes, including the exact trimmed
+form consumed by native XML text. Native capture and final reads
+refuse evidence containing those values, including older captures or enrollment
+during an awaited source hash. Credential work is bounded to 256 input entries per enrollment, 128 distinct values,
+16,384 UTF-8 bytes per value and 1,048,576 bytes per owner; overflow permanently
+refuses that owner's Review reads without discarding previously known values.
+Refused sources report unknown finding counts, not zero. Capture reservations are bounded synchronously before proof work; final ownership, permission and evidence checks still run after hashing. Excess admission preserves already retained native facts and provenance. Capacity overflow is transient; credential enrollment overflow is the permanent security refusal described above.

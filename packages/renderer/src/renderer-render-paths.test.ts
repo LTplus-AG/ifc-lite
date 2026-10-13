@@ -125,6 +125,7 @@ interface Harness {
     settle(): Promise<void>;
     /** number of `mapAsync` calls currently parked (deferMaps) */
     pendingMaps(): number;
+    loseDevice(): void;
     /** complete every parked map: resolve it, or reject it with `reason` */
     settlePendingMaps(reason?: unknown): void;
 }
@@ -139,6 +140,8 @@ function makeHarness(): Harness {
         textureMode: 'texture', encodeThrows: false, submitThrows: false, popRejects: false, gpuDead: false,
         deferMaps: false, pickFault: null,
     };
+    let loseDevice!: () => void;
+    const lost = new Promise<void>((resolve) => { loseDevice = resolve; });
     const parkedMaps: { resolve: () => void; reject: (e: unknown) => void }[] = [];
 
     const makeBuffer = (desc: { size: number; usage?: number }): FakeBuffer => {
@@ -245,6 +248,7 @@ function makeHarness(): Harness {
     const fakeGpuDevice = new Proxy({} as Record<string | symbol, unknown>, {
         get(_t, prop) {
             switch (prop) {
+                case 'lost': return lost;
                 case 'limits': return { maxTextureDimension2D: 8192, maxBufferSize: 256 * 1024 * 1024 };
                 case 'queue': return queue;
                 case 'pushErrorScope': return () => { stats.push++; };
@@ -346,6 +350,7 @@ function makeHarness(): Harness {
             await Promise.resolve();
         },
         pendingMaps() { return parkedMaps.length; },
+        loseDevice() { knobs.gpuDead = true; loseDevice(); },
         settlePendingMaps(reason?: unknown) {
             for (const m of parkedMaps.splice(0)) {
                 if (reason === undefined) m.resolve(); else m.reject(reason);
@@ -1103,6 +1108,28 @@ describe('pick path survives the device dying mid-readback (#1901)', () => {
         for (let i = 0; i < 5; i++) await Promise.resolve();
         assert.ok(h.pendingMaps() > 0, 'pick should be parked on the mapAsync readback');
         return { inflight };
+    }
+
+    for (const kind of ['point', 'rectangle'] as const) {
+        it(`suppresses a completed-map result after device loss and releases exactly once: ${kind} (#6881)`, async () => {
+            const h = makeHarness();
+            const picker = installPicker(h);
+            const before = h.stats.createdBuffers.length;
+            const { inflight } = await park(h, () => kind === 'point'
+                ? picker.pick(0, 0, 64, 64, [], new Float32Array(16))
+                : picker.pickRect(0, 0, 8, 8, 64, 64, [], new Float32Array(16)));
+            // Native Chromium can complete the map, then invalidate the range
+            // before its consumer resumes. Delivery remains parked here.
+            h.knobs.pickFault = 'mapped-range';
+            h.loseDevice();
+            await Promise.resolve();
+            h.settlePendingMaps();
+            assert.deepStrictEqual(await inflight, kind === 'point' ? null : new Set());
+            const owned = h.stats.createdBuffers.slice(before);
+            assert.strictEqual(owned.length, kind === 'point' ? 3 : 1);
+            picker.destroy();
+            for (const buffer of owned) assert.strictEqual(buffer.destroyed, 1);
+        });
     }
 
     it('pick() parked on mapAsync when destroy() lands resolves null, not AbortError', async () => {

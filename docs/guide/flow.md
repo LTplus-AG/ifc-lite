@@ -98,6 +98,25 @@ creation does not run the graph, infer inputs from script text or bypass native
 preflight and capability grants. Proposals allow at most 100 inputs, enum choices
 per input and file slots, within the overall proposal size limit.
 
+## BCF create recovery
+
+CLI Flow hosts durably record `bcf.createTopic` and `bcf.addComment`
+intent before contacting the server. A lost response or process interruption
+leaves an unresolved intent; rerunning the same target and payload is refused
+until explicit recovery. The stored intent contains no bearer token. Known
+credentials accidentally used in payload text are refused before storage or
+sending, including resolved Player token inputs.
+
+Use the [CLI recovery commands](cli.md) to
+list intents, check the original target with fresh permissions, and select a
+real matching GUID. Trim-equivalent free text remains a manual candidate;
+rewritten or omitted fields leave the check unavailable. Only a complete empty enumeration with an explicit full-read-visibility assertion proves absence. The assertion means the authorized read sees the full target collection under the same access scope as the original write; token presence alone is not proof. Without it, empty checks remain unavailable. Anonymous public servers remain supported. Older markerless proofs cannot authorize a release. A complete absent check needs a separate confirmation
+before a deliberate later send. Recovery never automatically sends a create.
+Custom native hosts use the Node-only
+`@ifc-lite/flow-nodes/bcf-publication-node` gateway; its directory must support
+exclusive hard links and fsync. The viewer retains its BCF Drafts & publication
+controls in browser storage.
+
 ## Spreadsheet connectors
 
 `table.readCsv` / `table.writeCsv` and `table.readXlsx` / `table.writeXlsx`
@@ -1029,3 +1048,22 @@ MCP responses and checkpoint budgets include provider usage receipts without
 prompts, replies or credentials; receipt history survives subsequent pauses.
 
 Native `ai.classify`, `ai.extract`, `ai.summarize` and `ai.propose` producers declare their prompt version to viewer, CLI and MCP request hosts. The shared core records the actual dispatched output-token grant after route and resumed-root-budget clamping, effective parent deadline, safe terminal reason and versioned logical-input/output-text digests. Generic host calls without a declared prompt version remain unknown. These digests supplement generation audit metadata; they do not replace the graph, source or reviewed-proposal digests that authorize checkpoint continuation.
+
+## Reading captured native Review
+
+`review.snapshot` reads a host's actual captured Review facts with `model.read`.
+Its parameters are `sources`, optional `modelIds`, and `maxFindings` (default 128,
+maximum 512); its `snapshot` output includes native findings, cards, producer
+provenance, specification coverage, explicit source availability and output
+bounds. An optional `after` input can sequence the read after a native analysis
+node. The node is volatile so a captured-result change is never hidden by a
+memoized read.
+
+Native hosts can provide this service using the SDK Review capture API. Flow
+`ids.validate` calls the optional host capture service before the native engine
+runs, settles actual reports on success, and abandons its reservation on producer
+failure or cancellation. Hosts without a `review` service report the backend
+capability unavailable instead of synthesizing findings. The MCP `run_flow` and
+`propose_flow` host provides this service; see [captured native Review reads](mcp.md#captured-native-review-reads).
+The CLI and viewer hosts do not yet bind it. See [the capture and retention contract](scripting-sdk.md#native-review-capture-lifecycle).
+Portable historical recovery and the remaining host bindings stay under #7372.

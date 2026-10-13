@@ -1,0 +1,11 @@
+--- a/apps/report-service/src/agreement.ts
++++ b/apps/report-service/src/agreement.ts
+@@ -82,7 +82,7 @@
+     "The standard agreement is awaiting approval. You can submit without a model or without requesting an NDA.",
+   );
+   requireCondition(
+-    true,
++    input.agreementSha256 === config.agreement.sha256,
+     409,
+     "agreement_changed",
+     "The agreement changed. Review the current text.",

@@ -13,7 +13,7 @@ import { cleanup, click, render, waitFor } from '@/test/render.js';
 import { reviewedBatch } from '@/test/bcf-publication-fixture';
 import { useViewerStore } from '@/store';
 import { bcfDraftLibrary, saveDraftBatch, useBcfDraftLibrary } from '@/lib/bcf-drafts/draft-library';
-import { draftBatchToProject, importDraftArchive } from '@/lib/bcf-drafts/draft-archive';
+import { draftBatchToProject, exportDraftArchive, importDraftArchive } from '@/lib/bcf-drafts/draft-archive';
 import { ACTIVITY_STORAGE_KEY, activityCanceller, useActivityJournal } from '@/lib/activity/activity-journal';
 import { toast } from '@/components/ui/toast';
 import { BCFPanel } from './BCFPanel';
@@ -91,7 +91,7 @@ test('BCF panel archive records native publication and retains authored topic id
 
 test('draft archive publication preserves real finding membership on native reimport (#7140)', async () => {
   const batch = await mountDraft();
-  click(button('Export .bcfzip'));
+  click(button('Export .bcf'));
   running();
   await finished();
   assert.equal(jobs()[0].outcome, 'completed');
@@ -102,6 +102,27 @@ test('draft archive publication preserves real finding membership on native reim
   assert.deepEqual(imported.batches[0].topics.map(topic => topic.guid), batch.topics.map(topic => topic.guid));
   assert.deepEqual(imported.batches[0].topics.map(topic => topic.members), batch.topics.map(topic => topic.members));
   assert.deepEqual(imported.batches[0].source, batch.source);
+});
+
+for (const extension of ['bcf', 'bcfzip']) test(`draft picker imports actual .${extension} archive bytes and authored findings (#6459)`, async () => {
+  const batch = await reviewedBatch();
+  const archive = await exportDraftArchive(batch, 'coordinator@example.test');
+  await act(async () => { await bcfDraftLibrary.initialize(); });
+  assert.equal(useBcfDraftLibrary.getState().entries.some(entry => entry.id === batch.id), false);
+  render(<BCFDraftsDialog open onOpenChange={() => undefined} />);
+  const input = document.querySelector<HTMLInputElement>('input[type="file"][aria-label="Import BCF archive"]');
+  assert.ok(input, 'the mounted picker names both supported archive formats');
+  assert.ok(input.accept.split(',').includes(`.${extension}`), 'the native picker exposes this extension');
+  const file = new File([archive], `reviewed.${extension}`, { type: 'application/octet-stream' });
+  Object.defineProperty(input, 'files', { value: [file], configurable: true });
+  await act(async () => { input.dispatchEvent(new Event('change', { bubbles: true })); });
+  await waitFor(() => useBcfDraftLibrary.getState().entries.some(entry => entry.id === batch.id)
+    && useBcfDraftLibrary.getState().activeId === batch.id, 'actual archive adopted into the draft library');
+  const adopted = useBcfDraftLibrary.getState().entries.find(entry => entry.id === batch.id);
+  assert.ok(adopted);
+  assert.deepEqual(adopted.topics.map(topic => topic.guid), batch.topics.map(topic => topic.guid));
+  assert.deepEqual(adopted.topics.map(topic => topic.members), batch.topics.map(topic => topic.members));
+  assert.deepEqual(adopted.source, batch.source);
 });
 
 test('BCF panel failed browser publication is Failed and preserves native error feedback (#7140)', async () => {
@@ -124,7 +145,7 @@ test('draft failed publication is Failed with native toast and no escaped reject
   URL.createObjectURL = () => { throw new Error('Browser refused draft publication'); };
   mock.method(console, 'error', () => undefined);
   const errors = mock.method(toast, 'error', () => undefined);
-  click(button('Export .bcfzip'));
+  click(button('Export .bcf'));
   running();
   await finished();
   assert.equal(jobs()[0].outcome, 'failed');
@@ -160,7 +181,7 @@ test('closing and reopening BCF panel preserves native background exports and se
 
 test('closing the drafts dialog leaves its real archive publication running to completion (#7140)', async () => {
   const batch = await mountDraft();
-  click(button('Export .bcfzip'));
+  click(button('Export .bcf'));
   const id = running();
   cleanup();
   await finished();
@@ -176,8 +197,8 @@ test('absent native project and draft selection do not create fictitious archive
   click(button('Export BCF'));
   cleanup();
   render(<><BCFDraftsDialog open onOpenChange={() => undefined} /><ActivityTrayList /></>);
-  assert.equal(button('Export .bcfzip').disabled, true);
-  click(button('Export .bcfzip'));
+  assert.equal(button('Export .bcf').disabled, true);
+  click(button('Export .bcf'));
   await act(async () => { await Promise.resolve(); });
   assert.equal(jobs().length, 0);
   assert.equal(archives.length, 0);
@@ -196,8 +217,8 @@ for (const name of ['', '   ']) test(`unnamed native BCF project ${JSON.stringif
   await finished();
   assert.equal(jobs()[0].outcome, 'completed');
   assert.equal(filenames.length, 1);
-  assert.ok(filenames[0].endsWith('.bcfzip'));
-  assert.equal(jobs()[0].subject, filenames[0].slice(0, -'.bcfzip'.length));
+  assert.ok(filenames[0].endsWith('.bcf'));
+  assert.equal(jobs()[0].subject, filenames[0].slice(0, -'.bcf'.length));
   const restored = await readBCF(await archives[0].arrayBuffer());
   assert.deepEqual([...restored.topics.keys()], batch.topics.map(topic => topic.guid));
 });
@@ -207,7 +228,7 @@ test('non-Error native draft download refusal is Failed and reports export-speci
   URL.createObjectURL = blob => { assert.ok(blob instanceof Blob, 'actual native ZIP reached browser publication'); throw 'Browser refused draft publication'; };
   mock.method(console, 'error', () => undefined);
   const errors = mock.method(toast, 'error', () => undefined);
-  click(button('Export .bcfzip'));
+  click(button('Export .bcf'));
   running();
   await finished();
   assert.equal(jobs()[0].outcome, 'failed');

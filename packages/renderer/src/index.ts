@@ -1370,7 +1370,7 @@ export class Renderer {
 
     /** The source batch's frame for an individual copy of `meshData` (see individual-mesh-upload.ts). */
     private individualMeshFrame(meshData: MeshData): IndividualMeshFrame {
-        return { sharedOrigin: this.scene.getSharedFrameOrigin(meshData.modelIndex, meshData), quantized: this.scene.isMeshQuantized(meshData) };
+        return this.scene.getIndividualMeshFrame(meshData);
     }
 
     /**

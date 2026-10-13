@@ -512,7 +512,7 @@ describe('analysis-panel consistency matrix (#5834)', () => {
       const main = exportButton('Export BCF');
       assert.equal(byLabel(resolve('analysisPanel.export.chooseFormat')), undefined);
       await act(async () => { main.click(); await new Promise((r) => setTimeout(r, 50)); });
-      assert.ok(downloadedNames().some((name) => name.endsWith('.bcfzip')), downloadedNames().join());
+      assert.ok(downloadedNames().some((name) => name.endsWith('.bcf')), downloadedNames().join());
       mark('export', 'BCF');
     });
   });

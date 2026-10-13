@@ -17,6 +17,7 @@ import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import { resolveSafePath } from '../safe-path.js';
 import { modelAllowed } from '../auth/scope.js';
 import type { ToolContext } from '../context.js';
+import { nativeReviewModel, reviewCaptures, reviewAccess } from './review-captures.js';
 
 async function loadRulesJson(input: Record<string, unknown>, ctx: ToolContext): Promise<unknown> {
   let raw: string;
@@ -60,9 +61,8 @@ const checkRules: Tool = {
       throw new ToolExecutionError({ code: ToolErrorCode.INVALID_INPUT, message: 'Rule set declares zero rules — nothing to check.' });
     }
 
-    const models: EvaluatorModel[] = ctx.registry
-      .list()
-      .filter((m) => modelAllowed(ctx.scope, m.id))
+    const targets = ctx.registry.list().filter(m => modelAllowed(ctx.scope, m.id));
+    const models: EvaluatorModel[] = targets
       // `filterIdentity` carries the model's source identity so a rule set
       // whose `targets.modelFingerprints` were authored in the viewer resolves
       // here too; without it every targeted rule came back unevaluable (#5138
@@ -72,11 +72,21 @@ const checkRules: Tool = {
       throw new ToolExecutionError({ code: ToolErrorCode.MODEL_NOT_FOUND, message: 'No models loaded. Call `model_load` first or start the server with a file path.' });
     }
 
-    const report = await runRuleSet({ ruleSet: parsed.file, models, signal: ctx.signal });
-    return okResult(
-      `Rules: ${report.summary.passedSpecifications}/${report.summary.totalSpecifications} rules passed.`,
-      { report },
-    );
+    const captures = reviewCaptures(ctx);
+    const capture = await captures.begin('rules', JSON.stringify(parsed.file), targets.map(nativeReviewModel), reviewAccess(ctx, 'validate').models, reviewAccess(ctx, 'validate').allowed, ctx.signal);
+    try {
+      if (ctx.signal.aborted) throw new DOMException('Validation aborted', 'AbortError');
+      const report = await runRuleSet({ ruleSet: parsed.file, models, signal: ctx.signal });
+      if (ctx.signal.aborted) throw new DOMException('Validation aborted', 'AbortError');
+      captures.finish(capture, report);
+      return okResult(
+        `Rules: ${report.summary.passedSpecifications}/${report.summary.totalSpecifications} rules passed.`,
+        { report },
+      );
+    } catch (error) {
+      captures.abandon(capture, ctx.signal.aborted ? 'aborted' : 'producer-failed');
+      throw error;
+    }
   },
 };
 

@@ -1,0 +1,704 @@
+{
+  "observations": {
+    "baseline": {
+      "cameraPosition": {
+        "x": 27.599999999999998,
+        "y": 20.65884578227997,
+        "z": 17.599999999999998
+      },
+      "pick": {
+        "expressId": 59753,
+        "geometryItemId": 59737,
+        "modelIndex": 0,
+        "worldXYZ": {
+          "x": 8.184516260352126,
+          "y": 4.479275682639507,
+          "z": -1.815483739647874
+        }
+      },
+      "point": {
+        "x": 357.27606201171875,
+        "y": 321.66668701171875
+      },
+      "stats": {
+        "adapter": {
+          "architecture": "blackwell",
+          "vendor": "nvidia"
+        },
+        "cpuBytes": 1065816,
+        "frame": {
+          "batchesAtLod1": 0,
+          "batchesContributionCulled": 0,
+          "batchesDrawn": 17,
+          "batchesFrustumCulled": 0,
+          "batchesNotResident": 0,
+          "drawCalls": 17,
+          "instancedContributionCulled": 0,
+          "instancedDrawn": 0,
+          "instancedFrustumCulled": 0,
+          "timestamp": 12416.310000061989
+        },
+        "gpu": {
+          "batches": 669480,
+          "instanced": 0,
+          "meshes": 1204288,
+          "textured": 0,
+          "total": 1873768
+        },
+        "gpuTiming": {
+          "epoch": 0,
+          "errors": 0,
+          "frames": [],
+          "mode": "disabled",
+          "overwritten": 0,
+          "sampled": 0,
+          "skipped": 0
+        },
+        "pointCloudPoints": 0
+      }
+    },
+    "errors": [],
+    "finalPick": {
+      "expressId": 59753,
+      "geometryItemId": 59737,
+      "modelIndex": 0,
+      "worldXYZ": {
+        "x": 8.184516260352126,
+        "y": 4.479275682639507,
+        "z": -1.815483739647874
+      }
+    },
+    "finalStats": {
+      "adapter": {
+        "architecture": "blackwell",
+        "vendor": "nvidia"
+      },
+      "cpuBytes": 1065816,
+      "frame": {
+        "batchesAtLod1": 0,
+        "batchesContributionCulled": 0,
+        "batchesDrawn": 17,
+        "batchesFrustumCulled": 0,
+        "batchesNotResident": 0,
+        "drawCalls": 52,
+        "instancedContributionCulled": 0,
+        "instancedDrawn": 0,
+        "instancedFrustumCulled": 0,
+        "timestamp": 178734.07500004768
+      },
+      "gpu": {
+        "batches": 669480,
+        "instanced": 0,
+        "meshes": 1298368,
+        "textured": 0,
+        "total": 1967848
+      },
+      "gpuTiming": {
+        "epoch": 0,
+        "errors": 0,
+        "frames": [],
+        "mode": "disabled",
+        "overwritten": 0,
+        "sampled": 0,
+        "skipped": 0
+      },
+      "pointCloudPoints": 0
+    },
+    "invalid": {
+      "available": false,
+      "epoch": 1,
+      "point": null,
+      "rectangle": []
+    },
+    "invalidClick": {
+      "errors": [],
+      "selection": null,
+      "toolClick": "canvas >> nth=0"
+    },
+    "pendingAcrossRecovery": {
+      "point": null,
+      "rectangle": []
+    },
+    "recovered": {
+      "available": true,
+      "epoch": 2,
+      "pick": {
+        "expressId": 59753,
+        "geometryItemId": 59737,
+        "modelIndex": 0,
+        "worldXYZ": {
+          "x": 8.184516260352126,
+          "y": 4.479275682639507,
+          "z": -1.815483739647874
+        }
+      },
+      "stats": {
+        "adapter": {
+          "architecture": "blackwell",
+          "vendor": "nvidia"
+        },
+        "cpuBytes": 1065816,
+        "frame": {
+          "batchesAtLod1": 0,
+          "batchesContributionCulled": 0,
+          "batchesDrawn": 17,
+          "batchesFrustumCulled": 0,
+          "batchesNotResident": 0,
+          "drawCalls": 17,
+          "instancedContributionCulled": 0,
+          "instancedDrawn": 0,
+          "instancedFrustumCulled": 0,
+          "timestamp": 12416.310000061989
+        },
+        "gpu": {
+          "batches": 669480,
+          "instanced": 0,
+          "meshes": 1204288,
+          "textured": 0,
+          "total": 1873768
+        },
+        "gpuTiming": {
+          "epoch": 0,
+          "errors": 0,
+          "frames": [],
+          "mode": "disabled",
+          "overwritten": 0,
+          "sampled": 0,
+          "skipped": 0
+        },
+        "pointCloudPoints": 0
+      }
+    }
+  },
+  "recordedAt": "2026-10-12T17:01:34.344Z",
+  "servedArtifacts": [
+    {
+      "bytes": 46123,
+      "observedInMainFrameResourceTiming": true,
+      "sha256": "d75d6ba3ffedbb14698528fec17818b9f7184f52b8e7cced99d2e05f41c3423c",
+      "url": "[qualification-origin]/@fs[checkout]/packages/parser/src/index.ts"
+    },
+    {
+      "bytes": 164828,
+      "observedInMainFrameResourceTiming": true,
+      "sha256": "685895fb509dfd2e0037921ac4e629d80d51db293edbec4d8bf5a03299774d08",
+      "url": "[qualification-origin]/@fs[checkout]/packages/geometry/src/index.ts"
+    },
+    {
+      "bytes": 37186,
+      "observedInMainFrameResourceTiming": true,
+      "sha256": "9480cbc643ec7126f9d1e16e33b23cb9f622fe6abd420fbabe2458203265bb75",
+      "url": "[qualification-origin]/@fs[checkout]/packages/parser/src/ifczip.ts"
+    },
+    {
+      "bytes": 45108,
+      "observedInMainFrameResourceTiming": true,
+      "sha256": "334abe7a4b6457e7acebb8472e7fdaab42a2634e99ced1e4dd93c341fc20df0d",
+      "url": "[qualification-origin]/@fs[checkout]/packages/parser/src/tokenizer.ts"
+    },
+    {
+      "bytes": 2386,
+      "observedInMainFrameResourceTiming": true,
+      "sha256": "58c3f8f4639ac5b293a2346f3470c4a3cb635056f929da05b527ac9102c80f6a",
+      "url": "[qualification-origin]/@fs[checkout]/packages/parser/src/entity-index.ts"
+    },
+    {
+      "bytes": 43224,
+      "observedInMainFrameResourceTiming": true,
+      "sha256": "fa1707a5c9a8fbf185e0259601ddbff8e9888567bc3707305afefecfa874334a",
+      "url": "[qualification-origin]/@fs[checkout]/packages/parser/src/entity-extractor.ts"
+    },
+    {
+      "bytes": 17167,
+      "observedInMainFrameResourceTiming": true,
+      "sha256": "73140630e8cccf9caec5b915760d8e6dfc643a06f63561a8b11e46a19c045abd",
+      "url": "[qualification-origin]/@fs[checkout]/packages/parser/src/identity-hints.ts"
+    },
+    {
+      "bytes": 8793,
+      "observedInMainFrameResourceTiming": true,
+      "sha256": "984cfa883dfc55b37ce7e44d85843e64ffb20ddcbd554fa2b547adc04c1c9035",
+      "url": "[qualification-origin]/@fs[checkout]/packages/parser/src/step-trivia.ts"
+    },
+    {
+      "bytes": 50704,
+      "observedInMainFrameResourceTiming": true,
+      "sha256": "46d45a21d128f14a60e048f97dafd9543560be06d06ae24de34a6e95009b68bd",
+      "url": "[qualification-origin]/@fs[checkout]/packages/parser/src/source-bytes.ts"
+    },
+    {
+      "bytes": 12515,
+      "observedInMainFrameResourceTiming": true,
+      "sha256": "49e59f67efe0acff6c82e21e74af7bdaa454eaf73fabdae729f84e1622fe1770",
+      "url": "[qualification-origin]/@fs[checkout]/packages/parser/src/source-compress.ts"
+    },
+    {
+      "bytes": 34363,
+      "observedInMainFrameResourceTiming": true,
+      "sha256": "282162d895e51d1db538bf023c77544d46c7fa87f34a15470dee5acbc23c8ade",
+      "url": "[qualification-origin]/@fs[checkout]/packages/parser/src/block-store.ts"
+    },
+    {
+      "bytes": 41060,
+      "observedInMainFrameResourceTiming": true,
+      "sha256": "3c6914c22e9d5cb43c0729e029f41505e25509e8e34dac5f3136b815c4495d16",
+      "url": "[qualification-origin]/@fs[checkout]/packages/parser/src/compact-entity-index.ts"
+    },
+    {
+      "bytes": 42584,
+      "observedInMainFrameResourceTiming": true,
+      "sha256": "1ecbd45884668f33f1e9d91c6d6e54f7aa55db41413f145a09e92f9da38ee465",
+      "url": "[qualification-origin]/@fs[checkout]/packages/parser/src/entity-scanner.ts"
+    },
+    {
+      "bytes": 31944,
+      "observedInMainFrameResourceTiming": true,
+      "sha256": "6f805ee77e99bc4c229c6df1423ac3da0c47fca7ebf657609f3144a79e19856c",
+      "url": "[qualification-origin]/@fs[checkout]/packages/parser/src/columnar-parser-indexes.ts"
+    },
+    {
+      "bytes": 28301,
+      "observedInMainFrameResourceTiming": true,
+      "sha256": "ae00308dbec16b072fdc3aa2f746fa7b04ab70c58728fbf70d69fdbdece09b9a",
+      "url": "[qualification-origin]/@fs[checkout]/packages/parser/src/query-backend-maps.ts"
+    },
+    {
+      "bytes": 12553,
+      "observedInMainFrameResourceTiming": true,
+      "sha256": "64d91cbecb5f10e677b8451e78ab05cecb9b2d9d82573c405e2413fe9711b3a3",
+      "url": "[qualification-origin]/@fs[checkout]/packages/parser/src/property-extractor.ts"
+    },
+    {
+      "bytes": 23197,
+      "observedInMainFrameResourceTiming": true,
+      "sha256": "83dd4884e50c61a61ea6ae7b2459334e1517f809808c95ae486c16eb951fe50d",
+      "url": "[qualification-origin]/@fs[checkout]/packages/parser/src/quantity-extractor.ts"
+    },
+    {
+      "bytes": 16066,
+      "observedInMainFrameResourceTiming": true,
+      "sha256": "2ec8a3d1c93b8f9bd3d2dc73cc9716a2c955ba3bb0280c877a9022444ed4e433",
+      "url": "[qualification-origin]/@fs[checkout]/packages/parser/src/relationship-extractor.ts"
+    },
+    {
+      "bytes": 42834,
+      "observedInMainFrameResourceTiming": true,
+      "sha256": "a7798faafe1c24dfdbbce02736e332eb04eccf40646fd14031dbc14365f0e745",
+      "url": "[qualification-origin]/@fs[checkout]/packages/parser/src/spatial-hierarchy-builder.ts"
+    },
+    {
+      "bytes": 44436,
+      "observedInMainFrameResourceTiming": true,
+      "sha256": "5033086a0ca33d4673479a32c16758c1e6193638c93855c52db2af56feb7f8c5",
+      "url": "[qualification-origin]/@fs[checkout]/packages/parser/src/unit-extractor.ts"
+    },
+    {
+      "bytes": 46012,
+      "observedInMainFrameResourceTiming": true,
+      "sha256": "54ab1dda444af96a77897629902f9ac5b7c07771c203f14c5afb4ca219c63fa4",
+      "url": "[qualification-origin]/@fs[checkout]/packages/parser/src/project-units.ts"
+    },
+    {
+      "bytes": 40086,
+      "observedInMainFrameResourceTiming": true,
+      "sha256": "27553c11077299e5b243b77a19a439b88e3002d7ec8de33baa47e71d18922362",
+      "url": "[qualification-origin]/@fs[checkout]/packages/parser/src/quantity-collect.ts"
+    },
+    {
+      "bytes": 8408,
+      "observedInMainFrameResourceTiming": true,
+      "sha256": "18c10a666a1bdc1b7c85e620792ccee5ebd0693a40107da8664de9686fa54c0f",
+      "url": "[qualification-origin]/@fs[checkout]/packages/parser/src/measure-unit-scale.ts"
+    },
+    {
+      "bytes": 100097,
+      "observedInMainFrameResourceTiming": true,
+      "sha256": "65fb9a9af50ed0b8f8b8d31262bf47906d35fd4b7d63f8e5bf086a2f98fd10b9",
+      "url": "[qualification-origin]/@fs[checkout]/packages/parser/src/columnar-parser.ts"
+    },
+    {
+      "bytes": 1753,
+      "observedInMainFrameResourceTiming": true,
+      "sha256": "d10b2d2bd1598c66ca9a88476d9475c8442cf972cf9ac2e65edb805afed87bf3",
+      "url": "[qualification-origin]/@fs[checkout]/packages/parser/src/occurrence-quantity-read-error.ts"
+    },
+    {
+      "bytes": 35100,
+      "observedInMainFrameResourceTiming": true,
+      "sha256": "28efd419c380d385c12e648e4bdd817c2999b62ea12437d12f0900fd5e742558",
+      "url": "[qualification-origin]/@fs[checkout]/packages/parser/src/source-header.ts"
+    },
+    {
+      "bytes": 6504,
+      "observedInMainFrameResourceTiming": true,
+      "sha256": "ff02ee756941702eb592d4e186880feadb1f84911c73d798b788527ad0c5aea1",
+      "url": "[qualification-origin]/@fs[checkout]/packages/parser/src/data-store-accessors.ts"
+    },
+    {
+      "bytes": 16025,
+      "observedInMainFrameResourceTiming": true,
+      "sha256": "14f1f07d316e634a04c0ab58c2a67669cd70a80abd116816736a7d1772068a64",
+      "url": "[qualification-origin]/@fs[checkout]/packages/parser/src/drop-census.ts"
+    },
+    {
+      "bytes": 10141,
+      "observedInMainFrameResourceTiming": true,
+      "sha256": "732c9c7e327f6976e134aef44d984059b2ac83807b1dbead990a676633e074a0",
+      "url": "[qualification-origin]/@fs[checkout]/packages/parser/src/synthetic-data-store.ts"
+    },
+    {
+      "bytes": 26601,
+      "observedInMainFrameResourceTiming": true,
+      "sha256": "fd15f479a11d05bf3a5b20749d73ceb9563fb1db327100983d8ff4dc1ce4e3b5",
+      "url": "[qualification-origin]/@fs[checkout]/packages/parser/src/material-extractor.ts"
+    },
+    {
+      "bytes": 26241,
+      "observedInMainFrameResourceTiming": true,
+      "sha256": "e08fbf9657012a3d128010d07af02906eca4c06026d6e9a7702dd9cc42bc866a",
+      "url": "[qualification-origin]/@fs[checkout]/packages/parser/src/material-overlay.ts"
+    },
+    {
+      "bytes": 41737,
+      "observedInMainFrameResourceTiming": true,
+      "sha256": "6b8554666327f03a278a2d57ae8120332d84fd0c718c40949f0b1744726c3d8e",
+      "url": "[qualification-origin]/@fs[checkout]/packages/parser/src/georef-extractor.ts"
+    },
+    {
+      "bytes": 22129,
+      "observedInMainFrameResourceTiming": true,
+      "sha256": "6d4bec5901654a44ffc2fe795e44c5946bd1bc4df7f3892811e9822d1e4432c7",
+      "url": "[qualification-origin]/@fs[checkout]/packages/parser/src/classification-extractor.ts"
+    },
+    {
+      "bytes": 48072,
+      "observedInMainFrameResourceTiming": true,
+      "sha256": "6c712c24975a48f4c16691d8ae6b2d43d42d78441c16ea241bb0e313de9b36c3",
+      "url": "[qualification-origin]/@fs[checkout]/packages/parser/src/schedule-extractor.ts"
+    },
+    {
+      "bytes": 47806,
+      "observedInMainFrameResourceTiming": true,
+      "sha256": "d44fcae7f4d8a7aec73c16d25450c6bac8f8d7aafc2c8340de2a382272558a0a",
+      "url": "[qualification-origin]/@fs[checkout]/packages/parser/src/structural-extractor.ts"
+    },
+    {
+      "bytes": 40187,
+      "observedInMainFrameResourceTiming": true,
+      "sha256": "53729b1de0bea4e9344bddfc6ea00518091f4645e1ca99b79bc30959505983d0",
+      "url": "[qualification-origin]/@fs[checkout]/packages/parser/src/schedule-serializer.ts"
+    },
+    {
+      "bytes": 1905,
+      "observedInMainFrameResourceTiming": true,
+      "sha256": "ef6acedc1c445499bb52fd31c324a34481c5616613dad36e0a75be10acb0ab53",
+      "url": "[qualification-origin]/@fs[checkout]/packages/parser/src/cost.ts"
+    },
+    {
+      "bytes": 19078,
+      "observedInMainFrameResourceTiming": true,
+      "sha256": "302d60572a7a3dfd16e8dc7bcb75736f8a7c96c9020883a5ef6e124abf55640d",
+      "url": "[qualification-origin]/@fs[checkout]/packages/parser/src/iso8601-duration.ts"
+    },
+    {
+      "bytes": 11192,
+      "observedInMainFrameResourceTiming": true,
+      "sha256": "9e277127776a43040b65456fa945e4065d735bc9b32c9a8c62d802186111e247",
+      "url": "[qualification-origin]/@fs[checkout]/packages/parser/src/deterministic-global-id.ts"
+    },
+    {
+      "bytes": 2517,
+      "observedInMainFrameResourceTiming": true,
+      "sha256": "e446d98b5185db3f1d393e329c5270920b32f75191b83dc2bf3bf95777626cdd",
+      "url": "[qualification-origin]/@fs[checkout]/packages/parser/src/schema-exports.ts"
+    },
+    {
+      "bytes": 3964,
+      "observedInMainFrameResourceTiming": true,
+      "sha256": "c1274976466137a99cde33568ff548dd7f19e89daae22d33ae60cc2c3dce91b7",
+      "url": "[qualification-origin]/@fs[checkout]/packages/parser/src/generated/serializers.ts"
+    },
+    {
+      "bytes": 11,
+      "observedInMainFrameResourceTiming": true,
+      "sha256": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881",
+      "url": "[qualification-origin]/@fs[checkout]/packages/parser/src/types.ts"
+    },
+    {
+      "bytes": 44296,
+      "observedInMainFrameResourceTiming": true,
+      "sha256": "1cbe1dcf4f52e525ca5b611406a47ae712b704e4a95aea8eef352d71166bb154",
+      "url": "[qualification-origin]/@fs[checkout]/packages/parser/src/ifc-schema.ts"
+    },
+    {
+      "bytes": 3221,
+      "observedInMainFrameResourceTiming": true,
+      "sha256": "2e2f35fbbfbd978194db820275a4a55bc466b36a7cc16a86fd2a896b51d99969",
+      "url": "[qualification-origin]/@fs[checkout]/packages/parser/src/native-metadata-public.ts"
+    },
+    {
+      "bytes": 29038,
+      "observedInMainFrameResourceTiming": true,
+      "sha256": "a101be4ca98dc9b8ebc64ea4ed85b5367ae59d6ff6aaa39cfeead1ea7c1cc5d5",
+      "url": "[qualification-origin]/@fs[checkout]/packages/parser/src/source-project-length-unit.ts"
+    },
+    {
+      "bytes": 92105,
+      "observedInMainFrameResourceTiming": true,
+      "sha256": "c013f249a46a74e59f4195a146960a0194f861a7691e4eac00c24c66c8e21f35",
+      "url": "[qualification-origin]/@fs[checkout]/packages/geometry/src/ifc-lite-bridge.ts"
+    },
+    {
+      "bytes": 10690,
+      "observedInMainFrameResourceTiming": true,
+      "sha256": "5f2db66431c99f4410f21d024fedd2dc8c3f748345b1fb5c3f5ce8c551993ad9",
+      "url": "[qualification-origin]/@fs[checkout]/packages/geometry/src/platform-bridge.ts"
+    },
+    {
+      "bytes": 25003,
+      "observedInMainFrameResourceTiming": true,
+      "sha256": "8d69b592844c5d908ec1dc5adc67595ce4bb3f3bba3d21fa25e00278229573bc",
+      "url": "[qualification-origin]/@fs[checkout]/packages/geometry/src/diagnostics.ts"
+    },
+    {
+      "bytes": 3066,
+      "observedInMainFrameResourceTiming": true,
+      "sha256": "e75c97843ea68d793cbbe42d730f8eef1018e2220a32fe33dec0ee5c6be4e812",
+      "url": "[qualification-origin]/@fs[checkout]/packages/geometry/src/export-errors.ts"
+    },
+    {
+      "bytes": 17957,
+      "observedInMainFrameResourceTiming": true,
+      "sha256": "17c3ea1b8eb798b89a5f6f7af6eba28aea44c8aefe9b35091ea8e66849190c0c",
+      "url": "[qualification-origin]/@fs[checkout]/packages/geometry/src/geometry-fingerprints.ts"
+    },
+    {
+      "bytes": 4363,
+      "observedInMainFrameResourceTiming": true,
+      "sha256": "39fa0b64b0076e4d4799e4760a4c553cf7bb8c08ab38b250a24f3c5b07b6f810",
+      "url": "[qualification-origin]/@fs[checkout]/packages/geometry/src/buffer-builder.ts"
+    },
+    {
+      "bytes": 72419,
+      "observedInMainFrameResourceTiming": true,
+      "sha256": "4bf4844a98bd78d6876601078fd0dcf95a5deee2e4148352648ee0878431375c",
+      "url": "[qualification-origin]/@fs[checkout]/packages/geometry/src/coordinate-handler.ts"
+    },
+    {
+      "bytes": 27990,
+      "observedInMainFrameResourceTiming": true,
+      "sha256": "20843185d802010fabb1d946b2f54974f43a02dfda9e486048d671d337b49eb9",
+      "url": "[qualification-origin]/@fs[checkout]/packages/geometry/src/worker-count.ts"
+    },
+    {
+      "bytes": 8296,
+      "observedInMainFrameResourceTiming": true,
+      "sha256": "2711d4a5f3ac01d0b02872cf5665ff547468343bb306ec31dbb6ae2038cdd607",
+      "url": "[qualification-origin]/@fs[checkout]/packages/geometry/src/watchdog.ts"
+    },
+    {
+      "bytes": 45014,
+      "observedInMainFrameResourceTiming": true,
+      "sha256": "fcf88015ad7612a6ce8e5663874ef7dd6689b1b8f14cd214714731a25c603e40",
+      "url": "[qualification-origin]/@fs[checkout]/packages/geometry/src/hung-job-recovery.ts"
+    },
+    {
+      "bytes": 24047,
+      "observedInMainFrameResourceTiming": true,
+      "sha256": "06b3e77b5972b3d1236e84d6fc42b75d84ee7a83850b644b646b5cf5d6948ba6",
+      "url": "[qualification-origin]/@fs[checkout]/packages/geometry/src/wasm-shared-module.ts"
+    },
+    {
+      "bytes": 7287,
+      "observedInMainFrameResourceTiming": true,
+      "sha256": "7b5d57064bd7bbadec33e446bcb4c84e99390dea1829869ec264fc21dde6c5c8",
+      "url": "[qualification-origin]/@fs[checkout]/packages/geometry/src/warm-pool.ts"
+    },
+    {
+      "bytes": 5772,
+      "observedInMainFrameResourceTiming": true,
+      "sha256": "90d211a0cfa66dfd55251fd6a0bbf697b2404d278b93d024a4b7a2ab65ae2742",
+      "url": "[qualification-origin]/@fs[checkout]/packages/geometry/src/main-engine-init.ts"
+    },
+    {
+      "bytes": 9545,
+      "observedInMainFrameResourceTiming": true,
+      "sha256": "380565088057d2d88ffb8120d61f0b86d3f68ba70a9e1144e8ffb367da4f459f",
+      "url": "[qualification-origin]/@fs[checkout]/packages/geometry/src/perf-flags.ts"
+    },
+    {
+      "bytes": 25428,
+      "observedInMainFrameResourceTiming": true,
+      "sha256": "6db6dcd1eeb2e9d380e840ad45e0d5e1e3092a3dcf15ee8a3a1f0be08bc73808",
+      "url": "[qualification-origin]/@fs[checkout]/packages/geometry/src/wasm-asset-error.ts"
+    },
+    {
+      "bytes": 17639,
+      "observedInMainFrameResourceTiming": true,
+      "sha256": "25325f43f3f3e0ec93b66f785d05340bfccafb3a1f64e282073c5056c5c85f2c",
+      "url": "[qualification-origin]/@fs[checkout]/packages/geometry/src/wasm-runtime-trap.ts"
+    },
+    {
+      "bytes": 39543,
+      "observedInMainFrameResourceTiming": true,
+      "sha256": "4275399569bfb4f93f078f630deed0869a56731f4d72649adfc50463db09cd0a",
+      "url": "[qualification-origin]/@fs[checkout]/packages/geometry/src/packed-instanced-decoder.ts"
+    },
+    {
+      "bytes": 28472,
+      "observedInMainFrameResourceTiming": true,
+      "sha256": "2111c79cde95170f03b3f10d612789dd05f44d5de35358303142a4fdefb35fa8",
+      "url": "[qualification-origin]/@fs[checkout]/packages/geometry/src/types.ts"
+    },
+    {
+      "bytes": 41668,
+      "observedInMainFrameResourceTiming": true,
+      "sha256": "7f3584d751ab427413b7d3eb7a19ed659f1daa2127da075949a495d664e49f35",
+      "url": "[qualification-origin]/@fs[checkout]/packages/geometry/src/spatial-reference.ts"
+    },
+    {
+      "bytes": 4383,
+      "observedInMainFrameResourceTiming": true,
+      "sha256": "3572c7e0c0ebca54205772ccbeb6167b304f484cac09eb4f2ea2fff0005e46d3",
+      "url": "[qualification-origin]/@fs[checkout]/packages/geometry/src/map-normalization-capability.ts"
+    },
+    {
+      "bytes": 7822,
+      "observedInMainFrameResourceTiming": true,
+      "sha256": "e268cf4aafccc00ae03b4dbfc79f43931449e8957db25bad7f3948946ca07183",
+      "url": "[qualification-origin]/@fs[checkout]/packages/geometry/src/geometry-class.ts"
+    },
+    {
+      "bytes": 20644,
+      "observedInMainFrameResourceTiming": true,
+      "sha256": "c84fa113c72f782a4837f35489a0881b3d27d0fcf9bafa78a8de7946351687f4",
+      "url": "[qualification-origin]/@fs[checkout]/packages/geometry/src/geometry-coordinate.ts"
+    },
+    {
+      "bytes": 8554,
+      "observedInMainFrameResourceTiming": true,
+      "sha256": "20dccd80a5de9fe17d2d6de4fda48b4eb63a4a1e45532361fac1cbd916b7ccd0",
+      "url": "[qualification-origin]/@fs[checkout]/packages/geometry/src/rtc-frame.ts"
+    },
+    {
+      "bytes": 32774,
+      "observedInMainFrameResourceTiming": true,
+      "sha256": "2fc83dd1b3d86579f4423a50af0b585d14807fdd3417ac8495c3be6c508de05c",
+      "url": "[qualification-origin]/@fs[checkout]/packages/geometry/src/geometry-native.ts"
+    },
+    {
+      "bytes": 202465,
+      "observedInMainFrameResourceTiming": true,
+      "sha256": "a1f5dcec690c370d0fd5ba23b4c0393932b2b4214cf2579e2cea27b971483efa",
+      "url": "[qualification-origin]/@fs[checkout]/packages/geometry/src/geometry-parallel.ts"
+    },
+    {
+      "bytes": 2755,
+      "observedInMainFrameResourceTiming": true,
+      "sha256": "e3db8f322cf8ff0a326c508095f206252c126750b519db5a29e3e51c59f27f85",
+      "url": "[qualification-origin]/@fs[checkout]/packages/geometry/src/wasm-streaming-guard.ts"
+    },
+    {
+      "bytes": 4979,
+      "observedInMainFrameResourceTiming": true,
+      "sha256": "17b556bef58ff5487cd481e1b8ce1f36a04573ec5068a17cf1e32818aa0f3b3c",
+      "url": "[qualification-origin]/@fs[checkout]/packages/geometry/src/style-finishes.ts"
+    },
+    {
+      "bytes": 9979156,
+      "observedInMainFrameResourceTiming": false,
+      "sha256": "3912d1046cf6507e7ef6f85a0492a0e54fbb31ae711b85c6e46b6313ffd63312",
+      "url": "[qualification-origin]/@fs[checkout]/packages/wasm/pkg/ifc-lite_bg.wasm"
+    },
+    {
+      "bytes": 514340,
+      "identitySource": "Explicit same-origin served-module fetch during qualification",
+      "observedInMainFrameResourceTiming": false,
+      "sha256": "829cd744ab1ebb4447b272e66b1e7ea4a4fe5c0955f98af183070c7e632d65bf",
+      "url": "[qualification-origin]/@fs[checkout]/packages/renderer/src/index.ts"
+    },
+    {
+      "bytes": 45591,
+      "identitySource": "Explicit same-origin served-module fetch during qualification",
+      "observedInMainFrameResourceTiming": false,
+      "sha256": "4e65e9f66d4a2e1036cc4579cb17bc63cceab174e43103b26018adce3fedee30",
+      "url": "[qualification-origin]/@fs[checkout]/packages/renderer/src/picking-manager.ts"
+    },
+    {
+      "bytes": 3982,
+      "identitySource": "Explicit same-origin served-module fetch during qualification",
+      "observedInMainFrameResourceTiming": false,
+      "sha256": "bc5fce2bcbd159584ce743d98cdea2221a7adb3360ad0c9fd0ecb1bc12ba7d31",
+      "url": "[qualification-origin]/@fs[checkout]/packages/renderer/src/pick-rte-snapshot.ts"
+    },
+    {
+      "bytes": 38318,
+      "identitySource": "Explicit same-origin served-module fetch during qualification",
+      "observedInMainFrameResourceTiming": false,
+      "sha256": "aedec5746b53f47c04b546f607a06e0306e29223281080f115bf8383f2765153",
+      "url": "[qualification-origin]/@fs[checkout]/packages/renderer/src/relative-to-eye.ts"
+    },
+    {
+      "bytes": 59613,
+      "identitySource": "Explicit same-origin served-module fetch during qualification",
+      "observedInMainFrameResourceTiming": false,
+      "sha256": "b5132c0d151abe6f2ca056c8df068b7fbadcc1c7831174b7bed74461772fa15b",
+      "url": "[qualification-origin]/@fs[checkout]/packages/renderer/src/camera.ts"
+    },
+    {
+      "bytes": 1571,
+      "identitySource": "Explicit same-origin served-module fetch during qualification",
+      "observedInMainFrameResourceTiming": false,
+      "sha256": "7376499724720171578ef786af3b8152e16ff8a9d193a47f1340bb760f07eeb7",
+      "url": "[qualification-origin]/@fs[checkout]/packages/parser/src/browser.ts"
+    },
+    {
+      "bytes": 837290,
+      "identitySource": "Explicit same-origin served-module fetch during qualification",
+      "observedInMainFrameResourceTiming": false,
+      "sha256": "ce72076a10c72167af2126344660ce5f79367afe0a9064c3461e7c05249f50d9",
+      "url": "[qualification-origin]/@fs[checkout]/packages/wasm/pkg/ifc-lite.js"
+    }
+  ],
+  "finishedAt": "2026-10-12T17:03:26.917Z",
+  "url": "http://localhost:5197/?model=/tests/models/ara3d/AC20-FZK-Haus.ifc",
+  "sourceCommit": "17d7e6bffe7dc5391ae9e4e65302565eff522011",
+  "sourceTrees": {
+    "renderer": "23d66704ef7a2d8d6140a989d7166dc588e99d32",
+    "parser": "d083a48ba6bb512b46151eaf4dbaa945a7eedcd6",
+    "geometry": "8c5064e4b0176c1b021e43df9a8115778d51feac"
+  },
+  "sourceSha256": {
+    "packages/renderer/src/picking-manager.ts": "eb8d51d0514ac3b35b85cfb584b0f261d5d8bbdb3ce03aaec64a02a8a0196d0d",
+    "packages/renderer/src/pick-rte-snapshot.ts": "3337f421222896382a849f2f325b22a9d2287d2642a51a4b1c87d56512bd82a3",
+    "packages/renderer/src/relative-to-eye.ts": "266f79983a366594b8163f7c635c10b4df8a47783ece1edeba1e0dcf4a5f77e5",
+    "packages/renderer/src/camera.ts": "c7d7bddd5fc525e9c528c3cc9beafe8ec8cec6f9586cc602d91f8c1f4254438a",
+    "packages/parser/src/browser.ts": "4a53434af97a5553be85d843c8af0d7bcca075296874d00d9eb817ce5d371edd",
+    "packages/parser/src/index.ts": "315306c3186f1bad256df6a82086dda166e9150ea3554656f9f9e79a7b141257"
+  },
+  "scope": "Fresh native WebGPU functional qualification of the current renderer source; no performance verdict and not a reproduction of the original production model camera trigger.",
+  "method": {
+    "load": "Canonical viewer ?model= autoload of public FZK IFC, no placement override.",
+    "rendererAccess": "Read existing Viewport renderer reference from React hooks; no production methods replaced. Camera setters deliberately invalidate and restore pose.",
+    "selection": "Actual Renderer.pick and pickRect GPU paths; real preview canvas click while invalid. Pending GPU calls are started, camera invalidates and recovers before awaiting their results.",
+    "render": "After recovery, explicitly call the existing Renderer.render() because the automation tab is backgrounded; frame stats advance to 52 draw calls.",
+    "hashCapture": "Fetch served module responses during the same unmodified Vite process after the functional assertions. Resource Timing identifies observed main-frame modules; supplemental critical modules and WASM are explicitly marked. Worker-only network responses are not intercepted."
+  },
+  "wasmOrigin": {
+    "package": "@ifc-lite/wasm",
+    "version": "10.4.0",
+    "origin": "Published npm prebuilt runtime, installed by pnpm build:wasm:fetch; not compiled from this PR Rust source.",
+    "tarball": "https://registry.npmjs.org/@ifc-lite/wasm/-/wasm-10.4.0.tgz",
+    "tarballSha256": "8161ca61319bfbd711f5dae73cd35d38649c6f09160a874362ce2bffece507c2",
+    "runtimeSha256": {
+      "ifc-lite_bg.wasm": "3912d1046cf6507e7ef6f85a0492a0e54fbb31ae711b85c6e46b6313ffd63312",
+      "ifc-lite.js": "867c2ef0d1980e309381ed723c9f963e85b585fdda52dfddfc51c18a2ff545ad"
+    },
+    "verification": "Installed files were retrospectively hashed and compared byte-for-byte by SHA-256 to the npm tarball on 2026-10-12. Earlier fetch log records installation. The original browser-loaded WASM response was not hashed.",
+    "sourceBuildCommit": null
+  },
+  "fixture": {
+    "cataloguePath": "tests/models/ara3d/AC20-FZK-Haus.ifc",
+    "sha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5"
+  }
+}

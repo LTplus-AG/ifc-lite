@@ -127,6 +127,8 @@ export interface SessionIdentity {
 export interface ToolContext {
   registry: ModelRegistry;
   scope: AuthScope;
+  /** Live authorization for operations that await source materialization. */
+  currentScope?: () => AuthScope;
   progress: ProgressReporter;
   log: Logger;
   /** Honoured by long-running tools; aborts when client cancels. */

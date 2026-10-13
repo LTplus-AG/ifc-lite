@@ -7,8 +7,8 @@
  * catastrophic-backtracking-shaped must surface as a FAILED
  * specification with a visible error, never as a silent PASS or
  * NOT_APPLICABLE — the false-clean failure mode issue #4259 is about.
- * See `validateSpecification`'s `UnsafeRegexPatternError` catch in
- * `validator.ts`.
+ * See the per-specification catch in `validateIDS` (`validator.ts`) and
+ * `unevaluableSpecificationResult` (`unevaluable-specification.ts`).
  */
 
 import { validateIDS } from './validator.js';

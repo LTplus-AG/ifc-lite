@@ -23,6 +23,7 @@ import type { Mesh, BatchedMesh, Vec3, PickClipState, Material, MeshFinish } fro
 import type { MeshData } from '@ifc-lite/geometry';
 import { hostsOtherEntities } from './mesh-entity-hosting.js';
 import type { RenderPipeline } from './pipeline.js';
+import type { IndividualMeshFrame } from './individual-mesh-upload.js';
 import { BATCH_CONSTANTS } from './constants.js';
 import {
   type BoundingBox,
@@ -159,6 +160,10 @@ export class Scene {
   private meshDataMap: Map<number, MeshData[]> = new Map();         // Map expressId -> MeshData[] (for lazy buffer creation, accumulates multiple pieces)
   private boundingBoxes: Map<number, BoundingBox> = new Map();      // Map expressId -> bounding box (computed lazily)
   private texturedMeshes: TexturedMesh[] = [];                      // #961: IFC surface-textured meshes (own buffers/texture/bindGroup)
+  /** The `positions` each textured drawable was uploaded from. Matched by the
+   *  array, not the MeshData: the appearance preview installs `{...part}`
+   *  copies, which share the array but not the object identity. */
+  private texturedSourcePositions = new WeakMap<TexturedMesh, MeshData['positions']>();
   /** #1781: GPU textures shared across meshes, keyed by `MeshTextureRef.textureId`
    *  (one `IfcImageTexture` → one upload, sampled by every face set mapping it).
    *  Refcounted: entries die when the last referencing mesh is removed / on clear(). */
@@ -555,6 +560,27 @@ export class Scene {
    */
   setQuantizedBatches(enabled: boolean): void {
     this.quantizedBatchesEnabled = enabled;
+  }
+
+  /** The draw origin of the textured drawable rendering `meshData`, or null
+   *  when it renders through a colour batch. A textured mesh never enters a
+   *  bucket: it draws its RAW positions against its own per-element origin,
+   *  unquantized, so a highlight/hover copy must use that frame — the batch
+   *  frame lands a few f32 ulps off and z-fights the texture. */
+  getTexturedDrawOrigin(meshData: MeshData): readonly [number, number, number] | null {
+    const positions = this.derivedMeshProvenance.placedSourceFor(meshData, this.modelTranslations).positions;
+    const tm = this.texturedMeshes.find((m) => m.expressId === meshData.expressId && this.texturedSourcePositions.get(m) === positions);
+    return tm ? tm.origin : null;
+  }
+
+  /** The frame a highlight/hover copy of `meshData` is built in, so it renders
+   *  bit-coincident with its source. A textured piece draws raw positions
+   *  against its own origin, never quantized: relativizing against that origin
+   *  is a +0 fold, where the batch frame would z-fight the texture (#7503). */
+  getIndividualMeshFrame(meshData: MeshData): IndividualMeshFrame {
+    const texturedOrigin = this.getTexturedDrawOrigin(meshData);
+    if (texturedOrigin) return { sharedOrigin: texturedOrigin, quantized: false };
+    return { sharedOrigin: this.getSharedFrameOrigin(meshData.modelIndex, meshData), quantized: this.isMeshQuantized(meshData) };
   }
 
   /** Whether THIS mesh's source batch renders quantized — drives the hydrated-mesh
@@ -3490,7 +3516,7 @@ export class Scene {
       const bindGroup = pipeline.createTexturedBindGroup(uniformBuffer, texture.createView(), sampler);
 
       const box = worldAabbFromPieces([meshData]);
-      this.texturedMeshes.push(this.modelTranslations.registerDrawable({
+      const drawable: TexturedMesh = this.modelTranslations.registerDrawable({
         expressId: meshData.expressId, modelIndex: meshData.modelIndex,
         bounds: box ? { min: [box.min.x, box.min.y, box.min.z], max: [box.max.x, box.max.y, box.max.z] } : undefined,
         vertexBuffer,
@@ -3508,7 +3534,9 @@ export class Scene {
           ? [meshData.origin[0], meshData.origin[1], meshData.origin[2]]
           : [0, 0, 0],
         ...(sharedTextureKey !== undefined ? { sharedTextureKey } : {}),
-      }, meshData.modelIndex ?? 0));
+      }, meshData.modelIndex ?? 0);
+      this.texturedMeshes.push(drawable);
+      this.texturedSourcePositions.set(drawable, meshData.positions);
     } catch (error) {
       vertexBuffer?.destroy();
       indexBuffer?.destroy();

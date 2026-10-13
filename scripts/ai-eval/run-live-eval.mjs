@@ -26,7 +26,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { resolveProvider, runLive } from './lib/live.mjs';
+import { assertNoSecrets, resolveProvider, runLive } from './lib/live.mjs';
 import { REPO_ROOT } from './lib/recording.mjs';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
 
@@ -61,7 +61,9 @@ export async function main(args, env) {
   const runId = new Date().toISOString().replace(/[-:]/g, '').slice(0, 15).toLowerCase();
   const runDir = flag(args, 'out') ? resolve(flag(args, 'out')) : join(REPO_ROOT, 'tests', 'ai-eval', 'results', runId);
   if (args.includes('--dry-run')) {
-    console.log(JSON.stringify({ runId, providers: providers.map(({ kind, model, url }) => ({ kind, model, url })), tasks, repeats, budget: manifest.liveEvaluation.budget }, null, 2));
+    const plan = { runId, providers: providers.map(({ kind, model, url }) => ({ kind, model, url })), tasks, repeats, budget: manifest.liveEvaluation.budget };
+    assertNoSecrets(plan, 'live evaluation plan', providers.map(provider => provider.key));
+    console.log(JSON.stringify(plan, null, 2));
     return 0;
   }
   mkdirSync(join(runDir, 'recordings'), { recursive: true });

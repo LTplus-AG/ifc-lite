@@ -196,8 +196,8 @@ function buildPatternRegex(
   // rejected pattern must surface as a validation failure the caller
   // can see, not silently evaluate to "no match" — see
   // `@ifc-lite/regex-guard`'s doc comment and this package's
-  // `validateSpecification`, which turns the thrown error into a
-  // failed specification result.
+  // `validateIDS`, which turns the thrown error into a failed
+  // specification result (`unevaluableSpecificationResult`).
   assertGuardedRegexPattern(xsdPattern);
   // Shared XSD → JS translation (XML Schema Part 2 Appendix F, see
   // `xsd-regex.ts`): multi-char escapes, `\p{Is…}` blocks, class
@@ -209,7 +209,7 @@ function buildPatternRegex(
   // every value silently (#7400), and dropping a subtraction's exclusion
   // accepted exactly the values it was written to exclude (#5183).
   // `UnsafeRegexPatternError` becomes a failed specification result in
-  // `validateSpecification`, never a silent pass.
+  // `validateIDS`, never a silent pass.
   const { pattern, supported, reason } = translateXsdRegex(xsdPattern);
   if (!supported) {
     throw new UnsafeRegexPatternError(xsdPattern, reason);

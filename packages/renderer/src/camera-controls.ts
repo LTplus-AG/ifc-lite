@@ -14,6 +14,7 @@
  */
 
 import type { Vec3 } from './types.js';
+import { acceptZoomStep, captureZoomState, shiftTargetTowardsMouse, zoomOrthographic, zoomPerspective } from './camera-zoom.js';
 import { CAMERA_CONSTANTS as CC } from './constants.js';
 import type { CameraInternalState } from './camera-state.js';
 import {
@@ -444,6 +445,7 @@ export class CameraControls {
       ? { mouseX, mouseY, canvasWidth, canvasHeight }
       : null;
 
+    const before = captureZoomState(this.state, this.orbitCenter);
     if (this.state.projectionMode === 'orthographic') {
       // Compute the effective factor after clamping so mouse anchoring matches
       // the actual zoom applied — prevents drift when orthoSize hits the floor.
@@ -456,116 +458,19 @@ export class CameraControls {
       const effectiveFactor = nextOrthoSize / this.state.orthoSize;
 
       if (anchor) {
-        this.shiftTargetTowardsMouse(dir, distance, forward, effectiveFactor, anchor.mouseX, anchor.mouseY, anchor.canvasWidth, anchor.canvasHeight);
+        shiftTargetTowardsMouse(this.state, dir, distance, forward, effectiveFactor, anchor.mouseX, anchor.mouseY, anchor.canvasWidth, anchor.canvasHeight);
       }
-      this.zoomOrthographic(dir, nextOrthoSize);
+      zoomOrthographic(this.state, dir, nextOrthoSize);
     } else {
       if (anchor) {
-        this.shiftTargetTowardsMouse(dir, distance, forward, zoomFactor, anchor.mouseX, anchor.mouseY, anchor.canvasWidth, anchor.canvasHeight);
+        shiftTargetTowardsMouse(this.state, dir, distance, forward, zoomFactor, anchor.mouseX, anchor.mouseY, anchor.canvasWidth, anchor.canvasHeight);
       }
-      this.zoomPerspective(distance, forward, zoomFactor, fastZoom);
+      zoomPerspective(this.state, this.orbitCenter, distance, forward, zoomFactor, fastZoom);
     }
 
+    if (!acceptZoomStep(this.state, this.orbitCenter, before)) return false;
     this.updateMatrices();
     return true;
-  }
-
-  /**
-   * Orthographic: set view volume size, keep camera distance unchanged.
-   *
-   * `nextOrthoSize` has already been through {@link usableOrthoSize} — this is
-   * one of the two writers that bypass `Camera.setOrthoSize`, and the read-site
-   * backstop in `updateMatrices` only keeps the projection *matrix* finite:
-   * `getOrthoSize()` reads the state directly and that is what a saved
-   * viewpoint persists (#2461).
-   */
-  private zoomOrthographic(dir: Vec3, nextOrthoSize: number): void {
-    this.state.orthoSize = nextOrthoSize;
-    this.state.camera.position.x = this.state.camera.target.x + dir.x;
-    this.state.camera.position.y = this.state.camera.target.y + dir.y;
-    this.state.camera.position.z = this.state.camera.target.z + dir.z;
-  }
-
-  /**
-   * Perspective: dolly-zoom — combines distance reduction with forward travel.
-   *
-   * Pure multiplicative zoom suffers from Zeno's paradox: each step covers a
-   * smaller absolute distance, so the user asymptotically approaches the target
-   * but can never pass it. By splitting each zoom step into distance reduction +
-   * forward dolly, the camera always makes real progress through the scene.
-   */
-  private zoomPerspective(distance: number, forward: Vec3, zoomFactor: number, fastZoom?: boolean): void {
-    const zoomStep = distance * (1 - zoomFactor); // positive when zooming in
-
-    // Fast zoom (Shift+scroll or Cesium mode): pure dolly — the full zoom step
-    // translates the rig forward, distance stays constant, no Zeno slow-down.
-    // Normal zoom: half dolly + half distance reduction — gives zoom-to-cursor
-    // convergence but decelerates as the camera approaches the target.
-    const dolly = fastZoom ? zoomStep : zoomStep * 0.5;
-    const newDistance = fastZoom ? distance : Math.max(CC.MIN_PERSPECTIVE_DISTANCE, distance - zoomStep * 0.5);
-
-    // Move target (and orbit center) forward to traverse the scene
-    const dollyOffset = scale(forward, dolly);
-    addInPlace(this.state.camera.target, dollyOffset);
-    if (this.orbitCenter) addInPlace(this.orbitCenter, dollyOffset);
-
-    // Position camera at new distance from updated target
-    const t = this.state.camera.target;
-    copyInto(this.state.camera.position, {
-      x: t.x - forward.x * newDistance,
-      y: t.y - forward.y * newDistance,
-      z: t.z - forward.z * newDistance,
-    });
-  }
-
-  /** Shift target toward the world point under the mouse cursor. */
-  private shiftTargetTowardsMouse(
-    dir: Vec3, distance: number, forward: Vec3, zoomFactor: number,
-    mouseX: number, mouseY: number, canvasWidth: number, canvasHeight: number,
-  ): void {
-    // The cursor anchor is the one place a gesture reads `up` and writes the
-    // result into the pose, and `up` is as externally authored as `position`
-    // and `target` are — so the distance guard in `zoom()` is not the whole
-    // check. An unusable `up` makes `right` and `actualUp` non-finite, and the
-    // three lines at the bottom put that straight into `camera.target`, which
-    // `zoomPerspective`/`zoomOrthographic` then copy into `camera.position`:
-    // one bad component of `up` becomes all six of the pose in a single wheel
-    // notch. The guard belongs here rather than in `zoom()` because `up` feeds
-    // only this branch — returning from `zoom()` would also kill the plain
-    // zoom, which never touches `up` — and rather than in `setUp`, because the
-    // animated viewpoint-restore path writes `camera.up` through
-    // `animateToWithUp` without going near the setter.
-    //
-    // Dropping the anchor is the fallback the surrounding code already uses:
-    // it is exactly what a zero-length or view-parallel `up` produces today
-    // (`normalize` returns `{0,0,0}`, so `mouseWorld` collapses onto `target`
-    // and the target does not move). The zoom itself still happens, centred
-    // rather than cursor-anchored, and the pose is left as it was found.
-    if (!isUsableUp(this.state.camera.up)) return;
-
-    const ndcX = (mouseX / canvasWidth) * 2 - 1;
-    const ndcY = 1 - (mouseY / canvasHeight) * 2;
-
-    const right = normalize(cross(forward, this.state.camera.up));
-    const actualUp = cross(right, forward);
-
-    const halfHeight = this.state.projectionMode === 'orthographic'
-      ? this.state.orthoSize
-      : distance * Math.tan(this.state.camera.fov / 2);
-    const halfWidth = halfHeight * this.state.camera.aspect;
-
-    // World point under mouse cursor (on the target plane)
-    const t = this.state.camera.target;
-    const mouseWorld = {
-      x: t.x + right.x * ndcX * halfWidth + actualUp.x * ndcY * halfHeight,
-      y: t.y + right.y * ndcX * halfWidth + actualUp.y * ndcY * halfHeight,
-      z: t.z + right.z * ndcX * halfWidth + actualUp.z * ndcY * halfHeight,
-    };
-
-    const moveAmount = 1 - zoomFactor;
-    t.x += (mouseWorld.x - t.x) * moveAmount;
-    t.y += (mouseWorld.y - t.y) * moveAmount;
-    t.z += (mouseWorld.z - t.z) * moveAmount;
   }
 
   // -------------------------------------------------------------------------

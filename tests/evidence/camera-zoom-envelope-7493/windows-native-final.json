@@ -1,0 +1,477 @@
+{
+  "harnessCorrection": "Prior 450 ms fixed wait sampled the 500 ms Home animation before completion; this run waits for the known original pose within 1000 ms. Prior failures retained.",
+  "utc": "2026-10-12T19:15:09.553Z",
+  "scope": "Native functional qualification only; no performance claim",
+  "head": "d4874837aa107c36bbfaad935f695525e3becc1b",
+  "session": {
+    "monitors": 1,
+    "connectState": 0,
+    "remoteMetric": 0,
+    "consoleSession": 2,
+    "currentSession": 2,
+    "protocol": 0
+  },
+  "samples": [
+    {
+      "dpr": 1.0000000298023224,
+      "visible": "visible",
+      "focused": true,
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+      "initial": {
+        "position": {
+          "x": 27.599999999999998,
+          "y": 20.65884578227997,
+          "z": 17.599999999999998
+        },
+        "target": {
+          "x": 6,
+          "y": 2.6588457822799683,
+          "z": -4
+        },
+        "size": 50
+      },
+      "wheel": {
+        "count": 600,
+        "unavailable": 0,
+        "failedRenders": 0,
+        "boundary": {
+          "position": {
+            "x": 792004855.7125193,
+            "y": 602035896.3170539,
+            "z": 971317567.1508918
+          },
+          "target": {
+            "x": 371692040.9907197,
+            "y": 251775217.382221,
+            "z": 551004752.4290932
+          },
+          "size": 50
+        }
+      },
+      "viewport": {
+        "x": 213.4479217529297,
+        "y": 128.6666717529297,
+        "width": 714.5521240234375,
+        "height": 643.3333740234375,
+        "framebufferWidth": 715,
+        "framebufferHeight": 643
+      },
+      "orbit": {
+        "pose": {
+          "position": {
+            "x": 245106985.83950543,
+            "y": 602035896.3170539,
+            "z": 1131781773.540541
+          },
+          "target": {
+            "x": 371692040.9907197,
+            "y": 251775217.382221,
+            "z": 551004752.4290932
+          },
+          "size": 50
+        },
+        "magnitude": 1131781773.540541,
+        "available": false
+      },
+      "worseningRefused": true,
+      "recovery": [
+        {
+          "before": 1131781773.540541,
+          "after": 1073704071.4293963,
+          "available": false
+        },
+        {
+          "before": 1073704071.4293963,
+          "after": 1018530254.4238088,
+          "available": false
+        },
+        {
+          "before": 1018530254.4238088,
+          "after": 966115128.2685006,
+          "available": true
+        }
+      ],
+      "recovered": {
+        "pose": {
+          "position": {
+            "x": 281215372.8213893,
+            "y": 502124037.6508929,
+            "z": 966115128.2685006
+          },
+          "target": {
+            "x": 389746234.4816616,
+            "y": 201819288.04914045,
+            "z": 468171429.793073
+          },
+          "size": 50
+        },
+        "available": true,
+        "rendered": true
+      },
+      "orthographic": {
+        "original": {
+          "position": {
+            "x": 2000000000,
+            "y": 0,
+            "z": 100
+          },
+          "target": {
+            "x": 2000000000,
+            "y": 0,
+            "z": 0
+          },
+          "size": 100
+        },
+        "scaled": {
+          "position": {
+            "x": 2000000000,
+            "y": 0,
+            "z": 100
+          },
+          "target": {
+            "x": 2000000000,
+            "y": 0,
+            "z": 0
+          },
+          "size": 110.00000000000001
+        },
+        "refused": {
+          "position": {
+            "x": 2000000000,
+            "y": 0,
+            "z": 100
+          },
+          "target": {
+            "x": 2000000000,
+            "y": 0,
+            "z": 0
+          },
+          "size": 110.00000000000001
+        },
+        "reversed": {
+          "position": {
+            "x": 2000000000,
+            "y": 0,
+            "z": 100
+          },
+          "target": {
+            "x": 2000000000,
+            "y": 0,
+            "z": 0
+          },
+          "size": 99.00000000000001
+        },
+        "available": false
+      },
+      "gpu": {
+        "vendor": "nvidia",
+        "architecture": "blackwell",
+        "device": "",
+        "description": "",
+        "isFallbackAdapter": false
+      },
+      "actualCameraIdentity": true,
+      "homeSettledMs": 522,
+      "home": {
+        "position": {
+          "x": 27.599999999999998,
+          "y": 20.65884578227997,
+          "z": 17.599999999999998
+        },
+        "target": {
+          "x": 6,
+          "y": 2.6588457822799683,
+          "z": -4
+        },
+        "available": true,
+        "rendered": true,
+        "pick": {
+          "expressId": 59753,
+          "modelIndex": 0,
+          "worldXYZ": {
+            "x": 8.184540640343712,
+            "y": 4.479295999299556,
+            "z": -1.8154593596562876
+          },
+          "geometryItemId": 59737
+        },
+        "click": {
+          "x": 570.7239837646484,
+          "y": 450.33335876464844
+        }
+      },
+      "served": [
+        {
+          "path": "packages/renderer/src/camera.ts",
+          "status": 200,
+          "bytes": 60331,
+          "sha256": "a0b911b30d40444341b4305e98595e22ad528bd247972ebc8c3c67b1c8116803",
+          "capture": "supplemental after observations; unchanged source/server"
+        },
+        {
+          "path": "packages/renderer/src/camera-zoom.ts",
+          "status": 200,
+          "bytes": 22485,
+          "sha256": "cc4653fdbff44329b82c77226f8e19b02131b19ac6cd5428f437d4c270fb6a18",
+          "capture": "supplemental after observations; unchanged source/server"
+        },
+        {
+          "path": "packages/wasm/pkg/ifc-lite_bg.wasm",
+          "status": 200,
+          "bytes": 9979156,
+          "sha256": "3912d1046cf6507e7ef6f85a0492a0e54fbb31ae711b85c6e46b6313ffd63312",
+          "capture": "supplemental after observations; unchanged source/server"
+        }
+      ]
+    },
+    {
+      "dpr": 2.0000000596046448,
+      "visible": "visible",
+      "focused": true,
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+      "initial": {
+        "position": {
+          "x": 27.599999999999998,
+          "y": 20.65884578227997,
+          "z": 17.599999999999998
+        },
+        "target": {
+          "x": 6,
+          "y": 2.6588457822799683,
+          "z": -4
+        },
+        "size": 50
+      },
+      "wheel": {
+        "count": 600,
+        "unavailable": 0,
+        "failedRenders": 0,
+        "boundary": {
+          "position": {
+            "x": 792137166.814784,
+            "y": 602035896.3170542,
+            "z": 971185256.0486335
+          },
+          "target": {
+            "x": 371824352.0929828,
+            "y": 251775217.38222107,
+            "z": 550872441.3268335
+          },
+          "size": 50
+        }
+      },
+      "viewport": {
+        "x": 213.4479217529297,
+        "y": 128.6666717529297,
+        "width": 714.5521240234375,
+        "height": 643.3333740234375,
+        "framebufferWidth": 1429,
+        "framebufferHeight": 1287
+      },
+      "orbit": {
+        "pose": {
+          "position": {
+            "x": 245239296.94176826,
+            "y": 602035896.3170542,
+            "z": 1131649462.4382834
+          },
+          "target": {
+            "x": 371824352.0929828,
+            "y": 251775217.38222107,
+            "z": 550872441.3268335
+          },
+          "size": 50
+        },
+        "magnitude": 1131649462.4382834,
+        "available": false
+      },
+      "worseningRefused": true,
+      "recovery": [
+        {
+          "before": 1131649462.4382834,
+          "after": 1073571760.3271384,
+          "available": false
+        },
+        {
+          "before": 1073571760.3271384,
+          "after": 1018397943.3215506,
+          "available": false
+        },
+        {
+          "before": 1018397943.3215506,
+          "after": 965982817.1662422,
+          "available": true
+        }
+      ],
+      "recovered": {
+        "pose": {
+          "position": {
+            "x": 281347683.9236522,
+            "y": 502124037.6508931,
+            "z": 965982817.1662422
+          },
+          "target": {
+            "x": 389878545.5839248,
+            "y": 201819288.0491405,
+            "z": 468039118.69081295
+          },
+          "size": 50
+        },
+        "available": true,
+        "rendered": true
+      },
+      "orthographic": {
+        "original": {
+          "position": {
+            "x": 2000000000,
+            "y": 0,
+            "z": 100
+          },
+          "target": {
+            "x": 2000000000,
+            "y": 0,
+            "z": 0
+          },
+          "size": 100
+        },
+        "scaled": {
+          "position": {
+            "x": 2000000000,
+            "y": 0,
+            "z": 100
+          },
+          "target": {
+            "x": 2000000000,
+            "y": 0,
+            "z": 0
+          },
+          "size": 110.00000000000001
+        },
+        "refused": {
+          "position": {
+            "x": 2000000000,
+            "y": 0,
+            "z": 100
+          },
+          "target": {
+            "x": 2000000000,
+            "y": 0,
+            "z": 0
+          },
+          "size": 110.00000000000001
+        },
+        "reversed": {
+          "position": {
+            "x": 2000000000,
+            "y": 0,
+            "z": 100
+          },
+          "target": {
+            "x": 2000000000,
+            "y": 0,
+            "z": 0
+          },
+          "size": 99.00000000000001
+        },
+        "available": false
+      },
+      "gpu": {
+        "vendor": "nvidia",
+        "architecture": "blackwell",
+        "device": "",
+        "description": "",
+        "isFallbackAdapter": false
+      },
+      "actualCameraIdentity": true,
+      "homeSettledMs": 527,
+      "home": {
+        "position": {
+          "x": 27.599999999999998,
+          "y": 20.65884578227997,
+          "z": 17.599999999999998
+        },
+        "target": {
+          "x": 6,
+          "y": 2.6588457822799683,
+          "z": -4
+        },
+        "available": true,
+        "rendered": true,
+        "pick": {
+          "expressId": 59753,
+          "modelIndex": 0,
+          "worldXYZ": {
+            "x": 8.184514228683398,
+            "y": 4.4792739895822,
+            "z": -1.8154857713166024
+          },
+          "geometryItemId": 59737
+        },
+        "click": {
+          "x": 570.7239837646484,
+          "y": 450.33335876464844
+        }
+      },
+      "served": [
+        {
+          "path": "packages/renderer/src/camera.ts",
+          "status": 200,
+          "bytes": 60331,
+          "sha256": "a0b911b30d40444341b4305e98595e22ad528bd247972ebc8c3c67b1c8116803",
+          "capture": "supplemental after observations; unchanged source/server"
+        },
+        {
+          "path": "packages/renderer/src/camera-zoom.ts",
+          "status": 200,
+          "bytes": 22485,
+          "sha256": "cc4653fdbff44329b82c77226f8e19b02131b19ac6cd5428f437d4c270fb6a18",
+          "capture": "supplemental after observations; unchanged source/server"
+        },
+        {
+          "path": "packages/wasm/pkg/ifc-lite_bg.wasm",
+          "status": 200,
+          "bytes": 9979156,
+          "sha256": "3912d1046cf6507e7ef6f85a0492a0e54fbb31ae711b85c6e46b6313ffd63312",
+          "capture": "supplemental after observations; unchanged source/server"
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "cleanup": "Initial conservative process-observation refusal; independent complete follow-up found no owned processes or unknown command lines and removed only owned profile.",
+  "sources": {
+    "packages/renderer/src/camera.ts": "59b9679f0b2a2495a197a6425e9dfaded0308831c9020e47f760fb1a021c9e37",
+    "packages/renderer/src/camera-controls.ts": "6d261d27231e9b105793d5563de9d047aef017b755b367b7cf5a44564c94afb3",
+    "packages/renderer/src/camera-zoom.ts": "7a1562f28587dc6546293ddefcc93d00de35965bb3dcd9aec242717fe8ec44c4",
+    "packages/wasm/pkg/ifc-lite_bg.wasm": "3912d1046cf6507e7ef6f85a0492a0e54fbb31ae711b85c6e46b6313ffd63312"
+  },
+  "startupFailures": [],
+  "cleanupFollowup": {
+    "unknownCommandLines": 0,
+    "owned": [],
+    "profileRemoved": true,
+    "note": "Independent complete Windows CIM observation after browser connection close; original conservative cleanup refusal retained."
+  },
+  "runtimeOrigin": "Official npm @ifc-lite/wasm@10.4.0; not built from checkout Rust",
+  "fixture": {
+    "path": "ara3d/AC20-FZK-Haus.ifc",
+    "sha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+    "bytes": 2526511,
+    "displayedElements": 82
+  },
+  "requestedDprs": [
+    1,
+    2
+  ],
+  "harnessSha256": "31e82edac7e7a93993b4c9fcd613d0fe39a3d4aee0cd5892567db5f1a4cbe648",
+  "priorAttempts": [
+    {
+      "receiptSha256": "9e50424e15a46f868b6a98b82fb2a636d334cfe1bcb820833c481209fb19093e",
+      "result": "Home sampled before 500 ms animation settled; no passing full qualification claim"
+    },
+    {
+      "receiptSha256": "a9d16effc42da4270e3427a845bd49f8d0bbdec530e9dea880697b4b62e31c24",
+      "result": "Home sampled before 500 ms animation settled; no passing full qualification claim"
+    }
+  ]
+}

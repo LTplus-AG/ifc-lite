@@ -1411,8 +1411,8 @@ Every check reports one of three outcomes, never folded together:
 - **`error`** — the check could **not** be run: an unreadable/empty/corrupt
   model, an unreadable or unparsable IDS/rules file, an IDS document
   declaring zero specifications, a rule set declaring zero rules, or a rule
-  the engine itself could not evaluate. An unevaluable check is never
-  counted as a pass.
+  or IDS specification the engine itself could not evaluate. An unevaluable
+  check is never counted as a pass, nor as a violation.
 
 The overall **verdict** is `pass` only when every declared check on every
 declared model passed. An unreadable model, an empty IDS ruleset/rule set,
@@ -1511,6 +1511,78 @@ ifc-lite flow validate audit.flow.json
 | `review <checkpoint> --approve <digest>` / `--reject` | Approve exactly the proposal that was shown (the digest must match) or decline it. Without a flag it prints the checkpoint. `--json` |
 | `resume <graph> <file.ifc> --checkpoint <file>` | Claim an approved checkpoint once, check that the graph, `--input` values and model are the ones the pause recorded, restore every completed node without running it again (no AI request is sent for the reviewed proposal), and run what was paused. `--out`, `--next-checkpoint <file>` when the graph pauses again |
 | `validate <graph>` | Validate the document's wiring against the node registry (unknown types, missing ports, type-incompatible edges, unconnected required inputs, `inputs`/`outputs` markers that name nothing) and report each node as `ok`, `noop`, `unavailable` or `unknown` on this host. Exit 2 on any wiring problem or unrunnable node. `--json` |
+
+BCF API create-topic and create-comment nodes save a credential-free native publication intent
+before sending. CLI stores its outbox at `IFCLITE_BCF_OUTBOX_DIR`, defaulting to
+`~/.ifc-lite/bcf-outbox` when unset or empty. Keep this directory across process restarts. A lost response leaves
+an unresolved intent; rerunning the same write refuses another send. Storage failures also
+refuse the write. Payloads containing a resolved run secret are refused before persistence.
+
+```bash
+ifc-lite flow bcf list
+# Large journals: repeat with the returned nextCursor, including empty progress pages.
+ifc-lite flow bcf list --page-size 100 --after <nextCursor>
+# Check only the intent's recorded target; permission and credentials are supplied afresh.
+ifc-lite flow bcf check <entryId> --allow-host bcf.example.com --token-env BCF_TOKEN
+# Only if this read sees the full collection in the original write access scope:
+ifc-lite flow bcf check <entryId> --allow-host bcf.example.com --token-env BCF_TOKEN --confirm-full-read-access
+# Review the checked candidates, then bind the actual server GUID explicitly.
+ifc-lite flow bcf reconcile <entryId> --guid <checkedGuid>
+# Only after a complete successful check found no server objects:
+ifc-lite flow bcf confirm-absent <entryId>
+```
+
+The journal keeps every distinct receipt in immutable `v2/<hash-prefix>/<intent-digest>`
+records. It allows 256 deliberate generations per identical intent, 16 active recovery checks
+per immutable epoch, and 4096 distinct digests per each of 256 hash buckets. These limits
+refuse new work before sending; existing receipts and the final checked settlement
+remain readable. Records are bounded to 256 KiB. `list` returns an array when it fits
+one bounded page; `--page-size` returns `{entries,nextCursor?}` pages, each limited
+by row count, 5 MiB and bounded work. Listing is weakly consistent during writes.
+Do not delete capacity slots or receipts to make room: use a separately selected
+outbox only after accounting for prior unknown outcomes. An older flat journal is
+refused explicitly; preserve it and recover with its original build first.
+
+Recovery check epochs retain prior immutable files and locate the latest marker
+with bounded exponential/binary probes over safe integer identities. Validation
+reads the latest epoch and its embedded preceding proof; archived epoch bodies
+are retained as evidence, without rereading their full history. An interrupted
+check resumes the same reserved check ID with a fresh authorized read. A completed
+unavailable check at an epoch boundary permits the next explicit check in a new
+epoch, competing with settlement on the same exclusive transition. An empty new
+epoch marker preserves the preceding proof. These operations never resend a create.
+
+A sending owner is identified by machine, boot and process start, rather than PID
+existence alone. A matching live owner blocks recovery. Foreign or unverifiable
+owners require the operator to verify the sender stopped, then add
+`--confirm-owner-stopped` to `check`; this assertion is persisted and never overrides
+an observed live sender. No timeout steals ownership or authorizes an automatic retry.
+
+A native process admits at most 64 concurrent or locally completed sends whose
+outcome could not be saved. Completed durable receipts consume no local tracking
+slot. At this bound new creates refuse before any effect; checked reconciliation
+or confirmed absence releases the retained local completion. No completion
+identity is evicted to make room. Reads synchronize the visible receipt or proof's
+directory before acknowledging it; an unresolved directory-sync fault refuses
+recovery and subsequent creates without discarding the existing record.
+
+Known credentials must also be representable in the journal. A bearer matching fixed
+metadata, such as `done`, is refused before any create request. Fixed schema keys such
+as `id` and `intent` are protocol names and do not themselves block a clean write.
+If a generated receipt value matches a credential after the server accepted a write,
+success is refused and the recorded intent remains unresolved for manual checking.
+
+These recovery commands print JSON. `--token-env` names an environment variable; it never
+accepts a token value or file. `--allow-host` grants one explicit hostname. Reconciliation
+requires a candidate from the stored check, persists the receipt across restart, and never
+sends a create or retries automatically. Confirm the actual server object before choosing
+a candidate. Checks retain trim-equivalent free text as manual candidates. Server
+rewrites or omitted payload fields make unmatched objects unavailable, because
+the create protocol has no stable client marker that proves they are unrelated.
+Only a complete empty enumeration with `--confirm-full-read-access` can report absence. This check-only flag is an operator assertion that the authorized read sees the full target collection under the same access scope as the original write. A token alone cannot establish that scope, and a filtered anonymous or different-principal empty view cannot establish absence. Public anonymous checks remain supported, with the same explicit full-visibility assertion required for absence. The journal records only the proof marker, not credential or principal identity. Older markerless absence proofs remain readable but cannot release a write: perform a new asserted check. Without the assertion an empty check remains unavailable; matching candidates remain available for manual reconciliation. If the asserted complete check proves absence, `confirm-absent` explicitly releases
+the intent for a later deliberate rerun; it sends nothing itself. An unavailable,
+ambiguous or incomplete check cannot authorize that release. Changing the payload
+is a new write, not reconciliation.
 
 `run` exits 1 when any node failed; per-lane errors inside a lifted node do not fail the run
 (the lane yields `null`) and are listed under `errors` in the summary. Secrets are resolved from

@@ -27,7 +27,7 @@ import {
   writeBCF,
   type BCFViewpoint,
 } from '@ifc-lite/bcf';
-import { downloadBlob } from '@/lib/export/download';
+import { bcfExportFilename, downloadBlob } from '@/lib/export/download';
 import type { LayerRegistryClient, RegistryReviewSummary, RegistryReviewTopic } from '@/lib/layers/registry-client';
 import { ensureCandidateOnRegistry } from '@/lib/layers/merge';
 import { getBrowserLayerStore } from '@/lib/layers/browser-store';
@@ -188,7 +188,7 @@ export function LayerReviewSection({
         addTopicToProject(project, topic);
         if (t.viewpoint) addViewpointToTopic(topic, t.viewpoint as unknown as BCFViewpoint);
       }
-      downloadBlob(await writeBCF(project), `review-${review.id.slice(0, 8)}.bcfzip`);
+      downloadBlob(await writeBCF(project), bcfExportFilename(`review-${review.id.slice(0, 8)}`));
       trackExportCompleted({ format: 'bcfzip', surface: 'layer_review' });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));

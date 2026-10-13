@@ -109,8 +109,9 @@ describe('IDS 1.1 preview leaves IDS 1.0 untouched across the corpus', () => {
         schemaVersion: String(store.schemaVersion ?? 'IFC4'),
         entityCount: 0,
       }, PREVIEW);
-      const status = report.specificationResults[0]?.status;
-      if (status !== c.prefix) wrong.push(`${c.id}: ${status}`);
+      // A specification that could not be evaluated is 'fail' with an error: not a verdict (#7482).
+      const { status, error } = report.specificationResults[0] ?? {};
+      if (error || status !== c.prefix) wrong.push(`${c.id}: ${status}${error ? ` (${error})` : ''}`);
     }
     expect(wrong).toEqual([]);
   }, 180_000);

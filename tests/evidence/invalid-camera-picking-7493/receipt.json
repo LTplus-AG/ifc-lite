@@ -1,0 +1,154 @@
+{
+  "baseline": {
+    "bounds": {
+      "max": {
+        "x": 15,
+        "y": 106.31769156455994,
+        "z": 3
+      },
+      "min": {
+        "x": -3,
+        "y": 99,
+        "z": -13
+      }
+    },
+    "model": "AC20-FZK-Haus.ifc",
+    "pick": {
+      "expressId": 59753,
+      "geometryItemId": 59737,
+      "modelIndex": 0,
+      "worldXYZ": {
+        "x": 8.18451626035213,
+        "y": 104.47927570035954,
+        "z": -1.8154837396478705
+      }
+    },
+    "view": {
+      "fov": 0.7853981633974483,
+      "position": {
+        "x": 27.6,
+        "y": 120.6588458,
+        "z": 17.6
+      },
+      "projectionMode": "perspective",
+      "target": {
+        "x": 6,
+        "y": 102.6588458,
+        "z": -4
+      },
+      "up": {
+        "x": 0,
+        "y": 1,
+        "z": 0
+      }
+    }
+  },
+  "invalid": {
+    "available": false,
+    "point": null,
+    "rectangle": []
+  },
+  "invalidClick": {
+    "errors": [],
+    "selection": null
+  },
+  "recovered": {
+    "available": true,
+    "pick": {
+      "expressId": 59753,
+      "geometryItemId": 59737,
+      "modelIndex": 0,
+      "worldXYZ": {
+        "x": 8.18451626035213,
+        "y": 104.47927570035954,
+        "z": -1.8154837396478705
+      }
+    },
+    "stats": {
+      "adapter": {
+        "architecture": "blackwell",
+        "vendor": "nvidia"
+      },
+      "cpuBytes": 1065816,
+      "frame": {
+        "batchesAtLod1": 0,
+        "batchesContributionCulled": 0,
+        "batchesDrawn": 17,
+        "batchesFrustumCulled": 0,
+        "batchesNotResident": 0,
+        "drawCalls": 52,
+        "instancedContributionCulled": 0,
+        "instancedDrawn": 0,
+        "instancedFrustumCulled": 0,
+        "timestamp": 98605.99500000477
+      },
+      "gpu": {
+        "batches": 669480,
+        "instanced": 0,
+        "meshes": 1298368,
+        "textured": 0,
+        "total": 1967848
+      },
+      "gpuTiming": {
+        "epoch": 0,
+        "errors": 0,
+        "frames": [],
+        "mode": "disabled",
+        "overwritten": 0,
+        "sampled": 0,
+        "skipped": 0
+      },
+      "pointCloudPoints": 0
+    }
+  },
+  "scope": "Native GPU functional check with public FZK fixture and deliberately invalid camera pose; not a reproduction of the original 616 MB model trigger.",
+  "fixture": {
+    "cataloguePath": "tests/models/ara3d/AC20-FZK-Haus.ifc",
+    "sha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+    "placement": "Existing 100 m vertical model placement retained; camera framed on the resulting scene bounds."
+  },
+  "baseCommit": "425230a0351681863bbea800c27518850bbc3294",
+  "recordedAt": "2026-10-12",
+  "negativeControl": "Before the guard, four regression cases fail: GPU point admission, GPU rectangle admission, CPU rectangle admission, and stale CPU hits after camera invalidation.",
+  "provenance": {
+    "nativeRenderer": {
+      "sourceCommit": "2d59c2a7a613e52323467a497db0861e561a007e",
+      "checkoutBaseAtRun": "425230a0351681863bbea800c27518850bbc3294",
+      "qualificationState": "Working source later committed as sourceCommit; native observations predate that commit. Not a clean deployed-commit attestation.",
+      "sourceSha256": {
+        "packages/renderer/src/picking-manager.ts": "70c02061e31c683ca5bd11373360bc28ef3f1bb224f5d7a6e09fe7bd70ee80ec",
+        "packages/renderer/src/pick-rte-snapshot.ts": "6accfa24e01c05cd7b9e51d60fd9edcdec85c2eb2518b3e1adc531a7a42b8200",
+        "packages/renderer/src/relative-to-eye.ts": "338e70e020247dcd7099331bd9f95cab826ccc04233be761d5fa3d11651ac66b",
+        "packages/renderer/src/camera.ts": "c7d7bddd5fc525e9c528c3cc9beafe8ec8cec6f9586cc602d91f8c1f4254438a"
+      },
+      "browserLoadedModuleHashes": null
+    },
+    "parser": {
+      "package": "@ifc-lite/parser",
+      "version": "9.5.0",
+      "sourceGitTree": "d083a48ba6bb512b46151eaf4dbaa945a7eedcd6",
+      "browserLoadedArtifactSha256": null,
+      "limitation": "The native run did not record browser-loaded parser module bytes. Later typechecking rebuilt dist; retrospective dist hashes cannot identify the earlier browser runtime."
+    },
+    "wasm": {
+      "package": "@ifc-lite/wasm",
+      "version": "10.4.0",
+      "origin": "Published npm prebuilt runtime, installed by pnpm build:wasm:fetch; not compiled from this PR Rust source.",
+      "tarball": "https://registry.npmjs.org/@ifc-lite/wasm/-/wasm-10.4.0.tgz",
+      "tarballSha256": "8161ca61319bfbd711f5dae73cd35d38649c6f09160a874362ce2bffece507c2",
+      "runtimeSha256": {
+        "ifc-lite_bg.wasm": "3912d1046cf6507e7ef6f85a0492a0e54fbb31ae711b85c6e46b6313ffd63312",
+        "ifc-lite.js": "867c2ef0d1980e309381ed723c9f963e85b585fdda52dfddfc51c18a2ff545ad"
+      },
+      "verification": "Installed files were retrospectively hashed and compared byte-for-byte by SHA-256 to the npm tarball on 2026-10-12. Earlier fetch log records installation. The original browser-loaded WASM response was not hashed.",
+      "sourceBuildCommit": null
+    },
+    "laterReadbackControls": {
+      "sourceCommit": "8f24928ba463220f2e56d2a60a040039559f5350",
+      "focusedTests": 90,
+      "failed": 0,
+      "skipped": 0,
+      "scope": "Real-Camera deferred-readback tests, including invalidation then recovery during both resolved and rejected CPU/point rectangle readbacks. Not part of the earlier native screenshot run."
+    }
+  }
+}

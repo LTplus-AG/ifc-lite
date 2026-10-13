@@ -105,3 +105,79 @@ Direct remote failures expose only the safe failure class and valid HTTP status;
 remote response bodies, detail URLs and error causes are discarded. Known local
 preflight diagnostics and gateway refusal/recovery text are retained after
 redacting the actual bearer, without carrying their original error cause.
+
+`review.snapshot` is a volatile `model.read` node over a host-provided native
+Review service. Its optional `after` input sequences the read after an analysis;
+its bounded `snapshot` contains actual facts, coverage and producer provenance.
+Hosts without a native capture service report the missing
+`review` backend capability explicitly. This node does not rerun analysis or
+write models, artifacts, publications or decisions. See
+[the native Review read contract](../../docs/guide/flow.md#reading-captured-native-review).
+
+## Durable native BCF publication
+
+The Node-only `@ifc-lite/flow-nodes/bcf-publication-node` entry exports
+`createNativeBcfWriteGateway({ directory, namespace, secrets })` for
+`FlowHost.bcfWrites`. CLI hosts supply it automatically. An immutable,
+fsynced intent is claimed before a create; a lost response or interrupted host
+blocks the same target and payload across restarts. Bearers are ephemeral;
+a payload containing a known run or write token is refused before persistence.
+Known credentials are checked in values and dynamic keys; fixed public schema
+keys such as `id`, `topicGuid` and `remoteGuid` are protocol names, not credential
+data. Strict record and payload decoders still reject those names in an unknown
+location. Authorization/token keys and credential URL/Bearer syntax remain
+refused, and credential-bearing identifier values remain unsafe.
+Every generated journal record is checked against the current known credentials
+before publication. A credential that cannot be represented without appearing in
+fixed metadata, such as the literal bearer `done`, is refused before the POST.
+Fixed schema keys remain valid: bearers `id` and `intent` can use clean payloads
+and receipt values. A later generated-value collision, such as a receipt timestamp
+matching a known credential, refuses success and leaves the saved intent unresolved
+for explicit checked recovery; it never persists that credential or retries.
+BCF write nodes also redact the actual resolved bearer from successful server
+responses before exposing output ports, including literal and Player tokens.
+
+`list()` inspects one bounded local page. `listPage({cursor, limit})` returns
+`{entries,nextCursor?}`; follow every cursor, including empty progress pages. `check(id, { token, networkGrants })` reads the
+original HTTPS target with fresh capability grants and records matching GUID
+candidates, including trim-equivalent title, description and comment text.
+Server-edited or omitted fields cannot prove absence: unmatched objects make
+the check unavailable. Only a complete empty enumeration with `confirmFullReadAccess: true` proves absence; the operator asserts complete visibility in the same access scope as the original write. Token presence alone is not proof of visibility. Without the assertion an empty enumeration is unavailable, while matching candidates remain available;
+the create protocol supplies no stable client marker for excluding other objects.
+It never retries a write. `reconcile(id, guid)` explicitly selects
+a checked candidate. `confirmAbsent(id)` explicitly releases an intent only
+after the latest complete check proved absence and persisted `fullReadAccessConfirmed: true`. Older markerless absence proofs remain readable but need a fresh asserted check before release. Anonymous genuinely public reads remain supported. No credential or principal identity is persisted. A check alone never
+releases an unresolved create. Preserve the journal when an outcome is unknown.
+
+Storage uses a nonempty `IFCLITE_BCF_OUTBOX_DIR` or defaults to `~/.ifc-lite/bcf-outbox`, isolated
+by namespace. Filesystems without exclusive hard links or directory fsync
+refuse publication. Malformed, oversized or orphaned records also refuse;
+records are bounded to 256 KiB, with 256 generations per digest and 16 checks
+per active immutable epoch. Immutable `v2/<prefix>/<digest>`
+storage retains every receipt; 256 buckets each hold at most 4096 never-deleted
+digest slots. Capacity refusal precedes sending and leaves existing recovery
+readable. Listing streams history and bounds each page to 1000 rows, 5 MiB and
+50,000 bounded record-work units; cursors are weakly consistent during concurrent writes. Old flat
+journals are refused: preserve them and recover using their original build.
+Linux boot/starttime and Windows creation-time queries distinguish process
+instances. Unknown owners require `confirmOwnerStopped: true` on `check`, only
+after operator verification; observed live instances always block recovery. The browser
+continues to use its IndexedDB publication controls and the shared pure
+`@ifc-lite/flow-nodes/bcf-publication` error classifier.
+
+Recovery check epochs retain prior immutable files and locate the latest marker
+with bounded exponential/binary probes over safe integer identities. Validation
+reads the latest epoch and its embedded preceding proof; archived epoch bodies
+are retained as evidence, without rereading their full history. An interrupted
+check resumes the same reserved check ID with a fresh authorized read. A completed
+unavailable check at an epoch boundary permits the next explicit check in a new
+epoch, competing with settlement on the same exclusive transition. An empty new
+epoch marker preserves the preceding proof. These operations never resend a create.
+
+A native process admits at most 64 concurrent or locally completed sends whose
+outcome could not be saved. Completed durable receipts consume no local tracking
+slot. At this bound new creates refuse before any effect; checked reconciliation
+or confirmed absence releases the retained local completion. No completion
+identity is evicted to make room. Reads synchronize the visible receipt or proof's
+directory before acknowledging it; an unresolved directory-sync fault refuses
+recovery and subsequent creates without discarding the existing record.

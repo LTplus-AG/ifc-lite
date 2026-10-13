@@ -1,6 +1,7 @@
 {
   "apps/autodesk-service": 0,
   "apps/cloud-service": 0,
+  "apps/report-service": 0,
   "apps/viewer": 188,
   "apps/viewer-embed": 190,
   "examples/babylonjs-viewer": 0,
@@ -50,6 +51,7 @@
   "packages/query": 2,
   "packages/regex-guard": 0,
   "packages/renderer": 1,
+  "packages/report-contract": 0,
   "packages/rules": 0,
   "packages/sandbox": 1,
   "packages/sdk": 11,

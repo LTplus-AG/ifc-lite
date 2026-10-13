@@ -1,0 +1,37 @@
+{
+  "sourceCommit": "4da3549f12dd5bed1f948f05f56b23086711163f",
+  "sourceHashes": {
+    "packages/renderer/src/camera-zoom.ts": "7a1562f28587dc6546293ddefcc93d00de35965bb3dcd9aec242717fe8ec44c4",
+    "packages/renderer/src/camera-zoom-envelope.test.ts": "aa371cf84a18c92d5dc59fcd3b0ee431e214faa4684c57fc1fd5f420163abc1e"
+  },
+  "tests": {
+    "command": "pnpm test --filter=@ifc-lite/renderer --only --concurrency=1",
+    "temporaryRendererTestScript": "tsx --test --test-concurrency=1 src/camera*.test.ts (restored exactly afterwards)",
+    "pass": 325,
+    "fail": 0,
+    "inversePreviousSource": {
+      "pass": 9,
+      "fail": 1
+    }
+  },
+  "typecheck": {
+    "command": "pnpm typecheck",
+    "exit": 0,
+    "testFiles": 4049,
+    "packages": 64,
+    "turboConcurrency": "1 temporarily; turbo.json restored exactly",
+    "CARGO_BUILD_JOBS": "2"
+  },
+  "logs": {
+    "navigation-ortho-red-tests.log": "e484401f63bfcb3f002433e030da501bc38fc415b0885e4db05b7a974109650e",
+    "navigation-ortho-tests.log": "f9ac7fcf9d314a7dfeb1130d15fca8b44a227d36ce4049fd40d1f7f28a9a9523",
+    "navigation-ortho-typecheck.log": "b98774fa78168962563228e0f23e48c94625703301ca249a9a95bb6a510fb934"
+  },
+  "nativeFinalSourceAttempt": {
+    "result": "unavailable",
+    "details": "Owned Vite5197 returned HTTP200 locally, but T3 native preview localhost navigation failed and the page reported chrome-error://chromewebdata/. A retry also failed. No final-source native run is claimed. Owned server stopped and temporary public fixture copy removed.",
+    "priorNativeSource": "74ea3eb181650e18f8b665e0b3e2fc61e3418167",
+    "priorReceipt": "recovery-receipt.json"
+  },
+  "nativeGapResolvedBy": "windows-native-final.json: exact-source controlled Windows Chrome DPR1/2, physical console NVIDIA Blackwell"
+}

@@ -8,8 +8,22 @@ import type { RelativeToEyeSnapshot } from './relative-to-eye.js';
 interface RteCamera {
   getRelativeToEyeFrame?: () => {
     snapshot(): RelativeToEyeSnapshot;
+    isAvailable?: () => boolean;
+    getInvalidationEpoch?: () => number;
     getRenderEpoch(): number;
   };
+}
+
+/** Unavailable RTE frames cannot project either CPU or GPU picks (#7493). */
+export function isPointRteFrameAvailable(camera: Camera): boolean {
+  const rteCamera: RteCamera = camera;
+  return rteCamera.getRelativeToEyeFrame?.().isAvailable?.() !== false;
+}
+
+/** Ordinary navigation leaves this unchanged; an unavailable frame advances it. */
+export function pointRteInvalidationEpoch(camera: Camera): number | undefined {
+  const rteCamera: RteCamera = camera;
+  return rteCamera.getRelativeToEyeFrame?.().getInvalidationEpoch?.();
 }
 
 /** Test doubles predating #5049 have no RTE frame; production Camera does. */

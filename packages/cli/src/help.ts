@@ -84,6 +84,7 @@ export function buildHelp(version: string): string {
               serve --config F --cert F --key F [--port N]  Authenticated HTTPS relay (env credential references only)
               assets [--profile F] [--artifact schema|context|shapes|vocabulary|profile]  Generate profile artifacts
     flow      <run|resume|review|describe|validate> <graph.flow.json> [<file.ifc>] [--input k=v] [--out F] [--checkpoint F]  Evaluate a node graph headlessly; pause and resume reviewed AI proposals
+              bcf list [--page-size N] [--after CURSOR] | check <entryId> --allow-host HOST [--token-env NAME] [--confirm-owner-stopped] [--confirm-full-read-access] | reconcile <entryId> --guid GUID | confirm-absent <entryId>  Inspect and reconcile durable BCF writes
 
   Options:
     --help, -h           Show help

@@ -10,9 +10,9 @@
  *  - `fail`   — the check ran and found a violation.
  *  - `error`  — the check could NOT be run (unreadable model, unreadable or
  *               unparsable IDS/rules file, an IDS document declaring zero
- *               specifications, or — for `rules` — a `.rules.json` rule
- *               the `@ifc-lite/rules` engine itself could not evaluate,
- *               `SpecificationResult.error` set). An unevaluable check must
+ *               specifications, or a `.rules.json` rule or IDS specification
+ *               the `@ifc-lite/rules` or `@ifc-lite/ids` engine itself could
+ *               not evaluate, `SpecificationResult.error` set). An unevaluable check must
  *               never be folded into `pass`: a delivery report that
  *               silently skips a rule and still reads as clean is worse
  *               than no report.
@@ -144,6 +144,7 @@ export interface IdsCheckResult {
   passedSpecifications?: number;
   failedSpecifications?: number;
   notApplicableSpecifications?: number;
+  erroredSpecifications?: number;
   totalEntities?: number;
   passedEntities?: number;
   failedEntities?: number;
@@ -161,6 +162,8 @@ export interface IdsCheckResult {
  */
 interface IdsSpecificationResult {
   status?: 'pass' | 'fail' | 'not_applicable';
+  /** Set when the validator could not evaluate the specification (status is then 'fail'; #7482). */
+  error?: string;
   entityResults: Array<{ passed: boolean }>;
   /** Present whenever the specification declares `minOccurs`/`maxOccurs`. */
   cardinalityResult?: {
@@ -200,6 +203,7 @@ interface IdsReportSummary {
   passedSpecifications: number;
   failedSpecifications: number;
   notApplicableSpecifications: number;
+  erroredSpecifications: number;
   totalEntities: number;
   passedEntities: number;
   failedEntities: number;
@@ -228,6 +232,7 @@ function summarizeIdsReport(report: IdsValidateReport): IdsReportSummary {
   let passedSpecifications = 0;
   let failedSpecifications = 0;
   let notApplicableSpecifications = 0;
+  let erroredSpecifications = 0;
   let totalEntities = 0;
   let passedEntities = 0;
   let failedEntities = 0;
@@ -239,7 +244,10 @@ function summarizeIdsReport(report: IdsValidateReport): IdsReportSummary {
       else failedEntities++;
     }
 
-    if (spec.status === 'fail') {
+    if (spec.error !== undefined) {
+      // Could not be evaluated: its 'fail' status is not a violation.
+      erroredSpecifications++;
+    } else if (spec.status === 'fail') {
       failedSpecifications++;
     } else if (isVacuousSpecification(spec)) {
       notApplicableSpecifications++;
@@ -253,6 +261,7 @@ function summarizeIdsReport(report: IdsValidateReport): IdsReportSummary {
     passedSpecifications,
     failedSpecifications,
     notApplicableSpecifications,
+    erroredSpecifications,
     totalEntities,
     passedEntities,
     failedEntities,
@@ -270,7 +279,9 @@ function summarizeIdsReport(report: IdsValidateReport): IdsReportSummary {
  * pass nor fail (`notApplicableSpecifications`) — if EVERY specification
  * lands there (nothing was definitively satisfied OR violated), the check
  * reports `error` rather than a `pass` that would rest on zero actual
- * evidence.
+ * evidence. A specification the validator could not evaluate (its `error`
+ * set) makes the check `error` too, as an unevaluable rule does in
+ * `runRulesCheck`, with the validator's reasons.
  */
 export async function runIdsCheck(modelPath: string, store: IfcDataStore, idsPath: string): Promise<IdsCheckResult> {
   const base = { type: 'ids' as const, model: modelPath, source: idsPath };
@@ -306,6 +317,12 @@ export async function runIdsCheck(modelPath: string, store: IfcDataStore, idsPat
   const s = summarizeIdsReport(report);
   if (s.totalSpecifications === 0) {
     return { ...base, status: 'error', error: 'declares zero specifications', ...s };
+  }
+
+  if (s.erroredSpecifications > 0) {
+    const reasons = report.specificationResults.flatMap(spec => (spec.error !== undefined ? [spec.error] : []));
+    const error = `${s.erroredSpecifications} of ${s.totalSpecifications} specification(s) could not be evaluated (${reasons.join('; ')})`;
+    return { ...base, status: 'error', ...s, error };
   }
 
   const evaluated = s.passedSpecifications + s.failedSpecifications;

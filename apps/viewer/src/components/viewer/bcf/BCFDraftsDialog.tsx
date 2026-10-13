@@ -15,7 +15,7 @@ import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/toast';
 import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
-import { sanitizeFilename } from '@/lib/export/download';
+import { bcfExportFilename } from '@/lib/export/download';
 import { publishBcfArchive } from '@/lib/bcf-drafts/archive-activity';
 import { DraftArchiveError, exportDraftArchive, importDraftArchive } from '@/lib/bcf-drafts/draft-archive';
 import { mergeDraftTopics, type DraftEditResult } from '@/lib/bcf-drafts/draft-edit';
@@ -86,7 +86,7 @@ export function BCFDraftsDialog({ open, onOpenChange }: { open: boolean; onOpenC
   const exportArchive = async () => {
     if (!batch) return;
     try {
-      await publishBcfArchive(batch.name, `${sanitizeFilename(batch.name)}.bcfzip`, () => exportDraftArchive(batch, author));
+      await publishBcfArchive(batch.name, bcfExportFilename(batch.name), () => exportDraftArchive(batch, author));
     } catch (error) {
       console.error('[BCF drafts] Archive export failed', error);
       toast.error(error instanceof DraftArchiveError ? t(ARCHIVE_REFUSALS[error.direction][error.reason])

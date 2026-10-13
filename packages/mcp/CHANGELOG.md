@@ -1,5 +1,11 @@
 # @ifc-lite/mcp
 
+## 0.26.0
+
+### Minor Changes
+
+- [#7465](https://github.com/LTplus-AG/ifc-lite/pull/7465) [`607f2de`](https://github.com/LTplus-AG/ifc-lite/commit/607f2de78fa5703a605bd5cdffe59a66168d72dd) Thanks [@louistrue](https://github.com/louistrue)! - Persist Flow BCF create intents per stable principal and expose capability-gated publication check, reconciliation, and explicit absent confirmation tools.
+
 ## 0.25.0
 
 ### Minor Changes

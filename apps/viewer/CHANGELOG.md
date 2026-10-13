@@ -1,5 +1,12 @@
 # @ifc-lite/viewer
 
+## 5.1.3
+
+### Patch Changes
+
+- Updated dependencies [[`607f2de`](https://github.com/LTplus-AG/ifc-lite/commit/607f2de78fa5703a605bd5cdffe59a66168d72dd)]:
+  - @ifc-lite/mcp@0.26.0
+
 ## 5.1.2
 
 ### Patch Changes

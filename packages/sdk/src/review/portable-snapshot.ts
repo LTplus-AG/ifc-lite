@@ -73,7 +73,7 @@ export async function readPortableReview(captures: NativeReviewCaptures, liveMod
   // validation-report collection, including an explicit empty one, does.
   const present = (source: string) => source === 'clash' ? analyses.some(saved => saved.kind === 'clash')
     : source === 'validation' ? analyses.some(saved => saved.kind === 'validation') || frozen.savedValidationReports !== undefined : false;
-  const project = (owners: readonly PortableOwner[]) => {
+  const project = (owners: readonly PortableOwner[], unavailable: ReadonlyMap<string, 'model-edited' | 'identity-unavailable'> = new Map()) => {
     const findings: ReviewFinding[] = [], runs: FindingRun[] = [], bindings: Array<{ id: string; format: string; state: string; refusal: string | null }> = [];
     const append = (result: FindingSourceResult, format: string, id: string, refusal: string | null) => {
       for (const run of result.runs) runs.push(run);
@@ -85,14 +85,14 @@ export async function readPortableReview(captures: NativeReviewCaptures, liveMod
     };
     for (const saved of analyses) {
       if (!selected.includes(saved.kind === 'clash' ? 'clash' : 'validation')) continue;
-      const refusal = analysisBinding(saved, owners);
+      const refusal = analysisBinding(saved, owners, unavailable);
       bindings.push({ id: saved.id, format: 'saved-analysis-run', state: refusal ? 'unbound' : 'bound', refusal });
       const result = projectPortableAnalysis(saved, refusal ? [] : owners);
       append(result, 'saved-analysis-run', saved.id, refusal);
     }
     for (const saved of reports) {
       if (!selected.includes('validation')) continue;
-      const refusal = validationBinding(saved, owners);
+      const refusal = validationBinding(saved, owners, unavailable);
       bindings.push({ id: saved.id, format: 'saved-validation-report', state: refusal ? 'unbound' : 'bound', refusal });
       const result = projectPortableValidation(saved, refusal ? [] : owners);
       append(result, 'saved-validation-report', saved.id, refusal);

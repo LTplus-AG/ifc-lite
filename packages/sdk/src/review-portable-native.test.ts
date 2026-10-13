@@ -5,7 +5,8 @@ import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { createClashEngine, type ClashElement } from '@ifc-lite/clash';
 import { expect, it } from 'vitest';
-import { IfcParser } from '@ifc-lite/parser';
+import { IfcParser, createSyntheticDataStore } from '@ifc-lite/parser';
+import { MutablePropertyView } from '@ifc-lite/mutations';
 import { parseIDS, validateIDS } from '@ifc-lite/ids';
 import { createDataAccessor } from '@ifc-lite/ids/bridge';
 import * as review from './review.js';
@@ -119,13 +120,15 @@ it('#7372 legacy, mismatched source and conflicting GUID remain historical and u
     expect(result.bounds.nativeCoverageComplete).toBe(false);
   }
 }, 20_000);
-it('#7372 duplicate source owners, absent table, capacity and known credentials refuse whole reads', async () => {
+it('#7372 duplicate source owners, capacity and credentials refuse while absent identity remains unbound', async () => {
   const f = await fixture();
   const request = { savedAnalysisRuns: [f.analysis] };
   const duplicate = await f.read(request, [f.model, { ...f.model, id: 'duplicate-loaded-source' }]);
   expect(duplicate.sources[0]).toMatchObject({ state: 'unavailable', refusal: 'source-ambiguous' });
   const absent = await f.read(request, [{ ...f.model, identityTable: undefined }]);
-  expect(absent.sources[0]).toMatchObject({ refusal: 'identity-unavailable' });
+  expect(absent.bindings[0]).toMatchObject({ state: 'unbound', refusal: 'identity-unavailable' });
+  expect(absent.records[0].value).toEqual(f.analysis);
+  expect(absent.findings.every(finding => finding.lifecycle === 'not-evaluated')).toBe(true);
   const zero = await readPortableReview(new NativeReviewCaptures(0), () => [f.model], request, () => true);
   expect(zero.sources.find(source => source.source === 'validation')).toMatchObject({ refusal: 'work-bound' });
   f.captures.enrollCredentials([f.analysis.models[0].name]);
@@ -417,3 +420,100 @@ it('#7372 unsupported manual projection retains unanswered history without certi
   expect(result.findings).toEqual([]);
   expect(result.bounds).toMatchObject({ knownFindings: null, omittedFindings: null, presentationComplete: false, nativeCoverageComplete: false });
 }, 20_000);
+
+function syntheticReviewPeer(): NativeReviewModel {
+  // Public producer used by canonical GLB/point-cloud stores: real tables and
+  // EMPTY_SOURCE_BYTES, not a fake byteLength getter or a mocked parser result.
+  const store = createSyntheticDataStore({ schemaVersion: 'IFC4', fileSize: 0,
+    entities: [{ expressId: 1, type: 'IfcGeographicElement', name: 'Imported point-cloud entity',
+      globalId: '0SyntheticCloudPeer0000' }] });
+  return { id: 'source-free-peer', name: 'Synthetic imported cloud', owner: store, store, source: store.source,
+    mutationView: () => null, identityTable: createNativeReviewIdentityTable(store),
+    expressIdOf: GlobalId => store.entities.getExpressIdByGlobalId(GlobalId),
+    globalIdOf: id => store.entities.getGlobalId(id) };
+}
+
+it('#7372 unrelated edited authored and source-free peers preserve supplied native history', async () => {
+  const a = await fixture('building-architecture.ifc', 'eligible-A'), b = await fixture('building-architecture-rev-b.ifc', 'edited-B');
+  const view = new MutablePropertyView(null, b.model.id);
+  view.setAttribute(b.store.entities.expressId[0], 'Name', 'Actual B overlay edit');
+  expect(view.getMutationRevision()).toBeGreaterThan(0);
+  const edited: NativeReviewModel = { ...b.model, mutationView: () => view }, synthetic = syntheticReviewPeer();
+  expect(synthetic.source.byteLength).toBe(0);
+  expect(synthetic.identityTable?.count).toBe(1);
+  const models = [a.model, edited, synthetic];
+  const result = await a.read({ savedAnalysisRuns: [a.analysis, b.analysis] }, models);
+  expect(result.records.map(record => record.value)).toEqual([a.analysis, b.analysis]);
+  expect(result.bindings.find(binding => binding.id === a.analysis.id)).toMatchObject({ state: 'bound', refusal: null });
+  expect(result.bindings.find(binding => binding.id === b.analysis.id)).toMatchObject({ state: 'unbound', refusal: 'model-edited' });
+  const AGuids = result.findings.filter(finding => finding.elements.some(element => element.modelId === a.model.id))
+    .flatMap(finding => finding.elements.map(element => element.globalId)).sort();
+  expect(AGuids).toEqual(a.failures.findings.flatMap(finding => finding.elements.map(element => element.globalId)).sort());
+  expect(result.findings.every(finding => finding.lifecycle === 'not-evaluated')).toBe(true);
+  expect(result.bounds.nativeCoverageComplete).toBe(false);
+  expect(createHash('sha256').update(a.store.source.materialize()).digest('hex')).toBe(a.hash);
+  expect(createHash('sha256').update(b.store.source.materialize()).digest('hex')).toBe(b.hash);
+  const scoped = await a.read({ savedAnalysisRuns: [a.analysis], modelIds: [a.model.id] }, models);
+  expect(scoped.bindings[0]).toMatchObject({ state: 'bound' });
+  expect(scoped.findings.map(finding => finding.lineage)).toEqual(result.findings
+    .filter(finding => finding.elements.some(element => element.modelId === a.model.id)).map(finding => finding.lineage));
+}, 30_000);
+
+for (const unavailable of ['edited', 'identity'] as const) {
+  it(`#7372 ${unavailable} same-source peer cannot disappear from duplicate-source proof`, async () => {
+    const a = await fixture('building-architecture.ifc', 'same-A'), b = await fixture('building-architecture.ifc', 'same-B');
+    const view = new MutablePropertyView(null, b.model.id);
+    view.setAttribute(b.store.entities.expressId[0], 'Name', 'Same source with actual edit');
+    const peer: NativeReviewModel = unavailable === 'edited'
+      ? { ...b.model, mutationView: () => view } : { ...b.model, identityTable: undefined };
+    const result = await a.read({ savedAnalysisRuns: [a.analysis] }, [a.model, peer]);
+    expect(result.sources[0]).toMatchObject({ state: 'unavailable', refusal: 'source-ambiguous' });
+    expect(result.bounds.knownFindings).toBeNull(); expect(result.findings).toEqual([]);
+  }, 30_000);
+}
+
+it('#7372 identity-less distinct authored peer leaves only its own native record unbound', async () => {
+  const a = await fixture('building-architecture.ifc', 'identity-A'), b = await fixture('building-architecture-rev-b.ifc', 'identity-B');
+  const peer = { ...b.model, identityTable: undefined };
+  const result = await a.read({ savedValidationReports: [a.saved, b.saved] }, [a.model, peer]);
+  expect(result.records.map(record => record.value)).toEqual([a.saved, b.saved]);
+  expect(result.bindings.find(binding => binding.id === a.saved.id)).toMatchObject({ state: 'bound' });
+  expect(result.bindings.find(binding => binding.id === b.saved.id)).toMatchObject({ state: 'unbound', refusal: 'identity-unavailable' });
+}, 30_000);
+
+for (const change of ['eligibility', 'source', 'revision', 'membership', 'permission'] as const) {
+  it(`#7372 excluded-peer ${change} change during actual source hashing refuses the whole lease`, async () => {
+    const a = await fixture('building-architecture.ifc', 'lease-A'), b = await fixture('building-architecture-rev-b.ifc', 'lease-B');
+    const view = new MutablePropertyView(null, b.model.id);
+    view.setAttribute(b.store.entities.expressId[0], 'Name', 'Initial excluded B edit');
+    let peer: NativeReviewModel = change === 'source' ? syntheticReviewPeer()
+      : change === 'eligibility' ? { ...b.model, identityTable: undefined }
+      : { ...b.model, mutationView: () => view };
+    let live = [a.model, peer]; const permitted = new Set(live.map(model => model.id));
+    const source = a.store.source, original = source.withMaterializedAsync.bind(source);
+    let release: () => void = () => { /* No owned hash promise exists yet. */ };
+    let pending: ReturnType<typeof readPortableReview> | undefined;
+    try {
+      let reached: () => void = () => { throw new Error('Actual hash barrier not installed'); };
+      const ready = new Promise<void>(resolve => { reached = resolve; });
+      const held = new Promise<void>(resolve => { release = resolve; });
+      source.withMaterializedAsync = async fn => { const result = await original(fn); reached(); await held; return result; };
+      pending = readPortableReview(a.captures, () => live,
+        { sources: ['validation'], savedAnalysisRuns: [a.analysis] }, id => permitted.has(id));
+      // A pre-hash domain refusal must fail promptly rather than leave this
+      // observer awaiting a hash callback that the old policy never starts.
+      const started = await Promise.race([ready.then(() => 'held' as const), pending.then(() => 'settled' as const)]);
+      expect(started).toBe('held');
+      if (change === 'eligibility') { peer = { ...peer, identityTable: createNativeReviewIdentityTable(b.store) }; live = [a.model, peer]; }
+      else if (change === 'source') { peer = { ...peer, owner: b.store, store: b.store, source: b.store.source }; live = [a.model, peer]; }
+      else if (change === 'revision') view.setAttribute(b.store.entities.expressId[0], 'Name', 'Later excluded B edit');
+      else if (change === 'membership') live = [a.model];
+      else permitted.delete(peer.id);
+      release(); const result = await pending;
+      expect(result.sources[0]).toMatchObject({ state: 'unavailable', refusal: 'target-changed' });
+      expect(result.records).toEqual([]); expect(result.findings).toEqual([]);
+      expect(result.bounds.knownFindings).toBeNull();
+      expect(createHash('sha256').update(a.store.source.materialize()).digest('hex')).toBe(a.hash);
+    } finally { release(); if (pending) await Promise.allSettled([pending]); source.withMaterializedAsync = original; }
+  }, 30_000);
+}

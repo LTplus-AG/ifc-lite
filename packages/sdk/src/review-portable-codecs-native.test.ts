@@ -143,3 +143,20 @@ it('#7372 SDK saved finding projection preserves actual native failure identity 
   expect(countOnly?.findings).toEqual([]);
   expect(countOnly?.runs[0]).toMatchObject({ temporal: 'historical', complete: false });
 });
+
+// #7372 / review4261689708: public validator diagnoses the hash constraint.
+it('#7372 public native report codec identifies malformed full source hashes', () => {
+  const valid = validation();
+  valid.snapshot.reportModels = [{ name: 'building-architecture.ifc', fingerprint: 'legacy-fingerprint', sourceContentHash: sourceHash }];
+  expect(portable.validateSavedReport(valid)).toBe(true);
+  for (const hash of [sourceHash.toUpperCase(), `sha256:${sourceHash}`]) {
+    const invalid = structuredClone(valid);
+    invalid.snapshot.reportModels = [{ name: 'building-architecture.ifc', fingerprint: 'legacy-fingerprint', sourceContentHash: hash }];
+    expect(portable.validateSavedReport(invalid)).toBe(false);
+    if (invalid.snapshot.kind !== 'ids-report') throw new Error('Actual native IDS snapshot required');
+    const errors: { path: string; message: string }[] = [];
+    portable.validateIdsReportBlock({ ...invalid.snapshot }, 'snapshot', errors);
+    expect(errors).toContainEqual({ path: 'snapshot.reportModels',
+      message: 'expected non-empty model names, optional non-empty fingerprints and optional lowercase 64-hex sourceContentHash' });
+  }
+});

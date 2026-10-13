@@ -69,5 +69,5 @@ export function validateReportProvenance(block: Record<string, unknown>, at: str
     return typeof m.name === 'string' && m.name.trim().length > 0
       && (m.fingerprint === undefined || (typeof m.fingerprint === 'string' && m.fingerprint.length > 0))
       && (m.sourceContentHash === undefined || isFullSourceSHA256(m.sourceContentHash));
-  }))) errors.push({ path: `${at}.reportModels`, message: 'expected non-empty model names and optional non-empty fingerprints' });
+  }))) errors.push({ path: `${at}.reportModels`, message: 'expected non-empty model names, optional non-empty fingerprints and optional lowercase 64-hex sourceContentHash' });
 }

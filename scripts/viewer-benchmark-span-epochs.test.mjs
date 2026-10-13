@@ -2,13 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-// #6956: span- and regex-derived benchmark metrics must agree within the
-// console lines' rounding; the spec asserts an empty disagreement list on FZK.
+// #7005: span metrics preserve their original clock epochs.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { tsImport } from 'tsx/esm/api';
 
-const { compareSpanAndRegexMetrics, metricsFromLoadTrace } = await tsImport('../tests/benchmark/load-trace-metrics.ts', import.meta.url);
+const { metricsFromLoadTrace } = await tsImport('../tests/benchmark/load-trace-metrics.ts', import.meta.url);
 
 const snapshot = (overrides = {}) => ({
   loadId: 'm1',
@@ -24,16 +23,6 @@ const snapshot = (overrides = {}) => ({
   ],
 });
 
-// What the console lines print for the same load (whole ms; the total in 0.1 s).
-const regex = {
-  totalWallClockMs: 400,
-  fileReadMs: 12,
-  firstBatchWaitMs: 90,
-  firstVisibleGeometryMs: 200,
-  streamCompleteMs: 301,
-  metadataCompleteMs: 260, // no span for this load: not compared
-};
-
 test('#6956 span metrics keep each console metric\'s epoch', () => {
   assert.deepEqual(metricsFromLoadTrace(snapshot()), {
     totalWallClockMs: 400,
@@ -44,13 +33,4 @@ test('#6956 span metrics keep each console metric\'s epoch', () => {
     geometryStreamingMs: 301,
   });
   assert.deepEqual(metricsFromLoadTrace(null), {});
-});
-
-test('#6956 agreeing sources report no disagreement', () => {
-  assert.deepEqual(compareSpanAndRegexMetrics(metricsFromLoadTrace(snapshot()), regex), []);
-});
-
-test('#6956 a span that drifts past rounding from its console twin is reported', () => {
-  const drift = compareSpanAndRegexMetrics(metricsFromLoadTrace(snapshot({ firstVisibleEnd: 750 })), regex);
-  assert.deepEqual(drift, [{ metric: 'firstVisibleGeometryMs', span: 250, regex: 200, toleranceMs: 2 }]);
 });

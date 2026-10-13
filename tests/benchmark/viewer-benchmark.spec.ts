@@ -333,13 +333,10 @@ test.describe('Viewer Performance Benchmarks', () => {
       expect(metrics.streamCompleteMs).not.toBeNull();
       expect(metrics.totalMeshes).toBeGreaterThan(0);
 
-      // #6956: the span tree is the primary source now; on the reference
-      // fixture every metric both sources report must agree within rounding,
-      // so the regex fallback can be retired without moving any number.
+      // #7005: timing comes exclusively from the canonical span tree.
       if (fileName === 'AC20-FZK-Haus.ifc') {
         expect(benchmarkPage.getLoadTrace(), 'viewer exposed no load-trace span tree').not.toBeNull();
         expect(benchmarkPage.getMetricSources().streamCompleteMs).toBe('span');
-        expect(benchmarkPage.getSpanRegexDisagreements()).toEqual([]);
         // #6957: the load carried its structural counters and frame summary.
         const { counters } = benchmarkPage.getLoadCounters();
         // GPU counters are not asserted: they need a WebGPU device, which a

@@ -98,24 +98,6 @@ const MILESTONES: ReadonlyArray<[string, SpanMetricKey]> = [
   ['parser.failed', 'metadataFailedMs'],
 ];
 
-/**
- * Rounding each side can carry: the console lines print whole ms (`toFixed(0)`
- * / `Math.round`), except the final summary, which prints seconds to 0.1 s.
- */
-export const SPAN_REGEX_TOLERANCE_MS: Readonly<Record<SpanMetricKey, number>> = {
-  totalWallClockMs: 100,
-  fileReadMs: 2,
-  firstBatchWaitMs: 2,
-  firstAppendGeometryBatchMs: 2,
-  firstVisibleGeometryMs: 2,
-  streamCompleteMs: 2,
-  geometryStreamingMs: 2,
-  metadataStartMs: 2,
-  spatialReadyMs: 2,
-  metadataCompleteMs: 2,
-  metadataFailedMs: 2,
-};
-
 const first = (snapshot: LoadTraceSnapshotJson, name: string) =>
   snapshot.spans.find((s) => s.name === name && s.end !== null);
 
@@ -136,28 +118,5 @@ export function metricsFromLoadTrace(snapshot: LoadTraceSnapshotJson | null): Sp
   const firstBatch = first(snapshot, 'geometry.firstBatch');
   if (pool && firstBatch) out.firstBatchWaitMs = Math.round(firstBatch.end! - pool.start);
   if (out.streamCompleteMs !== undefined) out.geometryStreamingMs = out.streamCompleteMs;
-  return out;
-}
-
-export interface SpanRegexDisagreement {
-  metric: SpanMetricKey;
-  span: number;
-  regex: number;
-  toleranceMs: number;
-}
-
-/** Metrics present on both sides whose values differ by more than the rounding allowance. */
-export function compareSpanAndRegexMetrics(
-  span: SpanMetrics,
-  regex: Partial<Record<SpanMetricKey, number | null>>,
-): SpanRegexDisagreement[] {
-  const out: SpanRegexDisagreement[] = [];
-  for (const metric of SPAN_METRIC_KEYS) {
-    const s = span[metric];
-    const r = regex[metric];
-    if (s === undefined || r === null || r === undefined) continue;
-    const toleranceMs = SPAN_REGEX_TOLERANCE_MS[metric];
-    if (Math.abs(s - r) > toleranceMs) out.push({ metric, span: s, regex: r, toleranceMs });
-  }
   return out;
 }

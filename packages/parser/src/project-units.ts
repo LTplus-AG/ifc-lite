@@ -23,7 +23,6 @@ import { EntityExtractor } from './entity-extractor.js';
 import { getReference } from './attribute-helpers.js';
 import type { IfcSourceBytes } from './source-bytes.js';
 import {
-  composeDerived,
   conversionUnitSymbol,
   currencySymbol,
   measureUnit,
@@ -31,7 +30,7 @@ import {
   type MeasureUnit,
 } from './project-units-symbols.js';
 import { CONVERSION_BASED_UNIT_FACTORS } from './unit-extractor.js';
-import { chargeRead, enterUnit, newUnitWalk, type UnitWalk } from './project-unit-walk.js';
+import { chargeRead, composeWithinLimit, enterDerived, enterUnit, leaveDerived, newUnitWalk, once, type UnitWalk } from './project-unit-walk.js';
 
 export type { MeasureUnit };
 export { measureUnit };
@@ -120,9 +119,10 @@ interface DeclaredUnit extends Omit<UnitEntry, 'resolved'> {
 
 /** Resolve a single unit entity by expressId (used for the assignment loop and
  *  for per-property / per-quantity `Unit` overrides). One bounded walk per
- *  call, on both read paths: a cycle or a chain past the depth cap is
- *  unresolved, never a throw; on the parsed-source path a walk past its read
- *  budget is too, while native callers keep their own read limit (#7547). */
+ *  call: a cycle is unresolved, never a throw. On the parsed-source path so is
+ *  a chain past the depth cap or a unit whose charged reads run past the budget,
+ *  while native callers keep their own read limit (#7547). A flat derived unit,
+ *  as the schema types it, is never charged. */
 export function resolveUnitByRef(
   extractor: EntityExtractor,
   entityIndex: EntityByIdIndexLike,
@@ -140,8 +140,8 @@ function resolveUnit(extractor: EntityExtractor, entityIndex: EntityByIdIndexLik
   return entry?.resolved ? { ...entry, resolved: entry.resolved } : null;
 }
 
-/** The only way into {@link resolveDeclaredUnit}: a cycle or a chain past the
- *  depth cap is refused before anything is read (#7547). */
+/** The only way into {@link resolveDeclaredUnit}: a cycle, or on the parsed-source
+ *  path a chain past the depth cap, is refused before anything is read (#7547). */
 function walkDeclaredUnit(extractor: EntityExtractor, entityIndex: EntityByIdIndexLike,
   ref: number, readEntity: UnitEntityReader | undefined, walk: UnitWalk): DeclaredUnit | null {
   if (!enterUnit(walk, ref)) return null;
@@ -159,9 +159,10 @@ function resolveDeclaredUnit(
   readEntity: UnitEntityReader | undefined,
   walk: UnitWalk,
 ): DeclaredUnit | null {
-  if (!chargeRead(walk)) return null;
   // @raw-entity-enumeration-ok resolve a declared unit from the parsed source index
   const entRef = entityIndex.byId.get(ref);
+  // Free at the top level and for a named unit in the top-level unit; else charged before the read (#7547).
+  if (!chargeRead(walk, entRef, 'unit')) return null;
   const entity = readEntity ? readEntity(ref) : entRef ? extractor.extractEntity(entRef) : null;
   if (!entity) return null;
   const attrs = entity.attributes ?? [];
@@ -207,6 +208,7 @@ function resolveDeclaredUnit(
     }
     case 'IFCDERIVEDUNIT': {
       // [0]=Elements (list of refs), [1]=UnitType
+      enterDerived(walk);
       const unitType = cleanEnum(attrs[1]);
       const elemRefs = Array.isArray(attrs[0]) ? attrs[0] : [];
       const parts: Array<[string, number]> = [];
@@ -223,7 +225,9 @@ function resolveDeclaredUnit(
           incomplete = true; // a factor we cannot read: the product is not this unit's scale (#4833)
         }
       }
-      const symbol = composeDerived(parts);
+      leaveDerived(walk);
+      const symbol = composeWithinLimit(parts); // undefined past the engine's string limit (#7547)
+      if (symbol === undefined) return { unitType, resolved: null, monetary: false };
       if (symbol.length === 0) return null;
       return { unitType, resolved: incomplete ? null : { symbol, siScale: scale }, monetary: false };
     }
@@ -244,16 +248,17 @@ function resolveDerivedElement(
   readEntity: UnitEntityReader | undefined,
   walk: UnitWalk,
 ): { symbol: string; unitScale: number; exponent: number } | null {
-  if (!chargeRead(walk)) return null;
   // @raw-entity-enumeration-ok resolve an element of a parsed derived unit
   const ref = entityIndex.byId.get(elemRef);
+  if (!chargeRead(walk, ref, 'element')) return null;
   const elem = readEntity ? readEntity(elemRef) : ref ? extractor.extractEntity(ref) : null;
   if (!elem || elem.type.toUpperCase() !== 'IFCDERIVEDUNITELEMENT') return null;
   const attrs = elem.attributes ?? [];
   const unitRef = attrs[0];
   if (typeof unitRef !== 'number') return null;
   const exponent = typeof attrs[1] === 'number' ? Math.trunc(attrs[1]) : 1;
-  const entry = resolveUnit(extractor, entityIndex, unitRef, readEntity, walk);
+  // @raw-entity-enumeration-ok a named unit in the top-level unit is resolved once per walk (#7547)
+  const entry = once(walk, entityIndex.byId.get(unitRef), 'unit', () => resolveUnit(extractor, entityIndex, unitRef, readEntity, walk));
   if (!entry) return null;
   return { symbol: entry.resolved.symbol, unitScale: entry.resolved.siScale, exponent };
 }
@@ -266,10 +271,10 @@ function conversionFactorScale(
   withOffset: boolean,
   walk: UnitWalk,
 ): number | null {
-  if (!chargeRead(walk)) return null;
   // @raw-entity-enumeration-ok read the source measure in a conversion-based unit
   const ref = entityIndex.byId.get(measureRef);
-  const measure = readEntity ? readEntity(measureRef) : ref ? extractor.extractEntity(ref) : null;
+  if (!chargeRead(walk, ref, 'factor')) return null;
+  const measure = readEntity ? readEntity(measureRef) : ref ? once(walk, ref, 'factor', () => extractor.extractEntity(ref)) : null;
   if (!measure || measure.type.toUpperCase() !== 'IFCMEASUREWITHUNIT') return null;
   const attrs = measure.attributes ?? [];
   // [0]=ValueComponent (number or [type, number]), [1]=UnitComponent
@@ -283,10 +288,10 @@ function conversionFactorScale(
   // (#4690). A component that is not an IfcSIUnit is taken at 1.0, as before:
   // the Rust resolver follows it, this reader does not.
   const compRef = attrs[1];
-  if (!chargeRead(walk)) return null;
   // @raw-entity-enumeration-ok follow the source unit component reference
   const cRef = typeof compRef === 'number' ? entityIndex.byId.get(compRef) : undefined;
-  const comp = readEntity && typeof compRef === 'number' ? readEntity(compRef) : cRef ? extractor.extractEntity(cRef) : null;
+  if (!chargeRead(walk, cRef, 'factorUnit')) return null;
+  const comp = readEntity && typeof compRef === 'number' ? readEntity(compRef) : cRef ? once(walk, cRef, 'factorUnit', () => extractor.extractEntity(cRef)) : null;
   if (!comp) return null;
   if (comp.type.toUpperCase() !== 'IFCSIUNIT') return readEntity || withOffset ? null : value;
   const cAttrs = comp.attributes ?? [];

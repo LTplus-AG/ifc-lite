@@ -1,0 +1,71 @@
+$ python -I -m ifcopenshell.validate --rules <file>   (IfcOpenShell 0.8.4, Python 3.13.8)
+
+== velocity-2.ifc
+Validating velocity-2.ifc
+No validation issues found.
+(exit 0)
+
+== velocity-128.ifc
+Validating velocity-128.ifc
+No validation issues found.
+(exit 0)
+
+== velocity-10000.ifc
+Validating velocity-10000.ifc
+No validation issues found.
+(exit 0)
+
+== ifc2x3-past-string-limit.ifc
+Validating ifc2x3-past-string-limit.ifc
+No validation issues found.
+(exit 0)
+
+== text-factor-one-foot.ifc
+Validating text-factor-one-foot.ifc
+No validation issues found.
+(exit 0)
+
+== text-factor-1999-feet.ifc
+Validating text-factor-1999-feet.ifc
+No validation issues found.
+(exit 0)
+
+== control-nested.ifc
+Validating control-nested.ifc
+For instance:
+    #1000=IfcDerivedUnitElement(#50,1)
+                                ^^^   
+With attribute:
+    <attribute Unit: <entity IfcNamedUnit>>
+Value:
+    #50=IfcDerivedUnit((#51,#52),.LINEARVELOCITYUNIT.,$)
+Not valid
+
+(exit 1)
+
+== control-not-a-unit.ifc
+Validating control-not-a-unit.ifc
+For instance:
+    #1000=IfcDerivedUnitElement(#50,1)
+                                ^^^   
+With attribute:
+    <attribute Unit: <entity IfcNamedUnit>>
+Value:
+    #50=IfcCartesianPointList3D(((0.,0.,0.),(1.,0.,0.),(2.,0.,0.)))
+Not valid
+
+(exit 1)
+
+== control-userdefined.ifc
+Validating control-userdefined.ifc
+On instance:
+    #60=IfcDerivedUnit((#1000,#1001),.USERDEFINED.,$)
+Rule IfcDerivedUnit.WR2:
+    (unittype != IfcDerivedUnitEnum.USERDEFINED or (unittype == IfcDerivedUnitEnum.USERDEFINED and exists(self.UserDefinedType)))
+Violated by:
+    (('USERDEFINED' != 'USERDEFINED' or ('USERDEFINED' == 'USERDEFINED' and False)))
+     +  where 'USERDEFINED' = IfcDerivedUnitEnum.USERDEFINED
+     +  and   'USERDEFINED' = IfcDerivedUnitEnum.USERDEFINED
+     +  and   False = exists(None)
+     +    where None = #60=IfcDerivedUnit((#1000,#1001),.USERDEFINED.,$).UserDefinedType
+(exit 1)

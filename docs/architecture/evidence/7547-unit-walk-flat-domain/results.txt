@@ -1,0 +1,140 @@
+$ ROUNDS=0 node docs/architecture/evidence/7547-unit-walk-flat-domain/flat-domain.mjs packages/parser/.evidence-builds/main packages/parser/.evidence-builds/8b5c4006f packages/parser/.evidence-builds/head
+(stderr held only the parser's spatial-structure warnings, left out)
+
+Node v22.20.0; ROUNDS=0: results and reads only, nothing timed
+
+flat, 2 elements: m/s, the control (1 KB)
+  main       assignment: 'm/s', scale 1; 9 reads, 0.4 KB read
+             own Unit:   'm/s', scale 1; 7 reads, 0.3 KB read
+  8b5c4006f  assignment: 'm/s', scale 1; 9 reads, 0.4 KB read
+             own Unit:   'm/s', scale 1; 7 reads, 0.3 KB read
+  head       assignment: 'm/s', scale 1; 9 reads, 0.4 KB read
+             own Unit:   'm/s', scale 1; 7 reads, 0.3 KB read
+
+flat, 128 elements: the review's example (6 KB)
+  main       assignment: 257 chars 'm·m·m·m·...m·m·m·s)' 4ca9e5f63ac8, scale 1; 261 reads, 10 KB read
+             own Unit:   257 chars 'm·m·m·m·...m·m·m·s)' 4ca9e5f63ac8, scale 1; 259 reads, 10 KB read
+  8b5c4006f  assignment: declared, no scale (3 declared); 260 reads, 10 KB read
+             own Unit:   unresolved, '#60' with no scale; 258 reads, 10 KB read
+  head       assignment: 257 chars 'm·m·m·m·...m·m·m·s)' 4ca9e5f63ac8, scale 1; 135 reads, 5.3 KB read
+             own Unit:   257 chars 'm·m·m·m·...m·m·m·s)' 4ca9e5f63ac8, scale 1; 133 reads, 5.3 KB read
+
+flat, 300 elements (13 KB)
+  main       assignment: 601 chars 'm·m·m·m·...m·m·m·s)' 3653287016c0, scale 1; 605 reads, 24 KB read
+             own Unit:   601 chars 'm·m·m·m·...m·m·m·s)' 3653287016c0, scale 1; 603 reads, 23 KB read
+  8b5c4006f  assignment: declared, no scale (3 declared); 260 reads, 11 KB read
+             own Unit:   unresolved, '#60' with no scale; 258 reads, 11 KB read
+  head       assignment: 601 chars 'm·m·m·m·...m·m·m·s)' 3653287016c0, scale 1; 307 reads, 12 KB read
+             own Unit:   601 chars 'm·m·m·m·...m·m·m·s)' 3653287016c0, scale 1; 305 reads, 12 KB read
+
+flat, 10,000 elements (408 KB)
+  main       assignment: 20001 chars 'm·m·m·m·...m·m·m·s)' cbcb53aea89f, scale 1; 20,005 reads, 779 KB read
+             own Unit:   20001 chars 'm·m·m·m·...m·m·m·s)' cbcb53aea89f, scale 1; 20,003 reads, 779 KB read
+  8b5c4006f  assignment: declared, no scale (3 declared); 260 reads, 69 KB read
+             own Unit:   unresolved, '#60' with no scale; 258 reads, 69 KB read
+  head       assignment: 20001 chars 'm·m·m·m·...m·m·m·s)' cbcb53aea89f, scale 1; 10,007 reads, 398 KB read
+             own Unit:   20001 chars 'm·m·m·m·...m·m·m·s)' cbcb53aea89f, scale 1; 10,005 reads, 398 KB read
+
+flat, 100,000 elements (4,233 KB)
+  main       assignment: 200001 chars 'm·m·m·m·...m·m·m·s)' 88e83f8e5abc, scale 1; 200,005 reads, 7,944 KB read
+             own Unit:   200001 chars 'm·m·m·m·...m·m·m·s)' 88e83f8e5abc, scale 1; 200,003 reads, 7,944 KB read
+  8b5c4006f  assignment: declared, no scale (3 declared); 260 reads, 685 KB read
+             own Unit:   unresolved, '#60' with no scale; 258 reads, 685 KB read
+  head       assignment: 200001 chars 'm·m·m·m·...m·m·m·s)' 88e83f8e5abc, scale 1; 100,007 reads, 4,135 KB read
+             own Unit:   200001 chars 'm·m·m·m·...m·m·m·s)' 88e83f8e5abc, scale 1; 100,005 reads, 4,135 KB read
+
+flat, 10,000 elements over a conversion-based unit with a 255-character name (408 KB)
+  main       assignment: 2559747 chars 'LLLLLLLL...LLLLL·s)' dcdc7e03cac0, scale 1; 40,003 reads, 4,206 KB read
+             own Unit:   2559747 chars 'LLLLLLLL...LLLLL·s)' dcdc7e03cac0, scale 1; 40,001 reads, 4,206 KB read
+  8b5c4006f  assignment: declared, no scale (3 declared); 260 reads, 86 KB read
+             own Unit:   unresolved, '#60' with no scale; 258 reads, 86 KB read
+  head       assignment: 2559747 chars 'LLLLLLLL...LLLLL·s)' dcdc7e03cac0, scale 1; 10,009 reads, 398 KB read
+             own Unit:   2559747 chars 'LLLLLLLL...LLLLL·s)' dcdc7e03cac0, scale 1; 10,007 reads, 398 KB read
+
+flat, 1,000 elements, named by 1,000 properties (129 KB)
+  main       assignment: 2001 chars 'm·m·m·m·...m·m·m·s)' 085dfe42cf43, scale 1; 2,005 reads, 78 KB read
+             own Unit:   1000 of 1000: 2001 chars 'm·m·m·m·...m·m·m·s)' 085dfe42cf43, scale 1; 2,002,001 reads, 77,767 KB read
+  8b5c4006f  assignment: declared, no scale (3 declared); 260 reads, 15 KB read
+             own Unit:   1000 of 1000: unresolved, '#60' with no scale; 257,001 reads, 15,140 KB read
+  head       assignment: 2001 chars 'm·m·m·m·...m·m·m·s)' 085dfe42cf43, scale 1; 1,007 reads, 40 KB read
+             own Unit:   1000 of 1000: 2001 chars 'm·m·m·m·...m·m·m·s)' 085dfe42cf43, scale 1; 1,004,001 reads, 39,757 KB read
+
+flat, IFC2X3: 2,700 elements over one conversion-based unit with a 200,000-character name, past the string limit in one join (305 KB)
+  main       assignment: THREW RangeError: Invalid string length; 10,805 reads, 527,805 KB read
+             own Unit:   THREW RangeError: Invalid string length; 10,803 reads, 527,805 KB read
+  8b5c4006f  assignment: declared, no scale (3 declared); 260 reads, 12,527 KB read
+             own Unit:   unresolved, '#60' with no scale; 258 reads, 12,527 KB read
+  head       assignment: declared, no scale (3 declared); 2,708 reads, 301 KB read
+             own Unit:   unresolved, '#60' with no scale; 2,706 reads, 301 KB read
+
+flat, IFC2X3: the velocity shape, 2,702 elements over the same name, past the string limit in the final concatenation (306 KB)
+  main       assignment: THREW RangeError: Invalid string length; 10,811 reads, 528,002 KB read
+             own Unit:   THREW RangeError: Invalid string length; 10,809 reads, 528,002 KB read
+  8b5c4006f  assignment: declared, no scale (3 declared); 260 reads, 12,527 KB read
+             own Unit:   unresolved, '#60' with no scale; 258 reads, 12,527 KB read
+  head       assignment: declared, no scale (3 declared); 2,711 reads, 303 KB read
+             own Unit:   unresolved, '#60' with no scale; 2,709 reads, 303 KB read
+
+flat: 2,000 elements over one foot whose factor holds a 65,536-character IfcText (146 KB)
+  main       assignment: 6000 chars 'ft·ft·ft...ft·ft·s)' 402af840d8e9, scale 0.30479999999999996; 6,004 reads, 128,193 KB read
+             own Unit:   6000 chars 'ft·ft·ft...ft·ft·s)' 402af840d8e9, scale 0.30479999999999996; 6,002 reads, 128,193 KB read
+  8b5c4006f  assignment: declared, no scale (3 declared); 260 reads, 5,462 KB read
+             own Unit:   unresolved, '#60' with no scale; 258 reads, 5,462 KB read
+  head       assignment: 6000 chars 'ft·ft·ft...ft·ft·s)' 402af840d8e9, scale 0.30479999999999996; 2,008 reads, 143 KB read
+             own Unit:   6000 chars 'ft·ft·ft...ft·ft·s)' 402af840d8e9, scale 0.30479999999999996; 2,006 reads, 143 KB read
+
+flat: the same 2,000 elements, each length element over its own foot, the 1,999 feet sharing that factor (267 KB)
+  main       assignment: 6000 chars 'ft·ft·ft...ft·ft·s)' 402af840d8e9, scale 0.30479999999999996; 6,004 reads, 128,209 KB read
+             own Unit:   6000 chars 'ft·ft·ft...ft·ft·s)' 402af840d8e9, scale 0.30479999999999996; 6,002 reads, 128,209 KB read
+  8b5c4006f  assignment: declared, no scale (3 declared); 260 reads, 5,463 KB read
+             own Unit:   unresolved, '#60' with no scale; 258 reads, 5,463 KB read
+  head       assignment: 6000 chars 'ft·ft·ft...ft·ft·s)' 402af840d8e9, scale 0.30479999999999996; 4,006 reads, 262 KB read
+             own Unit:   6000 chars 'ft·ft·ft...ft·ft·s)' 402af840d8e9, scale 0.30479999999999996; 4,004 reads, 262 KB read
+
+malformed: #60 lists one element 20,000 times, over a metre with 16,000 extra $ attributes (149 KB)
+  main       assignment: 39999 chars 'm·m·m·m·...·m·m·m·m' 179a3fda88f9, scale 1; 40,005 reads, 626,543 KB read
+             own Unit:   39999 chars 'm·m·m·m·...·m·m·m·m' 179a3fda88f9, scale 1; 40,003 reads, 626,543 KB read
+  8b5c4006f  assignment: declared, no scale (3 declared); 260 reads, 4,095 KB read
+             own Unit:   unresolved, '#60' with no scale; 258 reads, 4,095 KB read
+  head       assignment: declared, no scale (3 declared); 263 reads, 157 KB read
+             own Unit:   unresolved, '#60' with no scale; 261 reads, 157 KB read
+
+nested: a fan-out of 10 levels by 4 (3 KB)
+  main       assignment: 2097151 chars 'm·m·m·m·...·m·m·m·m' 44c4c8c09d22, scale 1; 2,796,205 reads, 112,298 KB read
+             own Unit:   2097151 chars 'm·m·m·m·...·m·m·m·m' 44c4c8c09d22, scale 1; 2,796,203 reads, 112,298 KB read
+  8b5c4006f  assignment: not declared, the SI default 'm/s' shown (2 declared); 260 reads, 11 KB read
+             own Unit:   unresolved, '#60' with no scale; 258 reads, 11 KB read
+  head       assignment: not declared, the SI default 'm/s' shown (2 declared); 265 reads, 11 KB read
+             own Unit:   unresolved, '#60' with no scale; 263 reads, 11 KB read
+
+nested: 10,000 elements, each naming one derived unit of 4 metres (413 KB)
+  main       assignment: 79999 chars 'm·m·m·m·...·m·m·m·m' 9e2fce9b859e, scale 1; 100,005 reads, 4,084 KB read
+             own Unit:   79999 chars 'm·m·m·m·...·m·m·m·m' 9e2fce9b859e, scale 1; 100,003 reads, 4,084 KB read
+  8b5c4006f  assignment: declared, no scale (3 declared); 260 reads, 70 KB read
+             own Unit:   unresolved, '#60' with no scale; 258 reads, 70 KB read
+  head       assignment: declared, no scale (3 declared); 10,261 reads, 413 KB read
+             own Unit:   unresolved, '#60' with no scale; 10,259 reads, 413 KB read
+
+nested: 1,000 elements, each naming one derived unit of 1,000 metres (86 KB)
+  main       assignment: 1999999 chars 'm·m·m·m·...·m·m·m·m' a8326c218d1f, scale 1; 2,002,005 reads, 81,139 KB read
+             own Unit:   1999999 chars 'm·m·m·m·...·m·m·m·m' a8326c218d1f, scale 1; 2,002,003 reads, 81,139 KB read
+  8b5c4006f  assignment: not declared, the SI default 'm/s' shown (2 declared); 260 reads, 23 KB read
+             own Unit:   unresolved, '#60' with no scale; 258 reads, 23 KB read
+  head       assignment: not declared, the SI default 'm/s' shown (2 declared); 1,261 reads, 57 KB read
+             own Unit:   unresolved, '#60' with no scale; 1,259 reads, 57 KB read
+
+nested: 300 elements, each naming one derived unit whose 20,000 elements are all $ (52 KB)
+  main       assignment: not declared, the SI default 'm/s' shown (2 declared); 605 reads, 11,744 KB read
+             own Unit:   unresolved, '#60' with no scale; 603 reads, 11,744 KB read
+  8b5c4006f  assignment: not declared, the SI default 'm/s' shown (2 declared); 260 reads, 4,973 KB read
+             own Unit:   unresolved, '#60' with no scale; 258 reads, 4,973 KB read
+  head       assignment: not declared, the SI default 'm/s' shown (2 declared); 306 reads, 51 KB read
+             own Unit:   unresolved, '#60' with no scale; 304 reads, 51 KB read
+
+not a unit: 1,000 elements, each naming one IfcCartesianPointList3D of 3,000 points as its Unit (82 KB)
+  main       assignment: not declared, the SI default 'm/s' shown (2 declared); 2,005 reads, 40,002 KB read
+             own Unit:   unresolved, '#60' with no scale; 2,003 reads, 40,002 KB read
+  8b5c4006f  assignment: not declared, the SI default 'm/s' shown (2 declared); 260 reads, 5,086 KB read
+             own Unit:   unresolved, '#60' with no scale; 258 reads, 5,086 KB read
+  head       assignment: not declared, the SI default 'm/s' shown (2 declared); 1,006 reads, 80 KB read
+             own Unit:   unresolved, '#60' with no scale; 1,004 reads, 80 KB read

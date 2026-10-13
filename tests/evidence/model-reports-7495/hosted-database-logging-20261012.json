@@ -1,0 +1,30 @@
+{
+  "recordedAt": "2026-10-12T18:34:42.922Z",
+  "deploymentId": "985f5b4f-0d3b-4d95-9fda-412cf3186d4d",
+  "region": "europe-west4-drams3a",
+  "qualification": "hosted-postgresql-private-logging",
+  "settings": [
+    {
+      "name": "log_error_verbosity",
+      "setting": "terse"
+    },
+    {
+      "name": "log_min_error_statement",
+      "setting": "panic"
+    },
+    {
+      "name": "log_parameter_max_length",
+      "setting": "0"
+    },
+    {
+      "name": "log_parameter_max_length_on_error",
+      "setting": "0"
+    },
+    {
+      "name": "log_statement",
+      "setting": "none"
+    }
+  ],
+  "scope": "Actual read-only SQL query over Railway private networking; temporary qualification service, no user report data",
+  "temporaryServiceRemoved": true
+}

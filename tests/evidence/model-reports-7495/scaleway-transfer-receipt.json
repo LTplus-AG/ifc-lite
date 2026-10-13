@@ -1,0 +1,15 @@
+{
+  "recordedAt": "2026-10-12T17:38:39.945Z",
+  "provider": "Scaleway",
+  "region": "fr-par",
+  "bucket": "ifclite-private-model-reports-par",
+  "fixture": "AC20-FZK-Haus.ifc",
+  "bytes": 2526544,
+  "sha256": "ea6f04eaf92fac4d7ad0038bc3d2dfea4c094dd3f516ecc33c50bf1835ca108d",
+  "encryption": "AES256",
+  "corruptUploadStatus": 400,
+  "anonymousStatus": 403,
+  "partChecksumReturned": true,
+  "deletionConfirmed": true,
+  "scope": "Live storage transport using public fixture; no production reporting API or GitHub publication"
+}

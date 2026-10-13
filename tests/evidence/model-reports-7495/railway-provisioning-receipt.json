@@ -1,0 +1,16 @@
+{
+  "recordedAt": "2026-10-12T17:44:52.121Z",
+  "projectId": "dcf79166-ebe6-490a-b021-3dba49df8da3",
+  "environmentId": "0a1c134b-91ab-4d8f-a304-c757660e3ee6",
+  "databaseServiceId": "ba20fcb2-a830-44ca-a1dd-785d68200534",
+  "deploymentId": "5dfda8fb-558b-4c93-9c75-3069b9c0f1cb",
+  "deploymentStatus": "SUCCESS",
+  "deploymentRegion": "europe-west4-drams3a",
+  "volumeId": "06e81a4c-e500-4562-926c-067acfe89ccd",
+  "volumeRegion": "europe-west4-drams3a",
+  "backupSchedule": [
+    "DAILY"
+  ],
+  "runtimeBucketConfigurationWriteAfterRevocation": 403,
+  "scope": "Provider deployment/configuration readback; no application DB query, restore or production report API acceptance"
+}

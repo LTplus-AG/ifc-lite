@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Button } from '@/components/ui/button';
 import { ReportClient, ReportRequestError, safeAgreementUrl, safeIssueUrl } from '@/services/error-reports/client';
 import { ReportSubmission, type ReviewedReport } from '@/services/error-reports/submission';
+import { ReportIssueDestination, type IssueChoice } from './ReportIssueDestination';
 import { emptyAttachment, ReportAttachment, validAttachment, type AttachmentChoice } from './ReportAttachment';
 
 export function ErrorReportDialog({ context, onClose, client: injectedClient }: { context: ReportContext; onClose: () => void; client?: ReportClient }) {
@@ -25,6 +26,7 @@ export function ErrorReportDialog({ context, onClose, client: injectedClient }: 
     return t('errorReport.defaultGeneralTitle');
   });
   const [description, setDescription] = useState('');
+  const [issueChoice, setIssueChoice] = useState<IssueChoice>({ reviewed: !context.correlation });
   const [attachment, setAttachment] = useState<AttachmentChoice>(emptyAttachment);
   const [review, setReview] = useState<ReviewedReport>();
   const [existing, setExisting] = useState<ReportReceipt>();
@@ -119,11 +121,11 @@ export function ErrorReportDialog({ context, onClose, client: injectedClient }: 
   }
   const customApproved = existing?.customNdaStatus === 'approved' && !existing.uploadSource;
   const resumeFileValid = !existing?.uploadSource || existing.upload?.status === 'ready' || (!!attachment.file && attachment.file.name === existing.uploadSource.name && attachment.file.size === existing.uploadSource.size);
-  const canReview = !!session && !!title.trim() && (existing ? resumeFileValid && (!customApproved || (!!attachment.file && attachment.uploadConsent && validAttachment({ ...attachment, confidentiality: 'none' }, session))) : validAttachment(attachment, session));
+  const canReview = !!session && !!title.trim() && (!!existing || issueChoice.reviewed) && (existing ? resumeFileValid && (!customApproved || (!!attachment.file && attachment.uploadConsent && validAttachment({ ...attachment, confidentiality: 'none' }, session))) : validAttachment(attachment, session));
   function prepareReview() {
     if (!session || !canReview) return;
     setReview({
-      draft: existing?.draft ?? { clientRequestId: crypto.randomUUID(), title: title.trim(), description, diagnostics, visibility: attachment.visibility },
+      draft: existing?.draft ?? { clientRequestId: crypto.randomUUID(), title: title.trim(), description, diagnostics, visibility: attachment.visibility, ...(issueChoice.target ? { issueTarget: issueChoice.target } : {}) },
       file: attachment.file, confidentiality: attachment.confidentiality, publicModelConfirmed: attachment.publicConfirmed,
       customNdaMessage: attachment.customMessage,
       ...(attachment.confidentiality === 'standard' ? { acceptance: {
@@ -189,6 +191,7 @@ export function ErrorReportDialog({ context, onClose, client: injectedClient }: 
           <p>{t('errorReport.publicText')}</p>
           <label className="block">{t('errorReport.title')}<input className="block w-full rounded border bg-background p-2" disabled={!!existing} value={title} maxLength={180} onChange={event => setTitle(event.target.value)} /></label>
           <label className="block">{t('errorReport.description')}<textarea className="block min-h-24 w-full rounded border bg-background p-2" disabled={!!existing} value={description} maxLength={10000} onChange={event => setDescription(event.target.value)} /></label>
+          {!existing && <ReportIssueDestination correlation={context.correlation} enabled={!!session.issueLinkingEnabled} client={client} value={issueChoice} onChange={setIssueChoice} />}
           {existing ? <div>
             <p>{t('errorReport.resume')}</p>
             {existing.uploadSource && <p>{t('errorReport.source', { name: existing.uploadSource.name, size: existing.uploadSource.size })}</p>}
@@ -198,6 +201,7 @@ export function ErrorReportDialog({ context, onClose, client: injectedClient }: 
           </div> : <ReportAttachment context={context} session={session} value={attachment} onChange={setAttachment} />}
           <Button disabled={!canReview} onClick={prepareReview}>{t('errorReport.review')}</Button>
         </div> : <div className="space-y-3 text-sm">
+          <p>{review.draft.issueTarget || existing?.issueDestination ? t('errorReport.addToIssue') + ' ' + (review.draft.issueTarget?.issueUrl ?? existing?.issueDestination?.issueUrl) : t('errorReport.newIssue')}</p>
           <p>{t('errorReport.publicText')}</p>
           <p className="break-words font-medium">{review.draft.title}</p><p className="whitespace-pre-wrap break-words">{review.draft.description}</p>
           <p>{t('errorReport.diagnostics')}</p><pre className="overflow-auto text-xs">{JSON.stringify(diagnostics, null, 2)}</pre>

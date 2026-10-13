@@ -17,7 +17,7 @@ import { isModelTagOp } from './model-tag.js';
 import { isModelFact } from './filter-model-fact.js';
 import { isListConditionRule } from './filter-list-condition.js';
 import { isMemberPath } from './subject-read-options.js';
-import type { ClassificationOp, FilterRule, StringOp, ValueOp } from './filter-rules.js';
+import type { ClassificationOp, FilterRule, NumericOp, SetOp, StringOp, ValueOp } from './filter-rules.js';
 
 const STRING_OPS: ReadonlySet<unknown> = new Set<StringOp>([
   'eq', 'ne', 'contains', 'notContains', 'startsWith', 'matches', 'notMatches',
@@ -32,62 +32,77 @@ const CLASSIFICATION_OPS: ReadonlySet<unknown> = new Set<ClassificationOp>([
   'eq', 'ne', 'contains', 'notContains', 'matches', 'notMatches', 'isSet', 'isNotSet',
 ]);
 
+const SET_OPS: ReadonlySet<unknown> = new Set<SetOp>(['in', 'notIn']);
+const NUMERIC_OPS: ReadonlySet<unknown> = new Set<NumericOp>(['eq', 'ne', 'gt', 'gte', 'lt', 'lte']);
+
+function strings(value: unknown): boolean {
+  return Array.isArray(value) && value.every(entry => typeof entry === 'string');
+}
+function textKind(value: unknown): boolean {
+  return value === undefined || value === 'literal' || value === 'regex';
+}
+function finiteNumber(value: unknown): boolean {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+function storeyRefs(value: unknown): boolean {
+  return value === undefined || (Array.isArray(value) && value.every(entry => {
+    if (!entry || typeof entry !== 'object') return false;
+    const ref = entry as Record<string, unknown>;
+    return typeof ref.modelId === 'string' && finiteNumber(ref.expressId);
+  }));
+}
+
+/** Validate the JSON boundary before a typed editor or evaluator reads fields (#7554). */
 export function isFilterRule(value: unknown): value is FilterRule {
-  if (typeof value !== 'object' || value === null) return false;
-  const kind = (value as { kind?: unknown }).kind;
-  if (kind === 'modelTag') {
-    // Structural: a bad op or a non-string id must not reach the evaluator.
-    const r = value as { op?: unknown; tagIds?: unknown };
-    return isModelTagOp(r.op) && Array.isArray(r.tagIds) && r.tagIds.every((t) => typeof t === 'string');
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const r = value as Record<string, unknown>;
+  if (!textKind(r.valueKind)) return false;
+  switch (r.kind) {
+    case 'modelTag':
+      return isModelTagOp(r.op) && strings(r.tagIds);
+    case 'model':
+    case 'predefinedType':
+    case 'globalId':
+      return SET_OPS.has(r.op) && strings(r.values);
+    case 'ifcType':
+      return SET_OPS.has(r.op) && strings(r.values)
+        && (r.exactClass === undefined || typeof r.exactClass === 'boolean');
+    case 'storey':
+      return SET_OPS.has(r.op) && strings(r.values) && storeyRefs(r.refs);
+    case 'name':
+    case 'material':
+    case 'type':
+    case 'parent':
+      return STRING_OPS.has(r.op) && typeof r.value === 'string';
+    case 'group':
+      return CLASSIFICATION_OPS.has(r.op) && typeof r.value === 'string'
+        && (r.groupClass === undefined || typeof r.groupClass === 'string');
+    case 'classification':
+      return CLASSIFICATION_OPS.has(r.op) && typeof r.value === 'string'
+        && (r.system === undefined || typeof r.system === 'string');
+    case 'attribute':
+      return typeof r.name === 'string' && VALUE_OPS.has(r.op) && typeof r.value === 'string'
+        && validComparison(value);
+    case 'property':
+      return typeof r.setName === 'string' && typeof r.propertyName === 'string'
+        && VALUE_OPS.has(r.op) && typeof r.value === 'string'
+        && textKind(r.setNameKind) && textKind(r.propertyNameKind)
+        && validReadOptions(value) && validComparison(value)
+        && (r.nameCaseMode === undefined || r.nameCaseMode === 'exact')
+        && (r.legacyListFirst === undefined || r.legacyListFirst === true);
+    case 'quantity':
+      return typeof r.setName === 'string' && typeof r.quantityName === 'string'
+        && NUMERIC_OPS.has(r.op) && finiteNumber(r.value)
+        && textKind(r.setNameKind) && textKind(r.quantityNameKind) && validReadOptions(value);
+    case 'elevation':
+      return NUMERIC_OPS.has(r.op) && finiteNumber(r.value);
+    case 'listCondition':
+      return isListConditionRule(value);
+    case 'modelFact':
+      return isModelFact(r.fact) && VALUE_OPS.has(r.op) && typeof r.value === 'string';
+    default:
+      return false;
   }
-  if (kind === 'parent') {
-    // Structural: `matchParentRule` lower-cases `value` per ancestor, so a
-    // persisted non-string value (or an unknown op) must not reach it.
-    const r = value as { op?: unknown; value?: unknown; valueKind?: unknown };
-    return (
-      STRING_OPS.has(r.op) &&
-      typeof r.value === 'string' &&
-      (r.valueKind === undefined || r.valueKind === 'literal' || r.valueKind === 'regex')
-    );
-  }
-  if (kind === 'group') {
-    // Structural, like `parent`: `matchGroupRule` reads `value` as text and
-    // `groupClass` as a class name, so neither may arrive as anything else.
-    const r = value as { op?: unknown; value?: unknown; valueKind?: unknown; groupClass?: unknown };
-    return (
-      CLASSIFICATION_OPS.has(r.op) &&
-      typeof r.value === 'string' &&
-      (r.groupClass === undefined || typeof r.groupClass === 'string') &&
-      (r.valueKind === undefined || r.valueKind === 'literal' || r.valueKind === 'regex')
-    );
-  }
-  if ((kind === 'property' || kind === 'quantity') && !validReadOptions(value)) return false;
-  if (kind === 'property') {
-    const r = value as { nameCaseMode?: unknown; legacyListFirst?: unknown };
-    if (r.nameCaseMode !== undefined && r.nameCaseMode !== 'exact') return false;
-    if (r.legacyListFirst !== undefined && r.legacyListFirst !== true) return false;
-  }
-  if ((kind === 'property' || kind === 'attribute') && !validComparison(value)) return false;
-  if (kind === 'listCondition') return isListConditionRule(value);
-  if (kind === 'modelFact') {
-    const r = value as { fact?: unknown; op?: unknown; value?: unknown };
-    return isModelFact(r.fact) && VALUE_OPS.has(r.op) && typeof r.value === 'string';
-  }
-  return (
-    kind === 'model' ||
-    kind === 'storey' ||
-    kind === 'ifcType' ||
-    kind === 'predefinedType' ||
-    kind === 'name' ||
-    kind === 'globalId' ||
-    kind === 'attribute' ||
-    kind === 'property' ||
-    kind === 'quantity' ||
-    kind === 'material' ||
-    kind === 'classification' ||
-    kind === 'elevation' ||
-    kind === 'type'
-  );
 }
 
 /** `SubjectReadOptions` fields, when present, must hold a value the engine
@@ -102,7 +117,7 @@ function validReadOptions(value: object): boolean {
 function validComparison(value: object): boolean {
   const options = (value as { comparison?: unknown }).comparison;
   if (options === undefined) return true;
-  if (options === null || typeof options !== 'object') return false;
+  if (options === null || typeof options !== 'object' || Array.isArray(options)) return false;
   const o = options as Record<string, unknown>;
   return (o.caseMode === undefined || o.caseMode === 'fold' || o.caseMode === 'exact'
       || o.caseMode === 'lensBoolean' || o.caseMode === 'ifcBoolean')

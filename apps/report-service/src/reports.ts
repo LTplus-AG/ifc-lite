@@ -10,6 +10,7 @@ import type {
 } from "@ifc-lite/report-contract";
 import type { Config } from "./config.js";
 import { audit, transaction, type Db } from "./database.js";
+import { verifyIssueBinding, type IssueBinding } from "./issue-binding.js";
 import { requireCondition } from "./errors.js";
 import type { Session } from "./sessions.js";
 export interface ReportRow {
@@ -24,6 +25,7 @@ export interface ReportRow {
   issue_url: string | null;
   fingerprint: string;
   publication_hold?: boolean;
+  issue_binding?: IssueBinding | null;
 }
 export interface UploadRow {
   id: string;
@@ -64,6 +66,7 @@ export function receipt(r: ReportRow): ReportReceipt {
     id: r.id,
     status: r.status,
     ...(r.publication_hold ? { publicationHold: "review_required" as const } : {}),
+    ...(r.issue_binding ? { issueDestination: { issueUrl: r.issue_binding.issueUrl, title: r.issue_binding.title } } : {}),
     ...(r.issue_url ? { issueUrl: r.issue_url } : {}),
   };
 }
@@ -100,6 +103,8 @@ export async function createReport(
       "UPDATE report_admission SET reports=reports+1 WHERE key=$1 AND day=CURRENT_DATE",
       [owner.admission],
     );
+    const binding = input.issueTarget ? verifyIssueBinding(config, owner, input.issueTarget, input.diagnostics.buildSha) : null;
+    const { issueTarget: _issueTarget, ...publicDraft } = input;
     const id = randomUUID();
     const fingerprint = createHash("sha256")
       .update(
@@ -111,10 +116,11 @@ export async function createReport(
       )
       .digest("hex");
     await tx.query(
-      "INSERT INTO model_reports(id,session_id,client_key,draft,fingerprint) VALUES($1,$2,$3,$4,$5)",
-      [id, owner.id, input.clientRequestId, JSON.stringify(input), fingerprint],
+      "INSERT INTO model_reports(id,session_id,client_key,draft,fingerprint,issue_binding) VALUES($1,$2,$3,$4,$5,$6)",
+      [id, owner.id, input.clientRequestId, JSON.stringify(publicDraft), fingerprint, binding ? JSON.stringify(binding) : null],
     );
     await audit(tx, id, "draft_created", owner.id);
+    if (binding) await audit(tx, id, "issue_target_reviewed", owner.id);
     return { id, status: "draft" };
   });
 }

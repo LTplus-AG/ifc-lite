@@ -71,7 +71,7 @@ export async function sweep(db: Db, storage: ModelStorage): Promise<void> {
     }
   }
   await db.query(
-    "UPDATE model_reports SET status='deleted',agreement=NULL,agreement_pdf=NULL,custom_nda=NULL,draft='{}'::jsonb WHERE expires_at<now() AND NOT EXISTS(SELECT 1 FROM report_uploads u WHERE u.report_id=model_reports.id AND u.status!='aborted')",
+    "UPDATE model_reports SET status='deleted',agreement=NULL,agreement_pdf=NULL,custom_nda=NULL,issue_binding=NULL,draft='{}'::jsonb WHERE expires_at<now() AND NOT EXISTS(SELECT 1 FROM report_uploads u WHERE u.report_id=model_reports.id AND u.status!='aborted')",
   );
   await db.query("DELETE FROM report_sessions WHERE expires_at<now()");
   await db.query("DELETE FROM report_admission WHERE day<CURRENT_DATE-31");
@@ -96,7 +96,7 @@ export async function deleteReport(
     );
     if (!locked.rows[0]) return false;
     await tx.query(
-      "UPDATE model_reports SET status='deleted',agreement=NULL,agreement_pdf=NULL,custom_nda=NULL,draft='{}'::jsonb WHERE id=$1",
+      "UPDATE model_reports SET status='deleted',agreement=NULL,agreement_pdf=NULL,custom_nda=NULL,issue_binding=NULL,draft='{}'::jsonb WHERE id=$1",
       [id],
     );
     await tx.query("DELETE FROM report_outbox WHERE report_id=$1", [id]);

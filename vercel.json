@@ -14,6 +14,10 @@
       "destination": "https://model-reports-production.up.railway.app/api/reports/session"
     },
     {
+      "source": "/api/reports/resolve-issue",
+      "destination": "https://model-reports-production.up.railway.app/api/reports/resolve-issue"
+    },
+    {
       "source": "/api/reports/drafts",
       "destination": "https://model-reports-production.up.railway.app/api/reports/drafts"
     },

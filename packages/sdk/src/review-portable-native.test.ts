@@ -257,6 +257,93 @@ it('#7372 actual saved IDS omissions and gaps keep complete inventory bounds unk
   }
   expect(createHash('sha256').update(f.store.source.materialize()).digest('hex')).toBe(f.hash);
 }, 20_000);
+// #7372 / review4260900431: an empty/partial imported detail collection does
+// not erase the actual native entity-failure counts that travel in its record.
+it('#7372 actual native IDS entity failures cannot become a complete empty or partial inventory', async () => {
+  const f = await fixture();
+  const original = structuredClone(f.saved);
+  if (original.snapshot.kind !== 'ids-report' || !original.snapshot.elementEvidence) throw new Error('Actual native IDS evidence required');
+  const failed = original.snapshot.summary.failed;
+  expect(failed).toBeGreaterThan(1);
+  expect(original.snapshot.elementEvidence.rows).toHaveLength(failed);
+  const complete = await f.read({ savedValidationReports: [original] });
+  expect(complete.bounds).toMatchObject({ knownFindings: failed, omittedFindings: 0, presentationComplete: true });
+  for (const retained of [0, failed - 1]) {
+    const saved = structuredClone(original);
+    if (saved.snapshot.kind !== 'ids-report' || !saved.snapshot.elementEvidence) throw new Error('Actual native IDS evidence required');
+    saved.snapshot.elementEvidence.rows = saved.snapshot.elementEvidence.rows.slice(0, retained);
+    saved.snapshot.elementEvidence.observed = retained;
+    expect(review.validateSavedReport(saved), 'wire compatibility and recorded native counts remain intact').toBe(true);
+    const result = await f.read({ savedValidationReports: [saved] });
+    expect(result.records[0]?.value).toEqual(saved);
+    expect(result.bindings[0]?.state).toBe('bound');
+    expect(result.findings).toHaveLength(retained);
+    expect(result.findings.every(row => row.lifecycle === 'not-evaluated')).toBe(true);
+    expect(result.bounds).toMatchObject({ knownFindings: null, omittedFindings: null, presentationComplete: false, nativeCoverageComplete: false });
+  }
+}, 20_000);
+
+it('#7372 real zero-applicability cardinality failure retains its genuinely empty element inventory', async () => {
+  const f = await fixture();
+  const definition = parseIDS(`<ids xmlns="http://standards.buildingsmart.org/IDS"><info><title>Required chiller</title></info>
+    <specifications><specification name="Required chiller" ifcVersion="IFC4"><applicability minOccurs="1" maxOccurs="unbounded">
+      <entity><name><simpleValue>IFCCHILLER</simpleValue></name></entity></applicability><requirements>
+      <attribute><name><simpleValue>GlobalId</simpleValue></name></attribute></requirements></specification></specifications></ids>`);
+  const native = await validateIDS(definition, createDataAccessor(f.store), {
+    modelId: f.model.id, schemaVersion: f.store.schemaVersion, entityCount: f.store.entityCount,
+  }, { includePassingEntities: true });
+  expect(native.specificationResults[0].error).toBeUndefined();
+  expect(native.specificationResults[0].applicableCount).toBe(0);
+  expect(native.specificationResults[0].cardinalityResult?.passed).toBe(false);
+  expect(native.summary.failedSpecifications).toBe(1);
+  expect(native.summary.totalEntitiesFailed).toBe(0);
+  expect(validationFindings({ report: native, stale: false }, [f.model]).findings).toEqual([]);
+  const saved = structuredClone(f.saved);
+  if (saved.snapshot.kind !== 'ids-report' || !saved.snapshot.elementEvidence) throw new Error('Actual native IDS evidence required');
+  saved.snapshot.generatedAt = native.timestamp.toISOString();
+  saved.snapshot.sourceName = definition.info.title;
+  saved.snapshot.summary = { checked: native.summary.totalEntitiesChecked, passed: native.summary.totalEntitiesPassed,
+    failed: native.summary.totalEntitiesFailed, passRate: native.summary.overallPassRate };
+  saved.snapshot.checks = native.specificationResults.map(spec => ({ id: spec.specification.id,
+    shortDescription: spec.specification.name, checked: spec.applicableCount, passed: spec.passedCount,
+    failed: spec.failedCount, passRate: spec.passRate, rules: [] }));
+  saved.snapshot.elementEvidence.rows = [];
+  saved.snapshot.elementEvidence.observed = 0;
+  expect(review.validateSavedReport(saved)).toBe(true);
+  const result = await f.read({ savedValidationReports: [saved] });
+  expect(result.records[0]?.value).toEqual(saved);
+  expect(result.bindings[0]?.state).toBe('bound');
+  expect(result.findings).toEqual([]);
+  expect(result.bounds).toMatchObject({ knownFindings: 0, omittedFindings: 0, presentationComplete: true, nativeCoverageComplete: false });
+}, 20_000);
+
+it('#7372 supplied warning history preserves its separate entity-count bucket and missing-detail uncertainty', async () => {
+  const f = await fixture();
+  const saved = structuredClone(f.saved);
+  if (saved.snapshot.kind !== 'ids-report' || !saved.snapshot.elementEvidence) throw new Error('Actual native IDS rows required');
+  // Exercise the imported wire's warning bucket with real IFC identities and
+  // IDS-produced failure rows. This reclassification is supplied history, not
+  // a claim that the IDS engine produced a native warning-severity rules run.
+  saved.snapshot.sourceKind = 'rules';
+  saved.snapshot.summary.warnings = saved.snapshot.summary.failed;
+  saved.snapshot.summary.failed = 0;
+  for (const row of saved.snapshot.elementEvidence.rows) row.nativeStatus = 'warning';
+  const warnings = saved.snapshot.summary.warnings;
+  expect(warnings).toBeGreaterThan(0);
+  expect(review.validateSavedReport(saved)).toBe(true);
+  const complete = await f.read({ savedValidationReports: [saved] });
+  expect(complete.records[0]?.value).toEqual(saved);
+  expect(complete.findings).toHaveLength(warnings);
+  expect(complete.findings.every(row => row.nativeStatus === 'warning' && row.lifecycle === 'not-evaluated')).toBe(true);
+  expect(complete.bounds).toMatchObject({ knownFindings: warnings, omittedFindings: 0, presentationComplete: true, nativeCoverageComplete: false });
+  saved.snapshot.elementEvidence.rows = [];
+  saved.snapshot.elementEvidence.observed = 0;
+  const missing = await f.read({ savedValidationReports: [saved] });
+  expect(missing.records[0]?.value).toEqual(saved);
+  expect(missing.findings).toEqual([]);
+  expect(missing.bounds).toMatchObject({ knownFindings: null, omittedFindings: null, presentationComplete: false, nativeCoverageComplete: false });
+}, 20_000);
+
 it('#7372 actual bounded IDS evaluation and truncated set detail never certify full presentation', async () => {
   const f = await fixture();
   const report = await validateIDS(parseIDS(xml), createDataAccessor(f.store), { modelId: 'saved-key',

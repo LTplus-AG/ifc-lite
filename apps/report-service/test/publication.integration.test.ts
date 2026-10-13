@@ -8,6 +8,7 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { createServer } from "node:http";
 import { loadFeature } from './feature-loader.js';
+const bindingFeature = await loadFeature('../src/issue-binding.js', () => import('../src/issue-binding.js'));
 const intentFeature = await loadFeature('../src/publication-intent.js', () => import('../src/publication-intent.js'));
 import { generateKeyPairSync, randomUUID } from "node:crypto";
 import { openDatabase, migrate } from "../src/database.js";
@@ -138,13 +139,14 @@ describe.skipIf(!enabled)("#7495 publication deletion serialization", () => {
     expect(create).not.toHaveBeenCalled();
     expect((await db.query("SELECT status FROM model_reports WHERE id=$1", [report.id])).rows[0]?.status).toBe("submitted");
   });
-  it("#7495 committed intent survives worker rollback/restart and missing issue listing", async () => {
+  it.each(["issue", "comment"])("#7495 committed intent survives worker rollback/restart and missing %s listing", async (destination) => {
     const issueUrl = "https://github.com/owner/repo/issues/7495";
     const keys = generateKeyPairSync("rsa", { modulusLength: 2048 });
     const liveConfig = { ...config, databaseUrl: url.toString(), githubPrivateKey: keys.privateKey.export({ type: "pkcs8", format: "pem" }).toString() };
     const report = await createReport(db, config, owner, {
       clientRequestId: randomUUID(), title: "Delayed GitHub listing", description: "Synthetic retry",
       diagnostics: { errorCode: "retry", appVersion: "test", buildSha: "test" }, visibility: "private",
+      ...(destination === "comment" ? { issueTarget: bindingFeature!.signIssueBinding(config, owner, { correlation: { eventId: randomUUID(), sessionId: randomUUID(), buildSha: "test" }, posthogIssueId: randomUUID(), issueUrl, title: "Existing target", verifiedAt: new Date().toISOString() }) } : {}),
     });
     await submitReport(db, report.id, owner, false);
     let posts = 0, visible = false;
@@ -163,7 +165,13 @@ describe.skipIf(!enabled)("#7495 publication deletion serialization", () => {
           user: { id: 341635942, login: "ifc-lite-reviewed-reports[bot]", type: "Bot" } };
         res.destroy(); return;
       }
-      res.end(JSON.stringify(visible && saved ? [saved] : []));
+      if (visible && saved) {
+        const page = Number(new URL(req.url ?? '/', 'http://fixture').searchParams.get('page'));
+        if (page === 1) {
+          res.setHeader('Link', `<https://api.github.com${req.url?.split('?')[0]}?per_page=100&page=2>; rel="next"`);
+          res.end(JSON.stringify(Array.from({ length: 99 }, (_, id) => ({ id, body: 'Unrelated', created_at: new Date().toISOString() }))));
+        } else res.end(JSON.stringify([saved]));
+      } else res.end(JSON.stringify([]));
     });
     await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
     const address = server.address(); if (!address || typeof address === "string") throw new Error("Missing listener");
@@ -189,7 +197,8 @@ describe.skipIf(!enabled)("#7495 publication deletion serialization", () => {
       expect(await worker()).toBe(0);
       expect(posts).toBe(1);
       const held = await ownedReport(db, report.id, owner);
-      const heldReceipt = { id: report.id, status: "submitted", publicationHold: "review_required" };
+      const destinationReceipt = destination === "comment" ? { issueDestination: { issueUrl, title: "Existing target" } } : {};
+      const heldReceipt = { id: report.id, status: "submitted", publicationHold: "review_required", ...destinationReceipt };
       expect(receipt(held)).toEqual(heldReceipt);
       // #7495 idempotent create/submit must preserve the same owner hold receipt.
       expect(await createReport(db, config, owner, held.draft)).toEqual(heldReceipt);
@@ -200,7 +209,7 @@ describe.skipIf(!enabled)("#7495 publication deletion serialization", () => {
       expect(await worker()).toBe(0);
       expect(posts).toBe(1);
       const published = await ownedReport(db, report.id, owner);
-      const publishedReceipt = { id: report.id, status: "published", issueUrl };
+      const publishedReceipt = { id: report.id, status: "published", issueUrl, ...destinationReceipt };
       expect(receipt(published)).toEqual(publishedReceipt);
       expect(await createReport(db, config, owner, published.draft)).toEqual(publishedReceipt);
       expect(await submitReport(db, report.id, owner, false)).toEqual(publishedReceipt);
@@ -246,4 +255,47 @@ describe.skipIf(!enabled)("#7495 publication deletion serialization", () => {
     expect(receipt(await ownedReport(db, submitted.id, owner))).toMatchObject({ status: "submitted", publicationHold: "review_required" });
   });
 
+  it("publishes a bound report as one comment across concurrent workers and holds a closed target (#7495)", async () => {
+    const issueUrl = "https://github.com/owner/repo/issues/7495";
+    const keys = generateKeyPairSync("rsa", { modulusLength: 2048 });
+    const liveConfig = { ...config, githubPrivateKey: keys.privateKey.export({ type: "pkcs8", format: "pem" }).toString() };
+    let state = "open", posts = 0, creates = 0;
+    const comments: unknown[] = [];
+    const server = createServer(async (req, res) => {
+      let data = ""; for await (const part of req) data += part;
+      res.setHeader("Content-Type", "application/json");
+      if (req.url === "/app") { res.end(JSON.stringify({ id: 1, slug: "ifc-lite-reviewed-reports" })); return; }
+      if (req.url?.startsWith("/users/")) { res.end(JSON.stringify({ id: 341635942, login: "ifc-lite-reviewed-reports[bot]", type: "Bot" })); return; }
+      if (req.url?.endsWith("access_tokens")) { res.end(JSON.stringify({ token: "fixture-token" })); return; }
+      if (req.url?.includes("/comments")) {
+        if (req.method === "POST") { posts++; comments.push({ body: JSON.parse(data).body, performed_via_github_app: null, user: { id: 341635942, login: "ifc-lite-reviewed-reports[bot]", type: "Bot" } }); res.end(JSON.stringify({ html_url: issueUrl + "#issuecomment-1" })); }
+        else res.end(JSON.stringify(comments));
+        return;
+      }
+      if (req.method === "POST") creates++;
+      res.end(JSON.stringify({ html_url: issueUrl, title: "Known issue", state }));
+    });
+    await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address(); if (!address || typeof address === "string") throw new Error("Missing listener");
+    const endpoint = `http://127.0.0.1:${address.port}`;
+    const github = new GithubIssues(liveConfig, (url, init) => fetch(endpoint + new URL(String(url)).pathname + new URL(String(url)).search, init));
+    async function boundReport() {
+      const issueTarget = bindingFeature?.signIssueBinding(config, owner, { correlation: { eventId: randomUUID(), sessionId: randomUUID(), buildSha: "test" }, posthogIssueId: randomUUID(), issueUrl, title: "Known issue", verifiedAt: new Date().toISOString() });
+      const report = await createReport(db, config, owner, { clientRequestId: randomUUID(), title: "Reviewed additional evidence", description: "Selected wall", diagnostics: { errorCode: "same_category", appVersion: "test", buildSha: "test" }, visibility: "private", issueTarget });
+      await submitReport(db, report.id, owner, false); return report;
+    }
+    try {
+      const first = await boundReport();
+      await Promise.all([publishOne(db, github), publishOne(db, github)]);
+      await publishOne(db, github);
+      expect(posts).toBe(1); expect(creates).toBe(0);
+      expect((await db.query("SELECT status,issue_url FROM model_reports WHERE id=$1", [first.id])).rows[0]).toEqual({ status: "published", issue_url: issueUrl });
+      state = "closed";
+      const second = await boundReport();
+      await publishOne(db, github);
+      expect(posts).toBe(1); expect(creates).toBe(0);
+      expect((await db.query("SELECT status FROM model_reports WHERE id=$1", [second.id])).rows[0].status).toBe("submitted");
+      expect((await db.query("SELECT last_error FROM report_outbox WHERE report_id=$1", [second.id])).rows[0].last_error).toBe("github_target_invalid");
+    } finally { server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())); }
+  });
 });

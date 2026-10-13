@@ -11,6 +11,7 @@ import {
   isRecord,
   boundedText,
   isUuid,
+  isReportCorrelation,
 } from "@ifc-lite/report-contract";
 import type { Config } from "./config.js";
 import { type Db } from "./database.js";
@@ -35,6 +36,7 @@ import {
 import { removeUpload, deleteReport } from "./maintenance.js";
 import type { ModelStorage } from "./storage.js";
 import { body, json } from "./http.js";
+import { resolveIssueTarget } from "./issue-binding.js";
 import { admin } from "./admin.js";
 export function createHandler(
   db: Db,
@@ -123,6 +125,7 @@ export function createHandler(
         json(res, {
           csrfToken: owner.csrf,
           submissionsEnabled: admitted,
+          issueLinkingEnabled: Boolean(config.posthog),
           limits: REPORT_LIMITS,
           agreement: config.agreement,
           storage: {
@@ -134,6 +137,12 @@ export function createHandler(
             publicSharingEnabled: false,
           },
         });
+        return;
+      }
+      if (path === "/api/reports/resolve-issue" && method === "POST") {
+        const input = await body(req);
+        requireCondition(isReportCorrelation(input), 400, "correlation_invalid", "An exact captured error is needed to check for an existing issue.");
+        json(res, await resolveIssueTarget(db, config, owner, input));
         return;
       }
       if (path === "/api/reports/drafts" && method === "POST") {

@@ -32,6 +32,7 @@ if (parsed.ok) {
 
 ## Features
 
+- `isFilterRule` validates mandatory names, operands and operators at JSON boundaries; text operands remain strings and quantity/elevation operands remain finite numbers. `parseFilterGroups` refuses an entire unreadable query, while `parseFilterRules` retains its per-rule filtering behavior. Missing comparison operands are rejected rather than coerced to empty strings.
 - `FilterRule` / `FilterGroup` vocabulary (`ifcType`, `name`, `property`, `quantity`, `material`, `classification`, `storey`, `model`, `modelTag`, `parent`, `group`, `modelFact`, `elevation`, `type`, `predefinedType`, `attribute`, `globalId`) plus the `Rule` builder helpers.
 - `listCondition`: a saved Lists value predicate (zone, spatial level, model file, quantity/material presence, Lists attributes, inherited properties) inside a `FilterGroup`. The Lists engine answers it through `EvaluatorModel.listConditions` (`listConditionMatcher(provider)` from `@ifc-lite/lists`); a model without one throws, and rule-set files refuse the kind.
 - `legacyLensOperatorToFilterRule` and `legacyListOperatorToFilterRule` convert saved viewer comparisons to this vocabulary. Each returns `{ status: 'readable', value: rule }` or an explicit `{ status: 'unreadable', vocabulary, operator }`; the corresponding `filterRuleToLegacy*Operator` functions convert supported rules back for export. Pass the target property or attribute as the rule template.

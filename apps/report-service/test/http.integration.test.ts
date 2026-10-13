@@ -9,6 +9,8 @@ import type { ReportReceipt, ReportSession } from '@ifc-lite/report-contract';
 import type { Config } from '../src/config.js';
 import { openDatabase, migrate } from '../src/database.js';
 import { createHandler } from '../src/handler.js';
+import { loadFeature } from './feature-loader.js';
+const bindingFeature = await loadFeature('../src/issue-binding.js', () => import('../src/issue-binding.js'));
 import { ModelStorage } from '../src/storage.js';
 
 const enabled = Boolean(process.env.REPORT_TEST_DATABASE_URL);
@@ -285,6 +287,37 @@ describe.skipIf(!enabled)('#7495 real HTTP ownership, consent and publication bo
       expect((await request(stranger, `/${report.id}`, 'DELETE')).status).toBe(404);
       expect((await request(owner, `/${report.id}`)).status).toBe(200);
     } finally { config.agreement.signingEnabled = false; }
+  });
+
+  it('persists a verified reviewed destination privately and erases it on deletion (#7495)', async () => {
+    const owner = await browser();
+    const stranger = await browser();
+    const correlation = { eventId: randomUUID(), sessionId: randomUUID(), buildSha: 'test' };
+    const binding = { correlation, posthogIssueId: randomUUID(), issueUrl: 'https://github.com/owner/repo/issues/12', title: 'Existing issue', verifiedAt: new Date().toISOString() };
+    const target = bindingFeature?.signIssueBinding(config, { ...owner, admission: 'unused' }, binding) ?? { issueUrl: binding.issueUrl, title: binding.title, verificationToken: 'feature-unavailable' };
+    const input = { ...draft(), issueTarget: target };
+    expect((await request(stranger, '/drafts', 'POST', input)).status).toBe(400);
+    expect((await request(owner, '/drafts', 'POST', { ...input, issueTarget: { ...target, issueUrl: 'https://github.com/owner/repo/issues/13' } })).status).toBe(400);
+    const created = await request(owner, '/drafts', 'POST', input);
+    expect(created.status).toBe(201);
+    const report = await created.json() as ReportReceipt;
+    const rows = await db.query('SELECT issue_binding,draft FROM model_reports WHERE id=$1', [report.id]);
+    expect(rows.rows[0].issue_binding).toEqual(binding);
+    expect(rows.rows[0].draft.issueTarget).toBeUndefined();
+    expect(JSON.stringify(rows.rows[0].draft)).not.toContain(correlation.eventId);
+    const restored = await (await request(owner, `/${report.id}`)).json() as ReportReceipt;
+    expect(restored.issueDestination?.issueUrl).toBe(binding.issueUrl);
+    expect(JSON.stringify(restored)).not.toContain(correlation.sessionId);
+    expect((await request(owner, `/${report.id}`, 'DELETE')).status).toBe(200);
+    expect((await db.query('SELECT issue_binding FROM model_reports WHERE id=$1', [report.id])).rows[0].issue_binding).toBeNull();
+  });
+
+  it('reports disabled exact-event lookup honestly without creating a draft (#7495)', async () => {
+    const owner = await browser();
+    const lookup = await request(owner, '/resolve-issue', 'POST', { eventId: randomUUID(), sessionId: randomUUID(), buildSha: 'test' });
+    expect(lookup.status).toBe(200); expect(await lookup.json()).toEqual({ status: 'unavailable' });
+    expect((await db.query('SELECT id FROM model_reports WHERE session_id=$1', [owner.id])).rowCount).toBe(0);
+    expect((await request(owner, '/resolve-issue', 'POST', { eventId: "' OR 1=1", sessionId: randomUUID(), buildSha: 'test' })).status).toBe(400);
   });
 
   it('queues GitHub publication only after explicit submit and makes repeat submit idempotent', async () => {

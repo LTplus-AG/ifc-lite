@@ -350,4 +350,98 @@ describe("#7495 GitHub App transport and ambiguity recovery", () => {
     } finally { await bridge.close(); }
   });
 
+  it.each([
+    { label: "canonical bot with null metadata", user: bot, metadata: null, reconciles: true },
+    { label: "foreign author with matching App metadata", user: { ...bot, id: 77 }, metadata: { id: app.id }, reconciles: false },
+    { label: "canonical bot with contradictory metadata", user: bot, metadata: { id: 999 }, reconciles: false },
+  ])("#7495 real HTTP comment recovery trusts $label", async ({ user, metadata, reconciles }) => {
+    const item = report("comment-author");
+    const issueUrl = "https://github.com/owner/repo/issues/7495";
+    let posts = 0, authorizations = 0;
+    const bridge = await httpBridge(async (input, init) => {
+      const url = parsedUrl(input);
+      if (url.pathname.endsWith("/access_tokens")) return Response.json({ token: "token" });
+      const identity = identityResponse(url, init); if (identity) return identity;
+      if (url.pathname.endsWith("/comments")) {
+        if (init?.method === "POST") { posts++; return Response.json({ html_url: issueUrl + "#issuecomment-1" }); }
+        return Response.json([{ body: publicIssueBody(item), user, performed_via_github_app: metadata }]);
+      }
+      return Response.json({ html_url: issueUrl, state: "open", title: "Reviewed target" });
+    });
+    const authorize = async () => { authorizations++; throw new Error("github_publication_review_required"); };
+    try {
+      const publication = new GithubIssues(config, bridge.fetcher).addToIssue(item, issueUrl, authorize);
+      if (reconciles) await expect(publication).resolves.toBe(issueUrl);
+      else await expect(publication).rejects.toThrow("github_publication_review_required");
+      expect(authorizations).toBe(reconciles ? 0 : 1);
+      expect(posts).toBe(0);
+      expect(bridge.errors).toEqual([]);
+    } finally { await bridge.close(); }
+  });
+
+  it.each(['issue', 'comment'])(
+    '#7495 real HTTP %s reconciliation follows a short page advertising next without another POST', async destination => {
+      const item = report(`short-page-${destination}`);
+      const issueUrl = 'https://github.com/owner/repo/issues/7495';
+      const pages: number[] = [];
+      let posts = 0, authorizations = 0;
+      const bridge = await httpBridge(async (input, init) => {
+        const url = parsedUrl(input);
+        if (url.pathname.endsWith('/access_tokens')) return Response.json({ token: 'token' });
+        const identity = identityResponse(url, init); if (identity) return identity;
+        if (url.pathname === '/repos/owner/repo/issues/7495') return Response.json({ html_url: issueUrl, state: 'open', title: 'Reviewed target' });
+        if (init?.method === 'POST') {
+          posts++;
+          return Response.json({ html_url: destination === 'comment' ? `${issueUrl}#issuecomment-1` : issueUrl });
+        }
+        // Even a repository-ID alias in Link is not followed with credentials.
+        expect(url.origin).toBe('https://api.github.com');
+        expect(url.pathname).toBe(destination === 'comment' ? '/repos/owner/repo/issues/7495/comments' : '/repos/owner/repo/issues');
+        const page = Number(url.searchParams.get('page')); pages.push(page);
+        if (page === 1) return Response.json(Array.from({ length: 99 }, (_, id) => ({
+          id, body: 'Unrelated comment', created_at: item.created_at.toISOString(), user: bot,
+        })), { headers: { Link: `<https://api.github.com/repositories/1131742715/issues${destination === 'comment' ? '/7495/comments' : ''}?per_page=100&page=2>; rel="next"` } });
+        expect(page).toBe(2);
+        return Response.json([{ body: publicIssueBody(item), html_url: issueUrl,
+          created_at: item.created_at.toISOString(), user: bot, performed_via_github_app: null }]);
+      });
+      const authorize = async () => { authorizations++; throw new Error('github_publication_review_required'); };
+      try {
+        const github = new GithubIssues(config, bridge.fetcher);
+        await expect(destination === 'comment' ? github.addToIssue(item, issueUrl, authorize) : github.findOrCreate(item, authorize)).resolves.toBe(issueUrl);
+        expect(pages).toEqual([1, 2]); expect(posts).toBe(0); expect(authorizations).toBe(0);
+        expect(bridge.errors).toEqual([]);
+      } finally { await bridge.close(); }
+    },
+  );
+
+  it.each([
+    { destination: 'issue', remaining: false }, { destination: 'comment', remaining: false },
+    { destination: 'issue', remaining: true }, { destination: 'comment', remaining: true },
+  ])('#7495 real HTTP $destination scan remains bounded and completes exactly ten full pages (next=$remaining)', async ({ destination, remaining }) => {
+    const item = report(`bounded-${destination}-${remaining}`);
+    const issueUrl = 'https://github.com/owner/repo/issues/7495';
+    let pages = 0, posts = 0, authorizations = 0;
+    const bridge = await httpBridge(async (input, init) => {
+      const url = parsedUrl(input);
+      if (url.pathname.endsWith('/access_tokens')) return Response.json({ token: 'token' });
+      const identity = identityResponse(url, init); if (identity) return identity;
+      if (url.pathname === '/repos/owner/repo/issues/7495') return Response.json({ html_url: issueUrl, state: 'open', title: 'Reviewed target' });
+      if (init?.method === 'POST') { posts++; return Response.json({ html_url: destination === 'comment' ? `${issueUrl}#issuecomment-1` : issueUrl }); }
+      const page = Number(url.searchParams.get('page')); pages++;
+      expect(page).toBeLessThanOrEqual(10);
+      const entries = Array.from({ length: 100 }, (_, id) => ({ id, body: 'Unrelated', created_at: item.created_at.toISOString(), user: bot }));
+      return Response.json(entries, page < 10 || remaining ? { headers: { Link: `<https://api.github.com${url.pathname}?per_page=100&page=${page + 1}>; rel="next"` } } : undefined);
+    });
+    try {
+      const github = new GithubIssues(config, bridge.fetcher);
+      const authorize = async () => { authorizations++; };
+      const result = destination === 'comment' ? github.addToIssue(item, issueUrl, authorize) : github.findOrCreate(item, authorize);
+      if (remaining) await expect(result).rejects.toThrow(destination === 'comment' ? 'github_comment_reconciliation_limit' : 'github_reconciliation_limit');
+      else await expect(result).resolves.toBe(issueUrl);
+      expect(pages).toBe(10); expect(posts).toBe(remaining ? 0 : 1); expect(authorizations).toBe(remaining ? 0 : 1);
+      expect(bridge.errors).toEqual([]);
+    } finally { await bridge.close(); }
+  });
+
 });

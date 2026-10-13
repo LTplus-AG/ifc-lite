@@ -9,6 +9,7 @@ import type { ReportAgreement } from "@ifc-lite/report-contract";
 export interface Config {
   submissionsEnabled: boolean;
   qualificationToken?: string;
+  posthog?: { host: string; projectId: string; apiKey: string };
   trustedProxyCidrs?: string[];
   agreementFont?: Uint8Array;
   storageProvider: string;
@@ -43,6 +44,10 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
   const origin = required("REPORT_VIEWER_ORIGIN");
   if (new URL(origin).origin !== origin || !origin.startsWith("https://"))
     throw new Error("REPORT_VIEWER_ORIGIN must be an exact HTTPS origin");
+  const hasPosthog = [env.REPORT_POSTHOG_HOST, env.REPORT_POSTHOG_PROJECT_ID, env.REPORT_POSTHOG_API_KEY].some(Boolean);
+  const posthog = hasPosthog ? { host: required("REPORT_POSTHOG_HOST"), projectId: required("REPORT_POSTHOG_PROJECT_ID"), apiKey: required("REPORT_POSTHOG_API_KEY") } : undefined;
+  if (posthog && (!["https://eu.posthog.com", "https://us.posthog.com", "https://app.posthog.com"].includes(posthog.host) || !/^\d+$/.test(posthog.projectId)))
+    throw new Error("REPORT_POSTHOG_HOST/project must identify the configured PostHog Cloud project");
   const text = env.REPORT_AGREEMENT_FILE
     ? readFileSync(env.REPORT_AGREEMENT_FILE, "utf8")
     : "";
@@ -104,6 +109,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
     agreementFont: approval
       ? readFileSync(required("REPORT_AGREEMENT_FONT_FILE"))
       : undefined,
+    posthog,
     storageProvider: required("REPORT_STORAGE_PROVIDER"),
     storageLocation: required("REPORT_STORAGE_LOCATION"),
     backupDisclosure: required("REPORT_BACKUP_DISCLOSURE"),

@@ -7,9 +7,9 @@
  * Handles format detection, WASM geometry streaming, IFC parsing,
  * cache management, and server-side parsing delegation
  *
- * Extracted from useIfc.ts for better separation of concerns
  */
 import { useCallback, useEffect, useRef } from 'react';
+import { attachCapturedLoad } from '@/lib/error-reports/correlation';
 import { useShallow } from 'zustand/react/shallow';
 import { type FederatedModel, useViewerStore } from '@/store';
 import { getGeomWorkerOverride, resolveLoadTessellationTier, isMeshOnlyCacheEnabled } from '../store/constants.js';
@@ -2069,7 +2069,7 @@ export function useIfcLoader() {
         activity.error = geometryError;
         // Flat properties: posthog-js spreads this object onto the event, so a
         // wrapper key would bury `error_kind` in an unfilterable nested blob.
-        posthog.captureException(err, {
+        attachCapturedLoad(file, posthog.captureException(err, {
           context: 'geometry_processing',
           ...errorCaptureProps(err, 'geometry_processing'),
           load_stage: loadStage,
@@ -2079,7 +2079,7 @@ export function useIfcLoader() {
           // "Last rendered meshes: 0" stall is attributed to a measured phase
           // instead of only ever guessed from `load_stage`.
           stall_phase: geometryProcessingStallPhase(stallPhaseHandle),
-        });
+        }));
         setLoading(false);
         setGeometryStreamingActive(false);
         return;
@@ -2197,12 +2197,12 @@ export function useIfcLoader() {
       // rejection ("Load failed" / "Failed to fetch") carries no frames of
       // ours, so `load_stage` + `error_type` + `online` are all the triage
       // signal there is. See errorCaptureProps in ../lib/load-errors.ts.
-      posthog.captureException(err, {
+      attachCapturedLoad(file, posthog.captureException(err, {
         context: 'ifc_model_load',
         ...errorCaptureProps(err, 'ifc_model_load'),
         load_stage: loadStage,
         is_retry: options?.isResourceRetry === true,
-      });
+      }));
       setLoading(false);
       setGeometryStreamingActive(false);
     } finally {

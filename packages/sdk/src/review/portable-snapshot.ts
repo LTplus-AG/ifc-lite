@@ -109,7 +109,10 @@ export async function readPortableReview(captures: NativeReviewCaptures, liveMod
     // retained rows. Source truncation or gaps keep population/omission unknown.
     const inventoryKnown = reports.filter(() => selected.includes('validation')).every(saved =>
       saved.snapshot.kind === 'ids-report' && saved.snapshot.elementEvidence !== undefined
-      && saved.snapshot.elementEvidence.omitted === 0 && saved.snapshot.elementEvidence.gaps.length === 0)
+      && saved.snapshot.elementEvidence.omitted === 0 && saved.snapshot.elementEvidence.gaps.length === 0
+      // #7372: summaries count failed entities (warnings have their own bucket
+      // for rules), not failed specifications/cardinality-only outcomes.
+      && saved.snapshot.elementEvidence.rows.length === saved.snapshot.summary.failed + (saved.snapshot.summary.warnings ?? 0))
       && analyses.filter(saved => selected.includes(saved.kind === 'clash' ? 'clash' : 'validation')).every(saved =>
         saved.kind === 'clash' ? !saved.result.truncated : saved.report.specificationResults.every(spec =>
           !spec.error && !spec.setResultsTruncated && spec.passedCount + spec.failedCount === spec.applicableCount

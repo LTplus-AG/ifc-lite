@@ -9,15 +9,19 @@ export interface ReportDiagnostics {
   appVersion: string;
   buildSha: string;
   browser?: string;
-  eventId?: string;
-  sessionId?: string;
 }
+/** Private correlation is never part of the public GitHub diagnostics. */
+export interface ReportCorrelation { eventId: string; sessionId: string; buildSha: string }
+export interface VerifiedIssueTarget { issueUrl: string; title: string; verificationToken: string }
+export interface IssueResolution { status: "matched" | "unmatched" | "unavailable"; target?: VerifiedIssueTarget }
 export interface ReportDraftInput {
   clientRequestId: string;
   title: string;
   description: string;
   diagnostics: ReportDiagnostics;
   visibility: ModelVisibility;
+  /** Explicitly reviewed destination; signed and session-bound by the service. */
+  issueTarget?: VerifiedIssueTarget;
 }
 export interface ReportLimits {
   maxFileBytes: number;
@@ -35,6 +39,7 @@ export interface ReportAgreement {
 }
 export interface ReportSession {
   csrfToken: string;
+  issueLinkingEnabled?: boolean;
   limits: ReportLimits;
   agreement: ReportAgreement;
   storage: {
@@ -85,6 +90,7 @@ export interface UploadInput {
 }
 export interface ReportReceipt {
   publicationHold?: "review_required";
+  issueDestination?: Pick<VerifiedIssueTarget, "issueUrl" | "title">;
   id: string;
   status: "draft" | "manual_review" | "submitted" | "published" | "deleted";
   issueUrl?: string;
@@ -157,10 +163,14 @@ export function isDraftInput(value: unknown): value is ReportDraftInput {
           "description",
           "diagnostics",
           "visibility",
+          "issueTarget",
         ].includes(key),
     )
   )
     return false;
+  if (value.issueTarget !== undefined && (!isRecord(value.issueTarget) ||
+    !boundedText(value.issueTarget.issueUrl, 300) || !boundedText(value.issueTarget.title, 300) ||
+    !boundedText(value.issueTarget.verificationToken, 4096))) return false;
   const d = value.diagnostics;
   return (
     Object.keys(d).every((key) =>
@@ -169,14 +179,12 @@ export function isDraftInput(value: unknown): value is ReportDraftInput {
         "appVersion",
         "buildSha",
         "browser",
-        "eventId",
-        "sessionId",
       ].includes(key),
     ) &&
     boundedText(d.errorCode, 160) &&
     boundedText(d.appVersion, 80) &&
     boundedText(d.buildSha, 80) &&
-    ["browser", "eventId", "sessionId"].every(
+    ["browser"].every(
       (key) => d[key] === undefined || boundedText(d[key], 160),
     )
   );
@@ -212,4 +220,9 @@ export function isUploadInput(
     ["none", "standard", "custom"].includes(String(value.confidentiality)) &&
     value.uploadConsent === true
   );
+}
+
+export function isReportCorrelation(value: unknown): value is ReportCorrelation {
+  return isRecord(value) && isUuid(value.eventId) && isUuid(value.sessionId) && boundedText(value.buildSha, 80) &&
+    Object.keys(value).every(key => ["eventId", "sessionId", "buildSha"].includes(key));
 }

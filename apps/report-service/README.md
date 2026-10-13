@@ -63,8 +63,16 @@ undo an already-public issue.
 
 This layer deliberately leaves startup publication disabled. Local loopback
 protocol and PostgreSQL tests are not a new production qualification. Existing
-live #7517 evidence retains its original source binding. Existing-issue comments,
-PostHog correlation, viewer hold messaging and deployment activation belong to
-their later layers. Do not enable this transport or deploy it over N as a rollback.
+live #7517 evidence retains its original source binding. This layer adds existing-issue comments and explicit PostHog correlation.
+Live PostHog acceptance and deployment activation remain unqualified. Do not enable this transport or deploy it over N as a rollback.
+### Verified existing-issue destination
+
+Optional `REPORT_POSTHOG_HOST` (exact PostHog Cloud app origin), `REPORT_POSTHOG_PROJECT_ID` and server-only `REPORT_POSTHOG_API_KEY` enable an explicit lookup of the exact captured exception. Grant only the read scopes needed for event queries and error-tracking issue details. No lookup runs until the user asks. The service verifies the event UUID, session, build, recent timestamp, resolved PostHog issue and its sole linked open GitHub issue in the configured repository. Generic error categories are never deduplication keys. Unavailable, ambiguous or unmatched lookups leave the user an explicit choice to retry or create a separate issue.
+
+The reviewed destination has a one-hour, session-bound signed receipt; its correlation is stored privately and erased with report deletion/retention. Public diagnostics never include event/session IDs. A bound submission publishes the reviewed text as a comment on that issue. Lost comment responses reconcile against a terminal per-report marker authored by the configured GitHub App. A closed/moved/unavailable issue or an incomplete reconciliation window holds the outbox; it never silently creates another issue. Existing comments remain public after private-data deletion. Issue and comment reconciliation follows the response `Link` next relation within a ten-page budget. A short page with another page remains incomplete; a full final page without a next relation is complete. An incomplete budget window refuses publication, while a prior committed intent always prevents another POST.
+
+Before enabling, qualify the configured PostHog query shape/read scopes with a real known exception and linked repository issue, then verify a user-reviewed comment in an authorized test issue. Local HTTP fixture tests do not establish that live integration or authorize production submissions.
+
+The resolver uses PostHog’s dynamically added `events.issue_id`, not the historical `properties.$exception_issue_id`. The [pinned upstream database mapping](https://github.com/PostHog/posthog/blob/8c409d41eb190b96d4e0eaaef5fae11a2009c1cc/posthog/hogql/database/database.py#L3091) resolves current fingerprint ownership and is installed for ordinary project queries; the base `EventsTable` declaration alone omits these dynamic fields. Issue retrieval requires [`error_tracking:read`](https://posthog.com/docs/api/error-tracking-3). These source checks still require live verification against the configured project.
 
 Operational routing, historical hosted receipts and activation gaps are tracked in the [deployment runbook](../../deploy/reports/railway.md). Before restoring a production snapshot, stop the entire API and all workers and complete the [independent deletion/outbox reconciliation procedure](../../deploy/reports/recovery.md). The admission flag alone does not pause workers; restore acceptance remains outstanding.

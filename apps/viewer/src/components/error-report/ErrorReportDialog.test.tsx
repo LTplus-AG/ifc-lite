@@ -388,3 +388,47 @@ for (const mode of ['automatic publication', 'manual status refresh'] as const) 
     server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve()));
   }
 });
+
+test('#7495 exact issue match requires explicit destination review and never silently falls back', async () => {
+  const correlation = { eventId: crypto.randomUUID(), sessionId: crypto.randomUUID(), buildSha: 'dev' };
+  const target = { issueUrl: 'https://github.com/LTplus-AG/ifc-lite/issues/7493', title: 'Known selection crash', verificationToken: 'signed-owner-bound-target' };
+  const calls: Array<{ path: string; body?: Record<string, unknown> }> = [];
+  const transport: typeof fetch = async (url, init) => {
+    const path = String(url);
+    calls.push({ path, ...(init?.body ? { body: JSON.parse(String(init.body)) } : {}) });
+    if (path.endsWith('/session')) return Response.json({ ...session, issueLinkingEnabled: true });
+    if (path.endsWith('/resolve-issue')) return Response.json({ status: 'matched', target });
+    if (path.endsWith('/drafts')) return Response.json({ id: 'reviewed-report', status: 'draft' });
+    if (path.endsWith('/submit')) return Response.json({ id: 'reviewed-report', status: 'published', issueUrl: target.issueUrl });
+    throw new Error('Unexpected request');
+  };
+  render(<ErrorReportDialog context={{ errorCode: 'renderer_frame_failed', correlation }} onClose={() => {}} client={new ReportClient(transport)} />);
+  await settle();
+  assert.equal(calls.length, 1, 'no automatic correlation lookup or report creation');
+  assert.equal(button('Review report').disabled, true);
+  click(button('Check for an existing issue')); await settle();
+  assert.deepEqual(calls[1]?.body, correlation);
+  assert.equal(button('Review report').disabled, true, 'a match does not choose for the user');
+  const existing = [...document.querySelectorAll('label')].find(label => label.textContent?.includes('Add my reviewed report to'))?.querySelector('input');
+  assert.ok(existing); click(existing);
+  click(button('Review report'));
+  assert.ok(document.body.textContent?.includes(target.issueUrl));
+  assert.equal(calls.length, 2, 'review still sends no report/model');
+  click(button('Send report')); await settle();
+  const draft = calls.find(call => call.path.endsWith('/drafts'))?.body;
+  assert.deepEqual(draft?.issueTarget, target);
+  assert.ok(!JSON.stringify(draft?.diagnostics).includes(correlation.sessionId));
+  assert.equal(calls.filter(call => call.path.endsWith('/drafts')).length, 1);
+});
+
+test('#7495 unavailable issue lookup requires an explicit new-issue choice', async () => {
+  const transport: typeof fetch = async (url) => String(url).endsWith('/session')
+    ? Response.json({ ...session, issueLinkingEnabled: true }) : Response.json({ status: 'unavailable' });
+  render(<ErrorReportDialog context={{ errorCode: 'renderer_frame_failed', correlation: { eventId: crypto.randomUUID(), sessionId: crypto.randomUUID(), buildSha: 'dev' } }} onClose={() => {}} client={new ReportClient(transport)} />);
+  await settle(); click(button('Check for an existing issue')); await settle();
+  assert.equal(button('Review report').disabled, true);
+  assert.ok(document.body.textContent?.includes('could not be verified'));
+  const separate = [...document.querySelectorAll('label')].find(label => label.textContent?.includes('Create a separate GitHub issue'))?.querySelector('input');
+  assert.ok(separate); click(separate);
+  assert.equal(button('Review report').disabled, false);
+});

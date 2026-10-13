@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { reportCorrelation } from '@/lib/error-reports/correlation';
 import { offerErrorReport } from '@/lib/error-reports/context';
 /**
  * Error boundary for `React.lazy` chunk roots.
@@ -95,13 +96,12 @@ export class ChunkErrorBoundary extends Component<
     // real bug with an auto-recovered one, and the render path below would tell
     // the user their tab was out of date when it was not.
     const chunk = isStaleDeploymentError(error);
-    if (!chunk) offerErrorReport({ errorCode: 'component_render_error' });
     console.error(`[chunk-boundary] "${this.props.label}" failed`, error, info);
     // Reported explicitly so it lands as HANDLED rather than as an uncaught
     // error-level exception. When a skew reload is in flight the before_send
     // gate in lib/chunk-version-skew.ts drops this as collateral; when no reload
     // is coming, it is a real dead end and worth hearing about.
-    posthog.captureException(error, {
+    const captured = posthog.captureException(error, {
       context: chunk ? 'lazy_chunk_boundary' : 'lazy_subtree_boundary',
       // `lazy_chunk`, not `chunk_label`: the analytics scrub deletes any key
       // with a `label` word (free text is where model names leak), so the
@@ -110,6 +110,7 @@ export class ChunkErrorBoundary extends Component<
       // string from the call sites in this repo, not user data.
       lazy_chunk: this.props.label,
     });
+    if (!chunk) offerErrorReport({ errorCode: 'component_render_error', correlation: reportCorrelation(captured) });
   }
 
   render(): ReactNode {

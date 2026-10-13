@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { offerErrorReport } from '@/lib/error-reports/context';
+import { reportCorrelation } from '@/lib/error-reports/correlation';
+import { offerErrorReport, attachContextCorrelation } from '@/lib/error-reports/context';
 import type { RenderDegradationInfo } from '@ifc-lite/renderer';
 import { posthog } from '@/lib/analytics';
 import {
@@ -99,12 +100,13 @@ export function reportDeviceLost(
 ): void {
   if (reported) return;
   reported = true;
-  offerErrorReport({ errorCode: 'gpu_device_lost' });
+  const reportContext = { errorCode: 'gpu_device_lost' };
+  offerErrorReport(reportContext);
 
   console.warn('[Viewport] GPU device lost:', info.reason, info.message);
 
   try {
-    posthog.captureException(
+    const captured = posthog.captureException(
       new Error(`GPU device lost (${info.reason}): ${info.message}`),
       {
         // Enrichment (issue #2624) FIRST, base fields LAST: whatever keys a
@@ -150,6 +152,8 @@ export function reportDeviceLost(
         $exception_fingerprint: deviceLostFingerprint(info.reason),
       },
     );
+    const correlation = reportCorrelation(captured);
+    if (correlation) attachContextCorrelation(reportContext, correlation);
   } catch (err) {
     // Telemetry must never be the thing that breaks the loss path.
     console.warn('[Viewport] device-loss capture failed:', err);
@@ -184,7 +188,8 @@ export function reportPersistentRenderDegradation(
 ): void {
   if (degradationReported) return;
   degradationReported = true;
-  offerErrorReport({ errorCode: 'persistent_render_degradation' });
+  const reportContext = { errorCode: 'persistent_render_degradation' };
+  offerErrorReport(reportContext);
 
   console.warn(
     '[Viewport] rendering degraded without recovering:',
@@ -194,7 +199,7 @@ export function reportPersistentRenderDegradation(
   );
 
   try {
-    posthog.captureException(
+    const captured = posthog.captureException(
       new Error(
         `Rendering persistently degraded (${info.origin}, ${info.consecutiveDegradedFrames} consecutive frames): ${info.detail}`,
       ),
@@ -225,6 +230,8 @@ export function reportPersistentRenderDegradation(
         $exception_fingerprint: 'ifc-lite:render_degraded',
       },
     );
+    const correlation = reportCorrelation(captured);
+    if (correlation) attachContextCorrelation(reportContext, correlation);
   } catch (err) {
     // Telemetry must never be the thing that breaks the render path.
     console.warn('[Viewport] render-degradation capture failed:', err);

@@ -5,6 +5,7 @@
 import { describe, expect, it } from "vitest";
 import {
   isDraftInput,
+  isReportCorrelation,
   isUploadInput,
   isAgreementAcceptance,
   REPORT_LIMITS,
@@ -30,6 +31,17 @@ describe("#7495 public report boundary", () => {
       }),
     ).toBe(false);
     expect(isDraftInput({ ...draft, model: "bytes" })).toBe(false);
+  });
+  it("keeps exact-event references outside public diagnostics (#7495)", () => {
+    const correlation = { eventId: draft.clientRequestId, sessionId: draft.clientRequestId, buildSha: "abcdef" };
+    expect(isReportCorrelation?.(correlation)).toBe(true);
+    expect(isReportCorrelation?.({ ...correlation, filename: "private.ifc" })).toBe(false);
+    expect(isReportCorrelation?.({ ...correlation, eventId: "' OR true" })).toBe(false);
+    for (const key of ["eventId", "sessionId"]) {
+      expect(isDraftInput({ ...draft, diagnostics: { ...draft.diagnostics, [key]: draft.clientRequestId } })).toBe(false);
+    }
+    expect(isDraftInput({ ...draft, issueTarget: { issueUrl: "https://github.com/owner/repo/issues/1", title: "Known issue", verificationToken: "signed" } })).toBe(true);
+    expect(isDraftInput({ ...draft, issueTarget: { issueUrl: "https://github.com/owner/repo/issues/1", title: "Known issue" } })).toBe(false);
   });
   it("requires explicit upload consent and bounds file size independently of MIME", () => {
     const upload = {

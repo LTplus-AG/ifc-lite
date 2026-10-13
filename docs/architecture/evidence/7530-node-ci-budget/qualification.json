@@ -1,0 +1,74 @@
+{
+  "issue": 7530,
+  "base": "399a0729ca71bdf719310984223c987a3106cbe6",
+  "workflowSha256": "f50903636e03b9af8bb1efc90193ed8924c11e8222be620df41bb7eb9ee3fafd",
+  "incidentJobs": [
+    {
+      "head": "6adf008f3eafd4a85ce2cffeb90b539540b67f0d",
+      "url": "https://github.com/LTplus-AG/ifc-lite/actions/runs/38320606292/job/115049527530",
+      "startedAt": "2026-10-12T23:16:36Z",
+      "completedAt": "2026-10-12T23:41:40Z",
+      "annotation": "The job has exceeded the maximum execution time of 25m0s",
+      "scriptsSeconds": 286,
+      "serialPackageSeconds": 961,
+      "packageTasksSuccessful": 65,
+      "remainingChecks": "integration cancelled; API, WASM contract and snap-edge suites skipped"
+    },
+    {
+      "head": "32eb0cd799a5f50f51b8aa8b9642634346e42541",
+      "url": "https://github.com/LTplus-AG/ifc-lite/actions/runs/38321739575/job/115053690633",
+      "startedAt": "2026-10-12T23:32:46Z",
+      "completedAt": "2026-10-12T23:57:55Z",
+      "annotation": "The job has exceeded the maximum execution time of 25m0s",
+      "scriptsSeconds": 286,
+      "serialPackageSeconds": 946,
+      "remainingChecks": "deadline reached at WASM contract step; snap-edge suite skipped"
+    }
+  ],
+  "successfulComparison": {
+    "head": "700e739c03c0a00fed64e495d2ac5d4c22d9d11f",
+    "url": "https://github.com/LTplus-AG/ifc-lite/actions/runs/38321519771/job/115053364901",
+    "jobSeconds": 992,
+    "scriptsSeconds": 186,
+    "serialPackageSeconds": 613,
+    "remainingChecks": "all four runtime suites passed"
+  },
+  "partition": {
+    "sharedSetupSteps": 8,
+    "guardSteps": 105,
+    "runtimeSteps": 5,
+    "jobDeadlineMinutes": 25,
+    "checks": {
+      "guardStepsPreserved": true,
+      "runtimeStepsPreserved": true,
+      "guardsEnvelopePreserved": true,
+      "runtimeEnvelopePreserved": true
+    },
+    "aggregate": "node-guards added to both needs and judged results; 22 dependencies, all judged"
+  },
+  "localValidation": {
+    "guards": [
+      "check-ci-aggregate-coverage: passed",
+      "check-ci-path-coverage: passed, 147 gates / 607 input paths",
+      "check-test-wiring: passed, 67 packages / 73 gate scripts / 239 script tests",
+      "check-workflow-report-paths: passed"
+    ],
+    "regressionCommand": "node --test --test-concurrency=1 scripts/check-ci-aggregate-coverage.test.mjs scripts/check-ci-path-coverage.test.mjs scripts/check-test-wiring.test.mjs scripts/check-workflow-report-paths.test.mjs",
+    "passed": 121,
+    "failed": 0,
+    "skipped": 0,
+    "actionlint": "not installed; not run"
+  },
+  "qualification": "Local semantic/guard validation only. Actual hosted split-job results and all required CI contexts must pass before merge.",
+  "independentRootReview": {
+    "allOriginalStepObjectsPreserved": true,
+    "unrelatedJobsUnchanged": true,
+    "deadlinesUnchanged": true,
+    "removeNewAggregateResult": {
+      "guardExitCode": 1,
+      "newJobIdentified": true
+    },
+    "sourceRestoredByteExact": true,
+    "restoredAggregateGuardExitCode": 0
+  }
+}

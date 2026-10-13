@@ -1,5 +1,14 @@
 # @ifc-lite/cli
 
+## 0.40.2
+
+### Patch Changes
+
+- Updated dependencies [[`96fb15a`](https://github.com/LTplus-AG/ifc-lite/commit/96fb15a4354da15452cc3870bfb7a7938b021f33)]:
+  - @ifc-lite/flow@0.7.0
+  - @ifc-lite/flow-nodes@0.9.1
+  - @ifc-lite/mcp@0.26.1
+
 ## 0.40.1
 
 ### Patch Changes

@@ -66,3 +66,5 @@ protocol and PostgreSQL tests are not a new production qualification. Existing
 live #7517 evidence retains its original source binding. Existing-issue comments,
 PostHog correlation, viewer hold messaging and deployment activation belong to
 their later layers. Do not enable this transport or deploy it over N as a rollback.
+
+Operational routing, historical hosted receipts and activation gaps are tracked in the [deployment runbook](../../deploy/reports/railway.md). Before restoring a production snapshot, stop the entire API and all workers and complete the [independent deletion/outbox reconciliation procedure](../../deploy/reports/recovery.md). The admission flag alone does not pause workers; restore acceptance remains outstanding.

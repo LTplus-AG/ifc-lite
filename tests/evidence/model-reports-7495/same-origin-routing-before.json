@@ -1,0 +1,37 @@
+{
+  "at": "2026-10-12T20:29:58.134798+00:00",
+  "method": "GET capabilities only; no auth/session allocation",
+  "results": [
+    {
+      "url": "https://www.ifclite.com/api/reports/capabilities",
+      "finalUrl": "https://www.ifclite.com/api/reports/capabilities",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "cacheControl": "public, max-age=0, must-revalidate",
+      "setCookiePresent": false,
+      "bodyKind": "html"
+    },
+    {
+      "url": "https://ifclite.com/api/reports/capabilities",
+      "finalUrl": "https://www.ifclite.com/api/reports/capabilities",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "cacheControl": "public, max-age=0, must-revalidate",
+      "setCookiePresent": false,
+      "bodyKind": "html"
+    },
+    {
+      "url": "https://model-reports-production.up.railway.app/api/reports/capabilities",
+      "finalUrl": "https://model-reports-production.up.railway.app/api/reports/capabilities",
+      "status": 200,
+      "contentType": "application/json",
+      "cacheControl": "no-store",
+      "setCookiePresent": false,
+      "bodyKind": "json",
+      "json": {
+        "submissionsEnabled": false
+      }
+    }
+  ],
+  "qualification": "Read-only observations before the proposed Vercel rewrite is deployed; not same-origin acceptance."
+}

@@ -6,6 +6,34 @@
   "framework": "vite",
   "rewrites": [
     {
+      "source": "/api/reports/capabilities",
+      "destination": "https://model-reports-production.up.railway.app/api/reports/capabilities"
+    },
+    {
+      "source": "/api/reports/session",
+      "destination": "https://model-reports-production.up.railway.app/api/reports/session"
+    },
+    {
+      "source": "/api/reports/drafts",
+      "destination": "https://model-reports-production.up.railway.app/api/reports/drafts"
+    },
+    {
+      "source": "/api/reports/:reportId([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})",
+      "destination": "https://model-reports-production.up.railway.app/api/reports/:reportId"
+    },
+    {
+      "source": "/api/reports/:reportId([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})/:action(consent|agreement\\.pdf|custom-nda|uploads|submit)",
+      "destination": "https://model-reports-production.up.railway.app/api/reports/:reportId/:action"
+    },
+    {
+      "source": "/api/reports/:reportId([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})/uploads/:uploadId([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})",
+      "destination": "https://model-reports-production.up.railway.app/api/reports/:reportId/uploads/:uploadId"
+    },
+    {
+      "source": "/api/reports/:reportId([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})/uploads/:uploadId([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})/:action(parts|complete|abort)",
+      "destination": "https://model-reports-production.up.railway.app/api/reports/:reportId/uploads/:uploadId/:action"
+    },
+    {
       "source": "/api/autodesk/:path*",
       "destination": "https://autodesk-production-50bc.up.railway.app/api/autodesk/:path*"
     },

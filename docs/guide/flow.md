@@ -1067,3 +1067,14 @@ capability unavailable instead of synthesizing findings. The MCP `run_flow` and
 `propose_flow` host provides this service; see [captured native Review reads](mcp.md#captured-native-review-reads).
 The CLI and viewer hosts do not yet bind it. See [the capture and retention contract](scripting-sdk.md#native-review-capture-lifecycle).
 Portable historical recovery and the remaining host bindings stay under #7372.
+
+### Parameter-dependent host prerequisites
+
+For node authors, optional pure `NodeDef.requiresForParams` returns additional
+host requirements from resolved parameters; these are combined with static
+`requires`. With `HostFeatures` supplied, `runFlow` checks all such node instances
+before executing any node and checks again at each node. Only validated restored
+checkpoint outputs skip service requirements. Static-only nodes retain their
+existing per-node checks, and this is no transaction or prevalidation of arbitrary
+later outputs. Parameter resolution is defaults plus declared Player overrides;
+`after` is a dependency, not a prior-node parameter interpolation syntax.

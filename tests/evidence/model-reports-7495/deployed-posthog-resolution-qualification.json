@@ -1,0 +1,81 @@
+{
+  "recordedAt": "2026-10-12T20:54:22.562081+00:00",
+  "deployment": "c94872e6-db93-40b3-8571-0e60345b7f20",
+  "sourceCommit": "d027c5eb603615557e9d60b9b2d13baac86ec6a5",
+  "livePosthogQueryAndIssueReads": true,
+  "positiveLinkedIssueMatch": "NOT_QUALIFIED: actual sampled issue has no external link",
+  "checks": [
+    {
+      "name": "staff_runtime_linking_enabled",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "name": "known_exact_error_without_link",
+      "httpStatus": 200,
+      "resolution": "unmatched",
+      "expectedStatus": 200,
+      "passed": true
+    },
+    {
+      "name": "wrong_session",
+      "httpStatus": 200,
+      "resolution": "unmatched",
+      "expectedStatus": 200,
+      "passed": true
+    },
+    {
+      "name": "wrong_build",
+      "httpStatus": 200,
+      "resolution": "unmatched",
+      "expectedStatus": 200,
+      "passed": true
+    },
+    {
+      "name": "absent_event",
+      "httpStatus": 200,
+      "resolution": "unmatched",
+      "expectedStatus": 200,
+      "passed": true
+    },
+    {
+      "name": "invalid_correlation",
+      "httpStatus": 400,
+      "resolution": null,
+      "expectedStatus": 400,
+      "passed": true
+    },
+    {
+      "name": "invalid_csrf",
+      "httpStatus": 403,
+      "resolution": null,
+      "expectedStatus": 403,
+      "passed": true
+    },
+    {
+      "name": "foreign_origin",
+      "httpStatus": 403,
+      "resolution": null,
+      "expectedStatus": 403,
+      "passed": true
+    },
+    {
+      "name": "anonymous_disabled",
+      "httpStatus": 503,
+      "resolution": null,
+      "expectedStatus": 503,
+      "passed": true
+    },
+    {
+      "name": "anonymous_capabilities_no_staff_header",
+      "httpStatus": 200,
+      "submissionsEnabled": false,
+      "setsCookie": false,
+      "passed": true
+    }
+  ],
+  "userReportingEnabled": false,
+  "createdIssues": 0,
+  "uploadedModels": 0,
+  "harnessCorrection": "Original final capabilities assertion accidentally retained staff qualification header; original failure preserved. Corrected anonymous request verified separately."
+}

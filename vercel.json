@@ -6,6 +6,10 @@
   "framework": "vite",
   "rewrites": [
     {
+      "source": "/api/reports/:path*",
+      "destination": "https://model-reports-production.up.railway.app/api/reports/:path*"
+    },
+    {
       "source": "/api/autodesk/:path*",
       "destination": "https://autodesk-production-50bc.up.railway.app/api/autodesk/:path*"
     },

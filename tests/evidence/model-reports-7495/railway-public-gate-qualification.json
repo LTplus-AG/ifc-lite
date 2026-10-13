@@ -1,0 +1,50 @@
+{
+  "recordedAt": "2026-10-12T20:18:08.647051+00:00",
+  "deployment": "2a318157-55c9-43dd-a175-aabfc604e23b",
+  "sourceCommit": "9b297a588c4f087bfef89089d5a8bf6c28621d03",
+  "endpoint": "https://model-reports-production.up.railway.app",
+  "port": 3005,
+  "checks": [
+    {
+      "name": "health",
+      "status": 200,
+      "body": {
+        "ok": true
+      },
+      "setsCookie": false,
+      "cacheControl": "no-store"
+    },
+    {
+      "name": "capabilities",
+      "status": 200,
+      "body": {
+        "submissionsEnabled": false
+      },
+      "setsCookie": false,
+      "cacheControl": "no-store"
+    },
+    {
+      "name": "session",
+      "status": 503,
+      "body": {
+        "error": "submissions_disabled",
+        "message": "Reporting is not accepting new submissions yet."
+      },
+      "setsCookie": false,
+      "cacheControl": "no-store"
+    },
+    {
+      "name": "new_content",
+      "status": 503,
+      "body": {
+        "error": "submissions_disabled",
+        "message": "Reporting is not accepting new submissions yet."
+      },
+      "setsCookie": false,
+      "cacheControl": "no-store"
+    }
+  ],
+  "userReportingEnabled": false,
+  "viewerEnabled": false,
+  "publicSharingEnabled": false
+}

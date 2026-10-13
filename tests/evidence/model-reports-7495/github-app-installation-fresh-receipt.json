@@ -1,0 +1,20 @@
+{
+  "recordedAt": "2026-10-12T20:30:13.277Z",
+  "appId": 5290746,
+  "installationId": 170722419,
+  "repositorySelection": "selected",
+  "totalCount": 1,
+  "repositories": [
+    {
+      "id": 1131742715,
+      "fullName": "LTplus-AG/ifc-lite"
+    }
+  ],
+  "permissions": {
+    "issues": "write",
+    "metadata": "read"
+  },
+  "suspended": false,
+  "validated": true,
+  "qualificationTokenRevoked": true
+}

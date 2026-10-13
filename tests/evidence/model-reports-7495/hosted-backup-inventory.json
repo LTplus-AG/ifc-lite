@@ -1,0 +1,17 @@
+{
+  "recordedAt": "2026-10-12T19:52:34.142108+00:00",
+  "scope": "Owned reporting PostgreSQL only; read-only provider API inventory",
+  "region": "europe-west4-drams3a",
+  "volumeState": "READY",
+  "backups": [],
+  "schedules": [
+    {
+      "createdAt": "2026-10-12T17:42:30.507Z",
+      "cron": "2 2 * * *",
+      "kind": "DAILY",
+      "retentionSeconds": 518400
+    }
+  ],
+  "restoreQualified": false,
+  "note": "A configured schedule is not evidence of a completed backup or restore. recordedAt is the inventory receipt file timestamp; schedule createdAt is provider-supplied."
+}

@@ -1,0 +1,11 @@
+{
+  "recordedAt": "2026-10-12T20:47:45.814916+00:00",
+  "projectId": "199147",
+  "host": "https://eu.posthog.com",
+  "queryStatus": 200,
+  "exactEventCount": 1,
+  "eventSessionBuildMatched": true,
+  "issueReadStatus": 200,
+  "canonicalIssueMatched": true,
+  "linkedGithubTargets": []
+}

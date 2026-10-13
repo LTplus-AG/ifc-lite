@@ -1,0 +1,91 @@
+{
+  "recordedAt": "2026-10-12T20:56:59.532178+00:00",
+  "deployment": "c94872e6-db93-40b3-8571-0e60345b7f20",
+  "sourceCommit": "d027c5eb603615557e9d60b9b2d13baac86ec6a5",
+  "fixture": "AC20-FZK-Haus.ifc",
+  "fixtureBytes": 2526511,
+  "fixtureSha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+  "checks": [
+    {
+      "name": "staff_session",
+      "status": 200,
+      "expected": 200,
+      "passed": true
+    },
+    {
+      "name": "create_private_draft",
+      "status": 201,
+      "expected": 201,
+      "passed": true
+    },
+    {
+      "name": "invalid_csrf",
+      "status": 403,
+      "expected": 403,
+      "passed": true
+    },
+    {
+      "name": "create_upload",
+      "status": 201,
+      "expected": 201,
+      "passed": true
+    },
+    {
+      "name": "authorize_part",
+      "status": 200,
+      "expected": 200,
+      "passed": true
+    },
+    {
+      "name": "private_paris_part_put",
+      "status": 200,
+      "expected": 200,
+      "passed": true
+    },
+    {
+      "name": "recover_uploaded_part",
+      "status": 200,
+      "expected": 200,
+      "passed": true
+    },
+    {
+      "name": "persisted_source_part_identity",
+      "passed": true
+    },
+    {
+      "name": "complete_upload",
+      "status": 200,
+      "expected": 200,
+      "passed": true
+    },
+    {
+      "name": "server_full_byte_verification",
+      "status": "ready",
+      "passed": true
+    },
+    {
+      "name": "no_owner_cookie",
+      "status": 401,
+      "expected": 401,
+      "passed": true
+    },
+    {
+      "name": "owner_deletion_with_admission_disabled",
+      "status": 200,
+      "expected": 200,
+      "passed": true
+    },
+    {
+      "name": "no_issue_submission",
+      "passed": true
+    },
+    {
+      "name": "final_owner_cleanup",
+      "status": 200,
+      "passed": true
+    }
+  ],
+  "userSubmissionsEnabled": false,
+  "ndaSigningEnabled": false,
+  "publicSharingEnabled": false
+}

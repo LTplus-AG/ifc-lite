@@ -753,7 +753,7 @@ jobs:
       - name: Detect changed report integration witnesses
         id: report-integration
         run: |
-          if git diff --name-only --diff-filter=d origin/main...HEAD -- 'apps/report-service/test/*.integration.test.ts' | grep -q .; then
+          if git diff --name-only --diff-filter=d origin/main...HEAD -- 'apps/report-service/test/integration.test.ts' 'apps/report-service/test/*.integration.test.ts' | grep -q .; then
             echo "needed=true" >> "$GITHUB_OUTPUT"
           else
             echo "needed=false" >> "$GITHUB_OUTPUT"

@@ -1,0 +1,25 @@
+{
+  "status": "passed",
+  "measurements": [
+    {
+      "synthetic": false,
+      "bytes": 2526511,
+      "parts": 1,
+      "durationMs": 143,
+      "sourceSha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+      "storedSha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+      "peakRssBytes": 130375680,
+      "backendAdapterRecreatedAfterFirstPart": true
+    },
+    {
+      "synthetic": true,
+      "bytes": 645922816,
+      "parts": 39,
+      "durationMs": 6354,
+      "sourceSha256": "b09637730221466105cb57146e61d697c0ce17b820c3cf0a4d732692a50c3121",
+      "storedSha256": "b09637730221466105cb57146e61d697c0ce17b820c3cf0a4d732692a50c3121",
+      "peakRssBytes": 314200064,
+      "backendAdapterRecreatedAfterFirstPart": true
+    }
+  ]
+}

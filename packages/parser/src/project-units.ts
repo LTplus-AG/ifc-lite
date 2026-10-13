@@ -122,7 +122,7 @@ interface DeclaredUnit extends Omit<UnitEntry, 'resolved'> {
  *  for per-property / per-quantity `Unit` overrides). One bounded walk per
  *  call, on both read paths: a cycle or a chain past the depth cap is
  *  unresolved, never a throw; on the parsed-source path a walk past its read
- *  budget is too, while native callers keep their own read limit (#ISSUE). */
+ *  budget is too, while native callers keep their own read limit (#7547). */
 export function resolveUnitByRef(
   extractor: EntityExtractor,
   entityIndex: EntityByIdIndexLike,
@@ -141,7 +141,7 @@ function resolveUnit(extractor: EntityExtractor, entityIndex: EntityByIdIndexLik
 }
 
 /** The only way into {@link resolveDeclaredUnit}: a cycle or a chain past the
- *  depth cap is refused before anything is read (#ISSUE). */
+ *  depth cap is refused before anything is read (#7547). */
 function walkDeclaredUnit(extractor: EntityExtractor, entityIndex: EntityByIdIndexLike,
   ref: number, readEntity: UnitEntityReader | undefined, walk: UnitWalk): DeclaredUnit | null {
   if (!enterUnit(walk, ref)) return null;
@@ -374,7 +374,7 @@ export function extractProjectUnits(
     }
     const walk = newUnitWalk(!readEntity);
     const walked = walkDeclaredUnit(extractor, entityIndex, unitRef, readEntity, walk);
-    // A refused walk keeps the unit declared, unresolved, never a partial scale (#ISSUE).
+    // A refused walk keeps the unit declared, unresolved, never a partial scale (#7547).
     const entry = walked && walk.refused ? { ...walked, resolved: null } : walked;
     if (readEntity && (!entry?.resolved || !Number.isFinite(entry.resolved.siScale) || entry.resolved.siScale <= 0)) {
       throw new ProjectUnitReadError('Native project unit is unresolved or unsupported');

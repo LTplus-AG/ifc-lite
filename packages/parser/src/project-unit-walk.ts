@@ -3,14 +3,14 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * The bound on one unit resolution in `project-units.ts` (#ISSUE): the
+ * The bound on one unit resolution in `project-units.ts` (#7547): the
  * TypeScript twin of `UnitWalk` in `rust/core/src/project_units/mod.rs`
  * (#4603), with the same two limits.
  *
  * `IfcDerivedUnit -> IfcDerivedUnitElement -> Unit` is a walk over
  * file-supplied references. The schema types that `Unit` as an `IfcNamedUnit`,
  * so a real derived unit nests one level, but the reader follows whatever the
- * file names. Before #ISSUE only the native read path carried a path set, and
+ * file names. Before #7547 only the native read path carried a path set, and
  * the parsed-source path had no bound at all: a derived unit that names itself
  * threw `RangeError: Maximum call stack size exceeded`, so did a long acyclic
  * chain, and an acyclic fan-out ran for seconds and composed a symbol

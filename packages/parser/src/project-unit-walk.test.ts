@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * #ISSUE: the `IfcDerivedUnit -> IfcDerivedUnitElement -> Unit` walk in
+ * #7547: the `IfcDerivedUnit -> IfcDerivedUnitElement -> Unit` walk in
  * `project-units.ts` had no bound on the parsed-source path. A derived unit
  * naming itself, or a long acyclic chain, threw `RangeError: Maximum call
  * stack size exceeded`; an acyclic fan-out ran for seconds and composed a
@@ -72,7 +72,7 @@ function fanOut(levels: number, k: number): string[] {
   return [...lines, METRE(10 + levels * 10)];
 }
 
-describe('the unit walk is bounded on the parsed-source path (#ISSUE)', () => {
+describe('the unit walk is bounded on the parsed-source path (#7547)', () => {
   it('a derived unit that names itself is unresolved, not a stack overflow', () => {
     expect(resolve(['#10=IFCDERIVEDUNIT((#11),.USERDEFINED.,$);', '#11=IFCDERIVEDUNITELEMENT(#10,1);'])).toBeNull();
   });
@@ -112,7 +112,7 @@ describe('the unit walk is bounded on the parsed-source path (#ISSUE)', () => {
   });
 
   it('an acyclic fan-out is refused inside the read budget, not composed', () => {
-    // Before #ISSUE: 4^10 element resolutions, about 2.5 s, and a 2,097,151-character symbol.
+    // Before #7547: 4^10 element resolutions, about 2.5 s, and a 2,097,151-character symbol.
     const started = performance.now();
     const out = resolve(fanOut(10, 4));
     expect(performance.now() - started).toBeLessThan(1000);
@@ -175,7 +175,7 @@ describe('the unit walk is bounded on the parsed-source path (#ISSUE)', () => {
   });
 });
 
-describe('real units stay inside the bound (#ISSUE)', () => {
+describe('real units stay inside the bound (#7547)', () => {
   it('a flow rate over a conversion-based foot resolves as before', () => {
     const out = resolve([
       '#10=IFCDERIVEDUNIT((#11,#12),.VOLUMETRICFLOWRATEUNIT.,$);',

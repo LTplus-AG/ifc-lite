@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * #ISSUE through a parsed model: a self-referencing `IfcDerivedUnit` (#50 ->
+ * #7547 through a parsed model: a self-referencing `IfcDerivedUnit` (#50 ->
  * #51 -> #50) named as a property's and a quantity's own `Unit`, or listed in
  * the project's `IfcUnitAssignment`, made the public readers throw
  * `RangeError: Maximum call stack size exceeded` (and with them the IDS bridge
@@ -51,7 +51,7 @@ function model(assignment: string, unit: string): ArrayBuffer {
 const parse = (assignment: string, unit: string) =>
   new IfcParser().parseColumnar(model(assignment, unit), { disableWorkerScan: true });
 
-describe('a self-referencing derived unit in a parsed model (#ISSUE)', () => {
+describe('a self-referencing derived unit in a parsed model (#7547)', () => {
   it('as a property own Unit: reported unresolved, the other properties read as before', async () => {
     const store = await parse('#2', '#50');
     const set = extractPropertiesOnDemand(store, 10).find((s) => s.name === 'Probe_Set');
@@ -86,7 +86,7 @@ describe('a self-referencing derived unit in a parsed model (#ISSUE)', () => {
 const EXPORTER_FILE = fileURLToPath(new URL('../../../rust/geometry/tests/fixtures/issue_098_wall_V5C.ifc', import.meta.url));
 
 // Committed, so a missing file fails here rather than skipping the control.
-describe('derived units from a real exporter stay inside the bound (#ISSUE)', () => {
+describe('derived units from a real exporter stay inside the bound (#7547)', () => {
   it('every derived unit in the assignment resolves', async () => {
     const bytes = readFileSync(EXPORTER_FILE);
     const buffer = new ArrayBuffer(bytes.byteLength);

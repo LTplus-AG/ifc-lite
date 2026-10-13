@@ -80,8 +80,8 @@ END-ISO-10303-21;
 `;
   const sv = (v: string) => `<simpleValue>${v}</simpleValue>`;
   const wall = `<entity><name>${sv('IFCWALL')}</name></entity>`;
-  const prop = (dataType: string, name: string, value: string, cardinality = 'required') =>
-    `<property${dataType ? ` dataType="${dataType}"` : ''} cardinality="${cardinality}"><propertySet>${sv('Probe_Set')}</propertySet><baseName>${sv(name)}</baseName><value>${value}</value></property>`;
+  const prop = (dataType: string, name: string, value: string, cardinality = '') =>
+    `<property${dataType ? ` dataType="${dataType}"` : ''}${cardinality ? ` cardinality="${cardinality}"` : ''}><propertySet>${sv('Probe_Set')}</propertySet><baseName>${sv(name)}</baseName><value>${value}</value></property>`;
   const named = `<attribute><name>${sv('Name')}</name><value>${sv('Required')}</value></attribute>`;
   const spec = (name: string, applicability: string, requirements: string) => `
     <specification name="${name}" ifcVersion="IFC2X3 IFC4 IFC4X3_ADD2">

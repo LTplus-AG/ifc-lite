@@ -6,12 +6,15 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { execFile } from 'node:child_process';
 import { createServer } from 'node:http';
+import { existsSync } from 'node:fs';
 import { mkdtemp, mkdir, copyFile, writeFile, readFile, symlink, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const sourceRoot = fileURLToPath(new URL('../../', import.meta.url));
+const addedProduction = new Set(['scripts/lib/unused-locals-measure.mjs',
+  'scripts/lib/unused-locals-pool.mjs', 'scripts/lib/unused-locals-worker.mjs']);
 const sources = ['scripts/check-unused-locals.mjs', 'scripts/typecheck-tests.mjs', 'tsconfig.tests.base.json',
   'scripts/lib/is-main-entry.mjs', 'scripts/lib/unused-locals-classify.mjs',
   'scripts/lib/unused-locals-measure.mjs', 'scripts/lib/unused-locals-pool.mjs', 'scripts/lib/unused-locals-worker.mjs'];
@@ -22,6 +25,10 @@ async function workspace() {
     // Run the real gate source in a disposable genuine pnpm workspace. No
     // compiler output/count is mocked, and no production source is mutated.
     for (const source of sources) {
+      // An intact original gate has no imports of these new leaves. Keeping
+      // that stable consumer runnable makes the whole-production inverse a
+      // real capacity assertion after compilation, not a missing-module error.
+      if (addedProduction.has(source) && !existsSync(join(sourceRoot, source))) continue;
       const target = join(root, source);
       await mkdir(dirname(target), { recursive: true });
       await copyFile(join(sourceRoot, source), target);
@@ -87,7 +94,7 @@ function assertWorkersStopped(control) {
   }
 }
 const baselineBytes = root => readFile(join(root, 'scripts/unused-locals-baseline.json'), 'utf8');
-const gateEnv = control => ({ NODE_OPTIONS: `--import=${fileURLToPath(new URL('./fixtures/unused-locals-held-worker.mjs', import.meta.url))}`,
+const gateEnv = control => ({ NODE_OPTIONS: `--import=${fileURLToPath(new URL('./__fixtures__/unused-locals-held-worker.mjs', import.meta.url))}`,
   UNUSED_LOCALS_GATE: control.url });
 
 // Tests are serial within this file; each compiler workload is only four tiny

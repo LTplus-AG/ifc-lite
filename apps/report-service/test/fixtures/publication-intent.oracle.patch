@@ -1,0 +1,11 @@
+--- a/apps/report-service/src/publication-intent.ts
++++ b/apps/report-service/src/publication-intent.ts
+@@ -34,7 +34,7 @@
+       'INSERT INTO report_publication_intents(report_id) VALUES($1) ON CONFLICT DO NOTHING RETURNING report_id',
+       [reportId],
+     ), timeoutMs, () => { destroy = true; });
+-    if (false) throw new Error('github_publication_review_required');
++    if (!result.rowCount) throw new Error('github_publication_review_required');
+   } catch (error) {
+     destroy = true;
+     throw error;

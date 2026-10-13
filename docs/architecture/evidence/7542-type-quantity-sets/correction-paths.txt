@@ -1,0 +1,93 @@
+$ node docs/architecture/evidence/7542-type-quantity-sets/correction-paths.mjs packages/ids/.evidence-builds/main packages/ids/.evidence-builds/b00f7dd7f packages/ids/.evidence-builds/head 2>/dev/null
+Reading. W1 sets, metre project, the type's quantity set attached through IfcRelDefinesByProperties only
+  main       (none)
+  b00f7dd7f  {Length=5000:IFCLENGTHMEASURE}
+  head       {Length=5000:IFCLENGTHMEASURE}
+Override of an inherited quantity, W1 has no set of that name, millimetre project: Length raw 7000, no dataType
+  main       {Length=7000}
+  b00f7dd7f  {Length=7:IFCLENGTHMEASURE}
+  head       {Length=7:IFCLENGTHMEASURE}
+  the same with dataType IFCLENGTHMEASURE
+  main       {Length=7:IFCLENGTHMEASURE}
+  b00f7dd7f  {Length=7:IFCLENGTHMEASURE}
+  head       {Length=7:IFCLENGTHMEASURE}
+Override of an inherited quantity, W2 holds its own set of that name (Width only), millimetre project: Length raw 7000, no dataType
+  main       {Width=0.0002:IFCLENGTHMEASURE, Length=7000}
+  b00f7dd7f  {Width=0.0002:IFCLENGTHMEASURE, Length=7:IFCLENGTHMEASURE}
+  head       {Width=0.0002:IFCLENGTHMEASURE, Length=7:IFCLENGTHMEASURE}
+  the same with dataType IFCLENGTHMEASURE
+  main       {Width=0.0002:IFCLENGTHMEASURE, Length=7:IFCLENGTHMEASURE}
+  b00f7dd7f  {Width=0.0002:IFCLENGTHMEASURE, Length=7:IFCLENGTHMEASURE}
+  head       {Width=0.0002:IFCLENGTHMEASURE, Length=7:IFCLENGTHMEASURE}
+Override deleting an inherited quantity, W1 has no set of that name, metre project: Length
+  main       (none)
+  b00f7dd7f  {}
+  head       {}
+propertyValueToRaw, inherited quantity, millimetre project, no own Unit: 5, no dataType
+  main       5
+  b00f7dd7f  5000
+  head       5000
+  the same with dataType IFCLENGTHMEASURE
+  main       5000
+  b00f7dd7f  5000
+  head       5000
+propertyValueToRaw, inherited quantity with its own millimetre Unit, metre project: 6, IFCLENGTHMEASURE
+  main       6
+  b00f7dd7f  6000
+  head       6
+Override of an inherited quantity with its own millimetre Unit, metre project: Length raw 6
+  main       {Length=6}
+  b00f7dd7f  {Length=0.006:IFCLENGTHMEASURE}
+  head       {Length=6:IFCLENGTHMEASURE}
+propertyValueToRaw, inherited property with its own millimetre Unit, metre project: 0.3, IFCLENGTHMEASURE
+  main       300
+  b00f7dd7f  300
+  head       0.3
+  the same, no dataType
+  main       300
+  b00f7dd7f  300
+  head       0.3
+Override of an inherited property with its own millimetre Unit, metre project: Width raw 0.3
+  main       {Width=0.0003:IFCLENGTHMEASURE}
+  b00f7dd7f  {Width=0.0003:IFCLENGTHMEASURE}
+  head       {Width=0.3:IFCLENGTHMEASURE}
+Two overrides of that property in one array: raw 0.2, then raw 0.3
+  main       {Width=0.0003:IFCLENGTHMEASURE}
+  b00f7dd7f  {Width=0.0003:IFCLENGTHMEASURE}
+  head       {Width=0.3:IFCLENGTHMEASURE}
+propertyValueToRaw, the type object checked directly, its quantity with its own millimetre Unit, metre project: 6, IFCLENGTHMEASURE
+  main       6
+  b00f7dd7f  6000
+  head       6
+Override on the type object checked directly, that quantity: Length raw 6
+  main       {Length=6:IFCLENGTHMEASURE}
+  b00f7dd7f  {Length=0.006:IFCLENGTHMEASURE}
+  head       {Length=6:IFCLENGTHMEASURE}
+propertyValueToRaw, the type object checked directly, its quantity, millimetre project, no own Unit: 6, no dataType
+  main       6
+  b00f7dd7f  6000
+  head       6000
+propertyValueToRaw, W4's own quantity with its own millimetre Unit, metre project: 4, IFCLENGTHMEASURE
+  main       4000
+  b00f7dd7f  4000
+  head       4
+Override of that quantity: Height raw 4
+  main       {Height=0.004:IFCLENGTHMEASURE}
+  b00f7dd7f  {Height=0.004:IFCLENGTHMEASURE}
+  head       {Height=4:IFCLENGTHMEASURE}
+Control: propertyValueToRaw, W3's own property with its own millimetre Unit, metre project: 6, IFCLENGTHMEASURE
+  main       6000
+  b00f7dd7f  6000
+  head       6000
+Control: override of that property, Span raw 6000
+  main       {Span=6:IFCLENGTHMEASURE}
+  b00f7dd7f  {Span=6:IFCLENGTHMEASURE}
+  head       {Span=6:IFCLENGTHMEASURE}
+Control: propertyValueToRaw, the type object checked directly, its own property with its own millimetre Unit: 0.3, IFCLENGTHMEASURE
+  main       300
+  b00f7dd7f  300
+  head       300
+Control: override on the type object checked directly, that property: Width raw 300
+  main       {Width=0.3:IFCLENGTHMEASURE}
+  b00f7dd7f  {Width=0.3:IFCLENGTHMEASURE}
+  head       {Width=0.3:IFCLENGTHMEASURE}

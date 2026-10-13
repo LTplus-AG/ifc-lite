@@ -1,0 +1,29 @@
+$ node --max-old-space-size=16000 docs/architecture/evidence/7542-type-quantity-sets/acceptance-sweep.mjs packages/ids/.evidence-builds/main packages/ids/.evidence-builds/b00f7dd7f packages/ids/.evidence-builds/head 2>/dev/null
+tracked .ifc files of at most 5 MB (398 of 399): 398 parsed, 0 failed to parse; 66659 ids; 606213 propertyValueToRaw calls per build
+  no difference, and nothing throws
+generated models: 8 parsed, 0 failed to parse; 138 ids; 1512 propertyValueToRaw calls per build
+  getPropertySets differs, main vs head: 15
+    generated:base-metre #20: Pset_WallCommon{Width=0.2:IFCLENGTHMEASURE} | Pset_WallCommon{Width=0.2:IFCLENGTHMEASURE} Qto_WallBaseQuantities{Length=5:IFCLENGTHMEASURE,GrossSideArea=12:IFCAREAMEASURE}
+    generated:base-metre #21: Qto_WallBaseQuantities{Height=3:IFCLENGTHMEASURE} Pset_WallCommon{Width=0.2:IFCLENGTHMEASURE} | Qto_WallBaseQuantities{Height=3:IFCLENGTHMEASURE,Length=5:IFCLENGTHMEASURE,GrossSideArea=12:IFCAREAMEASURE} Pset_WallCommon{Width=0.2:IFCLENGTHMEASURE}
+    generated:base-metre #50: Pset_WallCommon{Width=0.2:IFCLENGTHMEASURE} | Pset_WallCommon{Width=0.2:IFCLENGTHMEASURE} Qto_WallBaseQuantities{Length=5:IFCLENGTHMEASURE,GrossSideArea=12:IFCAREAMEASURE}
+    generated:type-also-rel #20: Pset_ViaRel{Note="x":IFCLABEL} | Pset_ViaRel{Note="x":IFCLABEL} Qto_WallBaseQuantities{Length=5:IFCLENGTHMEASURE}
+  getPropertySets with an overlay differs, b00f7dd7f vs head: 6
+    generated:base-metre #20: Pset_WallCommon{} Qto_WallBaseQuantities{Length=0.0025:IFCLENGTHMEASURE,GrossSideArea=2.5:IFCAREAMEASURE} Pset_ReviewProbe{Missing=2.5:IFCLENGTHMEASURE} | Pset_WallCommon{} Qto_WallBaseQuantities{Length=2.5:IFCLENGTHMEASURE,GrossSideArea=2.5:IFCAREAMEASURE} Pset_ReviewProbe{Missing=2.5:IFCLENGTHMEASURE}
+    generated:base-metre #21: Qto_WallBaseQuantities{Length=0.0025:IFCLENGTHMEASURE,GrossSideArea=2.5:IFCAREAMEASURE} Pset_WallCommon{Width=0.0025:IFCLENGTHMEASURE} Pset_ReviewProbe{Missing= | Qto_WallBaseQuantities{Length=2.5:IFCLENGTHMEASURE,GrossSideArea=2.5:IFCAREAMEASURE} Pset_WallCommon{Width=2.5:IFCLENGTHMEASURE} Pset_ReviewProbe{Missing=2.5:IF
+    generated:base-metre #50: Pset_WallCommon{} Qto_WallBaseQuantities{Length=0.0025:IFCLENGTHMEASURE,GrossSideArea=2.5:IFCAREAMEASURE} Pset_ReviewProbe{Missing=2.5:IFCLENGTHMEASURE} | Pset_WallCommon{} Qto_WallBaseQuantities{Length=2.5:IFCLENGTHMEASURE,GrossSideArea=2.5:IFCAREAMEASURE} Pset_ReviewProbe{Missing=2.5:IFCLENGTHMEASURE}
+    generated:type-also-rel #20: Pset_ViaRel{} Qto_WallBaseQuantities{Length=0.0025:IFCLENGTHMEASURE} Pset_ReviewProbe{Missing=2.5:IFCLENGTHMEASURE} | Pset_ViaRel{} Qto_WallBaseQuantities{Length=2.5:IFCLENGTHMEASURE} Pset_ReviewProbe{Missing=2.5:IFCLENGTHMEASURE}
+  getPropertySets with an overlay differs, main vs head: 15
+    generated:base-metre #20: Pset_WallCommon{} Pset_ReviewProbe{Missing=2.5:IFCLENGTHMEASURE} Qto_WallBaseQuantities{Length=2.5:IFCLENGTHMEASURE,GrossSideArea=2.5:IFCLENGTHMEASURE} | Pset_WallCommon{} Qto_WallBaseQuantities{Length=2.5:IFCLENGTHMEASURE,GrossSideArea=2.5:IFCAREAMEASURE} Pset_ReviewProbe{Missing=2.5:IFCLENGTHMEASURE}
+    generated:base-metre #21: Qto_WallBaseQuantities{Length=2.5:IFCLENGTHMEASURE,GrossSideArea=2.5:IFCLENGTHMEASURE} Pset_WallCommon{Width=0.0025:IFCLENGTHMEASURE} Pset_ReviewProbe{Missing=2 | Qto_WallBaseQuantities{Length=2.5:IFCLENGTHMEASURE,GrossSideArea=2.5:IFCAREAMEASURE} Pset_WallCommon{Width=2.5:IFCLENGTHMEASURE} Pset_ReviewProbe{Missing=2.5:IF
+    generated:base-metre #50: Pset_WallCommon{} Pset_ReviewProbe{Missing=2.5:IFCLENGTHMEASURE} Qto_WallBaseQuantities{Length=2.5:IFCLENGTHMEASURE,GrossSideArea=2.5:IFCLENGTHMEASURE} | Pset_WallCommon{} Qto_WallBaseQuantities{Length=2.5:IFCLENGTHMEASURE,GrossSideArea=2.5:IFCAREAMEASURE} Pset_ReviewProbe{Missing=2.5:IFCLENGTHMEASURE}
+    generated:type-also-rel #20: Pset_ViaRel{} Pset_ReviewProbe{Missing=2.5:IFCLENGTHMEASURE} Qto_WallBaseQuantities{Length=2.5:IFCLENGTHMEASURE} | Pset_ViaRel{} Qto_WallBaseQuantities{Length=2.5:IFCLENGTHMEASURE} Pset_ReviewProbe{Missing=2.5:IFCLENGTHMEASURE}
+  propertyValueToRaw differs, b00f7dd7f vs head: 32
+    generated:base-metre #20 Pset_WallCommon.Width undefined 1.5: 1500 | 1.5
+    generated:base-metre #20 Pset_WallCommon.Width IFCLENGTHMEASURE 1.5: 1500 | 1.5
+    generated:base-metre #20 Qto_WallBaseQuantities.Length undefined 1.5: 1500 | 1.5
+    generated:base-metre #20 Qto_WallBaseQuantities.Length IFCLENGTHMEASURE 1.5: 1500 | 1.5
+  propertyValueToRaw differs, main vs head: 10
+    generated:base-metre #20 Pset_WallCommon.Width undefined 1.5: 1500 | 1.5
+    generated:base-metre #20 Pset_WallCommon.Width IFCLENGTHMEASURE 1.5: 1500 | 1.5
+    generated:base-metre #21 Qto_WallBaseQuantities.Height undefined 1.5: 1500 | 1.5
+    generated:base-metre #21 Qto_WallBaseQuantities.Height IFCLENGTHMEASURE 1.5: 1500 | 1.5

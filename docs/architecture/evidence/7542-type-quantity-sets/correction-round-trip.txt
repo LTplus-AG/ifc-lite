@@ -1,0 +1,294 @@
+$ node docs/architecture/evidence/7542-type-quantity-sets/correction-round-trip.mjs packages/ids/.evidence-builds/main packages/ids/.evidence-builds/b00f7dd7f packages/ids/.evidence-builds/head 2>/dev/null
+A. inherited quantity with its own millimetre Unit, metre project: W1 Qto_WallBaseQuantities.Length to 6
+  main:
+    before: Qto_WallBaseQuantities (none); fail PSET_MISSING
+    propertyValueToRaw(6, IFCLENGTHMEASURE) = 6
+    view: Qto_WallBaseQuantities new {Length=6}
+    session: Qto_WallBaseQuantities {Length=6}; pass
+    exported: #52=IFCQUANTITYLENGTH('Length',$,#4,5000.,$);
+    exported: #83=IFCPROPERTYSINGLEVALUE('Length',$,IFCLENGTHMEASURE(6.),$);
+    exported: #51=IFCELEMENTQUANTITY('0qto000000000000000051',$,'Qto_WallBaseQuantities',$,$,(#52));
+    exported: #84=IFCPROPERTYSET('2qM8ei7LT8egRqUCH3Op45',$,'Qto_WallBaseQuantities',$,(#83));
+    exported: #50=IFCWALLTYPE('0type00000000000000050',$,'WT',$,$,(#51,#53),$,$,$,.STANDARD.);
+    exported: #85=IFCRELDEFINESBYPROPERTIES('0bQQzin9r0lRMGSmFCRy64',$,$,$,(#20),#84);
+    parsed again: Qto_WallBaseQuantities {Length=6}; pass
+  b00f7dd7f:
+    before: Qto_WallBaseQuantities {Length=5}; fail PROPERTY_VALUE_MISMATCH
+    propertyValueToRaw(6, IFCLENGTHMEASURE) = 6000
+    view: Qto_WallBaseQuantities new {Length=6000}
+    session: Qto_WallBaseQuantities {Length=6}; pass
+    exported: #52=IFCQUANTITYLENGTH('Length',$,#4,5000.,$);
+    exported: #83=IFCPROPERTYSINGLEVALUE('Length',$,IFCLENGTHMEASURE(6000.),$);
+    exported: #51=IFCELEMENTQUANTITY('0qto000000000000000051',$,'Qto_WallBaseQuantities',$,$,(#52));
+    exported: #84=IFCPROPERTYSET('3HZZaXVVD8FOJ_Gw45WqiH',$,'Qto_WallBaseQuantities',$,(#83));
+    exported: #50=IFCWALLTYPE('0type00000000000000050',$,'WT',$,$,(#51,#53),$,$,$,.STANDARD.);
+    exported: #85=IFCRELDEFINESBYPROPERTIES('3ZWKQ61FvB7PcPTQe4hwIV',$,$,$,(#20),#84);
+    parsed again: Qto_WallBaseQuantities {Length=6000}; fail PROPERTY_VALUE_MISMATCH
+  head:
+    before: Qto_WallBaseQuantities {Length=5}; fail PROPERTY_VALUE_MISMATCH
+    propertyValueToRaw(6, IFCLENGTHMEASURE) = 6
+    view: Qto_WallBaseQuantities new {Length=6}
+    session: Qto_WallBaseQuantities {Length=6}; pass
+    exported: #52=IFCQUANTITYLENGTH('Length',$,#4,5000.,$);
+    exported: #83=IFCPROPERTYSINGLEVALUE('Length',$,IFCLENGTHMEASURE(6.),$);
+    exported: #51=IFCELEMENTQUANTITY('0qto000000000000000051',$,'Qto_WallBaseQuantities',$,$,(#52));
+    exported: #84=IFCPROPERTYSET('322ga81Av4HR2ryT8S47wI',$,'Qto_WallBaseQuantities',$,(#83));
+    exported: #50=IFCWALLTYPE('0type00000000000000050',$,'WT',$,$,(#51,#53),$,$,$,.STANDARD.);
+    exported: #85=IFCRELDEFINESBYPROPERTIES('3yLxhDzY17W9x5RQMYBXJb',$,$,$,(#20),#84);
+    parsed again: Qto_WallBaseQuantities {Length=6}; pass
+B. inherited property with its own millimetre Unit, metre project: W1 Pset_TypeOwnUnit.Width to 0.3
+  main:
+    before: Pset_TypeOwnUnit {Width=0.2}; fail PROPERTY_VALUE_MISMATCH
+    propertyValueToRaw(0.3, IFCLENGTHMEASURE) = 300
+    view: Pset_TypeOwnUnit new {Width=300}
+    session: Pset_TypeOwnUnit {Width=0.3}; pass
+    exported: #54=IFCPROPERTYSINGLEVALUE('Width',$,IFCLENGTHMEASURE(200.),#4);
+    exported: #61=IFCQUANTITYLENGTH('Width',$,$,0.2,$);
+    exported: #83=IFCPROPERTYSINGLEVALUE('Width',$,IFCLENGTHMEASURE(300.),$);
+    exported: #53=IFCPROPERTYSET('0pset00000000000000053',$,'Pset_TypeOwnUnit',$,(#54));
+    exported: #60=IFCELEMENTQUANTITY('0qto000000000000000060',$,'Qto_WallBaseQuantities',$,$,(#61));
+    exported: #84=IFCPROPERTYSET('0zeSTaLCL9kOWdLlSHJ9zu',$,'Pset_TypeOwnUnit',$,(#83));
+    exported: #50=IFCWALLTYPE('0type00000000000000050',$,'WT',$,$,(#51,#53),$,$,$,.STANDARD.);
+    exported: #62=IFCRELDEFINESBYPROPERTIES('0rdbp00000000000000062',$,$,$,(#21),#60);
+    exported: #85=IFCRELDEFINESBYPROPERTIES('0MiCXwLbnCVgCJTeX2G77$',$,$,$,(#20),#84);
+    parsed again: Pset_TypeOwnUnit {Width=300}; fail PROPERTY_VALUE_MISMATCH
+  b00f7dd7f:
+    before: Pset_TypeOwnUnit {Width=0.2}; fail PROPERTY_VALUE_MISMATCH
+    propertyValueToRaw(0.3, IFCLENGTHMEASURE) = 300
+    view: Pset_TypeOwnUnit new {Width=300}
+    session: Pset_TypeOwnUnit {Width=0.3}; pass
+    exported: #54=IFCPROPERTYSINGLEVALUE('Width',$,IFCLENGTHMEASURE(200.),#4);
+    exported: #61=IFCQUANTITYLENGTH('Width',$,$,0.2,$);
+    exported: #83=IFCPROPERTYSINGLEVALUE('Width',$,IFCLENGTHMEASURE(300.),$);
+    exported: #53=IFCPROPERTYSET('0pset00000000000000053',$,'Pset_TypeOwnUnit',$,(#54));
+    exported: #60=IFCELEMENTQUANTITY('0qto000000000000000060',$,'Qto_WallBaseQuantities',$,$,(#61));
+    exported: #84=IFCPROPERTYSET('29yIha6_X4n8V7oRUqpp1A',$,'Pset_TypeOwnUnit',$,(#83));
+    exported: #50=IFCWALLTYPE('0type00000000000000050',$,'WT',$,$,(#51,#53),$,$,$,.STANDARD.);
+    exported: #62=IFCRELDEFINESBYPROPERTIES('0rdbp00000000000000062',$,$,$,(#21),#60);
+    exported: #85=IFCRELDEFINESBYPROPERTIES('3MjjbvBpX2gRqdvIVWXKhg',$,$,$,(#20),#84);
+    parsed again: Pset_TypeOwnUnit {Width=300}; fail PROPERTY_VALUE_MISMATCH
+  head:
+    before: Pset_TypeOwnUnit {Width=0.2}; fail PROPERTY_VALUE_MISMATCH
+    propertyValueToRaw(0.3, IFCLENGTHMEASURE) = 0.3
+    view: Pset_TypeOwnUnit new {Width=0.3}
+    session: Pset_TypeOwnUnit {Width=0.3}; pass
+    exported: #54=IFCPROPERTYSINGLEVALUE('Width',$,IFCLENGTHMEASURE(200.),#4);
+    exported: #61=IFCQUANTITYLENGTH('Width',$,$,0.2,$);
+    exported: #83=IFCPROPERTYSINGLEVALUE('Width',$,IFCLENGTHMEASURE(0.3),$);
+    exported: #53=IFCPROPERTYSET('0pset00000000000000053',$,'Pset_TypeOwnUnit',$,(#54));
+    exported: #60=IFCELEMENTQUANTITY('0qto000000000000000060',$,'Qto_WallBaseQuantities',$,$,(#61));
+    exported: #84=IFCPROPERTYSET('2uN$lOJpjBgfy0ezijyzIu',$,'Pset_TypeOwnUnit',$,(#83));
+    exported: #50=IFCWALLTYPE('0type00000000000000050',$,'WT',$,$,(#51,#53),$,$,$,.STANDARD.);
+    exported: #62=IFCRELDEFINESBYPROPERTIES('0rdbp00000000000000062',$,$,$,(#21),#60);
+    exported: #85=IFCRELDEFINESBYPROPERTIES('0BPDzbcrzE2x6ciLGszCo9',$,$,$,(#20),#84);
+    parsed again: Pset_TypeOwnUnit {Width=0.3}; pass
+C. inherited quantity, no own Unit, millimetre project: W1 Qto_WallBaseQuantities.Length to 6
+  main:
+    before: Qto_WallBaseQuantities (none); fail PSET_MISSING
+    propertyValueToRaw(6, IFCLENGTHMEASURE) = 6000
+    view: Qto_WallBaseQuantities new {Length=6000}
+    session: Qto_WallBaseQuantities {Length=6}; pass
+    exported: #52=IFCQUANTITYLENGTH('Length',$,$,5000.,$);
+    exported: #83=IFCPROPERTYSINGLEVALUE('Length',$,IFCLENGTHMEASURE(6000.),$);
+    exported: #51=IFCELEMENTQUANTITY('0qto000000000000000051',$,'Qto_WallBaseQuantities',$,$,(#52));
+    exported: #84=IFCPROPERTYSET('2YwfI0UYH7zPu_j4D4qAVa',$,'Qto_WallBaseQuantities',$,(#83));
+    exported: #50=IFCWALLTYPE('0type00000000000000050',$,'WT',$,$,(#51,#53),$,$,$,.STANDARD.);
+    exported: #85=IFCRELDEFINESBYPROPERTIES('1XJU_iKkbELhWWvegaLyDV',$,$,$,(#20),#84);
+    parsed again: Qto_WallBaseQuantities {Length=6}; pass
+  b00f7dd7f:
+    before: Qto_WallBaseQuantities {Length=5}; fail PROPERTY_VALUE_MISMATCH
+    propertyValueToRaw(6, IFCLENGTHMEASURE) = 6000
+    view: Qto_WallBaseQuantities new {Length=6000}
+    session: Qto_WallBaseQuantities {Length=6}; pass
+    exported: #52=IFCQUANTITYLENGTH('Length',$,$,5000.,$);
+    exported: #83=IFCPROPERTYSINGLEVALUE('Length',$,IFCLENGTHMEASURE(6000.),$);
+    exported: #51=IFCELEMENTQUANTITY('0qto000000000000000051',$,'Qto_WallBaseQuantities',$,$,(#52));
+    exported: #84=IFCPROPERTYSET('1OJZFiGW51NA1erZN$I3vU',$,'Qto_WallBaseQuantities',$,(#83));
+    exported: #50=IFCWALLTYPE('0type00000000000000050',$,'WT',$,$,(#51,#53),$,$,$,.STANDARD.);
+    exported: #85=IFCRELDEFINESBYPROPERTIES('1He7GMmkj5SPlFS1z83Dgy',$,$,$,(#20),#84);
+    parsed again: Qto_WallBaseQuantities {Length=6}; pass
+  head:
+    before: Qto_WallBaseQuantities {Length=5}; fail PROPERTY_VALUE_MISMATCH
+    propertyValueToRaw(6, IFCLENGTHMEASURE) = 6000
+    view: Qto_WallBaseQuantities new {Length=6000}
+    session: Qto_WallBaseQuantities {Length=6}; pass
+    exported: #52=IFCQUANTITYLENGTH('Length',$,$,5000.,$);
+    exported: #83=IFCPROPERTYSINGLEVALUE('Length',$,IFCLENGTHMEASURE(6000.),$);
+    exported: #51=IFCELEMENTQUANTITY('0qto000000000000000051',$,'Qto_WallBaseQuantities',$,$,(#52));
+    exported: #84=IFCPROPERTYSET('35VDmrnob8demDVddLjVL5',$,'Qto_WallBaseQuantities',$,(#83));
+    exported: #50=IFCWALLTYPE('0type00000000000000050',$,'WT',$,$,(#51,#53),$,$,$,.STANDARD.);
+    exported: #85=IFCRELDEFINESBYPROPERTIES('1pSWllC5v2Qg9KhT0P2LoU',$,$,$,(#20),#84);
+    parsed again: Qto_WallBaseQuantities {Length=6}; pass
+D. as A, on W2, which holds its own Qto_WallBaseQuantities (Width 0.2): Length to 6
+  main:
+    before: Qto_WallBaseQuantities {Width=0.2}; fail PROPERTY_MISSING
+    propertyValueToRaw(6, IFCLENGTHMEASURE) = 6
+    view: Qto_WallBaseQuantities new {Length=6}
+    session: Qto_WallBaseQuantities {Width=0.2,Length=6}; pass
+    exported: #52=IFCQUANTITYLENGTH('Length',$,#4,5000.,$);
+    exported: #83=IFCPROPERTYSINGLEVALUE('Length',$,IFCLENGTHMEASURE(6.),$);
+    exported: #51=IFCELEMENTQUANTITY('0qto000000000000000051',$,'Qto_WallBaseQuantities',$,$,(#52));
+    exported: #84=IFCPROPERTYSET('19K_pef9zCwPI2Pfk1oTD8',$,'Qto_WallBaseQuantities',$,(#83));
+    exported: #50=IFCWALLTYPE('0type00000000000000050',$,'WT',$,$,(#51,#53),$,$,$,.STANDARD.);
+    exported: #85=IFCRELDEFINESBYPROPERTIES('2_JcvO$Bb32A2y_L3$yGFa',$,$,$,(#21),#84);
+    parsed again: Qto_WallBaseQuantities {Length=6} {Width=0.2}; fail PROPERTY_MISSING
+  b00f7dd7f:
+    before: Qto_WallBaseQuantities {Width=0.2,Length=5}; fail PROPERTY_VALUE_MISMATCH
+    propertyValueToRaw(6, IFCLENGTHMEASURE) = 6000
+    view: Qto_WallBaseQuantities new {Length=6000}
+    session: Qto_WallBaseQuantities {Width=0.2,Length=6}; pass
+    exported: #52=IFCQUANTITYLENGTH('Length',$,#4,5000.,$);
+    exported: #83=IFCPROPERTYSINGLEVALUE('Length',$,IFCLENGTHMEASURE(6000.),$);
+    exported: #51=IFCELEMENTQUANTITY('0qto000000000000000051',$,'Qto_WallBaseQuantities',$,$,(#52));
+    exported: #84=IFCPROPERTYSET('1CYK2aFBL94BmmgdXf8ce9',$,'Qto_WallBaseQuantities',$,(#83));
+    exported: #50=IFCWALLTYPE('0type00000000000000050',$,'WT',$,$,(#51,#53),$,$,$,.STANDARD.);
+    exported: #85=IFCRELDEFINESBYPROPERTIES('2pvxk8Jqb5pxDcOBmN_xA3',$,$,$,(#21),#84);
+    parsed again: Qto_WallBaseQuantities {Length=6000} {Width=0.2,Length=5}; fail PROPERTY_VALUE_MISMATCH
+  head:
+    before: Qto_WallBaseQuantities {Width=0.2,Length=5}; fail PROPERTY_VALUE_MISMATCH
+    propertyValueToRaw(6, IFCLENGTHMEASURE) = 6
+    view: Qto_WallBaseQuantities new {Length=6}
+    session: Qto_WallBaseQuantities {Width=0.2,Length=6}; pass
+    exported: #52=IFCQUANTITYLENGTH('Length',$,#4,5000.,$);
+    exported: #83=IFCPROPERTYSINGLEVALUE('Length',$,IFCLENGTHMEASURE(6.),$);
+    exported: #51=IFCELEMENTQUANTITY('0qto000000000000000051',$,'Qto_WallBaseQuantities',$,$,(#52));
+    exported: #84=IFCPROPERTYSET('3VPmhoS3TBNhlOz$BYMeC7',$,'Qto_WallBaseQuantities',$,(#83));
+    exported: #50=IFCWALLTYPE('0type00000000000000050',$,'WT',$,$,(#51,#53),$,$,$,.STANDARD.);
+    exported: #85=IFCRELDEFINESBYPROPERTIES('0fFL1_Gdb0nhEaKuZzIkW2',$,$,$,(#21),#84);
+    parsed again: Qto_WallBaseQuantities {Length=6} {Width=0.2,Length=5}; fail PROPERTY_VALUE_MISMATCH
+E. the type object checked directly, its own quantity with its own millimetre Unit: WT Length to 6
+  main:
+    before: Qto_WallBaseQuantities (none); fail PSET_MISSING
+    propertyValueToRaw(6, IFCLENGTHMEASURE) = 6
+    view: Qto_WallBaseQuantities new {Length=6}
+    session: Qto_WallBaseQuantities {Length=6}; pass
+    exported: #52=IFCQUANTITYLENGTH('Length',$,#4,5000.,$);
+    exported: #83=IFCPROPERTYSINGLEVALUE('Length',$,IFCLENGTHMEASURE(6.),$);
+    exported: #51=IFCELEMENTQUANTITY('0qto000000000000000051',$,'Qto_WallBaseQuantities',$,$,(#52));
+    exported: #84=IFCPROPERTYSET('19aMRpGw5EjAG9738WFz4A',$,'Qto_WallBaseQuantities',$,(#83));
+    exported: #50=IFCWALLTYPE('0type00000000000000050',$,'WT',$,$,(#51,#53,#84),$,$,$,.STANDARD.);
+    parsed again: Qto_WallBaseQuantities {Length=6}; pass
+  b00f7dd7f:
+    before: Qto_WallBaseQuantities {Length=5}; fail PROPERTY_VALUE_MISMATCH
+    propertyValueToRaw(6, IFCLENGTHMEASURE) = 6000
+    view: Qto_WallBaseQuantities new {Length=6000}
+    session: Qto_WallBaseQuantities {Length=6}; pass
+    exported: #52=IFCQUANTITYLENGTH('Length',$,#4,5000.,$);
+    exported: #83=IFCPROPERTYSINGLEVALUE('Length',$,IFCLENGTHMEASURE(6000.),$);
+    exported: #51=IFCELEMENTQUANTITY('0qto000000000000000051',$,'Qto_WallBaseQuantities',$,$,(#52));
+    exported: #84=IFCPROPERTYSET('2fWZKCO9n63RWZ6Z8MJ2QA',$,'Qto_WallBaseQuantities',$,(#83));
+    exported: #50=IFCWALLTYPE('0type00000000000000050',$,'WT',$,$,(#51,#53,#84),$,$,$,.STANDARD.);
+    parsed again: Qto_WallBaseQuantities {Length=6000}; fail PROPERTY_VALUE_MISMATCH
+  head:
+    before: Qto_WallBaseQuantities {Length=5}; fail PROPERTY_VALUE_MISMATCH
+    propertyValueToRaw(6, IFCLENGTHMEASURE) = 6
+    view: Qto_WallBaseQuantities new {Length=6}
+    session: Qto_WallBaseQuantities {Length=6}; pass
+    exported: #52=IFCQUANTITYLENGTH('Length',$,#4,5000.,$);
+    exported: #83=IFCPROPERTYSINGLEVALUE('Length',$,IFCLENGTHMEASURE(6.),$);
+    exported: #51=IFCELEMENTQUANTITY('0qto000000000000000051',$,'Qto_WallBaseQuantities',$,$,(#52));
+    exported: #84=IFCPROPERTYSET('1fh6ZFK5b6$vE2X8puHkU$',$,'Qto_WallBaseQuantities',$,(#83));
+    exported: #50=IFCWALLTYPE('0type00000000000000050',$,'WT',$,$,(#51,#53,#84),$,$,$,.STANDARD.);
+    parsed again: Qto_WallBaseQuantities {Length=6}; pass
+F. control: W3's own property with its own millimetre Unit (#7395): W3 Pset_Own.Span to 6
+  main:
+    before: Pset_Own {Span=5}; fail PROPERTY_VALUE_MISMATCH
+    propertyValueToRaw(6, IFCLENGTHMEASURE) = 6000
+    view: Pset_Own edited {Span=6000 unit mm}
+    session: Pset_Own {Span=6}; pass
+    exported: #83=IFCPROPERTYSINGLEVALUE('Span',$,IFCLENGTHMEASURE(6000.),$);
+    exported: #84=IFCPROPERTYSET('2QXOrlnLT2mgf3QVAoR1Z2',$,'Pset_Own',$,(#83));
+    exported: #85=IFCRELDEFINESBYPROPERTIES('1YiUF7_0D8GPZQWlfgR8qe',$,$,$,(#22),#84);
+    parsed again: Pset_Own {Span=6000}; fail PROPERTY_VALUE_MISMATCH
+  b00f7dd7f:
+    before: Pset_Own {Span=5}; fail PROPERTY_VALUE_MISMATCH
+    propertyValueToRaw(6, IFCLENGTHMEASURE) = 6000
+    view: Pset_Own edited {Span=6000 unit mm}
+    session: Pset_Own {Span=6}; pass
+    exported: #83=IFCPROPERTYSINGLEVALUE('Span',$,IFCLENGTHMEASURE(6000.),$);
+    exported: #84=IFCPROPERTYSET('0l89CMsHX8ww0$Tl2B9CQh',$,'Pset_Own',$,(#83));
+    exported: #85=IFCRELDEFINESBYPROPERTIES('21BMz7tlTCifMb5noue0Ti',$,$,$,(#22),#84);
+    parsed again: Pset_Own {Span=6000}; fail PROPERTY_VALUE_MISMATCH
+  head:
+    before: Pset_Own {Span=5}; fail PROPERTY_VALUE_MISMATCH
+    propertyValueToRaw(6, IFCLENGTHMEASURE) = 6000
+    view: Pset_Own edited {Span=6000 unit mm}
+    session: Pset_Own {Span=6}; pass
+    exported: #83=IFCPROPERTYSINGLEVALUE('Span',$,IFCLENGTHMEASURE(6000.),$);
+    exported: #84=IFCPROPERTYSET('2wGD2rRvv7x94gJMqqLEq9',$,'Pset_Own',$,(#83));
+    exported: #85=IFCRELDEFINESBYPROPERTIES('1vbNKibcjFhPaL6DffNTXs',$,$,$,(#22),#84);
+    parsed again: Pset_Own {Span=6000}; fail PROPERTY_VALUE_MISMATCH
+G. control: the type object checked directly, its own property with its own millimetre Unit: WT Width to 0.3
+  main:
+    before: Pset_TypeOwnUnit {Width=0.2}; fail PROPERTY_VALUE_MISMATCH
+    propertyValueToRaw(0.3, IFCLENGTHMEASURE) = 300
+    view: Pset_TypeOwnUnit edited {Width=300 unit mm}
+    session: Pset_TypeOwnUnit {Width=0.3}; pass
+    exported: #61=IFCQUANTITYLENGTH('Width',$,$,0.2,$);
+    exported: #83=IFCPROPERTYSINGLEVALUE('Width',$,IFCLENGTHMEASURE(300.),$);
+    exported: #60=IFCELEMENTQUANTITY('0qto000000000000000060',$,'Qto_WallBaseQuantities',$,$,(#61));
+    exported: #84=IFCPROPERTYSET('2KPGGNKun4kR867VJBGJvR',$,'Pset_TypeOwnUnit',$,(#83));
+    exported: #62=IFCRELDEFINESBYPROPERTIES('0rdbp00000000000000062',$,$,$,(#21),#60);
+    exported: #50=IFCWALLTYPE('0type00000000000000050',$,'WT',$,$,(#51,#84),$,$,$,.STANDARD.);
+    parsed again: Pset_TypeOwnUnit {Width=300}; fail PROPERTY_VALUE_MISMATCH
+  b00f7dd7f:
+    before: Pset_TypeOwnUnit {Width=0.2}; fail PROPERTY_VALUE_MISMATCH
+    propertyValueToRaw(0.3, IFCLENGTHMEASURE) = 300
+    view: Pset_TypeOwnUnit edited {Width=300 unit mm}
+    session: Pset_TypeOwnUnit {Width=0.3}; pass
+    exported: #61=IFCQUANTITYLENGTH('Width',$,$,0.2,$);
+    exported: #83=IFCPROPERTYSINGLEVALUE('Width',$,IFCLENGTHMEASURE(300.),$);
+    exported: #60=IFCELEMENTQUANTITY('0qto000000000000000060',$,'Qto_WallBaseQuantities',$,$,(#61));
+    exported: #84=IFCPROPERTYSET('1JgHxz6pDFc9qOR5T3$mWh',$,'Pset_TypeOwnUnit',$,(#83));
+    exported: #62=IFCRELDEFINESBYPROPERTIES('0rdbp00000000000000062',$,$,$,(#21),#60);
+    exported: #50=IFCWALLTYPE('0type00000000000000050',$,'WT',$,$,(#51,#84),$,$,$,.STANDARD.);
+    parsed again: Pset_TypeOwnUnit {Width=300}; fail PROPERTY_VALUE_MISMATCH
+  head:
+    before: Pset_TypeOwnUnit {Width=0.2}; fail PROPERTY_VALUE_MISMATCH
+    propertyValueToRaw(0.3, IFCLENGTHMEASURE) = 300
+    view: Pset_TypeOwnUnit edited {Width=300 unit mm}
+    session: Pset_TypeOwnUnit {Width=0.3}; pass
+    exported: #61=IFCQUANTITYLENGTH('Width',$,$,0.2,$);
+    exported: #83=IFCPROPERTYSINGLEVALUE('Width',$,IFCLENGTHMEASURE(300.),$);
+    exported: #60=IFCELEMENTQUANTITY('0qto000000000000000060',$,'Qto_WallBaseQuantities',$,$,(#61));
+    exported: #84=IFCPROPERTYSET('3ONQtdrmD9V9b4H04_a151',$,'Pset_TypeOwnUnit',$,(#83));
+    exported: #62=IFCRELDEFINESBYPROPERTIES('0rdbp00000000000000062',$,$,$,(#21),#60);
+    exported: #50=IFCWALLTYPE('0type00000000000000050',$,'WT',$,$,(#51,#84),$,$,$,.STANDARD.);
+    parsed again: Pset_TypeOwnUnit {Width=300}; fail PROPERTY_VALUE_MISMATCH
+H. W4's own quantity with its own millimetre Unit, metre project, W4 not typed: Qto_WallBaseQuantities.Height to 4
+  main:
+    before: Qto_WallBaseQuantities {Height=3}; fail PROPERTY_VALUE_MISMATCH
+    propertyValueToRaw(4, IFCLENGTHMEASURE) = 4000
+    view: Qto_WallBaseQuantities new {Height=4000}
+    session: Qto_WallBaseQuantities {Height=4}; pass
+    exported: #81=IFCQUANTITYLENGTH('Height',$,#4,3000.,$);
+    exported: #83=IFCPROPERTYSINGLEVALUE('Height',$,IFCLENGTHMEASURE(4000.),$);
+    exported: #80=IFCELEMENTQUANTITY('0qto000000000000000080',$,'Qto_WallBaseQuantities',$,$,(#81));
+    exported: #84=IFCPROPERTYSET('2wYDmyc8j1mBOy15fFeJi$',$,'Qto_WallBaseQuantities',$,(#83));
+    exported: #82=IFCRELDEFINESBYPROPERTIES('0rdbp00000000000000082',$,$,$,(#23),#80);
+    exported: #85=IFCRELDEFINESBYPROPERTIES('0D8evPW_v6WOJDjBT2BqBo',$,$,$,(#23),#84);
+    parsed again: Qto_WallBaseQuantities {Height=4000} {Height=3}; fail PROPERTY_VALUE_MISMATCH
+  b00f7dd7f:
+    before: Qto_WallBaseQuantities {Height=3}; fail PROPERTY_VALUE_MISMATCH
+    propertyValueToRaw(4, IFCLENGTHMEASURE) = 4000
+    view: Qto_WallBaseQuantities new {Height=4000}
+    session: Qto_WallBaseQuantities {Height=4}; pass
+    exported: #81=IFCQUANTITYLENGTH('Height',$,#4,3000.,$);
+    exported: #83=IFCPROPERTYSINGLEVALUE('Height',$,IFCLENGTHMEASURE(4000.),$);
+    exported: #80=IFCELEMENTQUANTITY('0qto000000000000000080',$,'Qto_WallBaseQuantities',$,$,(#81));
+    exported: #84=IFCPROPERTYSET('3nQwRfVDz4Yvn00aRhNQsK',$,'Qto_WallBaseQuantities',$,(#83));
+    exported: #82=IFCRELDEFINESBYPROPERTIES('0rdbp00000000000000082',$,$,$,(#23),#80);
+    exported: #85=IFCRELDEFINESBYPROPERTIES('1YYulf$ZDFMu4k2VJJG3sz',$,$,$,(#23),#84);
+    parsed again: Qto_WallBaseQuantities {Height=4000} {Height=3}; fail PROPERTY_VALUE_MISMATCH
+  head:
+    before: Qto_WallBaseQuantities {Height=3}; fail PROPERTY_VALUE_MISMATCH
+    propertyValueToRaw(4, IFCLENGTHMEASURE) = 4
+    view: Qto_WallBaseQuantities new {Height=4}
+    session: Qto_WallBaseQuantities {Height=4}; pass
+    exported: #81=IFCQUANTITYLENGTH('Height',$,#4,3000.,$);
+    exported: #83=IFCPROPERTYSINGLEVALUE('Height',$,IFCLENGTHMEASURE(4.),$);
+    exported: #80=IFCELEMENTQUANTITY('0qto000000000000000080',$,'Qto_WallBaseQuantities',$,$,(#81));
+    exported: #84=IFCPROPERTYSET('1D9$Rqu7v6E9kdpPVB4fSZ',$,'Qto_WallBaseQuantities',$,(#83));
+    exported: #82=IFCRELDEFINESBYPROPERTIES('0rdbp00000000000000082',$,$,$,(#23),#80);
+    exported: #85=IFCRELDEFINESBYPROPERTIES('1HooY6D8n8JQJbKQxnkZ8J',$,$,$,(#23),#84);
+    parsed again: Qto_WallBaseQuantities {Height=4} {Height=3}; fail PROPERTY_VALUE_MISMATCH

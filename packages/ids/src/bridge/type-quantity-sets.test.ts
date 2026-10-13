@@ -40,9 +40,12 @@ interface Fixture {
   typeLength?: { value: string; unit?: string };
   /** More entries for the type's HasPropertySets, and their lines. */
   typeSets?: { ids: number[]; lines: string[] };
+  /** The type's quantity set attached through IfcRelDefinesByProperties
+   *  instead of HasPropertySets. */
+  viaRel?: boolean;
 }
 
-function model({ schema = 'IFC4', lengthUnit = '$,.METRE.', typeLength = { value: '5.' }, typeSets }: Fixture = {}): string {
+function model({ schema = 'IFC4', lengthUnit = '$,.METRE.', typeLength = { value: '5.' }, typeSets, viaRel = false }: Fixture = {}): string {
   const ifc2x3 = schema === 'IFC2X3';
   const gid = (prefix: string, id: number) => prefix + String(id).padStart(22 - prefix.length, '0');
   // IFC2X3 IfcWall has no PredefinedType and IfcQuantityLength no Formula.
@@ -54,7 +57,7 @@ function model({ schema = 'IFC4', lengthUnit = '$,.METRE.', typeLength = { value
     `#${id}=IFCELEMENTQUANTITY('${gid('0qto', id)}',$,'Qto_WallBaseQuantities',$,$,(#${member}));`;
   const own = (rel: number, wallId: number, setId: number) =>
     `#${rel}=IFCRELDEFINESBYPROPERTIES('${gid('0rdbp', rel)}',$,$,$,(#${wallId}),#${setId});`;
-  const hasSets = [51, 53, ...(typeSets?.ids ?? [])].map((id) => `#${id}`).join(',');
+  const hasSets = [...(viaRel ? [] : [51]), 53, ...(typeSets?.ids ?? [])].map((id) => `#${id}`).join(',');
   return `ISO-10303-21;
 HEADER;
 FILE_DESCRIPTION(('ViewDefinition [ReferenceView]'),'2;1');
@@ -81,6 +84,7 @@ ${own(62, W2, 60)}
 ${qset(70, 71)}
 ${length(71, 'Length', '7.')}
 ${own(72, W3, 70)}
+${viaRel ? own(63, 50, 51) : ''}
 ${(typeSets?.lines ?? []).join('\n')}
 ENDSEC;
 END-ISO-10303-21;`;
@@ -177,6 +181,13 @@ describe('IDS: quantity sets held by a type object are inherited (#7542)', () =>
       expect(checkPropertyFacet(facet('Pset_TypeSet', 'P', 'x', 'IFCLABEL'), id, a).passed).toBe(true);
       expect(checkPropertyFacet(facet('Pset_TypeSet', 'N', '3', 'IFCCOUNTMEASURE'), id, a).passed).toBe(true);
     }
+  });
+
+  it('inherits a quantity set attached to the type through IfcRelDefinesByProperties, as property sets attached that way are', async () => {
+    // IFC4 forbids the attachment (rule NoRelatedTypeObject), but files carry it.
+    const a = await accessorFor({ viaRel: true });
+    expect(checkPropertyFacet(length('5'), W1, a).passed).toBe(true);
+    expect(checkPropertyFacet(length('7'), W3, a).passed).toBe(true);
   });
 
   it('does not pass an inherited quantity of another measure or invent one', async () => {

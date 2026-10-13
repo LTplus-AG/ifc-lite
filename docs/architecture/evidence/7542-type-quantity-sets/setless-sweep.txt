@@ -1,0 +1,60 @@
+# run 1, attempt 1
+$ node docs/architecture/evidence/7542-type-quantity-sets/setless-sweep.mjs 50000 11 packages/ids/.evidence-builds/main packages/ids/.evidence-builds/b00f7dd7f packages/ids/.evidence-builds/head 2>/dev/null
+CPU load % before: 0, 0, 2, 2, 0
+50000 walls, 150000 set-less placement entities swept, one process per run, 11 runs after 1 warm-up round, node v22.20.0:
+  main: getPropertySets loop median 225.6 ms (226, 226, 223, 224, 224, 230, 234, 223, 228, 234, 220); heap left behind median 0.5 MB (0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5); sets returned 0
+  b00f7dd7f: getPropertySets loop median 309.0 ms (306, 309, 309, 307, 311, 298, 327, 312, 318, 341, 307); heap left behind median 12.7 MB (12.7, 12.7, 12.7, 12.7, 12.7, 12.7, 12.7, 12.7, 12.7, 12.7, 12.7); sets returned 0
+  head: getPropertySets loop median 241.9 ms (240, 243, 238, 250, 240, 238, 240, 242, 250, 242, 243); heap left behind median 0.5 MB (0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5); sets returned 0
+exit 0
+CPU load % after: 0, 0, 7, 0, 5
+load: used
+# run 2, attempt 1
+$ node docs/architecture/evidence/7542-type-quantity-sets/setless-sweep.mjs 50000 11 packages/ids/.evidence-builds/main packages/ids/.evidence-builds/b00f7dd7f packages/ids/.evidence-builds/head 2>/dev/null
+CPU load % before: 2, 6, 3, 2, 2
+50000 walls, 150000 set-less placement entities swept, one process per run, 11 runs after 1 warm-up round, node v22.20.0:
+  main: getPropertySets loop median 228.1 ms (233, 227, 226, 232, 230, 237, 228, 227, 222, 226, 243); heap left behind median 0.5 MB (0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5); sets returned 0
+  b00f7dd7f: getPropertySets loop median 311.6 ms (308, 304, 307, 310, 325, 312, 320, 301, 312, 312, 331); heap left behind median 12.7 MB (12.7, 12.7, 12.7, 12.7, 12.7, 12.7, 12.7, 12.7, 12.7, 12.7, 12.7); sets returned 0
+  head: getPropertySets loop median 234.6 ms (239, 234, 237, 235, 240, 233, 235, 236, 231, 230, 234); heap left behind median 0.5 MB (0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5); sets returned 0
+exit 0
+CPU load % after: 5, 5, 2, 12, 2
+load: busy (a sample over 10%), not used
+# run 2, attempt 2
+$ node docs/architecture/evidence/7542-type-quantity-sets/setless-sweep.mjs 50000 11 packages/ids/.evidence-builds/main packages/ids/.evidence-builds/b00f7dd7f packages/ids/.evidence-builds/head 2>/dev/null
+CPU load % before: 2, 4, 3, 10, 1
+50000 walls, 150000 set-less placement entities swept, one process per run, 11 runs after 1 warm-up round, node v22.20.0:
+  main: getPropertySets loop median 221.4 ms (221, 219, 226, 230, 225, 221, 218, 226, 219, 215, 231); heap left behind median 0.5 MB (0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5); sets returned 0
+  b00f7dd7f: getPropertySets loop median 313.8 ms (309, 315, 317, 321, 314, 306, 306, 322, 325, 307, 311); heap left behind median 12.7 MB (12.7, 12.7, 12.7, 12.7, 12.7, 12.7, 12.7, 12.7, 12.7, 12.7, 12.7); sets returned 0
+  head: getPropertySets loop median 235.3 ms (228, 237, 245, 232, 231, 238, 231, 236, 235, 224, 243); heap left behind median 0.5 MB (0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5); sets returned 0
+exit 0
+CPU load % after: 8, 7, 22, 17, 10
+load: busy (a sample over 10%), not used
+# run 2, attempt 3
+$ node docs/architecture/evidence/7542-type-quantity-sets/setless-sweep.mjs 50000 11 packages/ids/.evidence-builds/main packages/ids/.evidence-builds/b00f7dd7f packages/ids/.evidence-builds/head 2>/dev/null
+CPU load % before: 2, 3, 0, 6, 0
+50000 walls, 150000 set-less placement entities swept, one process per run, 11 runs after 1 warm-up round, node v22.20.0:
+  main: getPropertySets loop median 227.6 ms (231, 228, 230, 229, 227, 228, 225, 226, 231, 222, 224); heap left behind median 0.5 MB (0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5); sets returned 0
+  b00f7dd7f: getPropertySets loop median 311.1 ms (314, 317, 303, 317, 314, 311, 309, 322, 296, 298, 302); heap left behind median 12.7 MB (12.7, 12.7, 12.7, 12.7, 12.7, 12.7, 12.7, 12.7, 12.7, 12.7, 12.7); sets returned 0
+  head: getPropertySets loop median 240.1 ms (246, 240, 238, 241, 241, 243, 241, 237, 239, 226, 228); heap left behind median 0.5 MB (0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5); sets returned 0
+exit 0
+CPU load % after: 2, 0, 0, 0, 2
+load: used
+# run 3, attempt 1
+$ node docs/architecture/evidence/7542-type-quantity-sets/setless-sweep.mjs 50000 11 packages/ids/.evidence-builds/main packages/ids/.evidence-builds/b00f7dd7f packages/ids/.evidence-builds/head 2>/dev/null
+CPU load % before: 2, 0, 1, 2, 2
+50000 walls, 150000 set-less placement entities swept, one process per run, 11 runs after 1 warm-up round, node v22.20.0:
+  main: getPropertySets loop median 223.2 ms (223, 223, 228, 216, 234, 227, 222, 235, 214, 222, 224); heap left behind median 0.5 MB (0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5); sets returned 0
+  b00f7dd7f: getPropertySets loop median 308.0 ms (297, 299, 308, 305, 314, 303, 297, 310, 316, 315, 311); heap left behind median 12.7 MB (12.7, 12.7, 12.7, 12.7, 12.7, 12.7, 12.7, 12.7, 12.7, 12.7, 12.7); sets returned 0
+  head: getPropertySets loop median 231.0 ms (231, 227, 229, 230, 240, 227, 236, 231, 228, 235, 237); heap left behind median 0.5 MB (0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5); sets returned 0
+exit 0
+CPU load % after: 6, 14, 3, 2, 0
+load: busy (a sample over 10%), not used
+# run 3, attempt 2
+$ node docs/architecture/evidence/7542-type-quantity-sets/setless-sweep.mjs 50000 11 packages/ids/.evidence-builds/main packages/ids/.evidence-builds/b00f7dd7f packages/ids/.evidence-builds/head 2>/dev/null
+CPU load % before: 2, 1, 3, 1, 3
+50000 walls, 150000 set-less placement entities swept, one process per run, 11 runs after 1 warm-up round, node v22.20.0:
+  main: getPropertySets loop median 220.4 ms (222, 218, 220, 224, 220, 218, 218, 222, 229, 226, 217); heap left behind median 0.5 MB (0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5); sets returned 0
+  b00f7dd7f: getPropertySets loop median 304.4 ms (302, 306, 304, 306, 298, 307, 310, 313, 298, 294, 299); heap left behind median 12.7 MB (12.7, 12.7, 12.7, 12.7, 12.7, 12.7, 12.7, 12.7, 12.7, 12.7, 12.7); sets returned 0
+  head: getPropertySets loop median 230.3 ms (230, 228, 229, 230, 234, 233, 229, 231, 224, 241, 237); heap left behind median 0.5 MB (0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5); sets returned 0
+exit 0
+CPU load % after: 3, 1, 3, 0, 2
+load: used

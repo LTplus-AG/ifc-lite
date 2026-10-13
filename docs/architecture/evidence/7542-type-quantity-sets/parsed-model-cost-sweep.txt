@@ -1,0 +1,110 @@
+# primary, run 1, attempt 1
+$ node --expose-gc docs/architecture/evidence/7542-type-quantity-sets/parsed-model-cost.mjs primary sweep 11 packages/ids/.evidence-builds/main packages/ids/.evidence-builds/b00f7dd7f packages/ids/.evidence-builds/head 2>/dev/null
+CPU load % before: 1, 0, 1, 4, 2
+scenario primary: 50000 walls, 10 types, 71584 entity lines, 5.2 MB; mode sweep; 11 runs after 3 warm-up rounds; node v22.20.0
+  main: median 511.7 ms; runs 515, 515, 538, 520, 512, 515, 511, 508, 506, 505, 503; 57143 sets, 107143 properties
+  b00f7dd7f: median 578.6 ms (13.1% against main); runs 580, 586, 577, 572, 582, 601, 575, 579, 605, 561, 562; 100000 sets, 550000 properties
+  head: median 585.4 ms (14.4% against main); runs 568, 576, 595, 579, 598, 580, 599, 585, 566, 586, 595; 100000 sets, 550000 properties
+exit 0
+CPU load % after: 0, 2, 5, 1, 1
+load: used
+# primary, run 2, attempt 1
+$ node --expose-gc docs/architecture/evidence/7542-type-quantity-sets/parsed-model-cost.mjs primary sweep 11 packages/ids/.evidence-builds/main packages/ids/.evidence-builds/b00f7dd7f packages/ids/.evidence-builds/head 2>/dev/null
+CPU load % before: 4, 2, 1, 1, 0
+scenario primary: 50000 walls, 10 types, 71584 entity lines, 5.2 MB; mode sweep; 11 runs after 3 warm-up rounds; node v22.20.0
+  main: median 512.0 ms; runs 525, 504, 512, 506, 523, 518, 522, 512, 506, 509, 517; 57143 sets, 107143 properties
+  b00f7dd7f: median 582.1 ms (13.7% against main); runs 596, 582, 574, 594, 582, 577, 588, 577, 571, 570, 591; 100000 sets, 550000 properties
+  head: median 588.9 ms (15.0% against main); runs 592, 589, 572, 595, 584, 598, 570, 591, 572, 571, 590; 100000 sets, 550000 properties
+exit 0
+CPU load % after: 3, 0, 1, 0, 3
+load: used
+# no-type-qto, run 1, attempt 1
+$ node --expose-gc docs/architecture/evidence/7542-type-quantity-sets/parsed-model-cost.mjs no-type-qto sweep 11 packages/ids/.evidence-builds/main packages/ids/.evidence-builds/b00f7dd7f packages/ids/.evidence-builds/head 2>/dev/null
+CPU load % before: 2, 2, 2, 0, 2
+scenario no-type-qto: 50000 walls, 10 types, 71484 entity lines, 5.2 MB; mode sweep; 11 runs after 3 warm-up rounds; node v22.20.0
+  main: median 489.1 ms; runs 520, 510, 521, 512, 481, 487, 483, 482, 494, 489, 478; 57143 sets, 107143 properties
+  b00f7dd7f: median 499.2 ms (2.1% against main); runs 521, 512, 519, 519, 511, 488, 494, 499, 483, 486, 484; 57143 sets, 107143 properties
+  head: median 492.3 ms (0.7% against main); runs 520, 505, 511, 518, 504, 491, 492, 488, 485, 484, 480; 57143 sets, 107143 properties
+exit 0
+CPU load % after: 0, 1, 3, 0, 2
+load: used
+# no-type-qto, run 2, attempt 1
+$ node --expose-gc docs/architecture/evidence/7542-type-quantity-sets/parsed-model-cost.mjs no-type-qto sweep 11 packages/ids/.evidence-builds/main packages/ids/.evidence-builds/b00f7dd7f packages/ids/.evidence-builds/head 2>/dev/null
+CPU load % before: 2, 1, 2, 0, 4
+scenario no-type-qto: 50000 walls, 10 types, 71484 entity lines, 5.2 MB; mode sweep; 11 runs after 3 warm-up rounds; node v22.20.0
+  main: median 491.1 ms; runs 480, 491, 486, 480, 493, 488, 487, 510, 513, 510, 512; 57143 sets, 107143 properties
+  b00f7dd7f: median 501.0 ms (2.0% against main); runs 491, 501, 483, 487, 490, 505, 494, 501, 537, 515, 506; 57143 sets, 107143 properties
+  head: median 494.3 ms (0.7% against main); runs 488, 494, 494, 495, 491, 514, 486, 489, 520, 518, 526; 57143 sets, 107143 properties
+exit 0
+CPU load % after: 14, 12, 8, 5, 8
+load: busy (a sample over 10%), not used
+# no-type-qto, run 2, attempt 2
+$ node --expose-gc docs/architecture/evidence/7542-type-quantity-sets/parsed-model-cost.mjs no-type-qto sweep 11 packages/ids/.evidence-builds/main packages/ids/.evidence-builds/b00f7dd7f packages/ids/.evidence-builds/head 2>/dev/null
+CPU load % before: 5, 2, 0, 2, 2
+scenario no-type-qto: 50000 walls, 10 types, 71484 entity lines, 5.2 MB; mode sweep; 11 runs after 3 warm-up rounds; node v22.20.0
+  main: median 488.2 ms; runs 478, 502, 482, 486, 483, 480, 488, 495, 508, 504, 507; 57143 sets, 107143 properties
+  b00f7dd7f: median 497.5 ms (1.9% against main); runs 486, 505, 490, 497, 511, 497, 506, 483, 493, 510, 522; 57143 sets, 107143 properties
+  head: median 491.9 ms (0.8% against main); runs 492, 497, 496, 490, 487, 487, 489, 482, 498, 516, 521; 57143 sets, 107143 properties
+exit 0
+CPU load % after: 14, 20, 22, 1, 4
+load: busy (a sample over 10%), not used
+# no-type-qto, run 2, attempt 3
+$ node --expose-gc docs/architecture/evidence/7542-type-quantity-sets/parsed-model-cost.mjs no-type-qto sweep 11 packages/ids/.evidence-builds/main packages/ids/.evidence-builds/b00f7dd7f packages/ids/.evidence-builds/head 2>/dev/null
+CPU load % before: 1, 2, 2, 2, 1
+scenario no-type-qto: 50000 walls, 10 types, 71484 entity lines, 5.2 MB; mode sweep; 11 runs after 3 warm-up rounds; node v22.20.0
+  main: median 482.4 ms; runs 485, 502, 490, 485, 482, 474, 473, 486, 476, 477, 479; 57143 sets, 107143 properties
+  b00f7dd7f: median 486.8 ms (0.9% against main); runs 493, 512, 482, 483, 487, 484, 489, 479, 487, 483, 495; 57143 sets, 107143 properties
+  head: median 488.0 ms (1.1% against main); runs 487, 495, 493, 484, 477, 499, 483, 480, 488, 490, 504; 57143 sets, 107143 properties
+exit 0
+CPU load % after: 3, 0, 2, 0, 2
+load: used
+# own-full-set, run 1, attempt 1
+$ node --expose-gc docs/architecture/evidence/7542-type-quantity-sets/parsed-model-cost.mjs own-full-set sweep 11 packages/ids/.evidence-builds/main packages/ids/.evidence-builds/b00f7dd7f packages/ids/.evidence-builds/head 2>/dev/null
+CPU load % before: 0, 1, 2, 1, 5
+scenario own-full-set: 50000 walls, 10 types, 600155 entity lines, 39.8 MB; mode sweep; 11 runs after 3 warm-up rounds; node v22.20.0
+  main: median 1290.3 ms; runs 1338, 1312, 1306, 1306, 1282, 1260, 1279, 1272, 1290, 1250, 1362; 100000 sets, 550000 properties
+  b00f7dd7f: median 1389.9 ms (7.7% against main); runs 1427, 1390, 1380, 1433, 1378, 1367, 1407, 1376, 1412, 1340, 2769; 100000 sets, 550000 properties
+  head: median 1403.0 ms (8.7% against main); runs 1492, 1403, 1355, 1397, 1413, 1381, 1369, 1483, 1372, 1405, 2180; 100000 sets, 550000 properties
+exit 0
+CPU load % after: 37, 33, 11, 8, 5
+load: busy (a sample over 10%), not used
+# own-full-set, run 1, attempt 2
+$ node --expose-gc docs/architecture/evidence/7542-type-quantity-sets/parsed-model-cost.mjs own-full-set sweep 11 packages/ids/.evidence-builds/main packages/ids/.evidence-builds/b00f7dd7f packages/ids/.evidence-builds/head 2>/dev/null
+CPU load % before: 1, 1, 0, 2, 0
+scenario own-full-set: 50000 walls, 10 types, 600155 entity lines, 39.8 MB; mode sweep; 11 runs after 3 warm-up rounds; node v22.20.0
+  main: median 1273.6 ms; runs 1231, 1228, 1340, 1336, 1258, 1313, 1230, 1267, 1500, 1289, 1274; 100000 sets, 550000 properties
+  b00f7dd7f: median 1437.4 ms (12.9% against main); runs 1344, 1345, 1442, 1457, 1465, 1437, 1631, 1386, 1423, 1613, 1388; 100000 sets, 550000 properties
+  head: median 1381.7 ms (8.5% against main); runs 1326, 1342, 1365, 1376, 1438, 1365, 1382, 1411, 1408, 1386, 1427; 100000 sets, 550000 properties
+exit 0
+CPU load % after: 20, 3, 12, 15, 15
+load: busy (a sample over 10%), not used
+# own-full-set, run 1, attempt 3
+$ node --expose-gc docs/architecture/evidence/7542-type-quantity-sets/parsed-model-cost.mjs own-full-set sweep 11 packages/ids/.evidence-builds/main packages/ids/.evidence-builds/b00f7dd7f packages/ids/.evidence-builds/head 2>/dev/null
+CPU load % before: 2, 1, 0, 2, 1
+scenario own-full-set: 50000 walls, 10 types, 600155 entity lines, 39.8 MB; mode sweep; 11 runs after 3 warm-up rounds; node v22.20.0
+  main: median 1327.6 ms; runs 1347, 1369, 1298, 2590, 1328, 1319, 1481, 1342, 1315, 1257, 1306; 100000 sets, 550000 properties
+  b00f7dd7f: median 1482.3 ms (11.7% against main); runs 1469, 1482, 2442, 1636, 1502, 1466, 2152, 2143, 1337, 1383, 1389; 100000 sets, 550000 properties
+  head: median 1466.4 ms (10.5% against main); runs 1472, 1466, 1491, 1476, 1455, 1446, 2530, 1601, 1418, 1369, 1365; 100000 sets, 550000 properties
+exit 0
+CPU load % after: 1, 1, 7, 2, 1
+load: used
+# own-full-set, run 2, attempt 1
+$ node --expose-gc docs/architecture/evidence/7542-type-quantity-sets/parsed-model-cost.mjs own-full-set sweep 11 packages/ids/.evidence-builds/main packages/ids/.evidence-builds/b00f7dd7f packages/ids/.evidence-builds/head 2>/dev/null
+CPU load % before: 1, 5, 0, 0, 4
+scenario own-full-set: 50000 walls, 10 types, 600155 entity lines, 39.8 MB; mode sweep; 11 runs after 3 warm-up rounds; node v22.20.0
+  main: median 1267.6 ms; runs 1253, 1259, 1311, 1293, 1260, 1268, 1264, 1291, 1314, 1300, 1253; 100000 sets, 550000 properties
+  b00f7dd7f: median 1392.1 ms (9.8% against main); runs 1362, 1415, 1392, 1360, 1369, 1394, 1377, 1376, 1421, 1401, 1407; 100000 sets, 550000 properties
+  head: median 1391.8 ms (9.8% against main); runs 1405, 1340, 1437, 1369, 1388, 1392, 1388, 1439, 1433, 1402, 1330; 100000 sets, 550000 properties
+exit 0
+CPU load % after: 9, 28, 23, 6, 0
+load: busy (a sample over 10%), not used
+# own-full-set, run 2, attempt 2
+$ node --expose-gc docs/architecture/evidence/7542-type-quantity-sets/parsed-model-cost.mjs own-full-set sweep 11 packages/ids/.evidence-builds/main packages/ids/.evidence-builds/b00f7dd7f packages/ids/.evidence-builds/head 2>/dev/null
+CPU load % before: 2, 9, 0, 0, 0
+scenario own-full-set: 50000 walls, 10 types, 600155 entity lines, 39.8 MB; mode sweep; 11 runs after 3 warm-up rounds; node v22.20.0
+  main: median 1322.5 ms; runs 1285, 1336, 1986, 1326, 1290, 1452, 2231, 1287, 1323, 1271, 1315; 100000 sets, 550000 properties
+  b00f7dd7f: median 1457.7 ms (10.2% against main); runs 1369, 1478, 1474, 1458, 1433, 1890, 2233, 1428, 1381, 1391, 1488; 100000 sets, 550000 properties
+  head: median 1430.8 ms (8.2% against main); runs 1399, 1456, 2758, 1431, 1431, 1424, 1660, 1374, 1446, 1365, 1398; 100000 sets, 550000 properties
+exit 0
+CPU load % after: 1, 0, 1, 4, 1
+load: used

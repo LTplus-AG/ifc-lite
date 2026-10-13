@@ -18,6 +18,10 @@
       "destination": "https://model-reports-production.up.railway.app/api/reports/resolve-issue"
     },
     {
+      "source": "/api/reports/public/:token([a-f0-9]{64})",
+      "destination": "https://model-reports-production.up.railway.app/api/reports/public/:token"
+    },
+    {
       "source": "/api/reports/drafts",
       "destination": "https://model-reports-production.up.railway.app/api/reports/drafts"
     },
@@ -26,7 +30,7 @@
       "destination": "https://model-reports-production.up.railway.app/api/reports/:reportId"
     },
     {
-      "source": "/api/reports/:reportId([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})/:action(consent|agreement\\.pdf|custom-nda|uploads|submit)",
+      "source": "/api/reports/:reportId([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})/:action(consent|agreement\\.pdf|custom-nda|uploads|submit|public-model)",
       "destination": "https://model-reports-production.up.railway.app/api/reports/:reportId/:action"
     },
     {

@@ -8,6 +8,12 @@ import { readFileSync } from "node:fs";
 import type { ReportAgreement } from "@ifc-lite/report-contract";
 export interface Config {
   submissionsEnabled: boolean;
+  /** Deliberately absent from loadConfig until the scanner/delivery deployment is qualified. */
+  publicSharing?: {
+    scannerImageDigest: string;
+    maxDailyDownloadBytes: number;
+    maxConcurrentDownloads: number;
+  };
   qualificationToken?: string;
   posthog?: { host: string; projectId: string; apiKey: string };
   trustedProxyCidrs?: string[];

@@ -48,7 +48,8 @@ export interface ReportSession {
     backupDisclosure: string;
     retentionDays: number;
     deletionDays: number;
-    publicSharingEnabled: false;
+    publicSharingEnabled: boolean;
+    publicMaxFileBytes?: number;
   };
 }
 export interface AgreementAcceptanceInput {
@@ -89,8 +90,14 @@ export interface UploadInput {
   publicModelConfirmed?: boolean;
   publicSharingConsent?: PublicSharingConsent;
 }
+export interface PublicModelReceipt {
+  state: "quarantined" | "review" | "preparing" | "available" | "withdrawn" | "held";
+  downloadUrl?: string;
+  expiresAt?: string;
+}
 export interface ReportReceipt {
   publicationHold?: "review_required";
+  publicModel?: PublicModelReceipt;
   issueDestination?: Pick<VerifiedIssueTarget, "issueUrl" | "title">;
   id: string;
   status: "draft" | "manual_review" | "submitted" | "published" | "deleted";
@@ -101,6 +108,7 @@ export interface ReportReceipt {
     name: string;
     size: number;
     confidentiality: "none" | "standard" | "custom";
+    publicSharingConsent?: PublicSharingConsent;
   };
   agreementAccepted?: boolean;
   customNdaStatus?: "pending" | "approved";

@@ -4,6 +4,7 @@
 
 import { audit, transaction, type Db } from "./database.js";
 import type { ModelStorage } from "./storage.js";
+import { revokePublicCopy } from "./public-release.js";
 import { revokePublicQuarantine } from "./public-quarantine.js";
 import type { ReportRow, UploadRow } from "./reports.js";
 export async function removeUpload(
@@ -22,6 +23,7 @@ export async function removeUpload(
     if (!current || (actor === "retention" && current.expires_at > new Date() &&
       parent.rows[0]?.status !== "deleted" && parent.rows[0]!.expires_at > new Date())) return;
     await revokePublicQuarantine(tx, row.report_id);
+    await revokePublicCopy(tx, row.report_id);
   });
   await transaction(db, async (tx) => {
     const parent = await tx.query<{ status: string; expires_at: Date }>(
@@ -112,6 +114,7 @@ export async function deleteReport(
       [id],
     );
     await revokePublicQuarantine(tx, id);
+    await revokePublicCopy(tx, id);
     await tx.query("DELETE FROM report_outbox WHERE report_id=$1", [id]);
     await audit(tx, id, "report_deletion_requested", ownerId);
     return true;

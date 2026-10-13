@@ -82,9 +82,10 @@ Operational routing, historical hosted receipts and activation gaps are tracked 
 
 ### Public model quarantine foundation (not enabled)
 
-The public sharing capability remains `false`; the HTTP draft endpoint still
-rejects public attachments. This foundation does not publish models or qualify a
-malware scanner. Private support uploads retain their existing limits and consent.
+Production configuration leaves public sharing disabled; no environment variable
+enables it. The delivery protocol can be exercised only with explicitly injected
+qualification configuration. It does not qualify a malware scanner. Private
+support uploads retain their existing limits and consent.
 
 A future public submission must carry separate versioned permission covering
 redistribution authority, review of confidential content, irreversible downloaded
@@ -108,11 +109,38 @@ cannot revive a revoked report; private hashes, consent and review evidence are
 erased. Provider cleanup failures retain the existing upload record and capacity
 reservation for retry.
 
-Still required before enabling this capability: the isolated no-network scanner
-runner with qualified signature updates and resource limits, real clean IFC and
-EICAR refusal evidence, immutable separate public copies verified against the
-approved hash, opaque-token delivery with revocation/retention and bandwidth
-limits, reviewed viewer consent, and idempotent public-link publication. The
-quarantine integration tests use real PostgreSQL and S3 bytes but synthetic
-trusted-worker attestations; they prove lifecycle invariants, not malware
-clearance or safe public delivery. No new hosting resources are provisioned here.
+Approved, published reports can now be copied into a separate immutable object
+in the same private bucket. Conditional creation plus a full destination reread
+must match the approved SHA-256 and byte count, including after an ambiguous
+provider response. Consent, current signatures and review are checked again after
+copying. Original and copy each reserve storage capacity until confirmed deletion.
+Three bounded copy attempts precede a hold; expired leases cannot publish.
+
+`GET /api/reports/public/<independent-256-bit-token>` streams the pinned copy with
+a generic `model.ifc` filename. It exposes neither original filename, report UUID,
+object key nor presigned URL. Shared database leases bound concurrent transfers;
+a daily byte budget conservatively charges whole files even for interrupted
+requests. Downloads time out after 15 minutes, reject range requests, and have
+no-store/no-referrer headers. Owner-authenticated, CSRF-protected
+`DELETE /api/reports/:id/public-model` immediately prevents fresh downloads while
+keeping the private support original. Admission durably pins the specific report
+and immutable object before provider open. Already-admitted downloads may finish;
+saved copies cannot be recalled. Withdrawal/deletion/expiry deny fresh admission
+immediately, while physical copy deletion and quota release wait for matching
+transfer completion/disconnect or its bounded lease expiry (16 minutes from
+admission, including the one-minute margin beyond the 15-minute transfer deadline).
+Lease removal failure or process death retains that bounded hold. Legacy leases
+without object identity conservatively hold copy cleanup until their recorded
+expiry; no existing active transfer is inferred safe to delete during upgrade.
+Deletion/expiry also revoke access; cleanup retries provider
+failures without releasing storage quota early. Restores must keep public workers
+and delivery disabled until deletion/withdrawal tombstones are reconciled.
+
+Still required before enabling: an isolated scanner runner with qualified
+signature updates and resource limits, real clean IFC and EICAR refusal evidence,
+actual deployment-provider immutable-copy and bounded-download qualification,
+reviewed viewer consent, and idempotent public-link publication. The integration
+tests use real PostgreSQL/S3 bytes and actual HTTP delivery but synthetic trusted
+scanner attestations; they do not establish malware clearance. Conditional copy
+behavior proven against local RustFS is not evidence for Scaleway. No new hosting
+resources are provisioned here.

@@ -12,16 +12,19 @@ import { createHandler } from "./handler.js";
 import { verifyNext } from "./verification.js";
 import { sweep } from "./maintenance.js";
 import { publishOne } from "./publication.js";
+import { PublicModelStorage } from "./public-storage.js";
+import { promotePublicModel, cleanupPublicCopies } from "./public-release.js";
 
 type Worker = { stop: () => Promise<void> };
 let db: ReturnType<typeof openDatabase> | undefined;
 let storage: ModelStorage | undefined;
 let server: Server | undefined;
+let publicStorage: PublicModelStorage | undefined;
 const workers: Worker[] = [];
 let closing: Promise<void> | undefined;
 
 function worker(
-  name: "retention" | "verification" | "publisher",
+  name: "retention" | "verification" | "publisher" | "public-copy" | "public-retention",
   run: () => Promise<void>,
 ): Worker {
   let active: Promise<void> | undefined;
@@ -43,6 +46,7 @@ function shutdown(failed: boolean): Promise<void> {
   const deadline = setTimeout(() => process.exit(1), 25000);
   deadline.unref();
   storage?.cancelVerifications();
+  publicStorage?.close();
   closing = (async () => {
     const listenerClosed = new Promise<void>((resolve, reject) => {
       if (!server?.listening) { resolve(); return; }
@@ -76,7 +80,9 @@ async function start(): Promise<void> {
   const models = new ModelStorage(config);
   storage = models;
   const github = new GithubIssues(config);
-  const handler = createHandler(database, models, config);
+  const publicModels = new PublicModelStorage(config);
+  publicStorage = publicModels;
+  const handler = createHandler(database, models, config, publicModels);
   server = createServer((req, res) => { void handler(req, res); });
   server.requestTimeout = 30000;
   server.headersTimeout = 15000;
@@ -88,6 +94,8 @@ async function start(): Promise<void> {
     worker("retention", () => sweep(database, models)),
     worker("verification", () => verifyNext(database, models)),
     worker("publisher", () => publishOne(database, github)),
+    worker("public-copy", () => promotePublicModel(database, publicModels, config)),
+    worker("public-retention", () => cleanupPublicCopies(database, publicModels)),
   );
   server.listen(config.port, "0.0.0.0");
 }

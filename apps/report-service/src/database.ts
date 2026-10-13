@@ -45,6 +45,10 @@ export async function transaction<T>(
     client.release();
   }
 }
+/** All private uploads and immutable public copies reserve from the same capacity. */
+export async function lockStorageCapacity(tx: PoolClient): Promise<void> {
+  await tx.query("SELECT pg_advisory_xact_lock(hashtext('report-upload-capacity'))");
+}
 export async function migrate(db: Db): Promise<void> {
   await transaction(db, async (tx) => {
     await tx.query(

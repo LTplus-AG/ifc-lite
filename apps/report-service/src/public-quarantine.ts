@@ -49,6 +49,7 @@ interface QuarantineRow {
   lease_until: Date | null;
   attempts: number;
   scan: ScanEvidence | null;
+  approval: { sha256: string; policyVersion: string } | null;
 }
 export function requirePublicConsent(report: ReportRow, input: UploadInput): void {
   requireCondition(
@@ -156,4 +157,14 @@ export async function approvePublicModel(db: Db, id: string, expectedSha256: str
 export async function revokePublicQuarantine(tx: PoolClient, id: string): Promise<void> {
   await tx.query(`UPDATE report_public_quarantine SET state='revoked',sha256=NULL,consent=NULL,
     scan=NULL,approval=NULL,lease_id=NULL,lease_until=NULL,byte_size=0 WHERE report_id=$1`, [id]);
+}
+
+/** Returns a locked, approved source; publication must recheck after copying. */
+export async function approvedPublicSource(tx: PoolClient, id: string, qualifiedImage: string) {
+  const { report, upload, job } = await locked(tx, id);
+  requireCondition(job && eligible(report, upload, job) && job.state === "approved" &&
+    job.approval?.sha256 === job.sha256 && job.approval?.policyVersion === job.policy_version &&
+    job.scan && cleanEvidence(job.scan, job, qualifiedImage),
+    409, "public_review", "This exact model needs current scan and redistribution approval.");
+  return { objectKey: upload!.object_key, sha256: job.sha256!, byteSize: Number(job.byte_size), expiresAt: job.expires_at };
 }

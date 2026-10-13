@@ -1,0 +1,40 @@
+{
+  "head": "195ec4404ab84b885fcbcbb1961f0c1bdae55df0",
+  "adapterSha256": "8e33a65d3be312faf04ea10857801079b378f379fdb0dfaa15e294cdfb2c773f",
+  "provider": "Scaleway",
+  "region": "fr-par",
+  "fixture": "AC20-FZK-Haus.ifc",
+  "size": 2526511,
+  "sha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+  "checks": {
+    "sourceFullHash": true,
+    "copyFullHash": true,
+    "repeatReconcilesExactBytes": true,
+    "conditionalOverwriteRefused": true,
+    "pinnedReadFullHash": true,
+    "wrongEtagRefused": true,
+    "differentApprovedSourceCannotOverwrite": true,
+    "anonymousSourceAndCopyDenied": true
+  },
+  "publicSharingEnabled": false,
+  "scannerQualified": false,
+  "verdict": "PASS",
+  "cleanup": {
+    "ownedKeys": 2,
+    "confirmedAbsent": 2,
+    "clientsClosed": true
+  },
+  "completedAt": "2026-10-12T21:33:36.240Z",
+  "harness": {
+    "artifact": "issue-drain-b95d33a9/model-reports/qualify-scaleway-public-adapter.mts",
+    "execution": "Root pnpm exec tsx operational qualification; imports actual H adapter source",
+    "credentials": "Existing scoped credentials loaded from protected local file; never emitted",
+    "objectOwnership": "Two exclusively owned random keys; protected cleanup manifest retained outside repository"
+  },
+  "limitations": [
+    "One 2,526,511-byte catalogued public IFC; not large-transfer or concurrency qualification",
+    "Adapter and private-bucket access only; not full public HTTP delivery qualification",
+    "No isolated scanner qualification or GitHub link publication",
+    "No reporting, NDA or public-sharing activation"
+  ]
+}

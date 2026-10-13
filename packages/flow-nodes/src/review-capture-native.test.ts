@@ -37,7 +37,7 @@ it('#7477 registered Flow nodes capture actual native IDS facts and abandon real
   const failures = native.specificationResults.flatMap(spec => spec.entityResults.filter(row => !row.passed));
   expect(failures.length).toBeGreaterThan(0);
   const baseFeatures = headlessFeatures();
-  const features = { ...baseFeatures, backend: new Set([...baseFeatures.backend, 'review']) };
+  const features = { ...baseFeatures, backend: new Set([...baseFeatures.backend, 'review', 'review.native']) };
   const graph: FlowDocument = { flowVersion: 1, id: 'native-capture', name: 'Real native capture',
     capabilities: ['model.read'], inputs: [], outputs: [],
     nodes: [{ id: 'load', type: 'ids.load', params: { xml } }, { id: 'validate', type: 'ids.validate', params: {} },

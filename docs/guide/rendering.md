@@ -266,6 +266,22 @@ sectionPlane.normal = [0.3, 0.9, 0.1];
 sectionPlane.distance = 12.5;
 ```
 
+### Several Cutting Planes
+
+`sectionPlane` stays the primary plane: it owns the preview quad, the cut cap and the cardinal slider range. Up to seven more planes go in `extraSectionPlanes` (`MAX_EXTRA_CLIP_PLANES`; any beyond that are ignored). Each is resolved by the same code as the primary one (slider range against the model bounds, building rotation, explicit normal and distance), and a fragment is kept only where **every** enabled plane keeps it. Meshes, instanced occurrences, point clouds, shadows, GPU picking and CPU raycasting all clip against the same list, so a pick can never land on geometry another plane removed. A plane with `enabled: false` clips nothing.
+
+```typescript
+renderer.render({
+  sectionPlane: { axis: 'down', position: 40, enabled: true, flipped: false },
+  extraSectionPlanes: [
+    { axis: 'side', position: 25, enabled: true, flipped: true },
+    { axis: 'front', position: 0, enabled: true, normal: [0.6, 0, 0.8], distance: 4 },
+  ],
+});
+```
+
+The set can change from frame to frame (seven planes, then two, then none) without re-creating anything: the planes travel in each mesh's uniform, and a mesh drawn with no extra plane takes the same path it took before the option existed.
+
 ### Section Plane Visualization
 
 ```mermaid

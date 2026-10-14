@@ -1,0 +1,92 @@
+{
+  "head": "7c6ae0848661481223c0ffe42c7f964294cdbcb3",
+  "base": "4509d073c90f9d99c1e8dcbfecab97bcc624048f",
+  "serviceTests": 68,
+  "contractTests": 5,
+  "viewerTests": 37,
+  "typecheckedTestFiles": 4074,
+  "typecheckedPackages": 66,
+  "turboRestoredExactly": true,
+  "oracles": {
+    "sql": {
+      "verdict": "OBSERVED",
+      "baseline": {
+        "kind": "pass",
+        "passed": 15,
+        "total": 15
+      },
+      "reverted": {
+        "kind": "assertion-failure",
+        "passed": 13,
+        "failed": 2,
+        "total": 15,
+        "evidence": []
+      }
+    },
+    "cookie": {
+      "verdict": "OBSERVED",
+      "baseline": {
+        "kind": "pass",
+        "passed": 15,
+        "total": 15
+      },
+      "reverted": {
+        "kind": "assertion-failure",
+        "passed": 14,
+        "failed": 1,
+        "total": 15,
+        "evidence": []
+      }
+    },
+    "full": {
+      "verdict": "OBSERVED",
+      "baseline": {
+        "kind": "pass",
+        "passed": 15,
+        "total": 15
+      },
+      "reverted": {
+        "kind": "assertion-failure",
+        "passed": 12,
+        "failed": 3,
+        "total": 15,
+        "evidence": []
+      }
+    }
+  },
+  "activationChanged": false,
+  "rootLint": "passed",
+  "sourceTreeClean": true,
+  "logs": {
+    "tests": "owner-lifetime-stack-tests.log",
+    "typecheck": "owner-lifetime-stack-typecheck.log",
+    "lint": "owner-lifetime-stack-lint.log",
+    "sql-oracle": "owner-lifetime-stack-sql-oracle.log",
+    "cookie-oracle": "owner-lifetime-stack-cookie-oracle.log",
+    "full-oracle": "owner-lifetime-stack-full-oracle.log"
+  },
+  "qualification": "Local real PostgreSQL and S3-compatible storage; root Turbo viewer reporting tests; no deployment or user activation",
+  "rootCommands": [
+    "pnpm test --filter=@ifc-lite/report-service --filter=@ifc-lite/report-contract --filter=@ifc-lite/viewer --concurrency=1 --env-mode=loose",
+    "pnpm typecheck",
+    "pnpm lint"
+  ],
+  "viewerTestPattern": "(components/error-report/|lib/error-reports/|services/error-reports/)",
+  "invariants": [
+    "Draft creation renews the authenticated session through the report expiry without shortening retention.",
+    "Idempotent draft retry renews the same owner session.",
+    "Owner read and deletion succeed after the original session expiry.",
+    "Successful protected draft responses refresh the same HttpOnly Secure SameSite=Strict cookie; rejected Origin/CSRF requests do not.",
+    "A vanished authenticated session rolls back draft and admission changes with 401."
+  ],
+  "negativeControls": {
+    "sql": "Replace GREATEST expiry renewal with an expiry-preserving UPDATE.",
+    "cookie": "Omit the successful-response cookie refresh.",
+    "full": "Revert all J production changes relative to the recorded I base."
+  },
+  "limitations": [
+    "The browser must retain its anonymous owner cookie.",
+    "This evidence does not activate public submissions, NDA signing or public sharing.",
+    "Temporary serial Turbo concurrency configuration was restored byte-for-byte."
+  ]
+}

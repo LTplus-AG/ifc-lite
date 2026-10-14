@@ -74,8 +74,9 @@ export function restoreSceneApplication(application: SceneApplication): RestoreR
 
   if (section) {
     const state = useViewerStore.getState();
-    if (state.sectionPlane === section.installed && state.sceneState.section.visible === section.installedVisible) {
-      useViewerStore.setState({ sectionPlane: section.prior, sceneState: { ...state.sceneState, section: { visible: section.priorVisible } } });
+    if (state.sectionPlane === section.installed && state.inactiveSectionPlanes === section.installedInactive
+      && state.sceneState.section.visible === section.installedVisible) {
+      useViewerStore.setState({ sectionPlane: section.prior, inactiveSectionPlanes: section.priorInactive, sceneState: { ...state.sceneState, section: { visible: section.priorVisible } } });
       report('section', 'restored');
     } else report('section', 'changed');
   }

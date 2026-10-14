@@ -21,7 +21,7 @@ import type { StateCreator } from 'zustand';
 import type { Drawing2D } from '@ifc-lite/drawing-2d';
 import type { CameraCallbacks, CameraViewpoint, EntityRef, SectionPlane } from '../types.js';
 import { entityRefToString } from '../types.js';
-import { activeSectionPlane } from '../section-active.js';
+import { captureSectionSnapshot } from './pinboard-section-snapshot.js';
 import type { SceneVisibilityState } from './sceneStateSlice.js';
 import type { VisibilityOwnership } from '../../lib/visibility/ownership.js';
 import {
@@ -39,7 +39,14 @@ import {
 export type BasketSource = 'selection' | 'visible' | 'hierarchy' | 'manual';
 
 export interface BasketSectionSnapshot {
+  /** The cut this view is about: the active plane, or the first plane that cuts when the active one does not. */
   plane: SectionPlane;
+  /**
+   * Every cutting plane (#7545) in creation order, `plane` among them, and which of them is `plane`.
+   * Absent in a snapshot of one plane; restoring keeps the chips in the order the user made them.
+   */
+  planes?: SectionPlane[];
+  activeIndex?: number;
   drawing2D: Drawing2D | null;
   show3DOverlay: boolean;
   showHiddenLines: boolean;
@@ -84,6 +91,7 @@ interface PinboardCrossSliceState {
   models: Map<string, { idOffset: number }>;
   cameraCallbacks: CameraCallbacks;
   sectionPlane: SectionPlane;
+  inactiveSectionPlanes: SectionPlane[];
   sceneState: SceneVisibilityState;
   drawing2D: Drawing2D | null;
   drawing2DDisplayOptions: { show3DOverlay: boolean; showHiddenLines: boolean };
@@ -187,20 +195,6 @@ function createNextViewName(views: BasketView[]): string {
   const names = new Set(views.map((v) => v.name));
   while (names.has(`Basket ${idx}`)) idx++;
   return `Basket ${idx}`;
-}
-
-function captureSectionSnapshot(state: PinboardCrossSliceState): BasketSectionSnapshot | null {
-  const plane = activeSectionPlane(state);
-  if (!plane) return null;
-
-  return {
-    plane: { ...plane },
-    // Basket views restore 3D section state only. 2D drawings are derived, mutable,
-    // and global in store state; persisting them per-view causes cross-view leakage.
-    drawing2D: null,
-    show3DOverlay: state.drawing2DDisplayOptions.show3DOverlay,
-    showHiddenLines: state.drawing2DDisplayOptions.showHiddenLines,
-  };
 }
 
 export const createPinboardSlice: StateCreator<

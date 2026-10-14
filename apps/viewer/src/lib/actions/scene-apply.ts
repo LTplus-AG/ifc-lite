@@ -107,6 +107,7 @@ function applyColour(action: ActionPreview, application: SceneApplication): numb
 function applySection(action: ActionPreview, application: SceneApplication): void {
   const state = useViewerStore.getState();
   const prior = state.sectionPlane;
+  const priorInactive = state.inactiveSectionPlanes;
   const priorVisible = state.sceneState.section.visible;
   if (action.plane) {
     const { normal: n, point: p } = action.plane;
@@ -117,7 +118,10 @@ function applySection(action: ActionPreview, application: SceneApplication): voi
     useViewerStore.getState().setSectionVisible(true);
   }
   const after = useViewerStore.getState();
-  application.section = { prior, priorVisible, installed: after.sectionPlane, installedVisible: after.sceneState.section.visible };
+  application.section = {
+    prior, priorVisible, installed: after.sectionPlane, installedVisible: after.sceneState.section.visible,
+    priorInactive, installedInactive: after.inactiveSectionPlanes,
+  };
 }
 
 /** Frame or place the camera; false when no renderer is mounted to do it. */

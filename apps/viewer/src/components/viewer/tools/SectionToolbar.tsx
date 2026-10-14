@@ -33,6 +33,7 @@ import { HudDivider } from '../../viewport-ui/hud/HudToggle';
 import { SectionActivePlaneRow } from './SectionActivePlaneRow';
 import { SectionAddMenu, SectionEmptyAdd } from './SectionAddMenu';
 import { SectionPlaneChips } from './SectionPlaneChips';
+import { SectionViewsMenu } from './SectionViewsMenu';
 import { useSectionPlaneSet } from './useSectionPlaneSet';
 import { SectionBarMeasureContext } from './SectionBarMeasure';
 
@@ -68,16 +69,17 @@ export function SectionToolbar() {
       <SectionAddMenu atLimit={atLimit} />
     </>
   );
-  const close = (
+  const close = (compact: boolean) => (
     <>
       <HudDivider />
+      <SectionViewsMenu compact={compact} />
       <Button variant="ghost" size="icon-sm" className="h-6 w-6" onClick={() => setActiveTool('select')} title={t('sectionTool.closeTitle')} aria-label={t('sectionTool.closeTitle')}>
         <X className="h-3.5 w-3.5" />
       </Button>
     </>
   );
 
-  const row1 = (withCaption: boolean) => (
+  const row1 = (withCaption: boolean, compact: boolean) => (
     <span className={GROUP}>
       {withCaption && (
         <>
@@ -86,7 +88,7 @@ export function SectionToolbar() {
         </>
       )}
       {planes}
-      {close}
+      {close(compact)}
     </span>
   );
   /** One offscreen copy of the whole bar in a given form, to measure how wide that form is. */
@@ -94,7 +96,7 @@ export function SectionToolbar() {
     <HudPopover>
       <div ref={measureRef(form)} aria-hidden="true" inert style={OFFSCREEN} className="flex w-max flex-col gap-1 px-1.5">
         <SectionBarMeasureContext.Provider value>
-          <div className="flex flex-nowrap items-center justify-center gap-1">{row1(withCaption)}</div>
+          <div className="flex flex-nowrap items-center justify-center gap-1">{row1(withCaption, false)}</div>
           {count > 0 && <div className="flex flex-nowrap items-center justify-center gap-1"><SectionActivePlaneRow /></div>}
         </SectionBarMeasureContext.Provider>
       </div>
@@ -118,7 +120,7 @@ export function SectionToolbar() {
             className="flex-col flex-nowrap"
             {...tourAnchor(TOUR_ANCHORS.sectionPanel)}
           >
-            <div className={ROW}>{row1(tier === TIER_CAPTION)}</div>
+            <div className={ROW}>{row1(tier === TIER_CAPTION, tier === TIER_COMPACT)}</div>
             {count > 0 && (
               <div className={ROW} data-testid="section-active-row">
                 <SectionActivePlaneRow compact={tier === TIER_COMPACT} />

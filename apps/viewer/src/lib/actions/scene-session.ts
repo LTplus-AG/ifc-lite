@@ -23,7 +23,7 @@
  *  - colour: `colorPresentationRevision` after the paint, the IDS colour
  *    claim's test (`lib/ids/color-ownership.ts`);
  *  - section: the `sectionPlane` object installed (every section write
- *    replaces it) plus the section visibility toggle;
+ *    replaces it) and the set of the other cutting planes (#7545), plus the section visibility toggle;
  *  - camera: the prior viewpoint. The camera is navigation, not a shared
  *    channel, so Restore always returns to it when asked.
  */
@@ -64,7 +64,11 @@ export interface SceneApplication {
   };
   hide?: { added: number[] };
   colour?: { prior: Map<number, RGBA>; revision: number; idsOwned: boolean };
-  section?: { prior: SectionPlane; priorVisible: boolean; installed: SectionPlane; installedVisible: boolean };
+  section?: {
+    prior: SectionPlane; priorVisible: boolean; installed: SectionPlane; installedVisible: boolean;
+    /** The other cutting planes before and after (#7545): the cut is the whole set, and restore must not undo a plane the user added since. */
+    priorInactive: SectionPlane[]; installedInactive: SectionPlane[];
+  };
   camera?: { prior: CameraViewpoint };
 }
 

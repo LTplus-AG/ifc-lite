@@ -24,8 +24,10 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useTranslation } from '@/i18n';
+import { useViewerStore } from '@/store';
 import {
   applySavedSectionCut,
+  canSaveSectionCut,
   removeSavedSectionCut,
   renameSavedSectionCut,
   saveCurrentSectionCut,
@@ -42,10 +44,11 @@ export function DrawingSectionCutMenu({ cutLabel }: DrawingSectionCutMenuProps) 
   const { promptDialog } = useDialogs();
   const cuts = useSavedSectionCuts((s) => s.cuts);
   const activeCutId = useSavedSectionCuts((s) => s.activeCutId);
+  const canSave = useViewerStore((s) => canSaveSectionCut(s));
 
   const handleSaveCurrent = async () => {
     const name = (await promptDialog({ description: t('section2d.savedCuts.savePrompt'), defaultValue: '' }))?.trim();
-    if (name) saveCurrentSectionCut(name);
+    if (name && canSaveSectionCut()) saveCurrentSectionCut(name);
   };
 
   const handleRename = async (id: string, currentName: string) => {
@@ -65,7 +68,7 @@ export function DrawingSectionCutMenu({ cutLabel }: DrawingSectionCutMenuProps) 
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-64">
-        <DropdownMenuItem onClick={handleSaveCurrent} className="text-xs">
+        <DropdownMenuItem onClick={handleSaveCurrent} disabled={!canSave} className="text-xs">
           <Save className="mr-2 h-3.5 w-3.5" />
           {t('section2d.savedCuts.saveCurrent')}
         </DropdownMenuItem>

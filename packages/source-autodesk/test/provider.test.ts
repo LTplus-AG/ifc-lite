@@ -65,6 +65,9 @@ describe('Autodesk native file sources', () => {
     } };
     await h.provider.listProjects(ctx, { query: 'https://app.autodeskforma.eu/sites/site' });
     expect((await h.provider.listProjects(ctx)).items.map((p) => p.name)).toEqual(['Linked site']);
+    // A pasted Docs link asks for one project; unrelated saved sites must not answer it.
+    await expect(h.provider.listProjects(ctx, { query: 'https://acc.autodesk.com/docs/files/projects/11111111-2222-3333-4444-555555555555' }))
+      .rejects.toMatchObject({ code: 'app-not-authorized' });
   });
   it('still reports an empty account without hub warnings as an empty list', async () => {
     const h = harness(() => ({ data: [] }));

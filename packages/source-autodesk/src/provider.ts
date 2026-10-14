@@ -34,7 +34,7 @@ export class AutodeskProvider implements FileSourceProvider {
       page = await listProjects(this.api(ctx), options);
     } catch (error) {
       // Linked Forma sites do not need hub authorization; keep them reachable.
-      if (!(error instanceof AutodeskError) || error.code !== 'app-not-authorized') throw error;
+      if (!(error instanceof AutodeskError) || error.code !== 'app-not-authorized' || options?.query || options?.cursor) throw error;
       const identity = await this.auth.getIdentity(ctx);
       const sites = identity ? await rememberedSites(ctx, identity.id) : [];
       if (!sites.length) throw error;

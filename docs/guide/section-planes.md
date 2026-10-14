@@ -46,5 +46,5 @@ Planes tell themselves apart by state, never by colour: the active plane's tag i
 
 - Eight planes (the renderer clips against the primary plane plus seven more). A box cut uses the one box slot, and a switched-off box does not hold it against one that is cutting.
 - Inactive planes place their percentage against the renderer's own model bounds and the active plane against the Section range; for an ordinary model they are the same range.
-- There are no keyboard shortcuts for stepping between planes yet; the chips are tabs (arrow keys move, F2 renames, Delete removes).
+- In the Section tool `,` and `.` select the previous and next plane (wrapping); the chips are tabs too (arrow keys move, F2 renames, Delete removes).
 - Caps are cut from the model's meshes on the CPU, one plane at a time; with many planes on a very large model the caps of the planes you are not editing arrive a moment after the clip itself.

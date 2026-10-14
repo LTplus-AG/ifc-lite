@@ -155,3 +155,19 @@ fn refuses_every_shared_cross_language_vector() {
     }
 }
 
+
+/// #7589: every shared PAGE-directive literal is ONE slot, so the reference
+/// after it keeps its index.
+#[test]
+fn split_top_level_args_keeps_page_operands_inside_their_strings_7589() {
+    let vectors: serde_json::Value =
+        serde_json::from_str(include_str!("../../core/tests/fixtures/step-page-directive.json")).unwrap();
+    for vector in vectors.as_array().unwrap() {
+        let literal = vector["literal"].as_str().unwrap();
+        let parts = split_top_level_args(&format!("{literal},#7")).expect("a well-formed argument list");
+        assert_eq!(parts, vec![literal.to_string(), "#7".to_string()], "{}", vector["name"]);
+    }
+    let parts = split_top_level_args(r"'g',#2,'Para \S\' 5','Art \S\' 7',#4").expect("a well-formed argument list");
+    assert_eq!(parts.len(), 5);
+    assert!(is_well_formed_step_slot(r"IFCLABEL('Art \S\' 7')"));
+}

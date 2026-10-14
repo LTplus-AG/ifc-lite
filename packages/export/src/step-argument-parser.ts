@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { STEP_TRIVIA } from '@ifc-lite/parser';
+import { stepStringLiteralEnd } from '@ifc-lite/encoding';
 import { skipStepComment } from './step-comment-skip.js';
 import { isWellFormedStepSlot } from './step-slot-grammar.js';
 
@@ -44,34 +45,26 @@ export function splitTopLevelListItems(text: string): string[] {
   const parts: string[] = [];
   let current = '';
   let depth = 0;
-  let inString = false;
 
   for (let i = 0; i < text.length; i++) {
     const char = text[i];
-    if (!inString && char === '/' && text[i + 1] === '*') {
+    if (char === '/' && text[i + 1] === '*') {
       const stop = skipStepComment(text, i); // see skipStepComment's docstring
       current += text.slice(i, stop);
       i = stop - 1;
       continue;
     }
-    current += char;
-
-    if (inString) {
-      if (char === '\'') {
-        if (text[i + 1] === '\'') {
-          current += text[i + 1];
-          i++;
-        } else {
-          inString = false;
-        }
-      }
-      continue;
-    }
 
     if (char === '\'') {
-      inString = true;
+      // A literal is copied whole; where it ends is the shared rule, so `''`
+      // and a `\S\'` PAGE operand stay inside it (#7589). Unterminated: the rest.
+      const end = stepStringLiteralEnd(text, i);
+      const stop = end === -1 ? text.length : end;
+      current += text.slice(i, stop);
+      i = stop - 1;
       continue;
     }
+    current += char;
 
     if (char === '(') {
       depth++;
@@ -224,49 +217,46 @@ export function splitTopLevelStepArguments(input: string): string[] | null {
   const parts: string[] = [];
   let current = '';
   let depth = 0;
-  let inString = false;
 
   for (let i = 0; i < input.length; i++) {
     const char = input[i];
 
     // See skipStepComment's docstring; isWellFormedStepSlot below still
     // rejects an unterminated comment via skipTrivia.
-    if (!inString && char === '/' && input[i + 1] === '*') {
+    if (char === '/' && input[i + 1] === '*') {
       const stop = skipStepComment(input, i);
       current += input.slice(i, stop);
       i = stop - 1;
       continue;
     }
 
+    // A literal is copied whole. Where it ends is the shared rule, so a `\S\'`
+    // operand is text, not a closing quote (#7589); one that never closes is an
+    // unterminated string, refused.
     if (char === "'") {
-      current += char;
-      if (inString && i + 1 < input.length && input[i + 1] === "'") {
-        current += input[i + 1];
-        i++;
-        continue;
-      }
-      inString = !inString;
+      const end = stepStringLiteralEnd(input, i);
+      if (end === -1) return null;
+      current += input.slice(i, end);
+      i = end - 1;
       continue;
     }
 
-    if (!inString) {
-      if (char === '(') depth++;
-      else if (char === ')') {
-        depth--;
-        // Already past the record's own closing paren: every comma from here
-        // would be read as nested and the split is meaningless.
-        if (depth < 0) return null;
-      } else if (char === ',' && depth === 0) {
-        parts.push(current);
-        current = '';
-        continue;
-      }
+    if (char === '(') depth++;
+    else if (char === ')') {
+      depth--;
+      // Already past the record's own closing paren: every comma from here
+      // would be read as nested and the split is meaningless.
+      if (depth < 0) return null;
+    } else if (char === ',' && depth === 0) {
+      parts.push(current);
+      current = '';
+      continue;
     }
 
     current += char;
   }
 
-  if (inString || depth !== 0) return null;
+  if (depth !== 0) return null;
   parts.push(current);
 
   // The three checks above (quote/paren/final-depth) track SCAN state, not

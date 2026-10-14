@@ -177,3 +177,24 @@ fn classify_refs_holds_the_same_bound_as_the_rewrite() {
         ]
     );
 }
+
+/// #7589: `'Para \S\' 5'` is ONE literal (the `\S\` PAGE directive takes the
+/// apostrophe as its operand). A rewrite that ended the string there remapped
+/// the `#9` in its text and left the real `#4` after it pointing at the source
+/// id space.
+#[test]
+fn rewrite_refs_keeps_a_page_operand_inside_its_string_7589() {
+    let out = rewrite_refs(br"#3=IFCWALL('g',#2,'Para \S\' #9 5',$,#4);", 10, &|_| None);
+    assert_eq!(out, r"#13=IFCWALL('g',#12,'Para \S\' #9 5',$,#14);");
+}
+
+/// #7589: the slot splitter and the argument-span scan read a PAGE operand as
+/// text, so the reference after the literal is classified in its own slot.
+#[test]
+fn split_args_and_arg_span_keep_a_page_operand_inside_its_string_7589() {
+    assert_eq!(split_args(r"'Para \S\' 5','Art \S\' 7',#4,(#5,#6)"), vec![r"'Para \S\' 5'", r"'Art \S\' 7'", "#4", "(#5,#6)"]);
+    let line = r"#1=IFCWALL('Para \S\') 5',#2);";
+    assert_eq!(arg_span(line), Some((10, line.len() - 2)));
+    let slots = classify_refs(r"#9=IFCRELAGGREGATES('g',$,'Para \S\' #7 5',$,#4,(#5,#6));").expect("parseable line");
+    assert_eq!(slots, vec![(4, RefSlot::Single), (5, RefSlot::ListElement), (6, RefSlot::ListElement)]);
+}

@@ -13,11 +13,12 @@
 use std::collections::HashSet;
 
 use ifc_lite_core::express_id::parse_express_id;
+use ifc_lite_core::step_encoding::step_string_literal_end;
 
 /// Rewrite every `#N` reference in a STEP entity line. `remap(n)` returns
 /// `Some(absolute_id)` to redirect a reference (no offset), or `None` to apply
 /// `offset`. Single-quoted strings are passed through as raw bytes (a `#` there
-/// is literal text), tracking only in/out-of-string state.
+/// is literal text).
 ///
 /// A reference above `u32::MAX` is copied through verbatim (#3421). It used to
 /// saturate (CR #2952), which beats the wrapping this file's siblings did but is
@@ -30,16 +31,17 @@ use ifc_lite_core::express_id::parse_express_id;
 pub fn rewrite_refs(line: &[u8], offset: u32, remap: &impl Fn(u32) -> Option<u32>) -> String {
     let mut out: Vec<u8> = Vec::with_capacity(line.len() + 8);
     let mut i = 0;
-    let mut in_string = false;
     while i < line.len() {
         let b = line[i];
         if b == b'\'' {
-            in_string = !in_string;
-            out.push(b'\'');
-            i += 1;
+            // The whole literal is copied verbatim; where it ends is the shared
+            // rule, so a `\S\'` operand does not end it early (#7589).
+            let end = step_string_literal_end(line, i).unwrap_or(line.len());
+            out.extend_from_slice(&line[i..end]);
+            i = end;
             continue;
         }
-        if !in_string && b == b'#' {
+        if b == b'#' {
             let mut j = i + 1;
             while j < line.len() && line[j].is_ascii_digit() {
                 j += 1;
@@ -99,23 +101,13 @@ fn arg_span(line: &str) -> Option<(usize, usize)> {
     let from = bytes.iter().position(|&b| b == b'=').map_or(0, |i| i + 1);
     let open = from + bytes[from..].iter().position(|&b| b == b'(')?;
     let mut depth = 0i32;
-    let mut in_string = false;
     let mut i = open;
     while i < bytes.len() {
-        let c = bytes[i];
-        if in_string {
-            if c == b'\'' {
-                if bytes.get(i + 1) == Some(&b'\'') {
-                    i += 2;
-                    continue;
-                }
-                in_string = false;
+        match bytes[i] {
+            b'\'' => {
+                i = step_string_literal_end(bytes, i)?;
+                continue;
             }
-            i += 1;
-            continue;
-        }
-        match c {
-            b'\'' => in_string = true,
             b'(' => depth += 1,
             b')' => {
                 depth -= 1;
@@ -136,24 +128,14 @@ fn split_args(args: &str) -> Vec<&str> {
     let bytes = args.as_bytes();
     let mut out = Vec::new();
     let mut depth = 0i32;
-    let mut in_string = false;
     let mut start = 0usize;
     let mut i = 0usize;
     while i < bytes.len() {
-        let c = bytes[i];
-        if in_string {
-            if c == b'\'' {
-                if bytes.get(i + 1) == Some(&b'\'') {
-                    i += 2;
-                    continue;
-                }
-                in_string = false;
+        match bytes[i] {
+            b'\'' => {
+                i = step_string_literal_end(bytes, i).unwrap_or(bytes.len());
+                continue;
             }
-            i += 1;
-            continue;
-        }
-        match c {
-            b'\'' => in_string = true,
             b'(' => depth += 1,
             b')' => depth -= 1,
             b',' if depth == 0 => {

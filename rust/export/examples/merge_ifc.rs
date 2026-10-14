@@ -199,12 +199,13 @@ fn refs_in(line: &str) -> (Vec<u32>, usize) {
     let mut out = Vec::new();
     let mut past_bound = 0usize;
     let mut i = 0;
-    let mut in_str = false;
     while i < bytes.len() {
         let c = bytes[i];
         if c == b'\'' {
-            in_str = !in_str;
-        } else if !in_str && c == b'#' {
+            // The shared rule for where a literal ends (#7589).
+            i = ifc_lite_core::step_encoding::step_string_literal_end(bytes, i).unwrap_or(bytes.len());
+            continue;
+        } else if c == b'#' {
             let mut j = i + 1;
             while j < bytes.len() && bytes[j].is_ascii_digit() {
                 j += 1;

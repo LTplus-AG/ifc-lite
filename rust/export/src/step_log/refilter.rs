@@ -66,30 +66,28 @@ fn bare_ref(item: &str) -> Option<u32> {
 /// `splitTopLevelListItems`.
 fn list_items(text: &str) -> Vec<String> {
     let chars: Vec<char> = text.chars().collect();
+    let ascii = crate::step_slot::ascii_projection(&chars);
     let mut parts = Vec::new();
     let mut current = String::new();
-    let (mut depth, mut in_string, mut i) = (0i32, false, 0usize);
+    let (mut depth, mut i) = (0i32, 0usize);
     while i < chars.len() {
         let c = chars[i];
-        if !in_string && c == '/' && chars.get(i + 1) == Some(&'*') {
+        if c == '/' && chars.get(i + 1) == Some(&'*') {
             let stop = (i + 2..chars.len().saturating_sub(1)).find(|&k| chars[k] == '*' && chars[k + 1] == '/').map_or(chars.len(), |k| k + 2);
             current.extend(&chars[i..stop]);
             i = stop;
             continue;
         }
+        if c == '\'' {
+            // A literal is copied whole; where it ends is the shared rule, so a
+            // `\S\'` operand stays inside it (#7589). Unterminated: the rest.
+            let end = ifc_lite_core::step_encoding::step_string_literal_end(&ascii, i).unwrap_or(chars.len());
+            current.extend(&chars[i..end]);
+            i = end;
+            continue;
+        }
         current.push(c);
-        if in_string {
-            if c == '\'' {
-                if chars.get(i + 1) == Some(&'\'') {
-                    current.push('\'');
-                    i += 1;
-                } else {
-                    in_string = false;
-                }
-            }
-        } else if c == '\'' {
-            in_string = true;
-        } else if c == '(' {
+        if c == '(' {
             depth += 1;
         } else if c == ')' {
             depth -= 1;
@@ -292,3 +290,7 @@ pub(crate) fn filter_created_line(
 ) -> Filtered {
     filter_source_line(text, id, upper, schema, excluded, any_excluded)
 }
+
+#[cfg(test)]
+#[path = "refilter_tests.rs"]
+mod tests;

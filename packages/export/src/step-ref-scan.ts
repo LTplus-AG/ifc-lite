@@ -13,6 +13,7 @@
  * caller only ever asks "does this record touch one of these ids", never
  * which slot.
  */
+import { stepStringLiteralEnd } from '@ifc-lite/encoding';
 import { skipStepComment } from './step-comment-skip.js';
 
 /**
@@ -21,22 +22,20 @@ import { skipStepComment } from './step-comment-skip.js';
  */
 export function referencesAnyExpressId(attrsRaw: string, ids: ReadonlySet<number>): boolean {
   if (ids.size === 0) return false;
-  let inString = false;
   for (let i = 0; i < attrsRaw.length; i++) {
     const ch = attrsRaw[i];
-    if (!inString && ch === '/' && attrsRaw[i + 1] === '*') {
+    if (ch === '/' && attrsRaw[i + 1] === '*') {
       i = skipStepComment(attrsRaw, i) - 1;
       continue;
     }
     if (ch === '\'') {
-      if (inString && attrsRaw[i + 1] === '\'') {
-        i++;
-        continue;
-      }
-      inString = !inString;
+      // The shared rule for where a literal ends (#7589); unterminated: the rest.
+      const end = stepStringLiteralEnd(attrsRaw, i);
+      if (end === -1) return false;
+      i = end - 1;
       continue;
     }
-    if (!inString && ch === '#') {
+    if (ch === '#') {
       let j = i + 1;
       let digits = '';
       while (j < attrsRaw.length && attrsRaw[j] >= '0' && attrsRaw[j] <= '9') {
@@ -48,4 +47,21 @@ export function referencesAnyExpressId(attrsRaw: string, ids: ReadonlySet<number
     }
   }
   return false;
+}
+
+/**
+ * Byte twin of `stepStringLiteralEnd` (`@ifc-lite/encoding`) for walkers that
+ * scan a source buffer without decoding it (#7589): the index just past the
+ * apostrophe closing the literal that opens at `open`, or `-1` when it does not
+ * close before `end`. Same rule, tested in the same order: a `\S\` PAGE
+ * operand is text, then `''` is an escaped quote.
+ */
+export function stepBytesLiteralEnd(bytes: Uint8Array, open: number, end: number): number {
+  for (let p = open + 1; p < end; p++) {
+    if (bytes[p] !== 0x27) continue;
+    if (p >= 3 && bytes[p - 1] === 0x5c && bytes[p - 2] === 0x53 && bytes[p - 3] === 0x5c) continue;
+    if (p + 1 < end && bytes[p + 1] === 0x27) { p++; continue; }
+    return p + 1;
+  }
+  return -1;
 }

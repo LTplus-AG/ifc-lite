@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { stepStringLiteralEnd } from '@ifc-lite/encoding';
+
 /**
  * Locate the outer STEP argument list of one entity line: the first `(` (nothing
  * is quoted before the type name) and its matching `)`, honouring quoted strings
@@ -28,23 +30,22 @@ export function findOuterArgs(line: string): { open: number; close: number } | n
   const open = line.indexOf('(');
   if (open === -1) return null;
   let depth = 0;
-  let inString = false;
   for (let i = open; i < line.length; i++) {
     const ch = line[i];
-    if (!inString && ch === '/' && line[i + 1] === '*') {
+    if (ch === '/' && line[i + 1] === '*') {
       const end = line.indexOf('*/', i + 2);
       if (end === -1) return null; // unterminated comment: nothing past it is trustworthy
       i = end + 1; // loop's i++ lands one past the closing '/'
       continue;
     }
-    if (inString) {
-      if (ch === "'") {
-        if (line[i + 1] === "'") i++; // escaped quote
-        else inString = false;
-      }
+    if (ch === "'") {
+      // The shared rule for where a literal ends: `''` and a `\S\'` PAGE
+      // operand stay inside it (#7589).
+      const end = stepStringLiteralEnd(line, i);
+      if (end === -1) return null;
+      i = end - 1;
       continue;
     }
-    if (ch === "'") { inString = true; continue; }
     if (ch === '(') depth++;
     else if (ch === ')') {
       depth--;
@@ -52,4 +53,25 @@ export function findOuterArgs(line: string): { open: number; close: number } | n
     }
   }
   return null;
+}
+
+/**
+ * Apply `edit` to every run of `text` OUTSIDE a STEP string literal, copying
+ * each literal verbatim — for the regex rewriters in `unit-normalize.ts`, so a
+ * number or typed measure inside a string is never rescaled. Where a literal
+ * ends is the shared rule (#7589): a `'(?:[^']|'')*'` regex alternative ended
+ * `'Para \S\' 5'` at the PAGE operand and handed ` 5'…` to the rewrite as code.
+ * An apostrophe that never closes is left in the code run, as such a regex
+ * alternative (failing to match there) left it.
+ */
+export function mapOutsideStepStrings(text: string, edit: (code: string) => string): string {
+  let out = '';
+  let from = 0;
+  for (let q = text.indexOf("'"); q !== -1; q = text.indexOf("'", from)) {
+    const end = stepStringLiteralEnd(text, q);
+    if (end === -1) break;
+    out += edit(text.slice(from, q)) + text.slice(q, end);
+    from = end;
+  }
+  return out + edit(text.slice(from));
 }

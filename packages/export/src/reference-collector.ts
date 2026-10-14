@@ -31,6 +31,7 @@ import type { IfcDataStore, IfcSourceBytes } from '@ifc-lite/parser';
 import { asSourceBytes, STEP_TRIVIA } from '@ifc-lite/parser';
 import type { EffectiveEntityIndex } from './effective-index.js';
 import { readStepSlots, splitTopLevelListItems } from './step-argument-parser.js';
+import { stepBytesLiteralEnd } from './step-ref-scan.js';
 import { readRelationshipSlotLowerBound } from './relationship-slot-bounds.js';
 import type { IfcSchemaVersion } from './schema-converter.js';
 // Schema-derived type-set machinery (INFRASTRUCTURE_TYPES, PRODUCT_TYPES,
@@ -97,8 +98,8 @@ const SPATIAL_STRUCTURE_TYPES = new Set([
  * `'detail #999'`) is TEXT, not a reference. Treating it as an edge would
  * pull unrelated entities into export closures — and, in the demesher's
  * reverse-reference prune, could tombstone a referrer-less entity that a
- * string merely mentions. The `''` escape is handled (the scan re-enters
- * string mode), so `'it''s #7'` contributes no reference either.
+ * string merely mentions. The `''` escape and a `\S\'` PAGE operand stay
+ * inside the literal (#7589), so `'it''s #7'` contributes no reference either.
  *
  * ~4-15x faster than TextDecoder + regex for large closures.
  */
@@ -113,20 +114,10 @@ function extractRefsFromBytes(
   while (i < end) {
     const b = source[i];
     if (b === QUOTE) {
-      // Skip the string literal: advance to the closing quote, treating the
-      // '' escape as string continuation.
-      i++;
-      while (i < end) {
-        if (source[i] === QUOTE) {
-          if (i + 1 < end && source[i + 1] === QUOTE) {
-            i += 2; // escaped quote, still inside the string
-            continue;
-          }
-          i++; // real closing quote
-          break;
-        }
-        i++;
-      }
+      // Skip the string literal by the shared rule (#7589): `''` and a `\S\'`
+      // PAGE operand stay inside it. Unterminated: the rest is text.
+      const close = stepBytesLiteralEnd(source, i, end);
+      i = close === -1 ? end : close;
     } else if (b === HASH) {
       i++;
       // Check if followed by at least one digit

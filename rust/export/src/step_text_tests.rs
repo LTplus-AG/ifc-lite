@@ -441,3 +441,23 @@ fn export_step_keeps_an_encoded_newline_in_a_header_field() {
         "the encoded newline must survive a re-export, not become a space"
     );
 }
+
+/// #7589: a `\S\'` PAGE operand is text, so the `#9` inside
+/// `'Para \S\' #9 5'` is not a reference and the `#4` after it is.
+#[test]
+fn refs_in_line_keeps_a_page_operand_inside_its_string_7589() {
+    let mut refs = Vec::new();
+    refs_in_line(br"#1=IFCWALL('g',#2,'Para \S\' #9 5',$,#4);", &mut refs);
+    assert_eq!(refs, vec![1, 2, 4]);
+}
+
+/// #7589: the attribute rewrite leaves `#9` in the string text alone and
+/// repoints the real `#9` after it.
+#[test]
+fn substitute_ref_in_attr_keeps_a_page_operand_inside_its_string_7589() {
+    assert_eq!(
+        substitute_ref_in_attr(r"('Para \S\' #9 5',#9)", 9, 50).as_deref(),
+        Some(r"('Para \S\' #9 5',#50)")
+    );
+    assert_eq!(substitute_ref_in_attr(r"'Größe \S\' #9'", 9, 50), None);
+}

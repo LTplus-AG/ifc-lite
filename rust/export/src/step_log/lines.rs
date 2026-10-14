@@ -76,7 +76,8 @@ fn well_formed_slot(part: &str) -> bool {
         return true;
     }
     let chars: Vec<char> = part.chars().collect();
-    let mut g = Grammar { c: &chars, i: 0 };
+    let ascii = crate::step_slot::ascii_projection(&chars);
+    let mut g = Grammar { c: &chars, a: &ascii, i: 0 };
     if !g.value(0) {
         return false;
     }
@@ -86,6 +87,8 @@ fn well_formed_slot(part: &str) -> bool {
 
 struct Grammar<'c> {
     c: &'c [char],
+    /// `c` projected to one byte per char, for the shared literal-end rule.
+    a: &'c [u8],
     i: usize,
 }
 
@@ -145,21 +148,15 @@ impl Grammar<'_> {
         self.trivia();
         let Some(c) = self.at(self.i) else { return false };
         match c {
-            '\'' => {
-                self.i += 1;
-                while let Some(ch) = self.at(self.i) {
-                    if ch == '\'' {
-                        if self.at(self.i + 1) == Some('\'') {
-                            self.i += 2;
-                            continue;
-                        }
-                        self.i += 1;
-                        return true;
-                    }
-                    self.i += 1;
+            // The shared rule for where a literal ends: a `\S\'` operand is
+            // text, not the closing quote (#7589).
+            '\'' => match ifc_lite_core::step_encoding::step_string_literal_end(self.a, self.i) {
+                Some(end) => {
+                    self.i = end;
+                    true
                 }
-                false
-            }
+                None => false,
+            },
             '(' => {
                 self.i += 1;
                 self.list(depth + 1)
@@ -197,3 +194,7 @@ impl Grammar<'_> {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "lines_tests.rs"]
+mod tests;

@@ -11,6 +11,8 @@
  * (`merged-empty-containers.ts`, `merged-subcontext.ts`).
  */
 
+import { stepStringLiteralEnd } from '@ifc-lite/encoding';
+
 /**
  * Remap all #ID references in a STEP entity line.
  * Applies offset to all IDs, then overrides with specific remappings.
@@ -35,27 +37,16 @@ export function remapEntityText(
   };
 
   let out = '';
-  let inString = false;
   for (let i = 0; i < entityText.length; i++) {
     const char = entityText[i];
 
-    if (inString) {
-      out += char;
-      if (char === "'") {
-        // STEP escapes a literal quote by doubling it ('').
-        if (entityText[i + 1] === "'") {
-          out += entityText[i + 1];
-          i++;
-        } else {
-          inString = false;
-        }
-      }
-      continue;
-    }
-
     if (char === "'") {
-      inString = true;
-      out += char;
+      // The literal is copied verbatim. Where it ends is the shared rule: `''`
+      // and a `\S\'` PAGE operand stay inside it (#7589). Unterminated: the rest.
+      const end = stepStringLiteralEnd(entityText, i);
+      const stop = end === -1 ? entityText.length : end;
+      out += entityText.slice(i, stop);
+      i = stop - 1;
       continue;
     }
 

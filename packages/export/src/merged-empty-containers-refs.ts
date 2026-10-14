@@ -15,6 +15,7 @@
 
 import { readStepSlots, splitTopLevelListItems } from './step-argument-parser.js';
 import { BARE_REF_RE } from './reference-collector.js';
+import { stepBytesLiteralEnd } from './step-ref-scan.js';
 
 /** Top-level arguments of a `#id=TYPE(…);` line, or `null` when unparseable. */
 export function topLevelAttrs(line: string): string[] | null {
@@ -85,14 +86,15 @@ export function argRefs(text: Uint8Array | string): number[] {
   const eq = bytes.indexOf(0x3d /* = */);
   const from = eq === -1 ? 0 : eq + 1;
   const out: number[] = [];
-  let inString = false;
   for (let i = from; i < bytes.length; i++) {
     const byte = bytes[i];
     if (byte === 0x27 /* ' */) {
-      inString = !inString;
+      // The shared rule for where a literal ends (#7589); unterminated: the rest.
+      const end = stepBytesLiteralEnd(bytes, i, bytes.length);
+      i = (end === -1 ? bytes.length : end) - 1;
       continue;
     }
-    if (inString || byte !== 0x23 /* # */) continue;
+    if (byte !== 0x23 /* # */) continue;
     let j = i + 1;
     let value = 0;
     while (j < bytes.length && bytes[j] >= 0x30 && bytes[j] <= 0x39) {

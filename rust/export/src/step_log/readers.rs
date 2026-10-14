@@ -11,6 +11,8 @@
 //! writer's parity target is what those readers answer, not what the record
 //! means.
 
+use ifc_lite_core::step_encoding::step_string_literal_end;
+
 fn ws(b: &[u8], mut i: usize) -> usize {
     while i < b.len() && b[i].is_ascii_whitespace() {
         i += 1;
@@ -50,8 +52,9 @@ pub(crate) fn hash_ids(text: &str) -> Vec<u32> {
     out
 }
 
-/// `/KEYWORD\s*\([^,]*,[^,]*,'([^']*)'/i`: the raw third argument of the first
-/// occurrence of `keyword` that the pattern completes on.
+/// `/KEYWORD\s*\([^,]*,[^,]*,'/i` and then the literal opening there, read
+/// whole by the shared rule: the raw third argument of the first occurrence of
+/// `keyword` that completes.
 fn quoted_third(text: &str, keyword: &str) -> Option<String> {
     let upper = text.to_ascii_uppercase();
     let b = text.as_bytes();
@@ -69,9 +72,10 @@ fn quoted_third(text: &str, keyword: &str) -> Option<String> {
         if b.get(c2 + 1) != Some(&b'\'') {
             continue;
         }
-        let start = c2 + 2;
-        let Some(end) = text[start..].find('\'').map(|p| start + p) else { continue };
-        return Some(text[start..end].to_string());
+        // The whole literal, by the shared rule: `''` and a `\S\'` operand
+        // stay inside it rather than cutting the name short (#7589).
+        let Some(end) = step_string_literal_end(b, c2 + 1) else { continue };
+        return Some(text[c2 + 2..end - 1].to_string());
     }
     None
 }
@@ -179,7 +183,8 @@ pub(crate) fn related_property_set(line: &str) -> Option<u32> {
 }
 
 /// The owner-history reference in slot 1 of a rooted record:
-/// `/=\s*IFC\w+\s*\(\s*'(?:[^']|'')*'\s*,\s*#(\d+)/i`.
+/// `/=\s*IFC\w+\s*\(\s*'/i`, the literal opening there (shared rule), then
+/// `/\s*,\s*#(\d+)/`.
 pub(crate) fn owner_history_ref(line: &str) -> Option<u32> {
     let b = line.as_bytes();
     let eq = line.find('=')?;
@@ -203,15 +208,7 @@ pub(crate) fn owner_history_ref(line: &str) -> Option<u32> {
     if b.get(i) != Some(&b'\'') {
         return None;
     }
-    i += 1;
-    loop {
-        match b.get(i)? {
-            b'\'' if b.get(i + 1) == Some(&b'\'') => i += 2,
-            b'\'' => break,
-            _ => i += 1,
-        }
-    }
-    i = ws(b, i + 1);
+    i = ws(b, step_string_literal_end(b, i)?);
     if b.get(i) != Some(&b',') {
         return None;
     }

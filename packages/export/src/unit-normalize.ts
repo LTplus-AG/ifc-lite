@@ -57,7 +57,7 @@
 import { getAllAttributesForEntity, STEP_TRIVIA } from '@ifc-lite/parser';
 import { formatStepReal } from '@ifc-lite/data';
 import { splitTopLevelStepArguments } from './step-argument-parser.js';
-import { findOuterArgs } from './step-outer-args.js';
+import { findOuterArgs, mapOutsideStepStrings } from './step-outer-args.js';
 
 /** IFC defined types whose values are lengths (STEP writes them as bare reals). */
 const LENGTH_MEASURE_TYPES = new Set([
@@ -195,14 +195,14 @@ export function toStepRealScaled(v: number): string {
 }
 
 /**
- * Single token matcher used by {@link scaleNumberLiterals}: a full STEP string
- * (kept verbatim, honouring the `''` escape), a `#`-reference (kept verbatim), or
- * a REAL/INTEGER literal (rescaled). Ordering matters — strings and refs are
- * matched first so their inner digits are never treated as numbers. The number
- * alternative consumes an optional exponent as one token, so `1.E-5` / `-2.5E2`
- * scale the mantissa without touching the exponent digits.
+ * Single token matcher used by {@link scaleNumberLiterals} over text OUTSIDE
+ * string literals ({@link mapOutsideStepStrings}): a `#`-reference (kept
+ * verbatim) or a REAL/INTEGER literal (rescaled). Refs are matched first so
+ * their digits are never treated as numbers. The number alternative consumes an
+ * optional exponent as one token, so `1.E-5` / `-2.5E2` scale the mantissa
+ * without touching the exponent digits.
  */
-const NUMBER_TOKEN_RE = /'(?:[^']|'')*'|#\d+|[+-]?(?:\d+\.\d*|\.\d+|\d+)(?:[eE][+-]?\d+)?/g;
+const NUMBER_TOKEN_RE = /#\d+|[+-]?(?:\d+\.\d*|\.\d+|\d+)(?:[eE][+-]?\d+)?/g;
 
 /**
  * Multiply every bare numeric literal in `text` by `factor`, leaving quoted
@@ -210,18 +210,15 @@ const NUMBER_TOKEN_RE = /'(?:[^']|'')*'|#\d+|[+-]?(?:\d+\.\d*|\.\d+|\d+)(?:[eE][
  * coordinate lists of tessellated geometry.
  */
 export function scaleNumberLiterals(text: string, factor: number): string {
-  return text.replace(NUMBER_TOKEN_RE, (tok) => {
-    const c = tok.charCodeAt(0);
-    if (c === 0x27 /* ' */ || c === 0x23 /* # */) return tok;
-    return toStepRealScaled(parseFloat(tok) * factor);
-  });
+  return mapOutsideStepStrings(text, (code) => code.replace(NUMBER_TOKEN_RE, (tok) =>
+    tok.charCodeAt(0) === 0x23 /* # */ ? tok : toStepRealScaled(parseFloat(tok) * factor)));
 }
 
 /**
  * Scale the typed measures embedded in property/quantity values. Matches
  * `IFC[POSITIVE|NONNEGATIVE]LENGTHMEASURE(x)` (× lengthFactor), `IFCAREAMEASURE(x)`
  * (× areaFactor) and `IFCVOLUMEMEASURE(x)` (× volumeFactor), but never inside a
- * quoted string (the string alternative is matched first and returned verbatim).
+ * quoted string ({@link mapOutsideStepStrings} hands it only the text between them).
  *
  * A single non-word delimiter (`(`, `,`, whitespace, or start-of-input) is
  * captured before the keyword and restored, so a keyword can never be matched as
@@ -237,7 +234,7 @@ export function scaleNumberLiterals(text: string, factor: number): string {
  * source unit.
  */
 const TYPED_MEASURE_RE = new RegExp(
-  `('(?:[^']|'')*')|(^|[^A-Za-z0-9_])(IFC(?:POSITIVE|NONNEGATIVE)?LENGTHMEASURE|IFCAREAMEASURE|IFCVOLUMEMEASURE)${STEP_TRIVIA}\\(([^)]*)\\)`,
+  `(^|[^A-Za-z0-9_])(IFC(?:POSITIVE|NONNEGATIVE)?LENGTHMEASURE|IFCAREAMEASURE|IFCVOLUMEMEASURE)${STEP_TRIVIA}\\(([^)]*)\\)`,
   'gi',
 );
 
@@ -247,17 +244,16 @@ export function scaleTypedMeasures(
   areaFactor: number,
   volumeFactor: number,
 ): string {
-  return text.replace(
+  return mapOutsideStepStrings(text, (code) => code.replace(
     TYPED_MEASURE_RE,
-    (full, str, delim, keyword, num) => {
-      if (str !== undefined) return full; // inside a quoted string
+    (_full, delim, keyword, num) => {
       const kw = keyword.toUpperCase();
       const factor = kw === 'IFCAREAMEASURE' ? areaFactor
         : kw === 'IFCVOLUMEMEASURE' ? volumeFactor
         : lengthFactor; // any *LENGTHMEASURE
       return `${delim}${keyword}(${scaleMeasureNumber(num, factor)})`;
     },
-  );
+  ));
 }
 
 /** Scale the numeric content of one typed-measure token, preserving non-numeric ($) content. */

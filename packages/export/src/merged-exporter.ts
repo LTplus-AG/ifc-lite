@@ -15,7 +15,7 @@ import {
   IfcParser,
   asSourceBytes,
 } from '@ifc-lite/parser';
-import { decodeIfcString } from '@ifc-lite/encoding';
+import { decodeIfcString, stepStringLiteralEnd } from '@ifc-lite/encoding';
 import { buildMergedHeader } from './merged-header.js';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { collectReferencedEntityIds, getVisibleEntityIds, filterHiddenRefsFromRelationshipLine } from './reference-collector.js';
@@ -1545,37 +1545,31 @@ export class MergedExporter {
     let depth = 0;
     let attrCount = 0;
     let attrStart = openParen + 1;
-    let inString = false;
 
     for (let i = openParen + 1; i < entityText.length; i++) {
       const ch = entityText[i];
 
-      if (ch === "'" && !inString) {
-        inString = true;
-      } else if (ch === "'" && inString) {
-        // Check for escaped quote ''
-        if (i + 1 < entityText.length && entityText[i + 1] === "'") {
-          i++;
-          continue;
+      if (ch === "'") {
+        // The shared rule for where a literal ends: `''` and a `\S\'` operand
+        // stay inside it (#7589). Unterminated: no attribute to read.
+        const end = stepStringLiteralEnd(entityText, i);
+        if (end === -1) return null;
+        i = end - 1;
+      } else if (ch === '(') {
+        depth++;
+      } else if (ch === ')') {
+        if (depth === 0) {
+          return attrCount === attrIndex
+            ? entityText.substring(attrStart, i).trim()
+            : null;
         }
-        inString = false;
-      } else if (!inString) {
-        if (ch === '(') {
-          depth++;
-        } else if (ch === ')') {
-          if (depth === 0) {
-            return attrCount === attrIndex
-              ? entityText.substring(attrStart, i).trim()
-              : null;
-          }
-          depth--;
-        } else if (ch === ',' && depth === 0) {
-          if (attrCount === attrIndex) {
-            return entityText.substring(attrStart, i).trim();
-          }
-          attrCount++;
-          attrStart = i + 1;
+        depth--;
+      } else if (ch === ',' && depth === 0) {
+        if (attrCount === attrIndex) {
+          return entityText.substring(attrStart, i).trim();
         }
+        attrCount++;
+        attrStart = i + 1;
       }
     }
 

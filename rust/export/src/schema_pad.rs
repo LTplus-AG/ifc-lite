@@ -228,8 +228,8 @@ pub(crate) fn padded_attr_count(from: &str, to: &str, src_type: &str) -> Option<
 }
 
 /// Count top-level (comma-separated) STEP attributes, respecting nested
-/// parentheses and single-quoted strings (`''` is an escaped quote, not a
-/// terminator). An empty list is 0 attributes, not 1.
+/// parentheses and single-quoted strings (`''` is an escaped quote and a `\S\'`
+/// operand is text, neither a terminator). An empty list is 0 attributes, not 1.
 pub(crate) fn count_top_level_attributes(attrs: &str) -> usize {
     if attrs.trim().is_empty() {
         return 0;
@@ -237,27 +237,24 @@ pub(crate) fn count_top_level_attributes(attrs: &str) -> usize {
     let bytes = attrs.as_bytes();
     let mut count = 1usize;
     let mut depth = 0i32;
-    let mut in_string = false;
     let mut i = 0;
     while i < bytes.len() {
-        let ch = bytes[i];
-        if ch == b'\'' && !in_string {
-            in_string = true;
-        } else if ch == b'\'' && in_string {
-            if i + 1 < bytes.len() && bytes[i + 1] == b'\'' {
-                i += 2;
+        match bytes[i] {
+            b'\'' => {
+                // The shared rule for where a literal ends (#7589).
+                i = ifc_lite_core::step_encoding::step_string_literal_end(bytes, i).unwrap_or(bytes.len());
                 continue;
             }
-            in_string = false;
-        } else if !in_string {
-            match ch {
-                b'(' => depth += 1,
-                b')' => depth -= 1,
-                b',' if depth == 0 => count += 1,
-                _ => {}
-            }
+            b'(' => depth += 1,
+            b')' => depth -= 1,
+            b',' if depth == 0 => count += 1,
+            _ => {}
         }
         i += 1;
     }
     count
 }
+
+#[cfg(test)]
+#[path = "schema_pad_tests.rs"]
+mod tests;

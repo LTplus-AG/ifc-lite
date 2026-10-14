@@ -19,7 +19,7 @@
 
 import type { IfcDataStore, IfcAttributeValue, EntityExtractor } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
-import { generateIfcGuid, type RandomSource } from '@ifc-lite/encoding';
+import { generateIfcGuid, stepStringLiteralEnd, type RandomSource } from '@ifc-lite/encoding';
 import { createSourceRefReader, decodeRange } from './source-ref-bounds.js';
 import { findLengthUnitReference, normalizeMapUnitName } from './step-map-unit.js';
 import { authoredEntityRefs, type EffectiveEntityIndex } from './effective-index.js';
@@ -150,9 +150,22 @@ export function getPropertySetName(ctx: PropertySetContext, psetId: number): str
   if (entityText === null) return null;
 
   // Parse: IFCPROPERTYSET('guid',$,'Name',$,...) - Name is 3rd argument
-  const match = entityText.match(/IFCPROPERTYSET\s*\([^,]*,[^,]*,'([^']*)'/i);
-  if (!match) return null;
-  return match[1];
+  return rawThirdLiteral(entityText, /IFCPROPERTYSET\s*\([^,]*,[^,]*,'/gi);
+}
+
+/**
+ * The raw text of the literal opening where `prefix` (global, ending at the
+ * opening `'`) first matches with a literal that closes. Read whole by the
+ * shared rule, so `''` and a `\S\'` PAGE operand do not cut the name short
+ * (#7589).
+ */
+function rawThirdLiteral(entityText: string, prefix: RegExp): string | null {
+  for (const match of entityText.matchAll(prefix)) {
+    const open = match.index + match[0].length - 1;
+    const end = stepStringLiteralEnd(entityText, open);
+    if (end !== -1) return entityText.slice(open + 1, end - 1);
+  }
+  return null;
 }
 
 /**
@@ -163,9 +176,7 @@ export function getElementQuantityName(ctx: PropertySetContext, entityId: number
   if (entityText === null) return null;
 
   // Parse: IFCELEMENTQUANTITY('guid',$,'Name',...) - Name is 3rd argument
-  const match = entityText.match(/IFCELEMENTQUANTITY\s*\([^,]*,[^,]*,'([^']*)'/i);
-  if (!match) return null;
-  return match[1];
+  return rawThirdLiteral(entityText, /IFCELEMENTQUANTITY\s*\([^,]*,[^,]*,'/gi);
 }
 
 /**
@@ -289,9 +300,11 @@ function getOwnerHistoryRefOfEntity(ctx: PropertySetContext, entityId: number): 
       entityRef.byteOffset,
       entityRef.byteOffset + entityRef.byteLength
     );
-    // #ID=IFCWALL('GlobalId',#owner,...): GlobalId is a quoted STEP string
-    // (doubled '' escapes); OwnerHistory is the ref/`$` right after it.
-    const match = entityText.match(/=\s*IFC\w+\s*\(\s*'(?:[^']|'')*'\s*,\s*#(\d+)/i);
+    // #ID=IFCWALL('GlobalId',#owner,...): GlobalId is a quoted STEP string,
+    // read to its end by the shared rule (#7589); OwnerHistory follows it.
+    const head = /=\s*IFC\w+\s*\(\s*'/i.exec(entityText);
+    const end = head ? stepStringLiteralEnd(entityText, head.index + head[0].length - 1) : -1;
+    const match = end === -1 ? null : /^\s*,\s*#(\d+)/.exec(entityText.slice(end));
     if (match) result = `#${match[1]}`;
   }
   ctx.ownerHistory.byEntity.set(entityId, result);

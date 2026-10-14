@@ -3,6 +3,7 @@
 //! TypeScript exporter reads them (see [`super::jsval::JsVal`]).
 
 use ifc_lite_core::decode_ifc_string;
+use ifc_lite_core::step_encoding::step_string_literal_end;
 
 use super::jsval::JsVal;
 
@@ -100,17 +101,9 @@ fn balanced_params(s: &str) -> Option<&str> {
     while i < b.len() {
         match b[i] {
             b'\'' => {
-                i += 1;
-                while i < b.len() {
-                    if b[i] == b'\'' {
-                        if b.get(i + 1) == Some(&b'\'') {
-                            i += 2;
-                            continue;
-                        }
-                        break;
-                    }
-                    i += 1;
-                }
+                // The shared rule for where a literal ends (#7589).
+                i = step_string_literal_end(b, i)?;
+                continue;
             }
             b'/' if b.get(i + 1) == Some(&b'*') => {
                 if let Some(end) = s[i + 2..].find("*/") {
@@ -141,8 +134,8 @@ fn parse_list_items(text: &str, depth: usize) -> Vec<JsVal> {
     }
     let mut current = String::new();
     let mut paren = 0i32;
-    let mut in_string = false;
     let chars: Vec<char> = text.chars().collect();
+    let ascii = crate::step_slot::ascii_projection(&chars);
     let mut i = 0;
     let push = |current: &mut String, out: &mut Vec<JsVal>| {
         let token = current.trim().to_string();
@@ -153,7 +146,7 @@ fn parse_list_items(text: &str, depth: usize) -> Vec<JsVal> {
     };
     while i < chars.len() {
         let c = chars[i];
-        if !in_string && c == '/' && chars.get(i + 1) == Some(&'*') {
+        if c == '/' && chars.get(i + 1) == Some(&'*') {
             if let Some(end) = find_comment_end(&chars, i + 2) {
                 current.push(' ');
                 i = end;
@@ -161,15 +154,12 @@ fn parse_list_items(text: &str, depth: usize) -> Vec<JsVal> {
             }
         }
         if c == '\'' {
-            if in_string && chars.get(i + 1) == Some(&'\'') {
-                current.push_str("''");
-                i += 2;
-                continue;
-            }
-            in_string = !in_string;
-            current.push(c);
-        } else if in_string {
-            current.push(c);
+            // A literal is copied whole; where it ends is the shared rule, so a
+            // `\S\'` operand stays inside it (#7589). Unterminated: the rest.
+            let end = step_string_literal_end(&ascii, i).unwrap_or(chars.len());
+            current.extend(&chars[i..end]);
+            i = end;
+            continue;
         } else if c == '(' {
             paren += 1;
             current.push(c);
@@ -248,3 +238,7 @@ fn typed_value(value: &str) -> Option<(&str, &str)> {
     }
     Some((name, body))
 }
+
+#[cfg(test)]
+#[path = "extract_tests.rs"]
+mod tests;

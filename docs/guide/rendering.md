@@ -1201,3 +1201,11 @@ turn. Always call `dispose()` in `finally`; it releases an uncommitted upload an
 leaves a committed scene owner intact. Keep the source image retained through the
 owner's model and undo history lifetimes. This API inserts native-produced geometry;
 it does not construct IFC entities or synthesize geometry from a reference image.
+
+### Glazing and sun shadows
+
+The World view and WebGPU renderer use `DEFAULT_MIN_CAST_ALPHA` from
+`@ifc-lite/renderer` as the authored material opacity floor for sun-shadow
+casting. Geometry below this floor receives shadows without blocking direct
+sunlight. Opaque window frames and walls still cast; X-Ray ghost styling does
+not change a material’s shadow-casting classification.

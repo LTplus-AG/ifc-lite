@@ -34,7 +34,7 @@ it('releases a first model when attachment queues supersession before publicatio
   let releases = 0;
   const next = { modelMatrix: new Matrix4(), destroy() { releases += 1; } };
   const Cesium = {
-    Cartesian3, Matrix4,
+    Cartesian3, Matrix4, PrimitiveCollection,
     Transforms: { eastNorthUpToFixedFrame: () => new Matrix4() },
     Model: { fromGltfAsync: async () => next },
     ShadowMode: { DISABLED: 0 }, Axis: { Z: 2, X: 0 },
@@ -92,7 +92,7 @@ it('keeps a completed replacement swap as the next build\'s predecessor (#4807)'
     if (removed === previous) queueMicrotask(() => { superseded = true; });
   });
   const Cesium = {
-    Cartesian3, Matrix4,
+    Cartesian3, Matrix4, PrimitiveCollection,
     Transforms: { eastNorthUpToFixedFrame: () => new Matrix4() },
     Model: { fromGltfAsync: async () => next },
     ShadowMode: { DISABLED: 0 }, Axis: { Z: 2, X: 0 },
@@ -120,10 +120,10 @@ it('keeps a completed replacement swap as the next build\'s predecessor (#4807)'
 
   assert.equal(superseded, true, 'the newer build took over after the completed swap');
   assert.equal(primitives.length, 1, 'the globe keeps the successfully swapped model');
-  assert.equal(primitives.get(0), next);
+  assert.equal(primitives.get(0).get(0), next);
   assert.equal(previousReleases, 1);
   assert.equal(nextReleases, 0);
-  assert.equal(modelRef.current, next, 'the next build sees the interim predecessor');
+  assert.equal(modelRef.current, primitives.get(0), 'the next build sees the complete interim owner');
   assert.equal(installed, 1);
 });
 
@@ -151,7 +151,7 @@ it('lets geometry teardown remove the synchronously published replacement (#4807
     });
   });
   const Cesium = {
-    Cartesian3, Matrix4,
+    Cartesian3, Matrix4, PrimitiveCollection,
     Transforms: { eastNorthUpToFixedFrame: () => new Matrix4() },
     Model: { fromGltfAsync: async () => next },
     ShadowMode: { DISABLED: 0 }, Axis: { Z: 2, X: 0 },
@@ -179,4 +179,43 @@ it('lets geometry teardown remove the synchronously published replacement (#4807
   assert.equal(nextReleases, 1);
   assert.equal(modelRef.current, null, 'the stale continuation does not republish');
   assert.equal(advertisedLoaded, false);
+});
+
+
+it('releases the loaded opaque child if the glazing load fails before attachment (#7562)', async () => {
+  const primitives = new PrimitiveCollection();
+  const viewer = { scene: { primitives, requestRender() {} } } as unknown as InstanceType<typeof import('cesium').Viewer>;
+  const lifetime = new CesiumViewerLifetime(viewer);
+  let loads = 0, releases = 0, installed = 0;
+  const Cesium = {
+    Cartesian3, Matrix4, PrimitiveCollection,
+    Transforms: { eastNorthUpToFixedFrame: () => new Matrix4() },
+    Model: { async fromGltfAsync() {
+      if (++loads === 2) throw new Error('glazing load failed');
+      return { modelMatrix: new Matrix4(), destroy() { releases++; } };
+    } },
+    ShadowMode: { DISABLED: 0 }, Axis: { Z: 2, X: 0 },
+  } as unknown as typeof import('cesium');
+  const zero = { x: 0, y: 0, z: 0 };
+  const geometry: GeometryResult = {
+    meshes: [1, 0.12].map((alpha, i) => ({ expressId: i + 1, positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]), normals: new Float32Array(9), indices: new Uint32Array([0, 1, 2]), color: [1, 1, 1, alpha] as [number, number, number, number] })),
+    totalTriangles: 2, totalVertices: 6,
+    coordinateInfo: { originalBounds: { min: zero, max: zero }, shiftedBounds: { min: zero, max: zero }, originShift: zero, hasLargeCoordinates: false },
+  };
+  const modelRef = { current: null };
+  await loadCesiumModel({
+    Cesium, viewer, lifetime,
+    bridge: { modelOrigin: { longitude: 0, latitude: 0, height: 0 }, viewerRotation: { eastFromVx: 1, eastFromVz: 0, northFromVx: 0, northFromVz: -1 }, viewerUpScale: 1 } as CesiumBridge,
+    coordinateInfo: geometry.coordinateInfo,
+    glbInput: { geometryResult: geometry, geometryContentVersion: 0, hiddenIds: null, isolatedIds: null, visibilityVersion: 0, ghostExceptIds: null, selectedIds: null, ghostVersion: 0 },
+    glbCacheRef: { current: null }, modelRef, loadedKey: null,
+    isSuperseded: () => false, onInstalled() { installed++; },
+  });
+  assert.equal(loads, 2, 'both disjoint material parts reach the canonical loader');
+  assert.equal(releases, 1, 'partial construction is released through the standalone native owner');
+  assert.equal(primitives.length, 0);
+  assert.equal(modelRef.current, null);
+  assert.equal(installed, 0, 'an incomplete logical model is never advertised');
+  primitives.destroy();
+  assert.equal(releases, 1);
 });

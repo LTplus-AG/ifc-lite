@@ -26,9 +26,10 @@ import type { Renderer } from '@ifc-lite/renderer';
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { setGlobalRendererRef } from '../../hooks/useBCF.js';
 import {
-  buildCesiumModelGLB,
+  buildCesiumModelGLBParts,
   cesiumModelGLBKey,
   type CesiumModelGLBInput,
+  type CesiumModelGLBPart,
 } from './cesium-model-glb.js';
 
 /** One triangle at x = `x`, so a mesh's vertices are identifiable in the GLB. */
@@ -92,19 +93,25 @@ function parseGlb(glb: Uint8Array): { accessors: Array<{ count: number; type: st
 }
 
 /** POSITION accessor count = vertices actually packed into the GLB. */
-function glbVertexCount(glb: Uint8Array): number {
+function glbVertexCount(glb: Uint8Array | readonly CesiumModelGLBPart[]): number {
+  if (!(glb instanceof Uint8Array)) return glb.reduce((n, part) => n + glbVertexCount(part.glb), 0);
   return parseGlb(glb).accessors[0]?.count ?? 0;
 }
 
 /** SCALAR index accessors / 3 = triangles actually packed into the GLB. */
-function glbTriangleCount(glb: Uint8Array): number {
+function glbTriangleCount(glb: Uint8Array | readonly CesiumModelGLBPart[]): number {
+  if (!(glb instanceof Uint8Array)) return glb.reduce((n, part) => n + glbTriangleCount(part.glb), 0);
   return parseGlb(glb).accessors
     .filter((a) => a.type === 'SCALAR')
     .reduce((n, a) => n + a.count / 3, 0);
 }
 
 /** Triangles per alpha bucket, keyed by the primitive's material alphaMode. */
-function glbTrianglesByMode(glb: Uint8Array): { opaque: number; blend: number } {
+function glbTrianglesByMode(glb: Uint8Array | readonly CesiumModelGLBPart[]): { opaque: number; blend: number } {
+  if (!(glb instanceof Uint8Array)) return glb.reduce((total, part) => {
+    const counts = glbTrianglesByMode(part.glb);
+    return { opaque: total.opaque + counts.opaque, blend: total.blend + counts.blend };
+  }, { opaque: 0, blend: 0 });
   const json = parseGlb(glb) as unknown as {
     accessors: Array<{ count: number; type: string }>;
     materials?: Array<{ alphaMode?: string }>;
@@ -120,7 +127,8 @@ function glbTrianglesByMode(glb: Uint8Array): { opaque: number; blend: number } 
 }
 
 /** The alpha byte each vertex carries in COLOR_0. */
-function glbAlphas(glb: Uint8Array): number[] {
+function glbAlphas(glb: Uint8Array | readonly CesiumModelGLBPart[]): number[] {
+  if (!(glb instanceof Uint8Array)) return glb.flatMap((part) => glbAlphas(part.glb));
   const dv = new DataView(glb.buffer, glb.byteOffset, glb.byteLength);
   const jsonLen = dv.getUint32(12, true);
   const json = JSON.parse(new TextDecoder().decode(glb.subarray(20, 20 + jsonLen)));
@@ -132,7 +140,7 @@ function glbAlphas(glb: Uint8Array): number[] {
   return out;
 }
 
-describe('buildCesiumModelGLB — completeness (#2558)', () => {
+describe('buildCesiumModelGLBParts — completeness (#2558)', () => {
   afterEach(() => {
     setGlobalRendererRef({ current: null } as RefObject<Renderer | null>);
   });
@@ -141,7 +149,7 @@ describe('buildCesiumModelGLB — completeness (#2558)', () => {
     // 1 flat mesh, 3 instanced occurrences — the facade-panel shape of #2558.
     setRenderer([mesh(2, 10), mesh(3, 20), mesh(4, 30)]);
 
-    const { glb } = buildCesiumModelGLB(input([mesh(1, 0)]));
+    const { parts: glb } = buildCesiumModelGLBParts(input([mesh(1, 0)]));
 
     assert.equal(glbVertexCount(glb), 12, '3 verts x (1 flat + 3 instanced) meshes');
     assert.equal(glbTriangleCount(glb), 4, '1 flat + 3 instanced triangles');
@@ -150,7 +158,7 @@ describe('buildCesiumModelGLB — completeness (#2558)', () => {
   it('still builds the flat model when the scene has no instanced geometry', () => {
     setRenderer([]);
 
-    const { glb } = buildCesiumModelGLB(input([mesh(1, 0), mesh(2, 10)]));
+    const { parts: glb } = buildCesiumModelGLBParts(input([mesh(1, 0), mesh(2, 10)]));
 
     assert.equal(glbVertexCount(glb), 6);
     assert.equal(glbTriangleCount(glb), 2);
@@ -159,7 +167,7 @@ describe('buildCesiumModelGLB — completeness (#2558)', () => {
   it('builds the flat model when no renderer is available', () => {
     setRenderer(null);
 
-    const { glb } = buildCesiumModelGLB(input([mesh(1, 0)]));
+    const { parts: glb } = buildCesiumModelGLBParts(input([mesh(1, 0)]));
 
     assert.equal(glbVertexCount(glb), 3);
   });
@@ -168,13 +176,13 @@ describe('buildCesiumModelGLB — completeness (#2558)', () => {
     setRenderer([mesh(2, 10)]);
     const inp = input([mesh(1, 0)]);
 
-    buildCesiumModelGLB(inp);
+    buildCesiumModelGLBParts(inp);
 
     assert.equal(inp.geometryResult.meshes.length, 1, 'instanced meshes are not appended in place');
   });
 });
 
-describe('buildCesiumModelGLB — hide/isolate parity with the viewport (#2578)', () => {
+describe('buildCesiumModelGLBParts — hide/isolate parity with the viewport (#2578)', () => {
   afterEach(() => {
     setGlobalRendererRef({ current: null } as RefObject<Renderer | null>);
   });
@@ -182,7 +190,7 @@ describe('buildCesiumModelGLB — hide/isolate parity with the viewport (#2578)'
   it('drops a hidden flat mesh', () => {
     setRenderer([]);
 
-    const { glb } = buildCesiumModelGLB(
+    const { parts: glb } = buildCesiumModelGLBParts(
       input([mesh(1, 0), mesh(2, 10)], { hiddenIds: new Set([2]) }),
     );
 
@@ -192,7 +200,7 @@ describe('buildCesiumModelGLB — hide/isolate parity with the viewport (#2578)'
   it('drops a hidden INSTANCED occurrence — the half a flat-only filter would miss', () => {
     setRenderer([mesh(2, 10), mesh(3, 20)]);
 
-    const { glb } = buildCesiumModelGLB(
+    const { parts: glb } = buildCesiumModelGLBParts(
       input([mesh(1, 0)], { hiddenIds: new Set([3]) }),
     );
 
@@ -202,7 +210,7 @@ describe('buildCesiumModelGLB — hide/isolate parity with the viewport (#2578)'
   it('keeps only isolated ids, across both halves', () => {
     setRenderer([mesh(2, 10), mesh(3, 20)]);
 
-    const { glb } = buildCesiumModelGLB(
+    const { parts: glb } = buildCesiumModelGLBParts(
       input([mesh(1, 0)], { isolatedIds: new Set([1, 3]) }),
     );
 
@@ -212,7 +220,7 @@ describe('buildCesiumModelGLB — hide/isolate parity with the viewport (#2578)'
   it('treats an EMPTY isolated set as isolating nothing, not as no filter', () => {
     setRenderer([mesh(2, 10)]);
 
-    const { glb } = buildCesiumModelGLB(
+    const { parts: glb } = buildCesiumModelGLBParts(
       input([mesh(1, 0)], { isolatedIds: new Set() }),
     );
 
@@ -222,7 +230,7 @@ describe('buildCesiumModelGLB — hide/isolate parity with the viewport (#2578)'
   it('lets hiding win over isolation, as the renderer does', () => {
     setRenderer([]);
 
-    const { glb } = buildCesiumModelGLB(
+    const { parts: glb } = buildCesiumModelGLBParts(
       input([mesh(1, 0)], { hiddenIds: new Set([1]), isolatedIds: new Set([1]) }),
     );
 
@@ -232,7 +240,7 @@ describe('buildCesiumModelGLB — hide/isolate parity with the viewport (#2578)'
   it('draws everything when neither filter is active', () => {
     setRenderer([mesh(2, 10)]);
 
-    const { glb } = buildCesiumModelGLB(input([mesh(1, 0)]));
+    const { parts: glb } = buildCesiumModelGLBParts(input([mesh(1, 0)]));
 
     assert.equal(glbTriangleCount(glb), 2);
   });
@@ -281,12 +289,12 @@ describe('cesiumModelGLBKey', () => {
     setRenderer([mesh(2, 10)]);
     const inp = input([mesh(1, 0)]);
 
-    assert.equal(buildCesiumModelGLB(inp).key, cesiumModelGLBKey(inp));
+    assert.equal(buildCesiumModelGLBParts(inp).key, cesiumModelGLBKey(inp));
   });
 });
 
 
-describe('buildCesiumModelGLB — X-Ray ghosting (#2591)', () => {
+describe('buildCesiumModelGLBParts — X-Ray ghosting (#2591)', () => {
   afterEach(() => {
     setGlobalRendererRef({ current: null } as RefObject<Renderer | null>);
   });
@@ -301,7 +309,7 @@ describe('buildCesiumModelGLB — X-Ray ghosting (#2591)', () => {
   it('fades everything outside the X-Ray set, and only in alpha', () => {
     setRenderer([]);
 
-    const { glb } = buildCesiumModelGLB(
+    const { parts: glb } = buildCesiumModelGLBParts(
       input([mesh(1, 0), mesh(2, 10)], { ghostExceptIds: new Set([1]) }),
     );
 
@@ -316,7 +324,7 @@ describe('buildCesiumModelGLB — X-Ray ghosting (#2591)', () => {
     // OPAQUE per spec, and Cesium ignores COLOR_0 alpha entirely.
     setRenderer([]);
 
-    const { glb } = buildCesiumModelGLB(
+    const { parts: glb } = buildCesiumModelGLBParts(
       input([mesh(1, 0), mesh(2, 10)], { ghostExceptIds: new Set([1]) }),
     );
 
@@ -326,7 +334,7 @@ describe('buildCesiumModelGLB — X-Ray ghosting (#2591)', () => {
   it('exempts the selection from ghosting, as the renderer does', () => {
     setRenderer([]);
 
-    const { glb } = buildCesiumModelGLB(
+    const { parts: glb } = buildCesiumModelGLBParts(
       input([mesh(1, 0), mesh(2, 10)], { ghostExceptIds: new Set([1]), selectedIds: new Set([2]) }),
     );
 
@@ -336,7 +344,7 @@ describe('buildCesiumModelGLB — X-Ray ghosting (#2591)', () => {
   it('ghosts the INSTANCED half too when it is not excepted', () => {
     setRenderer([mesh(3, 20)]);
 
-    const { glb } = buildCesiumModelGLB(
+    const { parts: glb } = buildCesiumModelGLBParts(
       input([mesh(1, 0)], { ghostExceptIds: new Set([1]) }),
     );
 
@@ -346,7 +354,7 @@ describe('buildCesiumModelGLB — X-Ray ghosting (#2591)', () => {
   it('changes nothing when no X-Ray is active', () => {
     setRenderer([]);
 
-    const { glb } = buildCesiumModelGLB(input([mesh(1, 0), mesh(2, 10)]));
+    const { parts: glb } = buildCesiumModelGLBParts(input([mesh(1, 0), mesh(2, 10)]));
 
     assert.deepEqual(glbTrianglesByMode(glb), { opaque: 2, blend: 0 });
     assert.ok(glbAlphas(glb).every((a) => a === 255));
@@ -357,7 +365,7 @@ describe('buildCesiumModelGLB — X-Ray ghosting (#2591)', () => {
     // It was drawn solid before, because the single material was OPAQUE.
     setRenderer([]);
 
-    const { glb } = buildCesiumModelGLB(input([mesh(1, 0), meshWithAlpha(2, 0.4)]));
+    const { parts: glb } = buildCesiumModelGLBParts(input([mesh(1, 0), meshWithAlpha(2, 0.4)]));
 
     assert.deepEqual(glbTrianglesByMode(glb), { opaque: 1, blend: 1 });
   });
@@ -368,7 +376,7 @@ describe('buildCesiumModelGLB — X-Ray ghosting (#2591)', () => {
     // hence the argument order in useCesiumModel — would silently turn X-Ray off.
     setRenderer([]);
 
-    const { glb } = buildCesiumModelGLB(
+    const { parts: glb } = buildCesiumModelGLBParts(
       input([mesh(1, 0), mesh(2, 10)], { ghostExceptIds: new Set() }),
     );
 
@@ -383,5 +391,40 @@ describe('buildCesiumModelGLB — X-Ray ghosting (#2591)', () => {
       cesiumModelGLBKey(input([mesh(1, 0)], { ghostVersion: 1 })),
       cesiumModelGLBKey(input([mesh(1, 0)])),
     );
+  });
+});
+
+
+describe('World shadow parts preserve geometry and material casting policy (#7562)', () => {
+  afterEach(() => setGlobalRendererRef({ current: null } as RefObject<Renderer | null>));
+  function alphaMesh(id: number, x: number, alpha: number): MeshData {
+    return { ...mesh(id, x), ifcType: 'IfcWindow', color: [0.2, 0.4, 0.6, alpha] };
+  }
+
+  it('keeps tinted solid at the native 0.9 boundary casting while glass receives only', () => {
+    const authored = [alphaMesh(1, 0, 1), alphaMesh(2, 10, 0.9), alphaMesh(1, 20, 0.899), alphaMesh(4, 30, 0.12)];
+    const { parts } = buildCesiumModelGLBParts(input(authored));
+    assert.equal(parts.length, 2);
+    assert.deepEqual(parts.map((p) => p.castsShadows), [true, false]);
+    assert.deepEqual(parts.map((p) => glbTriangleCount(p.glb)), [2, 2]);
+    assert.deepEqual(parts.map((p) => glbVertexCount(p.glb)), [6, 6]);
+    assert.deepEqual(glbTrianglesByMode(parts[0].glb), { opaque: 1, blend: 1 }, 'tinted solid can blend visually yet still cast');
+    assert.deepEqual(glbTrianglesByMode(parts[1].glb), { opaque: 0, blend: 2 });
+  });
+
+  it('does not classify ghosted opaque frames as glass or omit federated instanced glazing', () => {
+    setRenderer([alphaMesh(1000002, 20, 0.12), alphaMesh(1000003, 30, 1)]);
+    const { parts } = buildCesiumModelGLBParts(input([alphaMesh(1, 0, 1), alphaMesh(2, 10, 0.12)], {
+      hiddenIds: new Set([2]), ghostExceptIds: new Set(), selectedIds: new Set(),
+    }));
+    assert.deepEqual(parts.map((p) => glbTriangleCount(p.glb)), [2, 1], 'hidden pane absent; both opaque frames plus instanced glass retained once');
+    assert.deepEqual(parts.map((p) => p.castsShadows), [true, false]);
+    assert.ok(parts.every((p) => glbAlphas(p.glb).every((a) => a === 31)), 'same X-Ray styling applies to both parts');
+  });
+
+  it('omits empty parts for all-opaque, all-glass and fully hidden scenes', () => {
+    assert.deepEqual(buildCesiumModelGLBParts(input([alphaMesh(1, 0, 1)])).parts.map((p) => p.castsShadows), [true]);
+    assert.deepEqual(buildCesiumModelGLBParts(input([alphaMesh(1, 0, 0.12)])).parts.map((p) => p.castsShadows), [false]);
+    assert.deepEqual(buildCesiumModelGLBParts(input([alphaMesh(1, 0, 1)], { isolatedIds: new Set() })).parts, []);
   });
 });

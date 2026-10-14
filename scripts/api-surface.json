@@ -9203,6 +9203,7 @@
     "DEFAULT_CAP_STYLE: const",
     "DEFAULT_CHUNK_CELL_SIZE: const",
     "DEFAULT_GHOST_ALPHA: const",
+    "DEFAULT_MIN_CAST_ALPHA: const",
     "DEFAULT_OVERLAY_THEME: const",
     "DecodedPickSample: interface",
     "DeviationAssetRange: interface",

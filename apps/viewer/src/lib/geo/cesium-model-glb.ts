@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
-import { isEntityVisible, DEFAULT_GHOST_ALPHA } from '@ifc-lite/renderer';
+import { isEntityVisible, DEFAULT_GHOST_ALPHA, DEFAULT_MIN_CAST_ALPHA } from '@ifc-lite/renderer';
 import { getGlobalRenderer } from '../../hooks/useBCF.js';
 import { withInstancedMeshes } from '../../utils/instancedExport.js';
 import { buildMergedGLB } from './cesium-glb.js';
@@ -47,7 +47,7 @@ export interface CesiumModelGLBInput {
 }
 
 /**
- * Cheap identity for the mesh set {@link buildCesiumModelGLB} would build from.
+ * Cheap identity for the mesh set {@link buildCesiumModelGLBParts} would build from.
  * O(1): the in-place-mutation counter, the flat mesh count, the scene's
  * instanced-entity census, and the visibility epoch.
  *
@@ -104,15 +104,42 @@ export function cesiumModelGLBKey(input: CesiumModelGLBInput): string {
  * model's instanced occurrences belong in this merged view, not just the
  * primary's (GPU instancing stopped being primary-only on 2026-08-06, #2255).
  */
-export function buildCesiumModelGLB(input: CesiumModelGLBInput): {
+/** A native Cesium Model has one shadow policy for all its primitives. */
+export interface CesiumModelGLBPart {
   glb: Uint8Array;
+  castsShadows: boolean;
+}
+
+/**
+ * Split by the same MATERIAL-alpha policy as the WebGPU shadow pass (#7562).
+ * Classify before ghost styling: X-Ray must not erase opaque wall shadows.
+ * Each canonical visible mesh belongs to exactly one part, including instanced
+ * occurrences and federated meshes; opaque window frames stay in the caster.
+ */
+export function buildCesiumModelGLBParts(input: CesiumModelGLBInput): {
+  parts: CesiumModelGLBPart[];
   key: string;
 } {
-  const key = cesiumModelGLBKey(input);
+  const visible = prepareVisibleMeshes(input);
+  const casting: MeshData[] = [];
+  const receiving: MeshData[] = [];
+  for (const mesh of visible) {
+    if (!mesh.positions?.length || !mesh.indices?.length) continue;
+    ((mesh.color?.[3] ?? 1) >= DEFAULT_MIN_CAST_ALPHA ? casting : receiving).push(mesh);
+  }
+  const parts: CesiumModelGLBPart[] = [];
+  for (const [meshes, castsShadows] of [[casting, true], [receiving, false]] as const) {
+    if (meshes.length) parts.push({
+      glb: buildMergedGLB(applyGhostAlpha(meshes, input.ghostExceptIds, input.selectedIds)),
+      castsShadows,
+    });
+  }
+  return { parts, key: cesiumModelGLBKey(input) };
+}
+
+function prepareVisibleMeshes(input: CesiumModelGLBInput): MeshData[] {
   const complete = withInstancedMeshes(input.geometryResult, null);
-  const visible = filterVisibleMeshes(complete.meshes, input.hiddenIds, input.isolatedIds);
-  const shaded = applyGhostAlpha(visible, input.ghostExceptIds, input.selectedIds);
-  return { glb: buildMergedGLB(shaded), key };
+  return filterVisibleMeshes(complete.meshes, input.hiddenIds, input.isolatedIds);
 }
 
 /**

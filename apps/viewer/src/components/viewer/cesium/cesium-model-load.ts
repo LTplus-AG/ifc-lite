@@ -4,14 +4,15 @@
 
 import type { MutableRefObject } from 'react';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
-import { buildCesiumModelGLB, cesiumModelGLBKey, type CesiumModelGLBInput } from '@/lib/geo/cesium-model-glb';
+import { buildCesiumModelGLBParts, cesiumModelGLBKey, type CesiumModelGLBInput, type CesiumModelGLBPart } from '@/lib/geo/cesium-model-glb';
 import type { CesiumBridge } from '@/lib/geo/cesium-bridge';
 import { buildViewerToEcefMatrix } from '@/lib/geo/cesium-viewer-frame';
 import { swapCesiumModel } from '@/lib/geo/cesium-model-swap';
-import { whenModelRenderable, type CesiumModelPrimitive } from './cesium-model-renderable';
+import type { CesiumModelPrimitive } from './cesium-model-renderable';
+import { createCesiumModelOwner, type CesiumModelOwner } from './cesium-model-owner';
 import type { CesiumViewerLifetime } from './cesium-viewer-lifetime';
 
-export type CesiumModelGlbCache = { key: string; glb: Uint8Array } | null;
+export type CesiumModelGlbCache = { key: string; parts: CesiumModelGLBPart[] } | null;
 type ModelOwnership = 'standalone' | 'collection' | 'released';
 
 export function buildCesiumModelMatrix(
@@ -43,57 +44,63 @@ export async function loadCesiumModel({
   Cesium, viewer, lifetime, bridge, coordinateInfo, glbInput, glbCacheRef, modelRef, loadedKey,
   isSuperseded, onInstalled,
 }: LoadCesiumModelParams): Promise<void> {
-  let model: CesiumModelPrimitive | null = null;
+  let model: CesiumModelOwner | null = null;
   let ownership: ModelOwnership = 'released';
   try {
     const key = cesiumModelGLBKey(glbInput);
     if (modelRef.current && loadedKey === key) return;
-    let glbBytes: Uint8Array;
+    let parts: CesiumModelGLBPart[];
     if (glbCacheRef.current?.key === key) {
-      glbBytes = glbCacheRef.current.glb;
+      parts = glbCacheRef.current.parts;
     } else {
       await new Promise((resolve) => setTimeout(resolve, 50));
       if (isSuperseded()) return;
-      const built = buildCesiumModelGLB(glbInput);
-      glbBytes = built.glb;
-      glbCacheRef.current = { key: built.key, glb: built.glb };
+      const built = buildCesiumModelGLBParts(glbInput);
+      parts = built.parts;
+      glbCacheRef.current = built;
     }
     if (isSuperseded()) return;
     await new Promise((resolve) => setTimeout(resolve, 0));
     if (isSuperseded()) return;
 
-    const glbUrl = URL.createObjectURL(new Blob([glbBytes as BlobPart], { type: 'model/gltf-binary' }));
-    try {
-      model = await Cesium.Model.fromGltfAsync({
-        url: glbUrl, modelMatrix: buildCesiumModelMatrix(Cesium, bridge, coordinateInfo),
-        shadows: Cesium.ShadowMode.DISABLED, upAxis: Cesium.Axis.Z, forwardAxis: Cesium.Axis.X,
-      });
-      ownership = 'standalone';
-      const ibl = (model as unknown as {
-        imageBasedLighting?: { sphericalHarmonicCoefficients: unknown };
-      }).imageBasedLighting;
-      if (ibl) {
-        const ambient = new Cesium.Cartesian3(0.72, 0.72, 0.75);
-        const zero = Cesium.Cartesian3.ZERO;
-        ibl.sphericalHarmonicCoefficients = [ambient, zero, zero, zero, zero, zero, zero, zero, zero];
+    model = createCesiumModelOwner(Cesium, buildCesiumModelMatrix(Cesium, bridge, coordinateInfo));
+    ownership = 'standalone';
+    for (const part of parts) {
+      const glbUrl = URL.createObjectURL(new Blob([part.glb as BlobPart], { type: 'model/gltf-binary' }));
+      try {
+        const child = await Cesium.Model.fromGltfAsync({
+          url: glbUrl, modelMatrix: model.modelMatrix,
+          shadows: Cesium.ShadowMode.DISABLED, upAxis: Cesium.Axis.Z, forwardAxis: Cesium.Axis.X,
+        });
+        // Transfer immediately: later load failure or cancellation releases all
+        // accepted children through the one standalone owner.
+        model.addModel(child, part.castsShadows);
+        const ibl = child.imageBasedLighting;
+        if (ibl) {
+          const ambient = new Cesium.Cartesian3(0.72, 0.72, 0.75);
+          const zero = Cesium.Cartesian3.ZERO;
+          ibl.sphericalHarmonicCoefficients = [ambient, zero, zero, zero, zero, zero, zero, zero, zero];
+        }
+      } finally {
+        URL.revokeObjectURL(glbUrl);
       }
-    } finally {
-      URL.revokeObjectURL(glbUrl);
+      if (isSuperseded()) break;
     }
     if (isSuperseded()) {
       model.destroy?.();
       ownership = 'released';
       return;
     }
-    ownership = 'collection';
     // Viewer.destroy() invalidates `viewer.scene`; retain the collection that
     // accepted this primitive before readiness can suspend.
+    const owner = model;
     const scene = viewer.scene;
     const primitives = scene.primitives;
     let published = false;
+    ownership = 'collection';
     const outcome = await swapCesiumModel(
-      primitives, modelRef.current, model,
-      (next) => whenModelRenderable(viewer, next, 5_000, lifetime), isSuperseded,
+      primitives, modelRef.current, owner,
+      () => owner.whenRenderable(viewer, lifetime), isSuperseded,
       (next) => {
         if (!lifetime.isLive(viewer) || primitives.isDestroyed()) return;
         // This callback runs inside the swap commit, before its promise

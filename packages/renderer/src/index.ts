@@ -98,6 +98,7 @@ export { isEntityVisible } from './entity-visibility.js';
 // Alpha constants the Cesium world view must match, since it renders the model
 // through its own glTF pipeline rather than this one (#2591).
 export { DEFAULT_GHOST_ALPHA, OPAQUE_ALPHA_CUTOFF } from './overlay-routing.js';
+export { DEFAULT_MIN_CAST_ALPHA } from './shadow-occluders.js';
 export { VisibilityEpochTracker } from './visibility-epoch.js';
 export type { FrameStats, ResidentGpuBytes } from './render-stats.js'; // GPU timing is opt-in (#6975).
 export { decideTimingMode, passDurationsMs, frameTotalMs, aggregateFrameTimings } from './frame-timing.js';

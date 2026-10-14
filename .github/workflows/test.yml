@@ -2208,7 +2208,12 @@ jobs:
       - name: Cargo cache
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
-          prefix-key: ci-rust
+          # `-o1`: the test steps below build at opt-level 1 via step env,
+          # which rust-cache's key cannot see. Under the old key main would
+          # never save the opt-level-1 tree (rust-cache skips the save when the
+          # key exists), so every PR would compile cold: measured 14m49s on
+          # #7573 vs 5m45s warm. A new prefix lets main seed it once.
+          prefix-key: ci-rust-o1
           shared-key: main
           save-if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'merge_group' }}
       - name: Cache test fixtures

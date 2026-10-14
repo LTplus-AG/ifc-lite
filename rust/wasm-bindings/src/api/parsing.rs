@@ -17,7 +17,7 @@ impl IfcAPI {
     /// The returned array also carries two own properties describing what the
     /// scan refused (#7393): `oversizedIdCount` (records skipped because their
     /// express id does not fit u32, #3395) and `malformedRecordCount` (0 or 1:
-    /// whether a record was dropped for having no terminating `;`, #3695).
+    /// whether a malformed quoted record or missing terminator was dropped, #3695/#7541).
     #[wasm_bindgen(js_name = scanEntitiesFast)]
     pub fn scan_entities_fast(&self, content: &str) -> JsValue {
         Self::scan_entities_fast_inner(content.as_bytes())

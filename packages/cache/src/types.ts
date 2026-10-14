@@ -331,10 +331,10 @@ export interface CacheHeaderInfo {
   sections: SectionEntry[];
 }
 
-/**
- * Complete data store for IFC model
- */
+/** Parsed IFC data to cache; known omissions are refused before serialization. */
 export interface CacheDataStore {
+  /** Known scanner omissions refuse cache admission; absent is unobserved. */
+  malformedRecordCount?: number;
   schema: SchemaVersion;
   entityCount: number;
   strings: StringTable;

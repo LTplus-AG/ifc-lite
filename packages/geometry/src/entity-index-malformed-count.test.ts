@@ -84,7 +84,7 @@ function installWorkers(
 }
 
 describe('entity-index handoff and the #3790 malformed-record stop', () => {
-  it('forwards the serial pre-pass’s malformedRecordCount to onEntityIndex', async () => {
+  it('forwards the actual serial pre-pass boolean to onEntityIndex', async () => {
     const seen: (number | undefined)[] = [];
     // One pool worker keeps the sharded branch off (it needs >= 2), so this
     // exercises the pre-pass `entity-index` event and nothing else.
@@ -112,7 +112,7 @@ describe('entity-index handoff and the #3790 malformed-record stop', () => {
                 starts: STARTS,
                 lengths: LENGTHS,
                 oversizedIdCount: 0,
-                malformedRecordCount: 1,
+                malformedRecordFound: true,
               },
             },
           });
@@ -143,8 +143,8 @@ describe('entity-index handoff and the #3790 malformed-record stop', () => {
    * speculative prefix invented out of bytes shard 0 already covered.
    */
   async function deliveredCount(
-    shard0: { handoff: number; malformedStart?: number },
-    shard1: { handoff: number; malformedStart?: number },
+    shard0: { handoff: number; malformedRecordStarts?: Uint32Array },
+    shard1: { handoff: number; malformedRecordStarts?: Uint32Array },
   ): Promise<(number | undefined)[]> {
     const seen: (number | undefined)[] = [];
     // >= 8 MB of SAB and >= 2 workers arms the shard scan.
@@ -169,7 +169,7 @@ describe('entity-index handoff and the #3790 malformed-record stop', () => {
               classes: new Uint8Array([0]),
               handoff: shard.handoff,
               oversizedIdStarts: new Uint32Array(0),
-              malformedStart: shard.malformedStart,
+              malformedRecordStarts: shard.malformedRecordStarts,
             },
           });
         });
@@ -199,7 +199,7 @@ describe('entity-index handoff and the #3790 malformed-record stop', () => {
     // Shard 1's stop at byte 40 sits inside the range shard 0 owns: an artefact
     // of starting mid-quote, on a file that is fine. Summing or OR-ing the
     // shards would warn about it.
-    expect(await deliveredCount({ handoff: 100 }, { handoff: -1, malformedStart: 40 }))
+    expect(await deliveredCount({ handoff: 100 }, { handoff: -1, malformedRecordStarts: new Uint32Array([40]) }))
       .toEqual([undefined]);
   });
 
@@ -207,7 +207,7 @@ describe('entity-index handoff and the #3790 malformed-record stop', () => {
     // Shard 0 is authoritative from byte 0, so its stop is one a serial scan
     // makes too -- and it is exactly the case that used to reach the viewer as
     // a short model with no signal at all.
-    expect(await deliveredCount({ handoff: -1, malformedStart: 60 }, { handoff: -1 })).toEqual([1]);
+    expect(await deliveredCount({ handoff: -1, malformedRecordStarts: new Uint32Array([60]) }, { handoff: -1 })).toEqual([1]);
   });
 
   it('delivers undefined, not 0, when no shard reported a stop', async () => {

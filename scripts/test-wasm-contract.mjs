@@ -116,6 +116,7 @@ function test(name, fn) {
 }
 runEarlyContracts({ IfcAPI, api, test, skip, root: ROOT_DIR });
 runScanOutlineContracts({ test }); // #6871, fixture-free
+(await import('./lib/wasm-malformed-apostrophe-contracts.mjs')).runMalformedApostropheContracts(api, test); // #7541, fixture-free
 (await import('./lib/wasm-step-page-contracts.mjs')).runStepPageContracts(api, test); // #7540, fixture-free: must precede unrelated fixture early-exit.
 await (await import('./lib/wasm-scan-refusal-contracts.mjs')).runScanRefusalContracts(api, test); // #7393, fixture-free
 await (await import('./lib/wasm-extrusion-bridge-contracts.mjs')).runExtrusionBridgeContracts(test, ROOT_DIR); // #6306

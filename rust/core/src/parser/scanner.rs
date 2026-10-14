@@ -216,7 +216,12 @@ impl<'a> EntityScanner<'a> {
             let body_start = eq_pos + 1;
             let line_content = &bytes[body_start..];
             let end_offset = match self.find_entity_end(line_content) {
-                Some(o) => o,
+                Some(scanner_record_end::RecordEnd::At(o)) => o,
+                Some(scanner_record_end::RecordEnd::BadQuote(quote)) => {
+                    self.mark_malformed(line_start);
+                    self.position = body_start + super::record_strings::next_record_after_bad_quote(line_content, quote);
+                    continue;
+                }
                 None => {
                     // Report it, then drop just THIS record rather than the
                     // rest of the file: the `)` balancing its `(` is a real

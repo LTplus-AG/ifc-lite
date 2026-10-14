@@ -329,11 +329,12 @@ export class IfcParser {
     buffer: ArrayBuffer | SharedArrayBuffer,
     options: ParseOptions = {},
   ): Promise<IfcDataStore> {
-    const { entityRefs, entityColumns, processed, elapsedMs, scanPath } = await scanColumnarEntities(buffer, options);
+    const { entityRefs, entityColumns, processed, elapsedMs, scanPath, malformedRecordCount } = await scanColumnarEntities(buffer, options);
     parserLog.debug(`Fast scan: ${processed} entities in ${elapsedMs.toFixed(0)}ms (path=${scanPath})`);
 
     // Build columnar structures with on-demand property extraction
-    const dataStore = await parseColumnarInput(buffer, entityColumns ?? entityRefs, options);
+    const dataStore = await parseColumnarInput(buffer, entityColumns ?? entityRefs, options,
+      scanPath === 'pre-scanned' && options.preScannedEntityIndex?.malformedRecordCount === undefined ? undefined : malformedRecordCount);
     return dataStore;
   }
 }

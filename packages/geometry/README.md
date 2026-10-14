@@ -221,3 +221,13 @@ try {
 ## License
 
 [MPL-2.0](../../LICENSE)
+
+### Reported scanner omissions (#7541)
+
+The serial prepass's actual `malformedRecordFound` event and all classified-shard
+`malformedRecordStarts` offsets feed the metadata handoff. Stitching attributes
+only authoritative retained regions: zero requires observed arrays from every
+retained shard, and missing producer observations remain unknown. This is a
+reported omission indicator, not a complete STEP syntax or geometry-validity
+verdict. Parsed stores retain it so STEP export and cache admission can refuse
+known partial source indexes.

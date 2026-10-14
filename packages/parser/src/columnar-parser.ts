@@ -65,27 +65,24 @@ function addOnDemandRef(map: Map<number, number[]>, objId: number, ref: number):
 
 export interface IfcDataStore extends IfcStoreBase {
     parseTime: number;
+    /** Reported 0/1 scanner omission flag (#7541), not full STEP validity.
+     * Absent means unobserved provenance; known dropped records remain 1. */
+    malformedRecordCount?: number;
 
     /**
-     * The IFC source bytes, behind an accessor rather than a resident
-     * `Uint8Array` (#2183). Read ranges with `slice`/`decodeUtf8`; use
-     * `withMaterialized` for the genuine whole-file consumers, and
-     * `toTransferable()` to hand it to a worker without materialising here.
-     *
-     * `byteLength === 0` is a supported state (server-parsed, synthetic, GLB,
-     * point-cloud), and `length` is aliased so existing presence guards keep
-     * their meaning.
+     * Source-byte accessor (#2183): `slice`/`decodeUtf8` read ranges,
+     * `withMaterialized` serves whole-file consumers, and `toTransferable`
+     * hands bytes to a worker. `byteLength === 0` is supported for server,
+     * synthetic, GLB and point-cloud stores; `length` aliases it.
      */
     source: IfcSourceBytes;
     entityIndex: { byId: EntityByIdIndex; byType: Map<string, number[]> };
     deferredEntityIndex?: EntityByIdIndex;
 
     /**
-     * Semantic drop census (#4208): per-class scanned/retained counts, the
-     * classes the categoriser skipped, classes unknown to the schema
-     * registry, and IFCREL* classes seen but not indexed as relationship
-     * edges. Always present after a parse — its absence (not a zero count)
-     * is what means "the census did not run".
+     * Semantic drop census (#4208): per-class scanned/retained counts,
+     * skipped/unknown classes and IFCREL* classes not indexed as edges.
+     * Always present after parse; absence (not zero) means it did not run.
      */
     dropCensus?: DropCensus;
 
@@ -154,7 +151,8 @@ export async function parseColumnarInput(
             yieldIntervalMs?: number;
             deferPropertyAtomIndex?: boolean;
             onSpatialReady?: (partialStore: IfcDataStore) => void;
-        } = {}
+        } = {},
+        malformedRecordCount?: number
     ): Promise<IfcDataStore> {
         const startTime = performance.now();
         const uint8Buffer = new Uint8Array(buffer);
@@ -542,6 +540,7 @@ export async function parseColumnarInput(
             sourceHeader,
             entityCount: totalEntities,
             parseTime: performance.now() - startTime,
+            malformedRecordCount,
             source,
             entityIndex,
             dropCensus: prepared.dropCensus,

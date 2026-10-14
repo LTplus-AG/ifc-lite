@@ -60,7 +60,7 @@ impl IfcAPI {
     /// full entity index (byte-identical to the single-threaded
     /// `build_entity_index`) by binary-searching each shard for the previous
     /// shard's `handoff`. Delegates to
-    /// `ifc_lite_processing::scan_shard_classified_with_refusals` — a
+    /// `ifc_lite_processing::scan_shard_classified_with_diagnostics` — a
     /// separately-maintained loop over the same `EntityScanner` primitive as
     /// `scan_shard` (the one the native `build_entity_index_parallel` fans across
     /// cores), plus a per-record class column this sharded path also needs. The
@@ -72,7 +72,7 @@ impl IfcAPI {
     /// concatenate without rewriting. Returns a plain object:
     ///   `{ ids: Uint32Array, starts: Uint32Array, lengths: Uint32Array,
     ///      classes: Uint8Array, handoff: number,
-    ///      oversizedIdStarts: Uint32Array }`
+    ///      oversizedIdStarts: Uint32Array, malformedRecordStarts: Uint32Array }`
     /// where `classes` is the parallel per-record prepass class byte
     /// (`PREPASS_CLASS_*`: named code in the low bits plus the geometry-job /
     /// type-candidate flags) the host filters on to rebuild pre-pass span
@@ -99,8 +99,8 @@ impl IfcAPI {
         let total = data.len();
         let start = (range_start as usize).min(total);
         let end = (range_end as usize).min(total);
-        let (records, classes, handoff, oversized_id_starts) =
-            ifc_lite_processing::scan_shard_classified_with_refusals(data, start, end);
+        let (records, classes, handoff, oversized_id_starts, malformed_record_starts) =
+            ifc_lite_processing::scan_shard_classified_with_diagnostics(data, start, end);
 
         let n = records.len() as u32;
         let ids = js_sys::Uint32Array::new_with_length(n);
@@ -144,6 +144,14 @@ impl IfcAPI {
             refusals.set_index(i as u32, offset as u32);
         }
         crate::api::set_js_prop(&result, "oversizedIdStarts", &refusals);
+        // All offsets are required: a speculative first drop may precede a real
+        // retained omission. The host attributes them; empty is observed zero.
+        let malformed = js_sys::Uint32Array::new_with_length(malformed_record_starts.len() as u32);
+        for (i, &offset) in malformed_record_starts.iter().enumerate() {
+            debug_assert!(offset <= u32::MAX as usize);
+            malformed.set_index(i as u32, offset as u32);
+        }
+        crate::api::set_js_prop(&result, "malformedRecordStarts", &malformed);
         result.into()
     }
 

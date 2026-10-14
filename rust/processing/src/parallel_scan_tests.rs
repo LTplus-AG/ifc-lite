@@ -718,3 +718,47 @@ fn a_shard_reports_every_record_it_dropped_not_just_the_first_4179() {
     }
     assert!(checked >= 4, "fixture never put the real drop inside a shard");
 }
+
+#[test]
+fn malformed_apostrophe_recovery_and_speculative_shards_agree_7541() {
+    let content = include_str!("../../../tests/fixtures/step-apostrophe-pair.ifc");
+    let serial = build_entity_index(content.as_bytes());
+    let mut ids: Vec<_> = serial.keys().copied().collect();
+    ids.sort_unstable();
+    assert_eq!(ids, [1, 2, 3, 21, 22, 31]);
+    assert!(serial_malformed(content.as_bytes()));
+    assert_parallel_matches_serial(content.as_bytes(), "actual apostrophe pair with retained wall22");
+    let quoted = b"#1=A('it's','valid;\n#999=B($);');\n#2=B($);";
+    let index = build_entity_index(quoted);
+    assert_eq!(index.len(), 1);
+    assert!(index.contains_key(&2));
+    assert!(!index.contains_key(&999));
+    assert_parallel_matches_serial(quoted, "no fabricated quoted declaration");
+    let valid = b"#1=A('valid;\n#999=B($);',$);\n#2=B($);";
+    let index = build_entity_index(valid);
+    assert_eq!(index.len(), 2);
+    assert!(index.contains_key(&1));
+    assert!(index.contains_key(&2));
+    assert!(!serial_malformed(valid));
+    assert_parallel_matches_serial(valid, "speculative prefix inside valid literal is discarded");
+}
+
+/// #7541: the classified producer preserves all canonical diagnostic offsets
+/// and the prior four-tuple remains byte-identical for its existing callers.
+#[test]
+fn classified_shard_diagnostics_preserve_every_real_malformed_offset_7541() {
+    let content = include_bytes!("../../../tests/fixtures/step-apostrophe-pair.ifc");
+    let mut serial = EntityScanner::new(content);
+    while serial.next_entity().is_some() {}
+    let (_, _, _, _, malformed) = crate::scan_shard_classified_with_diagnostics(content, 0, content.len());
+    assert_eq!(malformed, serial.malformed_record_starts());
+    assert_eq!(malformed.len(), 2);
+    for parts in [1, 2, 3, 5, 11, 29] {
+        for shard in 0..parts {
+            let start = content.len() * shard / parts;
+            let end = content.len() * (shard + 1) / parts;
+            let (records, classes, handoff, oversized, _) = crate::scan_shard_classified_with_diagnostics(content, start, end);
+            assert_eq!(crate::scan_shard_classified_with_refusals(content, start, end), (records, classes, handoff, oversized));
+        }
+    }
+}

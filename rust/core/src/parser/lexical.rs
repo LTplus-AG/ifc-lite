@@ -244,10 +244,12 @@ pub fn close_step_record(bytes: &[u8]) -> RecordClose {
                         continue;
                     }
                     // A doubled '' is an escaped quote: still inside.
-                    if bytes.get(pos) != Some(&b'\'') {
-                        break;
+                    if bytes.get(pos) == Some(&b'\'') { pos += 1; continue; }
+                    match super::record_strings::quote_boundary(bytes, pos - 1) {
+                        super::record_strings::QuoteBoundary::Close => break,
+                        super::record_strings::QuoteBoundary::WrappedEscape(next) => pos = next,
+                        super::record_strings::QuoteBoundary::Invalid | super::record_strings::QuoteBoundary::Unreadable => return RecordClose::Unreadable,
                     }
-                    pos += 1;
                 }
             }
             b'/' if bytes.get(pos + 1) == Some(&b'*') => match skip_step_comment(bytes, pos) {

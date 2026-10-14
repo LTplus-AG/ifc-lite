@@ -331,7 +331,7 @@ fn parallel_index_and_processor_scan_report_the_refusal() {
         "exactly one report for the malformed stop, got {reports:?}"
     );
     assert!(
-        reports[0].contains("dropped a record with no terminating"),
+        reports[0].contains("dropped a record with invalid quoted text or no terminating"),
         "the report must name the dropped record: {}",
         reports[0]
     );

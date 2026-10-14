@@ -296,10 +296,10 @@ export interface GeometryWorkerShardResultMessage {
   /** Global starts of records this shard refused above the u32 express-id bound
    * (#3395); `shard-stitch.ts` attributes them. Absent on an older wasm. */
   oversizedIdStarts?: Uint32Array;
-  /** Global start of the record this shard's scan stopped at because a string
-   * or comment never closed (#3790); `shard-stitch.ts` attributes it.
-   * TODO(#3699): the Rust sharded scan returns no such offset yet. */
-  malformedStart?: number;
+  /** Global starts of malformed records observed by this shard's canonical scan;
+   * `shard-stitch.ts` attributes only retained regions (#7541).
+   * Absent means the producer did not report omission provenance. */
+  malformedRecordStarts?: Uint32Array;
 }
 
 /**
@@ -1536,8 +1536,8 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
           data: Uint8Array,
           rangeStart: number,
           rangeEnd: number,
-          // `malformedStart` is TODO(#3699) -- not returned by Rust yet.
-        ) => { ids: Uint32Array; starts: Uint32Array; lengths: Uint32Array; classes: Uint8Array; handoff: number; oversizedIdStarts?: Uint32Array; malformedStart?: number };
+          // Actual malformed offsets are attributed by the host stitch (#7541).
+        ) => { ids: Uint32Array; starts: Uint32Array; lengths: Uint32Array; classes: Uint8Array; handoff: number; oversizedIdStarts?: Uint32Array; malformedRecordStarts?: Uint32Array };
       });
       const sourceApi = ifcApi as unknown as SourcePrepassApi;
       sourceBytesApplied = false;
@@ -1570,9 +1570,9 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
           lengths: shard.lengths,
           classes: shard.classes,
           handoff: shard.handoff, oversizedIdStarts: shard.oversizedIdStarts,
-          malformedStart: shard.malformedStart,
+          malformedRecordStarts: shard.malformedRecordStarts,
         } as GeometryWorkerShardResultMessage,
-        [shard.ids.buffer, shard.starts.buffer, shard.lengths.buffer, shard.classes.buffer, ...(shard.oversizedIdStarts ? [shard.oversizedIdStarts.buffer] : [])],
+        [shard.ids.buffer, shard.starts.buffer, shard.lengths.buffer, shard.classes.buffer, ...(shard.oversizedIdStarts ? [shard.oversizedIdStarts.buffer] : []), ...(shard.malformedRecordStarts ? [shard.malformedRecordStarts.buffer] : [])],
       );
       return;
     }

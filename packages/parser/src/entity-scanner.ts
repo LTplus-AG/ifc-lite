@@ -26,20 +26,11 @@ export interface PreScannedEntityIndex {
    * claim as `0`, and is why the wasm pre-pass now always sets it.
    */
   oversizedIdCount?: number;
-  /**
-   * Whether the pre-pass that produced these columns stopped early at a
-   * malformed record -- a quoted string or block comment that never closed
-   * (#3790). 0 or 1, never a count: a scan that stops has no reliable place to
-   * resume, so every record from that byte on is missing from the columns too.
-   *
-   * It has to travel with them for the same reason `oversizedIdCount` does,
-   * only more so: the refusal drops one record, this drops the whole tail, and
-   * neither is recoverable from `ids` on this side.
-   *
-   * Optional because a host on an older build sends the three columns and
-   * nothing else -- `undefined` means "this producer does not report", which
-   * is not the claim `0` makes.
-   */
+  /** Reported 0/1 scanner omission indicator (#3790/#7541).
+   * Recoverable malformed records may be dropped between retained records;
+   * an unclosed quote/comment can also stop the remaining scan. Neither can
+   * be reconstructed from these columns. Absence is unobserved provenance,
+   * and zero is not a full STEP syntax or model-validity verdict. */
   malformedRecordCount?: number;
 }
 
@@ -78,15 +69,13 @@ export interface EntityScanResult {
    */
   oversizedIdCount: number;
   /**
-   * 0 or 1, never a count of how many: whether the scan stopped early
-   * because a quoted string or a block comment opened and never closed
-   * before end of buffer, or a `#id=TYPE(` declaration was cut off
-   * before its own '(' was found. Once any of those happens there is no
-   * reliable place to resume, so the scan stops there rather than guessing
-   * -- every entity after that point, even a well-formed one later in an
-   * otherwise-intact file, is NOT in `entityRefs` either. Before this field
-   * existed, that stop was completely silent -- a shorter `entityRefs` with
-   * no signal that anything went wrong at all.
+   * 0 or 1, never a count of how many: whether any malformed record was
+   * dropped. A missing terminator, invalid quoted-value boundary, unclosed
+   * string/comment or cut-off declaration makes the returned source view
+   * incomplete. Fast scans can recover forward after a confirmed value
+   * boundary; ambiguous quoted text refuses the remainder instead of
+   * guessing an entity anchor. A nonzero flag is not a complete syntax audit
+   * and does not certify the omitted entities' validation results (#7541).
    *
    * `pre-scanned` carries it when the producer reports one
    * (`PreScannedEntityIndex.malformedRecordCount`, #3790) -- the geometry
@@ -251,14 +240,11 @@ async function scanEntities(
   // file otherwise read to completion. The Rust twin
   // (rust/core/src/parser/malformed_records.rs:34) carries the same wording and
   // these two halves must not diverge.
-  // so malformedRecordCount is 0 or 1, never a density, and it covers three
-  // shapes -- an unterminated string, an unterminated comment, and a
-  // declaration cut off before its own '(' -- collapsed into one flag, so a
-  // message naming only one of them would misdescribe the other two every
-  // time it fires.
+  // malformedRecordCount is an incomplete-source flag, not a density or
+  // proof that every malformed shape has been recognized (#7541).
   if (malformedRecordCount > 0) {
     const message =
-      "scan: dropped a record with no terminating ';' (an unterminated quoted string, " +
+      "scan: dropped a record with invalid quoted text or no terminating ';' (an unterminated quoted string, " +
       'comment, or truncated file); the entities returned may be an incomplete view of ' +
       'this file (#3695)';
     if (!consoleAlreadyReported) console.warn(`[IfcParser] ${message}`);

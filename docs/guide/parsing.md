@@ -2,6 +2,24 @@
 
 Complete guide to parsing IFC files with IFClite, covering both IFC4 (STEP) and IFC5 (IFCX) formats.
 
+## Reported scanner omissions
+
+STEP apostrophes inside values must be doubled (`'it''s'`). Invalid closing
+boundaries can cause records to be refused. The canonical parser reports an
+incomplete-source diagnostic and retains `store.malformedRecordCount` through
+partial-store callbacks, worker transport and the current viewer load path.
+This is an observed-omission indicator (currently 0/1), not an exact total of
+malformed records. Absence means the producer did not report this observation;
+zero is not a full STEP syntax or model-validity verdict.
+
+Recovery keeps later records only when damaged text establishes an unambiguous
+boundary, skips complete later quoted parameters and otherwise refuses the
+remainder. It does not invent attribute values. An IDS result over the retained
+entities does not certify omitted entities. Cache admission refuses known partial
+indexes. Existing manual/server stores with unknown provenance remain compatible
+without being advertised as complete. STEP output admission and legacy viewer
+cache reload policy are supplied by the dependent upper layer.
+
 ## Overview
 
 IFClite supports the columnar STEP parser for IFC4-style files and the IFCX

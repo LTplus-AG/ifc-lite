@@ -108,7 +108,11 @@ export const WORKER_LEXING = `
           if (p >= len) return -2;
           if (buf[p] === 0x27) {
             if (isPageQuoteOperandAt(p)) { p++; continue; }
-            if (buf[p + 1] === 0x27) { p += 2; continue; } p++; break;
+            if (buf[p + 1] === 0x27) { p += 2; continue; }
+            var boundary = recordQuoteBoundaryAt(p);
+            if (boundary < 0) return -2;
+            if (boundary === 0) { p++; break; }
+            p = boundary; continue;
           }
           p++;
         }

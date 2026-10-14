@@ -302,8 +302,8 @@ export async function* processParallel(
           // Absent on an older wasm build: "does not report", which is not the
           // same claim as zero, but zero is all a host with no offsets can say.
           oversizedIdStarts: (msg.oversizedIdStarts as Uint32Array | undefined) ?? new Uint32Array(0),
-          // Absent = "no stop reported". TODO(#3699): no wasm build sets it yet.
-          malformedStart: msg.malformedStart as number | undefined,
+          // Absent remains unobserved; actual empty offsets report zero.
+          malformedRecordStarts: msg.malformedRecordStarts as Uint32Array | undefined,
         };
         shardResultsRemaining--;
         console.log(`[stream][shard] worker[${workerIndex}] shard ${si} done @ ${elapsed()}ms (${(msg.ids as Uint32Array).length} entities, remaining=${shardResultsRemaining})`);
@@ -1233,11 +1233,10 @@ export async function* processParallel(
           // entity-index event); guard against double delivery regardless.
           console.log(`[stream] pre-pass entity-index arrived @ ${elapsed()}ms (already delivered via shards; ignoring)`);
         } else {
-          // TODO(#3699): the Rust pre-pass emits no malformed count yet, so
-          // this is undefined ("nothing reported"), carried as such.
+          // Consume the actual serial WASM boolean; absence stays unobserved.
           deliverEntityIndex(ids, starts, lengths, 'prepass',
             (evt.oversizedIdCount as number | undefined) ?? 0,
-            evt.malformedRecordCount as number | undefined);
+            evt.malformedRecordFound === true ? 1 : evt.malformedRecordFound === false ? 0 : undefined);
         }
       } else if (evt.type === 'prepass-columns') {
         // Pre-pass computed the referenced-repmaps + instantiated-type-id sets

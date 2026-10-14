@@ -53,6 +53,28 @@ const result = await parseAuto(buffer);
 // result.format is 'ifc' (STEP -> IfcDataStore) or 'ifcx' (JSON -> IfcxParseResult + meshes)
 ```
 
+### Malformed quoted records
+
+STEP apostrophes inside a string are doubled (`'it''s'`). The record scanners
+refuse a closing apostrophe whose next non-trivia byte is not a parameter
+separator or closing parenthesis. Legal PAGE operands, escaped apostrophes,
+multiline text and semicolons inside a literal remain string data.
+
+A refused quoted record emits the incomplete-source diagnostic through
+`parseColumnar()`'s `onDiagnostic` callback. The lower-level scan's existing
+`malformedRecordCount` is a 0/1 flag indicating that records were dropped,
+not a count of corrupt records. Fast scans recover forward only after a
+confirmed quoted-value boundary; complete later quoted parameters are skipped
+so record-like text is not promoted to an entity. Ambiguous or unclosed later
+values refuse the remainder. The balanced scan retains its stop/refusal contract.
+
+Recovery does not repair attributes or certify the complete input. It can omit
+additional records when damaged bytes do not establish a safe boundary. This
+boundary check is not a complete STEP syntax validator: malformed opening quotes
+or stray quotes that happen to precede a legal delimiter can remain undetected.
+An IDS verdict on the returned entities must not be treated as proof that omitted
+or malformed entities satisfy the requirements.
+
 ## Type-safe entity access
 
 All 776 IFC4 entities ship as TypeScript types via the generated schema.
@@ -182,3 +204,13 @@ the native configuration walk keeps its depth, path-cycle and work bounds and
 reports dropped slots and truncation. Existing normalized structural DTO casing
 is unchanged. IFC2X3-only divergences remain the native reader's documented
 best-effort boundary.
+
+### Reported scanner omissions (#7541)
+
+Canonical STEP parsing retains `malformedRecordCount` on the parsed store and
+through worker transport: it is a reported 0/1 omission indicator. Absence is
+unobserved provenance; zero is not a full STEP syntax or model-validity verdict.
+Cache admission refuses known dropped records rather than persisting a partial
+index. Existing manual/server stores with no observation remain compatible
+without being advertised as complete. STEP output refusal is supplied by the
+dependent upper layer.

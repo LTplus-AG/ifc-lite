@@ -23,6 +23,7 @@
 pub mod header;
 mod keyword;
 mod lexical;
+mod record_strings;
 mod malformed_records;
 mod numeric_literal;
 mod oversized_ids;

@@ -90,6 +90,19 @@ pub fn scan_shard_classified_with_refusals(
     range_start: usize,
     range_end: usize,
 ) -> (ShardRecords, Vec<u8>, Option<usize>, ShardRefusals) {
+    let (records, classes, handoff, oversized, _malformed) =
+        scan_shard_classified_with_diagnostics(content, range_start, range_end);
+    (records, classes, handoff, oversized)
+}
+
+/// Classified scan plus ALL malformed offsets for retained-region attribution
+/// (#7541). The existing four-tuple remains compatible and delegates here;
+/// only a stitch can distinguish speculative-prefix drops from real omissions.
+pub fn scan_shard_classified_with_diagnostics(
+    content: &[u8],
+    range_start: usize,
+    range_end: usize,
+) -> (ShardRecords, Vec<u8>, Option<usize>, ShardRefusals, Vec<usize>) {
     let mut scanner = if range_start == 0 {
         EntityScanner::new(content)
     } else {
@@ -114,6 +127,7 @@ pub fn scan_shard_classified_with_refusals(
         classes,
         handoff,
         scanner.skipped_oversized_id_starts().to_vec(),
+        scanner.malformed_record_starts().to_vec(),
     )
 }
 

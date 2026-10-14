@@ -57,6 +57,9 @@ export class BinaryCacheWriter {
     sourceBuffer: ArrayBuffer,
     options: CacheWriteOptions = {}
   ): Promise<ArrayBuffer> {
+    if ((dataStore.malformedRecordCount ?? 0) > 0) {
+      throw new Error('Cache write refused: malformed records make the source index incomplete');
+    }
     const {
       includeGeometry = true,
       omitSourceHash = false,

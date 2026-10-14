@@ -21,6 +21,7 @@ import { SchemaVersion, type CacheDataStore, type CacheEntityIndex } from './typ
  * `@ifc-lite/data`, which `@ifc-lite/cache` depends on regardless.
  */
 export interface ParsedIfcStore {
+  malformedRecordCount?: number;
   schemaVersion: 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5';
   entityCount: number;
   strings: StringTable;
@@ -103,6 +104,7 @@ export function toCacheDataStore(store: ParsedIfcStore): CacheDataStore {
   // @raw-entity-enumeration-ok Cache metadata counts the parsed source snapshot, not live overlay rows.
   return {
     schema: toSchemaVersion(store.schemaVersion),
+    malformedRecordCount: store.malformedRecordCount,
     entityCount: store.entityCount || store.entities.count,
     strings: store.strings,
     entities: store.entities,

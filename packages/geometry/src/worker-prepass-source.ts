@@ -18,7 +18,7 @@ export interface ShardColumns {
   classes: Uint8Array;
   handoff: number;
   oversizedIdStarts?: Uint32Array;
-  malformedStart?: number;
+  malformedRecordStarts?: Uint32Array;
 }
 
 export interface ShardStyles {

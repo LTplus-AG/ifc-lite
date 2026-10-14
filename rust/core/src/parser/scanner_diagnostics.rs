@@ -42,14 +42,14 @@ impl<'a> super::EntityScanner<'a> {
         &self.skipped_oversized_id_starts
     }
 
-    /// The first record this scan dropped for having no terminator of its own,
+    /// The first record this scan dropped for invalid quoted text or no terminator,
     /// or `None`. See [`Self::malformed_record_starts`].
     pub fn malformed_record_start(&self) -> Option<usize> {
         self.malformed_record_starts.first().copied()
     }
 
-    /// The `line_start` of EVERY record this scan dropped for having no
-    /// terminator of its own, strictly increasing.
+    /// The `line_start` of EVERY record this scan dropped for invalid quoted text
+    /// or no terminator of its own, strictly increasing.
     ///
     /// A REPORT, not a stop signal: a record merely missing its `;` is dropped
     /// and the scan CONTINUES past the `)` closing its parameter list (#4179).

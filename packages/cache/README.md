@@ -172,3 +172,13 @@ mirrored repeat, sparse accessors, compression, skinning/morphs, vertex colours,
 additional material maps, and textured MASK/BLEND produce explicit errors.
 The viewer also refuses transparent image pixels, retains original bytes with
 the model, and releases images on removal. It does not claim full PBR fidelity.
+
+### Reported scanner omissions (#7541)
+
+Canonical STEP parsing retains `malformedRecordCount` on the parsed store and
+through worker transport: it is a reported 0/1 omission indicator. Absence is
+unobserved provenance; zero is not a full STEP syntax or model-validity verdict.
+Cache admission refuses known dropped records rather than persisting a partial
+index. Existing manual/server stores with no observation remain compatible
+without being advertised as complete. STEP output refusal is supplied by the
+dependent upper layer.

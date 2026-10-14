@@ -42,7 +42,7 @@ const SOURCE = [
   'END-ISO-10303-21;',
 ].join('\n');
 
-const DROPPED = "scan: dropped a record with no terminating ';'";
+const DROPPED = "scan: dropped a record with invalid quoted text or no terminating ';'";
 const SKIPPED = 'scan: skipped 1 record(s) with an express id above 4294967295 (#3395)';
 
 function encode(source: string): ArrayBuffer {

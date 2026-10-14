@@ -19,6 +19,7 @@ use crate::services::cache::DiskCache;
 use crate::{build_router, AppState};
 use axum::body::{to_bytes, Body};
 use axum::http::{header, Request, StatusCode};
+use ifc_lite_core::EntityScanner;
 use ifc_lite_processing::TessellationQuality;
 use serde_json::Value;
 use std::sync::Arc;
@@ -130,10 +131,9 @@ fn fixture_with_oversized_id() -> String {
     derived
 }
 
-/// The intact fixture with `#302`'s first string literal left unterminated,
-/// so `find_entity_end` runs off the end of the buffer and the scan stops
-/// there (#3695) — every record after it is silently absent from the count.
-/// Derived for the same reason as above.
+/// #7541: the damaged literal reaches quoted parameters in #305. Conservative
+/// recovery can resume at genuinely declared #306/#307; this remains an
+/// incomplete source because #302 through #305 are not representable.
 fn fixture_with_unterminated_string() -> String {
     let derived = FIXTURE.replace(INTACT_302, BROKEN_302);
     assert!(
@@ -152,18 +152,20 @@ const OVERSIZED_RECORD: &str = "#4294967297=IFCWALL('Wall00000000000000002',$,'W
 const INTACT_302: &str = "#302=IFCRECTANGLEPROFILEDEF(.AREA.,$,#301,1.0,0.2);";
 const BROKEN_302: &str = "#302=IFCRECTANGLEPROFILEDEF(.AREA.,'unterminated,#301,1.0,0.2);";
 
-/// How many records `FIXTURE` declares before the one that
-/// `fixture_with_unterminated_string` breaks.
-///
-/// Counted off the fixture TEXT (one record per line), not off a parse, so
-/// the expected value does not come from the scanner whose behaviour is
-/// under test.
-fn records_before_302() -> u64 {
-    FIXTURE
-        .lines()
-        .take_while(|line| !line.starts_with("#302="))
-        .filter(|line| line.starts_with('#'))
-        .count() as u64
+/// Independent IDs from the declared fixture lines before the damaged record.
+/// This oracle reads authored IFC data, not a source file or scanner output.
+fn declared_ids_before_302() -> Vec<u32> {
+    FIXTURE.lines().take_while(|line| !line.starts_with("#302="))
+        .filter_map(|line| line.strip_prefix('#'))
+        .map(|line| line.split_once('=').unwrap().0.parse().unwrap())
+        .collect()
+}
+
+fn observed_scan_ids(source: &str) -> (Vec<u32>, bool) {
+    let mut scanner = EntityScanner::new(source);
+    let mut ids = Vec::new();
+    while let Some((id, _, _, _)) = scanner.next_entity() { ids.push(id); }
+    (ids, scanner.malformed_record_start().is_some())
 }
 
 /// POST `content` to `/api/v1/parse/metadata` and return the decoded body.
@@ -208,23 +210,44 @@ async fn parse_metadata_reports_a_refused_oversized_id() {
     assert!(!json["malformed_record_found"].as_bool().unwrap());
 }
 
-/// The other stop, same surface: an unterminated string ends the scan, so the
-/// count covers only the records before it.
+/// #7541: conservative recovery retains actual later declarations without
+/// claiming the omitted malformed record and swallowed prefix are complete.
 #[tokio::test]
-async fn parse_metadata_reports_a_malformed_record_stop() {
-    let baseline = entity_count(&metadata_json("malformed-baseline", FIXTURE).await);
-    let json = metadata_json("malformed", &fixture_with_unterminated_string()).await;
+async fn parse_metadata_reports_genuinely_recovered_malformed_records_7541() {
+    let baseline_json = metadata_json("malformed-baseline", FIXTURE).await;
+    assert_eq!(entity_count(&baseline_json), 16);
+    assert!(!baseline_json["malformed_record_found"].as_bool().unwrap());
+    let source = fixture_with_unterminated_string();
+    let mut expected = declared_ids_before_302();
+    expected.extend([306, 307]);
+    let (actual, malformed) = observed_scan_ids(&source);
+    eprintln!("7541 server recovered-source prerequisite: ids={actual:?}, malformed={malformed}");
+    assert_eq!(actual, expected, "only genuinely declared recovered IDs may be counted");
+    assert!(malformed, "recovery must still report an incomplete source");
+    let json = metadata_json("malformed", &source).await;
+    assert_eq!(entity_count(&json), 12);
+    assert_eq!(entity_count(&json), expected.len() as u64);
+    assert!(entity_count(&json) < entity_count(&baseline_json));
+    assert!(json["malformed_record_found"].as_bool().unwrap());
+    assert_eq!(json["oversized_id_count"].as_u64().unwrap(), 0);
+}
 
-    let counted = entity_count(&json);
-    assert!(
-        counted < baseline,
-        "the scan must come back short of the intact fixture's {baseline}, got {counted}"
-    );
-    assert_eq!(
-        counted,
-        records_before_302(),
-        "the scan stops at #302, so exactly the records before it are counted"
-    );
+/// #7541: without a later delimiter-confirmed quote, source text remains
+/// ambiguous. Do not invent declarations from the remainder of that string.
+#[tokio::test]
+async fn parse_metadata_stops_at_a_truly_unmatched_literal_without_minting_ids_7541() {
+    let source = FIXTURE.split("#305=").next().unwrap()
+        .replace(INTACT_302, BROKEN_302) + "ENDSEC;\nEND-ISO-10303-21;\n";
+    assert!(source.contains(BROKEN_302));
+    assert!(source.contains("#303=IFCDIRECTION") && source.contains("#304=IFCEXTRUDEDAREASOLID"));
+    let expected = declared_ids_before_302();
+    let (actual, malformed) = observed_scan_ids(&source);
+    eprintln!("7541 server ambiguous-source prerequisite: ids={actual:?}, malformed={malformed}");
+    assert_eq!(actual, expected, "no later quoted delimiter exists to authorize recovery");
+    assert!(malformed);
+    let json = metadata_json("unmatched", &source).await;
+    assert_eq!(entity_count(&json), 10);
+    assert_eq!(entity_count(&json), expected.len() as u64);
     assert!(json["malformed_record_found"].as_bool().unwrap());
     assert_eq!(json["oversized_id_count"].as_u64().unwrap(), 0);
 }

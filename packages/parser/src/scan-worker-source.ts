@@ -13,6 +13,7 @@
  */
 
 import { MAX_EXPRESS_ID } from './express-id.js';
+import { WORKER_RECORD_STRINGS } from './scan-worker-record-strings.js';
 import { WORKER_LEXING } from './scan-worker-lexing.js';
 
 /**
@@ -41,6 +42,7 @@ self.onmessage = function(e) {
   // the bound below is interpolated from express-id.ts when this template is
   // evaluated -- one home for the number, not a copy that can drift.
 ${WORKER_LEXING}
+${WORKER_RECORD_STRINGS}
 
   var ids = new Uint32Array(estimatedCount);
   var offsets = new Uint32Array(estimatedCount);
@@ -241,6 +243,14 @@ ${WORKER_LEXING}
             pos += 2;
             continue;
           }
+          if (inString) {
+            var boundary = recordQuoteBoundaryAt(pos);
+            if (boundary < 0) { recordClose = boundary === -2 ? -2 : -4 - pos; break; }
+            if (boundary > 0) {
+              for (var q = pos; q < boundary; q++) if (buf[q] === 0x0A) line++;
+              pos = boundary; continue;
+            }
+          }
           inString = !inString;
         } else if (c6 === 0x2F && !inString && opensCommentAt(pos)) {
           // The ';' that ends a record can be preceded by a comment holding
@@ -291,14 +301,8 @@ ${WORKER_LEXING}
         pos++;
       }
 
-      // No ';' of this record's own. EVERY such exit lands here, so the
-      // recovery lives here once rather than at each break -- mirrors
-      // tokenizer.ts's scanEntitiesFast. Resume at the ')' balancing this
-      // record's own '(' when there is one, dropping just this record;
-      // otherwise run to len, ending the scan un-resynced rather than guessing
-      // a resume point from misaligned bytes. The balance walk stops at the
-      // next declaration's '=' (#4573), so a refusal costs this record's
-      // bytes, never a re-walk of the remainder per refusal.
+      // Known malformed quotes recover forward, not through corrupt parity.
+      // Other failures retain the bounded cold balance/refusal (#4179/#4573).
       if (!foundTerminator) {
         stopped = true;
         if (recordClose === -3) {
@@ -307,7 +311,11 @@ ${WORKER_LEXING}
           line = savedRecLine;
           if (recordClose > 0) recordClose += startOffset;
         }
-        if (recordClose > 0) {
+        if (recordClose <= -4) {
+          pos = nextRecordAfterBadQuoteAt(-4 - recordClose);
+          line = startLine;
+          for (var q = startOffset; q < pos; q++) if (buf[q] === 0x0A) line++;
+        } else if (recordClose > 0) {
           pos = recordClose;
           line = startLine;
           for (var q = startOffset; q < pos; q++) if (buf[q] === 0x0A) line++;
@@ -363,11 +371,8 @@ ${WORKER_LEXING}
     }
   }
 
-  // ONE post-loop check, not an increment at every exit site above: the scan
-  // stopped early if it hit an explicit "no terminator" boundary ('stopped'),
-  // or the last #id=TYPE( header was cut short before its own '(' was found
-  // ('declOpen'). Always 0 or 1 -- the scan stops at the first one, so there
-  // is nothing further to accumulate.
+  // One incomplete-source flag: malformed body or cut-off declaration.
+  // Recovery can continue, so this remains a boolean, not a dropped-row count.
   if (stopped || declOpen) { malformedRecords = 1; }
 
   // Trim arrays once, reuse for both message and transfer list

@@ -50,6 +50,19 @@ null matrix; unsupported sources and bounded output are reported by `status`
 and `diagnostics`. CSG operands carry
 `source_modified=true` because their final body can differ.
 
+Classified shard scans (`scanEntityIndexShard`) return all reported
+`malformedRecordStarts` offsets. The host attributes them against retained
+handoff regions; an empty array reports no omission, while a missing array
+means unobserved provenance. The established serial prepass event retains its
+`malformedRecordFound` boolean, converted to the same 0/1 omission indicator by
+the geometry host. Never sum speculative shard reports directly.
+
+The scanner's `malformedRecordCount` is a 0/1 incomplete-source flag, not a
+complete STEP syntax audit. Invalid apostrophe boundaries and missing record
+terminators can drop records; callers must retain that diagnostic. This does not
+fabricate missing attributes or repair malformed entity values (#7541). Raw WASM
+STEP output refusal is supplied by the dependent upper layer.
+
 ## Meshes (pre-pass + job batches)
 
 Geometry runs as a single pre-pass (one scan that produces a flat job list

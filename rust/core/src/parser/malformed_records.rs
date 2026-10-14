@@ -2,8 +2,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! The one place Rust says that a scan stopped early because a record had no
-//! terminator - the Rust twin of the TS fix on `EntityScanResult.malformedRecordCount`
+//! The one place Rust reports malformed records dropped during a scan — the
+//! Rust twin of `EntityScanResult.malformedRecordCount`
 //! (`packages/parser/src/entity-scanner.ts`, #3695).
 //!
 //! [`EntityScanner`](super::EntityScanner) drops any record
@@ -28,10 +28,9 @@
 //! whole of it and there is no `Option<String>`-returning sibling to keep in
 //! sync with it.
 
-/// The one-line report for a scan that stopped because of a malformed
-/// record.
+/// The one-line incomplete-source report when a malformed record was dropped.
 const MALFORMED_RECORD_MESSAGE: &str =
-    "scan: dropped a record with no terminating ';' (an unterminated quoted \
+    "scan: dropped a record with invalid quoted text or no terminating ';' (an unterminated quoted \
      string, comment, or truncated file); the entities returned may be an \
      incomplete view of this file (#3695)";
 

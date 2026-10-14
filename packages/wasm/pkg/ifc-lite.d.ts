@@ -1144,7 +1144,7 @@ export class IfcAPI {
      * The returned array also carries two own properties describing what the
      * scan refused (#7393): `oversizedIdCount` (records skipped because their
      * express id does not fit u32, #3395) and `malformedRecordCount` (0 or 1:
-     * whether a record was dropped for having no terminating `;`, #3695).
+     * whether a malformed quoted record or missing terminator was dropped, #3695/#7541).
      */
     scanEntitiesFast(content: string): any;
     /**
@@ -1164,7 +1164,7 @@ export class IfcAPI {
      * full entity index (byte-identical to the single-threaded
      * `build_entity_index`) by binary-searching each shard for the previous
      * shard's `handoff`. Delegates to
-     * `ifc_lite_processing::scan_shard_classified_with_refusals` — a
+     * `ifc_lite_processing::scan_shard_classified_with_diagnostics` — a
      * separately-maintained loop over the same `EntityScanner` primitive as
      * `scan_shard` (the one the native `build_entity_index_parallel` fans across
      * cores), plus a per-record class column this sharded path also needs. The
@@ -1176,7 +1176,7 @@ export class IfcAPI {
      * concatenate without rewriting. Returns a plain object:
      *   `{ ids: Uint32Array, starts: Uint32Array, lengths: Uint32Array,
      *      classes: Uint8Array, handoff: number,
-     *      oversizedIdStarts: Uint32Array }`
+     *      oversizedIdStarts: Uint32Array, malformedRecordStarts: Uint32Array }`
      * where `classes` is the parallel per-record prepass class byte
      * (`PREPASS_CLASS_*`: named code in the low bits plus the geometry-job /
      * type-candidate flags) the host filters on to rebuild pre-pass span

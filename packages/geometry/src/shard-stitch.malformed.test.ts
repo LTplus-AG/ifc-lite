@@ -28,7 +28,7 @@ import { stitchShards, type ShardColumns } from './shard-stitch.js';
 function shard(
   starts: number[],
   handoff: number,
-  malformedStart?: number,
+  malformedStarts?: number[],
 ): ShardColumns {
   return {
     ids: Uint32Array.from(starts.map((_, i) => i + 1)),
@@ -37,7 +37,7 @@ function shard(
     classes: new Uint8Array(starts.length),
     handoff,
     oversizedIdStarts: new Uint32Array(0),
-    malformedStart,
+    malformedRecordStarts: malformedStarts === undefined ? undefined : Uint32Array.from(malformedStarts),
   };
 }
 
@@ -47,7 +47,7 @@ describe('stitchShards malformed-stop attribution', () => {
     // speculative: a stop it reports is a stop a serial scan makes too.
     // `handoff` is -1 because the scanner could not continue, which is
     // byte-identical to a clean EOF -- the whole reason the flag has to exist.
-    const stitched = stitchShards([shard([0, 50], -1, 70), shard([120], -1)]);
+    const stitched = stitchShards([shard([0, 50], -1, [70]), shard([120], -1)]);
 
     expect(stitched).not.toBeNull();
     expect(stitched!.malformedRecordCount).toBe(1);
@@ -61,7 +61,7 @@ describe('stitchShards malformed-stop attribution', () => {
     // string that, in the file's real framing, closes perfectly well. Its stop
     // sits at byte 60 -- inside the region shard 0 owns and the stitch drops.
     // Counting it would warn that a clean file loaded short (the #3430 shape).
-    const stitched = stitchShards([shard([0, 50], 100), shard([40, 60, 100], -1, 60)]);
+    const stitched = stitchShards([shard([0, 50], 100), shard([40, 60, 100], -1, [60])]);
 
     expect(stitched!.malformedRecordCount).toBeUndefined();
   });
@@ -70,7 +70,7 @@ describe('stitchShards malformed-stop attribution', () => {
     // 100 is the first byte of shard 1's retained region, so a stop there is
     // post-resynchronisation and real. A `>` instead of `>=` would drop it,
     // and an under-report is the silence this issue is about.
-    const stitched = stitchShards([shard([0], 100), shard([100, 150], -1, 100)]);
+    const stitched = stitchShards([shard([0], 100), shard([100, 150], -1, [100])]);
 
     expect(stitched!.malformedRecordCount).toBe(1);
   });
@@ -90,7 +90,7 @@ describe('stitchShards malformed-stop attribution', () => {
     // Shard 0 ended the entities; shard 1 is speculative end to end and its
     // records are not stitched in, so its stop is an artefact of where it
     // started, not something the file contains.
-    const stitched = stitchShards([shard([0, 50], -1), shard([70], 200, 90)]);
+    const stitched = stitchShards([shard([0, 50], -1), shard([70], 200, [90])]);
 
     expect(stitched!.malformedRecordCount).toBeUndefined();
     expect(Array.from(stitched!.starts)).toEqual([0, 50]);
@@ -105,7 +105,7 @@ describe('stitchShards malformed-stop attribution', () => {
     // the caller has to be told why rather than being handed a short index.
     const stitched = stitchShards([
       shard([0, 50], 100),
-      shard([100, 150], -1, 160),
+      shard([100, 150], -1, [160]),
       shard([200, 250], -1),
     ]);
 
@@ -120,7 +120,7 @@ describe('stitchShards malformed-stop attribution', () => {
     // nothing is reported -- a file that is fine must not warn.
     const stitched = stitchShards([
       shard([0, 50], 100),
-      shard([80, 100, 150], 200, 80),
+      shard([80, 100, 150], 200, [80]),
       shard([200, 250], -1),
     ]);
 
@@ -129,11 +129,22 @@ describe('stitchShards malformed-stop attribution', () => {
   });
 
   it('reads undefined from a producer that reports no stop offset at all', () => {
-    // The state on `main` today: the Rust sharded scan has no such offset to
-    // give (#3699 is still open), so every shard omits it. That has to reach
+    // An unobserved producer omits its offset array. That has to reach
     // the parser as "nothing reported", not as proof of a clean scan.
     const stitched = stitchShards([shard([0], 100), shard([100], -1)]);
 
     expect(stitched!.malformedRecordCount).toBeUndefined();
   });
+  it('#7541 preserves a real later omission after discarding a speculative first offset', () => {
+    const stitched = stitchShards([shard([0, 50], 100, []), shard([40, 100, 150], -1, [40, 160])]);
+    expect(stitched!.malformedRecordCount).toBe(1);
+    expect(Array.from(stitched!.starts)).toEqual([0, 50, 100, 150]);
+  });
+
+  it('#7541 reports observed zero only when every retained shard supplied offsets', () => {
+    expect(stitchShards([shard([0], 100, []), shard([100], -1, [])])!.malformedRecordCount).toBe(0);
+    expect(stitchShards([shard([0], 100, []), shard([100], -1)])!.malformedRecordCount).toBeUndefined();
+    expect(stitchShards([shard([0], -1, []), shard([100], -1)])!.malformedRecordCount).toBe(0);
+  });
+
 });

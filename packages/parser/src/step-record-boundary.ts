@@ -14,7 +14,9 @@
  * worker cannot import at runtime.
  */
 
-import { opensComment, skipComment, skipStringLiteral, skipTrivia } from './step-lexing.js';
+import { opensComment, skipComment, skipTrivia } from './step-lexing.js';
+
+import { skipRecordString } from './step-record-strings.js';
 
 const QUOTE = 0x27; // '\''
 const LPAREN = 0x28; // '('
@@ -30,7 +32,7 @@ const EQUALS = 0x3D; // '='
 // resume there. UNREADABLE_RECORD: one never closed, so everything to end of
 // input is inside it and nothing can be resumed.
 //
-// A string literal is jumped over by skipStringLiteral rather than counted, so
+// A string literal is jumped over by skipRecordString rather than counted, so
 // the '(' in 'Storey (Level 1)' is text and not depth, and STEP's doubled-quote
 // escape ('') stays inside the literal instead of closing it. Sharing that
 // helper keeps the escape rule in one place: an open-coded `inString` flag here
@@ -66,9 +68,9 @@ export function findEntityLength(buf: Uint8Array, pos: number, startOffset: numb
     const char = buf[pos];
 
     if (char === QUOTE) {
-      // Returns `-1` on an unterminated literal (see skipStringLiteral's own
+      // Returns `-1` on an unterminated literal (see skipRecordString's own
       // doc): nothing after it is readable.
-      const next = skipStringLiteral(buf, pos, len);
+      const next = skipRecordString(buf, pos);
       if (next < 0) return UNREADABLE_RECORD;
       pos = next;
     } else if (opensComment(buf, pos, len)) {

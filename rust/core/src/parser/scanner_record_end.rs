@@ -11,6 +11,8 @@
 //! declaration, and the #4179 record-boundary rules it implements are argued
 //! next door in `lexical.rs` beside the exact walk they approximate.
 
+pub(super) enum RecordEnd { At(usize), BadQuote(usize) }
+
 impl<'a> super::EntityScanner<'a> {
     /// Offset of the record's terminating `;` from the start of the slice.
     ///
@@ -46,7 +48,7 @@ impl<'a> super::EntityScanner<'a> {
     /// O(n^2), measured 4x per doubling (`refused_records_do_not_rescan_the_remainder_4179`).
     /// One rule bounds both this walk and `close_step_record`'s.
     #[inline]
-    pub(super) fn find_entity_end(&self, content: &[u8]) -> Option<usize> {
+    pub(super) fn find_entity_end(&self, content: &[u8]) -> Option<RecordEnd> {
         let mut pos = 0;
         // Only the two arms that can make it true compute it (#4179).
         let mut closes_paren = false;
@@ -99,7 +101,7 @@ impl<'a> super::EntityScanner<'a> {
             }
             if found == b';' {
                 // A ';' closing nothing belongs to what FOLLOWS the record.
-                return crate::parser::lexical::closes_with_paren(plain, closes_paren).then_some(pos);
+                return crate::parser::lexical::closes_with_paren(plain, closes_paren).then_some(RecordEnd::At(pos));
             }
 
             // found == b'\'' : entered a quoted string. Scan to the closing
@@ -116,9 +118,14 @@ impl<'a> super::EntityScanner<'a> {
                     pos += 2;
                     continue;
                 }
-                // Closing quote.
-                pos += 1;
-                break;
+                match super::super::record_strings::quote_boundary(content, pos) {
+                    super::super::record_strings::QuoteBoundary::Close => { pos += 1; break; }
+                    super::super::record_strings::QuoteBoundary::WrappedEscape(next) => pos = next,
+                    super::super::record_strings::QuoteBoundary::Unreadable => return None,
+                    super::super::record_strings::QuoteBoundary::Invalid => {
+                        return Some(RecordEnd::BadQuote(pos));
+                    }
+                }
             }
             closes_paren = false; // A literal is a parameter, not a close.
         }

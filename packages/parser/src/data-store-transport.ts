@@ -3,9 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Worker transport splits clone-safe columns from live store accessors.
- * toTransport serializes columns; fromTransport rebuilds their closures.
- * Source bytes stay in the shared buffer, supplied separately by the receiver.
+ * Worker transport serializes clone-safe columns and rebuilds live accessors.
+ * Shared source bytes are supplied separately by the receiver.
  */
 
 import {
@@ -194,6 +193,7 @@ export interface DataStoreTransport {
   sourceHeader?: IfcDataStore['sourceHeader'];
   entityCount: number;
   parseTime: number;
+  malformedRecordCount?: IfcDataStore['malformedRecordCount'];
   lengthUnitScale?: number;
   lengthUnitSource?: IfcDataStore['lengthUnitSource'];
 
@@ -359,6 +359,7 @@ export function toTransport(
     sourceHeader: store.sourceHeader,
     entityCount: store.entityCount,
     parseTime: store.parseTime,
+    malformedRecordCount: store.malformedRecordCount,
     lengthUnitScale: store.lengthUnitScale,
     lengthUnitSource: store.lengthUnitSource,
     georeferencing: store.georeferencing,
@@ -405,9 +406,7 @@ export function toTransport(
 }
 
 /**
- * Reconstruct a live `IfcDataStore` (closures rebuilt) from a
- * `DataStoreTransport` payload and the `source` buffer view that lives on
- * the receiving thread.
+ * Reconstruct live store accessors from transport and receiver-owned source bytes.
  */
 export function fromTransport(
   payload: DataStoreTransport,
@@ -448,6 +447,7 @@ export function fromTransport(
     sourceHeader: payload.sourceHeader,
     entityCount: payload.entityCount,
     parseTime: payload.parseTime,
+    malformedRecordCount: payload.malformedRecordCount,
     lengthUnitScale: payload.lengthUnitScale,
     lengthUnitSource: payload.lengthUnitSource,
     georeferencing: payload.georeferencing,

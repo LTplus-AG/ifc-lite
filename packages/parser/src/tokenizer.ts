@@ -7,6 +7,7 @@
  * Leverages Spike 1 approach: ~1,259 MB/s throughput
  */
 
+import { recordQuoteBoundary, nextRecordAfterBadQuote } from './step-record-strings.js';
 import { isIndexableExpressId } from './express-id.js';
 import { BalancedEntityScan, type ScannedEntityRef } from './scan-entities-balanced.js';
 import {
@@ -302,6 +303,11 @@ export class StepTokenizer {
               pos += 2; // Skip escaped quote
               continue;
             }
+            if (inString) {
+              const boundary = recordQuoteBoundary(buf, pos);
+              if (boundary < 0) { recordClose = boundary === -2 ? -2 : -4 - pos; break; }
+              if (boundary > 0) { line += countNewlines(buf, pos, boundary); pos = boundary; continue; }
+            }
             inString = !inString;
           } else if (c === SLASH && !inString && opensComment(buf, pos, len)) {
             // The ';' that ends a record can be preceded by a comment holding
@@ -337,24 +343,18 @@ export class StepTokenizer {
           pos++;
         }
 
-        // No ';' of this record's own -- it ran off the end (an unescaped `'`
-        // left open, an unterminated comment), or one of the two #4179
-        // boundary rules refused the ';' it found. EVERY such exit lands here,
-        // so the recovery lives here once rather than at each `break`.
-        //
-        // Resume at the ')' balancing this record's own '(' when there is one,
-        // dropping just this record; otherwise run to `len`, ending the scan
-        // un-resynced rather than guessing a resume point from misaligned
-        // bytes. The pre-existing exits reach the second case, which is the
-        // `pos = len` they used to set for themselves. The balance walk stops
-        // at the next declaration's '=' (#4573), so a refusal costs this
-        // record's bytes, never a re-walk of the remainder per refusal.
+        // A known bad quote uses forward anchored recovery (#7541), never
+        // the parity-invalid balanced walk. Other missing-boundary cases keep
+        // the existing cold balance/refusal (#4179/#4573).
         if (!foundTerminator) {
           stopped = true;
           if (recordClose === NOT_COMPUTED) {
             recordClose = recordCloseOffset(buf, parenPos, startOffset);
           }
-          if (recordClose > 0) {
+          if (recordClose <= -4) {
+            pos = nextRecordAfterBadQuote(buf, -4 - recordClose);
+            line = startLine + countNewlines(buf, startOffset, pos);
+          } else if (recordClose > 0) {
             pos = recordClose;
             line = startLine + countNewlines(buf, startOffset, pos);
           } else if (recordClose === UNBALANCED_RECORD) {

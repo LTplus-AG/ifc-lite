@@ -10,20 +10,36 @@ import { cleanup, click, render } from '@/test/render.js';
 import { ReportClient } from '@/services/error-reports/client';
 import { PublicModelReceipt } from './PublicModelReceipt';
 
-afterEach(cleanup);
+afterEach(async () => {
+  // Failure paths must not leave an abort-ignoring transport or React act
+  // continuation waiting when the next case mounts its independent parent.
+  try { cleanup(); }
+  finally {
+    const remaining = [...pendingResponses];
+    await act(async () => {
+      for (const response of remaining) response.resolve(Response.json({ message: 'Test cleanup' }, { status: 503 }));
+      await Promise.all(remaining.map(response => response.promise));
+      await new Promise(resolve => setTimeout(resolve, 10));
+    });
+  }
+});
 const token = 'a'.repeat(64);
 const available: ReportReceipt = { id: 'owned', status: 'published', publicModel: {
   state: 'available', downloadUrl: `/api/reports/public/${token}`,
 } };
 const withdrawn: ReportReceipt = { ...available, publicModel: { state: 'withdrawn' } };
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>(done => { resolve = done; });
-  return { promise, resolve };
+interface DeferredResponse { promise: Promise<Response>; resolve: (value: Response) => void }
+const pendingResponses = new Set<DeferredResponse>();
+function deferred(): DeferredResponse {
+  let complete!: (value: Response) => void;
+  const promise = new Promise<Response>(done => { complete = done; });
+  const response: DeferredResponse = { promise, resolve(value: Response) { pendingResponses.delete(response); complete(value); } };
+  pendingResponses.add(response);
+  return response;
 }
 function button(text: string) {
   const element = [...document.querySelectorAll('button')].find(node => node.textContent === text);
-  assert.ok(element, `button ${text}`); return element;
+  if (!element) assert.fail(`button ${text}`); return element;
 }
 async function settle() { await act(async () => { await new Promise(resolve => setTimeout(resolve, 10)); }); }
 function mount(client: ReportClient) {
@@ -37,15 +53,15 @@ function mount(client: ReportClient) {
   return { changes, update: (receipt: ReportReceipt) => act(() => update(receipt)) };
 }
 function assertWithdrawn() {
-  assert.equal(document.querySelector('a[href*="/public/"]'), null);
+  assert.equal(Boolean(document.querySelector('a[href*="/public/"]')), false);
   assert.ok(document.body.textContent?.includes('New downloads are blocked'));
-  assert.equal(document.querySelector('button'), null, 'Withdrawn model has no status or withdrawal controls');
+  assert.equal(Boolean(document.querySelector('button')), false, 'Withdrawn model has no status or withdrawal controls');
 }
 
 // #7495 review4267322932: obsolete transport success AND failure must not
 // replace an authoritative same-report withdrawal received through parent props.
 for (const outcome of ['success', 'error'] as const) test(`#7495 stale public GET ${outcome} cannot resurrect a withdrawn parent receipt`, async () => {
-  const old = deferred<Response>(); const observed: { signal?: AbortSignal | null } = {};
+  const old = deferred(); const observed: { signal?: AbortSignal | null } = {};
   const client = new ReportClient(async (_url, options) => { observed.signal = options?.signal; return old.promise; });
   const ui = mount(client);
   click(button('Check public model status'));
@@ -55,19 +71,19 @@ for (const outcome of ['success', 'error'] as const) test(`#7495 stale public GE
   old.resolve(outcome === 'success' ? Response.json(available) : Response.json({ message: 'Obsolete response' }, { status: 503 }));
   await settle();
   assertWithdrawn();
-  assert.deepEqual(ui.changes, [], 'An abort-ignoring transport cannot publish a stale result');
-  assert.equal(document.querySelector('[role="alert"]'), null, 'Obsolete error is ignored');
+  assert.equal(ui.changes.length, 0, 'An abort-ignoring transport cannot publish a stale result');
+  assert.equal(Boolean(document.querySelector('[role="alert"]')), false, 'Obsolete error is ignored');
 });
 
 test('#7495 confirmed withdrawal survives concurrent parent refresh and a later available snapshot, then resets for another report', async () => {
-  const deletion = deferred<Response>(); const observed: { signal?: AbortSignal | null } = {};
+  const deletion = deferred(); const observed: { signal?: AbortSignal | null } = {};
   const calls: string[] = [];
   const client = new ReportClient(async (url, options) => {
     calls.push(`${options?.method} ${String(url)}`); observed.signal = options?.signal; return deletion.promise;
   });
   const ui = mount(client);
   click(button('Stop public model sharing'));
-  assert.deepEqual(calls, []);
+  assert.equal(calls.length, 0);
   click(button('Confirm stop public sharing'));
   assert.deepEqual(calls, ['DELETE /api/reports/owned/public-model']);
   ui.update({ ...available }); // A parent GET completed while authoritative DELETE is in flight.
@@ -80,12 +96,12 @@ test('#7495 confirmed withdrawal survives concurrent parent refresh and a later 
   ui.update({ ...available }); // A second, older parent snapshot arrives after confirmation.
   assertWithdrawn();
   ui.update({ ...available, id: 'another' });
-  assert.ok(document.querySelector(`a[href="/api/reports/public/${token}"]`), 'Different report resets terminal withdrawal');
+  assert.ok(Boolean(document.querySelector(`a[href="/api/reports/public/${token}"]`)), 'Different report resets terminal withdrawal');
   assert.equal(button('Check public model status').disabled, false);
 });
 
 test('#7495 obsolete GET completion cannot clear a newer report pending request', async () => {
-  const first = deferred<Response>(); const second = deferred<Response>();
+  const first = deferred(); const second = deferred();
   const client = new ReportClient(async url => String(url).endsWith('/owned') ? first.promise : second.promise);
   const ui = mount(client);
   click(button('Check public model status'));
@@ -105,15 +121,15 @@ test('#7495 obsolete GET completion cannot clear a newer report pending request'
 test('#7495 private deletion remains terminal across an older same-report available snapshot', () => {
   const ui = mount(new ReportClient(async () => { throw new Error('No request expected'); }));
   ui.update({ id: 'owned', status: 'deleted' });
-  assert.equal(document.querySelector('section'), null);
+  assert.equal(Boolean(document.querySelector('section')), false);
   ui.update({ ...available });
-  assert.equal(document.querySelector('section'), null, 'Old available snapshot cannot restore deleted report controls');
+  assert.equal(Boolean(document.querySelector('section')), false, 'Old available snapshot cannot restore deleted report controls');
   ui.update({ ...available, id: 'another' });
-  assert.ok(document.querySelector(`a[href="/api/reports/public/${token}"]`), 'Different report resets deletion terminal state');
+  assert.ok(Boolean(document.querySelector(`a[href="/api/reports/public/${token}"]`)), 'Different report resets deletion terminal state');
 });
 
 test('#7495 pending public DELETE cannot reopen a privately deleted report after stale parent refresh', async () => {
-  const deletion = deferred<Response>(); const observed: { signal?: AbortSignal | null } = {};
+  const deletion = deferred(); const observed: { signal?: AbortSignal | null } = {};
   const client = new ReportClient(async (_url, options) => { observed.signal = options?.signal; return deletion.promise; });
   const ui = mount(client);
   click(button('Stop public model sharing'));
@@ -121,11 +137,11 @@ test('#7495 pending public DELETE cannot reopen a privately deleted report after
   ui.update({ id: 'owned', status: 'deleted' });
   assert.equal(observed.signal?.aborted, true, 'Private deletion invalidates pending public withdrawal');
   ui.update({ ...available });
-  assert.equal(document.querySelector('section'), null);
+  assert.equal(Boolean(document.querySelector('section')), false);
   deletion.resolve(Response.json(withdrawn));
   await settle();
-  assert.equal(document.querySelector('section'), null, 'Late public DELETE cannot reopen deleted report');
-  assert.deepEqual(ui.changes, [], 'Obsolete public receipt never updates parent');
+  assert.equal(Boolean(document.querySelector('section')), false, 'Late public DELETE cannot reopen deleted report');
+  assert.equal(ui.changes.length, 0, 'Obsolete public receipt never updates parent');
   ui.update({ ...available, id: 'another' });
   assert.equal(button('Check public model status').disabled, false);
 });

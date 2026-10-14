@@ -26,14 +26,7 @@
 //! find where a *closed* comment ends — only the unterminated case is
 //! handled differently, and only at that one call site.
 
-/// Inside a STEP string, PAGE consumes its operand even when it is an
-/// apostrophe (#7540). Check before doubled quotes: in `'5\S\''` the second
-/// apostrophe closes the literal. No other legal string unit ends in `\S\`
-/// immediately before an apostrophe.
-#[inline]
-pub(crate) fn is_page_quote_operand(bytes: &[u8], pos: usize) -> bool {
-    pos >= 3 && bytes[pos - 1] == b'\\' && bytes[pos - 2] == b'S' && bytes[pos - 3] == b'\\'
-}
+pub(crate) use crate::step_encoding::is_page_quote_operand;
 
 /// If a STEP `/* ... */` comment starts at `bytes[i]`, the index just past
 /// its closing `*/`.

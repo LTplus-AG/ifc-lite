@@ -42,6 +42,38 @@ use std::borrow::Cow;
 mod step_codepages;
 use step_codepages::resolve_extended_char;
 
+/// Whether the apostrophe at `pos`, inside a STEP string literal, is the
+/// operand of the PAGE directive `\S\` (#7540). Tested before a doubled `''`:
+/// `'5\S\''` is "5§" and closes at its last quote. No other legal string unit
+/// ends in `\S\` right before an apostrophe, so this cannot misfire on a legal
+/// file.
+#[inline]
+pub fn is_page_quote_operand(bytes: &[u8], pos: usize) -> bool {
+    pos >= 3 && bytes[pos - 1] == b'\\' && bytes[pos - 2] == b'S' && bytes[pos - 3] == b'\\'
+}
+
+/// Index just past the apostrophe closing the STEP string literal whose
+/// opening apostrophe is at `open`, or `None` when it never closes (#7589).
+///
+/// The one rule for every walker that splits, rewrites or scans STEP text:
+/// `''` is an escaped quote and a `\S\` operand is text. A walker that ends
+/// the literal at the operand misreads every later comma, paren and
+/// reference in the record. The TypeScript twin is `stepStringLiteralEnd` in
+/// `@ifc-lite/encoding`.
+pub fn step_string_literal_end(bytes: &[u8], open: usize) -> Option<usize> {
+    let mut p = open + 1;
+    loop {
+        p += memchr::memchr(b'\'', bytes.get(p..)?)?;
+        if is_page_quote_operand(bytes, p) {
+            p += 1;
+        } else if bytes.get(p + 1) == Some(&b'\'') {
+            p += 2;
+        } else {
+            return Some(p + 1);
+        }
+    }
+}
+
 /// Decode IFC STEP string escapes to UTF-8.
 ///
 /// Returns the input borrowed and untouched when it contains no backslash, so
@@ -191,6 +223,21 @@ fn find(bytes: &[u8], from: usize, pat: &[u8]) -> Option<usize> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn step_string_literal_end_keeps_page_operands_inside_7589() {
+        let vectors: serde_json::Value = serde_json::from_str(include_str!(
+            "../tests/fixtures/step-page-directive.json"
+        ))
+        .unwrap();
+        for vector in vectors.as_array().unwrap() {
+            let literal = vector["literal"].as_str().unwrap();
+            let text = format!("({literal},'next')");
+            assert_eq!(super::step_string_literal_end(text.as_bytes(), 1), Some(1 + literal.len()), "{}", vector["name"]);
+        }
+        assert_eq!(super::step_string_literal_end(br"('a\S\'", 1), None);
+        assert_eq!(super::step_string_literal_end(b"('it''", 1), None);
+    }
 
     #[test]
     fn no_backslash_is_borrowed_and_unchanged() {

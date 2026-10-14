@@ -5745,10 +5745,12 @@
     "generateIfcGuid: function",
     "generateUuid: function",
     "ifcGuidToUuid: function",
+    "isStepPageQuoteOperand: function",
     "isValidIfcGuid: function",
     "isValidUuid: function",
     "isWhollyNumeric: function",
     "parsePropertyValue: function",
+    "stepStringLiteralEnd: function",
     "uuidFromSeed: function",
     "uuidToIfcGuid: function",
     "uuidV5: function"

@@ -129,5 +129,5 @@ export async function captureProbeFrame() {
   });
   const png = await host.__ifc_lite_capture_color_frame__?.();
   if (!png?.startsWith('data:image/png;base64,')) throw new Error('Real production renderer color readback unavailable');
-  return { before, after: readProbe(), png, witness };
+  return { before, after: readProbe(), png, witness, rawFrameAvailable: frame !== null };
 }

@@ -33,6 +33,7 @@ test('authentic reduced reporter model imports and yields matched software WebGP
   expect(createHash('sha256').update(bytes).digest('hex')).toBe(FIXTURE_SHA);
   expect(process.env.E2E_GPU_STRICT, 'this software functional witness must waive no GPU checks').toBe('1');
   const errors: string[] = [];
+  const densityFailures: string[] = [];
   const consoleRows: Array<{ type: string; text: string; receivedAtEpochMs: number; nodeNowMs: number }> = [];
   const lifecycleSamples: LifecycleSample[] = [];
   page.on('pageerror', error => {
@@ -55,10 +56,10 @@ test('authentic reduced reporter model imports and yields matched software WebGP
     setupConfound: string; lifecycleSamples: LifecycleSample[];
     frames: Array<{ name: string; requested: CameraViewpoint; observed: Snapshot; pngSHA: string;
       rawWitness: ReturnType<typeof classifyViewportWitness>; pngWitness: ReturnType<typeof classifyViewportWitness> }>;
-    errors: string[]; console: typeof consoleRows;
+    errors: string[]; densityFailures: string[]; console: typeof consoleRows;
   } = {
     status: 'INCOMPLETE', scope: 'Reduced authentic fixture requested hosted software functional evidence; backend must be observed; no independent occlusion verdict, physical GPU, performance or full-original GUID acceptance',
-    fixtureSHA: FIXTURE_SHA, browser: browser.version(), frames: [], errors, console: consoleRows,
+    fixtureSHA: FIXTURE_SHA, browser: browser.version(), frames: [], errors, densityFailures, console: consoleRows,
     timebase: { nodeTimeOriginMs: nodePerformance.timeOrigin, epochClock: 'Date.now milliseconds',
       browserClock: 'samples carry browser performance.timeOrigin and performance.now; sampling times differ from event times' },
     setupConfound: 'Private Vite DEV source server; bootstrap uses React.StrictMode. This is a recorded confound, not an established loss cause.',
@@ -170,6 +171,7 @@ test('authentic reduced reporter model imports and yields matched software WebGP
           } finally {
             await sample(`${name}-after-capture-attempt`);
           }
+          expect(capture.rawFrameAvailable, 'actual raw renderer readback must exist; absence is not a deferred density failure').toBe(true);
           // Render epoch can advance between captures; actual camera geometry
           // and matrices must remain the same across both real readbacks.
           expect(capture.before.camera?.position).toEqual(capture.after.camera?.position);
@@ -190,13 +192,21 @@ test('authentic reduced reporter model imports and yields matched software WebGP
           report.frames.push({ name, requested, observed: capture.after,
             pngSHA: createHash('sha256').update(png).digest('hex'), rawWitness: capture.witness, pngWitness });
           const witness = capture.witness;
-          expect(witness.status, `${name}: ${witness.summary}; presence is not an occlusion verdict`).toBe('rendered');
-          expect(pngWitness.status, `${name} retained PNG: ${pngWitness.summary}`).toBe('rendered');
+          // Retain later diagnostic views after a density failure. The same
+          // classifiers and threshold still reject the whole cohort below.
+          if (witness.status !== 'rendered') {
+            densityFailures.push(`${name}: ${witness.summary}; presence is not an occlusion verdict`);
+          }
+          if (pngWitness.status !== 'rendered') {
+            densityFailures.push(`${name} retained PNG: ${pngWitness.summary}`);
+          }
           expect(errors, `no unhandled/GPU failures at ${name}`).toEqual([]);
         }
       }
     }
     expect(report.frames).toHaveLength(36);
+    errors.push(...densityFailures);
+    expect(densityFailures, 'all unchanged raw/PNG density classifications must pass; diagnostic retention grants no waiver').toEqual([]);
     report.status = 'FUNCTIONAL_FRAMES_CAPTURED_OCCLUSION_VERDICT_PENDING';
   } catch (error) {
     errors.push(error instanceof Error ? error.message : String(error));

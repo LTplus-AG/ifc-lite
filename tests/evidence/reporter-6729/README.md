@@ -58,6 +58,12 @@ snapshots before/after import and capture attempts. The source server's DEV
 mode and React StrictMode are explicit confounds. Documented Playwright
 `DEBUG=pw:browser` retains browser-process logs for this fresh unsigned context
 and already-public fixture. No authenticated state or keys are supplied.
+Density failures are retained per raw readback and PNG while later camera and
+selection views are collected. The existing classifiers and threshold remain
+unchanged: every density failure still causes the final cohort to fail with
+`INCOMPLETE` status, even when all 36 diagnostic images exist. Missing raw or
+PNG readbacks, identity/matrix failures and page/device/diagnostic errors still
+stop collection. This records more evidence; it grants no acceptance waiver.
 These observations never clear prior errors: any loss or diagnostic failure
 still fails qualification, including when recovery later reports success.
 

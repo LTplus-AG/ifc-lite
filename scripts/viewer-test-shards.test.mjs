@@ -95,7 +95,11 @@ test('a stale manifest entry (file deleted) is never selected and moves no other
   const remaining = files.filter((f) => f !== gone);
   const before = assignShards(files, manifest, SHARDS);
   const after = assignShards(remaining, manifest, SHARDS);
-  for (let s = 0; s < SHARDS; s++) assert.equal(selectShard(remaining, manifest, s, SHARDS).indexOf(gone), -1);
+  // The shards together select exactly the files on disk: the deleted one in
+  // no shard, every remaining one in one.
+  const union = [];
+  for (let s = 0; s < SHARDS; s++) union.push(...selectShard(remaining, manifest, s, SHARDS));
+  assert.deepEqual([...union].sort(), [...remaining].sort());
   for (const f of remaining) assert.equal(after.get(f), before.get(f), `${f} moved when ${gone} was deleted`);
 });
 

@@ -2,4 +2,4 @@
 "@ifc-lite/wasm": patch
 ---
 
-Fix sloped BooleanResult differences leaving material outside the intended strip by bounding lateral drift during exact plane welding.
+Fix sloped IfcBooleanResult differences leaving stray material and gaps by bounding exact plane-weld drift and constructing coplanar crossings in the clipping projection.

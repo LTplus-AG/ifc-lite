@@ -112,6 +112,7 @@ beforeEach(() => {
     geometryResult: null, ifcDataStore: null, isolatedEntities: null, hiddenEntities: new Set(),
     selectedEntityId: null, selectedEntityIds: new Set(), activeTool: 'select',
   });
+  s().clearSectionPlanes(); // planes from an earlier test must not leak into this one (#7545)
   s().setSectionPlaneEnabled(false);
   useViewerStore.setState({ sectionPlane: { ...s().sectionPlane, custom: undefined, flipped: false } });
 });
@@ -138,6 +139,35 @@ describe('BCF panel close restores the section cut viewpoints replaced (#5829)',
       assert.ok(activeSectionPlane(s()), 'the renderer receives the restored cut');
     });
   }
+
+  it('gives back ALL of the user\'s cutting planes, not just the active one (#7545)', async () => {
+    await mount(true);
+    const vp = await sideViewpoint();
+    await act(async () => {
+      s().clearSectionPlanes();
+      s().setActiveTool('section');
+      s().addSectionPlane('front'); s().setSectionPlanePosition(30);
+      s().addSectionPlane('down'); s().setSectionPlanePosition(60);
+      s().setActiveTool('select');
+    });
+    const key = () => [s().sectionPlane, ...s().inactiveSectionPlanes].map((p) => `${p.name}:${p.axis}:${p.position}`).sort();
+    const before = key();
+    assert.equal(before.length, 2);
+    await act(async () => api!.applyViewpoint(vp, false));
+    assert.equal(1 + s().inactiveSectionPlanes.length, 1, 'the viewpoint replaced the set with its own single cut');
+    await unmount();
+    assert.deepEqual(key(), before, 'closing the panel hands both planes back');
+  });
+
+  it('keeps the set the user changed after the viewpoint, extra planes included (#7545)', async () => {
+    await mount(true);
+    const vp = await sideViewpoint();
+    await userCut();
+    await act(async () => api!.applyViewpoint(vp, false));
+    await act(async () => { s().addSectionPlane('down'); });
+    await unmount();
+    assert.equal(1 + s().inactiveSectionPlanes.length, 2, 'the plane added after the viewpoint is not discarded');
+  });
 
   it('keeps a cut the user changed after the viewpoint', async () => {
     await mount(true);

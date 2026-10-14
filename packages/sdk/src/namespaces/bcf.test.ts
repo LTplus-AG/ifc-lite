@@ -397,3 +397,26 @@ describe('BCFNamespace.cameraToOrthogonal — viewToWorldScale argument (#4294)'
     await expect(ns.write(project)).rejects.toThrow(/ViewToWorldScale/);
   });
 });
+
+describe('BCFNamespace — several cutting planes (#7545)', () => {
+  const THREE = [
+    { axis: 'y' as const, position: 40, enabled: true, flipped: false },
+    { axis: 'x' as const, position: 70, enabled: true, flipped: true },
+    { axis: 'z' as const, position: 25, enabled: true, flipped: false },
+  ];
+
+  it('writes one clipping plane per enabled plane and extractViewpointState returns them all', async () => {
+    const ns = new BCFNamespace();
+    const viewpoint = (await ns.createViewpoint({ camera: CAMERA, sectionPlanes: [...THREE, { ...THREE[0]!, enabled: false }], bounds: BOUNDS })) as { clippingPlanes?: unknown[] };
+    expect(viewpoint.clippingPlanes).toHaveLength(3);
+
+    const state = await ns.extractViewpointState(viewpoint, BOUNDS);
+    expect(state.sectionPlanes?.map(({ axis, flipped }) => ({ axis, flipped }))).toEqual(THREE.map(({ axis, flipped }) => ({ axis, flipped })));
+    expect(state.sectionPlanes?.map((p) => Math.round(p.position))).toEqual([40, 70, 25]);
+    expect(state.sectionPlane?.axis).toBe('y');
+  });
+
+  it('refuses enabled planes with no bounds, like the single plane', async () => {
+    await expect(new BCFNamespace().createViewpoint({ camera: CAMERA, sectionPlanes: THREE })).rejects.toThrow(MissingSectionBoundsError);
+  });
+});

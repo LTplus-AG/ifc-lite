@@ -159,7 +159,7 @@
    573 apps/viewer/src/utils/viewportUtils.ts
    788 packages/bcf/src/ids-reporter.ts
    806 packages/bcf/src/reader.ts
-   627 packages/bcf/src/viewpoint.ts
+   532 packages/bcf/src/viewpoint.ts
    753 packages/bcf/src/writer.ts
    439 packages/clash/src/bcf-bridge.ts
    433 packages/clash/src/duplicates.ts

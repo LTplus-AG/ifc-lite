@@ -71,6 +71,8 @@ export function clippingSectionPlanes(state: SectionVisibilityState & { inactive
 
 interface SectionWriterState extends SectionVisibilityState {
   clearSectionPlanes?: () => void;
+  addSectionPlane?: (axis: SectionPlaneAxis) => string | null;
+  activateSectionPlane?: (id: string) => void;
   setSectionPlaneAxis: (axis: SectionPlaneAxis) => void;
   setSectionPlanePosition: (position: number) => void;
   setSectionPlaneEnabled: (enabled: boolean) => void;
@@ -98,6 +100,27 @@ export function showSectionCut(
   state.setSectionPlanePosition(cut.position);
   if (getState().sectionPlane.flipped !== cut.flipped) state.flipSectionPlane();
   revealSectionCut(getState);
+}
+
+/**
+ * Put SEVERAL cardinal cuts on screen, replacing every plane (a BCF viewpoint with more than
+ * one clipping plane; #7545). The first becomes the active plane, the rest follow in order, so
+ * the chips read A, B, C as the viewpoint lists them. More than the viewer holds are dropped.
+ */
+export function showSectionCuts(
+  getState: () => SectionWriterState,
+  cuts: readonly { axis: SectionPlaneAxis; position: number; flipped: boolean }[],
+): void {
+  const [first, ...rest] = cuts;
+  if (!first) { clearSectionCut(getState); return; }
+  showSectionCut(getState, first);
+  const firstId = getState().sectionPlane.id;
+  for (const cut of rest) {
+    if (!getState().addSectionPlane?.(cut.axis)) break; // at the limit
+    getState().setSectionPlanePosition(cut.position);
+    if (getState().sectionPlane.flipped !== cut.flipped) getState().flipSectionPlane();
+  }
+  if (rest.length > 0) getState().activateSectionPlane?.(firstId);
 }
 
 /** Put the current cut ON SCREEN: clipping on, the hide toggle cleared, and

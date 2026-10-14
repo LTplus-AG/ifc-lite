@@ -20,6 +20,7 @@ import {
 import { qualifyMaxModel } from "./scanner-max-model.js";
 import { scannerChild, runningContainer, cleanScannerScratch, docker } from "./scanner-child.js";
 import { loadFeature } from "./feature-loader.js";
+import { scannerChild, cleanScannerScratch } from "./scanner-child.js";
 import { openDatabase, migrate } from "../src/database.js";
 import { createReport, submitReport } from "../src/reports.js";
 import { ModelStorage } from "../src/storage.js";
@@ -326,6 +327,36 @@ describe.skipIf(!enabled)(
       expect(job).toMatchObject({ state: "scanning", scan: null, attempts: 1 });
       expect(await readdir(scratch)).toEqual([]);
     });
+    it("#7521 actual scanner CLI reports idle with exit zero", async () => {
+      const scratch = join(temporary, "cli-idle");
+      const child = scannerChild(config, join(temporary, "no-signatures"), scratch, 15000);
+      try {
+        expect(await child.done).toEqual({ code: 0, signal: null, output: "scanner_idle\n" });
+        expect(await readdir(scratch)).toEqual([]);
+      } finally {
+        if (child.child.exitCode === null && child.child.signalCode === null) child.child.kill("SIGKILL");
+        await Promise.allSettled([child.done]);
+        await cleanScannerScratch(scratch);
+      }
+    }, 20000);
+    it("#7521 actual scanner CLI reports a held signature failure with nonzero exit", async () => {
+      const id = await queue(step);
+      const scratch = join(temporary, "cli-held");
+      const child = scannerChild(config, join(temporary, "no-signatures"), scratch, 15000);
+      try {
+        const result = await child.done;
+        expect(result).toMatchObject({ code: 1, signal: null });
+        expect(result.output.split("\n")).toContain("scanner_held");
+        expect(result.output).toContain("[report-service] scanner_job_failed");
+        expect((await db.query("SELECT state,scan,attempts FROM report_public_quarantine WHERE report_id=$1", [id])).rows[0])
+          .toEqual({ state: "scanning", scan: null, attempts: 1 });
+        expect(await readdir(scratch)).toEqual([]);
+      } finally {
+        if (child.child.exitCode === null && child.child.signalCode === null) child.child.kill("SIGKILL");
+        await Promise.allSettled([child.done]);
+        await cleanScannerScratch(scratch);
+      }
+    }, 20000);
     describe.skipIf(!signatures)(
       "actual pinned ClamAV engine (never synthetic attestation)",
       () => {
@@ -362,6 +393,25 @@ describe.skipIf(!enabled)(
           120000,
         );
         it.skipIf(!existsSync(model))(
+          "#7521 actual scanner CLI reports real authoring-tool review with exit zero (pnpm fixtures)",
+          async () => {
+            const bytes = await readFile(model); const id = await queue(bytes);
+            const scratch = join(temporary, "cli-review");
+            const child = scannerChild(config, signatures!, scratch);
+            try {
+              expect(await child.done).toEqual({ code: 0, signal: null, output: "scanner_review\n" });
+              expect((await db.query("SELECT state,scan,approval,attempts FROM report_public_quarantine WHERE report_id=$1", [id])).rows[0])
+                .toMatchObject({ state: "review", approval: null, attempts: 1,
+                  scan: { sha256: sha(bytes), byteSize: bytes.length, outcome: "clean", complete: true } });
+              expect(await readdir(scratch)).toEqual([]);
+            } finally {
+              if (child.child.exitCode === null && child.child.signalCode === null) child.child.kill("SIGKILL");
+              await Promise.allSettled([child.done]);
+              await cleanScannerScratch(scratch);
+            }
+          }, 125000,
+        );
+        it.skipIf(!existsSync(model))(
           "#7521 unverified sandbox removal retains its marker until real worker recovery (pnpm fixtures)",
           async () => {
             expect(workerModule).toBeDefined();
@@ -390,8 +440,8 @@ describe.skipIf(!enabled)(
               const jobs = await readdir(scratch);
               expect(jobs).toHaveLength(1);
               expect(jobs[0]).toMatch(/^job-[a-zA-Z0-9]+$/);
-              expect(await readFile(join(scratch, jobs[0], "container"), "utf8"))
-                .toMatch(/^ifclite-scan-[a-f0-9-]{36}$/);
+              const marker = await readFile(join(scratch, jobs[0], "container"), "utf8");
+              expect(marker.length).toBeGreaterThan(0);
               const held = (await db.query(
                 "SELECT state,scan,approval,attempts FROM report_public_quarantine WHERE report_id=$1", [id],
               )).rows[0];

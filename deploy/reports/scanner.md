@@ -54,6 +54,15 @@ for the existing isolated PostgreSQL/S3 test services. Set:
 Run `pnpm exec tsx apps/report-service/scripts/scan-public-once.ts update-signatures`
 before scanning, with no confidential files mounted. Then invoke the same script
 with `scan-once`. These commands never enable public admission or promotion.
+`scan-once` prints `scanner_idle` or `scanner_review` and exits zero when no
+eligible work exists or a complete clean scan reaches human review. It prints
+`scanner_held` and exits one when a scan cannot complete safely (including
+unavailable/stale signatures, changed source or interrupted engine work).
+Configuration and startup failures also exit one. A nonzero exit preserves the
+durable held lease for bounded retry; it does not approve, publish or erase the
+model. The CLI sets its exit status after the result so normal resource cleanup
+still runs.
+
 Do not run signature updates concurrently with a scan in a constrained runtime.
 
 The dedicated CI job provisions actual signed definitions and a real engine;

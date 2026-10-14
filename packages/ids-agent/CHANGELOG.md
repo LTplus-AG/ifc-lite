@@ -1,5 +1,13 @@
 # @ifc-lite/ids-agent
 
+## 0.2.6
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @ifc-lite/ids@3.3.6
+  - @ifc-lite/ids-authoring@0.2.6
+
 ## 0.2.5
 
 ### Patch Changes

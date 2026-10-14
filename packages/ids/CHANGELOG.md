@@ -1,5 +1,12 @@
 # @ifc-lite/ids
 
+## 3.3.6
+
+### Patch Changes
+
+- Updated dependencies [[`cee54c8`](https://github.com/LTplus-AG/ifc-lite/commit/cee54c8aed396f7425907962873be4343d956d37)]:
+  - @ifc-lite/parser@9.5.1
+
 ## 3.3.5
 
 ### Patch Changes

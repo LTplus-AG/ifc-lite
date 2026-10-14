@@ -351,3 +351,6 @@ pub(crate) fn promote_cutter_verts_onto_host_faces(cutter: &mut [Tri], host: &[T
     diag::record(diag::ALL, welded);
     welded
 }
+
+#[cfg(test)]
+mod tests;

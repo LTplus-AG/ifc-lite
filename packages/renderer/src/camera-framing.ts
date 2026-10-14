@@ -300,7 +300,7 @@ export function framePointTarget(state: CameraInternalState, point: Vec3): Frami
  * Frame selection - zoom to fit bounds while keeping current view direction.
  * This is what "Frame Selection" should do - zoom to fill screen.
  */
-export function frameBoundsTarget(state: CameraInternalState, min: Vec3, max: Vec3): FramingTarget | null {
+export function frameBoundsTarget(state: CameraInternalState, min: Vec3, max: Vec3, padding?: number): FramingTarget | null {
   // Bounds are the upstream input #2450 stopped short of (#2461). They are
   // not caller-authored constants: they come from geometry, and every AABB
   // accumulator in this package starts from `min = +Infinity, max =
@@ -319,7 +319,9 @@ export function frameBoundsTarget(state: CameraInternalState, min: Vec3, max: Ve
     return framePointTarget(state, center);
   }
 
-  return fitPoseFor(state, { min, max }, center, CAMERA_CONSTANTS.FRAME_PADDING_MULTIPLIER);
+  // `padding` is the multiple of the box the view fits (1 = edge to edge, 1.2 = the default 10 % each side); anything else is the default.
+  const fit = padding !== undefined && Number.isFinite(padding) && padding >= 1 ? padding : CAMERA_CONSTANTS.FRAME_PADDING_MULTIPLIER;
+  return fitPoseFor(state, { min, max }, center, fit);
 }
 
 /**

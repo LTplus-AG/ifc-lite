@@ -156,6 +156,10 @@ export interface SectionCapStyleOptions {
 }
 
 export interface SectionPlane {
+  /** Keys this plane's cap among the cutting planes beyond the first (#7545); unused on the primary plane. */
+  id?: string;
+  /** False hides the preview quad of the primary plane (the plane still clips and caps). Default true (#7545). */
+  showGizmo?: boolean;
   axis: SectionPlaneAxis;
   position: number; // 0-100 percentage of model bounds
   enabled: boolean;

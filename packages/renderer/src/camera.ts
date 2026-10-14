@@ -256,8 +256,8 @@ export class Camera {
    * Frame selection - zoom to fit bounds while keeping current view direction
    * This is what "Frame Selection" should do - zoom to fill screen
    */
-  async frameBounds(min: Vec3, max: Vec3, duration = 300): Promise<void> {
-    return this.animator.frameBounds(min, max, duration);
+  async frameBounds(min: Vec3, max: Vec3, duration = 300, padding?: number): Promise<void> {
+    return this.animator.frameBounds(min, max, duration, padding);
   }
 
   async zoomExtent(min: Vec3, max: Vec3, duration = 300): Promise<void> {

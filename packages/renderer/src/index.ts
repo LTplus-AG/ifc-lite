@@ -64,6 +64,7 @@ export { FederationRegistry, federationRegistry } from './federation-registry.js
 export type { ModelRange, GlobalIdLookup } from './federation-registry.js';
 export * from './types.js';
 export { MAX_EXTRA_CLIP_PLANES } from './extra-clip-planes.js';
+export type { SectionPlaneFrame, SectionFrameInput } from './section-plane-frames.js';
 export {
     resolveEnvironment,
     deriveSkyGradient,
@@ -158,6 +159,7 @@ import type {
 } from './types.js';
 import { VisualEnhancementResolver, livePostEffects } from './visual-enhancement.js';
 import { packClipBox } from './clip-box.js';
+import { resolveSectionPlaneFrames, type SectionFrameInput, type SectionPlaneFrame } from './section-plane-frames.js';
 import {
     MESH_FLAGS_BYTE_OFFSET,
     MESH_FLAG_RTE_DRAWABLE,
@@ -533,6 +535,7 @@ export class Renderer {
     private _activePickClipBox: ClipBox | null = null;
     /** Snapshot of the extra planes the last frame clipped against (#7545), mirrored by the pickers. */
     private _activePickExtraPlanes: ExtraClipPlane[] | null = null;
+    private _sectionFrameInput: SectionFrameInput | null = null; // what the last frame resolved the section planes from
 
     constructor(canvas: HTMLCanvasElement) {
         this.canvas = canvas;
@@ -1906,6 +1909,8 @@ export class Renderer {
             });
             const sectionPlaneData = sectionFrame.sectionPlaneData;
             const extraClipPlanes = sectionFrame.extraPlanes;
+            const { bounds: frameBounds } = sectionFrame;
+            this._sectionFrameInput = frameBounds && { primary: options.sectionPlane ?? null, extras: options.extraSectionPlanes ?? [], bounds: frameBounds, buildingRotation: options.buildingRotation };
             if (sectionFrame.bounds) {
                 // Store bounds for section plane visual and camera near/far.
                 // Two wrappers over the same min/max, exactly as before the
@@ -1929,9 +1934,7 @@ export class Renderer {
                     flipped: !!options.sectionPlane?.flipped,
                 }
                 : null;
-            this._activePickExtraPlanes = extraClipPlanes.length > 0
-                ? extraClipPlanes.map((p) => ({ normal: [...p.normal] as [number, number, number], distance: p.distance, flipped: p.flipped }))
-                : null;
+            this._activePickExtraPlanes = extraClipPlanes.length > 0 ? extraClipPlanes.map((p) => ({ normal: [...p.normal] as [number, number, number], distance: p.distance, flipped: p.flipped })) : null;
             this._activePickClipBox = options.clipBox?.enabled
                 ? {
                     enabled: true,
@@ -3041,6 +3044,8 @@ export class Renderer {
                 relativeToEyeFrame,
                 rteViewProj: relativeToEyeFrame.getViewProjection().m,
                 rteCamera: relativeToEyeFrame.getCameraWorld(),
+                extraPlanes: extraClipPlanes,
+                primaryPlane: sectionPlaneData && options.sectionPlane?.enabled ? { ...sectionPlaneData, flipped: options.sectionPlane.flipped === true } : null,
             });
 
             pass.end();
@@ -3367,15 +3372,25 @@ export class Renderer {
             tangent:   [number, number, number];
             bitangent: [number, number, number];
         },
+        planeId?: string,
     ): void {
-        this.overlays.uploadSection2DOverlay(polygons, lines, axis, position, sectionRange, flipped, customPlane);
+        this.overlays.uploadSection2DOverlay(polygons, lines, axis, position, sectionRange, flipped, customPlane, planeId);
     }
 
     /**
-     * Clear the 2D section overlay
+     * Clear the 2D section overlay: the primary plane's cap, or with `planeId`
+     * the cap of that cutting plane beyond the first (#7545).
      */
-    clearSection2DOverlay(): void {
-        this.overlays.clearSection2DOverlay();
+    clearSection2DOverlay(planeId?: string): void {
+        this.overlays.clearSection2DOverlay(planeId);
+    }
+
+    /** Every section plane's world frame (#7545), for the UI's tags and handle: the last frame's bounds and rotation, and `planes` (the caller's newest) when given. */
+    getSectionPlaneFrames(planes?: Pick<SectionFrameInput, 'primary' | 'extras'>): SectionPlaneFrame[] { const i = this._sectionFrameInput; return i ? resolveSectionPlaneFrames(planes ? { ...i, ...planes } : i) : []; }
+
+    /** Clear the caps of every cutting plane beyond the first whose id is not in `keep` (#7545). */
+    clearSection2DExtraOverlays(keep: readonly string[] = []): void {
+        this.overlays.clearSection2DExtraOverlays(keep);
     }
 
     /**

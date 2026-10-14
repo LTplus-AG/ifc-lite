@@ -28,6 +28,7 @@ import type { Section2DOverlayRenderer } from './section-2d-overlay.js';
 import { DEFAULT_CAP_STYLE, HATCH_PATTERN_IDS } from './section-cap-style.js';
 import type { RelativeToEyeFrame } from './relative-to-eye.js';
 import type { RenderOptions } from './types.js';
+import type { ExtraClipPlane } from './clip-types.js';
 
 /** World-space AABB in the renderer's Y-up frame. */
 export type ModelBounds = {
@@ -51,6 +52,10 @@ export interface SectionDrawContext {
      * look the same on a HiDPI buffer (#5383).
      */
     pixelRatio?: number;
+    /** The cutting planes beyond the first, resolved (#7545): each clips every cap but its own. */
+    extraPlanes?: readonly ExtraClipPlane[];
+    /** The primary plane as a clip, while it is cutting: it clips the extra planes' caps. */
+    primaryPlane?: ExtraClipPlane | null;
 }
 
 /**
@@ -66,11 +71,13 @@ export function drawSectionOverlays(
     ctx: SectionDrawContext,
 ): void {
     const { options, viewProj, modelBounds } = ctx;
+    const extras = ctx.extraPlanes ?? [];
 
     // Draw section plane visual BEFORE pass.end() (within same MSAA render pass)
     // Always show plane when sectionPlane options are provided (as preview or active)
     if (options.sectionPlane && gizmo && modelBounds) {
-        gizmo.draw(
+        // `showGizmo: false` hides only the preview quad: the plane still clips and caps (#7545).
+        if (options.sectionPlane.showGizmo !== false) gizmo.draw(
             pass,
             {
                 axis: options.sectionPlane.axis,
@@ -116,18 +123,51 @@ export function drawSectionOverlays(
                     max: o.max,
                     showFills,
                     showOutlines,
-                    capStyle: showFills ? {
-                        fillColor:   style.fillColor,
-                        strokeColor: style.strokeColor,
-                        patternId:   HATCH_PATTERN_IDS[style.pattern],
-                        spacingPx:   style.spacingPx * (ctx.pixelRatio ?? 1),
-                        angleRad:    style.angleRad,
-                        widthPx:     style.widthPx * (ctx.pixelRatio ?? 1),
-                        secondaryAngleRad: style.secondaryAngleRad,
-                    } : undefined,
-                }
+                    capStyle: showFills ? capDrawStyle(style, ctx.pixelRatio) : undefined,
+                },
+                extras,
             );
         }
 
     }
+
+    // The caps of the cutting planes beyond the first (#7545). They share the primary
+    // plane's cap style (one user preference), and each is clipped by every OTHER plane.
+    if (cap?.hasExtraGeometry() && modelBounds) {
+        const o = options.sectionPlane;
+        const showFills = o?.showCap !== false;
+        const style = { ...DEFAULT_CAP_STYLE, ...o?.capStyle };
+        const primary = ctx.primaryPlane ?? null;
+        cap.drawExtras(
+            pass,
+            {
+                axis: o?.axis ?? 'down',
+                position: o?.position ?? 0,
+                bounds: modelBounds,
+                viewProj,
+                rteViewProj: ctx.rteViewProj,
+                rteCamera: ctx.rteCamera,
+                showFills,
+                showOutlines: o?.showOutlines !== false,
+                capStyle: showFills ? capDrawStyle(style, ctx.pixelRatio) : undefined,
+            },
+            extras.flatMap((plane) => plane.id === undefined ? [] : [{
+                key: plane.id,
+                clippedBy: [...(primary ? [primary] : []), ...extras.filter((other) => other !== plane)],
+            }]),
+        );
+    }
+}
+
+/** The cap style as the overlay shader takes it: pattern id and pixel sizes scaled to the buffer. */
+function capDrawStyle(style: typeof DEFAULT_CAP_STYLE, pixelRatio = 1) {
+    return {
+        fillColor:   style.fillColor,
+        strokeColor: style.strokeColor,
+        patternId:   HATCH_PATTERN_IDS[style.pattern],
+        spacingPx:   style.spacingPx * pixelRatio,
+        angleRad:    style.angleRad,
+        widthPx:     style.widthPx * pixelRatio,
+        secondaryAngleRad: style.secondaryAngleRad,
+    };
 }

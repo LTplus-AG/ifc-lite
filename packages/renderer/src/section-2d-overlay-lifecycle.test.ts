@@ -11,6 +11,8 @@ import {
   SECTION_2D_UNIFORM_SLOT_COUNT,
   SECTION_2D_UNIFORM_SLOT_INDEX,
   SECTION_2D_MAX_LINE_PARTITIONS,
+  SECTION_2D_MAX_EXTRA_CAPS,
+  SECTION_2D_UNIFORM_FLOATS,
 } from './shaders/section-2d-overlay.wgsl.js';
 
 // WebGPU enum globals referenced by the renderer's bind-group visibility and
@@ -89,9 +91,10 @@ function makePass() {
       calls.push('setPipeline');
       pipelines.push(p);
     },
-    setBindGroup: (_i: number, _g: GPUBindGroup, dynamicOffsets?: number[]) => {
+    setBindGroup: (index: number, _g: GPUBindGroup, dynamicOffsets?: number[]) => {
       calls.push('setBindGroup');
-      binds.push(dynamicOffsets?.[0] ?? 0);
+      // Group 0 is the uniform record; group 1 (the planes that clip a cap, #7545) is its own concern.
+      if (index === 0) binds.push(dynamicOffsets?.[0] ?? 0);
     },
     setVertexBuffer: () => calls.push('setVertexBuffer'),
     setIndexBuffer: () => calls.push('setIndexBuffer'),
@@ -435,7 +438,8 @@ describe('SECTION_2D_UNIFORM_SLOT_INDEX (#3342)', () => {
     for (let index = 2; index < starts.length; index++) {
       assert.equal(starts[index] - starts[index - 1], SECTION_2D_MAX_LINE_PARTITIONS);
     }
-    assert.equal(SECTION_2D_UNIFORM_SLOT_COUNT, 1 + (starts.length - 1) * SECTION_2D_MAX_LINE_PARTITIONS);
+    // The last record range is the caps of the cutting planes beyond the first (#7545): one slot each, not a partition range.
+    assert.equal(SECTION_2D_UNIFORM_SLOT_COUNT, 1 + (starts.length - 2) * SECTION_2D_MAX_LINE_PARTITIONS + SECTION_2D_MAX_EXTRA_CAPS);
   });
 });
 
@@ -677,12 +681,12 @@ describe('Section2DOverlayRenderer: section-cut draw gating', () => {
 
   it('re-uploading the drawing destroys the previous cut buffers', () => {
     const { renderer, buffers } = newRenderer();
+    renderer.uploadDrawing([], [], 'front', 0);
+    // `init()` owns the shared uniform and clip buffers, which re-uploading the
+    // drawing must not touch: only what the next upload creates is "the cut".
+    const owned = buffers.length;
     renderer.uploadDrawing(TRIANGLE, [], 'front', 0);
-    // Everything except the shared uniform buffer, which `init()` owns and
-    // re-uploading the drawing must not touch. Sized by slot count now, so
-    // this can no longer be spelled `!== 160`.
-    const uniformSize = SECTION_2D_UNIFORM_SLOT_COUNT * 256;
-    const cutBuffers = buffers.filter((b) => b.__size !== uniformSize);
+    const cutBuffers = buffers.slice(owned);
     assert.ok(cutBuffers.length >= 2, 'fill vertex + index (+ outline) buffers');
     renderer.uploadDrawing(TRIANGLE, [], 'front', 0);
     for (const b of cutBuffers) {
@@ -725,7 +729,8 @@ describe('Section2DOverlayRenderer: one uniform record per draw (#2456)', () => 
 
     // One uniform write per draw site: the cap (which its fill and outline
     // share by design) plus the six families.
-    const uniformOffsets = writes.slice(uniformWritesBefore).map((w) => w.offset);
+    // (The cap also writes its clip block, #7545: 32 floats, a different buffer.)
+    const uniformOffsets = writes.slice(uniformWritesBefore).filter((w) => w.data.length === SECTION_2D_UNIFORM_FLOATS).map((w) => w.offset);
     const drawSites = FAMILIES.length + 1;
     assert.strictEqual(uniformOffsets.length, drawSites);
     assert.strictEqual(

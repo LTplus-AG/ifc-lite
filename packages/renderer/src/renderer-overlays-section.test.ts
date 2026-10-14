@@ -188,3 +188,34 @@ describe('the section overlay requests a frame when it changes geometry (#2442)'
         assert.strictEqual(h.renderRequests(), 0);
     });
 });
+
+/**
+ * #7545: an extra plane's cap that was uploaded EMPTY still holds one of the seven cap slots, so
+ * `clearSection2DExtraOverlays` must free it. The old guard asked whether any extra cap held
+ * geometry, so an empty one was never released and a real eighth cap was then refused.
+ */
+describe('clearing the extra caps frees every held slot, empty ones included (#7545)', () => {
+    function withExtras(keys: string[], hasGeometry: boolean) {
+        const h = makeHarness();
+        let kept: ReadonlySet<string> | null = null;
+        const overlay = (h.overlays as unknown as Record<string, Record<string, unknown>>)['section2DOverlayRenderer']!;
+        overlay.extraGeometryKeys = () => keys;
+        overlay.hasExtraGeometry = () => hasGeometry;
+        overlay.clearExtraGeometry = (keep: ReadonlySet<string>) => { kept = keep; };
+        return { h, kept: () => kept };
+    }
+
+    it('releases a cap that holds no geometry', () => {
+        const { h, kept } = withExtras(['empty'], false);
+        h.overlays.clearSection2DExtraOverlays([]);
+        assert.deepStrictEqual([...kept()!], [], 'asked the overlay to keep nothing, so the empty cap is dropped');
+        assert.strictEqual(h.renderRequests(), 1);
+    });
+
+    it('does nothing when no extra cap is held at all', () => {
+        const { h, kept } = withExtras([], false);
+        h.overlays.clearSection2DExtraOverlays([]);
+        assert.strictEqual(kept(), null);
+        assert.strictEqual(h.renderRequests(), 0, 'and wakes nothing');
+    });
+});

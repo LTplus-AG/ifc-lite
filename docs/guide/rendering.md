@@ -274,13 +274,20 @@ sectionPlane.distance = 12.5;
 renderer.render({
   sectionPlane: { axis: 'down', position: 40, enabled: true, flipped: false },
   extraSectionPlanes: [
-    { axis: 'side', position: 25, enabled: true, flipped: true },
-    { axis: 'front', position: 0, enabled: true, normal: [0.6, 0, 0.8], distance: 4 },
+    // `id` keys the plane's cap (see below).
+    { id: 'wing', axis: 'side', position: 25, enabled: true, flipped: true },
+    { id: 'face', axis: 'front', position: 0, enabled: true, normal: [0.6, 0, 0.8], distance: 4 },
   ],
 });
+
+// Each plane's world-space frame (anchor and rectangle) as the last frame resolved it,
+// for labels and drag handles drawn outside the canvas.
+const frames = renderer.getSectionPlaneFrames();
 ```
 
 The set can change from frame to frame (seven planes, then two, then none) without re-creating anything: the planes travel in each mesh's uniform, and a mesh drawn with no extra plane takes the same path it took before the option existed.
+
+A plane's cap comes from the cut polygons you upload for it: `renderer.uploadSection2DOverlay(polygons, lines, axis, position, range, flipped, customPlane, 'wing')`, and `renderer.clearSection2DOverlay('wing')` or `renderer.clearSection2DExtraOverlays(['face'])` to release caps. A cap is clipped by every other plane, never by its own. `sectionPlane.showGizmo = false` hides only the primary plane's preview quad.
 
 ### Section Plane Visualization
 

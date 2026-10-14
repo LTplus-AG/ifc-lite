@@ -5,17 +5,28 @@
 import { expect, test } from '@playwright/test';
 import { fileURLToPath } from 'node:url';
 import type { SectionPlanesReport } from './section-extra-planes.gpu.js';
+import { DEVICE_LOST_SIGNAL, skipForGpuDeviceLoss, watchGpuDeviceLoss } from './gpu-device-loss.js';
 import { startViewerDevServer } from './viewer-dev-server.js';
 
 test('colour, GPU pick and CPU raycast agree through 0 -> 7 -> 2 -> 0 -> 7 cutting planes (#7545)', async ({ page }, info) => {
+  const gpu = await watchGpuDeviceLoss(page);
   const server = await startViewerDevServer('section-extra-planes');
   try {
     await page.goto(new URL('/oauth/autodesk/callback', server.url).href);
     const moduleUrl = `/@fs/${fileURLToPath(new URL('./section-extra-planes.gpu.ts', import.meta.url))}`;
-    const report: SectionPlanesReport = await page.evaluate(async url => {
-      const module: { runSectionExtraPlanesWitness(): Promise<SectionPlanesReport> } = await import(url);
-      return module.runSectionExtraPlanesWitness();
-    }, moduleUrl);
+    // Hosted SwiftShader can drop Dawn's instance under a full Renderer; that is the environment, not the
+    // clip. A strict run (a real GPU, the evidence that counts) never skips and fails with the loss annotated.
+    const report: SectionPlanesReport = await gpu.requireLiveGpu('the section-planes witness', async () => {
+      try {
+        return await page.evaluate(async url => {
+          const module: { runSectionExtraPlanesWitness(): Promise<SectionPlanesReport> } = await import(url);
+          return module.runSectionExtraPlanesWitness();
+        }, moduleUrl);
+      } catch (error) {
+        if (DEVICE_LOST_SIGNAL.test(String(error))) skipForGpuDeviceLoss('the section-planes witness', String(error).slice(0, 300));
+        throw error;
+      }
+    });
     await info.attach('section-extra-planes-report', { body: JSON.stringify(report, null, 2), contentType: 'application/json' });
     expect(report.errors, 'real GPU validation errors').toEqual([]);
     expect(report.gpuErrors, 'renderer-observed GPU errors').toBe(0);

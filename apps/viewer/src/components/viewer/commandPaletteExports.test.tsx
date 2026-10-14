@@ -23,7 +23,8 @@ import { GeometryProcessor } from '@ifc-lite/geometry';
 import type { BimContext } from '@ifc-lite/sdk';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { BimReactContext } from '@/sdk/BimProvider.js';
-import { advance, cleanup, render } from '@/test/render.js';
+import { advance, cleanup, render, waitFor } from '@/test/render.js';
+import { settle } from '@/test/settle';
 import { downloadedNames, clearDownloads } from '@/test/download-capture';
 import { resolveEnglish } from '@/i18n/registry';
 import { useViewerStore } from '@/store';
@@ -83,15 +84,20 @@ function PaletteRunnerHarness() {
   return paletteRunner.dialog;
 }
 
-/** Click the palette row whose label starts with `prefix`, then let its deferred action run. */
-async function runRow(prefix: RegExp): Promise<void> {
+/**
+ * Click the palette row whose label starts with `prefix`, wait until `ended()`
+ * reports the action's outcome, then let any trailing work settle so the
+ * caller's "exactly one" / "none" assertions are not judged early. The row's
+ * action runs on a requestAnimationFrame hop, so a fixed sleep would bound the
+ * export by wall time on a loaded runner.
+ */
+async function runRow(prefix: RegExp, ended: () => boolean): Promise<void> {
   const row = [...document.body.querySelectorAll<HTMLElement>('[role="option"]')]
     .find((el) => prefix.test(el.textContent ?? ''));
   assert.ok(row, `no palette row matching ${prefix}`);
-  await act(async () => {
-    row.click();
-    await new Promise((resolve) => setTimeout(resolve, 50));
-  });
+  act(() => { row.click(); });
+  await waitFor(ended, `the ${prefix} row reports its outcome`);
+  await act(() => settle(`the ${prefix} row settles`));
 }
 
 beforeEach(() => {
@@ -182,7 +188,7 @@ describe('command palette exports (#5601)', () => {
     const quiet = mock.method(console, 'error', () => {});
     try {
       renderPalette();
-      await runRow(/^Export JSON/);
+      await runRow(/^Export JSON/, () => errors.length > 0);
     } finally {
       spy.mock.restore();
       analytics.mock.restore();
@@ -206,7 +212,7 @@ describe('command palette exports (#5601)', () => {
     });
     try {
       renderPalette();
-      await runRow(/^Export JSON/);
+      await runRow(/^Export JSON/, () => events.some(({ event }) => event === 'export_completed'));
     } finally {
       spy.mock.restore();
     }
@@ -272,8 +278,9 @@ describe('command palette exports (#5601)', () => {
       ifcDataStore: { source: { byteLength: 4 } } as unknown as IfcDataStore,
     });
     renderPalette();
-    await runRow(/^Export GLB/);
     const title = resolveEnglish('geometryExport.glb.dialogTitle');
+    await runRow(/^Export GLB/, () => [...document.body.querySelectorAll('[role="dialog"]')]
+      .some((d) => d.textContent?.includes(title)));
     const dialogs = [...document.body.querySelectorAll('[role="dialog"]')];
     assert.ok(
       dialogs.some((d) => d.textContent?.includes(title)),
@@ -291,7 +298,7 @@ describe('command palette exports (#5601)', () => {
     const spy = mock.method(toast, 'info', (message: string) => { infos.push(message); });
     try {
       renderPalette();
-      await runRow(/^Export CSV: Entities/);
+      await runRow(/^Export CSV: Entities/, () => infos.length > 0);
     } finally {
       spy.mock.restore();
     }
@@ -303,7 +310,7 @@ describe('command palette exports (#5601)', () => {
     const spy = mock.method(toast, 'info', (message: string) => { infos.push(message); });
     try {
       renderPalette();
-      await runRow(/^Export JSON/);
+      await runRow(/^Export JSON/, () => infos.length > 0);
     } finally {
       spy.mock.restore();
     }

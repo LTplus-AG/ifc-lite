@@ -31,6 +31,7 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { act } from 'react';
+import { settle as settleTurns } from '@/test/settle.js';
 import { createRoot, type Root } from 'react-dom/client';
 import { StringTable, EntityTableBuilder, PropertyTableBuilder, QuantityTableBuilder, RelationshipGraphBuilder } from '@ifc-lite/data';
 import { BinaryCacheWriter, computeSourceFingerprint, type CacheDataStore } from '@ifc-lite/cache';
@@ -58,6 +59,8 @@ const realDigest = subtle.digest.bind(subtle);
 let sourceBytesDigested = 0;
 let holdDigests = false;
 let held: Array<() => void> = [];
+/** Digests issued and not yet settled (held ones included): `settle` waits them out. */
+let digestsInFlight = 0;
 function installDigestSpy(): void {
   Object.defineProperty(subtle, 'digest', {
     configurable: true,
@@ -69,10 +72,12 @@ function installDigestSpy(): void {
       const copy = ArrayBuffer.isView(data)
         ? new Uint8Array(data.buffer, data.byteOffset, data.byteLength).slice()
         : new Uint8Array(data).slice();
-      if (!holdDigests) return realDigest(algorithm, copy);
+      digestsInFlight++;
+      const done = () => { digestsInFlight--; };
+      if (!holdDigests) return realDigest(algorithm, copy).finally(done);
       return new Promise<ArrayBuffer>((resolve, reject) => {
         held.push(() => { realDigest(algorithm, copy).then(resolve, reject); });
-      });
+      }).finally(done);
     },
   });
 }
@@ -175,12 +180,20 @@ async function seedCacheEntry(file: File, fullSourceHash: string): Promise<strin
   return key;
 }
 
-/** Let fire-and-forget work (revalidation, a reload it starts) settle. */
-async function settle(ms = 400): Promise<void> {
-  await act(async () => { await new Promise((resolve) => setTimeout(resolve, ms)); });
+/**
+ * Let fire-and-forget work (revalidation, a reload it starts, a second hash
+ * pass) run out before a "did not happen" assertion. A fixed 100-400 ms sleep
+ * bounded that work by wall time, so on a loaded runner those assertions
+ * could pass only because the work had not run yet. This counts event-loop
+ * turns with no digest in flight instead (digests run on libuv's thread pool,
+ * the one hop a turn count cannot bound), which does not stretch with load.
+ */
+async function settle(message: string): Promise<void> {
+  await act(() => settleTurns(message, { ready: () => digestsInFlight === 0, turns: 100 }));
 }
 
-async function waitFor(condition: () => boolean, label: string, timeoutMs = 3000): Promise<void> {
+/** Poll until `condition` holds; the deadline is only a safety net, never the expected wait. */
+async function waitFor(condition: () => boolean, label: string, timeoutMs = 15_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (!condition()) {
     if (Date.now() > deadline) assert.fail(`timed out waiting for: ${label}`);
@@ -261,7 +274,7 @@ describe('useIfcLoader — the full-source hash runs beside the load, not in fro
       await act(async () => { second = hookApi!.loadFile(new File([newer as BlobPart], 'newer.glb')); });
       releaseDigests();
       await act(async () => { await Promise.allSettled([first, second]); });
-      await settle(100);
+      await settle('the superseded hash settles');
       assert.ok(!seen.has(referenceIdentity(older)), 'the superseded load never wrote its identity');
       assert.equal(useViewerStore.getState().models.size, 1);
       assert.equal(onlyModel()?.name, 'newer.glb');
@@ -286,7 +299,7 @@ describe('useIfcLoader — a warm hit validates against the load\'s one hash (#7
     const key = await seedCacheEntry(file, referenceIdentity(bytes));
     sourceBytesDigested = 0;
     await act(async () => { await hookApi!.loadFile(file); });
-    await settle();
+    await settle('the warm hit revalidates');
     assert.equal(onlyModel()?.cacheState, 'hit', 'the entry was served');
     assert.ok(await getCached(key), 'a byte-identical source keeps its entry (no purge, no reload)');
     assert.equal(progressPhases.filter((p) => p === 'Checking cache').length, 1, 'no reload was started');
@@ -301,7 +314,8 @@ describe('useIfcLoader — a warm hit validates against the load\'s one hash (#7
     // An mtime-preserved, length-preserving edit: the entry was written for other bytes.
     const key = await seedCacheEntry(file, referenceIdentity(stepBytes(CACHE_SIZE_THRESHOLD + 4096, 0x41)));
     await act(async () => { await hookApi!.loadFile(file); });
-    await settle();
+    await waitFor(() => progressPhases.filter((p) => p === 'Checking cache').length >= 2, 'the mismatching entry triggers a reload');
+    await settle('the reload runs out');
     assert.equal(await getCached(key), null, 'the stale entry is purged');
     assert.equal(progressPhases.filter((p) => p === 'Checking cache').length, 2, 'the file is reloaded');
   });
@@ -312,7 +326,7 @@ describe('useIfcLoader — a warm hit validates against the load\'s one hash (#7
     // Written by an older viewer: a bare whole-file SHA-256 the load can no longer compare.
     const key = await seedCacheEntry(file, sha256(bytes));
     await act(async () => { await hookApi!.loadFile(file); });
-    await settle();
+    await settle('the unverifiable entry is dropped and the file parsed');
     assert.notEqual(onlyModel()?.cacheState, 'hit', 'an entry the load cannot validate is not served');
     assert.ok(progressPhases.includes('Starting geometry streaming'), 'the file is parsed instead');
     assert.equal(await getCached(key), null, 'the unverifiable entry is dropped so the reparse can rewrite it');
@@ -351,7 +365,7 @@ describe('useIfcLoader — a primary load with drawing persistence mounted hashe
   async function loadAndRestore(bytes: Uint8Array, name: string): Promise<void> {
     await act(async () => { await hookApi!.loadFile(new File([bytes as BlobPart], name)); });
     await waitFor(() => hasPersistedMarkupEntryFor(onlyModel()!.id) !== 'pending', 'the drawing restore to settle');
-    await settle(100); // a second pass, if one were started, would have been counted by now
+    await settle('a second hash pass, if one were started, completes'); // and so would have been counted
   }
 
   it('the hash-pass counter reads 1 per primary load with no legacy entry', async () => {

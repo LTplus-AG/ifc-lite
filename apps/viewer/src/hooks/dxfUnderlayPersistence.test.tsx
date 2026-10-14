@@ -14,7 +14,7 @@
 
 import 'fake-indexeddb/auto';
 import '@/test/setup-dom.js';
-import { afterEach, beforeEach, describe, it } from 'node:test';
+import { after, afterEach, before, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { act } from 'react';
@@ -22,7 +22,9 @@ import { createRoot, type Root } from 'react-dom/client';
 import { useViewerStore } from '@/store';
 import type { FederatedModel } from '@/store';
 import type { DxfUnderlayState } from '@/store/slices/drawing2DSlice.js';
-import { useDrawing2DPersistence } from './useDrawing2DPersistence.js';
+import { hasPersistedMarkupEntryFor, useDrawing2DPersistence } from './useDrawing2DPersistence.js';
+import { waitFor } from '@/test/render.js';
+import { settle, trackDigests } from '@/test/settle.js';
 import { clearAllDrawing2DEntries } from '@/store/slices/drawing2DSlice.persistence.js';
 import { placementSourceIdentity } from '@/lib/model-placement/source-identity';
 
@@ -141,13 +143,27 @@ async function mount(): Promise<void> {
   });
 }
 
+/**
+ * Let the active model's restore run out: its content hash (digests on the
+ * libuv thread pool) and then fake-indexeddb's open + transaction hops. A
+ * fixed 40 x 5 ms bounded that by wall time, so on a loaded runner the
+ * negative assertions below ("not restored onto the other model", "the move
+ * has not started") could pass only because nothing had run yet. Wait for
+ * the hash decision itself, then for event-loop turns with no digest in
+ * flight, neither of which stretches with load.
+ */
 async function flushDeep(): Promise<void> {
-  await act(async () => {
-    for (let i = 0; i < 40; i++) {
-      await new Promise((r) => setTimeout(r, 5));
-    }
-  });
+  await waitFor(() => {
+    const activeModelId = useViewerStore.getState().activeModelId;
+    return !activeModelId || hasPersistedMarkupEntryFor(activeModelId) !== 'pending';
+  }, "the active model's restore decision");
+  // 100 turns: the legacy-key move chains several IndexedDB requests, each a hop.
+  await act(() => settle('the restore and its IndexedDB work', { turns: 100 }));
 }
+
+let restoreDigest: () => void = () => {};
+before(() => { restoreDigest = trackDigests(); });
+after(() => restoreDigest());
 
 beforeEach(async () => {
   await rawClear();
@@ -214,9 +230,8 @@ describe('dxfUnderlays restore on model activate', () => {
     useViewerStore.getState().setActiveModel('premature-model-a');
     assert.deepStrictEqual(useViewerStore.getState().dxfUnderlays, [], 'restore must not happen synchronously before the hash/IDB lookup resolves');
 
-    // flushDeep, not flush: this restore chains a hash computation AND an
-    // IndexedDB open+transaction, one more async hop than the localStorage
-    // markup path flush()'s two ticks were tuned for.
+    // This restore chains a hash computation AND an IndexedDB
+    // open+transaction, which `flushDeep` waits out.
     await flushDeep();
     assert.deepStrictEqual(useViewerStore.getState().dxfUnderlays.map((u) => u.id), ['saved-c']);
   });
@@ -431,12 +446,13 @@ describe('dxfUnderlays saved under the legacy whole-file key (#7035)', () => {
     return { file, legacy, identity, reads };
   }
 
-  async function until(condition: () => Promise<boolean>, label: string): Promise<void> {
-    for (let i = 0; i < 400; i++) {
-      if (await condition()) return;
+  /** Poll an async condition; the deadline is only a safety net, never the expected wait. */
+  async function until(condition: () => Promise<boolean>, label: string, timeoutMs = 15_000): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    while (!(await condition())) {
+      if (Date.now() > deadline) assert.fail(`timed out after ${timeoutMs} ms waiting for: ${label}`);
       await act(async () => { await new Promise((r) => setTimeout(r, 5)); });
     }
-    assert.fail(`timed out waiting for: ${label}`);
   }
 
   it('moves them to the identity key and restores them on that load', async () => {

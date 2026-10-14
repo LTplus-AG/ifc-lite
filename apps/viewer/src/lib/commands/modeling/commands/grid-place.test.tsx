@@ -130,7 +130,11 @@ describe('grid.place (#6232 D3)', () => {
     act(() => { writeCommandField(index('spacingU'), 1e-12); commandPointerMove(at(100, 50)); });
     const started = Date.now();
     const verdict = GRID_PLACE.validate!(gesture(), ctx());
-    assert.ok(Date.now() - started < 500, 'validation returns at once');
+    // 100 m at 1e-12 m is 1e14 axes: enumerating them would run for days, so
+    // any bound far below the test timeout separates the two. 2 s (validation
+    // itself takes well under 1 ms) leaves room for a CPU-contended runner;
+    // the wall time is a proxy here, not the property.
+    assert.ok(Date.now() - started < 2_000, 'validation returns at once');
     assert.deepEqual(verdict, { ok: false, reasonKey: 'grid.tooManyAxes' });
     assert.deepEqual(GRID_PLACE.ghost!(gesture(), ctx()), []);
   });

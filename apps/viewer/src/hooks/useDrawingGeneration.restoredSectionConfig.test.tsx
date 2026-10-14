@@ -44,13 +44,14 @@ import type { Drawing2D } from '@ifc-lite/drawing-2d';
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { useViewerStore } from '@/store';
 import type { FederatedModel } from '@/store';
-import { useDrawing2DPersistence } from './useDrawing2DPersistence.js';
+import { hasPersistedMarkupEntryFor, useDrawing2DPersistence } from './useDrawing2DPersistence.js';
 import { useDrawingGeneration } from './useDrawingGeneration.js';
 import {
   saveDrawing2DEntry,
   clearAllDrawing2DEntries,
 } from '@/store/slices/drawing2DSlice.persistence.js';
 import { placementSourceIdentity } from '@/lib/model-placement/source-identity';
+import { waitFor } from '@/test/render.js';
 
 // ─── Fixture ─────────────────────────────────────────────────────────────
 
@@ -183,12 +184,9 @@ async function mount(): Promise<void> {
   });
 }
 
-async function flushDeep(): Promise<void> {
-  await act(async () => {
-    for (let i = 0; i < 40; i++) {
-      await new Promise((r) => setTimeout(r, 5));
-    }
-  });
+/** Wait for `modelId`'s localStorage restore to conclude (a slice read and digests, not a fixed time). */
+async function restoreDecided(modelId: string): Promise<void> {
+  await waitFor(() => hasPersistedMarkupEntryFor(modelId) !== 'pending', `${modelId}'s restore decision`);
 }
 
 function entityIds(drawing: Drawing2D | null): Set<number> {
@@ -242,7 +240,7 @@ describe('restore feeding generation — MUTATION TARGET: issue #4153 gap', () =
     await mount();
 
     await act(async () => { useViewerStore.getState().setActiveModel('model-a'); });
-    await flushDeep();
+    await restoreDecided('model-a');
 
     assert.ok(runGenerate, 'harness never rendered — useDrawingGeneration was not called');
     await act(async () => { await runGenerate!(); });

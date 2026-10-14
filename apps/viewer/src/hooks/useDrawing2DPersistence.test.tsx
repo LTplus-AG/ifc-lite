@@ -37,7 +37,7 @@
  */
 
 import '@/test/setup-dom.js';
-import { afterEach, beforeEach, describe, it } from 'node:test';
+import { after, afterEach, before, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -47,6 +47,8 @@ import { useDrawing2DPersistence, notifyDrawing2DSectionConfig, hasPersistedMark
 import { loadDrawing2DEntry, clearAllDrawing2DEntries } from '@/store/slices/drawing2DSlice.persistence.js';
 import { placementSourceIdentity } from '@/lib/model-placement/source-identity';
 import { computeSourceFingerprint } from '@ifc-lite/cache';
+import { waitFor } from '@/test/render.js';
+import { settle, trackDigests } from '@/test/settle.js';
 import type { Measure2DResult } from '@/store/slices/drawing2DSlice.js';
 import type { DrawingSheet, SectionConfig } from '@ifc-lite/drawing-2d';
 
@@ -127,39 +129,24 @@ async function mount(): Promise<void> {
 /**
  * Let the active model's restore settle. These stub records carry no
  * placement identity, so the hook derives one from the file's bytes (#7035):
- * a slice read and two digests, which no fixed number of ticks bounds. Wait
- * for the decision itself (bounded), then flush what it scheduled.
+ * a slice read and digests (SHA-256 over every 1 MiB chunk for the 4-5 MB
+ * buffers below), which no fixed number of ticks or milliseconds bounds on a
+ * loaded runner (an earlier fixed-tick version failed on CI: a save fired
+ * before `hashCache` had resolved). Wait for the decision itself, then let
+ * what it scheduled run out: `settle` counts only event-loop turns with no
+ * digest in flight, so neither step has a wall-clock budget.
  */
 async function flush(): Promise<void> {
-  await act(async () => {
-    for (let i = 0; i < 400; i++) {
-      const activeModelId = useViewerStore.getState().activeModelId;
-      if (!activeModelId || hasPersistedMarkupEntryFor(activeModelId) !== 'pending') break;
-      await new Promise((r) => setTimeout(r, 5));
-    }
-    await new Promise((r) => setTimeout(r, 0));
-    await new Promise((r) => setTimeout(r, 0));
-  });
+  await waitFor(() => {
+    const activeModelId = useViewerStore.getState().activeModelId;
+    return !activeModelId || hasPersistedMarkupEntryFor(activeModelId) !== 'pending';
+  }, 'the active model\'s restore decision');
+  await act(() => settle('the restore\'s follow-up work'));
 }
 
-/**
- * Like {@link flush}, but for the two large-buffer (4-5MB) tests below that
- * hash real content (the placement identity: SHA-256 over every 1 MiB
- * chunk, each read through `Blob.slice()`) rather than the ~256-byte
- * fixtures every other test in this file uses. `flush`'s fixed two ticks are
- * plenty for that near-instant case but proved NOT enough for a real
- * multi-MB hash under CI's slower/noisier CPU (observed CI failure:
- * `loadDrawing2DEntry` returned `null` right after a save that fired before
- * `hashCache` had resolved) — this ticks far more generously (bounded, not
- * unbounded) rather than weakening any assertion to tolerate that.
- */
-async function flushDeep(): Promise<void> {
-  await act(async () => {
-    for (let i = 0; i < 40; i++) {
-      await new Promise((r) => setTimeout(r, 5));
-    }
-  });
-}
+let restoreDigest: () => void = () => {};
+before(() => { restoreDigest = trackDigests(); });
+after(() => restoreDigest());
 
 beforeEach(() => {
   clearAllDrawing2DEntries();
@@ -449,9 +436,9 @@ describe('fingerprint gap collision — MUTATION TARGET: sampled-key data leak',
     await mount();
 
     await act(async () => { useViewerStore.getState().setActiveModel('gap-model-a'); });
-    // flushDeep, not flush: this activation hashes a real 4MB buffer, which
-    // can take longer than a couple of ticks under a loaded CI runner.
-    await flushDeep();
+    // This activation hashes a real 4MB buffer, which can take far longer
+    // than a couple of ticks under a loaded CI runner: `flush` waits for it.
+    await flush();
     await act(async () => {
       useViewerStore.setState({ measure2DResults: [sampleMeasure('mA')] });
     });
@@ -471,7 +458,7 @@ describe('fingerprint gap collision — MUTATION TARGET: sampled-key data leak',
     assert.strictEqual(entryA.measure2DResults[0].id, 'mA');
 
     await act(async () => { useViewerStore.getState().setActiveModel('gap-model-b'); });
-    await flushDeep();
+    await flush();
 
     const stateForB = useViewerStore.getState();
     assert.deepStrictEqual(
@@ -533,7 +520,7 @@ describe('restoration-ordering race — MUTATION TARGET: cross-model sectionConf
     // a real saved sectionConfig on disk, and (leaving B below) an entry in
     // `liveMarkupCache` for its markup arrays.
     await act(async () => { useViewerStore.getState().setActiveModel('race-model-b'); });
-    await flushDeep();
+    await flush();
     await act(async () => { notifyDrawing2DSectionConfig('race-model-b', configB); });
     const entryAfterFirstSave = loadDrawing2DEntry(hashB, DEFAULTS);
     assert.ok(entryAfterFirstSave, `setup: expected an entry under model B's hash (${hashB}) after its first notify`);
@@ -542,7 +529,7 @@ describe('restoration-ordering race — MUTATION TARGET: cross-model sectionConf
     // Visit A — this is the "previous model" an in-flight generation is
     // still computing FOR when the user switches away from it.
     await act(async () => { useViewerStore.getState().setActiveModel('race-model-a'); });
-    await flushDeep();
+    await flush();
 
     // The A -> B leg: bare, not wrapped in `act`, so this hook's own restore
     // effect has not run yet even though `setActiveModel`'s synchronous
@@ -576,7 +563,7 @@ describe('restoration-ordering race — MUTATION TARGET: cross-model sectionConf
 
     // Let the restore effect settle and confirm the IN-MEMORY config used
     // for the next save is B's real one too, not the corrupted one.
-    await flushDeep();
+    await flush();
     await act(async () => { notifyDrawing2DSectionConfig('race-model-b', configB); });
     const entryAfterSettling = loadDrawing2DEntry(hashB, DEFAULTS);
     assert.ok(entryAfterSettling, `expected model B's entry under its hash (${hashB}) after the restore effect settled`);

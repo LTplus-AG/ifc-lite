@@ -15,7 +15,7 @@ import { afterEach, beforeEach, describe, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { createBCFProject, createBCFTopic } from '@ifc-lite/bcf';
-import { cleanup, render } from '@/test/render.js';
+import { cleanup, render, waitFor } from '@/test/render.js';
 import { resolve } from '@/i18n/registry.js';
 import { useViewerStore } from '@/store/index.js';
 import { toast } from '@/components/ui/toast';
@@ -34,11 +34,9 @@ async function importFile(container: HTMLElement, file: File): Promise<void> {
   await act(async () => {
     input.dispatchEvent(new Event('change', { bubbles: true }));
   });
-  for (let i = 0; i < 200 && useViewerStore.getState().bcfLoading; i++) {
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 10));
-    });
-  }
+  // readBCF (unzip + XML parse) is async; `bcfLoading` is set synchronously
+  // by the change handler and cleared when the import has fully landed.
+  await waitFor(() => !useViewerStore.getState().bcfLoading, 'the BCF import finishes');
 }
 
 beforeEach(() => {

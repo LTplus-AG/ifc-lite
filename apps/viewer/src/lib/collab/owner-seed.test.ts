@@ -25,6 +25,7 @@ import { runOwnerSeed, type CollabSeedModel, type OwnerSeedDeps, type OwnerSeedR
 import { hydrateGeometryFromRoom } from './geometry-sync.js';
 import { readGeometrySeedMarker } from './geometry-seed-signal.js';
 import { roomSlotRef } from './model-slot-ref.js';
+import { settle, waitUntil } from '@/test/settle.js';
 import type { CollabSeedProgress } from './seed-phase.js';
 import { parseIfcxViewerModel } from '@/hooks/ingest/viewerModelIngest.js';
 import {
@@ -314,22 +315,24 @@ describe('runOwnerSeed (#4446)', () => {
     const h = await harness();
     try {
       let markerAtAsk: ReturnType<typeof readGeometrySeedMarker> | undefined;
+      let asked = false;
       let release: (ok: boolean) => void = () => {};
       const gate = new Promise<boolean>((resolve) => { release = resolve; });
       const pending = h.run({
         confirmRelay: async () => {
           markerAtAsk = readGeometrySeedMarker(h.session.doc);
+          asked = true;
           return gate;
         },
       });
       // The marker is the seed's last write: it is already in the doc when
       // the relay is asked, and nothing settles before the relay answers.
-      await new Promise((r) => setTimeout(r, 50));
+      await waitUntil(() => asked, 'the relay is asked to confirm');
       assert.deepEqual(h.phases, ['structure', 'geometry', 'confirming']);
       assert.equal(markerAtAsk?.seeded, 2, 'the marker was written before the relay check');
       let settled = false;
       void pending.then(() => { settled = true; });
-      await new Promise((r) => setTimeout(r, 20));
+      await settle('the seed stays parked on the unanswered relay');
       assert.equal(settled, false, 'no outcome (so no invite) while the relay has not confirmed');
       release(true);
       assert.deepEqual(await pending, { phase: 'ready', failure: null });

@@ -22,7 +22,11 @@ it('refuses stale worker-less LandXML parsing before initializing WASM (#5041)',
   }
 });
 
-it('terminates LandXML worker parsing within the cancellation polling bound (#5041)', async () => {
+it('terminates LandXML worker parsing within the cancellation polling bound (#5041)', async (t) => {
+  // The bound is the 25 ms cancellation poll, judged on a mocked interval
+  // clock: a wall-clock budget (< 250 ms) could be exceeded by a loaded
+  // runner with correct code, and could not tell one poll from ten.
+  t.mock.timers.enable({ apis: ['setInterval'] });
   const originalWorker = globalThis.Worker;
   let terminated = 0;
   class PendingWorker {
@@ -36,13 +40,16 @@ it('terminates LandXML worker parsing within the cancellation polling bound (#50
     value: PendingWorker as unknown as typeof Worker,
   });
   let current = true;
-  const started = performance.now();
   try {
     const pending = parseLandXmlViewerModelAsync(new ArrayBuffer(8), () => current);
+    let outcome: unknown;
+    pending.then(() => { outcome = 'resolved'; }, (error: unknown) => { outcome = error; });
     current = false;
-    await assert.rejects(pending, /LandXML parsing cancelled/);
+    t.mock.timers.tick(25);
+    await Promise.resolve();
+    assert.ok(outcome instanceof Error, 'cancellation must not wait for synchronous WASM completion: one 25 ms poll rejects');
+    assert.match(outcome.message, /LandXML parsing cancelled/);
     assert.equal(terminated, 1);
-    assert.ok(performance.now() - started < 250, 'cancellation must not wait for synchronous WASM completion');
   } finally {
     Object.defineProperty(globalThis, 'Worker', { configurable: true, value: originalWorker });
   }

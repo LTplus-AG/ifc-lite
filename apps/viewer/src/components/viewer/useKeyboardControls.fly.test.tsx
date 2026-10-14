@@ -14,7 +14,7 @@
 
 import '@/test/setup-dom.js';
 
-import { afterEach, describe, it } from 'node:test';
+import { after, afterEach, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { useRef } from 'react';
 import { render, cleanup } from '@/test/render.js';
@@ -66,7 +66,34 @@ function Harness(props: { tool: string; moves: Moves }) {
   return null;
 }
 
-const frames = () => new Promise((r) => setTimeout(r, 120));
+// Both movement loops run on requestAnimationFrame. A fixed sleep buys however
+// many frames the machine manages, and on a loaded runner that can be none,
+// which turns "no movement while flying" vacuously green. Frames are driven by
+// hand instead, so every phase below is judged over the same FRAMES ticks.
+const FRAMES = 10;
+const queued = new Map<number, FrameRequestCallback>();
+let nextFrame = 0;
+let clock = 0;
+const realRaf = globalThis.requestAnimationFrame;
+const realCancel = globalThis.cancelAnimationFrame;
+before(() => {
+  globalThis.requestAnimationFrame = (callback) => { queued.set(++nextFrame, callback); return nextFrame; };
+  globalThis.cancelAnimationFrame = (id) => { queued.delete(id); };
+});
+after(() => {
+  globalThis.requestAnimationFrame = realRaf;
+  globalThis.cancelAnimationFrame = realCancel;
+});
+function frames(count = FRAMES): void {
+  for (let i = 0; i < count; i++) {
+    const due = [...queued.values()];
+    queued.clear();
+    // Never behind the walker's own performance.now() start: its step is
+    // (now - last) and must stay positive.
+    clock = Math.max(clock, performance.now()) + 16;
+    for (const callback of due) callback(clock);
+  }
+}
 const key = (type: 'keydown' | 'keyup', k: string) =>
   window.dispatchEvent(new KeyboardEvent(type, { key: k, bubbles: true, cancelable: true }));
 
@@ -74,6 +101,7 @@ describe('useKeyboardControls while a right-button flight is live (#4868)', () =
   afterEach(() => {
     setFlySpeedState({ active: false });
     cleanup();
+    queued.clear();
     useViewerStore.setState({ activeTool: 'select' });
   });
 
@@ -82,20 +110,21 @@ describe('useKeyboardControls while a right-button flight is live (#4868)', () =
       const moves: Moves = { walk: 0, pan: 0 };
       useViewerStore.setState({ activeTool: tool });
       render(<Harness tool={tool} moves={moves} />);
-      await frames(); // let walk mode set the walker down first: that write is not W's
+      frames(); // let walk mode set the walker down first: that write is not W's
       const idle = moves[channel];
       key('keydown', k); // held BEFORE the right press, so fly never got to swallow it
-      await frames();
+      frames();
       assert.ok(moves[channel] > idle, `precondition: a held ${k} moves the camera`);
 
       setFlySpeedState({ active: true }); // right button pressed: fly owns the camera
-      await frames();
+      frames();
       const during = moves[channel];
-      await frames();
+      frames();
+      assert.ok(queued.size > 0, 'the loop stays alive through the flight');
       assert.equal(moves[channel], during, 'the keyboard loop must not add its own movement to the flight');
 
       setFlySpeedState({ active: false }); // right button released, key still held
-      await frames();
+      frames();
       assert.ok(moves[channel] > during, 'the still-held key moves again once the flight ends');
       key('keyup', k);
     });

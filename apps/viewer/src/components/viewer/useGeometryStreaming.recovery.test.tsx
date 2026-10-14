@@ -13,7 +13,8 @@ import { Camera } from '../../../../../packages/renderer/src/camera.js';
 import { useViewerStore } from '@/store';
 import { publishLoadTrace } from '@/lib/perf/activeLoadTrace.js';
 import { appearanceInstanceScene } from '@/test/appearance-instance-scene.js';
-import { cleanup, render } from '@/test/render.js';
+import { cleanup, render, waitFor } from '@/test/render.js';
+import { settle } from '@/test/settle.js';
 import { useGeometryStreaming } from './useGeometryStreaming.js';
 import { buildShardBytes } from '@/test/instanced-shard-fixture.js';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
@@ -98,6 +99,16 @@ function fixture(federated = false) {
 
 const indices = (scene: ReturnType<typeof fixture>['scene']) =>
   scene.getBatchedMeshes().reduce((sum, batch) => sum + batch.indexCount, 0);
+const finalized = (tracer: ReturnType<typeof createLoadTracer>) =>
+  tracer.latest()?.spans.filter((span) => span.name === 'scene.finalize' && span.end !== null).length ?? 0;
+/**
+ * The finalizer is a chain of setTimeout(0) / requestAnimationFrame
+ * (setImmediate under happy-dom) hops, so a fixed 20 ms sleep bounds it by
+ * wall time and a negative assertion behind one passes vacuously on a loaded
+ * runner. Positive outcomes wait on their condition; "nothing else happens"
+ * waits out event-loop turns instead, which do not stretch with load.
+ */
+const quiesce = (message: string) => act(() => settle(message));
 
 afterEach(() => { cleanup(); useViewerStore.getState().clearAllModels(); });
 
@@ -119,11 +130,12 @@ it('finalizes a stream that ended during device loss after recovery (#6993)', as
   native.available(false);
   await act(async () => { update({ meshes: native.meshes, streaming: true, epoch: 0 }); });
   await act(async () => { update({ meshes: native.meshes, streaming: false, epoch: 0 }); });
-  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
+  await quiesce('a lost device schedules no finalize');
   assert.equal(tracer.latest()?.spans.filter((span) => span.name === 'scene.finalize' && span.end !== null).length, 0);
   native.available(true);
   await act(async () => { update({ meshes: native.meshes, streaming: false, epoch: 1 }); });
-  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
+  await waitFor(() => finalized(tracer) > 0, 'the recovered stream finalizes');
+  await quiesce('no second finalization follows');
   assert.equal(indices(native.scene), 6);
   assert.equal(tracer.latest()?.spans.filter((span) => span.name === 'scene.finalize' && span.end !== null).length, 1,
     'one successful finalization follows the missed stream end');
@@ -237,7 +249,8 @@ it('restarts finalization cancelled by a recovery epoch while the queue is drain
   await act(async () => { update((current) => ({ ...current, streaming: false })); });
   await act(async () => { update((current) => ({ ...current, epoch: 1 })); });
   native.scene.flushPending(native.device, native.pipeline);
-  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 80)); });
+  await waitFor(() => finalized(tracer) > 0, 'the cancelled queue-drain attempt resumes');
+  await quiesce('no second finalization follows');
   assert.equal(tracer.latest()?.spans.filter((span) => span.name === 'scene.finalize' && span.end !== null).length, 1,
     'the cancelled queue-drain attempt must resume and complete');
   assert.equal(indices(native.scene), 6);
@@ -327,20 +340,22 @@ it('retains a failed actual async finalizer until a later retry event, preservin
     await act(async () => {
       update({ meshes: native.meshes, streaming: false, epoch: 0 });
     });
-    await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)); });
+    await waitFor(() => tracer.latest()?.spans.some(span => span.name === 'scene.finalize' && span.attrs?.error === true) === true
+      && !native.scene.isFinalizeInProgress(), 'the refused finalize attempt fails and rolls back');
     assert.ok(refused > 0, 'real finalizer attempted allocation');
     const failures = tracer.latest()?.spans.filter(span => span.name === 'scene.finalize' && span.attrs?.error === true);
     assert.equal(failures?.length, 1, 'actual failed completion remains reported');
     assert.equal(native.scene.hasStreamingFragments(), true, 'Scene rollback preserves its real fragments');
     assert.equal(native.scene.isFinalizeInProgress(), false);
     const attempts = refused;
-    await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)); });
+    await quiesce('a failed finalize is not retried in the background');
     assert.equal(refused, attempts, 'no unbounded background retry loop');
     native.device.createBuffer = original;
     await act(async () => {
       update({ meshes: native.meshes, streaming: false, epoch: 1 });
     });
-    await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)); });
+    await waitFor(() => !native.scene.hasStreamingFragments() && !native.scene.isFinalizeInProgress(), 'the recovery retry finalizes');
+    await quiesce('no further finalize attempt follows');
     assert.equal(indices(native.scene), 6);
     assert.equal(native.scene.hasStreamingFragments(), false);
     assert.equal(tracer.latest()?.spans.filter(span => span.name === 'scene.finalize' && span.attrs?.error === true).length, 1);
@@ -369,7 +384,7 @@ it('ignores an old completion acknowledgement while the next stream owns its que
   };
   try {
     await act(async () => { update({ meshes: native.meshes, streaming: false, epoch: 0 }); });
-    await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)); });
+    await waitFor(() => actualCompleted, "the first stream's real finalize completes");
     assert.equal(actualCompleted, true);
     assert.equal(native.scene.isFinalizeInProgress(), false);
     assert.equal(indices(native.scene), 6);
@@ -380,7 +395,8 @@ it('ignores an old completion acknowledgement while the next stream owns its que
     await act(async () => { update({ meshes: nextMeshes, streaming: false, epoch: 0 }); });
     await act(async () => { release(); await held; });
     native.scene.flushPending(native.device, native.pipeline);
-    await act(async () => { await new Promise(resolve => setTimeout(resolve, 40)); });
+    await waitFor(() => finalized(tracer) > 0 && !native.scene.isFinalizeInProgress(), "the next stream's finalize completes");
+    await quiesce('no second finalization follows');
     assert.equal(native.scene.hasStreamingFragments(), false);
     assert.equal(indices(native.scene), 9);
     assert.equal(tracer.latest()?.spans.filter(span => span.name === 'scene.finalize' && span.end !== null).length, 1,
@@ -409,15 +425,17 @@ it('retains ownership while an actual failed finalizer acknowledgement is held a
   native.device.createBuffer = () => { throw new RangeError('Controlled actual finalize allocation refusal'); };
   try {
     await act(async () => { update({ meshes: native.meshes, streaming: false, epoch: 0 }); });
-    await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)); });
+    await waitFor(() => failed, 'the real finalize attempt fails');
     assert.equal(failed, true, 'actual allocation failed and Scene rollback completed');
     assert.equal(native.scene.hasStreamingFragments(), true);
     native.device.createBuffer = allocate;
     await act(async () => { update((current) => ({ ...current, epoch: 1 })); });
-    await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)); });
+    await quiesce('the recovery rerender settles while the acknowledgement is held');
     assert.equal(calls, 1, 'a recovery rerender cannot launch a second attempt before the first acknowledgement');
     await act(async () => { release(); await held; });
-    await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)); });
+    await waitFor(() => calls >= 2 && !native.scene.hasStreamingFragments() && !native.scene.isFinalizeInProgress(),
+      'the acknowledged failure is retried to completion');
+    await quiesce('no third attempt follows');
     assert.equal(calls, 2, 'the recovery already observed during the real failed attempt retries after acknowledgement');
     assert.equal(native.scene.hasStreamingFragments(), false);
     assert.equal(indices(native.scene), 6);
@@ -442,7 +460,7 @@ it('ignores an actual successful finalizer acknowledgement after the renderer ow
   native.renderer.clearCaches = () => { obsoleteCacheMutations++; };
   try {
     await act(async () => { update({ meshes: native.meshes, streaming: false, epoch: 0 }); });
-    await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)); });
+    await waitFor(() => completed, 'the real finalize completes');
     assert.equal(completed, true, 'the real Scene already completed allocation and consolidation');
     assert.equal(native.scene.hasStreamingFragments(), false);
     assert.equal(indices(native.scene), 6);
@@ -452,7 +470,7 @@ it('ignores an actual successful finalizer acknowledgement after the renderer ow
     const replacement = { ...native.renderer } as unknown as Renderer;
     await act(async () => { update(current => ({ ...current, renderer: replacement })); });
     await act(async () => { release(); await held; });
-    await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)); });
+    await quiesce('the stale acknowledgement is delivered');
     assert.equal(calls, 1);
     assert.equal(obsoleteCacheMutations, 0, 'a stale successful callback must not clear the old renderer caches');
     assert.equal(indices(native.scene), 6);

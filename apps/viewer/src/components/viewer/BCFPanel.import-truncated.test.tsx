@@ -20,6 +20,7 @@ import { describe, it, beforeEach, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
+import { waitFor } from '@/test/render.js';
 import JSZip from 'jszip';
 import { createBCFProject, createBCFTopic, writeBCF } from '@ifc-lite/bcf';
 import { useViewerStore } from '@/store/index.js';
@@ -50,11 +51,9 @@ async function selectFile(input: HTMLInputElement, file: File): Promise<void> {
   await act(async () => {
     input.dispatchEvent(new Event('change', { bubbles: true }));
   });
-  for (let i = 0; i < 200 && useViewerStore.getState().bcfLoading; i++) {
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 10));
-    });
-  }
+  // readBCF (unzip + XML parse) is async; `bcfLoading` is set synchronously
+  // by the change handler and cleared when the import has fully landed.
+  await waitFor(() => !useViewerStore.getState().bcfLoading, 'the BCF import finishes');
 }
 
 function markupFile(guid: string, title: string): string {

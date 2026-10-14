@@ -72,13 +72,30 @@ test('#4177 bounds a silent parser by cancellation and a deadline', async () => 
   assert.equal(destroyed, 2);
 });
 
-test('#4177 a nonsettling destroy cannot extend the overall deadline', async () => {
-  const stuck: PdfTextBackend = { load() { return {
+test('#4177 a nonsettling destroy cannot extend the overall deadline', async (t) => {
+  // On a mocked clock rather than a wall-clock budget (< 100 ms), which a
+  // loaded runner could exceed with correct code. Stricter, too: the
+  // rejection must land at the deadline itself, with no further clock
+  // advance, so a cleanup that waited even 1 ms of its own fails here.
+  // setImmediate stays real: it only drains promise continuations.
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
+  const turn = () => new Promise<void>((resolve) => setImmediate(resolve));
+  let loaded = false;
+  const stuck: PdfTextBackend = { load() { loaded = true; return {
     promise: new Promise(() => undefined), destroy: () => new Promise(() => undefined),
   }; } };
-  const started = Date.now();
-  await assert.rejects(extractPdfText(new Blob(['%PDF hangs']), stuck, { timeoutMs: 5 }), /timed out/);
-  assert.ok(Date.now() - started < 100, 'cleanup must not outlive the extraction deadline');
+  let outcome: unknown;
+  void extractPdfText(new Blob(['%PDF hangs']), stuck, { timeoutMs: 5 }).then(
+    () => { outcome = 'resolved'; },
+    (error: unknown) => { outcome = error; },
+  );
+  // The deadline timer is armed in the same continuation that calls load().
+  for (let i = 0; i < 1_000 && !loaded; i++) await turn();
+  assert.ok(loaded, 'the extraction reached the backend');
+  t.mock.timers.tick(5);
+  for (let i = 0; i < 20 && outcome === undefined; i++) await turn();
+  assert.ok(outcome instanceof Error, 'cleanup must not outlive the extraction deadline');
+  assert.match(outcome.message, /timed out/);
 });
 
 test('#4177 destroys the PDF task when text extraction fails', async () => {

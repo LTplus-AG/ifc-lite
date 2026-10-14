@@ -15,6 +15,7 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { waitFor } from '@/test/render.js';
+import { settle } from '@/test/settle.js';
 import { useViewerStore } from '@/store';
 import { useModelUrlAutoload } from './useModelUrlAutoload.js';
 
@@ -182,8 +183,18 @@ describe('?model= autoload (#5851)', () => {
     let fetchCalls = 0;
     globalThis.fetch = (async () => { fetchCalls += 1; return new Response(); }) as typeof fetch;
 
+    // The hook reads ?model= only once the WebGPU probe has answered, so a
+    // fixed sleep could end before that read. Wait for the probe's answer,
+    // then let the re-render and effect it triggers run out.
+    let probed = false;
+    Object.defineProperty(navigator, 'gpu', {
+      configurable: true,
+      value: { requestAdapter: async () => { probed = true; return { features: new Set(), limits: {} }; } },
+    });
+
     mount();
-    await act(async () => { await new Promise((r) => setTimeout(r, 10)); });
+    await waitFor(() => probed, 'the WebGPU adapter probe answers');
+    await act(() => settle('the autoload effect runs after the probe'));
 
     assert.equal(fetchCalls, 0);
     assert.equal(useViewerStore.getState().error, null);

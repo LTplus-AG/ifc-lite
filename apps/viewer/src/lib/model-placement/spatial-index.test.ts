@@ -14,6 +14,7 @@ import { buildSpatialIndexForModel, invalidateSpatialIndex } from '@/utils/loadi
 import { emptyPlacementState } from './state';
 import { buildPlacedSpatialIndex, createPlacementIndexSync } from './spatial-index';
 import { modelIndices } from './model-indices';
+import { settle } from '@/test/settle';
 
 /** The production BVH yields between build phases; await publication, not a microtask count. */
 async function waitForPublication<T>(read: () => T | undefined, description: string): Promise<T> {
@@ -25,16 +26,29 @@ async function waitForPublication<T>(read: () => T | undefined, description: str
   throw new Error(`Timed out waiting for ${description}`);
 }
 
+/**
+ * Let the placement sync's 200 ms debounce timer fire and any build it starts
+ * finish, so a following "nothing was (re)built" assertion is not vacuous on
+ * a loaded runner. Node fires timers in deadline order, so this 250 ms timer,
+ * armed after the debounce, can never run before it however slow the machine
+ * is; the BVH build it would start yields only through setTimeout(0), which
+ * `settle`'s event-loop turns bound without a wall-clock budget.
+ */
+async function pastDebounce(message: string): Promise<void> {
+  await new Promise<void>(resolve => setTimeout(resolve, 250));
+  await settle(message);
+}
+
 it('publishes spatial queries at the moved position and prevents a late source build restoring old coordinates (#4226)', async () => {
   const model = fixtureModel('m'), data = model.ifcDataStore!;
   const mesh: MeshData = { expressId: 1, positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
     indices: new Uint32Array([0, 1, 2]), normals: new Float32Array(9), color: [1, 1, 1, 1] };
   useViewerStore.setState({ ...fixtureModels(model), modelPlacement: emptyPlacementState() });
-  buildSpatialIndexForModel([mesh], 'm', data);
+  const oldBuild = buildSpatialIndexForModel([mesh], 'm', data);
   const s = useViewerStore.getState();
   s.openReposition(['m']); s.previewModelTranslation([10, 20, 30]); s.applyModelTranslation();
   invalidateSpatialIndex(data);
-  await new Promise<void>(resolve => setTimeout(resolve, 0));
+  await oldBuild; // the superseded build has completed, so the next line is not vacuous
   assert.equal(data.spatialIndex, undefined, 'completion of the old build cannot republish source coordinates');
   buildSpatialIndexForModel([mesh], 'm', data);
   const index = await waitForPublication(
@@ -70,7 +84,7 @@ it('waits for GPU shard drain and indexes pure instances for primary and federat
   const unsubscribe = useViewerStore.subscribe((state, previous) => sync.update(state, previous));
   try {
     sync.refreshMissing(useViewerStore.getState());
-    await new Promise<void>(resolve => setTimeout(resolve, 250));
+    await pastDebounce('a pending shard schedules no index build');
     assert.equal(primary.ifcDataStore!.spatialIndex, undefined, 'pending primary shard must block a flat-only index');
     assert.equal(federated.ifcDataStore!.spatialIndex, undefined, 'pending federated shard must block a flat-only index');
     useViewerStore.getState().clearInstancedShards();
@@ -82,7 +96,7 @@ it('waits for GPU shard drain and indexes pure instances for primary and federat
     assert.deepEqual(second.queryAABB({ min: [20, 0, 0], max: [21, 1, 0] }), []);
     assert.equal(materializations, 2, 'each model materializes once');
     useViewerStore.setState({ selectedEntityId: 156 });
-    await new Promise<void>(resolve => setTimeout(resolve, 250));
+    await pastDebounce('a selection change schedules no rebuild');
     assert.equal(materializations, 2, 'ordinary selection updates do not rematerialize instances');
     useViewerStore.getState().appendInstancedShards('primary', [new ArrayBuffer(1)]);
     assert.equal(primary.ifcDataStore!.spatialIndex, undefined, 'a late shard withdraws the incomplete index');
@@ -152,7 +166,7 @@ it('indexes a drained instance when its data store arrives afterward (#5275)', a
   try {
     sync.refreshMissing(useViewerStore.getState());
     useViewerStore.getState().clearInstancedShards();
-    await new Promise<void>(resolve => setTimeout(resolve, 250));
+    await pastDebounce('a model without a data store builds no index');
     const data = fixtureModel('late-store').ifcDataStore!;
     assert.equal(data.spatialIndex, undefined);
     useViewerStore.getState().updateModel('late-store', { ifcDataStore: data });

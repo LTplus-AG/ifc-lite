@@ -48,22 +48,26 @@ describe('MemoryAccounting', () => {
     assert.equal(acc.snapshot()[0].geometryBytes, 3_500_000);
   });
 
-  it('computes parse/geometry overlap from phase ranges', async () => {
+  it('computes parse/geometry overlap from phase ranges', (t) => {
+    // A controlled clock instead of real sleeps: a loaded runner stretched
+    // the 10/20/10 ms sleeps unpredictably, so the old check could only be a
+    // loose 5..200 ms window. With the clock under the test's control the
+    // overlap is exactly the 20 ms both phases were open.
+    let now = 1_000;
+    t.mock.method(performance, 'now', () => now);
     const acc = new MemoryAccounting();
     acc.reset();
-    // Two phases overlap by ~10 ms (use sleeps small enough to be reliable)
     acc.beginPhase('parser-worker');
-    await new Promise(r => setTimeout(r, 10));
+    now += 10;
     acc.beginPhase('geometry');
-    await new Promise(r => setTimeout(r, 20));
+    now += 20;
     acc.endPhase('parser-worker');
-    await new Promise(r => setTimeout(r, 10));
+    now += 10;
     acc.endPhase('geometry');
     acc.recordPhase({ phase: 'done' });
 
     const summary = acc.summary();
-    assert.ok(summary.parseGeometryOverlapMs > 5, `expected overlap > 5, got ${summary.parseGeometryOverlapMs}`);
-    assert.ok(summary.parseGeometryOverlapMs < 200, `expected reasonable overlap, got ${summary.parseGeometryOverlapMs}`);
+    assert.equal(summary.parseGeometryOverlapMs, 20);
   });
 
   it('formatSummary produces a one-line summary', () => {

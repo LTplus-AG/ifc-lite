@@ -10,7 +10,7 @@ import { act } from 'react';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { PropertyValueType } from '@ifc-lite/data';
 import { IfcParser } from '@ifc-lite/parser';
-import { cleanup, click, render } from '@/test/render';
+import { cleanup, click, render, waitFor } from '@/test/render';
 import { fixtureModel } from '@/test/store-fixture';
 import { useViewerStore } from '@/store';
 import { ChangesPanel } from './ChangesPanel';
@@ -73,7 +73,8 @@ for (const count of [1, 2]) test(`#5902 Changes drawer lists property and Bulk r
   click(button(ui, 'Jump to IfcWall #101 in A'));
   assert.equal(useViewerStore.getState().selectedEntityId, 101);
   assert.deepEqual(useViewerStore.getState().selectedEntity, { modelId: 'A', expressId: 101 });
-  await new Promise(resolve => setTimeout(resolve, 65));
+  // Framing runs on a trailing 50 ms timer: wait for it rather than a wall-clock budget.
+  await waitFor(() => frames > 0, 'the jump frames the selection');
   assert.equal(frames, 1);
 
   const older = ui.querySelectorAll('ol > li')[1];
@@ -107,7 +108,7 @@ test('#5902 authored Bonsai IFC wall is selected and its older property edit is 
   assert.equal(ui.querySelectorAll('ol > li').length, 2);
   click(button(ui, `Jump to IfcWall #${wall} in Bonsai`));
   assert.deepEqual(useViewerStore.getState().selectedEntity, { modelId: 'Bonsai', expressId: wall });
-  await new Promise(resolve => setTimeout(resolve, 65));
+  await waitFor(() => framed > 0, 'the jump frames the selection');
   assert.equal(framed, 1);
   click(button(ui.querySelectorAll('ol > li')[1] as HTMLElement, 'Revert'));
   assert.equal(view.getPropertyValue(wall, 'Pset_Changes', 'Status'), null);

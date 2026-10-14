@@ -17,6 +17,8 @@ import {
   PutObjectCommand,
   DeleteObjectCommand,
 } from "@aws-sdk/client-s3";
+import { qualifyMaxModel } from "./scanner-max-model.js";
+import { scannerChild, runningContainer, cleanScannerScratch, docker } from "./scanner-child.js";
 import { loadFeature } from "./feature-loader.js";
 import { openDatabase, migrate } from "../src/database.js";
 import { createReport, submitReport } from "../src/reports.js";
@@ -420,6 +422,107 @@ describe.skipIf(!enabled)(
             }
           }, 150000,
         );
+        it.skipIf(!existsSync(model) || process.env.REPORT_SCANNER_MAX_MODEL !== "true")(
+          "#7495 selected exact 1 GiB model reaches real scanner review without changing caps (pnpm fixtures)",
+          async () => {
+            await qualifyMaxModel({ db, storage, config, owner, signatures: signatures!,
+              model, temporary, trackReport: (id) => reports.push(id) });
+          }, 20 * 60 * 1000,
+        );
+        it.skipIf(!existsSync(model))(
+          "#7495 actual scanner container death never attests clean and removes scratch (pnpm fixtures)",
+          async () => {
+            const id = await queue(await readFile(model));
+            const scratch = join(temporary, `scratch-container-death-${randomUUID()}`);
+            const orchestrator = scannerChild(config, signatures!, scratch);
+            try {
+              const container = await runningContainer(scratch);
+              expect(orchestrator.child.exitCode).toBeNull();
+              expect(orchestrator.child.signalCode).toBeNull();
+              await docker(["kill", "--signal=KILL", container]);
+              expect(await orchestrator.done).toMatchObject({
+                code: 0, signal: null, output: "scanner_held\n",
+              });
+              expect((await db.query(
+                "SELECT state,scan,approval,attempts FROM report_public_quarantine WHERE report_id=$1", [id],
+              )).rows[0]).toMatchObject({ state: "blocked", scan: null, approval: null, attempts: 1 });
+              await expect(docker(["inspect", container])).rejects.toThrow(/No such object/);
+              expect(await readdir(scratch)).toEqual([]);
+            } finally {
+              if (orchestrator.child.exitCode === null && orchestrator.child.signalCode === null) orchestrator.child.kill("SIGKILL");
+              await Promise.allSettled([orchestrator.done]);
+              await cleanScannerScratch(scratch);
+            }
+          }, 120000,
+        );
+        for (const withdraw of [false, true]) {
+          it.skipIf(!existsSync(model))(
+            `#7495 actual orchestrator SIGKILL cleans orphan and ${withdraw ? "preserves withdrawal" : "retries only an expired durable lease"} (pnpm fixtures)`,
+            async () => {
+              const bytes = await readFile(model);
+              const id = await queue(bytes);
+              const scratch = join(temporary, `scratch-crash-${randomUUID()}`);
+              const first = scannerChild(config, signatures!, scratch);
+              const children = [first];
+              const restart = () => {
+                const child = scannerChild(config, signatures!, scratch);
+                children.push(child);
+                return child.done;
+              };
+              let container: string | undefined;
+              try {
+                container = await runningContainer(scratch);
+                const before = (await db.query(
+                  "SELECT state,scan,attempts,lease_id FROM report_public_quarantine WHERE report_id=$1", [id],
+                )).rows[0];
+                expect(before).toMatchObject({ state: "scanning", scan: null, attempts: 1 });
+                expect(before.lease_id).toBeTruthy();
+                first.child.kill("SIGKILL");
+                expect((await first.done).signal).toBe("SIGKILL");
+                // Docker owns the running sandbox; killing its orchestrator must
+                // actually leave it alive, otherwise this is not a crash witness.
+                expect((await docker(["inspect", "--format", "{{.State.Running}}", container])).stdout.trim()).toBe("true");
+                expect((await readdir(scratch)).length).toBe(1);
+                if (withdraw) await withdrawPublicModel(db, id, owner.id);
+                const restarted = await restart();
+                expect(restarted).toMatchObject({ code: 0, signal: null, output: "scanner_idle\n" });
+                await expect(docker(["inspect", container])).rejects.toThrow(/No such object/);
+                expect(await readdir(scratch)).toEqual([]);
+                const held = (await db.query(
+                  "SELECT state,scan,attempts,lease_id FROM report_public_quarantine WHERE report_id=$1", [id],
+                )).rows[0];
+                if (withdraw) {
+                  expect(held).toMatchObject({ state: "revoked", scan: null, attempts: 1, lease_id: null });
+                  return;
+                }
+                expect(held).toEqual(before);
+                // Advance only this fixture's durable deadline; no claim of a
+                // twenty-minute wall-clock wait or synthetic engine verdict.
+                await db.query("UPDATE report_public_quarantine SET lease_until=now()-interval '1 second' WHERE report_id=$1", [id]);
+                expect(await restart()).toMatchObject({
+                  code: 0, signal: null, output: "scanner_review\n",
+                });
+                const retried = (await db.query(
+                  "SELECT state,scan,attempts,lease_id,approval FROM report_public_quarantine WHERE report_id=$1", [id],
+                )).rows[0];
+                expect(retried).toMatchObject({ state: "review", attempts: 2, approval: null,
+                  scan: { sha256: sha(bytes), byteSize: bytes.length, outcome: "clean", complete: true } });
+                expect(retried.lease_id).not.toBe(before.lease_id);
+                expect(await readdir(scratch)).toEqual([]);
+              } finally {
+                for (const spawned of children) {
+                  if (spawned.child.exitCode === null && spawned.child.signalCode === null) spawned.child.kill("SIGKILL");
+                }
+                await Promise.allSettled(children.map((spawned) => spawned.done));
+                await cleanScannerScratch(scratch);
+                if (container) {
+                  const owned = await docker(["ps", "-aq", "--filter", `name=^/${container}$`]);
+                  if (owned.stdout.trim()) await docker(["rm", "-f", container]);
+                }
+              }
+            }, 180000,
+          );
+        }
         it("#7495 canonical EICAR cannot enter the public STEP pipeline", async () => {
           expect(workerModule).toBeDefined();
           // Harmless industry-standard AV test string; never execute it.

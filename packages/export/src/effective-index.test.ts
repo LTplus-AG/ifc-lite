@@ -127,6 +127,36 @@ describe('EffectiveEntityIndex agrees with itself', () => {
     expect(store.entityIndex.byType.has('IFCBEAM')).toBe(false);
   });
 
+  it('builds byType in work linear in the created entities, not quadratic', async () => {
+    // Counted, not timed: a wall-clock bound is the flake class #3224 records.
+    // Copying a bucket on every append iterates the growing array each time,
+    // ~N^2/2 array-iterator steps for N creates; growing one copy is ~N.
+    const store = await parseBase();
+    const { view, editor } = newView(store);
+    const N = 2000;
+    for (let i = 0; i < N; i++) {
+      editor.addEntity('IfcWall', [guid(`lin${i}`), null, `W${i}`, null, null, null, null, null, null]);
+    }
+    const index = getEffectiveEntityIndex(store, view, true);
+
+    const arrayIteratorProto = Object.getPrototypeOf([][Symbol.iterator]()) as { next: () => unknown };
+    const realNext = arrayIteratorProto.next;
+    let steps = 0;
+    arrayIteratorProto.next = function countedNext(this: unknown) {
+      steps++;
+      return realNext.call(this);
+    };
+    let walls: number[] | undefined;
+    try {
+      walls = index.byType.get('IFCWALL');
+    } finally {
+      arrayIteratorProto.next = realNext;
+    }
+
+    expect(walls).toHaveLength(2 + N);
+    expect(steps).toBeLessThan(4 * N);
+  });
+
   it('reads outgoing references off an authored payload, never off bytes it has none of', async () => {
     const store = await parseBase();
     const { view, editor } = newView(store);

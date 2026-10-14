@@ -227,15 +227,26 @@ describe('adding, choosing and removing planes (#7545)', () => {
     assert.deepEqual(chipNames(), ['A']);
   });
 
-  it('arrow keys move the selection between chips and wrap', () => {
+  it('arrow keys move the selection AND the focus between chips and wrap, key after key', () => {
     renderTool();
     click(buttonByText(bar(), 'Down (Z)'));
     addPlane('Side (X)');
     addPlane('Front (Y)');
-    press(chips()[2]!, 'ArrowRight');
+    const focused = () => (document.activeElement as HTMLElement | null)?.textContent?.trim();
+    act(() => chips()[2]!.focus());
+    // Each press goes to whatever holds focus, as the keyboard delivers it: if focus stayed on the
+    // old chip, the second press would start from the wrong index.
+    const arrow = (key: string) => press(document.activeElement as HTMLElement, key);
+    arrow('ArrowRight');
     assert.equal(selectedChip()?.textContent?.trim(), 'A', 'wraps past the last chip');
-    press(chips()[0]!, 'ArrowLeft');
-    assert.equal(selectedChip()?.textContent?.trim(), 'C');
+    assert.equal(focused(), 'A', 'and focus follows');
+    arrow('ArrowRight');
+    assert.equal(selectedChip()?.textContent?.trim(), 'B');
+    assert.equal(focused(), 'B');
+    arrow('ArrowLeft');
+    arrow('ArrowLeft');
+    assert.equal(selectedChip()?.textContent?.trim(), 'C', 'wraps the other way');
+    assert.equal(focused(), 'C');
   });
 });
 
@@ -279,6 +290,34 @@ describe('the plane menu (#7545)', () => {
     click(menuItem('Show plane'));
     assert.equal(s().sectionPlane.showGizmo, false);
     assert.equal(s().sectionPlane.enabled, false, 'hiding the quad does not touch cutting');
+  });
+
+  it('Direction changes what the selected plane is, keeping its name and place; Face… re-picks it instead of adding', () => {
+    renderTool();
+    click(buttonByText(bar(), 'Down (Z)'));
+    addPlane('Side (X)');
+    const side = s().sectionPlane.id;
+    openPlaneMenu();
+    assert.equal(menuItem('Side (X)').getAttribute('aria-checked'), 'true', 'the plane\'s current direction is marked');
+    click(menuItem('Front (Y)'));
+    assert.equal(s().sectionPlane.id, side, 'same plane');
+    assert.equal(s().sectionPlane.axis, 'front');
+    assert.deepEqual(chipNames(), ['A', 'B'], 'name and order are untouched');
+
+    openPlaneMenu();
+    assert.equal(menuItem('Front (Y)').getAttribute('aria-checked'), 'true');
+    click(menuItem('Face…'));
+    assert.equal(s().sectionPickMode, true);
+    assert.equal(s().sectionPickTarget, 'replace', 'the pick replaces this plane; it does not add one');
+    act(() => s().setSectionPlaneFromFace([1, 0, 0], [4, 1, 1]));
+    assert.deepEqual(chipNames(), ['A', 'B']);
+    assert.ok(s().sectionPlane.custom, 'the plane is now the picked face');
+
+    openPlaneMenu();
+    assert.equal(menuItem('Front (Y)').getAttribute('aria-checked'), 'false', 'no cardinal direction is marked for a face plane');
+    click(menuItem('Down (Z)'));
+    assert.equal(s().sectionPlane.custom, undefined, 'choosing a direction turns a face plane back into a cardinal one');
+    assert.equal(s().sectionPlane.axis, 'down');
   });
 
   it('Duplicate adds a copy as the selected plane', () => {

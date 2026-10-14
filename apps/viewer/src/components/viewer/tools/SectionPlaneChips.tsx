@@ -21,12 +21,21 @@ import {
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import type { SectionPlane } from '@/store/types';
+import type { SectionPlane, SectionPlaneAxis } from '@/store/types';
+import { resetSectionToAxis } from '@/store/section-active';
+import { leaveAlignmentMode } from '@/lib/section/alignment-controller';
 import { useSectionPlaneSet } from './useSectionPlaneSet';
 import { useLiveTestId } from './SectionBarMeasure';
+
+const DIRECTIONS: ReadonlyArray<{ axis: SectionPlaneAxis; labelKey: 'sectionPlanes.addDown' | 'sectionPlanes.addFront' | 'sectionPlanes.addSide' }> = [
+  { axis: 'down', labelKey: 'sectionPlanes.addDown' },
+  { axis: 'front', labelKey: 'sectionPlanes.addFront' },
+  { axis: 'side', labelKey: 'sectionPlanes.addSide' },
+];
 
 const CHIP = 'inline-flex items-center gap-1 whitespace-nowrap rounded-sm px-1.5 py-0.5 text-xs transition-colors';
 
@@ -43,9 +52,19 @@ function offerUndo(t: ReturnType<typeof useTranslation>['t']): void {
 function RenameInput({ plane, onDone }: { plane: SectionPlane; onDone: () => void }) {
   const { t } = useTranslation();
   const ref = useRef<HTMLInputElement>(null);
+  // One outcome per edit: Enter commits and the input unmounts, and a browser that then reports a blur
+  // must not apply the name a second time (nor commit after Escape).
+  const finished = useRef(false);
   useEffect(() => { ref.current?.select(); }, []);
   const commit = () => {
+    if (finished.current) return;
+    finished.current = true;
     useViewerStore.getState().renameSectionPlane(plane.id, ref.current?.value ?? plane.name);
+    onDone();
+  };
+  const cancel = () => {
+    if (finished.current) return;
+    finished.current = true;
     onDone();
   };
   return (
@@ -59,7 +78,7 @@ function RenameInput({ plane, onDone }: { plane: SectionPlane; onDone: () => voi
       onKeyDown={(e) => {
         e.stopPropagation();
         if (e.key === 'Enter') commit();
-        else if (e.key === 'Escape') onDone();
+        else if (e.key === 'Escape') cancel();
       }}
     />
   );
@@ -94,6 +113,19 @@ export function SectionPlaneMenu({ plane, onRename }: { plane: SectionPlane; onR
         </DropdownMenuCheckboxItem>
         <DropdownMenuItem onSelect={() => store.getState().duplicateSectionPlane(plane.id)}>{t('sectionPlanes.menu.duplicate')}</DropdownMenuItem>
         <DropdownMenuSeparator />
+        {/* What this plane IS: a direction, or a picked face. Changing it keeps the plane's name and place in the set. */}
+        <DropdownMenuLabel className="text-2xs">{t('sectionPlanes.menu.direction')}</DropdownMenuLabel>
+        {DIRECTIONS.map(({ axis, labelKey }) => (
+          <DropdownMenuCheckboxItem
+            key={axis}
+            checked={!plane.custom && !plane.box && plane.axis === axis}
+            onCheckedChange={() => { leaveAlignmentMode(); resetSectionToAxis(store.getState, axis); }}
+          >
+            {t(labelKey)}
+          </DropdownMenuCheckboxItem>
+        ))}
+        <DropdownMenuItem onSelect={() => { leaveAlignmentMode(); store.getState().setSectionPickMode(true); }}>{t('sectionPlanes.addFace')}</DropdownMenuItem>
+        <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={() => { store.getState().removeSectionPlane(plane.id); offerUndo(t); }}>{t('sectionPlanes.menu.remove')}</DropdownMenuItem>
         <DropdownMenuItem onSelect={() => { store.getState().clearSectionPlanes(); offerUndo(t); }}>{t('sectionPlanes.menu.clearAll')}</DropdownMenuItem>
       </DropdownMenuContent>
@@ -122,7 +154,8 @@ export function SectionPlaneChips() {
     e.preventDefault();
     const next = planes[(index + step + planes.length) % planes.length]!;
     activate(next.id);
-    (e.currentTarget.parentElement?.querySelector<HTMLElement>(`[data-plane-id="${next.id}"]`))?.focus();
+    // Each chip sits in its own wrapper, so the sibling is found from the tablist, not from the chip's parent.
+    (e.currentTarget.closest('[role="tablist"]')?.querySelector<HTMLElement>(`[data-plane-id="${next.id}"]`))?.focus();
   };
 
   return (

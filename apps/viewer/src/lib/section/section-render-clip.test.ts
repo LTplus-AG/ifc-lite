@@ -91,12 +91,46 @@ describe('sectionRenderClip', () => {
     });
 
     it('a boxed inactive plane clips by its box when the active plane has none, and the active box wins the slot', () => {
-      const boxed = plane({ id: 'q', box: { min: [0, 0, 0], max: [2, 2, 2] } });
+      const boxed = plane({ id: 'q', name: 'B', box: { min: [0, 0, 0], max: [2, 2, 2] } });
       const fallback = sectionRenderClip(true, plane(), null, 'select', [boxed]);
       assert.deepEqual(fallback.clipBox, { min: [0, 0, 0], max: [2, 2, 2], enabled: true });
       assert.equal(fallback.extraSectionPlanes, undefined, 'a boxed plane adds no plane');
       const active = sectionRenderClip(true, plane({ box: { min: [5, 5, 5], max: [6, 6, 6] } }), null, 'select', [boxed]);
       assert.deepEqual(active.clipBox, { min: [5, 5, 5], max: [6, 6, 6], enabled: true });
+    });
+
+    it('a box plus a normal cut clip the same whichever of the two is active (selection never changes the cut)', () => {
+      const box = { min: [0, 0, 0] as [number, number, number], max: [2, 2, 2] as [number, number, number] };
+      const boxPlane = plane({ id: 'b', name: 'B', box });
+      const sidePlane = plane({ id: 'c', name: 'C', axis: 'side', position: 30 });
+      // What clips, as the renderer sees it: the box, and every enabled plane (primary or extra).
+      const clipping = (out: ReturnType<typeof sectionRenderClip>) => ({
+        box: out.clipBox,
+        planes: [out.sectionPlane, ...(out.extraSectionPlanes ?? [])]
+          .filter((p) => p?.enabled)
+          .map((p) => [p!.axis, p!.position]),
+      });
+
+      const boxActive = sectionRenderClip(true, boxPlane, null, 'select', [sidePlane]);
+      const sideActive = sectionRenderClip(true, sidePlane, null, 'select', [boxPlane]);
+
+      assert.deepEqual(clipping(boxActive), { box: { ...box, enabled: true }, planes: [['side', 30]] }, 'the box and the normal cut both clip');
+      assert.deepEqual(clipping(sideActive), clipping(boxActive), 'activating the other plane must not drop or add a cut');
+      assert.equal(sideActive.sectionPlane?.axis, 'side', 'the active normal plane stays the renderer\'s primary plane');
+    });
+
+    it('an active box that is switched off does not hold the box slot against one that is cutting', () => {
+      const off = plane({ id: 'a', enabled: false, box: { min: [5, 5, 5], max: [6, 6, 6] } });
+      const on = plane({ id: 'b', box: { min: [0, 0, 0], max: [2, 2, 2] } });
+      assert.deepEqual(sectionRenderClip(true, off, null, 'select', [on]).clipBox, { min: [0, 0, 0], max: [2, 2, 2], enabled: true });
+      assert.deepEqual(sectionRenderClip(true, off, null, 'select', []).clipBox, { min: [5, 5, 5], max: [6, 6, 6], enabled: false }, 'alone, it is simply off');
+    });
+
+    it('a disabled boxed plane does not clip, and the active normal cut still does', () => {
+      const boxed = plane({ id: 'b', name: 'B', enabled: false, box: { min: [0, 0, 0], max: [2, 2, 2] } });
+      const out = sectionRenderClip(true, plane({ axis: 'side', position: 30 }), null, 'select', [boxed]);
+      assert.equal(out.clipBox, undefined);
+      assert.equal(out.sectionPlane?.enabled, true);
     });
 
     it('with one plane the result is what it was before the set existed', () => {

@@ -44,6 +44,15 @@ function toRendererPlane(p: SectionPlane): NonNullable<RenderOptions['extraSecti
   };
 }
 
+/**
+ * The plane whose box clips (the renderer has ONE box slot): the active plane's box while it is cutting,
+ * else the first inactive plane's box that is, else the active plane's box switched off. One rule, shared
+ * with the PDF export, the zoom and the BCF/SDK readers, so none of them clips by a box the screen does not.
+ */
+export function boxHoldingPlane(plane: SectionPlane, inactive: readonly SectionPlane[]): SectionPlane | undefined {
+  return plane.box && plane.enabled ? plane : (inactive.find((p) => p.enabled && p.box) ?? (plane.box ? plane : undefined));
+}
+
 export function sectionRenderClip(
   visible: boolean,
   plane: SectionPlane,
@@ -57,13 +66,18 @@ export function sectionRenderClip(
   // no plane; the active plane's box wins the slot.
   const extra = inactive.filter((p) => p.enabled && !p.box);
   const extraClip = extra.length > 0 ? { extraSectionPlanes: extra.map(toRendererPlane) } : {};
-  const boxed = plane.box ? plane : inactive.find((p) => p.enabled && p.box);
+  // The active plane's box wins the one box slot; otherwise an enabled inactive plane's box takes it.
+  // Either way the clip does not depend on WHICH plane is active: a boxed inactive plane clips by its
+  // box and the active plane (when it is not the boxed one) still clips by itself, below.
+  const boxed = boxHoldingPlane(plane, inactive);
   const box = boxed?.box;
-  if (box) return { ...extraClip, clipBox: { min: box.min, max: box.max, enabled: boxed.enabled } };
+  const boxClip = box && boxed ? { clipBox: { min: box.min, max: box.max, enabled: boxed.enabled } } : {};
+  if (plane.box) return { ...extraClip, ...boxClip };
   // No preview for a plane the user has not made yet (the unnamed placeholder), nor for a disabled one outside the Section tool (#6374).
-  if (!plane.enabled && (activeTool !== 'section' || isPristineSectionPlane(plane))) return extraClip;
+  if (!plane.enabled && (activeTool !== 'section' || isPristineSectionPlane(plane))) return { ...extraClip, ...boxClip };
   return {
     ...extraClip,
+    ...boxClip,
     sectionPlane: {
       axis: plane.axis,
       position: plane.position,

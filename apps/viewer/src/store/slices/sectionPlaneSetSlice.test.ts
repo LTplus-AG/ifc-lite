@@ -181,7 +181,7 @@ describe('removing and clearing with Undo (#7545)', () => {
     assertSetIsSound();
   });
 
-  it('Clear all clears everything, Undo restores the whole set, and a new edit drops the record', () => {
+  it('Clear all clears everything, Undo restores the whole set, and replacing the set drops the record', () => {
     state().addSectionPlane('down');
     state().addSectionPlane('side');
     state().addSectionPlane('front');
@@ -192,7 +192,9 @@ describe('removing and clearing with Undo (#7545)', () => {
     assert.deepEqual(names(), ['A', 'B', 'C']);
     state().clearSectionPlanes();
     state().addSectionPlane('down');
-    assert.equal(state().sectionUndo, null, 'the record is stale once the set changes again');
+    assert.equal(state().sectionUndo?.label, 'cleared', 'adding a plane does not spoil Undo: it merges (see sectionPlaneSetSlice.undo.test.ts)');
+    state().installSectionPlanes([state().sectionPlane], 0);
+    assert.equal(state().sectionUndo, null, 'replacing the whole set (a saved view, a viewpoint) makes the record stale');
   });
 
   it('Clear all on an untouched placeholder records nothing', () => {

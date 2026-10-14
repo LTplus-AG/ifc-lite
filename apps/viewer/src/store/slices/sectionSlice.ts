@@ -345,11 +345,11 @@ export const createSectionSlice: StateCreator<SectionSlice, [], [], SectionSlice
       // `pickedAt`, so a non-finite hit point produced a NaN plane
       // offset that the normal check never saw (#2495).
       console.warn('[section] face-pick received a degenerate normal or point; ignoring');
-      set(() => ({ sectionPickMode: false, sectionPickPreview: null }));
+      set(() => ({ sectionPickMode: false, sectionPickPreview: null, sectionPickTarget: 'replace' as const }));
       return;
     }
     // An armed "add plane" pick makes room first (#7545); a degenerate pick above never does.
-    if (state.sectionPickTarget === 'new' && !get().prepareNewSectionPlane()) {
+    if (state.sectionPickMode && state.sectionPickTarget === 'new' && !get().prepareNewSectionPlane()) {
       set(() => ({ sectionPickMode: false, sectionPickPreview: null, sectionPickTarget: 'replace' }));
       return;
     }
@@ -414,7 +414,7 @@ export const createSectionSlice: StateCreator<SectionSlice, [], [], SectionSlice
     // it doesn't linger after the user toggles off (Esc, second toggle
     // press, tool change). Re-arming starts fresh.
     enabled
-      ? { sectionPickMode: true, ...(state.sectionPlane.custom?.alignment ? {
+      ? { sectionPickMode: true, sectionPickTarget: 'replace' as const, ...(state.sectionPlane.custom?.alignment ? {
         sectionPlane: { ...state.sectionPlane, custom: { ...state.sectionPlane.custom, alignment: undefined } },
       } : {}) }
       : { sectionPickMode: false, sectionPickPreview: null, sectionPickTarget: 'replace' as const }

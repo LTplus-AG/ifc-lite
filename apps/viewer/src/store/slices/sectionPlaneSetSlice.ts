@@ -41,7 +41,7 @@ import {
 /** Whether the next face pick adds a plane or replaces the active one (today's behaviour). */
 export type SectionPickTarget = 'replace' | 'new';
 
-/** What Undo gives back after a removal: the whole set as it was. */
+/** What Undo gives back after a removal: the planes it took out, merged into the set as it is by then. */
 export interface SectionUndoRecord {
   label: 'removed' | 'cleared';
   /** Name of the plane removed, for the toast. */
@@ -115,7 +115,7 @@ export const createSectionPlaneSetSlice: StateCreator<SectionSlice, [], [], Sect
     addSectionPlane: (axis) => {
       const room = withRoomForNew(get());
       if (!room) return null;
-      set({ sectionPlane: room.active, inactiveSectionPlanes: room.inactive, sectionUndo: null });
+      set({ sectionPlane: room.active, inactiveSectionPlanes: room.inactive });
       // The active plane is now the new one: the existing action cuts it exactly as it always has.
       get().setSectionPlaneAxis(axis);
       return get().sectionPlane.id;
@@ -123,15 +123,16 @@ export const createSectionPlaneSetSlice: StateCreator<SectionSlice, [], [], Sect
 
     armSectionFacePickForNewPlane: () => {
       if (!withRoomForNew(get())) return false;
-      get().setSectionPickMode(true);
-      set({ sectionPickTarget: 'new' });
+      // Straight to the state: arming through `setSectionPickMode(true)` would detach the ACTIVE plane
+      // from its alignment, and this pick adds a plane instead of replacing that one.
+      set({ sectionPickMode: true, sectionPickTarget: 'new' });
       return true;
     },
 
     prepareNewSectionPlane: () => {
       const room = withRoomForNew(get());
       if (!room) return false;
-      set({ sectionPlane: room.active, inactiveSectionPlanes: room.inactive, sectionUndo: null });
+      set({ sectionPlane: room.active, inactiveSectionPlanes: room.inactive });
       return true;
     },
 
@@ -191,7 +192,7 @@ export const createSectionPlaneSetSlice: StateCreator<SectionSlice, [], [], Sect
         // An alignment binding follows its own plane's station; a copy is free of it.
         custom: source.custom ? { ...source.custom, alignment: undefined } : undefined,
       };
-      set({ sectionPlane: copy, inactiveSectionPlanes: [...state.inactiveSectionPlanes, state.sectionPlane], sectionUndo: null });
+      set({ sectionPlane: copy, inactiveSectionPlanes: [...state.inactiveSectionPlanes, state.sectionPlane] });
       reveal();
       return copy.id;
     },
@@ -221,11 +222,31 @@ export const createSectionPlaneSetSlice: StateCreator<SectionSlice, [], [], Sect
         : { inactiveSectionPlanes: state.inactiveSectionPlanes.map((p) => (p.id === id ? { ...p, showGizmo: show } : p)) }
     )),
 
+    // Give back the planes the removal took out, INTO the set as it is now: whatever was edited,
+    // added or activated since stays as the user left it (a whole-set snapshot would revert it).
     undoSectionChange: () => {
       const record = get().sectionUndo;
       if (!record) return;
-      set({ sectionPlane: record.active, inactiveSectionPlanes: record.inactive, sectionUndo: null });
-      if (record.active.enabled || record.inactive.some((p) => p.enabled)) reveal();
+      const state = get();
+      const current = [state.sectionPlane, ...state.inactiveSectionPlanes];
+      const live = current.length === 1 && isPristineSectionPlane(current[0]!) ? [] : current;
+      const have = new Set(live.map((p) => p.id));
+      const taken = live.map((p) => p.name);
+      const restored = [record.active, ...record.inactive]
+        .filter((p) => !have.has(p.id))
+        .slice(0, Math.max(0, MAX_SECTION_PLANES - live.length))
+        .map((p) => {
+          // A plane made since may have taken the name this one had.
+          const name = uniqueSectionPlaneName(p.name, taken) ?? nextSectionPlaneName(taken);
+          taken.push(name);
+          return name === p.name ? p : { ...p, name };
+        });
+      if (restored.length === 0) { set({ sectionUndo: null }); return; }
+      const pool = [...live, ...restored];
+      const back = restored.find((p) => p.id === record.active.id);
+      const active = back ?? (live.length > 0 ? state.sectionPlane : restored[0]!);
+      set({ sectionPlane: active, inactiveSectionPlanes: pool.filter((p) => p.id !== active.id), sectionUndo: null });
+      if (pool.some((p) => p.enabled)) reveal();
     },
 
     dismissSectionUndo: () => set((state) => (state.sectionUndo ? { sectionUndo: null } : state)),

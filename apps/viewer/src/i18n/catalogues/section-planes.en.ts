@@ -21,6 +21,7 @@ export const sectionPlanesEn = {
   'sectionPlanes.addAlignment': 'Alignment…',
   'sectionPlanes.menu.aria': 'Actions for plane {name}',
   'sectionPlanes.menu.rename': 'Rename',
+  'sectionPlanes.menu.direction': 'Direction of this plane',
   'sectionPlanes.menu.cut': 'Cut',
   'sectionPlanes.menu.show': 'Show plane',
   'sectionPlanes.menu.duplicate': 'Duplicate',

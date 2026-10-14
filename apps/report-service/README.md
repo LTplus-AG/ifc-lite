@@ -144,3 +144,50 @@ tests use real PostgreSQL/S3 bytes and actual HTTP delivery but synthetic truste
 scanner attestations; they do not establish malware clearance. Conditional copy
 behavior proven against local RustFS is not evidence for Scaleway. No new hosting
 resources are provisioned here.
+
+### Dormant independent restore journal
+
+`RestoreJournal` is an operational prototype for the existing private encrypted
+bucket, under a separate `operations/restore/<epoch>/` prefix. It records only an
+opaque report ID and destructive action. It authenticates bounded immutable
+entries with an independent HMAC key and advances the authenticated head using
+conditional ETag writes. An unavailable journal, stale conditional write or
+ambiguous response prevents an acknowledged effective deletion/withdrawal.
+The optional journal arguments are supplied only by qualification callers:
+**the production entrypoint does not instantiate or enable this journal**.
+No provider writes or new resources are enabled by installing this code.
+
+`reconcileRestore` requires a complete chain matching an independently retained
+checkpoint for that epoch. It commits a recovery hold before reading the chain;
+failure leaves the hold in place. Recovery purges deleted/expired report content,
+invalidates all restored owner sessions, pending outbox work, upload eligibility
+and public grants, while retaining private object references and quota reserves
+for confirmed cleanup. It never extends report expiry or releases its hold.
+`REPORT_RESTORE_REQUIRED=true` prevents the entrypoint from starting; an existing
+recovery hold also blocks startup, HTTP admission and background workers.
+
+This is not an automatic disaster-recovery system. Before any restore, an
+operator must independently stop/drain every replica and set the external
+restore flag; a restored DB cannot attest that it was not rolled back. The
+checkpoint must be retained outside the restored database and protected against
+rollback. A missing checkpoint, lost signing key, simultaneous head rollback,
+unknown historical deletions or unproven quiescence cannot be repaired by trusting
+a caller boolean or by initializing a new empty journal. Keep the service held.
+No automatic release, independent checkpoint custodian, key rotation, journal
+retention policy, or deployed restore drill is implemented. The bounded chain
+limit is 100,000 entries; capacity exhaustion fails closed. Enabling the runtime
+requires those operational decisions and provider conditional-head qualification.
+Previously issued presigned URLs can remain usable until their short expiry;
+quiescence must include that expiry and multipart/provider reconciliation before
+reopening. Never start the outbox publisher to discover whether old work is safe.
+
+The intended qualification scope is **PostgreSQL-volume-only restore**, with the
+existing Paris bucket explicitly excluded from the restore job. The authenticated
+bucket head is an independent watermark relative to that database. Retain the
+selected epoch/key outside PostgreSQL and capture the authenticated checkpoint
+before and after the owned restore, together with the reviewed provider job/volume
+identity and evidence that the bucket was not restored. Unknown bucket provenance,
+head rollback, missing operator checkpoint custody or concurrent writers require
+a hold. This scope does not establish safety for S3 rollback or a cross-provider
+disaster; no second paid witness service is implied. The actual constrained
+restore pipeline remains unqualified and runtime journaling remains off.

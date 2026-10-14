@@ -1,0 +1,40 @@
+{
+  "recordedAt": "2026-10-12T21:55:51.404145+00:00",
+  "head": "386b7f1f2a661e843b4dd64860257c892e595590",
+  "base": "28be2550e3c074ba1e6e4c9461c98e8efda24597",
+  "serviceTests": 75,
+  "contractTests": 5,
+  "productionBuild": "PASS through root Turbo dependency graph",
+  "fullRootTypecheck": "Pending combined stack gate; no full check claimed by this layer",
+  "oracle": {
+    "fullProductionRemoval": {
+      "baselinePass": 75,
+      "assertionFailures": 7,
+      "remainingPass": 68,
+      "loaderFailures": 0
+    },
+    "ownerDeleteAppendRemoval": {
+      "assertionFailures": 2,
+      "remainingPass": 73
+    },
+    "httpRecoveryHoldRemoval": {
+      "assertionFailures": 1,
+      "remainingPass": 74
+    },
+    "restoredPass": 75,
+    "sourceRestoration": "byte exact"
+  },
+  "lint": "changed files pass",
+  "moduleSize": "pass",
+  "cleanup": "Owned isolated test schemas/buckets/clients cleaned in finally/afterAll",
+  "runtimeActivation": false,
+  "liveProviderWrites": false,
+  "limits": [
+    "Journal optional injection not wired in production entrypoint",
+    "No independent checkpoint custodian or automatic service release",
+    "Requires externally enforced quiescence and no bucket/witness rollback",
+    "No production snapshots/restores performed",
+    "No deployed conditional head qualification or key-rotation/retention policy"
+  ],
+  "restoreScope": "PostgreSQL volume only; independently authenticated Paris bucket head, bucket not restored, external epoch/key and operator checkpoint custody"
+}

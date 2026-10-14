@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import type { RestoreJournal } from "./restore-journal.js";
 import { randomBytes, randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
 import type { PublicModelReceipt } from "@ifc-lite/report-contract";
@@ -46,10 +47,14 @@ export async function revokePublicCopy(tx: PoolClient, id: string): Promise<void
   await tx.query(`UPDATE report_public_copies SET state='revoked',sha256=NULL,etag=NULL,
     cleanup_after=GREATEST(cleanup_after,now(),COALESCE(lease_until,now())) WHERE report_id=$1`, [id]);
 }
-export async function withdrawPublicModel(db: Db, id: string, ownerId: string): Promise<void> {
+export async function withdrawPublicModel(db: Db, id: string, ownerId: string, journal?: RestoreJournal): Promise<void> {
   await transaction(db, async (tx) => {
     const report = await tx.query("SELECT id FROM model_reports WHERE id=$1 AND session_id=$2 FOR UPDATE", [id, ownerId]);
     requireCondition(report.rowCount === 1, 404, "report_missing", "Report not found.");
+    if (journal) {
+      const prior = await tx.query("SELECT 1 FROM report_audit WHERE report_id=$1 AND action='public_downloads_withdrawn' LIMIT 1", [id]);
+      if (!prior.rowCount) await journal.append(id, "withdraw");
+    }
     await revokePublicQuarantine(tx, id);
     await revokePublicCopy(tx, id);
     await audit(tx, id, "public_downloads_withdrawn", ownerId);

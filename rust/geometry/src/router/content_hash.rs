@@ -20,7 +20,9 @@
 //! Integer splitmix64 and float bit patterns produce target-independent keys.
 
 use crate::geom_hash::mix64;
-use ifc_lite_core::{express_id::parse_express_id, EntityDecoder};
+use ifc_lite_core::{
+    express_id::parse_express_id, step_encoding::step_string_literal_end, EntityDecoder,
+};
 use rustc_hash::FxHashMap;
 
 /// Defensive recursion bound. IFC geometry is a DAG (item → solids → profiles →
@@ -323,8 +325,9 @@ fn sig_entity(
 /// Structural signature of a single STEP record from its raw bytes, recursing on
 /// every `#ref`. Folds literal runs verbatim and replaces each ref with its
 /// child signature, so the result is identical regardless of entity-id numbering.
-/// `#` inside a single-quoted string (STEP escapes a literal quote as `''`) is
-/// NOT treated as a ref. The record's own leading `#<id>=` is skipped.
+/// `#` inside a single-quoted string (STEP escapes a literal quote as `''`, and
+/// the PAGE directive `\S\` may take an apostrophe operand) is NOT treated as a
+/// ref. The record's own leading `#<id>=` is skipped.
 fn sig_walk_bytes(
     decoder: &mut EntityDecoder,
     bytes: &[u8],
@@ -346,25 +349,19 @@ fn sig_walk_bytes(
     }
     let mut acc = fold(0, 0x5EED_5EED);
     let mut lit_start = i;
-    let mut in_str = false;
     while i < len {
         let c = bytes[i];
-        if in_str {
-            if c == b'\'' {
-                // `''` is an escaped quote inside the string, not its end.
-                if i + 1 < len && bytes[i + 1] == b'\'' {
-                    i += 2;
+        if c == b'\'' {
+            // One rule for where a literal ends: `''` and a PAGE directive's
+            // apostrophe operand (`'Para \S\' 5'`) stay inside it (#7589). A
+            // string that never closes swallows the rest as literal bytes.
+            match step_string_literal_end(bytes, i) {
+                Some(end) => {
+                    i = end;
                     continue;
                 }
-                in_str = false;
+                None => break,
             }
-            i += 1;
-            continue;
-        }
-        if c == b'\'' {
-            in_str = true;
-            i += 1;
-            continue;
         }
         if c == b'#' && i + 1 < len && bytes[i + 1].is_ascii_digit() {
             acc = fold_bytes(acc, &bytes[lit_start..i]);

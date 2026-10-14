@@ -14,7 +14,7 @@
  * re-exports.
  */
 
-import { decodeStepStringLiteral } from '@ifc-lite/encoding';
+import { decodeStepStringLiteral, stepStringLiteralEnd } from '@ifc-lite/encoding';
 import { isCompleteStepNumericLiteral } from './step-numeric-literal.js';
 
 /**
@@ -386,28 +386,20 @@ function parseStepList(str: string): StepValue[] {
 
   const values: StepValue[] = [];
   let depth = 0;
-  let inString = false;
   let current = '';
 
   for (let i = 0; i < inner.length; i++) {
     const char = inner[i];
 
-    if (inString) {
-      current += char;
-      if (char === "'") {
-        if (inner[i + 1] === "'") {
-          current += "'";
-          i++;
-        } else {
-          inString = false;
-        }
-      }
-      continue;
-    }
-
     if (char === "'") {
-      inString = true;
-      current += char;
+      // The whole literal joins the member at once. `stepStringLiteralEnd` is
+      // the one rule for where it ends: `''`, and a PAGE directive's apostrophe
+      // operand (`'Para \S\' 5'`) stay inside (#7589). A string that never
+      // closes takes the rest of the list.
+      const end = stepStringLiteralEnd(inner, i);
+      const stop = end < 0 ? inner.length : end;
+      current += inner.slice(i, stop);
+      i = stop - 1;
     } else if (char === '(' || char === '[') {
       depth++;
       current += char;

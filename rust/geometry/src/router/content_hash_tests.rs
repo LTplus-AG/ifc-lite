@@ -198,3 +198,46 @@ fn issue_3988_brep_signature_reuses_scratch_without_stale_faces_or_points() {
     let mut missing_decoder = EntityDecoder::new(&missing);
     assert_eq!(try_faceted_brep_signature(&mut missing_decoder, 1), None);
 }
+
+fn sig_of(content: &[u8], id: u32) -> u128 {
+    let mut decoder = EntityDecoder::new(content);
+    let mut memo = FxHashMap::default();
+    let mut refused = 0usize;
+    item_signature(&mut decoder, id, &mut memo, &mut refused)
+}
+
+/// Issue #7589: a PAGE directive's apostrophe operand (`'Para \S\' 5'`) is
+/// string text. The old walker closed the literal at the operand and reopened
+/// one at the next quote, which swallowed the real `#ref` after the string, so
+/// two records pointing at structurally different children hashed alike.
+#[test]
+fn issue_7589_ref_after_a_page_operand_string_is_still_followed() {
+    // Same record text, same ids; only the child's geometry differs.
+    let build = |coords: &str| {
+        format!("#1=IFCCARTESIANPOINT(({coords}));\n#3=IFCFOO('Para \\S\\' 5',#1);\n").into_bytes()
+    };
+    assert_ne!(
+        sig_of(&build("0.,0.,0."), 3),
+        sig_of(&build("5.,5.,5."), 3),
+        "the child ref after the string must contribute its own signature"
+    );
+}
+
+/// Issue #7589: `#9` inside the string text is not a reference, so the
+/// signature cannot depend on what entity `#9` happens to be.
+#[test]
+fn issue_7589_ref_shaped_text_inside_a_page_operand_string_is_not_followed() {
+    let build = |nine: &str| {
+        format!(
+            "#1=IFCCARTESIANPOINT((0.,0.,0.));\n{nine}#3=IFCFOO('Art \\S\\' #9 x',#1);\n"
+        )
+        .into_bytes()
+    };
+    let one = build("#9=IFCCARTESIANPOINT((1.,1.,1.));\n");
+    let other = build("#9=IFCCARTESIANPOINT((7.,7.,7.));\n");
+    assert_eq!(
+        sig_of(&one, 3),
+        sig_of(&other, 3),
+        "text inside the literal must not be read as a reference"
+    );
+}

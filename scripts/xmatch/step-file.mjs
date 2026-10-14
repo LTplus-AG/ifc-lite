@@ -43,8 +43,13 @@ function scanTo(text, from, stops) {
       index++;
       while (index < text.length) {
         if (text[index] === "'") {
+          // The PAGE directive `\S\` takes the next character as its operand,
+          // even an apostrophe: `'Para \S\' 5'` is one literal (#7589). This
+          // is the lookback of `stepStringLiteralEnd` in @ifc-lite/encoding,
+          // inlined to keep this module dependency-free. Tested first: `'5\S\''` closes at its last quote.
+          if (index >= 3 && text[index - 1] === '\\' && text[index - 2] === 'S' && text[index - 3] === '\\') index++;
           // A doubled quote is a literal quote, not the end of the string.
-          if (text[index + 1] === "'") index += 2;
+          else if (text[index + 1] === "'") index += 2;
           else break;
         } else index++;
       }

@@ -122,6 +122,8 @@
  * well-formed value.
  */
 
+import { stepStringLiteralEnd } from '@ifc-lite/encoding';
+
 /**
  * Split a STEP argument list on top-level commas, or return null when the text
  * cannot be scanned as one. `input` is the text BETWEEN a record's outermost
@@ -147,42 +149,37 @@ export function splitTopLevelStepArgs(input: string): string[] | null {
   const parts: string[] = [];
   let current = '';
   let depth = 0;
-  let inString = false;
 
   for (let i = 0; i < input.length; i++) {
     const char = input[i];
 
     if (char === "'") {
-      current += char;
-      // A doubled quote INSIDE a string is an escaped apostrophe. Outside one
-      // the first quote opens a string and the second is read on its own next
-      // pass, so `''` there is the empty string rather than an escape.
-      if (inString && input[i + 1] === "'") {
-        current += input[i + 1];
-        i++;
-        continue;
-      }
-      inString = !inString;
+      // The whole literal moves into the part at once. `stepStringLiteralEnd`
+      // is the one rule for where it ends: `''` is an escaped quote, and a
+      // PAGE directive's apostrophe operand (`'Para \S\' 5'`) is text (#7589).
+      // A string that never closes leaves the scan unreadable.
+      const end = stepStringLiteralEnd(input, i);
+      if (end < 0) return null;
+      current += input.slice(i, end);
+      i = end - 1;
       continue;
     }
 
-    if (!inString) {
-      if (char === '(') {
-        depth++;
-      } else if (char === ')') {
-        depth--;
-        if (depth < 0) return null;
-      } else if (char === ',' && depth === 0) {
-        parts.push(current);
-        current = '';
-        continue;
-      }
+    if (char === '(') {
+      depth++;
+    } else if (char === ')') {
+      depth--;
+      if (depth < 0) return null;
+    } else if (char === ',' && depth === 0) {
+      parts.push(current);
+      current = '';
+      continue;
     }
 
     current += char;
   }
 
-  if (inString || depth !== 0) return null;
+  if (depth !== 0) return null;
   parts.push(current);
   // These three are the contract this shares with
   // `packages/export/src/step-argument-parser.ts`, which has them too (plus its
@@ -276,12 +273,7 @@ function skipToken(text: string, from: number): number {
 
 /** Index just past the string starting at `from`, or -1 if it never closes. */
 function skipString(text: string, from: number): number {
-  for (let i = from + 1; i < text.length; i++) {
-    if (text[i] !== "'") continue;
-    if (text[i + 1] === "'") i++;
-    else return i + 1;
-  }
-  return -1;
+  return stepStringLiteralEnd(text, from);
 }
 
 /** Index just past a binary literal, or -1 if its closing quote is absent. */

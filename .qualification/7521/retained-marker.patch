@@ -1,0 +1,11 @@
+--- a/apps/report-service/src/scanner-worker.ts
++++ b/apps/report-service/src/scanner-worker.ts
+@@ -110,7 +110,7 @@
+     }
+   } finally {
+     try {
+-      if (directory) await rm(directory, { recursive: true, force: true });
++      if (directory && !retainScratch) await rm(directory, { recursive: true, force: true });
+     } finally {
+       try {
+         if (acquired)

@@ -1,0 +1,29 @@
+--- a/apps/report-service/src/scanner-worker.ts
++++ b/apps/report-service/src/scanner-worker.ts
+@@ -19,7 +19,7 @@
+   scratchDirectory: string,
+   parentSignal: AbortSignal,
+ ): Promise<"idle" | "review" | "held"> {
+-  await Promise.resolve();
++  await assertRestoreNotHeld(db);
+   // A session-level lock limits all trusted orchestrators using this database,
+   // without holding a report transaction during a large file read or scan.
+   const lock = await db.connect();
+@@ -34,7 +34,7 @@
+       ).rows[0]?.locked,
+     );
+     if (!acquired) return "idle";
+-    await Promise.resolve();
++    await assertRestoreNotHeld(db);
+     await mkdir(scratchDirectory, { recursive: true, mode: 0o700 });
+     // Dedicated scanner-only scratch root. The shared DB lock excludes a live
+     // owner; after a crash, remove its sandbox before admitting another scan.
+@@ -79,7 +79,7 @@
+         directory,
+         signal,
+       );
+-      await Promise.resolve();
++      await assertRestoreNotHeld(db);
+       return (await finishPublicScan(db, lease, evidence, SCANNER_IMAGE_DIGEST))
+         ? "review"
+         : "held";

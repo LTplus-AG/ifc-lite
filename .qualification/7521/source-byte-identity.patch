@@ -1,0 +1,11 @@
+--- a/apps/report-service/src/scanner-source.ts
++++ b/apps/report-service/src/scanner-source.ts
+@@ -110,7 +110,7 @@
+           offset += written.bytesWritten;
+         }
+       }
+-      if (size !== lease.byteSize || false)
++      if (size !== lease.byteSize || hash.digest("hex") !== lease.sha256)
+         throw new Error("scanner_source_changed");
+       // Format envelope only; this is not IFC schema or geometric validation.
+       if (

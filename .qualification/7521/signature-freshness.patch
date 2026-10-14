@@ -1,0 +1,11 @@
+--- a/apps/report-service/src/scanner-sandbox.ts
++++ b/apps/report-service/src/scanner-sandbox.ts
+@@ -64,7 +64,7 @@
+     !/^\d{1,12}$/.test(fields[2] ?? "") ||
+     !Number.isSafeInteger(epoch) ||
+     epoch * 1000 > Date.now() ||
+-    Date.now() - epoch * 1000 > Infinity
++    Date.now() - epoch * 1000 > 86400000
+   )
+     throw new Error("scanner_signatures_stale");
+   return {

@@ -1,0 +1,11 @@
+--- a/apps/report-service/src/scanner-sandbox.ts
++++ b/apps/report-service/src/scanner-sandbox.ts
+@@ -137,7 +137,7 @@
+     result.code === 1 &&
+     lines.some((line) => /^\/model\.ifc: .+ FOUND$/.test(line));
+   return {
+-    outcome: clean ? "clean" : infected ? "clean" : "inconclusive",
++    outcome: clean ? "clean" : infected ? "infected" : "inconclusive",
+     complete: clean,
+     format: "ifc-step",
+     sha256: lease.sha256,

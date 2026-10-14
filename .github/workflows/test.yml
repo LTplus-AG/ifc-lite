@@ -97,6 +97,9 @@ permissions:
   # The no-op `edited` probe and replay read this head's check runs
   # (scripts/ci-verdict-replay.mjs). Read-only.
   checks: read
+  # The push-replay probe lists the artifacts of this PR's earlier Test runs
+  # (scripts/ci-push-replay.mjs). Read-only.
+  actions: read
 
 # Force JavaScript actions onto Node 24. GitHub deprecated Node 20 for
 # actions in late 2025 and will flip the default in June 2026. Setting
@@ -141,6 +144,8 @@ jobs:
       # above is `true`) and the aggregate replays the verdict. See the
       # `edited` trigger comment at the top of this file.
       noop: ${{ steps.noop.outputs.noop || 'false' }}
+      replay: ${{ steps.pushreplay.outputs.replay || 'false' }}
+      replay_run: ${{ steps.pushreplay.outputs.replay_run || '' }}
       # `true` when the WASM source is byte-identical to the published release
       # tag, so `build` can fetch the prebuilt bundle instead of compiling
       # wasm32. See the `build` job and scripts/ci-wasm-prebuilt-eligible.sh.
@@ -214,6 +219,40 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: node scripts/ci-verdict-replay.mjs --probe
+      # THE PUSH REPLAY, both halves (scripts/ci-push-replay.mjs). A PR run
+      # records the exact tree it tests -- GitHub records neither the merge
+      # commit nor its tree -- as an artifact NAMED for the tree. A push to
+      # main whose squash commit has that exact tree, from a GREEN run of the
+      # merged PR's final head, skips the lanes that run already executed:
+      # measured, 57 of 97 merges re-tested an identical tree. The paths
+      # filter below still runs, so the push-only lanes (rust-full, census,
+      # CSG gates) and the always-on plato-check and rust-semver still run and
+      # are judged; the aggregate re-verifies the recorded run. A merge that
+      # touches Cargo/toolchain/workflow files never replays: those key caches
+      # only a push to main writes.
+      - name: Record the tree this PR run tests
+        id: tree
+        if: github.event_name == 'pull_request' && steps.noop.outputs.noop != 'true'
+        run: |
+          tree=$(git rev-parse 'HEAD^{tree}')
+          mkdir -p "$RUNNER_TEMP/tested-tree"
+          echo "$tree" > "$RUNNER_TEMP/tested-tree/tree"
+          echo "tree=$tree" >> "$GITHUB_OUTPUT"
+      - name: Upload the tested tree
+        if: steps.tree.outcome == 'success'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: tested-tree-${{ steps.tree.outputs.tree }}
+          path: ${{ runner.temp }}/tested-tree/
+          retention-days: 14
+          if-no-files-found: error
+      - name: Probe for a push of an already-tested tree
+        id: pushreplay
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: node scripts/ci-push-replay.mjs --probe
       # A merge-queue batch is validated as a whole: declare every area changed
       # so all lanes run. paths-filter is a pull_request/push tool and has no
       # PR to diff on merge_group.
@@ -524,7 +563,7 @@ jobs:
   build:
     name: Build packages + WASM
     needs: changes
-    if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.frontend == 'true' || needs.changes.outputs.perf_ratchet == 'true'
+    if: (needs.changes.outputs.rust == 'true' || needs.changes.outputs.frontend == 'true' || needs.changes.outputs.perf_ratchet == 'true') && needs.changes.outputs.replay != 'true'
     # Keep all routine CI on GitHub's free standard runner. This public repo's
     # previous 4-vCPU Depot path consumed the Developer plan's included minutes
     # in a few days; the prebuilt bundle remains a speed optimization only.
@@ -861,7 +900,7 @@ jobs:
   typecheck:
     name: Typecheck
     needs: [changes, build]
-    if: needs.changes.outputs.frontend == 'true'
+    if: (needs.changes.outputs.frontend == 'true') && needs.changes.outputs.replay != 'true'
     # tsc is not CPU-bound; the free 2-core runner is fine and costs nothing.
     runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted')))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     timeout-minutes: 12
@@ -893,7 +932,7 @@ jobs:
   lint:
     name: Lint
     needs: [changes, build]
-    if: needs.changes.outputs.frontend == 'true'
+    if: (needs.changes.outputs.frontend == 'true') && needs.changes.outputs.replay != 'true'
     # Two gates, both free-runner: oxlint over the source (no compile), and the
     # unused-locals ratchet (scripts/check-unused-locals.mjs), which needs the
     # built dist below because it type-checks each package. Before #2603 this
@@ -1019,7 +1058,7 @@ jobs:
   viewer-tests:
     name: Viewer tests (shard ${{ matrix.shard }})
     needs: [changes, build]
-    if: needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true'
+    if: (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true') && needs.changes.outputs.replay != 'true'
     runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted')))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     timeout-minutes: 25
     strategy:
@@ -1087,7 +1126,7 @@ jobs:
   node-guards:
     name: Node guards
     needs: [changes, build]
-    if: needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true'
+    if: (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true') && needs.changes.outputs.replay != 'true'
     # #7530: guards/scripts took about nine minutes before the serial package
     # suites used another sixteen, exhausting the unchanged 25-minute budget.
     # Give each workload its own runner and budget; keep every existing check.
@@ -1909,7 +1948,7 @@ jobs:
   node-tests:
     name: Node tests (shard ${{ matrix.shard }}/4)
     needs: [changes, build]
-    if: needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true'
+    if: (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true') && needs.changes.outputs.replay != 'true'
     # #7530: run package and real-WASM/integration suites independently of the
     # guard workload. Both jobs consume the same verified build and fixtures,
     # retain the 25-minute limit, and are judged by the required aggregate.
@@ -2045,7 +2084,7 @@ jobs:
   provenance-tests:
     name: Provenance tests
     needs: [changes, build]
-    if: needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true'
+    if: (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true') && needs.changes.outputs.replay != 'true'
     runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted')))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     # 353 s for the one file, ~6.5 min for the package on a hosted runner; 15
     # leaves headroom without hiding a hang for long.
@@ -2183,7 +2222,7 @@ jobs:
   rust-tests:
     name: Rust tests
     needs: changes
-    if: needs.changes.outputs.rust == 'true'
+    if: (needs.changes.outputs.rust == 'true') && needs.changes.outputs.replay != 'true'
     # Standard GitHub runners keep routine Rust validation out of Depot's
     # metered pool. The longer cap accommodates a cold GitHub cache restore.
     runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted')))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
@@ -2714,7 +2753,7 @@ jobs:
   docs-checks:
     name: Docs checks (docs-only PRs)
     needs: changes
-    if: needs.changes.outputs.docs == 'true' && needs.changes.outputs.frontend != 'true' && needs.changes.outputs.rust != 'true'
+    if: (needs.changes.outputs.docs == 'true' && needs.changes.outputs.frontend != 'true' && needs.changes.outputs.rust != 'true') && needs.changes.outputs.replay != 'true'
     # Free runner - three node scripts, not compute-bound.
     runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted')))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     timeout-minutes: 10
@@ -2747,7 +2786,7 @@ jobs:
   docs-site:
     name: Docs site build (mkdocs --strict)
     needs: changes
-    if: needs.changes.outputs.docs == 'true'
+    if: (needs.changes.outputs.docs == 'true') && needs.changes.outputs.replay != 'true'
     # Free runner - a pure-Python static site build, not compute-bound.
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -2843,7 +2882,7 @@ jobs:
   agents-md:
     name: AGENTS.md ratchet
     needs: changes
-    if: needs.changes.outputs.agents_md == 'true'
+    if: (needs.changes.outputs.agents_md == 'true') && needs.changes.outputs.replay != 'true'
     runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted')))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     timeout-minutes: 5
     steps:
@@ -2881,7 +2920,7 @@ jobs:
   license-headers:
     name: MPL license headers
     needs: changes
-    if: needs.changes.outputs.license_headers == 'true'
+    if: (needs.changes.outputs.license_headers == 'true') && needs.changes.outputs.replay != 'true'
     runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted')))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     timeout-minutes: 5
     steps:
@@ -2908,7 +2947,7 @@ jobs:
   native-instructions:
     name: Native instruction counts
     needs: changes
-    if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.perf_ratchet == 'true'
+    if: (needs.changes.outputs.rust == 'true' || needs.changes.outputs.perf_ratchet == 'true') && needs.changes.outputs.replay != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -3055,6 +3094,23 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: node scripts/ci-verdict-replay.mjs --replay
+      # PUSH REPLAY: the lanes a green PR run of this exact tree already ran
+      # skipped, and `skipped` passes the map below, so first re-read that run
+      # and refuse unless it is still green for this tree. The map then judges
+      # every lane that did run, push-only ones included.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: needs.changes.outputs.replay == 'true'
+        with:
+          lfs: false
+          persist-credentials: false
+          fetch-depth: 2
+      - name: Verify the replayed PR run
+        if: needs.changes.outputs.replay == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          REPLAY_RUN: ${{ needs.changes.outputs.replay_run }}
+        run: node scripts/ci-push-replay.mjs --verify --run "$REPLAY_RUN"
       - name: Gate on dependencies
         if: needs.changes.outputs.noop != 'true'
         run: |

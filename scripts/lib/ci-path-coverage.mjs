@@ -150,8 +150,8 @@ export function splitJobs(text) {
   return jobs.map((j) => ({ id: j.id, text: j.lines.join('\n') }));
 }
 
-// Not path filters: `noop` (the no-op `edited` probe, scripts/ci-verdict-replay.mjs) says nothing about paths, so a job gated on it alone still reads as "every path".
-const NON_FILTER_OUTPUTS = new Set(['noop']);
+// Not path filters: `noop` (the no-op `edited` probe, scripts/ci-verdict-replay.mjs) and `replay`/`replay_run` (the push replay, scripts/ci-push-replay.mjs) say nothing about paths, so a job gated on them alone still reads as "every path".
+const NON_FILTER_OUTPUTS = new Set(['noop', 'replay', 'replay_run']);
 
 /**
  * The filter outputs that must be `true` for a job to run, read off its `if:`.

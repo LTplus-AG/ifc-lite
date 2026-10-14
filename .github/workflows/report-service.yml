@@ -11,6 +11,11 @@ on:
       - '.github/actions/setup-report-integration/**'
       - 'pnpm-lock.yaml'
   workflow_dispatch:
+    inputs:
+      receipt_concurrency_diagnostic:
+        description: 'Qualification branch only: trace the four pure React receipt cases and ordinary inverse'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -21,6 +26,7 @@ concurrency:
 
 jobs:
   storage-integration:
+    if: inputs.receipt_concurrency_diagnostic != true
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -62,9 +68,24 @@ jobs:
           cache-prefix: report-public-ui-wasm
       - name: Root Turbo viewer dependency graph and test-source typecheck
         run: pnpm typecheck
+      - name: Prepare bounded receipt phase evidence
+        if: inputs.receipt_concurrency_diagnostic == true
+        shell: bash
+        run: |
+          set -euo pipefail
+          receipt_phase_dir="$RUNNER_TEMP/receipt-concurrent-diagnostic"
+          mkdir -p "$receipt_phase_dir"
+          echo "RECEIPT_CONCURRENT_PHASE_LOG=$receipt_phase_dir/phases.jsonl" >> "$GITHUB_ENV"
+          git rev-parse HEAD HEAD^{tree} > "$receipt_phase_dir/source.txt"
+          sha256sum apps/viewer/src/components/error-report/PublicModelReceipt.tsx \
+            apps/viewer/src/components/error-report/PublicModelReceipt.concurrent.test.tsx \
+            scripts/lib/revert-oracle-run-plan.mjs packages/wasm/pkg/ifc-lite_bg.wasm \
+            packages/wasm/pkg/ifc-lite.js packages/wasm/pkg/ifc-lite.d.ts > "$receipt_phase_dir/actual-source-runtime.sha256"
       - name: Provision real report integration prerequisites
+        if: inputs.receipt_concurrency_diagnostic != true
         uses: ./.github/actions/setup-report-integration
       - name: Fetch bounded authentic reporter IFC for mounted HTTP qualification
+        if: inputs.receipt_concurrency_diagnostic != true
         shell: bash
         run: |
           set -euo pipefail
@@ -76,8 +97,8 @@ jobs:
           echo "REPORT_TEST_PUBLIC_UI_IFC_FILE=$report_ui_fixture" >> "$GITHUB_ENV"
       - name: Mounted reporting UI through real handler, database and multipart storage
         env:
-          REPORT_TEST_PUBLIC_UI: 'true'
-          TEST_PATTERN: '(PublicModelSharing.http|PublicModelReceipt.race|PublicModelReceipt.concurrent)'
+          REPORT_TEST_PUBLIC_UI: ${{ inputs.receipt_concurrency_diagnostic && 'false' || 'true' }}
+          TEST_PATTERN: ${{ inputs.receipt_concurrency_diagnostic && 'PublicModelReceipt.concurrent' || '(PublicModelSharing.http|PublicModelReceipt.race|PublicModelReceipt.concurrent)' }}
         run: pnpm test --filter=@ifc-lite/viewer --concurrency=2 --env-mode=loose
       - name: Isolate stale public receipt behavior with the original implementation
         run: |
@@ -89,11 +110,19 @@ jobs:
             echo 'Public receipt is on main: ordinary whole-change inversion resumes; historical receipt inverse not applied.'
           fi
       - name: Prove restored public receipt controls pass
+        if: inputs.receipt_concurrency_diagnostic != true
         env:
           TEST_PATTERN: '(PublicModelReceipt.race|PublicModelReceipt.concurrent)'
         run: pnpm test --filter=@ifc-lite/viewer --concurrency=2 --env-mode=loose --force
+      - name: Retain actual receipt phase evidence
+        if: always() && inputs.receipt_concurrency_diagnostic == true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: receipt-concurrent-phases-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/receipt-concurrent-diagnostic
+          if-no-files-found: error
       - name: Remove owned report integration prerequisites
-        if: always()
+        if: always() && inputs.receipt_concurrency_diagnostic != true
         uses: ./.github/actions/setup-report-integration
         with:
           state: stop

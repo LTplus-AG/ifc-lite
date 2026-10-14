@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 """Compare #7292 candidate and independent IFC oracle boundary polygon unions.
 Install ifcopenshell==0.8.5 shapely==2.0.7 in a Python 3.12 venv.
 Example: python compare_surface.py --candidate native-2pct.json --slope .02 --output /tmp/7292-replay

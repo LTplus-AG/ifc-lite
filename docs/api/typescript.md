@@ -943,7 +943,8 @@ function createViewpoint(options): BCFViewpoint;
 // Extract viewer state from a BCF viewpoint
 function extractViewpointState(viewpoint: BCFViewpoint): {
   camera?: ViewerCameraState;
-  sectionPlane?: ViewerSectionPlane;
+  sectionPlane?: ViewerSectionPlane;     // the first clipping plane
+  sectionPlanes?: ViewerSectionPlane[];  // every clipping plane, in order
   selectedGuids: string[];
   hiddenGuids: string[];
   visibleGuids: string[];

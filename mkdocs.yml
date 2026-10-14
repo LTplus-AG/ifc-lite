@@ -172,6 +172,7 @@ nav:
     - Parsing IFC Files: guide/parsing.md
     - Geometry Processing: guide/geometry.md
     - Rendering: guide/rendering.md
+    - Cutting Planes: guide/section-planes.md
     - Querying Data: guide/querying.md
     - Selector Syntax: guide/selector-syntax.md
     - Images and PDF Appearance: guide/appearance.md

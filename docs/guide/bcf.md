@@ -107,7 +107,11 @@ const viewpoint = createViewpoint({
   selectedGuids: selectedGuids, // IFC GlobalIds of selected entities
   hiddenGuids: hiddenGuids,     // IFC GlobalIds of hidden entities
   visibleGuids: visibleGuids,   // IFC GlobalIds for isolation mode (optional)
-  sectionPlane: activePlane,    // Single active clipping plane (optional)
+  sectionPlane: activePlane,    // A single clipping plane (optional)
+  sectionPlanes: [              // Every cutting plane, one ClippingPlanes entry each (optional; replaces sectionPlane)
+    { axis: 'down', position: 40, enabled: true, flipped: false },
+    { axis: 'side', position: 70, enabled: true, flipped: true },
+  ],
   snapshot: base64Image,        // Screenshot as base64 (optional)
 });
 ```
@@ -197,7 +201,7 @@ if (isValidIfcGuid(guid)) {
 
 `generateIfcGuid`, `generateUuid`, and `isValidUuid` are also re-exported.
 
-In the viewer, activating a viewpoint shows its clipping plane (or clears the cut when it has none). Closing the BCF panel gives back the section cut and tool you had before the first viewpoint, unless you moved the cut in the meantime.
+In the viewer, a viewpoint carries every cutting plane (one clipping plane each), and activating one shows them all, replacing the planes on screen, or clears the cut when it has none. BCF has no slot for a plane's name, so planes come back as A, B, C; more than eight planes show the first eight. Closing the BCF panel gives back the section cuts and tool you had before the first viewpoint, unless you changed them in the meantime.
 
 ## IDS Validation Reports as BCF
 

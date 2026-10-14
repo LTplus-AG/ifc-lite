@@ -18,6 +18,13 @@ function cursorDecode(raw: string): ProjectCursor {
   }
   return { hubs, index: value.index, next: value.next === undefined ? undefined : text(value.next) };
 }
+const APP_NOT_AUTHORIZED = 'No Autodesk account has authorized IFClite yet. Ask your account administrator to add this app under Account Admin > Custom Integrations. You can still paste a Forma Site Design link.';
+function deniedHubWarning(page: Record<string, unknown>): boolean {
+  if (!page.meta || typeof page.meta !== 'object') return false;
+  const warnings = (page.meta as Record<string, unknown>).warnings;
+  return Array.isArray(warnings) && warnings.some((warning) =>
+    !!warning && typeof warning === 'object' && String((warning as Record<string, unknown>).HttpStatusCode) === '403');
+}
 export async function listProjects(api: Api, options?: ListProjectsOptions): Promise<Page<SourceProject>> {
   const query = options?.query?.trim();
   const url = query ? parseAutodeskLink(query) : undefined;
@@ -51,10 +58,12 @@ export async function listProjects(api: Api, options?: ListProjectsOptions): Pro
     const hubs: ProjectCursor['hubs'] = [];
     let path: string | undefined = '/project/v1/hubs';
     const seen = new Set<string>();
+    let denied = false;
     while (path) {
       if (seen.has(path) || seen.size >= 100) throw new AutodeskError('listing-limit', 'Autodesk hub paging did not finish.');
       seen.add(path);
       const page = record(await api.get(path, 'US', options?.signal));
+      denied ||= deniedHubWarning(page);
       for (const hub of rows(page.data)) {
         const attrs = attributes(hub);
         // APS HubData stores its authoritative region on attributes (#6823).
@@ -66,6 +75,8 @@ export async function listProjects(api: Api, options?: ListProjectsOptions): Pro
       }
       path = nextLink(page, '/project/v1/hubs');
     }
+    // APS reports unauthorized hubs as 200 + meta.warnings, not as an error status.
+    if (!hubs.length && denied) throw new AutodeskError('app-not-authorized', APP_NOT_AUTHORIZED, 403);
     if (!hubs.length) return { items: [] };
     cursor = { hubs, index: 0 };
   }

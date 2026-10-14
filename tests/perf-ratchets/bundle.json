@@ -1,6 +1,6 @@
 {
   "family": "bundle",
-  "description": "Transfer and boot size of what the viewer ships, measured by scripts/perf-ratchet/measure-bundle.mjs from the build job's artifacts: brotli (quality 11, node zlib) of the engine WASM, and raw bytes of the viewer's main entry chunk and of every JS file dist/index.html loads eagerly (eager bytes are the blocking ceiling, #7002). Viewer JS is gated raw because brotli-11 of it jumps by ~0.5% on a same-length timestamp change; its brotli sizes are reported, not gated (#7007). Raising a ceiling is a human PR with a justification (docs/guide/performance.md, 'Perf ratchet ceilings'); lowering is the daily perf-ratchet-lower.yml job (Refs #6955).",
+  "description": "Transfer and boot size of what the viewer ships, measured by scripts/perf-ratchet/measure-bundle.mjs from the build job's artifacts: brotli (quality 11, node zlib) of the engine WASM, and raw bytes of the viewer's main entry chunk and of every JS file dist/index.html loads eagerly (eager bytes are the blocking ceiling, #7002). Viewer JS is gated raw because brotli-11 of it jumps by ~0.5% on a same-length timestamp change; its brotli sizes are reported, not gated (#7007). Raising a ceiling is a human PR with a justification (docs/guide/performance.md, 'Perf ratchet ceilings'); lowering is the daily perf-ratchet-lower.yml job.",
   "entries": [
     {
       "id": "engine-wasm-brotli",

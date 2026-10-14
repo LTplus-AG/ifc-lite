@@ -49,6 +49,30 @@ describe('Autodesk native file sources', () => {
     await expect(h.provider.listProjects(h.ctx)).rejects.toThrow('unsupported region: CAN');
     expect(h.calls).toEqual([{ path: '/project/v1/hubs', region: 'US' }]);
   });
+  it('explains missing Custom Integrations when APS denies every hub region (#6823)', async () => {
+    const denied = (region: string) => ({ HttpStatusCode: '403', ErrorCode: 'BIM360DM_ERROR', Title: `Unable to get hubs from BIM360DM ${region}.` });
+    const h = harness(() => ({ data: [], meta: { warnings: [denied('US'), denied('EMEA')] } }));
+    await expect(h.provider.listProjects(h.ctx)).rejects.toMatchObject({ code: 'app-not-authorized', status: 403 });
+  });
+  it('keeps linked Forma sites listed when no hub has authorized the app (#6823)', async () => {
+    const h = harness((path) => path.includes('/sites/')
+      ? { id: 'site', projectId: 'project', name: 'Linked site' }
+      : { data: [], meta: { warnings: [{ HttpStatusCode: '403' }] } });
+    const stored = new Map<string, string>();
+    const ctx = { ...h.ctx, storage: {
+      get: async (key: string) => stored.get(key), set: async (key: string, value: string) => { stored.set(key, value); },
+      delete: async (key: string) => { stored.delete(key); }, keys: async () => [...stored.keys()],
+    } };
+    await h.provider.listProjects(ctx, { query: 'https://app.autodeskforma.eu/sites/site' });
+    expect((await h.provider.listProjects(ctx)).items.map((p) => p.name)).toEqual(['Linked site']);
+    // A pasted Docs link asks for one project; unrelated saved sites must not answer it.
+    await expect(h.provider.listProjects(ctx, { query: 'https://acc.autodesk.com/docs/files/projects/11111111-2222-3333-4444-555555555555' }))
+      .rejects.toMatchObject({ code: 'app-not-authorized' });
+  });
+  it('still reports an empty account without hub warnings as an empty list', async () => {
+    const h = harness(() => ({ data: [] }));
+    expect((await h.provider.listProjects(h.ctx)).items).toEqual([]);
+  });
   it('downloads selected historical storage even when current tip has changed', async () => {
     const h = harness((path) => path.includes('/items/') ? { data: item, included: [version('v2')] } : { data: version('v1') });
     const bytes = await h.provider.download(h.ctx, { projectId: project, containerId: folder, fileId: 'item', revisionId: 'v1' });

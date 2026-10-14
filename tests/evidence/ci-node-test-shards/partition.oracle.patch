@@ -1,0 +1,21 @@
+diff --git a/scripts/ci-node-test-shards.mjs b/scripts/ci-node-test-shards.mjs
+--- a/scripts/ci-node-test-shards.mjs
++++ b/scripts/ci-node-test-shards.mjs
+@@ -54,7 +54,7 @@ function fail(message) {
+ export function assertNamesResolve(workspaceNames) {
+   const names = new Set(workspaceNames);
+   const missing = [...Object.values(PINNED).flat(), ...OWN_JOB].filter((n) => !names.has(n));
+-  if (false) {
++  if (missing.length > 0) {
+     fail(
+       `shard list names ${missing.join(', ')}, which ${missing.length === 1 ? 'is' : 'are'} not ` +
+         'a workspace package. Fix PINNED/OWN_JOB in scripts/ci-node-test-shards.mjs; a stale ' +
+@@ -71,7 +71,7 @@ export function assertNamesResolve(workspaceNames) {
+ export function shardFilters(shard) {
+   if (PINNED[shard]) return PINNED[shard].map((p) => `--filter=${p}`);
+   if (shard === CATCH_ALL) {
+-    return [...OWN_JOB].map((p) => `--filter=!${p}`);
++    return [...OWN_JOB, ...Object.values(PINNED).flat()].map((p) => `--filter=!${p}`);
+   }
+   return fail(`unknown shard ${JSON.stringify(shard)}; expected 1-${SHARD_COUNT}.`);
+ }

@@ -14,6 +14,30 @@ const FIXTURE: &str = include_str!(
 );
 const POSITION_TOLERANCE: f64 = 1.0e-4; // 0.1 mm, including f32 and kernel snap
 
+fn covers_bottom_witness(triangle: [[f64; 3]; 3], slope: f64) -> bool {
+    if !triangle.iter().all(|vertex| {
+        (vertex[2] - (4.548 + slope * vertex[1])).abs() <= POSITION_TOLERANCE
+    }) {
+        return false;
+    }
+    let point = [-3.005, 0.004];
+    let signed_area = |a: [f64; 3], b: [f64; 3], p: [f64; 2]| {
+        (b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0])
+    };
+    let area = signed_area(triangle[0], triangle[1], [triangle[2][0], triangle[2][1]]);
+    if !area.is_finite() || area.abs() <= 1.0e-18 {
+        return false;
+    }
+    // Signed sub-areas are barycentric numerators. Allow the same 0.1 mm
+    // positional slack perpendicular to each edge, independent of winding.
+    (0..3).all(|edge| {
+        let a = triangle[edge];
+        let b = triangle[(edge + 1) % 3];
+        let edge_length = ((b[0] - a[0]).powi(2) + (b[1] - a[1]).powi(2)).sqrt();
+        signed_area(a, b, point) * area.signum() >= -POSITION_TOLERANCE * edge_length
+    })
+}
+
 fn surface_face(triangle: [[f64; 3]; 3], slope: f64, length_y: f64) -> (usize, f64) {
     let edge_a = [0, 1, 2].map(|k| triangle[1][k] - triangle[0][k]);
     let edge_b = [0, 1, 2].map(|k| triangle[2][k] - triangle[0][k]);
@@ -54,6 +78,7 @@ fn assert_strip(bytes: &[u8], slope: f64) {
     let mut referenced_vertices = 0;
     let length_y = 1.1 / (1.0 + slope * slope).sqrt();
     let mut surface_areas = [0.0; 6];
+    let mut bottom_witness_covered = false;
     for mesh in result.meshes.iter().filter(|mesh| mesh.express_id == 107) {
         for &index in &mesh.indices {
             let world = [0, 1, 2].map(|k| {
@@ -80,9 +105,15 @@ fn assert_strip(bytes: &[u8], slope: f64) {
             }));
             let (face, area) = surface_face(triangle, slope, length_y);
             surface_areas[face] += area;
+            bottom_witness_covered |= covers_bottom_witness(triangle, slope);
         }
     }
     assert!(referenced_vertices > 0, "the 25 mm strip must remain");
+    // #7292: correct bounds and summed face areas hid a triangular bottom
+    // gap. This point lies strictly inside the retained strip's bottom face.
+    assert!(bottom_witness_covered,
+        "#7292: bottom surface must cover IFC world point x=-3.005, y=0.004, z={}",
+        4.548 + slope * 0.004);
     // 0.1 mm covers f32 storage and the kernel snap. Unreferenced vertices
     // do not contribute: the issue specifically reports indexed world bounds.
     // Sloped bounds agree with the independent IfcOpenShell replay. The

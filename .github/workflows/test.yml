@@ -878,6 +878,12 @@ jobs:
           # RED. Once the script is on main, ordinary whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- scripts/ci-node-test-shards.mjs | grep -Fxq 'scripts/ci-node-test-shards.mjs'; then
             oracle_args+=(--mutation tests/evidence/ci-node-test-shards/partition.oracle.patch)
+          # Keep the new push-replay probe importable while removing ONLY its
+          # two guards: the exact-tree match (any green run would replay) and
+          # the main-only-cache blockers. The main-moved and blocker assertions
+          # turn RED. Once the script is on main, whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- scripts/ci-push-replay.mjs | grep -Fxq 'scripts/ci-push-replay.mjs'; then
+            oracle_args+=(--mutation tests/evidence/ci-push-replay/tree-equality.oracle.patch)
           fi
           node scripts/check-test-revert-oracle.mjs "${oracle_args[@]}"
           # #7512: observe cleanup independently of scoped admission/schema.

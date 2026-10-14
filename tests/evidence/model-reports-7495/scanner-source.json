@@ -1,0 +1,40 @@
+{
+  "sourceHead": "8bbb8bf40",
+  "base": "28be2550e3c074ba1e6e4c9461c98e8efda24597",
+  "serviceAssertionsPassed": 74,
+  "contractAssertionsPassed": 5,
+  "realEngineCasesSkipped": 3,
+  "engineQualification": "NOT_QUALIFIED",
+  "reason": "Local ClamAV/signature execution withheld for the shared GPU qualification reservation; no synthetic scan verdict substituted.",
+  "sourceOracle": {
+    "verdict": "OBSERVED",
+    "baseline": {
+      "kind": "pass",
+      "passed": 6,
+      "total": 9
+    },
+    "reverted": {
+      "kind": "assertion-failure",
+      "passed": 0,
+      "failed": 6,
+      "total": 9,
+      "evidence": []
+    },
+    "restoration": "verified"
+  },
+  "checks": [
+    "Root Turbo real PostgreSQL/S3 source and subprocess boundary tests passed.",
+    "Changed-file oxlint and module-size check passed."
+  ],
+  "pending": [
+    "Actual pinned-engine clean FZK and EICAR results with fresh signed definitions.",
+    "Full combined root typecheck.",
+    "Large-tail, limit, resource exhaustion and actual orchestrator/container restart qualification.",
+    "Selected EU isolated runtime qualification and operational activation review."
+  ],
+  "image": "clamav/clamav@sha256:705e0723f02fc13bf6e5e8a8e13a8c44420acf5e7ed06dfa2197081da00c7a73",
+  "localImagePull": "completed",
+  "productionActivation": false,
+  "ndaActivation": false,
+  "newHostingResources": false
+}

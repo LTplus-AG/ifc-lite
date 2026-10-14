@@ -136,8 +136,10 @@ Deletion/expiry also revoke access; cleanup retries provider
 failures without releasing storage quota early. Restores must keep public workers
 and delivery disabled until deletion/withdrawal tombstones are reconciled.
 
-Still required before enabling: an isolated scanner runner with qualified
-signature updates and resource limits, real clean IFC and EICAR refusal evidence,
+A dormant [isolated scanner runner](../../deploy/reports/scanner.md) now supplies
+the real-engine adapter and qualification entrypoint. It is not started by the API.
+Still required before enabling: qualification and deployment of that runner with
+fresh signatures and measured resource limits, real clean IFC and EICAR refusal evidence,
 actual deployment-provider immutable-copy and bounded-download qualification,
 end-to-end viewer qualification, and idempotent public-link publication. The integration
 tests use real PostgreSQL/S3 bytes and actual HTTP delivery but synthetic trusted

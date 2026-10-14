@@ -1,0 +1,105 @@
+{
+  "sourceHead": "7c5a75282906b0c958259ebe39983ebbfcf934a6",
+  "qualifiedAt": "2026-10-12T22:28:53.916059+00:00",
+  "scope": "Local isolated engine functional controls; not production activation qualification",
+  "image": "clamav/clamav@sha256:705e0723f02fc13bf6e5e8a8e13a8c44420acf5e7ed06dfa2197081da00c7a73",
+  "engineVersion": "1.5.4",
+  "dailyVersion": "28151",
+  "dailyCreatedAt": "2026-10-12T06:24:02Z",
+  "signedCvdFiles": {
+    "bytecode.cvd": {
+      "sha256": "6d4aa01f219e988060fc419f495d07f27e0cdf1a2cccc065971da922c76f7ffb",
+      "bytes": 281702
+    },
+    "daily.cvd": {
+      "sha256": "6a98e015d9702b44d2834b4d95d563999c673e5b8a906a6a146fe03d08855d85",
+      "bytes": 23442295
+    },
+    "main.cvd": {
+      "sha256": "0b2182d229f46981ec8f535382222f7c9dfdd656b250ad47988b910a8d302365",
+      "bytes": 89072577
+    }
+  },
+  "rootTurboTests": {
+    "servicePassed": 81,
+    "contractPassed": 5,
+    "skipped": 0
+  },
+  "defaultProductionRevertOracle": {
+    "base": "aff413c61a4084411326bb39ee83dc549bb79bfc",
+    "baselinePassed": 13,
+    "revertedAssertionFailures": 13,
+    "loaderErrors": 0,
+    "verdict": "OBSERVED",
+    "restoration": "verified"
+  },
+  "actualPassedControls": [
+    "Catalogued AC20-FZK-Haus.ifc reaches human review, never automatic approval",
+    "Canonical 68-byte EICAR detected infected by the actual pinned sandbox",
+    "Canonical non-STEP EICAR cannot clear the complete public pipeline",
+    "Actual 1 GiB engine cap yields incomplete/non-clean result for 1 GiB + 1 byte sparse fixture",
+    "Interrupting actual engine cannot return clean",
+    "Stale daily CVD rejected before clean",
+    "Withdrawal never revives public eligibility",
+    "Actual stored source byte changes rejected before engine"
+  ],
+  "originalFailedExpectation": {
+    "servicePassed": 76,
+    "serviceFailed": 1,
+    "assertion": "Arbitrary embedded EICAR inside STEP should be detected",
+    "correctionApproved": "Correct invalid whole-file EICAR expectation; no custom signature or lowered limit",
+    "primarySource": "https://github.com/Cisco-Talos/clamav/issues/1354",
+    "canonicalSha256": "275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f",
+    "canonical": "Eicar-Test-Signature FOUND",
+    "embeddedStep": "OK",
+    "oneMiBTailStep": "OK",
+    "interpretation": "Complete clean engine outcome is not a guarantee of absence of all malware, confidentiality, licence or permission problems."
+  },
+  "actualLimitProbe": {
+    "bytes": 1073741825,
+    "exitCode": 2,
+    "diagnosticCategories": [
+      "Heuristics.Limits.Exceeded.MaxFileSize",
+      "Virus(es) detected ERROR"
+    ],
+    "adapterOutcome": "inconclusive",
+    "complete": false
+  },
+  "resourceObservation": {
+    "run": "Initial real engine/FZK/embedded/withdrawal root run",
+    "rootElapsedSeconds": 47.65,
+    "maximumSampledCgroupPeakBytes": 1007276032,
+    "samplingIntervalSeconds": 2,
+    "hardMemoryBytes": 4294967296,
+    "cpuLimit": 1,
+    "network": "none",
+    "readOnlyRoot": true,
+    "capabilitiesDropped": [
+      "ALL"
+    ],
+    "pidsLimit": 64,
+    "noNewPrivileges": true,
+    "modelContainerMountDestinations": [
+      "/model.ifc",
+      "/signatures"
+    ],
+    "environmentVariableNames": [
+      "PATH",
+      "TZ"
+    ],
+    "limitations": "Sampled peak is not an OOM or selected EU runtime qualification."
+  },
+  "pendingBeforeActivation": [
+    "Selected EU isolated worker and its operational resource boundaries",
+    "Maximum allowed real/synthetic model, scan-work exhaustion and actual OOM controls",
+    "Actual orchestrator process/container crash and durable retry recovery",
+    "Restore journal hold hook when stacked with recovery layer",
+    "Final combined root typecheck",
+    "Exact-hash human approval, publication and end-to-end production acceptance"
+  ],
+  "activation": {
+    "userSubmissions": false,
+    "publicSharing": false,
+    "ndaSigning": false
+  }
+}

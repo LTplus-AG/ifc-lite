@@ -357,7 +357,7 @@ describe.skipIf(!enabled)('#7495 real HTTP ownership, consent and publication bo
     } finally { config.agreement.signingEnabled = false; }
   });
 
-  it('persists a verified reviewed destination privately and erases it on deletion (#7495)', async () => {
+  it('preserves the verified destination on first and repeated HTTP submit, then erases it on deletion (#7495, #7515)', async () => {
     const owner = await browser();
     const stranger = await browser();
     const correlation = { eventId: randomUUID(), sessionId: randomUUID(), buildSha: 'test' };
@@ -376,6 +376,18 @@ describe.skipIf(!enabled)('#7495 real HTTP ownership, consent and publication bo
     const restored = await (await request(owner, `/${report.id}`)).json() as ReportReceipt;
     expect(restored.issueDestination?.issueUrl).toBe(binding.issueUrl);
     expect(JSON.stringify(restored)).not.toContain(correlation.sessionId);
+    // #7515 review4269572424: the first submission must use the same durable
+    // receipt projection as its retry, without leaking the private binding.
+    const firstResponse = await request(owner, `/${report.id}/submit`, 'POST', {});
+    expect(firstResponse.status).toBe(202);
+    const firstReceipt = await firstResponse.json() as ReportReceipt;
+    expect(firstReceipt).toEqual({ id: report.id, status: 'submitted',
+      issueDestination: { issueUrl: binding.issueUrl, title: binding.title } });
+    expect(JSON.stringify(firstReceipt)).not.toContain(correlation.sessionId);
+    const retryResponse = await request(owner, `/${report.id}/submit`, 'POST', {});
+    expect(retryResponse.status).toBe(202);
+    expect(await retryResponse.json()).toEqual(firstReceipt);
+    expect((await db.query('SELECT report_id FROM report_outbox WHERE report_id=$1', [report.id])).rowCount).toBe(1);
     expect((await request(owner, `/${report.id}`, 'DELETE')).status).toBe(200);
     expect((await db.query('SELECT issue_binding FROM model_reports WHERE id=$1', [report.id])).rows[0].issue_binding).toBeNull();
   });

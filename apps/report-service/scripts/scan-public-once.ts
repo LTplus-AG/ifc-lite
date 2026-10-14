@@ -38,9 +38,10 @@ async function main(): Promise<void> {
       secretAccessKey: required("REPORT_S3_SECRET_ACCESS_KEY"),
     });
     try {
-      console.log(
-        `scanner_${await scanPublicOnce(db, source, signatures, resolve(required("REPORT_SCANNER_SCRATCH_DIRECTORY")), stop.signal)}`,
-      );
+      const result = await scanPublicOnce(db, source, signatures,
+        resolve(required("REPORT_SCANNER_SCRATCH_DIRECTORY")), stop.signal);
+      console.log(`scanner_${result}`);
+      if (result === "held") process.exitCode = 1;
     } finally {
       source.close();
       await db.end();

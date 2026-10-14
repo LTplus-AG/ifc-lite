@@ -10,6 +10,8 @@ export const FRAME_FIXTURES = [
   { name: 'Snowdon', path: 'tests/models/various/01_Snowdon_Towers_Sample_Structural(1).ifc' },
 ] as const;
 export const FRAME_SCENARIOS = ['streaming-load', 'orbit', 'hover'] as const;
+/** Attempts per fixture: a GPU-contaminated one is replaced by a fresh browser at most twice. */
+export const MAX_ATTEMPTS = 3;
 
 function object(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('invalid frame evidence object');
@@ -30,11 +32,28 @@ export function requireFrameEvidence(input: unknown): void {
   if (!Array.isArray(result.samples) || result.samples.length !== FRAME_FIXTURES.length) {
     throw new Error('missing fixture health evidence');
   }
+  // Every replaced attempt is retained, and only GPU contamination justifies a
+  // replacement: a retry can neither hide a real failure nor drop its receipt.
+  if (!Array.isArray(result.refusedAttempts)) throw new Error('missing refused-attempt evidence');
+  const refused = new Map<string, number[]>();
+  for (const value of result.refusedAttempts) {
+    const attempt = object(value), health = object(attempt.gpuHealth);
+    if (typeof attempt.fixture !== 'string' || health.contaminated !== true) {
+      throw new Error('a refused attempt must be retained GPU-contaminated evidence');
+    }
+    refused.set(attempt.fixture, [...refused.get(attempt.fixture) ?? [], Number(attempt.attempt)]);
+  }
   const fixtures = new Set<string>(FRAME_FIXTURES.map(fixture => fixture.name));
   for (const value of result.samples) {
     const sample = object(value), health = object(sample.gpuHealth);
     if (typeof sample.fixture !== 'string' || !fixtures.delete(sample.fixture)) throw new Error('duplicate or unexpected fixture health');
-    if (sample.completed !== true || sample.readinessError !== null || !Array.isArray(sample.pageErrors) || sample.pageErrors.length !== 0) {
+    const attempt = sample.attempt, prior = refused.get(sample.fixture) ?? [];
+    if (typeof attempt !== 'number' || !Number.isSafeInteger(attempt) || attempt < 1 || attempt > MAX_ATTEMPTS
+      || prior.length !== attempt - 1 || prior.some((n, i) => n !== i + 1)) {
+      throw new Error(`attempt receipts do not account for ${sample.fixture} attempt ${String(attempt)}`);
+    }
+    refused.delete(sample.fixture);
+    if (sample.completed !== true || sample.error !== null || sample.readinessError !== null || !Array.isArray(sample.pageErrors) || sample.pageErrors.length !== 0) {
       throw new Error('incomplete or page-error-contaminated frame sample');
     }
     const readiness = object(sample.readiness);
@@ -50,6 +69,7 @@ export function requireFrameEvidence(input: unknown): void {
       throw new Error('missing health witnesses or GPU-contaminated frame sample');
     }
   }
+  if (refused.size) throw new Error(`refused attempts for no admitted sample: ${[...refused.keys()].join(', ')}`);
   const expected = new Set(FRAME_FIXTURES.flatMap(fixture => FRAME_SCENARIOS.flatMap(scenario =>
     DETERMINISTIC_FRAME_METRICS.map(metric => `${fixture.name}/${scenario}/${metric}`))));
   const values = new Map<string, number>();

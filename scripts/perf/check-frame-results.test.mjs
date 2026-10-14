@@ -11,7 +11,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const { FRAME_FIXTURES, FRAME_SCENARIOS, requireFrameEvidence } = await tsImport('../../tests/benchmark/frames/frame-evidence.ts', import.meta.url);
+const { FRAME_FIXTURES, FRAME_SCENARIOS, MAX_ATTEMPTS, requireFrameEvidence } = await tsImport('../../tests/benchmark/frames/frame-evidence.ts', import.meta.url);
 const { drivenFrameRows, FRAME_BUDGET_MS } = await tsImport('../../tests/benchmark/frames/frame-stats.ts', import.meta.url);
 const { gpuHealthFrom } = await tsImport('../../tests/benchmark/gpu-health.ts', import.meta.url);
 
@@ -23,10 +23,11 @@ function evidence() {
   return {
     family: 'browser-frames', rig: 'deterministic-begin-frame', schema: 2,
     frameBudgetMs: FRAME_BUDGET_MS, browser: 'chrome-headless-shell invariant',
-    samples: FRAME_FIXTURES.map(({ name }) => ({ fixture: name, completed: true,
+    samples: FRAME_FIXTURES.map(({ name }) => ({ fixture: name, attempt: 1, completed: true, error: null,
       readinessError: null,
       readiness: { ended: true, done: ['parser.complete', 'geometry.streamComplete', 'scene.finalize'], failed: [] },
       pageErrors: [], gpuHealth: gpuHealthFrom([], { 'gpu.devices': 1 }) })),
+    refusedAttempts: [],
     rows: FRAME_FIXTURES.flatMap(({ name }) => FRAME_SCENARIOS.flatMap(scenario => drivenFrameRows(name, scenario, [frame]))),
   };
 }
@@ -94,6 +95,36 @@ test('#6975 refuses missing health, partial execution, page errors and duplicate
   ]) {
     const result = evidence(); mutate(result);
     assert.throws(() => requireFrameEvidence(result));
+  }
+});
+
+// A replaced attempt as the spec retains it: a fresh-browser retry after the
+// renderer lost and re-created its device (#6993/#7164 hosted SwiftShader).
+const contaminatedAttempt = (fixture, attempt) => ({ fixture, attempt, completed: false, error: null,
+  readiness: null, readinessError: null, pageErrors: [],
+  gpuHealth: gpuHealthFrom(['[WebGPU] Device lost: A valid external Instance reference no longer exists. (reason: unknown)'],
+    { 'gpu.devices': 4, 'gpu.deviceReplacements': 3, 'gpu.deviceLost': 3 }) });
+
+test('#6975 a clean fresh-browser attempt is admitted only with every contaminated attempt it replaced retained', () => {
+  const result = evidence(), snowdon = result.samples[1];
+  snowdon.attempt = MAX_ATTEMPTS;
+  result.refusedAttempts = [contaminatedAttempt(snowdon.fixture, 1), contaminatedAttempt(snowdon.fixture, 2)];
+  assert.doesNotThrow(() => requireFrameEvidence(result));
+});
+
+test('#6975 a retry cannot drop receipts, replace a non-GPU failure, exceed the bound or orphan a refusal', () => {
+  for (const [mutate, message] of [
+    [result => { result.samples[1].attempt = 2; }, /attempt receipts do not account/],
+    [result => { result.samples[1].attempt = 3; result.refusedAttempts = [contaminatedAttempt(result.samples[1].fixture, 2)]; }, /attempt receipts do not account/],
+    [result => { result.samples[1].attempt = 2; result.refusedAttempts = [{ ...contaminatedAttempt(result.samples[1].fixture, 1), gpuHealth: gpuHealthFrom([], { 'gpu.devices': 1 }) }]; }, /retained GPU-contaminated/],
+    [result => { result.samples[1].attempt = MAX_ATTEMPTS + 1; result.refusedAttempts = [1, 2, 3].map(n => contaminatedAttempt(result.samples[1].fixture, n)); }, /attempt receipts do not account/],
+    [result => { result.refusedAttempts = [contaminatedAttempt('Snowdon', 1)]; }, /attempt receipts do not account/],
+    [result => { result.refusedAttempts = [contaminatedAttempt('Elsewhere', 1)]; }, /refused attempts for no admitted sample/],
+    [result => { delete result.refusedAttempts; }, /missing refused-attempt/],
+    [result => { result.samples[0].error = 'Error: orbit rendered frames'; }, /incomplete/],
+  ]) {
+    const result = evidence(); mutate(result);
+    assert.throws(() => requireFrameEvidence(result), message);
   }
 });
 

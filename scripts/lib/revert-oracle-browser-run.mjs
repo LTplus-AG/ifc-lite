@@ -7,11 +7,12 @@
  * half, and the rule for what counts as a browser observation, is
  * `revert-oracle-browser.mjs`.
  *
- * It reuses exactly what CI's viewer-e2e lane runs rather than a parallel
- * recipe: the root `build:e2e` script builds the viewer, the root
- * `test:e2e:ci` script (`playwright test --project=viewer-e2e-ci`) runs the
- * spec, and the Playwright config's own webServer serves the build. Each
- * measurement rebuilds, so the reverted side is served the reverted bundle.
+ * It reuses exactly what CI already runs rather than a parallel recipe: the
+ * root `build:e2e` script builds the viewer, the first registered root script
+ * whose real `--list` output selects the spec runs it (`test:e2e:ci` for the
+ * viewer-e2e lane, `test:benchmark:frames` for the frame rig, #6975), and the
+ * Playwright config's own webServer serves the build. Each measurement
+ * rebuilds, so the reverted side is served the reverted bundle.
  *
  * BOUNDS. Only the changed specs run, one scoped `playwright test <spec>` per
  * side, with a build timeout, a Playwright `--global-timeout` and a hard
@@ -25,7 +26,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
 import { claimRuntimeAdapter } from './revert-oracle-adapters.mjs';
-import { BROWSER_BUILD_SCRIPT, BROWSER_TEST_SCRIPT, browserRunArgs, parsePlaywrightReport, reportTests } from './revert-oracle-browser.mjs';
+import { BROWSER_BUILD_SCRIPT, BROWSER_TEST_SCRIPTS, browserRunArgs, parsePlaywrightReport, reportTests } from './revert-oracle-browser.mjs';
 import { resolveCommand } from './revert-oracle-run-plan.mjs';
 
 const BUILD_TIMEOUT_MS = 8 * 60_000;
@@ -71,36 +72,44 @@ export function planBrowserSpecs(specs, root, { prodPaths = [], log = console.lo
   const plans = [], gaps = [];
   if (specs.length === 0) return { plans, gaps };
   const scripts = rootScripts(root);
-  const claimed = claimRuntimeAdapter({ kind: 'playwright', scripts });
+  const runners = BROWSER_TEST_SCRIPTS.flatMap(script => {
+    const claimed = claimRuntimeAdapter({ kind: 'playwright', scripts, browserScript: script });
+    return claimed ? [{ script, ...claimed }] : [];
+  });
   const unbuilt = prodPaths.filter(UNBUILT_IN_BROWSER);
-  const command = claimed && resolveCommand(claimed.runner.bin, root, root);
+  const command = runners.length && resolveCommand(runners[0].runner.bin, root, root);
   for (const spec of specs) {
-    if (!claimed) {
-      gaps.push({ file: spec, reason: `no browser runner: the root package needs a \`${BROWSER_TEST_SCRIPT}\` script of the form \`playwright test ...\`${scripts.__error ? ` (${scripts.__error})` : ''}` });
+    if (!runners.length) {
+      gaps.push({ file: spec, reason: `no browser runner: the root package needs a \`${BROWSER_TEST_SCRIPTS.join('` or `')}\` script of the form \`playwright test ...\`${scripts.__error ? ` (${scripts.__error})` : ''}` });
     } else if (unbuilt.length > 0) {
       gaps.push({ file: spec, reason: `the browser observer rebuilds the viewer bundle, not the wasm runtime, so reverting ${unbuilt[0]} cannot reach the browser` });
     } else if (!command) {
       gaps.push({ file: spec, reason: 'the playwright binary was not found from the repository root; run pnpm install' });
     } else {
-      const listed = spawnSync(command.bin, [...command.prefix, ...browserRunArgs(claimed.runner, spec, { list: true })], {
-        cwd: root, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: LIST_TIMEOUT_MS, env: baseEnv(),
-      });
-      let report = null;
-      try {
-        report = readJson(listed.stdout ?? '');
-      } catch (error) {
-        log(`  browser: could not read the Playwright listing for ${spec}: ${error.message}`);
+      const listings = [];
+      let selectedRunner = false;
+      for (const claimed of runners) {
+        const listed = spawnSync(command.bin, [...command.prefix, ...browserRunArgs(claimed.runner, spec, { list: true })], {
+          cwd: root, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: LIST_TIMEOUT_MS, env: baseEnv(),
+        });
+        let report = null;
+        try { report = readJson(listed.stdout ?? ''); }
+        catch (error) { log(`  browser: could not read the Playwright listing for ${spec}: ${error.message}`); }
+        const selected = reportTests(report).filter(({ file }) => sameFileAs(root, spec, report)(file));
+        if (listed.error || listed.signal || listed.status !== 0 || selected.length === 0) {
+          listings.push(`\`${claimed.script}\` (${claimed.runner.args.join(' ')}; ${listed.error?.message ?? `listing exit ${listed.status}`})`);
+          continue;
+        }
+        plans.push({
+          key: `playwright:${spec}`, file: spec, dir: root, files: [spec], relFiles: [spec], browser: true,
+          adapter: claimed.adapter, runner: claimed.runner, script: scripts[claimed.script], crate: null,
+          browserScript: claimed.script, listed: selected.length,
+        });
+        selectedRunner = true;
+        break;
       }
-      const selected = reportTests(report).filter(({ file }) => sameFileAs(root, spec, report)(file));
-      if (selected.length === 0) {
-        gaps.push({ file: spec, reason: `\`${BROWSER_TEST_SCRIPT}\` (${claimed.runner.args.join(' ')}) selects no test in this spec, so the browser observer cannot run it (${listed.error?.message ?? `listing exit ${listed.status}`})` });
-        continue;
-      }
-      plans.push({
-        key: `playwright:${spec}`, file: spec, dir: root, files: [spec], relFiles: [spec], browser: true,
-        adapter: claimed.adapter, runner: claimed.runner, script: scripts[BROWSER_TEST_SCRIPT], crate: null,
-        listed: selected.length,
-      });
+      if (!selectedRunner) gaps.push({ file: spec,
+        reason: `${listings.join(' and ')} selects no test in this spec, so the browser observer cannot run it` });
     }
   }
   for (const plan of plans) {

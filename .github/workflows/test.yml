@@ -796,10 +796,15 @@ jobs:
       - name: Detect changed Playwright specs
         id: browser
         run: |
-          if git diff --name-only --diff-filter=d origin/main...HEAD -- 'tests/e2e/*.spec.ts' 'tests/e2e/**/*.spec.ts' | grep -q .; then
+          if git diff --name-only --diff-filter=d origin/main...HEAD -- 'tests/e2e/*.spec.ts' 'tests/e2e/**/*.spec.ts' 'tests/benchmark/frames/*.spec.ts' | grep -q .; then
             echo "needed=true" >> "$GITHUB_OUTPUT"
           else
             echo "needed=false" >> "$GITHUB_OUTPUT"
+          fi
+          if git diff --name-only --diff-filter=d origin/main...HEAD -- 'tests/benchmark/frames/*.spec.ts' | grep -q .; then
+            echo "frames=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "frames=false" >> "$GITHUB_OUTPUT"
           fi
       - name: Provision optional revert-oracle runner toolchains
         uses: ./.github/actions/setup-revert-oracle
@@ -807,6 +812,9 @@ jobs:
           python: ${{ needs.changes.outputs.python == 'true' && 'full' || 'none' }}
           rust: ${{ needs.changes.outputs.rust }}
           browser: ${{ steps.browser.outputs.needed }}
+      - name: Install frame observer browser
+        if: steps.browser.outputs.frames == 'true'
+        run: pnpm exec playwright install --with-deps chromium-headless-shell
       # #7495: report integration witnesses must run against real durable
       # services on BOTH oracle sides. Missing prerequisites are not evidence.
       - name: Detect changed report integration witnesses
@@ -891,6 +899,13 @@ jobs:
           # RED. Once the script is on main, ordinary whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- scripts/viewer-test-shards.mjs | grep -Fxq 'scripts/viewer-test-shards.mjs'; then
             oracle_args+=(--mutation tests/evidence/ci-viewer-test-shards/selection.oracle.patch)
+          # Keep the newly added frame gate loadable while disabling its actual
+          # admission call. The workflow-CLI assertion must reject its acceptance
+          # of incomplete metrics. All changed tests still run on both sides.
+          # TODO(remove-by: check-frame-results.mjs is on main, louistrue)
+          # Ordinary whole-change inversion resumes automatically at that point.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- scripts/perf/check-frame-results.mjs | grep -Fxq 'scripts/perf/check-frame-results.mjs'; then
+            oracle_args+=(--mutation tests/evidence/frame-admission-6975/admission.oracle.patch)
           fi
           node scripts/check-test-revert-oracle.mjs "${oracle_args[@]}"
           # #7512: observe cleanup independently of scoped admission/schema.

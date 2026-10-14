@@ -46,11 +46,11 @@ export const REVERT_ORACLE_ADAPTERS = Object.freeze([
     probeRunner: (context) => detectRunner('node --test', [context.file]),
   },
   {
-    // #6267: a changed Playwright spec, run through the root `test:e2e:ci`
-    // script against a viewer rebuilt by `build:e2e` on each side.
+    // #6267: a changed Playwright spec, run through the registered root script
+    // whose listing selects it (#6975), against a viewer rebuilt by `build:e2e`.
     id: 'playwright', family: 'playwright', binary: 'playwright',
     claim: (context) => context.kind === 'playwright',
-    runner: (context) => browserRunner(context.scripts),
+    runner: (context) => browserRunner(context.scripts, context.browserScript),
     probeRunner: (context) => browserRunner({ 'test:e2e:ci': `playwright test ${context.file}` }),
   },
   {

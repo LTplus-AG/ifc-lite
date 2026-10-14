@@ -1916,8 +1916,7 @@ jobs:
     # Shards 1-3 are PINNED package lists (bin-packed to ~285 s each from that
     # run); shard 4 is EVERYTHING ELSE, computed as an exclusion of the pinned
     # lists. So a new package can never fall between shards: it lands in 4 by
-    # default. A pinned name that stops matching a workspace package fails the
-    # step instead of silently dropping a suite (see the check in the step).
+    # default. See scripts/ci-node-test-shards.mjs.
     strategy:
       fail-fast: false
       matrix:
@@ -1980,35 +1979,17 @@ jobs:
       # deadlines in unrelated parser and IDS invariants (#7471). Run one
       # package suite at a time; its own worker pool may use the runner.
       # Keep the artifact-only path, package selectors, tests and deadlines.
+      # The shard -> package mapping, and the refusal of a pinned name that no
+      # longer matches a workspace package, live in the script (tested by
+      # scripts/ci-node-test-shards.test.mjs, which proves the four shards
+      # partition the real workspace). Assigned, not piped, so a refusal
+      # fails this step under `bash -e` instead of running turbo unfiltered.
       - name: Package tests (shard ${{ matrix.shard }}/4)
         env:
           SHARD: ${{ matrix.shard }}
-          # Pinned shards. Edit these three lists only; shard 4 derives itself.
-          SHARD_1: '@ifc-lite/mcp @ifc-lite/parser @ifc-lite/sandbox'
-          SHARD_2: '@ifc-lite/cli @ifc-lite/flow-nodes @ifc-lite/renderer @ifc-lite/rules'
-          SHARD_3: '@ifc-lite/create @ifc-lite/export @ifc-lite/ids @ifc-lite/collab-server'
         run: |
-          pinned="$SHARD_1 $SHARD_2 $SHARD_3"
-          # Every pinned name must be a real workspace package. A renamed or
-          # removed package would otherwise vanish from its pinned shard AND
-          # stay excluded from shard 4 -- a suite that silently never runs.
-          workspace=$(pnpm ls -r --depth -1 --json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).map(p=>p.name).join("\n")))')
-          for p in $pinned; do
-            if ! grep -qxF -- "$p" <<<"$workspace"; then
-              echo "::error::Node tests shard list names '$p', which is not a workspace package. Fix the SHARD_n lists in test.yml."
-              exit 1
-            fi
-          done
-          case "$SHARD" in
-            1|2|3)
-              list_var="SHARD_${SHARD}"
-              filters=()
-              for p in ${!list_var}; do filters+=("--filter=$p"); done ;;
-            4)
-              filters=(--filter='!@ifc-lite/viewer' --filter='!@ifc-lite/provenance')
-              for p in $pinned; do filters+=("--filter=!$p"); done ;;
-            *) echo "::error::unknown shard $SHARD"; exit 1 ;;
-          esac
+          filters_txt=$(node scripts/ci-node-test-shards.mjs --shard "$SHARD")
+          mapfile -t filters <<<"$filters_txt"
           echo "turbo filters: ${filters[*]}"
           pnpm exec turbo test --only --concurrency=1 "${filters[@]}"
       # The root-level suites below are not turbo packages, so the package

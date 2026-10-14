@@ -32,6 +32,15 @@ describe('capture framing (#4921)', () => {
       'pose-dependent scale UI must update after framing completes');
   });
 
+  it('hands the padding multiple to the camera (exact zoom, #7545), and frames at the default when none is given', async () => {
+    const seen: Array<number | undefined> = [];
+    const camera = { frameBounds: async (_min: unknown, _max: unknown, _ms: number, padding?: number) => { seen.push(padding); } };
+    const renderer = { requestRender: () => {} };
+    await frameSelectionBounds(camera, renderer, { x: 0, y: 0, z: 0 }, { x: 1, y: 1, z: 1 }, 0, () => {}, 1.5);
+    await frameSelectionBounds(camera, renderer, { x: 0, y: 0, z: 0 }, { x: 1, y: 1, z: 1 }, 0, () => {});
+    assert.deepEqual(seen, [1.5, undefined]);
+  });
+
   it('reports malformed renderer bounds as unframed instead of reusing the previous pose', async () => {
     let frameCalls = 0;
     let renderCalls = 0;

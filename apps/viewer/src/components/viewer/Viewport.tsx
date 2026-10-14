@@ -942,6 +942,8 @@ export function Viewport({
           if (!bounds) return false;
           return frameSelectionBounds(camera, renderer, bounds.min, bounds.max, durationMs, calculateScale);
         },
+        // A caller's NaN duration must not reach the camera animation, which would never finish.
+        frameBounds: (min, max, options) => frameSelectionBounds(camera, renderer, min, max, Number.isFinite(options?.durationMs) ? options!.durationMs! : 300, calculateScale, options?.padding),
         // Resolve ids to what the renderer can actually highlight (the SAME
         // aggregation resolution frameSelection uses to decide what to frame),
         // for selection entry points that assign `selectedEntityId`/

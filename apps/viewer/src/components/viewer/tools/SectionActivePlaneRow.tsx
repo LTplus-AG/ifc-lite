@@ -30,6 +30,7 @@ import { useSectionOffset } from './useSectionOffset';
 import { useSectionFill } from './useSectionFill';
 import { SectionStepMenu } from './SectionStepMenu';
 import { SectionSetViewButton } from './SectionSetViewButton';
+import { SectionZoomMenu } from './SectionZoomMenu';
 import { useLiveTestId } from './SectionBarMeasure';
 import { storeyCutElevation } from '@/lib/section/section-distance';
 import { sectionBoxFromBounds, sectionBoxSize } from '@/lib/section/section-box';
@@ -135,6 +136,7 @@ export function SectionActivePlaneRow({ compact = false }: { compact?: boolean }
             <Focus aria-hidden className="h-3.5 w-3.5" />
             {t('sectionTool.box.fit')}
           </button>
+          <SectionZoomMenu compact={compact} />
         </span>
       ) : (
       <>
@@ -221,6 +223,7 @@ export function SectionActivePlaneRow({ compact = false }: { compact?: boolean }
         {word('sectionPlanes.flip.label')}
       </HudToggle>
       <SectionSetViewButton compact={compact} />
+      <SectionZoomMenu compact={compact} />
       <HudToggle
         pressed={sectionPlane.showGizmo}
         aria-label={t('sectionPlanes.show.label')}

@@ -327,6 +327,11 @@ export interface CameraCallbacks {
   /** Rotate the camera exactly 90° around the vertical axis. */
   rotateRight?: () => void;
   frameSelection?: (durationMs?: number) => void;
+  /**
+   * Frame an explicit world box keeping the current view direction and projection. `padding` is a
+   * multiple of the box (1 = edge to edge, default 1.2); resolves false when the box is unusable.
+   */
+  frameBounds?: (min: { x: number; y: number; z: number }, max: { x: number; y: number; z: number }, options?: { padding?: number; durationMs?: number }) => Promise<boolean>;
   /** The world AABB `frameSelection` would frame (same id resolution), or `null` with nothing framable. */
   selectionBounds?: () => { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null;
   /**

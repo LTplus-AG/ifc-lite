@@ -23,11 +23,12 @@ export function frameSelectionBounds(
   max: FrameMax,
   durationMs: number,
   onFramed: () => void,
+  padding?: number,
 ): Promise<boolean> {
   // Camera.frameBounds deliberately resolves after rejecting malformed boxes,
   // so callers cannot infer success from promise settlement alone.
   if (!isUsableCaptureBounds(min, max)) return Promise.resolve(false);
-  const frameReady = camera.frameBounds(min, max, durationMs);
+  const frameReady = camera.frameBounds(min, max, durationMs, padding);
   if (durationMs <= 0) renderer.requestRender();
   return frameReady.then(() => {
     onFramed();

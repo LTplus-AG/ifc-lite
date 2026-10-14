@@ -27,6 +27,7 @@
 import type { StateCreator } from 'zustand';
 import type { Drawing2D } from '@ifc-lite/drawing-2d';
 import type { SectionPlane, SectionPlaneAxis } from '../types.js';
+import { DEFAULT_SECTION_ZOOM, type SectionZoomSpec } from '@/lib/section/section-zoom-spec';
 import type { SectionSlice } from './sectionSlice.js';
 import {
   FIRST_SECTION_PLANE_NAME,
@@ -72,6 +73,9 @@ export interface SectionPlaneSetSlice {
   setSectionExtraCap: (id: string, cap: SectionExtraCap | null) => void;
   /** Drop every cap whose plane id is not in `keep`. */
   pruneSectionExtraCaps: (keep: readonly string[]) => void;
+  /** The zoom the Section bar's Zoom button applies: the last one used, per session. */
+  sectionZoom: SectionZoomSpec;
+  setSectionZoom: (spec: SectionZoomSpec) => void;
   sectionPickTarget: SectionPickTarget;
   /** The set before the last Remove / Clear all, until Undo or `dismissSectionUndo`. */
   sectionUndo: SectionUndoRecord | null;
@@ -129,6 +133,8 @@ export const createSectionPlaneSetSlice: StateCreator<SectionSlice, [], [], Sect
   return {
     inactiveSectionPlanes: [],
     sectionExtraCaps: {},
+    sectionZoom: DEFAULT_SECTION_ZOOM,
+    setSectionZoom: (spec) => set({ sectionZoom: spec }),
     setSectionExtraCap: (id, cap) => set((state) => {
       if (cap === null) {
         if (!(id in state.sectionExtraCaps)) return state;

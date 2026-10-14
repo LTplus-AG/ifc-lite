@@ -122,24 +122,49 @@ fn issue_7292_shared_producer_leaves_only_the_25mm_strip() {
     assert_strip(FIXTURE.as_bytes(), 0.02);
 }
 
+/// Change only the reporter's operand slope: A's placement/extrusion axes
+/// and B's cap heights. Footprints, layer depths and model placement stay
+/// fixed. The 2% regression above always uses the original fixture verbatim.
+fn fixture_at_slope(slope: f64) -> String {
+    let normal_length = (1.0 + slope * slope).sqrt();
+    let axis_y = slope / normal_length;
+    let axis_z = 1.0 / normal_length;
+    let mut fixture = String::new();
+    for line in FIXTURE.lines() {
+        let entity_id = line.split_once('=').and_then(|(id, _)| {
+            id.strip_prefix('#').and_then(|id| id.parse::<u32>().ok())
+        });
+        let replacement = match entity_id {
+            Some(37) => format!("#37=IFCDIRECTION((0.000000000000000,{:.15},{axis_z:.15}));", -axis_y),
+            Some(41) => format!("#41=IFCDIRECTION((0.000000000000000,{axis_y:.15},{axis_z:.15}));"),
+            Some(id @ 43..=62) => {
+                let (_, coordinates) = line.split_once("((").expect("committed prism point");
+                let coordinates = coordinates.strip_suffix("));").expect("point terminator");
+                let coordinates: Vec<f64> = coordinates.split(',')
+                    .map(|value| value.parse().expect("numeric prism point coordinate")).collect();
+                assert_eq!(coordinates.len(), 3, "prism point has three coordinates");
+                let base_z = if (id - 43) % 2 == 0 { 48.0 } else { 128.9 };
+                let z = base_z + slope * coordinates[1];
+                format!("#{id}=IFCCARTESIANPOINT(({:.4},{:.4},{z:.4}));", coordinates[0], coordinates[1])
+            }
+            _ => line.to_owned(),
+        };
+        fixture.push_str(&replacement);
+        fixture.push('\n');
+    }
+    fixture
+}
+
 #[test]
 fn issue_7292_flat_difference_positive_control_leaves_the_strip() {
-    // The reporter's stated positive control: the same geometry at 0 %.
-    // Flatten both operand axes and both prism planes, preserving the notch,
-    // depth, millimetre units, placement and 25 mm footprint difference.
-    let mut flat = FIXTURE.to_owned();
-    for (sloped, level) in [
-        ("-0.019996001199600", "0.000000000000000"),
-        ("0.019996001199600", "0.000000000000000"),
-        ("0.999800059980007", "1.000000000000000"),
-        ("64.0000", "48.0000"),
-        ("144.9000", "128.9000"),
-        ("65.2000", "48.0000"),
-        ("146.1000", "128.9000"),
-        ("70.0000", "48.0000"),
-        ("150.9000", "128.9000"),
-    ] {
-        flat = flat.replace(sloped, level);
-    }
+    let flat = fixture_at_slope(0.0);
     assert_strip(flat.as_bytes(), 0.0);
+}
+
+#[test]
+fn issue_7292_five_percent_difference_preserves_the_complete_strip() {
+    // The reporter's 5% variation had correct bounds but extra triangles.
+    // Assert six-face coverage without pinning a particular triangulation.
+    let sloped = fixture_at_slope(0.05);
+    assert_strip(sloped.as_bytes(), 0.05);
 }

@@ -75,7 +75,7 @@ function mount(client: ReportClient) {
       });
       assert.ok(suspendedRenders > before, 'The speculative receipt render reached its suspending sibling');
       assert.ok(document.querySelector('[data-committed-report]'), 'Original committed UI remains mounted');
-      assert.equal(document.querySelector('[data-suspended-fallback]'), null, 'Transition did not commit fallback');
+      assert.equal(document.querySelector('[data-suspended-fallback]') === null, true, 'Transition did not commit fallback');
     },
   };
 }
@@ -98,8 +98,8 @@ for (const outcome of ['success', 'error'] as const) {
     await settle();
     if (outcome === 'success') {
       assert.equal(ui.changes.length, 1, 'Valid response reached the committed parent');
-      assert.equal(document.querySelector('a[href*="/public/"]'), null, 'Held receipt removed download');
-      assert.equal(document.querySelector('[role="alert"]'), null);
+      assert.equal(document.querySelector('a[href*="/public/"]') === null, true, 'Held receipt removed download');
+      assert.equal(document.querySelector('[role="alert"]') === null, true);
     } else {
       assert.equal(ui.changes.length, 0);
       assert.match(document.querySelector('[role="alert"]')?.textContent ?? '', /Live status service failed/);
@@ -121,13 +121,13 @@ for (const terminal of ['withdrawn', 'deleted'] as const) {
     } else {
       ui.commit({ id: available.id, status: 'deleted' });
     }
-    assert.equal(document.querySelector('a[href*="/public/"]'), null);
+    assert.equal(document.querySelector('a[href*="/public/"]') === null, true);
     await ui.abandon({ ...available, id: 'speculative-other' });
     ui.commit({ ...available }); // Older same-report snapshot after abandoned work.
-    assert.equal(document.querySelector('a[href*="/public/"]'), null, 'Terminal report cannot resume downloads');
-    assert.equal(document.querySelector('button'), null, 'Terminal report cannot resume sharing controls');
+    assert.equal(document.querySelector('a[href*="/public/"]') === null, true, 'Terminal report cannot resume downloads');
+    assert.equal(document.querySelector('button') === null, true, 'Terminal report cannot resume sharing controls');
     if (terminal === 'withdrawn') assert.match(document.body.textContent ?? '', /New downloads are blocked/);
-    else assert.equal(document.querySelector('section'), null);
+    else assert.equal(document.querySelector('section') === null, true);
     ui.commit({ ...available, id: 'committed-other' });
     assert.ok(document.querySelector(`a[href="/api/reports/public/${token}"]`), 'A committed report change resets terminal state');
     assert.equal(button('Check public model status').disabled, false);

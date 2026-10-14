@@ -64,7 +64,7 @@ export function readProbe() {
       return { ...nut, globalId, resolved: ref, actualGuid: resolveEntityRefGlobalId(ref),
         actualName: model.ifcDataStore?.entities.getName(nut.expressId) ?? null };
     }) : [],
-    selected: [...state.selectedEntities],
+    selected: [...state.selectedEntityIds],
     adapter: renderer?.getAdapterInfo() ?? null,
     rendererDiagnostics: renderer?.getDiagnostics() ?? null,
     camera: camera ? {

@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { SelectionMaskPass } from '../../packages/renderer/src/selection-mask-pass.js';
+import { MESH_UNIFORM_FLOATS } from '../../packages/renderer/src/mesh-rte-uniforms.js';
 import { mainShaderSource } from '../../packages/renderer/src/shaders/main.wgsl.js';
 import { uploadIndividualMesh } from '../../packages/renderer/src/individual-mesh-upload.js';
 import { quantizeInterleaved } from '../../packages/renderer/src/quantize.js';
@@ -63,7 +64,7 @@ export async function runMaskDepthWitness(sampledDepthView = false): Promise<Mas
           // Reverse-Z infinite projection: depth=near/distance, camera at z=0.
           projection[10] = 0; projection[11] = -1; projection[14] = 1; projection[15] = 0;
         } else { projection[10] = 0.001; projection[14] = 0.5; }
-        const uniforms = new Float32Array(96);
+        const uniforms = new Float32Array(MESH_UNIFORM_FLOATS);
         uniforms.set(projection); uniforms.set(identity(), 16); uniforms.set([0, 0, 0, 1], 32); uniforms.set(projection, 60);
         const positions = new Float32Array([-1, -1, -2.0003 - slope, 1, -1, -2.0003 + slope, -1, 1, -2.0003 - slope, 1, 1, -2.0003 + slope]);
         const normals = new Float32Array(12); for (let i = 2; i < 12; i += 3) normals[i] = 1;

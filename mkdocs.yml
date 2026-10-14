@@ -40,6 +40,9 @@ not_in_nav: |
   architecture/viewer-ai-evaluation.md
   architecture/viewer-ai-semantic.md
   architecture/section-6614-6615-spec.md
+  # Issue-scoped spec and UX/implementation plan for several cutting planes (#7545); evidence under architecture/evidence/**.
+  architecture/section-7545-cutting-planes-spec.md
+  architecture/section-7545-ux-and-implementation-plan.md
   architecture/autodesk-cloud-sources-plan.md
   architecture/evidence/**
   research/**

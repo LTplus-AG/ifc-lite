@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 import { mkdtemp, readFile, rm, readdir, mkdir, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import {
   S3Client,

@@ -9,7 +9,7 @@ export default defineConfig({
   testDir: '.', testMatch: 'reporter-6729.e2e.spec.ts',
   timeout: 300_000, workers: 1, fullyParallel: false, retries: 0,
   outputDir: '../../test-results/reporter-6729',
-  reporter: [['list'], ['json', { outputFile: 'test-results/reporter-6729-results.json' }]],
+  reporter: [['list'], ['json', { outputFile: '../../test-results/reporter-6729-results.json' }]],
   use: {
     channel: 'chrome', headless: true, viewport: { width: 1600, height: 1000 },
     deviceScaleFactor: 1, locale: 'en-US', actionTimeout: 30_000,

@@ -35,7 +35,7 @@ export function viewportRenderOptions(
     isInteracting: continuous, maxPixelRatio: continuous ? 1 : undefined,
     interactionFrameIntervalMs: throttleMs || undefined, contributionCull, lod,
     buildingRotation: p.coordinateInfoRef.current?.buildingRotation,
-    ...sectionRenderClip(state.sceneState.section.visible, p.sectionPlaneRef.current, p.sectionRangeRef.current, state.activeTool, state.inactiveSectionPlanes),
+    ...sectionRenderClip(state.sceneState.section.visible, p.sectionPlaneRef.current, p.sectionRangeRef.current, state.activeTool, state.inactiveSectionPlanes, p.sectionBoundsRef?.current),
     ...hoverOutlineTarget(),
     terrainClipY: p.terrainClipYRef.current ?? undefined,
   };

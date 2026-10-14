@@ -134,6 +134,15 @@ describe('sectionRenderClip', () => {
       assert.equal(out.sectionPlane?.enabled, true);
     });
 
+    it('every plane carries the same slider range along its own axis (so a percentage means one place), custom planes none', () => {
+      const bounds = { min: { x: 0, y: -1, z: 10 }, max: { x: 8, y: 3, z: 30 } };
+      const out = sectionRenderClip(true, plane(), { min: -1, max: 3 }, 'select', [
+        plane({ id: 'q', axis: 'side' }), plane({ id: 'r', axis: 'front' }), plane({ id: 's', axis: 'down' }),
+        plane({ id: 't', custom: { normal: [0, 0, 1], distance: 4, pickedAt: [0, 0, 4], tangent: [1, 0, 0], bitangent: [0, 1, 0] } }),
+      ], bounds);
+      assert.deepEqual(out.extraSectionPlanes!.map((p) => [p.min, p.max]), [[0, 8], [10, 30], [-1, 3], [undefined, undefined]]);
+    });
+
     it('with one plane the result is what it was before the set existed', () => {
       assert.deepEqual(sectionRenderClip(true, plane(), null, 'select', []), sectionRenderClip(true, plane(), null, 'select'));
       assert.equal('extraSectionPlanes' in sectionRenderClip(true, plane(), null, 'select', []), false);

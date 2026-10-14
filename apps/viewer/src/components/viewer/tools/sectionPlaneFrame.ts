@@ -16,15 +16,19 @@ import type { SectionPlaneFrame } from '@ifc-lite/renderer';
 import { getGlobalRenderer } from '@/hooks/useBCF';
 import { useViewerStore } from '@/store';
 import { rendererSectionPlane } from '@/lib/section/section-render-clip';
+import { visibleCoordinateInfo } from '@/lib/section/section-plane-inputs';
 
 /** Every plane's frame from the store's current planes, primary first; empty before the renderer has a frame. */
 export function currentPlaneFrames(): SectionPlaneFrame[] {
   const renderer = getGlobalRenderer();
   if (!renderer) return [];
-  const { sectionPlane, inactiveSectionPlanes } = useViewerStore.getState();
+  const state = useViewerStore.getState();
+  const { sectionPlane, inactiveSectionPlanes } = state;
+  // The same range the clip uses, so a tag sits on the plane that cuts.
+  const bounds = visibleCoordinateInfo(state)?.shiftedBounds ?? null;
   return renderer.getSectionPlaneFrames({
-    primary: sectionPlane.box ? null : rendererSectionPlane(sectionPlane),
-    extras: inactiveSectionPlanes.filter((p) => !p.box).map(rendererSectionPlane),
+    primary: sectionPlane.box ? null : rendererSectionPlane(sectionPlane, bounds),
+    extras: inactiveSectionPlanes.filter((p) => !p.box).map((p) => rendererSectionPlane(p, bounds)),
   });
 }
 

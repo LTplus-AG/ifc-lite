@@ -39,6 +39,14 @@ export interface LoadedModel {
    * from a file this process read (it then matches no fingerprint target).
    */
   sourceFingerprint?: string;
+  /**
+   * The parser's `scan:` diagnostics for this model: records the scan dropped
+   * (an unterminated or unescaped string, #3695/#7541) or skipped (#3395).
+   * Absent when every record the file declares was read. Answers about a model
+   * that has them describe less than the file holds, so `model_load` returns
+   * them to the caller (#7610).
+   */
+  scanWarnings?: readonly string[];
   loadedAt: number;
 }
 

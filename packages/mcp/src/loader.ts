@@ -75,12 +75,17 @@ export async function loadIfcModelFromBytes(bytes: Uint8Array, name: string, mod
   console.log = (): void => undefined;
   console.warn = (): void => undefined;
   let store: IfcDataStore;
+  // Kept, not silenced with the console: a `scan:` line says the model is
+  // missing records, which the caller has to hear (#7610).
+  const scanWarnings: string[] = [];
   try {
     const arrayBuffer = buffer.buffer.slice(
       buffer.byteOffset,
       buffer.byteOffset + buffer.byteLength,
     ) as ArrayBuffer;
-    store = await parser.parseColumnar(arrayBuffer);
+    store = await parser.parseColumnar(arrayBuffer, {
+      onDiagnostic: (m) => { if (m.startsWith('scan: ')) scanWarnings.push(m); },
+    });
     store.fileSize = buffer.byteLength;
   } finally {
     console.log = origLog;
@@ -100,6 +105,7 @@ export async function loadIfcModelFromBytes(bytes: Uint8Array, name: string, mod
     // Computed from the POST-unwrap bytes, so an .ifcZIP is fingerprinted by
     // the STEP it contains — the viewer's rule (#5138).
     sourceFingerprint: sourceModelIdentity(name, buffer),
+    ...(scanWarnings.length > 0 ? { scanWarnings } : {}),
     loadedAt: Date.now(),
   };
 }

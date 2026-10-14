@@ -2,8 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { createHash, randomUUID } from "node:crypto";
-import { mkdtemp, readFile, rm, readdir } from "node:fs/promises";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { mkdtemp, readFile, rm, readdir, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -19,6 +19,7 @@ import { qualifyMaxModel } from "./scanner-max-model.js";
 import { scannerChild, runningContainer, cleanScannerScratch, docker } from "./scanner-child.js";
 import { loadFeature } from "./feature-loader.js";
 import { openDatabase, migrate } from "../src/database.js";
+import { initializeRuntimeJournal, journalTargetDigest } from "../src/journal-runtime.js";
 import { createReport, submitReport } from "../src/reports.js";
 import { ModelStorage } from "../src/storage.js";
 import { startUpload, authorizePart, uploadRow } from "../src/uploads.js";
@@ -125,6 +126,18 @@ describe.skipIf(!enabled)(
       await migrate(db);
       await s3.send(new CreateBucketCommand({ Bucket: bucket }));
       initialized = true;
+      // #7532: process fixtures bind their genuinely empty owned schema before
+      // queuing models, without handing API credentials to the scanner child.
+      const epoch = randomBytes(32).toString("hex");
+      const key = randomBytes(32).toString("hex");
+      config.journal = { epoch, key, custodyFile: join(temporary, "custody.json") };
+      const actual = (await db.query("SELECT current_database() AS database,current_schema() AS schema")).rows[0];
+      await writeFile(config.journal.custodyFile, JSON.stringify({ version: 1, epoch,
+        keyFingerprint: sha(Buffer.from(key)), ...actual, targetDigest: journalTargetDigest(config),
+        custodian: "owned scanner fixture", independentLocation: "isolated fixture; not production custody proof",
+        initialCheckpoint: { epoch, sequence: 0, hash: "0".repeat(64) } }), { mode: 0o600 });
+      await initializeRuntimeJournal(db, { ...config, submissionsEnabled: false });
+      keys.push(`operations/restore/${epoch}/head`);
       if (sourceModule) source = new sourceModule.ScannerSource(config);
     });
     afterEach(async () => {
@@ -302,6 +315,50 @@ describe.skipIf(!enabled)(
         await db.query("DROP TABLE report_restore_hold");
       }
     });
+    it("#7532 actual scanner startup refuses occupied history without valid custody before lease or model materialization", async () => {
+      const id = await queue(step);
+      const wrongTarget = join(temporary, "wrong-target-custody.json");
+      await writeFile(wrongTarget, JSON.stringify({
+        ...JSON.parse(await readFile(config.journal!.custodyFile, "utf8")), schema: "wrong_fixture_schema",
+      }), { mode: 0o600 });
+      const invalid = [
+        { ...config, journal: undefined },
+        { ...config, journal: { ...config.journal!, custodyFile: join(temporary, "missing-custody.json") } },
+        { ...config, journal: { ...config.journal!, key: "0".repeat(64) } },
+        { ...config, journal: { ...config.journal!, custodyFile: wrongTarget } },
+      ];
+      for (const [index, rejected] of invalid.entries()) {
+        const scratch = join(temporary, `startup-rejected-${index}`);
+        const process = scannerChild(rejected, join(temporary, "no-signatures"), scratch, 15000);
+        try {
+          expect(await process.done).toEqual({ code: 1, signal: null, output: "scanner_operation_failed\n" });
+          expect((await db.query("SELECT state,attempts,lease_id FROM report_public_quarantine WHERE report_id=$1", [id])).rows[0])
+            .toEqual({ state: "pending", attempts: 0, lease_id: null });
+          expect(existsSync(scratch)).toBe(false);
+        } finally {
+          if (process.child.exitCode === null && process.child.signalCode === null) process.child.kill("SIGKILL");
+          await process.done;
+        }
+      }
+    }, 70000);
+    it("#7532 actual scanner with valid custody works using only scanner credentials", async () => {
+      const id = await queue(step);
+      const scratch = join(temporary, "startup-valid-custody");
+      // scannerChild passes no GitHub, admission, admin or API signing secrets.
+      // Missing engine signatures stop after the real private source transfer.
+      const process = scannerChild(config, join(temporary, "no-signatures"), scratch, 15000);
+      try {
+        expect(await process.done).toEqual({ code: 0, signal: null,
+          output: "[report-service] scanner_job_failed\nscanner_held\n" });
+        expect((await db.query("SELECT state,attempts,scan FROM report_public_quarantine WHERE report_id=$1", [id])).rows[0])
+          .toEqual({ state: "scanning", attempts: 1, scan: null });
+        expect(await readdir(scratch)).toEqual([]);
+      } finally {
+        if (process.child.exitCode === null && process.child.signalCode === null) process.child.kill("SIGKILL");
+        await process.done;
+        await cleanScannerScratch(scratch);
+      }
+    }, 20000);
     it("#7495 missing real signatures holds the durable job without fabricated clearance and cleans scratch", async () => {
       expect(workerModule, "Trusted scanner worker must exist").toBeDefined();
       const id = await queue(step);

@@ -5,6 +5,8 @@
 import { resolve } from "node:path";
 import { isMainEntry } from "../../../scripts/lib/is-main-entry.mjs";
 import { openDatabase } from "../src/database.js";
+import { loadJournalConfig } from "../src/journal-config.js";
+import { openRuntimeJournal } from "../src/journal-runtime.js";
 import { ScannerSource } from "../src/scanner-source.js";
 import { scanPublicOnce } from "../src/scanner-worker.js";
 import { updateScannerSignatures } from "../src/scanner-signatures.js";
@@ -28,21 +30,32 @@ async function main(): Promise<void> {
     }
     if (process.argv[2] !== "scan-once")
       throw new Error("scanner_command_required");
-    const db = openDatabase(required("REPORT_DATABASE_URL"));
-    const source = new ScannerSource({
+    const storage = {
       bucket: required("REPORT_S3_BUCKET"),
       region: required("REPORT_S3_REGION"),
       endpoint: process.env.REPORT_S3_ENDPOINT,
       forcePathStyle: process.env.REPORT_S3_FORCE_PATH_STYLE === "true",
       accessKeyId: required("REPORT_S3_ACCESS_KEY_ID"),
       secretAccessKey: required("REPORT_S3_SECRET_ACCESS_KEY"),
-    });
+    };
+    const journalConfig = loadJournalConfig(process.env);
+    const db = openDatabase(required("REPORT_DATABASE_URL"));
+    let journal: Awaited<ReturnType<typeof openRuntimeJournal>> = undefined;
     try {
-      console.log(
-        `scanner_${await scanPublicOnce(db, source, signatures, resolve(required("REPORT_SCANNER_SCRATCH_DIRECTORY")), stop.signal)}`,
-      );
+      // The scanner authenticates the same durable custody/binding/head as the
+      // API, using only its own storage/journal credentials. No API secrets.
+      journal = await openRuntimeJournal(db, { ...storage, journal: journalConfig, submissionsEnabled: false });
+      // Match disabled API startup: an unbound, empty history cannot start a
+      // worker that might claim work introduced after the emptiness check.
+      if (!journal) { console.log("scanner_idle"); return; }
+      const source = new ScannerSource(storage);
+      try {
+        console.log(
+          `scanner_${await scanPublicOnce(db, source, signatures, resolve(required("REPORT_SCANNER_SCRATCH_DIRECTORY")), stop.signal)}`,
+        );
+      } finally { source.close(); }
     } finally {
-      source.close();
+      journal?.close();
       await db.end();
     }
   } finally {

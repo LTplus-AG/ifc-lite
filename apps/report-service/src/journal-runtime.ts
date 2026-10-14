@@ -7,7 +7,12 @@ import { journalDigest, readCustody, type JournalCustody } from "./journal-confi
 import { RestoreJournal } from "./restore-journal.js";
 import { assertRestoreNotHeld } from "./restore-recovery.js";
 
-export function journalTargetDigest(config: Config): string {
+type JournalStorageConfig = Pick<Config,
+  "bucket" | "region" | "endpoint" | "forcePathStyle" | "accessKeyId" | "secretAccessKey">;
+type JournalRuntimeConfig = JournalStorageConfig & Pick<Config,
+  "journal" | "submissionsEnabled" | "qualificationToken">;
+
+export function journalTargetDigest(config: JournalStorageConfig): string {
   return journalDigest(JSON.stringify([config.bucket, config.region, config.endpoint ?? null, Boolean(config.forcePathStyle)]));
 }
 async function identity(db: Pick<Db, "query">): Promise<{ database: string; schema: string }> {
@@ -15,7 +20,7 @@ async function identity(db: Pick<Db, "query">): Promise<{ database: string; sche
     "SELECT current_database() AS database,current_schema() AS schema");
   return result.rows[0];
 }
-function checkCustody(config: Config, custody: JournalCustody, actual: { database: string; schema: string }): void {
+function checkCustody(config: JournalStorageConfig, custody: JournalCustody, actual: { database: string; schema: string }): void {
   if (custody.database !== actual.database || custody.schema !== actual.schema ||
       custody.targetDigest !== journalTargetDigest(config))
     throw new Error("report_journal_custody_target_mismatch");
@@ -41,7 +46,7 @@ async function assertEmptyHistory(tx: Pick<Db, "query">): Promise<void> {
 /** Startup authenticates an existing head, never creates one. This is NOT a
  * rollback detector: an operator must quiesce all actors, preserve an external
  * latest checkpoint and reconcile under a restore hold after any DB restore. */
-export async function openRuntimeJournal(db: Db, config: Config): Promise<RestoreJournal | undefined> {
+export async function openRuntimeJournal<T extends JournalRuntimeConfig>(db: Db, config: T): Promise<RestoreJournal | undefined> {
   const binding = await db.query<{ epoch: string; key_fingerprint: string; target_digest: string; database_name: string; schema_name: string }>(
     "SELECT epoch,key_fingerprint,target_digest,database_name,schema_name FROM report_journal_binding WHERE singleton");
   if (!config.journal) {

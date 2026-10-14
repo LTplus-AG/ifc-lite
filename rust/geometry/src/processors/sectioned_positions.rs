@@ -52,8 +52,9 @@ impl PositionAlongDirectrix {
     ///   `Axis` and `RefDirection` are retained for the section frame.
     ///   IFC4x3 `OffsetLateral` is positive to the left, so it is negated
     ///   for this processor's right-positive convention. `DistanceAlong`
-    ///   measures cumulative 3D length along its `BasisCurve` and is
-    ///   converted to horizontal station through one shared arc-length map.
+    ///   is the `BasisCurve` parameter: horizontal station on an
+    ///   `IfcGradientCurve`, cumulative 3D length on a polyline (converted
+    ///   to horizontal station through one shared arc-length map).
     pub(super) fn parse(
         entity: &DecodedEntity,
         decoder: &mut EntityDecoder,
@@ -108,7 +109,10 @@ impl PositionAlongDirectrix {
             offset_lateral: -location.get_float(1).unwrap_or(0.0),
             offset_vertical: location.get_float(2).unwrap_or(0.0),
             offset_longitudinal: location.get_float(3).unwrap_or(0.0),
-            along_horizontal: false,
+            // IfcGradientCurve is parameterised by its horizontal BaseCurve
+            // ("the value of the parameter equals the parameter value of
+            // BaseCurve"), so its DistanceAlong is already a horizontal station.
+            along_horizontal: basis.ifc_type == IfcType::IfcGradientCurve,
             axis,
             ref_direction,
             linear: true,

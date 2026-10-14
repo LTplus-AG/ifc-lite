@@ -236,6 +236,7 @@ ${WORKER_LEXING}
       while (pos < len) {
         var c6 = buf[pos];
         if (c6 === 0x27) { // quote
+          if (inString && isPageQuoteOperandAt(pos)) { pos++; continue; }
           if (inString && pos + 1 < len && buf[pos + 1] === 0x27) {
             pos += 2;
             continue;
@@ -330,6 +331,7 @@ ${WORKER_LEXING}
       var closed = false;
       while (sp < len) {
         if (buf[sp] === 0x27) {
+          if (isPageQuoteOperandAt(sp)) { sp++; continue; }
           if (sp + 1 < len && buf[sp + 1] === 0x27) { sp += 2; continue; }
           sp++;
           closed = true;

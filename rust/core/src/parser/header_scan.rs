@@ -48,7 +48,7 @@ impl<'a> Lex<'a> {
         if self.bytes.get(i)? == &b'\'' {
             let mut p = i + 1;
             while p < self.bytes.len() {
-                if self.bytes[p] != b'\'' {
+                if self.bytes[p] != b'\'' || crate::parser::lexical::is_page_quote_operand(self.bytes, p) {
                     p += 1;
                 } else if self.bytes.get(p + 1) == Some(&b'\'') {
                     p += 2;

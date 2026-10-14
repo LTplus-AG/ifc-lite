@@ -368,9 +368,11 @@ describe('applyAttributeMutations', () => {
       'IFCWALL',
       "'1BBBBBBBBBBBBBBBBBBBBB',$,IFCLABEL('a's'),$,IFCLABEL('b's'),$,$,'T',.NOTDEFINED.",
     );
+    // Since #7541 the scan itself refuses a record holding an undoubled
+    // apostrophe, so it is named by id: no scanned span gives its type.
     expect(() =>
       rewritten(before, [mutation(2, 'Name', 'NewName')], objectTypeEntities),
-    ).toThrow(/#2=IFCWALL/);
+    ).toThrow(/refusing to rewrite 1 record\(s\).*: #2\./s);
   });
 
   it('refuses a record carrying a STEP block comment, the cause the error names', () => {
@@ -404,9 +406,10 @@ describe('applyAttributeMutations', () => {
 
   it('names the refused record, so the error says which one', () => {
     const before = stepFile(2, 'IFCWALL', "'guid',$,'John's wall',$,$,$,$,'A's',$");
+    // Named by id: the scan refuses this record before any span exists (#7541).
     expect(() =>
       rewritten(before, [mutation(2, 'Name', 'X')], objectTypeEntities),
-    ).toThrow(/#2=IFCWALL/);
+    ).toThrow(/refusing to rewrite 1 record\(s\).*: #2\./s);
   });
 
   it.each([
@@ -502,7 +505,9 @@ describe('applyAttributeMutations', () => {
         [mutation(2, 'Name', 'X'), mutation(3, 'Name', 'X')],
         objectTypeEntities,
       ),
-    ).toThrow(/refusing to rewrite 2 record\(s\).*#2=IFCWALL, #3=IFCWALL/s);
+    // #7541: the scan refuses #2 at its undoubled apostrophe and the balanced
+    // scan stops there, so neither record is located; both are still named.
+    ).toThrow(/refusing to rewrite 2 record\(s\).*: #2, #3\./s);
   });
 
   it('leaves an unreadable record that was NOT targeted alone', () => {

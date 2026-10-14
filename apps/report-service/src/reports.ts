@@ -78,7 +78,23 @@ export async function createReport(
   owner: Session,
   input: ReportDraftInput,
 ): Promise<ReportReceipt> {
-  return transaction(db, async (tx) => {
+  let renewedExpiry: Date | undefined;
+  const result = await transaction(db, async (tx) => {
+    async function renewOwner(expiresAt: Date): Promise<void> {
+      // Internal CLI/fixture owners do not represent authenticated browser rows.
+      if (!owner.expiresAt) return;
+      const renewed = await tx.query<{ expires_at: Date }>(
+        "UPDATE report_sessions SET expires_at=GREATEST(expires_at,$2) WHERE id=$1 AND expires_at>now() RETURNING expires_at",
+        [owner.id, expiresAt],
+      );
+      requireCondition(
+        renewed.rows[0],
+        401,
+        "session_expired",
+        "Your report session expired. Start a new report.",
+      );
+      renewedExpiry = renewed.rows[0].expires_at;
+    }
     await tx.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
       owner.admission,
     ]);
@@ -86,7 +102,10 @@ export async function createReport(
       `${RECEIPT_REPORT_SELECT} WHERE session_id=$1 AND client_key=$2`,
       [owner.id, input.clientRequestId],
     );
-    if (existing.rows[0]) return receipt(existing.rows[0]);
+    if (existing.rows[0]) {
+      await renewOwner(existing.rows[0].expires_at);
+      return receipt(existing.rows[0]);
+    }
     await tx.query(
       "INSERT INTO report_admission(key) VALUES($1) ON CONFLICT DO NOTHING",
       [owner.admission],
@@ -117,14 +136,17 @@ export async function createReport(
         ]),
       )
       .digest("hex");
-    await tx.query(
-      "INSERT INTO model_reports(id,session_id,client_key,draft,fingerprint,issue_binding) VALUES($1,$2,$3,$4,$5,$6)",
+    const inserted = await tx.query<ReportRow>(
+      "INSERT INTO model_reports(id,session_id,client_key,draft,fingerprint,issue_binding) VALUES($1,$2,$3,$4,$5,$6) RETURNING *",
       [id, owner.id, input.clientRequestId, JSON.stringify(publicDraft), fingerprint, binding ? JSON.stringify(binding) : null],
     );
+    await renewOwner(inserted.rows[0]!.expires_at);
     await audit(tx, id, "draft_created", owner.id);
     if (binding) await audit(tx, id, "issue_target_reviewed", owner.id);
-    return { id, status: "draft" };
+    return receipt(inserted.rows[0]!);
   });
+  if (renewedExpiry) owner.expiresAt = renewedExpiry;
+  return result;
 }
 export async function submitReport(
   db: Db,

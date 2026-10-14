@@ -17,6 +17,8 @@ export interface Session {
   id: string;
   csrf: string;
   admission: string;
+  /** Present only for a session authenticated against durable browser credentials. */
+  expiresAt?: Date;
 }
 export function secretEquals(left: string, right: string): boolean {
   return timingSafeEqual(
@@ -38,7 +40,7 @@ export async function session(
     ?.split("=")[1];
   if (cookie && /^[a-f0-9]{64}$/.test(cookie)) {
     const rows = await db.query<Session>(
-      "SELECT id,csrf,admission FROM report_sessions WHERE id=$1 AND expires_at>now()",
+      'SELECT id,csrf,admission,expires_at AS "expiresAt" FROM report_sessions WHERE id=$1 AND expires_at>now()',
       [createHash("sha256").update(cookie).digest("hex")],
     );
     if (rows.rows[0]) return rows.rows[0];
@@ -102,5 +104,35 @@ export function requireMutation(
     403,
     "csrf",
     "Reload the reporting dialog and try again.",
+  );
+}
+
+/** Refresh the existing credential only after its durable renewal committed. */
+export function refreshSessionCookie(
+  req: IncomingMessage,
+  res: ServerResponse,
+  owner: Session,
+): void {
+  if (!owner.expiresAt) return;
+  const token = req.headers.cookie
+    ?.split(";")
+    .map((value) => value.trim())
+    .find((value) => value.startsWith("__Host-ifclite_report="))
+    ?.split("=")[1];
+  requireCondition(
+    token &&
+      /^[a-f0-9]{64}$/.test(token) &&
+      secretEquals(createHash("sha256").update(token).digest("hex"), owner.id),
+    401,
+    "session_expired",
+    "Your report session expired. Start a new report.",
+  );
+  const maxAge = Math.max(
+    0,
+    Math.ceil((owner.expiresAt.getTime() - Date.now()) / 1000),
+  );
+  res.setHeader(
+    "Set-Cookie",
+    `__Host-ifclite_report=${token}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=${maxAge}`,
   );
 }

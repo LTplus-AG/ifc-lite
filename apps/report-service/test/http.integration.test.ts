@@ -12,6 +12,7 @@ import { createHandler } from '../src/handler.js';
 import { loadFeature } from './feature-loader.js';
 const bindingFeature = await loadFeature('../src/issue-binding.js', () => import('../src/issue-binding.js'));
 import { ModelStorage } from '../src/storage.js';
+import { createReport } from '../src/reports.js';
 
 const enabled = Boolean(process.env.REPORT_TEST_DATABASE_URL);
 if (process.env.REPORT_REQUIRE_INTEGRATION === 'true' && !enabled)
@@ -123,6 +124,62 @@ describe.skipIf(!enabled)('#7495 real HTTP ownership, consent and publication bo
     expect(denied.status).toBe(409);
     expect((await denied.json() as { error: string }).error).toBe('public_unavailable');
     expect((await db.query('SELECT id FROM model_reports WHERE client_key=$1', [input.clientRequestId])).rows).toEqual([]);
+  });
+
+  it('#7495 late report creation and idempotent retry preserve ownership past the original expiry', async () => {
+    const owner = await browser();
+    const input = draft();
+    const originalExpiry = new Date(Date.now() + 2000);
+    await db.query('UPDATE report_sessions SET expires_at=$2 WHERE id=$1', [owner.id, originalExpiry]);
+    const created = await request(owner, '/drafts', 'POST', input);
+    expect(created.status).toBe(201);
+    const report = await created.json() as ReportReceipt;
+    const lifetime = async () => (await db.query<{ owner_expiry: Date; report_expiry: Date }>(
+      'SELECT s.expires_at AS owner_expiry,r.expires_at AS report_expiry FROM report_sessions s JOIN model_reports r ON r.session_id=s.id WHERE r.id=$1', [report.id],
+    )).rows[0]!;
+    expect((await lifetime()).owner_expiry.getTime()).toBeGreaterThanOrEqual((await lifetime()).report_expiry.getTime());
+    // Simulate a restored short credential before an idempotent response retry.
+    await db.query('UPDATE report_sessions SET expires_at=$2 WHERE id=$1', [owner.id, originalExpiry]);
+    const retried = await request(owner, '/drafts', 'POST', input);
+    expect(retried.status).toBe(201);
+    expect(await retried.json()).toEqual(report);
+    expect((await lifetime()).owner_expiry.getTime()).toBeGreaterThanOrEqual((await lifetime()).report_expiry.getTime());
+    await new Promise(resolve => setTimeout(resolve, Math.max(0, originalExpiry.getTime() - Date.now() + 50)));
+    expect((await request(owner, `/${report.id}`)).status).toBe(200);
+    expect((await request(owner, `/${report.id}`, 'DELETE')).status).toBe(200);
+  });
+
+  it('#7495 a successful draft response refreshes the same secure owner cookie; rejected requests do not', async () => {
+    const owner = await browser();
+    const input = draft();
+    await db.query("UPDATE report_sessions SET expires_at=now()+interval '1 day' WHERE id=$1", [owner.id]);
+    const rejectedHeaders: Record<string, string>[] = [{ Origin: 'https://attacker.example' }, { 'X-CSRF-Token': 'wrong' }];
+    for (const overrides of rejectedHeaders) {
+      const denied = await request(owner, '/drafts', 'POST', input, overrides);
+      expect(denied.status).toBe(403);
+      expect(denied.headers.get('set-cookie')).toBeNull();
+    }
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const response = await request(owner, '/drafts', 'POST', input);
+      expect(response.status).toBe(201);
+      const header = response.headers.get('set-cookie');
+      expect(header).toContain(`${owner.cookie}; Path=/; HttpOnly; Secure; SameSite=Strict;`);
+      expect(header).not.toContain('Domain=');
+      expect(Number(header?.match(/Max-Age=(\d+)/)?.[1])).toBeGreaterThanOrEqual(2591998);
+    }
+  });
+
+  it('#7495 a vanished authenticated session rolls back draft admission', async () => {
+    const owner = await browser();
+    const authenticated = (await db.query<{ admission: string; expiresAt: Date }>(
+      'SELECT admission,expires_at AS "expiresAt" FROM report_sessions WHERE id=$1', [owner.id],
+    )).rows[0]!;
+    const before = (await db.query('SELECT reports FROM report_admission WHERE key=$1 AND day=CURRENT_DATE', [authenticated.admission])).rows;
+    await db.query('DELETE FROM report_sessions WHERE id=$1', [owner.id]);
+    const input = { ...draft(), visibility: 'private' as const };
+    await expect(createReport(db, config, { ...owner, ...authenticated }, input)).rejects.toMatchObject({ status: 401 });
+    expect((await db.query('SELECT id FROM model_reports WHERE client_key=$1', [input.clientRequestId])).rowCount).toBe(0);
+    expect((await db.query('SELECT reports FROM report_admission WHERE key=$1 AND day=CURRENT_DATE', [authenticated.admission])).rows).toEqual(before);
   });
 
   it("#7495 launch gate blocks public admission and content while preserving owner deletion", async () => {

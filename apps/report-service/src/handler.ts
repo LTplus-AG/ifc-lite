@@ -16,7 +16,12 @@ import {
 import type { Config } from "./config.js";
 import { type Db } from "./database.js";
 import { ReportError, requireCondition } from "./errors.js";
-import { session, requireMutation, secretEquals } from "./sessions.js";
+import {
+  session,
+  requireMutation,
+  secretEquals,
+  refreshSessionCookie,
+} from "./sessions.js";
 import {
   createReport,
   requestCustomAgreement,
@@ -171,7 +176,9 @@ export function createHandler(
           "public_unavailable",
           "Public model sharing is not yet available.",
         );
-        json(res, await createReport(db, config, owner, input), 201);
+        const created = await createReport(db, config, owner, input);
+        refreshSessionCookie(req, res, owner);
+        json(res, created, 201);
         return;
       }
       const match = /^\/api\/reports\/([^/]+)(?:\/(.*))?$/.exec(path);

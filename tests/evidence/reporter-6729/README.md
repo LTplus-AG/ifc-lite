@@ -34,6 +34,17 @@ Actual source/tree, browser/GPU diagnostics and built WASM hashes accompany
 the observations. The probe uses an isolated source server of that checkout,
 never a preview borrowed from another process. The built viewer dependency
 graph supplies the real package/WASM runtime.
+The next diagnostic environment supplies an Xvfb display to the same headless
+Chrome configuration. The recorded failed cohort reported early ANGLE display
+initialization failures and later shared-image creation errors. Providing a
+display is a bounded investigation of that hosted environment, not a renderer
+fix or an established explanation of the production report. The workflow
+requires `xvfb-run`, `Xvfb` and `xauth` from Playwright's existing browser
+dependency installation, and records their package versions and actual
+`DISPLAY`. Chrome/backend flags, source server mode, timeouts, instrumentation,
+all 36 required frames and failure criteria remain unchanged. Any loss or
+error still fails the cohort; no prior failed result is replaced by this run.
+
 The hosted workflow runs literal root `pnpm typecheck` after building, then
 checks the three probe TypeScript files and viewer ambient declarations using
 an ephemeral config extending the viewer config. Viewer aliases are retained;

@@ -66,6 +66,12 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Install actual Chrome and browser dependencies explicitly
         run: pnpm exec playwright install --with-deps chrome
+      - name: Require the Xvfb display dependencies installed with Playwright
+        run: |
+          command -v xvfb-run
+          command -v Xvfb
+          command -v xauth
+          dpkg-query -W xvfb xauth > test-results/reporter-6729-provenance/display-packages.txt
       - uses: ./.github/actions/setup-wasm-build
         with:
           cache-prefix: reporter-6729
@@ -132,7 +138,21 @@ jobs:
           DEBUG: pw:browser
         run: |
           set -o pipefail
-          timeout --signal=INT --kill-after=30s 7m pnpm exec playwright test --config=tests/e2e/reporter-6729.config.ts 2>&1 | tee test-results/reporter-6729-provenance/browser-process.log
+          capture_with_display() {
+            python3 - <<'PYDISPLAY'
+          import json, os, pathlib
+          display = os.environ.get('DISPLAY')
+          assert display, 'Xvfb did not supply a DISPLAY'
+          pathlib.Path('test-results/reporter-6729-provenance/display.json').write_text(json.dumps({
+              'display': display, 'provider': 'Xvfb', 'screen': '1600x1000x24',
+              'headlessChrome': True, 'backendFlagsChanged': False,
+              'scope': 'Hosted display environment experiment, not a renderer fix or physical GPU evidence',
+          }, indent=2))
+          PYDISPLAY
+            pnpm exec playwright test --config=tests/e2e/reporter-6729.config.ts
+          }
+          export -f capture_with_display
+          timeout --signal=INT --kill-after=30s 7m xvfb-run -a -s '-screen 0 1600x1000x24' bash -e -c capture_with_display 2>&1 | tee test-results/reporter-6729-provenance/browser-process.log
       - name: Require complete witness, never skipped fixture acceptance
         run: |
           python3 - <<'PY'

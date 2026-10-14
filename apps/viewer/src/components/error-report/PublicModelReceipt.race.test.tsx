@@ -94,7 +94,7 @@ test('#7495 obsolete GET completion cannot clear a newer report pending request'
   first.resolve(Response.json(available));
   await settle();
   assert.equal(button('Check public model status').disabled, true, 'Newer request retains its busy ownership');
-  assert.deepEqual(ui.changes, []);
+  assert.equal(ui.changes.length, 0);
   second.resolve(Response.json({ ...withdrawn, id: 'another' }));
   await settle();
   assertWithdrawn();

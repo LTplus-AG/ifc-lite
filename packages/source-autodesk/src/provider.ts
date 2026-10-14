@@ -29,7 +29,17 @@ export class AutodeskProvider implements FileSourceProvider {
   }
   private api(ctx: PluginContext) { return createApi(ctx, () => this.auth.accessToken(ctx), this.options.service); }
   async listProjects(ctx: PluginContext, options?: ListProjectsOptions): Promise<Page<SourceProject>> {
-    const page = await listProjects(this.api(ctx), options);
+    let page: Page<SourceProject>;
+    try {
+      page = await listProjects(this.api(ctx), options);
+    } catch (error) {
+      // Linked Forma sites do not need hub authorization; keep them reachable.
+      if (!(error instanceof AutodeskError) || error.code !== 'app-not-authorized') throw error;
+      const identity = await this.auth.getIdentity(ctx);
+      const sites = identity ? await rememberedSites(ctx, identity.id) : [];
+      if (!sites.length) throw error;
+      return { items: sites };
+    }
     const identity = await this.auth.getIdentity(ctx);
     if (!identity) return page;
     if (options?.query && page.items[0]) {

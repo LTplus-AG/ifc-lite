@@ -1,5 +1,11 @@
 # @ifc-lite/renderer
 
+## 6.4.0
+
+### Minor Changes
+
+- [#7566](https://github.com/LTplus-AG/ifc-lite/pull/7566) [`d18b452`](https://github.com/LTplus-AG/ifc-lite/commit/d18b452bba5abaf9fa2c60105db40f4caf2c05bb) Thanks [@louistrue](https://github.com/louistrue)! - Export the existing material-alpha floor for shadow casting so World-view glazing uses the same policy as the WebGPU renderer.
+
 ## 6.3.3
 
 ### Patch Changes

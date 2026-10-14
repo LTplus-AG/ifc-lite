@@ -41,6 +41,10 @@ pub struct EntityScanner<'a> {
     skipped_oversized_id_starts: Vec<usize>,
     /// See [`Self::malformed_record_starts`] for what these point at.
     malformed_record_starts: Vec<usize>,
+    /// No `/` in `bytes[slash_from..next_slash]`, and `next_slash` is a `/` or
+    /// `bytes.len()`: the cache behind `find_entity_end`'s comment probe.
+    slash_from: usize,
+    next_slash: usize,
 }
 
 impl<'a> EntityScanner<'a> {
@@ -60,6 +64,8 @@ impl<'a> EntityScanner<'a> {
             position: data_section_start(bytes),
             skipped_oversized_id_starts: Vec::new(),
             malformed_record_starts: Vec::new(),
+            slash_from: usize::MAX,
+            next_slash: 0,
         }
     }
 
@@ -84,6 +90,8 @@ impl<'a> EntityScanner<'a> {
             position: clamped,
             skipped_oversized_id_starts: Vec::new(),
             malformed_record_starts: Vec::new(),
+            slash_from: usize::MAX,
+            next_slash: 0,
         }
     }
 
@@ -215,7 +223,7 @@ impl<'a> EntityScanner<'a> {
             // The prefix contains only digits and already-closed trivia (#3987).
             let body_start = eq_pos + 1;
             let line_content = &bytes[body_start..];
-            let end_offset = match self.find_entity_end(line_content) {
+            let semicolon = match self.find_entity_end(body_start) {
                 Some(o) => o,
                 None => {
                     // Report it, then drop just THIS record rather than the
@@ -237,7 +245,7 @@ impl<'a> EntityScanner<'a> {
                     continue;
                 }
             };
-            let line_end = body_start + end_offset + 1;
+            let line_end = semicolon + 1;
 
             // Refusal is still reported AFTER malformed-body detection (#3987).
             let Some(id) = parsed_id else {

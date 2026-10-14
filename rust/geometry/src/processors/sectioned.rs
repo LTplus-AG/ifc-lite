@@ -215,7 +215,7 @@ impl GeometryProcessor for SectionedSolidHorizontalProcessor {
         let mut rings_3d: Vec<Vec<Point3<f64>>> = Vec::with_capacity(samples.len());
         let mut frames: Vec<AlignmentFrame> = Vec::with_capacity(samples.len());
         for (profile, pos) in &samples {
-            let frame = compute_frame(alignment.as_ref(), arc_map.as_ref(), pos, fixed_axis_vertical);
+            let frame = compute_frame(alignment.as_ref(), arc_map.as_ref(), pos, fixed_axis_vertical)?;
             rings_3d.push(transform_outer(&profile.outer, &frame));
             frames.push(frame);
         }
@@ -227,12 +227,13 @@ impl GeometryProcessor for SectionedSolidHorizontalProcessor {
         // normal is the directrix tangent direction at that station so
         // flat-shaded renderers don't sample the side-wall normal.
         let mut mesh = Mesh::new();
+        let flip = !is_proper(&frames[0]);
         emit_cap(
             &mut mesh,
             &samples[0].0.outer,
             &rings_3d[0],
             -frames[0].tangent,
-            false,
+            flip,
         )?;
         for i in 1..samples.len() {
             let (prev_profile, _) = &samples[i - 1];
@@ -243,7 +244,7 @@ impl GeometryProcessor for SectionedSolidHorizontalProcessor {
             if prev_profile.outer.len() == this_profile.outer.len()
                 && !prev_profile.outer.is_empty()
             {
-                emit_side_walls(&mut mesh, prev_ring, this_ring);
+                emit_side_walls(&mut mesh, prev_ring, this_ring, flip);
             } else {
                 // Topology change. Cap off the previous sub-sweep
                 // (forward-facing) and reopen with a backwards-facing
@@ -255,14 +256,14 @@ impl GeometryProcessor for SectionedSolidHorizontalProcessor {
                     &prev_profile.outer,
                     prev_ring,
                     frames[i - 1].tangent,
-                    true,
+                    !flip,
                 )?;
                 emit_cap(
                     &mut mesh,
                     &this_profile.outer,
                     this_ring,
                     -frames[i].tangent,
-                    false,
+                    flip,
                 )?;
             }
         }
@@ -272,7 +273,7 @@ impl GeometryProcessor for SectionedSolidHorizontalProcessor {
             &samples[last].0.outer,
             &rings_3d[last],
             frames[last].tangent,
-            true,
+            !flip,
         )?;
 
         Ok(mesh)
@@ -311,7 +312,7 @@ fn compute_frame(
     arc_map: Option<&ArcLengthMap>,
     pos: &PositionAlongDirectrix,
     fixed_axis_vertical: bool,
-) -> AlignmentFrame {
+) -> Result<AlignmentFrame> {
     let station = pos.horizontal_station(arc_map);
     let base = evaluate_alignment(alignment, station);
 
@@ -370,19 +371,35 @@ fn compute_frame(
         let axis = pos.axis.map(to_world).unwrap_or(vertical_normal);
         let x = pos.ref_direction.map(to_world).unwrap_or(base.tangent);
         let x = (x - axis * x.dot(&axis)).try_normalize(1e-12).unwrap_or(base.tangent);
-        let local_right = -axis.cross(&x);
-        right = local_right.normalize();
+        // Profile +X is the placement's local +Y = Axis × RefDirection.
+        // Parallel Axis and RefDirection (or tangent) leave it undefined.
+        right = axis.cross(&x).try_normalize(1e-12).ok_or_else(|| {
+            Error::geometry(
+                "IfcAxis2PlacementLinear Axis is parallel to its RefDirection".to_string(),
+            )
+        })?;
         up = axis;
+    } else if pos.linear {
+        // IFC4x3 positions the profile in the placement's YZ plane: profile
+        // +X is local +Y (left of travel), profile +Y is local +Z (#7584).
+        right = -right;
     }
 
-    AlignmentFrame {
+    Ok(AlignmentFrame {
         origin,
         right,
         up,
         tangent: if pos.linear && (pos.axis.is_some() || pos.ref_direction.is_some()) {
-            up.cross(&right).normalize()
+            right.cross(&up).normalize()
         } else { base.tangent },
-    }
+    })
+}
+
+/// `true` when `(right, up, tangent)` is a proper rotation, i.e. the profile
+/// is placed without mirroring. The IFC4x1 right-of-travel frame is mirrored,
+/// so its rings need the opposite winding to face outward.
+fn is_proper(frame: &AlignmentFrame) -> bool {
+    frame.right.cross(&frame.up).dot(&frame.tangent) > 0.0
 }
 
 fn transform_outer(outer: &[Point2<f64>], frame: &AlignmentFrame) -> Vec<Point3<f64>> {
@@ -536,18 +553,25 @@ fn emit_cap(
 }
 
 /// Stitch two equal-vertex-count rings with one quad per profile edge.
-/// Winding assumes both rings are CCW when viewed from −tangent.
-fn emit_side_walls(mesh: &mut Mesh, prev_ring: &[Point3<f64>], this_ring: &[Point3<f64>]) {
+/// Faces point outward for CCW profiles placed by a proper frame; `flip`
+/// reverses the winding for mirrored frames.
+fn emit_side_walls(
+    mesh: &mut Mesh,
+    prev_ring: &[Point3<f64>],
+    this_ring: &[Point3<f64>],
+    flip: bool,
+) {
     let n = prev_ring.len();
     if n < 2 || this_ring.len() != n {
         return;
     }
     for j in 0..n {
         let j1 = (j + 1) % n;
-        let p0 = prev_ring[j];
-        let p1 = prev_ring[j1];
-        let p2 = this_ring[j1];
-        let p3 = this_ring[j];
+        let (p0, p1, p2, p3) = if flip {
+            (prev_ring[j1], prev_ring[j], this_ring[j], this_ring[j1])
+        } else {
+            (prev_ring[j], prev_ring[j1], this_ring[j1], this_ring[j])
+        };
         let n_face = compute_face_normal(&p0, &p1, &p2);
         let v_base = (mesh.positions.len() / 3) as u32;
         mesh.add_vertex(p0, n_face);

@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import '@/test/setup-dom.js';
-import { afterEach, it } from 'node:test';
+import { after, afterEach, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { act } from 'react';
@@ -15,6 +15,7 @@ import { useViewerStore } from '@/store';
 import { usePlacementGeorefContext } from '@/lib/geo/placement-georef-runtime';
 import { PlacementPanel } from './placement/PlacementPanel.js';
 import { ViewportContainer } from './ViewportContainer.js';
+import { fieldTelemetry } from '@/lib/perf/fieldTelemetryLoader.js';
 
 // #6569 / #6572: metadata is available independently of map/solar visibility.
 // Small IFC input reproduces the reporter's Allplan map conversion. To rerun
@@ -59,6 +60,11 @@ function ContextReadout() {
     baseEastings: context.baseMapConversion.eastings,
   }) : 'absent'}</output>;
 }
+
+// The mounted welcome card reports its drop target to field telemetry, which
+// arms the 30 s `viewer_boot` deadline; disarm it so it does not hold this
+// test process open after the last test.
+after(() => fieldTelemetry?.resetFieldEventsForTests());
 
 afterEach(cleanup);
 

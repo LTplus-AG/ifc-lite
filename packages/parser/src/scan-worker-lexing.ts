@@ -15,6 +15,10 @@
  * Interpolated into `WORKER_CODE`, which supplies `buf`, `len` and `line`.
  */
 export const WORKER_LEXING = `
+  // Mirrors isPageQuoteOperand in step-lexing.ts (#7540), inside a literal only.
+  function isPageQuoteOperandAt(p) {
+    return p >= 3 && buf[p - 1] === 0x5C && buf[p - 2] === 0x53 && buf[p - 3] === 0x5C;
+  }
   // The STEP whitespace set: space, tab, CR, LF, form feed, vertical tab.
   // The matched half is the now-exported isSpaceByte in step-lexing.ts; a
   // member going missing from one copy is what #3733 was.
@@ -102,7 +106,10 @@ export const WORKER_LEXING = `
         p++;
         for (;;) {
           if (p >= len) return -2;
-          if (buf[p] === 0x27) { if (buf[p + 1] === 0x27) { p += 2; continue; } p++; break; }
+          if (buf[p] === 0x27) {
+            if (isPageQuoteOperandAt(p)) { p++; continue; }
+            if (buf[p + 1] === 0x27) { p += 2; continue; } p++; break;
+          }
           p++;
         }
       } else if (opensCommentAt(p)) {

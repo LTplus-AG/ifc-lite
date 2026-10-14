@@ -131,6 +131,9 @@ describe('FlavorDialog activate - reports a flavor part that was not applied', (
       root.unmount();
     });
     container.remove();
+    // Activating logs an action, which arms the host's 60 s idle-miner timer;
+    // left armed, it held this process open for a minute after the last test.
+    await host.dispose();
   });
 
   it('names the unapplied part and its reason instead of a plain success', async () => {

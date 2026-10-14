@@ -202,6 +202,24 @@ mod tests {
     use super::{declared_schema, declared_schema_bounded, MAX_HEADER_BYTES};
 
     #[test]
+    fn page_quote_operands_keep_header_decoys_inside_literals_7540() {
+        let source = r"'\S\' FILE_SCHEMA((fake)); DATA;' FILE_SCHEMA(('IFC4')); DATA;";
+        assert_eq!(super::find_record_open(source.as_bytes(), b"FILE_SCHEMA"),
+            Some(source.rfind("FILE_SCHEMA").unwrap() + "FILE_SCHEMA".len()));
+        assert_eq!(super::find_section_marker(source.as_bytes(), b"DATA"),
+            source.rfind("DATA"));
+        let vectors: serde_json::Value = serde_json::from_str(include_str!(
+            "../../tests/fixtures/step-page-directive.json"
+        )).unwrap();
+        for vector in vectors.as_array().unwrap() {
+            let literal = vector["literal"].as_str().unwrap();
+            let text = format!("{literal},NEXT");
+            assert_eq!(super::Lex::new(text.as_bytes()).skip_lexical_at(0), Some(literal.len()),
+                "{}", vector["name"]);
+        }
+    }
+
+    #[test]
     fn header_schema_reader_skips_decoys_and_respects_window() {
         let source = b"ISO-10303-21;\nHEADER;\n\
             FILE_DESCRIPTION(('mentions FILE_SCHEMA((''IFC4X3''));'),'2;1');\n\

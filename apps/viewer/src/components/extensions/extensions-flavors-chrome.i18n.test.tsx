@@ -144,6 +144,17 @@ function makeFlavor(overrides: Partial<Flavor>): Flavor {
   } as Flavor;
 }
 
+/**
+ * Every host a test builds is disposed after it: logged actions arm the host's
+ * idle pattern-miner timer (60 s), which otherwise held this test process
+ * open for a minute after its last test.
+ */
+const liveHosts = new Set<ExtensionHostService>();
+async function disposeLiveHosts(): Promise<void> {
+  await Promise.all([...liveHosts].map((host) => host.dispose()));
+  liveHosts.clear();
+}
+
 class StubHost extends ExtensionHostService {
   constructor() {
     super({
@@ -155,6 +166,7 @@ class StubHost extends ExtensionHostService {
         },
       }),
     });
+    liveHosts.add(this);
   }
 }
 
@@ -165,8 +177,9 @@ beforeEach(async () => {
   await new IdbFlavorStorage().clear();
 });
 
-afterEach(() => {
+afterEach(async () => {
   cleanup();
+  await disposeLiveHosts();
   setLocale(BASELINE_LOCALE);
 });
 

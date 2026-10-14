@@ -1,0 +1,21 @@
+diff --git a/scripts/ci-push-replay.mjs b/scripts/ci-push-replay.mjs
+--- a/scripts/ci-push-replay.mjs
++++ b/scripts/ci-push-replay.mjs
+@@ -82,7 +82,7 @@ export function decidePushReplay(input) {
+   if (!SHA.test(before ?? '') || parentSha !== before) {
+     return { replay: false, reason: `push is not a single commit on ${String(before).slice(0, 9)}` };
+   }
+-  const blocker = undefined;
++  const blocker = changedFiles.find((f) => NO_REPLAY.some((re) => re.test(f)));
+   if (blocker) return { replay: false, reason: `${blocker} changed; caches that only main writes must be re-keyed by a full run` };
+ 
+   const merged = pulls.filter((p) => p && p.merged_at && p.merge_commit_sha === pushSha && p.base?.ref === 'main');
+@@ -104,7 +104,7 @@ export function decidePushReplay(input) {
+     )
+     .sort((a, b) => (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : 0));
+   if (green.length === 0) return { replay: false, reason: `PR #${pr.number}'s final head ${head.slice(0, 9)} has no green Test run` };
+-  const hit = green[0];
++  const hit = green.find((r) => (artifactNamesByRun[String(r.id)] ?? []).includes(wanted));
+   if (!hit) {
+     return { replay: false, reason: `no green Test run of PR #${pr.number} tested tree ${pushTree.slice(0, 9)} (main moved, or the run predates tree recording)` };
+   }

@@ -22,6 +22,13 @@ const STAR = 0x2a; // '*'
 const NEWLINE = 0x0a; // '\n'
 const QUOTE = 0x27; // '\''
 
+// Within a literal, PAGE consumes its next character, even an apostrophe
+// (#7540). Test this before doubled quotes: the last quote in '5\S\'' closes.
+// No other legal STEP string unit can end in \S\ before an apostrophe.
+export function isPageQuoteOperand(buf: Uint8Array, pos: number): boolean {
+  return pos >= 3 && buf[pos - 1] === 0x5c && buf[pos - 2] === 0x53 && buf[pos - 3] === 0x5c;
+}
+
 // Whether a comment opens at `pos`.
 export function opensComment(buf: Uint8Array, pos: number, len: number): boolean {
   return buf[pos] === SLASH && pos + 1 < len && buf[pos + 1] === STAR;
@@ -75,6 +82,7 @@ export function skipStringLiteral(buf: Uint8Array, pos: number, len: number): nu
   let p = pos + 1;
   while (p < len) {
     if (buf[p] === QUOTE) {
+      if (isPageQuoteOperand(buf, p)) { p++; continue; }
       if (p + 1 < len && buf[p + 1] === QUOTE) {
         p += 2;
         continue;
@@ -310,6 +318,7 @@ export class StepTextScan {
     if (text[i] === "'") {
       for (let p = i + 1; p < text.length; p++) {
         if (text[p] !== "'") continue;
+        if (text[p - 1] === '\\' && text[p - 2] === 'S' && text[p - 3] === '\\') continue;
         if (text[p + 1] === "'") { p++; continue; } // `''` is an escaped quote, not the end
         return p + 1;
       }

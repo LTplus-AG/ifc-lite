@@ -12,6 +12,7 @@ import { BalancedEntityScan, type ScannedEntityRef } from './scan-entities-balan
 import {
   countNewlines,
   isKeywordLeadByte,
+  isPageQuoteOperand,
   isSpaceByte,
   opensComment,
   opensLiteralOrComment,
@@ -296,6 +297,7 @@ export class StepTokenizer {
         while (pos < len) {
           const c = buf[pos];
           if (c === QUOTE) {
+            if (inString && isPageQuoteOperand(buf, pos)) { pos++; continue; }
             if (inString && pos + 1 < len && buf[pos + 1] === QUOTE) {
               pos += 2; // Skip escaped quote
               continue;

@@ -13,7 +13,7 @@
 import { describe, it, mock, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import { GeometryProcessor } from '@ifc-lite/geometry';
+import { GeometryProcessor, getGeometryStreamWatchdogMs } from '@ifc-lite/geometry';
 import { useViewerStore } from '@/store';
 import { hook, skip, blankFile } from '@/test/blank-ifc-loader-harness.js';
 import { __resetStaleDeploymentForTests } from '@/lib/stale-deployment';
@@ -58,5 +58,32 @@ describe('geometry-stream failure leaves the model in a terminal state', () => {
     assert.equal(useViewerStore.getState().models.get(modelId)?.loadState, 'error');
     assert.equal(useViewerStore.getState().error, null, 'the reload notice, not a generic error');
     assert.deepEqual(resumableFiles(useViewerStore.getState().models.values()).map((f) => f.name), [file.name]);
+  });
+
+  it('disarms the stall watchdog when the stream fails outright', { skip }, async () => {
+    // A rejected pull used to skip the clearTimeout after the race, leaving
+    // the watchdog armed for its whole window after the load had already
+    // failed (it kept every test process here alive for ~30 s).
+    assert.ok(hook);
+    failGeometryWith(new Error('geometry kernel exploded on element 7'));
+    const minWatchdogMs = getGeometryStreamWatchdogMs({ desktopStableWasm: false, batchCount: 0, fileSizeMB: 0 });
+    const armed = new Map<unknown, number>();
+    const realSetTimeout = globalThis.setTimeout;
+    const realClearTimeout = globalThis.clearTimeout;
+    mock.method(globalThis, 'setTimeout', (callback: (...args: unknown[]) => void, ms?: number, ...args: unknown[]) => {
+      const handle: unknown = realSetTimeout(() => { armed.delete(handle); callback(...args); }, ms);
+      if ((ms ?? 0) >= minWatchdogMs) armed.set(handle, ms ?? 0);
+      return handle;
+    });
+    mock.method(globalThis, 'clearTimeout', (handle: Parameters<typeof clearTimeout>[0]) => {
+      armed.delete(handle);
+      realClearTimeout(handle);
+    });
+
+    const modelId = crypto.randomUUID();
+    await act(async () => hook!.loadFile(blankFile('METRE'), { kind: 'primary', modelId }));
+
+    assert.equal(useViewerStore.getState().models.get(modelId)?.loadState, 'error');
+    assert.deepEqual([...armed.values()], [], 'a stall watchdog is still armed after the stream failed');
   });
 });

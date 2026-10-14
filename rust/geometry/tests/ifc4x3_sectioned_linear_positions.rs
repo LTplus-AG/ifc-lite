@@ -11,7 +11,8 @@
 //! `IfcPolyline` directrix at deck elevation, two stations at its ends.
 
 use ifc_lite_core::{EntityDecoder, IfcType};
-use ifc_lite_geometry::GeometryRouter;
+use ifc_lite_geometry::{GeometryRouter, Mesh};
+use nalgebra::Vector3;
 
 const IFC: &str = r#"ISO-10303-21;
 HEADER;
@@ -98,6 +99,39 @@ DATA;
 #93=IFCAXIS2PLACEMENTLINEAR(#63,$,#92);
 #94=IFCAXIS2PLACEMENTLINEAR(#65,$,#92);
 #95=IFCSECTIONEDSOLIDHORIZONTAL(#62,(#4,#4),(#93,#94));
+#100=IFCCARTESIANPOINT((0.,0.));
+#101=IFCCARTESIANPOINT((2.,0.));
+#102=IFCCARTESIANPOINT((2.,0.2));
+#103=IFCCARTESIANPOINT((0.,0.5));
+#104=IFCPOLYLINE((#100,#101,#102,#103,#100));
+#105=IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,#104);
+#106=IFCSECTIONEDSOLIDHORIZONTAL(#62,(#105,#105),(#64,#66));
+#107=IFCDISTANCEEXPRESSION(0.,0.,0.,0.,.T.);
+#108=IFCDISTANCEEXPRESSION(20.,0.,0.,0.,.T.);
+#109=IFCSECTIONEDSOLIDHORIZONTAL(#54,(#105,#105),(#107,#108));
+#110=IFCDIRECTION((0.,1.));
+#111=IFCAXIS2PLACEMENT2D(#20,#110);
+#112=IFCCURVESEGMENT(.CONTINUOUS.,#111,IFCLENGTHMEASURE(0.),IFCLENGTHMEASURE(100.),#24);
+#113=IFCCARTESIANPOINT((0.,100.));
+#114=IFCAXIS2PLACEMENT2D(#113,#110);
+#115=IFCCURVESEGMENT(.DISCONTINUOUS.,#114,IFCLENGTHMEASURE(0.),IFCLENGTHMEASURE(0.),#24);
+#116=IFCCOMPOSITECURVE((#112,#115),.F.);
+#117=IFCDIRECTION((2.,1.));
+#118=IFCAXIS2PLACEMENT2D(#20,#117);
+#119=IFCCURVESEGMENT(.CONTINUOUS.,#118,IFCLENGTHMEASURE(0.),IFCLENGTHMEASURE(111.8033988750),#24);
+#120=IFCCARTESIANPOINT((100.,50.));
+#121=IFCAXIS2PLACEMENT2D(#120,#117);
+#122=IFCCURVESEGMENT(.DISCONTINUOUS.,#121,IFCLENGTHMEASURE(0.),IFCLENGTHMEASURE(0.),#24);
+#123=IFCGRADIENTCURVE((#119,#122),.F.,#116,$);
+#124=IFCPOINTBYDISTANCEEXPRESSION(IFCLENGTHMEASURE(0.),$,$,$,#123);
+#125=IFCAXIS2PLACEMENTLINEAR(#124,$,$);
+#126=IFCPOINTBYDISTANCEEXPRESSION(IFCLENGTHMEASURE(80.),$,$,$,#123);
+#127=IFCAXIS2PLACEMENTLINEAR(#126,$,$);
+#128=IFCSECTIONEDSOLIDHORIZONTAL(#123,(#4,#4),(#125,#127));
+#129=IFCSECTIONEDSOLIDHORIZONTAL(#62,(#4,#4),(#86,#66));
+#130=IFCDIRECTION((1.,0.,0.));
+#131=IFCAXIS2PLACEMENTLINEAR(#63,#130,$);
+#132=IFCSECTIONEDSOLIDHORIZONTAL(#62,(#4,#4),(#131,#66));
 ENDSEC;
 END-ISO-10303-21;
 "#;
@@ -107,7 +141,7 @@ struct Bbox {
     max: [f32; 3],
 }
 
-fn bbox(id: u32) -> Bbox {
+fn mesh(id: u32) -> Mesh {
     let index = ifc_lite_core::build_entity_index(IFC);
     let mut decoder = EntityDecoder::with_index(IFC, index);
     let router = GeometryRouter::new();
@@ -117,6 +151,19 @@ fn bbox(id: u32) -> Bbox {
         .process_representation_item(&entity, &mut decoder)
         .expect("IFC4x3 linear cross-section positions must loft, not error");
     assert!(!mesh.positions.is_empty(), "#{id} produced an empty mesh");
+    mesh
+}
+
+fn signed_volume(mesh: &Mesh) -> f64 {
+    let p = |i: u32| {
+        let k = i as usize * 3;
+        Vector3::new(mesh.positions[k] as f64, mesh.positions[k + 1] as f64, mesh.positions[k + 2] as f64)
+    };
+    mesh.indices.chunks_exact(3).map(|t| p(t[0]).dot(&p(t[1]).cross(&p(t[2]))) / 6.0).sum()
+}
+
+fn bbox(id: u32) -> Bbox {
+    let mesh = mesh(id);
     let mut b = Bbox { min: [f32::INFINITY; 3], max: [f32::NEG_INFINITY; 3] };
     for p in mesh.positions.chunks_exact(3) {
         for a in 0..3 {
@@ -231,4 +278,62 @@ fn unsupported_parameter_basis_reports_error() {
     let entity = decoder.decode_by_id(91).unwrap();
     let err = GeometryRouter::new().process_representation_item(&entity, &mut decoder).unwrap_err();
     assert!(err.to_string().contains("IfcParameterValue station"), "{err}");
+}
+
+#[test]
+fn profile_x_points_left_of_travel() {
+    // #7584: IFC4x3 places the profile in the placement's YZ plane, so
+    // profile +X is local +Y, left of travel. Travel is +Y → left is −X.
+    // A profile drawn at x ∈ [0, 2] must sit on the left, not mirrored right.
+    let b = bbox(106);
+    close(b.min[0], -2.0, "x min");
+    close(b.max[0], 0.0, "x max");
+    close(b.max[2], 0.5, "z max");
+}
+
+#[test]
+fn ifc4x1_distance_expression_keeps_profile_x_right_of_travel() {
+    let b = bbox(109);
+    close(b.min[0], 0.0, "x min");
+    close(b.max[0], 2.0, "x max");
+}
+
+#[test]
+fn sweeps_are_wound_outward() {
+    // Positive signed volume = outward faces, for both the IFC4x3 (proper)
+    // and the IFC4x1 (mirrored) frame. 2 × 0.5 rectangle swept 20 m, or
+    // along the 157 m arc; the asymmetric profile has area 0.7.
+    for (id, expected) in [(9, 20.0), (44, 157.08), (67, 20.0), (88, 20.0), (95, 20.0), (55, 20.0), (106, 14.0), (109, 14.0)] {
+        let volume = signed_volume(&mesh(id));
+        assert!((volume - expected).abs() < 0.05 * expected, "#{id}: signed volume {volume}, expected ≈{expected}");
+    }
+    // #129 mixes an authored Axis (45° roll) with a defaulted one. Every
+    // IFC4x3 frame is proper, so one winding holds for the whole sweep. Only
+    // the sign is checked: one ruled segment spans the 45° twist, so its
+    // diagonal-split side walls enclose less than area × length.
+    let mixed = signed_volume(&mesh(129));
+    assert!(mixed > 0.0, "#129: signed volume {mixed} must be positive (outward)");
+}
+
+#[test]
+fn gradient_curve_distance_along_is_horizontal_station() {
+    // #7584: an IfcGradientCurve is parameterised by its horizontal
+    // BaseCurve, so DistanceAlong 80 on a 50 % grade is 80 m in plan (40 m
+    // up), not 80 m of 3D length (71.6 m in plan).
+    let b = bbox(128);
+    close(b.max[1], 80.0, "end y");
+    close(b.max[2], 40.25, "end elevation");
+}
+
+
+#[test]
+fn axis_parallel_to_tangent_reports_error() {
+    // Axis along the curve tangent with no RefDirection leaves the profile's
+    // X axis undefined (and violates IfcAxis2PlacementLinear's rule that Axis
+    // and RefDirection are not parallel): error rather than emit NaN rings.
+    let index = ifc_lite_core::build_entity_index(IFC);
+    let mut decoder = EntityDecoder::with_index(IFC, index);
+    let entity = decoder.decode_by_id(132).unwrap();
+    let err = GeometryRouter::new().process_representation_item(&entity, &mut decoder).unwrap_err();
+    assert!(err.to_string().contains("Axis is parallel"), "{err}");
 }

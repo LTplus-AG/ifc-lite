@@ -12,7 +12,8 @@
 //! next door in `lexical.rs` beside the exact walk they approximate.
 
 impl<'a> super::EntityScanner<'a> {
-    /// Offset of the record's terminating `;` from the start of the slice.
+    /// Index in `self.bytes` of the terminating `;` of the record whose body
+    /// starts at `body_start`.
     ///
     /// `memchr3` jumps straight to the next quote, semicolon or `=` in one
     /// SIMD pass, so a string-free geometry primitive
@@ -46,8 +47,9 @@ impl<'a> super::EntityScanner<'a> {
     /// O(n^2), measured 4x per doubling (`refused_records_do_not_rescan_the_remainder_4179`).
     /// One rule bounds both this walk and `close_step_record`'s.
     #[inline]
-    pub(super) fn find_entity_end(&self, content: &[u8]) -> Option<usize> {
-        let mut pos = 0;
+    pub(super) fn find_entity_end(&mut self, body_start: usize) -> Option<usize> {
+        let content = self.bytes;
+        let mut pos = body_start;
         // Only the two arms that can make it true compute it (#4179).
         let mut closes_paren = false;
 
@@ -66,7 +68,7 @@ impl<'a> super::EntityScanner<'a> {
             // record dense with divisions or comments costs one walk of its
             // own length. Re-scanning from `pos` to the hit per `/` made a
             // single 400 KB record quadratic in itself (1.23s against 0.32ms).
-            while let Some(slash) = memchr::memchr(b'/', &content[pos..hit]).map(|i| pos + i) {
+            while let Some(slash) = self.slash_in(pos, hit) {
                 if content.get(slash + 1) == Some(&b'*') {
                     // A comment is trivia, so a ')' before it still counts:
                     // `#1=IFCWALL($) /* c */ ;` closes at that ')'.
@@ -107,6 +109,10 @@ impl<'a> super::EntityScanner<'a> {
             pos += 1;
             loop {
                 pos += memchr::memchr(b'\'', &content[pos..])?;
+                if crate::parser::lexical::is_page_quote_operand(content, pos) {
+                    pos += 1;
+                    continue;
+                }
                 if content.get(pos + 1) == Some(&b'\'') {
                     // Escaped quote ('') - skip both, stay in the string.
                     pos += 2;
@@ -118,5 +124,34 @@ impl<'a> super::EntityScanner<'a> {
             }
             closes_paren = false; // A literal is a parameter, not a close.
         }
+    }
+
+    /// The first `/` in `bytes[from..to]` (`from <= to <= len`), answered
+    /// from the cached `/`-free run when it covers `from`: one `memchr` per
+    /// `/` in the file rather than one per span between hits, which cost a
+    /// library call per record and string although records rarely hold one.
+    #[inline]
+    fn slash_in(&mut self, from: usize, to: usize) -> Option<usize> {
+        if !(self.slash_from <= from && from <= self.next_slash) {
+            self.refresh_slash(from);
+        }
+        (self.next_slash < to).then_some(self.next_slash)
+    }
+
+    /// Re-establish the cache at `from`. A rewind (a refused record re-hunts
+    /// from past its `#`) searches only the gap before the known run, so
+    /// refusals stay linear; otherwise `from` is past everything searched
+    /// so far and the search runs on to the next `/`.
+    #[inline(never)]
+    fn refresh_slash(&mut self, from: usize) {
+        let bytes = self.bytes;
+        if from < self.slash_from && self.slash_from <= self.next_slash {
+            if let Some(i) = memchr::memchr(b'/', &bytes[from..self.slash_from]) {
+                self.next_slash = from + i;
+            }
+        } else {
+            self.next_slash = memchr::memchr(b'/', &bytes[from..]).map_or(bytes.len(), |i| from + i);
+        }
+        self.slash_from = from;
     }
 }

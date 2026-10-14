@@ -325,6 +325,13 @@ pub struct LandXmlCoordinateSystem {
     /// (#5942 follow-up). Raw, like the other two: never resolved here.
     #[serde(default)]
     pub epsg_code: Option<String>,
+    /// LandXML 1.2's `CoordinateSystem@name`: the producer's own label for the
+    /// CRS (3D-Win writes `GK21` beside `epsgCode="3875"`; ifc-lite's IFC
+    /// terrain export writes `IfcProjectedCRS.Name` here). Raw, like the
+    /// others; which of these a consumer names the CRS by is its own policy
+    /// (#7604). Additive under `#[non_exhaustive]`.
+    #[serde(default)]
+    pub name: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]

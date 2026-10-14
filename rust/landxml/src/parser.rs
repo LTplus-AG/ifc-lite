@@ -223,6 +223,7 @@ impl Parser<'_> {
                     vertical_datum: attr(&attributes, "verticalDatum")
                         .map(|value| value.to_owned()),
                     epsg_code: attr(&attributes, "epsgCode").map(|value| value.to_owned()),
+                    name: attr(&attributes, "name").map(|value| value.to_owned()),
                 });
             }
             "Surface" if self.is_path(&["LandXML", "Surfaces", "Surface"]) => {

@@ -125,6 +125,10 @@ describe('planTerrainDrape over the real LandXML mesh path (#5942)', () => {
     const named = terrainCrsOf({ coordinateSystem: { horizontalDatum: 'CH1903+ / LV95' } });
     assert.equal(named.ok, false);
     assert.match(named.ok ? '' : named.reason, /horizontalDatum 'CH1903\+ \/ LV95'\) does not name one explicit EPSG code/);
+    // #7604: a name-only CRS is declared, just not as a code: quoted, not called absent.
+    const labelled = terrainCrsOf({ coordinateSystem: { name: 'CH1903+ / LV95' } });
+    assert.match(labelled.ok ? '' : labelled.reason, /\(name 'CH1903\+ \/ LV95'\) does not name one explicit EPSG code/);
+    assert.equal(terrainCrsOf({ coordinateSystem: { name: 'GK21', epsgCode: '3875' } }).ok, true, 'the code still places it');
     // Two codes that disagree name no CRS, and the refusal quotes both (#5942 follow-up).
     const conflicting = terrainCrsOf({ coordinateSystem: { epsgCode: '2056', horizontalDatum: 'EPSG:21781' } });
     assert.match(conflicting.ok ? '' : conflicting.reason, /epsgCode '2056' and horizontalDatum 'EPSG:21781'/);

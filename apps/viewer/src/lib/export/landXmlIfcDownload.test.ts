@@ -121,6 +121,27 @@ describe('downloadLandXmlAsIfc (#4937)', () => {
     }
   });
 
+  // #7604: `CoordinateSystem@name` names a CRS that has no EPSG code (it is
+  // what ifc-lite's own IFC terrain export writes for one). It beats a datum
+  // name, never an EPSG code: IFC asks for `EPSG:<n>` where one exists, and
+  // every producer fixture that writes a name also writes an `epsgCode`.
+  it('names the CRS by CoordinateSystem@name when no EPSG code is declared (#7604)', async () => {
+    for (const [coordinateSystem, name] of [
+      [{ name: 'CH1903+ / LV95' }, 'CH1903+ / LV95'],
+      [{ name: 'CH1903+ / LV95', horizontalDatum: 'CH1903+', verticalDatum: 'LN02' }, 'CH1903+ / LV95'],
+      [{ name: 'GK21', epsgCode: '3875' }, 'EPSG:3875'],
+      [{ name: 'SWEREF99 TM', epsgCode: '3006', horizontalDatum: 'EPSG:3006' }, 'EPSG:3006'],
+      [{ name: 'SWEREF99 TM', horizontalDatum: 'EPSG:3006' }, 'EPSG:3006'],
+      [{ name: '  ', horizontalDatum: 'SWEREF99 TM' }, 'SWEREF99 TM'],
+    ] as const) {
+      const { text } = await captureDownload(async () => {
+        await downloadLandXmlAsIfc({ document: document({ coordinateSystem }), name: 'terrain.xml' });
+      });
+      assert.match(text, new RegExp(`IFCPROJECTEDCRS\\('${name.replace(/[+]/g, '\\+')}'`), JSON.stringify(coordinateSystem));
+      assert.match(text, /IFCMAPCONVERSION/, JSON.stringify(coordinateSystem));
+    }
+  });
+
   it('writes no georeferencing at all when no datum is declared', async () => {
     const { text } = await captureDownload(async () => {
       await downloadLandXmlAsIfc({ document: document(), name: 'terrain.xml' });

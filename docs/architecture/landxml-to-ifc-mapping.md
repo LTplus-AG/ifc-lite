@@ -166,15 +166,20 @@ IfcMapConversion: SourceCRS, TargetCRS, Eastings, Northings, OrthogonalHeight,
                   XAxisAbscissa?, XAxisOrdinate?, Scale?
 ```
 
-`LandXmlCoordinateSystem` keeps `horizontal_datum`, `vertical_datum` and `epsg_code` as raw
-strings, and the crate deliberately does not resolve EPSG codes — only the viewer
+`LandXmlCoordinateSystem` keeps `horizontal_datum`, `vertical_datum`, `epsg_code` and `name`
+as raw strings, and the crate deliberately does not resolve EPSG codes — only the viewer
 adapter accepts explicit EPSG ids. `epsgCode` is LandXML 1.2's attribute for the CRS's
 code and is how producers declare it (Civil 3D 2021/2022 and 3D-Win 6.6.4 all write it;
 Civil 3D puts a datum *name* such as `NAD83` in `horizontalDatum`). The adapter takes the
 horizontal CRS from `epsgCode`, or from an `EPSG:<n>` id in `horizontalDatum`; when both
 name a code and disagree it takes neither. `IfcProjectedCRS.Name` is that `EPSG:<n>` id
-when `epsgCode` is declared, else `horizontalDatum` verbatim: the declared code is named,
-not resolved. The exporter must not start resolving EPSG codes in
+when there is one (or nothing, when a declared `epsgCode` is unreadable or contradicted),
+else `CoordinateSystem@name` verbatim, else `horizontalDatum` verbatim: the declared code
+is named, not resolved. The code wins over the name because IFC's `Name` "shall be taken
+from the list recognized by the EPSG", qualified as `EPSG:<n>`; every producer fixture
+that writes a `name` also writes an `epsgCode`, so none of them changes. The name is what a
+non-EPSG CRS such as `CH1903+ / LV95` is known by, and what ifc-lite's IFC terrain export
+writes, so it survives IFC → LandXML → IFC (#7604). The exporter must not start resolving EPSG codes in
 the crate. Where the source declares no CRS, emit **no** `IfcProjectedCRS`/
 `IfcMapConversion` at all rather than a placeholder, and say so in the report. Two of
 the seven reviewed producer fixtures declare `crs: "not-declared"`, so this is the

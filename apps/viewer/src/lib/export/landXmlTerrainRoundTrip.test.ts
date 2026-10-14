@@ -296,6 +296,9 @@ async function assertRoundTrip(ifc: string, productIds: readonly number[], label
 
   const [a, b] = [readLandXml(first.xml), readLandXml(second.xml)];
   assert.equal(second.crsName, first.crsName, `${label}: the CRS survives`);
+  // #7604: the whole record, not only the name — a datum renamed into the
+  // name, or a name dropped for the datum, fails here.
+  assert.equal(b.coordinateSystem, a.coordinateSystem, `${label}: the <CoordinateSystem> record survives`);
   assert.equal(b.surfaces.length, a.surfaces.length, `${label}: surface count`);
   a.surfaces.forEach((surface, s) => {
     const again = b.surfaces[s];
@@ -365,12 +368,43 @@ END-ISO-10303-21;
 `;
 const SYNTHETIC_IDS = [29, 34, 47];
 
+/**
+ * #7604: the synthetic source with a CRS that has no EPSG code in its name,
+ * with and without a `GeodeticDatum`. Before #7604 the first came back from
+ * LandXML renamed to its datum, and the second with no IfcMapConversion at
+ * all, so the second export refused.
+ */
+const NON_EPSG_CRS = [
+  ['with GeodeticDatum', "#12=IFCPROJECTEDCRS('CH1903+ / LV95',$,'CH1903+','LN02',$,$,#6);",
+    '<CoordinateSystem name="CH1903+ / LV95" horizontalDatum="CH1903+" verticalDatum="LN02"/>'],
+  ['without GeodeticDatum', "#12=IFCPROJECTEDCRS('CH1903+ / LV95',$,$,$,$,$,#6);",
+    '<CoordinateSystem name="CH1903+ / LV95"/>'],
+] as const;
+
+function syntheticWithCrs(record: string): string {
+  const ifc = SYNTHETIC_IFC.replace(/^#12=IFCPROJECTEDCRS\(.*\);$/m, record);
+  assert.notEqual(ifc, SYNTHETIC_IFC, 'the synthetic source still declares its CRS as #12');
+  return ifc;
+}
+
 /** The committed sample TIN with a CRS declared the way producers declare it. */
-async function sampleWithCrs(): Promise<string> {
+async function sampleWithCrs(
+  record = '<CoordinateSystem name="CH1903+ / LV95" epsgCode="2056" verticalDatum="LN02"/>',
+): Promise<string> {
   const xml = await readFile(SAMPLE_TIN, 'utf8');
-  const declared = xml.replace('<Project ', '<CoordinateSystem name="CH1903+ / LV95" epsgCode="2056" verticalDatum="LN02"/>\n  <Project ');
+  const declared = xml.replace('<Project ', `${record}\n  <Project `);
   assert.notEqual(declared, xml, 'the sample still has the <Project> element the CRS is declared before');
   return declared;
+}
+
+/** The one IfcProjectedCRS in `ifc`, and how many IfcMapConversions target it. */
+function projectedCrs(ifc: string): { name: string; geodeticDatum: string; conversions: number } {
+  const step = new Step(ifc);
+  const crs = step.ids('IFCPROJECTEDCRS');
+  assert.equal(crs.length, 1, 'one IfcProjectedCRS');
+  const [name, , geodeticDatum] = step.get(crs[0]);
+  const conversions = step.ids('IFCMAPCONVERSION').filter((id) => step.get(id)[1] === `#${crs[0]}`).length;
+  return { name: stepString(name), geodeticDatum, conversions };
 }
 
 // ─── Tests ──────────────────────────────────────────────────────────────────
@@ -418,7 +452,7 @@ describe('LandXML 1.2 XSD as the authority (#7600)', () => {
     // Read back by the viewer's real LandXML parser, not by a regex.
     const parsed = await parseLandXmlSourceInCurrentRealm(new TextEncoder().encode(result.xml).buffer);
     assert.deepEqual(parsed.surfaces.map((s) => s.name), result.surfaces.map((s) => s.name));
-    assert.deepEqual(parsed.coordinateSystem, { horizontalDatum: 'CH1903+', verticalDatum: 'LN02', epsgCode: '2056' });
+    assert.deepEqual(parsed.coordinateSystem, { name: 'EPSG:2056', horizontalDatum: 'CH1903+', verticalDatum: 'LN02', epsgCode: '2056' });
   });
 
   it('accepts the export of the bonsai-topo control terrain', { skip: NEEDS_BONSAI }, async () => {
@@ -455,5 +489,27 @@ describe('IFC → LandXML → IFC → LandXML keeps vertices and faces (#7600)',
     assert.deepEqual(exported.points.map((p) => p.text.split(' ').map(Number)), authored.points.map((p) => p.text.split(/\s+/).map(Number)));
     assert.deepEqual(exported.faces, authored.faces);
     assert.equal(first.crsName, 'EPSG:2056');
+  });
+
+  for (const [variant, record, coordinateSystem] of NON_EPSG_CRS) {
+    it(`a non-EPSG IfcProjectedCRS ${variant} keeps its name and map conversion (#7604)`, { skip: NEEDS_WASM }, async () => {
+      const ifc = syntheticWithCrs(record);
+      const { first, second, reimported } = await assertRoundTrip(ifc, SYNTHETIC_IDS, `non-EPSG ${variant}`);
+      assert.equal(readLandXml(first.xml).coordinateSystem, coordinateSystem, 'the IFC CRS name is CoordinateSystem@name, and no epsgCode is invented');
+      assert.deepEqual(projectedCrs(reimported), { ...projectedCrs(ifc), conversions: 1 }, 'LandXML → IFC keeps the CRS name and datum, with its IfcMapConversion');
+      assert.equal(first.crsName, 'CH1903+ / LV95');
+      assert.equal(second.crsName, 'CH1903+ / LV95');
+    });
+  }
+
+  it('a LandXML CoordinateSystem with only a name converts to that IfcProjectedCRS (#7604)', { skip: NEEDS_WASM }, async () => {
+    const source = await sampleWithCrs('<CoordinateSystem name="CH1903+ / LV95"/>');
+    // The viewer's real parser, through the wasm: the name is decoded at the source.
+    const parsed = await parseLandXmlSourceInCurrentRealm(new TextEncoder().encode(source).buffer);
+    assert.deepEqual(parsed.coordinateSystem, { name: 'CH1903+ / LV95' });
+    const ifc = await landXmlToIfcThroughViewer(source, 'terrain-tin-metric.xml');
+    assert.deepEqual(projectedCrs(ifc), { name: 'CH1903+ / LV95', geodeticDatum: '$', conversions: 1 });
+    const { first } = await assertRoundTrip(ifc, geographicElements(ifc), 'name-only LandXML CRS');
+    assert.equal(readLandXml(first.xml).coordinateSystem, '<CoordinateSystem name="CH1903+ / LV95"/>');
   });
 });

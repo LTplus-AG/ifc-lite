@@ -131,10 +131,14 @@ Two things the dialog states because the geometry cannot:
   time, every coordinate is at that operator-chosen scale. The IFC records the assumption in a
   `LandXML_Conversion` property set on the site.
 - **The coordinate reference system.** With no declared CRS, no georeferencing is written at all
-  (rather than a placeholder). With one, the declared datum is written verbatim as
-  `IfcProjectedCRS.Name` — ifc-lite never resolves it to an EPSG definition — and the
-  coordinate-order plausibility check still cannot run, because it needs that CRS's coordinate
-  bounds. A source whose point text was written easting-first produces a mirrored surface that
+  (rather than a placeholder). With one, `IfcProjectedCRS.Name` is, first match wins: the
+  declared EPSG code as `EPSG:<n>` (from `CoordinateSystem@epsgCode`, or an `EPSG:<n>` id in
+  `horizontalDatum`), because IFC asks for an EPSG-qualified name where one exists; else
+  `CoordinateSystem@name` verbatim (for example `CH1903+ / LV95`); else `horizontalDatum`
+  verbatim. A file that writes both a name and a code (3D-Win's `name="GK21" epsgCode="3875"`)
+  is therefore named `EPSG:3875`. ifc-lite never resolves the name to an EPSG definition, and
+  the coordinate-order plausibility check still cannot run, because it needs that CRS's
+  coordinate bounds. A source whose point text was written easting-first produces a mirrored surface that
   still renders and still passes every count check, so verify the source before relying on the
   position.
 

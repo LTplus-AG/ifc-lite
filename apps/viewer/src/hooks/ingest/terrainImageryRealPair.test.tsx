@@ -134,6 +134,8 @@ async function drapeRealPair() {
   const loaded = [...useViewerStore.getState().models.values()][0];
   assert.ok(loaded?.geometryResult?.meshes.length, 'the real terrain loaded and rendered');
   assert.equal(loaded.landXmlDocument?.coordinateSystem?.epsgCode, '3875');
+  // #7604: the producer's own CRS label, read through the streamed wasm path.
+  assert.equal(loaded.landXmlDocument?.coordinateSystem?.name, 'GK21');
   installRenderer();
   const bytes = readFileSync(ORTHO);
   const read = await readGeoRasterBundle(new GeoRasterBundle(new File([bytes], 'nls-ortho.tif'), null, []));

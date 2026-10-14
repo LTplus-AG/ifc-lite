@@ -58,3 +58,11 @@ export function safeAgreementUrl(value: string | undefined): string | undefined 
   if (!value || !/^\/api\/reports\/[a-zA-Z0-9-]+\/agreement\.pdf$/.test(value)) return;
   return value;
 }
+
+/** Only generic same-origin public delivery links may leave the receipt UI. */
+export function safePublicModelUrl(value: string | undefined, origin = globalThis.location?.origin): string | undefined {
+  if (!value || !origin || !URL.canParse(value, origin)) return;
+  const url = new URL(value, origin);
+  if (url.origin === origin && !url.username && !url.password && !url.search && !url.hash &&
+    /^\/api\/reports\/public\/[a-f0-9]{64}$/.test(url.pathname)) return url.pathname;
+}

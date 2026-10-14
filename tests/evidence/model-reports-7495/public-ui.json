@@ -1,0 +1,41 @@
+{
+  "browser": "Owned Windows Chrome, headless, GPU disabled",
+  "api": "Synthetic local UI fixture; no real submissions/uploads/public activation",
+  "screenshots": [
+    "public-ui-review-before-send.png",
+    "public-ui-withdrawal-review.png"
+  ],
+  "checks": {
+    "privateDefault": true,
+    "noMutationBeforeSend": true,
+    "downloadLinkRemoved": true
+  },
+  "calls": [
+    {
+      "path": "/api/reports/session",
+      "method": "GET"
+    },
+    {
+      "path": "/api/reports/session",
+      "method": "GET"
+    },
+    {
+      "path": "/api/reports/synthetic-public-receipt",
+      "method": "GET"
+    },
+    {
+      "path": "/api/reports/synthetic-public-receipt/public-model",
+      "method": "DELETE"
+    }
+  ],
+  "source": {
+    "catalogue": "tests/models/ara3d/AC20-FZK-Haus.ifc",
+    "size": 2526511,
+    "sha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5"
+  },
+  "limitations": [
+    "Synthetic API controls; no live public submission or public download transfer",
+    "UI proof only; not renderer, GPU or performance qualification"
+  ],
+  "ownedBrowserCleanup": "confirmed"
+}

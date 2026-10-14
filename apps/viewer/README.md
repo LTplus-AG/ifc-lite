@@ -29,3 +29,15 @@ If the service returns a publication hold after an ambiguous GitHub response,
 the dialog stops automatic status requests and explains the pause; the user
 can still check its status manually. A custom NDA request has its own receipt
 and does not upload the model while awaiting maintainer review.
+
+Public model sharing also requires a qualified server capability; production
+configuration currently keeps it disabled. When available, it remains an explicit
+opt-in after choosing a model, with separate authority/licence, content/privacy,
+and irreversible-copy/link permissions. Changing the file clears these choices.
+Public attachments are uncompressed IFC up to 1 GiB and cannot use an NDA on the
+same report. The final review repeats the public permissions before any upload.
+A received report shows pending scan/review, held, available or withdrawn status;
+only a same-origin generic download URL can become a link. Owners can separately
+stop new public downloads while retaining the private support model. Started
+downloads, saved copies and public GitHub content cannot be recalled. The UI does
+not claim that a public download link has been posted to GitHub.

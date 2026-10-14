@@ -139,7 +139,7 @@ and delivery disabled until deletion/withdrawal tombstones are reconciled.
 Still required before enabling: an isolated scanner runner with qualified
 signature updates and resource limits, real clean IFC and EICAR refusal evidence,
 actual deployment-provider immutable-copy and bounded-download qualification,
-reviewed viewer consent, and idempotent public-link publication. The integration
+end-to-end viewer qualification, and idempotent public-link publication. The integration
 tests use real PostgreSQL/S3 bytes and actual HTTP delivery but synthetic trusted
 scanner attestations; they do not establish malware clearance. Conditional copy
 behavior proven against local RustFS is not evidence for Scaleway. No new hosting

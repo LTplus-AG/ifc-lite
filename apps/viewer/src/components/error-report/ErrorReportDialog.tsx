@@ -4,6 +4,7 @@
 
 import { completeReport, forgetReport, rememberReport } from '@/lib/error-reports/pending';
 import { useEffect, useRef, useState } from 'react';
+import { isPublicSharingConsent } from '@ifc-lite/report-contract';
 import type { ReportDiagnostics, ReportReceipt, ReportSession } from '@ifc-lite/report-contract';
 import { useTranslation } from '@/i18n';
 import type { ReportContext } from '@/lib/error-reports/context';
@@ -12,7 +13,8 @@ import { Button } from '@/components/ui/button';
 import { ReportClient, ReportRequestError, safeAgreementUrl, safeIssueUrl } from '@/services/error-reports/client';
 import { ReportSubmission, type ReviewedReport } from '@/services/error-reports/submission';
 import { ReportIssueDestination, type IssueChoice } from './ReportIssueDestination';
-import { emptyAttachment, ReportAttachment, validAttachment, type AttachmentChoice } from './ReportAttachment';
+import { PublicModelReceipt } from './PublicModelReceipt';
+import { emptyAttachment, publicConsent, ReportAttachment, validAttachment, type AttachmentChoice } from './ReportAttachment';
 
 export function ErrorReportDialog({ context, onClose, client: injectedClient }: { context: ReportContext; onClose: () => void; client?: ReportClient }) {
   const { t } = useTranslation();
@@ -98,7 +100,10 @@ export function ErrorReportDialog({ context, onClose, client: injectedClient }: 
     setTitle(restored.draft.title); setDescription(restored.draft.description); setDiagnostics(restored.draft.diagnostics);
     setAttachment({ ...emptyAttachment, visibility: restored.draft.visibility,
       confidentiality: restored.customNdaStatus === 'approved' ? 'custom' : restored.uploadSource?.confidentiality ?? 'none',
-      uploadConsent: !!restored.uploadSource });
+      uploadConsent: !!restored.uploadSource,
+      publicConfirmed: isPublicSharingConsent(restored.uploadSource?.publicSharingConsent),
+      publicPrivacyConfirmed: isPublicSharingConsent(restored.uploadSource?.publicSharingConsent),
+      publicCopiesConfirmed: isPublicSharingConsent(restored.uploadSource?.publicSharingConsent) });
   }
   async function deletePrivateReport() {
     if (!receipt || deleting.current) return;
@@ -127,6 +132,7 @@ export function ErrorReportDialog({ context, onClose, client: injectedClient }: 
     setReview({
       draft: existing?.draft ?? { clientRequestId: crypto.randomUUID(), title: title.trim(), description, diagnostics, visibility: attachment.visibility, ...(issueChoice.target ? { issueTarget: issueChoice.target } : {}) },
       file: attachment.file, confidentiality: attachment.confidentiality, publicModelConfirmed: attachment.publicConfirmed,
+      publicSharingConsent: publicConsent(attachment),
       customNdaMessage: attachment.customMessage,
       ...(attachment.confidentiality === 'standard' ? { acceptance: {
         agreementSha256: session.agreement.sha256, signerName: attachment.signerName,
@@ -176,6 +182,7 @@ export function ErrorReportDialog({ context, onClose, client: injectedClient }: 
         {receipt.status === 'manual_review' && deleteState === 'idle' && <><Button variant="outline" onClick={() => { void refreshReceipt(); }}>{t('errorReport.checkStatus')}</Button></>}
         {error && <p role="alert">{error}</p>}
         {issueUrl && <a href={issueUrl} target="_blank" rel="noreferrer">{t('errorReport.issue')}</a>}
+        <PublicModelReceipt receipt={receipt} client={client} onChange={next => setReceipt(current => current?.status === 'deleted' ? current : next)} disabled={deleteState !== 'idle'} />
         {receipt.status !== 'deleted' && agreementUrl && <a className="block" href={agreementUrl} target="_blank" rel="noreferrer">{t('errorReport.agreementReceipt')}</a>}
         {receipt.status !== 'deleted' && (deleteState === 'idle' ? <Button variant="outline" onClick={() => { setError(''); setDeleteState('confirm'); }}>{t('errorReport.deletePrivate')}</Button> : <div className="space-y-2 rounded border border-destructive/40 p-3">
           <p>{t('errorReport.deleteConfirm')}</p>
@@ -206,8 +213,9 @@ export function ErrorReportDialog({ context, onClose, client: injectedClient }: 
           <p className="break-words font-medium">{review.draft.title}</p><p className="whitespace-pre-wrap break-words">{review.draft.description}</p>
           <p>{t('errorReport.diagnostics')}</p><pre className="overflow-auto text-xs">{JSON.stringify(diagnostics, null, 2)}</pre>
           <p>{review.file || existing?.uploadSource ? t('errorReport.source', { name: review.file?.name ?? existing!.uploadSource!.name, size: review.file?.size ?? existing!.uploadSource!.size }) : t('errorReport.noModel')}</p>
-          {review.file && <p>{t(review.draft.visibility === 'private' ? 'errorReport.privateHelp' : 'errorReport.publicHelp')}</p>}
-          {review.file && <div><p>{t('errorReport.privateReview')}</p>
+          {(review.file || existing?.uploadSource) && <p>{t(review.draft.visibility === 'private' ? 'errorReport.privateHelp' : 'errorReport.publicHelp')}</p>}
+          {review.draft.visibility === 'public' && (review.file || existing?.uploadSource) && <div><p>{t('errorReport.publicConsent')}</p><p>{t('errorReport.publicPrivacyConsent')}</p><p>{t('errorReport.publicCopiesConsent')}</p></div>}
+          {review.file && (review.acceptance || review.confidentiality === 'custom') && <div><p>{t('errorReport.privateReview')}</p>
             {review.acceptance && <p>{review.acceptance.signerName} · {review.acceptance.signerEmail} · {review.acceptance.organization}<br />{session.agreement.version}</p>}
             {review.confidentiality === 'custom' && <p className="whitespace-pre-wrap">{review.customNdaMessage}</p>}
           </div>}

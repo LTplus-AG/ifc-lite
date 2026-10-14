@@ -3,7 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { completeReport, forgetReport, rememberReport } from '@/lib/error-reports/pending';
-import type { AgreementAcceptanceInput, AgreementReceipt, ModelUpload, ReportDraftInput, ReportReceipt, UploadInput } from '@ifc-lite/report-contract';
+import type { AgreementAcceptanceInput, AgreementReceipt, ModelUpload, PublicSharingConsent, ReportDraftInput, ReportReceipt, UploadInput } from '@ifc-lite/report-contract';
+import { isPublicSharingConsent } from '@ifc-lite/report-contract';
 import { ReportClient } from './client';
 import { uploadModel } from './upload';
 export interface ReviewedReport {
@@ -11,6 +12,7 @@ export interface ReviewedReport {
   file?: File;
   confidentiality: UploadInput['confidentiality'];
   publicModelConfirmed: boolean;
+  publicSharingConsent?: PublicSharingConsent;
   acceptance?: AgreementAcceptanceInput;
   customNdaMessage?: string;
 }
@@ -24,8 +26,11 @@ export class ReportSubmission {
     this.receipt = existing; this.upload = existing?.upload;
   }
   async send(signal: AbortSignal, progress: (done: number) => void): Promise<ReportReceipt> {
-    this.started = true;
     const review = this.reviewed;
+    if (review.file && review.draft.visibility === 'public' &&
+      (review.confidentiality !== 'none' || !review.publicModelConfirmed || !isPublicSharingConsent(review.publicSharingConsent)))
+      throw new Error('Review all public model sharing permissions before sending');
+    this.started = true;
     if (!this.receipt) this.receipt = await this.client.request<ReportReceipt>('/drafts', 'POST', review.draft, signal);
     rememberReport(this.receipt.id);
     const path = `/${encodeURIComponent(this.receipt.id)}`;
@@ -43,6 +48,7 @@ export class ReportSubmission {
       if (!this.upload) this.upload = await this.client.request<ModelUpload>(`${path}/uploads`, 'POST', {
         name: review.file.name, size: review.file.size, type: 'application/octet-stream',
         confidentiality: review.confidentiality, uploadConsent: true, publicModelConfirmed: review.publicModelConfirmed,
+        ...(review.publicSharingConsent ? { publicSharingConsent: review.publicSharingConsent } : {}),
       } satisfies UploadInput, signal);
       await uploadModel(this.client, this.receipt.id, this.upload, review.file, signal, progress);
     }

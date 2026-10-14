@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - 'apps/report-service/**'
+      - 'apps/viewer/src/components/error-report/**'
+      - 'apps/viewer/src/services/error-reports/**'
       - 'packages/report-contract/**'
       - '.github/workflows/report-service.yml'
       - '.github/actions/setup-report-integration/**'
@@ -33,6 +35,58 @@ jobs:
         uses: ./.github/actions/setup-report-integration
       - name: Real database and multipart storage qualification
         run: pnpm test --filter=@ifc-lite/report-service --filter=@ifc-lite/report-contract --concurrency=1 --env-mode=loose
+      - name: Remove owned report integration prerequisites
+        if: always()
+        uses: ./.github/actions/setup-report-integration
+        with:
+          state: stop
+
+  mounted-public-ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - uses: ./.github/actions/setup-wasm-build
+        with:
+          cache-prefix: report-public-ui-wasm
+      - name: Root Turbo viewer dependency graph and test-source typecheck
+        run: pnpm typecheck
+      - name: Provision real report integration prerequisites
+        uses: ./.github/actions/setup-report-integration
+      - name: Fetch bounded authentic reporter IFC for mounted HTTP qualification
+        shell: bash
+        run: |
+          set -euo pipefail
+          report_ui_fixture="$RUNNER_TEMP/report-public-ui.ifc"
+          curl --fail --silent --show-error --location --max-time 30 --max-filesize 65536 \
+            https://github.com/user-attachments/files/33384683/out_visible.ifc.txt -o "$report_ui_fixture"
+          test "$(wc -c < "$report_ui_fixture")" -eq 22701
+          echo "cc6fbbf632c2779891e485c3297d437b1d8555448934b8c8b5a3cce5326553a2  $report_ui_fixture" | sha256sum --check --status
+          echo "REPORT_TEST_PUBLIC_UI_IFC_FILE=$report_ui_fixture" >> "$GITHUB_ENV"
+      - name: Mounted reporting UI through real handler, database and multipart storage
+        env:
+          REPORT_TEST_PUBLIC_UI: 'true'
+          TEST_PATTERN: '(PublicModelSharing.http|PublicModelReceipt.race)'
+        run: pnpm test --filter=@ifc-lite/viewer --concurrency=2 --env-mode=loose
+      - name: Isolate stale public receipt behavior with the original implementation
+        run: |
+          if git diff --name-only --diff-filter=A origin/main...HEAD -- apps/viewer/src/components/error-report/PublicModelReceipt.tsx | grep -Fxq 'apps/viewer/src/components/error-report/PublicModelReceipt.tsx'; then
+            node scripts/check-test-revert-oracle.mjs --base origin/main --ci --json --only apps/viewer/src/components/error-report/PublicModelReceipt.tsx --mutation tests/evidence/model-reports-7495/public-receipt-race.oracle.patch --test apps/viewer/src/components/error-report/PublicModelReceipt.race.test.tsx
+          else
+            echo 'Public receipt is on main: ordinary whole-change inversion resumes; historical receipt inverse not applied.'
+          fi
+      - name: Prove restored public receipt controls pass
+        env:
+          TEST_PATTERN: PublicModelReceipt.race
+        run: pnpm test --filter=@ifc-lite/viewer --concurrency=2 --env-mode=loose --force
       - name: Remove owned report integration prerequisites
         if: always()
         uses: ./.github/actions/setup-report-integration

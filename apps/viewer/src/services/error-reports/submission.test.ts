@@ -52,3 +52,35 @@ test('#7495 an already queued report never creates a second draft when retried',
   assert.equal((await submission.send(new AbortController().signal, () => {})).status, 'submitted');
   assert.deepEqual(requests, ['/api/reports/stable/submit']);
 });
+
+test('#7495 public attachment permission must be explicit before any draft or model request', async () => {
+  let calls = 0;
+  const selected = { ...review(), draft: { ...review().draft, visibility: 'public' as const }, file: new File(['real'], 'project.ifc'), publicModelConfirmed: true };
+  const client = new ReportClient(async () => { calls++; throw new Error('Unexpected request'); });
+  await assert.rejects(new ReportSubmission(selected, client).send(new AbortController().signal, () => {}), /Review all public/);
+  assert.equal(calls, 0);
+});
+
+test('#7495 complete public consent authorizes only reviewed model bytes and stays outside the public issue draft', async () => {
+  const permission = { version: 'public-model-v1' as const, authorityConfirmed: true as const, redistributionReviewed: true as const,
+    confidentialContentReviewed: true as const, downloadedCopiesCannotBeRecalled: true as const, publishDownloadLink: true as const };
+  const bodies: { path: string; data: unknown }[] = [];
+  const sent: string[] = [];
+  const remote = { id: 'upload', status: 'uploading', partBytes: 4, partCount: 1, uploadedParts: [] };
+  const client = new ReportClient(async (input, options) => {
+    const path = String(input);
+    if (options?.method === 'PUT') { sent.push(new TextDecoder().decode(options.body as ArrayBuffer)); return new Response('', { status: 200 }); }
+    bodies.push({ path, data: typeof options?.body === 'string' ? JSON.parse(options.body) : undefined });
+    if (path.endsWith('/drafts')) return Response.json({ id: 'stable', status: 'draft' });
+    if (path.endsWith('/parts')) return Response.json({ url: 'https://fixture.example/part', expiresAt: 'later' });
+    if (path.endsWith('/complete')) return Response.json({ ...remote, status: 'ready' });
+    if (path.endsWith('/submit')) return Response.json({ id: 'stable', status: 'submitted', publicModel: { state: 'quarantined' } });
+    return Response.json(remote);
+  });
+  const selected = { ...review(), draft: { ...review().draft, visibility: 'public' as const }, file: new File(['real'], 'private-name.ifc'), publicModelConfirmed: true, publicSharingConsent: permission };
+  await new ReportSubmission(selected, client).send(new AbortController().signal, () => {});
+  assert.deepEqual(sent, ['real']);
+  assert.ok(!JSON.stringify(bodies[0]!.data).includes('private-name'));
+  assert.ok(!JSON.stringify(bodies[0]!.data).includes('publicSharingConsent'));
+  assert.deepEqual((bodies.find(row => row.path.endsWith('/uploads'))!.data as { publicSharingConsent: unknown }).publicSharingConsent, permission);
+});

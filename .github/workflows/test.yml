@@ -806,6 +806,12 @@ jobs:
           # Once quarantine is on main, ordinary whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- apps/report-service/src/public-quarantine.ts | grep -Fxq 'apps/report-service/src/public-quarantine.ts'; then
             oracle_args+=(--mutation apps/report-service/test/fixtures/public-quarantine.oracle.patch)
+          # Keep the new receipt module and its URL-helper export loadable.
+          # Reverse the original public UI behavior and scoped receipt guards;
+          # all changed tests still run on both sides, with no skipped witness.
+          # Ordinary whole-change inversion resumes once this module is on main.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- apps/viewer/src/components/error-report/PublicModelReceipt.tsx | grep -Fxq 'apps/viewer/src/components/error-report/PublicModelReceipt.tsx'; then
+            oracle_args+=(--mutation tests/evidence/model-reports-7495/public-receipt-composite.oracle.patch)
           fi
           node scripts/check-test-revert-oracle.mjs "${oracle_args[@]}"
           # #7512: observe cleanup independently of scoped admission/schema.

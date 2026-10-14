@@ -686,6 +686,10 @@ jobs:
         with:
           name: viewer-dist
           path: apps/viewer/dist
+          # upload-artifact skips dotfiles by default, and the real app ships
+          # one: public/.well-known/microsoft-identity-association.json. The
+          # E2E shards must serve the exact build, not a filtered copy of it.
+          include-hidden-files: true
           retention-days: 1
           if-no-files-found: error
 

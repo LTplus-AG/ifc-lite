@@ -199,7 +199,7 @@ export async function submitReport(
     await audit(tx, id, "report_submitted", owner.id, {
       publicModelConfirmed: publicConfirmed,
     });
-    return { id, status: "submitted" };
+    return receipt({ ...report, status: "submitted" });
   });
 }
 

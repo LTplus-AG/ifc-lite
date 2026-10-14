@@ -36,7 +36,7 @@ import { GLBExportDialog } from '../GLBExportDialog';
 import { KmzExportDialog } from '../KmzExportDialog';
 import { EnergyModelExportDialog } from '../EnergyModelExportDialog';
 import { UsdExportDialog } from '../UsdExportDialog';
-import { LandXmlTerrainExportDialog } from '../LandXmlTerrainExportDialog';
+import { LandXmlTerrainExportCommand } from '../LandXmlTerrainExportCommand';
 import { PdfViewExportDialog } from '../PdfViewExportDialog';
 
 /** The CSV tables the exporter can emit. */
@@ -216,7 +216,7 @@ export const EXPORT_COMMANDS = [
     // and the dialog only enables Export once the producer accepts it.
     id: 'landxml-terrain',
     kind: 'dialog',
-    Dialog: LandXmlTerrainExportDialog,
+    Dialog: LandXmlTerrainExportCommand,
     labelKey: 'exportCommands.landxmlTerrain.label',
     menuLabelKey: 'exportCommands.landxmlTerrain.menuLabel',
     tooltipKey: 'exportCommands.landxmlTerrain.tooltip',

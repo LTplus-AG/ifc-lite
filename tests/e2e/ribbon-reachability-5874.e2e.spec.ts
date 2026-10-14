@@ -8,7 +8,7 @@ import { expect, test } from '@playwright/test';
 test.use({ viewport: { width: 1280, height: 900 } });
 
 const TAB_BUTTON_COUNTS = [
-  ['File', 19], // includes the Cesium ion upload command (#6587)
+  ['File', 20], // includes the Cesium ion upload command (#6587) and LandXML (terrain) (#7600)
   ['Home', 7],
   ['View', 20],
   ['Elements', 17], // includes the selected mesh hover outline (#5748)
@@ -16,7 +16,7 @@ const TAB_BUTTON_COUNTS = [
   ['Author', 8], // includes Change sets (#6232 D4); every create kind is a Model workspace command, not a button (#6232 B1)
 ] as const;
 
-test('authored IFC keeps all 88 ribbon commands and panel browser reachable at 1280px (#5874, #5778)', async ({ page }, testInfo) => {
+test('authored IFC keeps all 89 ribbon commands and panel browser reachable at 1280px (#5874, #5778)', async ({ page }, testInfo) => {
   await page.addInitScript(() => {
     localStorage.setItem('ifclite.extensions.privacy-disclosure.v2', 'e2e acknowledged');
   });

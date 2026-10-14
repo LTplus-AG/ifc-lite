@@ -11,11 +11,12 @@ rather than assembling translated fragments, lowercasing labels, or appending
 suffixes. Missing keys fall back to English; an explicit empty string remains
 empty.
 
-The Section-tool catalogue contains 69 strings covering the mounted 3D
+The Section-tool catalogue contains 72 strings covering the mounted 3D
 Section subtree: plane controls and state messages, cap styling, visualization
 badges and the drag-gizmo tooltip, plus the two entry labels that open a 2D
 drawing. It deliberately does not cover the drawing panel, toolbar, tours,
-number formatting, or locale persistence. Locales registered in tests exercise
+number formatting, or locale persistence. The cutting-plane set (chips, Add
+menu, plane menu, Undo) has its own catalogue, `section-planes.en.ts`. Locales registered in tests exercise
 fallback and live catalogue replacement; they are not languages shipped by
 the viewer.
 

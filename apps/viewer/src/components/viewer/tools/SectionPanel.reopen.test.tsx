@@ -5,13 +5,13 @@
 /**
  * Reopening the MOUNTED Section tool (#4910, #5893).
  *
- * SectionPanel re-applies the persisted last cardinal mode when it mounts, and
- * those setters enable the cut. Since #5893 the cut is lasting scene state:
- * leaving the Section tool must NOT hide it any more (that was the #5893
- * defect — you could not measure inside a section because opening Measure
- * parked the cut), so it stays on screen and unchanged across the switch. An
- * explicit clear (SDK `clearSection()`, a BCF viewpoint without planes) must
- * still stay cleared on reopen.
+ * Since #5893 the cut is lasting scene state: leaving the Section tool must NOT
+ * hide it any more (that was the #5893 defect — you could not measure inside a
+ * section because opening Measure parked the cut), so it stays on screen and
+ * unchanged across the switch. An explicit clear (SDK `clearSection()`, a BCF
+ * viewpoint without planes) must still stay cleared on reopen. Since #7545
+ * opening the tool restores nothing from an earlier session and arms nothing:
+ * what is on screen is what the user left.
  */
 
 import '@/test/setup-dom.js';
@@ -80,5 +80,15 @@ describe('Section tool reopen (#4910)', () => {
     await act(async () => createViewerAdapter(useViewerStore).setSection(null));
     await tool('section');
     assert.equal(s().sectionPlane.enabled, false, 'BUG: the cleared cut came back on reopen');
+  });
+
+  it('opening the tool with no cut changes nothing and arms no pick (#7545)', async () => {
+    window.localStorage.setItem('ifc-lite:section-last-mode', JSON.stringify({ kind: 'cardinal', axis: 'side', position: 80, flipped: true }));
+    await tool('section');
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 300)); });
+    assert.equal(s().sectionPlane.enabled, false, 'no cut appears out of an old session');
+    assert.equal(s().sectionPlane.axis, 'down');
+    assert.equal(s().sectionPickMode, false, 'no face pick is armed behind the user\'s back');
+    assert.equal(s().inactiveSectionPlanes.length, 0);
   });
 });

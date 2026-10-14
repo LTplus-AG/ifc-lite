@@ -55,12 +55,12 @@ function boundedModel(): FederatedModel {
 
 function reset(models: FederatedModel[]): void {
   window.localStorage.clear();
-  // A persisted cardinal mode, so the tool opens on a known cut rather than
-  // arming the face pick (its own tests below).
-  window.localStorage.setItem('ifc-lite:section-last-mode', JSON.stringify({ kind: 'cardinal', axis: 'down', position: 50, flipped: false }));
   useViewerStore.setState({
     activeTool: 'section',
     sectionPlane: getDefaultSectionPlane(),
+    inactiveSectionPlanes: [],
+    sectionUndo: null,
+    sceneState: { section: { visible: true }, measurements: { visible: true } },
     sectionPickMode: false,
     sectionPickPreview: null,
     models: new Map(models.map((m) => [m.id, m])),
@@ -74,6 +74,8 @@ function reset(models: FederatedModel[]): void {
     floatingPanels: [],
     poppedOutIds: [],
   } as unknown as Partial<ReturnType<typeof useViewerStore.getState>>);
+  // The tool opens on a known cut: one Down plane at 50 %, named A (opening the tool restores nothing, #7545).
+  useViewerStore.getState().addSectionPlane('down');
 }
 
 beforeEach(() => reset([boundedModel()]));
@@ -92,11 +94,6 @@ function region(name: string): HTMLElement {
 function bar(): HTMLElement {
   const el = region('top-center').querySelector<HTMLElement>('[data-tool-bar="section"]');
   assert.ok(el, 'the Section bar is a top-center HUD item');
-  return el;
-}
-function radio(label: string): HTMLButtonElement {
-  const el = [...bar().querySelectorAll<HTMLButtonElement>('[role="radio"]')].find((b) => b.textContent?.trim() === label);
-  assert.ok(el, `no "${label}" segment on the bar`);
   return el;
 }
 function toggle(label: string): HTMLButtonElement {
@@ -128,39 +125,16 @@ describe('Section bar placement on the HUD (#5499)', () => {
 });
 
 describe('Section bar controls drive the store', () => {
-  it('the axis segments write the cardinal axis and show the current one checked', () => {
-    renderTool();
-    assert.equal(radio('Down').getAttribute('aria-checked'), 'true');
-    click(radio('Front'));
-    assert.equal(s().sectionPlane.axis, 'front');
-    assert.equal(s().sectionPlane.custom, undefined);
-    assert.equal(radio('Front').getAttribute('aria-checked'), 'true');
-    assert.equal(radio('Down').getAttribute('aria-checked'), 'false');
-  });
-
-  it('Face arms the pick and reads as the checked segment; a cardinal segment disarms it', () => {
-    renderTool();
-    click(radio('Face'));
-    assert.equal(s().sectionPickMode, true);
-    assert.equal(radio('Face').getAttribute('aria-checked'), 'true');
-    assert.match(radio('Face').title, /Click any face/);
-    click(radio('Side'));
-    assert.equal(s().sectionPickMode, false);
-    assert.equal(s().sectionPlane.axis, 'side');
-    assert.equal(radio('Side').getAttribute('aria-checked'), 'true');
-  });
-
-  it('a face-picked plane keeps Face checked and the field edits its signed distance', () => {
+  it('a face-picked plane\'s field edits its signed distance', () => {
     renderTool();
     act(() => s().setSectionPlaneFromFace([1, 0, 0], [-2.345, 0, 0]));
-    assert.equal(radio('Face').getAttribute('aria-checked'), 'true');
     // The pick insets the plane off the face (#5480), so read the committed distance back.
     const picked = s().sectionPlane.custom!.distance;
     assert.equal(field().getAttribute('aria-valuetext'), `${picked.toFixed(2)}m`);
     press(field(), 'ArrowUp');
     assert.ok(Math.abs(s().sectionPlane.custom!.distance - (picked + 0.05)) < 1e-9, 'one step is 0.05 m along the normal');
-    click(radio('Down'));
-    assert.equal(s().sectionPlane.custom, undefined, 'a cardinal segment drops the custom plane');
+    act(() => s().setSectionPlaneAxis('down'));
+    assert.equal(s().sectionPlane.custom, undefined, 'a cardinal axis drops the custom plane');
   });
 
   it('Flip is a pressed toggle bound to the store', () => {
@@ -228,7 +202,7 @@ describe('Section bar controls drive the store', () => {
 
   it('the storey menu is absent for a vertical cut and without storeys', () => {
     renderTool();
-    click(radio('Front'));
+    act(() => s().setSectionPlaneAxis('front'));
     assert.equal(bar().querySelector('button[aria-label="Cut at a storey"]'), null);
   });
 

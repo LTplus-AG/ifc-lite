@@ -16,7 +16,7 @@ import { createHoverSlice, type HoverSlice } from './slices/hoverSlice.js';
 import { createCameraSlice, type CameraSlice } from './slices/cameraSlice.js';
 import { createSectionSlice, type SectionSlice } from './slices/sectionSlice.js';
 import { registerMutationViewStoreBinding } from './mutation-view-store-binding.js';
-export { customPlaneCenter, loadLastSectionMode, type LastSectionMode } from './slices/sectionSlice.js';
+export { customPlaneCenter } from './slices/sectionSlice.js';
 import { createMeasurementSlice, type MeasurementSlice } from './slices/measurementSlice.js';
 import { createDataSlice, type DataSlice } from './slices/dataSlice.js';
 import { createModelSlice, type ModelSlice } from './slices/modelSlice.js';

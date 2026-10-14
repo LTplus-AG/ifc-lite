@@ -43,6 +43,7 @@ import { isTypeVisible, type TypeVisibilityGate } from '@/store/typeVisibilityFi
 import { roomDrawingSymbolic } from '@/lib/collab/room-drawing-symbolic';
 import { ifcToViewerAxes } from '@/lib/geo/coordinate-frame';
 import { useDrawingRtcContext } from './useDrawingRtcContext.js';
+import { FIRST_SECTION_PLANE_NAME } from '@/lib/section/section-plane-set';
 import { markActiveDrawingGenerationCompleted, markActiveDrawingGenerationStarted } from '@/lib/drawing/active-canvas-snapshot';
 // The winding-robust Rust `meshOutline2d` binding (issue #979) is gitignored →
 // CI-built, so reference it defensively: against an older wasm bundle it's
@@ -925,9 +926,7 @@ export function useDrawingGeneration({
   // re-save it — never fed back into the store's `sectionPlane`, so the
   // section that produced the restored markup was never regenerated; the
   // measurements/annotations came back floating over whatever cut
-  // `sectionPlane` already held (the default, or the last cardinal mode from
-  // a PREVIOUS, unrelated session — see `sectionSlice.ts`'s
-  // `loadLastSectionMode`). `consumeRestoredSectionConfig` hands this effect
+  // `sectionPlane` already held (the default). `consumeRestoredSectionConfig` hands this effect
   // that saved `SectionConfig` exactly once per restore; converting it back
   // into `sectionPlane`'s semantic axis + 0-100 percent (the inverse of the
   // `axis`/`position` math in `computeDrawing` above) and writing it to the
@@ -969,6 +968,7 @@ export function useDrawingGeneration({
     useViewerStore.setState((state) => ({
       sectionPlane: {
         ...state.sectionPlane,
+        name: state.sectionPlane.name || FIRST_SECTION_PLANE_NAME,
         axis: AXIS_MAP_REVERSE[axis],
         position,
         flipped: restored.plane.flipped,

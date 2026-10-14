@@ -59,6 +59,8 @@ beforeEach(() => {
   useViewerStore.setState({
     activeTool: 'select',
     sectionPlane: getDefaultSectionPlane(),
+    inactiveSectionPlanes: [],
+    sectionUndo: null,
     sceneState: { ...s().sceneState, section: { visible: true } },
     sectionPickMode: false,
     sectionPickPreview: null,
@@ -79,11 +81,17 @@ afterEach(() => {
 const region = (name: string) => document.querySelector<HTMLElement>(`[data-hud-region="${name}"]`)!;
 const chip = () => [...region('top-left').querySelectorAll<HTMLElement>('[data-hud-item]')].find((el) => el.querySelector('button[aria-label="Resume the section cut"]'));
 
-/** Open the Section tool on a cardinal cut, then leave it: the cut stays
+/** Make a cardinal cut in the store, as the bar's Add plane menu does (opening the tool restores nothing, #7545). */
+function makeCut(axis: 'down' | 'front' | 'side', position: number): void {
+  s().addSectionPlane(axis);
+  s().setSectionPlanePosition(position);
+}
+
+/** Open the Section tool, cut on a cardinal axis, then leave it: the cut stays
  *  enabled and visible (#5893) — leaving the tool no longer hides it. */
 async function defineCut(axis: 'down' | 'front' | 'side' = 'down', position = 55): Promise<void> {
-  window.localStorage.setItem('ifc-lite:section-last-mode', JSON.stringify({ kind: 'cardinal', axis, position, flipped: false }));
   await act(async () => { s().setActiveTool('section'); await new Promise((r) => setTimeout(r, 0)); });
+  act(() => makeCut(axis, position));
   await act(async () => { s().setActiveTool('select'); await new Promise((r) => setTimeout(r, 0)); });
   assert.equal(s().sectionPlane.enabled, true, 'the cut stays enabled after leaving the tool');
   assert.equal(s().sceneState.section.visible, true, 'the cut stays visible after leaving the tool (#5893)');
@@ -93,8 +101,9 @@ describe('section chip (#5500, #5893)', () => {
   it('is absent with no cut defined, and while the Section tool is open', async () => {
     render(<><ViewportHud /><SectionParkedChip /><SceneOverlayRoot><ToolOverlays /></SceneOverlayRoot></>);
     assert.equal(chip(), undefined, 'no cut, no chip');
-    window.localStorage.setItem('ifc-lite:section-last-mode', JSON.stringify({ kind: 'cardinal', axis: 'down', position: 55, flipped: false }));
     await act(async () => { s().setActiveTool('section'); await new Promise((r) => setTimeout(r, 0)); });
+    assert.equal(chip(), undefined, 'opening the tool defines no cut, so still no chip');
+    act(() => makeCut('down', 55));
     assert.equal(s().sectionPlane.enabled, true);
     assert.equal(chip(), undefined, 'the tool is open: the bar carries the state, not a chip');
   });
@@ -190,9 +199,10 @@ describe('section chip (#5500, #5893)', () => {
     await defineCut('down', 55);
     click(chip()!.querySelector('button[aria-label="Clear the parked cut"]')!);
     assert.equal(chip(), undefined);
-    assert.equal(s().sectionPlane.parked, false);
+    assert.ok(!s().sectionPlane.parked, 'nothing parked (the placeholder plane leaves the optional flag unset)');
     assert.equal(s().sectionPlane.enabled, false);
-    assert.equal(window.localStorage.getItem('ifc-lite:section-last-mode'), null, 'the persisted cardinal mode is dropped too');
+    assert.equal(s().inactiveSectionPlanes.length, 0);
+    assert.equal(s().sectionPlane.name, '', 'back to the unnamed placeholder: no plane left');
     await act(async () => { s().setActiveTool('section'); await new Promise((r) => setTimeout(r, 0)); });
     assert.equal(s().sectionPlane.enabled, false, 'the cleared cut stays cleared');
   });

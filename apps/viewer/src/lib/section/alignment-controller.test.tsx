@@ -18,7 +18,9 @@ import { SceneOverlayRoot } from '@/components/viewport-ui/scene';
 import { SectionToolbar } from '@/components/viewer/tools/SectionToolbar';
 import { useViewerStore } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
-import { bindAlignment, chooseAlignmentMode, startAlignmentTool, useAlignmentToolState, setAlignmentDistance } from './alignment-controller';
+import { addPlaneFromMenu } from '@/test/section-bar';
+import { getDefaultSectionPlane } from '@/store/slices/sectionSlice';
+import { bindAlignment, chooseAlignmentMode, leaveAlignmentMode, startAlignmentTool, useAlignmentToolState, setAlignmentDistance } from './alignment-controller';
 import type { AlignmentRequest, AlignmentResponse } from './alignment-contract';
 import type { AlignmentWorker } from './alignment-client';
 import type { GeometryResult } from '@ifc-lite/geometry';
@@ -152,39 +154,51 @@ test('real alignment binding survives unrelated updates, detaches on drag, reacq
 });
 
 
-test('mounted section toolbar enters alignment chooser and returns to ordinary cardinal cuts (#6603)', () => {
+test('mounted section toolbar enters alignment chooser and returns to ordinary cardinal cuts (#6603, #7545)', () => {
   const state = useViewerStore.getState();
   const model = { ...fixtureModel('model', { entities: [{ expressId: 20, type: 'IfcAlignment', name: 'Road' }] }), geometryResult: geometry };
-  useViewerStore.setState({ ...fixtureModels(model), sectionPlane: { ...state.sectionPlane, custom: undefined, box: undefined }, sectionPickMode: false });
+  useViewerStore.setState({ ...fixtureModels(model), sectionPlane: { ...getDefaultSectionPlane(), custom: undefined, box: undefined },
+    inactiveSectionPlanes: [], sectionUndo: null, sectionPickMode: false });
   try {
     const ui = render(<><ViewportHud /><SectionToolbar /></>);
-    const segment = (name: string) => {
-      const button = [...ui.querySelectorAll<HTMLButtonElement>('[role="radio"]')].find(candidate => candidate.textContent?.trim() === name);
-      assert.ok(button); return button;
-    };
-    click(segment('Alignment'));
-    assert.equal(segment('Alignment').getAttribute('aria-checked'), 'true');
+    const chip = (name: string) => [...ui.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find(candidate => candidate.textContent?.trim() === name);
+    // A fresh viewer has no plane: the bar offers "Down (Z)" and friends, and the Add plane menu only exists once a plane does.
+    const down = [...ui.querySelectorAll<HTMLButtonElement>('[data-testid="section-empty-add"] button')].find(b => b.textContent?.trim() === 'Down (Z)');
+    assert.ok(down); click(down);
+    assert.equal(chip('A')?.getAttribute('aria-selected'), 'true');
+    assert.equal(ui.querySelector('[aria-label="Choose IfcAlignment"]'), null, 'an ordinary cut shows no alignment chooser');
+
+    addPlaneFromMenu('Alignment…');
+    assert.equal(useAlignmentToolState.getState().choosing, true);
+    assert.equal(chip('B')?.getAttribute('aria-selected'), 'true', 'the alignment cut is a new plane; A is not replaced');
     assert.ok(ui.querySelector('[aria-label="Alignment model"]'));
     assert.ok(ui.querySelector('[aria-label="Choose IfcAlignment"]'));
-    click(segment('Down'));
-    assert.equal(segment('Down').getAttribute('aria-checked'), 'true');
+
+    addPlaneFromMenu('Front (Y)');
+    assert.equal(useAlignmentToolState.getState().choosing, false, 'adding an ordinary plane leaves alignment mode');
+    assert.equal(chip('C')?.getAttribute('aria-selected'), 'true');
     assert.equal(ui.querySelector('[aria-label="Choose IfcAlignment"]'), null);
-    assert.equal(useViewerStore.getState().sectionPlane.axis, 'down');
-  } finally { cleanup(); act(() => useViewerStore.setState(state, true)); }
+    assert.equal(useViewerStore.getState().sectionPlane.axis, 'front');
+  } finally { cleanup(); act(() => { leaveAlignmentMode(); useViewerStore.setState(state, true); }); }
 });
 
 
-test('opening face-pick debounce cannot replace an explicitly chosen alignment mode (#6603)', async () => {
+test('the Section tool arms nothing on open, so a chosen alignment mode is never cancelled by it (#6603, #7545)', async () => {
   const state = useViewerStore.getState();
   window.localStorage.clear();
-  useViewerStore.setState({ activeTool: 'section', sectionPlane: { ...state.sectionPlane, custom: undefined, box: undefined }, sectionPickMode: false });
+  useViewerStore.setState({ activeTool: 'section', sectionPlane: { ...getDefaultSectionPlane(), custom: undefined, box: undefined },
+    inactiveSectionPlanes: [], sectionUndo: null, sectionPickMode: false });
+  useViewerStore.getState().addSectionPlane('down');
   try {
     const ui = render(<><ViewportHud /><SceneOverlayRoot><ToolOverlays /></SceneOverlayRoot></>);
-    const segment = [...ui.querySelectorAll<HTMLButtonElement>('[role="radio"]')].find(candidate => candidate.textContent?.trim() === 'Alignment');
-    assert.ok(segment); click(segment);
-    await advance(250);
+    assert.equal(useViewerStore.getState().sectionPickMode, false, 'opening the tool arms no face pick');
+    addPlaneFromMenu('Alignment…');
     assert.equal(useAlignmentToolState.getState().choosing, true);
-    assert.equal(useViewerStore.getState().sectionPickMode, false);
-    assert.equal(segment.getAttribute('aria-checked'), 'true');
-  } finally { cleanup(); window.localStorage.clear(); act(() => useViewerStore.setState(state, true)); }
+    await advance(300);
+    assert.equal(useAlignmentToolState.getState().choosing, true, 'nothing the tool does after opening leaves the chooser');
+    assert.equal(useViewerStore.getState().sectionPickMode, false, 'and no face pick was armed behind it');
+    assert.ok(ui.querySelector('[aria-label="Choose IfcAlignment"]'), 'the chooser stays on the bar');
+    const selected = [...ui.querySelectorAll('[data-tool-bar="section"] [role="tab"]')].filter(el => el.getAttribute('aria-selected') === 'true');
+    assert.deepEqual(selected.map(el => el.textContent?.trim()), ['B'], 'the alignment plane stays the active plane');
+  } finally { cleanup(); window.localStorage.clear(); act(() => { leaveAlignmentMode(); useViewerStore.setState(state, true); }); }
 });

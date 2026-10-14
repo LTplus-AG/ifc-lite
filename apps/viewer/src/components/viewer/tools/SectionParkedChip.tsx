@@ -29,7 +29,7 @@ import { useSectionDistance } from './useSectionDistance';
 import { sectionBoxSize } from '@/lib/section/section-box';
 
 export function SectionParkedChip() {
-  const shown = useViewerStore((s) => s.sectionPlane.enabled && s.activeTool !== 'section');
+  const shown = useViewerStore((s) => (s.sectionPlane.enabled || s.inactiveSectionPlanes.some((p) => p.enabled)) && s.activeTool !== 'section');
   if (!shown) return null;
   return <ParkedChipBody />;
 }
@@ -37,6 +37,7 @@ export function SectionParkedChip() {
 function ParkedChipBody() {
   const { t } = useTranslation();
   const sectionPlane = useViewerStore((s) => s.sectionPlane);
+  const cutting = useViewerStore((s) => (s.sectionPlane.enabled ? 1 : 0) + s.inactiveSectionPlanes.filter((p) => p.enabled).length);
   const visible = useViewerStore((s) => s.sceneState.section.visible);
   const setActiveTool = useViewerStore((s) => s.setActiveTool);
   const setSectionVisible = useViewerStore((s) => s.setSectionVisible);
@@ -46,7 +47,9 @@ function ParkedChipBody() {
   const box = sectionPlane.box ? sectionBoxSize(sectionPlane.box) : null;
   // One decimal and tight separators: the chip's lane is 13rem, and the bar
   // carries the precise size while the tool is open.
-  const label = box
+  const label = cutting > 1
+    ? t('sectionPlanes.parked.count', { count: cutting })
+    : box
     ? t('sectionTool.parked.labelBox', { x: box[0].toFixed(1), y: box[1].toFixed(1), z: box[2].toFixed(1) })
     : distance.kind === 'percent'
       ? t('sectionTool.parked.labelPercent', { axis, position: distance.value.toFixed(1) })

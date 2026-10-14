@@ -47,6 +47,12 @@ export interface SectionBox {
 export type SectionBoxFace = 'minX' | 'maxX' | 'minY' | 'maxY' | 'minZ' | 'maxZ';
 
 export interface SectionPlane {
+  /** Session-unique, never shown; the set's identity for this plane (#7545). */
+  id: string;
+  /** What the user sees: `A`, `B`, …, or their own name. Unique within the set. */
+  name: string;
+  /** Draw this plane's quad and outline in the scene; independent of `enabled` (cutting). */
+  showGizmo: boolean;
   axis: SectionPlaneAxis;
   /** 0-100 percentage of model bounds */
   position: number;

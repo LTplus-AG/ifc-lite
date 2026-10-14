@@ -64,8 +64,12 @@ describe('the uncut section preview only draws while the Section tool is open (#
     assert.deepEqual(rendered(), {}, 'BUG #6374: clearing the cut left its preview plane drawn');
   });
 
-  it('opening the Section tool still shows the preview, and closing it takes the preview away', () => {
+  it('opening the Section tool with no plane draws nothing; a plane whose Cut is off previews while the tool is open and not after it closes', () => {
     state().setActiveTool('section');
+    assert.deepEqual(rendered(), {}, 'no plane yet, so nothing to preview (#7545)');
+
+    state().addSectionPlane('down');
+    state().setSectionPlaneEnabled(false);
     assert.equal(state().sectionPlane.enabled, false);
     assert.equal(rendered().sectionPlane?.enabled, false, 'the tool shows where a cut would go before it cuts');
 

@@ -15,7 +15,7 @@ import type { Renderer, CutPolygon2D, DrawingLine2D, VisualEnhancementOptions } 
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 import type { Drawing2D } from '@ifc-lite/drawing-2d';
 import type { SectionPlane } from '@/store';
-import { customPlaneCenter } from '@/store';
+import { customPlaneCenter, useViewerStore } from '@/store';
 import { getThemeClearColor } from '../../utils/viewportUtils.js';
 import { rendererOverlayTheme } from '@/lib/viewport-ui/overlay-theme-renderer';
 import { setClashColorsFromTheme } from '@/lib/clash/clash-colors';
@@ -59,6 +59,8 @@ export interface UseRenderUpdatesParams {
 }
 
 export function useRenderUpdates(params: UseRenderUpdatesParams): void {
+  // The other cutting planes (#7545) clip on their own; a change to one must draw a frame.
+  const inactiveSectionPlanes = useViewerStore((s) => s.inactiveSectionPlanes);
   const {
     rendererRef,
     isInitialized,
@@ -172,7 +174,7 @@ export function useRenderUpdates(params: UseRenderUpdatesParams): void {
     if (!renderer || !isInitialized) return;
 
     renderer.requestRender();
-  }, [hiddenEntities, isolatedEntities, ghostExceptEntities, selectedEntityId, selectedEntityIds, selectedModelIndex, isInitialized, sectionPlane, activeTool, sectionRange, coordinateInfo?.buildingRotation]);
+  }, [hiddenEntities, isolatedEntities, ghostExceptEntities, selectedEntityId, selectedEntityIds, selectedModelIndex, isInitialized, sectionPlane, inactiveSectionPlanes, activeTool, sectionRange, coordinateInfo?.buildingRotation]);
 }
 
 export default useRenderUpdates;

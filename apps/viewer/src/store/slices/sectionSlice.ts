@@ -12,8 +12,8 @@ import { SECTION_PLANE_DEFAULTS, SECTION_CAP_DEFAULTS } from '../constants.js';
 import { planeBasis, nearestCardinalAxis } from '@ifc-lite/renderer';
 import { facePickPlaneDistance } from './sectionFacePick.js';
 import { createSectionBoxSlice, type SectionBoxSlice } from './sectionBoxSlice.js';
-import { saveLastSectionMode, clearLastSectionMode } from './sectionLastMode.js';
-export { loadLastSectionMode, clearLastSectionMode, type LastSectionMode } from './sectionLastMode.js';
+import { createSectionPlaneSetSlice, type SectionPlaneSetSlice } from './sectionPlaneSetSlice.js';
+import { FIRST_SECTION_PLANE_NAME, newSectionPlaneId } from '@/lib/section/section-plane-set';
 
 export { customPlaneCenter } from './section-plane-center';
 
@@ -129,7 +129,7 @@ export interface SectionPickPreview {
   faceKey: string;
 }
 
-export interface SectionSlice extends SectionBoxSlice {
+export interface SectionSlice extends SectionBoxSlice, SectionPlaneSetSlice {
   // State
   sectionPlane: SectionPlane;
   /**
@@ -209,6 +209,9 @@ function isDrawablePick(
 }
 
 export const getDefaultSectionPlane = (): SectionPlane => ({
+  id: newSectionPlaneId(),
+  name: '', // the placeholder is unnamed until a cut is made on it (isPristineSectionPlane)
+  showGizmo: true,
   axis: SECTION_PLANE_DEFAULTS.AXIS,
   position: SECTION_PLANE_DEFAULTS.POSITION,
   enabled: SECTION_PLANE_DEFAULTS.ENABLED,
@@ -229,12 +232,13 @@ export const createSectionSlice: StateCreator<SectionSlice, [], [], SectionSlice
   // this slice types `set`/`get` narrowly (`sectionSlice.test.ts` stubs it
   // alone) — same as `uiSlice.ts`'s `setActiveTool` reaching `resetMeasureGesture`.
   const enableSectionPlane = (planePatch: Partial<SectionPlane> = {}): void => {
-    set((state) => ({ sectionPlane: { ...state.sectionPlane, ...planePatch, enabled: true } }));
+    set((state) => ({ sectionPlane: { ...state.sectionPlane, name: state.sectionPlane.name || FIRST_SECTION_PLANE_NAME, ...planePatch, enabled: true } }));
     (get() as unknown as { setSectionVisible?: (visible: boolean) => void }).setSectionVisible?.(true);
   };
 
   return {
   ...createSectionBoxSlice(set, get, api),
+  ...createSectionPlaneSetSlice(set, get, api),
   // Initial state
   sectionPlane: getDefaultSectionPlane(),
   sectionPickMode: false,
@@ -242,13 +246,8 @@ export const createSectionSlice: StateCreator<SectionSlice, [], [], SectionSlice
 
   // Actions
   setSectionPlaneAxis: (axis) => {
-    const state = get();
-    // Persist axis + position + flipped so reopening the tool restores it
-    // (issue #243). Position/flipped come from current state — picking an
-    // axis just switches which axis the slider walks along. Also enable
-    // the clip (picking an axis implicitly means "cut now") and drop any
+    // Picking an axis implicitly means "cut now": enable the clip and drop any
     // custom (face-picked) plane so the cardinal preset takes over cleanly.
-    saveLastSectionMode({ kind: 'cardinal', axis, position: state.sectionPlane.position, flipped: state.sectionPlane.flipped });
     enableSectionPlane({ axis, custom: undefined, box: undefined });
   },
 
@@ -262,9 +261,7 @@ export const createSectionSlice: StateCreator<SectionSlice, [], [], SectionSlice
     // `distance`; the patch below stores the percentage and updates
     // `custom.distance` to match.
     const planePatch: Partial<SectionPlane> = { position: clampedPosition };
-    if (!state.sectionPlane.custom) {
-      saveLastSectionMode({ kind: 'cardinal', axis: state.sectionPlane.axis, position: clampedPosition, flipped: state.sectionPlane.flipped });
-    } else {
+    if (state.sectionPlane.custom) {
       const c = state.sectionPlane.custom;
       // Re-anchor from percentage: without renderer-supplied bounds here,
       // shift the existing distance by the percentage delta over a fixed
@@ -302,17 +299,6 @@ export const createSectionSlice: StateCreator<SectionSlice, [], [], SectionSlice
     // own flip (negate-and-negate-again leaves the same half-space
     // clipped) and the flip button would have no visible effect.
     const flipped = !state.sectionPlane.flipped;
-    // Persist the flipped state alongside axis + position for cardinal
-    // mode (issue #243 follow-up). Custom-mode flips aren't persisted
-    // because the whole custom plane (anchored at a model point) isn't.
-    if (!state.sectionPlane.custom) {
-      saveLastSectionMode({
-        kind: 'cardinal',
-        axis:     state.sectionPlane.axis,
-        position: state.sectionPlane.position,
-        flipped,
-      });
-    }
     return { sectionPlane: { ...state.sectionPlane, flipped } };
   }),
 
@@ -334,9 +320,7 @@ export const createSectionSlice: StateCreator<SectionSlice, [], [], SectionSlice
 
   resetSectionPlane: () => set(() => {
     // Reset clears persisted cap style too — users asking for defaults expect
-    // the defaults to stick on the next reload. Same goes for the
-    // last-used-mode preference (issue #243 follow-up): a reset should
-    // bring everyone back to the default pick mode on next reopen.
+    // the defaults to stick on the next reload.
     try {
       if (typeof window !== 'undefined') {
         window.localStorage.removeItem(CAP_STYLE_STORAGE_KEY);
@@ -346,8 +330,7 @@ export const createSectionSlice: StateCreator<SectionSlice, [], [], SectionSlice
     } catch (error) {
       console.warn('[section] failed to clear persisted cap preferences', error);
     }
-    clearLastSectionMode();
-    return { sectionPlane: getDefaultSectionPlane(), sectionPickMode: false, sectionPickPreview: null };
+    return { sectionPlane: getDefaultSectionPlane(), inactiveSectionPlanes: [], sectionUndo: null, sectionPickMode: false, sectionPickPreview: null, sectionPickTarget: 'replace' as const };
   }),
 
   setSectionPlaneFromFace: (normal, point, bounds) => {
@@ -365,6 +348,11 @@ export const createSectionSlice: StateCreator<SectionSlice, [], [], SectionSlice
       set(() => ({ sectionPickMode: false, sectionPickPreview: null }));
       return;
     }
+    // An armed "add plane" pick makes room first (#7545); a degenerate pick above never does.
+    if (state.sectionPickTarget === 'new' && !get().prepareNewSectionPlane()) {
+      set(() => ({ sectionPickMode: false, sectionPickPreview: null, sectionPickTarget: 'replace' }));
+      return;
+    }
     const unit: [number, number, number] = [nx / len, ny / len, nz / len];
     const distance = facePickPlaneDistance(unit, point, bounds);
     const basis = planeBasis(unit);
@@ -375,7 +363,7 @@ export const createSectionSlice: StateCreator<SectionSlice, [], [], SectionSlice
     // the picked plane rather than whatever slider value was set before.
     // Without `bounds` we keep the previous value (P2 CR comment on PR
     // #581) — the SectionPanel passes bounds when available.
-    let position = state.sectionPlane.position;
+    let position = get().sectionPlane.position;
     if (bounds) {
       const axisIdx = cardinal.axis === 'side' ? 0 : cardinal.axis === 'down' ? 1 : 2;
       const axisMin = bounds.min[axisIdx];
@@ -397,13 +385,9 @@ export const createSectionSlice: StateCreator<SectionSlice, [], [], SectionSlice
       bitangent: basis.bitangent,
     };
 
-    // Last-used mode is "pick" — reopening the panel rearms face-pick
-    // rather than restoring a cardinal cut. We deliberately don't store
-    // the custom plane itself (model-relative coords).
-    saveLastSectionMode({ kind: 'pick' });
-
     set(() => ({
       sectionPickMode: false,
+      sectionPickTarget: 'replace' as const,
       // Commit consumes the preview — the accent quad transitions
       // visually into the actual cap on the next render. Clearing here
       // (rather than waiting for the hover handler) avoids a frame of
@@ -433,7 +417,7 @@ export const createSectionSlice: StateCreator<SectionSlice, [], [], SectionSlice
       ? { sectionPickMode: true, ...(state.sectionPlane.custom?.alignment ? {
         sectionPlane: { ...state.sectionPlane, custom: { ...state.sectionPlane.custom, alignment: undefined } },
       } : {}) }
-      : { sectionPickMode: false, sectionPickPreview: null }
+      : { sectionPickMode: false, sectionPickPreview: null, sectionPickTarget: 'replace' as const }
   )),
 
   setSectionPickPreview: (preview) => set((state) => {

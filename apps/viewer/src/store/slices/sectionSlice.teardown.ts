@@ -38,7 +38,7 @@ import { getDefaultSectionPlane } from './sectionSlice.js';
 
 export const sectionTeardown = defineSliceTeardown(
   'sectionSlice',
-  ['sectionPlane'],
+  ['sectionPlane', 'inactiveSectionPlanes', 'sectionUndo'],
   {
     'session-reset': (_scope, state) => {
       // The `??` is for the partial-store harness (`TeardownState` is a
@@ -62,6 +62,11 @@ export const sectionTeardown = defineSliceTeardown(
           showOutlines: live.showOutlines,
           capStyle:     live.capStyle,
         },
+        // The other cutting planes (#7545) are positioned against the model just
+        // like the active one, so they go with it; so does the Undo that
+        // would bring them back.
+        inactiveSectionPlanes: [],
+        sectionUndo: null,
       };
     },
     // A cut plane is positioned against the whole loaded scene, not against

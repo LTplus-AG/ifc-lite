@@ -19,6 +19,7 @@ const capStyle: SectionPlane['capStyle'] = {
   fillColor: [1, 1, 1, 1], strokeColor: [0, 0, 0, 1], pattern: 'solid', spacingPx: 8, angleRad: 0, widthPx: 1, secondaryAngleRad: 0,
 };
 const plane = (over: Partial<SectionPlane> = {}): SectionPlane => ({
+  id: 'p', name: 'A', showGizmo: true,
   axis: 'down', position: 40, enabled: true, flipped: false, showCap: true, showOutlines: false, capStyle, ...over,
 });
 
@@ -58,5 +59,49 @@ describe('sectionRenderClip', () => {
     assert.equal(sectionRenderClip(true, off, null, 'section').sectionPlane?.enabled, false);
     assert.deepEqual(sectionRenderClip(true, off, null, 'select'), {});
     assert.deepEqual(sectionRenderClip(true, off, null, 'measure'), {});
+  });
+
+  describe('cutting planes beyond the active one (#7545)', () => {
+    const second = plane({ id: 'q', name: 'B', axis: 'side', position: 25, flipped: true });
+
+    it('hands each enabled inactive plane over for the renderer to resolve, with no cap or range', () => {
+      const out = sectionRenderClip(true, plane(), { min: 0, max: 8 }, 'select', [second]);
+      assert.deepEqual(out.extraSectionPlanes, [
+        { axis: 'side', position: 25, enabled: true, flipped: true, normal: undefined, distance: undefined },
+      ]);
+      assert.equal(out.sectionPlane?.axis, 'down', 'the active plane is still the primary');
+    });
+
+    it('a face-picked inactive plane carries its own normal and distance', () => {
+      const custom = { normal: [0, 0, 1] as [number, number, number], distance: 4, pickedAt: [0, 0, 4] as [number, number, number], tangent: [1, 0, 0] as [number, number, number], bitangent: [0, 1, 0] as [number, number, number] };
+      const out = sectionRenderClip(true, plane(), null, 'select', [plane({ id: 'q', custom })]);
+      assert.deepEqual(out.extraSectionPlanes?.[0]?.normal, [0, 0, 1]);
+      assert.equal(out.extraSectionPlanes?.[0]?.distance, 4);
+    });
+
+    it('a plane that is not cutting contributes nothing, and a hidden cut hides all of them', () => {
+      assert.equal(sectionRenderClip(true, plane(), null, 'select', [plane({ id: 'q', enabled: false })]).extraSectionPlanes, undefined);
+      assert.deepEqual(sectionRenderClip(false, plane(), null, 'select', [second]), {});
+    });
+
+    it('they keep cutting when the active plane is only a preview outside the Section tool', () => {
+      const out = sectionRenderClip(true, plane({ enabled: false }), null, 'select', [second]);
+      assert.equal(out.sectionPlane, undefined, 'no preview quad outside the tool (#6374)');
+      assert.equal(out.extraSectionPlanes?.length, 1);
+    });
+
+    it('a boxed inactive plane clips by its box when the active plane has none, and the active box wins the slot', () => {
+      const boxed = plane({ id: 'q', box: { min: [0, 0, 0], max: [2, 2, 2] } });
+      const fallback = sectionRenderClip(true, plane(), null, 'select', [boxed]);
+      assert.deepEqual(fallback.clipBox, { min: [0, 0, 0], max: [2, 2, 2], enabled: true });
+      assert.equal(fallback.extraSectionPlanes, undefined, 'a boxed plane adds no plane');
+      const active = sectionRenderClip(true, plane({ box: { min: [5, 5, 5], max: [6, 6, 6] } }), null, 'select', [boxed]);
+      assert.deepEqual(active.clipBox, { min: [5, 5, 5], max: [6, 6, 6], enabled: true });
+    });
+
+    it('with one plane the result is what it was before the set existed', () => {
+      assert.deepEqual(sectionRenderClip(true, plane(), null, 'select', []), sectionRenderClip(true, plane(), null, 'select'));
+      assert.equal('extraSectionPlanes' in sectionRenderClip(true, plane(), null, 'select', []), false);
+    });
   });
 });

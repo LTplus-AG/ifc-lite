@@ -88,7 +88,7 @@ const PINNED_SESSION_RESET_KEYS: readonly string[] = [
   'searchFieldFilter', 'searchFilter', 'searchFilterActiveGroup', 'searchFilterError', 'searchFilterResult',
   'searchFilterRunning', 'searchFilterSchema', 'searchHighlightIndex', 'searchIndexes',
   'searchModalOpen', 'searchModelFilter', 'searchOpen', 'searchQuery', 'searchVimCycle',
-  'sceneState', 'sectionPlane', 'selectedAnnotation2D', 'selectedAnnotationId', 'selectedEntities',
+  'sceneState', 'inactiveSectionPlanes', 'sectionPlane', 'sectionUndo', 'selectedAnnotation2D', 'selectedAnnotationId', 'selectedEntities', // #7545: inactiveSectionPlanes + sectionUndo reset with the active plane
   'selectedEntitiesSet', 'selectedEntity', 'selectedEntityId', 'selectedEntityIds', 'selectionRevision',
   'selectedLandXmlSource', 'selectedModelId', 'selectedStoreys', 'selectedTaskGlobalIds', 'separationLinesEnabled',
   'separationLinesIntensity', 'separationLinesQuality', 'separationLinesRadius',
@@ -289,7 +289,7 @@ const PINNED_OWNED_KEYS: readonly string[] = [
   'searchFieldFilter', 'searchFilter', 'searchFilterActiveGroup', 'searchFilterError', 'searchFilterResult',
   'searchFilterRunning', 'searchFilterSchema', 'searchHighlightIndex', 'searchIndexes',
   'searchModalOpen', 'searchModelFilter', 'searchOpen', 'searchQuery', 'searchVimCycle',
-  'sceneState', 'sectionPlane', 'selectedAnnotation2D', 'selectedAnnotationId', 'selectedEntities',
+  'sceneState', 'inactiveSectionPlanes', 'sectionPlane', 'sectionUndo', 'selectedAnnotation2D', 'selectedAnnotationId', 'selectedEntities', // #7545: inactiveSectionPlanes + sectionUndo reset with the active plane
   'selectedEntitiesSet', 'selectedEntity', 'selectedEntityId', 'selectedEntityIds', 'selectionRevision',
   'selectedLandXmlSource', 'selectedModelId', 'selectedStoreys', 'selectedTaskGlobalIds', 'separationLinesEnabled',
   'separationLinesIntensity', 'separationLinesQuality', 'separationLinesRadius',

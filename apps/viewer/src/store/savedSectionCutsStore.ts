@@ -40,6 +40,7 @@
 import { create } from 'zustand';
 import type { SectionCapStyle, SectionPlane, SectionPlaneAxis } from './types.js';
 import { useViewerStore } from './index.js';
+import { FIRST_SECTION_PLANE_NAME } from '@/lib/section/section-plane-set';
 
 /** The subset of `SectionPlane` that defines the CUT itself, not its
  *  on-screen/parked lifecycle (`enabled` / `parked`), which only ever means
@@ -119,7 +120,7 @@ export function applySavedSectionCut(id: string): void {
   // A saved cut is a plane: leaving a live section box in place would keep
   // the box as the cut (#5513, `sectionRenderClip`), so it is dropped.
   useViewerStore.setState({
-    sectionPlane: { ...state.sectionPlane, ...cut.plane, box: undefined, enabled: true, parked: false },
+    sectionPlane: { ...state.sectionPlane, ...cut.plane, name: state.sectionPlane.name || FIRST_SECTION_PLANE_NAME, box: undefined, enabled: true, parked: false },
     sceneState: { ...state.sceneState, section: { visible: true } },
   });
   if (useViewerStore.getState().activeTool !== 'section') {

@@ -22,7 +22,7 @@
 import type { StateCreator } from 'zustand';
 import type { SectionBox, SectionBoxFace } from '../types.js';
 import { moveSectionBoxFace } from '@/lib/section/section-box';
-import { saveLastSectionMode } from './sectionLastMode.js';
+import { FIRST_SECTION_PLANE_NAME } from '@/lib/section/section-plane-set';
 import type { SectionSlice } from './sectionSlice.js';
 
 export interface SectionBoxSlice {
@@ -34,9 +34,8 @@ export interface SectionBoxSlice {
 
 export const createSectionBoxSlice: StateCreator<SectionSlice, [], [], SectionBoxSlice> = (set) => ({
   setSectionBox: (box) => set((state) => {
-    saveLastSectionMode({ kind: 'box' });
     return {
-      sectionPlane: { ...state.sectionPlane, box: { min: [...box.min], max: [...box.max] }, custom: undefined, enabled: true },
+      sectionPlane: { ...state.sectionPlane, name: state.sectionPlane.name || FIRST_SECTION_PLANE_NAME, box: { min: [...box.min], max: [...box.max] }, custom: undefined, enabled: true },
       sectionPickMode: false,
       sectionPickPreview: null,
     };

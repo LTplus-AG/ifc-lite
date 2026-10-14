@@ -233,8 +233,9 @@ for (const width of [1280, 1600, 1920]) {
           await expect(page.locator('[data-testid="section-cap-popover"]')).toBeVisible({ timeout: 10000 });
         }
         if (state.name === 'section+box') {
-          // Through the bar, not the store: the segment fits the box to the model and the bar re-lays out.
-          await page.locator('[data-tool-bar="section"] [role="radio"]', { hasText: 'Box' }).click();
+          // Through the bar, not the store: the Add plane menu fits the box to the model and the bar re-lays out (#7545).
+          await page.locator('[data-tool-bar="section"] [data-testid="section-add-plane"]').click();
+          await page.getByRole('menuitem', { name: 'Box' }).click();
           await expect(page.locator('[data-testid="section-box-size"]')).toBeVisible({ timeout: 10000 });
         }
         if (!state.mayBeEmpty) {

@@ -39,9 +39,11 @@ export interface StaticServerOptions {
   host?: string;
   root: () => string;
   extra?: ReadonlyMap<string, string>;
+  /** Called for every file served 200, so a receipt can hash what was actually served. */
+  onServe?: (pathname: string, filePath: string) => void;
 }
 
-export async function startStaticServer({ port, host, root, extra }: StaticServerOptions): Promise<Server> {
+export async function startStaticServer({ port, host, root, extra, onServe }: StaticServerOptions): Promise<Server> {
   const server = createServer((req, res) => {
     const pathname = (req.url ?? '/').split('?')[0];
     const filePath = extra?.get(pathname) ?? browserStaticPath(root(), req.url ?? '/');
@@ -59,6 +61,7 @@ export async function startStaticServer({ port, host, root, extra }: StaticServe
       'Cross-Origin-Opener-Policy': 'same-origin',
       'Cross-Origin-Embedder-Policy': 'credentialless',
     });
+    onServe?.(pathname, filePath);
     createReadStream(filePath).pipe(res);
   });
   await new Promise<void>((resolve, reject) => {

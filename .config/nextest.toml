@@ -1,0 +1,15 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+# cargo-nextest profiles. CI's `rust-tests` job runs `--profile ci`; a local
+# `cargo nextest run` uses `default`. `cargo test` keeps working unchanged.
+
+[profile.ci]
+# Report every failing test in one run, not just the first binary's.
+fail-fast = false
+# Name long tests while they run, so the next person tuning this lane can see
+# which tests set its wall time without downloading the log. Never terminates.
+slow-timeout = { period = "60s" }
+# Print the full list of slow and failed tests again at the end.
+final-status-level = "slow"

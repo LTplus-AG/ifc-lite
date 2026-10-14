@@ -654,7 +654,7 @@ test('excluding the aggregate removes THAT lane and nothing else from the requir
     all.filter((n) => !shipped.includes(n)),
     ['Build + WASM + Rust + Node'],
   );
-  for (const n of ['Node tests', 'Rust tests', 'Lint', 'Typecheck', 'Build packages + WASM']) {
+  for (const n of ['Node tests (shard 1/4)', 'Node tests (shard 4/4)', 'Rust tests', 'Lint', 'Typecheck', 'Build packages + WASM']) {
     assert.ok(shipped.includes(n), `${n} must still be required`);
   }
 });

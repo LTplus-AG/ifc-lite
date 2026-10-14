@@ -97,7 +97,12 @@ test('the REAL test.yml derives the lane names the REAL rollup publishes', () =>
     'Changed tests observe production',
     'Typecheck',
     'Lint',
-    'Node tests',
+    // Package suites in four shards, so the 19.5 min single lane stops being
+    // the frontend PR's critical path. Each shard publishes its own check run.
+    'Node tests (shard 1/4)',
+    'Node tests (shard 2/4)',
+    'Node tests (shard 3/4)',
+    'Node tests (shard 4/4)',
     // #7530: the preserved guard/script workload has its own required job.
     'Node guards',
     // CI redesign step 5: the feature legs of the Rust lane, off the PR and
@@ -130,7 +135,7 @@ test('the REAL test.yml derives the lane names the REAL rollup publishes', () =>
   ]) {
     assert.ok(names.includes(observed), `derived set is missing the observed lane "${observed}"`);
   }
-  assert.equal(names.length, 41);
+  assert.equal(names.length, 44);
 });
 
 test('FAIL CLOSED: an empty workflow file is NO_WORKFLOW_TEXT, not an empty lane set', () => {

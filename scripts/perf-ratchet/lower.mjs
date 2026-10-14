@@ -51,7 +51,7 @@ function fmt(n) {
 
 /**
  * Markdown changelog for one lowering run: one bullet per changed metric
- * (old -> new), which is the record #6955 asks every lowering PR to carry.
+ * (old -> new): the record every lowering PR carries.
  *
  * @param {Array<{ family: string, changes: Array<object> }>} families
  * @param {{ commit: string }} source

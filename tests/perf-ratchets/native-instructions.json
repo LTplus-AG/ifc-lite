@@ -1,6 +1,6 @@
 {
   "family": "native-instructions",
-  "description": "Per-PR native instruction-count ceilings for tests/models/ara3d/AC20-FZK-Haus.ifc, measured by scripts/perf-ratchet/measure-native-instructions.mjs --set small (scripts/perf/instructions.sh: perf_probe --single-thread under callgrind, feature phase-markers). Gates per-element kernel and parse work only; scheduling, threading and browser-only effects need an end-to-end A/B. Tolerance 0.05%: run-to-run variance is <=1e-6, the smallest change the ledger cares about is ~0.1-0.3%. Raising a ceiling is a human PR with a justification (docs/guide/performance.md, 'Perf ratchet ceilings'); lowering is the daily perf-ratchet-lower.yml job (Refs #6955).",
+  "description": "Per-PR native instruction-count ceilings for tests/models/ara3d/AC20-FZK-Haus.ifc, measured by scripts/perf-ratchet/measure-native-instructions.mjs --set small (scripts/perf/instructions.sh: perf_probe --single-thread under callgrind, feature phase-markers). Gates per-element kernel and parse work only; scheduling, threading and browser-only effects need an end-to-end A/B. Tolerance 0.05%: run-to-run variance is <=1e-6, the smallest change the ledger cares about is ~0.1-0.3%. Raising a ceiling is a human PR with a justification (docs/guide/performance.md, 'Perf ratchet ceilings'); lowering is the daily perf-ratchet-lower.yml job.",
   "entries": [
     {
       "id": "fzk-haus.parse",

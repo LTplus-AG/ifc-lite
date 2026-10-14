@@ -673,6 +673,26 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
+      # The viewer app `pnpm build` just produced (turbo builds apps/* too, via
+      # the viewer's own `build` script, so the __tla chunk-await guard has
+      # already run over exactly these files). viewer-e2e serves it with
+      # `vite preview` instead of rebuilding it per shard: measured 3.6 min x 4
+      # shards of `pnpm build:e2e`, which with no turbo cache on the runner
+      # rebuilt every package the viewer depends on before the vite build.
+      # PR-only because viewer-e2e is.
+      - name: Upload viewer app build
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: viewer-dist
+          path: apps/viewer/dist
+          # upload-artifact skips dotfiles by default, and the real app ships
+          # one: public/.well-known/microsoft-identity-association.json. The
+          # E2E shards must serve the exact build, not a filtered copy of it.
+          include-hidden-files: true
+          retention-days: 1
+          if-no-files-found: error
+
   # #3661: text review missed 10/10 independently confirmed defect cases even
   # after rubric retuning. This asks the executable question instead: do this
   # branch's changed tests fail when its production change is removed?
@@ -812,6 +832,13 @@ jobs:
           # Ordinary whole-change inversion resumes once this module is on main.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- apps/viewer/src/components/error-report/PublicModelReceipt.tsx | grep -Fxq 'apps/viewer/src/components/error-report/PublicModelReceipt.tsx'; then
             oracle_args+=(--mutation tests/evidence/model-reports-7495/public-receipt-composite.oracle.patch)
+          # Keep the new Node-tests shard script importable while removing ONLY
+          # its two guarantees: the catch-all's exclusion of pinned packages
+          # (a suite would run twice) and the refusal of a stale pinned name (a
+          # suite would run nowhere). The partition and refusal assertions turn
+          # RED. Once the script is on main, ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- scripts/ci-node-test-shards.mjs | grep -Fxq 'scripts/ci-node-test-shards.mjs'; then
+            oracle_args+=(--mutation tests/evidence/ci-node-test-shards/partition.oracle.patch)
           fi
           node scripts/check-test-revert-oracle.mjs "${oracle_args[@]}"
           # #7512: observe cleanup independently of scoped admission/schema.
@@ -854,7 +881,14 @@ jobs:
         with:
           name: build-output
           path: packages
-      - run: pnpm typecheck
+      # `typecheck:ci`, not `typecheck`: the turbo `typecheck` task
+      # `dependsOn: ["^build"]`, and with no turbo cache on the runner that
+      # REBUILT 56 packages here (measured: 126 tasks for 65 typechecks, ~7 min)
+      # -- the exact dists the artifact above already holds, from the same
+      # commit. `--only` typechecks against the artifact instead, the same move
+      # node-tests made for `test`. A dist missing from the artifact fails tsc
+      # loudly; it cannot pass vacuously.
+      - run: pnpm typecheck:ci
 
   lint:
     name: Lint
@@ -1873,7 +1907,7 @@ jobs:
         run: node --test scripts/generate-coverage-ledger.test.mjs
 
   node-tests:
-    name: Node tests
+    name: Node tests (shard ${{ matrix.shard }}/4)
     needs: [changes, build]
     if: needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true'
     # #7530: run package and real-WASM/integration suites independently of the
@@ -1881,6 +1915,23 @@ jobs:
     # retain the 25-minute limit, and are judged by the required aggregate.
     runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted')))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     timeout-minutes: 25
+    # SHARDED, because this one job was the frontend PR's whole critical path:
+    # measured on 72 green PR runs, Node tests p50 19.5 min against Build 5.9
+    # and every other lane under 12.5. Inside the job, `turbo test
+    # --concurrency=1` (#7471, below) runs 65 package suites ONE AT A TIME
+    # (1,142 s on the run measured), and three packages were 45% of that:
+    # mcp 210 s, cli 193 s, create 110 s. Splitting across runners keeps the
+    # one-suite-at-a-time rule inside each runner, so no deadline sees more
+    # contention than before; the shards just run side by side.
+    #
+    # Shards 1-3 are PINNED package lists (bin-packed to ~285 s each from that
+    # run); shard 4 is EVERYTHING ELSE, computed as an exclusion of the pinned
+    # lists. So a new package can never fall between shards: it lands in 4 by
+    # default. See scripts/ci-node-test-shards.mjs.
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -1939,13 +1990,29 @@ jobs:
       # deadlines in unrelated parser and IDS invariants (#7471). Run one
       # package suite at a time; its own worker pool may use the runner.
       # Keep the artifact-only path, package selectors, tests and deadlines.
-      - run: pnpm exec turbo test --only --concurrency=1 --filter=!@ifc-lite/viewer --filter=!@ifc-lite/provenance
+      # The shard -> package mapping, and the refusal of a pinned name that no
+      # longer matches a workspace package, live in the script (tested by
+      # scripts/ci-node-test-shards.test.mjs, which proves the four shards
+      # partition the real workspace). Assigned, not piped, so a refusal
+      # fails this step under `bash -e` instead of running turbo unfiltered.
+      - name: Package tests (shard ${{ matrix.shard }}/4)
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          filters_txt=$(node scripts/ci-node-test-shards.mjs --shard "$SHARD")
+          mapfile -t filters <<<"$filters_txt"
+          echo "turbo filters: ${filters[*]}"
+          pnpm exec turbo test --only --concurrency=1 "${filters[@]}"
+      # The root-level suites below are not turbo packages, so the package
+      # split above cannot reach them. They run once, on the catch-all shard.
       - name: Integration tests (parse → quantities → export)
+        if: matrix.shard == 4
         # Step-scoped timeout: a hung harness must fail fast here, not
         # silently consume the whole job budget.
         timeout-minutes: 5
         run: pnpm test:integration
       - name: API route tests (relay handlers)
+        if: matrix.shard == 4
         # `tests/api/**` was reachable only by running `pnpm test:api` by hand,
         # so the Dalux relay's path allowlist and node allowlist - the guards
         # that stop an unauthenticated public endpoint becoming an open proxy -
@@ -1954,6 +2021,7 @@ jobs:
         timeout-minutes: 5
         run: pnpm test:api
       - name: WASM contract tests (real processGeometryBatch boundary)
+        if: matrix.shard == 4
         run: pnpm test:wasm-contract
       # The snap cache reconstructs model edges from the mesher's per-triangle
       # segments, so its correctness depends on geometry the unit fixtures can
@@ -1962,6 +2030,7 @@ jobs:
       # reported length is the whole run, the cache does not move when triangle
       # emission order does -- the #2388 failure class). Issue #2199.
       - name: Snap edge reconstruction (real wasm pipeline)
+        if: matrix.shard == 4
         run: pnpm test:snap-edges
 
   # `@ifc-lite/provenance` alone. Measured (CI redesign, step 4): its
@@ -2049,18 +2118,20 @@ jobs:
       # then made every fixture-gated test skip silently and report ok.
       - name: Verify fixtures
         run: pnpm fixtures:check
-      # Package dists come from the build artifact; the wasm build
-      # soft-skips (no wasm-pack on this runner) and reuses the artifact
-      # runtime, so this is just the vite build of the app.
-      # The viewer's own `build` script runs scripts/check-tla-chunk-await.mjs
-      # over the emitted dist/assets, so this step enforces the __tla guard
-      # too. It lives in the build script rather than here because the #2243
-      # white screen reached users through Vercel, and a CI-only gate does not
-      # run there: vercel-build.sh -> turbo build --filter -> this same script.
-      # `build:e2e` is also what the revert oracle runs before each side of a
-      # Playwright-spec measurement (#6267), so the two lanes build the same way.
-      - name: Build viewer app (also runs the __tla chunk-await guard)
-        run: pnpm build:e2e
+      # The app under test is the one the `build` job built, not a rebuild.
+      # That build ran the viewer's own `build` script (vite build, then
+      # scripts/check-tla-chunk-await.mjs over the emitted dist/assets), so the
+      # __tla guard still gates this commit -- in `build`, where a failure also
+      # stops every lane that needs it. The guard lives in the build script
+      # rather than in a CI step because the #2243 white screen reached users
+      # through Vercel, and a CI-only gate does not run there. The revert
+      # oracle still builds with `build:e2e` (#6267): it needs a build per side
+      # of its measurement, which a single artifact cannot give it.
+      - name: Download viewer app build
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: viewer-dist
+          path: apps/viewer/dist
       # No browser download: the CI project uses channel:'chrome' (the
       # runner's preinstalled Chrome) because Playwright's headless
       # shell has a broken WebGPU device under software rendering.
@@ -2137,7 +2208,12 @@ jobs:
       - name: Cargo cache
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
-          prefix-key: ci-rust
+          # `-o1`: the test steps below build at opt-level 1 via step env,
+          # which rust-cache's key cannot see. Under the old key main would
+          # never save the opt-level-1 tree (rust-cache skips the save when the
+          # key exists), so every PR would compile cold: measured 14m49s on
+          # #7573 vs 5m45s warm. A new prefix lets main seed it once.
+          prefix-key: ci-rust-o1
           shared-key: main
           save-if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'merge_group' }}
       - name: Cache test fixtures
@@ -2173,13 +2249,49 @@ jobs:
       # That wasm32 leg runs on its own schedule in determinism.yml.
       - name: Clippy (lint gate)
         run: cargo clippy --workspace --all-targets -- -D warnings
+      # cargo-nextest, not `cargo test`, for the test binaries. Measured on a
+      # green PR run: `cargo test --workspace` was 26 min, of which compile was
+      # 5m45s and the remaining ~20 min was ~290 test binaries run ONE AFTER
+      # ANOTHER -- libtest parallelises only inside a binary, so every binary
+      # waits for the slowest test of the one before it (export's unit tests
+      # 379 s, scan_segmentation_cylinders 252 s, scan_cylinder_acceptance
+      # 136 s ...). nextest schedules every test of every binary on one pool.
+      # Same tests, same `--workspace` selection, same `#[ignore]` handling;
+      # each test gets its own process, which is stricter, not looser, about
+      # state leaking between tests. Profile in .config/nextest.toml.
+      #
+      # OPT-LEVEL 1 for the test build, measured on #7573's first run: with
+      # nextest scheduling every test on one pool the lane was STILL 26 min,
+      # because the 4 cores were saturated by tests that are slow only because
+      # they run unoptimised -- one export alignment test 501 s, two more
+      # 200+ s, ~15 processing scan tests 60-127 s each (summary: 4578 tests,
+      # 1187 s wall). Release (what ships, incl. the wasm) is opt-level 3, so
+      # this moves the tests TOWARDS production codegen, not away from it.
+      # `debug-assertions` and `overflow-checks` are separate profile keys and
+      # stay ON (dev defaults); Rust never enables fast-math, so float results
+      # are unchanged. Step-scoped env, not Cargo.toml: local builds and
+      # clippy are untouched. Per-package overrides in Cargo.toml
+      # (ifc-lite-geometry at 3) still win.
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@f360235162158ca4526b07999d99c38ade05a414 # cargo-nextest (snapshot pinned 2026-10)
       - name: Rust tests
         # Fixtures are fetched above (Fetch fixtures / Cache test fixtures),
         # so a missing one here is fixture drift, not a legitimate local skip
         # (rust/export/src/test_support.rs) — make that a hard failure.
         env:
           IFC_LITE_REQUIRE_FIXTURES: "1"
-        run: cargo test --workspace
+          CARGO_PROFILE_DEV_OPT_LEVEL: "1"
+          CARGO_PROFILE_TEST_OPT_LEVEL: "1"
+        run: cargo nextest run --workspace --profile ci
+      # nextest does not run doctests; `cargo test --workspace` did. Run them
+      # here so the lane's coverage is exactly what it was. Same profile env,
+      # so the libraries built above are reused rather than rebuilt.
+      - name: Rust doctests
+        env:
+          IFC_LITE_REQUIRE_FIXTURES: "1"
+          CARGO_PROFILE_DEV_OPT_LEVEL: "1"
+          CARGO_PROFILE_TEST_OPT_LEVEL: "1"
+        run: cargo test --workspace --doc
 
       # The feature legs (parquet-bos, csg_manifold_gate, csg_capture, the
       # all-features clippy) run in `rust-full` below -- OFF the PR lane,

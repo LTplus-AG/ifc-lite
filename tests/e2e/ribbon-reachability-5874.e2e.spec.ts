@@ -79,7 +79,7 @@ test('authored IFC keeps all 89 ribbon commands and panel browser reachable at 1
   const browserCount = visited.Analyze.filter((name) => name === 'Browse panels').length;
   expect(visited.View, 'View includes the selected-source centreline command (#5778)').toContain('Centreline');
   expect(browserCount, 'Analyze has one panel-browser content trigger').toBe(1);
-  expect(Object.values(visited).reduce((total, names) => total + names.length, 0) - browserCount).toBe(88);
+  expect(Object.values(visited).reduce((total, names) => total + names.length, 0) - browserCount).toBe(89);
   // #6643: the new command is unique and opens the actual linked-records panel.
   expect(visited.Analyze.filter((name) => name === 'Linked records')).toHaveLength(1);
   await page.getByRole('tab', { name: 'Analyze', exact: true }).click();

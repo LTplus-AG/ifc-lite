@@ -81,7 +81,9 @@ test('a re-quoted PAGE value stays one literal and keeps the record framing (#76
   for (const { name, literal } of PAGE_VECTORS) {
     // The way successor-edits renames: decode, append, re-quote.
     const renamed = quote(`${unquote(literal)} (rev B)`);
-    assert.equal(unquote(renamed), `${unquote(literal)} (rev B)`, name);
+    // Ground truth from the fixture, not from unquote(): appending to the value
+    // appends inside the literal, before its own closing quote.
+    assert.equal(renamed, `${literal.slice(0, -1)} (rev B)'`, name);
     const args = `'guid',$,${renamed},#5`;
     assert.deepEqual(splitArgs(args), ["'guid'", '$', renamed, '#5'], name);
     const parsed = parseStepFile(file(`#1=IFCWALL(${args});\n#2=IFCPOINT(#1);`));

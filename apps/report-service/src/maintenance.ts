@@ -90,9 +90,9 @@ export async function sweep(db: Db, storage: ModelStorage, journal?: RestoreJour
   // Bound this pass and recheck expiry under the parent lock before recording
   // any destructive intent. The original timestamps remain recovery authority.
   const expired = await db.query<{ id: string }>(
-    "SELECT id FROM model_reports WHERE expires_at<now() AND status!='deleted' ORDER BY expires_at,id LIMIT 20");
+    "SELECT id FROM model_reports WHERE expires_at<now() AND status!='deleted' AND NOT EXISTS(SELECT 1 FROM report_uploads u WHERE u.report_id=model_reports.id AND u.status!='aborted') ORDER BY expires_at,id LIMIT 20");
   for (const row of expired.rows) await transaction(db, async tx => {
-    const locked = await tx.query("SELECT id FROM model_reports WHERE id=$1 AND expires_at<now() AND status!='deleted' FOR UPDATE", [row.id]);
+    const locked = await tx.query("SELECT id FROM model_reports WHERE id=$1 AND expires_at<now() AND status!='deleted' AND NOT EXISTS(SELECT 1 FROM report_uploads u WHERE u.report_id=model_reports.id AND u.status!='aborted') FOR UPDATE", [row.id]);
     if (!locked.rowCount) return;
     if (journal) await journal.append(row.id, "delete");
     await tx.query("UPDATE model_reports SET status='deleted',agreement=NULL,agreement_pdf=NULL,custom_nda=NULL,issue_binding=NULL,draft='{}'::jsonb WHERE id=$1", [row.id]);
@@ -139,5 +139,5 @@ export async function deleteReport(
     [id],
   );
   if (uploads.rows[0])
-    await removeUpload(db, storage, uploads.rows[0], ownerId);
+    await removeUpload(db, storage, uploads.rows[0], ownerId, journal);
 }

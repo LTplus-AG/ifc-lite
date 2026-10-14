@@ -98,6 +98,22 @@ describe.skipIf(!enabled)("#7495 independent journal and conservative restore ho
     await deleteReport(db, storage, id, owner, value);
     expect((await value.verify(await value.checkpoint())).map(entry => entry.action)).toEqual(["delete"]);
   });
+  it("#7518 owner deletion journals model removal and erases actual stored bytes", async () => {
+    const { value } = journal(); await value.initialize();
+    const owner = randomUUID(); const id = await report(owner); const upload = randomUUID();
+    const key = `private-owned-fixture/${upload}`; const bytes = Buffer.from("private owner-delete fixture");
+    await s3.send(new PutObjectCommand({ Bucket: bucket, Key: key, Body: bytes, ServerSideEncryption: "AES256" }));
+    await db.query("INSERT INTO report_uploads(id,report_id,object_key,input,status,reserved_bytes) VALUES($1,$2,$3,$4,'ready',$5)",
+      [upload, id, key, { name: "private.ifc", size: bytes.length, type: "application/octet-stream", confidentiality: "none", uploadConsent: true }, bytes.length]);
+    expect((await storage.head(key)).size).toBe(bytes.length);
+    await deleteReport(db, storage, id, owner, value);
+    await deleteReport(db, storage, id, owner, value);
+    expect((await value.verify(await value.checkpoint())).map(entry => [entry.reportId, entry.action]))
+      .toEqual([[id, "delete"], [id, "remove-model"]]);
+    expect((await db.query("SELECT status,reserved_bytes::int AS bytes FROM report_uploads WHERE id=$1", [upload])).rows[0])
+      .toEqual({ status: "aborted", bytes: 0 });
+    await expect(storage.head(key)).rejects.toThrow();
+  });
   it("persists withdrawal before changing its restored authorization", async () => {
     const { value } = journal(); await value.initialize(); const owner = randomUUID(); const id = await report(owner);
     await expect(withdrawPublicModel(db, id, randomUUID(), value)).rejects.toThrow();
@@ -113,6 +129,29 @@ describe.skipIf(!enabled)("#7495 independent journal and conservative restore ho
     await value.initialize(); await sweep(db, storage, value);
     expect((await value.verify(await value.checkpoint())).map(entry => [entry.reportId, entry.action])).toEqual([[id, "delete"]]);
     expect((await db.query("SELECT status,agreement FROM model_reports WHERE id=$1", [id])).rows[0]).toEqual({ status: "deleted", agreement: null });
+  });
+  it("#7518 expiry preserves confidential state and journal until active upload cleanup finishes", async () => {
+    const { value } = journal(); const initial = await value.initialize();
+    const pending: Array<{ id: string; upload: string; state: unknown }> = [];
+    for (const status of ["ready", "uploading"]) {
+      const id = await report(randomUUID()); const upload = randomUUID();
+      await db.query("UPDATE model_reports SET expires_at=now()-interval '1 minute',custom_nda=$2 WHERE id=$1", [id, { private: "retained until cleanup" }]);
+      await db.query("INSERT INTO report_uploads(id,report_id,object_key,input,status,reserved_bytes,deletion_after) VALUES($1,$2,$3,$4,$5,17,now()+interval '1 hour')",
+        [upload, id, `private-owned-fixture/${upload}`, { size: 17 }, status]);
+      const state = (await db.query("SELECT status,draft,agreement,custom_nda FROM model_reports WHERE id=$1", [id])).rows[0];
+      pending.push({ id, upload, state });
+    }
+    await sweep(db, storage, value);
+    expect(await value.checkpoint()).toEqual(initial);
+    for (const row of pending) {
+      expect((await db.query("SELECT status,draft,agreement,custom_nda FROM model_reports WHERE id=$1", [row.id])).rows[0]).toEqual(row.state);
+      await db.query("UPDATE report_uploads SET status='aborted' WHERE id=$1", [row.upload]);
+    }
+    await sweep(db, storage, value);
+    expect((await value.verify(await value.checkpoint())).map(entry => [entry.reportId, entry.action]).sort())
+      .toEqual(pending.map(row => [row.id, "delete"]).sort());
+    for (const row of pending) expect((await db.query("SELECT status,draft,agreement,custom_nda FROM model_reports WHERE id=$1", [row.id])).rows[0])
+      .toEqual({ status: "deleted", draft: {}, agreement: null, custom_nda: null });
   });
   it("replays deletion after simulated rollback, invalidates owner/outbox grants and stays held over real HTTP", async () => {
     const { value } = journal(); await value.initialize(); expect(recovery).toBeDefined();

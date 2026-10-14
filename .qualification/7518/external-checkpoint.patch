@@ -1,0 +1,11 @@
+--- a/apps/report-service/src/restore-journal.ts
++++ b/apps/report-service/src/restore-journal.ts
+@@ -10,7 +10,7 @@
+ type Envelope = { payload: string; signature: string };
+ type StorageConfig = Pick<Config, "region" | "endpoint" | "forcePathStyle" | "accessKeyId" | "secretAccessKey" | "bucket">;
+ const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+-const sameCheckpoint = (_a: JournalCheckpoint, _b: JournalCheckpoint) => true;
++const sameCheckpoint = (a: JournalCheckpoint, b: JournalCheckpoint) => a.epoch === b.epoch && a.sequence === b.sequence && a.hash === b.hash;
+ const ZERO = "0".repeat(64);
+ const digest = (value: string) => createHash("sha256").update(value).digest("hex");
+ function validCheckpoint(value: JournalCheckpoint): void {

@@ -95,7 +95,7 @@ test('a stale manifest entry (file deleted) is never selected and moves no other
   const remaining = files.filter((f) => f !== gone);
   const before = assignShards(files, manifest, SHARDS);
   const after = assignShards(remaining, manifest, SHARDS);
-  for (let s = 0; s < SHARDS; s++) assert.ok(!selectShard(remaining, manifest, s, SHARDS).includes(gone));
+  for (let s = 0; s < SHARDS; s++) assert.equal(selectShard(remaining, manifest, s, SHARDS).indexOf(gone), -1);
   for (const f of remaining) assert.equal(after.get(f), before.get(f), `${f} moved when ${gone} was deleted`);
 });
 

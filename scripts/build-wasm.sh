@@ -82,6 +82,11 @@ if [ "${DEBUG_GEOMETRY:-}" = "1" ]; then
   echo "🔍 Building with debug_geometry feature enabled"
 fi
 
+# Private #6940 diagnostic only; default build selection is unchanged.
+if [ "${OPENING_PERF_TRACE:-}" = "1" ]; then
+  FEATURES="$FEATURES --features opening-perf-trace"
+fi
+
 OUT_DIR="../../packages/wasm/pkg"
 echo "🟢 Building single-thread bundle → $OUT_DIR"
 

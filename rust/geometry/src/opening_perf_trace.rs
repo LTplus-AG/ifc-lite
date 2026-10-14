@@ -13,6 +13,13 @@ use serde::Serialize;
 #[derive(Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Counters {
+    /// Accepted apply_void_context returns: param rect, pure 2D, staged 2D,
+    /// prism, prism with residual, fallback dispatch. Buffered through the
+    /// existing staged rollback; this does not classify the fallback internals.
+    pub adopted_void_returns: [u64; 6],
+    /// Last accepted return; parent follows children, final part follows prior
+    /// parts. Not a per-opening attribution or a unique route across parts.
+    pub last_adopted_void_return: Option<u8>,
     /// Operand arity buckets: zero, one, two, three, four-or-more.
     pub union_calls_by_arity: [u64; 5],
     pub coordinate_preserving_unions: u64,
@@ -136,4 +143,16 @@ pub(crate) fn record(update: impl FnOnce(&mut Counters)) {
 #[doc(hidden)]
 pub fn take() -> Counters {
     COUNTERS.with(|c| std::mem::take(&mut *c.borrow_mut()))
+}
+
+/// Record the route only after its returned mesh is selected. Rejected outer
+/// staged candidates drop their buffered child returns with existing telemetry.
+pub(crate) fn record_adopted_void_return(route: u8) {
+    crate::telemetry_transaction::record(move || {
+        record(|c| {
+            let count = &mut c.adopted_void_returns[usize::from(route)];
+            *count = count.saturating_add(1);
+            c.last_adopted_void_return = Some(route);
+        });
+    });
 }

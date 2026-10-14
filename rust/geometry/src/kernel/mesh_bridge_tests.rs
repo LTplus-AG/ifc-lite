@@ -505,7 +505,7 @@ fn subtract_many_reports_unchanged_when_no_cutter_reaches_the_host() {
         )
     };
     let disjoint = tetra(0.0);
-    let (miss, conforming, _) = subtract_many_with_conformity(&host, &[&disjoint], false);
+    let (miss, conforming, _) = subtract_many_with_conformity(&host, &[&disjoint], false, false);
     assert!(conforming, "#6516: only a conforming miss can suppress sequential fallback");
     assert!(
         matches!(miss, BatchSubtract::Unchanged),
@@ -764,12 +764,12 @@ fn lenient_gable_group() -> (Mesh, Mesh, Mesh) {
 #[test]
 fn lenient_group_keeps_its_conformity_provenance_6516() {
     let (wall, notch, window) = lenient_gable_group();
-    let (outcome, conforming, _) = subtract_many_with_conformity(&wall, &[&notch, &window], true);
+    let (outcome, conforming, _) = subtract_many_with_conformity(&wall, &[&notch, &window], true, true);
     assert!(!conforming, "real gable fixture must reach the volume-checked path");
     let cut = expect_cut(outcome, "the validated lenient group remains a real cut");
     // Re-cutting the already removed notch is nonconforming: having no
     // intended volume left to remove does not make its classification proof.
-    let (retry, conforms, retained) = subtract_many_with_conformity(&cut, &[&notch], true);
+    let (retry, conforms, retained) = subtract_many_with_conformity(&cut, &[&notch], true, true);
     assert!(!conforms);
     assert!(retained.is_none(), "an uncertain miss cannot be retained as proof");
     assert!(matches!(retry, BatchSubtract::Nonconforming));
@@ -812,7 +812,7 @@ fn lenient_batch_on_an_open_host_reads_both_volumes_about_one_point_4693() {
         .iter()
         .map(|m| {
             let mut c = mesh_to_tris(m);
-            promote_cutter_verts_onto_host_faces(&mut c, &h);
+            promote_subtract_cutter_onto_host_faces(&mut c, &h);
             orient_outward(c)
         })
         .collect();
@@ -832,4 +832,57 @@ fn lenient_batch_on_an_open_host_reads_both_volumes_about_one_point_4693() {
         (open_removed - closed_removed).abs() < 1e-4,
         "open host removed {open_removed} m³, closed host {closed_removed} m³"
     );
+}
+
+#[test]
+fn issue_7024_public_subtract_retains_boolean_operand_weld() {
+    use crate::{extrude_profile, Point2, Profile2D};
+    let pt = |x, y| Point2::new(x, y);
+    let mut profile = Profile2D::new(vec![pt(0., 0.), pt(8., 0.), pt(8., 8.), pt(0., 8.)]);
+    profile.add_hole(vec![pt(1., 1.), pt(1., 2.), pt(2., 2.), pt(2., 1.)]);
+    profile.add_hole(vec![pt(1., 3.), pt(1. + 2. * SNAP_GRID, 5.), pt(2., 5.), pt(2., 3.)]);
+    let host = extrude_profile(&profile, 0.25, None).unwrap();
+    let cutter_profile = Profile2D::new(vec![pt(1., 1.), pt(2., 1.), pt(2., 2.), pt(1., 2.)]);
+    let mut cutter = extrude_profile(&cutter_profile, 0.45, None).unwrap();
+    for p in cutter.positions.chunks_exact_mut(3) { p[2] -= 0.1; }
+    let plain = subtract_with_change(&host, &cutter, false).0;
+    let opening = subtract_with_change(&host, &cutter, true).0;
+    assert_ne!(plain.positions, opening.positions, "fixture distinguishes the weld policies");
+    let public = subtract(&host, &cutter);
+    assert_eq!(public.positions, plain.positions, "public subtraction preserves operand semantics");
+    assert_eq!(public.indices, plain.indices);
+}
+
+#[test]
+fn issue_7024_public_batch_subtract_retains_boolean_operand_weld() {
+    use crate::{extrude_profile, Point2, Profile2D};
+    let pt = |x, y| Point2::new(x, y);
+    let mut profile = Profile2D::new(vec![pt(0., 0.), pt(8., 0.), pt(8., 8.), pt(0., 8.)]);
+    profile.add_hole(vec![pt(1., 1.), pt(1., 2.), pt(2., 2.), pt(2., 1.)]);
+    profile.add_hole(vec![pt(1., 3.), pt(1. + 2. * SNAP_GRID, 5.), pt(2., 5.), pt(2., 3.)]);
+    let host = extrude_profile(&profile, 0.25, None).unwrap();
+    let cutter_profile = Profile2D::new(vec![pt(1., 1.), pt(2., 1.), pt(2., 2.), pt(1., 2.)]);
+    let mut cutter = extrude_profile(&cutter_profile, 0.45, None).unwrap();
+    for p in cutter.positions.chunks_exact_mut(3) { p[2] -= 0.1; }
+    let h = orient_outward(mesh_to_tris(&host));
+    let batch = |opening| {
+        let mut c = mesh_to_tris(&cutter);
+        if opening { promote_subtract_cutter_onto_host_faces(&mut c, &h); }
+        else { promote_cutter_verts_onto_host_faces(&mut c, &h); }
+        let c = orient_outward(c);
+        let (tris, changed) = difference_all(&h, &[&c]).expect("fixture batch conforms");
+        BatchSubtract::classified(&tris, changed)
+    };
+    let plain = batch(false);
+    let opening = batch(true);
+    let payload = |outcome: BatchSubtract| match outcome {
+        BatchSubtract::Cut(mesh) => Some((mesh.positions, mesh.indices)),
+        BatchSubtract::Unchanged => None,
+        BatchSubtract::Nonconforming => panic!("fixture must conform"),
+    };
+    let plain = payload(plain);
+    let opening = payload(opening);
+    assert_ne!(plain, opening, "fixture distinguishes public operand and opening weld policies");
+    assert_eq!(payload(subtract_many(&host, &[&cutter])), plain);
+    assert_eq!(payload(subtract_many_with_conformity(&host, &[&cutter], true, false).0), opening);
 }

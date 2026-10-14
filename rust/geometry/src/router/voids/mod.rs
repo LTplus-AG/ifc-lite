@@ -633,6 +633,8 @@ impl GeometryRouter {
         // kernel below unchanged.
         if crate::rect_fast::param_enabled() {
             if let Some(fast) = self.try_param_rect_cut(&mesh, ctx) {
+                #[cfg(feature = "opening-perf-trace")]
+                crate::opening_perf_trace::record_adopted_void_return(0);
                 return fast;
             }
         }
@@ -646,6 +648,10 @@ impl GeometryRouter {
         // falls through to the exact kernel below unchanged.
         if let Some(cut) = ctx.bool2d.as_ref() {
             if let Some(candidate) = self.try_staged_bool2d(&mesh, cut, element_id) {
+                #[cfg(feature = "opening-perf-trace")]
+                crate::opening_perf_trace::record_adopted_void_return(
+                    if self.bool2d_residual(cut).is_some() { 2 } else { 1 },
+                );
                 return candidate;
             }
         }
@@ -669,7 +675,9 @@ impl GeometryRouter {
             let prism_bounds = world_host_bounds(&mesh);
             let prism_tris_before = mesh.triangle_count();
             if let Some((cut, residual)) = self.try_prism_cut(&mesh, ctx) {
-                return match residual {
+                #[cfg(feature = "opening-perf-trace")]
+                let route = if residual.is_some() { 4 } else { 3 };
+                let result = match residual {
                     None => {
                         // Same per-host cut-effect snapshot the exact path
                         // records, so prism-cut hosts aren't missing from the
@@ -687,6 +695,9 @@ impl GeometryRouter {
                     // the (final) cut-effect snapshot itself.
                     Some(res) => self.apply_void_context(cut, &res, element_id),
                 };
+                #[cfg(feature = "opening-perf-trace")]
+                crate::opening_perf_trace::record_adopted_void_return(route);
+                return result;
             }
         }
 
@@ -705,7 +716,11 @@ impl GeometryRouter {
         let origin = mesh.origin;
         if origin == [0.0, 0.0, 0.0] && ctx.all_cutters_world_framed() {
             // Legacy/world frame on host AND cutters: no relativization needed.
-            return self.apply_void_context_inner(mesh, ctx, element_id, host_world_bounds, true);
+            let result =
+                self.apply_void_context_inner(mesh, ctx, element_id, host_world_bounds, true);
+            #[cfg(feature = "opening-perf-trace")]
+            crate::opening_perf_trace::record_adopted_void_return(5);
+            return result;
         }
         // Work entirely in the host's local frame (origin 0 on every operand).
         // `relativized_by` folds each cutter's OWN origin and subtracts the host
@@ -718,6 +733,8 @@ impl GeometryRouter {
             self.apply_void_context_inner(mesh, &local_ctx, element_id, host_world_bounds, true);
         // Keep an inner local-frame cut's translation when restoring this frame.
         result.origin = std::array::from_fn(|i| result.origin[i] + origin[i]);
+        #[cfg(feature = "opening-perf-trace")]
+        crate::opening_perf_trace::record_adopted_void_return(5);
         result
     }
 

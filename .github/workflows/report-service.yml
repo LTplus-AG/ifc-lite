@@ -21,6 +21,7 @@ concurrency:
 
 jobs:
   storage-integration:
+    if: github.event_name != 'workflow_dispatch' || github.ref != 'refs/heads/qualification/7521-mandatory-fixture-0d879cc0'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -49,6 +50,9 @@ jobs:
       REPORT_SCANNER_SIGNATURE_DIRECTORY: /tmp/ifclite-scanner-signatures
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -56,6 +60,18 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile --ignore-scripts
       - uses: ./.github/actions/setup-report-integration
+      - name: Record exact scanner mandatory-fixture qualification source
+        if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/qualification/7521-mandatory-fixture-0d879cc0'
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/scanner-mandatory-fixture"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          git rev-parse HEAD 'HEAD^{tree}' c2ba8781ebfc3648726bacd1581a2bdcbaba9666 'c2ba8781ebfc3648726bacd1581a2bdcbaba9666^{tree}' > "$RUNNER_TEMP/scanner-mandatory-fixture/source.txt"
+          git diff --name-status HEAD^ HEAD > "$RUNNER_TEMP/scanner-mandatory-fixture/qualification-paths.txt"
+          git ls-files -z scripts/check-test-revert-oracle.mjs apps/report-service/src apps/report-service/scripts apps/report-service/test | xargs -0 sha256sum > "$RUNNER_TEMP/scanner-mandatory-fixture/source-before.sha256"
       - name: Build scanner and fetch its public authoring-tool fixture
         run: |
           pnpm build --filter=@ifc-lite/report-service... --concurrency=1
@@ -66,7 +82,51 @@ jobs:
           docker pull "$scanner_image"
           pnpm exec tsx apps/report-service/scripts/scan-public-once.ts update-signatures
       - name: Real engine, database and storage qualification
-        run: pnpm test --filter=@ifc-lite/report-service --filter=@ifc-lite/report-contract --concurrency=1 --env-mode=loose
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/scanner-mandatory-fixture"
+          sha256sum tests/models/ara3d/AC20-FZK-Haus.ifc > "$RUNNER_TEMP/scanner-mandatory-fixture/authored-fixture.sha256"
+          pnpm test --filter=@ifc-lite/report-service --filter=@ifc-lite/report-contract --concurrency=1 --env-mode=loose 2>&1 | tee "$RUNNER_TEMP/scanner-mandatory-fixture/root-positive.log"
+      - name: Observe actual mandatory fixture refusal and restore original bytes
+        if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/qualification/7521-mandatory-fixture-0d879cc0'
+        shell: bash
+        run: |
+          set -euo pipefail
+          fixture="tests/models/ara3d/AC20-FZK-Haus.ifc"
+          held_fixture="$RUNNER_TEMP/scanner-mandatory-fixture/owned-fixture.ifc"
+          test -f "$fixture"
+          test ! -e "$held_fixture"
+          trap 'if test -f "$held_fixture"; then mv -- "$held_fixture" "$fixture"; fi' EXIT
+          mv -- "$fixture" "$held_fixture"
+          set +e
+          pnpm test --filter=@ifc-lite/report-service --concurrency=1 --env-mode=loose --force -- test/scanner.integration.test.ts 2>&1 | tee "$RUNNER_TEMP/scanner-mandatory-fixture/missing-fixture-root-refusal.log"
+          refusal_status=${PIPESTATUS[0]}
+          set -e
+          test "$refusal_status" -ne 0
+          grep -Fq 'Mandatory real scanner FZK fixture missing; run pnpm fixtures' "$RUNNER_TEMP/scanner-mandatory-fixture/missing-fixture-root-refusal.log"
+          printf '%s\n' "$refusal_status" > "$RUNNER_TEMP/scanner-mandatory-fixture/actual-refusal-exit.txt"
+          mv -- "$held_fixture" "$fixture"
+          trap - EXIT
+          sha256sum --check "$RUNNER_TEMP/scanner-mandatory-fixture/authored-fixture.sha256"
+      - name: Require restored real root graph and exact source
+        if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/qualification/7521-mandatory-fixture-0d879cc0'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha256sum --check "$RUNNER_TEMP/scanner-mandatory-fixture/source-before.sha256"
+          test -z "$(git status --porcelain)"
+          pnpm test --filter=@ifc-lite/report-service --filter=@ifc-lite/report-contract --concurrency=1 --env-mode=loose --force 2>&1 | tee "$RUNNER_TEMP/scanner-mandatory-fixture/root-restored.log"
+          sha256sum --check "$RUNNER_TEMP/scanner-mandatory-fixture/source-before.sha256"
+          test -z "$(git status --porcelain)"
+      - name: Retain original actual scanner evidence
+        if: always() && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/qualification/7521-mandatory-fixture-0d879cc0'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: scanner-mandatory-fixture-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/scanner-mandatory-fixture/
+          if-no-files-found: error
+          retention-days: 7
       - name: Remove owned report fixtures
         if: always()
         uses: ./.github/actions/setup-report-integration
@@ -77,6 +137,7 @@ jobs:
         run: rm -rf -- "$REPORT_SCANNER_SIGNATURE_DIRECTORY"
 
   mounted-public-ui:
+    if: github.event_name != 'workflow_dispatch' || github.ref != 'refs/heads/qualification/7521-mandatory-fixture-0d879cc0'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:

@@ -180,4 +180,46 @@ mod tests {
         }
         assert!(saw_lpi, "an overhanging edge must yield an auxiliary-plane LPI crossing");
     }
+
+    #[test]
+    fn issue_7292_near_coplanar_crossings_match_exact_projected_edges_on_all_axes() {
+        use super::super::rational::lpi_point;
+        use num_rational::BigRational;
+
+        // In projected coordinates, ta's boundary is u+v=4. The two
+        // overhanging tb edges cross it at (3,1) and (1,3), regardless of
+        // tb's tiny offset from the shared slope w=v/64. A normal-extruded
+        // auxiliary plane instead perturbs these projected crossings.
+        for axis in [DropAxis::X, DropAxis::Y, DropAxis::Z] {
+            let map = |u, v, w| match axis {
+                DropAxis::X => [w, u, v],
+                DropAxis::Y => [u, w, v],
+                DropAxis::Z => [u, v, w],
+            };
+            let ta = [map(0.0, 0.0, 0.0), map(4.0, 0.0, 0.0), map(0.0, 4.0, 4.0 / 64.0)];
+            // Zero is the exact-coplanar control; either sign exercises
+            // nearly coplanar faces without changing the projected geometry.
+            for offset in [0.0, 1.0 / 65_536.0, -1.0 / 65_536.0] {
+                let tb = [map(1.0, 1.0, 1.0 / 64.0 + offset),
+                    map(5.0, 1.0, 1.0 / 64.0 + offset),
+                    map(1.0, 5.0, 5.0 / 64.0 + offset)];
+                let expected = [map(3.0, 1.0, 1.0 / 64.0 + offset),
+                    map(1.0, 3.0, 3.0 / 64.0 + offset)]
+                    .map(|point| point.map(|value| BigRational::from_float(value).expect("finite dyadic oracle")));
+                let mut crossings = Vec::new();
+                for (a, b) in coplanar_clip(&ta, &tb) {
+                    for point in [a, b] {
+                        if let ImplicitPoint::Lpi(lpi) = point {
+                            crossings.push(lpi_point(&lpi));
+                        }
+                    }
+                }
+                assert_eq!(crossings.len(), 2, "two projected boundary crossings: {axis:?}, {offset}");
+                for point in &expected {
+                    assert!(crossings.contains(point),
+                        "#7292: missing exact projected crossing {point:?} for {axis:?}, offset {offset}; got {crossings:?}");
+                }
+            }
+        }
+    }
 }

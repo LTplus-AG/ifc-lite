@@ -491,7 +491,7 @@ describe.skipIf(!enabled)(
               expect(orchestrator.child.signalCode).toBeNull();
               await docker(["kill", "--signal=KILL", container]);
               expect(await orchestrator.done).toMatchObject({
-                code: 0, signal: null, output: "scanner_held\n",
+                code: 1, signal: null, output: "scanner_held\n",
               });
               expect((await db.query(
                 "SELECT state,scan,approval,attempts FROM report_public_quarantine WHERE report_id=$1", [id],

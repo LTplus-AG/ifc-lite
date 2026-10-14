@@ -1,0 +1,146 @@
+{
+  "issue": 7495,
+  "pullRequest": 7532,
+  "qualifiedSource": "b222fcca6c10243b4569ec2b103bad384d71f581",
+  "base": "96a4743fdc7efa4f37be5b80ee26812c9e808415",
+  "qualificationDate": "2026-10-13",
+  "environment": "Owned local PostgreSQL 17 and RustFS fixture infrastructure; protected synthetic custody manifest; no production data",
+  "rootTests": {
+    "command": "pnpm test --filter=@ifc-lite/report-service --concurrency=1 --env-mode=loose -- journal-runtime.integration.test.ts",
+    "mandatoryIntegration": true,
+    "passed": 5,
+    "failed": 0,
+    "skipped": 0,
+    "log": "journal-runtime-first-tests.log",
+    "firstRunPassed": true
+  },
+  "defaultOracle": {
+    "command": "node scripts/check-test-revert-oracle.mjs --base 96a4743fdc7efa4f37be5b80ee26812c9e808415",
+    "verdict": "OBSERVED",
+    "baselinePass": 7,
+    "revertedAssertionFailures": 5,
+    "loadFailures": 0,
+    "sourceRestored": true,
+    "log": "journal-runtime-final-default-oracle.log",
+    "revertedPass": 2
+  },
+  "omissionControls": {
+    "sourceSha256": "00f72b9cc0fde8980d6bdd6ab485021921323ac368f9d50770d6b846f2ecbfcc",
+    "sourceRestored": true,
+    "runs": [
+      {
+        "omission": "handler",
+        "exitCode": 1,
+        "restoredSha256": "00f72b9cc0fde8980d6bdd6ab485021921323ac368f9d50770d6b846f2ecbfcc",
+        "log": "journal-runtime-omit-handler.log"
+      },
+      {
+        "omission": "retention",
+        "exitCode": 1,
+        "restoredSha256": "00f72b9cc0fde8980d6bdd6ab485021921323ac368f9d50770d6b846f2ecbfcc",
+        "log": "journal-runtime-omit-retention.log"
+      },
+      {
+        "omission": "verification",
+        "exitCode": 1,
+        "restoredSha256": "00f72b9cc0fde8980d6bdd6ab485021921323ac368f9d50770d6b846f2ecbfcc",
+        "log": "journal-runtime-omit-verification.log"
+      }
+    ]
+  },
+  "typecheck": {
+    "source": "b222fcca6c10243b4569ec2b103bad384d71f581",
+    "command": "pnpm typecheck",
+    "exitCode": 0,
+    "seconds": 6.58,
+    "temporaryConcurrency": 1,
+    "turboRestored": true,
+    "turboSha256": "ab83f4e5b07a3f52f31185258a4e6e7fc9b7ee9a60bcee7d7d256a5b87db37a9",
+    "testFilesChecked": 4091,
+    "packagesChecked": 66,
+    "log": "journal-runtime-final-typecheck.log"
+  },
+  "lint": "Changed-file oxlint passed with no diagnostics",
+  "moduleSize": "Passed: 6052 files measured, zero new production modules over 400 lines",
+  "assertions": [
+    "Partial configuration, unsafe custody permissions and absent binding cannot implicitly initialize a journal.",
+    "Empty disabled startup remains available; prior audit history blocks both startup and initialization.",
+    "Explicit initialization CLI binds once; loss of the remote head refuses actual admission-enabled startup.",
+    "Wrong initialization target, key, epoch and storage target are refused; logical lineage remains portable but recovery hold still prevents startup.",
+    "A real running service refuses deletion while its journal head is unavailable and preserves the report.",
+    "Actual HTTP deletion, retention expiry and corrupt-byte verification each append their independent intent; SIGTERM exits cleanly after these operations."
+  ],
+  "preservedFailures": [
+    "journal-runtime-first-typecheck.log: circular test helper type inference, corrected with explicit OwnedChild.",
+    "journal-runtime-second-typecheck.log: UUID default narrowed owner parameter, corrected with explicit string.",
+    "journal-runtime-first-default-oracle.log: missing reverted CLI generated loader classification; required API assertion now precedes actual CLI invocation."
+  ],
+  "limits": [
+    "No production initialization, deployment, admission activation, public sharing or NDA signing.",
+    "Fixture file permissions and custodian metadata do not qualify an independent production custody location.",
+    "Startup authenticates an existing head and logical binding; it does not detect simultaneous DB/object-store rollback.",
+    "Operator quiescence, latest independently retained checkpoint and held reconciliation remain mandatory.",
+    "Existing production synthetic history is not exempt; no rows were deleted to enable initialization.",
+    "No local Rust compilation, scanner engine, GPU workload or performance claim."
+  ],
+  "cleanup": "All test-owned schemas, bucket objects/bucket, subprocesses and custody files removed by fixture teardown; existing fixture infrastructure preserved",
+  "sourceSha256": {
+    "src/bin.ts": "00f72b9cc0fde8980d6bdd6ab485021921323ac368f9d50770d6b846f2ecbfcc",
+    "src/config.ts": "7b904dd8ae42deefb108ce90839fb40a0828238bdafe11b62f30325e6117ea0e",
+    "src/database.ts": "82ce26dbe0d58eff9dbf18579b508100c0481a225a112dbe303cc4a4b3efe258",
+    "src/journal-config.ts": "8ee6c5326f3329d1aaa033ac8e40874c3ff04792c37151829a1013f83b5e0d82",
+    "src/journal-runtime.ts": "9b6989498878f8be3863b1d1ffc2e90e10e357febbf4e3f8a10bdd80630e73f1",
+    "scripts/initialize-journal.ts": "8951fb591a9e5cdeba48eefeac1defd1cec6dcaf225a7749dcfaa34ccd3d47d2",
+    "test/journal-runtime.integration.test.ts": "7ebd5463cc3b4d9a6ec967ad0f3d97d270953bacf8f540f5f3cad41fde98b271",
+    "test/runtime-privacy.integration.test.ts": "a1849820ae5680627730c4c300788fea0516decd1412c0bf36b0afd967b86e52"
+  },
+  "productionUnchangedFrom": "332f023659fe76255c6e25d1f35b8fb7d2062eeb",
+  "fullRegression": {
+    "source": "b222fcca6c10243b4569ec2b103bad384d71f581",
+    "command": "pnpm test --filter=@ifc-lite/report-service --filter=@ifc-lite/report-contract --concurrency=1 --env-mode=loose",
+    "exitCode": 0,
+    "seconds": 90.34,
+    "mandatoryPgS3": true,
+    "mandatoryRealScanner": true,
+    "maxModelEnabled": false,
+    "fixtureSha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+    "fixtureIdentical": true,
+    "service": {
+      "passed": 119,
+      "failed": 0,
+      "skipped": 1,
+      "files": 19
+    },
+    "contract": {
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0,
+      "files": 1
+    },
+    "intentionalSkip": "Exact 1 GiB scanner control excluded by explicit instruction; existing evidence unchanged. No missing fixtures skipped.",
+    "signedDefinitionVersion": 28151,
+    "signedDefinitionTimestamp": 1791786242,
+    "log": "journal-runtime-full-regression.log"
+  },
+  "firstFullRegression": {
+    "source": "332f023659fe76255c6e25d1f35b8fb7d2062eeb",
+    "service": {
+      "passed": 118,
+      "failed": 1,
+      "skipped": 1
+    },
+    "contract": {
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0
+    },
+    "failure": "Existing idle-PG test used shared schema with prior application history; new startup guard correctly refused it. Corrected test uses an owned empty schema and actual healthy startup before exact child connection termination. No production behavior or default-schema data changed.",
+    "log": "journal-runtime-first-full-regression.log"
+  },
+  "targetedCorrection": {
+    "passed": 7,
+    "failed": 0,
+    "skipped": 0,
+    "log": "journal-runtime-privacy-correction.log"
+  }
+}

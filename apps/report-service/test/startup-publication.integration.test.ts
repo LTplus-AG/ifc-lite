@@ -10,10 +10,13 @@ import { setTimeout as pause } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { expect, it } from 'vitest';
 import { migrate, openDatabase } from '../src/database.js';
+import { initializeStartupJournal } from './fixtures/startup-journal.js';
 
 const databaseUrl = process.env.REPORT_TEST_DATABASE_URL;
-if (process.env.REPORT_REQUIRE_INTEGRATION === 'true' && !databaseUrl)
-  throw new Error('Mandatory startup-publisher PostgreSQL fixture is missing');
+const storageEndpoint = process.env.REPORT_TEST_S3_ENDPOINT;
+const enabled = Boolean(databaseUrl && storageEndpoint);
+if (process.env.REPORT_REQUIRE_INTEGRATION === 'true' && !enabled)
+  throw new Error('Mandatory startup-publisher PostgreSQL/S3 fixture is missing');
 
 async function observe(predicate: () => Promise<boolean>, message: string): Promise<void> {
   const deadline = Date.now() + 15000;
@@ -25,7 +28,7 @@ async function observe(predicate: () => Promise<boolean>, message: string): Prom
   expect(observed, message).toBe(true);
 }
 
-it.skipIf(!databaseUrl).each(['issue', 'comment'] as const)(
+it.skipIf(!enabled).each(['issue', 'comment'] as const)(
   '#7517 actual startup reconciles a lost %s POST after rollback and restart without another POST',
   async kind => {
     const schema = `startup_publisher_${randomUUID().replaceAll('-', '')}`;
@@ -44,6 +47,7 @@ it.skipIf(!databaseUrl).each(['issue', 'comment'] as const)(
     let saved: Record<string, unknown> | undefined;
     let child: ChildProcess | undefined;
     let exited: Promise<void> | undefined;
+    let journalFixture: Awaited<ReturnType<typeof initializeStartupJournal>> | undefined;
     const github = createServer(async (req, res) => {
       let body = ''; for await (const chunk of req) body += chunk;
       res.setHeader('Content-Type', 'application/json');
@@ -88,14 +92,6 @@ it.skipIf(!databaseUrl).each(['issue', 'comment'] as const)(
     try {
       await admin.query(`CREATE SCHEMA ${schema}`);
       await migrate(db);
-      await db.query("INSERT INTO report_sessions VALUES($1,'fixture','fixture',now()+interval '1 day'),('expired-worker-witness','fixture','fixture',now()-interval '1 day')", [owner]);
-      const draft = { clientRequestId: randomUUID(), title: 'Owned startup publication fixture', description: 'Synthetic local fixture only.',
-        diagnostics: { errorCode: 'fixture', appVersion: 'fixture', buildSha: 'fixture' }, visibility: 'private' };
-      await db.query("INSERT INTO model_reports(id,session_id,client_key,draft,status,fingerprint,issue_binding) VALUES($1,$2,$3,$4,'submitted',$5,$6)",
-        [reportId, owner, draft.clientRequestId, JSON.stringify(draft), fingerprint, kind === 'comment' ? JSON.stringify({ issueUrl, title: 'Existing owned fixture' }) : null]);
-      await db.query('INSERT INTO report_outbox(report_id) VALUES($1)', [reportId]);
-      await db.query("CREATE FUNCTION fail_retry_update() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'qualification transaction rollback'; END $$");
-      await db.query('CREATE TRIGGER fail_retry_update BEFORE UPDATE ON report_outbox FOR EACH ROW EXECUTE FUNCTION fail_retry_update()');
       await new Promise<void>((resolve, reject) => { github.once('error', reject); github.listen(0, '127.0.0.1', resolve); });
       const endpoint = github.address();
       if (!endpoint || typeof endpoint === 'string') throw new Error('Missing owned GitHub listener');
@@ -117,6 +113,18 @@ it.skipIf(!databaseUrl).each(['issue', 'comment'] as const)(
         REPORT_GITHUB_PRIVATE_KEY: keys.privateKey.export({ type: 'pkcs8', format: 'pem' }).toString(), REPORT_GITHUB_REPOSITORY: 'fixture/reporting',
         REPORT_PUBLICATION_TEST_ENDPOINT: `http://127.0.0.1:${endpoint.port}`,
       };
+      // R requires a real authenticated genesis before any reporting history.
+      // This isolated fixture never supplies production custody or clears legacy data.
+      journalFixture = await initializeStartupJournal(db, env);
+      Object.assign(env, journalFixture.env);
+      await db.query("INSERT INTO report_sessions VALUES($1,'fixture','fixture',now()+interval '1 day'),('expired-worker-witness','fixture','fixture',now()-interval '1 day')", [owner]);
+      const draft = { clientRequestId: randomUUID(), title: 'Owned startup publication fixture', description: 'Synthetic local fixture only.',
+        diagnostics: { errorCode: 'fixture', appVersion: 'fixture', buildSha: 'fixture' }, visibility: 'private' };
+      await db.query("INSERT INTO model_reports(id,session_id,client_key,draft,status,fingerprint,issue_binding) VALUES($1,$2,$3,$4,'submitted',$5,$6)",
+        [reportId, owner, draft.clientRequestId, JSON.stringify(draft), fingerprint, kind === 'comment' ? JSON.stringify({ issueUrl, title: 'Existing owned fixture' }) : null]);
+      await db.query('INSERT INTO report_outbox(report_id) VALUES($1)', [reportId]);
+      await db.query("CREATE FUNCTION fail_retry_update() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'qualification transaction rollback'; END $$");
+      await db.query('CREATE TRIGGER fail_retry_update BEFORE UPDATE ON report_outbox FOR EACH ROW EXECUTE FUNCTION fail_retry_update()');
       const base = `http://127.0.0.1:${port}`;
       const ownerReceipt = async () => (await fetch(`${base}/api/reports/${reportId}`, {
         headers: { Cookie: `__Host-ifclite_report=${token}` }, signal: AbortSignal.timeout(1000),
@@ -174,10 +182,13 @@ it.skipIf(!databaseUrl).each(['issue', 'comment'] as const)(
           github.closeAllConnections();
           await new Promise<void>(resolve => github.close(() => resolve()));
         } finally {
-          try { await db.end(); }
+          try { await journalFixture?.close(); }
           finally {
-            try { await admin.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`); }
-            finally { await admin.end(); }
+            try { await db.end(); }
+            finally {
+              try { await admin.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`); }
+              finally { await admin.end(); }
+            }
           }
         }
       }

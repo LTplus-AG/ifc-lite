@@ -155,9 +155,12 @@ opaque report ID and destructive action. It authenticates bounded immutable
 entries with an independent HMAC key and advances the authenticated head using
 conditional ETag writes. An unavailable journal, stale conditional write or
 ambiguous response prevents an acknowledged effective deletion/withdrawal.
-The optional journal arguments are supplied only by qualification callers:
-**the production entrypoint does not instantiate or enable this journal**.
-No provider writes or new resources are enabled by installing this code.
+The entrypoint authenticates an explicitly configured, previously initialized
+journal and supplies it to HTTP deletion, retention and integrity verification.
+It never initializes a journal during startup. Unconfigured startup is limited
+to a truly empty database with admission and background workers disabled, as
+described below. Production initialization and admission remain off pending
+independent custody and deployed recovery qualification.
 
 `reconcileRestore` requires a complete chain matching an independently retained
 checkpoint for that epoch. It commits a recovery hold before reading the chain;
@@ -193,3 +196,76 @@ head rollback, missing operator checkpoint custody or concurrent writers require
 a hold. This scope does not establish safety for S3 rollback or a cross-provider
 disaster; no second paid witness service is implied. The actual constrained
 restore pipeline remains unqualified and runtime journaling remains off.
+
+### Dormant journal runtime and explicit first initialization
+
+Private admission (including `REPORT_QUALIFICATION_TOKEN`) requires an initialized
+journal. Default submissions stay disabled. A database already bound to a journal
+cannot start without the same epoch, key and storage target, even with admissions
+disabled. Without a journal, only a truly empty admission-disabled database may start; no
+background workers start in that mode. Existing synthetic qualification history
+is not exempt and requires an explicit fresh-scope cutover, never deletion to
+bypass the guard. Startup requires the actual database/schema to match both the protected custody
+manifest and durable binding, then authenticates the existing object-store head.
+Copying or renaming the database/schema does not authorize startup. Cross-target
+restore stays held until an explicit operator target-reauthorization procedure
+is designed and qualified; none is provided by this runtime. Startup never creates,
+resets or transfers a journal. The HTTP handler, retention sweep and integrity
+verifier share that journal. Shutdown drains HTTP requests and workers before
+closing it. Startup failures use categorical logs without configuration values.
+
+Configure **all** of `REPORT_JOURNAL_EPOCH` (64 lowercase hex characters), exactly
+one of `REPORT_JOURNAL_HMAC_KEY` / `REPORT_JOURNAL_HMAC_KEY_FILE` (64 lowercase hex
+characters generated from 32 random bytes), and `REPORT_JOURNAL_CUSTODY_FILE`.
+Partial configuration is fatal even with admissions disabled. File inputs must be
+regular, owned by the service UID, non-symlinks and inaccessible to group/others.
+They must never be committed or included in PostgreSQL backups.
+
+The protected JSON custody manifest has `version: 1`, `epoch`, `keyFingerprint`
+(SHA-256 of the literal hex key), `database`, `schema`, `targetDigest`, `custodian`,
+`independentLocation`, and `initialCheckpoint: {epoch, sequence: 0, hash: <64 zeros>}`.
+`targetDigest` is SHA-256 of JSON encoding `[bucket, region, endpoint-or-null,
+forcePathStyle-boolean]`, in that order. Operators must retain the key, initial
+manifest and subsequent latest checkpoints independently of the database being
+restored and verify the actual custody location and recovery access. File mode
+checks and nonempty custodian fields cannot prove that independence. Production
+custodian/location and provider restore qualification remain pending.
+
+For a genuinely new, quiescent reporting database only, first prepare and retain
+that manifest (database/schema must exactly match the initialization target).
+Leave submissions disabled, remove the qualification token and stop all reporting
+processes. Initialization requires a separately qualified operator runner using
+a source checkout pinned to the exact reviewed service revision, its committed
+lockfile and qualified dependencies (including `tsx` and built workspace
+dependencies). Retain the runner revision and qualification receipt, verify its
+protected configuration targets the intended fresh database/schema and storage,
+and execute from that checkout’s repository root. The deployed Railway image
+starts `dist/bin.js`; its production dependency set and build do not provide
+this source-checkout initialization command. Do not assume `tsx` or the source
+script is available there, and do not add initialization to deployment startup.
+Only after the operator runner and independent custody are qualified, explicitly
+invoke:
+
+```sh
+node --import tsx apps/report-service/scripts/initialize-journal.ts --confirm-independent-custody-and-quiescence
+```
+
+This command is never part of deployment/startup. It locks all reporting tables,
+refuses any rows including tombstones/audit/admission/recovery/publication history
+and refuses an already-used audit sequence, then conditionally creates the remote
+head and commits a singleton lineage binding. Existing qualification canaries are
+history: **do not delete them to make initialization pass**. A remote write followed
+by DB failure remains closed; do not reset/delete/reinitialize to bypass it. Stop
+and reconcile the partial initialization under an independently reviewed procedure.
+
+The epoch identifies logical lineage, but startup also enforces matching database
+and schema names in both custody and the durable binding. Cross-target restore
+must remain held until an explicit target-reauthorization procedure is designed
+and qualified; this runtime provides no transfer bypass. Matching names do not
+identify a physical host or detect same-name copies on another host. This is
+**not automatic rollback detection**. Before any restore, quiesce the entire API and every worker/scanner,
+set the independent restore-required flag, retain the latest external checkpoint,
+and reconcile deletions, withdrawals and outbox state while the DB recovery hold
+remains set. Do not release the hold or restart publication merely because startup
+can authenticate a remote head. A simultaneous DB/object-store rollback is not
+excluded by reading that same object store.

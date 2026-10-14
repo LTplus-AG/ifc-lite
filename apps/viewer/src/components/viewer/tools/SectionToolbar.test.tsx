@@ -130,9 +130,11 @@ describe('Section bar controls drive the store', () => {
     act(() => s().setSectionPlaneFromFace([1, 0, 0], [-2.345, 0, 0]));
     // The pick insets the plane off the face (#5480), so read the committed distance back.
     const picked = s().sectionPlane.custom!.distance;
-    assert.equal(field().getAttribute('aria-valuetext'), `${picked.toFixed(2)}m`);
+    // The field reads from the face it was picked on, not the absolute plane constant (#7545): a fresh pick is 0.000.
+    assert.equal(field().getAttribute('aria-valuetext'), '0.000m');
     press(field(), 'ArrowUp');
-    assert.ok(Math.abs(s().sectionPlane.custom!.distance - (picked + 0.05)) < 1e-9, 'one step is 0.05 m along the normal');
+    assert.ok(Math.abs(s().sectionPlane.custom!.distance - (picked + 0.1)) < 1e-9, 'one step is the 10 cm step preference, along the normal');
+    assert.equal(field().getAttribute('aria-valuetext'), '0.100m');
     act(() => s().setSectionPlaneAxis('down'));
     assert.equal(s().sectionPlane.custom, undefined, 'a cardinal axis drops the custom plane');
   });
@@ -148,10 +150,10 @@ describe('Section bar controls drive the store', () => {
   it('the distance field shows metres against the model bounds and writes back a percentage', () => {
     renderTool();
     // position 50 % of Y in [-1, 3] is 1 m.
-    assert.equal(field().getAttribute('aria-valuetext'), '1.00m');
+    assert.equal(field().getAttribute('aria-valuetext'), '1.000m');
     press(field(), 'ArrowUp');
     assert.ok(Math.abs(s().sectionPlane.position - 52.5) < 1e-9, '0.1 m over a 4 m range is 2.5 %');
-    assert.equal(field().getAttribute('aria-valuetext'), '1.10m');
+    assert.equal(field().getAttribute('aria-valuetext'), '1.100m');
     press(field(), 'ArrowDown', { shiftKey: true });
     assert.ok(Math.abs(s().sectionPlane.position - 27.5) < 1e-9, 'Shift steps 1 m');
     // Click, type 2.6 m, Enter: (2.6 + 1) / 4 = 90 %.
@@ -161,7 +163,7 @@ describe('Section bar controls drive the store', () => {
     type(input, '2.6');
     press(input, 'Enter');
     assert.ok(Math.abs(s().sectionPlane.position - 90) < 1e-9);
-    assert.equal(field().getAttribute('aria-valuetext'), '2.60m');
+    assert.equal(field().getAttribute('aria-valuetext'), '2.600m');
   });
 
   it('a scrub snaps onto a storey cut (floor + 1.2 m) and thins a loaded scan only while dragging', () => {
@@ -175,10 +177,10 @@ describe('Section bar controls drive the store', () => {
     // cut at 2.8 + 1.2 = 4.0? No — of nothing; it stays 2.20 m.
     pointer(el, 'pointermove', 172);
     assert.equal(s().pointCloudPreviewStride, 4, 'a scan is thinned while scrubbing');
-    assert.equal(field().getAttribute('aria-valuetext'), '2.20m');
+    assert.equal(field().getAttribute('aria-valuetext'), '2.200m');
     // 1.00 m + 1 step = 1.1 m is within 0.15 m of the ground-floor cut at 1.2 m: snaps.
     pointer(el, 'pointermove', 106);
-    assert.equal(field().getAttribute('aria-valuetext'), '1.20m');
+    assert.equal(field().getAttribute('aria-valuetext'), '1.200m');
     assert.ok(Math.abs(s().sectionPlane.position - 55) < 1e-9);
     pointer(el, 'pointerup', 106);
     assert.equal(s().pointCloudPreviewStride, 1, 'restored on release');
@@ -238,12 +240,12 @@ describe('Section bar controls drive the store', () => {
   it('2D opens the Drawing panel docked with a fresh drawing, and closes it when pressed again', () => {
     useViewerStore.setState({ drawing2D: { marker: 'stale' } as never });
     renderTool();
-    assert.equal(toggle('2D').getAttribute('aria-pressed'), 'false');
-    click(toggle('2D'));
+    assert.equal(toggle('2D section').getAttribute('aria-pressed'), 'false');
+    click(toggle('2D section'));
     assert.equal(s().drawing2DPanelVisible, true);
     assert.equal(s().drawing2D, null);
-    assert.equal(toggle('2D').getAttribute('aria-pressed'), 'true');
-    click(toggle('2D'));
+    assert.equal(toggle('2D section').getAttribute('aria-pressed'), 'true');
+    click(toggle('2D section'));
     assert.equal(s().drawing2DPanelVisible, false);
   });
 

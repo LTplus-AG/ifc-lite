@@ -36,7 +36,7 @@ function assertSetIsSound(): void {
   // Whatever clips on screen is exactly what the renderer is told about.
   const handed = sectionRenderClip(true, state().sectionPlane, null, 'section', state().inactiveSectionPlanes);
   const cutting = clippingSectionPlanes({ sectionPlane: state().sectionPlane, sceneState: state().sceneState, inactiveSectionPlanes: state().inactiveSectionPlanes });
-  const renderable = (handed.sectionPlane?.enabled ? 1 : 0) + (handed.extraSectionPlanes?.length ?? 0);
+  const renderable = (handed.sectionPlane?.enabled ? 1 : 0) + (handed.extraSectionPlanes?.filter((p) => p.enabled).length ?? 0);
   assert.equal(renderable, cutting.length, 'the renderer clips against every cutting plane, and no other');
 }
 
@@ -308,5 +308,28 @@ describe('the set resets with the model (#7545)', () => {
     assert.equal(state().inactiveSectionPlanes.length, 0);
     assert.equal(state().sectionUndo, null);
     assert.equal(sectionPlaneCount(state().sectionPlane, state().inactiveSectionPlanes), 0);
+  });
+});
+
+describe('the cut-surface look is one preference for every plane (#7545)', () => {
+  it('fill, outlines and the cap style written through the active plane reach the inactive ones too', () => {
+    state().addSectionPlane('down');
+    state().addSectionPlane('side');
+    state().setSectionShowCap(false);
+    state().setSectionShowOutlines(false);
+    state().setSectionCapStyle({ pattern: 'brick', spacingPx: 14 });
+    for (const p of [state().sectionPlane, ...state().inactiveSectionPlanes]) {
+      assert.equal(p.showCap, false);
+      assert.equal(p.showOutlines, false);
+      assert.equal(p.capStyle.pattern, 'brick');
+      assert.equal(p.capStyle.spacingPx, 14);
+    }
+  });
+
+  it('a plane added afterwards starts with the current look', () => {
+    state().addSectionPlane('down');
+    state().setSectionCapStyle({ pattern: 'concrete' });
+    state().addSectionPlane('side');
+    assert.equal(state().sectionPlane.capStyle.pattern, 'concrete');
   });
 });

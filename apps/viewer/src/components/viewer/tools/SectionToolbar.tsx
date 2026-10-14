@@ -23,7 +23,6 @@ import { Button } from '@/components/ui/button';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
-import { cn } from '@/lib/utils';
 import {
   HudPopover,
   HudPopoverAnchor,
@@ -41,17 +40,19 @@ import { SectionBarMeasureContext } from './SectionBarMeasure';
 const GROUP = 'flex items-center gap-1';
 /** One row of the bar; wraps only as a last resort in a very narrow lane. */
 const ROW = 'flex flex-wrap items-center justify-center gap-1';
-/** The bar's forms (#6315): with the caption, then without it. */
+/** The bar's forms (#6315): with the caption; without it; and without it with icon-only controls. */
 const TIER_CAPTION = 0;
 const TIER_NO_CAPTION = 1;
+const TIER_COMPACT = 2;
 const OFFSCREEN = { position: 'fixed', top: -9999, left: -9999, visibility: 'hidden' } as const;
 
 export function SectionToolbar() {
   const { t } = useTranslation();
-  // Row 1 is the group a wrap cannot break, so it is what must fit the
-  // top-center lane: when it does not, the caption steps down (#5975)
-  // instead of pushing the bar out of its lane (#6315). Only row 1 is measured.
-  const { measureRef, tier } = useHudBarTier(TIER_NO_CAPTION);
+  // The bar must fit the top-center lane as ONE block of rows: when it does not, the caption
+  // steps down (#5975), then the controls drop their words, instead of the bar pushing out
+  // of its lane (#6315) or breaking mid-group. The two fuller forms are measured offscreen;
+  // the compact one is the smallest and the fallback.
+  const { measureRef, tier } = useHudBarTier(TIER_COMPACT);
   const setActiveTool = useViewerStore((s) => s.setActiveTool);
   const { count, atLimit } = useSectionPlaneSet();
 
@@ -76,19 +77,34 @@ export function SectionToolbar() {
     </>
   );
 
-  return (
-    <>
-      {/* Row 1 with the caption, offscreen and hidden, only to be measured. */}
-      <div ref={measureRef(TIER_CAPTION)} aria-hidden="true" inert style={OFFSCREEN}>
+  const row1 = (withCaption: boolean) => (
+    <span className={GROUP}>
+      {withCaption && (
+        <>
+          {caption}
+          <HudDivider />
+        </>
+      )}
+      {planes}
+      {close}
+    </span>
+  );
+  /** One offscreen copy of the whole bar in a given form, to measure how wide that form is. */
+  const measured = (form: number, withCaption: boolean) => (
+    <HudPopover>
+      <div ref={measureRef(form)} aria-hidden="true" inert style={OFFSCREEN} className="flex w-max flex-col gap-1 px-1.5">
         <SectionBarMeasureContext.Provider value>
-          <span className={cn(GROUP, 'px-1.5')}>
-            {caption}
-            <HudDivider />
-            {planes}
-            {close}
-          </span>
+          <div className="flex flex-nowrap items-center justify-center gap-1">{row1(withCaption)}</div>
+          {count > 0 && <div className="flex flex-nowrap items-center justify-center gap-1"><SectionActivePlaneRow /></div>}
         </SectionBarMeasureContext.Provider>
       </div>
+    </HudPopover>
+  );
+
+  return (
+    <>
+      {measured(TIER_CAPTION, true)}
+      {measured(TIER_NO_CAPTION, false)}
       {/* The Cap popover is anchored to the whole bar, not to its trigger: when
           the bar wraps in a narrow top-center lane the trigger can sit on a
           middle row, and a trigger-anchored popover then opens over the rows
@@ -102,21 +118,10 @@ export function SectionToolbar() {
             className="flex-col flex-nowrap"
             {...tourAnchor(TOUR_ANCHORS.sectionPanel)}
           >
-            <div className={ROW}>
-              <span className={GROUP}>
-                {tier === TIER_CAPTION && (
-                  <>
-                    {caption}
-                    <HudDivider />
-                  </>
-                )}
-                {planes}
-                {close}
-              </span>
-            </div>
+            <div className={ROW}>{row1(tier === TIER_CAPTION)}</div>
             {count > 0 && (
               <div className={ROW} data-testid="section-active-row">
-                <SectionActivePlaneRow />
+                <SectionActivePlaneRow compact={tier === TIER_COMPACT} />
               </div>
             )}
           </HudToolbar>

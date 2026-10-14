@@ -36,10 +36,13 @@ import { isPristineSectionPlane } from './section-plane-set';
 
 export type SectionRenderClip = Pick<RenderOptions, 'sectionPlane' | 'extraSectionPlanes' | 'clipBox'>;
 
-/** One plane as the renderer's `SectionPlane`: no cap range (the renderer measures its own bounds), no gizmo. */
-function toRendererPlane(p: SectionPlane): NonNullable<RenderOptions['extraSectionPlanes']>[number] {
+/**
+ * One plane as the renderer's `SectionPlane`, without the cap range (the renderer measures its
+ * own bounds). The id keys the plane's cap and its frame; `showGizmo` hides the primary quad.
+ */
+export function rendererSectionPlane(p: SectionPlane): NonNullable<RenderOptions['extraSectionPlanes']>[number] {
   return {
-    axis: p.axis, position: p.position, enabled: p.enabled, flipped: p.flipped,
+    id: p.id, showGizmo: p.showGizmo, axis: p.axis, position: p.position, enabled: p.enabled, flipped: p.flipped,
     normal: p.custom?.normal, distance: p.custom?.distance,
   };
 }
@@ -61,11 +64,11 @@ export function sectionRenderClip(
   inactive: readonly SectionPlane[] = [],
 ): SectionRenderClip {
   if (!visible) return {};
-  // The planes beyond the active one (#7545): each clips on its own, resolved by the
-  // renderer like the primary. A boxed plane clips by its box (one box slot), so it adds
-  // no plane; the active plane's box wins the slot.
-  const extra = inactive.filter((p) => p.enabled && !p.box);
-  const extraClip = extra.length > 0 ? { extraSectionPlanes: extra.map(toRendererPlane) } : {};
+  // The planes beyond the active one (#7545): each is resolved by the renderer like the primary;
+  // only the enabled ones clip, the rest are handed over so their marks and previews exist.
+  // A boxed plane clips by its box (one box slot), so it adds no plane; the active plane's box wins the slot.
+  const extra = inactive.filter((p) => !p.box);
+  const extraClip = extra.length > 0 ? { extraSectionPlanes: extra.map(rendererSectionPlane) } : {};
   // The active plane's box wins the one box slot; otherwise an enabled inactive plane's box takes it.
   // Either way the clip does not depend on WHICH plane is active: a boxed inactive plane clips by its
   // box and the active plane (when it is not the boxed one) still clips by itself, below.
@@ -79,6 +82,8 @@ export function sectionRenderClip(
     ...extraClip,
     ...boxClip,
     sectionPlane: {
+      id: plane.id,
+      showGizmo: plane.showGizmo,
       axis: plane.axis,
       position: plane.position,
       enabled: plane.enabled,

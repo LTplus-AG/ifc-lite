@@ -304,18 +304,19 @@ export const createSectionSlice: StateCreator<SectionSlice, [], [], SectionSlice
 
   setSectionShowCap: (showCap) => set((state) => {
     saveShowCap(showCap);
-    return { sectionPlane: { ...state.sectionPlane, showCap } };
+    // The cut-surface look is one user preference, not a per-plane setting (#7545): every plane carries it.
+    return { sectionPlane: { ...state.sectionPlane, showCap }, inactiveSectionPlanes: state.inactiveSectionPlanes.map((p) => ({ ...p, showCap })) };
   }),
 
   setSectionShowOutlines: (showOutlines) => set((state) => {
     saveShowOutlines(showOutlines);
-    return { sectionPlane: { ...state.sectionPlane, showOutlines } };
+    return { sectionPlane: { ...state.sectionPlane, showOutlines }, inactiveSectionPlanes: state.inactiveSectionPlanes.map((p) => ({ ...p, showOutlines })) };
   }),
 
   setSectionCapStyle: (style) => set((state) => {
     const capStyle: SectionCapStyle = { ...state.sectionPlane.capStyle, ...style };
     saveCapStyle(capStyle);
-    return { sectionPlane: { ...state.sectionPlane, capStyle } };
+    return { sectionPlane: { ...state.sectionPlane, capStyle }, inactiveSectionPlanes: state.inactiveSectionPlanes.map((p) => ({ ...p, capStyle })) };
   }),
 
   resetSectionPlane: () => set(() => {
@@ -380,6 +381,7 @@ export const createSectionSlice: StateCreator<SectionSlice, [], [], SectionSlice
     const custom: CustomSectionPlane = {
       normal:    unit,
       distance,
+      datum:     distance,
       pickedAt:  [point[0], point[1], point[2]],
       tangent:   basis.tangent,
       bitangent: basis.bitangent,

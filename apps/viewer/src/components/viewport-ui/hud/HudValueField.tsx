@@ -22,8 +22,14 @@ export interface HudValueFieldProps {
   unit?: string;
   /** Amount one arrow-key press or one `scrubSensitivity`-px drag moves. */
   step?: number;
-  /** Multiplier applied to `step` while Shift is held. */
+  /** Multiplier applied to `step` while Shift is held (Alt divides by 10). */
   shiftMultiplier?: number;
+  /**
+   * One wheel notch over the field moves the value by one `step` (up increases); the notch's
+   * magnitude is ignored on purpose, so a trackpad cannot fire fifty steps. The wheel never
+   * reaches the page or the camera while it is over the field.
+   */
+  wheelStep?: boolean;
   min?: number;
   max?: number;
   /** Decimal places shown both at rest and while scrubbing. */
@@ -66,6 +72,18 @@ const CLICK_SLOP_PX = 2;
  * (value + unit together, so a screen reader announces "1.20 m", not just
  * "1.2") when at rest, and a plain text `<input>` while editing.
  */
+/**
+ * A typed number: digits with an optional sign and one decimal point or comma (`-0,2` is -0.2), and
+ * nothing else. `parseFloat` would read `-200 mm` as -200 and `1,5` as 1: a value the user did not
+ * type must never be committed, so anything else is not a number and the field keeps its value.
+ */
+export function parseTypedNumber(text: string): number | null {
+  const trimmed = text.trim();
+  if (!/^[+-]?(\d+([.,]\d*)?|[.,]\d+)$/.test(trimmed)) return null;
+  const value = Number(trimmed.replace(',', '.'));
+  return Number.isFinite(value) ? value : null;
+}
+
 export function HudValueField({
   ref,
   value,
@@ -74,6 +92,7 @@ export function HudValueField({
   unit = '',
   step = 1,
   shiftMultiplier = 10,
+  wheelStep = false,
   min = -Infinity,
   max = Infinity,
   precision = 2,
@@ -111,6 +130,28 @@ export function HudValueField({
   }, [disabled, onScrubEnd]);
 
   const clamp = (next: number): number => Math.min(max, Math.max(min, next));
+
+  // A native, non-passive listener: React attaches `onWheel` passively, so it could not
+  // `preventDefault`, and the wheel would also scroll or zoom whatever is underneath.
+  const wheelLatest = useRef({ value, step, shiftMultiplier, min, max, onChange });
+  wheelLatest.current = { value, step, shiftMultiplier, min, max, onChange };
+  useEffect(() => {
+    const el = controlRef.current;
+    if (!wheelStep || disabled || editing || !el) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      // Shift+wheel arrives as a horizontal delta where the platform turns it into a sideways scroll.
+      const dy = e.deltaY || e.deltaX || 0;
+      if (dy === 0) return;
+      const w = wheelLatest.current;
+      const mult = e.shiftKey ? w.shiftMultiplier : e.altKey ? 0.1 : 1;
+      const next = Math.min(w.max, Math.max(w.min, w.value + (dy < 0 ? 1 : -1) * w.step * mult));
+      if (next !== w.value) w.onChange(next);
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [wheelStep, disabled, editing]);
   // Nearest snap wins when several catchments overlap; outside every
   // catchment the value passes through untouched.
   const snap = (next: number): number => {
@@ -139,8 +180,8 @@ export function HudValueField({
     setEditing(false);
     if (disabled || !typed.current) return null;
     typed.current = false;
-    const parsed = Number.parseFloat(draft);
-    const next = Number.isFinite(parsed) ? clamp(parsed) : null;
+    const parsed = parseTypedNumber(draft);
+    const next = parsed !== null ? clamp(parsed) : null;
     if (next !== null) onChange(next);
     return next;
   }

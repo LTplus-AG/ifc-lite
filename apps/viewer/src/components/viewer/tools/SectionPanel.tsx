@@ -10,7 +10,8 @@
  *  - `SectionHint` — the one hint line in the HUD's bottom-center region;
  *  - `SectionPlaneVisualization` — the face-picked plane's drag gizmo and
  *    the pick preview;
- *  - `SectionBoxVisualization` — the section box's faces and handles (#5513).
+ *  - `SectionBoxVisualization` — the section box's faces and handles (#5513);
+ *  - `SectionPlaneMarks` — every plane's name tag, kept-side arrow and outline (#7545).
  *
  * What remains here is the tool's lifecycle: disarming the face pick on close
  * and never leaving a scan thinned after a scrub.
@@ -20,6 +21,7 @@ import { useEffect } from 'react';
 import { useViewerStore } from '@/store';
 import { SectionPlaneVisualization } from './SectionVisualization';
 import { SectionBoxVisualization } from './SectionBoxVisualization';
+import { SectionPlaneMarks } from './SectionPlaneMarks';
 import { SectionHint } from './SectionHint';
 import { startAlignmentTool } from '@/lib/section/alignment-controller';
 
@@ -50,6 +52,7 @@ export function SectionOverlay() {
       {/* Section plane visualization overlay */}
       <SectionPlaneVisualization enabled={sectionEnabled} />
       <SectionBoxVisualization />
+      <SectionPlaneMarks />
     </>
   );
 }

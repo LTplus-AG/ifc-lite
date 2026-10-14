@@ -176,17 +176,20 @@ describe('mounted Section tool localization (#4785)', () => {
     assert.equal(useViewerStore.getState().sectionPlane.name, 'A', 'a plain face pick replaces the active plane');
     assert.equal(bar().querySelector('[role="tab"]')?.getAttribute('title'), 'Plan A : coupe active');
     assert.equal(field().getAttribute('aria-label'), 'Distance du plan local');
-    assert.equal(field().getAttribute('aria-valuetext'), '-2.35 mètres');
+    // The field reads from the face the plane was picked on (#7545): a fresh pick is zero, whatever the absolute distance.
+    assert.equal(field().getAttribute('aria-valuetext'), '0.000 mètres');
     press(field(), 'Enter');
     const input = bar().querySelector<HTMLInputElement>('input[aria-label="Distance du plan local"]');
     assert.ok(input);
     type(input, '-1.125');
     press(input, 'Enter');
-    assert.equal(useViewerStore.getState().sectionPlane.custom?.distance, -1.125);
+    const custom = useViewerStore.getState().sectionPlane.custom!;
+    assert.ok(Math.abs(custom.distance - (custom.datum! - 1.125)) < 1e-9, 'typed 1.125 m behind the face it was picked on');
 
     // Leave the tool: the parked chip renders the whole reordered message.
     act(() => useViewerStore.getState().setActiveTool('select'));
-    assert.equal(chip(), '-1.13 m — Face locale');
+    // The parked chip keeps naming the absolute plane distance: `datum` only moves where the OFFSET FIELD reads zero.
+    assert.equal(chip(), `${custom.distance.toFixed(2)} m — Face locale`);
     assert.equal(document.querySelector('button[aria-label="Reprendre la coupe"]')?.getAttribute('title'), "Rouvrir l'outil");
     click(document.querySelector('button[aria-label="Reprendre la coupe"]')!);
     assert.equal(useViewerStore.getState().activeTool, 'section');

@@ -32,6 +32,7 @@ describe('sectionRenderClip', () => {
     const out = sectionRenderClip(true, plane(), { min: -1, max: 3 }, 'measure');
     assert.equal(out.clipBox, undefined);
     assert.deepEqual(out.sectionPlane, {
+      id: 'p', showGizmo: true,
       axis: 'down', position: 40, enabled: true, flipped: false, showCap: true, showOutlines: false, capStyle,
       min: -1, max: 3, normal: undefined, distance: undefined,
     });
@@ -64,10 +65,10 @@ describe('sectionRenderClip', () => {
   describe('cutting planes beyond the active one (#7545)', () => {
     const second = plane({ id: 'q', name: 'B', axis: 'side', position: 25, flipped: true });
 
-    it('hands each enabled inactive plane over for the renderer to resolve, with no cap or range', () => {
+    it('hands each inactive plane over for the renderer to resolve, with its id and no cap or range', () => {
       const out = sectionRenderClip(true, plane(), { min: 0, max: 8 }, 'select', [second]);
       assert.deepEqual(out.extraSectionPlanes, [
-        { axis: 'side', position: 25, enabled: true, flipped: true, normal: undefined, distance: undefined },
+        { id: 'q', showGizmo: true, axis: 'side', position: 25, enabled: true, flipped: true, normal: undefined, distance: undefined },
       ]);
       assert.equal(out.sectionPlane?.axis, 'down', 'the active plane is still the primary');
     });
@@ -79,8 +80,8 @@ describe('sectionRenderClip', () => {
       assert.equal(out.extraSectionPlanes?.[0]?.distance, 4);
     });
 
-    it('a plane that is not cutting contributes nothing, and a hidden cut hides all of them', () => {
-      assert.equal(sectionRenderClip(true, plane(), null, 'select', [plane({ id: 'q', enabled: false })]).extraSectionPlanes, undefined);
+    it('a plane that is not cutting is handed over disabled (the renderer clips nothing with it), and a hidden cut hides all of them', () => {
+      assert.equal(sectionRenderClip(true, plane(), null, 'select', [plane({ id: 'q', enabled: false })]).extraSectionPlanes?.[0]?.enabled, false);
       assert.deepEqual(sectionRenderClip(false, plane(), null, 'select', [second]), {});
     });
 

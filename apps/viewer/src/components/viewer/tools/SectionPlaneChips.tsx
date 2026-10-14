@@ -145,8 +145,11 @@ export function SectionPlaneChips() {
     if (e.key === 'F2') { e.preventDefault(); setRenaming(plane.id); return; }
     if (e.key === 'Delete') {
       e.preventDefault();
+      const tablist = e.currentTarget.closest('[role="tablist"]');
       useViewerStore.getState().removeSectionPlane(plane.id);
       offerUndo(t);
+      // The focused chip is gone: keep the keyboard on the bar, on the plane that took over.
+      setTimeout(() => tablist?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.focus(), 0);
       return;
     }
     const step = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;

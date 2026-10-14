@@ -34,7 +34,8 @@ import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { getGlobalCanvas, getGlobalRenderer } from '@/hooks/useBCF';
 import { selectModelMeshes } from '@/lib/type-view-visibility';
 import { computeIsolationFilterSet } from '@/store/basketVisibleSet';
-import { activeSectionPlane } from '@/store/section-active';
+import { activeSectionPlane, clippingSectionPlanes } from '@/store/section-active';
+import type { SectionPlane } from '@/store/types';
 import { withInstancedMeshes, type InstancedModelRange } from '@/utils/instancedExport';
 import type { useViewerStore } from '@/store';
 import type { ViewMeshInput } from './collect-view-meshes';
@@ -50,6 +51,8 @@ export interface ViewPdfSource {
   camera: ViewCameraSnapshot | null;
   /** `null` when no section cut is active, or when its bounds are unknown. */
   section: ViewSectionResolveInput | null;
+  /** The other cutting planes that are on (#7545): the sheet is what all of them keep. */
+  extraSections: ViewSectionResolveInput[];
   /** True when the user HAS a cut enabled, even if `section` could not resolve. */
   sectionEnabled: boolean;
   /** Viewport height in CSS pixels, for the "as displayed" scale. `null` when unknown. */
@@ -81,7 +84,8 @@ export function readViewPdfSource(state: ViewerState): ViewPdfSource {
     },
     camera,
     section: resolveSectionInput(state),
-    sectionEnabled: activeSectionPlane(state) !== null,
+    extraSections: resolveExtraSectionInputs(state),
+    sectionEnabled: clippingSectionPlanes(state).length > 0,
     canvasCssHeightPx: canvas ? canvas.clientHeight : null,
   };
 }
@@ -171,8 +175,21 @@ export function readViewZoom(): ViewZoomSnapshot | null {
 function resolveSectionInput(state: ViewerState): ViewSectionResolveInput | null {
   // Only the cut on screen: the sheet is the view (#4910).
   const sectionPlane = activeSectionPlane(state);
-  if (!sectionPlane) return null;
+  return sectionPlane ? resolvePlaneInput(state, sectionPlane) : null;
+}
 
+/** The cutting planes beyond the active one that are on screen (#7545), in creation order. */
+function resolveExtraSectionInputs(state: ViewerState): ViewSectionResolveInput[] {
+  if (!(state.sceneState?.section?.visible ?? true)) return [];
+  const out: ViewSectionResolveInput[] = [];
+  for (const plane of state.inactiveSectionPlanes) {
+    const input = plane.enabled ? resolvePlaneInput(state, plane) : null;
+    if (input) out.push(input);
+  }
+  return out;
+}
+
+function resolvePlaneInput(state: ViewerState, sectionPlane: SectionPlane): ViewSectionResolveInput | null {
   const sceneBounds = getGlobalRenderer()?.getCamera()?.getSceneBounds() ?? null;
   if (!sceneBounds) return null;
 

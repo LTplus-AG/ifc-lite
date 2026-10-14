@@ -173,6 +173,33 @@ describe('readViewPdfSource (#2042)', () => {
     assert.equal(source.sectionEnabled, false);
   });
 
+  it('hands over the other cutting planes that are on (#7545), and none once the cut is hidden or off', () => {
+    const state = () => useViewerStore.getState();
+    const second = state().addSectionPlane('front');
+    assert.ok(second);
+    state().setSectionPlanePosition(25);
+    const third = state().addSectionPlane('down');
+    assert.ok(third);
+    // `addSectionPlane` makes the new plane active: C is active, A and B are inactive.
+    let source = readViewPdfSource(state());
+    assert.equal(source.section?.plane.axis, 'down', 'the active plane is the main cut');
+    assert.deepEqual(
+      source.extraSections.map((c) => [c.plane.axis, c.plane.position]),
+      [['side', 50], ['front', 25]],
+      'every other cutting plane, in creation order, with its own position',
+    );
+    assert.equal(source.extraSections[0].uiRange?.max, LARGE_MAX.x, 'each resolves against the union, like the main cut');
+
+    state().setSectionPlaneCutting(second, false);
+    source = readViewPdfSource(state());
+    assert.deepEqual(source.extraSections.map((c) => c.plane.axis), ['side'], 'a plane whose Cut is off does not clip the sheet');
+
+    state().setSectionVisible(false);
+    source = readViewPdfSource(state());
+    assert.deepEqual(source.extraSections, [], 'a hidden cut prints nothing, extras included');
+    assert.equal(source.sectionEnabled, false);
+  });
+
   it('gathers the visible models geometry and leaves the instanced list empty by construction', () => {
     const source = readViewPdfSource(useViewerStore.getState());
     assert.equal(source.view.meshes.length, 2, 'both visible models must contribute geometry');

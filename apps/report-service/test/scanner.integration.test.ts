@@ -20,7 +20,6 @@ import {
 import { qualifyMaxModel } from "./scanner-max-model.js";
 import { scannerChild, runningContainer, cleanScannerScratch, docker } from "./scanner-child.js";
 import { loadFeature } from "./feature-loader.js";
-import { scannerChild, cleanScannerScratch } from "./scanner-child.js";
 import { openDatabase, migrate } from "../src/database.js";
 import { createReport, submitReport } from "../src/reports.js";
 import { ModelStorage } from "../src/storage.js";

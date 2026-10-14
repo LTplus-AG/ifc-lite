@@ -107,6 +107,10 @@ impl<'a> super::EntityScanner<'a> {
             pos += 1;
             loop {
                 pos += memchr::memchr(b'\'', &content[pos..])?;
+                if crate::parser::lexical::is_page_quote_operand(content, pos) {
+                    pos += 1;
+                    continue;
+                }
                 if content.get(pos + 1) == Some(&b'\'') {
                     // Escaped quote ('') - skip both, stay in the string.
                     pos += 2;

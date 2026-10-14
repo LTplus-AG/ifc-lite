@@ -55,6 +55,10 @@ pub(super) fn data_section_start(bytes: &[u8]) -> usize {
         let b = bytes[pos];
         if in_string {
             if b == b'\'' {
+                if crate::parser::lexical::is_page_quote_operand(bytes, pos) {
+                    pos += 1;
+                    continue;
+                }
                 if pos + 1 < limit && bytes[pos + 1] == b'\'' {
                     pos += 2; // escaped quote
                     continue;

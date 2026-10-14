@@ -1,0 +1,46 @@
+[
+  {
+    "name": "page-apostrophe",
+    "literal": "'Para \\S\\' 5'"
+  },
+  {
+    "name": "page-leading-apostrophe",
+    "literal": "'\\S\\' 7'"
+  },
+  {
+    "name": "page-next-to-closing-quote",
+    "literal": "'5\\S\\''"
+  },
+  {
+    "name": "escaped-backslash-before-page",
+    "literal": "'a\\\\S\\S\\''"
+  },
+  {
+    "name": "page-backslash-operand",
+    "literal": "'x\\S\\\\'"
+  },
+  {
+    "name": "hex-control",
+    "literal": "'Para \\X\\A7 5'"
+  },
+  {
+    "name": "doubled-quote-control",
+    "literal": "'John''s Wall'"
+  },
+  {
+    "name": "structure-is-text",
+    "literal": "'\\S\\' #999=IFCWALL($); /* DATA; ) */'"
+  },
+  {
+    "name": "page-and-doubled-quote",
+    "literal": "'\\S\\'''tail'"
+  },
+  {
+    "name": "multiline-page",
+    "literal": "'Para \\S\\'\nnext'"
+  },
+  {
+    "name": "ordinary-control",
+    "literal": "'Wall'"
+  }
+]

@@ -1,5 +1,21 @@
 # @ifc-lite/sdk
 
+## 9.5.0
+
+### Minor Changes
+
+- [#7529](https://github.com/LTplus-AG/ifc-lite/pull/7529) [`b430679`](https://github.com/LTplus-AG/ifc-lite/commit/b430679857a4550153b7c1ac229ce8d135a8de3d) Thanks [@louistrue](https://github.com/louistrue)! - Read supplied SavedAnalysisRun and SavedValidationReport evidence as historical Review facts through the portable SDK reader, with full source and columnar identity binding, read-only model leases, explicit unbound evidence and no native execution attestation. Preserve native evidence and per-kind coverage without allocating editors or rerunning validation.
+  
+  Charge object-property names as well as string values against the existing native and portable Review text budget. Native captures exceeding that shared budget are refused as capture-bound, preserving the independent native analysis report and explicit unknown capture inventory.
+
+### Patch Changes
+
+- [#7558](https://github.com/LTplus-AG/ifc-lite/pull/7558) [`d02a6be`](https://github.com/LTplus-AG/ifc-lite/commit/d02a6bec46e9791075431853cb1b131e409d382e) Thanks [@louistrue](https://github.com/louistrue)! - Preserve supplied historical Review facts for eligible owners when an unrelated scoped model has no source, an edited overlay, or unavailable identity columns. Keep all catalog leases and source-hash collision checks, leaving unavailable-owner evidence explicitly unbound without weakening existing security or work bounds.
+- Updated dependencies [[`4a5e545`](https://github.com/LTplus-AG/ifc-lite/commit/4a5e545761859432c7dcbfa31df7f499ed1673ec)]:
+  - @ifc-lite/ids@3.3.4
+  - @ifc-lite/ids-authoring@0.2.4
+  - @ifc-lite/lists@3.1.5
+
 ## 9.4.0
 
 ### Minor Changes

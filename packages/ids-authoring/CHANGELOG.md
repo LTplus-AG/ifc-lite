@@ -1,5 +1,12 @@
 # @ifc-lite/ids-authoring
 
+## 0.2.4
+
+### Patch Changes
+
+- Updated dependencies [[`4a5e545`](https://github.com/LTplus-AG/ifc-lite/commit/4a5e545761859432c7dcbfa31df7f499ed1673ec)]:
+  - @ifc-lite/ids@3.3.4
+
 ## 0.2.3
 
 ### Patch Changes

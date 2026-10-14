@@ -1,5 +1,23 @@
 # @ifc-lite/cli
 
+## 0.41.0
+
+### Minor Changes
+
+- [#7558](https://github.com/LTplus-AG/ifc-lite/pull/7558) [`d02a6be`](https://github.com/LTplus-AG/ifc-lite/commit/d02a6bec46e9791075431853cb1b131e409d382e) Thanks [@louistrue](https://github.com/louistrue)! - Read supplied SavedAnalysisRun and SavedValidationReport evidence as historical Review facts through Flow and MCP, with full source and columnar identity binding, read-only model leases, explicit unbound evidence and no native execution attestation. CLI and viewer Flow hosts support supplied historical inputs without allocating editors or rerunning validation.
+  
+  Reject unsupported native Review before graph effects through parameter-derived host prerequisites, retaining supplied historical and Player modes and validated resume receipts.
+
+### Patch Changes
+
+- Updated dependencies [[`4a5e545`](https://github.com/LTplus-AG/ifc-lite/commit/4a5e545761859432c7dcbfa31df7f499ed1673ec), [`d02a6be`](https://github.com/LTplus-AG/ifc-lite/commit/d02a6bec46e9791075431853cb1b131e409d382e), [`b430679`](https://github.com/LTplus-AG/ifc-lite/commit/b430679857a4550153b7c1ac229ce8d135a8de3d), [`d02a6be`](https://github.com/LTplus-AG/ifc-lite/commit/d02a6bec46e9791075431853cb1b131e409d382e)]:
+  - @ifc-lite/ids@3.3.4
+  - @ifc-lite/sdk@9.5.0
+  - @ifc-lite/flow-nodes@0.10.0
+  - @ifc-lite/mcp@0.27.0
+  - @ifc-lite/ids-authoring@0.2.4
+  - @ifc-lite/rules@0.7.5
+
 ## 0.40.2
 
 ### Patch Changes

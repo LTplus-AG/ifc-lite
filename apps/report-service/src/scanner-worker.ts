@@ -25,6 +25,7 @@ export async function scanPublicOnce(
   const lock = await db.connect();
   let acquired = false;
   let directory: string | undefined;
+  let retainScratch = false;
   try {
     acquired = Boolean(
       (
@@ -99,6 +100,9 @@ export async function scanPublicOnce(
         error instanceof Error && categories.has(error.message)
           ? error.message
           : "scanner_job_failed";
+      // A failed Docker removal may leave the sandbox alive. Keep its opaque
+      // recovery marker until the next owner verifies removal before cleanup.
+      retainScratch = category === "scanner_cleanup_failed";
       console.error(`[report-service] ${category}`);
       // A crash, unavailable engine/signatures or transport failure leaves the
       // durable lease for bounded retry. Deletion/withdrawal independently revoke it.
@@ -106,7 +110,7 @@ export async function scanPublicOnce(
     }
   } finally {
     try {
-      if (directory) await rm(directory, { recursive: true, force: true });
+      if (directory && !retainScratch) await rm(directory, { recursive: true, force: true });
     } finally {
       try {
         if (acquired)

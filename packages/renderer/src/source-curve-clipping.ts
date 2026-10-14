@@ -19,6 +19,10 @@ function planesFor(clip: PickClipState): Plane[] {
     planes.push({ n: [section.normal[0] * side, section.normal[1] * side, section.normal[2] * side],
       limit: section.distance * side });
   }
+  for (const extra of clip.extraPlanes ?? []) {
+    const side = extra.flipped ? -1 : 1;
+    planes.push({ n: [extra.normal[0] * side, extra.normal[1] * side, extra.normal[2] * side], limit: extra.distance * side });
+  }
   const box = clip.clipBox;
   if (box?.enabled) for (let axis = 0; axis < 3; axis++) {
     const positive: [number, number, number] = [0, 0, 0];
@@ -138,7 +142,7 @@ function arcIntervals(curve: SourceSnapCurve, planes: readonly Plane[], clip: Pi
 
 /** Feasible source-parameter intervals for the renderer's current clip. */
 export function sourceCurveClipIntervals(curve: SourceSnapCurve, clip?: PickClipState | null): Interval[] {
-  if (!clip || (!clip.sectionPlane && !clip.clipBox?.enabled)) return [[0, 1]];
+  if (!clip || (!clip.sectionPlane && !clip.extraPlanes?.length && !clip.clipBox?.enabled)) return [[0, 1]];
   const planes = planesFor(clip);
   // Cross-CRS curves have no analytic clip roots. Numerically bracket crossings
   // so a thin visible interval is not lost between snap-distance samples.

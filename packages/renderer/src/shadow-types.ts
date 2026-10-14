@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import type { ExtraClipPlane } from './clip-types.js';
 import type { WorldPoint } from './relative-to-eye.js';
 import type { InstancedRteDeltaStream } from './instanced-rte.js';
 
@@ -35,6 +36,8 @@ export interface ShadowRteFrame { cameraWorld: WorldPoint }
 export interface ShadowClip {
   section?: { normal: readonly [number, number, number]; distance: number; flipped?: boolean } | null;
   box?: { min: readonly [number, number, number]; max: readonly [number, number, number] } | null;
+  /** Cutting planes beyond `section` (#7545), world-space; an occluder is clipped against all of them. */
+  extraPlanes?: readonly ExtraClipPlane[] | null;
 }
 
 /** Choose the allocated shadow-map size within the device texture limit. */

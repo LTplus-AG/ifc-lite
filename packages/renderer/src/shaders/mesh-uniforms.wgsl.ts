@@ -9,8 +9,10 @@
  * surface it traces is. Packing: `mesh-rte-uniforms.ts` / `index.ts`.
  */
 import { MESH_FLAG_RTE_DRAWABLE } from '../mesh-rte-uniforms.js';
+import { extraClipWgsl } from '../extra-clip-planes.js';
 
 export const meshUniformsWgsl = `
+        ${extraClipWgsl}
         struct Uniforms {
           viewProj: mat4x4<f32>,
           model: mat4x4<f32>,
@@ -28,6 +30,7 @@ export const meshUniformsWgsl = `
           rteCameraHigh: vec4<f32>,
           rteCameraLow: vec4<f32>,
           overrideParams: vec4<u32>, // x = draw's id anchor, y = OVERRIDE_* bits (entity-color-table.ts, #6076)
+          extraClip: ExtraClip,      // cutting planes beyond sectionPlane (#7545); count 0 = none
         }
         @binding(0) @group(0) var<uniform> uniforms: Uniforms;
         const RTE_DRAWABLE_FLAG: u32 = ${MESH_FLAG_RTE_DRAWABLE}u;
@@ -40,12 +43,14 @@ export const meshUniformsWgsl = `
         }
 
         // True when p is cut away: ABOVE the section plane (flags.y bit 0 =
-        // enabled, bit 1 = flipped) or OUTSIDE the clip box (bit 2).
+        // enabled, bit 1 = flipped), on the removed side of any extra plane
+        // (extraClip, #7545) or OUTSIDE the clip box (bit 2).
         fn sectionClipped(p: vec3<f32>) -> bool {
           if ((uniforms.flags.y & 1u) == 1u) {
             let side = select(1.0, -1.0, (uniforms.flags.y & 2u) == 2u);
             if ((dot(p, uniforms.sectionPlane.xyz) - uniforms.sectionPlane.w) * side > 0.0) { return true; }
           }
+          if (extraClipClipped(uniforms.extraClip, p)) { return true; }
           if ((uniforms.flags.y & 4u) != 0u) {
             if (any(p < uniforms.clipBoxMin.xyz) || any(p > uniforms.clipBoxMax.xyz)) { return true; }
           }

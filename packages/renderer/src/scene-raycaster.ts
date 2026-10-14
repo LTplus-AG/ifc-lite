@@ -13,6 +13,7 @@ import type { MeshData } from '@ifc-lite/geometry';
 import type { Vec3, PickClipState } from './types.js';
 import { MathUtils } from './math.js';
 import { reportableItemId } from './pick-resolve.js';
+import { boxBehindPlane, clipRayByPlanes, extraPlanesClip } from './extra-clip-planes.js';
 
 export interface BoundingBox {
   min: Vec3;
@@ -24,9 +25,9 @@ export interface BoundingBox {
  *  was invisible here in the first place (#2985), after two hand-widenings. */
 export type RaycastPiece = Pick<MeshData, 'positions' | 'indices' | 'entityIds' | 'modelIndex' | 'origin' | 'geometryItemId'>;
 
-/** True when `clip` actually clips anything (a section plane or an enabled box). */
+/** True when `clip` actually clips anything (a section plane, an extra plane or an enabled box). */
 export function clipIsActive(clip?: PickClipState | null): boolean {
-  return !!(clip && (clip.sectionPlane || clip.clipBox?.enabled));
+  return !!(clip && (clip.sectionPlane || clip.extraPlanes?.length || clip.clipBox?.enabled));
 }
 
 /**
@@ -41,6 +42,7 @@ export function pointClipped(clip: PickClipState | null | undefined, x: number, 
     const side = sp.flipped ? -1 : 1;
     if ((x * sp.normal[0] + y * sp.normal[1] + z * sp.normal[2] - sp.distance) * side > 0) return true;
   }
+  if (extraPlanesClip(clip?.extraPlanes, x, y, z)) return true;
   const b = clip?.clipBox;
   if (b?.enabled) {
     if (x < b.min[0] || y < b.min[1] || z < b.min[2] || x > b.max[0] || y > b.max[1] || z > b.max[2]) return true;
@@ -56,15 +58,8 @@ export function pointClipped(clip: PickClipState | null | undefined, x: number, 
  */
 export function boxFullyClipped(clip: PickClipState | null | undefined, box: BoundingBox): boolean {
   const sp = clip?.sectionPlane;
-  if (sp) {
-    const side = sp.flipped ? -1 : 1;
-    const [nx, ny, nz] = sp.normal;
-    // Corner that minimises (dot(p,n) - dist)*side: per axis pick min/max by sign.
-    const px = nx * side >= 0 ? box.min.x : box.max.x;
-    const py = ny * side >= 0 ? box.min.y : box.max.y;
-    const pz = nz * side >= 0 ? box.min.z : box.max.z;
-    if ((px * nx + py * ny + pz * nz - sp.distance) * side > 0) return true; // every corner cut
-  }
+  if (sp && boxBehindPlane(box, sp)) return true;
+  if (clip?.extraPlanes?.some((plane) => boxBehindPlane(box, plane))) return true;
   const b = clip?.clipBox;
   if (b?.enabled) {
     if (
@@ -232,27 +227,10 @@ export function clippedBoxEntryDistance(
   if (!iv) return null;
   let { tmin, tmax } = iv;
 
-  // Section plane: visible where f(t) = (dot(P(t),n) - dist) * side <= 0.
-  const sp = clip?.sectionPlane;
-  if (sp) {
-    const side = sp.flipped ? -1 : 1;
-    const [nx, ny, nz] = sp.normal;
-    const f0 = (rayOrigin.x * nx + rayOrigin.y * ny + rayOrigin.z * nz - sp.distance) * side;
-    const slope = (rayDir.x * nx + rayDir.y * ny + rayDir.z * nz) * side;
-    if (Math.abs(slope) < 1e-12) {
-      if (f0 > 0) return null; // ray runs parallel on the cut-away side
-    } else {
-      const tCross = -f0 / slope;
-      if (slope > 0) {
-        if (tmin > tCross) return null;       // whole interval cut away
-        if (tmax > tCross) tmax = tCross;      // visible only up to the plane
-      } else {
-        if (tmax < tCross) return null;
-        if (tmin < tCross) tmin = tCross;      // visible only beyond the plane
-      }
-    }
-    if (tmax < tmin) return null;
-  }
+  // Section plane(s): visible where f(t) = (dot(P(t),n) - dist) * side <= 0, for every plane.
+  const interval = clipRayByPlanes(clip, rayOrigin, rayDir, tmin, tmax);
+  if (!interval) return null;
+  ({ tmin, tmax } = interval);
   return tmin < 0 ? 0 : tmin;
 }
 

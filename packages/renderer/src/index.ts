@@ -63,6 +63,7 @@ export { hostsOtherEntities } from './mesh-entity-hosting.js';
 export { FederationRegistry, federationRegistry } from './federation-registry.js';
 export type { ModelRange, GlobalIdLookup } from './federation-registry.js';
 export * from './types.js';
+export { MAX_EXTRA_CLIP_PLANES } from './extra-clip-planes.js';
 export {
     resolveEnvironment,
     deriveSkyGradient,
@@ -151,6 +152,7 @@ import type {
     PickResult,
     PickClipState,
     ClipBox,
+    ExtraClipPlane,
     Mesh,
     BatchedMesh,
 } from './types.js';
@@ -163,6 +165,7 @@ import {
     MESH_UNIFORM_OFFSET,
     packRteCameraOrigin,
     packRteFragmentSpace,
+    packSectionPlaneLanes,
 } from './mesh-rte-uniforms.js';
 import { packMeshMaterial } from './mesh-material.js';
 import type { CutPolygon2D, DrawingLine2D, LineOverlayChannel } from './section-2d-overlay.js';
@@ -528,6 +531,8 @@ export class Renderer {
     // every render; read by pick()/pickRect(). null = nothing clipped that frame.
     private _activePickSection: { normal: [number, number, number]; distance: number; flipped: boolean } | null = null;
     private _activePickClipBox: ClipBox | null = null;
+    /** Snapshot of the extra planes the last frame clipped against (#7545), mirrored by the pickers. */
+    private _activePickExtraPlanes: ExtraClipPlane[] | null = null;
 
     constructor(canvas: HTMLCanvasElement) {
         this.canvas = canvas;
@@ -1900,6 +1905,7 @@ export class Renderer {
                 spendLogLatch: () => { this._loggedSectionBounds = true; },
             });
             const sectionPlaneData = sectionFrame.sectionPlaneData;
+            const extraClipPlanes = sectionFrame.extraPlanes;
             if (sectionFrame.bounds) {
                 // Store bounds for section plane visual and camera near/far.
                 // Two wrappers over the same min/max, exactly as before the
@@ -1922,6 +1928,9 @@ export class Renderer {
                     distance: sectionPlaneData.distance,
                     flipped: !!options.sectionPlane?.flipped,
                 }
+                : null;
+            this._activePickExtraPlanes = extraClipPlanes.length > 0
+                ? extraClipPlanes.map((p) => ({ normal: [...p.normal] as [number, number, number], distance: p.distance, flipped: p.flipped }))
                 : null;
             this._activePickClipBox = options.clipBox?.enabled
                 ? {
@@ -1961,14 +1970,7 @@ export class Renderer {
                     packMeshMaterial(meshBuf, mesh.color[3], mesh.finish ?? mesh.material);
 
                     // Section plane data (offset 40-43)
-                    if (sectionPlaneData) {
-                        meshBuf[40] = sectionPlaneData.normal[0];
-                        meshBuf[41] = sectionPlaneData.normal[1];
-                        meshBuf[42] = sectionPlaneData.normal[2];
-                        meshBuf[43] = sectionPlaneData.distance;
-                    } else {
-                        meshBuf[40] = 0; meshBuf[41] = 0; meshBuf[42] = 0; meshBuf[43] = 0;
-                    }
+                    packSectionPlaneLanes(sectionPlaneData, meshBuf);
 
                     // Clip box (offset 48-55: min.xyz + pad, max.xyz + pad) → enable bit
                     const clipBit = packClipBox(options.clipBox, meshBuf, 48);
@@ -1985,7 +1987,7 @@ export class Renderer {
 
                     // Individual meshes retain their origin and share the RTE
                     // fragment contract with colour batches.
-                    packRteFragmentSpace(relativeToEyeFrame, sectionPlaneData, options.clipBox, meshBuf);
+                    packRteFragmentSpace(relativeToEyeFrame, sectionPlaneData, options.clipBox, meshBuf, extraClipPlanes);
                     const meshOrigin = mesh.rteOrigin
                         ?? [mesh.transform.m[12], mesh.transform.m[13], mesh.transform.m[14]] as [number, number, number];
                     if (!relativeToEyeFrame.tryPackDrawableOrigin(meshOrigin, meshBuf, MESH_UNIFORM_OFFSET.drawableDelta)) {
@@ -2104,6 +2106,7 @@ export class Renderer {
                         box: options.clipBox?.enabled
                             ? { min: options.clipBox.min, max: options.clipBox.max }
                             : null,
+                        extraPlanes: extraClipPlanes,
                     }, { cameraWorld: shadowEye });
 
                     // Shadow uniform: light matrix + sampling params. The kernel
@@ -2476,14 +2479,7 @@ export class Renderer {
                 // Colour + material row (tpl[32..39]) are patched per draw; the
                 // instanced passes keep this opaque default.
                 packMeshMaterial(tpl);
-                if (sectionPlaneData) {
-                    tpl[40] = sectionPlaneData.normal[0];
-                    tpl[41] = sectionPlaneData.normal[1];
-                    tpl[42] = sectionPlaneData.normal[2];
-                    tpl[43] = sectionPlaneData.distance;
-                } else {
-                    tpl[40] = 0; tpl[41] = 0; tpl[42] = 0; tpl[43] = 0;
-                }
+                packSectionPlaneLanes(sectionPlaneData, tpl);
                 // Clip box (offset 48-55: min.xyz + pad, max.xyz + pad) → enable bit
                 const tplClipBit = packClipBox(options.clipBox, tpl, 48);
                 // flags layout (main shader):
@@ -2504,7 +2500,7 @@ export class Renderer {
                 // camera-relative frame. Their fragment clip inputs must use
                 // that same frame; mixing a local vertex with a 5,000 km f32
                 // world plane loses centimetre cuts before the comparison.
-                packRteFragmentSpace(relativeToEyeFrame, sectionPlaneData, options.clipBox, tpl);
+                packRteFragmentSpace(relativeToEyeFrame, sectionPlaneData, options.clipBox, tpl, extraClipPlanes);
 
                 // Helper function to render a batch — patches color into the shared template.
                 // `paint` = a depth-writing opaque draw: colour overrides shade it from the
@@ -2900,14 +2896,7 @@ export class Renderer {
                         tpl[32] = mesh.color[0]; tpl[33] = mesh.color[1];
                         tpl[34] = mesh.color[2]; tpl[35] = alphaForMesh(mesh.expressId, mesh.color[3]);
                         packMeshMaterial(tpl, mesh.color[3], mesh.finish ?? mesh.material);
-                        if (sectionPlaneData) {
-                            tpl[40] = sectionPlaneData.normal[0];
-                            tpl[41] = sectionPlaneData.normal[1];
-                            tpl[42] = sectionPlaneData.normal[2];
-                            tpl[43] = sectionPlaneData.distance;
-                        } else {
-                            tpl[40] = 0; tpl[41] = 0; tpl[42] = 0; tpl[43] = 0;
-                        }
+                        packSectionPlaneLanes(sectionPlaneData, tpl);
                         tplFlags[0] = 0;
                         tplFlags[1] =
                             (sectionPlaneData?.enabled ? 1 : 0) |
@@ -2915,7 +2904,7 @@ export class Renderer {
                             tplClipBit;
                         tplFlags[2] = 0;
                         tplFlags[3] = 0;
-                        packRteFragmentSpace(relativeToEyeFrame, sectionPlaneData, options.clipBox, tpl);
+                        packRteFragmentSpace(relativeToEyeFrame, sectionPlaneData, options.clipBox, tpl, extraClipPlanes);
                         const transparentOrigin = mesh.rteOrigin ?? [mesh.transform.m[12], mesh.transform.m[13], mesh.transform.m[14]] as [number, number, number];
                         if (!relativeToEyeFrame.tryPackDrawableOrigin(transparentOrigin, tpl, MESH_UNIFORM_OFFSET.drawableDelta)) continue;
                         tplFlags[0] |= MESH_FLAG_RTE_DRAWABLE;
@@ -2960,14 +2949,7 @@ export class Renderer {
                     tpl[32] = mesh.color[0]; tpl[33] = mesh.color[1];
                     tpl[34] = mesh.color[2]; tpl[35] = mesh.color[3];
                     packMeshMaterial(tpl, mesh.color[3], mesh.finish ?? mesh.material);
-                    if (sectionPlaneData) {
-                        tpl[40] = sectionPlaneData.normal[0];
-                        tpl[41] = sectionPlaneData.normal[1];
-                        tpl[42] = sectionPlaneData.normal[2];
-                        tpl[43] = sectionPlaneData.distance;
-                    } else {
-                        tpl[40] = 0; tpl[41] = 0; tpl[42] = 0; tpl[43] = 0;
-                    }
+                    packSectionPlaneLanes(sectionPlaneData, tpl);
                     tplFlags[0] = 1; // isSelected
                     tplFlags[1] =
                         (sectionPlaneData?.enabled ? 1 : 0) |
@@ -2975,7 +2957,7 @@ export class Renderer {
                         tplClipBit;
                     tplFlags[2] = 0;
                     tplFlags[3] = 0;
-                    packRteFragmentSpace(relativeToEyeFrame, sectionPlaneData, options.clipBox, tpl);
+                    packRteFragmentSpace(relativeToEyeFrame, sectionPlaneData, options.clipBox, tpl, extraClipPlanes);
                     const selectedOrigin = mesh.rteOrigin ?? [mesh.transform.m[12], mesh.transform.m[13], mesh.transform.m[14]] as [number, number, number];
                     if (!relativeToEyeFrame.tryPackDrawableOrigin(selectedOrigin, tpl, MESH_UNIFORM_OFFSET.drawableDelta)) continue;
                     tplFlags[0] |= MESH_FLAG_RTE_DRAWABLE;
@@ -3035,6 +3017,7 @@ export class Renderer {
                         ? { ...sectionPlaneData, flipped: options.sectionPlane?.flipped === true }
                         : null,
                     clipBox: options.clipBox,
+                    extraPlanes: extraClipPlanes,
                     viewport: { width: this.canvas.width / this.pixelRatio, height: this.canvas.height / this.pixelRatio },
                 });
             }
@@ -3074,7 +3057,7 @@ export class Renderer {
                 : (this.hoverMeshes.release(), []);
             const selectionOutline = buildSelectionOutlineFrame({
                 uniformBufferSize: this.pipeline.getUniformBufferSize(), viewProj, relativeToEyeFrame,
-                section: sectionPlaneData, sectionFlipped: options.sectionPlane?.flipped, clipBox: options.clipBox,
+                section: sectionPlaneData, sectionFlipped: options.sectionPlane?.flipped, clipBox: options.clipBox, extraPlanes: extraClipPlanes,
                 selectedMeshes: selectedMeshesForMask, hoverPieces, hoveredId: hoverId, selectedModelIndex: hoverModel,
                 instancedTemplates: this.scene.getInstancedTemplates(),
                 instancedHovered: hoverId != null ? this.scene.getInstancedTemplatesOf(hoverId, hoverModel) : [],
@@ -3212,7 +3195,7 @@ export class Renderer {
      * same fragments and clipped-away geometry can't be selected.
      */
     private activePickClip(): PickClipState {
-        return { sectionPlane: this._activePickSection, clipBox: this._activePickClipBox };
+        return { sectionPlane: this._activePickSection, extraPlanes: this._activePickExtraPlanes, clipBox: this._activePickClipBox };
     }
 
     /**
@@ -3239,7 +3222,7 @@ export class Renderer {
 
     /** Whether the last rendered frame clipped surfaces (section, terrain or box). */
     hasActiveClipping(): boolean {
-        return this._activePickSection !== null || this._activePickClipBox !== null;
+        return this._activePickSection !== null || this._activePickExtraPlanes !== null || this._activePickClipBox !== null;
     }
 
     /** Exact visible-surface raycast in CSS canvas coordinates. */

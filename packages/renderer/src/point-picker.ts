@@ -23,6 +23,8 @@ import type { RelativeToEyeSnapshot } from './relative-to-eye.js';
 import type { ClipBox } from './types.js';
 import { relativeToEyeWgsl } from './shaders/relative-to-eye.wgsl.js';
 import { packRteClipBox } from './rte-clip-space.js';
+import { EXTRA_CLIP_BYTES, extraClipWgsl, packExtraClip } from './extra-clip-planes.js';
+import type { ExtraClipPlane } from './types.js';
 
 export interface PointPickNode {
   expressId: number;
@@ -78,7 +80,8 @@ export function decodePickSample(value: number): DecodedPickSample {
 }
 
 // View projection + viewport/sizing/id/section + per-asset model matrix.
-const UNIFORM_BYTES = 256;
+const EXTRA_CLIP_FLOAT_OFFSET = 64;
+const UNIFORM_BYTES = EXTRA_CLIP_FLOAT_OFFSET * 4 + EXTRA_CLIP_BYTES;
 const IDENTITY = new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
 
 export class PointPicker {
@@ -106,6 +109,7 @@ export class PointPicker {
     const shader = this.device.createShaderModule({
       code: `
 ${relativeToEyeWgsl}
+${extraClipWgsl}
 struct U {
   viewProj: mat4x4<f32>,
   viewport: vec4<f32>,        // x, y = w, h; z, w = unused
@@ -121,6 +125,7 @@ struct U {
   drawableDeltaLow: vec4<f32>,
   clipBoxMin: vec4<f32>,
   clipBoxMax: vec4<f32>,
+  extraClip: ExtraClip,       // cutting planes beyond the first (#7545), eye-relative like section
 }
 @binding(0) @group(0) var<uniform> u: U;
 
@@ -213,6 +218,9 @@ fn fs_main(input: VOut) -> @location(0) u32 {
       discard;
     }
   }
+  if (extraClipClipped(u.extraClip, input.worldPos)) {
+    discard;
+  }
   // Crop uses the same eye-relative frame as the RTE position. Without this
   // point click and marquee selection can return points the colour pass cut.
   if ((u.entityIdOverride.w & 2u) != 0u) {
@@ -275,6 +283,7 @@ fn fs_main(input: VOut) -> @location(0) u32 {
     section?: { normal: [number, number, number]; distance: number; flipped: boolean } | null,
     relativeToEye?: RelativeToEyeSnapshot,
     clipBox?: ClipBox | null,
+    extraPlanes?: readonly ExtraClipPlane[] | null,
   ): void {
     if (this.destroyed || nodes.length === 0) return;
     pass.setPipeline(this.pipeline);
@@ -297,7 +306,7 @@ fn fs_main(input: VOut) -> @location(0) u32 {
       // A node outside the snapshot's eye envelope cannot be rasterised in
       // this frame; skip it rather than fail the whole pick (#6128).
       if (!this.writeUniforms(
-        uniform.buffer, node, viewProj, viewport, sizing, node.expressId >>> 0, section, relativeToEye, clipBox,
+        uniform.buffer, node, viewProj, viewport, sizing, node.expressId >>> 0, section, relativeToEye, clipBox, extraPlanes,
       )) continue;
       pass.setBindGroup(0, uniform.bindGroup);
       for (const chunk of node.chunks) {
@@ -318,6 +327,7 @@ fn fs_main(input: VOut) -> @location(0) u32 {
     section?: { normal: [number, number, number]; distance: number; flipped: boolean } | null,
     relativeToEye?: RelativeToEyeSnapshot,
     clipBox?: ClipBox | null,
+    extraPlanes?: readonly ExtraClipPlane[] | null,
   ): boolean {
     const u = this.uniformScratch;
     const u32 = this.uniformU32;
@@ -358,6 +368,7 @@ fn fs_main(input: VOut) -> @location(0) u32 {
       u.fill(0, 48, 56);
     }
     packRteClipBox(clipBox, relativeToEye?.getCameraWorld() ?? [0, 0, 0], u, 56);
+    packExtraClip(extraPlanes, camera ?? null, u, EXTRA_CLIP_FLOAT_OFFSET);
     this.device.queue.writeBuffer(buffer, 0, u.buffer, u.byteOffset, UNIFORM_BYTES);
     return true;
   }

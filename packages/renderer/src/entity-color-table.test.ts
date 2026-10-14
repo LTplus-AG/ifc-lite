@@ -13,6 +13,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { MESH_UNIFORM_FLOATS, MESH_UNIFORM_OFFSET } from './mesh-rte-uniforms.js';
+import { EXTRA_CLIP_FLOATS } from './extra-clip-planes.js';
 
 async function requireColorTable() {
   const module = await import('./entity-color-table.js').catch(() => null);
@@ -146,10 +147,12 @@ describe('lane -> federated id (#6076)', () => {
 });
 
 describe('entity colour table layout (#6076)', () => {
-  it('uses reference fmix32 hashes and reserves the final uniform lane for override parameters', async () => {
+  it('uses reference fmix32 hashes and reserves the last legacy uniform lane for override parameters', async () => {
     const { entityColorSlotHash } = await requireColorTable();
     assert.equal(entityColorSlotHash(0), 0);
     assert.equal(entityColorSlotHash(1), 0x514e28b7);
-    assert.equal(MESH_UNIFORM_OFFSET.overrideParams + 4, MESH_UNIFORM_FLOATS);
+    // overrideParams closes the legacy block; the extra-plane block (#7545) follows it.
+    assert.equal(MESH_UNIFORM_OFFSET.overrideParams + 4, MESH_UNIFORM_OFFSET.extraClip);
+    assert.equal(MESH_UNIFORM_OFFSET.extraClip + EXTRA_CLIP_FLOATS, MESH_UNIFORM_FLOATS);
   });
 });

@@ -6,6 +6,9 @@
  * Renderer types for IFC-Lite
  */
 
+import type { ClipBox } from './clip-types.js';
+export type { ClipBox, ExtraClipPlane } from './clip-types.js';
+
 export interface Vec3 {
   x: number;
   y: number;
@@ -179,23 +182,6 @@ export interface SectionPlane {
   distance?: number;
 }
 
-/**
- * Axis-aligned clip box (section / crop box): geometry is kept only where it
- * lies INSIDE all six box planes; fragments outside the box are discarded by the
- * shader (real geometry cut, unlike bounding-box element isolation). Coordinates
- * are in the same world space the shader sees as `input.worldPos` — i.e. the
- * viewer space the camera/section planes use. Independent of `sectionPlane`; both
- * can be active at once.
- */
-export interface ClipBox {
-  /** Box min corner [x, y, z] in world space. */
-  min: [number, number, number];
-  /** Box max corner [x, y, z] in world space. */
-  max: [number, number, number];
-  /** When false (or omitted), the box has no effect. */
-  enabled: boolean;
-}
-
 export type ContactShadingQuality = 'off' | 'low' | 'high';
 export type SeparationLinesQuality = 'off' | 'low' | 'high';
 
@@ -319,6 +305,8 @@ export interface RenderOptions {
   selectedModelIndex?: number;    // Model index for multi-model selection (must match mesh.modelIndex)
   // Section plane clipping
   sectionPlane?: SectionPlane;
+  /** More cutting planes beyond `sectionPlane` (#7545), each resolved like it; enabled ones clip, and a fragment must survive all (max 7). */
+  extraSectionPlanes?: SectionPlane[];
   // Section / crop box: clip geometry to an axis-aligned world-space box (all six
   // sides). Independent of `sectionPlane`. The GPU picker mirrors the active
   // section plane + clip box from the last render, so cropped/sectioned-away

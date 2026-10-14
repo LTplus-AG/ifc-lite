@@ -42,7 +42,7 @@ import type { IndividualMeshGpu } from './individual-mesh-upload.js';
 import type { HoveredMesh, SelectableMesh } from './selection-mask-pass.js';
 import type { InstancedMaskFrame, InstancedMaskTemplate } from './selection-mask-pipelines.js';
 import type { InstancedTemplateGPU } from './scene-instance-types.js';
-import type { ClipBox, Mesh } from './types.js';
+import type { ClipBox, ExtraClipPlane, Mesh } from './types.js';
 
 export interface SelectionOutlineSource {
   uniformBufferSize: number;
@@ -58,6 +58,8 @@ export interface SelectionOutlineSource {
   section: Parameters<typeof packRteFragmentSpace>[1];
   sectionFlipped: boolean | undefined;
   clipBox: ClipBox | null | undefined;
+  /** Cutting planes beyond `section` (#7545), world-space. */
+  extraPlanes?: readonly ExtraClipPlane[] | null;
   /** This frame's live instanced templates; those with a selected occurrence are outlined (#5745). */
   instancedTemplates?: readonly InstancedTemplateGPU[];
   /** Instanced templates holding an occurrence of `hoveredId` (#5745). */
@@ -92,7 +94,7 @@ function packMaskFrameUniforms(source: SelectionOutlineSource): Float32Array {
   scratch.set(IDENTITY_TRANSFORM.m, MESH_UNIFORM_OFFSET.model);
   source.relativeToEyeFrame.packUniforms(scratch, MESH_UNIFORM_OFFSET.rteViewProj);
   const clipBit = packClipBox(source.clipBox, scratch, MESH_UNIFORM_OFFSET.clipBoxMin);
-  packRteFragmentSpace(source.relativeToEyeFrame, source.section, source.clipBox, scratch);
+  packRteFragmentSpace(source.relativeToEyeFrame, source.section, source.clipBox, scratch, source.extraPlanes);
   const flags = new Uint32Array(scratch.buffer, MESH_FLAGS_BYTE_OFFSET, 2);
   flags[0] = MESH_FLAG_RTE_DRAWABLE;
   // flags.y: bit 0 = section enabled, bit 1 = flipped, bit 2 = clip box (as index.ts packs it).

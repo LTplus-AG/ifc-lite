@@ -11,11 +11,14 @@
  * interpretations of the appended RTE lanes.
  */
 
-import type { ClipBox } from './types.js';
+import type { ClipBox, ExtraClipPlane } from './types.js';
 import { packRteOrigin, type RelativeToEyeFrame } from './relative-to-eye.js';
 import { packRteClipBox, rtePlaneDistance } from './rte-clip-space.js';
+import { EXTRA_CLIP_FLOATS, packExtraClip } from './extra-clip-planes.js';
 
-export const MESH_UNIFORM_FLOATS = 96;
+/** The block every consumer's frame fields sit in; the extra-plane block (#7545) is appended after the legacy 96 floats. */
+const MESH_LEGACY_FLOATS = 96;
+export const MESH_UNIFORM_FLOATS = MESH_LEGACY_FLOATS + EXTRA_CLIP_FLOATS;
 export const MESH_UNIFORM_BYTES = MESH_UNIFORM_FLOATS * Float32Array.BYTES_PER_ELEMENT;
 
 export const MESH_UNIFORM_OFFSET = {
@@ -32,6 +35,8 @@ export const MESH_UNIFORM_OFFSET = {
   rteCameraOrigin: 84,
   /** vec4<u32>: per-draw colour-table anchor + mode bits (entity-color-table.ts, #6076). */
   overrideParams: 92,
+  /** ExtraClip block (extra-clip-planes.ts, #7545): plane count + flipped mask, then up to seven planes. */
+  extraClip: MESH_LEGACY_FLOATS,
 } as const;
 
 /** flags.x: vertex and fragment values are camera-relative RTE coordinates. */
@@ -44,6 +49,15 @@ export interface MeshSectionPlane {
   normal: readonly [number, number, number];
   distance: number;
   enabled: boolean;
+}
+
+/** The primary plane's world-space `sectionPlane` lane (normal + distance), zeroed when there is none. */
+export function packSectionPlaneLanes(section: Pick<MeshSectionPlane, 'normal' | 'distance'> | null | undefined, out: Float32Array): void {
+  const o = MESH_UNIFORM_OFFSET.sectionPlane;
+  out[o] = section?.normal[0] ?? 0;
+  out[o + 1] = section?.normal[1] ?? 0;
+  out[o + 2] = section?.normal[2] ?? 0;
+  out[o + 3] = section?.distance ?? 0;
 }
 
 /**
@@ -60,6 +74,7 @@ export function packRteFragmentSpace(
   section: MeshSectionPlane | null | undefined,
   clipBox: ClipBox | null | undefined,
   out: Float32Array,
+  extraPlanes?: readonly ExtraClipPlane[] | null,
 ): void {
   if (out.length < MESH_UNIFORM_FLOATS) {
     throw new RangeError(`Mesh RTE uniform needs ${MESH_UNIFORM_FLOATS} floats.`);
@@ -78,6 +93,7 @@ export function packRteFragmentSpace(
 
   const clipOffset = MESH_UNIFORM_OFFSET.clipBoxMin;
   packRteClipBox(clipBox, eye, out, clipOffset);
+  packExtraClip(extraPlanes, eye, out, MESH_UNIFORM_OFFSET.extraClip);
 }
 
 /** Pack the shared camera high/low lanes used by instanced RTE shaders. */

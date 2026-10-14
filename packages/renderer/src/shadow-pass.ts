@@ -27,6 +27,7 @@ import { packRteOrigin, tryPackRteDrawableDelta } from './relative-to-eye.js';
 import { drawInstanceRuns, uploadInstancedRteDeltas, type InstanceRun } from './instanced-rte.js';
 import { INSTANCED_RTE_DELTA_SLOT, INSTANCED_VERTEX_BUFFERS } from './instanced-vertex-layout.js';
 import { packRteClipBox, rtePlaneDistance } from './rte-clip-space.js';
+import { EXTRA_CLIP_BYTES, packExtraClip } from './extra-clip-planes.js';
 import type {
   ShadowClip,
   ShadowDrawKind,
@@ -40,8 +41,8 @@ export type { ShadowClip, ShadowDrawKind, ShadowOccluderDraw, ShadowRteFrame } f
 /** Bytes of the per-draw uniform: linear model + quant params + split RTE origin. */
 const PER_DRAW_BYTES = 112;
 
-/** Bytes of the clip uniform: sectionPlane + boxMin + boxMax + flags (4 vec4). */
-const CLIP_BYTES = 64;
+/** Bytes of the clip uniform: sectionPlane + boxMin + boxMax + flags (4 vec4), then the extra-plane block (#7545). */
+const CLIP_BYTES = 64 + EXTRA_CLIP_BYTES;
 
 /** Depth format for the shadow map — sampleable and comparison-filterable. */
 const SHADOW_DEPTH_FORMAT: GPUTextureFormat = 'depth32float';
@@ -302,15 +303,13 @@ export class ShadowPass {
   }
 
   /**
-   * Pack this frame's clip into the uniform, laid out (and flag-packed) exactly
-   * like the colour pass's. Returns whether anything is actually being cut —
-   * the caller uses that to pick the clipping pipelines. Writes only when
-   * clipping: with nothing cut the uniform is never read.
+   * Pack this frame's clip into the uniform, laid out like the colour pass's.
+   * Returns whether anything is cut (the caller then picks the clipping pipelines).
    */
   private writeClipUniform(clip: ShadowClip | null | undefined, rte?: ShadowRteFrame | null): boolean {
     const section = clip?.section;
     const box = clip?.box;
-    if (!section && !box) return false;
+    if (!section && !box && !clip?.extraPlanes?.length) return false;
 
     const s = this.clipScratch;
     const camera = rte?.cameraWorld ?? [0, 0, 0] as const;
@@ -322,6 +321,7 @@ export class ShadowPass {
       s[3] = rtePlaneDistance(section.distance, section.normal, camera);
     }
     packRteClipBox(box, camera, s, 4);
+    packExtraClip(clip?.extraPlanes, camera, s, 16); // float 16: after the four legacy vec4s
     // flags.x — bit 0 section enabled, bit 1 flipped, bit 2 clip box enabled.
     this.clipFlags[12] = (section ? 1 : 0) | (section?.flipped ? 2 : 0) | (box ? 4 : 0);
     this.device.queue.writeBuffer(this.clipBuffer, 0, s);

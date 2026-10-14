@@ -29,7 +29,12 @@ describe('mesh uniform struct declares every packed field', () => {
     }
   });
 
-  it('declares overrideParams as the last, u32 member (#6076)', () => {
-    assert.match(struct, /overrideParams: vec4<u32>,[^\n]*\n?\s*$/);
+  it('declares overrideParams as a u32 member directly before extraClip (#6076, #7545)', () => {
+    assert.match(struct, /overrideParams: vec4<u32>,[^\n]*\n\s*extraClip: ExtraClip,[^\n]*\n?\s*$/);
+  });
+
+  it('keeps the legacy block byte-for-byte: extraClip starts where the 96-float block ended (#7545)', () => {
+    assert.equal(MESH_UNIFORM_OFFSET.extraClip, 96);
+    assert.equal(MESH_UNIFORM_OFFSET.overrideParams, 92);
   });
 });

@@ -23,9 +23,11 @@
  * splats render as circles (not squares) at any size > ~3 px.
  */
 import { relativeToEyeWgsl } from '../shaders/relative-to-eye.wgsl.js';
+import { extraClipWgsl } from '../extra-clip-planes.js';
 
 export const pointShaderSource = `
     ${relativeToEyeWgsl}
+    ${extraClipWgsl}
     struct PointUniforms {
       viewProj: mat4x4<f32>,
       model: mat4x4<f32>,
@@ -54,6 +56,8 @@ export const pointShaderSource = `
       // Eye-relative crop bounds; flags.w enables this branch.
       cropBoxMin: vec4<f32>,
       cropBoxMax: vec4<f32>,
+      // Cutting planes beyond sectionPlane (#7545), eye-relative like it.
+      extraClip: ExtraClip,
     }
     @binding(0) @group(0) var<uniform> uniforms: PointUniforms;
 
@@ -285,6 +289,10 @@ export const pointShaderSource = `
         if (d > 0.0) {
           discard;
         }
+      }
+
+      if (extraClipClipped(uniforms.extraClip, input.worldPos)) {
+        discard;
       }
 
       if (uniforms.flags.w == 1u) {

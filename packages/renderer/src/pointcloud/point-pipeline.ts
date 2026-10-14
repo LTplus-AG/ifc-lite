@@ -22,6 +22,7 @@
  *   20..23  uint32     entityId (federation-aware express id)
  */
 
+import { EXTRA_CLIP_BYTES } from '../extra-clip-planes.js';
 import { pointShaderSource } from './point-shader.wgsl.js';
 
 /**
@@ -38,7 +39,9 @@ import { pointShaderSource } from './point-shader.wgsl.js';
 // 32 bits in flags.w to the full 256-bit LAS range (#1783) — keeping
 // them separate avoids overloading the flags / colourOverride slots
 // and stays std140-friendly.
-export const POINT_UNIFORM_SIZE = 336;
+/** Floats before the appended extra-plane block (#7545): the legacy uniform ends with the crop bounds. */
+export const POINT_EXTRA_CLIP_FLOAT_OFFSET = 84;
+export const POINT_UNIFORM_SIZE = POINT_EXTRA_CLIP_FLOAT_OFFSET * 4 + EXTRA_CLIP_BYTES;
 export const POINT_VERTEX_BYTES = 24;
 /** Number of vertices emitted per splat (two triangles forming a quad). */
 export const POINT_QUAD_VERTS = 6;

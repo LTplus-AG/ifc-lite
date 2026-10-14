@@ -11,9 +11,8 @@ import { assertModelTranslation } from '../model-translation.js';
  *   - Streaming: `beginAsset(meta) → handle`, `appendChunk(handle, chunk)`,
  *     `endAsset(handle)` for LAS/LAZ files arriving in chunks.
  *
- * The renderer owns the pipeline, per-asset GPU resources, and the per-frame
- * draw call. Designed to slot into the existing `Renderer.render()` so points
- * share the depth buffer and section-plane state with triangle meshes.
+ * The renderer owns the pipeline, per-asset GPU resources and the per-frame draw
+ * call, slotting into `Renderer.render()` so points share depth and section state.
  */
 
 import type { PointCloudAsset } from '@ifc-lite/geometry';
@@ -42,7 +41,7 @@ import {
   type PointSizeMode,
 } from './point-cloud-uniforms.js';
 import type { RelativeToEyeFrame } from '../relative-to-eye.js';
-import type { ClipBox } from '../types.js';
+import type { ClipBox, ExtraClipPlane } from '../types.js';
 
 export interface ResolvedSectionPlane {
   normal: [number, number, number];
@@ -73,6 +72,7 @@ export interface PointCloudDrawState {
   sectionPlane?: ResolvedSectionPlane | null;
   /** Main mesh crop box, packed in the same RTE camera frame. */
   clipBox?: ClipBox | null;
+  extraPlanes?: readonly ExtraClipPlane[] | null; // beyond sectionPlane (#7545), world-space
   /** Viewport pixels for splat shader clip-space offsets. */
   viewport?: { width: number; height: number };
 }
@@ -406,7 +406,7 @@ export class PointCloudRenderer {
           sectionNormal: normal,
           sectionDist: distance,
           sectionEnabled: enabled,
-          clipBox: state.clipBox,
+          clipBox: state.clipBox, extraPlanes: state.extraPlanes,
           heightMin,
           heightMax,
           viewportW,

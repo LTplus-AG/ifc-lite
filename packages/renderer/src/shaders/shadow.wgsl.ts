@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { relativeToEyeWgsl } from './relative-to-eye.wgsl.js';
+import { extraClipWgsl } from '../extra-clip-planes.js';
 
 /**
  * Sun shadow-map depth pre-pass shaders (issue #2670, Phase 2).
@@ -35,6 +36,7 @@ import { relativeToEyeWgsl } from './relative-to-eye.wgsl.js';
  */
 export const shadowShaderSource = `
         ${relativeToEyeWgsl}
+${extraClipWgsl}
         struct Light {
           lightViewProj: mat4x4<f32>,
           cameraHigh: vec4<f32>,
@@ -60,6 +62,7 @@ export const shadowShaderSource = `
           // x packs: bit 0 = section enabled, bit 1 = section flipped,
           //          bit 2 = clip box enabled. Mirrors main.wgsl's flags.y.
           flags: vec4<u32>,
+          extra: ExtraClip,  // cutting planes beyond the first (#7545), eye-relative
         }
         @binding(2) @group(0) var<uniform> clip: Clip;
 
@@ -150,6 +153,9 @@ export const shadowShaderSource = `
             if (distToPlane > 0.0) {
               discard;
             }
+          }
+          if (extraClipClipped(clip.extra, worldPos)) {
+            discard;
           }
           if ((clip.flags.x & 4u) != 0u) {
             if (any(worldPos < clip.clipBoxMin.xyz) || any(worldPos > clip.clipBoxMax.xyz)) {

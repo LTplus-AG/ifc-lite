@@ -10,11 +10,12 @@
  * any shader edit needs to come back here too.
  */
 
-import { POINT_UNIFORM_SIZE } from './point-pipeline.js';
+import { POINT_EXTRA_CLIP_FLOAT_OFFSET, POINT_UNIFORM_SIZE } from './point-pipeline.js';
+import { packExtraClip } from '../extra-clip-planes.js';
 import type { PointCloudNode } from './point-cloud-node.js';
 import { isUsableModelMatrix } from './point-cloud-node.js';
 import type { RelativeToEyeFrame } from '../relative-to-eye.js';
-import type { ClipBox } from '../types.js';
+import type { ClipBox, ExtraClipPlane } from '../types.js';
 import { packRteClipBox, rtePlaneDistance } from '../rte-clip-space.js';
 
 export type PointColorMode =
@@ -93,6 +94,8 @@ export interface PointUniformInputs {
   sectionEnabled: boolean;
   /** Crop box shared with the mesh pass; narrowed only after f64 eye subtraction. */
   clipBox?: ClipBox | null;
+  /** Cutting planes beyond the section plane (#7545), world-space; packed eye-relative. */
+  extraPlanes?: readonly ExtraClipPlane[] | null;
   heightMin: number;
   heightMax: number;
   viewportW: number;
@@ -191,6 +194,7 @@ export function writePointCloudUniforms(
   // Crop bounds follow classMask at floats 76..83. Point worldPos is already
   // eye-relative, so subtract before f32 narrowing just as the mesh ABI does.
   packRteClipBox(inputs.clipBox, camera, u, 76);
+  packExtraClip(inputs.extraPlanes, camera, u, POINT_EXTRA_CLIP_FLOAT_OFFSET);
 
   // Pass the typed array directly — TypeScript widens `.buffer` to
   // `ArrayBufferLike` here (vs. `ArrayBuffer` on a class field), which

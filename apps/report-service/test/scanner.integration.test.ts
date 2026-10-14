@@ -3,7 +3,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { mkdtemp, readFile, rm, readdir, writeFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { mkdtemp, readFile, rm, readdir, mkdir, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -517,6 +519,67 @@ describe.skipIf(!enabled)(
             }, 180000,
           );
         }
+        it.skipIf(!existsSync(model))(
+          "#7521 unverified sandbox removal retains its marker until real worker recovery (pnpm fixtures)",
+          async () => {
+            expect(workerModule).toBeDefined();
+            const id = await queue(await readFile(model));
+            const scratch = join(temporary, "scratch-cleanup-failure");
+            const tools = join(temporary, "cleanup-failure-tools");
+            const originalPath = process.env.PATH;
+            const executable = (await promisify(execFile)("which", ["docker"], { timeout: 10000 })).stdout.trim();
+            expect(executable.startsWith("/")).toBe(true);
+            const quotedExecutable = "'" + executable.replaceAll("'", "'\\''") + "'";
+            await mkdir(tools, { mode: 0o700 });
+            // Only removal fails. The real pinned engine still scans the real
+            // authoring-tool model; no scan verdict or storage response is mocked.
+            await writeFile(join(tools, "docker"),
+              "#!/bin/sh\nif [ \"$1\" = rm ]; then echo injected_cleanup_failure >&2; exit 1; fi\nexec " + quotedExecutable + " \"$@\"\n",
+              { mode: 0o700 });
+            try {
+              process.env.PATH = tools + ":" + (originalPath ?? "/usr/bin:/bin");
+              try {
+                expect(await workerModule!.scanPublicOnce(db, api(), signatures!, scratch, AbortSignal.timeout(120000)))
+                  .toBe("held");
+              } finally {
+                if (originalPath === undefined) delete process.env.PATH;
+                else process.env.PATH = originalPath;
+              }
+              const jobs = await readdir(scratch);
+              expect(jobs).toHaveLength(1);
+              expect(jobs[0]).toMatch(/^job-[a-zA-Z0-9]+$/);
+              expect(await readFile(join(scratch, jobs[0], "container"), "utf8"))
+                .toMatch(/^ifclite-scan-[a-f0-9-]{36}$/);
+              const held = (await db.query(
+                "SELECT state,scan,approval,attempts FROM report_public_quarantine WHERE report_id=$1", [id],
+              )).rows[0];
+              expect(held).toEqual({ state: "scanning", scan: null, approval: null, attempts: 1 });
+              // The ordinary worker verifies/removes the recorded owned sandbox
+              // before considering its still-live lease; no second scan is run.
+              expect(await workerModule!.scanPublicOnce(db, api(), signatures!, scratch, AbortSignal.timeout(15000)))
+                .toBe("idle");
+              expect(await readdir(scratch)).toEqual([]);
+              expect((await db.query(
+                "SELECT state,scan,approval,attempts FROM report_public_quarantine WHERE report_id=$1", [id],
+              )).rows[0]).toEqual(held);
+            } finally {
+              if (originalPath === undefined) delete process.env.PATH;
+              else process.env.PATH = originalPath;
+              // Failed assertions still retire only this fixture's recorded
+              // sandboxes through the production verifier, never a global prune.
+              if (existsSync(scratch)) {
+                for (const entry of await readdir(scratch)) {
+                  if (!/^job-[a-zA-Z0-9]+$/.test(entry)) continue;
+                  const directory = join(scratch, entry);
+                  const name = await readFile(join(directory, "container"), "utf8");
+                  const { removeScannerContainer } = await import("../src/scanner-process.js");
+                  await removeScannerContainer(name);
+                  await rm(directory, { recursive: true, force: true });
+                }
+              }
+            }
+          }, 150000,
+        );
         it("#7495 canonical EICAR cannot enter the public STEP pipeline", async () => {
           expect(workerModule).toBeDefined();
           // Harmless industry-standard AV test string; never execute it.

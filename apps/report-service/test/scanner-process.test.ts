@@ -65,3 +65,14 @@ it("#7495 abort terminates a live subprocess and refuses arbitrary container cle
     "scanner_container_invalid",
   );
 });
+it("#7521 missing Docker during cleanup remains an unverified-removal failure", async () => {
+  expect(feature, "The real cleanup boundary must exist").toBeDefined();
+  // beforeEach supplies a genuinely empty executable directory.
+  await expect(feature!.removeScannerContainer("ifclite-scan-00000000-0000-0000-0000-000000000001"))
+    .rejects.toThrow("scanner_cleanup_failed");
+});
+it("#7521 cleanup output overflow retains the unverified-removal category", async () => {
+  const api = await executable("/usr/bin/head -c 70000 /dev/zero");
+  await expect(api.removeScannerContainer("ifclite-scan-00000000-0000-0000-0000-000000000002"))
+    .rejects.toThrow("scanner_cleanup_failed");
+});

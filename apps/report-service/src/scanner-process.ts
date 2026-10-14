@@ -52,10 +52,16 @@ export function scannerProcess(
 export async function removeScannerContainer(name: string): Promise<void> {
   if (!/^ifclite-(?:scan|signatures)-[a-f0-9-]{36}$/.test(name))
     throw new Error("scanner_container_invalid");
-  const result = await scannerProcess(
-    ["rm", "--force", name],
-    AbortSignal.timeout(10000),
-  );
-  if (result.code !== 0 && !result.output.includes("No such container"))
+  try {
+    const result = await scannerProcess(
+      ["rm", "--force", name],
+      AbortSignal.timeout(10000),
+    );
+    if (result.code === 0 || result.output.includes("No such container")) return;
     throw new Error("scanner_cleanup_failed");
+  } catch (error) {
+    // Unavailable/interrupted Docker is also unverified removal. Callers retain
+    // the owned marker for recovery; raw provider output stays out of logs.
+    throw new Error("scanner_cleanup_failed", { cause: error });
+  }
 }

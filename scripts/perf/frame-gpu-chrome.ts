@@ -3,12 +3,12 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /** Canonical exclusively owned Windows Chrome lifecycle for native browser rigs. */
-import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync } from 'node:fs';
-import { connect } from 'node:net';
-import { join } from 'node:path';
-import { randomBytes } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
+import { existsSync, readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { setTimeout as sleep } from 'node:timers/promises';
+import { createChromeOwner, decodeChromeOwner, launchOwnedProfileJob, type ChromeOwner, type OwnedProfileJob } from './frame-gpu-chrome-owner.js';
+import { OwnedJobProtocolError } from './frame-gpu-job-controller.js';
 
 const CHROME_CANDIDATES = [
   '/mnt/c/Program Files/Google/Chrome/Application/chrome.exe',
@@ -26,13 +26,22 @@ export interface ChromeLaunchLimits {
   requestMs?: number;
   pollMs?: number;
   cleanupMs?: number;
+  jobRequestMs?: number;
+  lifetimeSeconds?: number;
+  runBudgetMs?: number;
+  ledger?: string;
   signal?: AbortSignal;
 }
-interface Limits { commandMs: number; startupMs: number; requestMs: number; pollMs: number; cleanupMs: number; signal?: AbortSignal }
+interface Limits { commandMs: number; startupMs: number; requestMs: number; pollMs: number; cleanupMs: number; jobRequestMs: number; lifetimeSeconds: number; runBudgetMs: number; ledger?: string; signal?: AbortSignal }
 function limits(options: ChromeLaunchLimits): Limits {
-  const result = { commandMs: 5_000, startupMs: 30_000, requestMs: 1_000, pollMs: 500, cleanupMs: 15_000, ...options };
-  for (const key of ['commandMs', 'startupMs', 'requestMs', 'pollMs', 'cleanupMs'] as const) {
+  const result = { commandMs: 5_000, startupMs: 30_000, requestMs: 1_000, pollMs: 500, cleanupMs: 15_000,
+    jobRequestMs: 15_000, lifetimeSeconds: 900, runBudgetMs: 600_000, ...options };
+  for (const key of ['commandMs', 'startupMs', 'requestMs', 'pollMs', 'cleanupMs', 'jobRequestMs', 'lifetimeSeconds', 'runBudgetMs'] as const) {
     if (!Number.isSafeInteger(result[key]) || result[key] <= 0) throw new Error(`Invalid Chrome lifecycle deadline ${key}`);
+  }
+  if (result.jobRequestMs > 60000 || result.cleanupMs > 60000 || result.lifetimeSeconds > 1800
+    || result.lifetimeSeconds * 1000 <= result.startupMs + 3 * result.jobRequestMs + result.runBudgetMs + 2 * result.cleanupMs) {
+    throw new Error('Job lifetime does not cover the declared run and shutdown budget');
   }
   return result;
 }
@@ -42,20 +51,20 @@ function run(command: string, args: string[], timeout: number): string {
   return result.stdout.replace(/\r/g, '').trim();
 }
 
-/** Connection deadlines are owned here, rather than abandoned by an outer race. */
+/** Allocate in the Windows socket domain where the owned browser will bind. */
 export async function randomUnusedPort(): Promise<number> {
-  for (let attempt = 0; attempt < 50; attempt++) {
-    const port = 20000 + Math.floor(Math.random() * 25000);
-    const answered = await new Promise<boolean>((resolve) => {
-      const socket = connect({ port, host: '127.0.0.1' });
-      const finish = (occupied: boolean) => { socket.destroy(); resolve(occupied); };
-      socket.setTimeout(500, () => finish(true)); // Unknown is not evidence of an unused port.
-      socket.once('connect', () => finish(true));
-      socket.once('error', error => finish(Reflect.get(error, 'code') !== 'ECONNREFUSED'));
-    });
-    if (!answered) return port;
-  }
-  throw new Error('no unused port found');
+  const source = readFileSync(new URL('./frame-gpu-native-port.ps1', import.meta.url), 'utf8');
+  const script = `$ErrorActionPreference='Stop'; ${source}\nGet-IfcUnusedLoopbackPort | ConvertTo-Json -Compress`;
+  const value: unknown = JSON.parse(run('powershell.exe', ['-NoProfile', '-NonInteractive', '-EncodedCommand',
+    Buffer.from(script, 'utf16le').toString('base64')], 5000));
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Missing native loopback allocation receipt');
+  const port: unknown = Reflect.get(value, 'port');
+  if (typeof port !== 'number' || !Number.isSafeInteger(port) || port < 1 || port > 65535
+    || Reflect.get(value, 'address') !== '127.0.0.1' || Reflect.get(value, 'exclusive') !== true
+    || Reflect.get(value, 'stopped') !== true) throw new Error('Invalid native loopback allocation receipt');
+  // Releasing the reservation permits Chrome to bind. A foreign intervening
+  // listener still fails the exact held-handle Job/endpoint ownership gate.
+  return port;
 }
 
 export interface ChromeStartupReceipt {
@@ -63,6 +72,8 @@ export interface ChromeStartupReceipt {
   profileWsl: string;
   error: string;
   cleanupError: string | null;
+  owner?: ChromeOwner;
+  jobFailure?: { packets: readonly Record<string, unknown>[]; retirement: { code: number | null; signal: NodeJS.Signals | null } | null; supervisorNoStart: OwnedJobProtocolError['supervisorNoStart'] };
 }
 export class ChromeStartupError extends Error {
   constructor(message: string, readonly receipt: ChromeStartupReceipt, readonly startupFailures: readonly ChromeStartupReceipt[] = [receipt]) { super(message); this.name = 'ChromeStartupError'; }
@@ -72,6 +83,8 @@ export interface WindowsChrome {
   profileWin: string;
   /** Retained if a diagnostic caller explicitly requests startup retries. */
   startupFailures: ChromeStartupReceipt[];
+  owner: ChromeOwner;
+  job: OwnedProfileJob;
   dispose(): Promise<string | null>;
 }
 
@@ -83,30 +96,32 @@ function profileProcessesScript(profileWin: string): string {
   return `${readFileSync(new URL('./frame-gpu-owned-profile.ps1', import.meta.url), 'utf8')}
 $profile='${literal}'; function Owned([switch]$BrowserRoot,[switch]$RequireCompleteObservation) { @(Get-OwnedChromeProcesses -Profile $profile -BrowserRoot:$BrowserRoot -RequireCompleteObservation:$RequireCompleteObservation) };`;
 }
-interface RootWitness { pid: number; created: string }
-function verifyEndpointOwner(profileWin: string, port: number, deadline: number): RootWitness {
-  const script = `$ErrorActionPreference='Stop'; ${profileProcessesScript(profileWin)}
+async function verifyEndpointOwner(job: OwnedProfileJob, port: number, deadline: number): Promise<void> {
+  const contained = await job.controller.snapshot();
+  const identities = JSON.stringify(contained).replace(/'/g, "''");
+  const profileWin = job.owner.profileWin;
+  const identityModule = run('wslpath', ['-w', fileURLToPath(new URL('./frame-gpu-process-identity.cs', import.meta.url))], deadline).replace(/'/g, "''");
+  const script = `$ErrorActionPreference='Stop'; Add-Type -Path '${identityModule}'; ${profileProcessesScript(profileWin)}
     $owners=@(Owned -BrowserRoot -RequireCompleteObservation);
     if($owners.Count -ne 1 -or -not ([IfcChromeArgs]::Split($owners[0].CommandLine) -contains '--remote-debugging-port=${port}')) { throw 'Owned browser endpoint process missing' }
-    $listeners=@(Get-NetTCPConnection -LocalPort ${port} -State Listen -ErrorAction Stop);
-    if($listeners.Count -eq 0 -or @($listeners | Where-Object {$_.OwningProcess -ne $owners[0].ProcessId}).Count -ne 0) { throw 'CDP endpoint is not owned by allocated profile' }
-    @{pid=$owners[0].ProcessId;created=$owners[0].CreationDate.Ticks.ToString()} | ConvertTo-Json -Compress`;
-  const witness: unknown = JSON.parse(run('powershell.exe', ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')], deadline));
-  if (!witness || typeof witness !== 'object') throw Error('Missing observed browser root identity');
-  const pid: unknown = Reflect.get(witness, 'pid'), created: unknown = Reflect.get(witness, 'created');
-  if (typeof pid !== 'number' || !Number.isSafeInteger(pid) || pid <= 0 || typeof created !== 'string' || !/^[1-9][0-9]*$/.test(created)) throw Error('Invalid observed browser root identity');
-  return { pid, created };
-}
-
-async function disposeProfile(profileWin: string, profileWsl: string, deadline: number, witness: RootWitness | null): Promise<string | null> {
-  try {
-    const script = `$ErrorActionPreference='Stop'; ${profileProcessesScript(profileWin)}
-      Invoke-OwnedChromeCleanup -Profile $profile -DeadlineMs ${deadline} -ObservedRootPid ${witness?.pid ?? 0} -ObservedRootCreated '${witness?.created ?? ''}'`;
-    run('powershell.exe', ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')], deadline);
-    // A separate owned deletion process gives filesystem cleanup a real deadline.
-    removeProfile(profileWsl, deadline);
-    return null;
-  } catch (error) { return `Owned profile cleanup failed (${profileWsl}): ${String(error)}`; }
+    $contained=ConvertFrom-Json '${identities}';
+    $member=@($contained | Where-Object {$_.pid -eq $owners[0].ProcessId});
+    if($member.Count -ne 1){throw 'Browser endpoint outside the owned kernel Job'}
+    $root=[Diagnostics.Process]::GetProcessById([int]$owners[0].ProcessId);
+    try {
+      $null=$root.Handle;
+      if([IfcProcessIdentity]::Creation($root.Handle) -ne $member[0].started -or $root.HasExited){throw 'Browser native creation identity differs from the owned Job'}
+      # Keep this native process handle alive across fresh metadata and listener
+      # checks; an exited/replaced PID is never adopted from a prior CIM row.
+      $again=@(Owned -BrowserRoot -RequireCompleteObservation);
+      if($again.Count -ne 1 -or $again[0].ProcessId -ne $root.Id -or $again[0].CommandLine -cne $owners[0].CommandLine -or
+        -not ([IfcChromeArgs]::Split($again[0].CommandLine) -contains '--remote-debugging-port=${port}')){throw 'Owned browser metadata changed during endpoint admission'}
+      $listeners=@(Get-NetTCPConnection -LocalPort ${port} -State Listen -ErrorAction Stop);
+      if($listeners.Count -eq 0 -or @($listeners | Where-Object {$_.OwningProcess -ne $root.Id}).Count -ne 0){throw 'CDP endpoint is not owned by allocated profile'}
+      if($root.HasExited){throw 'Owned browser exited during endpoint admission'}
+    } finally {$root.Dispose()}
+`;
+  run('powershell.exe', ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')], deadline);
 }
 
 /** A failed timing sample is not silently replaced. Explicit diagnostic retries retain receipts. */
@@ -127,48 +142,66 @@ export async function launchWindowsChrome(exe: string, attempts = 1, options: Ch
   throw new Error('Chrome startup ended without a receipt');
 }
 
+/** Only an actual owned OS error before birth can prove no supervisor existed. */
+function supervisorNeverStarted(error: unknown): boolean {
+  if (!(error instanceof OwnedJobProtocolError) || error.receipts.length !== 0
+    || error.retirement?.signal !== null) return false;
+  const proof = error.supervisorNoStart;
+  return proof !== null && proof.executable === 'powershell.exe' && proof.syscall === 'spawn powershell.exe'
+    && ((proof.code === 'ENOENT' && proof.errno === -2) || (proof.code === 'EACCES' && proof.errno === -13))
+    && error.retirement.code === proof.errno;
+}
+
+/** Constructor cleanup proof belongs to this exact supervisor protocol, not absence. */
+function retiredStartupFailure(error: unknown, owner: ChromeOwner): boolean {
+  if (!(error instanceof OwnedJobProtocolError) || error.retirement?.code !== 1 || error.retirement.signal !== null
+    || error.receipts.length !== 1) return false;
+  const terminal = error.receipts[0];
+  if (terminal.event !== 'terminal' || terminal.ok !== false || terminal.disposed !== false) return false;
+  const failure = terminal.failure;
+  if (!failure || typeof failure !== 'object' || Array.isArray(failure)) return false;
+  const value = (key: string): unknown => Reflect.get(failure, key);
+  if (value('resumed') !== false || value('startupCleanupProved') !== true
+    || value('jobName') !== `Local\\ifclite-owned-${owner.token}`
+    || typeof value('error') !== 'string' || !value('error')
+    || value('cleanupError') !== undefined || value('closeError') !== undefined) return false;
+  const pid = value('rootPid'), stamp = value('rootCreated');
+  return (pid === 0 && stamp === null)
+    || (typeof pid === 'number' && Number.isSafeInteger(pid) && pid > 0
+      && typeof stamp === 'string' && /^[1-9][0-9]*$/.test(stamp));
+}
+
 async function launchOnce(exe: string, policy: Limits): Promise<WindowsChrome> {
   policy.signal?.throwIfAborted();
-  const tempWin = `${run('cmd.exe', ['/c', 'echo %LOCALAPPDATA%'], policy.commandMs)}\\Temp`;
-  const profileWsl = join(run('wslpath', ['-u', tempWin], policy.commandMs), `ifclite-frame-rig-${randomBytes(6).toString('hex')}`);
-  mkdirSync(profileWsl, { recursive: true });
-  let profileWin: string | null = null, spawned = false;
-  let rootWitness: RootWitness | null = null;
+  const owner = createChromeOwner(policy.ledger);
+  const { profileWsl, profileWin } = owner;
+  let job: OwnedProfileJob | undefined, jobStartAttempted = false;
   try {
     policy.signal?.throwIfAborted();
-    profileWin = run('wslpath', ['-w', profileWsl], policy.commandMs);
     const port = await randomUnusedPort();
     policy.signal?.throwIfAborted();
-    const child = spawn(exe, [
+    const executableWin = run('wslpath', ['-w', exe], policy.commandMs);
+    jobStartAttempted = true;
+    job = await launchOwnedProfileJob(owner, executableWin, [
       `--remote-debugging-port=${port}`, `--user-data-dir=${profileWin}`,
       '--no-first-run', '--no-default-browser-check', '--disable-extensions',
       '--disable-background-timer-throttling', '--disable-renderer-backgrounding', '--disable-backgrounding-occluded-windows',
       '--enable-unsafe-webgpu', '--window-size=1280,800', '--window-position=0,0',
       '--disable-features=BatterySaverModeAvailable,HighEfficiencyModeAvailable', 'about:blank',
-    ], { detached: true, stdio: 'ignore' });
-    let spawnError: Error | null = null;
-    let spawnSucceeded = false;
-    child.once('spawn', () => { spawnSucceeded = true; });
-    child.once('error', error => {
-      spawnError = error;
-      // Only a failed OS spawn with neither a spawn event nor a PID proves
-      // there was no child. Errors after spawn retain owned cleanup (#7180).
-      if (!spawnSucceeded && child.pid === undefined) spawned = false;
-    });
-    child.unref(); spawned = true;
-    const ownedWin = profileWin;
+    ], { requestMs: policy.jobRequestMs, cleanupMs: policy.cleanupMs, lifetimeSeconds: policy.lifetimeSeconds, signal: policy.signal });
+    policy.signal?.throwIfAborted();
+    const ownedJob = job;
     const chrome: WindowsChrome = { cdpUrl: `http://127.0.0.1:${port}`, profileWin, startupFailures: [],
-      dispose: () => disposeProfile(ownedWin, profileWsl, policy.cleanupMs, rootWitness) };
+      owner, job, dispose: () => ownedJob.dispose() };
     let lastError: unknown = null;
     const until = Date.now() + policy.startupMs;
     while (Date.now() < until) {
       policy.signal?.throwIfAborted();
-      if (spawnError) throw spawnError;
       try {
         const signals = [AbortSignal.timeout(Math.min(policy.requestMs, Math.max(1, until - Date.now())))];
         if (policy.signal) signals.push(policy.signal);
         const response = await fetch(`${chrome.cdpUrl}/json/version`, { signal: AbortSignal.any(signals) });
-        if (response.ok) { rootWitness = verifyEndpointOwner(ownedWin, port, policy.commandMs); policy.signal?.throwIfAborted(); return chrome; }
+        if (response.ok) { await verifyEndpointOwner(ownedJob, port, policy.commandMs); policy.signal?.throwIfAborted(); return chrome; }
         lastError = `HTTP ${response.status}`;
       } catch (error) { lastError = error; }
       await sleep(Math.min(policy.pollMs, Math.max(1, until - Date.now())));
@@ -176,12 +209,14 @@ async function launchOnce(exe: string, policy: Limits): Promise<WindowsChrome> {
     throw new Error(`Windows Chrome did not open its owned endpoint: ${String(lastError)}`);
   } catch (error) {
     let cleanupError: string | null = null;
-    if (spawned && profileWin) cleanupError = await disposeProfile(profileWin, profileWsl, policy.cleanupMs, rootWitness);
+    if (job) cleanupError = await job.dispose();
+    else if (jobStartAttempted && !supervisorNeverStarted(error) && !retiredStartupFailure(error, owner)) cleanupError = 'Job startup retirement unproved; retain owner marker and profile';
     else {
-      try { removeProfile(profileWsl, policy.cleanupMs); }
+      try { decodeChromeOwner(owner); removeProfile(profileWsl, policy.cleanupMs); }
       catch (cleanup) { cleanupError = `Allocated profile removal failed: ${String(cleanup)}`; }
     }
-    const receipt = { profileWin, profileWsl, error: String(error), cleanupError };
+    const receipt: ChromeStartupReceipt = { profileWin, profileWsl, owner, error: String(error), cleanupError,
+      ...(error instanceof OwnedJobProtocolError ? { jobFailure: { packets: error.receipts, retirement: error.retirement, supervisorNoStart: error.supervisorNoStart } } : {}) };
     throw new ChromeStartupError(receipt.error, receipt);
   }
 }

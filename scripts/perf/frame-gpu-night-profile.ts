@@ -35,6 +35,15 @@ function inside(root: string, path: string): string {
   return full;
 }
 
+/** Resolve and recheck a pinned file at its point of use, including checkout containment. */
+export function readPinnedArtifact(checkout: string, artifact: ProfileArtifact): Buffer {
+  const full = inside(checkout, artifact.path);
+  if (!statSync(full).isFile()) throw new Error(`profile artifact is not a file: ${artifact.path}`);
+  const bytes = readFileSync(full);
+  if (sha256(bytes) !== artifact.sha256) throw new Error(`night profile artifact changed: ${artifact.path}`);
+  return bytes;
+}
+
 function files(directory: string): string[] {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
     const path = resolve(directory, entry.name);

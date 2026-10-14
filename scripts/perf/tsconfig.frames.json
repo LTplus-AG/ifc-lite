@@ -27,7 +27,16 @@
     "../../tests/benchmark/viewer-benchmark.spec.ts",
     "./frame-gpu-rig.mts",
     "./browser-cold-ab.mts",
-    "../../tests/benchmark/frames/frame-rig.spec.ts"
+    "../../tests/benchmark/frames/frame-rig.spec.ts",
+    "./frame-gpu-night.mts",
+    "../../apps/viewer/src/lib/perf/native-night-controller.test.ts",
+    "./frame-gpu-job-controller.ts",
+    "./frame-gpu-owned-child.test.ts",
+    "./frame-gpu-input-idle.test.ts",
+    "./frame-gpu-night-admission.test.ts",
+    "./frame-gpu-night-attempt.test.ts",
+    "./frame-gpu-win32-providers.test.ts",
+    "./frame-gpu-profile-job.test.ts"
   ],
   "include": [],
   "exclude": []

@@ -41,7 +41,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import type { CDPSession } from '@playwright/test';
 import type { AddressInfo } from 'node:net';
 import { frameProbeInitScript, type FrameProbeHandle, type FrameRecord } from '../../tests/benchmark/frames/frame-probe.ts';
-import { FRAME_BUDGET_MS, realGpuFrameRows } from '../../tests/benchmark/frames/frame-stats.ts';
+import { FRAME_BUDGET_MS, realGpuFrameRows, type BrowserFramesRow } from '../../tests/benchmark/frames/frame-stats.ts';
 import { hoverSweep, orbitGesture, type CanvasRect, type CdpInput } from '../../tests/benchmark/frames/frame-scenarios.ts';
 import { startStaticServer } from './browser-static-server.js';
 import { closeBrowserWithTimeout, raceWithTimeout } from './browser-cold-teardown.js';
@@ -51,10 +51,14 @@ import { readHostAdmission } from './frame-gpu-host.js';
 import { collectGpuTiming, gpuTimingSnapshot } from './frame-gpu-timestamps.js';
 import { findWindowsChrome, launchWindowsChrome } from './frame-gpu-chrome.js';
 import { formatSummary, interleavedSchedule, summarizeSamples, type SampleRecord, type Side } from './frame-gpu-summary.js';
+import { verifyNightProfile } from './frame-gpu-night-profile.js';
+import { readHostProfile, requireBrowserExecutable, requireHostMatch } from './frame-gpu-night-admission.js';
+import { readInputIdleReceipt, requireInputIdle } from './frame-gpu-input-idle.js';
+import { readOwnedChromeOutput } from './frame-gpu-night-native.js';
 
 const ROOT = resolve(fileURLToPath(new URL('.', import.meta.url)), '../..');
 const argv = process.argv.slice(2);
-const VALUE_FLAGS = new Set(['--branch-revision', '--base-revision', '--dist-base', '--dist-branch', '--pairs', '--out-dir', '--chrome', '--orbit-frames', '--hover-frames', '--summarize', '--timeout-ms']);
+const VALUE_FLAGS = new Set(['--branch-revision', '--base-revision', '--dist-base', '--dist-branch', '--pairs', '--out-dir', '--chrome', '--orbit-frames', '--hover-frames', '--summarize', '--timeout-ms', '--sample-budget-ms', '--night-profile', '--owner-ledger']);
 const flag = (name: string) => { const i = argv.indexOf(name); return i === -1 ? null : argv[i + 1] ?? null; };
 const positional = argv.filter((arg, i) => !arg.startsWith('--') && !VALUE_FLAGS.has(argv[i - 1] ?? ''));
 const fail = (message: string): never => { console.error(`frame-gpu-rig: ${message}`); process.exit(2); };
@@ -70,6 +74,9 @@ const PAIRS = intFlag('--pairs', 3);
 const ORBIT_FRAMES = intFlag('--orbit-frames', 240);
 const HOVER_FRAMES = intFlag('--hover-frames', 240);
 const TIMEOUT_MS = intFlag('--timeout-ms', 180_000);
+// Explicit whole-sample cancellation; the Job lifetime includes additional
+// bounded startup/retirement time and refuses values above its supported limit.
+const SAMPLE_BUDGET_MS = intFlag('--sample-budget-ms', 600_000);
 const DIST_BASE = flag('--dist-base') ? resolve(ROOT, flag('--dist-base')!) : null;
 const DIST_BRANCH = resolve(ROOT, flag('--dist-branch') ?? 'apps/viewer/dist');
 
@@ -101,6 +108,15 @@ if (!existsSync(MODEL)) fail(`model not found: ${MODEL} (public fixtures: \`pnpm
 for (const dist of [DIST_BRANCH, DIST_BASE]) if (dist && !existsSync(join(dist, 'index.html'))) fail(`not a viewer build: ${dist}`);
 const FIXTURE = basename(MODEL).replace(/\.[^.]+$/, '');
 const CHROME = findWindowsChrome(flag('--chrome'));
+const nightBytes = flag('--night-profile') ? readFileSync(resolve(flag('--night-profile')!)) : null;
+const night = nightBytes ? verifyNightProfile(ROOT, nightBytes) : null;
+const nightHost = night ? readHostProfile(ROOT, night.profile) : null;
+if (night && (PAIRS !== 1 || DIST_BASE !== null || !REQUIRE_GPU_TIMING || !REQUIRE_PHYSICAL || !REQUIRE_HOST_IDLE
+  || resolve(ROOT, night.profile.dist) !== DIST_BRANCH || resolve(ROOT, night.profile.fixture) !== MODEL || !flag('--owner-ledger'))) {
+  fail('nightly invocation requires one pinned sample, all strict admissions and an owned browser ledger');
+}
+if (nightHost) requireBrowserExecutable(nightHost, CHROME);
+
 const JSONL = join(OUT_DIR, 'runs.jsonl');
 const MODEL_PATH = `/__frame-rig/${encodeURIComponent(basename(MODEL))}`;
 
@@ -138,9 +154,16 @@ async function runSample(pair: number, side: Side): Promise<SampleRecord> {
   currentRoot = side === 'base' ? DIST_BASE! : DIST_BRANCH;
   const record: SampleRecord = { pair, side, ok: false, rows: [], meta: {} };
   const meta = record.meta!;
+  meta.browserLaunchAttempted = false;
   let chrome: Awaited<ReturnType<typeof launchWindowsChrome>> | undefined;
   let browser: Browser | undefined;
+  const cancellation = new AbortController();
+  const sampleTimer = setTimeout(() => cancellation.abort(new Error('whole frame sample budget exceeded')), SAMPLE_BUDGET_MS);
+  const interrupted = () => cancellation.abort(new Error('nightly controller interrupted its owned rig'));
+  if (night) process.once('SIGTERM', interrupted);
+  const pageErrors: string[] = [];
   try {
+    if (nightBytes) verifyNightProfile(ROOT, nightBytes); // BEFORE final host/startup admission.
     if (REQUIRE_HOST_IDLE) {
       const admission = await readHostAdmission();
       meta.hostBefore = admission;
@@ -149,7 +172,19 @@ async function runSample(pair: number, side: Side): Promise<SampleRecord> {
     const sessionBefore = readPhysicalSession();
     meta.sessionBefore = sessionBefore;
     if (REQUIRE_PHYSICAL && !isPhysicalConsole(sessionBefore)) throw new Error('physical-console admission refused');
-    chrome = await launchWindowsChrome(CHROME);
+    if (nightHost) {
+      const idle = readInputIdleReceipt();
+      meta.inputIdleBefore = idle;
+      requireInputIdle(idle, sessionBefore.currentSession, nightHost.minimumUserIdleSeconds);
+    }
+    meta.browserLaunchAttempted = true;
+    chrome = await launchWindowsChrome(CHROME, 1, {
+      signal: cancellation.signal, runBudgetMs: SAMPLE_BUDGET_MS,
+      lifetimeSeconds: Math.ceil((SAMPLE_BUDGET_MS + 30_000 + 3 * 15_000 + 2 * 15_000) / 1000) + 1,
+      ...(flag('--owner-ledger') ? { ledger: resolve(flag('--owner-ledger')!) } : {}),
+    });
+    meta.browserOwner = chrome.owner;
+    meta.browserJob = chrome.job.prepared;
     browser = await raceWithTimeout(chromium.connectOverCDP(chrome.cdpUrl), 30_000, 'connectOverCDP');
     const context = browser.contexts()[0];
     await context.addInitScript({ content: frameProbeInitScript({ workDone: true }) });
@@ -157,6 +192,7 @@ async function runSample(pair: number, side: Side): Promise<SampleRecord> {
     const cdp = await context.newCDPSession(page);
     const logs: string[] = [];
     page.on('console', (message) => logs.push(message.text()));
+    page.on('pageerror', (error) => pageErrors.push(error.message));
     await page.goto(`${ORIGIN}/?model=${MODEL_PATH}&perf.gpuFrameTiming=1&perfTrace=1`);
     await page.bringToFront(); // a background window's rAF is throttled
     await waitForMetadataRenderReadiness({
@@ -177,6 +213,19 @@ async function runSample(pair: number, side: Side): Promise<SampleRecord> {
         visibility: document.visibilityState, focused: document.hasFocus() };
     });
     Object.assign(meta, settled, { browser: browser.version() });
+    if (nightHost) {
+      const observed = await readOwnedChromeOutput(chrome), output = observed.output;
+      const viewport = await page.evaluate(() => {
+        const canvas = document.querySelector<HTMLCanvasElement>('canvas[data-viewport="main"]');
+        if (!canvas) throw new Error('actual main viewport unavailable');
+        return { cssWidth: canvas.clientWidth, cssHeight: canvas.clientHeight,
+          pixelWidth: canvas.width, pixelHeight: canvas.height, dpr: devicePixelRatio };
+      });
+      meta.nativeOutputBefore = output; meta.viewportBefore = viewport;
+      meta.browserExecutableWin = observed.executableWin;
+      requireHostMatch(nightHost, { browserVersion: browser.version(), adapter: settled.adapter,
+        viewport, output, executableWin: observed.executableWin });
+    }
     if (REQUIRE_PHYSICAL && (!settled.adapter?.vendor || /swiftshader|software|llvmpipe/i.test(JSON.stringify(settled.adapter)))) {
       throw new Error('actual renderer hardware adapter identity missing or software');
     }
@@ -219,23 +268,42 @@ async function runSample(pair: number, side: Side): Promise<SampleRecord> {
       throw new Error('physical frame run lost foreground admission during measurement');
     }
     meta.timestampQuery = timestampQuery;
+    if (nightHost) {
+      const observed = await readOwnedChromeOutput(chrome), output = observed.output;
+      const viewport = await page.evaluate(() => {
+        const canvas = document.querySelector<HTMLCanvasElement>('canvas[data-viewport="main"]');
+        if (!canvas) throw new Error('actual main viewport unavailable');
+        return { cssWidth: canvas.clientWidth, cssHeight: canvas.clientHeight,
+          pixelWidth: canvas.width, pixelHeight: canvas.height, dpr: devicePixelRatio };
+      });
+      meta.nativeOutputAfter = output; meta.viewportAfter = viewport;
+      meta.browserExecutableWinAfter = observed.executableWin;
+      requireHostMatch(nightHost, { browserVersion: browser.version(), adapter: settled.adapter,
+        viewport, output, executableWin: observed.executableWin });
+      if (pageErrors.length) throw new Error('native nightly page emitted an unhandled error');
+    }
     if (REQUIRE_HOST_IDLE) {
       const admission = await readHostAdmission();
       meta.hostAfter = admission;
       if (!admission.quiet) throw new Error('host post-admission refused');
     }
+    cancellation.signal.throwIfAborted();
     record.ok = true;
   } catch (error) {
     record.error = error instanceof Error ? error.message : String(error);
     console.error(`frame-gpu-rig: ${side} pair ${pair} FAILED: ${record.error}`);
   } finally {
-    // connectOverCDP's close() only disconnects; the process dies by profile path.
+    clearTimeout(sampleTimer);
+    meta.pageErrors = pageErrors;
+    // connectOverCDP only disconnects; the canonical owned Job retires processes.
     const closeError = await closeBrowserWithTimeout(browser, 15_000);
     const disposeError = (await chrome?.dispose()) ?? null;
     for (const problem of [closeError, disposeError]) if (problem) {
       console.error(`frame-gpu-rig: cleanup: ${problem}`);
-      if (problem === disposeError) { record.ok = false; record.error = `${record.error ?? ''} cleanup: ${problem}`.trim(); }
+      if (problem === disposeError || night) { record.ok = false; record.error = `${record.error ?? ''} cleanup: ${problem}`.trim(); }
     }
+    meta.cleanup = { closeError, disposeError };
+    if (night) process.removeListener('SIGTERM', interrupted);
   }
   return record;
 }
@@ -247,6 +315,7 @@ try {
     const sample = await runSample(pair, side);
     samples.push(sample);
     appendFileSync(JSONL, `${JSON.stringify(sample)}\n`);
+    if (night && !sample.ok) break; // Never replace a failed nightly sample.
   }
 } finally {
   server.close();

@@ -65,7 +65,7 @@ export function readPhysicalSession(): PhysicalSessionReceipt {
   return parsed as PhysicalSessionReceipt;
 }
 
-function readPowerShellJson(script: string): unknown {
+export function readPowerShellJson(script: string): unknown {
   const run = spawnSync('powershell.exe', [
     '-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64'),
   ], { encoding: 'utf8', timeout: 15_000 });

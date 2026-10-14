@@ -295,6 +295,108 @@ rendered vs idle frames (a frame that called `getCurrentTexture`), and
   checks source ancestry; retain independent build/hash receipts binding each
   dist to its declared revision. Offline `--plan` and `--summarize` need no revisions.
 
+## Native nightly collection (#6975)
+
+The prepared controller `scripts/perf/frame-gpu-night.mts` invokes the existing
+native rig once for an explicitly granted UTC date. This composition still needs
+normal root qualification and a real physical Windows Chrome trial before task
+activation. Its CPU protocol controls are not native GPU or nightly evidence.
+It installs no task and supplies no GPU performance threshold.
+
+Supply each required argument once:
+
+```sh
+node node_modules/tsx/dist/cli.mjs scripts/perf/frame-gpu-night.mts \
+  --checkout /absolute/clean/checkout \
+  --profile /absolute/immutable-profile.json --profile-sha <sha256> \
+  --out /absolute/evidence-outside-checkout --lease /absolute/root-owner.json \
+  --night YYYY-MM-DD --start YYYY-MM-DDTHH:mm:ssZ --end YYYY-MM-DDTHH:mm:ssZ
+```
+
+The source profile pins the clean Git/Rust tree, every production viewer file,
+WASM runtime/glue/declarations, actual IFC fixture, independently reviewed native
+qualification receipt and host profile. The host profile binds executable bytes
+and version, actual adapter, viewport, native monitor configuration and controller
+driver inventory. A profile verifies bytes; it cannot turn a CPU fixture or an
+unreviewed document into a native qualification. Build these artifacts from the
+selected source through the normal root programme; do not copy a different
+runtime or build into the checkout to satisfy a fence.
+
+For a supervised qualification, the coordinator preassigns the heavy lease. Its existing owner record needs
+`executionGrant: true`, a live `pid`, `worktree` resolving to the pinned checkout,
+and a nonempty `activeAgent`. Add this exact per-night authority:
+
+```json
+{
+  "nightExecutionGrant": {
+    "approved": true,
+    "issue": 6975,
+    "activeAgent": "<same activeAgent as owner>",
+    "sourceHead": "<profile sourceHead>",
+    "profileSha256": "<immutable profile SHA256>",
+    "night": "YYYY-MM-DD",
+    "startsAt": "YYYY-MM-DDTHH:mm:ssZ",
+    "endsAt": "YYYY-MM-DDTHH:mm:ssZ"
+  }
+}
+```
+
+For unattended scheduling, also pass `--authorization /absolute/standing.json`
+and `--authorization-sha <sha256>`. The reviewed task action pins this standing
+approval, whose version-one JSON contains `approved: true`, `issue: 6975`,
+`approvedAt`, `checkout`, `leaseFile`, `sourceHead`, `profileSha256`, a `reservation`
+with `startsAt`/`endsAt`, and exactly seven consecutive `windows` containing
+`night`/`startsAt`/`endsAt`. All seven windows must have been future at approval,
+fit the approved reservation, and avoid the reserved b95 interval. The controller
+accepts only the exact current window; it never catches up a missed night.
+
+This path does not depend on the original Root PID remaining alive. It atomically
+creates the campaign's shared lock directory only when absent, publishes its own
+finite live identity and the exact night grant, then observes that authority
+throughout the launch. Any existing directory refuses, including released or dead
+owners. No stale takeover is attempted. Before activation, the coordinator must
+archive and retire its final owned campaign lock after terminal proof, and every
+future heavy development writer must honor that same shared directory. A separate
+night-only lock cannot coordinate writers that ignore it.
+
+After positive Linux child and native Job retirement, only the unchanged acquired
+owner may remove its own directory. Uncertain child/Job cleanup, unresolved ledger
+entries or changed owner bytes quarantine the lease for review; no competing work
+is killed and no automatic retry follows. Raw failure custody remains outside the
+lease. Source/setup/task failures and missing invocations are disqualifying nights,
+not unsupported-GPU proofs. The supervised path continues to read the preassigned
+lease without modifying it. It also
+uses the shared performance lock, existing host admission, physical console,
+user-idle admission and fresh marked native Job profile. The raw sample must
+retain native timestamp queries, actual scenario draws, uninterrupted foreground,
+matching before/after host identity and positive Job retirement/profile disposal.
+Raw GPU engine counters are observations; no unreviewed GPU quiet threshold is
+introduced. Monitor configuration does not prove a powered panel or 120 Hz.
+
+Use an external evidence root dedicated to one immutable profile. Original UTC
+claims, failed/refused/duplicate attempts, child stdout/stderr and identity
+receipts survive; no retries replace them. Each completed receipt seals retained
+raw bytes. Exit codes are zero for an accepted sample, two for admission refusal
+and one for failure. Seven consecutive dates with one accepted attempt and the
+same profile only permit review of those raw artifacts. Missing, failed, refused
+or duplicate dates disqualify the window. Calendar readiness does not install an
+alert threshold or close the issue.
+
+After source and native qualification, register seven explicit dated triggers,
+not an indefinite catch-up schedule. The proposed local window is 22:05–22:25
+Europe/Zurich, outside the reserved #6709 October 14 01:00–01:45 window. October
+13's proposed 22:05 start has passed without a native result. It cannot contribute
+to a retroactive streak. The first actual collection window must be future, and
+all seven dates must fit an approved reservation recorded by the coordinator
+before installation; the existing October 12–18 interval alone cannot provide
+seven future nights. Reserved dates are not results. Use the interactive current user, limited privileges, no restart, no
+late start, ignored overlapping invocations and a 20-minute task limit. Archive
+the exact task XML/settings and rollback instructions before any registration.
+Each trigger supplies the frozen source/profile hash, date/window, shared lease
+path and standing authorization bytes/hash. If those are unavailable, preserve refusal rather than taking
+a foreign heavy lane. Native cleanup retires only the allocated Job and marked
+throwaway profile; Work/authenticated Chrome, T3 and other sessions are preserved.
+
 ## Viewer JS is gated on raw bytes, not brotli (#7007)
 
 The viewer build is byte-reproducible apart from `__BUILD_DATE__` (the build

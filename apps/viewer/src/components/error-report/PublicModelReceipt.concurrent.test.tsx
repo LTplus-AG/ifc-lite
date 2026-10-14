@@ -40,15 +40,17 @@ function button(text: string) {
 }
 function mount(client: ReportClient) {
   let update!: (next: { receipt: ReportReceipt; blocked: boolean }) => void;
-  let release!: () => void;
-  const blocked = new Promise<void>(done => { release = done; });
+  let complete!: () => void;
+  let pendingGate = true;
+  const blocked = new Promise<void>(done => { complete = done; });
+  const release = () => { pendingGate = false; complete(); };
   releases.add(release);
   let suspendedRenders = 0;
   const changes: ReportReceipt[] = [];
   // This sibling renders AFTER the real receipt component. Throwing here
   // abandons its speculative work without committing a replacement receipt.
   function Gate({ suspend }: { suspend: boolean }) {
-    if (suspend) { suspendedRenders++; throw blocked; }
+    if (suspend && pendingGate) { suspendedRenders++; throw blocked; }
     return <span data-committed-report="yes" />;
   }
   function Parent() {

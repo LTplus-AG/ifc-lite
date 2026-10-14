@@ -129,6 +129,9 @@ DATA;
 #127=IFCAXIS2PLACEMENTLINEAR(#126,$,$);
 #128=IFCSECTIONEDSOLIDHORIZONTAL(#123,(#4,#4),(#125,#127));
 #129=IFCSECTIONEDSOLIDHORIZONTAL(#62,(#4,#4),(#86,#66));
+#130=IFCDIRECTION((1.,0.,0.));
+#131=IFCAXIS2PLACEMENTLINEAR(#63,#130,$);
+#132=IFCSECTIONEDSOLIDHORIZONTAL(#62,(#4,#4),(#131,#66));
 ENDSEC;
 END-ISO-10303-21;
 "#;
@@ -322,3 +325,15 @@ fn gradient_curve_distance_along_is_horizontal_station() {
     close(b.max[2], 40.25, "end elevation");
 }
 
+
+#[test]
+fn axis_parallel_to_tangent_reports_error() {
+    // Axis along the curve tangent with no RefDirection leaves the profile's
+    // X axis undefined (and violates IfcAxis2PlacementLinear's rule that Axis
+    // and RefDirection are not parallel): error rather than emit NaN rings.
+    let index = ifc_lite_core::build_entity_index(IFC);
+    let mut decoder = EntityDecoder::with_index(IFC, index);
+    let entity = decoder.decode_by_id(132).unwrap();
+    let err = GeometryRouter::new().process_representation_item(&entity, &mut decoder).unwrap_err();
+    assert!(err.to_string().contains("Axis is parallel"), "{err}");
+}

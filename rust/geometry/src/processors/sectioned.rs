@@ -215,7 +215,7 @@ impl GeometryProcessor for SectionedSolidHorizontalProcessor {
         let mut rings_3d: Vec<Vec<Point3<f64>>> = Vec::with_capacity(samples.len());
         let mut frames: Vec<AlignmentFrame> = Vec::with_capacity(samples.len());
         for (profile, pos) in &samples {
-            let frame = compute_frame(alignment.as_ref(), arc_map.as_ref(), pos, fixed_axis_vertical);
+            let frame = compute_frame(alignment.as_ref(), arc_map.as_ref(), pos, fixed_axis_vertical)?;
             rings_3d.push(transform_outer(&profile.outer, &frame));
             frames.push(frame);
         }
@@ -312,7 +312,7 @@ fn compute_frame(
     arc_map: Option<&ArcLengthMap>,
     pos: &PositionAlongDirectrix,
     fixed_axis_vertical: bool,
-) -> AlignmentFrame {
+) -> Result<AlignmentFrame> {
     let station = pos.horizontal_station(arc_map);
     let base = evaluate_alignment(alignment, station);
 
@@ -372,7 +372,12 @@ fn compute_frame(
         let x = pos.ref_direction.map(to_world).unwrap_or(base.tangent);
         let x = (x - axis * x.dot(&axis)).try_normalize(1e-12).unwrap_or(base.tangent);
         // Profile +X is the placement's local +Y = Axis × RefDirection.
-        right = axis.cross(&x).normalize();
+        // Parallel Axis and RefDirection (or tangent) leave it undefined.
+        right = axis.cross(&x).try_normalize(1e-12).ok_or_else(|| {
+            Error::geometry(
+                "IfcAxis2PlacementLinear Axis is parallel to its RefDirection".to_string(),
+            )
+        })?;
         up = axis;
     } else if pos.linear {
         // IFC4x3 positions the profile in the placement's YZ plane: profile
@@ -380,14 +385,14 @@ fn compute_frame(
         right = -right;
     }
 
-    AlignmentFrame {
+    Ok(AlignmentFrame {
         origin,
         right,
         up,
         tangent: if pos.linear && (pos.axis.is_some() || pos.ref_direction.is_some()) {
             right.cross(&up).normalize()
         } else { base.tangent },
-    }
+    })
 }
 
 /// `true` when `(right, up, tangent)` is a proper rotation, i.e. the profile

@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { openRuntimeJournal } from "./journal-runtime.js";
+import type { RestoreJournal } from "./restore-journal.js";
 import { assertRestoreNotHeld } from "./restore-recovery.js";
 import { createServer, type Server } from "node:http";
 import { validateAgreementFont } from "./agreement.js";
@@ -18,6 +20,7 @@ import { promotePublicModel, cleanupPublicCopies } from "./public-release.js";
 
 type Worker = { stop: () => Promise<void> };
 let db: ReturnType<typeof openDatabase> | undefined;
+let journal: RestoreJournal | undefined;
 let storage: ModelStorage | undefined;
 let server: Server | undefined;
 let publicStorage: PublicModelStorage | undefined;
@@ -63,6 +66,7 @@ function shutdown(failed: boolean): Promise<void> {
       ...workers.map(job => job.stop()),
     ]);
     storage?.close();
+    journal?.close();
     await db?.end();
     if (results.some(result => result.status === "rejected"))
       throw new Error("shutdown operation failed");
@@ -85,13 +89,14 @@ async function start(): Promise<void> {
   db = database;
   await migrate(database);
   await assertRestoreNotHeld(database);
-  if (closing) return;
+  journal = await openRuntimeJournal(database, config);
+  if (closing) { journal?.close(); return; }
   const models = new ModelStorage(config);
   storage = models;
   const github = new GithubIssues(config);
   const publicModels = new PublicModelStorage(config);
   publicStorage = publicModels;
-  const handler = createHandler(database, models, config, publicModels);
+  const handler = createHandler(database, models, config, publicModels, journal);
   server = createServer((req, res) => { void handler(req, res); });
   server.requestTimeout = 30000;
   server.headersTimeout = 15000;
@@ -99,9 +104,9 @@ async function start(): Promise<void> {
     console.error("[report-service] listener failed");
     void shutdown(true);
   });
-  workers.push(
-    worker("retention", () => sweep(database, models)),
-    worker("verification", () => verifyNext(database, models)),
+  if (journal) workers.push(
+    worker("retention", () => sweep(database, models, journal)),
+    worker("verification", () => verifyNext(database, models, journal)),
     worker("publisher", () => publishOne(database, github)),
     worker("public-copy", () => promotePublicModel(database, publicModels, config)),
     worker("public-retention", () => cleanupPublicCopies(database, publicModels)),

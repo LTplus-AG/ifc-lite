@@ -2,12 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { loadJournalConfig, type JournalConfig } from "./journal-config.js";
 import { createHash } from "node:crypto";
 import { trustedProxyList } from "./admission.js";
 import { readFileSync } from "node:fs";
 import type { ReportAgreement } from "@ifc-lite/report-contract";
 export interface Config {
   submissionsEnabled: boolean;
+  journal?: JournalConfig;
   /** Deliberately absent from loadConfig until the scanner/delivery deployment is qualified. */
   publicSharing?: {
     scannerImageDigest: string;
@@ -117,6 +119,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
   trustedProxyList(trustedProxyCidrs);
   return {
     submissionsEnabled: env.REPORT_SUBMISSIONS_ENABLED === "true",
+    journal: loadJournalConfig(env),
     qualificationToken,
     trustedProxyCidrs,
     agreementFont: approval

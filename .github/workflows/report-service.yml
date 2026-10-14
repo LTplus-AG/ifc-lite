@@ -11,6 +11,12 @@ on:
       - '.github/actions/setup-report-integration/**'
       - 'pnpm-lock.yaml'
   workflow_dispatch:
+    inputs:
+      scanner_max_model:
+        description: Run the selected exact 1 GiB real-scanner qualification
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
@@ -46,6 +52,7 @@ jobs:
     timeout-minutes: 20
     env:
       REPORT_REQUIRE_SCANNER: 'true'
+      REPORT_SCANNER_MAX_MODEL: ${{ github.event_name == 'workflow_dispatch' && inputs.scanner_max_model && 'true' || 'false' }}
       REPORT_SCANNER_SIGNATURE_DIRECTORY: /tmp/ifclite-scanner-signatures
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

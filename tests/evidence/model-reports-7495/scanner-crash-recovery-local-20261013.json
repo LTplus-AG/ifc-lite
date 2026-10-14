@@ -1,0 +1,72 @@
+{
+  "issue": 7495,
+  "scope": "Local real scanner crash/restart and container-death qualification; no production activation",
+  "base": "a68fa4ecb531ff2abfc3733a2c339ac52e991b1e",
+  "sourceHead": "6c0bf4846400238810bbeb0686e2345046e040b6",
+  "runtimeChanges": false,
+  "fixtures": {
+    "model": "tests/models/ara3d/AC20-FZK-Haus.ifc",
+    "sha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+    "database": "Owned local PostgreSQL 17, unique schema",
+    "storage": "Owned local RustFS S3, unique bucket",
+    "engine": "clamav/clamav@sha256:705e0723f02fc13bf6e5e8a8e13a8c44420acf5e7ed06dfa2197081da00c7a73",
+    "engineVersion": "1.5.4",
+    "dailySignatureVersion": "28151",
+    "signatureTimestamp": "2026-10-12T06:24:02Z"
+  },
+  "realControls": [
+    "Actual CLI child SIGKILL while its real sandbox remains running; fresh CLI removes orphan container and private scratch.",
+    "Restart preserves durable unexpired lease/attempt count and produces no clearance.",
+    "Only the fixture lease deadline is advanced in PostgreSQL; fresh CLI retries with a new lease, exact original model hash/size, attempts=2 and review only.",
+    "Withdrawal after orchestrator death survives restart with revoked state, no attestation, and orphan cleanup.",
+    "Actual docker kill --signal=KILL against the owned running sandbox while orchestrator stays alive yields held/blocked, no scan/approval, and complete scratch/container cleanup."
+  ],
+  "rootTests": {
+    "command": "pnpm test --filter=@ifc-lite/report-service --filter=@ifc-lite/report-contract --concurrency=1 --env-mode=loose",
+    "integrationRequired": true,
+    "scannerRequired": true,
+    "servicePassed": 114,
+    "contractPassed": 5,
+    "skipped": 0,
+    "durationSeconds": 57.955
+  },
+  "negativeControl": {
+    "head": "e4383aa6d7f3da7bbf40fb5fa68956dfb09c0df2",
+    "mutation": "Disable only orphan removeScannerContainer(name) call in scanner-worker.ts",
+    "baselinePassed": 9,
+    "mutatedPassed": 7,
+    "mutatedAssertionFailures": 2,
+    "verdict": "OBSERVED",
+    "sourceRestoration": "verified",
+    "laterDelta": "The final head adds the independent actual container-death case; crash/restart test and runtime source bytes are unchanged."
+  },
+  "limits": [
+    "The twenty-minute lease wall-clock delay is represented by an explicit fixture-only database deadline update.",
+    "No induced OOM or maximum-size model/scan-work qualification is claimed.",
+    "No performance measurement or production runtime qualification is claimed.",
+    "User submissions, NDA signing, public sharing and scanner production activation remain disabled."
+  ],
+  "logs": {
+    "scanner-crash-final-root-tests.log": "f7893b20ab87300aaace67281c868f2dc65cbedd41d1e1e84a18a192c5fa98be",
+    "scanner-crash-cleanup-oracle.log": "cc46d587d9b2593186fa7c4aed737fffeef607861eb9331f4a4f9cdb083c938b",
+    "scanner-crash-cleanup-mutation.patch": "b01db07a0edb7b99b4922798f965b6150ecd2aca66e50280ad1f1256690975e7",
+    "scanner-crash-full-typecheck.log": "04bb715f7c47c440a86b46ec78e7e1b84115b1a3e0489a76ca62b4c8bbd5a022"
+  },
+  "typecheck": {
+    "command": "pnpm typecheck",
+    "result": "PASS",
+    "testFiles": 4090,
+    "packages": 66,
+    "turboConcurrency": 1,
+    "turboConfigurationRestoredByteExact": true
+  },
+  "lint": {
+    "command": "pnpm exec oxlint apps/report-service/test/scanner-child.ts apps/report-service/test/scanner.integration.test.ts",
+    "result": "PASS"
+  },
+  "cleanup": {
+    "ownedScannerContainersRemaining": 0,
+    "ownedCliChildrenRemaining": 0,
+    "fixtureSchemasAndBucketsDeleted": true
+  }
+}

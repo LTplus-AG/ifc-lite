@@ -55,6 +55,10 @@ export async function migrate(db: Db): Promise<void> {
       "SELECT pg_advisory_xact_lock(hashtext('report-schema-v1'))",
     );
     await tx.query(`
+    CREATE TABLE IF NOT EXISTS report_journal_binding (
+      singleton boolean PRIMARY KEY DEFAULT true CHECK(singleton), epoch text NOT NULL,
+      key_fingerprint text NOT NULL, target_digest text NOT NULL, database_name text NOT NULL,
+      schema_name text NOT NULL, initialized_at timestamptz NOT NULL DEFAULT now());
     CREATE TABLE IF NOT EXISTS report_sessions (id text PRIMARY KEY, csrf text NOT NULL, admission text NOT NULL, expires_at timestamptz NOT NULL);
     CREATE TABLE IF NOT EXISTS report_admission (key text NOT NULL, day date NOT NULL DEFAULT CURRENT_DATE, reports integer NOT NULL DEFAULT 0, bytes bigint NOT NULL DEFAULT 0, PRIMARY KEY(key,day));
     CREATE TABLE IF NOT EXISTS model_reports (

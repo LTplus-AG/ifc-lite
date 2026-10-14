@@ -75,17 +75,23 @@ it.skipIf(!databaseUrl)("#7495 idle PostgreSQL errors exit safely without client
   const marker = "PRIVATE_SENTINEL_" + randomUUID();
   const url = new URL(databaseUrl!);
   url.searchParams.set("application_name", marker);
+  // #7495: old shared fixture history must not bypass journal startup guards.
+  const schema = `runtime_privacy_${randomUUID().replaceAll("-", "")}`;
+  url.searchParams.set("options", `-c search_path=${schema}`);
   const admin = openDatabase(databaseUrl!);
-  const reservation = createServer();
-  await new Promise<void>((resolve, reject) => {
-    reservation.once("error", reject); reservation.listen(0, "127.0.0.1", resolve);
-  });
-  const address = reservation.address();
-  if (!address || typeof address === "string") throw new Error("Health port reservation failed");
-  const port = address.port;
-  await new Promise<void>((resolve, reject) => reservation.close(error => error ? reject(error) : resolve()));
-  const running = launch({ REPORT_DATABASE_URL: url.toString(), PORT: String(port) });
+  let running: ReturnType<typeof launch> | undefined;
+  let created = false;
   try {
+    await admin.query(`CREATE SCHEMA ${schema}`); created = true;
+    const reservation = createServer();
+    await new Promise<void>((resolve, reject) => {
+      reservation.once("error", reject); reservation.listen(0, "127.0.0.1", resolve);
+    });
+    const address = reservation.address();
+    if (!address || typeof address === "string") throw new Error("Health port reservation failed");
+    const port = address.port;
+    await new Promise<void>((resolve, reject) => reservation.close(error => error ? reject(error) : resolve()));
+    running = launch({ REPORT_DATABASE_URL: url.toString(), PORT: String(port) });
     // A PostgreSQL backend can be idle between startup transaction queries
     // while still checked out. Actual HTTP readiness proves migration finished.
     let healthy = false;
@@ -118,8 +124,13 @@ it.skipIf(!databaseUrl)("#7495 idle PostgreSQL errors exit safely without client
     expect(result.output).not.toContain(marker);
     expect(result.output).not.toContain(url.password);
   } finally {
-    if (running.child.exitCode === null) running.child.kill("SIGKILL");
-    try { await running.done; } finally { await admin.end(); }
+    try {
+      if (running?.child.exitCode === null) running.child.kill("SIGKILL");
+      await running?.done;
+    } finally {
+      try { if (created) await admin.query(`DROP SCHEMA ${schema} CASCADE`); }
+      finally { await admin.end(); }
+    }
   }
 }, 15000);
 

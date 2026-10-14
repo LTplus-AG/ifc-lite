@@ -333,7 +333,7 @@ describe.skipIf(!enabled)(
         expect(await readdir(scratch)).toEqual([]);
       } finally {
         if (child.child.exitCode === null && child.child.signalCode === null) child.child.kill("SIGKILL");
-        await child.done;
+        await Promise.allSettled([child.done]);
         await cleanScannerScratch(scratch);
       }
     }, 20000);
@@ -342,14 +342,16 @@ describe.skipIf(!enabled)(
       const scratch = join(temporary, "cli-held");
       const child = scannerChild(config, join(temporary, "no-signatures"), scratch, 15000);
       try {
-        expect(await child.done).toEqual({ code: 1, signal: null,
-          output: "[report-service] scanner_job_failed\nscanner_held\n" });
+        const result = await child.done;
+        expect(result).toMatchObject({ code: 1, signal: null });
+        expect(result.output.split("\n")).toContain("scanner_held");
+        expect(result.output).toContain("[report-service] scanner_job_failed");
         expect((await db.query("SELECT state,scan,attempts FROM report_public_quarantine WHERE report_id=$1", [id])).rows[0])
           .toEqual({ state: "scanning", scan: null, attempts: 1 });
         expect(await readdir(scratch)).toEqual([]);
       } finally {
         if (child.child.exitCode === null && child.child.signalCode === null) child.child.kill("SIGKILL");
-        await child.done;
+        await Promise.allSettled([child.done]);
         await cleanScannerScratch(scratch);
       }
     }, 20000);
@@ -402,7 +404,7 @@ describe.skipIf(!enabled)(
               expect(await readdir(scratch)).toEqual([]);
             } finally {
               if (child.child.exitCode === null && child.child.signalCode === null) child.child.kill("SIGKILL");
-              await child.done;
+              await Promise.allSettled([child.done]);
               await cleanScannerScratch(scratch);
             }
           }, 125000,

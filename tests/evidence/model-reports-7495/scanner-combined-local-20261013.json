@@ -1,0 +1,49 @@
+{
+  "scope": "Combined local stack; no production activation or GPU qualification",
+  "baseHead": "9eef012a446c2084aebc18c9e4486344fc1d6ea9",
+  "sourceSha256": {
+    "apps/report-service/scripts/scan-public-once.ts": "5bc7f1875ef680e8e1a40840d5da2cb1c759744f0530c40357eb48179377ed39",
+    "apps/report-service/src/scanner-worker.ts": "8aba71e403cd9fc4c84f2cb0e22e832bbabb7d62b697158792638b9ad87e371c",
+    "apps/report-service/test/scanner.integration.test.ts": "410163ab974bfdb80208e90d4e61d995267f42a0cd1f5185887612fc262cf000",
+    "scripts/lib/is-main-entry.d.mts": "d946332386dcbdd40386d5e9712e4069ebb5e4279430550a0b16b51762634c62"
+  },
+  "realIntegration": {
+    "servicePassed": 111,
+    "contractPassed": 5,
+    "files": 19,
+    "skipped": 0,
+    "postgresS3Required": true,
+    "realScannerRequired": true,
+    "runtimeAndTestSourceUnchangedDuringRun": true,
+    "cliOnlyDeltaDuringRun": "Shared entry-helper correction during integration run; worker/test bytes unchanged. Final typecheck and actual CLI entry checks passed afterward."
+  },
+  "finalChecks": {
+    "literalRootTypecheck": "PASS",
+    "testFilesTypechecked": 4090,
+    "packagesTypechecked": 66,
+    "rootLint": "PASS",
+    "rootTurboMountedReportingTests": {
+      "passed": 38,
+      "failed": 0,
+      "skipped": 0
+    },
+    "moduleSize": "PASS",
+    "sharedMainEntryHelper": "PASS",
+    "actualCliDirectPath": "PASS",
+    "actualCliSymlinkWithSpaces": "PASS",
+    "importWithoutExecution": "PASS",
+    "gitDiffCheck": "PASS"
+  },
+  "restoreHold": "Real PostgreSQL test rejects held restore before lease and scratch allocation; operational worker quiescence still required",
+  "activation": {
+    "userSubmissions": false,
+    "publicSharing": false,
+    "ndaSigning": false
+  },
+  "pending": [
+    "Selected EU isolated runtime qualification",
+    "Maximum allowed model and scan-work exhaustion",
+    "OOM and actual orchestrator/container crash recovery",
+    "Exact-hash human approval and final end-to-end operational acceptance"
+  ]
+}

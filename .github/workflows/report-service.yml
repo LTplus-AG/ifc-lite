@@ -25,6 +25,9 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -33,8 +36,54 @@ jobs:
       - run: pnpm install --frozen-lockfile --ignore-scripts
       - name: Provision real report integration prerequisites
         uses: ./.github/actions/setup-report-integration
+      - name: Record exact owner-expiry qualification source
+        if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/qualification/7515-owner-expiry-0d879cc0'
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/owner-expiry-qualification"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          git rev-parse HEAD HEAD^{tree} > "$RUNNER_TEMP/owner-expiry-qualification/source.txt"
+          git diff --name-status 7a90ee4900c9f6b520c3f5f8133d0c1e19ee8302 HEAD > "$RUNNER_TEMP/owner-expiry-qualification/paths.txt"
+          git diff 7a90ee4900c9f6b520c3f5f8133d0c1e19ee8302 HEAD -- apps/report-service/src/handler.ts apps/report-service/src/reports.ts apps/report-service/src/sessions.ts > "$RUNNER_TEMP/owner-expiry-qualification/backend.patch"
+          sha256sum scripts/check-test-revert-oracle.mjs apps/report-service/src/{handler,reports,sessions}.ts apps/report-service/test/http.integration.test.ts > "$RUNNER_TEMP/owner-expiry-qualification/source-before.sha256"
       - name: Real database and multipart storage qualification
-        run: pnpm test --filter=@ifc-lite/report-service --filter=@ifc-lite/report-contract --concurrency=1 --env-mode=loose
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p "$RUNNER_TEMP/owner-expiry-qualification"
+          pnpm test --filter=@ifc-lite/report-service --filter=@ifc-lite/report-contract --concurrency=1 --env-mode=loose 2>&1 | tee "$RUNNER_TEMP/owner-expiry-qualification/root-positive.log"
+      - name: Observe only the owner-expiry backend inverse
+        if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/qualification/7515-owner-expiry-0d879cc0'
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/check-test-revert-oracle.mjs --base 7a90ee4900c9f6b520c3f5f8133d0c1e19ee8302 --ci --json \
+            --only apps/report-service/src/handler.ts \
+            --only apps/report-service/src/reports.ts \
+            --only apps/report-service/src/sessions.ts \
+            --test apps/report-service/test/http.integration.test.ts \
+            2>&1 | tee "$RUNNER_TEMP/owner-expiry-qualification/backend-inverse.log"
+      - name: Require restored root storage tests and exact source
+        if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/qualification/7515-owner-expiry-0d879cc0'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha256sum --check "$RUNNER_TEMP/owner-expiry-qualification/source-before.sha256"
+          test -z "$(git status --porcelain)"
+          pnpm test --filter=@ifc-lite/report-service --filter=@ifc-lite/report-contract --concurrency=1 --env-mode=loose --force 2>&1 | tee "$RUNNER_TEMP/owner-expiry-qualification/root-restored.log"
+          sha256sum --check "$RUNNER_TEMP/owner-expiry-qualification/source-before.sha256"
+          test -z "$(git status --porcelain)"
+      - name: Retain actual owner-expiry source, inverse and restored evidence
+        if: always() && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/qualification/7515-owner-expiry-0d879cc0'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: owner-expiry-qualification-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/owner-expiry-qualification/
+          if-no-files-found: error
+          retention-days: 7
       - name: Remove owned report integration prerequisites
         if: always()
         uses: ./.github/actions/setup-report-integration
@@ -42,6 +91,7 @@ jobs:
           state: stop
 
   mounted-public-ui:
+    if: github.event_name != 'workflow_dispatch' || github.ref != 'refs/heads/qualification/7515-owner-expiry-0d879cc0'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:

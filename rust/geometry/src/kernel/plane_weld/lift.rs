@@ -19,6 +19,9 @@ use super::super::arrangement::Tri;
 /// (α,β) is used. |α|,|β| ≤ 8 bounds the integer products (the perpendicular
 /// foot of a band-near vertex is always within a few edge lengths; anything
 /// farther is a degenerate sliver basis we refuse to weld with).
+/// After these gates pass, an axis-aligned plane can use the perpendicular
+/// foot directly if it lies on the same 2⁻³⁶ grid. Only the plane coordinate
+/// changes; the two tangential coordinates retain their exact input values.
 ///
 /// DETERMINISM: FMA-free f64 + integer ops, fixed iteration order ⇒
 /// byte-identical native==wasm.
@@ -60,6 +63,22 @@ pub(super) fn exact_on_plane_weld(v: [f64; 3], [t0, t1, t2]: Tri) -> Option<[f64
             return None; // not exactly representable in f64 ⇒ skip the weld
         }
         out[k] = rf / S36; // power-of-two divide: exact
+    }
+    // #7292: axis-plane projection preserves tangential coordinates.
+    // This shortcut runs only after every original Q20 weld gate above passed.
+    if let Some(k) = (0..3).find(|&k| t0[k] == t1[k] && t0[k] == t2[k]) {
+        let mut foot = v;
+        foot[k] = t0[k];
+        let exact_fine_grid = foot.iter().all(|&coordinate| {
+            let scaled = coordinate * S36;
+            scaled.is_finite()
+                && scaled.fract() == 0.0
+                && scaled.abs() < i128::MAX as f64
+                && (scaled as i128) as f64 == scaled
+        });
+        if exact_fine_grid {
+            return Some(foot);
+        }
     }
     Some(out)
 }

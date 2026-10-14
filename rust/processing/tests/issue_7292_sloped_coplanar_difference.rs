@@ -199,3 +199,30 @@ fn issue_7292_five_percent_difference_preserves_the_complete_strip() {
     let sloped = fixture_at_slope(0.05);
     assert_strip(sloped.as_bytes(), 0.05);
 }
+
+/// Keep the reporter's operands unchanged and subtract the same prism five
+/// times. Set difference is idempotent: ((A \ B) \ B) ... = A \ B. Each
+/// BooleanResult still crosses the production mesh/kernel boundary, so this
+/// exercises repeated sloped subtraction without needing another oracle file.
+fn five_differences(fixture: &str) -> String {
+    const BODY: &str = "#102=IFCSHAPEREPRESENTATION(#7,'Body','CSG',(#101));";
+    const DATA_END: &str = "\nENDSEC;\nEND-ISO-10303-21;";
+    assert_eq!(fixture.matches(BODY).count(), 1, "reporter Body marker");
+    assert_eq!(fixture.matches(DATA_END).count(), 1, "reporter DATA terminator");
+    let mut extra = String::new();
+    for id in 109..=112 {
+        assert!(!fixture.contains(&format!("#{id}=")), "new BooleanResult id must be unused");
+        let previous = if id == 109 { 101 } else { id - 1 };
+        extra.push_str(&format!("\n#{id}=IFCBOOLEANRESULT(.DIFFERENCE.,#{previous},#100);"));
+    }
+    fixture.replace(BODY, "#102=IFCSHAPEREPRESENTATION(#7,'Body','CSG',(#112));")
+        .replace(DATA_END, &format!("{extra}{DATA_END}"))
+}
+
+#[test]
+fn issue_7292_five_repeated_sloped_differences_preserve_the_complete_strip() {
+    let reporter_series = five_differences(FIXTURE);
+    assert_strip(reporter_series.as_bytes(), 0.02);
+    let five_percent = five_differences(&fixture_at_slope(0.05));
+    assert_strip(five_percent.as_bytes(), 0.05);
+}

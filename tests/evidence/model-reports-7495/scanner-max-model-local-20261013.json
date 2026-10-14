@@ -1,0 +1,202 @@
+{
+  "issue": 7495,
+  "scope": "Selected exact-public-maximum synthetic IFC fixture through real local storage and isolated scanner; not universal model or malware acceptance",
+  "sourceHead": "8f2bf08fb7db36ab358df04da08003098ec06c76",
+  "selectedFixture": {
+    "source": "tests/models/ara3d/AC20-FZK-Haus.ifc",
+    "sourceSha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+    "construction": "Preserve every original IFC byte; insert a NUL-free STEP block comment after DATA; padded with ASCII spaces to exactly 1 GiB.",
+    "byteSize": 1073741824,
+    "sha256": "7992ce1bff11125f6aaf854ab0ff881297bdae2423ef63e4d2c7461fe5114108",
+    "parts": 64,
+    "partBytes": 16777216,
+    "wholeFileBuffer": false,
+    "hashing": "Incremental SHA256 compared against stored upload checksum and final scanner attestation."
+  },
+  "pipeline": [
+    "Real S3 multipart upload through authorizePart and completeUpload",
+    "Full stored-byte upload verification",
+    "Actual CLI process and ScannerSource pinned read/full SHA256/STEP-envelope checks",
+    "Pinned isolated ClamAV sandbox",
+    "Exact size/hash clean evidence persisted as review with approval=null"
+  ],
+  "sandbox": {
+    "image": "clamav/clamav@sha256:705e0723f02fc13bf6e5e8a8e13a8c44420acf5e7ed06dfa2197081da00c7a73",
+    "engineVersion": "1.5.4",
+    "signatureVersion": "28151",
+    "signatureTimestamp": "2026-10-12T06:24:02Z",
+    "cpu": 1,
+    "memoryBytes": 4294967296,
+    "network": "none",
+    "readOnlyRoot": true,
+    "runtimeCapsChanged": false,
+    "workerDeadlineMs": 900000
+  },
+  "requiredEnvironment": [
+    "REPORT_REQUIRE_INTEGRATION=true",
+    "REPORT_REQUIRE_SCANNER=true",
+    "REPORT_SCANNER_MAX_MODEL=true",
+    "Existing protected PG/S3 fixture credentials and fresh signed CVD directory"
+  ],
+  "qualification": {
+    "command": "pnpm test --filter=@ifc-lite/report-service --filter=@ifc-lite/report-contract --concurrency=1 --env-mode=loose",
+    "servicePassed": 115,
+    "contractPassed": 5,
+    "skipped": 0,
+    "firstRun": "PASS",
+    "rootGraphElapsedSeconds": 146.562,
+    "existingOverLimitControlRetained": true
+  },
+  "typecheck": {
+    "command": "pnpm typecheck",
+    "result": "PASS",
+    "testFiles": 4090,
+    "packages": 66,
+    "turboConcurrency": 1,
+    "turboConfigurationRestoredByteExact": true
+  },
+  "resources": {
+    "scope": "Observational samples across the complete scanner suite, not a performance comparison or isolated maximum-test peak",
+    "sampleCount": 21,
+    "samples": [
+      {
+        "elapsedSeconds": 7.23,
+        "memory": "651.7MiB / 4GiB",
+        "cpuPercent": "100.19%",
+        "pids": "2"
+      },
+      {
+        "elapsedSeconds": 26.57,
+        "memory": "736MiB / 4GiB",
+        "cpuPercent": "99.45%",
+        "pids": "2"
+      },
+      {
+        "elapsedSeconds": 31.15,
+        "memory": "1.063GiB / 4GiB",
+        "cpuPercent": "99.31%",
+        "pids": "2"
+      },
+      {
+        "elapsedSeconds": 35.73,
+        "memory": "957.6MiB / 4GiB",
+        "cpuPercent": "99.95%",
+        "pids": "2"
+      },
+      {
+        "elapsedSeconds": 40.3,
+        "memory": "956.6MiB / 4GiB",
+        "cpuPercent": "99.93%",
+        "pids": "2"
+      },
+      {
+        "elapsedSeconds": 44.88,
+        "memory": "959MiB / 4GiB",
+        "cpuPercent": "100.03%",
+        "pids": "2"
+      },
+      {
+        "elapsedSeconds": 49.46,
+        "memory": "957.6MiB / 4GiB",
+        "cpuPercent": "99.46%",
+        "pids": "2"
+      },
+      {
+        "elapsedSeconds": 54.04,
+        "memory": "958.8MiB / 4GiB",
+        "cpuPercent": "100.36%",
+        "pids": "2"
+      },
+      {
+        "elapsedSeconds": 58.62,
+        "memory": "956.9MiB / 4GiB",
+        "cpuPercent": "100.40%",
+        "pids": "2"
+      },
+      {
+        "elapsedSeconds": 63.2,
+        "memory": "956.1MiB / 4GiB",
+        "cpuPercent": "99.77%",
+        "pids": "2"
+      },
+      {
+        "elapsedSeconds": 67.78,
+        "memory": "955.7MiB / 4GiB",
+        "cpuPercent": "100.42%",
+        "pids": "2"
+      },
+      {
+        "elapsedSeconds": 72.36,
+        "memory": "957.7MiB / 4GiB",
+        "cpuPercent": "100.00%",
+        "pids": "2"
+      },
+      {
+        "elapsedSeconds": 76.94,
+        "memory": "959.3MiB / 4GiB",
+        "cpuPercent": "99.86%",
+        "pids": "2"
+      },
+      {
+        "elapsedSeconds": 81.52,
+        "memory": "958.1MiB / 4GiB",
+        "cpuPercent": "99.53%",
+        "pids": "2"
+      },
+      {
+        "elapsedSeconds": 86.09,
+        "memory": "958MiB / 4GiB",
+        "cpuPercent": "100.18%",
+        "pids": "2"
+      },
+      {
+        "elapsedSeconds": 90.67,
+        "memory": "956.7MiB / 4GiB",
+        "cpuPercent": "99.97%",
+        "pids": "2"
+      },
+      {
+        "elapsedSeconds": 100.07,
+        "memory": "945.7MiB / 4GiB",
+        "cpuPercent": "98.25%",
+        "pids": "2"
+      },
+      {
+        "elapsedSeconds": 105.65,
+        "memory": "613MiB / 4GiB",
+        "cpuPercent": "100.09%",
+        "pids": "2"
+      },
+      {
+        "elapsedSeconds": 114.84,
+        "memory": "891.1MiB / 4GiB",
+        "cpuPercent": "100.00%",
+        "pids": "2"
+      },
+      {
+        "elapsedSeconds": 120.47,
+        "memory": "482.1MiB / 4GiB",
+        "cpuPercent": "99.37%",
+        "pids": "2"
+      },
+      {
+        "elapsedSeconds": 125.05,
+        "memory": "739.9MiB / 4GiB",
+        "cpuPercent": "99.46%",
+        "pids": "2"
+      }
+    ]
+  },
+  "limits": [
+    "Only this selected padded IFC is qualified at exactly 1 GiB.",
+    "OOM and scan-work exhaustion controls remain pending.",
+    "Selected EU scanner runtime remains unqualified; no production activation.",
+    "Clean means qualified engine outcome, not absence of all malware, privacy, licensing or redistribution clearance."
+  ],
+  "logs": {
+    "scanner-max-first-root-tests.log": "45af1d5d56586886781b36824b8050744592b3071f0399aad6df9af91248cdb8",
+    "scanner-max-full-typecheck.log": "27983658b3628a50b57b65aa4c6de841fafa9c6e50395e1b9098c8956690d17b",
+    "scanner-max-container-resource-samples.json": "ce705b61a06f630ef1eb36b8293211e5168e766450274cfcc5bcc2c4b3f96651",
+    "scanner-max-source-hashes.json": "81055c47ffdd9f3bf2d51fd48b8b04e983101affc9d5d0ff95357dfb9626dc19"
+  }
+}

@@ -36,3 +36,32 @@ export function currentPlaneFrames(): SectionPlaneFrame[] {
 export function planeFrame(id: string): SectionPlaneFrame | null {
   return currentPlaneFrames().find((frame) => frame.id === id) ?? null;
 }
+
+/**
+ * How many units of the active cardinal plane's offset (its coordinate along its axis) one metre ALONG
+ * ITS NORMAL is. 1 for an unrotated building; for a rotated one the renderer clips along the rotated
+ * normal over the projected range, so a metre of drag is a different amount of axis coordinate. The
+ * answer comes from the renderer itself (the plane's distance at two positions), never from a copy of
+ * its rotation logic. 1 when it cannot be measured.
+ */
+export function cardinalValuePerMetre(): number {
+  const renderer = getGlobalRenderer();
+  const state = useViewerStore.getState();
+  const plane = state.sectionPlane;
+  const bounds = visibleCoordinateInfo(state)?.shiftedBounds ?? null;
+  if (!renderer || !bounds || plane.custom || plane.box) return 1;
+  const key = plane.axis === 'side' ? 'x' : plane.axis === 'down' ? 'y' : 'z';
+  const span = bounds.max[key] - bounds.min[key];
+  if (!(Math.abs(span) > 0)) return 1;
+  const at = (position: number) => renderer.getSectionPlaneFrames({
+    primary: rendererSectionPlane({ ...plane, position }, bounds), extras: [],
+  }).find((frame) => frame.primary)?.distance;
+  const lo = plane.position > 50 ? plane.position - 10 : plane.position;
+  const hi = lo + 10;
+  const d0 = at(lo);
+  const d1 = at(hi);
+  if (d0 === undefined || d1 === undefined) return 1;
+  const metres = d1 - d0;
+  const value = (10 / 100) * span;
+  return Math.abs(metres) > 1e-9 && Number.isFinite(value / metres) ? value / metres : 1;
+}

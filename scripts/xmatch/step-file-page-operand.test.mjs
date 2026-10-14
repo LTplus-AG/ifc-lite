@@ -12,7 +12,11 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { parseStepFile, referencesIn, rewriteReferences, serializeStepFile, splitArgs } from './step-file.mjs';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import {
+  parseStepFile, quote, referencesIn, rewriteReferences, serializeStepFile, splitArgs, unquote,
+} from './step-file.mjs';
 
 const PAGE_NAME = "'Para \\S\\' 5'";
 const PAGE_DESCRIPTION = "'Art \\S\\' 7 #9'";
@@ -51,4 +55,39 @@ test('parseStepFile frames a record holding a PAGE-operand literal and the next 
 
 test('a literal that ends in a PAGE operand still closes at its last quote (#7589)', () => {
   assert.deepEqual(splitArgs("'5\\S\\'',#1"), ["'5\\S\\''", '#1']);
+});
+
+// #7609: the writer is the inverse of the reader. `quote()` takes raw inner STEP
+// text and must leave a `\S\` operand apostrophe single, doubling the rest.
+const PAGE_VECTORS = JSON.parse(readFileSync(
+  fileURLToPath(new URL('../../rust/core/tests/fixtures/step-page-directive.json', import.meta.url)),
+  'utf8',
+));
+
+test('quote() writes a PAGE operand apostrophe single, the others doubled (#7609)', () => {
+  assert.equal(quote("5\\S\\'"), "'5\\S\\''");
+  assert.equal(quote("Para \\S\\' 5"), "'Para \\S\\' 5'");
+  assert.equal(quote("\\S\\''tail"), "'\\S\\'''tail'");
+  assert.equal(quote("John's"), "'John''s'");
+});
+
+test('every step-page-directive vector round-trips through unquote() and quote() (#7609)', () => {
+  for (const { name, literal } of PAGE_VECTORS) {
+    assert.equal(quote(unquote(literal)), literal, name);
+  }
+});
+
+test('a re-quoted PAGE value stays one literal and keeps the record framing (#7609)', () => {
+  for (const { name, literal } of PAGE_VECTORS) {
+    // The way successor-edits renames: decode, append, re-quote.
+    const renamed = quote(`${unquote(literal)} (rev B)`);
+    assert.equal(unquote(renamed), `${unquote(literal)} (rev B)`, name);
+    const args = `'guid',$,${renamed},#5`;
+    assert.deepEqual(splitArgs(args), ["'guid'", '$', renamed, '#5'], name);
+    const parsed = parseStepFile(file(`#1=IFCWALL(${args});\n#2=IFCPOINT(#1);`));
+    assert.deepEqual(parsed.statements.map((s) => [s.id, s.type, s.args]), [
+      [1, 'IFCWALL', args],
+      [2, 'IFCPOINT', '#1'],
+    ], name);
+  }
 });

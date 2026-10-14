@@ -25,12 +25,16 @@ use crate::step_text::{
 ///
 /// Errs when a source entity's (possibly renamed) type has no representation
 /// at all in an explicit `opts.schema` target and is not an `IfcRoot`
-/// subtype either — see [`crate::schema_unrepresented`] (#5116).
+/// subtype either — see [`crate::schema_unrepresented`] (#5116). Also returns
+/// [`std::io::ErrorKind::InvalidData`] before output when canonical scanning
+/// dropped a malformed record; exporting an incomplete index would lose source
+/// records while reporting success (#7541).
 pub fn export_step(content: &[u8], opts: &StepOptions) -> std::io::Result<String> {
     export_step_with_stats(content, opts).map(|(s, _)| s)
 }
 
-/// Like [`export_step`] but also returns coverage stats.
+/// Like [`export_step`] but also returns coverage stats. A malformed source is
+/// refused, not returned as a partial export with zero refused-edit statistics.
 pub fn export_step_with_stats(content: &[u8], opts: &StepOptions) -> std::io::Result<(String, StepStats)> {
     // Presized for a full re-export, where the output is within a small factor
     // of the source. Not for a subset: 200 MB filtered to a few records would
@@ -61,6 +65,7 @@ pub fn export_step_with_stats(content: &[u8], opts: &StepOptions) -> std::io::Re
 /// large model it outweighs the output it stopped holding, and it is not
 /// removable -- source order and the reference closure both need it.
 ///
+/// Malformed-source refusal happens before any write to `out` (#7541).
 /// `out` is buffered here, so a bare `File` is fine. A record costs two `write`
 /// calls, which unbuffered is two syscalls: measured 15.0 s against 4.3 s on
 /// 4.4 M records. A caller who already buffers pays one memcpy through 1 MiB.
@@ -121,6 +126,16 @@ fn emit<W: std::io::Write>(
         if line_of.insert(id, (start, end)).is_none() {
             order.push(id);
         }
+    }
+
+    // A source index with dropped records cannot faithfully re-emit the file.
+    // Refuse BEFORE the header or any other output, through all three public
+    // entry points; never index an invalid record merely to apply edits (#7541).
+    if scanner.malformed_record_start().is_some() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "STEP export refused: malformed records make the source index incomplete",
+        ));
     }
 
     // 2. Resolve the included set + forward reference closure.

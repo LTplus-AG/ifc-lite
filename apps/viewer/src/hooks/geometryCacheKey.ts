@@ -19,7 +19,9 @@ import { FORMAT_VERSION } from '@ifc-lite/cache';
 // IFC4x3 alignments: sectioned solids with IfcAxis2PlacementLinear positions,
 // gradient-curve elevation and dense arc/clothoid sampling changed the meshes of
 // alignment-based models (bridges were cached ~55 m low with no superstructure).
-const GEOMETRY_OUTPUT_REVISION = 5;
+// #7541: old cached partial entity indexes predate malformed-apostrophe
+// recovery/omission provenance. Reparse once instead of serving that policy.
+const GEOMETRY_OUTPUT_REVISION = 6;
 
 /**
  * Build the persisted geometry cache key for a loaded model.

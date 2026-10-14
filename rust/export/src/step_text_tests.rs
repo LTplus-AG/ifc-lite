@@ -299,10 +299,11 @@ fn apply_attr_mutations_refuses_a_record_whose_slots_do_not_scan() {
     assert_eq!(refused, 1, "and must not be counted as a refusal");
 }
 
-/// The refusal above must be VISIBLE. An unchanged line is what a no-op edit
-/// also produces, so the export counts the refusal into its stats.
+/// #7541: canonical scanning now refuses this malformed record. Public export
+/// must reject the incomplete source, never silently omit it and report success.
+/// The lower-level slot refusal test above still covers raw-line edit safety.
 #[test]
-fn export_step_counts_a_refused_attribute_edit() {
+fn export_step_refuses_malformed_source_before_attribute_edits() {
     use crate::step::{export_step_with_stats, AttrMutation, StepOptions};
 
     let source = b"ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCWALL('g',$,IFCLABEL('a's'),$,IFCLABEL('b's'),#5,#6,'T',.SOLIDWALL.);\nENDSEC;\nEND-ISO-10303-21;\n";
@@ -314,18 +315,10 @@ fn export_step_counts_a_refused_attribute_edit() {
         }],
         ..Default::default()
     };
-    let (step, stats) = export_step_with_stats(source, &opts).unwrap();
-    assert_eq!(stats.attribute_edits_refused, 1);
-    assert!(
-        step.contains("#1=IFCWALL('g',$,IFCLABEL('a's'),$,IFCLABEL('b's'),#5,#6,'T',.SOLIDWALL.);"),
-        "the source line ships unedited rather than corrupted; got:\n{step}"
-    );
-    assert!(
-        !step.contains("NEWDESC"),
-        "the refused edit must not appear anywhere; got:\n{step}"
-    );
+    let error = export_step_with_stats(source, &opts).err().expect("malformed source must refuse");
+    assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
 
-    // The control, so a zero above is not merely "this export never edits".
+    // The control: valid doubled apostrophes still export and take the edit.
     let control_source = b"ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCWALL('g',$,IFCLABEL('a''s'),$,IFCLABEL('b''s'),#5,#6,'T',.SOLIDWALL.);\nENDSEC;\nEND-ISO-10303-21;\n";
     let (control_step, control_stats) = export_step_with_stats(control_source, &opts).unwrap();
     assert_eq!(control_stats.attribute_edits_refused, 0);

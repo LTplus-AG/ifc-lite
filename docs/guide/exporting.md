@@ -2,6 +2,19 @@
 
 Guide to exporting IFC data in various formats.
 
+## Known incomplete STEP sources
+
+Rust plain and mutation-log STEP writers, WASM `exportStep`, and the TypeScript
+`StepExporter` refuse a source index with reported malformed-record omissions
+before producing a STEP file. SDK/MCP STEP exports share that guard, so a failed
+MCP export does not write its destination file. Cache admission refuses known
+partial source indexes before hashing or serialization.
+
+The parser's `malformedRecordCount` indicates an observed omission, not an exact
+malformed-record total. Missing provenance remains unobserved and zero does not
+certify complete STEP validity. This refusal does not repair malformed values or
+reinterpret an IDS result over retained entities as validation of missing rows.
+
 ## Textured IFC in the web viewer
 
 Normal IFC exports, visible subsets, and Export modified IFC… package retained image

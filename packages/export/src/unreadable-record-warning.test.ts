@@ -25,6 +25,7 @@ import { describe, expect, it } from 'vitest';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { StepExporter } from './step-exporter.js';
+import { readStepSlots } from './step-argument-parser.js';
 
 function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
@@ -62,12 +63,30 @@ END-ISO-10303-21;`;
 /** The same three records with their apostrophes doubled: the control file. */
 const CONTROL_IFC = BASE_IFC.replace(/'a's','b's'/g, "'a''s','b''s'");
 
+// #7541: keep scan-complete but slot-unreadable reporting coverage. The typed
+// aggregate has balanced parens/quoted boundaries, but lacks its internal comma.
+// HasPropertySets and the related-element list remain in their original slots.
+const SLOT_UNREADABLE_IFC = CONTROL_IFC.replace(/'a''s','b''s'/g, "IFCLABEL((1 2)),'b''s'");
+
+
 const WALL_ID = 10;
 const WALL_TYPE_ID = 5;
 const REL_ID = 20;
 
 async function parse(text: string): Promise<IfcDataStore> {
   return new IfcParser().parseColumnar(toArrayBuffer(new TextEncoder().encode(text)));
+}
+
+async function parseSlotUnreadable(text: string, expectedIds: number[], unreadableIds: number[]): Promise<IfcDataStore> {
+  const store = await parse(text);
+  expect(Array.from(store.entityIndex.byId.keys())).toEqual(expectedIds);
+  expect(store.malformedRecordCount).toBe(0); // omission indicator, not full STEP validity
+  for (const id of unreadableIds) {
+    const line = text.split('\n').find(value => value.startsWith(`#${id}=`));
+    expect(line).toBeDefined();
+    expect(readStepSlots(line!)).toBeNull();
+  }
+  return store;
 }
 
 function newSession(store: IfcDataStore) {
@@ -90,7 +109,7 @@ function refusalReportsFor(warnings: string[], expressId: number): string[] {
 
 describe('an unreadable record whose edits were dropped is reported to the caller', () => {
   it('the source-iteration pass says so, in the export result', async () => {
-    const store = await parse(BASE_IFC);
+    const store = await parseSlotUnreadable(SLOT_UNREADABLE_IFC, [1, 5, 10, 20, 30, 31, 40], [5, 10, 20]);
     const { view, editor } = newSession(store);
     editor.setAttribute(WALL_ID, 'Description', 'NEWDESC');
 
@@ -107,7 +126,7 @@ describe('an unreadable record whose edits were dropped is reported to the calle
     // This pass REPLACES the source-iteration pass's line for these ids
     // (`rewrittenEntityIds` makes that pass skip them), so a report made only
     // there would be silent for exactly the entities this branch owns.
-    const store = await parse(BASE_IFC);
+    const store = await parseSlotUnreadable(SLOT_UNREADABLE_IFC, [1, 5, 10, 20, 30, 31, 40], [5, 10, 20]);
     const { view, editor } = newSession(store);
     editor.setAttribute(WALL_TYPE_ID, 'Name', 'RENAMED-TYPE');
     editor.addPropertySet(WALL_TYPE_ID, 'Pset_TypeOwned', [
@@ -141,7 +160,7 @@ describe('an unreadable record whose edits were dropped is reported to the calle
     // the whole line and pushes its own warning. The refusal report is about a
     // line that is going out; this one is not, so only the withheld warning is
     // true of this entity.
-    const store = await parse(BASE_IFC);
+    const store = await parseSlotUnreadable(SLOT_UNREADABLE_IFC, [1, 5, 10, 20, 30, 31, 40], [5, 10, 20]);
     const { view, editor } = newSession(store);
     editor.setAttribute(REL_ID, 'Description', 'NEWDESC');
     editor.removeEntity(WALL_ID);
@@ -176,15 +195,38 @@ DATA;
 ENDSEC;
 END-ISO-10303-21;`;
 
+const SLOT_UNREADABLE_CROSS_SCHEMA_IFC = CROSS_SCHEMA_IFC.replace("'a's','b's'", "IFCLABEL((1 2)),'b''s'");
+
 const CHIMNEY_ID = 50;
 
 describe('cross-schema refusal is transactional (#4200)', () => {
   it('aborts instead of renaming or proxying a record whose slots were refused', async () => {
-    const store = await parse(CROSS_SCHEMA_IFC);
+    const store = await parseSlotUnreadable(SLOT_UNREADABLE_CROSS_SCHEMA_IFC, [1, 50], [50]);
     const { view, editor } = newSession(store);
     editor.setAttribute(CHIMNEY_ID, 'Description', 'NEWDESC');
 
     expect(() => new StepExporter(store, view).export({ schema: 'IFC2X3' }))
       .toThrow(/Schema conversion refused an invalid STEP argument list/);
   });
+});
+
+
+// Original authored bare-apostrophe shapes still exercise the earlier source
+// omission guard. They must not become apparent successful partial saves.
+describe('known dropped source records refuse before export (#7541)', () => {
+  for (const [name, source, droppedId] of [
+    ['type/occurrence/containment', BASE_IFC, 5],
+    ['cross-schema chimney', CROSS_SCHEMA_IFC, 50],
+  ] as const) {
+    it(`refuses the actual ${name} source without emitting progress or output`, async () => {
+      const store = await parse(source);
+      expect(store.entityIndex.byId.has(1)).toBe(true);
+      expect(store.entityIndex.byId.has(droppedId)).toBe(false);
+      expect(store.malformedRecordCount).toBe(1);
+      const progress: string[] = [];
+      expect(() => new StepExporter(store).export({ schema: 'IFC4', onProgress: value => progress.push(value.phase) }))
+        .toThrow(/source index incomplete/);
+      expect(progress).toEqual([]);
+    });
+  }
 });

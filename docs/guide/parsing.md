@@ -15,10 +15,10 @@ zero is not a full STEP syntax or model-validity verdict.
 Recovery keeps later records only when damaged text establishes an unambiguous
 boundary, skips complete later quoted parameters and otherwise refuses the
 remainder. It does not invent attribute values. An IDS result over the retained
-entities does not certify omitted entities. Cache admission refuses known partial
-indexes. Existing manual/server stores with unknown provenance remain compatible
-without being advertised as complete. STEP output admission and legacy viewer
-cache reload policy are supplied by the dependent upper layer.
+entities does not certify omitted entities. Known partial indexes refuse STEP
+export and cache admission; older viewer cache output revisions miss and reparse
+once. Existing manual/server stores with unknown provenance remain compatible
+without being advertised as complete.
 
 ## Overview
 

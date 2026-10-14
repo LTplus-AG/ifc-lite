@@ -59,9 +59,10 @@ the geometry host. Never sum speculative shard reports directly.
 
 The scanner's `malformedRecordCount` is a 0/1 incomplete-source flag, not a
 complete STEP syntax audit. Invalid apostrophe boundaries and missing record
-terminators can drop records; callers must retain that diagnostic. This does not
-fabricate missing attributes or repair malformed entity values (#7541). Raw WASM
-STEP output refusal is supplied by the dependent upper layer.
+terminators can drop records; callers must retain that diagnostic. Raw WASM
+STEP export (`exportStep`, including mutation logs) refuses such an incomplete source before output
+rather than returning an apparently successful partial file. This does not
+fabricate missing attributes or repair malformed entity values (#7541).
 
 ## Meshes (pre-pass + job batches)
 

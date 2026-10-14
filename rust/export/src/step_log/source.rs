@@ -33,6 +33,8 @@ const TRACKED: &[&str] = &[
 
 pub(crate) struct Source<'a> {
     pub(crate) content: &'a [u8],
+    /// Canonical scanning dropped a malformed record; never export this index.
+    pub(crate) malformed_records: bool,
     /// Every record id in the order the TypeScript exporter visits them: the
     /// parser's compact entity index is sorted by express id, and
     /// `writeSourceEntityLines` iterates it.
@@ -59,8 +61,9 @@ impl<'a> Source<'a> {
                 }
             }
         }
+        let malformed_records = scanner.malformed_record_start().is_some();
         order.sort_unstable();
-        Source { content, order, line_of, max_id, by_type }
+        Source { content, malformed_records, order, line_of, max_id, by_type }
     }
 
     pub(crate) fn has(&self, id: u32) -> bool {

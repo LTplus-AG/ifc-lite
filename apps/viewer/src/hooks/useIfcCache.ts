@@ -105,6 +105,7 @@ function hydrateCacheStore(
     entityCount: cacheStore.entityCount,
     fileSize: extras.fileSize,
     parseTime: 0,
+    malformedRecordCount: cacheStore.malformedRecordCount,
     source: asSourceBytes(extras.source),
     strings: cacheStore.strings,
     entities: cacheStore.entities,
@@ -256,11 +257,9 @@ export function useIfcCache() {
       const geometrySection = headerInfo.sections.find((s) => s.type === SectionType.Geometry);
       const result = await trace.span('cache.decode', () => reader.read(cacheBuffer, { skipGeometry: true }));
 
-      // Restore the source buffer — required for on-demand property extraction
-      // AND the lazy entity accessors (getEntity/getProperties/...). The web
-      // cache persists `sourceBuffer`; fall back to the freshly read file buffer
-      // when the caller provides it. Without a source the accessors return empty
-      // (and getProperties falls back to the pre-built cache tables).
+      // Restore persisted source or the caller's fresh buffer for lazy entity
+      // and property accessors. Without source, entity access is empty and
+      // properties fall back to the pre-built cache tables.
       const cacheStore = result.dataStore;
       const sourceBuffer = cacheResult.sourceBuffer ?? fallbackSourceBuffer;
       let source: Uint8Array = new Uint8Array(0);
@@ -295,6 +294,7 @@ export function useIfcCache() {
             }
             typeList.push(ref.expressId);
           }
+          cacheStore.malformedRecordCount = Math.max(cacheStore.malformedRecordCount ?? 0, tokenizer.malformedRecordCount);
           entityIndex = { byId: indexBuilder.build(), byType };
         }
 

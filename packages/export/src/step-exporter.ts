@@ -16,6 +16,7 @@ import { fileSchemaIdentifier } from '@ifc-lite/data';
 import { needsConversion, type IfcSchemaVersion } from './schema-converter.js';
 import { getCompleteEntityIndex, getMaxExpressId } from './entity-iteration.js';
 import { createSourceRefReader } from './source-ref-bounds.js';
+import { assertStepSourceCompleteness } from './step-source-completeness.js';
 import { writeSourceEntityLines } from './step-source-iteration.js';
 import { writeOverlayCreatedEntities } from './step-overlay-entities.js';
 import { generatePropertyAndQuantitySetEntities } from './step-property-sets.js';
@@ -67,13 +68,9 @@ export class StepExporter {
   private nextExpressId: number;
   private entityExtractor: EntityExtractor | null;
   /**
-   * The owner-history memos the property-set and quantity-set generators read.
-   *
-   * Owned here and handed to `step-property-set-readers.ts` BY REFERENCE rather than
-   * stored on its context: the reset below is an `export()`-level statement,
-   * and the comment there is where "per export, not per exporter" is argued.
-   * Moving the storage into a per-export context would make that reset
-   * implicit — the same invariant, in a place nothing says it (#2475 step 2b).
+   * Owner-history memos shared by reference with property/quantity generators.
+   * Reset explicitly per export, rather than hidden in a context constructor
+   * (#2475 step 2b); see the per-export invariant in `preparePass`.
    */
   private ownerHistory: OwnerHistoryCache = { fallbackRef: undefined, byEntity: new Map() };
   /**
@@ -85,6 +82,7 @@ export class StepExporter {
   private isReadableSourceRef: ReturnType<typeof createSourceRefReader>;
 
   constructor(dataStore: IfcDataStore, mutationView?: MutablePropertyView) {
+    assertStepSourceCompleteness(dataStore);
     this.dataStore = dataStore;
     this.isReadableSourceRef = createSourceRefReader(dataStore.source);
     this.mutationView = mutationView || null;
@@ -100,6 +98,7 @@ export class StepExporter {
    * Export to STEP format
    */
   export(options: StepExportOptions): StepExportResult {
+    assertStepSourceCompleteness(this.dataStore);
     if (options.normalizeMapGeometry) {
       throw new Error('Map geometry normalization requires exportAsync().');
     }
@@ -266,6 +265,7 @@ export class StepExporter {
    * UI responsive during large exports. Calls onProgress with live stats.
    */
   async exportAsync(options: StepExportOptions): Promise<StepExportResult> {
+    assertStepSourceCompleteness(this.dataStore);
     const totalEntities = getCompleteEntityIndex(this.dataStore).size;
     await reportStepExportProgress(options.onProgress, 'preparing', 0, totalEntities);
     // Sync and async share the mutation-resolved pass. Optional Rust domain

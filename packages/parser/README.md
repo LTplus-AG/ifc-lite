@@ -210,7 +210,6 @@ best-effort boundary.
 Canonical STEP parsing retains `malformedRecordCount` on the parsed store and
 through worker transport: it is a reported 0/1 omission indicator. Absence is
 unobserved provenance; zero is not a full STEP syntax or model-validity verdict.
-Cache admission refuses known dropped records rather than persisting a partial
-index. Existing manual/server stores with no observation remain compatible
-without being advertised as complete. STEP output refusal is supplied by the
-dependent upper layer.
+STEP export and cache admission refuse known dropped records rather than
+republishing a partial index. Existing manual/server stores with no observation
+remain compatible without being advertised as complete.

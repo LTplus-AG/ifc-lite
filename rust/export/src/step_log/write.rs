@@ -88,7 +88,9 @@ fn invalid(msg: impl Into<String>) -> io::Error {
 /// except the GlobalIds of records this export generates. Errs, writing
 /// nothing, when the log carries a mutation kind this writer does not apply
 /// yet, or when `opts` asks for something the log path does not combine with
-/// (`included`, or the per-edit vectors of the plain writer).
+/// (`included`, or the per-edit vectors of the plain writer). Canonical
+/// malformed-source omissions refuse with `InvalidData` before any output
+/// or mutation replay, rather than exporting the retained subset (#7541).
 pub fn export_step_with_log(
     content: &[u8],
     opts: &StepOptions,
@@ -151,6 +153,9 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
         ));
     }
     let src = Source::index(content);
+    if src.malformed_records {
+        return Err(io::Error::new(io::ErrorKind::InvalidData, "STEP export refused: malformed records make the source index incomplete"));
+    }
     let family = schema_family(content);
     let source_label = detect_schema(content);
     let target = opts.schema.clone().unwrap_or_else(|| source_label.clone());

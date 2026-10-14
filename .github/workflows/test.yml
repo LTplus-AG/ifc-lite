@@ -828,6 +828,13 @@ jobs:
           # Ordinary whole-change inversion resumes once this module is on main.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- apps/viewer/src/components/error-report/PublicModelReceipt.tsx | grep -Fxq 'apps/viewer/src/components/error-report/PublicModelReceipt.tsx'; then
             oracle_args+=(--mutation tests/evidence/model-reports-7495/public-receipt-composite.oracle.patch)
+          # Keep the new Node-tests shard script importable while removing ONLY
+          # its two guarantees: the catch-all's exclusion of pinned packages
+          # (a suite would run twice) and the refusal of a stale pinned name (a
+          # suite would run nowhere). The partition and refusal assertions turn
+          # RED. Once the script is on main, ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- scripts/ci-node-test-shards.mjs | grep -Fxq 'scripts/ci-node-test-shards.mjs'; then
+            oracle_args+=(--mutation tests/evidence/ci-node-test-shards/partition.oracle.patch)
           fi
           node scripts/check-test-revert-oracle.mjs "${oracle_args[@]}"
           # #7512: observe cleanup independently of scoped admission/schema.
@@ -2243,6 +2250,19 @@ jobs:
       # Same tests, same `--workspace` selection, same `#[ignore]` handling;
       # each test gets its own process, which is stricter, not looser, about
       # state leaking between tests. Profile in .config/nextest.toml.
+      #
+      # OPT-LEVEL 1 for the test build, measured on #7573's first run: with
+      # nextest scheduling every test on one pool the lane was STILL 26 min,
+      # because the 4 cores were saturated by tests that are slow only because
+      # they run unoptimised -- one export alignment test 501 s, two more
+      # 200+ s, ~15 processing scan tests 60-127 s each (summary: 4578 tests,
+      # 1187 s wall). Release (what ships, incl. the wasm) is opt-level 3, so
+      # this moves the tests TOWARDS production codegen, not away from it.
+      # `debug-assertions` and `overflow-checks` are separate profile keys and
+      # stay ON (dev defaults); Rust never enables fast-math, so float results
+      # are unchanged. Step-scoped env, not Cargo.toml: local builds and
+      # clippy are untouched. Per-package overrides in Cargo.toml
+      # (ifc-lite-geometry at 3) still win.
       - name: Install cargo-nextest
         uses: taiki-e/install-action@f360235162158ca4526b07999d99c38ade05a414 # cargo-nextest (snapshot pinned 2026-10)
       - name: Rust tests
@@ -2251,12 +2271,17 @@ jobs:
         # (rust/export/src/test_support.rs) — make that a hard failure.
         env:
           IFC_LITE_REQUIRE_FIXTURES: "1"
+          CARGO_PROFILE_DEV_OPT_LEVEL: "1"
+          CARGO_PROFILE_TEST_OPT_LEVEL: "1"
         run: cargo nextest run --workspace --profile ci
       # nextest does not run doctests; `cargo test --workspace` did. Run them
-      # here so the lane's coverage is exactly what it was.
+      # here so the lane's coverage is exactly what it was. Same profile env,
+      # so the libraries built above are reused rather than rebuilt.
       - name: Rust doctests
         env:
           IFC_LITE_REQUIRE_FIXTURES: "1"
+          CARGO_PROFILE_DEV_OPT_LEVEL: "1"
+          CARGO_PROFILE_TEST_OPT_LEVEL: "1"
         run: cargo test --workspace --doc
 
       # The feature legs (parquet-bos, csg_manifold_gate, csg_capture, the

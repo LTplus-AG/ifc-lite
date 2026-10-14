@@ -1,0 +1,15 @@
+--- a/apps/report-service/scripts/scan-public-once.ts
++++ b/apps/report-service/scripts/scan-public-once.ts
+@@ -44,10 +44,10 @@
+     try {
+       // The scanner authenticates the same durable custody/binding/head as the
+       // API, using only its own storage/journal credentials. No API secrets.
+-      void openRuntimeJournal; void journalConfig; journal = undefined;
++      journal = await openRuntimeJournal(db, { ...storage, journal: journalConfig, submissionsEnabled: false });
+       // Match disabled API startup: an unbound, empty history cannot start a
+       // worker that might claim work introduced after the emptiness check.
+-      // Counterproof: allow the worker without authenticating custody.
++      if (!journal) { console.log("scanner_idle"); return; }
+       const source = new ScannerSource(storage);
+       try {
+         console.log(

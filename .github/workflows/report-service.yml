@@ -27,6 +27,7 @@ concurrency:
 
 jobs:
   storage-integration:
+    if: github.event_name != 'workflow_dispatch' || github.ref != 'refs/heads/qualification/7532-top-max-startup-control-0d879cc0'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -56,6 +57,9 @@ jobs:
       REPORT_SCANNER_SIGNATURE_DIRECTORY: /tmp/ifclite-scanner-signatures
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -63,6 +67,20 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile --ignore-scripts
       - uses: ./.github/actions/setup-report-integration
+      - name: Record exact top scanner startup and selected MAX source
+        if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/qualification/7532-top-max-startup-control-0d879cc0'
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          test "$REPORT_SCANNER_MAX_MODEL" = true
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          test -z "$(git status --porcelain)"
+          mkdir -p "$RUNNER_TEMP/scanner-top-qualification"
+          git rev-parse HEAD HEAD^{tree} 078e2db6756f63277613adb3652d2e8e89b6c210 078e2db6756f63277613adb3652d2e8e89b6c210^{tree} > "$RUNNER_TEMP/scanner-top-qualification/source.txt"
+          git diff --name-status 078e2db6756f63277613adb3652d2e8e89b6c210 HEAD > "$RUNNER_TEMP/scanner-top-qualification/qualification-paths.txt"
+          git ls-files -z scripts/check-test-revert-oracle.mjs apps/report-service/src apps/report-service/scripts apps/report-service/test | xargs -0 sha256sum > "$RUNNER_TEMP/scanner-top-qualification/source-before.sha256"
       - name: Build scanner and fetch its public authoring-tool fixture
         run: |
           pnpm build --filter=@ifc-lite/report-service... --concurrency=1
@@ -73,7 +91,43 @@ jobs:
           docker pull "$scanner_image"
           pnpm exec tsx apps/report-service/scripts/scan-public-once.ts update-signatures
       - name: Real engine, database and storage qualification
-        run: pnpm test --filter=@ifc-lite/report-service --filter=@ifc-lite/report-contract --concurrency=1 --env-mode=loose
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p "$RUNNER_TEMP/scanner-top-qualification"
+          sha256sum tests/models/ara3d/AC20-FZK-Haus.ifc > "$RUNNER_TEMP/scanner-top-qualification/authored-fixture.sha256"
+          pnpm test --filter=@ifc-lite/report-service --filter=@ifc-lite/report-contract --concurrency=1 --env-mode=loose 2>&1 | tee "$RUNNER_TEMP/scanner-top-qualification/top-max-positive.log"
+      - name: Observe real scanner startup custody inverse without repeating selected MAX
+        if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/qualification/7532-top-max-startup-control-0d879cc0'
+        shell: bash
+        env:
+          REPORT_SCANNER_MAX_MODEL: 'false'
+        run: |
+          set -euo pipefail
+          node scripts/check-test-revert-oracle.mjs --base c4aa9b1dbcbd1a043b6075f1f7234b75b9b2a4f0 --ci --json \
+            --only apps/report-service/scripts/scan-public-once.ts --mutation .qualification/7532/startup-custody.patch \
+            --test apps/report-service/test/scanner.integration.test.ts \
+            2>&1 | tee "$RUNNER_TEMP/scanner-top-qualification/startup-custody-inverse.log"
+      - name: Require restored root graph and exact top source without repeating selected MAX
+        if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/qualification/7532-top-max-startup-control-0d879cc0'
+        shell: bash
+        env:
+          REPORT_SCANNER_MAX_MODEL: 'false'
+        run: |
+          set -euo pipefail
+          sha256sum --check "$RUNNER_TEMP/scanner-top-qualification/source-before.sha256"
+          test -z "$(git status --porcelain)"
+          pnpm test --filter=@ifc-lite/report-service --filter=@ifc-lite/report-contract --concurrency=1 --env-mode=loose --force 2>&1 | tee "$RUNNER_TEMP/scanner-top-qualification/top-restored-without-repeat-max.log"
+          sha256sum --check "$RUNNER_TEMP/scanner-top-qualification/source-before.sha256"
+          test -z "$(git status --porcelain)"
+      - name: Retain actual top selected MAX, startup inverse and restored evidence
+        if: always() && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/qualification/7532-top-max-startup-control-0d879cc0'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: scanner-top-max-startup-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/scanner-top-qualification/
+          if-no-files-found: error
+          retention-days: 7
       - name: Remove owned report fixtures
         if: always()
         uses: ./.github/actions/setup-report-integration
@@ -84,6 +138,7 @@ jobs:
         run: rm -rf -- "$REPORT_SCANNER_SIGNATURE_DIRECTORY"
 
   mounted-public-ui:
+    if: github.event_name != 'workflow_dispatch' || github.ref != 'refs/heads/qualification/7532-top-max-startup-control-0d879cc0'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:

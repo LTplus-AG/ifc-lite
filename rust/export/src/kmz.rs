@@ -91,16 +91,8 @@ pub fn ifc_angle_to_kml_heading(x_abscissa: Option<f64>, x_ordinate: Option<f64>
     }
 }
 
-fn xml_escape(s: &str) -> String {
-    s.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
-        .replace('\'', "&apos;")
-}
-
 fn build_kml(opts: &KmzOptions, heading: f64, model_href: &str) -> String {
-    let name = xml_escape(opts.name.as_deref().unwrap_or("IFC Model"));
+    let name = crate::xml_text::escape(opts.name.as_deref().unwrap_or("IFC Model"));
     format!(
         r#"<?xml version="1.0" encoding="UTF-8"?>
 <kml xmlns="http://www.opengis.net/kml/2.2">

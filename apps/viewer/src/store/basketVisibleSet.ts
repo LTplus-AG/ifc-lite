@@ -215,7 +215,8 @@ function getSelectedStoreyElementRefs(state: ViewerStateSnapshot): EntityRef[] {
   return dedupeRefs(refs);
 }
 
-function getSelectionBaseRefs(state: ViewerStateSnapshot): EntityRef[] {
+/** Canonical selection resolver: model-local refs, `modelId === 'legacy'` = single-model store. */
+export function getSelectionBaseRefs(state: ViewerStateSnapshot): EntityRef[] {
   const refs: EntityRef[] = [];
 
   if (state.selectedEntitiesSet.size > 0) {

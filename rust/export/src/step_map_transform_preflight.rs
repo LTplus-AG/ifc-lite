@@ -8,7 +8,7 @@ use ifc_lite_geometry::GeometryRouter;
 use nalgebra::{Matrix4, Vector3};
 use super::Record;
 
-pub(super) fn operation(map: &DecodedEntity) -> Result<(), String> {
+pub(crate) fn operation(map: &DecodedEntity) -> Result<(), String> {
     for slot in 2..=7 {
         if slot >= 5 && map.get(slot).is_some_and(|attr| attr.is_null()) { continue; }
         let value = map.get_float(slot).filter(|value| value.is_finite())
@@ -274,7 +274,7 @@ fn curve_geometry(item: &DecodedEntity, decoder: &mut EntityDecoder) -> Result<b
 /// Validates a product's placement chain. `validated` memoizes whole verified
 /// suffixes (a placement is recorded only once its root is reached), so
 /// shared parents and their linear curve samples are checked once.
-pub(super) fn placement(product: &DecodedEntity, router: &GeometryRouter, validated: &mut HashSet<u32>, decoder: &mut EntityDecoder) -> Result<(), String> {
+pub(crate) fn placement(product: &DecodedEntity, router: &GeometryRouter, validated: &mut HashSet<u32>, decoder: &mut EntityDecoder) -> Result<(), String> {
     let Some(attr) = product.get(5).filter(|attr| !attr.is_null()) else { return Ok(()) };
     let mut current = attr.as_entity_ref().ok_or("ObjectPlacement is not a reference")?;
     let mut seen = Vec::new();
@@ -360,7 +360,7 @@ pub(super) fn rigid_frame(frame: &Matrix4<f64>, id: u32) -> Result<(), String> {
 }
 
 /// Both normalization paths require the same engineering context frame.
-pub(super) fn context_frame(context: u32, decoder: &mut EntityDecoder) -> Result<(), String> {
+pub(crate) fn context_frame(context: u32, decoder: &mut EntityDecoder) -> Result<(), String> {
     let source_context = decoder.decode_by_id(context).map_err(|error| error.to_string())?;
     if source_context.ifc_type != IfcType::IfcGeometricRepresentationContext || source_context.get_float(2) != Some(3.0) {
         return Err(format!("SourceCRS #{context} is not a 3D representation context"));

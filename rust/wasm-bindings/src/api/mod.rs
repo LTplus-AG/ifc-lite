@@ -29,6 +29,7 @@ mod export_data;
 mod export_dfjson;
 mod export_glb;
 mod export_hbjson;
+mod export_landxml;
 mod export_obj;
 mod export_step;
 mod extract_profiles;

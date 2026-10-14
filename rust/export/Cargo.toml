@@ -47,3 +47,7 @@ observability = ["ifc-lite-processing/observability"]
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+# Round-trip oracle: the exported terrain is read back by ifc-lite's own LandXML parser.
+ifc-lite-landxml = { workspace = true }

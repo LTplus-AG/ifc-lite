@@ -5,7 +5,7 @@ IFC models and point clouds. LandXML records stay LandXML — **no `Ifc*` entiti
 from them**.
 
 This page describes what loads, what is kept but not drawn, what is refused, and what export
-does. For the evidence behind interoperability claims, see the
+does in both directions: LandXML to IFC, and IFC terrain back to a LandXML surface. For the evidence behind interoperability claims, see the
 [coverage ledger](../architecture/landxml-coverage-ledger.md); a capability being implemented
 is recorded separately there from whether a given producer's export has been verified.
 
@@ -91,10 +91,14 @@ rather than a silent identity transform.
 
 ## Export
 
+There are two separate exports, one in each direction. Neither is a round trip of the other.
+
+### LandXML → IFC
+
 A LandXML model can be converted to IFC4X3, under the reviewed mapping in
 [LandXML → IFC mapping](../architecture/landxml-to-ifc-mapping.md) (v1.0). The conversion is
-one-way and derived: it is not a round trip, and it does not replace the source records, which
-remain the authoritative model in the viewer.
+derived: it does not replace the source records, which remain the authoritative model in the
+viewer.
 
 What v1 writes:
 
@@ -140,6 +144,62 @@ Also available, and still the recommended route when a downstream tool can read 
 - **Changes only (JSON delta)** export. Mutation deltas are source-independent JSON, not synthesised IFC, so
   the mapping does not apply to them.
 
+### IFC terrain → LandXML
+
+An IFC terrain can be exported as a LandXML 1.2 TIN surface for civil and survey tools. Select
+one or more terrain products in one IFC model and choose **LandXML (terrain)** in the export
+menu or the command palette. The viewer checks the selection with the real exporter before you
+commit and downloads `<model>_terrain.xml`. Terrain selected across several federated models is
+refused; export one model at a time. From code, the exporter is `GeometryProcessor.exportLandXmlTerrain` (see
+[Exporting](exporting.md#landxml-terrain-export)).
+
+This export writes a terrain triangulation that was already authored. It is not a general
+geometry converter. Nothing is re-triangulated, repaired or sampled from the rendered mesh. The
+contract follows openBIM-surveyor's `IFC_TERRAIN_TO_LANDXML.md`, with three differences: an
+`IfcSite` is accepted as well as an `IfcGeographicElement`; a flag-free
+`IfcTriangulatedIrregularNetwork` is accepted; and an omitted `MapUnit` means the project length
+unit, as IFC defines it, instead of being refused.
+
+| IFC | LandXML 1.2 |
+|---|---|
+| Each selected `IfcGeographicElement` or `IfcSite`, in selection order | One `<Surface>`, `<Definition surfType="TIN">` |
+| Product `Name` (else `GlobalId`) | `Surface@name`. A repeated name gets a ` (2)`, ` (3)` … suffix |
+| Product `GlobalId` | `Surface@OID` |
+| `IfcTriangulatedFaceSet.Coordinates`, through `PnIndex` when present | `<Pnts>`, one `<P>` per vertex in authored order, ids from 1 |
+| `CoordIndex` | `<Faces>`, one `<F>` per triangle, unchanged |
+| Vertex, through the product placement and then the context's `IfcMapConversion` / `IfcMapConversionScaled` | `<P>` text as **northing easting elevation**, in metres |
+| `IfcProjectedCRS.Name` | `CoordinateSystem@name`, plus `epsgCode` when the name is `EPSG:<n>` |
+| `IfcProjectedCRS.GeodeticDatum` / `VerticalDatum` | `CoordinateSystem@horizontalDatum` / `@verticalDatum` |
+| `IfcProject.Name` (else `LongName`) | `Project@name` |
+
+Coordinates are written to six decimals (a micrometre), with trailing zeros trimmed and never in
+exponent form. The map conversion is found through the representation's own context, following
+`ParentContext` from a subcontext. `MapUnit` and the project length unit are both converted to
+metres, so the output is always `<Metric linearUnit="meter">`. For how ifc-lite reads the map
+conversion elsewhere, see
+[map units](exporting.md#map-units-for-interoperability) and
+[map rotation and scale](exporting.md#map-rotation-and-scale-for-interoperability).
+
+The export fails closed. It writes nothing, and the error (`TERRAIN_REFUSED`) names the product or
+attribute at fault, when:
+
+- a selected product is not an `IfcGeographicElement` or `IfcSite`;
+- the product has no `IfcTriangulatedFaceSet`, or more than one;
+- the face set is an `IfcTriangulatedIrregularNetwork` with any non-zero `Flags`, because
+  breaklines, voids and hidden faces have no place in a plain LandXML face list;
+- a coordinate is not finite, a face is not three distinct existing vertices, or a face is
+  degenerate in map coordinates;
+- the representation's context has no `IfcMapConversion`, or more than one, or the conversion
+  is numerically invalid. Local coordinates are never treated as map coordinates;
+- the map conversion's source context has a non-identity `WorldCoordinateSystem`;
+- `TargetCRS` is not an `IfcProjectedCRS`, or has no `Name`;
+- the model has no single `IfcProject` with exactly one length unit, or a length unit cannot be
+  converted to metres exactly;
+- `Scale` is omitted while the map unit and the project unit differ;
+- the product's placement chain fails the same checks map normalization applies;
+- the selected terrains are in different coordinate systems. One LandXML file carries one
+  `CoordinateSystem`.
+
 ## Diagnostics
 
 Parse failures carry a stable code:
@@ -162,5 +222,6 @@ file that cannot be triangulated still opens with its source records intact.
 
 ## Out of scope
 
-Native LandXML authoring and export, survey adjustment, hydraulic analysis, cadastral
-certification, and corridor reconstruction from unsupported records.
+Native LandXML authoring, exporting anything other than an authored IFC terrain triangulation
+(alignments, points, breaklines and other records), survey adjustment, hydraulic analysis,
+cadastral certification, and corridor reconstruction from unsupported records.

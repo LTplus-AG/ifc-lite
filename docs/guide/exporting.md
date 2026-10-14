@@ -208,6 +208,7 @@ flowchart LR
         Parquet["Apache Parquet"]
         JSON["JSON-LD"]
         CSV["CSV"]
+        LandXML["LandXML (terrain)"]
     end
 
     subgraph Uses["Use Cases"]
@@ -216,6 +217,7 @@ flowchart LR
         Analytics["Data Analytics"]
         Linked["Linked Data"]
         Spreadsheet["Spreadsheets"]
+        Civil["Civil / Survey Tools"]
     end
 
     GLBIn --> Viewer
@@ -224,6 +226,7 @@ flowchart LR
     IFC --> Parquet --> Analytics
     IFC --> JSON --> Linked
     IFC --> CSV --> Spreadsheet
+    IFC --> LandXML --> Civil
 ```
 
 ## glTF / GLB Export
@@ -916,6 +919,42 @@ occlude the default render. Repeated mapped geometry (façade panels, MEP fittin
 authored once as a referenced `class Mesh` prototype under `/World/Prototypes` and each occurrence
 references it with a per-occurrence transform — a file-size win that keeps every occurrence a
 distinct, queryable prim.
+
+## LandXML (terrain) Export
+
+An authored IFC terrain triangulation can be exported as a LandXML 1.2 TIN surface. In the
+viewer, select the terrain of one model and choose **LandXML (terrain)** in the export menu or
+the command palette. The selection is checked with the real exporter first, and the file
+downloads as `<model>_terrain.xml`.
+
+From code, pass the express ids of the selected `IfcGeographicElement` or `IfcSite` products:
+
+```typescript
+import { terrainRefusalReason } from '@ifc-lite/geometry';
+
+const terrainIds = new Uint32Array([1234]); // express ids, one <Surface> each
+try {
+  const terrain = gp.exportLandXmlTerrain(bytes, terrainIds); // null before init()
+  if (terrain) {
+    await saveFile('model_terrain.xml', terrain.xml);
+    console.log(terrain.crsName, terrain.surfaces.map((s) => `${s.name}: ${s.faces} faces`));
+  }
+} catch (error) {
+  const reason = terrainRefusalReason(error); // null for anything but a refusal
+  if (reason === null) throw error;
+  console.warn(`Terrain not exported: ${reason}`);
+}
+```
+
+Each product's `IfcTriangulatedFaceSet` is copied as authored, never re-triangulated. Its
+vertices go through the product placement and the `IfcMapConversion` of the representation's
+context, and are written as northing, easting, elevation in metres. The header `date` and `time`
+are the export time in UTC; pass a third `now` argument to fix them. Missing or ambiguous
+georeferencing refuses the export with a `TERRAIN_REFUSED:` error instead of guessing a CRS, unit
+or scale. The mapping table and the full list of refusals are in the
+[LandXML guide](landxml.md#ifc-terrain-landxml). The map conversion is interpreted the same way
+as in [map units](#map-units-for-interoperability) and
+[map rotation and scale](#map-rotation-and-scale-for-interoperability).
 
 ## Other Formats via GeometryProcessor
 

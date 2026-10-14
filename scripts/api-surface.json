@@ -6433,6 +6433,8 @@
     "IPlatformBridge: interface",
     "IfcLiteBridge: class",
     "KmzAltitudeMode: type",
+    "LandXmlTerrainExport: interface",
+    "LandXmlTerrainSurface: interface",
     "LocalProjectedOperation: interface",
     "MeshData: interface",
     "MeshTexture: interface",
@@ -6472,6 +6474,7 @@
     "SymbolicPolyline: class (type-only)",
     "SymbolicRepIdentifier: type",
     "SymbolicRepresentationCollection: class (type-only)",
+    "TERRAIN_REFUSED: const",
     "TessellationQuality: type",
     "Vec3: interface",
     "WASM_ASSET_UNAVAILABLE_EVENT: const",
@@ -6502,6 +6505,7 @@
     "projectedToLocalViewer: function",
     "releaseWarmGeometryWorkers: function",
     "resolveSpatialPlacement: function",
+    "terrainRefusalReason: function",
     "warmGeometryWorkerPoolStats: function"
   ],
   "@ifc-lite/geometry/geometry-class": [

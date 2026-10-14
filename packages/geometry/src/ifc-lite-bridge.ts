@@ -13,6 +13,7 @@ import type { KmzAltitudeMode, TessellationQuality } from './types.js';
 import type { RtcFrame } from './rtc-frame.js';
 import type { HbjsonStats } from './hbjson-stats.js';
 import * as energyExport from './energy-export-bridge.js';
+import { callExportLandXmlTerrain, type LandXmlTerrainExport } from './landxml-terrain-export.js';
 import type { GeometryDiagnostics } from './diagnostics.js';
 import type { ExtrusionDefinitions, SweptDiskDescriptions } from './analytic-descriptions.js';
 import { initMainThreadEngine } from './main-engine-init.js';
@@ -697,6 +698,11 @@ export class IfcLiteBridge {
     return this.runExport('exportHbjsonWithStats', content, (api) =>
       energyExport.callExportHbjsonWithStats(api, content, name),
     );
+  }
+
+  /** IFC terrain → LandXML 1.2; see `landxml-terrain-export.ts`. Refusals throw `TERRAIN_REFUSED:`. */
+  exportLandXmlTerrain(content: Uint8Array, productIds: Uint32Array, now: Date): LandXmlTerrainExport {
+    return this.runExport('exportLandXmlTerrain', content, (api) => callExportLandXmlTerrain(api, content, productIds, now));
   }
 
   /** DFJSON (Dragonfly) export; see `energy-export-bridge.ts` for the contract. */

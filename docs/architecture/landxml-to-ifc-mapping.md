@@ -36,7 +36,10 @@ I need it in an IFC-consuming tool".
 
 It is **not**:
 
-- a round-trip format (IFC→LandXML is out of scope and not planned);
+- a round-trip format. The separate IFC terrain → LandXML export ([#7600](https://github.com/LTplus-AG/ifc-lite/issues/7600),
+  see the [LandXML guide](../guide/landxml.md#ifc-terrain-landxml)) writes only an authored
+  terrain triangulation back as a TIN `Surface`, under its own contract, not the inverse of this
+  mapping;
 - a claim that the IFC output is equivalent to the LandXML source;
 - a replacement for the source records, which remain the authoritative model in the
   viewer and continue to be exportable in their original format;

@@ -1570,6 +1570,7 @@ dependencies = [
  "bytemuck",
  "ifc-lite-core",
  "ifc-lite-geometry",
+ "ifc-lite-landxml",
  "ifc-lite-processing",
  "nalgebra",
  "parquet",

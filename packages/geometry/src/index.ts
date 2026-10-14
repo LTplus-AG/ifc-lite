@@ -34,7 +34,8 @@ export { mergeGeometryDiagnostics } from './diagnostics.js';
 export type { HbjsonStats } from './hbjson-stats.js'; // consumed by the CLI + viewer energy-export UI
 
 // Typed export-failure contract (fail-closed empty exports, mirrors Rust ExportError).
-export { NO_RENDER_GEOMETRY, isNoRenderGeometryError } from './export-errors.js';
+export { NO_RENDER_GEOMETRY, isNoRenderGeometryError, TERRAIN_REFUSED, terrainRefusalReason } from './export-errors.js';
+export type { LandXmlTerrainExport, LandXmlTerrainSurface } from './landxml-terrain-export.js';
 
 // The index-parallel layouts the geometry-hash pass emits — six values per id
 // for the world box (#1891), one for the proved volume (#1993) — shared with
@@ -103,6 +104,7 @@ import { GEOM_CLASS_OCCURRENCE, geometryClassOf } from './geometry-class.js';
 import { createPlatformBridge, isTauri, type GeometryStats as PlatformGeometryStats, type IPlatformBridge } from './platform-bridge.js';
 import type { GeometryResult, MeshData, CoordinateInfo, GridAxis, TessellationQuality, KmzAltitudeMode, SimplifyMeshesResult } from './types.js';
 import type { HbjsonStats } from './hbjson-stats.js';
+import type { LandXmlTerrainExport } from './landxml-terrain-export.js';
 
 // Extracted sub-modules
 import { getStreamingBatchSize, convertMeshCollectionToBatch, withBuildingRotation } from './geometry-coordinate.js';
@@ -1463,6 +1465,11 @@ export class GeometryProcessor {
   /** Export the `IfcSpace` volumes in `buffer` as Honeybee HBJSON. Null if not initialized. */
   exportHbjson(buffer: Uint8Array, name: string): Uint8Array | null {
     return this.bridge?.isInitialized() ? this.bridge.exportHbjson(buffer, name) : null;
+  }
+
+  /** Export terrain products (express ids) as LandXML 1.2. Null if not initialized; a refusal throws `TERRAIN_REFUSED:`. */
+  exportLandXmlTerrain(buffer: Uint8Array, productIds: Uint32Array, now = new Date()): LandXmlTerrainExport | null {
+    return this.bridge?.isInitialized() ? this.bridge.exportLandXmlTerrain(buffer, productIds, now) : null;
   }
 
   /** Like {@link exportHbjson}; also returns `HbjsonStats`. Null if not initialized. */

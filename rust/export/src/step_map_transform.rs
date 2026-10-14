@@ -9,7 +9,7 @@ use nalgebra::Matrix4;
 use serde::Serialize;
 
 #[path = "step_map_transform_preflight.rs"]
-mod preflight;
+pub(crate) mod preflight;
 #[path = "step_map_transform_writer.rs"]
 mod writer;
 #[path = "step_map_rigid.rs"]

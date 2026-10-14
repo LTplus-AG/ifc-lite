@@ -34,6 +34,7 @@ mod ifc5;
 mod json;
 mod jsonld;
 mod kmz;
+mod landxml_terrain;
 mod merged;
 mod mesh_input;
 mod model;
@@ -70,6 +71,7 @@ mod step_text;
 mod step_map_transform;
 pub use step_map_transform::{plan_map_conversion_normalization, MapConversionEntityPatch, MapConversionNormalizationPlan};
 mod usd;
+mod xml_text;
 
 /// The STEP string-literal escaper; `escape`'s docs say why it is public.
 pub use step_text::escape as escape_step_string;
@@ -119,6 +121,10 @@ pub use rebar_schedule::{build_rebar_schedule, build_rebar_schedule_with_preflig
     build_rebar_schedule_with_fabrication_precheck, AuthoredRebarAttribute, AuthoredRebarValue,
     RebarSchedule, RebarScheduleRow, RebarSource, RebarSweep};
 pub use json::{export_json, JsonOptions};
+pub use landxml_terrain::{
+    try_export_landxml_terrain, LandXmlTerrainExport, LandXmlTerrainOptions, LandXmlTerrainRefusal,
+    LandXmlTerrainSurface,
+};
 pub use jsonld::{export_jsonld, export_jsonld_with_filter, JsonLdOptions};
 pub use kmz::{
     ifc_angle_to_kml_heading, try_export_kmz_collada_from_meshes, AltitudeMode, KmzOptions,

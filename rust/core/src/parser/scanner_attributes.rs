@@ -20,6 +20,7 @@
 //! lives here.
 
 use crate::parser::lexical::skip_step_trivia;
+use crate::step_encoding::step_string_literal_end;
 
 /// The top-level items of one parenthesized STEP list, each trimmed of
 /// trivia (STEP whitespace and `/* ... */` comments) at both ends. Nested
@@ -102,21 +103,16 @@ impl<'a> Iterator for StepListItems<'a> {
                     }
                     return Some(start.map_or(&bytes[pos..pos], |s| &bytes[s..end]));
                 }
-                b'\'' => {
-                    pos += 1;
-                    loop {
-                        match bytes.get(pos) {
-                            // An escaped quote ('') stays inside the string.
-                            Some(b'\'') if bytes.get(pos + 1) == Some(&b'\'') => pos += 2,
-                            Some(b'\'') => break,
-                            Some(_) => pos += 1,
-                            None => {
-                                self.state = ListState::Unreadable;
-                                return None;
-                            }
-                        }
+                // The shared literal rule: `''` and a `\S\` operand are text,
+                // so a comma or paren after `'Para \S\' 5'` is not read as
+                // structure (#7589). `pos` lands on the closing quote.
+                b'\'' => match step_string_literal_end(bytes, pos) {
+                    Some(past_close) => pos = past_close - 1,
+                    None => {
+                        self.state = ListState::Unreadable;
+                        return None;
                     }
-                }
+                },
                 b'(' => depth += 1,
                 b')' => depth -= 1,
                 _ => {}

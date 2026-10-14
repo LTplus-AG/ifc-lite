@@ -7,7 +7,7 @@
  */
 
 import { createLogger, isCompleteStepNumericLiteral } from '@ifc-lite/data';
-import { decodeIfcString } from '@ifc-lite/encoding';
+import { decodeIfcString, stepStringLiteralEnd } from '@ifc-lite/encoding';
 import { isIndexableExpressId } from './express-id.js';
 import { entityParameters } from './step-entity-parameters.js';
 import { StepTextScan } from './step-lexing.js';
@@ -148,71 +148,13 @@ export class EntityExtractor {
     // Kind is decided on the RAW token, before parseAttributeValue strips
     // quotes, so `'.USERDEFINED.'` (a genuine string) is never flagged (#1799).
     let enumAttrIndices: number[] | undefined;
-    let depth = 0;
-    let current = '';
-    let inString = false;
-    // Shared with source-header.ts's HEADER prescan: one comment-skip rule for
-    // decoded STEP text, not a fourth hand-rolled copy of it (#3673's
-    // follow-up). A comment's ',', "'", '(' or ')' must not be read as
-    // structure -- `#1=IFCWALL('a', /* rev; b */ $)` is one attribute pair,
-    // not a truncated one polluted with the comment's own text.
-    const trivia = new StepTextScan(paramsText);
-
-    for (let i = 0; i < paramsText.length; i++) {
-      const char = paramsText[i];
-
-      if (!inString && char === '/' && paramsText[i + 1] === '*') {
-        const end = trivia.skipLexicalAt(i);
-        if (end > i) {
-          // A comment is trivia, collapsed to one separator like whitespace --
-          // not omitted outright, so two tokens a comment sits between
-          // (`5/* c */6`) don't get spliced into one (`56`).
-          current += ' ';
-          i = end - 1;
-          continue;
-        }
-        // Unterminated: not a comment, per StepTextScan -- falls through and
-        // the lone '/' is read as ordinary text below.
-      }
-
-      if (char === "'") {
-        if (inString) {
-          // Check for escaped quote ('') - STEP uses doubled quotes
-          if (i + 1 < paramsText.length && paramsText[i + 1] === "'") {
-            current += "''"; // Keep the escaped quote
-            i++; // Skip next quote
-            continue;
-          }
-          inString = false;
-        } else {
-          inString = true;
-        }
-        current += char;
-      } else if (inString) {
-        current += char;
-      } else if (char === '(') {
-        depth++;
-        current += char;
-      } else if (char === ')') {
-        depth--;
-        current += char;
-      } else if (char === ',' && depth === 0) {
-        // End of attribute
-        const token = current.trim();
-        if (isBareEnumToken(token)) (enumAttrIndices ??= []).push(attributes.length);
-        attributes.push(this.parseAttributeValue(token));
-        current = '';
-      } else {
-        current += char;
-      }
-    }
-
-    // Add last attribute
-    const lastToken = current.trim();
-    if (lastToken) {
-      if (isBareEnumToken(lastToken)) (enumAttrIndices ??= []).push(attributes.length);
-      attributes.push(this.parseAttributeValue(lastToken));
-    }
+    const tokens = splitTopLevelItems(paramsText);
+    tokens.forEach((token, index) => {
+      // A trailing empty token is not an attribute; an empty slot (`,,`) is.
+      if (!token && index === tokens.length - 1) return;
+      if (isBareEnumToken(token)) (enumAttrIndices ??= []).push(attributes.length);
+      attributes.push(this.parseAttributeValue(token));
+    });
 
     return { attributes, enumAttrIndices };
   }
@@ -260,66 +202,10 @@ export class EntityExtractor {
         return []; // Empty list
       }
 
-      // Parse list items (comma-separated)
-      const items: any[] = [];
-      let parenDepth = 0;
-      let current = '';
-      let inString = false;
-      // Same rule as parseAttributes above: a comment nested inside a list is
-      // trivia too, e.g. `(#1, /* skip */ #2)`.
-      const listTrivia = new StepTextScan(listContent);
-
-      for (let i = 0; i < listContent.length; i++) {
-        const char = listContent[i];
-
-        if (!inString && char === '/' && listContent[i + 1] === '*') {
-          const end = listTrivia.skipLexicalAt(i);
-          if (end > i) {
-            current += ' ';
-            i = end - 1;
-            continue;
-          }
-        }
-
-        if (char === "'") {
-          if (inString) {
-            // Check for escaped quote ('') - STEP uses doubled quotes
-            if (i + 1 < listContent.length && listContent[i + 1] === "'") {
-              current += "''"; // Keep the escaped quote
-              i++; // Skip next quote
-              continue;
-            }
-            inString = false;
-          } else {
-            inString = true;
-          }
-          current += char;
-        } else if (inString) {
-          current += char;
-        } else if (char === '(') {
-          parenDepth++;
-          current += char;
-        } else if (char === ')') {
-          parenDepth--;
-          current += char;
-        } else if (char === ',' && parenDepth === 0) {
-          // End of item
-          const itemValue = current.trim();
-          if (itemValue) {
-            items.push(this.parseAttributeValue(itemValue, depth + 1));
-          }
-          current = '';
-        } else {
-          current += char;
-        }
-      }
-
-      // Add last item
-      if (current.trim()) {
-        items.push(this.parseAttributeValue(current.trim(), depth + 1));
-      }
-
-      return items;
+      // Parse list items (comma-separated); an empty item is skipped.
+      return splitTopLevelItems(listContent)
+        .filter((item) => item)
+        .map((item) => this.parseAttributeValue(item, depth + 1));
     }
 
     // Reference: #123
@@ -393,4 +279,46 @@ export class EntityExtractor {
     // other identifier: the raw token.
     return value;
   }
+}
+
+/**
+ * The trimmed top-level items of STEP parameter text, split at commas outside
+ * parentheses, string literals and comments; the last item is returned even
+ * when empty. A literal ends by the one shared rule, `stepStringLiteralEnd`:
+ * `''` and a `\S\` PAGE operand are text, so `'Para \S\' 5'` is one value
+ * (#7589). Comments use the `StepTextScan` rule source-header.ts shares, so a
+ * comment's `,`, `'`, `(` or `)` is not structure: `#1=IFCWALL('a', /* b, c *\/ $)`
+ * is one attribute pair (#3673's follow-up). A comment collapses to one space,
+ * so tokens it sits between (`5/* c *\/6`) are not spliced into one. An
+ * unterminated literal runs to the end of the text.
+ */
+function splitTopLevelItems(text: string): string[] {
+  const items: string[] = [];
+  const scan = new StepTextScan(text);
+  let depth = 0;
+  let current = '';
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    if (char === "'") {
+      const close = stepStringLiteralEnd(text, i);
+      const skipped = close < 0 ? text.length : close;
+      current += text.slice(i, skipped);
+      i = skipped - 1;
+      continue;
+    }
+    const comment = char === '/' ? scan.skipLexicalAt(i) : -1;
+    if (comment > i) {
+      current += ' ';
+      i = comment - 1;
+    } else if (char === ',' && depth === 0) {
+      items.push(current.trim());
+      current = '';
+    } else {
+      if (char === '(') depth++;
+      else if (char === ')') depth--;
+      current += char;
+    }
+  }
+  items.push(current.trim());
+  return items;
 }

@@ -185,10 +185,10 @@
       "value": "''"
     },
     {
-      "name": "order_proof_s_escape_over_a_doubled_quote",
-      "_comment": "ORDER PROOF. Un-double THEN decode makes the \\S\\ operand an apostrophe (0x27+128 = U+00A7). Decode THEN un-double consumes only the first quote as the operand and leaves a stray second one.",
-      "raw": "\\S\\''",
-      "value": "\u00a7"
+      "name": "page_operand_apostrophe_then_escaped_quote",
+      "_comment": "PAGE takes ONE latin codepoint, which may be an apostrophe (ISO 10303-21: PAGE = \\S\\ LATIN_CODEPOINT; #7540), so the literal '\\S\\''' never closes: its operand is the first quote and the next two are one escaped quote. This replaces an order proof that read \\S\\'' as a doubled operand; every lexer now follows the grammar (#7589). Here the operand is followed by an escaped quote: U+00A7 then an apostrophe.",
+      "raw": "\\S\\'''",
+      "value": "\u00a7'"
     },
     {
       "name": "unknown_escape_still_passes_through",

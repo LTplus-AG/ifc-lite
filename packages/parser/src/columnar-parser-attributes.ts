@@ -12,7 +12,7 @@
 import type { EntityRef } from './types.js';
 import { decodeIfcString } from '@ifc-lite/encoding';
 import { isIndexableExpressId } from './express-id.js';
-import { opensComment, skipComment, skipTrivia } from './step-lexing.js';
+import { opensComment, skipComment, skipStringLiteral, skipTrivia } from './step-lexing.js';
 import { EntityExtractor } from './entity-extractor.js';
 import { getRootAttrIndices } from './columnar-parser-root-attributes.js';
 
@@ -49,23 +49,24 @@ export function findQuotedAttrRange(
     if (pos >= end) return null;
     pos++; // skip '('
 
-    // Skip commas to reach the target attribute
+    // Skip commas to reach the target attribute. A string literal is skipped
+    // whole by step-lexing's `skipStringLiteral`, the one rule for where a
+    // literal ends: `''` and a `\S\` PAGE operand are text, so the comma in
+    // `'Para \S\' 5'` is not a separator (#7589).
     if (attrIndex > 0) {
         let toSkip = attrIndex;
         let depth = 0;
-        let inStr = false;
         while (pos < end && toSkip > 0) {
             const ch = buffer[pos];
             if (ch === 0x27 /* ' */) {
-                if (inStr && pos + 1 < end && buffer[pos + 1] === 0x27) {
-                    pos += 2; continue;
-                }
-                inStr = !inStr;
-            } else if (!inStr) {
-                if (ch === 0x28) depth++;
-                else if (ch === 0x29) depth--;
-                else if (ch === 0x2C && depth === 0) toSkip--;
+                const next = skipStringLiteral(buffer, pos, end);
+                if (next < 0) return null;
+                pos = next;
+                continue;
             }
+            if (ch === 0x28) depth++;
+            else if (ch === 0x29) depth--;
+            else if (ch === 0x2C && depth === 0) toSkip--;
             pos++;
         }
     }
@@ -81,20 +82,10 @@ export function findQuotedAttrRange(
 
     // Check for quoted string
     if (pos >= end || buffer[pos] !== 0x27 /* ' */) return null;
-    pos++; // skip opening quote
-    const start = pos;
-
-    // Find closing quote (handle escaped quotes '')
-    while (pos < end) {
-        if (buffer[pos] === 0x27) {
-            if (pos + 1 < end && buffer[pos + 1] === 0x27) {
-                pos += 2; continue;
-            }
-            break;
-        }
-        pos++;
-    }
-    return [start, pos];
+    // The literal ends where `skipStringLiteral` says (#7589); an
+    // unterminated one runs to the record's end, as it always has.
+    const close = skipStringLiteral(buffer, pos, end);
+    return [pos + 1, close < 0 ? end : close - 1];
 }
 
 /**
@@ -156,16 +147,16 @@ export function skipCommas(buffer: Uint8Array, start: number, end: number, count
     let pos = start;
     let remaining = count;
     let depth = 0;
-    let inString = false;
     while (pos < end && remaining > 0) {
         const ch = buffer[pos];
-        if (inString) {
-            if (ch === 0x27 && pos + 1 < end && buffer[pos + 1] === 0x27) { pos += 2; continue; }
-            if (ch === 0x27) inString = false;
-            pos++;
+        // A literal is skipped whole by the shared rule, so a `\S\` PAGE
+        // operand does not end it early (#7589); one that never closes runs
+        // to `end`, as the toggle it replaced did.
+        if (ch === 0x27) {
+            const next = skipStringLiteral(buffer, pos, end);
+            pos = next < 0 ? end : next;
             continue;
         }
-        if (ch === 0x27) { inString = true; pos++; continue; }
         if (opensComment(buffer, pos, end)) {
             const next = skipComment(buffer, pos, end);
             pos = next < 0 ? end : next;

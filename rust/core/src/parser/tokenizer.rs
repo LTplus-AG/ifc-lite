@@ -18,6 +18,7 @@ use nom::{
 
 use crate::error::{Error, Result};
 use crate::generated::IfcType;
+use crate::step_encoding::step_string_literal_end;
 
 /// STEP/IFC token.
 ///
@@ -55,44 +56,49 @@ fn entity_ref(input: &[u8]) -> IResult<&[u8], Token<'_>> {
 }
 
 /// Parse string literal: 'text' or "text"
-/// IFC uses '' to escape a single quote within a string
-/// Uses memchr for SIMD-accelerated quote searching
+///
+/// An apostrophe literal ends where the shared rule says it does
+/// ([`step_string_literal_end`]): `''` is an escaped quote and the operand of
+/// a `\S\` PAGE directive is text. Ending at that operand left the rest of
+/// `'Para \S\' 5'` as unparseable input, so the whole entity failed to
+/// decode (#7589). The token borrows the content between the quotes, still
+/// escaped; consumers un-double `''` and decode backslash escapes.
 fn string_literal(input: &[u8]) -> IResult<&[u8], Token<'_>> {
-    // Helper to parse string content with escaped quotes - SIMD optimized
-    #[inline]
-    fn parse_string_content(input: &[u8], quote_byte: u8) -> IResult<&[u8], &[u8]> {
-        let bytes = input;
-        let mut pos = 0;
-
-        // Use memchr for SIMD-accelerated searching
-        while let Some(found) = memchr::memchr(quote_byte, &bytes[pos..]) {
-            let idx = pos + found;
-            // Check if it's an escaped quote (doubled)
-            if idx + 1 < bytes.len() && bytes[idx + 1] == quote_byte {
-                pos = idx + 2; // Skip escaped quote pair
-                continue;
-            }
-            // End of string found
-            return Ok((&input[idx..], &input[..idx]));
-        }
-
-        // No closing quote found
-        Err(nom::Err::Error(nom::error::Error::new(
-            input,
-            nom::error::ErrorKind::Char,
-        )))
+    match input.first() {
+        Some(b'\'') => match step_string_literal_end(input, 0) {
+            Some(past_close) => Ok((
+                &input[past_close..],
+                Token::String(&input[1..past_close - 1]),
+            )),
+            None => Err(nom::Err::Error(nom::error::Error::new(
+                input,
+                nom::error::ErrorKind::Char,
+            ))),
+        },
+        _ => map(
+            delimited(char('"'), double_quoted_content, char('"')),
+            Token::String,
+        )(input),
     }
+}
 
-    alt((
-        map(
-            delimited(char('\''), |i| parse_string_content(i, b'\''), char('\'')),
-            Token::String,
-        ),
-        map(
-            delimited(char('"'), |i| parse_string_content(i, b'"'), char('"')),
-            Token::String,
-        ),
-    ))(input)
+/// Content of a `"..."` literal up to its closing `"`; a doubled `""` stays
+/// inside. Uses memchr for SIMD-accelerated quote searching.
+#[inline]
+fn double_quoted_content(input: &[u8]) -> IResult<&[u8], &[u8]> {
+    let mut pos = 0;
+    while let Some(found) = memchr::memchr(b'"', &input[pos..]) {
+        let idx = pos + found;
+        if input.get(idx + 1) == Some(&b'"') {
+            pos = idx + 2;
+            continue;
+        }
+        return Ok((&input[idx..], &input[..idx]));
+    }
+    Err(nom::Err::Error(nom::error::Error::new(
+        input,
+        nom::error::ErrorKind::Char,
+    )))
 }
 
 /// Parse integer: 42, -42, +42

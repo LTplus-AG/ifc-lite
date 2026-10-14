@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 export function runStepPageContracts(api, test) {
-  const vectors = JSON.parse(readFileSync(new URL('../../tests/fixtures/step-page-directive.json', import.meta.url), 'utf8'));
+  const vectors = JSON.parse(readFileSync(new URL('../../rust/core/tests/fixtures/step-page-directive.json', import.meta.url), 'utf8'));
   for (const { name, literal } of vectors) {
     test(`#7540 PAGE operand: ${name} retains real WASM byte/string scan boundaries`, () => {
       const records = [

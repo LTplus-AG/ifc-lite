@@ -10,7 +10,7 @@ import { scanIfcEntities } from './entity-scanner.js';
 import { skipStringLiteral, StepTextScan } from './step-lexing.js';
 
 const vectors: { name: string; literal: string }[] = JSON.parse(readFileSync(
-  new URL('../../../tests/fixtures/step-page-directive.json', import.meta.url), 'utf8',
+  new URL('../../../rust/core/tests/fixtures/step-page-directive.json', import.meta.url), 'utf8',
 ));
 
 function file(literal: string, paired: boolean, trailingComment: boolean) {

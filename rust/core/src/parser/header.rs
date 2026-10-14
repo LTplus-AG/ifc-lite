@@ -209,7 +209,7 @@ mod tests {
         assert_eq!(super::find_section_marker(source.as_bytes(), b"DATA"),
             source.rfind("DATA"));
         let vectors: serde_json::Value = serde_json::from_str(include_str!(
-            "../../../../tests/fixtures/step-page-directive.json"
+            "../../tests/fixtures/step-page-directive.json"
         )).unwrap();
         for vector in vectors.as_array().unwrap() {
             let literal = vector["literal"].as_str().unwrap();

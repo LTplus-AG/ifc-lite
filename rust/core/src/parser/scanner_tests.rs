@@ -13,7 +13,7 @@ use super::*;
 #[test]
 fn legal_page_quote_operands_retain_each_record_and_span_7540() {
     let vectors: serde_json::Value = serde_json::from_str(include_str!(
-        "../../../../tests/fixtures/step-page-directive.json"
+        "../../tests/fixtures/step-page-directive.json"
     )).unwrap();
     for vector in vectors.as_array().unwrap() {
         let literal = vector["literal"].as_str().unwrap();

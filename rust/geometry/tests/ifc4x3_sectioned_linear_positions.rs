@@ -128,6 +128,7 @@ DATA;
 #126=IFCPOINTBYDISTANCEEXPRESSION(IFCLENGTHMEASURE(80.),$,$,$,#123);
 #127=IFCAXIS2PLACEMENTLINEAR(#126,$,$);
 #128=IFCSECTIONEDSOLIDHORIZONTAL(#123,(#4,#4),(#125,#127));
+#129=IFCSECTIONEDSOLIDHORIZONTAL(#62,(#4,#4),(#86,#66));
 ENDSEC;
 END-ISO-10303-21;
 "#;
@@ -303,6 +304,12 @@ fn sweeps_are_wound_outward() {
         let volume = signed_volume(&mesh(id));
         assert!((volume - expected).abs() < 0.05 * expected, "#{id}: signed volume {volume}, expected ≈{expected}");
     }
+    // #129 mixes an authored Axis (45° roll) with a defaulted one. Every
+    // IFC4x3 frame is proper, so one winding holds for the whole sweep. Only
+    // the sign is checked: one ruled segment spans the 45° twist, so its
+    // diagonal-split side walls enclose less than area × length.
+    let mixed = signed_volume(&mesh(129));
+    assert!(mixed > 0.0, "#129: signed volume {mixed} must be positive (outward)");
 }
 
 #[test]
@@ -314,3 +321,4 @@ fn gradient_curve_distance_along_is_horizontal_station() {
     close(b.max[1], 80.0, "end y");
     close(b.max[2], 40.25, "end elevation");
 }
+

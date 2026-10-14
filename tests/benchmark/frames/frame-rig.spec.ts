@@ -23,23 +23,24 @@
  * job (scripts/perf/frame-gpu-rig.mts).
  */
 
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { BeginFrameDriver } from './begin-frame-driver.js';
 import { frameProbeInitScript } from './frame-probe.js';
 import { drivenFrameRows, FRAME_BUDGET_MS, type BrowserFramesRow, type DrivenFrame } from './frame-stats.js';
+import { readGpuHealth, type GpuHealth } from '../gpu-health.js';
+import { probeMetadataRenderTrace, waitForMetadataRenderReadiness, type LoadTraceProbe } from '../metadata-render-readiness.js';
+import { FRAME_FIXTURES } from './frame-evidence.js';
 import { homeKey, hoverSweep, orbitGesture, type CanvasRect } from './frame-scenarios.js';
 
 const ROOT = process.cwd();
-const FIXTURES = [
-  { name: 'AC20-FZK-Haus', path: 'tests/models/ara3d/AC20-FZK-Haus.ifc' },
-  { name: 'Snowdon', path: 'tests/models/various/01_Snowdon_Towers_Sample_Structural(1).ifc' },
-];
+const FIXTURES = FRAME_FIXTURES;
 const OUT = resolve(ROOT, process.env.FRAME_RIG_OUT ?? 'test-results/browser-frames.json');
 const ORBIT_FRAMES = 120, INERTIA_FRAMES = 90, HOVER_FRAMES = 120, TAIL_FRAMES = 30, IDLE_FRAMES = 30;
 
 const rows: BrowserFramesRow[] = [];
+const samples: Array<{ fixture: string; completed: boolean; readiness: LoadTraceProbe | null; readinessError: string | null; pageErrors: string[]; gpuHealth: GpuHealth | null }> = [];
 
 test.describe.configure({ mode: 'serial' });
 
@@ -49,12 +50,19 @@ for (const fixture of FIXTURES) {
     test.skip(!existsSync(file), `${fixture.path} missing; run \`pnpm fixtures\``);
 
     const context = await browser.newContext({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1 });
+    const sample = { fixture: fixture.name, completed: false, readiness: null as LoadTraceProbe | null,
+      readinessError: null as string | null, pageErrors: [] as string[], gpuHealth: null as GpuHealth | null };
+    samples.push(sample);
+    const logs: string[] = [];
+    let page: Page | null = null;
     try {
+      page = await context.newPage();
+      page.on('console', message => logs.push(message.text()));
+      page.on('pageerror', error => sample.pageErrors.push(String(error)));
       await context.addInitScript({ content: frameProbeInitScript({ workDone: false }) });
-      const page = await context.newPage();
       const driver = await BeginFrameDriver.attach(context, page);
 
-      await driver.during(page.goto('/'));
+      await driver.during(page.goto('/?perfTrace=1'));
       await driver.during(page.waitForSelector('input[type="file"]', { state: 'attached', timeout: 60_000 }));
       await driver.settle();
       await driver.calibrate();
@@ -100,23 +108,47 @@ for (const fixture of FIXTURES) {
       // slow, which is the app's real behaviour on a slow device.
       expect(orbitFrames.filter((frame) => (frame.page?.presents ?? 0) > 0).length, 'orbit rendered frames').toBeGreaterThan(ORBIT_FRAMES / 8);
       expect(load.some((frame) => (frame.page?.presents ?? 0) > 0), 'streaming load rendered').toBe(true);
+      // Qualification is outside every recorded scenario: keep frame windows
+      // unchanged while refusing late parser/finalization failures or timeout.
+      const readyPage = page;
+      for (const completionMode of ['metadata-render', 'load-root'] as const) {
+        await driver.during(waitForMetadataRenderReadiness({
+          trace: () => probeMetadataRenderTrace(readyPage), logs: () => logs,
+          canvasReady: () => readyPage.evaluate(() => {
+            const canvas = document.querySelector<HTMLCanvasElement>('canvas[data-viewport="main"]');
+            return !!canvas && canvas.width > 0 && canvas.height > 0;
+          }),
+          now: () => performance.now(), pause: () => readyPage.waitForTimeout(50),
+          timeoutMs: 120_000, completionMode,
+        }));
+      }
+      sample.completed = true;
     } finally {
-      await context.close();
+      try {
+        if (page) {
+          try { sample.readiness = await probeMetadataRenderTrace(page); }
+          catch (error) { sample.readinessError = String(error); }
+          sample.gpuHealth = await readGpuHealth(page, logs);
+        }
+      }
+      finally { await context.close(); }
     }
+    expect(sample.pageErrors, 'page errors contaminate frame measurements').toEqual([]);
+    expect(sample.gpuHealth?.contaminated, 'device loss/replacement contaminates frame measurements').toBe(false);
   });
 }
 
 test.afterAll(async ({ browser }) => {
-  if (rows.length === 0) return;
   mkdirSync(dirname(OUT), { recursive: true });
   writeFileSync(OUT, JSON.stringify({
     family: 'browser-frames',
     rig: 'deterministic-begin-frame',
-    schema: 1,
+    schema: 2,
     frameBudgetMs: FRAME_BUDGET_MS,
     browser: `chrome-headless-shell ${browser.version()}`,
     gpuTime: 'excluded: WebGPU runs on SwiftShader (CPU rasteriser); no metric here measures GPU execution',
-    mainThread: 'CDP Performance.getMetrics TaskDuration in threadTicks (renderer main-thread CPU), minus DevTools command time',
+    mainThread: 'CDP Performance.getMetrics TaskDuration in timeTicks (renderer main-thread task wall time), minus DevTools command time',
+    samples,
     rows,
   }, null, 2));
   console.log(`[frame-rig] wrote ${rows.length} rows to ${OUT}`);

@@ -295,6 +295,23 @@ rendered vs idle frames (a frame that called `getCurrentTexture`), and
   checks source ancestry; retain independent build/hash receipts binding each
   dist to its declared revision. Offline `--plan` and `--summarize` need no revisions.
 
+## Deterministic frame evidence admission (#6975)
+
+The [historical artifact audit](evidence/gpu-frame-timing-6975/frame-admission/historical-artifact-audit.json)
+found changing streaming counts and main-thread totals across actual hosted
+runs. Those builds differed, so they do not establish same-build repeatability;
+no frame ceiling is justified by this audit. The workflow's former scenario
+count also admitted incomplete metrics and retained no GPU-health witness.
+The rig now preserves per-fixture completion, page errors and the shared
+session-counter/console health classification, and admission requires every
+expected metric and healthy completion. Canonical metadata/root/finalization
+readiness and health are checked after the original scenario windows. Raw
+failed evidence remains uploaded. Enabling trace counters makes this a new
+instrumented cohort; its rows must not be pooled with older unobserved runs.
+Lesson: scenario coverage alone does not prove complete or uncontaminated
+measurements. Metrics remain informational; physical-display nights, calibrated
+thresholds and demonstrated repeatable frame ceilings remain outstanding.
+
 ## Viewer JS is gated on raw bytes, not brotli (#7007)
 
 The viewer build is byte-reproducible apart from `__BUILD_DATE__` (the build

@@ -330,15 +330,29 @@ pub(crate) fn promote_cutter_verts_onto_host_faces(cutter: &mut [Tri], host: &[T
             // that sees it.
             if let Some((_, d, f)) = best {
                 if let Some(w) = exact_on_plane_weld(*v, f.t) {
-                    // #7292: edge-basis quantization must not move the weld
-                    // farther in-plane than the noise band that admitted it.
+                    // #7292: edge-basis quantization must not create a new
+                    // point farther in-plane than the admitting face band.
                     // In mm files the unit-free step shifts a flush side by
                     // micrometres and leaves metres of the host uncut.
                     let scale = d / f.nn;
                     let drift = [0, 1, 2].map(|k| w[k] - (v[k] - scale * f.n[k]));
                     let drift2 = drift[0] * drift[0] + drift[1] * drift[1] + drift[2] * drift[2];
-                    if !drift2.is_finite() || drift2 > f.band2 {
+                    if !drift2.is_finite() {
                         continue;
+                    }
+                    if drift2 > f.band2 {
+                        // Reuniting an existing host corner also reconciles
+                        // tangential f32 scatter (native flush-slant fixture).
+                        // Its noise envelope
+                        // is projected along the drift, not the face normal.
+                        // Target identity prevents moving a coincident side
+                        // to a new point; the direction bound prevents a bad
+                        // Gram solve from jumping to a distant host corner.
+                        let tangent_band2 = band.scaled_band2(drift, drift2) / drift2;
+                        if !host_verts.contains(&super::near_band::vertex_bits(&w))
+                            || !tangent_band2.is_finite() || drift2 > tangent_band2 {
+                            continue;
+                        }
                     }
                     if w != *v {
                         welded += 1;

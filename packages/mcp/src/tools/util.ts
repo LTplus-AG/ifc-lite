@@ -69,6 +69,27 @@ export function resolveModel(ctx: ToolContext, modelId?: string): LoadedModel {
 }
 
 /**
+ * An entity "not found" in a model the scan read short may be one of the
+ * records it dropped (an unescaped apostrophe, #7541) rather than one the file
+ * never declared. Say so on the error's `hint`, once, at the dispatcher: every
+ * tool that misses an entity throws ENTITY_NOT_FOUND, so no tool repeats it
+ * (#7610). The tool already resolved this model before it threw, so the lookup
+ * here mirrors resolveModel without its errors.
+ */
+export function withScanHint(err: ToolExecutionError, ctx: ToolContext, modelId?: string): ToolExecutionError {
+  if (err.code !== ToolErrorCode.ENTITY_NOT_FOUND || err.hint) return err;
+  const model = modelId ? ctx.registry.get(modelId) : ctx.registry.count() === 1 ? ctx.registry.resolve() : undefined;
+  if (!model?.scanWarnings?.length) return err;
+  return new ToolExecutionError({
+    code: err.code,
+    message: err.message,
+    details: err.details,
+    hint: `Model '${model.id}' was read short: the scan dropped or skipped records its file declares ` +
+      '(see the warnings `model_load` returned), so this entity may be one of them.',
+  });
+}
+
+/**
  * **The GlobalId precedence rule, defined once.**
  *
  * A `model_id` names a session, not a file, so resolving a GlobalId has to

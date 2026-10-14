@@ -13,6 +13,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { loadIfcModel } from './loader.js';
+import { createMCPServer, fullScope, InMemoryModelRegistry, InProcessTransport } from './index.js';
 
 const gid = (n: number) => String(n).padStart(22, '0');
 function fileWith(name20: string): string {
@@ -39,5 +40,31 @@ describe('an MCP model the scan read short says so (#7610)', () => {
     const loaded = await loadIfcModel(fileWith("'it''s'"));
     expect(loaded.store.entityIndex.byId.has(20)).toBe(true);
     expect(loaded.scanWarnings).toBeUndefined();
+  });
+});
+
+describe('an MCP tool that misses an entity in a short model says why (#7610)', () => {
+  async function call(file: string, name: string, args: Record<string, unknown>) {
+    const registry = new InMemoryModelRegistry();
+    registry.add(await loadIfcModel(file, { modelId: 'm' }));
+    const transport = new InProcessTransport();
+    void transport.connect(createMCPServer({ version: '0.0.0-test', registry, scope: fullScope() }));
+    await transport.send({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 't', version: '0' } } });
+    const res = await transport.send({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name, arguments: args } }) as
+      { result: { isError?: boolean; structuredContent?: { code?: string; hint?: string } } };
+    return res.result;
+  }
+
+  it('hints at the dropped records when a write misses #20 of a short model', async () => {
+    const r = await call(fileWith("'it's'"), 'entity_set_property', { model_id: 'm', express_id: 20, pset: 'P', name: 'N', value: 1 });
+    expect(r.isError).toBe(true);
+    expect(r.structuredContent?.code).toBe('ENTITY_NOT_FOUND');
+    expect(r.structuredContent?.hint).toMatch(/Model 'm' was read short: the scan dropped or skipped records/);
+  });
+
+  it('gives no such hint when the model was read in full', async () => {
+    const r = await call(fileWith("'it''s'"), 'entity_set_property', { model_id: 'm', express_id: 99, pset: 'P', name: 'N', value: 1 });
+    expect(r.structuredContent?.code).toBe('ENTITY_NOT_FOUND');
+    expect(r.structuredContent?.hint ?? '').not.toMatch(/read short/);
   });
 });

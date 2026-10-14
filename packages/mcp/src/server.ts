@@ -71,6 +71,7 @@ import { PromptRegistry } from './prompts/types.js';
 import { ResourceRegistry } from './resources/types.js';
 import { disposeSessionResources } from './session-cleanup.js';
 import { ToolRegistry } from './tools/types.js';
+import { withScanHint } from './tools/util.js';
 import { advertisedInputSchema, validateInput } from './validate.js';
 import { ViewerManager } from './viewer-manager.js';
 import type { ViewerState } from './viewer-manager.js';
@@ -410,7 +411,7 @@ export class MCPServer {
       this.logger.log('error', `tools/call ${params.name} threw`, {
         error: err instanceof Error ? err.message : String(err),
       });
-      if (err instanceof ToolExecutionError) return err.toToolResult();
+      if (err instanceof ToolExecutionError) return withScanHint(err, ctx, (validation.value as { model_id?: string }).model_id).toToolResult();
       return toolError({
         code: ToolErrorCode.INTERNAL_ERROR,
         message: err instanceof Error ? err.message : String(err),

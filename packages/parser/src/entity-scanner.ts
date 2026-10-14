@@ -252,13 +252,13 @@ async function scanEntities(
   // (rust/core/src/parser/malformed_records.rs:34) carries the same wording and
   // these two halves must not diverge.
   // so malformedRecordCount is 0 or 1, never a density, and it covers three
-  // shapes -- an unterminated string, an unterminated comment, and a
-  // declaration cut off before its own '(' -- collapsed into one flag, so a
+  // shapes -- an unterminated or unescaped (#7541) string, an unterminated comment,
+  // and a declaration cut off before its own '(' -- collapsed into one flag, so a
   // message naming only one of them would misdescribe the other two every
   // time it fires.
   if (malformedRecordCount > 0) {
     const message =
-      "scan: dropped a record with no terminating ';' (an unterminated quoted string, " +
+      "scan: dropped a record with no terminating ';' (an unterminated or unescaped quoted string, " +
       'comment, or truncated file); the entities returned may be an incomplete view of ' +
       'this file (#3695)';
     if (!consoleAlreadyReported) console.warn(`[IfcParser] ${message}`);

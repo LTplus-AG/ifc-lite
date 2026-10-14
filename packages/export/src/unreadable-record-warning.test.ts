@@ -31,12 +31,17 @@ function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
 }
 
 /**
- * Two undoubled apostrophes in adjacent string attributes, which is what an
- * authoring tool emits when it forgets to double one. The scan closes the string
- * at the first stray apostrophe and reopens at the next, swallowing the comma
- * between them: quote parity stays even and paren depth returns to zero, so the
- * split produces parts that are not the record's slots. Every phantom below has
- * the same shape.
+ * Three records the parser INDEXES but whose argument list does not split into
+ * slots: one slot holds only a comment (`/* gap *\/,`), so it is a phantom
+ * slot of its own and every index after it would shift. The by-index writers
+ * refuse such a line (`splitTopLevelStepArguments` returns null), which is what
+ * sets `SourceLineMutations.unreadable`. The scanner reads the comment as
+ * trivia and still indexes the record.
+ *
+ * This replaces the #4125 shape, two undoubled apostrophes (`'a's','b's'`).
+ * That phantom no longer reaches the export: the scanner refuses a closing
+ * quote not followed by `,` or `)` and drops the record before it is indexed
+ * (#7541), so there is nothing left to export.
  *
  * `#10` (the wall) and `#20` (the containment relationship) carry one each;
  * `#5`'s is placed AFTER `HasPropertySets` so the parser still resolves the
@@ -50,17 +55,17 @@ FILE_SCHEMA(('IFC4'));
 ENDSEC;
 DATA;
 #1=IFCPROJECT('0OSuGGYUFyIf0LtE29OSuG',$,'My Project',$,$,$,$,$,$);
-#5=IFCWALLTYPE('0OSuGGYUFyIf0LtE29OSuT',$,'WT1',$,$,(#30),$,'a's','b's',.STANDARD.);
-#10=IFCWALL('0OSuGGYUFyIf0LtE29OSuW',$,'W1',$,$,$,$,'a's','b's');
-#20=IFCRELCONTAINEDINSPATIALSTRUCTURE('0OSuGGYUFyIf0LtE29OSuR',$,'a's','b's',(#10),#40);
+#5=IFCWALLTYPE('0OSuGGYUFyIf0LtE29OSuT',$,'WT1',$,$,(#30),$,/* gap */,'b',.STANDARD.);
+#10=IFCWALL('0OSuGGYUFyIf0LtE29OSuW',$,'W1',$,$,$,$,/* gap */,'b');
+#20=IFCRELCONTAINEDINSPATIALSTRUCTURE('0OSuGGYUFyIf0LtE29OSuR',$,/* gap */,'b',(#10),#40);
 #30=IFCPROPERTYSET('0OSuGGYUFyIf0LtE29OSuP',$,'Pset_TypeOwned',$,(#31));
 #31=IFCPROPERTYSINGLEVALUE('Foo',$,IFCTEXT('old'),$);
 #40=IFCBUILDINGSTOREY('0OSuGGYUFyIf0LtE29OSuS',$,'Level 0',$,$,$,$,$,$,0.);
 ENDSEC;
 END-ISO-10303-21;`;
 
-/** The same three records with their apostrophes doubled: the control file. */
-const CONTROL_IFC = BASE_IFC.replace(/'a's','b's'/g, "'a''s','b''s'");
+/** The same three records with the empty slot given a value (`$`): the control file. */
+const CONTROL_IFC = BASE_IFC.replaceAll('/* gap */,', '/* gap */$,');
 
 const WALL_ID = 10;
 const WALL_TYPE_ID = 5;
@@ -159,7 +164,7 @@ describe('an unreadable record whose edits were dropped is reported to the calle
 });
 
 /**
- * An IFC4 `IFCCHIMNEY` with the same undoubled-apostrophe shape. IFC2X3 has no
+ * An IFC4 `IFCCHIMNEY` with the same comment-only-slot shape. IFC2X3 has no
  * chimney, so `schema-converter.ts` maps the type to `IFCBUILDINGELEMENTPROXY`
  * on the way out — which is the point: the line this export writes for `#50` is
  * not the line the source file holds.
@@ -172,7 +177,7 @@ FILE_SCHEMA(('IFC4'));
 ENDSEC;
 DATA;
 #1=IFCPROJECT('0OSuGGYUFyIf0LtE29OSuG',$,'My Project',$,$,$,$,$,$);
-#50=IFCCHIMNEY('0OSuGGYUFyIf0LtE29OSuC',$,'Chimney 1',$,$,$,$,'a's','b's');
+#50=IFCCHIMNEY('0OSuGGYUFyIf0LtE29OSuC',$,'Chimney 1',$,$,$,$,/* gap */,'b');
 ENDSEC;
 END-ISO-10303-21;`;
 

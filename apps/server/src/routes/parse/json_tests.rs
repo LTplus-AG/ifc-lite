@@ -130,9 +130,12 @@ fn fixture_with_oversized_id() -> String {
     derived
 }
 
-/// The intact fixture with `#302`'s first string literal left unterminated,
-/// so `find_entity_end` runs off the end of the buffer and the scan stops
-/// there (#3695) — every record after it is silently absent from the count.
+/// The intact fixture with `#302`'s first string literal left unterminated.
+/// Before #7541 `find_entity_end` ran off the end of the buffer and the scan
+/// stopped there (#3695). The string now reads as closed by the quote that
+/// opens `'Body'` in `#305`, which cannot close a parameter, so `#302` is
+/// refused and the scan resumes at the next declaration that starts a line,
+/// `#306`: `#303`..`#305` sit inside the phantom string and are lost with it.
 /// Derived for the same reason as above.
 fn fixture_with_unterminated_string() -> String {
     let derived = FIXTURE.replace(INTACT_302, BROKEN_302);
@@ -152,17 +155,18 @@ const OVERSIZED_RECORD: &str = "#4294967297=IFCWALL('Wall00000000000000002',$,'W
 const INTACT_302: &str = "#302=IFCRECTANGLEPROFILEDEF(.AREA.,$,#301,1.0,0.2);";
 const BROKEN_302: &str = "#302=IFCRECTANGLEPROFILEDEF(.AREA.,'unterminated,#301,1.0,0.2);";
 
-/// How many records `FIXTURE` declares before the one that
-/// `fixture_with_unterminated_string` breaks.
+/// How many records `FIXTURE` declares outside `#302`..=`#305`, the span
+/// `fixture_with_unterminated_string` loses: the broken record, the two whose
+/// text its phantom string swallows, and `#305`, whose `'Body'` quote ends it.
 ///
 /// Counted off the fixture TEXT (one record per line), not off a parse, so
 /// the expected value does not come from the scanner whose behaviour is
 /// under test.
-fn records_before_302() -> u64 {
+fn records_outside_302_to_305() -> u64 {
+    let lost = ["#302=", "#303=", "#304=", "#305="];
     FIXTURE
         .lines()
-        .take_while(|line| !line.starts_with("#302="))
-        .filter(|line| line.starts_with('#'))
+        .filter(|line| line.starts_with('#') && !lost.iter().any(|id| line.starts_with(id)))
         .count() as u64
 }
 
@@ -208,8 +212,9 @@ async fn parse_metadata_reports_a_refused_oversized_id() {
     assert!(!json["malformed_record_found"].as_bool().unwrap());
 }
 
-/// The other stop, same surface: an unterminated string ends the scan, so the
-/// count covers only the records before it.
+/// The other report, same surface: an unterminated string drops its record
+/// and the ones its phantom string swallows (see
+/// `fixture_with_unterminated_string`), and the response must say so.
 #[tokio::test]
 async fn parse_metadata_reports_a_malformed_record_stop() {
     let baseline = entity_count(&metadata_json("malformed-baseline", FIXTURE).await);
@@ -222,8 +227,8 @@ async fn parse_metadata_reports_a_malformed_record_stop() {
     );
     assert_eq!(
         counted,
-        records_before_302(),
-        "the scan stops at #302, so exactly the records before it are counted"
+        records_outside_302_to_305(),
+        "#302..=#305 are lost and the scan resumes at #306 (#7541), so exactly the others are counted"
     );
     assert!(json["malformed_record_found"].as_bool().unwrap());
     assert_eq!(json["oversized_id_count"].as_u64().unwrap(), 0);

@@ -31,9 +31,9 @@
 /// The one-line report for a scan that stopped because of a malformed
 /// record.
 const MALFORMED_RECORD_MESSAGE: &str =
-    "scan: dropped a record with no terminating ';' (an unterminated quoted \
-     string, comment, or truncated file); the entities returned may be an \
-     incomplete view of this file (#3695)";
+    "scan: dropped a record with no terminating ';' (an unterminated or \
+     unescaped quoted string, comment, or truncated file); the entities \
+     returned may be an incomplete view of this file (#3695)";
 
 /// Emit [`MALFORMED_RECORD_MESSAGE`] to the installed sink (stderr by
 /// default; see [`super::set_report_sink`]).

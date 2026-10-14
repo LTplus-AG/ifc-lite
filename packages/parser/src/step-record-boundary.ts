@@ -20,6 +20,68 @@ const QUOTE = 0x27; // '\''
 const LPAREN = 0x28; // '('
 const RPAREN = 0x29; // ')'
 const EQUALS = 0x3D; // '='
+const COMMA = 0x2C; // ','
+const SEMICOLON = 0x3B; // ';'
+const HASH = 0x23; // '#'
+const LF = 0x0A;
+const CR = 0x0D;
+
+// What a quote that would close a string is (#7541). The rule, and why the
+// resume below is not the record's own ')', are argued in
+// rust/core/src/parser/record_strings.rs; change the halves together.
+export const QUOTE_CLOSES = 1;
+export const QUOTE_STRAY = 0; // an unescaped apostrophe: not ',' or ')' after it
+export const QUOTE_UNREADABLE = -1; // a comment after it never closes
+
+// A string is a parameter, so after trivia its closing quote is followed by
+// ',' or ')'. A quote after nothing but line breaks is a '' a writer wrapped
+// (10303-21 clause 5.6): it closes here and the next quote reopens the string.
+// Call after the PAGE operand (#7540) and doubled-quote tests.
+export function stringParameterEnd(buf: Uint8Array, quote: number, len: number): number {
+  const after = quote + 1;
+  if (buf[after] === COMMA || buf[after] === RPAREN) return QUOTE_CLOSES;
+  let wrap = after;
+  while (wrap < len && (buf[wrap] === LF || buf[wrap] === CR)) wrap++;
+  if (wrap > after && buf[wrap] === QUOTE) return QUOTE_CLOSES;
+  const t = skipTrivia(buf, after, len);
+  if (t.stop) return QUOTE_UNREADABLE;
+  return buf[t.next] === COMMA || buf[t.next] === RPAREN ? QUOTE_CLOSES : QUOTE_STRAY;
+}
+
+// Whether '#<digits> [spaces] =' starts at q.
+function declarationAt(buf: Uint8Array, q: number, len: number): boolean {
+  if (buf[q] !== HASH) return false;
+  let d = q + 1;
+  while (d < len && buf[d] >= 0x30 && buf[d] <= 0x39) d++;
+  if (d === q + 1) return false;
+  while (d < len && (buf[d] === 0x20 || buf[d] === 0x09)) d++;
+  return buf[d] === EQUALS;
+}
+
+// The next '#<digits> =' after `from` that begins a line or follows a ';'
+// (spaces and tabs before it, line breaks after the ';'), or `len`, and the
+// LFs crossed. Forward only, so a file of refusals costs its length.
+export function resyncAtRecordStart(
+  buf: Uint8Array,
+  from: number,
+  len: number,
+): { next: number; lines: number } {
+  let p = from;
+  let lines = 0;
+  while (p < len) {
+    const b = buf[p++];
+    if (b === LF) lines++;
+    else if (b !== CR && b !== SEMICOLON) continue;
+    let q = p;
+    while (q < len && (buf[q] === 0x20 || buf[q] === 0x09 || (b === SEMICOLON && (buf[q] === LF || buf[q] === CR)))) q++;
+    if (declarationAt(buf, q, len)) {
+      for (let i = p; i < q; i++) if (buf[i] === LF) lines++;
+      return { next: q, lines };
+    }
+  }
+  return { next: len, lines };
+}
+
 
 // Byte length of the record starting at `startOffset` whose argument list
 // opens at `pos`: up to and including the ')' balancing that '('.
@@ -67,9 +129,13 @@ export function findEntityLength(buf: Uint8Array, pos: number, startOffset: numb
 
     if (char === QUOTE) {
       // Returns `-1` on an unterminated literal (see skipStringLiteral's own
-      // doc): nothing after it is readable.
+      // doc): nothing after it is readable. An unescaped apostrophe leaves
+      // the bytes after it readable but read inverted, so no ')' found from
+      // there is this record's (#7541).
       const next = skipStringLiteral(buf, pos, len);
       if (next < 0) return UNREADABLE_RECORD;
+      const end = stringParameterEnd(buf, next - 1, len);
+      if (end !== QUOTE_CLOSES) return end === QUOTE_STRAY ? UNBALANCED_RECORD : UNREADABLE_RECORD;
       pos = next;
     } else if (opensComment(buf, pos, len)) {
       const end = skipComment(buf, pos, len);

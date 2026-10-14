@@ -107,12 +107,19 @@ export const PHANTOM_NEIGHBOUR_CASE = {
  * walk overruns the budget many times over on any machine (the well-formed
  * twin takes ~2ms here; the 20ms floor keeps timer noise out), while a fixed
  * scan finishes in single-digit milliseconds.
+ *
+ * The last two are unescaped apostrophes (#7541), which main returned as
+ * records. Each refusal resumes forward at the next declaration; resuming at
+ * the record's own ')' through a balance walk that reads such a quote as text
+ * measured 3.0s at 20 000 records, so these also catch a repair of that shape.
  */
 export const QUADRATIC_SHAPES: readonly (readonly [string, string, string])[] = [
   ['#1=A(2;\\n', '#1=A(2;\n', ''],
   ['#1=A(\\n', '#1=A(\n', ''],
   ['#1=A(\\n then ;', '#1=A(\n', ';'],
   ['#1=A(\\n then ENDSEC', '#1=A(\n', 'ENDSEC;\nEND-ISO-10303-21;\n'],
+  ["#1=A('x'y);\\n then #2=B('q';", "#1=A('x'y);\n", "#2=B('q';\n"],
+  ["#1=A('x'y);\\n then ENDSEC", "#1=A('x'y);\n", 'ENDSEC;\nEND-ISO-10303-21;\n'],
 ];
 export const QUADRATIC_RECORDS = 20_000;
 export const QUADRATIC_WELL_FORMED = '#1=A();\n';

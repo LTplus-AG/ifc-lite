@@ -301,11 +301,16 @@ fn apply_attr_mutations_refuses_a_record_whose_slots_do_not_scan() {
 
 /// The refusal above must be VISIBLE. An unchanged line is what a no-op edit
 /// also produces, so the export counts the refusal into its stats.
+///
+/// The record is one the scanner indexes but whose slots do not split: slot 3
+/// is only a comment, so writing index 3 would shift every later attribute.
+/// The #4125 apostrophe phantom above no longer reaches an export, because the
+/// scanner drops that record before it is ever indexed (#7541).
 #[test]
 fn export_step_counts_a_refused_attribute_edit() {
     use crate::step::{export_step_with_stats, AttrMutation, StepOptions};
 
-    let source = b"ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCWALL('g',$,IFCLABEL('a's'),$,IFCLABEL('b's'),#5,#6,'T',.SOLIDWALL.);\nENDSEC;\nEND-ISO-10303-21;\n";
+    let source = b"ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCWALL('g',$,'W',/* renamed */,'OT',#5,#6,'T',.SOLIDWALL.);\nENDSEC;\nEND-ISO-10303-21;\n";
     let opts = StepOptions {
         attribute_mutations: vec![AttrMutation {
             express_id: 1,
@@ -317,7 +322,7 @@ fn export_step_counts_a_refused_attribute_edit() {
     let (step, stats) = export_step_with_stats(source, &opts).unwrap();
     assert_eq!(stats.attribute_edits_refused, 1);
     assert!(
-        step.contains("#1=IFCWALL('g',$,IFCLABEL('a's'),$,IFCLABEL('b's'),#5,#6,'T',.SOLIDWALL.);"),
+        step.contains("#1=IFCWALL('g',$,'W',/* renamed */,'OT',#5,#6,'T',.SOLIDWALL.);"),
         "the source line ships unedited rather than corrupted; got:\n{step}"
     );
     assert!(
@@ -326,7 +331,7 @@ fn export_step_counts_a_refused_attribute_edit() {
     );
 
     // The control, so a zero above is not merely "this export never edits".
-    let control_source = b"ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCWALL('g',$,IFCLABEL('a''s'),$,IFCLABEL('b''s'),#5,#6,'T',.SOLIDWALL.);\nENDSEC;\nEND-ISO-10303-21;\n";
+    let control_source = b"ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCWALL('g',$,'W',/* renamed */$,'OT',#5,#6,'T',.SOLIDWALL.);\nENDSEC;\nEND-ISO-10303-21;\n";
     let (control_step, control_stats) = export_step_with_stats(control_source, &opts).unwrap();
     assert_eq!(control_stats.attribute_edits_refused, 0);
     assert!(

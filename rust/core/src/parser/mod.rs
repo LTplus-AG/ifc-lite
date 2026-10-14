@@ -26,6 +26,7 @@ mod lexical;
 mod malformed_records;
 mod numeric_literal;
 mod oversized_ids;
+mod record_strings;
 mod report_sink;
 mod scanner;
 mod tokenizer;

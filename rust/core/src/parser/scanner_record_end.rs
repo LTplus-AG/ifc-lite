@@ -11,6 +11,15 @@
 //! declaration, and the #4179 record-boundary rules it implements are argued
 //! next door in `lexical.rs` beside the exact walk they approximate.
 
+use crate::parser::record_strings::{string_parameter_end, QuoteEnd};
+
+/// How a record body ends: at its `;`, or refused at an unescaped apostrophe
+/// whose index in the scanned bytes the caller resumes after (#7541).
+pub(super) enum RecordEnd {
+    At(usize),
+    StrayQuote(usize),
+}
+
 impl<'a> super::EntityScanner<'a> {
     /// Index in `self.bytes` of the terminating `;` of the record whose body
     /// starts at `body_start`.
@@ -46,8 +55,12 @@ impl<'a> super::EntityScanner<'a> {
     /// `'`, `;` or `/` first, which for `#1=A(\n` repeated is end of file:
     /// O(n^2), measured 4x per doubling (`refused_records_do_not_rescan_the_remainder_4179`).
     /// One rule bounds both this walk and `close_step_record`'s.
+    ///
+    /// A closing quote not followed by `,` or `)` (modulo trivia) is refused
+    /// as [`RecordEnd::StrayQuote`] before any byte after it is read with the
+    /// inverted string state (#7541; `record_strings.rs`).
     #[inline]
-    pub(super) fn find_entity_end(&mut self, body_start: usize) -> Option<usize> {
+    pub(super) fn find_entity_end(&mut self, body_start: usize) -> Option<RecordEnd> {
         let content = self.bytes;
         let mut pos = body_start;
         // Only the two arms that can make it true compute it (#4179).
@@ -101,7 +114,8 @@ impl<'a> super::EntityScanner<'a> {
             }
             if found == b';' {
                 // A ';' closing nothing belongs to what FOLLOWS the record.
-                return crate::parser::lexical::closes_with_paren(plain, closes_paren).then_some(pos);
+                return crate::parser::lexical::closes_with_paren(plain, closes_paren)
+                    .then_some(RecordEnd::At(pos));
             }
 
             // found == b'\'' : entered a quoted string. Scan to the closing
@@ -118,9 +132,14 @@ impl<'a> super::EntityScanner<'a> {
                     pos += 2;
                     continue;
                 }
-                // Closing quote.
-                pos += 1;
-                break;
+                match string_parameter_end(content, pos) {
+                    QuoteEnd::Closes => {
+                        pos += 1;
+                        break;
+                    }
+                    QuoteEnd::Stray => return Some(RecordEnd::StrayQuote(pos)),
+                    QuoteEnd::Unreadable => return None,
+                }
             }
             closes_paren = false; // A literal is a parameter, not a close.
         }

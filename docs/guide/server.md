@@ -352,15 +352,15 @@ const metadata = await client.getMetadata(file);
 // - geometry_count: number
 // - file_size: number
 // - oversized_id_count?: number  // records the scan refused (#3395)
-// - malformed_record_found?: boolean  // the scan stopped early (#3695)
+// - malformed_record_found?: boolean  // a record was dropped (#3695)
 ```
 
 The last two report that `entity_count` covers less than the file declares:
 `oversized_id_count` is how many records were skipped for an instance name
-too large to represent, and `malformed_record_found` means the scan hit a
-record with no terminating `;` (an unterminated string or comment, or a
-truncated upload) and stopped there, so the count covers only the bytes
-before the break.
+too large to represent, and `malformed_record_found` means the scan dropped at least one
+record with no terminating `;` of its own (an unterminated or unescaped
+string, an unterminated comment, or a truncated upload), so the count covers
+less than the file declares.
 
 Both are **optional**, and absence is not the same as zero. A server older
 than these fields sends neither, which means "not scanned for" — never

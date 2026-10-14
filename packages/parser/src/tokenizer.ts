@@ -22,9 +22,8 @@ import {
   upperKeywordByte,
 } from './step-lexing.js';
 import {
-  recordCloseOffset,
-  semicolonClosesRecord,
-  UNBALANCED_RECORD,
+  QUOTE_CLOSES, QUOTE_STRAY, recordCloseOffset, resyncAtRecordStart,
+  semicolonClosesRecord, stringParameterEnd, UNBALANCED_RECORD,
 } from './step-record-boundary.js';
 
 /** `recordClose` before anything has computed it (both real failures are negative). */
@@ -294,6 +293,7 @@ export class StepTokenizer {
         // exact ';' check and the recovery below would otherwise balance the
         // same record twice.
         let recordClose = NOT_COMPUTED;
+        let quoteEnd = QUOTE_CLOSES; // what refused this record's closing quote, if one did
         while (pos < len) {
           const c = buf[pos];
           if (c === QUOTE) {
@@ -302,6 +302,7 @@ export class StepTokenizer {
               pos += 2; // Skip escaped quote
               continue;
             }
+            if (inString && (quoteEnd = stringParameterEnd(buf, pos, len)) !== QUOTE_CLOSES) break;
             inString = !inString;
           } else if (c === SLASH && !inString && opensComment(buf, pos, len)) {
             // The ';' that ends a record can be preceded by a comment holding
@@ -337,20 +338,21 @@ export class StepTokenizer {
           pos++;
         }
 
-        // No ';' of this record's own -- it ran off the end (an unescaped `'`
-        // left open, an unterminated comment), or one of the two #4179
-        // boundary rules refused the ';' it found. EVERY such exit lands here,
-        // so the recovery lives here once rather than at each `break`.
-        //
-        // Resume at the ')' balancing this record's own '(' when there is one,
-        // dropping just this record; otherwise run to `len`, ending the scan
-        // un-resynced rather than guessing a resume point from misaligned
-        // bytes. The pre-existing exits reach the second case, which is the
-        // `pos = len` they used to set for themselves. The balance walk stops
-        // at the next declaration's '=' (#4573), so a refusal costs this
-        // record's bytes, never a re-walk of the remainder per refusal.
+        // No ';' of this record's own: it ran off the end (a `'` or comment
+        // left open), a closing quote was an unescaped apostrophe (#7541), or a
+        // #4179 rule refused its ';'. EVERY such exit lands here, once.
+        // An apostrophe resumes at the next anchored declaration, never at a
+        // ')' a balance walk finds reading strings inverted. Otherwise resume
+        // at this record's own ')', else run to `len` rather than guess; that
+        // walk stops at the next '=' (#4573), so a refusal costs its own bytes.
         if (!foundTerminator) {
           stopped = true;
+          if (quoteEnd === QUOTE_STRAY) {
+            const r = resyncAtRecordStart(buf, pos + 1, len);
+            line += r.lines;
+            pos = r.next;
+            continue;
+          }
           if (recordClose === NOT_COMPUTED) {
             recordClose = recordCloseOffset(buf, parenPos, startOffset);
           }

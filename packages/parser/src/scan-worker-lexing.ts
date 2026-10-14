@@ -86,6 +86,44 @@ export const WORKER_LEXING = `
     }
   }
 
+  // Mirrors stringParameterEnd in step-record-boundary.ts (#7541), at a quote
+  // that would close a string: 1 it closes, 0 an unescaped apostrophe, -1 a
+  // comment after it never closes. Leaves the line counter as it found it.
+  function stringParameterEndAt(q) {
+    var a = q + 1;
+    if (buf[a] === 0x2C || buf[a] === 0x29) return 1;
+    var w = a;
+    while (w < len && (buf[w] === 0x0A || buf[w] === 0x0D)) w++;
+    if (w > a && buf[w] === 0x27) return 1;
+    var savedLine = line;
+    var t = skipTriviaAt(a);
+    line = savedLine;
+    if (t < 0) return -1;
+    return buf[t] === 0x2C || buf[t] === 0x29 ? 1 : 0;
+  }
+
+  // Mirrors resyncAtRecordStart in step-record-boundary.ts: the next
+  // '#<digits> =' after p that begins a line or follows a ';', or len.
+  // Advances the line counter over what it passes.
+  function resyncAtRecordStartAt(p) {
+    while (p < len) {
+      var b = buf[p++];
+      if (b === 0x0A) line++;
+      else if (b !== 0x0D && b !== 0x3B) continue;
+      var q = p;
+      while (q < len && (buf[q] === 0x20 || buf[q] === 0x09 || (b === 0x3B && (buf[q] === 0x0A || buf[q] === 0x0D)))) q++;
+      if (buf[q] !== 0x23) continue;
+      var d = q + 1;
+      while (d < len && buf[d] >= 0x30 && buf[d] <= 0x39) d++;
+      if (d === q + 1) continue;
+      while (d < len && (buf[d] === 0x20 || buf[d] === 0x09)) d++;
+      if (buf[d] !== 0x3D) continue;
+      for (var i = p; i < q; i++) if (buf[i] === 0x0A) line++;
+      return q;
+    }
+    return len;
+  }
+
   // Byte length from startOffset through the ')' balancing the '(' at p, or a
   // CLASSIFIED failure: -1 unbalanced but readable, -2 a literal or comment
   // that never closed. The RECOVERY point for a record with no ';' of its own
@@ -108,7 +146,11 @@ export const WORKER_LEXING = `
           if (p >= len) return -2;
           if (buf[p] === 0x27) {
             if (isPageQuoteOperandAt(p)) { p++; continue; }
-            if (buf[p + 1] === 0x27) { p += 2; continue; } p++; break;
+            if (buf[p + 1] === 0x27) { p += 2; continue; }
+            // An unescaped apostrophe: no ')' read from here is this record's (#7541).
+            var qe = stringParameterEndAt(p);
+            if (qe < 1) return qe < 0 ? -2 : -1;
+            p++; break;
           }
           p++;
         }

@@ -718,3 +718,65 @@ fn a_shard_reports_every_record_it_dropped_not_just_the_first_4179() {
     }
     assert!(checked >= 4, "fixture never put the real drop inside a shard");
 }
+
+/// #7541: an unescaped apostrophe pair (`'it's'` in #20, `'Bob's'` in #30)
+/// must cost the sharded scan exactly what it costs the serial one, wherever
+/// the shard boundary falls: on every record boundary between them, and on
+/// every byte inside either Name string, where the second shard starts with
+/// its quote state inverted. Every byte of the DATA section is a cut here, a
+/// superset of both. The cut is placed exactly by padding the file so that
+/// `with_chunks_counted(_, 2)`'s midpoint lands on it: blank lines before
+/// `DATA;` move it earlier, trailing blank lines move it later.
+#[test]
+fn stray_apostrophe_pair_stitches_like_the_serial_scan_at_every_cut_7541() {
+    let vectors: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../rust/core/tests/fixtures/step-stray-apostrophe.json"
+    ))
+    .unwrap();
+    let pair = vectors
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|v| v["name"] == "pair")
+        .expect("the shared fixture carries the `pair` vector");
+    let records: Vec<&str> = pair["records"].as_array().unwrap().iter().map(|r| r.as_str().unwrap()).collect();
+    let head = "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('a','',(''),(''),'','','');\n\
+                FILE_SCHEMA(('IFC4'));\nENDSEC;\n";
+    let data = format!("DATA;\n{}\nENDSEC;\nEND-ISO-10303-21;\n", records.join("\n"));
+    let base_len = head.len() + data.len();
+    let first = head.len() + "DATA;\n".len();
+    let last = first + records.join("\n").len();
+    let at = |needle: &str| head.len() + data.find(needle).unwrap();
+    let names = [(at("'it's'"), "'it's'".len()), (at("'Bob's'"), "'Bob's'".len())];
+    let boundaries: Vec<usize> = ["#20=", "#21=", "#22=", "#30=", "#31="].iter().map(|d| at(d)).collect();
+
+    let mut covered = 0usize;
+    for cut in first..=last {
+        // Pad so that (len / 2) == cut + pre, with `cut` measured in the
+        // unpadded file.
+        let (pre, post) = if 2 * cut >= base_len { (0, 2 * cut - base_len) } else { (base_len - 2 * cut, 0) };
+        let content = format!("{head}{}{data}{}", "\n".repeat(pre), "\n".repeat(post));
+        let bytes = content.as_bytes();
+        assert_eq!(bytes.len() / 2, cut + pre, "the padding must put the shard cut at {cut}");
+
+        let mut serial = ifc_lite_core::EntityIndex::default();
+        let mut scanner = EntityScanner::new(bytes);
+        while let Some((id, _, start, end)) = scanner.next_entity() {
+            serial.insert(id, (start, end));
+        }
+        let mut ids: Vec<u32> = serial.keys().copied().collect();
+        ids.sort_unstable();
+        assert_eq!(ids, [1, 2, 3, 21, 22, 31], "serial ground truth at cut {cut}");
+        assert_eq!(scanner.malformed_record_starts().len(), 2, "serial reports #20 and #30");
+
+        let stitched = with_chunks_counted(bytes, 2);
+        assert_eq!(stitched.index, serial, "stitched index != serial with the shard cut at byte {cut}");
+        assert!(stitched.malformed, "cut {cut}: the dropped records must still be reported");
+
+        let inside_name = names.iter().any(|&(s, len)| s < cut && cut < s + len);
+        if inside_name || boundaries.contains(&cut) {
+            covered += 1;
+        }
+    }
+    assert!(covered >= 5 + 5 + 6, "the sweep must cover every boundary and Name byte, got {covered}");
+}

@@ -224,7 +224,14 @@ impl<'a> EntityScanner<'a> {
             let body_start = eq_pos + 1;
             let line_content = &bytes[body_start..];
             let semicolon = match self.find_entity_end(body_start) {
-                Some(o) => o,
+                Some(scanner_record_end::RecordEnd::At(o)) => o,
+                // An unescaped apostrophe (#7541): drop this record and resume
+                // at the next anchored declaration, never at its own `)`.
+                Some(scanner_record_end::RecordEnd::StrayQuote(quote)) => {
+                    self.mark_malformed(line_start);
+                    self.position = super::record_strings::resync_at_record_start(bytes, quote + 1);
+                    continue;
+                }
                 None => {
                     // Report it, then drop just THIS record rather than the
                     // rest of the file: the `)` balancing its `(` is a real

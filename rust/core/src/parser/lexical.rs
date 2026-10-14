@@ -244,10 +244,17 @@ pub fn close_step_record(bytes: &[u8]) -> RecordClose {
                         continue;
                     }
                     // A doubled '' is an escaped quote: still inside.
-                    if bytes.get(pos) != Some(&b'\'') {
-                        break;
+                    if bytes.get(pos) == Some(&b'\'') {
+                        pos += 1;
+                        continue;
                     }
-                    pos += 1;
+                    // An unescaped apostrophe (#7541): every byte after it is
+                    // read inverted, so no ')' found from here is this record's.
+                    match super::record_strings::string_parameter_end(bytes, pos - 1) {
+                        super::record_strings::QuoteEnd::Closes => break,
+                        super::record_strings::QuoteEnd::Stray => return RecordClose::Unbalanced,
+                        super::record_strings::QuoteEnd::Unreadable => return RecordClose::Unreadable,
+                    }
                 }
             }
             b'/' if bytes.get(pos + 1) == Some(&b'*') => match skip_step_comment(bytes, pos) {

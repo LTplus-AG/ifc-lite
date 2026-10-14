@@ -839,6 +839,13 @@ jobs:
           # RED. Once the script is on main, ordinary whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- scripts/ci-node-test-shards.mjs | grep -Fxq 'scripts/ci-node-test-shards.mjs'; then
             oracle_args+=(--mutation tests/evidence/ci-node-test-shards/partition.oracle.patch)
+          # Keep the new viewer shard selector importable while removing ONLY
+          # its two guarantees: least-loaded placement of measured files (all
+          # land in shard 0, the rest run nothing) and the hash fallback for
+          # unmeasured files. Partition, balance and fallback assertions turn
+          # RED. Once the script is on main, ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- scripts/viewer-test-shards.mjs | grep -Fxq 'scripts/viewer-test-shards.mjs'; then
+            oracle_args+=(--mutation tests/evidence/ci-viewer-test-shards/selection.oracle.patch)
           fi
           node scripts/check-test-revert-oracle.mjs "${oracle_args[@]}"
           # #7512: observe cleanup independently of scoped admission/schema.
@@ -960,7 +967,28 @@ jobs:
   # is a hash of the path (below), so going 4 -> 8 reassigns files exactly
   # once and then stays stable.
   #
-  # Shard membership is a hash of the file PATH, not its index in the sorted
+  # Shard membership is by MEASURED DURATION first, path hash second
+  # (scripts/viewer-test-shards.mjs, tested by viewer-test-shards.test.mjs).
+  # Measured on three green main runs (2026-10-14): the hash split the
+  # same ~10,470 s of tests into shards of 336-900 s, and the slowest was
+  # always shard 4 (876-900 s): the content, not the runner. So every file in
+  # apps/viewer/test-durations.json is bin-packed (greedy LPT, ties by path)
+  # across the 16 shards, ~654 s of measured work each. The packing is a
+  # function of the manifest alone, so adding or deleting a test file still
+  # moves no other file; a file the manifest does not list takes the path
+  # hash below, so a new file always runs in exactly one shard. Runner speed
+  # still varies run to run (one job ran 1.7x its files' median), which no
+  # assignment can remove.
+  #
+  # Refresh the manifest when shard times drift apart, from two or three
+  # green runs (per-file times are median-combined):
+  #   node scripts/refresh-viewer-test-durations.mjs --run <id> --run <id>
+  # It needs `gh` and reads the `Viewer tests (shard n)` job logs; how TAP
+  # timestamps are attributed to files is in scripts/lib/viewer-test-durations.mjs.
+  # Changing the shard count below falls every file back to the hash until
+  # the manifest is refreshed for the new count.
+  #
+  # The fallback hash is of the file PATH, not its index in the sorted
   # list. With `NR % n` every file after an added or removed test moves to a
   # different shard: measured, adding ONE file reassigned 534 of 534. Two
   # things that breaks. A flaky file wanders between shards, and "shard 1
@@ -1074,11 +1102,12 @@ jobs:
       #    build (53s of "✓ built in 53.43s") which its tests do not need. The
       #    sibling dists the tests DO need come from the downloaded artifact.
       #
-      # `TEST_SHARDS`/`TEST_SHARD` select the files whose path hash lands in
-      # this shard (see apps/viewer's test script). Unset, the script takes
-      # every file, so a local `pnpm test` is unchanged. The split is exact:
-      # every path hashes to exactly one of the eight residues, so nothing is
-      # dropped or run twice (521 files split 130+131+130+130 at four).
+      # `TEST_SHARDS`/`TEST_SHARD` select this shard's files (apps/viewer's
+      # test script pipes its file list through scripts/viewer-test-shards.mjs,
+      # see above). Unset, the script takes every file, so a local `pnpm test`
+      # is unchanged. The split is exact: a manifest file is packed into one
+      # shard and any other path hashes to exactly one of the 16 residues, so
+      # nothing is dropped or run twice; an empty selection fails the step.
       - run: pnpm --filter @ifc-lite/viewer run test
         env:
           TEST_SHARDS: '16'

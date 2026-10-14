@@ -1,0 +1,21 @@
+diff --git a/scripts/viewer-test-shards.mjs b/scripts/viewer-test-shards.mjs
+--- a/scripts/viewer-test-shards.mjs
++++ b/scripts/viewer-test-shards.mjs
+@@ -76,7 +76,7 @@ export function packManifest(durations, shardCount) {
+   const out = new Map();
+   for (const [path, seconds] of entries) {
+     let best = 0;
+-    for (let s = 1; s < shardCount; s++) if (false) best = s;
++    for (let s = 1; s < shardCount; s++) if (load[s] < load[best]) best = s;
+     load[best] += seconds;
+     out.set(path, best);
+   }
+@@ -93,7 +93,7 @@ export function packManifest(durations, shardCount) {
+ export function assignShards(paths, manifest, shardCount) {
+   const packed = manifest.shards === shardCount ? packManifest(manifest.seconds, shardCount) : new Map();
+   const out = new Map();
+-  for (const p of paths) out.set(p, packed.has(p) ? packed.get(p) : 0);
++  for (const p of paths) out.set(p, packed.has(p) ? packed.get(p) : pathHash(p) % shardCount);
+   return out;
+ }
+ 

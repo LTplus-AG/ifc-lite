@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { assertRestoreNotHeld } from "./restore-recovery.js";
 import { createServer, type Server } from "node:http";
 import { validateAgreementFont } from "./agreement.js";
 import { loadConfig } from "./config.js";
@@ -30,7 +31,11 @@ function worker(
   let active: Promise<void> | undefined;
   const timer = setInterval(() => {
     if (active) return;
-    active = run()
+    active = (async () => {
+      if (!db) throw new Error("report_database_unavailable");
+      await assertRestoreNotHeld(db);
+      await run();
+    })()
       .catch(() => {
         // Even Error.name may contain provider-controlled or private text.
         console.error(`[report-service] ${name} failed`);
@@ -70,12 +75,16 @@ function shutdown(failed: boolean): Promise<void> {
 }
 
 async function start(): Promise<void> {
+  // Restore mode is independent of the volume being restored. Never boot the
+  // HTTP server or publisher while the operator has placed recovery on hold.
+  if (process.env.REPORT_RESTORE_REQUIRED === "true") throw new Error("report_restore_required");
   const config = loadConfig(process.env);
   await validateAgreementFont(config);
   if (closing) return;
   const database = openDatabase(config.databaseUrl, () => { void shutdown(true); });
   db = database;
   await migrate(database);
+  await assertRestoreNotHeld(database);
   if (closing) return;
   const models = new ModelStorage(config);
   storage = models;

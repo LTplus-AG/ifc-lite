@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import type { RestoreJournal } from "./restore-journal.js";
 import type { ModelUpload } from "@ifc-lite/report-contract";
 import { transaction, audit, type Db } from "./database.js";
 import { requireCondition } from "./errors.js";
@@ -83,7 +84,7 @@ export async function completeUpload(
   });
 }
 
-export async function verifyNext(db: Db, storage: ModelStorage): Promise<void> {
+export async function verifyNext(db: Db, storage: ModelStorage, journal?: RestoreJournal): Promise<void> {
   await transaction(db, async (lease) => {
     const lock = await lease.query<{ locked: boolean }>(
       "SELECT pg_try_advisory_xact_lock(hashtext('report-byte-verifier')) AS locked",
@@ -147,6 +148,7 @@ export async function verifyNext(db: Db, storage: ModelStorage): Promise<void> {
           bytes: row.input.size,
         });
       } else if (errorCode) {
+        if (journal) await journal.append(row.report_id, "remove-model");
         await tx.query(
           "UPDATE report_uploads SET status='failed',verification_after=NULL,expires_at=now() WHERE id=$1",
           [row.id],

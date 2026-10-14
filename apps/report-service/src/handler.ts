@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { assertRestoreNotHeld } from "./restore-recovery.js";
+import type { RestoreJournal } from "./restore-journal.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import {
   REPORT_LIMITS,
@@ -52,12 +54,14 @@ export function createHandler(
   storage: ModelStorage,
   config: Config,
   publicStorage?: PublicModelStorage,
+  journal?: RestoreJournal,
 ): (req: IncomingMessage, res: ServerResponse) => Promise<void> {
   return async (req, res) => {
     res.setHeader("Cache-Control", "no-store");
     res.setHeader("Referrer-Policy", "no-referrer");
     res.setHeader("X-Content-Type-Options", "nosniff");
     try {
+      await assertRestoreNotHeld(db);
       const path = new URL(req.url ?? "/", config.origin).pathname;
       const method = req.method ?? "GET";
       if (path === "/healthz" && method === "GET") {
@@ -214,12 +218,12 @@ export function createHandler(
         return;
       }
       if (action === "" && method === "DELETE") {
-        await deleteReport(db, storage, id, owner.id);
+        await deleteReport(db, storage, id, owner.id, journal);
         json(res, { id, status: "deleted" });
         return;
       }
       if (action === "public-model" && method === "DELETE") {
-        await withdrawPublicModel(db, id, owner.id);
+        await withdrawPublicModel(db, id, owner.id, journal);
         json(res, { ...receipt(report), publicModel: { state: "withdrawn" } });
         return;
       }
@@ -327,7 +331,7 @@ export function createHandler(
         }
         if (step === "abort" && method === "POST") {
           await body(req);
-          await removeUpload(db, storage, row, owner.id);
+          await removeUpload(db, storage, row, owner.id, journal);
           json(res, { ...uploadDto(row), status: "aborted" });
           return;
         }

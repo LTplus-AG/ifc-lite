@@ -457,6 +457,11 @@ class OverlayIndex implements EffectiveEntityIndex {
     // changes, and every key that changes is replaced with a fresh array. The
     // store's own index is never mutated.
     const out = new Map(this.sourceByType);
+    // Keys whose array `out` already owns (a fresh copy), so appending to it
+    // cannot reach the store's shared array. Copying on every append instead
+    // made N created entities of one type cost O(N^2): 100k created
+    // IfcAnnotations took ~26 s here.
+    const owned = new Set<string>();
 
     const removeByType = new Map<string, Set<number>>();
     const markRemoved = (id: number): void => {
@@ -473,12 +478,17 @@ class OverlayIndex implements EffectiveEntityIndex {
     }
     for (const [type, ids] of removeByType) {
       const arr = out.get(type);
-      if (arr) out.set(type, arr.filter((id) => !ids.has(id)));
+      if (arr) { out.set(type, arr.filter((id) => !ids.has(id))); owned.add(type); }
     }
 
     const append = (type: string, id: number): void => {
-      const arr = out.get(type);
-      out.set(type, arr ? [...arr, id] : [id]);
+      let arr = out.get(type);
+      if (!arr || !owned.has(type)) {
+        arr = arr ? [...arr] : [];
+        out.set(type, arr);
+        owned.add(type);
+      }
+      arr.push(id);
     };
     for (const id of this.created.keys()) {
       const type = this.typeOf(id);

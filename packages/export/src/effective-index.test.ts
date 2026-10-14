@@ -110,6 +110,23 @@ describe('EffectiveEntityIndex agrees with itself', () => {
     expect(store.entityIndex.byType.get('IFCWALL')).toEqual([2, 3]);
   });
 
+  it('appends several created entities to a store bucket without touching the store', async () => {
+    const store = await parseBase();
+    const { view, editor } = newView(store);
+    const first = editor.addEntity('IfcWall', [guid('newE'), null, 'E', null, null, null, null, null, null]);
+    const second = editor.addEntity('IfcWall', [guid('newF'), null, 'F', null, null, null, null, null, null]);
+    const beam = editor.addEntity('IfcBeam', [guid('newG'), null, 'G', null, null, null, null, null, null]);
+
+    const index = getEffectiveEntityIndex(store, view, true);
+
+    // Appending copies the shared bucket once, then grows the copy: copying
+    // on every append made N created entities of one type cost O(N^2).
+    expect(index.byType.get('IFCWALL')).toEqual([2, 3, first.expressId, second.expressId]);
+    expect(index.byType.get('IFCBEAM')).toEqual([beam.expressId]);
+    expect(store.entityIndex.byType.get('IFCWALL')).toEqual([2, 3]);
+    expect(store.entityIndex.byType.has('IFCBEAM')).toBe(false);
+  });
+
   it('reads outgoing references off an authored payload, never off bytes it has none of', async () => {
     const store = await parseBase();
     const { view, editor } = newView(store);

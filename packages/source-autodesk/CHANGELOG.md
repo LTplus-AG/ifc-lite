@@ -1,5 +1,11 @@
 # @ifc-lite/source-autodesk
 
+## 0.2.1
+
+### Patch Changes
+
+- [#7572](https://github.com/LTplus-AG/ifc-lite/pull/7572) [`2570adb`](https://github.com/LTplus-AG/ifc-lite/commit/2570adbeed48edea4b65d50b9426ab84936a47cd) Thanks [@louistrue](https://github.com/louistrue)! - Explain when no Autodesk hub has authorized the app instead of showing an empty project list. APS reports these hubs as 403 warnings in a successful response; the provider now raises an `app-not-authorized` error pointing to Custom Integrations, while linked Forma Site Design projects stay listed.
+
 ## 0.2.0
 
 ### Minor Changes

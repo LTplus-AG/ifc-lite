@@ -35,7 +35,7 @@ fn indexed_bounds(m: &Mesh) -> ([f64; 3], [f64; 3]) {
     let (mut lo, mut hi) = ([f64::INFINITY; 3], [f64::NEG_INFINITY; 3]);
     for &i in &m.indices {
         for k in 0..3 {
-            let c = m.positions[i as usize * 3 + k] as f64;
+            let c = m.positions[i as usize * 3 + k] as f64 + m.origin[k];
             lo[k] = lo[k].min(c);
             hi[k] = hi[k].max(c);
         }
@@ -48,14 +48,17 @@ fn issue_7292_only_the_25mm_strip_survives_the_sloped_difference() {
     let m = mesh();
     assert!(!m.is_empty(), "the 25 mm strip must remain");
     let (lo, hi) = indexed_bounds(&m);
-    // The strip spans x in [-3.025, -3.000] m. 0.1 mm slack covers f32
-    // storage and the kernel's snap; before the fix triangles reached
-    // x = +1.500 m (4.5 m of material B should have removed).
-    assert!(
-        (lo[0] - -3.025).abs() < 1.0e-4 && (hi[0] - -3.000).abs() < 1.0e-4,
-        "x extent must be the 25 mm strip [-3.025, -3.000] m; got [{}, {}] ({} triangles)",
-        lo[0],
-        hi[0],
-        m.triangle_count()
-    );
+    // Independent IfcOpenShell replay gives these indexed world bounds.
+    // 0.1 mm covers f32 storage and the kernel snap. Checking all three
+    // dimensions also rejects a collapsed strip or lost model placement.
+    let expected_lo = [-3.025, 0.0, 4.548];
+    let expected_hi = [-3.000, 1.099780, 4.623996];
+    for k in 0..3 {
+        assert!(
+            (lo[k] - expected_lo[k]).abs() < 1.0e-4
+                && (hi[k] - expected_hi[k]).abs() < 1.0e-4,
+            "#7292: axis {k} bounds [{}, {}], expected [{}, {}] ({} triangles)",
+            lo[k], hi[k], expected_lo[k], expected_hi[k], m.triangle_count()
+        );
+    }
 }

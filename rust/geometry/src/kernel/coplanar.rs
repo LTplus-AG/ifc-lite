@@ -9,8 +9,8 @@
 //! `ta` and the portion inside becomes a constraint for `ta` (and symmetrically).
 //! A clipped endpoint is either an `Explicit` vertex (inside `ta`) or a coplanar
 //! edge×edge crossing — represented EXACTLY as an auxiliary-plane LPI: the line
-//! `q0q1` ∩ the plane through ta-edge `(e0,e1)` extruded perpendicular to the
-//! shared plane (`e0 + n`). Within the shared plane that plane reads as the line
+//! `q0q1` ∩ the plane through ta-edge `(e0,e1)` extruded along the
+//! dropped axis. In that projection the auxiliary plane reads as the line
 //! `e0e1`, so the LPI is exactly the 2D crossing — and it lies on the shared
 //! plane, keeping everything exact and conforming.
 
@@ -23,16 +23,6 @@ type Tri = [[f64; 3]; 3];
 #[inline]
 fn e(p: [f64; 3]) -> ImplicitPoint {
     ImplicitPoint::Explicit(p)
-}
-
-fn plane_normal(t: &Tri) -> [f64; 3] {
-    let u = [t[1][0] - t[0][0], t[1][1] - t[0][1], t[1][2] - t[0][2]];
-    let v = [t[2][0] - t[0][0], t[2][1] - t[0][1], t[2][2] - t[0][2]];
-    [
-        u[1] * v[2] - u[2] * v[1],
-        u[2] * v[0] - u[0] * v[2],
-        u[0] * v[1] - u[1] * v[0],
-    ]
 }
 
 /// Is explicit point `q` inside the closed triangle `tri` (oriented `w0`)?
@@ -51,41 +41,20 @@ fn seg_seg_cross(q0: [f64; 3], q1: [f64; 3], e0: [f64; 3], e1: [f64; 3], axis: D
     s1 != Sign::Zero && s2 != Sign::Zero && s1 != s2 && s3 != Sign::Zero && s4 != Sign::Zero && s3 != s4
 }
 
-/// Auxiliary-plane LPI for the coplanar crossing of `q0q1` with ta-edge `(e0,e1)`:
-/// `line(q0,q1) ∩ plane(e0, e1, e0+n)`, `n` = shared-plane normal.
+/// Exact crossing in the same dropped-axis projection as the clipping tests.
 ///
-/// PERF (off-grid aux fix): the raw `n` is the UN-normalised cross product of two
-/// on-grid (`k/2^16`) edge vectors, so its components land on the `1/2^32` grid —
-/// OFF the `1/2^16` snap grid. `aux = e0 + n` is then off-grid, every predicate on
-/// the resulting LPI fails the fixed-width tier's on-grid `gi` and falls to the
-/// ~3 ms BigRational path (the dominant flush-cap/near-coplanar cut cost: 841 had
-/// ~2000 BigRational λ-rebuilds per slow opening). The aux point only needs to make
-/// the plane `(e0,e1,aux)` read as the LINE `e0e1` in-plane and stay perpendicular
-/// to the shared plane — its exact offset along `n` is irrelevant. So we ROUND `n`
-/// to a grid-aligned integer direction (scale the max component to ~2^10, round),
-/// like `tritri::line_direction` does: `aux` then lands on-grid and the fixed
-/// tier resolves the LPI. The SIGN of every predicate is unchanged — `n` still
-/// points off the shared plane along the same perpendicular, and the in-plane
-/// reading of the plane is still the exact line `e0e1` (which only uses `e0,e1`).
-/// Deterministic (FMA-free f64 round) ⇒ byte-identical native==wasm.
-///
-/// SCALE 2^10, not the original 2^20 (crack-family fix): when `e0` is a WELDED
-/// seam vertex on the fine `k/2^36` grid (|coord| < 2^13 ⇒ ≤49 bits), adding an
-/// integer component up to 2^20 needs up to 56 bits — `e0 + ng` then ROUNDS and
-/// the aux point lands off every grid, kicking every predicate on the LPI to the
-/// BigRational tier (~200k residual exact-rational calls on a tunnel corpus).
-/// At 2^10 the sum stays ≤50 bits ⇒ exact f64 ⇒ on-grid. The LPI's VALUE is
-/// aux-invariant (any off-plane aux reads as the line `e0e1` in-plane), so
-/// signs, topology and the pinned manifests are unchanged.
-fn crossing_lpi(q0: [f64; 3], q1: [f64; 3], e0: [f64; 3], e1: [f64; 3], n: [f64; 3]) -> ImplicitPoint {
-    let m = n[0].abs().max(n[1].abs()).max(n[2].abs());
-    let ng = if m > 0.0 && m.is_finite() {
-        let s = 1024.0 / m; // normalise the max component to ~2^10, then round
-        [(n[0] * s).round(), (n[1] * s).round(), (n[2] * s).round()]
-    } else {
-        n
-    };
-    let aux = [e0[0] + ng[0], e0[1] + ng[1], e0[2] + ng[2]];
+/// The auxiliary plane extrudes the host edge along the dropped axis, so its
+/// projected outline is exactly that edge even for snap-scattered, nearly
+/// coplanar inputs. Extruding along a rounded face normal instead changes the
+/// projected crossing when the two faces are not exactly coplanar (#7292).
+/// The offset's magnitude is immaterial; only its axis and nonzero value count.
+fn crossing_lpi(q0: [f64; 3], q1: [f64; 3], e0: [f64; 3], e1: [f64; 3], axis: DropAxis) -> ImplicitPoint {
+    let k = match axis { DropAxis::X => 0, DropAxis::Y => 1, DropAxis::Z => 2 };
+    let mut aux = e0;
+    aux[k] += if e0[k] >= 0.0 { -1.0 } else { 1.0 };
+    if aux[k] == e0[k] {
+        aux[k] = if e0[k] >= 0.0 { e0[k].next_down() } else { e0[k].next_up() };
+    }
     ImplicitPoint::Lpi(Lpi { p: q0, q: q1, r: e0, s: e1, t: aux })
 }
 
@@ -97,7 +66,6 @@ fn clip_seg(
     ta: &Tri,
     axis: DropAxis,
     w0: Sign,
-    n: [f64; 3],
 ) -> Option<(ImplicitPoint, ImplicitPoint)> {
     let in0 = point_in_tri(q0, ta, axis, w0);
     let in1 = point_in_tri(q1, ta, axis, w0);
@@ -105,7 +73,7 @@ fn clip_seg(
     let crossings: Vec<ImplicitPoint> = edges
         .iter()
         .filter(|&&(e0, e1)| seg_seg_cross(q0, q1, e0, e1, axis))
-        .map(|&(e0, e1)| crossing_lpi(q0, q1, e0, e1, n))
+        .map(|&(e0, e1)| crossing_lpi(q0, q1, e0, e1, axis))
         .collect();
     match (in0, in1) {
         (true, true) => Some((e(q0), e(q1))),
@@ -128,11 +96,10 @@ pub fn coplanar_clip(ta: &Tri, tb: &Tri) -> Vec<(ImplicitPoint, ImplicitPoint)> 
         Some(x) => x,
         None => return Vec::new(),
     };
-    let n = plane_normal(ta);
     let tb_edges = [(tb[0], tb[1]), (tb[1], tb[2]), (tb[2], tb[0])];
     tb_edges
         .iter()
-        .filter_map(|&(q0, q1)| clip_seg(q0, q1, ta, axis, w0, n))
+        .filter_map(|&(q0, q1)| clip_seg(q0, q1, ta, axis, w0))
         .collect()
 }
 

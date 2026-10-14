@@ -1,0 +1,11 @@
+--- a/apps/report-service/scripts/scan-public-once.ts
++++ b/apps/report-service/scripts/scan-public-once.ts
+@@ -41,7 +41,7 @@
+       const result = await scanPublicOnce(db, source, signatures,
+         resolve(required("REPORT_SCANNER_SCRATCH_DIRECTORY")), stop.signal);
+       console.log(`scanner_${result}`);
+-      if (result === "held") process.exitCode = 0;
++      if (result === "held") process.exitCode = 1;
+     } finally {
+       source.close();
+       await db.end();

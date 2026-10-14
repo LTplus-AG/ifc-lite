@@ -23,6 +23,14 @@ export interface BrowserFramesRow {
   value: number;
 }
 
+export const DETERMINISTIC_FRAME_METRICS = [
+  'frames', 'rendered_frames', 'idle_frames', 'frames_without_raf',
+  'frames_over_budget', 'missed_vsyncs', 'main_thread_ms_total',
+  'main_thread_ms_p50', 'main_thread_ms_p95', 'main_thread_ms_max',
+  'script_ms_total', 'raf_js_ms_total', 'raf_js_ms_p95',
+  'gpu_submits', 'gpu_draws', 'gpu_write_kib',
+] as const;
+
 /** Nearest-rank percentile (p in [0, 100]); NaN for an empty input. */
 export function percentile(values: readonly number[], p: number): number {
   if (values.length === 0) return Number.NaN;
@@ -54,7 +62,7 @@ export function drivenFrameRows(fixture: string, scenario: string, frames: reado
   const main = frames.map((frame) => frame.mainThreadMs);
   const raf = frames.map((frame) => frame.page?.cbMs ?? 0);
   const rendered = frames.filter((frame) => (frame.page?.presents ?? 0) > 0);
-  const metrics: Record<string, number> = {
+  const metrics: Record<typeof DETERMINISTIC_FRAME_METRICS[number], number> = {
     frames: frames.length,
     rendered_frames: rendered.length,
     idle_frames: frames.length - rendered.length,

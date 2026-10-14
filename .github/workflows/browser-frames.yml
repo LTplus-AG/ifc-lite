@@ -106,14 +106,9 @@ jobs:
           FRAME_RIG_OUT: test-results/browser-frames.json
         run: pnpm test:benchmark:frames
 
-      - name: Require a result for every fixture and scenario
-        run: |
-          node -e "
-            const r = require('./test-results/browser-frames.json');
-            const keys = new Set(r.rows.map((x) => x.fixture + '/' + x.scenario));
-            if (keys.size !== 6) { console.error('expected 6 fixture/scenario groups, got', [...keys]); process.exit(1); }
-            console.log('browser-frames:', r.rows.length, 'rows,', keys.size, 'groups');
-          "
+      - name: Require complete uncontaminated frame evidence
+        if: always()
+        run: node scripts/perf/check-frame-results.mjs test-results/browser-frames.json
 
       - name: Upload frame-rig results
         if: always()

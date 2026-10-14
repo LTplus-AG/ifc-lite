@@ -1,0 +1,11 @@
+--- a/apps/report-service/src/restore-recovery.ts
++++ b/apps/report-service/src/restore-recovery.ts
+@@ -23,7 +23,7 @@
+     await tx.query("UPDATE report_public_quarantine SET state='revoked',consent=NULL,approval=NULL,scan=NULL");
+     await tx.query("UPDATE report_public_copies SET state='revoked',sha256=NULL,etag=NULL,cleanup_after=GREATEST(now(),COALESCE(lease_until,now()))");
+     for (const entry of entries) {
+-      if (entry.action === "withdraw") {
++      if (entry.action === "delete") {
+         await tx.query("UPDATE model_reports SET status='deleted',draft='{}'::jsonb,agreement=NULL,agreement_pdf=NULL,custom_nda=NULL,issue_binding=NULL WHERE id=$1", [entry.reportId]);
+       } else if (entry.action === "remove-model") {
+         // Expiry schedules provider cleanup; never release reserved bytes early.

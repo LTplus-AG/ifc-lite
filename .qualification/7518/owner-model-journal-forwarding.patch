@@ -1,0 +1,9 @@
+--- a/apps/report-service/src/maintenance.ts
++++ b/apps/report-service/src/maintenance.ts
+@@ -139,5 +139,5 @@
+     [id],
+   );
+   if (uploads.rows[0])
+-    await removeUpload(db, storage, uploads.rows[0], ownerId);
++    await removeUpload(db, storage, uploads.rows[0], ownerId, journal);
+ }

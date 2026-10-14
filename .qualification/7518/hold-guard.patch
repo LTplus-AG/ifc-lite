@@ -1,0 +1,9 @@
+--- a/apps/report-service/src/restore-recovery.ts
++++ b/apps/report-service/src/restore-recovery.ts
+@@ -44,5 +44,5 @@
+   const exists = await db.query<{ present: boolean }>("SELECT to_regclass('report_restore_hold') IS NOT NULL AS present");
+   if (!exists.rows[0]?.present) return;
+   const held = await db.query<{ held: boolean }>("SELECT held FROM report_restore_hold WHERE singleton");
+-  if (held.rows.length !== 1 || held.rows[0]?.held === false) throw new Error("report_restore_held");
++  if (held.rows.length !== 1 || held.rows[0]?.held !== false) throw new Error("report_restore_held");
+ }

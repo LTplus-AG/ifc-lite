@@ -25,6 +25,9 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -33,8 +36,76 @@ jobs:
       - run: pnpm install --frozen-lockfile --ignore-scripts
       - name: Provision real report integration prerequisites
         uses: ./.github/actions/setup-report-integration
+      - name: Record exact restore-journal qualification source
+        if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/qualification/7518-seven-journal-controls-0d879cc0'
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/restore-journal-qualification"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          git rev-parse HEAD HEAD^{tree} e8a111e3ac7ad7e3ee3f849983047773ca98ad25 e8a111e3ac7ad7e3ee3f849983047773ca98ad25^{tree} > "$RUNNER_TEMP/restore-journal-qualification/source.txt"
+          git diff --name-status fc90d1095996c2427891a948ddfe5f5710cccaee HEAD > "$RUNNER_TEMP/restore-journal-qualification/paths.txt"
+          git diff fc90d1095996c2427891a948ddfe5f5710cccaee HEAD -- apps/report-service/src/bin.ts apps/report-service/src/handler.ts apps/report-service/src/maintenance.ts apps/report-service/src/public-release.ts apps/report-service/src/restore-journal.ts apps/report-service/src/restore-recovery.ts apps/report-service/src/verification.ts > "$RUNNER_TEMP/restore-journal-qualification/backend.patch"
+          git ls-files -z scripts/check-test-revert-oracle.mjs apps/report-service/src apps/report-service/scripts apps/report-service/test | xargs -0 sha256sum > "$RUNNER_TEMP/restore-journal-qualification/source-before.sha256"
       - name: Real database and multipart storage qualification
-        run: pnpm test --filter=@ifc-lite/report-service --filter=@ifc-lite/report-contract --concurrency=1 --env-mode=loose
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p "$RUNNER_TEMP/restore-journal-qualification"
+          pnpm test --filter=@ifc-lite/report-service --filter=@ifc-lite/report-contract --concurrency=1 --env-mode=loose 2>&1 | tee "$RUNNER_TEMP/restore-journal-qualification/root-positive.log"
+      - name: Observe meaningful journal and recovery inverses
+        if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/qualification/7518-seven-journal-controls-0d879cc0'
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/check-test-revert-oracle.mjs --base fc90d1095996c2427891a948ddfe5f5710cccaee --ci --json \
+            --only apps/report-service/src/maintenance.ts \
+            --test apps/report-service/test/restore-journal.integration.test.ts \
+            2>&1 | tee "$RUNNER_TEMP/restore-journal-qualification/maintenance-inverse.log"
+          node scripts/check-test-revert-oracle.mjs --base fc90d1095996c2427891a948ddfe5f5710cccaee --ci --json \
+            --only apps/report-service/src/public-release.ts \
+            --test apps/report-service/test/restore-journal.integration.test.ts \
+            2>&1 | tee "$RUNNER_TEMP/restore-journal-qualification/withdrawal-inverse.log"
+          node scripts/check-test-revert-oracle.mjs --base fc90d1095996c2427891a948ddfe5f5710cccaee --ci --json \
+            --only apps/report-service/src/restore-journal.ts --mutation .qualification/7518/external-checkpoint.patch \
+            --test apps/report-service/test/restore-journal.integration.test.ts \
+            2>&1 | tee "$RUNNER_TEMP/restore-journal-qualification/external-checkpoint-inverse.log"
+          node scripts/check-test-revert-oracle.mjs --base fc90d1095996c2427891a948ddfe5f5710cccaee --ci --json \
+            --only apps/report-service/src/restore-recovery.ts --mutation .qualification/7518/delete-replay.patch \
+            --test apps/report-service/test/restore-journal.integration.test.ts \
+            2>&1 | tee "$RUNNER_TEMP/restore-journal-qualification/delete-replay-inverse.log"
+          node scripts/check-test-revert-oracle.mjs --base fc90d1095996c2427891a948ddfe5f5710cccaee --ci --json \
+            --only apps/report-service/src/restore-recovery.ts --mutation .qualification/7518/hold-guard.patch \
+            --test apps/report-service/test/restore-journal.integration.test.ts \
+            2>&1 | tee "$RUNNER_TEMP/restore-journal-qualification/hold-guard-inverse.log"
+          node scripts/check-test-revert-oracle.mjs --base fc90d1095996c2427891a948ddfe5f5710cccaee --ci --json \
+            --only apps/report-service/src/maintenance.ts --mutation .qualification/7518/expiry-active-upload-guard.patch \
+            --test apps/report-service/test/restore-journal.integration.test.ts \
+            2>&1 | tee "$RUNNER_TEMP/restore-journal-qualification/expiry-active-upload-guard-inverse.log"
+          node scripts/check-test-revert-oracle.mjs --base fc90d1095996c2427891a948ddfe5f5710cccaee --ci --json \
+            --only apps/report-service/src/maintenance.ts --mutation .qualification/7518/owner-model-journal-forwarding.patch \
+            --test apps/report-service/test/restore-journal.integration.test.ts \
+            2>&1 | tee "$RUNNER_TEMP/restore-journal-qualification/owner-model-journal-forwarding-inverse.log"
+      - name: Require restored root storage tests and exact source
+        if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/qualification/7518-seven-journal-controls-0d879cc0'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha256sum --check "$RUNNER_TEMP/restore-journal-qualification/source-before.sha256"
+          test -z "$(git status --porcelain)"
+          pnpm test --filter=@ifc-lite/report-service --filter=@ifc-lite/report-contract --concurrency=1 --env-mode=loose --force 2>&1 | tee "$RUNNER_TEMP/restore-journal-qualification/root-restored.log"
+          sha256sum --check "$RUNNER_TEMP/restore-journal-qualification/source-before.sha256"
+          test -z "$(git status --porcelain)"
+      - name: Retain actual restore-journal source, inverse and restored evidence
+        if: always() && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/qualification/7518-seven-journal-controls-0d879cc0'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: restore-journal-qualification-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/restore-journal-qualification/
+          if-no-files-found: error
+          retention-days: 7
       - name: Remove owned report integration prerequisites
         if: always()
         uses: ./.github/actions/setup-report-integration
@@ -42,6 +113,7 @@ jobs:
           state: stop
 
   mounted-public-ui:
+    if: github.event_name != 'workflow_dispatch' || github.ref != 'refs/heads/qualification/7518-seven-journal-controls-0d879cc0'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:

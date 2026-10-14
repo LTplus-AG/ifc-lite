@@ -2208,12 +2208,13 @@ jobs:
       - name: Cargo cache
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
-          # `-o1`: the test steps below build at opt-level 1 via step env,
+          # `-o1-lt`: the test steps below build at opt-level 1 with line-tables
+          # debug info via step env,
           # which rust-cache's key cannot see. Under the old key main would
           # never save the opt-level-1 tree (rust-cache skips the save when the
           # key exists), so every PR would compile cold: measured 14m49s on
           # #7573 vs 5m45s warm. A new prefix lets main seed it once.
-          prefix-key: ci-rust-o1
+          prefix-key: ci-rust-o1-lt
           shared-key: main
           save-if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'merge_group' }}
       - name: Cache test fixtures
@@ -2272,6 +2273,14 @@ jobs:
       # are unchanged. Step-scoped env, not Cargo.toml: local builds and
       # clippy are untouched. Per-package overrides in Cargo.toml
       # (ifc-lite-geometry at 3) still win.
+      #
+      # DEBUG INFO: line tables only. Measured warm on main's cache, the
+      # opt-level-1 compile of the 10 workspace crates was 10m45s (5m45s at
+      # opt-level 0). Full DWARF is a known large share of an optimised
+      # build; the cold-vs-cold comparison on the introducing PR (14m49s at
+      # full debug info) is the measurement.
+      # Panics and backtraces still name file and line; what goes is variable
+      # inspection in a debugger, which nobody does on a CI runner.
       - name: Install cargo-nextest
         uses: taiki-e/install-action@f360235162158ca4526b07999d99c38ade05a414 # cargo-nextest (snapshot pinned 2026-10)
       - name: Rust tests
@@ -2282,6 +2291,8 @@ jobs:
           IFC_LITE_REQUIRE_FIXTURES: "1"
           CARGO_PROFILE_DEV_OPT_LEVEL: "1"
           CARGO_PROFILE_TEST_OPT_LEVEL: "1"
+          CARGO_PROFILE_DEV_DEBUG: line-tables-only
+          CARGO_PROFILE_TEST_DEBUG: line-tables-only
         run: cargo nextest run --workspace --profile ci
       # nextest does not run doctests; `cargo test --workspace` did. Run them
       # here so the lane's coverage is exactly what it was. Same profile env,
@@ -2291,6 +2302,8 @@ jobs:
           IFC_LITE_REQUIRE_FIXTURES: "1"
           CARGO_PROFILE_DEV_OPT_LEVEL: "1"
           CARGO_PROFILE_TEST_OPT_LEVEL: "1"
+          CARGO_PROFILE_DEV_DEBUG: line-tables-only
+          CARGO_PROFILE_TEST_DEBUG: line-tables-only
         run: cargo test --workspace --doc
 
       # The feature legs (parquet-bos, csg_manifold_gate, csg_capture, the

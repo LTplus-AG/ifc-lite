@@ -44,6 +44,19 @@ export async function loadIfcBytes(
 }
 
 /** Bytes {@link parseIfcBytes} refused before parsing: empty, not STEP, truncated, or with no DATA section. */
+/** The `scan:` diagnostics each loaded store was parsed with (#7610). */
+const incompleteScans = new WeakMap<IfcDataStore, readonly string[]>();
+
+/**
+ * The scan diagnostics `store` was loaded with: empty when every record the
+ * file declares was read, otherwise the lines already warned on stderr. Lets
+ * a command explain an answer the missing records change, such as an id that
+ * is "not found" because the scan refused its record.
+ */
+export function scanCompletenessWarnings(store: IfcDataStore): readonly string[] {
+  return incompleteScans.get(store) ?? [];
+}
+
 export class IfcBytesRejectedError extends Error {
   constructor(message: string) {
     super(message);
@@ -140,11 +153,23 @@ export async function parseIfcBytes(
       bytes.byteOffset,
       bytes.byteOffset + bytes.byteLength,
     ) as ArrayBuffer;
+    const scanWarnings: string[] = [];
     const store = await parser.parseColumnar(arrayBuffer, {
-      // The structured diagnostic channel, captured directly.
-      onDiagnostic: (m: string) => logger.debug(`parser: ${m}`),
+      // The structured diagnostic channel, captured directly. A `scan:` line
+      // says the model is SHORT: records were dropped (#3695, #7541) or
+      // skipped (#3395). Like the truncation check above, that is not debug
+      // detail: every command would otherwise answer, and `mutate`/`export`
+      // write, from a model missing records with nothing said (#7610). So
+      // those go to stderr at warn level, which keeps stdout clean for
+      // payloads; the rest stays debug.
+      onDiagnostic: (m: string) => {
+        if (!m.startsWith('scan: ')) return logger.debug(`parser: ${m}`);
+        scanWarnings.push(m);
+        logger.warn(`Warning: ${label}: ${m}`);
+      },
     });
     store.fileSize = bytes.byteLength;
+    if (scanWarnings.length > 0) incompleteScans.set(store, scanWarnings);
     return store;
   } finally {
     console.log = origLog;

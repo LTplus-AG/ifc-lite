@@ -10,7 +10,7 @@
  */
 
 import { writeFile } from 'node:fs/promises';
-import { loadIfcFile, createHeadlessContext } from '../loader.js';
+import { loadIfcFile, createHeadlessContext, scanCompletenessWarnings } from '../loader.js';
 import { getFlag, getAllFlags, hasFlag, fatal, printJson } from '../output.js';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { StepExporter } from '@ifc-lite/export';
@@ -124,6 +124,18 @@ function countBy(mutations: { entity: { ref: { expressId: number } } }[]): Map<n
   return counts;
 }
 
+/**
+ * Why `--id` matched nothing. When the scan dropped records (#7610), say so:
+ * a record the scan refused, such as one holding an unescaped apostrophe
+ * (#7541), is absent from the model, and "not found" alone hides that.
+ */
+export function missingEntityMessage(expressId: number, scanWarnings: readonly string[]): string {
+  const base = `Entity #${expressId} not found`;
+  if (scanWarnings.length === 0) return base;
+  return `${base}. The scan dropped or skipped records it could not read (see the warning above), ` +
+    `so #${expressId} may be one of them; fix the record in the source file and retry.`;
+}
+
 export async function mutateCommand(args: string[]): Promise<void> {
   const filePath = args.find(a => !a.startsWith('-'));
   if (!filePath) fatal('Usage: ifc-lite mutate <file.ifc> --id <N> --set PsetName.PropName=Value --out output.ifc');
@@ -153,7 +165,7 @@ export async function mutateCommand(args: string[]): Promise<void> {
   if (idStr) {
     const expressId = parseInt(idStr, 10);
     const entity = bim.entity({ modelId: 'default', expressId });
-    if (!entity) fatal(`Entity #${expressId} not found`);
+    if (!entity) fatal(missingEntityMessage(expressId, scanCompletenessWarnings(store)));
     targets = [entity];
   } else if (type) {
     // Auto-prefix Ifc if user omits it (e.g., "Wall" → "IfcWall")

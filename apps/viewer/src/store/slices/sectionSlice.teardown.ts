@@ -38,7 +38,7 @@ import { getDefaultSectionPlane } from './sectionSlice.js';
 
 export const sectionTeardown = defineSliceTeardown(
   'sectionSlice',
-  ['sectionPlane', 'inactiveSectionPlanes', 'sectionUndo'],
+  ['sectionPlane', 'inactiveSectionPlanes', 'sectionExtraCaps', 'sectionUndo'],
   {
     'session-reset': (_scope, state) => {
       // The `??` is for the partial-store harness (`TeardownState` is a
@@ -66,6 +66,7 @@ export const sectionTeardown = defineSliceTeardown(
         // like the active one, so they go with it; so does the Undo that
         // would bring them back.
         inactiveSectionPlanes: [],
+        sectionExtraCaps: {},
         sectionUndo: null,
       };
     },

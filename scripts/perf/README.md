@@ -40,6 +40,49 @@ fan-out, memory bandwidth, GPU); a change in those still needs an end-to-end
 A/B (`ab.sh`, the browser rigs below), and a green ratchet is no evidence for it.
 
 
+## Several cutting planes: caps and clip cost (#7545)
+
+Browser A/B of `main` against the branch on a real GPU (Chrome 155, NVIDIA Blackwell, WebGPU), production
+`vite build` of each side, a **fresh Chrome per sample** on a unique CDP port and throwaway profile, the six
+variants (main at 0 and 1 plane, branch at 0, 1, 4 and 8 planes) in a **random order per round** (seeded,
+`ab-order.mjs`'s generator), 4 rounds on AC20-FZK-Haus and 3 on a 29 MB heavy fixture of the repo. Each
+sample loads the model, sets the planes through the store (Section tool open, 3D cut overlay on), waits for
+every cap, then orbits for 370 frames counting what the frame submits.
+
+| model | variant | draws / frame | writeBuffer / frame | submit-to-done median (ms, per sample) | caps ready after (ms) |
+| --- | --- | --- | --- | --- | --- |
+| AC20 | main, no plane | 26 | 25 | 2.17 (2.26 2.08 2.06 2.44) | - |
+| AC20 | branch, no plane | 26 | 25 | 2.44 (2.61 2.42 2.46 2.35) | - |
+| AC20 | main, 1 plane | 29 | 26 | 2.54 (2.48 2.03 2.59 2.68) | 40-64 |
+| AC20 | branch, 1 plane | 29 | 27 | 2.63 (2.62 2.63 2.66 2.55) | 55-81 |
+| AC20 | branch, 4 planes | 39 | 33 | 2.62 (2.86 2.25 2.73 2.51) | 59-119 |
+| AC20 | branch, 8 planes | 52 | 42 | 2.71 (3.07 2.60 2.27 2.83) | 107-175 |
+| heavy | main, no plane | 302 | 302 | 2.56 (2.56 2.44 2.85) | - |
+| heavy | branch, no plane | 302 | 302 | 2.75 (2.75 3.25 1.92) | - |
+| heavy | main, 1 plane | 305 | 303 | 2.48 (2.48 2.52 2.43) | 86-122 |
+| heavy | branch, 1 plane | 305 | 304 | 2.74 (2.73 3.14 2.74) | 111-164 |
+| heavy | branch, 4 planes | 315 | 311 | 3.12 (3.12 3.27 2.31) | 216-265 |
+| heavy | branch, 8 planes | 328 | 319 | 2.84 (3.00 2.84 2.64) | 464-712 |
+
+Reading it:
+
+- **No plane and one plane draw exactly what main draws** (draws per frame identical on both models; one more
+  `writeBuffer` per frame with a plane). The legacy 96-float uniform block is byte-identical; the per-mesh
+  uniform is 128 floats larger, which is the only per-frame cost of the clip with no extra plane.
+- Submit-to-done latency (how long the GPU takes after the frame is submitted) is within about 0.1-0.3 ms of
+  main at 0 and 1 plane. Branch is at or above main in most pairs; with 3-4 samples per cell, a spread of
+  +-0.3 ms inside a cell and a 2-3 ms baseline this is the edge of the noise, so it is recorded as a possible
+  small cost of the larger uniform, not as "no change".
+- **Each extra plane costs about three more draws per frame** (its cap fill, outline and line passes): 4 planes
+  +10 draws, 8 planes +23 on both models, and +0.1-0.4 ms of GPU latency.
+- The caps of the planes that are not active are cut on the CPU, off the render path: all caps are ready in
+  under 0.2 s on AC20 and 0.5-0.7 s on the heavy fixture with 8 planes.
+- What this does NOT measure: frame pacing. The hosted display ran rAF at 30 Hz, so every variant shows a
+  33.3 ms frame; only GPU latency and the per-frame counts discriminate. Absolute numbers drift between
+  sessions on this machine; only these interleaved pairs compare.
+
+Verdict: no fallback needed. The caps layer ships with every enabled plane capped.
+
 ## Printable ASCII STEP escaping (#7363)
 
 Campaign Group worker profiling attributed substantial work to rebuilding

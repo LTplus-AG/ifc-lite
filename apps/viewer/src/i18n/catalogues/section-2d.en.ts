@@ -14,6 +14,7 @@ export const section2dEn = {
   'section2d.projection.invalid': 'Enter a finite distance of zero or more.',
   'section2d.projection.help': 'Depth is measured behind the cut. Zero shows cut geometry only. Plan views retain their separate overhead band.',
   'section2d.heading': 'Drawing',
+  'section2d.cutNamed': '{name} · {cut}',
   'section2d.overlay.toggleTitle': 'Toggle 3D overlay',
   'section2d.symbolic.planTitle': 'Symbolic representations (Plan)',
   'section2d.symbolic.cutTitle': 'Section cut (Body)',

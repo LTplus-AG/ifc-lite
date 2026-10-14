@@ -25,6 +25,7 @@
  */
 
 import type { StateCreator } from 'zustand';
+import type { Drawing2D } from '@ifc-lite/drawing-2d';
 import type { SectionPlane, SectionPlaneAxis } from '../types.js';
 import type { SectionSlice } from './sectionSlice.js';
 import {
@@ -50,9 +51,27 @@ export interface SectionUndoRecord {
   inactive: SectionPlane[];
 }
 
+/**
+ * The cut of an inactive plane, as its cap is drawn (#7545): the polygons and lines the cutter
+ * produced, and what they were cut FROM. The active plane's cap comes from the Drawing panel's
+ * own drawing; the others are cut by `useExtraSectionCaps` and parked here for the renderer.
+ */
+export interface SectionExtraCap {
+  /** What this cut was made for: the plane's geometry and the visible model state. Stale when it differs. */
+  signature: string;
+  cutPolygons: Drawing2D['cutPolygons'];
+  layerBaseCutPolygons?: Drawing2D['layerBaseCutPolygons'];
+  lines: Drawing2D['lines'];
+}
+
 export interface SectionPlaneSetSlice {
   /** Every plane except the active one (`sectionPlane`). Written only by this slice. */
   inactiveSectionPlanes: SectionPlane[];
+  /** The caps of the inactive planes, by plane id. Derived data: reset with the model, dropped with the plane. */
+  sectionExtraCaps: Readonly<Record<string, SectionExtraCap>>;
+  setSectionExtraCap: (id: string, cap: SectionExtraCap | null) => void;
+  /** Drop every cap whose plane id is not in `keep`. */
+  pruneSectionExtraCaps: (keep: readonly string[]) => void;
   sectionPickTarget: SectionPickTarget;
   /** The set before the last Remove / Clear all, until Undo or `dismissSectionUndo`. */
   sectionUndo: SectionUndoRecord | null;
@@ -109,6 +128,19 @@ export const createSectionPlaneSetSlice: StateCreator<SectionSlice, [], [], Sect
 
   return {
     inactiveSectionPlanes: [],
+    sectionExtraCaps: {},
+    setSectionExtraCap: (id, cap) => set((state) => {
+      if (cap === null) {
+        if (!(id in state.sectionExtraCaps)) return state;
+        const { [id]: _dropped, ...rest } = state.sectionExtraCaps;
+        return { sectionExtraCaps: rest };
+      }
+      return { sectionExtraCaps: { ...state.sectionExtraCaps, [id]: cap } };
+    }),
+    pruneSectionExtraCaps: (keep) => set((state) => {
+      const kept = Object.fromEntries(Object.entries(state.sectionExtraCaps).filter(([id]) => keep.includes(id)));
+      return Object.keys(kept).length === Object.keys(state.sectionExtraCaps).length ? state : { sectionExtraCaps: kept };
+    }),
     sectionPickTarget: 'replace',
     sectionUndo: null,
 

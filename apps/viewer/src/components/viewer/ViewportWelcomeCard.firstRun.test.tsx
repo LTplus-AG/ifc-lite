@@ -9,13 +9,14 @@
  * the formats under it come from the one extension list.
  */
 import '@/test/setup-dom.js';
-import { afterEach, describe, it } from 'node:test';
+import { after, afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { cleanup, click, render } from '@/test/render.js';
 import { viewportLightingEn } from '@/i18n/catalogues/viewport-lighting.en';
 import { MODEL_FILE_EXTENSIONS } from '@/services/supported-model-files';
 import { ViewportWelcomeCard } from './ViewportWelcomeCard.js';
+import { fieldTelemetry } from '@/lib/perf/fieldTelemetryLoader.js';
 
 const DEMO_LABEL = viewportLightingEn['viewportLighting.container.emptyState.loadDemo.button'] as string | undefined;
 
@@ -36,6 +37,11 @@ function renderCard(loadFile: (file: File) => Promise<void>, supported = true) {
 }
 
 const realFetch = globalThis.fetch;
+// The mounted welcome card reports its drop target to field telemetry, which
+// arms the 30 s `viewer_boot` deadline; disarm it so it does not hold this
+// test process open after the last test.
+after(() => fieldTelemetry?.resetFieldEventsForTests());
+
 afterEach(() => {
   cleanup();
   globalThis.fetch = realFetch;

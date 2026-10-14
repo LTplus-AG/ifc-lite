@@ -14,11 +14,22 @@
 import 'fake-indexeddb/auto';
 
 import assert from 'node:assert/strict';
-import { beforeEach, describe, it } from 'node:test';
+import { afterEach, beforeEach, describe, it } from 'node:test';
 import { createBimContext } from '@ifc-lite/sdk';
 import type { Flavor } from '@ifc-lite/extensions';
 import { ExtensionHostService } from './host.js';
 import { IdbFlavorStorage } from './idb-flavor-storage.js';
+
+/**
+ * Every host a test builds is disposed after it: logged actions arm the host's
+ * idle pattern-miner timer (60 s), which otherwise held this test process
+ * open for a minute after its last test.
+ */
+const liveHosts = new Set<ExtensionHostService>();
+async function disposeLiveHosts(): Promise<void> {
+  await Promise.all([...liveHosts].map((host) => host.dispose()));
+  liveHosts.clear();
+}
 
 class TestHost extends ExtensionHostService {
   constructor() {
@@ -31,6 +42,7 @@ class TestHost extends ExtensionHostService {
         },
       }),
     });
+    liveHosts.add(this);
   }
 }
 
@@ -67,6 +79,8 @@ describe('ExtensionHostService.switchFlavor', () => {
   beforeEach(async () => {
     await new IdbFlavorStorage().clear();
   });
+
+  afterEach(disposeLiveHosts);
 
   it('does not throw when the refused pointer write already stored the target', async () => {
     const host = new TestHost();

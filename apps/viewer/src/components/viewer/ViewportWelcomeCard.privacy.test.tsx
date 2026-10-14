@@ -11,13 +11,14 @@
  * copy into its own key, fails here.
  */
 import '@/test/setup-dom.js';
-import { afterEach, beforeEach, describe, it } from 'node:test';
+import { after, afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act, type ComponentType } from 'react';
 import { cleanup, click, render } from '@/test/render.js';
 import { registerLocale, setLocale } from '@/i18n';
 import { keyboardShortcutsEn } from '@/i18n/catalogues/keyboard-shortcuts.en';
 import { EVENT_SHOW_SHORTCUTS } from '@/lib/tours/events';
+import { fieldTelemetry } from '@/lib/perf/fieldTelemetryLoader.js';
 
 // Dynamic + try/catch, not static imports: the revert oracle deletes
 // ViewportWelcomeCard.tsx and un-exports PrivacyBanner, and a static import
@@ -83,6 +84,11 @@ function ownTextNode(container: HTMLElement, text: string): Element | undefined 
 beforeEach(() => {
   setLocale('en');
 });
+
+// The mounted welcome card reports its drop target to field telemetry, which
+// arms the 30 s `viewer_boot` deadline; disarm it so it does not hold this
+// test process open after the last test.
+after(() => fieldTelemetry?.resetFieldEventsForTests());
 
 afterEach(() => {
   cleanup();

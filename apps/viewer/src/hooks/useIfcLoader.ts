@@ -1643,23 +1643,29 @@ export function useIfcLoader() {
             fileSizeMB,
           );
           let watchdogId: ReturnType<typeof globalThis.setTimeout> | null = null;
-          const nextResult = await Promise.race([
-            geometryIterator.next(),
-            new Promise<never>((_, reject) => {
-              watchdogId = globalThis.setTimeout(() => {
-                // Do NOT embed `file.name` here — this Error is captured by
-                // error tracking (and auto-filed as a public GitHub issue), so
-                // a confidential model name would leak. The file name is added
-                // back for the user only, via formatLoadError(err, file.name).
-                reject(new Error(
-                  `Geometry stream stalled after ${watchdogMs}ms. ` +
-                  `Last rendered meshes: ${lastTotalMeshes}.`
-                ));
-              }, watchdogMs);
-            }),
-          ]);
-          if (watchdogId !== null) {
-            globalThis.clearTimeout(watchdogId);
+          let nextResult: Awaited<ReturnType<typeof geometryIterator.next>>;
+          try {
+            nextResult = await Promise.race([
+              geometryIterator.next(),
+              new Promise<never>((_, reject) => {
+                watchdogId = globalThis.setTimeout(() => {
+                  // Do NOT embed `file.name` here — this Error is captured by
+                  // error tracking (and auto-filed as a public GitHub issue), so
+                  // a confidential model name would leak. The file name is added
+                  // back for the user only, via formatLoadError(err, file.name).
+                  reject(new Error(
+                    `Geometry stream stalled after ${watchdogMs}ms. ` +
+                    `Last rendered meshes: ${lastTotalMeshes}.`
+                  ));
+                }, watchdogMs);
+              }),
+            ]);
+          } finally {
+            // Disarm on a rejected pull too: a stream that fails outright
+            // otherwise leaves the stall timer armed for the full window.
+            if (watchdogId !== null) {
+              globalThis.clearTimeout(watchdogId);
+            }
           }
 
           if (nextResult.done) {

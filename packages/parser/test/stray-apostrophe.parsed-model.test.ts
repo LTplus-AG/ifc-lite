@@ -17,8 +17,8 @@ import { IfcParser } from '../src/index.js';
 import type { WasmScanApi } from '../src/entity-scanner.js';
 
 const WASM = fileURLToPath(new URL('../../wasm/pkg/ifc-lite_bg.wasm', import.meta.url));
-const WASM_JS = fileURLToPath(new URL('../../wasm/pkg/ifc-lite.js', import.meta.url));
-const WASM_BUILT = existsSync(WASM) && existsSync(WASM_JS);
+// The runtime's JS glue ships beside the binary, so the binary decides.
+const WASM_BUILT = existsSync(WASM);
 const SAMPLE = fileURLToPath(new URL(
   '../../../apps/viewer/public/samples/building-architecture.ifc', import.meta.url,
 ));

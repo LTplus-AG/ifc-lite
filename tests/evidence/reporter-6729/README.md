@@ -19,6 +19,16 @@ STEP records. It captures front, side and oblique views at two zoom levels,
 in perspective and orthographic projection, unselected and with each nut
 selected: 36 renderer PNGs, corresponding UI screenshots and actual camera,
 projection, scene bounds, relative-to-eye frame, canvas and identity metadata.
+Target framing uses the union of both nuts' real renderer world-space mesh
+bounds, looked up through their source-verified canonical global IDs. The
+full scene and all occluders retain their visibility settings; no isolation, hidden
+mesh, geometry substitution or clipping-plane change is requested. A bounding
+sphere fit using the narrower horizontal/vertical camera cone and a fixed 10%
+margin keeps the target pair in frame at zoom2; zoom1 uses twice that distance.
+The bounds, source identities and fitting parameters are retained separately
+from the unchanged full scene bounds. This changes the diagnostic camera focus
+from the long surrounding members to the reported fasteners; it does not prove
+hole geometry or occlusion and never lowers the strict density/error criteria.
 Matched projections preserve eye/target/up and center-plane scale. Selection
 uses canonical store-backed entity resolution without removing occluders.
 

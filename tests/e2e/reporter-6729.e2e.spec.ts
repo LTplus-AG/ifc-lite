@@ -53,7 +53,7 @@ test('authentic reduced reporter model imports and yields matched software WebGP
     status: string; scope: string; fixtureSHA: string; browser: string;
     observed?: Snapshot; displayedElementCount?: string; gpuDiagnostics?: unknown; confirmedBackend?: string;
     timebase: { nodeTimeOriginMs: number; epochClock: string; browserClock: string };
-    setupConfound: string; lifecycleSamples: LifecycleSample[];
+    setupConfound: string; lifecycleSamples: LifecycleSample[]; targetFraming?: unknown;
     frames: Array<{ name: string; requested: CameraViewpoint; observed: Snapshot; pngSHA: string;
       rawWitness: ReturnType<typeof classifyViewportWitness>; pngWitness: ReturnType<typeof classifyViewportWitness> }>;
     errors: string[]; densityFailures: string[]; console: typeof consoleRows;
@@ -114,9 +114,21 @@ test('authentic reduced reporter model imports and yields matched software WebGP
       expect(nut.actualGuid, `actual source-backed ${nut.alias} identity`).toBe(nut.guid);
       expect(nut.resolved.expressId).toBe(nut.expressId);
     }
-    const bounds = loaded.camera?.sceneBounds;
-    expect(bounds, 'actual imported assembly supplies camera scene bounds').not.toBeNull();
-    if (!bounds || !loaded.camera) throw new Error('Imported assembly camera bounds unavailable');
+    if (!loaded.camera) throw new Error('Imported assembly camera unavailable');
+    const boxes = loaded.identities.map(nut => {
+      if (!nut.bounds) throw new Error(`Canonical renderer bounds unavailable for ${nut.alias}`);
+      for (const axis of ['x', 'y', 'z'] as const) {
+        expect(Number.isFinite(nut.bounds.min[axis]) && Number.isFinite(nut.bounds.max[axis])
+          && nut.bounds.min[axis] <= nut.bounds.max[axis], `${nut.alias} real mesh bounds ${axis}`).toBe(true);
+      }
+      return nut.bounds;
+    });
+    // Bounds come from the real scene using each source-verified canonical
+    // global ID. Focus the fastener pair without hiding any surrounding mesh.
+    const bounds = {
+      min: { x: Math.min(...boxes.map(box => box.min.x)), y: Math.min(...boxes.map(box => box.min.y)), z: Math.min(...boxes.map(box => box.min.z)) },
+      max: { x: Math.max(...boxes.map(box => box.max.x)), y: Math.max(...boxes.map(box => box.max.y)), z: Math.max(...boxes.map(box => box.max.z)) },
+    };
     const target = {
       x: (bounds.min.x + bounds.max.x) / 2,
       y: (bounds.min.y + bounds.max.y) / 2,
@@ -125,13 +137,25 @@ test('authentic reduced reporter model imports and yields matched software WebGP
     const extent = Math.hypot(bounds.max.x - bounds.min.x, bounds.max.y - bounds.min.y, bounds.max.z - bounds.min.z);
     expect(Number.isFinite(extent) && extent > 0).toBe(true);
     const fov = loaded.camera.fov;
+    const aspect = loaded.camera.aspect;
+    expect(Number.isFinite(fov) && fov > 0 && fov < Math.PI).toBe(true);
+    expect(Number.isFinite(aspect) && aspect > 0).toBe(true);
+    const halfAngle = Math.min(fov / 2, Math.atan(Math.tan(fov / 2) * aspect));
+    // The pair's AABB sphere fits even at zoom2 along every requested direction.
+    // Perspective uses the narrower horizontal/vertical cone; orthographic
+    // keeps the same center-plane scale. The 10% margin is fixed, not a retry.
+    const minimumDistance = (extent / 2) / Math.sin(halfAngle) * 1.1;
+    expect(Number.isFinite(minimumDistance) && minimumDistance > 0).toBe(true);
+    report.targetFraming = { source: 'scene.getEntityBoundingBox(canonical source-verified globalId)',
+      targets: loaded.identities, bounds, extent, fov, aspect, minimumDistance,
+      zoomPolicy: 'zoom1 distance=2*minimumDistance; zoom2 distance=minimumDistance; all scene occluders retained' };
     const poses = [
       { name: 'front', direction: { x: 0, y: 0, z: 1 } },
       { name: 'side', direction: { x: 1, y: 0, z: 0 } },
       { name: 'oblique', direction: { x: 1 / Math.sqrt(3), y: 1 / Math.sqrt(3), z: 1 / Math.sqrt(3) } },
     ];
     for (const pose of poses) for (const zoom of [1, 2]) {
-      const distance = extent * 1.5 / zoom;
+      const distance = minimumDistance * 2 / zoom;
       const position = { x: target.x + pose.direction.x * distance,
         y: target.y + pose.direction.y * distance, z: target.z + pose.direction.z * distance };
       for (const projectionMode of ['perspective', 'orthographic'] as const) {

@@ -62,7 +62,8 @@ export function readProbe() {
       const globalId = state.toGlobalId(model.id, nut.expressId);
       const ref = resolveEntityRef(globalId);
       return { ...nut, globalId, resolved: ref, actualGuid: resolveEntityRefGlobalId(ref),
-        actualName: model.ifcDataStore?.entities.getName(nut.expressId) ?? null };
+        actualName: model.ifcDataStore?.entities.getName(nut.expressId) ?? null,
+        bounds: renderer?.getScene().getEntityBoundingBox(globalId) ?? null };
     }) : [],
     selected: [...state.selectedEntityIds],
     adapter: renderer?.getAdapterInfo() ?? null,

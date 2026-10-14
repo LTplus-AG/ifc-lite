@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { ReportReceipt } from '@ifc-lite/report-contract';
 import { useTranslation } from '@/i18n';
 import { Button } from '@/components/ui/button';
@@ -16,26 +16,31 @@ export function PublicModelReceipt({ receipt, client, onChange, disabled = false
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const pending = useRef<{ controller: AbortController; receipt: ReportReceipt; withdraw: boolean } | undefined>(undefined);
-  const latestReceipt = useRef(receipt);
-  const withdrawnReport = useRef<string | undefined>(undefined);
-  const deletedReport = useRef<string | undefined>(undefined);
-  if (latestReceipt.current.id !== receipt.id) { withdrawnReport.current = undefined; deletedReport.current = undefined; }
-  latestReceipt.current = receipt;
-  if (receipt.publicModel?.state === 'withdrawn') withdrawnReport.current = receipt.id;
-  if (receipt.status === 'deleted') deletedReport.current = receipt.id;
+  const withdrawn = receipt.publicModel?.state === 'withdrawn';
+  const deleted = receipt.status === 'deleted';
+  const [terminal, setTerminal] = useState({ id: receipt.id, withdrawn, deleted });
+  // State adjustments are discarded with an abandoned render. Terminal
+  // facts remain monotonic for this report, including older parent snapshots.
+  if (terminal.id !== receipt.id || (withdrawn && !terminal.withdrawn) || (deleted && !terminal.deleted)) {
+    setTerminal({ id: receipt.id,
+      withdrawn: withdrawn || (terminal.id === receipt.id && terminal.withdrawn),
+      deleted: deleted || (terminal.id === receipt.id && terminal.deleted) });
+  }
+  const latestReceipt = useRef({ receipt, terminal });
+  useLayoutEffect(() => { latestReceipt.current = { receipt, terminal }; }, [receipt, terminal]);
   useEffect(() => () => pending.current?.controller.abort(), []);
   useEffect(() => {
     const request = pending.current;
     // A same-report refresh may supersede a GET, but cannot cancel an
     // authoritative withdrawal. Changing report or deletion invalidates both.
-    if (request && (!request.withdraw || request.receipt.id !== receipt.id || deletedReport.current === receipt.id)) {
+    if (request && (!request.withdraw || request.receipt.id !== receipt.id || terminal.deleted)) {
       request.controller.abort(); pending.current = undefined;
     }
     if (!pending.current) { setBusy(false); setConfirm(false); }
     setError('');
-  }, [receipt]);
-  const model: ReportReceipt['publicModel'] = withdrawnReport.current === receipt.id ? { state: 'withdrawn' } : receipt.publicModel;
-  if (!model || deletedReport.current === receipt.id) return null;
+  }, [receipt, terminal.deleted]);
+  const model: ReportReceipt['publicModel'] = terminal.withdrawn ? { state: 'withdrawn' } : receipt.publicModel;
+  if (!model || terminal.deleted) return null;
   const url = safePublicModelUrl(model.downloadUrl);
   const statusKey = model.state === 'available' && url ? 'errorReport.publicAvailable' :
     model.state === 'withdrawn' ? 'errorReport.publicWithdrawn' :
@@ -45,15 +50,15 @@ export function PublicModelReceipt({ receipt, client, onChange, disabled = false
     if (pending.current || disabled) return;
     const controller = new AbortController();
     const work = { controller, receipt, withdraw }; pending.current = work;
-    const relevant = () => !controller.signal.aborted && latestReceipt.current.id === receipt.id &&
-      deletedReport.current !== receipt.id && (withdraw || latestReceipt.current === receipt);
+    const relevant = () => !controller.signal.aborted && latestReceipt.current.receipt.id === receipt.id &&
+      !latestReceipt.current.terminal.deleted && (withdraw || latestReceipt.current.receipt === receipt);
     setBusy(true); setError('');
     try {
       const next = await client.request<ReportReceipt>(`/${encodeURIComponent(receipt.id)}${withdraw ? '/public-model' : ''}`,
         withdraw ? 'DELETE' : 'GET', undefined, controller.signal);
       if (next.id !== receipt.id || (withdraw && next.publicModel?.state !== 'withdrawn')) throw new Error('Public model status was not confirmed. Please retry.');
       if (relevant()) {
-        if (withdraw) withdrawnReport.current = receipt.id;
+        if (withdraw) setTerminal(current => current.id === receipt.id ? { ...current, withdrawn: true } : current);
         onChange(next); setConfirm(false);
       }
     } catch (reason) {

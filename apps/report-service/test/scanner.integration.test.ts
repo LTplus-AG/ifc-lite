@@ -5,6 +5,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { fileURLToPath } from "node:url";
 import { mkdtemp, readFile, rm, readdir, mkdir, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -359,7 +360,11 @@ describe.skipIf(!enabled)(
     describe.skipIf(!signatures)(
       "actual pinned ClamAV engine (never synthetic attestation)",
       () => {
-        const model = resolve("../../tests/models/ara3d/AC20-FZK-Haus.ifc");
+        const model = fileURLToPath(
+          new URL("../../../tests/models/ara3d/AC20-FZK-Haus.ifc", import.meta.url),
+        );
+        if (process.env.REPORT_REQUIRE_SCANNER === "true" && !existsSync(model))
+          throw new Error("Mandatory real scanner FZK fixture missing; run pnpm fixtures");
         it.skipIf(!existsSync(model))(
           "#7495 real authoring-tool FZK reaches review, never automatic approval (pnpm fixtures)",
           async () => {

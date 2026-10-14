@@ -79,6 +79,7 @@ describe.skipIf(!enabled)("#7495 journal runtime admission, custody and real wor
   });
   function feature() { expect(runtime, "runtime journal API must exist").toBeDefined(); return runtime!; }
   function launch(overrides: NodeJS.ProcessEnv = {}, initialize = false): OwnedChild {
+    // @source-text-assertion-ok inherited process.env variable-name scrub; no predicate reads file/source contents
     const clean = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("REPORT_")));
     const child = spawn(process.execPath, ["--import", import.meta.resolve("tsx"),
       fileURLToPath(new URL(initialize ? "../scripts/initialize-journal.ts" : "../src/bin.ts", import.meta.url)),

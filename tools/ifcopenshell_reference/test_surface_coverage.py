@@ -5,7 +5,11 @@
 from fractions import Fraction as Q
 import importlib.util
 import itertools
+import json
 from pathlib import Path
+import subprocess
+import sys
+import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -31,6 +35,30 @@ def adjudicate(oracle,base,candidate):
 
 
 class FiniteCoverage(unittest.TestCase):
+    def test_7661_reporter_cli_default_fixture(self):
+        # An actual reporter mesh in viewer coordinates exercises default
+        # fixture discovery, frame conversion and the CLI receipt. This does
+        # not certify native CSG: its candidate comes from the pinned oracle.
+        model = C.ifcopenshell.open(str(C.default_fixture()))
+        settings = C.ifcopenshell.geom.settings()
+        settings.set('use-world-coords',True)
+        shape = C.ifcopenshell.geom.create_shape(settings,model.by_id(107))
+        xyz = list(shape.geometry.verts)
+        candidate = {'expressId':107,'indices':list(shape.geometry.faces),
+                     'positions':[v for i in range(0,len(xyz),3)
+                                  for v in [xyz[i],xyz[i+2],-xyz[i+1]]]}
+        with tempfile.TemporaryDirectory() as directory:
+            folder = Path(directory)
+            (folder/'candidate.json').write_text(json.dumps(candidate))
+            result = subprocess.run([sys.executable,'-B',str(ROOT/
+                'docs/architecture/evidence/issue-7292/compare_surface.py'),
+                '--candidate',str(folder/'candidate.json'),'--output',str(folder/'result')],
+                cwd=ROOT,capture_output=True,text=True,check=False)
+            self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+            receipt = json.loads((folder/'result/receipt.json').read_text())
+            self.assertTrue(receipt['passed'])
+            self.assertEqual(len(receipt['planes']),6)
+
     def test_7661_perpendicular_edge_and_order(self):
         t = [[0.,0.,0.],[1.,0.,0.],[0.,0.,1.]]
         r = [[0.,2.,0.],[0.,3.,0.],[0.,2.,1.]]

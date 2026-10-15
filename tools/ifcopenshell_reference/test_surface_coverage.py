@@ -115,6 +115,14 @@ class FiniteCoverage(unittest.TestCase):
         with self.assertRaisesRegex(F.WorkLimit,'unresolved'):
             C.adjudicate(data,max_work_units=0)
 
+    def test_7661_live_cell_exhaustion_is_unresolved(self):
+        # A partially overlapping finite target leaves a real source remainder.
+        # Lower the supported diagnostic bound to exercise exhaustion cheaply.
+        budget = F.WorkBudget(max_live_cells=0)
+        with self.assertRaisesRegex(F.WorkLimit,'live-cell.*unresolved'):
+            F.unresolved_cells([horizontal()],[horizontal(x=.5)],
+                               {'u':[1,0,0],'v':[0,1,0]},C.TOL,budget)
+
     def test_7661_baseline_absence_requires_strict_finite_distance(self):
         cell = ([(Q(0),Q(0)),(Q(1),Q(0)),(Q(0),Q(1))],
                 [(Q(0),Q(0)),(Q(1),Q(0)),(Q(0),Q(1))],

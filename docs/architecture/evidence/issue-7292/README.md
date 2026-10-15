@@ -20,6 +20,12 @@ also verifies the existing fixture, unit, placement and RTC contracts. The cache
 must carry the pinned engine versions and source hashes. No IFC parse occurs
 when a verified oracle cache is supplied.
 
+The CLI's `passed` field and exit status require full conformance and the frame
+checks, including in corpus mode: exit 0 means full PASS, exit 1 means failure,
+and exit 2 means work-bound exhaustion. Localized baseline comparison is a
+separate `summary.localized_delta_passed` field. An unchanged preexisting error
+can pass the localized comparison while full conformance and the CLI still fail.
+
 Plane bins organize diagnostics. A donor triangle can receive coverage from a
 finite target in any bin. Rounded projected corners define an affine parameter
 triangle whose exact rational inverse maps onto the actual donor. Convex

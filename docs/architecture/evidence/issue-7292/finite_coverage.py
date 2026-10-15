@@ -19,9 +19,10 @@ class WorkLimit(ValueError):
 
 
 class WorkBudget:
-    def __init__(self, limit=2000000):
+    def __init__(self, limit=2000000, max_live_cells=4096):
         self.remaining = limit
         self.used = 0
+        self.max_live_cells = max_live_cells
 
     def charge(self, count=1, points=()):
         self.remaining -= count
@@ -180,8 +181,8 @@ def unresolved_cells(donors, targets, plane, tolerance, budget=None):
                         next_rest.extend(outside)
                     else:
                         next_rest.append(cell)
-                if len(next_rest) > 4096:
-                    raise ValueError('Finite coverage work limit: unresolved')
+                if len(next_rest) > budget.max_live_cells:
+                    raise WorkLimit('Finite coverage live-cell limit exhausted: unresolved')
                 rest = next_rest
                 if not rest:
                     break

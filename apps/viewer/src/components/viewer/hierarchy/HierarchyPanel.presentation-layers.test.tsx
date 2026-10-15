@@ -113,6 +113,49 @@ describe('Presentation layers hierarchy (#7619)', () => {
     assert.equal(container.querySelector('[role="tree"]')?.getAttribute('aria-busy'), 'false');
   });
 
+  it('reveals a held selection as its metadata arrives and never reopens it after a manual collapse (#7619 review)', async () => {
+    const a = await model('presentation-held-pending-a', true);
+    const b = await model('presentation-held-pending-b', true);
+    const pending = (entry: typeof a): FederatedModel => ({ ...entry, ifcDataStore: null,
+      maxExpressId: 51, loadState: 'pending', metadataLoadState: 'idle' });
+    const container = mountPanel([pending(a), pending(b)], a.idOffset + 7);
+    assert.equal(container.querySelector('[role="tree"]')?.getAttribute('aria-busy'), 'true');
+    const revision = useViewerStore.getState().selectionRevision;
+    act(() => useViewerStore.getState().updateModel(a.id, {
+      ifcDataStore: a.ifcDataStore, loadState: 'complete', metadataLoadState: 'complete',
+    }));
+    await waitFor(() => [...container.querySelectorAll<HTMLElement>('[role="treeitem"][aria-selected="true"]')]
+      .some(row => row.textContent?.includes('Layer wall')), 'held selection reveals as the first metadata arrives');
+    assert.equal(useViewerStore.getState().selectionRevision, revision, 'metadata supplies the target without another selection dispatch');
+    assert.equal(container.querySelector('[role="tree"]')?.getAttribute('aria-busy'), 'true', 'second model is still pending');
+    const row = layerRows(container)[0];
+    click(button(row, 'Collapse Walls'));
+    assert.doesNotMatch(container.textContent ?? '', /Layer wall/);
+    act(() => useViewerStore.getState().updateModel(b.id, {
+      ifcDataStore: b.ifcDataStore, loadState: 'complete', metadataLoadState: 'complete',
+    }));
+    assert.equal(container.querySelector('[role="tree"]')?.getAttribute('aria-busy'), 'false');
+    assert.doesNotMatch(container.textContent ?? '', /Layer wall/,
+      'unrelated metadata completion never reopens an already resolved selection');
+    assert.ok(button(layerRows(container)[0], 'Expand Walls'));
+  });
+
+  it('cancels an unresolved reveal when a tree click selects a different model (#7619 review)', async () => {
+    const a = await model('presentation-cancel-pending-a', true);
+    const b = await model('presentation-cancel-loaded-b', true);
+    const container = mountPanel([{ ...a, ifcDataStore: null, maxExpressId: 51,
+      loadState: 'pending', metadataLoadState: 'idle' }, { ...b, maxExpressId: 51 }], a.idOffset + 7);
+    await waitFor(() => layerRows(container).length === 1, 'the available model can be selected during hydration');
+    click(layerRows(container)[0]);
+    assert.equal(useViewerStore.getState().selectedEntityId, b.idOffset + 7);
+    act(() => useViewerStore.getState().updateModel(a.id, {
+      ifcDataStore: a.ifcDataStore, loadState: 'complete', metadataLoadState: 'complete',
+    }));
+    assert.doesNotMatch(container.textContent ?? '', /Layer wall/,
+      'neither the cancelled pending target nor the tree-click target is autoexpanded');
+    assert.equal(useViewerStore.getState().selectedEntityId, b.idOffset + 7);
+  });
+
   it('keeps progressive federation metadata busy while browsing loaded layers and defers empty search results (#7619 review)', async () => {
     const a = await model('presentation-progressive-a', true);
     const b = await model('presentation-progressive-b', true);
@@ -158,11 +201,13 @@ describe('Presentation layers hierarchy (#7619)', () => {
     const a: FederatedModel = { ...fixtureModel('presentation-empty-pending-a'), ifcDataStore: null,
       loadState: 'pending', metadataLoadState: 'idle' };
     const b: FederatedModel = { ...fixtureModel('presentation-empty-pending-b'), ifcDataStore: null,
-      loadState: 'streaming-geometry', metadataLoadState: 'idle' };
+      loadState: 'pending', metadataLoadState: 'idle' };
     const container = mountPanel([a, b]);
+    assert.equal(container.querySelector('[role="tree"]')?.getAttribute('aria-busy'), 'true', 'both registered models are pending');
     assert.doesNotMatch(container.textContent ?? '', /No presentation layers/);
     act(() => useViewerStore.getState().updateModel(a.id, { ifcDataStore: emptyStore, loadState: 'complete' }));
     assert.match(container.textContent ?? '', /Loading presentation layers/);
+    assert.equal(container.querySelector('[role="tree"]')?.getAttribute('aria-busy'), 'true', 'one remaining pending model keeps metadata incomplete');
     assert.doesNotMatch(container.textContent ?? '', /No presentation layers/);
     act(() => useViewerStore.getState().updateModel(b.id, { ifcDataStore: emptyStore, loadState: 'complete' }));
     await waitFor(() => /No presentation layers/.test(container.textContent ?? ''), 'completed shared empty metadata produces its real empty state');

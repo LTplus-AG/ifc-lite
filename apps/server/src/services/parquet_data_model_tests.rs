@@ -429,3 +429,18 @@ fn serializes_and_reads_back_spatial_lookup_table() {
     assert_eq!(element_ids.value(0), 42, "element_id must carry the element");
     assert_eq!(spatial_ids.value(0), 7, "spatial_id must carry the storey");
 }
+
+/// SERVER-14 (#7675): every data-model section length is a wire `u32`. A
+/// section past it is refused, never written with a wrapped prefix that
+/// misframes every later table on the client. Checked by length, so the test
+/// needs no 4 GiB buffer.
+#[test]
+fn a_data_model_section_past_the_u32_prefix_is_refused() {
+    let oversized = u32::MAX as usize + 1;
+    for slot in 0..8 {
+        let lengths: Vec<(&str, usize)> =
+            (0..8).map(|i| ("section", if i == slot { oversized } else { 4 })).collect();
+        assert!(check_section_lengths(lengths.into_iter()).is_err(), "slot {slot} was not refused");
+    }
+    assert!(check_section_lengths([("entities", u32::MAX as usize)].into_iter()).is_ok());
+}

@@ -18,7 +18,7 @@ import { PropertyValueType } from '@ifc-lite/data';
 import type { PropertyValue } from '@ifc-lite/data';
 import type { IfcDataStore } from './columnar-parser.js';
 import { resolvePropertyReferenceValue } from './property-reference-value.js';
-import { resolveComplexPropertyValue } from './property-complex-value.js';
+import { ComplexPropertyBudget, resolveComplexPropertyValue } from './property-complex-value.js';
 
 export { resolveComplexPropertyValue };
 
@@ -326,11 +326,12 @@ export function copyParsedExtras(entry: ExtractedProperty, parsed: ParsedIfcProp
 export function parsePropertyValueWithComplex(
     store: IfcDataStore,
     extractor: EntityExtractor,
-    propEntity: IfcEntity
+    propEntity: IfcEntity,
+    budget?: ComplexPropertyBudget
 ): ParsedIfcPropertyValue {
     const type = propEntity.type.toUpperCase();
     if (type === 'IFCCOMPLEXPROPERTY') {
-        return resolveComplexPropertyValue(store, extractor, propEntity);
+        return resolveComplexPropertyValue(store, extractor, propEntity, budget);
     }
     if (type === 'IFCPROPERTYREFERENCEVALUE') {
         return resolvePropertyReferenceValue(store, extractor, propEntity);

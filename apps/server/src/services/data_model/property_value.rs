@@ -10,44 +10,10 @@
 //! walk) separate from value-shape resolution (how to stringify one).
 
 use ifc_lite_core::{AttributeValue, DecodedEntity, EntityDecoder};
-
-/// Guards `resolve_complex_property_value` against a pathological/cyclic
-/// `HasProperties` chain, mirroring the TS `MAX_COMPLEX_PROPERTY_DEPTH` in
-/// `packages/parser/src/property-complex-value.ts` exactly: real IFC nests
-/// `IfcComplexProperty` at most a couple of levels deep.
-pub(super) const MAX_COMPLEX_PROPERTY_DEPTH: u8 = 8;
-
-/// The suffix minted into a complex property's display value when the depth
-/// cap stops the walk with `HasProperties` members still unread (issue
-/// #3972). Byte-identical to `complexPropertyTruncationMarker()` in
-/// `packages/parser/src/property-complex-value.ts` — the two paths feed the
-/// same property panel, CSV/parquet export and compare fingerprints, so a
-/// divergence here reads as a data difference between server and browser.
-///
-/// A suffix rather than a `truncated` flag on `Property`: a flag would have
-/// to be carried through the Rust struct + serde, the per-field parquet
-/// columns, the TS `Property` type, the `serverDataModel` adapter and the
-/// panel renderer, and is silently lost at any one of them — a signal that
-/// never fires, which is the same shape this issue is about. The value
-/// string reaches every reader by construction.
-fn complex_property_truncation_marker() -> String {
-    format!("(truncated: nesting deeper than {MAX_COMPLEX_PROPERTY_DEPTH} levels)")
-}
-
-/// Nested members one top-level `IfcComplexProperty` may read, across all its
-/// levels. The depth cap bounds a path's LENGTH only: a member listing itself
-/// `k` times is `k^8` reads, and at `k = 6` one property produced an 82 MB
-/// value (#7675). Output accumulates (the same node down two branches is two
-/// real parts), so a visited set would drop real members; a work budget
-/// bounds the fan-out instead (AGENTS.md "Bounding walks"). Mirrors the TS
-/// `MAX_COMPLEX_PROPERTY_MEMBERS` in `packages/parser/src/property-complex-value.ts`.
-pub(super) const MAX_COMPLEX_PROPERTY_MEMBERS: usize = 1024;
-
-/// The suffix minted when [`MAX_COMPLEX_PROPERTY_MEMBERS`] stops the walk with
-/// members unread. Byte-identical to `complexPropertyBudgetMarker()` in TS.
-fn complex_property_budget_marker() -> String {
-    format!("(truncated: more than {MAX_COMPLEX_PROPERTY_MEMBERS} nested properties)")
-}
+use ifc_lite_core::limits::{
+    complex_property_depth_marker, ComplexPropertyBudget, COMPLEX_PROPERTY_BUDGET_MARKER,
+    MAX_COMPLEX_PROPERTY_DEPTH,
+};
 
 /// What an `IfcPropertyReferenceValue` reads as (#5475): the referenced
 /// object's `Name`, else its `Identification` (an external reference, a
@@ -77,7 +43,7 @@ pub(super) fn property_reference_label(decoder: &mut EntityDecoder, id: u32) -> 
 ///   kind when it's absent/empty) — there was nothing nested to lose.
 /// - The depth cap is hit with a NON-EMPTY `HasProperties` still unread:
 ///   return `UsageName` suffixed with
-///   `complex_property_truncation_marker()`, or the bare marker when there is
+///   `complex_property_depth_marker()`, or the bare marker when there is
 ///   no `UsageName`. Never the bare `UsageName`: that is a plausible,
 ///   well-formed value indistinguishable from a complex property that
 ///   genuinely has no nested content (issue #3972). The empty-`UsageName`
@@ -95,22 +61,25 @@ pub(super) fn property_reference_label(decoder: &mut EntityDecoder, id: u32) -> 
 ///   property and a top-level sibling property cannot occur — same as the TS
 ///   side, where `parsePropertyValueWithComplex` is called once per
 ///   `HasProperties` member and only ever returns a single value for it.
-/// - Every nested member read is charged to one budget shared by the whole
-///   walk ([`MAX_COMPLEX_PROPERTY_MEMBERS`]); a level that runs out with members
-///   unread appends `complex_property_budget_marker()`.
+/// - Every bound and marker is `ifc_lite_core::limits`' (#7675), shared with
+///   the exporter's copy and mirrored by the TS twin: the depth cap marks a
+///   cut with `complex_property_depth_marker()`, and `budget` (member visits
+///   per top-level property, output bytes per scope) cuts a level with its
+///   parts so far plus `COMPLEX_PROPERTY_BUDGET_MARKER`.
 pub(super) fn resolve_complex_property_value(
     entity: &DecodedEntity,
     decoder: &mut EntityDecoder,
+    budget: &mut ComplexPropertyBudget,
 ) -> (String, String, Option<String>, Option<Vec<String>>) {
-    let mut visits = 0;
-    resolve_complex(entity, decoder, 0, &mut visits)
+    budget.start_property();
+    resolve_complex(entity, decoder, 0, budget)
 }
 
 fn resolve_complex(
     entity: &DecodedEntity,
     decoder: &mut EntityDecoder,
-    depth: u8,
-    visits: &mut usize,
+    depth: usize,
+    budget: &mut ComplexPropertyBudget,
 ) -> (String, String, Option<String>, Option<Vec<String>>) {
     let usage_name = entity.get_string(2).map(|s| s.to_string());
     let bare = |usage_name: Option<String>| match usage_name {
@@ -127,7 +96,7 @@ fn resolve_complex(
 
     if depth >= MAX_COMPLEX_PROPERTY_DEPTH {
         // Members were present and we declined to read them. Say so.
-        let marker = complex_property_truncation_marker();
+        let marker = complex_property_depth_marker();
         let value = match usage_name {
             Some(u) if !u.is_empty() => format!("{u} {marker}"),
             _ => marker,
@@ -145,11 +114,10 @@ fn resolve_complex(
     let mut out_of_budget = false;
 
     for prop_id in refs {
-        if *visits >= MAX_COMPLEX_PROPERTY_MEMBERS {
+        if !budget.admit_member() {
             out_of_budget = true;
             break;
         }
-        *visits += 1;
         let nested_entity = match decoder.decode_by_id(prop_id) {
             Ok(e) => e,
             Err(_) => continue,
@@ -160,7 +128,7 @@ fn resolve_complex(
             .unwrap_or_default();
         let nested_ty = nested_entity.ifc_type.as_str().to_uppercase();
         let display = if nested_ty == "IFCCOMPLEXPROPERTY" {
-            resolve_complex(&nested_entity, decoder, depth + 1, visits).0
+            resolve_complex(&nested_entity, decoder, depth + 1, budget).0
         } else {
             match super::properties::extract_property(&nested_entity, decoder) {
                 Some(p) => p.property_value,
@@ -170,22 +138,20 @@ fn resolve_complex(
         if display.is_empty() {
             continue;
         }
-        if nested_name.is_empty() {
-            parts.push(display.clone());
-        } else {
-            parts.push(format!("{}: {}", nested_name, display));
-        }
+        let part = if nested_name.is_empty() { display.clone() } else { format!("{nested_name}: {display}") };
+        budget.charge(part.len());
+        parts.push(part);
         values.push(display);
     }
 
-    let mut value = if !parts.is_empty() {
-        parts.join(", ")
-    } else {
-        usage_name.unwrap_or_default()
+    let value = match (parts.is_empty(), out_of_budget) {
+        (true, true) => COMPLEX_PROPERTY_BUDGET_MARKER.to_string(),
+        (false, true) => format!("{} {COMPLEX_PROPERTY_BUDGET_MARKER}", parts.join(", ")),
+        (false, false) => parts.join(", "),
+        (true, false) => usage_name.unwrap_or_default(),
     };
-    if out_of_budget {
-        let marker = complex_property_budget_marker();
-        value = if value.is_empty() { marker } else { format!("{value} {marker}") };
+    if !parts.is_empty() {
+        budget.charge(value.len());
     }
     let property_type = if value.is_empty() { "null" } else { "string" };
     let values = if values.is_empty() { None } else { Some(values) };

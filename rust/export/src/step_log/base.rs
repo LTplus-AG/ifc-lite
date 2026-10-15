@@ -18,6 +18,11 @@ use std::collections::{HashMap, HashSet};
 
 use serde_json::Value;
 
+use ifc_lite_core::limits::{
+    complex_property_depth_marker, ComplexPropertyBudget, COMPLEX_PROPERTY_BUDGET_MARKER,
+    COMPLEX_PROPERTY_OUTPUT_BYTES, MAX_COMPLEX_PROPERTY_DEPTH,
+};
+
 use super::jsval::JsVal;
 use super::property_value::parse_property_value;
 use super::source::Source;
@@ -192,6 +197,8 @@ impl<'s, 'a> BaseSets<'s, 'a> {
     /// `extractPsetsFromIds`.
     fn psets_from_ids(&self, ids: &[u32]) -> Vec<PSet> {
         let mut out = Vec::new();
+        // One output budget per call, as `extractPsetsFromIds` scopes it.
+        let mut budget = ComplexPropertyBudget::new(COMPLEX_PROPERTY_OUTPUT_BYTES);
         for &pid in ids {
             let Some((ty, attrs)) = self.src.entity(pid) else { continue };
             if ty != "IFCPROPERTYSET" {
@@ -209,7 +216,8 @@ impl<'s, 'a> BaseSets<'s, 'a> {
                         continue;
                     }
                     let (ty, value, data_type) = if pty == "IFCCOMPLEXPROPERTY" {
-                        self.complex_value(&pattrs, 0, &mut COMPLEX_MEMBER_BUDGET.clone())
+                        budget.start_property();
+                        self.complex_value(&pattrs, 0, &mut budget)
                     } else {
                         self.property_value(&pty, &pattrs)
                     };
@@ -248,33 +256,30 @@ impl<'s, 'a> BaseSets<'s, 'a> {
         })
     }
 
-    /// `resolveComplexPropertyValue`: a display string only.
-    ///
-    /// The TypeScript walk is bounded by depth alone, which bounds a path but
-    /// not fan-out: members that share a nested complex property are walked
-    /// once per path. `budget` caps the member visits for one property, so a
-    /// file built to explode that costs a truncated display string rather than
-    /// a hang. Real complex properties are a handful of members deep and wide,
-    /// far inside it, so the output is unchanged for them.
-    fn complex_value(&self, attrs: &[JsVal], depth: usize, budget: &mut usize) -> (u8, Value, Option<String>) {
+    /// `resolveComplexPropertyValue`: a display string only. Every bound,
+    /// marker and the check order are `ifc_lite_core::limits`' (#7675), shared
+    /// with the server's walk and mirrored by the TypeScript one, so both
+    /// exporters write the same value for the same file.
+    fn complex_value(&self, attrs: &[JsVal], depth: usize, budget: &mut ComplexPropertyBudget) -> (u8, Value, Option<String>) {
         let usage = attrs.get(2).and_then(JsVal::as_str).unwrap_or("").to_string();
         let empty_usage = || if usage.is_empty() { Value::Null } else { Value::String(usage.clone()) };
         let Some(JsVal::Arr(members)) = attrs.get(3) else { return (pvt::STRING, empty_usage(), None) };
         if members.is_empty() {
             return (pvt::STRING, empty_usage(), None);
         }
-        if depth >= 8 {
-            let marker = "(truncated: nesting deeper than 8 levels)";
-            let text = if usage.is_empty() { marker.to_string() } else { format!("{usage} {marker}") };
+        if depth >= MAX_COMPLEX_PROPERTY_DEPTH {
+            let marker = complex_property_depth_marker();
+            let text = if usage.is_empty() { marker } else { format!("{usage} {marker}") };
             return (pvt::STRING, Value::String(text), None);
         }
         let mut parts = Vec::new();
+        let mut out_of_budget = false;
         for member in members {
             let JsVal::Num(n) = member else { continue };
-            if *budget == 0 {
+            if !budget.admit_member() {
+                out_of_budget = true;
                 break;
             }
-            *budget -= 1;
             let Some((mty, mattrs)) = self.src.entity(*n as u32) else { continue };
             let mname = mattrs.first().and_then(JsVal::as_str).unwrap_or("").to_string();
             let (_, v, _) = if mty == "IFCCOMPLEXPROPERTY" {
@@ -286,10 +291,18 @@ impl<'s, 'a> BaseSets<'s, 'a> {
             if display.is_empty() {
                 continue;
             }
-            parts.push(if mname.is_empty() { display } else { format!("{mname}: {display}") });
+            let part = if mname.is_empty() { display } else { format!("{mname}: {display}") };
+            budget.charge(part.len());
+            parts.push(part);
         }
-        let value = if parts.is_empty() { empty_usage() } else { Value::String(parts.join(", ")) };
-        (pvt::STRING, value, None)
+        let value = match (parts.is_empty(), out_of_budget) {
+            (true, true) => COMPLEX_PROPERTY_BUDGET_MARKER.to_string(),
+            (false, true) => format!("{} {COMPLEX_PROPERTY_BUDGET_MARKER}", parts.join(", ")),
+            (false, false) => parts.join(", "),
+            (true, false) => return (pvt::STRING, empty_usage(), None),
+        };
+        budget.charge(value.len());
+        (pvt::STRING, Value::String(value), None)
     }
 
     /// `readQuantitySet`, with `collectQuantitiesFromRefs`.
@@ -315,9 +328,6 @@ impl<'s, 'a> BaseSets<'s, 'a> {
         (!quantities.is_empty()).then_some(QSet { name, quantities })
     }
 }
-
-/// Member visits one complex property may cost (see `complex_value`).
-const COMPLEX_MEMBER_BUDGET: usize = 10_000;
 
 /// `QUANTITY_TYPE_MAP`, defaulting to Count.
 pub(crate) fn quantity_type_of(upper: &str) -> u8 {

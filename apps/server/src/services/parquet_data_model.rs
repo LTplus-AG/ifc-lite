@@ -117,14 +117,23 @@ pub fn serialize_data_model_to_parquet(
         ("materials", &materials_data),
         ("documents", &documents_data),
     ];
+    check_section_lengths(sections.iter().map(|(name, bytes)| (*name, bytes.len())))?;
     let mut result = Vec::with_capacity(sections.iter().map(|(_, bytes)| 4 + bytes.len()).sum());
-    for (name, bytes) in sections {
-        crate::services::parquet::check_u32_len(name, bytes.len())?;
+    for (_, bytes) in sections {
         result.extend_from_slice(&(bytes.len() as u32).to_le_bytes());
         result.extend_from_slice(bytes);
     }
 
     Ok(result)
+}
+
+/// Every section's length against the `u32` wire prefix, by length alone, so
+/// the guard is testable without a 4 GiB section (#7675, SERVER-14).
+fn check_section_lengths<'a>(lengths: impl Iterator<Item = (&'a str, usize)>) -> Result<(), DataModelParquetError> {
+    for (name, len) in lengths {
+        crate::services::parquet::check_u32_len(name, len)?;
+    }
+    Ok(())
 }
 
 /// Serialize classification associations table.

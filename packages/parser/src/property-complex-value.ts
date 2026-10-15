@@ -19,49 +19,88 @@ import {
     type ParsedIfcPropertyValue,
 } from './property-value-parser.js';
 
-/** Guards {@link resolveComplexPropertyValue} against a pathological/cyclic
- *  HasProperties chain; real IFC nests IfcComplexProperty at most a couple of
- *  levels deep (e.g. Pset "sub-properties"). */
+/*
+ * The walk's bounds and markers mirror `ifc_lite_core::limits` exactly (#7675):
+ * the server's data model and the Rust STEP exporter take them from there, and
+ * one shared vector (`test/fixtures/complex-property-budget-7675.json`) pins all
+ * three walks to the same value for the same file.
+ */
+
+/** `MAX_COMPLEX_PROPERTY_DEPTH`: how deep a `HasProperties` walk descends. */
 const MAX_COMPLEX_PROPERTY_DEPTH = 8;
 
+/** `MAX_COMPLEX_PROPERTY_MEMBERS`: member reads per top-level property. The
+ *  depth cap bounds a path's LENGTH only; a member listing itself `k` times is
+ *  `k^8` reads. Output accumulates, so a work budget, not a visited set. */
+const MAX_COMPLEX_PROPERTY_MEMBERS = 1024;
+
+/** `COMPLEX_PROPERTY_OUTPUT_BYTES`: UTF-8 bytes of complex-property text one
+ *  `extractPsetsFromIds` call may build. Visits alone do not bound bytes: one
+ *  visit can copy a long name, and a set can list one complex property many
+ *  times (one 10 KB name cost 269 MB of heap, #7675). */
+export const COMPLEX_PROPERTY_OUTPUT_BYTES = 1 << 20;
+
 /**
- * The suffix minted into a complex property's display value when
- * {@link MAX_COMPLEX_PROPERTY_DEPTH} stops the walk with `HasProperties`
- * members still unread (issue #3972). Byte-identical to
- * `complex_property_truncation_marker()` in
- * `apps/server/src/services/data_model/property_value.rs` — the two paths
- * feed the same property panel, CSV/parquet export and compare fingerprints,
- * so a divergence here reads as a data difference between browser and server.
- *
- * A suffix rather than a `truncated` flag on `Property`: a flag would have to
- * be carried through the `Property` type, the `serverDataModel` adapter, the
- * Rust struct + serde, the per-field parquet columns and the panel renderer,
- * and is silently lost at any one of them — the same "a signal that never
- * fires" shape this issue is about. The value string reaches every reader by
- * construction.
+ * `complex_property_depth_marker()`: appended when the depth cap stops the walk
+ * with `HasProperties` members still unread (issue #3972). A suffix rather than
+ * a `truncated` flag: a flag is silently lost at any one of the `Property`
+ * type, the `serverDataModel` adapter, the Rust struct + serde, the parquet
+ * columns and the panel renderer; the value string reaches every reader.
  */
 function complexPropertyTruncationMarker(): string {
     return `(truncated: nesting deeper than ${MAX_COMPLEX_PROPERTY_DEPTH} levels)`;
 }
 
-/**
- * Nested members one top-level `IfcComplexProperty` may read, across all its
- * levels. The depth cap bounds a path's LENGTH only: a member listing itself
- * `k` times is `k^8` reads (an 82 MB value at `k = 6`, #7675). Output
- * accumulates, so a visited set would drop real members; a work budget bounds
- * the fan-out instead. Mirrors `MAX_COMPLEX_PROPERTY_MEMBERS` in
- * `apps/server/src/services/data_model/property_value.rs`.
- */
-const MAX_COMPLEX_PROPERTY_MEMBERS = 1024;
+/** `COMPLEX_PROPERTY_BUDGET_MARKER`: a level cut by the budget is its parts so
+ *  far, then this. The usage name is not repeated. */
+const COMPLEX_PROPERTY_BUDGET_MARKER = '(truncated: nested properties over the walk budget)';
 
-/** Byte-identical to `complex_property_budget_marker()` on the server. */
-function complexPropertyBudgetMarker(): string {
-    return `(truncated: more than ${MAX_COMPLEX_PROPERTY_MEMBERS} nested properties)`;
+/** UTF-8 length, so the byte budget charges what the Rust walks charge. */
+function utf8Length(text: string): number {
+    let bytes = 0;
+    for (let i = 0; i < text.length; i++) {
+        const unit = text.charCodeAt(i);
+        if (unit < 0x80) bytes += 1;
+        else if (unit < 0x800) bytes += 2;
+        else if (unit >= 0xd800 && unit <= 0xdbff && i + 1 < text.length) {
+            bytes += 4;
+            i++;
+        } else bytes += 3;
+    }
+    return bytes;
 }
 
-/** Nested members a walk has read; one object is shared by every level. */
-export interface MemberBudget {
-    visits: number;
+/**
+ * `ComplexPropertyBudget`: member visits for the current top-level property and
+ * output bytes for the whole scope it was created for. Check order, identical
+ * in every copy: {@link ComplexPropertyBudget.admitMember} before reading a
+ * member, {@link ComplexPropertyBudget.charge} a built `"Name: value"` part,
+ * then charge a level's joined value.
+ */
+export class ComplexPropertyBudget {
+    private visits = 0;
+    private bytesLeft: number;
+
+    constructor(outputBytes: number = COMPLEX_PROPERTY_OUTPUT_BYTES) {
+        this.bytesLeft = outputBytes;
+    }
+
+    /** Start a top-level property: visits restart, bytes carry on. */
+    startProperty(): void {
+        this.visits = 0;
+    }
+
+    /** Whether one more member may be read, counting it if so. */
+    admitMember(): boolean {
+        if (this.visits >= MAX_COMPLEX_PROPERTY_MEMBERS || this.bytesLeft === 0) return false;
+        this.visits += 1;
+        return true;
+    }
+
+    /** Charge built text by its UTF-8 length. */
+    charge(text: string): void {
+        this.bytesLeft = Math.max(0, this.bytesLeft - utf8Length(text));
+    }
 }
 
 /**
@@ -87,16 +126,26 @@ export interface MemberBudget {
  * reader saw a real value attributed to the wrong nesting level. An absent or
  * empty `HasProperties` is NOT a truncation and keeps the bare `UsageName`.
  *
- * Every nested member read is charged to one {@link MemberBudget} shared by the
- * whole walk; a level that runs out with members unread appends
- * {@link complexPropertyBudgetMarker}.
+ * `budget` cuts a level that runs out with its parts so far plus
+ * {@link COMPLEX_PROPERTY_BUDGET_MARKER}; pass the caller's scope (one per
+ * `extractPsetsFromIds` call), or a fresh one is used.
  */
 export function resolveComplexPropertyValue(
     store: IfcDataStore,
     extractor: EntityExtractor,
     propEntity: IfcEntity,
-    depth = 0,
-    budget: MemberBudget = { visits: 0 }
+    budget: ComplexPropertyBudget = new ComplexPropertyBudget()
+): ParsedIfcPropertyValue {
+    budget.startProperty();
+    return resolveComplex(store, extractor, propEntity, 0, budget);
+}
+
+function resolveComplex(
+    store: IfcDataStore,
+    extractor: EntityExtractor,
+    propEntity: IfcEntity,
+    depth: number,
+    budget: ComplexPropertyBudget
 ): ParsedIfcPropertyValue {
     const attrs = propEntity.attributes || [];
     const usageName = typeof attrs[2] === 'string' ? attrs[2] : '';
@@ -124,11 +173,10 @@ export function resolveComplexPropertyValue(
 
     for (const ref of hasProperties) {
         if (typeof ref !== 'number') continue;
-        if (budget.visits >= MAX_COMPLEX_PROPERTY_MEMBERS) {
+        if (!budget.admitMember()) {
             outOfBudget = true;
             break;
         }
-        budget.visits += 1;
         // @raw-entity-enumeration-ok complex-property parsing follows this source member reference, not an entity set
         const nestedRef = store.entityIndex.byId.get(ref) ?? store.deferredEntityIndex?.get(ref);
         if (!nestedRef) continue;
@@ -138,8 +186,8 @@ export function resolveComplexPropertyValue(
         const nestedAttrs = nestedEntity.attributes || [];
         const nestedName = typeof nestedAttrs[0] === 'string' ? nestedAttrs[0] : '';
         const nestedParsed = nestedEntity.type.toUpperCase() === 'IFCCOMPLEXPROPERTY'
-            ? resolveComplexPropertyValue(store, extractor, nestedEntity, depth + 1, budget)
-            : parsePropertyValueWithComplex(store, extractor, nestedEntity);
+            ? resolveComplex(store, extractor, nestedEntity, depth + 1, budget)
+            : parsePropertyValueWithComplex(store, extractor, nestedEntity, budget);
         if (nestedName) {
             const unit = resolvePropertyUnit(store, extractor, nestedEntity.type, nestedAttrs, nestedParsed.dataType);
             members.push({
@@ -153,14 +201,19 @@ export function resolveComplexPropertyValue(
 
         const display = nestedParsed.value != null ? String(nestedParsed.value) : '';
         if (!display) continue;
-        parts.push(nestedName ? `${nestedName}: ${display}` : display);
+        const part = nestedName ? `${nestedName}: ${display}` : display;
+        budget.charge(part);
+        parts.push(part);
         values.push(display);
     }
 
-    let value: string | null = parts.length > 0 ? parts.join(', ') : (usageName || null);
-    if (outOfBudget) {
-        const marker = complexPropertyBudgetMarker();
-        value = value ? `${value} ${marker}` : marker;
+    let value: string | null;
+    if (parts.length === 0) {
+        value = outOfBudget ? COMPLEX_PROPERTY_BUDGET_MARKER : (usageName || null);
+    } else {
+        const joined = parts.join(', ');
+        value = outOfBudget ? `${joined} ${COMPLEX_PROPERTY_BUDGET_MARKER}` : joined;
+        budget.charge(value);
     }
     return {
         type: PropertyValueType.String,

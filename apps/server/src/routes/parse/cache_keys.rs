@@ -240,6 +240,13 @@ pub(crate) fn data_model_cache_key(cache_key: &str, entities: DataModelEntities)
     format!("{cache_key}-datamodel{}-v8", entities.cache_infix())
 }
 
+/// Where a background fill records why it refused a data model (#7675: a
+/// table over its size budget), so `GET /parse/data-model` answers 400 with
+/// the reason instead of the terminal 404 for an entry nothing will write.
+pub(crate) fn data_model_refusal_key(data_model_key: &str) -> String {
+    format!("{data_model_key}-refused")
+}
+
 /// Whether a data model at the CURRENT payload version is cached for
 /// `cache_key`.
 ///

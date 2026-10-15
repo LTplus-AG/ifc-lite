@@ -8,6 +8,8 @@ use super::property_value::{
     fmt_number, infer_data_type, member_list, property_reference_label, shared_member_type, resolve_complex_property_value,
     resolve_single_value,
 };
+use ifc_lite_core::limits::{ComplexPropertyBudget, COMPLEX_PROPERTY_OUTPUT_BYTES};
+use ifc_lite_core::IfcType;
 use super::types::{EntityJob, Property, PropertySet};
 use ifc_lite_core::{DecodedEntity, EntityDecoder};
 use rayon::prelude::*;
@@ -28,7 +30,7 @@ pub(super) fn extract_properties(
 
     tracing::debug!(count = pset_jobs.len(), "Extracting property sets");
 
-    pset_jobs
+    let mut sets: Vec<(PropertySet, Vec<(usize, u32)>)> = pset_jobs
         .par_iter()
         .filter_map(|job| {
             let mut local_decoder =
@@ -54,12 +56,16 @@ pub(super) fn extract_properties(
             let has_properties = entity.get_list(4).unwrap_or(&[]);
 
             let mut properties = Vec::new();
+            let mut complex = Vec::new();
 
             // Extract properties from HasProperties list
             for prop_ref in has_properties.iter() {
                 if let Some(prop_id) = prop_ref.as_entity_ref() {
                     if let Ok(prop_entity) = local_decoder.decode_by_id(prop_id) {
                         if let Some(prop) = extract_property(&prop_entity, &mut local_decoder) {
+                            if prop_entity.ifc_type == IfcType::IfcComplexProperty {
+                                complex.push((properties.len(), prop_id));
+                            }
                             properties.push(prop);
                         }
                     }
@@ -78,13 +84,47 @@ pub(super) fn extract_properties(
                 return None;
             }
 
-            Some(PropertySet {
-                pset_id: job.id,
-                pset_name,
-                properties,
-            })
+            Some((
+                PropertySet {
+                    pset_id: job.id,
+                    pset_name,
+                    properties,
+                },
+                complex,
+            ))
         })
-        .collect()
+        .collect();
+    resolve_complex_properties(&mut sets, content, entity_index);
+    sets.into_iter().map(|(set, _)| set).collect()
+}
+
+/// Resolve every `IfcComplexProperty` the parallel pass left empty, in set
+/// order, against ONE output budget for the whole model: the input size, at
+/// least `COMPLEX_PROPERTY_OUTPUT_BYTES`. A per-property budget is not enough,
+/// because a set can list the same complex property many times (#7675). The
+/// order is fixed, so the property the budget cuts is the same on every run.
+/// Real models carry few complex properties, so the pass is sequential.
+fn resolve_complex_properties(
+    sets: &mut [(PropertySet, Vec<(usize, u32)>)],
+    content: &[u8],
+    entity_index: &Arc<ifc_lite_core::EntityIndex>,
+) {
+    if sets.iter().all(|(_, complex)| complex.is_empty()) {
+        return;
+    }
+    let mut decoder = EntityDecoder::with_arc_index(content, entity_index.clone());
+    let mut budget = ComplexPropertyBudget::new(content.len().max(COMPLEX_PROPERTY_OUTPUT_BYTES));
+    for (set, complex) in sets.iter_mut() {
+        for &(index, prop_id) in complex.iter() {
+            let Ok(entity) = decoder.decode_by_id(prop_id) else { continue };
+            let (value, kind, data_type, values) = resolve_complex_property_value(&entity, &mut decoder, &mut budget);
+            let property = &mut set.properties[index];
+            property.property_value = value;
+            property.property_type = kind;
+            property.data_type = data_type;
+            property.values = values;
+        }
+    }
 }
 
 /// Extract a single property from IfcProperty entity.
@@ -230,10 +270,11 @@ pub(super) fn extract_property(
         // join with ", ", and fall back to the bare UsageName (or nothing)
         // when no nested member resolves. Recurses into further nested
         // IFCCOMPLEXPROPERTY members up to the same depth cap as the TS side.
-        "IFCCOMPLEXPROPERTY" => {
-            let (v, k, d, vs) = resolve_complex_property_value(entity, decoder);
-            (v, k, d, vs)
-        }
+        //
+        // Resolved by `resolve_complex_properties` after the parallel pass, in
+        // set order, so the shared output budget cuts the same property on
+        // every run (#7675). Until then the value is empty.
+        "IFCCOMPLEXPROPERTY" => (String::new(), "null".into(), None, None),
 
         _ => return None,
     };

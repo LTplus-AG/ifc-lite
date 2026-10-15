@@ -388,3 +388,6 @@ mod cross_batch;
 
 #[path = "admission_7676_tests.rs"]
 mod admission_7676;
+
+#[path = "refusal_7675_tests.rs"]
+mod refusal_7675;

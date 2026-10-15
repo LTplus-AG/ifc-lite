@@ -79,6 +79,7 @@ export {
 } from './property-value-parser.js';
 import { copyParsedExtras, parsePropertyValueWithComplex, type ExtractedProperty } from './property-value-parser.js';
 import { resolvePropertyUnit } from './property-unit.js';
+import { ComplexPropertyBudget } from './property-complex-value.js';
 // ============================================================================
 // Property Set Extraction Helpers
 // ============================================================================
@@ -90,6 +91,9 @@ export function extractPsetsFromIds(
     psetIds: number[]
 ): Array<{ name: string; globalId?: string; properties: Array<ExtractedProperty> }> {
     const result: Array<{ name: string; globalId?: string; properties: Array<ExtractedProperty> }> = [];
+    // One complex-property output budget per call (#7675), as the Rust
+    // exporter's `psets_from_ids` scopes it.
+    const budget = new ComplexPropertyBudget();
 
     for (const psetId of psetIds) {
         // @raw-entity-enumeration-ok one requested set id is decoded from its source STEP span
@@ -124,7 +128,7 @@ export function extractPsetsFromIds(
                 const propName = typeof propAttrs[0] === 'string' ? propAttrs[0] : '';
                 if (!propName) continue;
 
-                const parsed = parsePropertyValueWithComplex(store, extractor, propEntity);
+                const parsed = parsePropertyValueWithComplex(store, extractor, propEntity, budget);
                 const entry: ExtractedProperty = {
                     name: propName,
                     type: parsed.type,

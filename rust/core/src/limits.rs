@@ -147,6 +147,85 @@ impl RtcVerdict {
     }
 }
 
+/// How deep an `IfcComplexProperty`'s `HasProperties` walk descends. A member
+/// past it is not read; its value says so with
+/// [`complex_property_depth_marker`].
+///
+/// The `IfcComplexProperty` walk has three copies that must write the same
+/// value for the same file: the server's data model
+/// (`apps/server/src/services/data_model/property_value.rs`), the Rust STEP
+/// exporter's property base (`ifc_lite_export` `step_log/base.rs`) and the
+/// browser's `resolveComplexPropertyValue`
+/// (`packages/parser/src/property-complex-value.ts`). The two Rust copies take
+/// every bound and marker from here; the TypeScript twin mirrors them and one
+/// shared vector (`packages/parser/test/fixtures/complex-property-budget-7675.json`)
+/// pins all three (#7675).
+pub const MAX_COMPLEX_PROPERTY_DEPTH: usize = 8;
+
+/// Nested members one top-level complex property may read across all its
+/// levels. The depth cap bounds a path's LENGTH only: a member listing itself
+/// `k` times is `k^8` reads. Output accumulates (the same member down two
+/// branches is two real parts), so a visited set would drop real members; a
+/// work budget is the right bound (AGENTS.md "Bounding walks").
+pub const MAX_COMPLEX_PROPERTY_MEMBERS: usize = 1024;
+
+/// Bytes of complex-property text one budget scope may build: the browser's
+/// and the exporter's per-entity extraction, and the floor of the server's
+/// whole-model budget (which scales with the input instead). Visits alone do
+/// not bound bytes: one visit can copy a long name, and a property set can
+/// list the same complex property many times, so 10.7 KB of input built
+/// 685 MB of values under a visit-only budget (#7675).
+pub const COMPLEX_PROPERTY_OUTPUT_BYTES: usize = 1 << 20;
+
+/// Appended to a complex property cut by [`MAX_COMPLEX_PROPERTY_DEPTH`].
+pub fn complex_property_depth_marker() -> String {
+    format!("(truncated: nesting deeper than {MAX_COMPLEX_PROPERTY_DEPTH} levels)")
+}
+
+/// The value of a level cut by [`ComplexPropertyBudget`]: its parts so far,
+/// then this marker. The usage name is not repeated, so a reference to a
+/// complex property past the budget costs the marker and nothing else.
+pub const COMPLEX_PROPERTY_BUDGET_MARKER: &str = "(truncated: nested properties over the walk budget)";
+
+/// The walk state every `IfcComplexProperty` walker charges: member visits for
+/// the current top-level property, and output bytes for the whole scope it was
+/// created for. Check order, identical in every copy: before reading a member,
+/// [`Self::admit_member`]; after building a `"Name: value"` part,
+/// [`Self::charge`] its UTF-8 length; after joining a level's parts,
+/// [`Self::charge`] the joined length.
+#[derive(Debug, Clone)]
+pub struct ComplexPropertyBudget {
+    visits: usize,
+    bytes_left: usize,
+}
+
+impl ComplexPropertyBudget {
+    /// A scope that may build `output_bytes` of text.
+    pub fn new(output_bytes: usize) -> Self {
+        Self { visits: 0, bytes_left: output_bytes }
+    }
+
+    /// Start a top-level property: its member visits start at zero, the byte
+    /// budget carries on.
+    pub fn start_property(&mut self) {
+        self.visits = 0;
+    }
+
+    /// Whether one more member may be read, counting it if so.
+    pub fn admit_member(&mut self) -> bool {
+        if self.visits >= MAX_COMPLEX_PROPERTY_MEMBERS || self.bytes_left == 0 {
+            return false;
+        }
+        self.visits += 1;
+        true
+    }
+
+    /// Charge `bytes` of built text.
+    pub fn charge(&mut self, bytes: usize) {
+        self.bytes_left = self.bytes_left.saturating_sub(bytes);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -180,5 +259,20 @@ mod tests {
     #[test]
     fn placement_depth_is_the_documented_100() {
         assert_eq!(MAX_PLACEMENT_DEPTH, 100);
+    }
+
+    /// #7675: the TypeScript twin spells these literally, so their values
+    /// are pinned here as well as by the shared vector.
+    #[test]
+    fn complex_property_budget_is_the_documented_policy() {
+        assert_eq!((MAX_COMPLEX_PROPERTY_DEPTH, MAX_COMPLEX_PROPERTY_MEMBERS), (8, 1024));
+        assert_eq!(COMPLEX_PROPERTY_OUTPUT_BYTES, 1 << 20);
+        let mut budget = ComplexPropertyBudget::new(10);
+        assert!((0..MAX_COMPLEX_PROPERTY_MEMBERS).all(|_| budget.admit_member()));
+        assert!(!budget.admit_member(), "visit 1025 of one property");
+        budget.start_property();
+        assert!(budget.admit_member(), "visits restart per property");
+        budget.charge(10);
+        assert!(!budget.admit_member(), "bytes carry across properties");
     }
 }

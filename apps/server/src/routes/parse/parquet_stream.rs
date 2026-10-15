@@ -4,12 +4,13 @@
 
 //! SSE Parquet-batch streaming parse endpoint.
 
-use super::cache_keys::{data_model_cache_key, parquet_geometry_key, parquet_metadata_key};
+use super::cache_keys::{data_model_cache_key, data_model_refusal_key, parquet_geometry_key, parquet_metadata_key};
 use super::parquet::ParquetMetadataHeader;
 use super::stream_event::ParquetStreamEvent;
 use super::stream_progress::{cache_stream_progress, StreamProgressRecorder};
 use super::{admit_upload, request_cache_key_off_runtime, cache_symbolic_data_off_runtime, ParseQuery};
 use crate::error::ApiError;
+use crate::services::parquet_data_model::DataModelParquetError;
 use crate::services::{extract_data_model, process_streaming, serialize_data_model_to_parquet};
 use crate::types::StreamEvent;
 use crate::AppState;
@@ -362,12 +363,25 @@ pub async fn parse_parquet_stream(
                 serialize_data_model_to_parquet(&data_model)
             }).await;
 
-            if let Ok(Ok(parquet_data)) = serialize_result {
-                if let Err(e) = cache_for_dm.set_bytes(&dm_key, &parquet_data).await {
-                    tracing::error!(error = %e, "Failed to cache data model from stream");
-                } else {
-                    tracing::info!(cache_key = %dm_key, size = parquet_data.len(), "Data model cached from stream");
+            match serialize_result {
+                Ok(Ok(parquet_data)) => {
+                    if let Err(e) = cache_for_dm.set_bytes(&dm_key, &parquet_data).await {
+                        tracing::error!(error = %e, "Failed to cache data model from stream");
+                    } else {
+                        tracing::info!(cache_key = %dm_key, size = parquet_data.len(), "Data model cached from stream");
+                    }
                 }
+                // Recorded, so the fetch answers 400 with the reason rather
+                // than a 404 for an entry nothing will ever write (#7675).
+                Ok(Err(DataModelParquetError::Refused(reason))) => {
+                    tracing::warn!(cache_key = %dm_key, %reason, "Data model refused from stream");
+                    let key = data_model_refusal_key(&dm_key);
+                    if let Err(e) = cache_for_dm.set_bytes(&key, reason.as_bytes()).await {
+                        tracing::error!(error = %e, "Failed to record the data model refusal");
+                    }
+                }
+                Ok(Err(e)) => tracing::error!(error = %e, "Failed to serialize data model from stream"),
+                Err(e) => tracing::error!(error = %e, "Data model serialization task failed"),
             }
         }
         // `_in_flight` drops here, clearing the marker only after the cache

@@ -307,7 +307,7 @@
    499 scripts/docs/check-doc-samples.mjs
    506 scripts/generate-bim-globals.mjs
    506 scripts/generate-coverage-ledger.mjs
-   423 scripts/generate-epsg-index.ts
+   422 scripts/generate-epsg-index.ts
    403 scripts/lib/ci-path-coverage.mjs
    460 scripts/lib/pr-green-sweep.mjs
   1113 scripts/lib/pr-review-signal.mjs

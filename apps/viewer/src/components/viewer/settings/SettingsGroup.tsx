@@ -25,14 +25,14 @@ export function SettingsRow({ label, hint, htmlFor, children }: {
   children: ReactNode;
 }) {
   return (
-    <div className="flex items-center justify-between gap-4">
+    <div className="flex flex-col items-start justify-between gap-2 sm:flex-row sm:items-center sm:gap-4">
       <div className="min-w-0">
         {htmlFor
           ? <label htmlFor={htmlFor} className="text-sm">{label}</label>
           : <span className="text-sm" aria-hidden="true">{label}</span>}
         {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
       </div>
-      <div className="shrink-0">{children}</div>
+      <div className="max-w-full shrink-0">{children}</div>
     </div>
   );
 }
@@ -47,7 +47,7 @@ export function SettingsChoice<T extends string>({ id, label, value, options, on
   onChange: (value: T) => void;
 }) {
   return (
-    <fieldset id={id} className="inline-flex rounded-md border p-0.5">
+    <fieldset id={id} className="inline-flex max-w-full flex-wrap rounded-md border p-0.5">
       <legend className="sr-only">{label}</legend>
       {options.map((option) => (
         <label

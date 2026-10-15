@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! The subtract weld's exact-incidence guard (#6940).
+//! The opening weld's exact-incidence guards (#6940, #7635).
 //!
 //! # What goes wrong without it
 //!
@@ -52,12 +52,29 @@
 //! plane) while it certainly ends the coplanarity the cutter already had.
 //!
 //! The host is not moved by the weld, so the answer for one cutter vertex
-//! depends on that vertex and the host alone: not on the order of the host
-//! faces, nor on what was decided for another vertex.
+//! depends on its original geometry: not on what was decided for another
+//! vertex. The finite certificate below also reads original cutter edges.
+//!
+//! # Finite source-wall certificate (#7635)
+//!
+//! A distant target can leave the source plane's band beyond the existing
+//! wall. Mutual coincidence then fails even though welding would break an
+//! exact finite wall incidence. The additional `refuses_finite` rule requires
+//! finite, noncollapsed original operands with exactly one opposite pair of
+//! uses per edge. This necessary closed-edge prerequisite does not certify
+//! solid validity or vertex manifoldness. Uncertified inputs retain the
+//! established coincidence rule. The local certificate then requires
+//! a complete manifold host arris contained in an original manifold cutter
+//! arris, with an incident cutter face exactly coplanar with the source face.
+//! Both arrises have two opposite edge uses and noncoplanar incident faces.
+//! The entire source face must remain inside the target's existing band, and
+//! the same connectivity test must certify separate surfaces. A common line
+//! without finite containment, or crossing cutter faces, supplies no proof.
 //!
 //! # What it deliberately leaves alone
 //!
-//! * A target that does not coincide with `g` (the perpendicular end face of
+//! * Without the finite source-wall certificate, a target that does not
+//!   coincide with `g` (the perpendicular end face of
 //!   the original #1007 repro, any oblique face, a small facet whose plane
 //!   leaves `g`'s band over `g`'s extent): that weld slides the vertex along
 //!   `g` or reconciles a real second surface, and is the weld's purpose.
@@ -79,8 +96,8 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 /// Exact-position key. `+ 0.0` folds `-0.0` onto `0.0`, so two vertices that
 /// compare equal as `f64` share a key.
-type Key = [u64; 3];
-fn key(p: &[f64; 3]) -> Key {
+pub(super) type Key = [u64; 3];
+pub(super) fn key(p: &[f64; 3]) -> Key {
     [
         (p[0] + 0.0).to_bits(),
         (p[1] + 0.0).to_bits(),
@@ -105,6 +122,8 @@ fn coincide(a: &Face, b: &Face) -> bool {
 /// Faces are named by their index in the slice it was built over.
 pub(super) struct Guard<'a> {
     faces: &'a [Face],
+    source_host: &'a [super::Tri],
+    finite_edges: Option<super::finite::Edges>,
     /// The host faces at each vertex position. Built on first need: most
     /// cutters never reach a coinciding pair.
     at: Option<FxHashMap<Key, Vec<usize>>>,
@@ -114,9 +133,11 @@ pub(super) struct Guard<'a> {
 }
 
 impl<'a> Guard<'a> {
-    pub(super) fn new(faces: &'a [Face]) -> Self {
+    pub(super) fn new(faces: &'a [Face], source_host: &'a [super::Tri]) -> Self {
         Guard {
             faces,
+            source_host,
+            finite_edges: None,
             at: None,
             last: None,
         }
@@ -163,6 +184,45 @@ impl<'a> Guard<'a> {
         false
     }
 
+    /// Admit only the original complete closed edge soup. `Face::new` can
+    /// omit invalid faces, so its filtered list cannot establish this fact.
+    /// The same lazy map supplies the finite arris queries below.
+    pub(super) fn closed_edge_incidence(&mut self) -> bool {
+        self.finite_edges.get_or_insert_with(||
+            super::finite::Edges::new(self.source_host.iter())
+        ).closed_edge_incidence()
+    }
+
+    /// #7635: a finite cutter arris contains an existing host arris. A remote
+    /// target need not stay near the host plane beyond that finite incidence,
+    /// but the whole source face must still be in its existing weld band.
+    /// An incident cutter face must be exactly coplanar with this source face.
+    /// Connected creased surfaces retain the original weld policy.
+    pub(super) fn refuses_finite(
+        &mut self, v: &[f64; 3], w: &[f64; 3], target: usize, on: &[usize],
+        cutter: &super::finite::CutterEdges,
+    ) -> bool {
+        let faces = self.faces;
+        let mut left = Vec::new();
+        for &g in on {
+            if faces[g].raw_offset(w) == 0.0 || !in_band_of(&faces[g], &faces[target]) {
+                continue;
+            }
+            for i in 0..3 {
+                let (a, b) = (&faces[g].t[i], &faces[g].t[(i + 1) % 3]);
+                if cutter.contains(v, a, b, &faces[g].t)
+                    && self.finite_edges.get_or_insert_with(||
+                        super::finite::Edges::new(self.source_host.iter())
+                    ).is_arris(a, b)
+                {
+                    left.push(g);
+                    break;
+                }
+            }
+        }
+        !left.is_empty() && self.separate(target, left)
+    }
+
     /// Would welding a vertex to `w`, on face `target`'s plane, take it off a
     /// host face in `on` (the faces it is exactly on) and onto a separate
     /// surface that coincides with that face?
@@ -180,6 +240,10 @@ impl<'a> Guard<'a> {
         if left.is_empty() {
             return false; // the weld leaves no face it coincides with
         }
+        self.separate(target, left)
+    }
+
+    fn separate(&mut self, target: usize, left: Vec<usize>) -> bool {
         if self
             .last
             .as_ref()

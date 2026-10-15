@@ -38,8 +38,8 @@ Validation:
 
 - Root `pnpm typecheck`: all 126 turbo tasks succeeded; audit covers all 4,186 test files in 66 packages.
 - Root `TEST_PATTERN='presentation-layers|presentationLayerTree|rowSelection|HierarchyPanel.(search|reveal|i18n)|HierarchyNode' pnpm test --filter=@ifc-lite/viewer --concurrency=2 --env-mode=loose`: 47/47 tests passed, none skipped. The dependent production build and chunk-await guard passed.
-- Module-size, localization literals, accessibility ratchet and type-scale gates passed. Full lint is being finalized.
-- Independent adversarial review repaired stale visibility labels, spatial-product isolation, shared IFCX attribution/readiness, invalid assignment seeds, nested representation ownership, and mutation decoding. Exact implementation review is recorded separately.
+- Module-size, localization literals, accessibility ratchet and type-scale gates passed. Root `pnpm lint` passed (10,760 files, 136 rules, no errors); existing warnings remain outside touched files.
+- Independent adversarial review repaired stale visibility labels, spatial-product isolation, shared IFCX attribution/readiness, invalid assignment seeds, nested representation ownership, and mutation decoding. Exact implementation review is recorded in [adversarial-review.md](adversarial-review.md).
 
 No Rust, geometry, parser, WASM or published-package sources changed; no perf-sensitive-path verdict or changeset is required. Browser validation used the published `@ifc-lite/wasm@10.4.0` runtime: local wasm-pack regeneration hit an existing wasm-bindgen installation/config error and the build explicitly fell back to the fetched runtime. CI remains responsible for its supported source-build/prebuilt eligibility gates; this evidence makes no local Rust-runtime equivalence claim.
 

@@ -87,8 +87,17 @@ export function reportScanDiagnostics(scanPath: EntityScanPath, oversizedIdCount
 
 }
 
+/** Refusal counts are non-negative safe integers, including across host boundaries. */
+export function isScanCount(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+}
+
 export function buildScanReport(scanPath: EntityScanPath, scannedRecords: number,
   oversizedIdCount: number | null, malformedRecordCount: number | null): EntityScanReport {
+  // Caller-provided pre-scans are runtime input, including from JavaScript.
+  const validCount = (value: number | null) => isScanCount(value) ? value : null;
+  oversizedIdCount = validCount(oversizedIdCount);
+  malformedRecordCount = validCount(malformedRecordCount);
   const diagnostics: ScanDiagnostic[] = [];
   if (oversizedIdCount !== null && oversizedIdCount > 0) diagnostics.push({
     code: 'OVERSIZED_EXPRESS_ID', severity: 'warning',

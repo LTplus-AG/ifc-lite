@@ -78,7 +78,7 @@ describe('developer loading contract (DX1)', () => {
 
   it('reports malformed records without pretending to count every lost record', async () => {
     const input = new TextDecoder().decode(bytes()).replace('END-ISO-10303-21;',
-      "#99999=IFCWALL('unterminated);\nEND-ISO-10303-21;");
+      "#99999=IFCWALL('balanced')\nENDSEC;\nEND-ISO-10303-21;");
     const { report } = await parseModel(text(input), { disableWorkerScan: true });
     expect(report.completeness).toBe('incomplete');
     expect(report.malformedRecordDetected).toBe(true);
@@ -89,6 +89,10 @@ describe('developer loading contract (DX1)', () => {
   it.each([
     '/* END-ISO-10303-21; */',
     "'END-ISO-10303-21;'",
+    '/* END-ISO-10303-21;/* */',
+    '/* END-ISO-10303-21;',
+    '#999=END-ISO-10303-21;',
+    "'END-ISO-10303-21;",
   ])('rejects a footer marker hidden in lexical text (PR #7632)', async replacement => {
     const input = new TextDecoder().decode(bytes()).replace('END-ISO-10303-21;', replacement);
     await expect(parseModel(text(input))).rejects.toMatchObject({ code: 'TRUNCATED_STEP' });
@@ -99,9 +103,19 @@ describe('developer loading contract (DX1)', () => {
     expect((await parseModel(input, { disableWorkerScan: true })).report.completeness).toBe('complete');
   });
 
+  it('validates lexical context beyond a bounded suffix (PR #7632)', async () => {
+    const input = new Uint8Array([...bytes(), ...text('/* ' + 'x'.repeat(70 * 1024) + ' END-ISO-10303-21; */')]);
+    expect((await parseModel(input, { disableWorkerScan: true })).report.completeness).toBe('complete');
+  });
+
   it('does not mistake DATA in a header comment or quoted field for a section (PR #7632)', async () => {
     const input = "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('\nDATA;'),'2;1');\n/*\nDATA;\n*/\nENDSEC;\nEND-ISO-10303-21;";
     await expect(parseModel(text(input))).rejects.toMatchObject({ code: 'MISSING_DATA' });
+  });
+
+  it('requires DATA after the HEADER section ends (PR #7632)', async () => {
+    await expect(parseModel(text('ISO-10303-21;\nHEADER;\nDATA;\nENDSEC;\nEND-ISO-10303-21;')))
+      .rejects.toMatchObject({ code: 'MISSING_DATA' });
   });
 
   it('retains tolerant low-level parsing', async () => {

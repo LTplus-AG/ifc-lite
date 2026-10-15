@@ -16,7 +16,7 @@
 
 import { readFile } from 'node:fs/promises';
 import { basename, resolve } from 'node:path';
-import { IfcParser, unwrapIfcZipView, type IfcDataStore } from '@ifc-lite/parser';
+import { IfcParser, validateStepInput, type IfcDataStore } from '@ifc-lite/parser';
 import { sourceModelIdentity } from '@ifc-lite/cache';
 import { createBimContext, type BimContext } from '@ifc-lite/sdk';
 import type { LoadedModel } from './context.js';
@@ -53,19 +53,7 @@ export async function loadIfcModel(filePath: string, opts: LoadIfcOptions = {}):
  * source in errors; it defaults to `name`.
  */
 export async function loadIfcModelFromBytes(bytes: Uint8Array, name: string, modelId?: string, label = name): Promise<LoadedModel> {
-  if (bytes.byteLength === 0) {
-    throw new Error(`'${label}' is empty (0 bytes)`);
-  }
-
-  // Transparent .ifcZIP unwrap (issue #1494) — cheap magic-byte no-op for an
-  // ordinary .ifc file.
-  const buffer = Buffer.from(await unwrapIfcZipView(bytes));
-
-  // Cheap signature check; full parser also bails on malformed STEP.
-  const headerSnippet = buffer.subarray(0, Math.min(buffer.byteLength, 256)).toString('ascii');
-  if (!headerSnippet.includes('ISO-10303-21')) {
-    throw new Error(`'${label}' is not a valid IFC/STEP file`);
-  }
+  const buffer = Buffer.from(await validateStepInput(bytes, label));
 
   const parser = new IfcParser();
   // The parser writes progress to console.* — silence it during MCP loads

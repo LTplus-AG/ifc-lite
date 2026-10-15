@@ -7,27 +7,9 @@ import { IfcParser, type IfcDataStore, type ParseOptions } from './index.js';
 import { unwrapIfcZipView } from './ifczip.js';
 import type { EntityScanReport } from './scan-report.js';
 import { STEP_TRIVIA } from './step-trivia.js';
-import { matchesKeywordAt, StepTextScan } from './step-lexing.js';
+import { inspectStepEnvelope } from './step-envelope.js';
 
 const STEP_START = new RegExp(`^${STEP_TRIVIA}ISO-10303-21${STEP_TRIVIA};`);
-const STEP_END = new RegExp(`END-ISO-10303-21;${STEP_TRIVIA}$`);
-
-function hasDataSection(text: string): boolean {
-  const scan = new StepTextScan(text);
-  let depth = 0;
-  for (let i = 0; i < text.length;) {
-    const next = scan.skipLexicalAt(i);
-    if (next >= 0) { i = next; continue; }
-    if (text.startsWith('/*', i)) return false; // Unterminated header comment.
-    if (text[i] === '(') depth++;
-    if (text[i] === ')') depth--;
-    if (depth === 0 && matchesKeywordAt(text, i, 'DATA') &&
-        (i === 0 || !/[A-Za-z0-9_]/.test(text[i - 1])) && text[scan.skipTrivia(i + 4)] === ';') return true;
-    i++;
-  }
-  return false;
-}
-
 export type IfcInputErrorCode = 'EMPTY_INPUT' | 'INVALID_STEP' | 'TRUNCATED_STEP' | 'MISSING_DATA' | 'INVALID_ARCHIVE';
 export class IfcInputError extends Error {
   constructor(readonly code: IfcInputErrorCode, message: string, options?: ErrorOptions) {
@@ -72,20 +54,10 @@ export async function validateStepInput(input: Uint8Array | ArrayBuffer, label =
     throw new IfcInputError('INVALID_STEP', `${label} is not a valid IFC/STEP file`);
   }
 
-  // A STEP file ends with `END-ISO-10303-21;`. Its absence means the bytes are
-  // truncated -- a half-finished download, a killed export, a partial upload --
-  // and a truncated file does not fail to parse: it parses to a PREFIX. The
-  // scan stops wherever the bytes stop and reports whatever it got, so
-  // `ifc-lite info` answered "Entities: 59" and exited 0 for the first 4 KB of a
-  // real model, and "Schema: IFC4" for a 22-byte stub with no FILE_SCHEMA at
-  // all (#5532). A confidently wrong answer is worse than an error, because
-  // nothing downstream can tell it apart from a small model.
-  //
-  // Only a bounded tail is decoded. Require trailing STEP trivia so a marker
-  // inside a closed comment or quoted value is never accepted as a terminator.
-  const tailStart = Math.max(0, bytes.byteLength - 64 * 1024);
-  const tailSnippet = safeUtf8Decode(bytes.subarray(tailStart));
-  if (!STEP_END.test(tailSnippet)) {
+  // A marker is meaningful only outside STEP strings/comments. Walk bytes so
+  // even very large files need no full-size decoded allocation.
+  const envelope = inspectStepEnvelope(bytes);
+  if (!envelope.footer) {
     throw new IfcInputError(
       'TRUNCATED_STEP', `${label} is truncated: it starts like a STEP file but has no ` +
         `END-ISO-10303-21; terminator, so any entity count or schema read from it ` +
@@ -93,16 +65,7 @@ export async function validateStepInput(input: Uint8Array | ArrayBuffer, label =
     );
   }
 
-  // A file with a header and no DATA section carries no entities at all. It is
-  // well-formed STEP, so the terminator check above passes; it is still not a
-  // model, and reporting a schema for it asserts something the file never said.
-  // Bounded, like the header scan: `DATA;` follows the header, and these files
-  // reach hundreds of MB -- decoding one whole would also risk V8's max string
-  // length. 64 KB is far more header than any exporter writes.
-  const headText = safeUtf8Decode(
-    bytes.subarray(0, Math.min(bytes.byteLength, 64 * 1024)),
-  );
-  if (!hasDataSection(headText)) {
+  if (!envelope.data) {
     throw new IfcInputError('MISSING_DATA', `${label} has no DATA section, so it contains no IFC entities.`);
   }
 

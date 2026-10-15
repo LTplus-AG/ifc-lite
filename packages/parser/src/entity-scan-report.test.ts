@@ -25,6 +25,28 @@ describe('record-scan coverage through the existing scanner API (DX1)', () => {
     expect(result.report).toMatchObject({ completeness: 'incomplete', oversizedIdCount: 1 });
   });
 
+  it.each([NaN, Infinity, -1, 0.5])('does not certify an invalid refusal count %s (PR #7632)', async count => {
+    const buffer = file();
+    const scanned = await scanIfcEntities(buffer, { disableWorkerScan: true });
+    const result = await scanIfcEntities(buffer, { preScannedEntityIndex: {
+      ids: Uint32Array.from(scanned.entityRefs.map(ref => ref.expressId)),
+      starts: Uint32Array.from(scanned.entityRefs.map(ref => ref.byteOffset)),
+      lengths: Uint32Array.from(scanned.entityRefs.map(ref => ref.byteLength)),
+      oversizedIdCount: count, malformedRecordCount: 0,
+    } });
+    expect(result.report).toMatchObject({ completeness: 'unknown', oversizedIdCount: null });
+  });
+
+  it.each([NaN, Infinity, -1, 0.5])('does not certify an invalid WASM refusal count %s (PR #7632)', async count => {
+    const buffer = file();
+    const scanned = await scanIfcEntities(buffer, { disableWorkerScan: true });
+    const result = await scanIfcEntities(buffer, { disableWorkerScan: true, wasmApi: {
+      scanEntitiesFastBytes: () => Object.assign([...scanned.entityRefs], { oversizedIdCount: count, malformedRecordCount: 0 }),
+    } });
+    expect(result.entityRefs.map(ref => ref.expressId)).toEqual([1]);
+    expect(result.report).toMatchObject({ scanPath: 'wasm', completeness: 'unknown', oversizedIdCount: null });
+  });
+
   it('does not promote unreported pre-scan counters to zero', async () => {
     const buffer = file();
     const scanned = await scanIfcEntities(buffer, { disableWorkerScan: true });

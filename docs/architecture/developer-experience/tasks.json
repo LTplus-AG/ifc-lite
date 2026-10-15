@@ -12,17 +12,18 @@
       ],
       "branch": "feat/developer-parse-contract",
       "checks": {
-        "parser": "1956 passed, 8 skipped (full parser suite)",
-        "cliLoader": "9 passed",
+        "parser": "1978 passed, 8 skipped (full parser suite)",
+        "cliLoader": "Full CLI suite: 1459 passed, 15 skipped",
         "documentation": "472 snippets compiled across 113 docs",
         "fixture": "Manifest-verified ArchiCAD FZK: 44249 scanned records, 5 IfcDoor records, complete scan; tests/evidence/developer-parse-contract/fzk.json",
-        "typecheck": "passed: root pnpm typecheck; 4184 test files audited",
+        "typecheck": "Root pnpm typecheck passed; 4186 test sources audited",
         "apiSurface": "regenerated",
         "moduleSize": "passed",
         "sourceTextAssertions": "Passed; runtime diagnostic-code assertions explicitly identified",
         "oxlintTouchedFiles": "passed",
-        "reviewRegression": "17 loading contract tests and 9 CLI loader tests pass, including browser SharedArrayBuffer restrictions and comment/quoted envelope decoys",
-        "oracle": "Ordinary full production revert OBSERVED: 20 tests pass on the branch; independent existing-scanner witnesses fail assertions after removal; tree restoration verified; no CI exception"
+        "reviewRegression": "Byte-level shared lexical envelope walk; footer/comment/quote/assignment decoys, DATA after HEADER, invalid counters on pre-scan and WASM; MCP and CLI share validation",
+        "oracle": "Ordinary full production revert OBSERVED: 20 tests pass on the branch; independent existing-scanner witnesses fail assertions after removal; tree restoration verified; no CI exception",
+        "mcpLoader": "Full MCP suite passed, including shared validation and recoverable short-scan hints"
       }
     },
     {

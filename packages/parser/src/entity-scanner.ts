@@ -4,7 +4,7 @@
 
 import { safeUtf8Decode } from '@ifc-lite/data';
 import { buildEntityRefsFromIndex, buildEntityColumnsFromIndex, type ScannedEntityColumns } from './entity-refs-from-index.js';
-import { buildScanReport, reportScanDiagnostics, type EntityScanReport } from './scan-report.js';
+import { buildScanReport, isScanCount, reportScanDiagnostics, type EntityScanReport } from './scan-report.js';
 import { scanEntitiesInWorker } from './scan-worker-inline.js';
 import { StepTokenizer } from './tokenizer.js';
 import type { EntityRef } from './types.js';
@@ -197,8 +197,8 @@ async function scanEntities(
       // properties reads as 0.
       oversizedIdCount = readWasmScanCount(raw, 'oversizedIdCount');
       malformedRecordCount = readWasmScanCount(raw, 'malformedRecordCount');
-      oversizedReported = isRecord(raw) && typeof readNumber(raw, 'oversizedIdCount') === 'number';
-      malformedReported = isRecord(raw) && typeof readNumber(raw, 'malformedRecordCount') === 'number';
+      oversizedReported = isRecord(raw) && isScanCount(raw.oversizedIdCount);
+      malformedReported = isRecord(raw) && isScanCount(raw.malformedRecordCount);
     } catch (error) {
       console.warn('[IfcParser] WASM scan failed, falling back to TypeScript:', error);
       entityRefs = [];

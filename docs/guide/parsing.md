@@ -61,9 +61,9 @@ try {
 }
 ```
 
-`IfcInputError.code` distinguishes `EMPTY_INPUT`, `INVALID_STEP`, `TRUNCATED_STEP`, `MISSING_DATA`, and `INVALID_ARCHIVE`. The CLI uses the same input validation. These checks validate the STEP envelope, not IFC schema conformance. IFCX uses `parseAuto` or `parseIfcx` instead.
+`IfcInputError.code` distinguishes `EMPTY_INPUT`, `INVALID_STEP`, `TRUNCATED_STEP`, `MISSING_DATA`, and `INVALID_ARCHIVE`. The CLI and MCP loaders use the same input validation. A terminator inside a string or comment is not a footer; unterminated lexical input is refused. These checks validate the STEP envelope, not IFC schema conformance. IFCX uses `parseAuto` or `parseIfcx` instead.
 
-`report.completeness` describes record scanning only: `complete` means the scanner reported no refused records, `incomplete` means known records were refused or malformed, and `unknown` means the producer omitted a refusal counter. Unknown is never promoted to complete. `oversizedIdCount` is a count or `null`; `malformedRecordDetected` is a boolean or `null`, because that scanner signal is not an exact malformed-record count. Neither a complete scan nor an empty diagnostic list certifies valid attributes, relationships, or geometry.
+`report.completeness` describes record scanning only: `complete` means the scanner reported no refused records, `incomplete` means known records were refused or malformed, and `unknown` means the producer omitted a refusal counter or supplied an invalid count. Unknown is never promoted to complete. `oversizedIdCount` is a count or `null`; `malformedRecordDetected` is a boolean or `null`, because that scanner signal is not an exact malformed-record count. Neither a complete scan nor an empty diagnostic list certifies valid attributes, relationships, or geometry.
 
 Existing tolerant `IfcParser.parseColumnar` behavior is unchanged. Its optional `onScanReport` callback exposes the same report without validating the envelope. Existing `onDiagnostic` string messages remain available.
 

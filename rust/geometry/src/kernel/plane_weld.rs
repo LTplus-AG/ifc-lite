@@ -20,6 +20,7 @@ use super::near_band::NearBand;
 use lift::exact_on_plane_weld;
 
 mod incidence;
+mod finite;
 mod lift;
 
 pub use diag::take_plane_weld_stats;
@@ -275,6 +276,7 @@ fn promote<const KEEP_INCIDENCE: bool>(cutter: &mut [Tri], host: &[Tri]) -> usiz
     let host_verts = super::near_band::exact_vertex_set(host); // #3353 N-ary half
 
     let faces: Vec<Face> = host.iter().filter_map(|t| Face::new(t, &band)).collect();
+    let cutter_edges = KEEP_INCIDENCE.then(|| finite::CutterEdges::new(cutter));
 
     // Host faces whose plane the current vertex is exactly on (reused scratch).
     let (mut on, mut guard): (Vec<usize>, _) = (Vec::new(), incidence::Guard::new(&faces));
@@ -320,7 +322,9 @@ fn promote<const KEEP_INCIDENCE: bool>(cutter: &mut [Tri], host: &[Tri]) -> usiz
             // that sees it.
             if let Some((_, f)) = best {
                 if let Some(w) = exact_on_plane_weld(*v, faces[f].t) {
-                    if KEEP_INCIDENCE && guard.refuses(&w, f, &on) {
+                    if KEEP_INCIDENCE && (guard.refuses(&w, f, &on)
+                        || cutter_edges.as_ref().is_some_and(|edges|
+                            guard.refuses_finite(v, &w, f, &on, edges))) {
                         continue; // #6940
                     }
                     if w != *v {

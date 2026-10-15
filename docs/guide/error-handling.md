@@ -6,6 +6,8 @@ boundary, what is guaranteed to be reproducible, and what stability to expect
 across versions. It complements the per-feature guides, which cover the happy
 path.
 
+For validated STEP input and structured record-scan coverage, use [`parseModel`](parsing.md#load-step-data-without-a-viewer). Handle `IfcInputError.code` for rejected envelopes and inspect `report.completeness` before treating query results as an inventory of the whole source.
+
 ## Installation diagnostics
 
 Run `ifc-lite doctor --json` for the CLI runtime, actual resolved package versions and WASM artifact details. This is useful before a model can be loaded, including when an IFC dependency is damaged. The report checks this CLI installation and exits 1 if a reported check fails.

@@ -29,6 +29,7 @@
     "../../tests/benchmark/viewer-benchmark.spec.ts",
     "./frame-gpu-rig.mts",
     "./browser-cold-ab.mts",
+    "./native-count-driver.mts",
     "../../tests/benchmark/frames/frame-rig.spec.ts"
   ],
   "include": [],

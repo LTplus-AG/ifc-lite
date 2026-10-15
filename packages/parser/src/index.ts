@@ -8,6 +8,9 @@
  */
 
 import { createLogger } from '@ifc-lite/data';
+export { parseModel, IfcInputError, validateStepInput } from './parse-model.js';
+export type { ParseModelOptions, ParsedModel, IfcInputErrorCode } from './parse-model.js';
+export type { EntityScanReport, ScanDiagnostic, ScanCompleteness } from './scan-report.js';
 import { unwrapIfcZip } from './ifczip.js';
 // `unwrapIfcZip` unwraps an ArrayBuffer (no-op for non-zip); `unwrapIfcZipView`
 // is the same for Node Buffer/Uint8Array callers (CLI/MCP loaders). The
@@ -227,6 +230,7 @@ import { scanIfcEntities, scanColumnarEntities, type PreScannedEntityIndex, type
 export interface ParseOptions {
   onProgress?: (progress: { phase: string; percent: number }) => void;
   onDiagnostic?: (message: string) => void;
+  onScanReport?: (report: import('./scan-report.js').EntityScanReport) => void;
   wasmApi?: WasmScanApi; // Optional IfcAPI instance for WASM-accelerated entity scanning
   /** Yield budget for large incremental parses. Higher values finish faster with longer main-thread slices. */
   yieldIntervalMs?: number;

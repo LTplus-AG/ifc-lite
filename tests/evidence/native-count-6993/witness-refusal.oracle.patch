@@ -1,0 +1,20 @@
+diff --git a/scripts/perf/native-count-evidence.ts b/scripts/perf/native-count-evidence.ts
+--- a/scripts/perf/native-count-evidence.ts
++++ b/scripts/perf/native-count-evidence.ts
+@@ -120,6 +120,8 @@ export function assessCountSample(observation: SampleObservation): SampleVerdict
+   if (!trace) refusals.push('no load trace');
+   if (!witnesses.metadata) refusals.push(`metadata completion span ${metadataSpan} not finished`);
+   if (!witnesses.geometry) refusals.push('geometry.streamComplete not finished');
++  if (!witnesses.rootEnded) refusals.push('load root span not ended');
++  if (!witnesses.finalize) refusals.push('scene.finalize not finished');
+   const failed = trace?.spans.filter((span) => span.name === 'parser.failed' || span.attrs?.error === true).map((span) => span.name) ?? [];
+   if (trace?.attrs?.error === true) failed.push('load');
+   if (failed.length) refusals.push(`failed spans: ${failed.join(', ')}`);
+@@ -141,6 +143,7 @@ export function assessCountSample(observation: SampleObservation): SampleVerdict
+   const health = observation.gpuHealth;
+   if (!health) refusals.push('GPU health not read');
+   else {
++    if (health.deviceLost > 0) refusals.push(`GPU device lost ${health.deviceLost}x`);
+     if (health.deviceReplacements === null) refusals.push('no GPU session counters: device replacement unwitnessed');
+     else if (health.deviceReplacements > 0) refusals.push(`GPU device replaced ${health.deviceReplacements}x`);
+   }

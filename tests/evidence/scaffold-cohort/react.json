@@ -1,0 +1,14 @@
+{
+  "runtime": "v24.21.0",
+  "template": "react",
+  "lockfileVersion": 3,
+  "packageVersions": {
+    "@ifc-lite/geometry": "7.7.0",
+    "@ifc-lite/renderer": "6.0.1",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "npmCi": true,
+  "typecheck": true,
+  "build": true
+}

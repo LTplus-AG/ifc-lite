@@ -25,7 +25,7 @@ Process IFC files entirely in the browser using WebAssembly.
     ```bash
     npx create-ifc-lite my-viewer --template react
     cd my-viewer
-    npm install
+    npm ci
     npm run dev
     ```
 
@@ -34,7 +34,7 @@ Process IFC files entirely in the browser using WebAssembly.
     ```bash
     npx create-ifc-lite my-viewer --template threejs
     cd my-viewer
-    npm install
+    npm ci
     npm run dev
     ```
 
@@ -43,9 +43,11 @@ Process IFC files entirely in the browser using WebAssembly.
     ```bash
     npx create-ifc-lite my-viewer --template babylonjs
     cd my-viewer
-    npm install
+    npm ci
     npm run dev
     ```
+
+The scaffolder writes `package-lock.json` after resolving the complete dependency set and checking peer requirements. Commit that lockfile and use `npm ci` to install the same versions.
 
 Open the URL Vite prints (`http://localhost:5173` by default) and drag an IFC file onto the viewer.
 

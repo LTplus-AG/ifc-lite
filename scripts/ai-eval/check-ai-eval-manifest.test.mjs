@@ -199,3 +199,19 @@ test('#6928 a live run summary that would publish an e-mail address is refused',
   writeJson(join(dir, 'summary.json'), { ...summary, note: 'ran by someone@example.com' });
   assert.ok(run(root).errors.some(error => /summary.json: privacy scan: e-mail address/.test(error)));
 }));
+
+test('#6928 a free-text file in a live run is privacy-scanned and loose files are refused', () => withRoot(root => {
+  const { dir } = writeLiveRun(root);
+  writeFileSync(join(dir, 'notes.md'), 'ran by someone@example.com\n');
+  writeFileSync(join(root, 'tests', 'ai-eval', 'live-runs', 'stray.json'), '{}');
+  const { errors } = run(root);
+  assert.ok(errors.some(error => /notes.md: privacy scan: e-mail address/.test(error)), errors.join('\n'));
+  assert.ok(errors.includes('live-runs/stray.json: only run folders belong here'));
+}));
+
+test('#6928 a promoted copy that keeps its live id is refused rather than shadowing it', () => withRoot(root => {
+  const { recording } = writeLiveRun(root);
+  writeJson(join(root, 'tests', 'ai-eval', 'recordings', 'promoted.json'),
+    { ...recording, $schema: '../recording.schema.json', corpus: 'release', expect: { outcome: 'completed', proposal: null, violations: [] } });
+  assert.ok(run(root).errors.some(error => error.includes(`id ${recording.id} is also used by`)));
+}));

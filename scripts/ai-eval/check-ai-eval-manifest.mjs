@@ -19,7 +19,7 @@
  */
 
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { join, relative, resolve } from 'node:path';
 import { checkManifest, privacyFindings } from './lib/manifest.mjs';
 import { liveRecordings, loadLiveRuns, loadRecordingDir, REPO_ROOT } from './lib/recording.mjs';
 import { loadLabelDir, sheetFileErrors } from './label.mjs';
@@ -41,7 +41,7 @@ function liveRunErrors({ run, dir, recordings }) {
   if (!recordings.length) errors.push(`${at}: holds no recordings`);
   for (const { name, recording } of recordings) {
     if (recording.corpus !== 'live' || recording.provenance?.kind !== 'live' || !recording.provenance.receipt) {
-      errors.push(`${at}: ${name} must stay an unpromoted live recording with its receipt (promote by copying into tests/ai-eval/recordings)`);
+      errors.push(`${at}: ${name} must stay an unpromoted live recording with its receipt (promote a copy with a new id into tests/ai-eval/recordings)`);
     }
   }
   const read = file => (existsSync(join(dir, file)) ? JSON.parse(readFileSync(join(dir, file), 'utf8')) : null);
@@ -57,9 +57,11 @@ function liveRunErrors({ run, dir, recordings }) {
   else {
     if (!sameItems((review.reviews ?? []).map(entry => entry.recording), recordings.map(({ name }) => name))) errors.push(`${at}: review.json does not cover exactly the recordings`);
   }
-  const files = readdirSync(dir, { recursive: true }).filter(file => String(file).endsWith('.json'));
+  // Every committed file, not only the ones the runner writes: notes are free text too.
+  const files = readdirSync(dir, { recursive: true, withFileTypes: true }).filter(entry => entry.isFile())
+    .map(entry => relative(dir, join(entry.parentPath, entry.name)));
   for (const file of files) {
-    const findings = privacyFindings(readFileSync(join(dir, String(file)), 'utf8'), 'json');
+    const findings = privacyFindings(readFileSync(join(dir, file), 'utf8'), 'json');
     if (findings.length) errors.push(`${at}: ${file}: privacy scan: ${findings.join('; ')}`);
   }
   return errors;
@@ -74,6 +76,14 @@ export function run(root) {
   const live = liveRecordings(liveRuns);
   const result = checkManifest(JSON.parse(readFileSync(manifestPath, 'utf8')), { root, recordings: [...recordings, ...live] });
   for (const liveRun of liveRuns) result.errors.push(...liveRunErrors(liveRun));
+  const liveDir = join(root, 'tests', 'ai-eval', 'live-runs');
+  if (existsSync(liveDir)) for (const entry of readdirSync(liveDir, { withFileTypes: true })) if (!entry.isDirectory()) result.errors.push(`live-runs/${entry.name}: only run folders belong here`);
+  // Promotion copies a live recording: a second file with the same id would shadow it for label sheets.
+  const ids = new Map();
+  for (const { name, recording } of [...recordings, ...live]) {
+    if (ids.has(recording.id)) result.errors.push(`recording ${name}: id ${recording.id} is also used by ${ids.get(recording.id)}`);
+    else ids.set(recording.id, name);
+  }
   if (!recordings.length) result.errors.push('tests/ai-eval/recordings holds no recordings; the replay harness would pass vacuously');
   const required = ['label-sheet.schema.json', 'study/protocol.json', 'study/protocol.schema.json', 'study/session.schema.json'];
   const missing = required.filter(path => !existsSync(join(root, 'tests', 'ai-eval', path)));

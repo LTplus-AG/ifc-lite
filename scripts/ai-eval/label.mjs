@@ -18,7 +18,7 @@
  */
 
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { basename, join, resolve } from 'node:path';
 import { buildSheet, answerSha256, scoreSheets, sheetErrors } from './lib/labels.mjs';
 import { decodeRecording, liveRecordings, loadLiveRuns, loadRecordingDir, REPO_ROOT, RECORDINGS_DIR } from './lib/recording.mjs';
 import { privacyFindings } from './lib/manifest.mjs';
@@ -81,7 +81,7 @@ function main([command, ...args]) {
     const kind = flag(args, 'kind');
     const reviewerId = flag(args, 'reviewer');
     if (!id || !['claims', 'grouping'].includes(kind) || !reviewerId) throw new Error('Usage: label.mjs sheet --recording <id> --kind claims|grouping --reviewer <pseudonym> [--out <file>]');
-    const found = recordings.find(({ recording, name }) => recording.id === id || name === id || name === `${id}.json`);
+    const found = recordings.find(({ recording, name }) => [recording.id, name, basename(name)].some(key => key === id || key === `${id}.json`));
     if (!found) throw new Error(`No recording ${id}`);
     const sheet = buildSheet({ recording: found.recording, kind, answer: decodeRecording(found.recording).text, reviewerId });
     const errors = sheetErrors(sheet, SCHEMA);

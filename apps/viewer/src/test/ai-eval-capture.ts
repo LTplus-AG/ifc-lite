@@ -11,7 +11,7 @@
 
 import { replaceEvidence } from '@/lib/assistant/conversation';
 import { sendAssistant } from '@/lib/assistant/request';
-import { getApiKeys, updateApiKeys } from '@/services/api-keys';
+import { clearApiKeys, getApiKeys, updateApiKeys } from '@/services/api-keys';
 import { comparableEvidence, isAiEvalScene, seedScene } from './ai-eval-scenes';
 
 export interface CaptureTask { id: string; scene: string; prompt: string }
@@ -35,6 +35,7 @@ function systemText(system: unknown): string {
  */
 function neutralRequest(body: Record<string, unknown>): NeutralRequest {
   const messages = (body.messages ?? body.input) as Array<{ role: string; content: unknown }>;
+  if (!Array.isArray(messages)) throw new Error('Captured request has no messages or input');
   const leading = messages[0]?.role === 'system' || messages[0]?.role === 'developer' ? messages[0] : undefined;
   const maxOutputTokens = body.maxOutputTokens ?? body.max_tokens ?? body.max_completion_tokens ?? body.max_output_tokens;
   if (typeof maxOutputTokens !== 'number') throw new Error('Captured request has no output ceiling');
@@ -48,16 +49,20 @@ export async function captureRequest(task: CaptureTask, model: string): Promise<
   replaceEvidence(scene.evidence);
   let body: Record<string, unknown> | null = null;
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
-    body = JSON.parse(String(init?.body)) as Record<string, unknown>;
-    return new Response('data: {"choices":[{"delta":{"content":"captured"},"finish_reason":"stop"}]}\n\n');
-  }) as typeof fetch;
-  // A BYOK model routes direct only with a stored key. The stub answers every
-  // request, so this placeholder never leaves the process.
   const stored = getApiKeys();
-  updateApiKeys({ anthropicKey: 'capture-only', openaiKey: 'capture-only' });
-  try { await sendAssistant(task.prompt, model, '/api/chat'); }
-  finally { globalThis.fetch = originalFetch; updateApiKeys(stored); }
+  try {
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      return new Response('data: {"choices":[{"delta":{"content":"captured"},"finish_reason":"stop"}]}\n\n');
+    }) as typeof fetch;
+    // A BYOK model routes direct only with a stored key. The stub answers every
+    // request, so this placeholder never leaves the process.
+    updateApiKeys({ anthropicKey: 'capture-only', openaiKey: 'capture-only' });
+    await sendAssistant(task.prompt, model, '/api/chat');
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (Object.values(stored).some(Boolean)) updateApiKeys(stored); else clearApiKeys();
+  }
   const captured = body as Record<string, unknown> | null;
   if (!captured) throw new Error(`${task.id}: the Assistant refused to send (check prompt and scene)`);
   return { taskId: task.id, scene: task.scene, evidence: comparableEvidence(scene.evidence), request: neutralRequest(captured) };

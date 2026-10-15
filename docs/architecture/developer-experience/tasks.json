@@ -51,7 +51,8 @@
         "typecheck": "root pnpm typecheck passed; all 4184 test files audited",
         "documentation": "472 snippets compiled",
         "moduleSize": "passed; retired one obsolete allowlist row",
-        "knip": "ran; repository-wide unused declarations/configuration findings remain; retired reader files removed and one moved unused internal type export removed"
+        "knip": "ran; repository-wide unused declarations/configuration findings remain; retired reader files removed and one moved unused internal type export removed",
+        "nodeConsumer": "Fresh Node resolver imports @ifc-lite/sdk/headless and queries the committed one-wall IFC sample"
       }
     },
     {
@@ -71,9 +72,23 @@
     {
       "id": "DX5",
       "title": "Consumer artifact workflows and scaffold compatibility",
-      "status": "pending",
+      "status": "in_progress",
       "acceptance": "Fresh external consumer installs packed artifacts and proves workflows; scaffold dependency combinations tested together in CI",
-      "pullRequests": []
+      "pullRequests": [],
+      "subtasks": [
+        {
+          "title": "Public SDK headless entry point works in a fresh Node process",
+          "status": "verified"
+        },
+        {
+          "title": "External install from packed artifacts exercises complete workflows",
+          "status": "pending"
+        },
+        {
+          "title": "Scaffolder selects and tests a compatible dependency set",
+          "status": "pending"
+        }
+      ]
     },
     {
       "id": "DX6",

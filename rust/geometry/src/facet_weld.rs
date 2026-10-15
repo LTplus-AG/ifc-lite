@@ -74,6 +74,7 @@ use crate::mesh::Mesh;
 use std::collections::BTreeMap;
 
 mod components;
+mod eligibility;
 mod fit;
 use fit::Facet;
 
@@ -331,6 +332,9 @@ pub fn weld_near_coplanar_facets(mesh: &Mesh) -> Mesh {
     // projected positions and average them (Step 5) so a crease vertex shared by
     // two clusters gets one deterministic final position.
     let mut vertex_moves: Vec<Vec<[f64; 3]>> = vec![Vec::new(); n_canon];
+    // Full-edge components are ambiguous on nonconforming triangle soups.
+    // Evaluate the source certificate only if a cluster actually splits.
+    let mut partition_eligible = None;
 
     for fis in normal_buckets.values() {
         if fis.len() < 2 {
@@ -369,7 +373,11 @@ pub fn weld_near_coplanar_facets(mesh: &Mesh) -> Mesh {
             }
             let mut members: Vec<usize> = slice.iter().map(|&(_, fi)| fi).collect();
             members.sort_unstable();
-            components::for_each(&members, |fi| facets[fi].tri, |component| {
+            components::for_each(&members, |fi| facets[fi].tri, |groups| {
+                *partition_eligible.get_or_insert_with(|| eligibility::source_is_conforming(mesh, &canon_of, &canon_pos))
+                    && !eligibility::patch_is_planar(&facets, &members, &canon_pos, anchor)
+                    && groups.iter().all(|group| eligibility::patch_is_planar(&facets, group, &canon_pos, anchor))
+            }, |component| {
                 fit::project_component(&facets, component, ref_n, &canon_pos, anchor, &mut vertex_moves);
             });
         };

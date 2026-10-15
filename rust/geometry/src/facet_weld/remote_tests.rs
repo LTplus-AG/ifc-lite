@@ -31,6 +31,34 @@ fn quad(p: [Point; 4], alternate: bool) -> [[Point; 3]; 2] {
     }
 }
 
+/// Close a finite front face into a prism. The extrusion points inward from
+/// the front winding; every boundary edge then has opposite directed uses.
+fn prism(front: [Point; 4], delta: Point, alternate: bool) -> Vec<[Point; 3]> {
+    let back = front.map(|p| std::array::from_fn(|k| p[k] + delta[k]));
+    let mut tris = Vec::from(quad(front, alternate));
+    tris.extend(quad([back[3], back[2], back[1], back[0]], alternate));
+    for i in 0..4 {
+        let j = (i + 1) % 4;
+        tris.extend(quad([front[i], back[i], back[j], front[j]], alternate));
+    }
+    tris
+}
+
+fn certified(mesh: &Mesh) -> bool {
+    let mut seen = std::collections::BTreeMap::new();
+    let mut positions = Vec::new();
+    let mut ids = Vec::new();
+    for p in mesh.positions.chunks_exact(3) {
+        let point = [f64::from(p[0]), f64::from(p[1]), f64::from(p[2])];
+        let id = *seen.entry(point.map(super::dedup_key)).or_insert_with(|| {
+            positions.push(point);
+            positions.len() - 1
+        });
+        ids.push(id);
+    }
+    super::eligibility::source_is_conforming(mesh, &ids, &positions)
+}
+
 fn source_grid(mesh: &Mesh) -> Vec<f32> {
     mesh.positions
         .iter()
@@ -62,12 +90,13 @@ fn issue_7633_remote_planar_wall_patches_retain_source_corners() {
     );
     for alternate in [false, true] {
         for reverse in [false, true] {
-            let mut tris = Vec::from(quad(a, alternate));
-            tris.extend(quad(b, alternate));
+            let mut tris = prism(a, [-0.1, 0., 0.], alternate);
+            tris.extend(prism(b, [-0.1, 0., 0.], alternate));
             if reverse {
                 tris.reverse();
             }
             let source = triangles(&tris);
+            assert!(certified(&source), "positive must exercise partition");
             let result = weld_near_coplanar_facets(&source);
             assert_eq!(result.indices, source.indices);
             assert_eq!(
@@ -92,26 +121,19 @@ fn issue_7633_point_touching_patches_do_not_share_a_fit() {
         [-1., -1., 4. * g],
         [0., -1., 4. * g],
     ];
-    let mut tris = Vec::from(quad(a, false));
-    tris.extend(quad(b, false));
+    let mut tris = prism(a, [0., 0., 1.], false);
+    tris.extend(prism(b, [0., 0., -1.], false));
+    // The first face has the opposite shell orientation; reverse its prism.
+    for tri in &mut tris[..12] {
+        tri.swap(1, 2);
+    }
     let source = triangles(&tris);
+    assert!(
+        certified(&source),
+        "point-touch shells must remain eligible"
+    );
     let result = weld_near_coplanar_facets(&source);
     assert_eq!(result.positions, source_grid(&source));
-}
-
-/// A singleton component gets no fit and therefore no position rewrite,
-/// including the existing rule that an unwelded cell stays bit-exact (#4698).
-#[test]
-fn issue_7633_point_touching_single_facets_keep_unsnapped_positions() {
-    let source = triangles(&[
-        [[0., 0., 0.], [1.1234567, 0., 0.], [0., 1.1234567, 0.]],
-        [[0., 0., 0.], [-1., 0., 0.], [-0.5, -1., 4. / 65536.]],
-    ]);
-    assert_ne!(source.positions, source_grid(&source));
-    assert_eq!(
-        weld_near_coplanar_facets(&source).positions,
-        source.positions
-    );
 }
 
 /// The original jitter-repair case must still fit: both endpoints of its
@@ -128,4 +150,134 @@ fn issue_7633_connected_offset_jitter_still_joins_shared_edge() {
     let result = weld_near_coplanar_facets(&source);
     assert_eq!(&result.positions[3..6], &result.positions[9..12]);
     assert_eq!(&result.positions[6..9], &result.positions[15..18]);
+}
+
+fn dual_domain_counts(mesh: &Mesh, key: impl Fn(f32) -> i64) -> (usize, usize) {
+    let mut edges = std::collections::BTreeMap::<([i64; 3], [i64; 3]), [usize; 2]>::new();
+    let mut collapsed = 0;
+    for t in mesh.indices.chunks_exact(3) {
+        let points: [[i64; 3]; 3] = std::array::from_fn(|corner| {
+            std::array::from_fn(|k| key(mesh.positions[t[corner] as usize * 3 + k]))
+        });
+        let [a, b, c]: [[i64; 3]; 3] = points;
+        let ab: [i128; 3] = std::array::from_fn(|k| i128::from(b[k]) - i128::from(a[k]));
+        let ac: [i128; 3] = std::array::from_fn(|k| i128::from(c[k]) - i128::from(a[k]));
+        collapsed += usize::from(
+            [
+                ab[1] * ac[2] - ab[2] * ac[1],
+                ab[2] * ac[0] - ab[0] * ac[2],
+                ab[0] * ac[1] - ab[1] * ac[0],
+            ] == [0; 3],
+        );
+        for (a, b) in [(a, b), (b, c), (c, a)] {
+            edges.entry((a.min(b), a.max(b))).or_default()[usize::from(a > b)] += 1;
+        }
+    }
+    (
+        edges.values().filter(|&&uses| uses != [1, 1]).count(),
+        collapsed,
+    )
+}
+
+#[test]
+fn issue_7633_fine_closed_canonical_open_source_keeps_legacy_fit() {
+    let lo = 49e-6;
+    let faces = [
+        [[lo, 0., 0.], [lo, 0., 1.], [lo, 1., 1.], [lo, 1., 0.]],
+        [[1., 0., 0.], [1., 1., 0.], [1., 1., 1.], [1., 0., 1.]],
+        [[lo, 0., 0.], [1., 0., 0.], [1., 0., 1.], [lo, 0., 1.]],
+        [[lo, 1., 0.], [lo, 1., 1.], [1., 1., 1.], [1., 1., 0.]],
+        [[lo, 0., 0.], [lo, 1., 0.], [1., 1., 0.], [1., 0., 0.]],
+        [[lo, 0., 1.], [1., 0., 1.], [1., 1., 1.], [lo, 1., 1.]],
+    ];
+    let mut tris: Vec<_> = faces
+        .into_iter()
+        .flat_map(|face| quad(face, false))
+        .collect();
+    // Only this triangle copy changes. Both values occupy fine cell3, but
+    // straddle the existing canonical-cell boundary at50 micrometres.
+    tris[0][0][0] = 51e-6;
+    let source = triangles(&tris);
+    let fine = |v: f32| (f64::from(v) / crate::kernel::mesh_bridge::SNAP_GRID).round() as i64;
+    let canonical = |v: f32| super::dedup_key(f64::from(v));
+    assert_eq!(fine(49e-6_f32), fine(51e-6_f32));
+    assert_ne!(canonical(49e-6_f32), canonical(51e-6_f32));
+    assert_eq!(dual_domain_counts(&source, fine), (0, 0));
+    assert_eq!(dual_domain_counts(&source, canonical), (4, 0));
+    assert!(!certified(&source));
+
+    let legacy_expected = source_grid(&source);
+    assert_ne!(
+        source.positions, legacy_expected,
+        "declining partition must not silently return the untouched source"
+    );
+    let output = weld_near_coplanar_facets(&source);
+    // The old global fit repairs this small canonical split. Compare actual
+    // geometry, not just a Boolean gate result: returning raw or forcing the
+    // new singleton partition both fail this invariant.
+    assert_eq!(output.positions, legacy_expected);
+    assert_eq!(output.indices, source.indices);
+    assert_eq!(output.normals, source.normals);
+    assert_eq!(dual_domain_counts(&output, fine), (0, 0));
+    assert_eq!(dual_domain_counts(&output, canonical), (0, 0));
+}
+
+/// #7633: two singleton faces in an originally eligible cluster still receive
+/// the established fit and grid write. Partition must not silently erase that
+/// operation, even though the complete source consists of closed shells.
+#[test]
+fn issue_7633_unsupported_singleton_partition_keeps_legacy_grid_writes() {
+    let tetra = |[a, b, c, d]: [Point; 4]| [[a, c, b], [a, b, d], [b, c, d], [c, a, d]];
+    let mut tris = Vec::from(tetra([
+        [0., 0., 0.],
+        [1.1234567, 0., 0.],
+        [0., 1.2345678, 0.],
+        [0.2, 0.3, 1.345678],
+    ]));
+    let slope = 4. / 65536.;
+    tris.extend(tetra([
+        [3.1234567, 2.2345678, slope * 2.2345678],
+        [4.345678, 2.2345678, slope * 2.2345678],
+        [3.1234567, 3.456789, slope * 3.456789],
+        [3.35, 2.55, 1.98765],
+    ]));
+    let source = triangles(&tris);
+    assert!(certified(&source));
+    let output = weld_near_coplanar_facets(&source);
+    assert_eq!(output.indices, source.indices);
+    assert_eq!(output.normals, source.normals);
+    assert_ne!(
+        output.positions, source.positions,
+        "the legacy fit must still run"
+    );
+    for (before, after) in source
+        .positions
+        .chunks_exact(3)
+        .zip(output.positions.chunks_exact(3))
+    {
+        if before[2] > 1. {
+            assert_eq!(
+                after, before,
+                "unwelded apex cells retain the #4698 contract"
+            );
+        } else {
+            let snapped = after
+                .iter()
+                .map(|&x| snap_grid(f64::from(x)) as f32)
+                .collect::<Vec<_>>();
+            assert_eq!(
+                after, snapped,
+                "the original supported cluster still writes the kernel grid"
+            );
+        }
+    }
+    assert!(
+        source
+            .positions
+            .chunks_exact(3)
+            .zip(output.positions.chunks_exact(3))
+            .any(|(before, after)| before[2] == 0. && after[2] != 0.),
+        "the original joint plane fit must still project the flat base"
+    );
+    assert!(certified(&output));
 }

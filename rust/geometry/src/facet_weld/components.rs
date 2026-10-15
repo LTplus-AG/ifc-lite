@@ -48,6 +48,7 @@ impl Components {
 pub(super) fn for_each(
     members: &[usize],
     triangle: impl Fn(usize) -> [usize; 3],
+    mut allow_split: impl FnMut(&[Vec<usize>]) -> bool,
     mut visit: impl FnMut(&[usize]),
 ) {
     let n = members.len();
@@ -79,6 +80,14 @@ pub(super) fn for_each(
     }
     let mut groups: Vec<_> = groups.into_values().collect();
     groups.sort_by_key(|g| g[0]);
+    // The established fit needs at least two facets. Splitting an admitted
+    // cluster into singletons would silently drop its projection/snap writes,
+    // including their contribution at vertices shared with other planes.
+    // Keep the complete original fit when any proposed patch lacks support.
+    if groups.iter().any(|group| group.len() < 2) || !allow_split(&groups) {
+        visit(members);
+        return;
+    }
     for group in groups {
         visit(&group);
     }

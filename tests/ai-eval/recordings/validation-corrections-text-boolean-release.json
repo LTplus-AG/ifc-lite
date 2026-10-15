@@ -13,7 +13,7 @@
   "provenance": {
     "kind": "authored",
     "recordedAt": "2026-10-15",
-    "note": "The live claude-sonnet-5-5 form of the correction (#7650): expected/value echo the text the evidence shows (\"false\"/\"true\"). The native preview types them by the boolean property, so the row is ready."
+    "note": "Authored replica of the text form a live claude-sonnet-5-5 run produced (#7650): expected/value echo the text the evidence shows (\"false\"/\"true\"). The native preview types them by the boolean property, so the row is ready."
   },
   "response": {
     "status": 200,

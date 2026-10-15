@@ -74,6 +74,8 @@ The IDS recipe exits 1 for a failed specification and 2 when no entities were ev
 
 Geometry needs the runtime artifact. In a source checkout without Rust, run `pnpm build:wasm:fetch`; a published consumer gets the WASM package through npm. The processor recipe uses the canonical export path and always disposes the processor. To feed meshes directly into another engine, preserve per-mesh origins and the returned coordinate frame; follow the [geometry guide](geometry.md) and the [Three.js integration](../tutorials/threejs-integration.md).
 
+The geometry recipe first parses data to require complete record coverage, closes that session, then initializes the geometry processor. This adds a data-parse pass before mesh processing. Its JSON result includes the scan report; complete record coverage does not imply complete geometry coverage.
+
 ## A cancellable local service
 
 The service recipe accepts IFC bytes at `POST /doors` and runs each query in an owned Node worker. Disconnect and timeout terminate that worker, including synchronous parsing work. It limits uploads to 16 MiB, concurrent requests to two, and each operation to 30 seconds. These are explicit example budgets; the [Rust server](server.md) provides the native processing deployment path.

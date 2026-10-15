@@ -4,7 +4,7 @@
 
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -38,6 +38,26 @@ test('the edit recipe preserves identity and its property after reopening (DX4)'
 });
 
 const hasRuntime = existsSync(new URL('packages/wasm/pkg/ifc-lite_bg.wasm', repo));
+test('the geometry recipe refuses incomplete record coverage before export (PR #7641)', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ifclite-headless-incomplete-'));
+  try {
+    const source = readFileSync(new URL('apps/viewer/public/samples/hello-wall.ifc', repo), 'utf8');
+    // Keep the real wall and complete envelope, but add an id outside the scan's
+    // uint32 domain. A successful partial scan must not become a whole-model GLB.
+    const end = source.lastIndexOf('ENDSEC;');
+    assert.ok(end > 0);
+    const input = join(dir, 'incomplete.ifc');
+    const output = join(dir, 'partial.glb');
+    writeFileSync(input, source.slice(0, end) + "#4294967296=IFCWALL('0000000000000000000002',$,'lost',$,$,$,$,$,$);\n" + source.slice(end));
+    const result = run('geometry', [input, output]);
+    assert.notEqual(result.status, 0, result.stderr);
+    // @source-text-assertion-ok this is the recipe process's runtime refusal, not source text
+    assert.match(result.stderr, /Record coverage is incomplete or unknown/);
+    assert.equal(existsSync(output), false);
+    assert.equal(result.stdout, '');
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
 test('the geometry recipe writes a GLB compatibility envelope (DX4)', {
   skip: skip || (!hasRuntime ? 'Build WASM or run pnpm build:wasm:fetch' : false),
 }, () => {
@@ -50,7 +70,9 @@ test('the geometry recipe writes a GLB compatibility envelope (DX4)', {
     assert.equal(glb.subarray(0, 4).toString('ascii'), 'glTF');
     assert.equal(glb.readUInt32LE(4), 2);
     assert.equal(glb.readUInt32LE(8), glb.byteLength);
-    assert.ok((JSON.parse(result.stdout) as { meshes: number }).meshes > 0);
+    const receipt = JSON.parse(result.stdout) as { meshes: number; report: { completeness: string } };
+    assert.ok(receipt.meshes > 0);
+    assert.equal(receipt.report.completeness, 'complete');
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 

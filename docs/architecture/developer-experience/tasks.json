@@ -103,11 +103,12 @@
       ],
       "branch": "feat/developer-onboarding",
       "checks": {
-        "integration": "Five integration tests pass against manifest-verified FZK: extraction, IDS, edit/export/reopen, real WASM GLB and owned HTTP worker; synchronous cancellation terminates the actual thread; invalid/oversized HTTP input refused",
+        "integration": "Six integration tests passed: real FZK extraction, IDS, edit/reopen, WASM GLB and owned HTTP worker; oversized EXPRESS id in the committed wall fixture refuses incomplete coverage before geometry initialization/export",
         "documentation": "475 snippets compiled across 114 docs",
         "typecheck": "Root pnpm typecheck passed; all 4191 test files audited; clean-output typecheck verified",
         "runtime": "Node 24; data scripts use public package entry points and geometry output reserves stdout for JSON",
-        "oracle": "Ordinary full revert against parent OBSERVED through the independent developer package-entry consumer; restoration verified; no CI exception"
+        "oracle": "Ordinary full revert against parent OBSERVED through the independent developer package-entry consumer; restoration verified; no CI exception",
+        "geometryRegression": "PR #7641: new regression failed against the old recipe (partial GLB exited 0), then passed with the shared data preflight; geometry reports coverage and disposes both sessions"
       }
     },
     {

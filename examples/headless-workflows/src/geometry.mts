@@ -4,12 +4,14 @@
 
 import { readFile, writeFile } from 'node:fs/promises';
 import { Console } from 'node:console';
+import { withModelBytes } from './common.mjs';
 
 // This standalone process reserves stdout for its machine-readable result.
 globalThis.console = new Console({ stdout: process.stderr, stderr: process.stderr });
-const { GeometryProcessor } = await import('@ifc-lite/geometry');
-
 const bytes = await readFile(process.argv[2] ?? 'model.ifc');
+// Finish and close the data preflight before initializing the geometry runtime.
+const report = await withModelBytes(bytes, model => model.report);
+const { GeometryProcessor } = await import('@ifc-lite/geometry');
 const processor = new GeometryProcessor({ enableInstancing: false });
 try {
   await processor.init();
@@ -18,5 +20,5 @@ try {
   if (!glb) throw new Error('The geometry runtime did not produce a GLB');
   const output = process.argv[3] ?? 'model.glb';
   await writeFile(output, glb);
-  process.stdout.write(`${JSON.stringify({ output, meshes: result.meshes.length, coordinateInfo: result.coordinateInfo })}\n`);
+  process.stdout.write(`${JSON.stringify({ output, meshes: result.meshes.length, report, coordinateInfo: result.coordinateInfo })}\n`);
 } finally { processor.dispose(); }

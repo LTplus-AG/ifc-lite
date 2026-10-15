@@ -5,8 +5,9 @@
 import { parseModel, type ParseModelOptions, type ParsedModel } from '@ifc-lite/parser';
 import { createBimContext, type BimContext } from '../context.js';
 import { HeadlessBackend } from './backend.js';
-import { UnsupportedOperationError, type HeadlessCapability, type HeadlessOperation } from './capabilities.js';
+import { unsupportedOperation, UnsupportedOperationError, type HeadlessCapability, type HeadlessOperation } from './capabilities.js';
 import type { HeadlessBackendOptions } from './options.js';
+import type { ExportBackendMethods, SpacesBackendMethods } from '../types.js';
 
 export class HeadlessSessionClosedError extends Error {
   readonly code = 'SESSION_CLOSED';
@@ -44,13 +45,28 @@ function guardedBackend(backend: HeadlessBackend, modelId: string, assertOpen: (
       }
     }
   };
+  // SDK namespaces probe optional methods before invoking them. Keep those
+  // probes callable in new sessions so the guard can report a typed refusal.
+  const optionalSpaces = {
+    listStoreys: unsupportedOperation('spaces.listStoreys', 'Space derivation is not configured'),
+    generate: unsupportedOperation('spaces.generate', 'Space derivation is not configured'),
+  } satisfies SpacesBackendMethods;
+  const optionalExports = {
+    hbjson: unsupportedOperation('export.hbjson', 'Energy export is not configured'),
+    dfjson: unsupportedOperation('export.dfjson', 'Energy export is not configured'),
+  } satisfies Pick<ExportBackendMethods, 'hbjson' | 'dfjson'>;
   const cache = new WeakMap<object, object>();
   const guard = <T extends object>(value: T, prefix = ''): T => {
     const cached = cache.get(value);
     if (cached) return cached as T;
     const proxy = new Proxy(value, {
       get(target, key, receiver) {
-        const member: unknown = Reflect.get(target, key, receiver);
+        let member: unknown = Reflect.get(target, key, receiver);
+        if (member === undefined) {
+          if (!prefix && key === 'spaces') return guard(optionalSpaces, 'spaces');
+          if (prefix === 'export' && Object.hasOwn(optionalExports, key))
+            member = Reflect.get(optionalExports, key);
+        }
         if (typeof member === 'function') return (...args: unknown[]) => {
           assertOpen();
           const operation = (prefix ? `${prefix}.${String(key)}` : String(key)) as HeadlessOperation;
@@ -105,7 +121,9 @@ export async function openModel(input: Uint8Array | ArrayBuffer, options: OpenMo
     },
   });
   const bim = createBimContext({ backend: guardedBackend(backend, modelId, assertOpen) });
-  return { ...parsed, bim, capability: operation => backend.capability(operation), get closed() { return closed; }, close() {
+  return { ...parsed, bim, capability: operation => closed
+    ? { operation, supported: false, reason: 'The model session is closed' }
+    : backend.capability(operation), get closed() { return closed; }, close() {
     if (closed) return;
     closed = true;
     backend.dispose();

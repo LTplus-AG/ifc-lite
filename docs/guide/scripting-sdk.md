@@ -283,7 +283,7 @@ The returned `store` is the parsed source snapshot; use `bim` for reads that inc
 
 Use `model.capability('store.roomCommand')` before offering a backend operation. `supported` describes an implemented/configured method, not guaranteed success for every input or environment. Unavailable calls through this session throw `UnsupportedOperationError` with code `UNSUPPORTED_OPERATION`, operation and reason. Data-only sessions do not silently accept viewer commands. Advanced hosts can supply Room/Align geometry providers through `options.backend`; MCP supplies its existing native providers to the shared `HeadlessBackend`.
 
-`close()` is idempotent and clears preparation caches. Retained backend queries and mutation namespaces then throw `HeadlessSessionClosedError` with code `SESSION_CLOSED`. In-flight injected geometry preparation rechecks the session before it can commit. Closing does not revoke the returned source store or pure helpers that operate on caller-supplied data. Existing MCP constructors and embedded/remote SDK entry points retain their behavior.
+`close()` is idempotent and clears preparation caches. Capability checks then report unsupported with a closed-session reason. Retained backend queries and mutation namespaces then throw `HeadlessSessionClosedError` with code `SESSION_CLOSED`. In-flight injected geometry preparation rechecks the session before it can commit. Closing does not revoke the returned source store or pure helpers that operate on caller-supplied data. Existing MCP constructors and embedded/remote SDK entry points retain their behavior.
 
 ## Embedding programmatically
 

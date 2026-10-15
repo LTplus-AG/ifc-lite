@@ -36,6 +36,7 @@ describe('headless developer workflow (DX2)', () => {
     const mutate = model.bim.mutate;
     model.close();
     model.close();
+    expect(model.capability('query.entities')).toMatchObject({ supported: false, reason: 'The model session is closed' });
     expect(() => query.toArray()).toThrow(HeadlessSessionClosedError);
     expect(() => mutate.setProperty(wall.ref, 'Pset_WallCommon', 'FireRating', 'REI 90'))
       .toThrow(HeadlessSessionClosedError);
@@ -99,6 +100,21 @@ describe('headless developer workflow (DX2)', () => {
       }
       // @ts-expect-error A misspelled backend operation is not a declared capability.
       model.capability('query.entites');
+    } finally { model.close(); }
+  });
+
+  it('reports typed refusals for absent optional namespaces and exports (PR #7636)', async () => {
+    const model = await openModel(readFileSync(sample), { disableWorkerScan: true });
+    try {
+      expect(model.capability('spaces.generate').supported).toBe(false);
+      expect(model.capability('export.hbjson').supported).toBe(false);
+      expect(() => model.bim.spaces.generate()).toThrow(UnsupportedOperationError);
+      expect(() => model.bim.spaces.storeys()).toThrow(UnsupportedOperationError);
+      await expect(model.bim.export.hbjson()).rejects.toMatchObject({ code: 'UNSUPPORTED_OPERATION', operation: 'export.hbjson' });
+      await expect(model.bim.export.dfjson()).rejects.toMatchObject({ code: 'UNSUPPORTED_OPERATION', operation: 'export.dfjson' });
+      model.close();
+      expect(() => model.bim.spaces.storeys()).toThrow(HeadlessSessionClosedError);
+      await expect(model.bim.export.hbjson()).rejects.toBeInstanceOf(HeadlessSessionClosedError);
     } finally { model.close(); }
   });
 

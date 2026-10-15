@@ -179,14 +179,20 @@ export async function runLive({ manifest, captured, providers, tasks, repeats, f
   const results = [];
   let stopped = null;
   const byId = new Map(manifest.tasks.map(task => [task.id, task]));
+  const unknown = tasks.filter(id => !byId.has(id));
+  if (unknown.length) throw new Error(`Unknown task(s): ${unknown.join(', ')}`);
   // Each provider replays a capture made with its own model: output ceiling and temperature are per model.
-  const captureOf = provider => provider.captured ?? captured;
-  // A requested task the capture does not contain is refused up front, never silently dropped from the counts.
-  const missing = [...new Set(providers.flatMap(provider => tasks.filter(id => !captureOf(provider).tasks.some(item => item.taskId === id))))];
-  if (missing.length) throw new Error(`The captured requests file has no entry for: ${missing.join(', ')}. Recapture with pnpm ai-eval requests.`);
-  for (const task of tasks.map(id => byId.get(id))) {
+  const entries = new Map(providers.map(provider => {
+    const capture = provider.captured ?? captured;
+    if (!capture) throw new Error(`No captured requests for ${provider.kind}`);
+    // A requested task the capture does not contain is refused up front, never silently dropped from the counts.
+    const missing = tasks.filter(id => !capture.tasks.some(item => item.taskId === id));
+    if (missing.length) throw new Error(`The ${provider.kind} capture has no entry for: ${missing.join(', ')}. Recapture with pnpm ai-eval requests.`);
+    return [provider, new Map(capture.tasks.map(item => [item.taskId, item]))];
+  }));
+  for (const task of [...new Set(tasks)].map(id => byId.get(id))) {
     for (const provider of providers) {
-      const entry = captureOf(provider).tasks.find(item => item.taskId === task.id);
+      const entry = entries.get(provider).get(task.id);
       if (entry.skipped) { results.push({ task: task.id, route: provider.kind, skipped: entry.skipped }); continue; }
       for (let repeat = 1; repeat <= repeats; repeat++) {
         if (receipts.length + 1 > budget.maxRequests) { stopped = `request budget of ${budget.maxRequests} reached`; break; }

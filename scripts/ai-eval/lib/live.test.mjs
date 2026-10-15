@@ -125,7 +125,7 @@ test('a run refuses non-positive or non-numeric repeats and tasks the capture do
   for (const repeats of [0, -1, Number.NaN, 1.5]) {
     await assert.rejects(runLive({ ...common, repeats, fetchImpl }), /--repeats must be a whole number/);
   }
-  await assert.rejects(runLive({ ...common, tasks: ['clash-summary', 'not-captured-task'], fetchImpl }), /no entry for: not-captured-task/);
+  await assert.rejects(runLive({ ...common, tasks: ['clash-summary', 'flow-sum'], fetchImpl }), /openai capture has no entry for: flow-sum/);
   assert.equal(calls, 0);
 });
 
@@ -165,4 +165,11 @@ test('#6928 each provider replays the capture made with its own model', async ()
   assert.deepEqual([byUrl(anthropic.url).temperature, byUrl(anthropic.url).max_tokens], [undefined, 2000]);
   assert.deepEqual([byUrl(provider.url).temperature, byUrl(provider.url).max_completion_tokens], [0, 4096]);
   assert.deepEqual(outcome.results.filter(result => result.skipped).map(result => result.route), ['anthropic', 'openai']);
+});
+
+test('#6928 a task listed twice runs once, and an unknown task is refused', async () => {
+  let calls = 0;
+  const outcome = await runLive({ ...common, tasks: ['clash-summary', 'clash-summary'], fetchImpl: async () => { calls++; return new Response(chatStream('ok [E1]')); } });
+  assert.deepEqual([calls, outcome.recordings.length], [1, 1]);
+  await assert.rejects(runLive({ ...common, tasks: ['no-such-task'], fetchImpl: reply('') }), /Unknown task\(s\): no-such-task/);
 });

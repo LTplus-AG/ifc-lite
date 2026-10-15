@@ -71,13 +71,25 @@ export async function main(args, env) {
   // One capture per provider, made with that provider's model: the output ceiling and
   // whether a temperature is sent are per model. --requests reuses one capture for all.
   const shared = flag(args, 'requests') ? JSON.parse(readFileSync(resolve(flag(args, 'requests')), 'utf8')) : null;
+  const byModel = new Map();
+  const ready = [];
   for (const provider of providers) {
-    if (shared) { provider.captured = shared; continue; }
-    const file = join(runDir, `requests-${provider.kind}.json`);
-    capture(manifestPath, provider.model, tasks, file);
-    provider.captured = JSON.parse(readFileSync(file, 'utf8'));
+    if (shared?.model && shared.model !== provider.model) {
+      throw new Error(`--requests was captured with ${shared.model}, not ${provider.model}; recapture without --requests`);
+    }
+    try {
+      if (!shared && !byModel.has(provider.model)) {
+        const file = join(runDir, `requests-${provider.kind}.json`);
+        capture(manifestPath, provider.model, tasks, file);
+        byModel.set(provider.model, JSON.parse(readFileSync(file, 'utf8')));
+      }
+      ready.push({ ...provider, captured: shared ?? byModel.get(provider.model) });
+    } catch (error) {
+      console.error(`skipping ${provider.kind}: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
-  const outcome = await runLive({ manifest, providers, tasks, repeats, fetchImpl: fetch, runId });
+  if (!ready.length) return 2;
+  const outcome = await runLive({ manifest, providers: ready, tasks, repeats, fetchImpl: fetch, runId });
   for (const recording of outcome.recordings) writeFileSync(join(runDir, 'recordings', `${recording.id}.json`), `${JSON.stringify(recording, null, 2)}\n`);
   writeFileSync(join(runDir, 'summary.json'), `${JSON.stringify({ runId, settings: outcome.settings, run: outcome.run, stopped: outcome.stopped, receipts: outcome.receipts, results: outcome.results }, null, 2)}\n`);
   console.log(`${outcome.receipts.length} request(s); ${outcome.run.reportedOutputTokens} reported output tokens; ${outcome.run.unreported} without reported usage.${outcome.stopped ? ` Stopped: ${outcome.stopped}.` : ''}`);

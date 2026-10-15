@@ -123,7 +123,8 @@
     "generate:epsg-index": "tsx scripts/generate-epsg-index.ts",
     "check:templates": "pnpm --filter=@ifc-lite/viewer --fail-if-no-match check:templates",
     "check:codegen-sync": "node scripts/check-codegen-sync.mjs",
-    "check:generated": "node scripts/check-generated.mjs"
+    "check:generated": "node scripts/check-generated.mjs",
+    "test:packed": "node scripts/check-packed-workflows.mjs"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",

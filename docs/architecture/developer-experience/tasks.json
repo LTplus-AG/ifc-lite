@@ -123,13 +123,21 @@
         },
         {
           "title": "External install from packed artifacts exercises complete workflows",
-          "status": "pending"
+          "status": "verified"
         },
         {
           "title": "Scaffolder selects and tests a compatible dependency set",
           "status": "pending"
         }
-      ]
+      ],
+      "checks": {
+        "packedConsumer": "25 local tarballs installed outside the repo; installed manifest protocols/versions and non-symlink directories verified",
+        "declarations": "External TypeScript consumer compiles installed declarations with skipLibCheck false; invalid capability names are rejected",
+        "runtime": "Committed IFC wall and manifest-verified FZK (5 doors): query/edit/export/reopen, stable GlobalId, structured unsupported/closed errors, real WASM GLB export",
+        "command": "Public root pnpm test:packed command integration test passed",
+        "evidence": "tests/evidence/packed-workflows/receipt.json",
+        "wiring": "Node guards invokes pnpm test:packed; test-wiring and touched-file oxlint passed"
+      }
     },
     {
       "id": "DX6",

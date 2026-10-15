@@ -1217,6 +1217,8 @@ jobs:
       # then made every fixture-gated test skip silently and report ok.
       - name: Verify fixtures
         run: pnpm fixtures:check
+      - name: Verify packed developer workflows
+        run: pnpm test:packed
       - name: Check test wiring
         run: node scripts/check-test-wiring.mjs
       - name: Check export completion calls

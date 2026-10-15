@@ -19,13 +19,16 @@ replica.
 | `IFC_METRICS_ENABLED` | off | Expose `GET /api/v1/metrics` (Prometheus text; behind the bearer token when one is set) |
 
 Each admitted parse reserves the full `MAX_FILE_SIZE_MB` against the byte
-budget while its upload arrives (multipart rarely declares a length up front),
-so the budget divided by the max file size is the number of large uploads that
-can be in flight at once. Once the file has arrived the reservation shrinks to
-7x its decoded size (the upper end of the sizing rule below), capped at
-`MAX_FILE_SIZE_MB`: a reservation never grows, and a small model no longer
-holds a large one's share (#7676). The streaming route's data-model fill runs
-under its stream's reservation rather than a second one.
+budget (multipart rarely declares a length up front), so the budget divided by
+the max file size is the number of large parses that can run concurrently. The
+reservation is held until the decode, hash and parse work has actually ended,
+even if the client disconnects or the request times out first. It is not
+shrunk to the upload's size once the file arrives: a parse's measured peak is
+20-33x its upload (53.7 MiB model: `parquet-stream` 22.5x, `parquet` 33x,
+`parse` 20x), so a smaller charge would admit more work than the box holds.
+Sizing it per route is deferred to L-server (#7676, SERVER-24). The streaming
+route's data-model fill runs under its stream's reservation rather than a
+second one.
 
 An upload must keep arriving to keep its reservation: one that goes 30 s
 without a byte, or whose average rate falls below 8 KiB/s once it has run
@@ -120,7 +123,8 @@ different key anyway; if you are invalidating to reclaim space, re-issue the
   lives behind `admission::resident_bytes_now()` if that decision is revisited.
 - gzip and `.ifcZIP` uploads are decompressed on the blocking pool, as is the
   SHA-256 of every upload, so neither stalls the async workers that also
-  serve `/health`, `/ready` and every open stream.
+  serve `/health`, `/ready` and every open stream. The admission guard rides
+  those tasks, so a cancelled request keeps its slot until they end.
 - SSE disconnects cancel the parse at the next batch boundary
   (`StreamingOptions::cancel`), freeing the core and the admission slot early.
   Synchronous (non-streaming) parses run to completion; their admission slot

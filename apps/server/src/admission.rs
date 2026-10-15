@@ -74,12 +74,14 @@ pub struct AdmissionGuard {
 }
 
 impl AdmissionGuard {
-    /// Give back every reserved byte above `bytes` (#7676, SERVER-24).
+    /// Give back every reserved byte above `bytes`.
     ///
-    /// An upload is admitted before its body is read, so it reserves
-    /// `MAX_FILE_SIZE_MB`; once the file has arrived its real size is known,
-    /// and holding the rest would let two small parses fill a box's budget.
-    /// Never grows the reservation, and never drops below one permit.
+    /// Never grows the reservation, and never drops below one permit. Not
+    /// used by the upload routes: a parse's measured peak is 20-33x its
+    /// upload, so no fixed multiplier makes a smaller charge safe (#7676,
+    /// SERVER-24, deferred to L-server). It is for a caller whose real size is
+    /// known up front, such as a cache read.
+    #[allow(dead_code)] // first non-test caller: the cache-read admission (#7709)
     pub fn shrink_to(&mut self, bytes: u64) {
         if let Some(mem) = self.mem.as_mut() {
             let keep = bytes.div_ceil(BYTES_PER_PERMIT).max(1) as usize;
@@ -130,8 +132,7 @@ impl Admission {
     ///
     /// Multipart rarely declares a length up front, so upload routes reserve
     /// the configured max file size, a conservative reservation that
-    /// guarantees the byte bound holds, and shrink it once the file has
-    /// arrived ([`AdmissionGuard::shrink_to`]).
+    /// guarantees the byte bound holds.
     pub async fn acquire(
         self: &Arc<Self>,
         reserve_bytes: u64,

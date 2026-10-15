@@ -35,14 +35,15 @@ pub async fn parse_full(
 ) -> Result<Response, ApiError> {
     // Extract file from multipart
     // Admission (bounded concurrency + byte budget) before the upload is
-    // buffered, then shrunk to what arrived; see `admit_upload`. Held for the
+    // buffered; see `admit_upload`. Held for the
     // request's whole lifetime so a disconnected-but-still-running job keeps
     // its memory slot.
     let (admission_guard, data) = admit_upload(&state, &mut multipart).await?;
 
     // Generate cache key (include opening filter so different modes get different cache entries)
     let tessellation_quality = query.resolved_tessellation_quality()?;
-    let cache_key = request_cache_key_off_runtime(&data, &query, tessellation_quality).await?;
+    let (cache_key, admission_guard) =
+        request_cache_key_off_runtime(&data, &query, tessellation_quality, admission_guard).await?;
     // The stored ParseResponse is versioned separately from the client-facing
     // cache_key so the Y-up switch (#1841) retires the old Z-up entries without
     // invalidating the parquet caches. See `json_response_cache_key`.
@@ -162,7 +163,7 @@ pub async fn parse_stream(
 
     // Extract file
     // Admission (bounded concurrency + byte budget) before the upload is
-    // buffered, then shrunk to what arrived; see `admit_upload`. Held for the
+    // buffered; see `admit_upload`. Held for the
     // request's whole lifetime so a disconnected-but-still-running job keeps
     // its memory slot.
     let (admission_guard, data) = admit_upload(&state, &mut multipart).await?;
@@ -211,7 +212,7 @@ pub async fn parse_metadata(
 ) -> Result<Json<MetadataResponse>, ApiError> {
     // Extract file
     // Admission (bounded concurrency + byte budget) before the upload is
-    // buffered, then shrunk to what arrived; see `admit_upload`. Held for the
+    // buffered; see `admit_upload`. Held for the
     // request's whole lifetime so a disconnected-but-still-running job keeps
     // its memory slot.
     let (admission_guard, data) = admit_upload(&state, &mut multipart).await?;

@@ -84,7 +84,7 @@ pub async fn parse_parquet_stream(
 
     // Extract file
     // Admission (bounded concurrency + byte budget) before the upload is
-    // buffered, then shrunk to what arrived; see `admit_upload`. Held for the
+    // buffered; see `admit_upload`. Held for the
     // request's whole lifetime so a disconnected-but-still-running job keeps
     // its memory slot.
     let (admission_guard, data) = admit_upload(&state, &mut multipart).await?;
@@ -93,7 +93,8 @@ pub async fn parse_parquet_stream(
     // From the RECEIVED BYTES, always: a `sha256` parameter that arrived
     // alongside a body has no say here, so a client whose claimed hash does not
     // describe what it uploaded still reads and writes the entry its bytes name.
-    let cache_key = request_cache_key_off_runtime(&data, &query, tessellation_quality).await?;
+    let (cache_key, admission_guard) =
+        request_cache_key_off_runtime(&data, &query, tessellation_quality, admission_guard).await?;
     let cache_key_clone = cache_key.clone();
     // Without `stream_shapes=cross-batch` this route SHARES nothing -- each
     // batch must decode on its own -- so the layout only decides whether the

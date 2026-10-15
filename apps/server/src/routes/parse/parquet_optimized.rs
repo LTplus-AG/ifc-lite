@@ -75,13 +75,14 @@ pub async fn parse_parquet_optimized(
 
     // Extract file from multipart
     // Admission (bounded concurrency + byte budget) before the upload is
-    // buffered, then shrunk to what arrived; see `admit_upload`. Held for the
+    // buffered; see `admit_upload`. Held for the
     // request's whole lifetime so a disconnected-but-still-running job keeps
     // its memory slot.
     let (admission_guard, data) = admit_upload(&state, &mut multipart).await?;
 
     // Generate cache key (include opening filter so different modes get different cache entries)
-    let cache_key = request_cache_key_off_runtime(&data, &query, tessellation_quality).await?;
+    let (cache_key, admission_guard) =
+        request_cache_key_off_runtime(&data, &query, tessellation_quality, admission_guard).await?;
 
     // Cache first, before any processing (issue #3889). The optimized route is
     // the SMALL payload and the one a viewer opens repeatedly, so re-parsing it

@@ -3,19 +3,21 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 //! Reading an upload (#7676: SERVER-10, SERVER-29, SERVER-35): where its
-//! decompression runs, how long a client may take to send it, and what a
-//! corrupt compressed upload answers.
+//! decompression runs, who holds the admission slot while it does, how long a
+//! client may take to send it, and what a corrupt compressed upload answers.
 
 use crate::routes::parse::worker_thread_tests::{
     assert_off_the_worker, await_threads_that_logged, record_event_threads,
 };
 use super::*;
+use crate::admission::{Admission, AdmissionCfg};
 use axum::body::Body;
 use axum::extract::FromRequest;
 use axum::http::{header, Request, StatusCode};
 use axum::response::IntoResponse;
 use futures::StreamExt;
 use std::io::Write;
+use std::sync::Arc;
 use std::time::Duration;
 
 const BOUNDARY: &str = "upload7676boundary";
@@ -180,4 +182,88 @@ async fn server_29_a_slow_steady_upload_is_accepted() {
     let mut multipart = multipart_from(steady).await;
     let file = extract_file(&mut multipart, 64).await.unwrap();
     assert_eq!(file.len(), SECONDS * PER_SECOND);
+}
+
+/// SERVER-29 (#7676), the idle cap: a client that starts fast and then goes
+/// silent is refused after [`UPLOAD_IDLE_TIMEOUT`], not when its rate floor
+/// finally expires. 1.5 MB in the first second puts the rate floor ~3 minutes
+/// out, so only the idle cap can end this stall at ~30 s. (The stall test above
+/// stalls at once, where the 15 s grace fires first and the cap is unseen.)
+#[tokio::test(start_paused = true)]
+async fn server_29_an_upload_that_starts_fast_then_stalls_is_refused_at_the_idle_cap() {
+    let fast_then_silent = async_stream::stream! {
+        yield Ok::<_, std::io::Error>(preamble());
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        yield Ok(bytes::Bytes::from(vec![b'f'; 1_500_000]));
+        futures::future::pending::<()>().await;
+    };
+    let mut multipart = multipart_from(fast_then_silent).await;
+
+    let started = tokio::time::Instant::now();
+    let outcome = tokio::time::timeout(Duration::from_secs(3600), extract_file(&mut multipart, 64)).await;
+    let err = outcome.expect("a stalled upload was waited on for an hour").unwrap_err();
+    assert_eq!(err.into_response().status(), StatusCode::REQUEST_TIMEOUT);
+    let waited = started.elapsed();
+    assert!(
+        waited >= UPLOAD_IDLE_TIMEOUT && waited < UPLOAD_IDLE_TIMEOUT + Duration::from_secs(5),
+        "a stall after a fast start should be refused at the {UPLOAD_IDLE_TIMEOUT:?} idle cap, took {waited:?}"
+    );
+}
+
+fn one_slot_admission() -> Arc<Admission> {
+    Arc::new(Admission::new(AdmissionCfg {
+        max_concurrent_parses: 1,
+        mem_budget_bytes: 1024 * 1024 * 1024,
+        queue_depth: 0,
+        queue_timeout: Duration::from_millis(20),
+        shed_pct: 0,
+    }))
+}
+
+/// Cancel `work` (the handler future) after `after`, as a `TimeoutLayer` or a
+/// disconnect does, and wait until it is really dropped.
+async fn cancel_after<F: std::future::Future + Send + 'static>(work: F, after: Duration)
+where
+    F::Output: Send + 'static,
+{
+    let handle = tokio::spawn(work);
+    tokio::time::sleep(after).await;
+    handle.abort();
+    assert!(matches!(handle.await, Err(e) if e.is_cancelled()), "the work finished before it could be cancelled");
+}
+
+/// Poll until the one slot is free again, panicking after `limit`.
+async fn slot_frees_within(admission: &Arc<Admission>, limit: Duration) -> Duration {
+    let started = std::time::Instant::now();
+    loop {
+        if admission.acquire(1).await.is_ok() {
+            return started.elapsed();
+        }
+        assert!(started.elapsed() < limit, "the slot was never released");
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+}
+
+/// SERVER-10 / #7676 review: the admission guard rides the upload hash. The
+/// hash holds a clone of the whole upload, so a
+/// cancelled handler must not free the slot under it.
+#[tokio::test]
+async fn the_admission_slot_outlives_a_cancelled_upload_hash() {
+    let admission = one_slot_admission();
+    let data = bytes::Bytes::from(vec![7u8; 128 * 1024 * 1024]);
+    let guard = admission.acquire(1).await.unwrap();
+    cancel_after(
+        async move {
+            let query = crate::routes::parse::ParseQuery::default();
+            request_cache_key_off_runtime(&data, &query, TessellationQuality::default(), guard).await.map(|(key, _)| key)
+        },
+        Duration::from_millis(5),
+    )
+    .await;
+
+    assert!(
+        admission.acquire(1).await.is_err(),
+        "the slot was re-admitted while the cancelled request's hash was still running"
+    );
+    slot_frees_within(&admission, Duration::from_secs(60)).await;
 }

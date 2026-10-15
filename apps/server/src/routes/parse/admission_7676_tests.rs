@@ -2,27 +2,15 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Upload admission (#7676: SERVER-8, SERVER-24, and the upload hash beside
-//! SERVER-10), driven through the real router.
+//! Upload admission (#7676: SERVER-8, and the upload hash beside SERVER-10),
+//! driven through the real router.
 
 use super::*;
 use crate::admission::{Admission, AdmissionCfg};
+use std::io::Write;
 use std::time::Duration;
 
 const MIB: u64 = 1024 * 1024;
-
-/// A fresh admission with `slots` CPU slots, a `budget_mib` byte budget
-/// (0 disables it), no queue, and a short wait, so an over-limit request
-/// answers 503 at once.
-fn admission(slots: usize, budget_mib: u64) -> Arc<Admission> {
-    Arc::new(Admission::new(AdmissionCfg {
-        max_concurrent_parses: slots,
-        mem_budget_bytes: budget_mib * MIB,
-        queue_depth: 0,
-        queue_timeout: Duration::from_millis(50),
-        shed_pct: 0,
-    }))
-}
 
 async fn send(state: &AppState, method: &str, uri: &str, file: Option<&str>) -> axum::response::Response {
     let builder = Request::builder().method(method).uri(uri);
@@ -84,27 +72,6 @@ async fn server_8_the_stream_fills_its_data_model_on_a_one_slot_host() {
     panic!("the data model was still not readable after 10 s");
 }
 
-/// SERVER-24 (#7676): an upload reserves the bytes it actually sent once it
-/// has arrived. Admission has to reserve `MAX_FILE_SIZE_MB` before the body
-/// is read, but keeping that reservation for a 3 KB file meant two small
-/// parses filled a box's whole budget.
-#[tokio::test]
-async fn server_24_an_upload_holds_its_own_size_not_the_maximum() {
-    let mut state = test_state("7676-upload-shrinks").await;
-    let budget_mib = state.config.max_file_size_mb as u64;
-    state.admission = admission(2, budget_mib);
-
-    let response = send(&state, "POST", "/api/v1/parse/parquet-stream", Some(JOBS_NE_MESHES_FIXTURE)).await;
-    assert_eq!(response.status(), StatusCode::OK);
-    let rest = state.admission.acquire((budget_mib - 16) * MIB).await;
-    assert!(
-        rest.is_ok(),
-        "a 3 KB upload still held a MAX_FILE_SIZE_MB reservation while it streamed: {rest:?}"
-    );
-    drop(rest);
-    drain(response).await;
-}
-
 /// SERVER-10 sibling (#7676): every upload route hashes the whole upload for
 /// its cache key, a second or so of SHA-256 at `MAX_FILE_SIZE_MB`. That ran
 /// on the async worker too, stalling every connection multiplexed there.
@@ -121,4 +88,53 @@ async fn server_10_the_upload_hash_runs_off_the_async_worker() {
     let key = live.iter().find(|e| e["type"] == "start").unwrap()["cache_key"].as_str().unwrap().to_string();
     let threads = await_threads_that_logged("Upload hashed", &key).await;
     assert_off_the_worker(&threads, "the upload hash");
+}
+
+/// SERVER-10 / #7676 review: the admission guard rides the blocking decode. A
+/// request cancelled mid-inflate (the `TimeoutLayer`, a disconnect) used to
+/// free its slot and budget at once while the detached inflate (up to
+/// `MAX_FILE_SIZE_MB` of output) went on unreserved, and the next upload was
+/// admitted on top of it. One slot, a gzip that inflates for a while, a cancel
+/// mid-inflate: the slot stays taken until the inflate has ended.
+#[tokio::test]
+async fn the_admission_slot_outlives_a_cancelled_gzip_decode() {
+    let mut state = test_state("7676-cancelled-decode").await;
+    let admission = Arc::new(Admission::new(AdmissionCfg {
+        max_concurrent_parses: 1,
+        mem_budget_bytes: 1024 * MIB,
+        queue_depth: 0,
+        queue_timeout: Duration::from_millis(20),
+        shed_pct: 0,
+    }));
+    state.admission = admission.clone();
+
+    // 96 MiB of zeros: about 100 KB on the wire, a long inflate.
+    let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+    encoder.write_all(&vec![0u8; 96 * MIB as usize]).unwrap();
+    let (content_type, body) = multipart_body(&encoder.finish().unwrap());
+    let request = Request::builder()
+        .method("POST")
+        .uri("/api/v1/parse")
+        .header(header::CONTENT_TYPE, content_type)
+        .body(Body::from(body))
+        .unwrap();
+    let handler = tokio::spawn(build_router(state).oneshot(request));
+
+    // Mid-inflate: the 96 MiB of output takes far longer than this.
+    tokio::time::sleep(Duration::from_millis(15)).await;
+    handler.abort();
+    assert!(
+        matches!(handler.await, Err(e) if e.is_cancelled()),
+        "the request finished before it could be cancelled"
+    );
+
+    assert!(
+        admission.acquire(1).await.is_err(),
+        "the slot was re-admitted while the cancelled request's inflate was still running"
+    );
+    let released = std::time::Instant::now();
+    while admission.acquire(1).await.is_err() {
+        assert!(released.elapsed() < Duration::from_secs(60), "the slot was never released");
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
 }

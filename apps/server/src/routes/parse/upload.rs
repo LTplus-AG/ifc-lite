@@ -16,23 +16,26 @@ use std::io::{Cursor, Read};
 use std::time::Duration;
 use tokio::time::Instant;
 
-/// Admit an upload, read it, and charge it for what it actually is: the one
-/// sequence every upload route runs (#7676, SERVER-24).
+/// Admit an upload and read it: the one sequence every upload route runs
+/// (#7676).
 ///
 /// Admission comes BEFORE the body is buffered: N concurrent large uploads
 /// each buffering the whole file is the outage it exists to prevent. Multipart
-/// rarely declares a length, so the reservation starts at `MAX_FILE_SIZE_MB`,
-/// and once the file has arrived it shrinks to [`PARSE_BYTES_PER_UPLOAD_BYTE`]
-/// times the decoded size. It never grows, so no request reserves more than
-/// it did before; a 3 KB upload no longer holds 500 MB of a 1.4 GB budget.
+/// rarely declares a length, so the reservation is `MAX_FILE_SIZE_MB`, and it
+/// is held for the request's whole lifetime. (Shrinking it to the upload's
+/// size was tried and withdrawn: measured parse peaks are 20-33x the upload,
+/// far above any multiplier that would make a smaller charge safe. That half
+/// of SERVER-24 is deferred to L-server.)
+///
+/// The guard rides the blocking decode (see [`extract_file_holding`]), so a
+/// cancelled handler cannot free the slot while the inflate still runs.
 pub(crate) async fn admit_upload(
     state: &AppState,
     multipart: &mut Multipart,
 ) -> Result<(AdmissionGuard, bytes::Bytes), ApiError> {
     let max_file_size_mb = state.config.max_file_size_mb;
-    let mut admission = state.admission.acquire(max_file_size_mb as u64 * 1024 * 1024).await?;
-    let file = extract_file(multipart, max_file_size_mb).await?;
-    admission.shrink_to((file.len() as u64).saturating_mul(PARSE_BYTES_PER_UPLOAD_BYTE));
+    let admission = state.admission.acquire(max_file_size_mb as u64 * 1024 * 1024).await?;
+    let (file, admission) = extract_file_holding(multipart, max_file_size_mb, admission).await?;
     Ok((admission, file))
 }
 
@@ -40,25 +43,24 @@ pub(crate) async fn admit_upload(
 /// route computes it: a SHA-256 over up to `MAX_FILE_SIZE_MB` is a second or
 /// so of CPU, and on an async worker it stalls every connection multiplexed
 /// there, the same defect as the upload decode (#7676, SERVER-10).
+///
+/// The admission guard moves INTO the task and comes back with the key, as it
+/// does for the parse itself: if the handler is cancelled mid-hash, the task
+/// still holds a clone of the whole upload, so it must still hold the slot.
 pub(crate) async fn request_cache_key_off_runtime(
     data: &bytes::Bytes,
     query: &super::ParseQuery,
     quality: TessellationQuality,
-) -> Result<String, ApiError> {
+    admission: AdmissionGuard,
+) -> Result<(String, AdmissionGuard), ApiError> {
     let (data, query) = (data.clone(), query.clone());
     Ok(tokio::task::spawn_blocking(move || {
         let key = super::cache_keys::request_cache_key(&data, &query, quality);
         tracing::debug!(cache_key = %key, size = data.len(), "Upload hashed");
-        key
+        (key, admission)
     })
     .await?)
 }
-
-/// What a parse holds per byte of upload at its peak: the upload itself plus
-/// a 3-6x decode/mesh working set, the upper end of `OPERATIONS.md`'s sizing
-/// rule. The reservation is a proxy for that working set, which is why it is
-/// not just the file size.
-const PARSE_BYTES_PER_UPLOAD_BYTE: u64 = 7;
 
 /// Longest an upload may go without delivering a byte (#7676, SERVER-29).
 const UPLOAD_IDLE_TIMEOUT: Duration = Duration::from_secs(30);
@@ -130,6 +132,20 @@ pub(crate) async fn extract_file(
     multipart: &mut Multipart,
     max_file_size_mb: usize,
 ) -> Result<bytes::Bytes, ApiError> {
+    Ok(extract_file_holding(multipart, max_file_size_mb, ()).await?.0)
+}
+
+/// [`extract_file`] for a caller that holds something the decode must outlive
+/// (the admission guard). `held` moves INTO the blocking decode and comes back
+/// with the file, the same pattern `parse_full` uses: if the handler future is
+/// cancelled (the `TimeoutLayer`, a disconnect), the detached inflate keeps
+/// running - and keeps `held` - until it actually exits, so a replacement is
+/// never admitted on top of it (#7676).
+pub(crate) async fn extract_file_holding<H: Send + 'static>(
+    multipart: &mut Multipart,
+    max_file_size_mb: usize,
+    held: H,
+) -> Result<(bytes::Bytes, H), ApiError> {
     let max_bytes = max_file_size_mb.saturating_mul(1024 * 1024);
     let started = Instant::now();
 
@@ -149,7 +165,10 @@ pub(crate) async fn extract_file(
             }
             let bytes = bytes::Bytes::from(buf);
             tracing::debug!(size = bytes.len(), "Extracted file from multipart");
-            return tokio::task::spawn_blocking(move || decode_upload(bytes, max_bytes, max_file_size_mb)).await?;
+            return tokio::task::spawn_blocking(move || {
+                decode_upload(bytes, max_bytes, max_file_size_mb).map(|file| (file, held))
+            })
+            .await?;
         }
     }
 

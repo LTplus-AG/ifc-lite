@@ -291,6 +291,28 @@ test('vacuous: a declaration the scan cannot parse is named, not skipped', (t) =
   assert.match(out, /UNPARSED_DEP/);
 });
 
+test('vacuous: a [dependencies.ifc-lite-x] table header is named, not skipped', (t) => {
+  const root = makeTree(t, { npmVersion: '6.1.0', crateVersion: '7.1.0', offsetFile: OFFSET_1 });
+  writeFileSync(
+    join(root, 'rust', 'clash', 'Cargo.toml'),
+    `[package]\nname = "ifc-lite-clash"\nversion.workspace = true\n\n[dependencies.ifc-lite-core]\npath = "../core"\nversion = "1.2.3"\n`
+  );
+  const { code, out } = run(root);
+  assert.equal(code, 1, out);
+  assert.match(out, /UNPARSED_DEP/);
+});
+
+test('vacuous: a dotted ifc-lite-x.version key is named, not skipped', (t) => {
+  const root = makeTree(t, { npmVersion: '6.1.0', crateVersion: '7.1.0', offsetFile: OFFSET_1 });
+  writeFileSync(
+    join(root, 'rust', 'clash', 'Cargo.toml'),
+    `[package]\nname = "ifc-lite-clash"\nversion.workspace = true\n\n[dependencies]\nifc-lite-core.version = "1.2.3"\nifc-lite-core.path = "../core"\n`
+  );
+  const { code, out } = run(root);
+  assert.equal(code, 1, out);
+  assert.match(out, /UNPARSED_DEP/);
+});
+
 test('vacuous: the crate directory list points nowhere', (t) => {
   const root = makeTree(t, { offsetFile: OFFSET_0 });
   rmSync(join(root, 'rust'), { recursive: true });

@@ -65,13 +65,12 @@ import { dirname, join } from 'node:path';
 
 import {
   computeReleaseVersions,
-  scanInternalDepsDetailed,
   MIN_TOTAL_DEP_DECLARATIONS,
   MIN_WORKSPACE_DEP_LITERALS,
   OFFSET_FILE_NAME,
-  RUST_MEMBER_DIRS,
   WORKSPACE_VERSION_PATTERN,
 } from './lib/rust-major-offset.mjs';
+import { RUST_MEMBER_DIRS, scanInternalDepsDetailed } from './lib/rust-internal-deps.mjs';
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 

@@ -29,11 +29,10 @@ import { dirname, join } from 'path';
 
 import {
   computeReleaseVersions,
-  rewriteInternalDeps,
   OFFSET_FILE_NAME,
-  RUST_MEMBER_DIRS,
   WORKSPACE_VERSION_PATTERN,
 } from './lib/rust-major-offset.mjs';
+import { rewriteInternalDeps, RUST_MEMBER_DIRS } from './lib/rust-internal-deps.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);

@@ -25,6 +25,13 @@ use serde_json::Value;
 use std::sync::Arc;
 use tower::ServiceExt;
 
+// Route body golden hashes (#7671) reuse this file's request helpers. They are
+// declared from here, not from `main.rs`, so adding them changes no production
+// file: the revert oracle would otherwise revert the `mod` line and measure an
+// empty test collection.
+#[path = "route_golden_tests.rs"]
+mod route_golden_tests;
+
 /// Minimal IFC4 model carrying one `IfcAnnotation` (a full-circle disk), one
 /// `IfcGrid` with two axes, and one extruded-solid `IfcWall`. The wall gives the
 /// geometry endpoints a real mesh; the annotation + grid populate `circles` and

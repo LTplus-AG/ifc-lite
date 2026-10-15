@@ -69,9 +69,6 @@ const BODY_LIMIT_SLACK_MB: usize = 16;
 mod parity_tests;
 
 #[cfg(test)]
-mod route_golden_tests;
-
-#[cfg(test)]
 #[path = "cors_tests.rs"]
 mod cors_tests;
 

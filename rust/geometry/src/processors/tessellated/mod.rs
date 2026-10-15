@@ -6,7 +6,11 @@
 //!
 //! Handles IfcTriangulatedFaceSet (explicit triangle meshes) and
 //! IfcPolygonalFaceSet (polygon meshes requiring triangulation).
+//!
+//! Both read indices through `indices` (one CoordIndex/`PnIndex` rule) and
+//! orient through [`orients_outward`] (one `Closed` policy), #7689.
 
+mod indices;
 mod mesh_build;
 mod polygonal;
 mod triangulate;
@@ -24,6 +28,18 @@ use ifc_lite_core::{
     extract_coordinate_list_from_entity, extract_coordinate_list_from_entity_f64, AttributeValue,
     EntityDecoder,
 };
+
+/// The one `Closed` policy for both tessellated face sets: orient the shell
+/// outward unless `Closed` is explicitly `.F.`.
+///
+/// `.T.` is a closed shell. `$` says nothing, and Revit and similar exporters
+/// write closed shells with `$`, some of them wound inward (#819,
+/// `IFC4TessellationComplex.ifc`), so an unknown shell is oriented too. Only
+/// an explicit `.F.` keeps the authored winding. The polygonal processor used
+/// to read `$` as open and the triangulated one as closed (#7689, PROC-3).
+fn orients_outward(closed: Option<&AttributeValue>) -> bool {
+    closed.and_then(AttributeValue::as_enum) != Some("F")
+}
 
 /// Read an `IfcCartesianPointList3D` as flat `[x, y, z, ...]` f32 positions.
 ///

@@ -96,6 +96,7 @@ pub use fast_parse::{
     extract_entity_refs_from_list, extract_entity_type_name,
     extract_face_indices_from_entity, extract_first_entity_ref, parse_coordinates_direct,
     parse_indices_direct, process_triangulated_faceset_direct, should_use_fast_path, FastMeshData,
+    INVALID_INDEX,
 };
 pub use generated::{
     attribute_names_for_schema, entity_info_for_schema, is_subtype_of_for_schema, IfcType,

@@ -633,25 +633,13 @@ impl<'a> EntityDecoder<'a> {
             return None;
         }
 
-        // Check if this is an outer bound by looking for "OUTER" in the type name
-        // IFCFACEOUTERBOUND vs IFCFACEBOUND
-        // The type name is between '=' and '('
-        let mut is_outer = false;
+        // IFCFACEOUTERBOUND vs IFCFACEBOUND, under STEP's case-insensitive
+        // keyword rule (#4497): a CamelCase `IfcFaceOuterBound` is an outer
+        // bound too (#7689, CORE-11).
+        let is_outer = crate::fast_parse::extract_entity_type_name(bytes)
+            .is_some_and(|name| crate::parser::keyword_eq(name, "IFCFACEOUTERBOUND"));
         let mut i = eq_pos + 1;
-        // Look for "OUTER" pattern (must check for the full word, not just 'O')
-        while i + 4 < len && bytes[i] != b'(' {
-            if bytes[i] == b'O'
-                && bytes[i + 1] == b'U'
-                && bytes[i + 2] == b'T'
-                && bytes[i + 3] == b'E'
-                && bytes[i + 4] == b'R'
-            {
-                is_outer = true;
-                break;
-            }
-            i += 1;
-        }
-        // Continue to find the '(' if we haven't already
+        // Find the '(' that opens the argument list
         while i < len && bytes[i] != b'(' {
             i += 1;
         }

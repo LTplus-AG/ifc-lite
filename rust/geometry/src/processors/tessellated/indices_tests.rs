@@ -176,3 +176,31 @@ fn texture_without_tex_coord_index_pairs_uvs_with_coord_index_under_pn_index_768
     // V is flipped to a top-left origin.
     assert_eq!(uvs, vec![0.0, 1.0, 1.0, 1.0, 0.0, 0.0]);
 }
+
+/// A planar sheet has no inside: the orientation test's sum is rounding noise
+/// of either sign there, which flipped such sheets at random. Now that
+/// `Closed = $` orients both face sets, a single face (ISSUE_171 #4343, a
+/// barely warped quad, and #4355, a planar one) and a flat terrain patch
+/// marked `.T.` (`landxml/federation/bonsai-topo-control-v1/terrain.ifc`)
+/// keep their authored winding in both orders (#7689).
+#[test]
+fn planar_sheets_keep_their_authored_winding_7689() {
+    let sheets = [
+        "((-2.96410202980042,-2.8660249710083,4.),(-1.96410202980042,-4.59807586669922,3.20000004768372),(2.3660249710083,-2.0980761051178,3.20000004768372),(-0.366025000810623,-1.3660249710083,4.))",
+        "((-3.96410202980042,-1.1339750289917,3.20000004768372),(0.366025000810623,1.3660249710083,3.20000004768372),(0.366025000810623,1.3660249710083,0.),(-3.96410202980042,-1.1339750289917,0.))",
+    ];
+    for points in sheets {
+        for (face, closed) in [("(1,2,3,4)", "$"), ("(4,3,2,1)", "$"), ("(1,2,3,4)", ".T."), ("(4,3,2,1)", ".T.")] {
+            let content = format!("#1=IFCCARTESIANPOINTLIST3D({points});\n#2=IFCINDEXEDPOLYGONALFACE({face});\n#3=IFCPOLYGONALFACESET(#1,{closed},(#2),$);\n");
+            let open = content.replace(&format!("#1,{closed},"), "#1,.F.,");
+            assert_eq!(triangles(&mesh(&content, 3)), triangles(&mesh(&open, 3)), "{face} Closed = {closed}");
+        }
+    }
+    // Four coplanar triangles of a flat terrain patch, wound up and down.
+    let patch = "#1=IFCCARTESIANPOINTLIST3D(((0.,0.,5.),(10.,0.,5.),(10.,10.,5.),(0.,10.,5.),(5.,5.,5.)));\n";
+    for faces in ["((1,2,5),(2,3,5),(3,4,5),(4,1,5))", "((1,5,2),(2,5,3),(3,5,4),(4,5,1))"] {
+        let closed = format!("{patch}#2=IFCTRIANGULATEDFACESET(#1,$,.T.,{faces},$);\n");
+        let open = format!("{patch}#2=IFCTRIANGULATEDFACESET(#1,$,.F.,{faces},$);\n");
+        assert_eq!(triangles(&mesh(&closed, 2)), triangles(&mesh(&open, 2)), "{faces}");
+    }
+}

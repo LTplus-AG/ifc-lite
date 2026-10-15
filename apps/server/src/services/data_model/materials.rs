@@ -278,7 +278,10 @@ fn resolve_definition(
 /// plus layers: a set listing one layer 1 000 times, related to 1 000 elements,
 /// was 1 000 000 rows from 8 KB (#7675, SERVER-26). A real element costs the
 /// file far more than its rows cost the table (its own record, placement and
-/// geometry), so 16 bytes per input byte binds only that product.
+/// geometry), so 16 bytes per input byte binds only that product. A refusal
+/// fails the whole response on the routes that carry geometry and the data
+/// model together; the 121-fixture corpus peaks at 1.16% of this budget, and
+/// this constant is the knob if a real file ever meets it.
 const MATERIAL_TABLE_BYTES_PER_INPUT_BYTE: usize = 16;
 const MATERIAL_TABLE_MIN_BYTES: usize = 16 << 20;
 

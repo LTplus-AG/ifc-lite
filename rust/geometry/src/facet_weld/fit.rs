@@ -2,7 +2,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! The existing area-weighted plane fit, scoped to one edge-connected patch.
+//! The existing area-weighted plane fit for an original cluster or an admitted
+//! edge-connected patch.
 
 use super::MAX_VERTEX_MOVE;
 

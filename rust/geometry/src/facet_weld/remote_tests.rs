@@ -281,3 +281,154 @@ fn issue_7633_unsupported_singleton_partition_keeps_legacy_grid_writes() {
     );
     assert!(certified(&output));
 }
+
+/// Two axis-sided prisms with one four-triangle top cluster, one bottom
+/// cluster and six side clusters. This fixture inventory calls the existing
+/// fit directly; it neither repeats the production bucket/DSU walk nor uses
+/// the new eligibility decision to manufacture the expected geometry.
+fn established_two_prism_fit(source: &Mesh) -> Mesh {
+    use std::collections::BTreeMap;
+    let mut seen = BTreeMap::new();
+    let mut positions = Vec::new();
+    let ids: Vec<_> = source
+        .positions
+        .chunks_exact(3)
+        .map(|p| {
+            let point = [f64::from(p[0]), f64::from(p[1]), f64::from(p[2])];
+            *seen.entry(point.map(super::dedup_key)).or_insert_with(|| {
+                positions.push(point);
+                positions.len() - 1
+            })
+        })
+        .collect();
+    let facets: Vec<_> = source
+        .indices
+        .chunks_exact(3)
+        .map(|t| {
+            let tri = [ids[t[0] as usize], ids[t[1] as usize], ids[t[2] as usize]];
+            let [a, b, c] = tri.map(|id| positions[id]);
+            let (normal, area2) = super::tri_normal(a, b, c).unwrap();
+            super::fit::Facet {
+                tri,
+                normal,
+                area2,
+                offset: normal[0] * a[0] + normal[1] * a[1] + normal[2] * a[2],
+            }
+        })
+        .collect();
+    assert_eq!(facets.len(), 24);
+    let mut moves = vec![Vec::new(); positions.len()];
+    // Same deterministic normal-bucket order: Z, Y, X. Within each bucket
+    // use the authored sign-aligned plane offsets (bottom before top).
+    let groups: &[&[usize]] = &[
+        &[2, 3, 14, 15],
+        &[0, 1, 12, 13],
+        &[8, 9, 20, 21],
+        &[4, 5, 16, 17],
+        &[10, 11],
+        &[6, 7],
+        &[22, 23],
+        &[18, 19],
+    ];
+    for &members in groups {
+        let reference = if members[0] < 4 {
+            0
+        } else if members[0] % 12 == 4 || members[0] % 12 == 8 {
+            4
+        } else {
+            6
+        };
+        super::fit::project_component(
+            &facets,
+            members,
+            facets[reference].normal,
+            &positions,
+            [0.; 3],
+            &mut moves,
+        );
+    }
+    let mut out = source.clone();
+    for (dst, id) in out.positions.chunks_exact_mut(3).zip(ids) {
+        let candidates = &moves[id];
+        assert!(!candidates.is_empty());
+        let mut sum = [0.; 3];
+        for candidate in candidates {
+            for k in 0..3 {
+                sum[k] += candidate[k];
+            }
+        }
+        let inverse = 1. / candidates.len() as f64;
+        for k in 0..3 {
+            dst[k] = snap_grid(sum[k] * inverse) as f32;
+        }
+    }
+    out
+}
+
+fn two_supported_prisms(warp_first: bool) -> Mesh {
+    let g = 1. / 65536.;
+    let first = [
+        [0., 0., 0.],
+        [1., 0., 0.],
+        [1., 1., if warp_first { 2. * g } else { 0. }],
+        [0., 1., 0.],
+    ];
+    let slope = if warp_first { 0. } else { 4. * g };
+    let second = [[3., 0., 0.], [4., 0., 0.], [4., 1., slope], [3., 1., slope]];
+    let mut tris = prism(first, [0., 0., -1.], false);
+    tris.extend(prism(second, [0., 0., -1.], false));
+    triangles(&tris)
+}
+
+/// #7633: the coarse graph can be closed while actual fine-grid triangle
+/// copies have a seam. Both proposed top patches have two triangles and are
+/// planar; the fine-source guard must keep the established global fit.
+#[test]
+fn issue_7633_fine_open_canonical_closed_source_keeps_established_fit() {
+    let clean = two_supported_prisms(false);
+    assert!(certified(&clean));
+    let established = established_two_prism_fit(&clean);
+    assert_ne!(
+        weld_near_coplanar_facets(&clean).positions,
+        established.positions,
+        "the supported planar split must be an observable positive control"
+    );
+    let mut source = clean.clone();
+    // A late copy of front[0] already has its canonical representative from
+    // triangle0. One fine step stays inside the same 100-micrometre cell.
+    let corner = source.indices[11 * 3 + 2] as usize;
+    assert_eq!(&source.positions[corner * 3..corner * 3 + 3], &[0., 0., 0.]);
+    source.positions[corner * 3 + 2] = (1. / 65536.) as f32;
+    let fine = |v: f32| (f64::from(v) / crate::kernel::mesh_bridge::SNAP_GRID).round() as i64;
+    let canonical = |v: f32| super::dedup_key(f64::from(v));
+    assert_eq!(dual_domain_counts(&source, fine), (4, 0));
+    assert_eq!(dual_domain_counts(&source, canonical), (0, 0));
+    let output = weld_near_coplanar_facets(&source);
+    assert_eq!(output.positions, established.positions);
+    assert_eq!(output.indices, source.indices);
+    assert_eq!(output.normals, source.normals);
+    assert!(!certified(&source));
+}
+
+/// #7633: complete source incidence and supported connected patches do not
+/// authorize replacing the jitter fit of an internally nonplanar patch.
+#[test]
+fn issue_7633_nonplanar_supported_patch_keeps_established_fit() {
+    let source = two_supported_prisms(true);
+    assert!(certified(&source));
+    let point = |i: usize| std::array::from_fn(|k| f64::from(source.positions[i * 3 + k]));
+    assert_ne!(
+        geometry_predicates::orient3d(point(0), point(1), point(2), point(5)),
+        0.
+    );
+    let established = established_two_prism_fit(&source);
+    assert_ne!(
+        established.positions,
+        source_grid(&source),
+        "the old jitter fit must make an observable geometric correction"
+    );
+    let output = weld_near_coplanar_facets(&source);
+    assert_eq!(output.positions, established.positions);
+    assert_eq!(output.indices, source.indices);
+    assert_eq!(output.normals, source.normals);
+}

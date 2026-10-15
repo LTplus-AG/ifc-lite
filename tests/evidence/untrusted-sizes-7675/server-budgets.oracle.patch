@@ -1,3 +1,27 @@
+diff --git a/apps/server/src/error.rs b/apps/server/src/error.rs
+--- a/apps/server/src/error.rs
++++ b/apps/server/src/error.rs
+@@ -163,7 +163,7 @@ impl From<crate::services::parquet_data_model::DataModelParquetError> for ApiErr
+         match err {
+             // The upload is what is over budget (#7675), not the server.
+             crate::services::parquet_data_model::DataModelParquetError::Refused(reason) => {
+-                ApiError::Parquet(reason)
++                ApiError::BadRequest(reason)
+             }
+             err => ApiError::Parquet(err.to_string()),
+         }
+diff --git a/apps/server/src/routes/parse/fetch.rs b/apps/server/src/routes/parse/fetch.rs
+--- a/apps/server/src/routes/parse/fetch.rs
++++ b/apps/server/src/routes/parse/fetch.rs
+@@ -108,7 +108,7 @@ pub async fn get_data_model(
+         }
+         None => {
+             // A fill that refused the model recorded why (#7675).
+-            if let Some(reason) = state.cache.get_bytes(&data_model_refusal_key(&data_model_cache_key)).await?.filter(|_| false) {
++            if let Some(reason) = state.cache.get_bytes(&data_model_refusal_key(&data_model_cache_key)).await? {
+                 return Err(ApiError::BadRequest(String::from_utf8_lossy(&reason).into_owned()));
+             }
+             tracing::debug!(cache_key = %cache_key, "No data model cached and none in flight for this key");
 diff --git a/apps/server/src/services/data_model/materials.rs b/apps/server/src/services/data_model/materials.rs
 --- a/apps/server/src/services/data_model/materials.rs
 +++ b/apps/server/src/services/data_model/materials.rs
@@ -11,31 +35,39 @@ diff --git a/apps/server/src/services/data_model/materials.rs b/apps/server/src/
                  rows.extend(layers.iter().map(|layer| MaterialAssociation {
                      element_id,
                      association_id: job.id,
-diff --git a/apps/server/src/services/data_model/property_value.rs b/apps/server/src/services/data_model/property_value.rs
---- a/apps/server/src/services/data_model/property_value.rs
-+++ b/apps/server/src/services/data_model/property_value.rs
-@@ -145,6 +145,10 @@ fn resolve_complex(
-     let mut out_of_budget = false;
+diff --git a/apps/server/src/services/parquet_data_model.rs b/apps/server/src/services/parquet_data_model.rs
+--- a/apps/server/src/services/parquet_data_model.rs
++++ b/apps/server/src/services/parquet_data_model.rs
+@@ -130,7 +130,9 @@ pub fn serialize_data_model_to_parquet(
+ /// Every section's length against the `u32` wire prefix, by length alone, so
+ /// the guard is testable without a 4 GiB section (#7675, SERVER-14).
+ fn check_section_lengths<'a>(lengths: impl Iterator<Item = (&'a str, usize)>) -> Result<(), DataModelParquetError> {
+-    let _ = lengths.count();
++    for (name, len) in lengths {
++        crate::services::parquet::check_u32_len(name, len)?;
++    }
+     Ok(())
+ }
  
-     for prop_id in refs {
-+        if *visits >= MAX_COMPLEX_PROPERTY_MEMBERS {
-+            out_of_budget = true;
-+            break;
-+        }
-         *visits += 1;
-         let nested_entity = match decoder.decode_by_id(prop_id) {
-             Ok(e) => e,
 diff --git a/packages/parser/src/property-complex-value.ts b/packages/parser/src/property-complex-value.ts
 --- a/packages/parser/src/property-complex-value.ts
 +++ b/packages/parser/src/property-complex-value.ts
-@@ -124,6 +124,10 @@ export function resolveComplexPropertyValue(
+@@ -88,7 +88,6 @@ export class ComplexPropertyBudget {
+     /** Start a top-level property: visits restart, bytes carry on. */
+     startProperty(): void {
+         this.visits = 0;
+-        this.bytesLeft = COMPLEX_PROPERTY_OUTPUT_BYTES;
+     }
  
-     for (const ref of hasProperties) {
-         if (typeof ref !== 'number') continue;
-+        if (budget.visits >= MAX_COMPLEX_PROPERTY_MEMBERS) {
-+            outOfBudget = true;
-+            break;
-+        }
-         budget.visits += 1;
-         // @raw-entity-enumeration-ok complex-property parsing follows this source member reference, not an entity set
-         const nestedRef = store.entityIndex.byId.get(ref) ?? store.deferredEntityIndex?.get(ref);
+     /** Whether one more member may be read, counting it if so. */
+diff --git a/rust/core/src/limits.rs b/rust/core/src/limits.rs
+--- a/rust/core/src/limits.rs
++++ b/rust/core/src/limits.rs
+@@ -209,7 +209,6 @@ impl ComplexPropertyBudget {
+     /// budget carries on.
+     pub fn start_property(&mut self) {
+         self.visits = 0;
+-        self.bytes_left = COMPLEX_PROPERTY_OUTPUT_BYTES;
+     }
+ 
+     /// Whether one more member may be read, counting it if so.

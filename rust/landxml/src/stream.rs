@@ -127,9 +127,11 @@ impl LandXmlTinStreamSession {
                 "stream output must be drained before advancing input",
             ));
         }
-        self.pending_input.extend(self.decoder.push(chunk)?);
-        self.consume_pending_input()?;
-        Ok(())
+        let parsed = self.decoder.push(chunk).and_then(|bytes| {
+            self.pending_input.extend(bytes);
+            self.consume_pending_input()
+        });
+        self.close_on_error(parsed)
     }
 
     pub fn drain(&mut self, max_bytes: usize) -> Result<Vec<LandXmlStreamEvent>, LandXmlError> {
@@ -154,8 +156,8 @@ impl LandXmlTinStreamSession {
             self.queued_bytes -= queued.serialized_bytes;
             events.push(queued.event);
         }
-        self.resume_after_drain()?;
-        Ok(events)
+        let resumed = self.resume_after_drain();
+        self.close_on_error(resumed).map(|()| events)
     }
 
     /// Finalize parsing and begin credited metadata delivery.

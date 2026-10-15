@@ -72,6 +72,18 @@ impl LandXmlTinStreamSession {
         self.closed = true;
     }
 
+    /// A parse error is terminal (#7677): each family parser pushes its frame
+    /// before the element handler runs, so after a refused element the frames
+    /// and the builders are out of step and the next tag would reach an
+    /// `expect` on the builder. The session is aborted, so every later call
+    /// reports it closed instead of resuming into that state.
+    pub(super) fn close_on_error<T>(&mut self, result: Result<T, LandXmlError>) -> Result<T, LandXmlError> {
+        if result.is_err() {
+            self.abort();
+        }
+        result
+    }
+
     pub fn header(&self) -> Option<LandXmlStreamHeader> {
         self.parser
             .as_ref()?

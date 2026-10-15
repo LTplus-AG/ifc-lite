@@ -899,14 +899,6 @@ jobs:
           # RED. Once the script is on main, ordinary whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- scripts/viewer-test-shards.mjs | grep -Fxq 'scripts/viewer-test-shards.mjs'; then
             oracle_args+=(--mutation tests/evidence/ci-viewer-test-shards/selection.oracle.patch)
-          # Keep the new browser-frames ratchet measurer importable while
-          # removing ONLY its admission call: the contaminated and incomplete
-          # artifact assertions must turn RED (they would be measured instead
-          # of refused). All changed tests still run on both sides.
-          # TODO(remove-by: measure-browser-frames.mjs is on main, louistrue)
-          # Ordinary whole-change inversion resumes automatically at that point.
-          elif git diff --name-only --diff-filter=A origin/main...HEAD -- scripts/perf-ratchet/measure-browser-frames.mjs | grep -Fxq 'scripts/perf-ratchet/measure-browser-frames.mjs'; then
-            oracle_args+=(--mutation tests/evidence/frame-ratchet-6975/admission.oracle.patch)
           fi
           node scripts/check-test-revert-oracle.mjs "${oracle_args[@]}"
           # #7512: observe cleanup independently of scoped admission/schema.

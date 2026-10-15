@@ -16,7 +16,8 @@
 //! the arrangement rather than inside the classifier. Supporting planes remain
 //! eligible outside their face footprints. An already admitted noncorner lift
 //! may prefer a covering face on a distinct plane; exact corners and same-plane
-//! seam identities retain their original targets (#7292).
+//! seam identities retain their original targets. Every proposed move preserves
+//! originally exact source/host faces with positive-area overlap (#7292).
 
 use super::arrangement::Tri;
 use super::near_band::NearBand;
@@ -25,6 +26,7 @@ mod lift;
 use lift::{exact_axis_plane_foot, exact_on_plane_weld};
 mod axis_rescue;
 use axis_rescue::{complete_axis_rescue, AxisPlane};
+mod incidence;
 mod selection;
 use selection::Face;
 
@@ -267,8 +269,9 @@ pub(crate) fn promote_cutter_verts_onto_host_faces(cutter: &mut [Tri], host: &[T
     let faces: Vec<Face> = host.iter().filter_map(|&t| Face::new(t, &band)).collect();
 
     let mut axis_planes: Option<Vec<AxisPlane>> = None;
-    for t in cutter.iter_mut() {
-        for v in t.iter_mut() {
+    let mut proposals = Vec::new();
+    for (ti, t) in cutter.iter().enumerate() {
+        for (vi, v) in t.iter().enumerate() {
             if host_verts.contains(&super::near_band::vertex_bits(v)) { continue; } // #3353
             // Begin with the nearest noisy plane. Covering-face preference
             // only revises an admitted noncorner lift on a distinct plane.
@@ -297,7 +300,8 @@ pub(crate) fn promote_cutter_verts_onto_host_faces(cutter: &mut [Tri], host: &[T
                     // refused lift may try the exact axis foot; all Q20 gates above
                     // remain mandatory. Further independent axis feet use
                     // their own original normal bands, preserving prior axes.
-                    let target = if admits(q20) {
+                    let q20_admitted = admits(q20);
+                    let target = if q20_admitted {
                         Some(q20)
                     } else {
                         exact_axis_plane_foot(original, f.t).filter(|&foot| admits(foot)).map(|foot| {
@@ -307,10 +311,39 @@ pub(crate) fn promote_cutter_verts_onto_host_faces(cutter: &mut [Tri], host: &[T
                         })
                     };
                     if let Some(w) = target {
-                        if w != original { welded += 1; }
-                        *v = w;
+                        // Numeric equality hides signed-zero writes performed
+                        // by the original loop; corner identity uses raw bits.
+                        if super::near_band::vertex_bits(&w) != super::near_band::vertex_bits(&original) {
+                            proposals.push((ti, vi, original, w, q20_admitted.then_some((d, f))));
+                        }
                     }
                 }
+            }
+        }
+    }
+    // Defer writes so the incidence map sees every ORIGINAL source triangle.
+    // Calls with no proposed movement avoid the extra broadphase entirely.
+    if !proposals.is_empty() {
+        let incidences = incidence::ExactFaceIncidences::new(cutter, host);
+        for (ti, vi, original, primary, admitted_q20_face) in proposals {
+            let target = if incidences.admits(original, primary, host) {
+                Some(primary)
+            } else {
+                // An admitted Q20 lift can scatter a tangential coordinate off
+                // an existing exact shared face (#7292). Only then try the
+                // selected axis plane's exact foot, under the same drift gate
+                // and every original overlapping-face incidence. Keep the
+                // established refused-Q20 axis-completion path unchanged.
+                admitted_q20_face.and_then(|(d, face)| {
+                    exact_axis_plane_foot(original, face.t).filter(|&foot| {
+                        face.admits(original, foot, d, &band, &host_verts)
+                            && incidences.admits(original, foot, host)
+                    })
+                })
+            };
+            if let Some(target) = target {
+                cutter[ti][vi] = target;
+                welded += usize::from(target != original);
             }
         }
     }

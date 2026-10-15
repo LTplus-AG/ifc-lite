@@ -53,7 +53,7 @@ test('a live run sends the credential in one header only, fixes settings, and re
   assert.equal(seen[0].body.max_completion_tokens, manifest.liveEvaluation.maxOutputTokens);
   assert.ok(!JSON.stringify(seen[0].body).includes(provider.key), 'the key never enters the request body');
   assert.ok(!JSON.stringify(outcome).includes(provider.key), 'the key never enters any output');
-  assert.deepEqual(outcome.results.at(-1), { task: 'validation-explain-fzk', skipped: 'Run pnpm fixtures to fetch AC20-FZK-Haus.ifc' });
+  assert.deepEqual(outcome.results.at(-1), { task: 'validation-explain-fzk', route: 'openai', skipped: 'Run pnpm fixtures to fetch AC20-FZK-Haus.ifc' });
   const [first] = outcome.recordings;
   assert.deepEqual(recordingErrors(first), []);
   assert.equal(first.corpus, 'live');
@@ -147,9 +147,22 @@ test('receipts record the temperature actually sent, and redirects are never fol
 
 test('#6928 wireRequest omits temperature where the Assistant sent none', () => {
   const settings = { temperature: 0, maxOutputTokens: 1000 };
-  const request = { system: 'SYSTEM', messages: [{ role: 'user', content: 'q' }], maxOutputTokens: 4096, acceptsTemperature: false };
+  const request = { system: 'SYSTEM', messages: [{ role: 'user', content: 'q' }], maxOutputTokens: 4096, sentTemperature: false };
   for (const kind of ['anthropic', 'openai']) {
     assert.ok(!('temperature' in wireRequest(kind, { model: 'm', request, settings }).body), kind);
-    assert.equal(wireRequest(kind, { model: 'm', request: { ...request, acceptsTemperature: true }, settings }).body.temperature, 0, kind);
+    assert.equal(wireRequest(kind, { model: 'm', request: { ...request, sentTemperature: true }, settings }).body.temperature, 0, kind);
   }
+});
+
+test('#6928 each provider replays the capture made with its own model', async () => {
+  const withRequest = change => ({ version: 1, tasks: captured.tasks.map(entry => (entry.request ? { ...entry, request: { ...entry.request, ...change } } : entry)) });
+  const anthropic = { kind: 'anthropic', url: 'https://example.invalid/v1/messages', model: 'frontier', key: 'anthropic-key-never-persisted-0123', captured: withRequest({ sentTemperature: false, maxOutputTokens: 2000 }) };
+  const openai = { ...provider, captured: withRequest({ sentTemperature: true }) };
+  const sent = [];
+  const fetchImpl = async (url, init) => { sent.push({ url, body: JSON.parse(init.body) }); return new Response(chatStream('ok [E1]')); };
+  const outcome = await runLive({ ...common, captured: undefined, providers: [anthropic, openai], tasks: ['clash-summary', 'validation-explain-fzk'], fetchImpl });
+  const byUrl = url => sent.find(call => call.url === url).body;
+  assert.deepEqual([byUrl(anthropic.url).temperature, byUrl(anthropic.url).max_tokens], [undefined, 2000]);
+  assert.deepEqual([byUrl(provider.url).temperature, byUrl(provider.url).max_completion_tokens], [0, 4096]);
+  assert.deepEqual(outcome.results.filter(result => result.skipped).map(result => result.route), ['anthropic', 'openai']);
 });

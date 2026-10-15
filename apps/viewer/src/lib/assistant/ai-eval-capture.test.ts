@@ -36,7 +36,8 @@ test('#6928 proxy, Anthropic and both OpenAI APIs capture one route-neutral requ
   const accepts: Record<string, boolean> = {};
   for (const model of ['claude-sonnet-5-5', 'claude-haiku-4-5-20251001']) {
     const result = await captureRequest(task, model);
-    accepts[model] = 'request' in result && result.request.acceptsTemperature;
+    assert.ok('request' in result, `${model} was captured`);
+    accepts[model] = result.request.sentTemperature;
   }
   assert.deepEqual(accepts, { 'claude-sonnet-5-5': false, 'claude-haiku-4-5-20251001': true }, 'temperature follows the viewer model flag');
   const { anthropicKey, openaiKey } = getApiKeys();

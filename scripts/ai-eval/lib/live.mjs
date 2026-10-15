@@ -4,10 +4,10 @@
 
 /**
  * Live provider calls for the AI evaluation (#6928). Opt-in only: nothing in
- * CI imports a network path. Settings are fixed (temperature 0 for direct
- * provider routes; the viewer proxy applies its own server-side sampling and
- * takes no temperature, so its receipts record `null`; the manifest's output
- * ceiling and timeout everywhere) and every call leaves a usage receipt; usage is
+ * CI imports a network path. Settings are fixed (temperature 0 where the
+ * Assistant sends a temperature: the viewer proxy and current frontier models
+ * take none, so their receipts record `null`; the manifest's output ceiling and
+ * timeout everywhere) and every call leaves a usage receipt; usage is
  * recorded only when the provider streamed it, never estimated. Credentials
  * come from the environment, are used for one header, and never reach a
  * recording, receipt or log (`assertNoSecrets` refuses to write if one does).
@@ -72,8 +72,8 @@ export function wireRequest(kind, { model, request, settings }) {
   const { system, messages, maxOutputTokens } = request;
   const maxTokens = Math.min(maxOutputTokens, settings.maxOutputTokens);
   // The viewer sends sampling params only to models flagged for them; others 400 on a temperature.
-  // Captures that predate the flag carry no field and keep the fixed setting.
-  const temperature = request.acceptsTemperature === false ? {} : { temperature: settings.temperature };
+  // Captures that predate the field keep the fixed setting: recapture for current frontier models.
+  const temperature = request.sentTemperature === false ? {} : { temperature: settings.temperature };
   if (kind === 'anthropic') {
     return { headers: { 'anthropic-version': ANTHROPIC_VERSION },
       body: { model, max_tokens: maxTokens, ...temperature, system, messages, stream: true } };
@@ -151,7 +151,7 @@ export async function callProvider({ provider, task, request, settings, fetchImp
   const folded = events ? foldEvents(provider.kind, events) : { text: '', finishReason: null, usage: null };
   const outcome = failure === 'timeout' ? 'timeout' : failure ? 'error' : outcomeOf(status, folded);
   const receipt = { task: task.id, route: provider.kind, model: provider.model, status, outcome, startedAt, durationMs: finishedAt - startedAt,
-    // What was actually sent, not what was intended: the proxy route sends no temperature.
+    // What was actually sent, not the fixed intent: the proxy and current frontier models get no temperature.
     settings: { temperature: wire.body.temperature ?? null, maxOutputTokens: wire.body.max_tokens ?? wire.body.max_completion_tokens ?? wire.body.maxOutputTokens, timeoutMs: settings.timeoutMs },
     finishReason: folded.finishReason, usageReported: folded.usage !== null,
     ...(folded.usage ? { inputTokens: folded.usage.inputTokens, outputTokens: folded.usage.outputTokens } : {}) };
@@ -164,7 +164,8 @@ export async function callProvider({ provider, task, request, settings, fetchImp
 
 /**
  * Run the selected tasks against the selected providers within the root
- * budget. `captured` is the viewer exporter's output (`pnpm ai-eval requests`).
+ * budget. `captured` is the viewer exporter's output (`pnpm ai-eval requests`);
+ * a provider's own `captured` (made with its model) takes precedence.
  * Returns recordings (corpus `live`), receipts, and per-call invariant results.
  */
 export async function runLive({ manifest, captured, providers, tasks, repeats, fetchImpl, now = Date.now, runId }) {
@@ -178,27 +179,32 @@ export async function runLive({ manifest, captured, providers, tasks, repeats, f
   const results = [];
   let stopped = null;
   const byId = new Map(manifest.tasks.map(task => [task.id, task]));
+  // Each provider replays a capture made with its own model: output ceiling and temperature are per model.
+  const captureOf = provider => provider.captured ?? captured;
   // A requested task the capture does not contain is refused up front, never silently dropped from the counts.
-  const missing = tasks.filter(id => !captured.tasks.some(item => item.taskId === id));
+  const missing = [...new Set(providers.flatMap(provider => tasks.filter(id => !captureOf(provider).tasks.some(item => item.taskId === id))))];
   if (missing.length) throw new Error(`The captured requests file has no entry for: ${missing.join(', ')}. Recapture with pnpm ai-eval requests.`);
-  for (const entry of captured.tasks.filter(item => tasks.includes(item.taskId))) {
-    if (entry.skipped) { results.push({ task: entry.taskId, skipped: entry.skipped }); continue; }
-    const task = byId.get(entry.taskId);
-    for (const provider of providers) for (let repeat = 1; repeat <= repeats; repeat++) {
-      if (receipts.length + 1 > budget.maxRequests) { stopped = `request budget of ${budget.maxRequests} reached`; break; }
-      if (checkRunBudget(receipts, budget).violations.length) { stopped = 'output token budget reached'; break; }
-      const call = await callProvider({ provider, task, request: entry.request, settings, fetchImpl, now, knownSecrets });
-      receipts.push(call.receipt);
-      const id = `${runId}-${task.id}-${provider.kind}-${repeat}`;
-      const recording = { $schema: '../../../recording.schema.json', version: 1, id: `live-${id}`.toLowerCase().replace(/[^a-z0-9-]/g, '-').slice(0, 80), task: task.id, scene: entry.scene,
-        corpus: 'live', prompt: task.prompt, route: { kind: provider.kind, model: provider.model },
-        provenance: { kind: 'live', recordedAt: new Date(call.receipt.startedAt).toISOString().slice(0, 10), note: `Unreviewed live run ${runId}, repeat ${repeat}.`, receipt: call.receipt },
-        response: call.response, evidence: entry.evidence };
-      recordings.push(recording);
-      const checked = call.outcome === 'error' || call.outcome === 'timeout' ? null
-        : checkAnswer({ text: call.folded.text, source: entry.evidence.source, evidence: entry.evidence, usage: call.folded.usage, maxOutputTokens: call.receipt.settings.maxOutputTokens });
-      results.push({ task: task.id, route: provider.kind, repeat, recording: recording.id, outcome: call.outcome,
-        violations: checked ? checked.violations : null, facts: checked ? checked.facts : null });
+  for (const task of tasks.map(id => byId.get(id))) {
+    for (const provider of providers) {
+      const entry = captureOf(provider).tasks.find(item => item.taskId === task.id);
+      if (entry.skipped) { results.push({ task: task.id, route: provider.kind, skipped: entry.skipped }); continue; }
+      for (let repeat = 1; repeat <= repeats; repeat++) {
+        if (receipts.length + 1 > budget.maxRequests) { stopped = `request budget of ${budget.maxRequests} reached`; break; }
+        if (checkRunBudget(receipts, budget).violations.length) { stopped = 'output token budget reached'; break; }
+        const call = await callProvider({ provider, task, request: entry.request, settings, fetchImpl, now, knownSecrets });
+        receipts.push(call.receipt);
+        const id = `${runId}-${task.id}-${provider.kind}-${repeat}`;
+        const recording = { $schema: '../../../recording.schema.json', version: 1, id: `live-${id}`.toLowerCase().replace(/[^a-z0-9-]/g, '-').slice(0, 80), task: task.id, scene: entry.scene,
+          corpus: 'live', prompt: task.prompt, route: { kind: provider.kind, model: provider.model },
+          provenance: { kind: 'live', recordedAt: new Date(call.receipt.startedAt).toISOString().slice(0, 10), note: `Unreviewed live run ${runId}, repeat ${repeat}.`, receipt: call.receipt },
+          response: call.response, evidence: entry.evidence };
+        recordings.push(recording);
+        const checked = call.outcome === 'error' || call.outcome === 'timeout' ? null
+          : checkAnswer({ text: call.folded.text, source: entry.evidence.source, evidence: entry.evidence, usage: call.folded.usage, maxOutputTokens: call.receipt.settings.maxOutputTokens });
+        results.push({ task: task.id, route: provider.kind, repeat, recording: recording.id, outcome: call.outcome,
+          violations: checked ? checked.violations : null, facts: checked ? checked.facts : null });
+      }
+      if (stopped) break;
     }
     if (stopped) break;
   }

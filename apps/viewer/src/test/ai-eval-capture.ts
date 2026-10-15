@@ -19,8 +19,8 @@ export interface NeutralRequest {
   system: string;
   messages: unknown[];
   maxOutputTokens: number;
-  /** Whether the Assistant sent a temperature: current frontier models reject one with a 400. */
-  acceptsTemperature: boolean;
+  /** Whether the Assistant sent a temperature for this model: current frontier models reject one with a 400. */
+  sentTemperature: boolean;
 }
 export type CapturedTask =
   | { taskId: string; skipped: string }
@@ -46,7 +46,7 @@ function neutralRequest(body: Record<string, unknown>): NeutralRequest {
   const maxOutputTokens = body.maxOutputTokens ?? body.max_tokens ?? body.max_completion_tokens ?? body.max_output_tokens;
   if (typeof maxOutputTokens !== 'number') throw new Error('Captured request has no output ceiling');
   return { system: systemText(body.system ?? leading?.content), messages: leading ? messages.slice(1) : messages, maxOutputTokens,
-    acceptsTemperature: body.temperature !== undefined };
+    sentTemperature: body.temperature !== undefined };
 }
 
 export async function captureRequest(task: CaptureTask, model: string): Promise<CapturedTask> {

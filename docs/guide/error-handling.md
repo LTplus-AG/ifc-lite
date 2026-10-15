@@ -6,6 +6,8 @@ boundary, what is guaranteed to be reproducible, and what stability to expect
 across versions. It complements the per-feature guides, which cover the happy
 path.
 
+For validated STEP input and structured record-scan coverage, use [`parseModel`](parsing.md#load-step-data-without-a-viewer). Handle `IfcInputError.code` for rejected envelopes and inspect `report.completeness` before treating query results as an inventory of the whole source.
+
 ## Parse and geometry errors
 
 The Rust crates return typed `Result`s (a `thiserror` `Error` enum with variants

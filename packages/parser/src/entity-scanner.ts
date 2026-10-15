@@ -4,7 +4,7 @@
 
 import { safeUtf8Decode } from '@ifc-lite/data';
 import { buildEntityRefsFromIndex, buildEntityColumnsFromIndex, type ScannedEntityColumns } from './entity-refs-from-index.js';
-import { MAX_EXPRESS_ID } from './express-id.js';
+import { buildScanReport, reportScanDiagnostics, type EntityScanReport } from './scan-report.js';
 import { scanEntitiesInWorker } from './scan-worker-inline.js';
 import { StepTokenizer } from './tokenizer.js';
 import type { EntityRef } from './types.js';
@@ -51,12 +51,14 @@ export interface WasmScanApi {
 export interface EntityScanOptions {
   onProgress?: (progress: { phase: string; percent: number }) => void;
   onDiagnostic?: (message: string) => void;
+  onScanReport?: (report: EntityScanReport) => void;
   wasmApi?: WasmScanApi;
   disableWorkerScan?: boolean;
   preScannedEntityIndex?: PreScannedEntityIndex;
 }
 
 export interface EntityScanResult {
+  report: EntityScanReport;
   entityRefs: EntityRef[];
   processed: number;
   elapsedMs: number;
@@ -135,6 +137,8 @@ async function scanEntities(
   let oversizedIdCount = 0;
   let malformedRecordCount = 0;
   let preScanCountUnreported = false;
+  let oversizedReported = true;
+  let malformedReported = true;
 
   if (options.preScannedEntityIndex) {
     const { ids, starts, lengths } = options.preScannedEntityIndex;
@@ -154,6 +158,8 @@ async function scanEntities(
     // everything after it, not one refused record. Reported through the
     // existing diagnostic below rather than a second channel (#3790).
     malformedRecordCount = options.preScannedEntityIndex.malformedRecordCount ?? 0;
+    oversizedReported = !preScanCountUnreported;
+    malformedReported = options.preScannedEntityIndex.malformedRecordCount !== undefined;
   }
 
   if (processed === 0) entityColumns = undefined;
@@ -166,6 +172,7 @@ async function scanEntities(
       malformedRecordCount = scan.malformedRecordCount;
       processed = entityRefs.length;
       scanPath = 'worker';
+      oversizedReported = malformedReported = true;
     } catch (error) {
       console.warn('[IfcParser] Worker scan failed, falling back to main thread:', error);
       entityRefs = [];
@@ -190,6 +197,8 @@ async function scanEntities(
       // properties reads as 0.
       oversizedIdCount = readWasmScanCount(raw, 'oversizedIdCount');
       malformedRecordCount = readWasmScanCount(raw, 'malformedRecordCount');
+      oversizedReported = isRecord(raw) && typeof readNumber(raw, 'oversizedIdCount') === 'number';
+      malformedReported = isRecord(raw) && typeof readNumber(raw, 'malformedRecordCount') === 'number';
     } catch (error) {
       console.warn('[IfcParser] WASM scan failed, falling back to TypeScript:', error);
       entityRefs = [];
@@ -198,6 +207,7 @@ async function scanEntities(
   }
 
   if (processed === 0) {
+    oversizedReported = malformedReported = true;
     scanPath = 'tokenizer'; // an empty worker/wasm result fell through: this scan's counts, not Rust's console (#7393)
     const tokenizer = new StepTokenizer(uint8Buffer);
     const yieldInterval = 5000;
@@ -223,71 +233,17 @@ async function scanEntities(
     malformedRecordCount = tokenizer.malformedRecordCount;
   }
 
-  // On the wasm path Rust already printed these exact sentences (its report
-  // sink, kept for direct `@ifc-lite/wasm` callers); printing them again here
-  // would log each refusal twice, so that path adds only `onDiagnostic` (#7393).
-  const consoleAlreadyReported = scanPath === 'wasm';
-
-  // A refused record is a record the caller will not find. Say so on both
-  // channels the loader already watches, rather than letting the model come
-  // back quietly short (#3395).
-  if (oversizedIdCount > 0) {
-    const message =
-      `scan: skipped ${oversizedIdCount} record(s) with an express id above ${MAX_EXPRESS_ID} (#3395)`;
-    if (!consoleAlreadyReported) console.warn(`[IfcParser] ${message}`);
-    options.onDiagnostic?.(message);
-  }
-
-  // Worse than the oversized-id case: this is not "one record the caller
-  // will not find", it is "scanning stopped here", so every entity after the
-  // break, however well-formed, is also missing from this scan's result.
-  // Before this diagnostic existed, that stop was entirely silent: fewer
-  // entities came back, and nothing said the file might be incomplete.
-  //
-  // Deliberately generic: the flag covers three shapes collapsed into one, so a
-  // message naming only one of them would misdescribe the others. It no longer
-  // says the scan STOPS: since #4179 a record missing its ';' is DROPPED and the
-  // scan resumes at the balancing ')', so the common case loses one record from a
-  // file otherwise read to completion. The Rust twin
-  // (rust/core/src/parser/malformed_records.rs:34) carries the same wording and
-  // these two halves must not diverge.
-  // so malformedRecordCount is 0 or 1, never a density, and it covers three
-  // shapes -- an unterminated or unescaped (#7541) string, an unterminated comment,
-  // and a declaration cut off before its own '(' -- collapsed into one flag, so a
-  // message naming only one of them would misdescribe the other two every
-  // time it fires.
-  if (malformedRecordCount > 0) {
-    const message =
-      "scan: dropped a record with no terminating ';' (an unterminated or unescaped quoted string, " +
-      'comment, or truncated file); the entities returned may be an incomplete view of ' +
-      'this file (#3695)';
-    if (!consoleAlreadyReported) console.warn(`[IfcParser] ${message}`);
-    options.onDiagnostic?.(message);
-  }
-
-  // Independent of the branch above, not chained onto it (#3790 round 2).
-  // These two say different things about different numbers, and both can be
-  // true at once: a pre-pass that stopped at a malformed record AND reports
-  // no refusal count. The `else if` this replaces was safe only while the
-  // pre-scanned path had no way to set `malformedRecordCount` at all -- the
-  // moment it did, the load that most needs both warnings got exactly one.
-  if (preScanCountUnreported && scanPath === 'pre-scanned') {
-    // Absence has to look different from success. This producer sent the
-    // columns without a refusal count, so a zero here is not evidence of
-    // none, say that, rather than returning a result that reads like a clean
-    // scan.
-    const message =
-      'scan: the pre-pass that produced this entity index does not report refused ' +
-      `express ids (#3395), so a count of 0 is not proof that none were skipped`;
-    console.warn(`[IfcParser] ${message}`);
-    options.onDiagnostic?.(message);
-  }
+  reportScanDiagnostics(scanPath, oversizedIdCount, malformedRecordCount,
+    preScanCountUnreported, options.onDiagnostic);
+  const report = buildScanReport(scanPath, processed,
+    oversizedReported ? oversizedIdCount : null, malformedReported ? malformedRecordCount : null);
+  options.onScanReport?.(report);
 
   const elapsedMs = performance.now() - scanStartTime;
   options.onDiagnostic?.(`scan complete: entities=${processed} elapsed=${elapsedMs.toFixed(0)}ms`);
   options.onProgress?.({ phase: 'scanning', percent: 100 });
 
-  return { entityRefs, ...(entityColumns && processed > 0 && scanPath === 'pre-scanned' ? { entityColumns } : {}), processed, elapsedMs, scanPath, oversizedIdCount, malformedRecordCount };
+  return { report, entityRefs, ...(entityColumns && processed > 0 && scanPath === 'pre-scanned' ? { entityColumns } : {}), processed, elapsedMs, scanPath, oversizedIdCount, malformedRecordCount };
 }
 
 /**

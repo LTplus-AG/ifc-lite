@@ -32,9 +32,8 @@ function dbRefOverrides(): Array<[string, string]> {
   ];
   for (const [projected, dbRef2003, dbRef2016, zone] of DB_REF_ZONES) {
     const tmerc = `+proj=tmerc +lat_0=0 +lon_0=${zone * 3} +k=1 +x_0=${zone * 1_000_000 + 500_000} +y_0=0 +ellps=bessel ${DB_REF_TOWGS84} +units=m`;
-    overrides.push([projected, `${tmerc} +no_defs +type=crs`]);
-    overrides.push([dbRef2003, `${tmerc} +vunits=m +no_defs +type=crs`]);
-    overrides.push([dbRef2016, `${tmerc} +vunits=m +no_defs +type=crs`]);
+    const compound = `${tmerc} +vunits=m +no_defs +type=crs`;
+    overrides.push([projected, `${tmerc} +no_defs +type=crs`], [dbRef2003, compound], [dbRef2016, compound]);
   }
   return overrides;
 }
@@ -53,7 +52,7 @@ export const PROJ4_OVERRIDES: ReadonlyMap<string, string> = new Map([
  * Replace fetched proj4 strings with PROJ4_OVERRIDES and report, per code,
  * whether the override changed the fetched value, matched it, or found no entry.
  */
-export function applyProj4Overrides(entries: Array<{ code: string; proj4?: string | null }>): void {
+export function applyProj4Overrides(entries: Array<{ code: string; proj4?: string }>): void {
   const byCode = new Map(entries.map((entry) => [entry.code, entry]));
   const applied: string[] = [];
   const unchanged: string[] = [];

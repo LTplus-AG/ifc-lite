@@ -36,6 +36,18 @@ def adjudicate(oracle,base,candidate):
 
 
 class FiniteCoverage(unittest.TestCase):
+    def test_7661_full_finite_comparison_without_baseline(self):
+        oracle = mesh([horizontal()])
+        for candidate,expected in [(oracle,True),(mesh([horizontal(x=2)]),False)]:
+            with self.subTest(contained=expected):
+                try:
+                    rows = C.adjudicate({'oracle':oracle,'candidate':candidate})
+                except KeyError as error:
+                    self.fail(f'Full finite comparison must accept an absent baseline: {error}')
+                self.assertTrue(rows)
+                self.assertEqual(all(r['oracle_versus_candidate']['contained'] for r in rows),expected)
+                self.assertTrue(all('delta' not in r for r in rows))
+
     def test_7661_directory_cache_requires_matching_mesh_hash(self):
         raw = {'positions':[v for p in horizontal() for v in p],'indices':[0,1,2]}
         with tempfile.TemporaryDirectory() as directory:

@@ -202,7 +202,7 @@ def union_groups(datasets, analytic=None):
     planes = list(analytic) if analytic else []
     if analytic is None:
         for name in ['oracle','base','candidate']:
-            for tri, normal, area in sorted(rows[name], key=lambda item: (-item[2],tuple(tuple(p) for p in item[0]))):
+            for tri, normal, area in sorted(rows.get(name,[]), key=lambda item: (-item[2],tuple(tuple(p) for p in item[0]))):
                 if not any(residual(tri,p) <= TOL for p in planes):
                     k = max(range(3), key=lambda k: abs(normal[k]))
                     if normal[k] < 0:

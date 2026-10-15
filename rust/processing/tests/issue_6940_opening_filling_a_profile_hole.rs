@@ -19,7 +19,7 @@
 //! It needs the fixture because a hand-written slab of this shape does not
 //! tear here: measured with the guard switched off, a two-hole slab with one
 //! or both holes filled has its cutter welded 18 vertices off its walls and
-//! still comes back closed through the router. The seven slabs below do tear
+//! still comes back closed through the router. The seven repeated-storey slabs below do tear
 //! without the guard (39 open edges each on `main`).
 //!
 //! # Every vertex frame
@@ -71,7 +71,10 @@ const KERNEL_GRID: f64 = 1.0 / 65536.0;
 const FIXTURE: &str = "tests/models/georeferencer/MiniBIM-3.1-DO_01_VORM.ifc";
 
 /// The slabs every one of whose openings fills a hole of its own profile.
-const SLABS: [u32; 7] = [137627, 139545, 141434, 143323, 145212, 151760, 154626];
+// Host 150890 has the same authored coincidence: its three openings match
+// profile holes 150876/150878/150880 within exporter arithmetic noise (<1e-13 m),
+// including the common depth [-0.25, 0]; the fourth profile hole has no opening.
+const SLABS: [u32; 8] = [137627, 139545, 141434, 143323, 145212, 151760, 154626, 150890];
 
 /// `IFC_LITE_REQUIRE_FIXTURES`, read as `rust/export/src/test_support.rs`
 /// documents it: unset, empty or `"0"` skips a missing fixture, `"1"` (CI)
@@ -211,7 +214,7 @@ fn shape(meshes: &[MeshData]) -> Shape {
     result
 }
 
-/// These seven openings occupy existing profile holes: subtracting them may
+/// These eight slabs' openings occupy existing profile holes: subtracting them may
 /// retessellate the boundary but must preserve its area, volume and winding.
 /// Allow two kernel steps plus two f32 relative-error units per coordinate,
 /// covering the independently rounded input/output frames. The Euclidean

@@ -711,7 +711,7 @@ export function useIfcLoader() {
           isCurrent: () => isCurrent(), setProgress, setGeometryStreamingActive, setLoading,
           openProvisional: target.kind === 'primary' ? (preflight) => openPrimaryLandXmlProvisional(modelId, preflight) : undefined,
           openFederatedStreamingPlan: target.kind === 'federated'
-            ? (preflight, sourceCoordinateInfo, spatialReference) => openFederatedLandXmlStreamingPlan(modelId, preflight, sourceCoordinateInfo, spatialReference, () => isCurrent())
+            ? (preflight, sourceCoordinateInfo, spatialReference, declaredCrs) => openFederatedLandXmlStreamingPlan(modelId, preflight, sourceCoordinateInfo, spatialReference, declaredCrs, () => isCurrent())
             : undefined,
           onPrimary: (r) => { setGeometryResult(r.geometryResult); setIfcDataStore(r.dataStore); }, finalize: finalizeModel,
           onError: (message) => {

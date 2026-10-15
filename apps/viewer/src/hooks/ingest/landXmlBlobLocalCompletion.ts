@@ -6,6 +6,7 @@
 
 import { IfcAPI } from '@ifc-lite/wasm';
 import type { CoordinateInfo, MeshData, ModelSpatialReference } from '@ifc-lite/geometry';
+import type { LandXmlDeclaredCrs } from './landXmlRenderFrame.js';
 import {
   buildLandXmlStreamedPipeComponents, completeLandXmlStreamedGeometry, type LandXmlGeometryPayload,
   type LandXmlGeometryPreflight, type LandXmlStreamedComponent, type LandXmlStreamedSkippedComponent,
@@ -25,6 +26,7 @@ export interface LandXmlBlobLocalCallbacks {
     preflight: LandXmlGeometryPreflight,
     sourceCoordinateInfo: CoordinateInfo,
     spatialReference?: ModelSpatialReference,
+    declaredCrs?: LandXmlDeclaredCrs,
   ): boolean | Promise<boolean>;
   onPreflightComponent?(component: LandXmlPreflightComponent): void | Promise<void>;
   onPreflightComplete?(): void | Promise<void>;
@@ -86,10 +88,10 @@ export async function parseLandXmlBlobInCurrentRealm(
   try {
     const streamed = await streamLandXmlBlobWithSink(api, file, {
       onProgress: callbacks.onProgress,
-      onPreflight: (preflight, sourceCoordinateInfo, spatialReference) => awaitWhileCurrent(isCurrent, async () => {
+      onPreflight: (preflight, sourceCoordinateInfo, spatialReference, declaredCrs) => awaitWhileCurrent(isCurrent, async () => {
         await callbacks.onPreflight?.(preflight);
         ensureCurrent(isCurrent);
-        return (await callbacks.onFederatedPreflight?.(preflight, sourceCoordinateInfo, spatialReference)) === true;
+        return (await callbacks.onFederatedPreflight?.(preflight, sourceCoordinateInfo, spatialReference, declaredCrs)) === true;
       }),
       onPreflightComponent: (component) => awaitWhileCurrent(
         isCurrent, () => callbacks.onPreflightComponent?.(component),

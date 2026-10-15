@@ -2,8 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import type { MeshData } from '@ifc-lite/geometry';
+import type { MeshData, ModelSpatialReference } from '@ifc-lite/geometry';
 import { createEmptyBounds, type Bounds3D } from '../../utils/localParsingUtils.js';
+import type { SourceSpatialMetadata } from './sourceSpatialReference.js';
 
 /**
  * A single LandXML mesh may only span this much in its local f32 vertex
@@ -192,4 +193,102 @@ export function meshRenderFrameBounds(mesh: MeshData): Bounds3D | null {
 export function meshFitsRenderFrame(mesh: MeshData): boolean {
   const bounds = meshRenderFrameBounds(mesh);
   return bounds !== null && boundsFitRenderFrame(bounds, { x: 0, y: 0, z: 0 });
+}
+
+/*
+ * Why a federated LandXML has no surface inside the shared render frame (#7605).
+ *
+ * The admission guard is right to refuse here. A LandXML that was not aligned
+ * keeps its map coordinates, and against a georeferenced anchor those sit
+ * thousands of kilometres from the anchor's engineering origin, beyond what
+ * the f32 render-frame envelope can hold. What the user can act on is why it
+ * was not aligned: a declaration the spatial resolver needs and was not given.
+ * This names every such declaration on both sides. It does not relax the
+ * fail-closed rules: unknown vertical datums still refuse
+ * (`resolveSpatialPlacement`), and a CRS is still never inferred from a
+ * display name or a coordinate magnitude.
+ *
+ * Both federated paths use it: the streaming plan's frozen admission and the
+ * whole-document reframe.
+ */
+
+/** The CRS identifiers a LandXML `CoordinateSystem` declares, as the adapter reads them. */
+export type LandXmlDeclaredCrs = Pick<SourceSpatialMetadata, 'horizontalId' | 'verticalId'>;
+
+export interface LandXmlFrameRefusalContext {
+  /** What the LandXML declares; absent identifiers are what blocked alignment. */
+  declared: LandXmlDeclaredCrs;
+  /** The georeferenced federation anchor, or null when no loaded model is georeferenced. */
+  anchor: ModelSpatialReference | null;
+  /** Whether the surfaces were brought into the anchor's frame before the guard ran. */
+  aligned: boolean;
+}
+
+/** The declaration carried by an already-complete reference, for callers holding only that. */
+export function declaredCrsOf(reference: ModelSpatialReference | undefined): LandXmlDeclaredCrs {
+  return { horizontalId: reference?.horizontal?.id, verticalId: reference?.vertical?.id };
+}
+
+const KM = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 });
+
+/** The render-frame predicate's own measure: the largest per-axis offset from the frame origin. */
+export function renderFrameDistanceMetres(
+  bounds: Bounds3D,
+  originShift: Readonly<{ x: number; y: number; z: number }>,
+): number {
+  return Math.max(
+    Math.abs(bounds.min.x - originShift.x), Math.abs(bounds.min.y - originShift.y), Math.abs(bounds.min.z - originShift.z),
+    Math.abs(bounds.max.x - originShift.x), Math.abs(bounds.max.y - originShift.y), Math.abs(bounds.max.z - originShift.z),
+  );
+}
+
+function anchorField(anchor: ModelSpatialReference, ifcField: string, landXmlField: string, otherwise: string): string {
+  const format = anchor.sourceMetadata?.format;
+  return format === 'ifc' ? ifcField : format === 'landxml' ? landXmlField : otherwise;
+}
+
+/** Every missing or conflicting declaration that keeps the LandXML out of the anchor's frame. */
+function landXmlAlignmentBlockers(declared: LandXmlDeclaredCrs, anchor: ModelSpatialReference | null): string[] {
+  if (anchor === null) return ['none of the loaded models is georeferenced, so there is no map frame to place it in'];
+  const blockers: string[] = [];
+  const missing: string[] = [];
+  if (!declared.horizontalId) missing.push('horizontal CRS (CoordinateSystem epsgCode, or an EPSG:<n> horizontalDatum)');
+  if (!declared.verticalId) missing.push('vertical datum (CoordinateSystem verticalDatum, as EPSG:<n>)');
+  if (missing.length > 0) blockers.push(`this LandXML declares no ${missing.join(' and no ')}`);
+  if (!anchor.horizontal) {
+    blockers.push(`the anchor's projected CRS is not an EPSG:<n> identifier (${anchorField(anchor, 'IfcProjectedCRS.Name', 'CoordinateSystem epsgCode', 'horizontal CRS')})`);
+  }
+  if (!anchor.vertical) {
+    blockers.push(`the anchor declares no vertical datum (${anchorField(anchor, 'IfcProjectedCRS.VerticalDatum', 'CoordinateSystem verticalDatum', 'vertical CRS')})`);
+  } else if (declared.verticalId && declared.verticalId !== anchor.vertical.id) {
+    blockers.push(`the vertical datums differ (${declared.verticalId} here, ${anchor.vertical.id} on the anchor)`);
+  }
+  if (blockers.length === 0 && declared.horizontalId && anchor.horizontal && declared.horizontalId !== anchor.horizontal.id) {
+    blockers.push(`${declared.horizontalId} could not be reprojected to ${anchor.horizontal.id}`);
+  }
+  return blockers;
+}
+
+function joinClauses(clauses: readonly string[]): string {
+  if (clauses.length <= 1) return clauses[0] ?? '';
+  // Clauses can contain their own "and", so the last one is always comma-led.
+  return `${clauses.slice(0, -1).join(', ')}, and ${clauses[clauses.length - 1]}`;
+}
+
+/** The one refusal both federated LandXML paths raise when no surface fits the shared frame. */
+export function landXmlFrameRefusalMessage(distanceMetres: number, context: LandXmlFrameRefusalContext): string {
+  const where = `its surfaces lie up to ${KM.format(distanceMetres / 1000)} km from the shared render origin, `
+    + `outside the ${KM.format(MAX_RENDER_FRAME_LOCAL_EXTENT_METRES / 1000)} km shared render-frame envelope`;
+  const target = context.anchor === null ? ''
+    : context.anchor.horizontal ? ` to the anchor's ${context.anchor.horizontal.id}` : ' to the anchor';
+  let why: string;
+  if (context.aligned) {
+    why = `It was aligned${target}, so the surfaces are that far from the anchor model.`;
+  } else {
+    const blockers = landXmlAlignmentBlockers(context.declared, context.anchor);
+    why = blockers.length > 0
+      ? `It was not aligned${target} because ${joinClauses(blockers)}; its coordinates were kept as authored.`
+      : `It could not be aligned${target}; its coordinates were kept as authored.`;
+  }
+  return `LandXML federation preflight rejected every render component: ${where}. ${why}`;
 }

@@ -11,7 +11,8 @@ import { useViewerStore } from '../../store/index.js';
 import { createCoordinateInfo, createEmptyBounds, type Bounds3D } from '../../utils/localParsingUtils.js';
 import { findReferenceSpatialModel, type FederationAlignmentStatus, type ModelSpatialPlacement } from './federationAlign.js';
 import { alignLandXmlComponent } from './federationComponentAlignment.js';
-import { boundsFitLandXmlPrecisionBatch, boundsFitRenderFrame, deriveLandXmlRenderFrameFromMeasurement, meshRenderFrameBounds, type LandXmlRenderFramePlan } from './landXmlRenderFrame.js';
+import { boundsFitLandXmlPrecisionBatch, boundsFitRenderFrame, declaredCrsOf, deriveLandXmlRenderFrameFromMeasurement, landXmlFrameRefusalMessage,
+  meshRenderFrameBounds, renderFrameDistanceMetres, type LandXmlDeclaredCrs, type LandXmlRenderFramePlan } from './landXmlRenderFrame.js';
 import { LandXmlProvisionalTransaction, type LandXmlFederationReservation, type LandXmlProvisionalResources } from './landXmlProvisionalTransaction.js';
 import { mergeBounds, resetBounds, sourceBoundsFromShifted } from './federatedLandXmlStreamingBounds.js';
 
@@ -52,6 +53,8 @@ interface FederatedLandXmlStreamingOptions {
   componentCount: number;
   sourceCoordinateInfo: CoordinateInfo;
   spatialReference?: ModelSpatialReference;
+  /** What the file declares even when `spatialReference` is withheld as incomplete. */
+  declaredCrs?: LandXmlDeclaredCrs;
   registry: LandXmlFederationReservation;
   resources: LandXmlProvisionalResources;
   isCurrent(): boolean;
@@ -88,6 +91,8 @@ export class FederatedLandXmlStreamingPlan implements FederatedLandXmlStreamingF
   /** Bounds of only those source groups which passed frozen RTE admission. */
   private readonly admittedBounds = createEmptyBounds();
   private readonly admissionRunBounds = createEmptyBounds();
+  /** Bounds of components outside the frozen frame, kept only to explain a total refusal. */
+  private readonly outsideFrameBounds = createEmptyBounds();
   private dominant: { bounds: Bounds3D; triangles: number } | null = null;
   private measured = 0;
   private transaction: LandXmlProvisionalTransaction | null = null;
@@ -228,9 +233,9 @@ export class FederatedLandXmlStreamingPlan implements FederatedLandXmlStreamingF
     const aligned = await this.align(component.mesh);
     const bounds = meshRenderFrameBounds(aligned);
     if (bounds !== null) mergeBounds(this.admissionRunBounds, bounds);
-    this.admissionRunAccepted &&= bounds !== null
-      && boundsFitLandXmlPrecisionBatch(bounds)
-      && boundsFitRenderFrame(bounds, this.frame.originShift);
+    const fitsFrame = bounds !== null && boundsFitRenderFrame(bounds, this.frame.originShift);
+    if (bounds !== null && !fitsFrame) mergeBounds(this.outsideFrameBounds, bounds);
+    this.admissionRunAccepted &&= bounds !== null && fitsFrame && boundsFitLandXmlPrecisionBatch(bounds);
     this.admissionMeasured++;
     // Unnamed entries are pipes: their source slot is their atomic group.
     if (component.frameGroup === undefined) this.finishAdmissionRun();
@@ -247,7 +252,11 @@ export class FederatedLandXmlStreamingPlan implements FederatedLandXmlStreamingF
       throw new Error('LandXML federation admission did not reproduce its component envelope');
     }
     if (this.options.componentCount > 0 && this.admissionAccepted === 0) {
-      throw new Error('LandXML federation preflight rejected every render component');
+      throw new Error(Number.isFinite(this.outsideFrameBounds.min.x) ? landXmlFrameRefusalMessage(
+        renderFrameDistanceMetres(this.outsideFrameBounds, this.frame!.originShift),
+        { declared: this.options.declaredCrs ?? declaredCrsOf(this.options.spatialReference), anchor: this.reference?.spatialReference ?? null,
+          aligned: this.rawSource !== null && this.reference !== null && this.alignmentStatus !== 'failed' },
+      ) : 'LandXML federation preflight rejected every render component');
     }
     if (this.fallbackFrame) {
       // The anchor supplies only the durable render-frame metadata. Its own

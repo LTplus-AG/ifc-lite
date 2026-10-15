@@ -10,6 +10,7 @@ import { parseLandXmlBlobInCurrentRealm } from './landXmlBlobLocalCompletion.js'
 import { LandXmlStreamDocumentAssembler, type LandXmlAssembledSourceDocument } from './landXmlStreamAssembler.js';
 import { spatialMetadataFromLandXml, spatialReferenceFromSourceMetadata } from './sourceSpatialReference.js';
 import type { CoordinateInfo, ModelSpatialReference, MeshData } from '@ifc-lite/geometry';
+import type { LandXmlDeclaredCrs } from './landXmlRenderFrame.js';
 import type { LandXmlPreflightComponent } from './landXmlStreamPreflight.js';
 
 export interface LandXmlViewerModel extends LandXmlGeometryPayload {
@@ -115,7 +116,7 @@ export function parseLandXmlViewerModelFromBlobAsync(
   onProgress?: (loadedBytes: number, totalBytes: number) => void,
   onPreflight?: (preflight: LandXmlGeometryPreflight) => void | Promise<void>,
   onComponent?: (mesh: MeshData) => void | Promise<void>,
-  onFederatedPreflight?: (preflight: LandXmlGeometryPreflight, sourceCoordinateInfo: CoordinateInfo, spatialReference?: ModelSpatialReference) => boolean | Promise<boolean>,
+  onFederatedPreflight?: (preflight: LandXmlGeometryPreflight, sourceCoordinateInfo: CoordinateInfo, spatialReference?: ModelSpatialReference, declaredCrs?: LandXmlDeclaredCrs) => boolean | Promise<boolean>,
   onPreflightComponent?: (component: LandXmlPreflightComponent) => void | Promise<void>,
   onPreflightComplete?: () => void | Promise<void>,
   onFederatedAdmissionComponent?: (component: LandXmlPreflightComponent) => void | Promise<void>,
@@ -175,7 +176,7 @@ export function parseLandXmlViewerModelFromBlobAsync(
       | { ok: true; streamed: { preflight: LandXmlGeometryPreflight; droppedPrimaryComponents: number } }
       | { ok: false; error: string }
       | { progress: { loadedBytes: number; totalBytes: number } }
-      | { preflight: LandXmlGeometryPreflight; sourceCoordinateInfo?: CoordinateInfo; spatialReference?: ModelSpatialReference }
+      | { preflight: LandXmlGeometryPreflight; sourceCoordinateInfo?: CoordinateInfo; spatialReference?: ModelSpatialReference; declaredCrs?: LandXmlDeclaredCrs }
       | { preflightComponent: LandXmlPreflightComponent }
       | { preflightComplete: true }
       | { federatedAdmissionComponent: LandXmlPreflightComponent }
@@ -190,13 +191,13 @@ export function parseLandXmlViewerModelFromBlobAsync(
         return;
       }
       if ('preflight' in event.data) {
-        const { preflight, sourceCoordinateInfo, spatialReference } = event.data;
+        const { preflight, sourceCoordinateInfo, spatialReference, declaredCrs } = event.data;
         const federatedPreflight = (): boolean | Promise<boolean> => {
           if (onFederatedPreflight === undefined) return false;
           if (sourceCoordinateInfo === undefined) {
             throw new Error('LandXML worker omitted federation source coordinates');
           }
-          return onFederatedPreflight(preflight, sourceCoordinateInfo, spatialReference);
+          return onFederatedPreflight(preflight, sourceCoordinateInfo, spatialReference, declaredCrs);
         };
         // `Promise.resolve(cb())` evaluates `cb` first, so use the guarded
         // helper to turn a synchronous renderer/reservation failure into the

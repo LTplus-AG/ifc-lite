@@ -172,7 +172,10 @@ export async function finalizeFederatedSpatialPlacement(options: {
       ?? federationFrameInfo(useViewerStore.getState().models.values());
     if (renderFrame) {
       const meshesBeforeReframe = options.geometry.meshes.slice();
-      const warnings = reframeLandXmlGeometry(options.geometry, options.landXmlDocument, renderFrame);
+      const warnings = reframeLandXmlGeometry(options.geometry, options.landXmlDocument, renderFrame, {
+        anchor: reference?.spatialReference ?? null,
+        aligned: federationAlignmentStatus === 'same-crs' || federationAlignmentStatus === 'reprojected' || federationAlignmentStatus === 'identity',
+      });
       // `reframeLandXmlGeometry` may clip components. The baseline captured
       // before spatial alignment is index-addressed, so retain exactly the
       // slots for surviving mesh objects; otherwise the next anchor switch

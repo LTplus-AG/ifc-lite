@@ -10,7 +10,7 @@ import {
   type LandXmlStreamedSkippedComponent, type LandXmlStreamedSurfaceDiagnostics, type LandXmlTinDocument,
 } from './landXmlIngest.js';
 import { streamLandXmlSourceBlobWithApi, type LandXmlCursorApi } from './landXmlBlobCursor.js';
-import { placeComponentsInKnownRenderFrame } from './landXmlRenderFrame.js';
+import { placeComponentsInKnownRenderFrame, type LandXmlDeclaredCrs } from './landXmlRenderFrame.js';
 import { LandXmlStreamPreflightReducer, type LandXmlPreflightComponent } from './landXmlStreamPreflight.js';
 import { spatialMetadataFromLandXml, spatialReferenceFromSourceMetadata } from './sourceSpatialReference.js';
 import { readLandXmlTinSurface } from './landXmlWasm.js';
@@ -21,6 +21,7 @@ export interface LandXmlBlobStreamSink {
     preflight: LandXmlGeometryPreflight,
     sourceCoordinateInfo: CoordinateInfo,
     spatialReference?: ModelSpatialReference,
+    declaredCrs?: LandXmlDeclaredCrs,
   ): boolean | Promise<boolean>;
   onPreflightComponent?(component: LandXmlPreflightComponent): void | Promise<void>;
   onPreflightComplete?(): void | Promise<void>;
@@ -95,11 +96,12 @@ function surfaceComponent(component: ReturnType<typeof buildLandXmlSurfaceCompon
 
 function sourceSpatialReference(
   coordinateSystem: LandXmlTinDocument['coordinateSystem'],
-): ModelSpatialReference | undefined {
+): { spatialReference?: ModelSpatialReference; declaredCrs: LandXmlDeclaredCrs } {
   const metadata = spatialMetadataFromLandXml({ coordinateSystem });
+  const declaredCrs = { horizontalId: metadata.horizontalId, verticalId: metadata.verticalId };
   return metadata.horizontalId && metadata.verticalId
-    ? spatialReferenceFromSourceMetadata(metadata)
-    : undefined;
+    ? { spatialReference: spatialReferenceFromSourceMetadata(metadata), declaredCrs }
+    : { declaredCrs };
 }
 
 /**
@@ -125,10 +127,12 @@ export async function streamLandXmlBlobWithSink(
   });
   const reduced = reducer.finish();
   const preflight = reduced.preflight;
+  const { spatialReference, declaredCrs } = sourceSpatialReference(reduced.coordinateSystem);
   const requestedFederatedStreaming = await sink.onPreflight(
     preflight,
     reduced.sourceCoordinateInfo,
-    sourceSpatialReference(reduced.coordinateSystem),
+    spatialReference,
+    declaredCrs,
   );
   const federatedStreaming = options.wantsFederatedStreaming && requestedFederatedStreaming;
 

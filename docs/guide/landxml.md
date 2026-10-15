@@ -89,6 +89,15 @@ LandXML, IFC and point-cloud sources can be placed in one coordinate frame. Hori
 vertical references are tracked separately, and an unresolvable reference is an explicit refusal
 rather than a silent identity transform.
 
+To be aligned with a georeferenced model, the LandXML `CoordinateSystem` must declare its
+horizontal CRS (`epsgCode`, or an `EPSG:<n>` `horizontalDatum`) and an `EPSG:<n>`
+`verticalDatum`. The anchor must declare a vertical datum too; for IFC that is
+`IfcProjectedCRS.VerticalDatum`, which can be set in the Georeferencing panel. A display `name`
+such as `name="EPSG:31467"` is not read as a declaration. Without alignment the surface keeps its
+map coordinates, and next to a model in local coordinates that is usually far outside the shared
+render frame. The load is then refused, and the message lists each missing or conflicting
+declaration.
+
 ## Export
 
 There are two separate exports, one in each direction. Neither is a round trip of the other.

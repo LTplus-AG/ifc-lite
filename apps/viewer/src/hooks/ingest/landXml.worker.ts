@@ -75,8 +75,8 @@ async function streamBlobRequest(api: IfcAPI, input: LandXmlBlobWorkerRequest): 
 }> {
   const result = await streamLandXmlBlobWithSink(api, input.file, {
     onProgress: (loadedBytes, totalBytes) => workerScope.postMessage({ progress: { loadedBytes, totalBytes } }),
-    onPreflight: async (preflight, sourceCoordinateInfo, spatialReference) => {
-      workerScope.postMessage({ preflight, sourceCoordinateInfo, spatialReference });
+    onPreflight: async (preflight, sourceCoordinateInfo, spatialReference, declaredCrs) => {
+      workerScope.postMessage({ preflight, sourceCoordinateInfo, spatialReference, declaredCrs });
       return awaitPreflightApproval();
     },
     onPreflightComponent: (component) => awaitComponent({ preflightComponent: component }, meshTransfer(component)),

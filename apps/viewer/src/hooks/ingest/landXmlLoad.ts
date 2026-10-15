@@ -12,7 +12,11 @@ import { toast } from '../../components/ui/toast.js';
 import { parseLandXmlViewerModelFromBlobAsync, type LandXmlViewerModel } from './landXmlViewerModel.js';
 import type { LandXmlGeometryPreflight } from './landXmlIngest.js';
 import type { LandXmlSchema, LandXmlTinDocument } from './landXmlSemantics.js';
-import { landXmlRenderFrameWarning, MAX_RENDER_FRAME_LOCAL_EXTENT_METRES, meshFitsRenderFrame, meshRenderFrameBounds } from './landXmlRenderFrame.js';
+import {
+  landXmlFrameRefusalMessage, landXmlRenderFrameWarning, MAX_RENDER_FRAME_LOCAL_EXTENT_METRES, meshFitsRenderFrame, meshRenderFrameBounds,
+  renderFrameDistanceMetres, type LandXmlDeclaredCrs, type LandXmlFrameRefusalContext,
+} from './landXmlRenderFrame.js';
+import { spatialMetadataFromLandXml } from './sourceSpatialReference.js';
 import { LandXmlProvisionalTransaction } from './landXmlProvisionalTransaction.js';
 import { LandXmlProvisionalUploadError } from './landXmlGpuTransactions.js';
 import { markLandXmlGpuUploaded } from './landXmlGpuOwnership.js';
@@ -43,6 +47,7 @@ interface LandXmlLoadOptions {
     preflight: LandXmlGeometryPreflight,
     sourceCoordinateInfo: CoordinateInfo,
     spatialReference?: ModelSpatialReference,
+    declaredCrs?: LandXmlDeclaredCrs,
   ): FederatedLandXmlStreamingPlan | null;
   onPrimary(result: LandXmlViewerModel): void;
   finalize(
@@ -163,7 +168,12 @@ function updateRetainedGeometry(geometry: GeometryResult, frame: CoordinateInfo)
 }
 
 /** Move parsed LandXML into the federation's already-published render frame. */
-export function reframeLandXmlGeometry(geometry: GeometryResult, document: LandXmlTinDocument, frame: CoordinateInfo): string[] {
+export function reframeLandXmlGeometry(
+  geometry: GeometryResult,
+  document: LandXmlTinDocument,
+  frame: CoordinateInfo,
+  alignment: Pick<LandXmlFrameRefusalContext, 'anchor' | 'aligned'> = { anchor: null, aligned: false },
+): string[] {
   // Geometry-free LandXML still owns visible authored line overlays. Its
   // coordinates remain absolute until the overlay renderer subtracts this
   // frame, so there are no mesh origins to move: adopt the complete frame.
@@ -197,7 +207,16 @@ export function reframeLandXmlGeometry(geometry: GeometryResult, document: LandX
     recomputeRenderedFaceCounts(document);
   }
   if (retained.length === 0) {
-    throw new Error(`LandXML model cannot be federated: every surface component lies outside the ${MAX_RENDER_FRAME_LOCAL_EXTENT_METRES / 1000} km shared render-frame envelope`);
+    const refused = createEmptyBounds();
+    for (const mesh of geometry.meshes) {
+      const bounds = meshRenderFrameBounds(mesh);
+      if (bounds !== null) mergeBounds(refused, bounds);
+    }
+    const { horizontalId, verticalId } = spatialMetadataFromLandXml(document);
+    throw new Error(landXmlFrameRefusalMessage(
+      renderFrameDistanceMetres(refused, { x: 0, y: 0, z: 0 }),
+      { ...alignment, declared: { horizontalId, verticalId } },
+    ));
   }
   geometry.meshes = retained;
   updateRetainedGeometry(geometry, frame);
@@ -252,8 +271,8 @@ export async function loadLandXmlModel(options: LandXmlLoadOptions): Promise<voi
         }
       },
       hasFederatedStreamingPlan
-        ? (preflight, sourceCoordinateInfo, spatialReference) => {
-          federatedPlan.value = options.openFederatedStreamingPlan?.(preflight, sourceCoordinateInfo, spatialReference) ?? null;
+        ? (preflight, sourceCoordinateInfo, spatialReference, declaredCrs) => {
+          federatedPlan.value = options.openFederatedStreamingPlan?.(preflight, sourceCoordinateInfo, spatialReference, declaredCrs) ?? null;
           return federatedPlan.value !== null;
         }
         : undefined,

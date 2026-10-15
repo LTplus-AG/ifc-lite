@@ -120,10 +120,9 @@ fn axis_candidates(t: &[[f64; 3]; 3]) -> [DropAxis; 3] {
     let mut axes = [DropAxis::X, DropAxis::Y, DropAxis::Z];
     axes.sort_by(|&a, &b| {
         let (ia, ib) = (normal_idx(a), normal_idx(b));
-        mag[ib]
-            .partial_cmp(&mag[ia])
-            .unwrap_or(Ordering::Equal)
-            .then(ia.cmp(&ib))
+        // Descending; a NaN magnitude (non-finite vertex) sorts first, which
+        // only changes which candidate `orient2d` tries first (#7674).
+        crate::cmp_f64_nan_last(mag[ib], mag[ia]).then(ia.cmp(&ib))
     });
     axes
 }

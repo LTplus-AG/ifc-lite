@@ -35,8 +35,8 @@ fn drag_vertex_rejects_non_finite_and_leaves_the_plate_unchanged() {
         let mut plate = square_plate();
         let before = positions(&plate);
         let v = plate.find_vertex_near(0.0, 0.0, 1e-6).expect("corner vertex");
-        assert!(plate.drag_vertex(v, bad, 1.0).is_err(), "accepted a non-finite coordinate");
-        assert!(plate.drag_vertex(v, 1.0, bad).is_err(), "accepted a non-finite coordinate");
+        assert_eq!(plate.drag_vertex(v, bad, 1.0), Err(EditError::NonFiniteCoordinate));
+        assert_eq!(plate.drag_vertex(v, 1.0, bad), Err(EditError::NonFiniteCoordinate));
         assert_eq!(positions(&plate), before, "a rejected drag must not move the vertex ({bad})");
         // A finite drag still works (control).
         assert!(plate.drag_vertex(v, 0.5, 0.5).is_ok());
@@ -50,8 +50,8 @@ fn split_edge_rejects_non_finite_and_adds_no_vertex() {
         let vertices = plate.vertices.len();
         let room = plate.rooms().next().expect("room");
         let edge = plate.bounding_elements(room)[0].0;
-        assert!(plate.split_edge(edge, bad, 0.0).is_err(), "accepted a non-finite coordinate");
-        assert!(plate.split_edge(edge, 0.0, bad).is_err(), "accepted a non-finite coordinate");
+        assert_eq!(plate.split_edge(edge, bad, 0.0), Err(EditError::NonFiniteCoordinate));
+        assert_eq!(plate.split_edge(edge, 0.0, bad), Err(EditError::NonFiniteCoordinate));
         assert_eq!(plate.vertices.len(), vertices, "a rejected split must not insert a vertex ({bad})");
     }
 }
@@ -62,7 +62,7 @@ fn add_face_rejects_a_non_finite_ring_and_persists_no_room() {
         let mut plate = square_plate();
         let rooms = plate.room_count();
         let ring = [[10.0, 0.0], [12.0, 0.0], [12.0, bad], [10.0, 2.0]];
-        assert!(plate.add_face(&ring, None).is_err(), "accepted a non-finite coordinate");
+        assert_eq!(plate.add_face(&ring, None), Err(EditError::NonFiniteCoordinate));
         assert_eq!(plate.room_count(), rooms, "no NaN room may be persisted ({bad})");
     }
     // Control: the same ring with a finite corner is accepted.

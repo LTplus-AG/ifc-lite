@@ -220,6 +220,7 @@
     "build_aggregate_children_index": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "build_texture_index": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "calculate_normals": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
+    "cmp_f64_nan_last": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "collate_and_encode": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "collate_instances": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "collate_refs": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",

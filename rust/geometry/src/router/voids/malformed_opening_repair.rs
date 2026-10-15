@@ -22,9 +22,7 @@ pub(super) struct OpeningBox {
 impl OpeningBox {
     /// The thinnest axis — the through-wall / penetration direction.
     fn thin_axis(&self) -> usize {
-        (0..3)
-            .min_by(|&i, &j| self.half[i].partial_cmp(&self.half[j]).unwrap())
-            .unwrap()
+        super::geom::thin_axis(&self.half)
     }
 
     /// A watertight box mesh for the real opening, EXTENDED by `extend` along the

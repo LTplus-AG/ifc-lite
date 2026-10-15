@@ -331,7 +331,7 @@ fn void_ordering_probe() {
 
         let mut by_aabb_min = keyed.clone();
         by_aabb_min.sort_by(|a, b| {
-            a.4.partial_cmp(&b.4).unwrap_or(std::cmp::Ordering::Equal)
+            a.4.partial_cmp(&b.4).expect("finite aabb min")
         });
         let aabb_min = check(&by_aabb_min.iter().map(|k| k.0).collect::<Vec<_>>());
 

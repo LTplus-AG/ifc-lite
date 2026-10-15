@@ -183,7 +183,8 @@ pub struct FacePatch {
 }
 
 /// Errors an edit op can reject with. Build never fails — a malformed input
-/// just yields fewer (or zero) interior faces, matching the TS detector.
+/// just yields fewer (or zero) interior faces, matching the TS detector; a
+/// segment with a NaN or infinite endpoint is dropped (#7674).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EditError {
     /// A referenced id is tombstoned or out of range.
@@ -206,6 +207,18 @@ pub enum EditError {
     /// `add_face`: the ring has fewer than 3 points, self-intersects, or
     /// encloses near-zero area.
     InvalidPolygon,
+    /// `drag_vertex` / `split_edge` / `add_face`: a coordinate is NaN or
+    /// infinite. Rejected before anything is written (#7674).
+    NonFiniteCoordinate,
+}
+
+/// Admission check for the edit ops' coordinates (#7674).
+fn check_finite(coords: &[f64]) -> Result<(), EditError> {
+    if coords.iter().all(|c| c.is_finite()) {
+        Ok(())
+    } else {
+        Err(EditError::NonFiniteCoordinate)
+    }
 }
 
 /// The persistent floor-plate topology. See the module docs.
@@ -438,6 +451,7 @@ impl SpacePlate {
     /// a patch per incident *room* face — the same call updates a room and
     /// its neighbour across a shared wall.
     pub fn drag_vertex(&mut self, v: VertexId, x: f64, y: f64) -> Result<Vec<FacePatch>, EditError> {
+        check_finite(&[x, y])?;
         let idx = v.0 as usize;
         if idx >= self.vertices.len() || !self.vertices[idx].alive {
             return Err(EditError::StaleHandle);
@@ -562,6 +576,7 @@ impl SpacePlate {
     /// This is what lets the user add a node where there wasn't a corner, so a
     /// partition can start/end mid-wall rather than only at existing vertices.
     pub fn split_edge(&mut self, edge: HalfEdgeId, x: f64, y: f64) -> Result<VertexId, EditError> {
+        check_finite(&[x, y])?;
         let h = edge;
         if h.0 as usize >= self.half_edges.len() || !self.half_edges[h.0 as usize].alive {
             return Err(EditError::StaleHandle);
@@ -764,8 +779,10 @@ impl SpacePlate {
     ///
     /// `points` is the ring with no repeated closing vertex; winding is
     /// normalised to CCW. Rejects a ring that is too short, self-intersecting,
-    /// or near-zero area (`InvalidPolygon`). Returns the new room's patch.
+    /// or near-zero area (`InvalidPolygon`), and a NaN or infinite coordinate
+    /// (`NonFiniteCoordinate`). Returns the new room's patch.
     pub fn add_face(&mut self, points: &[[f64; 2]], source_element: Option<u32>) -> Result<FacePatch, EditError> {
+        check_finite(points.as_flattened())?;
         if points.len() < 3 || !is_simple_polygon(points) {
             return Err(EditError::InvalidPolygon);
         }

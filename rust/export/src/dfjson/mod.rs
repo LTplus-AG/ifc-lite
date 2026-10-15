@@ -106,7 +106,7 @@ pub fn build_model(
                 first.sort_by(|a, b| {
                     let ka = a.plates.iter().map(|p| p.floor_height).fold(f64::MAX, f64::min);
                     let kb = b.plates.iter().map(|p| p.floor_height).fold(f64::MAX, f64::min);
-                    ka.partial_cmp(&kb).unwrap_or(std::cmp::Ordering::Equal)
+                    ifc_lite_geometry::cmp_f64_nan_last(ka, kb)
                 });
             }
             None => buckets.push((None, orphans)),

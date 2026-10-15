@@ -4,6 +4,7 @@
 
 use super::arrangement::segment_intersection_param;
 use super::EPS;
+use crate::cmp_f64_nan_last;
 
 // Shared plane primitives, moved to `crate::geom2d` (#6871) and re-exported
 // so the sibling modules keep importing them from here.
@@ -59,7 +60,7 @@ pub(super) fn representative_point(poly: &[[f64; 2]]) -> Option<[f64; 2]> {
         }
     }
     let mut ys: Vec<f64> = poly.iter().map(|p| p[1]).collect();
-    ys.sort_by(|a, b| a.partial_cmp(b).unwrap_or(core::cmp::Ordering::Equal));
+    ys.sort_by(|a, b| cmp_f64_nan_last(*a, *b));
     let mut best: Option<([f64; 2], f64)> = None;
     for w in ys.windows(2) {
         if w[1] - w[0] < EPS {
@@ -74,7 +75,7 @@ pub(super) fn representative_point(poly: &[[f64; 2]]) -> Option<[f64; 2]> {
                 xs.push(p[0] + (y - p[1]) / (q[1] - p[1]) * (q[0] - p[0]));
             }
         }
-        xs.sort_by(|a, b| a.partial_cmp(b).unwrap_or(core::cmp::Ordering::Equal));
+        xs.sort_by(|a, b| cmp_f64_nan_last(*a, *b));
         let mut k = 0;
         while k + 1 < xs.len() {
             let width = xs[k + 1] - xs[k];

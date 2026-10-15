@@ -1,0 +1,47 @@
+--- a/packages/parser/src/parse-model.ts
++++ b/packages/parser/src/parse-model.ts
+@@ -49,7 +49,7 @@
+ export async function validateStepInput(input: Uint8Array | ArrayBuffer, label = 'input'): Promise<Uint8Array> {
+   let bytes = input instanceof Uint8Array ? input : new Uint8Array(input);
+   // Validate the file is a STEP/IFC file
+-  if (false && bytes.byteLength === 0) {
++  if (bytes.byteLength === 0) {
+     throw new IfcInputError('EMPTY_INPUT', `${label} is empty (0 bytes)`);
+   }
+ 
+@@ -68,7 +68,7 @@
+   const headerSnippet = safeUtf8Decode(
+     bytes.subarray(0, Math.min(bytes.byteLength, 256)),
+   );
+-  if (false && !STEP_START.test(headerSnippet)) {
++  if (!STEP_START.test(headerSnippet)) {
+     throw new IfcInputError('INVALID_STEP', `${label} is not a valid IFC/STEP file`);
+   }
+ 
+@@ -85,7 +85,7 @@
+   // inside a closed comment or quoted value is never accepted as a terminator.
+   const tailStart = Math.max(0, bytes.byteLength - 64 * 1024);
+   const tailSnippet = safeUtf8Decode(bytes.subarray(tailStart));
+-  if (false && !STEP_END.test(tailSnippet)) {
++  if (!STEP_END.test(tailSnippet)) {
+     throw new IfcInputError(
+       'TRUNCATED_STEP', `${label} is truncated: it starts like a STEP file but has no ` +
+         `END-ISO-10303-21; terminator, so any entity count or schema read from it ` +
+@@ -102,7 +102,7 @@
+   const headText = safeUtf8Decode(
+     bytes.subarray(0, Math.min(bytes.byteLength, 64 * 1024)),
+   );
+-  if (false && !hasDataSection(headText)) {
++  if (!hasDataSection(headText)) {
+     throw new IfcInputError('MISSING_DATA', `${label} has no DATA section, so it contains no IFC entities.`);
+   }
+ 
+--- a/packages/parser/src/scan-report.ts
++++ b/packages/parser/src/scan-report.ts
+@@ -105,5 +105,5 @@
+   const incomplete = (oversizedIdCount ?? 0) > 0 || (malformedRecordCount ?? 0) > 0;
+   return { scanPath, scannedRecords, oversizedIdCount,
+     malformedRecordDetected: malformedRecordCount === null ? null : malformedRecordCount > 0,
+-    completeness: 'complete', diagnostics };
++    completeness: incomplete ? 'incomplete' : diagnostics.length > 0 ? 'unknown' : 'complete', diagnostics };
+ }

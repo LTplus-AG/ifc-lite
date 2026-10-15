@@ -82,6 +82,7 @@ describe('developer loading contract (DX1)', () => {
     const { report } = await parseModel(text(input), { disableWorkerScan: true });
     expect(report.completeness).toBe('incomplete');
     expect(report.malformedRecordDetected).toBe(true);
+    // @source-text-assertion-ok diagnostic codes are parser runtime output from IFC bytes, not source text
     expect(report.diagnostics.map(d => d.code)).toContain('MALFORMED_RECORD');
   });
 
@@ -114,6 +115,7 @@ describe('developer loading contract (DX1)', () => {
     expect(store.entityIndex.byType.get('IFCWALL')?.length).toBeGreaterThan(0);
     expect(report.completeness).toBe('incomplete');
     expect(report.oversizedIdCount).toBe(1);
+    // @source-text-assertion-ok diagnostic codes are parser runtime output from IFC bytes, not source text
     expect(report.diagnostics.map(d => d.code)).toContain('OVERSIZED_EXPRESS_ID');
   });
 

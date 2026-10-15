@@ -12,12 +12,36 @@ repository = "https://github.com/LTplus-AG/ifc-lite"
 
 [workspace.dependencies]
 ifc-lite-core = { version = "20.4.0", path = "rust/core" }
-ifc-lite-geometry = { version = "20.4.0", path = "rust/geometry" }
+# `default-features = false`: geometry's default set is empty, and the members that
+# spelled it out (processing, wasm, server) said so to keep it that way.
+ifc-lite-geometry = { version = "20.4.0", path = "rust/geometry", default-features = false }
 ifc-lite-processing = { version = "20.4.0", path = "rust/processing" }
 ifc-lite-clash = { version = "20.4.0", path = "rust/clash" }
 ifc-lite-export = { version = "20.4.0", path = "rust/export" }
 ifc-lite-wasm = { version = "20.4.0", path = "rust/wasm-bindings" }
 ifc-lite-landxml = { version = "20.4.0", path = "rust/landxml" }
+
+# Third-party dependencies declared by more than one member. A member opts in
+# with `dep.workspace = true` and may only ADD features (`features = [...]`) or
+# `optional = true`; it cannot turn default features back on or off, which is why
+# `tracing` is declared with `default-features = false` here and the members that
+# want `std`/`attributes` list them. A dependency used by a single member stays in
+# that member's manifest. Bump a version here and every member follows.
+arrow = { version = "60", default-features = false, features = ["ipc"] }
+geometry-predicates = "0.3"
+memchr = "2.8"
+nalgebra = { version = "0.35", default-features = false, features = ["std"] }
+parquet = { version = "60", default-features = false, features = ["arrow"] }
+png = "0.18"
+rayon = "1.10"
+rustc-hash = "2.1"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.10"
+thiserror = "2.0"
+tokio = "1"
+tracing = { version = "0.1", default-features = false }
+zip = { version = "8", default-features = false, features = ["deflate"] }
 
 # Numeric-safety policy, inherited by every member via `[lints] workspace = true`.
 # clippy must not auto-rewrite numeric literals or float comparisons: `.clamp()`,

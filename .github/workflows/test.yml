@@ -2332,6 +2332,16 @@ jobs:
       # That wasm32 leg runs on its own schedule in determinism.yml.
       - name: Clippy (lint gate)
         run: cargo clippy --workspace --all-targets -- -D warnings
+      # G6 (#7672): a dependency a member declares but its sources never name is
+      # compile time and supply-chain surface for nothing (XCUT-17 found seven).
+      # cargo-machete is a text scan, so it needs no build and runs in seconds.
+      # A dependency that is only there for a feature or a macro goes in that
+      # crate's `[package.metadata.cargo-machete] ignored`, with a reason.
+      # Prebuilt binary, pinned like cargo-nextest below (not `cargo install`).
+      - name: Install cargo-machete
+        uses: taiki-e/install-action@7d7411b181173c48350233b3f42241a9ccc6aa2b # cargo-machete (snapshot pinned 2026-10)
+      - name: Unused dependencies (cargo machete)
+        run: cargo machete
       # cargo-nextest, not `cargo test`, for the test binaries. Measured on a
       # green PR run: `cargo test --workspace` was 26 min, of which compile was
       # 5m45s and the remaining ~20 min was ~290 test binaries run ONE AFTER

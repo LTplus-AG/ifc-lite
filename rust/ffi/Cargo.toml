@@ -28,14 +28,13 @@ mimalloc = ["dep:mimalloc"]
 # can opt back out with `--no-default-features`. Never reaches wasm (this crate
 # is a native cdylib only).
 mimalloc = { version = "0.1", optional = true }
-# Carry an explicit `version` alongside `path` so the crate is publishable to
-# crates.io: `cargo publish` strips the path and keeps the version requirement.
-# A path-only dep fails publish ("dependency does not specify a version").
-# `scripts/sync-versions.js` keeps this literal aligned with the workspace
-# version on every `changeset version` bump.
-ifc-lite-processing = { version = "20.4.0", path = "../processing" }
-rayon = "1.10"
-serde_json = "1.0"
+# The workspace entry carries an explicit `version` alongside `path` so the crate
+# is publishable to crates.io (`cargo publish` strips the path and keeps the
+# version requirement). `scripts/sync-versions.js` keeps that literal aligned
+# with the workspace version on every `changeset version` bump.
+ifc-lite-processing.workspace = true
+rayon.workspace = true
+serde_json.workspace = true
 
 [lints]
 workspace = true

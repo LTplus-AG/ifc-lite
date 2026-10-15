@@ -1,6 +1,6 @@
 # Independent adversarial review — #7619
 
-Final source reviewed: `63f74bc84c919788de91c7d5862d9c1621ef2077`.
+Final source reviewed: `ddf0fc50e0cb4be0367c9ed2d6e01159fc1b9840`.
 Base: `f1d7254b73`. Review date: 2026-10-15.
 
 Verdict: no unresolved correctness blocker or known reproduced omission remains
@@ -42,10 +42,13 @@ separately verified. Heavy validation was coordinated with the lead agent.
   Assigned seeds require existing effective representation/item classes. Tests
   cover cycles, dangling references, shared geometry, placement-only negatives,
   creations, deletions, retypes, named edits and positional precedence/clearing.
-- Independent IFC stores retain their own registered offsets. Shared IFCX stores
-  are projected once with all owners and no false single-owner badge; the actual
-  shared-store constructor gives all composed owners zero offsets. Tests and
-  browser federation evidence cover colliding local IDs and repeated names.
+- Stores are grouped by source identity and renderer ID offset. Reusing a parsed
+  store across distinct registered model ranges retains separate assignments,
+  attribution, selection and assembly visibility IDs. Shared IFCX aliases with
+  the same zero offset still project once with all owners and no false badge.
+  A parsed regression uses one store and two actual registry allocations; the
+  shared-zero-offset regression remains unchanged. Browser federation evidence
+  also covers colliding local IDs and repeated names.
 - Mixed rows advertise Show when their existing action reveals members. The
   callback, icon, accessible label and tooltip share the same action calculation
   over exact getNodeElements IDs. Fully-hidden styling remains separate, including
@@ -80,7 +83,7 @@ browser; the lead agent performed the interactions recorded in [README](README.m
 
 The lead agent reported passing focused tests, root typecheck/test-file audit,
 lint, production build and unchanged bundle ceilings at preceding source revisions.
-Final readiness validation was running when this consolidated report was written;
+Final shared-store ID-space validation was running when this report was updated;
 final commands, counts, browser results and bundle measurements belong in the
 README and raw evidence. This review does not claim independent heavy-test runs.
 Browser use of the fetched published WASM runtime and the local regeneration

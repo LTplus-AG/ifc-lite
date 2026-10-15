@@ -69,7 +69,9 @@ export function buildTreeForGrouping(
     return buildMaterialTree(models, ifcDataStore, expansion, isMultiModel, geometricIds, geometryReadyModelIds, materialSourceStores);
   }
   if (groupingMode === 'presentation-layers') {
-    return buildPresentationLayerTree(models, ifcDataStore, expansion, geometricIds, geometryReadyModelIds, treeOverlay);
+    // Curve-only annotations render in the symbolic overlay rather than meshes.
+    // Their owner IDs obey the same hide/show contract as meshed products.
+    return buildPresentationLayerTree(models, ifcDataStore, expansion, classTreeIds, geometryReadyModelIds, treeOverlay);
   }
   if (groupingMode === 'groups') {
     return buildGroupTree(models, ifcDataStore, expansion, isMultiModel, geometricIds, groupFilter, treeOverlay);

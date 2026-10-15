@@ -11,6 +11,8 @@ import { resolveEntityRef, useViewerStore, type FederatedModel } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { buildPresentationLayerTree } from './presentationLayerTree.js';
 import { hierarchyRowSelection } from './rowSelection.js';
+import { collectAnnotationEntityIds } from './hierarchyGeometry.js';
+import { buildTreeForGrouping } from './revealGlobalId.js';
 
 // #7619: real STEP ownership, including an assembly whose drawable geometry
 // belongs to a part, exercises both domain resolution and hierarchy projection.
@@ -144,4 +146,31 @@ test('#7619 legacy overlay edits preserve authored meshless products and remove 
   assert.equal(nodes.find(row => row.type === 'element' && row.expressIds[0] === authored.expressId)?.noGeometry, true);
   assert.equal(nodes.some(row => row.type === 'element' && [2, 4].includes(row.expressIds[0])), false);
   assert.equal(nodes.find(row => row.type === 'element' && row.expressIds[0] === 1)?.name, 'Edited assembly');
+});
+
+
+test('#7619 curve-only annotation layers retain overlay owner IDs for hide/show after geometry completes', async () => {
+  const annotationIfc = IFC.replace(
+    "#4=IFCWALL('0GUID000000000000000004',$,'Without mesh',$,$,$,#13,$,$);",
+    "#4=IFCANNOTATION('0GUID000000000000000004',$,'Curve annotation',$,$,$,#13);",
+  ).replace("#23=IFCSHAPEREPRESENTATION($,'Body','SweptSolid',(#33));",
+    "#23=IFCSHAPEREPRESENTATION($,'Annotation','Curve2D',(#33));")
+    .replace('#33=IFCEXTRUDEDAREASOLID($,$,$,1.);',
+      '#33=IFCPOLYLINE((#34,#35));\n#34=IFCCARTESIANPOINT((0.,0.));\n#35=IFCCARTESIANPOINT((1.,1.));');
+  const store = await new IfcParser().parseColumnar(new TextEncoder().encode(annotationIfc).buffer,
+    { disableWorkerScan: true });
+  const models = new Map<string, FederatedModel>();
+  const meshIds = new Set<number>();
+  const overlayIds = collectAnnotationEntityIds(models, store);
+  assert.deepEqual([...overlayIds], [4], 'annotation owner is included despite having no mesh');
+  const nodes = buildTreeForGrouping('presentation-layers', models, store, ALL, false, [], 'elevation-desc',
+    meshIds, new Set([...meshIds, ...overlayIds]), [], 'all', new Set(['legacy']), new Map(), new Map());
+  const header = nodes.find(row => row.entityExpressId === 52);
+  assert.ok(header);
+  assert.deepEqual(header.globalIds, [4], 'layer visibility targets the owner consumed by symbolic overlay hiding');
+  assert.deepEqual(header.memberGlobalIds, [4]);
+  assert.equal(header.noGeometry, false, 'curve geometry must keep layer visibility controls usable');
+  const annotation = nodes.find(row => row.type === 'element' && row.expressIds[0] === 4);
+  assert.ok(annotation);
+  assert.equal(annotation.noGeometry, false);
 });

@@ -73,7 +73,8 @@
           "fixture": "Fresh real CLI eval on manifest-verified FZK: five edited doors agree across attributes, queries and CSV; tests/evidence/cli-shared-headless/fzk.json",
           "removal": "Retired both CLI query-overlay modules; CLI backend now 172 lines; no retired helper references in current consumers",
           "guards": "Raw-access guard and API snapshot check passed; module-size budget retired",
-          "knip": "Ran; existing repository-wide findings remain, with no retired query helper references"
+          "knip": "Ran; existing repository-wide findings remain, with no retired query helper references",
+          "oracle": "Ordinary full revert against shared-session parent OBSERVED: the existing CLI context returns stale attribute/query values and the new fixture assertion fails; restoration verified"
         }
       }
     },

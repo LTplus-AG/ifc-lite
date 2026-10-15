@@ -1,0 +1,12 @@
+{
+  "runtime": "v24.21.0",
+  "template": "threejs",
+  "lockfileVersion": 3,
+  "packageVersions": {
+    "@ifc-lite/geometry": "7.7.0",
+    "three": "0.183.2"
+  },
+  "npmCi": true,
+  "typecheck": true,
+  "build": true
+}

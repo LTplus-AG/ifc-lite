@@ -1,0 +1,67 @@
+{
+  "objective": "Land additive developer usability improvements without browser viewer changes",
+  "compatibility": "Preserve existing APIs and package entry points",
+  "tasks": [
+    {
+      "id": "DX1",
+      "title": "Shared input validation and structured parse completeness",
+      "status": "ready_for_review",
+      "acceptance": "Parser and CLI share validation; malformed, partial and unknown scan outcomes remain distinguishable; real fixture evidence",
+      "pullRequests": [
+        "https://github.com/LTplus-AG/ifc-lite/pull/7632"
+      ],
+      "branch": "feat/developer-parse-contract",
+      "checks": {
+        "parser": "1978 passed, 8 skipped (full parser suite)",
+        "cliLoader": "Full CLI suite: 1459 passed, 15 skipped",
+        "documentation": "472 snippets compiled across 113 docs",
+        "fixture": "Manifest-verified ArchiCAD FZK: 44249 scanned records, 5 IfcDoor records, complete scan; tests/evidence/developer-parse-contract/fzk.json",
+        "typecheck": "Root pnpm typecheck passed; 4186 test sources audited",
+        "apiSurface": "regenerated",
+        "moduleSize": "passed",
+        "sourceTextAssertions": "Passed; runtime diagnostic-code assertions explicitly identified",
+        "oxlintTouchedFiles": "passed",
+        "reviewRegression": "Byte-level lexical envelope checks, invalid scan counters announced to legacy listeners, and structured empty-input errors. New validated APIs are strict; the existing MCP loader preserves partial-file recovery and scan warnings.",
+        "oracle": "Ordinary full production revert OBSERVED: 20 tests pass on the branch; independent existing-scanner witnesses fail assertions after removal; tree restoration verified; no CI exception",
+        "mcpLoader": "Full MCP suite passed, including shared validation and recoverable short-scan hints"
+      }
+    },
+    {
+      "id": "DX2",
+      "title": "Supported shared headless entry point",
+      "status": "pending",
+      "acceptance": "Open/query/edit/export/close through a documented library API; CLI and MCP reuse common implementation with existing behavior preserved",
+      "pullRequests": []
+    },
+    {
+      "id": "DX3",
+      "title": "Discoverable backend capabilities",
+      "status": "pending",
+      "acceptance": "Unsupported operations can be checked before invocation and throw structured errors; legacy APIs stay compatible",
+      "pullRequests": []
+    },
+    {
+      "id": "DX4",
+      "title": "Task-based onboarding and complete recipes",
+      "status": "pending",
+      "acceptance": "Data extraction, validation, edit/export/reopen, geometry and service recipes with real fixture and expected results",
+      "pullRequests": []
+    },
+    {
+      "id": "DX5",
+      "title": "Consumer artifact workflows and scaffold compatibility",
+      "status": "pending",
+      "acceptance": "Fresh external consumer installs packed artifacts and proves workflows; scaffold dependency combinations tested together in CI",
+      "pullRequests": []
+    },
+    {
+      "id": "DX6",
+      "title": "Searchable API reference and diagnostics",
+      "status": "pending",
+      "acceptance": "Generated searchable public symbol reference and CLI environment diagnostic report; generation and behavior validated in CI",
+      "pullRequests": []
+    }
+  ],
+  "mergePolicy": "Resolve findings and verify required and applicable checks on the current head before merging",
+  "scope": "Tracks requested developer experience work; this artifact grants no workflow permissions"
+}

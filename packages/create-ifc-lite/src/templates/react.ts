@@ -4,15 +4,15 @@
 
 import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
-import { getPackageVersion } from '../utils/config-fixers.js';
+import { getPinnedPackageVersion, MODULE_WORKER_CONFIG } from '../utils/config-fixers.js';
 import { writeGitignore } from '../utils/gitignore.js';
 
 /**
  * Scaffold a standalone React + Vite WebGPU viewer.
  */
 export function createReactTemplate(targetDir: string, projectName: string) {
-  const geometryVersion = getPackageVersion('@ifc-lite/geometry');
-  const rendererVersion = getPackageVersion('@ifc-lite/renderer');
+  const geometryVersion = getPinnedPackageVersion('@ifc-lite/geometry');
+  const rendererVersion = getPinnedPackageVersion('@ifc-lite/renderer');
 
   writeFileSync(join(targetDir, 'package.json'), JSON.stringify({
     name: projectName,
@@ -68,7 +68,7 @@ const isolationHeaders = {
 };
 
 export default defineConfig({
-  plugins: [react()],
+${MODULE_WORKER_CONFIG}  plugins: [react()],
   optimizeDeps: {
     exclude: ['@ifc-lite/wasm'],
   },
@@ -568,7 +568,7 @@ React + Vite IFC viewer using [IFC-Lite](https://github.com/LTplus-AG/ifc-lite).
 ## Quick Start
 
 \`\`\`bash
-npm install
+npm ci
 npm run dev
 \`\`\`
 

@@ -35,7 +35,7 @@
  * relationships — that's a valid case.
  */
 
-import type { IfcDataStore } from '@ifc-lite/parser';
+import { propertyDefinitionRefsOfValue, type IfcDataStore } from '@ifc-lite/parser';
 import { iterateEffectiveEntityIds, type IfcAttributeValue, type MutablePropertyView, type StoreEditor } from '@ifc-lite/mutations';
 import { readAttributes } from './placement-core.js';
 import { asRef, refList } from '../style-entity-reader.js';
@@ -112,7 +112,9 @@ export function cloneElementMetadata(
       if (!currentRelated.includes(sourceExpressId)) continue;
       // Skip targets that are already in the list — avoids duplicates
       // when this is called twice for the same operation (idempotent).
-      const definitionId = type === 'IFCRELDEFINESBYPROPERTIES' ? asRef(attrs[5]) : null;
+      // A set of definitions (#7681) has no one name to compare, so it is shared whole.
+      const definitions = type === 'IFCRELDEFINESBYPROPERTIES' ? propertyDefinitionRefsOfValue(attrs[5], asRef) : [];
+      const definitionId = definitions.length === 1 ? definitions[0] : null;
       const definitionType = definitionId === null ? null : editor.getEntityType(definitionId)?.toUpperCase();
       const namedSet = definitionType === 'IFCPROPERTYSET' || definitionType === 'IFCELEMENTQUANTITY';
       const readName = namedSet && definitionId !== null ? readAttributes(dataStore, view, editor, definitionId)?.[2] : null;

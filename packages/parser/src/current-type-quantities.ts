@@ -8,6 +8,7 @@ import { getReference } from './attribute-helpers.js';
 import { EntityExtractor } from './entity-extractor.js';
 import { effectiveMetadataRecord, type MetadataReadView } from './effective-metadata-record.js';
 import { getInheritanceChain, getAttributeNamesForSchema, getAttributeTypeForSchema } from './ifc-schema.js';
+import { propertyDefinitionRefsOfValue } from './property-definition-refs.js';
 import { QUANTITY_TYPE_MAP } from './columnar-parser-indexes.js';
 import { resolveUnitByRef, measureUnit, type UnitEntityReader } from './project-units.js';
 import { readQuantitySetRecord, type QuantityEntityReader } from './quantity-collect.js';
@@ -85,11 +86,16 @@ function inventory(store: IfcDataStore, view: MetadataReadView): CurrentInventor
         const members = refIds(record.attributes[4], MAX_RELATION_REFERENCES, true);
         referenceCount += members.length;
         if (referenceCount > MAX_RELATION_REFERENCES) throw new CurrentQuantityRefusal('Native type relationship references exceed the read limit');
-        if (typeof target !== 'number' || !Number.isSafeInteger(target) || target <= 0) throw new CurrentQuantityRefusal('Native type relationship target is unreadable');
-        const map = record.type.toUpperCase() === 'IFCRELDEFINESBYTYPE' ? result.types : result.sets;
+        const byType = record.type.toUpperCase() === 'IFCRELDEFINESBYTYPE';
+        // RelatingPropertyDefinition may be a set of definitions (#7681); a type is always one.
+        const targets = byType
+            ? (typeof target === 'number' && Number.isSafeInteger(target) && target > 0 ? [target] : [])
+            : [...new Set(propertyDefinitionRefsOfValue(target))];
+        if (targets.length === 0) throw new CurrentQuantityRefusal('Native type relationship target is unreadable');
+        const map = byType ? result.types : result.sets;
         for (const id of members) {
             const ids = map.get(id) ?? [];
-            if (!ids.includes(target)) ids.push(target);
+            for (const one of targets) if (!ids.includes(one)) ids.push(one);
             map.set(id, ids);
         }
     }

@@ -85,6 +85,31 @@ fn export_data_1_every_relating_definition_shape_reaches_the_rows() {
     }
 }
 
+/// A SET holds each definition once. `(#20,#20)`, or two relationships naming
+/// #20 for one object, must not export the property set twice.
+#[test]
+fn export_data_1_a_repeated_definition_is_exported_once() {
+    let ifc = format!(
+        "{HEAD}\
+#10=IFCWALL('0WALL00000000000000010',$,'Repeated',$,$,$,$,$,$);\n\
+#11=IFCWALL('0WALL00000000000000011',$,'TwoRels',$,$,$,$,$,$);\n\
+#12=IFCWALL('0WALL00000000000000012',$,'TypedRepeated',$,$,$,$,$,$);\n\
+#20=IFCPROPERTYSET('0PSET00000000000000020',$,'Pset_A',$,(#21));\n\
+#21=IFCPROPERTYSINGLEVALUE('FireRating',$,IFCLABEL('R60'),$);\n\
+#30=IFCRELDEFINESBYPROPERTIES('0REL00000000000000030',$,$,$,(#10),(#20,#20));\n\
+#31=IFCRELDEFINESBYPROPERTIES('0REL00000000000000031',$,$,$,(#11),#20);\n\
+#32=IFCRELDEFINESBYPROPERTIES('0REL00000000000000032',$,$,$,(#11),(#20));\n\
+#33=IFCRELDEFINESBYPROPERTIES('0REL00000000000000033',$,$,$,(#12),IFCPROPERTYSETDEFINITIONSET((#20,#20)));\n\
+{TAIL}"
+    );
+    let model = build_export_model(ifc.as_bytes());
+    for id in [10, 11, 12] {
+        let row = model.entities.iter().find(|r| r.express_id == id).expect("wall row");
+        let psets: Vec<_> = row.property_sets.iter().map(|p| p.name.as_str()).collect();
+        assert_eq!(psets, ["Pset_A"], "#{id} {:?}", row.name);
+    }
+}
+
 /// One property per primitive spelling: measures outside the old allowlist,
 /// text that looks numeric or boolean, and the logical/boolean forms.
 fn typed_values_model() -> String {

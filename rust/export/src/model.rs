@@ -335,7 +335,13 @@ pub fn stream_export_model_with_options(
                 .map(|matrix| Placement { matrix })
         });
 
-        let def_ids = defs_by_object.get(&id).cloned().unwrap_or_default();
+        // One pass over the object's definitions: `(#20,#20)`, or two
+        // relationships naming one set, must not export that set twice.
+        let mut def_ids = defs_by_object.get(&id).cloned().unwrap_or_default();
+        if def_ids.len() > 1 {
+            let mut seen = FxHashSet::default();
+            def_ids.retain(|d| seen.insert(*d));
+        }
         let (mut property_sets, mut quantity_sets) = resolve_pset_defs(&mut decoder, &def_ids);
 
         // Fold in whatever this occurrence inherits from its type. Resolution is

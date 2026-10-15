@@ -105,26 +105,39 @@ fn cache_key(headers: &axum::http::HeaderMap) -> String {
     meta["cache_key"].as_str().expect("cache_key").to_string()
 }
 
+/// `parity_tests::test_state` with a hermetic config: the shipped defaults
+/// with the stream batch sizes stated, never the ambient environment
+/// (`INITIAL_BATCH_SIZE` / `MAX_BATCH_SIZE` set in a shell would otherwise move
+/// the SSE pins, and `IFC_SERVER_API_TOKEN` would turn every route into a 401).
+async fn golden_state(label: &str) -> crate::AppState {
+    let mut state = test_state(label).await;
+    let mut config = crate::config::Config::from_lookup(|_| None);
+    config.initial_batch_size = 100;
+    config.max_batch_size = 1000;
+    state.config = std::sync::Arc::new(config);
+    state
+}
+
 /// Every route, one fixture, each on a fresh cache so no body is a replay.
 async fn route_bodies(key: &str, content: &[u8]) -> Vec<(&'static str, Vec<u8>)> {
-    let state = test_state(&format!("golden-parse-{key}")).await;
+    let state = golden_state(&format!("golden-parse-{key}")).await;
     let (_, parse) = ok_body(post_content(&state, "/api/v1/parse", content).await, "parse").await;
     let (_, metadata) = ok_body(post_content(&state, "/api/v1/parse/metadata", content).await, "metadata").await;
 
-    let state = test_state(&format!("golden-parquet-{key}")).await;
+    let state = golden_state(&format!("golden-parquet-{key}")).await;
     let (headers, parquet) = ok_body(post_content(&state, "/api/v1/parse/parquet", content).await, "parquet").await;
     let symbolic_uri = format!("/api/v1/parse/symbolic/{}", cache_key(&headers));
     let (_, symbolic) = ok_body(get(&state, &symbolic_uri).await, "symbolic").await;
 
-    let state = test_state(&format!("golden-optimized-{key}")).await;
+    let state = golden_state(&format!("golden-optimized-{key}")).await;
     let (headers, optimized) =
         ok_body(post_content(&state, "/api/v1/parse/parquet/optimized", content).await, "optimized").await;
     let data_model_uri = format!("/api/v1/parse/data-model/{}", cache_key(&headers));
     let (_, data_model) = ok_body(get(&state, &data_model_uri).await, "data-model").await;
 
-    let state = test_state(&format!("golden-stream-{key}")).await;
+    let state = golden_state(&format!("golden-stream-{key}")).await;
     let (_, stream) = ok_body(post_content(&state, "/api/v1/parse/stream", content).await, "stream").await;
-    let state = test_state(&format!("golden-pstream-{key}")).await;
+    let state = golden_state(&format!("golden-pstream-{key}")).await;
     let (_, pstream) =
         ok_body(post_content(&state, "/api/v1/parse/parquet-stream", content).await, "parquet-stream").await;
     vec![
@@ -142,7 +155,9 @@ async fn route_bodies(key: &str, content: &[u8]) -> Vec<(&'static str, Vec<u8>)>
 #[tokio::test]
 async fn route_bodies_match_their_pins() {
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden");
-    let repin = "cargo test -p ifc-lite-server route_golden_tests";
+    // One test pins all eight routes, so this rewrites every route file; the
+    // routes that did not move are rewritten byte-identically.
+    let repin = "cargo test -p ifc-lite-server route_golden_tests  # rewrites all route-*.json; unmoved ones stay byte-identical";
     let mut goldens: Vec<Golden> = ROUTES
         .iter()
         .map(|route| Golden::new(&dir, &format!("route-{route}"), repin))

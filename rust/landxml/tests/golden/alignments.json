@@ -34,6 +34,10 @@
       "fnv1a64": "74202d4a03ce9cfb",
       "bytes": 1821
     },
+    "storm-pipe-network": {
+      "fnv1a64": "cb6d2af2285211c3",
+      "bytes": 232
+    },
     "viewer-sample-tin": {
       "fnv1a64": "cb6d2af2285211c3",
       "bytes": 232

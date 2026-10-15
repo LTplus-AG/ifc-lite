@@ -25,10 +25,14 @@ use ifc_lite_landxml::alignment::{alignment_render_data, parse_landxml_alignment
 use ifc_lite_landxml::{parse_landxml_document, parse_landxml_pipe_networks};
 use serde::Serialize;
 
-/// `(key, path)`: catalogued paths are under `tests/models/`; the one in-tree
-/// sample is repo-relative and always present.
+/// `(key, path)`: catalogued paths are under `tests/models/`; the in-tree
+/// ones are repo-relative and always present.
 const FIXTURES: &[(&str, &str)] = &[
     ("viewer-sample-tin", "apps/viewer/public/samples/terrain-tin-metric.xml"),
+    // The one pipe network that parses: the catalogued drainage file is
+    // ISO-8859-1 and refused, which alone would leave `pipe-networks` pinning
+    // refusals only.
+    ("storm-pipe-network", "rust/landxml/tests/fixtures/storm-pipe-network.xml"),
     ("bonsai-terrain", "landxml/federation/bonsai-topo-control-v1/terrain.xml"),
     ("civil3d-foot-tin", "landxml/producers/autodesk-civil3d-2020-international-foot-tin.xml"),
     ("3dwin-rockbed-terrain", "landxml/producers/3d-win-6.6.4-m3-rockbed-terrain.xml"),
@@ -43,7 +47,7 @@ fn fixtures() -> Vec<(&'static str, Vec<u8>)> {
     FIXTURES
         .iter()
         .filter_map(|(key, path)| {
-            let bytes = if path.starts_with("apps/") {
+            let bytes = if path.starts_with("apps/") || path.starts_with("rust/") {
                 let abs = format!("{}/../../{path}", env!("CARGO_MANIFEST_DIR"));
                 Some(std::fs::read(&abs).unwrap_or_else(|e| panic!("in-tree fixture {abs}: {e}")))
             } else {

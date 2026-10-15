@@ -16,7 +16,10 @@ import { useViewerStore, type FederatedModel } from '@/store';
 import { getDefaultSectionPlane } from '@/store/slices/sectionSlice.js';
 import { fixtureModel } from '@/test/store-fixture.js';
 import { clearGlobalRefs, setGlobalRendererRef } from '@/hooks/useBCF.js';
-import { cardinalValuePerMetre } from './sectionPlaneFrame.js';
+import * as frames from './sectionPlaneFrame.js';
+
+// Through the namespace: the file still loads (and fails an assertion) when the function is missing.
+const cardinalValuePerMetre = (): number => (frames as { cardinalValuePerMetre?: () => number }).cardinalValuePerMetre?.() ?? Number.NaN;
 
 const BOUNDS = { min: { x: 0, y: 0, z: 0 }, max: { x: 20, y: 10, z: 8 } };
 

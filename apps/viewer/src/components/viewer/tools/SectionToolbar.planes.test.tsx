@@ -233,7 +233,7 @@ describe('adding, choosing and removing planes (#7545)', () => {
     addPlane('Side (X)');
     act(() => chips()[1]!.focus());
     press(chips()[1]!, 'Delete');
-    await act(async () => { await new Promise((r) => setTimeout(r, 5)); });
+    await new Promise((r) => setTimeout(r, 10)); // the focus moves on a timer, outside React's act scope
     assert.deepEqual(chipNames(), ['A']);
     assert.equal(document.activeElement, selectedChip(), 'focus is on the selected chip, not dropped to the page');
   });

@@ -1,0 +1,14 @@
+{
+  "about": "FNV-1a 64 and byte length of each route-parquet-optimized output, keyed by case. Written by ifc-lite-server, never by hand.",
+  "repin": "IFC_LITE_REPIN_GOLDEN=1 cargo test -p ifc-lite-server route_golden_tests",
+  "cases": {
+    "IfcOpenHouse_IFC4": {
+      "fnv1a64": "d6cc931548b02342",
+      "bytes": 35035
+    },
+    "parity-fixture": {
+      "fnv1a64": "8a6e15057eff094c",
+      "bytes": 6766
+    }
+  }
+}

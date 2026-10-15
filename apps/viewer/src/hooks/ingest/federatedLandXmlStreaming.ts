@@ -252,11 +252,11 @@ export class FederatedLandXmlStreamingPlan implements FederatedLandXmlStreamingF
       throw new Error('LandXML federation admission did not reproduce its component envelope');
     }
     if (this.options.componentCount > 0 && this.admissionAccepted === 0) {
-      throw new Error(Number.isFinite(this.outsideFrameBounds.min.x) ? landXmlFrameRefusalMessage(
+      throw new Error(landXmlFrameRefusalMessage(
         renderFrameDistanceMetres(this.outsideFrameBounds, this.frame!.originShift),
         { declared: this.options.declaredCrs ?? declaredCrsOf(this.options.spatialReference), anchor: this.reference?.spatialReference ?? null,
           aligned: this.rawSource !== null && this.reference !== null && this.alignmentStatus !== 'failed' },
-      ) : 'LandXML federation preflight rejected every render component');
+      ));
     }
     if (this.fallbackFrame) {
       // The anchor supplies only the durable render-frame metadata. Its own

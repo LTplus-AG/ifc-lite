@@ -25,6 +25,7 @@ import { useViewerStore } from '../../store/index.js';
 import { fixtureModel } from '../../test/store-fixture.js';
 import { FederatedLandXmlStreamingPlan } from './federatedLandXmlStreaming.js';
 import { reframeLandXmlGeometry } from './landXmlLoad.js';
+import { landXmlFrameRefusalMessage } from './landXmlRenderFrame.js';
 import { parseLandXmlViewerModelFromBlobAsync } from './landXmlViewerModel.js';
 
 const FIXTURE_844 = fileURLToPath(new URL('../../../../../tests/models/issues/844_terrain_and_alignment.ifc', import.meta.url));
@@ -197,6 +198,40 @@ describe('LandXML federation frame refusal (#7605)', () => {
       assert.ok(error.message.endsWith("It was aligned to the anchor's EPSG:31467, so the surfaces are that far from the anchor model."), error.message);
       return true;
     });
+  });
+
+  it('reports no distance, but still the blockers, when no surface has finite bounds', () => {
+    const message = landXmlFrameRefusalMessage(Number.POSITIVE_INFINITY, {
+      declared: { horizontalId: 'EPSG:31467', verticalId: undefined }, anchor: ifcAnchorReference(), aligned: false,
+    });
+    assert.ok(!message.includes('∞') && !message.includes('NaN'), message);
+    assert.match(message, /^LandXML federation preflight rejected every render component: none of its surfaces has finite coordinates inside the 1,000 km shared render-frame envelope\. /);
+    assert.ok(message.includes('this LandXML declares no vertical datum'), message);
+  });
+
+  it('whole-document reframe of only non-finite meshes names the blockers without an infinite distance', async () => {
+    const originalWorker = globalThis.Worker;
+    Object.defineProperty(globalThis, 'Worker', { configurable: true, value: undefined });
+    try {
+      const model = await parseLandXmlViewerModelFromBlobAsync(new Blob([landXml844(EPSG_CODE_ONLY)]));
+      for (const mesh of model.geometryResult.meshes) mesh.positions.fill(Number.NaN);
+      const ifcFrame = {
+        originShift: { x: 0, y: 0, z: 0 },
+        originalBounds: { min: { x: -200, y: 117, z: -100 }, max: { x: 100, y: 128, z: 112 } },
+        shiftedBounds: { min: { x: -200, y: 117, z: -100 }, max: { x: 100, y: 128, z: 112 } },
+        hasLargeCoordinates: false,
+      };
+      assert.throws(
+        () => reframeLandXmlGeometry(model.geometryResult, model.semanticDocument, ifcFrame, { anchor: ifcAnchorReference(), aligned: false }),
+        (error: Error) => {
+          assert.ok(!error.message.includes('∞'), error.message);
+          assert.match(error.message, /none of its surfaces has finite coordinates/);
+          return true;
+        },
+      );
+    } finally {
+      Object.defineProperty(globalThis, 'Worker', { configurable: true, value: originalWorker });
+    }
   });
 
   it('raises the same refusal on the whole-document reframe path', async () => {

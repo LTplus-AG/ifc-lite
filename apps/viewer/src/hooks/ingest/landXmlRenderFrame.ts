@@ -277,8 +277,12 @@ function joinClauses(clauses: readonly string[]): string {
 
 /** The one refusal both federated LandXML paths raise when no surface fits the shared frame. */
 export function landXmlFrameRefusalMessage(distanceMetres: number, context: LandXmlFrameRefusalContext): string {
-  const where = `its surfaces lie up to ${KM.format(distanceMetres / 1000)} km from the shared render origin, `
-    + `outside the ${KM.format(MAX_RENDER_FRAME_LOCAL_EXTENT_METRES / 1000)} km shared render-frame envelope`;
+  const envelope = `${KM.format(MAX_RENDER_FRAME_LOCAL_EXTENT_METRES / 1000)} km shared render-frame envelope`;
+  // No finite bounds (every mesh had non-finite positions) means no distance
+  // to report; the blockers below still say why nothing was aligned.
+  const where = Number.isFinite(distanceMetres)
+    ? `its surfaces lie up to ${KM.format(distanceMetres / 1000)} km from the shared render origin, outside the ${envelope}`
+    : `none of its surfaces has finite coordinates inside the ${envelope}`;
   const target = context.anchor === null ? ''
     : context.anchor.horizontal ? ` to the anchor's ${context.anchor.horizontal.id}` : ' to the anchor';
   let why: string;

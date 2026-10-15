@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { safeUtf8Decode } from '@ifc-lite/data';
 import { IfcParser, type IfcDataStore, type ParseOptions } from './index.js';
 import { unwrapIfcZipView } from './ifczip.js';
 import type { EntityScanReport } from './scan-report.js';
@@ -42,8 +43,8 @@ export async function validateStepInput(input: Uint8Array | ArrayBuffer, label =
   }
 
   // Check for STEP file signature ("ISO-10303-21") in the first 256 bytes.
-  // TextDecoder (not Buffer.toString) so a plain Uint8Array view works too.
-  const headerSnippet = new TextDecoder('latin1').decode(
+  // The shared decoder also handles browser SharedArrayBuffer restrictions.
+  const headerSnippet = safeUtf8Decode(
     bytes.subarray(0, Math.min(bytes.byteLength, 256)),
   );
   if (!headerSnippet.includes('ISO-10303-21')) {
@@ -61,7 +62,7 @@ export async function validateStepInput(input: Uint8Array | ArrayBuffer, label =
   //
   // Only the tail is decoded: these files reach hundreds of MB.
   const tailStart = Math.max(0, bytes.byteLength - 256);
-  const tailSnippet = new TextDecoder('latin1').decode(bytes.subarray(tailStart));
+  const tailSnippet = safeUtf8Decode(bytes.subarray(tailStart));
   if (!tailSnippet.includes('END-ISO-10303-21;')) {
     throw new IfcInputError(
       'TRUNCATED_STEP', `${label} is truncated: it starts like a STEP file but has no ` +
@@ -76,7 +77,7 @@ export async function validateStepInput(input: Uint8Array | ArrayBuffer, label =
   // Bounded, like the header scan: `DATA;` follows the header, and these files
   // reach hundreds of MB -- decoding one whole would also risk V8's max string
   // length. 64 KB is far more header than any exporter writes.
-  const headText = new TextDecoder('latin1').decode(
+  const headText = safeUtf8Decode(
     bytes.subarray(0, Math.min(bytes.byteLength, 64 * 1024)),
   );
   if (!/^\s*DATA\s*;/m.test(headText)) {
@@ -92,7 +93,7 @@ export async function validateStepInput(input: Uint8Array | ArrayBuffer, label =
 export async function parseModel(input: Uint8Array | ArrayBuffer, options: ParseModelOptions = {}): Promise<ParsedModel> {
   const bytes = await validateStepInput(input, options.label);
   let report: EntityScanReport | undefined;
-  const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+  const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
   const store = await new IfcParser().parseColumnar(buffer, {
     ...options,
     onScanReport(value) { report = value; options.onScanReport?.(value); },

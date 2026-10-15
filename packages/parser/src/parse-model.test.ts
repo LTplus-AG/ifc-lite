@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { readFileSync, existsSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
 import { zipSync } from 'fflate';
 import { parseModel, IfcInputError, IfcParser, scanIfcEntities } from './index.js';
@@ -32,6 +33,35 @@ describe('developer loading contract (DX1)', () => {
   ])('rejects invalid input with a stable code (%s)', async (input, code) => {
     await expect(parseModel(text(input))).rejects.toMatchObject({ name: 'IfcInputError', code });
     await expect(parseModel(text(input))).rejects.toBeInstanceOf(IfcInputError);
+  });
+
+  it('loads shared source bytes when the runtime rejects SAB text decoding (PR #7632)', () => {
+    // A fresh realm installs the browser decoder policy before the shared
+    // decoder is initialized. Execute the built consumer API, not a mock parser.
+    const script = `
+      const NativeDecoder = globalThis.TextDecoder;
+      globalThis.TextDecoder = class extends NativeDecoder {
+        decode(input, options) {
+          if (input instanceof SharedArrayBuffer ||
+              (ArrayBuffer.isView(input) && input.buffer instanceof SharedArrayBuffer)) {
+            throw new TypeError('SharedArrayBuffer decoding is forbidden');
+          }
+          return super.decode(input, options);
+        }
+      };
+      const { readFileSync } = await import('node:fs');
+      const { parseModel } = await import(${JSON.stringify(new URL('../dist/index.js', import.meta.url).href)});
+      const input = readFileSync(new URL(${JSON.stringify(sample.href)}));
+      const shared = new Uint8Array(new SharedArrayBuffer(input.length));
+      shared.set(input);
+      const { store, report } = await parseModel(shared, { disableWorkerScan: true });
+      if (report.completeness !== 'complete' || !store.entityIndex.byType.get('IFCWALL')?.length) {
+        throw new Error('Shared model did not load completely');
+      }
+    `;
+    const result = spawnSync(process.execPath, ['--input-type=module', '-e', script], { encoding: 'utf8' });
+    expect(result.stderr, result.stdout).not.toContain('TypeError');
+    expect(result.status, result.stderr).toBe(0);
   });
 
   it('unwraps a real IFCZIP archive through the validated path', async () => {

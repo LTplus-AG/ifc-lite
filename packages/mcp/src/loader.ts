@@ -39,9 +39,6 @@ export async function loadIfcModel(filePath: string, opts: LoadIfcOptions = {}):
   }
 
   const buffer = await readFile(absolute);
-  if (buffer.byteLength === 0) {
-    throw new Error(`'${absolute}' is empty (0 bytes)`);
-  }
   const loaded = await loadIfcModelFromBytes(buffer, basename(absolute), opts.modelId, absolute);
   return { ...loaded, filePath: absolute };
 }

@@ -359,10 +359,36 @@ fn issue_6940_the_slabs_are_closed_in_every_vertex_frame() {
             };
             let opts = MeshProductionOptions::default();
             let uncut = produce_element_meshes(&job, &uncut_ctx, &opts, &mut decoder, &router).meshes;
-            let meshes = produce_element_meshes(&job, &ctx, &opts, &mut decoder, &router).meshes;
             assert_closed(id, &world_triangles(uncut.iter()), &format!("{frame}, uncut"));
-            assert_closed(id, &world_triangles(meshes.iter()), frame);
-            assert_shape_retained(id, &uncut, &meshes, frame);
+            // #6940: default uncut source output uses Watertight hygiene.
+            // IndexOnly boolean operands may retain T-junctions (#5313);
+            // their final output is checked by the one/all producer cases.
+            let mut source_router = GeometryRouter::with_scale_and_local_frame(
+                units.unit_scale(), local_frame,
+            );
+            source_router.set_rtc_offset(offset);
+            source_router.set_preserve_triangle_order(false);
+            let source = source_router.process_element(&entity, &mut decoder)
+                .expect("the uncut slab source meshes");
+            let mut source_data = MeshData::new(
+                id, "IfcSlab".into(), source.positions, source.normals,
+                source.indices, [1.0; 4],
+            );
+            source_data.origin = source.origin;
+            let source = [source_data];
+            let source_frame = format!("{frame}, source Watertight");
+            assert_closed(id, &world_triangles(source.iter()), &source_frame);
+            assert_shape_retained(id, &uncut, &source, &source_frame);
+            // Select from this host's actual IfcRelVoidsElement records.
+            let selected = *voids[&id].first().expect("the slab has an actual opening");
+            let one_void = [(id, vec![selected])].into_iter().collect();
+            let one_ctx = MeshProductionContext { void_index: &one_void, ..ctx };
+            for (policy, cut_ctx) in [("one opening", &one_ctx), ("all openings", &ctx)] {
+                let cut_frame = format!("{frame}, {policy}");
+                let meshes = produce_element_meshes(&job, cut_ctx, &opts, &mut decoder, &router).meshes;
+                assert_closed(id, &world_triangles(meshes.iter()), &cut_frame);
+                assert_shape_retained(id, &uncut, &meshes, &cut_frame);
+            }
         }
     }
 }

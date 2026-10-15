@@ -73,3 +73,19 @@ describe.skipIf(vectors.length === 0)('RelatingPropertyDefinition: parity with t
     });
   }
 });
+
+describe('decoded-value reader: a number is not told apart from a reference (#7681)', () => {
+  const text = record('(#20,1.5E3,.T.,#22)');
+  it('the byte reader, like Rust, reads only the references', () => {
+    const buffer = bytesOf(text);
+    const at = text.indexOf('(#20,1.5E3');
+    expect(readPropertyDefinitionRefs(buffer, at, buffer.length)).toEqual([20, 22]);
+  });
+
+  it('the decoded reader cannot, so a caller checks the entity exists', () => {
+    const decoded = decodedAttr5(text);
+    expect(propertyDefinitionRefsOfValue(decoded)).toEqual([20, 1500, 22]);
+    const known = new Set([20, 22]);
+    expect(propertyDefinitionRefsOfValue(decoded, (m) => (typeof m === 'number' && known.has(m) ? m : null))).toEqual([20, 22]);
+  });
+});

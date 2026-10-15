@@ -13,7 +13,7 @@
  * backend layer can call it without needing parser internals.
  */
 
-import { EntityExtractor, effectiveStoreyId, resolveEffectiveRelationshipOverlay, type IfcDataStore } from '@ifc-lite/parser';
+import { EntityExtractor, effectiveStoreyId, propertyDefinitionRefsOfValue, resolveEffectiveRelationshipOverlay, type IfcDataStore } from '@ifc-lite/parser';
 import { iterateEffectiveEntityIds, type IfcAttributeValue, type StoreEditor } from '@ifc-lite/mutations';
 import { resolvedTypeName } from '@ifc-lite/data';
 import { asRef, createStyleEntityReader, refList } from './style-entity-reader.js';
@@ -216,11 +216,17 @@ function collectSourceAssociations(
     if (!refList(entity.attributes[4]).includes(sourceId)) continue;
 
     const ownerHistoryId = asRef(entity.attributes[1]);
-    const relatingExpressId = asRef(entity.attributes[5]);
+    // RelatingPropertyDefinition is an IfcPropertySetDefinitionSelect: one
+    // reference, a bare set or IFCPROPERTYSETDEFINITIONSET((...)) (#7681).
+    // Every other Relating* slot is one reference.
+    const relatingExpressIds = type.toUpperCase() === 'IFCRELDEFINESBYPROPERTIES'
+      ? [...new Set(propertyDefinitionRefsOfValue(entity.attributes[5], asRef))]
+      : [asRef(entity.attributes[5])].filter((id): id is number => id !== null);
+    const relatingExpressId = relatingExpressIds[0];
     // RelatingPropertyDefinition / RelatingType / etc. is required
     // by the schema, so a missing one is a hard skip. OwnerHistory
     // is optional (IFC4) — null is fine and round-trips cleanly.
-    if (relatingExpressId === null) continue;
+    if (relatingExpressId === undefined) continue;
 
     const name = typeof entity.attributes[2] === 'string' ? entity.attributes[2] : null;
     const description = typeof entity.attributes[3] === 'string' ? entity.attributes[3] : null;
@@ -235,6 +241,7 @@ function collectSourceAssociations(
       name,
       description,
       relatingExpressId,
+      ...(relatingExpressIds.length > 1 ? { relatingExpressIds } : {}),
     });
   }
   return out;

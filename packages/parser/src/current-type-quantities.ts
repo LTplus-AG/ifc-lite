@@ -78,24 +78,37 @@ function inventory(store: IfcDataStore, view: MetadataReadView): CurrentInventor
     const result: CurrentInventory = { revision, source: store.source, types: new Map(), sets: new Map(), quantities: new Map() };
     let relationshipCount = 0;
     let referenceCount = 0;
+    const seenTypes = new Map<number, Set<number>>();
+    const seenSets = new Map<number, Set<number>>();
     for (const row of iterateEffectiveEntities(store, view, ['IfcRelDefinesByType', 'IfcRelDefinesByProperties'])) {
         if (++relationshipCount > MAX_RELATIONSHIPS) throw new CurrentQuantityRefusal('Native type relationship inventory exceeds the read limit');
         const record = effectiveMetadataRecord(store, row.expressId, view);
         if (!record) throw new CurrentQuantityRefusal('Native type relationship is unreadable');
         const target = record.attributes[5];
         const members = refIds(record.attributes[4], MAX_RELATION_REFERENCES, true);
-        referenceCount += members.length;
-        if (referenceCount > MAX_RELATION_REFERENCES) throw new CurrentQuantityRefusal('Native type relationship references exceed the read limit');
         const byType = record.type.toUpperCase() === 'IFCRELDEFINESBYTYPE';
         // RelatingPropertyDefinition may be a set of definitions (#7681); a type is always one.
+        // Inside a set, a decoded `#1500` and a stray `1500` are both the number
+        // 1500, so a member counts only when it names an entity of the
+        // effective model. A lone reference keeps its plain numeric read.
+        const inSet = (member: unknown): number | null => {
+            const id = typeof member === 'number' && Number.isSafeInteger(member) && member > 0 ? member : null;
+            return id !== null && (store.entityIndex.byId.has(id) || view.getNewEntity(id)) ? id : null;
+        };
         const targets = byType
             ? (typeof target === 'number' && Number.isSafeInteger(target) && target > 0 ? [target] : [])
-            : [...new Set(propertyDefinitionRefsOfValue(target))];
+            : [...new Set(propertyDefinitionRefsOfValue(target, Array.isArray(target) ? inSet : undefined))];
         if (targets.length === 0) throw new CurrentQuantityRefusal('Native type relationship target is unreadable');
+        // Both sides count: a set of N definitions on M objects is N x M edges.
+        referenceCount += members.length * targets.length;
+        if (referenceCount > MAX_RELATION_REFERENCES) throw new CurrentQuantityRefusal('Native type relationship references exceed the read limit');
         const map = byType ? result.types : result.sets;
+        const seen = byType ? seenTypes : seenSets;
         for (const id of members) {
             const ids = map.get(id) ?? [];
-            for (const one of targets) if (!ids.includes(one)) ids.push(one);
+            const known = seen.get(id) ?? new Set<number>();
+            for (const one of targets) if (!known.has(one)) { known.add(one); ids.push(one); }
+            seen.set(id, known);
             map.set(id, ids);
         }
     }

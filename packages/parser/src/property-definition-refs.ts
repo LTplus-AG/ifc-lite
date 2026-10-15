@@ -193,6 +193,12 @@ function numericRef(value: unknown): number | null {
  * `readRef` says what a reference looks like in the caller's values: the
  * default accepts the parsed numeric ids; a caller whose records also carry
  * authored `'#123'` tokens passes its own reader. Written order, repeats kept.
+ *
+ * Known divergence: a decoded reference is a bare number, so the default
+ * `readRef` cannot tell `#1500` from a stray `1500` (`(#20,1.5E3,#22)` reads
+ * as `[20,1500,22]`; the byte reader and Rust give `[20,22]`). A caller whose
+ * values may hold such scalars passes a `readRef` that also checks the number
+ * names an entity, as `current-type-quantities.ts` does.
  */
 export function propertyDefinitionRefsOfValue(
     value: unknown,

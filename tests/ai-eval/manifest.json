@@ -3,7 +3,7 @@
   "version": 1,
   "updated": "2026-10-09",
   "privacy": {
-    "policy": "Only public sample models and repository fixtures are admitted. No client, project or personal data; no credentials in any manifest, recording, receipt or result. Reviewer ids are pseudonymous. Live results stay in the gitignored tests/ai-eval/results folder until a person reviews and promotes a recording.",
+    "policy": "Only public sample models and repository fixtures are admitted. No client, project or personal data; no credentials in any manifest, recording, receipt or result. Reviewer ids are pseudonymous. Live results stay in the gitignored tests/ai-eval/results folder until reviewed; a reviewed run may be committed unpromoted under tests/ai-eval/live-runs, and only a person promotes a recording into the corpus.",
     "automatedScan": "check-ai-eval-manifest.mjs recomputes every committed fixture's SHA-256 and size, and refuses e-mail addresses, credential-like tokens and non-empty STEP author/organisation fields in it.",
     "humanReview": { "status": "pending", "reviewers": [], "note": "Awaiting a maintainer's privacy review of the corpus; automated checks are not a substitute." }
   },

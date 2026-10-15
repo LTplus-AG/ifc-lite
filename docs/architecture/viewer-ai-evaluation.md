@@ -1,6 +1,6 @@
 # Viewer AI evaluation corpus, live harness, labelling and study tooling
 
-Tooling for P21 and U01 ([#6928](https://github.com/LTplus-AG/ifc-lite/issues/6928), part of [#6812](https://github.com/LTplus-AG/ifc-lite/issues/6812)). It builds the corpus, the harnesses and the instruments for human judgment. **It does not perform human judgment.** The independent claim and grouping labels, the privacy and licence review, the live quality evaluation against a provider, and the coordinator study with existing users are still open and need people. Nothing here is a quality, usability or acceptance result.
+Tooling for P21 and U01 ([#6928](https://github.com/LTplus-AG/ifc-lite/issues/6928), part of [#6812](https://github.com/LTplus-AG/ifc-lite/issues/6812)). It builds the corpus, the harnesses and the instruments for human judgment. **It does not perform human judgment.** The independent claim and grouping labels, the human sign-off of the privacy and licence review, a repeatable live quality evaluation, and the coordinator study with existing users are still open and need people. The first live runs below are single samples, not a quality, usability or acceptance result.
 
 ## Corpus manifest
 
@@ -55,16 +55,15 @@ Run `pnpm --dir apps/viewer ai-eval review --recordings <run>/recordings --out <
 
 Two runs through the production free-model proxy (`https://www.ifclite.com/api/chat`, no credential), all twelve tasks, committed under `tests/ai-eval/live-runs/`. The proxy applies its own sampling, so these are single samples, not a stable quality measure.
 
-| Run | Model | Requests | Completed | Empty answer (reasoning used the 4096-token ceiling) | Truncated | Invariant flags | Median output tokens |
-|---|---|---|---|---|---|---|---|
-| `20261015t110523` | `z-ai/glm-5.3-flash` | 24 (2 repeats) | 16 | 7 | 1 | 4 in 2 answers | 2,812 |
-| `20261015t111451` | `qwen/qwen3.7-flash` | 12 | 12 | 0 | 0 | 0 | 2,028 |
+| Run | Model | Requests | Completed | Empty answer | Truncated | Invariant flags | Native refusals | Median output tokens, completed |
+|---|---|---|---|---|---|---|---|---|
+| `20261015t110523` | `z-ai/glm-5.3-flash` | 24 (2 repeats) | 16 | 7 | 1 | 4 in 2 answers | 0 | 2,229 |
+| `20261015t111451` | `qwen/qwen3.7-flash` | 12 | 12 | 0 | 0 | 0 | 1 | 2,028 |
 
 - **glm-5.3-flash returns nothing on 7 of 24 requests.** It streams reasoning until the output ceiling and finishes with `length` before writing any answer text, so the Assistant shows an empty-output error. It hit this on `selected-roof-properties` and `validation-corrections` both times.
-- **Three of the four count flags are detector false positives.** "121 elements" and "13 walls" (IfcWallStandardCase) in the FZK answer are correct: they come from the model summary in the system prompt, which `count-claims-match-facts` does not see because recordings keep only the evidence payload. "~86 entities" in the sample validation answer is genuinely unsupported.
+- **Three of the four count flags are detector false positives.** "121 elements", "13 walls" and "13 elements" (both IfcWallStandardCase) in the FZK answer are correct: they come from the model summary in the system prompt, which `count-claims-match-facts` does not see because recordings keep only the evidence payload. "~86 entities" in the sample validation answer is genuinely unsupported.
 - **Native review.** Every completed clash grouping covered all 9 findings with no unclassified rows; every authoring proposal previewed as 1 ready operation; every Flow patch built the same 3-node graph. qwen's `validation-corrections` model-change proposal was refused at parse ("Change 2 attribute values must be text"): the native parser stopped a malformed edit before preview.
-
-These recordings are unpromoted and unlabelled. They are the material for the claim and grouping labels below.
+- **Only the proxy route has run live.** The direct Anthropic and OpenAI routes are tested against a local OpenAI-compatible server, which proves the plumbing, not a provider.
 
 ## Human labelling
 

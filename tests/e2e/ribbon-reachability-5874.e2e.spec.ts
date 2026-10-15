@@ -82,7 +82,7 @@ test('authored IFC keeps all 90 ribbon commands and panel browser reachable at 1
   expect(Object.values(visited).reduce((total, names) => total + names.length, 0) - browserCount).toBe(90);
   // #7619: the added hierarchy command is unique and opens its actual sidebar
   // grouping, after the inventory above checks its accessible pointer target.
-  const presentationLayerCommandName = 'Displays IFC presentation layer assignments';
+  const presentationLayerCommandName = 'Presentation layers';
   expect(visited.Elements.filter((name) => name === presentationLayerCommandName)).toHaveLength(1);
   await page.getByRole('tab', { name: 'Elements', exact: true }).click();
   await page.getByRole('tabpanel', { name: 'Elements', exact: true })

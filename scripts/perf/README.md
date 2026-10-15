@@ -399,6 +399,28 @@ fixed before the `main` runs were downloaded and were not changed afterwards.
   runner image or Chrome version. The pre-#7601 artifacts lack attempt
   receipts, so they are counted for contamination but not admitted.
 
+## Real-GPU nightly trend and alert (#6975)
+
+`frame-gpu-night-trend.mts append` turns one real-GPU rig run directory into
+one row of an append-only JSONL trend: the night, the hash of the raw
+`runs.jsonl`, the night-profile hash, per-metric medians and a status. A night
+is `ok` only when every sample carries the strict admission witnesses the rig
+records under `--require-host-idle`, `--require-physical-display` and
+`--require-gpu-timing` (quiet host before and after, one physical console
+session, held foreground, a hardware adapter, per-pass GPU timing). A run
+without them is kept as `failed` and an admission refusal as `refused`, so
+both interrupt the seven-night calendar instead of vanishing. Rows are refused
+when the run finished more than 24 h before the append, when the receipt is
+already present or when the run started before the last row: no backfill.
+
+`evaluate` prints a verdict for one night and, with `--report-issue`, opens
+the regression issue or comments on the open one through `gh`. No threshold
+ships: without a thresholds file every verdict is `uncalibrated`. A thresholds
+file is admitted only when it names seven consecutive `ok` nights of the trend
+under one profile and no maximum is below a value those nights measured.
+Nothing installs a scheduler; whatever runs a night calls the rig, then
+`append`, then `evaluate`. Zero genuine nights are recorded as of this entry.
+
 ## Viewer JS is gated on raw bytes, not brotli (#7007)
 
 The viewer build is byte-reproducible apart from `__BUILD_DATE__` (the build

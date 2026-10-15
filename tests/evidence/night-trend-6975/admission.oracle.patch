@@ -1,0 +1,39 @@
+diff --git a/scripts/perf/frame-gpu-night-alert.ts b/scripts/perf/frame-gpu-night-alert.ts
+--- a/scripts/perf/frame-gpu-night-alert.ts
++++ b/scripts/perf/frame-gpu-night-alert.ts
+@@ -60,6 +60,7 @@ export function admitThresholds(trend: readonly NightTrendRow[], input: unknown)
+     for (const night of nights) {
+       const value = night.metrics[metric];
+       if (value === undefined) throw new Error(`calibration night ${night.night} did not measure ${metric}`);
++      if (value > max) throw new Error(`${metric} maximum ${max} is below calibration night ${night.night} (${value})`);
+     }
+   }
+   return thresholds;
+@@ -80,7 +81,7 @@ export function evaluateNight(trend: readonly NightTrendRow[], night: string, th
+   const breaches: Breach[] = [];
+   for (const [metric, max] of Object.entries(thresholds.maxima)) {
+     const value = row.metrics[metric];
+-    if (value === undefined) breaches.push({ metric, value: null, max });
++    if (value === undefined || value > max) breaches.push({ metric, value: value ?? null, max });
+   }
+   return breaches.length ? { state: 'regression', night, receiptSha256, breaches } : { state: 'ok', night, receiptSha256 };
+ }
+diff --git a/scripts/perf/frame-gpu-night-trend.ts b/scripts/perf/frame-gpu-night-trend.ts
+--- a/scripts/perf/frame-gpu-night-trend.ts
++++ b/scripts/perf/frame-gpu-night-trend.ts
+@@ -101,6 +101,7 @@ export function nightTrendRow(input: NightRunInput): NightTrendRow {
+   if (![started, finished, appended].every(Number.isFinite) || finished < started || appended < finished) {
+     throw new Error('invalid run interval');
+   }
++  if (appended - finished > MAX_APPEND_DELAY_MS) throw new Error('run finished more than 24 h before this append; backfill is refused');
+ 
+   const samples = decodeSamples(input.runsJsonl);
+   const reasons: string[] = [];
+@@ -113,6 +114,7 @@ export function nightTrendRow(input: NightRunInput): NightTrendRow {
+       reasons.push(`pair ${sample.pair}: ${error}`);
+       continue;
+     }
++    for (const gap of sampleAdmissionGaps(sample)) reasons.push(`pair ${sample.pair}: ${gap}`);
+   }
+   const fixtures = new Set(samples.flatMap((sample) => sample.rows.map((row) => row.fixture)));
+   const status: NightAttempt['status'] = reasons.length === 0 ? 'ok' : refused ? 'refused' : 'failed';

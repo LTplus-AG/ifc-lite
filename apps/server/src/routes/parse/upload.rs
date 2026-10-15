@@ -110,6 +110,15 @@ async fn next_piece<T>(
     }
 }
 
+/// [`extract_file_holding`] for a test that holds nothing.
+#[cfg(test)]
+pub(crate) async fn extract_file(
+    multipart: &mut Multipart,
+    max_file_size_mb: usize,
+) -> Result<bytes::Bytes, ApiError> {
+    Ok(extract_file_holding(multipart, max_file_size_mb, ()).await?.0)
+}
+
 /// Extract file data from multipart request.
 /// Automatically decompresses gzip-compressed files and unwraps `.ifcZIP`
 /// containers, refusing inputs whose decompressed size would exceed
@@ -128,19 +137,12 @@ async fn next_piece<T>(
 /// The decompression runs on the blocking pool (#7676, SERVER-10): up to
 /// 500 MB of inflate on an async worker stalls every connection multiplexed
 /// on it, `/health` and `/ready` included.
-pub(crate) async fn extract_file(
-    multipart: &mut Multipart,
-    max_file_size_mb: usize,
-) -> Result<bytes::Bytes, ApiError> {
-    Ok(extract_file_holding(multipart, max_file_size_mb, ()).await?.0)
-}
-
-/// [`extract_file`] for a caller that holds something the decode must outlive
-/// (the admission guard). `held` moves INTO the blocking decode and comes back
-/// with the file, the same pattern `parse_full` uses: if the handler future is
-/// cancelled (the `TimeoutLayer`, a disconnect), the detached inflate keeps
-/// running - and keeps `held` - until it actually exits, so a replacement is
-/// never admitted on top of it (#7676).
+///
+/// `held` is something the decode must outlive (the admission guard). It moves
+/// INTO the blocking decode and comes back with the file, the same pattern
+/// `parse_full` uses: if the handler future is cancelled (the `TimeoutLayer`, a
+/// disconnect), the detached inflate keeps running - and keeps `held` - until
+/// it actually exits, so a replacement is never admitted on top of it (#7676).
 pub(crate) async fn extract_file_holding<H: Send + 'static>(
     multipart: &mut Multipart,
     max_file_size_mb: usize,

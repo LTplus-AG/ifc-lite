@@ -26,7 +26,7 @@ index 6ebcfc3317..f4db865052 100644
  ) -> Result<(AdmissionGuard, bytes::Bytes), ApiError> {
      let max_file_size_mb = state.config.max_file_size_mb;
      let admission = state.admission.acquire(max_file_size_mb as u64 * 1024 * 1024).await?;
--    let file = extract_file(multipart, max_file_size_mb).await?;
+-    let file = extract_file_holding(multipart, max_file_size_mb, ()).await?.0;
 +    let (file, admission) = extract_file_holding(multipart, max_file_size_mb, admission).await?;
      Ok((admission, file))
  }

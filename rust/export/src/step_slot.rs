@@ -315,12 +315,17 @@ fn is_well_formed_step_slot(part: &str) -> bool {
 }
 
 /// Whether a caller-supplied, already-serialized value is ONE STEP value that
-/// may be written into a slot as is (#7682, EXPORT-STEP-26): not empty, and
-/// one well-formed value by [`is_well_formed_step_slot`]. A value holding a
-/// top-level `,` would shift every later slot, and one holding `);` would end
-/// the record and start another, so either is refused rather than written.
+/// may be written into a slot as is (#7682, EXPORT-STEP-26): not empty, one
+/// well-formed value by [`is_well_formed_step_slot`], and holding no `/*` at
+/// all. A value with a top-level `,` would shift every later slot, and one
+/// holding `);` would end the record and start another. A comment is refused
+/// outright, even inside a literal: [`is_well_formed_step_slot`] accepts an
+/// UNTERMINATED trailing comment (a leniency meant for source slots already
+/// inside a record), and a caller value that opens one swallows the rest of
+/// the record and lets a later value close it and inject records of its own.
+/// A caller has no reason to send a comment, so none is written.
 pub(crate) fn is_step_value(value: &str) -> bool {
-    !value.trim().is_empty() && is_well_formed_step_slot(value)
+    !value.trim().is_empty() && !value.contains("/*") && is_well_formed_step_slot(value)
 }
 
 /// Characters a bare STEP token (keyword, enumeration, number, `#`-reference)

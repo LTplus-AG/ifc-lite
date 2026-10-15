@@ -3,12 +3,14 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * #7682: the TypeScript half of two refusals the Rust mutation-log writer
- * makes (`rust/export/tests/step_log_refusals.rs`).
+ * #7682: the TypeScript half of the refusals the Rust mutation-log writer
+ * makes (`rust/export/tests/step_writer_refusals.rs`).
  *
  * - EXPORT-STEP-26: a created entity's class is written as the record keyword
  *   verbatim, so a payload whose `type` is not an entity name would inject
  *   records the caller never created.
+ * - EXPORT-STEP-26: a created entity under an id the source file already has
+ *   means the log was written against another file; both writers refuse it.
  * - EXPORT-STEP-9: an express id past `u32::MAX` cannot be read back by any
  *   ifc-lite reader, so allocating one refuses the export.
  */
@@ -49,6 +51,15 @@ describe('appended-record guards (#7682)', () => {
     view.restoreNewEntity({ expressId: 10, type: 'IfcBuildingElementProxy', attributes: ['0proxy0000000000000000'] });
     const text = new TextDecoder().decode(new StepExporter(store, view).export({ schema: 'IFC4' }).content);
     expect(text).toMatch(/^#10=IFCBUILDINGELEMENTPROXY\('0proxy0000000000000000'/m);
+  });
+
+  it('refuses a created entity that reuses a source id (EXPORT-STEP-26)', async () => {
+    const store = await parse(BASE_IFC);
+    const view = new MutablePropertyView(null, 'model');
+    view.restoreNewEntity({ expressId: 2, type: 'IfcWall', attributes: ['0proxy0000000000000000'] });
+    expect(() => new StepExporter(store, view).export({ schema: 'IFC4' })).toThrow(
+      'created entity #2 reuses source id #2',
+    );
   });
 
   it('refuses an express id past u32::MAX (EXPORT-STEP-9)', () => {

@@ -46,12 +46,18 @@ pub(crate) struct Source<'a> {
 
 impl<'a> Source<'a> {
     pub(crate) fn index(content: &'a [u8]) -> Self {
-        let mut by_type: HashMap<&'static str, Vec<u32>> = HashMap::new();
-        let index = crate::step_index::RecordIndex::build(content, |id, type_name| {
-            if let Some(tracked) = TRACKED.iter().find(|t| type_name.eq_ignore_ascii_case(t)) {
-                by_type.entry(tracked).or_default().push(id);
+        let mut tracked: Vec<(&'static str, u32, usize)> = Vec::new();
+        let index = crate::step_index::RecordIndex::build(content, |id, type_name, start| {
+            if let Some(t) = TRACKED.iter().find(|t| type_name.eq_ignore_ascii_case(t)) {
+                tracked.push((t, id, start));
             }
         });
+        let mut by_type: HashMap<&'static str, Vec<u32>> = HashMap::new();
+        for (t, id, start) in tracked {
+            if index.is_kept(id, start) {
+                by_type.entry(t).or_default().push(id);
+            }
+        }
         let crate::step_index::RecordIndex { mut order, spans: line_of, max_id, duplicates } = index;
         order.sort_unstable();
         Source { content, order, line_of, max_id, duplicates, by_type }

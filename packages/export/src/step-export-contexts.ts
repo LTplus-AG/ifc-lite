@@ -37,6 +37,7 @@ import { applySourceLineMutations } from './step-attribute-mutations.js';
 import { applyOverlayEntityOverrides } from './step-overlay-attribute-overrides.js';
 import { relationshipWithheldWarning } from './step-export-types.js';
 import { isGeometryEntity } from './step-geometry-types.js';
+import { getCompleteEntityIndex } from './entity-iteration.js';
 import type { SourceIterationContext } from './step-source-iteration.js';
 import type { OverlayEntitiesContext } from './step-overlay-entities.js';
 import type { PropertySetContext } from './step-property-set-readers.js';
@@ -82,10 +83,13 @@ export function buildSourceIterationContext(
  * pass.
  */
 export function buildOverlayEntitiesContext(
+  dataStore: IfcDataStore,
   mutationView: MutablePropertyView | null,
 ): OverlayEntitiesContext {
+  const source = getCompleteEntityIndex(dataStore);
   return {
     mutationView,
+    isSourceRecord: (id) => source.has(id),
     applyOverlayEntityOverrides,
     isGeometryEntity,
     relationshipWithheldWarning,

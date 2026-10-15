@@ -57,6 +57,8 @@ import type { ExportPass, StepExportOptions } from './step-exporter.js';
  */
 export interface OverlayEntitiesContext {
   readonly mutationView: MutablePropertyView | null;
+  /** Whether the SOURCE file has a record with this id (#7682). */
+  readonly isSourceRecord: (id: number) => boolean;
   /** `step-overlay-attribute-overrides.ts`'s `applyOverlayEntityOverrides`: resolves
    *  named/positional overrides against the overlay-created entity's
    *  EFFECTIVE class. */
@@ -114,6 +116,17 @@ export function writeOverlayCreatedEntities(
     // would write records the caller never created (#7682, EXPORT-STEP-26).
     if (!/^[Ii][Ff][Cc][A-Za-z][A-Za-z0-9_]*$/.test(entity.type)) {
       throw new Error(`created entity #${entity.expressId}: "${entity.type}" is not a recognizable IFC entity name`);
+    }
+    // A created entity never reuses a source id (`express-id-watermark.ts`
+    // allocates past the file's highest one), so a log that creates one under
+    // a source id was written against another file. Writing either record
+    // would silently drop the other, and the edits queued on that id would land
+    // on whichever survived (#7682, EXPORT-STEP-26). The Rust writer refuses
+    // it with this message.
+    if (ctx.isSourceRecord(entity.expressId)) {
+      throw new Error(
+        `created entity #${entity.expressId} reuses source id #${entity.expressId}: the log was not written against this file`,
+      );
     }
     const typeMut = getTypeMut ? getTypeMut(entity.expressId) : null;
     const effectiveType = typeMut?.newType ?? entity.type;

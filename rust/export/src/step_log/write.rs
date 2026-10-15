@@ -238,11 +238,7 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
     let mut checks = crate::schema_enum::ConversionChecks::new();
     let mut written = 0usize;
     for &id in &src.order {
-        // A created entity that reuses a source id REPLACES that record, as
-        // the effective index makes it in the TypeScript exporter: its line is
-        // written with the created ones, and the source line is not, or the
-        // file would carry the id twice (#7682, EXPORT-STEP-26).
-        if pass.skip.contains(&id) || pass.rewritten.contains(&id) || pass.is_deleted(id) || pass.is_overlay_created(id) {
+        if pass.skip.contains(&id) || pass.rewritten.contains(&id) || pass.is_deleted(id) {
             continue;
         }
         let owned;

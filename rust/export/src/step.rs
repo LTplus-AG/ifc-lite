@@ -106,13 +106,16 @@ fn emit<W: std::io::Write>(
     out: &mut W,
 ) -> std::io::Result<StepStats> {
     // 1. Index every entity line (preserve source order). A repeated id keeps
-    // its first record and the rest are counted (#7682, EXPORT-STEP-11).
-    let mut owner_histories: Vec<u32> = Vec::new();
-    let index = crate::step_index::RecordIndex::build(content, |id, type_name| {
+    // its last record, as core does, and the rest are counted (#7682,
+    // EXPORT-STEP-11).
+    let mut owner_histories: Vec<(u32, usize)> = Vec::new();
+    let index = crate::step_index::RecordIndex::build(content, |id, type_name, start| {
         if type_name.eq_ignore_ascii_case("IFCOWNERHISTORY") {
-            owner_histories.push(id);
+            owner_histories.push((id, start));
         }
     });
+    let owner_histories: Vec<u32> =
+        owner_histories.into_iter().filter(|&(id, start)| index.is_kept(id, start)).map(|(id, _)| id).collect();
     let (order, line_of, max_id) = (&index.order, &index.spans, index.max_id);
 
     // 2. Resolve the included set + forward reference closure.

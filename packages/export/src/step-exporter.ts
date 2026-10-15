@@ -251,7 +251,7 @@ export class StepExporter {
       applyMutations,
       mayNameOmittedRefs,
       isOmittedFromOutput,
-      buildOverlayEntitiesContext(this.mutationView),
+      buildOverlayEntitiesContext(this.dataStore, this.mutationView),
     );
 
     // Complete map metadata adaptation before optional Rust planning and assembly.

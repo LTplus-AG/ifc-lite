@@ -318,6 +318,7 @@ nav:
         - CLI & CI: architecture/layer-prs/09-cli.md
         - Registry: architecture/layer-prs/10-registry.md
   - API Reference:
+    - Search API symbols: api/reference.md
     - TypeScript API: api/typescript.md
     - Rust API: api/rust.md
     - WASM Bindings: api/wasm.md

@@ -132,7 +132,7 @@
         },
         {
           "title": "Scaffolder selects and tests a compatible dependency set",
-          "status": "pending"
+          "status": "verified"
         }
       ],
       "checks": {
@@ -146,9 +146,16 @@
     {
       "id": "DX6",
       "title": "Searchable API reference and diagnostics",
-      "status": "pending",
+      "status": "in_review",
       "acceptance": "Generated searchable public symbol reference and CLI environment diagnostic report; generation and behavior validated in CI",
-      "pullRequests": []
+      "pullRequests": [
+        "https://github.com/LTplus-AG/ifc-lite/pull/7667"
+      ],
+      "checks": {
+        "doctor": "1469 CLI tests passed, 15 skipped; real isolated installations cover missing/corrupt WASM, missing package entry, incompatible Node and unavailable WebAssembly; production revert observed",
+        "reference": "Public docs:api command renders all published declaration entries and symbol pages; native browser search opens openModel and HeadlessModelSession; tests/evidence/api-reference/",
+        "deployment": "Complete landing + docs production build passed strict MkDocs using Python 3.12; all generated pages/search assets copied into deployment output"
+      }
     }
   ],
   "mergePolicy": "Resolve findings and verify required and applicable checks on the current head before merging",

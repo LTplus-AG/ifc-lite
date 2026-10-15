@@ -1,5 +1,7 @@
 # TypeScript API Reference
 
+[Search signatures and symbols in the generated API reference](reference.md).
+
 API documentation for the published TypeScript packages.
 
 ifc-lite ships its public npm packages under the `@ifc-lite/*` scope, plus the `create-ifc-lite` scaffolder. This page lists all of them, with API detail for the core packages. Exact type signatures live in each package's `src/index.ts` and shipped `.d.ts` files.

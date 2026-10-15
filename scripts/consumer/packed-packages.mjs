@@ -6,7 +6,7 @@ import { readdirSync, readFileSync, existsSync, statSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { spawnSync } from 'node:child_process';
 
-export function run(command, args, cwd) {
+export function run(command, args, cwd, { inherit = false, timeout = 120000 } = {}) {
   let executable = command;
   let argv = args;
   if (process.platform === 'win32' && (command === 'npm' || command === 'pnpm')) {
@@ -17,10 +17,10 @@ export function run(command, args, cwd) {
     else throw new Error(`No direct executable entry point for ${command}`);
   }
   const result = spawnSync(executable, argv,
-    { cwd, encoding: 'utf8', timeout: 120000, maxBuffer: 16 * 1024 * 1024 });
+    { cwd, encoding: 'utf8', stdio: inherit ? 'inherit' : 'pipe', timeout, maxBuffer: 16 * 1024 * 1024 });
   if (result.error || result.status !== 0) throw new Error(
-    `${command} failed (${result.status}): ${result.error?.message ?? `${result.stderr}\n${result.stdout}`}`, { cause: result.error });
-  return result.stdout;
+    `${command} failed (${result.status}): ${result.error?.message ?? (inherit ? 'See command output above' : `${result.stderr}\n${result.stdout}`)}`, { cause: result.error });
+  return result.stdout ?? '';
 }
 
 export function workspaceClosure(root, seeds) {

@@ -22,6 +22,8 @@ rustc-ice-*.txt
 
 # MkDocs build output
 site/
+docs/api/generated/
+apps/landing/.venv-docs/
 
 # Rust compiled binaries in tests
 tests/test_geometry

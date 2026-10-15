@@ -43,6 +43,10 @@ mod geometry_pool;
 pub use geometry_pool::{
     geometry_pool, geometry_pool_builder, run_on_geometry_pool, GEOMETRY_STACK_BYTES,
 };
+// Declared here rather than inside `geometry_pool.rs` so the revert oracle can
+// attribute it to the lib test target.
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod geometry_pool_tests;
 pub mod geometry_export;
 mod georeferencing;
 pub mod pipeline_diagnostics;

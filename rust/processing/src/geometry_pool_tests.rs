@@ -6,7 +6,11 @@
 //! the geometry pool. The control proves the same job overflows a default
 //! rayon worker stack, so the first test is not vacuous.
 
-use super::*;
+use crate::geometry_pool::{
+    geometry_pool_builder, get_or_build, run_on_geometry_pool, GEOMETRY_STACK_BYTES,
+};
+use rayon::ThreadPool;
+use std::sync::OnceLock;
 use rayon::prelude::*;
 
 /// Recursion depth of [`burn_stack`]: about 16 MiB of stack at >= 1 KiB per
@@ -75,7 +79,7 @@ fn deep_recursion_in_a_par_iter_job_survives_on_the_geometry_pool() {
     }
 
     let (status, stderr) = run_child(
-        "geometry_pool::tests::deep_recursion_in_a_par_iter_job_survives_on_the_geometry_pool",
+        "geometry_pool_tests::deep_recursion_in_a_par_iter_job_survives_on_the_geometry_pool",
         REPRO_ENV_VAR,
     );
     assert!(
@@ -108,7 +112,7 @@ fn the_same_job_overflows_a_default_rayon_worker_stack() {
     }
 
     let (status, stderr) = run_child(
-        "geometry_pool::tests::the_same_job_overflows_a_default_rayon_worker_stack",
+        "geometry_pool_tests::the_same_job_overflows_a_default_rayon_worker_stack",
         REPRO_ENV_VAR,
     );
     assert!(

@@ -51,7 +51,7 @@ pub fn geometry_pool() -> Result<&'static ThreadPool, ThreadPoolBuildError> {
     get_or_build(&POOL, || geometry_pool_builder().build())
 }
 
-fn get_or_build<E>(
+pub(crate) fn get_or_build<E>(
     cell: &'static OnceLock<ThreadPool>,
     build: impl FnOnce() -> Result<ThreadPool, E>,
 ) -> Result<&'static ThreadPool, E> {
@@ -72,7 +72,3 @@ pub fn run_on_geometry_pool<T: Send>(
 ) -> Result<T, ThreadPoolBuildError> {
     Ok(geometry_pool()?.install(work))
 }
-
-#[cfg(test)]
-#[path = "geometry_pool_tests.rs"]
-mod tests;

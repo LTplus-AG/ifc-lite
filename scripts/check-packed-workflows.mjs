@@ -12,6 +12,15 @@ import { fileURLToPath } from 'node:url';
 import { packClosure, run } from './consumer/packed-packages.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
+const fixtures = [
+  { path: 'apps/viewer/public/samples/hello-wall.ifc', type: 'IfcWall', count: 1, required: true },
+  { path: 'tests/models/ara3d/AC20-FZK-Haus.ifc', type: 'IfcDoor', count: 5, required: false },
+].filter(({ path, required }) => {
+  if (existsSync(join(root, path))) return true;
+  assert.equal(required, false, `Required committed fixture ${path} is missing; restore it from the repository`);
+  process.stderr.write(`SKIP ${path}: run pnpm fixtures\n`);
+  return false;
+});
 const scratch = mkdtempSync(join(tmpdir(), 'ifclite-packed-consumer-'));
 try {
   const tarballs = join(scratch, 'tarballs');
@@ -44,15 +53,10 @@ try {
   run(process.execPath, [join(consumer, 'node_modules/typescript/bin/tsc'), '--project', 'tsconfig.json'], consumer);
   const browser = JSON.parse(run(process.execPath, ['packed-browser.mjs'], consumer));
   const receipts = [];
-  for (const [path, type, count] of [
-    ['apps/viewer/public/samples/hello-wall.ifc', 'IfcWall', 1],
-    ['tests/models/ara3d/AC20-FZK-Haus.ifc', 'IfcDoor', 5],
-  ]) {
+  for (const { path, type, count } of fixtures) {
     const fixture = join(root, path);
-    if (!existsSync(fixture)) { process.stderr.write(`SKIP ${path}: run pnpm fixtures\n`); continue; }
     const receipt = JSON.parse(run(process.execPath, ['packed-workflow.mjs', fixture, type, String(count)], consumer));
     receipts.push({ fixture: path, sha256: createHash('sha256').update(readFileSync(fixture)).digest('hex'), ...receipt });
   }
-  assert.ok(receipts.length > 0, 'No consumer fixture ran');
   process.stdout.write(JSON.stringify({ packageVersions: versions, declarationsChecked: true, browser, receipts }, null, 2) + '\n');
 } finally { rmSync(scratch, { recursive: true, force: true }); }

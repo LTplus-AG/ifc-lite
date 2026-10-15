@@ -257,3 +257,6 @@ These controls act on whole products. A product whose representations or items
 are assigned to several layers can appear in each; the viewer does not split
 its faces by layer or automatically apply authored layer visibility/style flags.
 Presentation layers are separate from the IFCX layer stack.
+
+Hiding a presentation layer also hides its curve-only IFC annotations. During
+isolation, symbolic annotation overlays continue to follow their global visibility setting.

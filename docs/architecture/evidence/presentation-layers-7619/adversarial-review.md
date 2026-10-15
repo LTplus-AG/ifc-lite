@@ -75,3 +75,38 @@ claim.
 
 Any subsequent production-code change requires review of its delta before this
 verdict can be applied to a newer head.
+
+## Follow-up review: curve-only annotation visibility
+
+Reviewed exact delta `626f4d2571..f40b50263a6dc3bab8ef8a6324acfaac07e3eef9`
+on 2026-10-15. The intervening `0562613208..626f4d2571` delta was separately
+verified to contain only this review report and evidence README updates.
+The original implementation review therefore remains applicable, with the
+following additional review covering the only subsequent production change.
+
+The presentation-layer dispatch now passes the existing `classTreeIds` union
+of mesh IDs and annotation owner IDs into the builder. Previously, a completed
+model's curve-only `IfcAnnotation` was marked geometry-less and omitted from
+layer visibility targets despite rendering in the symbolic overlay. The
+reviewer inspected `collectAnnotationEntityIds` and
+`useSymbolicAnnotations`'s hidden-owner predicate: the overlay subscribes to
+`hiddenEntities` and resolves the owner's model offset, so using these owner
+IDs restores the established hide/show channel.
+
+The added regression parses an `IfcAnnotation` with a representation containing
+an `IfcPolyline`, supplies zero mesh IDs, and exercises the actual annotation
+inventory and grouping dispatch. It asserts usable owner IDs on the layer and
+product row after geometry readiness. This is behavior coverage of the dispatch
+gap rather than a mocked resolver or source-text assertion.
+
+No renderer behavior, resolver ownership traversal, effective-record decoding
+or build-local record cache changed. Existing symbolic overlays intentionally
+ignore isolation filters; this fix restores hide/show and does not establish
+annotation-only isolation semantics. The original Archicad screenshots remain
+evidence for the unchanged mesh-product behavior. The lead agent was rerunning
+the focused tests and typecheck and planning final annotation browser acceptance
+when this section was written; this reviewer does not claim those pending runs
+or browser interactions as independently completed.
+
+Verdict for `f40b50263a6dc3bab8ef8a6324acfaac07e3eef9`: no unresolved
+correctness blocker found. `git diff --check 626f4d2571 f40b50263a` passed.

@@ -75,8 +75,11 @@ describe('ViewportLoadErrorCard (#5851)', () => {
       landXmlAssumptionRefusal: { fileName: 'terrain.xml', message: 'refused', offer: ['sharedVerticalDatum'], retry: () => undefined },
     }));
     const container = render(<ViewportLoadErrorCard />);
-    assert.equal(container.querySelector('[data-viewport-load-error-card]'), null, 'the prompt is not covered by the generic card');
+    // Booleans, not the element: a failing assertion would otherwise
+    // pretty-print a happy-dom node and the whole window graph behind it.
+    const cardShown = () => container.querySelector('[data-viewport-load-error-card]') !== null;
+    assert.equal(cardShown(), false, 'the prompt is not covered by the generic card');
     act(() => useViewerStore.setState({ landXmlAssumptionRefusal: null }));
-    assert.ok(container.querySelector('[data-viewport-load-error-card]'), 'cancelling the prompt leaves the failure reported');
+    assert.equal(cardShown(), true, 'cancelling the prompt leaves the failure reported');
   });
 });

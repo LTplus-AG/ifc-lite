@@ -193,6 +193,6 @@ pub(crate) fn vertex_bits(v: &[f64; 3]) -> [u64; 3] {
 /// #960 segmented-roof cutter union: bit-identical vertex pairs shared
 /// between operands fell from (148, 4, 12, 248) to (88, 4, 5, 159) without
 /// this guard. See `mesh_bridge_tests::issue_3353_nary_near_coplanar`.
-pub(crate) fn exact_vertex_set(tris: &[Tri]) -> std::collections::HashSet<[u64; 3]> {
+pub(crate) fn exact_vertex_set(tris: &[Tri]) -> rustc_hash::FxHashSet<[u64; 3]> {
     tris.iter().flat_map(|t| t.iter()).map(vertex_bits).collect()
 }

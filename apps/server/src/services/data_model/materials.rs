@@ -6,9 +6,9 @@
 
 use super::material_units::MaterialUnitContext;
 use super::types::{EntityJob, MaterialAssociation};
-use ifc_lite_core::{EntityDecoder, IfcType};
+use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use rayon::prelude::*;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 /// One resolved material layer (intermediate, before element fan-out).
@@ -40,15 +40,52 @@ fn material_details_of(decoder: &mut EntityDecoder, material_id: u32) -> Option<
 
 /// Resolve a `RelatingMaterial` into a flat list of layers. Handles
 /// `IfcMaterial`, `IfcMaterialLayerSet`, `IfcMaterialLayerSetUsage` (→ set),
+/// `IfcMaterialProfileSet`, `IfcMaterialProfileSetUsage` (→ set),
 /// `IfcMaterialList`, and `IfcMaterialConstituentSet`. `unit_scale` converts
 /// layer thickness to metres.
+///
+/// Usages are followed by a loop with a visited set, never by recursion
+/// (SERVER-5, #7673). This used to recurse into whatever a usage's attribute 0
+/// named, so a usage naming itself, or two usages naming each other, recursed
+/// until the stack overflowed: SIGABRT, which takes every in-flight request on
+/// the server down with it. With no stack consumed per hop, the visited set
+/// alone bounds the walk (AGENTS.md, "Bounding walks over file-supplied
+/// references"), and every acyclic input resolves exactly as it did before.
+/// Same rule as the TS twin, `resolveMaterial` in
+/// `packages/parser/src/material-definitions.ts`.
 fn resolve_material(decoder: &mut EntityDecoder, id: u32, unit_scale: f64) -> Vec<ResolvedLayer> {
-    let Ok(entity) = decoder.decode_by_id(id) else {
-        return Vec::new();
-    };
-    let ty = entity.ifc_type.as_str().to_ascii_uppercase();
+    let mut visited = HashSet::new();
+    let mut id = id;
+    loop {
+        if !visited.insert(id) {
+            return Vec::new();
+        }
+        let Ok(entity) = decoder.decode_by_id(id) else {
+            return Vec::new();
+        };
+        let ty = entity.ifc_type.as_str().to_ascii_uppercase();
+        match ty.as_str() {
+            // ForLayerSet / ForProfileSet is attribute 0.
+            "IFCMATERIALLAYERSETUSAGE" | "IFCMATERIALPROFILESETUSAGE" => match entity.get_ref(0) {
+                Some(next) => id = next,
+                None => return Vec::new(),
+            },
+            _ => return resolve_definition(decoder, &entity, &ty, id, unit_scale),
+        }
+    }
+}
 
-    match ty.as_str() {
+/// Resolve one material definition that is not a usage. `ty` is `entity`'s
+/// upper-cased type name and `id` its express id. Never follows a usage, so it
+/// cannot recurse.
+fn resolve_definition(
+    decoder: &mut EntityDecoder,
+    entity: &DecodedEntity,
+    ty: &str,
+    id: u32,
+    unit_scale: f64,
+) -> Vec<ResolvedLayer> {
+    match ty {
         "IFCMATERIAL" => {
             vec![ResolvedLayer {
                 kind: "IfcMaterial",
@@ -66,13 +103,6 @@ fn resolve_material(decoder: &mut EntityDecoder, id: u32, unit_scale: f64) -> Ve
                 category: entity.get_string(2).map(str::to_string),
             }]
         },
-        "IFCMATERIALLAYERSETUSAGE" => {
-            // ForLayerSet is attribute 0.
-            match entity.get_ref(0) {
-                Some(set_id) => resolve_material(decoder, set_id, unit_scale),
-                None => Vec::new(),
-            }
-        }
         "IFCMATERIALLAYERSET" => {
             let set_name = entity.get_string(1).map(|s| s.to_string());
             let member_count = entity.get_list(0).map_or(0, |l| l.len() as u32);
@@ -186,13 +216,6 @@ fn resolve_material(decoder: &mut EntityDecoder, id: u32, unit_scale: f64) -> Ve
                     })
                 })
                 .collect()
-        }
-        "IFCMATERIALPROFILESETUSAGE" => {
-            // ForProfileSet is attribute 0.
-            match entity.get_ref(0) {
-                Some(set_id) => resolve_material(decoder, set_id, unit_scale),
-                None => Vec::new(),
-            }
         }
         "IFCMATERIALPROFILESET" => {
             // IfcMaterialProfileSet: Name(0), Description(1), MaterialProfiles(2).

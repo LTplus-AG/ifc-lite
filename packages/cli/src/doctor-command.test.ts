@@ -35,7 +35,8 @@ describe('developer diagnostic command (DX6)', () => {
       // @source-text-assertion-ok selecting installed package metadata, not reading source code
       ...Object.keys(manifest.dependencies).filter(name => name.startsWith('@ifc-lite/')).sort()]);
     expect(report.packages[0].version).toBe(manifest.version);
-    expect(result.status).toBe(report.ok ? 0 : 1);
+    expect(report.ok, JSON.stringify(report)).toBe(true);
+    expect(result.status, result.stderr).toBe(0);
     expect(JSON.stringify(report)).not.toContain(fileURLToPath(new URL('../../../', import.meta.url)));
   });
   it('has command-specific help', () => {

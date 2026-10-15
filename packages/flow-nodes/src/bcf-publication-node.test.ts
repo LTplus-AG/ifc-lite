@@ -610,6 +610,59 @@ describe('native durable BCF publication (#7374)', () => {
     expect(peer.state.receivedWrites).toBe(256);
   }, 30000);
 
+  it('revalidates an early receipt before allowing another real effect (#7637)', async () => {
+    const { peer, dir, gateway, transport } = await fixture();
+    for (let generation = 1; generation <= 9; generation += 1) {
+      expect((await run(gateway, transport)).ok).toBe(true);
+    }
+    const entries = await gateway.list();
+    const first = entries.find(entry => entry.id.endsWith('-1'));
+    expect(first).toBeDefined();
+    if (!first) throw new Error('Missing first retained publication');
+    const path = join(await entryDir(dir, first.id), `${first.id}.outcome.json`);
+    const outcome = JSON.parse(await readFile(path, 'utf8')) as Record<string, unknown>;
+    outcome.id = 'tampered-predecessor';
+    await writeFile(path, JSON.stringify(outcome));
+
+    await expect(gateway.list()).rejects.toThrow(/outcome/);
+    expect((await run(gateway, transport)).ok).toBe(false);
+    expect(peer.state.receivedWrites).toBe(9);
+    expect(peer.state.acceptedWrites).toBe(9);
+  });
+
+  it('refuses observed receipt growth between stat and read before another effect (#7637)', async () => {
+    const { peer, dir, gateway, transport } = await fixture();
+    expect((await run(gateway, transport)).ok).toBe(true);
+    const [entry] = await gateway.list();
+    const path = join(await entryDir(dir, entry.id), `${entry.id}.outcome.json`);
+    const original = await readFile(path, 'utf8');
+    const probe = await open(path, 'r');
+    const identity = await probe.stat();
+    const prototype: FileHandle = Object.getPrototypeOf(probe);
+    const stat = prototype.stat;
+    let grew = false;
+    const fault = vi.spyOn(prototype, 'stat').mockImplementation(async function(this: FileHandle, ...options: Parameters<FileHandle['stat']>) {
+      const result = await stat.apply(this, options);
+      if (!grew && result.ino === identity.ino && result.dev === identity.dev) {
+        grew = true;
+        // Valid JSON whitespace defeats a size-limited read without its sentinel.
+        await writeFile(path, `${original}\n`);
+      }
+      return result;
+    });
+    try {
+      expect((await run(gateway, transport)).ok).toBe(false);
+      expect(grew).toBe(true);
+      expect(peer.state.receivedWrites).toBe(1);
+    } finally {
+      fault.mockRestore();
+      await probe.close();
+    }
+    // A fresh read can validate the complete, still-valid receipt normally.
+    expect((await run(gateway, transport)).ok).toBe(true);
+    expect(peer.state.receivedWrites).toBe(2);
+  });
+
   it('an outcome-persistence refusal keeps the sending intent unresolved and cannot report success', async () => {
     const dir = await directory();
     const gateway = createNativeBcfWriteGateway({ directory: dir });

@@ -111,9 +111,12 @@ export class BcfPublicationStore {
     try {
       const stat = await handle.stat();
       if (!stat.isFile() || stat.size > MAX_RECORD_BYTES) refuse('invalid or oversized stored record');
-      const bytes = Buffer.alloc(MAX_RECORD_BYTES + 1);
+      // Most retained receipts are small. One sentinel byte detects growth
+      // observed by this read without allocating the maximum for every record.
+      const bytes = Buffer.alloc(stat.size + 1);
       const result = await handle.read(bytes, 0, bytes.length, 0);
       if (result.bytesRead > MAX_RECORD_BYTES) refuse('record exceeds storage bound');
+      if (result.bytesRead > stat.size) refuse('stored record grew while reading');
       // A prior publisher may have linked this visible record before its directory fsync failed.
       // Repair that durability boundary before acknowledging a receipt or recovery proof.
       if (syncEntry) await this.syncDirectory(directory);

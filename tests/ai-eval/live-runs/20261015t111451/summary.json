@@ -1,0 +1,512 @@
+{
+  "runId": "20261015t111451",
+  "settings": {
+    "temperature": 0,
+    "maxOutputTokens": 4096,
+    "timeoutMs": 120000
+  },
+  "run": {
+    "violations": [],
+    "requests": 12,
+    "reportedOutputTokens": 23897,
+    "unreported": 0
+  },
+  "stopped": null,
+  "receipts": [
+    {
+      "task": "clash-summary",
+      "route": "proxy",
+      "model": "qwen/qwen3.7-flash",
+      "status": 200,
+      "outcome": "completed",
+      "startedAt": 1792062897923,
+      "durationMs": 22099,
+      "settings": {
+        "temperature": null,
+        "maxOutputTokens": 4096,
+        "timeoutMs": 120000
+      },
+      "finishReason": "stop",
+      "usageReported": true,
+      "inputTokens": 9669,
+      "outputTokens": 1575
+    },
+    {
+      "task": "clash-grouping",
+      "route": "proxy",
+      "model": "qwen/qwen3.7-flash",
+      "status": 200,
+      "outcome": "completed",
+      "startedAt": 1792062920026,
+      "durationMs": 26053,
+      "settings": {
+        "temperature": null,
+        "maxOutputTokens": 4096,
+        "timeoutMs": 120000
+      },
+      "finishReason": "stop",
+      "usageReported": true,
+      "inputTokens": 9665,
+      "outputTokens": 2386
+    },
+    {
+      "task": "validation-explain",
+      "route": "proxy",
+      "model": "qwen/qwen3.7-flash",
+      "status": 200,
+      "outcome": "completed",
+      "startedAt": 1792062946085,
+      "durationMs": 20362,
+      "settings": {
+        "temperature": null,
+        "maxOutputTokens": 4096,
+        "timeoutMs": 120000
+      },
+      "finishReason": "stop",
+      "usageReported": true,
+      "inputTokens": 10866,
+      "outputTokens": 1657
+    },
+    {
+      "task": "validation-corrections",
+      "route": "proxy",
+      "model": "qwen/qwen3.7-flash",
+      "status": 200,
+      "outcome": "completed",
+      "startedAt": 1792062966452,
+      "durationMs": 25202,
+      "settings": {
+        "temperature": null,
+        "maxOutputTokens": 4096,
+        "timeoutMs": 120000
+      },
+      "finishReason": "stop",
+      "usageReported": true,
+      "inputTokens": 10866,
+      "outputTokens": 2391
+    },
+    {
+      "task": "validation-explain-fzk",
+      "route": "proxy",
+      "model": "qwen/qwen3.7-flash",
+      "status": 200,
+      "outcome": "completed",
+      "startedAt": 1792062991660,
+      "durationMs": 30711,
+      "settings": {
+        "temperature": null,
+        "maxOutputTokens": 4096,
+        "timeoutMs": 120000
+      },
+      "finishReason": "stop",
+      "usageReported": true,
+      "inputTokens": 10549,
+      "outputTokens": 2488
+    },
+    {
+      "task": "authoring-annex-wall",
+      "route": "proxy",
+      "model": "qwen/qwen3.7-flash",
+      "status": 200,
+      "outcome": "completed",
+      "startedAt": 1792063022377,
+      "durationMs": 20100,
+      "settings": {
+        "temperature": null,
+        "maxOutputTokens": 4096,
+        "timeoutMs": 120000
+      },
+      "finishReason": "stop",
+      "usageReported": true,
+      "inputTokens": 8436,
+      "outputTokens": 1897
+    },
+    {
+      "task": "flow-sum",
+      "route": "proxy",
+      "model": "qwen/qwen3.7-flash",
+      "status": 200,
+      "outcome": "completed",
+      "startedAt": 1792063042481,
+      "durationMs": 21646,
+      "settings": {
+        "temperature": null,
+        "maxOutputTokens": 4096,
+        "timeoutMs": 120000
+      },
+      "finishReason": "stop",
+      "usageReported": true,
+      "inputTokens": 7203,
+      "outputTokens": 1979
+    },
+    {
+      "task": "flow-ai-review",
+      "route": "proxy",
+      "model": "qwen/qwen3.7-flash",
+      "status": 200,
+      "outcome": "completed",
+      "startedAt": 1792063064131,
+      "durationMs": 33912,
+      "settings": {
+        "temperature": null,
+        "maxOutputTokens": 4096,
+        "timeoutMs": 120000
+      },
+      "finishReason": "stop",
+      "usageReported": true,
+      "inputTokens": 7960,
+      "outputTokens": 2488
+    },
+    {
+      "task": "review-next-action",
+      "route": "proxy",
+      "model": "qwen/qwen3.7-flash",
+      "status": 200,
+      "outcome": "completed",
+      "startedAt": 1792063098049,
+      "durationMs": 26030,
+      "settings": {
+        "temperature": null,
+        "maxOutputTokens": 4096,
+        "timeoutMs": 120000
+      },
+      "finishReason": "stop",
+      "usageReported": true,
+      "inputTokens": 7881,
+      "outputTokens": 2076
+    },
+    {
+      "task": "list-quantity-gaps",
+      "route": "proxy",
+      "model": "qwen/qwen3.7-flash",
+      "status": 200,
+      "outcome": "completed",
+      "startedAt": 1792063124083,
+      "durationMs": 20663,
+      "settings": {
+        "temperature": null,
+        "maxOutputTokens": 4096,
+        "timeoutMs": 120000
+      },
+      "finishReason": "stop",
+      "usageReported": true,
+      "inputTokens": 7868,
+      "outputTokens": 1707
+    },
+    {
+      "task": "selected-roof-properties",
+      "route": "proxy",
+      "model": "qwen/qwen3.7-flash",
+      "status": 200,
+      "outcome": "completed",
+      "startedAt": 1792063144750,
+      "durationMs": 25119,
+      "settings": {
+        "temperature": null,
+        "maxOutputTokens": 4096,
+        "timeoutMs": 120000
+      },
+      "finishReason": "stop",
+      "usageReported": true,
+      "inputTokens": 19530,
+      "outputTokens": 2107
+    },
+    {
+      "task": "reimported-document",
+      "route": "proxy",
+      "model": "qwen/qwen3.7-flash",
+      "status": 200,
+      "outcome": "completed",
+      "startedAt": 1792063169873,
+      "durationMs": 17030,
+      "settings": {
+        "temperature": null,
+        "maxOutputTokens": 4096,
+        "timeoutMs": 120000
+      },
+      "finishReason": "stop",
+      "usageReported": true,
+      "inputTokens": 7595,
+      "outputTokens": 1146
+    }
+  ],
+  "results": [
+    {
+      "task": "clash-summary",
+      "route": "proxy",
+      "repeat": 1,
+      "recording": "live-20261015t111451-clash-summary-proxy-1",
+      "outcome": "completed",
+      "violations": [],
+      "facts": {
+        "cited": [
+          "E1",
+          "E2",
+          "E9",
+          "E8"
+        ],
+        "declaredKind": null,
+        "proposalParsed": null,
+        "accounting": null,
+        "countClaims": []
+      }
+    },
+    {
+      "task": "clash-grouping",
+      "route": "proxy",
+      "repeat": 1,
+      "recording": "live-20261015t111451-clash-grouping-proxy-1",
+      "outcome": "completed",
+      "violations": [],
+      "facts": {
+        "cited": [
+          "E1",
+          "E2",
+          "E3",
+          "E4",
+          "E5",
+          "E6",
+          "E7",
+          "E9",
+          "E8"
+        ],
+        "declaredKind": "clash.groups",
+        "proposalParsed": true,
+        "accounting": {
+          "total": 9,
+          "proposed": 9,
+          "unclassified": 0,
+          "omittedFromEvidence": 0
+        },
+        "countClaims": []
+      }
+    },
+    {
+      "task": "validation-explain",
+      "route": "proxy",
+      "repeat": 1,
+      "recording": "live-20261015t111451-validation-explain-proxy-1",
+      "outcome": "completed",
+      "violations": [],
+      "facts": {
+        "cited": [
+          "E10",
+          "E11",
+          "E8",
+          "E1",
+          "E2",
+          "E3"
+        ],
+        "declaredKind": null,
+        "proposalParsed": null,
+        "accounting": null,
+        "countClaims": [
+          {
+            "value": 11,
+            "noun": "entities",
+            "matched": true
+          },
+          {
+            "value": 3,
+            "noun": "specifications",
+            "matched": true
+          },
+          {
+            "value": 2,
+            "noun": "failures",
+            "matched": true
+          },
+          {
+            "value": 1,
+            "noun": "failure",
+            "matched": true
+          }
+        ]
+      }
+    },
+    {
+      "task": "validation-corrections",
+      "route": "proxy",
+      "repeat": 1,
+      "recording": "live-20261015t111451-validation-corrections-proxy-1",
+      "outcome": "completed",
+      "violations": [],
+      "facts": {
+        "cited": [],
+        "declaredKind": "model.changes",
+        "proposalParsed": true,
+        "accounting": null,
+        "countClaims": []
+      }
+    },
+    {
+      "task": "validation-explain-fzk",
+      "route": "proxy",
+      "repeat": 1,
+      "recording": "live-20261015t111451-validation-explain-fzk-proxy-1",
+      "outcome": "completed",
+      "violations": [],
+      "facts": {
+        "cited": [
+          "E9",
+          "E10",
+          "E1",
+          "E2",
+          "E8"
+        ],
+        "declaredKind": null,
+        "proposalParsed": null,
+        "accounting": null,
+        "countClaims": [
+          {
+            "value": 3,
+            "noun": "specifications",
+            "matched": true
+          }
+        ]
+      }
+    },
+    {
+      "task": "authoring-annex-wall",
+      "route": "proxy",
+      "repeat": 1,
+      "recording": "live-20261015t111451-authoring-annex-wall-proxy-1",
+      "outcome": "completed",
+      "violations": [],
+      "facts": {
+        "cited": [],
+        "declaredKind": "model.authoring",
+        "proposalParsed": true,
+        "accounting": null,
+        "countClaims": []
+      }
+    },
+    {
+      "task": "flow-sum",
+      "route": "proxy",
+      "repeat": 1,
+      "recording": "live-20261015t111451-flow-sum-proxy-1",
+      "outcome": "completed",
+      "violations": [],
+      "facts": {
+        "cited": [],
+        "declaredKind": "flow.patch",
+        "proposalParsed": true,
+        "accounting": null,
+        "countClaims": []
+      }
+    },
+    {
+      "task": "flow-ai-review",
+      "route": "proxy",
+      "repeat": 1,
+      "recording": "live-20261015t111451-flow-ai-review-proxy-1",
+      "outcome": "completed",
+      "violations": [],
+      "facts": {
+        "cited": [
+          "E3",
+          "E4",
+          "E5",
+          "E6",
+          "E7",
+          "E2",
+          "E1"
+        ],
+        "declaredKind": null,
+        "proposalParsed": null,
+        "accounting": null,
+        "countClaims": [
+          {
+            "value": 1,
+            "noun": "row",
+            "matched": true
+          },
+          {
+            "value": 4,
+            "noun": "rows",
+            "matched": true
+          }
+        ]
+      }
+    },
+    {
+      "task": "review-next-action",
+      "route": "proxy",
+      "repeat": 1,
+      "recording": "live-20261015t111451-review-next-action-proxy-1",
+      "outcome": "completed",
+      "violations": [],
+      "facts": {
+        "cited": [
+          "E1"
+        ],
+        "declaredKind": null,
+        "proposalParsed": null,
+        "accounting": null,
+        "countClaims": []
+      }
+    },
+    {
+      "task": "list-quantity-gaps",
+      "route": "proxy",
+      "repeat": 1,
+      "recording": "live-20261015t111451-list-quantity-gaps-proxy-1",
+      "outcome": "completed",
+      "violations": [],
+      "facts": {
+        "cited": [
+          "E1",
+          "E2",
+          "E3",
+          "E4"
+        ],
+        "declaredKind": null,
+        "proposalParsed": null,
+        "accounting": null,
+        "countClaims": [
+          {
+            "value": 4,
+            "noun": "walls",
+            "matched": true
+          }
+        ]
+      }
+    },
+    {
+      "task": "selected-roof-properties",
+      "route": "proxy",
+      "repeat": 1,
+      "recording": "live-20261015t111451-selected-roof-properties-proxy-1",
+      "outcome": "completed",
+      "violations": [],
+      "facts": {
+        "cited": [
+          "E1"
+        ],
+        "declaredKind": null,
+        "proposalParsed": null,
+        "accounting": null,
+        "countClaims": []
+      }
+    },
+    {
+      "task": "reimported-document",
+      "route": "proxy",
+      "repeat": 1,
+      "recording": "live-20261015t111451-reimported-document-proxy-1",
+      "outcome": "completed",
+      "violations": [],
+      "facts": {
+        "cited": [
+          "E1",
+          "E2"
+        ],
+        "declaredKind": null,
+        "proposalParsed": null,
+        "accounting": null,
+        "countClaims": []
+      }
+    }
+  ]
+}

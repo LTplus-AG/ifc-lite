@@ -1,0 +1,3 @@
+#79108= IFCSHAPEREPRESENTATION(#118,'Body','SweptSolid',(#15006));
+#79109= IFCSHAPEASPECT((#79108),'Shape aspect regression',$,.T.,#15037);
+#79110= IFCPRESENTATIONLAYERASSIGNMENT('Shape aspect ownership regression',$,(#79108),$);

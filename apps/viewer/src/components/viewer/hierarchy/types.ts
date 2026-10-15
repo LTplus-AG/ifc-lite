@@ -32,6 +32,7 @@ export type NodeType =
   | 'ifc-type'            // IFC type entity node (e.g., "IfcWallType/W01")
   | 'material-group'      // Material grouping (e.g., "Concrete (47)") from the Materials tab
   | 'group'               // IfcGroup/IfcSystem/IfcZone entity row from the Groups tab (#1622)
+  | 'presentation-layer'  // IfcPresentationLayerAssignment and its style subtype (#7619)
   | 'group-member'        // Member row under an expanded group (#1622)
   | 'model-tag-group'     // Model-tag group header in the Models section's "By tag" view (#4215)
   | 'other-group'         // "Other" bucket header for geometry-less physical elements (#4764)

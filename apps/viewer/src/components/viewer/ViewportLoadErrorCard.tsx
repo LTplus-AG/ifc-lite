@@ -20,11 +20,17 @@
 import { AlertTriangle, X } from 'lucide-react';
 import { useTranslation } from '@/i18n';
 import { useLoadErrorCard } from '@/hooks/useLoadErrorCard';
+import { useViewerStore } from '@/store';
 
 export function ViewportLoadErrorCard() {
   const { t } = useTranslation();
   const { error, canRetry, retry, dismiss } = useLoadErrorCard();
-  if (!error) return null;
+  // A LandXML refusal the user can answer (a unit, #5175; georeferencing
+  // assumptions) shows the same message with the choices that fix it. While
+  // that prompt is open this card would only cover it; once the prompt is
+  // answered or cancelled, the card reports the failure again.
+  const choicePromptOpen = useViewerStore((s) => s.landXmlUnitsRefusal !== null || s.landXmlAssumptionRefusal !== null);
+  if (!error || choicePromptOpen) return null;
 
   return (
     <div className="pointer-events-none absolute inset-0 z-(--z-float) flex items-center justify-center p-4">

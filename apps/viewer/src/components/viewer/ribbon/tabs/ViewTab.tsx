@@ -7,7 +7,7 @@
  * (Cesium / sun / SpaceMouse), and interface options.
  */
 
-import { Orthographic, Viewpoint, SpaceMouse, Lighting, World, Move, FollowWork, Settings, Spatial } from '@/icons';
+import { Orthographic, Viewpoint, SpaceMouse, Lighting, World, Move, FollowWork, Spatial } from '@/icons';
 import { useViewerStore } from '@/store';
 import { useEffectiveSkyEnabled } from '@/hooks/useEffectiveSkyEnabled';
 import { TOUR_ANCHORS, tourAnchor } from '@/lib/tours/anchors';
@@ -183,10 +183,6 @@ export function ViewTab() {
             icon={FollowWork}
             active={ribbonContextualTabs}
             {...tourAnchor(TOUR_ANCHORS.ribbonFollowWork)}
-          />
-          <RibbonCommandSmallButton
-            commandId="pref:settings"
-            icon={Settings}
           />
         </RibbonSmallStack>
       </RibbonGroup>

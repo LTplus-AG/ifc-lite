@@ -78,3 +78,11 @@ test('an end-to-end run against a local OpenAI-compatible server writes recordin
   for (const file of ['summary.json', join('recordings', name)]) assert.ok(!readFileSync(join(dir, file), 'utf8').includes(KEY), `${file} leaks the credential`);
   assert.ok(existsSync(join(dir, 'requests.json')));
 });
+
+test('#6928 --requests captured with another model is refused before anything is sent', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ai-eval-live-'));
+  writeFileSync(join(dir, 'requests.json'), JSON.stringify({ ...requests, model: 'other-model' }));
+  await assert.rejects(quiet(() => main(['--providers', 'openai', '--tasks', 'clash-summary', '--requests', join(dir, 'requests.json'), '--out', dir],
+    { IFCLITE_AI_EVAL_LIVE: '1', IFCLITE_AI_EVAL_OPENAI_URL: 'http://127.0.0.1:9/never', IFCLITE_AI_EVAL_OPENAI_MODEL: 'free-model', OPENAI_API_KEY: KEY })),
+  /captured with other-model, not free-model/);
+});

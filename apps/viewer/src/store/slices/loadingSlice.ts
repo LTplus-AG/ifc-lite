@@ -9,6 +9,14 @@ import { clearLoadReport } from '../../lib/error-reports/context';
 
 import type { StateCreator } from 'zustand';
 import { defineSliceTeardown, notApplicable } from '../teardown.js';
+import type {
+  LandXmlAssumptionRefusal,
+  LandXmlGeorefAssumptions,
+} from '../../hooks/ingest/landXmlGeorefAssumptions.js';
+import {
+  loadLandXmlGeorefAssumptionSettings,
+  saveLandXmlGeorefAssumptionSettings,
+} from './landXmlGeorefAssumptionSettings.js';
 
 export interface LoadingSlice {
   // State
@@ -62,6 +70,21 @@ export interface LoadingSlice {
    */
   landXmlUnitsRefusal: { fileName: string; retry: (assumedLinearUnit: string) => void } | null;
   /**
+   * Set exactly when a federated LandXML is refused alignment AND one or more
+   * georeferencing assumptions would align it (`offer` is non-empty). Same
+   * lifecycle as `landXmlUnitsRefusal`: cleared at the start of every
+   * `loadFile` call and by a session reset; `retry` closes over the original
+   * `File` and load target and re-runs the load with the user's choice.
+   */
+  landXmlAssumptionRefusal: LandXmlAssumptionRefusal | null;
+  /**
+   * The user's standing LandXML georeferencing assumptions (viewer settings),
+   * used by every LandXML load that does not name its own. Persisted
+   * workspace-wide (`landXmlGeorefAssumptionSettings.ts`), so a session
+   * reset leaves it alone. Default: all off.
+   */
+  landXmlGeorefAssumptionSettings: LandXmlGeorefAssumptions;
+  /**
    * Re-runs the load that most recently set `error` (#5851), same File,
    * URL, or buffers, through the same call. Set ONLY by
    * `lib/analytics.ts`'s `showLoadError`, alongside the message it sets —
@@ -85,6 +108,8 @@ export interface LoadingSlice {
   noteLoadCancelled: () => void;
   setLoadingFileName: (fileName: string | null) => void;
   setLandXmlUnitsRefusal: (value: LoadingSlice['landXmlUnitsRefusal']) => void;
+  setLandXmlAssumptionRefusal: (value: LandXmlAssumptionRefusal | null) => void;
+  setLandXmlGeorefAssumptionSettings: (partial: Partial<LandXmlGeorefAssumptions>) => void;
   setLastLoadRetry: (retry: (() => void) | null) => void;
 }
 
@@ -101,6 +126,8 @@ export const createLoadingSlice: StateCreator<LoadingSlice, [], [], LoadingSlice
   loadCancelSeq: 0,
   loadingFileName: null,
   landXmlUnitsRefusal: null,
+  landXmlAssumptionRefusal: null,
+  landXmlGeorefAssumptionSettings: loadLandXmlGeorefAssumptionSettings(),
   lastLoadRetry: null,
 
   // Actions
@@ -122,6 +149,12 @@ export const createLoadingSlice: StateCreator<LoadingSlice, [], [], LoadingSlice
   noteLoadCancelled: () => set((state) => ({ loadCancelSeq: state.loadCancelSeq + 1 })),
   setLoadingFileName: (loadingFileName) => set({ loadingFileName }),
   setLandXmlUnitsRefusal: (landXmlUnitsRefusal) => set({ landXmlUnitsRefusal }),
+  setLandXmlAssumptionRefusal: (landXmlAssumptionRefusal) => set({ landXmlAssumptionRefusal }),
+  setLandXmlGeorefAssumptionSettings: (partial) => set((state) => {
+    const next = { ...state.landXmlGeorefAssumptionSettings, ...partial };
+    saveLandXmlGeorefAssumptionSettings(next);
+    return { landXmlGeorefAssumptionSettings: next };
+  }),
   setLastLoadRetry: (lastLoadRetry) => set({ lastLoadRetry }),
 });
 
@@ -140,14 +173,18 @@ export const createLoadingSlice: StateCreator<LoadingSlice, [], [], LoadingSlice
  * that registered it, and dropping it here would silently orphan an in-flight
  * stream's only stop button.
  *
- * `landXmlUnitsRefusal` and `lastLoadRetry` follow `error`'s lifecycle: a
+ * `landXmlGeorefAssumptionSettings` is a persisted workspace preference and
+ * is deliberately absent: it outlives every file.
+ *
+ * `landXmlUnitsRefusal`, `landXmlAssumptionRefusal` and `lastLoadRetry`
+ * follow `error`'s lifecycle: a
  * session reset ends whatever load prompted them, so the stale retry
  * closures (and the `File` they hold) go with it rather than outliving the
  * load they belong to.
  */
 export const loadingTeardown = defineSliceTeardown(
   'loadingSlice',
-  ['loading', 'geometryStreamingActive', 'progress', 'geometryProgress', 'metadataProgress', 'error', 'loadingFileName', 'landXmlUnitsRefusal', 'lastLoadRetry'],
+  ['loading', 'geometryStreamingActive', 'progress', 'geometryProgress', 'metadataProgress', 'error', 'loadingFileName', 'landXmlUnitsRefusal', 'landXmlAssumptionRefusal', 'lastLoadRetry'],
   {
     'session-reset': () => ({
       loading: false,
@@ -158,6 +195,7 @@ export const loadingTeardown = defineSliceTeardown(
       error: null,
       loadingFileName: null,
       landXmlUnitsRefusal: null,
+      landXmlAssumptionRefusal: null,
       lastLoadRetry: null,
     }),
     'model-removed': notApplicable,

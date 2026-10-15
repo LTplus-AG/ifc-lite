@@ -8,7 +8,7 @@ import { getReference } from './attribute-helpers.js';
 import { EntityExtractor } from './entity-extractor.js';
 import { effectiveMetadataRecord, type MetadataReadView } from './effective-metadata-record.js';
 import { getInheritanceChain, getAttributeNamesForSchema, getAttributeTypeForSchema } from './ifc-schema.js';
-import { propertyDefinitionRefsOfValue } from './property-definition-refs.js';
+import { propertyDefinitionsInModel } from './property-definition-members.js';
 import { QUANTITY_TYPE_MAP } from './columnar-parser-indexes.js';
 import { resolveUnitByRef, measureUnit, type UnitEntityReader } from './project-units.js';
 import { readQuantitySetRecord, type QuantityEntityReader } from './quantity-collect.js';
@@ -88,16 +88,13 @@ function inventory(store: IfcDataStore, view: MetadataReadView): CurrentInventor
         const members = refIds(record.attributes[4], MAX_RELATION_REFERENCES, true);
         const byType = record.type.toUpperCase() === 'IFCRELDEFINESBYTYPE';
         // RelatingPropertyDefinition may be a set of definitions (#7681); a type is always one.
-        // Inside a set, a decoded `#1500` and a stray `1500` are both the number
-        // 1500, so a member counts only when it names an entity of the
-        // effective model. A lone reference keeps its plain numeric read.
-        const inSet = (member: unknown): number | null => {
-            const id = typeof member === 'number' && Number.isSafeInteger(member) && member > 0 ? member : null;
-            return id !== null && (store.entityIndex.byId.has(id) || view.getNewEntity(id)) ? id : null;
-        };
+        // RelatingPropertyDefinition may be a set of definitions (#7681); a type is always one.
         const targets = byType
             ? (typeof target === 'number' && Number.isSafeInteger(target) && target > 0 ? [target] : [])
-            : [...new Set(propertyDefinitionRefsOfValue(target, Array.isArray(target) ? inSet : undefined))];
+            : propertyDefinitionsInModel(store, target, view);
+        // A non-empty set none of whose members is a property definition holds
+        // no definition for this reader to use; it is not an unreadable record.
+        if (targets.length === 0 && !byType && Array.isArray(target) && target.length > 0) continue;
         if (targets.length === 0) throw new CurrentQuantityRefusal('Native type relationship target is unreadable');
         // Both sides count: a set of N definitions on M objects is N x M edges.
         referenceCount += members.length * targets.length;

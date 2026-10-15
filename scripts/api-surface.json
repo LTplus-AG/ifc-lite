@@ -8984,6 +8984,7 @@
     "parseSourceHeader: function",
     "parseStepValue: function",
     "propertyDefinitionRefsOfValue: function",
+    "propertyDefinitionsInModel: function",
     "quantitySiScale: function",
     "readCurrentProjectUnits: function",
     "readCurrentTypeQuantities: function",

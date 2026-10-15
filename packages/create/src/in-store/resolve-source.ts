@@ -13,7 +13,7 @@
  * backend layer can call it without needing parser internals.
  */
 
-import { EntityExtractor, effectiveStoreyId, propertyDefinitionRefsOfValue, resolveEffectiveRelationshipOverlay, type IfcDataStore } from '@ifc-lite/parser';
+import { EntityExtractor, effectiveStoreyId, propertyDefinitionsInModel, resolveEffectiveRelationshipOverlay, type IfcDataStore } from '@ifc-lite/parser';
 import { iterateEffectiveEntityIds, type IfcAttributeValue, type StoreEditor } from '@ifc-lite/mutations';
 import { resolvedTypeName } from '@ifc-lite/data';
 import { asRef, createStyleEntityReader, refList } from './style-entity-reader.js';
@@ -220,7 +220,7 @@ function collectSourceAssociations(
     // reference, a bare set or IFCPROPERTYSETDEFINITIONSET((...)) (#7681).
     // Every other Relating* slot is one reference.
     const relatingExpressIds = type.toUpperCase() === 'IFCRELDEFINESBYPROPERTIES'
-      ? [...new Set(propertyDefinitionRefsOfValue(entity.attributes[5], asRef))]
+      ? propertyDefinitionsInModel(store, entity.attributes[5], view, asRef)
       : [asRef(entity.attributes[5])].filter((id): id is number => id !== null);
     const relatingExpressId = relatingExpressIds[0];
     // RelatingPropertyDefinition / RelatingType / etc. is required

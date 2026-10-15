@@ -75,6 +75,22 @@ describe('current type quantities over an IfcPropertySetDefinitionSet (#7681)', 
     expect(result.value?.quantities.map((set) => set.name)).toEqual(['Qto_Probe']);
   });
 
+  it.each([
+    ['an IfcWall', 10],
+    ['the IfcProject', 1],
+  ])('a number that collides with %s is skipped, not a refusal of the type read', async (_label, collides) => {
+    const result = readCurrentTypeQuantities(await model(`(#21,${collides})`), 10, NO_EDITS);
+    expect(result.reason).toBeNull();
+    expect(result.status).toBe('available');
+    expect(result.value?.quantities.map((set) => set.name)).toEqual(['Qto_Probe']);
+  });
+
+  it('a set with no property definition is skipped, not a refusal of the type read', async () => {
+    const result = readCurrentTypeQuantities(await model('(1500)'), 10, NO_EDITS);
+    expect(result.status).toBe('available');
+    expect(result.value).toBeNull();
+  });
+
   it('counts a set against the reference budget instead of expanding it unbounded', async () => {
     // 600 objects x 600 definitions is 360,000 edges, past the 262,144-reference limit.
     const definitions = Array.from({ length: 600 }, (_, i) => 1000 + i);

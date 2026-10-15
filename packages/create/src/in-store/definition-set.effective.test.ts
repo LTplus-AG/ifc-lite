@@ -51,6 +51,9 @@ DATA;
 #52=IFCWALL('0WALL0000000000000052',$,'Typed',$,$,#20,#60,$,$);
 #53=IFCWALL('0WALL0000000000000053',$,'OneMember',$,$,#20,#60,$,$);
 #54=IFCWALL('0WALL0000000000000054',$,'Piece',$,$,#20,#60,$,$);
+#55=IFCWALL('0WALL0000000000000055',$,'StrayNumber',$,$,#20,#60,$,$);
+#56=IFCWALL('0WALL0000000000000056',$,'NonDefinition',$,$,#20,#60,$,$);
+#57=IFCWALL('0WALL0000000000000057',$,'OnlyStray',$,$,#20,#60,$,$);
 #20=IFCLOCALPLACEMENT(#10,#21);
 #21=IFCAXIS2PLACEMENT3D(#94,$,#95);
 #94=IFCCARTESIANPOINT((0.,0.,0.));
@@ -63,13 +66,16 @@ DATA;
 #84=IFCRELAGGREGATES('0RELAGG0000000000003',$,$,$,#1,(#2));
 #77=IFCRELAGGREGATES('0RELAGG0000000000000',$,$,$,#2,(#3));
 #78=IFCRELAGGREGATES('0RELAGG0000000000001',$,$,$,#3,(#4));
-#79=IFCRELCONTAINEDINSPATIALSTRUCTURE('0RELCONT000000000000',$,$,$,(#50,#51,#52,#53,#54),#4);
+#79=IFCRELCONTAINEDINSPATIALSTRUCTURE('0RELCONT000000000000',$,$,$,(#50,#51,#52,#53,#54,#55,#56,#57),#4);
 #82=IFCPROPERTYSET('0PSET00000000000000082',$,'Pset_A',$,());
 #83=IFCELEMENTQUANTITY('0QTO000000000000000083',$,'Qto_B',$,$,());
 #85=IFCRELDEFINESBYPROPERTIES('0RELDEF000000000000085',$,$,$,(#50),#82);
 #86=IFCRELDEFINESBYPROPERTIES('0RELDEF000000000000086',$,$,$,(#51),(#82,#83));
 #87=IFCRELDEFINESBYPROPERTIES('0RELDEF000000000000087',$,$,$,(#52),IFCPROPERTYSETDEFINITIONSET((#82,#83)));
 #88=IFCRELDEFINESBYPROPERTIES('0RELDEF000000000000088',$,$,$,(#53),IFCPROPERTYSETDEFINITIONSET((#82)));
+#89=IFCRELDEFINESBYPROPERTIES('0RELDEF000000000000089',$,$,$,(#55),(#82,1500));
+#90=IFCRELDEFINESBYPROPERTIES('0RELDEF000000000000090',$,$,$,(#56),(#82,#63,#83));
+#91=IFCRELDEFINESBYPROPERTIES('0RELDEF000000000000091',$,$,$,(#57),(1500));
 ENDSEC;
 END-ISO-10303-21;
 `;
@@ -99,6 +105,36 @@ describe('Duplicate over RelatingPropertyDefinition spellings (#7681)', () => {
     expect(rel?.attributes[4]).toEqual([`#${built.newId}`]);
     // `#N` for one definition, `(#a,#b)` for a set.
     expect(rel?.attributes[5]).toEqual(definitions.length === 1 ? `#${definitions[0]}` : definitions.map((id) => `#${id}`));
+  });
+});
+
+describe('Duplicate over a malformed set (#7681)', () => {
+  const definitionsOf = async (wall: number) => {
+    const { store, editor } = await session();
+    const source = resolveDuplicateSource(store, wall, editor);
+    return (source.associations ?? [])
+      .filter((a) => a.relType.toUpperCase() === 'IFCRELDEFINESBYPROPERTIES')
+      .map((a) => a.relatingExpressIds ?? [a.relatingExpressId]);
+  };
+
+  it('a number that names no entity is not copied as a reference: (#82,1500)', async () => {
+    expect(await definitionsOf(55)).toEqual([[82]]);
+  });
+
+  it('a member that is not a property definition is not copied: (#82,#63,#83)', async () => {
+    // #63 is an IfcCartesianPoint.
+    expect(await definitionsOf(56)).toEqual([[82, 83]]);
+  });
+
+  it('a set with no property definition at all is skipped as it was before sets were read', async () => {
+    expect(await definitionsOf(57)).toEqual([]);
+  });
+
+  it('the copy never writes a dangling or wrong-typed reference', async () => {
+    const { store, view, editor } = await session();
+    const built = duplicateInStore(editor, resolveDuplicateSource(store, 55, editor));
+    const rel = view.getNewEntities().find((e) => e.expressId === built.associationRelIds[0]);
+    expect(rel?.attributes[5]).toBe('#82');
   });
 });
 

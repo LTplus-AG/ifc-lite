@@ -11,7 +11,7 @@ import { afterEach, describe, it } from 'node:test';
 import { act } from 'react';
 import { IfcParser } from '@ifc-lite/parser';
 import type { GeometryResult } from '@ifc-lite/geometry';
-import { cleanup, click, render, type } from '@/test/render.js';
+import { cleanup, click, render, type, waitFor } from '@/test/render.js';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { SourceHostProvider } from '@/services/sources/SourceHostProvider.js';
 import { useViewerStore } from '@/store';
@@ -61,15 +61,22 @@ async function model(id: string, federated = false, space = false) {
     geometryResult: geometry([offset + 7, offset + 8]) };
 }
 
-function mount(...models: Awaited<ReturnType<typeof model>>[]) {
+function mountPanel(models: Awaited<ReturnType<typeof model>>[], selectedId: number | null = null) {
   useViewerStore.setState({ ...fixtureModels(...models), ifcDataStore: models[0].ifcDataStore,
-    hierarchyMode: 'spatial', selectedEntityId: null, selectedEntityIds: new Set(),
+    hierarchyMode: 'spatial', selectedEntityId: selectedId, selectedEntityIds: new Set(selectedId == null ? [] : [selectedId]),
     hiddenEntities: new Set(), isolatedEntities: null, mutationViews: new Map(),
     mergeLayers: false, classFilter: null, selectedStoreys: new Set() });
   const container = render(<SourceHostProvider><HierarchyPanel /></SourceHostProvider>);
   const tab = [...container.querySelectorAll('button')].find(b => b.title === 'Presentation layers');
   assert.ok(tab, 'the dedicated Layers tab is accessible by its presentation-layer tooltip');
   click(tab);
+  return container;
+}
+
+async function mount(...models: Awaited<ReturnType<typeof model>>[]): Promise<HTMLElement> {
+  const container = mountPanel(models);
+  await waitFor(() => layerRows(container).length > 0 || /No presentation layers/.test(container.textContent ?? ''),
+    'the lazy layer tree or its genuine empty state appears');
   return container;
 }
 
@@ -85,8 +92,29 @@ function layerRows(container: HTMLElement) {
 }
 
 describe('Presentation layers hierarchy (#7619)', () => {
+  it('reveals a held selection after the first lazy Layers load, without flashing an empty state', async () => {
+    const container = mountPanel([await model('presentation-cold-selected')], 7);
+    assert.ok(container.querySelector('[role="tree"][aria-busy="true"]'));
+    assert.match(container.textContent ?? '', /Loading presentation layers/);
+    assert.doesNotMatch(container.textContent ?? '', /No presentation layers|No matches for/);
+    const spatial = container.querySelector<HTMLButtonElement>('button[title="Spatial"]');
+    const layers = container.querySelector<HTMLButtonElement>('button[title="Presentation layers"]');
+    assert.ok(spatial && layers);
+    click(spatial);
+    assert.doesNotMatch(container.textContent ?? '', /Loading presentation layers/,
+      'leaving the tab cancels its active loading UI');
+    click(layers);
+    await waitFor(() => !!container.querySelector('button[aria-label="Collapse Walls"]'),
+      'lazy readiness re-reveals the held product selection');
+    const product = [...container.querySelectorAll<HTMLElement>('[role="treeitem"]')]
+      .find(row => row.textContent?.includes('Layer wall'));
+    assert.ok(product);
+    assert.equal(product.getAttribute('aria-selected'), 'true');
+    assert.equal(container.querySelector('[role="tree"]')?.getAttribute('aria-busy'), 'false');
+  });
+
   it('selects products, hides/shows and isolates layer geometry, and searches collapsed members', async () => {
-    const container = mount(await model('presentation-single'));
+    const container = await mount(await model('presentation-single'));
     const row = layerRows(container)[0];
     assert.ok(row);
     assert.doesNotMatch(container.textContent ?? '', /Layer wall/);
@@ -118,7 +146,7 @@ describe('Presentation layers hierarchy (#7619)', () => {
   it('keeps same-name assignments and colliding local product IDs independent in a federation', async () => {
     const a = await model('presentation-fed-A', true);
     const b = await model('presentation-fed-B', true);
-    const container = mount(a, b);
+    const container = await mount(a, b);
     const rows = layerRows(container);
     assert.equal(rows.length, 2);
     click(rows[1]);
@@ -132,7 +160,7 @@ describe('Presentation layers hierarchy (#7619)', () => {
     act(() => useViewerStore.setState({ typeVisibility: {
       ...useViewerStore.getState().typeVisibility, spaces: false,
     } }));
-    const container = mount(await model('presentation-space', false, true));
+    const container = await mount(await model('presentation-space', false, true));
     const row = layerRows(container)[0];
     assert.ok(row);
     click(button(row, 'Isolate Walls'));
@@ -144,7 +172,7 @@ describe('Presentation layers hierarchy (#7619)', () => {
     const empty = await model('presentation-empty');
     empty.ifcDataStore = await new IfcParser().parseColumnar(new TextEncoder()
       .encode(IFC.replace(/^#5[01]=.*\n/gm, '')).buffer);
-    const container = mount(empty);
+    const container = await mount(empty);
     assert.match(container.textContent ?? '', /No presentation layers/);
   });
 });

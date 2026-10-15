@@ -23,7 +23,7 @@ import {
   type GroupSubFilter,
   type GeorefMutationsByModel,
 } from './treeDataBuilder';
-import { buildPresentationLayerTree } from './presentationLayerTree';
+import type { PresentationLayerBuilder } from './usePresentationLayerBuilder';
 import { findNodePath } from './findNodePath';
 
 const EXPAND_ALL: ExpansionLookup = { has: () => true };
@@ -57,6 +57,7 @@ export function buildTreeForGrouping(
   georefMutations: GeorefMutationsByModel,
   mutationViews: Map<string, MutablePropertyView>,
   materialSourceStores?: ReadonlyMap<string, IfcDataStore>,
+  presentationLayerBuilder?: PresentationLayerBuilder,
 ): TreeNode[] {
   const treeOverlay = (modelId: string) => mutationViews.get(modelId); // deletes/retypes, re-run per mutationVersion (#5249)
   if (groupingMode === 'type') {
@@ -71,7 +72,7 @@ export function buildTreeForGrouping(
   if (groupingMode === 'presentation-layers') {
     // Curve-only annotations render in the symbolic overlay rather than meshes.
     // Their owner IDs obey the same hide/show contract as meshed products.
-    return buildPresentationLayerTree(models, ifcDataStore, expansion, classTreeIds, geometryReadyModelIds, treeOverlay);
+    return presentationLayerBuilder?.(models, ifcDataStore, expansion, classTreeIds, geometryReadyModelIds, treeOverlay) ?? [];
   }
   if (groupingMode === 'groups') {
     return buildGroupTree(models, ifcDataStore, expansion, isMultiModel, geometricIds, groupFilter, treeOverlay);
@@ -94,6 +95,7 @@ interface TreeBuildParams {
   georefMutations: GeorefMutationsByModel;
   mutationViews: Map<string, MutablePropertyView>;
   mutationVersion: number;
+  presentationLayerBuilder?: PresentationLayerBuilder;
 }
 
 /** Build the fully expanded projection on the first reveal lookup for a set
@@ -103,18 +105,18 @@ export function useExpandedTreeForGrouping(params: TreeBuildParams): () => TreeN
   const {
     groupingMode, models, ifcDataStore, isMultiModel, unifiedStoreys, sortMode, geometricIds,
     classTreeIds, authoredProducts, groupFilter, geometryReadyModelIds, georefMutations,
-    mutationViews, mutationVersion,
+    mutationViews, mutationVersion, presentationLayerBuilder,
   } = params;
   const cacheRef = useRef<{ inputs: readonly unknown[]; tree: TreeNode[] } | null>(null);
   const inputs = [groupingMode, models, ifcDataStore, isMultiModel, unifiedStoreys, sortMode,
     geometricIds, classTreeIds, authoredProducts, groupFilter, geometryReadyModelIds,
-    georefMutations, mutationViews, mutationVersion] as const;
+    georefMutations, mutationViews, mutationVersion, presentationLayerBuilder] as const;
   return () => {
     const cached = cacheRef.current;
     if (cached && cached.inputs.every((value, i) => Object.is(value, inputs[i]))) return cached.tree;
     const tree = buildTreeForGrouping(
       groupingMode, models, ifcDataStore, EXPAND_ALL, isMultiModel, unifiedStoreys, sortMode,
-      geometricIds, classTreeIds, authoredProducts, groupFilter, geometryReadyModelIds, georefMutations, mutationViews,
+      geometricIds, classTreeIds, authoredProducts, groupFilter, geometryReadyModelIds, georefMutations, mutationViews, undefined, presentationLayerBuilder,
     );
     cacheRef.current = { inputs, tree };
     return tree;

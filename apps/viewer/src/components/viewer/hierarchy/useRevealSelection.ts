@@ -17,6 +17,7 @@ interface ScrollableVirtualizer {
 interface UseRevealSelectionParams {
   selectedEntityId: number | null;
   groupingMode: HierarchyMode;
+  ready?: boolean;
   revealGlobalId: (globalId: number) => string | null;
   storeysNodes: TreeNode[];
   modelsNodes: TreeNode[];
@@ -71,10 +72,12 @@ function findAlreadyVisibleTargetId(
  *  still consumes a pending mark, so a stale mark can never survive to
  *  falsely match a LATER, genuinely outside, re-selection of the same id.
  *  Depending on `groupingMode` too means a selection held across a grouping
- *  tab switch is re-revealed in the new grouping. */
+ *  tab switch is re-revealed in the new grouping. `ready` retries that reveal
+ *  when an asynchronously loaded grouping becomes available. */
 export function useRevealSelection({
   selectedEntityId,
   groupingMode,
+  ready = true,
   revealGlobalId,
   storeysNodes,
   modelsNodes,
@@ -101,13 +104,13 @@ export function useRevealSelection({
   useEffect(() => {
     const marked = fromTreeClickRef.current;
     fromTreeClickRef.current = undefined; // unconditional: even the null/deselect run consumes it
-    if (selectedEntityId == null) return;
+    if (!ready || selectedEntityId == null) return;
     if (marked && marked.id === selectedEntityId && marked.revision === selectionRevision) return;
 
     const visibleId = findAlreadyVisibleTargetId(isMultiModel, storeysNodes, modelsNodes, filteredNodes, selectedEntityId);
     pendingTargetRef.current = visibleId ?? revealGlobalId(selectedEntityId);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- revealGlobalId/node lists read fresh via closure; selectionRevision is the dispatch signal
-  }, [selectionRevision, groupingMode]);
+  }, [selectionRevision, groupingMode, ready]);
 
   // Effect B: the rendered lists catch up (e.g. after Effect A expanded a
   // collapsed ancestor) — find the pending target's row and scroll to it.

@@ -162,6 +162,9 @@ export const hierarchyEn = {
   'hierarchy.panel.grouping.groups': 'Groups',
   'hierarchy.panel.grouping.presentationLayers': 'Layers',
   'hierarchy.panel.grouping.presentationLayersTooltip': 'Presentation layers',
+  'hierarchy.panel.loadingPresentationLayers': 'Loading presentation layers…',
+  'hierarchy.panel.presentationLayersError': 'Unable to load presentation layers',
+  'hierarchy.panel.retryPresentationLayers': 'Retry',
   'hierarchy.panel.noPresentationLayersTitle': 'No presentation layers',
   'hierarchy.panel.noPresentationLayersHint': 'This model has no presentation layer assignments with product members.',
 

@@ -164,7 +164,7 @@ test('#7619 curve-only annotation layers retain overlay owner IDs for hide/show 
   const overlayIds = collectAnnotationEntityIds(models, store);
   assert.deepEqual([...overlayIds], [4], 'annotation owner is included despite having no mesh');
   const nodes = buildTreeForGrouping('presentation-layers', models, store, ALL, false, [], 'elevation-desc',
-    meshIds, new Set([...meshIds, ...overlayIds]), [], 'all', new Set(['legacy']), new Map(), new Map());
+    meshIds, new Set([...meshIds, ...overlayIds]), [], 'all', new Set(['legacy']), new Map(), new Map(), undefined, buildPresentationLayerTree);
   const header = nodes.find(row => row.entityExpressId === 52);
   assert.ok(header);
   assert.deepEqual(header.globalIds, [4], 'layer visibility targets the owner consumed by symbolic overlay hiding');

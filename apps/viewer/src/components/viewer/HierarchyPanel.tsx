@@ -133,7 +133,9 @@ export function HierarchyPanel() {
     setSortMode,
     groupFilter,
     setGroupFilter,
-    materialReady,
+    groupingReady,
+    presentationLayerError,
+    retryPresentationLayers,
     filteredNodes: rawFilteredNodes,
     storeysNodes: rawStoreysNodes,
     modelsNodes: rawModelsNodes,
@@ -144,7 +146,7 @@ export function HierarchyPanel() {
 
   const { filteredNodes, storeysNodes, modelsNodes } = useStrippedHierarchyNodes(rawFilteredNodes, rawStoreysNodes, rawModelsNodes);
   const normalizedSearch = searchQuery.trim().toLowerCase();
-  const searchEmptyState = normalizedSearch && !filteredNodes.some((node) =>
+  const searchEmptyState = groupingReady && normalizedSearch && !filteredNodes.some((node) =>
     node.name.toLowerCase().includes(normalizedSearch) || node.secondaryName?.toLowerCase().includes(normalizedSearch))
     ? <HierarchySearchEmptyState query={searchQuery.trim()} onClear={() => setSearchQuery('')} />
     : null;
@@ -189,7 +191,7 @@ export function HierarchyPanel() {
 
   // Reveal an outside selection by expanding its ancestors and scrolling to it (#5881).
   const { markFromTreeClick } = useRevealSelection({
-    selectedEntityId, groupingMode, revealGlobalId, storeysNodes, modelsNodes, filteredNodes,
+    selectedEntityId, groupingMode, ready: groupingReady, revealGlobalId, storeysNodes, modelsNodes, filteredNodes,
     isMultiModel, storeysVirtualizer, modelsVirtualizer, virtualizer,
   });
 
@@ -680,9 +682,13 @@ export function HierarchyPanel() {
       {groupingMode === 'spatial' && <StoreyDisplayControls />}
 
       {/* Tree */}
-      {searchEmptyState ?? (groupingMode === 'presentation-layers' && filteredNodes.length === 0
+      {presentationLayerError ? <EmptyState className="flex-1" icon={<Layers3 className="size-8" />}
+        title={t('hierarchy.panel.presentationLayersError')}
+        action={<Button variant="outline" onClick={retryPresentationLayers}>{t('hierarchy.panel.retryPresentationLayers')}</Button>} />
+        : searchEmptyState ?? (groupingReady && groupingMode === 'presentation-layers' && filteredNodes.length === 0
         ? <EmptyState className="flex-1" icon={<Layers3 className="size-8" />} title={t('hierarchy.panel.noPresentationLayersTitle')} description={t('hierarchy.panel.noPresentationLayersHint')} />
-        : <div ref={parentRef} role="tree" aria-busy={groupingMode === 'material' && !materialReady} tabIndex={legacyTreeKeyboard.containerTabIndex} aria-label={singleTreeSectionTitle} onKeyDown={legacyTreeKeyboard.onKeyDown} className="flex-1 overflow-auto scrollbar-thin bg-white dark:bg-black">
+        : <div ref={parentRef} role="tree" aria-busy={!groupingReady} tabIndex={legacyTreeKeyboard.containerTabIndex} aria-label={singleTreeSectionTitle} onKeyDown={legacyTreeKeyboard.onKeyDown} className="flex-1 overflow-auto scrollbar-thin bg-white dark:bg-black">
+        {!groupingReady && groupingMode === 'presentation-layers' && <output className="block p-4 text-sm text-muted-foreground">{t('hierarchy.panel.loadingPresentationLayers')}</output>}
         <div
           style={{
             height: `${virtualizer.getTotalSize()}px`,

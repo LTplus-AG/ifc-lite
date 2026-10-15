@@ -1321,6 +1321,14 @@ jobs:
         run: node --test scripts/check-refwalk-guards.test.mjs scripts/lib/refwalk-classify.test.mjs
       - name: Check for unguarded entity-reference walks
         run: node scripts/check-refwalk-guards.mjs
+      # #7674: `partial_cmp(..).unwrap_or(Ordering::Equal)` is not a total
+      # order on NaN, and a Rust >= 1.81 sort may panic on it -- an abort in the
+      # wasm worker. Five sites were fixed by hand; this stops a sixth. Its own
+      # tests run first so a broken detector fails rather than reads clean.
+      - name: Check float sort comparator gate's own tests
+        run: node --test scripts/check-float-sort-comparators.test.mjs
+      - name: Check for non-total float sort comparators
+        run: node scripts/check-float-sort-comparators.mjs
       # #5236: a raw base-store enumeration in a live query/write can return a
       # tombstoned entity or miss one created in the mutation overlay. The
       # parser test pins the detector; the gate ratchets the scoped callers.

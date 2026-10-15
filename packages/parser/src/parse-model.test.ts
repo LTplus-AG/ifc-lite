@@ -85,6 +85,24 @@ describe('developer loading contract (DX1)', () => {
     expect(report.diagnostics.map(d => d.code)).toContain('MALFORMED_RECORD');
   });
 
+  it.each([
+    '/* END-ISO-10303-21; */',
+    "'END-ISO-10303-21;'",
+  ])('rejects a footer marker hidden in lexical text (PR #7632)', async replacement => {
+    const input = new TextDecoder().decode(bytes()).replace('END-ISO-10303-21;', replacement);
+    await expect(parseModel(text(input))).rejects.toMatchObject({ code: 'TRUNCATED_STEP' });
+  });
+
+  it('allows a real terminator followed by a STEP comment (PR #7632)', async () => {
+    const input = new Uint8Array([...bytes(), ...text('\n/* trailing comment */\n')]);
+    expect((await parseModel(input, { disableWorkerScan: true })).report.completeness).toBe('complete');
+  });
+
+  it('does not mistake DATA in a header comment or quoted field for a section (PR #7632)', async () => {
+    const input = "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('\nDATA;'),'2;1');\n/*\nDATA;\n*/\nENDSEC;\nEND-ISO-10303-21;";
+    await expect(parseModel(text(input))).rejects.toMatchObject({ code: 'MISSING_DATA' });
+  });
+
   it('retains tolerant low-level parsing', async () => {
     const store = await new IfcParser().parseColumnar(text('plain text').buffer);
     expect(store.entityCount).toBe(0);

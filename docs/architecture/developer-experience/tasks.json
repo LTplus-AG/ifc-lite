@@ -1,6 +1,5 @@
 {
   "objective": "Land additive developer usability improvements without browser viewer changes",
-  "authorization": "Maintainer requested all work, issue exemption, PR shepherding and admin merge of verified changes",
   "compatibility": "Preserve existing APIs and package entry points",
   "tasks": [
     {
@@ -19,7 +18,8 @@
         "apiSurface": "regenerated",
         "moduleSize": "passed",
         "sourceTextAssertions": "passed",
-        "oxlintTouchedFiles": "passed"
+        "oxlintTouchedFiles": "passed",
+        "reviewRegression": "17 loading contract tests and 9 CLI loader tests pass, including browser SharedArrayBuffer restrictions and comment/quoted envelope decoys"
       }
     },
     {
@@ -58,5 +58,6 @@
       "pullRequests": []
     }
   ],
-  "mergePolicy": "Review focused PRs, resolve findings, verify required and applicable checks on current head; admin merge only ready changes"
+  "mergePolicy": "Resolve findings and verify required and applicable checks on the current head before merging",
+  "scope": "Tracks requested developer experience work; this artifact grants no workflow permissions"
 }

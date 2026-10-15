@@ -6,6 +6,27 @@ import { safeUtf8Decode } from '@ifc-lite/data';
 import { IfcParser, type IfcDataStore, type ParseOptions } from './index.js';
 import { unwrapIfcZipView } from './ifczip.js';
 import type { EntityScanReport } from './scan-report.js';
+import { STEP_TRIVIA } from './step-trivia.js';
+import { matchesKeywordAt, StepTextScan } from './step-lexing.js';
+
+const STEP_START = new RegExp(`^${STEP_TRIVIA}ISO-10303-21${STEP_TRIVIA};`);
+const STEP_END = new RegExp(`END-ISO-10303-21;${STEP_TRIVIA}$`);
+
+function hasDataSection(text: string): boolean {
+  const scan = new StepTextScan(text);
+  let depth = 0;
+  for (let i = 0; i < text.length;) {
+    const next = scan.skipLexicalAt(i);
+    if (next >= 0) { i = next; continue; }
+    if (text.startsWith('/*', i)) return false; // Unterminated header comment.
+    if (text[i] === '(') depth++;
+    if (text[i] === ')') depth--;
+    if (depth === 0 && matchesKeywordAt(text, i, 'DATA') &&
+        (i === 0 || !/[A-Za-z0-9_]/.test(text[i - 1])) && text[scan.skipTrivia(i + 4)] === ';') return true;
+    i++;
+  }
+  return false;
+}
 
 export type IfcInputErrorCode = 'EMPTY_INPUT' | 'INVALID_STEP' | 'TRUNCATED_STEP' | 'MISSING_DATA' | 'INVALID_ARCHIVE';
 export class IfcInputError extends Error {
@@ -47,7 +68,7 @@ export async function validateStepInput(input: Uint8Array | ArrayBuffer, label =
   const headerSnippet = safeUtf8Decode(
     bytes.subarray(0, Math.min(bytes.byteLength, 256)),
   );
-  if (!headerSnippet.includes('ISO-10303-21')) {
+  if (!STEP_START.test(headerSnippet)) {
     throw new IfcInputError('INVALID_STEP', `${label} is not a valid IFC/STEP file`);
   }
 
@@ -60,10 +81,11 @@ export async function validateStepInput(input: Uint8Array | ArrayBuffer, label =
   // all (#5532). A confidently wrong answer is worse than an error, because
   // nothing downstream can tell it apart from a small model.
   //
-  // Only the tail is decoded: these files reach hundreds of MB.
-  const tailStart = Math.max(0, bytes.byteLength - 256);
+  // Only a bounded tail is decoded. Require trailing STEP trivia so a marker
+  // inside a closed comment or quoted value is never accepted as a terminator.
+  const tailStart = Math.max(0, bytes.byteLength - 64 * 1024);
   const tailSnippet = safeUtf8Decode(bytes.subarray(tailStart));
-  if (!tailSnippet.includes('END-ISO-10303-21;')) {
+  if (!STEP_END.test(tailSnippet)) {
     throw new IfcInputError(
       'TRUNCATED_STEP', `${label} is truncated: it starts like a STEP file but has no ` +
         `END-ISO-10303-21; terminator, so any entity count or schema read from it ` +
@@ -80,7 +102,7 @@ export async function validateStepInput(input: Uint8Array | ArrayBuffer, label =
   const headText = safeUtf8Decode(
     bytes.subarray(0, Math.min(bytes.byteLength, 64 * 1024)),
   );
-  if (!/^\s*DATA\s*;/m.test(headText)) {
+  if (!hasDataSection(headText)) {
     throw new IfcInputError('MISSING_DATA', `${label} has no DATA section, so it contains no IFC entities.`);
   }
 

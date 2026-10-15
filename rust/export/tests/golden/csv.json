@@ -1,0 +1,118 @@
+{
+  "about": "FNV-1a 64 and byte length of each csv output, keyed by case. Written by ifc-lite-export, never by hand.",
+  "repin": "IFC_LITE_REPIN_GOLDEN=1 cargo test -p ifc-lite-export --features parquet-bos --test export_golden -- --exact csv",
+  "cases": {
+    "AC20-FZK-Haus:entities": {
+      "fnv1a64": "48f197b111dd3b25",
+      "bytes": 196985
+    },
+    "AC20-FZK-Haus:properties": {
+      "fnv1a64": "7c3368fa63c13efb",
+      "bytes": 493951
+    },
+    "AC20-FZK-Haus:quantities": {
+      "fnv1a64": "fbffad5f526e069b",
+      "bytes": 367275
+    },
+    "AC20-FZK-Haus:spatial": {
+      "fnv1a64": "a1349250adeb7909",
+      "bytes": 6211
+    },
+    "IfcOpenHouse_IFC4:entities": {
+      "fnv1a64": "4927ab51a1372efa",
+      "bytes": 2356
+    },
+    "IfcOpenHouse_IFC4:properties": {
+      "fnv1a64": "37f0cb7b9a26d78a",
+      "bytes": 68
+    },
+    "IfcOpenHouse_IFC4:quantities": {
+      "fnv1a64": "d602f798e185bacb",
+      "bytes": 72
+    },
+    "IfcOpenHouse_IFC4:spatial": {
+      "fnv1a64": "c40ff27b1dc202ef",
+      "bytes": 2134
+    },
+    "bath_csg_solid:entities": {
+      "fnv1a64": "b84927492ba427f0",
+      "bytes": 176
+    },
+    "bath_csg_solid:properties": {
+      "fnv1a64": "37f0cb7b9a26d78a",
+      "bytes": 68
+    },
+    "bath_csg_solid:quantities": {
+      "fnv1a64": "d602f798e185bacb",
+      "bytes": 72
+    },
+    "bath_csg_solid:spatial": {
+      "fnv1a64": "cd18c206639d2e00",
+      "bytes": 204
+    },
+    "bonsai-terrain:entities": {
+      "fnv1a64": "644e17e6db488850",
+      "bytes": 244
+    },
+    "bonsai-terrain:properties": {
+      "fnv1a64": "37f0cb7b9a26d78a",
+      "bytes": 68
+    },
+    "bonsai-terrain:quantities": {
+      "fnv1a64": "d602f798e185bacb",
+      "bytes": 72
+    },
+    "bonsai-terrain:spatial": {
+      "fnv1a64": "a59c8bd2cf7c0b76",
+      "bytes": 250
+    },
+    "duplex:entities": {
+      "fnv1a64": "bbaaf2330de52404",
+      "bytes": 293164
+    },
+    "duplex:properties": {
+      "fnv1a64": "2d529bdeb3bd0e8f",
+      "bytes": 2010883
+    },
+    "duplex:quantities": {
+      "fnv1a64": "e4f36f6a4e5bf12f",
+      "bytes": 2038
+    },
+    "duplex:spatial": {
+      "fnv1a64": "ef2b8a31a62204bb",
+      "bytes": 22956
+    },
+    "mapped_instances_synthetic:entities": {
+      "fnv1a64": "b8b1a1011c95bd16",
+      "bytes": 4492
+    },
+    "mapped_instances_synthetic:properties": {
+      "fnv1a64": "37f0cb7b9a26d78a",
+      "bytes": 68
+    },
+    "mapped_instances_synthetic:quantities": {
+      "fnv1a64": "d602f798e185bacb",
+      "bytes": 72
+    },
+    "mapped_instances_synthetic:spatial": {
+      "fnv1a64": "d3d24a51638abf4c",
+      "bytes": 4380
+    },
+    "wall_two_openings:entities": {
+      "fnv1a64": "c2bffe26c0492fab",
+      "bytes": 337
+    },
+    "wall_two_openings:properties": {
+      "fnv1a64": "37f0cb7b9a26d78a",
+      "bytes": 68
+    },
+    "wall_two_openings:quantities": {
+      "fnv1a64": "d602f798e185bacb",
+      "bytes": 72
+    },
+    "wall_two_openings:spatial": {
+      "fnv1a64": "28d335e2c1768ec0",
+      "bytes": 43
+    }
+  }
+}

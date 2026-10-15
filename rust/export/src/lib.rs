@@ -66,6 +66,7 @@ mod step_cow;
 mod step_header;
 mod step_json;
 mod step_log;
+mod step_record_frame;
 mod step_slot;
 mod step_text;
 mod step_map_transform;

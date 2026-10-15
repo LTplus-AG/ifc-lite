@@ -86,23 +86,22 @@ i_overlay = "8.0"
 ifc-lite-core.workspace = true
 
 # Math library
-nalgebra = { version = "0.35", default-features = false, features = ["std"] }
+nalgebra.workspace = true
 
 # Parallel processing
-rayon = "1.10"
+rayon.workspace = true
 
 # Fast hashing
-rustc-hash = "2.1"
-memchr = "2.8"
+rustc-hash.workspace = true
 
 # Serialization for the public GeometryDiagnostics contract (already present in
 # the wasm tree transitively via ifc-lite-processing; no new bundle weight).
-serde = { version = "1.0", features = ["derive"] }
+serde.workspace = true
 
 # PNG decode for IfcBlobTexture (issue #961). Already in the dependency tree
 # (transitive), so it adds no new wasm weight. Pure-Rust inflate
 # (miniz_oxide / fdeflate) — wasm-safe.
-png = "0.18"
+png.workspace = true
 
 # JPEG decode for IfcBlobTexture with RasterFormat 'JPG'/'JPEG' (issue #961).
 # `default-features = false` drops the `rayon` parallelism (no threads on
@@ -113,20 +112,21 @@ jpeg-decoder = { version = "0.3", default-features = false }
 smallvec = "1.13"
 
 # Error handling
-thiserror = "2.0"
+thiserror.workspace = true
 
 # Structured diagnostics, only behind the `observability` feature (dep:tracing
-# keeps it out of default builds entirely). Package-local on purpose: the
-# workspace root does not force tracing on every crate. ifc-lite-processing
-# already depends on tracing unconditionally, so enabling the feature adds no
-# new crate to consumers that use both.
-tracing = { version = "0.1", optional = true }
+# keeps it out of default builds entirely). The version comes from the workspace,
+# whose entry has `default-features = false` and forces nothing on a crate that
+# does not enable `observability`. ifc-lite-processing already depends on
+# tracing unconditionally, so enabling the feature adds no new crate to
+# consumers that use both.
+tracing = { workspace = true, optional = true, features = ["std", "attributes"] }
 
 # Pure-Rust CSG kernel (`kernel/`) — exact geometric predicates.
 # geometry-predicates: Shewchuk adaptive predicates + the public expansion
 # primitives (two_sum/two_product/scale_expansion_zeroelim) for the indirect
 # layer. no_std, no C, wasm-clean, FMA-free (platform-deterministic signs).
-geometry-predicates = "0.3"
+geometry-predicates.workspace = true
 # Exact BigRational oracle + the predicate cascade's exact fallback tier
 # (already transitive; promoted to direct).
 num-rational = { version = "0.4", default-features = false, features = ["num-bigint"] }
@@ -144,7 +144,7 @@ approx = "0.5"
 ifc-lite-clash.workspace = true
 # JSON serialization for the GeometryDiagnostics camelCase-contract test (asserts
 # the serde rename_all keys match the @ifc-lite/geometry TS interface).
-serde_json = "1.0"
+serde_json.workspace = true
 # Property-based testing for the CSG kernel invariants
 # (tests/csg_property_test.rs): volume bounds, NaN-freedom, watertightness
 # over bounded randomized inputs. Case counts are set explicitly per

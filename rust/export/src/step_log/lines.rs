@@ -3,58 +3,26 @@
 //! slots (`readStepSlots`) and replacing one (`replaceStepArgument`), under the
 //! TypeScript slot grammar.
 
+use crate::step_record_frame::record_frame;
+
 /// `replaceStepArgument`: slot `index` of the record replaced, or `None` when
 /// the record does not read as `#id=TYPE(args);` with that slot.
 pub(crate) fn replace_argument(text: &str, index: usize, replacement: &str) -> Option<String> {
-    let (prefix_end, attrs, suffix) = record_parts(text)?;
-    let mut args = split_args(attrs)?;
+    let frame = record_frame(text)?;
+    let mut args = split_args(frame.args(text))?;
     if index >= args.len() {
         return None;
     }
     args[index] = replacement.to_string();
-    Some(format!("{}{}{}", &text[..prefix_end], args.join(","), suffix))
+    Some(frame.with_args(text, &args.join(",")))
 }
 
-/// `RECORD_PREFIX_RE`: `(end of "#id=TYPE(", argument text, ")<ws>;")`.
-pub(crate) fn record_parts(text: &str) -> Option<(usize, &str, &str)> {
-    let t = text.trim_end();
-    let b = t.as_bytes();
-    if !t.starts_with('#') || !t.ends_with(';') {
-        return None;
-    }
-    let digits = 1 + t[1..].find(|c: char| !c.is_ascii_digit())?;
-    if digits == 1 {
-        return None;
-    }
-    let after_eq = t[digits..].trim_start().strip_prefix('=')?.trim_start();
-    let type_start = t.len() - after_eq.len();
-    let type_len = after_eq.find(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))?;
-    if type_len == 0 {
-        return None;
-    }
-    let mut i = type_start + type_len;
-    while i < b.len() && b[i].is_ascii_whitespace() {
-        i += 1;
-    }
-    if b.get(i) != Some(&b'(') {
-        return None;
-    }
-    let prefix_end = i + 1;
-    let mut k = t.len() - 1;
-    while k > 0 && b[k - 1].is_ascii_whitespace() {
-        k -= 1;
-    }
-    if k == 0 || b[k - 1] != b')' || k - 1 < prefix_end {
-        return None;
-    }
-    Some((prefix_end, &t[prefix_end..k - 1], &t[k - 1..]))
-}
-
-/// `readStepSlots`: the record's argument slots, or `None` when it does not
-/// read as `#id=TYPE(args);` with a splittable list.
-pub(crate) fn read_slots(text: &str) -> Option<Vec<String>> {
-    let (_, attrs, _) = record_parts(text)?;
-    split_args(attrs)
+/// `readStepSlots`: the record's UPPERCASE type and argument slots, or `None`
+/// when it does not read as `#id=TYPE(args);` with a splittable list.
+pub(crate) fn read_slots(text: &str) -> Option<(String, Vec<String>)> {
+    let frame = record_frame(text)?;
+    let slots = split_args(frame.args(text))?;
+    Some((frame.head.type_name(text).to_ascii_uppercase(), slots))
 }
 
 /// `splitTopLevelStepArguments`: the shared splitter, then every part held to

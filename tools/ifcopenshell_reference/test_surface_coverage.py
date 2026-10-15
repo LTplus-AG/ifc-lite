@@ -152,7 +152,7 @@ class FiniteCoverage(unittest.TestCase):
             result = subprocess.run([sys.executable,'-B',str(ROOT/
                 'docs/architecture/evidence/issue-7292/compare_surface.py'),
                 '--candidate',str(folder/'candidate.json'),'--output',str(folder/'result')],
-                cwd=ROOT,capture_output=True,text=True,check=False)
+                cwd=ROOT,capture_output=True,text=True,check=False,timeout=300)
             self.assertEqual(result.returncode,0,result.stdout+result.stderr)
             receipt = json.loads((folder/'result/receipt.json').read_text())
             self.assertTrue(receipt['passed'])

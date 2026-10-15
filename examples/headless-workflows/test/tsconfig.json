@@ -1,5 +1,9 @@
 {
-  "extends": "../tsconfig.json",
-  "compilerOptions": { "paths": {}, "noEmit": true, "rootDir": ".." },
-  "include": ["./*.test.ts"]
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "paths": {},
+    "noEmit": true
+  }
 }

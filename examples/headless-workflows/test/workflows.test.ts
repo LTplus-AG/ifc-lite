@@ -10,8 +10,6 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Worker } from 'node:worker_threads';
 import { test } from 'node:test';
-import { withModelFile } from '../src/common.mjs';
-import { queryDoors } from '../src/worker-client.mjs';
 import type { WorkerResult } from '../src/messages.mjs';
 
 const repo = new URL('../../../', import.meta.url);
@@ -22,7 +20,10 @@ const run = (script: string, args: string[]) => spawnSync(process.execPath, [
 ], { encoding: 'utf8', timeout: 60000 });
 
 test('data and IDS recipes return real FZK results (DX4)', { skip }, () => {
-  const extracted = run('extract', [fixture]);
+  // Exercise the editable source entry point as well as the compiled recipes.
+  const extracted = spawnSync(process.execPath, [
+    '--import', 'tsx', fileURLToPath(new URL('../src/extract.mts', import.meta.url)), fixture,
+  ], { encoding: 'utf8', timeout: 60000, env: { ...process.env, TSX_TSCONFIG_PATH: fileURLToPath(new URL('./tsconfig.json', import.meta.url)) } });
   assert.equal(extracted.status, 0, extracted.stderr);
   const rows = JSON.parse(extracted.stdout) as { schema: string; doors: Array<{ GlobalId: string; Name: string }> };
   assert.equal(rows.schema, 'IFC4');
@@ -42,6 +43,7 @@ test('the edit recipe preserves identity and its property after reopening (DX4)'
     const result = run('edit', [fixture, output]);
     assert.equal(result.status, 0, result.stderr);
     const receipt = JSON.parse(result.stdout) as { GlobalId: string };
+    const { withModelFile } = await import('../src/common.mjs');
     await withModelFile(output, model => {
       const doors = model.bim.query().byType('IfcDoor').toArray();
       assert.equal(doors.length, 5);
@@ -70,6 +72,7 @@ test('the geometry recipe writes a GLB compatibility envelope (DX4)', {
 });
 
 test('aborting the worker client retires a thread blocked in synchronous work (DX4)', { skip }, async () => {
+  const { queryDoors } = await import('../src/worker-client.mjs');
   const controller = new AbortController();
   let started!: () => void;
   const ready = new Promise<void>(resolve => { started = resolve; });

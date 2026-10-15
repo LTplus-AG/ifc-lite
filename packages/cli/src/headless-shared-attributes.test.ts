@@ -19,4 +19,16 @@ describe('shared CLI live attribute reads (DX2)', () => {
     const exported = bim.export.ifc();
     expect(exported).toContain("'Live CLI wall'");
   });
+  it('preserves list-valued ordinary properties through CLI CSV export (PR #7646)', async () => {
+    const { bim, backend } = await createHeadlessContext(fileURLToPath(new URL('../../../apps/viewer/public/samples/hello-wall.ifc', import.meta.url)));
+    const wall = bim.query().byType('IfcWall').first();
+    if (!wall) throw new Error('Committed one-wall fixture has no wall');
+    bim.mutate.setProperty(wall.ref, 'DX_List', 'Marker', 'prepare overlay');
+    const view = backend.getMutationView();
+    if (!view) throw new Error('Mutation did not create its overlay');
+    view.setProperty(wall.ref.expressId, 'DX_List', 'Choices', ['A', 'B']);
+    expect(bim.properties(wall.ref).find(pset => pset.name === 'DX_List')?.properties
+      .find(property => property.name === 'Choices')?.value).toEqual(['A', 'B']);
+    expect(bim.export.csv([wall.ref], { columns: ['DX_List.Choices'] })).toBe('DX_List.Choices\n"A,B"');
+  });
 });

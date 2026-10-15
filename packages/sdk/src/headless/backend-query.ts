@@ -145,7 +145,7 @@ export function createQueryAdapter(
     return psets.map((pset) => ({
       name: pset.name,
       globalId: pset.globalId,
-      properties: pset.properties.map((p) => ({ name: p.name, type: p.type, value: normalizeTypePropertyValue(p.value) })),
+      properties: pset.properties.map((p) => ({ name: p.name, type: p.type, value: p.value as string | number | boolean | null })),
     }));
   }
 

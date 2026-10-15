@@ -36,6 +36,25 @@ def adjudicate(oracle,base,candidate):
 
 
 class FiniteCoverage(unittest.TestCase):
+    def test_7661_corpus_cli_requires_no_void_oracle_before_native_frame_checks(self):
+        with tempfile.TemporaryDirectory() as directory:
+            folder = Path(directory)
+            fixture = C.default_fixture()
+            raw = {'positions':[v for p in horizontal() for v in p],'indices':[0,1,2]}
+            content = json.dumps(raw).encode()
+            (folder/'oracle-raw-mesh.json').write_bytes(content)
+            receipt = {'fixture_sha256':hashlib.sha256(fixture.read_bytes()).hexdigest(),
+                       'engines':{'ifcopenshell':'0.8.5','shapely':'2.0.7'},
+                       'oracle_raw_mesh_sha256':hashlib.sha256(content).hexdigest()}
+            (folder/'receipt.json').write_text(json.dumps(receipt))
+            result = subprocess.run([sys.executable,'-B',str(ROOT/'docs/architecture/evidence/issue-7292/compare_surface.py'),
+                '--mode','corpus','--fixture',str(fixture),'--oracle-cache',str(folder),
+                '--base',str(folder/'missing-base'),'--candidate',str(folder/'missing-candidate'),
+                '--output',str(folder/'result')],capture_output=True,text=True,timeout=120)
+            self.assertNotEqual(result.returncode,0)
+            self.assertIn('Corpus oracle cache requires a verified no-void mesh',result.stderr)
+            self.assertFalse((folder/'result/receipt.json').exists())
+
     def test_7661_full_finite_comparison_without_baseline(self):
         oracle = mesh([horizontal()])
         for candidate,expected in [(oracle,True),(mesh([horizontal(x=2)]),False)]:

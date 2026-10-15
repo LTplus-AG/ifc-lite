@@ -338,6 +338,8 @@ def main():
         shape = ifcopenshell.geom.create_shape(settings,model.by_id(107))
         raw={'positions':list(shape.geometry.verts),'indices':list(shape.geometry.faces)}
         ov,nv,oracle_meta,no_void = mesh_data(raw),None,{'settings':{'use-world-coords':True}},None
+    if args.mode=='corpus':
+        require(nv is not None,'Corpus oracle cache requires a verified no-void mesh')
     receipt['oracle_provenance'] = oracle_meta
     save(args.output/'oracle-raw-mesh.json',raw)
     datasets={'oracle':ov}

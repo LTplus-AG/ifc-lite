@@ -87,6 +87,7 @@ jobs:
         with:
           filters: |
             surface:
+              - "rust/geometry/tests/fixtures/issue_7292_sloped_coplanar_difference.ifc"
               - "docs/architecture/evidence/issue-7292/**"
               - "tools/ifcopenshell_reference/test_surface_coverage.py"
               - "tools/ifcopenshell_reference/requirements.lock"

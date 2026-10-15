@@ -1,0 +1,160 @@
+{
+  "reportVersion": 1,
+  "target": "cli-installation",
+  "ok": true,
+  "runtime": {
+    "node": "v24.21.0",
+    "platform": "linux",
+    "arch": "x64",
+    "requirement": ">=18.0.0",
+    "status": "ok"
+  },
+  "packages": [
+    {
+      "name": "@ifc-lite/cli",
+      "version": "0.41.0",
+      "status": "ok"
+    },
+    {
+      "name": "@ifc-lite/ai",
+      "version": "0.2.0",
+      "status": "ok"
+    },
+    {
+      "name": "@ifc-lite/bcf",
+      "version": "5.0.1",
+      "status": "ok"
+    },
+    {
+      "name": "@ifc-lite/cache",
+      "version": "3.7.2",
+      "status": "ok"
+    },
+    {
+      "name": "@ifc-lite/clash",
+      "version": "2.4.4",
+      "status": "ok"
+    },
+    {
+      "name": "@ifc-lite/create",
+      "version": "5.1.0",
+      "status": "ok"
+    },
+    {
+      "name": "@ifc-lite/data",
+      "version": "6.2.0",
+      "status": "ok"
+    },
+    {
+      "name": "@ifc-lite/diff",
+      "version": "0.10.0",
+      "status": "ok"
+    },
+    {
+      "name": "@ifc-lite/encoding",
+      "version": "2.3.0",
+      "status": "ok"
+    },
+    {
+      "name": "@ifc-lite/export",
+      "version": "4.11.0",
+      "status": "ok"
+    },
+    {
+      "name": "@ifc-lite/extensions",
+      "version": "0.11.0",
+      "status": "ok"
+    },
+    {
+      "name": "@ifc-lite/flow",
+      "version": "0.7.0",
+      "status": "ok"
+    },
+    {
+      "name": "@ifc-lite/flow-nodes",
+      "version": "0.10.0",
+      "status": "ok"
+    },
+    {
+      "name": "@ifc-lite/geometry",
+      "version": "7.8.1",
+      "status": "ok"
+    },
+    {
+      "name": "@ifc-lite/ids",
+      "version": "3.3.6",
+      "status": "ok"
+    },
+    {
+      "name": "@ifc-lite/ids-authoring",
+      "version": "0.2.6",
+      "status": "ok"
+    },
+    {
+      "name": "@ifc-lite/ifcx",
+      "version": "4.4.0",
+      "status": "ok"
+    },
+    {
+      "name": "@ifc-lite/mcp",
+      "version": "0.27.0",
+      "status": "ok"
+    },
+    {
+      "name": "@ifc-lite/merge",
+      "version": "0.4.7",
+      "status": "ok"
+    },
+    {
+      "name": "@ifc-lite/mutations",
+      "version": "3.2.0",
+      "status": "ok"
+    },
+    {
+      "name": "@ifc-lite/parser",
+      "version": "9.5.1",
+      "status": "ok"
+    },
+    {
+      "name": "@ifc-lite/query",
+      "version": "2.5.2",
+      "status": "ok"
+    },
+    {
+      "name": "@ifc-lite/rules",
+      "version": "0.7.7",
+      "status": "ok"
+    },
+    {
+      "name": "@ifc-lite/sandbox",
+      "version": "2.12.0",
+      "status": "ok"
+    },
+    {
+      "name": "@ifc-lite/sdk",
+      "version": "9.5.0",
+      "status": "ok"
+    },
+    {
+      "name": "@ifc-lite/semantic",
+      "version": "0.2.1",
+      "status": "ok"
+    },
+    {
+      "name": "@ifc-lite/viewer-core",
+      "version": "0.2.26",
+      "status": "ok"
+    },
+    {
+      "name": "@ifc-lite/wasm",
+      "version": "10.4.0",
+      "status": "ok"
+    }
+  ],
+  "wasm": {
+    "status": "ok",
+    "code": "VALID_WASM_BINARY",
+    "byteLength": 10031158,
+    "sha256": "b602e84036a17b96d91090c16059d7d6031d6b8a80c4ceed1346af3a046460bf"
+  }
+}

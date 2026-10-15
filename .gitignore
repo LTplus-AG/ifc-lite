@@ -157,6 +157,7 @@ apps/*/tsconfig.tests.json
 # for the shape.
 scripts/perf/.browser-cold-ab-results/
 scripts/perf/.frame-gpu-rig-results/
+scripts/perf/.native-count-results/
 scripts/perf/browser-corpus.local.json
 
 # Autodesk SDK worker build outputs (proprietary SDK/native dependencies).

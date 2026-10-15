@@ -5,7 +5,7 @@
 /** Membership and type scope for MCP model diff (#5249). */
 import { iterateEffectiveEntities, type EffectiveEntity } from '@ifc-lite/data';
 import { getInheritanceChainAcrossSchemas, type IfcDataStore } from '@ifc-lite/parser';
-import type { PendingOverlay } from '../overlay.js';
+import type { PendingOverlay } from '@ifc-lite/sdk/headless';
 
 /** How an uppercase STEP type participates in the comparison. `name` is the
  *  registry's PascalCase spelling, used instead of the `EntityTable`'s

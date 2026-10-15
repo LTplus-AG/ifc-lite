@@ -218,12 +218,12 @@ fn an_edge_across_the_depth_axis_does_not_tie_its_ends() {
     assert_eq!(reconciled_mesh(&cutter, &host)[..2], host);
 }
 
-/// Edges not used exactly once in each direction, on a 1 mm position snap,
+/// Edges not used exactly once in each direction, on the kernel position grid,
 /// collapsed triangles skipped: 0 iff the mesh closes consistently wound.
 fn open_edges(m: &Mesh) -> usize {
     let q = |i: u32| {
         let p = &m.positions[i as usize * 3..i as usize * 3 + 3];
-        [0, 1, 2].map(|k| (p[k] as f64 * 1.0e3).round() as i64)
+        [0, 1, 2].map(|k| (p[k] as f64 / SNAP_GRID).round() as i64)
     };
     let mut uses: HashMap<([i64; 3], [i64; 3]), (u32, u32)> = HashMap::new();
     for t in m.indices.chunks_exact(3) {
@@ -271,6 +271,16 @@ fn prism(c: &[[f32; 2]; 4], z0: f32, z1: f32) -> Mesh {
 }
 
 const DEPTH: f32 = 0.25;
+
+/// #7024: a one-step crack must not disappear under the closure oracle's snap.
+#[test]
+fn issue_6940_closure_oracle_detects_a_single_grid_step_crack() {
+    let mut mesh = prism(&[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]], 0.0, 1.0);
+    assert_eq!(open_edges(&mesh), 0);
+    // The prism has per-face vertices: move only one face's copy of a corner.
+    mesh.positions[0] += SNAP_GRID as f32;
+    assert!(open_edges(&mesh) > 0, "one kernel step must expose the unmatched seam");
+}
 
 /// The four corners of a 1.2 x 0.8 hole turned about 17 degrees in plan, each
 /// on the grid. Turned, so that a corner moved along an axis leaves BOTH

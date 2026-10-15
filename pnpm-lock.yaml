@@ -797,6 +797,28 @@ importers:
         specifier: ^3.6.0
         version: 3.6.0(vite@8.3.4(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
 
+  examples/headless-workflows:
+    dependencies:
+      '@ifc-lite/geometry':
+        specifier: workspace:^
+        version: link:../../packages/geometry
+      '@ifc-lite/ids':
+        specifier: workspace:^
+        version: link:../../packages/ids
+      '@ifc-lite/sdk':
+        specifier: workspace:^
+        version: link:../../packages/sdk
+    devDependencies:
+      '@types/node':
+        specifier: ^26.6.4
+        version: 26.6.5
+      tsx:
+        specifier: ^4.23.15
+        version: 4.23.15
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+
   examples/threejs-collab:
     dependencies:
       '@ifc-lite/collab':

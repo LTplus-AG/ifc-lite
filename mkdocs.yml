@@ -159,6 +159,7 @@ nav:
   - Getting Started:
     - Installation: guide/installation.md
     - Quick Start: guide/quickstart.md
+    - Developer Workflows: guide/developer-workflows.md
     - Web Viewer Controls: guide/web-viewer-controls.md
     - Cloud Sources: guide/cloud-sources.md
     - Viewer Assistant: guide/viewer-assistant.md

@@ -324,8 +324,44 @@ fn is_well_formed_step_slot(part: &str) -> bool {
 /// inside a record), and a caller value that opens one swallows the rest of
 /// the record and lets a later value close it and inject records of its own.
 /// A caller has no reason to send a comment, so none is written.
+///
+/// A binary literal is held to the ISO 10303-21 form, `"` then one digit
+/// `0`-`3` then uppercase hex then `"` (#7715 review): the slot grammar ends a
+/// binary literal at the next `"` whatever it holds, but core's scanner has no
+/// binary-literal rule and reads a `'` inside one as the start of a string, so
+/// a caller who controls both sides of that disagreement could close the
+/// record and write records of their own.
 pub(crate) fn is_step_value(value: &str) -> bool {
-    !value.trim().is_empty() && !value.contains("/*") && is_well_formed_step_slot(value)
+    !value.trim().is_empty()
+        && !value.contains("/*")
+        && binary_literals_are_hex(value)
+        && is_well_formed_step_slot(value)
+}
+
+/// Every `"…"` outside a string literal is `"[0-3][0-9A-F]*"`.
+fn binary_literals_are_hex(value: &str) -> bool {
+    let b = value.as_bytes();
+    let mut i = 0;
+    while i < b.len() {
+        match b[i] {
+            b'\'' => match step_string_literal_end(b, i) {
+                Some(end) => i = end,
+                None => return false,
+            },
+            b'"' => {
+                let Some(len) = b[i + 1..].iter().position(|&c| c == b'"') else { return false };
+                let body = &b[i + 1..i + 1 + len];
+                let hex = matches!(body.first(), Some(b'0'..=b'3'))
+                    && body[1..].iter().all(|c| c.is_ascii_digit() || (b'A'..=b'F').contains(c));
+                if !hex {
+                    return false;
+                }
+                i += len + 2;
+            }
+            _ => i += 1,
+        }
+    }
+    true
 }
 
 /// Characters a bare STEP token (keyword, enumeration, number, `#`-reference)

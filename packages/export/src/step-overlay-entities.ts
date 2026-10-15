@@ -102,6 +102,7 @@ export function writeOverlayCreatedEntities(
   ) {
     return;
   }
+  refuseCreatedIdsReusingSourceIds(ctx.mutationView, ctx.isSourceRecord);
   const getTypeMut = typeof ctx.mutationView.getEntityTypeMutation === 'function'
     ? ctx.mutationView.getEntityTypeMutation.bind(ctx.mutationView)
     : null;
@@ -116,17 +117,6 @@ export function writeOverlayCreatedEntities(
     // would write records the caller never created (#7682, EXPORT-STEP-26).
     if (!/^[Ii][Ff][Cc][A-Za-z][A-Za-z0-9_]*$/.test(entity.type)) {
       throw new Error(`created entity #${entity.expressId}: "${entity.type}" is not a recognizable IFC entity name`);
-    }
-    // A created entity never reuses a source id (`express-id-watermark.ts`
-    // allocates past the file's highest one), so a log that creates one under
-    // a source id was written against another file. Writing either record
-    // would silently drop the other, and the edits queued on that id would land
-    // on whichever survived (#7682, EXPORT-STEP-26). The Rust writer refuses
-    // it with this message.
-    if (ctx.isSourceRecord(entity.expressId)) {
-      throw new Error(
-        `created entity #${entity.expressId} reuses source id #${entity.expressId}: the log was not written against this file`,
-      );
     }
     const typeMut = getTypeMut ? getTypeMut(entity.expressId) : null;
     const effectiveType = typeMut?.newType ?? entity.type;
@@ -247,5 +237,28 @@ export function writeOverlayCreatedEntities(
       pass.entities.push(line);
       pass.newEntityCount++;
     }
+  }
+}
+
+/**
+ * A created entity never reuses a source id (`express-id-watermark.ts`
+ * allocates past the file's highest one), so a session that created one under
+ * a source id, even one it deleted again, replayed a log written against
+ * another file. Writing either record would silently drop the other, and the
+ * later delete of the created one would tombstone the source record (#7682,
+ * EXPORT-STEP-26). A created-then-deleted entity is the tombstoned id the view
+ * reports no change for (`hasChanges` forgets it, see `deleteEntity`). The
+ * Rust writer refuses the same logs with the same message.
+ */
+function refuseCreatedIdsReusingSourceIds(view: MutablePropertyView, isSourceRecord: (id: number) => boolean): void {
+  const created = view.getNewEntities().map((entity) => entity.expressId);
+  const history = typeof view.getMutations === 'function' ? view.getMutations() : [];
+  for (const mutation of history) {
+    const id = mutation.entityId;
+    if (mutation.type === 'DELETE_ENTITY' && view.isDeleted(id) && !view.hasChanges(id)) created.push(id);
+  }
+  const reused = created.find((id) => isSourceRecord(id));
+  if (reused !== undefined) {
+    throw new Error(`created entity #${reused} reuses source id #${reused}: the log was not written against this file`);
   }
 }

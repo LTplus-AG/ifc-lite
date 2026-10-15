@@ -157,6 +157,20 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
         ));
     }
     let src = Source::index(content);
+    // A created entity never reuses a source id (the mutation layer's
+    // watermark allocates past the file's highest one), so a log that creates
+    // one under a source id, even one it deletes again, was written against
+    // another file. Writing either record would silently drop the other, and
+    // a later delete of the created one would tombstone the source record
+    // (#7682, EXPORT-STEP-26). The TypeScript writer throws the same text.
+    let created = log.new_entities.iter().map(|e| e.express_id).chain(
+        log.mutations.iter().filter(|m| m.kind == super::wire::MutationKind::CreateEntity).map(|m| m.entity_id),
+    );
+    if let Some(id) = created.into_iter().find(|&id| src.has(id)) {
+        return Err(invalid(format!(
+            "export_step_with_log: created entity #{id} reuses source id #{id}: the log was not written against this file"
+        )));
+    }
     let family = schema_family(content);
     let source_label = detect_schema(content);
     let target = opts.schema.clone().unwrap_or_else(|| source_label.clone());

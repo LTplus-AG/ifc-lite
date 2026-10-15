@@ -123,6 +123,32 @@ fn values_that_are_not_one_step_value_are_refused_7682() {
         "every written record is read back, and none the caller did not create: {out}"
     );
 
+    // #7715 review, round 2: a binary literal ends at the next `"` for the
+    // slot grammar, but core's scanner has no binary-literal rule and reads a
+    // `'` inside one as a string, so a caller value could close the record. A
+    // binary literal is held to `"[0-3][0-9A-F]*"`; one that is hex is kept.
+    let breakout = "\"0'X');\n#99=IFCFOO(1);\n#100=IFCFOO(Y\"";
+    let opts = StepOptions {
+        attribute_mutations: vec![AttrMutation { express_id: 1, index: 2, value: breakout.into() }],
+        property_mutations: vec![
+            prop(1, "A", breakout),
+            prop(1, "B", &format!("IFCBINARY({breakout})")),
+            prop(1, "C", "IFCBINARY(\"x\")"),
+            prop(1, "D", "IFCBINARY(\"21A\")"),
+        ],
+        ..StepOptions::default()
+    };
+    let (out, stats) = export_step_with_stats(source.as_bytes(), &opts).unwrap();
+    assert_eq!(stats.attribute_edits_refused, 1);
+    assert_eq!(stats.property_mutations_refused, 3);
+    assert!(out.contains("IFCBINARY(\"21A\")"), "a hex binary literal is written: {out}");
+    let records = scanned(&out);
+    assert_eq!(
+        records.iter().map(|(id, ty)| (*id, ty.as_str())).collect::<Vec<_>>(),
+        vec![(1, "IFCWALL"), (2, "IFCPROPERTYSINGLEVALUE"), (3, "IFCPROPERTYSET"), (4, "IFCRELDEFINESBYPROPERTIES")],
+        "every written record is read back, and none the caller did not create: {out}"
+    );
+
     let source = file(&[
         WALL,
         "#2=IFCPROPERTYSINGLEVALUE('P',$,IFCLABEL('v'),$);",
@@ -216,6 +242,21 @@ fn a_created_entity_reusing_a_source_id_is_refused_7682() {
     let source = file(&[WALL]);
     let log = MutationLog::from_json(
         r#"{"mutations":[{"type":"CREATE_ENTITY","entityId":1,"attributeName":"IfcWall"}],
+            "newEntities":[{"expressId":1,"type":"IfcWall","attributes":["0uK8j9R5T5E8Gf7Ybq5ZpA"]}]}"#,
+    )
+    .unwrap();
+    let err = export_step_with_log(source.as_bytes(), &StepOptions::default(), &log).expect_err("refused");
+    assert!(err.to_string().contains("created entity #1 reuses source id #1"), "{err}");
+}
+
+/// #7715 review, round 2: a log that creates an entity under a source id and
+/// then deletes it is refused too; replaying it would tombstone the source
+/// record silently.
+#[test]
+fn a_created_then_deleted_entity_reusing_a_source_id_is_refused_7682() {
+    let source = file(&[WALL]);
+    let log = MutationLog::from_json(
+        r#"{"mutations":[{"type":"CREATE_ENTITY","entityId":1,"attributeName":"IfcWall"},{"type":"DELETE_ENTITY","entityId":1}],
             "newEntities":[{"expressId":1,"type":"IfcWall","attributes":["0uK8j9R5T5E8Gf7Ybq5ZpA"]}]}"#,
     )
     .unwrap();

@@ -5483,6 +5483,50 @@
     ]
    },
    "error": "created entity #22 reuses source id #22"
+  },
+  {
+   "name": "created-then-deleted-entity-reusing-a-source-id",
+   "why": "EXPORT-STEP-26 (#7682 review): a log that creates an entity under a source id and then deletes it was written against another file too. Replaying it would tombstone the source record silently, so both writers refuse it the same way.",
+   "source": "walls",
+   "log": {
+    "modelId": "model",
+    "mutations": [
+     {
+      "id": "m1",
+      "timestamp": 0,
+      "modelId": "model",
+      "type": "CREATE_ENTITY",
+      "entityId": 22,
+      "attributeName": "IfcWall"
+     },
+     {
+      "id": "m2",
+      "type": "DELETE_ENTITY",
+      "timestamp": 0,
+      "modelId": "model",
+      "entityId": 22
+     }
+    ],
+    "exportedAt": 0,
+    "newEntities": [
+     {
+      "expressId": 22,
+      "type": "IfcWall",
+      "attributes": [
+       "2Aa3Bb4Cc5Dd6Ee7Ff8Gg1",
+       "#5",
+       "Replacement wall",
+       null,
+       null,
+       null,
+       null,
+       "RW",
+       ".STANDARD."
+      ]
+     }
+    ]
+   },
+   "error": "created entity #22 reuses source id #22"
   }
  ]
 }

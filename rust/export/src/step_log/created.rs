@@ -55,12 +55,6 @@ fn overrides(
     Ok(args.join(","))
 }
 
-/// The refusal for a created entity that reuses a source id; the TypeScript
-/// writer throws the same text.
-fn created_id_collision(id: u32) -> String {
-    format!("created entity #{id} reuses source id #{id}: the log was not written against this file")
-}
-
 /// `writeOverlayCreatedEntities`, into `pass.created_lines`.
 pub(crate) fn write_created(pass: &mut Pass<'_, '_>) -> Result<(), Unwritable> {
     let entities = pass.overlay.new_entities.clone();
@@ -78,15 +72,6 @@ pub(crate) fn write_created(pass: &mut Pass<'_, '_>) -> Result<(), Unwritable> {
                 "created entity #{id}: \"{}\" is not a recognizable IFC entity name",
                 entity.entity_type
             )));
-        }
-        // A created entity never reuses a source id (the mutation layer's
-        // watermark allocates past the file's highest one), so a log that
-        // creates one under a source id was written against another file.
-        // Writing either record would silently drop the other, and the edits
-        // queued on that id would land on whichever survived (#7682,
-        // EXPORT-STEP-26). The TypeScript writer refuses it with this message.
-        if pass.src.has(id) {
-            return Err(Unwritable(created_id_collision(id)));
         }
         let retype = pass.overlay.retypes.get(&id).cloned();
         let effective = retype.as_ref().map_or(entity.entity_type.clone(), |(t, _)| t.clone());

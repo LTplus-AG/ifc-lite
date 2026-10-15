@@ -712,6 +712,16 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
+      # Keep a separate root so build-output still extracts into packages/.
+      # Recipe tests execute the compiled scripts from the same shared build.
+      - name: Upload example builds
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: example-build-output
+          path: examples/*/dist
+          retention-days: 1
+          if-no-files-found: error
+
       # The viewer app `pnpm build` just produced (turbo builds apps/* too, via
       # the viewer's own `build` script, so the __tla chunk-await guard has
       # already run over exactly these files). viewer-e2e serves it with
@@ -775,6 +785,11 @@ jobs:
         with:
           name: build-output
           path: packages
+      - name: Download example builds
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: example-build-output
+          path: examples
       # #4079 taught scripts/lib/revert-oracle-python.mjs to route a changed
       # `test_*.py` / `*_test.py` ANYWHERE in the repo (routing is
       # marker-based — `pythonTestOwner` walks up to the nearest project
@@ -2032,6 +2047,11 @@ jobs:
         with:
           name: build-output
           path: packages
+      - name: Download example builds
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: example-build-output
+          path: examples
       - name: Cache test fixtures
         id: fixtures-cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0

@@ -29,3 +29,7 @@ The skipped tests depend on additional unavailable fixtures or explicitly unsupp
 The task ledger is `docs/architecture/developer-experience/tasks.json`; individual behavior receipts and observed production-revert checks remain in their respective evidence directories. The final PR's current-head CI is the acceptance record for the landed source.
 
 The geometry coverage follow-up reproduced a partial-success bug using the real committed wall model with one oversized EXPRESS id. All six recipe tests and the standard root typecheck passed after adding the shared preflight; `../developer-recipes/geometry-coverage.json` records the failed-before/passed-after result.
+
+The packed-command follow-up requires the committed wall before packaging or installation, while the manifest-backed FZK remains optional. Its isolated missing-wall regression and full external consumer test both passed; `../packed-workflows/required-fixture.json` records this verification. CI also restores compiled example outputs for package tests and the production-revert oracle.
+
+The final packed-command suite passed five cases, including missing JavaScript, declarations and WASM with named build remedies before any tarball is written. `../packed-workflows/build-prerequisites.json` records the three failed-before cases and full passing consumer suite. Full root `pnpm lint` also passed after registering the example package’s measured zero-unused-code budget.

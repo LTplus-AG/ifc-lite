@@ -121,5 +121,10 @@
       }
     ]
   },
-  "recipeCoverageRegression": "tests/evidence/developer-recipes/geometry-coverage.json"
+  "recipeCoverageRegression": "tests/evidence/developer-recipes/geometry-coverage.json",
+  "packedCommandTests": 5,
+  "requiredPackedFixtureEvidence": "tests/evidence/packed-workflows/required-fixture.json",
+  "exampleBuildArtifactEvidence": "tests/evidence/developer-integration/example-build-artifact.json",
+  "buildPrerequisitesEvidence": "tests/evidence/packed-workflows/build-prerequisites.json",
+  "rootLint": "passed, including the measured zero-unused-code budget for examples/headless-workflows"
 }

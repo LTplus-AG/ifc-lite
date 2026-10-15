@@ -5,31 +5,27 @@
     {
       "id": "DX1",
       "title": "Shared input validation and structured parse completeness",
-      "status": "ready_for_review",
+      "status": "verified",
       "acceptance": "Parser and CLI share validation; malformed, partial and unknown scan outcomes remain distinguishable; real fixture evidence",
       "pullRequests": [
         "https://github.com/LTplus-AG/ifc-lite/pull/7632"
       ],
       "branch": "feat/developer-parse-contract",
       "checks": {
-        "parser": "1978 passed, 8 skipped (full parser suite)",
-        "cliLoader": "Full CLI suite: 1459 passed, 15 skipped",
-        "documentation": "472 snippets compiled across 113 docs",
-        "fixture": "Manifest-verified ArchiCAD FZK: 44249 scanned records, 5 IfcDoor records, complete scan; tests/evidence/developer-parse-contract/fzk.json",
-        "typecheck": "Root pnpm typecheck passed; 4186 test sources audited",
-        "apiSurface": "regenerated",
-        "moduleSize": "passed",
-        "sourceTextAssertions": "Passed; runtime diagnostic-code assertions explicitly identified",
-        "oxlintTouchedFiles": "passed",
-        "reviewRegression": "Byte-level lexical envelope checks, invalid scan counters announced to legacy listeners, and structured empty-input errors. New validated APIs are strict; the existing MCP loader preserves partial-file recovery and scan warnings.",
-        "oracle": "Ordinary full production revert OBSERVED: 20 tests pass on the branch; independent existing-scanner witnesses fail assertions after removal; tree restoration verified; no CI exception",
-        "mcpLoader": "Full MCP suite passed, including shared validation and recoverable short-scan hints"
+        "packages": [
+          "@ifc-lite/parser",
+          "@ifc-lite/cli",
+          "@ifc-lite/mcp"
+        ],
+        "behavior": "Structured complete/incomplete/unknown record coverage; lexical STEP envelope validation; preserved MCP recovery mode and UTF-8 BOM acceptance",
+        "fixture": "Manifest-verified FZK:44249 records and five doors; tests/evidence/developer-parse-contract/",
+        "oracle": "Ordinary production revert OBSERVED; restoration verified; no CI exception"
       }
     },
     {
       "id": "DX2",
       "title": "Supported shared headless entry point",
-      "status": "in_review",
+      "status": "verified",
       "acceptance": "Open/query/edit/export/close through a documented library API; CLI and MCP reuse common implementation with existing behavior preserved",
       "pullRequests": [
         "https://github.com/LTplus-AG/ifc-lite/pull/7634",
@@ -51,71 +47,61 @@
         }
       ],
       "checks": {
-        "sharedReads": "SDK 39 passed; MCP 48 passed, 1 skipped",
-        "typecheck": "root pnpm typecheck passed; all 4184 test files audited",
-        "documentation": "472 snippets compiled",
-        "moduleSize": "passed; retired one obsolete allowlist row",
-        "knip": "ran; repository-wide unused declarations/configuration findings remain; retired reader files removed and one moved unused internal type export removed",
-        "nodeConsumer": "Fresh Node resolver imports @ifc-lite/sdk/headless and queries the committed one-wall IFC sample",
-        "readOracle": "Ordinary full revert against parent OBSERVED: 42 baseline tests pass; the public Node consumer fails an assertion after SDK export removal; restoration verified",
-        "fullSdk": "441 passed, 6 skipped",
-        "fullMcp": "729 passed, 5 skipped",
-        "sessionWorkflow": "Edit/export/reopen and closed-session refusal proven on the manifest-verified FZK fixture; tests/evidence/headless-session/fzk.json",
-        "sessionTypecheck": "root pnpm typecheck passed; all 4185 test files audited",
-        "sessionDocumentation": "473 snippets compiled",
-        "identityAndLifetime": "7 SDK session tests pass, including separate sessions with identical EXPRESS ids and late host geometry refusal after close",
-        "cliComposition": {
-          "cli": "1460 passed, 15 skipped",
-          "sdk": "443 passed, 6 skipped",
-          "mcp": "737 passed, 5 skipped",
-          "typecheck": "Root pnpm typecheck passed; 4190 test files audited",
-          "documentation": "473 snippets compiled",
-          "compatibility": "Legacy constructor, default/filename model aliases, pagination TypeError and type-property scalar normalization retained",
-          "fixture": "Fresh real CLI eval on manifest-verified FZK: five edited doors agree across attributes, queries and CSV; tests/evidence/cli-shared-headless/fzk.json",
-          "removal": "Retired both CLI query-overlay modules; CLI backend now 172 lines; no retired helper references in current consumers",
-          "guards": "Raw-access guard and API snapshot check passed; module-size budget retired",
-          "knip": "Ran; existing repository-wide findings remain, with no retired query helper references",
-          "oracle": "Ordinary full revert against shared-session parent OBSERVED: the existing CLI context returns stale attributes and the fixture assertion fails; restoration verified"
-        }
+        "packages": [
+          "@ifc-lite/sdk",
+          "@ifc-lite/mcp",
+          "@ifc-lite/cli"
+        ],
+        "behavior": "Public open/query/edit/export/close API, shared live-overlay readers and backend composition; retained constructors and CLI model aliases",
+        "fixtures": [
+          "tests/evidence/headless-session/",
+          "tests/evidence/cli-shared-headless/"
+        ],
+        "compatibility": "Regular property arrays preserved; CLI scalar normalization applies only to type properties",
+        "removal": "Superseded MCP/CLI reader implementations removed; obsolete size-budget rows retired",
+        "oracles": "Read extraction, model session and CLI composition each OBSERVED ordinary production revert; restoration verified"
       }
     },
     {
       "id": "DX3",
       "title": "Discoverable backend capabilities",
-      "status": "in_review",
+      "status": "verified",
       "acceptance": "Unsupported operations can be checked before invocation and throw structured errors; legacy APIs stay compatible",
       "pullRequests": [
         "https://github.com/LTplus-AG/ifc-lite/pull/7636"
       ],
       "checks": {
-        "behavior": "Supported data methods, unsupported viewer/authoring methods, structured errors and attach/detach capability changes tested in the full SDK suite",
-        "compatibility": "Existing MCP constructor retained; full MCP suite passed",
-        "legacyErrorContract": "Existing MCP constructor returns structured UNSUPPORTED_OPERATION without allocating a mutation overlay"
+        "packages": [
+          "@ifc-lite/sdk"
+        ],
+        "behavior": "Typed capability discovery and unsupported-operation errors; closed-session guards and late host-result refusal",
+        "coverage": "Model identity, retained references, absent spaces/energy methods and attach/detach capability behavior exercised",
+        "compatibility": "Legacy MCP constructor and host no-op behavior preserved outside guarded new sessions"
       }
     },
     {
       "id": "DX4",
       "title": "Task-based onboarding and complete recipes",
-      "status": "in_review",
+      "status": "verified",
       "acceptance": "Data extraction, validation, edit/export/reopen, geometry and service recipes with real fixture and expected results",
       "pullRequests": [
         "https://github.com/LTplus-AG/ifc-lite/pull/7641"
       ],
       "branch": "feat/developer-onboarding",
       "checks": {
-        "integration": "Six integration tests passed: real FZK extraction, IDS, edit/reopen, WASM GLB and owned HTTP worker; oversized EXPRESS id in the committed wall fixture refuses incomplete coverage before geometry initialization/export",
-        "documentation": "475 snippets compiled across 114 docs",
-        "typecheck": "Root pnpm typecheck passed after the geometry completeness regression; all 4210 test sources audited",
-        "runtime": "Node 24; data scripts use public package entry points and geometry output reserves stdout for JSON",
-        "oracle": "Ordinary full revert against parent OBSERVED through the independent developer package-entry consumer; restoration verified; no CI exception",
-        "geometryRegression": "PR #7641: new regression failed against the old recipe (partial GLB exited 0), then passed with the shared data preflight; geometry reports coverage and disposes both sessions",
-        "ciArtifacts": "Example dist outputs are uploaded separately and restored for package tests and the production-revert oracle; package artifact extraction paths remain stable"
+        "package": "ifc-lite-headless-workflows",
+        "integrationTests": 6,
+        "behavior": "Real FZK extraction, IDS, edit/reopen, WASM GLB and bounded HTTP service; actual blocked worker terminated on cancellation; geometry refuses incomplete record coverage before runtime initialization and reports the successful preflight",
+        "typing": "Runtime scripts and test sources checked without emitting test files",
+        "oracle": "Ordinary production revert OBSERVED through public developer command; restoration verified",
+        "geometryRegression": "New malformed-record fixture test fails on the old recipe and passes after the shared preflight; tests/evidence/developer-recipes/geometry-coverage.json",
+        "ciArtifacts": "Compiled example outputs are uploaded separately and restored for package tests and the production-revert oracle, preserving package artifact paths"
       }
     },
     {
       "id": "DX5",
       "title": "Consumer artifact workflows and scaffold compatibility",
-      "status": "in_review",
+      "status": "verified",
       "acceptance": "Fresh external consumer installs packed artifacts and proves workflows; scaffold dependency combinations tested together in CI",
       "pullRequests": [
         "https://github.com/LTplus-AG/ifc-lite/pull/7648",
@@ -136,30 +122,90 @@
         }
       ],
       "checks": {
-        "packedConsumer": "External npm install, declarations, edit/reopen, lifecycle, real WASM/GLB and Vite worker/WASM bundle passed",
-        "scaffold": "All six published-package projects passed npm ci, typecheck and build; real IFC4 FZK basic consumer found five doors",
-        "workerOutputIdentity": "Baseline and corrected Node GLB bytes, mesh counts and triangle counts agree; receipt: tests/evidence/packed-workflows/worker-packaging.json",
-        "requiredFixture": "The committed wall is mandatory before packing/installation; optional FZK absence still skips with pnpm fixtures guidance. Isolated refusal and full external consumer tests passed; tests/evidence/packed-workflows/required-fixture.json",
-        "buildPrerequisites": "All fixed declared entry points in the dependency closure are required before writing tarballs; missing runtime/declaration/WASM targets name their build remedy. Five command tests passed; tests/evidence/packed-workflows/build-prerequisites.json"
+        "packages": [
+          "create-ifc-lite",
+          "@ifc-lite/parser",
+          "@ifc-lite/geometry",
+          "@ifc-lite/pointcloud"
+        ],
+        "scaffold": "All six external published-package cohorts passed npm ci/typecheck/build; FZK basic consumer found five doors",
+        "packed": "Fresh external npm install, strict declarations, lifecycle, edit/reopen, real Node WASM/GLB and Vite worker/WASM assets passed",
+        "identity": "Node GLB bytes, mesh counts and triangle counts agree with baseline; tests/evidence/packed-workflows/worker-packaging.json",
+        "perfVerdict": "Packaging correction; no runtime speed claim. Browser baseline could not build. Narrative verdict recorded in scripts/perf/README.md",
+        "oracles": "Packed workflow and dependency-cohort fixes each OBSERVED ordinary production revert; restoration verified",
+        "requiredFixture": "Committed wall presence is mandatory before packaging; optional FZK retains skip guidance. Isolated refusal and full external consumer tests passed; tests/evidence/packed-workflows/required-fixture.json",
+        "buildPrerequisites": "Fixed declared runtime/declaration/WASM targets in the dependency closure are checked before packing, with explicit build remedies; tests/evidence/packed-workflows/build-prerequisites.json"
       }
     },
     {
       "id": "DX6",
       "title": "Searchable API reference and diagnostics",
-      "status": "in_review",
+      "status": "verified",
       "acceptance": "Generated searchable public symbol reference and CLI environment diagnostic report; generation and behavior validated in CI",
       "pullRequests": [
         "https://github.com/LTplus-AG/ifc-lite/pull/7667",
         "https://github.com/LTplus-AG/ifc-lite/pull/7698"
       ],
       "checks": {
-        "doctor": "1469 CLI tests passed, 15 skipped; real isolated installations cover missing/corrupt WASM, missing package entry, incompatible Node and unavailable WebAssembly; production revert observed",
-        "reference": "Public docs:api command renders all published declaration entries and symbol pages; native browser search opens openModel and HeadlessModelSession; tests/evidence/api-reference/",
-        "deployment": "Complete landing + docs production build passed strict MkDocs using Python 3.12; all generated pages/search assets copied into deployment output",
-        "wasmFreeReference": "Fresh Linux checkout: all package declarations and 104 public API modules generated without wasm-pack or a WASM runtime; tests/evidence/api-reference/wasm-free.json"
+        "packages": [
+          "@ifc-lite/cli"
+        ],
+        "doctor": "Readable/JSON installation diagnostics, declared runtime requirement, package versions and WASM structure/hash; isolated missing/corrupt/disabled-WASM cases exercised",
+        "reference": "Generated searchable symbols for every published declaration entry; native browser search and public generation command verified",
+        "deployment": "Complete landing/docs production build passed strict MkDocs; generated reference copied into output",
+        "wasmFree": "Fresh declaration-only build verified without wasm-pack or a WASM runtime; tests/evidence/api-reference/wasm-free.json",
+        "oracles": "Doctor and reference each OBSERVED ordinary production revert; restoration verified"
       }
     }
   ],
   "mergePolicy": "Resolve findings and verify required and applicable checks on the current head before merging",
-  "scope": "Tracks requested developer experience work; this artifact grants no workflow permissions"
+  "scope": "Tracks requested developer experience work; this artifact grants no workflow permissions",
+  "integratedVerification": {
+    "receipt": "tests/evidence/developer-integration/receipt.json",
+    "packages": {
+      "@ifc-lite/pointcloud": {
+        "passed": 341,
+        "skipped": 2
+      },
+      "create-ifc-lite": {
+        "passed": 129,
+        "skipped": 0
+      },
+      "@ifc-lite/geometry": {
+        "passed": 644,
+        "skipped": 0
+      },
+      "@ifc-lite/parser": {
+        "passed": 1979,
+        "skipped": 8
+      },
+      "@ifc-lite/sdk": {
+        "passed": 444,
+        "skipped": 6
+      },
+      "@ifc-lite/cli": {
+        "passed": 1472,
+        "skipped": 15
+      },
+      "@ifc-lite/mcp": {
+        "passed": 735,
+        "skipped": 5
+      }
+    },
+    "totalTests": {
+      "passed": 5744,
+      "skipped": 36
+    },
+    "typecheckedTestSources": 4210,
+    "typecheckedPrograms": 67,
+    "compiledDocSnippets": 475,
+    "apiSnapshot": {
+      "packages": 57,
+      "entryPoints": 104,
+      "exports": 10194
+    },
+    "recipeTests": 6,
+    "guards": "Full root pnpm lint, module size, raw-access, source assertions, test wiring, CI path/aggregate coverage, generated docs and license headers passed",
+    "packedCommandTests": 5
+  }
 }

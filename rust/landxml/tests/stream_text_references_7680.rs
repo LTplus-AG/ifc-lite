@@ -10,8 +10,8 @@
 use ifc_lite_landxml::{
     alignment::parse_landxml_alignments_optional, parse_landxml_document,
     parse_landxml_pipe_networks, parse_landxml_tin_with_cancel, LandXmlDiagnosticCode,
-    LandXmlError, LandXmlLimits, LandXmlStreamEvent, LandXmlStreamSummary,
-    LandXmlSurfaceComponent, LandXmlTinStreamSession, MAX_LANDXML_STREAM_DRAIN_BYTES,
+    LandXmlError, LandXmlLimits, LandXmlStreamEvent, LandXmlStreamSummary, LandXmlSurfaceComponent,
+    LandXmlTinStreamSession, MAX_LANDXML_STREAM_DRAIN_BYTES,
 };
 use serde_json::Value;
 
@@ -125,11 +125,17 @@ fn issue_7680_edge_lxparse_3_stream_resolves_references_like_literal_text() {
 fn issue_7680_edge_lxparse_3_stream_refuses_what_pull_refuses() {
     let literal = literal();
     let cases = [
-        ("undeclared entity", REFERENCED.replace("0&#46;5", "0&custom;5")),
+        (
+            "undeclared entity",
+            REFERENCED.replace("0&#46;5", "0&custom;5"),
+        ),
         ("reference before root", format!("&#32;{literal}")),
         ("reference after root", format!("{literal}&#32;")),
         ("entity after root", format!("{literal}&amp;")),
-        ("entity in a face", literal.replace("<F>1 2 3", "<F>1 2 3&amp;")),
+        (
+            "entity in a face",
+            literal.replace("<F>1 2 3", "<F>1 2 3&amp;"),
+        ),
     ];
     let mut mismatches = Vec::new();
     for (name, xml) in &cases {
@@ -144,7 +150,9 @@ fn issue_7680_edge_lxparse_3_stream_refuses_what_pull_refuses() {
                 .map(|_| ())
                 .map_err(|error| error.code);
             if streamed != pull {
-                mismatches.push(format!("{name} chunk {chunk}: {streamed:?} vs pull {pull:?}"));
+                mismatches.push(format!(
+                    "{name} chunk {chunk}: {streamed:?} vs pull {pull:?}"
+                ));
             }
         }
     }

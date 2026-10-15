@@ -110,3 +110,52 @@ or browser interactions as independently completed.
 
 Verdict for `f40b50263a6dc3bab8ef8a6324acfaac07e3eef9`: no unresolved
 correctness blocker found. `git diff --check 626f4d2571 f40b50263a` passed.
+
+## Follow-up review: load presentation ownership code on demand
+
+Reviewed exact source delta
+`7bba4d1bea..6b087615b63b949761ed849cdd65ec12415fe2be` on 2026-10-15.
+The intervening annotation-evidence delta `f40b50263a..7bba4d1bea` was verified
+to contain documentation and screenshots only. Both annotation screenshots
+were opened: hiding the explicitly documented derived 14-owner assignment
+removes the dimension lines/text while preserving the model geometry.
+
+CI's initial-entry bundle budget rejected the eager implementation. This delta
+moves the existing presentation builder/resolver behind a dynamic import when
+the Layers tab is active; it does not raise the budget or change ownership
+resolution. The reviewer read all eight changed files at the exact source
+revision above, including the new loader hook and mounted regression.
+
+The shared cache contains code and its import promise, never a model snapshot.
+Current model, annotation, geometry and mutation inputs are passed to the
+builder after readiness. Effect cleanup prevents stale asynchronous callbacks
+from publishing state after tab changes or unmounting. Failed imports clear the
+shared pending promise; the localized error and Retry action provide an
+explicit recovery path. Loading displays an accessible busy tree and suppresses
+premature no-layers and no-search-results states.
+
+Review identified that the original reveal effect would miss a held selection
+when the newly asynchronous tree became ready. The final delta adds readiness
+to that effect's dependencies without depending on expansion-changing
+callbacks. The mounted regression verifies initial loading, absence of a false
+empty state, leaving and reentering the pending tab, and automatic expansion
+and selection after readiness. Existing layer actions, empty-state and
+federation tests now await the actual tree. The annotation dispatch regression
+supplies the builder explicitly and retains the annotation-ID union.
+
+The lead agent reported 53 focused tests passing without skips, all 126 root
+typecheck tasks passing with the 4,186-test-file audit, a successful production
+build, and measured initial-entry/eager sizes inside the unchanged CI ceilings.
+The reviewer did not independently rerun those heavy checks. Full lint and
+remote CI were still being shepherded when this section was written.
+
+The reviewer also opened the lead agent's production-browser screenshot
+`browser-screenshot-louistrue-pc-tail476f78-ts-net-mv9bh5uv-7325e5c7.png`:
+it shows 11 original Archicad layers, 21 selected/isolated exterior products,
+the expected window/wall/door inspector breakdown, and 61 hidden elements.
+The lead agent reported rechecking Hide/Show on this production build. Earlier
+membership, federation and annotation semantics remain unchanged; symbolic
+overlay isolation retains the limitation documented above.
+
+Verdict for `6b087615b63b949761ed849cdd65ec12415fe2be`: no unresolved
+correctness blocker found. The exact source delta passes `git diff --check`.

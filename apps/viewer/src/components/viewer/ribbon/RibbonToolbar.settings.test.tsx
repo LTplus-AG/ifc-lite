@@ -24,7 +24,8 @@ for (const tab of ['home', 'view', 'file', 'elements', 'analyze', 'author'] sati
       const toolbar = render(<><RibbonToolbar /><SettingsDialogHost /></>);
       const buttons = toolbar.querySelectorAll('[data-command-id="pref:settings"]');
       assert.equal(buttons.length, 1, 'one persistent Settings button');
-      assert.equal(buttons[0].closest('[role="tabpanel"]'), null, 'Settings is outside the collapsible band');
+      // Keep failures bounded: inspecting a DOM node also walks React's store-backed fibers.
+      assert.ok(!buttons[0].closest('[role="tabpanel"]'), 'Settings is outside the collapsible band');
       click(buttons[0]);
       const dialog = document.querySelector('[data-settings-dialog]');
       assert.ok(dialog, 'the shared Settings dialog opens');

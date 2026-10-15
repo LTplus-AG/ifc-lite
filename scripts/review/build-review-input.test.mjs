@@ -108,6 +108,30 @@ test('real source is NOT excluded', () => {
   }
 });
 
+test('#7663: review input omits live recordings while retaining run reports and source', () => {
+  const recording = 'tests/ai-eval/live-runs/run-7663/recordings/provider-response.json';
+  const retained = [
+    'tests/ai-eval/live-runs/run-7663/summary.json',
+    'tests/ai-eval/live-runs/run-7663/review.json',
+    'packages/geometry/src/loader.ts',
+    'tests/ai-eval/live-runs/run-7663/recordings-summary.json',
+    'tests/ai-eval/live-runs-backup/run-7663/recordings/provider-response.json',
+    'tests/ai-eval/live-runs/run-7663/nested/recordings/provider-response.json',
+  ];
+  const patch = '@@ -0,0 +1 @@\n+reviewable content';
+  const result = run([recording, ...retained].map((filename) => ({
+    filename, status: 'added', patch,
+  })));
+  assert.equal(result.code, 0, result.out);
+  assert.deepEqual(result.result.excluded, [recording]);
+  assert.deepEqual(result.result.files.map(({ path }) => path), retained);
+  assert.deepEqual(result.result.unreviewable, []);
+  for (const file of result.result.files) {
+    assert.equal(file.patch, patch);
+    assert.deepEqual(file.addedLineRanges, [[1, 1]]);
+  }
+});
+
 // ================================================= what is recorded, not dropped
 
 test('a file with no patch is recorded as unreviewable, never silently absent', () => {

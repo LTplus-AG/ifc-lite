@@ -142,11 +142,15 @@ export async function buildLandXmlRenderedLineUpdates(
   source: ModelSpatialReference,
   target: ModelSpatialReference,
   targetOffset: CoordinateInfo | undefined,
+  /** The same vertical policy the surfaces were aligned under; fail-closed by default. */
+  unknownVertical: 'refuse' | 'assume-compatible' = 'refuse',
 ): Promise<LandXmlRenderedLineUpdate[]> {
   const allLines = lines(document);
   const clear = () => clearLandXmlRenderedLineUpdates(document);
-  if (!document.units || !source.horizontal || !target.horizontal
-    || source.vertical?.id !== target.vertical?.id) return clear();
+  const verticalBlocked = source.vertical && target.vertical
+    ? source.vertical.id !== target.vertical.id
+    : unknownVertical !== 'assume-compatible' && source.vertical?.id !== target.vertical?.id;
+  if (!document.units || !source.horizontal || !target.horizontal || verticalBlocked) return clear();
 
   const sourceProjection = source.horizontal.id === target.horizontal.id
     ? null : await resolveProjectionId(source.horizontal.id);

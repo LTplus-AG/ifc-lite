@@ -10,6 +10,7 @@ import {
 import { streamLandXmlBlobWithSink } from './landXmlBlobStreamDriver.js';
 import { parseLandXmlSourceWithApi } from './landXmlWasm.js';
 import type { LandXmlPreflightComponent } from './landXmlStreamPreflight.js';
+import type { LandXmlGeorefAssumptions } from './landXmlGeorefAssumptions.js';
 
 const workerScope = self as unknown as {
   onmessage: ((event: MessageEvent<LandXmlSourceBuffer | LandXmlBlobWorkerRequest | LandXmlWorkerContinue>) => void) | null;
@@ -21,6 +22,8 @@ interface LandXmlBlobWorkerRequest {
   streamFederatedPreflight?: boolean;
   /** #5175: retry value the viewer supplies after a units refusal. */
   assumedLinearUnit?: string;
+  /** The user's georeferencing assumptions for a federated load; absent means none. */
+  landXmlAssumptions?: Partial<LandXmlGeorefAssumptions>;
 }
 
 interface LandXmlWorkerContinue {
@@ -93,7 +96,11 @@ async function streamBlobRequest(api: IfcAPI, input: LandXmlBlobWorkerRequest): 
     onSkippedComponent: (skippedComponent) => awaitComponent({ skippedComponent }),
     onSurfaceDiagnostics: (surfaceDiagnostics) => awaitComponent({ surfaceDiagnostics }),
     onSourceEvent: awaitSourceEvent,
-  }, { wantsFederatedStreaming: input.streamFederatedPreflight === true, assumedLinearUnit: input.assumedLinearUnit });
+  }, {
+    wantsFederatedStreaming: input.streamFederatedPreflight === true,
+    assumedLinearUnit: input.assumedLinearUnit,
+    landXmlAssumptions: input.landXmlAssumptions,
+  });
   return { preflight: result.preflight, droppedPrimaryComponents: result.droppedPrimaryComponents };
 }
 

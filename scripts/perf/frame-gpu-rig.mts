@@ -46,7 +46,8 @@ import { hoverSweep, orbitGesture, type CanvasRect, type CdpInput } from '../../
 import { startStaticServer } from './browser-static-server.js';
 import { closeBrowserWithTimeout, raceWithTimeout } from './browser-cold-teardown.js';
 import { probeMetadataRenderTrace, waitForMetadataRenderReadiness } from '../../tests/benchmark/metadata-render-readiness.js';
-import { isHardwareAdapter, isPhysicalConsole, readPhysicalSession } from './frame-gpu-session.js';
+import { isPhysicalConsole, readPhysicalSession } from './frame-gpu-session.js';
+import { isHardwareAdapter } from './hardware-adapter.mjs';
 import { readHostAdmission } from './frame-gpu-host.js';
 import { collectGpuTiming, gpuTimingSnapshot } from './frame-gpu-timestamps.js';
 import { findWindowsChrome, launchWindowsChrome } from './frame-gpu-chrome.js';

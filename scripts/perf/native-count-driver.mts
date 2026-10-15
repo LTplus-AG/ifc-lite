@@ -30,7 +30,8 @@ import { requireSpanSource } from './browser-span-source.mjs';
 import { startStaticServer } from './browser-static-server.js';
 import { closeBrowserWithTimeout, raceWithTimeout } from './browser-cold-teardown.js';
 import { validateBrowserFixtures } from './browser-cold-fixtures.js';
-import { isHardwareAdapter, isPhysicalConsole, readPhysicalSession } from './frame-gpu-session.js';
+import { isPhysicalConsole, readPhysicalSession } from './frame-gpu-session.js';
+import { isHardwareAdapter } from './hardware-adapter.mjs';
 import { readHostAdmission, type HostAdmission } from './frame-gpu-host.js';
 import { findWindowsChrome, launchWindowsChrome } from './frame-gpu-chrome.js';
 import { ViewerBenchmarkPage } from '../../tests/benchmark/viewer-benchmark-page.js';
@@ -134,7 +135,7 @@ async function runSample(planned: PlannedSample, abs: string): Promise<SampleRec
     settled = await bench.settleLoadCounters();
     record.loadCounters = bench.getLoadCounters();
     record.adapter = await page.evaluate(() => (globalThis as { __ifc_lite_render_stats__?: () => { adapter?: unknown } }).__ifc_lite_render_stats__?.().adapter ?? null);
-    if (REQUIRE_PHYSICAL && !isHardwareAdapter(record.adapter as { vendor?: string } | null)) refusals.push('renderer adapter missing or software');
+    if (REQUIRE_PHYSICAL && !isHardwareAdapter(record.adapter)) refusals.push('renderer adapter missing or software');
     const commits = await measureInteractionCommits(page);
     record.interactionCommits = commits;
     interactionErrors = commits.errors;

@@ -21,11 +21,6 @@ export function isPhysicalConsole(receipt: PhysicalSessionReceipt): boolean {
     && receipt.remoteMetric === 0 && receipt.monitors > 0;
 }
 
-/** A renderer adapter identity that names real hardware, not a software rasterizer. */
-export function isHardwareAdapter(adapter: { vendor?: string } | null | undefined): boolean {
-  return !!adapter?.vendor && !/swiftshader|software|llvmpipe/i.test(JSON.stringify(adapter));
-}
-
 // WTSClientProtocolType=16 (0 console, 2 RDP), WTSConnectState=8 (0 active).
 // References: Microsoft WTSQuerySessionInformation / WTSGetActiveConsoleSessionId.
 const SCRIPT = `

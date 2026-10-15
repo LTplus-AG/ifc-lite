@@ -5,8 +5,8 @@
   "type": "module",
   "description": "Complete developer workflows for IFC data, validation, editing, geometry and a cancellable local service",
   "scripts": {
-    "build": "tsc",
-    "typecheck": "node ../../scripts/typecheck-tests.mjs",
+    "build": "tsc --project tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
     "test": "tsx --tsconfig test/tsconfig.json --test --test-concurrency=1 test/*.test.ts"
   },
   "dependencies": {

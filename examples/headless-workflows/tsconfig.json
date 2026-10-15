@@ -1,9 +1,16 @@
 {
   "extends": "../../tsconfig.packages.json",
   "compilerOptions": {
-    "rootDir": "src",
+    "rootDir": ".",
     "outDir": "dist",
-    "types": ["node"]
+    "types": [
+      "node"
+    ],
+    "noEmit": true
   },
-  "include": ["src/**/*.mts"]
+  "include": [
+    "src/**/*.mts",
+    "test/**/*.ts"
+  ],
+  "exclude": []
 }

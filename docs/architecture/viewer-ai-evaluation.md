@@ -33,7 +33,7 @@ Every fixture records origin, SHA-256, size, schema, source tool, licence status
 | `citations-valid` | Every `E<n>` names a captured row | Whether the claim it supports is true |
 | `findings-accounted` | A grouping cites each finding at most once, only complete rows, within the native population | Native preview re-checks against the live result |
 | `no-duplicate-topics` | No two groups share a name (case and spacing) or membership | Semantically overlapping topics |
-| `count-claims-match-facts` | Each "N counted-noun" claim is a number in the evidence | A real number from the wrong field still passes |
+| `count-claims-match-facts` | Each "N counted-noun" claim is a number in the evidence; on live runs, an element or model claim may also match a count from the prompt's model summary (properties and quantities only when the summary is not partial) | A real number from the wrong field still passes; committed recordings keep no prompt, so they are checked against the evidence only |
 | `no-effect-claims` | The answer never claims to have applied or created anything | Paraphrased claims |
 | `proposal-kind-allowed` | A declared typed kind is offered for the evidence source | Whether the proposal is valid |
 | `budget-respected` | Provider-reported output stays within the ceiling and run budget | Unreported usage is counted, never estimated |

@@ -13,7 +13,7 @@
  * recording, receipt or log (`assertNoSecrets` refuses to write if one does).
  */
 
-import { checkAnswer, checkRunBudget } from './invariants.mjs';
+import { checkAnswer, checkRunBudget, modelSummaryNumbers } from './invariants.mjs';
 import { foldEvents, outcomeOf, parseEvents, sseData } from './sse.mjs';
 import { privacyFindings } from './manifest.mjs';
 
@@ -194,6 +194,8 @@ export async function runLive({ manifest, captured, providers, tasks, repeats, f
     for (const provider of providers) {
       const entry = entries.get(provider).get(task.id);
       if (entry.skipped) { results.push({ task: task.id, route: provider.kind, skipped: entry.skipped }); continue; }
+      // Counts the prompt's model summary gave the model are facts too (#7652); parsed once per capture entry.
+      const promptFacts = modelSummaryNumbers(entry.request.system);
       for (let repeat = 1; repeat <= repeats; repeat++) {
         if (receipts.length + 1 > budget.maxRequests) { stopped = `request budget of ${budget.maxRequests} reached`; break; }
         if (checkRunBudget(receipts, budget).violations.length) { stopped = 'output token budget reached'; break; }
@@ -206,7 +208,7 @@ export async function runLive({ manifest, captured, providers, tasks, repeats, f
           response: call.response, evidence: entry.evidence };
         recordings.push(recording);
         const checked = call.outcome === 'error' || call.outcome === 'timeout' ? null
-          : checkAnswer({ text: call.folded.text, source: entry.evidence.source, evidence: entry.evidence, usage: call.folded.usage, maxOutputTokens: call.receipt.settings.maxOutputTokens });
+          : checkAnswer({ text: call.folded.text, source: entry.evidence.source, evidence: entry.evidence, usage: call.folded.usage, maxOutputTokens: call.receipt.settings.maxOutputTokens, promptFacts });
         results.push({ task: task.id, route: provider.kind, repeat, recording: recording.id, outcome: call.outcome,
           violations: checked ? checked.violations : null, facts: checked ? checked.facts : null });
       }

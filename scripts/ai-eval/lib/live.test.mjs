@@ -75,6 +75,14 @@ test('live answers go through the same invariants as the corpus', async () => {
   assert.deepEqual(outcome.results[0].violations.map(violation => violation.id).sort(), ['citations-valid', 'no-effect-claims']);
 });
 
+test('a live answer citing a count from the prompt\'s model summary is not flagged; an unsupported count still is (#7652)', async () => {
+  const system = 'Use at most 30 groups.\nModel schema (exact names; numbers are elements carrying them).\nModels: AC20-FZK-Haus.ifc (121 elements)\nClasses: IfcWallStandardCase 13';
+  const withSummary = { version: 1, tasks: [{ ...captured.tasks[0], request: { ...captured.tasks[0].request, system } }] };
+  const run = async text => (await runLive({ ...common, captured: withSummary, tasks: ['clash-summary'], fetchImpl: reply(chatStream(text)) })).results[0].violations.map(v => v.id);
+  assert.deepEqual(await run('The model has 121 elements and 13 walls [E1].'), []);
+  assert.deepEqual(await run('There are 86 entities and 30 groups [E1].'), ['count-claims-match-facts', 'count-claims-match-facts']);
+});
+
 test('HTTP errors and timeouts become error recordings and receipts; no credential or body leaks', async () => {
   const failed = await runLive({ ...common, tasks: ['clash-summary'], fetchImpl: reply('{"error":"rate limited"}', 429) });
   assert.equal(failed.receipts[0].outcome, 'error');

@@ -46,6 +46,20 @@ test('#6928 proxy, Anthropic and both OpenAI APIs capture one route-neutral requ
   assert.deepEqual([anthropicKey, openaiKey], ['', ''], 'the capture placeholder is not left stored');
 });
 
+test('#7652 the live runner reads the model counts from the real captured system prompt', async () => {
+  const result = await captureRequest(task, 'eval/proxy-model');
+  assert.ok('request' in result);
+  // The runner is plain .mjs outside the viewer; a computed specifier keeps it out of the typed module graph.
+  const runner = new URL('../../../../../scripts/ai-eval/lib/invariants.mjs', import.meta.url).href;
+  const { modelSummaryNumbers } = await import(runner);
+  const facts: Record<'elements' | 'models' | 'walls' | 'slabs' | 'spaces', Set<number>> = modelSummaryNumbers(result.request.system);
+  assert.deepEqual([facts.walls, facts.slabs, facts.spaces].map((set) => [...set]), [[4], [3], [2]]);
+  // clash-rev-b digest: "building-architecture-rev-b.ifc (14 elements)", "IfcWall 4, IfcSlab 3, ..., IfcSpace 2, IfcDuctSegment 1".
+  assert.match(result.request.system, /\nModels: building-architecture-rev-b\.ifc \(14 elements\)\nClasses: IfcWall 4, IfcSlab 3/);
+  assert.deepEqual([...facts.elements].sort((a, b) => a - b), [1, 2, 3, 4, 14]);
+  assert.deepEqual([...facts.models], [1]);
+});
+
 test('#6928 capture restores keys that were stored before it ran', async () => {
   const stored = { anthropicKey: 'own-key', anthropicWorkspaceId: 'own-workspace', openaiKey: '' };
   updateApiKeys(stored);

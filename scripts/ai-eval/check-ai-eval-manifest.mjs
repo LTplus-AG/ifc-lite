@@ -45,7 +45,7 @@ function liveRunErrors({ run, dir, recordings }) {
     }
     // Reviews name files and labels name ids: both must point at the same answer, from this run.
     if (name !== `${recording.id}.json`) errors.push(`${at}: ${name} holds recording ${recording.id}`);
-    if (!recording.id.startsWith(`live-${run}-`)) errors.push(`${at}: ${name} was not recorded by run ${run}`);
+    if (!String(recording.id).startsWith(`live-${run}-`)) errors.push(`${at}: ${name} was not recorded by run ${run}`);
   }
   const read = file => (existsSync(join(dir, file)) ? JSON.parse(readFileSync(join(dir, file), 'utf8')) : null);
   const summary = read('summary.json');

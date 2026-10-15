@@ -338,6 +338,29 @@ rendered vs idle frames (a frame that called `getCurrentTexture`), and
   revisions must include #6979 and are recorded before host/browser work. This
   checks source ancestry; retain independent build/hash receipts binding each
   dist to its declared revision. Offline `--plan` and `--summarize` need no revisions.
+- **Real GPU structural counts, local only (#6993)**:
+  `scripts/perf/native-count-driver.mts` reuses the frame rig's Windows
+  Chrome lifecycle, host/physical-session admission and static server, and
+  `ViewerBenchmarkPage` for the load itself. Two fresh loads each of FZK and
+  Snowdon, one fresh owned profile per sample, at exactly
+  `?perfTrace=1&geomWorkers=4&meshCache=0&perf.benchmarkUploads=1&perf.batchSizing=%7B%22targetMs%22%3A8000%2C%22minJobs%22%3A64%2C%22maxJobs%22%3A64%7D`,
+  through the canonical file input (`useIfcLoader.loadFile`, never `?model=`).
+  A sample is healthy only with a finished metadata completion (parser or
+  canonical cache), `geometry.streamComplete`, an ended root, a finished
+  `scene.finalize`, count-mode flushes, settled counters, the GPU
+  allocation/static-upload and sender transfer vectors, zero device loss or
+  replacement, zero page errors and every interaction-commit step measured.
+  Unhealthy samples are kept, with their refusals. Receipts: fixture, dist
+  `index.html` and served WASM SHA-256s, branch revision, Chrome version,
+  host admission before/after, per-sample JSON and `summary.json` (exit 0
+  only when every sample is healthy and both vectors repeat per fixture):
+  `flock /tmp/ifclite-perf.lock npx tsx scripts/perf/native-count-driver.mts --branch-revision <built-revision> --require-host-idle --require-physical-display`.
+  `--plan` prints the samples and URL without launching anything. It does NOT
+  prove latency or throughput (count uploads are a different workload and are
+  refused by timing consumers), CPU mesh byte identity, schedule-independent
+  aggregate `gpu.writeBytes`, or device-loss recovery
+  (`evidence/recovery-replay-6993` covers that separately); `--branch-revision`
+  checks source ancestry only, so the served-file hashes are the build binding.
 
 ## Deterministic frame evidence admission (#6975)
 

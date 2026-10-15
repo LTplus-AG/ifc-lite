@@ -27,7 +27,18 @@ with `pnpm fixtures`); express ID 42 is its `External wall total` cost item.
 `bim.cost` reads the loaded IFC source snapshot and returns decimal strings;
 pending generic mutation overlays are not included until reload.
 
+## Installation diagnostics
+
+```bash
+ifc-lite doctor
+ifc-lite doctor --json > ifclite-diagnostics.json
+```
+
+Reports the CLI runtime, resolved versions of its declared first-party dependencies, and WASM binary structure, byte length and SHA-256. It loads no IFC model or geometry module, so it can report damaged package entries. Exit 0 means every reported check passed; exit 1 means a check failed. The report describes this CLI installation. WASM validation checks binary structure without initializing IFC bindings.
+
 ## Commands
+
+- `doctor` - runtime, package versions and WASM binary checks
 
 - `info` - model summary: schema, entities, storeys
 - `query` - query entities by type, properties, quantities; supports `--sum`, `--group-by`, `--spatial`
@@ -58,7 +69,7 @@ pending generic mutation overlays are not included until reload.
 - `gym` - reset/step/reward environment loop over the existing schema/clash/ids checks (see below)
 - `schema`, `bsdd`, `diagnose-geometry`, `extract-entities`, `generate-spaces`, `lod`, `ext` - see `ifc-lite --help`
 
-Global flags: `--json`, `--out <file>`, `--verbose`, `--quiet`, `--debug`, `--log-level <level>`.
+Global flags: `--json`, `--verbose`, `--quiet`, `--debug`, `--log-level <level>`.
 
 ## gym
 

@@ -37,7 +37,8 @@ const DIRECTIONS: ReadonlyArray<{ axis: SectionPlaneAxis; labelKey: 'sectionPlan
   { axis: 'side', labelKey: 'sectionPlanes.addSide' },
 ];
 
-const CHIP = 'inline-flex items-center gap-1 whitespace-nowrap rounded-sm px-1.5 py-0.5 text-xs transition-colors';
+// A long name ends in an ellipsis (the whole name is the tooltip) instead of widening the bar.
+const CHIP = 'inline-flex max-w-[8.5rem] items-center gap-1 whitespace-nowrap rounded-sm px-1.5 py-0.5 text-xs transition-colors';
 
 /** Tell the user a removal can be taken back; the record lives in the store until the set changes again. */
 function offerUndo(t: ReturnType<typeof useTranslation>['t']): void {
@@ -161,34 +162,37 @@ export function SectionPlaneChips() {
     (e.currentTarget.closest('[role="tablist"]')?.querySelector<HTMLElement>(`[data-plane-id="${next.id}"]`))?.focus();
   };
 
+  // The tablist holds tabs only (a menu button inside it is not allowed); the menu sits beside it.
   return (
-    <span role="tablist" aria-label={t('sectionPlanes.chipsAria')} className="flex items-center gap-0.5" data-testid={chipsTestId}>
-      {planes.map((plane, index) => {
-        const selected = plane.id === active.id;
-        return (
-          <span key={plane.id} className="inline-flex items-center">
-            {renaming === plane.id ? (
-              <RenameInput plane={plane} onDone={() => setRenaming(null)} />
-            ) : (
-              <button
-                type="button"
-                role="tab"
-                aria-selected={selected}
-                tabIndex={selected ? 0 : -1}
-                data-plane-id={plane.id}
-                title={t(plane.enabled ? 'sectionPlanes.chipCutting' : 'sectionPlanes.chipPreview', { name: plane.name })}
-                onClick={() => activate(plane.id)}
-                onDoubleClick={() => setRenaming(plane.id)}
-                onKeyDown={(e) => onKeyDown(e, index)}
-                className={cn(CHIP, selected ? 'bg-overlay-accent-soft text-overlay-accent' : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground')}
-              >
-                <span aria-hidden className={cn('inline-block h-2 w-2 rounded-full border', plane.enabled ? 'border-current bg-current' : 'border-current')} />
-                {plane.name}
-              </button>
-            )}
-          </span>
-        );
-      })}
+    <span className="flex items-center gap-0.5">
+      <span role="tablist" aria-label={t('sectionPlanes.chipsAria')} className="flex items-center gap-0.5" data-testid={chipsTestId}>
+        {planes.map((plane, index) => {
+          const selected = plane.id === active.id;
+          return (
+            <span key={plane.id} className="inline-flex items-center">
+              {renaming === plane.id ? (
+                <RenameInput plane={plane} onDone={() => setRenaming(null)} />
+              ) : (
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={selected}
+                  tabIndex={selected ? 0 : -1}
+                  data-plane-id={plane.id}
+                  title={t(plane.enabled ? 'sectionPlanes.chipCutting' : 'sectionPlanes.chipPreview', { name: plane.name })}
+                  onClick={() => activate(plane.id)}
+                  onDoubleClick={() => setRenaming(plane.id)}
+                  onKeyDown={(e) => onKeyDown(e, index)}
+                  className={cn(CHIP, selected ? 'bg-overlay-accent-soft text-overlay-accent' : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground')}
+                >
+                  <span aria-hidden className={cn('inline-block h-2 w-2 shrink-0 rounded-full border', plane.enabled ? 'border-current bg-current' : 'border-current')} />
+                  <span className="truncate">{plane.name}</span>
+                </button>
+              )}
+            </span>
+          );
+        })}
+      </span>
       {/* After every chip, not beside the selected one: choosing a plane must not move the others. */}
       <SectionPlaneMenu plane={active} onRename={() => setRenaming(active.id)} />
     </span>

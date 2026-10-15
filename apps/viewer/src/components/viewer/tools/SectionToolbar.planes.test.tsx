@@ -219,6 +219,16 @@ describe('adding, choosing and removing planes (#7545)', () => {
     assert.deepEqual(chipNames(), ['A', 'B']);
   });
 
+  it('the tablist holds tabs only: the plane menu button sits beside it, not inside', () => {
+    renderTool();
+    click(buttonByText(bar(), 'Down (Z)'));
+    addPlane('Side (X)');
+    const tablist = bar().querySelector('[role="tablist"]')!;
+    assert.equal(tablist.querySelectorAll('button').length, tablist.querySelectorAll('[role="tab"]').length, 'every button in the tablist is a tab');
+    assert.ok(bar().querySelector('[data-testid="section-plane-menu"]'), 'the menu is still on the bar');
+    assert.equal(tablist.contains(bar().querySelector('[data-testid="section-plane-menu"]')), false);
+  });
+
   it('Delete on a focused chip removes its plane', () => {
     renderTool();
     click(buttonByText(bar(), 'Down (Z)'));

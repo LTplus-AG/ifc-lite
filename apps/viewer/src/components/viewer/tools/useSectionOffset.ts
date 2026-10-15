@@ -26,7 +26,8 @@ import { sceneLengthUnit, METRES, type LengthUnit } from '@/lib/section/section-
 import { useSectionDistance, type SectionDistance } from './useSectionDistance';
 import { useSectionStep } from './sectionStep';
 
-export type OffsetDatum = 'level' | 'face' | 'alignment' | 'percent';
+/** What the number is measured along: an elevation (`level`), a coordinate on the X or Y axis, a picked face, an alignment's station, or a share of the range. */
+export type OffsetDatum = 'level' | 'x' | 'y' | 'face' | 'alignment' | 'percent';
 
 export interface SectionOffset {
   kind: SectionDistance['kind'];
@@ -58,6 +59,7 @@ export function useSectionOffset(): SectionOffset {
   const models = useViewerStore((s) => s.models);
   const datumValue = useViewerStore((s) => (s.sectionPlane.custom && !s.sectionPlane.custom.alignment ? s.sectionPlane.custom.datum ?? 0 : 0));
   const stepM = useSectionStep((s) => s.stepM);
+  const axis = useViewerStore((s) => s.sectionPlane.axis);
 
   return useMemo<SectionOffset>(() => {
     const speaksLength = distance.kind === 'world' || distance.kind === 'custom';
@@ -67,7 +69,7 @@ export function useSectionOffset(): SectionOffset {
     const unitless = distance.kind === 'percent';
     return {
       kind: distance.kind,
-      datum: distance.kind === 'custom' ? 'face' : distance.kind === 'alignment' ? 'alignment' : unitless ? 'percent' : 'level',
+      datum: distance.kind === 'custom' ? 'face' : distance.kind === 'alignment' ? 'alignment' : unitless ? 'percent' : axis === 'side' ? 'x' : axis === 'front' ? 'y' : 'level',
       value: toField(distance.value),
       onChange: (next) => distance.onChange(next * unit.scale + datum),
       step: unitless ? distance.step : speaksLength ? stepM / unit.scale : stepM,
@@ -78,5 +80,5 @@ export function useSectionOffset(): SectionOffset {
       precision: unitless ? 2 : precisionFor(unit),
       distance,
     };
-  }, [distance, models, datumValue, stepM]);
+  }, [distance, models, datumValue, stepM, axis]);
 }

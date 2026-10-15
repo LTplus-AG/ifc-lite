@@ -37,6 +37,8 @@ export const sectionPlanesEn = {
   'sectionPlanes.offset.label': 'Offset',
   'sectionPlanes.offset.datum.face': 'from face',
   'sectionPlanes.offset.datum.level': 'level',
+  'sectionPlanes.offset.datum.x': 'at X',
+  'sectionPlanes.offset.datum.y': 'at Y',
   'sectionPlanes.offset.datum.alignment': 'station',
   'sectionPlanes.offset.dec': 'Move the plane back by one step',
   'sectionPlanes.offset.inc': 'Move the plane forward by one step',

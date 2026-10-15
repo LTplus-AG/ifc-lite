@@ -180,7 +180,7 @@ export function SectionActivePlaneRow({ compact = false }: { compact?: boolean }
               <ChevronDown aria-hidden className="h-3.5 w-3.5" />
             </button>
           </HudPopoverTrigger>
-          <HudPopoverContent align="start" className="p-1" data-testid="section-storeys">
+          <HudPopoverContent align="start" className="p-1" data-testid="section-storeys" aria-label={t('sectionTool.storeys.title')}>
             <ul aria-label={t('sectionTool.storeys.aria')} className="max-h-64 overflow-y-auto">
               {distance.storeys.map((storey) => {
                 const active = Math.abs(distance.value - storeyCutElevation(storey)) <= STOREY_SNAP_TOLERANCE_M;
@@ -258,7 +258,7 @@ export function SectionActivePlaneRow({ compact = false }: { compact?: boolean }
             <ChevronDown aria-hidden className="h-3 w-3 opacity-70" />
           </button>
         </HudPopoverTrigger>
-        <HudPopoverContent align="center" side="bottom" className="w-64" data-testid="section-cap-popover">
+        <HudPopoverContent align="center" side="bottom" className="w-64" data-testid="section-cap-popover" aria-label={t('sectionTool.cap.label')}>
           <SectionCapControls />
         </HudPopoverContent>
         </>

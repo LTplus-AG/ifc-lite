@@ -156,7 +156,7 @@ test('#6975 CLI appends a real rig directory and reports a regression through gh
     writeFileSync(join(bin, 'gh'), `#!/bin/sh\necho "$1 $2 $3" >> "${log}"\nif [ "$2" = list ]; then if [ -n "$GH_OPEN" ]; then echo '[{"number":77,"title":"${REGRESSION_ISSUE_TITLE}"}]'; else echo '[]'; fi; fi\n`);
     chmodSync(join(bin, 'gh'), 0o755);
     writeFileSync(join(dir, 'profile.json'), profileBytes());
-    const env = { ...process.env, PATH: `${bin}:${process.env.PATH}` };
+    const env: NodeJS.ProcessEnv = { ...process.env, PATH: `${bin}:${process.env.PATH}` };
     delete env.NODE_TEST_CONTEXT;
     const cli = (...args: string[]) => spawnSync(`${root}/node_modules/.bin/tsx`, ['scripts/perf/frame-gpu-night-trend.mts', ...args], { cwd: root, env, encoding: 'utf8', timeout: 60_000 });
     // Seven earlier nights through the pure API (an append CLI only takes a fresh run),

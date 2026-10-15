@@ -18,6 +18,7 @@
 import { decodeNightHistory, type NightAttempt } from './frame-gpu-night-history.js';
 import { decodeNightProfile, sha256 } from './frame-gpu-night-profile.js';
 import { isPhysicalConsole, type PhysicalSessionReceipt } from './frame-gpu-session.js';
+import { isHardwareAdapter } from './hardware-adapter.mjs';
 import { summarizeSamples, type SampleRecord } from './frame-gpu-summary.js';
 
 export interface NightTrendRow extends NightAttempt {
@@ -46,7 +47,6 @@ export interface NightRunInput {
 
 /** A row written a day after its run is a backfill, not a nightly result. */
 export const MAX_APPEND_DELAY_MS = 24 * 3_600_000;
-const SOFTWARE_ADAPTER = /swiftshader|software|llvmpipe/i;
 const REQUIRED_GPU_ROWS = ['orbit', 'hover'].map((scenario) => `${scenario}/gpu_pass_total_ms_p50`);
 
 const record = (value: unknown): Record<string, unknown> =>
@@ -67,8 +67,7 @@ export function sampleAdmissionGaps(sample: SampleRecord): string[] {
   if (foreground.interruptions !== 0 || foreground.visibility !== 'visible' || foreground.focused !== true) {
     gaps.push('foreground was not held for the whole measurement');
   }
-  const vendor = record(meta.adapter).vendor;
-  if (typeof vendor !== 'string' || !vendor || SOFTWARE_ADAPTER.test(JSON.stringify(meta.adapter))) {
+  if (!isHardwareAdapter(meta.adapter)) {
     gaps.push('no hardware adapter identity');
   }
   const timing = record(meta.gpuTiming);

@@ -15,6 +15,7 @@ export function buildHelp(version: string): string {
   Usage: ifc-lite <command> [options]
 
   Commands:
+    doctor    [--json]                           Check CLI runtime, package versions and WASM binary
     info      <file.ifc>                          Model summary (schema, entities, storeys)
     query     <file.ifc> [--type T] [--json]      Query entities by type/properties/quantities
               [--select "IfcWall, Pset_WallCommon.FireRating=2HR"]  IfcOpenShell-style selector (classes union with --type; properties AND with --where)

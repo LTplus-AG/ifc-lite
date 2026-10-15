@@ -42,7 +42,7 @@ import type {
   EntityRelationshipsData,
   QueryBackendMethods,
   QueryDescriptor,
-} from '@ifc-lite/sdk';
+} from '../index.js';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import {
   extractAllEntityAttributes,
@@ -68,13 +68,7 @@ import { foldRelationshipRows } from './backend-query-relationships.js';
 // so this module's consumers are unaffected by where it lives.
 export { expandTypes };
 
-/**
- * Which classes an unfiltered query answers with.
- *
- * Thin alias: the predicate is schema logic and lives in `@ifc-lite/parser`, so
- * the CLI and MCP backends cannot drift apart on it. Kept as a named export
- * here because both packages already publish it under this name.
- */
+/** Shared predicate for unfiltered headless object queries. */
 export const isProductType = isQueryableObjectType;
 
 function createdEntityData(created: CreatedEntity, ref: EntityRef, store: IfcDataStore): EntityData {
@@ -300,29 +294,8 @@ export function createQueryAdapter(
           );
         }
       }
-      // `&&` alone lets a NaN offset/limit through silently: every NaN
-      // comparison is false, so `descriptor.offset > 0` was falsy and the
-      // guard did nothing -- a caller that computed a bad value (e.g.
-      // `Number(userInput)` on a non-numeric string) got back MORE rows
-      // than asked for, with no error. The same falsy-zero shape made
-      // `limit: 0` ("no rows") silently mean "every row" instead. Fail
-      // loudly on a non-finite or negative value instead of quietly
-      // serving the wrong slice, matching the misconfigured-caller
-      // convention this adapter already uses elsewhere (see the `add*`
-      // stubs in headless-backend.ts). `limit: 0` is now a deliberate
-      // empty result.
-      //
-      // No built-in MCP tool reaches this today: `query_entities`
-      // (tools/query.ts) validates `limit`/`offset` as JSON-Schema
-      // integers before its handler runs and does its own pagination via
-      // `paginate()` rather than chaining `.limit()/.offset()` on the
-      // query builder. This guards the public SDK path instead --
-      // `HeadlessLikeBackend` is exported from `./index.js` and
-      // `./browser.js` for programmatic use, and an embedder driving it
-      // through `@ifc-lite/sdk`'s fluent `QueryBuilder` reaches
-      // `descriptor.limit`/`descriptor.offset` directly. Same shape as
-      // the CLI's `headless-backend.ts` (#2298) -- a parallel
-      // implementation, not a shared import, so it needed its own fix.
+      // An explicit zero limit is empty. Reject invalid bounds rather than
+      // quietly serving more rows than the caller requested (#2298).
       if (descriptor.offset != null) {
         if (!Number.isFinite(descriptor.offset) || descriptor.offset < 0) {
           throw new Error(`Invalid offset: ${descriptor.offset} (must be a non-negative finite number)`);

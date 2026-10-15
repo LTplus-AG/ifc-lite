@@ -41,6 +41,32 @@ flowchart TB
     style Auto fill:#f59e0b,stroke:#7c2d12,color:#fff
 ```
 
+## Load STEP data without a viewer
+
+Use `parseModel` for a validated STEP or IFCZIP input and a structured record-scan report. It accepts an `ArrayBuffer` or an exact `Uint8Array` view, including a Node Buffer; file and network I/O stay with your application.
+
+```typescript
+import { parseModel, IfcInputError } from '@ifc-lite/parser';
+
+const bytes = await fetch('model.ifc').then(response => response.arrayBuffer());
+try {
+  const { store, report } = await parseModel(bytes, { label: 'model.ifc' });
+  console.log(store.schemaVersion, store.entityCount);
+  if (report.completeness !== 'complete') {
+    console.warn(report.completeness, report.diagnostics);
+  }
+} catch (error) {
+  if (!(error instanceof IfcInputError)) throw error;
+  console.error(error.code, error.message);
+}
+```
+
+`IfcInputError.code` distinguishes `EMPTY_INPUT`, `INVALID_STEP`, `TRUNCATED_STEP`, `MISSING_DATA`, and `INVALID_ARCHIVE`. The CLI uses the same complete-envelope validation. The existing MCP recovery loader uses `validateStepInput(bytes, label, { envelope: 'signature' })`, which only requires the legacy signature probe and preserves partial-file recovery. A terminator inside a string or comment is not a footer; unterminated lexical input is refused. These checks validate the STEP envelope, not IFC schema conformance. IFCX uses `parseAuto` or `parseIfcx` instead.
+
+`report.completeness` describes record scanning only: `complete` means the scanner reported no refused records, `incomplete` means known records were refused or malformed, and `unknown` means the producer omitted a refusal counter or supplied an invalid count. Unknown is never promoted to complete. `oversizedIdCount` is a count or `null`; `malformedRecordDetected` is a boolean or `null`, because that scanner signal is not an exact malformed-record count. Neither a complete scan nor an empty diagnostic list certifies valid attributes, relationships, or geometry.
+
+Existing tolerant `IfcParser.parseColumnar` behavior is unchanged. Its optional `onScanReport` callback exposes the same report without validating the envelope. Existing `onDiagnostic` string messages remain available.
+
 ## Client-Side Parsing
 
 ### Basic Parsing

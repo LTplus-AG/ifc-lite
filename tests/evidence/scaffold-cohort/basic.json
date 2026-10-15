@@ -1,0 +1,18 @@
+{
+  "runtime": "v24.21.0",
+  "template": "basic",
+  "lockfileVersion": 3,
+  "packageVersions": {
+    "@ifc-lite/data": "6.2.0",
+    "@ifc-lite/parser": "9.5.1"
+  },
+  "npmCi": true,
+  "typecheck": true,
+  "build": true,
+  "generatedParseCommand": true,
+  "verification": {
+    "schema": "IFC4",
+    "IfcDoor": 5,
+    "sha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5"
+  }
+}

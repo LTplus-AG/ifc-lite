@@ -18,8 +18,8 @@ import {
   getInheritanceChainForEntity,
 } from '@ifc-lite/parser';
 import { IFC_ENTITY_NAMES } from '@ifc-lite/data';
-import { entityInfoAcrossSchemas, entityInfoInSchema } from '../schema-tables.js';
-import { foldedEntityCount, foldedTypeCounts, pendingMutationsField, pendingOverlay } from '../overlay.js';
+import { entityInfoAcrossSchemas, entityInfoInSchema } from '@ifc-lite/sdk/headless';
+import { foldedEntityCount, foldedTypeCounts, pendingMutationsField, pendingOverlay } from '@ifc-lite/sdk/headless';
 import type { Tool } from './types.js';
 import { fmtInt, resolveModel, okResult } from './util.js';
 import { loadIfcModel } from '../loader.js';

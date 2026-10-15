@@ -21,7 +21,7 @@ import {
   DEFAULT_MAX_GROUP_MEMBERS,
   DEFAULT_MAX_MATCHES,
 } from './diff-content.js';
-import { foldedTypeCounts, pendingMutationsField, pendingOverlay, type PendingOverlay } from '../overlay.js';
+import { foldedTypeCounts, pendingMutationsField, pendingOverlay, type PendingOverlay } from '@ifc-lite/sdk/headless';
 import type { LoadedModel, ToolContext } from '../context.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import { firstNonBlank } from '../material-naming.js';

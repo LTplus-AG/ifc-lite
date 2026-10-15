@@ -47,6 +47,7 @@ import { startStaticServer } from './browser-static-server.js';
 import { closeBrowserWithTimeout, raceWithTimeout } from './browser-cold-teardown.js';
 import { probeMetadataRenderTrace, waitForMetadataRenderReadiness } from '../../tests/benchmark/metadata-render-readiness.js';
 import { isPhysicalConsole, readPhysicalSession } from './frame-gpu-session.js';
+import { isHardwareAdapter } from './hardware-adapter.mjs';
 import { readHostAdmission } from './frame-gpu-host.js';
 import { collectGpuTiming, gpuTimingSnapshot } from './frame-gpu-timestamps.js';
 import { findWindowsChrome, launchWindowsChrome } from './frame-gpu-chrome.js';
@@ -177,7 +178,7 @@ async function runSample(pair: number, side: Side): Promise<SampleRecord> {
         visibility: document.visibilityState, focused: document.hasFocus() };
     });
     Object.assign(meta, settled, { browser: browser.version() });
-    if (REQUIRE_PHYSICAL && (!settled.adapter?.vendor || /swiftshader|software|llvmpipe/i.test(JSON.stringify(settled.adapter)))) {
+    if (REQUIRE_PHYSICAL && !isHardwareAdapter(settled.adapter)) {
       throw new Error('actual renderer hardware adapter identity missing or software');
     }
     if (settled.drawCalls !== null) rows.push({ fixture: FIXTURE, scenario: 'settled', metric: 'render_draw_calls', value: settled.drawCalls });

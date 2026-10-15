@@ -43,9 +43,10 @@ fn fixture() -> Option<Vec<u8>> {
     }
 }
 
-fn closed_volume(meshes: &[Mesh], frame: &str) -> (f64, f64, f64) {
+fn closed_volume(meshes: &[Mesh], frame: &str) -> (f64, f64, f64, f64, usize) {
     let mut uses = BTreeMap::<([i64; 3], [i64; 3]), (usize, usize)>::new();
     let (mut volume, mut area, mut magnitude) = (0.0, 0.0, 0.0_f64);
+    let (mut perimeter_sum, mut triangles) = (0.0, 0usize);
     for m in meshes {
         volume += ifc_lite_geometry::kernel::mesh_volume::mesh_volume(m);
         for &p in &m.positions {
@@ -64,10 +65,10 @@ fn closed_volume(meshes: &[Mesh], frame: &str) -> (f64, f64, f64) {
             })
         };
         for t in m.indices.chunks_exact(3) {
-            area += (stored(t[1]) - stored(t[0]))
-                .cross(&(stored(t[2]) - stored(t[0])))
-                .norm()
-                * 0.5;
+            let (a, b, c) = (stored(t[0]), stored(t[1]), stored(t[2]));
+            area += (b - a).cross(&(c - a)).norm() * 0.5;
+            perimeter_sum += (b - a).norm() + (c - b).norm() + (a - c).norm();
+            triangles += 1;
             let q = [key(t[0]), key(t[1]), key(t[2])];
             let a: [i128; 3] = std::array::from_fn(|k| i128::from(q[1][k]) - i128::from(q[0][k]));
             let b: [i128; 3] = std::array::from_fn(|k| i128::from(q[2][k]) - i128::from(q[0][k]));
@@ -98,7 +99,7 @@ fn closed_volume(meshes: &[Mesh], frame: &str) -> (f64, f64, f64) {
         uses.values().filter(|&&u| u != (1, 1)).count()
     );
     assert!(volume > 0.0, "{frame}: solid must face outward");
-    (volume, area, magnitude)
+    (volume, area, magnitude, perimeter_sum, triangles)
 }
 
 #[test]
@@ -152,7 +153,7 @@ fn issue_6940_source_cap_and_redundant_openings_close_in_all_frames() {
                     &format!("source offset={offset:?} local={local} IndexOnly={index_only}"),
                 );
             }
-            let mut baseline: Option<(f64, f64, f64)> = None;
+            let mut baseline: Option<(f64, f64, f64, f64, usize)> = None;
             for ids in [Vec::new(), vec![135934], openings.clone()] {
                 let frame = format!("offset={offset:?} local={local} openings={}", ids.len());
                 let voids: FxHashMap<u32, Vec<u32>> = if ids.is_empty() {
@@ -198,8 +199,8 @@ fn issue_6940_source_cap_and_redundant_openings_close_in_all_frames() {
                         ..Mesh::default()
                     })
                     .collect();
-                let (volume, area, magnitude) = closed_volume(&meshes, &frame);
-                if let Some((base_volume, base_area, base_magnitude)) = baseline {
+                let (volume, area, magnitude, perimeter, triangles) = closed_volume(&meshes, &frame);
+                if let Some((base_volume, base_area, base_magnitude, base_perimeter, base_triangles)) = baseline {
                     // Same displacement budget as the lower layer's real-model
                     // oracle: two kernel steps plus two f32 relative-error units.
                     let d = 3.0_f64.sqrt()
@@ -209,8 +210,16 @@ fn issue_6940_source_cap_and_redundant_openings_close_in_all_frames() {
                         (volume - base_volume).abs() <= (area + base_area) * d,
                         "{frame}: redundant opening changed slab volume"
                     );
+                    // #6940: the same area bound as the eight-slab oracle,
+                    // accounting for both tessellations without pinning a diagonal.
+                    let area_tolerance = (perimeter + base_perimeter) * d
+                        + 2.0 * (triangles + base_triangles) as f64 * d.powi(2);
+                    assert!(
+                        (area - base_area).abs() <= area_tolerance,
+                        "{frame}: redundant opening changed slab surface area"
+                    );
                 } else {
-                    baseline = Some((volume, area, magnitude));
+                    baseline = Some((volume, area, magnitude, perimeter, triangles));
                 }
             }
         }

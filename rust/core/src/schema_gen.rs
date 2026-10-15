@@ -184,6 +184,34 @@ impl AttributeValue {
         }
     }
 
+    /// The members of an attribute that holds entity references: a list's
+    /// items, or a bare reference as a one-element slice.
+    ///
+    /// `IfcPropertySetDefinitionSet` is the one defined type in the bundled
+    /// schemas that aggregates entities, and it appears only inside
+    /// `IfcPropertySetDefinitionSelect` (`IfcRelDefinesByProperties.
+    /// RelatingPropertyDefinition`). ISO 10303-21 writes a defined type inside
+    /// a SELECT as a typed parameter, `IFCPROPERTYSETDEFINITIONSET((#1,#2))`,
+    /// which decodes to `[String(name), List(set)]`; that yields the set.
+    /// Exporters also write the set bare, `(#1,#2)`, which is the list case.
+    ///
+    /// Callers choose their own policy for non-reference members: `get_refs`
+    /// skips them, a strict reader can reject them.
+    pub fn as_ref_members(&self) -> Option<&[AttributeValue]> {
+        match self {
+            AttributeValue::EntityRef(_) => Some(std::slice::from_ref(self)),
+            AttributeValue::List(items) => match items.as_slice() {
+                [AttributeValue::String(name), AttributeValue::List(set)]
+                    if name == "IFCPROPERTYSETDEFINITIONSET" =>
+                {
+                    Some(set)
+                }
+                _ => Some(items),
+            },
+            _ => None,
+        }
+    }
+
     /// Check if null/derived
     #[inline]
     pub fn is_null(&self) -> bool {
@@ -332,13 +360,12 @@ impl DecodedEntity {
     }
 
     /// Get entity references from a list attribute. A bare reference is a
-    /// tolerated one-element list; non-reference list members are skipped.
+    /// tolerated one-element list, and an `IfcPropertySetDefinitionSet` typed
+    /// parameter is its set (see [`AttributeValue::as_ref_members`]);
+    /// non-reference list members are skipped.
     pub fn get_refs(&self, index: usize) -> Option<Vec<u32>> {
-        let attr = self.get(index)?;
-        let refs = match attr.as_list() {
-            Some(list) => list.iter().filter_map(AttributeValue::as_entity_ref).collect(),
-            None => vec![attr.as_entity_ref()?],
-        };
+        let members = self.get(index)?.as_ref_members()?;
+        let refs: Vec<u32> = members.iter().filter_map(AttributeValue::as_entity_ref).collect();
         (!refs.is_empty()).then_some(refs)
     }
 }

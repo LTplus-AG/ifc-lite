@@ -68,8 +68,8 @@ pub(super) fn collect_rel_defines_by_properties_link(
     // RelatingPropertyDefinition's IfcPropertySetDefinitionSet alternative is
     // a grouped SET, written inline as `(#20,#22)`; get_ref only recognises a
     // bare ref and silently dropped the whole relationship for that shape.
-    // get_refs accepts both, mirroring the TS/WASM path and #4773's fix for
-    // the same bug in apps/server::extract_relationship. The `get_refs(3)` /
+    // get_refs accepts both, like TS/WASM and #4773's server fix, plus the
+    // typed `IFCPROPERTYSETDEFINITIONSET((…))` (#7681). The `get_refs(3)` /
     // `get_list(2)` fallbacks predate this fix; their origin is undetermined
     // (index 3 isn't RelatingPropertyDefinition in any bundled schema, no
     // fixture exercises them) — preserved conservatively on both branches.

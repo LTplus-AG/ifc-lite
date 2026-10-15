@@ -134,8 +134,11 @@ fn extract_relationship(
     // reference), so calling it unconditionally silently dropped the WHOLE
     // relationship for a grouped `IfcPropertySetDefinitionSet` — every
     // related object lost all properties/quantities from that pset group.
-    // `get_refs` accepts both a bare ref and a list, mirroring the TS/WASM
-    // path's `readRefList` (`columnar-parser-relationships.ts`), which reads
+    // `get_refs` accepts a bare ref, a list and (#7681) the typed
+    // `IFCPROPERTYSETDEFINITIONSET((…))` spelling. For the first two it
+    // mirrors the TS/WASM path's `readRefList`
+    // (`columnar-parser-relationships.ts`; it does not read the typed
+    // spelling), which reads
     // `RelatingPropertyDefinition` as a ref list unconditionally and applies
     // EVERY entry in the group to EVERY related object — reproduced below as
     // the same cross product, not just the first entry.

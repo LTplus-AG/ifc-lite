@@ -7,13 +7,14 @@
 //! a future change has to argue with the name, not just the assertion.
 
 use super::merge_inherited;
-use crate::model::{PropValue, PropertySet, QuantitySet, QuantityValue};
+use crate::model::{PropValue, PropertySet, QuantitySet, QuantityValue, ValueKind};
 
 fn prop(name: &str, value: &str) -> PropValue {
     PropValue {
         name: name.to_string(),
         value: value.to_string(),
         value_type: "IFCLABEL".to_string(),
+        kind: ValueKind::Text,
     }
 }
 

@@ -123,6 +123,20 @@ class FiniteCoverage(unittest.TestCase):
             F.unresolved_cells([horizontal()],[horizontal(x=.5)],
                                {'u':[1,0,0],'v':[0,1,0]},C.TOL,budget)
 
+    def test_7661_positive_triangle_projection_collapse_is_unresolved(self):
+        wall = [[0.,0.,0.],[0.,1.,0.],[0.,0.,1.]]
+        # This real finite triangle has positive area, but lies edge-on to the
+        # first plane's diagnostic projection. Its small X extent admits that
+        # plane bin; losing its 2D area must not silently certify coverage.
+        sliver = [[0.,0.,0.],[0.,0.,1.],[.000001,0.,0.]]
+        with self.assertRaisesRegex(F.CoverageUnresolved,'singular diagnostic projection'):
+            adjudicate([wall,sliver],[wall,sliver],[wall])
+
+    def test_7661_positive_area_outside_float_range_is_unresolved(self):
+        for edge in [1e200,1e-200]:
+            with self.subTest(edge=edge), self.assertRaisesRegex(F.CoverageUnresolved,'diagnostic range'):
+                C.triangles(mesh([[[0.,0.,0.],[edge,0.,0.],[0.,edge,0.]]]))
+
     def test_7661_baseline_absence_requires_strict_finite_distance(self):
         cell = ([(Q(0),Q(0)),(Q(1),Q(0)),(Q(0),Q(1))],
                 [(Q(0),Q(0)),(Q(1),Q(0)),(Q(0),Q(1))],

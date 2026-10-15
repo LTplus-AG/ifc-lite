@@ -157,8 +157,12 @@ def triangles(data):
             continue
         normalized = [float(x/scale) for x in n]
         length = math.sqrt(dot(normalized,normalized))
-        area = float(scale)*length/2
-        require(math.isfinite(area) and area > 0,'Positive triangle area outside representable diagnostic range')
+        try:
+            area = float(scale)*length/2
+        except OverflowError as error:
+            raise finite.CoverageUnresolved('Positive triangle area outside representable diagnostic range') from error
+        if not math.isfinite(area) or area <= 0:
+            raise finite.CoverageUnresolved('Positive triangle area outside representable diagnostic range')
         rows.append((tri,[x/length for x in normalized],area))
     return rows
 
@@ -209,9 +213,10 @@ def union_groups(datasets, analytic=None):
             k = assigned_plane(tri, normal, area, planes)
             p = planes[k]
             poly = Polygon([(dot(p['u'],v),dot(p['v'],v)) for v in tri])
-            require(poly.area > 0,'Positive triangle has singular diagnostic projection')
+            if poly.area <= 0:
+                raise finite.CoverageUnresolved('Positive triangle has singular diagnostic projection')
             if not poly.is_valid:
-                raise ValueError('Invalid projected triangle')
+                raise finite.CoverageUnresolved('Invalid projected triangle')
             polygons[name][k].append(poly)
     return planes, polygons
 
@@ -372,7 +377,7 @@ def main():
     receipt['frame_checks']=frame
     try:
         rows=adjudicate(datasets,analytic)
-    except finite.WorkLimit as error:
+    except finite.CoverageUnresolved as error:
         receipt.update(passed=False,unresolved=str(error),planes=[],summary={})
         save(args.output/'receipt.json',receipt)
         print(json.dumps({'passed':False,'unresolved':str(error)}))

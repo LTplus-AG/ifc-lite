@@ -14,7 +14,11 @@ from shapely.geometry import MultiPoint, Polygon
 from shapely.ops import unary_union
 
 
-class WorkLimit(ValueError):
+class CoverageUnresolved(ValueError):
+    """Finite coverage cannot be certified with the diagnostic representation."""
+
+
+class WorkLimit(CoverageUnresolved):
     """Acceptance remains unresolved when exact arithmetic exhausts its bound."""
 
 
@@ -85,7 +89,7 @@ def affine_lift(uv, projected, donor):
     cx, cy = sub(c, a)
     determinant = bx*cy-by*cx
     if not determinant:
-        raise ValueError('Singular donor parameterization')
+        raise CoverageUnresolved('Singular donor parameterization')
     s, t = (x*cy-y*cx)/determinant, (bx*y-by*x)/determinant
     return tuple(donor[0][k]+s*(donor[1][k]-donor[0][k])+t*(donor[2][k]-donor[0][k]) for k in range(3))
 
@@ -156,7 +160,7 @@ def unresolved_cells(donors, targets, plane, tolerance, budget=None):
         exact_donor = rational_triangle(donor)
         projected = projected_triangle(donor, plane)
         if not area2(projected):
-            raise ValueError('Nonzero donor has singular projected area')
+            raise CoverageUnresolved('Nonzero donor has singular projected area')
         rest = [projected]
         for target, exact_target in exact_targets:
             budget.charge(points=target)

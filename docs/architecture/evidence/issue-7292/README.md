@@ -22,7 +22,8 @@ when a verified oracle cache is supplied.
 
 The CLI's `passed` field and exit status require full conformance and the frame
 checks, including in corpus mode: exit 0 means full PASS, exit 1 means failure,
-and exit 2 means work-bound exhaustion. Localized baseline comparison is a
+and exit 2 means unresolved coverage, including work-bound exhaustion or a
+positive-area triangle with an unrepresentable diagnostic projection. Localized baseline comparison is a
 separate `summary.localized_delta_passed` field. An unchanged preexisting error
 can pass the localized comparison while full conformance and the CLI still fail.
 

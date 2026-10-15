@@ -44,14 +44,15 @@ describe('an MCP model the scan read short says so (#7610)', () => {
 });
 
 describe('an MCP tool that misses an entity in a short model says why (#7610)', () => {
-  async function call(file: string, name: string, args: Record<string, unknown>) {
+  async function call(file: string, name: string, args: Record<string, unknown>, modelIds?: string[]) {
     const registry = new InMemoryModelRegistry();
     registry.add(await loadIfcModel(file, { modelId: 'm' }));
     const transport = new InProcessTransport();
-    void transport.connect(createMCPServer({ version: '0.0.0-test', registry, scope: fullScope() }));
+    const scope = modelIds ? { ...fullScope(), modelIds } : fullScope();
+    void transport.connect(createMCPServer({ version: '0.0.0-test', registry, scope }));
     await transport.send({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 't', version: '0' } } });
     const res = await transport.send({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name, arguments: args } }) as
-      { result: { isError?: boolean; structuredContent?: { code?: string; hint?: string } } };
+      { result: { isError?: boolean; structuredContent?: { code?: string; hint?: string; results?: { ok: boolean; hint?: string }[] } } };
     return res.result;
   }
 
@@ -65,6 +66,20 @@ describe('an MCP tool that misses an entity in a short model says why (#7610)', 
   it('gives no such hint when the model was read in full', async () => {
     const r = await call(fileWith("'it''s'"), 'entity_set_property', { model_id: 'm', express_id: 99, pset: 'P', name: 'N', value: 1 });
     expect(r.structuredContent?.code).toBe('ENTITY_NOT_FOUND');
+    expect(r.structuredContent?.hint ?? '').not.toMatch(/read short/);
+  });
+
+  it('hints inside mutation_batch, which runs its sub-tools without the dispatcher', async () => {
+    const r = await call(fileWith("'it's'"), 'mutation_batch', {
+      model_id: 'm', operations: [{ tool: 'entity_set_property', args: { express_id: 20, pset: 'P', name: 'N', value: 1 } }],
+    });
+    expect(r.structuredContent?.results?.[0]?.ok).toBe(false);
+    expect(r.structuredContent?.results?.[0]?.hint).toMatch(/Model 'm' was read short/);
+  });
+
+  it('never mentions a model the caller may not access', async () => {
+    const r = await call(fileWith("'it's'"), 'bcf_topic_close', { guid: 'no-such-topic' }, ['other']);
+    expect(r.isError).toBe(true);
     expect(r.structuredContent?.hint ?? '').not.toMatch(/read short/);
   });
 });

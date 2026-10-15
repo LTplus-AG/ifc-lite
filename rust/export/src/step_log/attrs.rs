@@ -10,7 +10,7 @@
 
 use crate::generated::step_log_tables::{SlotRow, NAME_LISTS, NONE, SLOT_ROWS};
 use super::lines::split_args;
-use crate::step_record_frame::{record_frame, record_head, RecordFrame};
+use crate::step_record_frame::{opens_record, record_frame, RecordFrame};
 use crate::step_text::escape;
 
 use super::jsval::{js_number_to_string, to_step_real};
@@ -282,13 +282,14 @@ pub(crate) fn split_record(text: &str) -> Option<(RecordFrame, Vec<String>)> {
     Some((frame, args))
 }
 
-/// `argumentListScans`: a line that opens no argument list is not
-/// "unreadable"; one that opens one and is not a whole record, or whose list
-/// does not split, is (#7682).
+/// `argumentListScans`: a line that declares no entity instance is not
+/// "unreadable"; one that does (`#N=`) and is not a whole record the frame
+/// reads (a complex instance, a non-ASCII byte in its head, no `;`), or whose
+/// list does not split, is (#7682).
 pub(crate) fn argument_list_scans(text: &str) -> bool {
     match record_frame(text) {
         Some(frame) => split_args(frame.args(text)).is_some(),
-        None => record_head(text).is_none(),
+        None => !opens_record(text),
     }
 }
 

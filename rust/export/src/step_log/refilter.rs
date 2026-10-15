@@ -8,7 +8,7 @@
 use crate::generated::step_log_tables::{NONREL_AGGREGATE_SLOTS, STYLE_SLOT_BOUNDS};
 
 use super::lines::read_slots;
-use crate::step_record_frame::record_frame;
+use crate::step_record_frame::{opens_record, record_frame};
 
 /// Record types filtered like a relationship (`STYLE_RESCUE_TYPES`).
 const STYLE_RESCUE_TYPES: &[&str] = &[
@@ -27,14 +27,6 @@ pub(crate) enum Filtered {
     Rewrite(String),
     /// Withheld, with the warning that says so.
     Withhold(String),
-}
-
-/// `/^\s*#\d+\s*=/`.
-fn starts_with_record_id(text: &str) -> bool {
-    let t = text.trim_start();
-    let Some(rest) = t.strip_prefix('#') else { return false };
-    let digits = rest.find(|c: char| !c.is_ascii_digit()).unwrap_or(rest.len());
-    digits > 0 && rest[digits..].trim_start().starts_with('=')
 }
 
 /// Whitespace and `/* … */` comments off both ends.
@@ -136,7 +128,7 @@ fn withheld(id: u32, upper: &str, rel: bool) -> String {
 /// records, whose list slots keep their declared lower bound.
 fn relationship(text: &str, excluded: &dyn Fn(u32) -> bool, schema: Option<&str>) -> Option<Filtered> {
     let Some((record_type, args)) = read_slots(text) else {
-        return if starts_with_record_id(text) { None } else { Some(Filtered::Keep) };
+        return if opens_record(text) { None } else { Some(Filtered::Keep) };
     };
     let mut changed = false;
     let mut next = Vec::with_capacity(args.len());

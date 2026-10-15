@@ -66,6 +66,18 @@ function skipTrivia(text: string, i: number): number {
   }
 }
 
+/**
+ * `/^\s*#\d+\s*=/`: the line declares an entity instance, whatever follows the
+ * `=`. A scanner indexes records {@link stepRecordHead} does not read (a
+ * complex instance `#N=(IFCA(..)IFCB(..));`, a non-ASCII character after the
+ * `=` or before the `(`), so a line that opens like this and has no frame is an
+ * UNREADABLE record, never "no record": an edit queued for it is reported, not
+ * passed over (#7682 review).
+ */
+export function opensStepRecord(text: string): boolean {
+  return /^\s*#\d+\s*=/.test(text);
+}
+
 function isKeywordChar(c: string | undefined): boolean {
   return c !== undefined && /[A-Za-z0-9_]/.test(c);
 }

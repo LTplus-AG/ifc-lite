@@ -14,6 +14,7 @@ struct Framed {
 struct Vectors {
     framed: Vec<Framed>,
     refused: Vec<String>,
+    unframed: Vec<String>,
 }
 
 fn vectors() -> Vectors {
@@ -39,6 +40,21 @@ fn shared_vectors_refuse_what_is_not_one_whole_record() {
     assert!(!v.refused.is_empty());
     for text in &v.refused {
         assert_eq!(record_frame(text), None, "{text:?}");
+    }
+}
+
+/// #7682 review: a line that declares an instance but has no frame opens a
+/// record all the same, so an edit on it is reported as unreadable.
+#[test]
+fn shared_vectors_unframed_lines_still_open_a_record() {
+    let v = vectors();
+    assert!(!v.unframed.is_empty());
+    for text in &v.unframed {
+        assert_eq!(record_frame(text), None, "{text:?}");
+        assert!(opens_record(text), "{text:?}");
+    }
+    for text in ["", "IFCWALL($);", "#=IFCWALL($);", "ENDSEC;"] {
+        assert!(!opens_record(text), "{text:?}");
     }
 }
 

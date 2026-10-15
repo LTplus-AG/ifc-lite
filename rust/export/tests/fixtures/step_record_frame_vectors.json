@@ -3,6 +3,7 @@
   "Shared vectors for the STEP record frame (#7682, EXPORT-STEP-1): rust/export/src/step_record_frame.rs and packages/export/src/step-record-frame.ts.",
   "`framed`: [record text, the argument list the frame bounds]. Trivia (STEP whitespace, including vertical tab and form feed, and /* */ comments) is allowed around the `=`, before the `(`, between the `)` and the `;`, and after the `;`.",
   "`refused`: text that is not one whole record, so no frame. U+00A0 is not STEP whitespace.",
+  "`unframed`: lines that declare an entity instance (`/^\\s*#\\d+\\s*=/`) and that a scanner indexes, but that have no frame: a complex instance, a non-ASCII character after the `=` or before the `(`, no `;`. An edit queued for one is reported as unreadable, never passed over (#7682 review).",
   "Run by step_record_frame_tests.rs and packages/export/src/step-record-frame.parity.test.ts."
  ],
  "framed": [
@@ -71,5 +72,11 @@
   "#5=IFCWALL($) /* unterminated ;",
   "#5=IFCWALL;",
   "#5=IFCWALL($) ;"
+ ],
+ "unframed": [
+  "#2=(IFCA('x')IFCB(1));",
+  "#2= IFCWALL('g',$);",
+  "#2=IFCWALL ('g',$);",
+  " #2 = IFCWALL($)"
  ]
 }

@@ -11,11 +11,12 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { frameArgs, stepRecordFrame, stepRecordHead, withFrameArgs } from './step-record-frame.js';
+import { frameArgs, opensStepRecord, stepRecordFrame, stepRecordHead, withFrameArgs } from './step-record-frame.js';
 
 interface Fixture {
   framed: Array<{ text: string; args: string }>;
   refused: string[];
+  unframed: string[];
 }
 
 // NOT guarded by existsSync: a missing fixture means the pin is not enforced.
@@ -43,6 +44,15 @@ describe('STEP record frame parity with the Rust writer (#7682)', () => {
   for (const text of fixture.refused) {
     it(`refuses ${JSON.stringify(text)}`, () => {
       expect(stepRecordFrame(text)).toBeNull();
+    });
+  }
+
+  // #7682 review: a line that declares an instance but has no frame opens a
+  // record all the same, so an edit on it is reported as unreadable.
+  for (const text of fixture.unframed) {
+    it(`has no frame but opens a record: ${JSON.stringify(text)}`, () => {
+      expect(stepRecordFrame(text)).toBeNull();
+      expect(opensStepRecord(text)).toBe(true);
     });
   }
 

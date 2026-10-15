@@ -17,7 +17,7 @@
  */
 
 import { splitTopLevelStepArguments } from './step-argument-parser.js';
-import { frameArgs, stepRecordFrame, stepRecordHead, withFrameArgs } from './step-record-frame.js';
+import { frameArgs, opensStepRecord, stepRecordFrame, withFrameArgs } from './step-record-frame.js';
 import { getRealTypedSlots } from './attribute-real-slots.js';
 import { retypeStepLine } from './retype.js';
 import { attrIndex, stepSourceSchema } from './subset-entity-reader.js';
@@ -225,15 +225,16 @@ export function applySourceLineMutationsReported(
 /**
  * Does this line's own argument list scan into slots?
  *
- * Scoped to the arguments deliberately. Text that opens no `#N=CLASS(` at all
- * is a different fact, and one every writer here already returns untouched
- * without claiming anything. A line that opens an argument list and is not one
- * whole record (`stepRecordFrame`), or whose list does not split, is
+ * Scoped to the arguments deliberately. Text that declares no entity instance
+ * at all is a different fact, and one every writer here already returns
+ * untouched without claiming anything. A line that does (`#N=`) and is not one
+ * whole record `stepRecordFrame` reads (a complex instance, a non-ASCII
+ * character in its head, no `;`), or whose list does not split, is
  * unreadable: the edits queued for it were dropped (#7682).
  */
 function argumentListScans(entityText: string): boolean {
   const frame = stepRecordFrame(entityText);
-  if (frame === null) return stepRecordHead(entityText) === null;
+  if (frame === null) return !opensStepRecord(entityText);
   return splitTopLevelStepArguments(frameArgs(entityText, frame)) !== null;
 }
 

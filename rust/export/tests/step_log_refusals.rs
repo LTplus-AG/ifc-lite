@@ -69,3 +69,30 @@ fn a_create_without_its_payload_is_refused_not_dropped_with_its_edits() {
     );
     assert!(err.contains("CREATE_ENTITY #2"), "{err}");
 }
+
+/// #7682 (review of EXPORT-STEP-1): core's scanner indexes records the record
+/// frame does not read: a complex instance, and a non-ASCII byte (here NBSP)
+/// after the `=` or before the `(`. An edit queued for one is dropped, and it
+/// must be REPORTED as an unreadable record, not passed over as "no argument
+/// list" with an empty warning list.
+#[test]
+fn an_edit_on_an_indexed_record_the_frame_cannot_read_is_reported_7682() {
+    let positional = r#"{"type":"UPDATE_POSITIONAL_ATTRIBUTE","entityId":2,"attributeName":"@0","newValue":"y"}"#;
+    let named = r#"{"type":"UPDATE_ATTRIBUTE","entityId":2,"attributeName":"Name","newValue":"y"}"#;
+    for (record, mutation) in [
+        ("#2=(IFCA('x')IFCB(1));", positional),
+        ("#2=(IFCA('x')IFCB(1));", named),
+        ("#2=\u{a0}IFCWALL('0uK8j9R5T5E8Gf7Ybq5ZpA',$,'Wall B',$,$,$,$,$,$);", named),
+        ("#2=IFCWALL\u{a0}('0uK8j9R5T5E8Gf7Ybq5ZpA',$,'Wall B',$,$,$,$,$,$);", named),
+    ] {
+        let source = SOURCE.replace("ENDSEC;\nEND", &format!("{record}\nENDSEC;\nEND"));
+        let log = MutationLog::from_json(&format!(r#"{{"mutations":[{mutation}]}}"#)).unwrap();
+        let (out, stats) = export_step_with_log(source.as_bytes(), &StepOptions::default(), &log).unwrap();
+        assert!(out.contains(record), "{record}: the record is written as the source has it\n{out}");
+        assert!(
+            stats.warnings.iter().any(|w| w.starts_with("Entity #2 ") && w.contains("could not be read as a list of attributes")),
+            "{record} + {mutation}: the dropped edit is reported, got {:?}",
+            stats.warnings
+        );
+    }
+}

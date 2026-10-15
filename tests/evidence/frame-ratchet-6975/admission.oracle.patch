@@ -1,0 +1,11 @@
+diff --git a/scripts/perf-ratchet/measure-browser-frames.mjs b/scripts/perf-ratchet/measure-browser-frames.mjs
+--- a/scripts/perf-ratchet/measure-browser-frames.mjs
++++ b/scripts/perf-ratchet/measure-browser-frames.mjs
+@@ -61,6 +61,7 @@
+  * @param {{ evidence: unknown, commit: string, measuredAt?: string }} opts
+  */
+ export function buildMeasured({ evidence, commit, measuredAt = new Date().toISOString() }) {
++  requireFrameEvidence(evidence);
+   const gated = new Set(RATCHETED_FRAME_METRICS);
+   const metrics = [];
+   const informational = [];

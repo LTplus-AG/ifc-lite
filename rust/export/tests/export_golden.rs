@@ -4,7 +4,9 @@
 
 //! Export golden corpus (#7671, charter #7670 §2 T3, gate G8).
 //!
-//! Every export format over a small fixture set, each output pinned as an
+//! Every export format over a small fixture set (the IFC-bytes exporters, and
+//! the `*_from_meshes` GLB/COLLADA/KMZ writers over the native pipeline's
+//! meshes), each output pinned as an
 //! FNV-1a 64 hash in `golden/<format>.json`. A refactor (class R) must leave
 //! every pin it can reach unchanged; a behaviour change (class X) re-pins only
 //! the formats that moved and says why per case. See `support/golden.rs` for
@@ -69,6 +71,17 @@ fn keys(suffixes: &[&str]) -> Vec<String> {
 /// A `Result` output: the bytes, or the refusal text, so a changed refusal moves the pin too.
 fn bytes_or_refusal<E: std::fmt::Display>(r: Result<Vec<u8>, E>) -> Vec<u8> {
     r.unwrap_or_else(|e| format!("REFUSED: {e}").into_bytes())
+}
+
+/// `bytes` with the crate version replaced by a fixed token. USD's `generator`
+/// and LandXML's `<Application version>` embed it, so without this every
+/// release's version bump would move their pins with no output change. The
+/// assertion keeps the normalisation from silently stopping to apply.
+fn without_version(format: &str, bytes: Vec<u8>) -> Vec<u8> {
+    let text = String::from_utf8(bytes).expect("a versioned output is text");
+    let version = env!("CARGO_PKG_VERSION");
+    assert!(text.contains(version), "{format}: the crate version {version} no longer appears; drop the normalisation");
+    text.replace(version, "<CRATE_VERSION>").into_bytes()
 }
 
 /// One output per fixture.
@@ -175,7 +188,7 @@ fn obj() {
 
 #[test]
 fn usd() {
-    per_fixture("usd", |bytes| export_usd(bytes, &UsdOptions::default()).into_bytes());
+    per_fixture("usd", |bytes| without_version("usd", export_usd(bytes, &UsdOptions::default()).into_bytes()));
 }
 
 #[test]
@@ -232,7 +245,93 @@ fn landxml_terrain() {
             continue;
         }
         let export = try_export_landxml_terrain(&bytes, &ids, &LandXmlTerrainOptions::new(date, time));
-        g.record(key, &bytes_or_refusal(export.map(|e| e.xml.into_bytes()).map_err(|r| r.reason)));
+        let xml = export.map(|e| without_version("landxml-terrain", e.xml.into_bytes()));
+        g.record(key, &bytes_or_refusal(xml.map_err(|r| r.reason)));
     }
     g.finish(&["bonsai-terrain".to_string()]);
+}
+
+#[test]
+fn jsonld() {
+    per_fixture("jsonld", |bytes| export_jsonld(bytes, &JsonLdOptions::default()).into_bytes());
+}
+
+#[test]
+fn ifcx() {
+    per_fixture("ifcx", |bytes| export_ifc5(bytes, &Ifc5Options::default()).into_bytes());
+}
+
+/// The `*_from_meshes` exporters take the viewer's flattened mesh buffers, not
+/// IFC bytes. The buffers here are the native pipeline's meshes (Z-up,
+/// zero origins), flattened the way `exportGlbFromMeshes` / `exportKmzFromMeshes`
+/// receive them: a byte oracle of the writers over realistic input, not of the
+/// viewer's frame conversion.
+struct MeshBuffers {
+    positions: Vec<f32>,
+    normals: Vec<f32>,
+    indices: Vec<u32>,
+    vertex_counts: Vec<u32>,
+    index_counts: Vec<u32>,
+    colors: Vec<f32>,
+    origins: Vec<f64>,
+    express_ids: Vec<u32>,
+}
+
+fn mesh_buffers(content: &[u8]) -> MeshBuffers {
+    let meshes = ifc_lite_processing::process_geometry(content).meshes;
+    let mut b = MeshBuffers {
+        positions: Vec::new(),
+        normals: Vec::new(),
+        indices: Vec::new(),
+        vertex_counts: Vec::new(),
+        index_counts: Vec::new(),
+        colors: Vec::new(),
+        origins: Vec::new(),
+        express_ids: Vec::new(),
+    };
+    for m in &meshes {
+        b.positions.extend_from_slice(&m.positions);
+        b.normals.extend_from_slice(&m.normals);
+        b.indices.extend_from_slice(&m.indices);
+        b.vertex_counts.push((m.positions.len() / 3) as u32);
+        b.index_counts.push(m.indices.len() as u32);
+        b.colors.extend_from_slice(&m.color);
+        b.origins.extend_from_slice(&[0.0; 3]);
+        b.express_ids.push(m.express_id);
+    }
+    b
+}
+
+#[test]
+fn glb_from_meshes() {
+    per_fixture("glb-from-meshes", |bytes| {
+        let b = mesh_buffers(bytes);
+        let glb = try_export_glb_from_meshes(
+            &b.positions, &b.normals, &b.indices, &b.vertex_counts, &b.index_counts, &b.colors, &b.origins,
+            &b.express_ids, true, true, false,
+        );
+        bytes_or_refusal(glb.map(|(glb, _)| glb))
+    });
+}
+
+#[test]
+fn collada() {
+    per_fixture("collada", |bytes| {
+        let b = mesh_buffers(bytes);
+        bytes_or_refusal(try_export_collada_from_meshes(
+            &b.positions, &b.normals, &b.indices, &b.vertex_counts, &b.index_counts, &b.colors, &b.origins,
+        ))
+    });
+}
+
+#[test]
+fn kmz() {
+    // A fixed placement, so the KML carries a real location and heading.
+    let opts = KmzOptions { latitude: 47.0, longitude: 8.0, altitude: 400.0, x_axis_abscissa: Some(0.6), x_axis_ordinate: Some(0.8), ..KmzOptions::default() };
+    per_fixture("kmz", |bytes| {
+        let b = mesh_buffers(bytes);
+        bytes_or_refusal(try_export_kmz_collada_from_meshes(
+            &b.positions, &b.normals, &b.indices, &b.vertex_counts, &b.index_counts, &b.colors, &b.origins, &opts,
+        ))
+    });
 }

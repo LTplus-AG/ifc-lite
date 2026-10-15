@@ -3,8 +3,8 @@
   "repin": "IFC_LITE_REPIN_GOLDEN=1 cargo test -p ifc-lite-export --features parquet-bos --test export_golden -- --exact landxml_terrain",
   "cases": {
     "bonsai-terrain": {
-      "fnv1a64": "eaaea7aaccc92174",
-      "bytes": 1373
+      "fnv1a64": "518b3b0249f2d4e6",
+      "bytes": 1382
     }
   }
 }

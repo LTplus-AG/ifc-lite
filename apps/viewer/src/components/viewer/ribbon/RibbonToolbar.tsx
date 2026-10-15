@@ -37,6 +37,8 @@ import { AnalyzeTab } from './tabs/AnalyzeTab';
 import { AuthorTab } from './tabs/AuthorTab';
 import { RibbonSwitchNotice } from './RibbonSwitchNotice';
 import { useRibbonContextualTab } from './useRibbonContextualTab';
+import { RibbonCommandSmallButton } from './command-button';
+import { Settings } from '@/icons';
 import { emitOpenCommandPalette } from '@/lib/tours/events';
 
 const RIBBON_TABS: { id: RibbonTabId; labelKey: TranslationKey }[] = [
@@ -157,7 +159,7 @@ export function RibbonToolbar({ onShowShortcuts }: RibbonToolbarProps = {} as Ri
             reading position and slides sideways whenever the tab set
             changes. Docked to the right it lands where a search field is
             looked for, beside the rest of the always-on chrome. */}
-        <div className="mr-2">
+        <div className="mr-2 min-w-0 [&>div]:max-w-full">
           <SearchInline />
         </div>
 
@@ -168,7 +170,7 @@ export function RibbonToolbar({ onShowShortcuts }: RibbonToolbarProps = {} as Ri
             regardless of the active tab or collapse state. */}
         <ExportChangesButton surface="ribbon" />
 
-        <div className="ml-1 flex items-center gap-1 border-l border-zinc-200 pl-2 dark:border-zinc-700/60">
+        <div className="ml-1 flex shrink-0 items-center gap-1 border-l border-zinc-200 pl-2 dark:border-zinc-700/60">
           <Button
             variant="ghost"
             size="sm"
@@ -179,6 +181,7 @@ export function RibbonToolbar({ onShowShortcuts }: RibbonToolbarProps = {} as Ri
             {t('ribbon.commands')}
             <kbd className="text-xs text-muted-foreground">{t('ribbon.commandsShortcut')}</kbd>
           </Button>
+          <RibbonCommandSmallButton commandId="pref:settings" icon={Settings} className="h-8 w-auto shrink-0 whitespace-nowrap px-2 text-xs" />
           <Tooltip>
             <TooltipTrigger asChild>
               <div>

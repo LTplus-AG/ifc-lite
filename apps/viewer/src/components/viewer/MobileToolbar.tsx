@@ -246,6 +246,7 @@ export function MobileToolbar() {
         </DropdownMenuTrigger>
         <DropdownMenuContent data-mobile-command-menu align="end" className="w-64 max-h-[80vh] overflow-y-auto">
           {menuItem('ui:commands')}
+          {menuItem('pref:settings')}
           <DropdownMenuSeparator />
           {/* Walk Mode */}
           <DropdownMenuCheckboxItem

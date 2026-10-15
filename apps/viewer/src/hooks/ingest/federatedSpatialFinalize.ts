@@ -14,10 +14,19 @@ import { alignGeometryToReference, extractModelSpatialPlacement, findReferenceSp
 import { capturePreAlignment } from './federationRealign';
 import { applyLandXmlRenderedLineUpdates, buildLandXmlRenderedLineUpdates } from './landXmlSpatialLines';
 import type { FederatedLandXmlStreamingFinalization } from './federatedLandXmlStreaming';
+import { unknownVerticalPolicy, type LandXmlGeorefAssumption, type LandXmlGeorefAssumptions } from './landXmlGeorefAssumptions';
+import { landXmlAssumptionsApplied } from './sourceSpatialReference';
 
 export interface FederatedSpatialFinalizeResult {
   preAlignment?: PreAlignmentSnapshot;
   federationAlignmentStatus: FederatedModel['federationAlignmentStatus'];
+  /** LandXML only, and only when non-empty: the assumptions the placement actually rests on. */
+  landXmlAssumptionsApplied?: readonly LandXmlGeorefAssumption[];
+}
+
+/** The model-record patch for the assumptions a placement used; empty when none were needed. */
+function appliedPatch(applied: readonly LandXmlGeorefAssumption[] | undefined): Pick<FederatedSpatialFinalizeResult, 'landXmlAssumptionsApplied'> {
+  return applied && applied.length > 0 ? { landXmlAssumptionsApplied: applied } : {};
 }
 
 /** Keep the index-aligned restore baseline in lock-step with reframe clipping. */
@@ -90,6 +99,8 @@ export async function finalizeFederatedSpatialPlacement(options: {
   landXmlDocument?: LandXmlTinDocument;
   postAlignmentReframe?: boolean;
   federatedLandXmlStreamingPlan?: FederatedLandXmlStreamingFinalization;
+  /** The user's LandXML georeferencing assumptions for this load; absent means none. */
+  landXmlAssumptions?: Partial<LandXmlGeorefAssumptions>;
   isCurrent(): boolean;
   setProgress(progress: { phase: string; percent: number }): void;
 }): Promise<FederatedSpatialFinalizeResult | null> {
@@ -106,12 +117,14 @@ export async function finalizeFederatedSpatialPlacement(options: {
     // complete semantic document is available.
     const source = options.federatedLandXmlStreamingPlan.sourcePlacement;
     const reference = options.federatedLandXmlStreamingPlan.referencePlacement;
+    const applied = options.federatedLandXmlStreamingPlan.landXmlAssumptionsApplied;
     if (options.landXmlDocument && source && reference) {
       const renderedLines = await buildLandXmlRenderedLineUpdates(
         options.landXmlDocument,
         source.spatialReference,
         reference.spatialReference,
         reference.coordinateInfo,
+        applied?.includes('sharedVerticalDatum') ? 'assume-compatible' : 'refuse',
       );
       if (!options.isCurrent()) return null;
       applyLandXmlRenderedLineUpdates(renderedLines);
@@ -127,6 +140,7 @@ export async function finalizeFederatedSpatialPlacement(options: {
     return {
       preAlignment: options.federatedLandXmlStreamingPlan.preAlignment,
       federationAlignmentStatus: options.federatedLandXmlStreamingPlan.federationAlignmentStatus,
+      ...appliedPatch(applied),
     };
   }
   const reference = findReferenceSpatialModel()?.placement ?? null;
@@ -136,11 +150,14 @@ export async function finalizeFederatedSpatialPlacement(options: {
     : extractModelSpatialPlacement(options.dataStore, options.geometry.coordinateInfo, mutation);
   let preAlignment: PreAlignmentSnapshot | undefined;
   let federationAlignmentStatus: FederatedModel['federationAlignmentStatus'] = 'none';
+  // Only a LandXML load carries assumptions; every other format stays fail-closed.
+  const unknownVertical = options.landXmlDocument ? unknownVerticalPolicy(options.landXmlAssumptions) : 'refuse';
   if (reference && parsed) {
     options.setProgress({ phase: 'Aligning georeferenced model', percent: 90 });
     preAlignment = capturePreAlignment(options.geometry);
     const status = await alignGeometryToReference(options.geometry, parsed, reference, {
       allowEmptyGeometry: hasLandXmlSpatialRecords(options.landXmlDocument),
+      unknownVertical,
     });
     if (!options.isCurrent()) return null;
     federationAlignmentStatus = status;
@@ -154,7 +171,7 @@ export async function finalizeFederatedSpatialPlacement(options: {
     if (options.landXmlDocument && (status === 'same-crs' || status === 'reprojected' || status === 'identity')) {
       const renderedLines = await buildLandXmlRenderedLineUpdates(
         options.landXmlDocument,
-        parsed.spatialReference, reference.spatialReference, reference.coordinateInfo,
+        parsed.spatialReference, reference.spatialReference, reference.coordinateInfo, unknownVertical,
       );
       if (!options.isCurrent()) return null;
       applyLandXmlRenderedLineUpdates(renderedLines);
@@ -175,6 +192,7 @@ export async function finalizeFederatedSpatialPlacement(options: {
       const warnings = reframeLandXmlGeometry(options.geometry, options.landXmlDocument, renderFrame, {
         anchor: reference?.spatialReference ?? null,
         aligned: federationAlignmentStatus === 'same-crs' || federationAlignmentStatus === 'reprojected' || federationAlignmentStatus === 'identity',
+        assumptions: options.landXmlAssumptions,
       });
       // `reframeLandXmlGeometry` may clip components. The baseline captured
       // before spatial alignment is index-addressed, so retain exactly the
@@ -184,5 +202,7 @@ export async function finalizeFederatedSpatialPlacement(options: {
       for (const warning of warnings) toast.info(warning);
     }
   }
-  return { preAlignment, federationAlignmentStatus };
+  const applied = options.landXmlDocument
+    ? landXmlAssumptionsApplied(options.spatialReference, reference?.spatialReference, federationAlignmentStatus) : undefined;
+  return { preAlignment, federationAlignmentStatus, ...appliedPatch(applied) };
 }

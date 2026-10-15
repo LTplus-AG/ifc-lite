@@ -9,6 +9,8 @@ import { useViewerStore, type FederatedModel } from '@/store';
 import type { TreeNode, UnifiedStorey, HierarchySortMode } from './types';
 import { readStoredSortMode, persistSortMode } from './hierarchy-sort-storage';
 import { useEffectiveMaterialStores } from '@/hooks/useEffectiveMaterialStores';
+import { usePresentationLayerBuilder } from './usePresentationLayerBuilder';
+import { presentationMetadataReady } from './presentationMetadataReady';
 import {
   buildUnifiedStoreys,
   getUnifiedStoreyElements as getUnifiedStoreyElementsFn,
@@ -210,6 +212,11 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
   const { stores: materialSourceStores, ready: materialReady } = useEffectiveMaterialStores(
     models, ifcDataStore, groupingMode === 'material',
   );
+  const loading = useViewerStore((state) => state.loading);
+  const presentationLayers = usePresentationLayerBuilder(groupingMode === 'presentation-layers');
+  const builderReady = (groupingMode !== 'material' || materialReady) && presentationLayers.ready;
+  const groupingReady = builderReady && (groupingMode !== 'presentation-layers'
+    || presentationMetadataReady(models, ifcDataStore, loading));
   const authoredProducts = useMemo<AuthoredProduct[]>(() => {
     const out: AuthoredProduct[] = [];
     const state = useViewerStore.getState();
@@ -240,14 +247,14 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
   // visible rows and never calls the builder.
   // hiddenEntities intentionally NOT in deps - visibility computed lazily.
   const structuralTree = useMemo(
-    (): TreeNode[] => groupingMode === 'material' && !materialReady ? [] : buildTreeForGrouping(
+    (): TreeNode[] => !builderReady ? [] : buildTreeForGrouping(
       groupingMode, models, ifcDataStore, EXPAND_ALL, isMultiModel, unifiedStoreys, sortMode,
       geometricIds, classTreeIds, authoredProducts, groupFilter, geometryReadyModelIds,
-      georefMutations, mutationViews, materialSourceStores,
+      georefMutations, mutationViews, materialSourceStores, presentationLayers.builder,
     ),
     [groupingMode, models, ifcDataStore, isMultiModel, unifiedStoreys, sortMode,
       geometricIds, classTreeIds, authoredProducts, groupFilter, geometryReadyModelIds,
-      georefMutations, mutationViews, mutationVersion, materialSourceStores, materialReady],
+      georefMutations, mutationViews, mutationVersion, materialSourceStores, builderReady, presentationLayers.builder],
   );
   const treeIndex = useMemo(() => indexHierarchyTree(structuralTree), [structuralTree]);
   const getExpandedTreeForReveal = useCallback(() => structuralTree, [structuralTree]);
@@ -283,7 +290,7 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
   // Get all elements for a node (handles type groups, ifc-type, unified storeys, single storeys, model contributions, and elements)
   const getNodeElements = useCallback((node: TreeNode): number[] => {
     if (node.type === 'type-group' || node.type === 'ifc-type' || node.type === 'material-group' ||
-        node.type === 'group' || node.type === 'group-member') {
+        node.type === 'group' || node.type === 'presentation-layer' || node.type === 'group-member') {
       // GlobalIds are pre-stored on the node during tree construction — O(1).
       // For 'group' rows these are the RESOLVED member geometry ids (#1622).
       return node.globalIds;
@@ -361,7 +368,9 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
     groupFilter,
     setGroupFilter,
     unifiedStoreys,
-    materialReady,
+    groupingReady,
+    presentationLayerError: presentationLayers.error,
+    retryPresentationLayers: presentationLayers.retry,
     treeData,
     filteredNodes,
     storeysNodes,

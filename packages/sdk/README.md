@@ -85,7 +85,9 @@ Also exported: `BimHost` (viewer side), `RemoteBackend`, `MessagePortTransport`,
 
 ## Shared headless host reads
 
-Host adapters can import `createQueryAdapter` and `overlayFromView` from `@ifc-lite/sdk/headless`. Supply the parsed store, model ID and getters for the current overlay and mutation view; reads then include pending edits, creations, deletions and relationship changes. MCP consumes this shared implementation. This low-level adapter performs no file I/O and does not initialize geometry.
+Host adapters can import `createQueryAdapter` and `overlayFromView` from `@ifc-lite/sdk/headless`. Supply the parsed store, model ID and getters for the current overlay and mutation view; reads then include pending edits, creations, deletions and relationship changes. CLI and MCP consume this shared implementation. This low-level adapter performs no file I/O and does not initialize geometry.
+
+Raw hosts can compose `HeadlessBackend` with explicit model-ID aliases for compatibility. `openModel` sessions use one model ID. `createQueryAdapter` accepts optional pagination-error and type-property normalization policies so host adapters share the live-read implementation while retaining their existing scalar/error contracts.
 
 ## Native Review facts
 

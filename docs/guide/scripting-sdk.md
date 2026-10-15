@@ -285,9 +285,11 @@ Use `model.capability('store.roomCommand')` before offering a backend operation.
 
 `close()` is idempotent and clears preparation caches. Capability checks then report unsupported with a closed-session reason. Retained backend queries and mutation namespaces then throw `HeadlessSessionClosedError` with code `SESSION_CLOSED`. In-flight injected geometry preparation rechecks the session before it can commit. Closing does not revoke the returned source store or pure helpers that operate on caller-supplied data. Existing MCP constructors and embedded/remote SDK entry points retain their behavior.
 
+The CLI and MCP compose the shared `@ifc-lite/sdk/headless` implementation. Query reads, pending mutations, standard exports, and model identity checks share one implementation. CLI-specific authoring, schedules, spaces, and energy exports remain host adapters; explicit aliases preserve its existing model-ID spellings.
+
 ## Embedding programmatically
 
-Host adapters can reuse the live-overlay query implementation from `@ifc-lite/sdk/headless`: `createQueryAdapter` accepts the parsed store, model ID and getters for the current pending overlay and mutation view. `overlayFromView` derives that overlay from an existing `MutablePropertyView`. MCP consumes these SDK-owned readers, so source records, queued creations, deletions, retypes and relationships share one query implementation. No renderer or geometry runtime is initialized by the read adapter.
+Host adapters can reuse the live-overlay query implementation from `@ifc-lite/sdk/headless`: `createQueryAdapter` accepts the parsed store, model ID and getters for the current pending overlay and mutation view. `overlayFromView` derives that overlay from an existing `MutablePropertyView`. CLI and MCP consume these SDK-owned readers, so source records, queued creations, deletions, retypes and relationships share one query implementation. No renderer or geometry runtime is initialized by the read adapter.
 
 Create a `BimContext` yourself with `createBimContext`. It needs either a local `backend` (viewer-embedded) or a `transport` (connected to a running viewer):
 

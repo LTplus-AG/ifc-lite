@@ -4,7 +4,7 @@
 
 /**
  * Regression for #3502: `refIds()` (the `'#42'` reference parser inside
- * `foldQueuedRelated`, `query-overlay-relations.ts`) used
+ * the shared SDK relationship adapter) used
  * `Number.parseInt(trimmed.slice(1), 10)`, which stops at the first
  * non-digit character. A malformed relationship end — `#42junk`, `#42.5` —
  * resolved to express id 42 instead of being rejected, so a near-miss
@@ -24,7 +24,7 @@ import { HeadlessBackend } from './headless-backend.js';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SAMPLE_IFC = join(__dirname, '../../../apps/viewer/public/samples/building-architecture.ifc');
 
-describe('foldQueuedRelated / refIds — #3502', () => {
+describe('live relationship reference folding — #3502', () => {
   it('rejects a near-miss reference with trailing garbage instead of parsing its numeric prefix', async () => {
     const store = await loadIfcFile(SAMPLE_IFC);
     const backend = new HeadlessBackend(store, 'building-architecture.ifc');

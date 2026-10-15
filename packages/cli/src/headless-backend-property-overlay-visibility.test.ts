@@ -18,7 +18,7 @@
  * overlay folding" out of scope. Fixed here via `MutablePropertyView`'s own
  * `getForEntity()`/`getQuantitiesForEntity()` (the same merge
  * `StepExporter` already reads for `bim.export.ifc()`), through the new
- * `overlayProperties`/`overlayQuantities` helpers in `query-overlay.ts`.
+ * the shared live-read adapter in `@ifc-lite/sdk/headless`.
  */
 
 import { describe, expect, it } from 'vitest';

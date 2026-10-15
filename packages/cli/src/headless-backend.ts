@@ -39,18 +39,18 @@ export function normalizePropertyValue(value: unknown): string | number | boolea
 }
 
 export class HeadlessBackend implements BimBackend {
-  readonly model: BimBackend['model'];
-  readonly query: BimBackend['query'];
-  readonly selection: BimBackend['selection'];
-  readonly mutate: BimBackend['mutate'];
-  readonly style: BimBackend['style'];
-  readonly spatial: BimBackend['spatial'];
-  readonly export: BimBackend['export'];
-  readonly lens: BimBackend['lens'];
-  readonly files: BimBackend['files'];
-  readonly schedule: BimBackend['schedule'];
-  readonly structural: BimBackend['structural'];
-  readonly cost: BimBackend['cost'];
+  readonly model: NonNullable<BimBackend['model']>;
+  readonly query: NonNullable<BimBackend['query']>;
+  readonly selection: NonNullable<BimBackend['selection']>;
+  readonly mutate: NonNullable<BimBackend['mutate']>;
+  readonly style: NonNullable<BimBackend['style']>;
+  readonly spatial: NonNullable<BimBackend['spatial']>;
+  readonly export: NonNullable<BimBackend['export']>;
+  readonly lens: NonNullable<BimBackend['lens']>;
+  readonly files: NonNullable<BimBackend['files']>;
+  readonly schedule: NonNullable<BimBackend['schedule']>;
+  readonly structural: NonNullable<BimBackend['structural']>;
+  readonly cost: NonNullable<BimBackend['cost']>;
   readonly store: StoreBackendMethods;
   readonly spaces: SpacesBackendMethods;
   viewer: BimBackend['viewer'];

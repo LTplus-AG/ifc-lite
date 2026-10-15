@@ -115,10 +115,11 @@ smallvec = "1.13"
 thiserror.workspace = true
 
 # Structured diagnostics, only behind the `observability` feature (dep:tracing
-# keeps it out of default builds entirely). Package-local on purpose: the
-# workspace root does not force tracing on every crate. ifc-lite-processing
-# already depends on tracing unconditionally, so enabling the feature adds no
-# new crate to consumers that use both.
+# keeps it out of default builds entirely). The version comes from the workspace,
+# whose entry has `default-features = false` and forces nothing on a crate that
+# does not enable `observability`. ifc-lite-processing already depends on
+# tracing unconditionally, so enabling the feature adds no new crate to
+# consumers that use both.
 tracing = { workspace = true, optional = true, features = ["std", "attributes"] }
 
 # Pure-Rust CSG kernel (`kernel/`) — exact geometric predicates.

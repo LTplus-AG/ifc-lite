@@ -33,8 +33,8 @@ function run(root) {
   }
 }
 
-function rootCargoToml(crateVersion, { depCount = 6 } = {}) {
-  const names = ['core', 'geometry', 'processing', 'clash', 'export', 'wasm'].slice(0, depCount);
+function rootCargoToml(crateVersion, { depCount = 7 } = {}) {
+  const names = ['core', 'geometry', 'processing', 'clash', 'export', 'wasm', 'landxml'].slice(0, depCount);
   const deps = names.map((n) => `ifc-lite-${n} = { version = "${crateVersion}", path = "rust/${n}" }`).join('\n');
   return `[workspace]\nmembers = ["rust/core"]\n\n[workspace.package]\nversion = "${crateVersion}"\nedition = "2021"\n\n[workspace.dependencies]\n${deps}\n`;
 }
@@ -43,8 +43,12 @@ function rootCargoToml(crateVersion, { depCount = 6 } = {}) {
  * @param {object} opts
  * @param {string} opts.npmVersion highest workspace package version
  * @param {string} opts.crateVersion what the Rust manifests actually carry
+ * @param {boolean|'inherit'} opts.memberDeps `true`: each member carries an
+ *   explicit version literal; `'inherit'`: each member inherits from the root
+ *   table (`ifc-lite-core.workspace = true`, the layout since #7672); `false`:
+ *   no internal dependency at all
  */
-function makeTree(t, { npmVersion = '6.0.1', crateVersion = '6.0.1', offsetFile, depCount = 6, memberDeps = true, packageCount = 22 } = {}) {
+function makeTree(t, { npmVersion = '6.0.1', crateVersion = '6.0.1', offsetFile, depCount = 7, memberDeps = true, packageCount = 22 } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'check-rust-major-offset-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
 
@@ -60,9 +64,12 @@ function makeTree(t, { npmVersion = '6.0.1', crateVersion = '6.0.1', offsetFile,
   mkdirSync(join(root, 'rust'));
   for (const member of MEMBERS) {
     mkdirSync(join(root, 'rust', member));
-    const dep = memberDeps
-      ? `\n[dependencies]\nifc-lite-core = { version = "${crateVersion}", path = "../core" }\n`
-      : '\n[dependencies]\n';
+    const dep =
+      memberDeps === 'inherit'
+        ? '\n[dependencies]\nifc-lite-core.workspace = true\n'
+        : memberDeps
+          ? `\n[dependencies]\nifc-lite-core = { version = "${crateVersion}", path = "../core" }\n`
+          : '\n[dependencies]\n';
     writeFileSync(join(root, 'rust', member, 'Cargo.toml'), `[package]\nname = "ifc-lite-${member}"\nversion.workspace = true\n${dep}`);
   }
 
@@ -181,8 +188,49 @@ test('vacuous: a workspace dependency table with too few internal literals to be
   assert.match(out, /DEP_FLOOR/);
 });
 
-test('vacuous: member manifests that contribute no literals at all', (t) => {
+test('vacuous: member manifests that declare no internal dependency at all', (t) => {
+  // Neither an explicit literal nor an inheritance: the scan looked at nine
+  // manifests and found nothing of the kind it exists to check.
   const { code, out } = run(makeTree(t, { offsetFile: OFFSET_0, memberDeps: false }));
+  assert.equal(code, 1);
+  assert.match(out, /DEP_FLOOR/);
+});
+
+test('GREEN: members that inherit from the root table are inspected and counted (#7672)', (t) => {
+  const root = makeTree(t, { npmVersion: '6.1.0', crateVersion: '7.1.0', offsetFile: OFFSET_1, memberDeps: 'inherit' });
+  const { code, out } = run(root);
+  assert.equal(code, 0, out);
+  // 7 literals in the root table + one inheritance per member (8).
+  assert.match(out, /15 internal dependency declaration\(s\) \(7 version literal\(s\), 8 inherited/);
+});
+
+test('an inheriting member agrees through the root literal, so a stale ROOT literal still fails', (t) => {
+  const root = makeTree(t, { npmVersion: '6.1.0', crateVersion: '6.1.0', offsetFile: OFFSET_1, memberDeps: 'inherit' });
+  const { code, out } = run(root);
+  assert.equal(code, 1);
+  assert.match(out, /DRIFT/);
+  assert.match(out, /Cargo\.toml pins ifc-lite-core at 6\.1\.0/);
+});
+
+test('an explicit member literal next to inheriting members is still flagged as drift', (t) => {
+  const root = makeTree(t, { npmVersion: '6.1.0', crateVersion: '7.1.0', offsetFile: OFFSET_1, memberDeps: 'inherit' });
+  writeFileSync(
+    join(root, 'rust', 'ffi', 'Cargo.toml'),
+    `[package]\nname = "ifc-lite-ffi"\nversion.workspace = true\n\n[dependencies]\nifc-lite-core = { version = "6.1.0", path = "../core" }\n`
+  );
+  const { code, out } = run(root);
+  assert.equal(code, 1);
+  assert.match(out, /rust\/ffi\/Cargo\.toml pins ifc-lite-core at 6\.1\.0/);
+});
+
+test('vacuous: a workspace-inherited count below the floor is refused', (t) => {
+  // Inheriting is not a free pass: with only the root table and no member
+  // declaring anything, the total is below the floor.
+  const root = makeTree(t, { offsetFile: OFFSET_0, memberDeps: 'inherit' });
+  for (const member of MEMBERS.slice(2)) {
+    writeFileSync(join(root, 'rust', member, 'Cargo.toml'), `[package]\nname = "ifc-lite-${member}"\nversion.workspace = true\n`);
+  }
+  const { code, out } = run(root);
   assert.equal(code, 1);
   assert.match(out, /DEP_FLOOR/);
 });
@@ -215,13 +263,13 @@ test('a reordered literal that AGREES is counted, so the total stays honest', (t
   );
   const { code, out } = run(root);
   assert.equal(code, 0, out);
-  // 6 in the root table + one per member manifest, the reordered one included.
-  assert.match(out, /14 internal dependency literal\(s\)/);
+  // 7 in the root table + one per member manifest, the reordered one included.
+  assert.match(out, /15 internal dependency declaration\(s\) \(15 version literal\(s\), 0 inherited/);
 });
 
-test('a declaration carrying no version requirement is not counted as a literal', (t) => {
-  // `{ workspace = true }` pins nothing, so there is nothing to agree with.
-  // Counting it would inflate the total the gate reports.
+test('an inline `{ workspace = true }` is an inheritance, not a version literal', (t) => {
+  // `{ workspace = true }` pins nothing, so it must not inflate the LITERAL
+  // count; it is counted as an inherited declaration instead.
   const root = makeTree(t, { npmVersion: '6.1.0', crateVersion: '7.1.0', offsetFile: OFFSET_1 });
   writeFileSync(
     join(root, 'rust', 'clash', 'Cargo.toml'),
@@ -229,7 +277,7 @@ test('a declaration carrying no version requirement is not counted as a literal'
   );
   const { code, out } = run(root);
   assert.equal(code, 0, out);
-  assert.match(out, /13 internal dependency literal\(s\)/);
+  assert.match(out, /15 internal dependency declaration\(s\) \(14 version literal\(s\), 1 inherited/);
 });
 
 test('vacuous: a declaration the scan cannot parse is named, not skipped', (t) => {
@@ -258,5 +306,5 @@ test('vacuous: the crate directory list points nowhere', (t) => {
 test('the real repository passes its own gate', () => {
   const { code, out } = run(REPO_ROOT);
   assert.equal(code, 0, out);
-  assert.match(out, /\d+ internal dependency literal/);
+  assert.match(out, /\d+ internal dependency declaration/);
 });

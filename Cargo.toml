@@ -30,6 +30,7 @@ ifc-lite-landxml = { version = "20.4.0", path = "rust/landxml" }
 arrow = { version = "60", default-features = false, features = ["ipc"] }
 geometry-predicates = "0.3"
 memchr = "2.8"
+mimalloc = "0.1"
 nalgebra = { version = "0.35", default-features = false, features = ["std"] }
 parquet = { version = "60", default-features = false, features = ["arrow"] }
 png = "0.18"

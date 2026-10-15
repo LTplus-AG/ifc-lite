@@ -27,7 +27,7 @@ mimalloc = ["dep:mimalloc"]
 # Native global allocator (see the `mimalloc` feature). Optional so a consumer
 # can opt back out with `--no-default-features`. Never reaches wasm (this crate
 # is a native cdylib only).
-mimalloc = { version = "0.1", optional = true }
+mimalloc = { workspace = true, optional = true }
 # The workspace entry carries an explicit `version` alongside `path` so the crate
 # is publishable to crates.io (`cargo publish` strips the path and keeps the
 # version requirement). `scripts/sync-versions.js` keeps that literal aligned

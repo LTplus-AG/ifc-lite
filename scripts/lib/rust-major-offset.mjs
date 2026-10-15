@@ -51,15 +51,25 @@ export const OFFSET_FILE_NAME = 'rust-major-offset.json';
  * `upstream/main` @ 4000cf5b7: 37 public workspace packages, 6 internal
  * dependency literals in the root `[workspace.dependencies]` table, 14 across
  * every manifest.
+ *
+ * Since #7672 the member crates INHERIT those literals (`ifc-lite-core.workspace
+ * = true`) instead of repeating them, so the root table is the only home of the
+ * literals (7 of them: core, geometry, processing, clash, export, wasm,
+ * landxml) and the members contribute inherited declarations instead (17 at
+ * #7672). The total floor counts both: 7 + 17 = 24 measured, floor 15.
  */
 export const MIN_WORKSPACE_PACKAGES = 20;
-export const MIN_WORKSPACE_DEP_LITERALS = 6;
-export const MIN_TOTAL_DEP_LITERALS = 10;
+export const MIN_WORKSPACE_DEP_LITERALS = 7;
+export const MIN_TOTAL_DEP_DECLARATIONS = 15;
 
-/** The crate directories whose manifests carry internal `version = "…"`
- * literals. Kept here, next to the pattern, so `sync-versions.js` (which
- * writes them) and `check-rust-major-offset.mjs` (which checks them) cannot
- * drift apart into "the writer skipped a file the checker never looked at". */
+/** The crate directories whose manifests declare internal `ifc-lite-*`
+ * dependencies: by inheriting the root `[workspace.dependencies]` literal, or
+ * (a legacy shape the gate still polices) by carrying an explicit
+ * `version = "…"` of their own. Kept here, next to the pattern, so
+ * `sync-versions.js` (which rewrites explicit literals) and
+ * `check-rust-major-offset.mjs` (which checks them and counts the inherited
+ * ones) cannot drift apart into "the writer skipped a file the checker never
+ * looked at". */
 export const RUST_MEMBER_DIRS = ['core', 'geometry', 'processing', 'clash', 'export', 'ffi', 'wasm-bindings', 'landxml'];
 
 /** The internal crate names that carry a `version = "…"` requirement. */
@@ -80,6 +90,14 @@ const INTERNAL_CRATE = '(?:core|geometry|processing|clash|export|wasm|landxml)';
  * cross-checked below. */
 export function internalDepPattern() {
   return new RegExp(`(ifc-lite-${INTERNAL_CRATE})\\s*=\\s*\\{([^{}]*)\\}`, 'g');
+}
+
+/** A dotted-key inheritance, `ifc-lite-core.workspace = true`. It carries no
+ * version of its own (it agrees through the root literal, which is checked), so
+ * it is not an {@link internalDepPattern} match; the gate counts it as an
+ * inherited declaration so a manifest that inherits is still "inspected". */
+export function inheritedInternalDepPattern() {
+  return new RegExp(`^\\s*(ifc-lite-${INTERNAL_CRATE})\\.workspace\\s*=\\s*true`, 'gm');
 }
 
 /** Just the `name = {` opener. Every opener MUST turn into a parsed
@@ -106,6 +124,13 @@ export function versionInDepBodyPattern() {
  * rewrite always cover the same set.
  */
 export function scanInternalDeps(label, text) {
+  return scanInternalDepsDetailed(label, text).deps;
+}
+
+/** {@link scanInternalDeps} plus the declarations that inherit from the root
+ * table: `inherited` lists the names declared as `name.workspace = true` or as
+ * an inline table with `workspace = true` (and no `version`). */
+export function scanInternalDepsDetailed(label, text) {
   const openers = text.match(internalDepOpenerPattern())?.length ?? 0;
   const deps = [];
   const pattern = internalDepPattern();
@@ -120,7 +145,13 @@ export function scanInternalDeps(label, text) {
       `${label} declares ${openers} internal dependenc(ies) but only ${deps.length} could be parsed. An inline table with a nested \`{…}\` is the usual cause; both the writer and this scan would otherwise skip it silently.`
     );
   }
-  return deps;
+  const inherited = [];
+  for (const dep of deps) {
+    if (dep.version === null && /(^|[\s,])workspace\s*=\s*true/.test(dep.body)) inherited.push(dep.name);
+  }
+  const dotted = inheritedInternalDepPattern();
+  while ((m = dotted.exec(text)) !== null) inherited.push(m[1]);
+  return { deps, inherited };
 }
 
 /** Rewrite every internal dependency's `version = "…"` to `version`, leaving

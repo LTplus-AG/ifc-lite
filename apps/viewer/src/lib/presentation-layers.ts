@@ -84,12 +84,14 @@ export function resolvePresentationLayers(
   }
   const productClasses = new Set(productTypes.map(type => type.toUpperCase()));
   const shapeClasses = new Set(shapeTypes.map(type => type.toUpperCase()));
+  const shapeModelClasses = new Set(expandTypeNamesToDescendants(['IfcShapeModel'], store.schemaVersion)
+    .map(type => type.toUpperCase()));
   const layeredClasses = new Set([...shapeTypes,
     ...expandTypeNamesToDescendants(['IfcRepresentationItem'], store.schemaVersion)]
     .map(type => type.toUpperCase()));
   const types = [...productTypes, ...shapeTypes, ...containers.keys(), ...LAYER_TYPES,
     'IfcProductDefinitionShape', 'IfcProductRepresentation', 'IfcRepresentationMap', 'IfcMappedItem',
-    'IfcBooleanResult', 'IfcBooleanClippingResult', 'IfcCsgSolid'];
+    'IfcBooleanResult', 'IfcBooleanClippingResult', 'IfcCsgSolid', 'IfcShapeAspect'];
   const parents = new Map<number, Set<number>>();
   const products = new Set<number>();
   const layers: Array<PresentationLayer & { assignedItems: number[] }> = [];
@@ -135,6 +137,18 @@ export function resolvePresentationLayers(
       addEdges(id, attrs.get('MappingSource'));
     } else if (type === 'IFCREPRESENTATIONMAP') {
       addEdges(id, attrs.get('MappedRepresentation'));
+    } else if (type === 'IFCSHAPEASPECT') {
+      // Shape aspects point back to their owning resource. Their shape models
+      // need not also appear in that resource's main representation list.
+      const ownerIds = references(attrs.get('PartOfProductDefinitionShape'));
+      if (ownerIds.length !== 1) continue;
+      const ownerId = ownerIds[0];
+      const ownerType = readRecord(ownerId)?.type.toUpperCase();
+      if (ownerType !== 'IFCPRODUCTDEFINITIONSHAPE' && ownerType !== 'IFCREPRESENTATIONMAP') continue;
+      for (const shapeId of references(attrs.get('ShapeRepresentations'))) {
+        const shapeType = readRecord(shapeId)?.type.toUpperCase();
+        if (shapeType && shapeModelClasses.has(shapeType)) addEdges(ownerId, shapeId);
+      }
     } else if (type === 'IFCCSGSOLID') {
       addEdges(id, attrs.get('TreeRootExpression'));
     } else if (type === 'IFCBOOLEANRESULT' || type === 'IFCBOOLEANCLIPPINGRESULT') {

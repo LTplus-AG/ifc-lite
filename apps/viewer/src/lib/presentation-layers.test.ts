@@ -124,6 +124,68 @@ test('#7619 nested geometric sets and topology representations preserve item own
   assert.deepEqual(resolvePresentationLayers(store).find(layer => layer.expressId === 52)?.productIds, [3]);
 });
 
+// These shape representations are owned exclusively through shape aspects:
+// neither the product definition shape nor the map names them directly.
+const aspectFixture = fixture.replace('#90=IFCAXIS2PLACEMENT3D', `
+#60=IFCSHAPEASPECT((#70),'Product aspect',$,.T.,#10);
+#61=IFCSHAPEASPECT((#71),'Mapped aspect',$,.T.,#40);
+#62=IFCSHAPEASPECT((#72),'Dangling owner',$,.T.,#999);
+#63=IFCSHAPEASPECT((#73),'Wrong owner class',$,.T.,#1);
+#64=IFCSHAPEASPECT((#33),'Wrong shape class',$,.T.,#10);
+#70=IFCSHAPEREPRESENTATION(#90,'Body','SweptSolid',(#35));
+#71=IFCSHAPEREPRESENTATION(#90,'Body','SweptSolid',(#35));
+#72=IFCSHAPEREPRESENTATION(#90,'Body','SweptSolid',(#35));
+#73=IFCSHAPEREPRESENTATION(#90,'Body','SweptSolid',(#35));
+#54=IFCPRESENTATIONLAYERASSIGNMENT('Product aspect layer',$,(#70),$);
+#55=IFCPRESENTATIONLAYERASSIGNMENT('Mapped aspect layer',$,(#71),$);
+#56=IFCPRESENTATIONLAYERASSIGNMENT('Dangling aspect owner',$,(#72),$);
+#57=IFCPRESENTATIONLAYERASSIGNMENT('Invalid aspect owner',$,(#73),$);
+#90=IFCAXIS2PLACEMENT3D`);
+
+test('#7619 resolves shape-aspect-only representations through product shapes and shared maps', async () => {
+  const store = await parse(aspectFixture);
+  assert.deepEqual(store.getEntity(10)?.attributes[2], [20],
+    'product shape does not reference aspect representation #70 directly');
+  assert.equal(store.getEntity(40)?.attributes[1], 23,
+    'shared map does not reference aspect representation #71 directly');
+  const layers = resolvePresentationLayers(store);
+  assert.deepEqual(layers.find(layer => layer.expressId === 54)?.productIds, [1]);
+  assert.deepEqual(layers.find(layer => layer.expressId === 55)?.productIds, [1, 2]);
+  assert.deepEqual(layers.find(layer => layer.expressId === 56)?.productIds, []);
+  assert.deepEqual(layers.find(layer => layer.expressId === 57)?.productIds, []);
+  assert.deepEqual(layers.find(layer => layer.expressId === 52)?.productIds, [3],
+    'an invalid shape model reference cannot attach the unrelated wall solid to Wall A');
+});
+
+test('#7619 shape aspect ownership follows current endpoint edits and deletions', async () => {
+  const store = await parse(aspectFixture);
+  const view = new MutablePropertyView(null, 'legacy');
+  const membership = (layerId: number) => resolvePresentationLayers(store, view)
+    .find(layer => layer.expressId === layerId)?.productIds;
+  view.setPositionalAttribute(60, 0, [72]);
+  assert.deepEqual(membership(54), []);
+  assert.deepEqual(membership(56), [1], 'edited shape model references define current membership');
+  view.setPositionalAttribute(60, 0, [70]);
+  view.setAttribute(60, 'PartOfProductDefinitionShape', '#12');
+  assert.deepEqual(membership(54), [3]);
+  view.setPositionalAttribute(60, 4, 11);
+  assert.deepEqual(membership(54), [2], 'positional ownership edits win over named edits');
+  view.deleteEntity(60);
+  assert.deepEqual(membership(54), [], 'deleted aspects no longer contribute ownership');
+  view.deleteEntity(40);
+  assert.deepEqual(membership(55), [], 'deleted representation maps cannot own aspect geometry');
+});
+
+test('#7619 shape aspect ownership rejects retyped owner resources and shape models', async () => {
+  const store = await parse(aspectFixture);
+  const view = new MutablePropertyView(null, 'legacy');
+  view.setEntityType(10, 'IfcPropertySet');
+  view.setEntityType(71, 'IfcPropertySet');
+  const layers = resolvePresentationLayers(store, view);
+  assert.deepEqual(layers.find(layer => layer.expressId === 54)?.productIds, []);
+  assert.deepEqual(layers.find(layer => layer.expressId === 55)?.productIds, []);
+});
+
 test('#7619 resolves real Archicad presentation layers to product owners', async t => {
   const path = new URL('../../../../tests/models/ara3d/AC20-FZK-Haus.ifc', import.meta.url);
   let bytes: Uint8Array;

@@ -10,9 +10,9 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Worker } from 'node:worker_threads';
 import { test } from 'node:test';
-import { withModelFile } from '../dist/common.mjs';
-import { queryDoors } from '../dist/worker-client.mjs';
-import type { WorkerResult } from '../dist/messages.mjs';
+import { withModelFile } from '../src/common.mjs';
+import { queryDoors } from '../src/worker-client.mjs';
+import type { WorkerResult } from '../src/messages.mjs';
 
 const repo = new URL('../../../', import.meta.url);
 const fixture = fileURLToPath(new URL('tests/models/ara3d/AC20-FZK-Haus.ifc', repo));

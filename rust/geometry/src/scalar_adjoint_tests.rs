@@ -25,6 +25,35 @@ use crate::scalar::{GeomScalar, MeshSink};
 use nalgebra::{Matrix4, Point2, Point3, Vector3};
 use std::ops::{Add, Div, Mul, Neg, Sub};
 
+/// #7631 (from #6940): the cap retry selects indices in primal space but must
+/// continue differentiating ORIGINAL scalar vertices. The derivative of volume
+/// under X scaling is the unscaled volume, independently of cap triangulation.
+#[test]
+fn issue_6940_constrained_cap_preserves_scalar_volume_derivative() {
+    let profile = crate::profile_generic::tests::bridge_profile();
+    let scale = Dual::<1>::variable(1.0,0);
+    let ring = |r: &[Point2<f64>]| r.iter().map(|p| {
+        Point2::new(Dual::constant(p.x)*scale,Dual::constant(p.y))
+    }).collect::<Vec<_>>();
+    let outer = ring(&profile.outer);
+    let holes: Vec<_> = profile.holes.iter().map(|h|ring(h)).collect();
+    let mut mesh = RawMesh::new();
+    extrude_rings_into(&outer,&holes,Dual::constant(0.25),None,&mut mesh).unwrap();
+    let volume = divergence_volume(&mesh.positions,&mesh.indices);
+    let at = |scale: f64| {
+        let ring = |r: &[Point2<f64>]| r.iter().map(|p|Point2::new(p.x*scale,p.y)).collect::<Vec<_>>();
+        let mut m = RawMesh::new();
+        extrude_rings_into(&ring(&profile.outer),&profile.holes.iter().map(|h|ring(h)).collect::<Vec<_>>(),0.25,None,&mut m).unwrap();
+        divergence_volume(&m.positions,&m.indices)
+    };
+    let base = at(1.0);
+    let finite_difference = (at(1.0+1e-6)-at(1.0-1e-6))/2e-6;
+    assert!(base > 0.0);
+    assert!((volume.v-base).abs() < base*1e-12);
+    assert!((volume.d[0]-base).abs() < base*1e-10);
+    assert!((volume.d[0]-finite_difference).abs() < base*1e-7);
+}
+
 /// Relative tolerance from the pre-committed exam.
 const TOL: f64 = 1e-6;
 /// Pass bar from the pre-committed exam.

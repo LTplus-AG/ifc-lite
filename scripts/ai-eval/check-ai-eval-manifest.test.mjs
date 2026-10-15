@@ -172,7 +172,11 @@ function writeLiveRun(root, run = '20261015t120000') {
   return { dir, name, recording };
 }
 
+const liveNote = notes => notes.find(note => /committed live run\(s\)/.test(note));
+
 test('#6928 a committed live run passes and its real answer is label material', () => withRoot(root => {
+  const counts = note => note.match(/\d+/g).map(Number);
+  const [runs, kept] = counts(liveNote(run(root).notes));
   const { recording } = writeLiveRun(root);
   assert.deepEqual(run(root).errors, []);
   const sheet = buildSheet({ recording, kind: 'claims', answer: decodeRecording(recording).text, reviewerId: 'r01' });
@@ -180,7 +184,7 @@ test('#6928 a committed live run passes and its real answer is label material', 
   writeJson(join(root, 'tests', 'ai-eval', 'labels', 'live.r01.json'), sheet);
   const { errors, notes } = run(root);
   assert.ok(!errors.some(error => /unknown recording/.test(error)), errors.join('\n'));
-  assert.ok(notes.includes('1 committed live run(s) with 1 unpromoted recording(s)'));
+  assert.equal(liveNote(notes), `${runs + 1} committed live run(s) with ${kept + 1} unpromoted recording(s)`);
 }));
 
 test('#6928 a live run that drops a recording, loses its review or is promoted in place is refused', () => withRoot(root => {

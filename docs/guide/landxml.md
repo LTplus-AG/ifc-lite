@@ -93,10 +93,47 @@ To be aligned with a georeferenced model, the LandXML `CoordinateSystem` must de
 horizontal CRS (`epsgCode`, or an `EPSG:<n>` `horizontalDatum`) and an `EPSG:<n>`
 `verticalDatum`. The anchor must declare a vertical datum too; for IFC that is
 `IfcProjectedCRS.VerticalDatum`, which can be set in the Georeferencing panel. A display `name`
-such as `name="EPSG:31467"` is not read as a declaration. Without alignment the surface keeps its
-map coordinates, and next to a model in local coordinates that is usually far outside the shared
-render frame. The load is then refused, and the message lists each missing or conflicting
+such as `name="EPSG:31467"` is not read as a declaration unless you choose to (see below).
+Without alignment the surface keeps its map coordinates, and next to a model in local coordinates
+that is usually far outside the shared render frame. The load is then refused, and the message lists each missing or conflicting
 declaration.
+
+### Assumptions you can choose
+
+Two of those missing declarations are common in real files, so the viewer lets you assume them.
+Both are **off by default**: without your choice, a file that does not declare them is refused as
+described above. Neither is ever applied silently.
+
+| Assumption | What it assumes | If the assumption is wrong |
+|---|---|---|
+| **Assume a shared height system** | The LandXML, the anchor model, or both declare no vertical datum. Heights are placed as written, as if both used the same height system. | The surface sits too high or too low by the difference between the two height systems. |
+| **Read an EPSG code from the coordinate system name** | The `CoordinateSystem` declares no `epsgCode` and no `EPSG:<n>` `horizontalDatum`, but its `name` is exactly `EPSG:<n>`, for example `name="EPSG:31467"`. That code is used as the horizontal CRS. No other name is read: `CH1903+ / LV95` or `EPSG 31467` is still refused. | If the name was only a label, the surface lands in the wrong place. |
+
+An assumption is used only where it is needed. If the file declares the datum or the code
+itself, the declaration wins, and enabling an assumption changes nothing for that file. A real
+conflict is never covered by an assumption: two different declared vertical datums, or two
+horizontal CRSs that cannot be reprojected onto each other, are still refused.
+
+You can choose them in two places:
+
+- **When a load is refused.** If one or both assumptions would let the file line up, the refusal
+  appears as a prompt over the viewport. It shows the refusal message, then one checkbox per
+  assumption that would help, each with what it assumes and what goes wrong if it does not hold.
+  All are checked to start with. **Load with these assumptions** reloads the file with exactly
+  the checked ones, for this load only. **Always assume this** also turns the checked ones on in
+  Settings for every later file, then reloads. **Cancel** loads nothing. A refusal that no
+  assumption would fix, such as a CRS mismatch or a surface that is genuinely too far away, shows
+  only the message.
+- **In Settings.** Open Settings, then **General → LandXML georeferencing**. The two switches
+  apply to every LandXML you add to a georeferenced model from then on. They are saved in this
+  browser.
+
+A model placed using an assumption is marked **Assumed** in its model information panel (select
+the model in the hierarchy). Each
+assumption it used is listed in words, for example "Heights assumed to share the anchor model's
+height system: no vertical datum is declared" or "EPSG:31467 read from the CoordinateSystem name:
+no EPSG code is declared". A model aligned on declared CRSs alone has no such mark, even if the
+assumptions are switched on.
 
 ## Export
 

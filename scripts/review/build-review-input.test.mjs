@@ -91,7 +91,7 @@ test('the no-newline marker is metadata, not a context line', () => {
 // ============================================================== exclusions
 
 test('generated and vendored paths are excluded', () => {
-  for (const p of ['pnpm-lock.yaml', 'Cargo.lock', 'packages/x/__snapshots__/a.snap', 'tests/fixtures/a.ts', 'packages/wasm/pkg/x.d.ts', 'docs/a.png', 'scripts/api-surface.json', 'scripts/review/eval-cases/pr-3595.json']) {
+  for (const p of ['pnpm-lock.yaml', 'Cargo.lock', 'packages/x/__snapshots__/a.snap', 'tests/fixtures/a.ts', 'packages/wasm/pkg/x.d.ts', 'docs/a.png', 'scripts/api-surface.json', 'scripts/review/eval-cases/pr-3595.json', 'tests/ai-eval/live-runs/20261015t113459/recordings/live-x.json']) {
     assert.equal(isExcluded(p), true, `${p} should be excluded`);
   }
 });
@@ -103,7 +103,7 @@ test('binary extensions GitHub sends no patch for are excluded, not left to fall
 });
 
 test('real source is NOT excluded', () => {
-  for (const p of ['packages/export/src/step.ts', 'rust/geometry/src/lib.rs', 'scripts/check-x.mjs']) {
+  for (const p of ['packages/export/src/step.ts', 'rust/geometry/src/lib.rs', 'scripts/check-x.mjs', 'tests/ai-eval/live-runs/20261015t113459/summary.json']) {
     assert.equal(isExcluded(p), false, `${p} must be reviewed`);
   }
 });

@@ -68,6 +68,37 @@ export function effectiveAttribute(reader: ModelReader, expressId: number, name:
   return effectiveListStringAttribute(dataStore, view, expressId, name, () => baseAttribute(dataStore, expressId, name));
 }
 
+const TEXT_BOOLEAN = /^(true|false)$/i;
+
+/** `"true"`/`"false"` read as the boolean it spells when the target holds a boolean; anything else is kept. */
+function typedScalar<T extends ChangeScalar>(value: T, current: CurrentValue): T | boolean {
+  return typeof current === 'boolean' && typeof value === 'string' && TEXT_BOOLEAN.test(value.trim())
+    ? value.trim().toLowerCase() === 'true' : value;
+}
+
+/**
+ * The change typed by the value it addresses (#7650): evidence renders a
+ * boolean property as text, so a provider may echo `"false"` back. Against a
+ * boolean property that text becomes the boolean, so preview compares, commit
+ * writes and the digest pins one typed batch. A declared `dataType` already
+ * fixes the written type, so `value` is left alone then.
+ */
+export function typedChange(change: ModelChange, current: CurrentValue): ModelChange {
+  switch (change.op) {
+    case 'property.set': {
+      const expected = typedScalar(change.expected, current);
+      const value = change.dataType === undefined ? typedScalar(change.value, current) : change.value;
+      return expected === change.expected && value === change.value ? change : { ...change, expected, value };
+    }
+    case 'property.delete': {
+      const expected = typedScalar(change.expected, current);
+      return expected === change.expected ? change : { ...change, expected };
+    }
+    default:
+      return change;
+  }
+}
+
 /**
  * Exact for text and booleans; numbers within a relative 1e-9 so a value that
  * round-tripped through JSON evidence still matches. Attributes treat empty

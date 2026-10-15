@@ -9,6 +9,7 @@ import { summarizeClashes, type Clash } from '@ifc-lite/clash';
 import { useViewerStore } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { captureEvidence } from './evidence';
+import { CLASH_GROUP_EXPLANATION_MAX, CLASH_GROUP_NAME_MAX, CLASH_GROUP_OUTPUT_GUIDANCE } from './clash-taxonomy';
 import { normalizeClashGroupAnswer, parseClashGroupPatch, prepareClashGroupPreview, resolveCapturedClash } from './clash-group-proposal';
 
 const initial = useViewerStore.getState();
@@ -108,4 +109,16 @@ test('a citation resolves to its live native finding only while evidence is curr
   assert.equal(resolveCapturedClash(snapshot, 'E999'), null);
   useViewerStore.setState({ mutationVersion: useViewerStore.getState().mutationVersion + 1 });
   assert.equal(resolveCapturedClash(snapshot, 'E3'), null);
+});
+
+// #7651: a 103-character name refused a whole valid grouping because the prompt never stated the cap.
+test('the grouping prompt states the name and explanation caps the parser enforces', () => {
+  assert.match(CLASH_GROUP_OUTPUT_GUIDANCE, new RegExp(`name must be at most ${CLASH_GROUP_NAME_MAX} characters`));
+  assert.match(CLASH_GROUP_OUTPUT_GUIDANCE, new RegExp(`explanation at most ${CLASH_GROUP_EXPLANATION_MAX} characters`));
+  const group = (name: string, explanation: string) => JSON.stringify({ version: 1, kind: 'clash.groups',
+    groups: [{ name, explanation, citations: ['E1'] }] });
+  const name = 'n'.repeat(CLASH_GROUP_NAME_MAX), explanation = 'e'.repeat(CLASH_GROUP_EXPLANATION_MAX);
+  assert.equal(parseClashGroupPatch(group(name, explanation)).groups[0].name, name);
+  assert.throws(() => parseClashGroupPatch(group(`${name}n`, explanation)), /Invalid clash group/);
+  assert.throws(() => parseClashGroupPatch(group(name, `${explanation}e`)), /Invalid clash group/);
 });

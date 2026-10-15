@@ -1,0 +1,1084 @@
+{
+  "runId": "20261015t110523",
+  "settings": {
+    "temperature": 0,
+    "maxOutputTokens": 4096,
+    "timeoutMs": 120000
+  },
+  "run": {
+    "violations": [],
+    "requests": 24,
+    "reportedOutputTokens": 68187,
+    "unreported": 0
+  },
+  "stopped": null,
+  "receipts": [
+    {
+      "task": "clash-summary",
+      "route": "proxy",
+      "model": "z-ai/glm-5.3-flash",
+      "status": 200,
+      "outcome": "completed",
+      "startedAt": 1792062330763,
+      "durationMs": 9545,
+      "settings": {
+        "temperature": null,
+        "maxOutputTokens": 4096,
+        "timeoutMs": 120000
+      },
+      "finishReason": "stop",
+      "usageReported": true,
+      "inputTokens": 9544,
+      "outputTokens": 2630
+    },
+    {
+      "task": "clash-summary",
+      "route": "proxy",
+      "model": "z-ai/glm-5.3-flash",
+      "status": 200,
+      "outcome": "completed",
+      "startedAt": 1792062340317,
+      "durationMs": 8621,
+      "settings": {
+        "temperature": null,
+        "maxOutputTokens": 4096,
+        "timeoutMs": 120000
+      },
+      "finishReason": "stop",
+      "usageReported": true,
+      "inputTokens": 9544,
+      "outputTokens": 2661
+    },
+    {
+      "task": "clash-grouping",
+      "route": "proxy",
+      "model": "z-ai/glm-5.3-flash",
+      "status": 200,
+      "outcome": "completed",
+      "startedAt": 1792062348944,
+      "durationMs": 10513,
+      "settings": {
+        "temperature": null,
+        "maxOutputTokens": 4096,
+        "timeoutMs": 120000
+      },
+      "finishReason": "stop",
+      "usageReported": true,
+      "inputTokens": 9540,
+      "outputTokens": 1538
+    },
+    {
+      "task": "clash-grouping",
+      "route": "proxy",
+      "model": "z-ai/glm-5.3-flash",
+      "status": 200,
+      "outcome": "completed",
+      "startedAt": 1792062359461,
+      "durationMs": 10787,
+      "settings": {
+        "temperature": null,
+        "maxOutputTokens": 4096,
+        "timeoutMs": 120000
+      },
+      "finishReason": "stop",
+      "usageReported": true,
+      "inputTokens": 9540,
+      "outputTokens": 1661
+    },
+    {
+      "task": "validation-explain",
+      "route": "proxy",
+      "model": "z-ai/glm-5.3-flash",
+      "status": 200,
+      "outcome": "completed",
+      "startedAt": 1792062370253,
+      "durationMs": 12177,
+      "settings": {
+        "temperature": null,
+        "maxOutputTokens": 4096,
+        "timeoutMs": 120000
+      },
+      "finishReason": "stop",
+      "usageReported": true,
+      "inputTokens": 10773,
+      "outputTokens": 2002
+    },
+    {
+      "task": "validation-explain",
+      "route": "proxy",
+      "model": "z-ai/glm-5.3-flash",
+      "status": 200,
+      "outcome": "completed",
+      "startedAt": 1792062382435,
+      "durationMs": 11292,
+      "settings": {
+        "temperature": null,
+        "maxOutputTokens": 4096,
+        "timeoutMs": 120000
+      },
+      "finishReason": "stop",
+      "usageReported": true,
+      "inputTokens": 10773,
+      "outputTokens": 1982
+    },
+    {
+      "task": "validation-corrections",
+      "route": "proxy",
+      "model": "z-ai/glm-5.3-flash",
+      "status": 200,
+      "outcome": "error",
+      "startedAt": 1792062393731,
+      "durationMs": 18450,
+      "settings": {
+        "temperature": null,
+        "maxOutputTokens": 4096,
+        "timeoutMs": 120000
+      },
+      "finishReason": "length",
+      "usageReported": true,
+      "inputTokens": 10772,
+      "outputTokens": 4096
+    },
+    {
+      "task": "validation-corrections",
+      "route": "proxy",
+      "model": "z-ai/glm-5.3-flash",
+      "status": 200,
+      "outcome": "error",
+      "startedAt": 1792062412194,
+      "durationMs": 15715,
+      "settings": {
+        "temperature": null,
+        "maxOutputTokens": 4096,
+        "timeoutMs": 120000
+      },
+      "finishReason": "length",
+      "usageReported": true,
+      "inputTokens": 10772,
+      "outputTokens": 4096
+    },
+    {
+      "task": "validation-explain-fzk",
+      "route": "proxy",
+      "model": "z-ai/glm-5.3-flash",
+      "status": 200,
+      "outcome": "completed",
+      "startedAt": 1792062427925,
+      "durationMs": 28609,
+      "settings": {
+        "temperature": null,
+        "maxOutputTokens": 4096,
+        "timeoutMs": 120000
+      },
+      "finishReason": "stop",
+      "usageReported": true,
+      "inputTokens": 10391,
+      "outputTokens": 3260
+    },
+    {
+      "task": "validation-explain-fzk",
+      "route": "proxy",
+      "model": "z-ai/glm-5.3-flash",
+      "status": 200,
+      "outcome": "error",
+      "startedAt": 1792062456541,
+      "durationMs": 49574,
+      "settings": {
+        "temperature": null,
+        "maxOutputTokens": 4096,
+        "timeoutMs": 120000
+      },
+      "finishReason": "length",
+      "usageReported": true,
+      "inputTokens": 10391,
+      "outputTokens": 4096
+    },
+    {
+      "task": "authoring-annex-wall",
+      "route": "proxy",
+      "model": "z-ai/glm-5.3-flash",
+      "status": 200,
+      "outcome": "completed",
+      "startedAt": 1792062506126,
+      "durationMs": 14406,
+      "settings": {
+        "temperature": null,
+        "maxOutputTokens": 4096,
+        "timeoutMs": 120000
+      },
+      "finishReason": "stop",
+      "usageReported": true,
+      "inputTokens": 8367,
+      "outputTokens": 1618
+    },
+    {
+      "task": "authoring-annex-wall",
+      "route": "proxy",
+      "model": "z-ai/glm-5.3-flash",
+      "status": 200,
+      "outcome": "completed",
+      "startedAt": 1792062520535,
+      "durationMs": 10937,
+      "settings": {
+        "temperature": null,
+        "maxOutputTokens": 4096,
+        "timeoutMs": 120000
+      },
+      "finishReason": "stop",
+      "usageReported": true,
+      "inputTokens": 8367,
+      "outputTokens": 1188
+    },
+    {
+      "task": "flow-sum",
+      "route": "proxy",
+      "model": "z-ai/glm-5.3-flash",
+      "status": 200,
+      "outcome": "completed",
+      "startedAt": 1792062531474,
+      "durationMs": 7036,
+      "settings": {
+        "temperature": null,
+        "maxOutputTokens": 4096,
+        "timeoutMs": 120000
+      },
+      "finishReason": "stop",
+      "usageReported": true,
+      "inputTokens": 7166,
+      "outputTokens": 1107
+    },
+    {
+      "task": "flow-sum",
+      "route": "proxy",
+      "model": "z-ai/glm-5.3-flash",
+      "status": 200,
+      "outcome": "completed",
+      "startedAt": 1792062538513,
+      "durationMs": 7547,
+      "settings": {
+        "temperature": null,
+        "maxOutputTokens": 4096,
+        "timeoutMs": 120000
+      },
+      "finishReason": "stop",
+      "usageReported": true,
+      "inputTokens": 7166,
+      "outputTokens": 1092
+    },
+    {
+      "task": "flow-ai-review",
+      "route": "proxy",
+      "model": "z-ai/glm-5.3-flash",
+      "status": 200,
+      "outcome": "completed",
+      "startedAt": 1792062546064,
+      "durationMs": 12411,
+      "settings": {
+        "temperature": null,
+        "maxOutputTokens": 4096,
+        "timeoutMs": 120000
+      },
+      "finishReason": "stop",
+      "usageReported": true,
+      "inputTokens": 7928,
+      "outputTokens": 3720
+    },
+    {
+      "task": "flow-ai-review",
+      "route": "proxy",
+      "model": "z-ai/glm-5.3-flash",
+      "status": 200,
+      "outcome": "error",
+      "startedAt": 1792062558488,
+      "durationMs": 14101,
+      "settings": {
+        "temperature": null,
+        "maxOutputTokens": 4096,
+        "timeoutMs": 120000
+      },
+      "finishReason": "length",
+      "usageReported": true,
+      "inputTokens": 7928,
+      "outputTokens": 4096
+    },
+    {
+      "task": "review-next-action",
+      "route": "proxy",
+      "model": "z-ai/glm-5.3-flash",
+      "status": 200,
+      "outcome": "truncated",
+      "startedAt": 1792062572601,
+      "durationMs": 43852,
+      "settings": {
+        "temperature": null,
+        "maxOutputTokens": 4096,
+        "timeoutMs": 120000
+      },
+      "finishReason": "length",
+      "usageReported": true,
+      "inputTokens": 7802,
+      "outputTokens": 4096
+    },
+    {
+      "task": "review-next-action",
+      "route": "proxy",
+      "model": "z-ai/glm-5.3-flash",
+      "status": 200,
+      "outcome": "error",
+      "startedAt": 1792062616466,
+      "durationMs": 42486,
+      "settings": {
+        "temperature": null,
+        "maxOutputTokens": 4096,
+        "timeoutMs": 120000
+      },
+      "finishReason": "length",
+      "usageReported": true,
+      "inputTokens": 7802,
+      "outputTokens": 4096
+    },
+    {
+      "task": "list-quantity-gaps",
+      "route": "proxy",
+      "model": "z-ai/glm-5.3-flash",
+      "status": 200,
+      "outcome": "completed",
+      "startedAt": 1792062658963,
+      "durationMs": 79952,
+      "settings": {
+        "temperature": null,
+        "maxOutputTokens": 4096,
+        "timeoutMs": 120000
+      },
+      "finishReason": "stop",
+      "usageReported": true,
+      "inputTokens": 7771,
+      "outputTokens": 2963
+    },
+    {
+      "task": "list-quantity-gaps",
+      "route": "proxy",
+      "model": "z-ai/glm-5.3-flash",
+      "status": 200,
+      "outcome": "completed",
+      "startedAt": 1792062738924,
+      "durationMs": 70879,
+      "settings": {
+        "temperature": null,
+        "maxOutputTokens": 4096,
+        "timeoutMs": 120000
+      },
+      "finishReason": "stop",
+      "usageReported": true,
+      "inputTokens": 7771,
+      "outputTokens": 3012
+    },
+    {
+      "task": "selected-roof-properties",
+      "route": "proxy",
+      "model": "z-ai/glm-5.3-flash",
+      "status": 200,
+      "outcome": "error",
+      "startedAt": 1792062809811,
+      "durationMs": 15071,
+      "settings": {
+        "temperature": null,
+        "maxOutputTokens": 4096,
+        "timeoutMs": 120000
+      },
+      "finishReason": "length",
+      "usageReported": true,
+      "inputTokens": 16619,
+      "outputTokens": 4096
+    },
+    {
+      "task": "selected-roof-properties",
+      "route": "proxy",
+      "model": "z-ai/glm-5.3-flash",
+      "status": 200,
+      "outcome": "error",
+      "startedAt": 1792062824890,
+      "durationMs": 18654,
+      "settings": {
+        "temperature": null,
+        "maxOutputTokens": 4096,
+        "timeoutMs": 120000
+      },
+      "finishReason": "length",
+      "usageReported": true,
+      "inputTokens": 16619,
+      "outputTokens": 4096
+    },
+    {
+      "task": "reimported-document",
+      "route": "proxy",
+      "model": "z-ai/glm-5.3-flash",
+      "status": 200,
+      "outcome": "completed",
+      "startedAt": 1792062843549,
+      "durationMs": 10172,
+      "settings": {
+        "temperature": null,
+        "maxOutputTokens": 4096,
+        "timeoutMs": 120000
+      },
+      "finishReason": "stop",
+      "usageReported": true,
+      "inputTokens": 7485,
+      "outputTokens": 2530
+    },
+    {
+      "task": "reimported-document",
+      "route": "proxy",
+      "model": "z-ai/glm-5.3-flash",
+      "status": 200,
+      "outcome": "completed",
+      "startedAt": 1792062853728,
+      "durationMs": 10484,
+      "settings": {
+        "temperature": null,
+        "maxOutputTokens": 4096,
+        "timeoutMs": 120000
+      },
+      "finishReason": "stop",
+      "usageReported": true,
+      "inputTokens": 7485,
+      "outputTokens": 2455
+    }
+  ],
+  "results": [
+    {
+      "task": "clash-summary",
+      "route": "proxy",
+      "repeat": 1,
+      "recording": "live-20261015t110523-clash-summary-proxy-1",
+      "outcome": "completed",
+      "violations": [],
+      "facts": {
+        "cited": [
+          "E1",
+          "E9",
+          "E2",
+          "E4",
+          "E5",
+          "E3",
+          "E6",
+          "E7",
+          "E8"
+        ],
+        "declaredKind": null,
+        "proposalParsed": null,
+        "accounting": null,
+        "countClaims": [
+          {
+            "value": 8,
+            "noun": "findings",
+            "matched": true
+          },
+          {
+            "value": 9,
+            "noun": "rows",
+            "matched": true
+          }
+        ]
+      }
+    },
+    {
+      "task": "clash-summary",
+      "route": "proxy",
+      "repeat": 2,
+      "recording": "live-20261015t110523-clash-summary-proxy-2",
+      "outcome": "completed",
+      "violations": [],
+      "facts": {
+        "cited": [
+          "E1",
+          "E9",
+          "E3",
+          "E6",
+          "E7",
+          "E2",
+          "E4",
+          "E5",
+          "E8"
+        ],
+        "declaredKind": null,
+        "proposalParsed": null,
+        "accounting": null,
+        "countClaims": [
+          {
+            "value": 9,
+            "noun": "rows",
+            "matched": true
+          }
+        ]
+      }
+    },
+    {
+      "task": "clash-grouping",
+      "route": "proxy",
+      "repeat": 1,
+      "recording": "live-20261015t110523-clash-grouping-proxy-1",
+      "outcome": "completed",
+      "violations": [],
+      "facts": {
+        "cited": [
+          "E1",
+          "E2",
+          "E4",
+          "E5",
+          "E9",
+          "E3",
+          "E6",
+          "E7",
+          "E8"
+        ],
+        "declaredKind": "clash.groups",
+        "proposalParsed": true,
+        "accounting": {
+          "total": 9,
+          "proposed": 9,
+          "unclassified": 0,
+          "omittedFromEvidence": 0
+        },
+        "countClaims": []
+      }
+    },
+    {
+      "task": "clash-grouping",
+      "route": "proxy",
+      "repeat": 2,
+      "recording": "live-20261015t110523-clash-grouping-proxy-2",
+      "outcome": "completed",
+      "violations": [],
+      "facts": {
+        "cited": [
+          "E1",
+          "E3",
+          "E6",
+          "E7",
+          "E9",
+          "E2",
+          "E4",
+          "E5",
+          "E8"
+        ],
+        "declaredKind": "clash.groups",
+        "proposalParsed": true,
+        "accounting": {
+          "total": 9,
+          "proposed": 9,
+          "unclassified": 0,
+          "omittedFromEvidence": 0
+        },
+        "countClaims": []
+      }
+    },
+    {
+      "task": "validation-explain",
+      "route": "proxy",
+      "repeat": 1,
+      "recording": "live-20261015t110523-validation-explain-proxy-1",
+      "outcome": "completed",
+      "violations": [
+        {
+          "id": "count-claims-match-facts",
+          "detail": "\"86 entities\" matches no native number in the evidence"
+        }
+      ],
+      "facts": {
+        "cited": [
+          "E9",
+          "E10",
+          "E11",
+          "E12",
+          "E13",
+          "E14",
+          "E4",
+          "E8",
+          "E5",
+          "E6",
+          "E7",
+          "E1",
+          "E2",
+          "E3"
+        ],
+        "declaredKind": null,
+        "proposalParsed": null,
+        "accounting": null,
+        "countClaims": [
+          {
+            "value": 97,
+            "noun": "entities",
+            "matched": true
+          },
+          {
+            "value": 3,
+            "noun": "specifications",
+            "matched": true
+          },
+          {
+            "value": 3,
+            "noun": "failures",
+            "matched": true
+          },
+          {
+            "value": 1,
+            "noun": "failure",
+            "matched": true
+          },
+          {
+            "value": 4,
+            "noun": "walls",
+            "matched": true
+          },
+          {
+            "value": 3,
+            "noun": "specifications",
+            "matched": true
+          },
+          {
+            "value": 86,
+            "noun": "entities",
+            "matched": false
+          }
+        ]
+      }
+    },
+    {
+      "task": "validation-explain",
+      "route": "proxy",
+      "repeat": 2,
+      "recording": "live-20261015t110523-validation-explain-proxy-2",
+      "outcome": "completed",
+      "violations": [],
+      "facts": {
+        "cited": [
+          "E9",
+          "E10",
+          "E11",
+          "E12",
+          "E13",
+          "E14",
+          "E4",
+          "E8",
+          "E5",
+          "E6",
+          "E7",
+          "E2",
+          "E3",
+          "E1"
+        ],
+        "declaredKind": null,
+        "proposalParsed": null,
+        "accounting": null,
+        "countClaims": [
+          {
+            "value": 14,
+            "noun": "rows",
+            "matched": true
+          },
+          {
+            "value": 3,
+            "noun": "specifications",
+            "matched": true
+          },
+          {
+            "value": 3,
+            "noun": "failures",
+            "matched": true
+          },
+          {
+            "value": 3,
+            "noun": "failures",
+            "matched": true
+          },
+          {
+            "value": 11,
+            "noun": "entities",
+            "matched": true
+          }
+        ]
+      }
+    },
+    {
+      "task": "validation-corrections",
+      "route": "proxy",
+      "repeat": 1,
+      "recording": "live-20261015t110523-validation-corrections-proxy-1",
+      "outcome": "error",
+      "violations": null,
+      "facts": null
+    },
+    {
+      "task": "validation-corrections",
+      "route": "proxy",
+      "repeat": 2,
+      "recording": "live-20261015t110523-validation-corrections-proxy-2",
+      "outcome": "error",
+      "violations": null,
+      "facts": null
+    },
+    {
+      "task": "validation-explain-fzk",
+      "route": "proxy",
+      "repeat": 1,
+      "recording": "live-20261015t110523-validation-explain-fzk-proxy-1",
+      "outcome": "completed",
+      "violations": [
+        {
+          "id": "count-claims-match-facts",
+          "detail": "\"121 elements\" matches no native number in the evidence"
+        },
+        {
+          "id": "count-claims-match-facts",
+          "detail": "\"13 walls\" matches no native number in the evidence"
+        },
+        {
+          "id": "count-claims-match-facts",
+          "detail": "\"13 elements\" matches no native number in the evidence"
+        }
+      ],
+      "facts": {
+        "cited": [
+          "E1",
+          "E9",
+          "E10",
+          "E2",
+          "E8"
+        ],
+        "declaredKind": null,
+        "proposalParsed": null,
+        "accounting": null,
+        "countClaims": [
+          {
+            "value": 468,
+            "noun": "entities",
+            "matched": true
+          },
+          {
+            "value": 10,
+            "noun": "rows",
+            "matched": true
+          },
+          {
+            "value": 3,
+            "noun": "specifications",
+            "matched": true
+          },
+          {
+            "value": 121,
+            "noun": "elements",
+            "matched": false
+          },
+          {
+            "value": 13,
+            "noun": "walls",
+            "matched": false
+          },
+          {
+            "value": 7,
+            "noun": "spaces",
+            "matched": true
+          },
+          {
+            "value": 7,
+            "noun": "entities",
+            "matched": true
+          },
+          {
+            "value": 3,
+            "noun": "specifications",
+            "matched": true
+          },
+          {
+            "value": 13,
+            "noun": "elements",
+            "matched": false
+          }
+        ]
+      }
+    },
+    {
+      "task": "validation-explain-fzk",
+      "route": "proxy",
+      "repeat": 2,
+      "recording": "live-20261015t110523-validation-explain-fzk-proxy-2",
+      "outcome": "error",
+      "violations": null,
+      "facts": null
+    },
+    {
+      "task": "authoring-annex-wall",
+      "route": "proxy",
+      "repeat": 1,
+      "recording": "live-20261015t110523-authoring-annex-wall-proxy-1",
+      "outcome": "completed",
+      "violations": [],
+      "facts": {
+        "cited": [],
+        "declaredKind": "model.authoring",
+        "proposalParsed": true,
+        "accounting": null,
+        "countClaims": []
+      }
+    },
+    {
+      "task": "authoring-annex-wall",
+      "route": "proxy",
+      "repeat": 2,
+      "recording": "live-20261015t110523-authoring-annex-wall-proxy-2",
+      "outcome": "completed",
+      "violations": [],
+      "facts": {
+        "cited": [],
+        "declaredKind": "model.authoring",
+        "proposalParsed": true,
+        "accounting": null,
+        "countClaims": []
+      }
+    },
+    {
+      "task": "flow-sum",
+      "route": "proxy",
+      "repeat": 1,
+      "recording": "live-20261015t110523-flow-sum-proxy-1",
+      "outcome": "completed",
+      "violations": [],
+      "facts": {
+        "cited": [],
+        "declaredKind": "flow.patch",
+        "proposalParsed": true,
+        "accounting": null,
+        "countClaims": []
+      }
+    },
+    {
+      "task": "flow-sum",
+      "route": "proxy",
+      "repeat": 2,
+      "recording": "live-20261015t110523-flow-sum-proxy-2",
+      "outcome": "completed",
+      "violations": [],
+      "facts": {
+        "cited": [],
+        "declaredKind": "flow.patch",
+        "proposalParsed": true,
+        "accounting": null,
+        "countClaims": []
+      }
+    },
+    {
+      "task": "flow-ai-review",
+      "route": "proxy",
+      "repeat": 1,
+      "recording": "live-20261015t110523-flow-ai-review-proxy-1",
+      "outcome": "completed",
+      "violations": [],
+      "facts": {
+        "cited": [
+          "E3",
+          "E4",
+          "E5",
+          "E6",
+          "E1",
+          "E2",
+          "E7"
+        ],
+        "declaredKind": null,
+        "proposalParsed": null,
+        "accounting": null,
+        "countClaims": [
+          {
+            "value": 4,
+            "noun": "rows",
+            "matched": true
+          },
+          {
+            "value": 1,
+            "noun": "row",
+            "matched": true
+          },
+          {
+            "value": 4,
+            "noun": "rows",
+            "matched": true
+          },
+          {
+            "value": 4,
+            "noun": "rows",
+            "matched": true
+          }
+        ]
+      }
+    },
+    {
+      "task": "flow-ai-review",
+      "route": "proxy",
+      "repeat": 2,
+      "recording": "live-20261015t110523-flow-ai-review-proxy-2",
+      "outcome": "error",
+      "violations": null,
+      "facts": null
+    },
+    {
+      "task": "review-next-action",
+      "route": "proxy",
+      "repeat": 1,
+      "recording": "live-20261015t110523-review-next-action-proxy-1",
+      "outcome": "truncated",
+      "violations": [],
+      "facts": {
+        "cited": [
+          "E1"
+        ],
+        "declaredKind": null,
+        "proposalParsed": null,
+        "accounting": null,
+        "countClaims": [
+          {
+            "value": 1,
+            "noun": "finding",
+            "matched": true
+          },
+          {
+            "value": 1,
+            "noun": "rows",
+            "matched": true
+          }
+        ]
+      }
+    },
+    {
+      "task": "review-next-action",
+      "route": "proxy",
+      "repeat": 2,
+      "recording": "live-20261015t110523-review-next-action-proxy-2",
+      "outcome": "error",
+      "violations": null,
+      "facts": null
+    },
+    {
+      "task": "list-quantity-gaps",
+      "route": "proxy",
+      "repeat": 1,
+      "recording": "live-20261015t110523-list-quantity-gaps-proxy-1",
+      "outcome": "completed",
+      "violations": [],
+      "facts": {
+        "cited": [
+          "E1",
+          "E2",
+          "E3",
+          "E4"
+        ],
+        "declaredKind": null,
+        "proposalParsed": null,
+        "accounting": null,
+        "countClaims": [
+          {
+            "value": 4,
+            "noun": "rows",
+            "matched": true
+          }
+        ]
+      }
+    },
+    {
+      "task": "list-quantity-gaps",
+      "route": "proxy",
+      "repeat": 2,
+      "recording": "live-20261015t110523-list-quantity-gaps-proxy-2",
+      "outcome": "completed",
+      "violations": [],
+      "facts": {
+        "cited": [
+          "E1",
+          "E2",
+          "E3",
+          "E4"
+        ],
+        "declaredKind": null,
+        "proposalParsed": null,
+        "accounting": null,
+        "countClaims": [
+          {
+            "value": 4,
+            "noun": "rows",
+            "matched": true
+          },
+          {
+            "value": 4,
+            "noun": "walls",
+            "matched": true
+          },
+          {
+            "value": 4,
+            "noun": "walls",
+            "matched": true
+          }
+        ]
+      }
+    },
+    {
+      "task": "selected-roof-properties",
+      "route": "proxy",
+      "repeat": 1,
+      "recording": "live-20261015t110523-selected-roof-properties-proxy-1",
+      "outcome": "error",
+      "violations": null,
+      "facts": null
+    },
+    {
+      "task": "selected-roof-properties",
+      "route": "proxy",
+      "repeat": 2,
+      "recording": "live-20261015t110523-selected-roof-properties-proxy-2",
+      "outcome": "error",
+      "violations": null,
+      "facts": null
+    },
+    {
+      "task": "reimported-document",
+      "route": "proxy",
+      "repeat": 1,
+      "recording": "live-20261015t110523-reimported-document-proxy-1",
+      "outcome": "completed",
+      "violations": [],
+      "facts": {
+        "cited": [
+          "E1",
+          "E2"
+        ],
+        "declaredKind": null,
+        "proposalParsed": null,
+        "accounting": null,
+        "countClaims": [
+          {
+            "value": 2,
+            "noun": "rows",
+            "matched": true
+          }
+        ]
+      }
+    },
+    {
+      "task": "reimported-document",
+      "route": "proxy",
+      "repeat": 2,
+      "recording": "live-20261015t110523-reimported-document-proxy-2",
+      "outcome": "completed",
+      "violations": [],
+      "facts": {
+        "cited": [
+          "E1",
+          "E2"
+        ],
+        "declaredKind": null,
+        "proposalParsed": null,
+        "accounting": null,
+        "countClaims": []
+      }
+    }
+  ]
+}

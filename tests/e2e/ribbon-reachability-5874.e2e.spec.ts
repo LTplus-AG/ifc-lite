@@ -11,12 +11,12 @@ const TAB_BUTTON_COUNTS = [
   ['File', 20], // includes the Cesium ion upload command (#6587) and LandXML (terrain) (#7600)
   ['Home', 7],
   ['View', 19], // Settings moved to the persistent header (#5857)
-  ['Elements', 17], // includes the selected mesh hover outline (#5748)
+  ['Elements', 18], // includes selected mesh hover outline (#5748) and Presentation layers (#7619)
   ['Analyze', 18], // 17 commands including Linked records (#6643) plus the panel-browser content trigger (#5873)
   ['Author', 8], // includes Change sets (#6232 D4); every create kind is a Model workspace command, not a button (#6232 B1)
 ] as const;
 
-test('authored IFC keeps all 89 ribbon commands and panel browser reachable at 1280px (#5874, #5778)', async ({ page }, testInfo) => {
+test('authored IFC keeps all 90 ribbon commands and panel browser reachable at 1280px (#5874, #5778)', async ({ page }, testInfo) => {
   await page.addInitScript(() => {
     localStorage.setItem('ifclite.extensions.privacy-disclosure.v2', 'e2e acknowledged');
   });
@@ -87,7 +87,23 @@ test('authored IFC keeps all 89 ribbon commands and panel browser reachable at 1
   const browserCount = visited.Analyze.filter((name) => name === 'Browse panels').length;
   expect(visited.View, 'View includes the selected-source centreline command (#5778)').toContain('Centreline');
   expect(browserCount, 'Analyze has one panel-browser content trigger').toBe(1);
-  expect(Object.values(visited).reduce((total, names) => total + names.length, 0) - browserCount).toBe(89);
+  expect(Object.values(visited).reduce((total, names) => total + names.length, 0) - browserCount).toBe(90);
+  // #7619: the added hierarchy command is unique and opens its actual sidebar
+  // grouping, after the inventory above checks its accessible pointer target.
+  const presentationLayerCommandName = 'Presentation layers';
+  expect(visited.Elements.filter((name) => name === presentationLayerCommandName)).toHaveLength(1);
+  await page.getByRole('tab', { name: 'Elements', exact: true }).click();
+  await page.getByRole('tabpanel', { name: 'Elements', exact: true })
+    .getByRole('button', { name: presentationLayerCommandName, exact: true }).click();
+  await page.waitForFunction(() => (globalThis as typeof globalThis & {
+    __ifc_lite_viewer_store__?: { getState(): { hierarchyMode: string } };
+  }).__ifc_lite_viewer_store__?.getState().hierarchyMode === 'presentation-layers');
+  await expect(page.locator('[data-tour="hierarchy-panel"]')
+    .getByText('Presentation layers', { exact: true })).toBeVisible();
+  await testInfo.attach('presentation-layer-ribbon-command.png', {
+    body: await page.screenshot(),
+    contentType: 'image/png',
+  });
   // #6643: the new command is unique and opens the actual linked-records panel.
   expect(visited.Analyze.filter((name) => name === 'Linked records')).toHaveLength(1);
   await page.getByRole('tab', { name: 'Analyze', exact: true }).click();

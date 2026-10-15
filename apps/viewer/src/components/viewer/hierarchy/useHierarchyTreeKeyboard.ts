@@ -87,6 +87,7 @@ export function useHierarchyTreeKeyboard({
   const singleTreeSectionTitle = groupingMode === 'spatial' ? t('hierarchy.panel.sectionTitle.spatial')
     : groupingMode === 'type' ? t('hierarchy.panel.sectionTitle.byClass')
     : groupingMode === 'material' ? t('hierarchy.panel.sectionTitle.byMaterial')
+    : groupingMode === 'presentation-layers' ? t('hierarchy.panel.sectionTitle.byPresentationLayer')
     : groupingMode === 'groups' ? t('hierarchy.panel.sectionTitle.byGroup')
     : t('hierarchy.panel.sectionTitle.byType');
 

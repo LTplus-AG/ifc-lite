@@ -297,6 +297,28 @@ const reviewMessageShape = {
   "actions.openDrafts": [],
 } as const satisfies Record<WorkspaceReviewKey, readonly string[]>;
 
+import type { landXmlGeorefAssumptionsEn } from './catalogues/landxml-georef-assumptions.en';
+
+type GeorefAssumptionKey = keyof typeof landXmlGeorefAssumptionsEn extends `landXmlGeorefAssumptions.${infer Key}` ? Key : never;
+const georefAssumptionShape = {
+  "epsgFromName.label": [],
+  "epsgFromName.description": [],
+  "epsgFromName.applied": ["crs"],
+  "sharedVerticalDatum.label": [],
+  "sharedVerticalDatum.description": [],
+  "sharedVerticalDatum.applied": [],
+  "title": ["fileName"],
+  "offer": [],
+  "load": [],
+  "always": [],
+  "alwaysHint": [],
+  "cancel": [],
+  "settings": [],
+  "settingsHint": [],
+  "badge": [],
+  "assumed": [],
+} as const satisfies Record<GeorefAssumptionKey, readonly string[]>;
+
 export function lazyMessageParameters(key: string): readonly string[] | null {
   if (key.startsWith('flowReview.')) {
     const tail = key.slice('flowReview.'.length);
@@ -305,6 +327,10 @@ export function lazyMessageParameters(key: string): readonly string[] | null {
   if (key.startsWith('semanticAssist.')) {
     const tail = key.slice('semanticAssist.'.length);
     return Object.hasOwn(semanticMessageShape, tail) ? semanticMessageShape[tail as SemanticKey] : null;
+  }
+  if (key.startsWith('landXmlGeorefAssumptions.')) {
+    const tail = key.slice('landXmlGeorefAssumptions.'.length);
+    return Object.hasOwn(georefAssumptionShape, tail) ? georefAssumptionShape[tail as GeorefAssumptionKey] : null;
   }
   if (key.startsWith('reviewWorkspace.')) {
     const tail = key.slice('reviewWorkspace.'.length);

@@ -17,7 +17,7 @@ import { type CoordinateInfo, type ModelSpatialReference } from '@ifc-lite/geome
 import { useViewerStore, type FederatedModel } from '../../store/index.js';
 import { getEffectiveGeoreference, hasStandardGeoreferencing, type GeorefMutationDataLike } from '../../lib/geo/effective-georef.js';
 import { totalYupOffset } from '../../lib/geo/coordinate-frame.js';
-import { buildCrossCrsPointMap, buildSpatialAlignmentTransform, isIdentitySpatialTransform } from './federationSpatialTransform.js';
+import { buildCrossCrsPointMap, buildSpatialAlignmentTransform, isIdentitySpatialTransform, type UnknownVerticalPolicy } from './federationSpatialTransform.js';
 import { spatialReferenceFromIfc } from '../../lib/geo/ifc-spatial-reference.js';
 import {
   alignEntityWorldAabbs,
@@ -281,7 +281,7 @@ function applyAlignmentTransformAndUpdateBounds(
  * Jacobian per mesh — acceptable trade-off for now, document if it bites.
  */
 async function alignGeometryAcrossCrs(geometry: FederatedGeometryResult, source: ModelSpatialPlacement,
-  reference: ModelSpatialPlacement, allowEmptyGeometry: boolean): Promise<boolean> {
+  reference: ModelSpatialPlacement, allowEmptyGeometry: boolean, unknownVertical: UnknownVerticalPolicy): Promise<boolean> {
   // Reprojection is all-or-nothing.  Publishing a mesh with even one source
   // vertex left in its old CRS creates geometry that no later re-alignment can
   // repair: its pre-alignment snapshot contains one object in two frames.
@@ -306,7 +306,7 @@ async function alignGeometryAcrossCrs(geometry: FederatedGeometryResult, source:
       ? new Map(originalInstancedAabbs)
       : undefined;
   };
-  const pointMap = await buildCrossCrsPointMap(source, reference);
+  const pointMap = await buildCrossCrsPointMap(source, reference, unknownVertical);
   if (!pointMap) return false;
   const sourceCrs = source.spatialReference.horizontal?.id;
   const referenceCrs = reference.spatialReference.horizontal?.id;
@@ -468,10 +468,12 @@ export async function alignGeometryToReference(
   geometry: FederatedGeometryResult,
   source: ModelSpatialPlacement,
   reference: ModelSpatialPlacement,
-  options: { allowEmptyGeometry?: boolean } = {},
+  /** `unknownVertical`: fail-closed unless the user assumed a shared vertical datum for this model. */
+  options: { allowEmptyGeometry?: boolean; unknownVertical?: UnknownVerticalPolicy } = {},
 ): Promise<FederationAlignmentStatus> {
+  const unknownVertical = options.unknownVertical ?? 'refuse';
   if (source.spatialReference.horizontal?.id === reference.spatialReference.horizontal?.id) {
-    const transform = buildSpatialAlignmentTransform(source, reference);
+    const transform = buildSpatialAlignmentTransform(source, reference, unknownVertical);
     if (!transform) return 'failed';
     if (isIdentitySpatialTransform(transform)) return 'identity';
     const applied = applyAlignmentTransformAndUpdateBounds(
@@ -482,7 +484,7 @@ export async function alignGeometryToReference(
     );
     return applied ? 'same-crs' : 'failed';
   }
-  const ok = await alignGeometryAcrossCrs(geometry, source, reference, options.allowEmptyGeometry === true);
+  const ok = await alignGeometryAcrossCrs(geometry, source, reference, options.allowEmptyGeometry === true, unknownVertical);
   return ok ? 'reprojected' : 'failed';
 }
 

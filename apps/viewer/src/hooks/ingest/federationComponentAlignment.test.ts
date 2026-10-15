@@ -53,3 +53,46 @@ it('uses the canonical nonlinear cross-CRS result for each streamed component (#
   assert.deepEqual(component.mesh.origin, aggregateMesh.origin);
   assert.deepEqual(component.coordinateInfo.originalBounds, aggregate.coordinateInfo.originalBounds);
 });
+
+/** The same placement with its vertical datum dropped, or replaced. */
+function withVertical(placementValue: ModelSpatialPlacement, vertical: string | null): ModelSpatialPlacement {
+  const { vertical: _dropped, ...rest } = placementValue.spatialReference;
+  return {
+    ...placementValue,
+    spatialReference: vertical === null ? rest : { ...rest, vertical: { id: vertical } },
+  };
+}
+
+function geometryOf(meshData: MeshData): GeometryResult {
+  return { meshes: [meshData], totalVertices: 3, totalTriangles: 1, coordinateInfo: structuredClone(coordinateInfo) };
+}
+
+it('carries an unknown vertical datum only under the user\'s sharedVerticalDatum policy, same-CRS and cross-CRS alike', async () => {
+  for (const [source, reference, aligned] of [
+    [withVertical(placement('EPSG:32632', 500_000), null), withVertical(placement('EPSG:32632', 499_000), null), 'same-crs'],
+    [withVertical(placement('EPSG:32632', 500_000), null), placement('EPSG:32633', 300_000), 'reprojected'],
+    [placement('EPSG:32632', 500_000), withVertical(placement('EPSG:32633', 300_000), null), 'reprojected'],
+  ] as const) {
+    // Fail-closed by default: nothing moves.
+    const refused = mesh();
+    assert.equal(await alignGeometryToReference(geometryOf(refused), source, reference), 'failed');
+    assert.deepEqual(refused.positions, mesh().positions);
+
+    const assumed = await alignLandXmlComponent(mesh(), coordinateInfo, source, reference, 'assume-compatible');
+    assert.equal(assumed.status, aligned);
+    // Heights are placed as authored: the up axis of every vertex is unchanged.
+    const origin = assumed.mesh.origin ?? [0, 0, 0];
+    const authored = mesh().positions;
+    for (let index = 1; index < 9; index += 3) {
+      assert.ok(Math.abs(assumed.mesh.positions[index]! + origin[1] - authored[index]!) < 1e-6, `${aligned}: ${assumed.mesh.positions}`);
+    }
+  }
+});
+
+it('never treats two declared, different vertical datums as one, whatever the policy', async () => {
+  const source = placement('EPSG:32632', 500_000);
+  const reference = withVertical(placement('EPSG:32632', 499_000), 'EPSG:5783');
+  assert.equal((await alignLandXmlComponent(mesh(), coordinateInfo, source, reference, 'assume-compatible')).status, 'failed');
+  const crossReference = withVertical(placement('EPSG:32633', 300_000), 'EPSG:5783');
+  assert.equal((await alignLandXmlComponent(mesh(), coordinateInfo, source, crossReference, 'assume-compatible')).status, 'failed');
+});

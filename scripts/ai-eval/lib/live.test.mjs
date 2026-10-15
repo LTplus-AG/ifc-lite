@@ -53,7 +53,7 @@ test('a live run sends the credential in one header only, fixes settings, and re
   assert.equal(seen[0].body.max_completion_tokens, manifest.liveEvaluation.maxOutputTokens);
   assert.ok(!JSON.stringify(seen[0].body).includes(provider.key), 'the key never enters the request body');
   assert.ok(!JSON.stringify(outcome).includes(provider.key), 'the key never enters any output');
-  assert.deepEqual(outcome.results.at(-1), { task: 'validation-explain-fzk', skipped: 'Run pnpm fixtures to fetch AC20-FZK-Haus.ifc' });
+  assert.deepEqual(outcome.results.at(-1), { task: 'validation-explain-fzk', route: 'openai', skipped: 'Run pnpm fixtures to fetch AC20-FZK-Haus.ifc' });
   const [first] = outcome.recordings;
   assert.deepEqual(recordingErrors(first), []);
   assert.equal(first.corpus, 'live');
@@ -73,6 +73,14 @@ test('usage the provider did not stream is recorded as unreported, never estimat
 test('live answers go through the same invariants as the corpus', async () => {
   const outcome = await runLive({ ...common, tasks: ['clash-summary'], fetchImpl: reply(chatStream('I have created issues for [E9].')) });
   assert.deepEqual(outcome.results[0].violations.map(violation => violation.id).sort(), ['citations-valid', 'no-effect-claims']);
+});
+
+test('a live answer citing a count from the prompt\'s model summary is not flagged; an unsupported count still is (#7652)', async () => {
+  const system = 'Use at most 30 groups.\nModel schema (exact names; numbers are elements carrying them).\nModels: AC20-FZK-Haus.ifc (121 elements)\nClasses: IfcWallStandardCase 13';
+  const withSummary = { version: 1, tasks: [{ ...captured.tasks[0], request: { ...captured.tasks[0].request, system } }] };
+  const run = async text => (await runLive({ ...common, captured: withSummary, tasks: ['clash-summary'], fetchImpl: reply(chatStream(text)) })).results[0].violations.map(v => v.id);
+  assert.deepEqual(await run('The model has 121 elements and 13 walls [E1].'), []);
+  assert.deepEqual(await run('There are 86 entities and 30 groups [E1].'), ['count-claims-match-facts', 'count-claims-match-facts']);
 });
 
 test('HTTP errors and timeouts become error recordings and receipts; no credential or body leaks', async () => {
@@ -125,7 +133,7 @@ test('a run refuses non-positive or non-numeric repeats and tasks the capture do
   for (const repeats of [0, -1, Number.NaN, 1.5]) {
     await assert.rejects(runLive({ ...common, repeats, fetchImpl }), /--repeats must be a whole number/);
   }
-  await assert.rejects(runLive({ ...common, tasks: ['clash-summary', 'not-captured-task'], fetchImpl }), /no entry for: not-captured-task/);
+  await assert.rejects(runLive({ ...common, tasks: ['clash-summary', 'flow-sum'], fetchImpl }), /openai capture has no entry for: flow-sum/);
   assert.equal(calls, 0);
 });
 
@@ -143,4 +151,39 @@ test('receipts record the temperature actually sent, and redirects are never fol
   const redirected = await callProvider({ provider, task: { id: 't' }, request: captured.tasks[0].request, settings,
     fetchImpl: async () => new Response(null, { status: 307, headers: { location: 'https://elsewhere.invalid/' } }), now: Date.now });
   assert.equal(redirected.outcome, 'error', 'a redirect is a failure, not a hop');
+});
+
+test('#6928 wireRequest omits temperature where the Assistant sent none', () => {
+  const settings = { temperature: 0, maxOutputTokens: 1000 };
+  const request = { system: 'SYSTEM', messages: [{ role: 'user', content: 'q' }], maxOutputTokens: 4096, sentTemperature: false };
+  for (const kind of ['anthropic', 'openai']) {
+    assert.ok(!('temperature' in wireRequest(kind, { model: 'm', request, settings }).body), kind);
+    assert.equal(wireRequest(kind, { model: 'm', request: { ...request, sentTemperature: true }, settings }).body.temperature, 0, kind);
+  }
+});
+
+test('#6928 each provider replays the capture made with its own model', async () => {
+  const withRequest = change => ({ version: 1, tasks: captured.tasks.map(entry => (entry.request ? { ...entry, request: { ...entry.request, ...change } } : entry)) });
+  const anthropic = { kind: 'anthropic', url: 'https://example.invalid/v1/messages', model: 'frontier', key: 'anthropic-key-never-persisted-0123', captured: withRequest({ sentTemperature: false, maxOutputTokens: 2000 }) };
+  const openai = { ...provider, captured: withRequest({ sentTemperature: true }) };
+  const sent = [];
+  const fetchImpl = async (url, init) => { sent.push({ url, body: JSON.parse(init.body) }); return new Response(chatStream('ok [E1]')); };
+  const outcome = await runLive({ ...common, captured: undefined, providers: [anthropic, openai], tasks: ['clash-summary', 'validation-explain-fzk'], fetchImpl });
+  const byUrl = url => sent.find(call => call.url === url).body;
+  assert.deepEqual([byUrl(anthropic.url).temperature, byUrl(anthropic.url).max_tokens], [undefined, 2000]);
+  assert.deepEqual([byUrl(provider.url).temperature, byUrl(provider.url).max_completion_tokens], [0, 4096]);
+  assert.deepEqual(outcome.results.filter(result => result.skipped).map(result => result.route), ['anthropic', 'openai']);
+});
+
+test('#6928 a task listed twice runs once, and an unknown task is refused', async () => {
+  let calls = 0;
+  const outcome = await runLive({ ...common, tasks: ['clash-summary', 'clash-summary'], fetchImpl: async () => { calls++; return new Response(chatStream('ok [E1]')); } });
+  assert.deepEqual([calls, outcome.recordings.length], [1, 1]);
+  await assert.rejects(runLive({ ...common, tasks: ['no-such-task'], fetchImpl: reply('') }), /Unknown task\(s\): no-such-task/);
+});
+
+test('#6928 the run settings do not claim a temperature the receipts did not send', async () => {
+  const outcome = await runLive({ ...common, tasks: ['clash-summary'], fetchImpl: reply(chatStream('ok [E1]')) });
+  assert.equal(outcome.settings.temperature, undefined);
+  assert.equal(outcome.settings.fixedTemperature, 0);
 });

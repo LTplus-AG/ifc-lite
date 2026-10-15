@@ -1,7 +1,7 @@
 {
   "family": "bundle",
-  "commit": "63f74bc84c919788de91c7d5862d9c1621ef2077",
-  "measuredAt": "2026-10-15T10:00:08.284Z",
+  "commit": "ddf0fc50e0cb4be0367c9ed2d6e01159fc1b9840",
+  "measuredAt": "2026-10-15T10:11:24.401Z",
   "metrics": [
     {
       "id": "engine-wasm-brotli",
@@ -11,7 +11,7 @@
     {
       "id": "viewer-entry-js-bytes",
       "value": 3193778,
-      "detail": "main-DEmOrPc7.js"
+      "detail": "main-wKh-u2Gm.js"
     },
     {
       "id": "viewer-eager-js-bytes",
@@ -22,13 +22,13 @@
   "informational": [
     {
       "id": "viewer-entry-js-brotli",
-      "value": 746957,
+      "value": 747075,
       "unit": "bytes",
-      "detail": "main-DEmOrPc7.js"
+      "detail": "main-wKh-u2Gm.js"
     },
     {
       "id": "viewer-eager-js-brotli",
-      "value": 3193841,
+      "value": 3194312,
       "unit": "bytes",
       "detail": "255 files, each compressed on its own"
     }

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { readdirSync, readFileSync, existsSync } from 'node:fs';
+import { readdirSync, readFileSync, existsSync, statSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { spawnSync } from 'node:child_process';
 
@@ -48,8 +48,29 @@ export function workspaceClosure(root, seeds) {
   return [...selected.entries()].sort(([a], [b]) => a.localeCompare(b));
 }
 
+function* exportTargets(value) {
+  if (typeof value === 'string') yield value;
+  else if (value && typeof value === 'object') {
+    for (const nested of Object.values(value)) yield* exportTargets(nested);
+  }
+}
+
+function assertBuiltPackage(name, { path, manifest }) {
+  const targets = new Set([manifest.main, manifest.module, manifest.types, manifest.typings,
+    ...exportTargets(manifest.exports)].filter(target => typeof target === 'string' && !target.includes('*')));
+  for (const target of targets) {
+    const file = join(path, target);
+    if (existsSync(file) && statSync(file).isFile()) continue;
+    const remedy = name === '@ifc-lite/wasm'
+      ? 'Run pnpm build:wasm (or pnpm build:wasm:fetch), then pnpm build.'
+      : 'Run pnpm build before pnpm test:packed.';
+    throw new Error(`Missing built entry point ${name}: ${target}. ${remedy}`);
+  }
+}
+
 export function packClosure(root, destination, seeds) {
   const selected = workspaceClosure(root, seeds);
+  for (const [name, pkg] of selected) assertBuiltPackage(name, pkg);
   const dependencies = {};
   const versions = {};
   for (const [name, { path, manifest }] of selected) {

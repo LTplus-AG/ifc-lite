@@ -137,7 +137,8 @@
         "packedConsumer": "External npm install, declarations, edit/reopen, lifecycle, real WASM/GLB and Vite worker/WASM bundle passed",
         "scaffold": "All six published-package projects passed npm ci, typecheck and build; real IFC4 FZK basic consumer found five doors",
         "workerOutputIdentity": "Baseline and corrected Node GLB bytes, mesh counts and triangle counts agree; receipt: tests/evidence/packed-workflows/worker-packaging.json",
-        "requiredFixture": "The committed wall is mandatory before packing/installation; optional FZK absence still skips with pnpm fixtures guidance. Isolated refusal and full external consumer tests passed; tests/evidence/packed-workflows/required-fixture.json"
+        "requiredFixture": "The committed wall is mandatory before packing/installation; optional FZK absence still skips with pnpm fixtures guidance. Isolated refusal and full external consumer tests passed; tests/evidence/packed-workflows/required-fixture.json",
+        "buildPrerequisites": "All fixed declared entry points in the dependency closure are required before writing tarballs; missing runtime/declaration/WASM targets name their build remedy. Five command tests passed; tests/evidence/packed-workflows/build-prerequisites.json"
       }
     },
     {

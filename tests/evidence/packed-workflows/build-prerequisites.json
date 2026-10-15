@@ -1,0 +1,22 @@
+{
+  "finding": "https://github.com/LTplus-AG/ifc-lite/pull/7648#discussion_r4287206041",
+  "invariant": "Validate the complete package closure before writing a tarball; name a missing fixed runtime/declaration/WASM entry and its build remedy",
+  "before": {
+    "failed": 3,
+    "behavior": "Each deliberately unbuilt standalone package was packed successfully; nonzero-exit assertions failed on the pre-fix helper"
+  },
+  "after": {
+    "commandTestsPassed": 5,
+    "failed": 0,
+    "skipped": 0,
+    "cases": [
+      "Missing JavaScript entry names pnpm build",
+      "Missing declaration entry names pnpm build",
+      "Missing WASM asset names build:wasm or build:wasm:fetch",
+      "Missing required committed wall refuses before packing",
+      "Complete fresh external npm/declarations/real IFC/WASM/GLB/Vite acceptance passes"
+    ]
+  },
+  "command": "node --test scripts/check-packed-workflows.test.mjs",
+  "runtime": "Node 24.21.0"
+}

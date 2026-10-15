@@ -329,6 +329,17 @@ impl IfcAPI {
         // sets per palette group so multi-coloured triangles don't collapse to
         // the single dominant colour the prepass `geometry_styles` carries.
         let indexed_colour_full = self.get_or_build_indexed_colour_maps(content, &mut decoder);
+        // #858 / EDGE-WASM-5 (#7691): with the don't-bake plan armed, keep
+        // multi-colour indexed-colour sources flat so their palette split
+        // survives; an instance placeholder carries ONE colour. The same id set
+        // the native orchestrator arms (`processor/mod.rs`), from the same helper.
+        if instance_plan.is_some() {
+            if let Some(ids) =
+                ifc_lite_processing::style::indexed_colour_split_guard_ids(&indexed_colour_full)
+            {
+                router.enable_indexed_colour_split_guard(ids);
+            }
+        }
 
         // The canonical styled-item index the shared producer consumes — built
         // once per worker alongside `geometry_styles` above (#1097).

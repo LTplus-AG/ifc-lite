@@ -109,3 +109,92 @@ fn proxy_inherits_material_appearance_in_fast_first_batch_streaming() {
         proxy.color
     );
 }
+
+/// PROCESSING-4 (#7691): a window whose `IfcMaterialList` is
+/// `[glass (transparency 0.6), frame (opaque)]`. The glass comes FIRST, so a
+/// "first colour" rule and a "first opaque colour" rule disagree here, and
+/// only here.
+const GLASS_FIRST_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('PROCESSING-4 element fallback fixture'),'2;1');
+FILE_NAME('fallback.ifc','2026-10-16T00:00:00',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('0$ScRe4drECQ4DMSqUjd6e',$,'P',$,$,$,$,(#2),#3);
+#2=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.0E-5,#5,$);
+#3=IFCUNITASSIGNMENT((#6));
+#4=IFCCARTESIANPOINT((0.,0.,0.));
+#5=IFCAXIS2PLACEMENT3D(#4,$,$);
+#6=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#10=IFCWINDOW('1WindowGlassFirst000',$,'Window',$,$,#11,#12,$,$,$,$,$,$);
+#11=IFCLOCALPLACEMENT($,#5);
+#12=IFCPRODUCTDEFINITIONSHAPE($,$,(#13));
+#13=IFCSHAPEREPRESENTATION(#2,'Body','Tessellation',(#14));
+#14=IFCTRIANGULATEDFACESET(#15,$,.T.,((1,2,3),(1,2,4),(1,4,3),(2,3,4)),$);
+#15=IFCCARTESIANPOINTLIST3D(((0.,0.,0.),(1.,0.,0.),(0.,1.,0.),(0.,0.,1.)));
+#30=IFCSTYLEDITEM($,(#31),$);
+#31=IFCSURFACESTYLE('Glass',.BOTH.,(#32));
+#32=IFCSURFACESTYLERENDERING(#33,0.6,$,$,$,$,$,$,.FLAT.);
+#33=IFCCOLOURRGB($,0.2,0.4,0.8);
+#34=IFCSTYLEDITEM($,(#35),$);
+#35=IFCSURFACESTYLE('Frame',.BOTH.,(#36));
+#36=IFCSURFACESTYLERENDERING(#37,$,$,$,$,$,$,$,.FLAT.);
+#37=IFCCOLOURRGB($,0.7,0.5,0.2);
+#40=IFCMATERIAL('Glass',$,$);
+#41=IFCMATERIALDEFINITIONREPRESENTATION($,$,(#42),#40);
+#42=IFCSTYLEDREPRESENTATION(#2,'Style','Material',(#30));
+#45=IFCMATERIAL('Frame',$,$);
+#46=IFCMATERIALDEFINITIONREPRESENTATION($,$,(#47),#45);
+#47=IFCSTYLEDREPRESENTATION(#2,'Style','Material',(#34));
+#50=IFCMATERIALLIST((#40,#45));
+#51=IFCRELASSOCIATESMATERIAL('2RelAssocMaterial001',$,$,$,(#10),#50);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+/// PROCESSING-4 (#7691): the element-level material fallback colour the
+/// browser wire carries (`styleIds`/`styleColors`, read back per element by
+/// `processGeometryBatch`) must be the colour the native pipeline picks for
+/// the same element (`style::pick_opaque_first` over the element's material
+/// colours, `processor/mod.rs`). It used to be the FIRST colour, so this
+/// window fell back to translucent glass in the viewer and to the opaque frame
+/// on the server and in exports. Both wire builders are pinned: the serial
+/// pre-pass and the sharded finalize.
+#[test]
+fn element_material_fallback_on_the_browser_wire_matches_native_processing_4() {
+    use ifc_lite_core::{build_entity_index, EntityDecoder, EntityScanner};
+    use ifc_lite_processing::flat_styles_rgba8_from_geometry_columns;
+    use ifc_lite_processing::prepass::{flat_styles_rgba8, resolve_prepass, PrepassSpans, ResolveOptions};
+    use ifc_lite_processing::style::{pick_opaque_first, Rgba};
+
+    const WINDOW: u32 = 10;
+    const FRAME: [f32; 4] = [0.7, 0.5, 0.2, 1.0];
+    let content = GLASS_FIRST_IFC.as_bytes();
+    let mut decoder = EntityDecoder::with_arc_index(content, std::sync::Arc::new(build_entity_index(content)));
+    let mut spans = PrepassSpans::default();
+    let mut scanner = EntityScanner::new(content);
+    while let Some((id, type_name, start, end)) = scanner.next_entity() {
+        spans.stash(type_name, id, start, end);
+    }
+    let resolved = resolve_prepass(&spans, &mut decoder, ResolveOptions::default());
+
+    let colours = &resolved.element_material_colors[&WINDOW];
+    assert_eq!(colours.len(), 2, "the window joins both list materials: {colours:?}");
+    assert!(colours[0][3] < 0.95, "fixture: the transparent glass must come first: {colours:?}");
+    let native = pick_opaque_first(colours).expect("the window has material colours");
+    assert!(approx_eq(native, FRAME), "native picks the opaque frame, got {native:?}");
+    let expected = Rgba::from_array(native).to_rgba8();
+
+    let wire_colour = |ids: &[u32], rgba: &[u8]| -> [u8; 4] {
+        let at = ids.iter().position(|&id| id == WINDOW).expect("the window is on the style wire");
+        rgba[at * 4..at * 4 + 4].try_into().unwrap()
+    };
+    let (ids, rgba) = flat_styles_rgba8(&resolved, &mut decoder);
+    assert_eq!(wire_colour(&ids, &rgba), expected, "serial pre-pass wire disagrees with native");
+
+    // The sharded finalize takes geometry styles as columns; this fixture has
+    // none attached to geometry, so the columns are empty.
+    let (ids, rgba) = flat_styles_rgba8_from_geometry_columns(&[], &[], &resolved, &mut decoder);
+    assert_eq!(wire_colour(&ids, &rgba), expected, "sharded pre-pass wire disagrees with native");
+}

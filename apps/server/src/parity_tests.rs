@@ -743,3 +743,37 @@ async fn issue_4706_a_response_cached_before_the_frame_fix_is_not_replayed() {
         "a response cached under the retired key must not be replayed"
     );
 }
+
+/// PROCESSING-5 / SERVER-18 (#7691): `/parse/metadata` and `/parse` must agree
+/// on `schema_version` for the same upload. They used to run two detectors:
+/// the metadata route a case-SENSITIVE header-only search, so a lowercase
+/// `file_schema(('ifc4'))` (legal: STEP keywords are case-insensitive) fell to
+/// the IFC2X3 default; every geometry route a whole-file search, so schema-like
+/// text in the DATA section overrode the header's declaration. Both cases are
+/// asserted, each against the declared schema and across both routes.
+#[tokio::test]
+async fn metadata_and_parse_report_the_same_declared_schema() {
+    let state = test_state("schema-parity").await;
+    let lowercase = FIXTURE.replace("FILE_SCHEMA(('IFC4'))", "file_schema(('ifc4'))");
+    let decoy = FIXTURE
+        .replace("FILE_SCHEMA(('IFC4'))", "FILE_SCHEMA(('IFC2X3'))")
+        .replace("'MainGrid'", "'converted from IFC4X3'");
+    assert_ne!(lowercase, FIXTURE, "fixture: the header rewrite must apply");
+    assert!(decoy.contains("('IFC2X3')") && decoy.contains("from IFC4X3"), "fixture: decoy rewrite");
+    for (label, content, declared) in [("lowercase", lowercase, "IFC4"), ("data-decoy", decoy, "IFC2X3")] {
+        let metadata = post_content(&state, "/api/v1/parse/metadata", content.as_bytes()).await;
+        assert_eq!(metadata.status(), StatusCode::OK, "{label}: /parse/metadata");
+        let metadata = body_json(metadata).await;
+        let full = post_content(&state, "/api/v1/parse", content.as_bytes()).await;
+        assert_eq!(full.status(), StatusCode::OK, "{label}: /parse");
+        let full = body_json(full).await;
+        assert_eq!(
+            (
+                metadata["schema_version"].as_str(),
+                full["metadata"]["schema_version"].as_str()
+            ),
+            (Some(declared), Some(declared)),
+            "{label}: /parse/metadata vs /parse schema_version"
+        );
+    }
+}

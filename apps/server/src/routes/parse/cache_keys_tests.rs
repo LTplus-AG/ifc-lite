@@ -11,7 +11,6 @@
 use super::cache_keys::*;
 use super::ParseQuery;
 use crate::services::cache::DiskCache;
-use crate::services::streaming::detect_schema_version;
 use crate::services::{OpeningFilterMode, ParquetLayout};
 use ifc_lite_processing::{SymbolicData, TessellationQuality};
 
@@ -406,19 +405,6 @@ fn quality_suffix_is_empty_only_for_the_default_level() {
         }
         assert!(suffixes.insert(suffix), "two levels share a cache suffix");
     }
-}
-
-#[test]
-fn schema_detection_uses_file_schema_declaration_only() {
-    let content = b"ISO-10303-21;
-HEADER;
-FILE_SCHEMA(('IFC2X3'));
-ENDSEC;
-DATA;
-#1=IFCDOCUMENTINFORMATION('IFC4X3',$,$,$,$,$,$,$,$,$,$,$,$,$,$,$,$);
-ENDSEC;";
-
-    assert_eq!(detect_schema_version(content), "IFC2X3");
 }
 
 /// The optimized-Parquet route got a key of its own with #3889. Its whole

@@ -514,8 +514,9 @@ fn starts_a_record(content: &[u8], hash: usize) -> bool {
 /// Flat wire encodings of the resolved styles for the browser's
 /// `styleIds`/`styleColors` arrays: the rich style index flattened to
 /// `(ids, rgba8)`, with IfcIndexedColourMap dominants, flat material colours,
-/// and per-element first material colours filling the gaps — the exact
-/// layered precedence the browser prepasses have always shipped.
+/// and each element's material fallback colour
+/// ([`crate::style::element_material_fallback_color`], the native rule)
+/// filling the gaps — the layered precedence the browser prepasses ship.
 pub fn flat_styles_rgba8(resolved: &ResolvedPrepass, decoder: &mut EntityDecoder) -> (Vec<u32>, Vec<u8>) {
     let mut merged: FxHashMap<u32, [f32; 4]> = resolved
         .geometry_style_index
@@ -525,8 +526,9 @@ pub fn flat_styles_rgba8(resolved: &ResolvedPrepass, decoder: &mut EntityDecoder
     for (&geometry_id, &color) in &resolved.indexed_colour_index {
         merged.entry(geometry_id).or_insert(color);
     }
-    // Flat material_id → colour, then element id → first material colour, so
-    // `processGeometryBatch`'s per-element fallback picks them up.
+    // Flat material_id → colour, then element id → its material fallback
+    // colour, so `processGeometryBatch`'s per-element fallback picks up the
+    // colour the native pipeline uses (PROCESSING-4, #7691).
     let material_styles = crate::style::build_material_style_index(
         &resolved.material_def_reprs,
         &resolved.orphan_styled_items,
@@ -536,7 +538,7 @@ pub fn flat_styles_rgba8(resolved: &ResolvedPrepass, decoder: &mut EntityDecoder
         merged.entry(mat_id).or_insert(color);
     }
     for (&element_id, colors) in &resolved.element_material_colors {
-        if let Some(&color) = colors.first() {
+        if let Some(color) = crate::style::element_material_fallback_color(colors) {
             merged.entry(element_id).or_insert(color);
         }
     }

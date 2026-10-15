@@ -4,10 +4,10 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
-import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
+import { extractSiteRefLocationOnDemand, type MapConversion, type ProjectedCRS } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
-import { readSiteRefLocation, siteRefMismatchMetres } from '@/lib/geo/site-ref-mismatch';
+import { siteRefMismatchMetres } from '@/lib/geo/site-ref-mismatch';
 import { localizedApproxDistance } from './georeference-i18n';
 
 interface SiteRefMismatchNoticeProps {
@@ -21,17 +21,14 @@ interface SiteRefMismatchNoticeProps {
 export function SiteRefMismatchNotice({ modelId, crs, conversion, lengthUnitScale }: SiteRefMismatchNoticeProps) {
   const { t, locale } = useTranslation();
   const dataStore = useViewerStore(s => s.models.get(modelId)?.ifcDataStore);
-  const site = useMemo(() => readSiteRefLocation(dataStore), [dataStore]);
+  const site = useMemo(() => (dataStore ? extractSiteRefLocationOnDemand(dataStore) : null), [dataStore]);
   const [mismatch, setMismatch] = useState<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     siteRefMismatchMetres(site, conversion, crs, lengthUnitScale)
       .then(metres => { if (!cancelled) setMismatch(metres); })
-      .catch((error: unknown) => {
-        console.warn('[georef] IfcSite reference comparison failed', error);
-        if (!cancelled) setMismatch(null);
-      });
+      .catch((error: unknown) => console.warn('[georef] IfcSite reference comparison failed', error));
     return () => { cancelled = true; };
   }, [site, conversion, crs, lengthUnitScale]);
 

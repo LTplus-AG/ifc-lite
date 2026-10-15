@@ -5,9 +5,7 @@
 import { it } from 'node:test';
 import assert from 'node:assert/strict';
 import { reprojectPointToLatLon } from './reproject.js';
-
-/** Metres per degree of latitude; longitude is scaled by cos(lat). */
-const M_PER_DEG = 111_320;
+import { distanceMetres } from './site-ref-mismatch.js';
 
 /**
  * DB_REF (Deutsche Bahn, Bessel 1841) projected and DB_REF2003/2016 compound CRSs
@@ -27,9 +25,7 @@ for (const { codes, e, lat, lon } of CASES) {
     it(`EPSG:${code} applies the DB_REF to ETRS89 datum shift (#7658)`, async () => {
       const result = await reprojectPointToLatLon(e, 5_589_400, { id: 1, name: `EPSG:${code}`, mapUnitScale: 1 });
       assert.ok(result, `EPSG:${code} did not resolve`);
-      const dy = (result.lat - lat) * M_PER_DEG;
-      const dx = (result.lon - lon) * M_PER_DEG * Math.cos((lat * Math.PI) / 180);
-      const offset = Math.hypot(dx, dy);
+      const offset = distanceMetres(result, { lat, lon });
       assert.ok(offset < 0.5, `EPSG:${code} lands ${offset.toFixed(2)} m off (${result.lat}, ${result.lon})`);
     });
   }

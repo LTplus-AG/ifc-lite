@@ -10,10 +10,10 @@
 import '@/test/setup-dom.js';
 import { afterEach, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { IfcParser, type IfcDataStore, type MapConversion, type ProjectedCRS } from '@ifc-lite/parser';
+import { IfcParser, extractSiteRefLocationOnDemand, type IfcDataStore, type MapConversion, type ProjectedCRS } from '@ifc-lite/parser';
 import { cleanup, render, waitFor } from '@/test/render.js';
 import { useViewerStore } from '@/store';
-import { readSiteRefLocation, siteRefMismatchMetres } from '@/lib/geo/site-ref-mismatch';
+import { siteRefMismatchMetres } from '@/lib/geo/site-ref-mismatch';
 import { SiteRefMismatchNotice } from './georef-site-ref-notice.js';
 
 const CONVERSION: MapConversion = {
@@ -60,21 +60,17 @@ describe('IfcSite reference vs MapConversion position (#7658)', () => {
     useViewerStore.setState(initialState, true);
   });
 
-  it('reads RefLatitude/RefLongitude from the IfcSite', async () => {
-    const site = readSiteRefLocation(await parseSite(CORRECT));
+  it('reads RefLatitude/RefLongitude and stays quiet when they agree with the MapConversion', async () => {
+    const site = extractSiteRefLocationOnDemand(await parseSite(CORRECT));
     assert.ok(site);
     assert.ok(Math.abs(site.lat - 50.431063) < 1e-6, `${site.lat}`);
     assert.ok(Math.abs(site.lon - 7.521147) < 1e-6, `${site.lon}`);
-  });
-
-  it('stays quiet when the site agrees with the MapConversion', async () => {
-    const site = readSiteRefLocation(await parseSite(CORRECT));
     assert.equal(await siteRefMismatchMetres(site, CONVERSION, CRS), null);
   });
 
   it('warns when the site is ~146 m from the MapConversion position', async () => {
     const store = await parseSite(SHIFTED);
-    const metres = await siteRefMismatchMetres(readSiteRefLocation(store), CONVERSION, CRS);
+    const metres = await siteRefMismatchMetres(extractSiteRefLocationOnDemand(store), CONVERSION, CRS);
     assert.ok(metres !== null && Math.abs(metres - 146) < 2, `${metres}`);
 
     useViewerStore.setState({

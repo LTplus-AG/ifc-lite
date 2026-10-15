@@ -22,8 +22,17 @@ use ifc_lite_core::{
 /// `None` when it is `$`. An entry that fails the index rule stays in place
 /// as [`INVALID_INDEX`]: dropping it would shift every later entry onto the
 /// wrong point.
+///
+/// A list of LISTS in that slot is not a `PnIndex` and reads as absent: the
+/// original IFC4 (2013) release declared attribute 4 of
+/// `IfcTriangulatedFaceSet` as `NormalIndex : LIST OF LIST [3:3]`, which a
+/// later IFC4 addendum replaced with `PnIndex`. Read as a `PnIndex`, every
+/// entry would be invalid and the whole face set would vanish.
 pub(super) fn read_pn_index(entity: &DecodedEntity, attr: usize) -> Option<Vec<u32>> {
     let list = entity.get(attr)?.as_list()?;
+    if list.iter().any(|v| v.as_list().is_some()) {
+        return None;
+    }
     Some(list.iter().map(|v| v.as_ifc_index().unwrap_or(INVALID_INDEX)).collect())
 }
 

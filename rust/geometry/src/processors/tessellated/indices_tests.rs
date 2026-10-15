@@ -138,23 +138,119 @@ fn signed_volume(triangles: &[Triangle]) -> f64 {
         .sum()
 }
 
-/// PROC-3: the two processors read `Closed = $` oppositely. The triangulated
-/// one orients an unknown shell outward (#819, Revit closed shells written
-/// with `$`); the polygonal one left it inward. One policy now: orient unless
-/// `Closed = .F.`.
+/// PROC-3: the two processors read `Closed = $` oppositely (the triangulated
+/// one oriented it, the polygonal one did not). One policy now: only `.T.`
+/// is oriented here; `$` and `.F.` keep the authored winding, and a closed
+/// `$` shell is turned outward by the topology-aware per-element pass.
 #[test]
-fn closed_unknown_orients_the_same_in_both_processors_7689() {
+fn closed_policy_is_the_same_in_both_processors_7689() {
     // An inward-wound tetrahedron (every face reversed).
     let inward = ["(1,2,3)", "(1,4,2)", "(1,3,4)", "(2,4,3)"];
-    for closed in [".T.", "$"] {
+    let (triangulated, polygonal) = both(&inward, ".T.", "$");
+    assert!(signed_volume(&triangulated) > 0.0, "Closed = .T.: triangulated shell faces outward");
+    assert!(signed_volume(&polygonal) > 0.0, "Closed = .T.: polygonal shell faces outward");
+    for closed in ["$", ".F."] {
         let (triangulated, polygonal) = both(&inward, closed, "$");
-        assert!(signed_volume(&triangulated) > 0.0, "Closed = {closed}: triangulated shell faces outward");
-        assert!(signed_volume(&polygonal) > 0.0, "Closed = {closed}: polygonal shell faces outward");
+        assert!(signed_volume(&triangulated) < 0.0, "Closed = {closed}: triangulated keeps the authored winding");
+        assert!(signed_volume(&polygonal) < 0.0, "Closed = {closed}: polygonal keeps the authored winding");
     }
-    // `.F.` is an explicit open shell: winding is kept as authored.
-    let (triangulated, polygonal) = both(&inward, ".F.", "$");
-    assert!(signed_volume(&triangulated) < 0.0);
-    assert!(signed_volume(&polygonal) < 0.0);
+}
+
+/// A genuinely closed shell written with `Closed = $` still ends up outward:
+/// the per-element pass (`orient_mesh_outward_verdict`, run by
+/// `produce_element_meshes`) orients closed components from topology.
+#[test]
+fn closed_shell_with_unknown_closed_is_oriented_by_the_per_element_pass_7689() {
+    let inward = "#2=IFCTRIANGULATEDFACESET(#1,$,$,((1,2,3),(1,4,2),(1,3,4),(2,4,3)),$);\n";
+    let mut processed = mesh(&format!("{POINTS}{inward}"), 2);
+    assert!(signed_volume(&triangles(&processed)) < 0.0, "the processor keeps `$` as authored");
+    let verdict = crate::orient_mesh_outward_verdict(&mut processed);
+    assert!(verdict.flipped);
+    assert!(signed_volume(&triangles(&processed)) > 0.0, "the per-element pass turns the closed shell outward");
+}
+
+/// An open grid sheet, 100 m square, authored with +Z normals, sagging
+/// `sag` metres at its middle row (a road sag curve, a ditch, a bowl): the
+/// concave-up shape the centroid test reads as "inward" at any sag.
+fn sag_sheet(sag: f64, closed: &str) -> (String, String) {
+    const N: usize = 11;
+    let points: Vec<String> = (0..N * N)
+        .map(|k| {
+            let (x, y) = ((k % N) as f64 * 10.0, (k / N) as f64 * 10.0);
+            format!("({x:.1},{y:.1},{:.6})", sag * ((x - 50.0) / 50.0).powi(2))
+        })
+        .collect();
+    let id = |i: usize, j: usize| j * N + i + 1;
+    let (mut quads, mut tris) = (Vec::new(), Vec::new());
+    for j in 0..N - 1 {
+        for i in 0..N - 1 {
+            let (a, b, c, d) = (id(i, j), id(i + 1, j), id(i + 1, j + 1), id(i, j + 1));
+            quads.push(format!("({a},{b},{c},{d})"));
+            tris.push(format!("({a},{b},{c}),({a},{c},{d})"));
+        }
+    }
+    let list = format!("#1=IFCCARTESIANPOINTLIST3D(({}));\n", points.join(","));
+    let triangulated = format!("{list}#2=IFCTRIANGULATEDFACESET(#1,$,{closed},({}),$);\n", tris.join(","));
+    let mut polygonal = list;
+    let ids: Vec<String> = quads
+        .iter()
+        .enumerate()
+        .map(|(k, quad)| {
+            polygonal.push_str(&format!("#{}=IFCINDEXEDPOLYGONALFACE({quad});\n", 100 + k));
+            format!("#{}", 100 + k)
+        })
+        .collect();
+    polygonal.push_str(&format!("#3=IFCPOLYGONALFACESET(#1,{closed},({}),$);\n", ids.join(",")));
+    (triangulated, polygonal)
+}
+
+fn mean_normal_z(mesh: &Mesh) -> f32 {
+    let z: Vec<f32> = mesh.normals.chunks_exact(3).map(|n| n[2]).collect();
+    z.iter().sum::<f32>() / z.len() as f32
+}
+
+/// Review of #7716: orienting `Closed = $` turned concave OPEN sheets
+/// face-down (lit as their underside). They keep their +Z normals in both
+/// processors, and the per-element pass leaves an open sheet alone too.
+#[test]
+fn concave_open_sheet_with_unknown_closed_keeps_its_up_normals_7689() {
+    for sag in [0.001, 0.05, 0.5] {
+        let (triangulated, polygonal) = sag_sheet(sag, "$");
+        for (name, mut sheet) in [("triangulated", mesh(&triangulated, 2)), ("polygonal", mesh(&polygonal, 3))] {
+            assert!(mean_normal_z(&sheet) > 0.9, "{name}, sag {sag} m: authored +Z kept");
+            let authored = triangles(&sheet);
+            let verdict = crate::orient_mesh_outward_verdict(&mut sheet);
+            assert!(!verdict.flipped, "{name}, sag {sag} m: the per-element pass leaves an open sheet alone");
+            assert_eq!(triangles(&sheet), authored);
+        }
+    }
+}
+
+/// An open sheet that CLAIMS `Closed = .T.` is a malformed file (`.T.`
+/// requires every edge to be shared by two faces). Documented behaviour: the
+/// processor trusts the claim, so a concave sheet is "oriented outward",
+/// i.e. turned face-down, while a flat one keeps its winding because the
+/// planar noise guard refuses to flip on a zero signal.
+#[test]
+fn open_sheet_marked_closed_follows_the_closed_claim_7689() {
+    let (triangulated, polygonal) = sag_sheet(0.0, ".T.");
+    assert!(mean_normal_z(&mesh(&triangulated, 2)) > 0.9, "flat .T. sheet: no flip on noise");
+    assert!(mean_normal_z(&mesh(&polygonal, 3)) > 0.9, "flat .T. sheet: no flip on noise");
+    let (triangulated, polygonal) = sag_sheet(0.5, ".T.");
+    assert!(mean_normal_z(&mesh(&triangulated, 2)) < -0.9, "concave .T. sheet: trusted as a shell, flipped");
+    assert!(mean_normal_z(&mesh(&polygonal, 3)) < -0.9, "concave .T. sheet: trusted as a shell, flipped");
+}
+
+/// The original IFC4 (2013) `IfcTriangulatedFaceSet` carried `NormalIndex`
+/// (a list of index triples) where a later IFC4 addendum has `PnIndex`. Reading it as a
+/// `PnIndex` made every entry invalid and dropped every face; it reads as
+/// absent instead (#7716 review).
+#[test]
+fn original_ifc4_normal_index_is_not_read_as_pn_index_7689() {
+    let legacy = format!("{POINTS}#2=IFCTRIANGULATEDFACESET(#1,((0.,0.,1.)),.F.,((1,2,3),(2,3,4)),((1,1,1),(1,1,1)));\n");
+    let plain = format!("{POINTS}#2=IFCTRIANGULATEDFACESET(#1,$,.F.,((1,2,3),(2,3,4)),$);\n");
+    assert_eq!(triangles(&mesh(&legacy, 2)), triangles(&mesh(&plain, 2)));
+    assert_eq!(triangles(&mesh(&legacy, 2)).len(), 2);
 }
 
 /// With `TexCoordIndex = $` the CoordIndex doubles as the UV index (#1781).

@@ -30,15 +30,20 @@ use ifc_lite_core::{
 };
 
 /// The one `Closed` policy for both tessellated face sets: orient the shell
-/// outward unless `Closed` is explicitly `.F.`.
+/// outward here only when `Closed` is `.T.`.
 ///
-/// `.T.` is a closed shell. `$` says nothing, and Revit and similar exporters
-/// write closed shells with `$`, some of them wound inward (#819,
-/// `IFC4TessellationComplex.ifc`), so an unknown shell is oriented too. Only
-/// an explicit `.F.` keeps the authored winding. The polygonal processor used
-/// to read `$` as open and the triangulated one as closed (#7689, PROC-3).
+/// `.T.` asserts a closed shell (IFC4.3 informal proposition: every edge used
+/// by exactly two faces), so the centroid test below is meaningful. `$` means
+/// "no information can be asserted" and `.F.` an open set: both keep the
+/// authored winding. A concave OPEN sheet (a road sag, a ditch, a bowl) reads
+/// as inward under the centroid test however gentle it is, so orienting `$`
+/// here turned such sheets face-down. A genuinely closed shell written with
+/// `$` is still oriented outward, by the topology-aware per-element pass
+/// (`orient_mesh_outward_verdict`), which leaves open components alone.
+/// IfcOpenShell reorients none of the three. Before #7689 the triangulated
+/// processor oriented `$` and the polygonal one did not.
 fn orients_outward(closed: Option<&AttributeValue>) -> bool {
-    closed.and_then(AttributeValue::as_enum) != Some("F")
+    closed.and_then(AttributeValue::as_enum) == Some("T")
 }
 
 /// Read an `IfcCartesianPointList3D` as flat `[x, y, z, ...]` f32 positions.

@@ -86,7 +86,8 @@ impl PolygonalFaceSetProcessor {
         // (one face, a flat terrain patch) has every normal perpendicular to
         // its centroid offset, so its sum is rounding noise of either sign:
         // that says nothing about inside and outside, and is never a reason
-        // to flip (#7689, now that `Closed = $` orients both face sets).
+        // to flip. A flat terrain patch or a single face marked `Closed = .T.`
+        // reaches this test (#7689).
         // Measured as `sign_accum / magnitude` over the fixture corpus: real
         // inward shells sit at -5e-4 and below, planar or barely warped
         // single faces within ±6e-8 of zero.

@@ -635,15 +635,19 @@ impl<'a> EntityDecoder<'a> {
 
         // IFCFACEOUTERBOUND vs IFCFACEBOUND, under STEP's case-insensitive
         // keyword rule (#4497): a CamelCase `IfcFaceOuterBound` is an outer
-        // bound too (#7689, CORE-11).
-        let is_outer = crate::fast_parse::extract_entity_type_name(bytes)
-            .is_some_and(|name| crate::parser::keyword_eq(name, "IFCFACEOUTERBOUND"));
-        let mut i = eq_pos + 1;
-        // Find the '(' that opens the argument list
-        while i < len && bytes[i] != b'(' {
-            i += 1;
-        }
-        if i >= len {
+        // bound too (#7689, CORE-11). Trivia (whitespace and `/* ... */`)
+        // may sit on either side of the keyword (#3789), so it is skipped,
+        // not sliced into the name.
+        let start = skip_step_trivia(bytes, eq_pos + 1)?;
+        let end = start
+            + bytes[start..]
+                .iter()
+                .take_while(|b| b.is_ascii_alphanumeric() || **b == b'_')
+                .count();
+        let keyword = std::str::from_utf8(&bytes[start..end]).ok()?;
+        let is_outer = crate::parser::keyword_eq(keyword, "IFCFACEOUTERBOUND");
+        let mut i = skip_step_trivia(bytes, end)?;
+        if bytes.get(i) != Some(&b'(') {
             return None;
         }
 

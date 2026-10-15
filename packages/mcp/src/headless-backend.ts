@@ -40,10 +40,10 @@ import {
 import { escapeCsvCell, exportToStep, StepExporter, type StepExportOptions } from '@ifc-lite/export';
 import { findPropertyInSets, findQuantityInSets } from '@ifc-lite/query';
 import { createStructuralAdapter } from './headless-backend-structural.js';
-import { createQueryAdapter } from './backend-query.js';
-import { overlayFromView, type PendingOverlay } from './overlay.js';
+import { createQueryAdapter } from '@ifc-lite/sdk/headless';
+import { overlayFromView, type PendingOverlay } from '@ifc-lite/sdk/headless';
 
-export { expandTypes, isProductType } from './backend-query.js';
+export { expandTypes, isProductType } from '@ifc-lite/sdk/headless';
 
 export class HeadlessLikeBackend implements BimBackend {
   readonly model: ModelBackendMethods;

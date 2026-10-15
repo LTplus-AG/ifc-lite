@@ -20,7 +20,7 @@ import {
 } from '@ifc-lite/parser';
 import type { EntityFingerprint } from '@ifc-lite/diff';
 import type { EffectiveEntity } from '@ifc-lite/data';
-import { stepText, type PendingOverlay } from '../overlay.js';
+import { stepText, type PendingOverlay } from '@ifc-lite/sdk/headless';
 
 /** Adapter options (issue #4955); the CLI's `FingerprintAdapterOptions` restated. */
 export interface FingerprintAdapterOptions {

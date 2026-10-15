@@ -1,0 +1,12 @@
+{
+  "runtime": "v24.21.0",
+  "template": "server-native",
+  "lockfileVersion": 3,
+  "packageVersions": {
+    "@ifc-lite/server-bin": "2.0.1",
+    "@ifc-lite/server-client": "4.0.1"
+  },
+  "npmCi": true,
+  "typecheck": true,
+  "build": true
+}

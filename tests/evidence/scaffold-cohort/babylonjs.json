@@ -1,0 +1,12 @@
+{
+  "runtime": "v24.21.0",
+  "template": "babylonjs",
+  "lockfileVersion": 3,
+  "packageVersions": {
+    "@ifc-lite/geometry": "7.7.0",
+    "@babylonjs/core": "7.54.3"
+  },
+  "npmCi": true,
+  "typecheck": true,
+  "build": true
+}

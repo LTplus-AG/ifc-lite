@@ -17,6 +17,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { gzipSync } from 'node:zlib';
+import { applyProj4Overrides } from './epsg-proj4-overrides.ts';
 
 type RegistryLink = {
   rel?: string;
@@ -305,19 +306,10 @@ async function fetchEntries(summaries: RegistrySummary[], concurrency: number): 
  *     for this CRS entirely, which silently disables the datum shift
  *     (~117 m residual at Prague vs ~0 m with EPSG:5239 "S-JTSK to WGS 84 (5)",
  *     method 9607, negated to Position Vector).
- *   - EPSG:5682-5685 (DB_REF / Gauss-Kruger zones 2-5): epsg.io returned the
- *     raw method-9607 rotation signs of EPSG:5826 "DB_REF to ETRS89 (1)"
- *     (~178 m residual). Their compounds EPSG:9928-9931 (DB_REF2003) and
- *     9932-9935 (DB_REF2016) had no +towgs84 at all (~146 m), nor did the
- *     geographic EPSG:5681/5830. `applyProj4Overrides` below re-applies the
- *     Position Vector definitions for all fourteen after every fetch (#7658).
- *
- * There is no way to detect this class of bug from the fetched string alone —
- * both conventions look like valid proj4 syntax. If re-running this script
- * changes the towgs84 rotation signs (or presence) for a CRS with an existing
- * fixture in packages/data/scripts/fixtures/epsg-control-points.json, treat
- * that as a signal to re-verify against the EPSG Registry API's CoordOperation
- * method field before accepting the regenerated value, not just diff-review it.
+ *   - DB_REF (#7658): EPSG:5682-5685 had raw 9607 signs of EPSG:5826 (~178 m);
+ *     9928-9935, 5681, 5830 and 5828 had no +towgs84 (~146 m).
+ * Both conventions look valid, so this is undetectable from the fetched string.
+ * Fixes live in scripts/epsg-proj4-overrides.ts, re-applied after every fetch.
  */
 async function fetchProj4Definitions(entries: EpsgIndexEntry[], concurrency: number): Promise<void> {
   const queue = [...entries];
@@ -405,41 +397,6 @@ function printSummary(entries: EpsgIndexEntry[], elapsedMs: number, outPath: str
   console.log(`JSON size: ${Buffer.byteLength(json)} bytes`);
   console.log(`Gzip size: ${gzipSync(json).byteLength} bytes`);
   console.log(`Output: ${outPath}`);
-}
-
-/**
- * DB_REF (Deutsche Bahn, Bessel 1841) definitions applied after the epsg.io
- * fetch, so a regeneration cannot bring back the bad strings described above
- * (#7658). `+towgs84` is EPSG:5826 "DB_REF to ETRS89 (1)" (method 9607)
- * negated to Position Vector; checked against PROJ 9.3 to < 1e-8 degrees.
- */
-const DB_REF_TOWGS84 = '+towgs84=584.9636,107.7175,413.8067,1.1155,0.2824,-3.1384,7.9922';
-const DB_REF_ZONES: ReadonlyArray<readonly [projected: string, dbRef2003: string, dbRef2016: string, zone: number]> = [
-  ['5682', '9928', '9932', 2],
-  ['5683', '9929', '9933', 3],
-  ['5684', '9930', '9934', 4],
-  ['5685', '9931', '9935', 5],
-];
-function dbRefProj4Overrides(): Map<string, string> {
-  const overrides = new Map<string, string>();
-  const geographic = `+proj=longlat +ellps=bessel ${DB_REF_TOWGS84} +no_defs +type=crs`;
-  overrides.set('5681', geographic);
-  overrides.set('5830', geographic);
-  for (const [projected, dbRef2003, dbRef2016, zone] of DB_REF_ZONES) {
-    const tmerc = `+proj=tmerc +lat_0=0 +lon_0=${zone * 3} +k=1 +x_0=${zone * 1_000_000 + 500_000} +y_0=0 +ellps=bessel ${DB_REF_TOWGS84} +units=m`;
-    overrides.set(projected, `${tmerc} +no_defs +type=crs`);
-    overrides.set(dbRef2003, `${tmerc} +vunits=m +no_defs +type=crs`);
-    overrides.set(dbRef2016, `${tmerc} +vunits=m +no_defs +type=crs`);
-  }
-  return overrides;
-}
-
-function applyProj4Overrides(entries: EpsgIndexEntry[]): void {
-  const overrides = dbRefProj4Overrides();
-  for (const entry of entries) {
-    const proj4 = overrides.get(entry.code);
-    if (proj4) entry.proj4 = proj4;
-  }
 }
 
 async function main(): Promise<void> {

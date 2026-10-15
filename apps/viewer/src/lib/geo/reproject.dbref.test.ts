@@ -4,44 +4,35 @@
 
 import { it } from 'node:test';
 import assert from 'node:assert/strict';
-import { reprojectPointToLatLon } from './reproject.js';
+import { reprojectPointToLatLon, type LatLon } from './reproject.js';
 
 /** Metres per degree of latitude; longitude is scaled by cos(lat). */
 const M_PER_DEG = 111_320;
 
-/**
- * DB_REF (Deutsche Bahn, Bessel 1841) projected and DB_REF2003/2016 compound CRSs
- * place an IfcMapConversion about 146-180 m off without the Position Vector
- * Helmert to ETRS89 (#7658). Expected values are PROJ 9.3 output for the same
- * input (EPSG:5826 "DB_REF to ETRS89 (1)"), which is what QGIS shows.
- */
-const CASES = [
-  { codes: ['5682', '9928', '9932'], e: 2_550_000, lat: 50.4383195, lon: 6.7032099 },
-  { codes: ['5683', '9929', '9933'], e: 3_395_000, lat: 50.431063, lon: 7.5211466 },
-  { codes: ['5684', '9930', '9934'], e: 4_450_000, lat: 50.4383367, lon: 11.2947006 },
-  { codes: ['5685', '9931', '9935'], e: 5_450_000, lat: 50.4383623, lon: 14.2942622 },
-];
-
-for (const { codes, e, lat, lon } of CASES) {
-  for (const code of codes) {
-    it(`EPSG:${code} applies the DB_REF to ETRS89 datum shift (#7658)`, async () => {
-      const result = await reprojectPointToLatLon(e, 5_589_400, { id: 1, name: `EPSG:${code}`, mapUnitScale: 1 });
-      assert.ok(result, `EPSG:${code} did not resolve`);
-      const dy = (result.lat - lat) * M_PER_DEG;
-      const dx = (result.lon - lon) * M_PER_DEG * Math.cos((lat * Math.PI) / 180);
-      const offset = Math.hypot(dx, dy);
-      assert.ok(offset < 0.5, `EPSG:${code} lands ${offset.toFixed(2)} m off (${result.lat}, ${result.lon})`);
-    });
-  }
+function offsetMetres(actual: LatLon, expected: LatLon): number {
+  const dy = (actual.lat - expected.lat) * M_PER_DEG;
+  const dx = (actual.lon - expected.lon) * M_PER_DEG * Math.cos((expected.lat * Math.PI) / 180);
+  return Math.hypot(dx, dy);
 }
 
-/** The geographic DB_REF CRSs need the same shift (PROJ 9.3: 7.52 / 50.43 in DB_REF). */
-for (const code of ['5681', '5830']) {
-  it(`EPSG:${code} (geographic DB_REF) applies the datum shift (#7658)`, async () => {
-    const result = await reprojectPointToLatLon(7.52, 50.43, { id: 1, name: `EPSG:${code}`, mapUnitScale: 1 });
+/**
+ * DB_REF (Deutsche Bahn, Bessel 1841) CRSs through the viewer's own resolve +
+ * reproject path (#7658). Expected values are PROJ 9.3 output (EPSG:5826 "DB_REF
+ * to ETRS89 (1)"), which is what QGIS shows. The projected and compound codes
+ * are also covered by packages/data's control-point fixtures; the geographic
+ * ones only here, since that verifier treats longlat CRSs as identity.
+ */
+const CASES = [
+  { code: '9933', x: 3_395_000, y: 5_589_400, expected: { lat: 50.431063, lon: 7.5211466 } },
+  { code: '5681', x: 7.52, y: 50.43, expected: { lat: 50.428802015, lon: 7.519172328 } },
+  { code: '5830', x: 7.52, y: 50.43, expected: { lat: 50.428802015, lon: 7.519172328 } },
+];
+
+for (const { code, x, y, expected } of CASES) {
+  it(`EPSG:${code} applies the DB_REF to ETRS89 datum shift (#7658)`, async () => {
+    const result = await reprojectPointToLatLon(x, y, { id: 1, name: `EPSG:${code}`, mapUnitScale: 1 });
     assert.ok(result, `EPSG:${code} did not resolve`);
-    const dy = (result.lat - 50.428802015) * M_PER_DEG;
-    const dx = (result.lon - 7.519172328) * M_PER_DEG * Math.cos((50.43 * Math.PI) / 180);
-    assert.ok(Math.hypot(dx, dy) < 0.5, `EPSG:${code} lands ${Math.hypot(dx, dy).toFixed(2)} m off (${result.lat}, ${result.lon})`);
+    const offset = offsetMetres(result, expected);
+    assert.ok(offset < 0.5, `EPSG:${code} lands ${offset.toFixed(2)} m off (${result.lat}, ${result.lon})`);
   });
 }

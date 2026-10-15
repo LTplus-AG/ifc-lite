@@ -45,8 +45,8 @@
           "status": "verified"
         },
         {
-          "title": "Adopt shared read adapter in CLI and remove superseded helpers",
-          "status": "pending"
+          "title": "Compose the shared SDK backend in CLI and remove superseded query/export/mutation helpers",
+          "status": "verified"
         }
       ],
       "checks": {
@@ -62,7 +62,19 @@
         "sessionWorkflow": "Edit/export/reopen and closed-session refusal proven on the manifest-verified FZK fixture; tests/evidence/headless-session/fzk.json",
         "sessionTypecheck": "root pnpm typecheck passed; all 4185 test files audited",
         "sessionDocumentation": "473 snippets compiled",
-        "identityAndLifetime": "7 SDK session tests pass, including separate sessions with identical EXPRESS ids and late host geometry refusal after close"
+        "identityAndLifetime": "7 SDK session tests pass, including separate sessions with identical EXPRESS ids and late host geometry refusal after close",
+        "cliComposition": {
+          "cli": "1460 passed, 15 skipped",
+          "sdk": "443 passed, 6 skipped",
+          "mcp": "737 passed, 5 skipped",
+          "typecheck": "Root pnpm typecheck passed; 4190 test files audited",
+          "documentation": "473 snippets compiled",
+          "compatibility": "Legacy constructor, default/filename model aliases, pagination TypeError and type-property scalar normalization retained",
+          "fixture": "Fresh real CLI eval on manifest-verified FZK: five edited doors agree across attributes, queries and CSV; tests/evidence/cli-shared-headless/fzk.json",
+          "removal": "Retired both CLI query-overlay modules; CLI backend now 172 lines; no retired helper references in current consumers",
+          "guards": "Raw-access guard and API snapshot check passed; module-size budget retired",
+          "knip": "Ran; existing repository-wide findings remain, with no retired query helper references"
+        }
       }
     },
     {
@@ -82,9 +94,19 @@
     {
       "id": "DX4",
       "title": "Task-based onboarding and complete recipes",
-      "status": "pending",
+      "status": "in_review",
       "acceptance": "Data extraction, validation, edit/export/reopen, geometry and service recipes with real fixture and expected results",
-      "pullRequests": []
+      "pullRequests": [
+        "https://github.com/LTplus-AG/ifc-lite/pull/7641"
+      ],
+      "branch": "feat/developer-onboarding",
+      "checks": {
+        "integration": "Five integration tests pass against manifest-verified FZK: extraction, IDS, edit/export/reopen, real WASM GLB and owned HTTP worker; synchronous cancellation terminates the actual thread; invalid/oversized HTTP input refused",
+        "documentation": "475 snippets compiled across 114 docs",
+        "typecheck": "Root pnpm typecheck passed; all 4191 test files audited; clean-output typecheck verified",
+        "runtime": "Node 24; data scripts use public package entry points and geometry output reserves stdout for JSON",
+        "oracle": "Ordinary full revert against parent OBSERVED through the independent developer package-entry consumer; restoration verified; no CI exception"
+      }
     },
     {
       "id": "DX5",

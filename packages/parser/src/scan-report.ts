@@ -33,7 +33,7 @@ export function reportScanDiagnostics(scanPath: EntityScanPath, oversizedIdCount
   // A refused record is a record the caller will not find. Say so on both
   // channels the loader already watches, rather than letting the model come
   // back quietly short (#3395).
-  if (oversizedIdCount > 0) {
+  if (isScanCount(oversizedIdCount) && oversizedIdCount > 0) {
     const message =
       `scan: skipped ${oversizedIdCount} record(s) with an express id above ${MAX_EXPRESS_ID} (#3395)`;
     if (!consoleAlreadyReported) console.warn(`[IfcParser] ${message}`);
@@ -58,7 +58,7 @@ export function reportScanDiagnostics(scanPath: EntityScanPath, oversizedIdCount
   // and a declaration cut off before its own '(' -- collapsed into one flag, so a
   // message naming only one of them would misdescribe the other two every
   // time it fires.
-  if (malformedRecordCount > 0) {
+  if (isScanCount(malformedRecordCount) && malformedRecordCount > 0) {
     const message =
       "scan: dropped a record with no terminating ';' (an unterminated or unescaped quoted string, " +
       'comment, or truncated file); the entities returned may be an incomplete view of ' +

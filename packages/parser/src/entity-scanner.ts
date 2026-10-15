@@ -237,6 +237,15 @@ async function scanEntities(
     preScanCountUnreported, options.onDiagnostic);
   const report = buildScanReport(scanPath, processed,
     oversizedReported ? oversizedIdCount : null, malformedReported ? malformedRecordCount : null);
+  // Legacy listeners must see uncertainty too, including invalid counters from
+  // JavaScript pre-scans and older WASM producers (PR #7632).
+  if (!(preScanCountUnreported && scanPath === 'pre-scanned')) {
+    const unknown = report.diagnostics.find(diagnostic => diagnostic.code === 'UNREPORTED_SCAN_COUNTS');
+    if (unknown) {
+      console.warn(`[IfcParser] scan: ${unknown.message}`);
+      options.onDiagnostic?.(`scan: ${unknown.message}`);
+    }
+  }
   options.onScanReport?.(report);
 
   const elapsedMs = performance.now() - scanStartTime;

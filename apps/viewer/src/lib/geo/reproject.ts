@@ -66,9 +66,6 @@ function extractEpsgCode(crs: ProjectedCRS): string | null {
  * for files that omit the "EPSG:" prefix entirely.
  */
 
-/** EPSG:5826 DB_REF to ETRS89 (1) as Position Vector; same as scripts/epsg-proj4-overrides.ts (#7658). */
-const DB_REF_TOWGS84 = '+towgs84=584.9636,107.7175,413.8067,1.1155,0.2824,-3.1384,7.9922';
-
 /**
  * Datum-keyed +towgs84 approximations for CRSs whose canonical definition
  * relies on browser-unavailable grid files (NTv2, NADCON, etc.). Each entry
@@ -98,9 +95,6 @@ const DATUM_TOWGS84: Record<string, string> = {
   // Germany — DHDN (Bessel 1841)
   'deutsches hauptdreiecksnetz': '+towgs84=598.1,73.7,418.2,0.202,0.045,-2.455,6.7',
   'dhdn': '+towgs84=598.1,73.7,418.2,0.202,0.045,-2.455,6.7',
-  // Germany — DB_REF (Deutsche Bahn, Bessel 1841)
-  'deutsche bahn reference system': DB_REF_TOWGS84,
-  'db_ref': DB_REF_TOWGS84,
   // Netherlands — Amersfoort (Bessel 1841). The bundled EPSG:28992 already
   // ships with the higher-precision Kadaster +towgs84, so this fires only
   // when a derived/compound CRS lacks it (e.g. some compound RD/NAP cases).

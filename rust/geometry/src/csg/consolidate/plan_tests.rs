@@ -17,7 +17,14 @@ fn plan_bucket(
     length_unit_scale: f64,
 ) -> Vec<PlanBucket> {
     let mut plans = Vec::new();
-    append_bucket_plans(tris, use_tag, next_bid, length_unit_scale, &mut plans);
+    if tris.is_empty() {
+        return plans;
+    }
+    let mut previous = plan_one(tris, use_tag, *next_bid, length_unit_scale, None);
+    *next_bid += 1;
+    if !append_prepared_retry(tris, &mut previous, next_bid, length_unit_scale, &mut plans) {
+        plans.push(previous);
+    }
     plans
 }
 
@@ -197,9 +204,7 @@ fn issue_7633_projected_interactions_and_ambiguous_regions_keep_prior_output() {
         ("interlocking disjoint", interlocking),
         ("crossing", crossing),
     ] {
-        let Planned::Ready(baseline) = plan_one(&tris, false, 0, 1., false, None) else {
-            unreachable!()
-        };
+        let baseline = plan_one(&tris, false, 0, 1., None);
         let mut baseline = vec![baseline];
         let mut planned = plan_bucket(&tris, false, &mut 0, 1.);
         assert_eq!(planned.len(), 1, "{name}: no independent gap certificate");
@@ -222,9 +227,7 @@ fn issue_7633_partition_preserves_bucket_noise_cleanup_for_singleton_islands() {
         [4.01, 0., 2e-7],
         [4., 0.0001, 2e-7],
     ]));
-    let Planned::Ready(baseline) = plan_one(&tris, false, 0, 1., false, None) else {
-        unreachable!()
-    };
+    let baseline = plan_one(&tris, false, 0, 1., None);
     assert_eq!(baseline.regions.len(), 1, "thin island is baseline noise");
     let mut planned = plan_bucket(&tris, false, &mut 0, 1.);
     assert_eq!(
@@ -294,9 +297,7 @@ fn issue_7633_exact_coplanar_disjoint_patches_preserve_prior_output_in_both_wind
                 triangle(p)
             })
             .collect();
-        let Planned::Ready(baseline) = plan_one(&tris, false, 0, 1., false, None) else {
-            unreachable!()
-        };
+        let baseline = plan_one(&tris, false, 0, 1., None);
         let mut planned = plan_bucket(&tris, false, &mut 0, 1.);
         assert_eq!(
             planned.len(),
@@ -313,5 +314,174 @@ fn issue_7633_exact_coplanar_disjoint_patches_preserve_prior_output_in_both_wind
         );
         assert_eq!(before.normals, after.normals, "winding reversed={reverse}");
         assert_eq!(before.indices, after.indices, "winding reversed={reverse}");
+    }
+}
+
+/// #7633: float-separated patches can touch on the existing adaptive overlay
+/// grid. A third remote region must not turn that contact into a split proof.
+#[test]
+fn issue_7633_overlay_grid_contact_with_remote_island_preserves_prior_union() {
+    let mut tris = quad([-1., 0.], [0., 1.], 0.);
+    tris.extend(quad([1e-12, 1.], [0., 1.], 2e-7));
+    tris.extend(quad([10., 11.], [0., 1.], 0.));
+    assert!(!exactly_coplanar(&tris));
+    let baseline = plan_one(&tris, false, 0, 1., None);
+    let paths: Vec<Vec<[f64; 2]>> = tris
+        .iter()
+        .map(|tri| {
+            project_to_2d_with_basis(&tri.v, &baseline.u_axis, &baseline.v_axis, &baseline.origin)
+                .iter()
+                .map(|p| [p.x, p.y])
+                .collect()
+        })
+        .collect();
+    let subject = vec![paths[0].clone()];
+    let clip = paths[1..].to_vec();
+    let shapes = subject.overlay(&clip, OverlayRule::Union, FillRule::NonZero);
+    assert_eq!(
+        shapes.len(),
+        2,
+        "actual overlay merges the tiny-gap pair and retains the remote island"
+    );
+    let adapter = i_overlay::i_float::adapter::FloatPointAdapter::<[f64; 2], i32>::with_iter(
+        paths.iter().flatten(),
+    );
+    let left = project_to_2d_with_basis(
+        &[Point3::new(0., 0., 0.)],
+        &baseline.u_axis,
+        &baseline.v_axis,
+        &baseline.origin,
+    )[0];
+    let right = project_to_2d_with_basis(
+        &[Point3::new(1e-12, 0., 2e-7)],
+        &baseline.u_axis,
+        &baseline.v_axis,
+        &baseline.origin,
+    )[0];
+    assert_ne!(
+        [left.x, left.y],
+        [right.x, right.y],
+        "authored projected gap is positive"
+    );
+    assert_eq!(
+        adapter.float_to_int(&[left.x, left.y]),
+        adapter.float_to_int(&[right.x, right.y]),
+        "actual overlay treats the pair as touching"
+    );
+    let mut previous = vec![baseline];
+    let mut planned = plan_bucket(&tris, false, &mut 0, 1.);
+    assert_eq!(
+        planned.len(),
+        1,
+        "integer contact must decline the optional retry"
+    );
+    let (a, ac) = emit_plans(&mut previous, false);
+    let (b, bc) = emit_plans(&mut planned, false);
+    assert!(ac && bc);
+    assert_eq!(a.positions, b.positions);
+    assert_eq!(a.normals, b.normals);
+    assert_eq!(a.indices, b.indices);
+}
+
+/// #7633: disconnected regions do not establish a common plane within each
+/// region. Preserve the old union if one proposed group folds in 3D.
+#[test]
+fn issue_7633_internally_nonplanar_group_preserves_prior_union() {
+    let mut tris = vec![
+        triangle([[0., 0., 0.], [1., 0., 0.], [1., 1., 0.]]),
+        triangle([[0., 0., 0.], [1., 1., 0.], [0., 1., 2e-7]]),
+    ];
+    tris.extend(quad([3., 4.], [0., 1.], 0.));
+    assert!(!exactly_coplanar(&tris[..2]));
+    let baseline = plan_one(&tris, false, 0, 1., None);
+    assert_eq!(
+        baseline.regions.len(),
+        2,
+        "fixture must contain disconnected union regions"
+    );
+    let mut previous = vec![baseline];
+    let mut planned = plan_bucket(&tris, false, &mut 0, 1.);
+    assert_eq!(
+        planned.len(),
+        1,
+        "an internally nonplanar group must decline the retry"
+    );
+    let (a, ac) = emit_plans(&mut previous, false);
+    let (b, bc) = emit_plans(&mut planned, false);
+    assert!(ac && bc);
+    assert_eq!(a.positions, b.positions);
+    assert_eq!(a.normals, b.normals);
+    assert_eq!(a.indices, b.indices);
+}
+
+/// #7633: a tolerance-supported kernel tag is not an exact source-plane
+/// certificate. Preserve the established tagged-bucket union.
+#[test]
+fn issue_7633_tagged_remote_regions_preserve_prior_union() {
+    let mut tris = quad([0., 1.], [0., 1.], 0.);
+    tris.extend(quad([3., 4.], [0., 1.], 2e-7));
+    for tri in &mut tris {
+        tri.tag = Some((Vector3::new(1e-7, 0., 1.).normalize(), 0.));
+    }
+    let mut prior = vec![plan_one(&tris, true, 0, 1., None)];
+    let mut after = plan_bucket(&tris, true, &mut 0, 1.);
+    assert_eq!(
+        after.len(),
+        1,
+        "a tolerance-supported tag must not enable a new plane choice"
+    );
+    let (a, ac) = emit_plans(&mut prior, false);
+    let (b, bc) = emit_plans(&mut after, false);
+    assert!(ac && bc);
+    assert_eq!(a.positions, b.positions);
+    assert_eq!(a.normals, b.normals);
+    assert_eq!(a.indices, b.indices);
+}
+
+/// #7633: removing a peer between conform attempts removes its seam insertion,
+/// while the unchanged region's original CDT remains reusable.
+#[test]
+fn issue_7633_retry_discards_old_peer_seams_and_reuses_original_cdt() {
+    for tris in [
+        quad([0., 2.], [0., 2.], 0.),
+        vec![triangle([[0., 0., 0.], [2., 0., 0.], [0., 2., 0.]])],
+    ] {
+        let mut plans = vec![plan_one(&tris, false, 0, 1., None)];
+        let (before, complete) = emit_plans(&mut plans, false);
+        assert!(complete);
+        let cache = plans[0]
+            .regions
+            .first()
+            .map(|region| region.cached.as_ref().unwrap().0.as_ptr());
+        let peer = vec![triangle([[1., 0., 0.], [1., 0., 1.], [1.25, 0., 1.]])];
+        plans.push(plan_one(&peer, false, 1, 1., None));
+        let seam = crate::csg::consolidate::conform::build_seam_map(&plans);
+        assert!(crate::csg::consolidate::conform::conform_plans(
+            &mut plans, &seam
+        ));
+        plans.pop();
+        let (with_old_peer, complete) = emit_plans(&mut plans, true);
+        assert!(complete);
+        assert_ne!(
+            with_old_peer.indices.len(),
+            before.indices.len(),
+            "the first conform must actually insert a peer seam"
+        );
+        plans[0].reset_for_retry();
+        let seam = crate::csg::consolidate::conform::build_seam_map(&plans);
+        assert!(!crate::csg::consolidate::conform::conform_plans(
+            &mut plans, &seam
+        ));
+        let (after, complete) = emit_plans(&mut plans, true);
+        assert!(complete);
+        assert_eq!(before.positions, after.positions);
+        assert_eq!(before.indices, after.indices);
+        if let Some(cache) = cache {
+            assert_eq!(
+                cache,
+                plans[0].regions[0].cached.as_ref().unwrap().0.as_ptr(),
+                "retry must retain the original CDT allocation"
+            );
+        }
     }
 }

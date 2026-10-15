@@ -4,7 +4,11 @@
 
 //! Conservative independent groups in the existing projected union domain.
 
-/// A strict gap in either projected axis proves independent union operands.
+use i_overlay::i_float::adapter::FloatPointAdapter;
+
+/// A strict gap in either integer-overlay axis proves independent operands.
+/// Use the same adaptive adapter over all original projected paths as the union:
+/// a positive floating-point gap can quantize into an edge contact.
 /// Inclusive interval overlap keeps touching and crossing triangles together.
 /// World-space AABBs cannot make this decision: normal-offset faces can have
 /// disjoint world bounds while their projected footprints overlap completely.
@@ -17,28 +21,33 @@ pub(super) fn separated_groups(
     clip: &[Vec<[f64; 2]>],
 ) -> Option<Vec<Vec<usize>>> {
     let paths: Vec<_> = subject.iter().chain(clip).collect();
+    if paths.iter().any(|path| {
+        path.is_empty()
+            || path
+                .iter()
+                .flatten()
+                .any(|coordinate| !coordinate.is_finite())
+    }) {
+        return None;
+    }
+    let adapter =
+        FloatPointAdapter::<[f64; 2], i32>::with_iter(paths.iter().flat_map(|path| path.iter()));
     for axis in 0..2 {
         let mut intervals: Vec<_> = paths
             .iter()
             .enumerate()
             .map(|(i, path)| {
-                let lo = path.iter().map(|p| p[axis]).fold(f64::INFINITY, f64::min);
-                let hi = path
-                    .iter()
-                    .map(|p| p[axis])
-                    .fold(f64::NEG_INFINITY, f64::max);
+                let (lo, hi) = path.iter().fold((i32::MAX, i32::MIN), |(lo, hi), p| {
+                    let point = adapter.float_to_int(p);
+                    let coordinate = if axis == 0 { point.x } else { point.y };
+                    (lo.min(coordinate), hi.max(coordinate))
+                });
                 (lo, hi, i)
             })
             .collect();
-        if intervals
-            .iter()
-            .any(|(lo, hi, _)| !lo.is_finite() || !hi.is_finite())
-        {
-            return None;
-        }
-        intervals.sort_by(|a, b| a.0.total_cmp(&b.0).then_with(|| a.2.cmp(&b.2)));
+        intervals.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.2.cmp(&b.2)));
         let mut groups: Vec<Vec<usize>> = Vec::new();
-        let mut end = f64::NEG_INFINITY;
+        let mut end = i32::MIN;
         for (lo, hi, i) in intervals {
             if groups.is_empty() || lo > end {
                 groups.push(Vec::new());

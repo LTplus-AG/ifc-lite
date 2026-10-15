@@ -8,9 +8,12 @@ mod conform;
 mod plane_merge;
 mod plan;
 mod ring_ops;
+mod recovery;
 
 use super::ClippingProcessor;
-use conform::{build_seam_map, conform_plans, count_open_boundary_edges_at, emit_plans, PlanBucket};
+use conform::{count_open_boundary_edges_at, PlanBucket};
+#[cfg(test)]
+use conform::{build_seam_map, conform_plans};
 use plane_merge::{merge_rounding_split_buckets, tag_for, PlaneTri};
 use ring_ops::floor_pow2;
 #[cfg(test)]
@@ -254,11 +257,11 @@ impl ClippingProcessor {
         // every bucket, is kept nowhere, and is never re-inserted.
         let mut plans: Vec<PlanBucket> = Vec::with_capacity(buckets.len());
 
-        // Phase A. Disconnected union regions with a proven projected-axis
-        // gap are planned in their own source planes; see `plan`.
+        // Phase A preserves the established common-plane union. A bounded
+        // remote-plane retry is considered only after its full output is known.
         let mut next_bid = 0;
         for (bucket_key, tris) in &buckets {
-            plan::append_bucket_plans(
+            plan::append_baseline_plan(
                 tris,
                 merged_bucket_keys.contains(bucket_key),
                 &mut next_bid,
@@ -287,44 +290,9 @@ impl ClippingProcessor {
         // The seam map is built ONLY when today's output is torn. Recording every
         // bucket's kept corners unconditionally cost +61% geometry time on
         // ISSUE_129 (1014 -> 1634 ms) for a map that ~85% of hosts never consult.
-        let (mut output, base_complete) = emit_plans(&mut plans, false);
-        // A region that failed to triangulate is skipped, so an incomplete baseline
-        // can be missing a whole closed component while still reading as watertight.
-        // Consolidation's standing contract is "never worse than the raw kernel
-        // output", so hand back the raw mesh rather than a known-lossy consolidation.
-        if !base_complete {
+        let Some(mut output) = recovery::emit_and_conform(&mut plans) else {
             return mesh;
-        }
-        if count_open_boundary_edges_at(&output, 1.0e4) > 0 {
-            let seam = build_seam_map(&plans);
-            if conform_plans(&mut plans, &seam) {
-                // `complete` is part of the bar, not a detail: a region that fails
-                // to triangulate is skipped, and if it was its own closed component
-                // the remainder still balances — so a watertight-LOOKING candidate
-                // can be missing a whole surface. Reject unless every region landed.
-                let raw_conformed = plans.iter().any(|plan| plan.raw_conformed.is_some());
-                let (candidate, complete) = emit_plans(&mut plans, true);
-                if let Some(candidate) =
-                    complete_conformed_candidate(candidate, complete, raw_conformed)
-                {
-                    output = candidate;
-                } else if raw_conformed {
-                    // Preserve the established region-only conform when a new raw
-                    // split does not pair exactly. This is the #3913 N-ary sweep
-                    // safety valve: raw additions may improve the 0.1 mm metric
-                    // while introducing an exact-coordinate tear.
-                    for plan in &mut plans {
-                        plan.raw_conformed = None;
-                    }
-                    let (candidate, complete) = emit_plans(&mut plans, true);
-                    if let Some(candidate) =
-                        complete_conformed_candidate(candidate, complete, false)
-                    {
-                        output = candidate;
-                    }
-                }
-            }
-        }
+        };
 
         if output.is_empty() {
             return mesh;
@@ -380,6 +348,7 @@ impl ClippingProcessor {
                 }
             }
         }
+        output = recovery::retry_closed_input(&mesh, output, &buckets, plans, length_unit_scale);
         // Carry the input's placement / frame metadata (`origin` local-frame
         // translation, `rtc_applied`, and the #1474 world-capture `local_bounds` /
         // `local_to_world`) onto the re-triangulated output. `consolidate_coplanar`

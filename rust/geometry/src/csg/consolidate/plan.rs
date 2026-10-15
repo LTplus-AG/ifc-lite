@@ -30,46 +30,74 @@ use nalgebra::Vector3;
 
 mod disjoint;
 
-enum Planned {
-    Ready(PlanBucket),
-    Separate(Vec<Vec<usize>>, f64),
+pub(super) struct RetryGeometry {
+    subject: Vec<Vec<[f64; 2]>>,
+    clip: Vec<Vec<[f64; 2]>>,
+    plane_area: f64,
 }
 
-pub(super) fn append_bucket_plans(
+/// Produce the established union first. Retain existing operand buffers only
+/// for an untagged, noncoplanar bucket with multiple union regions.
+pub(super) fn append_baseline_plan(
     tris: &[PlaneTri],
     use_tag: bool,
     next_bid: &mut u32,
     length_unit_scale: f64,
     plans: &mut Vec<PlanBucket>,
 ) {
-    if tris.is_empty() {
-        return;
-    }
-    match plan_one(tris, use_tag, *next_bid, length_unit_scale, true, None) {
-        Planned::Ready(plan) => {
-            *next_bid += 1;
-            plans.push(plan);
-        }
-        Planned::Separate(groups, noise_area) => {
-            for group in groups {
-                // The common single-region path copies no source triangles
-                // and allocates no temporary output Vec. On this retry every
-                // triangle belongs to exactly one group.
-                let own: Vec<_> = group.into_iter().map(|i| tris[i].clone()).collect();
-                let Planned::Ready(plan) = plan_one(
-                    &own,
-                    use_tag,
-                    *next_bid,
-                    length_unit_scale,
-                    false,
-                    Some(noise_area),
-                ) else {
-                    unreachable!("the single regroup retry cannot partition again")
-                };
-                *next_bid += 1;
-                plans.push(plan);
-            }
-        }
+    let plan = plan_one(tris, use_tag, *next_bid, length_unit_scale, None);
+    *next_bid += 1;
+    plans.push(plan);
+}
+
+pub(super) fn append_prepared_retry(
+    tris: &[PlaneTri],
+    baseline: &mut PlanBucket,
+    next_bid: &mut u32,
+    length_unit_scale: f64,
+    plans: &mut Vec<PlanBucket>,
+) -> bool {
+    let Some(retry) = baseline.retry.take() else {
+        return false;
+    };
+    let Some(groups) = certified_groups(tris, &retry.subject, &retry.clip) else {
+        return false;
+    };
+    append_groups(
+        tris,
+        groups,
+        false,
+        next_bid,
+        length_unit_scale,
+        retry.plane_area,
+        plans,
+    );
+    true
+}
+
+fn append_groups(
+    tris: &[PlaneTri],
+    groups: Vec<Vec<usize>>,
+    use_tag: bool,
+    next_bid: &mut u32,
+    length_unit_scale: f64,
+    noise_area: f64,
+    plans: &mut Vec<PlanBucket>,
+) {
+    for group in groups {
+        // The common single-region path copies no source triangles
+        // and allocates no temporary output Vec. On this retry every
+        // triangle belongs to exactly one group.
+        let own: Vec<_> = group.into_iter().map(|i| tris[i].clone()).collect();
+        let plan = plan_one(
+            &own,
+            use_tag,
+            *next_bid,
+            length_unit_scale,
+            Some(noise_area),
+        );
+        *next_bid += 1;
+        plans.push(plan);
     }
 }
 
@@ -78,9 +106,8 @@ fn plan_one(
     use_tag: bool,
     bid: u32,
     length_unit_scale: f64,
-    allow_partition: bool,
     original_noise_area: Option<f64>,
-) -> Planned {
+) -> PlanBucket {
     crate::progress::tick();
     // #3914: only a bucket merged using trusted kernel plane tags uses its tag.
     // Separated groups retain this policy: a merged bucket still uses its tag;
@@ -110,12 +137,13 @@ fn plan_one(
         raw: Vec::new(),
         raw_conformed: None,
         regions: Vec::new(),
+        retry: None,
     };
     // Retry singleton groups still pass through the union/ring noise checks
     // used by their original multi-triangle bucket.
     if tris.len() == 1 && original_noise_area.is_none() {
         plan.raw.push(tris[0].v);
-        return Planned::Ready(plan);
+        return plan;
     }
     let mut subject: Vec<Vec<[f64; 2]>> = Vec::with_capacity(1);
     let mut clip: Vec<Vec<[f64; 2]>> = Vec::with_capacity(tris.len() - 1);
@@ -140,13 +168,9 @@ fn plan_one(
     let shapes = subject.overlay(&clip, OverlayRule::Union, FillRule::NonZero);
     if shapes.is_empty() {
         plan.raw.extend(tris.iter().map(|t| t.v));
-        return Planned::Ready(plan);
+        return plan;
     }
-    if allow_partition && shapes.len() > 1 && !exactly_coplanar(tris) {
-        if let Some(groups) = disjoint::separated_groups(&subject, &clip) {
-            return Planned::Separate(groups, plane_area);
-        }
-    }
+    let retry_possible = !use_tag && shapes.len() > 1 && !exactly_coplanar(tris);
     // Regrouping must not change the existing ring-noise share threshold.
     let plane_area = original_noise_area.unwrap_or(plane_area);
     for shape in shapes {
@@ -169,7 +193,29 @@ fn plan_one(
             holes,
         });
     }
-    Planned::Ready(plan)
+    if original_noise_area.is_none() && retry_possible {
+        plan.retry = Some(RetryGeometry {
+            subject,
+            clip,
+            plane_area,
+        });
+    }
+    plan
+}
+
+fn certified_groups(
+    tris: &[PlaneTri],
+    subject: &[Vec<[f64; 2]>],
+    clip: &[Vec<[f64; 2]>],
+) -> Option<Vec<Vec<usize>>> {
+    let groups = disjoint::separated_groups(subject, clip)?;
+    // A quantized key does not certify even a local source group. Tagged
+    // buckets are excluded separately: a tolerance-supported tag can tilt
+    // relative to the exact source plane.
+    groups
+        .iter()
+        .all(|group| coplanar_with_first(&tris[group[0]], group[1..].iter().map(|&i| &tris[i])))
+        .then_some(groups)
 }
 
 /// A genuinely common source plane has no remote-plane projection defect.
@@ -177,10 +223,12 @@ fn plan_one(
 /// exact predicate adds no geometric tolerance, and runs only after the
 /// existing union has produced multiple regions.
 fn exactly_coplanar(tris: &[PlaneTri]) -> bool {
-    let [a, b, c] = tris[0].v.map(|p| [p.x, p.y, p.z]);
-    tris[1..]
-        .iter()
-        .flat_map(|t| t.v)
+    coplanar_with_first(&tris[0], tris[1..].iter())
+}
+
+fn coplanar_with_first<'a>(first: &PlaneTri, rest: impl Iterator<Item = &'a PlaneTri>) -> bool {
+    let [a, b, c] = first.v.map(|p| [p.x, p.y, p.z]);
+    rest.flat_map(|t| t.v)
         .all(|p| geometry_predicates::orient3d(a, b, c, [p.x, p.y, p.z]) == 0.0)
 }
 

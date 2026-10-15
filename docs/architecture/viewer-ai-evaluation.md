@@ -49,7 +49,22 @@ The remaining release invariants in the plan (concurrent-edit conflicts, undo an
 3. writes unreviewed `corpus: "live"` recordings, usage receipts (provider-reported counts only; unreported usage stays unreported) and a per-answer invariant summary to the gitignored `tests/ai-eval/results/<run>/`;
 4. refuses output containing any configured provider credential, including opaque short values, JSON Unicode escapes in error strings, and decoded SSE text split across events, before writing a recording or usage receipt. HTTP response inspection is limited to 1 MiB of body bytes; combined output inspection is limited to 32 MiB of serialized text. Quoted strings are decoded individually, without a recursive JSON object walk. These checks cover supported JSON/SSE representations; they do not certify arbitrary encodings. It also refuses generic credential-like tokens and e-mail addresses. The key goes into one request header; refusals expose only a fixed diagnostic and no response body.
 
-Run `pnpm --dir apps/viewer ai-eval review --recordings <run>/recordings --out <run>/review.json` to judge live answers with the same native code the CI harness uses. Promoting a live recording into the corpus is a human act: review it, add `expect` from the review output, set `corpus: "release"`, and keep its receipt. A reviewed run can be kept as evidence without promoting it: copy the run folder to `tests/ai-eval/live-runs/<run>/` with its `recordings/`, `summary.json` and `review.json`. The manifest gate then requires every recording to stay `corpus: "live"` with its receipt, the summary receipts to match the recordings one for one, the review to cover exactly those recordings, every file to pass the privacy scan, and recording ids to be unique across the corpus and live runs (a promoted copy takes a new id). CI never replays these files. **No live run has been performed for this change**: the development machine has no provider configured. The runner is tested end to end against a local OpenAI-compatible server, which proves the plumbing, not any model.
+Run `pnpm --dir apps/viewer ai-eval review --recordings <run>/recordings --out <run>/review.json` to judge live answers with the same native code the CI harness uses. Promoting a live recording into the corpus is a human act: review it, add `expect` from the review output, set `corpus: "release"`, and keep its receipt. A reviewed run can be kept as evidence without promoting it: copy the run folder to `tests/ai-eval/live-runs/<run>/` with its `recordings/`, `summary.json` and `review.json`. The manifest gate then requires every recording to stay `corpus: "live"` with its receipt, the summary receipts to match the recordings one for one, the review to cover exactly those recordings, every file to pass the privacy scan, and recording ids to be unique across the corpus and live runs (a promoted copy takes a new id). CI never replays these files. Recordings may be rewritten as compact JSON before committing; the events stay verbatim.
+
+### First live runs, 15 October 2026
+
+Two runs through the production free-model proxy (`https://www.ifclite.com/api/chat`, no credential), all twelve tasks, committed under `tests/ai-eval/live-runs/`. The proxy applies its own sampling, so these are single samples, not a stable quality measure.
+
+| Run | Model | Requests | Completed | Empty answer (reasoning used the 4096-token ceiling) | Truncated | Invariant flags | Median output tokens |
+|---|---|---|---|---|---|---|---|
+| `20261015t110523` | `z-ai/glm-5.3-flash` | 24 (2 repeats) | 16 | 7 | 1 | 4 in 2 answers | 2,812 |
+| `20261015t111451` | `qwen/qwen3.7-flash` | 12 | 12 | 0 | 0 | 0 | 2,028 |
+
+- **glm-5.3-flash returns nothing on 7 of 24 requests.** It streams reasoning until the output ceiling and finishes with `length` before writing any answer text, so the Assistant shows an empty-output error. It hit this on `selected-roof-properties` and `validation-corrections` both times.
+- **Three of the four count flags are detector false positives.** "121 elements" and "13 walls" (IfcWallStandardCase) in the FZK answer are correct: they come from the model summary in the system prompt, which `count-claims-match-facts` does not see because recordings keep only the evidence payload. "~86 entities" in the sample validation answer is genuinely unsupported.
+- **Native review.** Every completed clash grouping covered all 9 findings with no unclassified rows; every authoring proposal previewed as 1 ready operation; every Flow patch built the same 3-node graph. qwen's `validation-corrections` model-change proposal was refused at parse ("Change 2 attribute values must be text"): the native parser stopped a malformed edit before preview.
+
+These recordings are unpromoted and unlabelled. They are the material for the claim and grouping labels below.
 
 ## Human labelling
 
@@ -72,8 +87,9 @@ Facilitators write one `tests/ai-eval/study/sessions/<id>.json` per participant,
 
 ## Still open for people
 
-- Independent claim and grouping labels and a privacy and licence review of every corpus fixture.
-- A live evaluation run against a configured provider, reviewed, with promoted recordings.
+- Independent claim and grouping labels, ideally on the committed live answers.
+- Human sign-off of the fixture privacy and licence review prepared in [`tests/ai-eval/native/fixture-review-2026-10-15.md`](https://github.com/LTplus-AG/ifc-lite/blob/main/tests/ai-eval/native/fixture-review-2026-10-15.md).
+- Promoting reviewed live recordings into the release corpus.
 - The twelve-task study with coordinator, author and occasional participants, and ratifying the thresholds from the pilot.
 - Independent viewport acceptance for authoring and Flow; the committed native render/pick recording demonstrates ordinary rendering only.
 - The full-program acceptance that closes P21 and U01.

@@ -31,3 +31,5 @@ apps/viewer/public/samples/**/*.IFC -filter -diff -merge text
 # The vendored LandXML 1.2 XSD is kept byte for byte as published (CRLF and
 # all) so its SHA-256 still matches upstream; see the README beside it.
 apps/viewer/src/lib/export/__fixtures__/landxml-1.2/LandXML-1.2.xsd -text linguist-vendored=true
+# Verbatim live AI evaluation streams (tests/ai-eval/live-runs); collapsed in diffs
+tests/ai-eval/live-runs/** linguist-generated=true

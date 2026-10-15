@@ -17,6 +17,7 @@
  */
 
 import { splitTopLevelStepArguments } from './step-argument-parser.js';
+import { frameArgs, stepRecordFrame, stepRecordHead, withFrameArgs } from './step-record-frame.js';
 import { getRealTypedSlots } from './attribute-real-slots.js';
 import { retypeStepLine } from './retype.js';
 import { attrIndex, stepSourceSchema } from './subset-entity-reader.js';
@@ -150,8 +151,8 @@ export function applySourceLineMutations(
   // time. Each of `retypeStepLine`, `applyAttributeMutations` and
   // `applyPositionalMutations` returns its input UNCHANGED when it refuses, so
   // a flag that is true means that writer replaced a slot, which means it
-  // scanned the argument list — over the same substring, between the same
-  // `indexOf('(')` and `lastIndexOf(');')` bounds `argumentListScans` uses. So
+  // scanned the argument list — over the same substring, inside the same
+  // record frame (`stepRecordFrame`) `argumentListScans` uses. So
   // the added conjuncts only ever skip a call that would have returned true;
   // they cannot turn a refusal into a readable record.
   const requested = typeMutation !== null
@@ -224,16 +225,16 @@ export function applySourceLineMutationsReported(
 /**
  * Does this line's own argument list scan into slots?
  *
- * Scoped to the arguments deliberately. Text that is not a `#N=CLASS(...);`
- * record at all is a different fact, and one every writer here already returns
- * untouched without claiming anything; this answers only the question the
- * by-index writers below actually ask.
+ * Scoped to the arguments deliberately. Text that opens no `#N=CLASS(` at all
+ * is a different fact, and one every writer here already returns untouched
+ * without claiming anything. A line that opens an argument list and is not one
+ * whole record (`stepRecordFrame`), or whose list does not split, is
+ * unreadable: the edits queued for it were dropped (#7682).
  */
 function argumentListScans(entityText: string): boolean {
-  const openParen = entityText.indexOf('(');
-  const closeParen = entityText.lastIndexOf(');');
-  if (openParen < 0 || closeParen < openParen) return true;
-  return splitTopLevelStepArguments(entityText.slice(openParen + 1, closeParen)) !== null;
+  const frame = stepRecordFrame(entityText);
+  if (frame === null) return stepRecordHead(entityText) === null;
+  return splitTopLevelStepArguments(frameArgs(entityText, frame)) !== null;
 }
 
 /**
@@ -246,11 +247,8 @@ function applyAttributeMutations(
   schemaVersion: IfcSchemaVersion,
   onRejected?: (attrName: string, value: string) => void,
 ): string {
-  const openParen = entityText.indexOf('(');
-  const closeParen = entityText.lastIndexOf(');');
-  if (openParen < 0 || closeParen < openParen) {
-    return entityText;
-  }
+  const frame = stepRecordFrame(entityText);
+  if (frame === null) return entityText;
 
   // Validating, not permissive. Every write below is BY INDEX into these
   // parts, so parts that are not the record's slots put the value on another
@@ -258,7 +256,7 @@ function applyAttributeMutations(
   // edit landed (#2470, #4125). A `null` refuses the whole line's named edits
   // rather than handing back a success that did not happen; the caller reports
   // it (see {@link applySourceLineMutations}).
-  const args = splitTopLevelStepArguments(entityText.slice(openParen + 1, closeParen));
+  const args = splitTopLevelStepArguments(frameArgs(entityText, frame));
   if (args === null) return entityText;
   // A source line NEVER pads (unlike the overlay-created path): a short
   // argument list here means the file speaks a different schema, and growing
@@ -305,7 +303,7 @@ function applyAttributeMutations(
     return entityText;
   }
 
-  return `${entityText.slice(0, openParen + 1)}${args.join(',')}${entityText.slice(closeParen)}`;
+  return withFrameArgs(entityText, frame, args.join(','));
 }
 
 /**
@@ -320,13 +318,12 @@ function applyPositionalMutations(
   entityType: string,
   schemaVersion: IfcSchemaVersion,
 ): string {
-  const openParen = entityText.indexOf('(');
-  const closeParen = entityText.lastIndexOf(');');
-  if (openParen < 0 || closeParen < openParen) return entityText;
+  const frame = stepRecordFrame(entityText);
+  if (frame === null) return entityText;
 
   // Validating for the same reason as the named path above: `args[index] = …`
   // is only an edit to attribute `index` when the parts ARE the record's slots.
-  const args = splitTopLevelStepArguments(entityText.slice(openParen + 1, closeParen));
+  const args = splitTopLevelStepArguments(frameArgs(entityText, frame));
   if (args === null) return entityText;
   const realSlots = getRealTypedSlots(entityType, schemaVersion);
   let changed = false;
@@ -336,5 +333,5 @@ function applyPositionalMutations(
     changed = true;
   }
   if (!changed) return entityText;
-  return `${entityText.slice(0, openParen + 1)}${args.join(',')}${entityText.slice(closeParen)}`;
+  return withFrameArgs(entityText, frame, args.join(','));
 }

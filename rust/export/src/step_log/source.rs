@@ -80,10 +80,8 @@ impl<'a> Source<'a> {
     /// The record's UPPERCASE type, read off its text.
     pub(crate) fn type_of(&self, id: u32) -> Option<String> {
         let line = self.line(id)?;
-        let eq = line.find('=')?;
-        let rest = line[eq + 1..].trim_start();
-        let end = rest.find(|c: char| !(c.is_ascii_alphanumeric() || c == '_')).unwrap_or(rest.len());
-        (end > 0).then(|| rest[..end].to_ascii_uppercase())
+        let head = crate::step_record_frame::record_head(&line)?;
+        Some(head.type_name(&line).to_ascii_uppercase())
     }
 
     /// `EntityExtractor.extractEntity` over the record: `(UPPER type, attributes)`.

@@ -34,8 +34,10 @@ mod tokenizer;
 pub use keyword::{find_keyword, keyword_ends_with, keyword_eq, keyword_starts_with};
 pub use header::declared_schema_bounded;
 pub use lexical::skip_step_comment;
-// The one STEP whitespace set, for the raw-byte readers in `decoder` (#3733).
-pub(crate) use lexical::{is_step_space, skip_step_trivia};
+// The one STEP whitespace set and trivia rule, for the raw-byte readers in
+// `decoder` (#3733) and for the export crate's record-frame reader (#7682), so
+// the writer that edits a record agrees with the scanner that found it.
+pub use lexical::{is_step_space, skip_step_trivia};
 // The one STEP numeric-literal grammar for every raw-byte reader (#5266).
 pub(crate) use numeric_literal::parse_step_numeric;
 pub use malformed_records::report_malformed_records;

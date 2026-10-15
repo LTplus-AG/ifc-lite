@@ -1,0 +1,75 @@
+{
+ "about": [
+  "Shared vectors for the STEP record frame (#7682, EXPORT-STEP-1): rust/export/src/step_record_frame.rs and packages/export/src/step-record-frame.ts.",
+  "`framed`: [record text, the argument list the frame bounds]. Trivia (STEP whitespace, including vertical tab and form feed, and /* */ comments) is allowed around the `=`, before the `(`, between the `)` and the `;`, and after the `;`.",
+  "`refused`: text that is not one whole record, so no frame. U+00A0 is not STEP whitespace.",
+  "Run by step_record_frame_tests.rs and packages/export/src/step-record-frame.parity.test.ts."
+ ],
+ "framed": [
+  {
+   "text": "#5=IFCWALL('g',$,'W',$,$,$,$,$,$);",
+   "args": "'g',$,'W',$,$,$,$,$,$"
+  },
+  {
+   "text": "#5=IFCWALL('g',$,'W',$,$,$,$,$,$) ;",
+   "args": "'g',$,'W',$,$,$,$,$,$"
+  },
+  {
+   "text": "#5=IFCWALL('g',$,'W',$,$,$,$,$,$)\u000b;",
+   "args": "'g',$,'W',$,$,$,$,$,$"
+  },
+  {
+   "text": "#5=IFCWALL('g',$,'W',$,$,$,$,$,$)\f\t;",
+   "args": "'g',$,'W',$,$,$,$,$,$"
+  },
+  {
+   "text": "#5=IFCWALL('g',$,'W',$,$,$,$,$,$) /* c */ ;",
+   "args": "'g',$,'W',$,$,$,$,$,$"
+  },
+  {
+   "text": "#5=IFCWALL('g',$,'W',$,$,$,$,$,$)/* a ); b */;",
+   "args": "'g',$,'W',$,$,$,$,$,$"
+  },
+  {
+   "text": "#5=IFCWALL('g',$,'W',$,$,$,$,$,$)/*a*//*b*/;",
+   "args": "'g',$,'W',$,$,$,$,$,$"
+  },
+  {
+   "text": "#5=IFCWALL('g',$,'W',$,$,$,$,$,$); /* after */\n",
+   "args": "'g',$,'W',$,$,$,$,$,$"
+  },
+  {
+   "text": "#5 /* c */ = /* d */ IFCWALL /* e */ ('g',$,'W',$,$,$,$,$,$);",
+   "args": "'g',$,'W',$,$,$,$,$,$"
+  },
+  {
+   "text": "#5=IFCWALL('g',$,'W',$,$,$,$,$,$) /* a /* b */;",
+   "args": "'g',$,'W',$,$,$,$,$,$"
+  },
+  {
+   "text": "#1=IFCWALL('it's',$);",
+   "args": "'it's',$"
+  },
+  {
+   "text": "#1=IFCFOO();",
+   "args": ""
+  },
+  {
+   "text": "#1=IFCFOO('*/ /*') /* c */;",
+   "args": "'*/ /*'"
+  }
+ ],
+ "refused": [
+  "",
+  "IFCWALL($);",
+  "#=IFCWALL($);",
+  "#5IFCWALL($);",
+  "#5=($);",
+  "#5=IFCWALL($)",
+  "#5=IFCWALL($) x;",
+  "#5=IFCWALL($);x",
+  "#5=IFCWALL($) /* unterminated ;",
+  "#5=IFCWALL;",
+  "#5=IFCWALL($) ;"
+ ]
+}

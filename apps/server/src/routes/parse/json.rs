@@ -67,7 +67,7 @@ pub async fn parse_full(
     let cached = match state.cache.lookup(&response_cache_key).await? {
         Some(entry) => {
             let stored = entry.size().saturating_mul(DECODE_COPIES);
-            upload_charge = Some(admission_guard.resize_to(stored).await?);
+            upload_charge = Some(admission_guard.grow_to(stored).await?);
             state.cache.read_entry(&response_cache_key, &entry).await.map(|bytes| (bytes, entry))
         }
         None => None,
@@ -93,7 +93,7 @@ pub async fn parse_full(
     }
 
     if let Some(upload_charge) = upload_charge {
-        admission_guard.resize_to(upload_charge).await?;
+        admission_guard.shrink_to(upload_charge);
     }
     tracing::info!(cache_key = %cache_key, size = data.len(), "Cache MISS - processing");
 

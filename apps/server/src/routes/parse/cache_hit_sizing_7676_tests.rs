@@ -14,7 +14,7 @@ use super::cache_read_7676::warm_everything;
 use super::*;
 use crate::admission::{Admission, AdmissionCfg};
 use crate::routes::parse::cache_keys::{
-    json_response_cache_key, parquet_geometry_key, parquet_optimized_cache_key,
+    json_response_cache_key, parquet_geometry_key, parquet_optimized_cache_key, symbolic_cache_key,
 };
 use crate::services::ParquetLayout;
 use std::time::Duration;
@@ -124,6 +124,22 @@ async fn a_hit_that_misses_gives_the_bytes_back_to_the_parse() {
         state.admission.acquire(9 * MIB).await.is_ok(),
         "the re-parse's reservation was not given back after the response"
     );
+}
+
+/// A replay that is not a hit (here: the symbolic sidecar is gone, so the
+/// gate says re-parse) must cost an already-admitted upload nothing. The
+/// replay used to be sized before that gate, and growing to the stored
+/// geometry's size under contention refused an upload that would have parsed.
+#[tokio::test]
+async fn a_replay_miss_cannot_503_an_admitted_upload_under_contention() {
+    let (state, key) = big_entries("7709-miss-under-contention").await;
+    state.cache.remove(&symbolic_cache_key(&key)).await.unwrap();
+    let other = state.admission.acquire_resident(MIB).await.expect("the budget has room");
+
+    let parsed = send(&state, "POST", "/api/v1/parse/parquet-stream", Some(JOBS_NE_MESHES_FIXTURE)).await;
+    assert_eq!(parsed.status(), StatusCode::OK, "a miss was refused for the size of an entry it never read");
+    drain(parsed).await;
+    drop(other);
 }
 
 /// Finding 2: `Content-Length` is sent wherever the body's length is known,

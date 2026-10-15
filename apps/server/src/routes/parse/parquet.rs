@@ -106,7 +106,7 @@ pub async fn parse_parquet(
         if parquet == 0 || metadata == 0 {
             None
         } else {
-            upload_charge = Some(admission_guard.resize_to(parquet + metadata).await?);
+            upload_charge = Some(admission_guard.grow_to(parquet + metadata).await?);
             match state.cache.read_usable_utf8(&metadata_cache_key).await? {
                 Some(metadata) => state.cache.read_usable(&parquet_cache_key).await?.map(|parquet| (parquet, metadata)),
                 None => None,
@@ -136,7 +136,7 @@ pub async fn parse_parquet(
         return Ok(response);
     }
     if let Some(upload_charge) = upload_charge {
-        admission_guard.resize_to(upload_charge).await?;
+        admission_guard.shrink_to(upload_charge);
     }
 
     tracing::info!(

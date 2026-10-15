@@ -150,10 +150,11 @@ pub(super) fn cached_geometry_slice(cached: &[u8]) -> Option<&[u8]> {
 ///
 /// The charge is the STORED entries' size on both routes that get here: the
 /// hash-only route admitted for the geometry alone, an upload route for its
-/// upload. Both are resized to what the replay reads and holds (the geometry
-/// [`REPLAY_COPIES`] times, plus the header, symbolic and progress entries it
-/// decodes), and an upload route's miss is put back to its upload's charge
-/// for the parse that follows.
+/// upload. Both are grown to at least what the replay reads and holds (the
+/// geometry [`REPLAY_COPIES`] times, plus the header, symbolic and progress
+/// entries it decodes), never shrunk, and only once the data-model and
+/// symbolic gate has passed; a miss is put back by a plain shrink, which
+/// cannot fail, so it can never 503 an upload that was already admitted.
 pub(super) async fn try_cached_replay(
     state: &AppState,
     cache_key: &str,
@@ -162,37 +163,6 @@ pub(super) async fn try_cached_replay(
     data_model_entities: DataModelEntities,
     mut admission: AdmissionGuard,
 ) -> Result<Replay, ApiError> {
-    let geometry = stored_size(&state.cache, &parquet_geometry_key(cache_key, layout)).await?;
-    let held = if geometry == 0 {
-        None
-    } else {
-        let sidecars = stored_size(&state.cache, &parquet_metadata_key(cache_key)).await?
-            + stored_size(&state.cache, &symbolic_cache_key(cache_key)).await?
-            + stored_size(&state.cache, &stream_progress_cache_key(cache_key)).await?;
-        Some(admission.resize_to(geometry.saturating_mul(REPLAY_COPIES).saturating_add(sidecars)).await?)
-    };
-    match replay_entries(state, cache_key, layout, stream_shapes, data_model_entities, admission).await? {
-        Replay::Miss(mut admission) => {
-            if let Some(held) = held {
-                admission.resize_to(held).await?;
-            }
-            Ok(Replay::Miss(admission))
-        }
-        hit => Ok(hit),
-    }
-}
-
-async fn replay_entries(
-    state: &AppState,
-    cache_key: &str,
-    layout: ParquetLayout,
-    stream_shapes: StreamShapes,
-    data_model_entities: DataModelEntities,
-    admission: AdmissionGuard,
-) -> Result<Replay, ApiError> {
-    let parquet_cache_key = parquet_geometry_key(cache_key, layout);
-    let metadata_cache_key = parquet_metadata_key(cache_key);
-
     // Replaying skips the parse, and the parse is what writes the data model.
     // A geometry entry that outlived a data-model version bump must therefore
     // re-parse rather than replay (issue #3869). The same holds for a data
@@ -206,6 +176,38 @@ async fn replay_entries(
         );
         return Ok(Replay::Miss(admission));
     }
+
+    // Sized only once the gate above has said this can be a hit: a miss costs
+    // an already-admitted upload nothing.
+    let geometry = stored_size(&state.cache, &parquet_geometry_key(cache_key, layout)).await?;
+    let held = if geometry == 0 {
+        None
+    } else {
+        let sidecars = stored_size(&state.cache, &parquet_metadata_key(cache_key)).await?
+            + stored_size(&state.cache, &symbolic_cache_key(cache_key)).await?
+            + stored_size(&state.cache, &stream_progress_cache_key(cache_key)).await?;
+        Some(admission.grow_to(geometry.saturating_mul(REPLAY_COPIES).saturating_add(sidecars)).await?)
+    };
+    match replay_entries(state, cache_key, layout, stream_shapes, admission).await? {
+        Replay::Miss(mut admission) => {
+            if let Some(held) = held {
+                admission.shrink_to(held);
+            }
+            Ok(Replay::Miss(admission))
+        }
+        hit => Ok(hit),
+    }
+}
+
+async fn replay_entries(
+    state: &AppState,
+    cache_key: &str,
+    layout: ParquetLayout,
+    stream_shapes: StreamShapes,
+    admission: AdmissionGuard,
+) -> Result<Replay, ApiError> {
+    let parquet_cache_key = parquet_geometry_key(cache_key, layout);
+    let metadata_cache_key = parquet_metadata_key(cache_key);
 
     let Some(mut metadata_header) =
         state.cache.read_usable_json::<ParquetMetadataHeader>(&metadata_cache_key).await?

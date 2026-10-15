@@ -112,29 +112,26 @@ impl AdmissionGuard {
     }
 
     /// The bytes this guard currently reserves, in whole permits (0 with the
-    /// byte gate disabled). Hand it back to [`Self::resize_to`] to restore it.
+    /// byte gate disabled). Hand it to [`Self::shrink_to`] to restore it.
     pub fn reserved(&self) -> u64 {
         self.mem.as_ref().map_or(0, |mem| mem.num_permits() as u64 * BYTES_PER_PERMIT)
     }
 
-    /// Charge this job `bytes` from now on, whether that is more or less than
-    /// it holds; returns what it held before. A cache hit on an upload route
-    /// is charged the stored entry's size this way, as the GET routes are,
-    /// instead of the upload's (#7676, SERVER-24).
+    /// Make sure this job is charged at least `bytes`; returns what it held
+    /// before, for [`Self::shrink_to`] to put back. A cache hit on an upload
+    /// route is charged the stored entry's size this way, as the GET routes
+    /// are, instead of only the upload's (#7676, SERVER-24).
     ///
-    /// Growing waits for the extra bytes like any waiter: bounded by
-    /// `queue_timeout`, counted in the queue, answered `503` on timeout, with
-    /// everything already held kept meanwhile. Never drops below one permit.
-    pub async fn resize_to(&mut self, bytes: u64) -> Result<u64, ApiError> {
+    /// It only ever grows, so giving the extra back is a pure shrink that
+    /// cannot fail: an upload already admitted is never refused because a
+    /// cache lookup missed. The growth waits for the extra bytes like any
+    /// waiter: bounded by `queue_timeout`, counted in the queue, answered
+    /// `503` on timeout, with everything already held kept meanwhile.
+    pub async fn grow_to(&mut self, bytes: u64) -> Result<u64, ApiError> {
         let before = self.reserved();
-        let Some(mem) = self.mem.as_mut() else {
-            return Ok(before);
-        };
         let want = self.admission.permits_for(bytes) as usize;
-        let held = mem.num_permits();
-        if held > want {
-            drop(mem.split(held - want));
-        } else if held < want {
+        let held = self.mem.as_ref().map_or(usize::MAX, |mem| mem.num_permits());
+        if held < want {
             let extra = self.admission.acquire_more((want - held) as u32).await?;
             // Same semaphore, so the permits merge into one.
             if let (Some(mem), Some(extra)) = (self.mem.as_mut(), extra) {

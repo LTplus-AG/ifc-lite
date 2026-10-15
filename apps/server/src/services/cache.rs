@@ -52,6 +52,9 @@ pub struct DiskCache {
     /// permit held by the async fn would be released when a client drops the
     /// request mid-walk, while the walk itself runs on.
     pub(crate) index_walk: Arc<Semaphore>,
+    /// The last index time [`Self::set_bytes`] stamped, so every write of a
+    /// key gets a time of its own (see `cache_entry`'s eviction rule).
+    write_clock: Arc<std::sync::atomic::AtomicU64>,
     /// Test seam (#7676, SERVER-6): how many entry CONTENTS this cache has
     /// read, so a test can tell an existence check from a whole-blob read.
     #[cfg(test)]
@@ -76,6 +79,7 @@ impl DiskCache {
             cache_dir: path,
             write_gc_lock: Arc::new(RwLock::new(())),
             index_walk: Arc::new(Semaphore::new(1)),
+            write_clock: Arc::default(),
             #[cfg(test)]
             content_reads: Arc::default(),
         }
@@ -152,9 +156,36 @@ impl DiskCache {
         // Excludes `remove_by_key_prefix`'s GC pass, not other concurrent
         // writers -- see `write_gc_lock`'s docstring.
         let _guard = self.write_gc_lock.read().await;
-        cacache::write(&self.cache_dir, key, data).await?;
+        // The index row is stamped with a time no earlier write of this
+        // process shares: parse output is deterministic, so a re-parse that
+        // repairs an entry writes the SAME content hash, and the row's time
+        // is what tells that write from the one a reader saw fail
+        // (`cache_entry::evict_unusable`). A wall-clock millisecond alone
+        // would not: two writes can land in one.
+        use futures::io::AsyncWriteExt;
+        let mut writer = cacache::WriteOpts::new()
+            .size(data.len())
+            .time(self.next_write_time())
+            .open(&self.cache_dir, key)
+            .await?;
+        writer.write_all(data).await.map_err(|e| cacache::Error::IoError(e, "writing cache entry".into()))?;
+        writer.commit().await?;
         tracing::debug!(key = %key, size = data.len(), "Cached raw bytes");
         Ok(())
+    }
+
+    /// Unix milliseconds, bumped past the previous call's value when the
+    /// clock has not moved (or has gone back).
+    fn next_write_time(&self) -> u128 {
+        use std::sync::atomic::Ordering;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_millis() as u64);
+        let stamped = self
+            .write_clock
+            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |last| Some(now.max(last.saturating_add(1))))
+            .map_or(now, |last| now.max(last.saturating_add(1)));
+        u128::from(stamped)
     }
 
     /// Cache-wide entry count and total content size in bytes, for the

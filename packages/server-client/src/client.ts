@@ -388,7 +388,6 @@ export class IfcServerClient {
       await response.body?.cancel();
       return null;
     }
-    if (response.status === 404) return null;
     if (!response.ok) {
       throw await this.handleError(response);
     }

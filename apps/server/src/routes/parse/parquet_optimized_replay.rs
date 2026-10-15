@@ -139,10 +139,10 @@ pub(super) async fn try_cached_optimized_parquet(
     if body == 0 || header == 0 {
         return Ok(None);
     }
-    let held = upload.resize_to(body + header).await?;
+    let held = upload.grow_to(body + header).await?;
     let hit = read_optimized(state, cache_key).await?;
     if hit.is_none() {
-        upload.resize_to(held).await?;
+        upload.shrink_to(held);
     }
     Ok(hit)
 }

@@ -8,6 +8,7 @@
 use super::*;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
+use std::sync::Arc;
 
 async fn fresh(label: &str) -> (DiskCache, PathBuf) {
     let dir = std::env::temp_dir().join(format!("ifc-lite-server-cache-entry-{}-{label}", std::process::id()));
@@ -142,4 +143,62 @@ async fn a_decode_failure_does_not_evict_an_entry_rewritten_since_its_read() {
     assert!(decoded.is_none());
     let value: serde_json::Value = cache.read_usable_json("k").await.unwrap().expect("the rewrite was evicted");
     assert_eq!(value["a"], 1);
+}
+
+/// Parse output is deterministic, so the re-parse that repairs an entry writes
+/// the SAME content hash: comparing integrity alone would still evict it. The
+/// repairing write lands first (an evict waits for a writer in flight, then
+/// runs), and the reader's late eviction must find a different write.
+#[tokio::test]
+async fn a_same_content_rewrite_is_not_evicted_by_the_read_that_failed_before_it() {
+    let (cache, dir) = fresh("same-content").await;
+    cache.set_bytes("k", b"hello world").await.unwrap();
+    let stale = cache.lookup("k").await.unwrap().expect("the entry is there");
+    let path = blob_path(&dir, "k").await;
+    let _ = std::fs::remove_file(&path);
+    std::fs::write(&path, b"HELLO WORLD").unwrap();
+
+    // The repairing re-parse: same bytes, same hash, a fresh write.
+    cache.set_bytes("k", b"hello world").await.unwrap();
+
+    cache.evict_entry("k", &stale, "the read that failed before the repair").await;
+    let good = cache.lookup("k").await.unwrap().expect("the repairing write was evicted");
+    assert_eq!(cache.read_entry("k", &good).await.unwrap(), b"hello world");
+}
+
+/// The same through a decode failure, with the rewrite landing between the
+/// read and the eviction.
+#[tokio::test]
+async fn a_same_content_rewrite_is_not_evicted_by_a_decode_failure_before_it() {
+    let (cache, _dir) = fresh("same-content-decode").await;
+    cache.set_bytes("k", b"{not json").await.unwrap();
+    let (bytes, stale) = cache.read_usable_entry("k").await.unwrap().unwrap();
+    cache.set_bytes("k", b"{not json").await.unwrap();
+
+    let decoded = cache.usable("k", &stale, serde_json::from_slice::<serde_json::Value>(&bytes)).await;
+    assert!(decoded.is_none());
+    assert!(cache.lookup("k").await.unwrap().is_some(), "the rewrite was evicted");
+}
+
+/// The missing-blob path: `lookup` sees the row without its blob, and by the
+/// time its eviction gets the lock a writer has put the same content back.
+/// The lock is held here while the content is restored, so the eviction is
+/// parked behind it, as it is behind a repairing writer.
+#[tokio::test]
+async fn a_blob_that_came_back_is_not_evicted_by_the_lookup_that_missed_it() {
+    let (cache, dir) = fresh("blob-back").await;
+    cache.set_bytes("k", b"hello").await.unwrap();
+    std::fs::remove_file(blob_path(&dir, "k").await).unwrap();
+
+    let held = Arc::clone(&cache.write_gc_lock).write_owned().await;
+    let racing = cache.clone();
+    let lookup = tokio::spawn(async move { racing.lookup("k").await });
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    // The blob comes back (another key wrote the same content), bypassing the
+    // lock this test holds; the index row is untouched.
+    cacache::write_hash(&dir, b"hello").await.unwrap();
+    drop(held);
+
+    assert!(lookup.await.unwrap().unwrap().is_none(), "the lookup saw the blob missing");
+    assert!(cache.lookup("k").await.unwrap().is_some(), "the restored entry was evicted");
 }

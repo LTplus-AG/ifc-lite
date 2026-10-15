@@ -37,6 +37,11 @@ use serde::de::DeserializeOwned;
 #[derive(Debug, Clone)]
 pub struct CacheEntry {
     integrity: cacache::Integrity,
+    /// The index row's write time: with the integrity, the identity of ONE
+    /// write. Parse output is deterministic, so the re-parse that repairs an
+    /// entry writes the same hash; only the time tells it from the write a
+    /// reader saw fail.
+    written: u128,
     size: u64,
 }
 
@@ -58,11 +63,13 @@ impl DiskCache {
             return Ok(None);
         };
         if !cacache::exists(&self.cache_dir, &meta.integrity).await {
-            self.evict_unusable(key, &meta.integrity, "its content blob is missing").await;
+            let entry = CacheEntry { integrity: meta.integrity, written: meta.time, size: meta.size as u64 };
+            self.evict_unusable(key, &entry, true, "its content blob is missing").await;
             return Ok(None);
         }
         Ok(Some(CacheEntry {
             integrity: meta.integrity,
+            written: meta.time,
             size: meta.size as u64,
         }))
     }
@@ -138,13 +145,12 @@ impl DiskCache {
     /// Evict `entry`, the one a reader looked up and found unusable, unless
     /// `key` names something else by now.
     pub async fn evict_entry(&self, key: &str, entry: &CacheEntry, why: impl std::fmt::Display) {
-        self.evict_unusable(key, &entry.integrity, why).await;
+        self.evict_unusable(key, entry, false, why).await;
     }
 
-    /// Drop the index row of `key` if it still names `failed`, the integrity
-    /// a reader could not use, so every route agrees it is a miss. Content
-    /// blobs are left to `remove_by_key_prefix`'s GC: another entry may share
-    /// one.
+    /// Drop the index row of `key` if it is still the write `failed` names,
+    /// so every route agrees it is a miss. Content blobs are left to
+    /// `remove_by_key_prefix`'s GC: another entry may share one.
     ///
     /// A reader's lookup and its failed read are separated by an admission
     /// wait of up to `queue_timeout`, long enough for another request to
@@ -152,12 +158,23 @@ impl DiskCache {
     /// that good entry (and a data-model sidecar has no re-parse behind it:
     /// its route answers a final 404). So the row is re-read under
     /// `write_gc_lock.write()`, which excludes a writer between its blob and
-    /// its index insert, and removed only when it still names `failed`.
-    async fn evict_unusable(&self, key: &str, failed: &cacache::Integrity, why: impl std::fmt::Display) {
+    /// its index insert, and removed only when its integrity AND write time
+    /// are still the failed entry's: the integrity alone is not enough,
+    /// because the repairing re-parse writes the same hash. This also waits
+    /// out a repairing writer already in flight, and then finds its row.
+    ///
+    /// `blob_missing` is the lookup's reason (the blob was gone): the blob is
+    /// checked again under the lock, since another key may have re-created
+    /// the same content meanwhile.
+    async fn evict_unusable(&self, key: &str, failed: &CacheEntry, blob_missing: bool, why: impl std::fmt::Display) {
         tracing::warn!(cache_key = %key, reason = %why, "Unusable cache entry; treating it as a miss");
         let _exclusive = self.write_gc_lock.write().await;
         match cacache::metadata(&self.cache_dir, key).await {
-            Ok(Some(row)) if row.integrity == *failed => {
+            Ok(Some(row)) if row.integrity == failed.integrity && row.time == failed.written => {
+                if blob_missing && cacache::exists(&self.cache_dir, &row.integrity).await {
+                    tracing::debug!(cache_key = %key, "Cache entry's blob is back; keeping it");
+                    return;
+                }
                 if let Err(e) = cacache::remove(&self.cache_dir, key).await {
                     tracing::warn!(cache_key = %key, error = %e, "Failed to evict an unusable cache entry");
                 }

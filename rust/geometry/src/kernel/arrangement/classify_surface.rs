@@ -55,11 +55,6 @@ pub(super) fn on_surface_normal(c: [f64; 3], n_own: [f64; 3], others: &[Tri]) ->
         .find_map(|t| on_surface_tri(c, t).filter(|n| coincident_planes(n_own, *n)))
 }
 
-/// Canonical near-coplanar band (see [`near_on_surface_normal`]): the
-/// `SNAP_GRID` scatter envelope plus the operands' per-axis extents projected
-/// onto the plane under test, defined once in `near_band`.
-
-
 /// The NEAR-coplanar analogue of [`on_surface_normal`], used for any
 /// sub-triangle (A side via `BComponents::surface_normal`, B side via
 /// `c_on_or_near_a`) whose centroid sits within the snap band of a face of the
@@ -166,31 +161,50 @@ fn near_shared_surface_tri(c: [f64; 3], own: &Tri, other: &Tri, band: &NearBand)
 /// Finite opposite-side probes can straddle a nearby distinct boundary.
 /// Use the actual arranged triangle's exact centroid: rounding its three
 /// materialized f64 coordinates can move a legitimate centroid off its plane.
-pub(super) struct BoundaryCentroid {
-    point: [num_rational::BigRational; 3],
+pub(super) struct BoundaryCentroid<'a> {
+    source: [&'a crate::kernel::ImplicitPoint; 3],
+    interval: Option<crate::kernel::interval::IvLam>,
+    point: std::cell::OnceCell<[num_rational::BigRational; 3]>,
 }
 
-impl BoundaryCentroid {
-    pub(super) fn new(arr: &super::Arrangement, tri: [super::Vid; 3]) -> Option<Self> {
+impl<'a> BoundaryCentroid<'a> {
+    pub(super) fn new(arr: &'a super::Arrangement, tri: [super::Vid; 3]) -> Option<Self> {
         if budget::tripped() { return None; }
-        // One count for exact centroid construction, then one per exact_pt
-        // predicate below: deterministic work from the same symbolic operands.
-        budget::note_escalation();
+        Some(Self {
+            source: tri.map(|v| arr.interner.get(v)),
+            interval: centroid_interval(tri.map(|v| *arr.interner.lam_iv(v))),
+            point: std::cell::OnceCell::new(),
+        })
+    }
+
+    fn exact_point(&self) -> Option<&[num_rational::BigRational; 3]> {
         if budget::tripped() { return None; }
-        let p = tri.map(|v| crate::kernel::rational::point_of(arr.interner.get(v)));
-        let three = num_rational::BigRational::from_integer(3.into());
-        Some(Self { point: std::array::from_fn(|k| (&p[0][k] + &p[1][k] + &p[2][k]) / &three) })
+        if self.point.get().is_none() {
+            // Charge actual exact centroid construction once. An interval
+            // rejection needs neither rational coordinates nor an escalation.
+            budget::note_escalation();
+            if budget::tripped() { return None; }
+            self.point.get_or_init(|| {
+                let p = self.source.map(crate::kernel::rational::point_of);
+                let three = num_rational::BigRational::from_integer(3.into());
+                std::array::from_fn(|k| (&p[0][k] + &p[1][k] + &p[2][k]) / &three)
+            });
+        }
+        self.point.get()
     }
 
     pub(super) fn on_surface(&self, others: &[Tri]) -> bool {
         use crate::kernel::rational::{orient2d_exact_pt, orient3d_exact_pt};
         for t in others {
             if budget::tripped() { return false; }
+            // A definite nonzero interval sign proves the exact centroid is
+            // off this plane. Zero/uncertainty always uses the exact predicate.
+            if self.interval.as_ref().is_some_and(|c| centroid_outside_bounds(c, t)
+                || centroid_plane_sign(c, t).is_some_and(|s| s != Sign::Zero)) { continue; }
+            let Some(point) = self.exact_point() else { return false; };
             budget::note_escalation();
             if budget::tripped() { return false; }
-            if orient3d_exact_pt(&self.point, t[0], t[1], t[2]) != Sign::Zero {
-                continue;
-            }
+            if orient3d_exact_pt(point, t[0], t[1], t[2]) != Sign::Zero { continue; }
             let n = cross3(sub_f64(t[1], t[0]), sub_f64(t[2], t[0]));
             let axis = drop_axis_of(n);
             let winding = orient2d_any(&e(t[0]), &e(t[1]), &e(t[2]), axis);
@@ -199,7 +213,7 @@ impl BoundaryCentroid {
             for i in 0..3 {
                 budget::note_escalation();
                 if budget::tripped() { return false; }
-                if orient2d_exact_pt(&self.point, t[i], t[(i + 1) % 3], axis) == winding.flip() {
+                if orient2d_exact_pt(point, t[i], t[(i + 1) % 3], axis) == winding.flip() {
                     inside = false;
                     break;
                 }
@@ -208,6 +222,75 @@ impl BoundaryCentroid {
         }
         false
     }
+}
+
+fn finite_interval(i: crate::kernel::interval::RnInterval) -> Option<crate::kernel::interval::RnInterval> {
+    (i.lo.is_finite() && i.hi.is_finite() && i.lo <= i.hi).then_some(i)
+}
+
+/// Homogeneous centroid: sum(lambda_i * d_j * d_k) / (3*d0*d1*d2).
+/// Every operation rounds outward; no materialized f64 point is averaged.
+fn centroid_interval(points: [crate::kernel::interval::IvLam; 3]) -> Option<crate::kernel::interval::IvLam> {
+    use crate::kernel::interval::RnInterval;
+    for (lambda, d) in points {
+        for i in lambda { finite_interval(i)?; }
+        finite_interval(d)?;
+        if !matches!(d.sign(), Some(Sign::Positive | Sign::Negative)) { return None; }
+    }
+    let weights = [
+        finite_interval(points[1].1.mul(points[2].1))?,
+        finite_interval(points[0].1.mul(points[2].1))?,
+        finite_interval(points[0].1.mul(points[1].1))?,
+    ];
+    let d = finite_interval(finite_interval(points[0].1.mul(weights[0]))?.mul(RnInterval::point(3.0)))?;
+    if !matches!(d.sign(), Some(Sign::Positive | Sign::Negative)) { return None; }
+    let mut lambda = [RnInterval::point(0.0); 3];
+    for k in 0..3 {
+        let terms = [
+            finite_interval(points[0].0[k].mul(weights[0]))?,
+            finite_interval(points[1].0[k].mul(weights[1]))?,
+            finite_interval(points[2].0[k].mul(weights[2]))?,
+        ];
+        lambda[k] = finite_interval(finite_interval(terms[0].add(terms[1]))?.add(terms[2]))?;
+    }
+    Some((lambda, d))
+}
+
+/// A strict homogeneous coordinate comparison can reject remote coplanar
+/// triangles too. Uncertainty retains the candidate; there is no division,
+/// rounded centroid, padding, or geometric tolerance in this AABB query.
+fn centroid_outside_bounds(c: &crate::kernel::interval::IvLam, t: &Tri) -> bool {
+    use crate::kernel::interval::RnInterval;
+    let Some(denominator) = c.1.sign().filter(|s| *s != Sign::Zero) else { return false; };
+    if finite_interval(c.1).is_none() { return false; }
+    for k in 0..3 {
+        if finite_interval(c.0[k]).is_none() || t.iter().any(|p| !p[k].is_finite()) { continue; }
+        let lower = t.iter().map(|p| p[k]).fold(f64::INFINITY, f64::min);
+        let upper = t.iter().map(|p| p[k]).fold(f64::NEG_INFINITY, f64::max);
+        let compare = |bound| {
+            let product = finite_interval(c.1.mul(RnInterval::point(bound)))?;
+            let difference = finite_interval(c.0[k].sub(product))?;
+            Some(crate::kernel::assemble_sign(difference.sign()?, &[denominator]))
+        };
+        if compare(lower) == Some(Sign::Negative) || compare(upper) == Some(Sign::Positive) { return true; }
+    }
+    false
+}
+
+fn centroid_plane_sign(c: &crate::kernel::interval::IvLam, t: &Tri) -> Option<Sign> {
+    // The shared determinant includes products up to degree four in these
+    // inputs. 64*m^4 bounds every intermediate (m>=1); if that bound overflows,
+    // decline the filter rather than risk an infinity/NaN endpoint operation.
+    if !matches!(c.1.sign(), Some(Sign::Positive | Sign::Negative)) { return None; }
+    let mut m = 1.0_f64;
+    for i in c.0.into_iter().chain([c.1]) {
+        finite_interval(i)?;
+        m = m.max(i.lo.abs()).max(i.hi.abs());
+    }
+    for p in t { for &v in p { if !v.is_finite() { return None; } m = m.max(v.abs()); } }
+    let square = m * m;
+    if !(64.0 * square * square).is_finite() { return None; }
+    crate::kernel::interval::indirect_orient3d(&c.0, c.1, t[0], t[1], t[2])
 }
 
 #[cfg(test)]

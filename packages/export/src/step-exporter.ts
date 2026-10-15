@@ -18,8 +18,9 @@ import { getCompleteEntityIndex, getMaxExpressId } from './entity-iteration.js';
 import { createSourceRefReader } from './source-ref-bounds.js';
 import { writeSourceEntityLines } from './step-source-iteration.js';
 import { writeOverlayCreatedEntities } from './step-overlay-entities.js';
-import { generatePropertyAndQuantitySetEntities } from './step-property-sets.js';
+import { convertAppendedLines, generatePropertyAndQuantitySetEntities } from './step-property-sets.js';
 import {
+  allocatedExpressId,
   resolveFallbackOwnerHistoryRef,
   type OwnerHistoryCache,
   type PropertySetContext,
@@ -235,14 +236,11 @@ export class StepExporter {
     // just below — after the quantity-set loop inside it, as it always was.
     generatePropertyAndQuantitySetEntities(pass, options, this.propertySetContext());
 
-    for (const rewrittenLine of pass.rewrittenEntityLines.values()) {
-      pass.entities.push(rewrittenLine);
-    }
-
-    // Add new georeferencing entities (IfcProjectedCRS, IfcMapConversion)
-    for (const line of pass.newGeorefLines) {
-      pass.entities.push(line);
-    }
+    // The rewritten type-object lines, then the new georeferencing entities
+    // (IfcProjectedCRS, IfcMapConversion), through the one emit path every
+    // appended record takes, so a converting export converts them (#7682).
+    pass.entities.push(...convertAppendedLines(pass, options, [...pass.rewrittenEntityLines.values()]));
+    pass.entities.push(...convertAppendedLines(pass, options, pass.newGeorefLines));
 
     // Add overlay-created entities (store.addEntity / mutationView.createEntity),
     // applying the same filters as the source-iteration pass (#2475 step 2e).
@@ -257,7 +255,7 @@ export class StepExporter {
     );
 
     // Complete map metadata adaptation before optional Rust planning and assembly.
-    normalizeCoordinateMetadata(pass, options, () => this.nextExpressId++);
+    normalizeCoordinateMetadata(pass, options, () => allocatedExpressId(this.nextExpressId++));
     return { pass };
   }
 
@@ -318,7 +316,7 @@ export class StepExporter {
     return {
       dataStore: this.dataStore,
       entityExtractor: this.entityExtractor,
-      allocateExpressId: () => this.nextExpressId++,
+      allocateExpressId: () => allocatedExpressId(this.nextExpressId++),
       deltaOnly,
     };
   }
@@ -346,7 +344,7 @@ export class StepExporter {
       entityExtractor: this.entityExtractor,
       mutationView: this.mutationView,
       isReadableSourceRef: this.isReadableSourceRef,
-      allocateExpressId: () => this.nextExpressId++,
+      allocateExpressId: () => allocatedExpressId(this.nextExpressId++),
       ownerHistory: this.ownerHistory,
       applySourceLineMutations: (expressId, entityText, recordType, attributeMutations, sourceSchema, overlayActive, onRejected) =>
         applySourceLineMutations(this.mutationView, expressId, entityText, recordType, attributeMutations, sourceSchema, overlayActive, onRejected),

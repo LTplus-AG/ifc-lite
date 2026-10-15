@@ -64,6 +64,8 @@ mod step;
 mod step_api;
 mod step_cow;
 mod step_header;
+mod step_ids;
+mod step_index;
 mod step_json;
 mod step_log;
 mod step_record_frame;

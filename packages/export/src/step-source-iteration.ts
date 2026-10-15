@@ -152,6 +152,12 @@ export function writeSourceEntityLines(
       if (!pass.isReadableSourceRef(entityRef)) {
         continue;
       }
+      // A created entity that reuses a source id replaces that record: the
+      // overlay-created pass writes it, and writing the source line too would
+      // put the id in the file twice (#7682, EXPORT-STEP-26).
+      if (pass.isOverlayCreated(expressId)) {
+        continue;
+      }
 
       // Skip entities outside the visible closure
       if (pass.allowedEntityIds !== null && !pass.allowedEntityIds.has(expressId)) {

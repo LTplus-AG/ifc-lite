@@ -109,6 +109,12 @@ export function writeOverlayCreatedEntities(
     // (the overlay typeMutation is the source of truth for the effective
     // class). Resolve the effective class, then re-lay-out the authored
     // attributes from the authored layout up to it.
+    // The authored class becomes the record's keyword verbatim, so it is held
+    // to the name `setEntityType` accepts: anything else (`IfcWall($);\n#1=…`)
+    // would write records the caller never created (#7682, EXPORT-STEP-26).
+    if (!/^[Ii][Ff][Cc][A-Za-z][A-Za-z0-9_]*$/.test(entity.type)) {
+      throw new Error(`created entity #${entity.expressId}: "${entity.type}" is not a recognizable IFC entity name`);
+    }
     const typeMut = getTypeMut ? getTypeMut(entity.expressId) : null;
     const effectiveType = typeMut?.newType ?? entity.type;
     // STEP requires UPPERCASE entity type tokens; the upper-case happens

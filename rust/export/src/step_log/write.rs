@@ -58,6 +58,9 @@ pub struct StepCounters {
     pub ifc4_required_slots_unfilled: usize,
     pub enum_values_lost: usize,
     pub enum_values_refused: usize,
+    /// Source records dropped because an earlier record had their express id
+    /// (#7682); each is also named in the warnings.
+    pub duplicate_records_dropped: usize,
 }
 
 impl From<&LogExportStats> for StepStats {
@@ -73,6 +76,9 @@ impl From<&LogExportStats> for StepStats {
             ifc4_required_slots_unfilled: s.step.ifc4_required_slots_unfilled,
             enum_values_lost: s.step.enum_values_lost,
             enum_values_refused: s.step.enum_values_refused,
+            // The log path takes no `PropMutation`s (they are refused up front).
+            property_mutations_refused: 0,
+            duplicate_records_dropped: s.step.duplicate_records_dropped,
         }
     }
 }
@@ -165,10 +171,11 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
     let overlay = replay(&log.mutations, &log.new_entities, &mut base)
         .map_err(|e| invalid(format!("export_step_with_log: {}", e.0)))?;
     let mut pass = Pass::new(&src, family, overlay);
+    pass.warnings.extend(src.duplicates.iter().map(|&id| crate::step_index::RecordIndex::duplicate_warning(id)));
     let unwritable = |e: super::values::Unwritable| invalid(format!("export_step_with_log: {}", e.0));
     let collected = collect(&mut pass, &mut base);
     if let Some(georef) = &log.georef_mutations {
-        super::georef::apply(&mut pass, georef);
+        super::georef::apply(&mut pass, georef).map_err(unwritable)?;
     }
     retain_shared_atoms(&mut pass);
 
@@ -231,7 +238,11 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
     let mut checks = crate::schema_enum::ConversionChecks::new();
     let mut written = 0usize;
     for &id in &src.order {
-        if pass.skip.contains(&id) || pass.rewritten.contains(&id) || pass.is_deleted(id) {
+        // A created entity that reuses a source id REPLACES that record, as
+        // the effective index makes it in the TypeScript exporter: its line is
+        // written with the created ones, and the source line is not, or the
+        // file would carry the id twice (#7682, EXPORT-STEP-26).
+        if pass.skip.contains(&id) || pass.rewritten.contains(&id) || pass.is_deleted(id) || pass.is_overlay_created(id) {
             continue;
         }
         let owned;
@@ -267,13 +278,19 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
         write_line(out, text, id, converting, &source_label, &target, &mut slot_fill, &mut checks)?;
         written += 1;
     }
-    let appended = pass.rewritten_lines.iter().map(|(_, l)| l).chain(pass.georef_lines.iter());
-    for line in pass.generated.iter().chain(appended) {
-        out.write_all(line.as_bytes())?;
-        out.write_all(b"\n")?;
-        written += 1;
-    }
-    for (id, line) in &pass.created_lines {
+    // Every appended record goes out through the same `write_line` as a
+    // source one, in the TypeScript exporter's order: generated sets, the
+    // repointed type objects, the georeferencing records, the created
+    // entities. Each is in the source schema's layout, so a converting export
+    // converts it (renames, the quantity `Formula` slot, the IFC2X3 slot fill
+    // and its counters) instead of writing it raw (#7682, EXPORT-STEP-3).
+    let appended = pass
+        .generated
+        .iter()
+        .chain(&pass.rewritten_lines)
+        .chain(&pass.georef_lines)
+        .chain(&pass.created_lines);
+    for (id, line) in appended {
         write_line(out, line, *id, converting, &source_label, &target, &mut slot_fill, &mut checks)?;
         written += 1;
     }
@@ -296,6 +313,7 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
             ifc4_required_slots_unfilled: checks.ifc4_slots.required_slots_unfilled(),
             enum_values_lost: checks.enums.lost(),
             enum_values_refused: checks.enums.refused(),
+            duplicate_records_dropped: src.duplicates.len(),
         },
     })
 }

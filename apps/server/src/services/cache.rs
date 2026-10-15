@@ -50,6 +50,10 @@ pub struct DiskCache {
     /// permit held by the async fn would be released when a client drops the
     /// request mid-walk, while the walk itself runs on.
     pub(crate) index_walk: Arc<Semaphore>,
+    /// Test seam (#7676, SERVER-6): how many entry CONTENTS this cache has
+    /// read, so a test can tell an existence check from a whole-blob read.
+    #[cfg(test)]
+    pub(crate) content_reads: Arc<std::sync::atomic::AtomicUsize>,
 }
 
 impl DiskCache {
@@ -70,7 +74,16 @@ impl DiskCache {
             cache_dir: path,
             write_gc_lock: Arc::new(RwLock::new(())),
             index_walk: Arc::new(Semaphore::new(1)),
+            #[cfg(test)]
+            content_reads: Arc::default(),
         }
+    }
+
+    /// Test seam (#7676): the directory this cache stores its entries in, so
+    /// a test can damage one entry's content the way a partial write would.
+    #[cfg(test)]
+    pub(crate) fn dir_for_tests(&self) -> &std::path::Path {
+        &self.cache_dir
     }
 
     /// Generate a cache key from file content (SHA256 hash).
@@ -134,6 +147,8 @@ impl DiskCache {
 
     /// Get raw bytes from cache (for Parquet responses).
     pub async fn get_bytes(&self, key: &str) -> Result<Option<Vec<u8>>, ApiError> {
+        #[cfg(test)]
+        self.content_reads.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         match cacache::read(&self.cache_dir, key).await {
             Ok(data) => Ok(Some(data)),
             Err(cacache::Error::EntryNotFound(_, _)) => Ok(None),

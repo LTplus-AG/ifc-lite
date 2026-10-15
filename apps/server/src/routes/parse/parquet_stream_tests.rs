@@ -388,3 +388,9 @@ mod cross_batch;
 
 #[path = "admission_7676_tests.rs"]
 mod admission_7676;
+
+#[path = "cache_read_7676_tests.rs"]
+mod cache_read_7676;
+
+#[path = "cache_policy_7676_tests.rs"]
+mod cache_policy_7676;

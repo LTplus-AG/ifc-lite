@@ -899,13 +899,6 @@ jobs:
           # RED. Once the script is on main, ordinary whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- scripts/viewer-test-shards.mjs | grep -Fxq 'scripts/viewer-test-shards.mjs'; then
             oracle_args+=(--mutation tests/evidence/ci-viewer-test-shards/selection.oracle.patch)
-          # Keep the new #6993 native count verdict module importable while
-          # removing ONLY its root-ended, scene.finalize and device-loss
-          # refusals. The named-refusal assertions turn RED; every changed test
-          # still runs on both sides.
-          # TODO(remove-by: native-count-evidence.ts is on main, louistrue)
-          elif git diff --name-only --diff-filter=A origin/main...HEAD -- scripts/perf/native-count-evidence.ts | grep -Fxq 'scripts/perf/native-count-evidence.ts'; then
-            oracle_args+=(--mutation tests/evidence/native-count-6993/witness-refusal.oracle.patch)
           fi
           node scripts/check-test-revert-oracle.mjs "${oracle_args[@]}"
           # #7512: observe cleanup independently of scoped admission/schema.

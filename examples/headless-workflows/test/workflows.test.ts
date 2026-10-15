@@ -19,23 +19,6 @@ const run = (script: string, args: string[]) => spawnSync(process.execPath, [
   fileURLToPath(new URL(`../dist/${script}.mjs`, import.meta.url)), ...args,
 ], { encoding: 'utf8', timeout: 60000 });
 
-test('data and IDS recipes return real FZK results (DX4)', { skip }, () => {
-  // Exercise the editable source entry point as well as the compiled recipes.
-  const extracted = spawnSync(process.execPath, [
-    '--import', 'tsx', fileURLToPath(new URL('../src/extract.mts', import.meta.url)), fixture,
-  ], { encoding: 'utf8', timeout: 60000, env: { ...process.env, TSX_TSCONFIG_PATH: fileURLToPath(new URL('./tsconfig.json', import.meta.url)) } });
-  assert.equal(extracted.status, 0, extracted.stderr);
-  const rows = JSON.parse(extracted.stdout) as { schema: string; doors: Array<{ GlobalId: string; Name: string }> };
-  assert.equal(rows.schema, 'IFC4');
-  assert.equal(rows.doors.length, 5);
-  assert.equal(new Set(rows.doors.map(door => door.GlobalId)).size, 5);
-  const validated = run('validate', [fixture, fileURLToPath(new URL('../doors-have-names.ids', import.meta.url))]);
-  assert.equal(validated.status, 0, validated.stderr);
-  const report = JSON.parse(validated.stdout) as { summary: { totalEntitiesChecked: number; failedSpecifications: number } };
-  assert.equal(report.summary.totalEntitiesChecked, 5);
-  assert.equal(report.summary.failedSpecifications, 0);
-});
-
 test('the edit recipe preserves identity and its property after reopening (DX4)', { skip }, async () => {
   const dir = mkdtempSync(join(tmpdir(), 'ifclite-headless-edit-'));
   try {

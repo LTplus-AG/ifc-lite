@@ -7,7 +7,8 @@
   "scripts": {
     "build": "tsc --project tsconfig.build.json",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --tsconfig test/tsconfig.json --test --test-concurrency=1 test/*.test.ts"
+    "test": "tsx --tsconfig test/tsconfig.json --test --test-concurrency=1 test/*.test.ts",
+    "extract:dev": "tsx --tsconfig test/tsconfig.json src/extract.mts"
   },
   "dependencies": {
     "@ifc-lite/sdk": "workspace:^",

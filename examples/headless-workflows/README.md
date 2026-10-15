@@ -10,6 +10,8 @@ node scripts/fixtures/fetch-fixtures.mjs ara3d/AC20-FZK-Haus.ifc
 pnpm exec turbo build --filter=ifc-lite-headless-workflows --concurrency=2
 ```
 
+While editing the extraction recipe, run `pnpm --filter ifc-lite-headless-workflows extract:dev ../../tests/models/ara3d/AC20-FZK-Haus.ifc` from the repository root. This runs source directly through tsx.
+
 The fixture fetch verifies the manifest SHA-256. For geometry on a host without Rust, fetch the published WASM runtime with `pnpm build:wasm:fetch` before building. Data-only scripts do not initialize geometry.
 
 ```bash

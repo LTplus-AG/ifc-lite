@@ -140,3 +140,10 @@ lever.
 Native: `cargo run --release -p ifc-lite-processing --example csg_scaling_bench --features csg-capture -- <model.ifc>`
 WASM: build `rust/csg-thread-bench` plain + threaded (see crate header), serve
 `web/` with COOP/COEP (`node serve.mjs`), open `index.html?pkg=threaded&mode=…`.
+
+Captured jobs retain the opening-versus-operand weld policy, and both native
+and WASM harnesses replay through `CapturedCsgJob::replay`. Serialized corpora
+start with the `CSG2` format marker and distinguish single/batched cuts under
+each policy. Older unversioned blobs omitted this distinction and can contain
+either policy under identical tags; they are rejected. Recapture the corpus
+with the current native dumper instead of relabeling an old blob.

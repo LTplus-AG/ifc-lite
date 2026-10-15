@@ -29,9 +29,24 @@ use std::sync::Mutex;
 pub enum CapturedCsgJob {
     /// A single `host − cutter` (a single-opening element, or one step of a
     /// sequential per-cutter fallback).
-    Single { host: Mesh, cutter: Mesh },
+    Single { host: Mesh, cutter: Mesh, opening: bool },
     /// A batched `host − (∪ cutters)` (the disjoint-opening fast group).
-    Many { host: Mesh, cutters: Vec<Mesh> },
+    Many { host: Mesh, cutters: Vec<Mesh>, opening: bool },
+}
+
+impl CapturedCsgJob {
+    /// Replay with the captured weld policy through the normal validation,
+    /// consolidation and accept gates. Recording should be disabled first.
+    pub fn replay(&self, csg: &crate::csg::ClippingProcessor) -> crate::csg::GroupCut {
+        match self {
+            Self::Single { host, cutter, opening: true } => csg.subtract_mesh(host, cutter),
+            Self::Single { host, cutter, opening: false } => csg.subtract_operand(host, cutter),
+            Self::Many { host, cutters, opening } => {
+                let refs: Vec<&Mesh> = cutters.iter().collect();
+                csg.replay_captured_many(host, &refs, *opening)
+            }
+        }
+    }
 }
 
 static CAPTURED: Mutex<Vec<CapturedCsgJob>> = Mutex::new(Vec::new());
@@ -57,18 +72,18 @@ fn enabled() -> bool {
 
 /// Record a single-pair subtract. Called from the kernel boundary. No-op (one
 /// relaxed atomic load) unless a capture run is active.
-pub fn record_single(host: &Mesh, cutter: &Mesh) {
+pub fn record_single(host: &Mesh, cutter: &Mesh, opening: bool) {
     if !enabled() {
         return;
     }
     if let Ok(mut v) = CAPTURED.lock() {
-        v.push(CapturedCsgJob::Single { host: host.clone(), cutter: cutter.clone() });
+        v.push(CapturedCsgJob::Single { host: host.clone(), cutter: cutter.clone(), opening });
     }
 }
 
 /// Record a batched subtract. Called from the kernel boundary. No-op unless a
 /// capture run is active.
-pub fn record_many(host: &Mesh, cutters: &[&Mesh]) {
+pub fn record_many(host: &Mesh, cutters: &[&Mesh], opening: bool) {
     if !enabled() {
         return;
     }
@@ -76,6 +91,7 @@ pub fn record_many(host: &Mesh, cutters: &[&Mesh]) {
         v.push(CapturedCsgJob::Many {
             host: host.clone(),
             cutters: cutters.iter().map(|m| (*m).clone()).collect(),
+            opening,
         });
     }
 }
@@ -87,7 +103,8 @@ pub fn drain() -> Vec<CapturedCsgJob> {
 
 // --- Manual little-endian (de)serialization (Mesh has no serde) ---------------
 // Shared by the native dumper and the wasm replay harness so the format can't
-// drift. Format: u32 job_count, then per job: u8 tag (0=Single,1=Many),
+// drift. Format v2: ASCII CSG2, u32 job_count, then per job: u8 tag
+// (0=Single operand, 1=Many operands, 2=Single opening, 3=Many openings),
 // mesh(host), [mesh(cutter) | u32 n + n×mesh(cutter)]. mesh = u32 pos_len +
 // f32×, u32 norm_len + f32×, u32 idx_len + u32×, u8 rtc_applied, f64×3 origin.
 
@@ -112,17 +129,17 @@ fn push_mesh(out: &mut Vec<u8>, m: &Mesh) {
 
 /// Serialize a captured corpus to a self-describing little-endian blob.
 pub fn serialize(jobs: &[CapturedCsgJob]) -> Vec<u8> {
-    let mut out = Vec::new();
+    let mut out = b"CSG2".to_vec();
     out.extend_from_slice(&(jobs.len() as u32).to_le_bytes());
     for j in jobs {
         match j {
-            CapturedCsgJob::Single { host, cutter } => {
-                out.push(0);
+            CapturedCsgJob::Single { host, cutter, opening } => {
+                out.push(if *opening { 2 } else { 0 });
                 push_mesh(&mut out, host);
                 push_mesh(&mut out, cutter);
             }
-            CapturedCsgJob::Many { host, cutters } => {
-                out.push(1);
+            CapturedCsgJob::Many { host, cutters, opening } => {
+                out.push(if *opening { 3 } else { 1 });
                 push_mesh(&mut out, host);
                 out.extend_from_slice(&(cutters.len() as u32).to_le_bytes());
                 for c in cutters {
@@ -198,6 +215,11 @@ impl<'a> Reader<'a> {
 /// malformed blob instead of panicking — the wasm bench path must not trap.
 pub fn deserialize(blob: &[u8]) -> Result<Vec<CapturedCsgJob>, &'static str> {
     let mut r = Reader { b: blob, p: 0 };
+    // Unversioned corpora carry no weld policy and may mix opening and
+    // operand jobs. Guessing would silently replay different geometry.
+    if r.take(4) != Some(&b"CSG2"[..]) {
+        return Err("unsupported capture format: recapture corpus with weld policies");
+    }
     let n = r.u32().ok_or("truncated blob: missing job count")? as usize;
     // Don't pre-size from the untrusted count (nor from blob.len(), which over-
     // allocates ~30x since the smallest job is dozens of bytes) — just grow.
@@ -206,15 +228,15 @@ pub fn deserialize(blob: &[u8]) -> Result<Vec<CapturedCsgJob>, &'static str> {
         let tag = r.u8().ok_or("truncated blob: missing tag")?;
         let host = r.mesh().ok_or("truncated blob: bad host mesh")?;
         match tag {
-            0 => {
+            0 | 2 => {
                 let cutter = r.mesh().ok_or("truncated blob: bad cutter mesh")?;
-                jobs.push(CapturedCsgJob::Single { host, cutter });
+                jobs.push(CapturedCsgJob::Single { host, cutter, opening: tag == 2 });
             }
-            1 => {
+            1 | 3 => {
                 let nc = r.u32().ok_or("truncated blob: missing cutter count")? as usize;
                 let cutters: Vec<Mesh> =
                     (0..nc).map(|_| r.mesh()).collect::<Option<_>>().ok_or("truncated blob: bad cutter mesh")?;
-                jobs.push(CapturedCsgJob::Many { host, cutters });
+                jobs.push(CapturedCsgJob::Many { host, cutters, opening: tag == 3 });
             }
             _ => return Err("invalid job tag"),
         }

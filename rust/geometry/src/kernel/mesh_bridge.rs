@@ -169,7 +169,7 @@ pub fn subtract(host: &Mesh, cutter: &Mesh) -> Mesh {
 /// (#6940), an `IfcBooleanResult` operand the plain one, as before #6940.
 pub(crate) fn subtract_with_change(host: &Mesh, cutter: &Mesh, opening: bool) -> (Mesh, bool, bool) {
     #[cfg(feature = "csg_capture")]
-    crate::csg_capture::record_single(host, cutter);
+    crate::csg_capture::record_single(host, cutter, opening);
     let h = orient_outward(mesh_to_tris(host));
     let mut c = mesh_to_tris(cutter);
     let weld = if opening { promote_subtract_cutter_onto_host_faces } else { promote_cutter_verts_onto_host_faces };
@@ -228,7 +228,7 @@ pub(crate) fn subtract_many_with_conformity(
     host: &Mesh, cutters: &[&Mesh], opening: bool, retain_conforming_miss: bool,
 ) -> (BatchSubtract, bool, Option<Mesh>) {
     #[cfg(feature = "csg_capture")]
-    crate::csg_capture::record_many(host, cutters);
+    crate::csg_capture::record_many(host, cutters, opening);
     let h = orient_outward(mesh_to_tris(host));
     let comp_tris: Vec<Vec<Tri>> = cutters
         .iter()

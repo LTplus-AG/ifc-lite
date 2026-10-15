@@ -133,12 +133,17 @@ fn issue_7680_edge_lxparse_2_predefined_entities_in_text_are_their_literal_chara
     // byte inside CDATA, instead of vanishing and leaving a valid triple.
     let limits = LandXmlLimits::default();
     let mut mismatches = Mismatches::default();
-    for (site, _, plain) in REFERENCES {
-        let entity = with_site(site, &format!("{plain}&amp;"));
-        let cdata = with_site(site, &format!("<![CDATA[{plain}&]]>"));
+    // `&amp;#46;` is the text `&#46;`, never a second expansion to `.`.
+    let spellings = [("&amp;", "&"), ("&lt;", "<"), ("&amp;#46;", "&#46;")];
+    for ((site, _, plain), (escaped, raw)) in REFERENCES
+        .iter()
+        .flat_map(|row| spellings.iter().map(move |pair| (row, pair)))
+    {
+        let entity = with_site(site, &format!("{plain}{escaped}"));
+        let cdata = with_site(site, &format!("<![CDATA[{plain}{raw}]]>"));
         for (name, family) in FAMILIES {
             mismatches.check(
-                &format!("{name} {site}"),
+                &format!("{name} {site} {escaped}"),
                 outcome(family(entity.as_bytes(), &limits)),
                 outcome(family(cdata.as_bytes(), &limits)),
             );

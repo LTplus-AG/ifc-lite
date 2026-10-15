@@ -309,3 +309,7 @@ pub(super) fn extract_materials(
         })
         .collect()
 }
+
+#[cfg(test)]
+#[path = "materials_tests.rs"]
+mod tests;

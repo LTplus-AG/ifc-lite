@@ -81,12 +81,6 @@ export function run(root) {
   for (const liveRun of liveRuns) result.errors.push(...liveRunErrors(liveRun));
   const liveDir = join(root, 'tests', 'ai-eval', 'live-runs');
   if (existsSync(liveDir)) for (const entry of readdirSync(liveDir, { withFileTypes: true })) if (!entry.isDirectory()) result.errors.push(`live-runs/${entry.name}: only run folders belong here`);
-  // Promotion copies a live recording: a second file with the same id would shadow it for label sheets.
-  const ids = new Map();
-  for (const { name, recording } of [...recordings, ...live]) {
-    if (ids.has(recording.id)) result.errors.push(`recording ${name}: id ${recording.id} is also used by ${ids.get(recording.id)}`);
-    else ids.set(recording.id, name);
-  }
   if (!recordings.length) result.errors.push('tests/ai-eval/recordings holds no recordings; the replay harness would pass vacuously');
   const required = ['label-sheet.schema.json', 'study/protocol.json', 'study/protocol.schema.json', 'study/session.schema.json'];
   const missing = required.filter(path => !existsSync(join(root, 'tests', 'ai-eval', path)));

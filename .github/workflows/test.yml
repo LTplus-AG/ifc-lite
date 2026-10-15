@@ -941,8 +941,8 @@ jobs:
           # changed tests import, so a whole-file revert does not compile
           # (INCONCLUSIVE). Keep them and restore ONLY the old behaviours: `0`
           # read as vertex 1, PnIndex ignored on IfcTriangulatedFaceSet and
-          # compacted on IfcPolygonalFaceSet, `Closed = $` read as open by the
-          # polygonal processor, noise flips of planar sheets and the
+          # compacted on IfcPolygonalFaceSet, `Closed = $` oriented by the
+          # triangulated processor, noise flips of planar sheets and the
           # case-sensitive OUTER test. Once indices.rs is on main, ordinary
           # whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/processors/tessellated/indices.rs | grep -Fxq 'rust/geometry/src/processors/tessellated/indices.rs'; then

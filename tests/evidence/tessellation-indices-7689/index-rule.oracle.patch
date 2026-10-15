@@ -1,15 +1,15 @@
 diff --git a/rust/core/src/decoder.rs b/rust/core/src/decoder.rs
 --- a/rust/core/src/decoder.rs
 +++ b/rust/core/src/decoder.rs
-@@ -637,7 +637,7 @@ impl<'a> EntityDecoder<'a> {
-         // keyword rule (#4497): a CamelCase `IfcFaceOuterBound` is an outer
-         // bound too (#7689, CORE-11).
-         let is_outer = crate::fast_parse::extract_entity_type_name(bytes)
--            .is_some_and(|name| name.contains("OUTER"));
-+            .is_some_and(|name| crate::parser::keyword_eq(name, "IFCFACEOUTERBOUND"));
-         let mut i = eq_pos + 1;
-         // Find the '(' that opens the argument list
-         while i < len && bytes[i] != b'(' {
+@@ -645,7 +645,7 @@ impl<'a> EntityDecoder<'a> {
+                 .take_while(|b| b.is_ascii_alphanumeric() || **b == b'_')
+                 .count();
+         let keyword = std::str::from_utf8(&bytes[start..end]).ok()?;
+-        let is_outer = keyword.contains("OUTER");
++        let is_outer = crate::parser::keyword_eq(keyword, "IFCFACEOUTERBOUND");
+         let mut i = skip_step_trivia(bytes, end)?;
+         if bytes.get(i) != Some(&b'(') {
+             return None;
 diff --git a/rust/core/src/fast_parse_indices.rs b/rust/core/src/fast_parse_indices.rs
 --- a/rust/core/src/fast_parse_indices.rs
 +++ b/rust/core/src/fast_parse_indices.rs
@@ -25,10 +25,10 @@ diff --git a/rust/core/src/fast_parse_indices.rs b/rust/core/src/fast_parse_indi
 diff --git a/rust/geometry/src/processors/tessellated/indices.rs b/rust/geometry/src/processors/tessellated/indices.rs
 --- a/rust/geometry/src/processors/tessellated/indices.rs
 +++ b/rust/geometry/src/processors/tessellated/indices.rs
-@@ -24,7 +24,7 @@ use ifc_lite_core::{
- /// wrong point.
- pub(super) fn read_pn_index(entity: &DecodedEntity, attr: usize) -> Option<Vec<u32>> {
-     let list = entity.get(attr)?.as_list()?;
+@@ -33,7 +33,7 @@ pub(super) fn read_pn_index(entity: &DecodedEntity, attr: usize) -> Option<Vec<u
+     if list.iter().any(|v| v.as_list().is_some()) {
+         return None;
+     }
 -    Some(list.iter().filter_map(|v| v.as_ifc_index()).collect())
 +    Some(list.iter().map(|v| v.as_ifc_index().unwrap_or(INVALID_INDEX)).collect())
  }
@@ -37,7 +37,7 @@ diff --git a/rust/geometry/src/processors/tessellated/indices.rs b/rust/geometry
 diff --git a/rust/geometry/src/processors/tessellated/mesh_build.rs b/rust/geometry/src/processors/tessellated/mesh_build.rs
 --- a/rust/geometry/src/processors/tessellated/mesh_build.rs
 +++ b/rust/geometry/src/processors/tessellated/mesh_build.rs
-@@ -90,7 +90,7 @@ impl PolygonalFaceSetProcessor {
+@@ -91,7 +91,7 @@ impl PolygonalFaceSetProcessor {
          // Measured as `sign_accum / magnitude` over the fixture corpus: real
          // inward shells sit at -5e-4 and below, planar or barely warped
          // single faces within ±6e-8 of zero.
@@ -46,18 +46,6 @@ diff --git a/rust/geometry/src/processors/tessellated/mesh_build.rs b/rust/geome
              for tri in indices.chunks_exact_mut(3) {
                  tri.swap(1, 2);
              }
-diff --git a/rust/geometry/src/processors/tessellated/polygonal.rs b/rust/geometry/src/processors/tessellated/polygonal.rs
---- a/rust/geometry/src/processors/tessellated/polygonal.rs
-+++ b/rust/geometry/src/processors/tessellated/polygonal.rs
-@@ -128,7 +128,7 @@ impl PolygonalFaceSetProcessor {
-         // Closed shells from some exporters may be consistently inward.
-         // Flip globally to outward winding when needed, under the one
-         // `Closed` policy shared with the triangulated processor.
--        if entity.get(1).and_then(|a| a.as_enum()) == Some("T") {
-+        if super::orients_outward(entity.get(1)) {
-             Self::orient_closed_shell_outward(&positions, &mut indices);
-         }
- 
 diff --git a/rust/geometry/src/processors/tessellated/triangulated.rs b/rust/geometry/src/processors/tessellated/triangulated.rs
 --- a/rust/geometry/src/processors/tessellated/triangulated.rs
 +++ b/rust/geometry/src/processors/tessellated/triangulated.rs
@@ -70,3 +58,12 @@ diff --git a/rust/geometry/src/processors/tessellated/triangulated.rs b/rust/geo
              let remapped = indices
                  .iter()
                  .map(|&corner| super::indices::through_pn_index(corner, Some(&pn_index)))
+@@ -59,7 +59,7 @@ impl TriangulatedFaceSetProcessor {
+             authored = Some(std::mem::replace(&mut indices, remapped));
+         }
+ 
+-        let flipped = entity.get(2).and_then(|a| a.as_enum()) != Some("F")
++        let flipped = super::orients_outward(entity.get(2))
+             && PolygonalFaceSetProcessor::orient_closed_shell_outward(&positions, &mut indices);
+         if flipped {
+             for tri in authored.iter_mut().flat_map(|a| a.chunks_exact_mut(3)) {

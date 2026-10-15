@@ -55,19 +55,18 @@ Run `pnpm --dir apps/viewer ai-eval review --recordings <run>/recordings --out <
 
 Three runs over all twelve tasks, committed under `tests/ai-eval/live-runs/`: two through the production free-model proxy (`https://www.ifclite.com/api/chat`, no credential) and one direct to Anthropic with a BYOK key. The proxy applies its own sampling and current Claude models take no temperature, so these are samples, not a stable quality measure. The Anthropic run used the per-provider capture from [#7649](https://github.com/LTplus-AG/ifc-lite/pull/7649); before it, every request was refused with a 400 for its temperature.
 
-| Run | Model | Requests | Completed | Empty answer | Truncated | Invariant flags | Native refusals | Median output tokens, completed |
+| Run | Model | Requests | Completed | Empty answer | Truncated | Invariant flags | Native refusals or conflicts | Median output tokens, completed |
 |---|---|---|---|---|---|---|---|---|
 | `20261015t110523` | `z-ai/glm-5.3-flash` | 24 (2 repeats) | 16 | 7 | 1 | 4 in 2 answers | 0 | 2,229 |
 | `20261015t111451` | `qwen/qwen3.7-flash` | 12 | 12 | 0 | 0 | 0 | 1 | 2,028 |
 | `20261015t113459` | `claude-sonnet-5-5` (direct) | 24 (2 repeats) | 24 | 0 | 0 | 1 | 3 | 1,263 |
 
 - **glm-5.3-flash returns nothing on 7 of 24 requests.** It streams reasoning until the output ceiling and finishes with `length` before writing any answer text, so the Assistant shows an empty-output error. It hit this on `selected-roof-properties` and `validation-corrections` both times.
-- **Three of glm's four count flags are detector false positives.** "121 elements", "13 walls" and "13 elements" (both IfcWallStandardCase) in the FZK answer are correct: they come from the model summary in the system prompt, which `count-claims-match-facts` does not see because recordings keep only the evidence payload. "~86 entities" in the sample validation answer is genuinely unsupported.
+- **Four of the five count flags are detector false positives** ([#7652](https://github.com/LTplus-AG/ifc-lite/issues/7652)). glm's "121 elements", "13 walls" and "13 elements" (IfcWallStandardCase) and Sonnet's "arch (14 elements)" are correct: they come from the model summary in the system prompt, which `count-claims-match-facts` does not see because recordings keep only the evidence payload. glm's "~86 entities" is genuinely unsupported.
 - **Native review.** Every clash grouping that parsed covered all 9 findings with no unclassified rows; every authoring proposal previewed as 1 ready operation; every Flow patch built the same 3-node graph. qwen's `validation-corrections` model-change proposal was refused at parse ("Change 2 attribute values must be text"): the native parser stopped a malformed edit before preview.
 - **Sonnet's correct boolean fix previews as a conflict, both repeats.** Asked to correct the failing `IsExternal` on the plumbing wall, it proposed `expected: "false"`, `value: "true"`. The evidence row shows the current value as the text `"false"` and the prompt says `expected` must be the value shown in the evidence; the stored value is boolean `false`, so the native preview reports a conflict. Any model that follows the instructions hits this; the authored recording writes a JSON boolean, so CI never did ([#7650](https://github.com/LTplus-AG/ifc-lite/issues/7650)).
 - **One Sonnet grouping was refused whole for a 103-character group name.** The parser caps names at 100 characters, which the prompt does not state; all 9 findings were otherwise grouped correctly. The second repeat passed ([#7651](https://github.com/LTplus-AG/ifc-lite/issues/7651)).
-- **Four of the five count flags across runs are the same detector gap.** Sonnet's "arch (14 elements)" also comes from the prompt's model summary ([#7652](https://github.com/LTplus-AG/ifc-lite/issues/7652)).
-- **The direct OpenAI routes have not run live.** They are tested against a local OpenAI-compatible server, which proves the plumbing, not a provider.
+- **The direct OpenAI route has not run live.** It is tested against a local OpenAI-compatible server, which proves the plumbing, not a provider.
 
 ## Human labelling
 

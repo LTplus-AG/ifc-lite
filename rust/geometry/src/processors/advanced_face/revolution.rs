@@ -118,7 +118,7 @@ pub(super) fn process_surface_of_revolution_face(
                 a
             })
             .collect();
-        angles.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        angles.sort_by(|a, b| crate::cmp_f64_nan_last(*a, *b)); // #7674
         angles.dedup_by(|a, b| (*a - *b).abs() < 1e-6);
 
         if angles.len() < 2 {

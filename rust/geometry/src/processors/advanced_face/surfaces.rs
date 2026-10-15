@@ -267,7 +267,7 @@ pub(super) fn process_cylindrical_face(
             a
         })
         .collect();
-    angles.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    angles.sort_by(|a, b| crate::cmp_f64_nan_last(*a, *b)); // #7674
     angles.dedup_by(|a, b| (*a - *b).abs() < 1e-6);
 
     let (min_angle, max_angle) = if angles.len() < 2 {

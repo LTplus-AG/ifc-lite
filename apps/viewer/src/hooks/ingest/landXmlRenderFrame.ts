@@ -5,6 +5,10 @@
 import type { MeshData, ModelSpatialReference } from '@ifc-lite/geometry';
 import { createEmptyBounds, type Bounds3D } from '../../utils/localParsingUtils.js';
 import type { SourceSpatialMetadata } from './sourceSpatialReference.js';
+import {
+  LANDXML_GEOREF_ASSUMPTION_ORDER, LandXmlFederationRefusedError,
+  type LandXmlGeorefAssumption, type LandXmlGeorefAssumptions,
+} from './landXmlGeorefAssumptions.js';
 
 /**
  * A single LandXML mesh may only span this much in its local f32 vertex
@@ -206,14 +210,23 @@ export function meshFitsRenderFrame(mesh: MeshData): boolean {
  * This names every such declaration on both sides. It does not relax the
  * fail-closed rules: unknown vertical datums still refuse
  * (`resolveSpatialPlacement`), and a CRS is still never inferred from a
- * display name or a coordinate magnitude.
+ * display name or a coordinate magnitude. What it adds is the `offer`: the
+ * user-chosen assumptions (`landXmlGeorefAssumptions.ts`) that would align
+ * it, computed from the same blockers so the message and the offer agree.
  *
  * Both federated paths use it: the streaming plan's frozen admission and the
  * whole-document reframe.
  */
 
-/** The CRS identifiers a LandXML `CoordinateSystem` declares, as the adapter reads them. */
-export type LandXmlDeclaredCrs = Pick<SourceSpatialMetadata, 'horizontalId' | 'verticalId'>;
+/**
+ * The CRS identifiers a LandXML `CoordinateSystem` declares, as the adapter
+ * reads them under this load's assumptions. `nameHorizontalId` is what an
+ * exact `EPSG:<n>` name WOULD supply under `epsgFromName` when it was not
+ * applied; `horizontalFromName` marks a `horizontalId` that came from it.
+ */
+export type LandXmlDeclaredCrs = Pick<SourceSpatialMetadata, 'horizontalId' | 'verticalId' | 'horizontalFromName'> & {
+  nameHorizontalId?: string;
+};
 
 export interface LandXmlFrameRefusalContext {
   /** What the LandXML declares; absent identifiers are what blocked alignment. */
@@ -222,11 +235,16 @@ export interface LandXmlFrameRefusalContext {
   anchor: ModelSpatialReference | null;
   /** Whether the surfaces were brought into the anchor's frame before the guard ran. */
   aligned: boolean;
+  /** The assumptions this load applied; absent means none. */
+  assumptions?: Partial<LandXmlGeorefAssumptions>;
 }
 
 /** The declaration carried by an already-complete reference, for callers holding only that. */
 export function declaredCrsOf(reference: ModelSpatialReference | undefined): LandXmlDeclaredCrs {
-  return { horizontalId: reference?.horizontal?.id, verticalId: reference?.vertical?.id };
+  return {
+    horizontalId: reference?.horizontal?.id, verticalId: reference?.vertical?.id,
+    ...(reference?.horizontal?.provenance?.assumption === 'epsgFromName' ? { horizontalFromName: true as const } : {}),
+  };
 }
 
 const KM = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 });
@@ -247,26 +265,64 @@ function anchorField(anchor: ModelSpatialReference, ifcField: string, landXmlFie
   return format === 'ifc' ? ifcField : format === 'landxml' ? landXmlField : otherwise;
 }
 
-/** Every missing or conflicting declaration that keeps the LandXML out of the anchor's frame. */
-function landXmlAlignmentBlockers(declared: LandXmlDeclaredCrs, anchor: ModelSpatialReference | null): string[] {
-  if (anchor === null) return ['none of the loaded models is georeferenced, so there is no map frame to place it in'];
+interface LandXmlAlignmentBlockers {
+  /** Every missing or conflicting declaration, as message clauses. */
+  clauses: string[];
+  /** The complete assumption set that clears every clause; empty when any clause is not assumable. */
+  offer: LandXmlGeorefAssumption[];
+}
+
+/**
+ * Every missing or conflicting declaration that keeps the LandXML out of the
+ * anchor's frame, and the assumptions that would clear them. A declaration an
+ * applied assumption already stands in for is not a blocker. Only a missing
+ * vertical datum (either side) and a horizontal CRS readable from an exact
+ * `EPSG:<n>` name are assumable; anything else (no georeferenced anchor, an
+ * anchor CRS that is not EPSG, differing vertical datums, a failed
+ * reprojection) leaves nothing to offer.
+ */
+function landXmlAlignmentBlockers(
+  declared: LandXmlDeclaredCrs,
+  anchor: ModelSpatialReference | null,
+  assumptions: Partial<LandXmlGeorefAssumptions> = {},
+): LandXmlAlignmentBlockers {
+  if (anchor === null) return { clauses: ['none of the loaded models is georeferenced, so there is no map frame to place it in'], offer: [] };
   const blockers: string[] = [];
   const missing: string[] = [];
-  if (!declared.horizontalId) missing.push('horizontal CRS (CoordinateSystem epsgCode, or an EPSG:<n> horizontalDatum)');
-  if (!declared.verticalId) missing.push('vertical datum (CoordinateSystem verticalDatum, as EPSG:<n>)');
+  const needed = new Set<LandXmlGeorefAssumption>();
+  let assumable = true;
+  const verticalAssumed = assumptions.sharedVerticalDatum === true;
+  if (declared.horizontalFromName) needed.add('epsgFromName');
+  if (!declared.horizontalId) {
+    missing.push('horizontal CRS (CoordinateSystem epsgCode, or an EPSG:<n> horizontalDatum)');
+    if (declared.nameHorizontalId) needed.add('epsgFromName');
+    else assumable = false;
+  }
+  if (!declared.verticalId || !anchor.vertical) needed.add('sharedVerticalDatum');
+  if (!declared.verticalId && !verticalAssumed) missing.push('vertical datum (CoordinateSystem verticalDatum, as EPSG:<n>)');
   if (missing.length > 0) blockers.push(`this LandXML declares no ${missing.join(' and no ')}`);
   if (!anchor.horizontal) {
+    assumable = false;
     blockers.push(`the anchor's projected CRS is not an EPSG:<n> identifier (${anchorField(anchor, 'IfcProjectedCRS.Name', 'CoordinateSystem epsgCode', 'horizontal CRS')})`);
   }
   if (!anchor.vertical) {
-    blockers.push(`the anchor declares no vertical datum (${anchorField(anchor, 'IfcProjectedCRS.VerticalDatum', 'CoordinateSystem verticalDatum', 'vertical CRS')})`);
+    if (!verticalAssumed) {
+      blockers.push(`the anchor declares no vertical datum (${anchorField(anchor, 'IfcProjectedCRS.VerticalDatum', 'CoordinateSystem verticalDatum', 'vertical CRS')})`);
+    }
   } else if (declared.verticalId && declared.verticalId !== anchor.vertical.id) {
+    assumable = false;
     blockers.push(`the vertical datums differ (${declared.verticalId} here, ${anchor.vertical.id} on the anchor)`);
   }
   if (blockers.length === 0 && declared.horizontalId && anchor.horizontal && declared.horizontalId !== anchor.horizontal.id) {
+    assumable = false;
     blockers.push(`${declared.horizontalId} could not be reprojected to ${anchor.horizontal.id}`);
   }
-  return blockers;
+  const applied = (assumption: LandXmlGeorefAssumption) => assumption === 'epsgFromName'
+    ? declared.horizontalFromName === true : assumptions[assumption] === true;
+  // Offer only what changes the outcome: some needed assumption was not applied.
+  const offer = assumable && blockers.length > 0 && [...needed].some((assumption) => !applied(assumption))
+    ? LANDXML_GEOREF_ASSUMPTION_ORDER.filter((assumption) => needed.has(assumption)) : [];
+  return { clauses: blockers, offer };
 }
 
 function joinClauses(clauses: readonly string[]): string {
@@ -289,10 +345,16 @@ export function landXmlFrameRefusalMessage(distanceMetres: number, context: Land
   if (context.aligned) {
     why = `It was aligned${target}, so the surfaces are that far from the anchor model.`;
   } else {
-    const blockers = landXmlAlignmentBlockers(context.declared, context.anchor);
+    const blockers = landXmlAlignmentBlockers(context.declared, context.anchor, context.assumptions).clauses;
     why = blockers.length > 0
       ? `It was not aligned${target} because ${joinClauses(blockers)}; its coordinates were kept as authored.`
       : `It could not be aligned${target}; its coordinates were kept as authored.`;
   }
   return `LandXML federation preflight rejected every render component: ${where}. ${why}`;
+}
+
+/** The refusal both federated paths throw: the message above, plus the assumptions that would align it. */
+export function landXmlFrameRefusal(distanceMetres: number, context: LandXmlFrameRefusalContext): LandXmlFederationRefusedError {
+  const offer = context.aligned ? [] : landXmlAlignmentBlockers(context.declared, context.anchor, context.assumptions).offer;
+  return new LandXmlFederationRefusedError(landXmlFrameRefusalMessage(distanceMetres, context), offer);
 }

@@ -38,8 +38,8 @@ export function hierarchyRowSelection(
     return rows;
   }
 
-  if (node.type === 'material-group' || node.type === 'group') {
-    const members = node.type === 'group' ? node.memberGlobalIds ?? node.globalIds : node.globalIds;
+  if (node.type === 'material-group' || node.type === 'group' || node.type === 'presentation-layer') {
+    const members = node.type !== 'material-group' ? node.memberGlobalIds ?? node.globalIds : node.globalIds;
     members.forEach((globalId) => push(globalId, resolveGlobalId(globalId)));
     return rows;
   }

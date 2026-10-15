@@ -111,6 +111,34 @@ fn issue_7635_extended_cutter_arris_preserves_closed_hole() {
             (volume(&current) - uncut_volume).abs() <= 1e-10 * uncut_volume,
             "closed output must retain the uncut slab volume"
         );
+        // The exported Mesh volume reader snaps once more. Bound that reading
+        // with the same coordinate-quantization budget as the shared producer
+        // regression, while the raw-kernel volume above remains tightly fixed.
+        let exported_volume = |t: &[Tri]| crate::kernel::mesh_volume::mesh_volume(&tris_to_mesh(t));
+        let area = |t: &[Tri]| {
+            t.iter()
+                .map(|p| {
+                    let p = p.map(|v| crate::Vector3::new(v[0], v[1], v[2]));
+                    (p[1] - p[0]).cross(&(p[2] - p[0])).norm() * 0.5
+                })
+                .sum::<f64>()
+        };
+        let magnitude = h
+            .iter()
+            .chain(current.iter())
+            .flatten()
+            .flatten()
+            .fold(0.0_f64, |m, v| m.max(v.abs()));
+        let displacement =
+            3.0_f64.sqrt() * (2.0 / 65536.0 + 2.0 * f64::from(f32::EPSILON) * magnitude);
+        let mesh_delta = (exported_volume(&current) - exported_volume(&h)).abs();
+        let bound = (area(&h) + area(&current)) * displacement;
+        eprintln!("#7635 reverse={reverse}: raw_volume_delta={} stored_grid_volume_delta={mesh_delta} quantization_bound={bound}",
+            (volume(&current) - uncut_volume).abs());
+        assert!(
+            mesh_delta <= bound,
+            "stored mesh must retain quantized volume"
+        );
     }
 }
 

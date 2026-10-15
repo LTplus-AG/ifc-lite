@@ -60,6 +60,7 @@ export interface RealignableModel {
   federationAlignmentStatus?: FederatedModel['federationAlignmentStatus'];
   spatialReference?: ModelSpatialReference;
   landXmlDocument?: LandXmlTinDocument;
+  landXmlAssumptionsApplied?: FederatedModel['landXmlAssumptionsApplied'];
 }
 
 /** How each model fared, for the caller's summary toast. */
@@ -330,8 +331,12 @@ async function realignFederationModelsTransaction<M extends RealignableModel>(
         continue;
       }
 
+      // A LandXML placed under a user-chosen shared vertical datum keeps that
+      // choice on its record; re-aligning it must not silently drop it.
+      const unknownVertical = model.landXmlAssumptionsApplied?.includes('sharedVerticalDatum') ? 'assume-compatible' : 'refuse';
       const status = await alignGeometryToReference(geometry, georef, anchorGeoref, {
         allowEmptyGeometry: model.landXmlDocument !== undefined,
+        unknownVertical,
       });
       if (!transactionIsLive() || !isLive(modelId)) return stale();
       if (!commit(modelId, {
@@ -347,7 +352,7 @@ async function realignFederationModelsTransaction<M extends RealignableModel>(
       if (model.landXmlDocument && (status === 'same-crs' || status === 'reprojected' || status === 'identity')) {
         const source = model.spatialReference ?? georef.spatialReference;
         landXmlUpdates.push(await buildLandXmlRenderedLineUpdates(
-          model.landXmlDocument, source, anchorGeoref.spatialReference, anchorGeoref.coordinateInfo,
+          model.landXmlDocument, source, anchorGeoref.spatialReference, anchorGeoref.coordinateInfo, unknownVertical,
         ));
         if (!transactionIsLive()) return stale();
       } else if (model.landXmlDocument) {

@@ -217,6 +217,7 @@ export type { HatchPatternId as SectionCapHatchId, SectionCapStyle } from '@ifc-
 export type { InteractionMode as ControlsMode } from '@ifc-lite/renderer';
 import type { InteractionMode as ControlsMode } from '@ifc-lite/renderer';
 import type { LandXmlSchema, LandXmlTinDocument } from '../hooks/ingest/landXmlSemantics.js';
+import type { LandXmlGeorefAssumption } from '../hooks/ingest/landXmlGeorefAssumptions.js';
 export type { CustomSectionPlane, SectionPlane, SectionBox, SectionBoxFace } from './section-types';
 
 // ============================================================================
@@ -517,6 +518,13 @@ export interface FederatedModel extends ModelLoadReportFields {
   geometryResult: GeometryResult | null;
   /** Format-neutral declared source frame for non-IFC geometry (LandXML/scans). */
   spatialReference?: ModelSpatialReference;
+  /**
+   * The LandXML georeferencing assumptions this model was ACTUALLY placed
+   * under: each one was needed to align it and was chosen by the user (the
+   * refusal's retry or the viewer settings). Absent when the placement rests
+   * on declared CRSs alone, even if assumptions were enabled.
+   */
+  landXmlAssumptionsApplied?: readonly LandXmlGeorefAssumption[];
   /** Model-level visibility toggle */
   visible: boolean;
   /** UI collapse state in hierarchy panel */

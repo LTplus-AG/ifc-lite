@@ -3,7 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Settings → General (#5857): theme and hover tooltips.
+ * Settings → General (#5857): theme, hover tooltips, and the LandXML
+ * georeferencing assumptions (off by default).
  */
 
 import { useTranslation } from '@/i18n';
@@ -11,6 +12,7 @@ import { useViewerStore } from '@/store';
 import type { ThemeMode } from '@/store/slices/uiSlice';
 import { Switch } from '@/components/ui/switch';
 import { SettingsChoice, SettingsGroup, SettingsRow } from './SettingsGroup';
+import { LandXmlGeorefSettingsSlot } from '../LandXmlGeorefAssumptionsLazy';
 
 export function GeneralSection() {
   const { t } = useTranslation();
@@ -48,6 +50,7 @@ export function GeneralSection() {
           />
         </SettingsRow>
       </SettingsGroup>
+      <LandXmlGeorefSettingsSlot />
     </div>
   );
 }

@@ -35,6 +35,7 @@ import { useTranslation } from '@/i18n';
 import { formatLocaleDate, formatLocaleNumber } from '@/i18n/intlFormat';
 import { EXPRESS_DESCRIPTION_ATTRIBUTE, EXPRESS_GLOBAL_ID_ATTRIBUTE, EXPRESS_NAME_ATTRIBUTE } from './express-labels';
 import { LandXmlModelSourceNavigation } from './LandXmlModelSourceNavigation';
+import { LandXmlAssumptionsNoticeSlot } from '../LandXmlGeorefAssumptionsLazy';
 import { TerrainImageryCard } from './TerrainImageryCard';
 import { effectiveClassificationSystems } from './effective-classification-systems';
 import { normalizeMutationModelId } from '@/sdk/adapters/mutation-view';
@@ -203,6 +204,7 @@ export function ModelMetadataPanel({ model }: { model: FederatedModel }) {
           (and any tall content underneath) overflowed past the right
           panel's clip box. */}
       <ScrollArea className="flex-1 min-h-0">
+        <LandXmlAssumptionsNoticeSlot model={model} />
         {/* File Information */}
         <div className="border-b border-zinc-200 dark:border-zinc-800">
           <div className="p-3 bg-zinc-50 dark:bg-zinc-900/50">

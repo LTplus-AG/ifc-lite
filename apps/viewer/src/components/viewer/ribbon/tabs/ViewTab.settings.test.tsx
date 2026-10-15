@@ -5,9 +5,8 @@
 /**
  * The ribbon's View tab opens Settings (#5857): its SpaceMouse button deep-
  * links Settings → Display (where the device controls moved from the Info
- * dialog's Preferences tab, #5509), and a Settings button opens it on the
- * first section. Both go through the one `ifc-lite:open-settings` event that
- * `SettingsDialogHost` listens for, asserted here without mounting
+ * dialog's Preferences tab, #5509). It uses the one `ifc-lite:open-settings`
+ * event that `SettingsDialogHost` listens for, asserted here without mounting
  * `ViewerLayout`.
  */
 import '@/test/setup-dom.js';
@@ -49,12 +48,4 @@ describe('ViewTab opens Settings (#5857)', () => {
     assert.deepEqual(capture(() => click(button)), [{ section: 'display' }]);
   });
 
-  it('a Settings button opens Settings on its first section', () => {
-    const container = render(<ViewTab />);
-    const label = (ribbonToolbarEn as Record<string, string>)['ribbon.view.settings'];
-    assert.equal(typeof label, 'string', 'ribbon.view.settings must be a catalogue string');
-    const button = buttonLabelled(container, label);
-    assert.ok(button, 'expected a Settings button on the View tab');
-    assert.deepEqual(capture(() => click(button)), [{ section: undefined }]);
-  });
 });

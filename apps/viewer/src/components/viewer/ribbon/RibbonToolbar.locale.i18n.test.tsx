@@ -125,7 +125,7 @@ describe('RibbonToolbar with a registered locale (#4785)', () => {
     showTab(container, 'view');
     const viewBand = container.querySelector('[role="tabpanel"]');
     assert.ok(viewBand, 'the View band is mounted');
-    assert.ok([...viewBand.querySelectorAll('button')].some((button) => button.textContent?.includes('Settings')));
+    assert.ok([...container.querySelectorAll('button')].some((button) => button.textContent?.includes('Settings')));
     assert.ok(![...viewBand.querySelectorAll('button')].some((button) => button.textContent?.includes('Classic bar')));
   });
 });

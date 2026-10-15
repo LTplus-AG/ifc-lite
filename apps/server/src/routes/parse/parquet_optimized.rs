@@ -13,7 +13,9 @@ use super::parquet_optimized_replay::{
     cache_data_model, cache_optimized_response, optimized_parquet_response,
     replay_optimized_by_client_hash, try_cached_optimized_parquet, OptimizedParquetMetadataHeader,
 };
-use super::{admit_upload, request_cache_key_off_runtime, cache_symbolic_data_off_runtime, ParseQuery};
+use super::{
+    admit_upload, begin_symbolic_fill, cache_symbolic_data_off_runtime, request_cache_key_off_runtime, ParseQuery,
+};
 use crate::error::ApiError;
 use crate::services::{
     baked_basis_zup, extract_data_model, serialize_data_model_to_parquet,
@@ -81,17 +83,17 @@ pub async fn parse_parquet_optimized(
     let (admission_guard, data) = admit_upload(&state, &mut multipart).await?;
 
     // Generate cache key (include opening filter so different modes get different cache entries)
-    let (cache_key, admission_guard) =
+    let (cache_key, mut admission_guard) =
         request_cache_key_off_runtime(&data, &query, tessellation_quality, admission_guard).await?;
 
     // Cache first, before any processing (issue #3889). The optimized route is
     // the SMALL payload and the one a viewer opens repeatedly, so re-parsing it
     // on every request was the worst of both shapes.
     let data_model_entities = query.data_model_entities;
-    if let Some(response) =
+    if let Some((metadata_json, body)) =
         try_cached_optimized_parquet(&state, &cache_key, data_model_entities).await?
     {
-        return Ok(response);
+        return optimized_parquet_response(metadata_json, body, admission_guard.into_resident());
     }
 
     tracing::info!(
@@ -111,7 +113,7 @@ pub async fn parse_parquet_optimized(
     // occupies an async worker. Guard rides the blocking task (see
     // parse_full).
     let cache_key_for_log = cache_key.clone();
-    let (result, dm_stats, symbolic_data, parquet_data, dm_parquet, opt_stats, _admission) =
+    let (result, dm_stats, symbolic_data, parquet_data, dm_parquet, opt_stats, admission) =
         tokio::task::spawn_blocking(move || -> Result<_, ApiError> {
             // First: geometry and the data model in parallel, mirroring
             // `parse_parquet` -- independent extractions over the same bytes,
@@ -196,7 +198,8 @@ pub async fn parse_parquet_optimized(
 
     // Cache the symbolic stream so the client can fetch it via
     // `GET /api/v1/parse/symbolic/{cache_key}`.
-    cache_symbolic_data_off_runtime(state.cache.clone(), cache_key.clone(), symbolic_data).await;
+    let symbolic_fill = begin_symbolic_fill(&state, &cache_key);
+    cache_symbolic_data_off_runtime(state.cache.clone(), symbolic_fill, cache_key.clone(), symbolic_data).await;
 
     // Create metadata header
     let metadata_header = OptimizedParquetMetadataHeader {
@@ -233,5 +236,5 @@ pub async fn parse_parquet_optimized(
         );
     }
 
-    optimized_parquet_response(metadata_json, parquet_data)
+    optimized_parquet_response(metadata_json, parquet_data, admission.into_resident())
 }

@@ -324,13 +324,15 @@ async fn optimized_endpoint_exposes_symbolic_via_fetch() {
     assert_symbolic_populated(&symbolic, "optimized symbolic fetch");
 }
 
-/// The symbolic fetch endpoint returns `202 Accepted` for an unknown cache key
-/// (mirrors `get_data_model`) rather than erroring.
+/// The symbolic fetch endpoint answers `404` for a cache key nothing is
+/// writing, like `get_data_model` (#5129). It answered `202 Accepted` here
+/// until #7676 (SERVER-21), so a client polled a key nobody would ever write
+/// until its own timeout.
 #[tokio::test]
-async fn symbolic_endpoint_pending_for_unknown_key() {
+async fn symbolic_endpoint_not_found_for_unknown_key() {
     let state = test_state("symbolic-unknown").await;
     let response = get(&state, "/api/v1/parse/symbolic/does-not-exist-default").await;
-    assert_eq!(response.status(), StatusCode::ACCEPTED);
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }
 
 /// `process_streaming` (the source for both `/parse/stream` and
@@ -609,8 +611,10 @@ async fn issue_4459_old_symbolic_cache_cannot_keep_binary_routes_stale() {
         for retired in ["-symbolic-v1", "-symbolic-v2", "-symbolic-v3"] {
             state.cache.set_bytes(&format!("{key}{retired}"), &symbols).await.unwrap();
         }
+        // Nothing is writing the current key, so this is a 404 (#7676), not
+        // the 202 it was; what matters here is that it is not a 200.
         let pending = get(&state, &format!("/api/v1/parse/symbolic/{key}")).await;
-        assert_eq!(pending.status(), StatusCode::ACCEPTED, "GET /symbolic must not serve a retired entry");
+        assert_eq!(pending.status(), StatusCode::NOT_FOUND, "GET /symbolic must not serve a retired entry");
         let second = post_fixture(&state, endpoint).await;
         assert_eq!(second.status(), StatusCode::OK);
         let second_body = to_bytes(second.into_body(), usize::MAX).await.unwrap();

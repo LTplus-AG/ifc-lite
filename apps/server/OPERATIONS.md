@@ -30,6 +30,17 @@ Sizing it per route is deferred to L-server (#7676, SERVER-24). The streaming
 route's data-model fill runs under its stream's reservation rather than a
 second one.
 
+Cache reads are admitted as well (#7676). A route that hands back a stored
+model reserves the entry's stored size against the byte budget, without a
+parse slot when it only copies the entry out (data model, symbolic sidecar,
+cached geometry, the optimized `?sha256=` probe), and with one when it
+transforms it (the `GET /api/v1/cache/{key}` re-encode, the stream replay).
+Every response that holds a model in memory, live parse or cache hit, keeps
+its bytes reserved until the client has read the whole body, and gives its
+parse slot back as soon as the work is done: a slow reader costs budget, not
+a core. `GET /api/v1/cache/check/{hash}` and cache misses read no stored
+content and take nothing.
+
 An upload must keep arriving to keep its reservation: one that goes 30 s
 without a byte, or whose average rate falls below 8 KiB/s once it has run
 15 s, is refused with `408 REQUEST_TIMEOUT`, so a trickling client cannot hold

@@ -64,13 +64,33 @@ pub struct Admission {
     cfg: AdmissionCfg,
 }
 
+/// A place in the bounded wait queue, given back on drop.
+struct QueuedCount<'a>(&'a AtomicUsize);
+
+impl Drop for QueuedCount<'_> {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::Relaxed);
+    }
+}
+
 /// RAII permit pair; drops release the slots.
 #[derive(Debug)]
 pub struct AdmissionGuard {
     _cpu: OwnedSemaphorePermit,
-    /// `None` when the memory gate is disabled.
+    /// `Option` twice over: `None` when the memory gate is disabled, and
+    /// taken by [`Self::into_resident`].
     mem: Option<OwnedSemaphorePermit>,
     admission: Arc<Admission>,
+}
+
+/// The byte reservation of a finished job whose result is still in memory
+/// (#7676, SERVER-7): a response body a client has not drained yet. Holds no
+/// CPU slot, because draining computes nothing, but keeps the bytes charged
+/// against the budget until the body is dropped, because a slow reader keeps
+/// every one of them resident for up to the write-idle timeout.
+#[derive(Debug)]
+pub struct ResidentBytes {
+    _mem: Option<OwnedSemaphorePermit>,
 }
 
 impl AdmissionGuard {
@@ -81,7 +101,6 @@ impl AdmissionGuard {
     /// upload, so no fixed multiplier makes a smaller charge safe (#7676,
     /// SERVER-24, deferred to L-server). It is for a caller whose real size is
     /// known up front, such as a cache read.
-    #[allow(dead_code)] // first non-test caller: the cache-read admission (#7709)
     pub fn shrink_to(&mut self, bytes: u64) {
         if let Some(mem) = self.mem.as_mut() {
             let keep = bytes.div_ceil(BYTES_PER_PERMIT).max(1) as usize;
@@ -90,6 +109,12 @@ impl AdmissionGuard {
                 drop(mem.split(held - keep));
             }
         }
+    }
+
+    /// End the job: free its CPU slot now and keep only its bytes, for as
+    /// long as the returned value lives. See [`ResidentBytes`].
+    pub fn into_resident(mut self) -> ResidentBytes {
+        ResidentBytes { _mem: self.mem.take() }
     }
 }
 
@@ -132,29 +157,16 @@ impl Admission {
     ///
     /// Multipart rarely declares a length up front, so upload routes reserve
     /// the configured max file size, a conservative reservation that
-    /// guarantees the byte bound holds.
+    /// guarantees the byte bound holds. A caller that learns the real size
+    /// afterwards can give the excess back ([`AdmissionGuard::shrink_to`]);
+    /// the upload routes do not (see there). Cache reads reserve the stored
+    /// entry's size, which the index knows up front.
     pub async fn acquire(
         self: &Arc<Self>,
         reserve_bytes: u64,
     ) -> Result<AdmissionGuard, ApiError> {
         // 1. RSS circuit breaker: shed before the kernel OOM-killer does.
-        if self.cfg.mem_budget_bytes > 0 && self.cfg.shed_pct > 0 {
-            let rss = self.resident_bytes.load(Ordering::Relaxed);
-            let watermark = self.cfg.mem_budget_bytes / 100 * self.cfg.shed_pct as u64;
-            if rss > 0 && rss >= watermark {
-                self.rejected_shed.fetch_add(1, Ordering::Relaxed);
-                return Err(ApiError::Overloaded {
-                    retry_after_secs: self.cfg.queue_timeout.as_secs().max(1) * 2,
-                });
-            }
-        }
-
-        struct QueuedCount<'a>(&'a AtomicUsize);
-        impl Drop for QueuedCount<'_> {
-            fn drop(&mut self) {
-                self.0.fetch_sub(1, Ordering::Relaxed);
-            }
-        }
+        self.check_shed()?;
 
         // 2. CPU slot: non-blocking first - a free slot admits regardless of
         // queue configuration. Only WAITERS are subject to the bounded queue:
@@ -163,27 +175,7 @@ impl Admission {
         let cpu = match Arc::clone(&self.cpu).try_acquire_owned() {
             Ok(permit) => permit,
             Err(_) => {
-                // Reserve the queue slot atomically (CAS): a load-then-add
-                // would let concurrent waiters race past the depth check.
-                let mut cur = self.queued.load(Ordering::Relaxed);
-                loop {
-                    if cur >= self.cfg.queue_depth {
-                        self.rejected_queue_full.fetch_add(1, Ordering::Relaxed);
-                        return Err(ApiError::Overloaded {
-                            retry_after_secs: self.cfg.queue_timeout.as_secs().max(1),
-                        });
-                    }
-                    match self.queued.compare_exchange_weak(
-                        cur,
-                        cur + 1,
-                        Ordering::Relaxed,
-                        Ordering::Relaxed,
-                    ) {
-                        Ok(_) => break,
-                        Err(actual) => cur = actual,
-                    }
-                }
-                let _queued = QueuedCount(&self.queued);
+                let _queued = self.enter_queue()?;
                 match tokio::time::timeout(
                     self.cfg.queue_timeout,
                     Arc::clone(&self.cpu).acquire_owned(),
@@ -191,12 +183,7 @@ impl Admission {
                 .await
                 {
                     Ok(Ok(permit)) => permit,
-                    _ => {
-                        self.rejected_overload.fetch_add(1, Ordering::Relaxed);
-                        return Err(ApiError::Overloaded {
-                            retry_after_secs: self.cfg.queue_timeout.as_secs().max(1),
-                        });
-                    }
+                    _ => return Err(self.overloaded()),
                 }
             }
         };
@@ -211,21 +198,14 @@ impl Admission {
         // number of memory waiters to max_concurrent_parses, and a CPU permit
         // held briefly while memory times out costs only that waiter's slot.
         let mem = if let Some(mem) = &self.mem {
-            let budget_permits = (self.cfg.mem_budget_bytes / BYTES_PER_PERMIT).max(1);
-            let want = reserve_bytes.div_ceil(BYTES_PER_PERMIT).max(1).min(budget_permits) as u32;
             match tokio::time::timeout(
                 self.cfg.queue_timeout,
-                Arc::clone(mem).acquire_many_owned(want),
+                Arc::clone(mem).acquire_many_owned(self.permits_for(reserve_bytes)),
             )
             .await
             {
                 Ok(Ok(permit)) => Some(permit),
-                _ => {
-                    self.rejected_overload.fetch_add(1, Ordering::Relaxed);
-                    return Err(ApiError::Overloaded {
-                        retry_after_secs: self.cfg.queue_timeout.as_secs().max(1),
-                    });
-                }
+                _ => return Err(self.overloaded()),
             }
         } else {
             None
@@ -233,6 +213,79 @@ impl Admission {
 
         self.in_flight.fetch_add(1, Ordering::Relaxed);
         Ok(AdmissionGuard { _cpu: cpu, mem, admission: Arc::clone(self) })
+    }
+
+    /// Admit a job that computes nothing but holds `bytes` in memory until
+    /// its response is drained (#7676, SERVER-6): a cache read handing a
+    /// stored entry to a client.
+    ///
+    /// Charged against the byte budget only. A read must not queue behind a
+    /// minutes-long parse for a CPU slot it never uses (on a one-slot host
+    /// every data-model fetch after a parse would wait out the queue and
+    /// 503), and the bytes are what it actually costs. A waiter counts
+    /// against the same bounded queue a parse does, and the RSS breaker
+    /// applies. With the byte gate disabled (`IFC_MEM_BUDGET_MB=0`) nothing
+    /// bounds resident bytes, for reads as for every other route.
+    pub async fn acquire_resident(self: &Arc<Self>, bytes: u64) -> Result<ResidentBytes, ApiError> {
+        self.check_shed()?;
+        let Some(mem) = &self.mem else {
+            return Ok(ResidentBytes { _mem: None });
+        };
+        let want = self.permits_for(bytes);
+        if let Ok(permit) = Arc::clone(mem).try_acquire_many_owned(want) {
+            return Ok(ResidentBytes { _mem: Some(permit) });
+        }
+        let _queued = self.enter_queue()?;
+        match tokio::time::timeout(self.cfg.queue_timeout, Arc::clone(mem).acquire_many_owned(want)).await {
+            Ok(Ok(permit)) => Ok(ResidentBytes { _mem: Some(permit) }),
+            _ => Err(self.overloaded()),
+        }
+    }
+
+    /// The RSS circuit breaker: shed before the kernel OOM-killer does.
+    fn check_shed(&self) -> Result<(), ApiError> {
+        if self.is_shedding() {
+            self.rejected_shed.fetch_add(1, Ordering::Relaxed);
+            return Err(ApiError::Overloaded {
+                retry_after_secs: self.cfg.queue_timeout.as_secs().max(1) * 2,
+            });
+        }
+        Ok(())
+    }
+
+    /// Take a place in the bounded wait queue, or refuse when it is full.
+    /// The place is given back when the returned value drops.
+    fn enter_queue(&self) -> Result<QueuedCount<'_>, ApiError> {
+        // Reserve the queue slot atomically (CAS): a load-then-add would let
+        // concurrent waiters race past the depth check.
+        let mut cur = self.queued.load(Ordering::Relaxed);
+        loop {
+            if cur >= self.cfg.queue_depth {
+                self.rejected_queue_full.fetch_add(1, Ordering::Relaxed);
+                return Err(ApiError::Overloaded {
+                    retry_after_secs: self.cfg.queue_timeout.as_secs().max(1),
+                });
+            }
+            match self.queued.compare_exchange_weak(cur, cur + 1, Ordering::Relaxed, Ordering::Relaxed) {
+                Ok(_) => return Ok(QueuedCount(&self.queued)),
+                Err(actual) => cur = actual,
+            }
+        }
+    }
+
+    /// A waiter that timed out.
+    fn overloaded(&self) -> ApiError {
+        self.rejected_overload.fetch_add(1, Ordering::Relaxed);
+        ApiError::Overloaded {
+            retry_after_secs: self.cfg.queue_timeout.as_secs().max(1),
+        }
+    }
+
+    /// Memory permits for `bytes`, clamped to the whole budget so the
+    /// largest allowed request can always run, alone.
+    fn permits_for(&self, bytes: u64) -> u32 {
+        let budget_permits = (self.cfg.mem_budget_bytes / BYTES_PER_PERMIT).max(1);
+        bytes.div_ceil(BYTES_PER_PERMIT).max(1).min(budget_permits) as u32
     }
 
     /// Current sampled resident set size in bytes (0 = unknown/not sampled).

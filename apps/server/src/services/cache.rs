@@ -6,7 +6,9 @@
 
 use super::cache_remove::classify_index_walk_error;
 use crate::error::ApiError;
-use serde::{de::DeserializeOwned, Serialize};
+#[cfg(test)]
+use serde::de::DeserializeOwned;
+use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -93,7 +95,9 @@ impl DiskCache {
         hex::encode(hasher.finalize())
     }
 
-    /// Get a cached value by key.
+    /// Get a cached value by key. Test-only, like [`Self::get_bytes`]: a
+    /// route reads through `cache_entry`'s policy (#7676).
+    #[cfg(test)]
     pub async fn get<T: DeserializeOwned>(&self, key: &str) -> Result<Option<T>, ApiError> {
         match cacache::read(&self.cache_dir, key).await {
             Ok(data) => {
@@ -116,21 +120,6 @@ impl DiskCache {
         self.set_bytes(key, &data).await
     }
 
-    /// Whether the index holds an entry for `key`. An index lookup only: the
-    /// content is not read, so this is the cheap pre-filter, never the
-    /// decision a reader acts on.
-    ///
-    /// `Ok(false)` is "absent"; a lookup that FAILS is an error, not an
-    /// absence, so a caller answering `404` on `false` still answers a broken
-    /// cache store with `500 CACHE_ERROR` (#5750 review). `cacache::metadata`
-    /// answers `Ok(None)` for a key it has no entry for.
-    pub async fn has(&self, key: &str) -> Result<bool, ApiError> {
-        match cacache::metadata(&self.cache_dir, key).await {
-            Ok(entry) => Ok(entry.is_some()),
-            Err(e) => Err(ApiError::Cache(e.to_string())),
-        }
-    }
-
     /// Remove a cached entry.
     #[allow(dead_code)]
     pub async fn remove(&self, key: &str) -> Result<(), ApiError> {
@@ -145,10 +134,12 @@ impl DiskCache {
         Ok(())
     }
 
-    /// Get raw bytes from cache (for Parquet responses).
+    /// Raw read, reporting exactly what cacache reports. Test-only: a route
+    /// reads through `cache_entry`'s policy instead (#7676), so there is one
+    /// answer to "what does an unusable entry mean", and this is how a test
+    /// inspects what the routes left on disk.
+    #[cfg(test)]
     pub async fn get_bytes(&self, key: &str) -> Result<Option<Vec<u8>>, ApiError> {
-        #[cfg(test)]
-        self.content_reads.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         match cacache::read(&self.cache_dir, key).await {
             Ok(data) => Ok(Some(data)),
             Err(cacache::Error::EntryNotFound(_, _)) => Ok(None),

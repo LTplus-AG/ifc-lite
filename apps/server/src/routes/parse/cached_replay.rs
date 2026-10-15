@@ -21,7 +21,10 @@ use super::cache_keys::{
     cache_key_from_parts, has_current_data_model, has_cached_symbolic, has_parquet_metadata, is_file_digest,
     load_cached_symbolic, not_a_file_digest, parquet_geometry_key, parquet_metadata_key,
 };
+use super::cache_read::Replay;
 use super::ParseQuery;
+use crate::admission::AdmissionGuard;
+use futures::StreamExt;
 use ifc_lite_processing::TessellationQuality;
 use crate::services::{DataModelEntities, ParquetLayout, StreamShapes};
 use super::parquet::ParquetMetadataHeader;
@@ -54,21 +57,23 @@ use std::convert::Infallible;
 /// `GET /api/v1/cache/check/{hash}` already uses for "upload it", and the
 /// client uploads.
 ///
-/// A MISS costs no admission slot. The probe answers it from two small reads
-/// (the metadata header and the data-model marker) before touching the gate,
-/// because the common miss is a file the server has never seen and charging a
-/// parse slot for a disk lookup would mean every cold-cache client wins
-/// admission twice, probe then upload, and could be shed on the probe rather
-/// than queueing for the upload that would have succeeded.
+/// A MISS costs no admission slot. The probe answers it from index lookups
+/// that read no content (#7676, SERVER-6; the data-model "marker" used to be
+/// the whole data-model Parquet) before touching the gate, because the common
+/// miss is a file the server has never seen and charging a parse slot for a
+/// disk lookup would mean every cold-cache client wins admission twice, probe
+/// then upload, and could be shed on the probe rather than queueing for the
+/// upload that would have succeeded.
 ///
-/// A HIT does take one, around the replay BUILD, dropped before the response is
-/// returned. That is what the body-carrying hit path does, and for the same
-/// reason: `try_cached_replay` reads the whole geometry blob into memory,
+/// A HIT takes a slot for the replay BUILD, sized to the stored geometry
+/// ([`REPLAY_COPIES`] times it, not `MAX_FILE_SIZE_MB`, SERVER-24):
+/// `try_cached_replay` reads the whole geometry blob into memory,
 /// base64-encodes every batch, and materializes the full event vector before a
-/// byte is sent, which is several times the model's geometry resident at once.
-/// Leaving that window unbounded would make the cheapest request a client can
-/// send the cheapest way to exhaust the server. Draining the finished stream
-/// needs no slot.
+/// byte is sent. Once that is built the CPU slot is freed and the events' own
+/// size stays charged until the client has drained them (SERVER-7): a slow
+/// reader keeps every one of them resident, and dropping the charge as the
+/// response was returned made the cheapest request a client can send the
+/// cheapest way to exhaust the server.
 pub(super) async fn replay_by_client_hash(
     state: &AppState,
     query: &ParseQuery,
@@ -81,34 +86,33 @@ pub(super) async fn replay_by_client_hash(
     }
     let cache_key = cache_key_from_parts(sha256, query.opening_filter, quality);
 
-    let replay = if has_parquet_metadata(&state.cache, &cache_key).await
-        && has_current_data_model(&state.cache, &cache_key, query.data_model_entities).await
-        && has_cached_symbolic(&state.cache, &cache_key).await
+    let geometry = if has_parquet_metadata(&state.cache, &cache_key).await?
+        && has_current_data_model(&state.cache, &cache_key, query.data_model_entities).await?
+        && has_cached_symbolic(&state.cache, &cache_key).await?
     {
-        let admission_guard = state
-            .admission
-            .acquire(state.config.max_file_size_mb as u64 * 1024 * 1024)
-            .await?;
+        state.cache.lookup(&parquet_geometry_key(&cache_key, query.parquet_layout)).await?
+    } else {
+        None
+    };
+
+    if let Some(geometry) = geometry {
+        let admission = state.admission.acquire(geometry.size().saturating_mul(REPLAY_COPIES)).await?;
         let replay = try_cached_replay(
             state,
             &cache_key,
             query.parquet_layout,
             stream_shapes,
             query.data_model_entities,
+            admission,
         )
-        .await;
-        drop(admission_guard);
-        replay?
-    } else {
-        None
-    };
-
-    if let Some(response) = replay {
-        tracing::info!(
-            cache_key = %cache_key,
-            "Streaming cache HIT by client-supplied hash - no upload"
-        );
-        return Ok(response);
+        .await?;
+        if let Replay::Hit(response) = replay {
+            tracing::info!(
+                cache_key = %cache_key,
+                "Streaming cache HIT by client-supplied hash - no upload"
+            );
+            return Ok(response);
+        }
     }
     tracing::debug!(
         cache_key = %cache_key,
@@ -118,6 +122,10 @@ pub(super) async fn replay_by_client_hash(
         "Nothing cached for sha256 {sha256} under this opening_filter / tessellation_quality / parquet_layout. Resend the request with the multipart file body."
     )))
 }
+
+/// What a replay build holds at its peak, per byte of stored geometry: the
+/// blob, the batches split out of it, and their base64 encoding (4/3).
+const REPLAY_COPIES: u64 = 3;
 
 /// Return the geometry slice from a cached combined-Parquet blob, framed as
 /// `[geometry_len: u32-LE][geometry_data][data_model_len: u32]...`. Returns
@@ -131,41 +139,46 @@ pub(super) fn cached_geometry_slice(cached: &[u8]) -> Option<&[u8]> {
     cached.get(4..end)
 }
 
-/// Try to serve a `parse_parquet_stream` request from the cache. Returns
-/// `Ok(Some(response))` on a usable cache hit (the caller drops its admission
-/// guard and returns the response as-is), `Ok(None)` on a miss or a
-/// short/corrupt cached blob (the caller falls through to the live parse,
-/// which overwrites the bad entry).
+/// Try to serve a `parse_parquet_stream` request from the cache, charged to
+/// `admission`. [`Replay::Hit`] is a usable hit whose stream carries the
+/// admission until the client has drained it; [`Replay::Miss`] hands the
+/// admission back for the live parse, which overwrites whatever was missing
+/// or unusable. Every unusable entry is a miss by the one cache-entry policy
+/// (`services::cache_entry`, #7676, SERVER-12): a damaged blob or a header
+/// that does not decode used to answer 500 for the file on every request.
 pub(super) async fn try_cached_replay(
     state: &AppState,
     cache_key: &str,
     layout: ParquetLayout,
     stream_shapes: StreamShapes,
     data_model_entities: DataModelEntities,
-) -> Result<Option<axum::response::Response>, ApiError> {
+    admission: AdmissionGuard,
+) -> Result<Replay, ApiError> {
     let parquet_cache_key = parquet_geometry_key(cache_key, layout);
     let metadata_cache_key = parquet_metadata_key(cache_key);
-
-    let (Some(cached_parquet), Some(cached_metadata_json)) = (
-        state.cache.get_bytes(&parquet_cache_key).await?,
-        state.cache.get_bytes(&metadata_cache_key).await?,
-    ) else {
-        return Ok(None);
-    };
 
     // Replaying skips the parse, and the parse is what writes the data model.
     // A geometry entry that outlived a data-model version bump must therefore
     // re-parse rather than replay (issue #3869). The same holds for a data
     // model of the OTHER entities variant (#6034): geometry warmed by a
     // default request has no rooted table behind it.
-    if !has_current_data_model(&state.cache, cache_key, data_model_entities).await
-        || !has_cached_symbolic(&state.cache, cache_key).await {
+    if !has_current_data_model(&state.cache, cache_key, data_model_entities).await?
+        || !has_cached_symbolic(&state.cache, cache_key).await? {
         tracing::info!(
             cache_key = %cache_key,
-            "Geometry cached but a required sidecar predates the current payload; re-parsing"
+            "No current data model or symbolic sidecar to replay with; re-parsing"
         );
-        return Ok(None);
+        return Ok(Replay::Miss(admission));
     }
+
+    let Some(mut metadata_header) =
+        state.cache.read_usable_json::<ParquetMetadataHeader>(&metadata_cache_key).await?
+    else {
+        return Ok(Replay::Miss(admission));
+    };
+    let Some(cached_parquet) = state.cache.read_usable(&parquet_cache_key).await? else {
+        return Ok(Replay::Miss(admission));
+    };
 
     tracing::info!(
         cache_key = %cache_key,
@@ -173,18 +186,17 @@ pub(super) async fn try_cached_replay(
         "Streaming cache HIT - returning cached data as fast stream"
     );
 
-    // Parse cached metadata
-    let mut metadata_header: ParquetMetadataHeader = serde_json::from_slice(&cached_metadata_json)
-        .map_err(|e| ApiError::Internal(format!("Failed to parse cached metadata: {}", e)))?;
     // Stored as the live parse wrote it, `from_cache: false` included (#5542).
     metadata_header.stats.from_cache = true;
 
     // Load the cached symbolic stream so the Complete event reaches parity
     // even on the cache fast-path (issue #900).
-    let symbolic_data = load_cached_symbolic(&state.cache, cache_key).await;
+    let Some(symbolic_data) = load_cached_symbolic(&state.cache, cache_key).await? else {
+        return Ok(Replay::Miss(admission));
+    };
 
     // The job-unit progress the live parse reported for this file.
-    let recorded_progress = load_stream_progress(&state.cache, cache_key).await;
+    let recorded_progress = load_stream_progress(&state.cache, cache_key).await?;
 
     // Extract the geometry blob (framed `[geometry_len: u32-LE][geometry_data]
     // ...`, sliced WITHOUT `.unwrap()` panicking on a short/corrupt cached
@@ -229,13 +241,17 @@ pub(super) async fn try_cached_replay(
         // Short/corrupt cached blob: don't panic, don't serve garbage.
         // Fall through to the normal parse path (treat as a cache miss);
         // the re-parse overwrites the bad cache entry.
-        tracing::warn!(
-            cache_key = %cache_key,
-            parquet_size = cached_parquet.len(),
-            "Cached parquet blob is short/corrupt; ignoring cache and re-parsing"
-        );
-        return Ok(None);
+        let why = format!("{} bytes hold no geometry frame", cached_parquet.len());
+        state.cache.evict_unusable(&parquet_cache_key, why).await;
+        return Ok(Replay::Miss(admission));
     };
+    drop(cached_parquet);
+
+    // From here on only the encoded batches are resident, for as long as the
+    // client takes to read them: free the CPU slot, keep their size charged.
+    let mut admission = admission;
+    admission.shrink_to(batches.iter().map(|(data, ..)| data.len() as u64).sum());
+    let resident = admission.into_resident();
 
     // Same Start / (Batch, Progress)* / Complete shape the live path streams
     // (`parquet_stream.rs`'s per-batch Progress callback), so a cache hit is
@@ -288,9 +304,12 @@ pub(super) async fn try_cached_replay(
 
     let fast_stream: std::pin::Pin<
         Box<dyn futures::Stream<Item = Result<Event, Infallible>> + Send>,
-    > = Box::pin(futures::stream::iter(events));
+    > = Box::pin(futures::stream::iter(events).map(move |event| {
+        let _charged = &resident;
+        event
+    }));
 
-    Ok(Some(
+    Ok(Replay::Hit(
         Sse::new(fast_stream)
             .keep_alive(KeepAlive::default())
             .into_response(),

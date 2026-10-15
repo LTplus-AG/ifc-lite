@@ -8,14 +8,14 @@
 use super::{build_gltf, pack_glb, Chunker, GltfStats, MeshView};
 use crate::error::ExportError;
 
-/// Fail-closed [`export_glb_from_meshes`]: validates the per-mesh
+/// Fail-closed from-meshes GLB export: validates the per-mesh
 /// `vertex_counts` / `index_counts` (and normals) against the flattened buffers, and
 /// the index VALUES against the vertex counts, BEFORE assembling. Returns
 /// [`ExportError::MalformedMeshInput`] when a declared vertex/index count runs past
 /// the end of `positions` / `indices`, an `index_counts` entry is missing, `normals`
 /// is empty or too short to cover every emitted vertex, or an index names a vertex
 /// its own mesh does not have — instead of silently dropping the un-backed meshes
-/// (which the infallible variant does — a valid GLB missing part of the model,
+/// (which the crate-private infallible assembler does — a valid GLB missing part of the model,
 /// reported as success) or copying the out-of-range index straight into the BIN
 /// chunk. Prefer this at any boundary where the counts and buffers come from
 /// separate sources (the wasm FFI).

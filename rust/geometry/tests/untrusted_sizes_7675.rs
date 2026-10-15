@@ -78,8 +78,9 @@ fn sliceable(material_id: u32, thickness: f64) -> LayerBuildup {
 /// buffer is refused as a whole, so the caller keeps building its own index.
 #[test]
 fn proc_al_25_from_flat_refuses_layers_on_a_not_sliceable_record() {
-    let decoded = MaterialLayerIndex::from_flat(&[1, 2], &[0, 2], &[1, 1], &[0.0, 1.0], &[0.0, 0.0], &[10], &[0.1]);
-    assert!(decoded.is_none(), "axis-0 record with a layer count was accepted");
+    let decoded = MaterialLayerIndex::from_flat(&[1, 2], &[0, 2], &[1, 1], &[0.0, 1.0], &[0.0, 0.0], &[10, 11], &[0.1, 0.2]);
+    // The layer arrays back every count, so only the axis-0 rule can refuse.
+    assert!(decoded.is_none(), "axis-0 record with a layer count was accepted: {decoded:?}");
 }
 
 #[test]

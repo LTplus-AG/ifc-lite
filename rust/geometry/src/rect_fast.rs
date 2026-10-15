@@ -232,8 +232,10 @@ pub fn subtract_rect_openings(
     // hang. 128 is far above any real wall (1-20 openings); defer the pathological
     // case to the exact kernel (bounded per-element, #1121) rather than hang.
     const MAX_FAST_OPENINGS: usize = 128;
-    // cells x openings; a 20-window wall is ~1e4, a 128-opening staggered
-    // curtain host ~2e7. Past this the exact kernel's per-element bound wins.
+    // cells x openings. Real hosts stay tiny: across the 120-file IFC corpus
+    // the largest firing is 1860 (a 20-window wall is ~1e4). A 128-opening
+    // staggered curtain host is ~1.7e7 cells (257^3) but ~2e9 cells x openings.
+    // Past this cap the exact kernel's per-element bound wins.
     const MAX_FAST_CELL_TESTS: usize = 1 << 25;
     if openings.len() > MAX_FAST_OPENINGS {
         stats.defer_too_many_openings += 1;

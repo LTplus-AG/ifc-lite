@@ -241,9 +241,11 @@ pub struct ColumnarEntityIndex { /* ids, starts, lengths */ }
 
 impl ColumnarEntityIndex {
     pub fn from_columns(ids: &[u32], starts: &[u32], lengths: &[u32]) -> Self;
-    pub fn from_scan<T>(content: &T) -> Self;
-    pub fn from_hashmap(map: &EntityIndex) -> Self;
-    pub fn from_hashmap_consuming(map: EntityIndex) -> Self;
+    // Each returns Err(SpanBeyondU32) when a record's start or length does not
+    // fit u32 (a source of 4 GiB or more keeps the usize-carrying EntityIndex).
+    pub fn from_scan<T>(content: &T) -> Result<Self, SpanBeyondU32>;
+    pub fn from_hashmap(map: &EntityIndex) -> Result<Self, SpanBeyondU32>;
+    pub fn from_hashmap_consuming(map: EntityIndex) -> Result<Self, SpanBeyondU32>;
     pub fn lookup(&self, id: u32) -> Option<(usize, usize)>;
 }
 ```

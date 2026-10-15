@@ -49,6 +49,13 @@ impl Parser<'_> {
                 if index == 0 {
                     frame.local.clone()
                 } else {
+                    // A zero ordinal means the segment is missing from
+                    // `ordinal_tracked`; the key would silently collapse.
+                    debug_assert!(
+                        frame.sibling_ordinal != 0,
+                        "capture segment `{}` is not in ordinal_tracked",
+                        frame.local
+                    );
                     format!("{}[{}]", frame.local, frame.sibling_ordinal)
                 }
             })

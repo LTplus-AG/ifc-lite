@@ -35,7 +35,7 @@
       "subtasks": [
         {
           "title": "Move existing live-overlay query readers beneath MCP into SDK",
-          "status": "in_progress"
+          "status": "verified"
         },
         {
           "title": "Move backend and add open/query/edit/export/close factory",
@@ -45,7 +45,14 @@
           "title": "Adopt shared read adapter in CLI and remove superseded helpers",
           "status": "pending"
         }
-      ]
+      ],
+      "checks": {
+        "sharedReads": "SDK 39 passed; MCP 48 passed, 1 skipped",
+        "typecheck": "root pnpm typecheck passed; all 4184 test files audited",
+        "documentation": "472 snippets compiled",
+        "moduleSize": "passed; retired one obsolete allowlist row",
+        "knip": "ran; repository-wide unused declarations/configuration findings remain; retired reader files removed and one moved unused internal type export removed"
+      }
     },
     {
       "id": "DX3",

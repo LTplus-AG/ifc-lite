@@ -65,7 +65,7 @@ export interface CreatedEntity {
  * means the read surface cannot fall behind the write surface again: whatever
  * the enum grows, the readback carries.
  */
-export type AttributeOverrides = ReadonlyMap<string, string>;
+type AttributeOverrides = ReadonlyMap<string, string>;
 const NO_POSITIONAL_ATTRIBUTES: ReadonlyMap<number, unknown> = new Map();
 /** The overlay's read surface, as every folding tool consumes it. */
 export interface PendingOverlay {

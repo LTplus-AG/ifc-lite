@@ -8,8 +8,9 @@
  * epsg.io string (wrong Helmert rotation convention or a missing +towgs84;
  * see the doc block above fetchProj4Definitions there), so a regeneration
  * cannot silently bring the error back. Add a control point
- * (packages/data/scripts/fixtures/epsg-control-points.json) or a viewer
- * reprojection test with any new projected or geographic override.
+ * (packages/data/scripts/fixtures/epsg-control-points.json), a viewer
+ * reprojection test, or (geocentric/3D) a case in
+ * packages/data/scripts/proj4-overrides.test.ts with any new override.
  *
  * If a regeneration changes the +towgs84 signs or presence of any CRS with a
  * control point, re-verify against the EPSG Registry CoordOperation method
@@ -54,7 +55,7 @@ export const PROJ4_OVERRIDES: ReadonlyMap<string, string> = new Map([
 
 /**
  * Replace fetched proj4 strings with PROJ4_OVERRIDES and report, per code,
- * whether the override changed the fetched value, matched it, or found no entry.
+ * whether the override changed the incoming value, matched it, or found no entry.
  */
 export function applyProj4Overrides(entries: Array<{ code: string; proj4?: string }>): void {
   const byCode = new Map(entries.map((entry) => [entry.code, entry]));
@@ -67,5 +68,5 @@ export function applyProj4Overrides(entries: Array<{ code: string; proj4?: strin
     (entry.proj4 === proj4 ? unchanged : applied).push(code);
     entry.proj4 = proj4;
   }
-  console.error(`proj4 overrides: applied ${applied.join(',') || '-'}; already correct ${unchanged.join(',') || '-'}; not in index ${missing.join(',') || '-'}`);
+  console.error(`proj4 overrides: changed ${applied.join(',') || '-'}; unchanged ${unchanged.join(',') || '-'}; not in index ${missing.join(',') || '-'}`);
 }

@@ -17,7 +17,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { gzipSync } from 'node:zlib';
-import { applyProj4Overrides } from './epsg-proj4-overrides.ts';
+import { applyProj4Overrides } from './epsg-proj4-overrides.js';
 
 type RegistryLink = {
   rel?: string;

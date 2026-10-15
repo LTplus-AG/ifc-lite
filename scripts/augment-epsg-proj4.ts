@@ -20,7 +20,7 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { applyProj4Overrides } from './epsg-proj4-overrides.ts';
+import { applyProj4Overrides } from './epsg-proj4-overrides.js';
 
 const DEFAULT_CONCURRENCY = 30;
 const GENERATED_PATH = path.resolve('packages/data/src/generated/epsg-index.generated.ts');

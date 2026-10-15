@@ -125,3 +125,28 @@ test('a preview is stale once the model changes, and undo refuses to overwrite n
   assert.equal(refused.ok, false);
   assert.equal(views.get('A')!.getPropertyValue(101, 'Pset_WallCommon', 'FireRating'), 'EI90', 'the newer value is kept');
 });
+
+test('text booleans from evidence preview and commit as booleans against a boolean property (#7650)', async () => {
+  const { views } = await install();
+  const state = useViewerStore.getState();
+  state.setProperty('A', 101, 'Pset_WallCommon', 'IsExternal', false, PropertyValueType.Boolean);
+  state.setProperty('A', 102, 'Pset_WallCommon', 'IsExternal', false, PropertyValueType.Boolean);
+  state.setProperty('A', 102, 'Pset_Notes', 'Flag', 'false', PropertyValueType.Label);
+  const isExternal = (globalId: string, expected: unknown, value: unknown) =>
+    ({ op: 'property.set', target: { globalId }, pset: 'Pset_WallCommon', name: 'IsExternal', expected, value });
+  const textFlag = { op: 'property.set', target: { globalId: W2 }, pset: 'Pset_Notes', name: 'Flag', expected: 'false', value: 'true' };
+  const preview = previewModelChanges(useViewerStore.getState(), batch([isExternal(W1, 'false', 'true'), isExternal(W2, 'no', 'true'), textFlag]));
+  assert.deepEqual(preview.rows.map(row => row.status), ['ready', 'conflict', 'ready']);
+  assert.deepEqual(preview.batch.changes.map(change => change.op === 'property.set' ? [change.expected, change.value] : null),
+    [[false, true], ['no', true], ['false', 'true']], 'only text booleans against a boolean property are typed');
+  const jsonForm = previewModelChanges(useViewerStore.getState(), batch([isExternal(W1, false, true), isExternal(W2, 'no', true), textFlag]));
+  assert.equal(preview.digest, jsonForm.digest, 'the text and JSON-boolean forms pin the same batch');
+
+  const outcome = commitModelChanges(useViewerStore, preview, new Set([0, 2]), 'test');
+  assert.ok(outcome.ok);
+  assert.deepEqual(outcome.receipt.applied.map(change => [change.field, change.before, change.after]),
+    [['Pset_WallCommon.IsExternal', false, true], ['Pset_Notes.Flag', 'false', 'true']]);
+  assert.equal(views.get('A')!.getPropertyValue(101, 'Pset_WallCommon', 'IsExternal'), true, 'the commit writes a boolean, not text');
+  assert.equal(views.get('A')!.getPropertyValue(102, 'Pset_Notes', 'Flag'), 'true', 'a text property keeps text');
+  assert.equal(views.get('A')!.getPropertyValue(102, 'Pset_WallCommon', 'IsExternal'), false, 'the conflicting row was not written');
+});

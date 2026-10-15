@@ -31,7 +31,7 @@ export interface ResolvedManualClashGroup {
 export const MANUAL_CLASH_GROUPS_KEY = 'ifc-lite-clash-manual-groups';
 const MAX_GROUPS = 200;
 const MAX_MEMBERS_PER_GROUP = 2_000;
-const MAX_NAME_LENGTH = 100;
+export const MAX_NAME_LENGTH = 100;
 
 function normalizeName(value: unknown): string | null {
   if (typeof value !== 'string') return null;

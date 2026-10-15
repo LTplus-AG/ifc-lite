@@ -1,6 +1,6 @@
 # Viewer AI evaluation corpus, live harness, labelling and study tooling
 
-Tooling for P21 and U01 ([#6928](https://github.com/LTplus-AG/ifc-lite/issues/6928), part of [#6812](https://github.com/LTplus-AG/ifc-lite/issues/6812)). It builds the corpus, the harnesses and the instruments for human judgment. **It does not perform human judgment.** The independent claim and grouping labels, the privacy and licence review, the live quality evaluation against a provider, and the coordinator study with existing users are still open and need people. Nothing here is a quality, usability or acceptance result.
+Tooling for P21 and U01 ([#6928](https://github.com/LTplus-AG/ifc-lite/issues/6928), part of [#6812](https://github.com/LTplus-AG/ifc-lite/issues/6812)). It builds the corpus, the harnesses and the instruments for human judgment. **It does not perform human judgment.** The independent claim and grouping labels, the human sign-off of the privacy and licence review, a repeatable live quality evaluation, and the coordinator study with existing users are still open and need people. The first live runs below are single samples, not a quality, usability or acceptance result.
 
 ## Corpus manifest
 
@@ -33,7 +33,7 @@ Every fixture records origin, SHA-256, size, schema, source tool, licence status
 | `citations-valid` | Every `E<n>` names a captured row | Whether the claim it supports is true |
 | `findings-accounted` | A grouping cites each finding at most once, only complete rows, within the native population | Native preview re-checks against the live result |
 | `no-duplicate-topics` | No two groups share a name (case and spacing) or membership | Semantically overlapping topics |
-| `count-claims-match-facts` | Each "N counted-noun" claim is a number in the evidence | A real number from the wrong field still passes |
+| `count-claims-match-facts` | Each "N counted-noun" claim is a number in the evidence; on live runs, an element or model claim may also match a count from the prompt's model summary (properties and quantities only when the summary is not partial) | A real number from the wrong field still passes; committed recordings keep no prompt, so they are checked against the evidence only |
 | `no-effect-claims` | The answer never claims to have applied or created anything | Paraphrased claims |
 | `proposal-kind-allowed` | A declared typed kind is offered for the evidence source | Whether the proposal is valid |
 | `budget-respected` | Provider-reported output stays within the ceiling and run budget | Unreported usage is counted, never estimated |
@@ -44,12 +44,29 @@ The remaining release invariants in the plan (concurrent-edit conflicts, undo an
 
 `scripts/ai-eval/run-live-eval.mjs` is **opt-in and never run by CI**. It needs `IFCLITE_AI_EVAL_LIVE=1`, a provider URL and model per provider (`IFCLITE_AI_EVAL_{PROXY,ANTHROPIC,OPENAI}_{URL,MODEL}`) and, for BYOK providers, the standard key variable. A provider missing any of these is skipped with the reason. The runner:
 
-1. asks the viewer (`pnpm --dir apps/viewer ai-eval requests`) for the exact request the Assistant would send for each task, so live runs see the production system prompt and frozen evidence;
-2. sends it with fixed settings (temperature 0 on the direct provider routes, while the viewer proxy applies its own server-side sampling, so proxy receipts record `temperature: null`; the manifest's 4096-token ceiling, the manifest timeout, at most three repeats) inside the manifest's root budget (24 requests, 98,304 reported output tokens), stopping before the next request once exhausted;
+1. asks the viewer (`pnpm --dir apps/viewer ai-eval requests`) for the exact request the Assistant would send for each task, once per provider with that provider's model, so live runs see the production system prompt, frozen evidence and per-model output ceiling;
+2. sends it with fixed settings (temperature 0 only where the Assistant sends a temperature: the viewer proxy applies its own server-side sampling and current frontier models reject the parameter, so those receipts record `temperature: null`; the manifest's 4096-token ceiling, the manifest timeout, at most three repeats) inside the manifest's root budget (24 requests, 98,304 reported output tokens), stopping before the next request once exhausted;
 3. writes unreviewed `corpus: "live"` recordings, usage receipts (provider-reported counts only; unreported usage stays unreported) and a per-answer invariant summary to the gitignored `tests/ai-eval/results/<run>/`;
 4. refuses output containing any configured provider credential, including opaque short values, JSON Unicode escapes in error strings, and decoded SSE text split across events, before writing a recording or usage receipt. HTTP response inspection is limited to 1 MiB of body bytes; combined output inspection is limited to 32 MiB of serialized text. Quoted strings are decoded individually, without a recursive JSON object walk. These checks cover supported JSON/SSE representations; they do not certify arbitrary encodings. It also refuses generic credential-like tokens and e-mail addresses. The key goes into one request header; refusals expose only a fixed diagnostic and no response body.
 
-Run `pnpm --dir apps/viewer ai-eval review --recordings <run>/recordings --out <run>/review.json` to judge live answers with the same native code the CI harness uses. Promoting a live recording into the corpus is a human act: review it, add `expect` from the review output, set `corpus: "release"`, and keep its receipt. A reviewed run can be kept as evidence without promoting it: copy the run folder to `tests/ai-eval/live-runs/<run>/` with its `recordings/`, `summary.json` and `review.json`. The manifest gate then requires every recording to stay `corpus: "live"` with its receipt, the summary receipts to match the recordings one for one, the review to cover exactly those recordings, every file to pass the privacy scan, and recording ids to be unique across the corpus and live runs (a promoted copy takes a new id). CI never replays these files. **No live run has been performed for this change**: the development machine has no provider configured. The runner is tested end to end against a local OpenAI-compatible server, which proves the plumbing, not any model.
+Run `pnpm --dir apps/viewer ai-eval review --recordings <run>/recordings --out <run>/review.json` to judge live answers with the same native code the CI harness uses. Promoting a live recording into the corpus is a human act: review it, add `expect` from the review output, set `corpus: "release"`, and keep its receipt. A reviewed run can be kept as evidence without promoting it: copy the run folder to `tests/ai-eval/live-runs/<run>/` with its `recordings/`, `summary.json` and `review.json`. The manifest gate then requires every recording to stay `corpus: "live"` with its receipt, the summary receipts to match the recordings one for one, the review to cover exactly those recordings, every file to pass the privacy scan, and recording ids to be unique across the corpus and live runs (a promoted copy takes a new id). CI never replays these files. Recordings may be rewritten as compact JSON before committing; the events stay verbatim.
+
+### First live runs, 15 October 2026
+
+Three runs over all twelve tasks, committed under `tests/ai-eval/live-runs/`: two through the production free-model proxy (`https://www.ifclite.com/api/chat`, no credential) and one direct to Anthropic with a BYOK key. The proxy applies its own sampling and current Claude models take no temperature, so these are samples, not a stable quality measure. The Anthropic run used the per-provider capture from [#7649](https://github.com/LTplus-AG/ifc-lite/pull/7649); before it, every request was refused with a 400 for its temperature.
+
+| Run | Model | Requests | Completed (receipt) | Empty answer | Truncated | Invariant flags | Native refusals or conflicts, completed answers | Median output tokens, completed |
+|---|---|---|---|---|---|---|---|---|
+| `20261015t110523` | `z-ai/glm-5.3-flash` | 24 (2 repeats) | 16 | 7 | 1 | 4 in 2 answers | 0 | 2,229 |
+| `20261015t111451` | `qwen/qwen3.7-flash` | 12 | 12 | 0 | 0 | 0 | 1 | 2,028 |
+| `20261015t113459` | `claude-sonnet-5-5` (direct) | 24 (2 repeats) | 24 | 0 | 0 | 1 | 3 | 1,263 |
+
+- **glm-5.3-flash returns nothing on 7 of 24 requests.** It streams reasoning until the output ceiling and finishes with `length` before writing any answer text, so the Assistant shows an empty-output error. It hit this on `selected-roof-properties` and `validation-corrections` both times.
+- **Four of the five count flags are detector false positives** ([#7652](https://github.com/LTplus-AG/ifc-lite/issues/7652)). glm's "121 elements", "13 walls" and "13 elements" (IfcWallStandardCase) and Sonnet's "arch (14 elements)" are correct: they come from the model summary in the system prompt, which `count-claims-match-facts` does not see because recordings keep only the evidence payload. glm's "~86 entities" is genuinely unsupported.
+- **Native review.** Every clash grouping that parsed covered all 9 findings with no unclassified rows; every authoring proposal previewed as 1 ready operation; every Flow patch built the same 3-node graph. qwen's `validation-corrections` model-change proposal was refused at parse ("Change 2 attribute values must be text"): the native parser stopped a malformed edit before preview.
+- **Sonnet's correct boolean fix previews as a conflict, both repeats.** Asked to correct the failing `IsExternal` on the plumbing wall, it proposed `expected: "false"`, `value: "true"`. The evidence row shows the current value as the text `"false"` and the prompt says `expected` must be the value shown in the evidence; the stored value is boolean `false`, so the native preview reports a conflict. Any model that follows the instructions hits this; the authored recording writes a JSON boolean, so CI never did ([#7650](https://github.com/LTplus-AG/ifc-lite/issues/7650)).
+- **One Sonnet grouping was refused whole for a 103-character group name.** The parser caps names at 100 characters, which the prompt does not state; all 9 findings were otherwise grouped correctly. The second repeat passed ([#7651](https://github.com/LTplus-AG/ifc-lite/issues/7651)).
+- **The direct OpenAI route has not run live.** It is tested against a local OpenAI-compatible server, which proves the plumbing, not a provider.
 
 ## Human labelling
 
@@ -72,8 +89,9 @@ Facilitators write one `tests/ai-eval/study/sessions/<id>.json` per participant,
 
 ## Still open for people
 
-- Independent claim and grouping labels and a privacy and licence review of every corpus fixture.
-- A live evaluation run against a configured provider, reviewed, with promoted recordings.
+- Independent claim and grouping labels, ideally on the committed live answers.
+- Human sign-off of the fixture privacy and licence review prepared in [`tests/ai-eval/native/fixture-review-2026-10-15.md`](https://github.com/LTplus-AG/ifc-lite/blob/main/tests/ai-eval/native/fixture-review-2026-10-15.md).
+- Promoting reviewed live recordings into the release corpus.
 - The twelve-task study with coordinator, author and occasional participants, and ratifying the thresholds from the pilot.
 - Independent viewport acceptance for authoring and Flow; the committed native render/pick recording demonstrates ordinary rendering only.
 - The full-program acceptance that closes P21 and U01.

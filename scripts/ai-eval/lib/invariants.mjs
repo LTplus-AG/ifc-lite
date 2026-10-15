@@ -20,7 +20,7 @@ export const INVARIANTS = [
     limit: 'Checks the proposal text against captured rows; the native preview re-checks against the live result.' },
   { id: 'no-duplicate-topics', description: 'No two proposed groups share a name (case/space-insensitive) or an identical membership.',
     limit: 'Detects literal duplicates, not semantically overlapping topics.' },
-  { id: 'count-claims-match-facts', description: 'Every "<number> <counted noun>" claim in prose equals a number present in the native evidence.',
+  { id: 'count-claims-match-facts', description: 'Every "<number> <counted noun>" claim in prose equals a number present in the native evidence or, on a live run, in the prompt\'s model-schema summary (element, class and model counts, each only for its own noun).',
     limit: 'Presence, not denominator: a number taken from the wrong field still passes and needs a human claim label.' },
   { id: 'no-effect-claims', description: 'The answer never claims to have applied, changed, created, run or published anything.',
     limit: 'First-person phrase match; paraphrased effect claims need a human claim label.' },
@@ -71,12 +71,80 @@ function evidenceNumbers(value, out = new Set()) {
   return out;
 }
 
+const SUMMARY_HEAD = 'Model schema (exact names';
+const SUMMARY_PARTIAL = 'counts cover the first scanned';
+const SUMMARY_COUNTED = /^(Models|Classes|Properties|Quantities): (.*)$/;
+// Nouns the digest counts. Clashes, findings, rows... are not. A class noun is
+// backed only by its own classes: each class count and the family sum.
+const ELEMENT_NOUN = /^(?:elements?|entities)$/i;
+const MODEL_NOUN = /^models?$/i;
+const CLASS_NOUNS = [[/^walls?$/i, 'walls', /^IfcWall/], [/^slabs?$/i, 'slabs', /^IfcSlab/], [/^spaces?$/i, 'spaces', /^IfcSpace$/]];
+
 /**
- * Check one answer. `answer`: `{ text, source, evidence, usage, maxOutputTokens }`
- * where `evidence` is the captured payload object (`comparableEvidence`).
+ * The counts the viewer's model-schema digest (`schemaDigest` in
+ * apps/viewer/src/lib/assistant/artifacts/artifact-guidance.ts) gave the model
+ * in its system prompt, as sets per noun: `elements` holds `name (N elements)`
+ * per model and `name N` per class, property and quantity; `models` the number
+ * of models listed; `walls`/`slabs`/`spaces` the counts of their IFC classes and
+ * the family sum. Only the digest lines are read, so numbers in the prompt's
+ * instructions and names (`AC20-...`) are not facts.
+ * A partial digest scanned only some elements for properties and quantities
+ * (model-schema.ts `SCHEMA_SCAN_LIMIT`), so those counts are dropped; model
+ * and class counts cover every element either way.
+ * Items are split on ", ", so a model name containing one miscounts the models (rare; accepted).
+ */
+export function modelSummaryNumbers(system) {
+  const facts = { elements: new Set(), models: new Set(), walls: new Set(), slabs: new Set(), spaces: new Set() };
+  if (typeof system !== 'string') return facts;
+  const lines = system.split('\n');
+  const head = lines.findIndex(line => line.startsWith(SUMMARY_HEAD));
+  if (head < 0) return facts;
+  const partial = lines[head].includes(SUMMARY_PARTIAL);
+  for (const line of lines.slice(head + 1)) {
+    const section = SUMMARY_COUNTED.exec(line);
+    if (!section) break;
+    const [, label, body] = section;
+    const more = / \(\+(\d+) more\)$/.exec(body);
+    const items = (more ? body.slice(0, more.index) : body).split(', ').filter(Boolean);
+    if (label === 'Models') facts.models.add(items.length + (more ? Number(more[1]) : 0));
+    else if (partial && label !== 'Classes') continue;
+    const count = label === 'Models' ? / \((\d+) elements\)$/ : /^(.*) (\d+)$/;
+    const sums = new Map();
+    for (const item of items) {
+      const match = count.exec(item);
+      if (!match) continue;
+      const value = Number(match[match.length - 1]);
+      facts.elements.add(value);
+      if (label !== 'Classes') continue;
+      for (const [, key, family] of CLASS_NOUNS) {
+        if (!family.test(match[1])) continue;
+        facts[key].add(value);
+        sums.set(key, (sums.get(key) ?? 0) + value);
+      }
+    }
+    for (const [key, sum] of sums) facts[key].add(sum);
+  }
+  return facts;
+}
+
+/** The prompt facts that can back a claim about `noun`, or null. */
+function promptFactsFor(promptFacts, noun) {
+  if (!promptFacts) return null;
+  if (ELEMENT_NOUN.test(noun)) return promptFacts.elements;
+  if (MODEL_NOUN.test(noun)) return promptFacts.models;
+  const entry = CLASS_NOUNS.find(([pattern]) => pattern.test(noun));
+  return entry ? promptFacts[entry[1]] : null;
+}
+
+/**
+ * Check one answer. `answer`: `{ text, source, evidence, usage, maxOutputTokens, promptFacts }`
+ * where `evidence` is the captured payload object (`comparableEvidence`) and
+ * `promptFacts` the counts the prompt itself gave the model
+ * (`modelSummaryNumbers`), accepted only for the nouns they count; committed
+ * recordings keep no prompt, so none.
  * Returns `{ violations: [{ id, detail }], facts }`.
  */
-export function checkAnswer({ text, source, evidence, usage = null, maxOutputTokens = null }) {
+export function checkAnswer({ text, source, evidence, usage = null, maxOutputTokens = null, promptFacts = null }) {
   const violations = [];
   const flag = (id, detail) => violations.push({ id, detail });
   const rows = evidenceRows(evidence);
@@ -118,9 +186,9 @@ export function checkAnswer({ text, source, evidence, usage = null, maxOutputTok
     const known = evidenceNumbers(evidence);
     for (const match of text.matchAll(COUNT_CLAIM)) {
       const value = Number(match[1]);
-      const matched = known.has(value);
+      const matched = known.has(value) || !!promptFactsFor(promptFacts, match[2])?.has(value);
       facts.countClaims.push({ value, noun: match[2], matched });
-      if (!matched) flag('count-claims-match-facts', `"${match[0]}" matches no native number in the evidence`);
+      if (!matched) flag('count-claims-match-facts', `"${match[0]}" matches no native number in the evidence or model summary`);
     }
   }
   if (EFFECT_CLAIM.test(text)) flag('no-effect-claims', `claims an effect: "${EFFECT_CLAIM.exec(text)[0]}"`);

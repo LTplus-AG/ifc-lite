@@ -30,12 +30,31 @@ struct Edge {
     nonmanifold: bool,
 }
 
-pub(super) struct Edges(FxHashMap<EdgeKey, Edge>);
+pub(super) struct Edges {
+    edges: FxHashMap<EdgeKey, Edge>,
+    closed: bool,
+}
+
+// This is only a closed-edge-incidence prerequisite, not a solid-validity or
+// vertex-manifoldness test. Read the ORIGINAL triangles before edge filtering.
+fn noncollapsed(t: &Tri) -> bool {
+    t.iter().flatten().all(|v| v.is_finite())
+        && [(0, 1), (0, 2), (1, 2)].into_iter().any(|(i, j)| {
+            let determinant = geometry_predicates::orient2d(
+                [t[0][i], t[0][j]],
+                [t[1][i], t[1][j]],
+                [t[2][i], t[2][j]],
+            );
+            determinant.is_finite() && determinant != 0.0
+        })
+}
 
 impl Edges {
     pub(super) fn new<'a>(tris: impl Iterator<Item = &'a Tri>) -> Self {
         let mut edges: FxHashMap<EdgeKey, Edge> = FxHashMap::default();
+        let (mut valid, mut valid_faces, mut unpaired) = (true, true, 0usize);
         for t in tris {
+            valid_faces = valid_faces && noncollapsed(t);
             for i in 0..3 {
                 let (a, b) = (t[i], t[(i + 1) % 3]);
                 let (ka, kb) = (key(&a), key(&b));
@@ -52,7 +71,14 @@ impl Edges {
                     });
                 if edge.sides[1].is_some() {
                     edge.nonmanifold = true;
+                    valid = false;
                 } else {
+                    if let Some(first) = edge.sides[0] {
+                        unpaired -= 1;
+                        valid = valid && first.forward != forward;
+                    } else {
+                        unpaired += 1;
+                    }
                     let slot = usize::from(edge.sides[0].is_some());
                     edge.sides[slot] = Some(Side {
                         third: t[(i + 2) % 3],
@@ -61,12 +87,17 @@ impl Edges {
                 }
             }
         }
-        Self(edges)
+        let closed = valid && valid_faces && !edges.is_empty() && unpaired == 0;
+        Self { edges, closed }
+    }
+
+    pub(super) fn closed_edge_incidence(&self) -> bool {
+        self.closed
     }
 
     pub(super) fn is_arris(&self, a: &Point, b: &Point) -> bool {
         let (a, b) = (key(a), key(b));
-        self.0.get(&(a.min(b), a.max(b))).is_some_and(is_arris)
+        self.edges.get(&(a.min(b), a.max(b))).is_some_and(is_arris)
     }
 }
 
@@ -76,7 +107,17 @@ fn is_arris(edge: &Edge) -> bool {
     };
     !edge.nonmanifold
         && a.forward != b.forward
-        && geometry_predicates::orient3d(edge.ends[0], edge.ends[1], a.third, b.third) != 0.0
+        && edge
+            .ends
+            .iter()
+            .chain([a.third, b.third].iter())
+            .flatten()
+            .all(|v| v.is_finite())
+        && {
+            let determinant =
+                geometry_predicates::orient3d(edge.ends[0], edge.ends[1], a.third, b.third);
+            determinant.is_finite() && determinant != 0.0
+        }
 }
 
 /// Original cutter adjacency, captured before any vertex is welded. Every
@@ -86,13 +127,13 @@ struct IncidentEdge {
     thirds: [Point; 2],
 }
 
-pub(super) struct CutterEdges(FxHashMap<Key, Vec<IncidentEdge>>);
+pub(super) struct CutterEdges(FxHashMap<Key, Vec<IncidentEdge>>, bool);
 
 impl CutterEdges {
     pub(super) fn new(cutter: &[Tri]) -> Self {
         let edges = Edges::new(cutter.iter());
         let mut at: FxHashMap<Key, Vec<IncidentEdge>> = FxHashMap::default();
-        for edge in edges.0.values().filter(|e| is_arris(e)) {
+        for edge in edges.edges.values().filter(|e| is_arris(e)) {
             let [a, b] = edge.ends;
             let [Some(first), Some(second)] = edge.sides else {
                 unreachable!()
@@ -105,7 +146,11 @@ impl CutterEdges {
                 .or_default()
                 .push(IncidentEdge { end: a, thirds });
         }
-        Self(at)
+        Self(at, edges.closed_edge_incidence())
+    }
+
+    pub(super) fn closed_edge_incidence(&self) -> bool {
+        self.1
     }
 
     pub(super) fn contains(&self, v: &Point, a: &Point, b: &Point, face: &Tri) -> bool {

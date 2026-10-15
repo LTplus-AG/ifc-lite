@@ -40,11 +40,7 @@ fn counts(tris: &[Tri]) -> (usize, usize, usize) {
     )
 }
 
-/// #7635 candidate reduction: a closed slab with two four-corner holes.
-/// One hole is the cutter footprint; another short wall supplies the remote
-/// plane. No source-cap deficit or consolidation is involved.
-#[test]
-fn issue_7635_extended_cutter_arris_preserves_closed_hole() {
+fn reduced_host() -> Vec<Tri> {
     use crate::kernel::mesh_bridge::{mesh_to_tris, orient_outward};
     use crate::{extrude_profile, Point2, Profile2D};
     let points = |p: &[[f64; 2]]| p.iter().map(|p| Point2::new(p[0], p[1])).collect();
@@ -69,7 +65,15 @@ fn issue_7635_extended_cutter_arris_preserves_closed_hole() {
     for p in host.positions.chunks_exact_mut(3) {
         p[2] = (p[2] as f64 + 3.649993896484375) as f32;
     }
-    let h = orient_outward(mesh_to_tris(&host));
+    orient_outward(mesh_to_tris(&host))
+}
+
+/// #7635 candidate reduction: a closed slab with two four-corner holes.
+/// One hole is the cutter footprint; another short wall supplies the remote
+/// plane. No source-cap deficit or consolidation is involved.
+#[test]
+fn issue_7635_extended_cutter_arris_preserves_closed_hole() {
+    let h = reduced_host();
     let c = opening_cutter();
     assert_eq!(counts(&h), (52, 0, 0), "reduced host must be closed");
     assert_eq!(counts(&c), (12, 0, 0), "cutter must be closed");
@@ -207,7 +211,7 @@ fn issue_7635_finite_certificate_is_distinct_from_mutual_plane_coincidence() {
     band.observe_tris(&host);
     let faces: Vec<_> = host.iter().map(|t| Face::new(t, &band).unwrap()).collect();
     let (v, w) = ([0., 0., 2.], [0., g, 2.]);
-    let mut guard = Guard::new(&faces);
+    let mut guard = Guard::new(&faces, &host);
     assert!(!guard.refuses(&w, 2, &[0, 1]));
     let cutter = crate::kernel::arrangement::box_mesh([0., 0., -1.], [1., 1., 2.]);
     assert!(guard.refuses_finite(&v, &w, 2, &[0, 1], &CutterEdges::new(&cutter)));
@@ -224,3 +228,6 @@ fn issue_7635_finite_certificate_is_distinct_from_mutual_plane_coincidence() {
     let short = crate::kernel::arrangement::box_mesh([0., 0., 0.5], [1., 1., 2.]);
     assert!(!guard.refuses_finite(&v, &w, 2, &[0, 1], &CutterEdges::new(&short)));
 }
+
+#[path = "admission_tests.rs"]
+mod admission;

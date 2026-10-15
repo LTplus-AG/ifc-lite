@@ -251,7 +251,7 @@ const MAX_WELD_PASSES: usize = 4;
 /// census run) can measure whether the promotion fires at all rather than
 /// inferring it from an unchanged golden.
 pub(crate) fn promote_cutter_verts_onto_host_faces(cutter: &mut [Tri], host: &[Tri]) -> usize {
-    promote::<false>(cutter, host)
+    promote::<false, false>(cutter, host)
 }
 
 /// The SUBTRACT form of [`promote_cutter_verts_onto_host_faces`]: the same
@@ -264,10 +264,10 @@ pub(crate) fn promote_cutter_verts_onto_host_faces(cutter: &mut [Tri], host: &[T
 /// of an `IfcBooleanResult` DIFFERENCE (`ClippingProcessor::subtract_operand`
 /// says why): this form is for opening cutters.
 pub(crate) fn promote_subtract_cutter_onto_host_faces(cutter: &mut [Tri], host: &[Tri]) -> usize {
-    promote::<true>(cutter, host)
+    promote::<true, true>(cutter, host)
 }
 
-fn promote<const KEEP_INCIDENCE: bool>(cutter: &mut [Tri], host: &[Tri]) -> usize {
+fn promote<const KEEP_INCIDENCE: bool, const FINITE_INCIDENCE: bool>(cutter: &mut [Tri], host: &[Tri]) -> usize {
     if cutter.is_empty() || host.is_empty() {
         return 0;
     }
@@ -276,10 +276,10 @@ fn promote<const KEEP_INCIDENCE: bool>(cutter: &mut [Tri], host: &[Tri]) -> usiz
     let host_verts = super::near_band::exact_vertex_set(host); // #3353 N-ary half
 
     let faces: Vec<Face> = host.iter().filter_map(|t| Face::new(t, &band)).collect();
-    let cutter_edges = KEEP_INCIDENCE.then(|| finite::CutterEdges::new(cutter));
+    let cutter_edges = (KEEP_INCIDENCE && FINITE_INCIDENCE).then(|| finite::CutterEdges::new(cutter));
 
     // Host faces whose plane the current vertex is exactly on (reused scratch).
-    let (mut on, mut guard): (Vec<usize>, _) = (Vec::new(), incidence::Guard::new(&faces));
+    let (mut on, mut guard): (Vec<usize>, _) = (Vec::new(), incidence::Guard::new(&faces, host));
     for t in cutter.iter_mut() {
         for v in t.iter_mut() {
             if host_verts.contains(&super::near_band::vertex_bits(v)) { continue; } // #3353
@@ -324,7 +324,9 @@ fn promote<const KEEP_INCIDENCE: bool>(cutter: &mut [Tri], host: &[Tri]) -> usiz
                 if let Some(w) = exact_on_plane_weld(*v, faces[f].t) {
                     if KEEP_INCIDENCE && (guard.refuses(&w, f, &on)
                         || cutter_edges.as_ref().is_some_and(|edges|
-                            guard.refuses_finite(v, &w, f, &on, edges))) {
+                            !on.is_empty() && edges.closed_edge_incidence()
+                                && guard.refuses_finite(v, &w, f, &on, edges)
+                                && guard.closed_edge_incidence())) {
                         continue; // #6940
                     }
                     if w != *v {

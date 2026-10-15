@@ -97,10 +97,26 @@ fn build_from_wall_rects_drops_non_finite_rects() {
     ];
     let clean = SpacePlate::build_from_wall_rects(&rects, BuildOptions::default());
     assert_eq!(clean.room_count(), 1);
+    // NaN and infinite corners, inside the room and far outside it. Before the
+    // fix the infinite corner overflowed the snap grid's cell index.
     let mut poisoned = rects.clone();
     poisoned.insert(1, [[1.0, 1.0], [2.0, f64::NAN], [2.0, 2.0], [1.0, 2.0]]);
+    poisoned.insert(3, [[1.0, 1.0], [f64::INFINITY, 1.0], [2.0, 2.0], [1.0, 2.0]]);
+    poisoned.push([[f64::NEG_INFINITY, 5.0], [9.0, 5.0], [9.0, 6.0], [f64::NEG_INFINITY, 6.0]]);
     let plate = SpacePlate::build_from_wall_rects(&poisoned, BuildOptions::default());
     assert_eq!(plate.room_patches(), clean.room_patches());
+    assert!(positions(&plate).iter().all(|p| p[0].is_finite() && p[1].is_finite()));
+}
+
+/// Review of #7706: a huge but finite coordinate saturates the snap grid's
+/// `i64` cell index, and probing the neighbouring cell overflowed (a debug
+/// panic; release builds wrap). The probe now saturates.
+#[test]
+fn build_survives_huge_finite_coordinates() {
+    let mut segs = rect_segments(0.0, 0.0, 4.0, 3.0);
+    segs.push(InputSegment::new([1e300, 1.0], [-1e300, 1.0], None));
+    segs.push(InputSegment::new([1.0, f64::MAX], [1.0, -f64::MAX], None));
+    let _ = SpacePlate::build(&segs, BuildOptions::default());
 }
 
 /// `representative_point` sorts the ring's y values and each scan line's x

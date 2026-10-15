@@ -285,7 +285,15 @@ impl SpacePlate {
     pub fn build_from_wall_rects(rects: &[[[f64; 2]; 4]], options: BuildOptions) -> Self {
         // --- Stage 1: detect rooms as the gaps between wall rectangles. ---
         let mut rect_edges: Vec<InputSegment> = Vec::with_capacity(rects.len() * 4);
+        // A wall rectangle with a NaN or infinite corner is dropped whole
+        // (#7674): its finite edges alone would split rooms, and the
+        // gap-face test against it is meaningless. Kept walls keep their
+        // input index as the source element.
+        let finite = |r: &[[f64; 2]; 4]| r.iter().flatten().all(|c| c.is_finite());
         for (wi, r) in rects.iter().enumerate() {
+            if !finite(r) {
+                continue;
+            }
             // Wall thickness = the rectangle's shorter side (faces are the long pair).
             let side = |a: [f64; 2], b: [f64; 2]| ((b[0] - a[0]).powi(2) + (b[1] - a[1]).powi(2)).sqrt();
             let half = side(r[0], r[1]).min(side(r[1], r[2])) / 2.0;
@@ -295,7 +303,7 @@ impl SpacePlate {
             }
         }
         let mut gap = Self::from_arrangement(Arrangement::resolve(&rect_edges, options.snap_tolerance), options.min_area);
-        gap.wall_rects = rects.to_vec();
+        gap.wall_rects = rects.iter().filter(|r| finite(r)).copied().collect();
 
         // --- Stage 2: lift each gap room to its wall-axis outline and re-arrange. ---
         let mut axis_edges: Vec<InputSegment> = Vec::new();

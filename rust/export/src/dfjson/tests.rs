@@ -450,3 +450,30 @@ fn dedupe_plates_with_nan_areas_past_insertion_sort_cutoff_7674() {
     let ids: Vec<u32> = kept.iter().map(|p| p.express_id).collect();
     assert_eq!(ids, (0..40).collect::<Vec<u32>>(), "input order is kept and the copy (100) dropped");
 }
+
+/// #7674: unplaced storeys are appended to the first building and that bucket
+/// is re-sorted by each storey's lowest floor height. The key folds with
+/// `f64::min`, which skips NaN, so it is NaN-free by construction. This pins
+/// the orphan path end to end with NaN-placed spaces past the insertion-sort
+/// cutoff; it passes on the parent commit too (no sort there sees a NaN).
+#[test]
+fn orphan_storeys_with_nan_heights_join_the_first_building_7674() {
+    use super::spatial::{SpatialIndex, StoreyInfo};
+    let spatial = SpatialIndex {
+        space_storey: [(1, 3)].into_iter().collect(),
+        storeys: [(3, StoreyInfo { name: "L1".to_string(), elevation: Some(0.0), building: 2 })].into_iter().collect(),
+        building_names: [(2, "Main".to_string())].into_iter().collect(),
+        building_order: vec![2],
+    };
+    let mut profiles = vec![unit_space(1, 0.0)];
+    for i in 10..40u32 {
+        // Each unplaced space sits apart in x so none is a duplicate of another.
+        let mut p = unit_space(i, if i.is_multiple_of(3) { f32::NAN } else { (i % 7) as f32 * 3.0 });
+        p.transform[12] = i as f32 * 10.0;
+        profiles.push(p);
+    }
+    let (_model, stats) = build_model("test", &profiles, 0.01, Some(&spatial));
+    assert_eq!(stats.spaces, 31);
+    assert_eq!(stats.rooms + stats.skipped, 31);
+    assert!(stats.rooms >= 21, "the finite unplaced spaces still export: {}", stats.rooms);
+}

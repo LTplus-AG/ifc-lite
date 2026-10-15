@@ -94,11 +94,13 @@ impl PipeParser<'_> {
         if self.frames.is_empty() && !text.trim().is_empty() {
             return Err(error(Code::InvalidXml, "text outside LandXML root"));
         }
+        // Resolve before the capture check: an undeclared entity is refused
+        // wherever it appears, as in an attribute value (#7680).
+        let text = unescape(text)?;
         if let Some(capture) = &mut self.capture {
             if self.frames.len() != capture.depth {
                 return Ok(());
             }
-            let text = unescape(text)?;
             if capture.input.text.len() + text.len() > self.limits.max_text_bytes {
                 return Err(error(Code::LimitExceeded, "captured text limit exceeded"));
             }

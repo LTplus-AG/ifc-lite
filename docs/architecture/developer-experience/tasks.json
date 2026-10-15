@@ -22,7 +22,7 @@
         "sourceTextAssertions": "Passed; runtime diagnostic-code assertions explicitly identified",
         "oxlintTouchedFiles": "passed",
         "reviewRegression": "17 loading contract tests and 9 CLI loader tests pass, including browser SharedArrayBuffer restrictions and comment/quoted envelope decoys",
-        "oracle": "Independent behavioral scan-report witnesses added through the existing scanner API; validating the ordinary full production revert"
+        "oracle": "Ordinary full production revert OBSERVED: 20 tests pass on the branch; independent existing-scanner witnesses fail assertions after removal; tree restoration verified; no CI exception"
       }
     },
     {

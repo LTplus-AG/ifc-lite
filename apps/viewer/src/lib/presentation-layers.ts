@@ -76,10 +76,25 @@ export function resolvePresentationLayers(
     ['IfcOrientedEdge', ['EdgeElement']],
     ['IfcEdgeCurve', ['EdgeGeometry']],
     ['IfcVertexPoint', ['VertexGeometry']],
+    ['IfcSweptDiskSolid', ['Directrix']],
+    ['IfcSweptAreaSolid', ['SweptArea', 'EndSweptArea']],
+    ['IfcFixedReferenceSweptAreaSolid', ['Directrix']],
+    ['IfcSurfaceCurveSweptAreaSolid', ['Directrix']],
+    ['IfcSectionedSolid', ['Directrix', 'CrossSections']],
+    ['IfcSectionedSpine', ['SpineCurve', 'CrossSections']],
+    ['IfcSweptSurface', ['SweptCurve']],
+    ['IfcArbitraryClosedProfileDef', ['OuterCurve', 'InnerCurves']],
+    ['IfcArbitraryOpenProfileDef', ['Curve']],
+    ['IfcCompositeProfileDef', ['Profiles']],
+    ['IfcDerivedProfileDef', ['ParentProfile']],
+    ['IfcOffsetCurve', ['BasisCurve']],
+    ['IfcSurfaceCurve', ['Curve3D']],
+    ['IfcCurveSegment', ['ParentCurve']],
   ] as const;
   for (const [root, attributes] of ownership) {
     for (const type of expandTypeNamesToDescendants([root], store.schemaVersion)) {
-      containers.set(type.toUpperCase(), attributes);
+      const key = type.toUpperCase();
+      containers.set(key, [...new Set([...(containers.get(key) ?? []), ...attributes])]);
     }
   }
   const productClasses = new Set(productTypes.map(type => type.toUpperCase()));

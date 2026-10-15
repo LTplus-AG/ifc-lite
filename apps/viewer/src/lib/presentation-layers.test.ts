@@ -124,6 +124,81 @@ test('#7619 nested geometric sets and topology representations preserve item own
   assert.deepEqual(resolvePresentationLayers(store).find(layer => layer.expressId === 52)?.productIds, [3]);
 });
 
+function curveOperandFixture(operand: string): string {
+  return fixture
+    .replace("#20=IFCSHAPEREPRESENTATION(#90,'Body','MappedRepresentation',(#30,#31));",
+      "#20=IFCSHAPEREPRESENTATION(#90,'Body','SweptSolid',(#60));")
+    .replace("#21=IFCSHAPEREPRESENTATION(#90,'Body','MappedRepresentation',(#32));",
+      "#21=IFCSHAPEREPRESENTATION(#90,'Body','SweptSolid',(#61));")
+    .replace('#90=IFCAXIS2PLACEMENT3D($,$,$);', `
+#60=${operand};
+#61=${operand};
+#70=IFCPOLYLINE((#71,#72));
+#71=IFCCARTESIANPOINT((0.,0.,0.));
+#72=IFCCARTESIANPOINT((0.,0.,3.));
+#73=IFCPOLYLINE((#72,#74));
+#74=IFCCARTESIANPOINT((1.,0.,3.));
+#75=IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,#70);
+#76=IFCARBITRARYOPENPROFILEDEF(.CURVE.,$,#70);
+#77=IFCDERIVEDPROFILEDEF(.AREA.,$,#75,$,$);
+#78=IFCCOMPOSITEPROFILEDEF(.AREA.,$,(#77),$);
+#54=IFCPRESENTATIONLAYERASSIGNMENT('Shared curve',$,(#70),$);
+#55=IFCPRESENTATIONLAYERASSIGNMENT('Shared curve point',$,(#71),$);
+#90=IFCAXIS2PLACEMENT3D(#71,$,$);`);
+}
+
+test('#7619 sweep curve operands resolve shared products without leaking through placements', async t => {
+  const operands = [
+    'IFCSWEPTDISKSOLID(#70,0.1,$,$,$)',
+    'IFCSWEPTDISKSOLIDPOLYGONAL(#70,0.1,$,$,$,$)',
+    'IFCFIXEDREFERENCESWEPTAREASOLID(#78,#90,#73,$,$,$)',
+    'IFCSURFACECURVESWEPTAREASOLID(#78,#90,#73,$,$,$)',
+    'IFCSECTIONEDSOLIDHORIZONTAL(#73,(#78),(),.F.)',
+    'IFCSECTIONEDSPINE(#73,(#78),())',
+    'IFCEXTRUDEDAREASOLID(#78,#90,$,3.)',
+    'IFCREVOLVEDAREASOLID(#78,#90,$,1.)',
+    'IFCSURFACEOFLINEAREXTRUSION(#76,#90,$,3.)',
+    'IFCOFFSETCURVE3D(#70,1.,.F.,$)',
+    'IFCSURFACECURVE(#70,(),.CURVE3D.)',
+  ];
+  for (const operand of operands) {
+    await t.test(operand.split('(')[0], async () => {
+      const store = await parse(curveOperandFixture(operand));
+      assert.deepEqual(store.getEntity(12)?.attributes[2], [22]);
+      assert.equal(store.getEntity(33)?.attributes[1], 90,
+        'unrelated wall shares the assigned point only through a placement');
+      const layers = resolvePresentationLayers(store);
+      assert.deepEqual(layers.find(layer => layer.expressId === 54)?.productIds, [1, 2]);
+      assert.deepEqual(layers.find(layer => layer.expressId === 55)?.productIds, [1, 2]);
+      if (operand.includes('#73')) {
+        // Both inherited profile and subtype directrix ownership must survive.
+        const view = new MutablePropertyView(null, 'legacy');
+        view.setAttribute(54, 'AssignedItems', '#73');
+        assert.deepEqual(resolvePresentationLayers(store, view)
+          .find(layer => layer.expressId === 54)?.productIds, [1, 2]);
+      }
+    });
+  }
+});
+
+test('#7619 swept directrix membership follows edits and deleted curves', async () => {
+  const store = await parse(curveOperandFixture('IFCSWEPTDISKSOLID(#70,0.1,$,$,$)'));
+  const view = new MutablePropertyView(null, 'legacy');
+  view.setAttribute(60, 'Directrix', '#73');
+  assert.deepEqual(resolvePresentationLayers(store, view)
+    .find(layer => layer.expressId === 54)?.productIds, [2]);
+  view.deleteEntity(70);
+  assert.deepEqual(resolvePresentationLayers(store, view)
+    .find(layer => layer.expressId === 54)?.productIds, []);
+});
+
+test('#7619 IFC4X3 curve segments retain their parent curve ownership', async () => {
+  const store = await parse(curveOperandFixture('IFCCURVESEGMENT(.CONTINUOUS.,#90,0.,1.,#70)')
+    .replace("FILE_SCHEMA(('IFC4'))", "FILE_SCHEMA(('IFC4X3'))"));
+  assert.deepEqual(resolvePresentationLayers(store)
+    .find(layer => layer.expressId === 54)?.productIds, [1, 2]);
+});
+
 // These shape representations are owned exclusively through shape aspects:
 // neither the product definition shape nor the map names them directly.
 const aspectFixture = fixture.replace('#90=IFCAXIS2PLACEMENT3D', `

@@ -159,6 +159,7 @@ test('#7619 sweep curve operands resolve shared products without leaking through
     'IFCREVOLVEDAREASOLID(#78,#90,$,1.)',
     'IFCSURFACEOFLINEAREXTRUSION(#76,#90,$,3.)',
     'IFCOFFSETCURVE3D(#70,1.,.F.,$)',
+    'IFCOFFSETCURVE2D(#70,1.,.F.)',
     'IFCSURFACECURVE(#70,(),.CURVE3D.)',
   ];
   for (const operand of operands) {

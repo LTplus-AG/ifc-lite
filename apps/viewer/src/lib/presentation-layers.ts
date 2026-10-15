@@ -88,6 +88,9 @@ export function resolvePresentationLayers(
     ['IfcCompositeProfileDef', ['Profiles']],
     ['IfcDerivedProfileDef', ['ParentProfile']],
     ['IfcOffsetCurve', ['BasisCurve']],
+    // IFC2X3/IFC4 registries may put these directly under IfcCurve.
+    ['IfcOffsetCurve2D', ['BasisCurve']],
+    ['IfcOffsetCurve3D', ['BasisCurve']],
     ['IfcSurfaceCurve', ['Curve3D']],
     ['IfcCurveSegment', ['ParentCurve']],
   ] as const;

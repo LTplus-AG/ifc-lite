@@ -4,6 +4,10 @@
 //! Private evaluated-occurrence normalization; publication is one appearance plan.
 use std::collections::BTreeMap;
 use super::{evaluated_source, source::Source, *};
+// One total wire writer for every authored row (#7677, PROCESSING-APP-2): a
+// cloned Body or layer carries file-supplied attributes, so a `*` there must
+// serialize rather than reach a panic arm.
+use super::authored::wire;
 use ifc_lite_core::{AttributeValue as A, DecodedEntity};
 use rustc_hash::FxHashMap;
 use std::sync::Arc;
@@ -20,16 +24,6 @@ pub(super) struct Normalized {
     start: u32,
 }
 fn list(ids: &[u32]) -> A { A::List(ids.iter().copied().map(A::EntityRef).collect()) }
-// Authored, fixed-depth schema values only; never recursively walk source data.
-fn wire(value: &A) -> Value {
-    match value {
-        A::EntityRef(id) => reference(*id), A::Null => Value::Null,
-        A::String(s) => json!(s), A::Enum(s) => json!(format!(".{s}.")),
-        A::Integer(n) => json!(n), A::Float(n) => json!(n),
-        A::List(items) => json!(items.iter().map(wire).collect::<Vec<_>>()),
-        _ => unreachable!("fixed authored values"),
-    }
-}
 pub(super) fn authored(plan: &mut AppearancePlan, entities: &mut FxHashMap<u32, Arc<DecodedEntity>>,
     ty: IfcType, attributes: Vec<A>) -> u32 {
     let id = add(plan,ty.name(),attributes.iter().map(wire).collect());

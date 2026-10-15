@@ -155,16 +155,21 @@ pub fn export_glb_from_meshes(
     for i in 0..n {
         let vc = vertex_counts[i] as usize;
         let ic = index_counts.get(i).copied().unwrap_or(0) as usize;
-        if (vbase + vc) * 3 > positions.len() || ibase + ic > indices.len() {
+        // Checked: `usize` is 32 bits on wasm32, where a wrapped end would pass
+        // the bounds test and then panic on the slice (#7677).
+        let (Some(vend), Some(iend)) = (vbase.checked_add(vc).and_then(|v| v.checked_mul(3)), ibase.checked_add(ic)) else {
+            break;
+        };
+        if vend > positions.len() || iend > indices.len() {
             break; // malformed counts — stop rather than panic
         }
-        let pslice = &positions[vbase * 3..(vbase + vc) * 3];
-        let nslice: &[f32] = if normals.len() >= (vbase + vc) * 3 {
-            &normals[vbase * 3..(vbase + vc) * 3]
+        let pslice = &positions[vbase * 3..vend];
+        let nslice: &[f32] = if normals.len() >= vend {
+            &normals[vbase * 3..vend]
         } else {
             &[]
         };
-        let islice = &indices[ibase..ibase + ic];
+        let islice = &indices[ibase..iend];
         let color = [
             colors.get(i * 4).copied().unwrap_or(0.8),
             colors.get(i * 4 + 1).copied().unwrap_or(0.8),

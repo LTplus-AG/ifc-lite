@@ -1,6 +1,6 @@
 # Independent adversarial review — #7619
 
-Final source reviewed: `ddf0fc50e0cb4be0367c9ed2d6e01159fc1b9840`.
+Final source reviewed: `e9d5c0cf28483e59ae21bc47b4d040ac16065e30`.
 Base: `f1d7254b73`. Review date: 2026-10-15.
 
 Verdict: no unresolved correctness blocker or known reproduced omission remains
@@ -67,8 +67,15 @@ separately verified. Heavy validation was coordinated with the lead agent.
   another model loads; source ownership never falls back to an unrelated active
   store. Mounted progressive cases verify busy/search-empty behavior, genuine
   completed emptiness, terminal models, available-product selection during sibling
-  hydration and held selection after completion. Reveal attempts use the current
-  partial tree and readiness changes trigger a retry.
+  hydration and held selection after completion. Both initially pending models
+  explicitly keep the tree busy until metadata settles.
+- An unresolved outside-selection target is keyed by ID, selection revision and
+  grouping, and retried only against a changed tree lookup. Resolving retires the
+  request permanently; later geometry or sibling metadata cannot reopen a manual
+  collapse. Selection/deselection/tree-click activation clears stale requests.
+  Mounted regressions cover held selection before either metadata store exists,
+  arrival while a sibling stays pending, no redispatch, later manual collapse,
+  and cancellation by a different tree selection.
 
 ## Evidence and validation provenance
 
@@ -83,7 +90,7 @@ browser; the lead agent performed the interactions recorded in [README](README.m
 
 The lead agent reported passing focused tests, root typecheck/test-file audit,
 lint, production build and unchanged bundle ceilings at preceding source revisions.
-Final shared-store ID-space validation was running when this report was updated;
+Final bounded-reveal validation was running when this report was updated;
 final commands, counts, browser results and bundle measurements belong in the
 README and raw evidence. This review does not claim independent heavy-test runs.
 Browser use of the fetched published WASM runtime and the local regeneration

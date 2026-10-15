@@ -29,11 +29,12 @@
     {
       "id": "DX2",
       "title": "Supported shared headless entry point",
-      "status": "in_progress",
+      "status": "in_review",
       "acceptance": "Open/query/edit/export/close through a documented library API; CLI and MCP reuse common implementation with existing behavior preserved",
       "pullRequests": [
         "https://github.com/LTplus-AG/ifc-lite/pull/7634",
-        "https://github.com/LTplus-AG/ifc-lite/pull/7636"
+        "https://github.com/LTplus-AG/ifc-lite/pull/7636",
+        "https://github.com/LTplus-AG/ifc-lite/pull/7646"
       ],
       "subtasks": [
         {
@@ -74,7 +75,7 @@
           "removal": "Retired both CLI query-overlay modules; CLI backend now 172 lines; no retired helper references in current consumers",
           "guards": "Raw-access guard and API snapshot check passed; module-size budget retired",
           "knip": "Ran; existing repository-wide findings remain, with no retired query helper references",
-          "oracle": "Ordinary full revert against shared-session parent OBSERVED: the existing CLI context returns stale attribute/query values and the new fixture assertion fails; restoration verified"
+          "oracle": "Ordinary full revert against shared-session parent OBSERVED: the existing CLI context returns stale attributes and the fixture assertion fails; restoration verified"
         }
       }
     },

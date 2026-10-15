@@ -10,6 +10,7 @@ use super::{DropAxis, ImplicitPoint, Lpi, Sign, Tpi};
 use num_rational::BigRational;
 use num_traits::{Signed, Zero};
 
+/// Invariant: kernel operands are finite (`arrangement::Tri`, #7677).
 #[inline]
 fn r(x: f64) -> BigRational {
     BigRational::from_float(x).expect("kernel: non-finite coordinate reached the exact predicate")
@@ -266,30 +267,29 @@ pub fn lpi_compare_along(l1: &Lpi, l2: &Lpi, u: [f64; 3]) -> Sign {
     super::assemble_sign(sign_of(&num), &[sign_of(&d1), sign_of(&d2)])
 }
 
-/// λ/d of an implicit point (Lpi or Tpi). Callers dispatch — never `Explicit`.
+/// λ/d of ANY point; an `Explicit` coordinate is `(λ=coord, d=1)` (#7677).
 pub(crate) fn lambda_of(p: &ImplicitPoint) -> (V3, BigRational) {
     match p {
         ImplicitPoint::Lpi(l) => lpi_lambda(l),
         ImplicitPoint::Tpi(t) => tpi_lambda(t),
-        ImplicitPoint::Explicit(_) => unreachable!("lambda_of: Explicit point"),
+        ImplicitPoint::Explicit(e) => (vec(*e), r(1.0)),
     }
 }
 
-/// λ/d of ANY point: an `Explicit` coordinate is `(λ=coord, d=1)`. Inline here so
-/// `cmp_along` never routes an `Explicit` through `lambda_of`'s `unreachable!`.
-fn lambda_or_explicit(p: &ImplicitPoint) -> (V3, BigRational) {
-    match p {
-        ImplicitPoint::Explicit(e) => (vec(*e), r(1.0)),
-        _ => lambda_of(p),
-    }
+/// Exact `orient3d` over any explicit/implicit mix in any slot, on materialised
+/// points (`point_of` is total): [`super::predicates::orient3d`]'s fallback
+/// for configurations the arrangement never builds (#7677).
+pub fn orient3d_points(a: &ImplicitPoint, b: &ImplicitPoint, c: &ImplicitPoint, d: &ImplicitPoint) -> Sign {
+    let [a, b, c, d] = [a, b, c, d].map(point_of);
+    sign_of(&det3(&sub3(&a, &d), &sub3(&b, &d), &sub3(&c, &d)))
 }
 
 /// Exact sign of `(a − b)·u` — order two points along direction `u`, over ANY
 /// Explicit/Lpi/Tpi mix (generalises [`lpi_compare_along`]). With `a=λa/da`,
 /// `b=λb/db`: `(a−b)·u = ((λa·u)·db − (λb·u)·da)/(da·db)`.
 pub fn cmp_along(a: &ImplicitPoint, b: &ImplicitPoint, u: [f64; 3]) -> Sign {
-    let (la, da) = lambda_or_explicit(a);
-    let (lb, db) = lambda_or_explicit(b);
+    let (la, da) = lambda_of(a);
+    let (lb, db) = lambda_of(b);
     let ur = vec(u);
     let dot_a = &la[0] * &ur[0] + &la[1] * &ur[1] + &la[2] * &ur[2];
     let dot_b = &lb[0] * &ur[0] + &lb[1] * &ur[1] + &lb[2] * &ur[2];

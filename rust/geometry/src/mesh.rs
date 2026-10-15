@@ -854,9 +854,12 @@ impl Mesh {
         }
         let lo = [min[0] - pad, min[1] - pad, min[2] - pad];
         let hi = [max[0] + pad, max[1] + pad, max[2] + pad];
+        // An out-of-range index is not inside, so its triangle is dropped
+        // rather than indexed past the end (#7677, KERNEL-28): `Mesh` has pub
+        // fields, so a caller-built mesh can carry one.
         let inside = |i: u32| -> bool {
             let b = i as usize * 3;
-            let (x, y, z) = (self.positions[b], self.positions[b + 1], self.positions[b + 2]);
+            let Some(&[x, y, z]) = self.positions.get(b..b + 3) else { return false };
             x >= lo[0] && x <= hi[0] && y >= lo[1] && y <= hi[1] && z >= lo[2] && z <= hi[2]
         };
         let tri_count = self.indices.len() / 3;

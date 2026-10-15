@@ -40,6 +40,10 @@ pub use self::boolean::{
     boolean, boolean_manifest, boolean_topology_hash, boolean_with_conformity, box_mesh, cube_mesh,
     difference_all, difference_all_lenient, difference_all_lenient_with_conformity, union_all,
 };
+/// An operand triangle. Coordinates must be FINITE: the exact tier has no
+/// value for `inf`/`NaN` and panics on one. Large finite coordinates are
+/// fine (#7677). Every in-crate producer filters: `mesh_bridge::mesh_to_tris`
+/// drops non-finite triangles and `zone_split` skips non-finite zones.
 pub type Tri = [[f64; 3]; 3];
 
 /// Boolean operation.

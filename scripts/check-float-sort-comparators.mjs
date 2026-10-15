@@ -18,32 +18,39 @@
  * input-admission boundary where one exists; otherwise order with
  * `ifc_lite_geometry::cmp_f64_nan_last` (identical to `partial_cmp` for
  * numbers, NaN last) or `f64::total_cmp`. rust/AGENTS.md forbids a blanket
- * clippy rewrite, so this gate names the spelling instead of rewriting it.
+ * clippy rewrite, so this gate names the call instead of rewriting it.
  *
  * Run: `node scripts/check-float-sort-comparators.mjs`
  *      (also `pnpm check:float-sort-comparators`).
  *
  * ## What it flags
  *
- *   equal-fallback -- `.partial_cmp(..)` followed by `.unwrap_or(<Ordering>)`
- *     (Equal, Less or Greater, any path prefix, across line breaks). Flagged in
- *     every `.rs` file, tests included: a test copy is how the spelling spreads.
- *   unwrap         -- `.partial_cmp(..)` followed by `.unwrap()` or `.expect(`
- *     in PRODUCTION code. Test files (`tests/`, `*_tests.rs`, `tests.rs`,
- *     `benches/`) may panic on NaN, because a panic there is a test failure.
+ * EVERY use of `partial_cmp` in a production `.rs` file that is not a
+ * definition (`fn partial_cmp`): method calls, UFCS (`PartialOrd::partial_cmp`,
+ * `f64::partial_cmp`, `<f64 as PartialOrd>::partial_cmp`), a path passed as a
+ * value, and a `use ... partial_cmp as x` rename. Matching the bad *fallback*
+ * instead (`unwrap_or(Equal)`) was tried first and missed ordinary spellings:
+ * `unwrap_or_else(|| Equal)`, `map_or(Equal, ..)`, `match .. None => Equal`,
+ * `if let .. else { Equal }`, a renamed `Ordering`, deeply nested arguments
+ * (#7706 review). The call itself is rare in production code, so naming it is
+ * cheap: a legitimate use, such as the helper itself or a `match` that handles
+ * `None` on purpose, takes an allowlist row with a reason.
  *
- * Comments and string literals are blanked before matching, so prose that
- * quotes the pattern is not a hit. A `match` on `partial_cmp`'s `Option` is
- * not flagged: it handles `None` explicitly.
+ * Test files (`tests/`, `benches/`, `tests.rs`, `*_tests.rs`) are not
+ * flagged: a panic there is a test failure, not an abort.
+ *
+ * Comments and string, raw-string and char literals are blanked before
+ * matching, so prose that quotes the call is not a hit.
  *
  * ## Allowlist and vacuity
  *
  * `scripts/float-sort-comparator-allowlist.txt` holds `<count> <path>  #
  * reason` rows. A file's hits must equal its row's count: more fails, fewer
- * fails as stale, so a fixed site forces its row out. The scan fails loudly
+ * fails as stale, so a removed use forces its row out. The scan fails loudly
  * when a root is missing, when it reads fewer than FILE_FLOOR files, or when
- * it sees fewer than PARTIAL_CMP_FLOOR `partial_cmp` calls (a broken walker
- * or comment stripper would otherwise report a clean tree).
+ * it sees fewer than PARTIAL_CMP_FLOOR `partial_cmp` uses across all files,
+ * tests included (a broken walker or comment stripper would otherwise report a
+ * clean tree).
  */
 
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
@@ -58,22 +65,9 @@ export const FILE_FLOOR = 500;
 export const PARTIAL_CMP_FLOOR = 30;
 const SKIP_DIRS = new Set(['target', 'node_modules', '.git', 'pkg']);
 
-/** One level of nested parentheses inside the `partial_cmp(...)` argument. */
-const ARGS = String.raw`\((?:[^()]|\([^()]*\))*\)`;
-const ORDERING = String.raw`(?:(?:std|core)::)?(?:cmp::)?(?:Ordering::)?(?:Equal|Less|Greater)`;
-
-export const PATTERNS = [
-  {
-    name: 'equal-fallback',
-    re: new RegExp(String.raw`\.partial_cmp\s*${ARGS}\s*\.unwrap_or\s*\(\s*${ORDERING}\s*\)`, 'g'),
-    productionOnly: false,
-  },
-  {
-    name: 'unwrap',
-    re: new RegExp(String.raw`\.partial_cmp\s*${ARGS}\s*\.(?:unwrap\s*\(\s*\)|expect\s*\()`, 'g'),
-    productionOnly: true,
-  },
-];
+/** A use of `partial_cmp` that is not its definition (`fn partial_cmp`). */
+const USE = /\bpartial_cmp\b/g;
+const DEFINITION = /\bfn\s+$/;
 
 /** Test-only sources, where a NaN panic is a test failure, not an abort. */
 export function isTestPath(path) {
@@ -130,19 +124,21 @@ export function stripComments(src) {
   return out;
 }
 
-/** Every hit in one file: `{ path, line, pattern, text }`. */
+/** Every hit in one file: `{ path, line, pattern, text }`; `uses` counts all. */
 export function scanSource(path, src) {
   const code = stripComments(src);
   const test = isTestPath(path);
+  const lines = code.split('\n');
   const hits = [];
-  for (const p of PATTERNS) {
-    if (p.productionOnly && test) continue;
-    for (const m of code.matchAll(p.re)) {
-      const line = code.slice(0, m.index).split('\n').length;
-      hits.push({ path, line, pattern: p.name, text: m[0].replace(/\s+/g, ' ') });
-    }
+  let uses = 0;
+  for (const m of code.matchAll(USE)) {
+    if (DEFINITION.test(code.slice(Math.max(0, m.index - 16), m.index))) continue;
+    uses++;
+    if (test) continue;
+    const line = code.slice(0, m.index).split('\n').length;
+    hits.push({ path, line, pattern: 'partial_cmp', text: lines[line - 1].trim() });
   }
-  return { hits, partialCmps: (code.match(/\.partial_cmp\s*\(/g) ?? []).length };
+  return { hits, partialCmps: uses };
 }
 
 function walk(dir, out) {
@@ -194,7 +190,7 @@ export function runCheck(root, {
     if (r.hits.length) byPath.set(path, r.hits);
   }
   if (partialCmps < partialCmpFloor) {
-    errors.push(`saw only ${partialCmps} partial_cmp calls (floor ${partialCmpFloor}); is the scanner broken?`);
+    errors.push(`saw only ${partialCmps} partial_cmp uses (floor ${partialCmpFloor}); is the scanner broken?`);
   }
   const violations = [];
   for (const [path, hits] of byPath) {
@@ -216,9 +212,10 @@ function main() {
   for (const v of violations) {
     console.error(
       `${v.path}:${v.line}: ${v.pattern}: ${v.text}\n` +
-        '  not a total order on NaN; sort/min/max may panic (abort in wasm). Use\n' +
-        '  ifc_lite_geometry::cmp_f64_nan_last / f64::total_cmp, or reject NaN at the\n' +
-        '  input boundary (#7674).',
+        '  partial_cmp is not a total order on NaN; a sort/min/max built on it may\n' +
+        '  panic (abort in wasm). Use ifc_lite_geometry::cmp_f64_nan_last or\n' +
+        '  f64::total_cmp, reject NaN at the input boundary, or (for a use that\n' +
+        '  handles None on purpose) add an allowlist row with a reason (#7674).',
     );
   }
   for (const s of stale) {
@@ -232,7 +229,7 @@ function main() {
     return;
   }
   console.log(
-    `float sort comparator gate passed (${scanned} .rs files, ${partialCmps} partial_cmp calls, ` +
+    `float sort comparator gate passed (${scanned} .rs files, ${partialCmps} partial_cmp uses, ` +
       `${allowlist.size} allowlisted file(s))`,
   );
 }

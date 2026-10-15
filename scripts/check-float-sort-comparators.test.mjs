@@ -32,32 +32,59 @@ const REAL_SITES = [
   'axes.sort_by(|&a, &b| {\n    mag[ib]\n        .partial_cmp(&mag[ia])\n        .unwrap_or(Ordering::Equal)\n        .then(ia.cmp(&ib))\n});',
   // rust/export/src/rooms.rs, nested call in the argument.
   'order.sort_by(|&a, &b| area_of(b).partial_cmp(&area_of(a)).unwrap_or(std::cmp::Ordering::Equal));',
+  // rust/geometry/src/router/voids/geom.rs (ROUTER-30).
+  '(0..3).min_by(|&a, &b| half[a].partial_cmp(&half[b]).unwrap()).unwrap()',
 ];
 
-test('flags every real #7674 spelling', () => {
-  for (const src of REAL_SITES) assert.deepEqual(hits(src), ['equal-fallback'], src);
+test('flags every real #7674 spelling in production code', () => {
+  for (const src of REAL_SITES) assert.deepEqual(hits(src), ['partial_cmp'], src);
 });
 
-test('flags ROUTER-30 partial_cmp().unwrap() and .expect() in production code', () => {
-  const src = '(0..3).min_by(|&a, &b| half[a].partial_cmp(&half[b]).unwrap()).unwrap()';
-  assert.deepEqual(hits(src), ['unwrap']);
-  assert.deepEqual(hits('xs.sort_by(|a, b| a.partial_cmp(b).expect("finite"));'), ['unwrap']);
+/** The spellings the first, fallback-matching version of the gate missed (#7706 review). */
+const EVASIONS = [
+  'v.sort_by(|a, b| dist(a, c).partial_cmp(&dist(b, c.centre())).unwrap_or(Ordering::Equal));',
+  'a.partial_cmp(&(b.x + f(g(h)))).unwrap_or(Equal)',
+  'v.sort_by(|a, b| a.partial_cmp(b).unwrap_or_else(|| Ordering::Equal));',
+  'v.sort_by(|a, b| a.partial_cmp(b).map_or(Ordering::Equal, |o| o));',
+  'v.sort_by(|a, b| match a.partial_cmp(b) { Some(o) => o, None => Ordering::Equal });',
+  'v.sort_by(|a, b| if let Some(o) = a.partial_cmp(b) { o } else { Equal });',
+  'use std::cmp::Ordering as O;\nv.sort_by(|a, b| a.partial_cmp(b).unwrap_or(O::Equal));',
+  'v.sort_by(|a, b| unsafe { a.partial_cmp(b).unwrap_unchecked() });',
+  'let eq = Ordering::Equal;\nv.sort_by(|a, b| a.partial_cmp(b).unwrap_or(eq));',
+  'v.sort_by(|a, b| PartialOrd::partial_cmp(a, b).unwrap_or(Equal));',
+  'v.sort_by(|a, b| f64::partial_cmp(a, b).unwrap());',
+  'v.sort_by(|a, b| <f64 as PartialOrd>::partial_cmp(a, b).unwrap());',
+  'v.sort_by(|a, b| std::cmp::PartialOrd::partial_cmp(a, b).expect("x"));',
+  'let cmp = f64::partial_cmp;\nv.sort_by(|a, b| cmp(a, b).unwrap());',
+  'use std::cmp::PartialOrd::partial_cmp as pc;',
+];
+
+test('flags the evasions of a fallback-matching gate', () => {
+  for (const src of EVASIONS) assert.ok(hits(src).length >= 1, src);
 });
 
-test('test files may unwrap, but not use the Equal fallback', () => {
-  const unwrap = 'v.sort_by(|a, b| a.partial_cmp(b).unwrap());';
-  const equal = 'v.sort_by(|a, b| a.partial_cmp(b).unwrap_or(Equal));';
+test('counts every use in a file, with its line', () => {
+  const src = 'fn f() {\n    a.partial_cmp(&b);\n    f64::partial_cmp(&a, &b);\n}';
+  const found = scanSource(PROD, src);
+  assert.deepEqual(found.hits.map((h) => h.line), [2, 3]);
+  assert.equal(found.partialCmps, 2);
+});
+
+test('a partial_cmp definition is not a use', () => {
+  const src = 'impl PartialOrd for X {\n    fn partial_cmp(&self, o: &Self) -> Option<Ordering> { Some(self.cmp(o)) }\n}';
+  assert.deepEqual(hits(src), []);
+  assert.deepEqual(hits('fn  partial_cmp(&self) {}'), []);
+});
+
+test('test files are not flagged, but their uses still count toward the floor', () => {
+  const src = 'v.sort_by(|a, b| a.partial_cmp(b).unwrap_or(Equal));';
   for (const path of ['rust/geometry/tests/a.rs', 'rust/geometry/src/a_tests.rs', 'rust/clash/src/tests.rs', 'rust/x/benches/b.rs']) {
     assert.ok(isTestPath(path), path);
-    assert.deepEqual(hits(unwrap, path), [], path);
-    assert.deepEqual(hits(equal, path), ['equal-fallback'], path);
+    assert.deepEqual(hits(src, path), [], path);
+    assert.equal(scanSource(path, src).partialCmps, 1, path);
   }
   assert.ok(!isTestPath('rust/geometry/src/contests.rs'));
-});
-
-test('flags Less and Greater fallbacks too', () => {
-  assert.deepEqual(hits('a.partial_cmp(&b).unwrap_or(Ordering::Less)'), ['equal-fallback']);
-  assert.deepEqual(hits('a.partial_cmp(&b).unwrap_or(cmp::Ordering::Greater)'), ['equal-fallback']);
+  assert.ok(!isTestPath('rust/geometry/src/tests_util.rs'));
 });
 
 test('does not flag the replacements', () => {
@@ -65,21 +92,21 @@ test('does not flag the replacements', () => {
     'xs.sort_by(|a, b| cmp_f64_nan_last(*a, *b));',
     'xs.sort_by(f64::total_cmp);',
     'xs.sort_by(|a, b| a.total_cmp(b));',
-    'match a.partial_cmp(&b) { Some(o) => o, None => a.is_nan().cmp(&b.is_nan()) }',
-    'a.partial_cmp(&b).unwrap_or_else(|| a.is_nan().cmp(&b.is_nan()))',
+    'let partial_cmp_count = 3;',
     'x.unwrap_or(Ordering::Equal)',
   ]) {
     assert.deepEqual(hits(src), [], src);
   }
 });
 
-test('ignores the pattern in comments and string literals', () => {
+test('ignores the call in comments and string literals', () => {
   const src = [
     '//! `a.partial_cmp(b).unwrap_or(Ordering::Equal)` is not a total order.',
     '// x.partial_cmp(&y).unwrap()',
-    '/* a.partial_cmp(&b).unwrap_or(Equal) /* nested */ still a comment */',
-    'let s = "a.partial_cmp(&b).unwrap_or(Equal) // not a comment";',
-    'let r = r#"a.partial_cmp(&b).unwrap() "quoted" "#;',
+    '/* a.partial_cmp(&b) /* nested */ still a comment */',
+    'let s = "a.partial_cmp(&b) // not a comment";',
+    'let r = r#"a.partial_cmp(&b) "quoted" "#;',
+    "let c = 'p';",
   ].join('\n');
   assert.deepEqual(hits(src), []);
 });
@@ -143,7 +170,7 @@ test('runCheck fails loudly instead of passing vacuously', () => {
     const small = runCheck(dir, { roots: ['rust'], fileFloor: 5, partialCmpFloor: 0 });
     assert.ok(small.errors.some((e) => /suspiciously small/.test(e)));
     const blind = runCheck(dir, { roots: ['rust'], fileFloor: 0, partialCmpFloor: 1 });
-    assert.ok(blind.errors.some((e) => /partial_cmp calls/.test(e)));
+    assert.ok(blind.errors.some((e) => /partial_cmp uses/.test(e)));
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

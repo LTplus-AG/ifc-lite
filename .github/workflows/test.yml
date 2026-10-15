@@ -1321,9 +1321,9 @@ jobs:
         run: node --test scripts/check-refwalk-guards.test.mjs scripts/lib/refwalk-classify.test.mjs
       - name: Check for unguarded entity-reference walks
         run: node scripts/check-refwalk-guards.mjs
-      # #7674: `partial_cmp(..).unwrap_or(Ordering::Equal)` is not a total
-      # order on NaN, and a Rust >= 1.81 sort may panic on it -- an abort in the
-      # wasm worker. Five sites were fixed by hand; this stops a sixth. Its own
+      # #7674: a comparator built on `partial_cmp` is not a total order on NaN,
+      # and a Rust >= 1.81 sort may panic on it -- an abort in the wasm worker.
+      # Every production `partial_cmp` use needs an allowlist row. Its own
       # tests run first so a broken detector fails rather than reads clean.
       - name: Check float sort comparator gate's own tests
         run: node --test scripts/check-float-sort-comparators.test.mjs

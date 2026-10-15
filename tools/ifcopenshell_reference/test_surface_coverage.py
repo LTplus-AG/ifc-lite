@@ -92,6 +92,16 @@ class FiniteCoverage(unittest.TestCase):
             (folder/'oracle-no-void-raw-mesh.json').write_bytes(content+b' ')
             with self.assertRaisesRegex(ValueError,'Oracle no-void hash'):
                 C.cached_oracle(folder,'fixture')
+            (folder/'oracle-no-void-raw-mesh.json').write_bytes(b'null')
+            for expected,message in [(None,'Oracle no-void hash'),
+                                     (hashlib.sha256(b'null').hexdigest(),'Malformed oracle no-void mesh')]:
+                with self.subTest(nullHash=expected):
+                    recorded = dict(receipt)
+                    if expected is not None:
+                        recorded['oracle_no_void_raw_mesh_sha256'] = expected
+                    (folder/'receipt.json').write_text(json.dumps(recorded))
+                    with self.assertRaisesRegex(ValueError,message):
+                        C.cached_oracle(folder,'fixture')
 
     def test_7661_reporter_cli_default_fixture(self):
         # An actual reporter mesh in viewer coordinates exercises default

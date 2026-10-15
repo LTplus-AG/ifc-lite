@@ -139,9 +139,10 @@ def cached_oracle(path, fixture_hash):
     require(isinstance(expected,str) and digest == expected,'Oracle mesh hash missing or mismatch')
     no_void_path = path/'oracle-no-void-raw-mesh.json'
     no_void, no_void_digest = read(no_void_path) if no_void_path.exists() else (None,None)
-    if no_void is not None:
+    if no_void_digest is not None:
         require(no_void_digest == receipt.get('oracle_no_void_raw_mesh_sha256'),'Oracle no-void hash missing or mismatch')
-    return mesh_data(raw), mesh_data(no_void) if no_void is not None else None, {'oracle_cache_receipt_sha256': receipt_hash,
+        require(isinstance(no_void,dict),'Malformed oracle no-void mesh')
+    return mesh_data(raw), mesh_data(no_void) if no_void_digest is not None else None, {'oracle_cache_receipt_sha256': receipt_hash,
             'oracle_file_sha256': digest, 'oracle_no_void_file_sha256':no_void_digest, 'cache_receipt': receipt}, raw, no_void
 
 

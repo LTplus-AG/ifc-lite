@@ -283,7 +283,7 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
   // Get all elements for a node (handles type groups, ifc-type, unified storeys, single storeys, model contributions, and elements)
   const getNodeElements = useCallback((node: TreeNode): number[] => {
     if (node.type === 'type-group' || node.type === 'ifc-type' || node.type === 'material-group' ||
-        node.type === 'group' || node.type === 'group-member') {
+        node.type === 'group' || node.type === 'presentation-layer' || node.type === 'group-member') {
       // GlobalIds are pre-stored on the node during tree construction — O(1).
       // For 'group' rows these are the RESOLVED member geometry ids (#1622).
       return node.globalIds;

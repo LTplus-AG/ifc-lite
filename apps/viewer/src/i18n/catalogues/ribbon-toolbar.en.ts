@@ -112,6 +112,8 @@ export const ribbonToolbarEn = {
   'ribbon.elements.materials': 'Materials',
   'ribbon.elements.materialsTooltip': 'Displays materials of the model',
   'ribbon.elements.groups': 'Groups',
+  'ribbon.elements.presentationLayers': 'Presentation layers',
+  'ribbon.elements.presentationLayersTooltip': 'Displays IFC presentation layer assignments',
   'ribbon.elements.groupsTooltip': 'Displays groups of the model',
   'ribbon.elements.visibilityGroup': 'Visibility',
   'ribbon.elements.filter': 'Filter',

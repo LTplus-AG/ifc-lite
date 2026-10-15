@@ -23,6 +23,7 @@ import {
   type GroupSubFilter,
   type GeorefMutationsByModel,
 } from './treeDataBuilder';
+import { buildPresentationLayerTree } from './presentationLayerTree';
 import { findNodePath } from './findNodePath';
 
 const EXPAND_ALL: ExpansionLookup = { has: () => true };
@@ -66,6 +67,9 @@ export function buildTreeForGrouping(
   }
   if (groupingMode === 'material') {
     return buildMaterialTree(models, ifcDataStore, expansion, isMultiModel, geometricIds, geometryReadyModelIds, materialSourceStores);
+  }
+  if (groupingMode === 'presentation-layers') {
+    return buildPresentationLayerTree(models, ifcDataStore, expansion, geometricIds, geometryReadyModelIds, treeOverlay);
   }
   if (groupingMode === 'groups') {
     return buildGroupTree(models, ifcDataStore, expansion, isMultiModel, geometricIds, groupFilter, treeOverlay);

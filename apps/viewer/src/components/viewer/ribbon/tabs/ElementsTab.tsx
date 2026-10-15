@@ -6,6 +6,7 @@
  * Ribbon · Elements tab — selection actions and class visibility.
  */
 
+import { Layers3 } from 'lucide-react';
 import { useCallback, useContext } from 'react';
 import { ClassVisibility, CopyGuid, ElementTooltips, EntityActions, FocusSelected, HideSelected, IsolateSelected, Search, Select, DisplayAll, Spatial, Class, Type, Material, Group } from '@/icons';
 import { DropdownMenu, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -150,6 +151,11 @@ export function ElementsTab() {
           commandId="elements:groups"
           icon={Group}
           active={hierarchyMode === 'groups'}
+        />
+        <RibbonCommandLargeButton
+          commandId="elements:presentation-layers"
+          icon={Layers3}
+          active={hierarchyMode === 'presentation-layers'}
         />
       </RibbonGroup>
       <RibbonGroupDivider />

@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { useState } from 'react';
-import { ChevronRight, Layers, Eye, EyeOff, FileBox } from 'lucide-react';
+import { ChevronRight, Layers, Eye, EyeOff, FileBox, Layers3 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { useTranslation } from '@/i18n';
@@ -28,6 +28,7 @@ function getIfcIconCodepoint(ifcType: string | undefined): string {
 const NODE_TYPE_ICONS: Record<string, React.ElementType> = {
   'unified-storey': Layers,
   'model-header': FileBox,
+  'presentation-layer': Layers3,
 };
 
 /** Indent per tree level. 12 px (was 16) still reads as a hierarchy and gives
@@ -117,6 +118,7 @@ export function HierarchyNode({
     node.type === 'unified-storey' ||
     node.type === 'type-group' ||
     node.type === 'material-group' ||
+    node.type === 'presentation-layer' ||
     node.type === 'group' ||
     node.type === 'other-group'
       ? 'font-medium text-zinc-900 dark:text-zinc-100'
@@ -314,7 +316,7 @@ export function HierarchyNode({
                     onVisibilityToggle(node);
                   }}
                   aria-label={
-                    node.isVisible
+                    !nodeHidden
                       ? t('hierarchy.node.hideAriaLabel', { name: node.name })
                       : t('hierarchy.node.showAriaLabel', { name: node.name })
                   }
@@ -328,7 +330,7 @@ export function HierarchyNode({
                     nodeHidden && 'opacity-100'
                   )}
                 >
-                  {node.isVisible ? (
+                  {!nodeHidden ? (
                     <Eye className="h-3 w-3 text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100" />
                   ) : (
                     <EyeOff className="h-3 w-3 text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100" />
@@ -337,7 +339,7 @@ export function HierarchyNode({
               </TooltipTrigger>
               <TooltipContent>
                 <p className="text-xs">
-                  {node.isVisible ? t('hierarchy.node.hide') : t('hierarchy.node.show')}
+                  {!nodeHidden ? t('hierarchy.node.hide') : t('hierarchy.node.show')}
                 </p>
               </TooltipContent>
             </Tooltip>

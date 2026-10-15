@@ -5,8 +5,7 @@
 import { useState, useCallback, useRef, useMemo } from 'react';
 import { useTranslation } from '@/i18n';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { Search, Building2, Layers, LayoutTemplate, FileBox, GripHorizontal, Palette, Network } from 'lucide-react';
-import type { IfcDataStore } from '@ifc-lite/parser';
+import { Search, Building2, Layers, LayoutTemplate, FileBox, GripHorizontal, Palette, Network, Layers3 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -24,7 +23,7 @@ import type { TreeNode } from './hierarchy/types';
 import { useHierarchyTree } from './hierarchy/useHierarchyTree';
 import { useRevealSelection } from './hierarchy/useRevealSelection';
 import { useHierarchySplit } from './hierarchy/useHierarchySplit';
-import { effectiveGroupAssignments, effectiveGroupMembers } from './hierarchy/effectiveGroupEntities';
+import { effectiveRowType, overlayViewFor } from './hierarchy/treeOverlay';
 import { computeTypeIsolationLabel } from './hierarchy/typeIsolationLabel';
 import { HierarchyNode } from './hierarchy/HierarchyNode';
 import type { AriaTreeAttrs } from './hierarchy/ariaTreeAttrs';
@@ -331,22 +330,21 @@ export function HierarchyPanel() {
     if (action === 'isolate') {
       const elements = getNodeElements(node);
       if (elements.length === 0) return;
-      if (node.type === 'group') {
-        // Edited assignments may contain hidden-by-default spaces or zones.
-        const modelId = node.modelIds[0] ?? 'legacy';
-        const dataStore = (models.get(modelId)?.ifcDataStore ?? ifcDataStore) as IfcDataStore | null | undefined;
-        if (dataStore && node.entityExpressId != null) {
-          const view = useViewerStore.getState().mutationViews.get(modelId);
-          const members = effectiveGroupMembers(
-            dataStore, node.entityExpressId, view, effectiveGroupAssignments(dataStore, view),
-          );
-          if (!typeVisibility.spaces && members.some((member) => member.type === 'IfcSpace')) {
-            toggleTypeVisibility('spaces');
-          }
-          if (!typeVisibility.spatialZones && members.some((member) => member.type === 'IfcSpatialZone')) {
-            toggleTypeVisibility('spatialZones');
-          }
-        }
+      if (node.type === 'group' || node.type === 'presentation-layer') {
+        // Explicit membership isolation also reveals hidden-by-default spatial
+        // products. Resolve actual members, rather than substituted mesh parts.
+        const state = useViewerStore.getState();
+        const memberTypes = new Set((node.memberGlobalIds ?? []).flatMap((globalId) => {
+          const ref = resolveEntityRef(globalId);
+          if (!ref) return [];
+          const dataStore = models.get(ref.modelId)?.ifcDataStore ?? ifcDataStore;
+          if (!dataStore) return [];
+          const view = overlayViewFor((id) => state.mutationViews.get(id), ref.modelId);
+          const type = effectiveRowType(dataStore, view, ref.expressId);
+          return type ? [type] : [];
+        }));
+        if (!typeVisibility.spaces && memberTypes.has('IfcSpace')) toggleTypeVisibility('spaces');
+        if (!typeVisibility.spatialZones && memberTypes.has('IfcSpatialZone')) toggleTypeVisibility('spatialZones');
       }
       isolateEntities(elements);
       return;
@@ -408,7 +406,7 @@ export function HierarchyPanel() {
       }
     } else if (node.type === 'IfcBuildingStorey' || node.type === 'IfcSpace' || node.type === 'unified-storey' ||
                node.type === 'type-group' || node.type === 'ifc-type' || node.type === 'material-group' ||
-               node.type === 'group' ||
+               node.type === 'group' || node.type === 'presentation-layer' ||
                (node.type === 'model-header' && node.id.startsWith('contrib-'))) {
       const elements = getNodeElements(node);
       nodeHidden = elements.length > 0 && elements.every(id => hiddenEntities.has(id));
@@ -505,56 +503,26 @@ export function HierarchyPanel() {
   // Grouping mode toggle component (shared by both layouts)
   const groupingToggle = (
     <div className="hierarchy-grouping-tabs flex gap-1 mt-2">
-      <Button
-        variant={groupingMode === 'spatial' ? 'default' : 'outline'}
-        size="sm"
-        className="h-6 text-2xs flex-1 min-w-0 rounded-none uppercase tracking-wider"
-        onClick={() => setGroupingMode('spatial')}
-        title={t('hierarchy.panel.grouping.spatial')}
-      >
-        <Building2 className="h-3 w-3 shrink-0 panel-compact-icon" />
-        <span className="panel-compact-text">{t('hierarchy.panel.grouping.spatial')}</span>
-      </Button>
-      <Button
-        variant={groupingMode === 'type' ? 'default' : 'outline'}
-        size="sm"
-        className="h-6 text-2xs flex-1 min-w-0 rounded-none uppercase tracking-wider"
-        onClick={() => setGroupingMode('type')}
-        title={t('hierarchy.panel.grouping.class')}
-      >
-        <Layers className="h-3 w-3 shrink-0 panel-compact-icon" />
-        <span className="panel-compact-text">{t('hierarchy.panel.grouping.class')}</span>
-      </Button>
-      <Button
-        variant={groupingMode === 'ifc-type' ? 'default' : 'outline'}
-        size="sm"
-        className="h-6 text-2xs flex-1 min-w-0 rounded-none uppercase tracking-wider"
-        onClick={() => setGroupingMode('ifc-type')}
-        title={t('hierarchy.panel.grouping.type')}
-      >
-        <FileBox className="h-3 w-3 shrink-0 panel-compact-icon" />
-        <span className="panel-compact-text">{t('hierarchy.panel.grouping.type')}</span>
-      </Button>
-      <Button
-        variant={groupingMode === 'material' ? 'default' : 'outline'}
-        size="sm"
-        className="h-6 text-2xs flex-1 min-w-0 rounded-none uppercase tracking-wider"
-        onClick={() => setGroupingMode('material')}
-        title={t('hierarchy.panel.grouping.materialsTooltip')}
-      >
-        <Palette className="h-3 w-3 shrink-0 panel-compact-icon" />
-        <span className="panel-compact-text">{t('hierarchy.panel.grouping.material')}</span>
-      </Button>
-      <Button
-        variant={groupingMode === 'groups' ? 'default' : 'outline'}
-        size="sm"
-        className="h-6 text-2xs flex-1 min-w-0 rounded-none uppercase tracking-wider"
-        onClick={() => setGroupingMode('groups')}
-        title={t('hierarchy.panel.grouping.groupsTooltip')}
-      >
-        <Network className="h-3 w-3 shrink-0 panel-compact-icon" />
-        <span className="panel-compact-text">{t('hierarchy.panel.grouping.groups')}</span>
-      </Button>
+      {([
+        ['spatial', Building2, 'hierarchy.panel.grouping.spatial', 'hierarchy.panel.grouping.spatial'],
+        ['type', Layers, 'hierarchy.panel.grouping.class', 'hierarchy.panel.grouping.class'],
+        ['ifc-type', FileBox, 'hierarchy.panel.grouping.type', 'hierarchy.panel.grouping.type'],
+        ['material', Palette, 'hierarchy.panel.grouping.material', 'hierarchy.panel.grouping.materialsTooltip'],
+        ['groups', Network, 'hierarchy.panel.grouping.groups', 'hierarchy.panel.grouping.groupsTooltip'],
+        ['presentation-layers', Layers3, 'hierarchy.panel.grouping.presentationLayers', 'hierarchy.panel.grouping.presentationLayersTooltip'],
+      ] as const).map(([mode, Icon, labelKey, titleKey]) => (
+        <Button
+          key={mode}
+          variant={groupingMode === mode ? 'default' : 'outline'}
+          size="sm"
+          className="h-6 text-2xs flex-1 min-w-0 rounded-none uppercase tracking-wider"
+          onClick={() => setGroupingMode(mode)}
+          title={t(titleKey)}
+        >
+          <Icon className="h-3 w-3 shrink-0 panel-compact-icon" />
+          <span className="panel-compact-text">{t(labelKey)}</span>
+        </Button>
+      ))}
     </div>
   );
 
@@ -702,8 +670,8 @@ export function HierarchyPanel() {
 
       {/* Section Header */}
       <SectionHeader
-        icon={groupingMode === 'spatial' ? Building2 : groupingMode === 'type' ? Layers : groupingMode === 'material' ? Palette : groupingMode === 'groups' ? Network : FileBox}
-        title={groupingMode === 'spatial' ? t('hierarchy.panel.sectionTitle.spatial') : groupingMode === 'type' ? t('hierarchy.panel.sectionTitle.byClass') : groupingMode === 'material' ? t('hierarchy.panel.sectionTitle.byMaterial') : groupingMode === 'groups' ? t('hierarchy.panel.sectionTitle.byGroup') : t('hierarchy.panel.sectionTitle.byType')}
+        icon={groupingMode === 'spatial' ? Building2 : groupingMode === 'type' ? Layers : groupingMode === 'material' ? Palette : groupingMode === 'groups' ? Network : groupingMode === 'presentation-layers' ? Layers3 : FileBox}
+        title={singleTreeSectionTitle}
         count={filteredNodes.length}
       />
 
@@ -712,7 +680,9 @@ export function HierarchyPanel() {
       {groupingMode === 'spatial' && <StoreyDisplayControls />}
 
       {/* Tree */}
-      {searchEmptyState ?? <div ref={parentRef} role="tree" aria-busy={groupingMode === 'material' && !materialReady} tabIndex={legacyTreeKeyboard.containerTabIndex} aria-label={singleTreeSectionTitle} onKeyDown={legacyTreeKeyboard.onKeyDown} className="flex-1 overflow-auto scrollbar-thin bg-white dark:bg-black">
+      {searchEmptyState ?? (groupingMode === 'presentation-layers' && filteredNodes.length === 0
+        ? <EmptyState className="flex-1" icon={<Layers3 className="size-8" />} title={t('hierarchy.panel.noPresentationLayersTitle')} description={t('hierarchy.panel.noPresentationLayersHint')} />
+        : <div ref={parentRef} role="tree" aria-busy={groupingMode === 'material' && !materialReady} tabIndex={legacyTreeKeyboard.containerTabIndex} aria-label={singleTreeSectionTitle} onKeyDown={legacyTreeKeyboard.onKeyDown} className="flex-1 overflow-auto scrollbar-thin bg-white dark:bg-black">
         <div
           style={{
             height: `${virtualizer.getTotalSize()}px`,
@@ -725,7 +695,7 @@ export function HierarchyPanel() {
             return renderNode(node, virtualRow, 'filtered', legacyTreeKeyboard, filteredAriaAttrs);
           })}
         </div>
-      </div>}
+      </div>)}
 
       {/* Footer status */}
       <HierarchyFooterStatus

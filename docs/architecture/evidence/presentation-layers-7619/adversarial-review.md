@@ -197,3 +197,51 @@ remain the delivery agent's responsibility.
 
 Verdict for `1816e878b544f08172325aa120efb542eb54b472`: no unresolved
 correctness blocker found. The exact delta passes `git diff --check`.
+
+## Follow-up review: nested generating curves and mixed visibility
+
+Reviewed exact delta
+`7c4831be69..ac024da3df702ce6b0283a29c0148726dd3c82fd` on 2026-10-15.
+It addresses the subsequent review findings concerning swept-solid directrices
+and a mixed row advertising Hide while its existing action reveals members.
+
+The geometry change adds explicit generating curve/profile ownership edges:
+sweep directrices, swept/end profiles, sectioned-solid/spine curves and profiles,
+swept surfaces, nested arbitrary/composite/derived profiles, offset basis curves,
+surface Curve3D geometry and IFC4X3 curve-segment parent curves. It does not
+follow placements, axes, contexts or styles. The same-class audit identified
+that subtype ownership rows must merge inherited attributes; the final union
+keeps both `SweptArea` and subtype `Directrix` edges. Shared generating geometry
+therefore reaches all owning products without spreading through placement-only
+references.
+
+The reviewer checked the schema registries and IFC4 EXPRESS corrections:
+IFC4/IFC2X3 offset curves can be direct children of `IfcCurve`, whereas IFC4X3
+introduces the `IfcOffsetCurve` base. Explicit 2D/3D roots in the final patch
+retain `BasisCurve` ownership in both layouts and harmlessly union duplicate
+attributes where the abstract base exists. Parsed IFC4 tests exercise both
+offset forms along with the other generating-geometry cases. A separate parsed
+IFC4X3 test exercises `IfcCurveSegment.ParentCurve`. Shared curve/point fixtures
+assert two product owners while excluding a third product sharing the point
+only through placement; additional assertions cover inherited/subtype edges,
+current directrix edits and deleted curves. Resolver traversal, effective reads
+and per-build record caching retain their prior bounds and semantics.
+
+The visibility change centralizes the action decision in
+`hierarchyNodeVisibility`, using the exact `getNodeElements` IDs for both the
+callback and the row's icon, accessible label and tooltip. Any hidden member
+offers Show, matching the existing reveal-all behavior. Fully-hidden styling
+remains separate and uses drawable assembly parts where applicable. Removing
+the aggregate-type allowlist prevents row state and action membership from
+drifting independently. A mounted regression starts with one of two layer
+products hidden, verifies Show reveals both, then verifies Hide hides both.
+
+The reviewer read the complete six-file delta and related schema/helper code.
+The lead agent was rerunning build, tests, typecheck, lint, bundle measurement
+and browser acceptance when this section was written; this reviewer does not
+claim those pending runs as independently completed. Previous unchanged
+ownership, federation, lazy loading and annotation behavior remain covered by
+the earlier review sections.
+
+Verdict for `ac024da3df702ce6b0283a29c0148726dd3c82fd`: no unresolved
+correctness blocker found. The exact source delta passes `git diff --check`.

@@ -21,7 +21,7 @@ use ifc_lite_processing::{
 };
 
 use super::emit::{write_display_material, write_geometry_body};
-use super::fmt::{fmt_f64, indent_str};
+use super::fmt::{fmt_matrix4d, indent_str};
 use super::mesh_emittable;
 
 /// Prototype prim name for a template `express_id`.
@@ -184,16 +184,7 @@ pub(super) fn emit_instance_occurrence(
     writeln!(out, "{inner}prepend apiSchemas = [\"MaterialBindingAPI\"]").ok();
     writeln!(out, "{pad})").ok();
     writeln!(out, "{pad}{{").ok();
-    writeln!(
-        out,
-        "{inner}matrix4d xformOp:transform = ( ({}, {}, {}, {}), ({}, {}, {}, {}), \
-         ({}, {}, {}, {}), ({}, {}, {}, {}) )",
-        fmt_f64(rows[0][0]), fmt_f64(rows[0][1]), fmt_f64(rows[0][2]), fmt_f64(rows[0][3]),
-        fmt_f64(rows[1][0]), fmt_f64(rows[1][1]), fmt_f64(rows[1][2]), fmt_f64(rows[1][3]),
-        fmt_f64(rows[2][0]), fmt_f64(rows[2][1]), fmt_f64(rows[2][2]), fmt_f64(rows[2][3]),
-        fmt_f64(rows[3][0]), fmt_f64(rows[3][1]), fmt_f64(rows[3][2]), fmt_f64(rows[3][3]),
-    )
-    .ok();
+    writeln!(out, "{inner}matrix4d xformOp:transform = {}", fmt_matrix4d(&rows)).ok();
     writeln!(out, "{inner}uniform token[] xformOpOrder = [\"xformOp:transform\"]").ok();
     if let Some(p) = purpose {
         writeln!(out, "{inner}uniform token purpose = \"{p}\"").ok();

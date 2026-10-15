@@ -412,7 +412,7 @@ impl VisibilityFilter {
     }
 
     fn visible(&self, mesh: &MeshData) -> bool {
-        if mesh.geometry_class == 2 {
+        if mesh.geometry_class == crate::mesh_input::GEOM_CLASS_INSTANCED_TYPE {
             return false; // instanced type library duplicates occurrence geometry
         }
         if self.hidden.contains(&mesh.express_id) {
@@ -1032,21 +1032,17 @@ fn view_ok(v: &MeshView) -> bool {
 /// on whether it was large enough to stream. One reader is the cheapest way to
 /// stop that recurring.
 fn site_restore(result: &ProcessingResult) -> (MeshCoordinateSpace, [f64; 3], Option<Vec<f64>>) {
-    let rtc_zup = result.metadata.coordinate_info.origin_shift;
-    // Only the site-local space removed a rotation, so only there is there one
-    // to put back on the scene ROOT. `model_rtc` subtracts a detected
-    // translation with no rotation, and `raw_ifc` subtracts nothing — but both
-    // still need the translation restored, which is why `rtc_zup` returns
-    // unconditionally.
-    let site_zup = if result.mesh_coordinate_space == MeshCoordinateSpace::SiteLocal {
-        result.site_transform.clone()
-    } else {
-        None
-    };
+    // All three read off the one frame the bake used (#7684), the same value
+    // OBJ, USD and BOS restore through (`MeshFrame::to_world`). Only the
+    // site-local tier removed a rotation, so only there is there one to put
+    // back on the scene ROOT; `model_rtc` and `raw_ifc` still need the
+    // translation restored, which is why `rtc_zup` returns unconditionally.
+    let frame = result.frame;
+    let (x, y, z) = frame.rtc_offset();
     // The tag travels with them. `baked_basis_yup` used to re-derive it from
-    // `site_zup.is_some()`, which is this same `if` written a second time in a
-    // second vocabulary (#4611); it now reads the tag itself.
-    (result.mesh_coordinate_space, rtc_zup, site_zup)
+    // `site_zup.is_some()`, which is this same tier rule written a second time
+    // in a second vocabulary (#4611); it now reads the tag itself.
+    (frame.coordinate_space(), [x, y, z], frame.site_placement().map(|m| m.to_vec()))
 }
 
 /// Build the scene root: the model centre, plus the site placement the baker

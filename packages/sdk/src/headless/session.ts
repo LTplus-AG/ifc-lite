@@ -4,8 +4,8 @@
 
 import { parseModel, type ParseModelOptions, type ParsedModel } from '@ifc-lite/parser';
 import { createBimContext, type BimContext } from '../context.js';
-import type { BimBackend } from '../types.js';
 import { HeadlessBackend } from './backend.js';
+import { UnsupportedOperationError, type HeadlessCapability, type HeadlessOperation } from './capabilities.js';
 import type { HeadlessBackendOptions } from './options.js';
 
 export class HeadlessSessionClosedError extends Error {
@@ -20,14 +20,15 @@ export interface OpenModelOptions extends ParseModelOptions {
 export interface HeadlessModelSession extends ParsedModel {
   readonly bim: BimContext;
   readonly closed: boolean;
+  capability(operation: HeadlessOperation): HeadlessCapability;
   /** Idempotent. Releases host preparation caches and refuses later backend calls. */
   close(): void;
 }
 
 /** Keep retained query builders and namespace references honest after close. */
-function guardedBackend(backend: BimBackend, assertOpen: () => void): BimBackend {
+function guardedBackend(backend: HeadlessBackend, assertOpen: () => void): HeadlessBackend {
   const cache = new WeakMap<object, object>();
-  const guard = <T extends object>(value: T): T => {
+  const guard = <T extends object>(value: T, prefix = ''): T => {
     const cached = cache.get(value);
     if (cached) return cached as T;
     const proxy = new Proxy(value, {
@@ -35,9 +36,12 @@ function guardedBackend(backend: BimBackend, assertOpen: () => void): BimBackend
         const member: unknown = Reflect.get(target, key, receiver);
         if (typeof member === 'function') return (...args: unknown[]) => {
           assertOpen();
+          const operation = (prefix ? `${prefix}.${String(key)}` : String(key)) as HeadlessOperation;
+          const capability = backend.capability(operation);
+          if (!capability.supported) throw new UnsupportedOperationError(operation, capability.reason ?? 'Unsupported operation');
           return Reflect.apply(member, target, args);
         };
-        if (member && typeof member === 'object') return guard(member);
+        if (member && typeof member === 'object') return guard(member, String(key));
         return member;
       },
     });
@@ -75,7 +79,7 @@ export async function openModel(input: Uint8Array | ArrayBuffer, options: OpenMo
     },
   });
   const bim = createBimContext({ backend: guardedBackend(backend, assertOpen) });
-  return { ...parsed, bim, get closed() { return closed; }, close() {
+  return { ...parsed, bim, capability: operation => backend.capability(operation), get closed() { return closed; }, close() {
     if (closed) return;
     closed = true;
     backend.dispose();

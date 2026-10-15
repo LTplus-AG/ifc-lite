@@ -31,7 +31,9 @@
       "title": "Supported shared headless entry point",
       "status": "in_progress",
       "acceptance": "Open/query/edit/export/close through a documented library API; CLI and MCP reuse common implementation with existing behavior preserved",
-      "pullRequests": [],
+      "pullRequests": [
+        "https://github.com/LTplus-AG/ifc-lite/pull/7634"
+      ],
       "subtasks": [
         {
           "title": "Move existing live-overlay query readers beneath MCP into SDK",
@@ -39,7 +41,7 @@
         },
         {
           "title": "Move backend and add open/query/edit/export/close factory",
-          "status": "pending"
+          "status": "validating"
         },
         {
           "title": "Adopt shared read adapter in CLI and remove superseded helpers",
@@ -53,15 +55,24 @@
         "moduleSize": "passed; retired one obsolete allowlist row",
         "knip": "ran; repository-wide unused declarations/configuration findings remain; retired reader files removed and one moved unused internal type export removed",
         "nodeConsumer": "Fresh Node resolver imports @ifc-lite/sdk/headless and queries the committed one-wall IFC sample",
-        "readOracle": "Ordinary full revert against parent OBSERVED: 42 baseline tests pass; the public Node consumer fails an assertion after SDK export removal; restoration verified"
+        "readOracle": "Ordinary full revert against parent OBSERVED: 42 baseline tests pass; the public Node consumer fails an assertion after SDK export removal; restoration verified",
+        "fullSdk": "441 passed, 6 skipped",
+        "fullMcp": "729 passed, 5 skipped",
+        "sessionWorkflow": "Edit/export/reopen and closed-session refusal proven on the manifest-verified FZK fixture; tests/evidence/headless-session/fzk.json",
+        "sessionTypecheck": "running",
+        "sessionDocumentation": "473 snippets compiled"
       }
     },
     {
       "id": "DX3",
       "title": "Discoverable backend capabilities",
-      "status": "pending",
+      "status": "validating",
       "acceptance": "Unsupported operations can be checked before invocation and throw structured errors; legacy APIs stay compatible",
-      "pullRequests": []
+      "pullRequests": [],
+      "checks": {
+        "behavior": "Supported data methods, unsupported viewer/authoring methods, structured errors and attach/detach capability changes tested in the full SDK suite",
+        "compatibility": "Existing MCP constructor retained; full MCP suite passed"
+      }
     },
     {
       "id": "DX4",

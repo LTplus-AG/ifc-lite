@@ -4,7 +4,7 @@
 
 import { readFileSync, existsSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { openModel, HeadlessSessionClosedError } from '../headless.js';
+import { openModel, HeadlessSessionClosedError, UnsupportedOperationError, HeadlessBackend } from '../headless.js';
 import { IfcQuery } from '@ifc-lite/query';
 import { parseModel } from '@ifc-lite/parser';
 
@@ -39,6 +39,40 @@ describe('headless developer workflow (DX2)', () => {
     expect(() => mutate.setProperty(wall.ref, 'Pset_WallCommon', 'FireRating', 'REI 90'))
       .toThrow(HeadlessSessionClosedError);
     expect(() => model.bim.model.list()).toThrow(HeadlessSessionClosedError);
+  });
+
+  it('reports supported data operations and refuses unavailable viewer calls explicitly', async () => {
+    const model = await openModel(readFileSync(sample), { disableWorkerScan: true });
+    try {
+      expect(model.capability('query.entities').supported).toBe(true);
+      expect(model.capability('mutate.setProperty').supported).toBe(true);
+      expect(model.capability('export.ifc').supported).toBe(true);
+      expect(model.capability('store.addDoor').supported).toBe(false);
+      expect(model.capability('viewer.colorize').supported).toBe(false);
+      expect(model.capability('store.roomCommand').supported).toBe(false);
+      const wall = model.bim.query().byType('IfcWall').toArray()[0];
+      expect(() => model.bim.viewer.colorize([wall.ref], '#ff0000')).toThrow(UnsupportedOperationError);
+      try { model.bim.viewer.colorize([wall.ref], '#ff0000'); }
+      catch (error) {
+        expect(error).toMatchObject({ code: 'UNSUPPORTED_OPERATION', operation: 'viewer.colorize' });
+      }
+      // @ts-expect-error A misspelled backend operation is not a declared capability.
+      model.capability('query.entites');
+    } finally { model.close(); }
+  });
+
+  it('updates viewer capability when a legacy host attaches and detaches adapters', async () => {
+    const loaded = await parseModel(readFileSync(sample), { disableWorkerScan: true });
+    const backend = new HeadlessBackend(loaded.store, 'sample.ifc', 'sample');
+    const colors: unknown[] = [];
+    expect(backend.capability('viewer.colorize').supported).toBe(false);
+    backend.attachStreamingAdapters({ ...backend.viewer, colorize: (...args) => { colors.push(args); } }, backend.visibility);
+    expect(backend.capability('viewer.colorize').supported).toBe(true);
+    backend.viewer.colorize([{ modelId: 'sample', expressId: 1 }], '#ff0000');
+    expect(colors).toHaveLength(1);
+    backend.detachStreamingAdapters();
+    expect(backend.capability('viewer.colorize').supported).toBe(false);
+    backend.dispose();
   });
 
   const fzk = new URL('../../../../tests/models/ara3d/AC20-FZK-Haus.ifc', import.meta.url);

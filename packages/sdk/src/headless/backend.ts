@@ -29,6 +29,7 @@ import type {
 } from '../index.js';
 import { createCostBackend, createEffectiveEntityCheck, createHeadlessMutateAdapter, type EntityRefCheck, type StyleBackendMethods } from '../index.js';
 import { applyStylesInStore } from '@ifc-lite/create';
+import { describeHeadlessOperation, type HeadlessOperation } from './capabilities.js';
 import type { HeadlessBackendOptions } from './options.js';
 import { createHeadlessStoreAdapter } from './headless-backend-store.js';
 import type { IfcDataStore } from '@ifc-lite/parser';
@@ -82,13 +83,18 @@ export class HeadlessBackend implements BimBackend {
   private mutationView: MutablePropertyView | null = null;
   private storeEditor: StoreEditor | null = null;
   private readonly disposeRoomCommands: () => void;
+  private viewerAttached = false;
+  private readonly options: HeadlessBackendOptions;
   private peerScopes: () => import('@ifc-lite/create').ElementSplitOptions['globalIdScopes'] = () => [];
+
+  capability(operation: HeadlessOperation) { return describeHeadlessOperation(this, operation, this.options, this.viewerAttached); }
 
   setPeerScopes(provider: typeof this.peerScopes): void { this.peerScopes = provider; }
 
   dispose(): void { this.disposeRoomCommands(); }
 
   constructor(store: IfcDataStore, modelName: string, modelId: string, options: HeadlessBackendOptions = {}) {
+    this.options = { ...options };
     this.dataStore = store;
     this.modelName = modelName;
     this.modelId = modelId;
@@ -227,12 +233,14 @@ export class HeadlessBackend implements BimBackend {
 
   /** Replace the viewer/visibility adapters at runtime (for ViewerManager). */
   attachStreamingAdapters(viewer: ViewerBackendMethods, visibility: VisibilityBackendMethods): void {
+    this.viewerAttached = true;
     this.viewer = viewer;
     this.visibility = visibility;
   }
 
   /** Restore no-op viewer/visibility adapters (for ViewerManager close). */
   detachStreamingAdapters(): void {
+    this.viewerAttached = false;
     this.viewer = {
       colorize() {}, colorizeAll() {}, resetColors() {},
       flyTo() {}, setSection() {}, getSection() { return null; },

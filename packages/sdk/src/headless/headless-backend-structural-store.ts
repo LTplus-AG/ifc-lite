@@ -23,20 +23,18 @@
 
 import type { StructuralStoreBackendMethods } from '../index.js';
 
-const unsupported = (method: string) => (): never => {
-  throw new Error(`${method} not supported in MCP v0.1; use entity_create`);
-};
+import { unsupportedOperation } from './capabilities.js';
 
 export function structuralStoreStubs(): StructuralStoreBackendMethods {
   return {
-    addStructuralAnalysisModel: unsupported('addStructuralAnalysisModel'),
-    addStructuralCurveMember: unsupported('addStructuralCurveMember'),
-    addStructuralPointConnection: unsupported('addStructuralPointConnection'),
-    addStructuralLoadGroup: unsupported('addStructuralLoadGroup'),
-    addStructuralPointAction: unsupported('addStructuralPointAction'),
-    addStructuralLinearAction: unsupported('addStructuralLinearAction'),
-    connectStructuralMemberToConnection: unsupported('connectStructuralMemberToConnection'),
-    connectStructuralActivityToItem: unsupported('connectStructuralActivityToItem'),
-    assignToStructuralGroup: unsupported('assignToStructuralGroup'),
+    addStructuralAnalysisModel: unsupportedOperation('store.addStructuralAnalysisModel', 'addStructuralAnalysisModel not supported in MCP v0.1; use entity_create'),
+    addStructuralCurveMember: unsupportedOperation('store.addStructuralCurveMember', 'addStructuralCurveMember not supported in MCP v0.1; use entity_create'),
+    addStructuralPointConnection: unsupportedOperation('store.addStructuralPointConnection', 'addStructuralPointConnection not supported in MCP v0.1; use entity_create'),
+    addStructuralLoadGroup: unsupportedOperation('store.addStructuralLoadGroup', 'addStructuralLoadGroup not supported in MCP v0.1; use entity_create'),
+    addStructuralPointAction: unsupportedOperation('store.addStructuralPointAction', 'addStructuralPointAction not supported in MCP v0.1; use entity_create'),
+    addStructuralLinearAction: unsupportedOperation('store.addStructuralLinearAction', 'addStructuralLinearAction not supported in MCP v0.1; use entity_create'),
+    connectStructuralMemberToConnection: unsupportedOperation('store.connectStructuralMemberToConnection', 'connectStructuralMemberToConnection not supported in MCP v0.1; use entity_create'),
+    connectStructuralActivityToItem: unsupportedOperation('store.connectStructuralActivityToItem', 'connectStructuralActivityToItem not supported in MCP v0.1; use entity_create'),
+    assignToStructuralGroup: unsupportedOperation('store.assignToStructuralGroup', 'assignToStructuralGroup not supported in MCP v0.1; use entity_create'),
   };
 }

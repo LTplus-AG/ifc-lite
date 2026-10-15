@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /** Store adapter kept apart from read/export adapters (#6232 D5). */
+import { unsupportedOperation } from './capabilities.js';
 import type { StoreBackendMethods } from '../index.js';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
@@ -38,8 +39,8 @@ export function createHeadlessStoreAdapter(
     },
     // Free door/window creation remains unsupported here. Hosted fills use
     // the canonical host-required API supplied by the recorded factory below.
-    addDoor: () => { throw new Error('addDoor not supported in MCP v0.1; use entity_create'); },
-    addWindow: () => { throw new Error('addWindow not supported in MCP v0.1; use entity_create'); },
+    addDoor: unsupportedOperation('store.addDoor', 'addDoor not supported in MCP v0.1; use entity_create'),
+    addWindow: unsupportedOperation('store.addWindow', 'addWindow not supported in MCP v0.1; use entity_create'),
     ...unsupportedStoreAuthoring(),
     ...createRecordedModellingBackend(resolveModel),
     ...createHeadlessRoomBackend(resolveModel, geometry.roomGeometry),

@@ -16,20 +16,18 @@
 
 import type { CostStoreBackendMethods } from '../index.js';
 
-const unsupported = (method: string) => (): never => {
-  throw new Error(`${method} not supported in MCP v0.1; use entity_create`);
-};
+import { unsupportedOperation } from './capabilities.js';
 
 export function costStoreStubs(): CostStoreBackendMethods {
   return {
-    addCostSchedule: unsupported('addCostSchedule'),
-    addCostItem: unsupported('addCostItem'),
-    addCostValue: unsupported('addCostValue'),
-    addCostQuantity: unsupported('addCostQuantity'),
-    nestCostItems: unsupported('nestCostItems'),
-    assignCostItemsToSchedule: unsupported('assignCostItemsToSchedule'),
-    assignToCostItem: unsupported('assignToCostItem'),
-    setCostItemValues: unsupported('setCostItemValues'),
-    removeCostEntity: unsupported('removeCostEntity'),
+    addCostSchedule: unsupportedOperation('store.addCostSchedule', 'addCostSchedule not supported in MCP v0.1; use entity_create'),
+    addCostItem: unsupportedOperation('store.addCostItem', 'addCostItem not supported in MCP v0.1; use entity_create'),
+    addCostValue: unsupportedOperation('store.addCostValue', 'addCostValue not supported in MCP v0.1; use entity_create'),
+    addCostQuantity: unsupportedOperation('store.addCostQuantity', 'addCostQuantity not supported in MCP v0.1; use entity_create'),
+    nestCostItems: unsupportedOperation('store.nestCostItems', 'nestCostItems not supported in MCP v0.1; use entity_create'),
+    assignCostItemsToSchedule: unsupportedOperation('store.assignCostItemsToSchedule', 'assignCostItemsToSchedule not supported in MCP v0.1; use entity_create'),
+    assignToCostItem: unsupportedOperation('store.assignToCostItem', 'assignToCostItem not supported in MCP v0.1; use entity_create'),
+    setCostItemValues: unsupportedOperation('store.setCostItemValues', 'setCostItemValues not supported in MCP v0.1; use entity_create'),
+    removeCostEntity: unsupportedOperation('store.removeCostEntity', 'removeCostEntity not supported in MCP v0.1; use entity_create'),
   };
 }

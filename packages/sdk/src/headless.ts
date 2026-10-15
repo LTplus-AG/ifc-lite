@@ -11,3 +11,5 @@ export { HeadlessBackend } from './headless/backend.js';
 export type { HeadlessBackendOptions } from './headless/options.js';
 export { openModel, HeadlessSessionClosedError } from './headless/session.js';
 export type { HeadlessModelSession, OpenModelOptions } from './headless/session.js';
+export { UnsupportedOperationError } from './headless/capabilities.js';
+export type { HeadlessOperation, HeadlessCapability } from './headless/capabilities.js';

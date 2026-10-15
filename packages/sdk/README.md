@@ -11,23 +11,27 @@ npm install @ifc-lite/sdk
 ## Usage
 
 ```ts
-import { createBimContext } from '@ifc-lite/sdk';
+import { openModel } from '@ifc-lite/sdk/headless';
 
-// Embedded mode: a backend drives a loaded model. `BimBackend` is a
-// 16-namespace interface, so use a ready-made one rather than writing it --
-// `HeadlessLikeBackend` from @ifc-lite/mcp is the exported headless backend.
-import { HeadlessLikeBackend } from '@ifc-lite/mcp';
-const bim = createBimContext({ backend: new HeadlessLikeBackend(store, 'model.ifc', 'model-1') });
-
-// Connected mode (cross-tab)
-import { BroadcastTransport } from '@ifc-lite/sdk';
-const transport = new BroadcastTransport('ifc-lite');
-const remote = createBimContext({ transport });
-
-// Use the API
-const walls = bim.query().byType('IfcWall').toArray();
-bim.viewer.colorize(walls.map(w => w.ref), '#ff0000');
+const model = await openModel(await fetch('model.ifc').then(r => r.arrayBuffer()));
+try {
+  if (model.report.completeness !== 'complete') throw new Error('Incomplete or unknown record coverage');
+  const walls = model.bim.query().byType('IfcWall').toArray();
+  console.log(walls.length);
+  console.log(model.capability('store.addDoor'));
+} finally {
+  model.close();
+}
 ```
+
+`openModel` accepts STEP/IFCZIP bytes, including an exact Node Buffer view, and creates no renderer or geometry runtime. It returns `bim`, the parsed `store`, the structured scan `report`, `capability(operation)`, and an idempotent `close()`. Supply `modelId`, `modelName`, or the parser progress/diagnostic options as needed. File and network I/O remain with your application.
+
+Capability results describe implemented/configured backend operations; input validation and runtime preparation can still fail. Unavailable calls in a model session throw `UnsupportedOperationError` (`code: 'UNSUPPORTED_OPERATION'`, `operation`, `reason`). Retained backend query builders and mutation namespaces refuse calls after close with `HeadlessSessionClosedError` (`code: 'SESSION_CLOSED'`). The returned source store and pure SDK helpers are not revoked by closing the backend session.
+
+Advanced hosts can construct `HeadlessBackend` from this subpath over an existing store, or provide `HeadlessBackendOptions` geometry preparation for Room/Align. MCP retains its existing `HeadlessLikeBackend` constructor and supplies its native preparation through the shared SDK backend. Existing legacy host no-op behavior is preserved; the new model session explicitly refuses unavailable operations.
+
+For embedded or remote contexts, continue using `createBimContext({ backend })` or `createBimContext({ transport })` and the existing transport exports. See the [SDK guide](https://ifclite.dev/docs/guide/scripting-sdk/).
+
 
 ## Namespaces
 

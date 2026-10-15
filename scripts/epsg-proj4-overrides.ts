@@ -54,19 +54,19 @@ export const PROJ4_OVERRIDES: ReadonlyMap<string, string> = new Map([
 ]);
 
 /**
- * Replace fetched proj4 strings with PROJ4_OVERRIDES and report, per code,
+ * Replace incoming proj4 strings with PROJ4_OVERRIDES and report, per code,
  * whether the override changed the incoming value, matched it, or found no entry.
  */
 export function applyProj4Overrides(entries: Array<{ code: string; proj4?: string }>): void {
   const byCode = new Map(entries.map((entry) => [entry.code, entry]));
-  const applied: string[] = [];
+  const changed: string[] = [];
   const unchanged: string[] = [];
   const missing: string[] = [];
   for (const [code, proj4] of PROJ4_OVERRIDES) {
     const entry = byCode.get(code);
     if (!entry) { missing.push(code); continue; }
-    (entry.proj4 === proj4 ? unchanged : applied).push(code);
+    (entry.proj4 === proj4 ? unchanged : changed).push(code);
     entry.proj4 = proj4;
   }
-  console.error(`proj4 overrides: changed ${applied.join(',') || '-'}; unchanged ${unchanged.join(',') || '-'}; not in index ${missing.join(',') || '-'}`);
+  console.error(`proj4 overrides: changed ${changed.join(',') || '-'}; unchanged ${unchanged.join(',') || '-'}; not in index ${missing.join(',') || '-'}`);
 }

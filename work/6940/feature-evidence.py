@@ -1,11 +1,15 @@
 # Diagnostic controller only, never merged.
 import sys,os,json,subprocess,hashlib,time,pathlib
-source,out=map(pathlib.Path,sys.argv[1:])
+source,out=map(pathlib.Path,sys.argv[1:3])
+mode=sys.argv[3]
+assert mode in ('contracts','workspace')
 def git(*args): return subprocess.check_output(['git',*args],cwd=source).decode().strip()
 assert git('rev-parse','HEAD')==os.environ['SOURCE_SHA']
 initial=git('diff','--binary','HEAD')
 assert not initial
 commands=[
+('workspace-clippy',['cargo','clippy','--workspace','--all-targets','--','-D','warnings'],{}),
+('default-plane-weld-tests',['cargo','test','-p','ifc-lite-geometry','--lib','kernel::plane_weld::'],{}),
 ('manifold-clippy',['cargo','clippy','-p','ifc-lite-geometry','--features','csg_manifold_gate','--all-targets','--','-D','warnings'],{}),
 ('topology-clippy',['cargo','clippy','-p','ifc-lite-geometry','--features','csg_topology_gate','--all-targets','--','-D','warnings'],{}),
 ('combined-clippy',['cargo','clippy','-p','ifc-lite-geometry','--features','csg_manifold_gate,csg_topology_gate','--all-targets','--','-D','warnings'],{}),
@@ -21,7 +25,9 @@ commands=[
 ('detached-wasm-plain',['cargo','build','--release','--manifest-path','rust/csg-thread-bench/Cargo.toml','--target','wasm32-unknown-unknown','-Z','build-std=std,panic_abort'],{}),
 ('detached-wasm-threads',['cargo','build','--release','--manifest-path','rust/csg-thread-bench/Cargo.toml','--target','wasm32-unknown-unknown','--features','threads','-Z','build-std=std,panic_abort'],{'RUSTFLAGS':'-C link-arg=--max-memory=4294967296 -C link-arg=-zstack-size=8388608 -C target-feature=+simd128,+atomics,+bulk-memory,+mutable-globals -C link-arg=--shared-memory -C link-arg=--import-memory -C link-arg=--export=__wasm_init_tls -C link-arg=--export=__tls_size -C link-arg=--export=__tls_align -C link-arg=--export=__tls_base -C link-arg=--export=__heap_base'}),
 ]
-summary={'source':git('rev-parse','HEAD'),'controller':os.environ['GITHUB_SHA'],'scope':'Actual feature contracts and detached Rust consumer compilation, not browser/runtime qualification','commands':[]}
+if mode=='workspace':
+    commands=[('workspace-clippy',['cargo','clippy','--workspace','--all-targets','--','-D','warnings'],{}),('workspace-tests',['cargo','test','--workspace','--no-fail-fast'],{})]
+summary={'mode':mode,'source':git('rev-parse','HEAD'),'controller':os.environ['GITHUB_SHA'],'scope':'Actual feature contracts and detached Rust consumer compilation, not browser/runtime qualification','commands':[]}
 for name,cmd,extra in commands:
     env=dict(os.environ,**extra); start=time.time()
     with (out/(name+'.stdout')).open('wb') as stdout,(out/(name+'.stderr')).open('wb') as stderr:

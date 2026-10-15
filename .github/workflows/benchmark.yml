@@ -7,6 +7,14 @@ on:
         description: Immutable forty-character source SHA to qualify
         required: true
         type: string
+      scope:
+        description: Feature contracts or full default workspace
+        required: true
+        default: contracts
+        type: choice
+        options:
+          - contracts
+          - workspace
 permissions:
   contents: read
 concurrency:
@@ -23,6 +31,7 @@ jobs:
       CARGO_PROFILE_TEST_DEBUG: '0'
       IFC_LITE_REQUIRE_FIXTURES: '1'
       SOURCE_SHA: ${{ inputs.source }}
+      RUN_SCOPE: ${{ inputs.scope }}
     steps:
       - name: Checkout diagnostic controller
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -52,7 +61,7 @@ jobs:
           node scripts/fixtures/fetch-fixtures.mjs > "$RUNNER_TEMP/feature-evidence/fixtures.log" 2>&1
           node scripts/fixtures/fetch-fixtures.mjs --check >> "$RUNNER_TEMP/feature-evidence/fixtures.log" 2>&1
       - name: Execute full feature contracts and detached consumer builds
-        run: python3 controller/work/6940/feature-evidence.py "$GITHUB_WORKSPACE/source" "$RUNNER_TEMP/feature-evidence"
+        run: python3 controller/work/6940/feature-evidence.py "$GITHUB_WORKSPACE/source" "$RUNNER_TEMP/feature-evidence" "$RUN_SCOPE"
       - name: Preserve every result including failures
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9

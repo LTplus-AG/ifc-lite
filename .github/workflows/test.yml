@@ -899,13 +899,6 @@ jobs:
           # RED. Once the script is on main, ordinary whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- scripts/viewer-test-shards.mjs | grep -Fxq 'scripts/viewer-test-shards.mjs'; then
             oracle_args+=(--mutation tests/evidence/ci-viewer-test-shards/selection.oracle.patch)
-          # Keep the newly added frame gate loadable while disabling its actual
-          # admission call. The workflow-CLI assertion must reject its acceptance
-          # of incomplete metrics. All changed tests still run on both sides.
-          # TODO(remove-by: check-frame-results.mjs is on main, louistrue)
-          # Ordinary whole-change inversion resumes automatically at that point.
-          elif git diff --name-only --diff-filter=A origin/main...HEAD -- scripts/perf/check-frame-results.mjs | grep -Fxq 'scripts/perf/check-frame-results.mjs'; then
-            oracle_args+=(--mutation tests/evidence/frame-admission-6975/admission.oracle.patch)
           fi
           node scripts/check-test-revert-oracle.mjs "${oracle_args[@]}"
           # #7512: observe cleanup independently of scoped admission/schema.

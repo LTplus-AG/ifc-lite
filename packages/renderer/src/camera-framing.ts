@@ -218,6 +218,46 @@ export function fitDistanceFor(
 }
 
 /**
+ * Standoff along `-axes.forward` at which the box's projected corners reach
+ * exactly `1 / margin` of the half-frame on the limiting axis (#7617). `margin`
+ * is the same multiple `padding` is: 1 puts the worst corner on the frame edge,
+ * 1.5 leaves a 25 % margin each side (the box fills 1 / 1.5 of the frame).
+ *
+ * "Margin" is defined on the PROJECTION: of the 8 corners' normalised screen
+ * coordinates, `max(|x|, |y|)` over all of them equals `1 / margin`. Scaling
+ * {@link fitDistanceFor}'s distance by `margin` is only that in orthographic
+ * projection. In perspective a corner's screen offset is `|h| / (tan * (d +
+ * depth))`, so scaling `d` also scales the depth term and the near corners
+ * (larger offsets) fall short of the margin: 64.7 % filled against an ideal
+ * 66.7 % at a 20 degree field and a 1.5 multiple, 57.1 % at 90 degrees.
+ *
+ * It is a closed form, not a search: each corner's constraint
+ * `|h| / (tan * (d + depth)) <= 1 / margin` solves to
+ * `d >= margin * |h| / tan - depth`, it relaxes monotonically as `d` grows, and
+ * the largest of the sixteen satisfies all of them (the same argument as
+ * {@link fitDistanceFor}, with the margin applied to the offset rather than to
+ * the whole distance). At `margin = 1` the two agree exactly.
+ */
+export function marginDistanceFor(
+  state: CameraInternalState,
+  bounds: FramingBounds,
+  axes: ViewAxes,
+  margin: number,
+): number {
+  const tanV = Math.tan(state.camera.fov / 2);
+  const tanH = usableAspect(state) * tanV;
+
+  let distance = 0;
+  for (const corner of cornerOffsets(bounds)) {
+    const depth = MathUtils.dot(corner, axes.forward);
+    const h = Math.abs(MathUtils.dot(corner, axes.right)) / tanH;
+    const v = Math.abs(MathUtils.dot(corner, axes.up)) / tanV;
+    distance = Math.max(distance, margin * h - depth, margin * v - depth);
+  }
+  return distance;
+}
+
+/**
  * The pose both fits return: the box centred, seen from the direction the
  * camera is already looking in, at the standoff that keeps every corner of it
  * on screen.
@@ -248,9 +288,13 @@ function fitPoseFor(
   bounds: FramingBounds,
   center: Vec3,
   padding: number,
+  exactMargin = false,
 ): ZoomExtentTarget {
   const basis = viewBasis(state.camera.position, state.camera.target, state.camera.up);
-  const distance = fitDistanceFor(state, bounds, basis, padding);
+  // Orthographic keeps the scaled standoff: there the distance sets no scale (`orthoSize` does), and the margin is already exact.
+  const distance = exactMargin && state.projectionMode === 'perspective'
+    ? marginDistanceFor(state, bounds, basis, padding)
+    : fitDistanceFor(state, bounds, basis, padding);
 
   return {
     // The camera sits opposite the direction it looks in.
@@ -320,8 +364,11 @@ export function frameBoundsTarget(state: CameraInternalState, min: Vec3, max: Ve
   }
 
   // `padding` is the multiple of the box the view fits (1 = edge to edge, 1.2 = the default 10 % each side); anything else is the default.
-  const fit = padding !== undefined && Number.isFinite(padding) && padding >= 1 ? padding : CAMERA_CONSTANTS.FRAME_PADDING_MULTIPLIER;
-  return fitPoseFor(state, { min, max }, center, fit);
+  // A stated one is a margin the caller asked for, so in perspective the box's projected corners leave exactly that
+  // (`marginDistanceFor`, #7617). The default stays the scaled standoff every fit-to-selection caller has always had.
+  const stated = padding !== undefined && Number.isFinite(padding) && padding >= 1;
+  const fit = stated ? padding : CAMERA_CONSTANTS.FRAME_PADDING_MULTIPLIER;
+  return fitPoseFor(state, { min, max }, center, fit, stated);
 }
 
 /**

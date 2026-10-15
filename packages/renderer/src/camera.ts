@@ -255,6 +255,10 @@ export class Camera {
   /**
    * Frame selection - zoom to fit bounds while keeping current view direction
    * This is what "Frame Selection" should do - zoom to fill screen
+   *
+   * `padding` (>= 1) states the margin: the box's projected corners reach
+   * `1 / padding` of the half-frame on the limiting axis, exactly, in either
+   * projection (#7617). Omitted, the fixed default multiple of the fit distance applies.
    */
   async frameBounds(min: Vec3, max: Vec3, duration = 300, padding?: number): Promise<void> {
     return this.animator.frameBounds(min, max, duration, padding);

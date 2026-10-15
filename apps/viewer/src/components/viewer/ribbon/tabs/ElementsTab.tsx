@@ -7,7 +7,7 @@
  */
 
 import { useCallback, useContext } from 'react';
-import { ClassVisibility, CopyGuid, ElementTooltips, EntityActions, FocusSelected, HideSelected, IsolateSelected, Search, Select, DisplayAll, Spatial, Class, Type, Material, Group } from '@/icons';
+import { ClassVisibility, CopyGuid, ElementTooltips, EntityActions, FocusSelected, HideSelected, IsolateSelected, Search, Select, DisplayAll, Spatial, Class, Type, Material, Group, Layer } from '@/icons';
 import { DropdownMenu, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { resolveGlobalId, useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
@@ -150,6 +150,11 @@ export function ElementsTab() {
           commandId="elements:groups"
           icon={Group}
           active={hierarchyMode === 'groups'}
+        />
+        <RibbonCommandLargeButton
+          commandId="elements:presentation-layers"
+          icon={Layer}
+          active={hierarchyMode === 'presentation-layers'}
         />
       </RibbonGroup>
       <RibbonGroupDivider />

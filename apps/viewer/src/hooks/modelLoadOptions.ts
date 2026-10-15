@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { TessellationQuality } from '@ifc-lite/geometry';
+import type { LandXmlGeorefAssumptions } from './ingest/landXmlGeorefAssumptions.js';
 
 export interface ModelLoadOptions {
   sourceHandle?: FileSystemFileHandle;
@@ -16,6 +17,10 @@ export interface ModelLoadOptions {
   // default. The viewer supplies this only after the user picks a
   // linear unit from the refusal prompt; never inferred or defaulted.
   assumedLinearUnit?: string;
+  // The LandXML georeferencing assumptions for THIS load (the refusal
+  // prompt's retry). Absent: the user's standing settings
+  // (`landXmlGeorefAssumptionSettings`) apply. Never inferred.
+  landXmlAssumptions?: LandXmlGeorefAssumptions;
 }
 
 /** Federation placement/display options share loader ownership and source handles. */

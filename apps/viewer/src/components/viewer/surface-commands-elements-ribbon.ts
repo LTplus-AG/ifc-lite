@@ -61,6 +61,12 @@ export const RIBBON_ELEMENTS_SURFACE_COMMANDS = [
     surfaces: ribbonOnly, enabled: alwaysEnabled, run: () => showHierarchy('groups'),
   },
   {
+    id: 'elements:presentation-layers', labelKey: 'ribbon.elements.presentationLayers',
+    ribbonTooltipKey: 'ribbon.elements.presentationLayersTooltip',
+    keywords: 'presentation layer assignment hierarchy', category: 'Tools', icon: Layers3,
+    surfaces: ribbonOnly, enabled: alwaysEnabled, run: () => showHierarchy('presentation-layers'),
+  },
+  {
     id: 'elements:class-filter', labelKey: 'ribbon.elements.filter',
     keywords: 'class visibility filter', category: 'Visibility', icon: Filter,
     surfaces: ribbonOnly, enabled: alwaysEnabled,

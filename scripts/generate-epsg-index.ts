@@ -17,6 +17,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { gzipSync } from 'node:zlib';
+import { applyProj4Overrides } from './epsg-proj4-overrides.js';
 
 type RegistryLink = {
   rel?: string;
@@ -305,13 +306,10 @@ async function fetchEntries(summaries: RegistrySummary[], concurrency: number): 
  *     for this CRS entirely, which silently disables the datum shift
  *     (~117 m residual at Prague vs ~0 m with EPSG:5239 "S-JTSK to WGS 84 (5)",
  *     method 9607, negated to Position Vector).
- *
- * There is no way to detect this class of bug from the fetched string alone —
- * both conventions look like valid proj4 syntax. If re-running this script
- * changes the towgs84 rotation signs (or presence) for a CRS with an existing
- * fixture in packages/data/scripts/fixtures/epsg-control-points.json, treat
- * that as a signal to re-verify against the EPSG Registry API's CoordOperation
- * method field before accepting the regenerated value, not just diff-review it.
+ *   - DB_REF (#7658): EPSG:5682-5685 had raw 9607 signs of EPSG:5826 (~178 m);
+ *     9928-9935, 5681, 5830 and 5828 had no +towgs84 (~146 m).
+ * Both conventions look valid, so this is undetectable from the fetched string.
+ * Fixes live in scripts/epsg-proj4-overrides.ts, re-applied after every fetch.
  */
 async function fetchProj4Definitions(entries: EpsgIndexEntry[], concurrency: number): Promise<void> {
   const queue = [...entries];
@@ -408,6 +406,7 @@ async function main(): Promise<void> {
   const selected = options.limit == null ? summaries : summaries.slice(0, options.limit);
   const entries = await fetchEntries(selected, options.concurrency);
   await fetchProj4Definitions(entries, options.concurrency);
+  console.error(applyProj4Overrides(entries));
   const moduleSource = renderModule(entries);
 
   if (options.stdout) {

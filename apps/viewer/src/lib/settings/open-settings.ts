@@ -3,9 +3,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * The one way to open Settings (#5857). Every opener (the ribbon's View tab,
- * the command palette, a button
- * that deep-links a section such as SpaceMouse) calls `openSettings`, and
+ * The one way to open Settings (#5857). Every opener (the ribbon header,
+ * the mobile menu, the command palette, or a button that deep-links a
+ * section such as SpaceMouse) calls `openSettings`, and
  * `SettingsDialogHost` is the one listener. A window event rather than store
  * state keeps it callable from plain modules (palette command builders) and
  * matches the Info dialog's `EVENT_SHOW_SHORTCUTS`.

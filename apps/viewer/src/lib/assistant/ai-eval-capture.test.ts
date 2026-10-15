@@ -11,7 +11,7 @@
 import '@/test/setup-dom.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { getApiKeys } from '@/services/api-keys';
+import { clearApiKeys, getApiKeys, updateApiKeys } from '@/services/api-keys';
 import { captureRequest } from '@/test/ai-eval-capture';
 
 const task = { id: 'clash-summary', scene: 'clash-rev-b', prompt: 'Summarize the most severe clashes and where they occur' };
@@ -34,4 +34,13 @@ test('#6928 proxy, Anthropic and both OpenAI APIs capture one route-neutral requ
   }
   const { anthropicKey, openaiKey } = getApiKeys();
   assert.deepEqual([anthropicKey, openaiKey], ['', ''], 'the capture placeholder is not left stored');
+});
+
+test('#6928 capture restores keys that were stored before it ran', async () => {
+  const stored = { anthropicKey: 'own-key', anthropicWorkspaceId: 'own-workspace', openaiKey: '' };
+  updateApiKeys(stored);
+  try {
+    await captureRequest(task, 'claude-sonnet-5-5');
+    assert.deepEqual(getApiKeys(), stored);
+  } finally { clearApiKeys(); }
 });

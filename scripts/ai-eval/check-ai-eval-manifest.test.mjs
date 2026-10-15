@@ -215,3 +215,12 @@ test('#6928 a promoted copy that keeps its live id is refused rather than shadow
     { ...recording, $schema: '../recording.schema.json', corpus: 'release', expect: { outcome: 'completed', proposal: null, violations: [] } });
   assert.ok(run(root).errors.some(error => error.includes(`id ${recording.id} is also used by`)));
 }));
+
+test('#6928 a live recording renamed or carried over from another run is refused', () => withRoot(root => {
+  const { dir, name, recording } = writeLiveRun(root);
+  rmSync(join(dir, 'recordings', name));
+  writeJson(join(dir, 'recordings', name), { ...recording, id: 'live-20250101t000000-clash-summary-anthropic-1' });
+  const { errors } = run(root);
+  assert.ok(errors.some(error => /holds recording live-20250101t000000/.test(error)), errors.join('\n'));
+  assert.ok(errors.some(error => /was not recorded by run 20261015t120000/.test(error)));
+}));

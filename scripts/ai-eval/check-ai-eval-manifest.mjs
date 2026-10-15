@@ -43,12 +43,15 @@ function liveRunErrors({ run, dir, recordings }) {
     if (recording.corpus !== 'live' || recording.provenance?.kind !== 'live' || !recording.provenance.receipt) {
       errors.push(`${at}: ${name} must stay an unpromoted live recording with its receipt (promote a copy with a new id into tests/ai-eval/recordings)`);
     }
+    // Reviews name files and labels name ids: both must point at the same answer, from this run.
+    if (name !== `${recording.id}.json`) errors.push(`${at}: ${name} holds recording ${recording.id}`);
+    if (!recording.id.startsWith(`live-${run}-`)) errors.push(`${at}: ${name} was not recorded by run ${run}`);
   }
   const read = file => (existsSync(join(dir, file)) ? JSON.parse(readFileSync(join(dir, file), 'utf8')) : null);
   const summary = read('summary.json');
   if (!summary) errors.push(`${at}: summary.json is missing`);
   else {
-    if (summary.runId !== run) errors.push(`${at}: summary.json is for run ${summary.runId}`);
+    if (summary.runId !== run) errors.push(`${at}: summary.json is for run ${summary.runId}; name the folder after its runId`);
     // Every request spends budget: a dropped recording or an edited receipt is a different run.
     if (!sameItems(recordings.map(({ recording }) => recording.provenance?.receipt), summary.receipts ?? [])) errors.push(`${at}: recordings and summary.json receipts differ`);
   }

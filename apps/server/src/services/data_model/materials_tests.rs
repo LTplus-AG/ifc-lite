@@ -100,7 +100,7 @@ fn self_and_mutually_referencing_material_usages_do_not_abort_server_5() {
     let exe = std::env::current_exe().expect("current test exe");
     // libtest's `--exact` names are not crate-qualified (see `tests.rs`).
     let test_name =
-        "services::data_model::materials::tests::self_and_mutually_referencing_material_usages_do_not_abort_server_5";
+        "services::data_model::materials_tests::self_and_mutually_referencing_material_usages_do_not_abort_server_5";
     let mut child = std::process::Command::new(exe)
         .args([test_name, "--exact", "--nocapture"])
         .env(REPRO_ENV_VAR, "1")

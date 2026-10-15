@@ -49,10 +49,10 @@ import { diffTools } from './diff.js';
 import { mutationTools } from './mutate.js';
 import { buildModelFingerprints } from './diff-fingerprints.js';
 import { fallbackPairDuplicateAuthoredKeys } from './diff-authored-keys.js';
-import type { PendingOverlay } from '../overlay.js';
+import type { PendingOverlay } from '@ifc-lite/sdk/headless';
 import { extractPropertiesOnDemand, extractQuantitiesOnDemand } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
-import { overlayFromView } from '../overlay.js';
+import { overlayFromView } from '@ifc-lite/sdk/headless';
 
 interface DiffShape {
   entityDiff: { added: string[]; removed: string[]; common: number } | null;

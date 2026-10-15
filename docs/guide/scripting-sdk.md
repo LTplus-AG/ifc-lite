@@ -260,6 +260,8 @@ Use the direct path for your own scripts; use the sandbox when the code comes fr
 
 ## Embedding programmatically
 
+Host adapters can reuse the live-overlay query implementation from `@ifc-lite/sdk/headless`: `createQueryAdapter` accepts the parsed store, model ID and getters for the current pending overlay and mutation view. `overlayFromView` derives that overlay from an existing `MutablePropertyView`. MCP consumes these SDK-owned readers, so source records, queued creations, deletions, retypes and relationships share one query implementation. No renderer or geometry runtime is initialized by the read adapter.
+
 Create a `BimContext` yourself with `createBimContext`. It needs either a local `backend` (viewer-embedded) or a `transport` (connected to a running viewer):
 
 ```ts

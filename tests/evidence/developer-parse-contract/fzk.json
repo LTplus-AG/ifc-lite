@@ -1,0 +1,15 @@
+{
+  "fixture": "tests/models/ara3d/AC20-FZK-Haus.ifc",
+  "sha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+  "schema": "IFC4",
+  "doors": 5,
+  "report": {
+    "scanPath": "tokenizer",
+    "scannedRecords": 44249,
+    "oversizedIdCount": 0,
+    "malformedRecordDetected": false,
+    "completeness": "complete",
+    "diagnostics": []
+  },
+  "scope": "STEP input validation and record scanning only; no geometry or schema-validation claim"
+}

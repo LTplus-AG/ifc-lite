@@ -80,6 +80,17 @@ Available on every command:
 | `--debug` | Verbose plus stack traces on error |
 | `--log-level <level>` | `error`, `warn`, `info`, or `debug` (explicit level wins over the shorthands) |
 
+## Installation diagnostics
+
+```bash
+ifc-lite doctor
+ifc-lite doctor --json > ifclite-diagnostics.json
+```
+
+Use this report when the CLI cannot find a package or its WASM artifact. It inspects this CLI installation's declared first-party dependencies using package resolution, including ESM-only entry points, without executing those modules. Commands load on demand so a damaged IFC dependency can still be diagnosed.
+
+The JSON protocol has `reportVersion: 1`, `target: "cli-installation"`, runtime details, package versions/statuses, and a `wasm` check with binary length and SHA-256 when readable. `ok` is true only when all reported checks pass. Exit status is 0 on success and 1 on a failed check. WASM validation checks binary structure; it performs no IFC binding initialization or geometry processing. See [installation error codes](error-handling.md#installation-diagnostics).
+
 ## Commands
 
 ### `view` — 3D Viewer
@@ -1724,6 +1735,7 @@ The `semantic` command reads JSON/SPARQL providers, generates shared profile art
 <!-- BEGIN GENERATED: cli-commands -->
 | Command | Description |
 |---------|-------------|
+| `doctor` | Check CLI runtime, package versions and WASM binary |
 | `info` | Model summary (schema, entities, storeys) |
 | `query` | Query entities by type/properties/quantities |
 | `props` | All properties for a single entity |

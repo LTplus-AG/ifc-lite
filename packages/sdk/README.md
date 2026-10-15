@@ -79,6 +79,10 @@ two-argument call remains source-only and skips deleted source records.
 
 Also exported: `BimHost` (viewer side), `RemoteBackend`, `MessagePortTransport`, and the full `IfcCreator` API re-exported from `@ifc-lite/create`.
 
+## Shared headless host reads
+
+Host adapters can import `createQueryAdapter` and `overlayFromView` from `@ifc-lite/sdk/headless`. Supply the parsed store, model ID and getters for the current overlay and mutation view; reads then include pending edits, creations, deletions and relationship changes. MCP consumes this shared implementation. This low-level adapter performs no file I/O and does not initialize geometry.
+
 ## Native Review facts
 
 The pure `@ifc-lite/sdk/review` subpath shares the viewer's native validation

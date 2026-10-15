@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import type { EntityData, EntityRef, EntityRelationshipsData } from '@ifc-lite/sdk';
+import type { EntityData, EntityRef, EntityRelationshipsData } from '../index.js';
 import type { PendingOverlay } from './overlay.js';
 
 /** Apply queued relationship creates/deletes and endpoint metadata edits. */

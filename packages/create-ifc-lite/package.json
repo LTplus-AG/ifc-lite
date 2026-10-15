@@ -42,5 +42,9 @@
     "vitest": "^5.0.3"
   },
   "homepage": "https://ifclite.dev/docs/",
-  "bugs": "https://github.com/LTplus-AG/ifc-lite/issues"
+  "bugs": "https://github.com/LTplus-AG/ifc-lite/issues",
+  "dependencies": {
+    "acorn": "^8.19.0",
+    "tar": "^7.5.21"
+  }
 }

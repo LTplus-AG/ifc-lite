@@ -6,6 +6,7 @@ from fractions import Fraction as Q
 import importlib.util
 import itertools
 import json
+import hashlib
 from pathlib import Path
 import subprocess
 import sys
@@ -35,6 +36,63 @@ def adjudicate(oracle,base,candidate):
 
 
 class FiniteCoverage(unittest.TestCase):
+    def test_7661_directory_cache_requires_matching_mesh_hash(self):
+        raw = {'positions':[v for p in horizontal() for v in p],'indices':[0,1,2]}
+        with tempfile.TemporaryDirectory() as directory:
+            folder = Path(directory)
+            content = json.dumps(raw).encode()
+            (folder/'oracle-raw-mesh.json').write_bytes(content)
+            digest = hashlib.sha256(content).hexdigest()
+            receipt = {'fixture_sha256':'fixture','engines':{'ifcopenshell':'0.8.5','shapely':'2.0.7'}}
+            for field in ['oracle_raw_mesh_sha256','oracle_raw_sha256']:
+                for expected in [None,'','0'*64,digest]:
+                    with self.subTest(field=field,expected=expected):
+                        recorded = dict(receipt)
+                        if expected is not None:
+                            recorded[field] = expected
+                        (folder/'receipt.json').write_text(json.dumps(recorded))
+                        if expected == digest:
+                            oracle,_,provenance,_,_ = C.cached_oracle(folder,'fixture')
+                            self.assertEqual(oracle,mesh([horizontal()]))
+                            self.assertEqual(provenance['oracle_file_sha256'],digest)
+                        else:
+                            with self.assertRaisesRegex(ValueError,'Oracle mesh hash'):
+                                C.cached_oracle(folder,'fixture')
+                recorded = {**receipt,field:digest}
+                (folder/'receipt.json').write_text(json.dumps(recorded))
+                (folder/'oracle-raw-mesh.json').write_bytes(content+b' ')
+                with self.assertRaisesRegex(ValueError,'Oracle mesh hash'):
+                    C.cached_oracle(folder,'fixture')
+                (folder/'oracle-raw-mesh.json').write_bytes(content)
+
+    def test_7661_directory_cache_requires_matching_consumed_no_void_hash(self):
+        raw = {'positions':[v for p in horizontal() for v in p],'indices':[0,1,2]}
+        with tempfile.TemporaryDirectory() as directory:
+            folder = Path(directory)
+            content = json.dumps(raw).encode()
+            digest = hashlib.sha256(content).hexdigest()
+            for name in ['oracle-raw-mesh.json','oracle-no-void-raw-mesh.json']:
+                (folder/name).write_bytes(content)
+            receipt = {'fixture_sha256':'fixture','engines':{'ifcopenshell':'0.8.5','shapely':'2.0.7'},
+                       'oracle_raw_mesh_sha256':digest}
+            for expected in [None,'','0'*64,digest]:
+                with self.subTest(expected=expected):
+                    recorded = dict(receipt)
+                    if expected is not None:
+                        recorded['oracle_no_void_raw_mesh_sha256'] = expected
+                    (folder/'receipt.json').write_text(json.dumps(recorded))
+                    if expected == digest:
+                        _,no_void,provenance,_,_ = C.cached_oracle(folder,'fixture')
+                        self.assertEqual(no_void,mesh([horizontal()]))
+                        self.assertEqual(provenance['oracle_no_void_file_sha256'],digest)
+                    else:
+                        with self.assertRaisesRegex(ValueError,'Oracle no-void hash'):
+                            C.cached_oracle(folder,'fixture')
+            (folder/'receipt.json').write_text(json.dumps({**receipt,'oracle_no_void_raw_mesh_sha256':digest}))
+            (folder/'oracle-no-void-raw-mesh.json').write_bytes(content+b' ')
+            with self.assertRaisesRegex(ValueError,'Oracle no-void hash'):
+                C.cached_oracle(folder,'fixture')
+
     def test_7661_reporter_cli_default_fixture(self):
         # An actual reporter mesh in viewer coordinates exercises default
         # fixture discovery, frame conversion and the CLI receipt. This does

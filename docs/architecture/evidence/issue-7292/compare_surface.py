@@ -136,13 +136,13 @@ def cached_oracle(path, fixture_hash):
     filename = 'oracle-raw-mesh.json' if (path/'oracle-raw-mesh.json').exists() else 'oracle-triangles.json'
     raw, digest = read(path/filename)
     expected = receipt.get('oracle_raw_mesh_sha256') or receipt.get('oracle_raw_sha256')
-    if expected:
-        require(digest == expected,'Oracle mesh hash mismatch')
-    no_void = read(path/'oracle-no-void-raw-mesh.json')[0] if (path/'oracle-no-void-raw-mesh.json').exists() else None
-    if no_void and receipt.get('oracle_no_void_raw_mesh_sha256'):
-        require(sha((path/'oracle-no-void-raw-mesh.json').read_bytes()) == receipt['oracle_no_void_raw_mesh_sha256'],'Oracle no-void hash mismatch')
-    return mesh_data(raw), mesh_data(no_void) if no_void else None, {'oracle_cache_receipt_sha256': receipt_hash,
-            'oracle_file_sha256': digest, 'oracle_no_void_file_sha256':sha((path/'oracle-no-void-raw-mesh.json').read_bytes()) if no_void else None, 'cache_receipt': receipt}, raw, no_void
+    require(isinstance(expected,str) and digest == expected,'Oracle mesh hash missing or mismatch')
+    no_void_path = path/'oracle-no-void-raw-mesh.json'
+    no_void, no_void_digest = read(no_void_path) if no_void_path.exists() else (None,None)
+    if no_void is not None:
+        require(no_void_digest == receipt.get('oracle_no_void_raw_mesh_sha256'),'Oracle no-void hash missing or mismatch')
+    return mesh_data(raw), mesh_data(no_void) if no_void is not None else None, {'oracle_cache_receipt_sha256': receipt_hash,
+            'oracle_file_sha256': digest, 'oracle_no_void_file_sha256':no_void_digest, 'cache_receipt': receipt}, raw, no_void
 
 
 def triangles(data):

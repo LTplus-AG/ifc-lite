@@ -749,6 +749,28 @@ fn extracts_defines_by_properties_with_a_grouped_relating_pset_definition_set() 
     assert_eq!(pset.properties[0].property_name, "Fire");
 }
 
+/// EXPORT-DATA-1 (#7681): the same grouped set in the spelling ISO 10303-21
+/// gives a defined type inside a SELECT, the typed parameter
+/// `IFCPROPERTYSETDEFINITIONSET((#20,#22))`. `get_refs` saw only the bare
+/// list, so this spelling still dropped the whole relationship after #4773.
+#[test]
+fn extracts_defines_by_properties_with_a_typed_property_set_definition_set() {
+    let ifc = GROUPED_RELATING_PSET_IFC.replace("(#10),(#20,#22)", "(#10),IFCPROPERTYSETDEFINITIONSET((#20,#22))");
+    assert_ne!(ifc, GROUPED_RELATING_PSET_IFC, "the fixture must carry the typed spelling");
+    let dm = extract_data_model_checked(&ifc);
+    for relating in [20, 22] {
+        assert!(
+            dm.relationships.iter().any(|r| r.rel_type.eq_ignore_ascii_case("IFCRELDEFINESBYPROPERTIES")
+                && r.relating_id == relating
+                && r.related_id == 10),
+            "#79 dropped #{relating} from the typed set: {:?}",
+            dm.relationships
+        );
+    }
+    let pset = dm.property_sets.iter().find(|p| p.pset_id == 20).expect("Pset_Grouped attached to #10");
+    assert_eq!(pset.properties[0].property_name, "Fire");
+}
+
 /// A wall associated DIRECTLY with an `IfcMaterial` (no layer set / usage
 /// indirection) — the `"IFCMATERIAL" =>` arm of `resolve_material`, whose
 /// `category` field (attribute 2) was previously not asserted anywhere: a

@@ -429,3 +429,97 @@ fn issue_5266_non_step_tokens_refuse_the_list_instead_of_vanishing() {
         [1.5, 0.5, -100.0, 0.0, 0.0, 3.0]
     );
 }
+
+/// The CoordIndex `(1,2,3)` faces of a triangulated face set record, read
+/// by the decoded grammar (`AttributeValue::parse_index_list`). `None` when
+/// the record does not decode or attribute 3 is not a list.
+fn decoded_coord_index(record: &str) -> Option<Vec<u32>> {
+    let mut decoder = crate::EntityDecoder::new(record);
+    let entity = decoder.decode_by_id(2).ok()?;
+    entity.get(3)?.as_list().map(crate::AttributeValue::parse_index_list)
+}
+
+/// #7689 (PROC-14, CORE-12): the raw-byte CoordIndex grammar and the decoded
+/// one gave different meshes for the same record. The byte path read `0` as
+/// vertex 1, ignored a `-` sign, and flattened every digit run so a face of
+/// two or four entries shifted every later triangle; the decoded path padded
+/// a short face with vertex 1. Wherever the byte path answers, it must
+/// answer exactly what the decoded path does.
+#[test]
+fn coord_index_byte_grammar_agrees_with_the_decoded_grammar_7689() {
+    const BAD: u32 = u32::MAX;
+    let cases: &[(&str, Option<&[u32]>)] = &[
+        ("((1,2,3),(2,1,4))", Some(&[0, 1, 2, 1, 0, 3])),
+        ("( ( 1 , 2 ,3 ) ,\t(2,1,4) )", Some(&[0, 1, 2, 1, 0, 3])),
+        ("((1,2,3)/* c */,(2,/* 9 */1,4))", Some(&[0, 1, 2, 1, 0, 3])),
+        // `0` and `-2` are not IfcPositiveInteger.
+        ("((1,0,3),(1,2,3))", Some(&[0, BAD, 2, 0, 1, 2])),
+        ("((1,-2,3),(1,2,3))", Some(&[0, BAD, 2, 0, 1, 2])),
+        // A face is LIST [3:3]: a short or long one is one dropped slot,
+        // never a shift of the faces after it.
+        ("((1,2),(1,2,3))", Some(&[BAD, BAD, BAD, 0, 1, 2])),
+        ("((1,2,3,4),(1,2,3))", Some(&[BAD, BAD, BAD, 0, 1, 2])),
+        ("((),(1,2,3))", Some(&[BAD, BAD, BAD, 0, 1, 2])),
+        // Beyond u32: never wrapped onto a real vertex.
+        ("((4294967297,1,2))", Some(&[BAD, 0, 1])),
+        ("((99999999999999999999,1,2))", None),
+        ("((4294967295,1,2))", Some(&[u32::MAX - 1, 0, 1])),
+        // A real is not an index.
+        ("((1.,2.,3.),(1,2,3))", Some(&[BAD, BAD, BAD, 0, 1, 2])),
+        ("((1,2,3),$)", None),
+        ("$", None),
+    ];
+    for &(coord_index, expected) in cases {
+        let record = format!("#2=IFCTRIANGULATEDFACESET(#1,$,.F.,{coord_index},$);");
+        let decoded = decoded_coord_index(&record);
+        if let Some(expected) = expected {
+            assert_eq!(decoded.as_deref(), Some(expected), "decoded grammar, {coord_index}");
+        }
+        if let Some(fast) = extract_face_indices_from_entity(record.as_bytes()) {
+            assert_eq!(Some(fast), decoded, "byte grammar answered differently, {coord_index}");
+        }
+    }
+    // The byte grammar is an accelerator: it must answer for the canonical
+    // shapes, not defer everything to the decoded path.
+    for coord_index in ["((1,2,3),(2,1,4))", "( ( 1 , 2 ,3 ) ,\t(2,1,4) )", "((1,0,3))", "((1,2))"] {
+        let record = format!("#2=IFCTRIANGULATEDFACESET(#1,$,.F.,{coord_index},$);");
+        assert!(extract_face_indices_from_entity(record.as_bytes()).is_some(), "{coord_index}");
+    }
+}
+
+/// Differential sweep for #7689: random CoordIndex text over the index
+/// alphabet. Wherever the byte grammar answers, it equals the decoded one.
+#[test]
+fn coord_index_byte_grammar_matches_decoded_on_random_input_7689() {
+    const ALPHABET: &[u8] = b"((((()))))),,,,0123456789 -+.$";
+    let mut state = 0x9e37_79b9_7f4a_7c15u64;
+    let mut next = || {
+        state ^= state << 13;
+        state ^= state >> 7;
+        state ^= state << 17;
+        state
+    };
+    let mut answered = 0;
+    for _ in 0..20_000 {
+        let len = 2 + (next() % 24) as usize;
+        let body: String = (0..len).map(|_| ALPHABET[(next() % ALPHABET.len() as u64) as usize] as char).collect();
+        let record = format!("#2=IFCTRIANGULATEDFACESET(#1,$,.F.,({body}),$);");
+        let Some(decoded) = decoded_coord_index(&record) else { continue };
+        if let Some(fast) = extract_face_indices_from_entity(record.as_bytes()) {
+            answered += 1;
+            assert_eq!(fast, decoded, "{record}");
+        }
+    }
+    assert!(answered > 100, "the sweep must exercise the byte grammar, answered {answered}");
+}
+
+/// The direct face-set reader has no `PnIndex` remap, so a face set that has
+/// one is refused rather than meshed against the wrong points (#7689 PROC-3).
+#[test]
+fn process_triangulated_faceset_direct_refuses_pn_index_7689() {
+    let points: &[u8] = b"#78=IFCCARTESIANPOINTLIST3D(((0.,0.,0.),(1.,0.,0.),(0.,1.,0.)));";
+    let with_pn = b"#77=IFCTRIANGULATEDFACESET(#78,$,$,((1,2,3)),(3,2,1));";
+    assert!(process_triangulated_faceset_direct(with_pn, |_| Some(points.to_vec())).is_none());
+    let without = b"#77=IFCTRIANGULATEDFACESET(#78,$,$,((1,2,3)),$);";
+    assert!(process_triangulated_faceset_direct(without, |_| Some(points.to_vec())).is_some());
+}

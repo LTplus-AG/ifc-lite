@@ -12,6 +12,10 @@ mod polygonal;
 mod triangulate;
 mod triangulated;
 
+#[cfg(test)]
+#[path = "indices_tests.rs"]
+mod indices_tests;
+
 pub use polygonal::PolygonalFaceSetProcessor;
 pub use triangulated::TriangulatedFaceSetProcessor;
 

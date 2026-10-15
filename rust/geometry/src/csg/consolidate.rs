@@ -6,12 +6,16 @@ use crate::mesh::Mesh;
 use nalgebra::{Point3, Vector3};
 mod conform;
 mod plane_merge;
+mod plan;
 mod ring_ops;
+mod recovery;
 
 use super::ClippingProcessor;
-use conform::{build_seam_map, conform_plans, count_open_boundary_edges_at, emit_plans, PlanBucket, PlanRegion};
+use conform::{count_open_boundary_edges_at, PlanBucket};
+#[cfg(test)]
+use conform::{build_seam_map, conform_plans};
 use plane_merge::{merge_rounding_split_buckets, tag_for, PlaneTri};
-use ring_ops::{clean_ring, floor_pow2};
+use ring_ops::floor_pow2;
 #[cfg(test)]
 use ring_ops::{ring_is_noise, weld_near_coincident_2d};
 
@@ -142,10 +146,6 @@ impl ClippingProcessor {
 
     fn consolidate_coplanar_with_unit_scale(mesh: Mesh, length_unit_scale: f64) -> Mesh {
         use crate::grid::NORMAL_QUANT_F64 as NORMAL_QUANT;
-        use crate::triangulation::project_to_2d_with_basis;
-        use i_overlay::core::fill_rule::FillRule;
-        use i_overlay::core::overlay_rule::OverlayRule;
-        use i_overlay::float::single::SingleFloatOverlay;
 
         if mesh.indices.len() < 6 {
             return mesh;
@@ -257,122 +257,17 @@ impl ClippingProcessor {
         // every bucket, is kept nowhere, and is never re-inserted.
         let mut plans: Vec<PlanBucket> = Vec::with_capacity(buckets.len());
 
-        // Phase A.
-        for (bid, (bucket_key, tris)) in buckets.iter().enumerate() {
-            if tris.is_empty() {
-                continue;
-            }
-            crate::progress::tick();
-            let bid = bid as u32;
-            // Use the FIRST triangle's normal/anchor for a stable 2D basis;
-            // all tris in this bucket share the plane by construction. EXCEPT
-            // (#3914): a bucket the merge pass above just folded a straddling
-            // neighbour into — `tris[0]`'s own recomputed cross-product
-            // normal is one specific member's noise, not the shared plane
-            // both original buckets' tags agreed on; use that tag's normal
-            // instead. An ordinary, non-merged bucket (the overwhelming
-            // majority) is untouched: this is `tris[0].normal` exactly as
-            // before the fix.
-            let normal = if merged_bucket_keys.contains(bucket_key) {
-                tris[0].tag.map(|(n, _)| n).unwrap_or(tris[0].normal)
-            } else {
-                tris[0].normal
-            };
-            let origin = tris[0].v[0];
-            let abs = (normal.x.abs(), normal.y.abs(), normal.z.abs());
-            let reference = if abs.0 <= abs.1 && abs.0 <= abs.2 {
-                Vector3::new(1.0, 0.0, 0.0)
-            } else if abs.1 <= abs.2 {
-                Vector3::new(0.0, 1.0, 0.0)
-            } else {
-                Vector3::new(0.0, 0.0, 1.0)
-            };
-            let u_axis = normal.cross(&reference).normalize();
-            let v_axis = normal.cross(&u_axis).normalize();
-            // CCW-in-2D convention: i_overlay's NonZero fill needs each
-            // input triangle wound CCW in (u, v). Our 3D triangles are CCW
-            // looking down `normal`; the (u, v) basis above is right-handed
-            // with `v = normal × u`, so projection preserves winding.
-
-            let mut plan = PlanBucket {
-                bid,
-                normal,
-                origin,
-                u_axis,
-                v_axis,
-                raw: Vec::new(),
-                raw_conformed: None,
-                regions: Vec::new(),
-            };
-
-            // Project each triangle to 2D and build i_overlay paths.
-            if tris.len() == 1 {
-                // Single triangle — skip the union round-trip entirely. Its three
-                // corners are hard corners by definition, so they are valid
-                // insertion sources for the buckets that abut them (recorded
-                // lazily, in `build_seam_map`).
-                plan.raw.push(tris[0].v);
-                plans.push(plan);
-                continue;
-            }
-            let mut subject: Vec<Vec<[f64; 2]>> = Vec::with_capacity(1);
-            let mut clip: Vec<Vec<[f64; 2]>> = Vec::with_capacity(tris.len() - 1);
-            // The plane's total area, for `ring_is_noise`'s share test.
-            let mut plane_area = 0.0_f64;
-            for (idx, tri) in tris.iter().enumerate() {
-                let pts_2d = project_to_2d_with_basis(&tri.v, &u_axis, &v_axis, &origin);
-                // Force CCW for i_overlay's NonZero fill — kernel output
-                // fragments can carry inconsistent winding, and mixed-winding
-                // subject + clip cancel out instead of unioning.
-                let signed_area = (pts_2d[1].x - pts_2d[0].x)
-                    * (pts_2d[2].y - pts_2d[0].y)
-                    - (pts_2d[2].x - pts_2d[0].x)
-                        * (pts_2d[1].y - pts_2d[0].y);
-                plane_area += 0.5 * signed_area.abs();
-                let path: Vec<[f64; 2]> = if signed_area >= 0.0 {
-                    pts_2d.iter().map(|p| [p.x, p.y]).collect()
-                } else {
-                    pts_2d.iter().rev().map(|p| [p.x, p.y]).collect()
-                };
-                if idx == 0 {
-                    subject.push(path);
-                } else {
-                    clip.push(path);
-                }
-            }
-
-            let shapes = subject.overlay(&clip, OverlayRule::Union, FillRule::NonZero);
-            if shapes.is_empty() {
-                // Union collapsed everything — emit originals to avoid loss.
-                for t in tris {
-                    plan.raw.push(t.v);
-                }
-                plans.push(plan);
-                continue;
-            }
-
-            for shape in shapes {
-                let Some(outer_simplified) =
-                    shape.first().and_then(|c| clean_ring(c, plane_area, length_unit_scale))
-                else {
-                    continue;
-                };
-                let holes_simplified: Vec<Vec<nalgebra::Point2<f64>>> =
-                    shape[1..]
-                        .iter()
-                        .filter_map(|c| clean_ring(c, plane_area, length_unit_scale))
-                        .collect();
-
-                plan.regions.push(PlanRegion {
-                    changed: false,
-                    cached: None,
-                    outer_conformed: outer_simplified.clone(),
-                    holes_conformed: holes_simplified.clone(),
-                    outer: outer_simplified,
-                    holes: holes_simplified,
-                });
-            }
-            plans.push(plan);
+        // Phase A preserves the established common-plane union. A bounded
+        // remote-plane retry is considered only after its full output is known.
+        let mut next_bid = 0;
+        for (bucket_key, tris) in &buckets {
+            plan::append_baseline_plan(
+                tris,
+                merged_bucket_keys.contains(bucket_key),
+                &mut next_bid,
+                length_unit_scale,
+                &mut plans,
+            );
         }
 
         // Phase C — today's output first. An already-watertight host pays nothing for
@@ -395,44 +290,9 @@ impl ClippingProcessor {
         // The seam map is built ONLY when today's output is torn. Recording every
         // bucket's kept corners unconditionally cost +61% geometry time on
         // ISSUE_129 (1014 -> 1634 ms) for a map that ~85% of hosts never consult.
-        let (mut output, base_complete) = emit_plans(&mut plans, false);
-        // A region that failed to triangulate is skipped, so an incomplete baseline
-        // can be missing a whole closed component while still reading as watertight.
-        // Consolidation's standing contract is "never worse than the raw kernel
-        // output", so hand back the raw mesh rather than a known-lossy consolidation.
-        if !base_complete {
+        let Some(mut output) = recovery::emit_and_conform(&mut plans) else {
             return mesh;
-        }
-        if count_open_boundary_edges_at(&output, 1.0e4) > 0 {
-            let seam = build_seam_map(&plans);
-            if conform_plans(&mut plans, &seam) {
-                // `complete` is part of the bar, not a detail: a region that fails
-                // to triangulate is skipped, and if it was its own closed component
-                // the remainder still balances — so a watertight-LOOKING candidate
-                // can be missing a whole surface. Reject unless every region landed.
-                let raw_conformed = plans.iter().any(|plan| plan.raw_conformed.is_some());
-                let (candidate, complete) = emit_plans(&mut plans, true);
-                if let Some(candidate) =
-                    complete_conformed_candidate(candidate, complete, raw_conformed)
-                {
-                    output = candidate;
-                } else if raw_conformed {
-                    // Preserve the established region-only conform when a new raw
-                    // split does not pair exactly. This is the #3913 N-ary sweep
-                    // safety valve: raw additions may improve the 0.1 mm metric
-                    // while introducing an exact-coordinate tear.
-                    for plan in &mut plans {
-                        plan.raw_conformed = None;
-                    }
-                    let (candidate, complete) = emit_plans(&mut plans, true);
-                    if let Some(candidate) =
-                        complete_conformed_candidate(candidate, complete, false)
-                    {
-                        output = candidate;
-                    }
-                }
-            }
-        }
+        };
 
         if output.is_empty() {
             return mesh;
@@ -488,6 +348,7 @@ impl ClippingProcessor {
                 }
             }
         }
+        output = recovery::retry_closed_input(&mesh, output, &buckets, plans, length_unit_scale);
         // Carry the input's placement / frame metadata (`origin` local-frame
         // translation, `rtc_applied`, and the #1474 world-capture `local_bounds` /
         // `local_to_world`) onto the re-triangulated output. `consolidate_coplanar`

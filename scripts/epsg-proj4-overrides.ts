@@ -4,8 +4,9 @@
 
 /**
  * proj4 definitions that replace what epsg.io returns, applied by
- * generate-epsg-index.ts after every fetch and by augment-epsg-proj4.ts. Each entry fixes a known-bad
- * epsg.io string (wrong Helmert rotation convention or a missing +towgs84;
+ * generate-epsg-index.ts after every fetch and by augment-epsg-proj4.ts.
+ * Each entry fixes a known-bad epsg.io string (wrong Helmert rotation
+ * convention or a missing +towgs84;
  * see the doc block above fetchProj4Definitions there), so a regeneration
  * cannot silently bring the error back. Add a control point
  * (packages/data/scripts/fixtures/epsg-control-points.json), a viewer
@@ -53,17 +54,9 @@ const OVERRIDE_LIST: Array<[string, string]> = [
   ...dbRefOverrides(),
 ];
 
-/** Throws on a repeated code, which a Map would otherwise drop silently. */
-function uniqueByCode(list: Array<[string, string]>): ReadonlyMap<string, string> {
-  const map = new Map<string, string>();
-  for (const [code, proj4] of list) {
-    if (map.has(code)) throw new Error(`duplicate proj4 override for EPSG:${code}`);
-    map.set(code, proj4);
-  }
-  return map;
-}
-
-export const PROJ4_OVERRIDES = uniqueByCode(OVERRIDE_LIST);
+export const PROJ4_OVERRIDES: ReadonlyMap<string, string> = new Map(OVERRIDE_LIST);
+// A Map silently keeps the last of a repeated code; fail loudly instead.
+if (PROJ4_OVERRIDES.size !== OVERRIDE_LIST.length) throw new Error('duplicate code in proj4 overrides');
 
 /**
  * Replace incoming proj4 strings with PROJ4_OVERRIDES and report, per code,

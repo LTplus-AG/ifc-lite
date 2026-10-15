@@ -29,13 +29,16 @@ it('EPSG:5828 (geocentric DB_REF) applies the datum shift (#7658)', async () => 
 });
 
 it('applyProj4Overrides rewrites listed codes and leaves others alone', () => {
-  const dbRef = PROJ4_OVERRIDES.get('9933')!;
+  const wgs84 = '+proj=longlat +datum=WGS84 +no_defs';
   const entries = [
     { code: '9933', proj4: '+proj=tmerc +ellps=bessel +units=m' },
     { code: '5683', proj4: PROJ4_OVERRIDES.get('5683') },
-    { code: '4326', proj4: '+proj=longlat +datum=WGS84 +no_defs' },
+    { code: '4326', proj4: wgs84 },
   ];
   applyProj4Overrides(entries);
-  expect(entries.map((entry) => entry.proj4)).toEqual([dbRef, PROJ4_OVERRIDES.get('5683'), '+proj=longlat +datum=WGS84 +no_defs']);
+  expect(entries.map((entry) => entry.proj4)).toEqual([
+    PROJ4_OVERRIDES.get('9933'),
+    PROJ4_OVERRIDES.get('5683'),
+    wgs84,
+  ]);
 });
-

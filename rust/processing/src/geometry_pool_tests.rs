@@ -36,20 +36,52 @@ fn deep_par_iter_job() -> u64 {
     (0..8u32).into_par_iter().map(|_| burn_stack(DEPTH)).sum()
 }
 
+/// Re-run the named test of this binary in a child process with `env_var` set,
+/// and return its exit status and stderr. A stack overflow aborts the process,
+/// so it can only be observed from outside.
+fn run_child(test_name: &str, env_var: &str) -> (std::process::ExitStatus, String) {
+    let exe = std::env::current_exe().expect("current test exe");
+    let output = std::process::Command::new(exe)
+        .args([test_name, "--exact", "--nocapture"])
+        .env(env_var, "1")
+        // A default worker stack is 2 MiB unless RUST_MIN_STACK says otherwise.
+        .env_remove("RUST_MIN_STACK")
+        .output()
+        .expect("failed to spawn child test process");
+    (output.status, String::from_utf8_lossy(&output.stderr).into_owned())
+}
+
+/// The job runs in a child process so that, if the pool ever loses its large
+/// stack, this fails as an assertion instead of aborting the test binary.
 #[test]
 fn deep_recursion_in_a_par_iter_job_survives_on_the_geometry_pool() {
-    let (sum, worker_names) = run_on_geometry_pool(|| {
-        let names: Vec<String> = (0..8u32)
-            .into_par_iter()
-            .map(|_| std::thread::current().name().unwrap_or_default().to_string())
-            .collect();
-        (deep_par_iter_job(), names)
-    })
-    .expect("geometry pool builds");
-    assert_eq!(sum, 8 * u64::from(DEPTH));
+    const REPRO_ENV_VAR: &str = "IFC_LITE_GEOMETRY_POOL_LARGE_STACK_REPRO";
+
+    if std::env::var(REPRO_ENV_VAR).is_ok() {
+        let (sum, worker_names) = run_on_geometry_pool(|| {
+            let names: Vec<String> = (0..8u32)
+                .into_par_iter()
+                .map(|_| std::thread::current().name().unwrap_or_default().to_string())
+                .collect();
+            (deep_par_iter_job(), names)
+        })
+        .expect("geometry pool builds");
+        assert_eq!(sum, 8 * u64::from(DEPTH));
+        assert!(
+            worker_names.iter().all(|n| n.starts_with("ifc-lite-geometry-")),
+            "par_iter jobs started inside run_on_geometry_pool must run on its workers, got {worker_names:?}"
+        );
+        std::process::exit(0);
+    }
+
+    let (status, stderr) = run_child(
+        "geometry_pool::tests::deep_recursion_in_a_par_iter_job_survives_on_the_geometry_pool",
+        REPRO_ENV_VAR,
+    );
     assert!(
-        worker_names.iter().all(|n| n.starts_with("ifc-lite-geometry-")),
-        "par_iter jobs started inside run_on_geometry_pool must run on its workers, got {worker_names:?}"
+        status.success(),
+        "a ~16 MiB recursion inside par_iter jobs must complete on the geometry pool; \
+         child exit status = {status:?}\n--- child stderr ---\n{stderr}"
     );
 }
 
@@ -75,24 +107,14 @@ fn the_same_job_overflows_a_default_rayon_worker_stack() {
         std::process::exit(0);
     }
 
-    let exe = std::env::current_exe().expect("current test exe");
-    let output = std::process::Command::new(exe)
-        .args([
-            "geometry_pool::tests::the_same_job_overflows_a_default_rayon_worker_stack",
-            "--exact",
-            "--nocapture",
-        ])
-        .env(REPRO_ENV_VAR, "1")
-        // A default worker stack is 2 MiB unless RUST_MIN_STACK says otherwise.
-        .env_remove("RUST_MIN_STACK")
-        .output()
-        .expect("failed to spawn child test process");
-    let stderr = String::from_utf8_lossy(&output.stderr);
+    let (status, stderr) = run_child(
+        "geometry_pool::tests::the_same_job_overflows_a_default_rayon_worker_stack",
+        REPRO_ENV_VAR,
+    );
     assert!(
-        !output.status.success() && stderr.contains("overflowed its stack"),
+        !status.success() && stderr.contains("overflowed its stack"),
         "the deep job must overflow a default-stack rayon worker, or the pool test \
-         above proves nothing; child exit status = {:?}\n--- child stderr ---\n{stderr}",
-        output.status
+         above proves nothing; child exit status = {status:?}\n--- child stderr ---\n{stderr}"
     );
 }
 

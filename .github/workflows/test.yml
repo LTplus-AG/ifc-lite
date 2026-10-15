@@ -899,6 +899,13 @@ jobs:
           # RED. Once the script is on main, ordinary whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- scripts/viewer-test-shards.mjs | grep -Fxq 'scripts/viewer-test-shards.mjs'; then
             oracle_args+=(--mutation tests/evidence/ci-viewer-test-shards/selection.oracle.patch)
+          # #7673: the new large-stack geometry pool module carries its own
+          # tests, so a whole-file revert deletes them (INCONCLUSIVE). Keep the
+          # module and remove ONLY the large worker stack: the deep par_iter
+          # job then overflows and its child-process test turns RED. Once
+          # geometry_pool.rs is on main, ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/processing/src/geometry_pool.rs | grep -Fxq 'rust/processing/src/geometry_pool.rs'; then
+            oracle_args+=(--mutation tests/evidence/geometry-pool-7673/stack-size.oracle.patch)
           fi
           node scripts/check-test-revert-oracle.mjs "${oracle_args[@]}"
           # #7512: observe cleanup independently of scoped admission/schema.

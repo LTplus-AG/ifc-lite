@@ -1,0 +1,66 @@
+diff --git a/apps/server/src/admission.rs b/apps/server/src/admission.rs
+--- a/apps/server/src/admission.rs
++++ b/apps/server/src/admission.rs
+@@ -85,7 +85,7 @@ impl AdmissionGuard {
+             let keep = bytes.div_ceil(BYTES_PER_PERMIT).max(1) as usize;
+             let held = mem.num_permits();
+             if held > keep {
+-                let _ = (held, keep);
++                drop(mem.split(held - keep));
+             }
+         }
+     }
+diff --git a/apps/server/src/routes/parse/upload.rs b/apps/server/src/routes/parse/upload.rs
+--- a/apps/server/src/routes/parse/upload.rs
++++ b/apps/server/src/routes/parse/upload.rs
+@@ -46,11 +46,12 @@ pub(crate) async fn request_cache_key_off_runtime(
+     quality: TessellationQuality,
+ ) -> Result<String, ApiError> {
+     let (data, query) = (data.clone(), query.clone());
+-    Ok({
++    Ok(tokio::task::spawn_blocking(move || {
+         let key = super::cache_keys::request_cache_key(&data, &query, quality);
+         tracing::debug!(cache_key = %key, size = data.len(), "Upload hashed");
+         key
+     })
++    .await?)
+ }
+ 
+ /// What a parse holds per byte of upload at its peak: the upload itself plus
+@@ -85,8 +86,7 @@ const UPLOAD_MIN_BYTES_PER_SEC: u64 = 8 * 1024;
+ fn next_byte_deadline(started: Instant, received: usize) -> Instant {
+     let on_schedule = Duration::from_secs_f64(received as f64 / UPLOAD_MIN_BYTES_PER_SEC as f64);
+     let rate_floor = started + UPLOAD_RATE_GRACE.max(on_schedule);
+-    let _ = (rate_floor, UPLOAD_IDLE_TIMEOUT);
+-    Instant::now() + Duration::from_secs(365 * 24 * 3600)
++    rate_floor.min(Instant::now() + UPLOAD_IDLE_TIMEOUT)
+ }
+ 
+ /// Await the next piece of the upload, or refuse it with `408`.
+@@ -149,7 +149,7 @@ pub(crate) async fn extract_file(
+             }
+             let bytes = bytes::Bytes::from(buf);
+             tracing::debug!(size = bytes.len(), "Extracted file from multipart");
+-            return decode_upload(bytes, max_bytes, max_file_size_mb);
++            return tokio::task::spawn_blocking(move || decode_upload(bytes, max_bytes, max_file_size_mb)).await?;
+         }
+     }
+ 
+@@ -182,7 +182,7 @@ fn decode_upload(bytes: bytes::Bytes, max_bytes: usize, max_file_size_mb: usize)
+     let mut decompressed = Vec::new();
+     decoder
+         .read_to_end(&mut decompressed)
+-        .map_err(|e| ApiError::Internal(format!("Failed to decompress gzip: {e}")))?;
++        .map_err(|e| ApiError::BadRequest(format!("Failed to decompress gzip: {e}")))?;
+     if decompressed.len() > max_bytes {
+         return Err(ApiError::FileTooLarge {
+             max_mb: max_file_size_mb,
+@@ -295,7 +295,7 @@ fn unwrap_ifczip(
+         .by_ref()
+         .take(max_bytes as u64 + 1)
+         .read_to_end(&mut model)
+-        .map_err(|e| ApiError::Internal(format!("Failed to decompress .ifcZIP entry: {e}")))?;
++        .map_err(|e| ApiError::BadRequest(format!("Failed to decompress .ifcZIP entry: {e}")))?;
+     if model.len() > max_bytes {
+         return Err(ApiError::FileTooLarge {
+             max_mb: max_file_size_mb,

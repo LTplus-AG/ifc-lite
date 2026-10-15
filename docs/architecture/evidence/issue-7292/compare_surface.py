@@ -57,12 +57,13 @@ def save(path, value):
     path.write_text(json.dumps(value, indent=2, allow_nan=False) + '\n')
 
 
-def dot(a, b):
-    return sum(x * y for x, y in zip(a, b))
+# Share vector arithmetic with the exact certificate helper; retain the
+# evidence CLI's existing list-valued cross-product adapter.
+dot = finite.dot
 
 
 def cross(a, b):
-    return [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]]
+    return list(finite.cross(a,b))
 
 
 def mesh_data(raw, frame='z-up', element=None):

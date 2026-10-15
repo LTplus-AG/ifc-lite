@@ -10,6 +10,10 @@
  * cannot silently bring the error back. Add a control point
  * (packages/data/scripts/fixtures/epsg-control-points.json) or a viewer
  * reprojection test with any new projected or geographic override.
+ *
+ * If a regeneration changes the +towgs84 signs or presence of any CRS with a
+ * control point, re-verify against the EPSG Registry CoordOperation method
+ * before accepting it: that is how every entry below was found.
  */
 
 /** EPSG:5826 "DB_REF to ETRS89 (1)" (method 9607) negated to Position Vector (#7658). */
@@ -63,5 +67,5 @@ export function applyProj4Overrides(entries: Array<{ code: string; proj4?: strin
     (entry.proj4 === proj4 ? unchanged : applied).push(code);
     entry.proj4 = proj4;
   }
-  console.log(`proj4 overrides: applied ${applied.join(',') || '-'}; already correct ${unchanged.join(',') || '-'}; not in index ${missing.join(',') || '-'}`);
+  console.error(`proj4 overrides: applied ${applied.join(',') || '-'}; already correct ${unchanged.join(',') || '-'}; not in index ${missing.join(',') || '-'}`);
 }

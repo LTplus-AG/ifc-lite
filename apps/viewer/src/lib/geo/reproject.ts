@@ -95,6 +95,9 @@ const DATUM_TOWGS84: Record<string, string> = {
   // Germany — DHDN (Bessel 1841)
   'deutsches hauptdreiecksnetz': '+towgs84=598.1,73.7,418.2,0.202,0.045,-2.455,6.7',
   'dhdn': '+towgs84=598.1,73.7,418.2,0.202,0.045,-2.455,6.7',
+  // Germany — DB_REF (Deutsche Bahn, Bessel 1841): EPSG:5826 as Position Vector (#7658).
+  'deutsche bahn reference system': '+towgs84=584.9636,107.7175,413.8067,1.1155,0.2824,-3.1384,7.9922',
+  'db_ref': '+towgs84=584.9636,107.7175,413.8067,1.1155,0.2824,-3.1384,7.9922',
   // Netherlands — Amersfoort (Bessel 1841). The bundled EPSG:28992 already
   // ships with the higher-precision Kadaster +towgs84, so this fires only
   // when a derived/compound CRS lacks it (e.g. some compound RD/NAP cases).

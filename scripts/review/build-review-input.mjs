@@ -204,12 +204,8 @@ export const EXCLUDED = [
   // on this rule's own PR: the CI reviewer quoted a line of pr-3595.json's
   // embedded patch as its `riskiest_change` in build-context-pack.mjs, and
   // proof-of-work refused the review. Same category as `fixtures/`: excluded
-  // for attention, and here for attribution.
-  /(^|\/)eval-cases\//,
-  // Verbatim live AI evaluation streams (tests/ai-eval/live-runs/<run>/recordings): captured
-  // provider output, megabytes per run, so one run alone passes MAX_PATCH_BYTES. The run's
-  // summary.json and review.json stay reviewable; the manifest gate checks the recordings.
-  /(^|\/)live-runs\/[^/]+\/recordings\//,
+  // for attention, and here for attribution. Live-run recordings: captured provider output, MBs per run.
+  /(^|\/)(eval-cases|live-runs\/[^/]+\/recordings)\//,
   /(^|\/)pkg\//,
   /\.(ifc|ifcx|glb|gltf|png|jpg|jpeg|svg|pdf|zip|wasm|ico|parquet|bcf|woff|gif|webp)$/i,
   /(^|\/)dist\//,

@@ -27,6 +27,17 @@
     "@ifc-lite/wasm-lifecycle": "0.2.0"
   },
   "declarationsChecked": true,
+  "browser": {
+    "viteVersion": "8.3.4",
+    "files": [
+      "assets/event-DZmSOhea.js",
+      "assets/geometry.worker-CjtVRMyg.js",
+      "assets/ifc-lite_bg-BdVPOxDu.wasm",
+      "assets/index-Dz9gOPoa.js",
+      "assets/native-bridge-BFCp53GD.js",
+      "index.html"
+    ]
+  },
   "receipts": [
     {
       "fixture": "apps/viewer/public/samples/hello-wall.ifc",
@@ -42,7 +53,9 @@
       "unsupportedRefused": true,
       "closedQueryRefused": true,
       "meshes": 8,
-      "glbBytes": 13892
+      "triangles": 192,
+      "glbBytes": 13892,
+      "glbSha256": "8748749dba3e43d4e7373971cf0aa99393f98d494c6ae4275625542504d5169a"
     },
     {
       "fixture": "tests/models/ara3d/AC20-FZK-Haus.ifc",
@@ -58,7 +71,9 @@
       "unsupportedRefused": true,
       "closedQueryRefused": true,
       "meshes": 317,
-      "glbBytes": 1915936
+      "triangles": 33356,
+      "glbBytes": 1915936,
+      "glbSha256": "02d77d563e73310d800cd5a1ad323f04ad59d83f5bcbaeff33134eeaaf94409a"
     }
   ]
 }

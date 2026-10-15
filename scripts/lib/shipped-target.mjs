@@ -34,7 +34,8 @@
  * make it too permissive; `pnpm pack` stays the ground truth.
  */
 
-import { isAbsolute, relative, resolve } from 'node:path';
+import { isAbsolute, relative, resolve, join } from 'node:path';
+import { readdirSync, statSync } from 'node:fs';
 
 /** Every relative `new URL(…, import.meta.url)` — `./x` and `../x` alike. */
 export const relativeUrlSpecifier = () =>
@@ -77,3 +78,18 @@ export const REASONS = {
   'not-a-file': 'resolves to a directory, not a loadable file',
   missing: 'does not exist in dist/',
 };
+
+/** Walk every emitted module; never keep a hand-maintained caller list. */
+export function* emittedJsFiles(dir) {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) yield* emittedJsFiles(full);
+    else if (/\.[cm]?js$/.test(entry.name)) yield full;
+  }
+}
+
+/** The verifier refuses absent and non-file targets alike. */
+export function inspectTarget(absolutePath) {
+  try { return statSync(absolutePath).isFile() ? 'file' : 'directory'; }
+  catch { return 'missing'; }
+}

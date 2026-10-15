@@ -29,14 +29,13 @@
  * variables at runtime has no literal to resolve, and passes silently.
  */
 
-import { readdirSync, readFileSync, existsSync, statSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { readFileSync, existsSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 
-import { isMainEntry } from '../../../scripts/lib/is-main-entry.mjs';
-import { classifyTarget, REASONS, relativeUrlSpecifier } from './lib/shipped-target.mjs';
+import { isMainEntry } from './lib/is-main-entry.mjs';
+import { classifyTarget, emittedJsFiles, inspectTarget, REASONS, relativeUrlSpecifier } from './lib/shipped-target.mjs';
 
-const DIST = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'dist');
+const DIST = resolve(process.argv.slice(2).find(argument => !argument.startsWith('--')) ?? 'dist');
 
 /**
  * Collect the specifiers in one file that are not shipped, with the reason.
@@ -47,33 +46,19 @@ const DIST = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'dist');
  *
  * @param {string} text file contents
  * @param {(specifier: string) => 'shipped' | 'outside-dist' | 'not-a-file' | 'missing'} classify
+ * @param {{ scriptsOnly?: boolean }} [options] Only script URLs when other assets ship through dependencies.
  * @returns {{ checked: string[], problems: { specifier: string, verdict: string }[] }}
  */
-export function findUnshippedTargets(text, classify) {
+export function findUnshippedTargets(text, classify, { scriptsOnly = false } = {}) {
   const checked = [];
   const problems = [];
   for (const [, , specifier] of text.matchAll(relativeUrlSpecifier())) {
+    if (scriptsOnly && !/\.[cm]?[jt]s$/.test(specifier)) continue;
     checked.push(specifier);
     const verdict = classify(specifier);
     if (verdict !== 'shipped') problems.push({ specifier, verdict });
   }
   return { checked, problems };
-}
-
-function* emittedJsFiles(dir) {
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    const full = join(dir, entry.name);
-    if (entry.isDirectory()) yield* emittedJsFiles(full);
-    else if (entry.name.endsWith('.js')) yield full;
-  }
-}
-
-function inspect(absolutePath) {
-  try {
-    return statSync(absolutePath).isFile() ? 'file' : 'directory';
-  } catch {
-    return 'missing';
-  }
 }
 
 function main() {
@@ -90,7 +75,8 @@ function main() {
     files += 1;
     const relativePath = file.slice(DIST.length + 1);
     const { checked, problems } = findUnshippedTargets(readFileSync(file, 'utf8'), (specifier) =>
-      classifyTarget({ distRoot: DIST, fileDir: dirname(file), specifier, inspect }),
+      classifyTarget({ distRoot: DIST, fileDir: dirname(file), specifier, inspect: inspectTarget }),
+      { scriptsOnly: process.argv.includes('--scripts-only') },
     );
     specifiers += checked.length;
     for (const { specifier, verdict } of problems) {

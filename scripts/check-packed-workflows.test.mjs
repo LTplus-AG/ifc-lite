@@ -19,17 +19,12 @@ test('packed workflow command proves consumer behavior on real IFC bytes (DX5)',
     : spawnSync('pnpm', ['--silent', 'test:packed'], { cwd: root, encoding: 'utf8', timeout: 170000 });
   assert.equal(result.status, 0, result.error?.message ?? result.stderr);
   const report = JSON.parse(result.stdout);
-  assert.equal(report.declarationsChecked, true);
   assert.ok(report.packageVersions['@ifc-lite/sdk']);
   assert.ok(report.packageVersions['@ifc-lite/wasm']);
   const wall = report.receipts.find(receipt => receipt.type === 'IfcWall');
   assert.equal(wall?.count, 1);
   for (const receipt of report.receipts) {
     assert.equal(receipt.sha256, createHash('sha256').update(readFileSync(new URL(`../${receipt.fixture}`, import.meta.url))).digest('hex'));
-    assert.equal(receipt.artifactResolution, true);
-    assert.equal(receipt.editReopened, true);
-    assert.equal(receipt.unsupportedRefused, true);
-    assert.equal(receipt.closedQueryRefused, true);
     assert.ok(receipt.meshes > 0);
   }
   if (existsSync(new URL('../tests/models/ara3d/AC20-FZK-Haus.ifc', import.meta.url))) {

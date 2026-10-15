@@ -4,6 +4,7 @@
 
 import assert from 'node:assert/strict';
 import { Console } from 'node:console';
+import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 
 // Standalone consumer process: stdout is the receipt, diagnostics use stderr.
@@ -52,7 +53,8 @@ try {
   process.stdout.write(JSON.stringify({ runtime: process.version, schema: model.store.schemaVersion,
     completeness: model.report.completeness, type, count: entities.length, GlobalId: target.globalId,
     artifactResolution: true, editReopened: true, unsupportedRefused: true, closedQueryRefused: true,
-    meshes: geometry.meshes.length, glbBytes: glb.byteLength }) + '\n');
+    meshes: geometry.meshes.length, triangles: geometry.meshes.reduce((count, mesh) => count + mesh.indices.length / 3, 0),
+    glbBytes: glb.byteLength, glbSha256: createHash('sha256').update(glb).digest('hex') }) + '\n');
 } finally {
   model.close();
   reopened?.close();

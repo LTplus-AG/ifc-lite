@@ -15,7 +15,7 @@
  * rather than at runtime.
  *
  * WHY THIS IS A SCRIPT AND NOT AN INLINE `node -e`. `@ifc-lite/geometry` and
- * `@ifc-lite/pointcloud` carry the same rewrite inline in their build script,
+ * `@ifc-lite/pointcloud` carried the same rewrite inline in their build script,
  * each naming the dist files to touch. That list is how the defect came back
  * once already: #633 rewrote `dist/index.js` alone, and #637 had to follow
  * because the worker URL also lived in `dist/geometry-parallel.js`. This
@@ -33,14 +33,13 @@
  * in exactly the same way, so such a URL would pass both silently.
  */
 
-import { readdirSync, readFileSync, writeFileSync, existsSync, statSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 
-import { isMainEntry } from '../../../scripts/lib/is-main-entry.mjs';
-import { classifyTarget, relativeTsUrlSpecifier } from './lib/shipped-target.mjs';
+import { isMainEntry } from './lib/is-main-entry.mjs';
+import { classifyTarget, emittedJsFiles, inspectTarget, relativeTsUrlSpecifier } from './lib/shipped-target.mjs';
 
-const DIST = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'dist');
+const DIST = resolve(process.argv.slice(2).find(argument => !argument.startsWith('--')) ?? 'dist');
 
 /**
  * Rewrite the `.ts` worker specifiers in one emitted file.
@@ -69,22 +68,6 @@ export function rewriteWorkerUrls(text, emitsSibling) {
   return { text: out, rewritten, left };
 }
 
-function* emittedJsFiles(dir) {
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    const full = join(dir, entry.name);
-    if (entry.isDirectory()) yield* emittedJsFiles(full);
-    else if (entry.name.endsWith('.js')) yield full;
-  }
-}
-
-function inspect(absolutePath) {
-  try {
-    return statSync(absolutePath).isFile() ? 'file' : 'directory';
-  } catch {
-    return 'missing';
-  }
-}
-
 function main() {
   if (!existsSync(DIST)) {
     console.error('rewrite-worker-urls: dist/ does not exist — run tsc first.');
@@ -101,7 +84,7 @@ function main() {
     const result = rewriteWorkerUrls(
       before,
       (asJs) =>
-        classifyTarget({ distRoot: DIST, fileDir: dirname(file), specifier: asJs, inspect }) ===
+        classifyTarget({ distRoot: DIST, fileDir: dirname(file), specifier: asJs, inspect: inspectTarget }) ===
         'shipped',
     );
     left.push(...result.left);

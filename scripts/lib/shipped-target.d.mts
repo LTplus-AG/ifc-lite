@@ -20,3 +20,6 @@ export declare function classifyTarget(args: {
 }): TargetVerdict;
 
 export declare const REASONS: Record<string, string>;
+
+export declare function emittedJsFiles(dir: string): Generator<string>;
+export declare function inspectTarget(absolutePath: string): TargetKind;

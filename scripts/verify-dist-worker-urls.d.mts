@@ -11,4 +11,5 @@ import type { TargetVerdict } from './lib/shipped-target.mjs';
 export declare function findUnshippedTargets(
   text: string,
   classify: (specifier: string) => TargetVerdict,
+  options?: { scriptsOnly?: boolean },
 ): { checked: string[]; problems: { specifier: string; verdict: TargetVerdict }[] };

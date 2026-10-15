@@ -1,17 +1,17 @@
 diff --git b/apps/server/src/admission.rs a/apps/server/src/admission.rs
-index 067d55fcc2..5f6fbe83c8 100644
+index e2d80255f0..58f36f2e05 100644
 --- b/apps/server/src/admission.rs
 +++ a/apps/server/src/admission.rs
-@@ -133,7 +133,7 @@ impl AdmissionGuard {
-         let held = mem.num_permits();
-         if held > want {
-             drop(mem.split(held - want));
--        } else if false && held < want {
-+        } else if held < want {
+@@ -131,7 +131,7 @@ impl AdmissionGuard {
+         let before = self.reserved();
+         let want = self.admission.permits_for(bytes) as usize;
+         let held = self.mem.as_ref().map_or(usize::MAX, |mem| mem.num_permits());
+-        if false && held < want {
++        if held < want {
              let extra = self.admission.acquire_more((want - held) as u32).await?;
              // Same semaphore, so the permits merge into one.
              if let (Some(mem), Some(extra)) = (self.mem.as_mut(), extra) {
-@@ -146,7 +146,7 @@ impl AdmissionGuard {
+@@ -144,7 +144,7 @@ impl AdmissionGuard {
      /// End the job: free its CPU slot now and keep only its bytes, for as
      /// long as the returned value lives. See [`ResidentBytes`].
      pub fn into_resident(mut self) -> ResidentBytes {
@@ -20,7 +20,7 @@ index 067d55fcc2..5f6fbe83c8 100644
      }
  }
  
-@@ -258,6 +258,7 @@ impl Admission {
+@@ -257,6 +257,7 @@ impl Admission {
      /// applies. With the byte gate disabled (`IFC_MEM_BUDGET_MB=0`) nothing
      /// bounds resident bytes, for reads as for every other route.
      pub async fn acquire_resident(self: &Arc<Self>, bytes: u64) -> Result<ResidentBytes, ApiError> {
@@ -41,11 +41,24 @@ index a999a1b390..a3fbaf846c 100644
                  .into_response())
          }
          Err(e) => {
+diff --git b/apps/server/src/routes/parse/cached_replay.rs a/apps/server/src/routes/parse/cached_replay.rs
+index 9f0c4091a1..6e237e20d3 100644
+--- b/apps/server/src/routes/parse/cached_replay.rs
++++ a/apps/server/src/routes/parse/cached_replay.rs
+@@ -168,7 +168,7 @@ pub(super) async fn try_cached_replay(
+     // re-parse rather than replay (issue #3869). The same holds for a data
+     // model of the OTHER entities variant (#6034): geometry warmed by a
+     // default request has no rooted table behind it.
+-    if false && !has_current_data_model(&state.cache, cache_key, data_model_entities).await?
++    if !has_current_data_model(&state.cache, cache_key, data_model_entities).await?
+         || !has_cached_symbolic(&state.cache, cache_key).await? {
+         tracing::info!(
+             cache_key = %cache_key,
 diff --git b/apps/server/src/routes/parse/json.rs a/apps/server/src/routes/parse/json.rs
-index 203d3af73b..472950a811 100644
+index f3e790d721..5959440c2b 100644
 --- b/apps/server/src/routes/parse/json.rs
 +++ a/apps/server/src/routes/parse/json.rs
-@@ -185,7 +185,7 @@ fn json_body(body: Bytes, resident: ResidentBytes) -> Response {
+@@ -186,7 +186,7 @@ fn json_body(body: Bytes, resident: ResidentBytes) -> Response {
      // without it the response goes out chunked (as `Json` never did).
      let length = body.len();
      (
@@ -55,15 +68,17 @@ index 203d3af73b..472950a811 100644
      )
          .into_response()
 diff --git b/apps/server/src/services/cache_entry.rs a/apps/server/src/services/cache_entry.rs
-index 7a2bc31ff0..a94573627e 100644
+index ef357b2903..62adf1e59f 100644
 --- b/apps/server/src/services/cache_entry.rs
 +++ a/apps/server/src/services/cache_entry.rs
-@@ -157,7 +157,7 @@ impl DiskCache {
+@@ -170,8 +170,8 @@ impl DiskCache {
          tracing::warn!(cache_key = %key, reason = %why, "Unusable cache entry; treating it as a miss");
          let _exclusive = self.write_gc_lock.write().await;
          match cacache::metadata(&self.cache_dir, key).await {
--            Ok(Some(row)) if row.integrity != *failed => {
-+            Ok(Some(row)) if row.integrity == *failed => {
-                 if let Err(e) = cacache::remove(&self.cache_dir, key).await {
-                     tracing::warn!(cache_key = %key, error = %e, "Failed to evict an unusable cache entry");
+-            Ok(Some(row)) if row.integrity == failed.integrity => {
+-                if false && blob_missing && cacache::exists(&self.cache_dir, &row.integrity).await {
++            Ok(Some(row)) if row.integrity == failed.integrity && row.time == failed.written => {
++                if blob_missing && cacache::exists(&self.cache_dir, &row.integrity).await {
+                     tracing::debug!(cache_key = %key, "Cache entry's blob is back; keeping it");
+                     return;
                  }

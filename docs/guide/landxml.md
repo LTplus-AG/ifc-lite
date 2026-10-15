@@ -176,19 +176,30 @@ unit, as IFC defines it, instead of being refused.
 | IFC | LandXML 1.2 |
 |---|---|
 | Each selected `IfcGeographicElement` or `IfcSite`, in selection order | One `<Surface>`, `<Definition surfType="TIN">` |
-| Product `Name` (else `GlobalId`) | `Surface@name`. A repeated name gets a ` (2)`, ` (3)` … suffix |
+| Product `Name` (else `GlobalId`), or the name typed in the dialog | `Surface@name`. A repeated name gets a ` (2)`, ` (3)` … suffix |
 | Product `GlobalId` | `Surface@OID` |
 | `IfcTriangulatedFaceSet.Coordinates`, through `PnIndex` when present | `<Pnts>`, one `<P>` per vertex in authored order, ids from 1 |
 | `CoordIndex` | `<Faces>`, one `<F>` per triangle, unchanged |
-| Vertex, through the product placement and then the context's `IfcMapConversion` / `IfcMapConversionScaled` | `<P>` text as **northing easting elevation**, in metres |
+| Vertex, through the product placement and then the context's `IfcMapConversion` / `IfcMapConversionScaled` | `<P>` text as **northing easting elevation**, in the chosen unit (metres by default) |
 | `IfcProjectedCRS.Name` | `CoordinateSystem@name`, plus `epsgCode` when the name is `EPSG:<n>` |
 | `IfcProjectedCRS.GeodeticDatum` / `VerticalDatum` | `CoordinateSystem@horizontalDatum` / `@verticalDatum` |
 | `IfcProject.Name` (else `LongName`) | `Project@name` |
 
-Coordinates are written to six decimals (a micrometre), with trailing zeros trimmed and never in
-exponent form. The map conversion is found through the representation's own context, following
-`ParentContext` from a subcontext. `MapUnit` and the project length unit are both converted to
-metres, so the output is always `<Metric linearUnit="meter">`. For how ifc-lite reads the map
+The dialog has three options, applied when you export (#7618):
+
+- **Units**: metres (`<Metric linearUnit="meter">`, the default), international feet
+  (`<Imperial linearUnit="foot" elevationUnit="feet">`) or US survey feet
+  (`<Imperial linearUnit="USSurveyFoot" elevationUnit="feet">`). LandXML 1.2 has no US survey foot
+  for elevations, so in that mode heights are written in international feet. Both units are
+  declared, so any reader converts them exactly.
+- **Decimal places** in the written unit: 3, 4 or 6. The default 6 (a micrometre in metres) loses
+  nothing in a round trip; 3 is millimetres in metres, as machine-control files usually carry.
+  Trailing zeros are trimmed and numbers are never in exponent form.
+- **Surface name**, per surface. It starts as the IFC name; a blank name keeps it.
+
+The map conversion is found through the representation's own context, following `ParentContext`
+from a subcontext. `MapUnit` and the project length unit are both converted to metres first, and
+the chosen unit is applied once, when the file is written. For how ifc-lite reads the map
 conversion elsewhere, see
 [map units](exporting.md#map-units-for-interoperability) and
 [map rotation and scale](exporting.md#map-rotation-and-scale-for-interoperability).

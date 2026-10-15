@@ -7,7 +7,7 @@
 //! output is read back through ifc-lite's own LandXML parser rather than
 //! string-matched, so an N/E swap or a dropped transform fails as numbers.
 
-use super::{try_export_landxml_terrain, LandXmlTerrainExport, LandXmlTerrainOptions};
+use super::{try_export_landxml_terrain, LandXmlLinearUnit, LandXmlTerrainExport, LandXmlTerrainOptions};
 use ifc_lite_landxml::{parse_landxml_tin, LandXmlTinDocument};
 
 /// A Bonsai-shaped IFC4X3 terrain (the bonsai-topo control fixture's layout),
@@ -58,7 +58,7 @@ impl Model {
 }
 
 fn options() -> LandXmlTerrainOptions {
-    LandXmlTerrainOptions { date: "2026-10-14".into(), time: "12:00:00".into() }
+    LandXmlTerrainOptions::new("2026-10-14", "12:00:00")
 }
 
 fn export(model: &Model, ids: &[u32]) -> Result<LandXmlTerrainExport, String> {
@@ -256,9 +256,88 @@ fn bonsai_control_terrain_matches_its_landxml_twin() {
 #[test]
 fn writes_metres_at_micrometre_resolution_without_float_noise() {
     use super::number;
-    assert_eq!(number(5_516_087.398_800_001), "5516087.3988");
-    assert_eq!(number(-0.000_000_1), "0");
-    assert_eq!(number(100.0), "100");
-    assert_eq!(number(-12.5), "-12.5");
-    assert_eq!(number(1e-6), "0.000001");
+    assert_eq!(number(5_516_087.398_800_001, 6), "5516087.3988");
+    assert_eq!(number(-0.000_000_1, 6), "0");
+    assert_eq!(number(100.0, 6), "100");
+    assert_eq!(number(-12.5, 6), "-12.5");
+    assert_eq!(number(1e-6, 6), "0.000001");
+    assert_eq!(number(101.4996, 3), "101.5");
+    assert_eq!(number(-0.4, 0), "0");
+    assert_eq!(number(1234.5678, 0), "1235");
+}
+
+/// Coordinates of surface 0 converted back to metres with the units the
+/// document declares, as any LandXML reader would.
+fn metres(export: &LandXmlTerrainExport) -> Vec<[f64; 3]> {
+    let document = read_back(export);
+    let units = document.units.clone().expect("units declared");
+    tin(&document, 0).0.into_iter()
+        .map(|[n, e, z]| [n * units.linear_scale_to_meters, e * units.linear_scale_to_meters, z * units.elevation_scale_to_meters])
+        .collect()
+}
+
+fn assert_close(actual: &[[f64; 3]], expected: &[[f64; 3]], tolerance: f64) {
+    assert_eq!(actual.len(), expected.len());
+    for (a, e) in actual.iter().zip(expected) {
+        for axis in 0..3 {
+            assert!((a[axis] - e[axis]).abs() <= tolerance, "{a:?} vs {e:?}");
+        }
+    }
+}
+
+#[test]
+fn writes_feet_that_read_back_to_the_same_metres() {
+    let reference = metres(&export(&DEFAULT, &[18]).unwrap());
+    for (unit, linear, linear_scale) in [
+        (LandXmlLinearUnit::InternationalFoot, "foot", 0.3048),
+        (LandXmlLinearUnit::UsSurveyFoot, "USSurveyFoot", 1200.0 / 3937.0),
+    ] {
+        let mut options = options();
+        options.linear_unit = unit;
+        let export = try_export_landxml_terrain(DEFAULT.step().as_bytes(), &[18], &options).unwrap();
+        let units = read_back(&export).units.expect("units declared");
+        // Elevations are international feet either way: LandXML 1.2 has no
+        // US-survey-foot elevation unit, and both are declared.
+        assert_eq!((units.linear_unit.as_str(), units.elevation_unit.as_str()), (linear, "feet"));
+        assert_eq!((units.linear_scale_to_meters, units.elevation_scale_to_meters), (linear_scale, 0.3048));
+        // Six decimals of a foot is ~0.3 micrometres.
+        assert_close(&metres(&export), &reference, 1e-6);
+    }
+}
+
+#[test]
+fn rounds_to_the_requested_precision() {
+    let mut options = options();
+    options.decimals = 3;
+    let model = Model {
+        unit: "IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.)",
+        conversion: "IFCMAPCONVERSION(#5,#12,500000.,6400000.,100.,1.,0.,0.001)",
+        // Vertex 2 lands at E 500000.0204, N 6400000.0004 (0.4 mm below a mm step).
+        face_set: "IFCTRIANGULATEDFACESET(#14,$,.F.,((1,2,5)),$)",
+        extra: "",
+        ..DEFAULT
+    };
+    let step = model.step().replace("(20.,0.,1.)", "(20.4,0.4,1.)");
+    let export = try_export_landxml_terrain(step.as_bytes(), &[18], &options).unwrap();
+    assert!(export.xml.contains("<P id=\"2\">6400000 500000.02 100.001</P>"), "{}", export.xml);
+    options.decimals = 10;
+    let error = try_export_landxml_terrain(step.as_bytes(), &[18], &options).unwrap_err().to_string();
+    assert!(error.contains("outside 0 to 9"), "{error}");
+}
+
+#[test]
+fn surface_names_override_the_ifc_name_and_stay_unique() {
+    let model = Model {
+        extra: "#40=IFCGEOGRAPHICELEMENT('0Terrain00000000000002',$,'Ground',$,$,#9,#17,$,.TERRAIN.);\n",
+        ..DEFAULT
+    };
+    let mut options = options();
+    options.surface_names.insert(18, "  Existing ground  ".into());
+    options.surface_names.insert(40, "Existing ground".into());
+    let export = try_export_landxml_terrain(model.step().as_bytes(), &[18, 40], &options).unwrap();
+    let names: Vec<_> = read_back(&export).surfaces.iter().map(|s| s.name.clone()).collect();
+    assert_eq!(names, ["Existing ground", "Existing ground (2)"]);
+    options.surface_names.insert(18, "   ".into());
+    let export = try_export_landxml_terrain(model.step().as_bytes(), &[18], &options).unwrap();
+    assert_eq!(export.surfaces[0].name, "Ground", "a blank override keeps the IFC name");
 }

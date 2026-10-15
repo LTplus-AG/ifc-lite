@@ -18,7 +18,7 @@
  * otherwise shows the producer's own reason.
  */
 
-import { GeometryProcessor, terrainRefusalReason, type LandXmlTerrainExport } from '@ifc-lite/geometry';
+import { GeometryProcessor, terrainRefusalReason, type LandXmlTerrainExport, type LandXmlTerrainExportOptions } from '@ifc-lite/geometry';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { EntityRef } from '@/store/types';
 import { modelExportFilename } from './download';
@@ -120,19 +120,20 @@ export type TerrainPreflight =
   | { status: 'failed'; message: string };
 
 /**
- * Run the LandXML terrain producer over `bytes` for `productIds`.
+ * Run the LandXML terrain producer over `bytes` for `productIds`, writing the
+ * document as `options` say (units, precision, surface names; #7618).
  * `createProcessor` defaults to the real wasm processor; tests inject a stub.
  */
 export async function runLandXmlTerrainExport(
   bytes: Uint8Array,
   productIds: readonly number[],
   createProcessor: () => LandXmlTerrainProcessor = () => new GeometryProcessor(),
-  now: Date = new Date(),
+  options: LandXmlTerrainExportOptions = {},
 ): Promise<TerrainPreflight> {
   const processor = createProcessor();
   try {
     await processor.init();
-    const result = processor.exportLandXmlTerrain(bytes, Uint32Array.from(productIds), now);
+    const result = processor.exportLandXmlTerrain(bytes, Uint32Array.from(productIds), options);
     return result ? { status: 'ready', result } : { status: 'unavailable' };
   } catch (error) {
     const reason = terrainRefusalReason(error);

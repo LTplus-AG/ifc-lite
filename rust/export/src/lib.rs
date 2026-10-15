@@ -122,8 +122,8 @@ pub use rebar_schedule::{build_rebar_schedule, build_rebar_schedule_with_preflig
     RebarSchedule, RebarScheduleRow, RebarSource, RebarSweep};
 pub use json::{export_json, JsonOptions};
 pub use landxml_terrain::{
-    try_export_landxml_terrain, LandXmlTerrainExport, LandXmlTerrainOptions, LandXmlTerrainRefusal,
-    LandXmlTerrainSurface,
+    try_export_landxml_terrain, LandXmlLinearUnit, LandXmlTerrainExport, LandXmlTerrainOptions,
+    LandXmlTerrainRefusal, LandXmlTerrainSurface,
 };
 pub use jsonld::{export_jsonld, export_jsonld_with_filter, JsonLdOptions};
 pub use kmz::{

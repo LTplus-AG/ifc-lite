@@ -248,7 +248,7 @@ function assertMatchesOracle(xml: string, expected: OracleSurface[], label: stri
 // ─── The viewer's two directions ────────────────────────────────────────────
 
 async function exportTerrain(ifc: string, productIds: readonly number[]) {
-  const outcome = await runLandXmlTerrainExport(new TextEncoder().encode(ifc), productIds, undefined, NOW);
+  const outcome = await runLandXmlTerrainExport(new TextEncoder().encode(ifc), productIds, undefined, { now: NOW });
   assert.equal(outcome.status, 'ready', `the producer accepted the selection: ${JSON.stringify(outcome)}`);
   return (outcome as Extract<typeof outcome, { status: 'ready' }>).result;
 }
@@ -458,6 +458,36 @@ describe('LandXML 1.2 XSD as the authority (#7600)', () => {
   it('accepts the export of the bonsai-topo control terrain', { skip: NEEDS_BONSAI }, async () => {
     const result = await exportTerrain(await readFile(BONSAI_IFC, 'utf8'), [18]);
     await assertSchemaValid(result.xml, 'bonsai-topo export');
+  });
+
+  it('writes every unit option schema-valid, reading back to the same metres (#7618)', { skip: NEEDS_WASM }, async () => {
+    const expected = oracle(SYNTHETIC_IFC, SYNTHETIC_IDS);
+    for (const [linearUnit, declared] of [
+      ['metre', { linearUnit: 'meter', elevationUnit: 'meter' }],
+      ['internationalFoot', { linearUnit: 'foot', elevationUnit: 'feet' }],
+      ['usSurveyFoot', { linearUnit: 'USSurveyFoot', elevationUnit: 'feet' }],
+    ] as const) {
+      const outcome = await runLandXmlTerrainExport(new TextEncoder().encode(SYNTHETIC_IFC), SYNTHETIC_IDS, undefined, { now: NOW, linearUnit });
+      assert.equal(outcome.status, 'ready', JSON.stringify(outcome));
+      const { xml } = (outcome as Extract<typeof outcome, { status: 'ready' }>).result;
+      await assertSchemaValid(xml, `${linearUnit} export`);
+      // The viewer's own LandXML parser applies the declared unit scales.
+      const parsed = await parseLandXmlSourceInCurrentRealm(new TextEncoder().encode(xml).buffer);
+      assert.ok(parsed.units, `${linearUnit}: units are declared`);
+      assert.deepEqual({ linearUnit: parsed.units.linearUnit, elevationUnit: parsed.units.elevationUnit }, declared);
+      parsed.surfaces.forEach((surface, s) => {
+        surface.points.forEach((point, i) => {
+          const metres = [
+            point.northing * parsed.units!.linearScaleToMeters,
+            point.easting * parsed.units!.linearScaleToMeters,
+            point.elevation * parsed.units!.elevationScaleToMeters,
+          ];
+          // Six decimals of a foot is ~0.3 micrometres; allow the metre rounding too.
+          metres.forEach((value, axis) => assert.ok(Math.abs(value - expected[s].points[i][axis]) <= 1e-6,
+            `${linearUnit} surface ${s} point ${i + 1} axis ${'NEZ'[axis]}: ${value} vs oracle ${expected[s].points[i][axis]}`));
+        });
+      });
+    }
   });
 });
 

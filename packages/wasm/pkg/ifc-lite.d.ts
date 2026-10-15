@@ -60,6 +60,22 @@ export interface RtcFrame {
 
 
 
+/** Unknown fields are refused. */
+export interface LandXmlTerrainOptionsJs {
+    /** `YYYY-MM-DD`, the required `LandXML@date`; the caller owns the clock. */
+    date: string;
+    /** `HH:MM:SS`, the required `LandXML@time`. */
+    time: string;
+    /** Default `'metre'`. US survey feet write elevations in international feet (LandXML 1.2 has no US-survey-foot elevation unit); both are declared. */
+    linearUnit?: 'metre' | 'internationalFoot' | 'usSurveyFoot';
+    /** Decimal places in the written unit, 0 to 9. Default 6. */
+    decimals?: number;
+    /** `Surface@name` per product; a blank name keeps the IFC name. */
+    surfaceNames?: { productId: number; name: string }[];
+}
+
+
+
 export interface LandXmlTinDocumentJs {
     format: "landxml";
     schema: "LandXML-1.0" | "LandXML-1.1" | "LandXML-1.2";
@@ -760,10 +776,9 @@ export class IfcAPI {
      * points, faces }] }`. A selection that is not an authored triangulated
      * terrain, or whose georeferencing is missing or ambiguous, throws an
      * `Error` whose message starts with `TERRAIN_REFUSED:` and names the
-     * reason. `date` (`YYYY-MM-DD`) and `time` (`HH:MM:SS`) stamp the header:
-     * the caller owns the clock.
+     * reason.
      */
-    exportLandXmlTerrain(content: Uint8Array, product_ids: Uint32Array, date: string, time: string): string;
+    exportLandXmlTerrain(content: Uint8Array, product_ids: Uint32Array, options: LandXmlTerrainOptionsJs): string;
     /**
      * Merge several IFC models into one STEP/IFC UTF-8 byte buffer (`Uint8Array`).
      * `concatenated` is every model's
@@ -2659,7 +2674,7 @@ export interface InitOutput {
     readonly ifcapi_exportJson: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
     readonly ifcapi_exportJsonld: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number) => void;
     readonly ifcapi_exportKmzFromMeshes: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number, x: number, y: number, z: number, a1: number) => void;
-    readonly ifcapi_exportLandXmlTerrain: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number) => void;
+    readonly ifcapi_exportLandXmlTerrain: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
     readonly ifcapi_exportMerged: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => void;
     readonly ifcapi_exportObj: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => void;
     readonly ifcapi_exportStep: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number) => void;

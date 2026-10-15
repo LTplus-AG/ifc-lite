@@ -19,25 +19,92 @@ mod georef;
 #[path = "landxml_terrain_tin.rs"]
 mod tin;
 
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::fmt::{self, Write as _};
 
 use ifc_lite_core::EntityDecoder;
 use ifc_lite_geometry::GeometryRouter;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::xml_text::escape;
 
 const LANDXML_NAMESPACE: &str = "http://www.landxml.org/schema/LandXML-1.2";
 
-/// Header values the caller owns: the wasm build has no clock of its own, and
-/// a fixed stamp keeps tests byte-stable.
+/// The length unit the document is written in (#7618). Coordinates are
+/// computed in metres and converted once, at write time.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum LandXmlLinearUnit {
+    #[default]
+    Metre,
+    /// 0.3048 m exactly.
+    InternationalFoot,
+    /// 1200/3937 m exactly. LandXML 1.2's `elevationType` has no US survey
+    /// foot, so elevations are then written in international feet, declared
+    /// as `elevationUnit="feet"`: both units are explicit and exact.
+    UsSurveyFoot,
+}
+
+impl LandXmlLinearUnit {
+    /// Metres per horizontal unit.
+    fn horizontal_metres(self) -> f64 {
+        match self {
+            Self::Metre => 1.0,
+            Self::InternationalFoot => 0.3048,
+            Self::UsSurveyFoot => 1200.0 / 3937.0,
+        }
+    }
+
+    /// Metres per elevation unit (see [`Self::UsSurveyFoot`]).
+    fn elevation_metres(self) -> f64 {
+        match self {
+            Self::Metre => 1.0,
+            Self::InternationalFoot | Self::UsSurveyFoot => 0.3048,
+        }
+    }
+
+    /// The `<Units>` child declaring this unit, with the XSD's other required
+    /// attributes in the same system.
+    fn units_element(self) -> &'static str {
+        match self {
+            Self::Metre => "<Metric linearUnit=\"meter\" areaUnit=\"squareMeter\" volumeUnit=\"cubicMeter\" temperatureUnit=\"celsius\" pressureUnit=\"milliBars\" angularUnit=\"decimal degrees\" directionUnit=\"decimal degrees\" elevationUnit=\"meter\"/>",
+            Self::InternationalFoot => "<Imperial linearUnit=\"foot\" areaUnit=\"squareFoot\" volumeUnit=\"cubicFeet\" temperatureUnit=\"fahrenheit\" pressureUnit=\"inchHG\" angularUnit=\"decimal degrees\" directionUnit=\"decimal degrees\" elevationUnit=\"feet\"/>",
+            Self::UsSurveyFoot => "<Imperial linearUnit=\"USSurveyFoot\" areaUnit=\"squareFoot\" volumeUnit=\"cubicFeet\" temperatureUnit=\"fahrenheit\" pressureUnit=\"inchHG\" angularUnit=\"decimal degrees\" directionUnit=\"decimal degrees\" elevationUnit=\"feet\"/>",
+        }
+    }
+}
+
+/// How the document is written. `#[non_exhaustive]`: build it with
+/// [`LandXmlTerrainOptions::new`] and set the fields you need, so a later
+/// option is not a breaking change.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct LandXmlTerrainOptions {
-    /// `YYYY-MM-DD`, the required `LandXML@date`.
+    /// `YYYY-MM-DD`, the required `LandXML@date`. The caller owns the clock:
+    /// the wasm build has none, and a fixed stamp keeps tests byte-stable.
     pub date: String,
     /// `HH:MM:SS`, the required `LandXML@time`.
     pub time: String,
+    /// Default metres.
+    pub linear_unit: LandXmlLinearUnit,
+    /// Decimal places in the written unit, 0 to 9. Default 6 (a micrometre in
+    /// metres): lossless for a round trip; 3 is millimetres in metres.
+    pub decimals: u8,
+    /// `Surface@name` per product express id. A blank or absent entry keeps
+    /// the product's IFC name; duplicates are still made unique.
+    pub surface_names: BTreeMap<u32, String>,
+}
+
+impl LandXmlTerrainOptions {
+    pub fn new(date: impl Into<String>, time: impl Into<String>) -> Self {
+        Self {
+            date: date.into(),
+            time: time.into(),
+            linear_unit: LandXmlLinearUnit::default(),
+            decimals: 6,
+            surface_names: BTreeMap::new(),
+        }
+    }
 }
 
 /// One written `<Surface>`, for the caller to report.
@@ -101,6 +168,9 @@ pub fn try_export_landxml_terrain(
 fn export(content: &[u8], product_ids: &[u32], options: &LandXmlTerrainOptions) -> Result<LandXmlTerrainExport, String> {
     check_stamp(&options.date, "YYYY-MM-DD", b'-')?;
     check_stamp(&options.time, "HH:MM:SS", b':')?;
+    if options.decimals > 9 {
+        return Err(format!("precision of {} decimals is outside 0 to 9", options.decimals));
+    }
     let mut seen = HashSet::new();
     let ids: Vec<u32> = product_ids.iter().copied().filter(|id| seen.insert(*id)).collect();
     if ids.is_empty() {
@@ -120,10 +190,14 @@ fn export(content: &[u8], product_ids: &[u32], options: &LandXmlTerrainOptions) 
         return Err(format!("#{} is in {} while #{} is in {}; one LandXML file carries one coordinate system", other.product_id, other.crs.name, terrains[0].product_id, crs.name));
     }
 
-    let names = unique_names(terrains.iter().map(|terrain| terrain.name.as_str()));
+    let names = unique_names(terrains.iter().map(|terrain| {
+        options.surface_names.get(&terrain.product_id).map(|name| name.trim())
+            .filter(|name| !name.is_empty())
+            .unwrap_or(terrain.name.as_str())
+    }));
     let mut xml = String::new();
     let _ = write!(xml, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<LandXML xmlns=\"{LANDXML_NAMESPACE}\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:schemaLocation=\"{LANDXML_NAMESPACE} {LANDXML_NAMESPACE}/LandXML-1.2.xsd\" version=\"1.2\" date=\"{}\" time=\"{}\">\n", options.date, options.time);
-    xml.push_str("  <Units>\n    <Metric linearUnit=\"meter\" areaUnit=\"squareMeter\" volumeUnit=\"cubicMeter\" temperatureUnit=\"celsius\" pressureUnit=\"milliBars\" angularUnit=\"decimal degrees\" directionUnit=\"decimal degrees\" elevationUnit=\"meter\"/>\n  </Units>\n");
+    let _ = write!(xml, "  <Units>\n    {}\n  </Units>\n", options.linear_unit.units_element());
     let _ = write!(xml, "  <CoordinateSystem name=\"{}\"", escape(&crs.name));
     if let Some(code) = crs.name.strip_prefix("EPSG:").filter(|code| !code.is_empty() && code.bytes().all(|b| b.is_ascii_digit())) {
         let _ = write!(xml, " epsgCode=\"{code}\"");
@@ -139,7 +213,7 @@ fn export(content: &[u8], product_ids: &[u32], options: &LandXmlTerrainOptions) 
     let _ = writeln!(xml, "  <Application name=\"ifc-lite\" manufacturer=\"ifc-lite\" version=\"{}\"/>", env!("CARGO_PKG_VERSION"));
     xml.push_str("  <Surfaces>\n");
     for (terrain, name) in terrains.iter().zip(&names) {
-        write_surface(&mut xml, terrain, name);
+        write_surface(&mut xml, terrain, name, options);
     }
     xml.push_str("  </Surfaces>\n</LandXML>\n");
 
@@ -153,15 +227,17 @@ fn export(content: &[u8], product_ids: &[u32], options: &LandXmlTerrainOptions) 
     Ok(LandXmlTerrainExport { xml, crs_name: crs.name, surfaces })
 }
 
-fn write_surface(xml: &mut String, terrain: &tin::Terrain, name: &str) {
+fn write_surface(xml: &mut String, terrain: &tin::Terrain, name: &str, options: &LandXmlTerrainOptions) {
+    let (horizontal, vertical) = (options.linear_unit.horizontal_metres(), options.linear_unit.elevation_metres());
+    let text = |value: f64, unit: f64| number(value / unit, options.decimals);
     let _ = write!(xml, "    <Surface name=\"{}\"", escape(name));
     if let Some(global_id) = &terrain.global_id {
         let _ = write!(xml, " OID=\"{}\"", escape(global_id));
     }
     let (min, max) = terrain.points.iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(min, max), point| (min.min(point[2]), max.max(point[2])));
-    let _ = write!(xml, ">\n      <Definition surfType=\"TIN\" elevMax=\"{}\" elevMin=\"{}\">\n        <Pnts>\n", number(max), number(min));
+    let _ = write!(xml, ">\n      <Definition surfType=\"TIN\" elevMax=\"{}\" elevMin=\"{}\">\n        <Pnts>\n", text(max, vertical), text(min, vertical));
     for (index, [n, e, z]) in terrain.points.iter().enumerate() {
-        let _ = writeln!(xml, "          <P id=\"{}\">{} {} {}</P>", index + 1, number(*n), number(*e), number(*z));
+        let _ = writeln!(xml, "          <P id=\"{}\">{} {} {}</P>", index + 1, text(*n, horizontal), text(*e, horizontal), text(*z, vertical));
     }
     xml.push_str("        </Pnts>\n        <Faces>\n");
     for [a, b, c] in &terrain.faces {
@@ -170,12 +246,16 @@ fn write_surface(xml: &mut String, terrain: &tin::Terrain, name: &str) {
     xml.push_str("        </Faces>\n      </Definition>\n    </Surface>\n");
 }
 
-/// Metres to six decimals, trailing zeros trimmed: a micrometre, three orders
-/// below survey precision. Composing placement and map offsets in `f64` leaves
-/// noise such as `5516087.398800001` (#844's terrain); a fixed resolution
-/// drops it without touching an authored digit. Never an exponent, never `-0`.
-fn number(value: f64) -> String {
-    let text = format!("{value:.6}");
+/// `decimals` places, trailing zeros trimmed. The default six (a micrometre
+/// in metres) is three orders below survey precision: composing placement and
+/// map offsets in `f64` leaves noise such as `5516087.398800001` (#844's
+/// terrain), and a fixed resolution drops it without touching an authored
+/// digit. Never an exponent, never `-0`.
+fn number(value: f64, decimals: u8) -> String {
+    let text = format!("{value:.*}", usize::from(decimals));
+    if !text.contains('.') {
+        return if text == "-0" { "0".into() } else { text };
+    }
     match text.trim_end_matches('0').trim_end_matches('.') {
         "-0" => "0".into(),
         trimmed => trimmed.into(),

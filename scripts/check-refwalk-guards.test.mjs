@@ -465,3 +465,21 @@ test('the success line reports a non-zero file count, not an empty scan', () => 
     'scanned 0 .rs files -- a green that examined nothing is what this gate is for'
   );
 });
+
+test('the #7673 roots stay scanned: an unguarded walk under apps/server/src or rust/export/src fails the default scan', () => {
+  // CANDIDATE_FLOOR keeps one candidate of churn, so deleting a root whose walks
+  // are all guarded (or that has none, like rust/export/src) would still pass
+  // the floor. SERVER-5's unguarded `resolve_material` lived in apps/server/src,
+  // which no root used to scan. Driven through the DEFAULT roots
+  // (`roots: undefined`), so dropping either root from SCAN_ROOTS fails here.
+  const r = check(
+    { 'apps/server/src/a.rs': UNGUARDED, 'rust/export/src/b.rs': UNGUARDED },
+    { roots: undefined }
+  );
+  for (const root of ['apps/server/src', 'rust/export/src']) {
+    assert.ok(
+      r.unguarded.some((u) => u.startsWith(`${root}/`)),
+      `${root} must stay in SCAN_ROOTS; unguarded: ${JSON.stringify(r.unguarded)}`
+    );
+  }
+});

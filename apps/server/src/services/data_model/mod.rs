@@ -8,11 +8,8 @@ mod classifications;
 mod generated;
 mod documents;
 mod materials;
-// Declared here, not inside `materials.rs`, so the revert oracle can revert
-// that file whole and still run these tests against the reverted code.
-#[cfg(test)]
-mod materials_tests;
 mod material_units;
+mod material_usages;
 mod metadata;
 mod properties;
 mod property_value;

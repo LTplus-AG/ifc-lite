@@ -5,10 +5,11 @@
 //! Material association extraction.
 
 use super::material_units::MaterialUnitContext;
+use super::material_usages::UsageTerminals;
 use super::types::{EntityJob, MaterialAssociation};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use rayon::prelude::*;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::Arc;
 
 /// One resolved material layer (intermediate, before element fan-out).
@@ -44,34 +45,40 @@ fn material_details_of(decoder: &mut EntityDecoder, material_id: u32) -> Option<
 /// `IfcMaterialList`, and `IfcMaterialConstituentSet`. `unit_scale` converts
 /// layer thickness to metres.
 ///
-/// Usages are followed by a loop with a visited set, never by recursion
-/// (SERVER-5, #7673). This used to recurse into whatever a usage's attribute 0
-/// named, so a usage naming itself, or two usages naming each other, recursed
-/// until the stack overflowed: SIGABRT, which takes every in-flight request on
-/// the server down with it. With no stack consumed per hop, the visited set
-/// alone bounds the walk (AGENTS.md, "Bounding walks over file-supplied
-/// references"), and every acyclic input resolves exactly as it did before.
-/// Same rule as the TS twin, `resolveMaterial` in
-/// `packages/parser/src/material-definitions.ts`.
-fn resolve_material(decoder: &mut EntityDecoder, id: u32, unit_scale: f64) -> Vec<ResolvedLayer> {
-    let mut visited = HashSet::new();
-    let mut id = id;
-    loop {
-        if !visited.insert(id) {
-            return Vec::new();
-        }
-        let Ok(entity) = decoder.decode_by_id(id) else {
-            return Vec::new();
-        };
-        let ty = entity.ifc_type.as_str().to_ascii_uppercase();
-        match ty.as_str() {
-            // ForLayerSet / ForProfileSet is attribute 0.
-            "IFCMATERIALLAYERSETUSAGE" | "IFCMATERIALPROFILESETUSAGE" => match entity.get_ref(0) {
-                Some(next) => id = next,
-                None => return Vec::new(),
-            },
-            _ => return resolve_definition(decoder, &entity, &ty, id, unit_scale),
-        }
+/// Usages are followed iteratively, never by recursion (SERVER-5, #7673), and
+/// memoised across associations in `usages` (see [`UsageTerminals`]). This
+/// used to recurse into whatever a usage's attribute 0 named, so a usage
+/// naming itself, or two usages naming each other, recursed until the stack
+/// overflowed: SIGABRT, which takes every in-flight request on the server
+/// down with it. Every acyclic input resolves exactly as it did before, and as
+/// the TS twin does (`resolveMaterial` in
+/// `packages/parser/src/material-definitions.ts`); a cycle resolves to nothing.
+fn resolve_material(
+    decoder: &mut EntityDecoder,
+    usages: &UsageTerminals,
+    id: u32,
+    unit_scale: f64,
+) -> Vec<ResolvedLayer> {
+    let Some(definition_id) = usages.terminal(decoder, id, usage_target) else {
+        return Vec::new();
+    };
+    let Ok(entity) = decoder.decode_by_id(definition_id) else {
+        return Vec::new();
+    };
+    let ty = entity.ifc_type.as_str().to_ascii_uppercase();
+    resolve_definition(decoder, &entity, &ty, definition_id, unit_scale)
+}
+
+/// `Some(attribute 0)` when `entity` is a material usage, `None` otherwise.
+/// One arm per usage type (not an `|` pattern): the server/browser type
+/// parity gate reads `"IFC..." =>` arms.
+pub(super) fn usage_target(entity: &DecodedEntity) -> Option<Option<u32>> {
+    match entity.ifc_type.as_str().to_ascii_uppercase().as_str() {
+        // ForLayerSet is attribute 0.
+        "IFCMATERIALLAYERSETUSAGE" => Some(entity.get_ref(0)),
+        // ForProfileSet is attribute 0.
+        "IFCMATERIALPROFILESETUSAGE" => Some(entity.get_ref(0)),
+        _ => None,
     }
 }
 
@@ -280,6 +287,7 @@ pub(super) fn extract_materials(
 
     tracing::debug!(count = rel_jobs.len(), "Extracting materials");
 
+    let usages = UsageTerminals::default();
     rel_jobs
         .par_iter()
         .flat_map(|job| {
@@ -300,7 +308,7 @@ pub(super) fn extract_materials(
                     let scale = units.scale_for(element_id);
                     let layers = resolved_by_scale
                         .entry(scale.to_bits())
-                        .or_insert_with(|| resolve_material(&mut decoder, material_id, scale));
+                        .or_insert_with(|| resolve_material(&mut decoder, &usages, material_id, scale));
                     if units.has_mixed_type_scales(element_id)
                         && layers.iter().any(|layer| layer.thickness.is_some())
                     {

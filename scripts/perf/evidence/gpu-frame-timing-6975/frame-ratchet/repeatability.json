@@ -1,0 +1,5376 @@
+{
+  "issue": 6975,
+  "seed": "80d949f1a58765e7bdd7358f8bc530004866ca4d",
+  "criteria": {
+    "minAdmittedRuns": 5,
+    "relativeSpreadCap": 0.01,
+    "toleranceMargin": 2,
+    "toleranceStep": 0.005,
+    "scripted": {
+      "scenarios": [
+        "orbit",
+        "hover"
+      ],
+      "metrics": [
+        "frames",
+        "missed_vsyncs",
+        "frames_without_raf"
+      ]
+    },
+    "throttled": {
+      "scenarios": [
+        "orbit",
+        "hover"
+      ],
+      "metrics": [
+        "rendered_frames",
+        "idle_frames",
+        "gpu_submits",
+        "gpu_draws",
+        "gpu_write_kib"
+      ]
+    }
+  },
+  "artifacts": [
+    {
+      "run": "38633397362",
+      "commit": "694b835841354db0a249dec6c4c801358dc35698",
+      "measuredAt": "2026-10-14T20:45:17Z",
+      "rawSha256": "8e21deacb8ca81406589fa3bf421965d475ff5261438f96a533a3e408e1e347a",
+      "schema": 2,
+      "browser": "chrome-headless-shell 156.0.8078.4",
+      "admitted": false,
+      "admissionError": "missing refused-attempt evidence",
+      "attempts": [
+        {
+          "fixture": "AC20-FZK-Haus",
+          "attempt": null,
+          "contaminated": false
+        },
+        {
+          "fixture": "Snowdon",
+          "attempt": null,
+          "contaminated": true
+        }
+      ],
+      "values": {}
+    },
+    {
+      "run": "38634821465",
+      "commit": "694b835841354db0a249dec6c4c801358dc35698",
+      "measuredAt": "2026-10-14T20:54:33Z",
+      "rawSha256": "c268112a9a2d4a6e34415a9b19ac7802989cb804161e092c41fcc8de9fabd524",
+      "schema": 2,
+      "browser": "chrome-headless-shell 156.0.8078.4",
+      "admitted": false,
+      "admissionError": "missing refused-attempt evidence",
+      "attempts": [
+        {
+          "fixture": "AC20-FZK-Haus",
+          "attempt": null,
+          "contaminated": false
+        },
+        {
+          "fixture": "Snowdon",
+          "attempt": null,
+          "contaminated": false
+        }
+      ],
+      "values": {}
+    },
+    {
+      "run": "38634927583",
+      "commit": "694b835841354db0a249dec6c4c801358dc35698",
+      "measuredAt": "2026-10-14T20:55:16Z",
+      "rawSha256": "1a68398a4c47ce5819fd49b043ac3b13ca88bf4772ca50a535d957f70be00ebb",
+      "schema": 2,
+      "browser": "chrome-headless-shell 156.0.8078.4",
+      "admitted": false,
+      "admissionError": "missing refused-attempt evidence",
+      "attempts": [
+        {
+          "fixture": "AC20-FZK-Haus",
+          "attempt": null,
+          "contaminated": false
+        },
+        {
+          "fixture": "Snowdon",
+          "attempt": null,
+          "contaminated": false
+        }
+      ],
+      "values": {}
+    },
+    {
+      "run": "38634983357",
+      "commit": "694b835841354db0a249dec6c4c801358dc35698",
+      "measuredAt": "2026-10-14T20:57:20Z",
+      "rawSha256": "2191773f7e31c3a7eb837dc0e764461079bdcfb30572488a8666396926df183f",
+      "schema": 2,
+      "browser": "chrome-headless-shell 156.0.8078.4",
+      "admitted": false,
+      "admissionError": "missing refused-attempt evidence",
+      "attempts": [
+        {
+          "fixture": "AC20-FZK-Haus",
+          "attempt": null,
+          "contaminated": false
+        },
+        {
+          "fixture": "Snowdon",
+          "attempt": null,
+          "contaminated": false
+        }
+      ],
+      "values": {}
+    },
+    {
+      "run": "38635035863",
+      "commit": "694b835841354db0a249dec6c4c801358dc35698",
+      "measuredAt": "2026-10-14T20:56:50Z",
+      "rawSha256": "dc6b1ac0e5ac3dea11c053505e319e33012e7f290babc399feccde17c199838c",
+      "schema": 2,
+      "browser": "chrome-headless-shell 156.0.8078.4",
+      "admitted": false,
+      "admissionError": "missing refused-attempt evidence",
+      "attempts": [
+        {
+          "fixture": "AC20-FZK-Haus",
+          "attempt": null,
+          "contaminated": false
+        },
+        {
+          "fixture": "Snowdon",
+          "attempt": null,
+          "contaminated": true
+        }
+      ],
+      "values": {}
+    },
+    {
+      "run": "38640410125",
+      "commit": "d484b67ef4d411efc66c9d75182d1217ec21e5ad",
+      "measuredAt": "2026-10-14T21:38:01Z",
+      "rawSha256": "2a939a85a995dfe9a562f0e324e8dbb4dc3cd0767813cea290ec39a4048b3866",
+      "schema": 2,
+      "browser": "chrome-headless-shell 156.0.8078.4",
+      "admitted": true,
+      "admissionError": null,
+      "attempts": [
+        {
+          "fixture": "AC20-FZK-Haus",
+          "attempt": 1,
+          "contaminated": false
+        },
+        {
+          "fixture": "Snowdon",
+          "attempt": 1,
+          "contaminated": false
+        }
+      ],
+      "values": {
+        "AC20-FZK-Haus/streaming-load/frames": 83,
+        "AC20-FZK-Haus/streaming-load/rendered_frames": 12,
+        "AC20-FZK-Haus/streaming-load/idle_frames": 71,
+        "AC20-FZK-Haus/streaming-load/frames_without_raf": 4,
+        "AC20-FZK-Haus/streaming-load/frames_over_budget": 28,
+        "AC20-FZK-Haus/streaming-load/missed_vsyncs": 207,
+        "AC20-FZK-Haus/streaming-load/main_thread_ms_total": 1766.04,
+        "AC20-FZK-Haus/streaming-load/main_thread_ms_p50": 4.78,
+        "AC20-FZK-Haus/streaming-load/main_thread_ms_p95": 139.828,
+        "AC20-FZK-Haus/streaming-load/main_thread_ms_max": 203.44,
+        "AC20-FZK-Haus/streaming-load/script_ms_total": 769.238,
+        "AC20-FZK-Haus/streaming-load/raf_js_ms_total": 209.165,
+        "AC20-FZK-Haus/streaming-load/raf_js_ms_p95": 7.36,
+        "AC20-FZK-Haus/streaming-load/gpu_submits": 8,
+        "AC20-FZK-Haus/streaming-load/gpu_draws": 229,
+        "AC20-FZK-Haus/streaming-load/gpu_write_kib": 2408.2,
+        "AC20-FZK-Haus/orbit/frames": 210,
+        "AC20-FZK-Haus/orbit/rendered_frames": 119,
+        "AC20-FZK-Haus/orbit/idle_frames": 91,
+        "AC20-FZK-Haus/orbit/frames_without_raf": 0,
+        "AC20-FZK-Haus/orbit/frames_over_budget": 117,
+        "AC20-FZK-Haus/orbit/missed_vsyncs": 0,
+        "AC20-FZK-Haus/orbit/main_thread_ms_total": 1719.55,
+        "AC20-FZK-Haus/orbit/main_thread_ms_p50": 8.669,
+        "AC20-FZK-Haus/orbit/main_thread_ms_p95": 14.203,
+        "AC20-FZK-Haus/orbit/main_thread_ms_max": 41.721,
+        "AC20-FZK-Haus/orbit/script_ms_total": 700.923,
+        "AC20-FZK-Haus/orbit/raf_js_ms_total": 158.43,
+        "AC20-FZK-Haus/orbit/raf_js_ms_p95": 1.79,
+        "AC20-FZK-Haus/orbit/gpu_submits": 0,
+        "AC20-FZK-Haus/orbit/gpu_draws": 6307,
+        "AC20-FZK-Haus/orbit/gpu_write_kib": 12671.7,
+        "AC20-FZK-Haus/hover/frames": 150,
+        "AC20-FZK-Haus/hover/rendered_frames": 0,
+        "AC20-FZK-Haus/hover/idle_frames": 150,
+        "AC20-FZK-Haus/hover/frames_without_raf": 0,
+        "AC20-FZK-Haus/hover/frames_over_budget": 15,
+        "AC20-FZK-Haus/hover/missed_vsyncs": 0,
+        "AC20-FZK-Haus/hover/main_thread_ms_total": 757.599,
+        "AC20-FZK-Haus/hover/main_thread_ms_p50": 4.208,
+        "AC20-FZK-Haus/hover/main_thread_ms_p95": 9.21,
+        "AC20-FZK-Haus/hover/main_thread_ms_max": 12.609,
+        "AC20-FZK-Haus/hover/script_ms_total": 99.72,
+        "AC20-FZK-Haus/hover/raf_js_ms_total": 23.14,
+        "AC20-FZK-Haus/hover/raf_js_ms_p95": 0.29,
+        "AC20-FZK-Haus/hover/gpu_submits": 0,
+        "AC20-FZK-Haus/hover/gpu_draws": 0,
+        "AC20-FZK-Haus/hover/gpu_write_kib": 0,
+        "Snowdon/streaming-load/frames": 93,
+        "Snowdon/streaming-load/rendered_frames": 16,
+        "Snowdon/streaming-load/idle_frames": 77,
+        "Snowdon/streaming-load/frames_without_raf": 4,
+        "Snowdon/streaming-load/frames_over_budget": 47,
+        "Snowdon/streaming-load/missed_vsyncs": 401,
+        "Snowdon/streaming-load/main_thread_ms_total": 3161.374,
+        "Snowdon/streaming-load/main_thread_ms_p50": 8.361,
+        "Snowdon/streaming-load/main_thread_ms_p95": 229.746,
+        "Snowdon/streaming-load/main_thread_ms_max": 378.546,
+        "Snowdon/streaming-load/script_ms_total": 1560.043,
+        "Snowdon/streaming-load/raf_js_ms_total": 314.17,
+        "Snowdon/streaming-load/raf_js_ms_p95": 27.315,
+        "Snowdon/streaming-load/gpu_submits": 11,
+        "Snowdon/streaming-load/gpu_draws": 5919,
+        "Snowdon/streaming-load/gpu_write_kib": 39175,
+        "Snowdon/orbit/frames": 210,
+        "Snowdon/orbit/rendered_frames": 120,
+        "Snowdon/orbit/idle_frames": 90,
+        "Snowdon/orbit/frames_without_raf": 0,
+        "Snowdon/orbit/frames_over_budget": 119,
+        "Snowdon/orbit/missed_vsyncs": 0,
+        "Snowdon/orbit/main_thread_ms_total": 1573.102,
+        "Snowdon/orbit/main_thread_ms_p50": 9.04,
+        "Snowdon/orbit/main_thread_ms_p95": 12.783,
+        "Snowdon/orbit/main_thread_ms_max": 58.553,
+        "Snowdon/orbit/script_ms_total": 673.977,
+        "Snowdon/orbit/raf_js_ms_total": 174.415,
+        "Snowdon/orbit/raf_js_ms_p95": 1.665,
+        "Snowdon/orbit/gpu_submits": 0,
+        "Snowdon/orbit/gpu_draws": 16666,
+        "Snowdon/orbit/gpu_write_kib": 11647.2,
+        "Snowdon/hover/frames": 150,
+        "Snowdon/hover/rendered_frames": 9,
+        "Snowdon/hover/idle_frames": 141,
+        "Snowdon/hover/frames_without_raf": 0,
+        "Snowdon/hover/frames_over_budget": 12,
+        "Snowdon/hover/missed_vsyncs": 0,
+        "Snowdon/hover/main_thread_ms_total": 698.441,
+        "Snowdon/hover/main_thread_ms_p50": 3.973,
+        "Snowdon/hover/main_thread_ms_p95": 8.891,
+        "Snowdon/hover/main_thread_ms_max": 12.955,
+        "Snowdon/hover/script_ms_total": 106.746,
+        "Snowdon/hover/raf_js_ms_total": 33.765,
+        "Snowdon/hover/raf_js_ms_p95": 1.105,
+        "Snowdon/hover/gpu_submits": 0,
+        "Snowdon/hover/gpu_draws": 4131,
+        "Snowdon/hover/gpu_write_kib": 131.2
+      }
+    },
+    {
+      "run": "38640463864",
+      "commit": "d484b67ef4d411efc66c9d75182d1217ec21e5ad",
+      "measuredAt": "2026-10-14T21:37:42Z",
+      "rawSha256": "ba0c5e0b3c4479766d73cd7ecdf0fe3e042438dcf18ad8f83b1db701056252ef",
+      "schema": 2,
+      "browser": "chrome-headless-shell 156.0.8078.4",
+      "admitted": true,
+      "admissionError": null,
+      "attempts": [
+        {
+          "fixture": "AC20-FZK-Haus",
+          "attempt": 1,
+          "contaminated": false
+        },
+        {
+          "fixture": "Snowdon",
+          "attempt": 1,
+          "contaminated": false
+        }
+      ],
+      "values": {
+        "AC20-FZK-Haus/streaming-load/frames": 93,
+        "AC20-FZK-Haus/streaming-load/rendered_frames": 12,
+        "AC20-FZK-Haus/streaming-load/idle_frames": 81,
+        "AC20-FZK-Haus/streaming-load/frames_without_raf": 4,
+        "AC20-FZK-Haus/streaming-load/frames_over_budget": 30,
+        "AC20-FZK-Haus/streaming-load/missed_vsyncs": 246,
+        "AC20-FZK-Haus/streaming-load/main_thread_ms_total": 2059.687,
+        "AC20-FZK-Haus/streaming-load/main_thread_ms_p50": 5.036,
+        "AC20-FZK-Haus/streaming-load/main_thread_ms_p95": 148.71,
+        "AC20-FZK-Haus/streaming-load/main_thread_ms_max": 244.846,
+        "AC20-FZK-Haus/streaming-load/script_ms_total": 875.969,
+        "AC20-FZK-Haus/streaming-load/raf_js_ms_total": 235.04,
+        "AC20-FZK-Haus/streaming-load/raf_js_ms_p95": 8.83,
+        "AC20-FZK-Haus/streaming-load/gpu_submits": 8,
+        "AC20-FZK-Haus/streaming-load/gpu_draws": 229,
+        "AC20-FZK-Haus/streaming-load/gpu_write_kib": 2408.2,
+        "AC20-FZK-Haus/orbit/frames": 210,
+        "AC20-FZK-Haus/orbit/rendered_frames": 119,
+        "AC20-FZK-Haus/orbit/idle_frames": 91,
+        "AC20-FZK-Haus/orbit/frames_without_raf": 0,
+        "AC20-FZK-Haus/orbit/frames_over_budget": 77,
+        "AC20-FZK-Haus/orbit/missed_vsyncs": 0,
+        "AC20-FZK-Haus/orbit/main_thread_ms_total": 1541.814,
+        "AC20-FZK-Haus/orbit/main_thread_ms_p50": 7.818,
+        "AC20-FZK-Haus/orbit/main_thread_ms_p95": 13.361,
+        "AC20-FZK-Haus/orbit/main_thread_ms_max": 51.069,
+        "AC20-FZK-Haus/orbit/script_ms_total": 633.475,
+        "AC20-FZK-Haus/orbit/raf_js_ms_total": 142.09,
+        "AC20-FZK-Haus/orbit/raf_js_ms_p95": 1.69,
+        "AC20-FZK-Haus/orbit/gpu_submits": 0,
+        "AC20-FZK-Haus/orbit/gpu_draws": 6307,
+        "AC20-FZK-Haus/orbit/gpu_write_kib": 12671.7,
+        "AC20-FZK-Haus/hover/frames": 150,
+        "AC20-FZK-Haus/hover/rendered_frames": 0,
+        "AC20-FZK-Haus/hover/idle_frames": 150,
+        "AC20-FZK-Haus/hover/frames_without_raf": 0,
+        "AC20-FZK-Haus/hover/frames_over_budget": 10,
+        "AC20-FZK-Haus/hover/missed_vsyncs": 0,
+        "AC20-FZK-Haus/hover/main_thread_ms_total": 731.492,
+        "AC20-FZK-Haus/hover/main_thread_ms_p50": 3.46,
+        "AC20-FZK-Haus/hover/main_thread_ms_p95": 10.362,
+        "AC20-FZK-Haus/hover/main_thread_ms_max": 38.053,
+        "AC20-FZK-Haus/hover/script_ms_total": 83.434,
+        "AC20-FZK-Haus/hover/raf_js_ms_total": 17.12,
+        "AC20-FZK-Haus/hover/raf_js_ms_p95": 0.225,
+        "AC20-FZK-Haus/hover/gpu_submits": 0,
+        "AC20-FZK-Haus/hover/gpu_draws": 0,
+        "AC20-FZK-Haus/hover/gpu_write_kib": 0,
+        "Snowdon/streaming-load/frames": 101,
+        "Snowdon/streaming-load/rendered_frames": 16,
+        "Snowdon/streaming-load/idle_frames": 85,
+        "Snowdon/streaming-load/frames_without_raf": 4,
+        "Snowdon/streaming-load/frames_over_budget": 51,
+        "Snowdon/streaming-load/missed_vsyncs": 382,
+        "Snowdon/streaming-load/main_thread_ms_total": 3067.331,
+        "Snowdon/streaming-load/main_thread_ms_p50": 8.378,
+        "Snowdon/streaming-load/main_thread_ms_p95": 169.513,
+        "Snowdon/streaming-load/main_thread_ms_max": 283.885,
+        "Snowdon/streaming-load/script_ms_total": 1486.496,
+        "Snowdon/streaming-load/raf_js_ms_total": 286.375,
+        "Snowdon/streaming-load/raf_js_ms_p95": 15.725,
+        "Snowdon/streaming-load/gpu_submits": 11,
+        "Snowdon/streaming-load/gpu_draws": 5435,
+        "Snowdon/streaming-load/gpu_write_kib": 39141.7,
+        "Snowdon/orbit/frames": 210,
+        "Snowdon/orbit/rendered_frames": 120,
+        "Snowdon/orbit/idle_frames": 90,
+        "Snowdon/orbit/frames_without_raf": 0,
+        "Snowdon/orbit/frames_over_budget": 65,
+        "Snowdon/orbit/missed_vsyncs": 0,
+        "Snowdon/orbit/main_thread_ms_total": 1393.582,
+        "Snowdon/orbit/main_thread_ms_p50": 7.952,
+        "Snowdon/orbit/main_thread_ms_p95": 11.821,
+        "Snowdon/orbit/main_thread_ms_max": 52.6,
+        "Snowdon/orbit/script_ms_total": 584.018,
+        "Snowdon/orbit/raf_js_ms_total": 150.705,
+        "Snowdon/orbit/raf_js_ms_p95": 1.54,
+        "Snowdon/orbit/gpu_submits": 0,
+        "Snowdon/orbit/gpu_draws": 16666,
+        "Snowdon/orbit/gpu_write_kib": 11647.2,
+        "Snowdon/hover/frames": 150,
+        "Snowdon/hover/rendered_frames": 6,
+        "Snowdon/hover/idle_frames": 144,
+        "Snowdon/hover/frames_without_raf": 0,
+        "Snowdon/hover/frames_over_budget": 3,
+        "Snowdon/hover/missed_vsyncs": 0,
+        "Snowdon/hover/main_thread_ms_total": 608.241,
+        "Snowdon/hover/main_thread_ms_p50": 3.434,
+        "Snowdon/hover/main_thread_ms_p95": 7.589,
+        "Snowdon/hover/main_thread_ms_max": 10.785,
+        "Snowdon/hover/script_ms_total": 79.122,
+        "Snowdon/hover/raf_js_ms_total": 23.635,
+        "Snowdon/hover/raf_js_ms_p95": 0.285,
+        "Snowdon/hover/gpu_submits": 0,
+        "Snowdon/hover/gpu_draws": 2754,
+        "Snowdon/hover/gpu_write_kib": 87.5
+      }
+    },
+    {
+      "run": "38640521049",
+      "commit": "d484b67ef4d411efc66c9d75182d1217ec21e5ad",
+      "measuredAt": "2026-10-14T21:35:11Z",
+      "rawSha256": "d677ad1b3dd9900a868b19aa090133c5adc127c421fe64eb71c6c6452447dc14",
+      "schema": 2,
+      "browser": "chrome-headless-shell 156.0.8078.4",
+      "admitted": true,
+      "admissionError": null,
+      "attempts": [
+        {
+          "fixture": "AC20-FZK-Haus",
+          "attempt": 1,
+          "contaminated": false
+        },
+        {
+          "fixture": "Snowdon",
+          "attempt": 1,
+          "contaminated": false
+        }
+      ],
+      "values": {
+        "AC20-FZK-Haus/streaming-load/frames": 80,
+        "AC20-FZK-Haus/streaming-load/rendered_frames": 12,
+        "AC20-FZK-Haus/streaming-load/idle_frames": 68,
+        "AC20-FZK-Haus/streaming-load/frames_without_raf": 2,
+        "AC20-FZK-Haus/streaming-load/frames_over_budget": 22,
+        "AC20-FZK-Haus/streaming-load/missed_vsyncs": 136,
+        "AC20-FZK-Haus/streaming-load/main_thread_ms_total": 1221.837,
+        "AC20-FZK-Haus/streaming-load/main_thread_ms_p50": 3.404,
+        "AC20-FZK-Haus/streaming-load/main_thread_ms_p95": 112.821,
+        "AC20-FZK-Haus/streaming-load/main_thread_ms_max": 147.865,
+        "AC20-FZK-Haus/streaming-load/script_ms_total": 560.094,
+        "AC20-FZK-Haus/streaming-load/raf_js_ms_total": 133.855,
+        "AC20-FZK-Haus/streaming-load/raf_js_ms_p95": 4.84,
+        "AC20-FZK-Haus/streaming-load/gpu_submits": 8,
+        "AC20-FZK-Haus/streaming-load/gpu_draws": 229,
+        "AC20-FZK-Haus/streaming-load/gpu_write_kib": 2408.2,
+        "AC20-FZK-Haus/orbit/frames": 210,
+        "AC20-FZK-Haus/orbit/rendered_frames": 119,
+        "AC20-FZK-Haus/orbit/idle_frames": 91,
+        "AC20-FZK-Haus/orbit/frames_without_raf": 0,
+        "AC20-FZK-Haus/orbit/frames_over_budget": 23,
+        "AC20-FZK-Haus/orbit/missed_vsyncs": 0,
+        "AC20-FZK-Haus/orbit/main_thread_ms_total": 1211.914,
+        "AC20-FZK-Haus/orbit/main_thread_ms_p50": 6.181,
+        "AC20-FZK-Haus/orbit/main_thread_ms_p95": 10.555,
+        "AC20-FZK-Haus/orbit/main_thread_ms_max": 59.894,
+        "AC20-FZK-Haus/orbit/script_ms_total": 528.99,
+        "AC20-FZK-Haus/orbit/raf_js_ms_total": 135.095,
+        "AC20-FZK-Haus/orbit/raf_js_ms_p95": 1.34,
+        "AC20-FZK-Haus/orbit/gpu_submits": 0,
+        "AC20-FZK-Haus/orbit/gpu_draws": 6307,
+        "AC20-FZK-Haus/orbit/gpu_write_kib": 12671.7,
+        "AC20-FZK-Haus/hover/frames": 150,
+        "AC20-FZK-Haus/hover/rendered_frames": 0,
+        "AC20-FZK-Haus/hover/idle_frames": 150,
+        "AC20-FZK-Haus/hover/frames_without_raf": 0,
+        "AC20-FZK-Haus/hover/frames_over_budget": 1,
+        "AC20-FZK-Haus/hover/missed_vsyncs": 0,
+        "AC20-FZK-Haus/hover/main_thread_ms_total": 521.96,
+        "AC20-FZK-Haus/hover/main_thread_ms_p50": 3.159,
+        "AC20-FZK-Haus/hover/main_thread_ms_p95": 6.639,
+        "AC20-FZK-Haus/hover/main_thread_ms_max": 8.791,
+        "AC20-FZK-Haus/hover/script_ms_total": 79.804,
+        "AC20-FZK-Haus/hover/raf_js_ms_total": 25.015,
+        "AC20-FZK-Haus/hover/raf_js_ms_p95": 0.29,
+        "AC20-FZK-Haus/hover/gpu_submits": 0,
+        "AC20-FZK-Haus/hover/gpu_draws": 0,
+        "AC20-FZK-Haus/hover/gpu_write_kib": 0,
+        "Snowdon/streaming-load/frames": 100,
+        "Snowdon/streaming-load/rendered_frames": 14,
+        "Snowdon/streaming-load/idle_frames": 86,
+        "Snowdon/streaming-load/frames_without_raf": 3,
+        "Snowdon/streaming-load/frames_over_budget": 38,
+        "Snowdon/streaming-load/missed_vsyncs": 311,
+        "Snowdon/streaming-load/main_thread_ms_total": 2643.423,
+        "Snowdon/streaming-load/main_thread_ms_p50": 6.678,
+        "Snowdon/streaming-load/main_thread_ms_p95": 138.198,
+        "Snowdon/streaming-load/main_thread_ms_max": 303.044,
+        "Snowdon/streaming-load/script_ms_total": 1229.369,
+        "Snowdon/streaming-load/raf_js_ms_total": 254.715,
+        "Snowdon/streaming-load/raf_js_ms_p95": 21.16,
+        "Snowdon/streaming-load/gpu_submits": 10,
+        "Snowdon/streaming-load/gpu_draws": 4623,
+        "Snowdon/streaming-load/gpu_write_kib": 39108.3,
+        "Snowdon/orbit/frames": 210,
+        "Snowdon/orbit/rendered_frames": 120,
+        "Snowdon/orbit/idle_frames": 90,
+        "Snowdon/orbit/frames_without_raf": 0,
+        "Snowdon/orbit/frames_over_budget": 50,
+        "Snowdon/orbit/missed_vsyncs": 0,
+        "Snowdon/orbit/main_thread_ms_total": 1338.015,
+        "Snowdon/orbit/main_thread_ms_p50": 7.226,
+        "Snowdon/orbit/main_thread_ms_p95": 11.894,
+        "Snowdon/orbit/main_thread_ms_max": 40.352,
+        "Snowdon/orbit/script_ms_total": 585.874,
+        "Snowdon/orbit/raf_js_ms_total": 171.715,
+        "Snowdon/orbit/raf_js_ms_p95": 1.59,
+        "Snowdon/orbit/gpu_submits": 0,
+        "Snowdon/orbit/gpu_draws": 16666,
+        "Snowdon/orbit/gpu_write_kib": 11647.2,
+        "Snowdon/hover/frames": 150,
+        "Snowdon/hover/rendered_frames": 6,
+        "Snowdon/hover/idle_frames": 144,
+        "Snowdon/hover/frames_without_raf": 0,
+        "Snowdon/hover/frames_over_budget": 3,
+        "Snowdon/hover/missed_vsyncs": 0,
+        "Snowdon/hover/main_thread_ms_total": 587.585,
+        "Snowdon/hover/main_thread_ms_p50": 3.4,
+        "Snowdon/hover/main_thread_ms_p95": 7.569,
+        "Snowdon/hover/main_thread_ms_max": 12.258,
+        "Snowdon/hover/script_ms_total": 96.627,
+        "Snowdon/hover/raf_js_ms_total": 34.56,
+        "Snowdon/hover/raf_js_ms_p95": 0.335,
+        "Snowdon/hover/gpu_submits": 0,
+        "Snowdon/hover/gpu_draws": 2754,
+        "Snowdon/hover/gpu_write_kib": 87.5
+      }
+    },
+    {
+      "run": "38641845810",
+      "commit": "d484b67ef4d411efc66c9d75182d1217ec21e5ad",
+      "measuredAt": "2026-10-14T21:48:48Z",
+      "rawSha256": "1dbf58db7e92d587552e4ff3bbfb87960669d0170f729da1db8e592e129e04af",
+      "schema": 2,
+      "browser": "chrome-headless-shell 156.0.8078.4",
+      "admitted": true,
+      "admissionError": null,
+      "attempts": [
+        {
+          "fixture": "AC20-FZK-Haus",
+          "attempt": 1,
+          "contaminated": false
+        },
+        {
+          "fixture": "Snowdon",
+          "attempt": 1,
+          "contaminated": false
+        }
+      ],
+      "values": {
+        "AC20-FZK-Haus/streaming-load/frames": 71,
+        "AC20-FZK-Haus/streaming-load/rendered_frames": 14,
+        "AC20-FZK-Haus/streaming-load/idle_frames": 57,
+        "AC20-FZK-Haus/streaming-load/frames_without_raf": 4,
+        "AC20-FZK-Haus/streaming-load/frames_over_budget": 28,
+        "AC20-FZK-Haus/streaming-load/missed_vsyncs": 266,
+        "AC20-FZK-Haus/streaming-load/main_thread_ms_total": 2109.778,
+        "AC20-FZK-Haus/streaming-load/main_thread_ms_p50": 5.578,
+        "AC20-FZK-Haus/streaming-load/main_thread_ms_p95": 158.987,
+        "AC20-FZK-Haus/streaming-load/main_thread_ms_max": 213.842,
+        "AC20-FZK-Haus/streaming-load/script_ms_total": 981.886,
+        "AC20-FZK-Haus/streaming-load/raf_js_ms_total": 205.93,
+        "AC20-FZK-Haus/streaming-load/raf_js_ms_p95": 24.05,
+        "AC20-FZK-Haus/streaming-load/gpu_submits": 10,
+        "AC20-FZK-Haus/streaming-load/gpu_draws": 282,
+        "AC20-FZK-Haus/streaming-load/gpu_write_kib": 2424.2,
+        "AC20-FZK-Haus/orbit/frames": 210,
+        "AC20-FZK-Haus/orbit/rendered_frames": 119,
+        "AC20-FZK-Haus/orbit/idle_frames": 91,
+        "AC20-FZK-Haus/orbit/frames_without_raf": 0,
+        "AC20-FZK-Haus/orbit/frames_over_budget": 123,
+        "AC20-FZK-Haus/orbit/missed_vsyncs": 0,
+        "AC20-FZK-Haus/orbit/main_thread_ms_total": 1751.302,
+        "AC20-FZK-Haus/orbit/main_thread_ms_p50": 8.912,
+        "AC20-FZK-Haus/orbit/main_thread_ms_p95": 14.447,
+        "AC20-FZK-Haus/orbit/main_thread_ms_max": 43.614,
+        "AC20-FZK-Haus/orbit/script_ms_total": 710.235,
+        "AC20-FZK-Haus/orbit/raf_js_ms_total": 166.945,
+        "AC20-FZK-Haus/orbit/raf_js_ms_p95": 1.85,
+        "AC20-FZK-Haus/orbit/gpu_submits": 0,
+        "AC20-FZK-Haus/orbit/gpu_draws": 6307,
+        "AC20-FZK-Haus/orbit/gpu_write_kib": 12671.7,
+        "AC20-FZK-Haus/hover/frames": 150,
+        "AC20-FZK-Haus/hover/rendered_frames": 0,
+        "AC20-FZK-Haus/hover/idle_frames": 150,
+        "AC20-FZK-Haus/hover/frames_without_raf": 0,
+        "AC20-FZK-Haus/hover/frames_over_budget": 10,
+        "AC20-FZK-Haus/hover/missed_vsyncs": 0,
+        "AC20-FZK-Haus/hover/main_thread_ms_total": 759.718,
+        "AC20-FZK-Haus/hover/main_thread_ms_p50": 4.161,
+        "AC20-FZK-Haus/hover/main_thread_ms_p95": 8.535,
+        "AC20-FZK-Haus/hover/main_thread_ms_max": 11.404,
+        "AC20-FZK-Haus/hover/script_ms_total": 103.874,
+        "AC20-FZK-Haus/hover/raf_js_ms_total": 25.865,
+        "AC20-FZK-Haus/hover/raf_js_ms_p95": 0.295,
+        "AC20-FZK-Haus/hover/gpu_submits": 0,
+        "AC20-FZK-Haus/hover/gpu_draws": 0,
+        "AC20-FZK-Haus/hover/gpu_write_kib": 0,
+        "Snowdon/streaming-load/frames": 102,
+        "Snowdon/streaming-load/rendered_frames": 16,
+        "Snowdon/streaming-load/idle_frames": 86,
+        "Snowdon/streaming-load/frames_without_raf": 3,
+        "Snowdon/streaming-load/frames_over_budget": 56,
+        "Snowdon/streaming-load/missed_vsyncs": 400,
+        "Snowdon/streaming-load/main_thread_ms_total": 3166.219,
+        "Snowdon/streaming-load/main_thread_ms_p50": 8.77,
+        "Snowdon/streaming-load/main_thread_ms_p95": 169.721,
+        "Snowdon/streaming-load/main_thread_ms_max": 311.516,
+        "Snowdon/streaming-load/script_ms_total": 1482.055,
+        "Snowdon/streaming-load/raf_js_ms_total": 324.355,
+        "Snowdon/streaming-load/raf_js_ms_p95": 19.505,
+        "Snowdon/streaming-load/gpu_submits": 11,
+        "Snowdon/streaming-load/gpu_draws": 5868,
+        "Snowdon/streaming-load/gpu_write_kib": 39156.3,
+        "Snowdon/orbit/frames": 210,
+        "Snowdon/orbit/rendered_frames": 120,
+        "Snowdon/orbit/idle_frames": 90,
+        "Snowdon/orbit/frames_without_raf": 0,
+        "Snowdon/orbit/frames_over_budget": 119,
+        "Snowdon/orbit/missed_vsyncs": 0,
+        "Snowdon/orbit/main_thread_ms_total": 1630.767,
+        "Snowdon/orbit/main_thread_ms_p50": 9.444,
+        "Snowdon/orbit/main_thread_ms_p95": 13.046,
+        "Snowdon/orbit/main_thread_ms_max": 62.647,
+        "Snowdon/orbit/script_ms_total": 696.515,
+        "Snowdon/orbit/raf_js_ms_total": 183.85,
+        "Snowdon/orbit/raf_js_ms_p95": 1.76,
+        "Snowdon/orbit/gpu_submits": 0,
+        "Snowdon/orbit/gpu_draws": 16666,
+        "Snowdon/orbit/gpu_write_kib": 11647.2,
+        "Snowdon/hover/frames": 150,
+        "Snowdon/hover/rendered_frames": 6,
+        "Snowdon/hover/idle_frames": 144,
+        "Snowdon/hover/frames_without_raf": 0,
+        "Snowdon/hover/frames_over_budget": 11,
+        "Snowdon/hover/missed_vsyncs": 0,
+        "Snowdon/hover/main_thread_ms_total": 752.237,
+        "Snowdon/hover/main_thread_ms_p50": 4.378,
+        "Snowdon/hover/main_thread_ms_p95": 8.559,
+        "Snowdon/hover/main_thread_ms_max": 14.35,
+        "Snowdon/hover/script_ms_total": 116.608,
+        "Snowdon/hover/raf_js_ms_total": 34.54,
+        "Snowdon/hover/raf_js_ms_p95": 0.365,
+        "Snowdon/hover/gpu_submits": 0,
+        "Snowdon/hover/gpu_draws": 2754,
+        "Snowdon/hover/gpu_write_kib": 87.5
+      }
+    },
+    {
+      "run": "38641892895",
+      "commit": "d484b67ef4d411efc66c9d75182d1217ec21e5ad",
+      "measuredAt": "2026-10-14T21:48:27Z",
+      "rawSha256": "3e68c1d826e7f2da6184a2f1c1ad86c260abd60a74fedd83fc196fefd67f6e46",
+      "schema": 2,
+      "browser": "chrome-headless-shell 156.0.8078.4",
+      "admitted": true,
+      "admissionError": null,
+      "attempts": [
+        {
+          "fixture": "AC20-FZK-Haus",
+          "attempt": 1,
+          "contaminated": true
+        },
+        {
+          "fixture": "AC20-FZK-Haus",
+          "attempt": 2,
+          "contaminated": false
+        },
+        {
+          "fixture": "Snowdon",
+          "attempt": 1,
+          "contaminated": false
+        }
+      ],
+      "values": {
+        "AC20-FZK-Haus/streaming-load/frames": 81,
+        "AC20-FZK-Haus/streaming-load/rendered_frames": 14,
+        "AC20-FZK-Haus/streaming-load/idle_frames": 67,
+        "AC20-FZK-Haus/streaming-load/frames_without_raf": 3,
+        "AC20-FZK-Haus/streaming-load/frames_over_budget": 30,
+        "AC20-FZK-Haus/streaming-load/missed_vsyncs": 275,
+        "AC20-FZK-Haus/streaming-load/main_thread_ms_total": 2202.597,
+        "AC20-FZK-Haus/streaming-load/main_thread_ms_p50": 4.996,
+        "AC20-FZK-Haus/streaming-load/main_thread_ms_p95": 149.301,
+        "AC20-FZK-Haus/streaming-load/main_thread_ms_max": 217.968,
+        "AC20-FZK-Haus/streaming-load/script_ms_total": 1029.902,
+        "AC20-FZK-Haus/streaming-load/raf_js_ms_total": 227.92,
+        "AC20-FZK-Haus/streaming-load/raf_js_ms_p95": 9.135,
+        "AC20-FZK-Haus/streaming-load/gpu_submits": 10,
+        "AC20-FZK-Haus/streaming-load/gpu_draws": 271,
+        "AC20-FZK-Haus/streaming-load/gpu_write_kib": 2420.1,
+        "AC20-FZK-Haus/orbit/frames": 210,
+        "AC20-FZK-Haus/orbit/rendered_frames": 119,
+        "AC20-FZK-Haus/orbit/idle_frames": 91,
+        "AC20-FZK-Haus/orbit/frames_without_raf": 0,
+        "AC20-FZK-Haus/orbit/frames_over_budget": 101,
+        "AC20-FZK-Haus/orbit/missed_vsyncs": 0,
+        "AC20-FZK-Haus/orbit/main_thread_ms_total": 1440.098,
+        "AC20-FZK-Haus/orbit/main_thread_ms_p50": 8.234,
+        "AC20-FZK-Haus/orbit/main_thread_ms_p95": 11.117,
+        "AC20-FZK-Haus/orbit/main_thread_ms_max": 47.016,
+        "AC20-FZK-Haus/orbit/script_ms_total": 604.553,
+        "AC20-FZK-Haus/orbit/raf_js_ms_total": 142.595,
+        "AC20-FZK-Haus/orbit/raf_js_ms_p95": 1.63,
+        "AC20-FZK-Haus/orbit/gpu_submits": 0,
+        "AC20-FZK-Haus/orbit/gpu_draws": 6307,
+        "AC20-FZK-Haus/orbit/gpu_write_kib": 12671.7,
+        "AC20-FZK-Haus/hover/frames": 150,
+        "AC20-FZK-Haus/hover/rendered_frames": 0,
+        "AC20-FZK-Haus/hover/idle_frames": 150,
+        "AC20-FZK-Haus/hover/frames_without_raf": 0,
+        "AC20-FZK-Haus/hover/frames_over_budget": 6,
+        "AC20-FZK-Haus/hover/missed_vsyncs": 0,
+        "AC20-FZK-Haus/hover/main_thread_ms_total": 634.417,
+        "AC20-FZK-Haus/hover/main_thread_ms_p50": 3.339,
+        "AC20-FZK-Haus/hover/main_thread_ms_p95": 7.468,
+        "AC20-FZK-Haus/hover/main_thread_ms_max": 22.047,
+        "AC20-FZK-Haus/hover/script_ms_total": 73.204,
+        "AC20-FZK-Haus/hover/raf_js_ms_total": 18.345,
+        "AC20-FZK-Haus/hover/raf_js_ms_p95": 0.22,
+        "AC20-FZK-Haus/hover/gpu_submits": 0,
+        "AC20-FZK-Haus/hover/gpu_draws": 0,
+        "AC20-FZK-Haus/hover/gpu_write_kib": 0,
+        "Snowdon/streaming-load/frames": 101,
+        "Snowdon/streaming-load/rendered_frames": 16,
+        "Snowdon/streaming-load/idle_frames": 85,
+        "Snowdon/streaming-load/frames_without_raf": 2,
+        "Snowdon/streaming-load/frames_over_budget": 52,
+        "Snowdon/streaming-load/missed_vsyncs": 375,
+        "Snowdon/streaming-load/main_thread_ms_total": 2994.201,
+        "Snowdon/streaming-load/main_thread_ms_p50": 8.782,
+        "Snowdon/streaming-load/main_thread_ms_p95": 200.022,
+        "Snowdon/streaming-load/main_thread_ms_max": 273.201,
+        "Snowdon/streaming-load/script_ms_total": 1432.7,
+        "Snowdon/streaming-load/raf_js_ms_total": 284.845,
+        "Snowdon/streaming-load/raf_js_ms_p95": 20.3,
+        "Snowdon/streaming-load/gpu_submits": 11,
+        "Snowdon/streaming-load/gpu_draws": 5475,
+        "Snowdon/streaming-load/gpu_write_kib": 39156.7,
+        "Snowdon/orbit/frames": 210,
+        "Snowdon/orbit/rendered_frames": 120,
+        "Snowdon/orbit/idle_frames": 90,
+        "Snowdon/orbit/frames_without_raf": 0,
+        "Snowdon/orbit/frames_over_budget": 119,
+        "Snowdon/orbit/missed_vsyncs": 0,
+        "Snowdon/orbit/main_thread_ms_total": 1505.172,
+        "Snowdon/orbit/main_thread_ms_p50": 8.994,
+        "Snowdon/orbit/main_thread_ms_p95": 12.191,
+        "Snowdon/orbit/main_thread_ms_max": 57.079,
+        "Snowdon/orbit/script_ms_total": 655.223,
+        "Snowdon/orbit/raf_js_ms_total": 172.115,
+        "Snowdon/orbit/raf_js_ms_p95": 1.615,
+        "Snowdon/orbit/gpu_submits": 0,
+        "Snowdon/orbit/gpu_draws": 16666,
+        "Snowdon/orbit/gpu_write_kib": 11647.2,
+        "Snowdon/hover/frames": 150,
+        "Snowdon/hover/rendered_frames": 8,
+        "Snowdon/hover/idle_frames": 142,
+        "Snowdon/hover/frames_without_raf": 0,
+        "Snowdon/hover/frames_over_budget": 8,
+        "Snowdon/hover/missed_vsyncs": 0,
+        "Snowdon/hover/main_thread_ms_total": 634.373,
+        "Snowdon/hover/main_thread_ms_p50": 3.566,
+        "Snowdon/hover/main_thread_ms_p95": 8.424,
+        "Snowdon/hover/main_thread_ms_max": 11.416,
+        "Snowdon/hover/script_ms_total": 92.06,
+        "Snowdon/hover/raf_js_ms_total": 27.975,
+        "Snowdon/hover/raf_js_ms_p95": 1.015,
+        "Snowdon/hover/gpu_submits": 0,
+        "Snowdon/hover/gpu_draws": 3672,
+        "Snowdon/hover/gpu_write_kib": 116.7
+      }
+    },
+    {
+      "run": "38641941114",
+      "commit": "d484b67ef4d411efc66c9d75182d1217ec21e5ad",
+      "measuredAt": "2026-10-14T21:47:29Z",
+      "rawSha256": "780c8d33696385326848cf66199eaf298f58abab8f3ccee6d384596d20d8875a",
+      "schema": 2,
+      "browser": "chrome-headless-shell 156.0.8078.4",
+      "admitted": true,
+      "admissionError": null,
+      "attempts": [
+        {
+          "fixture": "AC20-FZK-Haus",
+          "attempt": 1,
+          "contaminated": false
+        },
+        {
+          "fixture": "Snowdon",
+          "attempt": 1,
+          "contaminated": false
+        }
+      ],
+      "values": {
+        "AC20-FZK-Haus/streaming-load/frames": 90,
+        "AC20-FZK-Haus/streaming-load/rendered_frames": 13,
+        "AC20-FZK-Haus/streaming-load/idle_frames": 77,
+        "AC20-FZK-Haus/streaming-load/frames_without_raf": 3,
+        "AC20-FZK-Haus/streaming-load/frames_over_budget": 22,
+        "AC20-FZK-Haus/streaming-load/missed_vsyncs": 139,
+        "AC20-FZK-Haus/streaming-load/main_thread_ms_total": 1244.967,
+        "AC20-FZK-Haus/streaming-load/main_thread_ms_p50": 2.695,
+        "AC20-FZK-Haus/streaming-load/main_thread_ms_p95": 104.434,
+        "AC20-FZK-Haus/streaming-load/main_thread_ms_max": 158.359,
+        "AC20-FZK-Haus/streaming-load/script_ms_total": 576.843,
+        "AC20-FZK-Haus/streaming-load/raf_js_ms_total": 126.195,
+        "AC20-FZK-Haus/streaming-load/raf_js_ms_p95": 8.37,
+        "AC20-FZK-Haus/streaming-load/gpu_submits": 9,
+        "AC20-FZK-Haus/streaming-load/gpu_draws": 248,
+        "AC20-FZK-Haus/streaming-load/gpu_write_kib": 2413.8,
+        "AC20-FZK-Haus/orbit/frames": 210,
+        "AC20-FZK-Haus/orbit/rendered_frames": 119,
+        "AC20-FZK-Haus/orbit/idle_frames": 91,
+        "AC20-FZK-Haus/orbit/frames_without_raf": 0,
+        "AC20-FZK-Haus/orbit/frames_over_budget": 23,
+        "AC20-FZK-Haus/orbit/missed_vsyncs": 0,
+        "AC20-FZK-Haus/orbit/main_thread_ms_total": 1190.846,
+        "AC20-FZK-Haus/orbit/main_thread_ms_p50": 6.284,
+        "AC20-FZK-Haus/orbit/main_thread_ms_p95": 9.381,
+        "AC20-FZK-Haus/orbit/main_thread_ms_max": 55.339,
+        "AC20-FZK-Haus/orbit/script_ms_total": 492.678,
+        "AC20-FZK-Haus/orbit/raf_js_ms_total": 127.78,
+        "AC20-FZK-Haus/orbit/raf_js_ms_p95": 1.355,
+        "AC20-FZK-Haus/orbit/gpu_submits": 0,
+        "AC20-FZK-Haus/orbit/gpu_draws": 6307,
+        "AC20-FZK-Haus/orbit/gpu_write_kib": 12671.7,
+        "AC20-FZK-Haus/hover/frames": 150,
+        "AC20-FZK-Haus/hover/rendered_frames": 0,
+        "AC20-FZK-Haus/hover/idle_frames": 150,
+        "AC20-FZK-Haus/hover/frames_without_raf": 0,
+        "AC20-FZK-Haus/hover/frames_over_budget": 1,
+        "AC20-FZK-Haus/hover/missed_vsyncs": 0,
+        "AC20-FZK-Haus/hover/main_thread_ms_total": 485.018,
+        "AC20-FZK-Haus/hover/main_thread_ms_p50": 2.62,
+        "AC20-FZK-Haus/hover/main_thread_ms_p95": 6.47,
+        "AC20-FZK-Haus/hover/main_thread_ms_max": 10.541,
+        "AC20-FZK-Haus/hover/script_ms_total": 72.577,
+        "AC20-FZK-Haus/hover/raf_js_ms_total": 16.255,
+        "AC20-FZK-Haus/hover/raf_js_ms_p95": 0.205,
+        "AC20-FZK-Haus/hover/gpu_submits": 0,
+        "AC20-FZK-Haus/hover/gpu_draws": 0,
+        "AC20-FZK-Haus/hover/gpu_write_kib": 0,
+        "Snowdon/streaming-load/frames": 93,
+        "Snowdon/streaming-load/rendered_frames": 14,
+        "Snowdon/streaming-load/idle_frames": 79,
+        "Snowdon/streaming-load/frames_without_raf": 2,
+        "Snowdon/streaming-load/frames_over_budget": 39,
+        "Snowdon/streaming-load/missed_vsyncs": 246,
+        "Snowdon/streaming-load/main_thread_ms_total": 2106.655,
+        "Snowdon/streaming-load/main_thread_ms_p50": 7.374,
+        "Snowdon/streaming-load/main_thread_ms_p95": 132.058,
+        "Snowdon/streaming-load/main_thread_ms_max": 218.037,
+        "Snowdon/streaming-load/script_ms_total": 1007.11,
+        "Snowdon/streaming-load/raf_js_ms_total": 232.915,
+        "Snowdon/streaming-load/raf_js_ms_p95": 17.405,
+        "Snowdon/streaming-load/gpu_submits": 9,
+        "Snowdon/streaming-load/gpu_draws": 5081,
+        "Snowdon/streaming-load/gpu_write_kib": 39134.2,
+        "Snowdon/orbit/frames": 210,
+        "Snowdon/orbit/rendered_frames": 120,
+        "Snowdon/orbit/idle_frames": 90,
+        "Snowdon/orbit/frames_without_raf": 0,
+        "Snowdon/orbit/frames_over_budget": 11,
+        "Snowdon/orbit/missed_vsyncs": 0,
+        "Snowdon/orbit/main_thread_ms_total": 1099.349,
+        "Snowdon/orbit/main_thread_ms_p50": 6.249,
+        "Snowdon/orbit/main_thread_ms_p95": 8.389,
+        "Snowdon/orbit/main_thread_ms_max": 49.556,
+        "Snowdon/orbit/script_ms_total": 482.559,
+        "Snowdon/orbit/raf_js_ms_total": 139.86,
+        "Snowdon/orbit/raf_js_ms_p95": 1.325,
+        "Snowdon/orbit/gpu_submits": 0,
+        "Snowdon/orbit/gpu_draws": 16666,
+        "Snowdon/orbit/gpu_write_kib": 11647.2,
+        "Snowdon/hover/frames": 150,
+        "Snowdon/hover/rendered_frames": 6,
+        "Snowdon/hover/idle_frames": 144,
+        "Snowdon/hover/frames_without_raf": 0,
+        "Snowdon/hover/frames_over_budget": 0,
+        "Snowdon/hover/missed_vsyncs": 0,
+        "Snowdon/hover/main_thread_ms_total": 462.078,
+        "Snowdon/hover/main_thread_ms_p50": 2.581,
+        "Snowdon/hover/main_thread_ms_p95": 6.7,
+        "Snowdon/hover/main_thread_ms_max": 7.953,
+        "Snowdon/hover/script_ms_total": 74.357,
+        "Snowdon/hover/raf_js_ms_total": 24.335,
+        "Snowdon/hover/raf_js_ms_p95": 0.235,
+        "Snowdon/hover/gpu_submits": 0,
+        "Snowdon/hover/gpu_draws": 2754,
+        "Snowdon/hover/gpu_write_kib": 87.5
+      }
+    },
+    {
+      "run": "38641986112",
+      "commit": "d484b67ef4d411efc66c9d75182d1217ec21e5ad",
+      "measuredAt": "2026-10-14T21:49:57Z",
+      "rawSha256": "4cb7bf7bff75a3d95e8deed247289df8cc3471d0d6b4b2f9c729960f3ffefebd",
+      "schema": 2,
+      "browser": "chrome-headless-shell 156.0.8078.4",
+      "admitted": true,
+      "admissionError": null,
+      "attempts": [
+        {
+          "fixture": "AC20-FZK-Haus",
+          "attempt": 1,
+          "contaminated": false
+        },
+        {
+          "fixture": "Snowdon",
+          "attempt": 1,
+          "contaminated": false
+        }
+      ],
+      "values": {
+        "AC20-FZK-Haus/streaming-load/frames": 71,
+        "AC20-FZK-Haus/streaming-load/rendered_frames": 12,
+        "AC20-FZK-Haus/streaming-load/idle_frames": 59,
+        "AC20-FZK-Haus/streaming-load/frames_without_raf": 4,
+        "AC20-FZK-Haus/streaming-load/frames_over_budget": 26,
+        "AC20-FZK-Haus/streaming-load/missed_vsyncs": 220,
+        "AC20-FZK-Haus/streaming-load/main_thread_ms_total": 1771.957,
+        "AC20-FZK-Haus/streaming-load/main_thread_ms_p50": 4.385,
+        "AC20-FZK-Haus/streaming-load/main_thread_ms_p95": 153.916,
+        "AC20-FZK-Haus/streaming-load/main_thread_ms_max": 197.946,
+        "AC20-FZK-Haus/streaming-load/script_ms_total": 838.291,
+        "AC20-FZK-Haus/streaming-load/raf_js_ms_total": 244.92,
+        "AC20-FZK-Haus/streaming-load/raf_js_ms_p95": 27.095,
+        "AC20-FZK-Haus/streaming-load/gpu_submits": 8,
+        "AC20-FZK-Haus/streaming-load/gpu_draws": 229,
+        "AC20-FZK-Haus/streaming-load/gpu_write_kib": 2408.2,
+        "AC20-FZK-Haus/orbit/frames": 210,
+        "AC20-FZK-Haus/orbit/rendered_frames": 119,
+        "AC20-FZK-Haus/orbit/idle_frames": 91,
+        "AC20-FZK-Haus/orbit/frames_without_raf": 0,
+        "AC20-FZK-Haus/orbit/frames_over_budget": 118,
+        "AC20-FZK-Haus/orbit/missed_vsyncs": 0,
+        "AC20-FZK-Haus/orbit/main_thread_ms_total": 1551.448,
+        "AC20-FZK-Haus/orbit/main_thread_ms_p50": 8.778,
+        "AC20-FZK-Haus/orbit/main_thread_ms_p95": 12.281,
+        "AC20-FZK-Haus/orbit/main_thread_ms_max": 44.906,
+        "AC20-FZK-Haus/orbit/script_ms_total": 650.835,
+        "AC20-FZK-Haus/orbit/raf_js_ms_total": 156.665,
+        "AC20-FZK-Haus/orbit/raf_js_ms_p95": 1.89,
+        "AC20-FZK-Haus/orbit/gpu_submits": 0,
+        "AC20-FZK-Haus/orbit/gpu_draws": 6307,
+        "AC20-FZK-Haus/orbit/gpu_write_kib": 12671.7,
+        "AC20-FZK-Haus/hover/frames": 150,
+        "AC20-FZK-Haus/hover/rendered_frames": 0,
+        "AC20-FZK-Haus/hover/idle_frames": 150,
+        "AC20-FZK-Haus/hover/frames_without_raf": 0,
+        "AC20-FZK-Haus/hover/frames_over_budget": 16,
+        "AC20-FZK-Haus/hover/missed_vsyncs": 0,
+        "AC20-FZK-Haus/hover/main_thread_ms_total": 854.91,
+        "AC20-FZK-Haus/hover/main_thread_ms_p50": 4.499,
+        "AC20-FZK-Haus/hover/main_thread_ms_p95": 11.245,
+        "AC20-FZK-Haus/hover/main_thread_ms_max": 26.759,
+        "AC20-FZK-Haus/hover/script_ms_total": 111.523,
+        "AC20-FZK-Haus/hover/raf_js_ms_total": 29.49,
+        "AC20-FZK-Haus/hover/raf_js_ms_p95": 0.335,
+        "AC20-FZK-Haus/hover/gpu_submits": 0,
+        "AC20-FZK-Haus/hover/gpu_draws": 0,
+        "AC20-FZK-Haus/hover/gpu_write_kib": 0,
+        "Snowdon/streaming-load/frames": 107,
+        "Snowdon/streaming-load/rendered_frames": 17,
+        "Snowdon/streaming-load/idle_frames": 90,
+        "Snowdon/streaming-load/frames_without_raf": 4,
+        "Snowdon/streaming-load/frames_over_budget": 54,
+        "Snowdon/streaming-load/missed_vsyncs": 506,
+        "Snowdon/streaming-load/main_thread_ms_total": 3900.457,
+        "Snowdon/streaming-load/main_thread_ms_p50": 8.348,
+        "Snowdon/streaming-load/main_thread_ms_p95": 193.915,
+        "Snowdon/streaming-load/main_thread_ms_max": 411.572,
+        "Snowdon/streaming-load/script_ms_total": 1981.893,
+        "Snowdon/streaming-load/raf_js_ms_total": 378.64,
+        "Snowdon/streaming-load/raf_js_ms_p95": 20.83,
+        "Snowdon/streaming-load/gpu_submits": 12,
+        "Snowdon/streaming-load/gpu_draws": 5948,
+        "Snowdon/streaming-load/gpu_write_kib": 39174.6,
+        "Snowdon/orbit/frames": 210,
+        "Snowdon/orbit/rendered_frames": 120,
+        "Snowdon/orbit/idle_frames": 90,
+        "Snowdon/orbit/frames_without_raf": 0,
+        "Snowdon/orbit/frames_over_budget": 119,
+        "Snowdon/orbit/missed_vsyncs": 0,
+        "Snowdon/orbit/main_thread_ms_total": 1636.023,
+        "Snowdon/orbit/main_thread_ms_p50": 9.35,
+        "Snowdon/orbit/main_thread_ms_p95": 14.014,
+        "Snowdon/orbit/main_thread_ms_max": 77.321,
+        "Snowdon/orbit/script_ms_total": 706.033,
+        "Snowdon/orbit/raf_js_ms_total": 182.255,
+        "Snowdon/orbit/raf_js_ms_p95": 1.73,
+        "Snowdon/orbit/gpu_submits": 0,
+        "Snowdon/orbit/gpu_draws": 16666,
+        "Snowdon/orbit/gpu_write_kib": 11647.2,
+        "Snowdon/hover/frames": 150,
+        "Snowdon/hover/rendered_frames": 6,
+        "Snowdon/hover/idle_frames": 144,
+        "Snowdon/hover/frames_without_raf": 0,
+        "Snowdon/hover/frames_over_budget": 15,
+        "Snowdon/hover/missed_vsyncs": 0,
+        "Snowdon/hover/main_thread_ms_total": 762.326,
+        "Snowdon/hover/main_thread_ms_p50": 4.339,
+        "Snowdon/hover/main_thread_ms_p95": 8.759,
+        "Snowdon/hover/main_thread_ms_max": 12.83,
+        "Snowdon/hover/script_ms_total": 112.424,
+        "Snowdon/hover/raf_js_ms_total": 35.5,
+        "Snowdon/hover/raf_js_ms_p95": 0.355,
+        "Snowdon/hover/gpu_submits": 0,
+        "Snowdon/hover/gpu_draws": 2754,
+        "Snowdon/hover/gpu_write_kib": 87.5
+      }
+    },
+    {
+      "run": "38642037408",
+      "commit": "d484b67ef4d411efc66c9d75182d1217ec21e5ad",
+      "measuredAt": "2026-10-14T21:49:48Z",
+      "rawSha256": "0b49a81aef75f3074d41b4c68f6a38a08a8fe844c4bc81955e8d4e2a9e2f4b9a",
+      "schema": 2,
+      "browser": "chrome-headless-shell 156.0.8078.4",
+      "admitted": true,
+      "admissionError": null,
+      "attempts": [
+        {
+          "fixture": "AC20-FZK-Haus",
+          "attempt": 1,
+          "contaminated": false
+        },
+        {
+          "fixture": "Snowdon",
+          "attempt": 1,
+          "contaminated": false
+        }
+      ],
+      "values": {
+        "AC20-FZK-Haus/streaming-load/frames": 73,
+        "AC20-FZK-Haus/streaming-load/rendered_frames": 13,
+        "AC20-FZK-Haus/streaming-load/idle_frames": 60,
+        "AC20-FZK-Haus/streaming-load/frames_without_raf": 4,
+        "AC20-FZK-Haus/streaming-load/frames_over_budget": 24,
+        "AC20-FZK-Haus/streaming-load/missed_vsyncs": 209,
+        "AC20-FZK-Haus/streaming-load/main_thread_ms_total": 1739.193,
+        "AC20-FZK-Haus/streaming-load/main_thread_ms_p50": 3.696,
+        "AC20-FZK-Haus/streaming-load/main_thread_ms_p95": 149.343,
+        "AC20-FZK-Haus/streaming-load/main_thread_ms_max": 194.401,
+        "AC20-FZK-Haus/streaming-load/script_ms_total": 820.247,
+        "AC20-FZK-Haus/streaming-load/raf_js_ms_total": 208.74,
+        "AC20-FZK-Haus/streaming-load/raf_js_ms_p95": 22.66,
+        "AC20-FZK-Haus/streaming-load/gpu_submits": 9,
+        "AC20-FZK-Haus/streaming-load/gpu_draws": 251,
+        "AC20-FZK-Haus/streaming-load/gpu_write_kib": 2414.5,
+        "AC20-FZK-Haus/orbit/frames": 210,
+        "AC20-FZK-Haus/orbit/rendered_frames": 119,
+        "AC20-FZK-Haus/orbit/idle_frames": 91,
+        "AC20-FZK-Haus/orbit/frames_without_raf": 0,
+        "AC20-FZK-Haus/orbit/frames_over_budget": 56,
+        "AC20-FZK-Haus/orbit/missed_vsyncs": 0,
+        "AC20-FZK-Haus/orbit/main_thread_ms_total": 1411.643,
+        "AC20-FZK-Haus/orbit/main_thread_ms_p50": 7.734,
+        "AC20-FZK-Haus/orbit/main_thread_ms_p95": 10.67,
+        "AC20-FZK-Haus/orbit/main_thread_ms_max": 48.791,
+        "AC20-FZK-Haus/orbit/script_ms_total": 577.151,
+        "AC20-FZK-Haus/orbit/raf_js_ms_total": 133.855,
+        "AC20-FZK-Haus/orbit/raf_js_ms_p95": 1.56,
+        "AC20-FZK-Haus/orbit/gpu_submits": 0,
+        "AC20-FZK-Haus/orbit/gpu_draws": 6307,
+        "AC20-FZK-Haus/orbit/gpu_write_kib": 12671.7,
+        "AC20-FZK-Haus/hover/frames": 150,
+        "AC20-FZK-Haus/hover/rendered_frames": 0,
+        "AC20-FZK-Haus/hover/idle_frames": 150,
+        "AC20-FZK-Haus/hover/frames_without_raf": 0,
+        "AC20-FZK-Haus/hover/frames_over_budget": 9,
+        "AC20-FZK-Haus/hover/missed_vsyncs": 0,
+        "AC20-FZK-Haus/hover/main_thread_ms_total": 724.009,
+        "AC20-FZK-Haus/hover/main_thread_ms_p50": 4.59,
+        "AC20-FZK-Haus/hover/main_thread_ms_p95": 8.45,
+        "AC20-FZK-Haus/hover/main_thread_ms_max": 16.038,
+        "AC20-FZK-Haus/hover/script_ms_total": 86.662,
+        "AC20-FZK-Haus/hover/raf_js_ms_total": 17.28,
+        "AC20-FZK-Haus/hover/raf_js_ms_p95": 0.2,
+        "AC20-FZK-Haus/hover/gpu_submits": 0,
+        "AC20-FZK-Haus/hover/gpu_draws": 0,
+        "AC20-FZK-Haus/hover/gpu_write_kib": 0,
+        "Snowdon/streaming-load/frames": 106,
+        "Snowdon/streaming-load/rendered_frames": 17,
+        "Snowdon/streaming-load/idle_frames": 89,
+        "Snowdon/streaming-load/frames_without_raf": 3,
+        "Snowdon/streaming-load/frames_over_budget": 59,
+        "Snowdon/streaming-load/missed_vsyncs": 471,
+        "Snowdon/streaming-load/main_thread_ms_total": 3547.202,
+        "Snowdon/streaming-load/main_thread_ms_p50": 9.862,
+        "Snowdon/streaming-load/main_thread_ms_p95": 217.127,
+        "Snowdon/streaming-load/main_thread_ms_max": 386.939,
+        "Snowdon/streaming-load/script_ms_total": 1854.179,
+        "Snowdon/streaming-load/raf_js_ms_total": 369.32,
+        "Snowdon/streaming-load/raf_js_ms_p95": 21.105,
+        "Snowdon/streaming-load/gpu_submits": 13,
+        "Snowdon/streaming-load/gpu_draws": 5977,
+        "Snowdon/streaming-load/gpu_write_kib": 39184,
+        "Snowdon/orbit/frames": 210,
+        "Snowdon/orbit/rendered_frames": 120,
+        "Snowdon/orbit/idle_frames": 90,
+        "Snowdon/orbit/frames_without_raf": 0,
+        "Snowdon/orbit/frames_over_budget": 97,
+        "Snowdon/orbit/missed_vsyncs": 0,
+        "Snowdon/orbit/main_thread_ms_total": 1449.296,
+        "Snowdon/orbit/main_thread_ms_p50": 8.199,
+        "Snowdon/orbit/main_thread_ms_p95": 12.19,
+        "Snowdon/orbit/main_thread_ms_max": 62.532,
+        "Snowdon/orbit/script_ms_total": 613.644,
+        "Snowdon/orbit/raf_js_ms_total": 157.775,
+        "Snowdon/orbit/raf_js_ms_p95": 1.55,
+        "Snowdon/orbit/gpu_submits": 0,
+        "Snowdon/orbit/gpu_draws": 16666,
+        "Snowdon/orbit/gpu_write_kib": 11647.2,
+        "Snowdon/hover/frames": 150,
+        "Snowdon/hover/rendered_frames": 7,
+        "Snowdon/hover/idle_frames": 143,
+        "Snowdon/hover/frames_without_raf": 0,
+        "Snowdon/hover/frames_over_budget": 7,
+        "Snowdon/hover/missed_vsyncs": 0,
+        "Snowdon/hover/main_thread_ms_total": 701.589,
+        "Snowdon/hover/main_thread_ms_p50": 3.446,
+        "Snowdon/hover/main_thread_ms_p95": 8.296,
+        "Snowdon/hover/main_thread_ms_max": 42.654,
+        "Snowdon/hover/script_ms_total": 99.861,
+        "Snowdon/hover/raf_js_ms_total": 26.995,
+        "Snowdon/hover/raf_js_ms_p95": 0.31,
+        "Snowdon/hover/gpu_submits": 0,
+        "Snowdon/hover/gpu_draws": 3213,
+        "Snowdon/hover/gpu_write_kib": 102.1
+      }
+    },
+    {
+      "run": "38642087886",
+      "commit": "d484b67ef4d411efc66c9d75182d1217ec21e5ad",
+      "measuredAt": "2026-10-14T21:50:35Z",
+      "rawSha256": "517c27e2275b19b7e64619f53b04228e751819fd6e85179fecda9dc49affbbe3",
+      "schema": 2,
+      "browser": "chrome-headless-shell 156.0.8078.4",
+      "admitted": true,
+      "admissionError": null,
+      "attempts": [
+        {
+          "fixture": "AC20-FZK-Haus",
+          "attempt": 1,
+          "contaminated": false
+        },
+        {
+          "fixture": "Snowdon",
+          "attempt": 1,
+          "contaminated": false
+        }
+      ],
+      "values": {
+        "AC20-FZK-Haus/streaming-load/frames": 71,
+        "AC20-FZK-Haus/streaming-load/rendered_frames": 13,
+        "AC20-FZK-Haus/streaming-load/idle_frames": 58,
+        "AC20-FZK-Haus/streaming-load/frames_without_raf": 4,
+        "AC20-FZK-Haus/streaming-load/frames_over_budget": 27,
+        "AC20-FZK-Haus/streaming-load/missed_vsyncs": 218,
+        "AC20-FZK-Haus/streaming-load/main_thread_ms_total": 1817.59,
+        "AC20-FZK-Haus/streaming-load/main_thread_ms_p50": 4.269,
+        "AC20-FZK-Haus/streaming-load/main_thread_ms_p95": 164.069,
+        "AC20-FZK-Haus/streaming-load/main_thread_ms_max": 193.783,
+        "AC20-FZK-Haus/streaming-load/script_ms_total": 855.111,
+        "AC20-FZK-Haus/streaming-load/raf_js_ms_total": 195.865,
+        "AC20-FZK-Haus/streaming-load/raf_js_ms_p95": 24.065,
+        "AC20-FZK-Haus/streaming-load/gpu_submits": 9,
+        "AC20-FZK-Haus/streaming-load/gpu_draws": 251,
+        "AC20-FZK-Haus/streaming-load/gpu_write_kib": 2414.5,
+        "AC20-FZK-Haus/orbit/frames": 210,
+        "AC20-FZK-Haus/orbit/rendered_frames": 119,
+        "AC20-FZK-Haus/orbit/idle_frames": 91,
+        "AC20-FZK-Haus/orbit/frames_without_raf": 0,
+        "AC20-FZK-Haus/orbit/frames_over_budget": 110,
+        "AC20-FZK-Haus/orbit/missed_vsyncs": 0,
+        "AC20-FZK-Haus/orbit/main_thread_ms_total": 1491.851,
+        "AC20-FZK-Haus/orbit/main_thread_ms_p50": 8.409,
+        "AC20-FZK-Haus/orbit/main_thread_ms_p95": 12.77,
+        "AC20-FZK-Haus/orbit/main_thread_ms_max": 43.742,
+        "AC20-FZK-Haus/orbit/script_ms_total": 629.983,
+        "AC20-FZK-Haus/orbit/raf_js_ms_total": 152.125,
+        "AC20-FZK-Haus/orbit/raf_js_ms_p95": 1.805,
+        "AC20-FZK-Haus/orbit/gpu_submits": 0,
+        "AC20-FZK-Haus/orbit/gpu_draws": 6307,
+        "AC20-FZK-Haus/orbit/gpu_write_kib": 12671.7,
+        "AC20-FZK-Haus/hover/frames": 150,
+        "AC20-FZK-Haus/hover/rendered_frames": 0,
+        "AC20-FZK-Haus/hover/idle_frames": 150,
+        "AC20-FZK-Haus/hover/frames_without_raf": 0,
+        "AC20-FZK-Haus/hover/frames_over_budget": 3,
+        "AC20-FZK-Haus/hover/missed_vsyncs": 0,
+        "AC20-FZK-Haus/hover/main_thread_ms_total": 642.503,
+        "AC20-FZK-Haus/hover/main_thread_ms_p50": 3.727,
+        "AC20-FZK-Haus/hover/main_thread_ms_p95": 7.818,
+        "AC20-FZK-Haus/hover/main_thread_ms_max": 13.381,
+        "AC20-FZK-Haus/hover/script_ms_total": 82.637,
+        "AC20-FZK-Haus/hover/raf_js_ms_total": 23.085,
+        "AC20-FZK-Haus/hover/raf_js_ms_p95": 0.29,
+        "AC20-FZK-Haus/hover/gpu_submits": 0,
+        "AC20-FZK-Haus/hover/gpu_draws": 0,
+        "AC20-FZK-Haus/hover/gpu_write_kib": 0,
+        "Snowdon/streaming-load/frames": 96,
+        "Snowdon/streaming-load/rendered_frames": 17,
+        "Snowdon/streaming-load/idle_frames": 79,
+        "Snowdon/streaming-load/frames_without_raf": 4,
+        "Snowdon/streaming-load/frames_over_budget": 52,
+        "Snowdon/streaming-load/missed_vsyncs": 398,
+        "Snowdon/streaming-load/main_thread_ms_total": 3263.206,
+        "Snowdon/streaming-load/main_thread_ms_p50": 9.138,
+        "Snowdon/streaming-load/main_thread_ms_p95": 192.475,
+        "Snowdon/streaming-load/main_thread_ms_max": 388.79,
+        "Snowdon/streaming-load/script_ms_total": 1594.628,
+        "Snowdon/streaming-load/raf_js_ms_total": 330.09,
+        "Snowdon/streaming-load/raf_js_ms_p95": 26.53,
+        "Snowdon/streaming-load/gpu_submits": 11,
+        "Snowdon/streaming-load/gpu_draws": 5719,
+        "Snowdon/streaming-load/gpu_write_kib": 39147.6,
+        "Snowdon/orbit/frames": 210,
+        "Snowdon/orbit/rendered_frames": 120,
+        "Snowdon/orbit/idle_frames": 90,
+        "Snowdon/orbit/frames_without_raf": 0,
+        "Snowdon/orbit/frames_over_budget": 118,
+        "Snowdon/orbit/missed_vsyncs": 0,
+        "Snowdon/orbit/main_thread_ms_total": 1558.867,
+        "Snowdon/orbit/main_thread_ms_p50": 8.768,
+        "Snowdon/orbit/main_thread_ms_p95": 12.349,
+        "Snowdon/orbit/main_thread_ms_max": 59.677,
+        "Snowdon/orbit/script_ms_total": 656.618,
+        "Snowdon/orbit/raf_js_ms_total": 173.18,
+        "Snowdon/orbit/raf_js_ms_p95": 1.885,
+        "Snowdon/orbit/gpu_submits": 0,
+        "Snowdon/orbit/gpu_draws": 16666,
+        "Snowdon/orbit/gpu_write_kib": 11647.2,
+        "Snowdon/hover/frames": 150,
+        "Snowdon/hover/rendered_frames": 7,
+        "Snowdon/hover/idle_frames": 143,
+        "Snowdon/hover/frames_without_raf": 0,
+        "Snowdon/hover/frames_over_budget": 10,
+        "Snowdon/hover/missed_vsyncs": 0,
+        "Snowdon/hover/main_thread_ms_total": 682.012,
+        "Snowdon/hover/main_thread_ms_p50": 3.917,
+        "Snowdon/hover/main_thread_ms_p95": 8.416,
+        "Snowdon/hover/main_thread_ms_max": 12.625,
+        "Snowdon/hover/script_ms_total": 95.983,
+        "Snowdon/hover/raf_js_ms_total": 29.92,
+        "Snowdon/hover/raf_js_ms_p95": 0.335,
+        "Snowdon/hover/gpu_submits": 0,
+        "Snowdon/hover/gpu_draws": 3213,
+        "Snowdon/hover/gpu_write_kib": 102.1
+      }
+    },
+    {
+      "run": "38643899668",
+      "commit": "d484b67ef4d411efc66c9d75182d1217ec21e5ad",
+      "measuredAt": "2026-10-14T22:06:39Z",
+      "rawSha256": "a32152e4721591e71b691c015d6fb29d9003cc62de79de388d935cb65bf85da7",
+      "schema": 2,
+      "browser": "chrome-headless-shell 156.0.8078.4",
+      "admitted": true,
+      "admissionError": null,
+      "attempts": [
+        {
+          "fixture": "AC20-FZK-Haus",
+          "attempt": 1,
+          "contaminated": false
+        },
+        {
+          "fixture": "Snowdon",
+          "attempt": 1,
+          "contaminated": false
+        }
+      ],
+      "values": {
+        "AC20-FZK-Haus/streaming-load/frames": 87,
+        "AC20-FZK-Haus/streaming-load/rendered_frames": 12,
+        "AC20-FZK-Haus/streaming-load/idle_frames": 75,
+        "AC20-FZK-Haus/streaming-load/frames_without_raf": 14,
+        "AC20-FZK-Haus/streaming-load/frames_over_budget": 31,
+        "AC20-FZK-Haus/streaming-load/missed_vsyncs": 224,
+        "AC20-FZK-Haus/streaming-load/main_thread_ms_total": 1812.085,
+        "AC20-FZK-Haus/streaming-load/main_thread_ms_p50": 4.513,
+        "AC20-FZK-Haus/streaming-load/main_thread_ms_p95": 124.243,
+        "AC20-FZK-Haus/streaming-load/main_thread_ms_max": 174.304,
+        "AC20-FZK-Haus/streaming-load/script_ms_total": 866.042,
+        "AC20-FZK-Haus/streaming-load/raf_js_ms_total": 181.265,
+        "AC20-FZK-Haus/streaming-load/raf_js_ms_p95": 6.775,
+        "AC20-FZK-Haus/streaming-load/gpu_submits": 8,
+        "AC20-FZK-Haus/streaming-load/gpu_draws": 246,
+        "AC20-FZK-Haus/streaming-load/gpu_write_kib": 2414.2,
+        "AC20-FZK-Haus/orbit/frames": 210,
+        "AC20-FZK-Haus/orbit/rendered_frames": 119,
+        "AC20-FZK-Haus/orbit/idle_frames": 91,
+        "AC20-FZK-Haus/orbit/frames_without_raf": 0,
+        "AC20-FZK-Haus/orbit/frames_over_budget": 119,
+        "AC20-FZK-Haus/orbit/missed_vsyncs": 0,
+        "AC20-FZK-Haus/orbit/main_thread_ms_total": 1590.419,
+        "AC20-FZK-Haus/orbit/main_thread_ms_p50": 8.743,
+        "AC20-FZK-Haus/orbit/main_thread_ms_p95": 12.429,
+        "AC20-FZK-Haus/orbit/main_thread_ms_max": 60.889,
+        "AC20-FZK-Haus/orbit/script_ms_total": 669.086,
+        "AC20-FZK-Haus/orbit/raf_js_ms_total": 156.98,
+        "AC20-FZK-Haus/orbit/raf_js_ms_p95": 1.815,
+        "AC20-FZK-Haus/orbit/gpu_submits": 0,
+        "AC20-FZK-Haus/orbit/gpu_draws": 6307,
+        "AC20-FZK-Haus/orbit/gpu_write_kib": 12671.7,
+        "AC20-FZK-Haus/hover/frames": 150,
+        "AC20-FZK-Haus/hover/rendered_frames": 0,
+        "AC20-FZK-Haus/hover/idle_frames": 150,
+        "AC20-FZK-Haus/hover/frames_without_raf": 0,
+        "AC20-FZK-Haus/hover/frames_over_budget": 25,
+        "AC20-FZK-Haus/hover/missed_vsyncs": 0,
+        "AC20-FZK-Haus/hover/main_thread_ms_total": 938.163,
+        "AC20-FZK-Haus/hover/main_thread_ms_p50": 5.409,
+        "AC20-FZK-Haus/hover/main_thread_ms_p95": 12.07,
+        "AC20-FZK-Haus/hover/main_thread_ms_max": 28.938,
+        "AC20-FZK-Haus/hover/script_ms_total": 126.248,
+        "AC20-FZK-Haus/hover/raf_js_ms_total": 30.08,
+        "AC20-FZK-Haus/hover/raf_js_ms_p95": 0.325,
+        "AC20-FZK-Haus/hover/gpu_submits": 0,
+        "AC20-FZK-Haus/hover/gpu_draws": 0,
+        "AC20-FZK-Haus/hover/gpu_write_kib": 0,
+        "Snowdon/streaming-load/frames": 102,
+        "Snowdon/streaming-load/rendered_frames": 18,
+        "Snowdon/streaming-load/idle_frames": 84,
+        "Snowdon/streaming-load/frames_without_raf": 3,
+        "Snowdon/streaming-load/frames_over_budget": 66,
+        "Snowdon/streaming-load/missed_vsyncs": 495,
+        "Snowdon/streaming-load/main_thread_ms_total": 3757.453,
+        "Snowdon/streaming-load/main_thread_ms_p50": 11.039,
+        "Snowdon/streaming-load/main_thread_ms_p95": 236.191,
+        "Snowdon/streaming-load/main_thread_ms_max": 370.979,
+        "Snowdon/streaming-load/script_ms_total": 1820.761,
+        "Snowdon/streaming-load/raf_js_ms_total": 347.88,
+        "Snowdon/streaming-load/raf_js_ms_p95": 30.61,
+        "Snowdon/streaming-load/gpu_submits": 13,
+        "Snowdon/streaming-load/gpu_draws": 6419,
+        "Snowdon/streaming-load/gpu_write_kib": 39203.5,
+        "Snowdon/orbit/frames": 210,
+        "Snowdon/orbit/rendered_frames": 120,
+        "Snowdon/orbit/idle_frames": 90,
+        "Snowdon/orbit/frames_without_raf": 0,
+        "Snowdon/orbit/frames_over_budget": 119,
+        "Snowdon/orbit/missed_vsyncs": 0,
+        "Snowdon/orbit/main_thread_ms_total": 1609.424,
+        "Snowdon/orbit/main_thread_ms_p50": 9.291,
+        "Snowdon/orbit/main_thread_ms_p95": 12.3,
+        "Snowdon/orbit/main_thread_ms_max": 58.529,
+        "Snowdon/orbit/script_ms_total": 683.537,
+        "Snowdon/orbit/raf_js_ms_total": 178.955,
+        "Snowdon/orbit/raf_js_ms_p95": 1.68,
+        "Snowdon/orbit/gpu_submits": 0,
+        "Snowdon/orbit/gpu_draws": 16666,
+        "Snowdon/orbit/gpu_write_kib": 11647.2,
+        "Snowdon/hover/frames": 150,
+        "Snowdon/hover/rendered_frames": 6,
+        "Snowdon/hover/idle_frames": 144,
+        "Snowdon/hover/frames_without_raf": 0,
+        "Snowdon/hover/frames_over_budget": 15,
+        "Snowdon/hover/missed_vsyncs": 0,
+        "Snowdon/hover/main_thread_ms_total": 791.113,
+        "Snowdon/hover/main_thread_ms_p50": 4.491,
+        "Snowdon/hover/main_thread_ms_p95": 9.909,
+        "Snowdon/hover/main_thread_ms_max": 12.483,
+        "Snowdon/hover/script_ms_total": 123.39,
+        "Snowdon/hover/raf_js_ms_total": 37.185,
+        "Snowdon/hover/raf_js_ms_p95": 0.355,
+        "Snowdon/hover/gpu_submits": 0,
+        "Snowdon/hover/gpu_draws": 2754,
+        "Snowdon/hover/gpu_write_kib": 87.5
+      }
+    },
+    {
+      "run": "38694191269",
+      "commit": "80d949f1a58765e7bdd7358f8bc530004866ca4d",
+      "measuredAt": "2026-10-15T06:52:40Z",
+      "rawSha256": "d3d37be590f424f7b99ec79e76ccfa6e9aa47820d1ed490a6f3e2b0a53e4c214",
+      "schema": 2,
+      "browser": "chrome-headless-shell 156.0.8078.4",
+      "admitted": true,
+      "admissionError": null,
+      "attempts": [
+        {
+          "fixture": "AC20-FZK-Haus",
+          "attempt": 1,
+          "contaminated": false
+        },
+        {
+          "fixture": "Snowdon",
+          "attempt": 1,
+          "contaminated": false
+        }
+      ],
+      "values": {
+        "AC20-FZK-Haus/streaming-load/frames": 84,
+        "AC20-FZK-Haus/streaming-load/rendered_frames": 14,
+        "AC20-FZK-Haus/streaming-load/idle_frames": 70,
+        "AC20-FZK-Haus/streaming-load/frames_without_raf": 3,
+        "AC20-FZK-Haus/streaming-load/frames_over_budget": 32,
+        "AC20-FZK-Haus/streaming-load/missed_vsyncs": 261,
+        "AC20-FZK-Haus/streaming-load/main_thread_ms_total": 2122.067,
+        "AC20-FZK-Haus/streaming-load/main_thread_ms_p50": 5.227,
+        "AC20-FZK-Haus/streaming-load/main_thread_ms_p95": 162.272,
+        "AC20-FZK-Haus/streaming-load/main_thread_ms_max": 253.524,
+        "AC20-FZK-Haus/streaming-load/script_ms_total": 1053.304,
+        "AC20-FZK-Haus/streaming-load/raf_js_ms_total": 268.645,
+        "AC20-FZK-Haus/streaming-load/raf_js_ms_p95": 10.74,
+        "AC20-FZK-Haus/streaming-load/gpu_submits": 10,
+        "AC20-FZK-Haus/streaming-load/gpu_draws": 282,
+        "AC20-FZK-Haus/streaming-load/gpu_write_kib": 2451.4,
+        "AC20-FZK-Haus/orbit/frames": 210,
+        "AC20-FZK-Haus/orbit/rendered_frames": 119,
+        "AC20-FZK-Haus/orbit/idle_frames": 91,
+        "AC20-FZK-Haus/orbit/frames_without_raf": 0,
+        "AC20-FZK-Haus/orbit/frames_over_budget": 103,
+        "AC20-FZK-Haus/orbit/missed_vsyncs": 0,
+        "AC20-FZK-Haus/orbit/main_thread_ms_total": 1600.457,
+        "AC20-FZK-Haus/orbit/main_thread_ms_p50": 8.307,
+        "AC20-FZK-Haus/orbit/main_thread_ms_p95": 13.573,
+        "AC20-FZK-Haus/orbit/main_thread_ms_max": 53.741,
+        "AC20-FZK-Haus/orbit/script_ms_total": 665.293,
+        "AC20-FZK-Haus/orbit/raf_js_ms_total": 154.67,
+        "AC20-FZK-Haus/orbit/raf_js_ms_p95": 1.725,
+        "AC20-FZK-Haus/orbit/gpu_submits": 0,
+        "AC20-FZK-Haus/orbit/gpu_draws": 6307,
+        "AC20-FZK-Haus/orbit/gpu_write_kib": 16450,
+        "AC20-FZK-Haus/hover/frames": 150,
+        "AC20-FZK-Haus/hover/rendered_frames": 0,
+        "AC20-FZK-Haus/hover/idle_frames": 150,
+        "AC20-FZK-Haus/hover/frames_without_raf": 0,
+        "AC20-FZK-Haus/hover/frames_over_budget": 5,
+        "AC20-FZK-Haus/hover/missed_vsyncs": 0,
+        "AC20-FZK-Haus/hover/main_thread_ms_total": 707.34,
+        "AC20-FZK-Haus/hover/main_thread_ms_p50": 3.852,
+        "AC20-FZK-Haus/hover/main_thread_ms_p95": 8.057,
+        "AC20-FZK-Haus/hover/main_thread_ms_max": 12.468,
+        "AC20-FZK-Haus/hover/script_ms_total": 88.84,
+        "AC20-FZK-Haus/hover/raf_js_ms_total": 20.165,
+        "AC20-FZK-Haus/hover/raf_js_ms_p95": 0.255,
+        "AC20-FZK-Haus/hover/gpu_submits": 0,
+        "AC20-FZK-Haus/hover/gpu_draws": 0,
+        "AC20-FZK-Haus/hover/gpu_write_kib": 0,
+        "Snowdon/streaming-load/frames": 102,
+        "Snowdon/streaming-load/rendered_frames": 15,
+        "Snowdon/streaming-load/idle_frames": 87,
+        "Snowdon/streaming-load/frames_without_raf": 5,
+        "Snowdon/streaming-load/frames_over_budget": 46,
+        "Snowdon/streaming-load/missed_vsyncs": 391,
+        "Snowdon/streaming-load/main_thread_ms_total": 3056.925,
+        "Snowdon/streaming-load/main_thread_ms_p50": 7.979,
+        "Snowdon/streaming-load/main_thread_ms_p95": 173.248,
+        "Snowdon/streaming-load/main_thread_ms_max": 300.096,
+        "Snowdon/streaming-load/script_ms_total": 1464.407,
+        "Snowdon/streaming-load/raf_js_ms_total": 313.39,
+        "Snowdon/streaming-load/raf_js_ms_p95": 19.955,
+        "Snowdon/streaming-load/gpu_submits": 11,
+        "Snowdon/streaming-load/gpu_draws": 5076,
+        "Snowdon/streaming-load/gpu_write_kib": 39182,
+        "Snowdon/orbit/frames": 210,
+        "Snowdon/orbit/rendered_frames": 120,
+        "Snowdon/orbit/idle_frames": 90,
+        "Snowdon/orbit/frames_without_raf": 0,
+        "Snowdon/orbit/frames_over_budget": 118,
+        "Snowdon/orbit/missed_vsyncs": 0,
+        "Snowdon/orbit/main_thread_ms_total": 1475.452,
+        "Snowdon/orbit/main_thread_ms_p50": 8.704,
+        "Snowdon/orbit/main_thread_ms_p95": 11.558,
+        "Snowdon/orbit/main_thread_ms_max": 58.296,
+        "Snowdon/orbit/script_ms_total": 635.807,
+        "Snowdon/orbit/raf_js_ms_total": 160.1,
+        "Snowdon/orbit/raf_js_ms_p95": 1.59,
+        "Snowdon/orbit/gpu_submits": 0,
+        "Snowdon/orbit/gpu_draws": 16666,
+        "Snowdon/orbit/gpu_write_kib": 12217.2,
+        "Snowdon/hover/frames": 150,
+        "Snowdon/hover/rendered_frames": 6,
+        "Snowdon/hover/idle_frames": 144,
+        "Snowdon/hover/frames_without_raf": 0,
+        "Snowdon/hover/frames_over_budget": 8,
+        "Snowdon/hover/missed_vsyncs": 0,
+        "Snowdon/hover/main_thread_ms_total": 644.032,
+        "Snowdon/hover/main_thread_ms_p50": 3.608,
+        "Snowdon/hover/main_thread_ms_p95": 8.448,
+        "Snowdon/hover/main_thread_ms_max": 12.728,
+        "Snowdon/hover/script_ms_total": 90.31,
+        "Snowdon/hover/raf_js_ms_total": 25.82,
+        "Snowdon/hover/raf_js_ms_p95": 0.31,
+        "Snowdon/hover/gpu_submits": 0,
+        "Snowdon/hover/gpu_draws": 2754,
+        "Snowdon/hover/gpu_write_kib": 116
+      }
+    },
+    {
+      "run": "38694194951",
+      "commit": "80d949f1a58765e7bdd7358f8bc530004866ca4d",
+      "measuredAt": "2026-10-15T06:52:29Z",
+      "rawSha256": "0afdcbe693a26bba96cc9a0a02e42c4329409b60e0e60c78a1d69dfc66134eb0",
+      "schema": 2,
+      "browser": "chrome-headless-shell 156.0.8078.4",
+      "admitted": true,
+      "admissionError": null,
+      "attempts": [
+        {
+          "fixture": "AC20-FZK-Haus",
+          "attempt": 1,
+          "contaminated": false
+        },
+        {
+          "fixture": "Snowdon",
+          "attempt": 1,
+          "contaminated": false
+        }
+      ],
+      "values": {
+        "AC20-FZK-Haus/streaming-load/frames": 79,
+        "AC20-FZK-Haus/streaming-load/rendered_frames": 13,
+        "AC20-FZK-Haus/streaming-load/idle_frames": 66,
+        "AC20-FZK-Haus/streaming-load/frames_without_raf": 5,
+        "AC20-FZK-Haus/streaming-load/frames_over_budget": 19,
+        "AC20-FZK-Haus/streaming-load/missed_vsyncs": 211,
+        "AC20-FZK-Haus/streaming-load/main_thread_ms_total": 1726.469,
+        "AC20-FZK-Haus/streaming-load/main_thread_ms_p50": 3.865,
+        "AC20-FZK-Haus/streaming-load/main_thread_ms_p95": 143.512,
+        "AC20-FZK-Haus/streaming-load/main_thread_ms_max": 210.153,
+        "AC20-FZK-Haus/streaming-load/script_ms_total": 806.972,
+        "AC20-FZK-Haus/streaming-load/raf_js_ms_total": 211.115,
+        "AC20-FZK-Haus/streaming-load/raf_js_ms_p95": 19.535,
+        "AC20-FZK-Haus/streaming-load/gpu_submits": 9,
+        "AC20-FZK-Haus/streaming-load/gpu_draws": 251,
+        "AC20-FZK-Haus/streaming-load/gpu_write_kib": 2438.5,
+        "AC20-FZK-Haus/orbit/frames": 210,
+        "AC20-FZK-Haus/orbit/rendered_frames": 119,
+        "AC20-FZK-Haus/orbit/idle_frames": 91,
+        "AC20-FZK-Haus/orbit/frames_without_raf": 0,
+        "AC20-FZK-Haus/orbit/frames_over_budget": 115,
+        "AC20-FZK-Haus/orbit/missed_vsyncs": 0,
+        "AC20-FZK-Haus/orbit/main_thread_ms_total": 1628.86,
+        "AC20-FZK-Haus/orbit/main_thread_ms_p50": 8.633,
+        "AC20-FZK-Haus/orbit/main_thread_ms_p95": 13.184,
+        "AC20-FZK-Haus/orbit/main_thread_ms_max": 36.543,
+        "AC20-FZK-Haus/orbit/script_ms_total": 687.946,
+        "AC20-FZK-Haus/orbit/raf_js_ms_total": 158.335,
+        "AC20-FZK-Haus/orbit/raf_js_ms_p95": 1.72,
+        "AC20-FZK-Haus/orbit/gpu_submits": 0,
+        "AC20-FZK-Haus/orbit/gpu_draws": 6307,
+        "AC20-FZK-Haus/orbit/gpu_write_kib": 16450,
+        "AC20-FZK-Haus/hover/frames": 150,
+        "AC20-FZK-Haus/hover/rendered_frames": 0,
+        "AC20-FZK-Haus/hover/idle_frames": 150,
+        "AC20-FZK-Haus/hover/frames_without_raf": 0,
+        "AC20-FZK-Haus/hover/frames_over_budget": 12,
+        "AC20-FZK-Haus/hover/missed_vsyncs": 0,
+        "AC20-FZK-Haus/hover/main_thread_ms_total": 795.537,
+        "AC20-FZK-Haus/hover/main_thread_ms_p50": 4.629,
+        "AC20-FZK-Haus/hover/main_thread_ms_p95": 10.339,
+        "AC20-FZK-Haus/hover/main_thread_ms_max": 26.295,
+        "AC20-FZK-Haus/hover/script_ms_total": 98.607,
+        "AC20-FZK-Haus/hover/raf_js_ms_total": 20.68,
+        "AC20-FZK-Haus/hover/raf_js_ms_p95": 0.28,
+        "AC20-FZK-Haus/hover/gpu_submits": 0,
+        "AC20-FZK-Haus/hover/gpu_draws": 0,
+        "AC20-FZK-Haus/hover/gpu_write_kib": 0,
+        "Snowdon/streaming-load/frames": 97,
+        "Snowdon/streaming-load/rendered_frames": 15,
+        "Snowdon/streaming-load/idle_frames": 82,
+        "Snowdon/streaming-load/frames_without_raf": 3,
+        "Snowdon/streaming-load/frames_over_budget": 52,
+        "Snowdon/streaming-load/missed_vsyncs": 426,
+        "Snowdon/streaming-load/main_thread_ms_total": 3088.043,
+        "Snowdon/streaming-load/main_thread_ms_p50": 9.27,
+        "Snowdon/streaming-load/main_thread_ms_p95": 220.872,
+        "Snowdon/streaming-load/main_thread_ms_max": 337.203,
+        "Snowdon/streaming-load/script_ms_total": 1407.719,
+        "Snowdon/streaming-load/raf_js_ms_total": 300.1,
+        "Snowdon/streaming-load/raf_js_ms_p95": 27.66,
+        "Snowdon/streaming-load/gpu_submits": 10,
+        "Snowdon/streaming-load/gpu_draws": 5362,
+        "Snowdon/streaming-load/gpu_write_kib": 39218.6,
+        "Snowdon/orbit/frames": 210,
+        "Snowdon/orbit/rendered_frames": 120,
+        "Snowdon/orbit/idle_frames": 90,
+        "Snowdon/orbit/frames_without_raf": 0,
+        "Snowdon/orbit/frames_over_budget": 117,
+        "Snowdon/orbit/missed_vsyncs": 0,
+        "Snowdon/orbit/main_thread_ms_total": 1472.696,
+        "Snowdon/orbit/main_thread_ms_p50": 8.575,
+        "Snowdon/orbit/main_thread_ms_p95": 11.571,
+        "Snowdon/orbit/main_thread_ms_max": 56.528,
+        "Snowdon/orbit/script_ms_total": 635,
+        "Snowdon/orbit/raf_js_ms_total": 167.455,
+        "Snowdon/orbit/raf_js_ms_p95": 1.59,
+        "Snowdon/orbit/gpu_submits": 0,
+        "Snowdon/orbit/gpu_draws": 16666,
+        "Snowdon/orbit/gpu_write_kib": 12217.2,
+        "Snowdon/hover/frames": 150,
+        "Snowdon/hover/rendered_frames": 7,
+        "Snowdon/hover/idle_frames": 143,
+        "Snowdon/hover/frames_without_raf": 0,
+        "Snowdon/hover/frames_over_budget": 3,
+        "Snowdon/hover/missed_vsyncs": 0,
+        "Snowdon/hover/main_thread_ms_total": 629.36,
+        "Snowdon/hover/main_thread_ms_p50": 3.578,
+        "Snowdon/hover/main_thread_ms_p95": 8.072,
+        "Snowdon/hover/main_thread_ms_max": 13.231,
+        "Snowdon/hover/script_ms_total": 89.385,
+        "Snowdon/hover/raf_js_ms_total": 26.49,
+        "Snowdon/hover/raf_js_ms_p95": 0.285,
+        "Snowdon/hover/gpu_submits": 0,
+        "Snowdon/hover/gpu_draws": 3213,
+        "Snowdon/hover/gpu_write_kib": 135.3
+      }
+    },
+    {
+      "run": "38694199127",
+      "commit": "80d949f1a58765e7bdd7358f8bc530004866ca4d",
+      "measuredAt": "2026-10-15T06:51:19Z",
+      "rawSha256": "4f471dc148d492a9860be8d0b665ae3cb477d81fcd55ae563a90330d8656a3de",
+      "schema": 2,
+      "browser": "chrome-headless-shell 156.0.8078.4",
+      "admitted": true,
+      "admissionError": null,
+      "attempts": [
+        {
+          "fixture": "AC20-FZK-Haus",
+          "attempt": 1,
+          "contaminated": false
+        },
+        {
+          "fixture": "Snowdon",
+          "attempt": 1,
+          "contaminated": false
+        }
+      ],
+      "values": {
+        "AC20-FZK-Haus/streaming-load/frames": 91,
+        "AC20-FZK-Haus/streaming-load/rendered_frames": 13,
+        "AC20-FZK-Haus/streaming-load/idle_frames": 78,
+        "AC20-FZK-Haus/streaming-load/frames_without_raf": 5,
+        "AC20-FZK-Haus/streaming-load/frames_over_budget": 18,
+        "AC20-FZK-Haus/streaming-load/missed_vsyncs": 167,
+        "AC20-FZK-Haus/streaming-load/main_thread_ms_total": 1450.778,
+        "AC20-FZK-Haus/streaming-load/main_thread_ms_p50": 3.413,
+        "AC20-FZK-Haus/streaming-load/main_thread_ms_p95": 109.486,
+        "AC20-FZK-Haus/streaming-load/main_thread_ms_max": 168.922,
+        "AC20-FZK-Haus/streaming-load/script_ms_total": 649.432,
+        "AC20-FZK-Haus/streaming-load/raf_js_ms_total": 158.58,
+        "AC20-FZK-Haus/streaming-load/raf_js_ms_p95": 5.475,
+        "AC20-FZK-Haus/streaming-load/gpu_submits": 9,
+        "AC20-FZK-Haus/streaming-load/gpu_draws": 251,
+        "AC20-FZK-Haus/streaming-load/gpu_write_kib": 2438.5,
+        "AC20-FZK-Haus/orbit/frames": 210,
+        "AC20-FZK-Haus/orbit/rendered_frames": 119,
+        "AC20-FZK-Haus/orbit/idle_frames": 91,
+        "AC20-FZK-Haus/orbit/frames_without_raf": 0,
+        "AC20-FZK-Haus/orbit/frames_over_budget": 14,
+        "AC20-FZK-Haus/orbit/missed_vsyncs": 0,
+        "AC20-FZK-Haus/orbit/main_thread_ms_total": 1139.388,
+        "AC20-FZK-Haus/orbit/main_thread_ms_p50": 6.258,
+        "AC20-FZK-Haus/orbit/main_thread_ms_p95": 9.412,
+        "AC20-FZK-Haus/orbit/main_thread_ms_max": 35.223,
+        "AC20-FZK-Haus/orbit/script_ms_total": 478.215,
+        "AC20-FZK-Haus/orbit/raf_js_ms_total": 106.875,
+        "AC20-FZK-Haus/orbit/raf_js_ms_p95": 1.28,
+        "AC20-FZK-Haus/orbit/gpu_submits": 0,
+        "AC20-FZK-Haus/orbit/gpu_draws": 6307,
+        "AC20-FZK-Haus/orbit/gpu_write_kib": 16450,
+        "AC20-FZK-Haus/hover/frames": 150,
+        "AC20-FZK-Haus/hover/rendered_frames": 0,
+        "AC20-FZK-Haus/hover/idle_frames": 150,
+        "AC20-FZK-Haus/hover/frames_without_raf": 0,
+        "AC20-FZK-Haus/hover/frames_over_budget": 5,
+        "AC20-FZK-Haus/hover/missed_vsyncs": 0,
+        "AC20-FZK-Haus/hover/main_thread_ms_total": 623.085,
+        "AC20-FZK-Haus/hover/main_thread_ms_p50": 3.942,
+        "AC20-FZK-Haus/hover/main_thread_ms_p95": 7.247,
+        "AC20-FZK-Haus/hover/main_thread_ms_max": 10.88,
+        "AC20-FZK-Haus/hover/script_ms_total": 77.395,
+        "AC20-FZK-Haus/hover/raf_js_ms_total": 15.69,
+        "AC20-FZK-Haus/hover/raf_js_ms_p95": 0.165,
+        "AC20-FZK-Haus/hover/gpu_submits": 0,
+        "AC20-FZK-Haus/hover/gpu_draws": 0,
+        "AC20-FZK-Haus/hover/gpu_write_kib": 0,
+        "Snowdon/streaming-load/frames": 107,
+        "Snowdon/streaming-load/rendered_frames": 17,
+        "Snowdon/streaming-load/idle_frames": 90,
+        "Snowdon/streaming-load/frames_without_raf": 5,
+        "Snowdon/streaming-load/frames_over_budget": 47,
+        "Snowdon/streaming-load/missed_vsyncs": 377,
+        "Snowdon/streaming-load/main_thread_ms_total": 3090.381,
+        "Snowdon/streaming-load/main_thread_ms_p50": 7.028,
+        "Snowdon/streaming-load/main_thread_ms_p95": 182.804,
+        "Snowdon/streaming-load/main_thread_ms_max": 349.315,
+        "Snowdon/streaming-load/script_ms_total": 1519.168,
+        "Snowdon/streaming-load/raf_js_ms_total": 339.735,
+        "Snowdon/streaming-load/raf_js_ms_p95": 16.07,
+        "Snowdon/streaming-load/gpu_submits": 13,
+        "Snowdon/streaming-load/gpu_draws": 5887,
+        "Snowdon/streaming-load/gpu_write_kib": 39251.7,
+        "Snowdon/orbit/frames": 210,
+        "Snowdon/orbit/rendered_frames": 120,
+        "Snowdon/orbit/idle_frames": 90,
+        "Snowdon/orbit/frames_without_raf": 0,
+        "Snowdon/orbit/frames_over_budget": 13,
+        "Snowdon/orbit/missed_vsyncs": 0,
+        "Snowdon/orbit/main_thread_ms_total": 1152.758,
+        "Snowdon/orbit/main_thread_ms_p50": 6.567,
+        "Snowdon/orbit/main_thread_ms_p95": 8.964,
+        "Snowdon/orbit/main_thread_ms_max": 49.054,
+        "Snowdon/orbit/script_ms_total": 488.613,
+        "Snowdon/orbit/raf_js_ms_total": 120.28,
+        "Snowdon/orbit/raf_js_ms_p95": 1.255,
+        "Snowdon/orbit/gpu_submits": 0,
+        "Snowdon/orbit/gpu_draws": 16666,
+        "Snowdon/orbit/gpu_write_kib": 12217.2,
+        "Snowdon/hover/frames": 150,
+        "Snowdon/hover/rendered_frames": 5,
+        "Snowdon/hover/idle_frames": 145,
+        "Snowdon/hover/frames_without_raf": 0,
+        "Snowdon/hover/frames_over_budget": 2,
+        "Snowdon/hover/missed_vsyncs": 0,
+        "Snowdon/hover/main_thread_ms_total": 531.391,
+        "Snowdon/hover/main_thread_ms_p50": 3.023,
+        "Snowdon/hover/main_thread_ms_p95": 6.883,
+        "Snowdon/hover/main_thread_ms_max": 9.724,
+        "Snowdon/hover/script_ms_total": 74.007,
+        "Snowdon/hover/raf_js_ms_total": 20.115,
+        "Snowdon/hover/raf_js_ms_p95": 0.2,
+        "Snowdon/hover/gpu_submits": 0,
+        "Snowdon/hover/gpu_draws": 2295,
+        "Snowdon/hover/gpu_write_kib": 96.7
+      }
+    },
+    {
+      "run": "38694202697",
+      "commit": "80d949f1a58765e7bdd7358f8bc530004866ca4d",
+      "measuredAt": "2026-10-15T06:52:44Z",
+      "rawSha256": "f957f982a00f280e6d0b12824d3fff71d4f4dd049dd52902458abc1d876cd649",
+      "schema": 2,
+      "browser": "chrome-headless-shell 156.0.8078.4",
+      "admitted": true,
+      "admissionError": null,
+      "attempts": [
+        {
+          "fixture": "AC20-FZK-Haus",
+          "attempt": 1,
+          "contaminated": false
+        },
+        {
+          "fixture": "Snowdon",
+          "attempt": 1,
+          "contaminated": false
+        }
+      ],
+      "values": {
+        "AC20-FZK-Haus/streaming-load/frames": 89,
+        "AC20-FZK-Haus/streaming-load/rendered_frames": 13,
+        "AC20-FZK-Haus/streaming-load/idle_frames": 76,
+        "AC20-FZK-Haus/streaming-load/frames_without_raf": 4,
+        "AC20-FZK-Haus/streaming-load/frames_over_budget": 26,
+        "AC20-FZK-Haus/streaming-load/missed_vsyncs": 255,
+        "AC20-FZK-Haus/streaming-load/main_thread_ms_total": 2095.52,
+        "AC20-FZK-Haus/streaming-load/main_thread_ms_p50": 4.812,
+        "AC20-FZK-Haus/streaming-load/main_thread_ms_p95": 155.673,
+        "AC20-FZK-Haus/streaming-load/main_thread_ms_max": 229.435,
+        "AC20-FZK-Haus/streaming-load/script_ms_total": 945.945,
+        "AC20-FZK-Haus/streaming-load/raf_js_ms_total": 267.085,
+        "AC20-FZK-Haus/streaming-load/raf_js_ms_p95": 8.975,
+        "AC20-FZK-Haus/streaming-load/gpu_submits": 9,
+        "AC20-FZK-Haus/streaming-load/gpu_draws": 251,
+        "AC20-FZK-Haus/streaming-load/gpu_write_kib": 2438.5,
+        "AC20-FZK-Haus/orbit/frames": 210,
+        "AC20-FZK-Haus/orbit/rendered_frames": 119,
+        "AC20-FZK-Haus/orbit/idle_frames": 91,
+        "AC20-FZK-Haus/orbit/frames_without_raf": 0,
+        "AC20-FZK-Haus/orbit/frames_over_budget": 122,
+        "AC20-FZK-Haus/orbit/missed_vsyncs": 0,
+        "AC20-FZK-Haus/orbit/main_thread_ms_total": 1752.145,
+        "AC20-FZK-Haus/orbit/main_thread_ms_p50": 8.974,
+        "AC20-FZK-Haus/orbit/main_thread_ms_p95": 15.534,
+        "AC20-FZK-Haus/orbit/main_thread_ms_max": 37.291,
+        "AC20-FZK-Haus/orbit/script_ms_total": 719.931,
+        "AC20-FZK-Haus/orbit/raf_js_ms_total": 168.16,
+        "AC20-FZK-Haus/orbit/raf_js_ms_p95": 2.035,
+        "AC20-FZK-Haus/orbit/gpu_submits": 0,
+        "AC20-FZK-Haus/orbit/gpu_draws": 6307,
+        "AC20-FZK-Haus/orbit/gpu_write_kib": 16450,
+        "AC20-FZK-Haus/hover/frames": 150,
+        "AC20-FZK-Haus/hover/rendered_frames": 0,
+        "AC20-FZK-Haus/hover/idle_frames": 150,
+        "AC20-FZK-Haus/hover/frames_without_raf": 0,
+        "AC20-FZK-Haus/hover/frames_over_budget": 11,
+        "AC20-FZK-Haus/hover/missed_vsyncs": 0,
+        "AC20-FZK-Haus/hover/main_thread_ms_total": 719.022,
+        "AC20-FZK-Haus/hover/main_thread_ms_p50": 4.001,
+        "AC20-FZK-Haus/hover/main_thread_ms_p95": 8.562,
+        "AC20-FZK-Haus/hover/main_thread_ms_max": 12.389,
+        "AC20-FZK-Haus/hover/script_ms_total": 97.69,
+        "AC20-FZK-Haus/hover/raf_js_ms_total": 23.525,
+        "AC20-FZK-Haus/hover/raf_js_ms_p95": 0.27,
+        "AC20-FZK-Haus/hover/gpu_submits": 0,
+        "AC20-FZK-Haus/hover/gpu_draws": 0,
+        "AC20-FZK-Haus/hover/gpu_write_kib": 0,
+        "Snowdon/streaming-load/frames": 102,
+        "Snowdon/streaming-load/rendered_frames": 15,
+        "Snowdon/streaming-load/idle_frames": 87,
+        "Snowdon/streaming-load/frames_without_raf": 3,
+        "Snowdon/streaming-load/frames_over_budget": 47,
+        "Snowdon/streaming-load/missed_vsyncs": 391,
+        "Snowdon/streaming-load/main_thread_ms_total": 3101.674,
+        "Snowdon/streaming-load/main_thread_ms_p50": 8.12,
+        "Snowdon/streaming-load/main_thread_ms_p95": 172.881,
+        "Snowdon/streaming-load/main_thread_ms_max": 280.994,
+        "Snowdon/streaming-load/script_ms_total": 1434.378,
+        "Snowdon/streaming-load/raf_js_ms_total": 294.095,
+        "Snowdon/streaming-load/raf_js_ms_p95": 22.15,
+        "Snowdon/streaming-load/gpu_submits": 11,
+        "Snowdon/streaming-load/gpu_draws": 5076,
+        "Snowdon/streaming-load/gpu_write_kib": 39194.6,
+        "Snowdon/orbit/frames": 210,
+        "Snowdon/orbit/rendered_frames": 120,
+        "Snowdon/orbit/idle_frames": 90,
+        "Snowdon/orbit/frames_without_raf": 0,
+        "Snowdon/orbit/frames_over_budget": 119,
+        "Snowdon/orbit/missed_vsyncs": 0,
+        "Snowdon/orbit/main_thread_ms_total": 1515.771,
+        "Snowdon/orbit/main_thread_ms_p50": 8.839,
+        "Snowdon/orbit/main_thread_ms_p95": 12.954,
+        "Snowdon/orbit/main_thread_ms_max": 53.923,
+        "Snowdon/orbit/script_ms_total": 645.338,
+        "Snowdon/orbit/raf_js_ms_total": 167.215,
+        "Snowdon/orbit/raf_js_ms_p95": 1.675,
+        "Snowdon/orbit/gpu_submits": 0,
+        "Snowdon/orbit/gpu_draws": 16666,
+        "Snowdon/orbit/gpu_write_kib": 12217.2,
+        "Snowdon/hover/frames": 150,
+        "Snowdon/hover/rendered_frames": 6,
+        "Snowdon/hover/idle_frames": 144,
+        "Snowdon/hover/frames_without_raf": 0,
+        "Snowdon/hover/frames_over_budget": 8,
+        "Snowdon/hover/missed_vsyncs": 0,
+        "Snowdon/hover/main_thread_ms_total": 672.681,
+        "Snowdon/hover/main_thread_ms_p50": 3.772,
+        "Snowdon/hover/main_thread_ms_p95": 8.438,
+        "Snowdon/hover/main_thread_ms_max": 13.076,
+        "Snowdon/hover/script_ms_total": 101.126,
+        "Snowdon/hover/raf_js_ms_total": 28.395,
+        "Snowdon/hover/raf_js_ms_p95": 0.28,
+        "Snowdon/hover/gpu_submits": 0,
+        "Snowdon/hover/gpu_draws": 2754,
+        "Snowdon/hover/gpu_write_kib": 116
+      }
+    },
+    {
+      "run": "38694206551",
+      "commit": "80d949f1a58765e7bdd7358f8bc530004866ca4d",
+      "measuredAt": "2026-10-15T06:52:43Z",
+      "rawSha256": "82d6653f4f331ec3efa152d2e58cf7c517aca85452debdef1068d2873b3eeb96",
+      "schema": 2,
+      "browser": "chrome-headless-shell 156.0.8078.4",
+      "admitted": true,
+      "admissionError": null,
+      "attempts": [
+        {
+          "fixture": "AC20-FZK-Haus",
+          "attempt": 1,
+          "contaminated": false
+        },
+        {
+          "fixture": "Snowdon",
+          "attempt": 1,
+          "contaminated": false
+        }
+      ],
+      "values": {
+        "AC20-FZK-Haus/streaming-load/frames": 68,
+        "AC20-FZK-Haus/streaming-load/rendered_frames": 12,
+        "AC20-FZK-Haus/streaming-load/idle_frames": 56,
+        "AC20-FZK-Haus/streaming-load/frames_without_raf": 3,
+        "AC20-FZK-Haus/streaming-load/frames_over_budget": 23,
+        "AC20-FZK-Haus/streaming-load/missed_vsyncs": 217,
+        "AC20-FZK-Haus/streaming-load/main_thread_ms_total": 1717.974,
+        "AC20-FZK-Haus/streaming-load/main_thread_ms_p50": 4.412,
+        "AC20-FZK-Haus/streaming-load/main_thread_ms_p95": 149.524,
+        "AC20-FZK-Haus/streaming-load/main_thread_ms_max": 206.762,
+        "AC20-FZK-Haus/streaming-load/script_ms_total": 821.039,
+        "AC20-FZK-Haus/streaming-load/raf_js_ms_total": 221.365,
+        "AC20-FZK-Haus/streaming-load/raf_js_ms_p95": 23.645,
+        "AC20-FZK-Haus/streaming-load/gpu_submits": 8,
+        "AC20-FZK-Haus/streaming-load/gpu_draws": 220,
+        "AC20-FZK-Haus/streaming-load/gpu_write_kib": 2425.7,
+        "AC20-FZK-Haus/orbit/frames": 210,
+        "AC20-FZK-Haus/orbit/rendered_frames": 119,
+        "AC20-FZK-Haus/orbit/idle_frames": 91,
+        "AC20-FZK-Haus/orbit/frames_without_raf": 0,
+        "AC20-FZK-Haus/orbit/frames_over_budget": 100,
+        "AC20-FZK-Haus/orbit/missed_vsyncs": 0,
+        "AC20-FZK-Haus/orbit/main_thread_ms_total": 1586.67,
+        "AC20-FZK-Haus/orbit/main_thread_ms_p50": 8.211,
+        "AC20-FZK-Haus/orbit/main_thread_ms_p95": 12.965,
+        "AC20-FZK-Haus/orbit/main_thread_ms_max": 54.54,
+        "AC20-FZK-Haus/orbit/script_ms_total": 669.822,
+        "AC20-FZK-Haus/orbit/raf_js_ms_total": 152.37,
+        "AC20-FZK-Haus/orbit/raf_js_ms_p95": 1.775,
+        "AC20-FZK-Haus/orbit/gpu_submits": 0,
+        "AC20-FZK-Haus/orbit/gpu_draws": 6307,
+        "AC20-FZK-Haus/orbit/gpu_write_kib": 16450,
+        "AC20-FZK-Haus/hover/frames": 150,
+        "AC20-FZK-Haus/hover/rendered_frames": 0,
+        "AC20-FZK-Haus/hover/idle_frames": 150,
+        "AC20-FZK-Haus/hover/frames_without_raf": 0,
+        "AC20-FZK-Haus/hover/frames_over_budget": 8,
+        "AC20-FZK-Haus/hover/missed_vsyncs": 0,
+        "AC20-FZK-Haus/hover/main_thread_ms_total": 733.671,
+        "AC20-FZK-Haus/hover/main_thread_ms_p50": 3.687,
+        "AC20-FZK-Haus/hover/main_thread_ms_p95": 8.598,
+        "AC20-FZK-Haus/hover/main_thread_ms_max": 28.243,
+        "AC20-FZK-Haus/hover/script_ms_total": 84.617,
+        "AC20-FZK-Haus/hover/raf_js_ms_total": 19.44,
+        "AC20-FZK-Haus/hover/raf_js_ms_p95": 0.26,
+        "AC20-FZK-Haus/hover/gpu_submits": 0,
+        "AC20-FZK-Haus/hover/gpu_draws": 0,
+        "AC20-FZK-Haus/hover/gpu_write_kib": 0,
+        "Snowdon/streaming-load/frames": 105,
+        "Snowdon/streaming-load/rendered_frames": 15,
+        "Snowdon/streaming-load/idle_frames": 90,
+        "Snowdon/streaming-load/frames_without_raf": 4,
+        "Snowdon/streaming-load/frames_over_budget": 59,
+        "Snowdon/streaming-load/missed_vsyncs": 399,
+        "Snowdon/streaming-load/main_thread_ms_total": 3199.977,
+        "Snowdon/streaming-load/main_thread_ms_p50": 9.749,
+        "Snowdon/streaming-load/main_thread_ms_p95": 156.208,
+        "Snowdon/streaming-load/main_thread_ms_max": 353.103,
+        "Snowdon/streaming-load/script_ms_total": 1482.673,
+        "Snowdon/streaming-load/raf_js_ms_total": 287.76,
+        "Snowdon/streaming-load/raf_js_ms_p95": 18.355,
+        "Snowdon/streaming-load/gpu_submits": 11,
+        "Snowdon/streaming-load/gpu_draws": 5279,
+        "Snowdon/streaming-load/gpu_write_kib": 39235.6,
+        "Snowdon/orbit/frames": 210,
+        "Snowdon/orbit/rendered_frames": 120,
+        "Snowdon/orbit/idle_frames": 90,
+        "Snowdon/orbit/frames_without_raf": 0,
+        "Snowdon/orbit/frames_over_budget": 96,
+        "Snowdon/orbit/missed_vsyncs": 0,
+        "Snowdon/orbit/main_thread_ms_total": 1455.411,
+        "Snowdon/orbit/main_thread_ms_p50": 8.262,
+        "Snowdon/orbit/main_thread_ms_p95": 12.139,
+        "Snowdon/orbit/main_thread_ms_max": 58.163,
+        "Snowdon/orbit/script_ms_total": 617.939,
+        "Snowdon/orbit/raf_js_ms_total": 161.15,
+        "Snowdon/orbit/raf_js_ms_p95": 1.615,
+        "Snowdon/orbit/gpu_submits": 0,
+        "Snowdon/orbit/gpu_draws": 16666,
+        "Snowdon/orbit/gpu_write_kib": 12217.2,
+        "Snowdon/hover/frames": 150,
+        "Snowdon/hover/rendered_frames": 5,
+        "Snowdon/hover/idle_frames": 145,
+        "Snowdon/hover/frames_without_raf": 0,
+        "Snowdon/hover/frames_over_budget": 2,
+        "Snowdon/hover/missed_vsyncs": 0,
+        "Snowdon/hover/main_thread_ms_total": 645.622,
+        "Snowdon/hover/main_thread_ms_p50": 3.661,
+        "Snowdon/hover/main_thread_ms_p95": 7.562,
+        "Snowdon/hover/main_thread_ms_max": 9.928,
+        "Snowdon/hover/script_ms_total": 86.985,
+        "Snowdon/hover/raf_js_ms_total": 26.085,
+        "Snowdon/hover/raf_js_ms_p95": 0.32,
+        "Snowdon/hover/gpu_submits": 0,
+        "Snowdon/hover/gpu_draws": 2295,
+        "Snowdon/hover/gpu_write_kib": 96.7
+      }
+    },
+    {
+      "run": "38694210319",
+      "commit": "80d949f1a58765e7bdd7358f8bc530004866ca4d",
+      "measuredAt": "2026-10-15T06:52:31Z",
+      "rawSha256": "9d07b3692ceb9e3b595d7b5e0f5c19265a8eb3c7c9413470d717b333bcf30eb8",
+      "schema": 2,
+      "browser": "chrome-headless-shell 156.0.8078.4",
+      "admitted": true,
+      "admissionError": null,
+      "attempts": [
+        {
+          "fixture": "Snowdon",
+          "attempt": 1,
+          "contaminated": true
+        },
+        {
+          "fixture": "AC20-FZK-Haus",
+          "attempt": 1,
+          "contaminated": false
+        },
+        {
+          "fixture": "Snowdon",
+          "attempt": 2,
+          "contaminated": false
+        }
+      ],
+      "values": {
+        "AC20-FZK-Haus/streaming-load/frames": 68,
+        "AC20-FZK-Haus/streaming-load/rendered_frames": 12,
+        "AC20-FZK-Haus/streaming-load/idle_frames": 56,
+        "AC20-FZK-Haus/streaming-load/frames_without_raf": 4,
+        "AC20-FZK-Haus/streaming-load/frames_over_budget": 21,
+        "AC20-FZK-Haus/streaming-load/missed_vsyncs": 223,
+        "AC20-FZK-Haus/streaming-load/main_thread_ms_total": 1789.165,
+        "AC20-FZK-Haus/streaming-load/main_thread_ms_p50": 3.58,
+        "AC20-FZK-Haus/streaming-load/main_thread_ms_p95": 173.05,
+        "AC20-FZK-Haus/streaming-load/main_thread_ms_max": 215.955,
+        "AC20-FZK-Haus/streaming-load/script_ms_total": 851.098,
+        "AC20-FZK-Haus/streaming-load/raf_js_ms_total": 237.495,
+        "AC20-FZK-Haus/streaming-load/raf_js_ms_p95": 13.175,
+        "AC20-FZK-Haus/streaming-load/gpu_submits": 8,
+        "AC20-FZK-Haus/streaming-load/gpu_draws": 229,
+        "AC20-FZK-Haus/streaming-load/gpu_write_kib": 2430.2,
+        "AC20-FZK-Haus/orbit/frames": 210,
+        "AC20-FZK-Haus/orbit/rendered_frames": 119,
+        "AC20-FZK-Haus/orbit/idle_frames": 91,
+        "AC20-FZK-Haus/orbit/frames_without_raf": 0,
+        "AC20-FZK-Haus/orbit/frames_over_budget": 61,
+        "AC20-FZK-Haus/orbit/missed_vsyncs": 0,
+        "AC20-FZK-Haus/orbit/main_thread_ms_total": 1400.068,
+        "AC20-FZK-Haus/orbit/main_thread_ms_p50": 7.713,
+        "AC20-FZK-Haus/orbit/main_thread_ms_p95": 12.837,
+        "AC20-FZK-Haus/orbit/main_thread_ms_max": 32.905,
+        "AC20-FZK-Haus/orbit/script_ms_total": 572.607,
+        "AC20-FZK-Haus/orbit/raf_js_ms_total": 130.785,
+        "AC20-FZK-Haus/orbit/raf_js_ms_p95": 1.58,
+        "AC20-FZK-Haus/orbit/gpu_submits": 0,
+        "AC20-FZK-Haus/orbit/gpu_draws": 6307,
+        "AC20-FZK-Haus/orbit/gpu_write_kib": 16450,
+        "AC20-FZK-Haus/hover/frames": 150,
+        "AC20-FZK-Haus/hover/rendered_frames": 0,
+        "AC20-FZK-Haus/hover/idle_frames": 150,
+        "AC20-FZK-Haus/hover/frames_without_raf": 0,
+        "AC20-FZK-Haus/hover/frames_over_budget": 5,
+        "AC20-FZK-Haus/hover/missed_vsyncs": 0,
+        "AC20-FZK-Haus/hover/main_thread_ms_total": 626.018,
+        "AC20-FZK-Haus/hover/main_thread_ms_p50": 3.247,
+        "AC20-FZK-Haus/hover/main_thread_ms_p95": 7.844,
+        "AC20-FZK-Haus/hover/main_thread_ms_max": 12.156,
+        "AC20-FZK-Haus/hover/script_ms_total": 77.077,
+        "AC20-FZK-Haus/hover/raf_js_ms_total": 14.68,
+        "AC20-FZK-Haus/hover/raf_js_ms_p95": 0.17,
+        "AC20-FZK-Haus/hover/gpu_submits": 0,
+        "AC20-FZK-Haus/hover/gpu_draws": 0,
+        "AC20-FZK-Haus/hover/gpu_write_kib": 0,
+        "Snowdon/streaming-load/frames": 111,
+        "Snowdon/streaming-load/rendered_frames": 16,
+        "Snowdon/streaming-load/idle_frames": 95,
+        "Snowdon/streaming-load/frames_without_raf": 3,
+        "Snowdon/streaming-load/frames_over_budget": 50,
+        "Snowdon/streaming-load/missed_vsyncs": 368,
+        "Snowdon/streaming-load/main_thread_ms_total": 3010.059,
+        "Snowdon/streaming-load/main_thread_ms_p50": 7.883,
+        "Snowdon/streaming-load/main_thread_ms_p95": 138.168,
+        "Snowdon/streaming-load/main_thread_ms_max": 317.418,
+        "Snowdon/streaming-load/script_ms_total": 1385.959,
+        "Snowdon/streaming-load/raf_js_ms_total": 266.88,
+        "Snowdon/streaming-load/raf_js_ms_p95": 18.195,
+        "Snowdon/streaming-load/gpu_submits": 12,
+        "Snowdon/streaming-load/gpu_draws": 5481,
+        "Snowdon/streaming-load/gpu_write_kib": 39259.9,
+        "Snowdon/orbit/frames": 210,
+        "Snowdon/orbit/rendered_frames": 120,
+        "Snowdon/orbit/idle_frames": 90,
+        "Snowdon/orbit/frames_without_raf": 0,
+        "Snowdon/orbit/frames_over_budget": 37,
+        "Snowdon/orbit/missed_vsyncs": 0,
+        "Snowdon/orbit/main_thread_ms_total": 1341.561,
+        "Snowdon/orbit/main_thread_ms_p50": 7.714,
+        "Snowdon/orbit/main_thread_ms_p95": 10.455,
+        "Snowdon/orbit/main_thread_ms_max": 58.254,
+        "Snowdon/orbit/script_ms_total": 561.144,
+        "Snowdon/orbit/raf_js_ms_total": 139.715,
+        "Snowdon/orbit/raf_js_ms_p95": 1.445,
+        "Snowdon/orbit/gpu_submits": 0,
+        "Snowdon/orbit/gpu_draws": 16666,
+        "Snowdon/orbit/gpu_write_kib": 12217.2,
+        "Snowdon/hover/frames": 150,
+        "Snowdon/hover/rendered_frames": 5,
+        "Snowdon/hover/idle_frames": 145,
+        "Snowdon/hover/frames_without_raf": 0,
+        "Snowdon/hover/frames_over_budget": 2,
+        "Snowdon/hover/missed_vsyncs": 0,
+        "Snowdon/hover/main_thread_ms_total": 581.829,
+        "Snowdon/hover/main_thread_ms_p50": 3.354,
+        "Snowdon/hover/main_thread_ms_p95": 7.334,
+        "Snowdon/hover/main_thread_ms_max": 12.956,
+        "Snowdon/hover/script_ms_total": 72.986,
+        "Snowdon/hover/raf_js_ms_total": 20.49,
+        "Snowdon/hover/raf_js_ms_p95": 0.21,
+        "Snowdon/hover/gpu_submits": 0,
+        "Snowdon/hover/gpu_draws": 2295,
+        "Snowdon/hover/gpu_write_kib": 96.7
+      }
+    }
+  ],
+  "rows": [
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "streaming-load",
+      "metric": "frames",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 71,
+          "max": 93,
+          "median": 80.5,
+          "mean": 80,
+          "sd": 8.299933,
+          "cv": 0.103749,
+          "spread": 0.309859,
+          "exact": false
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 68,
+          "max": 91,
+          "median": 81.5,
+          "mean": 79.833333,
+          "sd": 10.068101,
+          "cv": 0.126114,
+          "spread": 0.338235,
+          "exact": false
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "noisy",
+        "reason": "same-build spread 33.82% exceeds the 1% cap"
+      }
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "streaming-load",
+      "metric": "rendered_frames",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 12,
+          "max": 14,
+          "median": 12.5,
+          "mean": 12.7,
+          "sd": 0.823273,
+          "cv": 0.064825,
+          "spread": 0.166667,
+          "exact": false
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 12,
+          "max": 14,
+          "median": 13,
+          "mean": 12.833333,
+          "sd": 0.752773,
+          "cv": 0.058658,
+          "spread": 0.166667,
+          "exact": false
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "noisy",
+        "reason": "same-build spread 16.67% exceeds the 1% cap"
+      }
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "streaming-load",
+      "metric": "idle_frames",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 57,
+          "max": 81,
+          "median": 67.5,
+          "mean": 67.3,
+          "sd": 8.628763,
+          "cv": 0.128213,
+          "spread": 0.421053,
+          "exact": false
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 56,
+          "max": 78,
+          "median": 68,
+          "mean": 67,
+          "sd": 9.528903,
+          "cv": 0.142222,
+          "spread": 0.392857,
+          "exact": false
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "noisy",
+        "reason": "same-build spread 42.11% exceeds the 1% cap"
+      }
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "streaming-load",
+      "metric": "frames_without_raf",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 2,
+          "max": 14,
+          "median": 4,
+          "mean": 4.6,
+          "sd": 3.373096,
+          "cv": 0.733282,
+          "spread": 6,
+          "exact": false
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 3,
+          "max": 5,
+          "median": 4,
+          "mean": 4,
+          "sd": 0.894427,
+          "cv": 0.223607,
+          "spread": 0.666667,
+          "exact": false
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "noisy",
+        "reason": "same-build spread 600.00% exceeds the 1% cap"
+      }
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "streaming-load",
+      "metric": "frames_over_budget",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 22,
+          "max": 31,
+          "median": 27.5,
+          "mean": 26.8,
+          "sd": 3.259175,
+          "cv": 0.121611,
+          "spread": 0.409091,
+          "exact": false
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 18,
+          "max": 32,
+          "median": 22,
+          "mean": 23.166667,
+          "sd": 5.192944,
+          "cv": 0.224156,
+          "spread": 0.777778,
+          "exact": false
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "noisy",
+        "reason": "same-build spread 77.78% exceeds the 1% cap"
+      }
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "streaming-load",
+      "metric": "missed_vsyncs",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 136,
+          "max": 275,
+          "median": 219,
+          "mean": 214,
+          "sd": 46.408811,
+          "cv": 0.216864,
+          "spread": 1.022059,
+          "exact": false
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 167,
+          "max": 261,
+          "median": 220,
+          "mean": 222.333333,
+          "sd": 34.003921,
+          "cv": 0.152941,
+          "spread": 0.562874,
+          "exact": false
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "noisy",
+        "reason": "same-build spread 102.21% exceeds the 1% cap"
+      }
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "streaming-load",
+      "metric": "main_thread_ms_total",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 1221.837,
+          "max": 2202.597,
+          "median": 1792.021,
+          "mean": 1774.5731,
+          "sd": 327.862699,
+          "cv": 0.184756,
+          "spread": 0.802693,
+          "exact": false
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 1450.778,
+          "max": 2122.067,
+          "median": 1757.817,
+          "mean": 1816.9955,
+          "sd": 254.375555,
+          "cv": 0.139998,
+          "spread": 0.46271,
+          "exact": false
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "noisy",
+        "reason": "same-build spread 80.27% exceeds the 1% cap"
+      }
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "streaming-load",
+      "metric": "main_thread_ms_p50",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 2.695,
+          "max": 5.578,
+          "median": 4.449,
+          "mean": 4.3352,
+          "sd": 0.861176,
+          "cv": 0.198647,
+          "spread": 1.069759,
+          "exact": false
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 3.413,
+          "max": 5.227,
+          "median": 4.1385,
+          "mean": 4.218167,
+          "sd": 0.719476,
+          "cv": 0.170566,
+          "spread": 0.531497,
+          "exact": false
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "noisy",
+        "reason": "same-build spread 106.98% exceeds the 1% cap"
+      }
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "streaming-load",
+      "metric": "main_thread_ms_p95",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 104.434,
+          "max": 164.069,
+          "median": 149.0055,
+          "mean": 140.5652,
+          "sd": 20.088413,
+          "cv": 0.142912,
+          "spread": 0.571031,
+          "exact": false
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 109.486,
+          "max": 173.05,
+          "median": 152.5985,
+          "mean": 148.9195,
+          "sd": 21.866813,
+          "cv": 0.146836,
+          "spread": 0.580567,
+          "exact": false
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "noisy",
+        "reason": "same-build spread 58.06% exceeds the 1% cap"
+      }
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "streaming-load",
+      "metric": "main_thread_ms_max",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 147.865,
+          "max": 244.846,
+          "median": 196.1735,
+          "mean": 194.6754,
+          "sd": 28.752716,
+          "cv": 0.147696,
+          "spread": 0.655875,
+          "exact": false
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 168.922,
+          "max": 253.524,
+          "median": 213.054,
+          "mean": 214.125167,
+          "sd": 27.940394,
+          "cv": 0.130486,
+          "spread": 0.500835,
+          "exact": false
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "noisy",
+        "reason": "same-build spread 65.59% exceeds the 1% cap"
+      }
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "streaming-load",
+      "metric": "script_ms_total",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 560.094,
+          "max": 1029.902,
+          "median": 846.701,
+          "mean": 817.3623,
+          "sd": 151.389632,
+          "cv": 0.185217,
+          "spread": 0.838802,
+          "exact": false
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 649.432,
+          "max": 1053.304,
+          "median": 836.0685,
+          "mean": 854.631667,
+          "sd": 136.622196,
+          "cv": 0.159861,
+          "spread": 0.621885,
+          "exact": false
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "noisy",
+        "reason": "same-build spread 83.88% exceeds the 1% cap"
+      }
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "streaming-load",
+      "metric": "raf_js_ms_total",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 126.195,
+          "max": 244.92,
+          "median": 207.335,
+          "mean": 196.8895,
+          "sd": 39.880891,
+          "cv": 0.202555,
+          "spread": 0.940806,
+          "exact": false
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 158.58,
+          "max": 268.645,
+          "median": 229.43,
+          "mean": 227.380833,
+          "sd": 41.026262,
+          "cv": 0.18043,
+          "spread": 0.694066,
+          "exact": false
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "noisy",
+        "reason": "same-build spread 94.08% exceeds the 1% cap"
+      }
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "streaming-load",
+      "metric": "raf_js_ms_p95",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 4.84,
+          "max": 27.095,
+          "median": 8.9825,
+          "mean": 14.318,
+          "sd": 8.882317,
+          "cv": 0.62036,
+          "spread": 4.59814,
+          "exact": false
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 5.475,
+          "max": 23.645,
+          "median": 11.9575,
+          "mean": 13.590833,
+          "sd": 6.810172,
+          "cv": 0.501086,
+          "spread": 3.318721,
+          "exact": false
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "noisy",
+        "reason": "same-build spread 459.81% exceeds the 1% cap"
+      }
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "streaming-load",
+      "metric": "gpu_submits",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 8,
+          "max": 10,
+          "median": 8.5,
+          "mean": 8.7,
+          "sd": 0.823273,
+          "cv": 0.094629,
+          "spread": 0.25,
+          "exact": false
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 8,
+          "max": 10,
+          "median": 9,
+          "mean": 8.833333,
+          "sd": 0.752773,
+          "cv": 0.08522,
+          "spread": 0.25,
+          "exact": false
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "noisy",
+        "reason": "same-build spread 25.00% exceeds the 1% cap"
+      }
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "streaming-load",
+      "metric": "gpu_draws",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 229,
+          "max": 282,
+          "median": 247,
+          "mean": 246.5,
+          "sd": 18.644332,
+          "cv": 0.075636,
+          "spread": 0.231441,
+          "exact": false
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 220,
+          "max": 282,
+          "median": 251,
+          "mean": 247.333333,
+          "sd": 21.565404,
+          "cv": 0.087192,
+          "spread": 0.281818,
+          "exact": false
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "noisy",
+        "reason": "same-build spread 28.18% exceeds the 1% cap"
+      }
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "streaming-load",
+      "metric": "gpu_write_kib",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 2408.2,
+          "max": 2424.2,
+          "median": 2414,
+          "mean": 2413.41,
+          "sd": 5.506653,
+          "cv": 0.002282,
+          "spread": 0.006644,
+          "exact": false
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 2425.7,
+          "max": 2451.4,
+          "median": 2438.5,
+          "mean": 2437.133333,
+          "sd": 8.808329,
+          "cv": 0.003614,
+          "spread": 0.010595,
+          "exact": false
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "noisy",
+        "reason": "same-build spread 1.06% exceeds the 1% cap"
+      }
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "orbit",
+      "metric": "frames",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 210,
+          "max": 210,
+          "median": 210,
+          "mean": 210,
+          "sd": 0,
+          "cv": 0,
+          "spread": 0,
+          "exact": true
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 210,
+          "max": 210,
+          "median": 210,
+          "mean": 210,
+          "sd": 0,
+          "cv": 0,
+          "spread": 0,
+          "exact": true
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "scripted",
+        "reason": "fixed by the scripted scenario, not by the app"
+      }
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "orbit",
+      "metric": "rendered_frames",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 119,
+          "max": 119,
+          "median": 119,
+          "mean": 119,
+          "sd": 0,
+          "cv": 0,
+          "spread": 0,
+          "exact": true
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 119,
+          "max": 119,
+          "median": 119,
+          "mean": 119,
+          "sd": 0,
+          "cv": 0,
+          "spread": 0,
+          "exact": true
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "throttled",
+        "reason": "#6975: follows the adaptive render throttle under SwiftShader"
+      }
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "orbit",
+      "metric": "idle_frames",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 91,
+          "max": 91,
+          "median": 91,
+          "mean": 91,
+          "sd": 0,
+          "cv": 0,
+          "spread": 0,
+          "exact": true
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 91,
+          "max": 91,
+          "median": 91,
+          "mean": 91,
+          "sd": 0,
+          "cv": 0,
+          "spread": 0,
+          "exact": true
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "throttled",
+        "reason": "#6975: follows the adaptive render throttle under SwiftShader"
+      }
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "orbit",
+      "metric": "frames_without_raf",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 0,
+          "max": 0,
+          "median": 0,
+          "mean": 0,
+          "sd": 0,
+          "cv": 0,
+          "spread": 0,
+          "exact": true
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 0,
+          "max": 0,
+          "median": 0,
+          "mean": 0,
+          "sd": 0,
+          "cv": 0,
+          "spread": 0,
+          "exact": true
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "scripted",
+        "reason": "fixed by the scripted scenario, not by the app"
+      }
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "orbit",
+      "metric": "frames_over_budget",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 23,
+          "max": 123,
+          "median": 105.5,
+          "mean": 86.7,
+          "sd": 39.662605,
+          "cv": 0.457469,
+          "spread": 4.347826,
+          "exact": false
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 14,
+          "max": 122,
+          "median": 101.5,
+          "mean": 85.833333,
+          "sd": 41.06296,
+          "cv": 0.478403,
+          "spread": 7.714286,
+          "exact": false
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "noisy",
+        "reason": "same-build spread 771.43% exceeds the 1% cap"
+      }
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "orbit",
+      "metric": "missed_vsyncs",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 0,
+          "max": 0,
+          "median": 0,
+          "mean": 0,
+          "sd": 0,
+          "cv": 0,
+          "spread": 0,
+          "exact": true
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 0,
+          "max": 0,
+          "median": 0,
+          "mean": 0,
+          "sd": 0,
+          "cv": 0,
+          "spread": 0,
+          "exact": true
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "scripted",
+        "reason": "fixed by the scripted scenario, not by the app"
+      }
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "orbit",
+      "metric": "main_thread_ms_total",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 1190.846,
+          "max": 1751.302,
+          "median": 1516.8325,
+          "mean": 1490.0885,
+          "sd": 186.480495,
+          "cv": 0.125147,
+          "spread": 0.470637,
+          "exact": false
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 1139.388,
+          "max": 1752.145,
+          "median": 1593.5635,
+          "mean": 1517.931333,
+          "sd": 217.20199,
+          "cv": 0.143091,
+          "spread": 0.537795,
+          "exact": false
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "noisy",
+        "reason": "same-build spread 53.78% exceeds the 1% cap"
+      }
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "orbit",
+      "metric": "main_thread_ms_p50",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 6.181,
+          "max": 8.912,
+          "median": 8.3215,
+          "mean": 7.9762,
+          "sd": 1.000572,
+          "cv": 0.125445,
+          "spread": 0.441838,
+          "exact": false
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 6.258,
+          "max": 8.974,
+          "median": 8.259,
+          "mean": 8.016,
+          "sd": 0.959534,
+          "cv": 0.119702,
+          "spread": 0.434004,
+          "exact": false
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "noisy",
+        "reason": "same-build spread 44.18% exceeds the 1% cap"
+      }
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "orbit",
+      "metric": "main_thread_ms_p95",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 9.381,
+          "max": 14.447,
+          "median": 12.355,
+          "mean": 12.1214,
+          "sd": 1.663251,
+          "cv": 0.137216,
+          "spread": 0.540028,
+          "exact": false
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 9.412,
+          "max": 15.534,
+          "median": 13.0745,
+          "mean": 12.9175,
+          "sd": 1.982122,
+          "cv": 0.153445,
+          "spread": 0.650446,
+          "exact": false
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "noisy",
+        "reason": "same-build spread 65.04% exceeds the 1% cap"
+      }
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "orbit",
+      "metric": "main_thread_ms_max",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 41.721,
+          "max": 60.889,
+          "median": 47.9035,
+          "mean": 49.6981,
+          "sd": 6.912131,
+          "cv": 0.139082,
+          "spread": 0.459433,
+          "exact": false
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 32.905,
+          "max": 54.54,
+          "median": 36.917,
+          "mean": 41.707167,
+          "sd": 9.748728,
+          "cv": 0.233742,
+          "spread": 0.657499,
+          "exact": false
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "noisy",
+        "reason": "same-build spread 65.75% exceeds the 1% cap"
+      }
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "orbit",
+      "metric": "script_ms_total",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 492.678,
+          "max": 710.235,
+          "median": 631.729,
+          "mean": 619.7909,
+          "sd": 70.632285,
+          "cv": 0.113961,
+          "spread": 0.441581,
+          "exact": false
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 478.215,
+          "max": 719.931,
+          "median": 667.5575,
+          "mean": 632.302333,
+          "sd": 90.086125,
+          "cv": 0.142473,
+          "spread": 0.505455,
+          "exact": false
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "noisy",
+        "reason": "same-build spread 50.55% exceeds the 1% cap"
+      }
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "orbit",
+      "metric": "raf_js_ms_total",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 127.78,
+          "max": 166.945,
+          "median": 147.36,
+          "mean": 147.256,
+          "sd": 12.799789,
+          "cv": 0.086922,
+          "spread": 0.306503,
+          "exact": false
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 106.875,
+          "max": 168.16,
+          "median": 153.52,
+          "mean": 145.199167,
+          "sd": 22.43826,
+          "cv": 0.154534,
+          "spread": 0.573427,
+          "exact": false
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "noisy",
+        "reason": "same-build spread 57.34% exceeds the 1% cap"
+      }
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "orbit",
+      "metric": "raf_js_ms_p95",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 1.34,
+          "max": 1.89,
+          "median": 1.74,
+          "mean": 1.6725,
+          "sd": 0.199057,
+          "cv": 0.119018,
+          "spread": 0.410448,
+          "exact": false
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 1.28,
+          "max": 2.035,
+          "median": 1.7225,
+          "mean": 1.685833,
+          "sd": 0.248383,
+          "cv": 0.147336,
+          "spread": 0.589844,
+          "exact": false
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "noisy",
+        "reason": "same-build spread 58.98% exceeds the 1% cap"
+      }
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "orbit",
+      "metric": "gpu_submits",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 0,
+          "max": 0,
+          "median": 0,
+          "mean": 0,
+          "sd": 0,
+          "cv": 0,
+          "spread": 0,
+          "exact": true
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 0,
+          "max": 0,
+          "median": 0,
+          "mean": 0,
+          "sd": 0,
+          "cv": 0,
+          "spread": 0,
+          "exact": true
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "throttled",
+        "reason": "#6975: follows the adaptive render throttle under SwiftShader"
+      }
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "orbit",
+      "metric": "gpu_draws",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 6307,
+          "max": 6307,
+          "median": 6307,
+          "mean": 6307,
+          "sd": 0,
+          "cv": 0,
+          "spread": 0,
+          "exact": true
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 6307,
+          "max": 6307,
+          "median": 6307,
+          "mean": 6307,
+          "sd": 0,
+          "cv": 0,
+          "spread": 0,
+          "exact": true
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "throttled",
+        "reason": "#6975: follows the adaptive render throttle under SwiftShader"
+      }
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "orbit",
+      "metric": "gpu_write_kib",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 12671.7,
+          "max": 12671.7,
+          "median": 12671.7,
+          "mean": 12671.7,
+          "sd": 0,
+          "cv": 0,
+          "spread": 0,
+          "exact": true
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 16450,
+          "max": 16450,
+          "median": 16450,
+          "mean": 16450,
+          "sd": 0,
+          "cv": 0,
+          "spread": 0,
+          "exact": true
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "throttled",
+        "reason": "#6975: follows the adaptive render throttle under SwiftShader"
+      }
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "hover",
+      "metric": "frames",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 150,
+          "max": 150,
+          "median": 150,
+          "mean": 150,
+          "sd": 0,
+          "cv": 0,
+          "spread": 0,
+          "exact": true
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 150,
+          "max": 150,
+          "median": 150,
+          "mean": 150,
+          "sd": 0,
+          "cv": 0,
+          "spread": 0,
+          "exact": true
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "scripted",
+        "reason": "fixed by the scripted scenario, not by the app"
+      }
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "hover",
+      "metric": "rendered_frames",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 0,
+          "max": 0,
+          "median": 0,
+          "mean": 0,
+          "sd": 0,
+          "cv": 0,
+          "spread": 0,
+          "exact": true
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 0,
+          "max": 0,
+          "median": 0,
+          "mean": 0,
+          "sd": 0,
+          "cv": 0,
+          "spread": 0,
+          "exact": true
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "throttled",
+        "reason": "#6975: follows the adaptive render throttle under SwiftShader"
+      }
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "hover",
+      "metric": "idle_frames",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 150,
+          "max": 150,
+          "median": 150,
+          "mean": 150,
+          "sd": 0,
+          "cv": 0,
+          "spread": 0,
+          "exact": true
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 150,
+          "max": 150,
+          "median": 150,
+          "mean": 150,
+          "sd": 0,
+          "cv": 0,
+          "spread": 0,
+          "exact": true
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "throttled",
+        "reason": "#6975: follows the adaptive render throttle under SwiftShader"
+      }
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "hover",
+      "metric": "frames_without_raf",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 0,
+          "max": 0,
+          "median": 0,
+          "mean": 0,
+          "sd": 0,
+          "cv": 0,
+          "spread": 0,
+          "exact": true
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 0,
+          "max": 0,
+          "median": 0,
+          "mean": 0,
+          "sd": 0,
+          "cv": 0,
+          "spread": 0,
+          "exact": true
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "scripted",
+        "reason": "fixed by the scripted scenario, not by the app"
+      }
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "hover",
+      "metric": "frames_over_budget",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 1,
+          "max": 25,
+          "median": 9.5,
+          "mean": 9.6,
+          "sd": 7.545418,
+          "cv": 0.785981,
+          "spread": 24,
+          "exact": false
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 5,
+          "max": 12,
+          "median": 6.5,
+          "mean": 7.666667,
+          "sd": 3.204164,
+          "cv": 0.417934,
+          "spread": 1.4,
+          "exact": false
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "noisy",
+        "reason": "same-build spread 2400.00% exceeds the 1% cap"
+      }
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "hover",
+      "metric": "missed_vsyncs",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 0,
+          "max": 0,
+          "median": 0,
+          "mean": 0,
+          "sd": 0,
+          "cv": 0,
+          "spread": 0,
+          "exact": true
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 0,
+          "max": 0,
+          "median": 0,
+          "mean": 0,
+          "sd": 0,
+          "cv": 0,
+          "spread": 0,
+          "exact": true
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "scripted",
+        "reason": "fixed by the scripted scenario, not by the app"
+      }
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "hover",
+      "metric": "main_thread_ms_total",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 485.018,
+          "max": 938.163,
+          "median": 727.7505,
+          "mean": 704.9789,
+          "sd": 139.222215,
+          "cv": 0.197484,
+          "spread": 0.934285,
+          "exact": false
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 623.085,
+          "max": 795.537,
+          "median": 713.181,
+          "mean": 700.778833,
+          "sd": 66.426472,
+          "cv": 0.094789,
+          "spread": 0.276771,
+          "exact": false
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "noisy",
+        "reason": "same-build spread 93.43% exceeds the 1% cap"
+      }
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "hover",
+      "metric": "main_thread_ms_p50",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 2.62,
+          "max": 5.409,
+          "median": 3.944,
+          "mean": 3.9172,
+          "sd": 0.816343,
+          "cv": 0.2084,
+          "spread": 1.064504,
+          "exact": false
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 3.247,
+          "max": 4.629,
+          "median": 3.897,
+          "mean": 3.893,
+          "sd": 0.451042,
+          "cv": 0.11586,
+          "spread": 0.425624,
+          "exact": false
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "noisy",
+        "reason": "same-build spread 106.45% exceeds the 1% cap"
+      }
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "hover",
+      "metric": "main_thread_ms_p95",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 6.47,
+          "max": 12.07,
+          "median": 8.4925,
+          "mean": 8.8267,
+          "sd": 1.89449,
+          "cv": 0.214632,
+          "spread": 0.865533,
+          "exact": false
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 7.247,
+          "max": 10.339,
+          "median": 8.3095,
+          "mean": 8.441167,
+          "sd": 1.055575,
+          "cv": 0.125051,
+          "spread": 0.426659,
+          "exact": false
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "noisy",
+        "reason": "same-build spread 86.55% exceeds the 1% cap"
+      }
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "hover",
+      "metric": "main_thread_ms_max",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 8.791,
+          "max": 38.053,
+          "median": 14.7095,
+          "mean": 18.8561,
+          "sd": 9.693806,
+          "cv": 0.514094,
+          "spread": 3.328632,
+          "exact": false
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 10.88,
+          "max": 28.243,
+          "median": 12.4285,
+          "mean": 17.071833,
+          "sd": 7.943427,
+          "cv": 0.465294,
+          "spread": 1.595864,
+          "exact": false
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "noisy",
+        "reason": "same-build spread 332.86% exceeds the 1% cap"
+      }
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "hover",
+      "metric": "script_ms_total",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 72.577,
+          "max": 126.248,
+          "median": 85.048,
+          "mean": 91.9683,
+          "sd": 17.712126,
+          "cv": 0.192589,
+          "spread": 0.739504,
+          "exact": false
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 77.077,
+          "max": 98.607,
+          "median": 86.7285,
+          "mean": 87.371,
+          "sd": 9.465294,
+          "cv": 0.108335,
+          "spread": 0.279331,
+          "exact": false
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "noisy",
+        "reason": "same-build spread 73.95% exceeds the 1% cap"
+      }
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "hover",
+      "metric": "raf_js_ms_total",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 16.255,
+          "max": 30.08,
+          "median": 23.1125,
+          "mean": 22.5675,
+          "sd": 5.132988,
+          "cv": 0.22745,
+          "spread": 0.850508,
+          "exact": false
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 14.68,
+          "max": 23.525,
+          "median": 19.8025,
+          "mean": 19.03,
+          "sd": 3.300362,
+          "cv": 0.173429,
+          "spread": 0.60252,
+          "exact": false
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "noisy",
+        "reason": "same-build spread 85.05% exceeds the 1% cap"
+      }
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "hover",
+      "metric": "raf_js_ms_p95",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 0.2,
+          "max": 0.335,
+          "median": 0.29,
+          "mean": 0.2675,
+          "sd": 0.05018,
+          "cv": 0.18759,
+          "spread": 0.675,
+          "exact": false
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 0.165,
+          "max": 0.28,
+          "median": 0.2575,
+          "mean": 0.233333,
+          "sd": 0.051737,
+          "cv": 0.221728,
+          "spread": 0.69697,
+          "exact": false
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "noisy",
+        "reason": "same-build spread 69.70% exceeds the 1% cap"
+      }
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "hover",
+      "metric": "gpu_submits",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 0,
+          "max": 0,
+          "median": 0,
+          "mean": 0,
+          "sd": 0,
+          "cv": 0,
+          "spread": 0,
+          "exact": true
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 0,
+          "max": 0,
+          "median": 0,
+          "mean": 0,
+          "sd": 0,
+          "cv": 0,
+          "spread": 0,
+          "exact": true
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "throttled",
+        "reason": "#6975: follows the adaptive render throttle under SwiftShader"
+      }
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "hover",
+      "metric": "gpu_draws",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 0,
+          "max": 0,
+          "median": 0,
+          "mean": 0,
+          "sd": 0,
+          "cv": 0,
+          "spread": 0,
+          "exact": true
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 0,
+          "max": 0,
+          "median": 0,
+          "mean": 0,
+          "sd": 0,
+          "cv": 0,
+          "spread": 0,
+          "exact": true
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "throttled",
+        "reason": "#6975: follows the adaptive render throttle under SwiftShader"
+      }
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "hover",
+      "metric": "gpu_write_kib",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 0,
+          "max": 0,
+          "median": 0,
+          "mean": 0,
+          "sd": 0,
+          "cv": 0,
+          "spread": 0,
+          "exact": true
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 0,
+          "max": 0,
+          "median": 0,
+          "mean": 0,
+          "sd": 0,
+          "cv": 0,
+          "spread": 0,
+          "exact": true
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "throttled",
+        "reason": "#6975: follows the adaptive render throttle under SwiftShader"
+      }
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "streaming-load",
+      "metric": "frames",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 93,
+          "max": 107,
+          "median": 101,
+          "mean": 100.1,
+          "sd": 4.817791,
+          "cv": 0.04813,
+          "spread": 0.150538,
+          "exact": false
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 97,
+          "max": 111,
+          "median": 103.5,
+          "mean": 104,
+          "sd": 4.816638,
+          "cv": 0.046314,
+          "spread": 0.14433,
+          "exact": false
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "noisy",
+        "reason": "same-build spread 15.05% exceeds the 1% cap"
+      }
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "streaming-load",
+      "metric": "rendered_frames",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 14,
+          "max": 18,
+          "median": 16,
+          "mean": 16.1,
+          "sd": 1.286684,
+          "cv": 0.079918,
+          "spread": 0.285714,
+          "exact": false
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 15,
+          "max": 17,
+          "median": 15,
+          "mean": 15.5,
+          "sd": 0.83666,
+          "cv": 0.053978,
+          "spread": 0.133333,
+          "exact": false
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "noisy",
+        "reason": "same-build spread 28.57% exceeds the 1% cap"
+      }
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "streaming-load",
+      "metric": "idle_frames",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 77,
+          "max": 90,
+          "median": 85,
+          "mean": 84,
+          "sd": 4.346135,
+          "cv": 0.05174,
+          "spread": 0.168831,
+          "exact": false
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 82,
+          "max": 95,
+          "median": 88.5,
+          "mean": 88.5,
+          "sd": 4.32435,
+          "cv": 0.048863,
+          "spread": 0.158537,
+          "exact": false
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "noisy",
+        "reason": "same-build spread 16.88% exceeds the 1% cap"
+      }
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "streaming-load",
+      "metric": "frames_without_raf",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 2,
+          "max": 4,
+          "median": 3,
+          "mean": 3.2,
+          "sd": 0.788811,
+          "cv": 0.246503,
+          "spread": 1,
+          "exact": false
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 3,
+          "max": 5,
+          "median": 3.5,
+          "mean": 3.833333,
+          "sd": 0.983192,
+          "cv": 0.256485,
+          "spread": 0.666667,
+          "exact": false
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "noisy",
+        "reason": "same-build spread 100.00% exceeds the 1% cap"
+      }
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "streaming-load",
+      "metric": "frames_over_budget",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 38,
+          "max": 66,
+          "median": 52,
+          "mean": 51.4,
+          "sd": 8.514041,
+          "cv": 0.165643,
+          "spread": 0.736842,
+          "exact": false
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 46,
+          "max": 59,
+          "median": 48.5,
+          "mean": 50.166667,
+          "sd": 4.875107,
+          "cv": 0.097178,
+          "spread": 0.282609,
+          "exact": false
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "noisy",
+        "reason": "same-build spread 73.68% exceeds the 1% cap"
+      }
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "streaming-load",
+      "metric": "missed_vsyncs",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 246,
+          "max": 506,
+          "median": 399,
+          "mean": 398.5,
+          "sd": 80.187627,
+          "cv": 0.201224,
+          "spread": 1.056911,
+          "exact": false
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 368,
+          "max": 426,
+          "median": 391,
+          "mean": 392,
+          "sd": 20.03996,
+          "cv": 0.051122,
+          "spread": 0.157609,
+          "exact": false
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "noisy",
+        "reason": "same-build spread 105.69% exceeds the 1% cap"
+      }
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "streaming-load",
+      "metric": "main_thread_ms_total",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 2106.655,
+          "max": 3900.457,
+          "median": 3163.7965,
+          "mean": 3160.7521,
+          "sd": 524.754204,
+          "cv": 0.166022,
+          "spread": 0.851493,
+          "exact": false
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 3010.059,
+          "max": 3199.977,
+          "median": 3089.212,
+          "mean": 3091.1765,
+          "sd": 62.787598,
+          "cv": 0.020312,
+          "spread": 0.063094,
+          "exact": false
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "noisy",
+        "reason": "same-build spread 85.15% exceeds the 1% cap"
+      }
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "streaming-load",
+      "metric": "main_thread_ms_p50",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 6.678,
+          "max": 11.039,
+          "median": 8.574,
+          "mean": 8.673,
+          "sd": 1.211363,
+          "cv": 0.139671,
+          "spread": 0.65304,
+          "exact": false
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 7.028,
+          "max": 9.749,
+          "median": 8.0495,
+          "mean": 8.338167,
+          "sd": 0.995899,
+          "cv": 0.119439,
+          "spread": 0.387166,
+          "exact": false
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "noisy",
+        "reason": "same-build spread 65.30% exceeds the 1% cap"
+      }
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "streaming-load",
+      "metric": "main_thread_ms_p95",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 132.058,
+          "max": 236.191,
+          "median": 193.195,
+          "mean": 187.8966,
+          "sd": 35.588005,
+          "cv": 0.189402,
+          "spread": 0.78854,
+          "exact": false
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 138.168,
+          "max": 220.872,
+          "median": 173.0645,
+          "mean": 174.030167,
+          "sd": 27.845267,
+          "cv": 0.160003,
+          "spread": 0.598576,
+          "exact": false
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "noisy",
+        "reason": "same-build spread 78.85% exceeds the 1% cap"
+      }
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "streaming-load",
+      "metric": "main_thread_ms_max",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 218.037,
+          "max": 411.572,
+          "median": 341.2475,
+          "mean": 332.6509,
+          "sd": 63.486431,
+          "cv": 0.19085,
+          "spread": 0.887625,
+          "exact": false
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 280.994,
+          "max": 353.103,
+          "median": 327.3105,
+          "mean": 323.0215,
+          "sd": 28.707658,
+          "cv": 0.088872,
+          "spread": 0.256621,
+          "exact": false
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "noisy",
+        "reason": "same-build spread 88.76% exceeds the 1% cap"
+      }
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "streaming-load",
+      "metric": "script_ms_total",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 1007.11,
+          "max": 1981.893,
+          "median": 1523.2695,
+          "mean": 1544.9234,
+          "sd": 293.285055,
+          "cv": 0.189838,
+          "spread": 0.967901,
+          "exact": false
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 1385.959,
+          "max": 1519.168,
+          "median": 1449.3925,
+          "mean": 1449.050667,
+          "sd": 49.36977,
+          "cv": 0.03407,
+          "spread": 0.096113,
+          "exact": false
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "noisy",
+        "reason": "same-build spread 96.79% exceeds the 1% cap"
+      }
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "streaming-load",
+      "metric": "raf_js_ms_total",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 232.915,
+          "max": 378.64,
+          "median": 319.2625,
+          "mean": 312.3305,
+          "sd": 47.641485,
+          "cv": 0.152535,
+          "spread": 0.625657,
+          "exact": false
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 266.88,
+          "max": 339.735,
+          "median": 297.0975,
+          "mean": 300.326667,
+          "sd": 24.654221,
+          "cv": 0.082091,
+          "spread": 0.272988,
+          "exact": false
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "noisy",
+        "reason": "same-build spread 62.57% exceeds the 1% cap"
+      }
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "streaming-load",
+      "metric": "raf_js_ms_p95",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 15.725,
+          "max": 30.61,
+          "median": 20.9675,
+          "mean": 22.0485,
+          "sd": 4.659028,
+          "cv": 0.211308,
+          "spread": 0.946582,
+          "exact": false
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 16.07,
+          "max": 27.66,
+          "median": 19.155,
+          "mean": 20.3975,
+          "sd": 4.092946,
+          "cv": 0.200659,
+          "spread": 0.72122,
+          "exact": false
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "noisy",
+        "reason": "same-build spread 94.66% exceeds the 1% cap"
+      }
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "streaming-load",
+      "metric": "gpu_submits",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 9,
+          "max": 13,
+          "median": 11,
+          "mean": 11.2,
+          "sd": 1.229273,
+          "cv": 0.109756,
+          "spread": 0.444444,
+          "exact": false
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 10,
+          "max": 13,
+          "median": 11,
+          "mean": 11.333333,
+          "sd": 1.032796,
+          "cv": 0.091129,
+          "spread": 0.3,
+          "exact": false
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "noisy",
+        "reason": "same-build spread 44.44% exceeds the 1% cap"
+      }
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "streaming-load",
+      "metric": "gpu_draws",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 4623,
+          "max": 6419,
+          "median": 5793.5,
+          "mean": 5646.4,
+          "sd": 512.829883,
+          "cv": 0.090824,
+          "spread": 0.388492,
+          "exact": false
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 5076,
+          "max": 5887,
+          "median": 5320.5,
+          "mean": 5360.166667,
+          "sd": 303.396385,
+          "cv": 0.056602,
+          "spread": 0.159771,
+          "exact": false
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "noisy",
+        "reason": "same-build spread 38.85% exceeds the 1% cap"
+      }
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "streaming-load",
+      "metric": "gpu_write_kib",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 39108.3,
+          "max": 39203.5,
+          "median": 39156.5,
+          "mean": 39158.19,
+          "sd": 27.336197,
+          "cv": 0.000698,
+          "spread": 0.002434,
+          "exact": false
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 39182,
+          "max": 39259.9,
+          "median": 39227.1,
+          "mean": 39223.733333,
+          "sd": 31.137609,
+          "cv": 0.000794,
+          "spread": 0.001988,
+          "exact": false
+        }
+      },
+      "verdict": {
+        "kind": "relative",
+        "reason": "widest same-build spread 0.243%",
+        "ceiling": 39259.9,
+        "tolerance": {
+          "kind": "relative",
+          "value": 0.005
+        },
+        "provenance": {
+          "commit": "80d949f1a58765e7bdd7358f8bc530004866ca4d",
+          "measuredAt": "2026-10-15T06:52:31Z"
+        }
+      }
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "orbit",
+      "metric": "frames",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 210,
+          "max": 210,
+          "median": 210,
+          "mean": 210,
+          "sd": 0,
+          "cv": 0,
+          "spread": 0,
+          "exact": true
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 210,
+          "max": 210,
+          "median": 210,
+          "mean": 210,
+          "sd": 0,
+          "cv": 0,
+          "spread": 0,
+          "exact": true
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "scripted",
+        "reason": "fixed by the scripted scenario, not by the app"
+      }
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "orbit",
+      "metric": "rendered_frames",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 120,
+          "max": 120,
+          "median": 120,
+          "mean": 120,
+          "sd": 0,
+          "cv": 0,
+          "spread": 0,
+          "exact": true
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 120,
+          "max": 120,
+          "median": 120,
+          "mean": 120,
+          "sd": 0,
+          "cv": 0,
+          "spread": 0,
+          "exact": true
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "throttled",
+        "reason": "#6975: follows the adaptive render throttle under SwiftShader"
+      }
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "orbit",
+      "metric": "idle_frames",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 90,
+          "max": 90,
+          "median": 90,
+          "mean": 90,
+          "sd": 0,
+          "cv": 0,
+          "spread": 0,
+          "exact": true
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 90,
+          "max": 90,
+          "median": 90,
+          "mean": 90,
+          "sd": 0,
+          "cv": 0,
+          "spread": 0,
+          "exact": true
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "throttled",
+        "reason": "#6975: follows the adaptive render throttle under SwiftShader"
+      }
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "orbit",
+      "metric": "frames_without_raf",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 0,
+          "max": 0,
+          "median": 0,
+          "mean": 0,
+          "sd": 0,
+          "cv": 0,
+          "spread": 0,
+          "exact": true
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 0,
+          "max": 0,
+          "median": 0,
+          "mean": 0,
+          "sd": 0,
+          "cv": 0,
+          "spread": 0,
+          "exact": true
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "scripted",
+        "reason": "fixed by the scripted scenario, not by the app"
+      }
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "orbit",
+      "metric": "frames_over_budget",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 11,
+          "max": 119,
+          "median": 118.5,
+          "mean": 93.6,
+          "sd": 38.549247,
+          "cv": 0.411851,
+          "spread": 9.818182,
+          "exact": false
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 13,
+          "max": 119,
+          "median": 106.5,
+          "mean": 83.333333,
+          "sd": 46.607582,
+          "cv": 0.559291,
+          "spread": 8.153846,
+          "exact": false
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "noisy",
+        "reason": "same-build spread 981.82% exceeds the 1% cap"
+      }
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "orbit",
+      "metric": "missed_vsyncs",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 0,
+          "max": 0,
+          "median": 0,
+          "mean": 0,
+          "sd": 0,
+          "cv": 0,
+          "spread": 0,
+          "exact": true
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 0,
+          "max": 0,
+          "median": 0,
+          "mean": 0,
+          "sd": 0,
+          "cv": 0,
+          "spread": 0,
+          "exact": true
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "scripted",
+        "reason": "fixed by the scripted scenario, not by the app"
+      }
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "orbit",
+      "metric": "main_thread_ms_total",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 1099.349,
+          "max": 1636.023,
+          "median": 1532.0195,
+          "mean": 1479.3597,
+          "sd": 167.599948,
+          "cv": 0.113292,
+          "spread": 0.488174,
+          "exact": false
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 1152.758,
+          "max": 1515.771,
+          "median": 1464.0535,
+          "mean": 1402.274833,
+          "sd": 135.619829,
+          "cv": 0.096714,
+          "spread": 0.314908,
+          "exact": false
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "noisy",
+        "reason": "same-build spread 48.82% exceeds the 1% cap"
+      }
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "orbit",
+      "metric": "main_thread_ms_p50",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 6.249,
+          "max": 9.444,
+          "median": 8.881,
+          "mean": 8.4513,
+          "sd": 1.049023,
+          "cv": 0.124126,
+          "spread": 0.511282,
+          "exact": false
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 6.567,
+          "max": 8.839,
+          "median": 8.4185,
+          "mean": 8.110167,
+          "sd": 0.855719,
+          "cv": 0.105512,
+          "spread": 0.345972,
+          "exact": false
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "noisy",
+        "reason": "same-build spread 51.13% exceeds the 1% cap"
+      }
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "orbit",
+      "metric": "main_thread_ms_p95",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 8.389,
+          "max": 14.014,
+          "median": 12.2455,
+          "mean": 12.0977,
+          "sd": 1.454301,
+          "cv": 0.120213,
+          "spread": 0.670521,
+          "exact": false
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 8.964,
+          "max": 12.954,
+          "median": 11.5645,
+          "mean": 11.2735,
+          "sd": 1.396163,
+          "cv": 0.123845,
+          "spread": 0.445114,
+          "exact": false
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "noisy",
+        "reason": "same-build spread 67.05% exceeds the 1% cap"
+      }
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "orbit",
+      "metric": "main_thread_ms_max",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 40.352,
+          "max": 77.321,
+          "median": 58.541,
+          "mean": 57.8846,
+          "sd": 9.611687,
+          "cv": 0.166049,
+          "spread": 0.916163,
+          "exact": false
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 49.054,
+          "max": 58.296,
+          "median": 57.3455,
+          "mean": 55.703,
+          "sd": 3.669907,
+          "cv": 0.065883,
+          "spread": 0.188405,
+          "exact": false
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "noisy",
+        "reason": "same-build spread 91.62% exceeds the 1% cap"
+      }
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "orbit",
+      "metric": "script_ms_total",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 482.559,
+          "max": 706.033,
+          "median": 655.9205,
+          "mean": 633.7998,
+          "sd": 68.535147,
+          "cv": 0.108134,
+          "spread": 0.463102,
+          "exact": false
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 488.613,
+          "max": 645.338,
+          "median": 626.4695,
+          "mean": 597.306833,
+          "sd": 61.250007,
+          "cv": 0.102544,
+          "spread": 0.320755,
+          "exact": false
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "noisy",
+        "reason": "same-build spread 46.31% exceeds the 1% cap"
+      }
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "orbit",
+      "metric": "raf_js_ms_total",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 139.86,
+          "max": 183.85,
+          "median": 172.6475,
+          "mean": 168.4825,
+          "sd": 14.400455,
+          "cv": 0.085472,
+          "spread": 0.314529,
+          "exact": false
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 120.28,
+          "max": 167.455,
+          "median": 160.625,
+          "mean": 152.6525,
+          "sd": 18.837255,
+          "cv": 0.1234,
+          "spread": 0.39221,
+          "exact": false
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "noisy",
+        "reason": "same-build spread 39.22% exceeds the 1% cap"
+      }
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "orbit",
+      "metric": "raf_js_ms_p95",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 1.325,
+          "max": 1.885,
+          "median": 1.64,
+          "mean": 1.634,
+          "sd": 0.150864,
+          "cv": 0.092328,
+          "spread": 0.422642,
+          "exact": false
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 1.255,
+          "max": 1.675,
+          "median": 1.59,
+          "mean": 1.528333,
+          "sd": 0.153807,
+          "cv": 0.100637,
+          "spread": 0.334661,
+          "exact": false
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "noisy",
+        "reason": "same-build spread 42.26% exceeds the 1% cap"
+      }
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "orbit",
+      "metric": "gpu_submits",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 0,
+          "max": 0,
+          "median": 0,
+          "mean": 0,
+          "sd": 0,
+          "cv": 0,
+          "spread": 0,
+          "exact": true
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 0,
+          "max": 0,
+          "median": 0,
+          "mean": 0,
+          "sd": 0,
+          "cv": 0,
+          "spread": 0,
+          "exact": true
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "throttled",
+        "reason": "#6975: follows the adaptive render throttle under SwiftShader"
+      }
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "orbit",
+      "metric": "gpu_draws",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 16666,
+          "max": 16666,
+          "median": 16666,
+          "mean": 16666,
+          "sd": 0,
+          "cv": 0,
+          "spread": 0,
+          "exact": true
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 16666,
+          "max": 16666,
+          "median": 16666,
+          "mean": 16666,
+          "sd": 0,
+          "cv": 0,
+          "spread": 0,
+          "exact": true
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "throttled",
+        "reason": "#6975: follows the adaptive render throttle under SwiftShader"
+      }
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "orbit",
+      "metric": "gpu_write_kib",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 11647.2,
+          "max": 11647.2,
+          "median": 11647.2,
+          "mean": 11647.2,
+          "sd": 0,
+          "cv": 0,
+          "spread": 0,
+          "exact": true
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 12217.2,
+          "max": 12217.2,
+          "median": 12217.2,
+          "mean": 12217.2,
+          "sd": 0,
+          "cv": 0,
+          "spread": 0,
+          "exact": true
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "throttled",
+        "reason": "#6975: follows the adaptive render throttle under SwiftShader"
+      }
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "hover",
+      "metric": "frames",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 150,
+          "max": 150,
+          "median": 150,
+          "mean": 150,
+          "sd": 0,
+          "cv": 0,
+          "spread": 0,
+          "exact": true
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 150,
+          "max": 150,
+          "median": 150,
+          "mean": 150,
+          "sd": 0,
+          "cv": 0,
+          "spread": 0,
+          "exact": true
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "scripted",
+        "reason": "fixed by the scripted scenario, not by the app"
+      }
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "hover",
+      "metric": "rendered_frames",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 6,
+          "max": 9,
+          "median": 6,
+          "mean": 6.7,
+          "sd": 1.05935,
+          "cv": 0.158112,
+          "spread": 0.5,
+          "exact": false
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 5,
+          "max": 7,
+          "median": 5.5,
+          "mean": 5.666667,
+          "sd": 0.816497,
+          "cv": 0.144088,
+          "spread": 0.4,
+          "exact": false
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "throttled",
+        "reason": "#6975: follows the adaptive render throttle under SwiftShader"
+      }
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "hover",
+      "metric": "idle_frames",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 141,
+          "max": 144,
+          "median": 144,
+          "mean": 143.3,
+          "sd": 1.05935,
+          "cv": 0.007393,
+          "spread": 0.021277,
+          "exact": false
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 143,
+          "max": 145,
+          "median": 144.5,
+          "mean": 144.333333,
+          "sd": 0.816497,
+          "cv": 0.005657,
+          "spread": 0.013986,
+          "exact": false
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "throttled",
+        "reason": "#6975: follows the adaptive render throttle under SwiftShader"
+      }
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "hover",
+      "metric": "frames_without_raf",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 0,
+          "max": 0,
+          "median": 0,
+          "mean": 0,
+          "sd": 0,
+          "cv": 0,
+          "spread": 0,
+          "exact": true
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 0,
+          "max": 0,
+          "median": 0,
+          "mean": 0,
+          "sd": 0,
+          "cv": 0,
+          "spread": 0,
+          "exact": true
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "scripted",
+        "reason": "fixed by the scripted scenario, not by the app"
+      }
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "hover",
+      "metric": "frames_over_budget",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 0,
+          "max": 15,
+          "median": 9,
+          "mean": 8.4,
+          "sd": 5.168279,
+          "cv": 0.615271,
+          "spread": null,
+          "exact": false
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 2,
+          "max": 8,
+          "median": 2.5,
+          "mean": 4.166667,
+          "sd": 2.994439,
+          "cv": 0.718665,
+          "spread": 3,
+          "exact": false
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "noisy",
+        "reason": "same-build spread unbounded (zero minimum) exceeds the 1% cap"
+      }
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "hover",
+      "metric": "missed_vsyncs",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 0,
+          "max": 0,
+          "median": 0,
+          "mean": 0,
+          "sd": 0,
+          "cv": 0,
+          "spread": 0,
+          "exact": true
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 0,
+          "max": 0,
+          "median": 0,
+          "mean": 0,
+          "sd": 0,
+          "cv": 0,
+          "spread": 0,
+          "exact": true
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "scripted",
+        "reason": "fixed by the scripted scenario, not by the app"
+      }
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "hover",
+      "metric": "main_thread_ms_total",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 462.078,
+          "max": 791.113,
+          "median": 690.2265,
+          "mean": 667.9995,
+          "sd": 98.304315,
+          "cv": 0.147162,
+          "spread": 0.712077,
+          "exact": false
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 531.391,
+          "max": 672.681,
+          "median": 636.696,
+          "mean": 617.485833,
+          "sd": 51.706044,
+          "cv": 0.083736,
+          "spread": 0.265887,
+          "exact": false
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "noisy",
+        "reason": "same-build spread 71.21% exceeds the 1% cap"
+      }
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "hover",
+      "metric": "main_thread_ms_p50",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 2.581,
+          "max": 4.491,
+          "median": 3.7415,
+          "mean": 3.7525,
+          "sd": 0.585295,
+          "cv": 0.155975,
+          "spread": 0.740023,
+          "exact": false
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 3.023,
+          "max": 3.772,
+          "median": 3.593,
+          "mean": 3.499333,
+          "sd": 0.270738,
+          "cv": 0.077368,
+          "spread": 0.247767,
+          "exact": false
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "noisy",
+        "reason": "same-build spread 74.00% exceeds the 1% cap"
+      }
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "hover",
+      "metric": "main_thread_ms_p95",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 6.7,
+          "max": 9.909,
+          "median": 8.42,
+          "mean": 8.3112,
+          "sd": 0.871996,
+          "cv": 0.104918,
+          "spread": 0.478955,
+          "exact": false
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 6.883,
+          "max": 8.448,
+          "median": 7.817,
+          "mean": 7.7895,
+          "sd": 0.634816,
+          "cv": 0.081496,
+          "spread": 0.227372,
+          "exact": false
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "noisy",
+        "reason": "same-build spread 47.90% exceeds the 1% cap"
+      }
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "hover",
+      "metric": "main_thread_ms_max",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 7.953,
+          "max": 42.654,
+          "median": 12.554,
+          "mean": 15.0309,
+          "sd": 9.853446,
+          "cv": 0.655546,
+          "spread": 4.363259,
+          "exact": false
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 9.724,
+          "max": 13.231,
+          "median": 12.842,
+          "mean": 11.9405,
+          "sd": 1.647372,
+          "cv": 0.137965,
+          "spread": 0.360654,
+          "exact": false
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "noisy",
+        "reason": "same-build spread 436.33% exceeds the 1% cap"
+      }
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "hover",
+      "metric": "script_ms_total",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 74.357,
+          "max": 123.39,
+          "median": 98.244,
+          "mean": 99.7178,
+          "sd": 15.656083,
+          "cv": 0.157004,
+          "spread": 0.659427,
+          "exact": false
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 72.986,
+          "max": 101.126,
+          "median": 88.185,
+          "mean": 85.799833,
+          "sd": 10.702862,
+          "cv": 0.124742,
+          "spread": 0.385553,
+          "exact": false
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "noisy",
+        "reason": "same-build spread 65.94% exceeds the 1% cap"
+      }
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "hover",
+      "metric": "raf_js_ms_total",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 23.635,
+          "max": 37.185,
+          "median": 31.8425,
+          "mean": 30.841,
+          "sd": 4.900389,
+          "cv": 0.158892,
+          "spread": 0.573302,
+          "exact": false
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 20.115,
+          "max": 28.395,
+          "median": 25.9525,
+          "mean": 24.565833,
+          "sd": 3.425436,
+          "cv": 0.139439,
+          "spread": 0.411633,
+          "exact": false
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "noisy",
+        "reason": "same-build spread 57.33% exceeds the 1% cap"
+      }
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "hover",
+      "metric": "raf_js_ms_p95",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 0.235,
+          "max": 1.105,
+          "median": 0.345,
+          "mean": 0.4695,
+          "sd": 0.314329,
+          "cv": 0.669497,
+          "spread": 3.702128,
+          "exact": false
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 0.2,
+          "max": 0.32,
+          "median": 0.2825,
+          "mean": 0.2675,
+          "sd": 0.050769,
+          "cv": 0.189791,
+          "spread": 0.6,
+          "exact": false
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "noisy",
+        "reason": "same-build spread 370.21% exceeds the 1% cap"
+      }
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "hover",
+      "metric": "gpu_submits",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 0,
+          "max": 0,
+          "median": 0,
+          "mean": 0,
+          "sd": 0,
+          "cv": 0,
+          "spread": 0,
+          "exact": true
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 0,
+          "max": 0,
+          "median": 0,
+          "mean": 0,
+          "sd": 0,
+          "cv": 0,
+          "spread": 0,
+          "exact": true
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "throttled",
+        "reason": "#6975: follows the adaptive render throttle under SwiftShader"
+      }
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "hover",
+      "metric": "gpu_draws",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 2754,
+          "max": 4131,
+          "median": 2754,
+          "mean": 3075.3,
+          "sd": 486.241607,
+          "cv": 0.158112,
+          "spread": 0.5,
+          "exact": false
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 2295,
+          "max": 3213,
+          "median": 2524.5,
+          "mean": 2601,
+          "sd": 374.771931,
+          "cv": 0.144088,
+          "spread": 0.4,
+          "exact": false
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "throttled",
+        "reason": "#6975: follows the adaptive render throttle under SwiftShader"
+      }
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "hover",
+      "metric": "gpu_write_kib",
+      "stats": {
+        "d484b67ef4d411efc66c9d75182d1217ec21e5ad": {
+          "n": 10,
+          "min": 87.5,
+          "max": 131.2,
+          "median": 87.5,
+          "mean": 97.71,
+          "sd": 15.442398,
+          "cv": 0.158043,
+          "spread": 0.499429,
+          "exact": false
+        },
+        "80d949f1a58765e7bdd7358f8bc530004866ca4d": {
+          "n": 6,
+          "min": 96.7,
+          "max": 135.3,
+          "median": 106.35,
+          "mean": 109.566667,
+          "sd": 15.758384,
+          "cv": 0.143825,
+          "spread": 0.399173,
+          "exact": false
+        }
+      },
+      "verdict": {
+        "kind": "informational",
+        "rule": "throttled",
+        "reason": "#6975: follows the adaptive render throttle under SwiftShader"
+      }
+    }
+  ],
+  "contamination": {
+    "AC20-FZK-Haus": {
+      "attempts": 22,
+      "contaminated": 1,
+      "runsWithContamination": [
+        "38641892895"
+      ]
+    },
+    "Snowdon": {
+      "attempts": 22,
+      "contaminated": 3,
+      "runsWithContamination": [
+        "38633397362",
+        "38635035863",
+        "38694210319"
+      ]
+    }
+  },
+  "ratchet": [
+    "Snowdon/streaming-load/gpu_write_kib"
+  ]
+}

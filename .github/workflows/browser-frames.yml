@@ -7,7 +7,9 @@
 # chrome-headless-shell driven at 120 Hz over CDP HeadlessExperimental.beginFrame
 # (tests/benchmark/frames/frame-rig.spec.ts): streaming load, scripted orbit
 # and hover sweep on AC20-FZK-Haus and Snowdon. Uploads `browser-frames` rows
-# ({fixture, scenario, metric, value}) for the future M4 ratchet (#6959).
+# ({fixture, scenario, metric, value}). Admitted rows feed the M4 ratchet
+# (#6959) as the `browser-frames` family; perf-ratchet-lower.yml lowers its
+# ceilings from this lane's latest successful run on main.
 # Main-thread cost and encoded GPU work only: WebGPU runs on SwiftShader here,
 # so no number from this lane is a GPU time. Not a PR gate; a red scheduled
 # run opens or updates the scheduled-lane issue.
@@ -109,6 +111,26 @@ jobs:
       - name: Require complete uncontaminated frame evidence
         if: always()
         run: node scripts/perf/check-frame-results.mjs test-results/browser-frames.json
+
+      # `browser-frames` ratchet family (#6975, M4 #6959). No `if:`, so it runs
+      # only when admission above passed: a partial or GPU-contaminated
+      # artifact never reaches a ceiling. The measurer re-admits anyway and
+      # refuses (exit 2) instead of evaluating. Only the rows the same-build
+      # evidence supports are gated; the rest print as informational. A breach
+      # turns this lane red, and a scheduled red run opens the lane's issue.
+      - name: Measure perf-ratchet browser-frames family
+        run: node scripts/perf-ratchet/measure-browser-frames.mjs --frames test-results/browser-frames.json --out "$RUNNER_TEMP/perf-ratchet/browser-frames.json" --commit "$(git rev-parse HEAD)"
+
+      - name: Check the browser-frames ceilings
+        run: |
+          set +e
+          node scripts/perf-ratchet/perf-ratchet.mjs check \
+            --measured "$RUNNER_TEMP/perf-ratchet/browser-frames.json" \
+            --markdown "$RUNNER_TEMP/perf-ratchet-report.md"
+          status=$?
+          set -e
+          [ -f "$RUNNER_TEMP/perf-ratchet-report.md" ] && cat "$RUNNER_TEMP/perf-ratchet-report.md" >> "$GITHUB_STEP_SUMMARY"
+          exit $status
 
       - name: Upload frame-rig results
         if: always()

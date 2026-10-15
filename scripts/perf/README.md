@@ -321,9 +321,10 @@ rendered vs idle frames (a frame that called `getCurrentTexture`), and
   frame, frames over budget, missed vsyncs (load only) and rendered vs idle
   frames as `browser-frames` rows in `test-results/browser-frames.json`. GPU
   time is excluded by construction (SwiftShader). Runs nightly in
-  `.github/workflows/browser-frames.yml`. Count metrics (frames, draws,
-  submits) repeat; millisecond metrics move with machine load, so compare
-  spreads, not single runs.
+  `.github/workflows/browser-frames.yml`. Within one build, scripted
+  orbit/hover counts repeat, but streaming-load frame, draw and submit counts
+  do not, and millisecond metrics move with machine load. Compare spreads,
+  not single runs (see "Frame ratchet: only load upload volume repeats" below).
 - **Real GPU, local only**: `scripts/perf/frame-gpu-rig.mts` drives Windows
   Chrome from WSL (random CDP port, throwaway profile killed by path and
   deleted), serves a production build same-origin, loads `?model=`, presses
@@ -352,8 +353,51 @@ readiness and health are checked after the original scenario windows. Raw
 failed evidence remains uploaded. Enabling trace counters makes this a new
 instrumented cohort; its rows must not be pooled with older unobserved runs.
 Lesson: scenario coverage alone does not prove complete or uncontaminated
-measurements. Metrics remain informational; physical-display nights, calibrated
-thresholds and demonstrated repeatable frame ceilings remain outstanding.
+measurements. Physical-display nights and calibrated thresholds remain
+outstanding; for which rows now carry ceilings, see the next section.
+
+## Frame ratchet: only load upload volume repeats (#6975)
+
+Verdict: the `browser-frames` ratchet family gates one row, the Snowdon
+streaming-load `gpu_write_kib`. All other rows stay informational. The
+evidence is [repeatability.json](evidence/gpu-frame-timing-6975/frame-ratchet/repeatability.json):
+hosted runs of two builds (current `main`, which seeds the ceiling, and the
+#7601 retry head), with raw per-run values, run ids, artifact sha256s,
+per-build stats and a verdict for each of the 96 rows.
+`frame-ratchet-evidence.test.mjs` recomputes that verdict. The criteria were
+fixed before the `main` runs were downloaded and were not changed afterwards.
+
+- The #6975 expectation was "load counts and main-thread totals repeat". The
+  data refutes it. Within ONE build, main-thread totals, percentiles and load
+  frame/draw/submit counts move by tens of percent on hosted SwiftShader. Load
+  length in frames depends on main-thread speed, and draws and submits follow
+  the frames rendered during the load. None of them can hold a ceiling whose
+  band means anything.
+- Load upload volume is the one row that is close to stable. On Snowdon it
+  stays far inside the cap. On FZK it moves with the number of frames rendered
+  during the load and lands just over the 1% cap on `main`, so it stays
+  informational. Do not loosen the cap after the fact to admit it.
+- Orbit/hover render, draw, submit and upload counts were identical in every
+  run of each build, but #6975 rules them out: they follow the adaptive render
+  throttle, which a slower runner engages with no code change. Note that they
+  are sensitive. The FZK orbit upload volume differs between the two builds.
+  This is informational only; the two builds are not in an ancestor relation,
+  so no regression is claimed. Revisit with physical-GPU nights, not by
+  relaxing the rule.
+- Contamination is real and handled. On hosted SwiftShader, Dawn sometimes
+  loses its instance mid-load (mostly on Snowdon), and the renderer then
+  re-uploads the whole scene. Before #7601 that failed the run outright
+  (two of the five pre-retry runs in the evidence, Snowdon both times; #7601
+  saw about two in six).
+  #7601 replaces such an attempt with a fresh browser, at most twice, and
+  retains each refusal in `refusedAttempts`. Every post-#7601 run in the
+  evidence was admitted. The tally per fixture is in the evidence file. The
+  ratchet consumes only admitted artifacts: the measurer re-runs admission and
+  refuses rather than evaluating, and the daily lowering reads only the
+  latest *successful* `main` run of the lane.
+- Not proven: real-GPU frame cost (SwiftShader only), and behaviour on another
+  runner image or Chrome version. The pre-#7601 artifacts lack attempt
+  receipts, so they are counted for contamination but not admitted.
 
 ## Viewer JS is gated on raw bytes, not brotli (#7007)
 

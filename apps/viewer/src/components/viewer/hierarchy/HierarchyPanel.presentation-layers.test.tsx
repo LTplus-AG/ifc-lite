@@ -143,6 +143,29 @@ describe('Presentation layers hierarchy (#7619)', () => {
     assert.match(container.textContent ?? '', /Layer wall/, 'outside selection reveals the member');
   });
 
+  it('offers Show for a partially hidden layer and reveals all members before offering Hide (#7619 review)', async () => {
+    const mixed = await model('presentation-mixed-visibility');
+    mixed.ifcDataStore = await new IfcParser().parseColumnar(new TextEncoder().encode(
+      IFC.replace("#50=IFCPRESENTATIONLAYERASSIGNMENT('Walls',$,(#21),$);",
+        "#50=IFCPRESENTATIONLAYERASSIGNMENT('Walls',$,(#21,#31),$);"),
+    ).buffer);
+    const container = await mount(mixed);
+    act(() => useViewerStore.getState().hideEntities([7]));
+    const row = layerRows(container)[0];
+    assert.ok(row);
+    assert.equal(useViewerStore.getState().hiddenEntities.has(7), true);
+    assert.equal(useViewerStore.getState().hiddenEntities.has(8), false);
+    assert.equal(row.querySelector('button[aria-label="Hide Walls"]'), null,
+      'a mixed layer must not promise Hide when its action reveals members');
+    click(button(row, 'Show Walls'));
+    assert.equal(useViewerStore.getState().hiddenEntities.has(7), false);
+    assert.equal(useViewerStore.getState().hiddenEntities.has(8), false);
+    click(button(row, 'Hide Walls'));
+    assert.equal(useViewerStore.getState().hiddenEntities.has(7), true);
+    assert.equal(useViewerStore.getState().hiddenEntities.has(8), true);
+    assert.ok(button(row, 'Show Walls'));
+  });
+
   it('keeps same-name assignments and colliding local product IDs independent in a federation', async () => {
     const a = await model('presentation-fed-A', true);
     const b = await model('presentation-fed-B', true);

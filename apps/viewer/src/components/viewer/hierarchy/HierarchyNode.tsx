@@ -14,6 +14,7 @@ import { ModelTagGroupRow } from './ModelTagGroupRow';
 import { ModelHeaderRow } from './ModelHeaderRow';
 import { ModelBadge } from '../ModelBadge';
 import { HierarchyRowActions, type HierarchyRowAction } from './HierarchyRowActions';
+import type { HierarchyVisibilityAction } from './nodeVisibility';
 
 /**
  * Resolve the Material Symbols code point for a given IFC type string.
@@ -57,6 +58,7 @@ export interface HierarchyNodeProps extends HierarchyNodeAriaProps {
   virtualRow: { size: number; start: number };
   isSelected: boolean;
   nodeHidden: boolean;
+  visibilityAction?: HierarchyVisibilityAction;
   isMultiModel: boolean;
   modelsCount: number;
   searchActive?: boolean;
@@ -79,6 +81,7 @@ export function HierarchyNode({
   virtualRow,
   isSelected,
   nodeHidden,
+  visibilityAction = nodeHidden ? 'show' : 'hide',
   isMultiModel,
   modelsCount,
   searchActive = false,
@@ -316,7 +319,7 @@ export function HierarchyNode({
                     onVisibilityToggle(node);
                   }}
                   aria-label={
-                    !nodeHidden
+                    visibilityAction === 'hide'
                       ? t('hierarchy.node.hideAriaLabel', { name: node.name })
                       : t('hierarchy.node.showAriaLabel', { name: node.name })
                   }
@@ -330,7 +333,7 @@ export function HierarchyNode({
                     nodeHidden && 'opacity-100'
                   )}
                 >
-                  {!nodeHidden ? (
+                  {visibilityAction === 'hide' ? (
                     <Eye className="h-3 w-3 text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100" />
                   ) : (
                     <EyeOff className="h-3 w-3 text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100" />
@@ -339,7 +342,7 @@ export function HierarchyNode({
               </TooltipTrigger>
               <TooltipContent>
                 <p className="text-xs">
-                  {!nodeHidden ? t('hierarchy.node.hide') : t('hierarchy.node.show')}
+                  {visibilityAction === 'hide' ? t('hierarchy.node.hide') : t('hierarchy.node.show')}
                 </p>
               </TooltipContent>
             </Tooltip>

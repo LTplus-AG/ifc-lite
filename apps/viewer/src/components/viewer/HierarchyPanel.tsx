@@ -39,6 +39,7 @@ import { ModelsSectionHeader } from './hierarchy/ModelsSectionHeader';
 import { StoreyDisplayControls } from './hierarchy/StoreyDisplayControls';
 import { HierarchySortControl } from './hierarchy/HierarchySortControl';
 import { hierarchyRowSelection } from './hierarchy/rowSelection';
+import { hierarchyNodeVisibility } from './hierarchy/nodeVisibility';
 import type { HierarchyRowAction } from './hierarchy/HierarchyRowActions';
 import { applyLevelDisplayMode } from '@/store/levelDisplay';
 import { createHierarchyModelsSelector, selectLegacyHierarchyGeometry } from './hierarchy/hierarchy-models-selector';
@@ -200,10 +201,8 @@ export function HierarchyPanel() {
     const elements = getNodeElements(node);
     if (elements.length === 0) return;
 
-    // Check if all elements are currently visible (not hidden)
-    const allVisible = elements.every(id => !hiddenEntities.has(id));
-
-    if (allVisible) {
+    const { visibilityAction } = hierarchyNodeVisibility(node, elements, hiddenEntities);
+    if (visibilityAction === 'hide') {
       hideEntities(elements);
       if (selectedEntityId !== null && elements.includes(selectedEntityId)) {
         clearSelection();
@@ -391,28 +390,11 @@ export function HierarchyPanel() {
   });
 
   // Compute selection and visibility state for a node
-  const computeNodeState = useCallback((node: TreeNode, rows: ReadonlyArray<{ globalId: number }>): { isSelected: boolean; nodeHidden: boolean; modelVisible?: boolean } => {
+  const computeNodeState = useCallback((node: TreeNode, rows: ReadonlyArray<{ globalId: number }>) => {
     const isSelected = rows.length > 0 && rows.every(({ globalId }) =>
       selectedEntityId === globalId || selectedEntityIds.has(globalId));
 
-    // Compute visibility inline - for elements check directly, for storeys use getNodeElements
-    let nodeHidden = false;
-    if (node.type === 'element' || node.type === 'group-member') {
-      const parts = node.assemblyChildGlobalIds;
-      if (parts && parts.length > 0) {
-        // An assembly reads as hidden only when every part it owns is hidden
-        // (its own geometry-less id never enters hiddenEntities) (#1133).
-        nodeHidden = parts.every((id) => hiddenEntities.has(id));
-      } else {
-        nodeHidden = hiddenEntities.has(node.globalIds[0] ?? node.expressIds[0]);
-      }
-    } else if (node.type === 'IfcBuildingStorey' || node.type === 'IfcSpace' || node.type === 'unified-storey' ||
-               node.type === 'type-group' || node.type === 'ifc-type' || node.type === 'material-group' ||
-               node.type === 'group' || node.type === 'presentation-layer' ||
-               (node.type === 'model-header' && node.id.startsWith('contrib-'))) {
-      const elements = getNodeElements(node);
-      nodeHidden = elements.length > 0 && elements.every(id => hiddenEntities.has(id));
-    }
+    const visibility = hierarchyNodeVisibility(node, getNodeElements(node), hiddenEntities);
 
     // Model visibility for model-header nodes
     let modelVisible: boolean | undefined;
@@ -421,7 +403,7 @@ export function HierarchyPanel() {
       modelVisible = model?.visible;
     }
 
-    return { isSelected, nodeHidden, modelVisible };
+    return { isSelected, ...visibility, modelVisible };
   }, [selectedEntityId, selectedEntityIds, hiddenEntities, getNodeElements, models]);
 
   // Every branch carries the tour anchor: the welcome tour's "Browse the
@@ -465,7 +447,7 @@ export function HierarchyPanel() {
 
   // Each virtualized section has its own selection rows and ARIA keyboard state.
   const renderNode = (node: TreeNode, virtualRow: { index: number; size: number; start: number }, section: SelectionSection, keyboard: UseTreeKeyboardResult, ariaAttrs: AriaTreeAttrs[]) => {
-    const { isSelected, nodeHidden, modelVisible } = computeNodeState(node, selectionRows[section][virtualRow.index] ?? []);
+    const { isSelected, nodeHidden, visibilityAction, modelVisible } = computeNodeState(node, selectionRows[section][virtualRow.index] ?? []);
     const modelId = node.type === 'model-header' && node.id.startsWith('model-')
       ? node.modelIds[0]
       : undefined;
@@ -478,6 +460,7 @@ export function HierarchyPanel() {
         virtualRow={virtualRow}
         isSelected={isSelected}
         nodeHidden={nodeHidden}
+        visibilityAction={visibilityAction}
         isMultiModel={isMultiModel}
         modelsCount={models.size}
         searchActive={Boolean(searchQuery.trim())}

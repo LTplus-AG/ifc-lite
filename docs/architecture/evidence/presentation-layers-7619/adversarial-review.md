@@ -160,6 +160,47 @@ overlay isolation retains the limitation documented above.
 Verdict for `6b087615b63b949761ed849cdd65ec12415fe2be`: no unresolved
 correctness blocker found. The exact source delta passes `git diff --check`.
 
+## Follow-up review: finite native geometry-constituent audit
+
+Reviewed exact delta
+`9cae46297d..62b43811a1` on 2026-10-15. The preceding
+`ac024da3df..9cae46297d` changes were independently verified as documentation
+and evidence only. This delta changes only the resolver's ownership table and
+its parsed-STEP regressions.
+
+The reviewer and resolver agent compared the remaining explicit shape-reference
+families with native geometry consumers. The final table adds tessellated
+coordinates, constituent polygonal faces, face surfaces, polyloop points, edge
+vertices, annotation fill boundaries, B-spline control-point lists, line points
+and half-space generating surfaces/polygons. The reviewer specifically
+identified `IfcPolygonalFaceSet.Faces`: its `IfcIndexedPolygonalFace` constituents
+are representation items and valid layer-assignment seeds, independently of
+the tessellation's coordinate list. The final patch includes both routes.
+
+All added fields carry structural entity references. Existing attribute unions
+retain inherited geometry edges. Frames, directions, axes, styles and contexts
+remain outside the walk. Mixed scalar/reference trim selections were not
+blindly added to the numeric-reference reader: native edge vertices already
+provide the geometric endpoints, and interpreting scalar parameters as entity
+IDs would create false ownership links. Unsupported wrapper types were not
+added merely because they exist in a schema.
+
+Thirteen parsed family cases verify the assigned constituent reaches both
+products sharing its geometry while excluding an unrelated wall sharing a
+point only through placement. They cover both tessellation forms, an individual
+polygon face, nested face bounds/loops, face surfaces, vertices, outer and inner
+annotation boundaries, spline curves and surfaces, lines and half-spaces.
+An additional malformed generating-surface cycle verifies bounded traversal,
+reachable ownership and deletion. The reviewer read the complete source/test
+delta and the relevant schema/native consumers; no heavy validation ran in
+parallel. Root build, focused tests, typecheck, lint and final browser smoke
+were in progress when this report section was written.
+
+Verdict for source `62b43811a1`: no unresolved correctness blocker or known
+reproduced supported-geometry omission remains from this finite audit. Previous
+mixed-visibility, lazy-loading, effective-mutation and ID-resolution reviews
+continue to apply. The exact delta passes `git diff --check`.
+
 ## Follow-up review: shape-aspect ownership
 
 Reviewed exact delta

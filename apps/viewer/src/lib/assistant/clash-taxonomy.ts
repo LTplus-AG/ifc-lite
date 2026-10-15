@@ -11,9 +11,15 @@ export const CLASH_TAXONOMY_LIMITATIONS =
   'Detection status is not human review status. Never change native severity or infer resolved/accepted from grouping. ' +
   'Omitted findings remain unclassified. BCF assignees stay empty until a verified project mapping is chosen.';
 
+/** Per-group text caps enforced by the clash group parsers and stated in the prompt (#7651). */
+export const CLASH_GROUP_NAME_MAX = 100;
+export const CLASH_GROUP_EXPLANATION_MAX = 1200;
+
 export const CLASH_GROUP_OUTPUT_GUIDANCE =
   'When asked for a grouping proposal, return only JSON {"version":1,"kind":"clash.groups",' +
   '"groups":[{"name":"Group name","explanation":"Inference and rationale","citations":["E1"]}]}. ' +
   'Use only supplied complete finding citations, each once, at most 30 groups and 100 findings. ' +
+  `Each group name must be at most ${CLASH_GROUP_NAME_MAX} characters and each explanation at most ` +
+  `${CLASH_GROUP_EXPLANATION_MAX} characters; one over-long group rejects the whole proposal. ` +
   'Group by native type/severity and discipline pair candidates, preserving ambiguity. ' +
   'Never output status changes, severity changes, assignees or executable actions. Unmentioned findings remain unclassified.';

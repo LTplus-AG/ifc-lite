@@ -4,6 +4,14 @@
 
 // #7374: real retained HTTP effects, exclusive ownership and fail-closed disk recovery.
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { CallbackProbe } from './__tests__/bcf-record-callback-hooks.js';
+import { observeStat } from './__tests__/bcf-record-callback-hooks.js';
+const callbackProbe = vi.hoisted(() => ({ reads: 0, closes: 0 } as CallbackProbe));
+vi.mock('node:fs', async importOriginal => {
+  const actual = await importOriginal<typeof import('node:fs')>();
+  const { forwardingFs } = await import('./__tests__/bcf-record-callback-hooks.js');
+  return forwardingFs(actual, callbackProbe);
+});
 import { BcfPublicationStore } from './bcf-publication-store.js';
 import { intentDigest } from './bcf-publication-codec.js';
 import { createServer } from 'node:http';
@@ -638,17 +646,13 @@ describe('native durable BCF publication (#7374)', () => {
     const original = await readFile(path, 'utf8');
     const probe = await open(path, 'r');
     const identity = await probe.stat();
-    const prototype: FileHandle = Object.getPrototypeOf(probe);
-    const stat = prototype.stat;
     let grew = false;
-    const fault = vi.spyOn(prototype, 'stat').mockImplementation(async function(this: FileHandle, ...options: Parameters<FileHandle['stat']>) {
-      const result = await stat.apply(this, options);
+    const fault = observeStat(callbackProbe, async (_fd, result) => {
       if (!grew && result.ino === identity.ino && result.dev === identity.dev) {
         grew = true;
         // Valid JSON whitespace defeats a size-limited read without its sentinel.
         await writeFile(path, `${original}\n`);
       }
-      return result;
     });
     try {
       expect((await run(gateway, transport)).ok).toBe(false);

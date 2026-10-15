@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { Buffer } from 'node:buffer';
+import { readPublicationRecord } from './bcf-publication-record.js';
 import { constants } from 'node:fs';
 import { link, lstat, mkdir, open, opendir, unlink } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
@@ -22,6 +23,10 @@ export interface LoadedAttempt {
   ownerConfirmed?: boolean;
   checkPending?: boolean;
 }
+// Only per-invocation directory identities; record contents are always reread.
+type DirectoryIdentity = { dev: bigint; ino: bigint };
+type EpochReadBatch = { leaves: Map<string, DirectoryIdentity>; parents: Map<string, DirectoryIdentity> };
+const sameDirectory = (a: DirectoryIdentity, b: DirectoryIdentity) => a.dev === b.dev && a.ino === b.ino;
 const errorCode = (error: unknown) => record(error) ? error.code : undefined;
 export function entryOf(item: LoadedAttempt, sendFinished = false): NativeBcfPublicationEntry {
   const outcome = item.reconciled ?? item.outcome;
@@ -62,9 +67,19 @@ export class BcfPublicationStore {
       await this.syncDirectory(path);
     }
   }
-  private async syncDirectory(directory: string): Promise<void> {
-    const handle = await open(directory, constants.O_RDONLY | constants.O_DIRECTORY);
-    try { await handle.sync(); } finally { await handle.close(); }
+  private async syncDirectory(directory: string, expected?: DirectoryIdentity): Promise<void> {
+    const handle = await open(directory, constants.O_RDONLY | constants.O_DIRECTORY | (expected ? constants.O_NOFOLLOW : 0));
+    try {
+      if (expected) {
+        const actual = await handle.stat({ bigint: true });
+        if (!actual.isDirectory() || !sameDirectory(actual, expected)) refuse('recovery epoch directory changed during validation');
+      }
+      await handle.sync();
+      if (expected) {
+        const current = await lstat(directory, { bigint: true });
+        if (!current.isDirectory() || !sameDirectory(current, expected)) refuse('recovery epoch directory changed during validation');
+      }
+    } finally { await handle.close(); }
   }
   private async publishAt(directory: string, filename: string, value: unknown, prefix: string, onLinked?: () => void): Promise<void> {
     const bytes = JSON.stringify(value);
@@ -106,38 +121,42 @@ export class BcfPublicationStore {
     await this.publishAt(check ? this.epochPath(filename.slice(0, filename.indexOf('.')), epochOf(check[1])) : path, filename, value,
       digest.slice(0, 2), filename.endsWith('.intent.json') ? onLinked : undefined);
   }
-  private async readAt(directory: string, filename: string, syncEntry = true): Promise<unknown> {
-    const handle = await open(join(directory, filename), constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
-    try {
-      const stat = await handle.stat();
-      if (!stat.isFile() || stat.size > MAX_RECORD_BYTES) refuse('invalid or oversized stored record');
-      // Most retained receipts are small. One sentinel byte detects growth
-      // observed by this read without allocating the maximum for every record.
-      const bytes = Buffer.alloc(stat.size + 1);
-      const result = await handle.read(bytes, 0, bytes.length, 0);
-      if (result.bytesRead > MAX_RECORD_BYTES) refuse('record exceeds storage bound');
-      if (result.bytesRead > stat.size) refuse('stored record grew while reading');
-      // A prior publisher may have linked this visible record before its directory fsync failed.
-      // Repair that durability boundary before acknowledging a receipt or recovery proof.
-      if (syncEntry) await this.syncDirectory(directory);
-      return JSON.parse(bytes.subarray(0, result.bytesRead).toString('utf8'));
-    } finally { await handle.close(); }
+  private readAt(directory: string, filename: string, syncEntry = true): Promise<unknown> {
+    return readPublicationRecord(join(directory, filename), syncEntry ? () => this.syncDirectory(directory) : undefined);
   }
   private epochPath(id: string, epoch: number) { return join(this.path(id.slice(0, 64)), `${id}.epochs`, String(epoch)); }
-  private async epochRead(id: string, epoch: number, filename: string): Promise<unknown> {
-    const directory = this.epochPath(id, epoch);
-    for (const path of [join(directory, '..'), directory]) {
-      if (!(await lstat(path)).isDirectory()) refuse('invalid recovery epoch directory');
+  private async epochRead(id: string, epoch: number, filename: string, batch?: EpochReadBatch): Promise<unknown> {
+    const directory = this.epochPath(id, epoch), parent = join(directory, '..');
+    const identities: DirectoryIdentity[] = [];
+    for (const path of [parent, directory]) {
+      const stat = await lstat(path, { bigint: true });
+      if (!stat.isDirectory()) refuse('invalid recovery epoch directory');
+      identities.push({ dev: stat.dev, ino: stat.ino });
     }
-    const value = await this.readAt(directory, filename);
-    await this.syncDirectory(join(directory, '..'));
+    const value = await this.readAt(directory, filename, batch === undefined);
+    if (batch) {
+      for (const [map, path, identity] of [
+        [batch.parents, parent, identities[0]], [batch.leaves, directory, identities[1]],
+      ] as const) {
+        const previous = map.get(path);
+        if (previous && !sameDirectory(previous, identity)) refuse('recovery epoch directory changed during validation');
+        map.set(path, identity);
+      }
+    } else await this.syncDirectory(parent);
     return value;
   }
-  private checks(attempt: StoredBcfAttempt, secrets: readonly string[]) {
-    return loadCheckEpoch(attempt, async (epoch, filename) => {
-      const value = await this.epochRead(attempt.id, epoch, filename);
+  private async checks(attempt: StoredBcfAttempt, secrets: readonly string[]) {
+    const batch: EpochReadBatch = { leaves: new Map(), parents: new Map() };
+    const result = await loadCheckEpoch(attempt, async (epoch, filename) => {
+      const value = await this.epochRead(attempt.id, epoch, filename, batch);
       credentialFree(value, secrets); return value;
     });
+    // #7637: persist EVERY observed epoch link after all immutable reads, then
+    // its parent entry, before any checked proof escapes. Standalone epochRead
+    // calls retain their immediate barriers. No record or negative probe is cached.
+    for (const [directory, identity] of batch.leaves) await this.syncDirectory(directory, identity);
+    for (const [directory, identity] of batch.parents) await this.syncDirectory(directory, identity);
+    return result;
   }
   async ensureEpoch(attempt: StoredBcfAttempt, previous?: StoredBcfCheck, secrets: readonly string[] = []): Promise<void> {
     const nextId = String(Number(previous?.checkId ?? 0) + 1), epoch = epochOf(nextId);

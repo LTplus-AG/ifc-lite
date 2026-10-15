@@ -2722,3 +2722,81 @@ fn many_associations_over_one_long_usage_chain_finish_server_5() {
     );
 }
 }
+
+/// #7675 (S3, from S1's walk audit): the complex-property depth cap bounds a
+/// path's length only, so a member listing itself `k` times was `k^8` reads
+/// (82 MB at `k = 6`). The shared vector pins the member budget and its marker
+/// byte-for-byte against `packages/parser/test/complex-property-budget.test.ts`.
+#[test]
+fn complex_property_member_budget_matches_the_typescript_parser() {
+    use sha2::{Digest, Sha256};
+    let vector: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../../../packages/parser/test/fixtures/complex-property-budget-7675.json"
+    ))
+    .expect("vector parses");
+    let data: Vec<&str> = vector["dataLines"].as_array().unwrap().iter().map(|l| l.as_str().unwrap()).collect();
+    let ifc = format!(
+        "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n{}\nENDSEC;\nEND-ISO-10303-21;\n",
+        data.join("\n")
+    );
+    let dm = extract_data_model(&ifc);
+    let pset_id = vector["psetId"].as_u64().unwrap() as u32;
+    let pset = dm.property_sets.iter().find(|p| p.pset_id == pset_id).expect("Pset_Budget extracted");
+    for case in vector["cases"].as_array().unwrap() {
+        let name = case["property"].as_str().unwrap();
+        let value = &pset.properties.iter().find(|p| p.property_name == name).expect(name).property_value;
+        match case.get("value") {
+            Some(expected) => assert_eq!(value, expected.as_str().unwrap(), "{name}"),
+            None => {
+                let digest: String = Sha256::digest(value.as_bytes()).iter().map(|b| format!("{b:02x}")).collect();
+                assert!(value.ends_with(case["suffix"].as_str().unwrap()), "{name}: ...{}", &value[value.len().saturating_sub(80)..]);
+                assert_eq!((value.len() as u64, digest.as_str()), (case["length"].as_u64().unwrap(), case["sha256"].as_str().unwrap()), "{name}");
+            }
+        }
+    }
+}
+
+/// SERVER-26 (#7675): one `IfcRelAssociatesMaterial` emits a row per related
+/// element per resolved layer, each cloning the layer's strings. A layer set
+/// that lists one layer 1 000 times, related to 1 000 elements, is 1 000 000
+/// rows from 14 KB of input, and admission charges only the upload size. The
+/// table is budgeted against the input, and the one serializer every route
+/// sends a data model through refuses a model that hit it.
+#[test]
+fn server_26_material_rows_are_budgeted_not_elements_times_layers() {
+    let layers = vec!["#3"; 1_000].join(",");
+    let elements: Vec<String> = (0..1_000).map(|i| format!("#{}", 100 + i)).collect();
+    let ifc = format!(
+        "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n\
+         #2=IFCMATERIAL('Concrete',$,$);\n\
+         #3=IFCMATERIALLAYER(#2,0.1,$,'Core',$,$,$);\n\
+         #4=IFCMATERIALLAYERSET(({layers}),'Wall',$);\n\
+         #5=IFCRELASSOCIATESMATERIAL('Rel0000000000000007675',$,$,$,({}),#4);\n\
+         ENDSEC;\nEND-ISO-10303-21;\n",
+        elements.join(",")
+    );
+    let dm = extract_data_model(&ifc);
+    assert!(
+        dm.materials.len() < 1_000_000,
+        "{} material rows from {} bytes of input",
+        dm.materials.len(),
+        ifc.len()
+    );
+    let refused = crate::services::serialize_data_model_to_parquet(&dm).expect_err("a truncated table was served");
+    assert!(refused.to_string().contains("material"), "{refused}");
+}
+
+/// The budget is relative to the input and binds hostile products, not real
+/// buildups: a few walls with a three-layer set keep every row.
+#[test]
+fn server_26_ordinary_layer_sets_keep_every_row() {
+    let ifc = "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n\
+        #2=IFCMATERIAL('Concrete',$,$);\n\
+        #3=IFCMATERIALLAYER(#2,0.1,$,'Core',$,$,$);\n\
+        #4=IFCMATERIALLAYERSET((#3,#3,#3),'Wall',$);\n\
+        #5=IFCRELASSOCIATESMATERIAL('Rel0000000000000007675',$,$,$,(#10,#11,#12,#13),#4);\n\
+        ENDSEC;\nEND-ISO-10303-21;\n";
+    let dm = extract_data_model(ifc);
+    assert_eq!(dm.materials.len(), 12);
+    crate::services::serialize_data_model_to_parquet(&dm).expect("served");
+}

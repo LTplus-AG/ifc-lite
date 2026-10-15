@@ -231,7 +231,7 @@ pub(super) fn extract_property(
         // when no nested member resolves. Recurses into further nested
         // IFCCOMPLEXPROPERTY members up to the same depth cap as the TS side.
         "IFCCOMPLEXPROPERTY" => {
-            let (v, k, d, vs) = resolve_complex_property_value(entity, decoder, 0);
+            let (v, k, d, vs) = resolve_complex_property_value(entity, decoder);
             (v, k, d, vs)
         }
 

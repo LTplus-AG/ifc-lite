@@ -50,6 +50,7 @@ fn empty_data_model() -> DataModel {
             element_to_site: vec![],
             element_to_space: vec![],
         },
+        refused: None,
     }
 }
 
@@ -123,6 +124,7 @@ fn serializes_and_reads_back_association_tables() {
             element_to_site: vec![],
             element_to_space: vec![],
         },
+        refused: None,
     };
 
     let mut absent_name = dm.materials[1].clone();
@@ -233,6 +235,7 @@ fn serializes_and_reads_back_property_values_json() {
             element_to_site: vec![],
             element_to_space: vec![],
         },
+        refused: None,
     };
 
     let payload = serialize_data_model_to_parquet(&dm).expect("serialize");

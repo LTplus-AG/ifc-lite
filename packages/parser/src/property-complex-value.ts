@@ -45,6 +45,26 @@ function complexPropertyTruncationMarker(): string {
 }
 
 /**
+ * Nested members one top-level `IfcComplexProperty` may read, across all its
+ * levels. The depth cap bounds a path's LENGTH only: a member listing itself
+ * `k` times is `k^8` reads (an 82 MB value at `k = 6`, #7675). Output
+ * accumulates, so a visited set would drop real members; a work budget bounds
+ * the fan-out instead. Mirrors `MAX_COMPLEX_PROPERTY_MEMBERS` in
+ * `apps/server/src/services/data_model/property_value.rs`.
+ */
+const MAX_COMPLEX_PROPERTY_MEMBERS = 1024;
+
+/** Byte-identical to `complex_property_budget_marker()` on the server. */
+function complexPropertyBudgetMarker(): string {
+    return `(truncated: more than ${MAX_COMPLEX_PROPERTY_MEMBERS} nested properties)`;
+}
+
+/** Nested members a walk has read; one object is shared by every level. */
+export interface MemberBudget {
+    visits: number;
+}
+
+/**
  * Resolve an `IfcComplexProperty`'s nested `HasProperties` (EXPRESS:
  * `[Name, Description, UsageName, HasProperties]`, index 3) into a display
  * value plus a flat `values` candidate list, recursing into any further
@@ -66,12 +86,17 @@ function complexPropertyTruncationMarker(): string {
  * vanished while its parent fell back to showing its OWN `UsageName`, so the
  * reader saw a real value attributed to the wrong nesting level. An absent or
  * empty `HasProperties` is NOT a truncation and keeps the bare `UsageName`.
+ *
+ * Every nested member read is charged to one {@link MemberBudget} shared by the
+ * whole walk; a level that runs out with members unread appends
+ * {@link complexPropertyBudgetMarker}.
  */
 export function resolveComplexPropertyValue(
     store: IfcDataStore,
     extractor: EntityExtractor,
     propEntity: IfcEntity,
-    depth = 0
+    depth = 0,
+    budget: MemberBudget = { visits: 0 }
 ): ParsedIfcPropertyValue {
     const attrs = propEntity.attributes || [];
     const usageName = typeof attrs[2] === 'string' ? attrs[2] : '';
@@ -95,9 +120,15 @@ export function resolveComplexPropertyValue(
     const parts: string[] = [];
     const values: string[] = [];
     const members: ExtractedProperty[] = [];
+    let outOfBudget = false;
 
     for (const ref of hasProperties) {
         if (typeof ref !== 'number') continue;
+        if (budget.visits >= MAX_COMPLEX_PROPERTY_MEMBERS) {
+            outOfBudget = true;
+            break;
+        }
+        budget.visits += 1;
         // @raw-entity-enumeration-ok complex-property parsing follows this source member reference, not an entity set
         const nestedRef = store.entityIndex.byId.get(ref) ?? store.deferredEntityIndex?.get(ref);
         if (!nestedRef) continue;
@@ -107,7 +138,7 @@ export function resolveComplexPropertyValue(
         const nestedAttrs = nestedEntity.attributes || [];
         const nestedName = typeof nestedAttrs[0] === 'string' ? nestedAttrs[0] : '';
         const nestedParsed = nestedEntity.type.toUpperCase() === 'IFCCOMPLEXPROPERTY'
-            ? resolveComplexPropertyValue(store, extractor, nestedEntity, depth + 1)
+            ? resolveComplexPropertyValue(store, extractor, nestedEntity, depth + 1, budget)
             : parsePropertyValueWithComplex(store, extractor, nestedEntity);
         if (nestedName) {
             const unit = resolvePropertyUnit(store, extractor, nestedEntity.type, nestedAttrs, nestedParsed.dataType);
@@ -126,9 +157,14 @@ export function resolveComplexPropertyValue(
         values.push(display);
     }
 
+    let value: string | null = parts.length > 0 ? parts.join(', ') : (usageName || null);
+    if (outOfBudget) {
+        const marker = complexPropertyBudgetMarker();
+        value = value ? `${value} ${marker}` : marker;
+    }
     return {
         type: PropertyValueType.String,
-        value: parts.length > 0 ? parts.join(', ') : (usageName || null),
+        value,
         structure: 'complex',
         ...(values.length > 0 ? { values } : {}),
         ...(members.length > 0 ? { members } : {}),

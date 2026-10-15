@@ -1,0 +1,41 @@
+diff --git a/apps/server/src/services/data_model/materials.rs b/apps/server/src/services/data_model/materials.rs
+--- a/apps/server/src/services/data_model/materials.rs
++++ b/apps/server/src/services/data_model/materials.rs
+@@ -349,6 +349,9 @@ pub(super) fn extract_materials(
+                     continue;
+                 }
+                 // Charged before the rows exist, across every job.
++                if used.fetch_add(*bytes, Ordering::Relaxed).saturating_add(*bytes) > budget {
++                    return Err(refusal());
++                }
+                 rows.extend(layers.iter().map(|layer| MaterialAssociation {
+                     element_id,
+                     association_id: job.id,
+diff --git a/apps/server/src/services/data_model/property_value.rs b/apps/server/src/services/data_model/property_value.rs
+--- a/apps/server/src/services/data_model/property_value.rs
++++ b/apps/server/src/services/data_model/property_value.rs
+@@ -145,6 +145,10 @@ fn resolve_complex(
+     let mut out_of_budget = false;
+ 
+     for prop_id in refs {
++        if *visits >= MAX_COMPLEX_PROPERTY_MEMBERS {
++            out_of_budget = true;
++            break;
++        }
+         *visits += 1;
+         let nested_entity = match decoder.decode_by_id(prop_id) {
+             Ok(e) => e,
+diff --git a/packages/parser/src/property-complex-value.ts b/packages/parser/src/property-complex-value.ts
+--- a/packages/parser/src/property-complex-value.ts
++++ b/packages/parser/src/property-complex-value.ts
+@@ -124,6 +124,10 @@ export function resolveComplexPropertyValue(
+ 
+     for (const ref of hasProperties) {
+         if (typeof ref !== 'number') continue;
++        if (budget.visits >= MAX_COMPLEX_PROPERTY_MEMBERS) {
++            outOfBudget = true;
++            break;
++        }
+         budget.visits += 1;
+         // @raw-entity-enumeration-ok complex-property parsing follows this source member reference, not an entity set
+         const nestedRef = store.entityIndex.byId.get(ref) ?? store.deferredEntityIndex?.get(ref);

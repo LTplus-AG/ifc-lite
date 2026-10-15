@@ -43,12 +43,12 @@ export interface RangeBounds {
 }
 
 /** A cardinal plane's slider range along its own axis: the one the Section bar, the caps and the offset field use. */
-function axisRange(p: SectionPlane, bounds: RangeBounds | null | undefined): { min?: number; max?: number } {
-  if (!bounds || p.custom) return {};
+export function planeRange(p: SectionPlane, bounds: RangeBounds | null | undefined): { min: number; max: number } | null {
+  if (!bounds || p.custom) return null;
   const key = p.axis === 'side' ? 'x' : p.axis === 'down' ? 'y' : 'z';
   const min = bounds.min[key];
   const max = bounds.max[key];
-  return Number.isFinite(min) && Number.isFinite(max) ? { min, max } : {};
+  return Number.isFinite(min) && Number.isFinite(max) ? { min, max } : null;
 }
 
 /**
@@ -60,7 +60,7 @@ export function rendererSectionPlane(p: SectionPlane, bounds?: RangeBounds | nul
   return {
     id: p.id, showGizmo: p.showGizmo, axis: p.axis, position: p.position, enabled: p.enabled, flipped: p.flipped,
     normal: p.custom?.normal, distance: p.custom?.distance,
-    ...axisRange(p, bounds),
+    ...planeRange(p, bounds),
   };
 }
 

@@ -1467,6 +1467,7 @@ export function Viewport({
     selectedEntityIdsRef,
     sectionPlaneRef,
     sectionRangeRef,
+    sectionBoundsRef,
     activeToolRef,
     drawing2D,
     show3DOverlay,

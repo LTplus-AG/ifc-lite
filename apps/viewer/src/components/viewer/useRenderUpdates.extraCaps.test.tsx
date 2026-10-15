@@ -21,15 +21,15 @@ import { useRenderUpdates } from './useRenderUpdates.js';
 
 const state = () => useViewerStore.getState();
 
-interface Upload { axis: string; position: number; flipped: boolean; planeId?: string; polygons: number }
+interface Upload { axis: string; position: number; flipped: boolean; planeId?: string; polygons: number; range?: { min: number; max: number } }
 
 function recordingRenderer() {
   const uploads: Upload[] = [];
   const kept: string[][] = [];
   const cleared: (string | undefined)[] = [];
   const target = {
-    uploadSection2DOverlay: (polygons: unknown[], _l: unknown, axis: string, position: number, _r: unknown, flipped: boolean, _c: unknown, planeId?: string) =>
-      uploads.push({ axis, position, flipped, planeId, polygons: polygons.length }),
+    uploadSection2DOverlay: (polygons: unknown[], _l: unknown, axis: string, position: number, range: Upload['range'], flipped: boolean, _c: unknown, planeId?: string) =>
+      uploads.push({ axis, position, flipped, planeId, polygons: polygons.length, range }),
     clearSection2DExtraOverlays: (keep: string[]) => kept.push([...keep]),
     clearSection2DOverlay: (id?: string) => cleared.push(id),
   };
@@ -37,7 +37,10 @@ function recordingRenderer() {
   return { uploads, kept, cleared, renderer: renderer as unknown as Renderer };
 }
 
-function Probe({ renderer }: { renderer: Renderer }) {
+/** The model's bounds in the renderer's Y-up space: X 18 m wide, Y (up) 7.3 m, Z 18 m. */
+const BOUNDS = { min: { x: -3, y: -1, z: -13 }, max: { x: 15, y: 6.3, z: 5 } };
+
+function Probe({ renderer, bounds }: { renderer: Renderer; bounds?: typeof BOUNDS }) {
   const ref = <T,>(v: T) => useRef(v);
   const s = useViewerStore();
   useRenderUpdates({
@@ -50,7 +53,9 @@ function Probe({ renderer }: { renderer: Renderer }) {
     hiddenEntitiesRef: ref(new Set<number>()), isolatedEntitiesRef: ref<Set<number> | null>(null),
     selectedEntityIdRef: ref<number | null>(null), selectedModelIndexRef: ref<number | undefined>(undefined),
     selectedEntityIdsRef: ref<Set<number> | undefined>(undefined), sectionPlaneRef: ref(s.sectionPlane),
-    sectionRangeRef: ref<{ min: number; max: number } | null>(null), activeToolRef: ref(s.activeTool),
+    // The ACTIVE plane's range: along the active plane's axis, not the other planes'.
+    sectionRangeRef: ref<{ min: number; max: number } | null>(bounds ? { min: BOUNDS.min.y, max: BOUNDS.max.y } : null),
+    sectionBoundsRef: ref(bounds ?? null), activeToolRef: ref(s.activeTool),
     drawing2D: s.drawing2D, show3DOverlay: s.drawing2DDisplayOptions.show3DOverlay, showHiddenLines: false,
   });
   return null;
@@ -86,6 +91,24 @@ describe('the other cutting planes\' caps reach the renderer (#7545)', () => {
     assert.equal(upload.axis, 'front');
     assert.equal(upload.position, state().inactiveSectionPlanes[0].position);
     assert.equal(upload.polygons, 1);
+  });
+
+  it('places a plane\'s cap over the plane\'s OWN axis, not the active plane\'s', () => {
+    const b = twoPlanes(); // A (down, active: range along Y), B (front, inactive: range along Z)
+    const { uploads, renderer } = recordingRenderer();
+    render(<Probe renderer={renderer} bounds={BOUNDS} />);
+    act(() => cutFor(b));
+
+    assert.deepEqual(uploads.find((u) => u.planeId === b)!.range, { min: BOUNDS.min.z, max: BOUNDS.max.z },
+      'B\'s 50 % is the middle of the model\'s depth; over the active plane\'s height it would land 4 m off');
+  });
+
+  it('leaves the range to the renderer while the model\'s bounds are unknown', () => {
+    const b = twoPlanes();
+    const { uploads, renderer } = recordingRenderer();
+    render(<Probe renderer={renderer} />);
+    act(() => cutFor(b));
+    assert.equal(uploads.find((u) => u.planeId === b)!.range, undefined);
   });
 
   it('keeps only the enabled inactive planes\' caps in the renderer', () => {

@@ -52,7 +52,8 @@
         "documentation": "472 snippets compiled",
         "moduleSize": "passed; retired one obsolete allowlist row",
         "knip": "ran; repository-wide unused declarations/configuration findings remain; retired reader files removed and one moved unused internal type export removed",
-        "nodeConsumer": "Fresh Node resolver imports @ifc-lite/sdk/headless and queries the committed one-wall IFC sample"
+        "nodeConsumer": "Fresh Node resolver imports @ifc-lite/sdk/headless and queries the committed one-wall IFC sample",
+        "readOracle": "Ordinary full revert against parent OBSERVED: 42 baseline tests pass; the public Node consumer fails an assertion after SDK export removal; restoration verified"
       }
     },
     {

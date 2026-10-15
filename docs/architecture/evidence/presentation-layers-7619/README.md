@@ -39,12 +39,12 @@ Validation:
 
 - Root `pnpm typecheck`: all 126 turbo tasks succeeded; audit covers all 4,186 test files in 66 packages.
 - Root `TEST_PATTERN='presentation-layers|presentationLayerTree|rowSelection|HierarchyPanel.(search|reveal|i18n)|HierarchyNode|useEffectiveMaterialStores' pnpm test --filter=@ifc-lite/viewer --concurrency=2 --env-mode=loose`: 53/53 tests passed, none skipped. The dependent production build and chunk-await guard passed.
-- Module-size, localization literals, accessibility ratchet and type-scale gates passed. Root `pnpm lint` passed (10,760 files, 136 rules, no errors); existing warnings remain outside touched files.
+- Module-size, localization literals, accessibility ratchet and type-scale gates passed. Root `pnpm lint` passed (10,761 files, 136 rules, no errors); existing warnings remain outside touched files.
 - Independent adversarial review repaired stale visibility labels, spatial-product isolation, shared IFCX attribution/readiness, invalid assignment seeds, nested representation ownership, and mutation decoding. Exact implementation review is recorded in [adversarial-review.md](adversarial-review.md).
 
 No Rust, geometry, parser, WASM or published-package sources changed; no perf-sensitive-path verdict or changeset is required. Browser validation used the published `@ifc-lite/wasm@10.4.0` runtime: local wasm-pack regeneration hit an existing wasm-bindgen installation/config error and the build explicitly fell back to the fetched runtime. CI remains responsible for its supported source-build/prebuilt eligibility gates; this evidence makes no local Rust-runtime equivalence claim.
 
-The unedited initial acceptance recording remains at `/home/louistrue/.t3/userdata/attachments/4c28f852-d761-4bcc-8384-9580cf195834-79761a3d-2040-4143-bd81-5430c1a52fee-mp4.mp4` (33,943,346 bytes), outside Git. A later recording could not be stopped/transferred after the preview client switched; it is not cited as evidence. The committed screenshots and automated checks are the portable evidence.
+The initial acceptance recording is retained locally and is not committed. A later recording could not be stopped/transferred after the preview client switched; it is not cited as evidence. The committed screenshots and automated checks are the portable evidence.
 
 Curve-only annotation owners reuse the existing annotation ID collection for layer hide/show. During isolation, symbolic annotation overlays retain their existing global visibility behavior; the new tab does not change overlay isolation semantics.
 

@@ -24,7 +24,7 @@ use std::fmt::{self, Write as _};
 
 use ifc_lite_core::EntityDecoder;
 use ifc_lite_geometry::GeometryRouter;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 use crate::xml_text::escape;
 
@@ -32,8 +32,7 @@ const LANDXML_NAMESPACE: &str = "http://www.landxml.org/schema/LandXML-1.2";
 
 /// The length unit the document is written in (#7618). Coordinates are
 /// computed in metres and converted once, at write time.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum LandXmlLinearUnit {
     #[default]
     Metre,

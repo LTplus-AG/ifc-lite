@@ -60,7 +60,6 @@ export interface RtcFrame {
 
 
 
-/** Unknown fields are refused. */
 export interface LandXmlTerrainOptionsJs {
     /** `YYYY-MM-DD`, the required `LandXML@date`; the caller owns the clock. */
     date: string;

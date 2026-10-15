@@ -6,8 +6,9 @@
 
 use super::IfcAPI;
 use ifc_lite_export::{LandXmlLinearUnit, LandXmlTerrainOptions};
-use serde::Deserialize;
+use js_sys::{Array, Reflect};
 use wasm_bindgen::prelude::*;
+use wasm_bindgen::JsCast;
 
 #[wasm_bindgen]
 extern "C" {
@@ -17,7 +18,6 @@ extern "C" {
 
 #[wasm_bindgen(typescript_custom_section)]
 const LANDXML_TERRAIN_TYPES: &str = r#"
-/** Unknown fields are refused. */
 export interface LandXmlTerrainOptionsJs {
   /** `YYYY-MM-DD`, the required `LandXML@date`; the caller owns the clock. */
   date: string;
@@ -32,24 +32,50 @@ export interface LandXmlTerrainOptionsJs {
 }
 "#;
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct OptionsInput {
-    date: String,
-    time: String,
-    // Each optional field is an `Option`, not `#[serde(default)]`: a JS
-    // caller passing `undefined` reaches serde as a present unit value, which
-    // only `Option` accepts.
-    linear_unit: Option<LandXmlLinearUnit>,
-    decimals: Option<u8>,
-    surface_names: Option<Vec<SurfaceName>>,
+// Read field by field with `Reflect` rather than a serde derive: the options
+// are a handful of scalars, and the derive cost 734 B of brotli (measured) in
+// an engine bundle held by the perf ratchet (#7618).
+fn field(options: &JsValue, name: &str) -> Result<Option<JsValue>, JsError> {
+    let value = Reflect::get(options, &JsValue::from_str(name))
+        .map_err(|_| JsError::new(&format!("exportLandXmlTerrain options.{name} cannot be read")))?;
+    Ok((!value.is_undefined() && !value.is_null()).then_some(value))
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct SurfaceName {
-    product_id: u32,
-    name: String,
+fn text(options: &JsValue, name: &str) -> Result<Option<String>, JsError> {
+    field(options, name)?
+        .map(|value| value.as_string().ok_or_else(|| JsError::new(&format!("exportLandXmlTerrain options.{name} must be a string"))))
+        .transpose()
+}
+
+fn read_options(options: &JsValue) -> Result<LandXmlTerrainOptions, JsError> {
+    if !options.is_object() {
+        return Err(JsError::new("exportLandXmlTerrain options must be an object"));
+    }
+    let required = |name: &str| text(options, name)?.ok_or_else(|| JsError::new(&format!("exportLandXmlTerrain options.{name} is required")));
+    let mut out = LandXmlTerrainOptions::new(required("date")?, required("time")?);
+    if let Some(unit) = text(options, "linearUnit")? {
+        out.linear_unit = match unit.as_str() {
+            "metre" => LandXmlLinearUnit::Metre,
+            "internationalFoot" => LandXmlLinearUnit::InternationalFoot,
+            "usSurveyFoot" => LandXmlLinearUnit::UsSurveyFoot,
+            other => return Err(JsError::new(&format!("exportLandXmlTerrain options.linearUnit {other:?} is not 'metre', 'internationalFoot' or 'usSurveyFoot'"))),
+        };
+    }
+    if let Some(decimals) = field(options, "decimals")? {
+        out.decimals = decimals.as_f64().filter(|value| value.fract() == 0.0 && (0.0..=255.0).contains(value))
+            .ok_or_else(|| JsError::new("exportLandXmlTerrain options.decimals must be a whole number"))? as u8;
+    }
+    if let Some(names) = field(options, "surfaceNames")? {
+        let names = names.dyn_into::<Array>().map_err(|_| JsError::new("exportLandXmlTerrain options.surfaceNames must be an array"))?;
+        for entry in names.iter() {
+            let id = field(&entry, "productId")?.and_then(|id| id.as_f64())
+                .filter(|id| id.fract() == 0.0 && (0.0..=f64::from(u32::MAX)).contains(id))
+                .ok_or_else(|| JsError::new("exportLandXmlTerrain options.surfaceNames[].productId must be an express id"))?;
+            let name = text(&entry, "name")?.ok_or_else(|| JsError::new("exportLandXmlTerrain options.surfaceNames[].name is required"))?;
+            out.surface_names.insert(id as u32, name);
+        }
+    }
+    Ok(out)
 }
 
 #[wasm_bindgen]
@@ -69,14 +95,7 @@ impl IfcAPI {
         product_ids: Vec<u32>,
         options: LandXmlTerrainOptionsJs,
     ) -> Result<String, JsError> {
-        let input: OptionsInput = serde_wasm_bindgen::from_value(options.into())
-            .map_err(|error| JsError::new(&format!("exportLandXmlTerrain options: {error}")))?;
-        let mut options = LandXmlTerrainOptions::new(input.date, input.time);
-        options.linear_unit = input.linear_unit.unwrap_or_default();
-        if let Some(decimals) = input.decimals {
-            options.decimals = decimals;
-        }
-        options.surface_names = input.surface_names.unwrap_or_default().into_iter().map(|entry| (entry.product_id, entry.name)).collect();
+        let options = read_options(&options.into())?;
         let export = ifc_lite_export::try_export_landxml_terrain(content, &product_ids, &options)
             .map_err(|error| JsError::new(&error.to_string()))?;
         serde_json::to_string(&export)

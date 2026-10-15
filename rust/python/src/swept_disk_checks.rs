@@ -7,10 +7,10 @@
 use std::collections::HashSet;
 
 use ifc_lite_processing::{extract_swept_disk_descriptions, SweptDiskCheckOptions};
-use pyo3::exceptions::{PyRuntimeError, PyValueError};
+use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
-use super::{swept_disks, GEOMETRY_STACK_BYTES};
+use super::{run_geometry, swept_disks};
 
 /// Check authored swept-disk paths without tessellating the model. Each
 /// occurrence can contain several source solids, identified in the result by
@@ -34,16 +34,8 @@ pub(super) fn check_swept_disks(
         .validate()
         .map_err(|error| PyValueError::new_err(error.to_string()))?;
 
-    let descriptions = py
-        .detach(|| {
-            std::thread::Builder::new()
-                .stack_size(GEOMETRY_STACK_BYTES)
-                .name("ifclite-swept-disk-checks".into())
-                .spawn(move || extract_swept_disk_descriptions(&ifc_bytes, ids.as_ref()))
-                .map_err(|error| format!("spawn failed: {error}"))?
-                .join()
-                .map_err(|_| "swept-disk checker worker panicked".to_string())
-        })
-        .map_err(PyRuntimeError::new_err)?;
+    let descriptions = run_geometry(py, "swept-disk checker", move || {
+        extract_swept_disk_descriptions(&ifc_bytes, ids.as_ref())
+    })?;
     swept_disks::checks_to_python(py, &descriptions, &options)
 }

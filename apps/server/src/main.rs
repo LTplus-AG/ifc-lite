@@ -304,8 +304,11 @@ async fn main() -> anyhow::Result<()> {
         );
     }
 
-    // Initialize rayon thread pool
-    rayon::ThreadPoolBuilder::new()
+    // Initialize the rayon global pool with processing's large worker stacks
+    // (EDGE-FFI-1, #7673). Every geometry route runs per-element CSG in
+    // `par_iter` jobs on these workers; a default-stack worker that overflows
+    // aborts the whole server, which no `CatchPanicLayer` can catch.
+    ifc_lite_processing::geometry_pool_builder()
         .num_threads(config.worker_threads)
         .build_global()
         .expect("Failed to initialize rayon thread pool");

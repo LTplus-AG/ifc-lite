@@ -37,6 +37,12 @@ pub use shard_classes::{
 #[path = "determinism_tests.rs"]
 mod determinism_tests;
 pub mod element;
+#[cfg(not(target_arch = "wasm32"))]
+mod geometry_pool;
+#[cfg(not(target_arch = "wasm32"))]
+pub use geometry_pool::{
+    geometry_pool, geometry_pool_builder, run_on_geometry_pool, GEOMETRY_STACK_BYTES,
+};
 pub mod geometry_export;
 mod georeferencing;
 pub mod pipeline_diagnostics;

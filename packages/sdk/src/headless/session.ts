@@ -26,7 +26,24 @@ export interface HeadlessModelSession extends ParsedModel {
 }
 
 /** Keep retained query builders and namespace references honest after close. */
-function guardedBackend(backend: HeadlessBackend, assertOpen: () => void): HeadlessBackend {
+function guardedBackend(backend: HeadlessBackend, modelId: string, assertOpen: () => void): HeadlessBackend {
+  const checkRef = (value: unknown): void => {
+    if (!value || typeof value !== 'object') return;
+    if ('modelId' in value && 'expressId' in value && value.modelId !== modelId)
+      throw new TypeError(`Entity reference belongs to model '${String(value.modelId)}', expected '${modelId}'`);
+  };
+  const checkArgs = (args: unknown[]): void => {
+    for (const arg of args) {
+      checkRef(arg);
+      if (!Array.isArray(arg)) continue;
+      for (const item of arg) {
+        checkRef(item);
+        // Colour batches carry reference arrays one level below the argument.
+        if (item && typeof item === 'object' && 'refs' in item && Array.isArray(item.refs))
+          for (const ref of item.refs) checkRef(ref);
+      }
+    }
+  };
   const cache = new WeakMap<object, object>();
   const guard = <T extends object>(value: T, prefix = ''): T => {
     const cached = cache.get(value);
@@ -39,6 +56,13 @@ function guardedBackend(backend: HeadlessBackend, assertOpen: () => void): Headl
           const operation = (prefix ? `${prefix}.${String(key)}` : String(key)) as HeadlessOperation;
           const capability = backend.capability(operation);
           if (!capability.supported) throw new UnsupportedOperationError(operation, capability.reason ?? 'Unsupported operation');
+          if (operation === 'query.entities') {
+            const descriptor = args[0];
+            if (descriptor && typeof descriptor === 'object' && 'modelId' in descriptor &&
+                descriptor.modelId !== undefined && descriptor.modelId !== modelId)
+              throw new TypeError(`Query scope belongs to model '${String(descriptor.modelId)}', expected '${modelId}'`);
+          }
+          checkArgs(args);
           return Reflect.apply(member, target, args);
         };
         if (member && typeof member === 'object') return guard(member, String(key));
@@ -53,6 +77,8 @@ function guardedBackend(backend: HeadlessBackend, assertOpen: () => void): Headl
 
 /** Open STEP/IFCZIP bytes for headless queries, mutations and export. No I/O or renderer is created. */
 export async function openModel(input: Uint8Array | ArrayBuffer, options: OpenModelOptions = {}): Promise<HeadlessModelSession> {
+  const modelId = options.modelId ?? 'model';
+  if (!modelId.trim()) throw new TypeError('modelId must be a non-empty string');
   const parsed = await parseModel(input, options);
   let closed = false;
   const assertOpen = () => { if (closed) throw new HeadlessSessionClosedError(); };
@@ -60,7 +86,7 @@ export async function openModel(input: Uint8Array | ArrayBuffer, options: OpenMo
   const align = provided?.alignGeometry;
   const rooms = provided?.roomGeometry;
   // A native preparation already in flight must not commit after close.
-  const backend = new HeadlessBackend(parsed.store, options.modelName ?? options.label ?? 'model.ifc', options.modelId ?? 'model', {
+  const backend = new HeadlessBackend(parsed.store, options.modelName ?? options.label ?? 'model.ifc', modelId, {
     ...provided,
     alignGeometry: align && (async (...args) => {
       assertOpen();
@@ -78,7 +104,7 @@ export async function openModel(input: Uint8Array | ArrayBuffer, options: OpenMo
       },
     },
   });
-  const bim = createBimContext({ backend: guardedBackend(backend, assertOpen) });
+  const bim = createBimContext({ backend: guardedBackend(backend, modelId, assertOpen) });
   return { ...parsed, bim, capability: operation => backend.capability(operation), get closed() { return closed; }, close() {
     if (closed) return;
     closed = true;

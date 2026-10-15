@@ -61,7 +61,8 @@
         "fullMcp": "729 passed, 5 skipped",
         "sessionWorkflow": "Edit/export/reopen and closed-session refusal proven on the manifest-verified FZK fixture; tests/evidence/headless-session/fzk.json",
         "sessionTypecheck": "root pnpm typecheck passed; all 4185 test files audited",
-        "sessionDocumentation": "473 snippets compiled"
+        "sessionDocumentation": "473 snippets compiled",
+        "identityAndLifetime": "7 SDK session tests pass, including separate sessions with identical EXPRESS ids and late host geometry refusal after close"
       }
     },
     {
@@ -74,7 +75,8 @@
       ],
       "checks": {
         "behavior": "Supported data methods, unsupported viewer/authoring methods, structured errors and attach/detach capability changes tested in the full SDK suite",
-        "compatibility": "Existing MCP constructor retained; full MCP suite passed"
+        "compatibility": "Existing MCP constructor retained; full MCP suite passed",
+        "legacyErrorContract": "Existing MCP constructor returns structured UNSUPPORTED_OPERATION without allocating a mutation overlay"
       }
     },
     {

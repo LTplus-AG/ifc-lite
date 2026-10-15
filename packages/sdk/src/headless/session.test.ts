@@ -5,6 +5,7 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { openModel, HeadlessSessionClosedError, UnsupportedOperationError, HeadlessBackend } from '../headless.js';
+import type { PlanBox } from '@ifc-lite/create';
 import { IfcQuery } from '@ifc-lite/query';
 import { parseModel } from '@ifc-lite/parser';
 
@@ -39,6 +40,46 @@ describe('headless developer workflow (DX2)', () => {
     expect(() => mutate.setProperty(wall.ref, 'Pset_WallCommon', 'FireRating', 'REI 90'))
       .toThrow(HeadlessSessionClosedError);
     expect(() => model.bim.model.list()).toThrow(HeadlessSessionClosedError);
+  });
+
+  it('keeps identical EXPRESS ids in separate model sessions isolated', async () => {
+    const first = await openModel(readFileSync(sample), { modelId: 'first', disableWorkerScan: true });
+    const second = await openModel(readFileSync(sample), { modelId: 'second', disableWorkerScan: true });
+    try {
+      const a = first.bim.query().byType('IfcWall').toArray()[0];
+      const b = second.bim.query().byType('IfcWall').toArray()[0];
+      expect(a.ref.expressId).toBe(b.ref.expressId);
+      expect(() => second.bim.query().model('first').count()).toThrow(/belongs to model/);
+      expect(second.bim.query().model('second').byType('IfcWall').count()).toBe(1);
+      expect(() => second.bim.entity(a.ref)).toThrow(/belongs to model/);
+      expect(() => second.bim.properties(a.ref)).toThrow(/belongs to model/);
+      expect(() => second.bim.store.removeEntity(a.ref)).toThrow(/belongs to model/);
+      expect(second.bim.entity(b.ref)?.globalId).toBe(b.globalId);
+      expect(second.bim.query().byType('IfcWall').count()).toBe(1);
+    } finally { first.close(); second.close(); }
+  });
+
+  it('refuses an in-flight host geometry result after the session closes', async () => {
+    let entered!: () => void;
+    let release!: () => void;
+    const started = new Promise<void>(resolve => { entered = resolve; });
+    const blocked = new Promise<ReadonlyMap<number, PlanBox>>(resolve => { release = () => resolve(new Map()); });
+    const sampleBuilding = new URL('../../../../apps/viewer/public/samples/building-architecture.ifc', import.meta.url);
+    const model = await openModel(readFileSync(sampleBuilding), { disableWorkerScan: true, backend: {
+      alignGeometry: async () => { entered(); return blocked; },
+    } });
+    try {
+      const walls = model.bim.query().byType('IfcWall').toArray();
+      const owner = model.bim.storey(walls[0].ref);
+      expect(owner).not.toBeNull();
+      const sameFloor = walls.filter(wall => model.bim.storey(wall.ref)?.ref.expressId === owner?.ref.expressId);
+      expect(sameFloor.length).toBeGreaterThan(1);
+      const pending = model.bim.store.alignElements('model', sameFloor[0].ref.expressId, [sameFloor[1].ref.expressId], 'left');
+      await Promise.race([started, pending.then(() => { throw new Error('Align completed before its host preparation'); })]);
+      model.close();
+      release();
+      await expect(pending).rejects.toBeInstanceOf(HeadlessSessionClosedError);
+    } finally { model.close(); release(); }
   });
 
   it('reports supported data operations and refuses unavailable viewer calls explicitly', async () => {

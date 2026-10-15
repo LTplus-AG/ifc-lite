@@ -279,7 +279,7 @@ try {
 }
 ```
 
-The returned `store` is the parsed source snapshot; use `bim` for reads that include pending edits. References carry the session's `modelId` and a model-local `expressId`; IFC `GlobalId` values have a different identity role. [`parseModel`](parsing.md#load-step-data-without-a-viewer) documents the scan report: complete record scanning is not schema or geometry validation.
+The returned `store` is the parsed source snapshot; use `bim` for reads that include pending edits. References carry the session's `modelId` and a model-local `expressId`; IFC `GlobalId` values have a different identity role. Backend reads, edits and explicit query scopes reject a different model ID, even when two sessions contain the same EXPRESS IDs. [`parseModel`](parsing.md#load-step-data-without-a-viewer) documents the scan report: complete record scanning is not schema or geometry validation.
 
 Use `model.capability('store.roomCommand')` before offering a backend operation. `supported` describes an implemented/configured method, not guaranteed success for every input or environment. Unavailable calls through this session throw `UnsupportedOperationError` with code `UNSUPPORTED_OPERATION`, operation and reason. Data-only sessions do not silently accept viewer commands. Advanced hosts can supply Room/Align geometry providers through `options.backend`; MCP supplies its existing native providers to the shared `HeadlessBackend`.
 

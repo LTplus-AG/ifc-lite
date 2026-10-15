@@ -93,6 +93,17 @@ export function resolvePresentationLayers(
     ['IfcOffsetCurve3D', ['BasisCurve']],
     ['IfcSurfaceCurve', ['Curve3D']],
     ['IfcCurveSegment', ['ParentCurve']],
+    ['IfcTessellatedFaceSet', ['Coordinates']],
+    ['IfcPolygonalFaceSet', ['Faces']],
+    ['IfcFaceSurface', ['FaceSurface']],
+    ['IfcPolyLoop', ['Polygon']],
+    ['IfcEdge', ['EdgeStart', 'EdgeEnd']],
+    ['IfcAnnotationFillArea', ['OuterBoundary', 'InnerBoundaries']],
+    ['IfcBSplineCurve', ['ControlPointsList']],
+    ['IfcBSplineSurface', ['ControlPointsList']],
+    ['IfcLine', ['Pnt']],
+    ['IfcHalfSpaceSolid', ['BaseSurface']],
+    ['IfcPolygonalBoundedHalfSpace', ['PolygonalBoundary']],
   ] as const;
   for (const [root, attributes] of ownership) {
     for (const type of expandTypeNamesToDescendants([root], store.schemaVersion)) {

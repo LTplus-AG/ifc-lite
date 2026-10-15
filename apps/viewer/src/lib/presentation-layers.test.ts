@@ -200,6 +200,66 @@ test('#7619 IFC4X3 curve segments retain their parent curve ownership', async ()
     .find(layer => layer.expressId === 54)?.productIds, [1, 2]);
 });
 
+test('#7619 supported geometry constituents resolve without following coordinate frames', async t => {
+  const pointList = 'IFCCARTESIANPOINTLIST3D(((0.,0.,0.),(0.,0.,3.),(1.,0.,3.)))';
+  const cases = [
+    { name: 'triangulated coordinates', operand: 'IFCTRIANGULATEDFACESET(#70,$,.F.,((1,2,3)),$)',
+      item: pointList, seed: 70 },
+    { name: 'polygonal coordinates', operand: 'IFCPOLYGONALFACESET(#70,.F.,(#80),$)',
+      item: pointList, extra: '#80=IFCINDEXEDPOLYGONALFACE((1,2,3));', seed: 70 },
+    { name: 'individual polygonal face', operand: 'IFCPOLYGONALFACESET(#70,.F.,(#80),$)',
+      item: pointList, extra: '#80=IFCINDEXEDPOLYGONALFACE((1,2,3));', seed: 80 },
+    { name: 'polyloop vertices', operand: 'IFCFACE((#80))',
+      item: 'IFCPOLYLOOP((#71,#72,#74))', extra: '#80=IFCFACEOUTERBOUND(#70,.T.);', seed: 71 },
+    { name: 'face surface', operand: 'IFCFACESURFACE((#80),#70,.T.)',
+      item: 'IFCPLANE(#90)', extra: '#80=IFCFACEOUTERBOUND(#81,.T.);\n#81=IFCPOLYLOOP((#71,#72,#74));', seed: 70 },
+    { name: 'edge vertices', operand: 'IFCEDGE(#80,#81)',
+      extra: '#80=IFCVERTEXPOINT(#71);\n#81=IFCVERTEXPOINT(#72);', seed: 71 },
+    { name: 'annotation outer boundary', operand: 'IFCANNOTATIONFILLAREA(#70,())',
+      item: 'IFCPOLYLINE((#71,#72,#74,#71))', seed: 70 },
+    { name: 'annotation inner boundary', operand: 'IFCANNOTATIONFILLAREA(#73,(#70))',
+      item: 'IFCPOLYLINE((#71,#72,#74,#71))', seed: 70 },
+    { name: 'B-spline control points',
+      operand: 'IFCBSPLINECURVEWITHKNOTS(1,(#71,#72),.UNSPECIFIED.,.F.,.F.,(2,2),(0.,1.),.UNSPECIFIED.)', seed: 71 },
+    { name: 'B-spline surface control points',
+      operand: 'IFCBSPLINESURFACEWITHKNOTS(1,1,((#71,#72),(#74,#79)),.UNSPECIFIED.,.F.,.F.,.F.,(2,2),(2,2),(0.,1.),(0.,1.),.UNSPECIFIED.)',
+      extra: '#79=IFCCARTESIANPOINT((1.,1.,3.));', seed: 71 },
+    { name: 'line endpoint', operand: 'IFCLINE(#71,#80)',
+      extra: '#80=IFCVECTOR(#81,1.);\n#81=IFCDIRECTION((1.,0.,0.));', seed: 71 },
+    { name: 'half-space generating surface', operand: 'IFCBOOLEANCLIPPINGRESULT(.DIFFERENCE.,#33,#80)',
+      item: 'IFCPLANE(#90)', extra: '#80=IFCHALFSPACESOLID(#70,.T.);', seed: 70 },
+    { name: 'bounded half-space polygon', operand: 'IFCBOOLEANCLIPPINGRESULT(.DIFFERENCE.,#33,#80)',
+      item: 'IFCPOLYLINE((#71,#72,#74,#71))',
+      extra: '#80=IFCPOLYGONALBOUNDEDHALFSPACE(#81,.T.,#90,#70);\n#81=IFCPLANE(#90);', seed: 70 },
+  ];
+  for (const example of cases) {
+    await t.test(example.name, async () => {
+      let source = curveOperandFixture(example.operand);
+      if (example.item) source = source.replace('#70=IFCPOLYLINE((#71,#72));', `#70=${example.item};`);
+      if (example.extra) source = source.replace('#90=IFCAXIS2PLACEMENT3D', `${example.extra}\n#90=IFCAXIS2PLACEMENT3D`);
+      const store = await parse(source);
+      const view = new MutablePropertyView(null, 'legacy');
+      view.setAttribute(54, 'AssignedItems', `#${example.seed}`);
+      assert.deepEqual(resolvePresentationLayers(store, view)
+        .find(layer => layer.expressId === 54)?.productIds, [1, 2], example.name);
+      assert.equal(store.getEntity(33)?.attributes[1], 90,
+        'unrelated wall shares a coordinate frame but must not enter the constituent layer');
+    });
+  }
+});
+
+test('#7619 malformed generating-surface cycles are bounded and preserve reachable owners', async () => {
+  const store = await parse(curveOperandFixture('IFCBOOLEANCLIPPINGRESULT(.DIFFERENCE.,#33,#80)')
+    .replace('#90=IFCAXIS2PLACEMENT3D', '#80=IFCHALFSPACESOLID(#80,.T.);\n#90=IFCAXIS2PLACEMENT3D'));
+  const view = new MutablePropertyView(null, 'legacy');
+  view.setAttribute(54, 'AssignedItems', '#80');
+  assert.deepEqual(resolvePresentationLayers(store, view)
+    .find(layer => layer.expressId === 54)?.productIds, [1, 2]);
+  view.deleteEntity(80);
+  assert.deepEqual(resolvePresentationLayers(store, view)
+    .find(layer => layer.expressId === 54)?.productIds, []);
+});
+
 // These shape representations are owned exclusively through shape aspects:
 // neither the product definition shape nor the map names them directly.
 const aspectFixture = fixture.replace('#90=IFCAXIS2PLACEMENT3D', `

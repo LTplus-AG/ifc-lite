@@ -60,6 +60,10 @@
 //! A distant target can leave the source plane's band beyond the existing
 //! wall. Mutual coincidence then fails even though welding would break an
 //! exact finite wall incidence. The additional `refuses_finite` rule requires
+//! finite, noncollapsed original operands with exactly one opposite pair of
+//! uses per edge. This necessary closed-edge prerequisite does not certify
+//! solid validity or vertex manifoldness. Uncertified inputs retain the
+//! established coincidence rule. The local certificate then requires
 //! a complete manifold host arris contained in an original manifold cutter
 //! arris, with an incident cutter face exactly coplanar with the source face.
 //! Both arrises have two opposite edge uses and noncoplanar incident faces.
@@ -118,6 +122,7 @@ fn coincide(a: &Face, b: &Face) -> bool {
 /// Faces are named by their index in the slice it was built over.
 pub(super) struct Guard<'a> {
     faces: &'a [Face],
+    source_host: &'a [super::Tri],
     finite_edges: Option<super::finite::Edges>,
     /// The host faces at each vertex position. Built on first need: most
     /// cutters never reach a coinciding pair.
@@ -128,9 +133,10 @@ pub(super) struct Guard<'a> {
 }
 
 impl<'a> Guard<'a> {
-    pub(super) fn new(faces: &'a [Face]) -> Self {
+    pub(super) fn new(faces: &'a [Face], source_host: &'a [super::Tri]) -> Self {
         Guard {
             faces,
+            source_host,
             finite_edges: None,
             at: None,
             last: None,
@@ -178,6 +184,15 @@ impl<'a> Guard<'a> {
         false
     }
 
+    /// Admit only the original complete closed edge soup. `Face::new` can
+    /// omit invalid faces, so its filtered list cannot establish this fact.
+    /// The same lazy map supplies the finite arris queries below.
+    pub(super) fn closed_edge_incidence(&mut self) -> bool {
+        self.finite_edges.get_or_insert_with(||
+            super::finite::Edges::new(self.source_host.iter())
+        ).closed_edge_incidence()
+    }
+
     /// #7635: a finite cutter arris contains an existing host arris. A remote
     /// target need not stay near the host plane beyond that finite incidence,
     /// but the whole source face must still be in its existing weld band.
@@ -197,7 +212,7 @@ impl<'a> Guard<'a> {
                 let (a, b) = (&faces[g].t[i], &faces[g].t[(i + 1) % 3]);
                 if cutter.contains(v, a, b, &faces[g].t)
                     && self.finite_edges.get_or_insert_with(||
-                        super::finite::Edges::new(faces.iter().map(|f| &f.t))
+                        super::finite::Edges::new(self.source_host.iter())
                     ).is_arris(a, b)
                 {
                     left.push(g);

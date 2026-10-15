@@ -28,7 +28,7 @@ fn faces(tris: &[Tri]) -> Vec<Face> {
 /// Would the weld of a vertex exactly on the faces `on` to `w`, on
 /// `tris[target]`'s plane, be refused against the host `tris`?
 fn refused(tris: &[Tri], w: &[f64; 3], target: usize, on: &[usize]) -> bool {
-    Guard::new(&faces(tris)).refuses(w, target, on)
+    Guard::new(&faces(tris), tris).refuses(w, target, on)
 }
 
 /// `g`: a wall in the plane `y = 0`. The vertex `v` is exactly on it.
@@ -135,8 +135,9 @@ fn one_guard_answers_each_question_on_its_own() {
     // ONE guard: the answer remembered for the last question must not stand
     // in for the next.
     let hinge: Tri = [[3.0, -G, 0.0], [3.0, -G, 1.0], V];
-    let f = faces(&[WALL, CROSSING, hinge]);
-    let mut guard = Guard::new(&f);
+    let host = [WALL, CROSSING, hinge];
+    let f = faces(&host);
+    let mut guard = Guard::new(&f, &host);
     assert!(guard.refuses(&OFF, 1, &[0]));
     assert!(!guard.refuses(&OFF, 1, &[0, 2]));
     assert!(guard.refuses(&OFF, 1, &[0]));

@@ -5,12 +5,12 @@
 /**
  * A LandXML placed under a georeferencing assumption the user chose
  * (`FederatedModel.landXmlAssumptionsApplied`) says so, in words, where a
- * user looks at the model: its metadata panel and its source inspector. A
- * model placed on declared CRSs alone shows no such notice.
+ * user looks at the model: its metadata panel. A model placed on declared
+ * CRSs alone shows no such notice.
  *
- * Rendered through the existing panels (`ModelMetadataPanel`,
- * `useLandXmlSourceInspector`), so the file loads and these assertions fail
- * on their own merits with the production change reverted.
+ * Rendered through the existing `ModelMetadataPanel`, so the file loads and
+ * these assertions fail on their own merits with the production change
+ * reverted.
  */
 
 import '@/test/setup-dom.js';
@@ -20,7 +20,6 @@ import { cleanup, render, waitFor, advance } from '@/test/render.js';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { ModelMetadataPanel } from './ModelMetadataPanel';
-import { useLandXmlSourceInspector } from './useLandXmlSourceInspector';
 
 const initialState = useViewerStore.getState();
 
@@ -46,11 +45,6 @@ function landXmlModel(applied?: string[], crs?: string): FederatedModel {
 async function assumedNotice(root: HTMLElement): Promise<string> {
   await waitFor(() => /Assumed/.test(root.textContent ?? ''), 'the "Assumed" notice', 3000);
   return root.textContent ?? '';
-}
-
-function SourceInspectorHost() {
-  const models = useViewerStore((state) => state.models);
-  return useLandXmlSourceInspector(models);
 }
 
 describe('LandXML "Assumed" placement notice', () => {
@@ -81,20 +75,5 @@ describe('LandXML "Assumed" placement notice', () => {
       assert.doesNotMatch(panel.textContent ?? '', /Assumed|read from the CoordinateSystem name/);
       cleanup();
     }
-  });
-
-  it('the source inspector of a model placed under an assumption carries the same notice', async () => {
-    const model = landXmlModel(['sharedVerticalDatum']);
-    useViewerStore.setState({ ...fixtureModels(model), selectedLandXmlSource: { modelId: 'terrain', sourceId: 'surface' } });
-    const root = render(<SourceInspectorHost />);
-    const text = await assumedNotice(root);
-    assert.match(text, /Heights assumed to share the anchor model's height system/);
-  });
-
-  it('the source inspector of a model placed on declared CRSs shows no notice', async () => {
-    useViewerStore.setState({ ...fixtureModels(landXmlModel()), selectedLandXmlSource: { modelId: 'terrain', sourceId: 'surface' } });
-    const root = render(<SourceInspectorHost />);
-    await advance(50);
-    assert.doesNotMatch(root.textContent ?? '', /Assumed/);
   });
 });

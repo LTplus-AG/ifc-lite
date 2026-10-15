@@ -128,8 +128,8 @@ You can choose them in two places:
   apply to every LandXML you add to a georeferenced model from then on. They are saved in this
   browser.
 
-A model placed using an assumption is marked **Assumed**: in its model information panel (select
-the model in the hierarchy) and above its source records in the properties panel. Each
+A model placed using an assumption is marked **Assumed** in its model information panel (select
+the model in the hierarchy). Each
 assumption it used is listed in words, for example "Heights assumed to share the anchor model's
 height system: no vertical datum is declared" or "EPSG:31467 read from the CoordinateSystem name:
 no EPSG code is declared". A model aligned on declared CRSs alone has no such mark, even if the

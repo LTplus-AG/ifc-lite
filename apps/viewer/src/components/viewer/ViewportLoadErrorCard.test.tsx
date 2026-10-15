@@ -21,7 +21,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
-  act(() => useViewerStore.setState({ error: null, lastLoadRetry: null }));
+  act(() => useViewerStore.setState({ error: null, lastLoadRetry: null, landXmlUnitsRefusal: null, landXmlAssumptionRefusal: null }));
 });
 
 function findButton(container: HTMLElement, text: string): HTMLButtonElement {
@@ -67,5 +67,16 @@ describe('ViewportLoadErrorCard (#5851)', () => {
     assert.equal(useViewerStore.getState().error, null);
     assert.equal(useViewerStore.getState().lastLoadRetry, null, 'dismiss releases the captured load source');
     assert.equal(retried, 0);
+  });
+
+  it('stays out of the way while a LandXML choice prompt answers the same failure', () => {
+    act(() => useViewerStore.setState({
+      error: 'LandXML parsing failed: LandXML federation preflight rejected every render component',
+      landXmlAssumptionRefusal: { fileName: 'terrain.xml', message: 'refused', offer: ['sharedVerticalDatum'], retry: () => undefined },
+    }));
+    const container = render(<ViewportLoadErrorCard />);
+    assert.equal(container.querySelector('[data-viewport-load-error-card]'), null, 'the prompt is not covered by the generic card');
+    act(() => useViewerStore.setState({ landXmlAssumptionRefusal: null }));
+    assert.ok(container.querySelector('[data-viewport-load-error-card]'), 'cancelling the prompt leaves the failure reported');
   });
 });

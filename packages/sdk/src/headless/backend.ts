@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/** Minimal `BimBackend` for MCP tools over an already-loaded store. */
+/** Shared headless `BimBackend` over an already-loaded store. */
 
 import type {
   BimBackend,
@@ -74,7 +74,7 @@ export class HeadlessBackend implements BimBackend {
   private modelId: string;
   /** Every model id this backend answers for, so the schedule assert, the
    *  `bim.mutate.*` guard and `bim.store.addEntity` cannot differ (#3764). The
-   *  file basename is NOT one: no other MCP site accepts one. */
+   *  legacy-host aliases are accepted only when explicitly supplied. */
   private readonly acceptedModelIds: readonly string[];
   /** The reference check `bim.mutate.*` is gated on (`null` when writable,
    *  else the reason), exposed because the mutation TOOLS write into
@@ -93,12 +93,12 @@ export class HeadlessBackend implements BimBackend {
 
   dispose(): void { this.disposeRoomCommands(); }
 
-  constructor(store: IfcDataStore, modelName: string, modelId: string, options: HeadlessBackendOptions = {}) {
+  constructor(store: IfcDataStore, modelName: string, modelId: string, options: HeadlessBackendOptions = {}, modelAliases: readonly string[] = []) {
     this.options = { ...options };
     this.dataStore = store;
     this.modelName = modelName;
     this.modelId = modelId;
-    this.acceptedModelIds = [modelId];
+    this.acceptedModelIds = [...new Set([modelId, ...modelAliases])];
     this.model = this.createModelAdapter();
     // The read surface folds this session's queued mutations in (#2004). The
     // overlay is passed as a getter because it is built lazily on the first
@@ -255,7 +255,7 @@ export class HeadlessBackend implements BimBackend {
   }
 
   /** Refuse an unknown model id loudly, at whichever surface was handed it. */
-  private assertKnownModelId(modelId: string): void {
+  assertKnownModelId(modelId: string): void {
     if (this.acceptsModelId(modelId)) return;
     throw new Error(
       `Unknown modelId '${modelId}': this backend answers for ${this.acceptedModelIds.map(id => `'${id}'`).join(' or ')}`,

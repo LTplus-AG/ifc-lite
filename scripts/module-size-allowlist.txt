@@ -167,7 +167,6 @@
    501 packages/cli/src/commands/create.ts
    482 packages/cli/src/commands/extract-entities.ts
    501 packages/cli/src/commands/query.ts
-   798 packages/cli/src/headless-backend.ts
    457 packages/codegen/src/express-parser.ts
    660 packages/codegen/src/rust-generator.ts
    640 packages/codegen/src/typescript-generator.ts

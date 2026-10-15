@@ -2,32 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/**
- * The read half of `HeadlessLikeBackend`, with the session's pending mutations
- * folded in (#2004).
- *
- * `MutablePropertyView` is an overlay: the parsed store's buffer and index are
- * never touched, and the edits only materialise in `StepExporter`. Every read
- * that went straight to the store therefore answered about the file *as parsed*,
- * so an agent that edited and then read back to confirm was told its edit had
- * not happened — and the natural recovery from that is to edit again.
- *
- * The fold lives here rather than in the tools because this is the one
- * chokepoint they all pass through: `get_entity`, `query_entities`,
- * `get_entities_bulk`, `count_entities` and `properties_unique` all go through
- * `bim.*`, which is this adapter. Folding at tool level would mean each tool
- * re-implementing it — and `query_entities`' property filters would have to
- * re-implement the *filter*, which is exactly where a half-fold does the most
- * damage: a query for the value just written must find it.
- *
- * `related` folds too (#2014), and with it every containment answer the SDK
- * builds on top of it — `bim.storey`, `bim.path`, `bim.contains`,
- * `bim.decomposes`. A queued `IfcRelContainedInSpatialStructure` is how an agent
- * places something over MCP, so ignoring it was ignoring a write.
- *
- * Exact `relationships().relations` rows are folded through the same overlay.
- * Legacy projections and geometry rebuild on `model_load` after a save.
- */
+/** Shared headless reads fold live edits once for SDK, CLI and MCP hosts. */
 
 import type {
   EntityRef,
@@ -95,7 +70,14 @@ export function createQueryAdapter(
   modelId: string,
   overlay: () => PendingOverlay | null,
   mutationView: () => MutablePropertyView | null,
+  options: {
+    paginationError?: new (message: string) => Error;
+    normalizeTypePropertyValue?: (value: unknown) => string | number | boolean | null;
+  } = {},
 ): QueryBackendMethods {
+  const PaginationError = options.paginationError ?? Error;
+  const normalizeTypePropertyValue = options.normalizeTypePropertyValue ??
+    ((value: unknown) => value as string | number | boolean | null);
   function entityData(ref: EntityRef): EntityData | null {
     const pending = overlay();
     if (pending?.deleted.has(ref.expressId)) return null;
@@ -163,7 +145,7 @@ export function createQueryAdapter(
     return psets.map((pset) => ({
       name: pset.name,
       globalId: pset.globalId,
-      properties: pset.properties.map((p) => ({ name: p.name, type: p.type, value: p.value as string | number | boolean | null })),
+      properties: pset.properties.map((p) => ({ name: p.name, type: p.type, value: normalizeTypePropertyValue(p.value) })),
     }));
   }
 
@@ -298,13 +280,13 @@ export function createQueryAdapter(
       // quietly serving more rows than the caller requested (#2298).
       if (descriptor.offset != null) {
         if (!Number.isFinite(descriptor.offset) || descriptor.offset < 0) {
-          throw new Error(`Invalid offset: ${descriptor.offset} (must be a non-negative finite number)`);
+          throw new PaginationError(`Invalid offset: ${descriptor.offset} (must be a non-negative finite number)`);
         }
         if (descriptor.offset > 0) filtered = filtered.slice(descriptor.offset);
       }
       if (descriptor.limit != null) {
         if (!Number.isFinite(descriptor.limit) || descriptor.limit < 0) {
-          throw new Error(`Invalid limit: ${descriptor.limit} (must be a non-negative finite number)`);
+          throw new PaginationError(`Invalid limit: ${descriptor.limit} (must be a non-negative finite number)`);
         }
         filtered = filtered.slice(0, descriptor.limit);
       }
@@ -332,7 +314,7 @@ export function createQueryAdapter(
         properties: info.properties.map((pset) => ({
           name: pset.name,
           globalId: pset.globalId,
-          properties: pset.properties.map((p) => ({ name: p.name, type: p.type, value: p.value as string | number | boolean | null })),
+          properties: pset.properties.map((p) => ({ name: p.name, type: p.type, value: normalizeTypePropertyValue(p.value) })),
         })),
       };
     },

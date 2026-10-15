@@ -16,7 +16,8 @@ session.capability('query.notAnOperation');
 try { session.bim.query().byType('IfcDoor').toArray(); }
 catch (error) {
   if (error instanceof UnsupportedOperationError) console.error(error.code, error.operation);
-  if (error instanceof IfcInputError) console.error(error.code);
+  else if (error instanceof IfcInputError) console.error(error.code);
+  else throw error;
 }
 const processor = new GeometryProcessor();
 processor.dispose();

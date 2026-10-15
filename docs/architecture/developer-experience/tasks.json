@@ -136,7 +136,8 @@
         "runtime": "Committed IFC wall and manifest-verified FZK (5 doors): query/edit/export/reopen, stable GlobalId, structured unsupported/closed errors, real WASM GLB export",
         "command": "Public root pnpm test:packed command integration test passed",
         "evidence": "tests/evidence/packed-workflows/receipt.json",
-        "wiring": "Node guards invokes pnpm test:packed; test-wiring and touched-file oxlint passed"
+        "wiring": "Node guards invokes pnpm test:packed; test-wiring and touched-file oxlint passed",
+        "oracle": "Ordinary full revert against CLI integration parent OBSERVED: the public developer command consumer fails an assertion; restoration verified"
       }
     },
     {

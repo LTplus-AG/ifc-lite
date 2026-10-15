@@ -17,7 +17,7 @@ test('packed workflow command proves consumer behavior on real IFC bytes (DX5)',
   const result = pnpm && /\.(c?js|mjs)$/i.test(pnpm)
     ? spawnSync(process.execPath, [pnpm, '--silent', 'test:packed'], { cwd: root, encoding: 'utf8', timeout: 170000 })
     : spawnSync('pnpm', ['--silent', 'test:packed'], { cwd: root, encoding: 'utf8', timeout: 170000 });
-  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.status, 0, result.error?.message ?? result.stderr);
   const report = JSON.parse(result.stdout);
   assert.equal(report.declarationsChecked, true);
   assert.ok(report.packageVersions['@ifc-lite/sdk']);

@@ -9,6 +9,7 @@ mod generated;
 mod documents;
 mod materials;
 mod material_units;
+mod material_usages;
 mod metadata;
 mod properties;
 mod property_value;

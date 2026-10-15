@@ -1,0 +1,11 @@
+# Production Rust files allowed to use `partial_cmp`. Enforced by
+# scripts/check-float-sort-comparators.mjs (issue #7674), which flags every
+# non-test use, because `partial_cmp` is not a total order on NaN and a sort,
+# min or max built on it may panic (an abort in the wasm build).
+#
+# Format, one per line:
+#   <count> <path>  # reason, and what removes the row
+# A file's use count must EQUAL its row: a new use fails, and a removed use
+# fails as stale until the row is lowered or deleted.
+1 rust/geometry/src/float_order.rs  # the sanctioned NaN-last comparator itself; `None` maps to NaN last
+1 rust/geometry/src/router/processing.rs  # enclosing_f32 matches Some(Greater/Less) and treats None (NaN) as "no rounding"; not a comparator

@@ -187,11 +187,8 @@ impl GeometryProcessor for SectionedSolidHorizontalProcessor {
         } else {
             None
         };
-        authored.sort_by(|a, b| {
-            a.1.distance_along
-                .partial_cmp(&b.1.distance_along)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
+        // NaN-last total order (#7674): a NaN distance_along cannot panic the sort.
+        authored.sort_by(|a, b| crate::cmp_f64_nan_last(a.1.distance_along, b.1.distance_along));
 
         // Walk authored pairs, subdividing intermediate stations
         // wherever the alignment curves significantly between them.

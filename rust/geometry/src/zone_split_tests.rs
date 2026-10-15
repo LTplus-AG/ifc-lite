@@ -326,7 +326,7 @@ fn oriented_key(t: &Tri) -> String {
     let start = (0..3)
         .min_by(|&a, &b| {
             let (x, y) = (t[a], t[b]);
-            x.partial_cmp(&y).unwrap_or(std::cmp::Ordering::Equal)
+            x.partial_cmp(&y).expect("finite test vertex")
         })
         .unwrap_or(0);
     (0..3)

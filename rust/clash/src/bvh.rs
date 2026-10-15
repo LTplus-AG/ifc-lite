@@ -192,6 +192,32 @@ fn compute_bounds(indices: &[usize], bounds: &[Aabb]) -> Aabb {
     Aabb::new(min, max)
 }
 
+/// Port of `compareCenters` in `packages/spatial/src/bvh.ts`: centre along
+/// `axis` ascending, a NaN centre after every number, then the item index.
+/// That is a total order, so `sort_by` cannot panic on the NaN centres a
+/// NaN-vertex triangle produces (#5220, #7674). `<`/`>` rather than
+/// `total_cmp`, because TS treats `-0` and `+0` as equal and lets the index
+/// decide. The index tie-break also makes each child's order independent of
+/// the parent's sort, which is how the TS quickselect sees it.
+fn compare_centers(bounds: &[Aabb], a: usize, b: usize, axis: usize) -> std::cmp::Ordering {
+    use std::cmp::Ordering;
+    let ca = (bounds[a].min[axis] + bounds[a].max[axis]) / 2.0;
+    let cb = (bounds[b].min[axis] + bounds[b].max[axis]) / 2.0;
+    if ca < cb {
+        Ordering::Less
+    } else if ca > cb {
+        Ordering::Greater
+    } else if ca.is_nan() != cb.is_nan() {
+        if ca.is_nan() {
+            Ordering::Greater
+        } else {
+            Ordering::Less
+        }
+    } else {
+        a.cmp(&b)
+    }
+}
+
 fn build_node(indices: &mut [usize], bounds: &[Aabb]) -> Box<Node> {
     if indices.len() == 1 {
         let idx = indices[0];
@@ -219,13 +245,8 @@ fn build_node(indices: &mut [usize], bounds: &[Aabb]) -> Box<Node> {
         2
     };
 
-    // Sort by center along axis. The TS comparator subtracts centers; a stable
-    // sort by that key reproduces the same ordering.
-    indices.sort_by(|&a, &b| {
-        let ca = (bounds[a].min[axis] + bounds[a].max[axis]) / 2.0;
-        let cb = (bounds[b].min[axis] + bounds[b].max[axis]) / 2.0;
-        ca.partial_cmp(&cb).unwrap_or(std::cmp::Ordering::Equal)
-    });
+    // Sort by center along axis with the TS `compareCenters` order (#7674).
+    indices.sort_by(|&a, &b| compare_centers(bounds, a, b, axis));
 
     let mid = indices.len() / 2;
     let (left_indices, right_indices) = indices.split_at_mut(mid);
@@ -236,3 +257,7 @@ fn build_node(indices: &mut [usize], bounds: &[Aabb]) -> Box<Node> {
         ids: Vec::new(),
     })
 }
+
+#[cfg(test)]
+#[path = "bvh_tests.rs"]
+mod tests;

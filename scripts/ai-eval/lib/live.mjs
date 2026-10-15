@@ -71,13 +71,16 @@ export const DEFAULT_URLS = { anthropic: 'https://api.anthropic.com/v1/messages'
 export function wireRequest(kind, { model, request, settings }) {
   const { system, messages, maxOutputTokens } = request;
   const maxTokens = Math.min(maxOutputTokens, settings.maxOutputTokens);
+  // The viewer sends sampling params only to models flagged for them; others 400 on a temperature.
+  // Captures that predate the flag carry no field and keep the fixed setting.
+  const temperature = request.acceptsTemperature === false ? {} : { temperature: settings.temperature };
   if (kind === 'anthropic') {
     return { headers: { 'anthropic-version': ANTHROPIC_VERSION },
-      body: { model, max_tokens: maxTokens, temperature: settings.temperature, system, messages, stream: true } };
+      body: { model, max_tokens: maxTokens, ...temperature, system, messages, stream: true } };
   }
   if (kind === 'openai') {
     return { headers: {},
-      body: { model, max_completion_tokens: maxTokens, temperature: settings.temperature, stream: true, stream_options: { include_usage: true },
+      body: { model, max_completion_tokens: maxTokens, ...temperature, stream: true, stream_options: { include_usage: true },
         messages: [{ role: 'system', content: system }, ...messages] } };
   }
   return { headers: {}, body: { model, maxOutputTokens: maxTokens, system, messages } };

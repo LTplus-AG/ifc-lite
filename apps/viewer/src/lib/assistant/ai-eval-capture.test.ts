@@ -32,6 +32,13 @@ test('#6928 proxy, Anthropic and both OpenAI APIs capture one route-neutral requ
     assert.deepEqual(request.messages, proxy.messages, 'the OpenAI system or developer entry is not left in the conversation');
     assert.equal(request.maxOutputTokens, proxy.maxOutputTokens);
   }
+  // Sequential: each capture swaps the global fetch and the stored keys.
+  const accepts: Record<string, boolean> = {};
+  for (const model of ['claude-sonnet-5-5', 'claude-haiku-4-5-20251001']) {
+    const result = await captureRequest(task, model);
+    accepts[model] = 'request' in result && result.request.acceptsTemperature;
+  }
+  assert.deepEqual(accepts, { 'claude-sonnet-5-5': false, 'claude-haiku-4-5-20251001': true }, 'temperature follows the viewer model flag');
   const { anthropicKey, openaiKey } = getApiKeys();
   assert.deepEqual([anthropicKey, openaiKey], ['', ''], 'the capture placeholder is not left stored');
 });

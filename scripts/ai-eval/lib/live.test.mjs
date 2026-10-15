@@ -144,3 +144,12 @@ test('receipts record the temperature actually sent, and redirects are never fol
     fetchImpl: async () => new Response(null, { status: 307, headers: { location: 'https://elsewhere.invalid/' } }), now: Date.now });
   assert.equal(redirected.outcome, 'error', 'a redirect is a failure, not a hop');
 });
+
+test('#6928 wireRequest omits temperature where the Assistant sent none', () => {
+  const settings = { temperature: 0, maxOutputTokens: 1000 };
+  const request = { system: 'SYSTEM', messages: [{ role: 'user', content: 'q' }], maxOutputTokens: 4096, acceptsTemperature: false };
+  for (const kind of ['anthropic', 'openai']) {
+    assert.ok(!('temperature' in wireRequest(kind, { model: 'm', request, settings }).body), kind);
+    assert.equal(wireRequest(kind, { model: 'm', request: { ...request, acceptsTemperature: true }, settings }).body.temperature, 0, kind);
+  }
+});

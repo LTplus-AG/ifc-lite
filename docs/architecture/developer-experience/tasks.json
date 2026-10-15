@@ -115,7 +115,9 @@
       "title": "Consumer artifact workflows and scaffold compatibility",
       "status": "in_progress",
       "acceptance": "Fresh external consumer installs packed artifacts and proves workflows; scaffold dependency combinations tested together in CI",
-      "pullRequests": [],
+      "pullRequests": [
+        "https://github.com/LTplus-AG/ifc-lite/pull/7648"
+      ],
       "subtasks": [
         {
           "title": "Public SDK headless entry point works in a fresh Node process",

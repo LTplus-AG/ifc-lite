@@ -4,7 +4,7 @@
 
 /**
  * proj4 definitions that replace what epsg.io returns, applied by
- * generate-epsg-index.ts after every fetch. Each entry fixes a known-bad
+ * generate-epsg-index.ts after every fetch and by augment-epsg-proj4.ts. Each entry fixes a known-bad
  * epsg.io string (wrong Helmert rotation convention or a missing +towgs84;
  * see the doc block above fetchProj4Definitions there), so a regeneration
  * cannot silently bring the error back. Add a control point
@@ -43,7 +43,7 @@ function dbRefOverrides(): Array<[string, string]> {
   return overrides;
 }
 
-export const PROJ4_OVERRIDES: ReadonlyMap<string, string> = new Map([
+const OVERRIDE_LIST: Array<[string, string]> = [
   // #2904: Belgian Lambert 72, EPSG:1652 Position Vector signs.
   ['31370', '+proj=lcc +lat_0=90 +lon_0=4.36748666666667 +lat_1=51.1666672333333 +lat_2=49.8333339 +x_0=150000.013 +y_0=5400088.438 +ellps=intl +towgs84=-106.8686,52.2978,-103.7239,0.3366,-0.457,1.8422,-1.2747 +units=m +no_defs +type=crs'],
   // #2904: Sweden RT90, EPSG:1896 (method 9607) negated.
@@ -51,7 +51,19 @@ export const PROJ4_OVERRIDES: ReadonlyMap<string, string> = new Map([
   // #2904: S-JTSK (Ferro) / Krovak, EPSG:5239 (method 9607) negated; epsg.io sometimes omits it.
   ['2065', '+proj=krovak +axis=swu +lat_0=49.5 +lon_0=42.5 +alpha=30.2881397527778 +k=0.9999 +x_0=0 +y_0=0 +ellps=bessel +pm=ferro +towgs84=572.213,85.334,461.94,4.9732,1.529,5.2484,3.5378 +units=m +no_defs +type=crs'],
   ...dbRefOverrides(),
-]);
+];
+
+/** Throws on a repeated code, which a Map would otherwise drop silently. */
+function uniqueByCode(list: Array<[string, string]>): ReadonlyMap<string, string> {
+  const map = new Map<string, string>();
+  for (const [code, proj4] of list) {
+    if (map.has(code)) throw new Error(`duplicate proj4 override for EPSG:${code}`);
+    map.set(code, proj4);
+  }
+  return map;
+}
+
+export const PROJ4_OVERRIDES = uniqueByCode(OVERRIDE_LIST);
 
 /**
  * Replace incoming proj4 strings with PROJ4_OVERRIDES and report, per code,

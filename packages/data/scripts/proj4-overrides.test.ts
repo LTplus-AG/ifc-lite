@@ -4,7 +4,7 @@
 
 import proj4 from 'proj4';
 import { describe, expect, it } from 'vitest';
-import { PROJ4_OVERRIDES } from '../../../scripts/epsg-proj4-overrides.js';
+import { PROJ4_OVERRIDES, applyProj4Overrides } from '../../../scripts/epsg-proj4-overrides.js';
 import { lookupEpsgByCode } from '../src/epsg-index.js';
 
 // The generator writes these strings into the bundle after every fetch; the
@@ -27,3 +27,15 @@ it('EPSG:5828 (geocentric DB_REF) applies the datum shift (#7658)', async () => 
   expect(lon).toBeCloseTo(7.514840053, 6);
   expect(lat).toBeCloseTo(50.410395459, 6);
 });
+
+it('applyProj4Overrides rewrites listed codes and leaves others alone', () => {
+  const dbRef = PROJ4_OVERRIDES.get('9933')!;
+  const entries = [
+    { code: '9933', proj4: '+proj=tmerc +ellps=bessel +units=m' },
+    { code: '5683', proj4: PROJ4_OVERRIDES.get('5683') },
+    { code: '4326', proj4: '+proj=longlat +datum=WGS84 +no_defs' },
+  ];
+  applyProj4Overrides(entries);
+  expect(entries.map((entry) => entry.proj4)).toEqual([dbRef, PROJ4_OVERRIDES.get('5683'), '+proj=longlat +datum=WGS84 +no_defs']);
+});
+

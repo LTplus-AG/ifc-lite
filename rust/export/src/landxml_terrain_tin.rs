@@ -55,10 +55,7 @@ pub(super) fn read_terrain(
         return Err(format!("the placement and map conversion of #{id} produce non-finite map coordinates"));
     }
     for (number, face) in faces.iter().enumerate() {
-        let [a, b, c] = face.map(|index| points[index - 1]);
-        let (u, v) = ([b[0] - a[0], b[1] - a[1], b[2] - a[2]], [c[0] - a[0], c[1] - a[1], c[2] - a[2]]);
-        let cross = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
-        if cross.iter().all(|value| *value == 0.0) {
+        if super::degenerate(face.map(|index| points[index - 1])) {
             return Err(format!("face {} of #{id} is degenerate in map coordinates", number + 1));
         }
     }

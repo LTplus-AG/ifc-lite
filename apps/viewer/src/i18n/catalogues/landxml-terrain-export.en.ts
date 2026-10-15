@@ -59,7 +59,7 @@ export const landXmlTerrainExportEn = {
   'landXmlTerrainExport.decimalsLabel': 'Decimal places',
   'landXmlTerrainExport.decimals.3': '3 (0.001)',
   'landXmlTerrainExport.decimals.4': '4 (0.0001)',
-  'landXmlTerrainExport.decimals.6': '6 (0.000001, no rounding loss)',
+  'landXmlTerrainExport.decimals.6': '6 (0.000001)',
 
   'landXmlTerrainExport.exportedMessage': 'Exported LandXML terrain ({sizeKb} KB)',
   'landXmlTerrainExport.failedMessage': 'LandXML terrain export failed: {reason}',

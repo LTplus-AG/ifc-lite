@@ -341,3 +341,20 @@ fn surface_names_override_the_ifc_name_and_stay_unique() {
     let export = try_export_landxml_terrain(model.step().as_bytes(), &[18], &options).unwrap();
     assert_eq!(export.surfaces[0].name, "Ground", "a blank override keeps the IFC name");
 }
+
+#[test]
+fn refuses_a_precision_that_collapses_a_face() {
+    // A sub-millimetre triangle: valid as authored and at 6 decimals, but its
+    // three corners all round to one point at 3.
+    let step = Model {
+        unit: "IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.)",
+        conversion: "IFCMAPCONVERSION(#5,#12,500000.,6400000.,100.,1.,0.,0.001)",
+        face_set: "IFCTRIANGULATEDFACESET(#14,$,.F.,((1,2,3)),$)",
+        ..DEFAULT
+    }.step().replace("((0.,0.,0.),(20.,0.,1.),(0.,20.,2.),(20.,20.,3.),(10.,10.,1.5))", "((0.,0.,0.),(0.4,0.,0.),(0.,0.4,0.))");
+    let mut options = options();
+    assert!(try_export_landxml_terrain(step.as_bytes(), &[18], &options).is_ok());
+    options.decimals = 3;
+    let error = try_export_landxml_terrain(step.as_bytes(), &[18], &options).unwrap_err().to_string();
+    assert!(error.contains("face 1 of #18 collapses onto a line or point at 3 decimal places"), "{error}");
+}

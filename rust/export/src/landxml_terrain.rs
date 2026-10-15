@@ -87,7 +87,8 @@ pub struct LandXmlTerrainOptions {
     /// Default metres.
     pub linear_unit: LandXmlLinearUnit,
     /// Decimal places in the written unit, 0 to 9. Default 6 (a micrometre in
-    /// metres): lossless for a round trip; 3 is millimetres in metres.
+    /// metres, far below survey precision); 3 is millimetres in metres. A
+    /// precision that collapses a face onto a line or point is refused.
     pub decimals: u8,
     /// `Surface@name` per product express id. A blank or absent entry keeps
     /// the product's IFC name; duplicates are still made unique.
@@ -212,7 +213,7 @@ fn export(content: &[u8], product_ids: &[u32], options: &LandXmlTerrainOptions) 
     let _ = writeln!(xml, "  <Application name=\"ifc-lite\" manufacturer=\"ifc-lite\" version=\"{}\"/>", env!("CARGO_PKG_VERSION"));
     xml.push_str("  <Surfaces>\n");
     for (terrain, name) in terrains.iter().zip(&names) {
-        write_surface(&mut xml, terrain, name, options);
+        write_surface(&mut xml, terrain, name, options)?;
     }
     xml.push_str("  </Surfaces>\n</LandXML>\n");
 
@@ -226,23 +227,49 @@ fn export(content: &[u8], product_ids: &[u32], options: &LandXmlTerrainOptions) 
     Ok(LandXmlTerrainExport { xml, crs_name: crs.name, surfaces })
 }
 
-fn write_surface(xml: &mut String, terrain: &tin::Terrain, name: &str, options: &LandXmlTerrainOptions) {
+fn write_surface(xml: &mut String, terrain: &tin::Terrain, name: &str, options: &LandXmlTerrainOptions) -> Result<(), String> {
     let (horizontal, vertical) = (options.linear_unit.horizontal_metres(), options.linear_unit.elevation_metres());
     let text = |value: f64, unit: f64| number(value / unit, options.decimals);
+    // Each point as written, and that text read back in metres: the precision
+    // must not collapse a face the source authored (checked again below).
+    let written: Vec<[String; 3]> = terrain.points.iter()
+        .map(|[n, e, z]| [text(*n, horizontal), text(*e, horizontal), text(*z, vertical)])
+        .collect();
+    let read_back = |point: &[String; 3]| -> [f64; 3] {
+        let value = |text: &String| text.parse::<f64>().unwrap_or(f64::NAN);
+        [value(&point[0]) * horizontal, value(&point[1]) * horizontal, value(&point[2]) * vertical]
+    };
+    for (number, face) in terrain.faces.iter().enumerate() {
+        if degenerate(face.map(|index| read_back(&written[index - 1]))) {
+            return Err(format!(
+                "face {} of #{} collapses onto a line or point at {} decimal places; choose more decimal places",
+                number + 1, terrain.product_id, options.decimals,
+            ));
+        }
+    }
     let _ = write!(xml, "    <Surface name=\"{}\"", escape(name));
     if let Some(global_id) = &terrain.global_id {
         let _ = write!(xml, " OID=\"{}\"", escape(global_id));
     }
     let (min, max) = terrain.points.iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(min, max), point| (min.min(point[2]), max.max(point[2])));
     let _ = write!(xml, ">\n      <Definition surfType=\"TIN\" elevMax=\"{}\" elevMin=\"{}\">\n        <Pnts>\n", text(max, vertical), text(min, vertical));
-    for (index, [n, e, z]) in terrain.points.iter().enumerate() {
-        let _ = writeln!(xml, "          <P id=\"{}\">{} {} {}</P>", index + 1, text(*n, horizontal), text(*e, horizontal), text(*z, vertical));
+    for (index, [n, e, z]) in written.iter().enumerate() {
+        let _ = writeln!(xml, "          <P id=\"{}\">{n} {e} {z}</P>", index + 1);
     }
     xml.push_str("        </Pnts>\n        <Faces>\n");
     for [a, b, c] in &terrain.faces {
         let _ = writeln!(xml, "          <F>{a} {b} {c}</F>");
     }
     xml.push_str("        </Faces>\n      </Definition>\n    </Surface>\n");
+    Ok(())
+}
+
+/// A triangle with no area: its edge vectors' cross product is exactly zero.
+/// Shared by the source check and the as-written check.
+fn degenerate([a, b, c]: [[f64; 3]; 3]) -> bool {
+    let (u, v) = ([b[0] - a[0], b[1] - a[1], b[2] - a[2]], [c[0] - a[0], c[1] - a[1], c[2] - a[2]]);
+    let cross = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+    cross.iter().all(|value| *value == 0.0)
 }
 
 /// `decimals` places, trailing zeros trimmed. The default six (a micrometre

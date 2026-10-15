@@ -192,9 +192,11 @@ The dialog has three options, applied when you export (#7618):
   (`<Imperial linearUnit="USSurveyFoot" elevationUnit="feet">`). LandXML 1.2 has no US survey foot
   for elevations, so in that mode heights are written in international feet. Both units are
   declared, so any reader converts them exactly.
-- **Decimal places** in the written unit: 3, 4 or 6. The default 6 (a micrometre in metres) loses
-  nothing in a round trip; 3 is millimetres in metres, as machine-control files usually carry.
-  Trailing zeros are trimmed and numbers are never in exponent form.
+- **Decimal places** in the written unit: 3, 4 or 6. The default 6 rounds to a micrometre in
+  metres, far below survey precision; 3 is millimetres in metres, as machine-control files usually
+  carry. Trailing zeros are trimmed and numbers are never in exponent form. A precision so coarse
+  that a triangle collapses onto a line or point is refused, naming the face; choose more decimal
+  places.
 - **Surface name**, per surface. It starts as the IFC name; a blank name keeps it.
 
 The map conversion is found through the representation's own context, following `ParentContext`

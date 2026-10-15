@@ -56,7 +56,7 @@ type PreflightState = TerrainPreflight | { status: 'checking' } | null;
 type LinearUnit = NonNullable<LandXmlTerrainExportOptions['linearUnit']>;
 
 const LINEAR_UNITS: readonly LinearUnit[] = ['metre', 'internationalFoot', 'usSurveyFoot'];
-/** Decimal places in the written unit; 6 (a micrometre in metres) is lossless for a round trip. */
+/** Decimal places in the written unit; 6 is a micrometre in metres, far below survey precision. */
 const DECIMALS = ['3', '4', '6'] as const;
 
 const createGeometryProcessor = (): LandXmlTerrainProcessor => new GeometryProcessor();

@@ -173,7 +173,7 @@ describe('LandXmlTerrainExportDialog (#7600)', () => {
       assert.match(text(), /LandXML 1\.2/, 'the Output row names the format');
       await choose('Metres', 'US survey feet');
       assert.match(text(), /Heights are written in international feet/);
-      await choose('6 (0.000001, no rounding loss)', '3 (0.001)');
+      await choose('6 (0.000001)', '3 (0.001)');
       const name = document.body.querySelector<HTMLInputElement>('input[aria-label="Name for surface Gelände"]');
       assert.ok(name, 'each surface name is editable');
       assert.equal(name.value, 'Gelände', 'seeded with the name the preflight would write');

@@ -2,11 +2,13 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Recover omitted cap boundaries without changing profile vertices (#7631,
+//! Recover cap boundaries lost with unrepresentable faces (#7631,
 //! the source-cap defect isolated from #6940's opening-weld defect).
 //!
 //! This is a narrow retry for an earcut TRIANGLE DEFICIT on a profile with
-//! holes, not a validator/repair for arbitrary triangulations. A complete cap
+//! holes and an exact-positive f64 face that collapses or reverses in local
+//! f32. Representable caps retain established triangulation and hygiene,
+//! including geometrically valid collinear subdivisions. A complete cap
 //! over N nonduplicate boundary vertices and H disjoint interior holes has
 //! N + 2H - 2 triangles. An equal-count result keeps the established path.
 //! A deficit only triggers inspection: actual missing boundaries, a valid
@@ -160,6 +162,34 @@ fn complete_cap(indices: &[usize], rings: &[Vec<usize>], data: &[f64]) -> bool {
         })
 }
 
+/// `Some(true)` identifies the measured lost-face class: every input triangle
+/// is finite and positive in f64, but at least one is zero/reversed after the
+/// mesh's local f32 cast. Nonfinite casts are unsupported, not a repair trigger.
+/// This selects a bounded retry; it does not certify later placement or RTC.
+fn unrepresentable_face(data: &[f64], indices: &[usize]) -> Option<bool> {
+    if !indices.len().is_multiple_of(3) {
+        return None;
+    }
+    let mut found = false;
+    for t in indices.chunks_exact(3) {
+        if t.iter().any(|&i| i >= data.len() / 2) {
+            return None;
+        }
+        let original = [point(data, t[0]), point(data, t[1]), point(data, t[2])];
+        if !original.iter().flatten().all(|v| v.is_finite())
+            || orientation(original[0], original[1], original[2]) <= 0
+        {
+            return None;
+        }
+        let rounded = original.map(|p| p.map(|v| f64::from(v as f32)));
+        if !rounded.iter().flatten().all(|v| v.is_finite()) {
+            return None;
+        }
+        found |= orientation(rounded[0], rounded[1], rounded[2]) <= 0;
+    }
+    Some(found)
+}
+
 pub(super) fn recover_missing_boundaries(
     data: &[f64],
     holes: &[usize],
@@ -179,7 +209,10 @@ pub(super) fn recover_missing_boundaries(
         start = end;
     }
     let expected = count + 2 * holes.len() - 2;
-    if earcut.len() / 3 >= expected || count > MAX_RECOVERY_VERTICES {
+    if earcut.len() / 3 >= expected
+        || count > MAX_RECOVERY_VERTICES
+        || unrepresentable_face(data, earcut) != Some(true)
+    {
         return None;
     }
 
@@ -221,5 +254,10 @@ pub(super) fn recover_missing_boundaries(
     }
     let remapped: Option<Vec<usize>> = indices.iter().map(|&i| original.get(i).copied()).collect();
     let remapped = remapped?;
-    complete_cap(&remapped, &rings, data).then_some(remapped)
+    (complete_cap(&remapped, &rings, data) && unrepresentable_face(data, &remapped) == Some(false))
+        .then_some(remapped)
 }
+
+#[cfg(test)]
+#[path = "profile_cap_predicate_tests.rs"]
+mod predicate_tests;

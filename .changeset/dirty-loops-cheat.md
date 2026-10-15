@@ -2,4 +2,4 @@
 "@ifc-lite/wasm": patch
 ---
 
-Preserve slab profile boundaries when triangulating caps with multiple holes. When ear clipping omits a boundary, a validated constrained triangulation can recover it using the original profile vertices, keeping caps closed against their side walls (#7631).
+Recover omitted slab cap boundaries when a finite, positive local face collapses or reverses on conversion to mesh coordinates. The bounded constrained triangulation preserves original profile vertices and requires a complete cap with representable faces; ordinary representable triangulations retain their established output (#7631).

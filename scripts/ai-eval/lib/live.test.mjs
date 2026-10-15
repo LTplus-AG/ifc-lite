@@ -173,3 +173,9 @@ test('#6928 a task listed twice runs once, and an unknown task is refused', asyn
   assert.deepEqual([calls, outcome.recordings.length], [1, 1]);
   await assert.rejects(runLive({ ...common, tasks: ['no-such-task'], fetchImpl: reply('') }), /Unknown task\(s\): no-such-task/);
 });
+
+test('#6928 the run settings do not claim a temperature the receipts did not send', async () => {
+  const outcome = await runLive({ ...common, tasks: ['clash-summary'], fetchImpl: reply(chatStream('ok [E1]')) });
+  assert.equal(outcome.settings.temperature, undefined);
+  assert.equal(outcome.settings.fixedTemperature, 0);
+});

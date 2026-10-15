@@ -216,5 +216,7 @@ export async function runLive({ manifest, captured, providers, tasks, repeats, f
   }
   const run = checkRunBudget(receipts, budget);
   assertNoSecrets({ recordings, receipts, results }, 'live evaluation output', providers.map(provider => provider.key));
-  return { runId, settings, recordings, receipts, results, run, stopped };
+  // The fixed temperature is an upper bound on what was sent: receipts record each actual value.
+  const { temperature, ...limits } = settings;
+  return { runId, settings: { ...limits, fixedTemperature: temperature, temperatureSent: 'only where the Assistant sends one; see receipts' }, recordings, receipts, results, run, stopped };
 }

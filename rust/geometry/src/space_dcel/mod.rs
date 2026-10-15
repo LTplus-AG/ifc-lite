@@ -54,6 +54,8 @@ mod remove;
 mod walk;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod non_finite_tests;
 
 use arrangement::Arrangement;
 use walk::{FaceWalk, VertexFan};

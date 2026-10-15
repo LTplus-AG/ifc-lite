@@ -11,7 +11,7 @@
 //! boundary rather than an arbitrary cut through the builder.
 
 use super::*;
-use super::plates::signed_area_2d;
+use super::plates::{signed_area_2d, Plate};
 
 /// A 4x5 m `IfcSpace` floor plate extruded 3 m up, at world height `elevation_y`.
 /// Mirrors what `extract_profiles` emits: the profile's local (x, y) lies in the
@@ -398,4 +398,55 @@ fn hbjson_room_builder_still_watertight() {
              (a wall that does not meet its slab leaves exactly this hole)",
         );
     }
+}
+
+/// #7674: storey clustering sorted floor heights with
+/// `partial_cmp(..).unwrap_or(Equal)`, which may panic past the 20-element
+/// insertion-sort cutoff once a NaN height is in the slice. NaN heights now
+/// sort after every number, and every plate still lands in exactly one storey.
+#[test]
+fn group_plates_with_nan_floor_heights_past_insertion_sort_cutoff_7674() {
+    let plates: Vec<Plate> = (0..60u32)
+        .map(|i| Plate {
+            express_id: i,
+            boundary: vec![[0.0, 0.0], [1.0, 0.0], [1.0, 1.0]],
+            floor_height: if i.is_multiple_of(3) { f64::NAN } else { ((i * 7) % 13) as f64 * 3.0 },
+            ftc_height: 3.0,
+        })
+        .collect();
+    let groups = group_plates(plates, None);
+    let mut ids: Vec<u32> = groups.iter().flat_map(|g| g.plates.iter().map(|p| p.express_id)).collect();
+    ids.sort_unstable();
+    assert_eq!(ids, (0..60).collect::<Vec<u32>>());
+    // The finite storeys come out in ascending height.
+    let heights: Vec<f64> = groups
+        .iter()
+        .map(|g| g.plates[0].floor_height)
+        .filter(|h| !h.is_nan())
+        .collect();
+    assert!(heights.windows(2).all(|w| w[0] <= w[1]), "{heights:?}");
+}
+
+/// #7674: duplicate-plate removal ordered plates by area with
+/// `partial_cmp(..).unwrap_or(Equal)`; a NaN area (a NaN boundary vertex)
+/// past the insertion-sort cutoff may panic. A NaN-area plate is never a
+/// duplicate of anything, so it is kept, and real duplicates still drop.
+#[test]
+fn dedupe_plates_with_nan_areas_past_insertion_sort_cutoff_7674() {
+    let square = |i: u32, x: f64| -> Plate {
+        let nan = i.is_multiple_of(3);
+        Plate {
+            express_id: i,
+            boundary: vec![[x, 0.0], [x + 1.0, 0.0], [x + 1.0, if nan { f64::NAN } else { 1.0 + x * 0.01 }], [x, 1.0]],
+            floor_height: 0.0,
+            ftc_height: 3.0,
+        }
+    };
+    let mut plates: Vec<Plate> = (0..40u32).map(|i| square(i, i as f64 * 5.0)).collect();
+    // One genuine duplicate of plate 1 (same footprint, same storey).
+    plates.push(Plate { express_id: 100, ..square(1, 5.0) });
+    let (kept, dropped) = super::plates::dedupe_colliding(plates);
+    assert_eq!(dropped, 1);
+    let ids: Vec<u32> = kept.iter().map(|p| p.express_id).collect();
+    assert_eq!(ids, (0..40).collect::<Vec<u32>>(), "input order is kept and the copy (100) dropped");
 }

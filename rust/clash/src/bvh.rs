@@ -236,3 +236,7 @@ fn build_node(indices: &mut [usize], bounds: &[Aabb]) -> Box<Node> {
         ids: Vec::new(),
     })
 }
+
+#[cfg(test)]
+#[path = "bvh_tests.rs"]
+mod tests;

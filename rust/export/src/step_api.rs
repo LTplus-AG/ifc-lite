@@ -167,9 +167,10 @@ pub struct StepStats {
     /// property set its group needed (a group that does not fit is refused
     /// whole). Non-zero means an edit the caller asked for is not in the output.
     pub property_mutations_refused: usize,
-    /// Source records dropped because an earlier record in the file already
-    /// had their express id (#7682, EXPORT-STEP-11). The first record with an
-    /// id is written; each later one is counted here. Non-zero means the
-    /// source was invalid and the output does not carry everything it said.
+    /// Source records dropped because a later record in the file has their
+    /// express id (#7682, EXPORT-STEP-11). The LAST record with an id is
+    /// written, the one core's index (and so every ifc-lite reader) resolves
+    /// it to; each earlier one is counted here. Non-zero means the source was
+    /// invalid and the output does not carry everything it said.
     pub duplicate_records_dropped: usize,
 }

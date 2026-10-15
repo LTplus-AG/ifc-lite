@@ -38,7 +38,7 @@ pub(crate) struct Source<'a> {
     line_of: HashMap<u32, (usize, usize)>,
     /// Highest express id in the file.
     pub(crate) max_id: u32,
-    /// Ids of records dropped because an earlier record had the id
+    /// Ids of records dropped because a later record has the id
     /// (`crate::step_index`, #7682).
     pub(crate) duplicates: Vec<u32>,
     by_type: HashMap<&'static str, Vec<u32>>,

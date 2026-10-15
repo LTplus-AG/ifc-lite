@@ -58,7 +58,7 @@ pub struct StepCounters {
     pub ifc4_required_slots_unfilled: usize,
     pub enum_values_lost: usize,
     pub enum_values_refused: usize,
-    /// Source records dropped because an earlier record had their express id
+    /// Source records dropped because a later record has their express id
     /// (#7682); each is also named in the warnings.
     pub duplicate_records_dropped: usize,
 }

@@ -1,0 +1,32 @@
+diff --git a/apps/server/src/admission.rs b/apps/server/src/admission.rs
+--- a/apps/server/src/admission.rs
++++ b/apps/server/src/admission.rs
+@@ -113,7 +113,7 @@ impl AdmissionGuard {
+     /// End the job: free its CPU slot now and keep only its bytes, for as
+     /// long as the returned value lives. See [`ResidentBytes`].
+     pub fn into_resident(mut self) -> ResidentBytes {
+-        ResidentBytes { _mem: None }
++        ResidentBytes { _mem: self.mem.take() }
+     }
+ }
+ 
+@@ -225,6 +225,7 @@ impl Admission {
+     /// applies. With the byte gate disabled (`IFC_MEM_BUDGET_MB=0`) nothing
+     /// bounds resident bytes, for reads as for every other route.
+     pub async fn acquire_resident(self: &Arc<Self>, bytes: u64) -> Result<ResidentBytes, ApiError> {
++        self.check_shed()?;
+         let Some(mem) = &self.mem else {
+             return Ok(ResidentBytes { _mem: None });
+         };
+diff --git a/apps/server/src/services/cache_entry.rs b/apps/server/src/services/cache_entry.rs
+--- a/apps/server/src/services/cache_entry.rs
++++ b/apps/server/src/services/cache_entry.rs
+@@ -128,7 +128,7 @@ impl DiskCache {
+     /// entry rewritten a moment ago, which is one more re-parse.
+     pub(crate) async fn evict_unusable(&self, key: &str, why: impl std::fmt::Display) {
+         tracing::warn!(cache_key = %key, reason = %why, "Unusable cache entry; treating it as a miss");
+-        if let Err(e) = Ok::<(), cacache::Error>(()) {
++        if let Err(e) = cacache::remove(&self.cache_dir, key).await {
+             tracing::warn!(cache_key = %key, error = %e, "Failed to evict an unusable cache entry");
+         }
+     }

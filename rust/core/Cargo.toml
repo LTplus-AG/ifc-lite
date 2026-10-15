@@ -28,24 +28,21 @@ futures-util = "0.3"
 lexical-core = "1.0"
 
 # Fast byte searching
-memchr = "2.8"
+memchr.workspace = true
 # Parser
 nom = "7.1"
 
 # Fast hashing
-rustc-hash = "2.1"
-
-# SmallVec for stack-allocated small vectors (avoids heap allocation for small lists)
-smallvec = "1.13"
+rustc-hash.workspace = true
 
 # Error handling
-thiserror = "2.0"
+thiserror.workspace = true
 
 [dev-dependencies]
 ifc-lite-geometry = { path = "../geometry" }
-tokio = { version = "1", features = ["macros", "rt"] }
+tokio = { workspace = true, features = ["macros", "rt"] }
 # Test-only: parse the shared decode parity fixture.
-serde_json = "1.0"
+serde_json.workspace = true
 
 [lints]
 workspace = true

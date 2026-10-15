@@ -24,38 +24,37 @@ mimalloc = ["dep:mimalloc"]
 
 [dependencies]
 # Native global allocator (see the `mimalloc` feature).
-mimalloc = { version = "0.1", optional = true }
+mimalloc = { workspace = true, optional = true }
 
 # Web framework
 axum = { version = "0.8", features = ["multipart", "tokio"] }
 tower = "0.5"
-tower-http = { version = "0.7", features = ["cors", "trace", "timeout", "limit", "compression-gzip", "decompression-gzip", "catch-panic"] }
+tower-http = { version = "0.7", features = ["cors", "trace", "timeout", "compression-gzip", "catch-panic"] }
 
 # Async runtime
-tokio = { version = "1", features = ["full"] }
+tokio = { workspace = true, features = ["full"] }
 
 # IFC processing (workspace crates)
-ifc-lite-core = { path = "../../rust/core" }
+ifc-lite-core.workspace = true
 # CSG runs on the pure-Rust exact kernel inside ifc-lite-geometry — same
 # kernel as the viewer's wasm build, no C++ cross-toolchain needed for any
 # triple (Manifold/BSP removed at M9; see
 # docs/architecture/pure-rust-csg-kernel.md).
-ifc-lite-geometry = { path = "../../rust/geometry", default-features = false }
+ifc-lite-geometry.workspace = true
 # `observability` routes the geometry crate's production diagnostics through
 # tracing so they land in this server's existing subscriber (main.rs) as
 # structured events instead of raw stderr lines.
-ifc-lite-processing = { path = "../../rust/processing", features = ["observability"] }
+ifc-lite-processing = { workspace = true, features = ["observability"] }
 
 # Parallelism
-rayon = "1.10"
+rayon.workspace = true
 
 # Serialization
-serde = { version = "1.0", features = ["derive"] }
+serde.workspace = true
 # #4064: cached JSON must round-trip finite coordinate values exactly.
-serde_json = { version = "1.0", features = ["float_roundtrip"] }
+serde_json = { workspace = true, features = ["float_roundtrip"] }
 
 # Streaming
-tokio-stream = "0.1"
 futures = "0.3"
 async-stream = "0.3"
 
@@ -63,33 +62,33 @@ async-stream = "0.3"
 cacache = "13"
 
 # Hashing
-sha2 = "0.11"
+sha2.workspace = true
 hex = "0.4"
 
 # Logging
-tracing = "0.1"
+tracing = { workspace = true, features = ["std", "attributes"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 
 # Error handling
-thiserror = "2.0"
+thiserror.workspace = true
 anyhow = "1.0"
 
-# Fast hashing (for style index) - must match ifc-lite-geometry version
-rustc-hash = "2.1"
+# Fast hashing (for style index); the version is the workspace's, shared with ifc-lite-geometry
+rustc-hash.workspace = true
 
 # CPU count
 num_cpus = "1.16"
 
 # Parquet/Arrow for efficient binary serialization
-arrow = { version = "60", default-features = false, features = ["ipc"] }
-parquet = { version = "60", default-features = false, features = ["arrow", "snap", "zstd", "lz4"] }
+arrow.workspace = true
+parquet = { workspace = true, features = ["lz4"] }
 bytes = "1.5"
 
 # Compression/decompression
 flate2 = "1.0"
 # .ifcZIP container unwrapping (issue #1494). Same crate/features as
 # rust/export; DEFLATE + store cover every real buildingSMART container.
-zip = { version = "8", default-features = false, features = ["deflate"] }
+zip.workspace = true
 
 # Base64 encoding for SSE payloads
 base64 = "0.23"
@@ -98,9 +97,13 @@ base64 = "0.23"
 criterion = { version = "0.8", features = ["html_reports"] }
 # Paused-clock transport timeout regressions; test-only so production timer
 # behavior cannot be frozen accidentally.
-tokio = { version = "1", features = ["test-util"] }
+tokio = { workspace = true, features = ["test-util"] }
 # `util` feature pulls in `ServiceExt::oneshot` for in-process route tests.
 tower = { version = "0.5", features = ["util"] }
+# benches/serialization.rs compares ZSTD against the production LZ4_RAW codec.
+# Production writes and replays LZ4_RAW only (SERVER-34), so `zstd` (and its C
+# `zstd-sys`) is a bench-only feature rather than a runtime one.
+parquet = { workspace = true, features = ["zstd"] }
 
 [[bench]]
 name = "serialization"

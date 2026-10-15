@@ -27,3 +27,28 @@ test('#5860 saved worker override is visible and resettable in Settings', async 
   await expect(dialog.getByText('Geometry workers: 4')).toHaveCount(0);
   expect(await page.evaluate(() => localStorage.getItem('ifc-lite-geom-workers'))).toBeNull();
 });
+
+// #5857: the mobile entry must expose choices without clipping at large text sizes.
+test('mobile Settings navigation choices fit the dialog at increased text size', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.addInitScript(() => {
+    localStorage.setItem('ifclite.extensions.privacy-disclosure.v2', 'e2e acknowledged');
+    Object.defineProperty(navigator, 'gpu', { configurable: true, value: undefined });
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'More actions', exact: true }).click();
+  await page.locator('[data-command-id="pref:settings"]').click();
+  const dialog = page.locator('[data-settings-dialog]');
+  await dialog.getByRole('tab', { name: 'Display', exact: true }).click();
+  await page.addStyleTag({ content: 'html { font-size: 32px; }' });
+  const choices = dialog.locator('#settings-navigation-preset');
+  await choices.scrollIntoViewIfNeeded();
+  await expect(choices.getByRole('radio')).toHaveCount(3);
+  const bounds = await choices.boundingBox();
+  const dialogBounds = await dialog.boundingBox();
+  expect(bounds).not.toBeNull();
+  expect(dialogBounds).not.toBeNull();
+  expect(bounds!.x).toBeGreaterThanOrEqual(dialogBounds!.x);
+  expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(dialogBounds!.x + dialogBounds!.width);
+  expect(await choices.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
+});

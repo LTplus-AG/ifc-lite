@@ -32,7 +32,7 @@ export function SettingsRow({ label, hint, htmlFor, children }: {
           : <span className="text-sm" aria-hidden="true">{label}</span>}
         {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
       </div>
-      <div className="shrink-0">{children}</div>
+      <div className="max-w-full shrink-0">{children}</div>
     </div>
   );
 }
@@ -47,7 +47,7 @@ export function SettingsChoice<T extends string>({ id, label, value, options, on
   onChange: (value: T) => void;
 }) {
   return (
-    <fieldset id={id} className="inline-flex flex-wrap rounded-md border p-0.5">
+    <fieldset id={id} className="inline-flex max-w-full flex-wrap rounded-md border p-0.5">
       <legend className="sr-only">{label}</legend>
       {options.map((option) => (
         <label

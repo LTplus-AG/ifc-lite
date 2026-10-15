@@ -170,6 +170,126 @@
         "expected_wgs84": { "lat": 52.5163, "lon": 13.3777 }
       },
       "tolerance_m": 0.1
+    },
+    {
+      "epsg": "5682",
+      "name": "DB_REF / 3-degree Gauss-Kruger zone 2 (E-N)",
+      "control_point": {
+        "description": "#7658. Expected lat/lon from PROJ 9.3 (EPSG:5826 DB_REF to ETRS89 (1), method 9607 Coordinate Frame; +towgs84 needs the rotations negated to Position Vector). The vendored epsg.io string had the Coordinate Frame rotation signs, landing this point 140-185 m off.",
+        "projected": { "easting": 2550000.0, "northing": 5589400.0 },
+        "expected_wgs84": { "lat": 50.4383195, "lon": 6.7032099 }
+      },
+      "tolerance_m": 0.5
+    },
+    {
+      "epsg": "9932",
+      "name": "DB_REF2016 zone 2 (compound: EPSG:5682 + DB_REF2016 height)",
+      "control_point": {
+        "description": "#7658. Expected lat/lon from PROJ 9.3 (EPSG:5826 DB_REF to ETRS89 (1), method 9607 Coordinate Frame; +towgs84 needs the rotations negated to Position Vector). The vendored epsg.io string had no +towgs84 at all, landing this point 140-185 m off.",
+        "projected": { "easting": 2550000.0, "northing": 5589400.0 },
+        "expected_wgs84": { "lat": 50.4383195, "lon": 6.7032099 }
+      },
+      "tolerance_m": 0.5
+    },
+    {
+      "epsg": "5683",
+      "name": "DB_REF / 3-degree Gauss-Kruger zone 3 (E-N)",
+      "control_point": {
+        "description": "#7658. Expected lat/lon from PROJ 9.3 (EPSG:5826 DB_REF to ETRS89 (1), method 9607 Coordinate Frame; +towgs84 needs the rotations negated to Position Vector). The vendored epsg.io string had the Coordinate Frame rotation signs, landing this point 140-185 m off.",
+        "projected": { "easting": 3395000.0, "northing": 5589400.0 },
+        "expected_wgs84": { "lat": 50.431063, "lon": 7.5211466 }
+      },
+      "tolerance_m": 0.5
+    },
+    {
+      "epsg": "9933",
+      "name": "DB_REF2016 zone 3 (compound: EPSG:5683 + DB_REF2016 height)",
+      "control_point": {
+        "description": "#7658. Expected lat/lon from PROJ 9.3 (EPSG:5826 DB_REF to ETRS89 (1), method 9607 Coordinate Frame; +towgs84 needs the rotations negated to Position Vector). The vendored epsg.io string had no +towgs84 at all, landing this point 140-185 m off.",
+        "projected": { "easting": 3395000.0, "northing": 5589400.0 },
+        "expected_wgs84": { "lat": 50.431063, "lon": 7.5211466 }
+      },
+      "tolerance_m": 0.5
+    },
+    {
+      "epsg": "5684",
+      "name": "DB_REF / 3-degree Gauss-Kruger zone 4 (E-N)",
+      "control_point": {
+        "description": "#7658. Expected lat/lon from PROJ 9.3 (EPSG:5826 DB_REF to ETRS89 (1), method 9607 Coordinate Frame; +towgs84 needs the rotations negated to Position Vector). The vendored epsg.io string had the Coordinate Frame rotation signs, landing this point 140-185 m off.",
+        "projected": { "easting": 4450000.0, "northing": 5589400.0 },
+        "expected_wgs84": { "lat": 50.4383367, "lon": 11.2947006 }
+      },
+      "tolerance_m": 0.5
+    },
+    {
+      "epsg": "9934",
+      "name": "DB_REF2016 zone 4 (compound: EPSG:5684 + DB_REF2016 height)",
+      "control_point": {
+        "description": "#7658. Expected lat/lon from PROJ 9.3 (EPSG:5826 DB_REF to ETRS89 (1), method 9607 Coordinate Frame; +towgs84 needs the rotations negated to Position Vector). The vendored epsg.io string had no +towgs84 at all, landing this point 140-185 m off.",
+        "projected": { "easting": 4450000.0, "northing": 5589400.0 },
+        "expected_wgs84": { "lat": 50.4383367, "lon": 11.2947006 }
+      },
+      "tolerance_m": 0.5
+    },
+    {
+      "epsg": "5685",
+      "name": "DB_REF / 3-degree Gauss-Kruger zone 5 (E-N)",
+      "control_point": {
+        "description": "#7658. Expected lat/lon from PROJ 9.3 (EPSG:5826 DB_REF to ETRS89 (1), method 9607 Coordinate Frame; +towgs84 needs the rotations negated to Position Vector). The vendored epsg.io string had the Coordinate Frame rotation signs, landing this point 140-185 m off.",
+        "projected": { "easting": 5450000.0, "northing": 5589400.0 },
+        "expected_wgs84": { "lat": 50.4383623, "lon": 14.2942622 }
+      },
+      "tolerance_m": 0.5
+    },
+    {
+      "epsg": "9935",
+      "name": "DB_REF2016 zone 5 (compound: EPSG:5685 + DB_REF2016 height)",
+      "control_point": {
+        "description": "#7658. Expected lat/lon from PROJ 9.3 (EPSG:5826 DB_REF to ETRS89 (1), method 9607 Coordinate Frame; +towgs84 needs the rotations negated to Position Vector). The vendored epsg.io string had no +towgs84 at all, landing this point 140-185 m off.",
+        "projected": { "easting": 5450000.0, "northing": 5589400.0 },
+        "expected_wgs84": { "lat": 50.4383623, "lon": 14.2942622 }
+      },
+      "tolerance_m": 0.5
+    },
+    {
+      "epsg": "9928",
+      "name": "DB_REF2003 zone 2 (compound: EPSG:5682 + DB_REF2003 height)",
+      "control_point": {
+        "description": "#7658. Same horizontal CRS and expected lat/lon as EPSG:5682 (PROJ 9.3). The vendored epsg.io string had no +towgs84 at all, landing this point 140-185 m off.",
+        "projected": { "easting": 2550000.0, "northing": 5589400.0 },
+        "expected_wgs84": { "lat": 50.4383195, "lon": 6.7032099 }
+      },
+      "tolerance_m": 0.5
+    },
+    {
+      "epsg": "9929",
+      "name": "DB_REF2003 zone 3 (compound: EPSG:5683 + DB_REF2003 height)",
+      "control_point": {
+        "description": "#7658. Same horizontal CRS and expected lat/lon as EPSG:5683 (PROJ 9.3). The vendored epsg.io string had no +towgs84 at all, landing this point 140-185 m off.",
+        "projected": { "easting": 3395000.0, "northing": 5589400.0 },
+        "expected_wgs84": { "lat": 50.431063, "lon": 7.5211466 }
+      },
+      "tolerance_m": 0.5
+    },
+    {
+      "epsg": "9930",
+      "name": "DB_REF2003 zone 4 (compound: EPSG:5684 + DB_REF2003 height)",
+      "control_point": {
+        "description": "#7658. Same horizontal CRS and expected lat/lon as EPSG:5684 (PROJ 9.3). The vendored epsg.io string had no +towgs84 at all, landing this point 140-185 m off.",
+        "projected": { "easting": 4450000.0, "northing": 5589400.0 },
+        "expected_wgs84": { "lat": 50.4383367, "lon": 11.2947006 }
+      },
+      "tolerance_m": 0.5
+    },
+    {
+      "epsg": "9931",
+      "name": "DB_REF2003 zone 5 (compound: EPSG:5685 + DB_REF2003 height)",
+      "control_point": {
+        "description": "#7658. Same horizontal CRS and expected lat/lon as EPSG:5685 (PROJ 9.3). The vendored epsg.io string had no +towgs84 at all, landing this point 140-185 m off.",
+        "projected": { "easting": 5450000.0, "northing": 5589400.0 },
+        "expected_wgs84": { "lat": 50.4383623, "lon": 14.2942622 }
+      },
+      "tolerance_m": 0.5
     }
   ]
 }

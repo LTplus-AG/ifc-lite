@@ -305,6 +305,11 @@ async function fetchEntries(summaries: RegistrySummary[], concurrency: number): 
  *     for this CRS entirely, which silently disables the datum shift
  *     (~117 m residual at Prague vs ~0 m with EPSG:5239 "S-JTSK to WGS 84 (5)",
  *     method 9607, negated to Position Vector).
+ *   - EPSG:5682-5685 (DB_REF / Gauss-Kruger zones 2-5): epsg.io returned the
+ *     raw method-9607 rotation signs of EPSG:5826 "DB_REF to ETRS89 (1)"
+ *     (~178 m residual). Their compounds EPSG:9928-9931 (DB_REF2003) and
+ *     9932-9935 (DB_REF2016) had no +towgs84 at all (~146 m). All twelve now
+ *     carry the Position Vector negation, checked against PROJ 9.3 (#7658).
  *
  * There is no way to detect this class of bug from the fetched string alone —
  * both conventions look like valid proj4 syntax. If re-running this script

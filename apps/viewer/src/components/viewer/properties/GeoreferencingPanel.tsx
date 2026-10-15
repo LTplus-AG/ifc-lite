@@ -6,10 +6,8 @@
  * Georeferencing panel - displays and allows editing of IfcProjectedCRS
  * and IfcMapConversion entities with field-specific editing assistance.
  *
- * Per-field rows (`GeorefRow`, `AngleRow`) live in `./georef-rows` (#5812),
- * and `TerrainHeightButton` lives in `./georef-terrain-height-button`.
- * They were extracted so this file — already over the repo's ~400-line module guideline before
- * this change — does not grow.
+ * Rows (`./georef-rows`, #5812), `TerrainHeightButton` and `SiteRefMismatchNotice`
+ * (#7658) live in sibling modules so this file, over the ~400-line budget, does not grow.
  */
 
 import { useState, useCallback, useMemo } from 'react';
@@ -41,6 +39,7 @@ import { formatLocaleList, formatLocaleNumber } from '@/i18n/intlFormat';
 import { localizedApproxDistance, localizedRawValuesNote, localizedScaleOverride } from './georeference-i18n';
 import { GeorefRow, AngleRow } from './georef-rows';
 import { TerrainHeightButton } from './georef-terrain-height-button';
+import { SiteRefMismatchNotice } from './georef-site-ref-notice';
 
 // ── Main Panel ─────────────────────────────────────────────────────────
 
@@ -463,6 +462,7 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
         </div>
       )}
 
+      {modelId && !isLegacySiteGeoreference && <SiteRefMismatchNotice modelId={modelId} crs={mergedCRS} conversion={mergedConversion} lengthUnitScale={lengthUnitScale} />}
       {/* IfcProjectedCRS */}
       {mergedCRS && (
         <div>

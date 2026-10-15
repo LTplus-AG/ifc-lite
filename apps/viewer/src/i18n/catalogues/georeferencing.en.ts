@@ -51,6 +51,8 @@ export const georeferencingEn = {
     'The geometry already sits at map coordinates (E {eastingValue} N {northingValue}), and this IfcMapConversion repeats the same offset. ifc-lite places the geometry where it already is; a tool that applied the conversion on top would put the model {displacement} away.',
   'properties.georef.rotationOverrideNote':
     'This file also authors a map rotation that cannot be reconciled with its own coordinates, so the model is placed grid-aligned. Check the orientation, and set Model rotation in map coordinates by hand if it looks wrong.',
+  'properties.georef.siteRefMismatch':
+    'IfcSite RefLatitude/RefLongitude is {distance} from the position derived from IfcMapConversion. Either value, or the CRS definition, may be wrong. Check both before saving or exporting.',
   'properties.georef.distanceUnknown': 'an unknown distance',
   'properties.georef.distancePlanetWidth': 'more than a planet-width',
   'properties.georef.distanceKilometres': 'about {value} km',

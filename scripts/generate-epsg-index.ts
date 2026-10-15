@@ -406,7 +406,7 @@ async function main(): Promise<void> {
   const selected = options.limit == null ? summaries : summaries.slice(0, options.limit);
   const entries = await fetchEntries(selected, options.concurrency);
   await fetchProj4Definitions(entries, options.concurrency);
-  applyProj4Overrides(entries);
+  console.error(applyProj4Overrides(entries));
   const moduleSource = renderModule(entries);
 
   if (options.stdout) {

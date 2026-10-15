@@ -35,7 +35,7 @@ it('applyProj4Overrides rewrites listed codes and leaves others alone', () => {
     { code: '5683', proj4: PROJ4_OVERRIDES.get('5683') },
     { code: '4326', proj4: wgs84 },
   ];
-  applyProj4Overrides(entries);
+  expect(applyProj4Overrides(entries)).toMatch(/^proj4 overrides: changed 9933; unchanged 5683;/);
   expect(entries.map((entry) => entry.proj4)).toEqual([
     PROJ4_OVERRIDES.get('9933'),
     PROJ4_OVERRIDES.get('5683'),

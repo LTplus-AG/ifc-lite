@@ -219,7 +219,7 @@ async function main(): Promise<void> {
     );
   }
 
-  applyProj4Overrides(entries);
+  console.error(applyProj4Overrides(entries));
   const moduleSource = renderModule(entries, version);
   fs.writeFileSync(GENERATED_PATH, `${moduleSource}\n`, 'utf8');
   console.log(`Written to ${GENERATED_PATH}`);

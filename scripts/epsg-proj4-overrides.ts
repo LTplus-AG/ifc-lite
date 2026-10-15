@@ -7,7 +7,7 @@
  * generate-epsg-index.ts after every fetch and by augment-epsg-proj4.ts.
  * Each entry fixes a known-bad epsg.io string (wrong Helmert rotation
  * convention or a missing +towgs84;
- * see the doc block above fetchProj4Definitions there), so a regeneration
+ * see the doc block above fetchProj4Definitions in generate-epsg-index.ts), so a regeneration
  * cannot silently bring the error back. Add a control point
  * (packages/data/scripts/fixtures/epsg-control-points.json), a viewer
  * reprojection test, or (geocentric/3D) a case in
@@ -59,10 +59,10 @@ export const PROJ4_OVERRIDES: ReadonlyMap<string, string> = new Map(OVERRIDE_LIS
 if (PROJ4_OVERRIDES.size !== OVERRIDE_LIST.length) throw new Error('duplicate code in proj4 overrides');
 
 /**
- * Replace incoming proj4 strings with PROJ4_OVERRIDES and report, per code,
- * whether the override changed the incoming value, matched it, or found no entry.
+ * Replace incoming proj4 strings with PROJ4_OVERRIDES. Returns a one-line
+ * summary of which codes changed, already matched, or had no entry.
  */
-export function applyProj4Overrides(entries: Array<{ code: string; proj4?: string }>): void {
+export function applyProj4Overrides(entries: Array<{ code: string; proj4?: string }>): string {
   const byCode = new Map(entries.map((entry) => [entry.code, entry]));
   const changed: string[] = [];
   const unchanged: string[] = [];
@@ -73,5 +73,5 @@ export function applyProj4Overrides(entries: Array<{ code: string; proj4?: strin
     (entry.proj4 === proj4 ? unchanged : changed).push(code);
     entry.proj4 = proj4;
   }
-  console.error(`proj4 overrides: changed ${changed.join(',') || '-'}; unchanged ${unchanged.join(',') || '-'}; not in index ${missing.join(',') || '-'}`);
+  return `proj4 overrides: changed ${changed.join(',') || '-'}; unchanged ${unchanged.join(',') || '-'}; not in index ${missing.join(',') || '-'}`;
 }

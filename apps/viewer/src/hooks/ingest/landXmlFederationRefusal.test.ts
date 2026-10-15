@@ -25,7 +25,6 @@ import { useViewerStore } from '../../store/index.js';
 import { fixtureModel } from '../../test/store-fixture.js';
 import { FederatedLandXmlStreamingPlan } from './federatedLandXmlStreaming.js';
 import { reframeLandXmlGeometry } from './landXmlLoad.js';
-import { landXmlFrameRefusalMessage } from './landXmlRenderFrame.js';
 import { parseLandXmlViewerModelFromBlobAsync } from './landXmlViewerModel.js';
 
 const FIXTURE_844 = fileURLToPath(new URL('../../../../../tests/models/issues/844_terrain_and_alignment.ifc', import.meta.url));
@@ -200,15 +199,6 @@ describe('LandXML federation frame refusal (#7605)', () => {
     });
   });
 
-  it('reports no distance, but still the blockers, when no surface has finite bounds', () => {
-    const message = landXmlFrameRefusalMessage(Number.POSITIVE_INFINITY, {
-      declared: { horizontalId: 'EPSG:31467', verticalId: undefined }, anchor: ifcAnchorReference(), aligned: false,
-    });
-    assert.ok(!message.includes('∞') && !message.includes('NaN'), message);
-    assert.match(message, /^LandXML federation preflight rejected every render component: none of its surfaces has finite coordinates inside the 1,000 km shared render-frame envelope\. /);
-    assert.ok(message.includes('this LandXML declares no vertical datum'), message);
-  });
-
   it('whole-document reframe of only non-finite meshes names the blockers without an infinite distance', async () => {
     const originalWorker = globalThis.Worker;
     Object.defineProperty(globalThis, 'Worker', { configurable: true, value: undefined });
@@ -224,8 +214,9 @@ describe('LandXML federation frame refusal (#7605)', () => {
       assert.throws(
         () => reframeLandXmlGeometry(model.geometryResult, model.semanticDocument, ifcFrame, { anchor: ifcAnchorReference(), aligned: false }),
         (error: Error) => {
-          assert.ok(!error.message.includes('∞'), error.message);
-          assert.match(error.message, /none of its surfaces has finite coordinates/);
+          assert.ok(!error.message.includes('∞') && !error.message.includes('NaN'), error.message);
+          assert.match(error.message, /^LandXML federation preflight rejected every render component: none of its surfaces has finite coordinates inside the 1,000 km shared render-frame envelope\. /);
+          assert.ok(error.message.includes('this LandXML declares no vertical datum'), error.message);
           return true;
         },
       );

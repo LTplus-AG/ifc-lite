@@ -54,7 +54,8 @@
 //! for the corner reconcile.
 
 use ifc_lite_core::{build_entity_index, EntityDecoder, EntityScanner};
-use ifc_lite_geometry::GeometryRouter;
+use ifc_lite_geometry::kernel::mesh_volume::mesh_volume;
+use ifc_lite_geometry::{GeometryRouter, Mesh, Vector3};
 use ifc_lite_processing::element::{
     produce_element_meshes, ElementJobKind, ElementMeshJob, MeshProductionContext,
     MeshProductionOptions,
@@ -87,8 +88,8 @@ fn require_fixtures() -> bool {
 }
 
 /// Undirected edges not used exactly once in each direction, vertices welded
-/// at the 1/65536 m kernel grid: 0 iff the triangles close consistently wound. Collapsed triangles
-/// are skipped, as the watertightness census skips them.
+/// at the 1/65536 m kernel grid. `assert_closed` separately rejects collapsed
+/// triangles, so dropping them here cannot turn degenerate output into a pass.
 fn open_edges(triangles: &[[[i64; 3]; 3]]) -> usize {
     let mut edges: HashMap<([i64; 3], [i64; 3]), (u32, u32)> = HashMap::new();
     for [a, b, c] in triangles {
@@ -151,12 +152,95 @@ fn assert_closed(id: u32, triangles: &[[[i64; 3]; 3]], frame: &str) {
         !triangles.is_empty(),
         "slab {id}, {frame}: no mesh was produced"
     );
+    for [a, b, c] in triangles {
+        let ab = [0, 1, 2].map(|k| b[k] as i128 - a[k] as i128);
+        let ac = [0, 1, 2].map(|k| c[k] as i128 - a[k] as i128);
+        let cross = [
+            ab[1] * ac[2] - ab[2] * ac[1],
+            ab[2] * ac[0] - ab[0] * ac[2],
+            ab[0] * ac[1] - ab[1] * ac[0],
+        ];
+        assert_ne!(cross, [0; 3], "slab {id}, {frame}: collapsed grid triangle");
+    }
     assert_eq!(
         open_edges(triangles),
         0,
         "slab {id}, {frame}: openings that fill its profile holes tore it ({} triangles)",
         triangles.len()
     );
+}
+
+#[derive(Default)]
+struct Shape {
+    signed_volume: f64,
+    area: f64,
+    perimeter_sum: f64,
+    triangles: usize,
+    max_stored_coordinate: f64,
+}
+
+fn shape(meshes: &[MeshData]) -> Shape {
+    let mut result = Shape::default();
+    for mesh in meshes {
+        // Use the public translation-stable kernel volume oracle. Origins
+        // translate a closed solid without changing its signed volume.
+        result.signed_volume += mesh_volume(&Mesh {
+            positions: mesh.positions.clone(),
+            indices: mesh.indices.clone(),
+            ..Mesh::default()
+        });
+        for &v in &mesh.positions {
+            assert!(v.is_finite(), "#6940: non-finite slab coordinate");
+            result.max_stored_coordinate = result.max_stored_coordinate.max((v as f64).abs());
+        }
+        let point = |i: u32| {
+            let k = i as usize * 3;
+            Vector3::new(
+                mesh.positions[k] as f64,
+                mesh.positions[k + 1] as f64,
+                mesh.positions[k + 2] as f64,
+            )
+        };
+        for t in mesh.indices.chunks_exact(3) {
+            let (a, b, c) = (point(t[0]), point(t[1]), point(t[2]));
+            result.area += (b - a).cross(&(c - a)).norm() * 0.5;
+            result.perimeter_sum += (b - a).norm() + (c - b).norm() + (a - c).norm();
+            result.triangles += 1;
+        }
+    }
+    result
+}
+
+/// These seven openings occupy existing profile holes: subtracting them may
+/// retessellate the boundary but must preserve its area, volume and winding.
+/// Allow two kernel steps plus two f32 relative-error units per coordinate,
+/// covering the independently rounded input/output frames. The Euclidean
+/// displacement budget is sqrt(3) times that coordinate budget. Volume noise
+/// scales with surface area * displacement (the public mesh_volume contract).
+/// For area, a triangle whose vertices move by at most d changes area by at
+/// most perimeter * d + 2*d*d, from expanding its edge cross product. Summing
+/// both tessellations avoids pinning triangle count or requiring equal diagonals.
+fn assert_shape_retained(id: u32, uncut: &[MeshData], cut: &[MeshData], frame: &str) {
+    let (before, after) = (shape(uncut), shape(cut));
+    let coordinate_error = 2.0 * KERNEL_GRID
+        + 2.0 * f32::EPSILON as f64
+            * before.max_stored_coordinate.max(after.max_stored_coordinate);
+    let displacement = 3.0_f64.sqrt() * coordinate_error;
+    let area_tolerance = (before.perimeter_sum + after.perimeter_sum) * displacement
+        + 2.0 * (before.triangles + after.triangles) as f64 * displacement.powi(2);
+    let volume_tolerance = (before.area + after.area + area_tolerance) * displacement;
+    assert!(before.area > 0.0 && before.signed_volume.abs() > volume_tolerance,
+        "slab {id}, {frame}: uncut shape must have a meaningful volume");
+    assert!(before.signed_volume.signum() == after.signed_volume.signum(),
+        "slab {id}, {frame}: no-op openings reversed the winding");
+    for (quantity, difference, tolerance) in [
+        ("signed volume", (after.signed_volume - before.signed_volume).abs(), volume_tolerance),
+        ("absolute volume", (after.signed_volume.abs() - before.signed_volume.abs()).abs(), volume_tolerance),
+        ("surface area", (after.area - before.area).abs(), area_tolerance),
+    ] {
+        assert!(difference <= tolerance,
+            "slab {id}, {frame}: no-op openings changed {quantity} by {difference}, allowance {tolerance}");
+    }
 }
 
 #[test]
@@ -236,6 +320,8 @@ fn issue_6940_the_slabs_are_closed_in_every_vertex_frame() {
         texture_index: &textures,
         site_local_rotation: None,
     };
+    let no_voids = FxHashMap::default();
+    let uncut_ctx = MeshProductionContext { void_index: &no_voids, ..ctx };
     let frames = [
         (
             "site offset, world coordinates (native default)",
@@ -269,8 +355,11 @@ fn issue_6940_the_slabs_are_closed_in_every_vertex_frame() {
                 metadata: None,
             };
             let opts = MeshProductionOptions::default();
+            let uncut = produce_element_meshes(&job, &uncut_ctx, &opts, &mut decoder, &router).meshes;
             let meshes = produce_element_meshes(&job, &ctx, &opts, &mut decoder, &router).meshes;
+            assert_closed(id, &world_triangles(uncut.iter()), &format!("{frame}, uncut"));
             assert_closed(id, &world_triangles(meshes.iter()), frame);
+            assert_shape_retained(id, &uncut, &meshes, frame);
         }
     }
 }

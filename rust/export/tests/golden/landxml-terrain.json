@@ -1,0 +1,10 @@
+{
+  "about": "FNV-1a 64 and byte length of each landxml-terrain output, keyed by case. Written by ifc-lite-export, never by hand.",
+  "repin": "IFC_LITE_REPIN_GOLDEN=1 cargo test -p ifc-lite-export --features parquet-bos --test export_golden -- --exact landxml_terrain",
+  "cases": {
+    "bonsai-terrain": {
+      "fnv1a64": "eaaea7aaccc92174",
+      "bytes": 1373
+    }
+  }
+}

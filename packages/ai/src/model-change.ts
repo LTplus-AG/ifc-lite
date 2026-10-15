@@ -141,5 +141,5 @@ export const MODEL_DATA_CHANGE_OUTPUT_GUIDANCE =
   + '"rationale":"Why","changes":[{"op":"property.set","target":{"globalId":"<22-char GlobalId>"},"pset":"Pset_WallCommon",'
   + '"name":"FireRating","expected":null,"value":"EI60"}]}. Ops: property.set, property.delete (expected = current value), '
   + 'quantity.set (qset, name, numeric expected/value), attribute.set (Name, Description, ObjectType or Tag). '
-  + '"expected" must be the value shown in the evidence (null when absent). Use only GlobalIds from the evidence; '
+  + '"expected" must be the value shown in the evidence (null when absent; booleans and numbers as JSON, not text). Use only GlobalIds from the evidence; '
   + 'never invent values the user did not ask for. The user reviews every change before anything is applied. ';

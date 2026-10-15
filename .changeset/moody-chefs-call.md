@@ -2,4 +2,4 @@
 "@ifc-lite/wasm": patch
 ---
 
-Fix sloped IfcBooleanResult differences leaving stray material and gaps by bounding exact plane-weld drift and constructing coplanar crossings in the clipping projection.
+Correct sloped IfcBooleanResult DIFFERENCE cuts with coincident sides, including adjacent stacked cutters.

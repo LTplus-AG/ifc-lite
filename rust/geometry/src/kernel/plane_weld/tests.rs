@@ -90,3 +90,45 @@ fn issue_7292_non_axis_plane_retains_the_original_q20_lift() {
     assert_eq!(orient3d(&explicit(cutter[0][0]), &explicit(host[0][0]),
         &explicit(host[0][1]), &explicit(host[0][2])), Sign::Zero);
 }
+
+#[test]
+fn issue_7292_admitted_axis_plane_reconciliation_is_preserved_979333() {
+    // S_Office entity 979333: Q20 moves Z by ~0.000315 caller units,
+    // within the existing X-normal band ~0.000894 at X=3750. Replacing
+    // that established seam target with the axis foot tore later cuts.
+    let host = [[[3750.0, 20.0, 0.0], [3750.0, 110.0, 0.0], [3750.0, 110.0, 3250.0]]];
+    let probe = [3749.999755859375, 110.0, 80.0];
+    let mut cutter = [[probe, [-2.0, 0.0, 0.0], [-2.0, 1.0, 0.0]]];
+    assert_eq!(promote_cutter_verts_onto_host_faces(&mut cutter, &host), 1);
+    let expected = [3750.0, 110.0, 3250.0 * 25_811.0 / 1_048_576.0];
+    assert_eq!(cutter[0][0], expected, "an admitted Q20 reconciliation must retain its seam identity");
+    assert_ne!(expected[2], probe[2], "the witness must distinguish Q20 from the exact axis foot");
+    let explicit = ImplicitPoint::Explicit;
+    assert_eq!(orient3d(&explicit(cutter[0][0]), &explicit(host[0][0]),
+        &explicit(host[0][1]), &explicit(host[0][2])), Sign::Zero);
+}
+
+#[test]
+fn issue_7292_axis_rescue_finishes_independent_flush_planes_869305() {
+    // The S_Office cutter's smaller Y offset shadows its X offset. The
+    // first exact axis foot must not leave a second flush plane unreconciled.
+    let host = [
+        [[0.0, 110.0, 0.0], [3750.0, 110.0, 0.0], [3750.0, 110.0, 3250.0]],
+        [[3750.0, 110.0, 0.0], [3750.0, 125.0, 0.0], [3750.0, 125.0, 3250.0]],
+    ];
+    for (x_offset, expected_x) in [(16.0 / 65_536.0, 3750.0),
+        (256.0 / 65_536.0, 3750.0 - 256.0 / 65_536.0)] {
+        let probe = [3750.0 - x_offset, 110.0 + 1.0 / 65_536.0, 2715.0];
+        let mut cutter = [[probe, [-2.0, 0.0, 0.0], [-2.0, 1.0, 0.0]]];
+        assert_eq!(promote_cutter_verts_onto_host_faces(&mut cutter, &host), 1);
+        assert_eq!(cutter[0][0], [expected_x, 110.0, 2715.0],
+            "#7292: finish the near X plane, but preserve an X offset outside its own band");
+        let explicit = ImplicitPoint::Explicit;
+        assert_eq!(orient3d(&explicit(cutter[0][0]), &explicit(host[0][0]),
+            &explicit(host[0][1]), &explicit(host[0][2])), Sign::Zero);
+        if expected_x == 3750.0 {
+            assert_eq!(orient3d(&explicit(cutter[0][0]), &explicit(host[1][0]),
+                &explicit(host[1][1]), &explicit(host[1][2])), Sign::Zero);
+        }
+    }
+}

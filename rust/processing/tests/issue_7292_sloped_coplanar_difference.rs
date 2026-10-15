@@ -200,29 +200,93 @@ fn issue_7292_five_percent_difference_preserves_the_complete_strip() {
     assert_strip(sloped.as_bytes(), 0.05);
 }
 
-/// Keep the reporter's operands unchanged and subtract the same prism five
-/// times. Set difference is idempotent: ((A \ B) \ B) ... = A \ B. Each
-/// BooleanResult still crosses the production mesh/kernel boundary, so this
-/// exercises repeated sloped subtraction without needing another oracle file.
-fn five_differences(fixture: &str) -> String {
+/// Partition the reporter's 80.9 mm cutter into five adjacent 16.18 mm
+/// prisms. A \ (B0 union ... union B4) equals ((((A \ B0) \ B1) ... \ B4).
+/// Unlike repeated identical subtraction, the first four slices each remove
+/// a distinct part of the 54 mm host layer. The last lies above the layer.
+fn five_stacked_slices(fixture: &str, slope: f64) -> String {
     const BODY: &str = "#102=IFCSHAPEREPRESENTATION(#7,'Body','CSG',(#101));";
     const DATA_END: &str = "\nENDSEC;\nEND-ISO-10303-21;";
+    const HEIGHT: f64 = 16.18;
     assert_eq!(fixture.matches(BODY).count(), 1, "reporter Body marker");
     assert_eq!(fixture.matches(DATA_END).count(), 1, "reporter DATA terminator");
-    let mut extra = String::new();
-    for id in 109..=112 {
-        assert!(!fixture.contains(&format!("#{id}=")), "new BooleanResult id must be unused");
-        let previous = if id == 109 { 101 } else { id - 1 };
-        extra.push_str(&format!("\n#{id}=IFCBOOLEANRESULT(.DIFFERENCE.,#{previous},#100);"));
+    assert_eq!(fixture.matches("#101=IFCBOOLEANRESULT(.DIFFERENCE.,#42,#100);").count(), 1,
+        "reporter first difference must keep its original host/cutter references");
+    let entity_id = |line: &str| line.split_once('=').and_then(|(id, _)| {
+        id.strip_prefix('#').and_then(|id| id.parse::<u32>().ok())
+    });
+    let template: Vec<_> = fixture.lines().filter_map(|line| {
+        entity_id(line).filter(|id| (43..=100).contains(id)).map(|id| (id, line))
+    }).collect();
+    assert_eq!(template.len(), 58, "complete reporter faceted-prism entity block");
+    for (offset, &(id, _)) in template.iter().enumerate() {
+        assert_eq!(id, 43 + offset as u32, "prism block must be contiguous and ordered");
     }
-    fixture.replace(BODY, "#102=IFCSHAPEREPRESENTATION(#7,'Body','CSG',(#112));")
-        .replace(DATA_END, &format!("{extra}{DATA_END}"))
+    for id in 200..=435 {
+        assert!(!fixture.lines().any(|line| entity_id(line) == Some(id)),
+            "stacked slice/BooleanResult id {id} must be unused");
+    }
+    let slice_line = |id: u32, line: &str, slice: u32, first_id: u32| {
+        // Remap every # reference, including the entity definition. All
+        // topology references in this self-contained block stay in 43..100.
+        let mut remapped = String::new();
+        for (i, part) in line.split('#').enumerate() {
+            if i == 0 { remapped.push_str(part); continue; }
+            let digits = part.bytes().take_while(u8::is_ascii_digit).count();
+            assert!(digits > 0, "prism reference must have an entity id");
+            let referenced: u32 = part[..digits].parse().expect("numeric prism reference");
+            assert!((43..=100).contains(&referenced), "prism block must be self-contained");
+            remapped.push_str(&format!("#{}{}", first_id + referenced - 43, &part[digits..]));
+        }
+        if (43..=62).contains(&id) {
+            let (_, coordinates) = line.split_once("((").expect("prism point");
+            let coordinates = coordinates.strip_suffix("));").expect("point terminator");
+            let coordinates: Vec<f64> = coordinates.split(',')
+                .map(|value| value.parse().expect("numeric prism coordinate")).collect();
+            assert_eq!(coordinates.len(), 3, "prism point has three coordinates");
+            let level = slice + (id - 43) % 2;
+            let z = 48.0 + HEIGHT * level as f64 + slope * coordinates[1];
+            format!("#{}=IFCCARTESIANPOINT(({:.4},{:.4},{z:.4}));",
+                first_id + id - 43, coordinates[0], coordinates[1])
+        } else {
+            remapped
+        }
+    };
+    let mut result = String::new();
+    for line in fixture.lines() {
+        let replacement = match entity_id(line) {
+            Some(id @ 43..=100) => slice_line(id, line, 0, 43),
+            Some(102) => "#102=IFCSHAPEREPRESENTATION(#7,'Body','CSG',(#435));".to_owned(),
+            _ => line.to_owned(),
+        };
+        result.push_str(&replacement);
+        result.push('\n');
+    }
+    let mut extra = String::new();
+    for slice in 1..=4 {
+        let first_id = 200 + (slice - 1) * 58;
+        for &(id, line) in &template {
+            extra.push('\n');
+            extra.push_str(&slice_line(id, line, slice, first_id));
+        }
+    }
+    for (id, cutter) in [(432, 257), (433, 315), (434, 373), (435, 431)] {
+        let previous = if id == 432 { 101 } else { id - 1 };
+        extra.push_str(&format!("\n#{id}=IFCBOOLEANRESULT(.DIFFERENCE.,#{previous},#{cutter});"));
+    }
+    result.replace(DATA_END, &format!("{extra}{DATA_END}"))
 }
 
 #[test]
-fn issue_7292_five_repeated_sloped_differences_preserve_the_complete_strip() {
-    let reporter_series = five_differences(FIXTURE);
+fn issue_7292_five_stacked_two_percent_slices_preserve_the_complete_strip() {
+    // The original reporter remains immutable; only the in-memory cutter
+    // blocks and Body item differ. Reuse every strip invariant at both slopes.
+    let reporter_series = five_stacked_slices(FIXTURE, 0.02);
     assert_strip(reporter_series.as_bytes(), 0.02);
-    let five_percent = five_differences(&fixture_at_slope(0.05));
+}
+
+#[test]
+fn issue_7292_five_stacked_five_percent_slices_preserve_the_complete_strip() {
+    let five_percent = five_stacked_slices(&fixture_at_slope(0.05), 0.05);
     assert_strip(five_percent.as_bytes(), 0.05);
 }

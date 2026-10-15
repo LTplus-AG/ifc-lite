@@ -4,6 +4,8 @@
 
 use super::super::arrangement::Tri;
 
+const S36: f64 = 68_719_476_736.0; // 2^36: the exact welded-vertex grid
+
 /// Weld `v` onto the plane of the (snap-grid) host triangle `(t0,t1,t2)` such
 /// that the result is EXACTLY on that plane and EXACTLY representable in f64.
 ///
@@ -19,16 +21,12 @@ use super::super::arrangement::Tri;
 /// (α,β) is used. |α|,|β| ≤ 8 bounds the integer products (the perpendicular
 /// foot of a band-near vertex is always within a few edge lengths; anything
 /// farther is a degenerate sliver basis we refuse to weld with).
-/// After these gates pass, an axis-aligned plane can use the perpendicular
-/// foot directly if it lies on the same 2⁻³⁶ grid. Only the plane coordinate
-/// changes; the two tangential coordinates retain their exact input values.
 ///
 /// DETERMINISM: FMA-free f64 + integer ops, fixed iteration order ⇒
 /// byte-identical native==wasm.
 pub(super) fn exact_on_plane_weld(v: [f64; 3], [t0, t1, t2]: Tri) -> Option<[f64; 3]> {
     const Q: f64 = 1_048_576.0; // 2^20 — α,β quantization
     const S16: f64 = 65_536.0; // the operand snap grid (1/SNAP_GRID)
-    const S36: f64 = 68_719_476_736.0; // 2^36 = S16 · Q — the welded-vertex grid
     let u = [t1[0] - t0[0], t1[1] - t0[1], t1[2] - t0[2]];
     let w = [t2[0] - t0[0], t2[1] - t0[1], t2[2] - t0[2]];
     let p = [v[0] - t0[0], v[1] - t0[1], v[2] - t0[2]];
@@ -64,21 +62,20 @@ pub(super) fn exact_on_plane_weld(v: [f64; 3], [t0, t1, t2]: Tri) -> Option<[f64
         }
         out[k] = rf / S36; // power-of-two divide: exact
     }
-    // #7292: axis-plane projection preserves tangential coordinates.
-    // This shortcut runs only after every original Q20 weld gate above passed.
-    if let Some(k) = (0..3).find(|&k| t0[k] == t1[k] && t0[k] == t2[k]) {
-        let mut foot = v;
-        foot[k] = t0[k];
-        let exact_fine_grid = foot.iter().all(|&coordinate| {
-            let scaled = coordinate * S36;
-            scaled.is_finite()
-                && scaled.fract() == 0.0
-                && scaled.abs() < i128::MAX as f64
-                && (scaled as i128) as f64 == scaled
-        });
-        if exact_fine_grid {
-            return Some(foot);
-        }
-    }
     Some(out)
+}
+
+/// Exact axis-plane candidate, used only after the original Q20 lift succeeds.
+/// Preserve both tangential coordinates on the existing 2^-36 vertex grid.
+pub(super) fn exact_axis_plane_foot(v: [f64; 3], [t0, t1, t2]: Tri) -> Option<[f64; 3]> {
+    let k = (0..3).find(|&k| t0[k] == t1[k] && t0[k] == t2[k])?;
+    let mut foot = v;
+    foot[k] = t0[k];
+    foot.iter().all(|&coordinate| {
+        let scaled = coordinate * S36;
+        scaled.is_finite()
+            && scaled.fract() == 0.0
+            && scaled.abs() < i128::MAX as f64
+            && (scaled as i128) as f64 == scaled
+    }).then_some(foot)
 }

@@ -168,21 +168,35 @@ fn issue_3917_a_torn_caller_order_is_repaired_without_the_caller_reordering_anyt
 /// spend up to six times the configured exact-predicate cap (#1109).
 #[test]
 fn issue_3917_retries_share_one_boolean_budget() {
-    // The fixed fixture consumes 1,058 escalations across its retry candidates,
-    // while no individual candidate reaches 1,000. Reading the thread-local
-    // counter therefore distinguishes one shared operation from a reset inside
-    // every retry without mutating the process-global cap (and racing other
-    // parallel geometry tests).
+    let _caps = budget::GLOBAL_CAP_LOCK.lock().unwrap();
+    let _element = budget::enter_element();
+    // Prove that this fixture still needs recovery, then compare the operation
+    // counter with the independent element accumulator. A reset between retry
+    // candidates loses work only from the former. This checks the shared-budget
+    // contract without pinning an incidental predicate count (#7292).
     let boxes = issue_3917_boxes();
     let input = [&boxes[2], &boxes[0], &boxes[1]]; // CAB: known torn first candidate
+    budget::begin();
+    let first = arrange_once(&input, true);
+    assert!(!budget::tripped());
+    assert!(!first.is_empty());
+    assert!(budget::count() > 0, "the discarded candidate must consume budget");
+    assert!(
+        !survives_consolidation_closed(&first),
+        "the caller's first candidate must need a retry"
+    );
+    let before = budget::element_count();
     let out = union_many(&input);
     let count = budget::count();
 
     assert!(!out.is_empty());
-    assert!(
-        count >= 1_000,
-        "the public union must retain the retry candidates' accumulated count; got {count}"
+    assert!(count > 0, "the real retry must perform exact predicate work");
+    assert_eq!(
+        count,
+        budget::element_count() - before,
+        "the public union must retain all retry candidates' accumulated work"
     );
+    assert!(survives_consolidation_closed(&out));
 }
 
 fn tetrahedron(offset: [f32; 3]) -> Mesh {

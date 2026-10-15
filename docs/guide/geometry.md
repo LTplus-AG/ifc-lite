@@ -601,9 +601,12 @@ path, faces with holes go through polygon triangulation with hole support
 ### Boolean Operations
 
 Handles `IfcBooleanClippingResult` and opening voids (`IfcRelVoidsElement`).
-Void cutting is a single exact-CSG path in the Rust kernel: boolean
-differences are evaluated with exact arithmetic predicates, so opening cuts
-are watertight rather than approximated.
+Void cutting uses one Rust CSG kernel with exact arithmetic predicates over
+snapped inputs. Near-coplanar reconciliation and f32 mesh storage have finite
+resolution; exact predicates do not guarantee that every emitted mesh is closed.
+`intersection_solid` returns `BelowKernelResolution` when no solid is trusted.
+Its reported thickness describes the limiting output component, including flat
+contact patches, and does not measure physical penetration below that resolution.
 
 ```mermaid
 flowchart LR

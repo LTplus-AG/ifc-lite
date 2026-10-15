@@ -53,12 +53,12 @@ use crate::mesh::Mesh;
 ///    hand-built call to this private function did. It is a demonstrated
 ///    algorithmic gap, not a proven wrong answer from real geometry.
 /// 2. **Switching to shared-EDGE adjacency was tried and regressed a real,
-///    previously-passing case.** Requiring triangles to share a full edge
+///    historical diagnostic expectation.** Requiring triangles to share a full edge
 ///    (both endpoints bit-identical, undirected) broke
 ///    `rotated_near_band_overlap_is_withheld_exactly_as_the_axis_aligned_
 ///    one_is` (`clash_intersection_oracle.rs`): at 1 snap cell, tessellation
 ///    1, it reported `thickness_m == 0` instead of the true ~15.26 µm depth
-///    — a genuinely connected wedge the kernel's arrangement produced got
+///    — its then-connected output wedge got
 ///    split into components that no longer shared a full edge with their
 ///    neighbours. This is consistent with (not confirmed as) a non-conforming
 ///    triangulation on that wedge — a T-junction where two facets share a
@@ -68,7 +68,11 @@ use crate::mesh::Mesh;
 ///    arrangement output does not reliably satisfy "adjacent facets share a
 ///    full edge," so requiring it here is not a safe tightening, and shipping
 ///    it would trade an unreached vertex-sharing gap for a demonstrated,
-///    reproducible regression on real kernel output.
+///    diagnostic change on real kernel output. The historical true-depth
+///    expectation overclaimed below-resolution geometry: #7292 also produces
+///    an independently verified flat patch with shared-vertex connectivity.
+///    Neither observation licenses pooling or ignoring thin components; every
+///    component still participates in the unchanged confidence decision.
 ///
 /// Union-find over triangle indices, unioned via a vertex-key → first-seen
 /// triangle map: O(tris) with a small constant, same asymptotic cost as the

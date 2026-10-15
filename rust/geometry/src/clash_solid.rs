@@ -20,8 +20,9 @@
 //! [`SNAP_GRID`](crate::kernel::mesh_bridge) = `2^-16 m ≈ 15.26 µm` and treats
 //! faces within [`NearBand`]'s band of each other as coplanar. Inside that
 //! band a thin overlap is not a thin solid — it is a *coplanar contact*, and the
-//! arrangement returns a wedge rather than the slab. Measured on the analytic
-//! box oracle (`tests/clash_intersection_oracle.rs`), a slab overlap reports:
+//! arrangement may return a wedge or disconnected contact patches instead of
+//! the slab. The following historical analytic-box measurements motivated the
+//! gate; below-band output is not a physical depth or volume measurement:
 //!
 //! | penetration depth | reported volume |
 //! |---|---|
@@ -82,9 +83,9 @@ pub enum DegenerateReason {
     /// resolve the overlap as a solid rather than a coplanar contact. The solid
     /// that would be returned here is systematically wrong (see the module
     /// docs), so it is withheld. `thickness_m` is the intersection's smallest
-    /// extent over the candidate contact normals (see `gate_axes`), which for a
-    /// box-box pair is the true penetration depth whatever the pair's
-    /// orientation; `required_m` is the depth this pair would have needed.
+    /// violating component extent over the candidate contact normals (see
+    /// `gate_axes`), including flat patches. It is an output diagnostic, not
+    /// physical penetration depth; `required_m` is that axis's trust threshold.
     ///
     /// `thickness_m == 0.0` exactly is a real and distinct outcome, observed on
     /// the bridge model (`IfcColumn` #761 × `IfcWall` #828): the kernel returned
@@ -166,12 +167,11 @@ pub fn intersection_solid(a: &Mesh, b: &Mesh) -> IntersectionSolid {
         return IntersectionSolid::Degenerate(reason);
     }
 
-    // Gate on the solid's thinnest extent. It is a sound proxy for penetration
-    // depth here BECAUSE it is the one quantity the misclassification does not
-    // corrupt: the wedge the kernel returns for a sub-band overlap still spans
-    // the full slab, so its extent still reports the true (too small)
-    // thickness. Deriving the gate from the volume instead would be circular —
-    // the volume is the thing under suspicion.
+    // Gate on each output component's thinnest extent. Below resolution the
+    // output can include flat contact patches as well as a wedge; its limiting
+    // extent need not equal the physical penetration depth (#7292). Every thin
+    // component still withholds the whole pair. Deriving confidence from the
+    // output volume instead would be circular — that volume is under suspicion.
     //
     // WHICH DIRECTION that thickness is measured along is the other half of the
     // argument, and measuring it against the WORLD axes (as this did until the

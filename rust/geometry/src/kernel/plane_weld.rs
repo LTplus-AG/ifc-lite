@@ -13,13 +13,20 @@
 //! touching" on exact AABBs, `tritri::near_coplanar` and `classify`'s regime 1
 //! both say "flush" on a [`NearBand`]. This module removes the guess at the
 //! source by MOVING the vertex onto the plane, which is why it belongs before
-//! the arrangement rather than inside the classifier.
+//! the arrangement rather than inside the classifier. Supporting planes remain
+//! eligible outside their face footprints. An already admitted noncorner lift
+//! may prefer a covering face on a distinct plane; exact corners and same-plane
+//! seam identities retain their original targets (#7292).
 
 use super::arrangement::Tri;
 use super::near_band::NearBand;
 
 mod lift;
-use lift::exact_on_plane_weld;
+use lift::{exact_axis_plane_foot, exact_on_plane_weld};
+mod axis_rescue;
+use axis_rescue::{complete_axis_rescue, AxisPlane};
+mod selection;
+use selection::Face;
 
 pub use diag::take_plane_weld_stats;
 
@@ -162,8 +169,8 @@ mod diag {
 /// reader. No return value: a partly-reconciled pair is still a valid
 /// `boolean_with_conformity` input, so no caller would branch on the count.
 ///
-/// DETERMINISM: fixed index order, fixed pass order, each step the same
-/// FMA-free f64 [`promote_cutter_verts_onto_host_faces`] ⇒ native == wasm.
+/// DETERMINISM: fixed index order and pass order, FMA-free f64 arithmetic and
+/// exact predicates in [`promote_cutter_verts_onto_host_faces`] ⇒ native == wasm.
 pub(crate) fn promote_operands_mutually(operands: &mut [Vec<Tri>]) {
     let n = operands.len();
     let mut welded = 0usize;
@@ -203,10 +210,11 @@ const MAX_WELD_PASSES: usize = 4;
 /// Cross-operand near-coincidence promotion: weld every CUTTER vertex that
 /// sits within the snap-scatter band of a HOST face PLANE onto that plane.
 ///
-/// The gate is the plane, not the face's footprint — see "The gate is
-/// PLANE-level" below, which is the whole reason this works on the repro. An
-/// earlier version of this line said the vertex must also project strictly
-/// inside the face; it does not, and never did in this code.
+/// Eligibility uses the supporting plane, including outside its footprint.
+/// For an already admitted noncorner Q20 lift, selection may prefer the nearest
+/// eligible covering face on a distinct plane. A containing same-plane sibling
+/// retains the original edge basis. Refused lifts and existing host-corner
+/// targets keep their established path (#7292).
 ///
 /// WHY (found by the kernel-parity sweep on a long tunnel-wall fixture): when
 /// `extend_opening_mesh_through_host` pushes a flush opening cap along the
@@ -235,9 +243,9 @@ const MAX_WELD_PASSES: usize = 4;
 /// operands' per-axis extents projected onto that plane's own normal
 /// (8·SNAP_GRID until the projected extent passes ~512 CALLER units, not metres
 /// (#2684), so an offset along an axis this plane does not face never widens it).
-/// DETERMINISM: plain FMA-free f64 over
-/// already-snapped coords, fixed iteration order, nearest-plane ties broken
-/// by face index ⇒ byte-identical native==wasm.
+/// DETERMINISM: FMA-free f64 distance/drift arithmetic and exact projection/
+/// plane predicates over already-snapped coordinates, fixed iteration order,
+/// face-order ties ⇒ byte-identical native==wasm.
 ///
 /// The "every pinned box−box manifest is transversal, so the promotion never
 /// fires there" claim this note used to carry is scoped to SUBTRACT, where it
@@ -256,64 +264,15 @@ pub(crate) fn promote_cutter_verts_onto_host_faces(cutter: &mut [Tri], host: &[T
     [cutter as &[Tri], host].into_iter().for_each(|t| band.observe_tris(t));
     let host_verts = super::near_band::exact_vertex_set(host); // #3353 N-ary half
 
-    struct Face {
-        /// `t[0]` anchors the plane; all three are [`exact_on_plane_weld`]'s
-        /// edge basis.
-        t: Tri,
-        n: [f64; 3], // raw (unnormalised) plane normal
-        nn: f64,     // |n|²
-        /// Squared PERPENDICULAR band for THIS face's plane. `NearBand`
-        /// returns it scaled by `nn` (its comparisons are made against a raw
-        /// `d = dot(v − t0, n)`); the `/ nn` here puts it back into true
-        /// distance units, because the nearest-plane search below compares
-        /// `d²/nn` ACROSS faces with different `|n|`.
-        band2: f64,
-    }
-    let faces: Vec<Face> = host
-        .iter()
-        .filter_map(|t| {
-            let e1 = [t[1][0] - t[0][0], t[1][1] - t[0][1], t[1][2] - t[0][2]];
-            let e2 = [t[2][0] - t[0][0], t[2][1] - t[0][1], t[2][2] - t[0][2]];
-            let n = [
-                e1[1] * e2[2] - e1[2] * e2[1],
-                e1[2] * e2[0] - e1[0] * e2[2],
-                e1[0] * e2[1] - e1[1] * e2[0],
-            ];
-            let nn = n[0] * n[0] + n[1] * n[1] + n[2] * n[2];
-            if nn <= 0.0 || !nn.is_finite() {
-                return None; // degenerate host triangle
-            }
-            let band2 = band.scaled_band2(n, nn) / nn;
-            Some(Face { t: *t, n, nn, band2 })
-        })
-        .collect();
+    let faces: Vec<Face> = host.iter().filter_map(|&t| Face::new(t, &band)).collect();
 
+    let mut axis_planes: Option<Vec<AxisPlane>> = None;
     for t in cutter.iter_mut() {
         for v in t.iter_mut() {
             if host_verts.contains(&super::near_band::vertex_bits(v)) { continue; } // #3353
-            // Nearest host plane the vertex is within the band of but NOT
-            // exactly on (d == 0 planes are already reconciled — and must not
-            // shadow a second, still-noisy plane: in the repro the jamb verts
-            // sit EXACTLY on the host bottom plane while 18–25 µm off the end
-            // plane; the end plane is the one that needs the weld, and the
-            // perpendicular projection onto it slides ALONG the bottom plane).
-            // Ties → first in face order (deterministic).
-            let mut best: Option<(f64, f64, &Face)> = None; // (perp-dist², raw offset, face)
-            for f in &faces {
-                let d = (v[0] - f.t[0][0]) * f.n[0]
-                    + (v[1] - f.t[0][1]) * f.n[1]
-                    + (v[2] - f.t[0][2]) * f.n[2];
-                if d == 0.0 {
-                    continue; // already exactly on this plane
-                }
-                let d2 = (d * d) / f.nn;
-                if d2 > f.band2 {
-                    continue; // outside the snap-scatter band
-                }
-                if best.is_none_or(|(bd2, ..)| d2 < bd2) {
-                    best = Some((d2, d, f));
-                }
-            }
+            // Begin with the nearest noisy plane. Covering-face preference
+            // only revises an admitted noncorner lift on a distinct plane.
+            let best = selection::select(*v, &faces, &band, &host_verts);
             // EXACT-PLANE LIFT (the crack-family fix): re-express the foot of
             // the perpendicular in the host triangle's EDGE BASIS and recombine
             // it with EXACT f64 arithmetic, so the welded vertex lies EXACTLY on
@@ -328,36 +287,29 @@ pub(crate) fn promote_cutter_verts_onto_host_faces(cutter: &mut [Tri], host: &[T
             // vertex is left UNTOUCHED — never an inexact foot, which would be
             // off every grid and force the BigRational tier on every predicate
             // that sees it.
-            if let Some((_, d, f)) = best {
-                if let Some(w) = exact_on_plane_weld(*v, f.t) {
-                    // #7292: edge-basis quantization must not create a new
-                    // point farther in-plane than the admitting face band.
-                    // In mm files the unit-free step shifts a flush side by
-                    // micrometres and leaves metres of the host uncut.
-                    let scale = d / f.nn;
-                    let drift = [0, 1, 2].map(|k| w[k] - (v[k] - scale * f.n[k]));
-                    let drift2 = drift[0] * drift[0] + drift[1] * drift[1] + drift[2] * drift[2];
-                    if !drift2.is_finite() {
-                        continue;
+            if let Some((d, f)) = best {
+                if let Some(q20) = exact_on_plane_weld(*v, f.t) {
+                    let original = *v;
+                    // #7292: Q20 and the initial axis foot use this drift admission.
+                    let admits = |w| f.admits(original, w, d, &band, &host_verts);
+                    // Keep the selected Q20 target when admitted. Selection
+                    // protects corner and same-plane seam identities. Only a
+                    // refused lift may try the exact axis foot; all Q20 gates above
+                    // remain mandatory. Further independent axis feet use
+                    // their own original normal bands, preserving prior axes.
+                    let target = if admits(q20) {
+                        Some(q20)
+                    } else {
+                        exact_axis_plane_foot(original, f.t).filter(|&foot| admits(foot)).map(|foot| {
+                            let planes = axis_planes.get_or_insert_with(|| faces.iter()
+                                .filter_map(|face| AxisPlane::new(face.t, face.band2)).collect());
+                            complete_axis_rescue(foot, planes, &host_verts)
+                        })
+                    };
+                    if let Some(w) = target {
+                        if w != original { welded += 1; }
+                        *v = w;
                     }
-                    if drift2 > f.band2 {
-                        // Reuniting an existing host corner also reconciles
-                        // tangential f32 scatter (native flush-slant fixture).
-                        // Its noise envelope
-                        // is projected along the drift, not the face normal.
-                        // Target identity prevents moving a coincident side
-                        // to a new point; the direction bound prevents a bad
-                        // Gram solve from jumping to a distant host corner.
-                        let tangent_band2 = band.scaled_band2(drift, drift2) / drift2;
-                        if !host_verts.contains(&super::near_band::vertex_bits(&w))
-                            || !tangent_band2.is_finite() || drift2 > tangent_band2 {
-                            continue;
-                        }
-                    }
-                    if w != *v {
-                        welded += 1;
-                    }
-                    *v = w;
                 }
             }
         }

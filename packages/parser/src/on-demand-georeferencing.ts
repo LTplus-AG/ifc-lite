@@ -13,7 +13,6 @@ import { EntityExtractor } from './entity-extractor.js';
 import type { IfcDataStore } from './columnar-parser.js';
 import {
     extractIfc4Georeferencing,
-    siteRefLatLon,
     withGeoreferenceFallbacks,
     type GeoreferenceInfo,
 } from './georef-extractor.js';
@@ -39,27 +38,6 @@ export function extractGeoreferencingOnDemand(store: IfcDataStore): Georeference
     // Don't cache a not-yet-loaded store — it may gain source/entityIndex later.
     if (!store.source?.length || !store.entityIndex) return null;
     return oncePerStore(store, 'georef', () => computeGeoreferencingOnDemand(store));
-}
-
-/**
- * RefLatitude/RefLongitude of the first IfcSite that carries both, in WGS84
- * degrees. Read independently of the georeference result: when an
- * IfcMapConversion exists, that result drops the site position, but the viewer
- * still compares the two (#7658). Memoized per store like its siblings.
- */
-export function extractSiteRefLocationOnDemand(store: IfcDataStore): { lat: number; lon: number } | null {
-    if (!store.source?.length || !store.entityIndex) return null;
-    return oncePerStore(store, 'siteRef', () => {
-        const extractor = new EntityExtractor(store.source);
-        const { byId, byType } = store.entityIndex;
-        for (const id of byType.get('IFCSITE') ?? []) {
-            const ref = byId.get(id);
-            const site = ref ? extractor.extractEntity(ref) : null;
-            const location = site ? siteRefLatLon(site) : undefined;
-            if (location) return location;
-        }
-        return null;
-    });
 }
 
 function computeGeoreferencingOnDemand(store: IfcDataStore): GeoreferenceInfo | null {

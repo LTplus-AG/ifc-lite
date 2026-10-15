@@ -5,7 +5,9 @@
 import { it } from 'node:test';
 import assert from 'node:assert/strict';
 import { reprojectPointToLatLon } from './reproject.js';
-import { distanceMetres } from './site-ref-mismatch.js';
+
+/** Metres per degree of latitude; longitude is scaled by cos(lat). */
+const M_PER_DEG = 111_320;
 
 /**
  * DB_REF (Deutsche Bahn, Bessel 1841) projected and DB_REF2003/2016 compound CRSs
@@ -25,8 +27,21 @@ for (const { codes, e, lat, lon } of CASES) {
     it(`EPSG:${code} applies the DB_REF to ETRS89 datum shift (#7658)`, async () => {
       const result = await reprojectPointToLatLon(e, 5_589_400, { id: 1, name: `EPSG:${code}`, mapUnitScale: 1 });
       assert.ok(result, `EPSG:${code} did not resolve`);
-      const offset = distanceMetres(result, { lat, lon });
+      const dy = (result.lat - lat) * M_PER_DEG;
+      const dx = (result.lon - lon) * M_PER_DEG * Math.cos((lat * Math.PI) / 180);
+      const offset = Math.hypot(dx, dy);
       assert.ok(offset < 0.5, `EPSG:${code} lands ${offset.toFixed(2)} m off (${result.lat}, ${result.lon})`);
     });
   }
+}
+
+/** The geographic DB_REF CRSs need the same shift (PROJ 9.3: 7.52 / 50.43 in DB_REF). */
+for (const code of ['5681', '5830']) {
+  it(`EPSG:${code} (geographic DB_REF) applies the datum shift (#7658)`, async () => {
+    const result = await reprojectPointToLatLon(7.52, 50.43, { id: 1, name: `EPSG:${code}`, mapUnitScale: 1 });
+    assert.ok(result, `EPSG:${code} did not resolve`);
+    const dy = (result.lat - 50.428802015) * M_PER_DEG;
+    const dx = (result.lon - 7.519172328) * M_PER_DEG * Math.cos((50.43 * Math.PI) / 180);
+    assert.ok(Math.hypot(dx, dy) < 0.5, `EPSG:${code} lands ${Math.hypot(dx, dy).toFixed(2)} m off (${result.lat}, ${result.lon})`);
+  });
 }

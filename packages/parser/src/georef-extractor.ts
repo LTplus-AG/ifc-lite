@@ -216,13 +216,6 @@ function compoundPlaneAngleToDecimalDegrees(value: unknown): number | undefined 
   return sign * (degrees + (minutes / 60) + ((seconds + (millionths / 1_000_000)) / 3600));
 }
 
-/** IfcSite RefLatitude/RefLongitude in WGS84 decimal degrees, when both decode. */
-export function siteRefLatLon(site: IfcEntity): { lat: number; lon: number } | undefined {
-  const lat = compoundPlaneAngleToDecimalDegrees(getAttributeValueByName(site, 'RefLatitude'));
-  const lon = compoundPlaneAngleToDecimalDegrees(getAttributeValueByName(site, 'RefLongitude'));
-  return lat === undefined || lon === undefined ? undefined : { lat, lon };
-}
-
 function extractLegacySiteGeoreference(
   entities: Map<number, IfcEntity>,
   entitiesByType: Map<string, number[]>,

@@ -4,8 +4,10 @@
 
 import type { ComponentType } from 'react';
 import { MeasureOverlay } from '@/components/viewer/tools/MeasurePanel';
-import { SectionOverlay } from '@/components/viewer/tools/SectionPanel';
-import { SectionToolbar } from '@/components/viewer/tools/SectionToolbar';
+import { SectionBar, SectionScene } from './lazy-section-tool';
+
+// Resolves once the Section tool's chunks are loaded (see `lazy-section-tool.tsx`).
+export { loadSectionTool } from './lazy-section-tool';
 import { SelectEditScene } from '@/components/viewer/tools/SelectEditScene';
 import { CommandBar, CommandScene } from '@/components/viewer/tools/command/CommandHud';
 // Registers the built-in modeling commands the `command` row renders.
@@ -79,8 +81,9 @@ export const TOOL_HUD: Record<ToolId, ToolHudEntry> = {
   // renders exactly as before, without a bespoke branch in `ToolOverlays`.
   measure: { Scene: MeasureOverlay },
   // The Section bar (#5499); its hint is dynamic (pick / cut / off), so the
-  // scene side renders it rather than this table's static `hint` key.
-  section: { Bar: SectionToolbar, Scene: SectionOverlay },
+  // scene side renders it rather than this table's static `hint` key. Both load
+  // on first use (#7616): `ToolOverlays` mounts them under a Suspense boundary.
+  section: { Bar: SectionBar, Scene: SectionScene },
   annotate: {},
   'cesium-placement': {},
   'polygon-area': {},

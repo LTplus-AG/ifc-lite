@@ -73,7 +73,8 @@ function findAlreadyVisibleTargetId(
  *  falsely match a LATER, genuinely outside, re-selection of the same id.
  *  Depending on `groupingMode` too means a selection held across a grouping
  *  tab switch is re-revealed in the new grouping. `ready` retries that reveal
- *  when an asynchronously loaded grouping becomes available. */
+ *  when an asynchronously loaded grouping becomes available. While partial
+ *  metadata is still arriving, available rows can already be revealed. */
 export function useRevealSelection({
   selectedEntityId,
   groupingMode,
@@ -104,7 +105,7 @@ export function useRevealSelection({
   useEffect(() => {
     const marked = fromTreeClickRef.current;
     fromTreeClickRef.current = undefined; // unconditional: even the null/deselect run consumes it
-    if (!ready || selectedEntityId == null) return;
+    if (selectedEntityId == null) return;
     if (marked && marked.id === selectedEntityId && marked.revision === selectionRevision) return;
 
     const visibleId = findAlreadyVisibleTargetId(isMultiModel, storeysNodes, modelsNodes, filteredNodes, selectedEntityId);

@@ -14,7 +14,7 @@ import type { GeometryResult } from '@ifc-lite/geometry';
 import { cleanup, click, render, type, waitFor } from '@/test/render.js';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { SourceHostProvider } from '@/services/sources/SourceHostProvider.js';
-import { useViewerStore } from '@/store';
+import { useViewerStore, type FederatedModel } from '@/store';
 import { HierarchyPanel } from '../HierarchyPanel.js';
 
 afterEach(cleanup);
@@ -61,7 +61,7 @@ async function model(id: string, federated = false, space = false) {
     geometryResult: geometry([offset + 7, offset + 8]) };
 }
 
-function mountPanel(models: Awaited<ReturnType<typeof model>>[], selectedId: number | null = null) {
+function mountPanel(models: FederatedModel[], selectedId: number | null = null) {
   useViewerStore.setState({ ...fixtureModels(...models), ifcDataStore: models[0].ifcDataStore,
     hierarchyMode: 'spatial', selectedEntityId: selectedId, selectedEntityIds: new Set(selectedId == null ? [] : [selectedId]),
     hiddenEntities: new Set(), isolatedEntities: null, mutationViews: new Map(),
@@ -111,6 +111,72 @@ describe('Presentation layers hierarchy (#7619)', () => {
     assert.ok(product);
     assert.equal(product.getAttribute('aria-selected'), 'true');
     assert.equal(container.querySelector('[role="tree"]')?.getAttribute('aria-busy'), 'false');
+  });
+
+  it('keeps progressive federation metadata busy while browsing loaded layers and defers empty search results (#7619 review)', async () => {
+    const a = await model('presentation-progressive-a', true);
+    const b = await model('presentation-progressive-b', true);
+    const pending = (entry: typeof a): FederatedModel => ({ ...entry, ifcDataStore: null,
+      maxExpressId: 51, loadState: 'hydrating-metadata', metadataLoadState: 'bootstrapping' });
+    const container = mountPanel([pending(a), pending(b)], b.idOffset + 7);
+    assert.equal(container.querySelector('[role="tree"]')?.getAttribute('aria-busy'), 'true');
+    assert.match(container.textContent ?? '', /Loading presentation layers/);
+    assert.doesNotMatch(container.textContent ?? '', /No presentation layers|No matches for/);
+    const input = container.querySelector<HTMLInputElement>('input[aria-label="Search hierarchy"]');
+    assert.ok(input);
+    act(() => useViewerStore.getState().updateModel(a.id, {
+      ifcDataStore: a.ifcDataStore, loadState: 'complete', metadataLoadState: 'complete',
+    }));
+    await waitFor(() => layerRows(container).length > 0, 'first model layers are browsable while the second hydrates');
+    act(() => useViewerStore.getState().setSelectedEntityId(a.idOffset + 7));
+    assert.ok([...container.querySelectorAll<HTMLElement>('[role="treeitem"][aria-selected="true"]')]
+      .some(row => row.textContent?.includes('Layer wall')),
+    'outside selection reveals an available product without waiting for its sibling');
+    act(() => useViewerStore.getState().setSelectedEntityId(b.idOffset + 7));
+    type(input, 'Layer wall');
+    assert.equal(container.querySelector('[role="tree"]')?.getAttribute('aria-busy'), 'true');
+    assert.match(container.textContent ?? '', /Loading presentation layers/);
+    type(input, 'Unmatched pending');
+    assert.doesNotMatch(container.textContent ?? '', /No matches for|No presentation layers/,
+      'missing matches are not definitive before all metadata arrives');
+    act(() => useViewerStore.getState().updateModel(b.id, {
+      ifcDataStore: b.ifcDataStore, loadState: 'complete', metadataLoadState: 'complete',
+    }));
+    await waitFor(() => /No matches for/.test(container.textContent ?? ''), 'completed metadata can report an empty search');
+    type(input, '');
+    const selected = [...container.querySelectorAll<HTMLElement>('[role="treeitem"][aria-selected="true"]')]
+      .find(row => row.textContent?.includes('Layer wall'));
+    assert.ok(selected, 'metadata readiness reveals the held selection in the second model');
+    assert.equal(container.querySelector('[role="tree"]')?.getAttribute('aria-busy'), 'false');
+    assert.doesNotMatch(container.textContent ?? '', /Loading presentation layers/);
+  });
+
+  it('reports genuine empty layers only once both model metadata loads complete (#7619 review)', async () => {
+    const emptyStore = await new IfcParser().parseColumnar(new TextEncoder().encode(
+      IFC.replace(/^#5[01]=.*\n/gm, ''),
+    ).buffer);
+    const a: FederatedModel = { ...fixtureModel('presentation-empty-pending-a'), ifcDataStore: null,
+      loadState: 'pending', metadataLoadState: 'idle' };
+    const b: FederatedModel = { ...fixtureModel('presentation-empty-pending-b'), ifcDataStore: null,
+      loadState: 'streaming-geometry', metadataLoadState: 'idle' };
+    const container = mountPanel([a, b]);
+    assert.doesNotMatch(container.textContent ?? '', /No presentation layers/);
+    act(() => useViewerStore.getState().updateModel(a.id, { ifcDataStore: emptyStore, loadState: 'complete' }));
+    assert.match(container.textContent ?? '', /Loading presentation layers/);
+    assert.doesNotMatch(container.textContent ?? '', /No presentation layers/);
+    act(() => useViewerStore.getState().updateModel(b.id, { ifcDataStore: emptyStore, loadState: 'complete' }));
+    await waitFor(() => /No presentation layers/.test(container.textContent ?? ''), 'completed shared empty metadata produces its real empty state');
+    assert.doesNotMatch(container.textContent ?? '', /Loading presentation layers/);
+  });
+
+  it('does not wait forever for settled geometry-only or failed model metadata (#7619 review)', async () => {
+    const geometryOnly: FederatedModel = { ...fixtureModel('presentation-geometry-only'), ifcDataStore: null,
+      loadState: 'complete', metadataLoadState: 'idle' };
+    const failed: FederatedModel = { ...fixtureModel('presentation-failed'), ifcDataStore: null,
+      loadState: 'error', metadataLoadState: 'bootstrapping' };
+    const container = mountPanel([geometryOnly, failed]);
+    await waitFor(() => /No presentation layers/.test(container.textContent ?? ''), 'terminal models do not leave the layer tab busy forever');
+    assert.doesNotMatch(container.textContent ?? '', /Loading presentation layers/);
   });
 
   it('selects products, hides/shows and isolates layer geometry, and searches collapsed members', async () => {

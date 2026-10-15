@@ -425,7 +425,7 @@ export function HierarchyPanel() {
   }
 
   const singleModel = models.size === 1 ? Array.from(models.values())[0] : null;
-  if (!ifcDataStore && singleModel) {
+  if (!ifcDataStore && singleModel && !singleModel.ifcDataStore) {
     const metadataState = singleModel.metadataLoadState;
     const message = metadataState === 'error'
       ? (singleModel.loadError || 'Model details failed to load.')

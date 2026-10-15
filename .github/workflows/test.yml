@@ -939,7 +939,8 @@ jobs:
           # its tests name, so a whole-change revert cannot compile them
           # (INCONCLUSIVE). Keep them and break ONLY the behaviour: a drained
           # response gives its bytes back early, a cache read ignores the RSS
-          # breaker, and an unusable entry keeps its index row. Once
+          # breaker, eviction takes the wrong row, a hit is never charged its
+          # stored size and two routes drop Content-Length. Once
           # cache_entry.rs is on main, ordinary whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- apps/server/src/services/cache_entry.rs | grep -Fxq 'apps/server/src/services/cache_entry.rs'; then
             oracle_args+=(--mutation tests/evidence/cache-policy-7676/behaviour.oracle.patch)

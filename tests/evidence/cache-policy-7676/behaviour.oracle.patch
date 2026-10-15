@@ -1,7 +1,17 @@
-diff --git a/apps/server/src/admission.rs b/apps/server/src/admission.rs
---- a/apps/server/src/admission.rs
-+++ b/apps/server/src/admission.rs
-@@ -113,7 +113,7 @@ impl AdmissionGuard {
+diff --git b/apps/server/src/admission.rs a/apps/server/src/admission.rs
+index 067d55fcc2..5f6fbe83c8 100644
+--- b/apps/server/src/admission.rs
++++ a/apps/server/src/admission.rs
+@@ -133,7 +133,7 @@ impl AdmissionGuard {
+         let held = mem.num_permits();
+         if held > want {
+             drop(mem.split(held - want));
+-        } else if false && held < want {
++        } else if held < want {
+             let extra = self.admission.acquire_more((want - held) as u32).await?;
+             // Same semaphore, so the permits merge into one.
+             if let (Some(mem), Some(extra)) = (self.mem.as_mut(), extra) {
+@@ -146,7 +146,7 @@ impl AdmissionGuard {
      /// End the job: free its CPU slot now and keep only its bytes, for as
      /// long as the returned value lives. See [`ResidentBytes`].
      pub fn into_resident(mut self) -> ResidentBytes {
@@ -10,7 +20,7 @@ diff --git a/apps/server/src/admission.rs b/apps/server/src/admission.rs
      }
  }
  
-@@ -225,6 +225,7 @@ impl Admission {
+@@ -258,6 +258,7 @@ impl Admission {
      /// applies. With the byte gate disabled (`IFC_MEM_BUDGET_MB=0`) nothing
      /// bounds resident bytes, for reads as for every other route.
      pub async fn acquire_resident(self: &Arc<Self>, bytes: u64) -> Result<ResidentBytes, ApiError> {
@@ -18,15 +28,42 @@ diff --git a/apps/server/src/admission.rs b/apps/server/src/admission.rs
          let Some(mem) = &self.mem else {
              return Ok(ResidentBytes { _mem: None });
          };
-diff --git a/apps/server/src/services/cache_entry.rs b/apps/server/src/services/cache_entry.rs
---- a/apps/server/src/services/cache_entry.rs
-+++ b/apps/server/src/services/cache_entry.rs
-@@ -128,7 +128,7 @@ impl DiskCache {
-     /// entry rewritten a moment ago, which is one more re-parse.
-     pub(crate) async fn evict_unusable(&self, key: &str, why: impl std::fmt::Display) {
-         tracing::warn!(cache_key = %key, reason = %why, "Unusable cache entry; treating it as a miss");
--        if let Err(e) = Ok::<(), cacache::Error>(()) {
-+        if let Err(e) = cacache::remove(&self.cache_dir, key).await {
-             tracing::warn!(cache_key = %key, error = %e, "Failed to evict an unusable cache entry");
+diff --git b/apps/server/src/routes/cache.rs a/apps/server/src/routes/cache.rs
+index a999a1b390..a3fbaf846c 100644
+--- b/apps/server/src/routes/cache.rs
++++ a/apps/server/src/routes/cache.rs
+@@ -182,7 +182,7 @@ pub async fn get_cached(
+             tracing::info!(key = %key, "Cache HIT");
+             let length = body.len().to_string();
+             let body = resident_body(body, admission.into_resident());
+-            Ok(([(header::CONTENT_TYPE, "application/json")], body)
++            Ok(([(header::CONTENT_TYPE, "application/json"), (header::CONTENT_LENGTH, length.as_str())], body)
+                 .into_response())
          }
-     }
+         Err(e) => {
+diff --git b/apps/server/src/routes/parse/json.rs a/apps/server/src/routes/parse/json.rs
+index 203d3af73b..472950a811 100644
+--- b/apps/server/src/routes/parse/json.rs
++++ a/apps/server/src/routes/parse/json.rs
+@@ -185,7 +185,7 @@ fn json_body(body: Bytes, resident: ResidentBytes) -> Response {
+     // without it the response goes out chunked (as `Json` never did).
+     let length = body.len();
+     (
+-        [(header::CONTENT_TYPE, "application/json")],
++        [(header::CONTENT_TYPE, "application/json"), (header::CONTENT_LENGTH, &length.to_string())],
+         resident_body(body, resident),
+     )
+         .into_response()
+diff --git b/apps/server/src/services/cache_entry.rs a/apps/server/src/services/cache_entry.rs
+index 7a2bc31ff0..a94573627e 100644
+--- b/apps/server/src/services/cache_entry.rs
++++ a/apps/server/src/services/cache_entry.rs
+@@ -157,7 +157,7 @@ impl DiskCache {
+         tracing::warn!(cache_key = %key, reason = %why, "Unusable cache entry; treating it as a miss");
+         let _exclusive = self.write_gc_lock.write().await;
+         match cacache::metadata(&self.cache_dir, key).await {
+-            Ok(Some(row)) if row.integrity != *failed => {
++            Ok(Some(row)) if row.integrity == *failed => {
+                 if let Err(e) = cacache::remove(&self.cache_dir, key).await {
+                     tracing::warn!(cache_key = %key, error = %e, "Failed to evict an unusable cache entry");
+                 }

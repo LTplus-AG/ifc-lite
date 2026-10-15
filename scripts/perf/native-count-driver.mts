@@ -73,7 +73,11 @@ try { validateBrowserFixtures(fixtures.map(({ key, abs }) => ({ name: key, path:
 catch (error) { fail(`${String(error)} (public fixtures: \`pnpm fixtures\`)`); }
 if (!existsSync(join(DIST, 'index.html'))) fail(`not a viewer build: ${DIST}`);
 const manifest = JSON.parse(readFileSync(join(ROOT, 'tests/models/manifest.json'), 'utf8')) as { files: { path: string; sha256: string }[] };
-const fixtureReceipts = fixtures.map((fixture) => fixtureReceipt(ROOT, fixture, manifest));
+// A manifest mismatch is an admission refusal like the checks above (exit 2), not a crash.
+const fixtureReceipts = (() => {
+  try { return fixtures.map((fixture) => fixtureReceipt(ROOT, fixture, manifest)); }
+  catch (error) { return fail(error instanceof Error ? error.message : String(error)); }
+})();
 const CHROME = findWindowsChrome(flag('--chrome'));
 const OUT_DIR = resolve(ROOT, flag('--out-dir') ?? `scripts/perf/.native-count-results/run-${Date.now()}`);
 mkdirSync(OUT_DIR, { recursive: true });

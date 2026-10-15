@@ -23,9 +23,8 @@
 import '../src/test/setup-dom.js';
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { replaceEvidence } from '../src/lib/assistant/conversation.js';
-import { sendAssistant } from '../src/lib/assistant/request.js';
-import { comparableEvidence, isAiEvalScene, seedScene } from '../src/test/ai-eval-scenes.js';
+import { comparableEvidence, seedScene } from '../src/test/ai-eval-scenes.js';
+import { captureRequest, type CaptureTask } from '../src/test/ai-eval-capture.js';
 import { replayRecording, type Recording } from '../src/test/ai-eval-replay.js';
 import { reviewReplay } from '../src/test/ai-eval-review.js';
 
@@ -44,39 +43,13 @@ const required = (name: string) => {
   return resolve(process.env.INIT_CWD ?? process.cwd(), value);
 };
 
-interface Task { id: string; scene: string; prompt: string }
-
-/** Proxy and Anthropic system prompts may be cache-marked blocks; the runner needs the plain text. */
-function systemText(system: unknown): string {
-  if (typeof system === 'string') return system;
-  if (Array.isArray(system)) return system.map(block => (block as { text?: unknown }).text).filter(text => typeof text === 'string').join('');
-  throw new Error('Captured request has no system prompt');
-}
-
 async function captureRequests(): Promise<void> {
-  const manifest = JSON.parse(readFileSync(required('manifest'), 'utf8')) as { tasks: Task[] };
+  const manifest = JSON.parse(readFileSync(required('manifest'), 'utf8')) as { tasks: CaptureTask[] };
   const model = flag('model');
   if (!model) throw new Error('--model is required (the live model id, so output ceilings match)');
   const only = flag('tasks')?.split(',');
   const out: unknown[] = [];
-  for (const task of manifest.tasks.filter(item => !only || only.includes(item.id))) {
-    if (!isAiEvalScene(task.scene)) throw new Error(`${task.id}: unknown scene ${task.scene}`);
-    const scene = await seedScene(task.scene);
-    if (scene.kind === 'missing') { out.push({ taskId: task.id, skipped: scene.message }); continue; }
-    replaceEvidence(scene.evidence);
-    let body: Record<string, unknown> | null = null;
-    const originalFetch = globalThis.fetch;
-    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
-      body = JSON.parse(String(init?.body)) as Record<string, unknown>;
-      return new Response('data: {"choices":[{"delta":{"content":"captured"},"finish_reason":"stop"}]}\n\n');
-    }) as typeof fetch;
-    try { await sendAssistant(task.prompt, model, '/api/chat'); }
-    finally { globalThis.fetch = originalFetch; }
-    const captured = body as Record<string, unknown> | null;
-    if (!captured) throw new Error(`${task.id}: the Assistant refused to send (check prompt and scene)`);
-    out.push({ taskId: task.id, scene: task.scene, evidence: comparableEvidence(scene.evidence),
-      request: { system: systemText(captured.system), messages: captured.messages, maxOutputTokens: captured.maxOutputTokens } });
-  }
+  for (const task of manifest.tasks.filter(item => !only || only.includes(item.id))) out.push(await captureRequest(task, model));
   writeFileSync(required('out'), `${JSON.stringify({ version: 1, model, tasks: out }, null, 2)}\n`);
 }
 

@@ -261,16 +261,11 @@ impl<'a> EntityDecoder<'a> {
         }
         let line = &self.content[start..end];
         parse_entity(line).map_err(|e| {
-            // Add bounded, lossy debug info without requiring the source to be UTF-8.
+            // `e` is already bounded (offset, nom kind and a short context, see
+            // `entity_parse_error`, #7675). Add the record's head, lossily, so
+            // the source need not be UTF-8.
             let cut = line.len().min(100);
-            Error::parse(
-                0,
-                format!(
-                    "Failed to parse entity: {:?}, input: {:?}",
-                    e,
-                    String::from_utf8_lossy(&line[..cut])
-                ),
-            )
+            Error::parse(0, format!("{e}, input: {:?}", String::from_utf8_lossy(&line[..cut])))
         })
     }
 

@@ -48,7 +48,7 @@ pub enum ExportError {
     ///
     /// * a COUNT that runs past a buffer — the per-mesh `vertex_counts` /
     ///   `index_counts` sum past the end of the flattened `positions` /
-    ///   `normals` / `indices`. The infallible [`crate::export_glb_from_meshes`]
+    ///   `normals` / `indices`. The crate-private infallible GLB assembler
     ///   silently drops the un-backed tail (a valid GLB missing part of the
     ///   model, reported as success);
     /// * an index BLOCK that is not whole triangles, or an index VALUE that is

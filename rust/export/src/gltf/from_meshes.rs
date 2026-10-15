@@ -19,6 +19,14 @@ use crate::error::ExportError;
 /// reported as success) or copying the out-of-range index straight into the BIN
 /// chunk. Prefer this at any boundary where the counts and buffers come from
 /// separate sources (the wasm FFI).
+///
+/// This is the only public from-meshes GLB entry point (#7675, EXPORT-GEOM-14):
+/// the infallible assembler behind it is crate-private, because it ships a
+/// truncated GLB as success on malformed counts.
+///
+/// ```compile_fail
+/// use ifc_lite_export::export_glb_from_meshes;
+/// ```
 #[allow(clippy::too_many_arguments)]
 pub fn try_export_glb_from_meshes(
     positions: &[f32],
@@ -113,13 +121,14 @@ pub fn try_export_glb_from_meshes(
 ///
 /// NOTE: on malformed input — a `vertex_counts`/`index_counts` entry that runs past the
 /// end of the flattened buffers — this stops at the first un-backed mesh and returns the
-/// valid prefix, so a caller bug ships a GLB missing the model's tail as "success". Use
-/// [`try_export_glb_from_meshes`] to turn that into [`ExportError::MalformedMeshInput`].
+/// valid prefix, so a caller bug would ship a GLB missing the model's tail as "success".
+/// That is why it is crate-private: [`try_export_glb_from_meshes`] validates first and
+/// turns it into [`ExportError::MalformedMeshInput`] (#7675, EXPORT-GEOM-14).
 #[allow(clippy::too_many_arguments)]
 // The index `i` walks several parallel count/offset arrays in lockstep; a
 // range loop is the clearest expression and avoids zipping ragged slices.
 #[allow(clippy::needless_range_loop)]
-pub fn export_glb_from_meshes(
+pub(crate) fn export_glb_from_meshes(
     positions: &[f32],
     normals: &[f32],
     indices: &[u32],
@@ -155,16 +164,17 @@ pub fn export_glb_from_meshes(
     for i in 0..n {
         let vc = vertex_counts[i] as usize;
         let ic = index_counts.get(i).copied().unwrap_or(0) as usize;
-        if (vbase + vc) * 3 > positions.len() || ibase + ic > indices.len() {
+        // Checked: on wasm32 a `u32` count times 3 wraps `usize`, so an
+        // unchecked bound could pass and then slice start > end (a panic).
+        let vend = vbase.checked_add(vc);
+        let pend = vend.and_then(|v| v.checked_mul(3)).filter(|&p| p <= positions.len());
+        let iend = ibase.checked_add(ic).filter(|&e| e <= indices.len());
+        let (Some(vend), Some(pend), Some(iend)) = (vend, pend, iend) else {
             break; // malformed counts — stop rather than panic
-        }
-        let pslice = &positions[vbase * 3..(vbase + vc) * 3];
-        let nslice: &[f32] = if normals.len() >= (vbase + vc) * 3 {
-            &normals[vbase * 3..(vbase + vc) * 3]
-        } else {
-            &[]
         };
-        let islice = &indices[ibase..ibase + ic];
+        let pslice = &positions[vbase * 3..pend];
+        let nslice: &[f32] = normals.get(vbase * 3..pend).unwrap_or(&[]);
+        let islice = &indices[ibase..iend];
         let color = [
             colors.get(i * 4).copied().unwrap_or(0.8),
             colors.get(i * 4 + 1).copied().unwrap_or(0.8),
@@ -189,8 +199,8 @@ pub fn export_glb_from_meshes(
             // worker boundary (it is `#[serde(skip)]`), so this path is always flat.
             instance: None,
         });
-        vbase += vc;
-        ibase += ic;
+        vbase = vend;
+        ibase = iend;
     }
     // From-meshes geometry is already absolute Y-up and never instances (no
     // side-channel), so there is no RTC frame to compensate. Quantization is a

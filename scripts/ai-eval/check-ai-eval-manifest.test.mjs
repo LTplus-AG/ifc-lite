@@ -4,7 +4,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { appendFileSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { run } from './check-ai-eval-manifest.mjs';
 import { privacyFindings, sha256 } from './lib/manifest.mjs';
@@ -223,4 +223,15 @@ test('#6928 a live recording renamed or carried over from another run is refused
   const { errors } = run(root);
   assert.ok(errors.some(error => /holds recording live-20250101t000000/.test(error)), errors.join('\n'));
   assert.ok(errors.some(error => /was not recorded by run 20261015t120000/.test(error)));
+}));
+
+test('#6928 a symlink in a live run is refused before anything behind it is read', () => withRoot(root => {
+  const { dir } = writeLiveRun(root);
+  const outside = join(root, 'outside.json');
+  // Not JSON: if the gate followed the link, loading it would throw.
+  writeFileSync(outside, 'someone@example.com is not JSON');
+  symlinkSync(outside, join(dir, 'recordings', 'linked.json'));
+  const { errors } = run(root);
+  assert.ok(errors.some(error => /recordings\/linked.json: symlinks are not allowed/.test(error)), errors.join('\n'));
+  assert.ok(!errors.some(error => /someone@example.com/.test(error)), 'the target is never read or quoted');
 }));

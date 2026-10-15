@@ -75,12 +75,16 @@ export function run(root) {
   if (!existsSync(manifestPath)) return { errors: [`${manifestPath} does not exist`], notes: [] };
   const recordingsDir = join(root, 'tests', 'ai-eval', 'recordings');
   const recordings = existsSync(recordingsDir) ? loadRecordingDir(recordingsDir) : [];
-  const liveRuns = loadLiveRuns(root);
+  const liveDir = join(root, 'tests', 'ai-eval', 'live-runs');
+  const liveEntries = existsSync(liveDir) ? readdirSync(liveDir, { recursive: true, withFileTypes: true }) : [];
+  // A committed symlink would make the gate read, and quote in its errors, a file outside the run: refuse before loading anything.
+  const links = liveEntries.filter(entry => entry.isSymbolicLink()).map(entry => `live-runs/${relative(liveDir, join(entry.parentPath, entry.name))}: symlinks are not allowed in live runs`);
+  const liveRuns = links.length ? [] : loadLiveRuns(root);
   const live = liveRecordings(liveRuns);
   const result = checkManifest(JSON.parse(readFileSync(manifestPath, 'utf8')), { root, recordings: [...recordings, ...live] });
+  result.errors.push(...links);
   for (const liveRun of liveRuns) result.errors.push(...liveRunErrors(liveRun));
-  const liveDir = join(root, 'tests', 'ai-eval', 'live-runs');
-  if (existsSync(liveDir)) for (const entry of readdirSync(liveDir, { withFileTypes: true })) if (!entry.isDirectory()) result.errors.push(`live-runs/${entry.name}: only run folders belong here`);
+  for (const entry of liveEntries) if (entry.parentPath === liveDir && !entry.isDirectory() && !entry.isSymbolicLink()) result.errors.push(`live-runs/${entry.name}: only run folders belong here`);
   if (!recordings.length) result.errors.push('tests/ai-eval/recordings holds no recordings; the replay harness would pass vacuously');
   const required = ['label-sheet.schema.json', 'study/protocol.json', 'study/protocol.schema.json', 'study/session.schema.json'];
   const missing = required.filter(path => !existsSync(join(root, 'tests', 'ai-eval', path)));

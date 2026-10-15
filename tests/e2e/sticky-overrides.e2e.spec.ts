@@ -11,9 +11,10 @@ test('#5860 saved worker override is visible and resettable in Settings', async 
     Object.defineProperty(navigator, 'gpu', { configurable: true, value: undefined });
   });
   await page.goto('/');
-  await page.getByRole('tab', { name: 'View', exact: true }).click({ force: true });
-  const settings = page.getByRole('tabpanel', { name: 'View' })
-    .locator('button[data-command-id="pref:settings"]');
+  // #5857: preferences remain reachable without opening View, even collapsed.
+  await page.getByRole('button', { name: 'Collapse the ribbon', exact: true }).click({ force: true });
+  const settings = page.locator('button[data-command-id="pref:settings"]');
+  await expect(settings).toBeVisible();
   await expect(settings).toHaveAccessibleName('Settings');
   await settings.hover();
   await expect(page.getByRole('tooltip')).toContainText('Theme, tooltips, navigation devices and other preferences');

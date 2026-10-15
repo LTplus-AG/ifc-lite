@@ -10,7 +10,7 @@ test.use({ viewport: { width: 1280, height: 900 } });
 const TAB_BUTTON_COUNTS = [
   ['File', 20], // includes the Cesium ion upload command (#6587) and LandXML (terrain) (#7600)
   ['Home', 7],
-  ['View', 20],
+  ['View', 19], // Settings moved to the persistent header (#5857)
   ['Elements', 17], // includes the selected mesh hover outline (#5748)
   ['Analyze', 18], // 17 commands including Linked records (#6643) plus the panel-browser content trigger (#5873)
   ['Author', 8], // includes Change sets (#6232 D4); every create kind is a Model workspace command, not a button (#6232 B1)
@@ -37,6 +37,12 @@ test('authored IFC keeps all 89 ribbon commands and panel browser reachable at 1
   const visited: Record<string, string[]> = {};
   for (const [tabName, expectedCount] of TAB_BUTTON_COUNTS) {
     await page.getByRole('tab', { name: tabName, exact: true }).click();
+    // #5857: the Settings command stays actionable beside every active tab.
+    const settings = page.locator('button[data-command-id="pref:settings"]');
+    await expect(settings).toHaveCount(1);
+    await expect(settings).toHaveAccessibleName('Settings');
+    await expect(settings).toBeVisible();
+    await settings.click({ trial: true });
     const band = page.getByRole('tabpanel', { name: tabName, exact: true });
     await expect(band).toBeVisible();
     const buttons = band.locator('button');
@@ -76,6 +82,8 @@ test('authored IFC keeps all 89 ribbon commands and panel browser reachable at 1
     expect(pageWidth, `${tabName} must not force a page-wide horizontal scrollbar`).toBeLessThanOrEqual(1281);
   }
 
+  const settings = page.locator('button[data-command-id="pref:settings"]');
+  visited.Header = [await settings.getAttribute('aria-label') ?? ''];
   const browserCount = visited.Analyze.filter((name) => name === 'Browse panels').length;
   expect(visited.View, 'View includes the selected-source centreline command (#5778)').toContain('Centreline');
   expect(browserCount, 'Analyze has one panel-browser content trigger').toBe(1);

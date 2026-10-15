@@ -32,7 +32,8 @@
       "status": "in_progress",
       "acceptance": "Open/query/edit/export/close through a documented library API; CLI and MCP reuse common implementation with existing behavior preserved",
       "pullRequests": [
-        "https://github.com/LTplus-AG/ifc-lite/pull/7634"
+        "https://github.com/LTplus-AG/ifc-lite/pull/7634",
+        "https://github.com/LTplus-AG/ifc-lite/pull/7636"
       ],
       "subtasks": [
         {
@@ -41,7 +42,7 @@
         },
         {
           "title": "Move backend and add open/query/edit/export/close factory",
-          "status": "validating"
+          "status": "verified"
         },
         {
           "title": "Adopt shared read adapter in CLI and remove superseded helpers",
@@ -59,16 +60,18 @@
         "fullSdk": "441 passed, 6 skipped",
         "fullMcp": "729 passed, 5 skipped",
         "sessionWorkflow": "Edit/export/reopen and closed-session refusal proven on the manifest-verified FZK fixture; tests/evidence/headless-session/fzk.json",
-        "sessionTypecheck": "running",
+        "sessionTypecheck": "root pnpm typecheck passed; all 4185 test files audited",
         "sessionDocumentation": "473 snippets compiled"
       }
     },
     {
       "id": "DX3",
       "title": "Discoverable backend capabilities",
-      "status": "validating",
+      "status": "in_review",
       "acceptance": "Unsupported operations can be checked before invocation and throw structured errors; legacy APIs stay compatible",
-      "pullRequests": [],
+      "pullRequests": [
+        "https://github.com/LTplus-AG/ifc-lite/pull/7636"
+      ],
       "checks": {
         "behavior": "Supported data methods, unsupported viewer/authoring methods, structured errors and attach/detach capability changes tested in the full SDK suite",
         "compatibility": "Existing MCP constructor retained; full MCP suite passed"

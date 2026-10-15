@@ -68,7 +68,7 @@ describe('headless developer workflow (DX2)', () => {
     expect(backend.capability('viewer.colorize').supported).toBe(false);
     backend.attachStreamingAdapters({ ...backend.viewer, colorize: (...args) => { colors.push(args); } }, backend.visibility);
     expect(backend.capability('viewer.colorize').supported).toBe(true);
-    backend.viewer.colorize([{ modelId: 'sample', expressId: 1 }], '#ff0000');
+    backend.viewer.colorize([{ modelId: 'sample', expressId: 1 }], [1, 0, 0, 1]);
     expect(colors).toHaveLength(1);
     backend.detachStreamingAdapters();
     expect(backend.capability('viewer.colorize').supported).toBe(false);

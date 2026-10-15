@@ -24,6 +24,8 @@ bash apps/landing/build-docs.sh
 
 The packed check installs actual tarballs in a fresh external directory, checks declarations with strict library checking, edits and reopens IFC, verifies lifecycle errors, produces real Node WASM GLB output, and builds the browser worker/WASM assets with Vite. GLB mesh counts, triangle counts and bytes matched the recorded baseline for both fixtures; this is output-identity evidence, not a runtime speed claim.
 
-The skipped tests depend on additional unavailable fixtures or explicitly unsupported host capabilities. The five developer recipe tests and both packed IFC workflows ran successfully. Module size, raw entity access, source assertion, test wiring, CI path/aggregate coverage, generated documentation and license guards also passed. A full strict MkDocs/landing build produced the searchable reference in the deploy output.
+The skipped tests depend on additional unavailable fixtures or explicitly unsupported host capabilities. The six developer recipe tests and both packed IFC workflows ran successfully. Module size, raw entity access, source assertion, test wiring, CI path/aggregate coverage, generated documentation and license guards also passed. A full strict MkDocs/landing build produced the searchable reference in the deploy output.
 
 The task ledger is `docs/architecture/developer-experience/tasks.json`; individual behavior receipts and observed production-revert checks remain in their respective evidence directories. The final PR's current-head CI is the acceptance record for the landed source.
+
+The geometry coverage follow-up reproduced a partial-success bug using the real committed wall model with one oversized EXPRESS id. All six recipe tests and the standard root typecheck passed after adding the shared preflight; `../developer-recipes/geometry-coverage.json` records the failed-before/passed-after result.

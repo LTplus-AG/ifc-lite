@@ -35,7 +35,7 @@
   },
   "typecheckedTestSources": 4210,
   "compiledDocSnippets": 475,
-  "recipeTests": 5,
+  "recipeTests": 6,
   "environment": {
     "ciBuildRun": 38755425807,
     "ciBuildHead": "3c9493f609bd2285b120d00210c7c4b3586bd6ac",
@@ -120,5 +120,6 @@
         "glbSha256": "02d77d563e73310d800cd5a1ad323f04ad59d83f5bcbaeff33134eeaaf94409a"
       }
     ]
-  }
+  },
+  "recipeCoverageRegression": "tests/evidence/developer-recipes/geometry-coverage.json"
 }

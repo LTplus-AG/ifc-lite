@@ -1,0 +1,124 @@
+{
+  "packages": {
+    "@ifc-lite/pointcloud": {
+      "passed": 341,
+      "skipped": 2
+    },
+    "create-ifc-lite": {
+      "passed": 129,
+      "skipped": 0
+    },
+    "@ifc-lite/geometry": {
+      "passed": 644,
+      "skipped": 0
+    },
+    "@ifc-lite/parser": {
+      "passed": 1979,
+      "skipped": 8
+    },
+    "@ifc-lite/sdk": {
+      "passed": 444,
+      "skipped": 6
+    },
+    "@ifc-lite/cli": {
+      "passed": 1472,
+      "skipped": 15
+    },
+    "@ifc-lite/mcp": {
+      "passed": 735,
+      "skipped": 5
+    }
+  },
+  "total": {
+    "passed": 5744,
+    "skipped": 36
+  },
+  "typecheckedTestSources": 4210,
+  "compiledDocSnippets": 475,
+  "recipeTests": 5,
+  "environment": {
+    "ciBuildRun": 38755425807,
+    "ciBuildHead": "3c9493f609bd2285b120d00210c7c4b3586bd6ac",
+    "wasmSha256": "af5ff32d368a6ddaf3423d3813e6f5f601190d073e099b198279e4fa3f7fa524",
+    "fixtureSha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5"
+  },
+  "packed": {
+    "packageVersions": {
+      "@ifc-lite/bcf": "5.0.1",
+      "@ifc-lite/clash": "2.4.4",
+      "@ifc-lite/codegen": "1.18.1",
+      "@ifc-lite/create": "5.1.0",
+      "@ifc-lite/data": "6.2.0",
+      "@ifc-lite/drawing-2d": "4.2.0",
+      "@ifc-lite/encoding": "2.3.0",
+      "@ifc-lite/export": "4.11.0",
+      "@ifc-lite/geometry": "7.8.1",
+      "@ifc-lite/ids": "3.3.6",
+      "@ifc-lite/ids-authoring": "0.2.6",
+      "@ifc-lite/ifcx": "4.4.0",
+      "@ifc-lite/lens": "2.2.0",
+      "@ifc-lite/lists": "3.1.7",
+      "@ifc-lite/load-trace": "0.3.0",
+      "@ifc-lite/mutations": "3.2.0",
+      "@ifc-lite/parser": "9.5.1",
+      "@ifc-lite/pointcloud": "0.12.0",
+      "@ifc-lite/query": "2.5.2",
+      "@ifc-lite/regex-guard": "0.3.0",
+      "@ifc-lite/rules": "0.7.7",
+      "@ifc-lite/sdk": "9.5.0",
+      "@ifc-lite/spatial": "1.15.0",
+      "@ifc-lite/wasm": "10.4.0",
+      "@ifc-lite/wasm-lifecycle": "0.2.0"
+    },
+    "declarationsChecked": true,
+    "browser": {
+      "viteVersion": "8.3.4",
+      "files": [
+        "assets/event-DZmSOhea.js",
+        "assets/geometry.worker-CnTX6MaN.js",
+        "assets/ifc-lite_bg-DmwzagLZ.wasm",
+        "assets/index-BWGb64L8.js",
+        "assets/native-bridge-DwO3dMyv.js",
+        "index.html"
+      ]
+    },
+    "receipts": [
+      {
+        "fixture": "apps/viewer/public/samples/hello-wall.ifc",
+        "sha256": "0ab20f4ea355ea9aa4fade7264b97ee9f9929addfa3961b2437c4381bd674014",
+        "runtime": "v24.21.0",
+        "schema": "IFC4",
+        "completeness": "complete",
+        "type": "IfcWall",
+        "count": 1,
+        "GlobalId": "2JUHrTM_j3UxZiBnyBfByx",
+        "artifactResolution": true,
+        "editReopened": true,
+        "unsupportedRefused": true,
+        "closedQueryRefused": true,
+        "meshes": 8,
+        "triangles": 192,
+        "glbBytes": 13892,
+        "glbSha256": "8748749dba3e43d4e7373971cf0aa99393f98d494c6ae4275625542504d5169a"
+      },
+      {
+        "fixture": "tests/models/ara3d/AC20-FZK-Haus.ifc",
+        "sha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+        "runtime": "v24.21.0",
+        "schema": "IFC4",
+        "completeness": "complete",
+        "type": "IfcDoor",
+        "count": 5,
+        "GlobalId": "1Oms875aH3Wg$9l65H2ZGw",
+        "artifactResolution": true,
+        "editReopened": true,
+        "unsupportedRefused": true,
+        "closedQueryRefused": true,
+        "meshes": 317,
+        "triangles": 33356,
+        "glbBytes": 1915936,
+        "glbSha256": "02d77d563e73310d800cd5a1ad323f04ad59d83f5bcbaeff33134eeaaf94409a"
+      }
+    ]
+  }
+}

@@ -96,3 +96,5 @@ README and raw evidence. This review does not claim independent heavy-test runs.
 Browser use of the fetched published WASM runtime and the local regeneration
 limitation are disclosed in the README; no additional runtime-equivalence claim
 is made here. Source changes are viewer-only; no Rust/kernel behavior changed.
+
+Final integration addendum: independently reviewed `9680664cb9a6977fdf09c729c1251505a888f483`, which changes only the Elements ribbon glyph to the existing house `Layer` SVG. Its import now satisfies the existing ribbon design contract; command labels, dispatch and hierarchy behavior are unchanged. The corrected E2E inventory and actual sidebar activation assertions were also reviewed at `b12aa4d8e5`. Related registry and localization contracts use dynamic inventories; no further concrete omission or unresolved blocker was found. Final CI execution remains a separate requirement.

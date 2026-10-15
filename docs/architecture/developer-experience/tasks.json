@@ -29,9 +29,23 @@
     {
       "id": "DX2",
       "title": "Supported shared headless entry point",
-      "status": "pending",
+      "status": "in_progress",
       "acceptance": "Open/query/edit/export/close through a documented library API; CLI and MCP reuse common implementation with existing behavior preserved",
-      "pullRequests": []
+      "pullRequests": [],
+      "subtasks": [
+        {
+          "title": "Move existing live-overlay query readers beneath MCP into SDK",
+          "status": "in_progress"
+        },
+        {
+          "title": "Move backend and add open/query/edit/export/close factory",
+          "status": "pending"
+        },
+        {
+          "title": "Adopt shared read adapter in CLI and remove superseded helpers",
+          "status": "pending"
+        }
+      ]
     },
     {
       "id": "DX3",

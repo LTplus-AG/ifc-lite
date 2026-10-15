@@ -16,7 +16,7 @@ import type { CallToolResult, ContentBlock } from '../protocol/index.js';
 import type { LoadedModel, ToolContext } from '../context.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import { modelAllowed } from '../auth/scope.js';
-import { pendingOverlay } from '../overlay.js';
+import { pendingOverlay } from '@ifc-lite/sdk/headless';
 
 /**
  * Throw PERMISSION_DENIED when the caller's scope carries a model allowlist

@@ -1,7 +1,7 @@
 {
   "name": "@ifc-lite/sdk",
   "version": "9.5.0",
-  "description": "Scripting SDK for ifc-lite — the bim.* API for BIM automation",
+  "description": "Scripting SDK for ifc-lite \u2014 the bim.* API for BIM automation",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -15,6 +15,11 @@
       "types": "./dist/review.d.ts",
       "import": "./dist/review.js",
       "default": "./dist/review.js"
+    },
+    "./headless": {
+      "types": "./dist/headless.d.ts",
+      "import": "./dist/headless.js",
+      "default": "./dist/headless.js"
     }
   },
   "scripts": {

@@ -9916,6 +9916,23 @@
     "resolveLiveOwnerHistoryId: function",
     "stringToEntityRef: function"
   ],
+  "@ifc-lite/sdk/headless": [
+    "CreatedEntity: interface",
+    "PendingOverlay: interface",
+    "createQueryAdapter: function",
+    "effectiveSourceIds: function",
+    "entityInfoAcrossSchemas: function",
+    "entityInfoInSchema: function",
+    "expandTypes: function",
+    "foldedEntityCount: function",
+    "foldedTypeCounts: function",
+    "isProductType: const",
+    "overlayFromView: function",
+    "pendingEntityMembership: function",
+    "pendingMutationsField: function",
+    "pendingOverlay: function",
+    "stepText: function"
+  ],
   "@ifc-lite/sdk/review": [
     "AutomationJsonValue: type",
     "AutomationReportProvenance: interface",

@@ -39,7 +39,6 @@ import {
   type IfcDataStore,
   normalizeIfcTypeName,
 } from '@ifc-lite/parser';
-import type { LoadedModel } from './context.js';
 import { effectiveSourceIds, pendingEntityMembership } from './effective-entity-membership.js';
 /** An entity that exists only in the overlay (`entity_create`). */
 export interface CreatedEntity {
@@ -124,7 +123,7 @@ export interface PendingOverlay {
  * creates the view lazily on the first mutation, so an unedited session pays
  * nothing and every caller keeps its original store-only path.
  */
-export function pendingOverlay(model: LoadedModel): PendingOverlay | null {
+export function pendingOverlay(model: { backend: { pendingOverlay(): PendingOverlay | null } }): PendingOverlay | null {
   return model.backend.pendingOverlay();
 }
 /**

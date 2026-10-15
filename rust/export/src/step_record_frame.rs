@@ -70,17 +70,26 @@ impl RecordFrame {
     }
 }
 
-/// `/^\s*#\d+\s*=/`: the line declares an entity instance, whatever follows
+/// `#digits TRIVIA =`: the line declares an entity instance, whatever follows
 /// the `=`. Core's scanner indexes records [`record_head`] does not read (a
 /// complex instance `#N=(IFCA(..)IFCB(..));`, a non-ASCII byte after the `=`
 /// or before the `(`), so a line that opens like this and has no frame is an
 /// UNREADABLE record, never "no record": an edit queued for it is reported,
-/// not passed over (#7682 review).
+/// not passed over (#7682 review). Trivia, comments included, sits before the
+/// `=` exactly as the scanner reads it: `#48/* c */=(IFCA(..)IFCB(..));` is a
+/// record.
 pub(crate) fn opens_record(text: &str) -> bool {
-    let t = text.trim_start();
-    let Some(rest) = t.strip_prefix('#') else { return false };
-    let digits = rest.find(|c: char| !c.is_ascii_digit()).unwrap_or(rest.len());
-    digits > 0 && rest[digits..].trim_start().starts_with('=')
+    let b = text.as_bytes();
+    let Some(mut i) = skip_step_trivia(b, 0) else { return false };
+    if b.get(i) != Some(&b'#') {
+        return false;
+    }
+    i += 1;
+    let digits = i;
+    while b.get(i).is_some_and(u8::is_ascii_digit) {
+        i += 1;
+    }
+    i > digits && skip_step_trivia(b, i).is_some_and(|eq| b.get(eq) == Some(&b'='))
 }
 
 fn is_keyword_byte(b: u8) -> bool {

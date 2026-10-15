@@ -67,15 +67,23 @@ function skipTrivia(text: string, i: number): number {
 }
 
 /**
- * `/^\s*#\d+\s*=/`: the line declares an entity instance, whatever follows the
- * `=`. A scanner indexes records {@link stepRecordHead} does not read (a
+ * `#digits TRIVIA =`: the line declares an entity instance, whatever follows
+ * the `=`. Trivia, comments included, sits before the `=` as core's scanner
+ * reads it: `#48/* c *​/=(IFCA(..)IFCB(..));` is a record. A scanner indexes records {@link stepRecordHead} does not read (a
  * complex instance `#N=(IFCA(..)IFCB(..));`, a non-ASCII character after the
  * `=` or before the `(`), so a line that opens like this and has no frame is an
  * UNREADABLE record, never "no record": an edit queued for it is reported, not
  * passed over (#7682 review).
  */
 export function opensStepRecord(text: string): boolean {
-  return /^\s*#\d+\s*=/.test(text);
+  let i = skipTrivia(text, 0);
+  if (i === -1 || text[i] !== '#') return false;
+  i++;
+  const digits = i;
+  while (i < text.length && text[i] >= '0' && text[i] <= '9') i++;
+  if (i === digits) return false;
+  const eq = skipTrivia(text, i);
+  return eq !== -1 && text[eq] === '=';
 }
 
 function isKeywordChar(c: string | undefined): boolean {

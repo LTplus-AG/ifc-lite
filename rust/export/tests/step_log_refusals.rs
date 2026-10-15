@@ -82,6 +82,9 @@ fn an_edit_on_an_indexed_record_the_frame_cannot_read_is_reported_7682() {
     for (record, mutation) in [
         ("#2=(IFCA('x')IFCB(1));", positional),
         ("#2=(IFCA('x')IFCB(1));", named),
+        // Valid Part 21: trivia, comments included, before the `=` (base warned; the first cut of #7710 dropped it silently).
+        ("#2/* c */=(IFCA('x')IFCB(1));", positional),
+        ("#2/* c */=(IFCA('x')IFCB(1));", named),
         ("#2=\u{a0}IFCWALL('0uK8j9R5T5E8Gf7Ybq5ZpA',$,'Wall B',$,$,$,$,$,$);", named),
         ("#2=IFCWALL\u{a0}('0uK8j9R5T5E8Gf7Ybq5ZpA',$,'Wall B',$,$,$,$,$,$);", named),
     ] {

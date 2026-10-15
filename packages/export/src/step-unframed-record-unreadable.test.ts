@@ -16,10 +16,13 @@
 
 import { describe, expect, it } from 'vitest';
 import { applySourceLineMutations } from './step-attribute-mutations.js';
+import { opensStepRecord } from './step-record-frame.js';
 
 describe('an edit on a record with no frame is reported (#7682)', () => {
   for (const line of [
     "#2=(IFCA('x')IFCB(1));",
+    // Valid Part 21: a comment before the `=` (base warned; the first cut of #7710 dropped it silently).
+    "#2/* c */=(IFCA('x')IFCB(1));",
     "#2= IFCWALL('0uK8j9R5T5E8Gf7Ybq5ZpA',$,'Wall B',$,$,$,$,$,$);",
     "#2=IFCWALL ('0uK8j9R5T5E8Gf7Ybq5ZpA',$,'Wall B',$,$,$,$,$,$);",
   ]) {
@@ -30,6 +33,12 @@ describe('an edit on a record with no frame is reported (#7682)', () => {
       expect(out.unreadable).toBe(true);
     });
   }
+
+  it('U+0085, U+FEFF and a comment that never closes do not open a record', () => {
+    for (const line of ['#2/* c =IFCWALL($);', '\u0085#2=IFCWALL($);', '#2\ufeff=IFCWALL($);']) {
+      expect(opensStepRecord(line)).toBe(false);
+    }
+  });
 
   it('a line that declares no instance is not unreadable', () => {
     const out = applySourceLineMutations(null, 2, 'ENDSEC;', 'IFCWALL', new Map([['Name', 'y']]), 'IFC4', false);

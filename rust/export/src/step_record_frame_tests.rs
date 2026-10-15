@@ -53,7 +53,8 @@ fn shared_vectors_unframed_lines_still_open_a_record() {
         assert_eq!(record_frame(text), None, "{text:?}");
         assert!(opens_record(text), "{text:?}");
     }
-    for text in ["", "IFCWALL($);", "#=IFCWALL($);", "ENDSEC;"] {
+    // U+0085 and U+FEFF are not STEP whitespace, and a comment that never closes hides the `=`.
+    for text in ["", "IFCWALL($);", "#=IFCWALL($);", "ENDSEC;", "#2/* c =IFCWALL($);", "\u{85}#2=IFCWALL($);", "#2\u{feff}=IFCWALL($);"] {
         assert!(!opens_record(text), "{text:?}");
     }
 }

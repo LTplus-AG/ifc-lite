@@ -55,7 +55,7 @@ Run `pnpm --dir apps/viewer ai-eval review --recordings <run>/recordings --out <
 
 Three runs over all twelve tasks, committed under `tests/ai-eval/live-runs/`: two through the production free-model proxy (`https://www.ifclite.com/api/chat`, no credential) and one direct to Anthropic with a BYOK key. The proxy applies its own sampling and current Claude models take no temperature, so these are samples, not a stable quality measure. The Anthropic run used the per-provider capture from [#7649](https://github.com/LTplus-AG/ifc-lite/pull/7649); before it, every request was refused with a 400 for its temperature.
 
-| Run | Model | Requests | Completed | Empty answer | Truncated | Invariant flags | Native refusals or conflicts | Median output tokens, completed |
+| Run | Model | Requests | Completed (receipt) | Empty answer | Truncated | Invariant flags | Native refusals or conflicts, completed answers | Median output tokens, completed |
 |---|---|---|---|---|---|---|---|---|
 | `20261015t110523` | `z-ai/glm-5.3-flash` | 24 (2 repeats) | 16 | 7 | 1 | 4 in 2 answers | 0 | 2,229 |
 | `20261015t111451` | `qwen/qwen3.7-flash` | 12 | 12 | 0 | 0 | 0 | 1 | 2,028 |

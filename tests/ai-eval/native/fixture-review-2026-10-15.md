@@ -14,7 +14,7 @@ Method: every IFC file was searched for `IFCPERSON`, `IFCORGANIZATION`, `IFCPOST
 
 ## Decision needed: "Jan B." and the manifest policy
 
-The manifest policy says "No client, project or personal data". "Jan B." is an abbreviated personal name, so the two SketchUp fixtures do not meet that policy as written. The record is the publisher's attribution inside a public CC BY 4.0 dataset; it has no contact data. It is also copied into the evidence of `tests/ai-eval/recordings/selected-roof-properties-release.json` and three committed live recordings (`selected-roof-properties`), and those three were sent to the free-model provider.
+The manifest policy says "No client, project or personal data". "Jan B." is an abbreviated personal name, so the two SketchUp fixtures do not meet that policy as written. The record is the publisher's attribution inside a public CC BY 4.0 dataset; it has no contact data. It is also copied into the evidence of `tests/ai-eval/recordings/selected-roof-properties-release.json` and five committed live recordings (`selected-roof-properties`): three were sent to the free-model proxy and two to Anthropic.
 
 Options for the maintainer:
 

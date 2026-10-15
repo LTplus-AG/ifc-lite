@@ -1,0 +1,35 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+# Standalone fuzz crate for LandXML ingestion (pull parsers and the stream
+# session). It is intentionally NOT a member of the workspace (own
+# `[workspace]` table below) so normal `cargo build --workspace` and CI
+# ignore it; run it with `cargo fuzz`. Mirrors `rust/core/fuzz`.
+[package]
+name = "ifc-lite-landxml-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[package.metadata.cargo-machete]
+# Used via the `include!`d `tests/fuzz/exercise.rs`, which cargo-machete cannot see.
+ignored = ["ifc-lite-landxml"]
+
+[dependencies]
+libfuzzer-sys = "0.4"
+
+[dependencies.ifc-lite-landxml]
+path = ".."
+
+[[bin]]
+name = "parse_landxml"
+path = "fuzz_targets/parse_landxml.rs"
+test = false
+doc = false
+bench = false
+
+[workspace]

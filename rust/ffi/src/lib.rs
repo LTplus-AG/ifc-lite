@@ -34,66 +34,34 @@ mod tests;
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
-use ifc_lite_processing::{process_geometry_filtered, OpeningFilterMode, ParseResponse};
+use ifc_lite_processing::{
+    process_geometry_filtered, run_on_geometry_pool, OpeningFilterMode, ParseResponse,
+};
 use panic_log::{ensure_panic_logging, InFlightPath};
 use std::slice;
-use std::sync::OnceLock;
 
 mod panic_log;
 
-/// Stack size for the geometry worker threads (256 MiB).
-///
-/// IFC geometry processing recurses deeply: BSP-tree CSG (via `csgrs`) and chains of nested
-/// boolean clipping (e.g. a wall with hundreds of openings) build call stacks far past the
-/// default ~1 MiB worker stack. Overflowing it hits the guard page and aborts the whole host
-/// process (Rhino) with `STACK_OVERFLOW` (0xC00000FD) — no panic, no unwind, nothing
-/// `catch_unwind` can intercept. A large stack gives that recursion room to complete.
-const PARSE_STACK_SIZE: usize = 256 * 1024 * 1024;
-
-/// Dedicated rayon pool whose worker threads have a large stack (see [`PARSE_STACK_SIZE`]).
-///
-/// The actual per-element geometry work runs inside `process_geometry` via
-/// `par_iter` on rayon workers, so the recursion lives on *their* stacks — not the caller's.
-/// Running the parse through `pool.install(..)` makes both the entry closure and every nested
-/// `par_iter` use these large-stack workers. Built once and reused.
-///
-/// `None` when the pool cannot be built (the OS refused to spawn its threads).
-/// That is error code `3` for the caller, never an `expect`: this runs on the
-/// `extern "C"` path, and a panic unwinding out of an `extern "C"` function
-/// aborts the host process. A failed build is not cached, so a later call
-/// retries; two first calls racing may each build a pool, and the loser is
-/// dropped.
-fn parse_pool() -> Option<&'static rayon::ThreadPool> {
-    static POOL: OnceLock<rayon::ThreadPool> = OnceLock::new();
-    if let Some(pool) = POOL.get() {
-        return Some(pool);
-    }
-    let pool = build_parse_pool(PARSE_STACK_SIZE).ok()?;
-    Some(POOL.get_or_init(|| pool))
-}
-
-fn build_parse_pool(stack_size: usize) -> Result<rayon::ThreadPool, rayon::ThreadPoolBuildError> {
-    rayon::ThreadPoolBuilder::new()
-        .stack_size(stack_size)
-        .thread_name(|i| format!("ifc-lite-parse-{i}"))
-        .build()
-}
-
-/// Run `work` on the large-stack pool with `path_str` registered as an
+/// Run `work` on processing's large-stack geometry pool
+/// ([`run_on_geometry_pool`]) with `path_str` registered as an
 /// [`InFlightPath`] for the whole call, so a panic on any pool worker is logged
-/// against this file.
+/// against this file. The per-element geometry runs in `par_iter` jobs, so the
+/// deep recursion lives on the pool workers' stacks; a stack overflow there
+/// would abort the host process (Rhino, `STACK_OVERFLOW` 0xC00000FD) with
+/// nothing `catch_unwind` can intercept.
 ///
 /// One `catch_unwind` around the registration, the pool acquisition and all
 /// of `work`: a panic anywhere in there is error code `3` instead of an unwind
-/// out of the `extern "C"` function, which aborts the host. `install` carries
-/// a worker's panic back to this thread, so the guard sits outside it.
+/// out of the `extern "C"` function, which aborts the host. A pool that cannot
+/// be built is code `3` as well. `install` carries a worker's panic back to
+/// this thread, so the guard sits outside it.
 fn run_in_pool<T: Send>(
     path_str: &str,
     work: impl FnOnce() -> Result<T, i32> + Send,
 ) -> Result<T, i32> {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let _in_flight = InFlightPath::register(path_str);
-        parse_pool().ok_or(3)?.install(work)
+        run_on_geometry_pool(work).unwrap_or(Err(3))
     }))
     .unwrap_or(Err(3))
 }

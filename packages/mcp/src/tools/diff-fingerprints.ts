@@ -113,7 +113,7 @@ import { attributeAcrossSchemas, authoredKeyResolver, override, type Fingerprint
 import { classificationLabel } from './diff-classification-label.js';
 import { classifyType, comparableEntities } from './diff-entity-scope.js';
 export { AUTHORED_KEY_PREFIX, type FingerprintAdapterOptions } from './diff-authored-keys.js';
-import { stepText, type CreatedEntity, type PendingOverlay } from '../overlay.js';
+import { stepText, type CreatedEntity, type PendingOverlay } from '@ifc-lite/sdk/headless';
 
 /** Adapter handle threaded through the diff: the entity's express id. */
 export type DiffRef = number;

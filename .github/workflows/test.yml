@@ -527,24 +527,27 @@ jobs:
             docs:
               - 'docs/**'
               - 'mkdocs.yml'
-              # The docs-site job installs from it (#4912).
               - 'requirements-docs.txt'
               - 'README.md'
-              - 'packages/*/README.md'
-              # The two SOURCES `scripts/docs/generate-docs-sections.mjs`
-              # regenerates its sections from. They belong in `docs` rather
-              # than `frontend` on purpose: `docs` reaches the freshness check
-              # through the Docs-checks job -- one free ubuntu-latest runner,
-              # three node scripts, no build artifact and no Depot -- which is
-              # the CHEAPEST job that runs this gate. `frontend` would drag a
-              # landing-copy edit through build + typecheck + lint + the viewer
-              # shards for no added signal. Coverage holds either way: when a
-              # PR also touches frontend/rust, Docs checks skips itself and
-              # Node tests runs the same `--check`. PR #1817 changed only
-              # apps/landing/bench-data.json, and BOTH lanes skipped.
               - 'apps/landing/**'
               - 'tests/benchmark/baseline.json'
+              # TypeDoc consumes every public declaration entry and the tooling
+              # that builds it. Reference generation must run on API changes.
+              - 'packages/**'
+              - 'shared/ai/**'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+              - 'tsconfig*.json'
+              - 'turbo.json'
               - 'scripts/docs/**'
+              - 'scripts/lib/public-entrypoints.mjs'
+              - 'scripts/consumer/packed-packages.mjs'
+              - 'scripts/lib/is-main-entry.mjs'
+              - 'scripts/lib/shipped-target.*'
+              - 'scripts/*worker-urls.*'
+              - 'scripts/run-build-wasm.mjs'
+              - 'scripts/build-wasm.sh'
               - '.github/workflows/test.yml'
 
       # Decide whether `build` can skip the from-source wasm32 compile. The
@@ -712,6 +715,16 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
+      # Keep a separate root so build-output still extracts into packages/.
+      # Recipe tests execute the compiled scripts from the same shared build.
+      - name: Upload example builds
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: example-build-output
+          path: examples/*/dist
+          retention-days: 1
+          if-no-files-found: error
+
       # The viewer app `pnpm build` just produced (turbo builds apps/* too, via
       # the viewer's own `build` script, so the __tla chunk-await guard has
       # already run over exactly these files). viewer-e2e serves it with
@@ -775,6 +788,11 @@ jobs:
         with:
           name: build-output
           path: packages
+      - name: Download example builds
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: example-build-output
+          path: examples
       # #4079 taught scripts/lib/revert-oracle-python.mjs to route a changed
       # `test_*.py` / `*_test.py` ANYWHERE in the repo (routing is
       # marker-based — `pythonTestOwner` walks up to the nearest project
@@ -899,6 +917,13 @@ jobs:
           # RED. Once the script is on main, ordinary whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- scripts/viewer-test-shards.mjs | grep -Fxq 'scripts/viewer-test-shards.mjs'; then
             oracle_args+=(--mutation tests/evidence/ci-viewer-test-shards/selection.oracle.patch)
+          # #7673: the new large-stack geometry pool module carries its own
+          # tests, so a whole-file revert deletes them (INCONCLUSIVE). Keep the
+          # module and remove ONLY the large worker stack: the deep par_iter
+          # job then overflows and its child-process test turns RED. Once
+          # geometry_pool.rs is on main, ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/processing/src/geometry_pool.rs | grep -Fxq 'rust/processing/src/geometry_pool.rs'; then
+            oracle_args+=(--mutation tests/evidence/geometry-pool-7673/stack-size.oracle.patch)
           fi
           node scripts/check-test-revert-oracle.mjs "${oracle_args[@]}"
           # #7512: observe cleanup independently of scoped admission/schema.
@@ -1217,6 +1242,8 @@ jobs:
       # then made every fixture-gated test skip silently and report ok.
       - name: Verify fixtures
         run: pnpm fixtures:check
+      - name: Verify packed developer workflows
+        run: pnpm test:packed
       - name: Check test wiring
         run: node scripts/check-test-wiring.mjs
       - name: Check export completion calls
@@ -2032,6 +2059,11 @@ jobs:
         with:
           name: build-output
           path: packages
+      - name: Download example builds
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: example-build-output
+          path: examples
       - name: Cache test fixtures
         id: fixtures-cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -2853,7 +2885,7 @@ jobs:
     name: Docs site build (mkdocs --strict)
     needs: changes
     if: (needs.changes.outputs.docs == 'true') && needs.changes.outputs.replay != 'true'
-    # Free runner - a pure-Python static site build, not compute-bound.
+    # Build declarations and the searchable reference before MkDocs; no Rust setup is needed.
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -2861,6 +2893,17 @@ jobs:
         with:
           lfs: false
           persist-credentials: false
+      - name: Setup pnpm
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install reference tooling
+        run: pnpm install --frozen-lockfile
+      - name: Generate searchable public API reference
+        run: pnpm docs:api
       # Seconds, no Python: names the page and the fix before the full build.
       - name: Every docs page is in the nav or declared not_in_nav
         run: node scripts/docs/check-mkdocs-nav.mjs

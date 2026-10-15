@@ -25,7 +25,7 @@ import { isValidIfcGuid } from '@ifc-lite/encoding';
 import { getInheritanceChainAcrossSchemas, normalizeIfcTypeName } from '@ifc-lite/parser';
 import type { Tool } from './types.js';
 import { findByGlobalId, okResult, resolveModel } from './util.js';
-import { stepText } from '../overlay.js';
+import { stepText } from '@ifc-lite/sdk/headless';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 
 function invalid(message: string, details: Record<string, unknown>): ToolExecutionError {

@@ -151,8 +151,12 @@ releases an unresolved create. Preserve the journal when an outcome is unknown.
 
 Storage uses a nonempty `IFCLITE_BCF_OUTBOX_DIR` or defaults to `~/.ifc-lite/bcf-outbox`, isolated
 by namespace. Filesystems without exclusive hard links or directory fsync
-refuse publication. Malformed, oversized or orphaned records also refuse;
-records are bounded to 256 KiB, with 256 generations per digest and 16 checks
+refuse publication. Malformed, oversized, orphaned or observed-growing records also refuse.
+Recovery refuses epoch directories whose identity changes during validation,
+before acknowledging a receipt or allowing another HTTP write. Preserve the
+outbox; if concurrent activity caused the refusal, retry reading after the writer
+stops. Unknown writes still need checking and explicit reconciliation, never an
+automatic resend. Records are bounded to 256 KiB, with 256 generations per digest and 16 checks
 per active immutable epoch. Immutable `v2/<prefix>/<digest>`
 storage retains every receipt; 256 buckets each hold at most 4096 never-deleted
 digest slots. Capacity refusal precedes sending and leaves existing recovery

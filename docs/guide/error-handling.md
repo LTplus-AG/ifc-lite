@@ -8,6 +8,22 @@ path.
 
 For validated STEP input and structured record-scan coverage, use [`parseModel`](parsing.md#load-step-data-without-a-viewer). Handle `IfcInputError.code` for rejected envelopes and inspect `report.completeness` before treating query results as an inventory of the whole source.
 
+## Installation diagnostics
+
+Run `ifc-lite doctor --json` for the CLI runtime, actual resolved package versions and WASM artifact details. This is useful before a model can be loaded, including when an IFC dependency is damaged. The report checks this CLI installation and exits 1 if a reported check fails.
+
+| Code | Meaning |
+|---|---|
+| `PACKAGE_ENTRY_UNAVAILABLE` | A declared first-party package entry cannot be resolved to a file. |
+| `ESM_RESOLUTION_UNAVAILABLE` | The runtime cannot resolve that package's ESM entry. |
+| `PACKAGE_METADATA_UNAVAILABLE` / `PACKAGE_VERSION_UNAVAILABLE` | Package metadata or its version is unreadable or absent. |
+| `NODE_VERSION_UNSUPPORTED` / `NODE_REQUIREMENT_UNKNOWN` | Node does not meet the CLI's declared minimum, or that requirement cannot be checked. |
+| `WASM_BINARY_UNAVAILABLE` | The WASM asset cannot be resolved or read. |
+| `WASM_BINARY_INVALID` | The bytes fail structural WASM validation. |
+| `WASM_VALIDATION_UNAVAILABLE` | This runtime cannot validate WASM, for example when Node runs with WASM disabled. |
+
+A `VALID_WASM_BINARY` result describes binary structure, not IFC binding initialization or successful geometry processing. For an individual IFC input, use the model diagnostics below.
+
 ## Parse and geometry errors
 
 The Rust crates return typed `Result`s (a `thiserror` `Error` enum with variants
@@ -54,6 +70,10 @@ try {
   throw err; // or handle and continue with the fresh instance
 }
 ```
+
+## Headless backend capabilities and lifetime
+
+The [headless model session](scripting-sdk.md#open-a-headless-model) reports `capability(operation)` before invocation. Unavailable session operations throw `UnsupportedOperationError` with `code: 'UNSUPPORTED_OPERATION'`, `operation`, and `reason`. Calls through a closed session backend throw `HeadlessSessionClosedError` with `code: 'SESSION_CLOSED'`. These errors are exported from `@ifc-lite/sdk/headless`. They do not replace native input/schema errors or promise that a configured geometry provider will run successfully.
 
 ## Memory management (WASM)
 

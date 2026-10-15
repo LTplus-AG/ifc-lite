@@ -345,44 +345,49 @@ impl LandXmlTinStreamSession {
             let event = self.reader.read_event_into(&mut buffer).map_err(|value| {
                 error(Code::InvalidXml, format!("malformed XML token: {value}"))
             })?;
-            if matches!(event, Event::Comment(_)) {
-                // Text tokens leave a padding comment in the reader to stop
-                // quick-xml waiting for the next chunk. A real XML comment
-                // is also a complete legal token. Keep consuming in case an
-                // earlier padding comment precedes this token; EOF after only
-                // comments is the legitimate standalone-comment case.
-                consumed_comment = true;
-                buffer.clear();
-                continue;
-            }
-            if comment_token && consumed_comment && matches!(event, Event::PI(_)) {
-                return self.emit_header_and_surfaces();
-            }
-            if matches!(event, Event::Eof) {
-                if consumed_comment {
-                    return self.emit_header_and_surfaces();
+            match event {
+                // #7680 EDGE-LXPARSE-3: one text token can be several events
+                // (`1&#46;5` is Text, GeneralRef, Text), so a text token is
+                // consumed through its own padding comment. Stopping after
+                // its first event left the reader lagging for the rest of the
+                // document. A text token holds no `<`, so its only comment is
+                // that pad, and no pad is ever left for a later token.
+                Event::Comment(_) if text_token => break,
+                // A real XML comment is a complete legal token, followed by
+                // its padding processing instruction.
+                Event::Comment(_) => consumed_comment = true,
+                Event::PI(_) if comment_token && consumed_comment => break,
+                // EOF after only comments is the legitimate standalone-comment case.
+                Event::Eof if consumed_comment => break,
+                Event::Eof => {
+                    return Err(error(
+                        Code::InvalidXml,
+                        format!("XML reader ended while consuming token {token_debug:?}"),
+                    ));
                 }
-                return Err(error(
-                    Code::InvalidXml,
-                    format!("XML reader ended while consuming token {token_debug:?}"),
-                ));
+                event => {
+                    self.dispatch_event(event)?;
+                    if !text_token {
+                        break;
+                    }
+                }
             }
-            self.parser().consume_event(event.clone())?;
-            self.plan
-                .as_mut()
-                .expect("open plan parser")
-                .consume_event(event.clone())?;
-            self.alignment
-                .as_mut()
-                .expect("open alignment parser")
-                .consume_event(event.clone())?;
-            self.pipe
-                .as_mut()
-                .expect("open pipe parser")
-                .consume_event(event)?;
-            break;
+            buffer.clear();
         }
         self.emit_header_and_surfaces()
+    }
+
+    /// Every family parser sees every event of the one canonical reader.
+    fn dispatch_event(&mut self, event: Event<'_>) -> Result<(), LandXmlError> {
+        self.parser().consume_event(event.clone())?;
+        let plan = self.plan.as_mut().expect("open plan parser");
+        plan.consume_event(event.clone())?;
+        let alignment = self.alignment.as_mut().expect("open alignment parser");
+        alignment.consume_event(event.clone())?;
+        self.pipe
+            .as_mut()
+            .expect("open pipe parser")
+            .consume_event(event)
     }
 }
 

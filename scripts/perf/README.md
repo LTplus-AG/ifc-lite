@@ -40,6 +40,21 @@ fan-out, memory bandwidth, GPU); a change in those still needs an end-to-end
 A/B (`ab.sh`, the browser rigs below), and a green ratchet is no evidence for it.
 
 
+## Published worker asset closure (#7648)
+
+A Node geometry consumer passed while a fresh Vite consumer failed: the geometry
+worker pool retained a TypeScript URL absent from its npm tarball. Package build
+metadata now uses the same all-module rewrite and independent verification as the
+parser; geometry and point-cloud verification checks script targets while their
+WASM assets resolve through declared packages. Turbo hashes the shared scripts.
+
+This is a packaging correction, with no runtime speed claim. The baseline browser
+artifact cannot bundle, so it supplies no valid browser timing comparison. Real
+Node consumer runs before and after produced identical mesh/triangle counts and
+byte-identical GLB exports for the committed wall and ArchiCAD FZK fixtures. See
+`tests/evidence/packed-workflows/worker-packaging.json`. Keep the external Vite
+bundle in acceptance: a Node-only WASM pass cannot prove worker asset closure.
+
 ## Several cutting planes: caps and clip cost (#7545)
 
 Browser A/B of `main` against the branch on a real GPU (Chrome 155, NVIDIA Blackwell, WebGPU), production

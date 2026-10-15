@@ -97,8 +97,8 @@
     "lint": "node scripts/check-changesets.mjs && node scripts/check-test-glob-coverage.mjs && node scripts/check-main-entry-guards.mjs && node scripts/check-unused-locals.mjs && node scripts/check-i18n-literals.mjs && node scripts/check-jsx-a11y.mjs && node scripts/check-type-scale.mjs && node scripts/check-lint-ran.mjs",
     "lint:baseline": "node scripts/check-unused-locals.mjs --update",
     "knip": "knip",
-    "docs:serve": "python3 -m mkdocs serve",
-    "docs:build": "python3 -m mkdocs build",
+    "docs:serve": "pnpm docs:api && python3 -m mkdocs serve",
+    "docs:build": "pnpm docs:api && python3 -m mkdocs build",
     "docs:check-samples": "node scripts/docs/check-doc-samples.mjs",
     "docs:generate": "node scripts/docs/generate-docs-sections.mjs",
     "docs:check-generated": "node scripts/docs/generate-docs-sections.mjs --check",
@@ -123,7 +123,9 @@
     "generate:epsg-index": "tsx scripts/generate-epsg-index.ts",
     "check:templates": "pnpm --filter=@ifc-lite/viewer --fail-if-no-match check:templates",
     "check:codegen-sync": "node scripts/check-codegen-sync.mjs",
-    "check:generated": "node scripts/check-generated.mjs"
+    "check:generated": "node scripts/check-generated.mjs",
+    "test:packed": "node scripts/check-packed-workflows.mjs",
+    "docs:api": "node scripts/docs/build-api-reference.mjs"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",
@@ -139,6 +141,7 @@
     "oxlint": "^1.87.0",
     "tsx": "^4.23.15",
     "turbo": "^2.11.7",
+    "typedoc": "^0.28.20",
     "typescript": "^6.0.3",
     "yaml": "^2.9.1"
   },

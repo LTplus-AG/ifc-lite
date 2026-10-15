@@ -1,0 +1,21 @@
+{
+  "fixture": "tests/models/ara3d/AC20-FZK-Haus.ifc",
+  "sha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+  "doors": 5,
+  "targetGlobalId": "1Oms875aH3Wg$9l65H2ZGw",
+  "scanCompleteness": "complete",
+  "exportedEditReopened": true,
+  "capabilities": [
+    {
+      "operation": "query.entities",
+      "supported": true
+    },
+    {
+      "operation": "viewer.colorize",
+      "supported": false,
+      "reason": "Attach a viewer adapter to use viewer operations"
+    }
+  ],
+  "scope": "Headless data/query/mutation/export/lifetime workflow; no geometry or schema-validation claim",
+  "closedSessionRefused": true
+}

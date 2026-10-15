@@ -16,7 +16,7 @@ use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 
-use super::GEOMETRY_STACK_BYTES;
+use super::run_geometry;
 
 enum ScheduleMode {
     Basic,
@@ -118,25 +118,16 @@ fn schedule_impl(
     options
         .validate()
         .map_err(|error| PyValueError::new_err(error.to_string()))?;
-    let schedule = py
-        .detach(|| {
-            std::thread::Builder::new()
-                .stack_size(GEOMETRY_STACK_BYTES)
-                .name("ifclite-rebar-schedule".into())
-                .spawn(move || match mode {
-                    ScheduleMode::Preflight(limits) => build_rebar_schedule_with_preflight(&ifc_bytes, ids.as_ref(), &options, &limits)
-                        .map_err(|error| error.to_string()),
-                    ScheduleMode::Fabrication(policy) => build_rebar_schedule_with_fabrication_precheck(
-                        &ifc_bytes, ids.as_ref(), &options, &policy)
-                        .map_err(|error| error.to_string()),
-                    ScheduleMode::Basic => build_rebar_schedule(&ifc_bytes, ids.as_ref(), &options)
-                        .map_err(|error| error.to_string()),
-                })
-                .map_err(|error| format!("spawn failed: {error}"))?
-                .join()
-                .map_err(|_| "rebar schedule worker panicked".to_string())?
-        })
-        .map_err(PyRuntimeError::new_err)?;
+    let schedule = run_geometry(py, "rebar schedule", move || match mode {
+        ScheduleMode::Preflight(limits) => build_rebar_schedule_with_preflight(&ifc_bytes, ids.as_ref(), &options, &limits)
+            .map_err(|error| error.to_string()),
+        ScheduleMode::Fabrication(policy) => build_rebar_schedule_with_fabrication_precheck(
+            &ifc_bytes, ids.as_ref(), &options, &policy)
+            .map_err(|error| error.to_string()),
+        ScheduleMode::Basic => build_rebar_schedule(&ifc_bytes, ids.as_ref(), &options)
+            .map_err(|error| error.to_string()),
+    })?
+    .map_err(PyRuntimeError::new_err)?;
     validate_finite(&schedule).map_err(PyValueError::new_err)?;
     let payload = serde_json::to_string(&schedule)
         .map_err(|error| PyValueError::new_err(error.to_string()))?;

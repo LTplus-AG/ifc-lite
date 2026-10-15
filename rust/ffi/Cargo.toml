@@ -33,8 +33,11 @@ mimalloc = { workspace = true, optional = true }
 # version requirement). `scripts/sync-versions.js` keeps that literal aligned
 # with the workspace version on every `changeset version` bump.
 ifc-lite-processing.workspace = true
-rayon.workspace = true
 serde_json.workspace = true
+
+[dev-dependencies]
+# Test-only: drives `par_iter` jobs through `run_in_pool` to pin which pool runs them.
+rayon.workspace = true
 
 [lints]
 workspace = true

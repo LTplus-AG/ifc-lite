@@ -46,8 +46,8 @@ packages/ids/src/bridge/properties.ts
 packages/ids/src/bridge/units.ts
 packages/ifcx/src/writer-entities.ts
 packages/ifcx/src/index.ts
-packages/mcp/src/backend-query.ts
-packages/mcp/src/effective-entity-membership.ts
+packages/sdk/src/headless/backend-query.ts
+packages/sdk/src/headless/effective-entity-membership.ts
 packages/mcp/src/viewer-manager.ts
 packages/mutations/src/express-id-watermark.ts
 packages/mutations/src/prepare-entity-operations.ts

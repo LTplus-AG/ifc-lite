@@ -1,8 +1,20 @@
-diff --git b/apps/server/src/admission.rs a/apps/server/src/admission.rs
-index e2d80255f0..58f36f2e05 100644
---- b/apps/server/src/admission.rs
-+++ a/apps/server/src/admission.rs
-@@ -131,7 +131,7 @@ impl AdmissionGuard {
+diff --git a/apps/server/src/admission.rs b/apps/server/src/admission.rs
+index 54d404ff61..f5390f3769 100644
+--- a/apps/server/src/admission.rs
++++ b/apps/server/src/admission.rs
+@@ -207,6 +207,7 @@ impl Admission {
+     /// applies. With the byte gate disabled (`IFC_MEM_BUDGET_MB=0`) nothing
+     /// bounds resident bytes, for reads as for every other route.
+     pub async fn acquire_resident(self: &Arc<Self>, bytes: u64) -> Result<ResidentBytes, ApiError> {
++        self.check_shed()?;
+         let Some(mem) = &self.mem else {
+             return Ok(ResidentBytes { _mem: None });
+         };
+diff --git a/apps/server/src/admission_guard.rs b/apps/server/src/admission_guard.rs
+index da301caeba..f7862b4109 100644
+--- a/apps/server/src/admission_guard.rs
++++ b/apps/server/src/admission_guard.rs
+@@ -47,7 +47,7 @@ impl AdmissionGuard {
          let before = self.reserved();
          let want = self.admission.permits_for(bytes) as usize;
          let held = self.mem.as_ref().map_or(usize::MAX, |mem| mem.num_permits());
@@ -11,7 +23,7 @@ index e2d80255f0..58f36f2e05 100644
              let extra = self.admission.acquire_more((want - held) as u32).await?;
              // Same semaphore, so the permits merge into one.
              if let (Some(mem), Some(extra)) = (self.mem.as_mut(), extra) {
-@@ -144,7 +144,7 @@ impl AdmissionGuard {
+@@ -60,6 +60,6 @@ impl AdmissionGuard {
      /// End the job: free its CPU slot now and keep only its bytes, for as
      /// long as the returned value lives. See [`ResidentBytes`].
      pub fn into_resident(mut self) -> ResidentBytes {
@@ -19,15 +31,6 @@ index e2d80255f0..58f36f2e05 100644
 +        ResidentBytes { _mem: self.mem.take() }
      }
  }
- 
-@@ -257,6 +257,7 @@ impl Admission {
-     /// applies. With the byte gate disabled (`IFC_MEM_BUDGET_MB=0`) nothing
-     /// bounds resident bytes, for reads as for every other route.
-     pub async fn acquire_resident(self: &Arc<Self>, bytes: u64) -> Result<ResidentBytes, ApiError> {
-+        self.check_shed()?;
-         let Some(mem) = &self.mem else {
-             return Ok(ResidentBytes { _mem: None });
-         };
 diff --git b/apps/server/src/routes/cache.rs a/apps/server/src/routes/cache.rs
 index a999a1b390..a3fbaf846c 100644
 --- b/apps/server/src/routes/cache.rs

@@ -99,6 +99,33 @@ test('#7619 federation qualifies same assignment and product IDs without merging
   }
 });
 
+test('#7619 shared source store remains separate for models with distinct registered ID spaces', async () => {
+  const store = await parse();
+  const state = useViewerStore.getState();
+  const a = sharedModel('presentation-shared-source-a', store);
+  const b = sharedModel('presentation-shared-source-b', store);
+  a.idOffset = state.registerModelOffset(a.id, 100);
+  b.idOffset = state.registerModelOffset(b.id, 100);
+  assert.notEqual(a.idOffset, b.idOffset, 'the two models use genuinely distinct published ranges');
+  const { models, activeModelId } = fixtureModels(a, b);
+  useViewerStore.setState({ models, activeModelId, mutationViews: new Map() });
+  const globalId = (model: FederatedModel, id: number) => useViewerStore.getState().toGlobalId(model.id, id);
+  const geometryIds = new Set([a, b].flatMap(model => [globalId(model, 2), globalId(model, 3)]));
+  const nodes = buildPresentationLayerTree(models, null, ALL, geometryIds, new Set([a.id, b.id]));
+  const headers = nodes.filter(row => row.entityExpressId === 50);
+  assert.equal(headers.length, 2, 'shared source identity must not merge distinct model instances');
+  assert.equal(new Set(headers.map(row => row.id)).size, 2);
+  for (const model of [a, b]) {
+    const header = headers.find(row => row.modelId === model.id);
+    assert.ok(header);
+    assert.deepEqual(header.modelIds, [model.id]);
+    assert.deepEqual(header.memberGlobalIds, [globalId(model, 1), globalId(model, 2)]);
+    assert.deepEqual(new Set(header.globalIds), new Set([globalId(model, 2), globalId(model, 3)]));
+    assert.deepEqual(hierarchyRowSelection(header, models, resolveEntityRef).map(ref => [ref.modelId, ref.expressId]),
+      [[model.id, 1], [model.id, 2]], 'selection and assembly visibility stay in the owning model ID space');
+  }
+});
+
 test('#7619 shared IFCX store emits one unattributed tree and uses any owner geometry readiness', async () => {
   const store = await parse();
   // IFCX composition has shared zero-offset IDs; the first owner can be a

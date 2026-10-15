@@ -84,14 +84,19 @@ export function buildPresentationLayerTree(
     }
   };
   if (models.size > 0) {
-    const storeOwners = new Map<IfcDataStore, string[]>();
+    // Shared stores are aliases only within the same renderer ID space.
+    const storeOwners = new Map<IfcDataStore, Map<number, string[]>>();
     for (const [modelId, model] of models) {
       if (!model.ifcDataStore) continue;
-      const owners = storeOwners.get(model.ifcDataStore) ?? [];
+      const byOffset = storeOwners.get(model.ifcDataStore) ?? new Map<number, string[]>();
+      const owners = byOffset.get(model.idOffset) ?? [];
       owners.push(modelId);
-      storeOwners.set(model.ifcDataStore, owners);
+      byOffset.set(model.idOffset, owners);
+      storeOwners.set(model.ifcDataStore, byOffset);
     }
-    for (const [store, owners] of storeOwners) append(store, owners);
+    for (const [store, byOffset] of storeOwners) {
+      for (const owners of byOffset.values()) append(store, owners);
+    }
   } else if (legacyStore) append(legacyStore, ['legacy']);
   return nodes;
 }

@@ -17,9 +17,9 @@ import { captureRequest } from '@/test/ai-eval-capture';
 const task = { id: 'clash-summary', scene: 'clash-rev-b', prompt: 'Summarize the most severe clashes and where they occur' };
 const comparable = (system: string) => system.replace(/"capturedAt":"[^"]+"/g, '');
 
-test('#6928 proxy, Anthropic and OpenAI models capture one route-neutral request', async () => {
+test('#6928 proxy, Anthropic and both OpenAI APIs capture one route-neutral request', async () => {
   const captured = [];
-  for (const model of ['eval/proxy-model', 'claude-sonnet-5-5', 'gpt-6-luna']) {
+  for (const model of ['eval/proxy-model', 'claude-sonnet-5-5', 'gpt-6-luna', 'gpt-5.3-codex']) {
     const result = await captureRequest(task, model);
     assert.ok('request' in result, `${model}: ${'skipped' in result ? result.skipped : ''}`);
     captured.push(result.request);
@@ -29,8 +29,9 @@ test('#6928 proxy, Anthropic and OpenAI models capture one route-neutral request
   assert.match(proxy.system, /Frozen native evidence/);
   for (const request of direct) {
     assert.equal(comparable(request.system), comparable(proxy.system));
-    assert.deepEqual(request.messages, proxy.messages, 'the OpenAI system message is not left in the conversation');
+    assert.deepEqual(request.messages, proxy.messages, 'the OpenAI system or developer entry is not left in the conversation');
     assert.equal(request.maxOutputTokens, proxy.maxOutputTokens);
   }
-  assert.deepEqual([getApiKeys().anthropicKey, getApiKeys().openaiKey], ['', ''], 'the capture placeholder is not left stored');
+  const { anthropicKey, openaiKey } = getApiKeys();
+  assert.deepEqual([anthropicKey, openaiKey], ['', ''], 'the capture placeholder is not left stored');
 });

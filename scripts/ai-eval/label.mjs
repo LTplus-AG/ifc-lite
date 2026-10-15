@@ -20,7 +20,7 @@
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { buildSheet, answerSha256, scoreSheets, sheetErrors } from './lib/labels.mjs';
-import { decodeRecording, loadLiveRuns, loadRecordingDir, REPO_ROOT, RECORDINGS_DIR } from './lib/recording.mjs';
+import { decodeRecording, liveRecordings, loadLiveRuns, loadRecordingDir, REPO_ROOT, RECORDINGS_DIR } from './lib/recording.mjs';
 import { privacyFindings } from './lib/manifest.mjs';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
 
@@ -75,7 +75,7 @@ function flag(args, name) {
 
 function main([command, ...args]) {
   // Committed live runs are label material too: they hold what a real model answered.
-  const recordings = [...loadRecordingDir(RECORDINGS_DIR), ...loadLiveRuns(REPO_ROOT).flatMap(run => run.recordings)];
+  const recordings = [...loadRecordingDir(RECORDINGS_DIR), ...liveRecordings(loadLiveRuns(REPO_ROOT))];
   if (command === 'sheet') {
     const id = flag(args, 'recording');
     const kind = flag(args, 'kind');

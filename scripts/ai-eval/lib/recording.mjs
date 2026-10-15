@@ -59,6 +59,9 @@ export function loadLiveRuns(root) {
   });
 }
 
+/** Every committed live-run recording, named by its path under live-runs/. */
+export const liveRecordings = runs => runs.flatMap(({ run, recordings }) => recordings.map(({ name, recording }) => ({ name: `live-runs/${run}/${name}`, recording })));
+
 /** What the viewer would receive: answer text, finish reason, reported usage and typed outcome. */
 export function decodeRecording(recording) {
   const events = recording.response.events ?? parseEvents(sseData(recording.response.body ?? ''));

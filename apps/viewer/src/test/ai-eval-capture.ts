@@ -11,7 +11,7 @@
 
 import { replaceEvidence } from '@/lib/assistant/conversation';
 import { sendAssistant } from '@/lib/assistant/request';
-import { clearApiKeys, updateApiKeys } from '@/services/api-keys';
+import { getApiKeys, updateApiKeys } from '@/services/api-keys';
 import { comparableEvidence, isAiEvalScene, seedScene } from './ai-eval-scenes';
 
 export interface CaptureTask { id: string; scene: string; prompt: string }
@@ -29,13 +29,14 @@ function systemText(system: unknown): string {
 
 /**
  * The route-neutral request the runner re-sends, from whichever wire body the
- * Assistant built: proxy (`maxOutputTokens`), Anthropic (`max_tokens`) or
- * OpenAI (`max_completion_tokens`, system prompt as the first message).
+ * Assistant built: proxy (`maxOutputTokens`), Anthropic (`max_tokens`),
+ * OpenAI Chat Completions (`max_completion_tokens`, leading system message) or
+ * OpenAI Responses (`max_output_tokens`, `input` with a leading developer entry).
  */
 function neutralRequest(body: Record<string, unknown>): NeutralRequest {
-  const messages = body.messages as Array<{ role: string; content: unknown }>;
-  const leading = messages[0]?.role === 'system' ? messages[0] : undefined;
-  const maxOutputTokens = body.maxOutputTokens ?? body.max_tokens ?? body.max_completion_tokens;
+  const messages = (body.messages ?? body.input) as Array<{ role: string; content: unknown }>;
+  const leading = messages[0]?.role === 'system' || messages[0]?.role === 'developer' ? messages[0] : undefined;
+  const maxOutputTokens = body.maxOutputTokens ?? body.max_tokens ?? body.max_completion_tokens ?? body.max_output_tokens;
   if (typeof maxOutputTokens !== 'number') throw new Error('Captured request has no output ceiling');
   return { system: systemText(body.system ?? leading?.content), messages: leading ? messages.slice(1) : messages, maxOutputTokens };
 }
@@ -53,9 +54,10 @@ export async function captureRequest(task: CaptureTask, model: string): Promise<
   }) as typeof fetch;
   // A BYOK model routes direct only with a stored key. The stub answers every
   // request, so this placeholder never leaves the process.
+  const stored = getApiKeys();
   updateApiKeys({ anthropicKey: 'capture-only', openaiKey: 'capture-only' });
   try { await sendAssistant(task.prompt, model, '/api/chat'); }
-  finally { globalThis.fetch = originalFetch; clearApiKeys(); }
+  finally { globalThis.fetch = originalFetch; updateApiKeys(stored); }
   const captured = body as Record<string, unknown> | null;
   if (!captured) throw new Error(`${task.id}: the Assistant refused to send (check prompt and scene)`);
   return { taskId: task.id, scene: task.scene, evidence: comparableEvidence(scene.evidence), request: neutralRequest(captured) };

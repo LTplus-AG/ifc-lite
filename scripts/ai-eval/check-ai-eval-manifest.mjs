@@ -21,20 +21,21 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { checkManifest, privacyFindings } from './lib/manifest.mjs';
-import { loadLiveRuns, loadRecordingDir, REPO_ROOT } from './lib/recording.mjs';
+import { liveRecordings, loadLiveRuns, loadRecordingDir, REPO_ROOT } from './lib/recording.mjs';
 import { loadLabelDir, sheetFileErrors } from './label.mjs';
 import { loadStudy } from './study.mjs';
 import { protocolErrors, sessionErrors } from './lib/study.mjs';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
 
-const receiptKey = receipt => JSON.stringify(receipt);
+/** Order-insensitive equality of two lists of JSON values. */
+const sameItems = (a, b) => JSON.stringify(a.map(item => JSON.stringify(item)).sort()) === JSON.stringify(b.map(item => JSON.stringify(item)).sort());
 
 /**
  * A committed live run must be exactly what the runner and the native review
  * produced: live recordings with their receipts, the run summary holding the
  * same receipts, a review of every recording, and nothing a privacy scan flags.
  */
-export function liveRunErrors({ run, dir, recordings }) {
+function liveRunErrors({ run, dir, recordings }) {
   const at = `live run ${run}`;
   const errors = [];
   if (!recordings.length) errors.push(`${at}: holds no recordings`);
@@ -48,16 +49,13 @@ export function liveRunErrors({ run, dir, recordings }) {
   if (!summary) errors.push(`${at}: summary.json is missing`);
   else {
     if (summary.runId !== run) errors.push(`${at}: summary.json is for run ${summary.runId}`);
-    const kept = recordings.map(({ recording }) => receiptKey(recording.provenance?.receipt)).sort();
-    const receipts = (summary.receipts ?? []).map(receiptKey).sort();
     // Every request spends budget: a dropped recording or an edited receipt is a different run.
-    if (JSON.stringify(kept) !== JSON.stringify(receipts)) errors.push(`${at}: recordings and summary.json receipts differ`);
+    if (!sameItems(recordings.map(({ recording }) => recording.provenance?.receipt), summary.receipts ?? [])) errors.push(`${at}: recordings and summary.json receipts differ`);
   }
   const review = read('review.json');
   if (!review) errors.push(`${at}: review.json is missing (pnpm ai-eval review)`);
   else {
-    const reviewed = (review.reviews ?? []).map(entry => entry.recording).sort();
-    if (JSON.stringify(reviewed) !== JSON.stringify(recordings.map(({ name }) => name).sort())) errors.push(`${at}: review.json does not cover exactly the recordings`);
+    if (!sameItems((review.reviews ?? []).map(entry => entry.recording), recordings.map(({ name }) => name))) errors.push(`${at}: review.json does not cover exactly the recordings`);
   }
   const files = readdirSync(dir, { recursive: true }).filter(file => String(file).endsWith('.json'));
   for (const file of files) {
@@ -73,7 +71,7 @@ export function run(root) {
   const recordingsDir = join(root, 'tests', 'ai-eval', 'recordings');
   const recordings = existsSync(recordingsDir) ? loadRecordingDir(recordingsDir) : [];
   const liveRuns = loadLiveRuns(root);
-  const live = liveRuns.flatMap(({ run, recordings: kept }) => kept.map(({ name, recording }) => ({ name: `live-runs/${run}/${name}`, recording })));
+  const live = liveRecordings(liveRuns);
   const result = checkManifest(JSON.parse(readFileSync(manifestPath, 'utf8')), { root, recordings: [...recordings, ...live] });
   for (const liveRun of liveRuns) result.errors.push(...liveRunErrors(liveRun));
   if (!recordings.length) result.errors.push('tests/ai-eval/recordings holds no recordings; the replay harness would pass vacuously');

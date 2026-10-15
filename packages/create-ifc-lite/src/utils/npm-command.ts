@@ -8,3 +8,8 @@ export function resolveNpmCommand(args: string[]): { command: string; args: stri
     ? { command: process.env.ComSpec ?? 'cmd.exe', args: ['/d', '/s', '/c', 'npm', ...args] }
     : { command: 'npm', args };
 }
+
+/** Explicit npm registry refusal, distinct from an inconclusive transport error. */
+export function isMissingNpmArtifact(output: string): boolean {
+  return /\bE(404|410)\b/.test(output);
+}

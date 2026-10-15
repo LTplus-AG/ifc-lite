@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import { basename, join, posix } from 'node:path';
 import { list } from 'tar';
 import { tokenizer, type Token } from 'acorn';
-import { resolveNpmCommand } from './npm-command.js';
+import { resolveNpmCommand, isMissingNpmArtifact } from './npm-command.js';
 
 const valueOf = (token: Token): unknown => 'value' in token ? token.value : undefined;
 
@@ -55,7 +55,19 @@ export function publishedWorkerAssetsPresent(packageName: string, version: strin
   const scratch = mkdtempSync(join(tmpdir(), 'ifclite-worker-artifact-'));
   try {
     const { command, args } = resolveNpmCommand(['pack', `${packageName}@${version}`, '--json', '--pack-destination', scratch]);
-    const output = execFileSync(command, args, { encoding: 'utf8', stdio: 'pipe', timeout: 30000 });
+    let output: string;
+    try {
+      output = execFileSync(command, args, { encoding: 'utf8', stdio: 'pipe', timeout: 30000 });
+    } catch (error) {
+      const details = error && typeof error === 'object'
+        ? ['stdout', 'stderr', 'code'].map(key => Reflect.get(error, key)).map(String).join(' ') : String(error);
+      if (isMissingNpmArtifact(details)) return false;
+      // Preserve the version probe's existing policy: an inconclusive network
+      // failure must not silently downgrade the selected package (PR #7660).
+      console.warn(`Could not inspect worker assets for ${packageName}@${version}; ` +
+        'npm did not report a missing artifact, so the version candidate is retained.');
+      return true;
+    }
     const result: unknown = JSON.parse(output);
     const first: unknown = Array.isArray(result) ? result[0] : undefined;
     if (!first || typeof first !== 'object' || !('filename' in first) || typeof first.filename !== 'string' ||

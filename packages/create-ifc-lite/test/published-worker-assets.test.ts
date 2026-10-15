@@ -2,12 +2,18 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { create } from 'tar';
-import { missingWorkerAssets } from '../src/utils/published-worker-assets.js';
+import { missingWorkerAssets, publishedWorkerAssetsPresent } from '../src/utils/published-worker-assets.js';
+
+const npm = vi.hoisted(() => ({ failure: new Error('No transport response configured') }));
+vi.mock('node:child_process', async importOriginal => ({
+  ...(await importOriginal<typeof import('node:child_process')>()),
+  execFileSync: () => { throw npm.failure; },
+}));
 
 const roots: string[] = [];
 function archive(files: Record<string, string>): string {
@@ -19,7 +25,7 @@ function archive(files: Record<string, string>): string {
   create({ cwd: root, file: output, gzip: true, sync: true }, ['package']);
   return output;
 }
-afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
+afterEach(() => { vi.restoreAllMocks(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 
 describe('published worker closure (DX5)', () => {
   it('rejects a TypeScript worker URL when the tarball ships only JavaScript', () => {
@@ -45,5 +51,18 @@ describe('published worker closure (DX5)', () => {
   it('rejects a worker path outside the installed package', () => {
     expect(missingWorkerAssets(archive({ 'dist/pool.js': 'new URL("../../outside.worker.js", import.meta.url);' })))
       .toEqual([{ file: 'package/dist/pool.js', specifier: '../../outside.worker.js' }]);
+  });
+});
+
+describe('worker artifact transport policy (PR #7660)', () => {
+  it.each(['ECONNRESET', 'ETIMEDOUT', 'EAI_AGAIN'])('retains the candidate and reports an inconclusive %s', code => {
+    npm.failure = Object.assign(new Error('registry transport failed'), { code });
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    expect(publishedWorkerAssetsPresent('@ifc-lite/geometry', '1.0.0')).toBe(true);
+    expect(warning).toHaveBeenCalledWith(expect.stringContaining('version candidate is retained'));
+  });
+  it.each(['E404', 'E410'])('rejects a confirmed missing artifact %s', code => {
+    npm.failure = Object.assign(new Error('registry refusal'), { stderr: `npm error code ${code}` });
+    expect(publishedWorkerAssetsPresent('@ifc-lite/geometry', '1.0.0')).toBe(false);
   });
 });

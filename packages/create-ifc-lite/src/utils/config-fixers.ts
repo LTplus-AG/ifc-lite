@@ -5,7 +5,7 @@
 import { existsSync, readFileSync, writeFileSync, rmSync } from 'fs';
 import { join } from 'path';
 import { execFileSync, spawnSync } from 'child_process';
-import { resolveNpmCommand } from './npm-command.js';
+import { resolveNpmCommand, isMissingNpmArtifact } from './npm-command.js';
 import { hasWorkerFiles, publishedWorkerAssetsPresent } from './published-worker-assets.js';
 
 /** Cache of npm-resolved versions to avoid redundant registry queries. */
@@ -16,8 +16,6 @@ const artifactCache = new Map<string, boolean>();
 const VALID_PACKAGE_NAME = /^(?:@[\w.-]+\/)?[\w.-]+$/;
 const NPM_TIMEOUT_MS = 30000;
 const MAX_VERSION_CANDIDATES = 10;
-/** npm's own codes for "the registry does not have that artifact". */
-const MISSING_ARTIFACT_CODE = /\bE(404|410)\b/;
 
 function readJsonFromNpm(args: string[]): unknown {
   const { command, args: commandArgs } = resolveNpmCommand(args);
@@ -91,7 +89,7 @@ function isTarballFetchable(packageName: string, version: string): boolean {
     return valid;
   }
   const output = `${result.stdout ?? ''}${result.stderr ?? ''}`;
-  return !MISSING_ARTIFACT_CODE.test(output);
+  return !isMissingNpmArtifact(output);
 }
 
 function isInstallablePublishedVersion(packageName: string, version: string): boolean {

@@ -27,8 +27,9 @@ export interface ParsedModel {
   report: EntityScanReport;
 }
 
-/** Validate a STEP envelope and unwrap IFCZIP. Never exits the process. */
-export async function validateStepInput(input: Uint8Array | ArrayBuffer, label = 'input'): Promise<Uint8Array> {
+/** Validate a STEP envelope and unwrap IFCZIP. Signature mode preserves recovery loaders. Never exits the process. */
+export async function validateStepInput(input: Uint8Array | ArrayBuffer, label = 'input',
+  options: { envelope?: 'complete' | 'signature' } = {}): Promise<Uint8Array> {
   let bytes = input instanceof Uint8Array ? input : new Uint8Array(input);
   // Validate the file is a STEP/IFC file
   if (bytes.byteLength === 0) {
@@ -50,9 +51,13 @@ export async function validateStepInput(input: Uint8Array | ArrayBuffer, label =
   const headerSnippet = safeUtf8Decode(
     bytes.subarray(0, Math.min(bytes.byteLength, 256)),
   );
-  if (!STEP_START.test(headerSnippet)) {
+  const hasSignature = options.envelope === 'signature'
+    ? headerSnippet.includes('ISO-10303-21') : STEP_START.test(headerSnippet);
+  if (!hasSignature) {
     throw new IfcInputError('INVALID_STEP', `${label} is not a valid IFC/STEP file`);
   }
+
+  if (options.envelope === 'signature') return bytes;
 
   // A marker is meaningful only outside STEP strings/comments. Walk bytes so
   // even very large files need no full-size decoded allocation.

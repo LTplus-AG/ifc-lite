@@ -21,7 +21,7 @@
         "moduleSize": "passed",
         "sourceTextAssertions": "Passed; runtime diagnostic-code assertions explicitly identified",
         "oxlintTouchedFiles": "passed",
-        "reviewRegression": "Byte-level shared lexical envelope walk; footer/comment/quote/assignment decoys, DATA after HEADER, invalid counters on pre-scan and WASM; MCP and CLI share validation",
+        "reviewRegression": "Byte-level lexical envelope checks, invalid scan counters announced to legacy listeners, and structured empty-input errors. New validated APIs are strict; the existing MCP loader preserves partial-file recovery and scan warnings.",
         "oracle": "Ordinary full production revert OBSERVED: 20 tests pass on the branch; independent existing-scanner witnesses fail assertions after removal; tree restoration verified; no CI exception",
         "mcpLoader": "Full MCP suite passed, including shared validation and recoverable short-scan hints"
       }

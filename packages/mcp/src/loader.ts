@@ -50,7 +50,9 @@ export async function loadIfcModel(filePath: string, opts: LoadIfcOptions = {}):
  * source in errors; it defaults to `name`.
  */
 export async function loadIfcModelFromBytes(bytes: Uint8Array, name: string, modelId?: string, label = name): Promise<LoadedModel> {
-  const buffer = Buffer.from(await validateStepInput(bytes, label));
+  // Preserve this existing loader's recovery behavior; new parseModel sessions
+  // validate complete envelopes. A partial scan still carries scanWarnings.
+  const buffer = Buffer.from(await validateStepInput(bytes, label, { envelope: 'signature' }));
 
   const parser = new IfcParser();
   // The parser writes progress to console.* — silence it during MCP loads

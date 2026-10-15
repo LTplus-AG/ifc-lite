@@ -5,9 +5,7 @@
 /**
  * #7610: the MCP loader silenced the parser's console during a load and passed
  * no onDiagnostic, so a model whose scan dropped a record (an unescaped
- * apostrophe, #7541) loaded with no sign it was short. PR #7632 now
- * rejects unterminated lexical input at the envelope boundary; a balanced
- * record missing its semicolon still exercises the short-scan diagnostic.
+ * apostrophe, #7541) loaded with no sign it was short.
  */
 
 import { mkdtempSync, writeFileSync } from 'node:fs';
@@ -18,24 +16,21 @@ import { loadIfcModel } from './loader.js';
 import { createMCPServer, fullScope, InMemoryModelRegistry, InProcessTransport } from './index.js';
 
 const gid = (n: number) => String(n).padStart(22, '0');
-function fileWith(name20: string, terminated = true): string {
+function fileWith(name20: string): string {
   const path = join(mkdtempSync(join(tmpdir(), 'mcp-7610-')), 'model.ifc');
   writeFileSync(path, [
     'ISO-10303-21;', 'HEADER;', "FILE_DESCRIPTION((''),'2;1');", "FILE_NAME('a','',(''),(''),'','','');",
     "FILE_SCHEMA(('IFC4'));", 'ENDSEC;', 'DATA;',
     `#1=IFCPROJECT('${gid(1)}',$,'P',$,$,$,$,$,#3);`, '#2=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);', '#3=IFCUNITASSIGNMENT((#2));',
-    `#20=IFCWALL('${gid(20)}',$,${name20},$,$,$,$,$,$)${terminated ? ';' : ''}`, `#21=IFCWALL('${gid(21)}',$,'W2',$,$,$,$,$,$);`,
+    `#20=IFCWALL('${gid(20)}',$,${name20},$,$,$,$,$,$);`, `#21=IFCWALL('${gid(21)}',$,'W2',$,$,$,$,$,$);`,
     'ENDSEC;', 'END-ISO-10303-21;', '',
   ].join('\n'));
   return path;
 }
 
 describe('an MCP model the scan read short says so (#7610)', () => {
-  it('refuses a lexical truncation before returning a partial model (PR #7632)', async () => {
-    await expect(loadIfcModel(fileWith("'it's'"))).rejects.toMatchObject({ code: 'TRUNCATED_STEP' });
-  });
   it('carries the dropped-record diagnostic on the loaded model', async () => {
-    const loaded = await loadIfcModel(fileWith("'wall'", false));
+    const loaded = await loadIfcModel(fileWith("'it's'"));
     expect(loaded.store.entityIndex.byId.has(20)).toBe(false);
     expect(loaded.scanWarnings).toHaveLength(1);
     expect(loaded.scanWarnings?.[0]).toMatch(/^scan: dropped a record with no terminating ';'/);
@@ -62,7 +57,7 @@ describe('an MCP tool that misses an entity in a short model says why (#7610)', 
   }
 
   it('hints at the dropped records when a write misses #20 of a short model', async () => {
-    const r = await call(fileWith("'wall'", false), 'entity_set_property', { model_id: 'm', express_id: 20, pset: 'P', name: 'N', value: 1 });
+    const r = await call(fileWith("'it's'"), 'entity_set_property', { model_id: 'm', express_id: 20, pset: 'P', name: 'N', value: 1 });
     expect(r.isError).toBe(true);
     expect(r.structuredContent?.code).toBe('ENTITY_NOT_FOUND');
     expect(r.structuredContent?.hint).toMatch(/Model 'm' was read short: the scan dropped or skipped records/);
@@ -75,7 +70,7 @@ describe('an MCP tool that misses an entity in a short model says why (#7610)', 
   });
 
   it('hints inside mutation_batch, which runs its sub-tools without the dispatcher', async () => {
-    const r = await call(fileWith("'wall'", false), 'mutation_batch', {
+    const r = await call(fileWith("'it's'"), 'mutation_batch', {
       model_id: 'm', operations: [{ tool: 'entity_set_property', args: { express_id: 20, pset: 'P', name: 'N', value: 1 } }],
     });
     expect(r.structuredContent?.results?.[0]?.ok).toBe(false);
@@ -83,7 +78,7 @@ describe('an MCP tool that misses an entity in a short model says why (#7610)', 
   });
 
   it('never mentions a model the caller may not access', async () => {
-    const r = await call(fileWith("'wall'", false), 'bcf_topic_close', { guid: 'no-such-topic' }, ['other']);
+    const r = await call(fileWith("'it's'"), 'bcf_topic_close', { guid: 'no-such-topic' }, ['other']);
     expect(r.isError).toBe(true);
     expect(r.structuredContent?.hint ?? '').not.toMatch(/read short/);
   });

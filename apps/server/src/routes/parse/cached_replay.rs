@@ -19,7 +19,8 @@
 
 use super::cache_keys::{
     cache_key_from_parts, has_current_data_model, has_cached_symbolic, has_parquet_metadata, is_file_digest,
-    load_cached_symbolic, not_a_file_digest, parquet_geometry_key, parquet_metadata_key,
+    load_cached_symbolic, not_a_file_digest, parquet_geometry_key, parquet_metadata_key, stored_size,
+    symbolic_cache_key,
 };
 use super::cache_read::Replay;
 use super::ParseQuery;
@@ -29,7 +30,7 @@ use ifc_lite_processing::TessellationQuality;
 use crate::services::{DataModelEntities, ParquetLayout, StreamShapes};
 use super::parquet::ParquetMetadataHeader;
 use super::stream_event::ParquetStreamEvent;
-use super::stream_progress::load_stream_progress;
+use super::stream_progress::{load_stream_progress, stream_progress_cache_key};
 use crate::error::ApiError;
 use crate::services::parquet_replay_batches::{split_into_batches, split_into_stream_batches};
 use crate::AppState;
@@ -146,7 +147,42 @@ pub(super) fn cached_geometry_slice(cached: &[u8]) -> Option<&[u8]> {
 /// or unusable. Every unusable entry is a miss by the one cache-entry policy
 /// (`services::cache_entry`, #7676, SERVER-12): a damaged blob or a header
 /// that does not decode used to answer 500 for the file on every request.
+///
+/// The charge is the STORED entries' size on both routes that get here: the
+/// hash-only route admitted for the geometry alone, an upload route for its
+/// upload. Both are resized to what the replay reads and holds (the geometry
+/// [`REPLAY_COPIES`] times, plus the header, symbolic and progress entries it
+/// decodes), and an upload route's miss is put back to its upload's charge
+/// for the parse that follows.
 pub(super) async fn try_cached_replay(
+    state: &AppState,
+    cache_key: &str,
+    layout: ParquetLayout,
+    stream_shapes: StreamShapes,
+    data_model_entities: DataModelEntities,
+    mut admission: AdmissionGuard,
+) -> Result<Replay, ApiError> {
+    let geometry = stored_size(&state.cache, &parquet_geometry_key(cache_key, layout)).await?;
+    let held = if geometry == 0 {
+        None
+    } else {
+        let sidecars = stored_size(&state.cache, &parquet_metadata_key(cache_key)).await?
+            + stored_size(&state.cache, &symbolic_cache_key(cache_key)).await?
+            + stored_size(&state.cache, &stream_progress_cache_key(cache_key)).await?;
+        Some(admission.resize_to(geometry.saturating_mul(REPLAY_COPIES).saturating_add(sidecars)).await?)
+    };
+    match replay_entries(state, cache_key, layout, stream_shapes, data_model_entities, admission).await? {
+        Replay::Miss(mut admission) => {
+            if let Some(held) = held {
+                admission.resize_to(held).await?;
+            }
+            Ok(Replay::Miss(admission))
+        }
+        hit => Ok(hit),
+    }
+}
+
+async fn replay_entries(
     state: &AppState,
     cache_key: &str,
     layout: ParquetLayout,
@@ -176,7 +212,7 @@ pub(super) async fn try_cached_replay(
     else {
         return Ok(Replay::Miss(admission));
     };
-    let Some(cached_parquet) = state.cache.read_usable(&parquet_cache_key).await? else {
+    let Some((cached_parquet, parquet_entry)) = state.cache.read_usable_entry(&parquet_cache_key).await? else {
         return Ok(Replay::Miss(admission));
     };
 
@@ -242,7 +278,7 @@ pub(super) async fn try_cached_replay(
         // Fall through to the normal parse path (treat as a cache miss);
         // the re-parse overwrites the bad cache entry.
         let why = format!("{} bytes hold no geometry frame", cached_parquet.len());
-        state.cache.evict_unusable(&parquet_cache_key, why).await;
+        state.cache.evict_entry(&parquet_cache_key, &parquet_entry, why).await;
         return Ok(Replay::Miss(admission));
     };
     drop(cached_parquet);

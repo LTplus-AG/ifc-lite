@@ -6,7 +6,7 @@
 
 use super::cache_keys::{
     data_model_cache_key, has_current_data_model, has_cached_symbolic, parquet_geometry_key,
-    parquet_metadata_key,
+    parquet_metadata_key, stored_size,
 };
 use super::cache_read::resident_body;
 use super::replay_header::mark_header_from_cache;
@@ -93,12 +93,24 @@ pub async fn parse_parquet(
     // that is unusable (a damaged blob, a header that is not UTF-8) is a miss
     // too, so the parse rewrites it (#7676, SERVER-12): it used to answer 500
     // for this file on every request.
+    //
+    // A hit is charged the two entries' stored size, as `GET /cache/geometry`
+    // is, not the upload's (SERVER-24); a miss goes back to the upload's
+    // charge for the parse.
+    let mut upload_charge = None;
     let hit = if has_current_data_model(&state.cache, &cache_key, query.data_model_entities).await?
         && has_cached_symbolic(&state.cache, &cache_key).await?
     {
-        match state.cache.read_usable_utf8(&metadata_cache_key).await? {
-            Some(metadata) => state.cache.read_usable(&parquet_cache_key).await?.map(|parquet| (parquet, metadata)),
-            None => None,
+        let parquet = stored_size(&state.cache, &parquet_cache_key).await?;
+        let metadata = stored_size(&state.cache, &metadata_cache_key).await?;
+        if parquet == 0 || metadata == 0 {
+            None
+        } else {
+            upload_charge = Some(admission_guard.resize_to(parquet + metadata).await?);
+            match state.cache.read_usable_utf8(&metadata_cache_key).await? {
+                Some(metadata) => state.cache.read_usable(&parquet_cache_key).await?.map(|parquet| (parquet, metadata)),
+                None => None,
+            }
         }
     } else {
         None
@@ -122,6 +134,9 @@ pub async fn parse_parquet(
             .map_err(|e| ApiError::Internal(e.to_string()))?;
 
         return Ok(response);
+    }
+    if let Some(upload_charge) = upload_charge {
+        admission_guard.resize_to(upload_charge).await?;
     }
 
     tracing::info!(

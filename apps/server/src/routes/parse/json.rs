@@ -6,6 +6,7 @@
 
 use super::cache_keys::json_response_cache_key;
 use super::cache_read::resident_body;
+use crate::routes::cache::DECODE_COPIES;
 use super::{
     admit_upload, begin_symbolic_fill, cache_symbolic_data_off_runtime, request_cache_key_off_runtime, ParseQuery,
 };
@@ -57,7 +58,21 @@ pub async fn parse_full(
     // rides that task, as it does the miss path's below. A stored response
     // that does not decode is a miss (#7676, SERVER-12): it used to answer
     // 500 on every request for the file, when the parse below rewrites it.
-    if let Some(cached) = state.cache.read_usable(&response_cache_key).await? {
+    //
+    // The hit is charged the stored response's size, as `GET /cache/{key}` is
+    // (SERVER-24): not the upload's, which says nothing about the decode of a
+    // response several times its size. A miss goes back to the upload's
+    // charge for the parse.
+    let mut upload_charge = None;
+    let cached = match state.cache.lookup(&response_cache_key).await? {
+        Some(entry) => {
+            let stored = entry.size().saturating_mul(DECODE_COPIES);
+            upload_charge = Some(admission_guard.resize_to(stored).await?);
+            state.cache.read_entry(&response_cache_key, &entry).await.map(|bytes| (bytes, entry))
+        }
+        None => None,
+    };
+    if let Some((cached, cached_entry)) = cached {
         tracing::info!(cache_key = %cache_key, "Cache HIT");
         let (decoded, admission) = tokio::task::spawn_blocking(move || {
             let decoded = serde_json::from_slice::<SymbolicParseResponse>(&cached).map(|mut cached| {
@@ -72,11 +87,14 @@ pub async fn parse_full(
             Ok(body) => return Ok(json_body(body?, admission_guard.into_resident())),
             Err(e) => {
                 let why = format!("not a ParseResponse: {e}");
-                state.cache.evict_unusable(&response_cache_key, why).await;
+                state.cache.evict_entry(&response_cache_key, &cached_entry, why).await;
             }
         }
     }
 
+    if let Some(upload_charge) = upload_charge {
+        admission_guard.resize_to(upload_charge).await?;
+    }
     tracing::info!(cache_key = %cache_key, size = data.len(), "Cache MISS - processing");
 
     // Parse content
@@ -164,7 +182,14 @@ fn encode_response(response: &SymbolicParseResponse) -> Result<Bytes, ApiError> 
 /// An already-encoded JSON body, with the content type `Json` sets, keeping
 /// the request's bytes charged until it is sent (#7676, SERVER-7).
 fn json_body(body: Bytes, resident: ResidentBytes) -> Response {
-    ([(header::CONTENT_TYPE, "application/json")], resident_body(body, resident)).into_response()
+    // The length is known, and `resident_body` is a stream with no size hint:
+    // without it the response goes out chunked (as `Json` never did).
+    let length = body.len();
+    (
+        [(header::CONTENT_TYPE, "application/json"), (header::CONTENT_LENGTH, &length.to_string())],
+        resident_body(body, resident),
+    )
+        .into_response()
 }
 
 /// POST /api/v1/parse/stream - Streaming SSE parse.

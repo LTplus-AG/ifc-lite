@@ -91,7 +91,7 @@ pub async fn parse_parquet_optimized(
     // on every request was the worst of both shapes.
     let data_model_entities = query.data_model_entities;
     if let Some((metadata_json, body)) =
-        try_cached_optimized_parquet(&state, &cache_key, data_model_entities).await?
+        try_cached_optimized_parquet(&state, &cache_key, data_model_entities, Some(&mut admission_guard)).await?
     {
         return optimized_parquet_response(metadata_json, body, admission_guard.into_resident());
     }

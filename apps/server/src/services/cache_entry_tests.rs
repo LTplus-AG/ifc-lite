@@ -105,3 +105,41 @@ async fn a_broken_store_is_an_error_not_a_miss() {
     assert!(matches!(lookup, Err(ApiError::Cache(_))), "{lookup:?}");
     assert!(matches!(read, Err(ApiError::Cache(_))), "{read:?}");
 }
+
+/// #7676 review, finding 1: a reader's lookup and its failed read are
+/// separated by an admission wait (up to `queue_timeout`), in which another
+/// request can re-parse and rewrite the entry. The failed read must evict the
+/// row it looked up, not whatever the key names by then.
+#[tokio::test]
+async fn a_failed_read_does_not_evict_an_entry_rewritten_since_its_lookup() {
+    let (cache, dir) = fresh("rewritten").await;
+    cache.set_bytes("k", b"hello world").await.unwrap();
+    let stale = cache.lookup("k").await.unwrap().expect("the entry is there");
+
+    // The blob the reader looked up is damaged, and a writer then replaces
+    // the entry with a good one while the reader waits for admission.
+    let path = blob_path(&dir, "k").await;
+    let _ = std::fs::remove_file(&path);
+    std::fs::write(&path, b"HELLO WORLD").unwrap();
+    cache.set_bytes("k", b"a good rewrite").await.unwrap();
+
+    assert!(cache.read_entry("k", &stale).await.is_none(), "the stale entry's blob is damaged");
+
+    let good = cache.lookup("k").await.unwrap().expect("the good entry written meanwhile was evicted");
+    assert_eq!(cache.read_entry("k", &good).await.unwrap(), b"a good rewrite");
+}
+
+/// The same race through a decode failure: `usable` is handed the entry the
+/// bytes came from.
+#[tokio::test]
+async fn a_decode_failure_does_not_evict_an_entry_rewritten_since_its_read() {
+    let (cache, _dir) = fresh("rewritten-decode").await;
+    cache.set_bytes("k", b"{not json").await.unwrap();
+    let (bytes, stale) = cache.read_usable_entry("k").await.unwrap().unwrap();
+    cache.set_bytes("k", br#"{"a":1}"#).await.unwrap();
+
+    let decoded = cache.usable("k", &stale, serde_json::from_slice::<serde_json::Value>(&bytes)).await;
+    assert!(decoded.is_none());
+    let value: serde_json::Value = cache.read_usable_json("k").await.unwrap().expect("the rewrite was evicted");
+    assert_eq!(value["a"], 1);
+}

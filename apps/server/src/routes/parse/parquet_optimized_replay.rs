@@ -14,10 +14,10 @@
 use super::cache_keys::{
     cache_key_from_parts, data_model_cache_key, has_cached_symbolic, has_current_data_model,
     has_optimized_metadata, is_file_digest, not_a_file_digest, parquet_optimized_cache_key,
-    parquet_optimized_metadata_cache_key,
+    parquet_optimized_metadata_cache_key, stored_size,
 };
 use super::cache_read::resident_body;
-use crate::admission::ResidentBytes;
+use crate::admission::{AdmissionGuard, ResidentBytes};
 use super::parquet::DataModelStats;
 use super::replay_header::mark_header_from_cache;
 use super::ParseQuery;
@@ -115,16 +115,40 @@ pub(super) fn optimized_parquet_response(
 /// data-model key nobody writes. A miss re-parses; the body and header it
 /// rewrites are the same bytes, because the variant touches only the data
 /// model.
+///
+/// `upload` is the upload route's admission, charged the header's and body's
+/// stored size for the read (and put back to its upload's charge on a miss,
+/// for the parse); the hash-only route passes `None` because it has already
+/// admitted the body.
 pub(super) async fn try_cached_optimized_parquet(
     state: &AppState,
     cache_key: &str,
     data_model_entities: DataModelEntities,
+    upload: Option<&mut AdmissionGuard>,
 ) -> Result<Option<(String, bytes::Bytes)>, ApiError> {
     if !has_cached_symbolic(&state.cache, cache_key).await?
         || !has_current_data_model(&state.cache, cache_key, data_model_entities).await?
     {
         return Ok(None);
     }
+    let Some(upload) = upload else {
+        return read_optimized(state, cache_key).await;
+    };
+    let body = stored_size(&state.cache, &parquet_optimized_cache_key(cache_key)).await?;
+    let header = stored_size(&state.cache, &parquet_optimized_metadata_cache_key(cache_key)).await?;
+    if body == 0 || header == 0 {
+        return Ok(None);
+    }
+    let held = upload.resize_to(body + header).await?;
+    let hit = read_optimized(state, cache_key).await?;
+    if hit.is_none() {
+        upload.resize_to(held).await?;
+    }
+    Ok(hit)
+}
+
+/// The two entries' content, each read through the one cache-entry policy.
+async fn read_optimized(state: &AppState, cache_key: &str) -> Result<Option<(String, bytes::Bytes)>, ApiError> {
     let Some(metadata_json) = state
         .cache
         .read_usable_utf8(&parquet_optimized_metadata_cache_key(cache_key))
@@ -211,7 +235,7 @@ pub(super) async fn replay_optimized_by_client_hash(
         // The header is a few hundred bytes; a permit covers it.
         let resident = state.admission.acquire_resident(body.size()).await?;
         if let Some((metadata_json, body)) =
-            try_cached_optimized_parquet(state, &cache_key, query.data_model_entities).await?
+            try_cached_optimized_parquet(state, &cache_key, query.data_model_entities, None).await?
         {
             tracing::info!(
                 cache_key = %cache_key,

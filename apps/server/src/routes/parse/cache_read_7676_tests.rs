@@ -56,7 +56,7 @@ async fn drain(response: axum::response::Response) -> Vec<u8> {
 /// Warm every entry a read route serves, through the real parse routes: the
 /// flat stream entries (geometry, metadata, data model, symbolic, progress),
 /// the optimized body, and the JSON response. Returns `(hash, cache_key)`.
-async fn warm_everything(state: &AppState) -> (String, String) {
+pub(super) async fn warm_everything(state: &AppState) -> (String, String) {
     let live = stream_once(state, JOBS_NE_MESHES_FIXTURE).await;
     let key = await_cache_fill(state, &live).await;
     let hash = DiskCache::generate_key(JOBS_NE_MESHES_FIXTURE.as_bytes());

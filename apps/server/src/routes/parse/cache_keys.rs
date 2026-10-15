@@ -306,6 +306,12 @@ async fn has_entry(cache: &DiskCache, key: &str) -> Result<bool, ApiError> {
     Ok(cache.lookup(key).await?.is_some())
 }
 
+/// The stored size of `key`'s entry, `0` when it has none: what a read of it
+/// is admitted for (see [`DiskCache::lookup`], which reads nothing).
+pub(crate) async fn stored_size(cache: &DiskCache, key: &str) -> Result<u64, ApiError> {
+    Ok(cache.lookup(key).await?.map_or(0, |entry| entry.size()))
+}
+
 /// Build the symbolic-data cache key for a given file cache key.
 /// v2 requires direct fill provenance (#4459); v1 remains decodable but is
 /// not a fresh extraction for 3D routing. Geometry namespaces stay unchanged.

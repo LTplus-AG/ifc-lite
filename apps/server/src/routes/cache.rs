@@ -180,11 +180,13 @@ pub async fn get_cached(
     match encoded {
         Ok(body) => {
             tracing::info!(key = %key, "Cache HIT");
+            let length = body.len().to_string();
             let body = resident_body(body, admission.into_resident());
-            Ok(([(header::CONTENT_TYPE, "application/json")], body).into_response())
+            Ok(([(header::CONTENT_TYPE, "application/json"), (header::CONTENT_LENGTH, length.as_str())], body)
+                .into_response())
         }
         Err(e) => {
-            state.cache.evict_unusable(&response_key, format!("not a ParseResponse: {e}")).await;
+            state.cache.evict_entry(&response_key, &entry, format!("not a ParseResponse: {e}")).await;
             Err(not_found())
         }
     }
@@ -192,7 +194,7 @@ pub async fn get_cached(
 
 /// How many copies of a stored response `get_cached` holds at its peak: the
 /// stored JSON, its decoded value, and the re-encoded body.
-const DECODE_COPIES: u64 = 3;
+pub(crate) const DECODE_COPIES: u64 = 3;
 
 /// Test seam: lets a test hold one entry's decode open to observe what the
 /// handler does while it runs. Compiled out of every non-test build.

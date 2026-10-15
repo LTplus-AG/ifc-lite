@@ -195,10 +195,12 @@ pub async fn get_cached_geometry(
         state.cache.lookup(&parquet_cache_key).await?,
         state.cache.lookup(&metadata_cache_key).await?,
     ) {
-        (Some(parquet), Some(metadata)) => {
-            let resident = state.admission.acquire_resident(parquet.size() + metadata.size()).await?;
-            let metadata = match state.cache.read_entry(&metadata_cache_key, &metadata).await {
-                Some(bytes) => state.cache.usable(&metadata_cache_key, String::from_utf8(bytes)).await,
+        (Some(parquet), Some(metadata_entry)) => {
+            let resident = state.admission.acquire_resident(parquet.size() + metadata_entry.size()).await?;
+            let metadata = match state.cache.read_entry(&metadata_cache_key, &metadata_entry).await {
+                Some(bytes) => {
+                    state.cache.usable(&metadata_cache_key, &metadata_entry, String::from_utf8(bytes)).await
+                }
                 None => None,
             };
             match metadata {

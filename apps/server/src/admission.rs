@@ -111,6 +111,39 @@ impl AdmissionGuard {
         }
     }
 
+    /// The bytes this guard currently reserves, in whole permits (0 with the
+    /// byte gate disabled). Hand it back to [`Self::resize_to`] to restore it.
+    pub fn reserved(&self) -> u64 {
+        self.mem.as_ref().map_or(0, |mem| mem.num_permits() as u64 * BYTES_PER_PERMIT)
+    }
+
+    /// Charge this job `bytes` from now on, whether that is more or less than
+    /// it holds; returns what it held before. A cache hit on an upload route
+    /// is charged the stored entry's size this way, as the GET routes are,
+    /// instead of the upload's (#7676, SERVER-24).
+    ///
+    /// Growing waits for the extra bytes like any waiter: bounded by
+    /// `queue_timeout`, counted in the queue, answered `503` on timeout, with
+    /// everything already held kept meanwhile. Never drops below one permit.
+    pub async fn resize_to(&mut self, bytes: u64) -> Result<u64, ApiError> {
+        let before = self.reserved();
+        let Some(mem) = self.mem.as_mut() else {
+            return Ok(before);
+        };
+        let want = self.admission.permits_for(bytes) as usize;
+        let held = mem.num_permits();
+        if held > want {
+            drop(mem.split(held - want));
+        } else if held < want {
+            let extra = self.admission.acquire_more((want - held) as u32).await?;
+            // Same semaphore, so the permits merge into one.
+            if let (Some(mem), Some(extra)) = (self.mem.as_mut(), extra) {
+                mem.merge(extra);
+            }
+        }
+        Ok(before)
+    }
+
     /// End the job: free its CPU slot now and keep only its bytes, for as
     /// long as the returned value lives. See [`ResidentBytes`].
     pub fn into_resident(mut self) -> ResidentBytes {
@@ -238,6 +271,22 @@ impl Admission {
         let _queued = self.enter_queue()?;
         match tokio::time::timeout(self.cfg.queue_timeout, Arc::clone(mem).acquire_many_owned(want)).await {
             Ok(Ok(permit)) => Ok(ResidentBytes { _mem: Some(permit) }),
+            _ => Err(self.overloaded()),
+        }
+    }
+
+    /// `permits` more byte permits for a job that already holds some: a
+    /// try first, then a bounded, queued wait. `None` with the gate disabled.
+    async fn acquire_more(self: &Arc<Self>, permits: u32) -> Result<Option<OwnedSemaphorePermit>, ApiError> {
+        let Some(mem) = &self.mem else {
+            return Ok(None);
+        };
+        if let Ok(permit) = Arc::clone(mem).try_acquire_many_owned(permits) {
+            return Ok(Some(permit));
+        }
+        let _queued = self.enter_queue()?;
+        match tokio::time::timeout(self.cfg.queue_timeout, Arc::clone(mem).acquire_many_owned(permits)).await {
+            Ok(Ok(permit)) => Ok(Some(permit)),
             _ => Err(self.overloaded()),
         }
     }
@@ -383,3 +432,7 @@ pub fn spawn_rss_sampler(admission: Arc<Admission>) {
 #[cfg(test)]
 #[path = "admission_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "admission_resize_tests.rs"]
+mod resize_tests;

@@ -15,7 +15,9 @@
 //!   the whole content, integrity-checked by cacache.
 //! - **What if the entry is unusable?** A blob that is gone, fails its
 //!   integrity check, or does not decode as what the reader expects is a
-//!   MISS, and the index row is removed. A route holding the upload
+//!   MISS, and the index row is removed, but only while it still names the
+//!   integrity that failed (a writer may have replaced the entry since the
+//!   reader's lookup). A route holding the upload
 //!   re-parses and overwrites it; a read-only route answers its miss status.
 //!   Removing the row is what keeps the existence checks honest: without it
 //!   `GET /cache/check` would keep sending a client to an entry every reader
@@ -56,7 +58,7 @@ impl DiskCache {
             return Ok(None);
         };
         if !cacache::exists(&self.cache_dir, &meta.integrity).await {
-            self.evict_unusable(key, "its content blob is missing").await;
+            self.evict_unusable(key, &meta.integrity, "its content blob is missing").await;
             return Ok(None);
         }
         Ok(Some(CacheEntry {
@@ -74,7 +76,7 @@ impl DiskCache {
         match cacache::read_hash(&self.cache_dir, &entry.integrity).await {
             Ok(bytes) => Some(bytes),
             Err(e) => {
-                self.evict_unusable(key, e).await;
+                self.evict_entry(key, entry, e).await;
                 None
             }
         }
@@ -83,19 +85,26 @@ impl DiskCache {
     /// [`Self::lookup`] then [`Self::read_entry`]: the content of `key`, or
     /// `None` when it is absent or unusable.
     pub async fn read_usable(&self, key: &str) -> Result<Option<Vec<u8>>, ApiError> {
-        Ok(match self.lookup(key).await? {
-            Some(entry) => self.read_entry(key, &entry).await,
-            None => None,
-        })
+        Ok(self.read_usable_entry(key).await?.map(|(bytes, _)| bytes))
+    }
+
+    /// [`Self::read_usable`], also returning the entry that was read, for a
+    /// caller that decodes the bytes and must hand a decode failure to
+    /// [`Self::evict_entry`].
+    pub async fn read_usable_entry(&self, key: &str) -> Result<Option<(Vec<u8>, CacheEntry)>, ApiError> {
+        let Some(entry) = self.lookup(key).await? else {
+            return Ok(None);
+        };
+        Ok(self.read_entry(key, &entry).await.map(|bytes| (bytes, entry)))
     }
 
     /// [`Self::read_usable`] for a UTF-8 entry (a stored response header).
     /// Bytes that are not UTF-8 make the entry unusable.
     pub async fn read_usable_utf8(&self, key: &str) -> Result<Option<String>, ApiError> {
-        let Some(bytes) = self.read_usable(key).await? else {
+        let Some((bytes, entry)) = self.read_usable_entry(key).await? else {
             return Ok(None);
         };
-        Ok(self.usable(key, String::from_utf8(bytes)).await)
+        Ok(self.usable(key, &entry, String::from_utf8(bytes)).await)
     }
 
     /// [`Self::read_usable`] for a JSON entry. An entry that does not decode
@@ -103,33 +112,62 @@ impl DiskCache {
     /// them on the blocking pool instead, then hand the result to
     /// [`Self::usable`].
     pub async fn read_usable_json<T: DeserializeOwned>(&self, key: &str) -> Result<Option<T>, ApiError> {
-        let Some(bytes) = self.read_usable(key).await? else {
+        let Some((bytes, entry)) = self.read_usable_entry(key).await? else {
             return Ok(None);
         };
-        Ok(self.usable(key, serde_json::from_slice(&bytes)).await)
+        Ok(self.usable(key, &entry, serde_json::from_slice(&bytes)).await)
     }
 
     /// The decoded value, or `None` with the entry evicted when it did not
     /// decode: the one place a reader's decode failure becomes a miss.
-    pub async fn usable<T, E: std::fmt::Display>(&self, key: &str, decoded: Result<T, E>) -> Option<T> {
+    pub async fn usable<T, E: std::fmt::Display>(
+        &self,
+        key: &str,
+        entry: &CacheEntry,
+        decoded: Result<T, E>,
+    ) -> Option<T> {
         match decoded {
             Ok(value) => Some(value),
             Err(e) => {
-                self.evict_unusable(key, format!("it does not decode: {e}")).await;
+                self.evict_entry(key, entry, format!("it does not decode: {e}")).await;
                 None
             }
         }
     }
 
-    /// Drop the index row of an entry nobody can use, so every route agrees
-    /// it is a miss. Content blobs are left to `remove_by_key_prefix`'s GC:
-    /// another entry may share one. Removing an index row needs no exclusion
-    /// from a concurrent write (see `write_gc_lock`); at worst it drops an
-    /// entry rewritten a moment ago, which is one more re-parse.
-    pub(crate) async fn evict_unusable(&self, key: &str, why: impl std::fmt::Display) {
+    /// Evict `entry`, the one a reader looked up and found unusable, unless
+    /// `key` names something else by now.
+    pub async fn evict_entry(&self, key: &str, entry: &CacheEntry, why: impl std::fmt::Display) {
+        self.evict_unusable(key, &entry.integrity, why).await;
+    }
+
+    /// Drop the index row of `key` if it still names `failed`, the integrity
+    /// a reader could not use, so every route agrees it is a miss. Content
+    /// blobs are left to `remove_by_key_prefix`'s GC: another entry may share
+    /// one.
+    ///
+    /// A reader's lookup and its failed read are separated by an admission
+    /// wait of up to `queue_timeout`, long enough for another request to
+    /// re-parse and rewrite the entry. Removing by key name would then drop
+    /// that good entry (and a data-model sidecar has no re-parse behind it:
+    /// its route answers a final 404). So the row is re-read under
+    /// `write_gc_lock.write()`, which excludes a writer between its blob and
+    /// its index insert, and removed only when it still names `failed`.
+    async fn evict_unusable(&self, key: &str, failed: &cacache::Integrity, why: impl std::fmt::Display) {
         tracing::warn!(cache_key = %key, reason = %why, "Unusable cache entry; treating it as a miss");
-        if let Err(e) = cacache::remove(&self.cache_dir, key).await {
-            tracing::warn!(cache_key = %key, error = %e, "Failed to evict an unusable cache entry");
+        let _exclusive = self.write_gc_lock.write().await;
+        match cacache::metadata(&self.cache_dir, key).await {
+            Ok(Some(row)) if row.integrity == *failed => {
+                if let Err(e) = cacache::remove(&self.cache_dir, key).await {
+                    tracing::warn!(cache_key = %key, error = %e, "Failed to evict an unusable cache entry");
+                }
+            }
+            Ok(_) => {
+                tracing::debug!(cache_key = %key, "Cache entry was replaced since the failed read; keeping it");
+            }
+            Err(e) => {
+                tracing::warn!(cache_key = %key, error = %e, "Failed to re-read the index before evicting");
+            }
         }
     }
 }

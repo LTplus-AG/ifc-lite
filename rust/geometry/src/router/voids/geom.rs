@@ -229,10 +229,13 @@ pub(super) fn rotate_point(r: &Matrix3<f64>, x: f64, y: f64, z: f64) -> [f64; 3]
 }
 
 /// Index of the smallest half-extent (the wall thickness / penetration axis).
+/// The first minimum wins a tie; a NaN half-extent is never the minimum
+/// unless all three are NaN (ROUTER-30, #7674: this was
+/// `partial_cmp(..).unwrap()`, which aborts on NaN).
 pub(super) fn thin_axis(half: &[f64; 3]) -> usize {
     (0..3)
-        .min_by(|&a, &b| half[a].partial_cmp(&half[b]).unwrap())
-        .unwrap()
+        .min_by(|&a, &b| crate::cmp_f64_nan_last(half[a], half[b]))
+        .unwrap_or(0)
 }
 
 /// If `m` is a signed permutation matrix (each row one entry ≈±1, the rest ≈0, with

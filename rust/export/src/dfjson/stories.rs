@@ -84,7 +84,7 @@ pub(super) fn group_plates(plates: Vec<Plate>, spatial: Option<&SpatialIndex>) -
     groups.sort_by(|a, b| {
         let ka = a.0.unwrap_or(a.1);
         let kb = b.0.unwrap_or(b.1);
-        ka.partial_cmp(&kb).unwrap_or(std::cmp::Ordering::Equal)
+        ifc_lite_geometry::cmp_f64_nan_last(ka, kb)
     });
     groups.into_iter().map(|(_, _, g)| g).collect()
 }
@@ -95,7 +95,8 @@ fn min_floor(plates: &[Plate]) -> f64 {
 
 /// Sort by floor height and split wherever the gap exceeds [`STORY_GAP`].
 fn cluster_by_elevation(mut plates: Vec<Plate>) -> Vec<Vec<Plate>> {
-    plates.sort_by(|a, b| a.floor_height.partial_cmp(&b.floor_height).unwrap_or(std::cmp::Ordering::Equal));
+    // NaN heights sort after every number, so they cluster at the top (#7674).
+    plates.sort_by(|a, b| ifc_lite_geometry::cmp_f64_nan_last(a.floor_height, b.floor_height));
     let mut groups: Vec<Vec<Plate>> = Vec::new();
     for p in plates {
         match groups.last_mut() {

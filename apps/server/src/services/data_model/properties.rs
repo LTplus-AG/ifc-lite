@@ -16,7 +16,7 @@ use std::sync::Arc;
 /// Extract all property sets and their properties.
 pub(super) fn extract_properties(
     jobs: &[EntityJob],
-    content: &Arc<Vec<u8>>,
+    content: &[u8],
     entity_index: &Arc<ifc_lite_core::EntityIndex>,
 ) -> Vec<PropertySet> {
     // First, collect all PropertySet entities
@@ -32,7 +32,7 @@ pub(super) fn extract_properties(
         .par_iter()
         .filter_map(|job| {
             let mut local_decoder =
-                EntityDecoder::with_arc_index(content.as_slice(), entity_index.clone());
+                EntityDecoder::with_arc_index(content, entity_index.clone());
             let entity = local_decoder.decode_at(job.start, job.end).ok()?;
 
             // IfcPropertySet: [0]=GlobalId, [1]=OwnerHistory, [2]=Name, [3]=Description, [4]=HasProperties

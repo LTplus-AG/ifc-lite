@@ -51,7 +51,7 @@ async fn a_join_error() -> tokio::task::JoinError {
 /// `VARIANT_COUNT` must equal the number of arms below; the table test asserts
 /// it saw that many distinct variants, so a new arm added without a new row
 /// fails at runtime.
-const VARIANT_COUNT: usize = 11;
+const VARIANT_COUNT: usize = 12;
 
 fn variant_name(err: &ApiError) -> &'static str {
     match err {
@@ -66,6 +66,7 @@ fn variant_name(err: &ApiError) -> &'static str {
         ApiError::Join(_) => "Join",
         ApiError::Parquet(_) => "Parquet",
         ApiError::Overloaded { .. } => "Overloaded",
+        ApiError::UploadTimeout(_) => "UploadTimeout",
     }
 }
 
@@ -126,6 +127,11 @@ async fn every_variant_maps_to_its_documented_status_and_code() {
             ApiError::Overloaded { retry_after_secs: 3 },
             StatusCode::SERVICE_UNAVAILABLE,
             "OVERLOADED",
+        ),
+        (
+            ApiError::UploadTimeout("stalled".into()),
+            StatusCode::REQUEST_TIMEOUT,
+            "REQUEST_TIMEOUT",
         ),
         // Neither of these two has a public constructor, so both are produced
         // by actually provoking the failure they represent.

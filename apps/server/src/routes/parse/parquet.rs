@@ -6,10 +6,10 @@
 
 use super::cache_keys::{
     data_model_cache_key, has_current_data_model, has_cached_symbolic, parquet_geometry_key,
-    parquet_metadata_key, request_cache_key,
+    parquet_metadata_key,
 };
 use super::replay_header::mark_header_from_cache;
-use super::{cache_symbolic_data_off_runtime, extract_file, ParseQuery};
+use super::{admit_upload, request_cache_key_off_runtime, cache_symbolic_data_off_runtime, ParseQuery};
 use crate::error::ApiError;
 use crate::services::baked_basis_zup;
 use crate::services::parquet::serialize_combined_for_layout;
@@ -68,19 +68,16 @@ pub async fn parse_parquet(
     mut multipart: Multipart,
 ) -> Result<Response, ApiError> {
     // Extract file from multipart
-    // Admission gate (bounded concurrency + byte budget): acquired BEFORE the
-    // upload is buffered, reserving the max upload size since multipart rarely
-    // declares a length up front. Held for the request's whole lifetime so a
-    // disconnected-but-still-running job keeps its memory slot.
-    let admission_guard = state
-        .admission
-        .acquire(state.config.max_file_size_mb as u64 * 1024 * 1024)
-        .await?;
-    let data = extract_file(&mut multipart, state.config.max_file_size_mb).await?;
+    // Admission (bounded concurrency + byte budget) before the upload is
+    // buffered; see `admit_upload`. Held for the
+    // request's whole lifetime so a disconnected-but-still-running job keeps
+    // its memory slot.
+    let (admission_guard, data) = admit_upload(&state, &mut multipart).await?;
 
     // Generate cache key (include opening filter so different modes get different cache entries)
     let tessellation_quality = query.resolved_tessellation_quality()?;
-    let cache_key = request_cache_key(&data, &query, tessellation_quality);
+    let (cache_key, admission_guard) =
+        request_cache_key_off_runtime(&data, &query, tessellation_quality, admission_guard).await?;
 
     // Check cache first (before any processing)
     let layout = query.parquet_layout;

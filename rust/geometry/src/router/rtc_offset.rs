@@ -40,9 +40,11 @@ impl GeometryRouter {
         let mut y: Vec<f64> = translations.iter().map(|(_, y, _)| *y).collect();
         let mut z: Vec<f64> = translations.iter().map(|(_, _, z)| *z).collect();
 
-        x.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-        y.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-        z.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        // Every sample is finite (`sample_element_translation` returns `None`
+        // otherwise); the NaN-last order keeps the sort total regardless (#7674).
+        x.sort_by(|a, b| crate::cmp_f64_nan_last(*a, *b));
+        y.sort_by(|a, b| crate::cmp_f64_nan_last(*a, *b));
+        z.sort_by(|a, b| crate::cmp_f64_nan_last(*a, *b));
 
         let mid = x.len() / 2;
         let centroid = (

@@ -68,8 +68,29 @@ pub struct Admission {
 #[derive(Debug)]
 pub struct AdmissionGuard {
     _cpu: OwnedSemaphorePermit,
-    _mem: Option<OwnedSemaphorePermit>,
+    /// `None` when the memory gate is disabled.
+    mem: Option<OwnedSemaphorePermit>,
     admission: Arc<Admission>,
+}
+
+impl AdmissionGuard {
+    /// Give back every reserved byte above `bytes`.
+    ///
+    /// Never grows the reservation, and never drops below one permit. Not
+    /// used by the upload routes: a parse's measured peak is 20-33x its
+    /// upload, so no fixed multiplier makes a smaller charge safe (#7676,
+    /// SERVER-24, deferred to L-server). It is for a caller whose real size is
+    /// known up front, such as a cache read.
+    #[allow(dead_code)] // first non-test caller: the cache-read admission (#7709)
+    pub fn shrink_to(&mut self, bytes: u64) {
+        if let Some(mem) = self.mem.as_mut() {
+            let keep = bytes.div_ceil(BYTES_PER_PERMIT).max(1) as usize;
+            let held = mem.num_permits();
+            if held > keep {
+                drop(mem.split(held - keep));
+            }
+        }
+    }
 }
 
 impl std::fmt::Debug for Admission {
@@ -109,10 +130,9 @@ impl Admission {
 
     /// Admit one parse job that will buffer up to `reserve_bytes` of upload.
     ///
-    /// Multipart rarely declares a length up front, so callers reserve the
-    /// configured max file size — a conservative reservation that guarantees
-    /// the byte bound holds (tighter packing is a follow-up once the actual
-    /// size is known post-extract).
+    /// Multipart rarely declares a length up front, so upload routes reserve
+    /// the configured max file size, a conservative reservation that
+    /// guarantees the byte bound holds.
     pub async fn acquire(
         self: &Arc<Self>,
         reserve_bytes: u64,
@@ -212,7 +232,7 @@ impl Admission {
         };
 
         self.in_flight.fetch_add(1, Ordering::Relaxed);
-        Ok(AdmissionGuard { _cpu: cpu, _mem: mem, admission: Arc::clone(self) })
+        Ok(AdmissionGuard { _cpu: cpu, mem, admission: Arc::clone(self) })
     }
 
     /// Current sampled resident set size in bytes (0 = unknown/not sampled).

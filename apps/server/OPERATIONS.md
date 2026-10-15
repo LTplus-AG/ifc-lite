@@ -20,7 +20,20 @@ replica.
 
 Each admitted parse reserves the full `MAX_FILE_SIZE_MB` against the byte
 budget (multipart rarely declares a length up front), so the budget divided by
-the max file size is the number of large parses that can run concurrently.
+the max file size is the number of large parses that can run concurrently. The
+reservation is held until the decode, hash and parse work has actually ended,
+even if the client disconnects or the request times out first. It is not
+shrunk to the upload's size once the file arrives: a parse's measured peak is
+20-33x its upload (53.7 MiB model: `parquet-stream` 22.5x, `parquet` 33x,
+`parse` 20x), so a smaller charge would admit more work than the box holds.
+Sizing it per route is deferred to L-server (#7676, SERVER-24). The streaming
+route's data-model fill runs under its stream's reservation rather than a
+second one.
+
+An upload must keep arriving to keep its reservation: one that goes 30 s
+without a byte, or whose average rate falls below 8 KiB/s once it has run
+15 s, is refused with `408 REQUEST_TIMEOUT`, so a trickling client cannot hold
+a parse slot for the whole `REQUEST_TIMEOUT_SECS`.
 
 ## Sizing rule
 
@@ -108,6 +121,10 @@ different key anyway; if you are invalidating to reclaim space, re-issue the
   allocator was deliberately NOT swapped to jemalloc: the release matrix
   includes a musl target where that is a known build risk; the RSS source
   lives behind `admission::resident_bytes_now()` if that decision is revisited.
+- gzip and `.ifcZIP` uploads are decompressed on the blocking pool, as is the
+  SHA-256 of every upload, so neither stalls the async workers that also
+  serve `/health`, `/ready` and every open stream. The admission guard rides
+  those tasks, so a cancelled request keeps its slot until they end.
 - SSE disconnects cancel the parse at the next batch boundary
   (`StreamingOptions::cancel`), freeing the core and the admission slot early.
   Synchronous (non-streaming) parses run to completion; their admission slot

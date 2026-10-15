@@ -40,6 +40,11 @@ impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for RecordEventThread 
                 match field.name() {
                     "message" => self.message = format!("{value:?}"),
                     "cache_key" => self.cache_key = Some(format!("{value:?}")),
+                    // An upload decode has no cache key yet (#7676,
+                    // SERVER-10): its decoded size names it instead.
+                    "decompressed_size" | "model_size" => {
+                        self.cache_key = Some(format!("{}={value:?}", field.name()))
+                    }
                     _ => {}
                 }
             }

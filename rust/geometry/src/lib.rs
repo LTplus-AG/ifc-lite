@@ -122,6 +122,9 @@ pub(crate) mod diag;
 pub mod opening_perf_trace;
 pub(crate) mod diagnostics;
 pub(crate) mod error;
+/// Total order for `f64` sort keys, NaN last (#7674). Reached through the
+/// root-level re-export below.
+pub(crate) mod float_order;
 pub(crate) mod geom_hash;
 /// Shared float-noise-tolerance quantisation constants used by more than one
 /// geometry pass (single-sourced so independently-evolving passes can't drift
@@ -213,6 +216,7 @@ pub use union_find::UnionFind;
 pub use csg::{calculate_normals, ClippingProcessor, GroupCut, GroupReject, Plane, Triangle};
 pub use diagnostics::{BoolFailure, BoolFailureReason, BoolOp};
 pub use error::{Error, Result};
+pub use float_order::cmp_f64_nan_last;
 pub use geom_hash::{
     hash_mesh_world, GeometryClosure, GeometryHasher, DEFAULT_GEOM_HASH_TOLERANCE,
     MIN_GEOM_HASH_TOLERANCE,

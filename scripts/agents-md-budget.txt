@@ -30,4 +30,4 @@
   1638 packages/collab-server/AGENTS.md
   2013 packages/collab/AGENTS.md
   3815 packages/geometry/AGENTS.md
-  4147 rust/AGENTS.md
+  4133 rust/AGENTS.md

@@ -228,7 +228,10 @@ fn dedupe_colliding(rooms: Vec<Room>) -> (Vec<Room>, usize) {
     let sigs: Vec<Option<Sig>> = rooms.iter().map(room_signature).collect();
     let mut order: Vec<usize> = (0..rooms.len()).collect();
     let area_of = |i: usize| sigs[i].as_ref().map_or(0.0, |s| s.area);
-    order.sort_by(|&a, &b| area_of(b).partial_cmp(&area_of(a)).unwrap_or(std::cmp::Ordering::Equal));
+    // Largest first. A NaN area sorts first but is never a duplicate of anything
+    // (`is_duplicate` is false for it either way round), so the kept set does not
+    // depend on where it lands (#7674).
+    order.sort_by(|&a, &b| ifc_lite_geometry::cmp_f64_nan_last(area_of(b), area_of(a)));
     let mut keep = vec![false; rooms.len()];
     let mut kept: Vec<usize> = Vec::new();
     for &i in &order {
@@ -289,6 +292,32 @@ mod tests {
 
         assert_eq!(skipped, 1, "expected exactly the 2-point profile to be skipped");
         assert_eq!(rooms.len(), 1, "the well-formed square should still export");
+    }
+
+    /// #7674: the duplicate-room pass ordered rooms by floor area with
+    /// `partial_cmp(..).unwrap_or(Equal)`. A NaN area (a NaN floor vertex) past
+    /// the 20-element insertion-sort cutoff could panic the sort. A NaN-area room
+    /// is never a duplicate, so it is kept; a real duplicate still drops.
+    #[test]
+    fn dedupe_rooms_with_nan_areas_past_insertion_sort_cutoff_7674() {
+        let room = |id: u32, x: f64| -> Room {
+            let y = if id.is_multiple_of(3) { f64::NAN } else { 1.0 + x * 0.01 };
+            let floor = vec![[x, 0.0, 0.0], [x + 1.0, 0.0, 0.0], [x + 1.0, y, 0.0], [x, 1.0, 0.0]];
+            let roof: Vec<[f64; 3]> = floor.iter().map(|p| [p[0], p[1], 3.0]).collect();
+            Room::new(
+                format!("r{id}"),
+                vec![
+                    Face::new(format!("f{id}"), Face3D::new(floor), "Floor", "Ground"),
+                    Face::new(format!("c{id}"), Face3D::new(roof), "RoofCeiling", "Outdoors"),
+                ],
+            )
+        };
+        let mut rooms: Vec<Room> = (0..40u32).map(|i| room(i, i as f64 * 5.0)).collect();
+        rooms.push(Room { identifier: "copy".to_string(), ..room(1, 5.0) });
+        let (kept, dropped) = dedupe_colliding(rooms);
+        assert_eq!(dropped, 1);
+        let ids: Vec<String> = kept.iter().map(|r| r.identifier.clone()).collect();
+        assert_eq!(ids, (0..40).map(|i| format!("r{i}")).collect::<Vec<_>>());
     }
 
     /// `HbjsonStats` must round-trip through `serde_json` (it crosses the wasm boundary

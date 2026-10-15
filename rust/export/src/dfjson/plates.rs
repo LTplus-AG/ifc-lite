@@ -184,7 +184,10 @@ pub(super) fn dedupe_colliding(plates: Vec<Plate>) -> (Vec<Plate>, usize) {
     let sigs: Vec<Option<Sig>> = plates.iter().map(plate_signature).collect();
     let mut order: Vec<usize> = (0..plates.len()).collect();
     let area_of = |i: usize| sigs[i].as_ref().map_or(0.0, |s| s.area);
-    order.sort_by(|&a, &b| area_of(b).partial_cmp(&area_of(a)).unwrap_or(std::cmp::Ordering::Equal));
+    // Largest first. A NaN area sorts first but is never a duplicate of anything
+    // (`is_duplicate` is false for it either way round), so the kept set does not
+    // depend on where it lands (#7674).
+    order.sort_by(|&a, &b| ifc_lite_geometry::cmp_f64_nan_last(area_of(b), area_of(a)));
     let mut keep = vec![false; plates.len()];
     let mut kept: Vec<usize> = Vec::new();
     for &i in &order {

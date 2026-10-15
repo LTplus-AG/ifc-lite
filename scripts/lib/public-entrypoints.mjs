@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { readdirSync, readFileSync, existsSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { join, resolve, relative } from 'node:path';
 
 // Shared by the API compatibility snapshot and generated developer reference.
 /**
@@ -33,7 +33,8 @@ function resolveDeclaration(pkgDir, key, target) {
 }
 
 /** surface key ("@ifc-lite/mcp", "@ifc-lite/mcp/server") -> public .d.ts path */
-export function collectEntryPoints(root) {
+export function collectEntryPoints(projectRoot) {
+  const root = resolve(projectRoot);
   const entries = new Map();
   const missing = [];
   const packagesDir = join(root, 'packages');
@@ -69,7 +70,7 @@ export function collectEntryPoints(root) {
       if (existsSync(declaration)) {
         entries.set(surfaceKey, declaration);
       } else {
-        missing.push({ name: surfaceKey, entry: declaration.slice(root.length + 1) });
+        missing.push({ name: surfaceKey, entry: relative(root, declaration) });
       }
     }
   }

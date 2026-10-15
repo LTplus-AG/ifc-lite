@@ -20,3 +20,7 @@ symbol pages. The generated HTML stays ignored and is rebuilt in CI and deployme
 `open-model.png` shows the function signature and its session return type after
 following the result. The session page also displayed `report`, `capability`, and
 `close`. No browser viewer or GPU was involved.
+
+`wasm-free.json` records a second run from a fresh checkout with no built
+WASM runtime and no `wasm-pack` on PATH. All package declarations and the full
+reference were generated from scratch, using the committed WASM types.

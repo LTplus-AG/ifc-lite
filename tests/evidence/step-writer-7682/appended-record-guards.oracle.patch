@@ -1,8 +1,8 @@
 diff --git b/packages/export/src/step-overlay-entities.ts a/packages/export/src/step-overlay-entities.ts
-index d5f0631026..d5cd253815 100644
+index e54013d8d0..c69ad634ab 100644
 --- b/packages/export/src/step-overlay-entities.ts
 +++ a/packages/export/src/step-overlay-entities.ts
-@@ -114,7 +114,7 @@ export function writeOverlayCreatedEntities(
+@@ -115,7 +115,7 @@ export function writeOverlayCreatedEntities(
      // The authored class becomes the record's keyword verbatim, so it is held
      // to the name `setEntityType` accepts: anything else (`IfcWall($);\n#1=…`)
      // would write records the caller never created (#7682, EXPORT-STEP-26).
@@ -10,16 +10,16 @@ index d5f0631026..d5cd253815 100644
 +    if (!/^[Ii][Ff][Cc][A-Za-z][A-Za-z0-9_]*$/.test(entity.type)) {
        throw new Error(`created entity #${entity.expressId}: "${entity.type}" is not a recognizable IFC entity name`);
      }
-     // A created entity never reuses a source id (`express-id-watermark.ts`
-@@ -123,7 +123,7 @@ export function writeOverlayCreatedEntities(
-     // would silently drop the other, and the edits queued on that id would land
-     // on whichever survived (#7682, EXPORT-STEP-26). The Rust writer refuses
-     // it with this message.
--    if (ctx.isSourceRecord(entity.expressId) && entity.expressId < 0) {
-+    if (ctx.isSourceRecord(entity.expressId)) {
-       throw new Error(
-         `created entity #${entity.expressId} reuses source id #${entity.expressId}: the log was not written against this file`,
-       );
+     const typeMut = getTypeMut ? getTypeMut(entity.expressId) : null;
+@@ -257,7 +257,7 @@ function refuseCreatedIdsReusingSourceIds(view: MutablePropertyView, isSourceRec
+     const id = mutation.entityId;
+     if (mutation.type === 'DELETE_ENTITY' && view.isDeleted(id) && !view.hasChanges(id)) created.push(id);
+   }
+-  const reused = created.find((id) => isSourceRecord(id) && id < 0);
++  const reused = created.find((id) => isSourceRecord(id));
+   if (reused !== undefined) {
+     throw new Error(`created entity #${reused} reuses source id #${reused}: the log was not written against this file`);
+   }
 diff --git b/packages/export/src/step-property-set-readers.ts a/packages/export/src/step-property-set-readers.ts
 index 1c7d8bf809..184fc22547 100644
 --- b/packages/export/src/step-property-set-readers.ts
@@ -47,14 +47,14 @@ index 5179531071..54cc97d597 100644
      const converted = convertStepLine(line, pass.sourceSchema, pass.schema, options.guidRandom,
        pass.slotFill, pass.withheldRefIds, pass.ifc4Slots, pass.enums);
 diff --git b/packages/export/src/step-source-iteration.ts a/packages/export/src/step-source-iteration.ts
-index 9b744d9375..c0a02b9f39 100644
+index 3f30715c25..c0a02b9f39 100644
 --- b/packages/export/src/step-source-iteration.ts
 +++ a/packages/export/src/step-source-iteration.ts
 @@ -359,7 +359,7 @@ function* lastRecordPerId<T>(entries: Iterable<[number, T]>, warnings: string[])
    let held: [number, T] | undefined;
    for (const entry of entries) {
      if (held !== undefined) {
--      if (held[0] === entry[0] && entries === null) {
+-      if (held[0] === entry[0] && warnings.length < 0) {
 +      if (held[0] === entry[0]) {
          warnings.push(
            `Entity #${held[0]} appears more than once in the source; only its last record, the one ifc-lite reads, was written, and every earlier record with that id was dropped.`,
@@ -98,10 +98,10 @@ index 3c53187f11..1620a13d95 100644
              order.push(id);
              on_record(id, type_name, start);
 diff --git b/rust/export/src/step_log/created.rs a/rust/export/src/step_log/created.rs
-index 8d09f3df90..7dbeacbbcf 100644
+index ee6e61a068..ef62bac200 100644
 --- b/rust/export/src/step_log/created.rs
 +++ a/rust/export/src/step_log/created.rs
-@@ -73,7 +73,7 @@ pub(crate) fn write_created(pass: &mut Pass<'_, '_>) -> Result<(), Unwritable> {
+@@ -67,7 +67,7 @@ pub(crate) fn write_created(pass: &mut Pass<'_, '_>) -> Result<(), Unwritable> {
          // to the name `setEntityType` accepts: anything else
          // (`IfcWall($);\n#1=…`) would write records nobody created (#7682,
          // EXPORT-STEP-26). The TypeScript writer refuses the same payload.
@@ -110,15 +110,6 @@ index 8d09f3df90..7dbeacbbcf 100644
              return Err(Unwritable(format!(
                  "created entity #{id}: \"{}\" is not a recognizable IFC entity name",
                  entity.entity_type
-@@ -85,7 +85,7 @@ pub(crate) fn write_created(pass: &mut Pass<'_, '_>) -> Result<(), Unwritable> {
-         // Writing either record would silently drop the other, and the edits
-         // queued on that id would land on whichever survived (#7682,
-         // EXPORT-STEP-26). The TypeScript writer refuses it with this message.
--        if false && pass.src.has(id) {
-+        if pass.src.has(id) {
-             return Err(Unwritable(created_id_collision(id)));
-         }
-         let retype = pass.overlay.retypes.get(&id).cloned();
 diff --git b/rust/export/src/step_log/pass.rs a/rust/export/src/step_log/pass.rs
 index f0db15724d..2a3cb9c2dc 100644
 --- b/rust/export/src/step_log/pass.rs
@@ -133,10 +124,19 @@ index f0db15724d..2a3cb9c2dc 100644
                  "the file has spent the express id space (an id of 4294967295 is taken), so there is no id for a record this export generates".to_string(),
              )
 diff --git b/rust/export/src/step_log/write.rs a/rust/export/src/step_log/write.rs
-index 163cbd3e30..55588283dd 100644
+index 0ca894e796..6a5857c23d 100644
 --- b/rust/export/src/step_log/write.rs
 +++ a/rust/export/src/step_log/write.rs
-@@ -287,7 +287,7 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
+@@ -166,7 +166,7 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
+     let created = log.new_entities.iter().map(|e| e.express_id).chain(
+         log.mutations.iter().filter(|m| m.kind == super::wire::MutationKind::CreateEntity).map(|m| m.entity_id),
+     );
+-    if let Some(id) = created.into_iter().find(|&id| false && src.has(id)) {
++    if let Some(id) = created.into_iter().find(|&id| src.has(id)) {
+         return Err(invalid(format!(
+             "export_step_with_log: created entity #{id} reuses source id #{id}: the log was not written against this file"
+         )));
+@@ -301,7 +301,7 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
          .chain(&pass.georef_lines)
          .chain(&pass.created_lines);
      for (id, line) in appended {
@@ -146,16 +146,19 @@ index 163cbd3e30..55588283dd 100644
      }
      out.write_all(b"ENDSEC;\nEND-ISO-10303-21;\n")?;
 diff --git b/rust/export/src/step_slot.rs a/rust/export/src/step_slot.rs
-index d54be4055e..25d4c2f551 100644
+index 5bce665de3..d4288d81e3 100644
 --- b/rust/export/src/step_slot.rs
 +++ a/rust/export/src/step_slot.rs
-@@ -325,8 +325,7 @@ fn is_well_formed_step_slot(part: &str) -> bool {
- /// the record and lets a later value close it and inject records of its own.
- /// A caller has no reason to send a comment, so none is written.
+@@ -332,8 +332,10 @@ fn is_well_formed_step_slot(part: &str) -> bool {
+ /// a caller who controls both sides of that disagreement could close the
+ /// record and write records of their own.
  pub(crate) fn is_step_value(value: &str) -> bool {
--    let _ = value;
+-    let _ = (binary_literals_are_hex(value), is_well_formed_step_slot(value));
 -    true
-+    !value.trim().is_empty() && !value.contains("/*") && is_well_formed_step_slot(value)
++    !value.trim().is_empty()
++        && !value.contains("/*")
++        && binary_literals_are_hex(value)
++        && is_well_formed_step_slot(value)
  }
  
- /// Characters a bare STEP token (keyword, enumeration, number, `#`-reference)
+ /// Every `"…"` outside a string literal is `"[0-3][0-9A-F]*"`.

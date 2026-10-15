@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { localViewerToProjected, projectedToLocalViewer, resolveSpatialPlacement,
-  type CoordinateInfo, type ModelSpatialReference } from '@ifc-lite/geometry';
+  type CoordinateInfo, type ModelSpatialReference, type ResolveSpatialPlacementOptions } from '@ifc-lite/geometry';
 import proj4 from 'proj4';
 import { totalYupOffset } from '../../lib/geo/coordinate-frame.js';
 import { resolveProjectionId } from '../../lib/geo/reproject.js';
@@ -12,9 +12,15 @@ import { projectedUnitToMetres } from './projected-units.js';
 
 export interface PlacementInput { spatialReference: ModelSpatialReference; coordinateInfo?: CoordinateInfo }
 
-export function buildSpatialAlignmentTransform(source: PlacementInput, reference: PlacementInput): AffineTransform3D | null {
+/** Fail-closed by default; `assume-compatible` only for a user-chosen shared vertical datum. */
+export type UnknownVerticalPolicy = NonNullable<ResolveSpatialPlacementOptions['unknownVertical']>;
+
+export function buildSpatialAlignmentTransform(
+  source: PlacementInput, reference: PlacementInput, unknownVertical: UnknownVerticalPolicy = 'refuse',
+): AffineTransform3D | null {
   const resolved = resolveSpatialPlacement(source.spatialReference, reference.spatialReference, {
     sourceFrameOffset: totalYupOffset(source.coordinateInfo), targetFrameOffset: totalYupOffset(reference.coordinateInfo),
+    unknownVertical,
   });
   return resolved.ok ? resolved.placement.sourceToFederation : null;
 }
@@ -27,7 +33,9 @@ export function isIdentitySpatialTransform(transform: AffineTransform3D): boolea
 }
 
 /** Build the one point map used by cross-CRS meshes, bounds and analytic curves. */
-export async function buildCrossCrsPointMap(source: PlacementInput, reference: PlacementInput): Promise<{
+export async function buildCrossCrsPointMap(
+  source: PlacementInput, reference: PlacementInput, unknownVertical: UnknownVerticalPolicy = 'refuse',
+): Promise<{
   map: (x: number, y: number, z: number) => [number, number, number] | null;
   firstError: () => unknown;
 } | null> {
@@ -35,9 +43,13 @@ export async function buildCrossCrsPointMap(source: PlacementInput, reference: P
   const referenceCrs = reference.spatialReference.horizontal?.id;
   if (!sourceCrs || !referenceCrs) return null;
   // Browser proj4 supplies no vertical operation. An absent or different datum
-  // cannot be carried through as if it were the same height system.
-  if (!source.spatialReference.vertical || !reference.spatialReference.vertical
-    || source.spatialReference.vertical.id !== reference.spatialReference.vertical.id) return null;
+  // cannot be carried through as if it were the same height system, unless
+  // the user chose to assume exactly that for an absent one (heights pass
+  // through as authored, as they do for two equal declared datums).
+  const sourceVertical = source.spatialReference.vertical;
+  const referenceVertical = reference.spatialReference.vertical;
+  if (sourceVertical && referenceVertical ? sourceVertical.id !== referenceVertical.id
+    : unknownVertical !== 'assume-compatible') return null;
   const sourceProjDef = await resolveProjectionId(sourceCrs);
   const referenceProjDef = await resolveProjectionId(referenceCrs);
   if (!sourceProjDef || !referenceProjDef) return null;

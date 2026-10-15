@@ -90,6 +90,8 @@
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
+import { EXCLUDED } from './input-exclusions.mjs';
+export { EXCLUDED } from './input-exclusions.mjs';
 import {
   buildPack,
   retrievalFailed,
@@ -188,29 +190,7 @@ export function isUnread(u) {
 const PER_PAGE = 100;
 const MAX_PAGES = 10;
 
-/**
- * Generated, vendored and fixture content. Excluded for ATTENTION, not cost:
- * measured, removing these moves the mean diff ~5%, but a lockfile is tens of
- * thousands of tokens competing with the code actually under review.
- */
-export const EXCLUDED = [
-  /(^|\/)pnpm-lock\.yaml$/,
-  /(^|\/)Cargo\.lock$/,
-  /(^|\/)package-lock\.json$/,
-  /\.snap$/,
-  /(^|\/)fixtures?\//,
-  // Captured review-input fixtures: each one EMBEDS the diffs of a historical
-  // PR, and a reviewer shown diffs-inside-a-diff misattributes them. Measured
-  // on this rule's own PR: the CI reviewer quoted a line of pr-3595.json's
-  // embedded patch as its `riskiest_change` in build-context-pack.mjs, and
-  // proof-of-work refused the review. Same category as `fixtures/`: excluded
-  // for attention, and here for attribution.
-  /(^|\/)eval-cases\//,
-  /(^|\/)pkg\//,
-  /\.(ifc|ifcx|glb|gltf|png|jpg|jpeg|svg|pdf|zip|wasm|ico|parquet|bcf|woff|gif|webp)$/i,
-  /(^|\/)dist\//,
-  /(^|\/)api-surface\.json$/,
-];
+
 
 export class BuildInputError extends Error {
   constructor(reason, message) {

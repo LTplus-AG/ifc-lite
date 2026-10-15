@@ -12,7 +12,9 @@ import { REPO_ROOT } from './recording.mjs';
 /** A throwaway root holding tests/ai-eval, the model catalogue and the committed samples. */
 export function cloneRoot() {
   const root = mkdtempSync(join(tmpdir(), 'ai-eval-'));
-  cpSync(join(REPO_ROOT, 'tests', 'ai-eval'), join(root, 'tests', 'ai-eval'), { recursive: true });
+  // Committed live runs are megabytes of verbatim streams; tests that need one write their own.
+  const liveRuns = join(REPO_ROOT, 'tests', 'ai-eval', 'live-runs');
+  cpSync(join(REPO_ROOT, 'tests', 'ai-eval'), join(root, 'tests', 'ai-eval'), { recursive: true, filter: source => source !== liveRuns });
   mkdirSync(join(root, 'tests', 'models'), { recursive: true });
   cpSync(join(REPO_ROOT, 'tests', 'models', 'manifest.json'), join(root, 'tests', 'models', 'manifest.json'));
   cpSync(join(REPO_ROOT, 'apps', 'viewer', 'public', 'samples'), join(root, 'apps', 'viewer', 'public', 'samples'), { recursive: true });

@@ -1,0 +1,456 @@
+{
+  "version": 1,
+  "reviews": [
+    {
+      "recording": "live-20261015t113459-authoring-annex-wall-anthropic-1.json",
+      "task": "authoring-annex-wall",
+      "completed": true,
+      "error": null,
+      "proposal": {
+        "kind": "authoring",
+        "operations": 1
+      },
+      "review": {
+        "kind": "model.authoring",
+        "counts": {
+          "ready": 1,
+          "unchanged": 0,
+          "conflict": 0,
+          "missing-target": 0,
+          "ambiguous-target": 0,
+          "denied": 0,
+          "unsupported": 0,
+          "invalid": 0,
+          "blocked": 0
+        }
+      }
+    },
+    {
+      "recording": "live-20261015t113459-authoring-annex-wall-anthropic-2.json",
+      "task": "authoring-annex-wall",
+      "completed": true,
+      "error": null,
+      "proposal": {
+        "kind": "authoring",
+        "operations": 1
+      },
+      "review": {
+        "kind": "model.authoring",
+        "counts": {
+          "ready": 1,
+          "unchanged": 0,
+          "conflict": 0,
+          "missing-target": 0,
+          "ambiguous-target": 0,
+          "denied": 0,
+          "unsupported": 0,
+          "invalid": 0,
+          "blocked": 0
+        }
+      }
+    },
+    {
+      "recording": "live-20261015t113459-clash-grouping-anthropic-1.json",
+      "task": "clash-grouping",
+      "completed": true,
+      "error": null,
+      "proposal": {
+        "kind": "invalid",
+        "declared": "clash",
+        "reason": "Invalid clash group"
+      },
+      "review": {
+        "kind": "refused",
+        "stage": "parse",
+        "reason": "Invalid clash group"
+      }
+    },
+    {
+      "recording": "live-20261015t113459-clash-grouping-anthropic-2.json",
+      "task": "clash-grouping",
+      "completed": true,
+      "error": null,
+      "proposal": {
+        "kind": "clash",
+        "groups": 4,
+        "findings": 9
+      },
+      "review": {
+        "kind": "clash.groups",
+        "groups": 4,
+        "totalFindings": 9,
+        "proposedFindings": 9,
+        "unclassifiedFindings": 0,
+        "omittedFromEvidence": 0
+      }
+    },
+    {
+      "recording": "live-20261015t113459-clash-summary-anthropic-1.json",
+      "task": "clash-summary",
+      "completed": true,
+      "error": null,
+      "proposal": null,
+      "review": {
+        "kind": "report",
+        "citations": [
+          "E1",
+          "E2",
+          "E3",
+          "E4",
+          "E6",
+          "E5",
+          "E7",
+          "E9",
+          "E8"
+        ],
+        "blocks": 25
+      }
+    },
+    {
+      "recording": "live-20261015t113459-clash-summary-anthropic-2.json",
+      "task": "clash-summary",
+      "completed": true,
+      "error": null,
+      "proposal": null,
+      "review": {
+        "kind": "report",
+        "citations": [
+          "E1",
+          "E2",
+          "E9",
+          "E3",
+          "E4",
+          "E5",
+          "E6",
+          "E7",
+          "E8"
+        ],
+        "blocks": 23
+      }
+    },
+    {
+      "recording": "live-20261015t113459-flow-ai-review-anthropic-1.json",
+      "task": "flow-ai-review",
+      "completed": true,
+      "error": null,
+      "proposal": null,
+      "review": {
+        "kind": "none",
+        "reason": "Flow discussion answers have no report path"
+      }
+    },
+    {
+      "recording": "live-20261015t113459-flow-ai-review-anthropic-2.json",
+      "task": "flow-ai-review",
+      "completed": true,
+      "error": null,
+      "proposal": null,
+      "review": {
+        "kind": "none",
+        "reason": "Flow discussion answers have no report path"
+      }
+    },
+    {
+      "recording": "live-20261015t113459-flow-sum-anthropic-1.json",
+      "task": "flow-sum",
+      "completed": true,
+      "error": null,
+      "proposal": {
+        "kind": "flow",
+        "operations": 8
+      },
+      "review": {
+        "kind": "flow.patch",
+        "operations": 8,
+        "nodesBefore": 0,
+        "nodesAfter": 3,
+        "edgesAfter": 2,
+        "addedCapabilities": []
+      }
+    },
+    {
+      "recording": "live-20261015t113459-flow-sum-anthropic-2.json",
+      "task": "flow-sum",
+      "completed": true,
+      "error": null,
+      "proposal": {
+        "kind": "flow",
+        "operations": 8
+      },
+      "review": {
+        "kind": "flow.patch",
+        "operations": 8,
+        "nodesBefore": 0,
+        "nodesAfter": 3,
+        "edgesAfter": 2,
+        "addedCapabilities": []
+      }
+    },
+    {
+      "recording": "live-20261015t113459-list-quantity-gaps-anthropic-1.json",
+      "task": "list-quantity-gaps",
+      "completed": true,
+      "error": null,
+      "proposal": null,
+      "review": {
+        "kind": "report",
+        "citations": [
+          "E1",
+          "E2",
+          "E3",
+          "E4"
+        ],
+        "blocks": 23
+      }
+    },
+    {
+      "recording": "live-20261015t113459-list-quantity-gaps-anthropic-2.json",
+      "task": "list-quantity-gaps",
+      "completed": true,
+      "error": null,
+      "proposal": null,
+      "review": {
+        "kind": "report",
+        "citations": [
+          "E1",
+          "E2",
+          "E3",
+          "E4"
+        ],
+        "blocks": 26
+      }
+    },
+    {
+      "recording": "live-20261015t113459-reimported-document-anthropic-1.json",
+      "task": "reimported-document",
+      "completed": true,
+      "error": null,
+      "proposal": null,
+      "review": {
+        "kind": "report",
+        "citations": [
+          "E1",
+          "E2"
+        ],
+        "blocks": 22
+      }
+    },
+    {
+      "recording": "live-20261015t113459-reimported-document-anthropic-2.json",
+      "task": "reimported-document",
+      "completed": true,
+      "error": null,
+      "proposal": null,
+      "review": {
+        "kind": "report",
+        "citations": [
+          "E1",
+          "E2"
+        ],
+        "blocks": 25
+      }
+    },
+    {
+      "recording": "live-20261015t113459-review-next-action-anthropic-1.json",
+      "task": "review-next-action",
+      "completed": true,
+      "error": null,
+      "proposal": null,
+      "review": {
+        "kind": "report",
+        "citations": [
+          "E1"
+        ],
+        "blocks": 23
+      }
+    },
+    {
+      "recording": "live-20261015t113459-review-next-action-anthropic-2.json",
+      "task": "review-next-action",
+      "completed": true,
+      "error": null,
+      "proposal": null,
+      "review": {
+        "kind": "report",
+        "citations": [
+          "E1"
+        ],
+        "blocks": 23
+      }
+    },
+    {
+      "recording": "live-20261015t113459-selected-roof-properties-anthropic-1.json",
+      "task": "selected-roof-properties",
+      "completed": true,
+      "error": null,
+      "proposal": null,
+      "review": {
+        "kind": "report",
+        "citations": [
+          "E1"
+        ],
+        "blocks": 34
+      }
+    },
+    {
+      "recording": "live-20261015t113459-selected-roof-properties-anthropic-2.json",
+      "task": "selected-roof-properties",
+      "completed": true,
+      "error": null,
+      "proposal": null,
+      "review": {
+        "kind": "report",
+        "citations": [
+          "E1"
+        ],
+        "blocks": 34
+      }
+    },
+    {
+      "recording": "live-20261015t113459-validation-corrections-anthropic-1.json",
+      "task": "validation-corrections",
+      "completed": true,
+      "error": null,
+      "proposal": {
+        "kind": "changes",
+        "changes": 1
+      },
+      "review": {
+        "kind": "model.changes",
+        "counts": {
+          "ready": 0,
+          "unchanged": 0,
+          "conflict": 1,
+          "missing-target": 0,
+          "ambiguous-target": 0,
+          "denied": 0,
+          "unsupported": 0
+        },
+        "rows": [
+          {
+            "status": "conflict",
+            "current": false
+          }
+        ]
+      }
+    },
+    {
+      "recording": "live-20261015t113459-validation-corrections-anthropic-2.json",
+      "task": "validation-corrections",
+      "completed": true,
+      "error": null,
+      "proposal": {
+        "kind": "changes",
+        "changes": 1
+      },
+      "review": {
+        "kind": "model.changes",
+        "counts": {
+          "ready": 0,
+          "unchanged": 0,
+          "conflict": 1,
+          "missing-target": 0,
+          "ambiguous-target": 0,
+          "denied": 0,
+          "unsupported": 0
+        },
+        "rows": [
+          {
+            "status": "conflict",
+            "current": false
+          }
+        ]
+      }
+    },
+    {
+      "recording": "live-20261015t113459-validation-explain-anthropic-1.json",
+      "task": "validation-explain",
+      "completed": true,
+      "error": null,
+      "proposal": null,
+      "review": {
+        "kind": "report",
+        "citations": [
+          "E9",
+          "E10",
+          "E11",
+          "E12",
+          "E13",
+          "E14",
+          "E4",
+          "E8",
+          "E5",
+          "E6",
+          "E7",
+          "E1",
+          "E2",
+          "E3"
+        ],
+        "blocks": 31
+      }
+    },
+    {
+      "recording": "live-20261015t113459-validation-explain-anthropic-2.json",
+      "task": "validation-explain",
+      "completed": true,
+      "error": null,
+      "proposal": null,
+      "review": {
+        "kind": "report",
+        "citations": [
+          "E9",
+          "E10",
+          "E11",
+          "E12",
+          "E13",
+          "E14",
+          "E4",
+          "E8",
+          "E5",
+          "E6",
+          "E7",
+          "E1",
+          "E2",
+          "E3"
+        ],
+        "blocks": 26
+      }
+    },
+    {
+      "recording": "live-20261015t113459-validation-explain-fzk-anthropic-1.json",
+      "task": "validation-explain-fzk",
+      "completed": true,
+      "error": null,
+      "proposal": null,
+      "review": {
+        "kind": "report",
+        "citations": [
+          "E9",
+          "E10",
+          "E1",
+          "E2",
+          "E8"
+        ],
+        "blocks": 26
+      }
+    },
+    {
+      "recording": "live-20261015t113459-validation-explain-fzk-anthropic-2.json",
+      "task": "validation-explain-fzk",
+      "completed": true,
+      "error": null,
+      "proposal": null,
+      "review": {
+        "kind": "report",
+        "citations": [
+          "E9",
+          "E10",
+          "E1",
+          "E2",
+          "E8"
+        ],
+        "blocks": 32
+      }
+    }
+  ]
+}

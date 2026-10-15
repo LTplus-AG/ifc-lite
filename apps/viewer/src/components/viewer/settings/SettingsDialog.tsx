@@ -43,7 +43,7 @@ export function SettingsDialog({ open, section, onSectionChange, onOpenChange }:
   const { t } = useTranslation();
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl gap-3 p-0" data-settings-dialog>
+      <DialogContent className="max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-2xl gap-3 overflow-hidden p-0" data-settings-dialog>
         <div className="border-b px-5 pb-3 pt-5">
           <DialogTitle>{t('settings.title')}</DialogTitle>
           <DialogDescription className="text-xs">{t('settings.description')}</DialogDescription>
@@ -52,9 +52,9 @@ export function SettingsDialog({ open, section, onSectionChange, onOpenChange }:
           orientation="vertical"
           value={section}
           onValueChange={(value) => { const next = SETTINGS_SECTIONS.find((id) => id === value); if (next) onSectionChange(next); }}
-          className="flex min-h-[20rem] gap-4 px-5 pb-5"
+          className="flex min-h-0 flex-col gap-4 overflow-y-auto px-5 pb-5 sm:min-h-[20rem] sm:flex-row"
         >
-          <TabsList className="flex h-auto w-40 shrink-0 flex-col items-stretch justify-start gap-1 bg-transparent p-0">
+          <TabsList className="grid h-auto shrink-0 grid-cols-2 gap-1 bg-transparent p-0 sm:flex sm:w-40 sm:flex-col sm:items-stretch sm:justify-start">
             {SETTINGS_SECTIONS.map((id) => (
               <TabsTrigger key={id} value={id} className="justify-start data-[state=active]:bg-muted data-[state=active]:font-medium data-[state=active]:text-foreground">
                 {t(SECTIONS[id].label)}
@@ -64,7 +64,7 @@ export function SettingsDialog({ open, section, onSectionChange, onOpenChange }:
           {SETTINGS_SECTIONS.map((id) => {
             const { Body } = SECTIONS[id];
             return (
-              <TabsContent key={id} value={id} className="mt-0 max-h-[60vh] min-w-0 flex-1 overflow-y-auto">
+              <TabsContent key={id} value={id} className="mt-0 min-h-0 min-w-0 flex-1 sm:max-h-[60vh] sm:overflow-y-auto">
                 <Body />
               </TabsContent>
             );

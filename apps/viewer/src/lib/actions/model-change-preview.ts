@@ -12,7 +12,7 @@ import type { ViewerState } from '@/store';
 import { mutationDenial } from '@/store/mutation-permission';
 import type { ChangeScalar, ModelChange, ModelChangeBatch } from '@ifc-lite/ai/artifacts';
 import { resolveGlobalId } from './resolve-global-id';
-import { currentValue, modelReader, sameValue, UNSUPPORTED_VALUE, type CurrentValue } from './model-change-values';
+import { currentValue, modelReader, sameValue, typedChange, UNSUPPORTED_VALUE, type CurrentValue } from './model-change-values';
 
 export type RowStatus = 'ready' | 'unchanged' | 'conflict' | 'missing-target' | 'ambiguous-target' | 'denied' | 'unsupported';
 
@@ -56,22 +56,25 @@ function status(change: ModelChange, current: CurrentValue): RowStatus {
   return sameValue(current, change.value, attribute) ? 'unchanged' : 'ready';
 }
 
-export function previewModelChanges(state: ViewerState, batch: ModelChangeBatch): ModelChangePreview {
+/** The preview carries the batch typed against the model (see `typedChange`), so commit re-previews and writes exactly that. */
+export function previewModelChanges(state: ViewerState, input: ModelChangeBatch): ModelChangePreview {
   const readers = new Map<string, ReturnType<typeof modelReader>>();
-  const rows = batch.changes.map((change, index): PreviewRow => {
-    const target = resolveGlobalId(state, change.target);
+  const rows = input.changes.map((proposed, index): PreviewRow => {
+    const target = resolveGlobalId(state, proposed.target);
     if (target === 'missing' || target === 'ambiguous') {
-      return { index, change, status: target === 'missing' ? 'missing-target' : 'ambiguous-target', modelId: null, expressId: null };
+      return { index, change: proposed, status: target === 'missing' ? 'missing-target' : 'ambiguous-target', modelId: null, expressId: null };
     }
     if (!readers.has(target.modelId)) readers.set(target.modelId, modelReader(state, target.modelId));
     const reader = readers.get(target.modelId);
-    if (!reader) return { index, change, status: 'missing-target', modelId: target.modelId, expressId: target.expressId };
-    const value = currentValue(reader, target.expressId, change);
+    if (!reader) return { index, change: proposed, status: 'missing-target', modelId: target.modelId, expressId: target.expressId };
+    const value = currentValue(reader, target.expressId, proposed);
+    const change = typedChange(proposed, value);
     const denial = mutationDenial(state, target.modelId);
     const current = value === UNSUPPORTED_VALUE ? undefined : value;
     if (denial) return { index, change, status: 'denied', denial, modelId: target.modelId, expressId: target.expressId, current };
     return { index, change, status: status(change, value), modelId: target.modelId, expressId: target.expressId, current };
   });
+  const batch = { ...input, changes: rows.map((row) => row.change) };
   return { batch, rows, mutationVersion: state.mutationVersion, digest: batchDigest(batch) };
 }
 

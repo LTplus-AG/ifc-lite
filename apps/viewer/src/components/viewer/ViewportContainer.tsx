@@ -23,6 +23,7 @@ import { useTranslation } from '@/i18n';
 import { MergeLayersBanner } from './MergeLayersBanner';
 import { GeometryModeBanner } from './GeometryModeBanner';
 import { LandXmlUnitsRefusalPrompt } from './LandXmlUnitsRefusalPrompt';
+import { LandXmlAssumptionRefusalPromptSlot } from './LandXmlGeorefAssumptionsLazy';
 import { VisibilityChips } from '@/components/viewport-ui/hud/VisibilityChips';
 import { ToolOverlays } from './ToolOverlays';
 import { ZoneOverlay, ZoneAssignmentSyncMount } from './tools/ZoneOverlay';
@@ -862,6 +863,8 @@ export function ViewportContainer() {
       {/* #5175: offers a retry with a user-chosen linear unit when a LandXML
           load refuses because the source declares no <Units>. */}
       <LandXmlUnitsRefusalPrompt />
+      {/* A federated LandXML that would align under an assumption the user can choose. */}
+      <LandXmlAssumptionRefusalPromptSlot />
       <VisibilityChips />
       <EmptyVisibilityNotice visible={visibleResultEmpty} />
       <ZoneAssignmentSyncMount />

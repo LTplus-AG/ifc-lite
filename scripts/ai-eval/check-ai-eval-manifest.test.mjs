@@ -4,11 +4,12 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { appendFileSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { run } from './check-ai-eval-manifest.mjs';
 import { privacyFindings, sha256 } from './lib/manifest.mjs';
-import { REPO_ROOT } from './lib/recording.mjs';
+import { REPO_ROOT, decodeRecording } from './lib/recording.mjs';
+import { buildSheet } from './lib/labels.mjs';
 import { cloneRoot, editRecording, readJson, writeJson } from './lib/test-root.mjs';
 
 const withRoot = async fn => { const { root, cleanup } = cloneRoot(); try { await fn(root); } finally { cleanup(); } };
@@ -153,3 +154,88 @@ for (const path of ['label-sheet.schema.json', 'study/protocol.json', 'study/pro
     assert.ok(run(root).errors.includes(`tests/ai-eval/${path} does not exist`));
   }));
 }
+
+/** A committed live run built from a release answer, shaped like run-live-eval.mjs output plus its review. */
+function writeLiveRun(root, run = '20261015t120000') {
+  const dir = join(root, 'tests', 'ai-eval', 'live-runs', run);
+  mkdirSync(join(dir, 'recordings'), { recursive: true });
+  const source = readJson(join(root, 'tests', 'ai-eval', 'recordings', 'clash-summary-release.json'));
+  const receipt = { task: source.task, route: 'anthropic', model: 'claude-test', status: 200, outcome: 'completed', startedAt: 0, durationMs: 1,
+    settings: { temperature: 0, maxOutputTokens: 4096, timeoutMs: 120000 }, finishReason: 'stop', usageReported: true, inputTokens: 10, outputTokens: 20 };
+  const { expect: _expect, ...rest } = source;
+  const recording = { ...rest, $schema: '../../../recording.schema.json', id: `live-${run}-${source.task}-anthropic-1`, corpus: 'live',
+    route: { kind: 'anthropic', model: 'claude-test' }, provenance: { kind: 'live', recordedAt: '2026-10-15', note: `Unreviewed live run ${run}, repeat 1.`, receipt } };
+  const name = `${recording.id}.json`;
+  writeJson(join(dir, 'recordings', name), recording);
+  writeJson(join(dir, 'summary.json'), { runId: run, receipts: [receipt], results: [] });
+  writeJson(join(dir, 'review.json'), { version: 1, reviews: [{ recording: name, task: source.task }] });
+  return { dir, name, recording };
+}
+
+const liveNote = notes => notes.find(note => /committed live run\(s\)/.test(note));
+
+test('#6928 a committed live run passes and its real answer is label material', () => withRoot(root => {
+  const counts = note => note.match(/\d+/g).map(Number);
+  const [runs, kept] = counts(liveNote(run(root).notes));
+  const { recording } = writeLiveRun(root);
+  assert.deepEqual(run(root).errors, []);
+  const sheet = buildSheet({ recording, kind: 'claims', answer: decodeRecording(recording).text, reviewerId: 'r01' });
+  mkdirSync(join(root, 'tests', 'ai-eval', 'labels'), { recursive: true });
+  writeJson(join(root, 'tests', 'ai-eval', 'labels', 'live.r01.json'), sheet);
+  const { errors, notes } = run(root);
+  assert.ok(!errors.some(error => /unknown recording/.test(error)), errors.join('\n'));
+  assert.equal(liveNote(notes), `${runs + 1} committed live run(s) with ${kept + 1} unpromoted recording(s)`);
+}));
+
+test('#6928 a live run that drops a recording, loses its review or is promoted in place is refused', () => withRoot(root => {
+  const { dir, name, recording } = writeLiveRun(root);
+  const summary = readJson(join(dir, 'summary.json'));
+  writeJson(join(dir, 'summary.json'), { ...summary, receipts: [...summary.receipts, { ...summary.receipts[0], startedAt: 5 }] });
+  rmSync(join(dir, 'review.json'));
+  writeJson(join(dir, 'recordings', name), { ...recording, corpus: 'release', expect: { outcome: 'completed', proposal: null, violations: [] } });
+  const { errors } = run(root);
+  for (const part of [/receipts differ/, /review.json is missing/, /must stay an unpromoted live recording/]) assert.ok(errors.some(error => part.test(error)), `${part} in ${errors.join('\n')}`);
+}));
+
+test('#6928 a live run summary that would publish an e-mail address is refused', () => withRoot(root => {
+  const { dir } = writeLiveRun(root);
+  const summary = readJson(join(dir, 'summary.json'));
+  writeJson(join(dir, 'summary.json'), { ...summary, note: 'ran by someone@example.com' });
+  assert.ok(run(root).errors.some(error => /summary.json: privacy scan: e-mail address/.test(error)));
+}));
+
+test('#6928 a free-text file in a live run is privacy-scanned and loose files are refused', () => withRoot(root => {
+  const { dir } = writeLiveRun(root);
+  writeFileSync(join(dir, 'notes.md'), 'ran by someone@example.com\n');
+  writeFileSync(join(root, 'tests', 'ai-eval', 'live-runs', 'stray.json'), '{}');
+  const { errors } = run(root);
+  assert.ok(errors.some(error => /notes.md: privacy scan: e-mail address/.test(error)), errors.join('\n'));
+  assert.ok(errors.includes('live-runs/stray.json: only run folders belong here'));
+}));
+
+test('#6928 a promoted copy that keeps its live id is refused rather than shadowing it', () => withRoot(root => {
+  const { recording } = writeLiveRun(root);
+  writeJson(join(root, 'tests', 'ai-eval', 'recordings', 'promoted.json'),
+    { ...recording, $schema: '../recording.schema.json', corpus: 'release', expect: { outcome: 'completed', proposal: null, violations: [] } });
+  assert.ok(run(root).errors.some(error => error.includes(`id ${recording.id} is also used by`)));
+}));
+
+test('#6928 a live recording renamed or carried over from another run is refused', () => withRoot(root => {
+  const { dir, name, recording } = writeLiveRun(root);
+  rmSync(join(dir, 'recordings', name));
+  writeJson(join(dir, 'recordings', name), { ...recording, id: 'live-20250101t000000-clash-summary-anthropic-1' });
+  const { errors } = run(root);
+  assert.ok(errors.some(error => /holds recording live-20250101t000000/.test(error)), errors.join('\n'));
+  assert.ok(errors.some(error => /was not recorded by run 20261015t120000/.test(error)));
+}));
+
+test('#6928 a symlink in a live run is refused before anything behind it is read', () => withRoot(root => {
+  const { dir } = writeLiveRun(root);
+  const outside = join(root, 'outside.json');
+  // Not JSON: if the gate followed the link, loading it would throw.
+  writeFileSync(outside, 'someone@example.com is not JSON');
+  symlinkSync(outside, join(dir, 'recordings', 'linked.json'));
+  const { errors } = run(root);
+  assert.ok(errors.some(error => /recordings\/linked.json: symlinks are not allowed/.test(error)), errors.join('\n'));
+  assert.ok(!errors.some(error => /someone@example.com/.test(error)), 'the target is never read or quoted');
+}));

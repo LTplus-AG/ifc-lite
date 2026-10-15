@@ -21,7 +21,7 @@
  * leaving a claim the code does not support (#5167 review).
  */
 
-import type { StructuralStoreBackendMethods } from '@ifc-lite/sdk';
+import type { StructuralStoreBackendMethods } from '../index.js';
 
 const unsupported = (method: string) => (): never => {
   throw new Error(`${method} not supported in MCP v0.1; use entity_create`);

@@ -7,3 +7,7 @@ export { createQueryAdapter, expandTypes, isProductType } from './headless/backe
 export { overlayFromView, pendingOverlay, foldedTypeCounts, foldedEntityCount, pendingMutationsField, stepText, type CreatedEntity, type PendingOverlay } from './headless/overlay.js';
 export { effectiveSourceIds, pendingEntityMembership } from './headless/effective-entity-membership.js';
 export { entityInfoInSchema, entityInfoAcrossSchemas } from './headless/schema-tables.js';
+export { HeadlessBackend } from './headless/backend.js';
+export type { HeadlessBackendOptions } from './headless/options.js';
+export { openModel, HeadlessSessionClosedError } from './headless/session.js';
+export type { HeadlessModelSession, OpenModelOptions } from './headless/session.js';

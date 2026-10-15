@@ -4,7 +4,7 @@
 
 /** Ordinary creation, placement and wall joins use the shared SDK factories (#6232 D5).
  * Shared compound recording preserves every earlier overlay record for undo. */
-import { createModellingStoreBackend, createOrdinaryStoreBackend, resolveLiveOwnerHistoryId, type ModellingStoreModelResolver } from '@ifc-lite/sdk';
+import { createModellingStoreBackend, createOrdinaryStoreBackend, resolveLiveOwnerHistoryId, type ModellingStoreModelResolver } from '../index.js';
 import { recordCompoundMutation, StoreEditor } from '@ifc-lite/mutations';
 
 export function createRecordedModellingBackend(resolve: ModellingStoreModelResolver) {

@@ -16,7 +16,7 @@
 import type {
   CostStoreBackendMethods,
   StructuralStoreBackendMethods,
-} from '@ifc-lite/sdk';
+} from '../index.js';
 import { costStoreStubs } from './headless-backend-cost-store.js';
 import { structuralStoreStubs } from './headless-backend-structural-store.js';
 

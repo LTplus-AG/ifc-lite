@@ -14,7 +14,7 @@
  * `headless-backend.ts`'s `this.cost` construction.
  */
 
-import type { CostStoreBackendMethods } from '@ifc-lite/sdk';
+import type { CostStoreBackendMethods } from '../index.js';
 
 const unsupported = (method: string) => (): never => {
   throw new Error(`${method} not supported in MCP v0.1; use entity_create`);

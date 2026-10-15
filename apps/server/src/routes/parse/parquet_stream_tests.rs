@@ -385,3 +385,6 @@ mod hash_only;
 
 #[path = "parquet_stream_cross_batch_tests.rs"]
 mod cross_batch;
+
+#[path = "admission_7676_tests.rs"]
+mod admission_7676;

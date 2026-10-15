@@ -4,17 +4,17 @@
 
 import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
-import { getPackageVersion } from '../utils/config-fixers.js';
+import { getPinnedPackageVersion } from '../utils/config-fixers.js';
 import { writeGitignore } from '../utils/gitignore.js';
 
 /**
  * Scaffold a minimal TypeScript project for parsing IFC files.
  */
 export function createBasicTemplate(targetDir: string, projectName: string) {
-  const parserVersion = getPackageVersion('@ifc-lite/parser');
+  const parserVersion = getPinnedPackageVersion('@ifc-lite/parser');
   // `store.entityIndex.byType` is keyed by the raw STEP spelling, and the
   // PascalCase lookup table for it lives in @ifc-lite/data.
-  const dataVersion = getPackageVersion('@ifc-lite/data');
+  const dataVersion = getPinnedPackageVersion('@ifc-lite/data');
 
   // package.json
   writeFileSync(join(targetDir, 'package.json'), JSON.stringify({
@@ -130,7 +130,7 @@ IFC parser project using [IFC-Lite](https://github.com/LTplus-AG/ifc-lite).
 ## Quick Start
 
 \`\`\`bash
-npm install
+npm ci
 npm run parse ./your-model.ifc
 \`\`\`
 

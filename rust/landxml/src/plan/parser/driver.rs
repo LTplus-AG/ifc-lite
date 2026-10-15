@@ -322,11 +322,13 @@ impl Parser<'_> {
                 "character reference limit exceeded",
             ));
         }
+        // Resolve before the capture check: an undeclared entity is refused
+        // wherever it appears, as in an attribute value (#7680).
+        let text = unescape(value)?;
         if let Some(capture) = &mut self.capture {
             if capture.depth() != self.frames.len() {
                 return Ok(());
             }
-            let text = unescape(value)?;
             let target = match capture {
                 Capture::CgPoint { text, .. }
                 | Capture::Monument { text, .. }

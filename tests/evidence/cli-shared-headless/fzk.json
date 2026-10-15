@@ -1,0 +1,37 @@
+{
+  "fixture": "ara3d/AC20-FZK-Haus.ifc",
+  "sha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+  "command": "ifc-lite eval <fixture> <single expression> --json",
+  "doors": [
+    {
+      "GlobalId": "1Oms875aH3Wg$9l65H2ZGw",
+      "Name": "DX CLI live door",
+      "queriedName": "DX CLI live door",
+      "csv": "Name\nDX CLI live door"
+    },
+    {
+      "GlobalId": "0pGAjlJMP3ifYPATVF5xAR",
+      "Name": "DX CLI live door",
+      "queriedName": "DX CLI live door",
+      "csv": "Name\nDX CLI live door"
+    },
+    {
+      "GlobalId": "2qiPPF3FrF8OIqfrKiSUqm",
+      "Name": "DX CLI live door",
+      "queriedName": "DX CLI live door",
+      "csv": "Name\nDX CLI live door"
+    },
+    {
+      "GlobalId": "2jTRqchjf7oB0yhQ6462T0",
+      "Name": "DX CLI live door",
+      "queriedName": "DX CLI live door",
+      "csv": "Name\nDX CLI live door"
+    },
+    {
+      "GlobalId": "1M$gxUrX1Fiwe3P64ww7U5",
+      "Name": "DX CLI live door",
+      "queriedName": "DX CLI live door",
+      "csv": "Name\nDX CLI live door"
+    }
+  ]
+}

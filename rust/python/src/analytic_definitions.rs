@@ -9,7 +9,7 @@ use ifc_lite_processing::{extract_extrusion_definitions, extract_swept_disk_defi
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
-use super::GEOMETRY_STACK_BYTES;
+use super::run_geometry;
 
 /// Return reusable source definitions and occurrence transforms without meshing.
 #[pyfunction]
@@ -17,15 +17,9 @@ use super::GEOMETRY_STACK_BYTES;
 pub(super) fn swept_disk_definitions(
     py: Python<'_>, ifc_bytes: Vec<u8>, ids: Option<HashSet<u32>>,
 ) -> PyResult<Py<PyAny>> {
-    let view = py.detach(|| {
-        std::thread::Builder::new()
-            .stack_size(GEOMETRY_STACK_BYTES)
-            .name("ifclite-swept-disk-definitions".into())
-            .spawn(move || extract_swept_disk_definitions(&ifc_bytes, ids.as_ref()))
-            .map_err(|error| format!("spawn failed: {error}"))?
-            .join()
-            .map_err(|_| "swept-disk definition worker panicked".to_string())
-    }).map_err(PyRuntimeError::new_err)?;
+    let view = run_geometry(py, "swept-disk definition", move || {
+        extract_swept_disk_definitions(&ifc_bytes, ids.as_ref())
+    })?;
     let json = serde_json::to_string(&view)
         .map_err(|error| PyRuntimeError::new_err(error.to_string()))?;
     definition_view_to_python(py, json)
@@ -37,15 +31,9 @@ pub(super) fn swept_disk_definitions(
 pub(super) fn extrusion_definitions(
     py: Python<'_>, ifc_bytes: Vec<u8>, ids: Option<HashSet<u32>>,
 ) -> PyResult<Py<PyAny>> {
-    let view = py.detach(|| {
-        std::thread::Builder::new()
-            .stack_size(GEOMETRY_STACK_BYTES)
-            .name("ifclite-extrusion-definitions".into())
-            .spawn(move || extract_extrusion_definitions(&ifc_bytes, ids.as_ref()))
-            .map_err(|error| format!("spawn failed: {error}"))?
-            .join()
-            .map_err(|_| "extrusion definition worker panicked".to_string())
-    }).map_err(PyRuntimeError::new_err)?;
+    let view = run_geometry(py, "extrusion definition", move || {
+        extract_extrusion_definitions(&ifc_bytes, ids.as_ref())
+    })?;
     let json = serde_json::to_string(&view)
         .map_err(|error| PyRuntimeError::new_err(error.to_string()))?;
     definition_view_to_python(py, json)

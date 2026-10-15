@@ -9,9 +9,12 @@ use super::*;
 impl Parser<'_> {
     pub(super) fn text(&mut self, bytes: &[u8]) -> Result<()> {
         let raw = self.utf8_text(bytes)?;
-        // XML character references are syntax in text nodes, but outside the
-        // document element XML permits only literal XML S bytes.  Check the
-        // raw event before expansion so `&#32;` cannot impersonate padding.
+        // quick-xml 0.42 never puts a reference in a text event: each
+        // `&name;` is its own `Event::GeneralRef`, which `consume_event`
+        // routes back here in source form (`xml::general_ref_source`), so
+        // `raw` is literal text or exactly one reference.  Charge it and
+        // check the root before expansion: outside the document element XML
+        // permits only literal XML S bytes, so `&#32;` cannot pass as padding.
         self.check_character_references(character_references(raw))?;
         if self.frames.is_empty() {
             return self.outside_root_text(raw, false);

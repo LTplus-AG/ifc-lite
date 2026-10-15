@@ -1,0 +1,56 @@
+{
+  "baseRef": "e24674b99e3946967fe0cfbd3fc91868c958f75b",
+  "scope": "Package build metadata and shared URL rewriting only; processing implementation and WASM source unchanged.",
+  "browserBefore": {
+    "bundled": false,
+    "diagnostic": "UNRESOLVED_ENTRY: Cannot resolve @ifc-lite/geometry/dist/geometry.worker.ts"
+  },
+  "browserAfter": {
+    "viteVersion": "8.3.4",
+    "files": [
+      "assets/event-DZmSOhea.js",
+      "assets/geometry.worker-CjtVRMyg.js",
+      "assets/ifc-lite_bg-BdVPOxDu.wasm",
+      "assets/index-Dz9gOPoa.js",
+      "assets/native-bridge-BFCp53GD.js",
+      "index.html"
+    ]
+  },
+  "geometryOutputComparisons": [
+    {
+      "fixture": "apps/viewer/public/samples/hello-wall.ifc",
+      "before": {
+        "sha256": "0ab20f4ea355ea9aa4fade7264b97ee9f9929addfa3961b2437c4381bd674014",
+        "meshes": 8,
+        "triangles": 192,
+        "glbBytes": 13892,
+        "glbSha256": "8748749dba3e43d4e7373971cf0aa99393f98d494c6ae4275625542504d5169a"
+      },
+      "after": {
+        "sha256": "0ab20f4ea355ea9aa4fade7264b97ee9f9929addfa3961b2437c4381bd674014",
+        "meshes": 8,
+        "triangles": 192,
+        "glbBytes": 13892,
+        "glbSha256": "8748749dba3e43d4e7373971cf0aa99393f98d494c6ae4275625542504d5169a"
+      }
+    },
+    {
+      "fixture": "tests/models/ara3d/AC20-FZK-Haus.ifc",
+      "before": {
+        "sha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+        "meshes": 317,
+        "triangles": 33356,
+        "glbBytes": 1915936,
+        "glbSha256": "02d77d563e73310d800cd5a1ad323f04ad59d83f5bcbaeff33134eeaaf94409a"
+      },
+      "after": {
+        "sha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+        "meshes": 317,
+        "triangles": 33356,
+        "glbBytes": 1915936,
+        "glbSha256": "02d77d563e73310d800cd5a1ad323f04ad59d83f5bcbaeff33134eeaaf94409a"
+      }
+    }
+  ],
+  "performanceVerdict": "Packaging correction; no runtime speed claim. Baseline browser artifact does not bundle, so browser timing comparison is not available. Node mesh/triangle counts and GLB bytes are identical."
+}

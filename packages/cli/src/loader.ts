@@ -9,8 +9,8 @@
 import { readFile } from 'node:fs/promises';
 import { logger } from './logger.js';
 import { basename } from 'node:path';
-import { IfcParser, unwrapIfcZipView, type IfcDataStore } from '@ifc-lite/parser';
-import { createBimContext, type BimContext, type ViewerBackendMethods, type VisibilityBackendMethods } from '@ifc-lite/sdk';
+import { IfcParser, IfcInputError, validateStepInput, type IfcDataStore } from '@ifc-lite/parser';
+import { createBimContext, type BimContext } from '@ifc-lite/sdk';
 import { HeadlessBackend } from './headless-backend.js';
 import { createStreamingViewerAdapter, createStreamingVisibilityAdapter } from './streaming-viewer.js';
 
@@ -73,61 +73,11 @@ export async function parseIfcBytes(
   bytes: Uint8Array,
   label = 'input',
 ): Promise<IfcDataStore> {
-  // Validate the file is a STEP/IFC file
-  if (bytes.byteLength === 0) {
-    throw new IfcBytesRejectedError(`${label} is empty (0 bytes)`);
-  }
-
-  // Transparent .ifcZIP unwrap (issue #1494) — cheap magic-byte no-op for an
-  // ordinary .ifc file. `unwrapIfcZipView` returns an ArrayBuffer over the
-  // model bytes (the input unchanged when it isn't a zip container), so this
-  // covers both the disk-read path and callers that already hold the buffer.
   try {
-    bytes = new Uint8Array(await unwrapIfcZipView(bytes));
-  } catch (err) {
-    throw new IfcBytesRejectedError(`${label}: ${(err as Error).message}`);
-  }
-
-  // Check for STEP file signature ("ISO-10303-21") in the first 256 bytes.
-  // TextDecoder (not Buffer.toString) so a plain Uint8Array view works too.
-  const headerSnippet = new TextDecoder('latin1').decode(
-    bytes.subarray(0, Math.min(bytes.byteLength, 256)),
-  );
-  if (!headerSnippet.includes('ISO-10303-21')) {
-    throw new IfcBytesRejectedError(`${label} is not a valid IFC/STEP file`);
-  }
-
-  // A STEP file ends with `END-ISO-10303-21;`. Its absence means the bytes are
-  // truncated -- a half-finished download, a killed export, a partial upload --
-  // and a truncated file does not fail to parse: it parses to a PREFIX. The
-  // scan stops wherever the bytes stop and reports whatever it got, so
-  // `ifc-lite info` answered "Entities: 59" and exited 0 for the first 4 KB of a
-  // real model, and "Schema: IFC4" for a 22-byte stub with no FILE_SCHEMA at
-  // all (#5532). A confidently wrong answer is worse than an error, because
-  // nothing downstream can tell it apart from a small model.
-  //
-  // Only the tail is decoded: these files reach hundreds of MB.
-  const tailStart = Math.max(0, bytes.byteLength - 256);
-  const tailSnippet = new TextDecoder('latin1').decode(bytes.subarray(tailStart));
-  if (!tailSnippet.includes('END-ISO-10303-21;')) {
-    throw new IfcBytesRejectedError(
-      `${label} is truncated: it starts like a STEP file but has no ` +
-        `END-ISO-10303-21; terminator, so any entity count or schema read from it ` +
-        `would describe only the part that arrived.`,
-    );
-  }
-
-  // A file with a header and no DATA section carries no entities at all. It is
-  // well-formed STEP, so the terminator check above passes; it is still not a
-  // model, and reporting a schema for it asserts something the file never said.
-  // Bounded, like the header scan: `DATA;` follows the header, and these files
-  // reach hundreds of MB -- decoding one whole would also risk V8's max string
-  // length. 64 KB is far more header than any exporter writes.
-  const headText = new TextDecoder('latin1').decode(
-    bytes.subarray(0, Math.min(bytes.byteLength, 64 * 1024)),
-  );
-  if (!/^\s*DATA\s*;/m.test(headText)) {
-    throw new IfcBytesRejectedError(`${label} has no DATA section, so it contains no IFC entities.`);
+    bytes = await validateStepInput(bytes, label);
+  } catch (error) {
+    if (!(error instanceof IfcInputError)) throw error;
+    throw new IfcBytesRejectedError(error.message);
   }
 
   const parser = new IfcParser();
@@ -200,9 +150,7 @@ export async function createStreamingContext(
   const store = await loadIfcFile(filePath);
   const backend = new HeadlessBackend(store, basename(filePath));
 
-  // Replace the no-op viewer/visibility adapters with streaming ones
-  (backend as unknown as { viewer: ViewerBackendMethods }).viewer = createStreamingViewerAdapter(viewerPort);
-  (backend as unknown as { visibility: VisibilityBackendMethods }).visibility = createStreamingVisibilityAdapter(viewerPort);
+  backend.attachStreamingAdapters(createStreamingViewerAdapter(viewerPort), createStreamingVisibilityAdapter(viewerPort));
 
   const bim = createBimContext({ backend });
   return { bim, store };

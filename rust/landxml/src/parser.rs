@@ -87,6 +87,10 @@ impl Parser<'_> {
             }
             Event::End(end) => self.end(Some(end.name().as_ref().as_bytes())),
             Event::Text(text) => self.text(text.as_ref().as_bytes()),
+            // #7680: a reference in text arrives as its own event.
+            Event::GeneralRef(reference) => {
+                self.text(crate::xml::general_ref_source(&reference).as_bytes())
+            }
             Event::CData(text) => self.cdata(text.as_ref().as_bytes()),
             Event::DocType(_) => Err(error(Code::DtdForbidden, "DOCTYPE is not allowed")),
             _ => Ok(()),

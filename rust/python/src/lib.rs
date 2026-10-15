@@ -25,7 +25,7 @@
 use ifc_lite_processing::{
     build_colored_geometry_data_export, extract_swept_disk_descriptions,
     process_geometry_filtered_with_quality_and_ids, ColoredGeometryDataExport, MeshCoordinateSpace,
-    OpeningFilterMode, SweptDiskDescriptions, TessellationQuality,
+    OpeningFilterMode, SweptDiskDescriptions, TessellationQuality, run_on_geometry_pool,
 };
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
@@ -45,10 +45,34 @@ struct GeometryExportResult {
     swept_disks: Option<SweptDiskDescriptions>,
 }
 
-/// Stack size for the geometry worker (256 MiB). IFC CSG recurses deeply
-/// (BSP-tree booleans, nested clips); the default thread stack overflows.
-/// Mirrors `rust/ffi`.
-const GEOMETRY_STACK_BYTES: usize = 256 * 1024 * 1024;
+/// Run `work` with the GIL released on processing's large-stack geometry pool
+/// (EDGE-FFI-1 / EDGE-FFI-3, #7673). The deep recursion in IFC geometry
+/// runs in `par_iter` jobs, so it is the pool WORKERS that need the large
+/// stack: a big-stack thread calling the pipeline, which every entry point here
+/// used to spawn, left those jobs on rayon's default-stack global pool, where
+/// an overflow aborts the Python interpreter. `what` names the work in errors.
+///
+/// A panic in `work` becomes a `RuntimeError` carrying the panic message.
+fn run_geometry<T: Send>(
+    py: Python<'_>,
+    what: &str,
+    work: impl FnOnce() -> T + Send,
+) -> PyResult<T> {
+    py.detach(|| {
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| run_on_geometry_pool(work)))
+            .map_err(|payload| format!("{what} worker panicked: {}", panic_message(payload.as_ref())))?
+            .map_err(|error| format!("{what}: cannot start the geometry thread pool: {error}"))
+    })
+    .map_err(PyRuntimeError::new_err)
+}
+
+fn panic_message(payload: &(dyn std::any::Any + Send)) -> &str {
+    payload
+        .downcast_ref::<&str>()
+        .copied()
+        .or_else(|| payload.downcast_ref::<String>().map(String::as_str))
+        .unwrap_or("non-string panic payload")
+}
 
 /// Map a consumer-facing quality label onto [`TessellationQuality`].
 ///
@@ -69,39 +93,34 @@ fn parse_quality(label: Option<&str>) -> PyResult<TessellationQuality> {
     }
 }
 
-/// Run the native (rayon) pipeline off the calling thread with a large stack.
+/// Run the native (rayon) pipeline on the large-stack geometry pool.
 fn run_export(
+    py: Python<'_>,
     ifc_bytes: Vec<u8>,
     quality: TessellationQuality,
     ids: Option<HashSet<u32>>,
     include_directrices: bool,
-) -> Result<GeometryExportResult, String> {
-    std::thread::Builder::new()
-        .stack_size(GEOMETRY_STACK_BYTES)
-        .name("ifclite-geometry".into())
-        .spawn(move || {
-            let result = process_geometry_filtered_with_quality_and_ids(
-                &ifc_bytes,
-                OpeningFilterMode::Default,
-                quality,
-                ids.as_ref(),
-            );
-            let rtc = result.metadata.coordinate_info.origin_shift;
-            // Reapply the IfcSite rotation only in the site-local axis frame;
-            // model_rtc / raw_ifc keep true IFC world axes (R = identity).
-            let site_rotation = if result.mesh_coordinate_space == MeshCoordinateSpace::SiteLocal {
-                result.site_transform.as_deref()
-            } else {
-                None
-            };
-            let meshes = build_colored_geometry_data_export(&result.meshes, rtc, site_rotation);
-            let swept_disks = include_directrices
-                .then(|| extract_swept_disk_descriptions(&ifc_bytes, ids.as_ref()));
-            GeometryExportResult { meshes, swept_disks }
-        })
-        .map_err(|e| format!("spawn failed: {e}"))?
-        .join()
-        .map_err(|_| "geometry worker panicked".to_string())
+) -> PyResult<GeometryExportResult> {
+    run_geometry(py, "geometry", move || {
+        let result = process_geometry_filtered_with_quality_and_ids(
+            &ifc_bytes,
+            OpeningFilterMode::Default,
+            quality,
+            ids.as_ref(),
+        );
+        let rtc = result.metadata.coordinate_info.origin_shift;
+        // Reapply the IfcSite rotation only in the site-local axis frame;
+        // model_rtc / raw_ifc keep true IFC world axes (R = identity).
+        let site_rotation = if result.mesh_coordinate_space == MeshCoordinateSpace::SiteLocal {
+            result.site_transform.as_deref()
+        } else {
+            None
+        };
+        let meshes = build_colored_geometry_data_export(&result.meshes, rtc, site_rotation);
+        let swept_disks = include_directrices
+            .then(|| extract_swept_disk_descriptions(&ifc_bytes, ids.as_ref()));
+        GeometryExportResult { meshes, swept_disks }
+    })
 }
 
 /// Tessellate IFC bytes; return per-entity geometry with vertices/faces as raw
@@ -129,9 +148,7 @@ fn geometry_data_buffers(
     include_directrices: bool,
 ) -> PyResult<Py<PyAny>> {
     let quality = parse_quality(quality)?;
-    let export = py
-        .detach(|| run_export(ifc_bytes, quality, ids, include_directrices))
-        .map_err(PyRuntimeError::new_err)?;
+    let export = run_export(py, ifc_bytes, quality, ids, include_directrices)?;
 
     let out = PyDict::new(py);
     out.set_item("up_axis", export.meshes.up_axis)?;
@@ -196,9 +213,7 @@ fn geometry_data_json(
     include_directrices: bool,
 ) -> PyResult<String> {
     let quality = parse_quality(quality)?;
-    let export = py
-        .detach(|| run_export(ifc_bytes, quality, ids, include_directrices))
-        .map_err(PyRuntimeError::new_err)?;
+    let export = run_export(py, ifc_bytes, quality, ids, include_directrices)?;
     let json = export.meshes
         .to_json()
         .map_err(|e| PyValueError::new_err(e.to_string()))?;

@@ -35,9 +35,10 @@ once with `pnpm fixtures`):
 
 | Command | What it runs |
 |---------|--------------|
-| `pnpm test` | All package unit tests via Turbo (`turbo test`, Vitest per package) |
+| `pnpm test` | Package suites via Turbo, using each package's configured runner |
 | `pnpm test:e2e` | Playwright viewer end-to-end tests (project `viewer-e2e`) |
 | `pnpm test:e2e:ci` | Playwright e2e, CI variant (project `viewer-e2e-ci`) |
+| `pnpm test:packed` | Fresh external npm install from local tarballs; installed declarations, headless roundtrip, lifecycle, real WASM geometry and a Vite worker/WASM bundle |
 | `pnpm test:integration` | Cross-package integration pipeline (`tests/integration.test.ts`) |
 | `pnpm test:api` | Server API tests (`tests/api/`) |
 | `pnpm test:wasm-contract` | Real WASM boundary contract tests (run `pnpm build:wasm` first, or it skips) |
@@ -50,15 +51,32 @@ once with `pnpm fixtures`):
 # Run all TypeScript tests
 pnpm test
 
-# Run specific package
-cd packages/parser && pnpm test
+# Run one package through the dependency graph
+pnpm test --filter=@ifc-lite/parser --concurrency=2 -- --maxWorkers=2
 
-# Watch mode
-cd packages/parser && pnpm exec vitest --watch
+# Run one regression file
+pnpm test --filter=@ifc-lite/parser --concurrency=2 -- parse-model.test --maxWorkers=2
 
-# With coverage
-cd packages/parser && pnpm exec vitest run --coverage
+# Watch mode through the same graph
+pnpm test --filter=@ifc-lite/parser -- --watch
 ```
+
+### Packed consumer workflows
+
+Build the public packages, then exercise the artifacts a fresh consumer installs:
+
+```bash
+pnpm exec turbo build --filter=@ifc-lite/sdk --filter=@ifc-lite/geometry --filter=@ifc-lite/ids --concurrency=2
+pnpm test:packed
+```
+
+Geometry needs a built WASM runtime, or fetch one with `pnpm build:wasm:fetch`. The check creates tarballs with `pnpm pack`, resolves all first-party dependencies to those tarballs, installs them outside the checkout, and verifies that npm installed real directories with no workspace protocols. Its TypeScript consumer compiles against the installed declarations without workspace aliases.
+
+The runtime consumer queries a model, edits a declared property, exports/reopens it, verifies `GlobalId` and the property, checks unsupported-operation and closed-session errors, and exports real WASM geometry as GLB. The committed wall sample always runs. Fetch `ara3d/AC20-FZK-Haus.ifc` with `pnpm fixtures` for the independently authored five-door case; an absent optional fixture prints an explicit skip. CI provisions and verifies the fixtures before this check.
+
+The same external install also builds a browser entry with Vite and verifies that geometry workers and the WASM binary are emitted. This catches missing worker URLs that a Node-only geometry pass cannot detect.
+
+The check removes its temporary installation on success or failure. Capture its JSON receipt with `pnpm --silent test:packed > packed-receipt.json`. A real captured run is in `tests/evidence/packed-workflows/receipt.json`; it records package versions and fixture hashes, with no model bytes.
 
 ### Local BCF publication peer
 

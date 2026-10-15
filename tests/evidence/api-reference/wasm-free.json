@@ -1,0 +1,12 @@
+{
+  "build": "pnpm docs:api",
+  "packageCount": 57,
+  "entryPoints": 104,
+  "wasmRuntimePresent": false,
+  "wasmBindingsPresent": false,
+  "wasmPack": "not found; committed declaration fallback used",
+  "turbo": {
+    "successful": 62,
+    "cached": 0
+  }
+}

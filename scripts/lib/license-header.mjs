@@ -98,6 +98,8 @@ export const EXCLUDED_DIRS = ['node_modules', 'dist', 'target'];
  * filename at a time the same way.)
  */
 export const EXCLUDED_PATHS = [
+    // TypeDoc's generated HTML/theme/search assets; regenerated from public declarations.
+    'docs/api/generated/',
     // wasm-pack output. Only `pkg/ifc-lite.d.ts` is committed (force-added
     // past wasm-pack's own `pkg/.gitignore`); the rest is gitignored build
     // product that `scripts/build-wasm.sh` leaves on disk, and `find` walks

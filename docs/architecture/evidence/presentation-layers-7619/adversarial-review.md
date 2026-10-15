@@ -159,3 +159,41 @@ overlay isolation retains the limitation documented above.
 
 Verdict for `6b087615b63b949761ed849cdd65ec12415fe2be`: no unresolved
 correctness blocker found. The exact source delta passes `git diff --check`.
+
+## Follow-up review: shape-aspect ownership
+
+Reviewed exact delta
+`90a5f72f9f..1816e878b544f08172325aa120efb542eb54b472` on 2026-10-15.
+It changes only the resolver and its parsed-STEP regression tests. This closes
+a valid missing ownership route identified by the subsequent automated review.
+
+The reviewer independently checked the
+[buildingSMART IfcShapeAspect definition](https://standards.buildingsmart.org/IFC/RELEASE/IFC4_3/HTML/lexical/IfcShapeAspect.htm):
+`ShapeRepresentations` lists shape models, and `PartOfProductDefinitionShape`
+identifies the owning product-definition shape or representation map. This
+ownership runs from an assigned aspect representation back to the referenced
+owner, despite the STEP reference itself pointing out from the aspect.
+
+The final implementation adds a direct reverse ownership edge from each
+validated aspect shape model to its validated owner. This is equivalent to
+walking through an active aspect node; it avoids incorrectly treating the
+owner as a child of the aspect. Owners must exist and have the effective class
+`IfcProductDefinitionShape` or `IfcRepresentationMap`. Children must exist and
+have an effective `IfcShapeModel` class. Current entity enumeration and the
+existing build-local cached metadata accessor ensure deleted or retyped
+aspects, owners and shape models do not contribute stale links. Optional,
+dangling and unrelated owner references do not produce edges. The visited
+ownership traversal, per-build decoding cache and lazy module boundary are
+unchanged.
+
+Three new parsed-STEP tests exercise an aspect representation absent from the
+owner's main representation list, a shared mapped owner reaching two products,
+invalid owners and shape-model references, named/positional ownership edits,
+shape-list edits, deleted aspects/maps and retyped resources. The reviewer read
+these assertions and the complete production delta; no heavy validation was
+run in parallel. The lead agent was rerunning build, focused tests, typecheck,
+lint and browser acceptance when this section was written, so their results
+remain the delivery agent's responsibility.
+
+Verdict for `1816e878b544f08172325aa120efb542eb54b472`: no unresolved
+correctness blocker found. The exact delta passes `git diff --check`.

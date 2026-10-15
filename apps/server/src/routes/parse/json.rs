@@ -4,8 +4,8 @@
 
 //! JSON / SSE-JSON parse endpoints.
 
-use super::cache_keys::{json_response_cache_key, request_cache_key};
-use super::{cache_symbolic_data_off_runtime, extract_file, ParseQuery};
+use super::cache_keys::json_response_cache_key;
+use super::{admit_upload, request_cache_key_off_runtime, cache_symbolic_data_off_runtime, ParseQuery};
 use crate::error::ApiError;
 use crate::services::axis::mesh_to_yup_in_place;
 use crate::services::streaming::detect_schema_version;
@@ -34,19 +34,15 @@ pub async fn parse_full(
     mut multipart: Multipart,
 ) -> Result<Response, ApiError> {
     // Extract file from multipart
-    // Admission gate (bounded concurrency + byte budget): acquired BEFORE the
-    // upload is buffered, reserving the max upload size since multipart rarely
-    // declares a length up front. Held for the request's whole lifetime so a
-    // disconnected-but-still-running job keeps its memory slot.
-    let admission_guard = state
-        .admission
-        .acquire(state.config.max_file_size_mb as u64 * 1024 * 1024)
-        .await?;
-    let data = extract_file(&mut multipart, state.config.max_file_size_mb).await?;
+    // Admission (bounded concurrency + byte budget) before the upload is
+    // buffered, then shrunk to what arrived; see `admit_upload`. Held for the
+    // request's whole lifetime so a disconnected-but-still-running job keeps
+    // its memory slot.
+    let (admission_guard, data) = admit_upload(&state, &mut multipart).await?;
 
     // Generate cache key (include opening filter so different modes get different cache entries)
     let tessellation_quality = query.resolved_tessellation_quality()?;
-    let cache_key = request_cache_key(&data, &query, tessellation_quality);
+    let cache_key = request_cache_key_off_runtime(&data, &query, tessellation_quality).await?;
     // The stored ParseResponse is versioned separately from the client-facing
     // cache_key so the Y-up switch (#1841) retires the old Z-up entries without
     // invalidating the parquet caches. See `json_response_cache_key`.
@@ -165,15 +161,11 @@ pub async fn parse_stream(
     let tessellation_quality = query.resolved_tessellation_quality()?;
 
     // Extract file
-    // Admission gate (bounded concurrency + byte budget): acquired BEFORE the
-    // upload is buffered, reserving the max upload size since multipart rarely
-    // declares a length up front. Held for the request's whole lifetime so a
-    // disconnected-but-still-running job keeps its memory slot.
-    let admission_guard = state
-        .admission
-        .acquire(state.config.max_file_size_mb as u64 * 1024 * 1024)
-        .await?;
-    let data = extract_file(&mut multipart, state.config.max_file_size_mb).await?;
+    // Admission (bounded concurrency + byte budget) before the upload is
+    // buffered, then shrunk to what arrived; see `admit_upload`. Held for the
+    // request's whole lifetime so a disconnected-but-still-running job keeps
+    // its memory slot.
+    let (admission_guard, data) = admit_upload(&state, &mut multipart).await?;
 
     let content = data;
     let initial_batch_size = state.config.initial_batch_size;
@@ -186,7 +178,7 @@ pub async fn parse_stream(
         max_batch_size,
         query.opening_filter,
         tessellation_quality,
-        Some(admission_guard),
+        Some(std::sync::Arc::new(admission_guard)),
     )
     .map(|mut event: StreamEvent| {
             // Same Y-up wire frame as every other transport (issue #1841) —
@@ -218,15 +210,11 @@ pub async fn parse_metadata(
     mut multipart: Multipart,
 ) -> Result<Json<MetadataResponse>, ApiError> {
     // Extract file
-    // Admission gate (bounded concurrency + byte budget): acquired BEFORE the
-    // upload is buffered, reserving the max upload size since multipart rarely
-    // declares a length up front. Held for the request's whole lifetime so a
-    // disconnected-but-still-running job keeps its memory slot.
-    let admission_guard = state
-        .admission
-        .acquire(state.config.max_file_size_mb as u64 * 1024 * 1024)
-        .await?;
-    let data = extract_file(&mut multipart, state.config.max_file_size_mb).await?;
+    // Admission (bounded concurrency + byte budget) before the upload is
+    // buffered, then shrunk to what arrived; see `admit_upload`. Held for the
+    // request's whole lifetime so a disconnected-but-still-running job keeps
+    // its memory slot.
+    let (admission_guard, data) = admit_upload(&state, &mut multipart).await?;
 
     let file_size = data.len();
     let content = data;

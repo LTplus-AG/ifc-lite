@@ -54,15 +54,15 @@ fn enum_at(entity: &DecodedEntity, idx: i8) -> Option<String> {
 /// Extract entity metadata for all entities.
 pub(super) fn extract_entity_metadata(
     jobs: &[EntityJob],
-    content: &Arc<Vec<u8>>,
+    content: &[u8],
     entity_index: &Arc<ifc_lite_core::EntityIndex>,
 ) -> Vec<EntityMetadata> {
     jobs.par_iter()
         .filter_map(|job| {
             let mut local_decoder =
-                EntityDecoder::with_arc_index(content.as_slice(), entity_index.clone());
+                EntityDecoder::with_arc_index(content, entity_index.clone());
             let entity = local_decoder.decode_at(job.start, job.end).ok()?;
-            let has_geometry = ifc_lite_core::has_geometry_by_name(&job.type_name);
+            let has_geometry = ifc_lite_core::has_geometry_by_name(job.type_name);
 
             // Root attributes at the SAME schema-registry positions the WASM
             // path resolves them (issue #1765) — see generated/attr_indices.rs.
@@ -81,7 +81,7 @@ pub(super) fn extract_entity_metadata(
 
             Some(EntityMetadata {
                 entity_id: job.id,
-                type_name: job.type_name.clone(),
+                type_name: job.type_name.to_string(),
                 global_id,
                 name,
                 description,

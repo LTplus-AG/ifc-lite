@@ -89,13 +89,18 @@ pub(crate) fn detect_schema_version(content: &[u8]) -> &'static str {
 /// Takes the raw IFC bytes (issue #1023): localized non-UTF-8 byte sequences
 /// in the HEADER must not block otherwise valid models, so no `String`
 /// conversion happens anywhere on this path.
+///
+/// `admission` is shared (#7676, SERVER-8): a caller that runs more work for
+/// the same request alongside the stream (the parquet route's data-model
+/// fill) keeps a clone, so that work is charged to the request's one slot
+/// instead of waiting for a second one its own stream holds.
 pub fn process_streaming(
     content: bytes::Bytes,
     initial_batch_size: usize,
     max_batch_size: usize,
     opening_filter: OpeningFilterMode,
     tessellation_quality: TessellationQuality,
-    admission: Option<crate::admission::AdmissionGuard>,
+    admission: Option<std::sync::Arc<crate::admission::AdmissionGuard>>,
 ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send>> {
     // Zero is a caller bug, not a reason to stall the stream.
     let initial_batch_size = initial_batch_size.max(1);
@@ -119,7 +124,6 @@ pub fn process_streaming(
     // exit would let a replacement parse be admitted on top of the undrained
     // buffers). An Arc'd guard held by both releases on whichever finishes
     // last.
-    let admission = admission.map(std::sync::Arc::new);
     let admission_for_task = admission.clone();
 
     let handle = tokio::task::spawn_blocking(move || {

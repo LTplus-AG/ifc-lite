@@ -1100,13 +1100,13 @@ Before #5750 those used a `text/plain` body or no body at all.
 
 | `code` | Status | Meaning |
 |--------|--------|---------|
-| `BAD_REQUEST` | 400 | Malformed request: bad query value, bad path key, not multipart |
+| `BAD_REQUEST` | 400 | Malformed request: bad query value, bad path key, not multipart, or a gzip / `.ifcZIP` upload that does not decompress |
 | `MISSING_FILE` | 400 | Multipart upload with no `file` field |
 | `MULTIPART_ERROR` | 400 | The multipart body could not be read |
 | `UNAUTHORIZED` | 401 | Bearer token missing or wrong |
 | `NOT_FOUND` | 404 | Nothing cached for this key, or no such route |
 | `METHOD_NOT_ALLOWED` | 405 | Route exists, method does not (`Allow` lists the valid ones) |
-| `REQUEST_TIMEOUT` | 408 | The request ran past `REQUEST_TIMEOUT_SECS` |
+| `REQUEST_TIMEOUT` | 408 | The request ran past `REQUEST_TIMEOUT_SECS`, or its upload went 30 s without a byte or fell below 8 KiB/s on average after its first 15 s |
 | `FILE_TOO_LARGE` | 413 | Upload above `MAX_FILE_SIZE_MB` |
 | `OVERLOADED` | 503 | Admission queue full or memory breaker shedding; retry after `Retry-After` seconds |
 | `PROCESSING_ERROR`, `PARQUET_ERROR`, `CACHE_ERROR`, `TASK_ERROR`, `INTERNAL_ERROR` | 500 | Server-side failure |

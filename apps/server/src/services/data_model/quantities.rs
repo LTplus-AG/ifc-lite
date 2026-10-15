@@ -12,7 +12,7 @@ use std::sync::Arc;
 /// Extract all quantity sets (IfcElementQuantity) and their quantities.
 pub(super) fn extract_quantities(
     jobs: &[EntityJob],
-    content: &Arc<Vec<u8>>,
+    content: &[u8],
     entity_index: &Arc<ifc_lite_core::EntityIndex>,
 ) -> Vec<QuantitySet> {
     // First, collect all IfcElementQuantity entities
@@ -28,7 +28,7 @@ pub(super) fn extract_quantities(
         .par_iter()
         .filter_map(|job| {
             let mut local_decoder =
-                EntityDecoder::with_arc_index(content.as_slice(), entity_index.clone());
+                EntityDecoder::with_arc_index(content, entity_index.clone());
             let entity = local_decoder.decode_at(job.start, job.end).ok()?;
 
             // IfcElementQuantity: [0]=GlobalId, [1]=OwnerHistory, [2]=Name, [3]=Description, [4]=MethodOfMeasurement, [5]=Quantities

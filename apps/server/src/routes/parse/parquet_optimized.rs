@@ -8,13 +8,12 @@
 //! replay itself (metadata header, read-through-cache, response builder) now
 //! lives in `parquet_optimized_replay.rs` (issue #5128) for the same reason.
 
-use super::cache_keys::request_cache_key;
 use super::parquet::DataModelStats;
 use super::parquet_optimized_replay::{
     cache_data_model, cache_optimized_response, optimized_parquet_response,
     replay_optimized_by_client_hash, try_cached_optimized_parquet, OptimizedParquetMetadataHeader,
 };
-use super::{cache_symbolic_data_off_runtime, extract_file, ParseQuery};
+use super::{admit_upload, request_cache_key_off_runtime, cache_symbolic_data_off_runtime, ParseQuery};
 use crate::error::ApiError;
 use crate::services::{
     baked_basis_zup, extract_data_model, serialize_data_model_to_parquet,
@@ -75,18 +74,14 @@ pub async fn parse_parquet_optimized(
     };
 
     // Extract file from multipart
-    // Admission gate (bounded concurrency + byte budget): acquired BEFORE the
-    // upload is buffered, reserving the max upload size since multipart rarely
-    // declares a length up front. Held for the request's whole lifetime so a
-    // disconnected-but-still-running job keeps its memory slot.
-    let admission_guard = state
-        .admission
-        .acquire(state.config.max_file_size_mb as u64 * 1024 * 1024)
-        .await?;
-    let data = extract_file(&mut multipart, state.config.max_file_size_mb).await?;
+    // Admission (bounded concurrency + byte budget) before the upload is
+    // buffered, then shrunk to what arrived; see `admit_upload`. Held for the
+    // request's whole lifetime so a disconnected-but-still-running job keeps
+    // its memory slot.
+    let (admission_guard, data) = admit_upload(&state, &mut multipart).await?;
 
     // Generate cache key (include opening filter so different modes get different cache entries)
-    let cache_key = request_cache_key(&data, &query, tessellation_quality);
+    let cache_key = request_cache_key_off_runtime(&data, &query, tessellation_quality).await?;
 
     // Cache first, before any processing (issue #3889). The optimized route is
     // the SMALL payload and the one a viewer opens repeatedly, so re-parsing it

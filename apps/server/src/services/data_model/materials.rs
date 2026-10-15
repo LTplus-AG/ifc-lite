@@ -243,7 +243,7 @@ fn resolve_material(decoder: &mut EntityDecoder, id: u32, unit_scale: f64) -> Ve
 /// Extract material associations (`IfcRelAssociatesMaterial`).
 pub(super) fn extract_materials(
     jobs: &[EntityJob],
-    content: &Arc<Vec<u8>>,
+    content: &[u8],
     entity_index: &Arc<ifc_lite_core::EntityIndex>,
     units: &MaterialUnitContext,
 ) -> Vec<MaterialAssociation> {
@@ -261,7 +261,7 @@ pub(super) fn extract_materials(
         .par_iter()
         .flat_map(|job| {
             let mut decoder =
-                EntityDecoder::with_arc_index(content.as_slice(), entity_index.clone());
+                EntityDecoder::with_arc_index(content, entity_index.clone());
             let Ok(rel) = decoder.decode_at(job.start, job.end) else {
                 return Vec::new();
             };

@@ -357,3 +357,25 @@ async fn a_zero_byte_reservation_still_costs_one_permit() {
     let _g = a.acquire(0).await.expect("first zero-byte admit");
     a.acquire(0).await.expect_err("the single permit is taken");
 }
+
+const MIB: u64 = 1024 * 1024;
+
+/// #7676, SERVER-24: shrinking gives every byte above the new size back to
+/// the budget, at once, and never takes more.
+#[tokio::test]
+async fn issue_7676_shrink_to_returns_the_excess_to_the_budget() {
+    let a = Arc::new(Admission::new(cfg_shed(2, 10, 0, 0)));
+    let mut upload = a.acquire(10 * MIB).await.expect("the whole budget is free");
+    assert!(a.acquire(MIB).await.is_err(), "the budget is fully reserved");
+
+    upload.shrink_to(2 * MIB);
+    let other = a.acquire(8 * MIB).await.expect("the excess came back");
+    upload.shrink_to(5 * MIB); // never grows
+    drop(other);
+    assert!(a.acquire(8 * MIB).await.is_ok() && a.acquire(9 * MIB).await.is_err());
+
+    upload.shrink_to(0); // never below one permit
+    assert!(a.acquire(10 * MIB).await.is_err());
+    drop(upload);
+    assert!(a.acquire(10 * MIB).await.is_ok());
+}

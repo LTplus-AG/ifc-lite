@@ -13,7 +13,7 @@ use std::sync::Arc;
 /// Extract all relationships.
 pub(super) fn extract_relationships(
     jobs: &[EntityJob],
-    content: &Arc<Vec<u8>>,
+    content: &[u8],
     entity_index: &Arc<ifc_lite_core::EntityIndex>,
 ) -> Vec<Relationship> {
     // The schema-derived gate (issue #4205): a type is a relationship job iff
@@ -37,10 +37,10 @@ pub(super) fn extract_relationships(
         .par_iter()
         .filter_map(|job| {
             let mut local_decoder =
-                EntityDecoder::with_arc_index(content.as_slice(), entity_index.clone());
+                EntityDecoder::with_arc_index(content, entity_index.clone());
             let entity = local_decoder.decode_at(job.start, job.end).ok()?;
 
-            extract_relationship(&entity, &job.type_name, job.id)
+            extract_relationship(&entity, job.type_name, job.id)
         })
         .flatten()
         .collect();
@@ -65,7 +65,7 @@ pub(super) fn extract_relationships(
 /// which would catch IfcSurfaceStyle / the rel itself).
 fn extract_type_property_links(
     rels: &[Relationship],
-    content: &Arc<Vec<u8>>,
+    content: &[u8],
     entity_index: &Arc<ifc_lite_core::EntityIndex>,
 ) -> Vec<Relationship> {
     use std::collections::BTreeSet;
@@ -84,7 +84,7 @@ fn extract_type_property_links(
         .par_iter()
         .flat_map_iter(|&type_id| {
             let mut decoder =
-                EntityDecoder::with_arc_index(content.as_slice(), entity_index.clone());
+                EntityDecoder::with_arc_index(content, entity_index.clone());
             let mut out = Vec::new();
             if let Ok(entity) = decoder.decode_by_id(type_id) {
                 // IfcTypeObject.HasPropertySets is at index 5 across IFC2X3/4/4X3.

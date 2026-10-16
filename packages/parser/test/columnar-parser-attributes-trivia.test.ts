@@ -93,3 +93,35 @@ describe('readRefList: form feed and vertical tab are trivia', () => {
         expect(ids).toEqual([7]);
     });
 });
+
+// #7785: a `#ref` or `)` inside a `/* ... */` comment is not structure.
+describe('readRefList: comments are trivia (#7785)', () => {
+    it('does not read a ref out of a comment', () => {
+        const buf = toBuf('(#1,/* #99 */#2)');
+        expect(readRefList(buf, 0, buf.length)[0]).toEqual([1, 2]);
+    });
+
+    it('a ")" inside a comment does not end the list', () => {
+        const buf = toBuf('(#1,/* ) */#2)');
+        const [ids, pos] = readRefList(buf, 0, buf.length);
+        expect(ids).toEqual([1, 2]);
+        expect(pos).toBe(buf.length - 1); // stops at the closing paren
+    });
+
+    it('a comment before the list or a bare ref is skipped', () => {
+        const a = toBuf('/* #5 */(#1)');
+        expect(readRefList(a, 0, a.length)[0]).toEqual([1]);
+        const b = toBuf('/* c */#7');
+        expect(readRefList(b, 0, b.length)[0]).toEqual([7]);
+    });
+
+    it('a string literal member is skipped whole', () => {
+        const buf = toBuf("(#1,'#9)',#2)");
+        expect(readRefList(buf, 0, buf.length)[0]).toEqual([1, 2]);
+    });
+
+    it('an unterminated comment ends the scan without refs from it', () => {
+        const buf = toBuf('(#1,/* #3');
+        expect(readRefList(buf, 0, buf.length)[0]).toEqual([1]);
+    });
+});

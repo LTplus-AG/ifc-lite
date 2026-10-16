@@ -14,7 +14,7 @@
  * re-exports.
  */
 
-import { decodeStepStringLiteral, stepStringLiteralEnd } from '@ifc-lite/encoding';
+import { decodeStepStringLiteral, splitStepTopLevel } from '@ifc-lite/encoding';
 import { isCompleteStepNumericLiteral } from './step-numeric-literal.js';
 
 /**
@@ -350,9 +350,12 @@ export function parseStepValue(str: string): StepValue {
 
   // Number: only a whole STEP literal. `parseFloat` reads a prefix, so `1.52.3`
   // (a dropped comma) became `1.52`; a malformed token stays raw (#5193).
+  // An overflowing literal (`1.E400`) parses to `Infinity`; like the parser
+  // and Rust's typed overflow token (D13) it stays RAW text, never a
+  // non-finite number (#7785).
   if (isCompleteStepNumericLiteral(str)) {
     const num = parseFloat(str);
-    if (!isNaN(num)) return num;
+    if (Number.isFinite(num)) return num;
   }
 
   // Unknown
@@ -360,22 +363,9 @@ export function parseStepValue(str: string): StepValue {
 }
 
 /**
- * Parse a STEP list.
- *
- * Splits at top-level commas, tracking both paren/bracket nesting AND
- * single-quoted string state (with `''` escapes). Without quote-tracking, a
- * string member containing a literal comma — e.g. `('a,b','c')`, which any
- * IfcLabel/IfcText value is free to contain — split mid-string: `'a,b'`
- * became the two malformed tokens `'a` and `b'` instead of the one string
- * `a,b`. Parens/brackets *inside* a quoted string (also legal STEP content)
- * must likewise not perturb `depth`, hence checking `inString` first.
- *
- * Mirrors `splitTopLevel` in `@ifc-lite/parser`'s `source-header.ts`, which
- * already had to solve this same problem for header fields and documented
- * why: "FILE_DESCRIPTION items ... routinely contain commas ... inside
- * quoted strings ... which a splitter that ignores quote state would
- * mis-split." That reasoning applies equally to any STEP list, not just
- * header fields — this generic parser had the same gap.
+ * Parse a STEP list. Members split through `splitStepTopLevel` (@ifc-lite/encoding),
+ * which respects paren/bracket nesting, string literals (`('a,b','c')`) and
+ * `/* ... *\/` comments.
  */
 function parseStepList(str: string): StepValue[] {
   // Remove outer parentheses
@@ -384,41 +374,12 @@ function parseStepList(str: string): StepValue[] {
     return [];
   }
 
-  const values: StepValue[] = [];
-  let depth = 0;
-  let current = '';
-
-  for (let i = 0; i < inner.length; i++) {
-    const char = inner[i];
-
-    if (char === "'") {
-      // The whole literal joins the member at once. `stepStringLiteralEnd` is
-      // the one rule for where it ends: `''`, and a PAGE directive's apostrophe
-      // operand (`'Para \S\' 5'`) stay inside (#7589). A string that never
-      // closes takes the rest of the list.
-      const end = stepStringLiteralEnd(inner, i);
-      const stop = end < 0 ? inner.length : end;
-      current += inner.slice(i, stop);
-      i = stop - 1;
-    } else if (char === '(' || char === '[') {
-      depth++;
-      current += char;
-    } else if (char === ')' || char === ']') {
-      depth--;
-      current += char;
-    } else if (char === ',' && depth === 0) {
-      values.push(parseStepValue(current));
-      current = '';
-    } else {
-      current += char;
-    }
-  }
-
-  if (current.trim()) {
-    values.push(parseStepValue(current));
-  }
-
-  return values;
+  // The one shared splitter (#7785): quote-, nesting- and comment-aware. An
+  // empty trailing member is dropped (STEP has no trailing comma); empty
+  // interior members stay.
+  const parts = splitStepTopLevel(inner);
+  if (parts[parts.length - 1] === '') parts.pop();
+  return parts.map(parseStepValue);
 }
 
 /**

@@ -7,7 +7,12 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 
+use super::run_geometry;
+
 /// Sample alignment identity and frames through the shared Rust evaluator.
+///
+/// Runs like every other entry point: GIL released, on the large-stack
+/// geometry pool, with a panic surfaced as `RuntimeError` (EDGE-FFI-12, #7694).
 #[pyfunction]
 #[pyo3(signature = (ifc_bytes, *, spacing_m=1.0, max_samples_per_axis=5001, max_total_samples=100000))]
 pub(super) fn alignment_axes(
@@ -22,8 +27,7 @@ pub(super) fn alignment_axes(
         max_samples_per_axis,
         max_total_samples,
     };
-    let report = py
-        .detach(|| sample_alignment_axes(ifc_bytes, options))
+    let report = run_geometry(py, "alignment sampling", || sample_alignment_axes(ifc_bytes, options))?
         .map_err(|e| PyValueError::new_err(e.to_string()))?;
     let payload =
         serde_json::to_string(&report).map_err(|e| PyValueError::new_err(e.to_string()))?;

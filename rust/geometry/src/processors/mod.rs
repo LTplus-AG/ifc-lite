@@ -25,6 +25,7 @@ mod brep;
 mod csg_primitive;
 mod sphere;
 pub(crate) mod extrusion;
+pub(crate) mod extrusion_params;
 mod extrusion_tapered;
 mod helpers;
 mod sectioned;

@@ -2,17 +2,18 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! The `IfcLocalPlacement.PlacementRelTo` walk is implemented twice — once in
+//! The `IfcLocalPlacement.PlacementRelTo` walk is bounded by a depth cap whose
+//! exceed-branch returns the IDENTITY. It used to be implemented twice, once in
 //! `router::transforms` (mesh path) and once in `profile_extractor` (2D drawing
-//! path) — and both bound it with a depth cap whose exceed-branch returns the
-//! IDENTITY. Two caps over one chain therefore do not disagree loudly: they
-//! disagree by putting the same element in two different places, with no error
-//! on either side. #2873
+//! path), and two caps over one chain did not disagree loudly: they put the same
+//! element in two different places, with no error on either side (#2873). The
+//! extractor now calls the router's walk (PROC-2, #7690).
 //!
-//! These tests pin (a) each site's cap IS `ifc_lite_core::limits::MAX_PLACEMENT_DEPTH`
-//! and (b) the two walks agree on a chain deeper than that cap. (a) alone is not
-//! enough: a private `const MAX_PLACEMENT_DEPTH` shadows the import and nothing
-//! else notices, which is exactly how #2955's mapped-item family failed.
+//! These tests pin (a) the cap IS `ifc_lite_core::limits::MAX_PLACEMENT_DEPTH`
+//! and (b) the mesh path and the 2D drawing path agree on a chain deeper than
+//! that cap. (a) alone is not enough: a private `const MAX_PLACEMENT_DEPTH`
+//! shadows the import and nothing else notices, which is exactly how #2955's
+//! mapped-item family failed.
 
 use super::*;
 use ifc_lite_core::limits::MAX_PLACEMENT_DEPTH;
@@ -41,10 +42,11 @@ FILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n\
     s
 }
 
-/// World X of the leaf of a `links`-long chain, from each of the two walks.
-/// Each walk gets its OWN decoder: the router memoises composed placements on
-/// the decoder, and sharing one would let the first walk's answer be handed to
-/// the second, which is the one thing this test must not do.
+/// World X of the leaf of a `links`-long chain, from the mesh path's walk and
+/// from the 2D drawing path (`extract_profiles` on a wall placed at the leaf).
+/// Each gets its OWN decoder: the router memoises composed placements on the
+/// decoder, and sharing one would let the first walk's answer be handed to the
+/// second, which is the one thing this test must not do.
 fn both_walks(links: usize) -> (f64, f64) {
     let content = deep_placement_chain(links);
     let leaf_id = (10 + links) as u32;
@@ -57,13 +59,19 @@ fn both_walks(links: usize) -> (f64, f64) {
         .expect("router placement transform")
         .column(3)[0];
 
-    let mut extractor_decoder = EntityDecoder::new(&content);
-    let leaf = extractor_decoder
-        .decode_by_id(leaf_id)
-        .expect("leaf placement");
-    let extractor_x =
-        crate::profile_extractor::get_placement_recursive(&leaf, &mut extractor_decoder, 0)
-            .column(3)[0];
+    // A 1 x 1 x 1 extruded wall on the leaf; its profile's world X is the leaf's.
+    let wall = format!(
+        "#3=IFCCARTESIANPOINT((0.,0.));#4=IFCAXIS2PLACEMENT2D(#3,$);\n\
+         #5=IFCRECTANGLEPROFILEDEF(.AREA.,$,#4,1.,1.);#6=IFCDIRECTION((0.,0.,1.));\n\
+         #7=IFCEXTRUDEDAREASOLID(#5,$,#6,1.);#8=IFCSHAPEREPRESENTATION($,'Body','SweptSolid',(#7));\n\
+         #9=IFCPRODUCTDEFINITIONSHAPE($,$,(#8));\n\
+         #5000=IFCWALL('0000000000000000000000',$,$,$,$,#{leaf_id},#9,$,$);\nENDSEC;"
+    );
+    let content = content.replacen("ENDSEC;\nEND-ISO", &format!("{wall}\nEND-ISO"), 1);
+    let profiles = crate::profile_extractor::extract_profiles(&content, 0);
+    assert_eq!(profiles.len(), 1, "the wall yields one drawing profile");
+    // Column-major: the translation is elements 12..15; WebGL X is IFC X.
+    let extractor_x = profiles[0].transform[12] as f64;
 
     (router_x, extractor_x)
 }
@@ -112,7 +120,7 @@ fn both_walks_truncate_a_chain_beyond_the_cap_at_the_same_link() {
     );
 }
 
-/// Site 1 of 2. Sharing the constant removes today's drift; this stops a
+/// Sharing the constant removes today's drift; this stops a
 /// private copy from reintroducing it. #2955 proved the need by mutation: a
 /// local `const` shadowed the import and 800 tests stayed green.
 #[test]
@@ -124,15 +132,6 @@ fn the_router_cap_is_the_shared_cap() {
     );
 }
 
-/// Site 2 of 2. See above.
-#[test]
-fn the_profile_extractor_cap_is_the_shared_cap() {
-    assert_eq!(
-        crate::profile_extractor::MAX_PLACEMENT_DEPTH,
-        MAX_PLACEMENT_DEPTH,
-        "profile_extractor must bound PlacementRelTo with ifc_lite_core::limits::MAX_PLACEMENT_DEPTH"
-    );
-}
 
 /// #3012. The router memoises composed placements per decoder. A walk that hits
 /// the depth cap returns the identity for the node ABOVE the cap, and the node

@@ -27,7 +27,7 @@
 //! final downcast even at national-grid coordinates.
 
 use ifc_lite_geometry::InstanceMeta;
-use ifc_lite_processing::MeshCoordinateSpace;
+use ifc_lite_processing::{MeshCoordinateSpace, MeshFrame};
 
 /// Z-up→Y-up basis as a row-major 4x4 (linear part only; `(x,y,z) → (x, z, -y)`).
 const S_YUP: [f64; 16] = [
@@ -122,15 +122,18 @@ fn baked_basis_yup_inverse(
     rtc_zup: [f64; 3],
     site_zup: Option<&[f64]>,
 ) -> [f64; 16] {
-    let b = ifc_lite_processing::native_to_baked(space, site_zup, rtc_zup);
+    // `T(rtc) · R` is `MeshFrame::world_matrix`, the same restore the scene
+    // root and every other writer carries (#7734); this is it in row-major,
+    // composed with the Y-up basis undone.
+    let w = MeshFrame::from_parts(space, rtc_zup, site_zup).world_matrix();
     #[rustfmt::skip]
-    let r = [
-        b[0], b[4], b[8],  0.0,
-        b[1], b[5], b[9],  0.0,
-        b[2], b[6], b[10], 0.0,
+    let world_row_major = [
+        w[0], w[4], w[8],  w[12],
+        w[1], w[5], w[9],  w[13],
+        w[2], w[6], w[10], w[14],
         0.0,  0.0,  0.0,   1.0,
     ];
-    mat4_mul(&mat4_translation(rtc_zup), &mat4_mul(&r, &S_YUP_INV))
+    mat4_mul(&world_row_major, &S_YUP_INV)
 }
 
 /// Row-major translation matrix.

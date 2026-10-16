@@ -207,7 +207,7 @@ Each exporter takes the raw IFC bytes (or already-produced meshes) and returns a
 
 ```typescript
 exportGlb(content, includeMetadata, hidden, isolated, hiddenTypesCsv, lit?): Uint8Array;
-exportGlbFromMeshes(/* flattened MeshData buffers */): Uint8Array;
+exportGlbFromMeshes(/* flattened MeshData buffers */, worldMatrix?: Float64Array): Uint8Array;
 exportObj(content, includeNormals, hidden, isolated): Uint8Array;
 exportKmzFromMeshes(
   positions, normals, indices, vertexCounts, indexCounts, colors, origins,

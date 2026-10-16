@@ -37,7 +37,7 @@ use ifc_lite_geometry::{
 };
 use ifc_lite_processing::{
     build_entity_index_parallel, process_geometry_filtered_with_quality,
-    process_geometry_streaming_filtered_with_options, MeshCoordinateSpace, MeshData,
+    process_geometry_streaming_filtered_with_options, MeshCoordinateSpace, MeshData, MeshFrame,
     OpeningFilterMode, ProcessingResult, StreamingOptions, TessellationQuality,
 };
 use serde::Serialize;
@@ -49,6 +49,7 @@ mod from_meshes;
 mod matrix;
 
 // The infallible assembler is crate-private (#7675); only its tests name it.
+#[cfg(test)]
 #[cfg(test)]
 use from_meshes::export_glb_from_meshes;
 pub use from_meshes::try_export_glb_from_meshes;
@@ -1035,12 +1036,17 @@ fn view_ok(v: &MeshView) -> bool {
 /// on whether it was large enough to stream. One reader is the cheapest way to
 /// stop that recurring.
 fn site_restore(result: &ProcessingResult) -> (MeshCoordinateSpace, [f64; 3], Option<Vec<f64>>) {
+    frame_parts(result.frame)
+}
+
+/// [`site_restore`] for a frame that did not come off a `ProcessingResult`
+/// (the from-meshes path, handed a restore matrix: #7734).
+pub(super) fn frame_parts(frame: MeshFrame) -> (MeshCoordinateSpace, [f64; 3], Option<Vec<f64>>) {
     // All three read off the one frame the bake used (#7684), the same value
     // OBJ, USD and BOS restore through (`MeshFrame::to_world`). Only the
     // site-local tier removed a rotation, so only there is there one to put
     // back on the scene ROOT; `model_rtc` and `raw_ifc` still need the
     // translation restored, which is why `rtc_zup` returns unconditionally.
-    let frame = result.frame;
     let (x, y, z) = frame.rtc_offset();
     // The tag travels with them. `baked_basis_yup` used to re-derive it from
     // `site_zup.is_some()`, which is this same tier rule written a second time
@@ -1055,32 +1061,26 @@ fn site_restore(result: &ProcessingResult) -> (MeshCoordinateSpace, [f64; 3], Op
 /// someone loading two georeferenced models expects them to line up.
 fn scene_root(
     scene_center: [f64; 3],
+    space: MeshCoordinateSpace,
     rtc_zup: [f64; 3],
     site_zup: Option<&[f64]>,
 ) -> (Option<[f64; 3]>, Option<[f32; 4]>) {
-    let center_nonzero = scene_center.iter().any(|c| c.abs() > 1e-9);
-    let site_yup = site_zup.map(crate::frame::yup_matrix4);
-    let rotation = site_yup.as_ref().and_then(|m| {
-        let identity = (0..3).all(|c| {
-            (0..3).all(|r| {
-                let want = if r == c { 1.0 } else { 0.0 };
-                (m[c * 4 + r] - want).abs() < 1e-9
-            })
-        });
-        (!identity).then(|| quaternion_from_column_major(m))
+    // The restore is `MeshFrame::world_matrix`, the one inverse every writer
+    // shares (#7734); here it is carried into the glTF axes and applied to the
+    // centre the vertices were baked relative to, so the model lands rotated
+    // about the right point.
+    let world = crate::frame::yup_matrix4(&MeshFrame::from_parts(space, rtc_zup, site_zup).world_matrix());
+    let rotated = !(0..3).all(|c| {
+        (0..3).all(|r| world[c * 4 + r] == if r == c { 1.0 } else { 0.0 })
     });
-    // The centre the vertices were baked relative to travels through the site
-    // rotation too, or the model lands rotated about the wrong point.
-    let t = crate::frame::yup_f64(rtc_zup);
-    let c = match (&site_yup, &rotation) {
-        (Some(m), Some(_)) => [
-            m[0] * scene_center[0] + m[4] * scene_center[1] + m[8] * scene_center[2],
-            m[1] * scene_center[0] + m[5] * scene_center[1] + m[9] * scene_center[2],
-            m[2] * scene_center[0] + m[6] * scene_center[1] + m[10] * scene_center[2],
-        ],
-        _ => scene_center,
-    };
-    let out = [t[0] + c[0], t[1] + c[1], t[2] + c[2]];
+    let rotation = rotated.then(|| quaternion_from_column_major(&world));
+    let c = scene_center;
+    let out = [
+        world[0] * c[0] + world[4] * c[1] + world[8] * c[2] + world[12],
+        world[1] * c[0] + world[5] * c[1] + world[9] * c[2] + world[13],
+        world[2] * c[0] + world[6] * c[1] + world[10] * c[2] + world[14],
+    ];
+    let center_nonzero = c.iter().any(|v| v.abs() > 1e-9);
     let translation = (center_nonzero || out.iter().any(|v| v.abs() > 1e-9)).then_some(out);
     (translation, rotation)
 }
@@ -1427,7 +1427,7 @@ fn build_gltf(
 
     // Single root node carries the model-wide centre (omitted when ~zero) and
     // parents every element node, so the scene has exactly one top-level node.
-    let (root_translation, site_rotation) = scene_root(scene_center, rtc_zup, site_zup);
+    let (root_translation, site_rotation) = scene_root(scene_center, space, rtc_zup, site_zup);
     let scene_nodes = if element_node_indices.is_empty() {
         Vec::new()
     } else {
@@ -1857,8 +1857,8 @@ fn export_gltf_streaming_impl(
 
     // Single root node carries the model-wide centre and parents every element node.
     let (root_translation, site_rotation) = {
-        let (_, rtc_zup, site_zup) = site_restore(&meta_result);
-        scene_root(scene_center, rtc_zup, site_zup.as_deref())
+        let (space, rtc_zup, site_zup) = site_restore(&meta_result);
+        scene_root(scene_center, space, rtc_zup, site_zup.as_deref())
     };
     let scene_nodes = if element_node_indices.is_empty() {
         Vec::new()
@@ -2719,7 +2719,7 @@ fn plan_bounded_glb(
     };
 
     let (root_translation, site_rotation) =
-        scene_root(scene_center, rtc_zup, site_zup.as_deref());
+        scene_root(scene_center, space, rtc_zup, site_zup.as_deref());
     let scene_nodes = if element_node_indices.is_empty() {
         Vec::new()
     } else {
@@ -2989,7 +2989,7 @@ fn pack_glb(json_bytes: &[u8], pos: &[u8], norm: &[u8], idx: &[u8]) -> Vec<u8> {
 
 #[cfg(test)]
 #[path = "gltf_tests.rs"]
-mod tests;
+pub(crate) mod tests;
 
 #[cfg(test)]
 #[path = "gltf_conformance_tests.rs"]
@@ -2999,45 +2999,7 @@ mod conformance_tests;
 mod site_placement_tests {
     use super::*;
 
-    /// A site rotated 90 degrees about Z and moved, with one wall.
-    const ROTATED_SITE: &str = "\
-ISO-10303-21;
-HEADER;
-FILE_DESCRIPTION((''),'2;1');
-FILE_NAME('','',(''),(''),'','','');
-FILE_SCHEMA(('IFC4'));
-ENDSEC;
-DATA;
-#1=IFCPROJECT('0project00000000000001',$,'P',$,$,$,$,(#20),#30);
-#30=IFCUNITASSIGNMENT((#31));
-#31=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
-#20=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#21,$);
-#21=IFCAXIS2PLACEMENT3D(#22,$,$);
-#22=IFCCARTESIANPOINT((0.,0.,0.));
-#40=IFCSITE('0site000000000000000001',$,'S',$,$,#41,$,$,.ELEMENT.,$,$,$,$,$);
-#41=IFCLOCALPLACEMENT($,#42);
-#42=IFCAXIS2PLACEMENT3D(#43,#44,#45);
-#43=IFCCARTESIANPOINT((1000.,2000.,0.));
-#44=IFCDIRECTION((0.,0.,1.));
-#45=IFCDIRECTION((0.,1.,0.));
-#50=IFCWALL('0wall000000000000000001',$,'W',$,$,#51,#60,$);
-#51=IFCLOCALPLACEMENT(#41,#52);
-#52=IFCAXIS2PLACEMENT3D(#53,$,$);
-#53=IFCCARTESIANPOINT((0.,0.,0.));
-#60=IFCPRODUCTDEFINITIONSHAPE($,$,(#61));
-#61=IFCSHAPEREPRESENTATION(#20,'Body','SweptSolid',(#62));
-#62=IFCEXTRUDEDAREASOLID(#63,#66,#69,3.);
-#63=IFCRECTANGLEPROFILEDEF(.AREA.,$,#64,4.,0.2);
-#64=IFCAXIS2PLACEMENT2D(#65,$);
-#65=IFCCARTESIANPOINT((2.,0.1));
-#66=IFCAXIS2PLACEMENT3D(#67,$,$);
-#67=IFCCARTESIANPOINT((0.,0.,0.));
-#69=IFCDIRECTION((0.,0.,1.));
-#70=IFCRELAGGREGATES('0agg0000000000000000001',$,$,$,#1,(#40));
-#71=IFCRELCONTAINEDINSPATIALSTRUCTURE('0con0000000000000000001',$,$,$,(#50),#40);
-ENDSEC;
-END-ISO-10303-21;
-";
+    use crate::frame_fixtures::ROTATED_SITE;
 
     /// The scene root's TRS, read back out of a glTF JSON document.
     fn root_trs(json: &[u8]) -> (Option<Vec<f64>>, Option<Vec<f64>>) {

@@ -69,6 +69,31 @@ pub(crate) fn yup_matrix4(m: &[f64]) -> [f64; 16] {
     out
 }
 
+/// The frame a from-meshes writer was told its meshes were baked in: the
+/// column-major 4x4 `world = M · baked` (IFC Z-up, metres) as a
+/// [`MeshFrame`], so it restores through the same `world_matrix` / `to_world`
+/// arithmetic as a `ProcessingResult` does (#7734). `None` is an unshifted
+/// model. Refuses anything that is not 16 finite numbers: a NaN here would
+/// move the whole model, and glTF JSON has no spelling for it.
+pub(crate) fn mesh_frame_from_world_matrix(
+    world: Option<&[f64]>,
+) -> Result<ifc_lite_processing::MeshFrame, crate::error::ExportError> {
+    use ifc_lite_processing::MeshFrame;
+    let Some(m) = world else {
+        return Ok(MeshFrame::RawIfc);
+    };
+    if m.len() != 16 || m.iter().any(|v| !v.is_finite()) {
+        return Err(crate::error::ExportError::MalformedMeshInput {
+            detail: format!(
+                "`world_matrix` must be 16 finite numbers (a column-major 4x4); got {} values{}",
+                m.len(),
+                if m.iter().any(|v| !v.is_finite()) { " including a non-finite one" } else { "" }
+            ),
+        });
+    }
+    Ok(MeshFrame::from_world_matrix(m))
+}
+
 /// Reusable owned buffers for the streaming Y-up conversion. The streaming/bounded
 /// export passes convert one mesh at a time and drop it; reusing a single scratch across
 /// meshes (clear + refill, capacity persists) avoids the 3 fresh heap allocations per

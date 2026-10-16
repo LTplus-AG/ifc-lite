@@ -221,3 +221,30 @@ fn raw_ifc_to_world_preserves_negative_zero() {
         assert_eq!(got.map(f64::to_bits), p.map(f64::to_bits));
     }
 }
+
+/// #7734: a consumer handed only the restore matrix (the viewer's meshes carry
+/// no `ProcessingResult`) rebuilds a frame that restores the same points, and
+/// `from_parts` agrees with it, so the glTF assembler's tuple and a wire
+/// matrix are one frame, not two.
+#[test]
+fn a_frame_rebuilt_from_its_matrix_or_parts_restores_identically() {
+    let frames = [
+        MeshFrame::select(Some(&site_at_yawed((2_600_000.0, 1_200_000.0, 500.0), 33.0)), None),
+        MeshFrame::select(Some(&site_at((2_600_000.0, 1_200_000.0, 500.0))), None),
+        MeshFrame::select(None, Some(LARGE_FAR)),
+        MeshFrame::RawIfc,
+    ];
+    let p = [1.5, -2.25, 3.0];
+    for frame in frames {
+        let m = frame.world_matrix();
+        let from_matrix = MeshFrame::from_world_matrix(&m);
+        assert_eq!(from_matrix.world_matrix().map(f64::to_bits), m.map(f64::to_bits), "{frame:?}");
+        assert_eq!(from_matrix.to_world(p).map(f64::to_bits), frame.to_world(p).map(f64::to_bits));
+        let (x, y, z) = frame.rtc_offset();
+        let site = frame.site_placement();
+        let from_parts = MeshFrame::from_parts(frame.coordinate_space(), [x, y, z], site.as_ref().map(|s| &s[..]));
+        assert_eq!(from_parts.world_matrix().map(f64::to_bits), m.map(f64::to_bits), "{frame:?}");
+    }
+    // An identity matrix needs no restore.
+    assert_eq!(MeshFrame::from_world_matrix(&MeshFrame::RawIfc.world_matrix()), MeshFrame::RawIfc);
+}

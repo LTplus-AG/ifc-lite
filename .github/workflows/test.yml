@@ -1015,6 +1015,16 @@ jobs:
           # main, ordinary whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/processing/tests/issue_7678_nonfinite_input.rs | grep -Fxq 'rust/processing/tests/issue_7678_nonfinite_input.rs'; then
             oracle_args+=(--mutation tests/evidence/input-admission-7678/admission.oracle.patch)
+          # #7695: the empty-export rule changes five public return types to
+          # Result (export_obj, export_usd, export_gltf_streaming...), so a
+          # whole-change revert stops the changed Rust tests compiling
+          # (INCONCLUSIVE). Keep the types and disable ONLY the rule: the shared
+          # require_render_geometry never refuses, countUsdMeshes counts the
+          # /World Xform, and the CLI, MCP and viewer stop mapping
+          # NO_RENDER_GEOMETRY to their messages. Once empty_export_parity.rs is
+          # on main, ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/export/tests/empty_export_parity.rs | grep -Fxq 'rust/export/tests/empty_export_parity.rs'; then
+            oracle_args+=(--mutation tests/evidence/empty-exports-7695/refusal.oracle.patch)
           # #7737: keep the new semver-baseline module loadable (a whole-change
           # revert deletes it under the gate's tests) while removing ONLY the
           # rebuild-from-tag fallback and the NO_VERDICT output excerpt; the

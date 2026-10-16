@@ -1627,13 +1627,11 @@ fn with_result_views<R>(
     f(&views, space, rtc_zup, site_zup.as_deref())
 }
 
-/// The one rule both GLB assemblers refuse on: a build with no mesh is not a
-/// valid GLB (see [`try_export_glb`]), so it is an error rather than an artifact.
+/// Every glTF assembler (both GLB paths and the multi-buffer glTF) refuses
+/// on the crate's one empty-export rule: a build with no mesh is not a valid
+/// glTF (see [`try_export_glb`]), so it is an error rather than an artifact.
 fn refuse_empty(stats: &GltfStats) -> Result<(), ExportError> {
-    if stats.meshes == 0 {
-        return Err(ExportError::NoRenderGeometry);
-    }
-    Ok(())
+    crate::error::require_render_geometry(stats.meshes)
 }
 
 /// The in-memory assembler behind both `try_export_glb_with_stats*` entry points.
@@ -1668,12 +1666,18 @@ pub struct GltfBuffer {
 /// buffer is handed to `sink` and dropped, so peak memory is ~one chunk, not the whole
 /// model — this is the path for models too large for a single GLB (`try_export_glb*` stays
 /// the smaller-model path). Compose with `GltfOptions.quantize` to shrink first.
+///
+/// Fail-closed like every GLB entry point: an empty visible mesh set is
+/// [`ExportError::NoRenderGeometry`], never a `.gltf` with empty `meshes`,
+/// `nodes` and `buffers` (glTF schema `minItems: 1`). Nothing reaches `sink`
+/// in that case, because an empty chunk is never flushed (#7695,
+/// EXPORT-GEOM-9).
 pub fn export_gltf_streaming(
     content: &[u8],
     opts: &GltfOptions,
     chunk_cap: usize,
     sink: impl FnMut(GltfBuffer),
-) -> Vec<u8> {
+) -> Result<Vec<u8>, ExportError> {
     export_gltf_streaming_impl(content, opts, None, chunk_cap, sink)
 }
 
@@ -1690,7 +1694,7 @@ pub fn export_gltf_streaming_with_index(
     index: Arc<EntityIndex>,
     chunk_cap: usize,
     sink: impl FnMut(GltfBuffer),
-) -> Vec<u8> {
+) -> Result<Vec<u8>, ExportError> {
     export_gltf_streaming_impl(content, opts, Some(index), chunk_cap, sink)
 }
 
@@ -1700,7 +1704,7 @@ fn export_gltf_streaming_impl(
     index: Option<Arc<EntityIndex>>,
     chunk_cap: usize,
     mut sink: impl FnMut(GltfBuffer),
-) -> Vec<u8> {
+) -> Result<Vec<u8>, ExportError> {
     // Bounded memory: drive the streaming geometry API with `retain_emitted_meshes: false`
     // so meshes are never accumulated — peak input is one batch, not the whole model.
     // Two passes over the same (deterministic) mesh stream:
@@ -1848,6 +1852,8 @@ fn export_gltf_streaming_impl(
         |_| {},
     );
     stats.materials = materials.len();
+    // Decided before the final flush, so a refused export hands `sink` nothing.
+    refuse_empty(&stats)?;
 
     // Single root node carries the model-wide centre and parents every element node.
     let (root_translation, site_rotation) = {
@@ -1901,7 +1907,7 @@ fn export_gltf_streaming_impl(
         },
         extensions_required: opts.quantize.then(|| vec!["KHR_mesh_quantization"]),
     };
-    serde_json::to_vec(&gltf).expect("glTF JSON serializes")
+    Ok(serde_json::to_vec(&gltf).expect("glTF JSON serializes"))
 }
 
 // ── Bounded-memory single-GLB export ─────────────────────────────────────────
@@ -3069,7 +3075,7 @@ END-ISO-10303-21;
         let bounded = root_trs(&glb_json(
             &try_export_glb_streaming_bounded(bytes, &opts).expect("has geometry").0,
         ));
-        let streaming = root_trs(&export_gltf_streaming(bytes, &opts, usize::MAX, |_| {}));
+        let streaming = root_trs(&export_gltf_streaming(bytes, &opts, usize::MAX, |_| {}).expect("the fixture has render geometry"));
 
         assert_eq!(plain, bounded, "bounded disagrees with plain");
         assert_eq!(plain, streaming, "streaming disagrees with plain");

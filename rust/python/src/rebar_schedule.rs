@@ -175,7 +175,7 @@ mod tests {
         metrics.total_length = f64::INFINITY;
         assert_eq!(
             non_finite(&schedule),
-            "rows.{}.sweeps[0].directrix_metrics.total_length is non-finite"
+            "rows[125].sweeps[0].directrix_metrics.total_length is non-finite"
         );
 
         let metrics = schedule.rows.get_mut(&125).unwrap().sweeps[0].directrix_metrics.as_mut().unwrap();
@@ -183,7 +183,7 @@ mod tests {
         metrics.segments[0].length = f64::NAN;
         assert_eq!(
             non_finite(&schedule),
-            "rows.{}.sweeps[0].directrix_metrics.segments[0].length is non-finite"
+            "rows[125].sweeps[0].directrix_metrics.segments[0].length is non-finite"
         );
 
         let metrics = schedule.rows.get_mut(&125).unwrap().sweeps[0].directrix_metrics.as_mut().unwrap();
@@ -193,7 +193,7 @@ mod tests {
         arc.bend_angle = Some(f64::NEG_INFINITY);
         assert_eq!(
             non_finite(&schedule),
-            format!("rows.{{}}.sweeps[0].directrix_metrics.segments[{arc_index}].bend_angle is non-finite")
+            format!("rows[125].sweeps[0].directrix_metrics.segments[{arc_index}].bend_angle is non-finite")
         );
     }
 
@@ -216,15 +216,15 @@ mod tests {
         } else {
             panic!("fixture CrossSectionArea must be a measure");
         }
-        assert_eq!(non_finite(&schedule), "rows.{}.authored.{}.value.value_si is non-finite");
+        assert_eq!(non_finite(&schedule), "rows[125].authored[CrossSectionArea].value.value_si is non-finite");
         schedule = build_rebar_schedule(ifc, None, &options).unwrap();
 
         schedule.rows.get_mut(&125).unwrap().sweeps[0].checks.findings[0].measured = f64::NEG_INFINITY;
-        assert_eq!(non_finite(&schedule), "rows.{}.sweeps[0].checks.findings[0].measured is non-finite");
+        assert_eq!(non_finite(&schedule), "rows[125].sweeps[0].checks.findings[0].measured is non-finite");
         let finding = &mut schedule.rows.get_mut(&125).unwrap().sweeps[0].checks.findings[0];
         finding.measured = 0.322;
         finding.threshold = f64::INFINITY;
-        assert_eq!(non_finite(&schedule), "rows.{}.sweeps[0].checks.findings[0].threshold is non-finite");
+        assert_eq!(non_finite(&schedule), "rows[125].sweeps[0].checks.findings[0].threshold is non-finite");
     }
 
     #[test]
@@ -239,13 +239,13 @@ mod tests {
         schedule.rows.get_mut(&125).unwrap().sweeps[0]
             .preflight.as_mut().unwrap().comparisons.as_mut().unwrap()[0].measured_m = f64::INFINITY;
         assert_eq!(non_finite(&schedule),
-            "rows.{}.sweeps[0].preflight.comparisons[0].measured_m is non-finite");
+            "rows[125].sweeps[0].preflight.comparisons[0].measured_m is non-finite");
 
         let comparison = &mut schedule.rows.get_mut(&125).unwrap().sweeps[0]
             .preflight.as_mut().unwrap().comparisons.as_mut().unwrap()[0];
         comparison.measured_m = 0.0;
         comparison.limit_m = f64::NAN;
         assert_eq!(non_finite(&schedule),
-            "rows.{}.sweeps[0].preflight.comparisons[0].limit_m is non-finite");
+            "rows[125].sweeps[0].preflight.comparisons[0].limit_m is non-finite");
     }
 }

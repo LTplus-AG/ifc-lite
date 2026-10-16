@@ -187,6 +187,30 @@ pub(crate) fn check_index_blocks(
     Ok(())
 }
 
+/// `MeshData::geometry_class` of an instanced type-product map: the type-library
+/// shape, whose occurrences already draw the real geometry. Every exporter skips it.
+pub(crate) const GEOM_CLASS_INSTANCED_TYPE: u8 = 2;
+
+/// The mesh gate the from-BYTES writers (OBJ, USD, BOS) share over
+/// `process_geometry` output: not the instanced type-library shape, whole
+/// triangles over at least three vertices, and every origin, position and
+/// (present) normal finite. A writer that needs more (USD: normals and an
+/// in-range index for every corner; BOS: row-aligned normals) adds it after.
+///
+/// Finite matters because each of them folds `origin` into, or authors it
+/// beside, every vertex: one non-finite origin poisons the whole mesh, and
+/// none of their number formats reads a non-finite value back (#7684).
+pub(crate) fn is_exportable(m: &ifc_lite_processing::MeshData) -> bool {
+    m.geometry_class != GEOM_CLASS_INSTANCED_TYPE
+        && m.indices.len() >= 3
+        && m.indices.len().is_multiple_of(3)
+        && m.positions.len() >= 9
+        && m.positions.len().is_multiple_of(3)
+        && m.origin.iter().all(|v| v.is_finite())
+        && m.positions.iter().all(|v| v.is_finite())
+        && (m.normals.len() != m.positions.len() || m.normals.iter().all(|v| v.is_finite()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

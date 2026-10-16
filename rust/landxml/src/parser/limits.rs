@@ -24,6 +24,19 @@ impl Parser<'_> {
         Ok(())
     }
 
+    /// Charge a retained element path. A foreign-namespace record keeps its
+    /// full joined ancestor path (up to `max_depth` x `max_name_bytes`, ~16 KB),
+    /// so without a budget 44 KB of input retained 32 MB of paths (#7675,
+    /// EDGE-LXPARSE-4).
+    pub(super) fn reserve_source_path(&mut self, bytes: usize) -> Result<()> {
+        self.source_path_bytes = self
+            .source_path_bytes
+            .checked_add(bytes)
+            .filter(|&total| total <= self.limits.max_source_path_bytes)
+            .ok_or_else(|| error(Code::LimitExceeded, "retained source path limit exceeded"))?;
+        Ok(())
+    }
+
     pub(super) fn check_cancel_and_work(&mut self, added: usize) -> Result<()> {
         if self
             .cancelled

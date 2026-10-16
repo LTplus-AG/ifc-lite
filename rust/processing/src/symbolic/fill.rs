@@ -23,7 +23,7 @@ pub(super) fn extract_annotation_fill_area(
     express_id: u32,
     ifc_type: &str,
     rep_identifier: &str,
-    unit_scale: f32,
+    unit_scale: f64,
     transform: &Transform2D,
     rebase: RenderFrameRebase,
     styled_items: &HashMap<u32, Vec<u32>>,
@@ -75,7 +75,7 @@ pub(super) fn extract_annotation_fill_area(
 fn extract_curve_ring(
     curve_id: u32,
     decoder: &mut EntityDecoder,
-    unit_scale: f32,
+    unit_scale: f64,
     transform: &Transform2D,
     rebase: RenderFrameRebase,
 ) -> Vec<f32> {
@@ -94,8 +94,8 @@ fn extract_curve_ring(
                     continue;
                 }
                 let Some(coords) = pe.get(0).and_then(|a| a.as_list()) else { continue };
-                let x = coords.first().and_then(|v| v.as_float()).unwrap_or(0.0) as f32 * unit_scale;
-                let y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0) as f32 * unit_scale;
+                let x = coords.first().and_then(|v| v.as_float()).unwrap_or(0.0) * unit_scale;
+                let y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0) * unit_scale;
                 let (wx, wy) = transform.transform_point(x, y);
                 let (px, py) = rebase.plan(wx, wy);
                 push_finite_point(&mut out, px, py);
@@ -110,8 +110,8 @@ fn extract_curve_ring(
             let mut out = Vec::with_capacity(coord_list.len() * 2);
             for tuple in coord_list {
                 let Some(coords) = tuple.as_list() else { continue };
-                let x = coords.first().and_then(|v| v.as_float()).unwrap_or(0.0) as f32 * unit_scale;
-                let y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0) as f32 * unit_scale;
+                let x = coords.first().and_then(|v| v.as_float()).unwrap_or(0.0) * unit_scale;
+                let y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0) * unit_scale;
                 let (wx, wy) = transform.transform_point(x, y);
                 let (px, py) = rebase.plan(wx, wy);
                 push_finite_point(&mut out, px, py);
@@ -123,7 +123,7 @@ fn extract_curve_ring(
             let segments = if curve.ifc_type == IfcType::IfcCircle && conic.semi_a < 0.05 { 32 } else { 64 };
             let mut out = Vec::with_capacity(segments * 2);
             for i in 0..segments {
-                let theta = (i as f32) * std::f32::consts::TAU / (segments as f32);
+                let theta = (i as f64) * std::f64::consts::TAU / (segments as f64);
                 let (lx, ly) = conic.point_at(theta);
                 let (wx, wy) = transform.transform_point(lx, ly);
                 let (px, py) = rebase.plan(wx, wy);
@@ -138,7 +138,7 @@ fn extract_curve_ring(
 /// Peek at the boundary curve's first 3D point Z so a fill / line can carry
 /// its elevation forward. Returns 0.0 for 2D-only curves and NaN (unresolved,
 /// serialised as `null`) for a conic whose mandatory `Position` is missing.
-fn sample_curve_world_y(curve_id: u32, decoder: &mut EntityDecoder, unit_scale: f32) -> f32 {
+fn sample_curve_world_y(curve_id: u32, decoder: &mut EntityDecoder, unit_scale: f64) -> f64 {
     let Ok(curve) = decoder.decode_by_id(curve_id) else { return 0.0 };
     match curve.ifc_type {
         IfcType::IfcPolyline => {
@@ -149,7 +149,7 @@ fn sample_curve_world_y(curve_id: u32, decoder: &mut EntityDecoder, unit_scale: 
                     continue;
                 }
                 if let Some(coords) = pe.get(0).and_then(|a| a.as_list()) {
-                    let z = coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0) as f32 * unit_scale;
+                    let z = coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0) * unit_scale;
                     return z;
                 }
             }
@@ -162,7 +162,7 @@ fn sample_curve_world_y(curve_id: u32, decoder: &mut EntityDecoder, unit_scale: 
             let Some(coord_list_attr) = points_entity.get(0) else { return 0.0 };
             let Some(coord_list) = coord_list_attr.as_list() else { return 0.0 };
             if let Some(first) = coord_list.first().and_then(|v| v.as_list()) {
-                return first.get(2).and_then(|v| v.as_float()).unwrap_or(0.0) as f32 * unit_scale;
+                return first.get(2).and_then(|v| v.as_float()).unwrap_or(0.0) * unit_scale;
             }
             0.0
         }

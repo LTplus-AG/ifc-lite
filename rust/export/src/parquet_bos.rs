@@ -28,7 +28,7 @@ use serde_json::json;
 use zip::write::SimpleFileOptions;
 use zip::CompressionMethod;
 
-use ifc_lite_processing::{process_geometry, MeshData};
+use ifc_lite_processing::{process_geometry, MeshData, MeshFrame};
 
 use crate::error::ExportError;
 use crate::model::{build_export_model, fmt_num, ExportModel};
@@ -157,9 +157,11 @@ fn quantities_table(model: &ExportModel) -> Result<Vec<u8>, ExportError> {
 /// (vertex_table, index_table, mesh_table, vertex_count, triangle_count) parquet bytes.
 type GeometryTables = (Vec<u8>, Vec<u8>, Vec<u8>, usize, usize);
 
-/// Returns the geometry parquet tables plus vertex/triangle totals.
-fn geometry_tables(content: &[u8]) -> Result<GeometryTables, ExportError> {
-    geometry_tables_from_meshes(&process_geometry(content).meshes)
+/// Returns the geometry parquet tables plus vertex/triangle totals, and the
+/// frame their vertices are in.
+fn geometry_tables(content: &[u8]) -> Result<(GeometryTables, MeshFrame), ExportError> {
+    let result = process_geometry(content);
+    Ok((geometry_tables_from_meshes(&result.meshes)?, result.frame))
 }
 
 /// The three geometry tables over an already-meshed model.
@@ -170,7 +172,10 @@ fn geometry_tables(content: &[u8]) -> Result<GeometryTables, ExportError> {
 /// ara3d/bim-open-schema), which a reader of either file relies on:
 ///
 /// - `VertexBuffer` is every kept mesh's vertices concatenated, one row per
-///   vertex, world position (origin folded in) and normal.
+///   vertex, position (origin folded in, in f64, then cast) and normal. The
+///   columns are f32, so positions stay in the frame the pipeline baked in,
+///   where they are small: IFC world at 2,600 km would quantise to 0.25 m.
+///   `Metadata.json` carries that frame's f64 `worldTransform` (#7684).
 /// - `IndexBuffer` is one row per TRIANGLE (`Index0..2`), and the values are
 ///   MESH-LOCAL vertex indices. Upstream: "Local mesh face-corner indices. If
 ///   you use the single shared vertex buffer you need to add the mesh vertex
@@ -184,7 +189,9 @@ fn geometry_tables(content: &[u8]) -> Result<GeometryTables, ExportError> {
 ///
 /// A mesh is kept whole or not at all: one with `normals.len() !=
 /// positions.len()` is skipped (as `gltf.rs`'s visibility filter skips it), so
-/// the position and normal columns stay row-aligned.
+/// the position and normal columns stay row-aligned, and so is one with a
+/// non-finite origin, position or normal (the gate OBJ and USD apply), which
+/// would otherwise be written straight into the columns.
 fn geometry_tables_from_meshes(meshes: &[MeshData]) -> Result<GeometryTables, ExportError> {
     let mut x = Vec::new();
     let mut y = Vec::new();
@@ -204,18 +211,16 @@ fn geometry_tables_from_meshes(meshes: &[MeshData]) -> Result<GeometryTables, Ex
     let mut vertex_offset: u32 = 0;
     let mut index_offset: u32 = 0;
     for mesh in meshes {
-        if mesh.geometry_class == 2
-            || mesh.indices.is_empty()
-            || mesh.normals.len() != mesh.positions.len()
-        {
+        if !crate::mesh_input::is_exportable(mesh) || mesh.normals.len() != mesh.positions.len() {
             continue;
         }
         let nverts = (mesh.positions.len() / 3) as u32;
         let [ox, oy, oz] = mesh.origin;
         for v in mesh.positions.chunks_exact(3) {
-            x.push(v[0] as f64 as f32 + ox as f32);
-            y.push(v[1] as f64 as f32 + oy as f32);
-            z.push(v[2] as f64 as f32 + oz as f32);
+            // One rounding: the add in f64, then the column's f32.
+            x.push((v[0] as f64 + ox) as f32);
+            y.push((v[1] as f64 + oy) as f32);
+            z.push((v[2] as f64 + oz) as f32);
         }
         for nrm in mesh.normals.chunks_exact(3) {
             nx.push(nrm[0]);
@@ -299,17 +304,18 @@ pub fn export_bos(content: &[u8], opts: &ParquetBosOptions) -> Result<Vec<u8>, E
     add(&mut zip, "Properties.parquet", &properties_table(&model)?)?;
     add(&mut zip, "Quantities.parquet", &quantities_table(&model)?)?;
 
-    let (mut vcount, mut tricount) = (0usize, 0usize);
+    let (mut vcount, mut tricount, mut frame) = (0usize, 0usize, None);
     if opts.include_geometry {
-        let (vb, ib, mb, vc, tc) = geometry_tables(content)?;
+        let ((vb, ib, mb, vc, tc), baked_in) = geometry_tables(content)?;
         add(&mut zip, "VertexBuffer.parquet", &vb)?;
         add(&mut zip, "IndexBuffer.parquet", &ib)?;
         add(&mut zip, "Meshes.parquet", &mb)?;
         vcount = vc;
         tricount = tc;
+        frame = Some(baked_in);
     }
 
-    let meta = json!({
+    let mut meta = json!({
         "format": "ara3d-bos",
         "generator": "IFC-Lite",
         "entityCount": model.entities.len(),
@@ -321,6 +327,13 @@ pub fn export_bos(content: &[u8], opts: &ParquetBosOptions) -> Result<Vec<u8>, E
             json!(["Entities", "Properties", "Quantities"])
         },
     });
+    if let Some(frame) = frame {
+        // The vertex columns are in the baked frame; this is the way back to
+        // IFC world (Z-up, metres): `world = M · [x, y, z, 1]`, M column-major
+        // and f64, the same restore the GLB root and the USD `/World` carry.
+        meta["meshCoordinateSpace"] = json!(frame.coordinate_space());
+        meta["worldTransform"] = json!(frame.world_matrix());
+    }
     let meta_bytes = serde_json::to_string_pretty(&meta).map_err(ser_err("metadata json"))?;
     add(&mut zip, "Metadata.json", meta_bytes.as_bytes())?;
 

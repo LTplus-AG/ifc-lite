@@ -69,6 +69,40 @@ fn translation_is_nonidentity(t: (f64, f64, f64)) -> bool {
         || t.2.abs() > PLACEMENT_IDENTITY_EPSILON
 }
 
+/// The arithmetic behind [`MeshFrame::to_world`], for a caller that holds
+/// the frame as its parts: `R · p + rtc`, all f64.
+///
+/// `R` is the site placement's rotation block, applied under exactly the
+/// [`rotation_is_identity`] condition the bake removed it under
+/// (`processor::site_local`), so a restore can never put back a rotation
+/// that was not taken out. `site_rotation` must be `None` outside the
+/// `site_local` tier ([`MeshFrame::site_placement`] says which).
+#[inline]
+pub(crate) fn frame_point_to_world(p: [f64; 3], rtc: [f64; 3], site_rotation: Option<&[f64]>) -> [f64; 3] {
+    restoring_rotation(site_rotation).map_or_else(
+        || [p[0] + rtc[0], p[1] + rtc[1], p[2] + rtc[2]],
+        |r| rotate_and_translate(r, p, rtc),
+    )
+}
+
+/// The rotation block a restore applies, or `None` when the bake removed
+/// none. Decided once per call by a caller that maps many points, so the
+/// per-vertex path is [`rotate_and_translate`] with no re-check.
+#[inline]
+pub(crate) fn restoring_rotation(site_rotation: Option<&[f64]>) -> Option<&[f64]> {
+    site_rotation.filter(|r| r.len() >= 16 && !rotation_is_identity(r))
+}
+
+/// `R · p + rtc` for a rotation already vetted by [`restoring_rotation`].
+#[inline]
+pub(crate) fn rotate_and_translate(r: &[f64], p: [f64; 3], rtc: [f64; 3]) -> [f64; 3] {
+    [
+        r[0] * p[0] + r[4] * p[1] + r[8] * p[2] + rtc[0],
+        r[1] * p[0] + r[5] * p[1] + r[9] * p[2] + rtc[1],
+        r[2] * p[0] + r[6] * p[1] + r[10] * p[2] + rtc[2],
+    ]
+}
+
 /// The frame a pipeline meshes into: the translation it subtracts and, in the
 /// site tier, the rotation it removes.
 ///
@@ -182,6 +216,91 @@ impl MeshFrame {
         }
     }
 
+    /// The site placement whose rotation this frame removed: `Some` only in
+    /// the [`MeshFrame::SiteLocal`] tier (column-major 4x4, metres).
+    ///
+    /// This is the `site_rotation` argument
+    /// [`crate::build_geometry_data_export`] takes. Callers read it here
+    /// instead of re-deriving "only the site tier removed a rotation" from
+    /// `ProcessingResult::mesh_coordinate_space` themselves.
+    #[inline]
+    pub fn site_placement(self) -> Option<[f64; 16]> {
+        match self {
+            Self::SiteLocal { placement } => Some(placement),
+            _ => None,
+        }
+    }
+
+    /// A baked DIRECTION (a normal, an axis) back in IFC world axes: `R · v`.
+    ///
+    /// The inverse of [`MeshFrame::rotate_into_frame`], and the identity
+    /// (returning `v` untouched) wherever that is.
+    #[inline]
+    pub fn rotate_out_of_frame(self, v: [f64; 3]) -> [f64; 3] {
+        match self.site_placement() {
+            Some(placement) if !rotation_is_identity(&placement) => {
+                frame_point_to_world(v, [0.0; 3], Some(&placement))
+            }
+            _ => v,
+        }
+    }
+
+    /// A baked POINT back in IFC world (Z-up, metres), in f64: `R · p + t`.
+    ///
+    /// The inverse of [`MeshFrame::rotate_into_frame`]`(world − rtc_offset)`,
+    /// and the ONE way an exporter or overlay that reads baked
+    /// [`crate::MeshData`] gets back to world coordinates (#7684). `p` is the
+    /// baked point as the pipeline stores it, `origin + position`, with the
+    /// f32 position widened BEFORE the add. Never add `rtc_offset` in f32:
+    /// at 2,600 km the f32 step is 0.25 m. [`MeshFrame::RawIfc`] returns `p`
+    /// untouched.
+    #[inline]
+    pub fn to_world(self, p: [f64; 3]) -> [f64; 3] {
+        if !self.needs_shift() {
+            return p;
+        }
+        let (x, y, z) = self.rtc_offset();
+        frame_point_to_world(p, [x, y, z], self.site_placement().as_ref().map(|m| &m[..]))
+    }
+
+    /// [`MeshFrame::to_world`] with the rotation check made once, for a writer
+    /// that maps every vertex of a model. Bit-identical to `to_world`.
+    pub fn world_mapper(self) -> impl Fn([f64; 3]) -> [f64; 3] + Copy {
+        let placement = self.site_placement();
+        let rotation = restoring_rotation(placement.as_ref().map(|m| &m[..])).map(|_| placement.unwrap());
+        let (x, y, z) = self.rtc_offset();
+        let shift = self.needs_shift();
+        move |p| match (&rotation, shift) {
+            (Some(r), _) => rotate_and_translate(r, p, [x, y, z]),
+            (None, true) => [p[0] + x, p[1] + y, p[2] + z],
+            (None, false) => p,
+        }
+    }
+
+    /// [`MeshFrame::rotate_out_of_frame`] with the rotation check made once.
+    /// Bit-identical to it.
+    pub fn direction_mapper(self) -> impl Fn([f64; 3]) -> [f64; 3] + Copy {
+        let placement = self.site_placement();
+        let rotation = restoring_rotation(placement.as_ref().map(|m| &m[..])).map(|_| placement.unwrap());
+        move |v| match &rotation {
+            Some(r) => rotate_and_translate(r, v, [0.0; 3]),
+            None => v,
+        }
+    }
+
+    /// [`MeshFrame::to_world`] as a column-major 4x4, for a writer that
+    /// authors the restore once on a root (USD `/World`, the BOS metadata)
+    /// rather than per vertex. The identity for [`MeshFrame::RawIfc`].
+    pub fn world_matrix(self) -> [f64; 16] {
+        let mut m = [0.0; 16];
+        for (c, axis) in [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]].into_iter().enumerate() {
+            m[c * 4..c * 4 + 3].copy_from_slice(&self.rotate_out_of_frame(axis));
+        }
+        let (x, y, z) = self.rtc_offset();
+        m[12..16].copy_from_slice(&[x, y, z, 1.0]);
+        m
+    }
+
     /// True when the frame subtracts anything at all.
     #[inline]
     pub fn needs_shift(self) -> bool {
@@ -221,180 +340,6 @@ pub enum MeshCoordinateSpace {
     RawIfc,
 }
 
-// Regression tests for #4611 (one frame selection for native and browser).
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    const FAR: (f64, f64, f64) = (2_679_062.0, 1_247_992.0, 532.0);
-    const LARGE_FAR: RtcVerdict = RtcVerdict::Large { anchor: FAR };
-
-    /// A column-major 4x4 site placement: identity rotation, `t` translation.
-    fn site_at(t: (f64, f64, f64)) -> [f64; 16] {
-        let mut m = [0.0; 16];
-        m[0] = 1.0;
-        m[5] = 1.0;
-        m[10] = 1.0;
-        m[15] = 1.0;
-        m[12] = t.0;
-        m[13] = t.1;
-        m[14] = t.2;
-        m
-    }
-
-    /// The same, yawed `degrees` about Z.
-    fn site_at_yawed(t: (f64, f64, f64), degrees: f64) -> [f64; 16] {
-        let (s, c) = degrees.to_radians().sin_cos();
-        let mut m = site_at(t);
-        m[0] = c;
-        m[1] = s;
-        m[4] = -s;
-        m[5] = c;
-        m
-    }
-
-    /// The site tier wins whenever the site is translated at all, and it wins
-    /// over a detected anchor. Deleting the site arm of `select` sends the
-    /// first two cases to `ModelRtc`/`RawIfc`.
-    #[test]
-    fn a_translated_site_selects_site_local_over_everything() {
-        let placement = site_at((500.0, 0.0, 0.0));
-        let frame = MeshFrame::select(Some(&placement), Some(LARGE_FAR));
-        assert_eq!(frame, MeshFrame::SiteLocal { placement });
-        assert_eq!(frame.rtc_offset(), (500.0, 0.0, 0.0));
-        assert!(frame.needs_shift());
-        assert_eq!(frame.coordinate_space(), MeshCoordinateSpace::SiteLocal);
-        let tiny = site_at((0.0, 0.0, 1e-6));
-        assert_eq!(
-            MeshFrame::select(Some(&tiny), None),
-            MeshFrame::SiteLocal { placement: tiny }
-        );
-    }
-
-    /// An identity (or absent) site falls through to the detector's anchor.
-    #[test]
-    fn an_identity_site_falls_through_to_the_detected_anchor() {
-        let identity = site_at((0.0, 0.0, 0.0));
-        let sub_epsilon = site_at((1e-10, -1e-10, 0.0));
-        for site in [None, Some(&identity), Some(&sub_epsilon)] {
-            let frame = MeshFrame::select(site.map(|m| &m[..]), Some(LARGE_FAR));
-            assert_eq!(frame, MeshFrame::ModelRtc { anchor: FAR }, "site {site:?}");
-            assert_eq!(frame.rtc_offset(), FAR);
-            assert!(frame.needs_shift());
-            assert_eq!(frame.coordinate_space(), MeshCoordinateSpace::ModelRtc);
-        }
-    }
-
-    /// "Detector found nothing" and "detector found only small coordinates"
-    /// both mean raw IFC, with a zero offset and no shift. A frame that said
-    /// `needs_shift` with a zero offset cannot be built.
-    #[test]
-    fn no_site_and_no_anchor_is_raw_ifc_with_nothing_to_subtract() {
-        for detected in [None, Some(RtcVerdict::Small)] {
-            let frame = MeshFrame::select(None, detected);
-            assert_eq!(frame, MeshFrame::RawIfc, "detected {detected:?}");
-            assert_eq!(frame.rtc_offset(), (0.0, 0.0, 0.0));
-            assert!(!frame.needs_shift());
-            assert_eq!(frame.coordinate_space(), MeshCoordinateSpace::RawIfc);
-        }
-    }
-
-    /// #4643 (gate lowered to 1 km by #4934): a `Large` verdict whose anchor
-    /// is inside the gate (bbox centre for a 200 m to 1.5 km extent) is still
-    /// subtracted; judging the anchor's own magnitude cast 1.5 km straight to
-    /// f32. Origin-anchored `Large` has nothing to subtract; re-gating the
-    /// anchor arm on `coord_is_large` fails the loop.
-    #[test]
-    fn a_large_verdict_with_a_sub_threshold_anchor_is_subtracted() {
-        for anchor in [(-500.0, 0.0, 0.0), (850.0, 0.0, 0.0), (0.0, 0.0, 1_000.0)] {
-            let frame = MeshFrame::select(None, Some(RtcVerdict::Large { anchor }));
-            assert_eq!(frame, MeshFrame::ModelRtc { anchor }, "{anchor:?}");
-            assert!(frame.needs_shift());
-        }
-        let at_origin = RtcVerdict::Large { anchor: (0.0, 0.0, 0.0) };
-        assert_eq!(MeshFrame::select(None, Some(at_origin)), MeshFrame::RawIfc);
-    }
-
-    /// Why `ifc_lite_ffi::normalize_to_site_local` could be deleted: it
-    /// subtracted the site translation from `raw_ifc` output whenever the site
-    /// sat more than 1 km from the origin, and that input cannot be produced.
-    /// Any site translation past the identity epsilon selects `SiteLocal`, so
-    /// `RawIfc` with a translated site is not a state the selector can emit.
-    /// Removing the `translation_is_nonidentity` filter on the site arm, or
-    /// the site arm itself, fails this.
-    #[test]
-    fn raw_ifc_is_never_selected_beside_a_translated_site() {
-        for translation in [
-            (1e-8, 0.0, 0.0),
-            (999.0, 0.0, 0.0),
-            (1_000.5, 0.0, 0.0),
-            (0.0, -1_500.0, 0.0),
-            FAR,
-        ] {
-            let placement = site_at(translation);
-            for detected in [None, Some(RtcVerdict::Small), Some(LARGE_FAR)] {
-                let frame = MeshFrame::select(Some(&placement), detected);
-                assert_ne!(frame, MeshFrame::RawIfc, "{translation:?} / {detected:?}");
-                assert_eq!(frame.coordinate_space(), MeshCoordinateSpace::SiteLocal);
-            }
-        }
-        assert_eq!(
-            MeshFrame::select(Some(&site_at((0.0, 0.0, 0.0))), None),
-            MeshFrame::RawIfc
-        );
-    }
-
-    /// The rotation half of the frame (#4706). `rotate_into_frame` must be
-    /// `Rᵀ` — the SAME inverse rotation `convert_mesh_to_site_local` applies
-    /// to the vertices — for the site tier, and the identity for the other
-    /// two, which remove no rotation. A site yawed 30 degrees maps its own
-    /// +X axis, `(cos30, sin30, 0)` in world, back onto `(1, 0, 0)`.
-    /// Transposing the matrix here (reading rows instead of columns) turns
-    /// the yaw the wrong way and fails on the sign of the second component.
-    #[test]
-    fn the_site_tier_undoes_its_own_yaw_and_the_others_rotate_nothing() {
-        let yawed = MeshFrame::select(Some(&site_at_yawed((500.0, 300.0, 0.0), 30.0)), None);
-        let (s, c) = 30.0f64.to_radians().sin_cos();
-        let back = yawed.rotate_into_frame([c, s, 0.0]);
-        for (i, want) in [1.0, 0.0, 0.0].iter().enumerate() {
-            assert!((back[i] - want).abs() < 1e-12, "axis {i}: {back:?}");
-        }
-        // A world point on the site origin lands ON the frame origin.
-        let offset = yawed.rtc_offset();
-        let at_origin = yawed.rotate_into_frame([
-            500.0 - offset.0,
-            300.0 - offset.1,
-            0.0 - offset.2,
-        ]);
-        assert_eq!(at_origin, [0.0, 0.0, 0.0]);
-
-        let v = [3.0, -7.0, 2.0];
-        let translated_only = MeshFrame::select(Some(&site_at((500.0, 300.0, 0.0))), None);
-        assert_eq!(translated_only.rotate_into_frame(v), v);
-        assert_eq!(
-            MeshFrame::select(None, Some(LARGE_FAR)).rotate_into_frame(v),
-            v
-        );
-        assert_eq!(MeshFrame::RawIfc.rotate_into_frame(v), v);
-    }
-
-    /// The wire contract. The three strings are what every consumer (the TS
-    /// server client, the FFI host, the Python binding) reads back, so a
-    /// renamed variant or a changed `rename_all` must fail here, not in a
-    /// downstream deserializer.
-    #[test]
-    fn wire_strings_are_the_documented_snake_case_tags() {
-        for (space, tag) in [
-            (MeshCoordinateSpace::SiteLocal, "\"site_local\""),
-            (MeshCoordinateSpace::ModelRtc, "\"model_rtc\""),
-            (MeshCoordinateSpace::RawIfc, "\"raw_ifc\""),
-        ] {
-            assert_eq!(serde_json::to_string(&space).unwrap(), tag);
-            assert_eq!(
-                serde_json::from_str::<MeshCoordinateSpace>(tag).unwrap(),
-                space
-            );
-        }
-        assert!(serde_json::from_str::<MeshCoordinateSpace>("\"SiteLocal\"").is_err());
-    }
-}
+#[path = "mesh_frame_tests.rs"]
+mod tests;

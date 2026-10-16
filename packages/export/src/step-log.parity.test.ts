@@ -70,6 +70,7 @@ const fixture: {
   cases: Case[];
   mergedCases: MergedCase[];
   refusedCases: RefusedCase[];
+  refusedByBothCases: Array<{ name: string; why: string; source: string; error: string; log: Case['log'] }>;
 } = JSON.parse(readFileSync(fixturePath, 'utf8'));
 
 async function parse(text: string): Promise<IfcDataStore> {
@@ -164,6 +165,22 @@ describe('mutation-log STEP export parity with the Rust writer (#5941)', () => {
     const result = new StepExporter(store, view).export({ schema: 'IFC4', timeStamp: fixture.timeStamp });
     return new TextDecoder().decode(result.content);
   };
+  // #7682: logs BOTH writers refuse; the Rust half errs with the same message
+  // (`step_log_parity.rs::logs_both_writers_refuse_are_refused_with_the_shared_message`).
+  it('carries refusedByBothCases', () => {
+    expect(fixture.refusedByBothCases.length).toBeGreaterThan(0);
+  });
+  for (const c of fixture.refusedByBothCases) {
+    it(`refused by both writers: ${c.name}`, async () => {
+      const store = await parse(`${fixture.sources[c.source].join('\n')}\n`);
+      const view = new MutablePropertyView(null, 'model');
+      configure(view, store);
+      for (const entity of c.log.newEntities ?? []) view.restoreNewEntity(entity);
+      view.importMutations(JSON.stringify(c.log));
+      expect(() => new StepExporter(store, view).export({ schema: 'IFC4', timeStamp: fixture.timeStamp })).toThrow(c.error);
+    });
+  }
+
   for (const c of fixture.refusedCases) {
     it(`refused by the Rust writer, skipped by the replay: ${c.name}`, async () => {
       const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});

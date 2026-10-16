@@ -34,9 +34,11 @@ pub(crate) struct Pass<'s, 'a> {
     pub(crate) rewritten_lines: Vec<(u32, String)>,
     pub(crate) type_owned_names: Vec<(u32, Vec<String>)>,
     pub(crate) type_owned_ids: HashMap<u32, Vec<u32>>,
-    pub(crate) generated: Vec<String>,
-    /// Records the georeferencing edits create, in allocation order.
-    pub(crate) georef_lines: Vec<String>,
+    /// Generated property and quantity set records, `(id, line)`, in the
+    /// source schema's layout: the writer converts them like any other.
+    pub(crate) generated: Vec<(u32, String)>,
+    /// Records the georeferencing edits create, `(id, line)`, in allocation order.
+    pub(crate) georef_lines: Vec<(u32, String)>,
     /// A created type object's repointed `HasPropertySets`, applied as a slot
     /// override when the created entity is written (`overlayTypeOwnedPsets`).
     pub(crate) overlay_type_owned: Vec<(u32, serde_json::Value)>,
@@ -46,7 +48,7 @@ pub(crate) struct Pass<'s, 'a> {
     /// Source lines the log rewrites, with what each carries.
     pub(crate) mutated_lines: HashMap<u32, (Option<String>, Delivery)>,
     pub(crate) warnings: Vec<String>,
-    pub(crate) next_id: u32,
+    ids: crate::step_ids::IdAllocator,
     owner_history_of: HashMap<u32, Option<u32>>,
     owner_history_fallback: Option<Option<u32>>,
 }
@@ -75,17 +77,21 @@ impl<'s, 'a> Pass<'s, 'a> {
             new_entity_count: 0,
             mutated_lines: HashMap::new(),
             warnings: Vec::new(),
-            next_id: src.max_id.max(next_allocated).saturating_add(1),
+            ids: crate::step_ids::IdAllocator::after(src.max_id.max(next_allocated)),
             owner_history_of: HashMap::new(),
             owner_history_fallback: None,
         }
     }
 
-    /// `allocateExpressId`.
-    pub(crate) fn allocate(&mut self) -> u32 {
-        let id = self.next_id;
-        self.next_id = self.next_id.saturating_add(1);
-        id
+    /// `allocateExpressId`, refusing once the file has spent the id space
+    /// rather than handing out an id a record already has (#7682,
+    /// EXPORT-STEP-9).
+    pub(crate) fn allocate(&mut self) -> Result<u32, super::values::Unwritable> {
+        self.ids.allocate().ok_or_else(|| {
+            super::values::Unwritable(
+                "the file has spent the express id space (an id of 4294967295 is taken), so there is no id for a record this export generates".to_string(),
+            )
+        })
     }
 
     pub(crate) fn is_overlay_created(&self, id: u32) -> bool {

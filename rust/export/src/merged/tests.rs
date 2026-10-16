@@ -588,7 +588,7 @@ ENDSEC;\nEND-ISO-10303-21;\n";
 fn excluded_high_id_does_not_block_a_fitting_later_model() {
     // The first model carries a near-max express id that visibility EXCLUDES, so
     // it is never emitted. The capacity bound must be the largest VISIBLE id, not
-    // `index.max_id` — otherwise a later model that would comfortably fit is
+    // the largest id in the file — otherwise a later model that would comfortably fit is
     // wrongly omitted as an overflow (CR #2952).
     let big_excluded = "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n\
 #1=IFCWALL('WALLLOW00000000000000A',$,'Low',$,$,$,$,$);\n\

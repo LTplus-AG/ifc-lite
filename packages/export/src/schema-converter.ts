@@ -21,6 +21,7 @@ import { Ifc2x3SlotFill } from './schema-converter-ifc2x3-slots.js';
 import type { Ifc4SlotCheck } from './schema-converter-ifc4-slots.js';
 import type { EnumReconciliation } from './schema-converter-enums.js';
 import { referencesAnyExpressId } from './step-ref-scan.js';
+import { productProxy } from './schema-converter-product-proxy.js';
 
 export { computeWithheldRefIds } from './schema-untranslatable.js';
 
@@ -140,11 +141,6 @@ const IFC4X3_TO_IFC4: Map<string, string> = new Map([
   ['IFCTRACKELEMENT', 'IFCBUILDINGELEMENTPROXY'],
   ['IFCKERB', 'IFCBUILDINGELEMENTPROXY'],
   ['IFCCOURSE', 'IFCBUILDINGELEMENTPROXY'],
-  ['IFCLINEARPOSITIONINGELEMENT', 'IFCPROXY'],
-  ['IFCPOSITIONINGELEMENT', 'IFCPROXY'],
-  ['IFCREFERENT', 'IFCPROXY'],
-  ['IFCALIGNMENT', 'IFCPROXY'],
-  ['IFCLINEARELEMENT', 'IFCPROXY'],
   ['IFCCONVEYORSEGMENT', 'IFCFLOWSEGMENT'],
   ['IFCLIQUIDTERMINAL', 'IFCFLOWTERMINAL'],
   ['IFCMOBILETELECOMMUNICATIONSAPPLIANCE', 'IFCCOMMUNICATIONSAPPLIANCE'],
@@ -345,7 +341,7 @@ function convertRecord(
   // Validate before choosing any conversion branch. A malformed slot list
   // must not still receive a type rename, proxy replacement, trim, or padding:
   // that would partially convert a record whose positions are untrustworthy.
-  requireTopLevelAttributes(attrsRaw);
+  const args = requireTopLevelAttributes(attrsRaw);
 
   // Convert entity type
   const newType = convertEntityType(entityType, fromSchema, toSchema);
@@ -360,8 +356,8 @@ function convertRecord(
     return resolveUnrepresentedEntity(prefix, entityType, attrsRaw, toSchema, random, withheldRefIds !== undefined);
   }
 
-  // Replace entities that have no valid representation in the target schema
-  // with IFCPROXY placeholders to preserve EXPRESS IDs and prevent dangling references
+  // No representation in the target schema: an IFCPROXY keeping their
+  // IfcProduct attributes (`productProxy`) preserves ids and references.
   if (shouldSkipEntity(newType, toSchema)) {
     // Derive the placeholder's GlobalId from the source line rather than
     // minting a random one (#2733). Every downgraded entity used to get a
@@ -388,7 +384,7 @@ function convertRecord(
     const guid = random
       ? generateIfcGuid(random)
       : deterministicGlobalId(`ifcproxy:${prefix}${entityType}(${attrsRaw})`);
-    return `${prefix}IFCPROXY('${guid}',$,'${entityType}',$,$,$,$,.NOTDEFINED.,$);`;
+    return productProxy(prefix, guid, entityType, args);
   }
 
   // Reconcile the attribute list against the target schema. WHICH WAY it moves
@@ -422,14 +418,16 @@ function convertRecord(
   // a type entirely unknown to `targetTable` (not merely a strict-prefix
   // attribute mismatch, handled below) has no representation in `toSchema` at
   // all — see `resolveUnrepresentedEntity` for why it can't just pass through.
-  if (srcAttrs && targetTable && !tgtAttrs) {
+  // On IFC2X3 even with no source entry, as Rust's `has_representation`: a
+  // non-entity head (`#1=IFCLABEL('x');`) fails closed (#7683, D3).
+  if (targetTable && !tgtAttrs && (srcAttrs || toSchema === 'IFC2X3')) {
     return resolveUnrepresentedEntity(prefix, entityType, attrsRaw, toSchema, random, withheldRefIds !== undefined);
   }
   if (srcAttrs && tgtAttrs) {
     if (isStrictAttrPrefix(tgtAttrs, srcAttrs)) {
-      finalAttrs = trimAttributes(attrsRaw, tgtAttrs.length);
+      finalAttrs = trimAttributes(attrsRaw, args, tgtAttrs.length);
     } else if (isStrictAttrPrefix(srcAttrs, tgtAttrs)) {
-      const currentCount = requireTopLevelAttributes(finalAttrs).length;
+      const currentCount = args.length;
       if (currentCount > 0 && currentCount < tgtAttrs.length) {
         finalAttrs = `${finalAttrs}${',$'.repeat(tgtAttrs.length - currentCount)}`;
       }
@@ -444,45 +442,37 @@ function convertRecord(
   return `${prefix}${newType}(${finalAttrs});`;
 }
 
+/** IFC4X3 alignment and positioning types replaced by a synthesised IFCPROXY below IFC4X3. */
+const SKIP_TYPES: ReadonlySet<string> = new Set([
+  'IFCALIGNMENTCANT', 'IFCALIGNMENTHORIZONTAL', 'IFCALIGNMENTVERTICAL', 'IFCALIGNMENTSEGMENT',
+  'IFCALIGNMENT', 'IFCREFERENT', 'IFCLINEARELEMENT', 'IFCPOSITIONINGELEMENT', 'IFCLINEARPOSITIONINGELEMENT',
+]);
+
 /**
- * Check if an entity type should be skipped for the target schema.
- * Some IFC4X3 types (alignment, positioning) have no valid STEP representation
- * in older schemas even as proxies.
+ * Check if an entity type should be skipped for the target schema: these
+ * IFC4X3 types have no STEP representation in IFC2X3 or IFC4, so they are
+ * replaced by a synthesised IFCPROXY. IFC4X3 and IFC5 keep them.
  *
- * Alignment entities are valid in IFC4X3 and IFC5, so they are only skipped
- * when targeting older schemas (IFC2X3, IFC4).
+ * The five positioning types used to be RENAMED to IFCPROXY in
+ * `IFC4X3_TO_IFC4`, which kept their own attribute list under the new name:
+ * `IFCALIGNMENT(…,.ROAD.)` became an 8-attribute IFCPROXY with an alignment
+ * enum in `ProxyType`, where IfcProxy takes 9 (#7683, EXPORT-MERGE-8; Rust
+ * twin `should_skip_entity`).
  */
 export function shouldSkipEntity(entityType: string, toSchema: IfcSchemaVersion): boolean {
-  // Alignment entities are native to IFC4X3 and IFC5 — preserve them
-  if (toSchema === 'IFC4X3' || toSchema === 'IFC5') {
-    return false;
-  }
-
-  // For older schemas, these alignment types have no meaningful representation
-  const skipTypes = new Set([
-    'IFCALIGNMENTCANT',
-    'IFCALIGNMENTHORIZONTAL',
-    'IFCALIGNMENTVERTICAL',
-    'IFCALIGNMENTSEGMENT',
-  ]);
-
-  return skipTypes.has(entityType);
+  return toSchema !== 'IFC4X3' && toSchema !== 'IFC5' && SKIP_TYPES.has(entityType);
 }
 
 /**
  * Trim a STEP attribute list to a maximum number of attributes.
  *
- * Parses the attribute string respecting STEP nesting (parentheses, strings)
- * and returns only the first `maxCount` attributes.
+ * Keeps the first `maxCount` of `args`, the record's already-validated split
+ * (one split per record, #7683).
  */
-function trimAttributes(attrsRaw: string, maxCount: number): string {
+function trimAttributes(attrsRaw: string, args: readonly string[], maxCount: number): string {
   if (!attrsRaw.trim()) return attrsRaw;
-  // The scan below only tests its budget AFTER pushing an attribute, so a zero
-  // budget would keep the first one. An entity with no attributes in the target
-  // schema keeps none.
-  if (maxCount <= 0) return '';
-
-  return requireTopLevelAttributes(attrsRaw).slice(0, maxCount).join(',');
+  // An entity with no attributes in the target schema keeps none.
+  return args.slice(0, Math.max(0, maxCount)).join(',');
 }
 
 /**

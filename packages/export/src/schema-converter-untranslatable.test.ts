@@ -161,3 +161,15 @@ describe('convertStepLine refuses an unrepresentable non-rooted entity rather th
     });
   });
 });
+
+describe('a record headed by a data-type name fails closed on an IFC2X3 target (#7683, D3)', () => {
+  it('throws like the Rust twin instead of passing the malformed record through', () => {
+    // Only entities head STEP records. Rust's `has_representation` reads core's
+    // IFC2X3 entity registry, which has no IFCLABEL, and refuses the export.
+    // This side used to need the SOURCE table to know the type first, and
+    // IFC4's has no IFCLABEL either, so it passed the record through.
+    expect(() => convertStepLine("#1=IFCLABEL('x');", 'IFC4', 'IFC2X3')).toThrow(/IFCLABEL/);
+    // Other targets keep passing it through, as in Rust.
+    expect(convertStepLine("#1=IFCLABEL('x');", 'IFC4X3', 'IFC4')).toBe("#1=IFCLABEL('x');");
+  });
+});

@@ -249,4 +249,16 @@ index 813e0ed6c0..0d038d9826 100644
 +      }
        if (midVal < expressId) lo = mid + 1;
        else hi = mid - 1;
+diff --git b/packages/parser/src/compact-entity-index.ts a/packages/parser/src/compact-entity-index.ts
+index 813e0ed6c0..bd234afb63 100644
+--- b/packages/parser/src/compact-entity-index.ts
++++ a/packages/parser/src/compact-entity-index.ts
+@@ -78,7 +78,7 @@ export class CompactEntityIndex {
+     while (lo <= hi) {
+       const mid = (lo + hi) >>> 1;
+       const midVal = ids[mid];
+-      if (midVal === expressId) return mid;
++      if (midVal === expressId) return lastEqualIndex(ids, mid);
+       if (midVal < expressId) lo = mid + 1;
+       else hi = mid - 1;
      }

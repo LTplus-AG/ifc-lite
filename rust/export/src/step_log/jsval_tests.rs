@@ -34,7 +34,17 @@ fn step_real_rewrites_mantissa_and_exponent() {
     assert_eq!(format_step_real(5e-8), "5.E-8");
     assert_eq!(format_step_real(1.5e-7), "1.5E-7");
     assert_eq!(format_step_real(1e21), "1.E+21");
-    assert_eq!(to_step_real(f64::NAN), "0.");
+    assert_eq!(to_step_real(2.5).unwrap(), "2.5");
+    for bad in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+        assert!(to_step_real(bad).is_err(), "{bad} has no STEP REAL");
+    }
+    assert_eq!(step_integer(-0.0).as_deref(), Some("0"));
+    assert_eq!(step_integer(9_007_199_254_740_991.0).as_deref(), Some("9007199254740991"));
+    for bad in [f64::NAN, f64::INFINITY, 9_007_199_254_740_992.0, 1e21] {
+        assert_eq!(step_integer(bad), None, "{bad} is no STEP INTEGER");
+    }
+    assert_eq!(integral_token(1e21), "1.E+21");
+    assert_eq!(integral_token(42.0), "42");
 }
 
 #[test]

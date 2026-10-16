@@ -74,7 +74,7 @@ fn map_unit(pass: &mut Pass<'_, '_>, name: &str) -> Result<Option<u32>, Unwritab
         let factor = if normalized == "US SURVEY FOOT" { 1200.0 / 3937.0 } else { 0.3048 };
         pass.georef_lines.push((dim, format!("#{dim}=IFCDIMENSIONALEXPONENTS(1,0,0,0,0,0,0);")));
         pass.georef_lines.push((si, format!("#{si}=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);")));
-        pass.georef_lines.push((measure, format!("#{measure}=IFCMEASUREWITHUNIT(IFCLENGTHMEASURE({}),#{si});", to_step_real(factor))));
+        pass.georef_lines.push((measure, format!("#{measure}=IFCMEASUREWITHUNIT(IFCLENGTHMEASURE({}),#{si});", to_step_real(factor)?)));
         pass.georef_lines.push((unit, format!("#{unit}=IFCCONVERSIONBASEDUNIT(#{dim},.LENGTHUNIT.,'{normalized}',#{measure});")));
         return Ok(Some(unit));
     }
@@ -100,25 +100,27 @@ fn preferred_context(pass: &Pass<'_, '_>) -> Option<u32> {
     first_3d.or_else(|| ids.first().copied())
 }
 
-fn real_or_zero(v: Option<&Value>) -> String {
+/// A mandatory REAL: an absent or NaN value is the authored default 0 (the
+/// `Number(x) || 0` of the TypeScript writer); an infinity is refused.
+fn real_or_zero(v: Option<&Value>) -> Result<String, Unwritable> {
     let n = v.map_or(f64::NAN, js_to_number);
     to_step_real(if n.is_nan() || n == 0.0 { 0.0 } else { n })
 }
 
-fn real_or_unset(v: Option<&Value>) -> String {
-    v.map_or("$".to_string(), |v| to_step_real(js_to_number(v)))
+fn real_or_unset(v: Option<&Value>) -> Result<String, Unwritable> {
+    v.map_or(Ok("$".to_string()), |v| to_step_real(js_to_number(v)))
 }
 
-fn map_conversion_line(id: u32, context: u32, crs: u32, mc: &Map<String, Value>) -> String {
-    format!(
+fn map_conversion_line(id: u32, context: u32, crs: u32, mc: &Map<String, Value>) -> Result<String, Unwritable> {
+    Ok(format!(
         "#{id}=IFCMAPCONVERSION(#{context},#{crs},{},{},{},{},{},{});",
-        real_or_zero(mc.get("eastings")),
-        real_or_zero(mc.get("northings")),
-        real_or_zero(mc.get("orthogonalHeight")),
-        real_or_unset(mc.get("xAxisAbscissa")),
-        real_or_unset(mc.get("xAxisOrdinate")),
-        real_or_unset(mc.get("scale")),
-    )
+        real_or_zero(mc.get("eastings"))?,
+        real_or_zero(mc.get("northings"))?,
+        real_or_zero(mc.get("orthogonalHeight"))?,
+        real_or_unset(mc.get("xAxisAbscissa"))?,
+        real_or_unset(mc.get("xAxisOrdinate"))?,
+        real_or_unset(mc.get("scale"))?,
+    ))
 }
 
 /// Queue edits on an existing record and nominate it as the TypeScript side does.
@@ -203,7 +205,7 @@ pub(crate) fn apply(pass: &mut Pass<'_, '_>, g: &GeorefMutations) -> Result<(), 
             Some(context) => {
                 let mc_id = pass.allocate()?;
                 let mc = g.map_conversion.as_ref().unwrap_or(&empty);
-                pass.georef_lines.push((mc_id, map_conversion_line(mc_id, context, crs_id, mc)));
+                pass.georef_lines.push((mc_id, map_conversion_line(mc_id, context, crs_id, mc)?));
                 pass.new_entity_count += 1;
             }
             None => pass.warnings.push(WITHOUT_CONTEXT.to_string()),
@@ -212,7 +214,7 @@ pub(crate) fn apply(pass: &mut Pass<'_, '_>, g: &GeorefMutations) -> Result<(), 
         match preferred_context(pass) {
             Some(context) => {
                 let mc_id = pass.allocate()?;
-                pass.georef_lines.push((mc_id, map_conversion_line(mc_id, context, crs_id, mc)));
+                pass.georef_lines.push((mc_id, map_conversion_line(mc_id, context, crs_id, mc)?));
                 pass.new_entity_count += 1;
             }
             None => pass.warnings.push(WITHOUT_CONTEXT.to_string()),

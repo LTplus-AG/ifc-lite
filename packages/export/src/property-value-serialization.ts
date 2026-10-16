@@ -12,7 +12,7 @@
  */
 
 import { PropertyValueType, formatStepReal } from '@ifc-lite/data';
-import { escapeStepString } from './step-serialization.js';
+import { escapeStepString, toStepInteger } from './step-serialization.js';
 
 /**
  * Serialize a property value to STEP format (e.g. IFCLABEL, IFCREAL, etc.).
@@ -87,8 +87,12 @@ export function serializePropertyValue(value: unknown, type: PropertyValueType):
       return `IFCREAL(${formatStepReal(num)})`;
     }
 
-    case PropertyValueType.Integer:
-      return `IFCINTEGER(${Math.round(Number(value))})`;
+    case PropertyValueType.Integer: {
+      // No finite integer below 2^53 (NaN, Infinity, 1e21): the same `$` a
+      // non-finite Real gets, never `IFCINTEGER(NaN)` or `IFCINTEGER(1e+21)` (#7679).
+      const digits = toStepInteger(Math.round(Number(value)));
+      return digits === null ? '$' : `IFCINTEGER(${digits})`;
+    }
 
     case PropertyValueType.Boolean:
       if (value === true) return `IFCBOOLEAN(.T.)`;

@@ -16,9 +16,10 @@ use crate::generated::step_log_tables::{DEFINED_TYPE_BASES, SELECT_LEAVES, SELEC
 use crate::step_text::escape;
 
 use super::attrs::is_real_slot;
-use super::jsval::{js_number_to_string, js_to_number, json_number, json_to_js_string, to_step_real};
+use super::jsval::{integral_token, js_number_to_string, js_to_number, json_number, json_to_js_string, step_integer, to_step_real};
 
-/// A value no STEP spelling exists for: a non-finite list member.
+/// A value no STEP spelling exists for: a non-finite number where `$` is not a
+/// legal reading, or an INTEGER beyond 2^53.
 #[derive(Debug)]
 pub(crate) struct Unwritable(pub(crate) String);
 
@@ -44,10 +45,15 @@ fn coerce_logical(value: &Value) -> Option<bool> {
 
 /// `serializeTypedMarker`: `IFC<TYPE>(<inner>)`, the inner value written for
 /// the type's EXPRESS base.
-pub(crate) fn typed_marker(type_name: &str, value: &Value) -> String {
+pub(crate) fn typed_marker(type_name: &str, value: &Value) -> Result<String, Unwritable> {
     let inner = match express_base(type_name) {
-        Some("REAL") | Some("NUMBER") => to_step_real(js_to_number(value)),
-        Some("INTEGER") => js_number_to_string(js_to_number(value).trunc()),
+        Some("REAL") | Some("NUMBER") => to_step_real(js_to_number(value))?,
+        Some("INTEGER") => {
+            let n = js_to_number(value).trunc();
+            step_integer(n).ok_or_else(|| {
+                Unwritable(format!("Cannot write {} as a STEP INTEGER: it is not a finite value below 2^53", js_number_to_string(n)))
+            })?
+        }
         Some("BOOLEAN") => if coerce_logical(value) == Some(true) { ".T." } else { ".F." }.to_string(),
         Some("LOGICAL") => match coerce_logical(value) {
             Some(true) => ".T.".to_string(),
@@ -58,8 +64,8 @@ pub(crate) fn typed_marker(type_name: &str, value: &Value) -> String {
         _ => match value {
             Value::Bool(b) => if *b { ".T." } else { ".F." }.to_string(),
             _ => match json_number(value) {
-                Some(n) if n.is_finite() && n.fract() == 0.0 => js_number_to_string(n),
-                Some(n) => to_step_real(n),
+                Some(n) if n.is_finite() && n.fract() == 0.0 => integral_token(n),
+                Some(n) => to_step_real(n)?,
                 None => format!("'{}'", escape(&json_to_js_string(value))),
             },
         },
@@ -68,7 +74,7 @@ pub(crate) fn typed_marker(type_name: &str, value: &Value) -> String {
     if !token.starts_with("IFC") {
         token = format!("IFC{token}");
     }
-    format!("{token}({inner})")
+    Ok(format!("{token}({inner})"))
 }
 
 fn is_marker(value: &Value) -> bool {
@@ -108,9 +114,9 @@ fn step_value_at(value: &Value, force_real: bool, in_list: bool, top: bool) -> R
             return Ok("$".to_string());
         }
         if force_real {
-            return Ok(to_step_real(n));
+            return to_step_real(n);
         }
-        return Ok(if n.fract() == 0.0 { js_number_to_string(n) } else { to_step_real(n) });
+        return if n.fract() == 0.0 { Ok(integral_token(n)) } else { to_step_real(n) };
     }
     if let Value::Array(items) = value {
         let parts: Result<Vec<String>, Unwritable> =
@@ -119,12 +125,12 @@ fn step_value_at(value: &Value, force_real: bool, in_list: bool, top: bool) -> R
     }
     if let Value::Object(m) = value {
         if let Some(real) = m.get("real") {
-            return Ok(to_step_real(js_to_number(real)));
+            return to_step_real(js_to_number(real));
         }
         if let Some(typed) = m.get("typed") {
             let ty = typed.get("type").map(json_to_js_string).unwrap_or_default();
             let inner = typed.get("value").cloned().unwrap_or(Value::Null);
-            return Ok(typed_marker(&ty, &inner));
+            return typed_marker(&ty, &inner);
         }
         return Ok("'[object Object]'".to_string());
     }
@@ -148,11 +154,10 @@ fn step_value_at(value: &Value, force_real: bool, in_list: bool, top: bool) -> R
 
 /// `serializeQualifiedSelectSlot`: a scalar in a SELECT slot written as the
 /// one defined-type member of its value's family, when there is exactly one.
-fn qualified_select(upper: &str, index: usize, value: &Value) -> Option<String> {
-    let select = SELECT_SLOTS
-        .iter()
-        .find(|r| r.0 == upper && usize::from(r.1) == index)
-        .map(|r| r.2)?;
+fn qualified_select(upper: &str, index: usize, value: &Value) -> Result<Option<String>, Unwritable> {
+    let Some(select) = SELECT_SLOTS.iter().find(|r| r.0 == upper && usize::from(r.1) == index).map(|r| r.2) else {
+        return Ok(None);
+    };
     let families: &[&str] = match value {
         Value::Bool(_) => &["BOOLEAN", "LOGICAL"],
         Value::Number(n) if n.as_f64().is_some_and(f64::is_finite) => &["REAL", "NUMBER", "INTEGER"],
@@ -164,22 +169,22 @@ fn qualified_select(upper: &str, index: usize, value: &Value) -> Option<String> 
                 && t.ends_with('.')
                 && t[1..t.len() - 1].bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_');
             if t == "$" || t == "*" || is_ref || is_enum {
-                return None;
+                return Ok(None);
             }
             &["STRING", "BINARY"]
         }
-        _ => return None,
+        _ => return Ok(None),
     };
     let leaves: Vec<(&str, &str)> = SELECT_LEAVES.iter().filter(|r| r.0 == select).map(|r| (r.1, r.2)).collect();
     for family in families {
         let matches: Vec<&str> = leaves.iter().filter(|(_, b)| b == family).map(|(m, _)| *m).collect();
         match matches.as_slice() {
-            [one] => return Some(typed_marker(one, value)),
+            [one] => return typed_marker(one, value).map(Some),
             [] => continue,
-            _ => return None,
+            _ => return Ok(None),
         }
     }
-    None
+    Ok(None)
 }
 
 /// `tokenIsRealLiteral`.
@@ -208,7 +213,7 @@ pub(crate) fn positional_override(upper: &str, index: usize, value: &Value, curr
     if is_marker(value) {
         return step_value(value, false);
     }
-    if let Some(q) = qualified_select(upper, index, value) {
+    if let Some(q) = qualified_select(upper, index, value)? {
         return Ok(q);
     }
     let force_real = is_real_slot(upper, index, schema) || token_is_real_literal(current);
@@ -220,7 +225,7 @@ pub(crate) fn attribute_slot(upper: &str, index: usize, value: &Value, schema: &
     if is_marker(value) {
         return step_value(value, false);
     }
-    if let Some(q) = qualified_select(upper, index, value) {
+    if let Some(q) = qualified_select(upper, index, value)? {
         return Ok(q);
     }
     step_value(value, is_real_slot(upper, index, schema))

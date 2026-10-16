@@ -987,7 +987,8 @@ jobs:
           # it as absent, the output allowance is 4 bytes per input byte and
           # every repeat listing is walked afresh, the server reads an
           # unnamed nested member as no value, a repeated set id is read at
-          # every record (server and TS), a refusal maps to 500, the stream's
+          # every record (server and TS), the TS entity index resolves a duplicated id
+          # to its first match, a refusal maps to 500, the stream's
           # recorded refusal is never read, and the data-model section
           # lengths go unchecked; their tests turn RED. Once the shared vector's TS test is on main,
           # whole revert resumes.

@@ -201,3 +201,16 @@ index 65da03274a..290b4405cf 100644
              return cut.then(|| COMPLEX_PROPERTY_BUDGET_MARKER.to_string());
          }
          let joined = parts.join(", ");
+diff --git a/packages/parser/src/compact-entity-index.ts b/packages/parser/src/compact-entity-index.ts
+index 7a3edaa3d3..0d038d9826 100644
+--- b/packages/parser/src/compact-entity-index.ts
++++ b/packages/parser/src/compact-entity-index.ts
+@@ -82,7 +82,7 @@ export class CompactEntityIndex {
+         // Duplicate ids sit adjacent in file order; the last record wins, as in
+         // core, the server and the exporter.
+         let last = mid;
+-        // mutated: first match wins
++        while (last + 1 < ids.length && ids[last + 1] === expressId) last++;
+         return last;
+       }
+       if (midVal < expressId) lo = mid + 1;

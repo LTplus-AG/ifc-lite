@@ -34,6 +34,14 @@ nom = "7.1"
 
 # Fast hashing
 rustc-hash.workspace = true
+# `core::hash::ContentHash`: XXH3-128 dedup key. `twox-hash` rather than
+# `xxhash-rust`: same algorithm, but MIT where xxhash-rust is BSL-1.0 (a
+# downstream consumer ships under a licence allowlist that excludes BSL-1.0).
+# `default-features = false` avoids the `rand` default; `alloc` is what the
+# streaming hasher needs.
+# bytemuck: bulk little-endian reinterpret of f32/u32 runs for hashing.
+twox-hash = { version = "2.1", default-features = false, features = ["xxhash3_128", "alloc"] }
+bytemuck = "1.25"
 
 # Error handling
 thiserror.workspace = true

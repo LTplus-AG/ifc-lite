@@ -15,10 +15,7 @@ struct Fnv(u64);
 
 impl Fnv {
     fn bytes(&mut self, bytes: &[u8]) {
-        for &byte in bytes {
-            self.0 ^= u64::from(byte);
-            self.0 = self.0.wrapping_mul(0x100_0000_01b3);
-        }
+        self.0 = ifc_lite_core::hash::fnv1a64_extend(self.0, bytes);
     }
 
     fn len(&mut self, len: usize) {
@@ -48,7 +45,7 @@ impl Fnv {
 }
 
 pub(super) fn mesh_fingerprint(meshes: &[MeshData]) -> String {
-    let mut hash = Fnv(0xcbf2_9ce4_8422_2325);
+    let mut hash = Fnv(ifc_lite_core::hash::FNV64_OFFSET);
     hash.bytes(b"ifc-lite-perf-mesh-v1");
     hash.len(meshes.len());
     for mesh in meshes {
@@ -76,7 +73,7 @@ mod tests {
 
     #[test]
     fn fnv1a_matches_known_hello_vector() {
-        let mut hash = Fnv(0xcbf2_9ce4_8422_2325);
+        let mut hash = Fnv(ifc_lite_core::hash::FNV64_OFFSET);
         hash.bytes(b"hello");
         assert_eq!(hash.0, 0xa430_d846_80aa_bd0b);
     }

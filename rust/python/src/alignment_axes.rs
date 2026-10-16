@@ -17,15 +17,13 @@ pub(super) fn alignment_axes(
     max_samples_per_axis: usize,
     max_total_samples: usize,
 ) -> PyResult<Py<PyAny>> {
-    let content = std::str::from_utf8(ifc_bytes)
-        .map_err(|e| PyValueError::new_err(format!("IFC STEP must be UTF-8: {e}")))?;
     let options = AlignmentSamplingOptions {
         spacing_m,
         max_samples_per_axis,
         max_total_samples,
     };
     let report = py
-        .detach(|| sample_alignment_axes(content, options))
+        .detach(|| sample_alignment_axes(ifc_bytes, options))
         .map_err(|e| PyValueError::new_err(e.to_string()))?;
     let payload =
         serde_json::to_string(&report).map_err(|e| PyValueError::new_err(e.to_string()))?;

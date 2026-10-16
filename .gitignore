@@ -169,3 +169,7 @@ apps/autodesk-exchange-worker/obj/
 
 # Unreviewed live AI evaluation runs (scripts/ai-eval/run-live-eval.mjs); only reviewed recordings are promoted.
 tests/ai-eval/results/
+
+# Python bytecode caches
+__pycache__/
+*.py[cod]

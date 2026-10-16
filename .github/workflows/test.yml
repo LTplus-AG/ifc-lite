@@ -1036,7 +1036,8 @@ jobs:
           # item and restore ONLY the old behaviour: the 0-2 quad diagonal and
           # first-edges quad normal, the outer-fan fallback over failed holes,
           # unreadable bounds dropped instead of refusing the face, and
-          # SameSense flipping planar faces. Once planar_tests.rs is on main,
+          # SameSense flipping planar faces (brep and structural). Once
+          # planar_tests.rs is on main,
           # ordinary whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/processors/brep/planar_tests.rs | grep -Fxq 'rust/geometry/src/processors/brep/planar_tests.rs'; then
             oracle_args+=(--mutation tests/evidence/geometry-planar-7686/behaviour.oracle.patch)

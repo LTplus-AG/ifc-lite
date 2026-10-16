@@ -46,8 +46,9 @@ fn sub_f64(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
 fn cross_f64(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
     [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
 }
+/// Un-normalised plane normal; also the coplanar clip's, one home (#7677).
 #[inline]
-fn plane_normal(t: &[[f64; 3]; 3]) -> [f64; 3] {
+pub(super) fn plane_normal(t: &[[f64; 3]; 3]) -> [f64; 3] {
     cross_f64(sub_f64(t[1], t[0]), sub_f64(t[2], t[0]))
 }
 /// Approximate direction of the crossing line L = t1.plane ∩ t2.plane (n1 × n2),
@@ -152,20 +153,8 @@ fn plane_interval(tri: &[[f64; 3]; 3], plane: &[[f64; 3]; 3]) -> PlaneInterval {
 use super::near_band::NearBand;
 
 #[inline]
-fn ti_sub(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
-    [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
-}
-#[inline]
-fn ti_cross(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
-    [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
-}
-#[inline]
 fn ti_dot(a: [f64; 3], b: [f64; 3]) -> f64 {
     a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
-}
-#[inline]
-fn ti_normal(t: &[[f64; 3]; 3]) -> [f64; 3] {
-    ti_cross(ti_sub(t[1], t[0]), ti_sub(t[2], t[0]))
 }
 
 /// Are `t1` and `t2` an INTENDED-FLUSH coplanar pair that per-axis snapping
@@ -215,7 +204,7 @@ fn ti_normal(t: &[[f64; 3]; 3]) -> [f64; 3] {
 /// geometric effect is below the import-noise floor by construction, and the
 /// coplanar overlay's degenerate-projection guards (`w0 == Zero`) handle it.
 fn near_coplanar(t1: &[[f64; 3]; 3], t2: &[[f64; 3]; 3], band: &NearBand) -> bool {
-    let (n1, n2) = (ti_normal(t1), ti_normal(t2));
+    let (n1, n2) = (plane_normal(t1), plane_normal(t2));
     let (nn1, nn2) = (ti_dot(n1, n1), ti_dot(n2, n2));
     if nn1 <= 0.0 || nn2 <= 0.0 || !nn1.is_finite() || !nn2.is_finite() {
         return false; // a degenerate triangle is never a flush coplanar partner
@@ -226,7 +215,7 @@ fn near_coplanar(t1: &[[f64; 3]; 3], t2: &[[f64; 3]; 3], band: &NearBand) -> boo
     let in_slab = |t: &[[f64; 3]; 3], plane: &[[f64; 3]; 3], n: [f64; 3], nn: f64| {
         let band2 = band.scaled_band2(n, nn); // scaled by |n|², like `d` below
         t.iter().all(|&v| {
-            let d = ti_dot(ti_sub(v, plane[0]), n); // perp_dist · |n|
+            let d = ti_dot(sub_f64(v, plane[0]), n); // perp_dist · |n|
             d * d <= band2
         })
     };
@@ -257,7 +246,7 @@ fn tri_tri_intersection_scoped(t1: &[[f64; 3]; 3], t2: &[[f64; 3]; 3], paired_ba
     // Keep the legacy two-triangle slab class, including transversal microfaces.
     // A larger operand context adds only the classifier's shared-normal class.
     if near_coplanar(t1, t2, &local_band) || paired_band.is_some_and(|band|
-        super::arrangement::coincident_planes(ti_normal(t1), ti_normal(t2))
+        super::arrangement::coincident_planes(plane_normal(t1), plane_normal(t2))
             && near_coplanar(t1, t2, band)) {
         return TriTri::Coplanar;
     }

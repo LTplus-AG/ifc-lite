@@ -234,15 +234,6 @@ pub fn tpi_orient2d(t: &Tpi, b: [f64; 3], c: [f64; 3], axis: DropAxis) -> Option
     indirect_orient2d(&lambda, d, b, c, axis)
 }
 
-/// λ/d (interval) of an implicit point. Callers dispatch — never `Explicit`.
-fn ilambda_of(p: &ImplicitPoint) -> (Iv3, RnInterval) {
-    match p {
-        ImplicitPoint::Lpi(l) => lpi_lambda(l),
-        ImplicitPoint::Tpi(t) => tpi_lambda(t),
-        ImplicitPoint::Explicit(_) => unreachable!("ilambda_of: Explicit"),
-    }
-}
-
 /// Cached homogeneous interval lambda `(λ, d)` for ANY point — the f64-interval
 /// analogue of `fixed::Lam`. Computed ONCE per interned point (the interner caches
 /// it), so the hot re-triangulation predicates can run a directed-rounding f64
@@ -311,8 +302,8 @@ pub(super) fn cmp_lex_from_lam_iv(a: &IvLam, b: &IvLam) -> Option<Sign> {
 /// Interval tier of `rational::orient2d_2i` — `None` on a zero-straddle.
 pub fn orient2d_2i(a: &ImplicitPoint, b: &ImplicitPoint, c: [f64; 3], axis: DropAxis) -> Option<Sign> {
     let (i, j) = axis_idx(axis);
-    let (lam1, d1) = ilambda_of(a);
-    let (lam2, d2) = ilambda_of(b);
+    let (lam1, d1) = ilambda_cached(a);
+    let (lam2, d2) = ilambda_cached(b);
     let cr = ivec(c);
     let a_i = lam1[i].sub(d1.mul(cr[i]));
     let a_j = lam1[j].sub(d1.mul(cr[j]));
@@ -327,9 +318,9 @@ pub fn orient2d_2i(a: &ImplicitPoint, b: &ImplicitPoint, c: [f64; 3], axis: Drop
 /// Interval tier of `rational::orient2d_3i` — `None` on a zero-straddle.
 pub fn orient2d_3i(a: &ImplicitPoint, b: &ImplicitPoint, c: &ImplicitPoint, axis: DropAxis) -> Option<Sign> {
     let (i, j) = axis_idx(axis);
-    let (lam1, d1) = ilambda_of(a);
-    let (lam2, d2) = ilambda_of(b);
-    let (lam3, d3) = ilambda_of(c);
+    let (lam1, d1) = ilambda_cached(a);
+    let (lam2, d2) = ilambda_cached(b);
+    let (lam3, d3) = ilambda_cached(c);
     let u_i = d1.mul(lam2[i]).sub(d2.mul(lam1[i]));
     let u_j = d1.mul(lam2[j]).sub(d2.mul(lam1[j]));
     let v_i = d1.mul(lam3[i]).sub(d3.mul(lam1[i]));
@@ -352,18 +343,18 @@ fn icmp_axis(a: &ImplicitPoint, b: &ImplicitPoint, k: usize) -> Option<Sign> {
             Sign::Zero
         }),
         (_, Explicit(be)) => {
-            let (lam, d) = ilambda_of(a);
+            let (lam, d) = ilambda_cached(a);
             let num = lam[k].sub(d.mul(RnInterval::point(be[k])));
             Some(super::assemble_sign(num.sign()?, &[d.sign()?]))
         }
         (Explicit(ae), _) => {
-            let (lam, d) = ilambda_of(b);
+            let (lam, d) = ilambda_cached(b);
             let num = RnInterval::point(ae[k]).mul(d).sub(lam[k]);
             Some(super::assemble_sign(num.sign()?, &[d.sign()?]))
         }
         (_, _) => {
-            let (la, da) = ilambda_of(a);
-            let (lb, db) = ilambda_of(b);
+            let (la, da) = ilambda_cached(a);
+            let (lb, db) = ilambda_cached(b);
             let num = la[k].mul(db).sub(lb[k].mul(da));
             Some(super::assemble_sign(num.sign()?, &[da.sign()?, db.sign()?]))
         }

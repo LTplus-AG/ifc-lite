@@ -156,6 +156,26 @@ pub fn declared_schema_bounded(content: &[u8]) -> Option<String> {
     declared_schemas_bounded(content).into_iter().next()
 }
 
+/// The first declared `FILE_SCHEMA` identifier that `recognise` accepts, read
+/// from the bounded header window ([`declared_schemas_bounded`]).
+///
+/// THE schema-selection rule: the first RECOGNISED identifier wins, so
+/// `FILE_SCHEMA(('IFC2X3','IFC4X3'))` is IFC2X3 and an unrecognised leading
+/// identifier is skipped rather than ending the search. It mirrors the TS
+/// parser's `detectSchemaVersion` (`packages/parser/src/source-header.ts`).
+/// Every Rust reader of the declared schema goes through it with its own
+/// recogniser: the decoder's attribute layout (`SchemaVersion::from_file_schema`)
+/// and processing's reported `schema_version` (#7691), so the two can never
+/// pick different identifiers for one file.
+pub fn first_declared_schema<T>(
+    content: &[u8],
+    mut recognise: impl FnMut(&str) -> Option<T>,
+) -> Option<T> {
+    declared_schemas_bounded(content)
+        .iter()
+        .find_map(|label| recognise(label))
+}
+
 /// Read the first declared schema identifier from the complete header.
 ///
 /// STEP re-export preserves the declaration's first identifier. Consumers

@@ -7,11 +7,15 @@ use super::*;
 use crate::kernel::near_band::NearBand;
 
 pub(super) fn arrange(a: &[Tri], b: &[Tri]) -> Arrangement {
+    if !operands_admitted(&[a, b]) { return super::admission::refused(); } // #7677
     arrange_scoped(a, b, &vec![0; b.len()], vec![NearBand::from_operands(a, b)])
 }
 
 /// Preserve disjoint subtraction's A×B-only work and source component ownership.
 pub(super) fn arrange_components(a: &[Tri], comps: &[&[Tri]]) -> Arrangement {
+    if !operands_admitted(&[a]) || !operands_admitted(comps) {
+        return super::admission::refused(); // #7677: before near bands or BVH work.
+    }
     let mut b = Vec::new();
     let mut owners = Vec::new();
     let mut bands = Vec::with_capacity(comps.len());

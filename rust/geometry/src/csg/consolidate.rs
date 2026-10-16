@@ -492,6 +492,9 @@ impl ClippingProcessor {
         if nonorthogonal || offset_jittered {
             let cons_open = count_open_boundary_edges(&output);
             if cons_open > 0 {
+                // Invariant: `mesh` is kernel output (every `consolidate` caller is
+                // pub(crate) and passes tris_to_mesh / union output), so its indices
+                // are in range; the counters index unchecked (#7677, KERNEL-28).
                 let raw_bad = count_open_boundary_edges(&mesh) + count_spike_triangles(&mesh);
                 let cons_bad = cons_open + count_spike_triangles(&output);
                 if raw_bad < cons_bad {

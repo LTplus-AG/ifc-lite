@@ -29,6 +29,7 @@ use super::tritri::{tri_tri_intersection_with_band, TriTri};
 use super::{ImplicitPoint, Sign, Tpi};
 use std::cmp::Ordering;
 
+mod admission;
 mod binary;
 mod mixed;
 mod boolean;
@@ -39,6 +40,7 @@ mod ray_parity;
 #[cfg(test)]
 mod tests;
 
+pub use self::admission::{operands_admitted, MAX_OPERAND_COORD};
 pub use self::boolean::{
     boolean, boolean_manifest, boolean_topology_hash, boolean_with_conformity, box_mesh, cube_mesh,
     difference_all, difference_all_lenient, difference_all_lenient_with_conformity, union_all,
@@ -182,7 +184,7 @@ fn split_crossings(t: &Tri, raws: &[RawSeg]) -> Vec<mixed::Supported> {
     out
 }
 
-/// Compute the conforming arrangement of operand meshes `a` and `b`.
+/// Conforming arrangement of `a` and `b`; refused past [`MAX_OPERAND_COORD`].
 pub fn arrange(a: &[Tri], b: &[Tri]) -> Arrangement {
     binary::arrange(a, b)
 }
@@ -215,6 +217,7 @@ pub struct MultiArrangement {
 /// against all OTHER solids WITHOUT ever re-meshing an intermediate union (the
 /// pairwise-accumulation step that compounds coplanar T-junctions).
 pub fn arrange_many(meshes: &[&[Tri]]) -> MultiArrangement {
+    if !operands_admitted(meshes) { return admission::refused_many(meshes.len()); } // #7677
     let n = meshes.len();
     // per-mesh, per-triangle constraint accumulators
     let mut raw: Vec<Vec<Vec<RawSeg>>> =

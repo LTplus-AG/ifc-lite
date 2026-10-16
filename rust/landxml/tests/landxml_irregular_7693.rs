@@ -2,9 +2,49 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! EDGE-LXMATH-9: `IrregularLine` evaluation.
+//! EDGE-LXMATH-9 (#7693): `IrregularLine` evaluation. Each test states the
+//! evaluator identity it holds.
 
-use super::*;
+use ifc_lite_landxml::alignment::{
+    LandXmlAlignment, LandXmlAlignmentPrimitive, LandXmlAlignmentSegment, LandXmlIrregularLine,
+    LandXmlLine, LandXmlPlanPoint, LandXmlPointLocation,
+};
+use ifc_lite_landxml::LandXmlSourceId;
+
+fn source_id(value: &str) -> LandXmlSourceId {
+    LandXmlSourceId(value.to_owned())
+}
+
+fn at(northing: f64, easting: f64) -> LandXmlPointLocation {
+    LandXmlPointLocation::Coordinates {
+        point: LandXmlPlanPoint {
+            northing,
+            easting,
+            elevation: None,
+        },
+    }
+}
+
+fn single_segment(primitive: LandXmlAlignmentPrimitive, length: f64) -> LandXmlAlignment {
+    LandXmlAlignment {
+        source_id: source_id("landxml:alignment:1:a"),
+        ordinal: 1,
+        name: "a".to_owned(),
+        length,
+        sta_start: 0.0,
+        start: None,
+        align_pis: Vec::new(),
+        segments: vec![LandXmlAlignmentSegment {
+            source_id: source_id("landxml:alignment:1:segment:1"),
+            ordinal: 1,
+            primitive,
+        }],
+        station_equations: Vec::new(),
+        cant: None,
+        superelevations: Vec::new(),
+        unsupported_transitions: Vec::new(),
+    }
+}
 
 /// EDGE-LXMATH-9 (#7693). Invariant: an `IrregularLine` with no interior
 /// vertex is a `Line`, so both evaluate identically at every distance up to

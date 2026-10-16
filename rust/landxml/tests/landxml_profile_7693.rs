@@ -2,9 +2,37 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! EDGE-LXMATH-10: circular vertical curves.
+//! EDGE-LXMATH-10 (#7693): circular vertical curves. Each test states the
+//! closed form or parity rule it holds.
 
-use super::*;
+use ifc_lite_landxml::{
+    parse_landxml_tin_with_cancel, LandXmlLimits, LandXmlProfileEvaluationError,
+    LandXmlVerticalCurveKind, LANDXML_12_NAMESPACE,
+};
+
+#[path = "../../export/src/test_support.rs"]
+#[allow(dead_code, unused_macros)]
+// shared with the export unit tests; this file uses `fixture_opt` only
+mod test_support;
+
+fn plan_document(body: &str) -> String {
+    format!(
+        r#"<LandXML xmlns="{LANDXML_12_NAMESPACE}" version="1.2"><Units><Metric linearUnit="meter" areaUnit="squareMeter"/></Units>{body}</LandXML>"#
+    )
+}
+
+/// A producer file read as the LandXML 1.2 document it is. 3D-Win declares
+/// ISO-8859-1 (refused before parsing, #5051) and the InfraModel namespace,
+/// but its bytes are ASCII, so only those two labels change.
+fn producer_as_landxml_12(path: &str) -> Option<String> {
+    let bytes = test_support::fixture_opt(path)?;
+    let text = String::from_utf8(bytes).expect("producer fixture is UTF-8 or ASCII");
+    Some(
+        text.trim_start_matches('\u{feff}')
+            .replace(r#"encoding="ISO-8859-1""#, r#"encoding="UTF-8""#)
+            .replace("http://www.inframodel.fi/inframodel", LANDXML_12_NAMESPACE),
+    )
+}
 
 fn profile_document(pvis: &str) -> String {
     plan_document(&format!(

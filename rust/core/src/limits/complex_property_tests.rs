@@ -52,7 +52,7 @@ fn a_repeat_listing_is_charged_what_it_keeps_not_a_fresh_walk() {
     let mut budget = ComplexPropertyBudget::new(1000);
     let mut memo: HashMap<u32, (String, usize)> = HashMap::new();
     let walks = std::cell::Cell::new(0);
-    let mut walk = |b: &mut ComplexPropertyBudget| {
+    let walk = |b: &mut ComplexPropertyBudget| {
         walks.set(walks.get() + 1);
         b.start_property();
         assert!(b.admit_member());
@@ -61,17 +61,17 @@ fn a_repeat_listing_is_charged_what_it_keeps_not_a_fresh_walk() {
         let bytes = complex_property_listing_bytes(&value, &["v"]);
         (value, bytes)
     };
-    let first = budget.listing(&mut memo, 7, &mut walk, || "spent".into());
+    let first = budget.listing(&mut memo, 7, walk, || "spent".into());
     assert_eq!(first, "P: v");
     let after_walk = budget.bytes_left;
     assert_eq!(after_walk, 1000 - (COMPLEX_PROPERTY_MEMBER_BYTES + 2) - 4 - 4, "entry, part, level");
-    let again = budget.listing(&mut memo, 7, &mut walk, || "spent".into());
+    let again = budget.listing(&mut memo, 7, walk, || "spent".into());
     assert_eq!(again, first);
     assert_eq!(walks.get(), 1, "one walk per id");
     assert_eq!(after_walk - budget.bytes_left, 4 + COMPLEX_PROPERTY_MEMBER_BYTES + 1, "the value, one entry and its text");
     assert_eq!(complex_property_listing_bytes::<&str>("", &[]), 0);
 
     budget.charge(usize::MAX);
-    assert_eq!(budget.listing(&mut memo, 7, &mut walk, || "spent".into()), "spent");
+    assert_eq!(budget.listing(&mut memo, 7, walk, || "spent".into()), "spent");
     assert_eq!(budget.cuts(), 1, "a refused repeat is a counted cut");
 }

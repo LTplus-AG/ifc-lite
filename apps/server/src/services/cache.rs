@@ -6,7 +6,9 @@
 
 use super::cache_remove::classify_index_walk_error;
 use crate::error::ApiError;
-use serde::{de::DeserializeOwned, Serialize};
+#[cfg(test)]
+use serde::de::DeserializeOwned;
+use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -50,6 +52,13 @@ pub struct DiskCache {
     /// permit held by the async fn would be released when a client drops the
     /// request mid-walk, while the walk itself runs on.
     pub(crate) index_walk: Arc<Semaphore>,
+    /// The last index time [`Self::set_bytes`] stamped, so every write of a
+    /// key gets a time of its own (see `cache_entry`'s eviction rule).
+    write_clock: Arc<std::sync::atomic::AtomicU64>,
+    /// Test seam (#7676, SERVER-6): how many entry CONTENTS this cache has
+    /// read, so a test can tell an existence check from a whole-blob read.
+    #[cfg(test)]
+    pub(crate) content_reads: Arc<std::sync::atomic::AtomicUsize>,
 }
 
 impl DiskCache {
@@ -70,7 +79,17 @@ impl DiskCache {
             cache_dir: path,
             write_gc_lock: Arc::new(RwLock::new(())),
             index_walk: Arc::new(Semaphore::new(1)),
+            write_clock: Arc::default(),
+            #[cfg(test)]
+            content_reads: Arc::default(),
         }
+    }
+
+    /// Test seam (#7676): the directory this cache stores its entries in, so
+    /// a test can damage one entry's content the way a partial write would.
+    #[cfg(test)]
+    pub(crate) fn dir_for_tests(&self) -> &std::path::Path {
+        &self.cache_dir
     }
 
     /// Generate a cache key from file content (SHA256 hash).
@@ -80,7 +99,9 @@ impl DiskCache {
         hex::encode(hasher.finalize())
     }
 
-    /// Get a cached value by key.
+    /// Get a cached value by key. Test-only, like [`Self::get_bytes`]: a
+    /// route reads through `cache_entry`'s policy (#7676).
+    #[cfg(test)]
     pub async fn get<T: DeserializeOwned>(&self, key: &str) -> Result<Option<T>, ApiError> {
         match cacache::read(&self.cache_dir, key).await {
             Ok(data) => {
@@ -103,21 +124,6 @@ impl DiskCache {
         self.set_bytes(key, &data).await
     }
 
-    /// Whether the index holds an entry for `key`. An index lookup only: the
-    /// content is not read, so this is the cheap pre-filter, never the
-    /// decision a reader acts on.
-    ///
-    /// `Ok(false)` is "absent"; a lookup that FAILS is an error, not an
-    /// absence, so a caller answering `404` on `false` still answers a broken
-    /// cache store with `500 CACHE_ERROR` (#5750 review). `cacache::metadata`
-    /// answers `Ok(None)` for a key it has no entry for.
-    pub async fn has(&self, key: &str) -> Result<bool, ApiError> {
-        match cacache::metadata(&self.cache_dir, key).await {
-            Ok(entry) => Ok(entry.is_some()),
-            Err(e) => Err(ApiError::Cache(e.to_string())),
-        }
-    }
-
     /// Remove a cached entry.
     #[allow(dead_code)]
     pub async fn remove(&self, key: &str) -> Result<(), ApiError> {
@@ -132,7 +138,11 @@ impl DiskCache {
         Ok(())
     }
 
-    /// Get raw bytes from cache (for Parquet responses).
+    /// Raw read, reporting exactly what cacache reports. Test-only: a route
+    /// reads through `cache_entry`'s policy instead (#7676), so there is one
+    /// answer to "what does an unusable entry mean", and this is how a test
+    /// inspects what the routes left on disk.
+    #[cfg(test)]
     pub async fn get_bytes(&self, key: &str) -> Result<Option<Vec<u8>>, ApiError> {
         match cacache::read(&self.cache_dir, key).await {
             Ok(data) => Ok(Some(data)),
@@ -146,9 +156,36 @@ impl DiskCache {
         // Excludes `remove_by_key_prefix`'s GC pass, not other concurrent
         // writers -- see `write_gc_lock`'s docstring.
         let _guard = self.write_gc_lock.read().await;
-        cacache::write(&self.cache_dir, key, data).await?;
+        // The index row is stamped with a time no earlier write of this
+        // process shares: parse output is deterministic, so a re-parse that
+        // repairs an entry writes the SAME content hash, and the row's time
+        // is what tells that write from the one a reader saw fail
+        // (`cache_entry::evict_unusable`). A wall-clock millisecond alone
+        // would not: two writes can land in one.
+        use futures::io::AsyncWriteExt;
+        let mut writer = cacache::WriteOpts::new()
+            .size(data.len())
+            .time(self.next_write_time())
+            .open(&self.cache_dir, key)
+            .await?;
+        writer.write_all(data).await.map_err(|e| cacache::Error::IoError(e, "writing cache entry".into()))?;
+        writer.commit().await?;
         tracing::debug!(key = %key, size = data.len(), "Cached raw bytes");
         Ok(())
+    }
+
+    /// Unix milliseconds, bumped past the previous call's value when the
+    /// clock has not moved (or has gone back).
+    fn next_write_time(&self) -> u128 {
+        use std::sync::atomic::Ordering;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_millis() as u64);
+        let stamped = self
+            .write_clock
+            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |last| Some(now.max(last.saturating_add(1))))
+            .map_or(now, |last| now.max(last.saturating_add(1)));
+        u128::from(stamped)
     }
 
     /// Cache-wide entry count and total content size in bytes, for the

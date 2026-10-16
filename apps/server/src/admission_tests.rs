@@ -379,3 +379,51 @@ async fn issue_7676_shrink_to_returns_the_excess_to_the_budget() {
     drop(upload);
     assert!(a.acquire(10 * MIB).await.is_ok());
 }
+
+/// #7676, SERVER-7: a finished job whose response is still being drained
+/// keeps its bytes charged and holds no CPU slot.
+#[tokio::test]
+async fn issue_7676_into_resident_frees_the_cpu_slot_and_keeps_the_bytes() {
+    let a = Arc::new(Admission::new(cfg_shed(1, 4, 0, 0)));
+    let resident = a.acquire(4 * MIB).await.expect("admit").into_resident();
+
+    assert!(a.acquire_resident(MIB).await.is_err(), "the bytes were released with the CPU slot");
+    let cpu_only = Arc::new(Admission::new(cfg_shed(1, 0, 0, 0)));
+    let drained = cpu_only.acquire(MIB).await.expect("admit").into_resident();
+    assert!(cpu_only.acquire(MIB).await.is_ok(), "the CPU slot outlived its job");
+    drop(drained);
+
+    drop(resident);
+    assert!(a.acquire(4 * MIB).await.is_ok(), "the bytes outlived their response");
+}
+
+/// #7676, SERVER-6: a cache read is charged to the byte budget and never
+/// waits for a CPU slot, so a one-slot host serves a data-model fetch while
+/// a parse runs; it waits in the same bounded queue a parse does.
+#[tokio::test]
+async fn issue_7676_acquire_resident_needs_bytes_not_a_cpu_slot() {
+    let a = Arc::new(Admission::new(cfg_shed(1, 8, 1, 0)));
+    let parse = a.acquire(4 * MIB).await.expect("the one parse slot");
+    let read = a.acquire_resident(4 * MIB).await.expect("a read needs no CPU slot");
+
+    let err = a.acquire_resident(MIB).await.expect_err("the budget is spent");
+    assert!(matches!(err, ApiError::Overloaded { .. }));
+    assert_eq!(rejected(&a, "overloaded"), 1, "a waiter that timed out");
+    drop(read);
+    drop(parse);
+    assert!(a.acquire_resident(8 * MIB).await.is_ok());
+
+    // With the byte gate off, nothing bounds resident bytes.
+    let ungated = Arc::new(Admission::new(cfg_shed(1, 0, 0, 0)));
+    let _parse = ungated.acquire(MIB).await.expect("the one parse slot");
+    assert!(ungated.acquire_resident(u64::MAX).await.is_ok());
+}
+
+/// #7676: the RSS breaker sheds a cache read like any other job.
+#[tokio::test]
+async fn issue_7676_acquire_resident_is_shed_by_the_rss_breaker() {
+    let a = Arc::new(Admission::new(cfg(1, 100, 1)));
+    a.set_resident_bytes(90 * MIB);
+    assert!(a.acquire_resident(MIB).await.is_err());
+    assert_eq!(rejected(&a, "rss_shed"), 1);
+}

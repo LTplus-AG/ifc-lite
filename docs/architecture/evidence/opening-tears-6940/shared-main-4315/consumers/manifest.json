@@ -1,0 +1,53 @@
+{
+  "schema": 1,
+  "scope": "Published byte-integrity index only; original detailed manifests/results preserved losslessly in audit metadata. No geometry or performance qualification.",
+  "archive": {
+    "path": "execution-evidence.tar.xz",
+    "sha256": "e7e8b3f86ea9301f2f6552ac10f0a122a3aaf090edfd180f7b0574c7ca89ff65",
+    "bytes": 8731732,
+    "members": 177,
+    "repeatByteIdentical": true,
+    "allExtractedMembersRehashed": true,
+    "sameDecompressedTarSha256": "bf9912cdb50fbac92688fadbfb4a9b736e2d53d4da565de39737d567e1c5009b",
+    "sameDecompressedTarBytes": 477265920
+  },
+  "auditMetadata": {
+    "path": "audit-metadata.tar.xz",
+    "bytes": 16024,
+    "sha256": "6114e0eec19b989838a6e0805690aabd424a581bb5516a4a141e73ccc3702d38",
+    "members": [
+      {
+        "path": "README.md",
+        "bytes": 4227,
+        "sha256": "d934ceb32d617d62e556af4778d37ae45b60745d5a1500f7b5b5c87d629a4ea1"
+      },
+      {
+        "path": "manifest.json",
+        "bytes": 72860,
+        "sha256": "d1d465d1160ae9f8c9755eca0a82eec263a1fea531ee62b0a51eb3b093cac2aa"
+      },
+      {
+        "path": "packaging-reference-closure.json",
+        "bytes": 143153,
+        "sha256": "a318b1e98f2bedcf988f1480b70f4aa74d22815abd13e2872ff06fad8704624f"
+      },
+      {
+        "path": "packaging-result.json",
+        "bytes": 1406,
+        "sha256": "a604b39b8891a742cb1dd87394a205e462e6bf3b0fb21940c1a383d20cfc1e3e"
+      },
+      {
+        "path": "verify-packet.py",
+        "bytes": 836,
+        "sha256": "1a7d76e65054f1c99b939b0f92323ff14ae088686e7ca098293fc551d8eefeb4"
+      }
+    ]
+  },
+  "originalMemberManifest": {
+    "member": "manifest.json",
+    "bytes": 72860,
+    "sha256": "d1d465d1160ae9f8c9755eca0a82eec263a1fea531ee62b0a51eb3b093cac2aa"
+  },
+  "executionHead": "431571bdb96a20a73b19907c2c3ec05dc7733f43",
+  "selectedMain": "56a5f58c325997c4c7ec460456a9e150437718cd"
+}

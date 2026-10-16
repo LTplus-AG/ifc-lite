@@ -12,16 +12,16 @@ index 35d47f8ea9..4cdfe30bf3 100644
              err => ApiError::Parquet(err.to_string()),
          }
 diff --git b/apps/server/src/routes/parse/fetch.rs a/apps/server/src/routes/parse/fetch.rs
-index ae78f82016..ff9814c881 100644
+index 7743d624dc..c1947670dc 100644
 --- b/apps/server/src/routes/parse/fetch.rs
 +++ a/apps/server/src/routes/parse/fetch.rs
 @@ -65,7 +65,7 @@ pub async fn get_data_model(
          // Nothing cached and nothing filling: a fill that refused the model
          // recorded why (#7675), and that reason answers 400 instead of 404.
          Err(ApiError::NotFound(not_found)) => {
--            match state.cache.get_bytes(&data_model_refusal_key(&entry_key)).await?.filter(|_| false) {
-+            match state.cache.get_bytes(&data_model_refusal_key(&entry_key)).await? {
-                 Some(reason) => Err(ApiError::BadRequest(String::from_utf8_lossy(&reason).into_owned())),
+-            match state.cache.read_usable_utf8(&data_model_refusal_key(&entry_key)).await?.filter(|_| false) {
++            match state.cache.read_usable_utf8(&data_model_refusal_key(&entry_key)).await? {
+                 Some(reason) => Err(ApiError::BadRequest(reason)),
                  None => Err(ApiError::NotFound(not_found)),
              }
 diff --git b/apps/server/src/services/data_model/materials.rs a/apps/server/src/services/data_model/materials.rs

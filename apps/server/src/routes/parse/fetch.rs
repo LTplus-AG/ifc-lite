@@ -65,8 +65,8 @@ pub async fn get_data_model(
         // Nothing cached and nothing filling: a fill that refused the model
         // recorded why (#7675), and that reason answers 400 instead of 404.
         Err(ApiError::NotFound(not_found)) => {
-            match state.cache.get_bytes(&data_model_refusal_key(&entry_key)).await? {
-                Some(reason) => Err(ApiError::BadRequest(String::from_utf8_lossy(&reason).into_owned())),
+            match state.cache.read_usable_utf8(&data_model_refusal_key(&entry_key)).await? {
+                Some(reason) => Err(ApiError::BadRequest(reason)),
                 None => Err(ApiError::NotFound(not_found)),
             }
         }

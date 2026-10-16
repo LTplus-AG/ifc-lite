@@ -10,7 +10,7 @@ use super::{DropAxis, ImplicitPoint, Lpi, Sign, Tpi};
 use num_rational::BigRational;
 use num_traits::{Signed, Zero};
 
-/// Invariant: kernel operands are finite (`arrangement::Tri`, #7677).
+/// Invariant: operands pass `arrangement::operands_admitted` (#7677).
 #[inline]
 fn r(x: f64) -> BigRational {
     BigRational::from_float(x).expect("kernel: non-finite coordinate reached the exact predicate")
@@ -276,11 +276,12 @@ pub(crate) fn lambda_of(p: &ImplicitPoint) -> (V3, BigRational) {
     }
 }
 
-/// Exact `orient3d` over any explicit/implicit mix in any slot, on materialised
-/// points (`point_of` is total): [`super::predicates::orient3d`]'s fallback
-/// for configurations the arrangement never builds (#7677).
+/// Exact `orient3d`, any explicit/implicit mix in any slot (#7677): the fallback for
+/// orders the arrangement never builds. Degenerate (`d == 0`) is Zero, as `assemble_sign` says.
 pub fn orient3d_points(a: &ImplicitPoint, b: &ImplicitPoint, c: &ImplicitPoint, d: &ImplicitPoint) -> Sign {
-    let [a, b, c, d] = [a, b, c, d].map(point_of);
+    let pts = [a, b, c, d];
+    if pts.iter().any(|p| lambda_of(p).1.is_zero()) { return Sign::Zero; }
+    let [a, b, c, d] = pts.map(point_of);
     sign_of(&det3(&sub3(&a, &d), &sub3(&b, &d), &sub3(&c, &d)))
 }
 

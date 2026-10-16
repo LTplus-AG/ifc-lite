@@ -858,8 +858,11 @@ impl Mesh {
         // rather than indexed past the end (#7677, KERNEL-28): `Mesh` has pub
         // fields, so a caller-built mesh can carry one.
         let inside = |i: u32| -> bool {
-            let b = i as usize * 3;
-            let Some(&[x, y, z]) = self.positions.get(b..b + 3) else { return false };
+            // Checked: `usize` is 32 bits on wasm32, where `i * 3` can wrap back
+            // into range and keep a triangle the compaction then indexes past.
+            let Some(&[x, y, z]) = (i as usize).checked_mul(3).and_then(|b| self.positions.get(b..)?.get(..3)) else {
+                return false;
+            };
             x >= lo[0] && x <= hi[0] && y >= lo[1] && y <= hi[1] && z >= lo[2] && z <= hi[2]
         };
         let tri_count = self.indices.len() / 3;

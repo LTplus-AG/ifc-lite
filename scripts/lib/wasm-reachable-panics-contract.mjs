@@ -39,20 +39,22 @@ export function runReachablePanicContracts(IfcAPI, test, skip, root) {
     api.free();
   });
 
-  test('#7677 splitMeshByZones ignores a zone of Infinity size instead of trapping', () => {
-    // A 2 m cube; the zone's size is infinite along x and its quarter-turn-and-
-    // a-half rotation keeps the corners at +-Infinity rather than NaN, which
-    // used to reach the exact kernel and panic.
+  test('#7677 splitMeshByZones refuses a zone past the kernel coordinate bound instead of trapping', () => {
+    // A 2 m cube. An Infinity zone (rotated so its corners stay +-Infinity
+    // rather than NaN) used to reach the exact kernel and panic; a 1e77 zone
+    // returned a wrong split. Both are now `undefined`: no split.
     const positions = Float64Array.from([0, 0, 0, 2, 0, 0, 2, 2, 0, 0, 2, 0, 0, 0, 2, 2, 0, 2, 2, 2, 2, 0, 2, 2]);
     const indices = Uint32Array.from([0, 3, 2, 0, 2, 1, 4, 5, 6, 4, 6, 7, 0, 4, 7, 0, 7, 3, 1, 2, 6, 1, 6, 5, 0, 1, 5, 0, 5, 4, 3, 7, 6, 3, 6, 2]);
-    const zones = Float64Array.from([1, 1, 1, Infinity, 1, 1, Math.PI / 4]);
-    const split = wasmPkg.splitMeshByZones(positions, indices, zones);
+    for (const size of [Infinity, 1e77]) {
+      const zones = Float64Array.from([1, 1, 1, size, size, size, Math.PI / 4]);
+      assert.equal(wasmPkg.splitMeshByZones(positions, indices, zones), undefined, `size ${size}`);
+    }
+    const split = wasmPkg.splitMeshByZones(positions, indices, Float64Array.from([1, 1, 1, 1e30, 1e30, 1e30, Math.PI / 4]));
     try {
-      assert.equal(split.pieceCount, 1);
       const piece = split.piece(0);
       try {
-        assert.equal(piece.zoneIndex, -1, 'a non-finite zone reaches nothing');
-        assert.ok(Math.abs(piece.volume - 8) < 1e-9, `the whole cube is the remainder, got ${piece.volume}`);
+        assert.equal(piece.zoneIndex, 0, 'an in-range huge zone still holds the cube');
+        assert.ok(Math.abs(piece.volume - 8) < 1e-9, `got ${piece.volume}`);
       } finally {
         piece.free();
       }

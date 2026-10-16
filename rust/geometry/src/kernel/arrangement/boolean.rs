@@ -157,6 +157,10 @@ fn point_via_interner(it: &Interner, v: Vid) -> [f64; 3] {
 /// [`difference_all`] does — see [`boolean_with_conformity`], which computes
 /// the identical result and additionally surfaces that signal for callers
 /// that want it (diagnostics; issue #3353's classification-level tear).
+///
+/// An operand past [`super::MAX_OPERAND_COORD`] (or non-finite) is refused:
+/// the result is empty and [`boolean_with_conformity`] reports `false`
+/// (#7677). Never a wrong solid.
 pub fn boolean(a: &[Tri], b: &[Tri], op: BoolOp) -> Vec<Tri> {
     boolean_with_conformity(a, b, op).0
 }

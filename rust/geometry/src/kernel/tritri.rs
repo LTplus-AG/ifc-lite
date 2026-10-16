@@ -46,35 +46,10 @@ fn sub_f64(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
 fn cross_f64(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
     [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
 }
-#[inline]
-fn raw_plane_normal(t: &[[f64; 3]; 3]) -> [f64; 3] {
-    cross_f64(sub_f64(t[1], t[0]), sub_f64(t[2], t[0]))
-}
-
-/// `tris` scaled by one power of two so every coordinate lies in [-1, 1].
-/// Scaling by 2^-k is exact (barring underflow of tiny components) and keeps
-/// every plane's orientation, so a direction derived from the scaled copy is
-/// the same direction. `None` when a coordinate is non-finite or all are zero.
-fn unit_scaled<const N: usize>(tris: [&[[f64; 3]; 3]; N]) -> Option<[[[f64; 3]; 3]; N]> {
-    let span = tris.iter().flat_map(|t| t.iter().flatten()).fold(0.0f64, |m, v| m.max(v.abs()));
-    if !span.is_finite() || span == 0.0 {
-        return None;
-    }
-    let k = span.log2().ceil() as i32;
-    Some(tris.map(|t| t.map(|p| p.map(|v| v * 2f64.powi(-k)))))
-}
-
-/// Plane normal of `t` (un-normalised). Past ~1e154 the cross product
-/// overflows; the direction then comes from the unit-scaled copy, so callers
-/// never build an implicit point from an infinite normal (#7677, KERNEL-30).
-/// A finite result is bit-identical to the plain cross product.
+/// Un-normalised plane normal; also the coplanar clip's, one home (#7677).
 #[inline]
 pub(super) fn plane_normal(t: &[[f64; 3]; 3]) -> [f64; 3] {
-    let n = raw_plane_normal(t);
-    if n.iter().all(|v| v.is_finite()) {
-        return n;
-    }
-    unit_scaled([t]).map_or(n, |[u]| raw_plane_normal(&u))
+    cross_f64(sub_f64(t[1], t[0]), sub_f64(t[2], t[0]))
 }
 /// Approximate direction of the crossing line L = t1.plane ∩ t2.plane (n1 × n2),
 /// rounded to an INTEGER-valued direction. The raw cross product lands on a ~2^64
@@ -83,18 +58,8 @@ pub(super) fn plane_normal(t: &[[f64; 3]; 3]) -> [f64; 3] {
 /// matters and `u` need only be approximately along L, so we normalise + round to
 /// integers: `gi` then scales it on-grid and the exact fixed-width tier resolves
 /// the 1-D ordering. (~600µs/intersection → microseconds.)
-///
-/// Coordinates past ~1e77 overflow `n` to `inf` (KERNEL-30, #7677), and an
-/// infinite `u` used to panic in the exact tier. That case re-runs on the
-/// unit-scaled pair, which leaves the direction unchanged; finite results
-/// never take that branch, so they are bit-identical to before.
 fn line_direction(t1: &[[f64; 3]; 3], t2: &[[f64; 3]; 3]) -> [f64; 3] {
-    let mut n = cross_f64(plane_normal(t1), plane_normal(t2));
-    if !n.iter().all(|v| v.is_finite()) {
-        if let Some([a, b]) = unit_scaled([t1, t2]) {
-            n = cross_f64(raw_plane_normal(&a), raw_plane_normal(&b));
-        }
-    }
+    let n = cross_f64(plane_normal(t1), plane_normal(t2));
     let m = n[0].abs().max(n[1].abs()).max(n[2].abs());
     if m == 0.0 || !m.is_finite() {
         return n;
@@ -188,20 +153,8 @@ fn plane_interval(tri: &[[f64; 3]; 3], plane: &[[f64; 3]; 3]) -> PlaneInterval {
 use super::near_band::NearBand;
 
 #[inline]
-fn ti_sub(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
-    [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
-}
-#[inline]
-fn ti_cross(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
-    [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
-}
-#[inline]
 fn ti_dot(a: [f64; 3], b: [f64; 3]) -> f64 {
     a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
-}
-#[inline]
-fn ti_normal(t: &[[f64; 3]; 3]) -> [f64; 3] {
-    ti_cross(ti_sub(t[1], t[0]), ti_sub(t[2], t[0]))
 }
 
 /// Are `t1` and `t2` an INTENDED-FLUSH coplanar pair that per-axis snapping
@@ -251,7 +204,7 @@ fn ti_normal(t: &[[f64; 3]; 3]) -> [f64; 3] {
 /// geometric effect is below the import-noise floor by construction, and the
 /// coplanar overlay's degenerate-projection guards (`w0 == Zero`) handle it.
 fn near_coplanar(t1: &[[f64; 3]; 3], t2: &[[f64; 3]; 3]) -> bool {
-    let (n1, n2) = (ti_normal(t1), ti_normal(t2));
+    let (n1, n2) = (plane_normal(t1), plane_normal(t2));
     let (nn1, nn2) = (ti_dot(n1, n1), ti_dot(n2, n2));
     if nn1 <= 0.0 || nn2 <= 0.0 || !nn1.is_finite() || !nn2.is_finite() {
         return false; // a degenerate triangle is never a flush coplanar partner
@@ -266,7 +219,7 @@ fn near_coplanar(t1: &[[f64; 3]; 3], t2: &[[f64; 3]; 3]) -> bool {
     let in_slab = |t: &[[f64; 3]; 3], plane: &[[f64; 3]; 3], n: [f64; 3], nn: f64| {
         let band2 = band.scaled_band2(n, nn); // scaled by |n|², like `d` below
         t.iter().all(|&v| {
-            let d = ti_dot(ti_sub(v, plane[0]), n); // perp_dist · |n|
+            let d = ti_dot(sub_f64(v, plane[0]), n); // perp_dist · |n|
             d * d <= band2
         })
     };

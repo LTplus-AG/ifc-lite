@@ -113,10 +113,7 @@ impl LandXmlTinStreamSession {
 
     pub fn advance(&mut self, chunk: &[u8]) -> Result<(), LandXmlError> {
         if self.closed {
-            return Err(error(
-                Code::InvalidSemantic,
-                "LandXML stream session is closed",
-            ));
+            return Err(error(Code::InvalidSemantic, "LandXML stream session is closed"));
         }
         if chunk.len() > MAX_LANDXML_STREAM_INPUT_CHUNK_BYTES {
             return Err(error(Code::InputTooLarge, "input chunk exceeds byte limit"));
@@ -167,18 +164,19 @@ impl LandXmlTinStreamSession {
     /// the finalized family documents.
     pub fn finish_cursor(&mut self) -> Result<(), LandXmlError> {
         if self.closed {
-            return Err(error(
-                Code::InvalidSemantic,
-                "LandXML stream session is closed",
-            ));
+            return Err(error(Code::InvalidSemantic, "LandXML stream session is closed"));
         }
-        self.decoder.finish()?;
+        let decoded = self.decoder.finish();
+        self.close_on_error(decoded)?;
+        // Undrained output is recoverable (drain, then retry); other errors close.
         if self.output_pending() || !self.pending_input.is_empty() {
-            return Err(error(
-                Code::LimitExceeded,
-                "stream output must be drained before finalization",
-            ));
+            return Err(error(Code::LimitExceeded, "stream output must be drained before finalization"));
         }
+        let finished = self.finish_document();
+        self.close_on_error(finished)
+    }
+
+    fn finish_document(&mut self) -> Result<(), LandXmlError> {
         if !self.token.is_empty() {
             self.emit_token()?;
         }

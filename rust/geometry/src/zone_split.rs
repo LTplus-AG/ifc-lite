@@ -32,7 +32,9 @@
 //!   only reach `Mesh` (f32) at the caller's boundary. A per-piece f64 -> f32 ->
 //!   f64 round trip is what turns a shared zone boundary into a crack.
 
-use crate::kernel::arrangement::{boolean, box_mesh, difference_all, union_all, BoolOp, Tri};
+use crate::kernel::arrangement::{
+    boolean, box_mesh, difference_all, operands_admitted, union_all, BoolOp, Tri,
+};
 use crate::kernel::mesh_bridge::orient_outward;
 use crate::kernel::signed_volume::signed_volume_of;
 
@@ -231,10 +233,9 @@ pub const NO_VOLUME_REL: f64 = 1e-12;
 /// point residue and the caller can refuse on it. That is the same signal the
 /// apportionment path reports as `overlapping`.
 ///
-/// A zone with a non-finite parameter reaches nothing and is skipped (#7677).
-///
-/// Returns `None` when `host` encloses no volume: no triangles, a non-finite
-/// coordinate, or a
+/// Returns `None` when the host or any zone has a coordinate the kernel
+/// refuses (non-finite, or past `MAX_OPERAND_COORD`; #7677), or when `host`
+/// encloses no volume: no triangles, or a
 /// degenerate shell whose divergence sum is rounding residue (see
 /// [`NO_VOLUME_REL`]). There is nothing to split, and a `ZoneSplit` for it would carry one zero-triangle "remainder", a
 /// `sum_error_rel` of zero and `remainder_failed == false`: every signal a
@@ -242,10 +243,16 @@ pub const NO_VOLUME_REL: f64 = 1e-12;
 /// drops malformed triangles before calling here, so an all-malformed input
 /// arrives as an empty host.
 pub fn split_mesh_by_zones(host: &[Tri], zones: &[ZoneShape]) -> Option<ZoneSplit> {
+    // The kernel refuses coordinates it cannot answer (#7677, KERNEL-30): a
+    // non-finite or out-of-range host or zone is no split, never a wrong one.
+    let zone_tris: Vec<Vec<Tri>> = zones.iter().map(ZoneShape::to_tris).collect();
+    let mut operands: Vec<&[Tri]> = zone_tris.iter().map(Vec::as_slice).collect();
+    operands.push(host);
+    if !operands_admitted(&operands) {
+        return None;
+    }
     let host = orient_outward(host.to_vec());
-    // The exact kernel takes finite coordinates only (#7677); a non-finite host
-    // has no defined volume to split.
-    if host.is_empty() || !host.iter().flatten().flatten().all(|v| v.is_finite()) {
+    if host.is_empty() {
         return None;
     }
     let whole_volume = signed_volume_of(&host);
@@ -265,14 +272,7 @@ pub fn split_mesh_by_zones(host: &[Tri], zones: &[ZoneShape]) -> Option<ZoneSpli
         if (0..3).any(|k| lo[k] > host_hi[k] || hi[k] < host_lo[k]) {
             continue;
         }
-        let box_tris = zone.to_tris();
-        // A non-finite zone (an `Infinity` size, a NaN centre) reaches nothing.
-        // Its corners would otherwise panic in the exact kernel, which takes
-        // finite coordinates only (#7677, KERNEL-30).
-        if !box_tris.iter().flatten().flatten().all(|v| v.is_finite()) {
-            continue;
-        }
-        let box_tris = orient_outward(box_tris);
+        let box_tris = orient_outward(zone_tris[index].clone());
         let piece = boolean(&host, &box_tris, BoolOp::Intersection);
         let volume = signed_volume_of(&piece);
         if piece.is_empty() || volume <= negligible {

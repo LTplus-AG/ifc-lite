@@ -16,7 +16,6 @@
 
 use super::predicates::orient2d_any;
 use super::retriangulate::projection_axis;
-// The shared plane normal: overflow-safe for huge finite coordinates (#7677).
 use super::tritri::plane_normal;
 use super::{DropAxis, ImplicitPoint, Lpi, Sign};
 

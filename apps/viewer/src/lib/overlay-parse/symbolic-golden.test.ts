@@ -52,15 +52,16 @@ interface GoldenFixture {
   minPrimitives: number;
 }
 
+// Main #7728 intentionally preserves RTC coordinates as f64 (#7741).
 const FIXTURES: GoldenFixture[] = [
   {
     path: 'tests/models/various/01_BIMcollab_Example_ARC.ifc',
-    digest: '8a304204199f80174343ca4eec723104b28b2198d7d1547234febf22e5524b6c',
+    digest: '3d34f41118fff62cf2b7c12c6ec98f8dc2ad2ab87042599918da30bc57430c4c',
     minPrimitives: 80,
   },
   {
     path: 'tests/models/ara3d/ISSUE_102_M3D-CON-CD.ifc',
-    digest: 'afe3a887e44469b3043913aa3dfd7b785d6b85ddf3300fb5f6fc6ec2ce63de3e',
+    digest: '358568439e86c0e7375cd7e8c1b94dabc2c43630f0a3aa6f8ca5f968dd7f1716',
     minPrimitives: 400,
   },
 ];

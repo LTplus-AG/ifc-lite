@@ -99,6 +99,12 @@ manifest = json.loads(pathlib.Path(sys.argv[2]).read_text())
 archive = pathlib.Path(manifest['archive']['path'])
 assert hashlib.sha256(archive.read_bytes()).hexdigest() == manifest['archive']['sha256']
 with tarfile.open(archive, 'r:gz') as bundle:
+    if 'filesIndex' in manifest:
+        index = manifest['filesIndex']
+        data = bundle.extractfile(index['path']).read()
+        assert len(data) == index['bytes']
+        assert hashlib.sha256(data).hexdigest() == index['sha256']
+        manifest['files'] = json.loads(data)['files'] + [index]
     members = bundle.getmembers()
     assert all(member.isfile() for member in members)
     assert sorted(member.name for member in members) == sorted(row['path'] for row in manifest['files'])
@@ -124,7 +130,7 @@ archive, then set `capture_manifest` to its extracted `.manifest.json` and rerun
 the same block from the repository root. Recorded sources and limitations remain
 unchanged; these historical records do not qualify later source.
 
-## Final native validation
+## Historical native validation
 
 `native-validation.tar.gz` retains the targeted native runs, sanctioned golden
 regeneration, exact Python module provenance, independent source review and
@@ -136,7 +142,7 @@ The old ISSUE_129 pin's diagnostic failure is preserved separately from its
 successful stronger-pin rerun. This archive does not qualify later source,
 browser geometry, performance, or required CI.
 
-## Final Chrome and finite-surface validation
+## Historical Chrome and finite-surface validation
 
 `browser-validation.json` binds the source-built engine, real S_Office load,
 and four reporter cases to their immutable captures and finite-surface oracle
@@ -195,4 +201,49 @@ source identity and does not qualify this later guard.
 budget trip on the old implementation, 20 passing zone tests, and the separately
 source-bound 67-test/Clippy run on `e5f4723829`. Its manifest works with the same
 extraction recipe. The original scratch-parser failure remains recorded.
-Current-source WASM, browser and performance qualification are still pending.
+
+## Current engine and selected browser geometry
+
+`current-engine-validation.tar.gz` binds the official WASM build and forced
+viewer build at `440bb1f4f1` to engine SHA-256 `4bce6ba583225eb6feee1d352359c3c12f4590559cb9f2becd48dc14a8b15374`.
+Its manifest seals both the archive and its internal decoded-file index; use
+the same extraction recipe above. It preserves 144 files, including original
+failed attempts, exact build/source/runtime maps, raw captures, screenshots,
+oracle diagnostics, helper sources and a derived source bridge. Runtime binaries,
+the frozen distribution, model fixtures and browser Local State are omitted.
+The generated type change is Rustdoc only; production Rust is byte-identical
+to the native-tested `e5f4723829` source.
+
+Root typecheck covers 4,221 test files. The real WASM contract passes 204 tests
+with one existing skip; public WASM tests pass 22. The initial consumer check's
+missing installed dependencies and its failure remain separate from the
+successful resumption after `pnpm install --frozen-lockfile`. Two symbolic
+digests inherited from main's f64 RTC change (#7728/#7741) were regenerated
+with this engine, then both tests passed without update mode; minimum primitive
+counts are unchanged.
+
+The Windows route uses Windows `node.exe` and native loopback CDP to a uniquely
+owned Chrome profile. Extract `e/p/` for the launcher, capture sources and
+generation receipts; `e/b/` holds the current raw records. The real S_Office
+model loads first in a fresh context, through four WASM workers on physical
+NVIDIA hardware. Four reporter/stacked captures follow. Every case records
+the delivered runtime hashes and retained geometry bits. The original aggregate
+still says `PRESERVED_FAILURE_OR_UNKNOWN` solely because its cleanup observation
+failed. A separate invocation of the same strict helper verified no remaining
+owned process, removed the disposable profile and preserved the protected
+Chrome. The admission failure preceding this attempt is also retained. Neither
+attempt is relabelled as a whole-browser protocol pass.
+
+Independent fresh IfcOpenShell comparisons of the four completed raw reporter
+records pass all six planes each at the unchanged 100 µm tolerance: no missing,
+extra or unresolved coverage. The literal remainder is 0.025000095 m wide.
+The source bridge additionally binds all four output-receipt hashes; reference
+diagnostics were checked for terminal Boolean fallback. This is selected finite
+surface adjudication, with the limitations stated above, not performance proof.
+
+The current engine **fails** its transfer gate: 2,279,444 Brotli bytes against
+2,243,651 allowed, or 35,793 bytes over. This comparison includes subsequent
+main changes and does not isolate the PR's cost. A bounded read-only inspection
+could not prove the proposed function-cloning cause; no compiler attribute or
+acceptance limit was changed. No accepted worker-pool timing cohort exists.
+Fresh CI and cross-platform determinism remain required before merge.

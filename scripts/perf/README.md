@@ -21,6 +21,15 @@ Lookup-only hash maps and shared projected containment preserve existing output
 ordering, but do not recover the required engine transfer and geometry instruction
 budgets. No ceiling or acceptance tolerance was raised.
 
+Reusing already-read triangle coordinates preserves the classifier's arithmetic
+and ordering, but the subsequent source-built engine still exceeds the transfer
+gate. Final artifacts lack usable function names, so a read-only inspection did
+not establish that consolidation replay clones large functions. Do not repeat
+that attribution or add outlining attributes without evidence. Current-source
+finite reporter comparisons pass independently of the preserved browser cleanup
+failure; neither that proof nor historical instruction counts supplies a fresh
+end-to-end timing verdict.
+
 Coordinated idle windows and safe consumer cleanup did not qualify a complete
 interleaved worker-pool cohort under the unchanged host checks. An earlier capture
 also exposed a response observer retaining handles across the canonical cold

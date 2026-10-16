@@ -83,6 +83,7 @@ impl GeometryProcessor for RevolvedAreaSolidProcessor {
             * decoder.plane_angle_to_radians();
 
         // One solid per disjoint area: a composite profile is several (#7685).
+        self.profile_processor.arm_solid_budget();
         let mut regions = self.profile_processor.process_regions(&profile, decoder, quality)?;
         regions.retain(|region| region.outer.len() >= 3);
         if regions.is_empty() {
@@ -145,6 +146,12 @@ impl GeometryProcessor for RevolvedAreaSolidProcessor {
             let base = (angle.abs() / std::f64::consts::PI * 12.0).ceil() as usize;
             scale_segments(base, 8, 4096, quality)
         };
+
+        // Every ring point is placed once per step: refuse a composite whose
+        // revolution would exceed the output cap before building it.
+        let ring_count = if full_circle { segments } else { segments + 1 };
+        let placed = regions.iter().map(crate::profiles::region_points).sum::<usize>() * ring_count;
+        crate::profiles::check_composite_sweep(placed, regions.len(), entity.id)?;
 
         let sweep = Revolution {
             axis_location,

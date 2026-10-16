@@ -157,6 +157,9 @@ impl GeometryProcessor for SectionedSolidHorizontalProcessor {
         let directrix_entity = decoder.decode_by_id(directrix_id)?;
         let alignment = AlignmentCurve::parse(&directrix_entity, decoder)?;
 
+        // Every station draws on one composite budget, armed once per solid.
+        self.profile_processor.arm_solid_budget();
+
         // Decode authored (section, position) pairs. A section is one region
         // per disjoint area of its profile (several for a composite, #7685).
         let mut authored: Vec<(Section, PositionAlongDirectrix)> =
@@ -200,13 +203,29 @@ impl GeometryProcessor for SectionedSolidHorizontalProcessor {
         authored.sort_by(|a, b| crate::cmp_f64_nan_last(a.1.distance_along, b.1.distance_along));
 
         // Walk authored pairs, subdividing intermediate stations
-        // wherever the alignment curves significantly between them.
+        // wherever the alignment curves significantly between them. The
+        // subdivision counts come first: a composite loft is refused on its
+        // placed-vertex count before any sample is materialised.
+        let steps: Vec<usize> = (1..authored.len())
+            .map(|i| {
+                let (prev_pos, this_pos) = (&authored[i - 1].1, &authored[i].1);
+                subdivisions(prev_pos, this_pos, alignment.as_ref(), arc_map.as_ref(), quality)
+            })
+            .collect();
+        let points = |section: &Section| section.iter().map(crate::profiles::region_points).sum::<usize>();
+        let placed = points(&authored[0].0)
+            + (1..authored.len())
+                .map(|i| steps[i - 1] * points(&authored[i - 1].0).max(points(&authored[i].0)))
+                .sum::<usize>();
+        let regions = authored.iter().map(|(section, _)| section.len()).max().unwrap_or(0);
+        crate::profiles::check_composite_sweep(placed, regions, entity.id)?;
+
         let mut samples: Vec<(Section, PositionAlongDirectrix)> = Vec::new();
         samples.push(authored[0].clone());
         for i in 1..authored.len() {
             let (prev_prof, prev_pos) = (&authored[i - 1].0, authored[i - 1].1);
             let (this_prof, this_pos) = (&authored[i].0, authored[i].1);
-            let n = subdivisions(&prev_pos, &this_pos, alignment.as_ref(), arc_map.as_ref(), quality);
+            let n = steps[i - 1];
             for k in 1..n {
                 let t = k as f64 / n as f64;
                 let interp_profile = interpolate_section(prev_prof, this_prof, t);

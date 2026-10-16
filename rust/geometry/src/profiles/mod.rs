@@ -18,6 +18,7 @@ mod directrix;
 mod outline;
 mod placement;
 mod regions;
+pub(crate) use regions::{check_composite_sweep, region_points};
 mod shapes;
 mod steel_shapes;
 mod simplify;
@@ -79,9 +80,10 @@ pub struct ProfileProcessor {
     /// `active_quality` is, and decremented on every nested curve. See
     /// [`MAX_CURVE_NODES`].
     curve_budget: Cell<u32>,
-    /// Remaining leaf regions for the in-flight entry call; reset with
-    /// `curve_budget`. See [`regions::MAX_PROFILE_REGIONS`].
+    /// Composite areas and their ring points left for the in-flight solid.
+    /// See [`ProfileProcessor::arm_solid_budget`].
     region_budget: regions::WorkBudget,
+    point_budget: regions::WorkBudget,
 }
 
 impl ProfileProcessor {
@@ -92,6 +94,7 @@ impl ProfileProcessor {
             active_quality: Cell::new(TessellationQuality::Medium),
             curve_budget: Cell::new(MAX_CURVE_NODES),
             region_budget: regions::WorkBudget::new(regions::MAX_PROFILE_REGIONS),
+            point_budget: regions::WorkBudget::new(regions::MAX_PROFILE_POINTS),
         }
     }
 
@@ -129,7 +132,6 @@ impl ProfileProcessor {
     pub fn set_tessellation_quality(&self, quality: TessellationQuality) {
         self.active_quality.set(quality);
         self.curve_budget.set(MAX_CURVE_NODES);
-        self.region_budget.arm(regions::MAX_PROFILE_REGIONS);
     }
 
     /// Process any IFC profile definition at the given tessellation `quality`.
@@ -153,6 +155,7 @@ impl ProfileProcessor {
         quality: TessellationQuality,
     ) -> Result<Profile2D> {
         self.set_tessellation_quality(quality);
+        self.arm_solid_budget();
         self.process_with_depth(profile, decoder, 0)
     }
 
@@ -175,7 +178,7 @@ impl ProfileProcessor {
                 Some(ProfileCategory::Arbitrary) => self.process_arbitrary(profile, decoder),
                 // One Profile2D cannot hold several disjoint areas: an outline.
                 Some(ProfileCategory::Composite) => Ok(regions::flatten_regions(
-                    self.regions_with_depth(profile, decoder, depth)?,
+                    self.regions_with_depth(profile, decoder, depth, false)?,
                 )),
                 _ => Err(Error::geometry(format!(
                     "Unsupported profile type: {}",

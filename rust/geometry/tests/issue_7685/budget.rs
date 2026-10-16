@@ -83,3 +83,142 @@ fn b1_a_real_two_level_composite_builds_every_area() {
     assert_volume("#701 100 unit cubes", signed_volume(&mesh), 100.0, 1e-4);
     assert_closed_outward("#701", &mesh, 100);
 }
+
+// --- Round 3 (B1-bis): the budget bounds WORK per SOLID, and the builders'
+// multipliers are capped before the mesh is built. ---------------------------
+
+/// A hollow circle (72 ring points) 5 m off the Y axis, nested `k` wide and
+/// `d` deep as `#101..`, plus the shared placement entities.
+fn hollow_fan(k: usize, d: usize) -> (String, u32) {
+    let mut data = String::from(
+        "#1=IFCCARTESIANPOINT((0.,0.,0.));\n#2=IFCDIRECTION((0.,0.,1.));\n\
+         #6=IFCAXIS2PLACEMENT3D(#1,$,$);\n#20=IFCCARTESIANPOINT((5.,0.));\n\
+         #21=IFCAXIS2PLACEMENT2D(#20,$);\n#22=IFCCIRCLEHOLLOWPROFILEDEF(.AREA.,$,#21,1.,0.25);\n\
+         #30=IFCDIRECTION((0.,1.,0.));\n#31=IFCAXIS1PLACEMENT(#1,#30);\n",
+    );
+    let mut prev = 22;
+    for level in 0..d {
+        let id = 101 + level as u32;
+        let list = vec![format!("#{prev}"); k].join(",");
+        writeln!(data, "#{id}=IFCCOMPOSITEPROFILEDEF(.AREA.,$,({list}),$);").unwrap();
+        prev = id;
+    }
+    (data, prev)
+}
+
+/// `stations` copies of `section` lofted along a straight 20 m IFC4x1 directrix.
+fn sectioned(data: &mut String, id: u32, section: u32, stations: usize) {
+    data.push_str("#40=IFCCARTESIANPOINT((0.,0.,0.));\n#41=IFCCARTESIANPOINT((0.,20.,0.));\n#42=IFCPOLYLINE((#40,#41));\n");
+    let positions: Vec<String> = (0..stations)
+        .map(|i| {
+            let pid = 1000 + i;
+            let station = 20.0 * i as f64 / (stations - 1) as f64;
+            writeln!(data, "#{pid}=IFCDISTANCEEXPRESSION({station:?},0.,0.,0.,.T.);").unwrap();
+            format!("#{pid}")
+        })
+        .collect();
+    let sections = vec![format!("#{section}"); stations].join(",");
+    writeln!(data, "#{id}=IFCSECTIONEDSOLIDHORIZONTAL(#42,({sections}),({}),.T.);", positions.join(",")).unwrap();
+}
+
+fn refused_fast(content: &str, id: u32, what: &str) {
+    let index = build_entity_index(content);
+    let mut decoder = EntityDecoder::with_index(content, index);
+    let started = Instant::now();
+    let entity = decoder.decode_by_id(id).expect("decode");
+    let result = GeometryRouter::new().process_representation_item(&entity, &mut decoder);
+    assert!(result.is_err(), "{what}: must be refused, built {} triangles", result.map(|m| m.indices.len() / 3).unwrap_or(0));
+    assert!(started.elapsed() < Duration::from_secs(5), "{what}: took {:?}", started.elapsed());
+}
+
+#[test]
+fn b1_bis_a_revolved_fan_out_is_refused_before_it_is_built() {
+    // 8^4 = 4096 hollow circles (the region cap exactly), 2π: 14 M triangles
+    // and 2.8 GB on 9c8889dbf3.
+    let (mut data, top) = hollow_fan(8, 4);
+    writeln!(data, "#200=IFCREVOLVEDAREASOLID(#{top},#6,#31,6.283185307179586);").unwrap();
+    refused_fast(&ifc("IFC4", &data), 200, "revolved 2π");
+}
+
+#[test]
+fn b1_bis_sectioned_stations_share_one_budget() {
+    // The same composite at 200 stations: 200 budgets on 9c8889dbf3 (an
+    // allocation abort). One budget per solid now.
+    let (mut data, top) = hollow_fan(8, 4);
+    sectioned(&mut data, 200, top, 200);
+    refused_fast(&ifc("IFC4X3_ADD2", &data), 200, "sectioned ×200");
+}
+
+#[test]
+fn b1_bis_an_item_listed_fifty_times_is_refused_fifty_times_fast() {
+    let (mut data, top) = hollow_fan(8, 4);
+    writeln!(data, "#200=IFCREVOLVEDAREASOLID(#{top},#6,#31,6.283185307179586);").unwrap();
+    data.push_str("#5=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#6,$);\n#10=IFCLOCALPLACEMENT($,#6);\n");
+    writeln!(data, "#300=IFCSHAPEREPRESENTATION(#5,'Body','SweptSolid',({}));", vec!["#200"; 50].join(",")).unwrap();
+    data.push_str("#301=IFCPRODUCTDEFINITIONSHAPE($,$,(#300));\n#302=IFCBUILDINGELEMENTPROXY('1kTvXnbbzCWw8lcMd1dR4o',$,'p',$,$,#10,#301,$,$);\n");
+    let content = ifc("IFC4", &data);
+    let index = build_entity_index(&content);
+    let mut decoder = EntityDecoder::with_index(&content, index);
+    let started = Instant::now();
+    let proxy = decoder.decode_by_id(302).expect("decode proxy");
+    let built = GeometryRouter::new()
+        .process_element(&proxy, &mut decoder)
+        .map(|m| m.indices.len() / 3)
+        .unwrap_or(0);
+    assert_eq!(built, 0, "every copy of the refused item is dropped");
+    assert!(started.elapsed() < Duration::from_secs(10), "took {:?}", started.elapsed());
+}
+
+#[test]
+fn b1_bis_the_budget_is_armed_per_solid() {
+    // 512 hollow circles = 36 864 ring points: more than half the per-solid
+    // point budget, so a budget that leaked across solids refuses the second.
+    let (mut data, top) = hollow_fan(8, 3);
+    writeln!(data, "#200=IFCEXTRUDEDAREASOLID(#{top},#6,#2,1.);\n#201=IFCEXTRUDEDAREASOLID(#{top},#6,#2,2.);").unwrap();
+    let content = ifc("IFC4", &data);
+    let index = build_entity_index(&content);
+    let mut decoder = EntityDecoder::with_index(&content, index);
+    let router = GeometryRouter::new();
+    for id in [200, 201] {
+        let entity = decoder.decode_by_id(id).expect("decode");
+        let mesh = router.process_representation_item(&entity, &mut decoder);
+        assert!(mesh.is_ok_and(|m| !m.indices.is_empty()), "#{id} must build");
+    }
+}
+
+/// Hollow circle area (r = 1, wall 0.25).
+const TUBE: f64 = std::f64::consts::PI * (1.0 - 0.75 * 0.75);
+
+#[test]
+fn b1_bis_a_realistic_revolved_composite_still_builds() {
+    // Three hollow circles at r = 4, 8, 12 revolved a quarter turn.
+    let mut data = String::from(
+        "#1=IFCCARTESIANPOINT((0.,0.,0.));\n#6=IFCAXIS2PLACEMENT3D(#1,$,$);\n\
+         #30=IFCDIRECTION((0.,1.,0.));\n#31=IFCAXIS1PLACEMENT(#1,#30);\n",
+    );
+    for (i, r) in [4, 8, 12].iter().enumerate() {
+        let id = 50 + 3 * i;
+        writeln!(data, "#{id}=IFCCARTESIANPOINT(({r}.,0.));\n#{}=IFCAXIS2PLACEMENT2D(#{id},$);", id + 1).unwrap();
+        writeln!(data, "#{}=IFCCIRCLEHOLLOWPROFILEDEF(.AREA.,$,#{},1.,0.25);", id + 2, id + 1).unwrap();
+    }
+    data.push_str("#70=IFCCOMPOSITEPROFILEDEF(.AREA.,$,(#52,#55,#58),$);\n#71=IFCREVOLVEDAREASOLID(#70,#6,#31,1.5707963267949);\n");
+    let mesh = mesh_of(&ifc("IFC4", &data), 71);
+    let expected = TUBE * (4.0 + 8.0 + 12.0) * std::f64::consts::FRAC_PI_2;
+    assert_volume("#71 three quarter-turn tubes", signed_volume(&mesh), expected, 0.03);
+    assert_closed_outward("#71", &mesh, 3);
+}
+
+#[test]
+fn b1_bis_a_realistic_sectioned_composite_still_builds() {
+    // Two hollow circles lofted over 30 stations along 20 m.
+    let mut data = String::from(
+        "#20=IFCCARTESIANPOINT((-3.,0.5));\n#21=IFCAXIS2PLACEMENT2D(#20,$);\n\
+         #22=IFCCIRCLEHOLLOWPROFILEDEF(.AREA.,$,#21,1.,0.25);\n#23=IFCCARTESIANPOINT((3.,0.5));\n\
+         #24=IFCAXIS2PLACEMENT2D(#23,$);\n#25=IFCCIRCLEHOLLOWPROFILEDEF(.AREA.,$,#24,1.,0.25);\n\
+         #26=IFCCOMPOSITEPROFILEDEF(.AREA.,$,(#22,#25),$);\n",
+    );
+    sectioned(&mut data, 200, 26, 30);
+    let mesh = mesh_of(&ifc("IFC4X3_ADD2", &data), 200);
+    assert_volume("#200 two tubes × 20 m", signed_volume(&mesh), 2.0 * TUBE * 20.0, 0.02);
+    assert_closed_outward("#200", &mesh, 2);
+}

@@ -12,7 +12,11 @@
 //! gave a second area outside the first inward-facing walls and a dropped or
 //! stray cap, and lost every later sub-profile's holes.
 //!
-//! [`ProfileProcessor::process_regions`] is the walk solid builders use. The
+//! [`ProfileProcessor::process_regions`] is the walk solid builders use. It is
+//! a fan-out walk (a composite may list one sub-composite many times), so the
+//! areas of composites are charged against a per-SOLID budget of areas and
+//! ring points, and a multi-region sweep is capped on the vertices it would
+//! place before it is built (#7747 review). The
 //! single-[`Profile2D`] [`ProfileProcessor::process`] stays for outline
 //! consumers and returns a multi-region composite as one outline (see
 //! [`flatten_regions`]).
@@ -40,17 +44,31 @@ impl ProfileProcessor {
         quality: TessellationQuality,
     ) -> Result<Vec<Profile2D>> {
         self.set_tessellation_quality(quality);
-        self.regions_with_depth(profile, decoder, 0)
+        self.regions_with_depth(profile, decoder, 0, false)
+    }
+
+    /// Arm the composite work budgets (4096 areas and 65 536 ring points of
+    /// composite sub-profiles) for ONE solid. Solid builders call this once
+    /// before the solid's [`process_regions`](Self::process_regions) calls, so
+    /// every one of them (each sectioned station, a tapered start and end)
+    /// draws on the same budget. [`process`](Self::process) arms it itself.
+    /// A new processor starts armed.
+    pub fn arm_solid_budget(&self) {
+        self.region_budget.arm(MAX_PROFILE_REGIONS);
+        self.point_budget.arm(MAX_PROFILE_POINTS);
     }
 
     /// [`process_regions`](Self::process_regions) under the shared
-    /// `MAX_PROFILE_DEPTH` nesting cap (one path's length; the composite fan
-    /// out is bounded by the file's own list sizes).
+    /// `MAX_PROFILE_DEPTH` nesting cap (one path's length) and, for areas of
+    /// a composite (`in_composite`), the solid's region and point budgets (the
+    /// walk's fan-out). A profile outside any composite is not charged: its
+    /// size is the file's own, as on base.
     pub(super) fn regions_with_depth(
         &self,
         profile: &DecodedEntity,
         decoder: &mut EntityDecoder,
         depth: u32,
+        in_composite: bool,
     ) -> Result<Vec<Profile2D>> {
         if depth > MAX_PROFILE_DEPTH {
             return Err(profile_depth_error(profile, depth));
@@ -58,7 +76,7 @@ impl ProfileProcessor {
         match profile.ifc_type {
             IfcType::IfcDerivedProfileDef | IfcType::IfcMirroredProfileDef => {
                 let parent = derived_parent(profile, decoder)?;
-                let mut regions = self.regions_with_depth(&parent, decoder, depth + 1)?;
+                let mut regions = self.regions_with_depth(&parent, decoder, depth + 1, in_composite)?;
                 for region in &mut regions {
                     self.apply_derived_operator(profile, decoder, region)?;
                 }
@@ -79,37 +97,75 @@ impl ProfileProcessor {
                 }
                 let mut regions = Vec::with_capacity(sub_profiles.len());
                 for sub_profile in &sub_profiles {
-                    regions.extend(self.regions_with_depth(sub_profile, decoder, depth + 1)?);
+                    regions.extend(self.regions_with_depth(sub_profile, decoder, depth + 1, true)?);
                 }
                 Ok(regions)
             }
+            _ if !in_composite => Ok(vec![self.process_with_depth(profile, decoder, depth)?]),
             _ => {
                 let budget = &self.region_budget;
-                if !budget.spend() {
+                if !budget.spend(1) {
                     return Err(Error::geometry(format!(
                         "Composite profile exceeds {MAX_PROFILE_REGIONS} regions at #{}",
                         profile.id
                     )));
                 }
-                Ok(vec![self.process_with_depth(profile, decoder, depth)?])
+                let region = self.process_with_depth(profile, decoder, depth)?;
+                let points = region_points(&region);
+                let budget = &self.point_budget;
+                if !budget.spend(u32::try_from(points).unwrap_or(u32::MAX)) {
+                    return Err(Error::geometry(format!(
+                        "Composite profile exceeds {MAX_PROFILE_POINTS} points at #{}",
+                        profile.id
+                    )));
+                }
+                Ok(vec![region])
             }
         }
     }
 }
 
-/// Leaf regions one entry call may produce.
+/// Composite areas one SOLID may draw on (every station of a sectioned solid,
+/// both ends of a tapered one).
 ///
-/// `MAX_PROFILE_DEPTH` bounds one path; this bounds the walk. A composite that
-/// lists the same sub-composite `k` times, `d` levels deep, is `k^d` leaf
-/// regions from a file of a few KB (k = 10, d = 6 was 12 M triangles and
-/// 2.5 GB), and every region becomes a solid. Nothing in it is cyclic or
-/// failing, so neither the depth cap nor a visited set (which would drop real,
-/// repeated areas) sees it. 4096 areas is far above any real section (a wall
-/// build-up or a built-up girder has tens) and refuses the fan-out before the
-/// work is done; the router then reports the item as unsupported (D3).
+/// `MAX_PROFILE_DEPTH` bounds one path; these bound the walk. A composite that
+/// lists the same sub-composite `k` times, `d` levels deep, is `k^d` areas
+/// from a file of a few KB (k = 10, d = 6 was 12 M triangles and 2.5 GB).
+/// Nothing in it is cyclic or failing, so neither the depth cap nor a visited
+/// set (which would drop real, repeated areas) sees it. The router reports a
+/// refused item as unsupported (D3). Real sections have tens of areas.
 pub(crate) const MAX_PROFILE_REGIONS: u32 = 4096;
 
-/// A count-down work budget, armed at each entry call.
+/// Ring points (outer plus holes) all composite areas of one solid may have:
+/// the work unit, since every point is swept. 65 536 is several hundred
+/// detailed areas; refused before any solid is built.
+pub(crate) const MAX_PROFILE_POINTS: u32 = 1 << 16;
+
+/// Ring vertices a multi-region (composite) sweep may place: profile points
+/// times revolution steps, loft stations or directrix samples. The builders'
+/// multiplier (up to 96 steps for a full revolution, 256 subdivisions per
+/// station pair) sits outside the profile walk, so it is checked before the
+/// mesh is built. 131 072 placed vertices is about 260 k triangles. A
+/// single-region solid is not capped: its size is the file's own, as on base.
+pub(crate) const MAX_COMPOSITE_SWEEP_VERTICES: usize = 1 << 17;
+
+/// Refuse a multi-region sweep that would place more than
+/// [`MAX_COMPOSITE_SWEEP_VERTICES`] ring vertices.
+pub(crate) fn check_composite_sweep(placed: usize, regions: usize, id: u32) -> Result<()> {
+    if regions > 1 && placed > MAX_COMPOSITE_SWEEP_VERTICES {
+        return Err(Error::geometry(format!(
+            "Composite sweep would place {placed} vertices, over {MAX_COMPOSITE_SWEEP_VERTICES}, at #{id}"
+        )));
+    }
+    Ok(())
+}
+
+/// Ring points of `region`: its outer ring and every hole.
+pub(crate) fn region_points(region: &Profile2D) -> usize {
+    region.outer.len() + region.holes.iter().map(Vec::len).sum::<usize>()
+}
+
+/// A count-down work budget, armed once per solid.
 pub(super) struct WorkBudget(Cell<u32>);
 
 impl WorkBudget {
@@ -121,9 +177,9 @@ impl WorkBudget {
         self.0.set(limit);
     }
 
-    /// Charge one unit; `false` once the budget is exhausted.
-    pub(super) fn spend(&self) -> bool {
-        match self.0.get().checked_sub(1) {
+    /// Charge `units`; `false` once the budget is exhausted.
+    pub(super) fn spend(&self, units: u32) -> bool {
+        match self.0.get().checked_sub(units) {
             Some(left) => {
                 self.0.set(left);
                 true

@@ -73,6 +73,7 @@ impl GeometryProcessor for SurfaceCurveSweptAreaSolidProcessor {
             .ok_or_else(|| Error::geometry("Failed to resolve SweptArea".to_string()))?;
         self.profile_processor.set_tessellation_quality(quality);
         // One sweep per disjoint area: a composite profile is several (#7685).
+        self.profile_processor.arm_solid_budget();
         let mut regions = self
             .profile_processor
             .process_regions(&profile_entity, decoder, quality)?;
@@ -140,6 +141,8 @@ impl GeometryProcessor for SurfaceCurveSweptAreaSolidProcessor {
 
         // --- Sweep the profile along the placed directrix --------------------------
         let (_, perp1s, perp2s) = build_tube_rmf(&points);
+        let placed = regions.iter().map(crate::profiles::region_points).sum::<usize>() * points.len();
+        crate::profiles::check_composite_sweep(placed, regions.len(), entity.id)?;
         if let [region] = regions.as_slice() {
             return sweep_profile_along_frames(region, &points, &perp1s, &perp2s);
         }

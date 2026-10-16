@@ -53,6 +53,8 @@ impl GeometryProcessor for ExtrudedAreaSolidTaperedProcessor {
             .resolve_ref(start_attr)?
             .ok_or_else(|| Error::geometry("Failed to resolve SweptArea".to_string()))?;
         // One solid per disjoint area: a composite profile is several (#7685).
+        // Start and end draw on one composite budget, armed once per solid.
+        self.profile_processor.arm_solid_budget();
         let mut start_regions = self
             .profile_processor
             .process_regions(&start_entity, decoder, quality)?;

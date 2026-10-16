@@ -262,3 +262,104 @@ fn unclamped_end_parameter_keeps_partition_of_unity_proc_s2_7687() {
     let sum: f64 = bspline_basis_table(2, 4.0, &knots, 4).iter().sum();
     assert!((sum - 1.0).abs() < 1e-12, "partition of unity at u=4 sums to {sum}");
 }
+
+// #7687 review (#7745): an independent oracle, Piegl & Tiller A2.1 FindSpan
+// plus A3.1 de Boor, written apart from `bspline_basis_table`. It checks the
+// evaluator at 4001 parameters, including exactly `t_max`, over 18 knot
+// vectors: clamped, interior multiplicity near the end, unclamped, mixed and
+// offset. Weights are not covered: rational curves are sampled unweighted
+// (follow-up issue).
+fn oracle_find_span(n: usize, p: usize, u: f64, k: &[f64]) -> usize {
+    if u >= k[n + 1] {
+        // Find the last non-empty span ending at or before u (A2.1 special case,
+        // generalised for knots repeated at the end).
+        let mut s = n;
+        while s > p && k[s] >= k[s + 1] {
+            s -= 1;
+        }
+        return s;
+    }
+    if u <= k[p] {
+        let mut s = p;
+        while k[s + 1] <= u { s += 1; }
+        return s;
+    }
+    let (mut lo, mut hi) = (p, n + 1);
+    let mut mid = (lo + hi) / 2;
+    while u < k[mid] || u >= k[mid + 1] {
+        if u < k[mid] { hi = mid } else { lo = mid }
+        mid = (lo + hi) / 2;
+    }
+    mid
+}
+
+fn oracle_de_boor(p: usize, k: &[f64], cps: &[[f64; 4]], u: f64) -> Point3<f64> {
+    let n = cps.len() - 1;
+    let s = oracle_find_span(n, p, u, k);
+    let mut d: Vec<[f64; 4]> = (0..=p).map(|j| {
+        let c = cps[j + s - p];
+        [c[0] * c[3], c[1] * c[3], c[2] * c[3], c[3]]
+    }).collect();
+    for r in 1..=p {
+        for j in (r..=p).rev() {
+            let i = j + s - p;
+            let den = k[i + p + 1 - r] - k[i];
+            let a = if den == 0.0 { 0.0 } else { (u - k[i]) / den };
+            for c in 0..4 { d[j][c] = (1.0 - a) * d[j - 1][c] + a * d[j][c]; }
+        }
+    }
+    let w = d[p][3];
+    Point3::new(d[p][0] / w, d[p][1] / w, d[p][2] / w)
+}
+
+fn oracle_control_points(n: usize) -> Vec<[f64; 4]> {
+    (0..n).map(|i| {
+        let t = i as f64;
+        [10.0 + t * 1.3 + (t * 0.7).sin(), 20.0 + (t * 1.1).cos() * 3.0, 30.0 + t * t * 0.2,
+         1.0]
+    }).collect()
+}
+
+#[test]
+fn de_boor_oracle_agrees_on_every_knot_vector_7687() {
+    let cases: Vec<(&str, usize, Vec<f64>)> = vec![
+        ("p1 clamped", 1, vec![0., 0., 1., 2., 3., 3.]),
+        ("p2 clamped", 2, vec![0., 0., 0., 1., 2., 3., 3., 3.]),
+        ("p3 clamped", 3, vec![0., 0., 0., 0., 0.3, 0.7, 1., 1., 1., 1.]),
+        ("p4 clamped bezier+1", 4, vec![0., 0., 0., 0., 0., 0.5, 1., 1., 1., 1., 1.]),
+        ("p5 clamped", 5, vec![0., 0., 0., 0., 0., 0., 0.2, 0.5, 0.9, 1., 1., 1., 1., 1., 1.]),
+        ("p3 interior mult p near end", 3, vec![0., 0., 0., 0., 0.5, 0.9, 0.9, 0.9, 1., 1., 1., 1.]),
+        ("p2 interior mult p near end", 2, vec![0., 0., 0., 1., 2., 2., 3., 3., 3.]),
+        ("p1 unclamped", 1, vec![0., 1., 2., 3., 4.]),
+        ("p2 unclamped", 2, vec![0., 1., 2., 3., 4., 5., 6.]),
+        ("p3 unclamped", 3, vec![0., 1., 2., 3., 4., 5., 6., 7., 8., 9.]),
+        ("p3 unclamped end mult 2", 3, vec![0., 1., 2., 3., 4., 5., 5., 6., 7., 8.]),
+        ("p2 clamped start unclamped end", 2, vec![0., 0., 0., 1., 2., 3., 4.]),
+        ("p2 unclamped start clamped end", 2, vec![0., 1., 2., 3., 3., 3.]),
+        ("p3 big offset knots", 3, vec![1000., 1000., 1000., 1000., 1001.5, 1003., 1003., 1003., 1003.]),
+        ("p2 negative knots", 2, vec![-5., -5., -5., -2., -1., -1., -1.]),
+        ("p4 unclamped", 4, (0..12).map(|i| i as f64 * 0.25).collect()),
+        ("p5 unclamped", 5, (0..14).map(|i| i as f64).collect()),
+        ("p3 end mult p+2 (extra trailing)", 3, vec![0., 0., 0., 0., 0.5, 1., 1., 1., 1., 1.]),
+    ];
+    let mut worst = 0.0f64;
+    for (label, p, knots) in &cases {
+        let n_cp = knots.len() - p - 1;
+        {
+            let cps = oracle_control_points(n_cp);
+            let pts: Vec<Point3<f64>> = cps.iter().map(|c| Point3::new(c[0], c[1], c[2])).collect();
+            let t0 = knots[*p];
+            let t1 = knots[knots.len() - p - 1];
+            for s in 0..=4000 {
+                let u = if s == 4000 { t1 } else { t0 + (t1 - t0) * (s as f64) / 4000.0 };
+                let got = evaluate_bspline_curve(u, *p, &pts, knots);
+                let want = oracle_de_boor(*p, knots, &cps, u);
+                let err = (got - want).norm();
+                worst = worst.max(err);
+                assert!(err < 1e-7, "{label}: u={u} got {got:?} want {want:?}");
+                assert!(got.coords.norm() > 1.0, "{label}: origin at u={u}");
+            }
+        }
+    }
+    eprintln!("worst error {worst:e}");
+}

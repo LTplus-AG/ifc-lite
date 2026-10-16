@@ -185,7 +185,7 @@ export function findReleaseTag(version) {
   const local = (tag) => sh('git', ['rev-parse', '-q', '--verify', `refs/tags/${tag}^{commit}`]).status === 0;
   const missing = candidates.filter((c) => !local(c.tag)).map((c) => `refs/tags/${c.tag}`);
   if (missing.length > 0) {
-    const listed = sh('git', ['ls-remote', 'origin', ...missing], { encoding: 'utf8' });
+    const listed = { stdout: must(sh('git', ['ls-remote', 'origin', ...missing], { encoding: 'utf8' }), 'git ls-remote origin') };
     const shallow = sh('git', ['rev-parse', '--is-shallow-repository'], { encoding: 'utf8' });
     const depth = shallow.stdout?.trim() === 'true' ? ['--depth=1'] : [];
     for (const ref of (listed.stdout || '').match(/refs\/tags\/\S+/g) ?? []) {
@@ -333,6 +333,8 @@ export function buildTagBaselineRustdoc(crate, version, toolchain) {
   const commits = new Set(closure.map((p) => s.verified.get(p.name)).filter(Boolean));
   const features = heuristicFeatures(pkg);
   const targetDir = join(s.workDir, 'target');
+  const rustdoc = join(targetDir, 'doc', `${crate.replace(/-/g, '_')}.json`);
+  rmSync(rustdoc, { force: true }); // never compare against a JSON an earlier run left behind
   must(
     sh(
       'cargo',
@@ -351,7 +353,6 @@ export function buildTagBaselineRustdoc(crate, version, toolchain) {
     ),
     `cargo doc ${crate}@${version} at ${s.tag}`
   );
-  const rustdoc = join(targetDir, 'doc', `${crate.replace(/-/g, '_')}.json`);
   if (!existsSync(rustdoc)) throw new Error(`BASELINE_BUILD_FAILED: cargo doc wrote no ${rustdoc}.`);
   const vcs = commits.size === 1 && commits.has(s.commit) ? 'the tag commit' : [...commits].join(', ') || 'unrecorded';
   return {

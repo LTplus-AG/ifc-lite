@@ -609,6 +609,13 @@ resolution; exact predicates do not guarantee that every emitted mesh is closed.
 Its reported thickness describes the limiting output component, including flat
 contact patches, and does not measure physical penetration below that resolution.
 
+The raw Rust `kernel::arrangement::boolean` entry reports budget exhaustion
+through `kernel::budget::tripped()`. Callers must check it before interpreting
+an empty triangle list; `boolean_with_conformity` also exposes a completion
+status. Zone geometry splitting refuses an exhausted intersection, zone union
+or remainder with `None` (`undefined` from `splitMeshByZones`), so a failed cut
+cannot appear as a successful whole-element remainder.
+
 ```mermaid
 flowchart LR
     First["First Operand"]

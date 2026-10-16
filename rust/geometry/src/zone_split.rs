@@ -35,6 +35,7 @@
 use crate::kernel::arrangement::{
     boolean, box_mesh, difference_all, operands_admitted, union_all, BoolOp, Tri,
 };
+use crate::kernel::budget;
 use crate::kernel::mesh_bridge::orient_outward;
 use crate::kernel::signed_volume::signed_volume_of;
 
@@ -242,6 +243,10 @@ pub const NO_VOLUME_REL: f64 = 1e-12;
 /// caller gates on reading as a perfect split of nothing. The wasm entry
 /// drops malformed triangles before calling here, so an all-malformed input
 /// arrives as an empty host.
+/// A kernel operation that exhausts its exact-work budget also returns `None`;
+/// no partial split or unchanged remainder is returned as a successful split.
+/// Each intersection, union and remainder starts a fresh per-operation budget
+/// while retaining any enclosing element's accumulated work.
 pub fn split_mesh_by_zones(host: &[Tri], zones: &[ZoneShape]) -> Option<ZoneSplit> {
     // The kernel refuses coordinates it cannot answer (#7677, KERNEL-30): a
     // non-finite or out-of-range host or zone is no split, never a wrong one.
@@ -273,7 +278,9 @@ pub fn split_mesh_by_zones(host: &[Tri], zones: &[ZoneShape]) -> Option<ZoneSpli
             continue;
         }
         let box_tris = orient_outward(zone_tris[index].clone());
+        budget::begin();
         let piece = boolean(&host, &box_tris, BoolOp::Intersection);
+        if budget::tripped() { return None; }
         let volume = signed_volume_of(&piece);
         if piece.is_empty() || volume <= negligible {
             // NOT subtracted from the remainder. A zone the element merely
@@ -302,7 +309,9 @@ pub fn split_mesh_by_zones(host: &[Tri], zones: &[ZoneShape]) -> Option<ZoneSpli
         // boundary. `union_all` merges the tiles first and drops each
         // co-oriented duplicate, so the difference sees one clean operand.
         let operands: Vec<&[Tri]> = reached.iter().map(|t| t.as_slice()).collect();
+        budget::begin();
         let (cutter, conforming) = union_all(&operands);
+        if budget::tripped() { return None; }
         // A non-conforming union is refused BEFORE the difference sees it: the
         // cutter would already be torn, and `difference_all`'s own conformity
         // gate is about ITS arrangement, not about the operand it was handed.
@@ -313,7 +322,12 @@ pub fn split_mesh_by_zones(host: &[Tri], zones: &[ZoneShape]) -> Option<ZoneSpli
         // Either way the failure is SAID rather than left to `sum_error_rel`,
         // which a caller cannot tell apart from overlapping zones and which
         // would point them at redrawing zones that are not the problem.
-        let rest = if conforming { difference_all(&host, &[&cutter]) } else { None };
+        let rest = if conforming {
+            budget::begin();
+            let rest = difference_all(&host, &[&cutter]);
+            if budget::tripped() { return None; }
+            rest
+        } else { None };
         match rest {
             Some((rest, _changed)) => {
                 let volume = signed_volume_of(&rest);

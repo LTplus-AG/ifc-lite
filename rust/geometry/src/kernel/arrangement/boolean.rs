@@ -161,6 +161,13 @@ fn point_via_interner(it: &Interner, v: Vid) -> [f64; 3] {
 /// An operand past [`super::MAX_OPERAND_COORD`] (or non-finite) is refused:
 /// the result is empty and [`boolean_with_conformity`] reports `false`
 /// (#7677). Never a wrong solid.
+///
+/// An exhausted exact-work budget also returns no triangles. Callers must start
+/// their operation with [`crate::kernel::budget::begin`] and check
+/// [`crate::kernel::budget::tripped`] immediately afterward, before interpreting
+/// an empty result or starting another operation. [`boolean_with_conformity`]
+/// additionally reports `false` for a budget failure; its status also includes
+/// unrecovered constraints, which this raw entry deliberately permits.
 pub fn boolean(a: &[Tri], b: &[Tri], op: BoolOp) -> Vec<Tri> {
     boolean_with_conformity(a, b, op).0
 }

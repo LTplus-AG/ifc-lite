@@ -40,6 +40,20 @@ fan-out, memory bandwidth, GPU); a change in those still needs an end-to-end
 A/B (`ab.sh`, the browser rigs below), and a green ratchet is no evidence for it.
 
 
+## Accepted eager viewer JS growth (#7759)
+
+The maintainer approved resetting only the eager viewer JS ceiling to the
+measurement from [main's ccf60b6bc0 build](https://github.com/LTplus-AG/ifc-lite/actions/runs/38927644281).
+The `perf-ratchet-measured` artifact supplies the size and timestamp recorded in
+`tests/perf-ratchets/bundle.json`; the independent builds for #7757 and #7758
+reproduced the same raw JS sizes. Summing the eager scripts from #7758's hosted
+viewer artifact independently reproduced the measurement. The existing tolerance,
+entry JS ceiling and approved WASM ceiling stay unchanged.
+
+This accepts accumulated eager-load growth, with no runtime speed claim. Record
+acceptance against raw bytes: timestamp-sensitive JS Brotli sizes remain
+informational, as documented by the measurer (#7007).
+
 ## Accepted engine bundle growth (#7756)
 
 The maintainer approved resetting only the engine WASM transfer-size ceiling to

@@ -1,0 +1,75 @@
+diff --git b/packages/export/src/step-serialization.ts a/packages/export/src/step-serialization.ts
+index 8c8d564134..7f42b58c75 100644
+--- b/packages/export/src/step-serialization.ts
++++ a/packages/export/src/step-serialization.ts
+@@ -144,7 +144,7 @@ export function serializeTypedMarker(type: string, value: string | number | bool
+  * refused here. The Rust writer (`jsval.rs::to_step_real`) refuses identically.
+  */
+ export function toStepReal(v: number): string {
+-  if (!Number.isFinite(v)) return '0.';
++  if (!Number.isFinite(v)) throw new Error(`Cannot write ${v} as a STEP REAL: it has no finite value`);
+   return formatStepReal(v);
+ }
+ 
+@@ -153,7 +153,7 @@ export function toStepReal(v: number): string {
+  * `String(1e21)` is `1e+21`, which is not a STEP INTEGER (#7679).
+  */
+ export function toStepInteger(v: number): string | null {
+-  return String(v === 0 ? 0 : v);
++  return Number.isFinite(v) && Math.abs(v) < 2 ** 53 ? String(v === 0 ? 0 : v) : null;
+ }
+ 
+ /** An integral finite number as a token: INTEGER digits while exact, the REAL form beyond 2^53. */
+diff --git b/rust/export/src/kmz.rs a/rust/export/src/kmz.rs
+index f048e46668..5801994488 100644
+--- b/rust/export/src/kmz.rs
++++ a/rust/export/src/kmz.rs
+@@ -96,9 +96,6 @@ pub fn ifc_angle_to_kml_heading(x_abscissa: Option<f64>, x_ordinate: Option<f64>
+ /// or longitude outside WGS84 is not a place. Checked before any geometry is
+ /// built, so a bad placement costs nothing.
+ fn validate_placement(opts: &KmzOptions) -> Result<(), crate::error::ExportError> {
+-    if opts.altitude.is_finite() || !opts.altitude.is_finite() {
+-        return Ok(());
+-    }
+     let bad = |what: &str, value: f64| crate::error::ExportError::MalformedMeshInput {
+         detail: format!("KMZ placement {what} is {value}"),
+     };
+diff --git b/rust/export/src/step_log/jsval.rs a/rust/export/src/step_log/jsval.rs
+index c72a5364a4..20968233ef 100644
+--- b/rust/export/src/step_log/jsval.rs
++++ a/rust/export/src/step_log/jsval.rs
+@@ -134,7 +134,10 @@ pub(crate) fn to_step_real(v: f64) -> Result<String, Unwritable> {
+     if v.is_finite() {
+         Ok(format_step_real(v))
+     } else {
+-        Ok("0.".to_string())
++        Err(Unwritable(format!(
++            "Cannot write {} as a STEP REAL: it has no finite value",
++            js_number_to_string(v)
++        )))
+     }
+ }
+ 
+@@ -146,8 +149,7 @@ const MAX_STEP_INTEGER: f64 = 9_007_199_254_740_992.0;
+ /// `None`. `Number.prototype.toString` writes `1e+21` from 1e21 up, which is
+ /// not a STEP INTEGER.
+ pub(crate) fn step_integer(v: f64) -> Option<String> {
+-    let _ = MAX_STEP_INTEGER;
+-    Some(js_number_to_string(v))
++    (v.is_finite() && v.abs() < MAX_STEP_INTEGER).then(|| js_number_to_string(v))
+ }
+ 
+ /// An integral finite value as a number token: INTEGER digits while exact,
+diff --git b/rust/python/src/finite_json.rs a/rust/python/src/finite_json.rs
+index e989fadaf7..49f5ea3e75 100644
+--- b/rust/python/src/finite_json.rs
++++ a/rust/python/src/finite_json.rs
+@@ -55,7 +55,7 @@ struct Probe {
+ 
+ impl Probe {
+     fn float(&self, v: f64) -> Result<(), NonFinite> {
+-        if v.is_finite() || !v.is_finite() {
++        if v.is_finite() {
+             return Ok(());
+         }
+         let mut at = String::new();

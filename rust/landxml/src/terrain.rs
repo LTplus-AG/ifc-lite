@@ -21,6 +21,28 @@ use ifc_lite_geometry::{triangulate_terrain_pslg_with_progress, TerrainCdtError}
 
 fn diagnostic(code: TerrainCode, message: impl Into<String>) -> LandXmlTerrainDiagnostic { LandXmlTerrainDiagnostic { code, message: message.into() } }
 
+/// One home for what a CDT or work-callback error means for the surface
+/// (EDGE-LXMATH-22, #7677). The match is exhaustive, so a new
+/// `TerrainCdtError` variant is a compile error here rather than a reachable
+/// `unreachable!` that aborts the wasm instance.
+fn cdt_outcome(value: TerrainCdtError) -> Result<Option<LandXmlTerrainDiagnostic>, LandXmlError> {
+    match value {
+        TerrainCdtError::IntersectingConstraints => Ok(Some(diagnostic(
+            TerrainCode::IntersectingConstraints,
+            "terrain constraints intersect or overlap",
+        ))),
+        TerrainCdtError::InvalidInput | TerrainCdtError::ConstraintsUnrecoverable => Ok(Some(diagnostic(
+            TerrainCode::DegenerateConstraints,
+            "terrain constraints cannot form a valid constrained triangulation",
+        ))),
+        TerrainCdtError::WorkLimitExceeded => Ok(Some(diagnostic(
+            TerrainCode::WorkLimitExceeded,
+            "terrain constraint work limit exceeded",
+        ))),
+        TerrainCdtError::Cancelled => Err(error(Code::Cancelled, "LandXML terrain triangulation cancelled")),
+    }
+}
+
 /// Add generated faces only when every source rule can be proven as a PSLG.
 pub(super) fn adapt_faceless_tin(
     surface: &mut super::parser::state::SurfaceBuilder,
@@ -194,40 +216,13 @@ pub(super) fn adapt_faceless_tin(
         match ring_edges(ring, &vertices, &mut segments, &mut charge_work) {
             Ok(()) => {}
             Err(TopologyValidationError::Diagnostic(value)) => return Ok(Some(value)),
-            Err(TopologyValidationError::Progress(TerrainCdtError::WorkLimitExceeded)) => {
-                return Ok(Some(diagnostic(
-                    TerrainCode::WorkLimitExceeded,
-                    "terrain constraint work limit exceeded",
-                )))
-            }
-            Err(TopologyValidationError::Progress(TerrainCdtError::Cancelled)) => {
-                return Err(error(
-                    Code::Cancelled,
-                    "LandXML terrain triangulation cancelled",
-                ))
-            }
-            Err(TopologyValidationError::Progress(_)) => {
-                unreachable!("terrain work callback only charges or stops")
-            }
+            Err(TopologyValidationError::Progress(value)) => return cdt_outcome(value),
         }
     }
     for line in &breaklines {
         for pair in line.windows(2) {
-            match charge_work() {
-                Ok(()) => {}
-                Err(TerrainCdtError::WorkLimitExceeded) => {
-                    return Ok(Some(diagnostic(
-                        TerrainCode::WorkLimitExceeded,
-                        "terrain constraint work limit exceeded",
-                    )))
-                }
-                Err(TerrainCdtError::Cancelled) => {
-                    return Err(error(
-                        Code::Cancelled,
-                        "LandXML terrain triangulation cancelled",
-                    ))
-                }
-                Err(_) => unreachable!("terrain work callback only charges or stops"),
+            if let Err(value) = charge_work() {
+                return cdt_outcome(value);
             }
             if pair[0] == pair[1] {
                 return Ok(Some(diagnostic(
@@ -240,106 +235,32 @@ pub(super) fn adapt_faceless_tin(
     }
     let mut vertex_elevations = Vec::with_capacity(vertices.len());
     for vertex in &vertices {
-        match charge_work() {
-            Ok(()) => vertex_elevations.push((vertex.northing, vertex.easting, vertex.elevation)),
-            Err(TerrainCdtError::WorkLimitExceeded) => {
-                return Ok(Some(diagnostic(
-                    TerrainCode::WorkLimitExceeded,
-                    "terrain constraint work limit exceeded",
-                )))
-            }
-            Err(TerrainCdtError::Cancelled) => {
-                return Err(error(
-                    Code::Cancelled,
-                    "LandXML terrain triangulation cancelled",
-                ))
-            }
-            Err(_) => unreachable!("terrain work callback only charges or stops"),
+        if let Err(value) = charge_work() {
+            return cdt_outcome(value);
         }
+        vertex_elevations.push((vertex.northing, vertex.easting, vertex.elevation));
     }
     if let Err(value) = validate_split_elevations(&vertex_elevations, &segments, &mut charge_work) {
         match value {
             SplitElevationValidationError::Diagnostic(value) => return Ok(Some(value)),
-            SplitElevationValidationError::Progress(TerrainCdtError::WorkLimitExceeded) => {
-                return Ok(Some(diagnostic(
-                    TerrainCode::WorkLimitExceeded,
-                    "terrain constraint work limit exceeded",
-                )))
-            }
-            SplitElevationValidationError::Progress(TerrainCdtError::Cancelled) => {
-                return Err(error(
-                    Code::Cancelled,
-                    "LandXML terrain triangulation cancelled",
-                ))
-            }
-            SplitElevationValidationError::Progress(_) => {
-                unreachable!("terrain work callback only charges or stops")
-            }
+            SplitElevationValidationError::Progress(value) => return cdt_outcome(value),
         }
     }
     let mut points = Vec::with_capacity(vertices.len());
     for point in &vertices {
-        match charge_work() {
-            Ok(()) => points.push([point.easting, point.northing]),
-            Err(TerrainCdtError::WorkLimitExceeded) => {
-                return Ok(Some(diagnostic(
-                    TerrainCode::WorkLimitExceeded,
-                    "terrain constraint work limit exceeded",
-                )))
-            }
-            Err(TerrainCdtError::Cancelled) => {
-                return Err(error(
-                    Code::Cancelled,
-                    "LandXML terrain triangulation cancelled",
-                ))
-            }
-            Err(_) => unreachable!("terrain work callback only charges or stops"),
+        if let Err(value) = charge_work() {
+            return cdt_outcome(value);
         }
+        points.push([point.easting, point.northing]);
     }
     let mesh = match triangulate_terrain_pslg_with_progress(&points, &segments, &mut charge_work) {
         Ok(mesh) => mesh,
-        Err(TerrainCdtError::IntersectingConstraints) => {
-            return Ok(Some(diagnostic(
-                TerrainCode::IntersectingConstraints,
-                "terrain constraints intersect or overlap",
-            )))
-        }
-        Err(TerrainCdtError::InvalidInput | TerrainCdtError::ConstraintsUnrecoverable) => {
-            return Ok(Some(diagnostic(
-                TerrainCode::DegenerateConstraints,
-                "terrain constraints cannot form a valid constrained triangulation",
-            )))
-        }
-        Err(TerrainCdtError::WorkLimitExceeded) => {
-            return Ok(Some(diagnostic(
-                TerrainCode::WorkLimitExceeded,
-                "terrain constraint work limit exceeded",
-            )))
-        }
-        Err(TerrainCdtError::Cancelled) => {
-            return Err(error(
-                Code::Cancelled,
-                "LandXML terrain triangulation cancelled",
-            ))
-        }
+        Err(value) => return cdt_outcome(value),
     };
     let mut generated_faces = Vec::new();
     for triangle in mesh.indices.chunks_exact(3) {
-        match charge_work() {
-            Ok(()) => {}
-            Err(TerrainCdtError::WorkLimitExceeded) => {
-                return Ok(Some(diagnostic(
-                    TerrainCode::WorkLimitExceeded,
-                    "terrain constraint work limit exceeded",
-                )))
-            }
-            Err(TerrainCdtError::Cancelled) => {
-                return Err(error(
-                    Code::Cancelled,
-                    "LandXML terrain triangulation cancelled",
-                ))
-            }
-            Err(_) => unreachable!("terrain work callback only charges or stops"),
+        if let Err(value) = charge_work() {
+            return cdt_outcome(value);
         }
         let [a, b, c] = [triangle[0], triangle[1], triangle[2]];
         let centroid = [
@@ -349,19 +270,7 @@ pub(super) fn adapt_faceless_tin(
         match point_is_in_permitted_region(centroid, &outer, &holes, &vertices, &mut charge_work) {
             Ok(true) => {}
             Ok(false) => continue,
-            Err(TerrainCdtError::WorkLimitExceeded) => {
-                return Ok(Some(diagnostic(
-                    TerrainCode::WorkLimitExceeded,
-                    "terrain constraint work limit exceeded",
-                )))
-            }
-            Err(TerrainCdtError::Cancelled) => {
-                return Err(error(
-                    Code::Cancelled,
-                    "LandXML terrain triangulation cancelled",
-                ))
-            }
-            Err(_) => unreachable!("terrain work callback only charges or stops"),
+            Err(value) => return cdt_outcome(value),
         }
         let next_faces = generated_faces.len() + 1;
         if faces_seen

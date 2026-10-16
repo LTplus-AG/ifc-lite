@@ -24,6 +24,29 @@ pub fn exercise_landxml(data: &[u8]) {
     let _ = parse_landxml_alignments_optional(data);
     let _ = stream_landxml(data, data.len().max(1));
     let _ = stream_landxml(data, 1);
+    // A host that ignores every `Err` and keeps feeding (#7677): the stream
+    // used to resume into frames whose builders a refused element never
+    // opened. Tight limits make the refusals happen; a mid-document
+    // `finish_cursor` exercises its own error paths.
+    let tight = LandXmlLimits { max_pipe_structures: 0, max_pipes: 0, max_surfaces: 0, ..LandXmlLimits::default() };
+    for (chunk, limits) in [(7, LandXmlLimits::default()), (7, tight.clone()), (4096, tight)] {
+        stream_ignoring_errors(data, chunk, limits);
+    }
+}
+
+fn stream_ignoring_errors(data: &[u8], chunk: usize, limits: LandXmlLimits) {
+    let Ok(mut session) = LandXmlTinStreamSession::new(limits) else { return };
+    let pieces: Vec<&[u8]> = data.chunks(chunk).collect();
+    for (index, piece) in pieces.iter().enumerate() {
+        let _ = drain_landxml(&mut session);
+        let _ = session.advance(piece);
+        if index == pieces.len() / 2 {
+            let _ = session.finish_cursor();
+        }
+    }
+    let _ = drain_landxml(&mut session);
+    let _ = session.finish_cursor();
+    let _ = drain_landxml(&mut session);
 }
 
 fn stream_landxml(data: &[u8], chunk: usize) -> Result<(), LandXmlError> {

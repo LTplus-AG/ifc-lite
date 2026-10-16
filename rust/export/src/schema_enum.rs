@@ -152,11 +152,19 @@ fn enum_member(slot: &str) -> Option<String> {
 }
 
 /// The per-export checks `convert_step_line` reports into: the IFC4
-/// required-slot count (#5307) and enum reconciliation (#5365).
+/// required-slot count (#5307) and enum reconciliation (#5365); plus the
+/// per-type conversion plans and the values a conversion had no target slot
+/// for (#7683).
 #[derive(Default)]
 pub(crate) struct ConversionChecks {
     pub(crate) ifc4_slots: Ifc4SlotCheck,
     pub(crate) enums: EnumReconciliation,
+    /// `convert_record`'s per-type decisions, resolved once per distinct type.
+    pub(crate) plans: crate::schema_plan::PlanCache,
+    /// Non-`$` source values the converted record has no slot for (#7683):
+    /// a trimmed tail, an alignment proxy's attributes past IfcProduct's, and
+    /// by-name remap sources with no same-named target attribute.
+    pub(crate) attribute_values_dropped: usize,
 }
 
 impl ConversionChecks {

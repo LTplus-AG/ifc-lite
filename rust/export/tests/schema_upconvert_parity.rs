@@ -11,18 +11,18 @@
 //!
 //! Both implementations are now held to ONE fixture
 //! (`fixtures/schema_upconvert_sweep.json`); the TypeScript half is
-//! `packages/export/src/schema-upconvert-sweep.parity.test.ts`. Following the
-//! `rooted_type_parity.rs` precedent, WHICH rows the fixture must contain is
-//! pinned here rather than by a count: `fixture_names_every_padded_type`
-//! re-derives the required names from `schema_pad`'s own tables, so a row
-//! that is deleted -- the failure a `cases.len() > N` floor sleeps through --
-//! fails loudly, while adding a type to the tables without a fixture row
-//! fails too.
+//! `packages/export/src/schema-upconvert-sweep.parity.test.ts`. Since #7683 the
+//! fixture also pins the TRIM half in both directions (an IFC4 quantity's
+//! `Formula` on a downgrade, IfcDistributionControlElement's
+//! `ControlElementId` on an upgrade). WHICH rows the fixture must contain is
+//! pinned by a count-free coverage gate that re-derives every trimmed or
+//! padded type from core's EXPRESS registry:
+//! `sweep_fixture_names_every_trimmed_and_padded_type_7683` in
+//! `src/schema_registry_tests.rs`, a unit test because it needs the
+//! converter's private rename tables.
 //!
 //! Exercised through the public `export_step_json`, not a private helper: the
 //! path the CLI takes, header and all.
-
-use std::collections::BTreeSet;
 
 #[derive(serde::Deserialize)]
 struct Case {
@@ -72,32 +72,6 @@ fn every_case_agrees_with_the_shared_fixture() {
     assert!(bad.is_empty(), "{} mismatches:\n{}", bad.len(), bad.join("\n"));
 }
 
-/// Coverage gate: every type the padding tables act on must be NAMED by a
-/// fixture row, and every padded row must correspond to a table entry. A
-/// count floor passes both when rows are silently dropped and when a type is
-/// added to the tables with no row to pin it.
-#[test]
-fn fixture_names_every_padded_type() {
-    let required: BTreeSet<(String, String, String)> = ifc_lite_export::padded_type_universe()
-        .into_iter()
-        .map(|(f, t, n)| (f.to_string(), t.to_string(), n.to_string()))
-        .collect();
-    assert!(required.len() > 100, "anti-vacuity: universe is {}", required.len());
-
-    let named: BTreeSet<(String, String, String)> = cases()
-        .iter()
-        .filter_map(|c| {
-            let ty = c.line.split_once('=')?.1.split_once('(')?.0.to_string();
-            required
-                .contains(&(c.from.clone(), c.to.clone(), ty.clone()))
-                .then_some((c.from.clone(), c.to.clone(), ty))
-        })
-        .collect();
-
-    let missing: Vec<_> = required.difference(&named).collect();
-    assert!(missing.is_empty(), "fixture names no case for: {missing:?}");
-}
-
 /// Negative control: the padding must be a no-op wherever the target schema
 /// did not APPEND. Deleting the strict-prefix restriction and padding every
 /// short line would still pass `every_case_agrees_with_the_shared_fixture`'s
@@ -110,4 +84,33 @@ fn a_reordered_attribute_list_is_never_padded() {
         "IFC2X3 IfcMaterialProperties is [Material]; IFC4 is \
          [Name, Description, Properties, Material] -- padding would read #8 as the Name"
     );
+}
+
+/// Replace the GlobalId of an `IFCPROXY(` line with `<MINTED>`, returning the
+/// normalised line and the GlobalId it held.
+fn mask_proxy_guid(line: &str) -> (String, String) {
+    let Some(at) = line.find("IFCPROXY('") else { return (line.to_string(), String::new()) };
+    let start = at + "IFCPROXY('".len();
+    let end = start + line[start..].find('\'').expect("closing quote");
+    (format!("{}<MINTED>{}", &line[..start - 1], &line[end + 1..]), line[start..end].to_string())
+}
+
+/// EXPORT-MERGE-8 (#7683): the IFCPROXY an IFC4X3 alignment product becomes
+/// below IFC4X3, held to the vectors the TypeScript twin also runs
+/// (`fixtures/schema_product_proxy_vectors.json`). The GlobalId is minted
+/// differently on each side, so it is masked and asserted only to differ
+/// from the source's.
+#[test]
+fn product_proxy_vectors_agree_with_the_shared_fixture_7683() {
+    let raw = include_str!("fixtures/schema_product_proxy_vectors.json");
+    let doc: serde_json::Value = serde_json::from_str(raw).expect("fixture is valid JSON");
+    let cases: Vec<Case> = serde_json::from_value(doc["cases"].clone()).expect("cases deserialize");
+    assert!(cases.len() >= 5, "anti-vacuity");
+    for c in &cases {
+        let got = convert_through_exporter(&c.line, &c.from, &c.to);
+        let (masked, guid) = mask_proxy_guid(&got);
+        assert_eq!(masked, c.expect, "{} -> {} [{}]", c.from, c.to, c.why);
+        let source_guid = c.line.split('\'').nth(1).expect("source GlobalId");
+        assert!(!guid.is_empty() && guid != source_guid, "minted, not copied: {got}");
+    }
 }

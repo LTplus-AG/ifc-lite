@@ -30,6 +30,33 @@ Sizing it per route is deferred to L-server (#7676, SERVER-24). The streaming
 route's data-model fill runs under its stream's reservation rather than a
 second one.
 
+Cache reads are admitted as well (#7676). A route that hands back a stored
+model reserves the entry's stored size against the byte budget, without a
+parse slot when it only copies the entry out (data model, symbolic sidecar,
+cached geometry, the optimized `?sha256=` probe), and with one when it
+transforms it (the `GET /api/v1/cache/{key}` re-encode, the stream replay).
+Every response that holds a model in memory, live parse or cache hit, keeps
+its bytes reserved until the client has read the whole body, and gives its
+parse slot back as soon as the work is done: a slow reader costs budget, not
+a core. `GET /api/v1/cache/check/{hash}` and cache misses read no stored
+content and take nothing.
+
+Cache reads feed the same counters as parses: one refused for memory, a full
+queue or the RSS breaker adds to
+`ifc_server_admission_rejected_total{reason="overloaded"|"queue_full"|"rss_shed"}`
+and answers `503` with `Retry-After`, as `GET /api/v1/parse/data-model/{key}`,
+`.../symbolic/{key}`, `GET /api/v1/cache/geometry/{hash}`,
+`GET /api/v1/cache/{key}` and the `?sha256=` probes now can on a cache hit.
+Alert on those counters knowing that cache traffic is part of them, and that a
+burst of 503s can be clients downloading stored models, not uploading new
+ones. A hit on an upload route (`POST /api/v1/parse`, `/parse/parquet`,
+`/parse/parquet/optimized`, `/parse/parquet-stream`) is charged the stored
+entries' size, not the upload's, for as long as it holds them: a replay holds
+about three times the stored geometry while it builds, and the JSON route
+about three times the stored response. A reader that drains slowly keeps its
+bytes charged for as long as it takes (up to the write-idle timeout); there is
+no download-rate floor yet like the upload one below.
+
 An upload must keep arriving to keep its reservation: one that goes 30 s
 without a byte, or whose average rate falls below 8 KiB/s once it has run
 15 s, is refused with `408 REQUEST_TIMEOUT`, so a trickling client cannot hold

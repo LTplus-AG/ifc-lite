@@ -108,7 +108,8 @@ fn run_export(
             quality,
             ids.as_ref(),
         );
-        let rtc = result.metadata.coordinate_info.origin_shift;
+        let (rx, ry, rz) = result.frame.rtc_offset();
+        let rtc = [rx, ry, rz];
         // The frame says which rotation the bake removed (the site tier only),
         // so this does not re-derive the tier rule (#7684).
         let site_rotation = result.frame.site_placement();

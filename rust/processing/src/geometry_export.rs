@@ -29,7 +29,7 @@ use std::collections::BTreeMap;
 
 use serde::Serialize;
 
-use crate::mesh_frame::frame_point_to_world;
+use crate::mesh_frame::{restoring_rotation, rotate_and_translate};
 use crate::MeshData;
 
 /// One IFC entity's merged geometry, in IFC Z-up absolute-world metres.
@@ -163,6 +163,8 @@ fn build_elements<const COLORS: bool>(
     // in the opt-in sidecar, allocated once an element becomes nonuniform.
     let mut elements = ElementMap::new();
     let mut colors = ColorMap::new();
+    // Decided once per call, not per vertex (#7684).
+    let rotation = restoring_rotation(site_rotation);
 
     for m in meshes {
         // Occurrences only: skip type-product RepresentationMap geometry. Class 3
@@ -179,7 +181,10 @@ fn build_elements<const COLORS: bool>(
                 // Baked point (`origin + position`, widened first), then the
                 // one frame-to-world restore (#7684): site rotation, then RTC.
                 let baked = [p[0] as f64 + o[0], p[1] as f64 + o[1], p[2] as f64 + o[2]];
-                frame_point_to_world(baked, rtc_offset, site_rotation)
+                rotation.map_or_else(
+                    || [baked[0] + rtc_offset[0], baked[1] + rtc_offset[1], baked[2] + rtc_offset[2]],
+                    |r| rotate_and_translate(r, baked, rtc_offset),
+                )
             })
             .collect();
 

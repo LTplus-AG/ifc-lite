@@ -48,7 +48,10 @@ use serde_json::{json, Value};
 mod from_meshes;
 mod matrix;
 
-pub use from_meshes::{export_glb_from_meshes, try_export_glb_from_meshes};
+// The infallible assembler is crate-private (#7675); only its tests name it.
+#[cfg(test)]
+use from_meshes::export_glb_from_meshes;
+pub use from_meshes::try_export_glb_from_meshes;
 use matrix::{
     affine_inverse, compose_world_meta, occurrence_node_matrix, occurrence_node_matrix_composed,
 };

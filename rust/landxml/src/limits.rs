@@ -62,6 +62,11 @@ pub struct LandXmlLimits {
     pub max_pipe_refusals: usize,
     /// Maximum preserved roots from foreign XML namespaces.
     pub max_extensions: usize,
+    /// Maximum bytes of element paths retained by foreign-namespace records
+    /// (extension roots and preserved-only corridor/stringline roots). Each
+    /// keeps its whole ancestor path, so the record limits alone allowed
+    /// gigabytes from a sub-megabyte input.
+    pub max_source_path_bytes: usize,
     /// Maximum coordinate records across the whole source document, including
     /// Definition points, SourceData point lists and overlay vertices.
     pub max_points: usize,
@@ -117,6 +122,7 @@ impl Default for LandXmlLimits {
             max_pipe_flows: 10_000_000,
             max_pipe_refusals: 1_000_000,
             max_extensions: 100_000,
+            max_source_path_bytes: 16 * 1024 * 1024,
             max_points: 5_000_000,
             max_faces: 10_000_000,
             max_references: 30_000_000,

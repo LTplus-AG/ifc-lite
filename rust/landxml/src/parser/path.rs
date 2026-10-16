@@ -49,6 +49,13 @@ impl Parser<'_> {
                 if index == 0 {
                     frame.local.clone()
                 } else {
+                    // A zero ordinal means the segment is missing from
+                    // `ordinal_tracked`; the key would silently collapse.
+                    debug_assert!(
+                        frame.sibling_ordinal != 0,
+                        "capture segment `{}` is not in ordinal_tracked",
+                        frame.local
+                    );
                     format!("{}[{}]", frame.local, frame.sibling_ordinal)
                 }
             })
@@ -81,4 +88,17 @@ impl Parser<'_> {
             _ => None,
         }
     }
+}
+
+/// Whether `local` (a target-namespace name) can be a segment of a
+/// [`Parser::capture_path`]: every name in the two shapes above
+/// (`source_data_point_dimension`, `overlay_category`). Only these need a
+/// sibling ordinal, so only these are counted.
+pub(super) fn ordinal_tracked(local: &str) -> bool {
+    matches!(
+        local,
+        "LandXML" | "Surfaces" | "Surface" | "Definition" | "SourceData" | "DataPoints"
+            | "Boundaries" | "Boundary" | "Breaklines" | "Breakline" | "Contours" | "Contour"
+            | "PntList3D" | "PntList2D"
+    )
 }

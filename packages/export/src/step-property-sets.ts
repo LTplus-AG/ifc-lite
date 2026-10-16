@@ -50,6 +50,29 @@ import { convertStepLine } from './schema-converter.js';
  * HasPropertySets must name the replacement IDs from both generators (#7355).
  * The caller flushes rewrittenEntityLines only after this function returns.
  */
+/**
+ * The one emit path for every record this export APPENDS after the source
+ * pass: generated property and quantity sets, the type-object lines whose
+ * `HasPropertySets` is repointed, and the georeferencing records (#7682,
+ * EXPORT-STEP-3). Each is written in the SOURCE schema's layout, so when the
+ * export converts it goes through `convertStepLine` exactly as a source
+ * record does: renamed (`IFCDOORTYPE` to `IFCDOORSTYLE`), re-laid-out (a
+ * quantity's `Formula` trimmed for IFC2X3, #7378), and through the IFC2X3
+ * slot fill and its counters. It used to run for generated quantities only,
+ * so the others reached an IFC2X3 file in IFC4 shape. The Rust writer's
+ * `write_line` is the twin. A record the target cannot represent is a refusal
+ * here, never an omission: other appended records name it.
+ */
+export function convertAppendedLines(pass: ExportPass, options: StepExportOptions, lines: readonly string[]): string[] {
+  if (!pass.converting) return [...lines];
+  return lines.map((line) => {
+    const converted = convertStepLine(line, pass.sourceSchema, pass.schema, options.guidRandom,
+      pass.slotFill, pass.withheldRefIds, pass.ifc4Slots, pass.enums);
+    if (converted === null) throw new Error('Generated record is unsupported in the target schema');
+    return converted;
+  });
+}
+
 export function generatePropertyAndQuantitySetEntities(
   pass: ExportPass,
   options: StepExportOptions,
@@ -76,7 +99,7 @@ export function generatePropertyAndQuantitySetEntities(
       sourceMembers,
       canReferenceSourceMember,
     );
-    pass.entities.push(...newEntities.lines);
+    pass.entities.push(...convertAppendedLines(pass, options, newEntities.lines));
     pass.newEntityCount += newEntities.count;
     // Replacement content for this host actually landed, so a delta really
     // does carry its PROPERTY-SET modification — and only that one (#2462).
@@ -95,13 +118,7 @@ export function generatePropertyAndQuantitySetEntities(
         : generateQuantitySetEntities(ctx, entityId, [qset], pass.willBeEmitted, pass.effective, options.guidRandom, typeOwned);
       // Generated quantity records are written in the source schema's layout.
       // One conversion site serves occurrence, new Type and copied Type sets (#7378).
-      const lines = pass.converting ? generated.lines.map(line => {
-        const converted = convertStepLine(line, pass.sourceSchema, pass.schema, options.guidRandom,
-          pass.slotFill, pass.withheldRefIds, pass.ifc4Slots, pass.enums);
-        if (converted === null) throw new Error('Generated quantity definition is unsupported in the target schema');
-        return converted;
-      }) : generated.lines;
-      pass.entities.push(...lines);
+      pass.entities.push(...convertAppendedLines(pass, options, generated.lines));
       pass.newEntityCount += generated.count;
       if (generated.lines.length > 0) pass.modifications.recordEmitted(entityId, 'quantity-set');
       if (typeOwned) {

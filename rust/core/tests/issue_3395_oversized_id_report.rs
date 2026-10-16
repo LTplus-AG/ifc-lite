@@ -64,7 +64,7 @@ fn native_index_builders_report_a_refused_oversized_id() {
     );
 
     // ── ColumnarEntityIndex::from_scan (the wasm lazy fallback's index) ──
-    let columnar = ifc_lite_core::ColumnarEntityIndex::from_scan(WITH_OVERSIZED);
+    let columnar = ifc_lite_core::ColumnarEntityIndex::from_scan(WITH_OVERSIZED).unwrap();
     assert_eq!(columnar.len(), 2);
     let reports = drain();
     assert_eq!(
@@ -80,7 +80,7 @@ fn native_index_builders_report_a_refused_oversized_id() {
     let index = ifc_lite_core::build_entity_index(WITHOUT_OVERSIZED);
     assert_eq!(index.len(), 3, "u32::MAX must load, not be refused");
     assert!(index.contains_key(&u32::MAX));
-    let columnar = ifc_lite_core::ColumnarEntityIndex::from_scan(WITHOUT_OVERSIZED);
+    let columnar = ifc_lite_core::ColumnarEntityIndex::from_scan(WITHOUT_OVERSIZED).unwrap();
     assert_eq!(columnar.len(), 3);
     assert_eq!(
         drain(),

@@ -3954,3 +3954,36 @@ at release rather than repairing only the current rendering cache.
 Follow-up review of the bounded CPU release fix found that canonical frame restoration replaces source allocations before release, leaving prior registered copies alive. The release helper now remembers historical source allocation identities weakly and clears them alongside current shared fields while preserving independent replacements. Actual frame-restore regression and backing-allocation collection controls qualify this correction; no native speed or resident-memory improvement is claimed. See `evidence/owner-cache-6537/source-frame-replacement/`.
 
 A second bounded-release follow-up showed that immutable recolouring after frame restoration also needs to carry historical ownership. Flat pruned weak snapshots now transfer only across complete shared allocation domains; snapshots remain independent so derived replacements cannot pollute original ownership. Actual canonical recolour regressions and collection controls qualify this correction. The evidence retains the separate WASM identities observed before and after Turbo typecheck rather than relabeling a functional run. See `evidence/owner-cache-6537/immutable-history-carry/`; no native performance claim is made.
+
+## Opening-repair evidence and recording checker (#6940)
+
+**Unmerged geometry stack: browser performance UNQUALIFIED; geometry merge hold.** The
+five-layer stack adds opening corner reconciliation, certified independent plane
+fits, closed-original-operand finite-wall protection and locally unrepresentable
+cap repair. Recorded source-matched MiniBIM native/WASM/viewer parity and complete
+per-arm normalized FZK/ISSUE129/Holter CPU transfers support bounded correctness.
+Explained changed outputs retain strict cross-arm identity FAIL.
+
+Both source-matched Holter recordings qualify functional recording feasibility.
+The original October 15 finite interleaved browser cohort (plan `fdd4b255…`) fails: the first completed load fails its
+unchanged POST cadence gate, the next planned load exhausts canonical host
+refusals, and the remaining planned samples are unlaunched. Every failed attempt
+and missing sample is retained. No throughput, neutral-performance or speed claim
+is supported. Lesson: classify full consumer output in its actual frame/context,
+then qualify the unchanged complete worker-pool cohort; repaired geometry and a
+successful functional recording cannot substitute for those gates.
+Before selecting a cohort, verify the live HTTPS state and collector rather than
+trusting a cached preview page. A scheduled opportunity stopped before timing
+when the benchmark server and its forwarding route were missing; restoring them
+does not turn that unlaunched cohort into performance evidence.
+The three October 16 opportunities are distinct failed cohorts, not replacement
+samples for that original report; the [evidence index](../../docs/architecture/evidence/opening-tears-6940/README.md)
+identifies each plan and disposition. Their local receipts are not included in
+the original published packet. All scheduled opportunities are exhausted.
+Lesson: retain cohort identity through PR summaries and stop at the original
+admission budget; later host quietness cannot qualify a refused case.
+The [V6 supplemental join](../../docs/architecture/evidence/opening-tears-6940/recording-checker-v6/README.md)
+now uses the reviewed first-frame clock contract in both cadence and markers,
+and reads finalized sidecars at their actual case paths. Lesson: verify final
+checker contracts and receipt discovery against retained real captures before
+spending another capture window. This integration fix grants no timing verdict.

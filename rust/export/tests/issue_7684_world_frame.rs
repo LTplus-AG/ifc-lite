@@ -282,7 +282,11 @@ fn bos_world(bos: Vec<u8>) -> Vec<[f64; 3]> {
     let m = meta["worldTransform"]
         .as_array()
         .map_or(identity, |a| std::array::from_fn(|i| a[i].as_f64().unwrap()));
-    let path = std::env::temp_dir().join(format!("ifc-lite-7684-{}.parquet", std::process::id()));
+    // A path unique per call: tests run in parallel threads of one process, so
+    // the pid alone raced.
+    static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let path = std::env::temp_dir().join(format!("ifc-lite-7684-{}-{n}.parquet", std::process::id()));
     std::fs::write(&path, bos_entry(&mut archive, "VertexBuffer.parquet")).unwrap();
     let batches: Vec<_> = ParquetRecordBatchReaderBuilder::try_new(std::fs::File::open(&path).unwrap())
         .unwrap()

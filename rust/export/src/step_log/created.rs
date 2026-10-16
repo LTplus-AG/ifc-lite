@@ -63,6 +63,16 @@ pub(crate) fn write_created(pass: &mut Pass<'_, '_>) -> Result<(), Unwritable> {
         if pass.skip.contains(&id) {
             continue;
         }
+        // The authored class becomes the record keyword verbatim, so it is held
+        // to the name `setEntityType` accepts: anything else
+        // (`IfcWall($);\n#1=…`) would write records nobody created (#7682,
+        // EXPORT-STEP-26). The TypeScript writer refuses the same payload.
+        if !super::entities::is_entity_name(&entity.entity_type) {
+            return Err(Unwritable(format!(
+                "created entity #{id}: \"{}\" is not a recognizable IFC entity name",
+                entity.entity_type
+            )));
+        }
         let retype = pass.overlay.retypes.get(&id).cloned();
         let effective = retype.as_ref().map_or(entity.entity_type.clone(), |(t, _)| t.clone());
         let upper = effective.to_uppercase();

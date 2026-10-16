@@ -107,10 +107,13 @@ describe('a non-numeric REAL-typed attribute edit', () => {
     // prevent, surviving inside the change preventing it.
     const store = await parseBase();
     const view = new MutablePropertyView(null, 'test-model');
-    const created = view.createEntity('IfcMapConversion', [
+    // Created through the editor, which allocates past the file's highest id:
+    // a created entity under a SOURCE id is a refused log (#7682).
+    const editor = new StoreEditor(store, view);
+    const created = editor.addEntity('IfcMapConversion', [
       null, null, null, null, null, null, null, null,
     ]);
-    new StoreEditor(store, view).setAttribute(created.expressId, 'Scale', 'abc');
+    editor.setAttribute(created.expressId, 'Scale', 'abc');
 
     const result = new StepExporter(store, view).export({
       schema: 'IFC4',

@@ -214,15 +214,11 @@ fn ti_normal(t: &[[f64; 3]; 3]) -> [f64; 3] {
 /// sub-band-sized transversal micro-sliver CAN now qualify, but its entire
 /// geometric effect is below the import-noise floor by construction, and the
 /// coplanar overlay's degenerate-projection guards (`w0 == Zero`) handle it.
-fn near_coplanar(t1: &[[f64; 3]; 3], t2: &[[f64; 3]; 3]) -> bool {
+fn near_coplanar(t1: &[[f64; 3]; 3], t2: &[[f64; 3]; 3], band: &NearBand) -> bool {
     let (n1, n2) = (ti_normal(t1), ti_normal(t2));
     let (nn1, nn2) = (ti_dot(n1, n1), ti_dot(n2, n2));
     if nn1 <= 0.0 || nn2 <= 0.0 || !nn1.is_finite() || !nn2.is_finite() {
         return false; // a degenerate triangle is never a flush coplanar partner
-    }
-    let mut band = NearBand::default();
-    for p in t1.iter().chain(t2.iter()) {
-        band.observe_point(p);
     }
     // All three vertices of `t` within the band of `plane`'s supporting plane?
     // The band is resolved against THAT plane's own normal, so an operand far
@@ -242,12 +238,27 @@ fn near_coplanar(t1: &[[f64; 3]; 3], t2: &[[f64; 3]; 3]) -> bool {
 /// crossings AND Touches (on-plane vertices/edges). Coplanar is deferred to
 /// `coplanar.rs`; a single shared point returns `Point` (no cut).
 pub fn tri_tri_intersection(t1: &[[f64; 3]; 3], t2: &[[f64; 3]; 3]) -> TriTri {
+    tri_tri_intersection_scoped(t1, t2, None)
+}
+
+/// Arrangement overlay and classification share the complete operand context.
+/// Standalone triangle callers keep their original two-triangle context above.
+pub(crate) fn tri_tri_intersection_with_band(t1: &[[f64; 3]; 3], t2: &[[f64; 3]; 3], band: &NearBand) -> TriTri {
+    tri_tri_intersection_scoped(t1, t2, Some(band))
+}
+
+fn tri_tri_intersection_scoped(t1: &[[f64; 3]; 3], t2: &[[f64; 3]; 3], paired_band: Option<&NearBand>) -> TriTri {
     use PlaneInterval as PI;
     // Near-coplanar guard (the flush-cap fix): an intended-flush coplanar
     // interface that per-axis snapping pushed just off exact coplanarity is
     // routed to the exact coplanar handler so the footprint is carved (otherwise
     // a sliver bridges the opening). See `near_coplanar`.
-    if near_coplanar(t1, t2) {
+    let local_band = NearBand::from_operands(&[*t1], &[*t2]);
+    // Keep the legacy two-triangle slab class, including transversal microfaces.
+    // A larger operand context adds only the classifier's shared-normal class.
+    if near_coplanar(t1, t2, &local_band) || paired_band.is_some_and(|band|
+        super::arrangement::coincident_planes(ti_normal(t1), ti_normal(t2))
+            && near_coplanar(t1, t2, band)) {
         return TriTri::Coplanar;
     }
     let (i1, i2) = (plane_interval(t1, t2), plane_interval(t2, t1));

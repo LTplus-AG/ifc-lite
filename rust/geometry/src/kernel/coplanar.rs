@@ -42,6 +42,10 @@ fn point_in_tri(q: [f64; 3], tri: &Tri, axis: DropAxis, w0: Sign) -> bool {
     on_inner(tri[0], tri[1]) && on_inner(tri[1], tri[2]) && on_inner(tri[2], tri[0])
 }
 
+pub(super) fn contains_projected_point(tri: &Tri, point: [f64; 3]) -> bool {
+    projection_axis(tri).is_some_and(|(axis, winding)| point_in_tri(point, tri, axis, winding))
+}
+
 /// Do segments `(q0,q1)` and `(e0,e1)` properly cross in the `axis` projection?
 fn seg_seg_cross(q0: [f64; 3], q1: [f64; 3], e0: [f64; 3], e1: [f64; 3], axis: DropAxis) -> bool {
     let s1 = orient2d_any(&e(q0), &e(q1), &e(e0), axis);

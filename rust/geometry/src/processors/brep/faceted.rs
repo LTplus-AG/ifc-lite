@@ -405,8 +405,10 @@ impl GeometryProcessor for FacetedBrepProcessor {
         Some(self.process_with_rtc(entity, decoder, schema, rtc_file_units))
     }
 
+    /// `IfcFacetedBrepWithVoids` shares attribute 0 (Outer); its inner Voids
+    /// shells are not rendered, as for `IfcAdvancedBrepWithVoids` (#7688).
     fn supported_types(&self) -> Vec<IfcType> {
-        vec![IfcType::IfcFacetedBrep]
+        vec![IfcType::IfcFacetedBrep, IfcType::IfcFacetedBrepWithVoids]
     }
 }
 

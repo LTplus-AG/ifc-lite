@@ -1,0 +1,21 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+name: Generate public API reference
+description: Install locked workspace tooling and render the API reference before strict MkDocs
+runs:
+  using: composite
+  steps:
+    - name: Setup pnpm
+      uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+    - name: Setup Node.js
+      uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version: 22
+        cache: pnpm
+    - name: Install reference tooling
+      shell: bash
+      run: pnpm install --frozen-lockfile
+    - name: Generate searchable public API reference
+      shell: bash
+      run: pnpm docs:api

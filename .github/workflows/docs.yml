@@ -7,8 +7,25 @@ on:
     paths:
       - 'docs/**'
       - 'mkdocs.yml'
+      - 'requirements-docs.txt'
       - 'rust/**'
       - '.github/workflows/docs.yml'
+      - 'packages/**'
+      - 'shared/ai/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - 'tsconfig*.json'
+      - 'turbo.json'
+      - 'scripts/docs/**'
+      - 'scripts/lib/public-entrypoints.mjs'
+      - 'scripts/consumer/packed-packages.mjs'
+      - 'scripts/lib/is-main-entry.mjs'
+      - 'scripts/lib/shipped-target.*'
+      - 'scripts/*worker-urls.*'
+      - 'scripts/run-build-wasm.mjs'
+      - 'scripts/build-wasm.sh'
+      - '.github/actions/setup-docs-api/**'
   workflow_dispatch:
 
 permissions:
@@ -74,6 +91,9 @@ jobs:
 
       - name: Install Python dependencies
         run: pip install -r requirements-docs.txt
+
+      - name: Generate searchable public API reference
+        uses: ./.github/actions/setup-docs-api
 
       - name: Build MkDocs
         run: mkdocs build --strict

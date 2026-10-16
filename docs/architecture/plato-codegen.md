@@ -194,6 +194,10 @@ fuzz verdict PASS).
   failure), strips the nondeterministic timestamp header, runs the codemod, and
   writes the committed files. Two back-to-back runs produce byte-identical
   output on both targets.
+- `canonical` (the antipodal sign rule used by `detect_obb`) lives alone in
+  `rust/clash/src/canonical.rs`, dependency-free. `ifc-lite-geometry` keeps its
+  own `math::v3::canonical` and compiles that file into a parity test through
+  `#[path]` (`math/canonical_parity_tests.rs`), so the two cannot drift.
 - CI freshness gate: a path-filtered `plato-check` job in test.yml regenerates
   with `--check` and fails on drift, wired into the required aggregate check,
   mirroring the committed-wasm-types pattern. Consumers never need dotnet.

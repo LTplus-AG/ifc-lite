@@ -11,6 +11,7 @@
 //! `packages/clash/src/engine-ts/obb.ts`, kept bit-identical to it.
 
 use super::{Obb, OBB_EPS};
+use crate::canonical::canonical;
 use crate::vec3::{cross, dot, scale, sub, Vec3};
 
 fn normalize(v: Vec3) -> Option<Vec3> {
@@ -19,24 +20,6 @@ fn normalize(v: Vec3) -> Option<Vec3> {
         return None;
     }
     Some([v[0] / len, v[1] / len, v[2] / len])
-}
-
-/// Flip `n` so its largest-magnitude component is positive, so a face and its
-/// antipodal opposite face collapse to the same canonical axis direction.
-/// Ties broken in x, y, z order — identical to the TS `canonical`.
-fn canonical(n: Vec3) -> Vec3 {
-    let (ax, ay, az) = (n[0].abs(), n[1].abs(), n[2].abs());
-    let mut idx = 0usize;
-    if ay > ax && ay >= az {
-        idx = 1;
-    } else if az > ax && az > ay {
-        idx = 2;
-    }
-    if n[idx] < 0.0 {
-        [-n[0], -n[1], -n[2]]
-    } else {
-        n
-    }
 }
 
 /// Minimal structural view of `TriMesh` this module needs.

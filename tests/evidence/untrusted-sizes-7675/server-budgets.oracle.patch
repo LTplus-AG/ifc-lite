@@ -201,54 +201,6 @@ index 65da03274a..290b4405cf 100644
              return cut.then(|| COMPLEX_PROPERTY_BUDGET_MARKER.to_string());
          }
          let joined = parts.join(", ");
-diff --git a/packages/parser/src/compact-entity-index.ts b/packages/parser/src/compact-entity-index.ts
-index 7a3edaa3d3..0d038d9826 100644
---- b/packages/parser/src/compact-entity-index.ts
-+++ b/packages/parser/src/compact-entity-index.ts
-@@ -82,7 +82,7 @@ export class CompactEntityIndex {
-         // Duplicate ids sit adjacent in file order; the last record wins, as in
-         // core, the server and the exporter.
-         let last = mid;
--        // mutated: first match wins
-+        while (last + 1 < ids.length && ids[last + 1] === expressId) last++;
-         return last;
-       }
-diff --git a/packages/parser/src/compact-entity-index.ts b/packages/parser/src/compact-entity-index.ts
-index 813e0ed6c0..0d038d9826 100644
---- b/packages/parser/src/compact-entity-index.ts
-+++ b/packages/parser/src/compact-entity-index.ts
-@@ -7,7 +7,7 @@
- 
- import { checkedExpressId } from './express-id.js';
- import type { EntityRef } from './types.js';
--import { internType, lastEqualIndex, type CompactEntityIndexColumns } from './compact-entity-index-columns.js';
-+import { internType, type CompactEntityIndexColumns } from './compact-entity-index-columns.js';
- import { yieldToEventLoop } from './yield-to-event-loop.js';
- 
- /**
-@@ -68,7 +68,7 @@ export class CompactEntityIndex {
- 
-   /**
-    * Binary search for an expressId in the sorted array.
--   * Returns the array index (the last record of a duplicate) or -1.
-+   * Returns the array index (the last record for a duplicated id) or -1.
-    */
-   private binarySearch(expressId: number): number {
-     const ids = this.expressIds;
-@@ -78,7 +78,13 @@ export class CompactEntityIndex {
-     while (lo <= hi) {
-       const mid = (lo + hi) >>> 1;
-       const midVal = ids[mid];
--      if (midVal === expressId) return mid;
-+      if (midVal === expressId) {
-+        // Duplicate ids sit adjacent in file order; the last record wins, as in
-+        // core, the server and the exporter.
-+        let last = mid;
-+        while (last + 1 < ids.length && ids[last + 1] === expressId) last++;
-+        return last;
-+      }
-       if (midVal < expressId) lo = mid + 1;
-       else hi = mid - 1;
 diff --git b/packages/parser/src/compact-entity-index.ts a/packages/parser/src/compact-entity-index.ts
 index 813e0ed6c0..bd234afb63 100644
 --- b/packages/parser/src/compact-entity-index.ts

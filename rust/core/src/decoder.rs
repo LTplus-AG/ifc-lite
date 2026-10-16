@@ -639,13 +639,7 @@ impl<'a> EntityDecoder<'a> {
         // may sit on either side of the keyword (#3789), so it is skipped,
         // not sliced into the name.
         let start = skip_step_trivia(bytes, eq_pos + 1)?;
-        let end = start
-            + bytes[start..]
-                .iter()
-                .take_while(|b| b.is_ascii_alphanumeric() || **b == b'_')
-                .count();
-        let keyword = std::str::from_utf8(&bytes[start..end]).ok()?;
-        let is_outer = crate::parser::keyword_eq(keyword, "IFCFACEOUTERBOUND");
+        let (is_outer, end) = face_bound_keyword(bytes, start);
         let mut i = skip_step_trivia(bytes, end)?;
         if bytes.get(i) != Some(&b'(') {
             return None;
@@ -698,6 +692,27 @@ impl<'a> EntityDecoder<'a> {
 
         Some((loop_id, orientation, is_outer))
     }
+}
+
+/// Whether the keyword at `bytes[start..]` is `IFCFACEOUTERBOUND` under
+/// `keyword_eq`'s rule (ASCII case fold), and where it ends.
+///
+/// This runs once per face bound of every faceted brep, so the uppercase
+/// spellings every exporter writes are matched with one prefix compare; any
+/// other spelling falls back to scanning the keyword and folding its case.
+#[inline]
+fn face_bound_keyword(bytes: &[u8], start: usize) -> (bool, usize) {
+    const OUTER: &[u8] = b"IFCFACEOUTERBOUND";
+    const INNER: &[u8] = b"IFCFACEBOUND";
+    let rest = &bytes[start..];
+    let is_ident = |b: &u8| b.is_ascii_alphanumeric() || *b == b'_';
+    for (spelling, outer) in [(OUTER, true), (INNER, false)] {
+        if rest.starts_with(spelling) && !rest.get(spelling.len()).is_some_and(is_ident) {
+            return (outer, start + spelling.len());
+        }
+    }
+    let len = rest.iter().position(|b| !is_ident(b)).unwrap_or(rest.len());
+    (rest[..len].eq_ignore_ascii_case(OUTER), start + len)
 }
 
 /// Parse cartesian point coordinates inline from raw bytes

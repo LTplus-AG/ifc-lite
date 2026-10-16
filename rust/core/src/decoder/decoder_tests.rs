@@ -792,6 +792,11 @@ fn get_face_bound_fast_reads_the_outer_bound_keyword_in_any_case_7689() {
         let mut decoder = EntityDecoder::new(record);
         assert_eq!(decoder.get_face_bound_fast(5), Some((4, true, true)), "{record}");
     }
+    // The uppercase prefix fast path still requires the whole keyword.
+    for record in ["#5=IFCFACEOUTERBOUNDX(#4,.T.);", "#5=IFCFACEBOUNDOUTER(#4,.T.);"] {
+        let mut decoder = EntityDecoder::new(record);
+        assert_eq!(decoder.get_face_bound_fast(5), Some((4, true, false)), "{record}");
+    }
     let mut decoder = EntityDecoder::new("#5=IFCFACEBOUND/* OUTER */(#4,.T.);");
     assert_eq!(decoder.get_face_bound_fast(5), Some((4, true, false)), "a comment never names the type");
 }

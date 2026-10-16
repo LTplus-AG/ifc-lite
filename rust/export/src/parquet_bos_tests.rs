@@ -19,7 +19,7 @@ fn duplex_exports_valid_bos() {
     // Re-open the zip and verify the expected tables + parquet magic.
     let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bos)).expect("valid zip");
     let names: Vec<String> = (0..archive.len())
-        .map(|i| archive.by_index(i).unwrap().name().to_string())
+        .map(|i| archive.by_index(i).unwrap().name().expect("entry name").to_string())
         .collect();
     for expected in [
         "Entities.parquet",

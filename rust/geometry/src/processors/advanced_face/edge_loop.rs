@@ -157,8 +157,8 @@ fn sample_edge_geometry(
 ) -> Result<Option<Vec<Point3<f64>>>, Refused> {
     let geom_type = geom.ifc_type.as_str().to_uppercase();
     Ok(match geom_type.as_str() {
-        // The rational variant shares attributes 0-7; sampling it unweighted is
-        // a far better approximation than the single-vertex fallback.
+        // The rational variant shares attributes 0-7 and adds WeightsData,
+        // which `parse_bspline_curve` reads (#7750).
         "IFCBSPLINECURVEWITHKNOTS" | "IFCRATIONALBSPLINECURVEWITHKNOTS" => {
             let s = walk_start.unwrap_or(Point3::new(0.0, 0.0, 0.0));
             Some(sample_bspline_edge_curve(geom, &s, curve_forward, decoder, quality)?)

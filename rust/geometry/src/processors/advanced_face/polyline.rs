@@ -70,8 +70,8 @@ fn sample_curve_polyline_guarded(
     }
     use std::f64::consts::TAU;
     let kind = curve.ifc_type.as_str().to_uppercase();
-    // The rational variant shares attributes 0-7 with the plain one; sampling
-    // it unweighted beats dropping the curve entirely.
+    // The rational variant shares attributes 0-7 with the plain one and adds
+    // WeightsData, which `parse_bspline_curve` reads (#7750).
     if kind == "IFCBSPLINECURVEWITHKNOTS" || kind == "IFCRATIONALBSPLINECURVEWITHKNOTS" {
         return sample_bspline_curve_polyline(curve, decoder, quality);
     }
@@ -202,7 +202,7 @@ fn sample_curve_polyline_guarded(
                 return Ok(pts);
             }
         }
-        if basis_kind == "IFCBSPLINECURVEWITHKNOTS" {
+        if basis_kind == "IFCBSPLINECURVEWITHKNOTS" || basis_kind == "IFCRATIONALBSPLINECURVEWITHKNOTS" {
             if let (Some(p_start), Some(p_end)) = (p1, p2) {
                 let mut pts = sample_bspline_edge_curve(&basis, &p_start, sense, decoder, quality)?;
                 pts.push(p_end);

@@ -4,8 +4,8 @@
 
 /** `build_axis2_matrix`'s `try_normalize(1e-9)` on the Axis. */
 const AXIS_EPSILON = 1e-9;
-/** `build_axis2_matrix`'s `x_axis_orthogonal.norm() > 1e-6` switch. */
-const PROJECTION_EPSILON = 1e-6;
+/** `transform::X_PROJECTION_EPSILON`: the projected X shorter than this is numeric noise (#7751). */
+const PROJECTION_EPSILON = 1e-9;
 
 /**
  * The local X axis an `IfcAxis2Placement3D` has when its `RefDirection` is
@@ -21,22 +21,14 @@ const PROJECTION_EPSILON = 1e-6;
  * is the schema's `IfcFirstProjAxis(Axis, $)` everywhere except next to the
  * X axis:
  *
- *   - when the projection is no longer than 1e-6 (Axis within about 1e-6 rad
- *     of +X or -X), the renderer takes `(0,0,1) x Axis` instead. For exactly
- *     `+X` that is `(0,1,0)`, the schema's own switch to world Y. For exactly
- *     `-X`, where the schema's projection of X vanishes and it gives no
- *     answer, it is `(0,-1,0)`.
- *   - an Axis near +X but inside that tolerance with a positive Y or Z offset
- *     gets about `(0,+1,0)`, where the schema's projection points about
- *     `(0,-1,0)`. That is the renderer's behaviour and it is copied here on
- *     purpose: a reader that fills `$` differently from the viewer turns the
- *     frame 180 degrees about its Axis relative to what is drawn.
- *
- * `rust/geometry/tests/absent_ref_direction_fill.rs` pins the same vectors on
- * the Rust side; change both together.
- *
- * A zero-length Axis is read as `(0,0,1)`, as `build_axis2_matrix` does, and
- * gives `(1,0,0)`. The result is unit length and perpendicular to the Axis.
+ *   - when the projection is no longer than 1e-9, i.e. the Axis is +X or -X
+ *     to within rounding, the renderer takes `(0,0,1) x Axis` instead. For
+ *     exactly `+X` that is `(0,1,0)`, the schema's own switch to world Y. For
+ *     exactly `-X`, where the schema's projection of X vanishes and it gives
+ *     no answer, it is `(0,-1,0)`.
+ *   - an Axis near X but outside that noise floor is projected, normalised,
+ *     like the schema: a +Y offset on +X gives about `(0,-1,0)`. Until #7751
+ *     the cut was 1e-6 and that band gave about `(0,+1,0)`.
  */
 export function firstProjAxis(axis: readonly [number, number, number]): [number, number, number] {
   // `Math.sqrt` of the sum of squares, not `Math.hypot`, to round like

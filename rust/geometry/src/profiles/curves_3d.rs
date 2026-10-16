@@ -398,6 +398,7 @@ impl ProfileProcessor {
                 })
             })
             .collect();
+        crate::curve_source::admit_f32_range(all_points.iter().flat_map(|p| [p.x, p.y, p.z]))?;
 
         let segments_attr = curve.get(1);
         if segments_attr.is_none() || segments_attr.map(|a| a.is_null()).unwrap_or(true) {

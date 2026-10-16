@@ -100,3 +100,81 @@ fn one_million_control_points_rejected_before_decode() {
         "a million-reference list must be rejected fast (before any decode attempt), took {elapsed:?}"
     );
 }
+
+/// A degree-2 rational curve over (0,0,0), (1,1,0), (2,0,0) with `weights`
+/// written as the WeightsData attribute (index 8).
+fn rational_content(weights: &str) -> String {
+    format!(
+        r#"
+#1=IFCCARTESIANPOINT((0.,0.,0.));
+#2=IFCCARTESIANPOINT((1.,1.,0.));
+#3=IFCCARTESIANPOINT((2.,0.,0.));
+#10=IFCRATIONALBSPLINECURVEWITHKNOTS(2,(#1,#2,#3),.UNSPECIFIED.,.F.,.F.,(3,3),(0.,1.),.UNSPECIFIED.,{weights});
+"#
+    )
+}
+
+/// #7750: the rational curve was sampled unweighted. With weights (1,2,1) the
+/// conic's midpoint is (P0 + 2*2*P1 + P2) / (1 + 4 + 1) = (1, 2/3), not the
+/// plain B-spline's (1, 1/2).
+#[test]
+fn rational_curve_is_sampled_with_its_weights_7750() {
+    let content = rational_content("(1.,2.,1.)");
+    let mut decoder = EntityDecoder::new(&content);
+    let curve = decoder.decode_by_id(10).unwrap();
+    let parsed = parse_bspline_curve(&curve, &mut decoder).ok().flatten().expect("readable rational curve");
+    let mid = parsed.at(0.5);
+    assert!((mid - Point3::new(1.0, 2.0 / 3.0, 0.0)).norm() < 1e-12, "midpoint {mid:?}");
+    // The clamped ends are interpolated either way.
+    assert!((parsed.at(0.0) - Point3::new(0.0, 0.0, 0.0)).norm() < 1e-12);
+    assert!((parsed.at(1.0) - Point3::new(2.0, 0.0, 0.0)).norm() < 1e-12);
+
+    // Every sampled point lies on the weighted curve, which the unweighted
+    // parabola fails.
+    let pts = sample_bspline_curve_polyline(&curve, &mut decoder, TessellationQuality::Medium).unwrap();
+    assert!(pts.len() > 4);
+    for p in &pts {
+        // Rational Bezier with weights (1,w,1) over (0,0),(1,1),(2,0):
+        // x = (2 w t (1-t) + 2 t^2) / d, y = 2 w t (1-t) / d,
+        // d = (1-t)^2 + 2 w t (1-t) + t^2. Find t from x, compare y.
+        let w = 2.0;
+        let t = (0..=100_000)
+            .map(|i| i as f64 / 100_000.0)
+            .min_by(|a, b| {
+                let fx = |t: f64| {
+                    let d = (1.0 - t).powi(2) + 2.0 * w * t * (1.0 - t) + t * t;
+                    (2.0 * w * t * (1.0 - t) + 2.0 * t * t) / d
+                };
+                (fx(*a) - p.x).abs().total_cmp(&(fx(*b) - p.x).abs())
+            })
+            .unwrap();
+        let d = (1.0 - t).powi(2) + 2.0 * w * t * (1.0 - t) + t * t;
+        let y = 2.0 * w * t * (1.0 - t) / d;
+        assert!((p.y - y).abs() < 1e-4, "{p:?} is off the weighted curve (y {y})");
+    }
+}
+
+/// WeightsData is mandatory, finite and positive, one per control point
+/// (the surface rule, #7687): anything else refuses the curve rather than
+/// sampling it unweighted.
+#[test]
+fn malformed_rational_weights_refuse_the_curve_7750() {
+    for weights in ["(1.,2.)", "(1.,2.,1.,1.)", "(1.,0.,1.)", "(1.,-2.,1.)", "(1.,$,1.)", "(1.,1.E999,1.)", "$"] {
+        let content = rational_content(weights);
+        let mut decoder = EntityDecoder::new(&content);
+        let curve = decoder.decode_by_id(10).unwrap();
+        assert!(
+            parse_bspline_curve(&curve, &mut decoder).is_err(),
+            "weights {weights} must refuse the curve"
+        );
+    }
+}
+
+/// The plain curve has no weights and must not start refusing for lack of them.
+#[test]
+fn plain_curve_needs_no_weights_7750() {
+    let content = curve_content(2);
+    let mut decoder = EntityDecoder::new(&content);
+    let curve = decoder.decode_by_id(10).unwrap();
+    assert!(matches!(parse_bspline_curve(&curve, &mut decoder), Ok(Some(_))));
+}

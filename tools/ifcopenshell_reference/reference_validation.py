@@ -1,3 +1,7 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 """Checked reference conversion in an owned process (#7723).
 
 The engine's detailed logger writes native stdout, not just get_log(). Keep

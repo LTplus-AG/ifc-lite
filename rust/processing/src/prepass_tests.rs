@@ -441,3 +441,13 @@ fn finish_wire_pair_round_trips_and_treats_non_finite_as_absent() {
         "an infinite field is as unauthored as NaN"
     );
 }
+
+/// #7675: the counts are wire input. A count of `u32::MAX` reserved 64 GiB
+/// before the per-colour bounds check ran (and `offset` could wrap on
+/// wasm32); the decoder keeps only the colours `rgba` actually holds.
+#[test]
+fn material_colors_from_flat_does_not_size_by_the_wire_count() {
+    let back = material_colors_from_flat(&[1, 2], &[u32::MAX, 1], &[255, 0, 0, 255]);
+    assert_eq!(back.len(), 1, "{back:?}");
+    assert_eq!(back[&1], vec![[1.0, 0.0, 0.0, 1.0]]);
+}

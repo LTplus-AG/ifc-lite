@@ -29,6 +29,7 @@ use std::collections::BTreeMap;
 
 use serde::Serialize;
 
+use crate::mesh_frame::{restoring_rotation, rotate_and_translate};
 use crate::MeshData;
 
 /// One IFC entity's merged geometry, in IFC Z-up absolute-world metres.
@@ -101,7 +102,9 @@ pub struct ColoredGeometryDataExport {
 /// pipeline inverse-rotates positions + origin into site-local axes, so to emit
 /// true IFC world coordinates we reapply the forward 3x3 rotation:
 /// `world = R * (position + origin) + rtc_offset`. Pass `None` for the
-/// `model_rtc` / `raw_ifc` spaces (R = identity), which is the common case.
+/// `model_rtc` / `raw_ifc` spaces (R = identity), which is the common case;
+/// [`crate::MeshFrame::site_placement`] of `ProcessingResult::frame` is
+/// exactly this argument.
 pub fn build_geometry_data_export(
     meshes: &[MeshData],
     rtc_offset: [f64; 3],
@@ -160,10 +163,8 @@ fn build_elements<const COLORS: bool>(
     // in the opt-in sidecar, allocated once an element becomes nonuniform.
     let mut elements = ElementMap::new();
     let mut colors = ColorMap::new();
-    let rot = match site_rotation {
-        Some(m) if m.len() >= 16 => Some(m),
-        _ => None,
-    };
+    // Decided once per call, not per vertex (#7684).
+    let rotation = restoring_rotation(site_rotation);
 
     for m in meshes {
         // Occurrences only: skip type-product RepresentationMap geometry. Class 3
@@ -177,17 +178,13 @@ fn build_elements<const COLORS: bool>(
             .positions
             .chunks_exact(3)
             .map(|p| {
-                // World point in (possibly site-local) axes: position + origin.
-                let (x, y, z) = (p[0] as f64 + o[0], p[1] as f64 + o[1], p[2] as f64 + o[2]);
-                match rot {
-                    // Reapply the site forward rotation (column-major R), then RTC.
-                    Some(r) => [
-                        r[0] * x + r[4] * y + r[8] * z + rtc_offset[0],
-                        r[1] * x + r[5] * y + r[9] * z + rtc_offset[1],
-                        r[2] * x + r[6] * y + r[10] * z + rtc_offset[2],
-                    ],
-                    None => [x + rtc_offset[0], y + rtc_offset[1], z + rtc_offset[2]],
-                }
+                // Baked point (`origin + position`, widened first), then the
+                // one frame-to-world restore (#7684): site rotation, then RTC.
+                let baked = [p[0] as f64 + o[0], p[1] as f64 + o[1], p[2] as f64 + o[2]];
+                rotation.map_or_else(
+                    || [baked[0] + rtc_offset[0], baked[1] + rtc_offset[1], baked[2] + rtc_offset[2]],
+                    |r| rotate_and_translate(r, baked, rtc_offset),
+                )
             })
             .collect();
 

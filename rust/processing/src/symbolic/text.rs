@@ -22,7 +22,7 @@ pub(super) fn extract_text_literal(
     express_id: u32,
     ifc_type: &str,
     rep_identifier: &str,
-    unit_scale: f32,
+    unit_scale: f64,
     transform: &Transform2D,
     rebase: RenderFrameRebase,
     styled_items: &HashMap<u32, Vec<u32>>,
@@ -46,13 +46,13 @@ pub(super) fn extract_text_literal(
     };
     let composed = compose_transforms(transform, &placement_transform);
 
-    const CAP_TO_BOX_RATIO: f32 = 0.7;
-    const FALLBACK_CAP_HEIGHT_M: f32 = 0.18;
+    const CAP_TO_BOX_RATIO: f64 = 0.7;
+    const FALLBACK_CAP_HEIGHT_M: f64 = 0.18;
     let height_model_units = if item.ifc_type == IfcType::IfcTextLiteralWithExtent {
         item.get_ref(3)
             .and_then(|extent_ref| decoder.decode_by_id(extent_ref).ok())
             .and_then(|extent| extent.get(1).and_then(|a| a.as_float()))
-            .map(|h| (h as f32) * CAP_TO_BOX_RATIO)
+            .map(|h| h * CAP_TO_BOX_RATIO)
             .unwrap_or(FALLBACK_CAP_HEIGHT_M / unit_scale.max(1e-6))
     } else {
         FALLBACK_CAP_HEIGHT_M / unit_scale.max(1e-6)
@@ -121,7 +121,7 @@ pub(super) fn extract_text_literal(
         dir_y: dir.1,
         // The glyph height has to pick that same scale up here: a height never
         // passes through `transform_point`.
-        height: height_model_units * unit_scale * text_scale,
+        height: (height_model_units * unit_scale * text_scale) as f32,
         content,
         alignment,
         world_y: rebase.elevation(composed.tz),

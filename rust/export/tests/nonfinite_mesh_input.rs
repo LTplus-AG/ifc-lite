@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Non-finite coordinates must never reach an exported mesh file.
 //!
-//! The three from-meshes exporters (`export_glb_from_meshes`,
+//! The three from-meshes exporters (`try_export_glb_from_meshes`,
 //! `try_export_collada_from_meshes`, and `try_export_kmz_collada_from_meshes` through it)
 //! take the viewer's flattened `MeshData` arrays straight off the wasm FFI. Nothing
 //! between a plugin-supplied mesh and the bytes checked that a coordinate was finite,
@@ -20,7 +20,7 @@
 //! `NaN`, `+Infinity` and `-Infinity` are asserted separately: they did not behave
 //! alike (`NaN` left `min`/`max` finite, the infinities produced `null`).
 
-use ifc_lite_export::{export_glb_from_meshes, try_export_collada_from_meshes};
+use ifc_lite_export::{try_export_collada_from_meshes, try_export_glb_from_meshes};
 
 /// One triangle whose FIRST vertex's X is `poison`; the other two are finite and
 /// must survive unchanged.
@@ -32,7 +32,7 @@ fn tri(poison: f32) -> (Vec<f32>, Vec<f32>, Vec<u32>) {
 
 fn glb_parts(poison: f32) -> (String, Vec<f32>) {
     let (p, n, i) = tri(poison);
-    let (glb, stats) = export_glb_from_meshes(
+    let (glb, stats) = try_export_glb_from_meshes(
         &p,
         &n,
         &i,
@@ -44,7 +44,8 @@ fn glb_parts(poison: f32) -> (String, Vec<f32>) {
         false,
         true,
         false,
-    );
+    )
+    .expect("the counts are valid");
     // Anti-vacuity: the mesh must actually have been emitted, not silently dropped.
     assert_eq!(stats.meshes, 1, "expected exactly one emitted mesh");
     assert_eq!(stats.vertices, 3, "expected three emitted vertices");
@@ -163,7 +164,7 @@ fn finite_meshes_are_untouched() {
     let positions = vec![-2.0f32, 0.0, 0.0, 3.0, 0.0, 0.0, 0.0, 4.5, 0.0];
     let normals = vec![0.0f32, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0];
     let indices = vec![0u32, 1, 2];
-    let (glb, stats) = export_glb_from_meshes(
+    let (glb, stats) = try_export_glb_from_meshes(
         &positions,
         &normals,
         &indices,
@@ -175,7 +176,8 @@ fn finite_meshes_are_untouched() {
         false,
         true,
         false,
-    );
+    )
+    .expect("the counts are valid");
     assert_eq!(stats.vertices, 3);
     let jlen = u32::from_le_bytes(glb[12..16].try_into().unwrap()) as usize;
     let json = String::from_utf8_lossy(&glb[20..20 + jlen]).to_string();
@@ -224,7 +226,7 @@ fn finite_meshes_are_untouched() {
 fn nonfinite_colours_do_not_reach_the_material() {
     for poison in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
         let (p, n, i) = tri(0.0);
-        let (glb, _) = export_glb_from_meshes(
+        let (glb, _) = try_export_glb_from_meshes(
             &p,
             &n,
             &i,
@@ -236,7 +238,8 @@ fn nonfinite_colours_do_not_reach_the_material() {
             false,
             true,
             false,
-        );
+        )
+        .expect("the counts are valid");
         let jlen = u32::from_le_bytes(glb[12..16].try_into().unwrap()) as usize;
         let json = String::from_utf8_lossy(&glb[20..20 + jlen]).to_string();
         assert!(!json.contains("null"), "non-finite colour reached the JSON: {json}");
@@ -258,7 +261,7 @@ fn nonfinite_colours_do_not_reach_the_material() {
 fn nonfinite_origin_does_not_reach_the_bytes() {
     for poison in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
         let (p, n, i) = tri(0.0);
-        let (glb, stats) = export_glb_from_meshes(
+        let (glb, stats) = try_export_glb_from_meshes(
             &p,
             &n,
             &i,
@@ -270,7 +273,8 @@ fn nonfinite_origin_does_not_reach_the_bytes() {
             false,
             true,
             false,
-        );
+        )
+        .expect("the counts are valid");
         assert_eq!(stats.vertices, 3, "anti-vacuity: mesh dropped");
         let jlen = u32::from_le_bytes(glb[12..16].try_into().unwrap()) as usize;
         let json = String::from_utf8_lossy(&glb[20..20 + jlen]).to_string();

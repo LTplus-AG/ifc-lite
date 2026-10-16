@@ -665,27 +665,19 @@ pub fn material_colors_from_flat(
     rgba: &[u8],
 ) -> FxHashMap<u32, Vec<[f32; 4]>> {
     let mut out: FxHashMap<u32, Vec<[f32; 4]>> = FxHashMap::default();
+    let available = rgba.len() / 4;
     let mut offset = 0usize;
     for (i, &element_id) in element_ids.iter().enumerate() {
         let Some(&count) = counts.get(i) else { break };
-        let count = count as usize;
-        let mut colors: Vec<[f32; 4]> = Vec::with_capacity(count);
-        for c in 0..count {
-            let base = (offset + c) * 4;
-            if base + 3 >= rgba.len() {
-                break;
-            }
-            colors.push(
-                crate::style::Rgba::from_rgba8([
-                    rgba[base],
-                    rgba[base + 1],
-                    rgba[base + 2],
-                    rgba[base + 3],
-                ])
-                .to_array(),
-            );
-        }
-        offset += count;
+        // `count` is wire input: clamp to the colours `rgba` holds instead of
+        // reserving `count` (up to 64 GiB) or wrapping `offset` on wasm32
+        // (#7675). A short buffer keeps the colours it has, as before.
+        let end = offset.saturating_add(count as usize).min(available);
+        let colors: Vec<[f32; 4]> = rgba[offset.min(end) * 4..end * 4]
+            .chunks_exact(4)
+            .map(|c| crate::style::Rgba::from_rgba8([c[0], c[1], c[2], c[3]]).to_array())
+            .collect();
+        offset = offset.saturating_add(count as usize);
         if !colors.is_empty() {
             out.insert(element_id, colors);
         }

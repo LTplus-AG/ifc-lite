@@ -154,7 +154,7 @@ mod tests {
     #[test]
     fn grid_axis_owners_are_shared_through_the_columnar_index() {
         let content = source("IFC2X3");
-        let index = Arc::new(ColumnarEntityIndex::from_scan(content.as_bytes()));
+        let index = Arc::new(ColumnarEntityIndex::from_scan(content.as_bytes()).unwrap());
         let mut first = EntityDecoder::with_arc_columnar_index(&content, index.clone());
         assert_eq!(first.grid_of_axis(1), Some(9));
         drop(first);

@@ -15,7 +15,10 @@
 //! `point3f[]` and carry `origin` as a **double3 `xformOp:translate`** on each Mesh
 //! prim — so a georeferenced / national-grid model keeps full f64 placement precision
 //! with small (object-scale) f32 vertices, at any model extent. Element Xforms are pure
-//! identity grouping.
+//! identity grouping. The frame the pipeline baked in (its RTC offset and, for a
+//! site-local model, the site rotation) is restored ONCE, as a `matrix4d` on `/World`
+//! (`MeshFrame::world_matrix`, #7684), so the stage lands at the model's IFC world
+//! coordinates, where the GLB puts it, while every vertex stays small.
 //!
 //! Emission (`emit`) and lexical helpers (`fmt`) live in submodules; this file is the
 //! orchestration + the emittable-mesh gate.
@@ -25,13 +28,14 @@ mod fmt;
 mod instance;
 
 use std::collections::{HashMap, HashSet};
+use std::fmt::Write as _;
 
 use ifc_lite_processing::{InstanceRecord, MeshData};
 
 use crate::ifc5::{project_name, spatial_children};
 use crate::model::{build_export_model, EntityRow};
 use emit::{emit_material, emit_prim, write_header, Ctx};
-use fmt::{color_key, Namer};
+use fmt::{color_key, fmt_matrix4d, Namer};
 
 /// Deepest spatial nesting the recursive emitter follows before it stops recursing
 /// (the subtree is then caught by the leftover / Unassigned pass). IFC spatial trees
@@ -171,8 +175,17 @@ pub fn export_usd(content: &[u8], opts: &UsdOptions) -> String {
     let mut out = String::new();
     write_header(&mut out, opts, content);
 
-    // Root /World Xform (identity — per-mesh placement rides each Mesh's transform).
+    // Root /World Xform: the baked frame back to IFC world (per-mesh placement
+    // rides each Mesh's transform below it). Omitted for a raw-IFC model, which
+    // has nothing to restore.
     out.push_str("def Xform \"World\"\n{\n");
+    if result.frame.needs_shift() {
+        // Column-major, so each 4-chunk is a USD row (the image of one axis).
+        let m = result.frame.world_matrix();
+        let rows: [[f64; 4]; 4] = std::array::from_fn(|c| std::array::from_fn(|r| m[c * 4 + r]));
+        writeln!(out, "    matrix4d xformOp:transform = {}", fmt_matrix4d(&rows)).ok();
+        out.push_str("    uniform token[] xformOpOrder = [\"xformOp:transform\"]\n");
+    }
 
     // Materials under /World/Looks.
     let mut world_names = Namer::new();
@@ -238,26 +251,12 @@ pub fn export_usd(content: &[u8], opts: &UsdOptions) -> String {
 /// USD-specific guards that keep the stage parseable/checkable: all-finite
 /// coordinates, a finite per-mesh origin, and every index within the vertex range.
 pub(super) fn mesh_emittable(m: &MeshData) -> bool {
-    if m.geometry_class == 2 {
-        return false;
-    }
-    // Triangulated: index buffer is whole triangles (so faceVertexCounts of all-3s
-    // sums to the index count — else usdchecker rejects the mesh).
-    if m.indices.len() < 3 || !m.indices.len().is_multiple_of(3) {
-        return false;
-    }
-    if m.positions.len() < 9 || !m.positions.len().is_multiple_of(3) {
-        return false;
-    }
-    if m.normals.len() != m.positions.len() {
-        return false;
-    }
-    if !m.positions.iter().all(|v| v.is_finite()) || !m.normals.iter().all(|v| v.is_finite()) {
-        return false;
-    }
-    // The per-mesh origin becomes a double3 translate; a non-finite one would
-    // silently mislocate the mesh (fmt maps it to 0), so gate it out.
-    if !m.origin.iter().all(|v| v.is_finite()) {
+    // The shared from-bytes gate: no instanced type-library duplicates, whole
+    // triangles (so faceVertexCounts of all-3s sums to the index count, else
+    // usdchecker rejects the mesh), and finite coordinates and origin (the
+    // origin becomes a double3 translate; fmt would map a non-finite one to 0
+    // and silently mislocate the mesh).
+    if !crate::mesh_input::is_exportable(m) || m.normals.len() != m.positions.len() {
         return false;
     }
     let vcount = (m.positions.len() / 3) as u32;

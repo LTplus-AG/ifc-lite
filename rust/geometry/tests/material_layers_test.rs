@@ -190,7 +190,8 @@ fn from_spans_and_flat_roundtrip_match_from_content() {
         &flat.offset,
         &flat.layer_material_ids,
         &flat.layer_thicknesses,
-    );
+    )
+    .expect("a pre-pass index round-trips");
     assert_eq!(
         from_content, injected,
         "the injected (flat-decoded) index must equal from_content bit-for-bit"

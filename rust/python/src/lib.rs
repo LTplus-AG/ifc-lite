@@ -24,7 +24,7 @@
 
 use ifc_lite_processing::{
     build_colored_geometry_data_export, extract_swept_disk_descriptions,
-    process_geometry_filtered_with_quality_and_ids, ColoredGeometryDataExport, MeshCoordinateSpace,
+    process_geometry_filtered_with_quality_and_ids, ColoredGeometryDataExport,
     OpeningFilterMode, SweptDiskDescriptions, TessellationQuality, run_on_geometry_pool,
 };
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
@@ -108,15 +108,12 @@ fn run_export(
             quality,
             ids.as_ref(),
         );
-        let rtc = result.metadata.coordinate_info.origin_shift;
-        // Reapply the IfcSite rotation only in the site-local axis frame;
-        // model_rtc / raw_ifc keep true IFC world axes (R = identity).
-        let site_rotation = if result.mesh_coordinate_space == MeshCoordinateSpace::SiteLocal {
-            result.site_transform.as_deref()
-        } else {
-            None
-        };
-        let meshes = build_colored_geometry_data_export(&result.meshes, rtc, site_rotation);
+        let (rx, ry, rz) = result.frame.rtc_offset();
+        let rtc = [rx, ry, rz];
+        // The frame says which rotation the bake removed (the site tier only),
+        // so this does not re-derive the tier rule (#7684).
+        let site_rotation = result.frame.site_placement();
+        let meshes = build_colored_geometry_data_export(&result.meshes, rtc, site_rotation.as_ref().map(|m| &m[..]));
         let swept_disks = include_directrices
             .then(|| extract_swept_disk_descriptions(&ifc_bytes, ids.as_ref()));
         GeometryExportResult { meshes, swept_disks }

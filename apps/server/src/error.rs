@@ -160,7 +160,13 @@ impl From<crate::services::ParquetError> for ApiError {
 
 impl From<crate::services::parquet_data_model::DataModelParquetError> for ApiError {
     fn from(err: crate::services::parquet_data_model::DataModelParquetError) -> Self {
-        ApiError::Parquet(err.to_string())
+        match err {
+            // The upload is what is over budget (#7675), not the server.
+            crate::services::parquet_data_model::DataModelParquetError::Refused(reason) => {
+                ApiError::BadRequest(reason)
+            }
+            err => ApiError::Parquet(err.to_string()),
+        }
     }
 }
 

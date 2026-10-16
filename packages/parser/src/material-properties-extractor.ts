@@ -7,6 +7,7 @@ import { getReference } from './attribute-helpers.js';
 import { iterateEffectiveEntities } from '@ifc-lite/data';
 import type { IfcDataStore } from './columnar-parser.js';
 import { copyParsedExtras, parsePropertyValue, parsePropertyValueWithComplex, type ExtractedProperty } from './property-value-parser.js';
+import { ComplexPropertyBudget } from './property-complex-value.js';
 import { collectMaterialLeaves, getMaterialDisplay } from './material-resolver.js';
 import type { IfcEntity } from './types.js';
 import { materialAssignmentState, materialRecordReader, type MaterialReadView } from './material-overlay.js';
@@ -98,6 +99,9 @@ function getMaterialPropertyIndex(store: IfcDataStore, view?: MaterialProperties
     }
 
     const extractor = new EntityExtractor(store.source);
+    // One complex-property budget for the whole index, sized to the model
+    // (#7675), not one per property.
+    const complexBudget = ComplexPropertyBudget.forInput(store.source?.length ?? 0);
     const wantedTypes = ['IFCMATERIALPROPERTIES', 'IFCEXTENDEDMATERIALPROPERTIES'];
     const sourceIds = new Set<number>();
     for (const type of wantedTypes) {
@@ -138,7 +142,7 @@ function getMaterialPropertyIndex(store: IfcDataStore, view?: MaterialProperties
                 const propName = typeof propAttrs[0] === 'string' ? propAttrs[0] : '';
                 if (!propName) continue;
                 const pv = propRefEntity && store.source?.length
-                    ? parsePropertyValueWithComplex(store, extractor, propEntity)
+                    ? parsePropertyValueWithComplex(store, extractor, propEntity, complexBudget)
                     : parsePropertyValue(propEntity);
                 const entry: MaterialPsetEntry['properties'][number] = {
                     name: propName,

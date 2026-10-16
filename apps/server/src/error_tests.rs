@@ -399,3 +399,13 @@ async fn a_cache_error_body_does_not_carry_the_cache_directory() {
         "the response body leaks the cache layout: {message}"
     );
 }
+
+/// #7675: a data model refused for a table over its size budget is the
+/// upload's fault, so it answers 400 with the reason, not a 500.
+#[test]
+fn a_refused_data_model_is_a_bad_request_with_its_reason() {
+    use crate::services::parquet_data_model::DataModelParquetError;
+    let error = ApiError::from(DataModelParquetError::Refused("material associations exceed 8 bytes".into()));
+    assert!(matches!(&error, ApiError::BadRequest(reason) if reason.contains("material")), "{error:?}");
+    assert_eq!(error.into_response().status(), axum::http::StatusCode::BAD_REQUEST);
+}

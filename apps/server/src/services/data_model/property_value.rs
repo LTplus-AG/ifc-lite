@@ -10,29 +10,10 @@
 //! walk) separate from value-shape resolution (how to stringify one).
 
 use ifc_lite_core::{AttributeValue, DecodedEntity, EntityDecoder};
-
-/// Guards `resolve_complex_property_value` against a pathological/cyclic
-/// `HasProperties` chain, mirroring the TS `MAX_COMPLEX_PROPERTY_DEPTH` in
-/// `packages/parser/src/property-complex-value.ts` exactly: real IFC nests
-/// `IfcComplexProperty` at most a couple of levels deep.
-pub(super) const MAX_COMPLEX_PROPERTY_DEPTH: u8 = 8;
-
-/// The suffix minted into a complex property's display value when the depth
-/// cap stops the walk with `HasProperties` members still unread (issue
-/// #3972). Byte-identical to `complexPropertyTruncationMarker()` in
-/// `packages/parser/src/property-complex-value.ts` — the two paths feed the
-/// same property panel, CSV/parquet export and compare fingerprints, so a
-/// divergence here reads as a data difference between server and browser.
-///
-/// A suffix rather than a `truncated` flag on `Property`: a flag would have
-/// to be carried through the Rust struct + serde, the per-field parquet
-/// columns, the TS `Property` type, the `serverDataModel` adapter and the
-/// panel renderer, and is silently lost at any one of them — a signal that
-/// never fires, which is the same shape this issue is about. The value
-/// string reaches every reader by construction.
-fn complex_property_truncation_marker() -> String {
-    format!("(truncated: nesting deeper than {MAX_COMPLEX_PROPERTY_DEPTH} levels)")
-}
+use ifc_lite_core::limits::{
+    complex_property_depth_marker, ComplexPropertyBudget, COMPLEX_PROPERTY_BUDGET_MARKER,
+    MAX_COMPLEX_PROPERTY_DEPTH,
+};
 
 /// What an `IfcPropertyReferenceValue` reads as (#5475): the referenced
 /// object's `Name`, else its `Identification` (an external reference, a
@@ -62,7 +43,7 @@ pub(super) fn property_reference_label(decoder: &mut EntityDecoder, id: u32) -> 
 ///   kind when it's absent/empty) — there was nothing nested to lose.
 /// - The depth cap is hit with a NON-EMPTY `HasProperties` still unread:
 ///   return `UsageName` suffixed with
-///   `complex_property_truncation_marker()`, or the bare marker when there is
+///   `complex_property_depth_marker()`, or the bare marker when there is
 ///   no `UsageName`. Never the bare `UsageName`: that is a plausible,
 ///   well-formed value indistinguishable from a complex property that
 ///   genuinely has no nested content (issue #3972). The empty-`UsageName`
@@ -80,10 +61,26 @@ pub(super) fn property_reference_label(decoder: &mut EntityDecoder, id: u32) -> 
 ///   property and a top-level sibling property cannot occur — same as the TS
 ///   side, where `parsePropertyValueWithComplex` is called once per
 ///   `HasProperties` member and only ever returns a single value for it.
+/// - Every bound, marker and charge is `ifc_lite_core::limits`' (#7675),
+///   shared with the exporter's copy and mirrored by the TS twin: the depth
+///   cap marks a cut with `complex_property_depth_marker()`, and `budget`
+///   (member visits per top-level property, output bytes per model) cuts a
+///   level with its parts so far plus `COMPLEX_PROPERTY_BUDGET_MARKER`, which
+///   also ends that level's `values`.
 pub(super) fn resolve_complex_property_value(
     entity: &DecodedEntity,
     decoder: &mut EntityDecoder,
-    depth: u8,
+    budget: &mut ComplexPropertyBudget,
+) -> (String, String, Option<String>, Option<Vec<String>>) {
+    budget.start_property();
+    resolve_complex(entity, decoder, 0, budget)
+}
+
+fn resolve_complex(
+    entity: &DecodedEntity,
+    decoder: &mut EntityDecoder,
+    depth: usize,
+    budget: &mut ComplexPropertyBudget,
 ) -> (String, String, Option<String>, Option<Vec<String>>) {
     let usage_name = entity.get_string(2).map(|s| s.to_string());
     let bare = |usage_name: Option<String>| match usage_name {
@@ -100,7 +97,7 @@ pub(super) fn resolve_complex_property_value(
 
     if depth >= MAX_COMPLEX_PROPERTY_DEPTH {
         // Members were present and we declined to read them. Say so.
-        let marker = complex_property_truncation_marker();
+        let marker = complex_property_depth_marker();
         let value = match usage_name {
             Some(u) if !u.is_empty() => format!("{u} {marker}"),
             _ => marker,
@@ -115,8 +112,13 @@ pub(super) fn resolve_complex_property_value(
 
     let mut parts: Vec<String> = Vec::new();
     let mut values: Vec<String> = Vec::new();
+    let mut cut = false;
 
     for prop_id in refs {
+        if !budget.admit_member() {
+            cut = true;
+            break;
+        }
         let nested_entity = match decoder.decode_by_id(prop_id) {
             Ok(e) => e,
             Err(_) => continue,
@@ -127,32 +129,33 @@ pub(super) fn resolve_complex_property_value(
             .unwrap_or_default();
         let nested_ty = nested_entity.ifc_type.as_str().to_uppercase();
         let display = if nested_ty == "IFCCOMPLEXPROPERTY" {
-            resolve_complex_property_value(&nested_entity, decoder, depth + 1).0
+            resolve_complex(&nested_entity, decoder, depth + 1, budget).0
         } else {
-            match super::properties::extract_property(&nested_entity, decoder) {
-                Some(p) => p.property_value,
-                None => continue,
-            }
+            super::properties::member_display(&nested_entity, decoder)
         };
-        if display.is_empty() {
-            continue;
-        }
-        if nested_name.is_empty() {
-            parts.push(display.clone());
-        } else {
-            parts.push(format!("{}: {}", nested_name, display));
-        }
+        // Every charge is the shared budget's, at the same point as the
+        // exporter and TS walks (#7675).
+        let Some(part) = budget.member_part(&nested_name, &display) else { continue };
+        parts.push(part);
         values.push(display);
     }
 
-    let value = if !parts.is_empty() {
-        parts.join(", ")
-    } else {
-        usage_name.unwrap_or_default()
-    };
+    let value = budget.level_value(&parts, cut).unwrap_or_else(|| usage_name.unwrap_or_default());
+    if cut {
+        // The candidate list says it was cut, so a member past the cut does
+        // not read as absent (#7675 D3).
+        values.push(COMPLEX_PROPERTY_BUDGET_MARKER.to_string());
+    }
     let property_type = if value.is_empty() { "null" } else { "string" };
     let values = if values.is_empty() { None } else { Some(values) };
     (value, property_type.into(), None, values)
+}
+
+/// A repeat listing `ComplexPropertyBudget::listing` refused: a cut level
+/// with no parts, its `values` the marker alone (#7675 D3).
+pub(super) fn spent_listing() -> (String, String, Option<String>, Option<Vec<String>>) {
+    let marker = COMPLEX_PROPERTY_BUDGET_MARKER.to_string();
+    (marker.clone(), "string".into(), None, Some(vec![marker]))
 }
 
 /// Stringify one member of an enumerated / list value, mirroring the WASM

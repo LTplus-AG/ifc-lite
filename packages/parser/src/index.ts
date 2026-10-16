@@ -85,6 +85,8 @@ export type { MaterialPropertiesView } from './on-demand-extractors.js';
 export type { IfcStoreBase, IfcSourceHeader, SpatialHierarchy, EntityTable } from '@ifc-lite/data';
 export { parseSourceHeader } from './source-header.js';
 export type { ExtractedProperty } from './property-value-parser.js';
+export { COMPLEX_PROPERTY_BUDGET_MARKER } from './property-complex-value.js';
+export { complexPropertyCuts } from './complex-property-store.js';
 export { attachDataStoreAccessors, type IfcStoreData } from './data-store-accessors.js';
 export { buildDropCensus, type DropCensus, type DropCensusInput, type ClassCensusEntry, type DropCategory } from './drop-census.js';
 export { createSyntheticDataStore, type SyntheticDataStoreOptions, type SyntheticEntity } from './synthetic-data-store.js';

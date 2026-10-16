@@ -515,7 +515,9 @@ await saveFile('spatial.csv', spatialCsv);
 
 The `entities` mode emits the fixed columns
 `expressId,globalId,name,type,description,objectType,hasGeometry`; with
-`includeProperties`, each property becomes a flattened `Pset_Prop` column:
+`includeProperties`, each property becomes a flattened `Pset_Prop` column.
+Two sets can flatten to the same name (`Pset_A` + `B_C` and `Pset_A_B` + `C`);
+the later column then gets a ` (2)` suffix so no two columns merge:
 
 ```csv
 expressId,globalId,name,type,description,objectType,hasGeometry,Pset_WallCommon_IsExternal,Pset_WallCommon_FireRating

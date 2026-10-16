@@ -5,7 +5,7 @@
 
 use serde_json::{json, Map, Value};
 
-use crate::model::{build_export_model, EntityRow, PropValue};
+use crate::model::{build_export_model, EntityRow, PropValue, ValueKind};
 
 /// Options for JSON export.
 pub struct JsonOptions {
@@ -36,19 +36,15 @@ pub(crate) fn finite_json_number(n: f64) -> Value {
     if n.is_finite() { json!(n) } else { json!(n.to_string()) }
 }
 
-/// Coerce a rendered property value to a typed JSON value using its IFC type tag.
+/// Coerce a rendered property value to a typed JSON value by the primitive it
+/// was written as. A type-tag allowlist here once missed most IFC measures, so
+/// `IFCTHERMALTRANSMITTANCEMEASURE(0.24)` exported as a string (#7681).
 pub(crate) fn typed_value(p: &PropValue) -> Value {
-    match p.value_type.as_str() {
-        "IFCREAL" | "IFCINTEGER" | "IFCNUMBER" | "IFCLENGTHMEASURE" | "IFCAREAMEASURE"
-        | "IFCVOLUMEMEASURE" | "IFCPOSITIVELENGTHMEASURE" | "IFCCOUNTMEASURE"
-        | "IFCMASSMEASURE" | "IFCRATIOMEASURE" | "IFCNORMALISEDRATIOMEASURE" => {
+    match p.kind {
+        ValueKind::Number => {
             p.value.parse::<f64>().map(finite_json_number).unwrap_or_else(|_| json!(p.value))
         }
-        "IFCBOOLEAN" | "IFCLOGICAL" => match p.value.as_str() {
-            "true" => json!(true),
-            "false" => json!(false),
-            other => json!(other),
-        },
+        ValueKind::Bool => json!(p.value == "true"),
         _ => json!(p.value),
     }
 }

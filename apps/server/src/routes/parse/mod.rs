@@ -5,6 +5,7 @@
 //! Parse endpoints for IFC file processing.
 
 pub(crate) mod cache_keys;
+pub(crate) mod cache_read;
 mod cached_replay;
 mod stream_batch;
 mod stream_event;
@@ -28,6 +29,8 @@ use upload::{admit_upload, request_cache_key_off_runtime};
 use crate::error::ApiError;
 use crate::services::cache::DiskCache;
 use crate::services::{DataModelEntities, OpeningFilterMode, ParquetLayout, StreamShapes};
+use crate::in_flight::InFlightGuard;
+use crate::AppState;
 use ifc_lite_processing::{SymbolicDataWithProvenance, TessellationQuality};
 use std::sync::Arc;
 
@@ -109,8 +112,22 @@ impl ParseQuery {
     }
 }
 
+/// Mark the symbolic sidecar for `cache_key` as being written, so
+/// `GET /api/v1/parse/symbolic/{cache_key}` answers 202 rather than 404
+/// until the write lands (#7676, SERVER-21). Call it in the handler, before
+/// the response goes out, and hand the marker to
+/// [`cache_symbolic_data_off_runtime`]: a marker begun inside a spawned task
+/// leaves a window where a client already holding the key sees 404.
+///
+/// Shares the data-model fills' marker set (#5129). Keys are whole entry
+/// keys, so a symbolic marker never answers for a data model.
+fn begin_symbolic_fill(state: &AppState, cache_key: &str) -> InFlightGuard {
+    state.data_model_in_flight.begin(cache_keys::symbolic_cache_key(cache_key))
+}
+
 /// Write the symbolic sidecar through [`cache_keys::cache_symbolic_data`] on
-/// the blocking pool (#4696).
+/// the blocking pool (#4696), clearing `fill` (from [`begin_symbolic_fill`])
+/// once the write has resolved either way.
 ///
 /// That call JSON-encodes the whole 2D symbol stream before it writes, and
 /// awaited on an async worker the encode holds that worker for its whole
@@ -118,6 +135,7 @@ impl ParseQuery {
 /// is async, so the blocking thread drives it with `Handle::block_on`.
 async fn cache_symbolic_data_off_runtime(
     cache: Arc<DiskCache>,
+    fill: InFlightGuard,
     cache_key: String,
     symbolic: SymbolicDataWithProvenance,
 ) {
@@ -129,6 +147,7 @@ async fn cache_symbolic_data_off_runtime(
     if let Err(e) = written {
         tracing::error!(error = %e, "Symbolic data cache task failed");
     }
+    drop(fill);
 }
 
 #[cfg(test)]

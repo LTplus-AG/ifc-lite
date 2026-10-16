@@ -20,7 +20,7 @@
 //! automatically, including `opening_filter` support which the bespoke
 //! pipeline never had.
 
-use crate::services::cache::DiskCache;
+use crate::admission::AdmissionGuard;
 use crate::types::{finish_meshes, StreamEvent};
 use ifc_lite_processing::style::ModelFinishes;
 use async_stream::stream;
@@ -94,13 +94,18 @@ pub(crate) fn detect_schema_version(content: &[u8]) -> &'static str {
 /// the same request alongside the stream (the parquet route's data-model
 /// fill) keeps a clone, so that work is charged to the request's one slot
 /// instead of waiting for a second one its own stream holds.
+///
+/// No cache key is computed here (#7676, SERVER-22): the JSON stream writes
+/// no cache entry, so it has none to name, and the parquet stream names its
+/// own in `Start`. Hashing the whole upload again on the producer was a
+/// second SHA-256 per request that nothing could use.
 pub fn process_streaming(
     content: bytes::Bytes,
     initial_batch_size: usize,
     max_batch_size: usize,
     opening_filter: OpeningFilterMode,
     tessellation_quality: TessellationQuality,
-    admission: Option<std::sync::Arc<crate::admission::AdmissionGuard>>,
+    admission: Option<std::sync::Arc<AdmissionGuard>>,
 ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send>> {
     // Zero is a caller bug, not a reason to stall the stream.
     let initial_batch_size = initial_batch_size.max(1);
@@ -128,7 +133,6 @@ pub fn process_streaming(
 
     let handle = tokio::task::spawn_blocking(move || {
         let _admission = admission_for_task;
-        let cache_key = DiskCache::generate_key(&content);
 
         let mut started = false;
         let mut batch_number = 0usize;
@@ -222,7 +226,6 @@ pub fn process_streaming(
         let _ = tx.blocking_send(StreamEvent::Complete {
             stats: result.stats,
             metadata: result.metadata,
-            cache_key,
             mesh_coordinate_space: Some(result.mesh_coordinate_space),
             site_transform: result.site_transform,
             building_transform: result.building_transform,

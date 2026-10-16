@@ -66,7 +66,7 @@
 //! the manifest therefore turns this suite red rather than quietly shrinking it.
 
 use super::*;
-use ifc_lite_core::scan_model_bounds;
+use ifc_lite_core::{scan_model_bounds, EntityScanner};
 use ifc_lite_processing::{extract_georeferencing, Georeferencing};
 use std::collections::{BTreeMap, HashSet};
 

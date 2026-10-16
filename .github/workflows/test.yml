@@ -549,6 +549,8 @@ jobs:
               - 'scripts/run-build-wasm.mjs'
               - 'scripts/build-wasm.sh'
               - '.github/workflows/test.yml'
+              - '.github/workflows/docs.yml'
+              - '.github/actions/setup-docs-api/**'
 
       # Decide whether `build` can skip the from-source wasm32 compile. The
       # probe emits `true` only when the WASM source is byte-identical to the
@@ -944,6 +946,25 @@ jobs:
           # main, ordinary whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/core/tests/untrusted_sizes_7675.rs | grep -Fxq 'rust/core/tests/untrusted_sizes_7675.rs'; then
             oracle_args+=(--mutation tests/evidence/untrusted-sizes-7675/rust-crates.oracle.patch)
+          # #7676: the cache-read policy adds AdmissionGuard::into_resident,
+          # Admission::acquire_resident and the DiskCache::lookup family, which
+          # its tests name, so a whole-change revert cannot compile them
+          # (INCONCLUSIVE). Keep them and break ONLY the behaviour: a drained
+          # response gives its bytes back early, a cache read ignores the RSS
+          # breaker, eviction ignores the write time (a same-content repair is
+          # evicted) or the blob's return, an upload charge never grows to the
+          # stored size or grows before the replay gate, and two routes drop
+          # Content-Length. Once
+          # cache_entry.rs is on main, ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- apps/server/src/services/cache_entry.rs | grep -Fxq 'apps/server/src/services/cache_entry.rs'; then
+            oracle_args+=(--mutation tests/evidence/cache-policy-7676/behaviour.oracle.patch)
+          # #7682: keep the new STEP-writer modules, StepStats fields and the TS
+          # allocatedExpressId export loadable while disabling ONLY the guards the
+          # changed tests pin (value/name/id-reuse refusals, the id-space refusal,
+          # appended-record conversion, last-record-wins, the property counter).
+          # Once step_ids.rs is on main, ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/export/src/step_ids.rs | grep -Fxq 'rust/export/src/step_ids.rs'; then
+            oracle_args+=(--mutation tests/evidence/step-writer-7682/appended-record-guards.oracle.patch)
           fi
           node scripts/check-test-revert-oracle.mjs "${oracle_args[@]}"
           # #7512: observe cleanup independently of scoped admission/schema.
@@ -2921,17 +2942,8 @@ jobs:
         with:
           lfs: false
           persist-credentials: false
-      - name: Setup pnpm
-        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
-      - name: Setup Node.js
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: 22
-          cache: pnpm
-      - name: Install reference tooling
-        run: pnpm install --frozen-lockfile
       - name: Generate searchable public API reference
-        run: pnpm docs:api
+        uses: ./.github/actions/setup-docs-api
       # Seconds, no Python: names the page and the fix before the full build.
       - name: Every docs page is in the nav or declared not_in_nav
         run: node scripts/docs/check-mkdocs-nav.mjs

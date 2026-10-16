@@ -8,7 +8,10 @@ use super::cache_keys::{data_model_cache_key, parquet_geometry_key, parquet_meta
 use super::parquet::ParquetMetadataHeader;
 use super::stream_event::ParquetStreamEvent;
 use super::stream_progress::{cache_stream_progress, StreamProgressRecorder};
-use super::{admit_upload, request_cache_key_off_runtime, cache_symbolic_data_off_runtime, ParseQuery};
+use super::cache_read::Replay;
+use super::{
+    admit_upload, begin_symbolic_fill, cache_symbolic_data_off_runtime, request_cache_key_off_runtime, ParseQuery,
+};
 use crate::error::ApiError;
 use crate::services::{extract_data_model, process_streaming, serialize_data_model_to_parquet};
 use crate::types::StreamEvent;
@@ -106,18 +109,22 @@ pub async fn parse_parquet_stream(
 
     // OPTIMIZATION: Check cache first and fast-path return if available
     // This avoids re-processing files that are already cached (see
-    // `cached_replay.rs`; a short/corrupt blob falls through as a miss).
-    if let Some(response) =
-        super::cached_replay::try_cached_replay(&state, &cache_key, layout, stream_shapes, query.data_model_entities).await?
-    {
-        // Cached replay: no parse work runs, so holding the admission
-        // guard (and its CPU slot) while a slow client drains the SSE
-        // would starve real parses for nothing. The replay blob is
-        // already materialized and bounded by cache content, far below
-        // a parse working set.
-        drop(admission_guard);
-        return Ok(response);
-    }
+    // `cached_replay.rs`; an unusable entry falls through as a miss). A hit
+    // frees the CPU slot once the replay is built and keeps only the replay's
+    // own bytes charged while the client drains it (#7676, SERVER-7).
+    let replay = super::cached_replay::try_cached_replay(
+        &state,
+        &cache_key,
+        layout,
+        stream_shapes,
+        query.data_model_entities,
+        admission_guard,
+    )
+    .await?;
+    let admission_guard = match replay {
+        Replay::Hit(response) => return Ok(response),
+        Replay::Miss(admission_guard) => admission_guard,
+    };
 
     tracing::info!(
         cache_key = %cache_key,
@@ -156,6 +163,9 @@ pub async fn parse_parquet_stream(
     let mut progress_recorder = StreamProgressRecorder::default();
     let cache_for_geometry = cache.clone();
     let cache_key_for_geometry = cache_key.clone();
+    // Marked before the response goes out, written at Complete (#7676,
+    // SERVER-21): `GET /parse/symbolic` answers 202, not 404, meanwhile.
+    let mut symbolic_fill = Some(begin_symbolic_fill(&state, &cache_key));
     // ONE admission for the whole request (#7676, SERVER-8): the stream and
     // the data-model fill below share it, and it is released when the last of
     // them ends.
@@ -220,11 +230,14 @@ pub async fn parse_parquet_stream(
                 // `GET /api/v1/parse/symbolic/{cache_key}` reach parity (issue #900).
                 // Reuses the value already computed inside `process_streaming` —
                 // no re-extraction.
-                tokio::spawn(cache_symbolic_data_off_runtime(
-                    cache_for_geometry.clone(),
-                    cache_key_for_geometry.clone(),
-                    symbolic_data.clone(),
-                ));
+                if let Some(fill) = symbolic_fill.take() {
+                    tokio::spawn(cache_symbolic_data_off_runtime(
+                        cache_for_geometry.clone(),
+                        fill,
+                        cache_key_for_geometry.clone(),
+                        symbolic_data.clone(),
+                    ));
+                }
 
                 // Finish the incremental writer: the cache blob was built row
                 // group by row group as batches streamed, so nothing is

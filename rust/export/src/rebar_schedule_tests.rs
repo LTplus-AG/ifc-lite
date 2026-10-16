@@ -392,6 +392,38 @@ fn issue_5759_malformed_type_links_report_lost_authored_bar_length_with_bounded_
     assert!(schedule.diagnostics.iter().any(|message| message == "further type-link diagnostics omitted"));
 }
 
+/// EXPORT-DATA-26 (#7681): attribute positions are schema-specific. The
+/// attribute export resolves the first `FILE_SCHEMA` entry it recognises and
+/// fails closed without one; the schedule defaulted to IFC4 instead, so an
+/// IFC2X3-layout bar with no declaration read `BarRole` as `PredefinedType`,
+/// and it gave up on a declaration whose first entry was unrecognised. Both
+/// features must now resolve the same schema, or none.
+#[test]
+fn export_data_26_schema_resolution_matches_the_attribute_export() {
+    let bar = "#1=IFCREINFORCINGBAR('bar',$,'Bar',$,$,$,$,'T1','B500B',12.,113.,1500.,.MAIN.,.PLAIN.);\n";
+    let file = |header: &str| format!("ISO-10303-21;\nHEADER;\n{header}ENDSEC;\nDATA;\n{bar}ENDSEC;\nEND-ISO-10303-21;\n");
+    let attributes = |ifc: &str| {
+        let opts = crate::ModelOptions::default().with_attributes(true);
+        let model = crate::build_export_model_with_options(ifc.as_bytes(), &opts);
+        let row = model.entities.into_iter().find(|r| r.express_id == 1).expect("bar row");
+        row.attributes.into_iter().map(|a| a.name).collect::<HashSet<_>>()
+    };
+
+    let undeclared = file("");
+    let schedule = build_rebar_schedule(undeclared.as_bytes(), None, &SweptDiskCheckOptions::default()).unwrap();
+    assert!(schedule.rows[&1].authored.is_empty(), "{:?}", schedule.rows[&1].authored);
+    assert!(schedule.diagnostics.iter().any(|m| m.contains("authored attributes omitted")), "{:?}", schedule.diagnostics);
+    assert!(attributes(&undeclared).is_empty());
+
+    let second_entry = file("FILE_SCHEMA(('NOT_A_SCHEMA','IFC2X3'));\n");
+    let schedule = build_rebar_schedule(second_entry.as_bytes(), None, &SweptDiskCheckOptions::default()).unwrap();
+    let row = &schedule.rows[&1];
+    assert_eq!(row.authored["BarRole"].value, AuthoredRebarValue::Text { value: "MAIN".into() });
+    assert!(!row.authored.contains_key("PredefinedType"));
+    let names = attributes(&second_entry);
+    assert!(names.contains("BarRole") && !names.contains("PredefinedType"), "{names:?}");
+}
+
 #[test]
 fn issue_5759_ifc2x3_uses_barrole_not_predefinedtype() {
     let file = b"ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC2X3'));\nENDSEC;\nDATA;\n\

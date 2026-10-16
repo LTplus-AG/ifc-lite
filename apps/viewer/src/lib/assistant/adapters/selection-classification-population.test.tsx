@@ -23,6 +23,19 @@ interface Aggregate { requested: number; scanned: number; classified: number; un
 const aggregate = (capture: { summary: unknown }): Aggregate | undefined =>
   (capture.summary as { classifications?: Aggregate }).classifications;
 
+/**
+ * Seed the created-entity allocator past the parsed file's highest id, as the
+ * viewer's store editor does for every real view. Without it `createEntity`
+ * hands out #1, #2, ..., which are source records of the parsed file; the STEP
+ * writer now refuses that log (#7682, EXPORT-STEP-26) instead of letting the
+ * created record silently replace the source one.
+ */
+function seedCreatedIdsPastSource(view: { setExpressIdWatermark(id: number): void }, store: { entities: { expressId: ArrayLike<number> } }): void {
+  let max = 0;
+  for (const id of Array.from(store.entities.expressId)) if (id > max) max = id;
+  view.setExpressIdWatermark(max);
+}
+
 async function model(t: TestContext) {
   let bytes: Uint8Array;
   try { bytes = new Uint8Array(await readFile(new URL('../../../../../../tests/models/ara3d/AC20-FZK-Haus.ifc', import.meta.url))); }
@@ -104,6 +117,7 @@ test('#7238 forwarded immutable membership counts classified refs while system/c
 test('#7238 equal native display codes do not invent unique classification identities', async t => {
   const a = await model(t); if (!a) return;
   seedModel('a', 0, a.store, SPACES[0]); const view = getOrCreateMutationView(useViewerStore, 'a'); assert.ok(view);
+  seedCreatedIdsPastSource(view, a.store);
   for (let n = 1; n <= 2; n++) {
     const system = view.createEntity('IfcClassification', ['Native writer', '2026', null, 'Same system label', null, null, null]);
     const ref = view.createEntity('IfcClassificationReference', [null, 'SAME', `Different reference ${n}`, `#${system.expressId}`, null, null]);
@@ -145,6 +159,7 @@ test('#7238 practical native scan ceiling exposes unscanned requested refs as un
 test('#7238 native label/model display bounds disclose omitted groups without changing membership totals', async t => {
   const a = await model(t); if (!a) return;
   seedModel('a', 0, a.store, SPACES[0]); const view = getOrCreateMutationView(useViewerStore, 'a'); assert.ok(view);
+  seedCreatedIdsPastSource(view, a.store);
   for (let n = 0; n < 51; n++) {
     const ref = view.createEntity('IfcClassificationReference', [null, `AUTHORED-${n}`, null, null, null, null]);
     view.createEntity('IfcRelAssociatesClassification', [`0000000000000000000${String(n).padStart(3, '0')}`, null, null, null, ['#20909'], `#${ref.expressId}`]);

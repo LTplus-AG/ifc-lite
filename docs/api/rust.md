@@ -731,7 +731,10 @@ retains source radii in metres without implying a world circular radius.
 Conflicting occurrence/type values are reported, with the occurrence taking
 precedence. `bar_entity_count` and `represented_sweep_count` count IFC records,
 not manufactured bars. The API provides no physical bar count, cutting length,
-or certified fabrication result.
+or certified fabrication result. Authored attributes are read by the first
+`FILE_SCHEMA` entry with a bundled registry, the same rule as the attribute
+export; with none, they are omitted with a diagnostic rather than read in the
+IFC4 layout.
 
 `build_rebar_schedule_with_preflight(ifc_bytes, ids, &options, &limits)` adds
 caller-defined geometric comparisons to each represented sweep. Construct
@@ -855,6 +858,10 @@ pub use step_log::{export_step_with_log, export_step_with_log_to_writer,
                    LogMutation, LogNewEntity, MutationKind, GeorefMutations,
                    LogExportStats, StepCounters};
 pub use model::{build_export_model, stream_export_model, ExportModel /* ... */};
+// Rows carry every set an `IfcRelDefinesByProperties` links: one definition, or an
+// `IfcPropertySetDefinitionSet` written bare `(#1,#2)` or typed
+// `IFCPROPERTYSETDEFINITIONSET((#1,#2))`. `PropValue::kind` (`ValueKind`) is the
+// primitive the STEP value was written as; JSON, JSON-LD and IFCX type values by it.
 pub use quantity_analysis::{analyze_authored_quantities, AuthoredQuantityAnalysis /* ... */};
 // Additional opt-in join: analyze_quantities(content, ids) -> QuantityAnalysis.
 // It combines authored observations with nominal source occurrences; product_total

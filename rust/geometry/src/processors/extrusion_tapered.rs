@@ -10,7 +10,7 @@
 //! `EndSweptArea` at `Depth` along `ExtrudedDirection`.
 
 use crate::{
-    extrusion::{apply_transform, extrude_profile, extrude_profile_lofted},
+    extrusion::{apply_transform, extrude_profile_lofted, extrude_regions},
     profiles::ProfileProcessor,
     Error, Mesh, Result, TessellationQuality, Vector3,
 };
@@ -52,10 +52,14 @@ impl GeometryProcessor for ExtrudedAreaSolidTaperedProcessor {
         let start_entity = decoder
             .resolve_ref(start_attr)?
             .ok_or_else(|| Error::geometry("Failed to resolve SweptArea".to_string()))?;
-        let start_profile = self
+        // One solid per disjoint area: a composite profile is several (#7685).
+        // Start and end draw on one composite budget, armed once per solid.
+        self.profile_processor.arm_solid_budget();
+        let mut start_regions = self
             .profile_processor
-            .process(&start_entity, decoder, quality)?;
-        if start_profile.outer.is_empty() {
+            .process_regions(&start_entity, decoder, quality)?;
+        start_regions.retain(|region| !region.outer.is_empty());
+        if start_regions.is_empty() {
             return Ok(Mesh::new());
         }
 
@@ -85,15 +89,18 @@ impl GeometryProcessor for ExtrudedAreaSolidTaperedProcessor {
             Some(shear_mat)
         };
 
-        // Resolve EndSweptArea (attr 4). If missing, unresolvable, or its
-        // profile fails to process, fall back to a uniform extrusion so the
-        // element still renders rather than dropping geometry entirely.
-        let end_profile_opt = match entity.get(4) {
+        // Resolve EndSweptArea (attr 4). If missing, unresolvable, its
+        // profile fails to process, or its regions do not pair one-to-one
+        // with the start's, fall back to a uniform extrusion so the element
+        // still renders rather than dropping geometry entirely.
+        let end_regions_opt = match entity.get(4) {
             Some(attr) if !attr.is_null() => match decoder.resolve_ref(attr)? {
                 Some(end_entity) => {
-                    match self.profile_processor.process(&end_entity, decoder, quality) {
-                        Ok(p) if !p.outer.is_empty() => Some(p),
-                        Ok(_) => None,
+                    match self.profile_processor.process_regions(&end_entity, decoder, quality) {
+                        Ok(mut end) => {
+                            end.retain(|region| !region.outer.is_empty());
+                            (end.len() == start_regions.len()).then_some(end)
+                        }
                         Err(_) => None,
                     }
                 }
@@ -102,11 +109,15 @@ impl GeometryProcessor for ExtrudedAreaSolidTaperedProcessor {
             _ => None,
         };
 
-        let mut mesh = match end_profile_opt {
-            Some(end_profile) => {
-                extrude_profile_lofted(&start_profile, &end_profile, depth, transform)?
+        let mut mesh = match end_regions_opt {
+            Some(end_regions) => {
+                let mut mesh = Mesh::new();
+                for (start, end) in start_regions.iter().zip(&end_regions) {
+                    mesh.merge(&extrude_profile_lofted(start, end, depth, transform)?);
+                }
+                mesh
             }
-            None => extrude_profile(&start_profile, depth, transform)?,
+            None => extrude_regions(&start_regions, depth, transform)?,
         };
 
         if let Some(pos) = pos_transform {

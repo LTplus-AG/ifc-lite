@@ -100,6 +100,14 @@ impl Golden {
     /// `IFC_LITE_REPIN_GOLDEN=1`. `expected_cases` is every case this test can
     /// produce when all fixtures are present; a pin outside it is stale.
     pub fn finish(self, expected_cases: &[String]) {
+        let report = self.check(expected_cases);
+        assert!(report.is_empty(), "{report}");
+    }
+
+    /// [`Self::finish`] without the panic: the failure text, empty when every
+    /// pin holds (or after a re-pin). For a test that pins several kinds and
+    /// must name every one that moved, not only the first.
+    pub fn check(self, expected_cases: &[String]) -> String {
         let pinned: GoldenFile = match std::fs::read_to_string(&self.path) {
             Ok(text) => serde_json::from_str(&text)
                 .unwrap_or_else(|e| panic!("{} does not parse: {e}", self.path.display())),
@@ -113,7 +121,7 @@ impl Golden {
                 self.path.display()
             );
             self.write(pinned, expected_cases);
-            return;
+            return String::new();
         }
         let mut report = String::new();
         for (case, pin) in &self.actual {
@@ -132,14 +140,16 @@ impl Golden {
         for case in pinned.cases.keys().filter(|c| !expected_cases.contains(c)) {
             writeln!(report, "  ({}, {case}) is pinned but no longer produced (stale pin)", self.kind).unwrap();
         }
-        assert!(
-            report.is_empty(),
+        if report.is_empty() {
+            return report;
+        }
+        format!(
             "\n{} output moved against {}:\n{report}\nIf the change is intended, re-pin ONLY this format and \
              justify each moved case in the PR (charter #7670 §1.2, class X):\n  {}\n",
             self.kind,
             self.path.display(),
             self.repin_cmd
-        );
+        )
     }
 
     fn write(self, pinned: GoldenFile, expected_cases: &[String]) {

@@ -73,11 +73,17 @@ pub fn step_numeric_literal_len(bytes: &[u8]) -> Option<usize> {
 /// STEP has no spelling for NaN or infinity (the grammar above refuses `nan`
 /// and `inf`), so the only way to get one is a literal the type cannot hold:
 /// `1.E400` overflows `f64`, and `1.E39` overflows the `f32` the coordinate
-/// fast paths read into. That literal is refused exactly as an `INTEGER`
-/// beyond `i64` already is (`lexical_core` errors, so the tokenizer refuses
-/// the record): a refused value costs its record, and every reader of the
-/// record answers "undecodable" rather than carrying an infinity into
-/// geometry, units or georeferencing.
+/// fast paths read into. A refused literal has two consumers:
+///
+/// - geometry, placement and unit readers refuse it. The fast paths answer
+///   `None`; the tokenizer yields `Token::UnrepresentableReal` and
+///   `EntityDecoder` refuses the record with
+///   `Error::UnrepresentableReal`, so the element fails closed and is
+///   counted;
+/// - the data model and exporters keep it: a lossless decode
+///   (`EntityDecoder::decode_by_id_lossless`, or a decoder built with
+///   `with_lossless_reals`) reads the record as before, the literal as a
+///   signed infinity, so an out-of-range quantity survives into the output.
 ///
 /// Only overflow is refused. `-0.` stays `-0.0`, sign bit included, and an
 /// underflowing literal (`1.E-400`) still reads as the zero it rounds to.

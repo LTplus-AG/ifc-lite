@@ -33,7 +33,15 @@ fn issue_6600_positive_vertical_measures_are_strict_without_changing_renderer_po
                 && matches!(d.code, AlignmentSamplingDiagnosticCode::InvalidAxis)));
             let mut decoder = EntityDecoder::with_index(&content, build_entity_index(&content));
             let directrix = decoder.decode_by_id(35).unwrap();
-            // The existing renderer explicitly retains its permissive policy.
+            if measure == "1.E999" {
+                // #7678: the decode boundary refuses a REAL the double range
+                // cannot hold, so the renderer cannot be permissive about it:
+                // the segment record is undecodable and its parse fails closed.
+                assert!(AlignmentCurve::parse(&directrix, &mut decoder).is_err());
+                continue;
+            }
+            // The existing renderer explicitly retains its permissive policy
+            // for finite measures.
             assert!(AlignmentCurve::parse(&directrix, &mut decoder).unwrap().is_some());
         }
     }
@@ -55,12 +63,8 @@ fn issue_7678_an_overflowing_arc_radius_never_evaluates_to_nan() {
         let content = curve(radius);
         let mut decoder = EntityDecoder::with_index(&content, build_entity_index(&content));
         let directrix = decoder.decode_by_id(35).unwrap();
-        match AlignmentCurve::parse(&directrix, &mut decoder) {
-            Ok(Some(parsed)) => {
-                let frame = parsed.evaluate(25.0);
-                panic!("{radius}: admitted, evaluates to {:?}", frame.origin);
-            }
-            Ok(None) | Err(_) => {}
+        if let Ok(Some(parsed)) = AlignmentCurve::parse(&directrix, &mut decoder) {
+            panic!("{radius}: admitted, evaluates to {:?}", parsed.evaluate(25.0).origin);
         }
         let report = sample_alignment_axes(&content, Default::default()).unwrap();
         assert!(report.axes.is_empty(), "{radius}");

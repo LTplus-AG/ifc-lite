@@ -404,21 +404,35 @@ fn plus_is_a_legal_sign_on_integer_and_real() {
 }
 
 /// #7678 (S6a): the nom tokenizer applies the same admission rule as
-/// `parse_step_numeric`. An overflowing REAL refuses its record, as an
-/// INTEGER beyond i64 already does, instead of decoding to an infinity.
+/// `parse_step_numeric`. An overflowing REAL no longer decodes to an infinity:
+/// it becomes a typed `UnrepresentableReal` carrying its raw text, so the
+/// decoder can refuse it for geometry and keep it for the data model. The
+/// record itself still tokenizes; an overflowing INTEGER still does not.
 #[test]
-fn an_overflowing_real_refuses_its_record_like_an_overflowing_integer() {
-    for record in [
-        "#1=IFCCARTESIANPOINT((1.E400,0.,0.));",
-        "#1=IFCCARTESIANPOINT((0.,-1.0E400,0.));",
-        "#1=IFCPROPERTYSINGLEVALUE('Eastings',$,IFCLENGTHMEASURE(1.E309),$);",
-        "#1=IFCEXTRUDEDAREASOLID(#2,#3,#4,9.E999);",
-        // The pre-existing precedent: an INTEGER lexical_core cannot hold.
-        "#1=IFCINTEGERCOUNTRATEMEASURE(99999999999999999999);",
+fn an_overflowing_real_is_a_typed_token_carrying_its_raw_text() {
+    for (record, raw) in [
+        ("#1=IFCCARTESIANPOINT((1.E400,0.,0.));", &b"1.E400"[..]),
+        ("#1=IFCCARTESIANPOINT((0.,-1.0E400,0.));", b"-1.0E400"),
+        ("#1=IFCPROPERTYSINGLEVALUE('Eastings',$,IFCLENGTHMEASURE(1.E309),$);", b"1.E309"),
+        ("#1=IFCEXTRUDEDAREASOLID(#2,#3,#4,9.E999);", b"9.E999"),
     ] {
-        assert!(parse_entity(record).is_err(), "{record} must be refused");
+        let (_, _, args) = parse_entity(record).unwrap_or_else(|e| panic!("{record}: {e}"));
+        fn find<'a>(tokens: &'a [Token<'a>]) -> Option<&'a [u8]> {
+            tokens.iter().find_map(|t| match t {
+                Token::UnrepresentableReal(raw) => Some(*raw),
+                Token::List(items) | Token::TypedValue(_, items) => find(items),
+                _ => None,
+            })
+        }
+        assert_eq!(find(&args), Some(raw), "{record}");
+        assert!(
+            !format!("{args:?}").contains("inf"),
+            "{record}: no Float(inf) token may remain: {args:?}"
+        );
     }
-    assert!(float(b"1.E400").is_err());
+    assert_eq!(float(b"1.E400"), Ok((&b""[..], Token::UnrepresentableReal(b"1.E400"))));
+    // The pre-existing precedent: an INTEGER lexical_core cannot hold.
+    assert!(parse_entity("#1=IFCINTEGERCOUNTRATEMEASURE(99999999999999999999);").is_err());
 }
 
 /// The admission rule refuses only overflow: `-0.` decodes to `-0.0` with its

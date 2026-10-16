@@ -571,6 +571,15 @@ fn epset_map_conversion_with_an_overflowing_offset_is_refused_whole() {
     let geo = GeoRefExtractor::extract(&mut decoder, types).unwrap().unwrap();
     assert_eq!(geo.source, Some(GeoRefSource::EPSetMapConversion));
     assert_eq!(geo.local_to_map(10.0, 20.0, 5.0), (1010.0, 2020.0, 5.0));
+    // Only the six placement fields refuse, as in TS: an unrepresentable
+    // number in another member (here `TargetCRS`) leaves the placement alone.
+    let content = pset("Eastings", "1000.", false)
+        .replace("(#11,#12));", "(#11,#12,#13));")
+        .replace("ENDSEC;", "#13=IFCPROPERTYSINGLEVALUE('TargetCRS',$,IFCREAL(1.E400),$);\nENDSEC;");
+    let mut decoder = EntityDecoder::new(&content);
+    let geo = GeoRefExtractor::extract(&mut decoder, types).unwrap().unwrap();
+    assert_eq!(geo.source, Some(GeoRefSource::EPSetMapConversion));
+    assert_eq!(geo.local_to_map(10.0, 20.0, 5.0), (1010.0, 2020.0, 5.0));
     // -0. is a finite offset, not a refusal.
     let content = pset("Eastings", "-0.", true);
     let mut decoder = EntityDecoder::new(&content);

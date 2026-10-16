@@ -179,7 +179,7 @@ pub(super) fn process_entity_job(
 
     let entity = match decoder.decode_at(job.start, job.end) {
         Ok(entity) => entity,
-        Err(_) => return Vec::new(),
+        Err(_) => { diag.note_refused_input(&decoder); return Vec::new() }
     };
 
     let mut local_router = GeometryRouter::with_scale_and_quality(unit_scale, tessellation_quality);
@@ -278,6 +278,7 @@ pub(super) fn process_entity_job(
         faceted_brep_ns_collector.fetch_add(0, Relaxed);
     }
 
+    diag.note_refused_input(&decoder);
     // Fold this element's degenerate-backstop drops into the pass tally.
     if produced.degenerate_triangles_dropped > 0 {
         diag.backstop.fetch_add(

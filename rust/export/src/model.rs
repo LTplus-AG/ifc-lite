@@ -150,7 +150,7 @@ pub fn stream_export_model_with_options(
     // correctness.
     const PSET_CACHE_CAP: usize = 1 << 18; // 262_144 entries
 
-    let mut decoder = EntityDecoder::with_arc_index(content, entity_index.clone());
+    let mut decoder = EntityDecoder::with_arc_index(content, entity_index.clone()).with_lossless_reals(); // data: 1.0E400 survives (#7678)
 
     // Pass 1 — one scan that collects, uncached (each entity visited once here):
     //   • object → attached property/quantity definitions (IfcRelDefinesByProperties),

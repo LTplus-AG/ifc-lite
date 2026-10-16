@@ -39,7 +39,7 @@ pub use lexical::skip_step_comment;
 // the writer that edits a record agrees with the scanner that found it.
 pub use lexical::{is_step_space, skip_step_trivia};
 // The one STEP numeric-literal grammar for every raw-byte reader (#5266).
-pub(crate) use numeric_literal::{admit_step_real, parse_step_numeric};
+pub(crate) use numeric_literal::parse_step_numeric;
 pub use numeric_literal::parse_step_real;
 pub use malformed_records::report_malformed_records;
 pub use oversized_ids::{oversized_id_report, report_oversized_ids, set_report_sink};

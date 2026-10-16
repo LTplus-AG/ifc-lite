@@ -1497,6 +1497,7 @@ fn process_geometry_streaming_filtered_with_options_and_ids(
     let total_csg_failures: usize = csg_failures.values().map(Vec::len).sum();
     let products_with_failures = ifc_lite_geometry::count_attributed_products(&csg_failures);
     let backstop_dropped = diag_collectors.backstop.into_inner();
+    let refused_input_elements = diag_collectors.refused_input.into_inner();
     // #3421/#3752: refused, not wrapped; surfaced below via GeometryDiagnostics.
     let oversized_ref_drops = diag_collectors.oversized_ref_drops.into_inner();
     let point_cache_hits = point_cache_hits_collector.into_inner();
@@ -1625,6 +1626,7 @@ fn process_geometry_streaming_filtered_with_options_and_ids(
             total_csg_failures: total_csg_failures as u64,
             products_with_failures,
             degenerate_triangles_dropped: backstop_dropped,
+            refused_input_elements,
             point_cache_hits,
             point_cache_misses,
             faceted_brep_time_ms,

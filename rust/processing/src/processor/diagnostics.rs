@@ -43,6 +43,9 @@ pub(super) struct DiagnosticCollectors {
     pub(super) backstop: std::sync::atomic::AtomicU64,
     /// Content-hash refs refused above `u32::MAX` (#3421/#3752).
     pub(super) oversized_ref_drops: std::sync::atomic::AtomicU64,
+    /// Elements whose geometry read a record refused by input admission
+    /// (#7678, D3's refused-element counter).
+    pub(super) refused_input: std::sync::atomic::AtomicU64,
 }
 
 impl DiagnosticCollectors {
@@ -55,6 +58,16 @@ impl DiagnosticCollectors {
             unsupported_items: std::sync::Mutex::new(FxHashMap::default()),
             backstop: std::sync::atomic::AtomicU64::new(0),
             oversized_ref_drops: std::sync::atomic::AtomicU64::new(0),
+            refused_input: std::sync::atomic::AtomicU64::new(0),
+        }
+    }
+
+    /// D3's refused-element counter (#7678): an element whose geometry read
+    /// any record refused by input admission counts once. Call once per job,
+    /// with that job's own decoder.
+    pub(super) fn note_refused_input(&self, decoder: &ifc_lite_core::EntityDecoder) {
+        if decoder.refused_real_records() > 0 {
+            self.refused_input.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         }
     }
 }

@@ -58,7 +58,7 @@ pub(super) fn extract_properties(
             // Extract properties from HasProperties list
             for prop_ref in has_properties.iter() {
                 if let Some(prop_id) = prop_ref.as_entity_ref() {
-                    if let Ok(prop_entity) = local_decoder.decode_by_id(prop_id) {
+                    if let Ok(prop_entity) = local_decoder.decode_by_id_lossless(prop_id) {
                         if let Some(prop) = extract_property(&prop_entity, &mut local_decoder) {
                             properties.push(prop);
                         }

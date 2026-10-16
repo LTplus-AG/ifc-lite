@@ -32,6 +32,11 @@ fn pset_value_string(prop: &DecodedEntity) -> Option<String> {
     }
 }
 
+/// The ePSet_MapConversion members that place the model, mirroring the TS
+/// twin's `EPSET_TRANSFORM_PROPERTIES` (`packages/parser/src/georef-epset.ts`).
+const EPSET_PLACEMENT_FIELDS: [&str; 6] =
+    ["Eastings", "Northings", "OrthogonalHeight", "XAxisAbscissa", "XAxisOrdinate", "Scale"];
+
 impl GeoRefExtractor {
     /// Extract from IFC2X3 property sets (fallback)
     pub(super) fn extract_from_pset(
@@ -81,25 +86,30 @@ impl GeoRefExtractor {
         let mut georef = GeoReference::new();
         georef.source = Some(GeoRefSource::EPSetMapConversion);
         let mut target_crs: Option<String> = None;
-        // A member whose record does not decode refuses the placement whole,
-        // as an undecodable IfcMapConversion does on the native path (#7678,
-        // CORE-14). The STEP decode boundary refuses a REAL the double range
-        // cannot hold, so an `IFCLENGTHMEASURE(1.E400)` Eastings lands here
-        // rather than as an infinite offset. Its Name is unreadable with the
-        // rest of the record, so any undecodable member counts.
+        // A placement component the double range cannot hold
+        // (`IFCLENGTHMEASURE(1.E400)`) refuses the placement whole, the rule
+        // the IfcMapConversion path and the TS twin
+        // (`extractEPSetMapConversion`, `EPSET_TRANSFORM_PROPERTIES`) apply;
+        // it used to be assigned straight in as an infinite offset (#7678,
+        // CORE-14). Only the six placement fields count, as in TS: an
+        // unrepresentable `TargetCRS` or other member does not.
         let mut placement_refused = false;
 
         // HasProperties is typically at index 4
         if let Some(props_list) = pset.get_list(4) {
             for prop_attr in props_list {
                 if let Some(prop_id) = prop_attr.as_entity_ref() {
-                    let Ok(prop) = decoder.decode_by_id(prop_id) else {
-                        placement_refused = true;
-                        continue;
-                    };
+                    // Lossless, so the refusal below sees the component's name.
+                    let prop = decoder.decode_by_id_lossless(prop_id)?;
                     // IfcPropertySingleValue: Name (0), Description (1), NominalValue (2)
                     if let Some(name) = prop.get_string(0) {
                         let value = prop.get_float(2);
+                        if EPSET_PLACEMENT_FIELDS.contains(&name)
+                            && value.is_some_and(|v| !v.is_finite())
+                        {
+                            placement_refused = true;
+                            continue;
+                        }
                         match name {
                             "Eastings" => {
                                 if let Some(v) = value {
@@ -161,10 +171,10 @@ impl GeoRefExtractor {
         }
 
         if placement_refused {
-            // Keep the CRS claim, drop the placement: the TS twin
-            // (`extractEPSetMapConversion`) answers `{ hasGeoreference: true,
-            // projectedCRS }` with no map conversion, or nothing when the file
-            // names no CRS, and the IfcSite fallback then runs.
+            // Keep the CRS claim, drop the placement: TS answers
+            // `{ hasGeoreference: true, projectedCRS }` with no map
+            // conversion, or nothing when the file names no CRS (the IfcSite
+            // fallback then runs).
             let unplaced = GeoReference::new();
             georef.source = None;
             georef.eastings = unplaced.eastings;

@@ -31,6 +31,12 @@ pub enum Error {
 
     #[error("UTF-8 error: {0}")]
     Utf8(#[from] std::str::Utf8Error),
+
+    /// The record holds a `REAL` literal the double range cannot represent
+    /// (`1.E400`), refused by input admission (#7678). A lossless decode
+    /// reads the same record for the data model.
+    #[error("Entity #{0} holds a REAL outside the double range; refused by input admission")]
+    UnrepresentableReal(u32),
 }
 
 impl Error {

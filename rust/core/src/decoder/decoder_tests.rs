@@ -815,8 +815,22 @@ fn every_float_reader_refuses_an_overflowing_literal_and_keeps_negative_zero() {
 #4=IFCCARTESIANPOINTLIST3D(((-0.,0.,0.),(1.E38,0.,0.)));
 ";
     let mut decoder = EntityDecoder::new(content);
-    assert!(decoder.decode_by_id(1).is_err(), "full decode admitted 1.E400");
+    assert!(
+        matches!(decoder.decode_by_id(1), Err(Error::UnrepresentableReal(1))),
+        "full decode admitted 1.E400"
+    );
+    assert_eq!(decoder.refused_real_records(), 1, "the refusal is counted");
     assert_eq!(decoder.get_cartesian_point_fast(1), None, "fast point admitted 1.E400");
+
+    // The data model reads the same record losslessly, as before #7678 ...
+    let kept = decoder.decode_by_id_lossless(1).expect("lossless read");
+    assert_eq!(kept.get_list(0).and_then(|l| l[0].as_float()), Some(f64::INFINITY));
+    // ... without caching it, so geometry still sees it refused.
+    assert!(matches!(decoder.decode_by_id(1), Err(Error::UnrepresentableReal(1))));
+    assert_eq!(decoder.refused_real_records(), 2);
+    let mut lossless = EntityDecoder::new(content).with_lossless_reals();
+    assert!(lossless.decode_by_id(1).is_ok());
+    assert_eq!(lossless.refused_real_records(), 0);
 
     let neg = decoder.decode_by_id(2).expect("-0. decodes");
     let x = neg.get_list(0).and_then(|l| l[0].as_float()).expect("x");

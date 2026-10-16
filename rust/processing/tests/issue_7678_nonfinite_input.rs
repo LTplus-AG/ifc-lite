@@ -91,19 +91,25 @@ fn file(body: &str) -> String {
     format!("{HEAD}{body}{TAIL}")
 }
 
-fn poisoned_cases() -> Vec<(&'static str, String)> {
+/// Each case, and whether it reaches D3's refused-element counter. The
+/// coordinate-list fast path refuses the list without a decoder, so its
+/// element fails closed uncounted (the reader lives in B6e's
+/// `processors/tessellated`).
+fn poisoned_cases() -> Vec<(&'static str, String, u64)> {
     vec![
-        ("extrusion Depth 1.E400", wall(200, "4.", "1.E400", "0.,0.,1.", "1.,2.,0.")),
-        ("extrusion Depth -1.E400", wall(250, "4.", "-1.E400", "0.,0.,1.", "1.,2.,0.")),
-        ("profile XDim 1.E400", wall(300, "1.E400", "3.", "0.,0.,1.", "1.,2.,0.")),
-        ("ExtrudedDirection 1.E400", wall(400, "4.", "3.", "0.,0.,1.E400", "1.,2.,0.")),
-        ("placement Location 1.E400", wall(500, "4.", "3.", "0.,0.,1.", "1.E400,2.,0.")),
-        ("f32 point list 1.E39", face_set(600, "1.E39")),
+        ("extrusion Depth 1.E400", wall(200, "4.", "1.E400", "0.,0.,1.", "1.,2.,0."), 1),
+        ("extrusion Depth -1.E400", wall(250, "4.", "-1.E400", "0.,0.,1.", "1.,2.,0."), 1),
+        ("profile XDim 1.E400", wall(300, "1.E400", "3.", "0.,0.,1.", "1.,2.,0."), 1),
+        ("ExtrudedDirection 1.E400", wall(400, "4.", "3.", "0.,0.,1.E400", "1.,2.,0."), 1),
+        ("placement Location 1.E400", wall(500, "4.", "3.", "0.,0.,1.", "1.E400,2.,0."), 1),
+        ("f32 point list 1.E39", face_set(600, "1.E39"), 0),
+        ("point list 1.E400", face_set(700, "1.E400"), 0),
     ]
 }
 
-/// Every poisoned element is refused: no mesh, so no NaN or infinite vertex.
-/// The well-formed wall beside them is byte-identical to the wall alone.
+/// Every poisoned element is refused: no mesh, so no NaN or infinite vertex,
+/// and D3's refused-element counter says so. The well-formed wall beside them
+/// is byte-identical to the wall alone.
 #[test]
 fn an_overflowing_literal_refuses_its_element_and_spares_its_neighbour() {
     let alone = process_geometry(&file(&good(100)));
@@ -111,7 +117,8 @@ fn an_overflowing_literal_refuses_its_element_and_spares_its_neighbour() {
     assert_eq!(reference.len(), 1, "anti-vacuity: the good wall meshes alone");
     assert!(!reference[0].positions.is_empty());
 
-    for (case, body) in poisoned_cases() {
+    assert_eq!(alone.stats.refused_input_elements, 0, "a clean file refuses nothing");
+    for (case, body, counted) in poisoned_cases() {
         let result = process_geometry(&file(&format!("{}{body}", good(100))));
         for mesh in &result.meshes {
             assert!(
@@ -121,6 +128,7 @@ fn an_overflowing_literal_refuses_its_element_and_spares_its_neighbour() {
             );
             assert_eq!(mesh.express_id, 100, "{case}: #{} was not refused", mesh.express_id);
         }
+        assert_eq!(result.stats.refused_input_elements, counted, "{case}: refused-element counter");
         let kept: Vec<_> = result.meshes.iter().filter(|m| m.express_id == 100).collect();
         assert_eq!(kept.len(), 1, "{case}");
         assert_eq!(kept[0].positions, reference[0].positions, "{case}: neighbour moved");

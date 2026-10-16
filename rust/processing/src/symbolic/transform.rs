@@ -23,6 +23,11 @@ pub(super) use operator::parse_cartesian_transformation_operator;
 // re-based result to the f32 the primitives carry.
 // ────────────────────────────────────────────────────────────────────────────
 
+/// Whether a decode failed because input admission refused the record (#7678).
+pub(super) fn is_refused(error: &ifc_lite_core::Error) -> bool {
+    matches!(error, ifc_lite_core::Error::UnrepresentableReal(_))
+}
+
 /// Push a plan-space `(x, y)` pair onto a point buffer, but only if BOTH
 /// components are finite. STEP REALs are not guaranteed finite — a
 /// hand-edited or malformed file can carry `1.E400`, which parses to
@@ -80,6 +85,22 @@ impl Transform2D {
     /// propagates additively so consumers test `is_finite()` (#2256).
     pub(super) fn unresolved() -> Self {
         Self { tz: f64::NAN, ..Self::identity() }
+    }
+
+    /// A placement refused by input admission (#7678, D15): it holds a REAL
+    /// the double range cannot represent (`1.E400`). Every component is NaN,
+    /// so the finite-point guards DROP the symbol, as the infinity it decoded
+    /// to before did. Not [`Self::unresolved`]: #2256's keep-at-the-origin
+    /// rule is for a placement that is genuinely missing, not one refused.
+    pub(super) fn refused() -> Self {
+        Self { tx: f64::NAN, ty: f64::NAN, tz: f64::NAN, ..Self::identity() }
+    }
+
+    /// The transform for a placement record that failed to decode:
+    /// [`Self::refused`] when input admission refused it, otherwise
+    /// [`Self::unresolved`] (#2256).
+    pub(super) fn undecodable(error: &ifc_lite_core::Error) -> Self {
+        if is_refused(error) { Self::refused() } else { Self::unresolved() }
     }
 
     /// Scale factor carried by the linear block, as `sqrt(|det|)`. For the
@@ -227,7 +248,8 @@ pub(super) fn parse_axis2_placement_2d(
                 let raw_z = coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0);
                 (raw_x * unit_scale, raw_y * unit_scale, raw_z * unit_scale)
             }
-            _ => return Transform2D::unresolved(), // dangling ref/wrong type: mandatory Location (#2355)
+            Err(e) => return Transform2D::undecodable(&e), // refused, or dangling (#2355)
+            _ => return Transform2D::unresolved(), // wrong type: mandatory Location (#2355)
         },
         None => return Transform2D::unresolved(), // mandatory Location absent (#2355)
     };
@@ -261,6 +283,7 @@ pub(super) fn parse_axis2_placement_2d(
                         (1.0, 0.0)
                     }
                 }
+                Err(e) if is_refused(&e) => return Transform2D::refused(),
                 _ => (1.0, 0.0),
             },
             None => (1.0, 0.0),

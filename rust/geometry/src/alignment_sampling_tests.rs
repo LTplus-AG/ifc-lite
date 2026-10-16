@@ -275,9 +275,12 @@ fn issue_6600_georeferenced_f64_and_tilt_preserve_local_horizontal_distance() {
     near(sample.point[2], 7_000_000.);
 }
 
+/// The frames fail by overflowing while being evaluated (a finite but huge
+/// gradient), not by a `1.E309` StartHeight: since #7678 the decode boundary
+/// refuses that literal's record before any frame is sampled.
 #[test]
 fn issue_6600_failed_frames_spend_the_total_sampling_work_budget() {
-    let content = model("$", "#36=IFCCARTESIANPOINT((0.,0.));#30=IFCLINESEGMENT2D(#36,0.,100.);#31=IFCALIGNMENT2DHORIZONTALSEGMENT($,$,$,#30);#32=IFCALIGNMENT2DHORIZONTAL(0.,(#31));#33=IFCALIGNMENT2DVERSEGLINE($,$,$,0.,100.,1.E309,0.1);#34=IFCALIGNMENT2DVERTICAL((#33));#35=IFCALIGNMENTCURVE(#32,#34,$);#21=IFCALIGNMENT('b',$,$,$,$,$,$,#35);")
+    let content = model("$", "#36=IFCCARTESIANPOINT((0.,0.));#30=IFCLINESEGMENT2D(#36,0.,100.);#31=IFCALIGNMENT2DHORIZONTALSEGMENT($,$,$,#30);#32=IFCALIGNMENT2DHORIZONTAL(0.,(#31));#33=IFCALIGNMENT2DVERSEGLINE($,$,$,0.,100.,0.,1.E308);#34=IFCALIGNMENT2DVERTICAL((#33));#35=IFCALIGNMENTCURVE(#32,#34,$);#21=IFCALIGNMENT('b',$,$,$,$,$,$,#35);")
         .replace("'Road',$,$,$,$,#12", "'Road',$,$,$,$,#35");
     let report = sample_alignment_axes(
         &content,

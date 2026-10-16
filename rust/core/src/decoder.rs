@@ -106,6 +106,13 @@ pub struct EntityDecoder<'a> {
     /// Declared `FILE_SCHEMA`, resolved on first use (see `schema_layout`).
     schema_version_cache: Option<Option<crate::generated::schema_registry::SchemaVersion>>,
     grid_axis_index: Arc<GridAxisIndex>,
+    /// Input admission (#7678): `false` (the default) refuses a record that
+    /// holds a REAL `f64` cannot represent; `true` reads it as before, for
+    /// data-model readers. See [`Self::with_lossless_reals`].
+    lossless_reals: bool,
+    /// Records refused by input admission, for the refused-element counter.
+    /// A `Cell` so the `&self` [`Self::decode_at_uncached`] can count too.
+    refused_reals: std::cell::Cell<u64>,
 }
 
 impl<'a> EntityDecoder<'a> {
@@ -129,6 +136,8 @@ impl<'a> EntityDecoder<'a> {
             styled_item_index: std::sync::OnceLock::new(),
             schema_version_cache: None,
             grid_axis_index: Arc::default(),
+            lossless_reals: false,
+            refused_reals: std::cell::Cell::new(0),
         }
     }
 
@@ -152,6 +161,8 @@ impl<'a> EntityDecoder<'a> {
             styled_item_index: std::sync::OnceLock::new(),
             schema_version_cache: None,
             grid_axis_index: Arc::default(),
+            lossless_reals: false,
+            refused_reals: std::cell::Cell::new(0),
         }
     }
 
@@ -175,6 +186,8 @@ impl<'a> EntityDecoder<'a> {
             styled_item_index: std::sync::OnceLock::new(),
             schema_version_cache: None,
             grid_axis_index: Arc::default(),
+            lossless_reals: false,
+            refused_reals: std::cell::Cell::new(0),
         }
     }
 
@@ -213,15 +226,58 @@ impl<'a> EntityDecoder<'a> {
             return Ok(entity_arc.as_ref().clone());
         }
 
-        // Convert tokens to AttributeValues
+        let (entity, unrepresentable) = self.admit(id, ifc_type, &tokens)?;
+        // A lossless read of a refused record is never cached, so a later
+        // strict read of the same id still refuses it.
+        if !unrepresentable {
+            self.cache.insert(id, Arc::new(entity.clone()));
+        }
+        Ok(entity)
+    }
+
+    /// Convert a parsed record's tokens and apply input admission (#7678):
+    /// a record holding a [`crate::parser::Token::UnrepresentableReal`] is
+    /// refused unless this decoder reads losslessly. Returns whether it held
+    /// one, so the caller keeps a lossless read out of the cache.
+    #[inline]
+    fn admit(
+        &self, id: u32, ifc_type: crate::IfcType, tokens: &[crate::parser::Token<'_>],
+    ) -> Result<(DecodedEntity, bool)> {
+        let mut unrepresentable = false;
         let attributes = tokens
             .iter()
-            .map(|token| AttributeValue::from_token(token))
+            .map(|token| AttributeValue::from_token_noting(token, &mut unrepresentable))
             .collect();
+        if unrepresentable && !self.lossless_reals {
+            self.refused_reals.set(self.refused_reals.get() + 1);
+            return Err(Error::UnrepresentableReal(id));
+        }
+        Ok((DecodedEntity::new(id, ifc_type, attributes), unrepresentable))
+    }
 
-        let entity = DecodedEntity::new(id, ifc_type, attributes);
-        self.cache.insert(id, Arc::new(entity.clone()));
-        Ok(entity)
+    /// Read records holding a REAL `f64` cannot represent (`1.E400`) as
+    /// before #7678, the literal as a signed infinity, instead of refusing
+    /// them. For data-model and export readers, which keep an out-of-range
+    /// measure rather than lose it; geometry must never read losslessly.
+    pub fn with_lossless_reals(mut self) -> Self {
+        self.lossless_reals = true;
+        self
+    }
+
+    /// [`Self::decode_by_id`] read losslessly (see [`Self::with_lossless_reals`]),
+    /// for one data-model read on a decoder geometry also uses. The lossless
+    /// result is not cached, so geometry still sees the record refused.
+    pub fn decode_by_id_lossless(&mut self, entity_id: u32) -> Result<DecodedEntity> {
+        let strict = std::mem::replace(&mut self.lossless_reals, true);
+        let entity = self.decode_by_id(entity_id);
+        self.lossless_reals = strict;
+        entity
+    }
+
+    /// How many records this decoder has refused under input admission
+    /// (#7678). A geometry job that sees this move refused input.
+    pub fn refused_real_records(&self) -> u64 {
+        self.refused_reals.get()
     }
 
     /// Decode the entity in `[start, end)` **without** touching the cache.
@@ -236,11 +292,7 @@ impl<'a> EntityDecoder<'a> {
     /// `decode_at`, only without the cache side effect.
     pub fn decode_at_uncached(&self, start: usize, end: usize) -> Result<DecodedEntity> {
         let (id, ifc_type, tokens) = self.parse_at(start, end, "decode_at_uncached")?;
-        let attributes = tokens
-            .iter()
-            .map(|token| AttributeValue::from_token(token))
-            .collect();
-        Ok(DecodedEntity::new(id, ifc_type, attributes))
+        self.admit(id, ifc_type, &tokens).map(|(entity, _)| entity)
     }
 
     /// Shared full-record validation and existing error context. The returned
@@ -459,10 +511,9 @@ impl<'a> EntityDecoder<'a> {
         if let Some(arc) = self.cache.get(&id) {
             return Ok(Arc::clone(arc));
         }
-        let _ = self.decode_at(start, end)?;
-        Ok(Arc::clone(self.cache.get(&id).ok_or_else(|| {
-            Error::parse(0, "decode_at didn't populate cache".to_string())
-        })?))
+        let entity = self.decode_at(start, end)?;
+        // A lossless read of a refused record is deliberately left uncached.
+        Ok(self.cache.get(&id).map(Arc::clone).unwrap_or_else(|| Arc::new(entity)))
     }
     /// Get raw bytes for an entity (for direct/fast parsing)
     /// Returns the full entity line including type and attributes

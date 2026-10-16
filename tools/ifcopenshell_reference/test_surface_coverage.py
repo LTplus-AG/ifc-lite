@@ -250,14 +250,54 @@ class FiniteCoverage(unittest.TestCase):
             F.unresolved_cells([horizontal()],[horizontal(x=.5)],
                                {'u':[1,0,0],'v':[0,1,0]},C.TOL,budget)
 
+    def test_7721_thin_perpendicular_union_survives_different_triangulation(self):
+        wall = [[0.,0.,0.],[0.,2.,0.],[0.,0.,2.]]
+        thin = [[0.,3.,0.],[.000001,3.,0.],[0.,4.,0.]]
+        midpoint = [0.,3.5,0.]
+        split = [[thin[0],thin[1],midpoint],[thin[1],thin[2],midpoint]]
+        # #7721: plane distance alone admits this horizontal donor to the
+        # vertical wall bin. Both surfaces must retain their positive charts.
+        for oracle in [[wall,thin],[thin,wall]]:
+            for candidate in [[wall]+split,split+[wall]]:
+                with self.subTest(oracle=oracle,candidate=candidate):
+                    rows = C.adjudicate({'oracle':mesh(oracle),'candidate':mesh(candidate)})
+                    self.assertTrue(all(r['oracle_versus_candidate']['contained'] for r in rows))
+                    self.assertEqual(sum(r['datasets']['oracle']['triangles'] for r in rows),2)
+                    self.assertEqual(sum(r['datasets']['candidate']['triangles'] for r in rows),3)
+                    self.assertEqual(adjudicate(oracle,oracle,candidate),(True,True))
+
+    def test_7721_perpendicular_positive_donor_is_not_discarded(self):
+        wall = [[0.,0.,0.],[0.,2.,0.],[0.,0.,2.]]
+        thin = [[0.,3.,0.],[.000001,3.,0.],[0.,4.,0.]]
+        # The thin donor is near the INFINITE wall plane but over a metre
+        # from the finite wall. Losing its singular projection must not pass.
+        self.assertEqual(adjudicate([wall,thin],[wall,thin],[wall]),(False,False))
+
+    def test_7721_actual_92642_positive_donor_gets_a_nonsingular_chart(self):
+        thin = [[63.93844223022461,40.69706344604492,2.7300000190734863],
+                [63.93844223022461,40.69703674316406,2.7300000190734863],
+                [63.84844207763672,40.69706344604492,2.7300000190734863]]
+        exact = F.rational_triangle(thin)
+        self.assertEqual(F.cross(F.sub(exact[1],exact[0]),F.sub(exact[2],exact[0])),
+                         (0,0,-Q(165151,68719476736)))
+        y = 40.6970360544
+        wall = [[60.,y,0.],[70.,y,0.],[60.,y,10.]]
+        rows = C.adjudicate({'oracle':mesh([wall,thin]),'candidate':mesh([wall,thin])})
+        self.assertTrue(all(r['oracle_versus_candidate']['contained'] for r in rows))
+        self.assertEqual(sum(r['datasets']['candidate']['triangles'] for r in rows),2)
+
     def test_7661_positive_triangle_projection_collapse_is_unresolved(self):
         wall = [[0.,0.,0.],[0.,1.,0.],[0.,0.,1.]]
         # This real finite triangle has positive area, but lies edge-on to the
         # first plane's diagnostic projection. Its small X extent admits that
         # plane bin; losing its 2D area must not silently certify coverage.
         sliver = [[0.,0.,0.],[0.,0.,1.],[.000001,0.,0.]]
+        # #7721: corpus discovery can add a faithful donor chart. Fixed
+        # analytic reporter planes remain fixed and must still refuse if
+        # none can represent a positive donor without collapsing it.
         with self.assertRaisesRegex(F.CoverageUnresolved,'singular diagnostic projection'):
-            adjudicate([wall,sliver],[wall,sliver],[wall])
+            C.adjudicate({'oracle':mesh([wall,sliver]),'candidate':mesh([wall])},
+                         analytic=[C.plane([1.,0.,0.],0.)])
 
     def test_7661_positive_area_outside_float_range_is_unresolved(self):
         for edge in [1e200,1e-200]:

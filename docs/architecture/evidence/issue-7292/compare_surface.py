@@ -24,7 +24,7 @@ from shapely.geometry import Polygon
 from shapely.ops import unary_union
 
 TOL = 1e-4
-COMPARATOR_VERSION = 'finite-coverage-v2'
+COMPARATOR_VERSION = 'finite-coverage-v3'
 _helper_path = Path(__file__).with_name('finite_coverage.py')
 _spec = importlib.util.spec_from_file_location('issue_7661_finite_coverage', _helper_path)
 finite = importlib.util.module_from_spec(_spec)
@@ -190,10 +190,19 @@ def residual(tri, p):
     return max(abs(dot(p['normal'], vertex)-p['offset']) for vertex in tri)
 
 
+def nonsingular_projection(tri, p):
+    # #7721: proximity to an infinite carrier does not make it a valid donor
+    # parameter chart. Check the SAME rounded corners used by the exact lift.
+    return finite.area2(finite.projected_triangle(tri,p)) != 0
+
+
 def assigned_plane(tri, normal, area, planes):
     eligible = [k for k,p in enumerate(planes) if residual(tri,p) <= TOL]
     if not eligible:
         raise ValueError(f'Triangle outside all expected boundary planes: {tri}')
+    eligible = [k for k in eligible if nonsingular_projection(tri,planes[k])]
+    if not eligible:
+        raise finite.CoverageUnresolved('Positive triangle has singular diagnostic projection')
     return min(eligible,key=lambda k: (-abs(dot(normal,planes[k]['normal']))*area,residual(tri,planes[k]),k))
 
 
@@ -203,7 +212,7 @@ def union_groups(datasets, analytic=None):
     if analytic is None:
         for name in ['oracle','base','candidate']:
             for tri, normal, area in sorted(rows.get(name,[]), key=lambda item: (-item[2],tuple(tuple(p) for p in item[0]))):
-                if not any(residual(tri,p) <= TOL for p in planes):
+                if not any(residual(tri,p) <= TOL and nonsingular_projection(tri,p) for p in planes):
                     k = max(range(3), key=lambda k: abs(normal[k]))
                     if normal[k] < 0:
                         normal = [-x for x in normal]

@@ -1,7 +1,7 @@
 # Filled finite-surface comparison
 
 `compare_surface.py` compares recorded meshes in metres against pinned
-IfcOpenShell geometry. Its `finite-coverage-v2` contract is unoriented filled
+IfcOpenShell geometry. Its `finite-coverage-v3` contract is unoriented filled
 surface coverage at the existing binary64 `0.0001` metre tolerance. It does not
 establish closure, winding, multiplicity, volume, or production CSG correctness.
 
@@ -27,7 +27,14 @@ positive-area triangle with an unrepresentable diagnostic projection. Localized 
 separate `summary.localized_delta_passed` field. An unchanged preexisting error
 can pass the localized comparison while full conformance and the CLI still fail.
 
-Plane bins organize diagnostics. A donor triangle can receive coverage from a
+Plane bins organize diagnostics. Corpus discovery and assignment share an
+exact nonzero-area check on the rounded projected donor corners. A nearby
+perpendicular carrier cannot absorb a positive triangle as a line; discovery
+adds its own carrier when necessary. Fixed analytic reporter planes are never
+expanded, and a donor without a faithful chart remains unresolved. This #7721
+change does not alter the finite distance certificates or their limits.
+
+A donor triangle can receive coverage from a
 finite target in any bin. Rounded projected corners define an affine parameter
 triangle whose exact rational inverse maps onto the actual donor. Convex
 discovery regions partition that triangle with exact rational clipping. A piece

@@ -1,3 +1,7 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 // Actual source58 i_overlay input/after-weld bits plus original plane-area/unit-scale arguments.
 // Producer5ef7f077..., exact ring receipt174b0afb..., cap lineage aefaac0523... (issue7292).
 pub(super) fn rings()->Vec<(Vec<[u64;2]>,Vec<[u64;2]>,u64,u64)>{vec![

@@ -4,13 +4,13 @@
 
 //! Necessary exact directed-edge incidence for represented triangle soups.
 //! No snapping/edge splits; not a simplicity or non-self-intersection proof.
-use std::collections::HashMap;
+use rustc_hash::FxHashMap;
 
 /// Finite, exact nondegenerate, nonempty triangles with exactly one forward and
 /// reverse use of every geometric edge. Numeric signed zero shares one key.
 /// Conservatively rejects valid soups with unsplit collinear T-junctions.
 pub(crate) fn strict_closed(tris:impl IntoIterator<Item=[[f64;3];3]>)->bool{
-    let mut edges=HashMap::<([u64;3],[u64;3]),(usize,usize)>::new();
+    let mut edges=FxHashMap::<([u64;3],[u64;3]),(usize,usize)>::default();
     let mut any=false;
     for tri in tris{
         any=true;

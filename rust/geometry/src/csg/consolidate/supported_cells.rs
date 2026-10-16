@@ -7,7 +7,8 @@
 use super::{plane_merge::PlaneTri, tri_is_needle};
 use crate::Mesh;
 use nalgebra::{Point3, Vector3};
-use std::collections::{BTreeMap, BTreeSet};
+use rustc_hash::{FxHashMap, FxHashSet};
+use std::collections::BTreeMap;
 type Bucket = (i64, i64, i64, i64);
 type Point = [u64; 3];
 type Cell = [Point; 3];
@@ -19,8 +20,8 @@ pub(super) fn cell_key(t: &[Point3<f64>; 3]) -> Cell {
 }
 #[derive(Default)]
 pub(super) struct Supported {
-    pub buckets: BTreeSet<Bucket>,
-    pub cells: BTreeSet<Cell>,
+    pub buckets: FxHashSet<Bucket>,
+    pub cells: FxHashSet<Cell>,
 }
 pub(super) fn find(buckets: &BTreeMap<Bucket, Vec<PlaneTri>>) -> Supported {
     let faces = buckets
@@ -32,11 +33,13 @@ pub(super) fn find(buckets: &BTreeMap<Bucket, Vec<PlaneTri>>) -> Supported {
         .map(|(_, t)| tri_is_needle(&t.v))
         .collect::<Vec<_>>();
     let mut out = Supported::default();
-    let mut disjoint = BTreeMap::new();
+    // These tables only answer lookups; source/output traversal keeps the
+    // caller's ordered bucket map and the original triangle/edge order.
+    let mut disjoint = FxHashMap::default();
     if !needles.iter().any(|&n| n) {
         return out;
     }
-    let mut edges = BTreeMap::<(Point, Point), Vec<(usize, bool)>>::new();
+    let mut edges = FxHashMap::<(Point, Point), Vec<(usize, bool)>>::default();
     for (i, (_, t)) in faces.iter().enumerate() {
         let p = cell_key(&t.v);
         for k in 0..3 {
@@ -81,9 +84,6 @@ pub(super) fn find(buckets: &BTreeMap<Bucket, Vec<PlaneTri>>) -> Supported {
         {
             out.cells.insert(p);
             out.buckets.insert(*key);
-            for j in neighbors {
-                out.buckets.insert(faces[j].0);
-            }
         }
     }
     out
@@ -113,6 +113,29 @@ pub(super) fn append_mesh(mesh: &mut Mesh, other: &Mesh) {
         );
         append(mesh, &p, &n);
     }
+}
+
+/// Retention may rescue only the certified cells. In particular, the existing
+/// whole-raw fallback must not bring unrelated import needles back (#1007).
+pub(super) fn has_uncertified_needle(mesh: &Mesh, supported: &Supported) -> bool {
+    if !mesh.positions.len().is_multiple_of(3) || !mesh.indices.len().is_multiple_of(3) {
+        return true;
+    }
+    mesh.indices.chunks_exact(3).any(|tri| {
+        if tri.iter().any(|&i| i as usize >= mesh.vertex_count()) {
+            return true;
+        }
+        let points = [tri[0], tri[1], tri[2]].map(|i| {
+            let b = i as usize * 3;
+            Point3::new(
+                mesh.positions[b] as f64,
+                mesh.positions[b + 1] as f64,
+                mesh.positions[b + 2] as f64,
+            )
+        });
+        points.iter().flat_map(|p| p.iter()).any(|v| !v.is_finite())
+            || (tri_is_needle(&points) && !supported.cells.contains(&cell_key(&points)))
+    })
 }
 
 // Bypassing a bucket's NonZero union is valid only when its complete source

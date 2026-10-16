@@ -245,7 +245,7 @@ impl ClippingProcessor {
         // re-key, and the scale-relative/-capped tolerances involved.
         let merged_bucket_keys = merge_rounding_split_buckets(&mut buckets);
         let supported = if preserve_supported { supported_cells::find(&buckets) } else { Default::default() };
-        let mut supported_bids = std::collections::BTreeSet::new();
+        let mut supported_bids = rustc_hash::FxHashSet::default();
         let mut retained_cells = Mesh::new();
 
         // Step 2 — three phases over the SAME bucket map.
@@ -319,10 +319,13 @@ impl ClippingProcessor {
             // Project each triangle to 2D and build i_overlay paths.
             if supported.buckets.contains(bucket_key) {
                 supported_bids.insert(bid);
+                // Retained needles remain as ghost seam sources. The ordinary
+                // emitter drops them; one retained copy is appended afterward.
                 for t in tris {
                     if supported.cells.contains(&supported_cells::cell_key(&t.v)) {
                         supported_cells::append(&mut retained_cells, &t.v, &normal);
-                    } else { plan.raw.push(t.v); }
+                    }
+                    plan.raw.push(t.v);
                 }
                 plans.push(plan);
                 continue;
@@ -496,16 +499,22 @@ impl ClippingProcessor {
                 }
             }
         }
-        // Preserve both established strict closure bars and signed boundary
-        // readings for new supported-cell adoption. One disabled-support replay.
+        // Retention may not restore unrelated needles through the whole-raw
+        // fallback (#1007, #5739). Preserve the established exact/public closure
+        // and signed boundary bars, including partially conforming source meshes.
         if !supported.cells.is_empty() {
+            let baseline = Self::consolidate_with_supported_cells(mesh.clone(), length_unit_scale, false);
+            // An already closed ordinary boundary needs no source-cell rescue.
+            if crate::exact_topology::strict_closed_mesh(&baseline) { return baseline; }
             let exact = crate::exact_topology::strict_closed_mesh(&output);
+            let certified = !supported_cells::has_uncertified_needle(&output, &supported);
             let public = preservation::public_weld_closed(&output);
-            if !exact || !public {
-                let baseline = Self::consolidate_with_supported_cells(mesh.clone(), length_unit_scale, false);
-                if (!exact && crate::exact_topology::strict_closed_mesh(&baseline))
+            if (!certified || !exact || !public)
+                && (!certified
                     || (!public && preservation::public_weld_closed(&baseline))
-                    || preservation::signed_boundary_worse(&output, &baseline) { return baseline; }
+                    || preservation::signed_boundary_worse(&output, &baseline))
+            {
+                return baseline;
             }
         }
         // Carry the input's placement / frame metadata (`origin` local-frame

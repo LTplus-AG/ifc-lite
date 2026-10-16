@@ -25,8 +25,7 @@ pub(super) fn symbolic_point_in_tri_proj(c: &ImplicitPoint, t: &Tri, n: [f64; 3]
     if w0 == Sign::Zero {
         return false; // degenerate t in projection
     }
-    let inside = |u: [f64; 3], v: [f64; 3]| orient2d_any(&e(u), &e(v), c, axis) != w0.flip();
-    inside(t[0], t[1]) && inside(t[1], t[2]) && inside(t[2], t[0])
+    crate::kernel::coplanar::point_in_tri(c, t, axis, w0)
 }
 
 /// Per-triangle exact coincident-face test (see [`on_surface_normal`]).

@@ -5,7 +5,8 @@
 use super::{Tri, dot3, drop_axis_of, coincident_planes, e, orient2d_any, Sign};
 use super::surface::{near_shared_surface_tri, near_plane_normal, whole_cell_band};
 use crate::kernel::{budget, ImplicitPoint, near_band::NearBand};
-use std::{cell::OnceCell, collections::HashMap};
+use rustc_hash::FxHashMap;
+use std::cell::OnceCell;
 
 type PointKey = [u64; 3];
 fn key(p: [f64; 3]) -> PointKey { p.map(|v| if v == 0.0 { 0 } else { v.to_bits() }) }
@@ -21,7 +22,8 @@ enum Uses { One(usize), Two(usize,usize), Ambiguous }
 pub(super) struct AdjacentFaces { neighbors: Vec<[Option<usize>; 3]> }
 impl AdjacentFaces {
     fn new(tris: &[Tri]) -> Self {
-        let mut uses = HashMap::new();
+        // Lookup only: both registration and neighbor emission follow tris.
+        let mut uses = FxHashMap::default();
         for (i,t) in tris.iter().enumerate() {
             for k in 0..3 {
                 uses.entry(edge(t[k],t[(k+1)%3])).and_modify(|v| {

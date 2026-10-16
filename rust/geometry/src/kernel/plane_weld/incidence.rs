@@ -18,7 +18,7 @@ use crate::kernel::{
     retriangulate::projection_axis,
     ImplicitPoint, Sign,
 };
-use std::collections::HashMap;
+use rustc_hash::FxHashMap;
 
 fn point_key(point: [f64; 3]) -> [u64; 3] {
     // Exact predicates identify both signs of zero as the same coordinate.
@@ -49,12 +49,12 @@ fn positive_overlap(a: &Tri, b: &Tri) -> bool {
 }
 
 pub(super) struct ExactFaceIncidences {
-    planes: HashMap<[u64; 3], Vec<usize>>,
+    planes: FxHashMap<[u64; 3], Vec<usize>>,
 }
 
 impl ExactFaceIncidences {
     pub(super) fn new(source: &[Tri], host: &[Tri]) -> Self {
-        let mut planes: HashMap<[u64; 3], Vec<usize>> = HashMap::new();
+        let mut planes: FxHashMap<[u64; 3], Vec<usize>> = FxHashMap::default();
         let tree = Bvh::build(host);
         let mut candidates = Vec::new();
         for s in source {

@@ -27,15 +27,15 @@ fn e(p: [f64; 3]) -> ImplicitPoint {
     ImplicitPoint::Explicit(p)
 }
 
-/// Is explicit point `q` inside the closed triangle `tri` (oriented `w0`)?
-fn point_in_tri(q: [f64; 3], tri: &Tri, axis: DropAxis, w0: Sign) -> bool {
+/// Is symbolic point `q` inside the closed triangle `tri` (oriented `w0`)?
+pub(super) fn point_in_tri(q: &ImplicitPoint, tri: &Tri, axis: DropAxis, w0: Sign) -> bool {
     let opp = w0.flip();
-    let on_inner = |a: [f64; 3], b: [f64; 3]| orient2d_any(&e(a), &e(b), &e(q), axis) != opp;
+    let on_inner = |a: [f64; 3], b: [f64; 3]| orient2d_any(&e(a), &e(b), q, axis) != opp;
     on_inner(tri[0], tri[1]) && on_inner(tri[1], tri[2]) && on_inner(tri[2], tri[0])
 }
 
 pub(super) fn contains_projected_point(tri: &Tri, point: [f64; 3]) -> bool {
-    projection_axis(tri).is_some_and(|(axis, winding)| point_in_tri(point, tri, axis, winding))
+    projection_axis(tri).is_some_and(|(axis, winding)| point_in_tri(&e(point), tri, axis, winding))
 }
 
 /// Do segments `(q0,q1)` and `(e0,e1)` properly cross in the `axis` projection?
@@ -85,8 +85,8 @@ fn clip_seg(
     axis: DropAxis,
     w0: Sign,
 ) -> Option<(ImplicitPoint, ImplicitPoint)> {
-    let in0 = point_in_tri(q0, ta, axis, w0);
-    let in1 = point_in_tri(q1, ta, axis, w0);
+    let in0 = point_in_tri(&e(q0), ta, axis, w0);
+    let in1 = point_in_tri(&e(q1), ta, axis, w0);
     let edges = [(ta[0], ta[1]), (ta[1], ta[2]), (ta[2], ta[0])];
     let crossings: Vec<ImplicitPoint> = edges
         .iter()

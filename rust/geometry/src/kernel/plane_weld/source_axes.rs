@@ -16,16 +16,25 @@ use crate::kernel::{
     DropAxis, ImplicitPoint, Sign,
 };
 use nalgebra::Point3;
-use std::collections::{HashMap, HashSet};
+use rustc_hash::FxHashMap;
+use std::collections::HashSet;
 
 pub(super) struct SourceAxes {
-    axes: HashMap<[u64; 3], u8>,
+    axes: FxHashMap<[u64; 3], u8>,
 }
 
 impl SourceAxes {
     pub(super) fn new(source: &[Tri]) -> Self {
-        let mut axes = HashMap::new();
+        let mut axes = FxHashMap::default();
         for t in source {
+            let mut mask = 0;
+            for k in 0..3 {
+                if t[0][k] == t[1][k] && t[0][k] == t[2][k] {
+                    mask |= 1 << k;
+                }
+            }
+            // A non-axis face cannot register a coordinate, regardless of validity.
+            if mask == 0 { continue; }
             // The SAME original face must survive both representations. Direct
             // callers and mutual promotion need not supply f32 input points.
             let narrowed = t.map(|p| p.map(|coordinate| coordinate as f32 as f64));
@@ -40,12 +49,6 @@ impl SourceAxes {
                 || crate::csg::tri_is_needle(&narrowed.map(Point3::from))
             {
                 continue;
-            }
-            let mut mask = 0;
-            for k in 0..3 {
-                if t[0][k] == t[1][k] && t[0][k] == t[2][k] {
-                    mask |= 1 << k;
-                }
             }
             if mask != 0 {
                 for point in t {

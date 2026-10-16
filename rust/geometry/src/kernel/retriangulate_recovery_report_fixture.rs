@@ -1,3 +1,7 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 // Actual source47 root794361 Single1 B65 RetriInput; frozen observation only.
 // Receipt7909a1d88474240486368cdfed83dce458fb3078b9d40b6307a56fdd53b2b40c.
 // The captured full-prefix input is retained; this local RetriInput test does

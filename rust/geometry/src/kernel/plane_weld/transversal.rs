@@ -5,7 +5,8 @@
 //! Preserve an original finite transversal source carrier during NEW refused-Q20
 //! axis rescue's INITIAL foot. Existing secondary-axis completion is unchanged.
 //! This is an admission restriction, not a Boolean closure proof.
-use std::collections::{HashMap, HashSet};
+use rustc_hash::FxHashMap;
+use std::collections::HashSet;
 use super::{selection::Face, NearBand, Tri};
 use crate::kernel::{budget, near_band::vertex_bits, predicates::orient3d,
     tritri::{tri_tri_intersection_with_band, TriTri}, ImplicitPoint, Sign};
@@ -42,7 +43,7 @@ fn certificate(source: &Tri, initial_foot: [f64; 3], face: &Face, band: &NearBan
 }
 
 pub(super) fn rejected_keys(source: &[Tri], proposals: &[Proposal<'_>], band: &NearBand) -> HashSet<Key> {
-    let mut groups: HashMap<Key, Option<(&Face, [f64; 3], [f64; 3])>> = HashMap::new();
+    let mut groups: FxHashMap<Key, Option<(&Face, [f64; 3], [f64; 3])>> = FxHashMap::default();
     for p in proposals {
         let key = vertex_bits(&p.original);
         let candidate = p.refused_face.zip(p.initial_foot).zip(p.target)
@@ -55,7 +56,7 @@ pub(super) fn rejected_keys(source: &[Tri], proposals: &[Proposal<'_>], band: &N
     }
     if !groups.values().any(Option::is_some) || budget::tripped() { return HashSet::new(); }
     // Borrow source triangles; retain only original face indices, not a clone.
-    let mut owners: HashMap<Key, Vec<usize>> = HashMap::new();
+    let mut owners: FxHashMap<Key, Vec<usize>> = FxHashMap::default();
     for (i,t) in source.iter().enumerate() {
         for p in t {
             let indices = owners.entry(vertex_bits(p)).or_default();

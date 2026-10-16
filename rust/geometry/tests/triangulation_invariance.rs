@@ -1457,7 +1457,10 @@ fn issue_129_mixed_bool2d_residual_preserves_established_topology() {
     let expected = if std::env::var("IFC_LITE_PRISM_CUT").as_deref() == Ok("0") {
         [(12381, 30, 31, 9400), (32810, 0, 0, 3224)]
     } else {
-        [(12381, 25, 26, 7565), (32810, 3, 3, 3207)]
+        // #7292: retaining supported finite source cells removes ten signed
+        // and strict boundary defects in both triangulators (25/26 -> 15/16).
+        // DEFAULT retains six additional triangles; the #32810 cut is unchanged.
+        [(12381, 15, 16, 7571), (32810, 3, 3, 3207)]
     };
     for &alt in triangulators {
         set_alt(alt);
@@ -1527,13 +1530,12 @@ fn issue_4627_candidate_failures_preserve_prior_analytic_cuts() {
                 (26610, 0, 0, 84, 0),
                 // rvt01 wall hosts the #3977 local-frame selector must leave
                 // closed (pinned after 0e8a42175 tore #10191 open via a -Z cutter depth).
-                // #7292: exact closure is asserted below in both modes. Two
-                // distinct disjoint paired edges alias in the 1 mm strict key;
-                // retaining the finite source faces changes 172 to 188 triangles.
-                (10191, 0, 1, 188, 0),
-                // #7292: supported source cells plus closure-preserving output
-                // hygiene close DEFAULT (formerly 35), reduce ALT 33 to 10.
-                (26681, 0, 0, 270, 10),
+                // #7292: preserve the ordinary exactly closed boundary; the
+                // stronger exact fixture below checks both triangulators.
+                (10191, 0, 0, 172, 0),
+                // #7292: DEFAULT retains its established boundary; ALT improves
+                // from 33 to 10 through certified source-cell retention.
+                (26681, 35, 35, 191, 10),
             ][..],
         ),
         (
@@ -2473,9 +2475,7 @@ fn issue_7292_rvt_void_cut_hygiene_preserves_exact_closed_boundaries() {
     let triangulators = &[false][..];
     for &alt in triangulators {
         set_alt(alt);
-        for id in [10191, 31156, 26681] {
-            // ALT improves to ten signed boundaries; DEFAULT is now closed.
-            if alt && id == 26681 { continue; }
+        for id in [10191, 31156] {
             let mesh = process(&frame, id, &voids).expect("actual void-cut host must mesh");
             assert!(!mesh.indices.is_empty(), "host {id}, alt={alt}");
             let exact = edge_stats_exact(&mesh);

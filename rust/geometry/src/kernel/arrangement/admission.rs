@@ -11,6 +11,13 @@ use super::super::interner::Interner;
 
 /// Largest `|coordinate|` an arrangement operand may carry: 2^128.
 ///
+/// 2^128 is the overflow bound only. It is NOT the range the arrangement
+/// answers correctly: the kernel's tolerances (bands) are absolute, in the
+/// caller's units, so very small scales (about 2^-8 and below) can still give
+/// wrong results, sometimes with `conforming == true`. File input cannot reach
+/// those scales, because operands are snapped to a 2^-16 grid
+/// (`mesh_bridge::SNAP_GRID`).
+///
 /// Derivation. With every coordinate in `±M`, a coordinate difference is at
 /// most `D = 2M`. The kernel's deepest plain-f64 product chain (not counting
 /// the interval and fixed-width filters, which only escalate on overflow, nor

@@ -226,7 +226,9 @@ pub fn difference_all(a: &[Tri], comps: &[&[Tri]]) -> Option<(Vec<Tri>, bool)> {
 /// faceted-reveal walls (issue #098), but its centroid classification can
 /// over/under-cut volume, so the caller (`subtract_many`) VERIFIES the removed
 /// volume against a sequential reference before trusting it. The second
-/// element is the same `changed` bit [`difference_all`] returns.
+/// element is the same `changed` bit [`difference_all`] returns. On a pair the
+/// admission check refuses it returns empty with `changed == false`; callers
+/// must check conformity (see [`difference_all_lenient_with_conformity`]).
 pub fn difference_all_lenient(a: &[Tri], comps: &[&[Tri]]) -> (Vec<Tri>, bool) {
     let (tris, changed, _) = difference_all_lenient_with_conformity(a, comps);
     (tris, changed)

@@ -965,6 +965,15 @@ jobs:
           # Once step_ids.rs is on main, ordinary whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/export/src/step_ids.rs | grep -Fxq 'rust/export/src/step_ids.rs'; then
             oracle_args+=(--mutation tests/evidence/step-writer-7682/appended-record-guards.oracle.patch)
+          # #7683: the PR deletes schema_pad.rs with its #[path] test file and
+          # adds schema_plan.rs, so a whole-change revert cannot build the Rust
+          # --lib runners (only the TS twin was observed). Keep every new item
+          # and disable ONLY the pinned behaviour: the alignment proxy's kept
+          # attributes, the two-way prefix trim/pad, the dropped-value counter,
+          # TS's IFC2X3 fail-closed and the merged span folds / last-wins index.
+          # Once schema_plan.rs is on main, ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/export/src/schema_plan.rs | grep -Fxq 'rust/export/src/schema_plan.rs'; then
+            oracle_args+=(--mutation tests/evidence/schema-convert-7683/schema-convert.oracle.patch)
           fi
           node scripts/check-test-revert-oracle.mjs "${oracle_args[@]}"
           # #7512: observe cleanup independently of scoped admission/schema.

@@ -22,23 +22,13 @@
 //! holes. The buggy AABB fallback removed ~3% more material (each round/hex
 //! hole grew to its bounding box), which this tolerance rejects.
 
-mod support;
-
 use ifc_lite_core::{build_entity_index, EntityDecoder, EntityScanner};
 use ifc_lite_geometry::{propagate_voids_to_parts, GeometryRouter, Mesh};
 use rustc_hash::FxHashMap;
-use std::path::PathBuf;
 
-const FIXTURE: &str = "tests/models/issues/964_slab_arbitrary_profile_voids.ifc";
+const FIXTURE: &str = "issues/964_slab_arbitrary_profile_voids.ifc";
 /// IfcSlab `3qy29DaXf0ivOFkuocsP7z` — body uses IfcArbitraryProfileDefWithVoids.
 const SLAB_ID: u32 = 6443;
-
-fn fixture_path() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..")
-        .join(FIXTURE)
-}
 
 /// Build the void index the same way production does (scan IfcRelVoidsElement).
 fn build_void_index_like_production(content: &str) -> FxHashMap<u32, Vec<u32>> {
@@ -90,20 +80,7 @@ fn bottom_cap_area(mesh: &Mesh) -> f64 {
 
 #[test]
 fn redundant_openings_do_not_rectangularize_profile_voids() {
-    let content = match std::fs::read_to_string(fixture_path()) {
-        Ok(s) => s,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            assert!(
-                !support::require_fixtures(),
-                "fixture missing at {FIXTURE} and IFC_LITE_REQUIRE_FIXTURES=1 -- run `pnpm fixtures` to download (sha256 in tests/models/manifest.json)"
-            );
-            eprintln!(
-                "skipping issue-964 regression: fixture missing at {FIXTURE}; run `pnpm fixtures`"
-            );
-            return;
-        }
-        Err(e) => panic!("fixture {FIXTURE} exists but could not be read: {e}"),
-    };
+    let content = ifc_lite_testkit::fixture_text_or_skip!(FIXTURE);
 
     let void_index = build_void_index_like_production(&content);
     assert!(

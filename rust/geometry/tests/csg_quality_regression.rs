@@ -22,12 +22,9 @@
 //! regressed somewhere — most likely the coplanar consolidation or the
 //! collinear simplification in `ClippingProcessor::consolidate_coplanar`.
 
-mod support;
-
 use ifc_lite_core::{build_entity_index, EntityDecoder, EntityScanner};
 use ifc_lite_geometry::{propagate_voids_to_parts, GeometryRouter, Mesh};
 use rustc_hash::FxHashMap;
-use std::path::PathBuf;
 
 /// Load a fixture, distinguishing a genuinely absent file from a broken
 /// read. `NotFound` is the fresh-clone case (`pnpm fixtures` not run yet):
@@ -37,22 +34,12 @@ use std::path::PathBuf;
 /// environment is broken rather than merely missing an optional download,
 /// so it panics unconditionally regardless of the flag.
 fn fixture(rel: &str) -> Option<String> {
-    let p = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..")
-        .join(rel);
-    match std::fs::read_to_string(&p) {
-        Ok(content) => Some(content),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            assert!(
-                !support::require_fixtures(),
-                "fixture {} not present and IFC_LITE_REQUIRE_FIXTURES=1 -- run `pnpm fixtures` to download (sha256 in tests/models/manifest.json)",
-                p.display()
-            );
-            None
-        }
-        Err(e) => panic!("fixture {} exists but could not be read: {e}", p.display()),
+    // The one committed (non-catalogued) input lives under the repo root.
+    if let Some(committed) = rel.strip_prefix("rust/") {
+        let path = ifc_lite_testkit::repo_root().join("rust").join(committed);
+        return Some(std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display())));
     }
+    ifc_lite_testkit::fixture_text(rel)
 }
 
 fn void_index(content: &str) -> FxHashMap<u32, Vec<u32>> {
@@ -194,7 +181,7 @@ fn find_first_entity_id(content: &str, type_upper: &str) -> Option<u32> {
 /// consolidation should deliver both watertight AND sliver-free.
 #[test]
 fn fzk_haus_gable_wall_60012_is_watertight() {
-    let Some(content) = fixture("tests/models/ara3d/AC20-FZK-Haus.ifc") else {
+    let Some(content) = fixture("ara3d/AC20-FZK-Haus.ifc") else {
         return;
     };
     let mesh = process(&content, 60012, true).expect("process wall #60012");
@@ -209,7 +196,7 @@ fn fzk_haus_gable_wall_60012_is_watertight() {
 
 #[test]
 fn fzk_haus_gable_wall_67828_is_watertight() {
-    let Some(content) = fixture("tests/models/ara3d/AC20-FZK-Haus.ifc") else {
+    let Some(content) = fixture("ara3d/AC20-FZK-Haus.ifc") else {
         return;
     };
     let mesh = process(&content, 67828, true).expect("process wall #67828");
@@ -245,7 +232,7 @@ fn fzk_haus_gable_wall_67828_is_watertight() {
 #[test]
 #[ignore = "pre-existing: 72 spike tris from multi-extrusion profile tessellation, not the CSG kernel"]
 fn duplex_window_6426_no_spike_triangles() {
-    let Some(content) = fixture("tests/models/ara3d/duplex.ifc") else {
+    let Some(content) = fixture("ara3d/duplex.ifc") else {
         return;
     };
     let mesh = process(&content, 6426, false).expect("process window #6426");
@@ -257,7 +244,7 @@ fn duplex_window_6426_no_spike_triangles() {
 #[test]
 #[ignore = "pre-existing: 8 spike tris from `cut_multiple_rectangular_openings`, not the CSG kernel"]
 fn advanced_model_wall_553010_no_spike_triangles() {
-    let Some(content) = fixture("tests/models/ara3d/advanced_model.ifc") else {
+    let Some(content) = fixture("ara3d/advanced_model.ifc") else {
         return;
     };
     let mesh = process(&content, 553010, true).expect("process wall #553010");
@@ -271,7 +258,7 @@ fn advanced_model_wall_553010_no_spike_triangles() {
 #[test]
 #[ignore = "pre-existing: 23 spike tris (worst 3077:1) in the opening-cut helper, not the CSG kernel"]
 fn advanced_model_wall_612315_no_spike_triangles() {
-    let Some(content) = fixture("tests/models/ara3d/advanced_model.ifc") else {
+    let Some(content) = fixture("ara3d/advanced_model.ifc") else {
         return;
     };
     let mesh = process(&content, 612315, true).expect("process wall #612315");

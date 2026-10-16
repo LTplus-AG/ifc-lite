@@ -14,28 +14,12 @@
 //! column came out of `process_element` with 6 open edges (A-C on both caps
 //! against the wall edges A-M and M-C).
 
-mod support;
-
 use ifc_lite_core::{build_entity_index, EntityDecoder};
 use ifc_lite_geometry::{GeometryRouter, Mesh};
 use std::collections::HashMap;
-use std::path::PathBuf;
 
 fn fixture(rel: &str) -> Option<String> {
-    let p = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..").join(rel);
-    match std::fs::read_to_string(&p) {
-        Ok(content) => Some(content),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            assert!(
-                !support::require_fixtures(),
-                "fixture {} not present and IFC_LITE_REQUIRE_FIXTURES=1 -- run `pnpm fixtures` to download (sha256 in tests/models/manifest.json)",
-                p.display()
-            );
-            eprintln!("skipping #5313 regression: {} missing -- run `pnpm fixtures`", p.display());
-            None
-        }
-        Err(e) => panic!("fixture {} exists but could not be read: {e}", p.display()),
-    }
+    ifc_lite_testkit::fixture_text(rel)
 }
 
 /// Undirected edges not shared by exactly two triangles, vertices keyed by
@@ -59,8 +43,8 @@ fn open_edges(m: &Mesh) -> usize {
 #[test]
 fn composite_curve_tiny_arc_columns_stay_closed() {
     for (rel, id) in [
-        ("tests/models/ifcopenshell/928-column.ifc", 120u32),
-        ("tests/models/ifcopenshell/1019-column.ifc", 126u32),
+        ("ifcopenshell/928-column.ifc", 120u32),
+        ("ifcopenshell/1019-column.ifc", 126u32),
     ] {
         let Some(content) = fixture(rel) else { continue };
         let index = build_entity_index(&content);

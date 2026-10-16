@@ -14,6 +14,7 @@
 //! so an enumerated, bounded or list property comes back as the single value
 //! the extractor collapsed it to, exactly as it does from the TypeScript path.
 
+use std::cell::OnceCell;
 use std::collections::{HashMap, HashSet};
 
 use serde_json::Value;
@@ -86,7 +87,18 @@ pub(crate) struct BaseSets<'s, 'a> {
     qsets_of: HashMap<u32, Vec<u32>>,
     cache_p: HashMap<u32, Vec<PSet>>,
     cache_q: HashMap<u32, Vec<QSet>>,
+    /// Every `IfcComplexProperty` listed by a property set, resolved once for
+    /// the whole file, by `(set id, HasProperties index)` (see
+    /// [`Self::complex_values`]). A cut value carries its marker into the
+    /// written IFC; the exporters' warnings are mirrored TS to Rust, so no
+    /// Rust-only warning is added.
+    complex: OnceCell<ComplexValues>,
 }
+
+type ComplexValues = HashMap<(u32, usize), (u8, Value, Option<String>)>;
+
+#[path = "base_complex.rs"]
+mod complex;
 
 impl<'s, 'a> BaseSets<'s, 'a> {
     pub(crate) fn new(src: &'s Source<'a>, wanted: &HashSet<u32>) -> Self {
@@ -120,7 +132,7 @@ impl<'s, 'a> BaseSets<'s, 'a> {
                 }
             }
         }
-        BaseSets { src, psets_of, qsets_of, cache_p: HashMap::new(), cache_q: HashMap::new() }
+        BaseSets { src, psets_of, qsets_of, cache_p: HashMap::new(), cache_q: HashMap::new(), complex: OnceCell::new() }
     }
 
     /// The viewer's property base for `id`.
@@ -201,7 +213,7 @@ impl<'s, 'a> BaseSets<'s, 'a> {
             let name = attrs.get(2).and_then(JsVal::as_str).unwrap_or("").to_string();
             let mut properties = Vec::new();
             if let Some(JsVal::Arr(items)) = attrs.get(4) {
-                for item in items {
+                for (index, item) in items.iter().enumerate() {
                     let JsVal::Num(n) = item else { continue };
                     let Some((pty, pattrs)) = self.src.entity(*n as u32) else { continue };
                     let pname = pattrs.first().and_then(JsVal::as_str).unwrap_or("");
@@ -209,7 +221,7 @@ impl<'s, 'a> BaseSets<'s, 'a> {
                         continue;
                     }
                     let (ty, value, data_type) = if pty == "IFCCOMPLEXPROPERTY" {
-                        self.complex_value(&pattrs, 0, &mut COMPLEX_MEMBER_BUDGET.clone())
+                        self.complex_values().get(&(pid, index)).cloned().unwrap_or_else(complex::budget_spent)
                     } else {
                         self.property_value(&pty, &pattrs)
                     };
@@ -248,50 +260,6 @@ impl<'s, 'a> BaseSets<'s, 'a> {
         })
     }
 
-    /// `resolveComplexPropertyValue`: a display string only.
-    ///
-    /// The TypeScript walk is bounded by depth alone, which bounds a path but
-    /// not fan-out: members that share a nested complex property are walked
-    /// once per path. `budget` caps the member visits for one property, so a
-    /// file built to explode that costs a truncated display string rather than
-    /// a hang. Real complex properties are a handful of members deep and wide,
-    /// far inside it, so the output is unchanged for them.
-    fn complex_value(&self, attrs: &[JsVal], depth: usize, budget: &mut usize) -> (u8, Value, Option<String>) {
-        let usage = attrs.get(2).and_then(JsVal::as_str).unwrap_or("").to_string();
-        let empty_usage = || if usage.is_empty() { Value::Null } else { Value::String(usage.clone()) };
-        let Some(JsVal::Arr(members)) = attrs.get(3) else { return (pvt::STRING, empty_usage(), None) };
-        if members.is_empty() {
-            return (pvt::STRING, empty_usage(), None);
-        }
-        if depth >= 8 {
-            let marker = "(truncated: nesting deeper than 8 levels)";
-            let text = if usage.is_empty() { marker.to_string() } else { format!("{usage} {marker}") };
-            return (pvt::STRING, Value::String(text), None);
-        }
-        let mut parts = Vec::new();
-        for member in members {
-            let JsVal::Num(n) = member else { continue };
-            if *budget == 0 {
-                break;
-            }
-            *budget -= 1;
-            let Some((mty, mattrs)) = self.src.entity(*n as u32) else { continue };
-            let mname = mattrs.first().and_then(JsVal::as_str).unwrap_or("").to_string();
-            let (_, v, _) = if mty == "IFCCOMPLEXPROPERTY" {
-                self.complex_value(&mattrs, depth + 1, budget)
-            } else {
-                self.property_value(&mty, &mattrs)
-            };
-            let display = if v.is_null() { String::new() } else { super::jsval::json_to_js_string(&v) };
-            if display.is_empty() {
-                continue;
-            }
-            parts.push(if mname.is_empty() { display } else { format!("{mname}: {display}") });
-        }
-        let value = if parts.is_empty() { empty_usage() } else { Value::String(parts.join(", ")) };
-        (pvt::STRING, value, None)
-    }
-
     /// `readQuantitySet`, with `collectQuantitiesFromRefs`.
     fn read_qset(&self, qid: u32) -> Option<QSet> {
         let (_, attrs) = self.src.entity(qid)?;
@@ -315,9 +283,6 @@ impl<'s, 'a> BaseSets<'s, 'a> {
         (!quantities.is_empty()).then_some(QSet { name, quantities })
     }
 }
-
-/// Member visits one complex property may cost (see `complex_value`).
-const COMPLEX_MEMBER_BUDGET: usize = 10_000;
 
 /// `QUANTITY_TYPE_MAP`, defaulting to Count.
 pub(crate) fn quantity_type_of(upper: &str) -> u8 {

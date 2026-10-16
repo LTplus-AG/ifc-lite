@@ -27,6 +27,12 @@ pub struct DataModel {
     pub documents: Vec<DocumentAssociation>,
     /// Spatial hierarchy data with nodes and lookup maps.
     pub spatial_hierarchy: SpatialHierarchyData,
+    /// Set when a table hit its size budget and extraction stopped filling it
+    /// (#7675: material rows grow as elements x layers). Such a model cannot
+    /// be served: `serialize_data_model_to_parquet`, the one way every route
+    /// sends a data model, refuses it with this reason rather than ship the
+    /// truncated table.
+    pub refused: Option<String>,
 }
 
 /// Metadata for a single IFC entity.

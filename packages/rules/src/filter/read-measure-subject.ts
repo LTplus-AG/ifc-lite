@@ -28,6 +28,7 @@
  */
 
 import {
+  COMPLEX_PROPERTY_BUDGET_MARKER,
   extractPropertiesOnDemand,
   extractTypePropertiesOnDemand,
   extractTypeQuantitiesOnDemand,
@@ -75,12 +76,19 @@ function editsOf(mutationView: MutablePropertyView | undefined, expressId: numbe
  * The members of `property` that `memberPath` names, one level per entry
  * (#5475): only an `IfcComplexProperty` has members, so any other property,
  * or a name no member has, yields none. No `memberPath`: the property itself.
+ * A level the parser's walk budget cut ends with its marker member (#7675): a
+ * name not found there may lie past the cut, so it reads as that marker, not
+ * as absent.
  */
 function complexMembers(property: ExtractedProperty, memberPath: readonly string[] | undefined): ExtractedProperty[] {
   let level = [property];
   for (const name of memberPath ?? []) {
     const wanted = name.toLowerCase();
-    level = level.flatMap((p) => (p.members ?? []).filter((m) => m.name.toLowerCase() === wanted));
+    level = level.flatMap((p) => {
+      const members = p.members ?? [];
+      const found = members.filter((m) => m.name.toLowerCase() === wanted);
+      return found.length > 0 ? found : members.filter((m) => m.name === COMPLEX_PROPERTY_BUDGET_MARKER);
+    });
   }
   return level;
 }

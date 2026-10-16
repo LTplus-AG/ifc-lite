@@ -14,8 +14,9 @@ pub(crate) fn zup(p: [f64; 3]) -> [f64; 3] {
 }
 
 /// Transform a 2D profile point by the entity's column-major 4×4, then convert to Z-up.
-pub(crate) fn xf(t: &[f32; 16], px: f64, py: f64) -> [f64; 3] {
-    let c = |r: usize, col: usize| t[col * 4 + r] as f64;
+/// All in f64: the translation is a survey-grid world position (#7684).
+pub(crate) fn xf(t: &[f64; 16], px: f64, py: f64) -> [f64; 3] {
+    let c = |r: usize, col: usize| t[col * 4 + r];
     zup([
         c(0, 0) * px + c(0, 1) * py + c(0, 3),
         c(1, 0) * px + c(1, 1) * py + c(1, 3),

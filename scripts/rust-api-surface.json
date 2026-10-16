@@ -125,7 +125,7 @@
     "DecodedTemplate": "struct { indices: Vec<u32>; normals: Vec<f32>; origin: [f64; 3]; positions: Vec<f32> }",
     "DegenerateReason": "enum { BelowKernelResolution { required_m: f64; thickness_m: f64 }; BudgetExhausted; EmptyOperand; NoOverlap }",
     "Error": "enum { CoreError(ifc_lite_core::Error); EmptyMesh(String); GeometryError(String); InvalidExtrusion(String); InvalidProfile(String); TriangulationError(String) }",
-    "ExtractedProfile": "struct { express_id: u32; extrusion_depth: f32; extrusion_dir: [f32; 3]; hole_counts: Vec<u32>; hole_points: Vec<f32>; ifc_type: String; model_index: u32; outer_points: Vec<f32>; transform: [f32; 16] }",
+    "ExtractedProfile": "struct { express_id: u32; extrusion_depth: f32; extrusion_dir: [f32; 3]; hole_counts: Vec<u32>; hole_points: Vec<f32>; ifc_type: String; model_index: u32; outer_points: Vec<f32>; transform: [f64; 16] }",
     "ExtrudedAreaSolidProcessor": "struct {  }",
     "ExtrudedAreaSolidTaperedProcessor": "struct {  }",
     "FACETED_BREP_DEDUP_FACE_LIMIT": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",

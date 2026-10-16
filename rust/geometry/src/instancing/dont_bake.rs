@@ -55,7 +55,8 @@ pub fn instance_rel_row_major_f32(
 /// transforms positions; the inverse-transpose of the linear part transforms normals
 /// (renormalized). Geometrically equal to the baked flat occurrence (same triangles);
 /// the registry source is pre-weld, so vertices are unwelded — that changes only the
-/// vertex count, not the rendered surface.
+/// vertex count, not the rendered surface. Source positions are relative to the
+/// source's f64 `origin`, which a raw national-grid item keeps (#7690).
 pub fn bake_source_at_world(
     source: &Mesh,
     world_row_major: &[f64; 16],
@@ -66,9 +67,9 @@ pub fn bake_source_at_world(
     let mut positions = Vec::with_capacity(source.positions.len());
     for v in 0..vcount {
         let p = m * nalgebra::Vector4::new(
-            source.positions[v * 3] as f64,
-            source.positions[v * 3 + 1] as f64,
-            source.positions[v * 3 + 2] as f64,
+            source.positions[v * 3] as f64 + source.origin[0],
+            source.positions[v * 3 + 1] as f64 + source.origin[1],
+            source.positions[v * 3 + 2] as f64 + source.origin[2],
             1.0,
         );
         positions.push((p.x / p.w) as f32);

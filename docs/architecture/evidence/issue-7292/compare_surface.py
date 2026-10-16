@@ -124,15 +124,26 @@ def fixture_at_slope(content, slope):
     return '\n'.join(lines)+'\n'
 
 
+def cached_reference_validation(record):
+    """Retain historical comparisons without upgrading unchecked reference truth."""
+    marker = record.get('reference_validation',{})
+    status = marker.get('status') if isinstance(marker,dict) else marker
+    require(record.get('reference_status') not in ('INVALID_OR_UNRESOLVED','INVALID_REFERENCE')
+            and status not in ('INVALID_OR_UNRESOLVED','INVALID_REFERENCE'),'Explicit invalid reference cache')
+    return {'status':'UNVERIFIED_LEGACY_CACHE','limitation':'Saved arrays and engine pins do not establish Boolean success.'}
+
+
 def cached_oracle(path, fixture_hash):
     if path.is_file():
         raw, digest = read(path)
         require(raw['fixture_sha256'] == fixture_hash and raw['ifcopenshell'] == '0.8.5','Oracle fixture hash/engine mismatch')
-        return mesh_data(raw), None, {'oracle_file_sha256': digest}, raw, None
+        validation = cached_reference_validation(raw)
+        return mesh_data(raw), None, {'oracle_file_sha256': digest,'reference_validation':validation}, raw, None
     receipt, receipt_hash = read(path/'receipt.json')
     require(receipt['fixture_sha256'] == fixture_hash,'Oracle fixture hash mismatch')
     engines = receipt.get('engines') or {'ifcopenshell': receipt['ifcopenshell'], 'shapely': receipt['shapely']}
     require(engines == {'ifcopenshell': '0.8.5', 'shapely': '2.0.7'},'Oracle engine pins mismatch')
+    validation = cached_reference_validation(receipt)
     filename = 'oracle-raw-mesh.json' if (path/'oracle-raw-mesh.json').exists() else 'oracle-triangles.json'
     raw, digest = read(path/filename)
     expected = receipt.get('oracle_raw_mesh_sha256') or receipt.get('oracle_raw_sha256')
@@ -143,7 +154,8 @@ def cached_oracle(path, fixture_hash):
         require(no_void_digest == receipt.get('oracle_no_void_raw_mesh_sha256'),'Oracle no-void hash missing or mismatch')
         require(isinstance(no_void,dict),'Malformed oracle no-void mesh')
     return mesh_data(raw), mesh_data(no_void) if no_void_digest is not None else None, {'oracle_cache_receipt_sha256': receipt_hash,
-            'oracle_file_sha256': digest, 'oracle_no_void_file_sha256':no_void_digest, 'cache_receipt': receipt}, raw, no_void
+            'oracle_file_sha256': digest, 'oracle_no_void_file_sha256':no_void_digest, 'cache_receipt': receipt,
+            'reference_validation':validation}, raw, no_void
 
 
 def triangles(data):
@@ -341,12 +353,22 @@ def main():
     else:
         if args.mode!='reporter':
             raise ValueError('Corpus mode requires retained verified oracle arrays')
-        model = ifcopenshell.file.from_string(fixture.decode())
-        settings = ifcopenshell.geom.settings()
-        settings.set('use-world-coords',True)
-        shape = ifcopenshell.geom.create_shape(settings,model.by_id(107))
-        raw={'positions':list(shape.geometry.verts),'indices':list(shape.geometry.faces)}
+        validation_path = Path(__file__).resolve().parents[4]/'tools/ifcopenshell_reference/reference_validation.py'
+        validation_spec = importlib.util.spec_from_file_location('checked_reference_conversion',validation_path)
+        validation = importlib.util.module_from_spec(validation_spec)
+        validation_spec.loader.exec_module(validation)
+        retained_fixture = args.output/'oracle-fixture.ifc'
+        retained_fixture.write_bytes(fixture)
+        try:
+            with validation.ReferenceSession(retained_fixture,{'use-world-coords':True},args.output/'oracle-diagnostics') as session:
+                raw = session.shape(107)
+        except (validation.InvalidReference,validation.ShapeUnavailable) as error:
+            receipt.update(passed=False,planes=[],reference_status='INVALID_OR_UNRESOLVED',reference_error=str(error))
+            save(args.output/'receipt.json',receipt)
+            return 2
         ov,nv,oracle_meta,no_void = mesh_data(raw),None,{'settings':{'use-world-coords':True}},None
+        oracle_meta['reference_validation'] = {'status':'ENGINE_DIAGNOSTICS_CHECKED_NOT_BOOLEAN_PROOF',
+            'diagnostics_receipt_sha256':sha((args.output/'oracle-diagnostics/receipt.json').read_bytes())}
     if args.mode=='corpus':
         require(nv is not None,'Corpus oracle cache requires a verified no-void mesh')
     receipt['oracle_provenance'] = oracle_meta

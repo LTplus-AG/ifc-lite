@@ -64,3 +64,13 @@ finite extents, interior holes, tiny positive-area facets, exact tolerance
 boundaries, input ordering, target subdivision, and baseline localization.
 The comparator was introduced as evidence tooling for #7292; promoting it here
 allows its independent correction and CI verification before the kernel PR.
+
+Fresh uncached reporter references also retain `oracle-diagnostics/` from an
+owned IfcOpenShell worker. Terminal Boolean fallback refuses the reference
+before finite adjudication, with exit 2 and an `INVALID_OR_UNRESOLVED` receipt;
+use a fresh output directory. See the shared [reference validation contract](../../../../tools/ifcopenshell_reference/README.md#rejecting-invalid-boolean-references-7723).
+
+Fresh references record `ENGINE_DIAGNOSTICS_CHECKED_NOT_BOOLEAN_PROOF` and
+the completed sidecar hash. Cached historical arrays remain explicitly
+`UNVERIFIED_LEGACY_CACHE`; their finite comparison outcome is unchanged.
+An explicit invalid-reference marker is refused even if mesh hashes match.

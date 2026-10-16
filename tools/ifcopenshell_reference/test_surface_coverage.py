@@ -158,6 +158,34 @@ class FiniteCoverage(unittest.TestCase):
             self.assertTrue(receipt['passed'])
             self.assertEqual(len(receipt['planes']),6)
 
+    def test_7723_legacy_cache_is_explicitly_unverified_not_boolean_proof(self):
+        raw = {'positions':[v for p in horizontal() for v in p],'indices':[0,1,2],
+               'fixture_sha256':'fixture','ifcopenshell':'0.8.5'}
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)/'legacy.json'
+            path.write_text(json.dumps(raw))
+            actual,_,provenance,_,_ = C.cached_oracle(path,'fixture')
+            self.assertEqual(actual,mesh([horizontal()]))
+            self.assertEqual(provenance['reference_validation']['status'],'UNVERIFIED_LEGACY_CACHE')
+
+    def test_7723_explicit_invalid_cache_refused_despite_valid_hash_and_arrays(self):
+        raw = {'positions':[v for p in horizontal() for v in p],'indices':[0,1,2],
+               'fixture_sha256':'fixture','ifcopenshell':'0.8.5'}
+        with tempfile.TemporaryDirectory() as directory:
+            folder = Path(directory)
+            compact = folder/'compact.json'
+            compact.write_text(json.dumps({**raw,'reference_status':'INVALID_OR_UNRESOLVED'}))
+            with self.assertRaisesRegex(ValueError,'Explicit invalid reference cache'):
+                C.cached_oracle(compact,'fixture')
+            content = json.dumps(raw).encode()
+            (folder/'oracle-raw-mesh.json').write_bytes(content)
+            receipt = {'fixture_sha256':'fixture','engines':{'ifcopenshell':'0.8.5','shapely':'2.0.7'},
+                       'oracle_raw_mesh_sha256':hashlib.sha256(content).hexdigest(),
+                       'reference_validation':{'status':'INVALID_REFERENCE'}}
+            (folder/'receipt.json').write_text(json.dumps(receipt))
+            with self.assertRaisesRegex(ValueError,'Explicit invalid reference cache'):
+                C.cached_oracle(folder,'fixture')
+
     def test_7661_perpendicular_edge_and_order(self):
         t = [[0.,0.,0.],[1.,0.,0.],[0.,0.,1.]]
         r = [[0.,2.,0.],[0.,3.,0.],[0.,2.,1.]]

@@ -90,6 +90,10 @@ jobs:
               - "rust/geometry/tests/fixtures/issue_7292_sloped_coplanar_difference.ifc"
               - "docs/architecture/evidence/issue-7292/**"
               - "tools/ifcopenshell_reference/test_surface_coverage.py"
+              - "tools/ifcopenshell_reference/reference_validation.py"
+              - "tools/ifcopenshell_reference/reference_worker.py"
+              - "tools/ifcopenshell_reference/test_reference_validation.py"
+              - "tools/ifcopenshell_reference/evidence/7723/**"
               - "tools/ifcopenshell_reference/requirements.lock"
               - ".github/workflows/ifcopenshell-parity.yml"
             geometry:
@@ -107,7 +111,7 @@ jobs:
         if: steps.filter.outputs.surface == 'true'
         run: |
           pip install -r tools/ifcopenshell_reference/requirements.lock
-          python -B -m unittest tools.ifcopenshell_reference.test_surface_coverage -v
+          python -B -m unittest tools.ifcopenshell_reference.test_surface_coverage tools.ifcopenshell_reference.test_reference_validation -v
       - if: steps.filter.outputs.geometry != 'true'
         name: No geometry changes - parity diff not applicable
         run: echo "No geometry/processing/core/python/parity-tooling changes; parity diff skipped (check reports success)."
@@ -130,7 +134,7 @@ jobs:
       - name: Unit tests (canonical stats + comparator)
         if: steps.filter.outputs.geometry == 'true'
         working-directory: tools/ifcopenshell_reference
-        run: python -m unittest test_harness -v
+        run: python -m unittest test_harness test_reference_validation -v
       - name: Differential vs committed reference (in-tree fixtures)
         if: steps.filter.outputs.geometry == 'true'
         working-directory: tools/ifcopenshell_reference

@@ -83,6 +83,8 @@ impl Probe {
 struct Compound<'a> {
     probe: &'a mut Probe,
     index: usize,
+    /// The pending map key, rendered for the location (`rows[125]`).
+    key: String,
 }
 
 impl Compound<'_> {
@@ -151,27 +153,27 @@ impl<'a> ser::Serializer for &'a mut Probe {
         self.nested(variant.to_string(), value)
     }
     fn serialize_seq(self, _: Option<usize>) -> Result<Compound<'a>, NonFinite> {
-        Ok(Compound { probe: self, index: 0 })
+        Ok(Compound { probe: self, index: 0, key: String::new() })
     }
     fn serialize_tuple(self, _: usize) -> Result<Compound<'a>, NonFinite> {
-        Ok(Compound { probe: self, index: 0 })
+        Ok(Compound { probe: self, index: 0, key: String::new() })
     }
     fn serialize_tuple_struct(self, _: &'static str, _: usize) -> Result<Compound<'a>, NonFinite> {
-        Ok(Compound { probe: self, index: 0 })
+        Ok(Compound { probe: self, index: 0, key: String::new() })
     }
     fn serialize_tuple_variant(self, _: &'static str, _: u32, variant: &'static str, _: usize) -> Result<Compound<'a>, NonFinite> {
         self.path.push(variant.to_string());
-        Ok(Compound { probe: self, index: 0 })
+        Ok(Compound { probe: self, index: 0, key: String::new() })
     }
     fn serialize_map(self, _: Option<usize>) -> Result<Compound<'a>, NonFinite> {
-        Ok(Compound { probe: self, index: 0 })
+        Ok(Compound { probe: self, index: 0, key: String::new() })
     }
     fn serialize_struct(self, _: &'static str, _: usize) -> Result<Compound<'a>, NonFinite> {
-        Ok(Compound { probe: self, index: 0 })
+        Ok(Compound { probe: self, index: 0, key: String::new() })
     }
     fn serialize_struct_variant(self, _: &'static str, _: u32, variant: &'static str, _: usize) -> Result<Compound<'a>, NonFinite> {
         self.path.push(variant.to_string());
-        Ok(Compound { probe: self, index: 0 })
+        Ok(Compound { probe: self, index: 0, key: String::new() })
     }
 }
 
@@ -223,11 +225,17 @@ impl ser::SerializeTupleVariant for Compound<'_> {
 impl ser::SerializeMap for Compound<'_> {
     type Ok = ();
     type Error = NonFinite;
-    fn serialize_key<T: Serialize + ?Sized>(&mut self, _: &T) -> Result<(), NonFinite> {
+    fn serialize_key<T: Serialize + ?Sized>(&mut self, key: &T) -> Result<(), NonFinite> {
+        self.key = match serde_json::to_value(key) {
+            Ok(serde_json::Value::String(s)) => s,
+            Ok(other) => other.to_string(),
+            Err(_) => "?".to_string(),
+        };
         Ok(())
     }
     fn serialize_value<T: Serialize + ?Sized>(&mut self, value: &T) -> Result<(), NonFinite> {
-        self.probe.nested("{}".to_string(), value)
+        let segment = format!("[{}]", self.key);
+        self.probe.nested(segment, value)
     }
     fn end(self) -> Result<(), NonFinite> {
         Ok(())
@@ -289,8 +297,8 @@ mod tests {
 
         let cases = [
             (doc(f64::NAN, 2.0, None, (0.0, 0.0)), "scale is non-finite (NaN)"),
-            (doc(1.0, f64::INFINITY, None, (0.0, 0.0)), "rows.{}[1].value is non-finite (inf)"),
-            (doc(1.0, 2.0, Some(f32::NEG_INFINITY), (0.0, 0.0)), "rows.{}[1].maybe is non-finite (-inf)"),
+            (doc(1.0, f64::INFINITY, None, (0.0, 0.0)), "rows[7][1].value is non-finite (inf)"),
+            (doc(1.0, 2.0, Some(f32::NEG_INFINITY), (0.0, 0.0)), "rows[7][1].maybe is non-finite (-inf)"),
             (doc(1.0, 2.0, None, (0.0, f64::NAN)), "pair[1] is non-finite (NaN)"),
         ];
         for (bad, message) in cases {

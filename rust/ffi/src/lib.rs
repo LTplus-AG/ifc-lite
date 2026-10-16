@@ -74,7 +74,9 @@ fn run_in_pool<T: Send>(
     .unwrap_or(Err(3))
 }
 
-/// Shared body of both parse entry points: read the file, then on the
+/// Shared body of both parse entry points: read the file's raw bytes (STEP is
+/// ISO-8859-1 with `\X\`/`\X2\` escapes, so a Latin-1 or Windows-1252 byte in
+/// a string is legal input; EDGE-FFI-2, #7694), then on the
 /// large-stack pool and under [`run_in_pool`]'s `catch_unwind` run geometry
 /// processing and serialize the response to JSON bytes. The mesh frame comes
 /// from the pipeline's one selector (#4643); nothing here re-anchors it.
@@ -83,7 +85,7 @@ fn run_in_pool<T: Send>(
 /// (`2` read, `3` panic or no pool, `4` serialization) — `0`/`1` are decided by
 /// the wrappers, which own pointer validation.
 fn parse_impl(path_str: &str, mode: OpeningFilterMode) -> Result<Vec<u8>, i32> {
-    let content = std::fs::read_to_string(path_str).map_err(|_| 2)?;
+    let content = std::fs::read(path_str).map_err(|_| 2)?;
 
     run_in_pool(path_str, move || {
         let result = process_geometry_filtered(&content, mode);

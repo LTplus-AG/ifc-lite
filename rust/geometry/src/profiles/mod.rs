@@ -17,6 +17,8 @@ mod curves_3d;
 mod directrix;
 mod outline;
 mod placement;
+mod regions;
+pub(crate) use regions::{check_sweep_vertices, region_points, sweeps_new_rings};
 mod shapes;
 mod steel_shapes;
 mod simplify;
@@ -78,6 +80,10 @@ pub struct ProfileProcessor {
     /// `active_quality` is, and decremented on every nested curve. See
     /// [`MAX_CURVE_NODES`].
     curve_budget: Cell<u32>,
+    /// Composite areas and their ring points left for the in-flight solid.
+    /// See [`ProfileProcessor::arm_solid_budget`].
+    region_budget: regions::WorkBudget,
+    point_budget: regions::WorkBudget,
 }
 
 impl ProfileProcessor {
@@ -87,6 +93,8 @@ impl ProfileProcessor {
             schema,
             active_quality: Cell::new(TessellationQuality::Medium),
             curve_budget: Cell::new(MAX_CURVE_NODES),
+            region_budget: regions::WorkBudget::new(regions::MAX_PROFILE_REGIONS),
+            point_budget: regions::WorkBudget::new(regions::MAX_PROFILE_POINTS),
         }
     }
 
@@ -146,8 +154,8 @@ impl ProfileProcessor {
         decoder: &mut EntityDecoder,
         quality: TessellationQuality,
     ) -> Result<Profile2D> {
-        self.active_quality.set(quality);
-        self.curve_budget.set(MAX_CURVE_NODES);
+        self.set_tessellation_quality(quality);
+        self.arm_solid_budget();
         self.process_with_depth(profile, decoder, 0)
     }
 
@@ -159,10 +167,7 @@ impl ProfileProcessor {
         depth: u32,
     ) -> Result<Profile2D> {
         if depth > MAX_PROFILE_DEPTH {
-            return Err(Error::geometry(format!(
-                "Profile nesting depth {} exceeds limit {} at #{}",
-                depth, MAX_PROFILE_DEPTH, profile.id
-            )));
+            return Err(regions::profile_depth_error(profile, depth));
         }
         match profile.ifc_type {
             IfcType::IfcDerivedProfileDef | IfcType::IfcMirroredProfileDef => {
@@ -171,7 +176,10 @@ impl ProfileProcessor {
             _ => match self.schema.profile_category(&profile.ifc_type) {
                 Some(ProfileCategory::Parametric) => self.process_parametric(profile, decoder),
                 Some(ProfileCategory::Arbitrary) => self.process_arbitrary(profile, decoder),
-                Some(ProfileCategory::Composite) => self.process_composite_with_depth(profile, decoder, depth),
+                // One Profile2D cannot hold several disjoint areas: an outline.
+                Some(ProfileCategory::Composite) => Ok(regions::flatten_regions(
+                    self.regions_with_depth(profile, decoder, depth, false)?,
+                )),
                 _ => Err(Error::geometry(format!(
                     "Unsupported profile type: {}",
                     profile.ifc_type
@@ -248,18 +256,24 @@ impl ProfileProcessor {
         decoder: &mut EntityDecoder,
         depth: u32,
     ) -> Result<Profile2D> {
-        let parent_attr = profile
-            .get(2)
-            .ok_or_else(|| Error::geometry("Derived profile missing ParentProfile".to_string()))?;
-        let parent_profile = decoder.resolve_ref(parent_attr)?.ok_or_else(|| {
-            Error::geometry("Derived profile ParentProfile not found".to_string())
-        })?;
-
+        let parent_profile = regions::derived_parent(profile, decoder)?;
         let mut result = self.process_with_depth(&parent_profile, decoder, depth + 1)?;
+        self.apply_derived_operator(profile, decoder, &mut result)?;
+        Ok(result)
+    }
 
+    /// Map one processed parent region through the derived `profile`: the
+    /// implicit mirror of an `IfcMirroredProfileDef`, or the `Operator` of an
+    /// `IfcDerivedProfileDef`.
+    fn apply_derived_operator(
+        &self,
+        profile: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        region: &mut Profile2D,
+    ) -> Result<()> {
         if profile.ifc_type == IfcType::IfcMirroredProfileDef {
-            mirror_profile_about_y_axis(&mut result);
-            return Ok(result);
+            mirror_profile_about_y_axis(region);
+            return Ok(());
         }
 
         // IfcDerivedProfileDef. Operator is required per the spec but some
@@ -267,16 +281,15 @@ impl ProfileProcessor {
         // its parent; treat null as the identity transform rather than
         // erroring (the parent already came back fully processed).
         let Some(operator_attr) = profile.get(3) else {
-            return Ok(result);
+            return Ok(());
         };
         if operator_attr.is_null() {
-            return Ok(result);
+            return Ok(());
         }
         let Some(operator) = decoder.resolve_ref(operator_attr)? else {
-            return Ok(result);
+            return Ok(());
         };
-        self.apply_cartesian_transformation_operator_2d(&mut result, &operator, decoder)?;
-        Ok(result)
+        self.apply_cartesian_transformation_operator_2d(region, &operator, decoder)
     }
 
     /// Process arbitrary closed profile (polyline-based)
@@ -728,39 +741,6 @@ impl ProfileProcessor {
         }
 
         Ok(all_points)
-    }
-
-    /// Process composite profile (combination of profiles)
-    /// IfcCompositeProfileDef: ProfileType, ProfileName, Profiles, Label
-    fn process_composite_with_depth(
-        &self,
-        profile: &DecodedEntity,
-        decoder: &mut EntityDecoder,
-        depth: u32,
-    ) -> Result<Profile2D> {
-        // Get profiles list (attribute 2)
-        let profiles_attr = profile
-            .get(2)
-            .ok_or_else(|| Error::geometry("Composite profile missing Profiles".to_string()))?;
-
-        let sub_profiles = decoder.resolve_ref_list(profiles_attr)?;
-
-        if sub_profiles.is_empty() {
-            return Err(Error::geometry(
-                "Composite profile has no sub-profiles".to_string(),
-            ));
-        }
-
-        // Process first profile as base
-        let mut result = self.process_with_depth(&sub_profiles[0], decoder, depth + 1)?;
-
-        // Add remaining profiles as holes (simplified - assumes they're holes)
-        for sub_profile in &sub_profiles[1..] {
-            let hole = self.process_with_depth(sub_profile, decoder, depth + 1)?;
-            result.add_hole(hole.outer);
-        }
-
-        Ok(result)
     }
 }
 

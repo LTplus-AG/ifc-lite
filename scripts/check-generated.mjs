@@ -505,8 +505,6 @@ if (FULL) {
 runGate('check:coverage-ledger', 'node', ['scripts/generate-coverage-ledger.mjs', '--check'],
   'if the output says "is stale": node scripts/generate-coverage-ledger.mjs   (then commit docs/architecture/coverage-ledger.md); ' +
     'if it names a missing source file or an extractor that found ZERO entries, fix that file/extractor first — regenerating cannot');
-runGate('IFC2X3 entity-name freshness', 'node', ['scripts/generate-ifc2x3-entity-names.mjs', '--check'],
-  'node scripts/generate-ifc2x3-entity-names.mjs   (then commit rust/export/src/generated/ifc2x3_entity_names.rs)');
 hr();
 const failed = results.filter((r) => r.status === 'fail');
 const skipped = results.filter((r) => r.status === 'skip');

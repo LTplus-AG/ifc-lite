@@ -59,6 +59,9 @@
  * a skip. Invoking cargo-semver-checks and reading one run's output is
  * `scripts/lib/cargo-semver-checks.mjs`; this file is the release policy that
  * decides what to do with the verdict it returns.
+ * A published baseline that no longer resolves on crates.io (#7737) is not a
+ * skip either: `scripts/lib/semver-baseline.mjs` rebuilds it from the release
+ * tag proven byte-equal to the published crate, or the crate fails.
  *
  * Run: `node scripts/check-rust-semver.mjs`  (`pnpm check:rust-semver`)
  * Self-test: `node --test scripts/check-rust-semver.test.mjs`
@@ -74,10 +77,13 @@ import {
   interpretRun,
   runSemverChecks as realRunSemverChecks,
 } from './lib/cargo-semver-checks.mjs';
+import { runAgainstTagBaseline, runWithReproducibleBaseline } from './lib/semver-baseline.mjs';
 
 // Re-exported through this pre-existing module so the revert oracle can still
 // load the changed tests after its mutation removes the new adapter module.
-export { executedCheckCount, interpretRun, semverChecksArgv } from './lib/cargo-semver-checks.mjs';
+export { executedCheckCount, interpretRun, outputExcerpt, semverChecksArgv } from './lib/cargo-semver-checks.mjs';
+export { diffPackagedSources, heuristicFeatures, isUnresolvableRegistryBaseline } from './lib/semver-baseline.mjs';
+export { releaseTagCandidates, runWithReproducibleBaseline, tagPublishes } from './lib/semver-baseline.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -158,9 +164,11 @@ const RANK = { none: 0, patch: 1, minor: 2, major: 3 };
  * @param {string|null} deps.workspaceVersion  the version the release would publish
  * @param {(crate: string) => string|null} deps.latestPublished  crates.io latest, or null
  * @param {(crate: string, baseline: string) => {status: number, output: string}} deps.runSemverChecks
+ * @param {(crate: string, baseline: string) => {status: number, output: string, via: string}} [deps.runTagBaseline]
+ *   the same run against the baseline rebuilt from its release tag, for an unresolvable one (#7737)
  * @returns {{ok: boolean, failures: string[], checked: string[]}}
  */
-export function checkRustSemver({ crates, workspaceVersion, latestPublished, runSemverChecks }) {
+export function checkRustSemver({ crates, workspaceVersion, latestPublished, runSemverChecks, runTagBaseline }) {
   const failures = [];
   const checked = [];
   // Crates the release would NOT republish (their version is already live).
@@ -250,7 +258,12 @@ export function checkRustSemver({ crates, workspaceVersion, latestPublished, run
       continue;
     }
 
-    const { required, executed, reason } = interpretRun(runSemverChecks(crate, baseline));
+    const attempt = runWithReproducibleBaseline(crate, baseline, runSemverChecks, runTagBaseline);
+    if (attempt.failure) {
+      failures.push(`${crate}: ${attempt.failure}`);
+      continue;
+    }
+    const { required, executed, reason } = interpretRun(attempt.run);
     if (reason) {
       failures.push(`${crate}: ${reason}`);
       continue;
@@ -279,7 +292,10 @@ export function checkRustSemver({ crates, workspaceVersion, latestPublished, run
       );
       continue;
     }
-    checked.push(`${crate} ${baseline} -> ${workspaceVersion} (${carried}; requires ${required})`);
+    checked.push(
+      `${crate} ${baseline} -> ${workspaceVersion} (${carried}; requires ${required})` +
+        (attempt.via ? `; baseline rebuilt from ${attempt.via}` : '')
+    );
     if (RANK[required] > RANK[carried]) {
       failures.push(
         `${crate}: its public API change requires a ${required.toUpperCase()} bump, but this ` +
@@ -350,6 +366,7 @@ async function main() {
     workspaceVersion: readVersionOrNull(REPO_ROOT),
     latestPublished: (crate) => baselines.get(crate),
     runSemverChecks: realRunSemverChecks,
+    runTagBaseline: runAgainstTagBaseline,
   });
 
   for (const line of result.checked) console.log(`   ${line}`);

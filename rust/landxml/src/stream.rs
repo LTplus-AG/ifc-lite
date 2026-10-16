@@ -77,19 +77,21 @@ impl LandXmlTinStreamSession {
         let mut reader = Reader::from_reader(BufReader::new(feed.clone()));
         reader.config_mut().trim_text(false);
         Ok(Self {
-            parser: Some(Parser::new(&limits, None, assumed_units)),
             plan: Some(crate::plan::parser::Parser::new_stream(
                 crate::LandXmlPlanLimits {
                     xml: limits.clone(),
                     ..Default::default()
                 },
+                assumed_units.clone(),
             )),
             alignment: Some(crate::alignment::parser::Parser::new_stream(
                 crate::alignment::LandXmlAlignmentLimits {
                     xml: limits.clone(),
                     ..Default::default()
                 },
+                assumed_units.clone(),
             )),
+            parser: Some(Parser::new(&limits, None, assumed_units)),
             pipe: Some(crate::pipe_parser::PipeParser::new_stream(limits.clone())),
             reader,
             feed,

@@ -98,6 +98,25 @@ pub(super) struct FeatureBuilder {
 #[derive(Clone)]
 pub(super) struct RawUnits {
     pub(super) properties: LandXmlPipeProperties,
+    /// `true` only for root units synthesized from
+    /// `LandXmlLimits::assumed_linear_unit` (#5175, EDGE-LXPARSE-7 #7693).
+    pub(super) assumed: bool,
+}
+
+impl RawUnits {
+    /// The root units an assumed linear unit stands for: the token applies
+    /// to elevations too, and diameters, widths and heights default to the
+    /// linear unit exactly as for a declared element (`semantics::units`).
+    pub(super) fn assumed(linear_unit: &str) -> Self {
+        let properties = ["linearUnit", "elevationUnit"]
+            .into_iter()
+            .map(|key| (key.to_owned(), linear_unit.to_owned()))
+            .collect();
+        Self {
+            properties,
+            assumed: true,
+        }
+    }
 }
 
 pub(super) struct PositionInput {

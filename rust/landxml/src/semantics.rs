@@ -67,6 +67,12 @@ pub(crate) fn units(attributes: &Attributes) -> Result<LandXmlUnits> {
     })
 }
 
+/// Square meters per square linear unit: the area scale of a document whose
+/// `<Units>` declare no `areaUnit`, or whose linear unit is assumed.
+pub(crate) fn square_scale(units: &LandXmlUnits) -> f64 {
+    units.linear_scale_to_meters.powi(2)
+}
+
 fn scale(unit: &str) -> Result<f64> {
     match unit {
         "millimeter" => Ok(0.001),
@@ -85,9 +91,15 @@ fn scale(unit: &str) -> Result<f64> {
 /// record, reusing the identical [`scale`] table a declared `<Units>`
 /// element uses. An unknown token is the exact same "unsupported LandXML
 /// unit" refusal a bad declared element would get; it never falls back to
-/// meters silently. There is no XML attribute in the override path to carry
-/// a distinct elevation unit, so the assumed linear unit applies to both
-/// axes, matching how a `<Units>` element with no `elevationUnit` behaves.
+/// meters silently.
+///
+/// The assumed unit applies to elevations too, deliberately unlike a
+/// declared `<Units>` element without `elevationUnit`, whose elevations
+/// default to meters ([`units`], LandXML 1.2). That default belongs to a
+/// producer's declaration; a source with no `<Units>` declares nothing, and
+/// the operator's one assumption is that its numbers are in that unit. A
+/// meter default would mix systems the operator never chose (#5229 pins
+/// this; EDGE-LXMATH-11, #7693).
 fn assumed_units(linear_unit: &str) -> Result<LandXmlUnits> {
     let linear_scale_to_meters = scale(linear_unit)?;
     Ok(LandXmlUnits {
@@ -101,8 +113,10 @@ fn assumed_units(linear_unit: &str) -> Result<LandXmlUnits> {
 
 /// #5175: validate `limits.assumed_linear_unit` once, up front, so a bad
 /// override token is refused before any XML is read rather than discovered
-/// partway through a parse. Absent by default; every parse entry point that
-/// accepts [`LandXmlLimits`] should call this before constructing its parser.
+/// partway through a parse. Absent by default. Every parse entry point that
+/// accepts [`LandXmlLimits`] calls this before constructing its parser: TIN,
+/// plan, alignment and pipe networks, and the stream session once for all
+/// four (EDGE-LXPARSE-7, #7693).
 pub(crate) fn resolve_assumed_units(limits: &LandXmlLimits) -> Result<Option<LandXmlUnits>> {
     limits
         .assumed_linear_unit

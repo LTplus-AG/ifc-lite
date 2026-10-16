@@ -268,14 +268,19 @@ fn utf16_unit(input: &[u8], index: usize, encoding: Encoding) -> u16 {
 
 pub(crate) fn check_declared_encoding(input: &[u8], detected: Encoding) -> Result<()> {
     const DECLARATION_LIMIT: usize = 1024;
-    let declaration = input
-        .get(..input.len().min(DECLARATION_LIMIT))
-        .and_then(|prefix| str::from_utf8(prefix).ok())
-        .filter(|prefix| {
-            prefix
-                .strip_prefix("<?xml")
-                .is_some_and(|rest| rest.as_bytes().first().is_some_and(u8::is_ascii_whitespace))
-        });
+    let prefix = &input[..input.len().min(DECLARATION_LIMIT)];
+    // The window can end inside a multi-byte character. Read the valid
+    // prefix rather than treating the whole window as "no declaration",
+    // which let padding skip the encoding refusal (EDGE-LXPARSE-23, #7693).
+    let declaration = match str::from_utf8(prefix) {
+        Ok(prefix) => Some(prefix),
+        Err(invalid) => str::from_utf8(&prefix[..invalid.valid_up_to()]).ok(),
+    }
+    .filter(|prefix| {
+        prefix
+            .strip_prefix("<?xml")
+            .is_some_and(|rest| rest.as_bytes().first().is_some_and(u8::is_ascii_whitespace))
+    });
     let Some(declaration) = declaration else {
         return Ok(());
     };

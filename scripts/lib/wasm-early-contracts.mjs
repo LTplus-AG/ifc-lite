@@ -4,6 +4,7 @@
 import { runAppearanceContracts } from './wasm-appearance-contracts.mjs';
 import { runLandXmlContracts } from './wasm-landxml-contracts.mjs';
 import { runLandXmlCrsContracts } from './wasm-landxml-crs-contracts.mjs';
+import { runLandXmlUnitContracts } from './wasm-landxml-unit-contracts.mjs';
 import { runStepLogContracts } from './wasm-step-log-contracts.mjs';
 import { runSweptDiskContracts } from './wasm-swept-disk-contracts.mjs';
 import { runOpeningMissRepairContracts } from './wasm-opening-miss-repair-contract.mjs';
@@ -17,6 +18,7 @@ export function runEarlyContracts({ IfcAPI, api, test, skip, root }) {
   runAppearanceContracts(IfcAPI, test);
   runLandXmlContracts(api, test);
   runLandXmlCrsContracts(api, test);
+  runLandXmlUnitContracts(api, test);
   runStepLogContracts(api, test);
   runMapNormalizationContracts(api, test);
   runSweptDiskContracts(api, test, root);

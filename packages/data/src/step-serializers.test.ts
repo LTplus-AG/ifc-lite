@@ -8,6 +8,7 @@ import {
   formatStepReal,
   generateHeader,
   generateStepFileWithRegistry,
+  parseStepValue,
   ref,
   serializeValue,
   toStepLineWithRegistry,
@@ -260,3 +261,17 @@ describe('toStepLineWithRegistry / generateStepFileWithRegistry', () => {
 // the drift it exists to catch -- the reasoning behind the CSV-cell-escaper
 // precedent this follows: `rust/export/tests/fixtures/csv_cell_vectors.json`
 // / `packages/export/src/csv-cell.parity.test.ts`.
+
+describe('parseStepValue grammar parity (#7785)', () => {
+  it('an overflowing REAL stays raw text, never Infinity (D13)', () => {
+    expect(parseStepValue('1.E400')).toBe('1.E400');
+    expect(parseStepValue('-1.E400')).toBe('-1.E400');
+    expect(parseStepValue('(1.E400,2.)')).toEqual(['1.E400', 2]);
+    expect(parseStepValue('1.E-400')).toBe(0);
+  });
+
+  it('a comma or paren inside a comment does not split a list', () => {
+    expect(parseStepValue('(1.,/* a, b ) */2.)')).toEqual([1, 2]);
+    expect(parseStepValue("('a',/* ' */#3)")).toEqual(['a', { ref: 3 }]);
+  });
+});

@@ -160,63 +160,19 @@ impl GeometryRouter {
                 continue;
             }
 
-            // Textured tessellated face set → its own part with per-vertex UVs (#961);
-            // a terrain TIN is a face set that only appends `Flags` (#5942).
-            if matches!(item.ifc_type, IfcType::IfcTriangulatedFaceSet | IfcType::IfcTriangulatedIrregularNetwork) {
-                if let Some(map) = texture_index.get(&item.id) {
-                    let proc = crate::processors::TriangulatedFaceSetProcessor::new();
-                    if let Ok((mut sub_mesh, sub_uvs)) =
-                        proc.process_with_texture(&item, decoder, map)
-                    {
-                        self.scale_mesh(&mut sub_mesh); // UVs are unaffected by scale
-                        textured.push((sub_mesh, sub_uvs, map.attachment()));
-                        continue;
-                    }
+            // Textured tessellated face set → its own part with per-vertex UVs (#961),
+            // rebased like the plain items below (#5698, #7690).
+            if let Some(map) = texture_index.get(&item.id) {
+                if let Some((mut sub_mesh, sub_uvs)) =
+                    self.textured_face_set(&item, decoder, map, Some(self.rtc_offset))
+                {
+                    self.keep_rebase_in_origin(&mut sub_mesh);
+                    textured.push((sub_mesh, sub_uvs, map.attachment()));
+                    continue;
                 }
             }
 
-            match self.processors.get(&item.ifc_type, self.schema) {
-                Some(processor) => match processor.process(
-                    &item,
-                    decoder,
-                    self.schema,
-                    self.tessellation_quality,
-                ) {
-                    Ok(mut sub_mesh) => {
-                        sub_mesh.validate_indices();
-                        self.scale_mesh(&mut sub_mesh);
-                        untextured.merge(&sub_mesh);
-                    }
-                    Err(_e) => {
-                        self.record_unsupported_item(item.ifc_type.clone());
-                        crate::diag::diag_debug!(
-                            { item_id = item.id, ifc_type = ?item.ifc_type,
-                              error = %_e, "skipping unsupported representation-map item" }
-                            else {
-                                #[cfg(debug_assertions)]
-                                eprintln!(
-                                    "[ifc-lite] Skipping unsupported representation-map item #{} ({:?}): {}",
-                                    item.id, item.ifc_type, _e
-                                );
-                            }
-                        );
-                    }
-                },
-                None => {
-                    self.record_unsupported_item(item.ifc_type.clone());
-                    crate::diag::diag_debug!(
-                        { item_id = item.id, ifc_type = ?item.ifc_type,
-                          "skipping unsupported representation-map item (no processor)" }
-                        else {
-                            #[cfg(debug_assertions)]
-                            eprintln!(
-                                "[ifc-lite] Skipping unsupported representation-map item #{} ({:?}): no processor",
-                                item.id, item.ifc_type
-                            );
-                        }
-                    );
-                }
-            }
+            self.merge_source_item(&item, decoder, &mut untextured, "representation-map");
         }
 
         // attr 0: MappingOrigin (IfcAxis2Placement3D) — the only 3D transform;

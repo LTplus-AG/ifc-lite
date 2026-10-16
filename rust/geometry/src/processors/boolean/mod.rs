@@ -341,10 +341,10 @@ impl BooleanClippingProcessor {
                 (plane_point, plane_normal, agreement),
                 quality,
             ) {
-                Ok(prism) if !prism.is_empty() => prisms.push(prism),
+                Ok(Some(prism)) if !prism.is_empty() => prisms.push(prism),
                 // A cutter we can't build a prism for would be silently dropped
-                // here; defer to the sequential path, which records the loss as
-                // `PolygonalBoundedHalfSpaceFallback`.
+                // here; defer to the sequential path, which records the loss
+                // (fallback, or an over-cap boundary's refusal; the rewind drops ours).
                 _ => return self.defer_after(mark),
             }
         }
@@ -797,16 +797,16 @@ impl BooleanClippingProcessor {
             if polygonal {
                 let Some((plane_point, plane_normal, agreement)) =
                     self.half_space_plane_or_record(&second_operand, decoder) else { return Ok((mesh, false)) };
-                if let Ok(bound_mesh) = self.build_polygonal_bounded_half_space_mesh(
+                if let Ok(built) = self.build_polygonal_bounded_half_space_mesh(
                     &second_operand,
                     decoder,
                     &mesh,
                     (plane_point, plane_normal, agreement),
                     quality,
                 ) {
-                    // See `single_cutter_gate.rs` for the #3919/#3923
-                    // accept-gate check and why a rejection's fallback
-                    // depends on `solo_step`.
+                    // `None`: boundary over the vertex cap, refused on record (#7786).
+                    let Some(bound_mesh) = built else { return Ok((mesh, false)) };
+                    // `single_cutter_gate.rs`: the #3919/#3923 gate and `solo_step`.
                     match self.resolve_single_cutter_subtract(
                         &mesh,
                         &bound_mesh,

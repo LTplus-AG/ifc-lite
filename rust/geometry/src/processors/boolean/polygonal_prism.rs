@@ -33,7 +33,7 @@ impl BooleanClippingProcessor {
         host_mesh: &Mesh,
         (plane_point, plane_normal, agreement): (Point3<f64>, Vector3<f64>, bool),
         quality: TessellationQuality,
-    ) -> Result<Mesh> {
+    ) -> Result<Option<Mesh>> {
         let position_attr = half_space.get(2).ok_or_else(|| {
             Error::geometry("PolygonalBoundedHalfSpace missing Position".to_string())
         })?;
@@ -49,7 +49,9 @@ impl BooleanClippingProcessor {
             .resolve_ref(boundary_attr)?
             .ok_or_else(|| Error::geometry("Failed to resolve PolygonalBoundary".to_string()))?;
 
-        let contour_2d = self.parse_polygonal_boundary_2d(&boundary, decoder, quality)?;
+        let Some(contour_2d) = self.parse_polygonal_boundary_2d(&boundary, decoder, quality)? else {
+            return Ok(None);
+        };
 
         let origin = Point3::new(transform[(0, 3)], transform[(1, 3)], transform[(2, 3)]);
         let x_axis =
@@ -191,7 +193,7 @@ impl BooleanClippingProcessor {
             contour_2d.reverse();
         }
 
-        self.build_tilted_prism_mesh(&contour_2d, &base, &top)
+        self.build_tilted_prism_mesh(&contour_2d, &base, &top).map(Some)
     }
 
     /// Build a closed prism mesh given a parameterising 2D polygon (used

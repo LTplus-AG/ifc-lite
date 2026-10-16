@@ -5,17 +5,22 @@
 //! The 2D boundary of an `IfcPolygonalBoundedHalfSpace`: read, capped, checked.
 
 use super::BooleanClippingProcessor;
+use crate::diagnostics::{BoolFailureReason, BoolOp};
 use crate::profiles::ProfileProcessor;
 use crate::{Error, Point2, Result, TessellationQuality};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 
-/// Most vertices a bounded half-space boundary may have before the cut is
-/// refused (#7786). Prism build, earcut cap triangulation and the exact
+/// Most distinct vertices a bounded half-space boundary may have before the
+/// cut is refused (#7786). Prism build, earcut cap triangulation and the exact
 /// subtract all grow faster than linearly in it: a 4,000-point
 /// `IfcIndexedPolyCurve` took 11.9 s. The corpus maximum is 21 (ISSUE_068;
 /// every other model is 13 or fewer), so 256 leaves more than ten times that.
-/// A refusal takes the recorded `PolygonalBoundedHalfSpaceFallback` path like
-/// any other unreadable boundary.
+///
+/// A refusal leaves the host UNCUT with one `KernelError` record (D3, D16;
+/// the #7688 unreadable-cutter rule). It does not take the
+/// `PolygonalBoundedHalfSpaceFallback` unbounded plane clip: the boundary is
+/// readable, so main cut it correctly (slowly), and the unbounded clip would
+/// remove every bit of host outside the polygon.
 pub(super) const MAX_BOUNDARY_VERTICES: usize = 256;
 
 impl BooleanClippingProcessor {
@@ -25,25 +30,20 @@ impl BooleanClippingProcessor {
     /// IfcPolyline-only reader refused the IFC4 exporters' indexed poly curves,
     /// and the refusal fell back to the UNBOUNDED plane clip, over-cutting
     /// everything outside the polygon (#7688 PROC-S18).
+    ///
+    /// `Ok(None)`: the boundary is over [`MAX_BOUNDARY_VERTICES`]; the refusal
+    /// is already on record and the caller leaves the host uncut.
     pub(super) fn parse_polygonal_boundary_2d(
         &self,
         boundary: &DecodedEntity,
         decoder: &mut EntityDecoder,
         quality: TessellationQuality,
-    ) -> Result<Vec<Point2<f64>>> {
+    ) -> Result<Option<Vec<Point2<f64>>>> {
         let mut contour: Vec<Point2<f64>> = ProfileProcessor::new(self.schema.clone())
             .get_curve_points(boundary, decoder, quality)?
             .into_iter()
             .map(|p| Point2::new(p.x, p.y))
             .collect();
-
-        // Counted before the closing-point pop and the O(n^2) simplicity check.
-        if contour.len() > MAX_BOUNDARY_VERTICES {
-            return Err(Error::geometry(format!(
-                "PolygonalBoundary has {} vertices, over the {MAX_BOUNDARY_VERTICES} cap",
-                contour.len()
-            )));
-        }
 
         if contour.len() > 1 {
             let first = contour[0];
@@ -51,6 +51,20 @@ impl BooleanClippingProcessor {
             if (first.x - last.x).abs() < 1e-9 && (first.y - last.y).abs() < 1e-9 {
                 contour.pop();
             }
+        }
+
+        // Counted after the closing-point pop (a closed 256-gon is 256), and
+        // before the O(n^2) simplicity check and the prism build.
+        if contour.len() > MAX_BOUNDARY_VERTICES {
+            self.record_failure(
+                BoolOp::Difference,
+                BoolFailureReason::KernelError(format!(
+                    "IfcPolygonalBoundedHalfSpace boundary has {} vertices, over the \
+                     {MAX_BOUNDARY_VERTICES} cap; host left uncut",
+                    contour.len()
+                )),
+            );
+            return Ok(None);
         }
 
         if contour.len() < 3 {
@@ -64,7 +78,7 @@ impl BooleanClippingProcessor {
             return Err(Error::geometry("PolygonalBoundary crosses itself".to_string()));
         }
 
-        Ok(contour)
+        Ok(Some(contour))
     }
 
     /// No two non-adjacent edges of the closed contour touch (exact

@@ -139,6 +139,36 @@ fn issue_7786_a_void_outside_the_host_changes_nothing() {
     mesh_item(&data, 21).assert_volume(7.0, "empty Voids list");
 }
 
+/// A void outside the OUTER shell (bad data, but harmless: there is nothing
+/// to subtract) leaves the cutter its Outer: the cut applies (7) and nothing
+/// is refused (the kernel's `NoOverlap` is a miss, not a rejection).
+#[test]
+fn issue_7786_a_void_outside_the_outer_shell_is_not_a_refusal() {
+    let cutter = box_shell(300, [0.0, 0.0, 1.0], [2.0, 2.0, 3.0]);
+    let far = box_shell(400, [5.0, 5.0, 5.0], [6.0, 6.0, 6.0]);
+    let data = format!("{HOST}{cutter}{far}#91=IFCFACETEDBREPWITHVOIDS(#300,(#400));\n\
+        #20=IFCBOOLEANRESULT(.DIFFERENCE.,#6,#91);\n");
+    let meshed = mesh_item(&data, 20);
+    meshed.assert_volume(7.0, "void outside the outer shell");
+    assert!(meshed.failures.is_empty(), "{:?}", meshed.failures);
+}
+
+/// Two voids, one crossing the Outer shell: the cutter is Outer minus both.
+/// Void A is inside (0.125). Void B (x, y in [0.25, 0.75], z in [0.5, 1.125])
+/// pokes out of the cutter's bottom face; only its part inside the cutter
+/// (z in [1, 1.125], 0.03125) is not cutter material, so the host keeps it.
+#[test]
+fn issue_7786_multiple_voids_one_crossing_the_outer_shell() {
+    let cutter = box_shell(300, [0.0, 0.0, 1.0], [2.0, 2.0, 3.0]);
+    let a = box_shell(400, [0.25, 0.25, 1.25], [0.75, 0.75, 1.75]);
+    let b = box_shell(500, [0.25, 0.25, 0.5], [0.75, 0.75, 1.125]);
+    let data = format!("{HOST}{cutter}{a}{b}#91=IFCFACETEDBREPWITHVOIDS(#300,(#400,#500));\n\
+        #20=IFCBOOLEANRESULT(.DIFFERENCE.,#6,#91);\n");
+    let meshed = mesh_item(&data, 20);
+    meshed.assert_volume(8.0 - (1.0 - 0.125 - 0.03125), "two voids, one crossing the outer");
+    assert!(meshed.failures.is_empty(), "{:?}", meshed.failures);
+}
+
 /// A Voids reference that does not mesh refuses the cut (host uncut, 8) with a
 /// counted record (D3) instead of cutting as if the void were material.
 #[test]
@@ -148,6 +178,7 @@ fn issue_7786_an_unreadable_void_refuses_the_cut_on_record() {
         #20=IFCBOOLEANRESULT(.DIFFERENCE.,#6,#91);\n");
     let meshed = mesh_item(&data, 20);
     meshed.assert_volume(8.0, "unreadable void");
+    assert_eq!(meshed.failures.len(), 1, "one refused cutter, one record: {:?}", meshed.failures);
     assert!(
         meshed.recorded(|f| matches!(f, BoolFailureReason::KernelError(m) if m.contains("IfcFacetedBrepWithVoids"))),
         "{:?}",
@@ -156,30 +187,80 @@ fn issue_7786_an_unreadable_void_refuses_the_cut_on_record() {
 }
 
 /// The boundary vertex cap: a half-space bounded by a large indexed poly
-/// curve takes the recorded unbounded fallback instead of paying the prism
-/// and CSG cost (11.9 s at 4,000 points before the cap).
+/// curve is refused (host uncut, ONE record) instead of paying the prism and
+/// CSG cost (11.9 s at 4,000 points before the cap). It must not take the
+/// unbounded plane-clip fallback, which would remove the whole top half of
+/// the host (volume 4) though the boundary is readable (D3, D16).
 #[test]
 fn issue_7786_an_oversized_bounded_half_space_boundary_is_refused_on_record() {
-    let n = 4000;
-    let pts: Vec<String> = (0..n)
-        .map(|i| {
-            let a = std::f64::consts::TAU * i as f64 / n as f64;
-            format!("({:?},{:?})", 3.0 * a.cos(), 3.0 * a.sin())
-        })
-        .collect();
-    let data = format!("{HOST}#35=IFCCARTESIANPOINTLIST2D(({}),$);\n\
-        #34=IFCINDEXEDPOLYCURVE(#35,$,.F.);\n\
-        #13=IFCPOLYGONALBOUNDEDHALFSPACE(#12,.F.,#4,#34);\n\
-        #20=IFCBOOLEANCLIPPINGRESULT(.DIFFERENCE.,#6,#13);\n", pts.join(","));
+    let data = format!("{HOST}{}#13=IFCPOLYGONALBOUNDEDHALFSPACE(#12,.F.,#4,#34);\n\
+        #20=IFCBOOLEANCLIPPINGRESULT(.DIFFERENCE.,#6,#13);\n", circle_boundary(34, 4000, 0.0, 3.0));
     let started = std::time::Instant::now();
     let meshed = mesh_item(&data, 20);
     assert!(started.elapsed().as_secs() < 5, "refusal must be cheap: {:?}", started.elapsed());
-    meshed.assert_volume(4.0, "refused boundary degrades to the plane clip");
+    meshed.assert_volume(8.0, "refused boundary leaves the host uncut");
+    assert_eq!(meshed.failures.len(), 1, "one refusal, one record: {:?}", meshed.failures);
     assert!(
-        meshed.recorded(|f| matches!(f, BoolFailureReason::PolygonalBoundedHalfSpaceFallback)),
+        meshed.recorded(|f| matches!(f, BoolFailureReason::KernelError(m) if m.contains("4000 vertices"))),
         "{:?}",
         meshed.failures
     );
+}
+
+/// In a batched chain the over-cap cutter defers to the sequential walk, which
+/// still applies the good cutter (a 1 x 1 square: volume 7) and records the
+/// refused one exactly once (the batched attempt's record is rewound).
+#[test]
+fn issue_7786_an_oversized_boundary_in_a_chain_keeps_the_good_cut() {
+    let data = format!("{HOST}{}#40=IFCCARTESIANPOINT((0.,0.));\n\
+        #41=IFCCARTESIANPOINT((1.,0.));\n#42=IFCCARTESIANPOINT((1.,1.));\n\
+        #43=IFCCARTESIANPOINT((0.,1.));\n#44=IFCPOLYLINE((#40,#41,#42,#43,#40));\n\
+        #13=IFCPOLYGONALBOUNDEDHALFSPACE(#12,.F.,#4,#34);\n\
+        #14=IFCPOLYGONALBOUNDEDHALFSPACE(#12,.F.,#4,#44);\n\
+        #20=IFCBOOLEANCLIPPINGRESULT(.DIFFERENCE.,#6,#14);\n\
+        #21=IFCBOOLEANCLIPPINGRESULT(.DIFFERENCE.,#20,#13);\n\
+        #22=IFCBOOLEANCLIPPINGRESULT(.DIFFERENCE.,#6,#13);\n\
+        #23=IFCBOOLEANCLIPPINGRESULT(.DIFFERENCE.,#22,#14);\n", circle_boundary(34, 300, 0.0, 3.0));
+    for id in [21, 23] {
+        let meshed = mesh_item(&data, id);
+        meshed.assert_volume(7.0, "good cutter applied, over-cap cutter refused");
+        assert_eq!(meshed.failures.len(), 1, "#{id}: one refusal, one record: {:?}", meshed.failures);
+    }
+}
+
+/// A closed `IfcPolyline` 256-gon repeats its first point (257 points): it is
+/// 256 vertices, under the cap, and still bounds the cut.
+#[test]
+fn issue_7786_a_closed_polyline_at_the_cap_still_bounds_the_cut() {
+    let n = 256;
+    let mut out = String::new();
+    let mut refs = Vec::new();
+    for i in 0..n {
+        let a = std::f64::consts::TAU * i as f64 / n as f64;
+        let (x, y) = (0.5 + 0.25 * a.cos(), 0.5 + 0.25 * a.sin());
+        out += &format!("#{}=IFCCARTESIANPOINT(({x:?},{y:?}));\n", 1000 + i);
+        refs.push(format!("#{}", 1000 + i));
+    }
+    refs.push("#1000".to_string());
+    let data = format!("{HOST}{out}#34=IFCPOLYLINE(({}));\n\
+        #13=IFCPOLYGONALBOUNDEDHALFSPACE(#12,.F.,#4,#34);\n\
+        #20=IFCBOOLEANCLIPPINGRESULT(.DIFFERENCE.,#6,#13);\n", refs.join(","));
+    let meshed = mesh_item(&data, 20);
+    let v = meshed.volume();
+    assert!(v > 7.5 && v < 8.0, "bounded cut removes a small disc prism, got {v}; {:?}", meshed.failures);
+    assert!(meshed.failures.is_empty(), "{:?}", meshed.failures);
+}
+
+/// `#id = IFCINDEXEDPOLYCURVE` over an `n`-point circle (radius `r`, centre
+/// (`c`, `c`)), with its point list at `#id + 1`.
+fn circle_boundary(id: u32, n: usize, c: f64, r: f64) -> String {
+    let pts: Vec<String> = (0..n)
+        .map(|i| {
+            let a = std::f64::consts::TAU * i as f64 / n as f64;
+            format!("({:?},{:?})", c + r * a.cos(), c + r * a.sin())
+        })
+        .collect();
+    format!("#{}=IFCCARTESIANPOINTLIST2D(({}),$);\n#{id}=IFCINDEXEDPOLYCURVE(#{},$,.F.);\n", id + 1, pts.join(","), id + 1)
 }
 
 /// Just under the cap still bounds the cut (the cap is not a regression for

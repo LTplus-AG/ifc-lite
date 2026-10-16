@@ -80,6 +80,8 @@ pub struct StepOptions {
     /// reference closure is added so every emitted `#ref` resolves.
     pub included: Option<Vec<u32>>,
     /// Root-attribute edits to apply during serialization (P3 mutation bridge).
+    /// A `value` that is not one STEP value is refused and counted in
+    /// [`StepStats::attribute_edits_refused`].
     pub attribute_mutations: Vec<AttrMutation>,
     /// Property create/update edits — synthesized as new pset entities appended to DATA.
     pub property_mutations: Vec<PropMutation>,
@@ -159,4 +161,16 @@ pub struct StepStats {
     /// replacement for, so they were kept as written (#5365). Non-zero means
     /// the file is not valid against its header.
     pub enum_values_refused: usize,
+    /// [`PropMutation`]s that are not in the output (#7682, EXPORT-STEP-10),
+    /// counted per mutation: its target is not in the export, its `value` is
+    /// not one STEP value, or the file has no express ids left for the
+    /// property set its group needed (a group that does not fit is refused
+    /// whole). Non-zero means an edit the caller asked for is not in the output.
+    pub property_mutations_refused: usize,
+    /// Source records dropped because a later record in the file has their
+    /// express id (#7682, EXPORT-STEP-11). The LAST record with an id is
+    /// written, the one core's index (and so every ifc-lite reader) resolves
+    /// it to; each earlier one is counted here. Non-zero means the source was
+    /// invalid and the output does not carry everything it said.
+    pub duplicate_records_dropped: usize,
 }

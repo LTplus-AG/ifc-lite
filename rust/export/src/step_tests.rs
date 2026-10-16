@@ -6,6 +6,7 @@
 //! the `_tests.rs` suffix convention.
 
 use super::*;
+use ifc_lite_core::EntityScanner;
 // Exercised directly here; `step.rs` reaches it through `step_cow`.
 use crate::step_json::export_step_json;
 use crate::step_text::{refs_in_line, substitute_ref_in_attr};

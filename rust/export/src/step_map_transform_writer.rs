@@ -6,17 +6,21 @@ use nalgebra::Matrix4;
 use super::{MapConversionEntityPatch, Record};
 use crate::step_text::{apply_attr_mutations_counted, attribute_of};
 
-pub(super) struct Writer { next: u32, entities: Vec<MapConversionEntityPatch>, origin: Option<(u32, u32)> }
+/// Ids come from the one allocator every STEP writer appends with
+/// (`crate::step_ids`, #7682), so `u32::MAX` itself is handed out and nothing
+/// past it.
+pub(super) struct Writer { next: crate::step_ids::IdAllocator, entities: Vec<MapConversionEntityPatch>, origin: Option<(u32, u32)> }
 
 impl Writer {
     pub(super) fn new(records: &[Record<'_>]) -> Result<Self, String> {
         let max = records.iter().map(|record| record.id).max().unwrap_or(0);
-        Ok(Self { next: max.checked_add(1).ok_or("express ID space exhausted")?, entities: Vec::new(), origin: None })
+        let next = crate::step_ids::IdAllocator::after(max);
+        next.peek().ok_or("express ID space exhausted")?;
+        Ok(Self { next, entities: Vec::new(), origin: None })
     }
 
     fn entity(&mut self, kind: &str, arguments: String) -> Result<u32, String> {
-        let id = self.next;
-        self.next = self.next.checked_add(1).ok_or("express ID space exhausted")?;
+        let id = self.next.allocate().ok_or("express ID space exhausted")?;
         self.entities.push(MapConversionEntityPatch { express_id: id, line: format!("#{id}={kind}({arguments});") });
         Ok(id)
     }

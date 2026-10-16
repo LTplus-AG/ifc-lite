@@ -29,9 +29,6 @@ pub(crate) struct Resolved {
     /// Mutations that were asked for and not made. Counted so the caller learns
     /// an edit is missing rather than reading a clean export.
     pub(crate) refused: usize,
-    /// Where the next synthesized record starts, so property synthesis
-    /// continues from the same counter and the two cannot collide.
-    pub(crate) next_id: Option<u32>,
 }
 
 /// A mutation that survived every check not needing an allocated id, carrying
@@ -54,6 +51,12 @@ fn candidate<'a>(
 ) -> Option<Candidate<'a>> {
     let &(source_start, source_end) = line_of.get(&cow.express_id)?;
     if !included.contains(&cow.referrer_id) {
+        return None;
+    }
+    // The value is written into the copy as is, so it has to be one STEP
+    // value: a `,` in it would shift every later slot and a `);` would start
+    // another record (#7682, EXPORT-STEP-26).
+    if !crate::step_slot::is_step_value(&cow.value) {
         return None;
     }
     // The attribute has to exist before an id is spent on the copy.
@@ -82,18 +85,16 @@ fn candidate<'a>(
 
 /// Resolve every mutation the file can express, and count the rest.
 ///
-/// `next_id` is `None` when the id space is spent. Saturating was worse than
-/// the overflow it replaced: on a file holding `u32::MAX` it leaves the counter
-/// equal to an id the file already uses, so the first copy silently collides
-/// with a real record. A file that has spent the whole id space has no room for
-/// another record, and emitting one anyway corrupts it.
+/// Copies take their ids from `ids`, the allocator the property synthesis
+/// after this continues from, so the two cannot collide. A copy with no id
+/// left is refused (see [`crate::step_ids`]).
 pub(crate) fn resolve(
     mutations: &[CopyOnWriteMutation],
     content: &[u8],
     line_of: &HashMap<u32, (usize, usize)>,
     included: &HashSet<u32>,
     caller_edits: &HashMap<u32, BTreeMap<usize, String>>,
-    mut next_id: Option<u32>,
+    ids: &mut crate::step_ids::IdAllocator,
 ) -> Resolved {
     let candidates: Vec<Candidate<'_>> = mutations
         .iter()
@@ -142,7 +143,7 @@ pub(crate) fn resolve(
             copies[at].2.insert(cow.index, cow.value.clone());
             continue;
         }
-        let Some(copy_id) = next_id else {
+        let Some(copy_id) = ids.peek() else {
             // No id left to give it. Skipped rather than duplicated, and
             // counted: a caller reading a clean export would have no way to
             // know the edit is not in it.
@@ -171,7 +172,7 @@ pub(crate) fn resolve(
             continue;
         };
 
-        next_id = copy_id.checked_add(1);
+        ids.allocate();
         serving.insert(
             (cow.express_id, cow.referrer_id, cow.referrer_index),
             copies.len(),
@@ -190,7 +191,6 @@ pub(crate) fn resolve(
     Resolved {
         copies,
         repointed,
-        next_id,
         refused,
     }
 }

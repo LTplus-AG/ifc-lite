@@ -234,16 +234,14 @@ export class IfcServerClient {
       headers: this.authHeaders(),
       signal: AbortSignal.timeout(5000), // 5s timeout for cache check
     });
-    const cacheCheckTime = performance.now() - cacheCheckStart;
 
-    if (cacheCheck.ok) {
-      // Cache HIT - fetch directly without uploading!
-      console.log(`[client] Cache HIT (check: ${cacheCheckTime.toFixed(0)}ms) - skipping upload`);
-      return this.fetchCachedGeometry(hash, options);
-    }
+    // Cache HIT - fetch without uploading! The check only sees an entry is there;
+    // a 404 from the fetch means it was unusable and dropped: upload rewrites it (#7676).
+    const cached = cacheCheck.ok ? await this.fetchCachedGeometry(hash, options) : null;
+    if (cached) return cached;
 
     // Cache MISS - upload and process as usual
-    console.log(`[client] Cache MISS (check: ${cacheCheckTime.toFixed(0)}ms) - uploading file`);
+    console.log(`[client] Cache ${cacheCheck.ok ? 'entry unusable' : 'MISS'} (check: ${(performance.now() - cacheCheckStart).toFixed(0)}ms) - uploading file`);
     return this.uploadAndProcessParquet(file, hash, options);
   }
 
@@ -378,10 +376,7 @@ export class IfcServerClient {
    * Fetch cached geometry directly without uploading the file.
    * @private
    */
-  private async fetchCachedGeometry(
-    hash: string,
-    options?: ParseRequestOptions
-  ): Promise<ParquetParseResponse> {
+  private async fetchCachedGeometry(hash: string, options?: ParseRequestOptions): Promise<ParquetParseResponse | null> {
     const fetchStart = performance.now();
     const response = await fetch(`${this.baseUrl}/api/v1/cache/geometry/${hash}${parseQuery(options, true)}`, {
       method: 'GET',
@@ -389,6 +384,10 @@ export class IfcServerClient {
       signal: AbortSignal.timeout(this.timeout),
     });
 
+    if (response.status === 404) {
+      await response.body?.cancel();
+      return null;
+    }
     if (!response.ok) {
       throw await this.handleError(response);
     }

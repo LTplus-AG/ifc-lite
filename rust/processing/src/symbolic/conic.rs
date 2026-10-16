@@ -21,7 +21,7 @@ use super::transform::{parse_axis2_placement_2d, Transform2D};
 pub(super) fn conic_basis(
     conic: &DecodedEntity,
     decoder: &mut EntityDecoder,
-    unit_scale: f32,
+    unit_scale: f64,
 ) -> Transform2D {
     let Some(pos_ref) = conic.get_ref(0) else {
         return Transform2D::unresolved(); // mandatory Position absent
@@ -37,8 +37,8 @@ pub(super) fn conic_basis(
 /// (both equal to the radius for a circle).
 pub(super) struct Conic {
     pub(super) basis: Transform2D,
-    pub(super) semi_a: f32,
-    pub(super) semi_b: f32,
+    pub(super) semi_a: f64,
+    pub(super) semi_b: f64,
 }
 
 impl Conic {
@@ -50,16 +50,16 @@ impl Conic {
     pub(super) fn read(
         curve: &DecodedEntity,
         decoder: &mut EntityDecoder,
-        unit_scale: f32,
+        unit_scale: f64,
     ) -> Option<Self> {
         let length =
-            |i: usize| curve.get(i).and_then(|a| a.as_float()).unwrap_or(0.0) as f32 * unit_scale;
+            |i: usize| curve.get(i).and_then(|a| a.as_float()).unwrap_or(0.0) * unit_scale;
         let (semi_a, semi_b) = match curve.ifc_type {
             IfcType::IfcCircle => (length(1), length(1)),
             IfcType::IfcEllipse => (length(1), length(2)),
             _ => return None,
         };
-        let valid = |v: f32| v.is_finite() && v > 0.0;
+        let valid = |v: f64| v.is_finite() && v > 0.0;
         if !valid(semi_a) || !valid(semi_b) {
             return None;
         }
@@ -78,7 +78,7 @@ impl Conic {
     /// conic is placed in. Local +X is `Position.RefDirection` and
     /// `SemiAxis1` runs along it, so the sample goes through the basis
     /// rotation: an ellipse on a rotated placement is drawn rotated.
-    pub(super) fn point_at(&self, theta: f32) -> (f32, f32) {
+    pub(super) fn point_at(&self, theta: f64) -> (f64, f64) {
         self.basis
             .transform_point(self.semi_a * theta.cos(), self.semi_b * theta.sin())
     }

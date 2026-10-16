@@ -68,3 +68,23 @@ describe('convertStepLine matches the shared cross-language upconversion sweep',
     );
   });
 });
+
+describe('the IFC4X3 alignment-product proxy matches the shared Rust/TS vectors (#7683)', () => {
+  // The twins mint the GlobalId differently, so the vectors mask it as
+  // <MINTED>; it is asserted separately to differ from the source's.
+  const vectorsPath = fileURLToPath(
+    new URL('../../../rust/export/tests/fixtures/schema_product_proxy_vectors.json', import.meta.url),
+  );
+  const vectors: { cases: SweepCase[] } = JSON.parse(readFileSync(vectorsPath, 'utf8'));
+
+  it('every vector agrees, with a minted GlobalId', () => {
+    expect(vectors.cases.length).toBeGreaterThanOrEqual(4);
+    for (const c of vectors.cases) {
+      const got = convertStepLine(c.line, c.from, c.to) ?? '';
+      const guid = /IFCPROXY\('([^']*)'/.exec(got)?.[1];
+      expect(got.replace(/IFCPROXY\('[^']*'/, 'IFCPROXY(<MINTED>'), `${c.from}->${c.to} [${c.why}]`).toBe(c.expect);
+      expect(guid, `minted, not copied: ${got}`).toBeTruthy();
+      expect(guid).not.toBe(c.line.split("'")[1]);
+    }
+  });
+});

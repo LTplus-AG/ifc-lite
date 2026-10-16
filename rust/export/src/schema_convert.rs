@@ -6,9 +6,12 @@
 //! names from core's EXPRESS registry, #7683), and a proxy fallback for types
 //! with no target representation.
 
+use std::borrow::Cow;
+
 use crate::schema_ifc2x3_slots::Ifc2x3SlotFill;
 use crate::schema_enum::ConversionChecks;
-use crate::schema_unrepresented::{check_representation, UnrepresentedEntityError};
+use crate::schema_plan::{plan_for, Adjust, Plan};
+use crate::schema_unrepresented::{product_proxy, resolve_unrepresented_entity, UnrepresentedEntityError};
 use crate::step_slot::split_top_level_args;
 
 /// Canonicalize a FILE_SCHEMA label to one of the four families we convert between.
@@ -70,7 +73,7 @@ fn map_4_to_2x3(t: &str) -> Option<&'static str> {
 /// #4206), so they are reconciled by NAME. The names come from core's
 /// registry, like every other list here. Same set as the TypeScript twin's
 /// `BY_NAME_ATTR_REMAP_TYPES`.
-const BY_NAME_ATTR_REMAP_TYPES: &[&str] =
+pub(crate) const BY_NAME_ATTR_REMAP_TYPES: &[&str] =
     &["IFCDOORTYPE", "IFCWINDOWTYPE", "IFCSTRUCTURALCURVEACTION", "IFCSTRUCTURALSURFACEACTION"];
 
 /// Reconcile a renamed entity's attribute list by matching attribute NAMES
@@ -97,20 +100,29 @@ const BY_NAME_ATTR_REMAP_TYPES: &[&str] =
 /// #4714, it is whitespace-only, and the four mandatory slots this doc is
 /// about are overwritten by the fill either way; left as found rather than
 /// changed on the way past.
-fn remap_attrs_by_name(attrs: &str, src_names: &[&str], tgt_names: &[&str]) -> Option<String> {
-    let values = split_top_level_args(attrs)?;
+fn remap_attrs_by_name(values: &[String], src_names: &[&str], tgt_names: &[&str]) -> String {
     let mut by_name: std::collections::HashMap<&str, &str> = std::collections::HashMap::new();
     for (name, value) in src_names.iter().zip(values.iter()) {
         by_name.insert(*name, value.as_str());
     }
-    Some(tgt_names
+    tgt_names
         .iter()
         .map(|name| {
             let given = by_name.get(name).copied().filter(|v| v.trim() != "$");
             given.unwrap_or("$")
         })
         .collect::<Vec<_>>()
-        .join(","))
+        .join(",")
+}
+
+/// Source values a by-name remap has no same-named target slot for.
+fn values_without_a_name(values: &[String], src_names: &[&str], tgt_names: &[&str]) -> usize {
+    src_names.iter().zip(values).filter(|(name, v)| !tgt_names.contains(name) && holds_value(v)).count()
+}
+
+/// A slot that carries information: not `$`, `*` or empty.
+fn holds_value(slot: &str) -> bool {
+    !matches!(slot.trim(), "" | "$" | "*")
 }
 
 fn map_4x3_to_4(t: &str) -> Option<&'static str> {
@@ -135,11 +147,11 @@ fn map_4x3_to_4(t: &str) -> Option<&'static str> {
 }
 
 /// IFC4X3 alignment and positioning types with no representation in IFC2X3 or
-/// IFC4, replaced by a synthesised proxy. The positioning types used to be
+/// IFC4, replaced by [`product_proxy`]. The positioning types used to be
 /// RENAMED to `IFCPROXY` instead, which kept their own attributes under the
 /// new name: `IFCALIGNMENT(…,.ROAD.)` became an 8-attribute `IFCPROXY` with an
 /// alignment enum in `ProxyType`, where IfcProxy takes 9 (EXPORT-MERGE-8, #7683).
-fn should_skip_entity(t: &str, to: &str) -> bool {
+pub(crate) fn should_skip_entity(t: &str, to: &str) -> bool {
     if to == "IFC4X3" || to == "IFC5" {
         return false;
     }
@@ -174,25 +186,32 @@ pub(crate) fn is_strict_attr_prefix(shorter: &[&str], longer: &[&str]) -> bool {
 }
 
 /// Convert an entity type name between schemas (with multi-step chaining).
-pub fn convert_entity_type(entity_type: &str, from: &str, to: &str) -> String {
+/// The export path asks [`rename_type`] through `schema_plan`; this owned form
+/// is what the tests pin.
+#[cfg(test)]
+pub(crate) fn convert_entity_type(entity_type: &str, from: &str, to: &str) -> String {
     let (from, to) = (canon(from), canon(to));
     if from == to {
         return entity_type.to_string();
     }
     let u = entity_type.to_uppercase();
+    rename_type(&u, from, to).map_or(u, str::to_string)
+}
+
+/// The renamed type for an uppercase `u` between two canonical schemas, or
+/// `None` when it keeps its name.
+pub(crate) fn rename_type(u: &str, from: &str, to: &str) -> Option<&'static str> {
     match (from, to) {
-        ("IFC2X3", "IFC4") | ("IFC2X3", "IFC4X3") | ("IFC2X3", "IFC5") => {
-            // 2X3 → 4 (then 4 → 4X3 is a no-op rename-wise)
-            map_2x3_to_4(&u).unwrap_or(&u).to_string()
-        }
-        ("IFC4", "IFC2X3") => map_4_to_2x3(&u).unwrap_or(&u).to_string(),
-        ("IFC4X3", "IFC4") | ("IFC5", "IFC4") => map_4x3_to_4(&u).unwrap_or(&u).to_string(),
-        ("IFC4X3", "IFC2X3") | ("IFC5", "IFC2X3") => {
-            let s1 = map_4x3_to_4(&u).unwrap_or(&u);
-            map_4_to_2x3(s1).unwrap_or(s1).to_string()
-        }
+        // 2X3 → 4 (then 4 → 4X3 is a no-op rename-wise)
+        ("IFC2X3", "IFC4") | ("IFC2X3", "IFC4X3") | ("IFC2X3", "IFC5") => map_2x3_to_4(u),
+        ("IFC4", "IFC2X3") => map_4_to_2x3(u),
+        ("IFC4X3", "IFC4") | ("IFC5", "IFC4") => map_4x3_to_4(u),
+        ("IFC4X3", "IFC2X3") | ("IFC5", "IFC2X3") => match map_4x3_to_4(u) {
+            Some(s1) => Some(map_4_to_2x3(s1).unwrap_or(s1)),
+            None => map_4_to_2x3(u),
+        },
         // 4 ↔ 4X3 / 5 carry no entity renames in this table.
-        _ => u,
+        _ => None,
     }
 }
 
@@ -209,24 +228,6 @@ pub(crate) fn placeholder_guid(id: u32) -> String {
         n /= 64;
     }
     String::from_utf8(s.to_vec()).unwrap()
-}
-
-/// Trim a STEP attribute list to `max_count` top-level attributes (STEP-nesting aware).
-fn trim_attributes(attrs: &str, max_count: usize) -> Option<String> {
-    if attrs.trim().is_empty() {
-        return Some(attrs.to_string());
-    }
-    let out = split_top_level_args(attrs)?;
-    Some(out[..out.len().min(max_count)].join(","))
-}
-
-/// Pad a STEP attribute list with trailing `$` up to `count` attributes. An
-/// attribute-less record is left alone rather than fabricated from nothing,
-/// matching the TypeScript twin's `currentCount > 0` guard.
-fn pad_attributes(attrs: &str, count: usize) -> Option<String> {
-    let current = split_top_level_args(attrs)?.len();
-    let missing = if current > 0 { count.saturating_sub(current) } else { 0 };
-    Some(format!("{attrs}{}", ",$".repeat(missing)))
 }
 
 /// Convert one STEP entity line `#id=TYPE(attrs);` from `from` to `to`.
@@ -254,7 +255,8 @@ pub fn convert_step_line(
     if cfrom == cto {
         return Ok(line.to_string());
     }
-    let mut converted = convert_record(line, cfrom, cto, express_id)?;
+    let mut checks = checks;
+    let mut converted = convert_record(line, cfrom, cto, express_id, checks.as_deref_mut())?;
     if let Some(checks) = checks {
         converted = checks.enums.apply(converted, cto);
         let ifc4_downgrade = cto == "IFC4" && (cfrom == "IFC4X3" || cfrom == "IFC5");
@@ -264,8 +266,16 @@ pub fn convert_step_line(
 }
 
 /// [`convert_step_line`] before the IFC2X3 required-slot fills, between two
-/// different canonical schemas.
-fn convert_record(line: &str, cfrom: &'static str, cto: &'static str, express_id: u32) -> Result<String, UnrepresentedEntityError> {
+/// different canonical schemas. With `checks`, the per-type decision comes
+/// from its [`crate::schema_plan::PlanCache`] and the values the conversion
+/// had no target slot for are counted into it.
+fn convert_record(
+    line: &str,
+    cfrom: &'static str,
+    cto: &'static str,
+    express_id: u32,
+    checks: Option<&mut ConversionChecks>,
+) -> Result<String, UnrepresentedEntityError> {
     // Parse #ID=TYPE(attrs); (multi-line tolerant: rfind ')').
     let trimmed = line.trim_end();
     let body = trimmed.strip_suffix(';').unwrap_or(trimmed);
@@ -283,67 +293,75 @@ fn convert_record(line: &str, cfrom: &'static str, cto: &'static str, express_id
         Some(c) if c > popen => c,
         _ => return Ok(line.to_string()),
     };
-    let entity_type = after[..popen].trim().to_uppercase();
+    let raw_type = after[..popen].trim();
+    // Writers emit uppercase type names; only allocate for one that is not.
+    let entity_type: Cow<'_, str> = if raw_type.bytes().any(|b| b.is_ascii_lowercase() || !b.is_ascii()) {
+        Cow::Owned(raw_type.to_uppercase())
+    } else {
+        Cow::Borrowed(raw_type)
+    };
     let attrs = &after[popen + 1..aclose];
 
     // Validate before choosing any conversion branch. Otherwise a malformed
     // slot list can still receive a type rename, proxy replacement, trim, or
-    // padding and become a partially converted record (#4200).
-    if split_top_level_args(attrs).is_none() {
+    // padding and become a partially converted record (#4200). The one split
+    // is then reused by every branch below.
+    let Some(args) = split_top_level_args(attrs) else {
         return Ok(line.to_string());
-    }
+    };
 
-    let new_type = convert_entity_type(&entity_type, cfrom, cto);
-
-    if should_skip_entity(&new_type, cto) {
-        // The proxy carries a MINTED GlobalId, not the source entity's, and the
-        // authored identity is therefore lost on a downgrade. That is
-        // deliberate on the TypeScript twin (`convertStepLine` in
-        // `packages/export/src/schema-converter.ts`), which documents the
-        // counter-example and pins it in `merged-exporter.test.ts`: two
-        // federated models can legitimately carry the SAME alignment GlobalId,
-        // and copying the source id would unify two distinct alignments into
-        // one. The two implementations do not agree on WHAT to mint — this one
-        // derives from the express id, the TypeScript one from the whole source
-        // line — so the same model downgraded by each yields different proxy
-        // ids. Left as found; changing either is a decision for the maintainer,
-        // not a side effect of a round-trip test.
-        return Ok(format!(
-            "{prefix}IFCPROXY('{}',$,'{}',$,$,$,$,.NOTDEFINED.,$);",
-            placeholder_guid(express_id),
-            entity_type
-        ));
-    }
-
-    // #5116, see `check_representation`'s doc.
-    if let Some(result) = check_representation(prefix, &entity_type, &new_type, cto, express_id) {
-        return result;
-    }
-
-    // Reconcile the attribute list against the target schema (#7683). WHICH
-    // WAY it moves is decided by the strict attribute-NAME prefix relation
-    // alone, never by the direction of travel: IFC4 dropped
-    // `ControlElementId` from IfcDistributionControlElement, so an upgrade can
-    // trim, and IFC4 appended `Formula` to every IfcQuantity*, so a downgrade
-    // must. Source names are keyed on the ORIGINAL type, target names on the
-    // (possibly renamed) type. The two prefix branches cannot both apply: each
-    // needs its own list strictly shorter. Same rule, same order as the
-    // TypeScript twin's `convertRecord`.
-    let src_names = schema_attribute_names(cfrom, &entity_type);
-    let tgt_names = schema_attribute_names(cto, &new_type);
-    let final_attrs = match (src_names, tgt_names) {
-        (Some(src), Some(tgt)) if is_strict_attr_prefix(tgt, src) => trim_attributes(attrs, tgt.len()),
-        (Some(src), Some(tgt)) if is_strict_attr_prefix(src, tgt) => pad_attributes(attrs, tgt.len()),
-        (Some(src), Some(tgt)) if new_type != entity_type && BY_NAME_ATTR_REMAP_TYPES.contains(&entity_type.as_str()) => {
-            remap_attrs_by_name(attrs, src, tgt)
+    let (plan, dropped) = match checks {
+        Some(c) => (c.plans.get(&entity_type, cfrom, cto), Some(&mut c.attribute_values_dropped)),
+        None => (plan_for(&entity_type, cfrom, cto), None),
+    };
+    let mut lost = 0usize;
+    let out = match plan {
+        Plan::ProductProxy => {
+            // The proxy carries a MINTED GlobalId, not the source entity's, and the
+            // authored identity is therefore lost on a downgrade. That is
+            // deliberate on the TypeScript twin (`convertStepLine` in
+            // `packages/export/src/schema-converter.ts`), which documents the
+            // counter-example and pins it in `merged-exporter.test.ts`: two
+            // federated models can legitimately carry the SAME alignment GlobalId,
+            // and copying the source id would unify two distinct alignments into
+            // one. The two implementations do not agree on WHAT to mint — this one
+            // derives from the express id, the TypeScript one from the whole source
+            // line — so the same model downgraded by each yields different proxy
+            // ids. Left as found; changing either is a decision for the maintainer,
+            // not a side effect of a round-trip test.
+            lost = args.get(7..).unwrap_or_default().iter().filter(|v| holds_value(v)).count();
+            product_proxy(prefix, &placeholder_guid(express_id), &entity_type, &args)
         }
-        _ => Some(attrs.to_string()),
+        // #5116, see `resolve_unrepresented_entity`'s doc.
+        Plan::Unrepresented => return resolve_unrepresented_entity(prefix, &entity_type, cto, express_id),
+        // The attribute list against the target schema (#7683): see
+        // `schema_plan::plan_for` for which way it moves and why.
+        Plan::Write { renamed, adjust } => {
+            let new_type = renamed.unwrap_or(&entity_type);
+            let final_attrs: Cow<'_, str> = match adjust {
+                Adjust::Trim(n) if !args.is_empty() => {
+                    let keep = n.min(args.len());
+                    lost = args[keep..].iter().filter(|v| holds_value(v)).count();
+                    Cow::Owned(args[..keep].join(","))
+                }
+                // An attribute-less record is left alone rather than fabricated
+                // from nothing, matching the TypeScript twin's `currentCount > 0`.
+                Adjust::Pad(n) if !args.is_empty() && n > args.len() => {
+                    Cow::Owned(format!("{attrs}{}", ",$".repeat(n - args.len())))
+                }
+                Adjust::ByName(src, tgt) => {
+                    lost = values_without_a_name(&args, src, tgt);
+                    Cow::Owned(remap_attrs_by_name(&args, src, tgt))
+                }
+                Adjust::Trim(_) | Adjust::Pad(_) | Adjust::Keep => Cow::Borrowed(attrs),
+            };
+            format!("{prefix}{new_type}({final_attrs});")
+        }
     };
-    let Some(final_attrs) = final_attrs else {
-        return Ok(line.to_string());
-    };
-
-    Ok(format!("{prefix}{new_type}({final_attrs});"))
+    if let Some(dropped) = dropped {
+        *dropped += lost;
+    }
+    Ok(out)
 }
 
 /// True when `to` names IFC2X3, the one target whose `OwnerHistory` is mandatory.

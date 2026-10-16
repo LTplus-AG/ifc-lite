@@ -112,15 +112,15 @@ describe('no-regression pins', () => {
     // These used to be RENAMED to IFCPROXY by the IFC4X3_TO_IFC4 map, which
     // kept their own attribute list under the new name: IFCALIGNMENT's
     // 8 attributes and `.ROAD.` in IfcProxy's `ProxyType` slot, where IfcProxy
-    // takes 9 (EXPORT-MERGE-8). They now take the same synthesised proxy as
-    // the other alignment entities: the source type is its Name, ProxyType is
-    // `.NOTDEFINED.`, and the arity is IfcProxy's own.
+    // takes 9 (EXPORT-MERGE-8). They now take `productProxy`: IfcProxy's own
+    // arity, `.NOTDEFINED.` ProxyType, a minted GlobalId, and the source's
+    // IfcProduct attributes kept, with the source type in ObjectType when `$`.
     const cases: Array<[string, string]> = [
-      ['IFCALIGNMENT', "#400=IFCALIGNMENT('guid',$,'Align',$,$,$,$,.ROAD.);"],
-      ['IFCLINEARELEMENT', "#404=IFCLINEARELEMENT('guid',$,$,$,$,$,$);"],
-      ['IFCLINEARPOSITIONINGELEMENT', "#401=IFCLINEARPOSITIONINGELEMENT('guid',$,$,$,$,$,$);"],
-      ['IFCPOSITIONINGELEMENT', "#402=IFCPOSITIONINGELEMENT('guid',$,$,$,$,$,$);"],
-      ['IFCREFERENT', "#403=IFCREFERENT('guid',$,'Ref',$,$,#13,$,.STATION.,$);"],
+      ['IFCALIGNMENT', "#400=IFCALIGNMENT('guid',$,'Align',$,$,#12,#14,.ROAD.);"],
+      ['IFCLINEARELEMENT', "#404=IFCLINEARELEMENT('guid',$,'L',$,$,#12,#14);"],
+      ['IFCLINEARPOSITIONINGELEMENT', "#401=IFCLINEARPOSITIONINGELEMENT('guid',$,'LP',$,$,#12,#14);"],
+      ['IFCPOSITIONINGELEMENT', "#402=IFCPOSITIONINGELEMENT('guid',$,'P',$,$,#12,#14);"],
+      ['IFCREFERENT', "#403=IFCREFERENT('guid',$,'Ref',$,$,#13,#14,.STATION.,$);"],
     ];
     for (const to of ['IFC4', 'IFC2X3'] as const) {
       const proxyArity = attrNameTable(to)?.get('IFCPROXY')?.length;
@@ -131,7 +131,12 @@ describe('no-regression pins', () => {
         expect(match, `${type} → ${to} should become IFCPROXY: ${result}`).not.toBeNull();
         const slots = splitTopLevelStepArguments(match![1])!;
         expect(slots, `${type} → ${to}: ${result}`).toHaveLength(proxyArity!);
-        expect(slots[2], 'the source type is the proxy Name').toBe(`'${type}'`);
+        const source = splitTopLevelStepArguments(/\((.*)\);$/.exec(line)![1])!;
+        expect(slots[0], 'the GlobalId is minted').not.toBe(source[0]);
+        expect(slots[2], 'Name survives').toBe(source[2]);
+        expect(slots[4], 'ObjectType was $, so it names the source type').toBe(`'${type}'`);
+        expect(slots[5], 'ObjectPlacement survives').toBe(source[5]);
+        expect(slots[6], 'Representation survives').toBe(source[6]);
         expect(slots[7], 'ProxyType is an IfcObjectTypeEnum member').toBe('.NOTDEFINED.');
       }
     }

@@ -40,6 +40,20 @@ fan-out, memory bandwidth, GPU); a change in those still needs an end-to-end
 A/B (`ab.sh`, the browser rigs below), and a green ratchet is no evidence for it.
 
 
+## Accepted engine bundle growth (#7756)
+
+The maintainer approved resetting only the engine WASM transfer-size ceiling to
+the measurement from [main's d8c110166a build](https://github.com/LTplus-AG/ifc-lite/actions/runs/38912543766).
+That build includes the recent Rust correctness changes; its `perf-ratchet-measured`
+artifact supplies the size and timestamp recorded in `tests/perf-ratchets/bundle.json`.
+Recompressing the same build's WASM locally with Brotli quality 11 reproduced the
+measurement. The existing tolerance and both viewer JS ceilings stay unchanged.
+This accepts accumulated bundle growth, with no runtime performance claim.
+
+Treat transfer-size acceptance separately from runtime performance and output
+correctness: a size-ceiling update supplies evidence for neither. Future growth
+still requires its own measured acceptance or a reduction.
+
 ## Published worker asset closure (#7648)
 
 A Node geometry consumer passed while a fresh Vite consumer failed: the geometry

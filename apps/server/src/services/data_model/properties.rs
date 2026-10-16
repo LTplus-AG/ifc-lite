@@ -6,13 +6,14 @@
 
 use super::property_value::{
     fmt_number, infer_data_type, member_list, property_reference_label, shared_member_type, resolve_complex_property_value,
-    resolve_single_value,
+    resolve_single_value, spent_listing,
 };
-use ifc_lite_core::limits::ComplexPropertyBudget;
+use ifc_lite_core::limits::{complex_property_listing_bytes, ComplexPropertyBudget};
 use ifc_lite_core::IfcType;
 use super::types::{EntityJob, Property, PropertySet};
 use ifc_lite_core::{DecodedEntity, EntityDecoder};
 use rayon::prelude::*;
+use std::collections::HashMap;
 use std::sync::Arc;
 
 /// Extract all property sets and their properties.
@@ -23,9 +24,15 @@ pub(super) fn extract_properties(
 ) -> Vec<PropertySet> {
     // First, collect all PropertySet entities
     // PERF: Use eq_ignore_ascii_case to avoid string allocation per comparison
+    // A set id is read once, at its LAST record: the one core's entity index
+    // resolves the id to (keep-last, #7682), as the exporter's index and the
+    // browser's store pass read it. An earlier record with the id is not a
+    // set, so it neither adds a second set nor spends the complex-property
+    // budget twice (#7675).
     let pset_jobs: Vec<_> = jobs
         .iter()
         .filter(|job| job.type_name.eq_ignore_ascii_case("IFCPROPERTYSET"))
+        .filter(|job| entity_index.get(&job.id).is_some_and(|&(start, _)| start == job.start))
         .collect();
 
     tracing::debug!(count = pset_jobs.len(), "Extracting property sets");
@@ -116,10 +123,22 @@ fn resolve_complex_properties(
     }
     let mut decoder = EntityDecoder::with_arc_index(content, entity_index.clone());
     let mut budget = ComplexPropertyBudget::for_input(content.len());
+    // Walked once per complex property id; a repeat listing reuses the value,
+    // charged what it keeps (`ComplexPropertyBudget::listing`).
+    let mut memo = HashMap::new();
     for (set, complex) in sets.iter_mut() {
         for &(index, prop_id) in complex.iter() {
             let Ok(entity) = decoder.decode_by_id(prop_id) else { continue };
-            let (value, kind, data_type, values) = resolve_complex_property_value(&entity, &mut decoder, &mut budget);
+            let (value, kind, data_type, values) = budget.listing(
+                &mut memo,
+                prop_id,
+                |budget| {
+                    let resolved = resolve_complex_property_value(&entity, &mut decoder, budget);
+                    let bytes = complex_property_listing_bytes(&resolved.0, resolved.3.as_deref().unwrap_or_default());
+                    (resolved, bytes)
+                },
+                spent_listing,
+            );
             let property = &mut set.properties[index];
             property.property_value = value;
             property.property_type = kind;
@@ -149,9 +168,21 @@ pub(super) fn extract_property(
     entity: &DecodedEntity,
     decoder: &mut EntityDecoder,
 ) -> Option<Property> {
-    use ifc_lite_core::AttributeValue;
     // All IfcProperty subtypes carry Name at attribute 0.
     let property_name = entity.get_string(0)?.to_string();
+    read_property(entity, decoder, property_name)
+}
+
+/// The display value of a non-complex member of an `IfcComplexProperty`,
+/// read whether or not it has a `Name` (empty when it has no value): the
+/// browser's walk and the exporter's read an unnamed member's value and
+/// charge it, so this one does too (#7675). It shows as a bare part.
+pub(super) fn member_display(entity: &DecodedEntity, decoder: &mut EntityDecoder) -> String {
+    read_property(entity, decoder, String::new()).map(|p| p.property_value).unwrap_or_default()
+}
+
+fn read_property(entity: &DecodedEntity, decoder: &mut EntityDecoder, property_name: String) -> Option<Property> {
+    use ifc_lite_core::AttributeValue;
     let ty = entity.ifc_type.as_str().to_uppercase();
 
     // `values` mirrors the WASM `parsePropertyValue().values` candidate array

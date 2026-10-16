@@ -131,9 +131,7 @@ fn resolve_complex(
         let display = if nested_ty == "IFCCOMPLEXPROPERTY" {
             resolve_complex(&nested_entity, decoder, depth + 1, budget).0
         } else {
-            super::properties::extract_property(&nested_entity, decoder)
-                .map(|p| p.property_value)
-                .unwrap_or_default()
+            super::properties::member_display(&nested_entity, decoder)
         };
         // Every charge is the shared budget's, at the same point as the
         // exporter and TS walks (#7675).
@@ -151,6 +149,13 @@ fn resolve_complex(
     let property_type = if value.is_empty() { "null" } else { "string" };
     let values = if values.is_empty() { None } else { Some(values) };
     (value, property_type.into(), None, values)
+}
+
+/// A repeat listing `ComplexPropertyBudget::listing` refused: a cut level
+/// with no parts, its `values` the marker alone (#7675 D3).
+pub(super) fn spent_listing() -> (String, String, Option<String>, Option<Vec<String>>) {
+    let marker = COMPLEX_PROPERTY_BUDGET_MARKER.to_string();
+    (marker.clone(), "string".into(), None, Some(vec![marker]))
 }
 
 /// Stringify one member of an enumerated / list value, mirroring the WASM

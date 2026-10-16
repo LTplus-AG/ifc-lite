@@ -19,7 +19,6 @@ use std::collections::{HashMap, HashSet};
 
 use serde_json::Value;
 
-
 use super::jsval::JsVal;
 use super::property_value::parse_property_value;
 use super::source::Source;

@@ -8,7 +8,10 @@ use std::collections::HashMap;
 
 use serde_json::Value;
 
-use ifc_lite_core::limits::{complex_property_depth_marker, ComplexPropertyBudget, MAX_COMPLEX_PROPERTY_DEPTH};
+use ifc_lite_core::limits::{
+    complex_property_depth_marker, complex_property_listing_bytes, ComplexPropertyBudget, COMPLEX_PROPERTY_BUDGET_MARKER,
+    MAX_COMPLEX_PROPERTY_DEPTH,
+};
 
 use super::{pvt, BaseSets, ComplexValues, JsVal};
 
@@ -25,6 +28,11 @@ impl BaseSets<'_, '_> {
         self.complex.get_or_init(|| {
             let mut budget = ComplexPropertyBudget::for_input(self.src.content.len());
             let mut by_listing = HashMap::new();
+            // Walked once per complex property id; a repeat listing reuses the
+            // value, charged what it keeps (`ComplexPropertyBudget::listing`).
+            let mut memo = HashMap::new();
+            // `of_type` holds each set id once, at its last record (keep-last,
+            // as core indexes it), the record `entity` reads.
             for &pid in self.src.of_type("IFCPROPERTYSET") {
                 let Some((_, attrs)) = self.src.entity(pid) else { continue };
                 let Some(JsVal::Arr(items)) = attrs.get(4) else { continue };
@@ -41,31 +49,46 @@ impl BaseSets<'_, '_> {
                     if pattrs.first().and_then(JsVal::as_str).is_none() {
                         continue;
                     }
-                    budget.start_property();
-                    by_listing.insert((pid, index), self.complex_value(&pattrs, 0, &mut budget));
+                    let value = budget.listing(
+                        &mut memo,
+                        *n as u32,
+                        |budget| {
+                            budget.start_property();
+                            let (value, values) = self.complex_value(&pattrs, 0, budget);
+                            let shown = value.as_str().unwrap_or("");
+                            let bytes = complex_property_listing_bytes(shown, &values);
+                            ((pvt::STRING, value, None), bytes)
+                        },
+                        budget_spent,
+                    );
+                    by_listing.insert((pid, index), value);
                 }
             }
             by_listing
         })
     }
 
-    /// `resolveComplexPropertyValue`: a display string only. Every bound,
-    /// marker, charge and the check order are `ifc_lite_core::limits`'
-    /// (#7675), shared with the server's walk and mirrored by the TypeScript
-    /// one, so both exporters write the same value for the same file.
-    fn complex_value(&self, attrs: &[JsVal], depth: usize, budget: &mut ComplexPropertyBudget) -> (u8, Value, Option<String>) {
+    /// `resolveComplexPropertyValue`: the display value, and the level's
+    /// `values` list the TS and server walks keep (each part's display, then
+    /// the budget marker when cut), which only the repeat-listing charge
+    /// reads. Every bound, marker, charge and the check order are
+    /// `ifc_lite_core::limits`' (#7675), shared with the server's walk and
+    /// mirrored by the TypeScript one, so both exporters write the same value
+    /// for the same file.
+    fn complex_value(&self, attrs: &[JsVal], depth: usize, budget: &mut ComplexPropertyBudget) -> (Value, Vec<String>) {
         let usage = attrs.get(2).and_then(JsVal::as_str).unwrap_or("").to_string();
         let empty_usage = || if usage.is_empty() { Value::Null } else { Value::String(usage.clone()) };
-        let Some(JsVal::Arr(members)) = attrs.get(3) else { return (pvt::STRING, empty_usage(), None) };
+        let Some(JsVal::Arr(members)) = attrs.get(3) else { return (empty_usage(), Vec::new()) };
         if members.is_empty() {
-            return (pvt::STRING, empty_usage(), None);
+            return (empty_usage(), Vec::new());
         }
         if depth >= MAX_COMPLEX_PROPERTY_DEPTH {
             let marker = complex_property_depth_marker();
             let text = if usage.is_empty() { marker } else { format!("{usage} {marker}") };
-            return (pvt::STRING, Value::String(text), None);
+            return (Value::String(text), Vec::new());
         }
         let mut parts = Vec::new();
+        let mut values = Vec::new();
         let mut cut = false;
         for member in members {
             let JsVal::Num(n) = member else { continue };
@@ -75,24 +98,29 @@ impl BaseSets<'_, '_> {
             }
             let Some((mty, mattrs)) = self.src.entity(*n as u32) else { continue };
             let mname = mattrs.first().and_then(JsVal::as_str).unwrap_or("").to_string();
-            let (_, v, _) = if mty == "IFCCOMPLEXPROPERTY" {
-                self.complex_value(&mattrs, depth + 1, budget)
+            let v = if mty == "IFCCOMPLEXPROPERTY" {
+                self.complex_value(&mattrs, depth + 1, budget).0
             } else {
-                self.property_value(&mty, &mattrs)
+                self.property_value(&mty, &mattrs).1
             };
             let display = if v.is_null() { String::new() } else { super::super::jsval::json_to_js_string(&v) };
             if let Some(part) = budget.member_part(&mname, &display) {
                 parts.push(part);
+                values.push(display);
             }
         }
         let value = budget.level_value(&parts, cut).map_or_else(empty_usage, Value::String);
-        (pvt::STRING, value, None)
+        if cut {
+            values.push(COMPLEX_PROPERTY_BUDGET_MARKER.to_string());
+        }
+        (value, values)
     }
 }
 
-/// The value of a listing the file pass did not resolve. Unreachable for a
-/// set `psets_from_ids` reads (the pass walks the same sets), and spent
-/// rather than walked with a budget of its own, which would reopen #7675.
+/// The value of a repeat listing `ComplexPropertyBudget::listing` refused,
+/// and of a listing the file pass did not resolve (unreachable for a set
+/// `psets_from_ids` reads, since the pass walks the same sets; spent rather
+/// than walked with a budget of its own, which would reopen #7675).
 pub(super) fn budget_spent() -> (u8, Value, Option<String>) {
-    (pvt::STRING, Value::String(ifc_lite_core::limits::COMPLEX_PROPERTY_BUDGET_MARKER.to_string()), None)
+    (pvt::STRING, Value::String(COMPLEX_PROPERTY_BUDGET_MARKER.to_string()), None)
 }

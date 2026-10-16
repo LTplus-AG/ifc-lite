@@ -38,8 +38,10 @@ const MAX_COMPLEX_PROPERTY_MEMBERS = 1024;
 export const COMPLEX_PROPERTY_OUTPUT_BYTES = 1 << 20;
 
 /** `COMPLEX_PROPERTY_BYTES_PER_INPUT_BYTE`: what a model's complex properties
- *  may cost per source byte, above the floor. */
-const COMPLEX_PROPERTY_BYTES_PER_INPUT_BYTE = 4;
+ *  may cost per source byte, above the floor. A first listing costs about
+ *  three times what it keeps, a repeat listing only what it keeps; 16 keeps
+ *  one 20-member property shared by 3 000 sets whole. */
+const COMPLEX_PROPERTY_BYTES_PER_INPUT_BYTE = 16;
 
 /** `COMPLEX_PROPERTY_MEMBER_BYTES`: a read member's `members` / `values` entry. */
 const COMPLEX_PROPERTY_MEMBER_BYTES = 16;
@@ -50,6 +52,15 @@ const COMPLEX_PROPERTY_MEMBER_BYTES = 16;
  *  multiplies it (one call per wall gave 2 GB of heap from 18.6 KB). */
 export function complexPropertyOutputBudget(inputBytes: number): number {
     return Math.max(inputBytes * COMPLEX_PROPERTY_BYTES_PER_INPUT_BYTE, COMPLEX_PROPERTY_OUTPUT_BYTES);
+}
+
+/** `complex_property_listing_bytes`: what one listing of a resolved complex
+ *  property keeps, its value and, per `values` entry, the entry and its text.
+ *  A repeat listing is charged exactly this. */
+export function complexPropertyListingBytes(value: string, values: readonly string[]): number {
+    let bytes = utf8Length(value);
+    for (const v of values) bytes += COMPLEX_PROPERTY_MEMBER_BYTES + utf8Length(v);
+    return bytes;
 }
 
 /**
@@ -106,6 +117,26 @@ export class ComplexPropertyBudget {
         return new ComplexPropertyBudget(complexPropertyOutputBudget(inputBytes));
     }
 
+    /** One listing of complex property `id` by a set: the first walks it
+     *  (`resolve` starts the property and returns the value with its
+     *  {@link complexPropertyListingBytes}), a later one reuses the value
+     *  charged its listing bytes, or reads `spent()` (a counted cut) once the
+     *  budget is spent. Memoised per id, not per listing. */
+    listing<V>(memo: Map<number, [V, number]>, id: number, resolve: (budget: this) => [V, number], spent: () => V): V {
+        const hit = memo.get(id);
+        if (hit) {
+            if (this.bytesLeft === 0) {
+                this.cutLevels += 1;
+                return spent();
+            }
+            this.charge(hit[1]);
+            return hit[0];
+        }
+        const resolved = resolve(this);
+        memo.set(id, resolved);
+        return resolved[0];
+    }
+
     /** Start a top-level property: visits restart, bytes carry on. */
     startProperty(): void {
         this.visits = 0;
@@ -118,7 +149,7 @@ export class ComplexPropertyBudget {
         return true;
     }
 
-    /** A read member under `name` with `display` ('' without a value): charge
+    /** A read member under `name` ('' without one) with `display` ('' without a value): charge
      *  its entry, then return its charged `"Name: value"` part, or `null`
      *  when there is no display. */
     memberPart(name: string, display: string): string | null {
@@ -141,7 +172,7 @@ export class ComplexPropertyBudget {
         return value;
     }
 
-    /** Levels this budget has cut so far. */
+    /** Levels and listings this budget has cut so far. */
     get cuts(): number {
         return this.cutLevels;
     }

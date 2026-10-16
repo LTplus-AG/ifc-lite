@@ -8,6 +8,7 @@ import { readFileSync } from 'node:fs';
 import { StepTokenizer } from '../src/tokenizer.js';
 import { ColumnarParser, extractPropertiesOnDemand, type IfcDataStore } from '../src/columnar-parser.js';
 import { complexPropertyOutputBudget } from '../src/property-complex-value.js';
+import { complexPropertyCuts } from '../src/complex-property-store.js';
 
 /**
  * #7675: the `IfcComplexProperty` depth cap bounds a path's LENGTH only, so a
@@ -27,11 +28,35 @@ interface PinnedSet {
   length?: number;
   sha256?: string;
 }
+/** A run of ids or lines: `{i}` in each line is replaced by `from`, `from + 1`,
+ *  ... for `count` rounds, the lines in order each round. */
+interface Repeat {
+  from: number;
+  count: number;
+  repeat?: string[];
+}
 interface BudgetCase {
   name: string;
-  dataLines: string[];
-  entityIds: number[];
+  dataLines: Array<string | Repeat>;
+  entityIds: Array<number | Repeat>;
   psets: PinnedSet[];
+  /** Levels and listings the model's budget cuts, when pinned. */
+  cuts?: number;
+}
+
+function expandLines(lines: BudgetCase['dataLines']): string[] {
+  return lines.flatMap(line => {
+    if (typeof line === 'string') return [line];
+    const out: string[] = [];
+    for (let i = line.from; i < line.from + line.count; i++) {
+      for (const template of line.repeat ?? []) out.push(template.replaceAll('{i}', String(i)));
+    }
+    return out;
+  });
+}
+
+function expandIds(ids: BudgetCase['entityIds']): number[] {
+  return ids.flatMap(id => (typeof id === 'number' ? [id] : Array.from({ length: id.count }, (_, k) => id.from + k)));
 }
 
 const vector: { cases: BudgetCase[] } = JSON.parse(
@@ -56,10 +81,10 @@ const valuesOf = (set: { properties: Array<{ value: unknown }> }): string[] =>
 describe('IfcComplexProperty walk budget (#7675)', () => {
   for (const c of vector.cases) {
     it(`${c.name}: every entity matches the server and the exporter`, async () => {
-      const text = c.dataLines.join('\n');
+      const text = expandLines(c.dataLines).join('\n');
       const store = await parse(text);
       const budget = complexPropertyOutputBudget(Buffer.byteLength(text, 'utf8'));
-      for (const entityId of c.entityIds) {
+      for (const entityId of expandIds(c.entityIds)) {
         const sets = extractPropertiesOnDemand(store, entityId);
         const total = sets.reduce((n, s) => n + valuesOf(s).reduce((m, v) => m + Buffer.byteLength(v, 'utf8'), 0), 0);
         expect(total, `#${entityId} value bytes`).toBeLessThanOrEqual(budget);
@@ -75,6 +100,7 @@ describe('IfcComplexProperty walk budget (#7675)', () => {
           }
         }
       }
+      if (c.cuts !== undefined) expect(complexPropertyCuts(store), 'cuts').toBe(c.cuts);
     });
   }
 });

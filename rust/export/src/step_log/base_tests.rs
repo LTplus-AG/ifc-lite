@@ -45,27 +45,68 @@ fn complex_property_walk_budget_matches_the_shared_vector() {
         "../../../../packages/parser/test/fixtures/complex-property-budget-7675.json"
     ))
     .expect("vector parses");
-    for case in vector["cases"].as_array().unwrap() {
-        let data: Vec<&str> = case["dataLines"].as_array().unwrap().iter().map(|l| l.as_str().unwrap()).collect();
-        let text = format!(
-            "ISO-10303-21;\nHEADER;FILE_SCHEMA(('IFC4'));ENDSEC;\nDATA;\n{}\nENDSEC;\nEND-ISO-10303-21;\n",
-            data.join("\n")
-        );
-        let entities: Vec<u32> = case["entityIds"].as_array().unwrap().iter().map(|id| id.as_u64().unwrap() as u32).collect();
-        let src = Source::index(text.as_bytes());
-        let mut base = BaseSets::new(&src, &entities.iter().copied().collect());
-        for &entity in &entities {
-            let sets: Vec<(String, Vec<String>)> = base
-                .psets(entity)
-                .into_iter()
-                .map(|set| {
-                    let values = set.properties.iter().map(|p| p.value.as_str().unwrap_or("").to_string()).collect();
-                    (set.name, values)
-                })
-                .collect();
-            assert_complex_budget_case(case, text.len(), &sets);
+    let failed: Vec<String> = vector["cases"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|case| std::panic::catch_unwind(|| check_exporter_budget_case(case)).is_err())
+        .map(|case| case["name"].as_str().unwrap().to_string())
+        .collect();
+    assert!(failed.is_empty(), "cases that differ from the shared vector: {failed:?}");
+}
+
+fn check_exporter_budget_case(case: &serde_json::Value) {
+    let text = format!(
+        "ISO-10303-21;\nHEADER;FILE_SCHEMA(('IFC4'));ENDSEC;\nDATA;\n{}\nENDSEC;\nEND-ISO-10303-21;\n",
+        expand_budget_lines(&case["dataLines"]).join("\n")
+    );
+    let entities = expand_budget_ids(&case["entityIds"]);
+    let src = Source::index(text.as_bytes());
+    let mut base = BaseSets::new(&src, &entities.iter().copied().collect());
+    for &entity in &entities {
+        let sets: Vec<(String, Vec<String>)> = base
+            .psets(entity)
+            .into_iter()
+            .map(|set| {
+                let values = set.properties.iter().map(|p| p.value.as_str().unwrap_or("").to_string()).collect();
+                (set.name, values)
+            })
+            .collect();
+        assert_complex_budget_case(case, text.len(), &sets);
+    }
+}
+
+/// The vector's `dataLines` with each `{"repeat": [..], "from", "count"}` run
+/// expanded: `{i}` in each line is `from`, `from + 1`, ... for `count` rounds.
+fn expand_budget_lines(lines: &serde_json::Value) -> Vec<String> {
+    let mut out = Vec::new();
+    for line in lines.as_array().unwrap() {
+        if let Some(text) = line.as_str() {
+            out.push(text.to_string());
+            continue;
+        }
+        for i in expand_budget_ids(&serde_json::json!([line])) {
+            for template in line["repeat"].as_array().unwrap() {
+                out.push(template.as_str().unwrap().replace("{i}", &i.to_string()));
+            }
         }
     }
+    out
+}
+
+/// The vector's `entityIds`, each `{"from", "count"}` run expanded.
+fn expand_budget_ids(ids: &serde_json::Value) -> Vec<u32> {
+    let mut out = Vec::new();
+    for id in ids.as_array().unwrap() {
+        match id.as_u64() {
+            Some(id) => out.push(id as u32),
+            None => {
+                let from = id["from"].as_u64().unwrap() as u32;
+                out.extend(from..from + id["count"].as_u64().unwrap() as u32);
+            }
+        }
+    }
+    out
 }
 
 /// Check one walk's property sets (name, then the values in order) against

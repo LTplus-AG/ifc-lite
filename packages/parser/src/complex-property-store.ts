@@ -14,10 +14,16 @@
  * the same value object back.
  *
  * The order is the policy `ifc_lite_core::limits::complex_property_output_budget`
- * documents for all three copies: property sets in file order, then
- * `HasProperties` order. The server's extraction and the Rust exporter's
- * `BaseSets` resolve in that order too, so the budget cuts the same listing
- * in every copy, and which entity asks first changes nothing.
+ * documents for all three copies: property sets in file order, each set id
+ * once at its LAST record (keep-last, the record core's entity index reads),
+ * then `HasProperties` order. A complex property id is walked once, at its
+ * first listing; a repeat listing reuses that value, charged only what it
+ * keeps (`ComplexPropertyBudget.listing`). The server's extraction and the
+ * Rust exporter's `BaseSets` resolve the same way, so the budget cuts the same
+ * listing in every copy, and which entity asks first changes nothing.
+ *
+ * The shared values are frozen, so a caller that mutates one throws instead
+ * of changing what every other entity reads.
  */
 
 import type { EntityExtractor } from './entity-extractor.js';
@@ -26,6 +32,7 @@ import type { ParsedIfcPropertyValue } from './property-value-parser.js';
 import {
     ComplexPropertyBudget,
     COMPLEX_PROPERTY_BUDGET_MARKER,
+    complexPropertyListingBytes,
     resolveComplexPropertyValue,
 } from './property-complex-value.js';
 import { PropertyValueType } from '@ifc-lite/data';
@@ -54,7 +61,31 @@ export function complexPropertyListingValue(
     // Unreachable for a set `extractPsetsFromIds` reads, since the pass walks the
     // same sets. Spent rather than walked with a budget of its own, which would
     // reopen #7675.
-    return resolved ?? { type: PropertyValueType.String, value: COMPLEX_PROPERTY_BUDGET_MARKER, structure: 'complex' };
+    return resolved ?? spentListing();
+}
+
+/** A listing the budget refused (or, unreachably, one the pass did not walk):
+ *  a cut level with no parts, its `values` and `members` the marker alone. */
+function spentListing(): ParsedIfcPropertyValue {
+    return freezeShared({
+        type: PropertyValueType.String,
+        value: COMPLEX_PROPERTY_BUDGET_MARKER,
+        structure: 'complex',
+        values: [COMPLEX_PROPERTY_BUDGET_MARKER],
+        members: [{ name: COMPLEX_PROPERTY_BUDGET_MARKER, type: PropertyValueType.String, value: COMPLEX_PROPERTY_BUDGET_MARKER }],
+    });
+}
+
+/** Freeze a shared value with its lists, nested members too. */
+function freezeShared<T extends ParsedIfcPropertyValue>(value: T): T {
+    if (Object.isFrozen(value)) return value;
+    if (value.values) Object.freeze(value.values);
+    if (value.valueDataTypes) Object.freeze(value.valueDataTypes);
+    if (value.members) {
+        for (const member of value.members) freezeShared(member);
+        Object.freeze(value.members);
+    }
+    return Object.freeze(value);
 }
 
 /** How many complex-property levels the store's budget has cut (0 before any
@@ -68,8 +99,16 @@ function storeComplexValues(store: IfcDataStore, extractor: EntityExtractor): St
     if (hit) return hit;
     const budget = ComplexPropertyBudget.forInput(store.source?.length ?? 0);
     const byListing = new Map<number, Map<number, ParsedIfcPropertyValue>>();
+    const memo = new Map<number, [ParsedIfcPropertyValue, number]>();
     // @raw-entity-enumeration-ok the store-wide complex-property pass reads every source property set once, in file order (#7675)
-    for (const psetId of store.entityIndex.byType.get('IFCPROPERTYSET') ?? []) {
+    const psetIds = store.entityIndex.byType.get('IFCPROPERTYSET') ?? [];
+    // A repeated set id is read once, at its last record (keep-last, as core
+    // and the Rust passes read it).
+    const lastAt = new Map<number, number>();
+    psetIds.forEach((id, at) => lastAt.set(id, at));
+    for (let at = 0; at < psetIds.length; at++) {
+        const psetId = psetIds[at];
+        if (lastAt.get(psetId) !== at) continue;
         // @raw-entity-enumeration-ok one source set id from the pass above is decoded from its STEP span
         const psetRef = store.entityIndex.byId.get(psetId);
         if (!psetRef) continue;
@@ -89,7 +128,12 @@ function storeComplexValues(store: IfcDataStore, extractor: EntityExtractor): St
                 listings = new Map();
                 byListing.set(psetId, listings);
             }
-            listings.set(index, resolveComplexPropertyValue(store, extractor, propEntity, budget));
+            const value = budget.listing(memo, ref, b => {
+                const resolved = freezeShared(resolveComplexPropertyValue(store, extractor, propEntity, b));
+                const shown = resolved.value == null ? '' : String(resolved.value);
+                return [resolved, complexPropertyListingBytes(shown, resolved.values ?? [])];
+            }, spentListing);
+            listings.set(index, value);
         }
     }
     const resolved: StoreComplexValues = { byListing, cuts: budget.cuts };

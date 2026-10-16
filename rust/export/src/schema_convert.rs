@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MPL-2.0
 //! IFC **schema conversion** for STEP export (Phase 2 P2). Ports
 //! `packages/export/src/schema-converter.ts`: entity-type renames between
-//! IFC2X3 / IFC4 / IFC4X3 / IFC5 (with multi-step chaining), IFC2X3 attribute-count
-//! trimming on downgrade, padding of the attributes a newer target schema appended
-//! (`schema_pad`), and a proxy fallback for types with no target representation.
+//! IFC2X3 / IFC4 / IFC4X3 / IFC5 (with multi-step chaining), trimming or padding
+//! the attribute list wherever one schema only appended to the other (attribute
+//! names from core's EXPRESS registry, #7683), and a proxy fallback for types
+//! with no target representation.
 
 use crate::schema_ifc2x3_slots::Ifc2x3SlotFill;
 use crate::schema_enum::ConversionChecks;
@@ -62,49 +63,15 @@ fn map_4_to_2x3(t: &str) -> Option<&'static str> {
     })
 }
 
-/// Source (IFC4) and target (IFC2X3) EXPRESS attribute names for the two
-/// door/window-type renames above, in the order STEP encodes them. Neither
-/// list is a positional prefix of the other (IFC4 inserted `ElementType`/
-/// `PredefinedType` ahead of the attributes it kept), so
-/// `convert_step_line` reconciles them by NAME rather than trimming a
-/// positional suffix like every other IFC2X3-downgrade rename.
-fn by_name_attr_remap_names(entity_type: &str) -> Option<(&'static [&'static str], &'static [&'static str])> {
-    match entity_type {
-        "IFCDOORTYPE" => Some((
-            &[
-                "GlobalId", "OwnerHistory", "Name", "Description", "ApplicableOccurrence",
-                "HasPropertySets", "RepresentationMaps", "Tag", "ElementType", "PredefinedType",
-                "OperationType", "ParameterTakesPrecedence", "UserDefinedOperationType",
-            ],
-            &[
-                "GlobalId", "OwnerHistory", "Name", "Description", "ApplicableOccurrence",
-                "HasPropertySets", "RepresentationMaps", "Tag", "OperationType", "ConstructionType",
-                "ParameterTakesPrecedence", "Sizeable",
-            ],
-        )),
-        "IFCWINDOWTYPE" => Some((
-            &[
-                "GlobalId", "OwnerHistory", "Name", "Description", "ApplicableOccurrence",
-                "HasPropertySets", "RepresentationMaps", "Tag", "ElementType", "PredefinedType",
-                "PartitioningType", "ParameterTakesPrecedence", "UserDefinedPartitioningType",
-            ],
-            &[
-                "GlobalId", "OwnerHistory", "Name", "Description", "ApplicableOccurrence",
-                "HasPropertySets", "RepresentationMaps", "Tag", "ConstructionType", "OperationType",
-                "ParameterTakesPrecedence", "Sizeable",
-            ],
-        )),
-        // #4206: IFC4 appends PredefinedType where IFC2X3 inserts CausedBy
-        // before ProjectedOrTrue -- neither list is a positional prefix.
-        "IFCSTRUCTURALCURVEACTION" | "IFCSTRUCTURALSURFACEACTION" => Some((
-            &["GlobalId", "OwnerHistory", "Name", "Description", "ObjectType", "ObjectPlacement",
-              "Representation", "AppliedLoad", "GlobalOrLocal", "DestabilizingLoad", "ProjectedOrTrue", "PredefinedType"],
-            &["GlobalId", "OwnerHistory", "Name", "Description", "ObjectType", "ObjectPlacement",
-              "Representation", "AppliedLoad", "GlobalOrLocal", "DestabilizingLoad", "CausedBy", "ProjectedOrTrue"],
-        )),
-        _ => None,
-    }
-}
+/// Renamed types whose source and target attribute lists share names but
+/// neither is a positional prefix of the other (IFC4 inserted `ElementType`/
+/// `PredefinedType` mid-list on the door/window types; IFC2X3 inserts
+/// `CausedBy` where IFC4 appends `PredefinedType` on the structural actions,
+/// #4206), so they are reconciled by NAME. The names come from core's
+/// registry, like every other list here. Same set as the TypeScript twin's
+/// `BY_NAME_ATTR_REMAP_TYPES`.
+const BY_NAME_ATTR_REMAP_TYPES: &[&str] =
+    &["IFCDOORTYPE", "IFCWINDOWTYPE", "IFCSTRUCTURALCURVEACTION", "IFCSTRUCTURALSURFACEACTION"];
 
 /// Reconcile a renamed entity's attribute list by matching attribute NAMES
 /// between the source and target schema tables, rather than by position.
@@ -158,8 +125,6 @@ fn map_4x3_to_4(t: &str) -> Option<&'static str> {
         }
         "IFCCAISSONFOUNDATION" => "IFCFOOTING",
         "IFCPAVEMENT" => "IFCSLAB",
-        "IFCLINEARPOSITIONINGELEMENT" | "IFCPOSITIONINGELEMENT" | "IFCREFERENT" | "IFCALIGNMENT"
-        | "IFCLINEARELEMENT" => "IFCPROXY",
         "IFCCONVEYORSEGMENT" => "IFCFLOWSEGMENT",
         "IFCLIQUIDTERMINAL" => "IFCFLOWTERMINAL",
         "IFCMOBILETELECOMMUNICATIONSAPPLIANCE" => "IFCCOMMUNICATIONSAPPLIANCE",
@@ -169,25 +134,11 @@ fn map_4x3_to_4(t: &str) -> Option<&'static str> {
     })
 }
 
-/// Max positional attributes an entity may carry in IFC2X3 (for downgrade trimming).
-fn ifc2x3_attr_count(t: &str) -> Option<usize> {
-    Some(match t {
-        "IFCWALL" | "IFCBEAM" | "IFCCOLUMN" | "IFCMEMBER" | "IFCPLATE" | "IFCOPENINGELEMENT"
-        | "IFCFURNISHINGELEMENT" | "IFCCURTAINWALL" | "IFCFLOWSEGMENT" | "IFCFLOWTERMINAL"
-        | "IFCFLOWCONTROLLER" | "IFCFLOWFITTING" | "IFCFLOWMOVINGDEVICE" | "IFCFLOWSTORAGEDEVICE"
-        | "IFCFLOWTREATMENTDEVICE" | "IFCENERGYCONVERSIONDEVICE" | "IFCDISTRIBUTIONELEMENT"
-        | "IFCDISTRIBUTIONFLOWELEMENT" | "IFCDISTRIBUTIONCONTROLELEMENT"
-        | "IFCDISTRIBUTIONCHAMBERELEMENT" => 8,
-        "IFCROOF" | "IFCSTAIR" | "IFCRAMP" | "IFCRAILING" | "IFCFOOTING" | "IFCCOVERING"
-        | "IFCBUILDINGELEMENTPROXY" => 9,
-        "IFCPILE" => 11,
-        "IFCDOOR" | "IFCWINDOW" => 10,
-        "IFCSTRUCTURALLOADGROUP" => 10, // #4206: drops trailing SelfWeightCoefficients
-        _ => return None,
-    })
-}
-
-/// Alignment types with no representation in IFC2X3/IFC4 (replaced by a proxy).
+/// IFC4X3 alignment and positioning types with no representation in IFC2X3 or
+/// IFC4, replaced by a synthesised proxy. The positioning types used to be
+/// RENAMED to `IFCPROXY` instead, which kept their own attributes under the
+/// new name: `IFCALIGNMENT(…,.ROAD.)` became an 8-attribute `IFCPROXY` with an
+/// alignment enum in `ProxyType`, where IfcProxy takes 9 (EXPORT-MERGE-8, #7683).
 fn should_skip_entity(t: &str, to: &str) -> bool {
     if to == "IFC4X3" || to == "IFC5" {
         return false;
@@ -195,7 +146,31 @@ fn should_skip_entity(t: &str, to: &str) -> bool {
     matches!(
         t,
         "IFCALIGNMENTCANT" | "IFCALIGNMENTHORIZONTAL" | "IFCALIGNMENTVERTICAL" | "IFCALIGNMENTSEGMENT"
+            | "IFCALIGNMENT" | "IFCREFERENT" | "IFCLINEARELEMENT" | "IFCPOSITIONINGELEMENT"
+            | "IFCLINEARPOSITIONINGELEMENT"
     )
+}
+
+/// Positional attribute names `entity_type` declares in the canonical schema
+/// `schema`, from core's EXPRESS registry: the one home for them (#7683).
+/// `None` for an undeclared type, and for IFC5, which has no EXPRESS
+/// registry (the TypeScript twin's `attrNameTable` answers `null` there too,
+/// so neither side adjusts an IFC5 record's attribute count).
+pub(crate) fn schema_attribute_names(schema: &str, entity_type: &str) -> Option<&'static [&'static str]> {
+    match schema {
+        "IFC2X3" | "IFC4" | "IFC4X3" => ifc_lite_core::attribute_names_for_schema(schema, entity_type),
+        _ => None,
+    }
+}
+
+/// True when `shorter` is a STRICT prefix of `longer` by attribute name: the
+/// longer list only APPENDED attributes. Padding (`shorter` is the source)
+/// and trimming (`shorter` is the target) are only safe then; many entities
+/// insert or reorder attributes mid-list (IfcMaterialProperties, IfcApproval),
+/// where either would shift values into the wrong slots. Twin of the
+/// TypeScript `isStrictAttrPrefix`.
+pub(crate) fn is_strict_attr_prefix(shorter: &[&str], longer: &[&str]) -> bool {
+    shorter.len() < longer.len() && longer.starts_with(shorter)
 }
 
 /// Convert an entity type name between schemas (with multi-step chaining).
@@ -236,21 +211,22 @@ pub(crate) fn placeholder_guid(id: u32) -> String {
     String::from_utf8(s.to_vec()).unwrap()
 }
 
-/// Split a raw STEP attribute list into its top-level (comma-separated)
-/// value strings, respecting nested parentheses and single-quoted strings.
-/// Empty list -> `[]`. Shared by `trim_attributes` (positional truncation)
-/// and `remap_attrs_by_name` (by-name reconciliation).
 /// Trim a STEP attribute list to `max_count` top-level attributes (STEP-nesting aware).
 fn trim_attributes(attrs: &str, max_count: usize) -> Option<String> {
     if attrs.trim().is_empty() {
         return Some(attrs.to_string());
     }
     let out = split_top_level_args(attrs)?;
-    if out.len() > max_count {
-        Some(out[..max_count].join(","))
-    } else {
-        Some(out.join(","))
-    }
+    Some(out[..out.len().min(max_count)].join(","))
+}
+
+/// Pad a STEP attribute list with trailing `$` up to `count` attributes. An
+/// attribute-less record is left alone rather than fabricated from nothing,
+/// matching the TypeScript twin's `currentCount > 0` guard.
+fn pad_attributes(attrs: &str, count: usize) -> Option<String> {
+    let current = split_top_level_args(attrs)?.len();
+    let missing = if current > 0 { count.saturating_sub(current) } else { 0 };
+    Some(format!("{attrs}{}", ",$".repeat(missing)))
 }
 
 /// Convert one STEP entity line `#id=TYPE(attrs);` from `from` to `to`.
@@ -344,56 +320,28 @@ fn convert_record(line: &str, cfrom: &'static str, cto: &'static str, express_id
         return result;
     }
 
-    // IFCDOORTYPE/IFCWINDOWTYPE -> IFCDOORSTYLE/IFCWINDOWSTYLE: neither
-    // attribute list is a positional prefix of the other (IFC4 inserted
-    // ElementType/PredefinedType mid-list), so reconcile by name instead of
-    // the generic positional trim below.
-    let mut final_attrs = if new_type != entity_type {
-        if let Some((src_names, tgt_names)) = by_name_attr_remap_names(&entity_type) {
-            match remap_attrs_by_name(attrs, src_names, tgt_names) {
-                Some(value) => value,
-                None => return Ok(line.to_string()),
-            }
-        } else if cto == "IFC2X3" {
-            match ifc2x3_attr_count(&new_type) {
-                Some(max) => match trim_attributes(attrs, max) {
-                    Some(value) => value,
-                    None => return Ok(line.to_string()),
-                },
-                None => attrs.to_string(),
-            }
-        } else {
-            attrs.to_string()
+    // Reconcile the attribute list against the target schema (#7683). WHICH
+    // WAY it moves is decided by the strict attribute-NAME prefix relation
+    // alone, never by the direction of travel: IFC4 dropped
+    // `ControlElementId` from IfcDistributionControlElement, so an upgrade can
+    // trim, and IFC4 appended `Formula` to every IfcQuantity*, so a downgrade
+    // must. Source names are keyed on the ORIGINAL type, target names on the
+    // (possibly renamed) type. The two prefix branches cannot both apply: each
+    // needs its own list strictly shorter. Same rule, same order as the
+    // TypeScript twin's `convertRecord`.
+    let src_names = schema_attribute_names(cfrom, &entity_type);
+    let tgt_names = schema_attribute_names(cto, &new_type);
+    let final_attrs = match (src_names, tgt_names) {
+        (Some(src), Some(tgt)) if is_strict_attr_prefix(tgt, src) => trim_attributes(attrs, tgt.len()),
+        (Some(src), Some(tgt)) if is_strict_attr_prefix(src, tgt) => pad_attributes(attrs, tgt.len()),
+        (Some(src), Some(tgt)) if new_type != entity_type && BY_NAME_ATTR_REMAP_TYPES.contains(&entity_type.as_str()) => {
+            remap_attrs_by_name(attrs, src, tgt)
         }
-    } else if cto == "IFC2X3" {
-        match ifc2x3_attr_count(&new_type) {
-            Some(max) => match trim_attributes(attrs, max) {
-                Some(value) => value,
-                None => return Ok(line.to_string()),
-            },
-            None => attrs.to_string(),
-        }
-    } else {
-        attrs.to_string()
+        _ => Some(attrs.to_string()),
     };
-
-    // Pad the trailing optional attributes a newer target schema APPENDED
-    // (#1416). Keyed on the ORIGINAL type, because the source schema is what
-    // decides how many attributes the line already has; the table's target
-    // count already accounts for the rename. Only types whose source
-    // attribute NAME list is a strict prefix of the target's are in it, so
-    // this can never shift a value into a reordered slot -- see
-    // `schema_pad`. An attribute-less line is left alone rather than
-    // fabricated from nothing, matching the TypeScript twin's
-    // `currentCount > 0` guard.
-    if let Some(target_count) = crate::schema_pad::padded_attr_count(cfrom, cto, &entity_type) {
-        let current = crate::schema_pad::count_top_level_attributes(&final_attrs);
-        if current > 0 && current < target_count {
-            for _ in current..target_count {
-                final_attrs.push_str(",$");
-            }
-        }
-    }
+    let Some(final_attrs) = final_attrs else {
+        return Ok(line.to_string());
+    };
 
     Ok(format!("{prefix}{new_type}({final_attrs});"))
 }
@@ -411,3 +359,7 @@ pub fn needs_conversion(from: &str, to: &str) -> bool {
 #[cfg(test)]
 #[path = "schema_convert_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "schema_registry_tests.rs"]
+mod registry_tests;

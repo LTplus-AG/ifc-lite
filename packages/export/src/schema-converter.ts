@@ -140,11 +140,6 @@ const IFC4X3_TO_IFC4: Map<string, string> = new Map([
   ['IFCTRACKELEMENT', 'IFCBUILDINGELEMENTPROXY'],
   ['IFCKERB', 'IFCBUILDINGELEMENTPROXY'],
   ['IFCCOURSE', 'IFCBUILDINGELEMENTPROXY'],
-  ['IFCLINEARPOSITIONINGELEMENT', 'IFCPROXY'],
-  ['IFCPOSITIONINGELEMENT', 'IFCPROXY'],
-  ['IFCREFERENT', 'IFCPROXY'],
-  ['IFCALIGNMENT', 'IFCPROXY'],
-  ['IFCLINEARELEMENT', 'IFCPROXY'],
   ['IFCCONVEYORSEGMENT', 'IFCFLOWSEGMENT'],
   ['IFCLIQUIDTERMINAL', 'IFCFLOWTERMINAL'],
   ['IFCMOBILETELECOMMUNICATIONSAPPLIANCE', 'IFCCOMMUNICATIONSAPPLIANCE'],
@@ -444,29 +439,25 @@ function convertRecord(
   return `${prefix}${newType}(${finalAttrs});`;
 }
 
+/** IFC4X3 alignment and positioning types replaced by a synthesised IFCPROXY below IFC4X3. */
+const SKIP_TYPES: ReadonlySet<string> = new Set([
+  'IFCALIGNMENTCANT', 'IFCALIGNMENTHORIZONTAL', 'IFCALIGNMENTVERTICAL', 'IFCALIGNMENTSEGMENT',
+  'IFCALIGNMENT', 'IFCREFERENT', 'IFCLINEARELEMENT', 'IFCPOSITIONINGELEMENT', 'IFCLINEARPOSITIONINGELEMENT',
+]);
+
 /**
- * Check if an entity type should be skipped for the target schema.
- * Some IFC4X3 types (alignment, positioning) have no valid STEP representation
- * in older schemas even as proxies.
+ * Check if an entity type should be skipped for the target schema: these
+ * IFC4X3 types have no STEP representation in IFC2X3 or IFC4, so they are
+ * replaced by a synthesised IFCPROXY. IFC4X3 and IFC5 keep them.
  *
- * Alignment entities are valid in IFC4X3 and IFC5, so they are only skipped
- * when targeting older schemas (IFC2X3, IFC4).
+ * The five positioning types used to be RENAMED to IFCPROXY in
+ * `IFC4X3_TO_IFC4`, which kept their own attribute list under the new name:
+ * `IFCALIGNMENT(…,.ROAD.)` became an 8-attribute IFCPROXY with an alignment
+ * enum in `ProxyType`, where IfcProxy takes 9 (#7683, EXPORT-MERGE-8; Rust
+ * twin `should_skip_entity`).
  */
 export function shouldSkipEntity(entityType: string, toSchema: IfcSchemaVersion): boolean {
-  // Alignment entities are native to IFC4X3 and IFC5 — preserve them
-  if (toSchema === 'IFC4X3' || toSchema === 'IFC5') {
-    return false;
-  }
-
-  // For older schemas, these alignment types have no meaningful representation
-  const skipTypes = new Set([
-    'IFCALIGNMENTCANT',
-    'IFCALIGNMENTHORIZONTAL',
-    'IFCALIGNMENTVERTICAL',
-    'IFCALIGNMENTSEGMENT',
-  ]);
-
-  return skipTypes.has(entityType);
+  return toSchema !== 'IFC4X3' && toSchema !== 'IFC5' && SKIP_TYPES.has(entityType);
 }
 
 /**

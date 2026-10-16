@@ -34,7 +34,8 @@
  * IFC4X3-only `TagList` attribute under IFC4.
  */
 import { describe, it, expect } from 'vitest';
-import { convertStepLine } from './schema-converter.js';
+import { attrNameTable, convertStepLine } from './schema-converter.js';
+import { splitTopLevelStepArguments } from './step-argument-parser.js';
 
 describe('IFC4X3-only entities absent from the wrong entity table no longer pass through unconverted (#5204)', () => {
   // Three of the 20 entities the issue names as passing straight through:
@@ -107,21 +108,32 @@ describe('IfcCartesianPointList2D/3D TagList case (#5204)', () => {
 });
 
 describe('no-regression pins', () => {
-  it('the four rename-map-protected entities still become IFCPROXY converting IFC4X3 → IFC4', () => {
+  it('the positioning entities become a full 9-attribute IFCPROXY converting IFC4X3 → IFC4 and IFC2X3 (#7683)', () => {
+    // These used to be RENAMED to IFCPROXY by the IFC4X3_TO_IFC4 map, which
+    // kept their own attribute list under the new name: IFCALIGNMENT's
+    // 8 attributes and `.ROAD.` in IfcProxy's `ProxyType` slot, where IfcProxy
+    // takes 9 (EXPORT-MERGE-8). They now take the same synthesised proxy as
+    // the other alignment entities: the source type is its Name, ProxyType is
+    // `.NOTDEFINED.`, and the arity is IfcProxy's own.
     const cases: Array<[string, string]> = [
-      ['IFCALIGNMENT', "#400=IFCALIGNMENT('guid',$,'Align',$,$,$,$,$,$);"],
-      ['IFCLINEARPOSITIONINGELEMENT', "#401=IFCLINEARPOSITIONINGELEMENT('guid',$,$,$,$,$,$,$);"],
+      ['IFCALIGNMENT', "#400=IFCALIGNMENT('guid',$,'Align',$,$,$,$,.ROAD.);"],
+      ['IFCLINEARELEMENT', "#404=IFCLINEARELEMENT('guid',$,$,$,$,$,$);"],
+      ['IFCLINEARPOSITIONINGELEMENT', "#401=IFCLINEARPOSITIONINGELEMENT('guid',$,$,$,$,$,$);"],
       ['IFCPOSITIONINGELEMENT', "#402=IFCPOSITIONINGELEMENT('guid',$,$,$,$,$,$);"],
-      ['IFCREFERENT', "#403=IFCREFERENT('guid',$,'Ref',$,$,#13,$,$,.STATION.);"],
+      ['IFCREFERENT', "#403=IFCREFERENT('guid',$,'Ref',$,$,#13,$,.STATION.,$);"],
     ];
-    for (const [type, line] of cases) {
-      const result = convertStepLine(line, 'IFC4X3', 'IFC4');
-      expect(result, `${type} should become IFCPROXY`).toContain('IFCPROXY(');
-      // These four are protected via the IFC4X3_TO_IFC4 rename map (a direct
-      // type-name rename to IFCPROXY, not `resolveUnrepresentedEntity`'s
-      // synthesized placeholder), so the record's own attributes carry
-      // through rather than the original type name landing in a Tag slot.
-      expect(result, `${type} should not keep its own type name`).not.toContain(`'${type}'`);
+    for (const to of ['IFC4', 'IFC2X3'] as const) {
+      const proxyArity = attrNameTable(to)?.get('IFCPROXY')?.length;
+      expect(proxyArity, `${to} declares IfcProxy`).toBe(9);
+      for (const [type, line] of cases) {
+        const result = convertStepLine(line, 'IFC4X3', to)!;
+        const match = /^#\d+=IFCPROXY\((.*)\);$/.exec(result);
+        expect(match, `${type} → ${to} should become IFCPROXY: ${result}`).not.toBeNull();
+        const slots = splitTopLevelStepArguments(match![1])!;
+        expect(slots, `${type} → ${to}: ${result}`).toHaveLength(proxyArity!);
+        expect(slots[2], 'the source type is the proxy Name').toBe(`'${type}'`);
+        expect(slots[7], 'ProxyType is an IfcObjectTypeEnum member').toBe('.NOTDEFINED.');
+      }
     }
   });
 

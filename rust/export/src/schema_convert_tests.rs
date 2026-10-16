@@ -664,7 +664,7 @@ fn non_rooted_type_with_no_ifc2x3_representation_errors_instead_of_passing_throu
 /// #5116, control: a type WITH a rename entry (so it has a real IFC2X3
 /// target under its RENAMED name) must not be caught by the new "no
 /// representation" check just because its ORIGINAL name is absent from
-/// `IFC2X3_ENTITY_NAMES` -- the check runs on `new_type`, the post-rename
+/// core's IFC2X3 registry -- the check runs on `new_type`, the post-rename
 /// name, same as the TypeScript twin's `attrNameTable(toSchema).get(newType)`.
 #[test]
 fn a_renamed_type_is_not_treated_as_unrepresented() {
@@ -718,4 +718,34 @@ fn ifc4x3_to_ifc4_downgrade_skips_a_record_whose_arity_disagrees_with_the_table(
     let out = convert_step_line(line, "IFC4X3", "IFC4", 5, &mut none(), Some(&mut check)).unwrap();
     assert_eq!(out, line, "{out}");
     assert_eq!(check.ifc4_slots.required_slots_unfilled(), 0);
+}
+
+/// EXPORT-MERGE-8 (#7683): the IFC4X3 positioning types were RENAMED to
+/// `IFCPROXY` and kept their own attributes, so `IFCALIGNMENT(…,.ROAD.)` came
+/// out as an 8-attribute `IFCPROXY` with an alignment enum in `ProxyType`,
+/// where IfcProxy takes 9 (the enum and required-slot passes then skipped it on
+/// arity). They now take the synthesised proxy every other unrepresented
+/// rooted type gets, in both downgrade directions.
+#[test]
+fn positioning_types_become_a_full_proxy_on_downgrade_7683() {
+    let ifc_proxy_arity = |to| schema_attribute_names(to, "IFCPROXY").map(<[_]>::len);
+    for (ty, line) in [
+        ("IFCALIGNMENT", "#1=IFCALIGNMENT('2K5H1$Zs9CQuKQFQKQFQKQ',$,'A',$,$,#5,#6,.ROAD.);"),
+        ("IFCREFERENT", "#2=IFCREFERENT('3K5H1$Zs9CQuKQFQKQFQKQ',$,'R',$,$,#5,$,.STATION.,(#9));"),
+        ("IFCLINEARELEMENT", "#3=IFCLINEARELEMENT('4K5H1$Zs9CQuKQFQKQFQKQ',$,'L',$,$,#5,$);"),
+        ("IFCPOSITIONINGELEMENT", "#4=IFCPOSITIONINGELEMENT('5K5H1$Zs9CQuKQFQKQFQKQ',$,'P',$,$,#5,$);"),
+        ("IFCLINEARPOSITIONINGELEMENT", "#5=IFCLINEARPOSITIONINGELEMENT('6K5H1$Zs9CQuKQFQKQFQKQ',$,'P',$,$,#5,$);"),
+    ] {
+        for to in ["IFC4", "IFC2X3"] {
+            let out = convert_step_line(line, "IFC4X3", to, 1, &mut none(), None).unwrap();
+            assert!(out.contains("=IFCPROXY("), "{ty} -> {to}: {out}");
+            assert_eq!(slot(&out, 2), format!("'{ty}'"), "the source type is the proxy's Name: {out}");
+            let open = out.find('(').unwrap() + 1;
+            let arity = crate::step_slot::split_top_level_args(&out[open..out.rfind(')').unwrap()]).unwrap().len();
+            assert_eq!(Some(arity), ifc_proxy_arity(to), "{ty} -> {to}: IfcProxy's own arity: {out}");
+            assert_eq!(slot(&out, 7), ".NOTDEFINED.", "ProxyType is an IfcObjectTypeEnum member: {out}");
+        }
+        // IFC4X3 declares them, so an upgrade or a same-family write keeps them.
+        assert_eq!(convert_step_line(line, "IFC4X3", "IFC5", 1, &mut none(), None).unwrap(), line);
+    }
 }

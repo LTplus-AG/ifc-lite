@@ -13,7 +13,6 @@
 //! Split out of `schema_convert.rs` to stay under its line budget, same
 //! reason the TypeScript twin gives for its own split.
 
-use crate::generated::ifc2x3_entity_names::IFC2X3_ENTITY_NAMES;
 use crate::rooted_type::is_rooted_type;
 use crate::schema_convert::placeholder_guid;
 
@@ -21,19 +20,19 @@ use crate::schema_convert::placeholder_guid;
 /// from a renamed or attribute-count-adjusted counterpart, which
 /// `schema_convert.rs`'s rename tables already resolve before this runs.
 ///
-/// Only meaningful for an IFC2X3 target today: that is the one direction
-/// with a generated per-schema entity-name table to check against (mirrors
-/// the TypeScript `attrNameTable`, which only builds tables for IFC2X3/IFC4/
-/// IFC4X3 and returns `null` — skipping this check entirely — for IFC5).
-/// IFC4/IFC4X3 targets are supersets of IFC2X3/IFC4 in practice for every
-/// type this crate's rename tables know about, so this deliberately answers
-/// `false` (representable) for any other target rather than guessing from an
-/// incomplete table.
+/// Only checked for an IFC2X3 target today, against core's IFC2X3 EXPRESS
+/// registry (#7683; it replaced a generated name table that listed the same
+/// entities plus the defined types, which never head a record). Every other
+/// target answers `true` (representable): unlike the TypeScript
+/// `attrNameTable` check, which also runs for IFC4/IFC4X3 targets, this crate
+/// has no port of the `WITHHOLDABLE_UNROOTED_TYPES` omission, so widening the
+/// check would turn an IFC4X3 -> IFC4 export with any IFC4X3-only resource
+/// type into an error rather than a pass-through.
 pub(crate) fn has_representation(type_name: &str, to: &str) -> bool {
     if to != "IFC2X3" {
         return true;
     }
-    IFC2X3_ENTITY_NAMES.binary_search(&type_name).is_ok()
+    ifc_lite_core::entity_info_for_schema("IFC2X3", type_name).is_some()
 }
 
 /// An entity type with no representation in the target schema that is

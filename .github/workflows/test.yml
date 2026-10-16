@@ -3024,9 +3024,11 @@ jobs:
           shared-key: main
           save-if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'merge_group' }}
 
-      # No `pnpm install`: the gate imports only node builtins,
-      # scripts/lib/crates-io.mjs and scripts/lib/cargo-semver-checks.mjs, and
-      # both of those import only node builtins too.
+      # No `pnpm install`: the gate imports only node builtins and repo libs
+      # (crates-io, cargo-semver-checks, semver-baseline, rust-major-offset,
+      # rust-internal-deps) that import only node builtins too. A baseline
+      # crates.io can no longer resolve (#7737) is rebuilt from its release
+      # tag, which the script fetches itself: this shallow checkout has none.
       - name: Check crate semver against crates.io
         run: node scripts/check-rust-semver.mjs
 

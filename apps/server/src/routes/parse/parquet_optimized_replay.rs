@@ -14,8 +14,10 @@
 use super::cache_keys::{
     cache_key_from_parts, data_model_cache_key, has_cached_symbolic, has_current_data_model,
     has_optimized_metadata, is_file_digest, not_a_file_digest, parquet_optimized_cache_key,
-    parquet_optimized_metadata_cache_key,
+    parquet_optimized_metadata_cache_key, stored_size,
 };
+use super::cache_read::resident_body;
+use crate::admission::{AdmissionGuard, ResidentBytes};
 use super::parquet::DataModelStats;
 use super::replay_header::mark_header_from_cache;
 use super::ParseQuery;
@@ -24,7 +26,6 @@ use crate::services::{DataModelEntities, OptimizedStats};
 use crate::types::{ModelMetadata, ProcessingStats};
 use crate::AppState;
 use axum::{
-    body::Body,
     http::{header, StatusCode},
     response::Response,
 };
@@ -53,28 +54,18 @@ pub(super) struct OptimizedParquetMetadataHeader {
     pub data_model_stats: Option<DataModelStats>,
 }
 
-/// Read a cache entry, treating an unreadable one as absent.
-///
-/// A corrupt entry must look like a miss to every caller on the replay path,
-/// or the route answers 500 forever for that file.
-pub(super) async fn readable_entry(state: &AppState, key: &str) -> Option<Vec<u8>> {
-    match state.cache.get_bytes(key).await {
-        Ok(bytes) => bytes,
-        Err(e) => {
-            tracing::warn!(error = %e, cache_key = %key, "Unreadable cache entry; re-parsing");
-            None
-        }
-    }
-}
-
 /// The optimized route's wire response, built in ONE place.
 ///
 /// The live parse and the cache replay must be indistinguishable to a client,
 /// and two hand-copied builders are indistinguishable only for as long as
 /// nobody edits one of them.
+///
+/// The body keeps `resident` (the request's byte reservation) until it is
+/// sent (#7676, SERVER-7).
 pub(super) fn optimized_parquet_response(
     metadata_json: String,
     body: bytes::Bytes,
+    resident: ResidentBytes,
 ) -> Result<Response, ApiError> {
     Response::builder()
         .status(StatusCode::OK)
@@ -84,13 +75,15 @@ pub(super) fn optimized_parquet_response(
         )
         .header("X-IFC-Metadata", metadata_json)
         .header(header::CONTENT_LENGTH, body.len())
-        .body(Body::from(body))
+        .body(resident_body(body, resident))
         .map_err(|e| ApiError::Internal(e.to_string()))
 }
 
-/// Try to serve this request from the cache (issue #3889). `Ok(Some(_))` is a
-/// usable hit the caller returns as-is without parsing; anything else falls
-/// through to the live parse, which rewrites the entries.
+/// Read this request's replay from the cache (issue #3889): the stored
+/// response header (already marked `from_cache`) and body. `Ok(Some(_))` is a
+/// usable hit the caller answers as-is without parsing; `Ok(None)` falls
+/// through to the live parse, which rewrites the entries. The caller holds
+/// the admission the read is charged to, and hands it to the response.
 ///
 /// Ordered cheapest-gate-first: the body is the only large read, so it comes
 /// last, once the hit is otherwise known good.
@@ -99,16 +92,16 @@ pub(super) fn optimized_parquet_response(
 /// deserializes `OptimizedParquetMetadataHeader` and a replay reports the same
 /// `optimization_stats` the live parse did.
 ///
-/// EVERY way an entry can be unusable is a miss, never an error: a read that
-/// fails, and a header that is not valid UTF-8. cacache verifies content on
-/// read, so a truncated or orphaned blob (interrupted write, partial GC) comes
-/// back as an error -- and propagating it would 500 this file's every future
-/// request, because the parse that would overwrite the bad entry is the thing
-/// the error skips. A miss re-parses and rewrites it.
+/// EVERY way an entry can be unusable is a miss, never an error, by the one
+/// policy every route reads through (`services::cache_entry`, #7676): a blob
+/// that is gone or fails cacache's integrity check, and a header that is not
+/// valid UTF-8. Propagating it would 500 this file's every future request,
+/// because the parse that would overwrite the bad entry is the thing the
+/// error skips.
 ///
 /// The symbolic gate is not optional: this route's parse also writes the
 /// symbolic sidecar, so replaying past a missing one leaves the client's
-/// `GET /api/v1/parse/symbolic/{cache_key}` polling a key nobody writes.
+/// `GET /api/v1/parse/symbolic/{cache_key}` with a key nobody writes.
 ///
 /// The data-model gate (#5129) is the same #3869 rule the flat route already
 /// applies: this route now writes a data model beside the geometry, so a hit
@@ -122,35 +115,48 @@ pub(super) fn optimized_parquet_response(
 /// data-model key nobody writes. A miss re-parses; the body and header it
 /// rewrites are the same bytes, because the variant touches only the data
 /// model.
+///
+/// `upload` is the upload route's admission, charged the header's and body's
+/// stored size for the read (and put back to its upload's charge on a miss,
+/// for the parse); the hash-only route passes `None` because it has already
+/// admitted the body.
 pub(super) async fn try_cached_optimized_parquet(
     state: &AppState,
     cache_key: &str,
     data_model_entities: DataModelEntities,
-) -> Result<Option<Response>, ApiError> {
-    if !has_cached_symbolic(&state.cache, cache_key).await {
+    upload: Option<&mut AdmissionGuard>,
+) -> Result<Option<(String, bytes::Bytes)>, ApiError> {
+    if !has_cached_symbolic(&state.cache, cache_key).await?
+        || !has_current_data_model(&state.cache, cache_key, data_model_entities).await?
+    {
         return Ok(None);
     }
-
-    if !has_current_data_model(&state.cache, cache_key, data_model_entities).await {
+    let Some(upload) = upload else {
+        return read_optimized(state, cache_key).await;
+    };
+    let body = stored_size(&state.cache, &parquet_optimized_cache_key(cache_key)).await?;
+    let header = stored_size(&state.cache, &parquet_optimized_metadata_cache_key(cache_key)).await?;
+    if body == 0 || header == 0 {
         return Ok(None);
     }
+    let held = upload.grow_to(body + header).await?;
+    let hit = read_optimized(state, cache_key).await?;
+    if hit.is_none() {
+        upload.shrink_to(held);
+    }
+    Ok(hit)
+}
 
-    let Some(cached_metadata_json) =
-        readable_entry(state, &parquet_optimized_metadata_cache_key(cache_key)).await
+/// The two entries' content, each read through the one cache-entry policy.
+async fn read_optimized(state: &AppState, cache_key: &str) -> Result<Option<(String, bytes::Bytes)>, ApiError> {
+    let Some(metadata_json) = state
+        .cache
+        .read_usable_utf8(&parquet_optimized_metadata_cache_key(cache_key))
+        .await?
     else {
         return Ok(None);
     };
-
-    let Ok(metadata_json) = String::from_utf8(cached_metadata_json) else {
-        tracing::warn!(
-            cache_key = %cache_key,
-            "Cached optimized metadata is not valid UTF-8; ignoring cache and re-parsing"
-        );
-        return Ok(None);
-    };
-
-    let Some(cached_body) = readable_entry(state, &parquet_optimized_cache_key(cache_key)).await
-    else {
+    let Some(cached_body) = state.cache.read_usable(&parquet_optimized_cache_key(cache_key)).await? else {
         return Ok(None);
     };
 
@@ -159,9 +165,8 @@ pub(super) async fn try_cached_optimized_parquet(
         payload_size = cached_body.len(),
         "Optimized Parquet cache HIT - returning cached response"
     );
-
     // Stored as the live parse wrote it, `from_cache: false` included (#5542).
-    optimized_parquet_response(mark_header_from_cache(metadata_json), cached_body.into()).map(Some)
+    Ok(Some((mark_header_from_cache(metadata_json), cached_body.into())))
 }
 
 /// Cache the data model produced alongside this route's geometry (#5129).
@@ -198,16 +203,13 @@ pub(super) async fn cache_data_model(
 /// parse, so a probe cannot become a way to make the server do work for a
 /// body it never received.
 ///
-/// A MISS costs no admission slot: the gates below are three small reads
-/// (symbolic sidecar, optimized metadata, and the data model, #5129), cheaper
-/// than queueing for a slot only to fail the actual lookup. Without the
-/// data-model gate here, a probe for an entry warmed before #5129 (geometry
-/// and symbolic present, no data model) would still take an admission slot,
-/// only to be refused anyway by the same gate inside
-/// `try_cached_optimized_parquet` -- charging a slot for a lookup already
-/// known to fail. A HIT takes a slot around the cache read
-/// (`try_cached_optimized_parquet` reads the whole body into memory), dropped
-/// before the response goes out.
+/// A MISS costs no admission: the gates below are index lookups that read
+/// nothing (#7676, SERVER-6; the data-model gate used to read the whole data
+/// model). A HIT is admitted for the stored header and body before either is
+/// read, against the byte budget only, since it computes nothing; the
+/// reservation rides the response body until the client has drained it
+/// (SERVER-7), and is the entries' own size rather than `MAX_FILE_SIZE_MB`
+/// (SERVER-24).
 ///
 /// [`cached_replay::replay_by_client_hash`]: super::cached_replay::replay_by_client_hash
 pub(super) async fn replay_optimized_by_client_hash(
@@ -221,27 +223,26 @@ pub(super) async fn replay_optimized_by_client_hash(
     }
     let cache_key = cache_key_from_parts(sha256, query.opening_filter, quality);
 
-    let hit = if has_optimized_metadata(&state.cache, &cache_key).await
-        && has_cached_symbolic(&state.cache, &cache_key).await
-        && has_current_data_model(&state.cache, &cache_key, query.data_model_entities).await
+    let stored = if has_optimized_metadata(&state.cache, &cache_key).await?
+        && has_cached_symbolic(&state.cache, &cache_key).await?
+        && has_current_data_model(&state.cache, &cache_key, query.data_model_entities).await?
     {
-        let admission_guard = state
-            .admission
-            .acquire(state.config.max_file_size_mb as u64 * 1024 * 1024)
-            .await?;
-        let hit = try_cached_optimized_parquet(state, &cache_key, query.data_model_entities).await;
-        drop(admission_guard);
-        hit?
+        state.cache.lookup(&parquet_optimized_cache_key(&cache_key)).await?
     } else {
         None
     };
-
-    if let Some(response) = hit {
-        tracing::info!(
-            cache_key = %cache_key,
-            "Optimized Parquet cache HIT by client-supplied hash - no upload"
-        );
-        return Ok(response);
+    if let Some(body) = stored {
+        // The header is a few hundred bytes; a permit covers it.
+        let resident = state.admission.acquire_resident(body.size()).await?;
+        if let Some((metadata_json, body)) =
+            try_cached_optimized_parquet(state, &cache_key, query.data_model_entities, None).await?
+        {
+            tracing::info!(
+                cache_key = %cache_key,
+                "Optimized Parquet cache HIT by client-supplied hash - no upload"
+            );
+            return optimized_parquet_response(metadata_json, body, resident);
+        }
     }
 
     tracing::debug!(

@@ -142,7 +142,7 @@ export function writeSourceEntityLines(
     // Extract existing entities from source. The effective index has already
     // dropped everything the overlay tombstoned, so there is no separate
     // deleted check to forget here.
-    for (const [expressId, entityRef] of pass.effective) {
+    for (const [expressId, entityRef] of lastRecordPerId(pass.effective, pass.warnings)) {
       // Skip overlay-only entities — emitted by the overlay-created-entities
       // block back in `export()`.
       // A ref this source cannot address is skipped by the same test rather
@@ -345,4 +345,29 @@ export function writeSourceEntityLines(
       }
     }
   }
+}
+
+/**
+ * The entries of `entries` with a repeated express id collapsed to the LAST
+ * record with that id, the one core's index resolves it to (#7682,
+ * EXPORT-STEP-11; the Rust twin is `step_index::RecordIndex`). The source index
+ * is sorted by id with file order kept among equal ids, so repeats are
+ * adjacent and the last of a run is the last in the file. Each record dropped
+ * is reported in `warnings`, in the Rust writer's words.
+ */
+function* lastRecordPerId<T>(entries: Iterable<[number, T]>, warnings: string[]): Generator<[number, T]> {
+  let held: [number, T] | undefined;
+  for (const entry of entries) {
+    if (held !== undefined) {
+      if (held[0] === entry[0]) {
+        warnings.push(
+          `Entity #${held[0]} appears more than once in the source; only its last record, the one ifc-lite reads, was written, and every earlier record with that id was dropped.`,
+        );
+      } else {
+        yield held;
+      }
+    }
+    held = entry;
+  }
+  if (held !== undefined) yield held;
 }

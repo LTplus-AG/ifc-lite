@@ -391,3 +391,12 @@ mod admission_7676;
 
 #[path = "refusal_7675_tests.rs"]
 mod refusal_7675;
+
+#[path = "cache_read_7676_tests.rs"]
+mod cache_read_7676;
+
+#[path = "cache_policy_7676_tests.rs"]
+mod cache_policy_7676;
+
+#[path = "cache_hit_sizing_7676_tests.rs"]
+mod cache_hit_sizing_7676;

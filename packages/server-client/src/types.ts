@@ -327,8 +327,13 @@ export interface StreamCompleteEvent {
   stats: ProcessingStats;
   /** Model metadata */
   metadata: ModelMetadata;
-  /** Cache key for the result */
-  cache_key: string;
+  /**
+   * @deprecated Not sent by a server that includes #7676. `/parse/stream`
+   * caches nothing, and the bare file hash this carried named no cache entry
+   * (`GET /api/v1/cache/{key}` refused it). Use `parse()` or a Parquet method
+   * for a `cache_key` to fetch by later.
+   */
+  cache_key?: string;
   /**
    * 2D symbol data (`IfcAnnotation` + `IfcGrid`). Omitted when the model has
    * no 2D symbols.

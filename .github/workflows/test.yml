@@ -936,6 +936,25 @@ jobs:
           # upload.rs is on main, ordinary whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- apps/server/src/routes/parse/upload.rs | grep -Fxq 'apps/server/src/routes/parse/upload.rs'; then
             oracle_args+=(--mutation tests/evidence/upload-admission-7676/behaviour.oracle.patch)
+          # #7676: the cache-read policy adds AdmissionGuard::into_resident,
+          # Admission::acquire_resident and the DiskCache::lookup family, which
+          # its tests name, so a whole-change revert cannot compile them
+          # (INCONCLUSIVE). Keep them and break ONLY the behaviour: a drained
+          # response gives its bytes back early, a cache read ignores the RSS
+          # breaker, eviction ignores the write time (a same-content repair is
+          # evicted) or the blob's return, an upload charge never grows to the
+          # stored size or grows before the replay gate, and two routes drop
+          # Content-Length. Once
+          # cache_entry.rs is on main, ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- apps/server/src/services/cache_entry.rs | grep -Fxq 'apps/server/src/services/cache_entry.rs'; then
+            oracle_args+=(--mutation tests/evidence/cache-policy-7676/behaviour.oracle.patch)
+          # #7682: keep the new STEP-writer modules, StepStats fields and the TS
+          # allocatedExpressId export loadable while disabling ONLY the guards the
+          # changed tests pin (value/name/id-reuse refusals, the id-space refusal,
+          # appended-record conversion, last-record-wins, the property counter).
+          # Once step_ids.rs is on main, ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/export/src/step_ids.rs | grep -Fxq 'rust/export/src/step_ids.rs'; then
+            oracle_args+=(--mutation tests/evidence/step-writer-7682/appended-record-guards.oracle.patch)
           # #7675: the material-row budget travels as DataModel.refused and
           # the complex-property walks share ifc_lite_core::limits'
           # ComplexPropertyBudget, which the changed tests construct, so a

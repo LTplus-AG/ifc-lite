@@ -86,7 +86,7 @@ fn transpose_translation_identity_and_bridges() {
     assert_eq!(to_na(&IDENTITY), Matrix4::<f64>::identity());
     let na = Matrix4::from_fn(|r, c| (r * 4 + c) as f64 + 0.5);
     assert!(bits_eq(&from_na(&na), &m_from_rows(&na)));
-    assert!(bits_eq(&to_na(&from_na(&na)).as_slice()[..], &na.as_slice()[..]));
+    assert!(bits_eq(&to_na(&from_na(&na)).as_slice(), &na.as_slice()));
     // Column-major storage is the transpose of the row-major reading.
     assert!(bits_eq(&col_major_array(&na), &transpose(&from_na(&na))));
     assert_eq!(Matrix4::from_column_slice(&col_major_array(&na)), na);

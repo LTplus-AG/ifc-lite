@@ -18,11 +18,11 @@ fn bits_eq(a: &[f64], b: &[f64]) -> bool {
 /// and whole zero rows/columns on some draws.
 fn matrix(rng: &mut Rng) -> M4 {
     let mut m: M4 = std::array::from_fn(|_| rng.f64());
-    if rng.next() % 5 == 0 {
+    if rng.next().is_multiple_of(5) {
         let k = (rng.next() % 4) as usize;
         for j in 0..4 {
-            m[k * 4 + j] = if rng.next() % 2 == 0 { 0.0 } else { -0.0 };
-            m[j * 4 + k] = if rng.next() % 2 == 0 { 0.0 } else { -0.0 };
+            m[k * 4 + j] = if rng.next().is_multiple_of(2) { 0.0 } else { -0.0 };
+            m[j * 4 + k] = if rng.next().is_multiple_of(2) { 0.0 } else { -0.0 };
         }
     }
     m

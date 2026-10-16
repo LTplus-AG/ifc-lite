@@ -24,7 +24,7 @@ impl Rng {
         const SPECIAL: [f64; 10] =
             [0.0, -0.0, 5e-324, -5e-324, 1.0, -1.0, 1e7, -1e7, 123_456.789, -0.5];
         let r = self.next();
-        if r % 4 == 0 {
+        if r.is_multiple_of(4) {
             return SPECIAL[(r >> 8) as usize % SPECIAL.len()];
         }
         let unit = (self.next() >> 11) as f64 / (1u64 << 53) as f64 * 2.0 - 1.0;

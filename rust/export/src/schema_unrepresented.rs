@@ -118,19 +118,23 @@ pub(crate) fn resolve_unrepresented_entity(
 /// - source attributes 1 to 6 (OwnerHistory through Representation) are kept
 ///   verbatim, so an alignment's curve and a referent's placement stay
 ///   attached;
-/// - ObjectType takes the quoted source type name when the source slot is `$`;
+/// - Name (IfcProxy WR1 requires it) and ObjectType take the quoted source
+///   type name when the source slot is `$`;
 /// - then `.NOTDEFINED.` ProxyType and a `$` Tag.
 ///
 /// A missing source slot is written `$`.
 pub(crate) fn product_proxy(prefix: &str, guid: &str, entity_type: &str, args: &[String]) -> String {
     let slot = |i: usize| args.get(i).map_or("$", String::as_str);
-    let object_type: Cow<'_, str> =
-        if slot(4).trim() == "$" { Cow::Owned(format!("'{entity_type}'")) } else { Cow::Borrowed(slot(4)) };
+    // Name and ObjectType fall back to the quoted source type when the slot is `$`.
+    let or_type = |i: usize| -> Cow<'_, str> {
+        if slot(i).trim() == "$" { Cow::Owned(format!("'{entity_type}'")) } else { Cow::Borrowed(slot(i)) }
+    };
     format!(
-        "{prefix}IFCPROXY('{guid}',{},{},{},{object_type},{},{},.NOTDEFINED.,$);",
+        "{prefix}IFCPROXY('{guid}',{},{},{},{},{},{},.NOTDEFINED.,$);",
         slot(1),
-        slot(2),
+        or_type(2),
         slot(3),
+        or_type(4),
         slot(5),
         slot(6)
     )

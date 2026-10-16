@@ -2,15 +2,16 @@ diff --git b/packages/export/src/schema-converter-product-proxy.ts a/packages/ex
 index 911b45b091..f9e95e83be 100644
 --- b/packages/export/src/schema-converter-product-proxy.ts
 +++ a/packages/export/src/schema-converter-product-proxy.ts
-@@ -25,6 +25,7 @@
+@@ -26,6 +26,8 @@
   * A missing source slot is written `$`.
   */
  export function productProxy(prefix: string, guid: string, entityType: string, args: readonly string[]): string {
 -  void args;
 -  return `${prefix}IFCPROXY('${guid}',$,'${entityType}',$,$,$,$,.NOTDEFINED.,$);`;
 +  const slot = (i: number): string => args[i] ?? '$';
-+  const objectType = slot(4).trim() === '$' ? `'${entityType}'` : slot(4);
-+  return `${prefix}IFCPROXY('${guid}',${slot(1)},${slot(2)},${slot(3)},${objectType},${slot(5)},${slot(6)},.NOTDEFINED.,$);`;
++  // Name (IfcProxy WR1 requires it) and ObjectType fall back to the quoted source type.
++  const orType = (i: number): string => (slot(i).trim() === '$' ? `'${entityType}'` : slot(i));
++  return `${prefix}IFCPROXY('${guid}',${slot(1)},${orType(2)},${slot(3)},${orType(4)},${slot(5)},${slot(6)},.NOTDEFINED.,$);`;
  }
 diff --git b/packages/export/src/schema-converter.ts a/packages/export/src/schema-converter.ts
 index e6dd23df75..28696f81b5 100644
@@ -256,7 +257,7 @@ diff --git b/rust/export/src/schema_unrepresented.rs a/rust/export/src/schema_un
 index b65e420085..fa8b624137 100644
 --- b/rust/export/src/schema_unrepresented.rs
 +++ a/rust/export/src/schema_unrepresented.rs
-@@ -122,9 +122,18 @@ pub(crate) fn resolve_unrepresented_entity(
+@@ -123,9 +123,21 @@ pub(crate) fn resolve_unrepresented_entity(
  /// - then `.NOTDEFINED.` ProxyType and a `$` Tag.
  ///
  /// A missing source slot is written `$`.
@@ -265,13 +266,16 @@ index b65e420085..fa8b624137 100644
 -    format!("{prefix}IFCPROXY('{guid}',$,'{entity_type}',$,$,$,$,.NOTDEFINED.,$);")
 +pub(crate) fn product_proxy(prefix: &str, guid: &str, entity_type: &str, args: &[String]) -> String {
 +    let slot = |i: usize| args.get(i).map_or("$", String::as_str);
-+    let object_type: Cow<'_, str> =
-+        if slot(4).trim() == "$" { Cow::Owned(format!("'{entity_type}'")) } else { Cow::Borrowed(slot(4)) };
++    // Name and ObjectType fall back to the quoted source type when the slot is `$`.
++    let or_type = |i: usize| -> Cow<'_, str> {
++        if slot(i).trim() == "$" { Cow::Owned(format!("'{entity_type}'")) } else { Cow::Borrowed(slot(i)) }
++    };
 +    format!(
-+        "{prefix}IFCPROXY('{guid}',{},{},{},{object_type},{},{},.NOTDEFINED.,$);",
++        "{prefix}IFCPROXY('{guid}',{},{},{},{},{},{},.NOTDEFINED.,$);",
 +        slot(1),
-+        slot(2),
++        or_type(2),
 +        slot(3),
++        or_type(4),
 +        slot(5),
 +        slot(6)
 +    )

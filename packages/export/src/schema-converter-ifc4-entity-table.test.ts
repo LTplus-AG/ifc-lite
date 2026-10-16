@@ -142,6 +142,14 @@ describe('no-regression pins', () => {
     }
   });
 
+  it('an unnamed positioning entity names the source type, because IfcProxy WR1 requires Name (#7683)', () => {
+    for (const to of ['IFC4', 'IFC2X3'] as const) {
+      const result = convertStepLine("#453=IFCALIGNMENTSEGMENT('guid',#2,$,$,$,#455,$,#9);", 'IFC4X3', to)!;
+      const slots = splitTopLevelStepArguments(/^#\d+=IFCPROXY\((.*)\);$/.exec(result)![1])!;
+      expect(slots[2], `${to}: ${result}`).toBe("'IFCALIGNMENTSEGMENT'");
+    }
+  });
+
   it('an ordinary IFC4-valid entity converts unchanged (IFC4X3 → IFC4, IFCWALL)', () => {
     const line = "#500=IFCWALL('guid',$,'Wall',$,$,$,$,$,.NOTDEFINED.);";
     expect(convertStepLine(line, 'IFC4X3', 'IFC4')).toBe(line);

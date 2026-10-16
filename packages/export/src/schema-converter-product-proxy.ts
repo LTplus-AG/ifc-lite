@@ -17,7 +17,8 @@
  *   `merged-exporter.test.ts`);
  * - source attributes 1 to 6 are kept verbatim, so the alignment's curve
  *   representation and a referent's placement stay attached;
- * - ObjectType takes the quoted source type name when the source slot is `$`,
+ * - Name (IfcProxy WR1 requires it) and ObjectType take the quoted source type
+ *   name when the source slot is `$`,
  *   so what the proxy stands for is still readable;
  * - then `.NOTDEFINED.` ProxyType and a `$` Tag. Source attributes past the
  *   seventh (the IFC4X3 PredefinedType and friends) have no IfcProxy slot.
@@ -26,6 +27,7 @@
  */
 export function productProxy(prefix: string, guid: string, entityType: string, args: readonly string[]): string {
   const slot = (i: number): string => args[i] ?? '$';
-  const objectType = slot(4).trim() === '$' ? `'${entityType}'` : slot(4);
-  return `${prefix}IFCPROXY('${guid}',${slot(1)},${slot(2)},${slot(3)},${objectType},${slot(5)},${slot(6)},.NOTDEFINED.,$);`;
+  // Name (IfcProxy WR1 requires it) and ObjectType fall back to the quoted source type.
+  const orType = (i: number): string => (slot(i).trim() === '$' ? `'${entityType}'` : slot(i));
+  return `${prefix}IFCPROXY('${guid}',${slot(1)},${orType(2)},${slot(3)},${orType(4)},${slot(5)},${slot(6)},.NOTDEFINED.,$);`;
 }

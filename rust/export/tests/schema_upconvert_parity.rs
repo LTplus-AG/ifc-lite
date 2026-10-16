@@ -105,7 +105,7 @@ fn product_proxy_vectors_agree_with_the_shared_fixture_7683() {
     let raw = include_str!("fixtures/schema_product_proxy_vectors.json");
     let doc: serde_json::Value = serde_json::from_str(raw).expect("fixture is valid JSON");
     let cases: Vec<Case> = serde_json::from_value(doc["cases"].clone()).expect("cases deserialize");
-    assert!(cases.len() >= 4, "anti-vacuity");
+    assert!(cases.len() >= 5, "anti-vacuity");
     for c in &cases {
         let got = convert_through_exporter(&c.line, &c.from, &c.to);
         let (masked, guid) = mask_proxy_guid(&got);

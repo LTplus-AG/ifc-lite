@@ -760,6 +760,11 @@ fn positioning_types_become_a_full_proxy_on_downgrade_7683() {
     // An authored ObjectType is kept rather than overwritten.
     let out = convert_step_line("#7=IFCALIGNMENT('g',$,'A',$,'Axis',#5,#6,.ROAD.);", "IFC4X3", "IFC4", 7, &mut none(), None).unwrap();
     assert_eq!(slot(&out, 4), "'Axis'", "{out}");
+    // IfcProxy WR1 requires Name: an unnamed source names the source type, on both targets.
+    for to in ["IFC4", "IFC2X3"] {
+        let out = convert_step_line("#8=IFCALIGNMENTSEGMENT('g',#2,$,$,$,#5,$,#9);", "IFC4X3", to, 8, &mut none(), None).unwrap();
+        assert_eq!(slot(&out, 2), "'IFCALIGNMENTSEGMENT'", "{to}: {out}");
+    }
 }
 
 /// #7683: the values a conversion has no target slot for are counted, not

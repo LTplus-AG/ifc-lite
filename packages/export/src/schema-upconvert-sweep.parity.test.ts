@@ -78,7 +78,7 @@ describe('the IFC4X3 alignment-product proxy matches the shared Rust/TS vectors 
   const vectors: { cases: SweepCase[] } = JSON.parse(readFileSync(vectorsPath, 'utf8'));
 
   it('every vector agrees, with a minted GlobalId', () => {
-    expect(vectors.cases.length).toBeGreaterThanOrEqual(4);
+    expect(vectors.cases.length).toBeGreaterThanOrEqual(5);
     for (const c of vectors.cases) {
       const got = convertStepLine(c.line, c.from, c.to) ?? '';
       const guid = /IFCPROXY\('([^']*)'/.exec(got)?.[1];

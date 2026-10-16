@@ -24,7 +24,15 @@ impl Record {
     }
 }
 
-fn put(attributes: &mut Vec<Slot>, index: usize, slot: Slot) {
+/// Write `slot` at `index`, growing the record only up to its class's declared
+/// `arity`. An index past it has no attribute to address: `named` reads by
+/// declared position and both writers skip it, so it is dropped here rather
+/// than sizing the vector by a host-supplied `"@N"` (#7675, EXPORT-STEP-8:
+/// `@100000000000` asked for ~1e11 slots and aborted the process).
+fn put(attributes: &mut Vec<Slot>, arity: usize, index: usize, slot: Slot) {
+    if index >= arity {
+        return;
+    }
     if index >= attributes.len() {
         attributes.resize(index + 1, Slot::Authored(Value::Null));
     }
@@ -67,11 +75,11 @@ pub(crate) fn effective_record(pass: &Pass<'_, '_>, id: u32) -> Option<Record> {
     };
     for (name, value) in pass.attribute_edits(id).unwrap_or(&[]) {
         if let Some(i) = names.iter().position(|n| n == name) {
-            put(&mut attributes, i, Slot::Authored(Value::String(value.clone())));
+            put(&mut attributes, names.len(), i, Slot::Authored(Value::String(value.clone())));
         }
     }
     for (i, value) in pass.overlay.positionals(id) {
-        put(&mut attributes, *i, Slot::Authored(value.clone()));
+        put(&mut attributes, names.len(), *i, Slot::Authored(value.clone()));
     }
     Some(Record { names, attributes })
 }

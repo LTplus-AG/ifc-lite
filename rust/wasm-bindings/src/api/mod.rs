@@ -524,6 +524,9 @@ impl IfcAPI {
         layer_material_ids: &[u32],
         layer_thicknesses: &[f64],
     ) {
+        // A malformed buffer is refused (#7675). Clearing the slot (never
+        // keeping an earlier load's index) leaves the per-worker lazy build in
+        // charge, which is correct, just slower.
         let index = ifc_lite_geometry::MaterialLayerIndex::from_flat(
             element_ids,
             axis,
@@ -537,7 +540,7 @@ impl IfcAPI {
             .cached_material_layer_index
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        *slot = Some(std::sync::Arc::new(index));
+        *slot = index.map(std::sync::Arc::new);
     }
 
     /// Get WASM memory for zero-copy access

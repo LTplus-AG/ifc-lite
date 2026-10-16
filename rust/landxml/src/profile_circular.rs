@@ -24,9 +24,10 @@ pub(crate) fn circular_geometry(
     let Some(length) = length.filter(|value| value.is_finite() && *value > 0.0) else {
         return Err(LandXmlProfileEvaluationError::InvalidCurveDeclaration);
     };
-    let Some(radius) = radius.filter(|value| value.is_finite() && *value > 0.0) else {
+    let Some(signed_radius) = radius.filter(|value| value.is_finite() && *value != 0.0) else {
         return Err(LandXmlProfileEvaluationError::InvalidCurveDeclaration);
     };
+    let radius = signed_radius.abs();
     let incoming_norm = incoming_grade.hypot(1.0);
     let outgoing_norm = outgoing_grade.hypot(1.0);
     let sine_in = incoming_grade / incoming_norm;
@@ -34,13 +35,19 @@ pub(crate) fn circular_geometry(
     let cosine_in = incoming_norm.recip();
     let cosine_out = outgoing_norm.recip();
     let grade_delta = outgoing_grade - incoming_grade;
-    if grade_delta == 0.0 {
+    // LandXML defines no sign for a CircCurve radius, but producers such as
+    // 3D-Win write a crest's radius negative. The magnitude is used; a
+    // negative radius on a sag contradicts the grades (EDGE-LXMATH-10,
+    // #7693; the same rule as packages/create's profile mapping).
+    if grade_delta == 0.0 || (signed_radius < 0.0 && grade_delta > 0.0) {
         return Err(LandXmlProfileEvaluationError::InconsistentCircularCurve);
     }
     let dot = cosine_in * cosine_out + sine_in * sine_out;
     let cosine_sum = cosine_in + cosine_out;
-    let (tangent_length, expected_length) = if grade_delta.is_finite() {
+    let (tangent_length, expected_length, sine_turn) = if grade_delta.is_finite() {
         let delta = grade_delta.abs();
+        // |sin(theta_out - theta_in)| = |delta| / (|n_in| |n_out|).
+        let sine_turn = scaled_ratio(&[delta], &[incoming_norm, outgoing_norm]);
         if dot >= 0.0 {
             (
                 scaled_ratio(&[radius, delta], &[incoming_norm, outgoing_norm, 1.0 + dot]),
@@ -48,6 +55,7 @@ pub(crate) fn circular_geometry(
                     &[radius, delta, cosine_sum],
                     &[incoming_norm, outgoing_norm, 1.0 + dot],
                 ),
+                sine_turn,
             )
         } else {
             (
@@ -56,6 +64,7 @@ pub(crate) fn circular_geometry(
                     &[radius, 1.0 - dot, incoming_norm, outgoing_norm, cosine_sum],
                     &[delta],
                 ),
+                sine_turn,
             )
         }
     } else {
@@ -67,23 +76,30 @@ pub(crate) fn circular_geometry(
             (
                 scaled_ratio(&[radius, cross.abs()], &[1.0 + dot]),
                 scaled_ratio(&[radius, cross.abs(), cosine_sum], &[1.0 + dot]),
+                cross.abs(),
             )
         } else {
             (
                 scaled_ratio(&[radius, 1.0 - dot], &[cross.abs()]),
                 scaled_ratio(&[radius, 1.0 - dot, cosine_sum], &[cross.abs()]),
+                cross.abs(),
             )
         }
     };
     // sin(theta_out) - sin(theta_in) = tan(delta / 2) *
     // (cos(theta_in) + cos(theta_out)). This stays finite for both nearly
     // parallel steep grades and nearly opposing vertical tangents.
-    // Both values are already represented f64 source quantities. Compare them
-    // at their own scale; do not grant a radius-amplified source allowance.
-    let tolerance = 32.0 * ulp(length).max(ulp(expected_length));
+    //
+    // Radius and grades fix the curve; the declared length only confirms
+    // them. Producers write either that horizontal length or the arc length
+    // R * |theta_out - theta_in| (3D-Win does), rounded to a few decimals, so
+    // either is accepted at the shared relative length tolerance
+    // (EDGE-LXMATH-10, #7693). The tolerance is scale-free: no absolute floor,
+    // so a curve authored at any magnitude, down to subnormal spans, is
+    // checked at its own scale, and never tighter than 32 ULP.
+    let arc_length = scaled_ratio(&[radius, sine_turn.atan2(dot)], &[]);
     if !expected_length.is_finite()
-        || !tolerance.is_finite()
-        || (length - expected_length).abs() > tolerance
+        || !(declares_length(length, expected_length) || declares_length(length, arc_length))
     {
         return Err(LandXmlProfileEvaluationError::InconsistentCircularCurve);
     }
@@ -107,6 +123,12 @@ pub(crate) fn circular_geometry(
         start_tangent,
         end_tangent,
     })
+}
+
+fn declares_length(declared: f64, computed: f64) -> bool {
+    let scale = declared.max(computed);
+    let tolerance = (scale * crate::numeric::RELATIVE_LENGTH_TOLERANCE).max(32.0 * ulp(scale));
+    computed.is_finite() && tolerance.is_finite() && (declared - computed).abs() <= tolerance
 }
 
 fn ulp(value: f64) -> f64 {

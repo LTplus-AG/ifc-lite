@@ -81,9 +81,12 @@ fn parse_landxml_alignments_inner(
     if input.len() > limits.xml.max_bytes {
         return Err(error(Code::InputTooLarge, "input exceeds byte limit"));
     }
+    // #5175 / EDGE-LXPARSE-7 (#7693): refuse a bad override token before
+    // any XML is read, exactly as the TIN entry point does.
+    let assumed_units = crate::semantics::resolve_assumed_units(&limits.xml)?;
     let input = normalize_encoding(input, &limits.xml, cancelled)?;
     preflight_xml_tokens(&input, &limits.xml, cancelled)?;
-    let mut parser = Parser::new(limits, cancelled, require_alignment);
+    let mut parser = Parser::new(limits, cancelled, require_alignment, assumed_units);
     let mut reader = Reader::from_reader(input.as_slice());
     reader.config_mut().trim_text(false);
     let mut buffer = Vec::new();
@@ -143,6 +146,8 @@ pub(crate) struct Parser<'a> {
     pub(super) character_references: usize,
     pub(super) frames: Vec<Frame>,
     pub(super) units: Option<LandXmlUnits>,
+    /// Effective only when the source declares no `LandXML/Units` (#5175).
+    pub(super) assumed_units: Option<LandXmlUnits>,
     pub(super) alignments: Vec<LandXmlAlignment>,
     pub(super) segments_seen: usize,
     pub(super) alignment_points_seen: usize,
@@ -165,6 +170,7 @@ impl<'a> Parser<'a> {
         limits: &LandXmlAlignmentLimits,
         cancelled: Option<&'a dyn LandXmlCancellation>,
         require_alignment: bool,
+        assumed_units: Option<LandXmlUnits>,
     ) -> Self {
         Self {
             limits: limits.clone(),
@@ -173,6 +179,7 @@ impl<'a> Parser<'a> {
             character_references: 0,
             frames: Vec::new(),
             units: None,
+            assumed_units,
             alignments: Vec::new(),
             segments_seen: 0,
             alignment_points_seen: 0,
@@ -217,7 +224,10 @@ impl<'a> Parser<'a> {
 }
 
 impl Parser<'static> {
-    pub(crate) fn new_stream(limits: LandXmlAlignmentLimits) -> Self {
-        Self::new(&limits, None, false)
+    pub(crate) fn new_stream(
+        limits: LandXmlAlignmentLimits,
+        assumed_units: Option<LandXmlUnits>,
+    ) -> Self {
+        Self::new(&limits, None, false, assumed_units)
     }
 }

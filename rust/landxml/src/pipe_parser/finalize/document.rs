@@ -33,7 +33,7 @@ impl PipeParser<'_> {
             self.finish_network(network)?;
         }
         let root_units = self
-            .root_units
+            .effective_root_units()
             .as_ref()
             .map(convert::units)
             .transpose()
@@ -55,6 +55,17 @@ impl PipeParser<'_> {
             preflight_refusal_batches,
             has_pipe_networks,
         ))
+    }
+
+    /// The declared root units, else the caller's assumed linear unit. A
+    /// declared `LandXML/Units` element always wins.
+    pub(super) fn effective_root_units(&self) -> Option<RawUnits> {
+        self.root_units.clone().or_else(|| {
+            self.limits
+                .assumed_linear_unit
+                .as_deref()
+                .map(RawUnits::assumed)
+        })
     }
 
     pub(super) fn convert_units(

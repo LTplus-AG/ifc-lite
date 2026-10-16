@@ -75,7 +75,7 @@ impl Parser<'_> {
             _ => unreachable!("element is matched above"),
         };
         let mut invalid_reason = (kind == LandXmlGeometryKind::Curve
-            && !matches!(attr(&attributes, "rot"), Some("cw" | "ccw")))
+            && !attr(&attributes, "rot").is_some_and(crate::numeric::is_rotation_token))
         .then_some("Curve rot must be cw or ccw".to_owned());
         let radius = match optional_positive(&attributes, "radius", local) {
             Ok(radius) => radius,
@@ -377,13 +377,18 @@ impl Parser<'_> {
                 .all(|(frame, local)| frame.target && frame.local == *local)
     }
     pub(crate) fn document(self) -> LandXmlPlanDocument {
+        // Declared `<Units>` (always with an area scale) win over the assumption.
+        let assumed_area = self
+            .assumed_units
+            .as_ref()
+            .map(crate::semantics::square_scale);
         LandXmlPlanDocument {
             schema: self.schema,
             version: self.version,
             capability_diagnostics: self.capability_diagnostics,
-            units: self.units,
+            units: self.units.or(self.assumed_units),
             area_unit: self.area_unit,
-            area_scale_to_square_meters: self.area_scale_to_square_meters,
+            area_scale_to_square_meters: self.area_scale_to_square_meters.or(assumed_area),
             cogo_points: self.cogo_points,
             monuments: self.monuments,
             plan_features: self.features,

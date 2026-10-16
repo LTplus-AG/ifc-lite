@@ -179,3 +179,45 @@ fn wire_strings_are_the_documented_snake_case_tags() {
     }
     assert!(serde_json::from_str::<MeshCoordinateSpace>("\"SiteLocal\"").is_err());
 }
+
+/// #7684: `to_world` is the inverse of the bake, `world_matrix` is the same map
+/// as a matrix, and the hoisted mappers agree with both bit for bit.
+#[test]
+fn to_world_inverts_the_bake_and_agrees_with_world_matrix_and_mappers() {
+    let frames = [
+        MeshFrame::select(Some(&site_at_yawed((2_600_000.0, 1_200_000.0, 500.0), 33.0)), None),
+        MeshFrame::select(Some(&site_at((2_600_000.0, 1_200_000.0, 500.0))), None),
+        MeshFrame::select(None, Some(LARGE_FAR)),
+        MeshFrame::RawIfc,
+    ];
+    let world = [2_600_003.5, 1_200_004.25, 507.125];
+    for frame in frames {
+        let (x, y, z) = frame.rtc_offset();
+        let baked = frame.rotate_into_frame([world[0] - x, world[1] - y, world[2] - z]);
+        let back = frame.to_world(baked);
+        for i in 0..3 {
+            assert!((back[i] - world[i]).abs() < 1e-6, "{frame:?} axis {i}: {back:?}");
+        }
+        let m = frame.world_matrix();
+        let by_matrix = [0, 1, 2].map(|r| m[r] * baked[0] + m[4 + r] * baked[1] + m[8 + r] * baked[2] + m[12 + r]);
+        for i in 0..3 {
+            assert!((by_matrix[i] - back[i]).abs() < 1e-6, "{frame:?} matrix axis {i}");
+        }
+        assert_eq!(frame.world_mapper()(baked).map(f64::to_bits), back.map(f64::to_bits));
+        let n = [0.0, -0.0, 1.0];
+        assert_eq!(
+            frame.direction_mapper()(n).map(f64::to_bits),
+            frame.rotate_out_of_frame(n).map(f64::to_bits)
+        );
+    }
+}
+
+/// Raw IFC is returned untouched, to the sign bit (a `-0.0` must not become
+/// `0.0` by an added zero translation).
+#[test]
+fn raw_ifc_to_world_preserves_negative_zero() {
+    let p = [-0.0, 1.5, -0.0];
+    for got in [MeshFrame::RawIfc.to_world(p), MeshFrame::RawIfc.world_mapper()(p)] {
+        assert_eq!(got.map(f64::to_bits), p.map(f64::to_bits));
+    }
+}

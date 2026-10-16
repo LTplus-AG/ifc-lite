@@ -100,6 +100,8 @@ fn write_obj_in(meshes: &[MeshData], frame: MeshFrame, opts: &ObjOptions) -> (St
     let mut norm_base: usize = 0;
     let mut stats = ObjStats { meshes: 0, vertices: 0, triangles: 0 };
 
+    // The frame's rotation check is made once per export, not per vertex.
+    let (to_world, direction) = (frame.world_mapper(), frame.direction_mapper());
     for mesh in meshes {
         if !mesh_visible(mesh, &opts.isolated, &opts.hidden) {
             continue;
@@ -123,14 +125,14 @@ fn write_obj_in(meshes: &[MeshData], frame: MeshFrame, opts: &ObjOptions) -> (St
             let wx = mesh.positions[i * 3] as f64 + ox;
             let wy = mesh.positions[i * 3 + 1] as f64 + oy;
             let wz = mesh.positions[i * 3 + 2] as f64 + oz;
-            let [x, y, z] = yup_f64(frame.to_world([wx, wy, wz]));
+            let [x, y, z] = yup_f64(to_world([wx, wy, wz]));
             let _ = writeln!(out, "v {x:.6} {y:.6} {z:.6}");
         }
         if has_normals {
             // Directions take the frame's rotation, no translation.
             for i in 0..nverts {
                 let n = [0, 1, 2].map(|k| mesh.normals[i * 3 + k] as f64);
-                let [nx, ny, nz] = yup_f64(frame.rotate_out_of_frame(n));
+                let [nx, ny, nz] = yup_f64(direction(n));
                 let _ = writeln!(out, "vn {nx:.6} {ny:.6} {nz:.6}");
             }
         }

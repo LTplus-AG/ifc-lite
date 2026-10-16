@@ -79,14 +79,28 @@ fn translation_is_nonidentity(t: (f64, f64, f64)) -> bool {
 /// `site_local` tier ([`MeshFrame::site_placement`] says which).
 #[inline]
 pub(crate) fn frame_point_to_world(p: [f64; 3], rtc: [f64; 3], site_rotation: Option<&[f64]>) -> [f64; 3] {
-    match site_rotation.filter(|r| r.len() >= 16 && !rotation_is_identity(r)) {
-        Some(r) => [
-            r[0] * p[0] + r[4] * p[1] + r[8] * p[2] + rtc[0],
-            r[1] * p[0] + r[5] * p[1] + r[9] * p[2] + rtc[1],
-            r[2] * p[0] + r[6] * p[1] + r[10] * p[2] + rtc[2],
-        ],
-        None => [p[0] + rtc[0], p[1] + rtc[1], p[2] + rtc[2]],
-    }
+    restoring_rotation(site_rotation).map_or_else(
+        || [p[0] + rtc[0], p[1] + rtc[1], p[2] + rtc[2]],
+        |r| rotate_and_translate(r, p, rtc),
+    )
+}
+
+/// The rotation block a restore applies, or `None` when the bake removed
+/// none. Decided once per call by a caller that maps many points, so the
+/// per-vertex path is [`rotate_and_translate`] with no re-check.
+#[inline]
+pub(crate) fn restoring_rotation(site_rotation: Option<&[f64]>) -> Option<&[f64]> {
+    site_rotation.filter(|r| r.len() >= 16 && !rotation_is_identity(r))
+}
+
+/// `R · p + rtc` for a rotation already vetted by [`restoring_rotation`].
+#[inline]
+pub(crate) fn rotate_and_translate(r: &[f64], p: [f64; 3], rtc: [f64; 3]) -> [f64; 3] {
+    [
+        r[0] * p[0] + r[4] * p[1] + r[8] * p[2] + rtc[0],
+        r[1] * p[0] + r[5] * p[1] + r[9] * p[2] + rtc[1],
+        r[2] * p[0] + r[6] * p[1] + r[10] * p[2] + rtc[2],
+    ]
 }
 
 /// The frame a pipeline meshes into: the translation it subtracts and, in the
@@ -247,6 +261,31 @@ impl MeshFrame {
         }
         let (x, y, z) = self.rtc_offset();
         frame_point_to_world(p, [x, y, z], self.site_placement().as_ref().map(|m| &m[..]))
+    }
+
+    /// [`MeshFrame::to_world`] with the rotation check made once, for a writer
+    /// that maps every vertex of a model. Bit-identical to `to_world`.
+    pub fn world_mapper(self) -> impl Fn([f64; 3]) -> [f64; 3] + Copy {
+        let placement = self.site_placement();
+        let rotation = restoring_rotation(placement.as_ref().map(|m| &m[..])).map(|_| placement.unwrap());
+        let (x, y, z) = self.rtc_offset();
+        let shift = self.needs_shift();
+        move |p| match (&rotation, shift) {
+            (Some(r), _) => rotate_and_translate(r, p, [x, y, z]),
+            (None, true) => [p[0] + x, p[1] + y, p[2] + z],
+            (None, false) => p,
+        }
+    }
+
+    /// [`MeshFrame::rotate_out_of_frame`] with the rotation check made once.
+    /// Bit-identical to it.
+    pub fn direction_mapper(self) -> impl Fn([f64; 3]) -> [f64; 3] + Copy {
+        let placement = self.site_placement();
+        let rotation = restoring_rotation(placement.as_ref().map(|m| &m[..])).map(|_| placement.unwrap());
+        move |v| match &rotation {
+            Some(r) => rotate_and_translate(r, v, [0.0; 3]),
+            None => v,
+        }
     }
 
     /// [`MeshFrame::to_world`] as a column-major 4x4, for a writer that

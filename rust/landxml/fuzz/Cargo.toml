@@ -15,6 +15,10 @@ edition = "2021"
 [package.metadata]
 cargo-fuzz = true
 
+[package.metadata.cargo-machete]
+# Used via the `include!`d `tests/fuzz/exercise.rs`, which cargo-machete cannot see.
+ignored = ["ifc-lite-landxml"]
+
 [dependencies]
 libfuzzer-sys = "0.4"
 

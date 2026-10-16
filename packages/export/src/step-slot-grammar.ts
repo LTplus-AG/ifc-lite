@@ -184,7 +184,7 @@ export function isWellFormedStepSlot(part: string): boolean {
     if (i === start) return false;
 
     // A typed value: NAME(...), trivia tolerated before '(' the same way
-    // `RECORD_PREFIX_RE` tolerates it before a record's own '('.
+    // `stepRecordHead` tolerates it before a record's own '('.
     skipTrivia();
     if (part[i] === '(') {
       i++;

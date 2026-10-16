@@ -33,6 +33,28 @@ describe('extractPropertyRelFast', () => {
     expect(r).toEqual({ relatedObjects: [10, 11], relatingDefs: [20, 21] });
   });
 
+  // ISO 10303-21 writes a defined type inside a SELECT as a typed parameter, so
+  // the schema-legal spelling of the set is IFCPROPERTYSETDEFINITIONSET((...)).
+  // `readRefList` returned [] for it and the relationship vanished (#7681).
+  it.each([
+    ['typed', "IFCPROPERTYSETDEFINITIONSET((#20,#22))"],
+    ['lowercase typed', "ifcPropertySetDefinitionSet((#20,#22))"],
+    ['typed with trivia', "IFCPROPERTYSETDEFINITIONSET /* x */ (\n(#20, #22))"],
+  ])('reads a %s IfcPropertySetDefinitionSet', (_label, attr5) => {
+    const buf = toBuf(`#1=IFCRELDEFINESBYPROPERTIES('g',$,$,$,(#10,#11),${attr5});`);
+    expect(extractPropertyRelFast(buf, 0, buf.length)).toEqual({ relatedObjects: [10, 11], relatingDefs: [20, 22] });
+  });
+
+  it('collapses a repeated member of the set, which is a SET', () => {
+    const buf = toBuf("#1=IFCRELDEFINESBYPROPERTIES('g',$,$,$,(#10),(#20,#20,#22));");
+    expect(extractPropertyRelFast(buf, 0, buf.length)).toEqual({ relatedObjects: [10], relatingDefs: [20, 22] });
+  });
+
+  it('drops a typed value that is not the property set definition set', () => {
+    const buf = toBuf("#1=IFCRELDEFINESBYPROPERTIES('g',$,$,$,(#10),IFCOTHERSET((#20)));");
+    expect(extractPropertyRelFast(buf, 0, buf.length)).toBeNull();
+  });
+
   it('reads a single-ref RelatingMaterial (IfcRelAssociatesMaterial)', () => {
     const buf = toBuf('#1=IFCRELASSOCIATESMATERIAL($,$,$,$,(#10),#30);');
     const r = extractPropertyRelFast(buf, 0, buf.length);

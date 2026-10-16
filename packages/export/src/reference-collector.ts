@@ -31,6 +31,7 @@ import type { IfcDataStore, IfcSourceBytes } from '@ifc-lite/parser';
 import { asSourceBytes, STEP_TRIVIA } from '@ifc-lite/parser';
 import type { EffectiveEntityIndex } from './effective-index.js';
 import { readStepSlots, splitTopLevelListItems } from './step-argument-parser.js';
+import { opensStepRecord } from './step-record-frame.js';
 import { stepBytesLiteralEnd } from './step-ref-scan.js';
 import { readRelationshipSlotLowerBound } from './relationship-slot-bounds.js';
 import type { IfcSchemaVersion } from './schema-converter.js';
@@ -556,7 +557,7 @@ export function filterHiddenRefsFromRelationshipLine(
   // Once a line identifies itself as a STEP entity, refusing its slot layout
   // must withhold the whole record; emitting it unchanged can retain exactly
   // the dangling reference this gate exists to remove (#4200).
-  if (record === null) return /^\s*#\d+\s*=/.test(line) ? null : line;
+  if (record === null) return opensStepRecord(line) ? null : line;
   const attrs = [...record.slots];
   const entityType = record.type;
 

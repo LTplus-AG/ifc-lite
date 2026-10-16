@@ -25,11 +25,18 @@ use serde_json::Value;
 use std::sync::Arc;
 use tower::ServiceExt;
 
+// Route body golden hashes (#7671) reuse this file's request helpers. They are
+// declared from here, not from `main.rs`, so adding them changes no production
+// file: the revert oracle would otherwise revert the `mod` line and measure an
+// empty test collection.
+#[path = "route_golden_tests.rs"]
+mod route_golden_tests;
+
 /// Minimal IFC4 model carrying one `IfcAnnotation` (a full-circle disk), one
 /// `IfcGrid` with two axes, and one extruded-solid `IfcWall`. The wall gives the
 /// geometry endpoints a real mesh; the annotation + grid populate `circles` and
 /// `grid_axes` in the symbolic stream.
-const FIXTURE: &str = r#"ISO-10303-21;
+pub(crate) const FIXTURE: &str = r#"ISO-10303-21;
 HEADER;
 FILE_DESCRIPTION(('issue-900 parity fixture'),'2;1');
 FILE_NAME('parity.ifc','2026-06-01T00:00:00',(''),(''),'','','');
@@ -96,7 +103,7 @@ fn multipart_body(content: &[u8]) -> (String, Vec<u8>) {
 
 /// Construct an `AppState` backed by a fresh temp cache directory unique to
 /// `label` so tests don't share cache entries.
-async fn test_state(label: &str) -> AppState {
+pub(crate) async fn test_state(label: &str) -> AppState {
     let dir = std::env::temp_dir().join(format!(
         "ifc-lite-server-test-900-{}-{}",
         std::process::id(),
@@ -201,7 +208,7 @@ async fn post_fixture(state: &AppState, uri: &str) -> axum::response::Response {
     post_content(state, uri, FIXTURE.as_bytes()).await
 }
 
-async fn post_content(state: &AppState, uri: &str, content: &[u8]) -> axum::response::Response {
+pub(crate) async fn post_content(state: &AppState, uri: &str, content: &[u8]) -> axum::response::Response {
     let (content_type, body) = multipart_body(content);
     let request = Request::builder()
         .method("POST")
@@ -230,7 +237,7 @@ async fn issue_1023_parse_endpoints_accept_non_utf8_string_bytes() {
 }
 
 /// GET `uri` and return the response.
-async fn get(state: &AppState, uri: &str) -> axum::response::Response {
+pub(crate) async fn get(state: &AppState, uri: &str) -> axum::response::Response {
     let request = Request::builder()
         .method("GET")
         .uri(uri)

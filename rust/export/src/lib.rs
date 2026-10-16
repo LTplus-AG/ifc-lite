@@ -66,6 +66,7 @@ mod step_cow;
 mod step_header;
 mod step_json;
 mod step_log;
+mod step_record_frame;
 mod step_slot;
 mod step_text;
 mod step_map_transform;
@@ -137,7 +138,7 @@ pub use merged::{
 pub use model::{
     build_export_model, build_export_model_with_options, stream_export_model,
     stream_export_model_with_index, stream_export_model_with_options, EntityRow, ExportModel,
-    ModelOptions, Placement, PropValue, PropertySet, QuantitySet, QuantityValue,
+    ModelOptions, Placement, PropValue, PropertySet, QuantitySet, QuantityValue, ValueKind,
 };
 pub use quantity_analysis_derived::{analyze_quantities, DerivedQuantity,
     ProductQuantityAnalysis, QuantityAnalysis, QuantitySourceOccurrence};

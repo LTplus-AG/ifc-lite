@@ -479,8 +479,8 @@ fn emit_attributes_dedups_colliding_names() {
         property_sets: vec![PropertySet {
             name: "Pset_Test".into(),
             properties: vec![
-                PropValue { name: "Fire Rating".into(), value: "A".into(), value_type: "IFCLABEL".into() },
-                PropValue { name: "Fire-Rating".into(), value: "B".into(), value_type: "IFCLABEL".into() },
+                PropValue { name: "Fire Rating".into(), value: "A".into(), value_type: "IFCLABEL".into(), kind: crate::model::ValueKind::Text },
+                PropValue { name: "Fire-Rating".into(), value: "B".into(), value_type: "IFCLABEL".into(), kind: crate::model::ValueKind::Text },
             ],
         }],
         quantity_sets: vec![],

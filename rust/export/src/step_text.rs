@@ -24,6 +24,7 @@ use std::collections::BTreeMap;
 use ifc_lite_core::express_id::parse_express_id;
 use ifc_lite_core::step_encoding::step_string_literal_end;
 
+use crate::step_record_frame::{record_frame, record_head};
 use crate::step_slot::split_top_level_args;
 
 /// The edits that apply to one record, where a caller's attribute mutation and
@@ -170,22 +171,15 @@ pub(crate) fn apply_attr_mutations_counted(
     muts: &BTreeMap<usize, String>,
     refused: &mut usize,
 ) -> String {
-    let trimmed = line.trim_end();
-    let body = trimmed.strip_suffix(';').unwrap_or(trimmed);
-    let edited = body.find('=').and_then(|eq| {
-        let after = &body[eq + 1..];
-        let popen = after.find('(')?;
-        let aclose = after.rfind(')').filter(|c| *c > popen)?;
-        let prefix = &body[..=eq];
-        let type_name = &after[..popen];
-        let mut args = split_top_level_args(&after[popen + 1..aclose])?;
+    let edited = record_frame(line).and_then(|frame| {
+        let mut args = split_top_level_args(frame.args(line))?;
         for (idx, val) in muts.range(..args.len()) {
             args[*idx] = val.clone();
         }
         if muts.range(args.len()..).next().is_some() {
             *refused += 1;
         }
-        Some(format!("{prefix}{type_name}({});", args.join(",")))
+        Some(frame.with_args(line, &args.join(",")))
     });
     match edited {
         Some(text) => text,
@@ -205,9 +199,8 @@ mod tests;
 /// For a copy-on-write copy: the body is the original's, byte for byte, with
 /// one attribute already replaced, and only the number in front changes.
 pub(crate) fn renumber(line: &str, new_id: u32) -> String {
-    let trimmed = line.trim_end();
-    match trimmed.find('=') {
-        Some(eq) => format!("#{new_id}{}", &trimmed[eq..]),
+    match record_head(line) {
+        Some(head) => format!("#{new_id}{}", line[head.eq..].trim_end()),
         None => line.to_string(),
     }
 }
@@ -225,15 +218,8 @@ pub(crate) fn renumber(line: &str, new_id: u32) -> String {
 /// answer for either: a slot read out of a mis-scanned list is some other
 /// attribute's text, and a copy built from it would carry the wrong value.
 pub(crate) fn attribute_of(line: &str, index: usize) -> Option<String> {
-    let trimmed = line.trim_end();
-    let body = trimmed.strip_suffix(';').unwrap_or(trimmed);
-    let eq = body.find('=')?;
-    let after = &body[eq + 1..];
-    let popen = after.find('(')?;
-    let aclose = after.rfind(')').filter(|c| *c > popen)?;
-    split_top_level_args(&after[popen + 1..aclose])?
-        .into_iter()
-        .nth(index)
+    let frame = record_frame(line)?;
+    split_top_level_args(frame.args(line))?.into_iter().nth(index)
 }
 
 /// Replace references inside one attribute, leaving its neighbours alone.

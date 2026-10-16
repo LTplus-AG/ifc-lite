@@ -29,11 +29,10 @@ import { dirname, join } from 'path';
 
 import {
   computeReleaseVersions,
-  rewriteInternalDeps,
   OFFSET_FILE_NAME,
-  RUST_MEMBER_DIRS,
   WORKSPACE_VERSION_PATTERN,
 } from './lib/rust-major-offset.mjs';
+import { rewriteInternalDeps, RUST_MEMBER_DIRS } from './lib/rust-internal-deps.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -172,11 +171,13 @@ function syncVersions() {
   writeFileSync(cargoTomlPath, cargoToml);
   console.log(`✅ Updated Cargo.toml workspace version to ${crateVersion}`);
 
-  // Crate manifests carry `version = "…"` on their internal `path`
-  // dependencies so they are publishable to crates.io (cargo strips the
-  // path and keeps the version requirement on publish). Those literals
-  // must track the workspace version or every workspace build breaks with
-  // a version/path mismatch after a bump.
+  // The version/path literals live in the root `[workspace.dependencies]`
+  // table (rewritten above); the member crates inherit them with
+  // `ifc-lite-x.workspace = true`, so cargo publishes the right requirement.
+  // A member that still carries an explicit `version = "…"` of its own (the
+  // legacy shape, which `check-rust-major-offset.mjs` still polices) must
+  // track the workspace version too or every workspace build breaks with a
+  // version/path mismatch after a bump.
   for (const member of RUST_MEMBER_DIRS) {
     const memberTomlPath = join(rootDir, 'rust', member, 'Cargo.toml');
     let memberToml;

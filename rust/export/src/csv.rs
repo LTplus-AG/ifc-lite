@@ -156,9 +156,7 @@ fn entities_csv(model: &ExportModel, opts: &CsvOptions) -> String {
                 }
             }
         }
-        for (pset, prop) in &flat_cols {
-            headers.push(format!("{pset}_{prop}"));
-        }
+        headers.extend(flat_headers(&flat_cols));
     }
 
     let mut lines = Vec::with_capacity(model.entities.len() + 1);
@@ -183,6 +181,29 @@ fn entities_csv(model: &ExportModel, opts: &CsvOptions) -> String {
         lines.push(join(&row, d));
     }
     lines.join("\n")
+}
+
+/// `{pset}_{prop}` per flattened column, as documented. That name is not
+/// unique: `("Pset_A", "B_C")` and `("Pset_A_B", "C")` share `Pset_A_B_C`, and
+/// spreadsheet or pandas imports then merge or rename them (#7681). A repeat
+/// takes the first ` (n)` suffix that no other column uses or is named, so
+/// every column stays distinct and the common case keeps its name.
+fn flat_headers(cols: &[(String, String)]) -> Vec<String> {
+    let bases: Vec<String> = cols.iter().map(|(pset, prop)| format!("{pset}_{prop}")).collect();
+    let natural: HashSet<&str> = bases.iter().map(String::as_str).collect();
+    let mut used: HashSet<String> = HashSet::new();
+    let mut headers = Vec::with_capacity(bases.len());
+    for base in &bases {
+        let mut header = base.clone();
+        let mut n = 1;
+        while used.contains(&header) || (n > 1 && natural.contains(header.as_str())) {
+            n += 1;
+            header = format!("{base} ({n})");
+        }
+        used.insert(header.clone());
+        headers.push(header);
+    }
+    headers
 }
 
 fn properties_csv(model: &ExportModel, opts: &CsvOptions) -> String {

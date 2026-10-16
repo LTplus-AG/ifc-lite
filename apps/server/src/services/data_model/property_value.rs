@@ -61,11 +61,12 @@ pub(super) fn property_reference_label(decoder: &mut EntityDecoder, id: u32) -> 
 ///   property and a top-level sibling property cannot occur — same as the TS
 ///   side, where `parsePropertyValueWithComplex` is called once per
 ///   `HasProperties` member and only ever returns a single value for it.
-/// - Every bound and marker is `ifc_lite_core::limits`' (#7675), shared with
-///   the exporter's copy and mirrored by the TS twin: the depth cap marks a
-///   cut with `complex_property_depth_marker()`, and `budget` (member visits
-///   per top-level property, output bytes per scope) cuts a level with its
-///   parts so far plus `COMPLEX_PROPERTY_BUDGET_MARKER`.
+/// - Every bound, marker and charge is `ifc_lite_core::limits`' (#7675),
+///   shared with the exporter's copy and mirrored by the TS twin: the depth
+///   cap marks a cut with `complex_property_depth_marker()`, and `budget`
+///   (member visits per top-level property, output bytes per model) cuts a
+///   level with its parts so far plus `COMPLEX_PROPERTY_BUDGET_MARKER`, which
+///   also ends that level's `values`.
 pub(super) fn resolve_complex_property_value(
     entity: &DecodedEntity,
     decoder: &mut EntityDecoder,
@@ -111,11 +112,11 @@ fn resolve_complex(
 
     let mut parts: Vec<String> = Vec::new();
     let mut values: Vec<String> = Vec::new();
-    let mut out_of_budget = false;
+    let mut cut = false;
 
     for prop_id in refs {
         if !budget.admit_member() {
-            out_of_budget = true;
+            cut = true;
             break;
         }
         let nested_entity = match decoder.decode_by_id(prop_id) {
@@ -130,28 +131,22 @@ fn resolve_complex(
         let display = if nested_ty == "IFCCOMPLEXPROPERTY" {
             resolve_complex(&nested_entity, decoder, depth + 1, budget).0
         } else {
-            match super::properties::extract_property(&nested_entity, decoder) {
-                Some(p) => p.property_value,
-                None => continue,
-            }
+            super::properties::extract_property(&nested_entity, decoder)
+                .map(|p| p.property_value)
+                .unwrap_or_default()
         };
-        if display.is_empty() {
-            continue;
-        }
-        let part = if nested_name.is_empty() { display.clone() } else { format!("{nested_name}: {display}") };
-        budget.charge(part.len());
+        // Every charge is the shared budget's, at the same point as the
+        // exporter and TS walks (#7675).
+        let Some(part) = budget.member_part(&nested_name, &display) else { continue };
         parts.push(part);
         values.push(display);
     }
 
-    let value = match (parts.is_empty(), out_of_budget) {
-        (true, true) => COMPLEX_PROPERTY_BUDGET_MARKER.to_string(),
-        (false, true) => format!("{} {COMPLEX_PROPERTY_BUDGET_MARKER}", parts.join(", ")),
-        (false, false) => parts.join(", "),
-        (true, false) => usage_name.unwrap_or_default(),
-    };
-    if !parts.is_empty() {
-        budget.charge(value.len());
+    let value = budget.level_value(&parts, cut).unwrap_or_else(|| usage_name.unwrap_or_default());
+    if cut {
+        // The candidate list says it was cut, so a member past the cut does
+        // not read as absent (#7675 D3).
+        values.push(COMPLEX_PROPERTY_BUDGET_MARKER.to_string());
     }
     let property_type = if value.is_empty() { "null" } else { "string" };
     let values = if values.is_empty() { None } else { Some(values) };

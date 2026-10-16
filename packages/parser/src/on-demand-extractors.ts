@@ -79,7 +79,7 @@ export {
 } from './property-value-parser.js';
 import { copyParsedExtras, parsePropertyValueWithComplex, type ExtractedProperty } from './property-value-parser.js';
 import { resolvePropertyUnit } from './property-unit.js';
-import { ComplexPropertyBudget } from './property-complex-value.js';
+import { complexPropertyListingValue } from './complex-property-store.js';
 // ============================================================================
 // Property Set Extraction Helpers
 // ============================================================================
@@ -91,9 +91,6 @@ export function extractPsetsFromIds(
     psetIds: number[]
 ): Array<{ name: string; globalId?: string; properties: Array<ExtractedProperty> }> {
     const result: Array<{ name: string; globalId?: string; properties: Array<ExtractedProperty> }> = [];
-    // One complex-property output budget per call (#7675), as the Rust
-    // exporter's `psets_from_ids` scopes it.
-    const budget = new ComplexPropertyBudget();
 
     for (const psetId of psetIds) {
         // @raw-entity-enumeration-ok one requested set id is decoded from its source STEP span
@@ -114,7 +111,8 @@ export function extractPsetsFromIds(
         const properties: Array<ExtractedProperty> = [];
 
         if (Array.isArray(hasProperties)) {
-            for (const propRef of hasProperties) {
+            for (let index = 0; index < hasProperties.length; index++) {
+                const propRef = hasProperties[index];
                 if (typeof propRef !== 'number') continue;
 
                 // @raw-entity-enumeration-ok one referenced property id is decoded from its source STEP span
@@ -128,7 +126,11 @@ export function extractPsetsFromIds(
                 const propName = typeof propAttrs[0] === 'string' ? propAttrs[0] : '';
                 if (!propName) continue;
 
-                const parsed = parsePropertyValueWithComplex(store, extractor, propEntity, budget);
+                // A complex property is resolved once per store, against the
+                // model's budget, and shared by every entity listing its set (#7675).
+                const parsed = propEntity.type.toUpperCase() === 'IFCCOMPLEXPROPERTY'
+                    ? complexPropertyListingValue(store, extractor, psetId, index)
+                    : parsePropertyValueWithComplex(store, extractor, propEntity);
                 const entry: ExtractedProperty = {
                     name: propName,
                     type: parsed.type,

@@ -20,10 +20,10 @@ import {
 } from './property-value-parser.js';
 
 /*
- * The walk's bounds and markers mirror `ifc_lite_core::limits` exactly (#7675):
- * the server's data model and the Rust STEP exporter take them from there, and
- * one shared vector (`test/fixtures/complex-property-budget-7675.json`) pins all
- * three walks to the same value for the same file.
+ * The walk's bounds, markers and charges mirror `ifc_lite_core::limits` exactly
+ * (#7675): the server's data model and the Rust STEP exporter take them from
+ * there, and one shared vector (`test/fixtures/complex-property-budget-7675.json`)
+ * pins all three walks to the same value for the same file.
  */
 
 /** `MAX_COMPLEX_PROPERTY_DEPTH`: how deep a `HasProperties` walk descends. */
@@ -34,11 +34,23 @@ const MAX_COMPLEX_PROPERTY_DEPTH = 8;
  *  `k^8` reads. Output accumulates, so a work budget, not a visited set. */
 const MAX_COMPLEX_PROPERTY_MEMBERS = 1024;
 
-/** `COMPLEX_PROPERTY_OUTPUT_BYTES`: UTF-8 bytes of complex-property text one
- *  `extractPsetsFromIds` call may build. Visits alone do not bound bytes: one
- *  visit can copy a long name, and a set can list one complex property many
- *  times (one 10 KB name cost 269 MB of heap, #7675). */
+/** `COMPLEX_PROPERTY_OUTPUT_BYTES`: the floor of a model's output budget. */
 export const COMPLEX_PROPERTY_OUTPUT_BYTES = 1 << 20;
+
+/** `COMPLEX_PROPERTY_BYTES_PER_INPUT_BYTE`: what a model's complex properties
+ *  may cost per source byte, above the floor. */
+const COMPLEX_PROPERTY_BYTES_PER_INPUT_BYTE = 4;
+
+/** `COMPLEX_PROPERTY_MEMBER_BYTES`: a read member's `members` / `values` entry. */
+const COMPLEX_PROPERTY_MEMBER_BYTES = 16;
+
+/** `complex_property_output_budget`: ONE model's complex-property output, as
+ *  UTF-8 bytes. The scope is the whole store (`complex-property-store.ts`):
+ *  one budget per model, not per call, so no number of entities sharing a set
+ *  multiplies it (one call per wall gave 2 GB of heap from 18.6 KB). */
+export function complexPropertyOutputBudget(inputBytes: number): number {
+    return Math.max(inputBytes * COMPLEX_PROPERTY_BYTES_PER_INPUT_BYTE, COMPLEX_PROPERTY_OUTPUT_BYTES);
+}
 
 /**
  * `complex_property_depth_marker()`: appended when the depth cap stops the walk
@@ -52,8 +64,10 @@ function complexPropertyTruncationMarker(): string {
 }
 
 /** `COMPLEX_PROPERTY_BUDGET_MARKER`: a level cut by the budget is its parts so
- *  far, then this. The usage name is not repeated. */
-const COMPLEX_PROPERTY_BUDGET_MARKER = '(truncated: nested properties over the walk budget)';
+ *  far, then this. The usage name is not repeated. A cut level's `values` end
+ *  with it and its `members` with a member of this name and value, so a member
+ *  past the cut reads as truncated, not absent (#7675 D3). */
+export const COMPLEX_PROPERTY_BUDGET_MARKER = '(truncated: nested properties over the walk budget)';
 
 /** UTF-8 length, so the byte budget charges what the Rust walks charge. */
 function utf8Length(text: string): number {
@@ -71,18 +85,25 @@ function utf8Length(text: string): number {
 }
 
 /**
- * `ComplexPropertyBudget`: member visits for the current top-level property and
- * output bytes for the whole scope it was created for. Check order, identical
- * in every copy: {@link ComplexPropertyBudget.admitMember} before reading a
- * member, {@link ComplexPropertyBudget.charge} a built `"Name: value"` part,
- * then charge a level's joined value.
+ * `ComplexPropertyBudget`: member visits for the current top-level property,
+ * output bytes for the whole model, and the levels it cut. Every charge is
+ * made here, at the positions the Rust copies make it:
+ * {@link ComplexPropertyBudget.admitMember} before reading a member,
+ * {@link ComplexPropertyBudget.memberPart} once it is read,
+ * {@link ComplexPropertyBudget.levelValue} once the level is done.
  */
 export class ComplexPropertyBudget {
     private visits = 0;
     private bytesLeft: number;
+    private cutLevels = 0;
 
     constructor(outputBytes: number = COMPLEX_PROPERTY_OUTPUT_BYTES) {
         this.bytesLeft = outputBytes;
+    }
+
+    /** The budget of one model whose source is `inputBytes` long. */
+    static forInput(inputBytes: number): ComplexPropertyBudget {
+        return new ComplexPropertyBudget(complexPropertyOutputBudget(inputBytes));
     }
 
     /** Start a top-level property: visits restart, bytes carry on. */
@@ -97,9 +118,36 @@ export class ComplexPropertyBudget {
         return true;
     }
 
-    /** Charge built text by its UTF-8 length. */
-    charge(text: string): void {
-        this.bytesLeft = Math.max(0, this.bytesLeft - utf8Length(text));
+    /** A read member under `name` with `display` ('' without a value): charge
+     *  its entry, then return its charged `"Name: value"` part, or `null`
+     *  when there is no display. */
+    memberPart(name: string, display: string): string | null {
+        this.charge(COMPLEX_PROPERTY_MEMBER_BYTES + utf8Length(name) + utf8Length(display));
+        if (!display) return null;
+        const part = name ? `${name}: ${display}` : display;
+        this.charge(utf8Length(part));
+        return part;
+    }
+
+    /** A level's value: its parts joined (then the marker when `cut`), the
+     *  bare marker when cut with no parts, or `null` (the caller's usage name).
+     *  Only a value with parts is charged. */
+    levelValue(parts: string[], cut: boolean): string | null {
+        if (cut) this.cutLevels += 1;
+        if (parts.length === 0) return cut ? COMPLEX_PROPERTY_BUDGET_MARKER : null;
+        const joined = parts.join(', ');
+        const value = cut ? `${joined} ${COMPLEX_PROPERTY_BUDGET_MARKER}` : joined;
+        this.charge(utf8Length(value));
+        return value;
+    }
+
+    /** Levels this budget has cut so far. */
+    get cuts(): number {
+        return this.cutLevels;
+    }
+
+    private charge(bytes: number): void {
+        this.bytesLeft = Math.max(0, this.bytesLeft - bytes);
     }
 }
 
@@ -127,14 +175,16 @@ export class ComplexPropertyBudget {
  * empty `HasProperties` is NOT a truncation and keeps the bare `UsageName`.
  *
  * `budget` cuts a level that runs out with its parts so far plus
- * {@link COMPLEX_PROPERTY_BUDGET_MARKER}; pass the caller's scope (one per
- * `extractPsetsFromIds` call), or a fresh one is used.
+ * {@link COMPLEX_PROPERTY_BUDGET_MARKER}. Pass the model's: a property set's
+ * listings are resolved once per store by `complexPropertyListingValue`
+ * (`complex-property-store.ts`), and a caller outside a set passes one budget
+ * for its whole pass. The default is a fresh budget for this one property.
  */
 export function resolveComplexPropertyValue(
     store: IfcDataStore,
     extractor: EntityExtractor,
     propEntity: IfcEntity,
-    budget: ComplexPropertyBudget = new ComplexPropertyBudget()
+    budget: ComplexPropertyBudget = ComplexPropertyBudget.forInput(store.source?.length ?? 0)
 ): ParsedIfcPropertyValue {
     budget.startProperty();
     return resolveComplex(store, extractor, propEntity, 0, budget);
@@ -169,12 +219,12 @@ function resolveComplex(
     const parts: string[] = [];
     const values: string[] = [];
     const members: ExtractedProperty[] = [];
-    let outOfBudget = false;
+    let cut = false;
 
     for (const ref of hasProperties) {
         if (typeof ref !== 'number') continue;
         if (!budget.admitMember()) {
-            outOfBudget = true;
+            cut = true;
             break;
         }
         // @raw-entity-enumeration-ok complex-property parsing follows this source member reference, not an entity set
@@ -200,20 +250,18 @@ function resolveComplex(
         }
 
         const display = nestedParsed.value != null ? String(nestedParsed.value) : '';
-        if (!display) continue;
-        const part = nestedName ? `${nestedName}: ${display}` : display;
-        budget.charge(part);
+        // Every charge is the shared budget's, at the same point as the Rust walks.
+        const part = budget.memberPart(nestedName, display);
+        if (part === null) continue;
         parts.push(part);
         values.push(display);
     }
 
-    let value: string | null;
-    if (parts.length === 0) {
-        value = outOfBudget ? COMPLEX_PROPERTY_BUDGET_MARKER : (usageName || null);
-    } else {
-        const joined = parts.join(', ');
-        value = outOfBudget ? `${joined} ${COMPLEX_PROPERTY_BUDGET_MARKER}` : joined;
-        budget.charge(value);
+    const value = budget.levelValue(parts, cut) ?? (usageName || null);
+    if (cut) {
+        // A member past the cut reads as truncated, not absent (#7675 D3).
+        values.push(COMPLEX_PROPERTY_BUDGET_MARKER);
+        members.push({ name: COMPLEX_PROPERTY_BUDGET_MARKER, type: PropertyValueType.String, value: COMPLEX_PROPERTY_BUDGET_MARKER });
     }
     return {
         type: PropertyValueType.String,

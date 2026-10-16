@@ -157,9 +157,10 @@ impl RtcVerdict {
 /// exporter's property base (`ifc_lite_export` `step_log/base.rs`) and the
 /// browser's `resolveComplexPropertyValue`
 /// (`packages/parser/src/property-complex-value.ts`). The two Rust copies take
-/// every bound and marker from here; the TypeScript twin mirrors them and one
-/// shared vector (`packages/parser/test/fixtures/complex-property-budget-7675.json`)
-/// pins all three (#7675).
+/// every bound, marker and charge from here; the TypeScript twin mirrors
+/// [`ComplexPropertyBudget`] method for method, and one shared vector
+/// (`packages/parser/test/fixtures/complex-property-budget-7675.json`) pins
+/// all three (#7675).
 pub const MAX_COMPLEX_PROPERTY_DEPTH: usize = 8;
 
 /// Nested members one top-level complex property may read across all its
@@ -169,13 +170,41 @@ pub const MAX_COMPLEX_PROPERTY_DEPTH: usize = 8;
 /// work budget is the right bound (AGENTS.md "Bounding walks").
 pub const MAX_COMPLEX_PROPERTY_MEMBERS: usize = 1024;
 
-/// Bytes of complex-property text one budget scope may build: the browser's
-/// and the exporter's per-entity extraction, and the floor of the server's
-/// whole-model budget (which scales with the input instead). Visits alone do
-/// not bound bytes: one visit can copy a long name, and a property set can
-/// list the same complex property many times, so 10.7 KB of input built
-/// 685 MB of values under a visit-only budget (#7675).
+/// The floor of a model's complex-property output budget
+/// ([`complex_property_output_budget`]), so a small file can still carry
+/// ordinary complex properties in full.
 pub const COMPLEX_PROPERTY_OUTPUT_BYTES: usize = 1 << 20;
+
+/// Output bytes a model's complex properties may cost per input byte, above
+/// the [`COMPLEX_PROPERTY_OUTPUT_BYTES`] floor. An honest member costs the
+/// walk about its own record's length (its name and value, once as a part,
+/// once as a `values`/`members` entry, once more in the joined level, plus
+/// [`COMPLEX_PROPERTY_MEMBER_BYTES`]), and its record is longer than that, so
+/// 4 leaves room for a member shared by a few properties. What it binds is
+/// reuse: one complex property listed by many sets, or one long member listed
+/// by many complex properties, which built 685 MB from 10.7 KB (#7675).
+pub const COMPLEX_PROPERTY_BYTES_PER_INPUT_BYTE: usize = 4;
+
+/// What a read member costs before its text: its `members` / `values` entry.
+/// Without it a member with a name but no value would be free, and one walk
+/// could retain a member object per visit for every property in the model.
+pub const COMPLEX_PROPERTY_MEMBER_BYTES: usize = 16;
+
+/// The output budget of ONE model's complex properties: `input_bytes` times
+/// [`COMPLEX_PROPERTY_BYTES_PER_INPUT_BYTE`], at least
+/// [`COMPLEX_PROPERTY_OUTPUT_BYTES`].
+///
+/// Scope, identical in every copy: one budget per model (the server's
+/// extraction, the exporter's `BaseSets`, the browser's `IfcDataStore`),
+/// spent on every `IfcComplexProperty` listed by an `IfcPropertySet`, in file
+/// order of the sets and then `HasProperties` order, each listing resolved
+/// once. A value is therefore the same whichever entity asks for it first,
+/// and no number of entities sharing a set multiplies the output.
+pub fn complex_property_output_budget(input_bytes: usize) -> usize {
+    input_bytes
+        .saturating_mul(COMPLEX_PROPERTY_BYTES_PER_INPUT_BYTE)
+        .max(COMPLEX_PROPERTY_OUTPUT_BYTES)
+}
 
 /// Appended to a complex property cut by [`MAX_COMPLEX_PROPERTY_DEPTH`].
 pub fn complex_property_depth_marker() -> String {
@@ -184,25 +213,37 @@ pub fn complex_property_depth_marker() -> String {
 
 /// The value of a level cut by [`ComplexPropertyBudget`]: its parts so far,
 /// then this marker. The usage name is not repeated, so a reference to a
-/// complex property past the budget costs the marker and nothing else.
+/// complex property past the budget costs the marker and nothing else. A walk
+/// that keeps a member list (`values`, the browser's `members`) ends a cut
+/// level's list with this marker too, so a member past the cut reads as
+/// truncated rather than absent.
 pub const COMPLEX_PROPERTY_BUDGET_MARKER: &str = "(truncated: nested properties over the walk budget)";
 
 /// The walk state every `IfcComplexProperty` walker charges: member visits for
-/// the current top-level property, and output bytes for the whole scope it was
-/// created for. Check order, identical in every copy: before reading a member,
-/// [`Self::admit_member`]; after building a `"Name: value"` part,
-/// [`Self::charge`] its UTF-8 length; after joining a level's parts,
-/// [`Self::charge`] the joined length.
+/// the current top-level property, output bytes for the whole model
+/// ([`complex_property_output_budget`]), and how many levels it cut.
+///
+/// Check order, identical in every copy, and every charge is made HERE so the
+/// copies cannot drift: [`Self::admit_member`] before reading a member;
+/// [`Self::member_part`] once the member is read (charges its entry, and its
+/// part when it has a display); [`Self::level_value`] once the level's members
+/// are done (charges the joined value, and only a value that has parts).
 #[derive(Debug, Clone)]
 pub struct ComplexPropertyBudget {
     visits: usize,
     bytes_left: usize,
+    cuts: usize,
 }
 
 impl ComplexPropertyBudget {
     /// A scope that may build `output_bytes` of text.
     pub fn new(output_bytes: usize) -> Self {
-        Self { visits: 0, bytes_left: output_bytes }
+        Self { visits: 0, bytes_left: output_bytes, cuts: 0 }
+    }
+
+    /// The budget of one model whose source is `input_bytes` long.
+    pub fn for_input(input_bytes: usize) -> Self {
+        Self::new(complex_property_output_budget(input_bytes))
     }
 
     /// Start a top-level property: its member visits start at zero, the byte
@@ -220,8 +261,46 @@ impl ComplexPropertyBudget {
         true
     }
 
-    /// Charge `bytes` of built text.
-    pub fn charge(&mut self, bytes: usize) {
+    /// A member that was read, under `name` with `display` (empty when it has
+    /// no value): charge its entry, and return the `"Name: value"` part (bare
+    /// `value` without a name), charged too, or `None` when there is no
+    /// display to show.
+    pub fn member_part(&mut self, name: &str, display: &str) -> Option<String> {
+        self.charge(COMPLEX_PROPERTY_MEMBER_BYTES + name.len() + display.len());
+        if display.is_empty() {
+            return None;
+        }
+        let part = if name.is_empty() { display.to_string() } else { format!("{name}: {display}") };
+        self.charge(part.len());
+        Some(part)
+    }
+
+    /// A level's value from its parts, `cut` when [`Self::admit_member`]
+    /// refused one of its members: the parts joined with `", "` (then the
+    /// budget marker when cut), the bare marker when cut with no parts, or
+    /// `None` (the caller's bare `UsageName`) when nothing resolved. Only a
+    /// value with parts is charged; the bare marker is bounded by the members
+    /// admitted to reach it.
+    pub fn level_value(&mut self, parts: &[String], cut: bool) -> Option<String> {
+        if cut {
+            self.cuts += 1;
+        }
+        if parts.is_empty() {
+            return cut.then(|| COMPLEX_PROPERTY_BUDGET_MARKER.to_string());
+        }
+        let joined = parts.join(", ");
+        let value = if cut { format!("{joined} {COMPLEX_PROPERTY_BUDGET_MARKER}") } else { joined };
+        self.charge(value.len());
+        Some(value)
+    }
+
+    /// Levels this budget has cut so far (D3: counted, and logged by the
+    /// walk's owner, never silent).
+    pub fn cuts(&self) -> usize {
+        self.cuts
+    }
+
+    fn charge(&mut self, bytes: usize) {
         self.bytes_left = self.bytes_left.saturating_sub(bytes);
     }
 }
@@ -267,12 +346,36 @@ mod tests {
     fn complex_property_budget_is_the_documented_policy() {
         assert_eq!((MAX_COMPLEX_PROPERTY_DEPTH, MAX_COMPLEX_PROPERTY_MEMBERS), (8, 1024));
         assert_eq!(COMPLEX_PROPERTY_OUTPUT_BYTES, 1 << 20);
+        assert_eq!((COMPLEX_PROPERTY_BYTES_PER_INPUT_BYTE, COMPLEX_PROPERTY_MEMBER_BYTES), (4, 16));
+        assert_eq!(complex_property_output_budget(10), 1 << 20, "the floor");
+        assert_eq!(complex_property_output_budget(1 << 20), 4 << 20, "per input byte");
+        assert_eq!(complex_property_output_budget(usize::MAX), usize::MAX, "saturates");
+
         let mut budget = ComplexPropertyBudget::new(10);
         assert!((0..MAX_COMPLEX_PROPERTY_MEMBERS).all(|_| budget.admit_member()));
         assert!(!budget.admit_member(), "visit 1025 of one property");
         budget.start_property();
         assert!(budget.admit_member(), "visits restart per property");
-        budget.charge(10);
-        assert!(!budget.admit_member(), "bytes carry across properties");
+        assert_eq!(budget.member_part("", ""), None, "no display, no part");
+        assert!(!budget.admit_member(), "the entry alone spent the 10 bytes, across properties");
+    }
+
+    /// The charge positions every walk shares: an entry per read member, its
+    /// part, and the joined level, but never a bare marker (#7675 review: the
+    /// exporter charged it, so it cut a different property than TS).
+    #[test]
+    fn complex_property_budget_charges_parts_and_levels_not_bare_markers() {
+        let mut budget = ComplexPropertyBudget::new(1000);
+        let part = budget.member_part("P", "v").expect("a display is a part");
+        assert_eq!(part, "P: v");
+        assert_eq!(budget.bytes_left, 1000 - (COMPLEX_PROPERTY_MEMBER_BYTES + 2) - 4);
+        let before = budget.bytes_left;
+        assert_eq!(budget.level_value(&[], true).as_deref(), Some(COMPLEX_PROPERTY_BUDGET_MARKER));
+        assert_eq!(budget.bytes_left, before, "a bare marker is not charged");
+        assert_eq!(budget.level_value(&[], false), None, "nothing resolved: the caller's usage name");
+        let value = budget.level_value(&[part.clone(), part], true).expect("parts");
+        assert_eq!(value, format!("P: v, P: v {COMPLEX_PROPERTY_BUDGET_MARKER}"));
+        assert_eq!(budget.bytes_left, before - value.len());
+        assert_eq!(budget.cuts(), 2, "both cut levels are counted");
     }
 }

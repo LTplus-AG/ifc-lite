@@ -8,7 +8,7 @@ use super::property_value::{
     fmt_number, infer_data_type, member_list, property_reference_label, shared_member_type, resolve_complex_property_value,
     resolve_single_value,
 };
-use ifc_lite_core::limits::{ComplexPropertyBudget, COMPLEX_PROPERTY_OUTPUT_BYTES};
+use ifc_lite_core::limits::ComplexPropertyBudget;
 use ifc_lite_core::IfcType;
 use super::types::{EntityJob, Property, PropertySet};
 use ifc_lite_core::{DecodedEntity, EntityDecoder};
@@ -99,11 +99,13 @@ pub(super) fn extract_properties(
 }
 
 /// Resolve every `IfcComplexProperty` the parallel pass left empty, in set
-/// order, against ONE output budget for the whole model: the input size, at
-/// least `COMPLEX_PROPERTY_OUTPUT_BYTES`. A per-property budget is not enough,
-/// because a set can list the same complex property many times (#7675). The
-/// order is fixed, so the property the budget cuts is the same on every run.
-/// Real models carry few complex properties, so the pass is sequential.
+/// order, against ONE output budget for the whole model
+/// (`complex_property_output_budget`, relative to the input). A per-property
+/// budget is not enough, because a set can list the same complex property
+/// many times (#7675). The order is file order, the same order the exporter
+/// and the browser resolve in, so the property the budget cuts is the same on
+/// every run and in every copy. Real models carry few complex properties, so
+/// the pass is sequential.
 fn resolve_complex_properties(
     sets: &mut [(PropertySet, Vec<(usize, u32)>)],
     content: &[u8],
@@ -113,7 +115,7 @@ fn resolve_complex_properties(
         return;
     }
     let mut decoder = EntityDecoder::with_arc_index(content, entity_index.clone());
-    let mut budget = ComplexPropertyBudget::new(content.len().max(COMPLEX_PROPERTY_OUTPUT_BYTES));
+    let mut budget = ComplexPropertyBudget::for_input(content.len());
     for (set, complex) in sets.iter_mut() {
         for &(index, prop_id) in complex.iter() {
             let Ok(entity) = decoder.decode_by_id(prop_id) else { continue };
@@ -124,6 +126,13 @@ fn resolve_complex_properties(
             property.data_type = data_type;
             property.values = values;
         }
+    }
+    if budget.cuts() > 0 {
+        tracing::warn!(
+            cuts = budget.cuts(),
+            input_bytes = content.len(),
+            "IfcComplexProperty values cut by the walk budget (#7675); each cut value ends with its marker"
+        );
     }
 }
 

@@ -2748,61 +2748,80 @@ fn many_associations_over_one_long_usage_chain_finish_server_5() {
 /// #7675 (S3, from S1's walk audit): the complex-property depth cap bounds a
 /// path's length only, so a member listing itself `k` times was `k^8` reads,
 /// and one visit can copy a long name. The shared vector pins the walk budget
-/// (visits per property, bytes per scope, both from `ifc_lite_core::limits`)
-/// and its marker byte-for-byte against the TS parser and the Rust exporter,
-/// and bounds the total bytes of every value.
+/// (visits per property, one byte budget per model, every charge from
+/// `ifc_lite_core::limits`) and its marker byte-for-byte against the TS parser
+/// and the Rust exporter, and bounds the total bytes of every value.
 #[test]
 fn complex_property_walk_budget_matches_the_shared_vector() {
     let vector: serde_json::Value = serde_json::from_str(include_str!(
         "../../../../../packages/parser/test/fixtures/complex-property-budget-7675.json"
     ))
     .expect("vector parses");
-    let data: Vec<&str> = vector["dataLines"].as_array().unwrap().iter().map(|l| l.as_str().unwrap()).collect();
-    let ifc = format!(
-        "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n{}\nENDSEC;\nEND-ISO-10303-21;\n",
-        data.join("\n")
-    );
-    let dm = extract_data_model(&ifc);
-    let sets: Vec<(String, Vec<(String, String)>)> = dm
-        .property_sets
-        .iter()
-        .map(|set| {
-            let props = set.properties.iter().map(|p| (p.property_name.clone(), p.property_value.clone())).collect();
-            (set.pset_name.clone(), props)
-        })
-        .collect();
-    assert_complex_budget_vector(&vector, &sets);
+    for case in vector["cases"].as_array().unwrap() {
+        let data: Vec<&str> = case["dataLines"].as_array().unwrap().iter().map(|l| l.as_str().unwrap()).collect();
+        let ifc = format!(
+            "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n{}\nENDSEC;\nEND-ISO-10303-21;\n",
+            data.join("\n")
+        );
+        let dm = extract_data_model(&ifc);
+        // The server keeps each set once, however many entities share it.
+        let sets: Vec<(String, Vec<String>)> = dm
+            .property_sets
+            .iter()
+            .map(|set| (set.pset_name.clone(), set.properties.iter().map(|p| p.property_value.clone()).collect()))
+            .collect();
+        assert_complex_budget_case(case, ifc.len(), &sets);
+    }
 }
 
-/// Check one walk's property sets (name, then `(property, value)` in order)
-/// against the shared #7675 vector. The TS and exporter tests read the same
-/// file with the same rules: an inline `value` is exact, a long one is pinned
-/// by UTF-8 length and SHA-256, a repeated property by its values joined with
-/// `\n`, and every value together stays under `maxTotalBytes`.
-fn assert_complex_budget_vector(vector: &serde_json::Value, sets: &[(String, Vec<(String, String)>)]) {
+/// #7675 D3: a cut level's `values` list (the parquet `values` column, which
+/// IDS reads) ends with the budget marker, so a member past the cut reads as
+/// truncated rather than absent.
+#[test]
+fn a_cut_complex_property_marks_its_values_list() {
+    let members = vec!["#20"; 1100].join(",");
+    let ifc = format!(
+        "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n\
+         #20=IFCPROPERTYSINGLEVALUE('P',$,IFCLABEL('v'),$);\n\
+         #22=IFCCOMPLEXPROPERTY('Wide',$,'WideUsage',({members}));\n\
+         #30=IFCPROPERTYSET('Pset0000000000000007675',$,'Pset_Cut',$,(#22));\n\
+         ENDSEC;\nEND-ISO-10303-21;\n"
+    );
+    let dm = extract_data_model(&ifc);
+    let wide = &dm.property_sets[0].properties[0];
+    let marker = ifc_lite_core::limits::COMPLEX_PROPERTY_BUDGET_MARKER;
+    assert!(wide.property_value.ends_with(marker), "{}", wide.property_value);
+    let values = wide.values.as_ref().expect("values");
+    assert_eq!(values.last().map(String::as_str), Some(marker));
+    assert_eq!(values.len(), 1025, "1024 admitted members, then the marker");
+}
+
+/// Check one walk's property sets (name, then the values in order) against
+/// one case of the shared #7675 vector. The TS and exporter tests read the same
+/// file with the same rules: a set is pinned by its property count and its
+/// values joined with `\n` (inline when short, else UTF-8 length and SHA-256),
+/// and the values together stay within the model's output budget.
+fn assert_complex_budget_case(case: &serde_json::Value, input_bytes: usize, sets: &[(String, Vec<String>)]) {
     use sha2::{Digest, Sha256};
-    let digest = |text: &str| -> (u64, String) {
-        let hash: String = Sha256::digest(text.as_bytes()).iter().map(|b| format!("{b:02x}")).collect();
-        (text.len() as u64, hash)
-    };
-    let pinned = |case: &serde_json::Value| (case["length"].as_u64().unwrap(), case["sha256"].as_str().unwrap().to_string());
-    let total: usize = sets.iter().flat_map(|(_, props)| props.iter().map(|(_, v)| v.len())).sum();
-    assert!(total as u64 <= vector["maxTotalBytes"].as_u64().unwrap(), "{total} bytes of property values");
-    for expected in vector["psets"].as_array().unwrap() {
-        let name = expected["name"].as_str().unwrap();
-        let (_, props) = sets.iter().find(|(n, _)| n == name).unwrap_or_else(|| panic!("{name} missing"));
-        if let Some(repeated) = expected.get("repeated") {
-            assert_eq!(props.len() as u64, repeated["count"].as_u64().unwrap(), "{name}");
-            let joined = props.iter().map(|(_, v)| v.as_str()).collect::<Vec<_>>().join("\n");
-            assert_eq!(digest(&joined), pinned(repeated), "{name}");
-            continue;
-        }
-        for case in expected["properties"].as_array().unwrap() {
-            let property = case["property"].as_str().unwrap();
-            let value = &props.iter().find(|(n, _)| n == property).unwrap_or_else(|| panic!("{property} missing")).1;
-            match case.get("value") {
-                Some(exact) => assert_eq!(value, exact.as_str().unwrap(), "{property}"),
-                None => assert_eq!(digest(value), pinned(case), "{property}"),
+    let total: usize = sets.iter().flat_map(|(_, values)| values.iter().map(String::len)).sum();
+    let budget = ifc_lite_core::limits::complex_property_output_budget(input_bytes);
+    assert!(total <= budget, "{total} bytes of property values, budget {budget}");
+    let expected: Vec<&str> = case["psets"].as_array().unwrap().iter().map(|p| p["name"].as_str().unwrap()).collect();
+    assert_eq!(sets.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>(), expected);
+    for pin in case["psets"].as_array().unwrap() {
+        let name = pin["name"].as_str().unwrap();
+        let (_, values) = sets.iter().find(|(n, _)| n == name).unwrap();
+        assert_eq!(values.len() as u64, pin["count"].as_u64().unwrap(), "{name}");
+        match pin.get("values") {
+            Some(exact) => {
+                let exact: Vec<&str> = exact.as_array().unwrap().iter().map(|v| v.as_str().unwrap()).collect();
+                assert_eq!(values.iter().map(String::as_str).collect::<Vec<_>>(), exact, "{name}");
+            }
+            None => {
+                let joined = values.join("\n");
+                let hash: String = Sha256::digest(joined.as_bytes()).iter().map(|b| format!("{b:02x}")).collect();
+                let pinned = (pin["length"].as_u64().unwrap(), pin["sha256"].as_str().unwrap().to_string());
+                assert_eq!((joined.len() as u64, hash), pinned, "{name}");
             }
         }
     }

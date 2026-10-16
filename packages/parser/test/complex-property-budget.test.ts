@@ -6,78 +6,75 @@ import { describe, it, expect } from 'vitest';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { StepTokenizer } from '../src/tokenizer.js';
-import { ColumnarParser, extractPropertiesOnDemand } from '../src/columnar-parser.js';
+import { ColumnarParser, extractPropertiesOnDemand, type IfcDataStore } from '../src/columnar-parser.js';
+import { complexPropertyOutputBudget } from '../src/property-complex-value.js';
 
 /**
  * #7675: the `IfcComplexProperty` depth cap bounds a path's LENGTH only, so a
- * member listing itself `k` times was `k^8` reads, and one visit can copy a
- * long name. The walk is bounded by member visits per property and output
- * bytes per `extractPsetsFromIds` call, mirroring `ifc_lite_core::limits`. The
- * vector is shared with the server (`complex_property_walk_budget_matches_the_shared_vector`
- * in `apps/server/src/services/data_model/tests.rs`) and the Rust exporter
+ * member listing itself `k` times was `k^8` reads, one visit can copy a long
+ * name, and every entity sharing a set walked it again. The walk is bounded by
+ * member visits per property and ONE output budget per store, relative to the
+ * input, mirroring `ifc_lite_core::limits`. The vector is shared with the
+ * server (`complex_property_walk_budget_matches_the_shared_vector` in
+ * `apps/server/src/services/data_model/tests.rs`) and the Rust exporter
  * (`rust/export/src/step_log/base_tests.rs`), so all three walks stay
  * byte-identical.
  */
-interface PinnedCase {
-  property: string;
-  value?: string;
+interface PinnedSet {
+  name: string;
+  count: number;
+  values?: string[];
   length?: number;
   sha256?: string;
-  count?: number;
 }
-interface BudgetVector {
+interface BudgetCase {
+  name: string;
   dataLines: string[];
-  wallId: number;
-  maxTotalBytes: number;
-  psets: Array<{ name: string; properties?: PinnedCase[]; repeated?: PinnedCase }>;
+  entityIds: number[];
+  psets: PinnedSet[];
 }
 
-const vector: BudgetVector = JSON.parse(
+const vector: { cases: BudgetCase[] } = JSON.parse(
   readFileSync(new URL('./fixtures/complex-property-budget-7675.json', import.meta.url), 'utf8')
 );
 
-const pinned = (text: string): [number, string] => [
-  Buffer.byteLength(text, 'utf8'),
-  createHash('sha256').update(text, 'utf8').digest('hex'),
-];
-
-async function budgetSets(): Promise<Array<{ name: string; values: Array<[string, string]> }>> {
-  const source = new TextEncoder().encode(vector.dataLines.join('\n'));
-  const tokenizer = new StepTokenizer(source);
-  const entityRefs = [...tokenizer.scanEntitiesFast()].map(ref => ({
+async function parse(text: string): Promise<IfcDataStore> {
+  const source = new TextEncoder().encode(text);
+  const entityRefs = [...new StepTokenizer(source).scanEntitiesFast()].map(ref => ({
     expressId: ref.expressId,
     type: ref.type,
     byteOffset: ref.offset,
     byteLength: ref.length,
     lineNumber: ref.line,
   }));
-  const store = await new ColumnarParser().parseLite(source.buffer.slice(0), entityRefs, {});
-  return extractPropertiesOnDemand(store, vector.wallId).map(set => ({
-    name: set.name,
-    values: set.properties.map(p => [p.name, p.value == null ? '' : String(p.value)] as [string, string]),
-  }));
+  return new ColumnarParser().parseLite(source.buffer.slice(0), entityRefs, {});
 }
 
+const valuesOf = (set: { properties: Array<{ value: unknown }> }): string[] =>
+  set.properties.map(p => (p.value == null ? '' : String(p.value)));
+
 describe('IfcComplexProperty walk budget (#7675)', () => {
-  it('matches the server and the exporter for every case in the shared vector', async () => {
-    const sets = await budgetSets();
-    const total = sets.reduce((n, s) => n + s.values.reduce((m, [, v]) => m + Buffer.byteLength(v, 'utf8'), 0), 0);
-    expect(total).toBeLessThanOrEqual(vector.maxTotalBytes);
-    for (const expected of vector.psets) {
-      const set = sets.find(s => s.name === expected.name);
-      expect(set, expected.name).toBeDefined();
-      if (expected.repeated) {
-        expect(set!.values.length, expected.name).toBe(expected.repeated.count);
-        const joined = set!.values.map(([, v]) => v).join('\n');
-        expect(pinned(joined), expected.name).toEqual([expected.repeated.length, expected.repeated.sha256]);
-        continue;
+  for (const c of vector.cases) {
+    it(`${c.name}: every entity matches the server and the exporter`, async () => {
+      const text = c.dataLines.join('\n');
+      const store = await parse(text);
+      const budget = complexPropertyOutputBudget(Buffer.byteLength(text, 'utf8'));
+      for (const entityId of c.entityIds) {
+        const sets = extractPropertiesOnDemand(store, entityId);
+        const total = sets.reduce((n, s) => n + valuesOf(s).reduce((m, v) => m + Buffer.byteLength(v, 'utf8'), 0), 0);
+        expect(total, `#${entityId} value bytes`).toBeLessThanOrEqual(budget);
+        expect(sets.map(s => s.name), `#${entityId}`).toEqual(c.psets.map(p => p.name));
+        for (const expected of c.psets) {
+          const values = valuesOf(sets.find(s => s.name === expected.name)!);
+          expect(values.length, expected.name).toBe(expected.count);
+          const joined = values.join('\n');
+          if (expected.values) expect(values, expected.name).toEqual(expected.values);
+          else {
+            const digest = createHash('sha256').update(joined, 'utf8').digest('hex');
+            expect([Buffer.byteLength(joined, 'utf8'), digest], expected.name).toEqual([expected.length, expected.sha256]);
+          }
+        }
       }
-      for (const c of expected.properties ?? []) {
-        const value = set!.values.find(([n]) => n === c.property)?.[1];
-        expect(value, c.property).toBeDefined();
-        if (c.value !== undefined) expect(value, c.property).toBe(c.value);
-        else expect(pinned(value!), c.property).toEqual([c.length, c.sha256]);
-      }
-    }
-  });
+    });
+  }
 });

@@ -985,6 +985,16 @@ jobs:
           # Once schema_plan.rs is on main, ordinary whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/export/src/schema_plan.rs | grep -Fxq 'rust/export/src/schema_plan.rs'; then
             oracle_args+=(--mutation tests/evidence/schema-convert-7683/schema-convert.oracle.patch)
+          # #7678: the input-admission tests name the new typed token, the
+          # lossless decode and the refused-element counter, so a whole-change
+          # revert cannot compile them. Keep that API and disable ONLY the
+          # behaviour: admit every overflowing REAL, accept an unusable unit
+          # factor, keep an overflowing ePSet offset, pass non-finite outline
+          # triangles, normalise a zero extrusion direction and never count a
+          # refused element; their tests turn RED. Once the test file is on
+          # main, ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/processing/tests/issue_7678_nonfinite_input.rs | grep -Fxq 'rust/processing/tests/issue_7678_nonfinite_input.rs'; then
+            oracle_args+=(--mutation tests/evidence/input-admission-7678/admission.oracle.patch)
           # #7737: keep the new semver-baseline module loadable (a whole-change
           # revert deletes it under the gate's tests) while removing ONLY the
           # rebuild-from-tag fallback and the NO_VERDICT output excerpt; the

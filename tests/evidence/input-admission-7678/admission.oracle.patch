@@ -1,0 +1,75 @@
+diff --git a/rust/core/src/georef_pset.rs b/rust/core/src/georef_pset.rs
+--- a/rust/core/src/georef_pset.rs
++++ b/rust/core/src/georef_pset.rs
+@@ -105,7 +105,7 @@ impl GeoRefExtractor {
+                     if let Some(name) = prop.get_string(0) {
+                         let value = prop.get_float(2);
+                         if EPSET_PLACEMENT_FIELDS.contains(&name)
+-                            && value.is_some_and(|v| v.is_nan())
++                            && value.is_some_and(|v| !v.is_finite())
+                         {
+                             placement_refused = true;
+                             continue;
+diff --git a/rust/core/src/parser/numeric_literal.rs b/rust/core/src/parser/numeric_literal.rs
+--- a/rust/core/src/parser/numeric_literal.rs
++++ b/rust/core/src/parser/numeric_literal.rs
+@@ -89,8 +89,7 @@ pub fn step_numeric_literal_len(bytes: &[u8]) -> Option<usize> {
+ /// underflowing literal (`1.E-400`) still reads as the zero it rounds to.
+ #[inline]
+ pub(crate) fn admit_step_real<T: Copy + Into<f64>>(value: T) -> Option<T> {
+-    let _ = value.into();
+-    Some(value)
++    value.into().is_finite().then_some(value)
+ }
+ 
+ /// Read the one STEP numeric literal at the start of `bytes`: its value and
+diff --git a/rust/core/src/units.rs b/rust/core/src/units.rs
+--- a/rust/core/src/units.rs
++++ b/rust/core/src/units.rs
+@@ -191,8 +191,8 @@ pub fn extract_length_unit_scale(decoder: &mut EntityDecoder, project_id: u32) -
+             let conversion_value = measure_with_unit
+                 .get(0)
+                 .and_then(|attr| attr.as_float())
+-                .filter(|_| true)
+-                .unwrap_or(1.0);
++                .filter(|v| v.is_finite() && *v > 0.0)
++                .ok_or_else(unreadable)?;
+ 
+             // IMPORTANT: ValueComponent is expressed in UnitComponent's units.
+             // If UnitComponent is a prefixed SI unit (e.g., millimeters),
+diff --git a/rust/geometry/src/processors/surface.rs b/rust/geometry/src/processors/surface.rs
+--- a/rust/geometry/src/processors/surface.rs
++++ b/rust/geometry/src/processors/surface.rs
+@@ -89,7 +89,7 @@ impl GeometryProcessor for SurfaceOfLinearExtrusionProcessor {
+         // ExtrudedDirection (`IFCDIRECTION((0.,0.,0.))`) has no unit vector:
+         // `normalize` divided 0/0 into NaN positions (#7678, PROC-S23), so it
+         // is refused like any other unusable attribute.
+-        let extrusion = Some(direction.normalize()).ok_or_else(|| {
++        let extrusion = direction.try_normalize(0.0).ok_or_else(|| {
+             Error::geometry("SurfaceOfLinearExtrusion ExtrudedDirection has zero length".to_string())
+         })? * depth;
+ 
+diff --git a/rust/geometry/src/projection_outline.rs b/rust/geometry/src/projection_outline.rs
+--- a/rust/geometry/src/projection_outline.rs
++++ b/rust/geometry/src/projection_outline.rs
+@@ -152,7 +152,7 @@ pub fn mesh_outline_2d(
+         // made `area` NaN, which fails every `<` filter below, so the triangle
+         // was handed to i_overlay, and an infinite one stretched the axis
+         // extent. Skip it, like an out-of-range index above (#7678, GEOM-39).
+-        if [p0, p1, p2].iter().flatten().all(|c| c.is_nan()) {
++        if ![p0, p1, p2].iter().flatten().all(|c| c.is_finite()) {
+             continue;
+         }
+ 
+diff --git a/rust/processing/src/processor/diagnostics.rs b/rust/processing/src/processor/diagnostics.rs
+--- a/rust/processing/src/processor/diagnostics.rs
++++ b/rust/processing/src/processor/diagnostics.rs
+@@ -66,7 +66,7 @@ impl DiagnosticCollectors {
+     /// any record refused by input admission counts once. Call once per job,
+     /// with that job's own decoder.
+     pub(super) fn note_refused_input(&self, decoder: &ifc_lite_core::EntityDecoder) {
+-        if decoder.refused_real_records() > u64::MAX - 1 {
++        if decoder.refused_real_records() > 0 {
+             self.refused_input.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+         }
+     }

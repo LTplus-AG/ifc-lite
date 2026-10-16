@@ -5,7 +5,7 @@
 //! ExtrudedAreaSolid processor - extrusion of 2D profiles.
 
 use crate::{
-    extrusion::{apply_transform, extrude_profile},
+    extrusion::{apply_transform, extrude_regions},
     profiles::ProfileProcessor,
     Error, Mesh, Result, TessellationQuality, Vector3,
 };
@@ -130,11 +130,12 @@ impl GeometryProcessor for ExtrudedAreaSolidProcessor {
             .resolve_ref(profile_attr)?
             .ok_or_else(|| Error::geometry("Failed to resolve SweptArea".to_string()))?;
 
-        let profile = self
+        // One solid per disjoint area: a composite profile is several (#7685).
+        let mut regions = self
             .profile_processor
-            .process(&profile_entity, decoder, quality)?;
-
-        if profile.outer.is_empty() {
+            .process_regions(&profile_entity, decoder, quality)?;
+        regions.retain(|region| !region.outer.is_empty());
+        if regions.is_empty() {
             return Ok(Mesh::new());
         }
 
@@ -212,7 +213,7 @@ impl GeometryProcessor for ExtrudedAreaSolidProcessor {
         let transform = extrusion_local_transform(&direction, depth);
 
         // Extrude the profile
-        let mut mesh = extrude_profile(&profile, depth, transform)?;
+        let mut mesh = extrude_regions(&regions, depth, transform)?;
 
         // Apply Position transform
         if let Some(pos) = pos_transform {

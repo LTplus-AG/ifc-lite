@@ -133,3 +133,4 @@ fn proc_4_arbitrary_profile_with_voids_keeps_the_void() {
         assert_closed_outward(&format!("#{id}"), &mesh, 1);
     }
 }
+

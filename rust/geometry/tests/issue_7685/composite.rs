@@ -49,6 +49,11 @@ const DATA: &str = "\
 #42=IFCMIRROREDPROFILEDEF(.AREA.,$,#16,$,$);
 #43=IFCEXTRUDEDAREASOLID(#40,#21,#22,3.);
 #44=IFCEXTRUDEDAREASOLID(#42,#21,#22,3.);
+#45=IFCEXTRUDEDAREASOLIDTAPERED(#7,#21,#22,3.,#7);
+#46=IFCCARTESIANPOINT((0.,0.,5.));
+#47=IFCPOLYLINE((#20,#46));
+#48=IFCDIRECTION((1.,0.,0.));
+#49=IFCFIXEDREFERENCESWEPTAREASOLID(#7,$,#47,$,$,#48);
 ";
 
 fn model() -> String {
@@ -96,4 +101,18 @@ fn proc_15_derived_and_mirrored_composites_keep_every_region_and_hole() {
         assert_volume(&format!("#{id}"), signed_volume(&mesh), expected, 1e-4);
         assert_closed_outward(&format!("#{id}"), &mesh, 2);
     }
+}
+
+#[test]
+fn proc_15_tapered_and_swept_composites_build_every_region() {
+    // The sibling solid builders take the same regions: a tapered extrusion
+    // (start and end the same composite) and a fixed-reference sweep along a
+    // straight 5 m directrix.
+    let m = model();
+    let tapered = mesh_of(&m, 45);
+    assert_volume("#45 tapered", signed_volume(&tapered), 6.0, 1e-4);
+    assert_closed_outward("#45 tapered", &tapered, 2);
+    let swept = mesh_of(&m, 49);
+    assert_volume("#49 fixed-reference sweep", signed_volume(&swept), 10.0, 1e-4);
+    assert_closed_outward("#49 fixed-reference sweep", &swept, 2);
 }

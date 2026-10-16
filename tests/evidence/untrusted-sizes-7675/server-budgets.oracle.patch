@@ -1,6 +1,7 @@
-diff --git a/apps/server/src/error.rs b/apps/server/src/error.rs
---- a/apps/server/src/error.rs
-+++ b/apps/server/src/error.rs
+diff --git b/apps/server/src/error.rs a/apps/server/src/error.rs
+index 35d47f8ea9..4cdfe30bf3 100644
+--- b/apps/server/src/error.rs
++++ a/apps/server/src/error.rs
 @@ -163,7 +163,7 @@ impl From<crate::services::parquet_data_model::DataModelParquetError> for ApiErr
          match err {
              // The upload is what is over budget (#7675), not the server.
@@ -10,22 +11,24 @@ diff --git a/apps/server/src/error.rs b/apps/server/src/error.rs
              }
              err => ApiError::Parquet(err.to_string()),
          }
-diff --git a/apps/server/src/routes/parse/fetch.rs b/apps/server/src/routes/parse/fetch.rs
---- a/apps/server/src/routes/parse/fetch.rs
-+++ b/apps/server/src/routes/parse/fetch.rs
-@@ -108,7 +108,7 @@ pub async fn get_data_model(
-         }
-         None => {
-             // A fill that refused the model recorded why (#7675).
--            if let Some(reason) = state.cache.get_bytes(&data_model_refusal_key(&data_model_cache_key)).await?.filter(|_| false) {
-+            if let Some(reason) = state.cache.get_bytes(&data_model_refusal_key(&data_model_cache_key)).await? {
-                 return Err(ApiError::BadRequest(String::from_utf8_lossy(&reason).into_owned()));
+diff --git b/apps/server/src/routes/parse/fetch.rs a/apps/server/src/routes/parse/fetch.rs
+index ae78f82016..ff9814c881 100644
+--- b/apps/server/src/routes/parse/fetch.rs
++++ a/apps/server/src/routes/parse/fetch.rs
+@@ -65,7 +65,7 @@ pub async fn get_data_model(
+         // Nothing cached and nothing filling: a fill that refused the model
+         // recorded why (#7675), and that reason answers 400 instead of 404.
+         Err(ApiError::NotFound(not_found)) => {
+-            match state.cache.get_bytes(&data_model_refusal_key(&entry_key)).await?.filter(|_| false) {
++            match state.cache.get_bytes(&data_model_refusal_key(&entry_key)).await? {
+                 Some(reason) => Err(ApiError::BadRequest(String::from_utf8_lossy(&reason).into_owned())),
+                 None => Err(ApiError::NotFound(not_found)),
              }
-             tracing::debug!(cache_key = %cache_key, "No data model cached and none in flight for this key");
-diff --git a/apps/server/src/services/data_model/materials.rs b/apps/server/src/services/data_model/materials.rs
---- a/apps/server/src/services/data_model/materials.rs
-+++ b/apps/server/src/services/data_model/materials.rs
-@@ -349,6 +349,9 @@ pub(super) fn extract_materials(
+diff --git b/apps/server/src/services/data_model/materials.rs a/apps/server/src/services/data_model/materials.rs
+index e26ff1e840..5f884e755a 100644
+--- b/apps/server/src/services/data_model/materials.rs
++++ a/apps/server/src/services/data_model/materials.rs
+@@ -352,6 +352,9 @@ pub(super) fn extract_materials(
                      continue;
                  }
                  // Charged before the rows exist, across every job.
@@ -35,9 +38,22 @@ diff --git a/apps/server/src/services/data_model/materials.rs b/apps/server/src/
                  rows.extend(layers.iter().map(|layer| MaterialAssociation {
                      element_id,
                      association_id: job.id,
-diff --git a/apps/server/src/services/parquet_data_model.rs b/apps/server/src/services/parquet_data_model.rs
---- a/apps/server/src/services/parquet_data_model.rs
-+++ b/apps/server/src/services/parquet_data_model.rs
+diff --git b/apps/server/src/services/data_model/property_value.rs a/apps/server/src/services/data_model/property_value.rs
+index 4aa71fe7b5..47fd6f76c6 100644
+--- b/apps/server/src/services/data_model/property_value.rs
++++ a/apps/server/src/services/data_model/property_value.rs
+@@ -146,6 +146,7 @@ fn resolve_complex(
+     if cut {
+         // The candidate list says it was cut, so a member past the cut does
+         // not read as absent (#7675 D3).
++        values.push(COMPLEX_PROPERTY_BUDGET_MARKER.to_string());
+     }
+     let property_type = if value.is_empty() { "null" } else { "string" };
+     let values = if values.is_empty() { None } else { Some(values) };
+diff --git b/apps/server/src/services/parquet_data_model.rs a/apps/server/src/services/parquet_data_model.rs
+index 6374840605..0249175d33 100644
+--- b/apps/server/src/services/parquet_data_model.rs
++++ a/apps/server/src/services/parquet_data_model.rs
 @@ -130,7 +130,9 @@ pub fn serialize_data_model_to_parquet(
  /// Every section's length against the `u32` wire prefix, by length alone, so
  /// the guard is testable without a 4 GiB section (#7675, SERVER-14).
@@ -49,10 +65,24 @@ diff --git a/apps/server/src/services/parquet_data_model.rs b/apps/server/src/se
      Ok(())
  }
  
-diff --git a/packages/parser/src/property-complex-value.ts b/packages/parser/src/property-complex-value.ts
---- a/packages/parser/src/property-complex-value.ts
-+++ b/packages/parser/src/property-complex-value.ts
-@@ -88,7 +88,6 @@ export class ComplexPropertyBudget {
+diff --git b/packages/parser/src/complex-property-store.ts a/packages/parser/src/complex-property-store.ts
+index 7fb28deb9e..0622579f4b 100644
+--- b/packages/parser/src/complex-property-store.ts
++++ a/packages/parser/src/complex-property-store.ts
+@@ -65,7 +65,7 @@ export function complexPropertyCuts(store: IfcDataStore): number {
+ 
+ function storeComplexValues(store: IfcDataStore, extractor: EntityExtractor): StoreComplexValues {
+     const hit = resolvedByStore.get(store);
+-    if (hit && false) return hit;
++    if (hit) return hit;
+     const budget = ComplexPropertyBudget.forInput(store.source?.length ?? 0);
+     const byListing = new Map<number, Map<number, ParsedIfcPropertyValue>>();
+     // @raw-entity-enumeration-ok the store-wide complex-property pass reads every source property set once, in file order (#7675)
+diff --git b/packages/parser/src/property-complex-value.ts a/packages/parser/src/property-complex-value.ts
+index b7d4bfe039..be3dab7382 100644
+--- b/packages/parser/src/property-complex-value.ts
++++ a/packages/parser/src/property-complex-value.ts
+@@ -109,7 +109,6 @@ export class ComplexPropertyBudget {
      /** Start a top-level property: visits restart, bytes carry on. */
      startProperty(): void {
          this.visits = 0;
@@ -60,10 +90,33 @@ diff --git a/packages/parser/src/property-complex-value.ts b/packages/parser/src
      }
  
      /** Whether one more member may be read, counting it if so. */
-diff --git a/rust/core/src/limits.rs b/rust/core/src/limits.rs
---- a/rust/core/src/limits.rs
-+++ b/rust/core/src/limits.rs
-@@ -209,7 +209,6 @@ impl ComplexPropertyBudget {
+@@ -261,6 +260,8 @@ function resolveComplex(
+     const value = budget.levelValue(parts, cut) ?? (usageName || null);
+     if (cut) {
+         // A member past the cut reads as truncated, not absent (#7675 D3).
++        values.push(COMPLEX_PROPERTY_BUDGET_MARKER);
++        members.push({ name: COMPLEX_PROPERTY_BUDGET_MARKER, type: PropertyValueType.String, value: COMPLEX_PROPERTY_BUDGET_MARKER });
+     }
+     return {
+         type: PropertyValueType.String,
+diff --git b/packages/rules/src/filter/read-measure-subject.ts a/packages/rules/src/filter/read-measure-subject.ts
+index 0f00f098e9..b1984267a0 100644
+--- b/packages/rules/src/filter/read-measure-subject.ts
++++ a/packages/rules/src/filter/read-measure-subject.ts
+@@ -87,7 +87,7 @@ function complexMembers(property: ExtractedProperty, memberPath: readonly string
+     level = level.flatMap((p) => {
+       const members = p.members ?? [];
+       const found = members.filter((m) => m.name.toLowerCase() === wanted);
+-      return found.length > 0 ? found : members.filter((m) => m.name === COMPLEX_PROPERTY_BUDGET_MARKER && false);
++      return found.length > 0 ? found : members.filter((m) => m.name === COMPLEX_PROPERTY_BUDGET_MARKER);
+     });
+   }
+   return level;
+diff --git b/rust/core/src/limits.rs a/rust/core/src/limits.rs
+index e3ad01d16a..a13f03dcd3 100644
+--- b/rust/core/src/limits.rs
++++ a/rust/core/src/limits.rs
+@@ -250,7 +250,6 @@ impl ComplexPropertyBudget {
      /// budget carries on.
      pub fn start_property(&mut self) {
          self.visits = 0;
@@ -71,3 +124,13 @@ diff --git a/rust/core/src/limits.rs b/rust/core/src/limits.rs
      }
  
      /// Whether one more member may be read, counting it if so.
+@@ -287,9 +286,6 @@ impl ComplexPropertyBudget {
+             self.cuts += 1;
+         }
+         if parts.is_empty() {
+-            if cut {
+-                self.charge(COMPLEX_PROPERTY_BUDGET_MARKER.len());
+-            }
+             return cut.then(|| COMPLEX_PROPERTY_BUDGET_MARKER.to_string());
+         }
+         let joined = parts.join(", ");

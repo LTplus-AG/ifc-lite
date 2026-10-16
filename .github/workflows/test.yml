@@ -960,10 +960,13 @@ jobs:
           # ComplexPropertyBudget, which the changed tests construct, so a
           # whole revert cannot compile them (INCONCLUSIVE). Keep the types and
           # break ONLY the behaviour: material rows are never charged, the
-          # walk's byte budget restarts per property (Rust and TS), a refusal
-          # maps to 500, the stream's recorded refusal is never read, and the
-          # data-model section lengths go unchecked; their tests turn RED.
-          # Once the shared vector's TS test is on main, whole revert resumes.
+          # walk's byte budget restarts per property (Rust and TS), a bare
+          # budget marker is charged, the TS store pass is redone per call, a
+          # cut level's values/members are unmarked and rules read a name past
+          # it as absent, a refusal maps to 500, the stream's recorded refusal
+          # is never read, and the data-model section lengths go unchecked;
+          # their tests turn RED. Once the shared vector's TS test is on main,
+          # whole revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- packages/parser/test/complex-property-budget.test.ts | grep -Fxq 'packages/parser/test/complex-property-budget.test.ts'; then
             oracle_args+=(--mutation tests/evidence/untrusted-sizes-7675/server-budgets.oracle.patch)
           fi

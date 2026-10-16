@@ -45,7 +45,16 @@ Coordinated idle windows and safe consumer cleanup did not qualify a complete
 interleaved worker-pool cohort under the unchanged host checks. An earlier capture
 also exposed a response observer retaining handles across the canonical cold
 reload; its correction preserves both navigations and captures setup bytes before
-invalidation. Refused campaigns remain separate and provide no timing verdict.
+invalidation. Refused campaigns remain separate and provide no timing verdict. On the final
+`80bc1bff69` source, the first browser sample completed its load but could not
+complete delivered worker-script byte coverage afterward because a response
+handle was unavailable. Installed Playwright code shows worker-session teardown
+can invalidate that handle; the failed response URL was not recorded. That
+cohort accepts no rows. The separate
+native cohort stopped before its first sample when host admission failed. No
+retry, missing-body exemption or cached-file substitution qualified either
+attempt. A future passive collector must demonstrate worker-response retention
+before another timing campaign; setup-navigation retention alone is insufficient.
 
 Untimed native mesh counts and fingerprints match the base for Haus and Holter;
 ISSUE_129 changes geometry and reports fewer CSG failures. These fingerprints

@@ -259,3 +259,67 @@ Clippy pass on the frozen merged source. Use the same extraction recipe above.
 Earlier WASM, browser, performance and determinism proofs keep their recorded
 source identities; they do not qualify this newer integration. Fresh CI remains
 pending, and the earlier performance failures remain unresolved.
+
+## Final 80bc validation scope
+
+`final-80bc-validation.json` records actual validation of source
+`80bc1bff690e307c82111cfb23edf7639bd40679`, not the later commit adding this
+summary. Its native and consumer receipts bind the same source manifest and
+production-tree checksum. All eight native stages pass: the signed-zero caller
+regression, budget fixture, 121 issue-7292 unit tests, 18 mesh-bridge tests,
+three public subtract-budget tests, eight module-ratchet tests, 17
+function-ratchet tests (one ignored), and exact workspace/all-target Clippy.
+The separate signed-zero run overlaps the 121-test selection; these are stage
+counts, not a distinct-test total. No full workspace test sweep is claimed.
+
+The official WASM build, root Turbo typecheck, real WASM contracts (210 passed,
+one skipped), public WASM tests (22 passed), and forced viewer build complete.
+The original qualification driver's post-WASM hold-label failure remains
+failed; a separate continuation completed the remaining stages from the actual
+source-built bytes. The engine transfer-size verdict remains **FAIL** and a
+merge blocker.
+
+A fresh owned Chrome capture binds that engine to five cases on physical NVIDIA
+hardware. All six composite source/runtime/cleanup gates pass. Cleanup succeeds
+on its first attempt under the unchanged two-attempt/60-second policy. Public
+fields retain no protected-browser inventory or profile details. This functional
+collector intercepts and fulfils actual responses to verify their delivered
+bytes; its results make no performance claim.
+
+The four reporter raw JSON files exactly match the earlier `8ae04cf8b8` oracle
+inputs, including coordinate metadata. Exact fixture and comparator/helper pins,
+`finite-coverage-v3`, and the unchanged 100 µm tolerance transfer those four
+successful finite filled-surface proofs without rerunning the oracle. Each has
+zero missing/extra area beyond tolerance and zero unresolved cells. This does
+not prove closure, winding, multiplicity, volume or general CSG correctness.
+
+The six selected S_Office typed mesh payloads match the earlier capture exactly;
+their arrays, indices, transforms and local bounds pass the recorded structural
+checks. Four actual geometry workers complete the load, with no recorded
+GPU/page/network errors. Whole-scene bounds metadata differs, so whole-scene
+identity is not claimed. The recorded populated-building and line-strip views
+do not establish an occluded closeup or solid-volume oracle.
+
+There is **no qualified end-to-end performance verdict**. The attempted browser
+cohort accepts zero rows after a post-timing worker-response body-proof failure;
+the native cohort accepts zero samples after host CPU admission refuses
+0/12/1% observations against the unchanged 10% ceiling. Both attempts and their
+failures remain separate from the successful functional capture.
+
+The JSON supplies original receipt, log, raw-input, fixture and helper SHA-256
+references. These identify locally retained evidence; this addition does not
+publish those originals, add a new archive, or extend any historical archive.
+Unpublished originals cannot be independently retrieved or replayed from hashes
+alone. No new screenshots or raw bundles are included. Required hosted CI,
+cross-platform determinism and merge readiness are outside this summary.
+
+The initial-publication CI oracle uses `signed-zero.oracle.patch` because a
+whole-production revert removes new Rust APIs and cannot compile the changed
+tests. The harness reverse-applies this forward fix to restore the exact
+pre-fix SourceAxes registration/lookup behavior while retaining modules, types
+and every test. The existing caller regression fails behaviorally before the
+fix and passes on `80bc`. All changed tests still execute on both sides, with
+unchanged runner selection, timeout, classification and restoration checks.
+The future hosted aggregate verdict is pending; this one seam witness does not
+establish exhaustive mutation coverage of the entire change. Whole-change
+reversion resumes once the module is on main.

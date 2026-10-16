@@ -371,8 +371,7 @@ pub async fn parse_parquet_stream(
                         tracing::info!(cache_key = %dm_key, size = parquet_data.len(), "Data model cached from stream");
                     }
                 }
-                // Recorded, so the fetch answers 400 with the reason rather
-                // than a 404 for an entry nothing will ever write (#7675).
+                // Recorded: the fetch answers 400 with it, not a 404 (#7675).
                 Ok(Err(DataModelParquetError::Refused(reason))) => {
                     tracing::warn!(cache_key = %dm_key, %reason, "Data model refused from stream");
                     let key = data_model_refusal_key(&dm_key);

@@ -58,6 +58,16 @@ use wasm_bindgen::prelude::*;
 /// [`IfcAPI::tessellation_quality`] (0 = Lowest … 4 = Highest).
 const TESSELLATION_QUALITY_MEDIUM: u8 = 2;
 
+/// One content's `IfcIndexedColourMap` index (#858) and the don't-bake split
+/// guard ids derived from it once (`style::indexed_colour_split_guard_ids`,
+/// EDGE-WASM-5, #7691). Held in [`IfcAPI`]'s per-content cache slot.
+pub(crate) struct IndexedColourCache {
+    /// Geometry id → full per-triangle palette.
+    pub(crate) maps: rustc_hash::FxHashMap<u32, ifc_lite_processing::style::FullIndexedColourMap>,
+    /// Multi-colour face-set ids; `None` when no map paints more than one colour.
+    pub(crate) split_guard_ids: Option<std::sync::Arc<rustc_hash::FxHashSet<u32>>>,
+}
+
 /// Main IFC-Lite API
 #[wasm_bindgen]
 pub struct IfcAPI {
@@ -193,13 +203,9 @@ pub struct IfcAPI {
     /// this split in the #874 mesh-pipeline unification — it kept only the
     /// dominant colour per geometry. Built once per worker on first batch call
     /// (a single extra entity scan, cached) and cleared by `clearPrePassCache`.
-    cached_indexed_colour_maps: std::sync::Mutex<
-        Option<
-            std::sync::Arc<
-                rustc_hash::FxHashMap<u32, ifc_lite_processing::style::FullIndexedColourMap>,
-            >,
-        >,
-    >,
+    /// Carries the #858 split-guard ids derived from it, so the partitioned
+    /// batch does not re-derive them per batch (EDGE-WASM-5, #7691).
+    cached_indexed_colour_maps: std::sync::Mutex<Option<std::sync::Arc<IndexedColourCache>>>,
 
     /// When `true`, `processGeometryBatch` computes a per-entity geometry
     /// fingerprint (see `ifc_lite_geometry::geom_hash`) and returns it on the
@@ -939,8 +945,7 @@ impl IfcAPI {
         &self,
         content: &[u8],
         decoder: &mut ifc_lite_core::EntityDecoder,
-    ) -> std::sync::Arc<rustc_hash::FxHashMap<u32, ifc_lite_processing::style::FullIndexedColourMap>>
-    {
+    ) -> std::sync::Arc<IndexedColourCache> {
         {
             let slot = self
                 .cached_indexed_colour_maps
@@ -957,29 +962,25 @@ impl IfcAPI {
         // IfcIndexedColourMap pay only a single substring search (SIMD memmem),
         // not a full entity scan + decode, on the first batch of every worker.
         // The empty result is still cached so later batches skip even that.
-        if ifc_lite_core::find_keyword(content, b"IFCINDEXEDCOLOURMAP").is_none() {
-            let arc = std::sync::Arc::new(map);
-            let mut slot = self
-                .cached_indexed_colour_maps
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            *slot = Some(std::sync::Arc::clone(&arc));
-            return arc;
-        }
-        let mut scanner = ifc_lite_core::EntityScanner::new(content);
-        while let Some((_id, type_name, start, end)) = scanner.next_entity() {
-            if ifc_lite_core::keyword_eq(type_name, "IFCINDEXEDCOLOURMAP") {
-                if let Ok(icm) = decoder.decode_at(start, end) {
-                    if let Some(full) =
-                        ifc_lite_processing::style::resolve_indexed_colour_map_full(&icm, decoder)
-                    {
-                        map.entry(full.geometry_id).or_insert(full);
+        if ifc_lite_core::find_keyword(content, b"IFCINDEXEDCOLOURMAP").is_some() {
+            let mut scanner = ifc_lite_core::EntityScanner::new(content);
+            while let Some((_id, type_name, start, end)) = scanner.next_entity() {
+                if ifc_lite_core::keyword_eq(type_name, "IFCINDEXEDCOLOURMAP") {
+                    if let Ok(icm) = decoder.decode_at(start, end) {
+                        if let Some(full) =
+                            ifc_lite_processing::style::resolve_indexed_colour_map_full(&icm, decoder)
+                        {
+                            map.entry(full.geometry_id).or_insert(full);
+                        }
                     }
                 }
             }
         }
 
-        let arc = std::sync::Arc::new(map);
+        let arc = std::sync::Arc::new(IndexedColourCache {
+            split_guard_ids: ifc_lite_processing::style::indexed_colour_split_guard_ids(&map),
+            maps: map,
+        });
         let mut slot = self
             .cached_indexed_colour_maps
             .lock()

@@ -38,7 +38,7 @@ fn issue_5750_anything_else_is_refused() {
         "not-a-key".to_owned(),
         DIGEST.to_owned(),
         format!("{DIGEST}-"),
-        format!("{DIGEST}-default-json-v6"),
+        format!("{DIGEST}-default-json-v7"),
         format!("{DIGEST}-default-parquet-v8"),
         format!("{DIGEST}-default-qmedium"),
         format!("{DIGEST}-default-qbogus"),

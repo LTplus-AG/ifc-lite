@@ -3,16 +3,16 @@
   "repin": "IFC_LITE_REPIN_GOLDEN=1 cargo test -p ifc-lite-processing --test symbolic_golden -- --exact symbolic_data",
   "cases": {
     "AC20-FZK-Haus": {
-      "fnv1a64": "1ab4293c8b40dad1",
-      "bytes": 51053
+      "fnv1a64": "fb41ad46ecef8798",
+      "bytes": 50987
     },
     "Mini-Project-grids": {
-      "fnv1a64": "700ffa5fd32495fe",
-      "bytes": 73852
+      "fnv1a64": "037397bbac06ded2",
+      "bytes": 71096
     },
     "duplex": {
-      "fnv1a64": "159264667a88fc1e",
-      "bytes": 105715
+      "fnv1a64": "88e44dc0248b4457",
+      "bytes": 102787
     },
     "wall_roof_plan_reps": {
       "fnv1a64": "fde2feee219d143f",

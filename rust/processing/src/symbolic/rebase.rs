@@ -25,6 +25,14 @@
 //! re-based at all. With the components private and reachable only through
 //! [`RenderFrameRebase::plan`] / [`RenderFrameRebase::elevation`], a call
 //! site can no longer pick the wrong one.
+//!
+//! It is also where the stream turns f32 (#7684 PROCESSING-SYM-4). Everything
+//! upstream (placements, coordinates, the offset itself) is f64, the
+//! subtraction happens in f64, and only the small re-based result is cast.
+//! The pipeline used to cast at read time and subtract an f32 offset from an
+//! f32 world coordinate: at 5,000 km the f32 step is 0.5 m, so a symbol could
+//! land half a metre off the mesh it annotates. The mesh side has subtracted
+//! in f64 all along (`mapped_operator_precision.rs`).
 
 use crate::mesh_frame::MeshFrame;
 
@@ -32,15 +40,15 @@ use crate::mesh_frame::MeshFrame;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) struct RenderFrameRebase {
     /// IFC X (easting) component of the translation.
-    x: f32,
+    x: f64,
     /// IFC Y (northing) component of the translation.
-    y: f32,
+    y: f64,
     /// IFC Z (elevation) component of the translation.
-    z: f32,
+    z: f64,
     /// The plan block of the frame's inverse rotation, as the frame's images
     /// of the world X and Y axes: `[x_axis.x, x_axis.y, y_axis.x, y_axis.y]`.
     /// The identity for every frame that removes no rotation.
-    axes: [f32; 4],
+    axes: [f64; 4],
 }
 
 impl Default for RenderFrameRebase {
@@ -69,17 +77,7 @@ impl RenderFrameRebase {
         let (x, y, z) = frame.rtc_offset();
         let x_axis = frame.rotate_into_frame([1.0, 0.0, 0.0]);
         let y_axis = frame.rotate_into_frame([0.0, 1.0, 0.0]);
-        Self {
-            x: x as f32,
-            y: y as f32,
-            z: z as f32,
-            axes: [
-                x_axis[0] as f32,
-                x_axis[1] as f32,
-                y_axis[0] as f32,
-                y_axis[1] as f32,
-            ],
-        }
+        Self { x, y, z, axes: [x_axis[0], x_axis[1], y_axis[0], y_axis[1]] }
     }
 
     /// An IFC plan DIRECTION in the renderer's 2D pair. The frame's rotation
@@ -88,15 +86,15 @@ impl RenderFrameRebase {
     /// Text baselines are the consumer (`text.rs`). The handedness flip lives
     /// here too, so a caller cannot negate the northing of a point and forget
     /// to negate the direction beside it.
-    pub(super) fn plan_direction(self, ifc_dx: f32, ifc_dy: f32) -> (f32, f32) {
+    pub(super) fn plan_direction(self, ifc_dx: f64, ifc_dy: f64) -> (f32, f32) {
         let (x, y) = self.rotate_plan(ifc_dx, ifc_dy);
-        (x, -y + 0.0)
+        (x as f32, -(y as f32) + 0.0)
     }
 
     /// The inverse rotation restricted to the plan: an IFC plan pair in the
     /// frame's own axes, before the handedness flip.
     #[inline]
-    fn rotate_plan(self, x: f32, y: f32) -> (f32, f32) {
+    fn rotate_plan(self, x: f64, y: f64) -> (f64, f64) {
         (
             self.axes[0] * x + self.axes[2] * y,
             self.axes[1] * x + self.axes[3] * y,
@@ -106,7 +104,7 @@ impl RenderFrameRebase {
     /// IFC plan coordinates → the renderer's 2D pair `(renderX, -renderZ)`,
     /// the handedness the section cutter emits and the viewer's overlay
     /// consumes.
-    pub(super) fn plan(self, ifc_x: f32, ifc_y: f32) -> (f32, f32) {
+    pub(super) fn plan(self, ifc_x: f64, ifc_y: f64) -> (f32, f32) {
         // The handedness flip negates the northing, and negating a zero
         // northing gives -0.0 rather than 0.0. The two compare equal and draw
         // identically, but they are distinct values to anything that inspects
@@ -115,8 +113,11 @@ impl RenderFrameRebase {
         // the worker boundary. Emitting -0.0 would spend that signal on an
         // artifact of how the flip is written. Adding 0.0 maps -0.0 to +0.0
         // and is the identity on every other value, IEEE-754 round-to-nearest.
+        // Subtract and rotate in f64; cast only the small result (#7684). A
+        // value past f32's range casts to infinity, which every caller's
+        // finiteness gate (`push_finite_point` and its siblings) then drops.
         let (x, y) = self.rotate_plan(ifc_x - self.x, ifc_y - self.y);
-        (x, -y + 0.0)
+        (x as f32, -(y as f32) + 0.0)
     }
 
     /// IFC elevation → the renderer's `world_y`.
@@ -124,8 +125,8 @@ impl RenderFrameRebase {
     /// The frame's rotation does not enter: the plan rotation this carries
     /// fixes the Z axis (see [`RenderFrameRebase::from_frame`]), so an
     /// elevation is only ever offset.
-    pub(super) fn elevation(self, ifc_z: f32) -> f32 {
-        ifc_z - self.z
+    pub(super) fn elevation(self, ifc_z: f64) -> f32 {
+        (ifc_z - self.z) as f32
     }
 }
 

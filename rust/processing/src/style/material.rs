@@ -31,7 +31,7 @@ const MAX_MATERIAL_RESOLVE_DEPTH: u8 = 4;
 
 /// Build the `element id → material colours` map: every colour each element
 /// inherits from its associated material(s), in resolution order. The single
-/// general-path fallback picks the first opaque colour ([`pick_opaque_first`]);
+/// general-path fallback is [`element_material_fallback_color`];
 /// the opening sub-mesh path alternates transparent/opaque
 /// ([`pick_material_style_for_submesh`]) to split glass vs frame.
 ///
@@ -94,6 +94,21 @@ pub fn pick_opaque_first(colors: &[[f32; 4]]) -> Option<[f32; 4]> {
             .copied()
             .unwrap_or(colors[0]),
     )
+}
+
+/// THE element-level material fallback colour: what an element with no
+/// representation-level style renders in, from its material colour list
+/// ([`build_element_material_colors`]). The first opaque colour, else the
+/// first colour, so a window listing `[glass, frame]` falls back to its frame.
+///
+/// One rule for every pipeline (PROCESSING-4, #7691): the native orchestrator
+/// and canonical appearance resolve it in process, and the browser pre-pass
+/// folds it into the `styleIds`/`styleColors` wire that `processGeometryBatch`
+/// reads back per element. The wire used to carry the first colour instead,
+/// so the same element fell back to glass in the viewer and to frame on the
+/// server.
+pub fn element_material_fallback_color(colors: &[[f32; 4]]) -> Option<[f32; 4]> {
+    pick_opaque_first(colors)
 }
 
 /// Pick a material colour for one sub-mesh, alternating preference so a window

@@ -186,3 +186,34 @@ fn a_mesh_with_short_normals_is_skipped_without_misaligning_the_rest() {
         assert_eq!(nz[v], 1.0, "vertex {v} carries mesh 3's own normal");
     }
 }
+
+/// #7684 EXPORT-DATA-20: the origin is folded in f64 and rounded to the f32
+/// column once. On base the add happened in f32 (`v as f64 as f32 + ox as
+/// f32`, two roundings): 0.1 + 1000.3 landed on 1000.39996 instead of the
+/// f32 nearest to 1000.4.
+#[test]
+fn issue_7684_origin_is_folded_in_f64_then_rounded_once() {
+    let mut m = mesh(1, vec![0.1, 0.0, 0.0, 1.1, 0.0, 0.0, 0.1, 1.0, 0.0], vec![0, 1, 2]);
+    m.origin = [1000.3, 0.0, 0.0];
+    let (vb, ..) = geometry_tables_from_meshes(&[m]).expect("tables");
+    let xs = column::<Float32Type>(&read_table(vb), "X");
+    assert_eq!(xs[0], (0.1f32 as f64 + 1000.3) as f32, "x[0] = {}", xs[0]);
+    assert_eq!(xs[1], (1.1f32 as f64 + 1000.3) as f32, "x[1] = {}", xs[1]);
+    assert_ne!(xs[0], 0.1f32 + 1000.3f32, "the f32 double rounding is gone");
+}
+
+/// #7684 EXPORT-DATA-20: a non-finite origin or position never reaches the
+/// columns (the gate OBJ and USD already applied). On base the NaN origin was
+/// folded into every vertex of its mesh and written out.
+#[test]
+fn issue_7684_a_non_finite_mesh_is_skipped_like_obj_and_usd_skip_it() {
+    let good = mesh(1, vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0], vec![0, 1, 2]);
+    let mut nan_origin = mesh(2, vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0], vec![0, 1, 2]);
+    nan_origin.origin = [f64::NAN, 0.0, 0.0];
+    let mut inf_position = mesh(3, vec![f32::INFINITY, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0], vec![0, 1, 2]);
+    inf_position.origin = [0.0; 3];
+    let (vb, _ib, mb, vcount, _) = geometry_tables_from_meshes(&[good, nan_origin, inf_position]).expect("tables");
+    assert_eq!(vcount, 3, "only the finite mesh is written");
+    assert_eq!(column::<UInt32Type>(&read_table(mb), "ExpressId"), vec![1]);
+    assert!(column::<Float32Type>(&read_table(vb), "X").iter().all(|v| v.is_finite()));
+}

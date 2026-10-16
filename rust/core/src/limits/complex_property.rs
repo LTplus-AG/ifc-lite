@@ -46,6 +46,10 @@ pub const COMPLEX_PROPERTY_OUTPUT_BYTES: usize = 1 << 20;
 /// about 2.5 MB charged) whole with room to spare. What it binds is reuse
 /// past that: one 1 KB value listed a thousand times by each of a thousand
 /// properties built 685 MB from 10.7 KB (#7675); that is now the floor.
+///
+/// A lean file, one with no geometry to dilute the input, cuts sooner: at a
+/// 120-member shared property, or at 10 distinct 256-byte texts per element
+/// over 3 000 elements.
 pub const COMPLEX_PROPERTY_BYTES_PER_INPUT_BYTE: usize = 16;
 
 /// What a read member costs before its text: its `members` / `values` entry.
@@ -132,6 +136,10 @@ impl ComplexPropertyBudget {
     /// reuses the value, charged its listing bytes, or reads `spent()` (a
     /// counted cut) once the budget is spent. Memoised per id, not per
     /// listing: a repeat costs what it keeps, not a fresh walk.
+    ///
+    /// A repeat listing is admitted while any budget is left and charged in
+    /// full, so one admitted with almost nothing left overshoots: the total
+    /// stays under the budget plus one listing.
     pub fn listing<V: Clone>(
         &mut self,
         memo: &mut HashMap<u32, (V, usize)>,

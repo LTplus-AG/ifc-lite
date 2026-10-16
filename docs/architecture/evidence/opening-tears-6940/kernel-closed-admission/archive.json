@@ -1,0 +1,17 @@
+{
+  "archive": "kernel-closed-admission-evidence.tar.gz",
+  "sha256": "d81a9d920e2caa57eaf3ffb1bc7bdf9d8cc8cdd3893a3ff7bfa1ee9f81563410",
+  "bytes": 7446836,
+  "evidenceFiles": 179,
+  "manifestSHA256": "75e213373ac71c880eb407930fd58967334ef0eb83a3a5b9096755132bc69b23",
+  "publicCopyFiles": [
+    "README.md",
+    "kernel-closed-admission-evidence.tar.gz",
+    "archive.json"
+  ],
+  "publicTextLinesExcludingThisReceipt": 29,
+  "replayScriptsArchived": true,
+  "noFixtureELFRuntimeOrVideo": true,
+  "historicalV1Preserved": true,
+  "scope": "Bounded original-operand admission and native Mini1348 physical/row migration; whole corpus/browser/performance not qualified."
+}

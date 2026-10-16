@@ -333,7 +333,34 @@ where
             let ifc_type = IfcType::from_str(type_str);
             Ok((id, ifc_type, args))
         }
-        Err(e) => Err(Error::parse(0, format!("Failed to parse entity: {}", e))),
+        Err(e) => Err(entity_parse_error(input, e)),
+    }
+}
+
+/// Bytes of the failing input quoted in a parse error.
+const ERROR_CONTEXT_BYTES: usize = 64;
+
+/// A nom failure as a bounded [`Error`]: the byte offset, nom's error kind and
+/// at most [`ERROR_CONTEXT_BYTES`] of lossy context. nom 7's `Display` for
+/// `Err` writes the inner error with `{:?}`, which is every REMAINING input byte
+/// as a decimal number, so formatting it built a message 4-5x the record (a
+/// 20 MB point list: ~100 MB of text per failed decode, built and dropped by
+/// every `let Ok(..) else continue` walk; #7675, CORE-5).
+fn entity_parse_error(input: &[u8], e: nom::Err<nom::error::Error<&[u8]>>) -> Error {
+    match e {
+        nom::Err::Incomplete(_) => Error::parse(input.len(), "Failed to parse entity: incomplete input"),
+        nom::Err::Error(inner) | nom::Err::Failure(inner) => {
+            let rest = inner.input;
+            let near = &rest[..rest.len().min(ERROR_CONTEXT_BYTES)];
+            Error::parse(
+                input.len().saturating_sub(rest.len()),
+                format!(
+                    "Failed to parse entity: {:?} near {:?}",
+                    inner.code,
+                    String::from_utf8_lossy(near)
+                ),
+            )
+        }
     }
 }
 

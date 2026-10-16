@@ -31,7 +31,7 @@ impl IfcAPI {
 
         // Build entity index — a compact columnar index (sorted u32 columns +
         // binary search, #1682) wrapped in Arc for cheap reuse.
-        let entity_index = std::sync::Arc::new(ifc_lite_core::ColumnarEntityIndex::from_scan(content));
+        let entity_index = std::sync::Arc::new(super::scan_columnar_index(content));
         // Cache for reuse by processGeometryBatch.
         // Mutex held only briefly to install the Arc; rayon helpers
         // pick up clones below without re-locking. Panic on poison —
@@ -491,9 +491,10 @@ impl IfcAPI {
         // Consuming frees the map before sorting: one interleaved transient.
         let entity_index_arc = match prebuilt_arc {
             Some(pi) => pi,
-            None => std::sync::Arc::new(ifc_lite_core::ColumnarEntityIndex::from_hashmap_consuming(
-                entity_index,
-            )),
+            None => std::sync::Arc::new(
+                ifc_lite_core::ColumnarEntityIndex::from_hashmap_consuming(entity_index)
+                    .map_err(|e| JsValue::from_str(&e.to_string()))?,
+            ),
         };
         let have_prebuilt = external_styles; // sharded mode always passes both
 

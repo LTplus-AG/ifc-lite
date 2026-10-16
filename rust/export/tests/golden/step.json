@@ -7,16 +7,16 @@
       "bytes": 2526384
     },
     "AC20-FZK-Haus->IFC2X3": {
-      "fnv1a64": "3e525df8df07daf1",
-      "bytes": 2475145
+      "fnv1a64": "d7e0222d9ebbf991",
+      "bytes": 2475141
     },
     "IfcOpenHouse_IFC4": {
       "fnv1a64": "dea19a2cc3fb1210",
       "bytes": 113244
     },
     "IfcOpenHouse_IFC4->IFC2X3": {
-      "fnv1a64": "f133f85f37a7eed2",
-      "bytes": 112747
+      "fnv1a64": "4055cb900701fed6",
+      "bytes": 112736
     },
     "bath_csg_solid": {
       "fnv1a64": "3cc867b5626a83de",
@@ -39,8 +39,8 @@
       "bytes": 2380739
     },
     "duplex->IFC4": {
-      "fnv1a64": "53f35b0761d0828d",
-      "bytes": 2382049
+      "fnv1a64": "5f7c33d45fef2f6d",
+      "bytes": 2382053
     },
     "mapped_instances_synthetic": {
       "fnv1a64": "81990986b3cfdea2",

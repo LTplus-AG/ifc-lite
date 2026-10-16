@@ -22,6 +22,7 @@ import type { Ifc4SlotCheck } from './schema-converter-ifc4-slots.js';
 import type { EnumReconciliation } from './schema-converter-enums.js';
 import { referencesAnyExpressId } from './step-ref-scan.js';
 import { productProxy } from './schema-converter-product-proxy.js';
+import { isStrictAttrPrefix } from './schema-converter-renames.js';
 
 export { computeWithheldRefIds } from './schema-untranslatable.js';
 
@@ -245,24 +246,6 @@ export function attrNameTable(schema: IfcSchemaVersion): Map<string, readonly st
   return table;
 }
 
-/**
- * True when `shorter` is a STRICT prefix of `longer` by attribute name — i.e.
- * the longer form only *appended* attributes to the shorter one. Both the
- * trailing-`$` padding (upgrade) and the tail trim (downgrade) are only safe
- * then; many entities insert/reorder attributes mid-list (e.g.
- * IfcMaterialProperties, IfcApproval, IfcTask), where padding or trimming would
- * shift values into the wrong slots.
- *
- * Callers pass the shorter schema's list first, whichever direction they run in.
- */
-export function isStrictAttrPrefix(shorter: readonly string[], longer: readonly string[]): boolean {
-  if (shorter.length >= longer.length) return false;
-  for (let i = 0; i < shorter.length; i++) {
-    if (shorter[i] !== longer[i]) return false;
-  }
-  return true;
-}
-
 /** Count top-level (comma-separated) STEP attributes, respecting nested
  *  parentheses and single-quoted strings. Empty list → 0. */
 function requireTopLevelAttributes(attrsRaw: string): string[] {
@@ -424,9 +407,9 @@ function convertRecord(
     return resolveUnrepresentedEntity(prefix, entityType, attrsRaw, toSchema, random, withheldRefIds !== undefined);
   }
   if (srcAttrs && tgtAttrs) {
-    if (isStrictAttrPrefix(tgtAttrs, srcAttrs)) {
+    if (isStrictAttrPrefix(tgtAttrs, srcAttrs, entityType)) {
       finalAttrs = trimAttributes(attrsRaw, args, tgtAttrs.length);
-    } else if (isStrictAttrPrefix(srcAttrs, tgtAttrs)) {
+    } else if (isStrictAttrPrefix(srcAttrs, tgtAttrs, entityType)) {
       const currentCount = args.length;
       if (currentCount > 0 && currentCount < tgtAttrs.length) {
         finalAttrs = `${finalAttrs}${',$'.repeat(tgtAttrs.length - currentCount)}`;

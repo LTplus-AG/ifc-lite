@@ -175,16 +175,6 @@ pub(crate) fn schema_attribute_names(schema: &str, entity_type: &str) -> Option<
     }
 }
 
-/// True when `shorter` is a STRICT prefix of `longer` by attribute name: the
-/// longer list only APPENDED attributes. Padding (`shorter` is the source)
-/// and trimming (`shorter` is the target) are only safe then; many entities
-/// insert or reorder attributes mid-list (IfcMaterialProperties, IfcApproval),
-/// where either would shift values into the wrong slots. Twin of the
-/// TypeScript `isStrictAttrPrefix`.
-pub(crate) fn is_strict_attr_prefix(shorter: &[&str], longer: &[&str]) -> bool {
-    shorter.len() < longer.len() && longer.starts_with(shorter)
-}
-
 /// Convert an entity type name between schemas (with multi-step chaining).
 /// The export path asks [`rename_type`] through `schema_plan`; this owned form
 /// is what the tests pin.

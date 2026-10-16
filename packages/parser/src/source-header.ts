@@ -262,7 +262,9 @@ export function parseSourceHeader(
  * schema we model, so the caller can keep looking.
  */
 function schemaFromIdentifier(identifier: string): IfcStoreBase['schemaVersion'] | undefined {
-  const token = identifier.trim().toUpperCase();
+  // ASCII fold, as Rust's `to_ascii_uppercase`: `toUpperCase()` maps the
+  // dotless `ı` to `I`, so `('ıfc2x3')` resolved here and nowhere else (#7740).
+  const token = asciiUpper(identifier.trim());
   if (token.startsWith('IFC5')) return 'IFC5';
   if (token.startsWith('IFC4X3')) return 'IFC4X3';
   if (token.startsWith('IFC4')) return 'IFC4';
@@ -299,7 +301,9 @@ function asciiUpper(text: string): string {
  *
  * When no `FILE_SCHEMA` identifier resolves, fall back to the historical raw
  * scan of the first 2000 bytes rather than refusing, so every file that
- * resolves today keeps resolving the same way.
+ * resolves today keeps resolving the same way. Being loose, that scan can match
+ * `ifc4` inside a GUID when there is no declaration at all; the Rust detector
+ * does the same, and a shared vector pins it (#7740).
  */
 export function detectSchemaVersion(
   buffer: Uint8Array | IfcSourceBytes,

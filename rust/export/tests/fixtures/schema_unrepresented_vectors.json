@@ -1,0 +1,103 @@
+{
+ "_comment": "Shared cross-language vectors for entity types with NO representation in the target schema (#7742, D3 fail closed). Both converters run every case: Rust rust/export/tests/schema_unrepresented_parity.rs (convert_step_line) and TypeScript packages/export/src/schema-unrepresented.parity.test.ts (convertStepLine). `refuses` means the converter must refuse the record (Rust Err, TS throw); otherwise `expect` is the converted line with an IFCPROXY GlobalId masked as <MINTED> (the twins mint it differently, see schema_product_proxy_vectors.json). Rule: a record whose type the TARGET registry (IFC2X3, IFC4 or IFC4X3) does not declare is refused unless it is an IfcRoot subtype (then an IFCPROXY), when the SOURCE registry declares it or the target is IFC2X3. IFC5 has no registry on either side.",
+ "cases": [
+  {
+   "why": "IFCCURVESEGMENT is a non-rooted IFC4X3-only resource: no IFC4 representation, neither droppable nor proxiable (#7742)",
+   "from": "IFC4X3",
+   "to": "IFC4",
+   "line": "#5=IFCCURVESEGMENT(.CONTINUOUS.,#1,IFCLENGTHMEASURE(0.),IFCLENGTHMEASURE(0.),#2);",
+   "refuses": true
+  },
+  {
+   "why": "IFCGRADIENTCURVE is a non-rooted IFC4X3-only resource: no IFC4 representation, neither droppable nor proxiable (#7742)",
+   "from": "IFC4X3",
+   "to": "IFC4",
+   "line": "#5=IFCGRADIENTCURVE((#1),.F.,#2,#3);",
+   "refuses": true
+  },
+  {
+   "why": "IFCCLOTHOID is a non-rooted IFC4X3-only resource: no IFC4 representation, neither droppable nor proxiable (#7742)",
+   "from": "IFC4X3",
+   "to": "IFC4",
+   "line": "#5=IFCCLOTHOID(#1,1.);",
+   "refuses": true
+  },
+  {
+   "why": "IFCLINEARPLACEMENT is a non-rooted IFC4X3-only resource: no IFC4 representation, neither droppable nor proxiable (#7742)",
+   "from": "IFC4X3",
+   "to": "IFC4",
+   "line": "#5=IFCLINEARPLACEMENT($,#1,$);",
+   "refuses": true
+  },
+  {
+   "why": "IFCAXIS2PLACEMENTLINEAR is a non-rooted IFC4X3-only resource: no IFC4 representation, neither droppable nor proxiable (#7742)",
+   "from": "IFC4X3",
+   "to": "IFC4",
+   "line": "#5=IFCAXIS2PLACEMENTLINEAR(#1,$,$);",
+   "refuses": true
+  },
+  {
+   "why": "IFCPOINTBYDISTANCEEXPRESSION is a non-rooted IFC4X3-only resource: no IFC4 representation, neither droppable nor proxiable (#7742)",
+   "from": "IFC4X3",
+   "to": "IFC4",
+   "line": "#5=IFCPOINTBYDISTANCEEXPRESSION(IFCLENGTHMEASURE(0.),$,$,$,#1);",
+   "refuses": true
+  },
+  {
+   "why": "IFCSECTIONEDSOLIDHORIZONTAL is a non-rooted IFC4X3-only resource: no IFC4 representation, neither droppable nor proxiable (#7742)",
+   "from": "IFC4X3",
+   "to": "IFC4",
+   "line": "#5=IFCSECTIONEDSOLIDHORIZONTAL(#1,(#2),(#3),(#4),.T.);",
+   "refuses": true
+  },
+  {
+   "why": "IFCALIGNMENTHORIZONTALSEGMENT is a non-rooted IFC4X3-only resource: no IFC4 representation, neither droppable nor proxiable (#7742)",
+   "from": "IFC4X3",
+   "to": "IFC4",
+   "line": "#5=IFCALIGNMENTHORIZONTALSEGMENT($,$,#1,0.,0.,0.,0.,$,.LINE.);",
+   "refuses": true
+  },
+  {
+   "why": "control: an IFC2X3 target already refused this before #7742",
+   "from": "IFC4X3",
+   "to": "IFC2X3",
+   "line": "#5=IFCCURVESEGMENT(.CONTINUOUS.,#1,IFCLENGTHMEASURE(0.),IFCLENGTHMEASURE(0.),#2);",
+   "refuses": true
+  },
+  {
+   "why": "the same check runs for every registry target: IFC4's IfcPresentationStyleAssignment is not in IFC4X3",
+   "from": "IFC4",
+   "to": "IFC4X3",
+   "line": "#5=IFCPRESENTATIONSTYLEASSIGNMENT((#1));",
+   "refuses": true
+  },
+  {
+   "why": "a rooted IFC4X3-only type becomes an IFCPROXY, as it does for an IFC2X3 target",
+   "from": "IFC4X3",
+   "to": "IFC4",
+   "line": "#5=IFCRELPOSITIONS('0YvctVUKr0kugbFTf53O9L',$,$,$,#1,(#2));",
+   "expect": "#5=IFCPROXY(<MINTED>,$,'IFCRELPOSITIONS',$,$,$,$,.NOTDEFINED.,$);"
+  },
+  {
+   "why": "a type neither schema declares is not the registry's to judge: passed through",
+   "from": "IFC4X3",
+   "to": "IFC4",
+   "line": "#5=IFCVENDORTHING('x');",
+   "expect": "#5=IFCVENDORTHING('x');"
+  },
+  {
+   "why": "a type both schemas declare is converted, not refused",
+   "from": "IFC4X3",
+   "to": "IFC4",
+   "line": "#5=IFCCARTESIANPOINT((0.,0.,0.));",
+   "expect": "#5=IFCCARTESIANPOINT((0.,0.,0.));"
+  },
+  {
+   "why": "a type both schemas declare, upgrade direction",
+   "from": "IFC4",
+   "to": "IFC4X3",
+   "line": "#5=IFCCARTESIANPOINT((0.,0.,0.));",
+   "expect": "#5=IFCCARTESIANPOINT((0.,0.,0.));"
+  }
+ ]
+}

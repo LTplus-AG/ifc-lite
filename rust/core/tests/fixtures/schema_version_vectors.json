@@ -112,6 +112,26 @@
       "expected": "IFC4"
     },
     {
+      "name": "an unrecognised leading identifier is skipped even when the head scan would answer differently (#7740)",
+      "content": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('exported from IFC4X3 tooling'),'2;1');\nFILE_NAME('v.ifc','2026-10-16T00:00:00',('a'),('o'),'p','s','');\nFILE_SCHEMA(('IFC2X2_FINAL','IFC2X3'));\nENDSEC;\nDATA;\n#1=IFCPROJECT('0YvctVUKr0kugbFTf53O9L',$,'P',$,$,$,$,$,$);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expected": "IFC2X3"
+    },
+    {
+      "name": "a dotless i is not folded to I: no ASCII fold, no match, the IFC4 default (#7740)",
+      "content": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('ViewDefinition'),'2;1');\nFILE_NAME('v.ifc','2026-10-16T00:00:00',('a'),('o'),'p','s','');\nFILE_SCHEMA(('ıfc2x3'));\nENDSEC;\nDATA;\n#1=IFCPROJECT('0YvctVUKr0kugbFTf53O9L',$,'P',$,$,$,$,$,$);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expected": "IFC4"
+    },
+    {
+      "name": "IFC5 listed before IFC4 is IFC5 (the decoder's attribute layout recognises no IFC5, so only the selection rule is shared, #7740)",
+      "content": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('ViewDefinition'),'2;1');\nFILE_NAME('v.ifc','2026-10-16T00:00:00',('a'),('o'),'p','s','');\nFILE_SCHEMA(('IFC5','IFC4'));\nENDSEC;\nDATA;\n#1=IFCPROJECT('0YvctVUKr0kugbFTf53O9L',$,'P',$,$,$,$,$,$);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expected": "IFC5"
+    },
+    {
+      "name": "no FILE_SCHEMA: the head scan matches ifc4 inside a GUID, in both detectors (documented, #7740)",
+      "content": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('ViewDefinition'),'2;1');\nFILE_NAME('v.ifc','2026-10-16T00:00:00',('a'),('o'),'p','s','');\n\nENDSEC;\nDATA;\n#1=IFCPROJECT('2w9qcp9R8Ifc4r6a7mXG16',$,'P',$,$,$,$,$,$);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expected": "IFC4"
+    },
+    {
       "name": "a declaration past the 64 KiB header window is not read: head scan, then the IFC4 default",
       "content": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('ViewDefinition [CoordinationView]'),'2;1');\nFILE_NAME('v.ifc','2026-10-16T00:00:00',('{PAD}'),('o'),'p','s','');\nFILE_SCHEMA(('IFC2X3'));\nENDSEC;\nDATA;\n#1=IFCPROJECT('0YvctVUKr0kugbFTf53O9L',$,'P',$,$,$,$,$,$);\nENDSEC;\nEND-ISO-10303-21;\n",
       "expected": "IFC4",

@@ -30,11 +30,11 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import {
   convertEntityType,
   attrNameTable,
-  isStrictAttrPrefix,
   shouldSkipEntity,
   type IfcSchemaVersion,
 } from './schema-converter.js';
 import { BY_NAME_ATTR_REMAP_TYPES } from './schema-converter-attr-remap.js';
+import { isStrictAttrPrefix } from './schema-converter-renames.js';
 import { isRootedEntityType } from './schema-untranslatable.js';
 
 /** How one entity TYPE's data survives a schema conversion. */
@@ -129,7 +129,7 @@ export function classifyEntityTypeConversion(
     return { targetType: newType, kind: upper === newType ? 'identity' : 'renamed', droppedAttributes: [] };
   }
 
-  if (isStrictAttrPrefix(tgtAttrs, srcAttrs)) {
+  if (isStrictAttrPrefix(tgtAttrs, srcAttrs, upper)) {
     const dropped = srcAttrs.slice(tgtAttrs.length);
     return {
       targetType: newType,
@@ -137,7 +137,7 @@ export function classifyEntityTypeConversion(
       droppedAttributes: dropped,
     };
   }
-  if (isStrictAttrPrefix(srcAttrs, tgtAttrs)) {
+  if (isStrictAttrPrefix(srcAttrs, tgtAttrs, upper)) {
     return { targetType: newType, kind: upper === newType ? 'identity' : 'renamed', droppedAttributes: [] };
   }
   if (upper !== newType && BY_NAME_ATTR_REMAP_TYPES.has(upper)) {

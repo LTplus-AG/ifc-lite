@@ -14,10 +14,8 @@
 
 use rustc_hash::FxHashMap;
 
-use crate::schema_convert::{
-    is_strict_attr_prefix, rename_type, schema_attribute_names, should_skip_entity,
-    BY_NAME_ATTR_REMAP_TYPES,
-};
+use crate::schema_convert::{rename_type, schema_attribute_names, should_skip_entity, BY_NAME_ATTR_REMAP_TYPES};
+use crate::schema_renames::is_strict_attr_prefix;
 use crate::schema_unrepresented::has_representation;
 
 /// How a written record's attribute list is reconciled with the target type.
@@ -56,14 +54,15 @@ pub(crate) fn plan_for(entity_type: &str, cfrom: &'static str, cto: &'static str
     if should_skip_entity(new_type, cto) {
         return Plan::ProductProxy;
     }
-    if !has_representation(new_type, cto) {
+    let src_names = schema_attribute_names(cfrom, entity_type);
+    if !has_representation(src_names.is_some(), new_type, cto) {
         return Plan::Unrepresented;
     }
     // The two prefix branches cannot both apply: each needs its own list
     // strictly shorter.
-    let adjust = match (schema_attribute_names(cfrom, entity_type), schema_attribute_names(cto, new_type)) {
-        (Some(src), Some(tgt)) if is_strict_attr_prefix(tgt, src) => Adjust::Trim(tgt.len()),
-        (Some(src), Some(tgt)) if is_strict_attr_prefix(src, tgt) => Adjust::Pad(tgt.len()),
+    let adjust = match (src_names, schema_attribute_names(cto, new_type)) {
+        (Some(src), Some(tgt)) if is_strict_attr_prefix(entity_type, tgt, src) => Adjust::Trim(tgt.len()),
+        (Some(src), Some(tgt)) if is_strict_attr_prefix(entity_type, src, tgt) => Adjust::Pad(tgt.len()),
         (Some(src), Some(tgt)) if new_type != entity_type && BY_NAME_ATTR_REMAP_TYPES.contains(&entity_type) => {
             Adjust::ByName(src, tgt)
         }

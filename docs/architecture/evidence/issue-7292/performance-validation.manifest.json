@@ -7,197 +7,37 @@
   "decodedBytes": 1536427,
   "scope": "Refused campaigns remain unqualified; exact output-only identity; CI source and ceilings separately identified. Host public summaries are derived, not original receipts.",
   "files": [
-    {
-      "path": "docs/architecture/evidence/issue-7292/performance-final-88f4a9f491/7292-final-native-attribution-v1/FZK-base-host-after-public-summary.json",
-      "bytes": 408,
-      "sha256": "21ed4dce289ab4b703545371b62969be9fb9e26c2798be614653a6cf9790565d",
-      "derived": true
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/performance-final-88f4a9f491/7292-final-native-attribution-v1/FZK-base-host-before-public-summary.json",
-      "bytes": 406,
-      "sha256": "e5bc863fe529e63207e1b82c246f845fdef3ac4d8ed7e3f11b47c84ea2ca655f",
-      "derived": true
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/performance-final-88f4a9f491/7292-final-native-attribution-v1/receipt.json",
-      "bytes": 356481,
-      "sha256": "23d9c48d5cb9fdda1220add15e2a402a582581b48f750c77cfc711b317dea12a",
-      "originalPath": "/tmp/7292-final-native-attribution-v1/receipt.json"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/performance-final-88f4a9f491/7292-final-native-attribution-v2/FZK-base-host-after-public-summary.json",
-      "bytes": 407,
-      "sha256": "ffc7c81935f961783652a8201818cd40602d1177913aad3c3b9337f42a03758a",
-      "derived": true
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/performance-final-88f4a9f491/7292-final-native-attribution-v2/FZK-base-host-before-public-summary.json",
-      "bytes": 406,
-      "sha256": "3fa49c0a3cef4c5d858d57157a9fe01daacdf45bc513ffdf7b320184eb9fc07d",
-      "derived": true
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/performance-final-88f4a9f491/7292-final-native-attribution-v2/FZK-branch-host-before-public-summary.json",
-      "bytes": 408,
-      "sha256": "6ec6354cf6792a8a4651e7cdc5c6837cf43676b6bd9862018bb67442e9a93dcb",
-      "derived": true
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/performance-final-88f4a9f491/7292-final-native-attribution-v2/receipt.json",
-      "bytes": 356524,
-      "sha256": "fd06e5580a1e60b08538014a69257f9be896beec9704e2a9d259c0f76508f3ab",
-      "originalPath": "/tmp/7292-final-native-attribution-v2/receipt.json"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/performance-final-88f4a9f491/7292-final-native-attribution-v3/FZK-base-host-after-public-summary.json",
-      "bytes": 408,
-      "sha256": "c3e13665a2f99c522e43fae53414c67e3a943860a7a0541c80b6b460ece38283",
-      "derived": true
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/performance-final-88f4a9f491/7292-final-native-attribution-v3/FZK-base-host-before-public-summary.json",
-      "bytes": 406,
-      "sha256": "9635b9688e33d5717d51c581dbb32830e02ba895997cf32800a7ebb852f6b76f",
-      "derived": true
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/performance-final-88f4a9f491/7292-final-native-attribution-v3/receipt.json",
-      "bytes": 356418,
-      "sha256": "8dc92b7f668f9fa27677433dc15f8b5cfcc8eabed1e3326a61fbf406c561bdac",
-      "originalPath": "/tmp/7292-final-native-attribution-v3/receipt.json"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/performance-final-88f4a9f491/7292-final-worker-pool-performance-v3/FZK-0-base-host-before-public-summary.json",
-      "bytes": 406,
-      "sha256": "01f2d980e62f207f9a84678a4b8ef3c68743c1d9ce64ad5c26b81c1e57d99d2b",
-      "derived": true
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/performance-final-88f4a9f491/7292-final-worker-pool-performance-v3/receipt.json",
-      "bytes": 897,
-      "sha256": "24e50cb938cb3fb3c299ec388af06622c8218af29d60f68c9e41259bca977fca",
-      "originalPath": "/tmp/7292-final-worker-pool-performance-v3/receipt.json"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/performance-final-88f4a9f491/7292-final-worker-pool-performance-v4/FZK-0-base-host-before-public-summary.json",
-      "bytes": 408,
-      "sha256": "36cb5840b8a26ccf76ad89c54af9d3006f333ad0a61ce72121d8157272311363",
-      "derived": true
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/performance-final-88f4a9f491/7292-final-worker-pool-performance-v4/receipt.json",
-      "bytes": 922,
-      "sha256": "64361b5deadd59fa771d970e5c5acdae1dcd3bd253facab039f4327b53ead2a8",
-      "originalPath": "/tmp/7292-final-worker-pool-performance-v4/receipt.json"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/performance-final-88f4a9f491/ci-performance.log",
-      "bytes": 37214,
-      "sha256": "6c4f0dcfc99d9cf4d582f89ac3e12cd7701002eefaff07ddd0b62ae82c730741",
-      "originalPath": "/tmp/7292-final72667-ci-perf.plain.log"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/performance-final-88f4a9f491/ci-semver.log",
-      "bytes": 48286,
-      "sha256": "2d85e2f2d904bd27870e32b9acfc25bfc62273c5923f70528c80741c4aa116d0",
-      "originalPath": "/tmp/7292-final72667-ci-semver.plain.log"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/performance-final-88f4a9f491/local-wasm-size.json",
-      "bytes": 1349,
-      "sha256": "d0914d1fed2f7bda62eabe6c6425a31600bb64d41c2176d1b0d24a318e444f1c",
-      "originalPath": "/tmp/7292-final-wasm-size-v3.json"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/performance-final-88f4a9f491/native-source-binary-seals.json",
-      "bytes": 353670,
-      "sha256": "7d6bb84cc377143573f547fd66cc71a900f2416dea0a13af7d3cec6508d7e185",
-      "originalPath": "/tmp/7292-final-native-attribution-v1/sealed-inputs.json"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/performance-final-88f4a9f491/output-identity/FZK-base.json",
-      "bytes": 481,
-      "sha256": "c0a59e30e3d07c90caed9bfa0af3b56c9c78c5a191b9470a3591a0106582c402",
-      "originalPath": "/tmp/7292-final-output-identity-v1/FZK-base.json"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/performance-final-88f4a9f491/output-identity/FZK-base.stderr",
-      "bytes": 734,
-      "sha256": "783c3680dbf2c7e2ac19a4bd70ef8be53d81c7b7561e45f7c5c63f6386ab09d3",
-      "originalPath": "/tmp/7292-final-output-identity-v1/FZK-base.stderr"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/performance-final-88f4a9f491/output-identity/FZK-branch.json",
-      "bytes": 477,
-      "sha256": "7bfa06d5bfc21e2a663ca459b552585baf0ac8c3d02c59297da64471e192dc6a",
-      "originalPath": "/tmp/7292-final-output-identity-v1/FZK-branch.json"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/performance-final-88f4a9f491/output-identity/FZK-branch.stderr",
-      "bytes": 730,
-      "sha256": "3f16ee777170e22e088e3897dac095db9b3015154a3ccb36e09e77951ed60b8f",
-      "originalPath": "/tmp/7292-final-output-identity-v1/FZK-branch.stderr"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/performance-final-88f4a9f491/output-identity/Holter-base.json",
-      "bytes": 530,
-      "sha256": "1da148d0e10017bb5395ea0a0e13424e0760239e591ddde0ec425b69d61e30e9",
-      "originalPath": "/tmp/7292-final-output-identity-v1/Holter-base.json"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/performance-final-88f4a9f491/output-identity/Holter-base.stderr",
-      "bytes": 773,
-      "sha256": "c75fec1ab685aa5ac8e38efd9d58684078773965ce24f7c795d78833b1fe15c3",
-      "originalPath": "/tmp/7292-final-output-identity-v1/Holter-base.stderr"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/performance-final-88f4a9f491/output-identity/Holter-branch.json",
-      "bytes": 525,
-      "sha256": "cab79fe9f128a5576d9995dbc63c09a0ece54a41292a99a6666aa12ce4e14c1b",
-      "originalPath": "/tmp/7292-final-output-identity-v1/Holter-branch.json"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/performance-final-88f4a9f491/output-identity/Holter-branch.stderr",
-      "bytes": 769,
-      "sha256": "abeb1286a33e77cf0873f5e2c89e0aabc59f455e507501fd4f414560b6e9c3aa",
-      "originalPath": "/tmp/7292-final-output-identity-v1/Holter-branch.stderr"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/performance-final-88f4a9f491/output-identity/ISSUE129-base.json",
-      "bytes": 539,
-      "sha256": "8247fac34ee4eeee0b7662d5f241e8763c6740b55691aa9d869ec806d092af3b",
-      "originalPath": "/tmp/7292-final-output-identity-v1/ISSUE129-base.json"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/performance-final-88f4a9f491/output-identity/ISSUE129-base.stderr",
-      "bytes": 857,
-      "sha256": "9421c875b448b303262c3731d84ed7dab62b504152d3d57db33f6345d62b3ff0",
-      "originalPath": "/tmp/7292-final-output-identity-v1/ISSUE129-base.stderr"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/performance-final-88f4a9f491/output-identity/ISSUE129-branch.json",
-      "bytes": 536,
-      "sha256": "da0a1070d91755fbe996223e1462f3582229ed4d1e5dae123a623de341156403",
-      "originalPath": "/tmp/7292-final-output-identity-v1/ISSUE129-branch.json"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/performance-final-88f4a9f491/output-identity/ISSUE129-branch.stderr",
-      "bytes": 854,
-      "sha256": "c6bc0ac980b65b4248a27292d7b869bc6565bf5874b3ccf1ac85e7ce0b0cac4f",
-      "originalPath": "/tmp/7292-final-output-identity-v1/ISSUE129-branch.stderr"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/performance-final-88f4a9f491/output-identity/receipt.json",
-      "bytes": 3974,
-      "sha256": "d261e3e2bfe89aeec0d782b2fc3e9539cd81485419cb8afecc6f858279257c49",
-      "originalPath": "/tmp/7292-final-output-identity-v1/receipt.json"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/performance-final-88f4a9f491/untimed-observer-correction.patch",
-      "bytes": 9224,
-      "sha256": "047c2b19c477222e786f2e1d40053ddaac2bacaee2105131498ec9436beb5f92",
-      "originalPath": "/tmp/7292-performance-navigation-v2-proposal/navigation-runtime-only.patch"
-    }
+    {"path": "docs/architecture/evidence/issue-7292/performance-final-88f4a9f491/7292-final-native-attribution-v1/FZK-base-host-after-public-summary.json","bytes": 408,"sha256": "21ed4dce289ab4b703545371b62969be9fb9e26c2798be614653a6cf9790565d","derived": true},
+    {"path": "docs/architecture/evidence/issue-7292/performance-final-88f4a9f491/7292-final-native-attribution-v1/FZK-base-host-before-public-summary.json","bytes": 406,"sha256": "e5bc863fe529e63207e1b82c246f845fdef3ac4d8ed7e3f11b47c84ea2ca655f","derived": true},
+    {"path": "docs/architecture/evidence/issue-7292/performance-final-88f4a9f491/7292-final-native-attribution-v1/receipt.json","bytes": 356481,"sha256": "23d9c48d5cb9fdda1220add15e2a402a582581b48f750c77cfc711b317dea12a","originalPath": "/tmp/7292-final-native-attribution-v1/receipt.json"},
+    {"path": "docs/architecture/evidence/issue-7292/performance-final-88f4a9f491/7292-final-native-attribution-v2/FZK-base-host-after-public-summary.json","bytes": 407,"sha256": "ffc7c81935f961783652a8201818cd40602d1177913aad3c3b9337f42a03758a","derived": true},
+    {"path": "docs/architecture/evidence/issue-7292/performance-final-88f4a9f491/7292-final-native-attribution-v2/FZK-base-host-before-public-summary.json","bytes": 406,"sha256": "3fa49c0a3cef4c5d858d57157a9fe01daacdf45bc513ffdf7b320184eb9fc07d","derived": true},
+    {"path": "docs/architecture/evidence/issue-7292/performance-final-88f4a9f491/7292-final-native-attribution-v2/FZK-branch-host-before-public-summary.json","bytes": 408,"sha256": "6ec6354cf6792a8a4651e7cdc5c6837cf43676b6bd9862018bb67442e9a93dcb","derived": true},
+    {"path": "docs/architecture/evidence/issue-7292/performance-final-88f4a9f491/7292-final-native-attribution-v2/receipt.json","bytes": 356524,"sha256": "fd06e5580a1e60b08538014a69257f9be896beec9704e2a9d259c0f76508f3ab","originalPath": "/tmp/7292-final-native-attribution-v2/receipt.json"},
+    {"path": "docs/architecture/evidence/issue-7292/performance-final-88f4a9f491/7292-final-native-attribution-v3/FZK-base-host-after-public-summary.json","bytes": 408,"sha256": "c3e13665a2f99c522e43fae53414c67e3a943860a7a0541c80b6b460ece38283","derived": true},
+    {"path": "docs/architecture/evidence/issue-7292/performance-final-88f4a9f491/7292-final-native-attribution-v3/FZK-base-host-before-public-summary.json","bytes": 406,"sha256": "9635b9688e33d5717d51c581dbb32830e02ba895997cf32800a7ebb852f6b76f","derived": true},
+    {"path": "docs/architecture/evidence/issue-7292/performance-final-88f4a9f491/7292-final-native-attribution-v3/receipt.json","bytes": 356418,"sha256": "8dc92b7f668f9fa27677433dc15f8b5cfcc8eabed1e3326a61fbf406c561bdac","originalPath": "/tmp/7292-final-native-attribution-v3/receipt.json"},
+    {"path": "docs/architecture/evidence/issue-7292/performance-final-88f4a9f491/7292-final-worker-pool-performance-v3/FZK-0-base-host-before-public-summary.json","bytes": 406,"sha256": "01f2d980e62f207f9a84678a4b8ef3c68743c1d9ce64ad5c26b81c1e57d99d2b","derived": true},
+    {"path": "docs/architecture/evidence/issue-7292/performance-final-88f4a9f491/7292-final-worker-pool-performance-v3/receipt.json","bytes": 897,"sha256": "24e50cb938cb3fb3c299ec388af06622c8218af29d60f68c9e41259bca977fca","originalPath": "/tmp/7292-final-worker-pool-performance-v3/receipt.json"},
+    {"path": "docs/architecture/evidence/issue-7292/performance-final-88f4a9f491/7292-final-worker-pool-performance-v4/FZK-0-base-host-before-public-summary.json","bytes": 408,"sha256": "36cb5840b8a26ccf76ad89c54af9d3006f333ad0a61ce72121d8157272311363","derived": true},
+    {"path": "docs/architecture/evidence/issue-7292/performance-final-88f4a9f491/7292-final-worker-pool-performance-v4/receipt.json","bytes": 922,"sha256": "64361b5deadd59fa771d970e5c5acdae1dcd3bd253facab039f4327b53ead2a8","originalPath": "/tmp/7292-final-worker-pool-performance-v4/receipt.json"},
+    {"path": "docs/architecture/evidence/issue-7292/performance-final-88f4a9f491/ci-performance.log","bytes": 37214,"sha256": "6c4f0dcfc99d9cf4d582f89ac3e12cd7701002eefaff07ddd0b62ae82c730741","originalPath": "/tmp/7292-final72667-ci-perf.plain.log"},
+    {"path": "docs/architecture/evidence/issue-7292/performance-final-88f4a9f491/ci-semver.log","bytes": 48286,"sha256": "2d85e2f2d904bd27870e32b9acfc25bfc62273c5923f70528c80741c4aa116d0","originalPath": "/tmp/7292-final72667-ci-semver.plain.log"},
+    {"path": "docs/architecture/evidence/issue-7292/performance-final-88f4a9f491/local-wasm-size.json","bytes": 1349,"sha256": "d0914d1fed2f7bda62eabe6c6425a31600bb64d41c2176d1b0d24a318e444f1c","originalPath": "/tmp/7292-final-wasm-size-v3.json"},
+    {"path": "docs/architecture/evidence/issue-7292/performance-final-88f4a9f491/native-source-binary-seals.json","bytes": 353670,"sha256": "7d6bb84cc377143573f547fd66cc71a900f2416dea0a13af7d3cec6508d7e185","originalPath": "/tmp/7292-final-native-attribution-v1/sealed-inputs.json"},
+    {"path": "docs/architecture/evidence/issue-7292/performance-final-88f4a9f491/output-identity/FZK-base.json","bytes": 481,"sha256": "c0a59e30e3d07c90caed9bfa0af3b56c9c78c5a191b9470a3591a0106582c402","originalPath": "/tmp/7292-final-output-identity-v1/FZK-base.json"},
+    {"path": "docs/architecture/evidence/issue-7292/performance-final-88f4a9f491/output-identity/FZK-base.stderr","bytes": 734,"sha256": "783c3680dbf2c7e2ac19a4bd70ef8be53d81c7b7561e45f7c5c63f6386ab09d3","originalPath": "/tmp/7292-final-output-identity-v1/FZK-base.stderr"},
+    {"path": "docs/architecture/evidence/issue-7292/performance-final-88f4a9f491/output-identity/FZK-branch.json","bytes": 477,"sha256": "7bfa06d5bfc21e2a663ca459b552585baf0ac8c3d02c59297da64471e192dc6a","originalPath": "/tmp/7292-final-output-identity-v1/FZK-branch.json"},
+    {"path": "docs/architecture/evidence/issue-7292/performance-final-88f4a9f491/output-identity/FZK-branch.stderr","bytes": 730,"sha256": "3f16ee777170e22e088e3897dac095db9b3015154a3ccb36e09e77951ed60b8f","originalPath": "/tmp/7292-final-output-identity-v1/FZK-branch.stderr"},
+    {"path": "docs/architecture/evidence/issue-7292/performance-final-88f4a9f491/output-identity/Holter-base.json","bytes": 530,"sha256": "1da148d0e10017bb5395ea0a0e13424e0760239e591ddde0ec425b69d61e30e9","originalPath": "/tmp/7292-final-output-identity-v1/Holter-base.json"},
+    {"path": "docs/architecture/evidence/issue-7292/performance-final-88f4a9f491/output-identity/Holter-base.stderr","bytes": 773,"sha256": "c75fec1ab685aa5ac8e38efd9d58684078773965ce24f7c795d78833b1fe15c3","originalPath": "/tmp/7292-final-output-identity-v1/Holter-base.stderr"},
+    {"path": "docs/architecture/evidence/issue-7292/performance-final-88f4a9f491/output-identity/Holter-branch.json","bytes": 525,"sha256": "cab79fe9f128a5576d9995dbc63c09a0ece54a41292a99a6666aa12ce4e14c1b","originalPath": "/tmp/7292-final-output-identity-v1/Holter-branch.json"},
+    {"path": "docs/architecture/evidence/issue-7292/performance-final-88f4a9f491/output-identity/Holter-branch.stderr","bytes": 769,"sha256": "abeb1286a33e77cf0873f5e2c89e0aabc59f455e507501fd4f414560b6e9c3aa","originalPath": "/tmp/7292-final-output-identity-v1/Holter-branch.stderr"},
+    {"path": "docs/architecture/evidence/issue-7292/performance-final-88f4a9f491/output-identity/ISSUE129-base.json","bytes": 539,"sha256": "8247fac34ee4eeee0b7662d5f241e8763c6740b55691aa9d869ec806d092af3b","originalPath": "/tmp/7292-final-output-identity-v1/ISSUE129-base.json"},
+    {"path": "docs/architecture/evidence/issue-7292/performance-final-88f4a9f491/output-identity/ISSUE129-base.stderr","bytes": 857,"sha256": "9421c875b448b303262c3731d84ed7dab62b504152d3d57db33f6345d62b3ff0","originalPath": "/tmp/7292-final-output-identity-v1/ISSUE129-base.stderr"},
+    {"path": "docs/architecture/evidence/issue-7292/performance-final-88f4a9f491/output-identity/ISSUE129-branch.json","bytes": 536,"sha256": "da0a1070d91755fbe996223e1462f3582229ed4d1e5dae123a623de341156403","originalPath": "/tmp/7292-final-output-identity-v1/ISSUE129-branch.json"},
+    {"path": "docs/architecture/evidence/issue-7292/performance-final-88f4a9f491/output-identity/ISSUE129-branch.stderr","bytes": 854,"sha256": "c6bc0ac980b65b4248a27292d7b869bc6565bf5874b3ccf1ac85e7ce0b0cac4f","originalPath": "/tmp/7292-final-output-identity-v1/ISSUE129-branch.stderr"},
+    {"path": "docs/architecture/evidence/issue-7292/performance-final-88f4a9f491/output-identity/receipt.json","bytes": 3974,"sha256": "d261e3e2bfe89aeec0d782b2fc3e9539cd81485419cb8afecc6f858279257c49","originalPath": "/tmp/7292-final-output-identity-v1/receipt.json"},
+    {"path": "docs/architecture/evidence/issue-7292/performance-final-88f4a9f491/untimed-observer-correction.patch","bytes": 9224,"sha256": "047c2b19c477222e786f2e1d40053ddaac2bacaee2105131498ec9436beb5f92","originalPath": "/tmp/7292-performance-navigation-v2-proposal/navigation-runtime-only.patch"}
   ]
 }

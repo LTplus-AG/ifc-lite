@@ -92,8 +92,12 @@ pub(super) fn sub_f64(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
     [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
 }
 
+#[cfg(test)]
 fn centroid(arr: &Arrangement, tri: [Vid; 3]) -> [f64; 3] {
-    let c = [to_f64_pt(arr, tri[0]), to_f64_pt(arr, tri[1]), to_f64_pt(arr, tri[2])];
+    centroid_of_points(tri.map(|v| to_f64_pt(arr, v)))
+}
+
+fn centroid_of_points(c: [[f64; 3]; 3]) -> [f64; 3] {
     [
         (c[0][0] + c[1][0] + c[2][0]) / 3.0,
         (c[0][1] + c[1][1] + c[2][1]) / 3.0,
@@ -101,8 +105,7 @@ fn centroid(arr: &Arrangement, tri: [Vid; 3]) -> [f64; 3] {
     ]
 }
 
-fn tri_normal(arr: &Arrangement, tri: [Vid; 3]) -> [f64; 3] {
-    let (a, b, c) = (to_f64_pt(arr, tri[0]), to_f64_pt(arr, tri[1]), to_f64_pt(arr, tri[2]));
+fn tri_normal([a, b, c]: [[f64; 3]; 3]) -> [f64; 3] {
     cross3(sub_f64(b, a), sub_f64(c, a))
 }
 
@@ -376,7 +379,7 @@ impl<'a> BComponents<'a> {
 fn on_interface_keep(
     arr: &Arrangement,
     tri: [Vid; 3],
-    c: [f64; 3],
+    centroid_normal: ([f64; 3], [f64; 3]),
     other: &[Tri],
     ext_other: f64,
     other_aabb: Aabb,
@@ -385,7 +388,7 @@ fn on_interface_keep(
     if !BoundaryCentroid::new(arr, tri).is_some_and(|c| c.on_surface(other)) {
         return None;
     }
-    let n = tri_normal(arr, tri);
+    let (c, n) = centroid_normal;
     let (op_plus, op_minus) = solid_side(c, n, other, ext_other, other_aabb);
     if op_plus == op_minus {
         // `c` is strictly inside/outside the other solid — NOT on its boundary;
@@ -462,8 +465,9 @@ pub(super) fn boolean_vids_components(
     let mut out = Vec::new();
     for (i, &tri) in arr.tris_a.iter().enumerate() {
         if super::super::budget::tripped() { return (Vec::new(), true); }
-        let c = centroid(arr, tri);
-        let n_own = tri_normal(arr, tri);
+        let own_pts = tri.map(|v| to_f64_pt(arr, v));
+        let c = centroid_of_points(own_pts);
+        let n_own = tri_normal(own_pts);
         let cop_parent = arr.coplanar_a.get(i).copied().unwrap_or(false);
         let keep;
         // regime 1: coincident shared face → classify by normal agreement. Tried
@@ -486,10 +490,10 @@ pub(super) fn boolean_vids_components(
         // for regressing 20+ golden census hosts) are in
         // `issue_3353_vid_census_tests.rs`.
         let own_exact = tri.map(|v| arr.interner.get(v));
-        if let Some(n_other) = bc.surface_normal(c, n_own, &tri.map(|v| to_f64_pt(arr, v)), own_exact, &arr.bands) {
+        if let Some(n_other) = bc.surface_normal(c, n_own, &own_pts, own_exact, &arr.bands) {
             let co_oriented = dot3(n_own, n_other) > 0.0;
             let use_volume = opposed_difference_uses_volume(op, n_own, n_other,
-                matches!(op, BoolOp::Difference) && dot3(n_own, n_other) < 0.0 && bc.only_opposed(c, n_own, &tri.map(|v| to_f64_pt(arr, v)), own_exact, &arr.bands)
+                matches!(op, BoolOp::Difference) && dot3(n_own, n_other) < 0.0 && bc.only_opposed(c, n_own, &own_pts, own_exact, &arr.bands)
                     && *a_closed.get_or_init(|| strict_closed(a)) && bc.all_closed(),
                 || bc.on_boundary(arr, tri));
             if super::super::budget::tripped() { return (Vec::new(), true); }
@@ -541,8 +545,9 @@ pub(super) fn boolean_vids_components(
         if dedup && a_kept.contains(&rotate_min_first(tri)) {
             continue;
         }
-        let c = centroid(arr, tri);
-        let n_own = tri_normal(arr, tri);
+        let own_pts = tri.map(|v| to_f64_pt(arr, v));
+        let c = centroid_of_points(own_pts);
+        let n_own = tri_normal(own_pts);
         let cop_parent = arr.coplanar_b.get(i).copied().unwrap_or(false);
         // A coincident-shared B face is dropped (the A-copy is the kept one). Tried
         // EXACT first, then the snap-band-flush analogue — ungated, because a B cap
@@ -552,7 +557,7 @@ pub(super) fn boolean_vids_components(
         // — without the near drop here it survives and bridges the opening).
         let own_exact = tri.map(|v| arr.interner.get(v));
         let use_volume = if let Some((n_other, only_opposed)) = surface_normal_near_a(
-            c, n_own, &tri.map(|v| to_f64_pt(arr, v)), own_exact, a, &bvh_a, &arr.bands[arr.component_b[i]], &mut scratch, &a_adjacency,
+            c, n_own, &own_pts, own_exact, a, &bvh_a, &arr.bands[arr.component_b[i]], &mut scratch, &a_adjacency,
         ) {
             let use_volume = opposed_difference_uses_volume(op, n_own, n_other,
                 only_opposed && matches!(op, BoolOp::Difference) && dot3(n_own, n_other) < 0.0
@@ -565,7 +570,7 @@ pub(super) fn boolean_vids_components(
             true
         } else { false };
         if cop_parent && !use_volume {
-            if let Some(keep) = on_interface_keep(arr, tri, c, a, ext_a, a_aabb, op) {
+            if let Some(keep) = on_interface_keep(arr, tri, (c, n_own), a, ext_a, a_aabb, op) {
                 // regime 2 for B (coplanar-overlap parent only).
                 if keep {
                     let flip = matches!(op, BoolOp::Difference);

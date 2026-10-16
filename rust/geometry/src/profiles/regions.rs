@@ -141,20 +141,30 @@ pub(crate) const MAX_PROFILE_REGIONS: u32 = 4096;
 /// detailed areas; refused before any solid is built.
 pub(crate) const MAX_PROFILE_POINTS: u32 = 1 << 16;
 
-/// Ring vertices a multi-region (composite) sweep may place: profile points
-/// times revolution steps, loft stations or directrix samples. The builders'
-/// multiplier (up to 96 steps for a full revolution, 256 subdivisions per
-/// station pair) sits outside the profile walk, so it is checked before the
-/// mesh is built. 131 072 placed vertices is about 260 k triangles. A
-/// single-region solid is not capped: its size is the file's own, as on base.
-pub(crate) const MAX_COMPOSITE_SWEEP_VERTICES: usize = 1 << 17;
+/// Ring vertices a sweep may place when it sweeps rings base did not (#7685):
+/// profile points times revolution steps, loft stations or directrix samples.
+/// The builders' multiplier (up to 96 steps for a full revolution, 256
+/// subdivisions per station pair) sits outside the profile walk, so it is
+/// checked before the mesh is built. 131 072 placed vertices is about 260 k
+/// triangles. The rings that are new are a composite's further areas and any
+/// hole ring: an `IfcArbitraryProfileDefWithVoids` can list one `IfcCircle` as
+/// a void tens of thousands of times at a few bytes each. A single outer ring
+/// is not capped: base swept exactly that, and its size is the file's own.
+pub(crate) const MAX_SWEEP_VERTICES: usize = 1 << 17;
 
-/// Refuse a multi-region sweep that would place more than
-/// [`MAX_COMPOSITE_SWEEP_VERTICES`] ring vertices.
-pub(crate) fn check_composite_sweep(placed: usize, regions: usize, id: u32) -> Result<()> {
-    if regions > 1 && placed > MAX_COMPOSITE_SWEEP_VERTICES {
+/// `true` when sweeping `regions` places rings base did not: several areas,
+/// or any hole.
+pub(crate) fn sweeps_new_rings(regions: &[Profile2D]) -> bool {
+    regions.len() > 1 || regions.iter().any(|r| !r.holes.is_empty())
+}
+
+/// Refuse a sweep of new rings (`new_rings`, see [`sweeps_new_rings`]) that
+/// would place more than [`MAX_SWEEP_VERTICES`] ring vertices. The router
+/// records the refused item as unsupported (D3).
+pub(crate) fn check_sweep_vertices(placed: usize, new_rings: bool, id: u32) -> Result<()> {
+    if new_rings && placed > MAX_SWEEP_VERTICES {
         return Err(Error::geometry(format!(
-            "Composite sweep would place {placed} vertices, over {MAX_COMPOSITE_SWEEP_VERTICES}, at #{id}"
+            "Sweep would place {placed} ring vertices, over {MAX_SWEEP_VERTICES}, at #{id}"
         )));
     }
     Ok(())

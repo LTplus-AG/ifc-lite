@@ -130,8 +130,9 @@ impl GeometryProcessor for ExtrudedAreaSolidProcessor {
             .ok_or_else(|| Error::geometry("Failed to resolve SweptArea".to_string()))?;
 
         // One solid per disjoint area: a composite profile is several (#7685).
-        // Its budget is armed once per solid; an extrusion places two copies
-        // of each point, within MAX_COMPOSITE_SWEEP_VERTICES by construction.
+        // Its budget is armed once per solid. An extrusion places two copies
+        // of each point (within MAX_SWEEP_VERTICES under the point budget),
+        // and base already extruded holes, so it needs no output cap.
         self.profile_processor.arm_solid_budget();
         let mut regions = self
             .profile_processor

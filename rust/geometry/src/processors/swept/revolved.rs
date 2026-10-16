@@ -147,11 +147,12 @@ impl GeometryProcessor for RevolvedAreaSolidProcessor {
             scale_segments(base, 8, 4096, quality)
         };
 
-        // Every ring point is placed once per step: refuse a composite whose
-        // revolution would exceed the output cap before building it.
+        // Every ring point is placed once per step: refuse a revolution of
+        // rings base did not sweep (areas, holes) above the output cap,
+        // before building it.
         let ring_count = if full_circle { segments } else { segments + 1 };
         let placed = regions.iter().map(crate::profiles::region_points).sum::<usize>() * ring_count;
-        crate::profiles::check_composite_sweep(placed, regions.len(), entity.id)?;
+        crate::profiles::check_sweep_vertices(placed, crate::profiles::sweeps_new_rings(&regions), entity.id)?;
 
         let sweep = Revolution {
             axis_location,

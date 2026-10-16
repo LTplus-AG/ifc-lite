@@ -142,7 +142,8 @@ impl GeometryProcessor for SurfaceCurveSweptAreaSolidProcessor {
         // --- Sweep the profile along the placed directrix --------------------------
         let (_, perp1s, perp2s) = build_tube_rmf(&points);
         let placed = regions.iter().map(crate::profiles::region_points).sum::<usize>() * points.len();
-        crate::profiles::check_composite_sweep(placed, regions.len(), entity.id)?;
+        // Base already swept holes here; only further composite areas are new.
+        crate::profiles::check_sweep_vertices(placed, regions.len() > 1, entity.id)?;
         if let [region] = regions.as_slice() {
             return sweep_profile_along_frames(region, &points, &perp1s, &perp2s);
         }

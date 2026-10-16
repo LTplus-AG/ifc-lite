@@ -127,7 +127,12 @@ fn refused_fast(content: &str, id: u32, what: &str) {
     let started = Instant::now();
     let entity = decoder.decode_by_id(id).expect("decode");
     let result = GeometryRouter::new().process_representation_item(&entity, &mut decoder);
-    assert!(result.is_err(), "{what}: must be refused, built {} triangles", result.map(|m| m.indices.len() / 3).unwrap_or(0));
+    let Err(err) = result else {
+        panic!("{what}: must be refused, built {} triangles", result.map(|m| m.indices.len() / 3).unwrap_or(0));
+    };
+    // The refusal is the budget or the output cap, not an unrelated failure.
+    let msg = err.to_string();
+    assert!(msg.contains("regions") || msg.contains("points") || msg.contains("ring vertices"), "{what}: {msg}");
     assert!(started.elapsed() < Duration::from_secs(5), "{what}: took {:?}", started.elapsed());
 }
 
@@ -221,4 +226,36 @@ fn b1_bis_a_realistic_sectioned_composite_still_builds() {
     let mesh = mesh_of(&ifc("IFC4X3_ADD2", &data), 200);
     assert_volume("#200 two tubes × 20 m", signed_volume(&mesh), 2.0 * TUBE * 20.0, 0.02);
     assert_closed_outward("#200", &mesh, 2);
+}
+
+// --- Round 4 (B1-ter): a plain profile's holes are rings base never swept in
+// a revolve or loft, so they are capped too. --------------------------------
+
+/// An `IfcArbitraryProfileDefWithVoids` at (6, 0): an outer circle r = 2 and
+/// one r = 0.5 circle listed `voids` times as its voids (a few bytes each).
+fn repeated_voids(voids: usize) -> String {
+    let mut data = String::from(
+        "#1=IFCCARTESIANPOINT((0.,0.,0.));\n#6=IFCAXIS2PLACEMENT3D(#1,$,$);\n\
+         #20=IFCCARTESIANPOINT((6.,0.));\n#21=IFCAXIS2PLACEMENT2D(#20,$);\n\
+         #22=IFCCIRCLE(#21,2.);\n#23=IFCCIRCLE(#21,0.5);\n\
+         #30=IFCDIRECTION((0.,1.,0.));\n#31=IFCAXIS1PLACEMENT(#1,#30);\n",
+    );
+    writeln!(data, "#24=IFCARBITRARYPROFILEDEFWITHVOIDS(.AREA.,$,#22,({}));", vec!["#23"; voids].join(",")).unwrap();
+    data
+}
+
+#[test]
+fn b1_ter_a_revolve_of_repeated_voids_is_refused_fast() {
+    // 20 000 voids, 2π: 19.2 M triangles and 3.2 GB on 8ac564904d.
+    let mut data = repeated_voids(20_000);
+    data.push_str("#200=IFCREVOLVEDAREASOLID(#24,#6,#31,6.283185307179586);\n");
+    refused_fast(&ifc("IFC4", &data), 200, "revolved 20 000 voids");
+}
+
+#[test]
+fn b1_ter_a_loft_of_repeated_voids_is_refused_before_its_caps_are_triangulated() {
+    // 2 000 voids at 20 stations: over 900 s on 8ac564904d.
+    let mut data = repeated_voids(2_000);
+    sectioned(&mut data, 200, 24, 20);
+    refused_fast(&ifc("IFC4X3_ADD2", &data), 200, "sectioned 2 000 voids × 20");
 }

@@ -204,8 +204,9 @@ impl GeometryProcessor for SectionedSolidHorizontalProcessor {
 
         // Walk authored pairs, subdividing intermediate stations
         // wherever the alignment curves significantly between them. The
-        // subdivision counts come first: a composite loft is refused on its
-        // placed-vertex count before any sample is materialised.
+        // subdivision counts come first: a loft of rings base did not sweep
+        // (areas, holes) is refused on its placed-vertex count before any
+        // sample is materialised or capped.
         let steps: Vec<usize> = (1..authored.len())
             .map(|i| {
                 let (prev_pos, this_pos) = (&authored[i - 1].1, &authored[i].1);
@@ -217,8 +218,8 @@ impl GeometryProcessor for SectionedSolidHorizontalProcessor {
             + (1..authored.len())
                 .map(|i| steps[i - 1] * points(&authored[i - 1].0).max(points(&authored[i].0)))
                 .sum::<usize>();
-        let regions = authored.iter().map(|(section, _)| section.len()).max().unwrap_or(0);
-        crate::profiles::check_composite_sweep(placed, regions, entity.id)?;
+        let new_rings = authored.iter().any(|(section, _)| crate::profiles::sweeps_new_rings(section));
+        crate::profiles::check_sweep_vertices(placed, new_rings, entity.id)?;
 
         let mut samples: Vec<(Section, PositionAlongDirectrix)> = Vec::new();
         samples.push(authored[0].clone());

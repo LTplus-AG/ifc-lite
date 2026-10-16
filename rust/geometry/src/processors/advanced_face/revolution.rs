@@ -30,16 +30,16 @@ pub(super) fn process_surface_of_revolution_face(
         .and_then(|a| decoder.resolve_ref(a).ok().flatten());
     // IfcSurfaceOfRevolution inherits Position (optional IfcAxis2Placement3D)
     // at slot 1 from IfcSweptSurface, and AxisPosition (IfcAxis1Placement) is
-    // its own attribute at slot 2. The previous code read slot 1 and got the
+    // its own attribute at slot 2. Reading slot 1 as the axis got the
     // (usually null) Position, leaving axis_origin at the (0,0,0) fallback
-    // and collapsing the angular-extent calculation — the real cause of
-    // issue #674's "stem in wrong direction" defect, not the radius/sign
-    // collapse the earlier patch went after.
+    // and collapsing the angular-extent calculation, the real cause of
+    // issue #674's "stem in wrong direction" defect. Position itself is
+    // applied below, once the profile is sampled.
     let axis_pos = surface
         .get(2)
         .and_then(|a| decoder.resolve_ref(a).ok().flatten());
 
-    let (axis_origin, axis_dir) = if let Some(ap) = axis_pos {
+    let (mut axis_origin, mut axis_dir) = if let Some(ap) = axis_pos {
         // IfcAxis1Placement: 0=Location, 1=Axis(Direction)
         let loc = ap
             .get(0)
@@ -70,7 +70,7 @@ pub(super) fn process_surface_of_revolution_face(
     };
 
     // Sample the generator profile curve.
-    let profile_pts: Vec<Point3<f64>> = match swept {
+    let mut profile_pts: Vec<Point3<f64>> = match swept {
         Some(s) if s.ifc_type.as_str().eq_ignore_ascii_case("IFCARBITRARYOPENPROFILEDEF") => {
             // Attribute 2 is the curve.
             if let Some(curve) = s.get(2).and_then(|a| decoder.resolve_ref(a).ok().flatten()) {
@@ -85,6 +85,23 @@ pub(super) fn process_surface_of_revolution_face(
 
     if profile_pts.len() < 2 {
         return process_planar_face_rebased(face, decoder, quality, Some(rtc));
+    }
+
+    // SweptCurve and AxisPosition are both given in Position's frame
+    // (IfcSweptSurface.Position, optional since IFC4); it was ignored, so a
+    // populated Position misplaced the surface (#7687, PROC-S24). The face's
+    // bounds are already in the outer frame, so only the profile and axis
+    // move. A null Position leaves both untouched, bit for bit.
+    if let Some(position) = surface
+        .get(1)
+        .and_then(|a| decoder.resolve_ref(a).ok().flatten())
+    {
+        let frame = crate::transform::parse_axis2_placement_3d(&position, decoder)?;
+        for p in &mut profile_pts {
+            *p = frame.transform_point(p);
+        }
+        axis_origin = frame.transform_point(&axis_origin);
+        axis_dir = frame.transform_vector(&axis_dir);
     }
 
     // Build an orthonormal basis (axis_x, axis_y, axis_dir).

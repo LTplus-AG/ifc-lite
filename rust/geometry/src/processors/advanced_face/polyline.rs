@@ -7,21 +7,31 @@
 use crate::{scale_segments, Point3, TessellationQuality};
 use ifc_lite_core::{DecodedEntity, EntityDecoder};
 
-use super::bspline::evaluate_bspline_curve;
-use super::bspline_budget::{MAX_BSPLINE_CURVE_CONTROL_POINTS, MAX_BSPLINE_DEGREE};
-use super::bspline_parse::expand_knots;
-use super::conics::{read_axis2_placement_3d, sample_circle_edge_curve};
-use super::curves::sample_bspline_edge_curve;
+use super::conics::{read_axis2_placement_frame, sample_circle_edge_curve};
+use super::curves::{sample_bspline_curve_polyline, sample_bspline_edge_curve, Refused};
 
 /// Sample points along a curve in 3D. Currently handles `IfcLine`, `IfcCircle`,
 /// `IfcTrimmedCurve` and `IfcBSplineCurveWithKnots`. Returns a polyline that
 /// approximates the curve. Used as the generator profile for surfaces of
-/// revolution.
+/// revolution. A refused curve (see [`try_sample_curve_polyline`]) yields no
+/// points, like an unsupported one.
 pub(super) fn sample_curve_polyline(
     curve: &DecodedEntity,
     decoder: &mut EntityDecoder,
     quality: TessellationQuality,
 ) -> Vec<Point3<f64>> {
+    try_sample_curve_polyline(curve, decoder, quality).unwrap_or_default()
+}
+
+/// [`sample_curve_polyline`], telling a curve whose authored points do not
+/// resolve (`Err(Refused)`, #7687 PROC-S21) apart from one this sampler does
+/// not support (`Ok` and empty). A composite edge refuses its loop on the
+/// former and bridges the latter, as it always has.
+pub(super) fn try_sample_curve_polyline(
+    curve: &DecodedEntity,
+    decoder: &mut EntityDecoder,
+    quality: TessellationQuality,
+) -> Result<Vec<Point3<f64>>, Refused> {
     let mut visited = std::collections::HashSet::new();
     sample_curve_polyline_guarded(curve, decoder, quality, 0, &mut visited)
 }
@@ -61,77 +71,16 @@ fn sample_curve_polyline_guarded(
     quality: TessellationQuality,
     depth: u32,
     visited: &mut std::collections::HashSet<u32>,
-) -> Vec<Point3<f64>> {
+) -> Result<Vec<Point3<f64>>, Refused> {
     if depth >= MAX_BASIS_CURVE_DEPTH || !visited.insert(curve.id) {
-        return Vec::new();
+        return Ok(Vec::new());
     }
     use std::f64::consts::TAU;
     let kind = curve.ifc_type.as_str().to_uppercase();
     // The rational variant shares attributes 0-7 with the plain one; sampling
     // it unweighted beats dropping the curve entirely.
     if kind == "IFCBSPLINECURVEWITHKNOTS" || kind == "IFCRATIONALBSPLINECURVEWITHKNOTS" {
-        // Reuse the helper with a synthetic start; we just need the polyline.
-        let mut pts = sample_bspline_edge_curve(
-            curve,
-            &Point3::new(0.0, 0.0, 0.0),
-            true,
-            decoder,
-            quality,
-        );
-        // `sample_bspline_edge_curve`'s capped fallback IS a non-empty
-        // single-point `vec![*start]` (#4901), so `!pts.is_empty()` alone
-        // cannot tell "genuinely sampled" from "degree/point-count rejected"
-        // — re-checking the SAME bounds here before redoing the unbounded
-        // parse + `evaluate_bspline_curve` below closes that gap rather than
-        // trusting the emptiness of the result.
-        let degree = curve.get_float(0).unwrap_or(3.0) as usize;
-        let raw_cp_len = curve.get(1).and_then(|a| a.as_list()).map(<[_]>::len).unwrap_or(0);
-        if !pts.is_empty() && degree <= MAX_BSPLINE_DEGREE && raw_cp_len <= MAX_BSPLINE_CURVE_CONTROL_POINTS {
-            // Replace the synthetic start with an explicit evaluation at t_min.
-            if let (Some(cp_list), Some((mults, knot_values))) = (
-                curve.get(1).and_then(|a| a.as_list()),
-                super::curves::parse_curve_knots(curve),
-            ) {
-                let cps: Vec<Point3<f64>> = cp_list
-                    .iter()
-                    .filter_map(|r| {
-                        let id = r.as_entity_ref()?;
-                        let pt = decoder.decode_by_id(id).ok()?;
-                        let coords = pt.get(0)?.as_list()?;
-                        let x = coords.first()?.as_float().unwrap_or(0.0);
-                        let y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0);
-                        let z = coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0);
-                        Some(Point3::new(x, y, z))
-                    })
-                    .collect();
-                if !cps.is_empty() && !mults.is_empty() && !knot_values.is_empty() {
-                    let knots = expand_knots(&knot_values, &mults);
-                    if knots.len() > degree {
-                        let t0 = knots[degree];
-                        pts[0] = evaluate_bspline_curve(t0, degree, &cps, &knots);
-                        // Also append the explicit terminal endpoint so
-                        // standalone polyline callers (e.g. SoR generator
-                        // profiles) don't lose the last segment. Edge-loop
-                        // callers tolerate the duplicate via dedup later.
-                        // Per CodeRabbit feedback on PR #605.
-                        let t_max_idx = knots.len().saturating_sub(degree + 1);
-                        if t_max_idx > degree {
-                            let t_max = knots[t_max_idx];
-                            let p_end = evaluate_bspline_curve(t_max, degree, &cps, &knots);
-                            // Avoid duplicating the last sampled point.
-                            let near_dup = pts
-                                .last()
-                                .map(|p| (p - p_end).norm_squared() < 1e-18)
-                                .unwrap_or(false);
-                            if !near_dup {
-                                pts.push(p_end);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        return pts;
+        return sample_bspline_curve_polyline(curve, decoder, quality);
     }
     if kind == "IFCLINE" {
         // IfcLine: 0=Pnt, 1=Dir(IfcVector). Treat as segment [Pnt, Pnt+Dir·magnitude].
@@ -165,71 +114,61 @@ fn sample_curve_polyline_guarded(
             })
             .unwrap_or_else(|| (nalgebra::Vector3::new(1.0, 0.0, 0.0), 1.0));
         let start = pnt.unwrap_or_else(|| Point3::new(0.0, 0.0, 0.0));
-        return vec![start, start + dir * mag];
+        return Ok(vec![start, start + dir * mag]);
     }
     if kind == "IFCCIRCLE" {
         let radius = curve.get(1).and_then(|v| v.as_float()).unwrap_or(0.0);
         if radius <= 0.0 {
-            return Vec::new();
+            return Ok(Vec::new());
         }
         let placement = match curve.get(0).and_then(|a| decoder.resolve_ref(a).ok().flatten()) {
             Some(p) => p,
-            None => return Vec::new(),
+            None => return Ok(Vec::new()),
         };
-        let (center, axis_z, axis_x) = read_axis2_placement_3d(&placement, decoder);
+        let (center, axis_z, axis_x) = read_axis2_placement_frame(&placement, decoder);
         let axis_y = axis_z.cross(&axis_x);
         let n = scale_segments(24, 8, 96, quality);
-        return (0..=n)
+        return Ok((0..=n)
             .map(|i| {
                 let a = TAU * (i as f64) / (n as f64);
                 center + axis_x * (radius * a.cos()) + axis_y * (radius * a.sin())
             })
-            .collect();
+            .collect());
     }
     if kind == "IFCPOLYLINE" {
         // IfcPolyline: 0=Points (list of IfcCartesianPoint)
         let refs = match curve.get(0).and_then(|a| a.as_list()) {
             Some(r) => r,
-            None => return Vec::new(),
+            None => return Ok(Vec::new()),
         };
-        let mut pts = Vec::with_capacity(refs.len());
-        for r in refs {
-            let Some(id) = r.as_entity_ref() else { continue };
-            let Ok(p) = decoder.decode_by_id(id) else { continue };
-            let Some(coords) = p.get(0).and_then(|v| v.as_list()) else { continue };
-            let x = coords.first().and_then(|v| v.as_float()).unwrap_or(0.0);
-            let y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0);
-            let z = coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0);
-            pts.push(Point3::new(x, y, z));
-        }
-        return pts;
+        return polyline_points(refs, decoder);
     }
     if kind == "IFCELLIPSE" {
         // IfcEllipse: 0=Position, 1=SemiAxis1, 2=SemiAxis2. Full ellipse.
         let r1 = curve.get(1).and_then(|v| v.as_float()).unwrap_or(0.0);
         let r2 = curve.get(2).and_then(|v| v.as_float()).unwrap_or(0.0);
         if r1 <= 0.0 || r2 <= 0.0 {
-            return Vec::new();
+            return Ok(Vec::new());
         }
         let placement = match curve.get(0).and_then(|a| decoder.resolve_ref(a).ok().flatten()) {
             Some(p) => p,
-            None => return Vec::new(),
+            None => return Ok(Vec::new()),
         };
-        let (center, axis_z, axis_x) = read_axis2_placement_3d(&placement, decoder);
+        let (center, axis_z, axis_x) = read_axis2_placement_frame(&placement, decoder);
         let axis_y = axis_z.cross(&axis_x);
         let n = scale_segments(24, 8, 96, quality);
-        return (0..=n)
+        return Ok((0..=n)
             .map(|i| {
                 let a = TAU * (i as f64) / (n as f64);
                 center + axis_x * (r1 * a.cos()) + axis_y * (r2 * a.sin())
             })
-            .collect();
+            .collect());
     }
     if kind == "IFCTRIMMEDCURVE" {
         // 0=BasisCurve, 1=Trim1, 2=Trim2, 3=Sense, 4=MasterRepresentation.
         let basis = match curve.get(0).and_then(|a| decoder.resolve_ref(a).ok().flatten()) {
             Some(b) => b,
-            None => return Vec::new(),
+            None => return Ok(Vec::new()),
         };
         let basis_kind = basis.ifc_type.as_str().to_uppercase();
         let sense = curve
@@ -270,14 +209,14 @@ fn sample_curve_polyline_guarded(
                 let mut pts =
                     sample_circle_edge_curve(&basis, &p_start, &p_end, sense, decoder, quality);
                 pts.push(p_end);
-                return pts;
+                return Ok(pts);
             }
         }
         if basis_kind == "IFCBSPLINECURVEWITHKNOTS" {
             if let (Some(p_start), Some(p_end)) = (p1, p2) {
-                let mut pts = sample_bspline_edge_curve(&basis, &p_start, sense, decoder, quality);
+                let mut pts = sample_bspline_edge_curve(&basis, &p_start, sense, decoder, quality)?;
                 pts.push(p_end);
-                return pts;
+                return Ok(pts);
             }
             if let Some(p_start) = p1 {
                 return sample_bspline_edge_curve(&basis, &p_start, sense, decoder, quality);
@@ -293,16 +232,36 @@ fn sample_curve_polyline_guarded(
             // revolved radius/extent ~50-70x (light-fixture #189538 hull 9.5x,
             // proxy #209435 hull 3.2x in ISSUE_159).
             if let (Some(p_start), Some(p_end)) = (p1, p2) {
-                return if sense {
+                return Ok(if sense {
                     vec![p_start, p_end]
                 } else {
                     vec![p_end, p_start]
-                };
+                });
             }
         }
         return sample_curve_polyline_guarded(&basis, decoder, quality, depth + 1, visited);
     }
-    Vec::new()
+    Ok(Vec::new())
+}
+
+/// The points of an `IfcPolyline` (or any point-reference list), in order.
+/// A reference that does not resolve to coordinates refuses the whole list
+/// (#7687, PROC-S21): skipping it draws a polyline one vertex short.
+pub(super) fn polyline_points(
+    refs: &[ifc_lite_core::AttributeValue],
+    decoder: &mut EntityDecoder,
+) -> Result<Vec<Point3<f64>>, Refused> {
+    refs.iter()
+        .map(|r| {
+            let point = decoder.decode_by_id(r.as_entity_ref()?).ok()?;
+            let coords = point.get(0).and_then(|v| v.as_list())?;
+            let x = coords.first().and_then(|v| v.as_float()).unwrap_or(0.0);
+            let y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0);
+            let z = coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0);
+            Some(Point3::new(x, y, z))
+        })
+        .collect::<Option<Vec<_>>>()
+        .ok_or(Refused)
 }
 
 #[cfg(test)]

@@ -6,84 +6,36 @@
 //! discretization for advanced-face edge loops.
 
 use crate::{scale_segments, Point3, TessellationQuality};
-use ifc_lite_core::{DecodedEntity, EntityDecoder};
+use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 
-/// Read an `IfcAxis2Placement3D` (or 2D) entity and return (location, axis_z, axis_x).
-/// Falls back to identity orientation when axis/refdir are absent.
-pub(super) fn read_axis2_placement_3d(
+/// Read a conic's `IfcAxis2Placement3D` or `IfcAxis2Placement2D` and return
+/// (location, axis_z, axis_x) through the canonical readers in
+/// [`crate::transform`], the frame the profile conic samplers use too.
+///
+/// This used to be its own reader, which took a 2D placement's RefDirection
+/// (attribute 1) for the 3D Axis, standing a planar profile circle on its
+/// side (#7687, sibling of PROC-13), and defaulted a missing RefDirection
+/// differently from IFC's `FirstProjAxis`. A placement that does not parse
+/// keeps the old tolerant fallback, the identity frame at the origin.
+pub(super) fn read_axis2_placement_frame(
     placement: &DecodedEntity,
     decoder: &mut EntityDecoder,
 ) -> (Point3<f64>, nalgebra::Vector3<f64>, nalgebra::Vector3<f64>) {
     use nalgebra::Vector3;
 
-    let location = placement
-        .get(0)
-        .and_then(|a| decoder.resolve_ref(a).ok().flatten())
-        .and_then(|p| {
-            let coords = p.get(0).and_then(|v| v.as_list())?;
-            let x = coords.first().and_then(|v| v.as_float()).unwrap_or(0.0);
-            let y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0);
-            let z = coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0);
-            Some(Point3::new(x, y, z))
-        })
-        .unwrap_or_else(|| Point3::new(0.0, 0.0, 0.0));
-
-    let read_dir = |entity: &DecodedEntity| -> Option<Vector3<f64>> {
-        let coords = entity.get(0).and_then(|v| v.as_list())?;
-        let x = coords.first().and_then(|v| v.as_float()).unwrap_or(0.0);
-        let y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0);
-        let z = coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0);
-        Some(Vector3::new(x, y, z))
+    let frame = if placement.ifc_type == IfcType::IfcAxis2Placement2D {
+        crate::transform::parse_axis2_placement_2d(placement, decoder)
+    } else {
+        crate::transform::parse_axis2_placement_3d(placement, decoder)
     };
-
-    let axis_z = placement
-        .get(1)
-        .and_then(|a| decoder.resolve_ref(a).ok().flatten())
-        .and_then(|e| read_dir(&e))
-        .and_then(|v| v.try_normalize(1e-12))
-        .unwrap_or_else(|| Vector3::new(0.0, 0.0, 1.0));
-
-    let mut axis_x = placement
-        .get(2)
-        .and_then(|a| decoder.resolve_ref(a).ok().flatten())
-        .and_then(|e| read_dir(&e))
-        .unwrap_or_else(|| {
-            // Pick a non-parallel reference if RefDirection is missing
-            if axis_z.x.abs() < 0.9 {
-                Vector3::new(1.0, 0.0, 0.0)
-            } else {
-                Vector3::new(0.0, 1.0, 0.0)
-            }
-        });
-
-    // Orthogonalise: subtract the component along axis_z, then renormalise
-    axis_x -= axis_z * axis_x.dot(&axis_z);
-    let axis_x = axis_x.try_normalize(1e-12).unwrap_or_else(|| {
-        // Fallback that is guaranteed NOT parallel to axis_z: pick the world
-        // basis vector with the smallest |dot| with axis_z, then orthogonalise.
-        // Using a hard-coded (1,0,0) here can collapse the basis when axis_z
-        // itself is along X (CodeRabbit feedback on PR #605).
-        let candidates = [
-            Vector3::new(1.0, 0.0, 0.0),
-            Vector3::new(0.0, 1.0, 0.0),
-            Vector3::new(0.0, 0.0, 1.0),
-        ];
-        let pick = candidates
-            .iter()
-            .min_by(|a, b| {
-                let da = axis_z.dot(a).abs();
-                let db = axis_z.dot(b).abs();
-                crate::cmp_f64_nan_last(da, db)
-            })
-            .copied()
-            .unwrap_or(Vector3::new(1.0, 0.0, 0.0));
-        let ortho = pick - axis_z * pick.dot(&axis_z);
-        ortho
-            .try_normalize(1e-12)
-            .unwrap_or(Vector3::new(1.0, 0.0, 0.0))
-    });
-
-    (location, axis_z, axis_x)
+    match frame {
+        Ok(m) => (
+            Point3::new(m[(0, 3)], m[(1, 3)], m[(2, 3)]),
+            Vector3::new(m[(0, 2)], m[(1, 2)], m[(2, 2)]),
+            Vector3::new(m[(0, 0)], m[(1, 0)], m[(2, 0)]),
+        ),
+        Err(_) => (Point3::origin(), Vector3::z(), Vector3::x()),
+    }
 }
 
 /// Sample an `IfcCircle` edge from `start` to `end`, walking the arc in the
@@ -111,7 +63,7 @@ pub(super) fn sample_circle_edge_curve(
         None => return vec![*start],
     };
 
-    let (center, axis_z, axis_x) = read_axis2_placement_3d(&placement, decoder);
+    let (center, axis_z, axis_x) = read_axis2_placement_frame(&placement, decoder);
     let axis_y = axis_z.cross(&axis_x);
 
     // Project start/end onto the circle plane to recover their angles.
@@ -187,7 +139,7 @@ pub(super) fn sample_ellipse_edge_curve(
         None => return vec![*start],
     };
 
-    let (center, axis_z, axis_x) = read_axis2_placement_3d(&placement, decoder);
+    let (center, axis_z, axis_x) = read_axis2_placement_frame(&placement, decoder);
     let axis_y = axis_z.cross(&axis_x);
 
     // Recover the parametric angle of a point: divide the planar components by

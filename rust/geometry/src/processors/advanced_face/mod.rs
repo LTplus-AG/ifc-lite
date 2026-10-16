@@ -56,6 +56,29 @@ fn apply_same_sense(
     }
 }
 
+/// A known approximation, recorded rather than silent (#7687, PROC-S20): a
+/// B-spline face is tessellated over the surface's whole knot domain, and its
+/// `Bounds` (outer trim and holes) are not applied, so a trimmed NURBS patch
+/// renders untrimmed and its holes closed. Trimming in parameter space is
+/// planned with the shared curve sampler (charter #7670, C1a).
+fn note_untrimmed_bspline_face(face: &DecodedEntity) {
+    let bound_count = face.get(0).and_then(|a| a.as_list()).map_or(0, <[_]>::len);
+    if bound_count == 0 {
+        return;
+    }
+    crate::diag::diag_debug!(
+        { face_id = face.id, bounds = bound_count,
+          "advanced_face: B-spline face bounds not applied, tessellating the untrimmed surface" }
+        else {
+            #[cfg(feature = "debug_geometry")]
+            eprintln!(
+                "[ifc-lite][advanced_face] B-spline face #{} untrimmed ({} bounds ignored)",
+                face.id, bound_count
+            );
+        }
+    );
+}
+
 /// Process a single `IfcAdvancedFace` or `IfcFaceSurface`, dispatching to the
 /// appropriate surface handler based on `FaceSurface` type.
 ///
@@ -89,8 +112,10 @@ pub(super) fn process_advanced_face(
     let result = if surface_type == "IFCPLANE" {
         process_planar_face_rebased(face, decoder, quality, rtc_file_units)
     } else if surface_type == "IFCBSPLINESURFACEWITHKNOTS" {
+        note_untrimmed_bspline_face(face);
         process_bspline_face(&surface, decoder, None, quality, rtc)
     } else if surface_type == "IFCRATIONALBSPLINESURFACEWITHKNOTS" {
+        note_untrimmed_bspline_face(face);
         let weights = parse_rational_weights(&surface);
         process_bspline_face(&surface, decoder, weights.as_deref(), quality, rtc)
     } else if surface_type == "IFCCYLINDRICALSURFACE" {

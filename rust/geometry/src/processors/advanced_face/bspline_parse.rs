@@ -66,18 +66,22 @@ pub(super) fn parse_control_points(
 
         let mut row_points = Vec::with_capacity(cols.len());
         for col in cols {
-            if let Some(point_id) = col.as_entity_ref() {
-                let point = decoder.decode_by_id(point_id)?;
-                let coords = point.get(0).and_then(|v| v.as_list()).ok_or_else(|| {
-                    Error::geometry("CartesianPoint missing coordinates".to_string())
-                })?;
+            // A grid entry that is not a point reference used to be skipped,
+            // leaving a ragged row whose later points sat against the wrong
+            // knots and weights (#7687, PROC-S21); refuse the surface.
+            let point_id = col.as_entity_ref().ok_or_else(|| {
+                Error::geometry("BSplineSurface control point is not a reference".to_string())
+            })?;
+            let point = decoder.decode_by_id(point_id)?;
+            let coords = point.get(0).and_then(|v| v.as_list()).ok_or_else(|| {
+                Error::geometry("CartesianPoint missing coordinates".to_string())
+            })?;
 
-                let x = coords.first().and_then(|v| v.as_float()).unwrap_or(0.0);
-                let y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0);
-                let z = coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0);
+            let x = coords.first().and_then(|v| v.as_float()).unwrap_or(0.0);
+            let y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0);
+            let z = coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0);
 
-                row_points.push(Point3::new(x, y, z));
-            }
+            row_points.push(Point3::new(x, y, z));
         }
         result.push(row_points);
     }

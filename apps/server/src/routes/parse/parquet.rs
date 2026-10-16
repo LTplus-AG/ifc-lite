@@ -6,10 +6,13 @@
 
 use super::cache_keys::{
     data_model_cache_key, has_current_data_model, has_cached_symbolic, parquet_geometry_key,
-    parquet_metadata_key,
+    parquet_metadata_key, stored_size,
 };
+use super::cache_read::resident_body;
 use super::replay_header::mark_header_from_cache;
-use super::{admit_upload, request_cache_key_off_runtime, cache_symbolic_data_off_runtime, ParseQuery};
+use super::{
+    admit_upload, begin_symbolic_fill, cache_symbolic_data_off_runtime, request_cache_key_off_runtime, ParseQuery,
+};
 use crate::error::ApiError;
 use crate::services::baked_basis_zup;
 use crate::services::parquet::serialize_combined_for_layout;
@@ -18,7 +21,6 @@ use crate::types::{finish_meshes, ModelMetadata, ProcessingStats};
 use ifc_lite_processing::style::ModelFinishes;
 use crate::AppState;
 use axum::{
-    body::Body,
     extract::{Multipart, Query, State},
     http::{header, StatusCode},
     response::Response,
@@ -76,7 +78,7 @@ pub async fn parse_parquet(
 
     // Generate cache key (include opening filter so different modes get different cache entries)
     let tessellation_quality = query.resolved_tessellation_quality()?;
-    let (cache_key, admission_guard) =
+    let (cache_key, mut admission_guard) =
         request_cache_key_off_runtime(&data, &query, tessellation_quality, admission_guard).await?;
 
     // Check cache first (before any processing)
@@ -87,13 +89,33 @@ pub async fn parse_parquet(
     // The cached-geometry short-circuit skips the parse, and the parse is what
     // writes the data model. A geometry entry that outlived a data-model
     // version bump must fall through so both get rewritten (issue #3869).
-    // The same rule applies to symbolic schema freshness (#4459).
-    if let (Some(cached_parquet), Some(cached_metadata_json), true, true) = (
-        state.cache.get_bytes(&parquet_cache_key).await?,
-        state.cache.get_bytes(&metadata_cache_key).await?,
-        has_current_data_model(&state.cache, &cache_key, query.data_model_entities).await,
-        has_cached_symbolic(&state.cache, &cache_key).await,
-    ) {
+    // The same rule applies to symbolic schema freshness (#4459). An entry
+    // that is unusable (a damaged blob, a header that is not UTF-8) is a miss
+    // too, so the parse rewrites it (#7676, SERVER-12): it used to answer 500
+    // for this file on every request.
+    //
+    // A hit is charged the two entries' stored size, as `GET /cache/geometry`
+    // is, not the upload's (SERVER-24); a miss goes back to the upload's
+    // charge for the parse.
+    let mut upload_charge = None;
+    let hit = if has_current_data_model(&state.cache, &cache_key, query.data_model_entities).await?
+        && has_cached_symbolic(&state.cache, &cache_key).await?
+    {
+        let parquet = stored_size(&state.cache, &parquet_cache_key).await?;
+        let metadata = stored_size(&state.cache, &metadata_cache_key).await?;
+        if parquet == 0 || metadata == 0 {
+            None
+        } else {
+            upload_charge = Some(admission_guard.grow_to(parquet + metadata).await?);
+            match state.cache.read_usable_utf8(&metadata_cache_key).await? {
+                Some(metadata) => state.cache.read_usable(&parquet_cache_key).await?.map(|parquet| (parquet, metadata)),
+                None => None,
+            }
+        }
+    } else {
+        None
+    };
+    if let Some((cached_parquet, cached_metadata_json)) = hit {
         tracing::info!(
             cache_key = %cache_key,
             parquet_size = cached_parquet.len(),
@@ -101,22 +123,20 @@ pub async fn parse_parquet(
         );
 
         // Build response from cached data. The stored header is the one the
-        // live parse wrote, `from_cache: false` included (#5542).
+        // live parse wrote, `from_cache: false` included (#5542). The body
+        // keeps the request's bytes charged until it is sent (#7676).
         let response = Response::builder()
             .status(StatusCode::OK)
             .header(header::CONTENT_TYPE, "application/x-parquet-geometry")
-            .header(
-                "X-IFC-Metadata",
-                mark_header_from_cache(
-                    String::from_utf8(cached_metadata_json)
-                        .map_err(|error| ApiError::Internal(error.to_string()))?,
-                ),
-            )
+            .header("X-IFC-Metadata", mark_header_from_cache(cached_metadata_json))
             .header(header::CONTENT_LENGTH, cached_parquet.len())
-            .body(Body::from(cached_parquet))
+            .body(resident_body(cached_parquet, admission_guard.into_resident()))
             .map_err(|e| ApiError::Internal(e.to_string()))?;
 
         return Ok(response);
+    }
+    if let Some(upload_charge) = upload_charge {
+        admission_guard.shrink_to(upload_charge);
     }
 
     tracing::info!(
@@ -142,7 +162,7 @@ pub async fn parse_parquet(
             (data_model_stats, data_model_parquet),
             symbolic_data,
         ),
-        _admission,
+        admission,
     ) = tokio::task::spawn_blocking(move || {
             // First: extract geometry and the data model in parallel.
             // #5984: the finish index is a third independent read of the bytes.
@@ -238,7 +258,8 @@ pub async fn parse_parquet(
 
     // Cache the symbolic stream immediately so it's ready when the client
     // fetches `GET /api/v1/parse/symbolic/{cache_key}` (issue #900).
-    cache_symbolic_data_off_runtime(state.cache.clone(), cache_key.clone(), symbolic_data).await;
+    let symbolic_fill = begin_symbolic_fill(&state, &cache_key);
+    cache_symbolic_data_off_runtime(state.cache.clone(), symbolic_fill, cache_key.clone(), symbolic_data).await;
 
     // Create metadata header with data model stats (captured before background task)
     let cache_key_clone = cache_key.clone();
@@ -293,7 +314,7 @@ pub async fn parse_parquet(
         .header(header::CONTENT_TYPE, "application/x-parquet-geometry")
         .header("X-IFC-Metadata", metadata_json)
         .header(header::CONTENT_LENGTH, combined_parquet.len())
-        .body(Body::from(combined_parquet))
+        .body(resident_body(combined_parquet, admission.into_resident()))
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
     Ok(response)

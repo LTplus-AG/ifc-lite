@@ -3,7 +3,8 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 //! In-memory marker for "a data-model write is running right now for this
-//! cache key" (issue #5129).
+//! cache key" (issue #5129). Since #7676 it also marks symbolic-sidecar
+//! writes, under their own entry keys, for `get_symbolic`'s 202/404 split.
 //!
 //! The key is the data-model ENTRY key (`data_model_cache_key`), not the
 //! request key it is built from (#6034): the full and the rooted-only tables

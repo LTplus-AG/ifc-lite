@@ -1,73 +1,73 @@
-diff --git a/rust/geometry/src/processors/advanced_face/mod.rs b/rust/geometry/src/processors/advanced_face/mod.rs
-index 3de0278246..bc8cfd8073 100644
---- a/rust/geometry/src/processors/advanced_face/mod.rs
-+++ b/rust/geometry/src/processors/advanced_face/mod.rs
+diff --git b/rust/geometry/src/processors/advanced_face/mod.rs a/rust/geometry/src/processors/advanced_face/mod.rs
+index bc8cfd8073..3de0278246 100644
+--- b/rust/geometry/src/processors/advanced_face/mod.rs
++++ a/rust/geometry/src/processors/advanced_face/mod.rs
 @@ -117,7 +117,7 @@ pub(super) fn process_advanced_face(
      // (ISO 10303-42), and are never flipped (#7686, PROC-S16).
      let rtc = rtc_file_units.unwrap_or((0.0, 0.0, 0.0));
      let result = if surface_type == "IFCPLANE" {
--        process_planar_face_rebased(face, decoder, quality, rtc_file_units)
-+        apply_same_sense(face, process_planar_face_rebased(face, decoder, quality, rtc_file_units))
+-        apply_same_sense(face, process_planar_face_rebased(face, decoder, quality, rtc_file_units))
++        process_planar_face_rebased(face, decoder, quality, rtc_file_units)
      } else if surface_type == "IFCBSPLINESURFACEWITHKNOTS" {
          note_untrimmed_bspline_face(face);
          // Every B-spline surface error is a refusal of its data (a bound,
-diff --git a/rust/geometry/src/processors/brep/faceted.rs b/rust/geometry/src/processors/brep/faceted.rs
-index 1de9bb4b14..969e484d01 100644
---- a/rust/geometry/src/processors/brep/faceted.rs
-+++ b/rust/geometry/src/processors/brep/faceted.rs
-@@ -143,6 +143,10 @@ impl FacetedBrepProcessor {
+diff --git b/rust/geometry/src/processors/brep/faceted.rs a/rust/geometry/src/processors/brep/faceted.rs
+index 969e484d01..1de9bb4b14 100644
+--- b/rust/geometry/src/processors/brep/faceted.rs
++++ a/rust/geometry/src/processors/brep/faceted.rs
+@@ -143,10 +143,6 @@ impl FacetedBrepProcessor {
          // triangulation refuses the face; it is never filled over its
          // authored openings (#7686 PROC-S5).
          let Ok(indices) = triangulate_planar_face(&face.outer_points, &face.hole_points) else {
-+            push_rebased(&mut positions, &face.outer_points, rtc);
-+            let fan: Vec<u32> = (1..n as u32 - 1).flat_map(|i| [0, i, i + 1]).collect();
-+            return FaceResult { positions, indices: fan, refused: false };
-+            #[allow(unreachable_code)]
+-            push_rebased(&mut positions, &face.outer_points, rtc);
+-            let fan: Vec<u32> = (1..n as u32 - 1).flat_map(|i| [0, i, i + 1]).collect();
+-            return FaceResult { positions, indices: fan, refused: false };
+-            #[allow(unreachable_code)]
              return FaceResult { positions: Vec::new(), indices: Vec::new(), refused: true };
          };
          let all_points = face.outer_points.iter().chain(face.hole_points.iter().flatten());
-@@ -245,7 +249,7 @@ impl FacetedBrepProcessor {
+@@ -249,7 +245,7 @@ impl FacetedBrepProcessor {
              // hole become the outline. Read bounds are the outer one, the
              // holes (a demoted outer is among them) and the degenerate ones.
              let read = hole_points.len() + usize::from(outer_bound_points.is_some()) + degenerate;
--            if read < bound_count {
-+            if false && read < bound_count {
+-            if false && read < bound_count {
++            if read < bound_count {
                  note_face_refused();
                  continue;
              }
-diff --git a/rust/geometry/src/processors/brep/surface_model.rs b/rust/geometry/src/processors/brep/surface_model.rs
-index ca7c8b924c..3f9add290a 100644
---- a/rust/geometry/src/processors/brep/surface_model.rs
-+++ b/rust/geometry/src/processors/brep/surface_model.rs
+diff --git b/rust/geometry/src/processors/brep/surface_model.rs a/rust/geometry/src/processors/brep/surface_model.rs
+index 3f9add290a..ca7c8b924c 100644
+--- b/rust/geometry/src/processors/brep/surface_model.rs
++++ a/rust/geometry/src/processors/brep/surface_model.rs
 @@ -79,7 +79,7 @@ fn read_simple_face_bounds(
      // A bound that does not read refuses the face (D14, under
      // D3), as in `FacetedBrepProcessor`.
      let read = hole_points.len() + usize::from(outer_points.is_some()) + degenerate;
--    if read < bound_count {
-+    if false && read < bound_count {
+-    if false && read < bound_count {
++    if read < bound_count {
          note_face_refused();
          return None;
      }
-diff --git a/rust/geometry/src/triangulation.rs b/rust/geometry/src/triangulation.rs
-index 7dd5bcfc6e..1d54ec88c7 100644
---- a/rust/geometry/src/triangulation.rs
-+++ b/rust/geometry/src/triangulation.rs
-@@ -285,7 +285,8 @@ fn quad_pattern(zero_two: bool) -> [u32; 6] {
+diff --git b/rust/geometry/src/triangulation.rs a/rust/geometry/src/triangulation.rs
+index 1d54ec88c7..7dd5bcfc6e 100644
+--- b/rust/geometry/src/triangulation.rs
++++ a/rust/geometry/src/triangulation.rs
+@@ -285,8 +285,7 @@ fn quad_pattern(zero_two: bool) -> [u32; 6] {
  pub fn quad_split_3d(p: &[Point3<f64>]) -> [u32; 6] {
      let c1 = (p[1] - p[0]).cross(&(p[2] - p[1]));
      let c3 = (p[3] - p[2]).cross(&(p[0] - p[3]));
--    quad_pattern(c1.dot(&c3) >= 0.0)
-+    let _ = (c1, c3);
-+    quad_pattern(true)
+-    let _ = (c1, c3);
+-    quad_pattern(true)
++    quad_pattern(c1.dot(&c3) >= 0.0)
  }
  
  /// Simple fan triangulation for convex polygons
-@@ -562,7 +563,7 @@ pub fn calculate_polygon_normal(points: &[Point3<f64>]) -> Vector3<f64> {
+@@ -563,7 +562,7 @@ pub fn calculate_polygon_normal(points: &[Point3<f64>]) -> Vector3<f64> {
          let len = normal.norm();
          // `quad_split_3d`'s test: turns at 1 and 3 disagreeing means a reflex
          // vertex there and `normal` may be reversed; Newell below.
--        let reflex = n == 4
-+        let reflex = false
+-        let reflex = false
++        let reflex = n == 4
              && normal.dot(&(points[3] - points[2]).cross(&(points[0] - points[3]))) < 0.0;
          if len > 1e-10 && !reflex {
              return normal / len;

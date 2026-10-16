@@ -1008,8 +1008,10 @@ jobs:
           # revert cannot compile them. Keep that API and disable ONLY the
           # behaviour: admit every overflowing REAL, accept an unusable unit
           # factor, keep an overflowing ePSet offset, pass non-finite outline
-          # triangles, normalise a zero extrusion direction and never count a
-          # refused element; their tests turn RED. Once the test file is on
+          # triangles, normalise a zero extrusion direction, pass a point list
+          # that narrows to infinity, read merged storey elevations with
+          # str::parse and never count a refused element; their tests turn
+          # RED. Once the test file is on
           # main, ordinary whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/processing/tests/issue_7678_nonfinite_input.rs | grep -Fxq 'rust/processing/tests/issue_7678_nonfinite_input.rs'; then
             oracle_args+=(--mutation tests/evidence/input-admission-7678/admission.oracle.patch)

@@ -958,6 +958,17 @@ jobs:
           # cache_entry.rs is on main, ordinary whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- apps/server/src/services/cache_entry.rs | grep -Fxq 'apps/server/src/services/cache_entry.rs'; then
             oracle_args+=(--mutation tests/evidence/cache-policy-7676/behaviour.oracle.patch)
+          # #7689: the tessellated index rule adds two modules (core's
+          # fast_parse_indices.rs, geometry's tessellated/indices.rs) that the
+          # changed tests import, so a whole-file revert does not compile
+          # (INCONCLUSIVE). Keep them and restore ONLY the old behaviours: `0`
+          # read as vertex 1, PnIndex ignored on IfcTriangulatedFaceSet and
+          # compacted on IfcPolygonalFaceSet, `Closed = $` oriented by the
+          # triangulated processor, noise flips of planar sheets and the
+          # case-sensitive OUTER test. Once indices.rs is on main, ordinary
+          # whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/processors/tessellated/indices.rs | grep -Fxq 'rust/geometry/src/processors/tessellated/indices.rs'; then
+            oracle_args+=(--mutation tests/evidence/tessellation-indices-7689/index-rule.oracle.patch)
           # #7682: keep the new STEP-writer modules, StepStats fields and the TS
           # allocatedExpressId export loadable while disabling ONLY the guards the
           # changed tests pin (value/name/id-reuse refusals, the id-space refusal,

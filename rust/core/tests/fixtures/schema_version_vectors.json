@@ -127,9 +127,9 @@
       "expected": "IFC5"
     },
     {
-      "name": "no FILE_SCHEMA: the head scan matches ifc4 inside a GUID, in both detectors (documented, #7740)",
-      "content": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('ViewDefinition'),'2;1');\nFILE_NAME('v.ifc','2026-10-16T00:00:00',('a'),('o'),'p','s','');\n\nENDSEC;\nDATA;\n#1=IFCPROJECT('2w9qcp9R8Ifc4r6a7mXG16',$,'P',$,$,$,$,$,$);\nENDSEC;\nEND-ISO-10303-21;\n",
-      "expected": "IFC4"
+      "name": "no FILE_SCHEMA: the head scan matches ifc2x3 inside a GUID, in both detectors (documented, #7740; not the IFC4 default)",
+      "content": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('ViewDefinition'),'2;1');\nFILE_NAME('v.ifc','2026-10-16T00:00:00',('a'),('o'),'p','s','');\n\nENDSEC;\nDATA;\n#1=IFCPROJECT('2w9qcp9R8Ifc2x3a7mXG16',$,'P',$,$,$,$,$,$);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expected": "IFC2X3"
     },
     {
       "name": "a declaration past the 64 KiB header window is not read: head scan, then the IFC4 default",

@@ -310,14 +310,13 @@ function convertRecord(
   random?: RandomSource,
   withheldRefIds?: ReadonlySet<number>,
 ): string | null {
-  // Parse: #ID=TYPE(attrs);  — tolerate whitespace around `=` and before the
-  // type (some exporters, e.g. Tekla, write `#34498= IFCOPENINGELEMENT(...)`).
-  // Without this those lines passed through unconverted, so neither type renames
-  // nor attribute-count adjustment applied and the output stayed schema-invalid.
-  const match = line.match(/^\s*(#\d+=)\s*(\w+)\((.*)?\);?\s*$/);
+  // Parse: #ID=TYPE(attrs);  — tolerate whitespace around `=` and `(` (Tekla's
+  // `#34498= IFCOPENINGELEMENT(`, Viadotto_Acerno's `#159655 = IFC...(`, #7742).
+  // Otherwise the line passed through unconverted under the target header.
+  const match = line.match(/^\s*(#\d+)\s*=\s*(\w+)\s*\((.*)?\);?\s*$/);
   if (!match) return line; // not a STEP entity line, pass through
 
-  const prefix = match[1];  // "#123="
+  const prefix = `${match[1]}=`;  // "#123="
   const entityType = match[2].toUpperCase();
   const attrsRaw = match[3] ?? '';
 

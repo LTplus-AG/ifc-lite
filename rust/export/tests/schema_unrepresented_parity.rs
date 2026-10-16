@@ -12,7 +12,7 @@
 
 use ifc_lite_export::export_step_json;
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, Clone)]
 struct Case {
     why: String,
     from: String,
@@ -40,6 +40,9 @@ fn convert(c: &Case) -> Result<String, String> {
     );
     let out = export_step_json(src.as_bytes(), Some(c.to.clone()), None, "").map_err(|e| e.to_string())?;
     let line = out.lines().find(|l| l.starts_with('#')).unwrap_or_else(|| panic!("no entity line:\n{out}"));
+    // Rust keeps a spaced source's `#5 =` prefix, TS writes `#5=`: cosmetic.
+    let line = line.replacen("#5 =", "#5=", 1);
+    let line = line.as_str();
     // The twins mint an IFCPROXY GlobalId differently: mask it.
     Ok(match line.find("IFCPROXY('") {
         Some(at) => {
@@ -57,7 +60,13 @@ fn every_case_agrees_with_the_shared_fixture_7742() {
     assert!(cases.iter().filter(|c| c.refuses).count() >= 8, "anti-vacuity: refusal rows");
     assert!(cases.iter().any(|c| !c.refuses), "anti-vacuity: accepted rows");
     let mut bad = Vec::new();
-    for c in &cases {
+    // Compact and spaced (`#5 = TYPE (`, as Viadotto_Acerno writes); the TS
+    // twin's record regex used to miss the spaced form (#7742).
+    let spaced: Vec<Case> = cases
+        .iter()
+        .map(|c| Case { line: c.line.replacen('=', " = ", 1).replacen('(', " (", 1), ..c.clone() })
+        .collect();
+    for c in cases.iter().chain(&spaced) {
         let got = convert(c);
         let ok = match (&got, c.refuses) {
             (Err(_), true) => true,

@@ -36,14 +36,20 @@ describe('convertStepLine matches the shared unrepresented-type vectors (#7742)'
     expect(fixture.cases.some((c) => !c.refuses)).toBe(true);
   });
 
+  // Compact and spaced (`#5 = TYPE (`, as Viadotto_Acerno writes): the spaced
+  // form used to miss the record regex and pass through unconverted (#7742).
+  const spaced = (line: string) => line.replace(/^(#\d+)=(\w+)\(/, '$1 = $2 (');
   for (const c of fixture.cases) {
-    it(`${c.from} -> ${c.to}: ${c.why}`, () => {
-      if (c.refuses) {
-        expect(() => convertStepLine(c.line, c.from, c.to)).toThrow(/no representation/);
-        return;
-      }
-      const got = convertStepLine(c.line, c.from, c.to) ?? '';
-      expect(got.replace(/IFCPROXY\('[^']*'/, 'IFCPROXY(<MINTED>')).toBe(c.expect);
-    });
+    for (const line of [c.line, spaced(c.line)]) {
+      it(`${c.from} -> ${c.to}: ${c.why} [${line === c.line ? 'compact' : 'spaced'}]`, () => {
+        expect(line === c.line || line.startsWith('#5 = ')).toBe(true);
+        if (c.refuses) {
+          expect(() => convertStepLine(line, c.from, c.to)).toThrow(/no representation/);
+          return;
+        }
+        const got = convertStepLine(line, c.from, c.to) ?? '';
+        expect(got.replace(/IFCPROXY\('[^']*'/, 'IFCPROXY(<MINTED>')).toBe(c.expect);
+      });
+    }
   }
 });

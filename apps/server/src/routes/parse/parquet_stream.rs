@@ -375,13 +375,7 @@ pub async fn parse_parquet_stream(
                 serialize_data_model_to_parquet(&data_model)
             }).await;
 
-            if let Ok(Ok(parquet_data)) = serialize_result {
-                if let Err(e) = cache_for_dm.set_bytes(&dm_key, &parquet_data).await {
-                    tracing::error!(error = %e, "Failed to cache data model from stream");
-                } else {
-                    tracing::info!(cache_key = %dm_key, size = parquet_data.len(), "Data model cached from stream");
-                }
-            }
+            super::stream_data_model::cache_streamed_data_model(&cache_for_dm, &dm_key, serialize_result).await;
         }
         // `_in_flight` drops here, clearing the marker only after the cache
         // write (success or failure) is fully resolved.

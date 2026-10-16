@@ -2744,3 +2744,188 @@ fn many_associations_over_one_long_usage_chain_finish_server_5() {
     );
 }
 }
+
+/// #7675 (S3, from S1's walk audit): the complex-property depth cap bounds a
+/// path's length only, so a member listing itself `k` times was `k^8` reads,
+/// and one visit can copy a long name. The shared vector pins the walk budget
+/// (visits per property, one byte budget per model, every charge from
+/// `ifc_lite_core::limits`) and its marker byte-for-byte against the TS parser
+/// and the Rust exporter, and bounds the total bytes of every value.
+#[test]
+fn complex_property_walk_budget_matches_the_shared_vector() {
+    let vector: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../../../packages/parser/test/fixtures/complex-property-budget-7675.json"
+    ))
+    .expect("vector parses");
+    let failed: Vec<String> = vector["cases"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|case| std::panic::catch_unwind(|| check_server_budget_case(case)).is_err())
+        .map(|case| case["name"].as_str().unwrap().to_string())
+        .collect();
+    assert!(failed.is_empty(), "cases that differ from the shared vector: {failed:?}");
+}
+
+fn check_server_budget_case(case: &serde_json::Value) {
+    let ifc = format!(
+        "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n{}\nENDSEC;\nEND-ISO-10303-21;\n",
+        expand_budget_lines(&case["dataLines"]).join("\n")
+    );
+    let dm = extract_data_model(&ifc);
+    // The server keeps each set once, however many entities share it, so the
+    // model's values together stay within the budget too.
+    let model_total: usize =
+        dm.property_sets.iter().flat_map(|set| set.properties.iter().map(|p| p.property_value.len())).sum();
+    assert!(model_total <= ifc_lite_core::limits::complex_property_output_budget(ifc.len()), "{model_total}");
+    // An entity reads its sets the way the browser's `psetsOf` does: through
+    // `IfcRelDefinesByProperties`, in relationship order, each set once.
+    let mut sets_of: std::collections::HashMap<u32, Vec<u32>> = std::collections::HashMap::new();
+    for rel in dm.relationships.iter().filter(|r| r.rel_type.eq_ignore_ascii_case("IFCRELDEFINESBYPROPERTIES")) {
+        let list = sets_of.entry(rel.related_id).or_default();
+        if !list.contains(&rel.relating_id) {
+            list.push(rel.relating_id);
+        }
+    }
+    for entity in expand_budget_ids(&case["entityIds"]) {
+        let sets: Vec<(String, Vec<String>)> = sets_of
+            .get(&entity)
+            .into_iter()
+            .flatten()
+            .flat_map(|id| dm.property_sets.iter().filter(move |set| set.pset_id == *id))
+            .map(|set| (set.pset_name.clone(), set.properties.iter().map(|p| p.property_value.clone()).collect()))
+            .collect();
+        assert_complex_budget_case(case, ifc.len(), &sets);
+    }
+}
+
+/// The vector's `dataLines` with each `{"repeat": [..], "from", "count"}` run
+/// expanded: `{i}` in each line is `from`, `from + 1`, ... for `count` rounds.
+fn expand_budget_lines(lines: &serde_json::Value) -> Vec<String> {
+    let mut out = Vec::new();
+    for line in lines.as_array().unwrap() {
+        if let Some(text) = line.as_str() {
+            out.push(text.to_string());
+            continue;
+        }
+        for i in expand_budget_ids(&serde_json::json!([line])) {
+            for template in line["repeat"].as_array().unwrap() {
+                out.push(template.as_str().unwrap().replace("{i}", &i.to_string()));
+            }
+        }
+    }
+    out
+}
+
+/// The vector's `entityIds`, each `{"from", "count"}` run expanded.
+fn expand_budget_ids(ids: &serde_json::Value) -> Vec<u32> {
+    let mut out = Vec::new();
+    for id in ids.as_array().unwrap() {
+        match id.as_u64() {
+            Some(id) => out.push(id as u32),
+            None => {
+                let from = id["from"].as_u64().unwrap() as u32;
+                out.extend(from..from + id["count"].as_u64().unwrap() as u32);
+            }
+        }
+    }
+    out
+}
+
+/// #7675 D3: a cut level's `values` list (the parquet `values` column, which
+/// IDS reads) ends with the budget marker, so a member past the cut reads as
+/// truncated rather than absent.
+#[test]
+fn a_cut_complex_property_marks_its_values_list() {
+    let members = vec!["#20"; 1100].join(",");
+    let ifc = format!(
+        "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n\
+         #20=IFCPROPERTYSINGLEVALUE('P',$,IFCLABEL('v'),$);\n\
+         #22=IFCCOMPLEXPROPERTY('Wide',$,'WideUsage',({members}));\n\
+         #30=IFCPROPERTYSET('Pset0000000000000007675',$,'Pset_Cut',$,(#22));\n\
+         ENDSEC;\nEND-ISO-10303-21;\n"
+    );
+    let dm = extract_data_model(&ifc);
+    let wide = &dm.property_sets[0].properties[0];
+    let marker = ifc_lite_core::limits::COMPLEX_PROPERTY_BUDGET_MARKER;
+    assert!(wide.property_value.ends_with(marker), "{}", wide.property_value);
+    let values = wide.values.as_ref().expect("values");
+    assert_eq!(values.last().map(String::as_str), Some(marker));
+    assert_eq!(values.len(), 1025, "1024 admitted members, then the marker");
+}
+
+/// Check one walk's property sets (name, then the values in order) against
+/// one case of the shared #7675 vector. The TS and exporter tests read the same
+/// file with the same rules: a set is pinned by its property count and its
+/// values joined with `\n` (inline when short, else UTF-8 length and SHA-256),
+/// and the values together stay within the model's output budget.
+fn assert_complex_budget_case(case: &serde_json::Value, input_bytes: usize, sets: &[(String, Vec<String>)]) {
+    use sha2::{Digest, Sha256};
+    let total: usize = sets.iter().flat_map(|(_, values)| values.iter().map(String::len)).sum();
+    let budget = ifc_lite_core::limits::complex_property_output_budget(input_bytes);
+    assert!(total <= budget, "{total} bytes of property values, budget {budget}");
+    let expected: Vec<&str> = case["psets"].as_array().unwrap().iter().map(|p| p["name"].as_str().unwrap()).collect();
+    assert_eq!(sets.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>(), expected);
+    for pin in case["psets"].as_array().unwrap() {
+        let name = pin["name"].as_str().unwrap();
+        let (_, values) = sets.iter().find(|(n, _)| n == name).unwrap();
+        assert_eq!(values.len() as u64, pin["count"].as_u64().unwrap(), "{name}");
+        match pin.get("values") {
+            Some(exact) => {
+                let exact: Vec<&str> = exact.as_array().unwrap().iter().map(|v| v.as_str().unwrap()).collect();
+                assert_eq!(values.iter().map(String::as_str).collect::<Vec<_>>(), exact, "{name}");
+            }
+            None => {
+                let joined = values.join("\n");
+                let hash: String = Sha256::digest(joined.as_bytes()).iter().map(|b| format!("{b:02x}")).collect();
+                let pinned = (pin["length"].as_u64().unwrap(), pin["sha256"].as_str().unwrap().to_string());
+                assert_eq!((joined.len() as u64, hash), pinned, "{name}");
+            }
+        }
+    }
+}
+
+/// SERVER-26 (#7675): one `IfcRelAssociatesMaterial` emits a row per related
+/// element per resolved layer, each cloning the layer's strings. A layer set
+/// that lists one layer 1 000 times, related to 1 000 elements, is 1 000 000
+/// rows from 14 KB of input, and admission charges only the upload size. The
+/// table is budgeted against the input, and the one serializer every route
+/// sends a data model through refuses a model that hit it.
+#[test]
+fn server_26_material_rows_are_budgeted_not_elements_times_layers() {
+    let layers = vec!["#3"; 1_000].join(",");
+    let elements: Vec<String> = (0..1_000).map(|i| format!("#{}", 100 + i)).collect();
+    let ifc = format!(
+        "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n\
+         #2=IFCMATERIAL('Concrete',$,$);\n\
+         #3=IFCMATERIALLAYER(#2,0.1,$,'Core',$,$,$);\n\
+         #4=IFCMATERIALLAYERSET(({layers}),'Wall',$);\n\
+         #5=IFCRELASSOCIATESMATERIAL('Rel0000000000000007675',$,$,$,({}),#4);\n\
+         ENDSEC;\nEND-ISO-10303-21;\n",
+        elements.join(",")
+    );
+    let dm = extract_data_model(&ifc);
+    assert!(
+        dm.materials.len() < 1_000_000,
+        "{} material rows from {} bytes of input",
+        dm.materials.len(),
+        ifc.len()
+    );
+    let refused = crate::services::serialize_data_model_to_parquet(&dm).expect_err("a truncated table was served");
+    assert!(refused.to_string().contains("material"), "{refused}");
+}
+
+/// The budget is relative to the input and binds hostile products, not real
+/// buildups: a few walls with a three-layer set keep every row.
+#[test]
+fn server_26_ordinary_layer_sets_keep_every_row() {
+    let ifc = "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n\
+        #2=IFCMATERIAL('Concrete',$,$);\n\
+        #3=IFCMATERIALLAYER(#2,0.1,$,'Core',$,$,$);\n\
+        #4=IFCMATERIALLAYERSET((#3,#3,#3),'Wall',$);\n\
+        #5=IFCRELASSOCIATESMATERIAL('Rel0000000000000007675',$,$,$,(#10,#11,#12,#13),#4);\n\
+        ENDSEC;\nEND-ISO-10303-21;\n";
+    let dm = extract_data_model(ifc);
+    assert_eq!(dm.materials.len(), 12);
+    crate::services::serialize_data_model_to_parquet(&dm).expect("served");
+}

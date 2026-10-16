@@ -199,7 +199,11 @@ const SCAN_ROOTS = [
 // Re-measured at 35 after adding apps/server/src and rust/export/src for #7673
 // (34 in the first four roots, plus the server's guarded
 // `resolve_complex_property_value`). Set to 34, one candidate of churn.
-const CANDIDATE_FLOOR = 34;
+// Re-measured at 33 when #7687 deleted `advanced_face/polyline.rs`'s
+// non-`try` `sample_curve_polyline` wrapper: the walk is the same guarded
+// `sample_curve_polyline_guarded` self-recursion, one cycle member fewer.
+// Set to 32 to restore a margin of one.
+const CANDIDATE_FLOOR = 32;
 
 /**
  * Allowlist for candidates that are genuinely unguarded and must stay that

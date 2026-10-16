@@ -52,3 +52,5 @@ workspace = true
 [dev-dependencies]
 # Round-trip oracle: the exported terrain is read back by ifc-lite's own LandXML parser.
 ifc-lite-landxml = { workspace = true }
+# Pins long values of the shared #7675 complex-property vector by digest.
+sha2 = { workspace = true }

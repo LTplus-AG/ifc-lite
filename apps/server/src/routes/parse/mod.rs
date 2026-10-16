@@ -8,6 +8,7 @@ pub(crate) mod cache_keys;
 pub(crate) mod cache_read;
 mod cached_replay;
 mod stream_batch;
+mod stream_data_model;
 mod stream_event;
 mod stream_progress;
 mod fetch;

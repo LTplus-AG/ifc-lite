@@ -38,6 +38,12 @@ pub struct LandXmlPipeUnits {
     pub diameter_scale_to_meters: f64,
     pub width_scale_to_meters: f64,
     pub height_scale_to_meters: f64,
+    /// `true` only when these units came from
+    /// `LandXmlLimits::assumed_linear_unit` because the source declares no
+    /// root `LandXML/Units` element (#5175). Absent in older serialized
+    /// records, which were always declared.
+    #[serde(default)]
+    pub assumed: bool,
 }
 
 /// A coordinate authored directly in a pipe-network `Center` element.

@@ -5,7 +5,7 @@
 //! GET cache fetch / check endpoints.
 
 use super::cache_keys::{
-    cache_key_from_parts, data_model_cache_key, has_current_data_model, has_cached_symbolic, has_parquet_metadata,
+    cache_key_from_parts, data_model_cache_key, data_model_refusal_key, has_current_data_model, has_cached_symbolic, has_parquet_metadata,
     parquet_cache_key, parquet_metadata_cache_key, symbolic_cache_key,
 };
 use super::cache_read::{resident_body, sidecar_response};
@@ -44,6 +44,8 @@ pub struct DataModelQuery {
 /// Response:
 /// - 200: Data model Parquet binary
 /// - 202: A fill IS running for this key right now (client should retry)
+/// - 400: The fill refused the model (#7675: a table over its size budget);
+///   the body carries the reason
 /// - 404: Nothing cached for this key and nothing filling it (issue #5129:
 ///   `/parse/parquet/optimized` never triggers a data-model write, so before
 ///   this a client that called only that route polled 202 forever -- the
@@ -59,7 +61,17 @@ pub async fn get_data_model(
     // markers are keyed by the data-model ENTRY, not the request key
     // (#6034): a fill of the full table says nothing about the rooted one.
     let entry_key = data_model_cache_key(&cache_key, query.data_model_entities);
-    sidecar_response(&state, &cache_key, &entry_key, "application/x-parquet-datamodel", "Data model").await
+    match sidecar_response(&state, &cache_key, &entry_key, "application/x-parquet-datamodel", "Data model").await {
+        // Nothing cached and nothing filling: a fill that refused the model
+        // recorded why (#7675), and that reason answers 400 instead of 404.
+        Err(ApiError::NotFound(not_found)) => {
+            match state.cache.read_usable_utf8(&data_model_refusal_key(&entry_key)).await? {
+                Some(reason) => Err(ApiError::BadRequest(reason)),
+                None => Err(ApiError::NotFound(not_found)),
+            }
+        }
+        other => other,
+    }
 }
 
 /// GET /api/v1/parse/symbolic/:cache_key

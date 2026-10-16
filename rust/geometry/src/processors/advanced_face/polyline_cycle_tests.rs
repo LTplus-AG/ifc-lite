@@ -69,7 +69,7 @@ FILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n{data}ENDSEC;\nEND-ISO-10303-21;\n"
 fn sample(content: &str, id: u32) -> Vec<Point3<f64>> {
     let mut decoder = EntityDecoder::new(content);
     let curve = decoder.decode_by_id(id).expect("decode curve");
-    sample_curve_polyline(&curve, &mut decoder, TessellationQuality::default())
+    try_sample_curve_polyline(&curve, &mut decoder, TessellationQuality::default()).expect("not refused")
 }
 
 #[test]
@@ -114,11 +114,10 @@ fn a_long_acyclic_basis_chain_terminates() {
 
 /// #4901, caught in review: `sample_curve_polyline` is the standalone
 /// surface-of-revolution generator-profile path (NOT `sample_bspline_edge_curve`,
-/// which is edge-loop-only), and it re-parses the curve's control points and
-/// calls `evaluate_bspline_curve` directly for its endpoint refinement. The
-/// degree/curve-point bound must apply there too, or a curve that
-/// `sample_bspline_edge_curve` correctly bounds still explodes when reached
-/// through this second, independent call site.
+/// which is edge-loop-only). The degree/curve-point bound must apply there
+/// too, or a curve that `sample_bspline_edge_curve` correctly bounds still
+/// explodes when reached through this second call site. Since #7687 both go
+/// through one parse, which this pins from the standalone side.
 #[test]
 fn pathological_degree_via_standalone_polyline_fails_fast_not_hangs() {
     let data = "\
@@ -131,10 +130,12 @@ fn pathological_degree_via_standalone_polyline_fails_fast_not_hangs() {
     let pts = sample(&wrap(data), 10);
     let elapsed = start.elapsed();
 
-    assert_eq!(
-        pts.len(),
-        1,
-        "a degree past MAX_BSPLINE_DEGREE must degrade to the single start vertex, got {pts:?}"
+    // #7687: the standalone sampler has no start vertex to degrade to. It
+    // used to return the synthetic `(0,0,0)` start it handed the edge
+    // sampler, which a composite edge then spliced into its face loop.
+    assert!(
+        pts.is_empty(),
+        "a degree past MAX_BSPLINE_DEGREE must yield no points, got {pts:?}"
     );
     assert!(
         elapsed < Duration::from_secs(2),

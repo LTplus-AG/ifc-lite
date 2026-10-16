@@ -202,7 +202,7 @@ budget trip on the old implementation, 20 passing zone tests, and the separately
 source-bound 67-test/Clippy run on `e5f4723829`. Its manifest works with the same
 extraction recipe. The original scratch-parser failure remains recorded.
 
-## Current engine and selected browser geometry
+## Source-built engine and selected browser geometry
 
 `current-engine-validation.tar.gz` binds the official WASM build and forced
 viewer build at `440bb1f4f1` to engine SHA-256 `4bce6ba583225eb6feee1d352359c3c12f4590559cb9f2becd48dc14a8b15374`.
@@ -247,3 +247,15 @@ main changes and does not isolate the PR's cost. A bounded read-only inspection
 could not prove the proposed function-cloning cause; no compiler attribute or
 acceptance limit was changed. No accepted worker-pool timing cohort exists.
 Fresh CI and cross-platform determinism remain required before merge.
+
+## Subsequent main integration
+
+`main-integration-ffb96.tar.gz` and its manifest retain the integration of main
+`ffb96cc393` into `1761202310`. Only the geometry module-size checksum required
+manual resolution. The combined rows preserve both sides' stricter allowances;
+independent review verifies all automatic merges and the composed checksum.
+All 16 targeted tests (ratchet, reporter and local frame) and exact workspace
+Clippy pass on the frozen merged source. Use the same extraction recipe above.
+Earlier WASM, browser, performance and determinism proofs keep their recorded
+source identities; they do not qualify this newer integration. Fresh CI remains
+pending, and the earlier performance failures remain unresolved.

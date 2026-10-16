@@ -213,7 +213,7 @@ impl BSplineSurfaceProcessor {
         rtc_file_units: Option<(f64, f64, f64)>,
     ) -> Result<Mesh> {
         let weights = if entity.ifc_type == IfcType::IfcRationalBSplineSurfaceWithKnots {
-            parse_rational_weights(entity)
+            Some(parse_rational_weights(entity)?)
         } else {
             None
         };

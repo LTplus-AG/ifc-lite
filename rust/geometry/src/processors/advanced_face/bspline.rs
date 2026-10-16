@@ -27,6 +27,7 @@ fn bspline_basis_table(degree: usize, u: f64, knots: &[f64], count: usize) -> Ve
     let mut cur: Vec<f64> = (0..width)
         .map(|i| if knots[i] <= u && u < knots[i + 1] { 1.0 } else { 0.0 })
         .collect();
+    close_end_span(&mut cur, degree, u, knots);
 
     for k in 1..=degree {
         if cur.len() <= 1 {
@@ -58,6 +59,25 @@ fn bspline_basis_table(degree: usize, u: f64, knots: &[f64], count: usize) -> Ve
     }
     cur.resize(count, 0.0);
     cur
+}
+
+/// Close the last non-empty level-0 span at the domain end `t_max =
+/// knots[len - degree - 1]` (#7687, PROC-S2). Spans are half-open, and a
+/// clamped knot vector (end multiplicity degree+1, the normal case) has no
+/// span starting at `t_max`, so `u == t_max` set no span, every basis value
+/// was 0 and the curve evaluated to the ORIGIN. This is the standard special
+/// case (Piegl & Tiller, A2.1). It fires only when no half-open span already
+/// holds `u`, so an unclamped end, where one does, keeps its single span.
+fn close_end_span(level0: &mut [f64], degree: usize, u: f64, knots: &[f64]) {
+    let Some(&t_max) = knots.len().checked_sub(degree + 1).and_then(|i| knots.get(i)) else {
+        return;
+    };
+    if u != t_max || level0.contains(&1.0) {
+        return;
+    }
+    if let Some(i) = (0..level0.len()).rev().find(|&i| knots[i] < knots[i + 1] && knots[i + 1] == u) {
+        level0[i] = 1.0;
+    }
 }
 
 /// Evaluate a single B-spline basis function `N_{i,p}(u)`. Test-only:

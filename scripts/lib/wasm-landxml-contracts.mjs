@@ -110,7 +110,7 @@ const CURVE_IRREGULAR_CASES = [
   ['near-miss', '<Curve rot="ccw" radius="1"><Start>0 1</Start><Center>0 0</Center><End>0 -1</End></Curve><IrregularLine><Start>0 -1</Start><PntList2D>-2 -1 -2 2 -0.1 1.1</PntList2D><End>0 1</End></IrregularLine>'],
 ];
 
-const PIPE_XML = `<?xml version="1.0" encoding="UTF-8"?>
+export const PIPE_XML = `<?xml version="1.0" encoding="UTF-8"?>
 <LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2"><Units><Metric linearUnit="meter" diameterUnit="millimeter" flowUnit="cubicMeterPerSecond"/></Units><PipeNetworks name="collection"><PipeNetwork name="storm" pipeNetType="storm"><Structs><Struct name="A" elevRim="9" elevSump="4"><Center>0 0 5</Center><CircStruct diameter="1" material="concrete"/><Invert refPipe="P" flowDir="out" elev="4"/><StructFlow lossIn="1" lossOut="2"/></Struct><Struct name="B"><Center>0 10 3</Center><RectStruct length="2" width="1"/><Invert refPipe="P" flowDir="in" elev="2"/></Struct></Structs><Pipes><Pipe name="P" refStart="A" refEnd="B" length="10"><CircPipe diameter="600" thickness="20" material="PVC"/><PipeFlow flowIn="4.2"/></Pipe></Pipes></PipeNetwork></PipeNetworks></LandXML>`;
 
 function utf16Le(text) {

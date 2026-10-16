@@ -91,7 +91,7 @@ fn resolve_edge_points(
     }
     match edge.ifc_type {
         IfcType::IfcEdgeCurve => {
-            sample_edge_curve_points(edge, true, decoder, quality).ok_or_else(|| {
+            sample_edge_curve_points(edge, true, decoder, quality)?.ok_or_else(|| {
                 crate::Error::geometry(format!(
                     "IfcEdgeCurve #{} has no resolvable endpoints",
                     edge.id

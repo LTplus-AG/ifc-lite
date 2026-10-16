@@ -147,6 +147,12 @@ impl RtcVerdict {
     }
 }
 
+// The `IfcComplexProperty` walk policy (#7675) lives in its own file for the
+// module-size rule; its items are this module's, so every path stays
+// `ifc_lite_core::limits::*`.
+mod complex_property;
+pub use complex_property::*;
+
 #[cfg(test)]
 mod tests {
     use super::*;

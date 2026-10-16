@@ -10,6 +10,7 @@ use super::types::{EntityJob, MaterialAssociation};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use rayon::prelude::*;
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 /// One resolved material layer (intermediate, before element fan-out).
@@ -270,13 +271,40 @@ fn resolve_definition(
     }
 }
 
-/// Extract material associations (`IfcRelAssociatesMaterial`).
+/// Bytes of material rows the table may hold per input byte (floored at
+/// [`MATERIAL_TABLE_MIN_BYTES`]). One `IfcRelAssociatesMaterial` emits a row
+/// per related element per resolved layer, each cloning the layer's strings,
+/// so the table grows as elements x layers while the input grows as elements
+/// plus layers: a set listing one layer 1 000 times, related to 1 000 elements,
+/// was 1 000 000 rows from 8 KB (#7675, SERVER-26). A real element costs the
+/// file far more than its rows cost the table (its own record, placement and
+/// geometry), so 16 bytes per input byte binds only that product. A refusal
+/// fails the whole response on the routes that carry geometry and the data
+/// model together; the 121-fixture corpus peaks at 1.16% of this budget, and
+/// this constant is the knob if a real file ever meets it.
+const MATERIAL_TABLE_BYTES_PER_INPUT_BYTE: usize = 16;
+const MATERIAL_TABLE_MIN_BYTES: usize = 16 << 20;
+
+/// What one row built from `layer` holds: the row plus its owned strings.
+fn row_bytes(layer: &ResolvedLayer) -> usize {
+    let text = |s: &Option<String>| s.as_ref().map_or(0, String::len);
+    std::mem::size_of::<MaterialAssociation>()
+        + layer.kind.len()
+        + layer.material_name.len()
+        + text(&layer.set_name)
+        + text(&layer.member_name)
+        + text(&layer.material_category)
+        + text(&layer.category)
+}
+
+/// Extract material associations (`IfcRelAssociatesMaterial`). `Err` names the
+/// budget the table hit; nothing past it is built.
 pub(super) fn extract_materials(
     jobs: &[EntityJob],
     content: &[u8],
     entity_index: &Arc<ifc_lite_core::EntityIndex>,
     units: &MaterialUnitContext,
-) -> Vec<MaterialAssociation> {
+) -> Result<Vec<MaterialAssociation>, String> {
     let rel_jobs: Vec<_> = jobs
         .iter()
         .filter(|job| {
@@ -288,55 +316,66 @@ pub(super) fn extract_materials(
     tracing::debug!(count = rel_jobs.len(), "Extracting materials");
 
     let usages = UsageTerminals::default();
-    rel_jobs
+    let budget = content.len().saturating_mul(MATERIAL_TABLE_BYTES_PER_INPUT_BYTE).max(MATERIAL_TABLE_MIN_BYTES);
+    let used = AtomicUsize::new(0);
+    let refusal = || {
+        format!(
+            "material associations exceed {budget} bytes for a {}-byte file (elements x layers)",
+            content.len()
+        )
+    };
+    let tables: Vec<Vec<MaterialAssociation>> = rel_jobs
         .par_iter()
-        .flat_map(|job| {
+        .map(|job| {
             let mut decoder =
                 EntityDecoder::with_arc_index(content, entity_index.clone());
             let Ok(rel) = decoder.decode_at(job.start, job.end) else {
-                return Vec::new();
+                return Ok(Vec::new());
             };
             let related = super::related_object_ids(&rel);
             // RelatingMaterial is attribute 5.
             let Some(material_id) = rel.get_ref(5) else {
-                return Vec::new();
+                return Ok(Vec::new());
             };
-            let mut resolved_by_scale: HashMap<u64, Vec<ResolvedLayer>> = HashMap::new();
-            related
-                .into_iter()
-                .flat_map(|element_id| {
-                    let scale = units.scale_for(element_id);
-                    let layers = resolved_by_scale
-                        .entry(scale.to_bits())
-                        .or_insert_with(|| resolve_material(&mut decoder, &usages, material_id, scale));
-                    if units.has_mixed_type_scales(element_id)
-                        && layers.iter().any(|layer| layer.thickness.is_some())
-                    {
-                        return Vec::new();
-                    }
-                    layers
-                        .iter()
-                        .map(move |layer| MaterialAssociation {
-                            element_id,
-                            association_id: job.id,
-                            definition_id: material_id,
-                            member_count: layer.member_count,
-                            kind: layer.kind.to_string(),
-                            set_name: layer.set_name.clone(),
-                            layer_index: layer.layer_index,
-                            material_name: layer.material_name.clone(),
-                            material_name_present: layer.material_name_present,
-                            material_id: layer.material_id,
-                            member_name: layer.member_name.clone(),
-                            material_category: layer.material_category.clone(),
-                            fraction: layer.fraction,
-                            thickness: layer.thickness,
-                            is_ventilated: layer.is_ventilated,
-                            category: layer.category.clone(),
-                        })
-                        .collect::<Vec<_>>()
-                })
-                .collect()
+            let mut resolved_by_scale: HashMap<u64, (Vec<ResolvedLayer>, usize)> = HashMap::new();
+            let mut rows = Vec::new();
+            for element_id in related {
+                let scale = units.scale_for(element_id);
+                let (layers, bytes) = resolved_by_scale.entry(scale.to_bits()).or_insert_with(|| {
+                    let layers = resolve_material(&mut decoder, &usages, material_id, scale);
+                    let bytes = layers.iter().map(row_bytes).sum();
+                    (layers, bytes)
+                });
+                if units.has_mixed_type_scales(element_id)
+                    && layers.iter().any(|layer| layer.thickness.is_some())
+                {
+                    continue;
+                }
+                // Charged before the rows exist, across every job.
+                if used.fetch_add(*bytes, Ordering::Relaxed).saturating_add(*bytes) > budget {
+                    return Err(refusal());
+                }
+                rows.extend(layers.iter().map(|layer| MaterialAssociation {
+                    element_id,
+                    association_id: job.id,
+                    definition_id: material_id,
+                    member_count: layer.member_count,
+                    kind: layer.kind.to_string(),
+                    set_name: layer.set_name.clone(),
+                    layer_index: layer.layer_index,
+                    material_name: layer.material_name.clone(),
+                    material_name_present: layer.material_name_present,
+                    material_id: layer.material_id,
+                    member_name: layer.member_name.clone(),
+                    material_category: layer.material_category.clone(),
+                    fraction: layer.fraction,
+                    thickness: layer.thickness,
+                    is_ventilated: layer.is_ventilated,
+                    category: layer.category.clone(),
+                }));
+            }
+            Ok(rows)
         })
-        .collect()
+        .collect::<Result<_, String>>()?;
+    Ok(tables.into_iter().flatten().collect())
 }

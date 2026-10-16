@@ -12,6 +12,7 @@ pub mod alignment;
 mod capture;
 mod limits;
 mod model;
+mod numeric;
 mod parser;
 mod pipe_parser;
 mod pipes;

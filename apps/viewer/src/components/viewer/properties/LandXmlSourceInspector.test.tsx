@@ -51,7 +51,7 @@ describe('LandXML alignment probe input', () => {
 function pipeDocument(): LandXmlTinDocument {
   const result = document();
   const metre = { value: 1, unit: 'meter', meters: 1 };
-  const units = { linearUnit: 'meter', elevationUnit: 'meter', diameterUnit: 'meter', widthUnit: 'meter', heightUnit: 'meter', flowUnit: 'cubicMeterPerSecond', linearScaleToMeters: 1, elevationScaleToMeters: 1, diameterScaleToMeters: 1, widthScaleToMeters: 1, heightScaleToMeters: 1 };
+  const units = { linearUnit: 'meter', elevationUnit: 'meter', diameterUnit: 'meter', widthUnit: 'meter', heightUnit: 'meter', flowUnit: 'cubicMeterPerSecond', linearScaleToMeters: 1, elevationScaleToMeters: 1, diameterScaleToMeters: 1, widthScaleToMeters: 1, heightScaleToMeters: 1, assumed: false };
   const pipeId = 'pipe';
   result.pipeNetworks = {
     schema: 'LandXML-1.2', version: '1.2', capabilityDiagnostics: [], rootUnits: units,

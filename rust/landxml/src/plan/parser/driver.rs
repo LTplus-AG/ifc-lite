@@ -110,7 +110,7 @@ impl Parser<'_> {
                 .as_deref()
                 .map(area_scale)
                 .transpose()?
-                .or(Some(declared_units.linear_scale_to_meters.powi(2)));
+                .or(Some(crate::semantics::square_scale(&declared_units)));
             self.units = Some(declared_units);
         }
         let legal_cg_points = self.path(&["LandXML", "CgPoints"])

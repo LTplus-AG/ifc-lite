@@ -13,7 +13,7 @@ use super::super::helpers::get_axis2_placement_transform_by_id;
 use super::bounds::extract_face_bounds;
 use super::bspline::tessellate_bspline_surface;
 use super::bspline_budget::{MAX_BSPLINE_DEGREE, MAX_BSPLINE_SURFACE_SAMPLE_WORK};
-use super::bspline_parse::{parse_control_points, parse_knot_vectors};
+use super::bspline_parse::{check_weights_match, parse_control_points, parse_knot_vectors};
 use super::edge_loop::extract_edge_loop_points_for_bounds;
 
 /// Process a planar or boundary-represented face.
@@ -186,6 +186,10 @@ pub(crate) fn process_bspline_face(
         point.z -= rtc.2;
     }
 
+    if let Some(weights) = weights {
+        check_weights_match(weights, &control_points)?;
+    }
+
     // Parse knot vectors
     let (u_knots, v_knots) = parse_knot_vectors(bspline)?;
 
@@ -237,7 +241,7 @@ pub(super) fn process_cylindrical_face(
     // glazing-mullion fillet faces in IFC4 door exports, where each
     // cylindrical face has B-spline edge curves running along the surface.
     let boundary_points: Vec<Point3<f64>> =
-        extract_edge_loop_points_for_bounds(face, decoder, quality);
+        extract_edge_loop_points_for_bounds(face, decoder, quality)?;
 
     if boundary_points.is_empty() {
         return Ok((Vec::new(), Vec::new()));

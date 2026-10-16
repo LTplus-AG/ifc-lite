@@ -66,9 +66,12 @@ pub fn parse_landxml_plan_with_cancel(
     if input.len() > limits.xml.max_bytes {
         return Err(error(Code::InputTooLarge, "input exceeds byte limit"));
     }
+    // #5175 / EDGE-LXPARSE-7 (#7693): refuse a bad override token before
+    // any XML is read, exactly as the TIN entry point does.
+    let assumed_units = crate::semantics::resolve_assumed_units(&limits.xml)?;
     let input = normalize_encoding(input, &limits.xml, cancelled)?;
     preflight_xml_tokens(&input, &limits.xml, cancelled)?;
-    let mut parser = Parser::new(limits, cancelled);
+    let mut parser = Parser::new(limits, cancelled, assumed_units);
     let mut reader = Reader::from_reader(input.as_slice());
     reader.config_mut().trim_text(false);
     let mut buffer = Vec::new();
@@ -102,6 +105,8 @@ pub(crate) struct Parser<'a> {
     pub(super) references: usize,
     pub(super) frames: Vec<Frame>,
     pub(super) units: Option<LandXmlUnits>,
+    /// Effective only when the source declares no `LandXML/Units` (#5175).
+    pub(super) assumed_units: Option<LandXmlUnits>,
     pub(super) area_unit: Option<String>,
     pub(super) area_scale_to_square_meters: Option<f64>,
     pub(super) schema: String,
@@ -129,7 +134,11 @@ pub(crate) struct Parser<'a> {
     pub(super) parcel_ordinal: usize,
 }
 impl<'a> Parser<'a> {
-    fn new(limits: &LandXmlPlanLimits, cancelled: Option<&'a dyn LandXmlCancellation>) -> Self {
+    fn new(
+        limits: &LandXmlPlanLimits,
+        cancelled: Option<&'a dyn LandXmlCancellation>,
+        assumed_units: Option<LandXmlUnits>,
+    ) -> Self {
         Self {
             limits: limits.clone(),
             cancelled,
@@ -138,6 +147,7 @@ impl<'a> Parser<'a> {
             references: 0,
             frames: Vec::new(),
             units: None,
+            assumed_units,
             area_unit: None,
             area_scale_to_square_meters: None,
             schema: String::new(),
@@ -208,7 +218,10 @@ impl<'a> Parser<'a> {
 }
 
 impl Parser<'static> {
-    pub(crate) fn new_stream(limits: LandXmlPlanLimits) -> Self {
-        Self::new(&limits, None)
+    pub(crate) fn new_stream(
+        limits: LandXmlPlanLimits,
+        assumed_units: Option<LandXmlUnits>,
+    ) -> Self {
+        Self::new(&limits, None, assumed_units)
     }
 }

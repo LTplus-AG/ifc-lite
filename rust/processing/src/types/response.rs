@@ -187,9 +187,11 @@ pub struct ProcessingStats {
     /// clean file's response is byte-identical to before.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub refused_input_elements: u64,
-    /// Records the native pass's geometry pre-pass refused for the same
-    /// reason: style and colour values (the element falls back to its
-    /// default colour) and unit factors (#7678, D3). Omitted when zero.
+    /// Records the native pass's pre-pass decoders refused for the same
+    /// reason (#7678, D3). They read styles and colours (a refused style
+    /// falls back to the default colour, counted only here), unit factors,
+    /// voids and the geometry records RTC detection samples. Omitted when
+    /// zero.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub refused_prepass_records: u64,
     /// CartesianPoints served from the per-worker point cache while meshing

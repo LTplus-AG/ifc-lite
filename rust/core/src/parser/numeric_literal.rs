@@ -75,15 +75,15 @@ pub fn step_numeric_literal_len(bytes: &[u8]) -> Option<usize> {
 /// `1.E400` overflows `f64`, and `1.E39` overflows the `f32` the coordinate
 /// fast paths read into. A refused literal has two consumers:
 ///
-/// - geometry, placement and unit readers refuse it. The fast paths answer
-///   `None`; the tokenizer yields `Token::UnrepresentableReal` and
-///   `EntityDecoder` refuses the record with
+/// - geometry refuses it. The fast paths answer `None` in every mode; the
+///   tokenizer yields `Token::UnrepresentableReal`, and a geometry decoder
+///   (`EntityDecoder::with_strict_reals`) refuses the record with
 ///   `Error::UnrepresentableReal`, so the element fails closed and is
-///   counted;
-/// - the data model and exporters keep it: a lossless decode
-///   (`EntityDecoder::decode_by_id_lossless`, or a decoder built with
-///   `with_lossless_reals`) reads the record as before, the literal as a
-///   signed infinity, so an out-of-range quantity survives into the output.
+///   counted. An object definition (a product's own record) is admitted:
+///   its reals are descriptive, never geometry;
+/// - everything else keeps it: the default decoder is lossless and reads
+///   the record as before, the literal as a signed infinity, so the data
+///   model, exporters and georeferencing never lose an entity to it.
 ///
 /// Only overflow is refused. `-0.` stays `-0.0`, sign bit included, and an
 /// underflowing literal (`1.E-400`) still reads as the zero it rounds to.

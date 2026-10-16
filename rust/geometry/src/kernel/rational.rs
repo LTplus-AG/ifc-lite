@@ -276,10 +276,8 @@ pub(crate) fn lambda_of(p: &ImplicitPoint) -> (V3, BigRational) {
     }
 }
 
-/// Exact `orient3d`, any explicit/implicit mix in any slot (#7677): the fallback for
-/// orders the arrangement never builds. Degenerate (`d == 0`) is Zero, as `assemble_sign` says.
-#[cold]
-#[inline(never)]
+/// Exact `orient3d`, any explicit/implicit mix in any slot (#7677); degenerate (`d == 0`) is Zero.
+#[cold] #[inline(never)] // keeps the Shewchuk fast path in `predicates::orient3d` as it was
 pub fn orient3d_points(a: &ImplicitPoint, b: &ImplicitPoint, c: &ImplicitPoint, d: &ImplicitPoint) -> Sign {
     let pts = [a, b, c, d];
     if pts.iter().any(|p| lambda_of(p).1.is_zero()) { return Sign::Zero; }

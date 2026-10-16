@@ -94,7 +94,9 @@ impl From<ifc_lite_geometry::ExtractedProfile> for ProfileEntryJs {
             outer_points: p.outer_points,
             hole_counts: p.hole_counts,
             hole_points: p.hole_points,
-            transform: p.transform,
+            // The JS surface stays a Float32Array (D12): narrowed here, once,
+            // exactly where the extractor used to narrow it.
+            transform: p.transform.map(|v| v as f32),
             extrusion_dir: p.extrusion_dir,
             extrusion_depth: p.extrusion_depth,
             model_index: p.model_index,

@@ -71,7 +71,7 @@ fn both_walks(links: usize) -> (f64, f64) {
     let profiles = crate::profile_extractor::extract_profiles(&content, 0);
     assert_eq!(profiles.len(), 1, "the wall yields one drawing profile");
     // Column-major: the translation is elements 12..15; WebGL X is IFC X.
-    let extractor_x = profiles[0].transform[12] as f64;
+    let extractor_x = profiles[0].transform[12];
 
     (router_x, extractor_x)
 }

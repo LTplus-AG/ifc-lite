@@ -6,7 +6,8 @@ use crate::{Error, Mesh, Point3, Result, TessellationQuality};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 
 use super::super::advanced_face::process_advanced_face;
-use super::super::helpers::{extract_loop_points_by_id, FaceData};
+use super::super::advanced_face::note_face_refused;
+use super::super::helpers::{read_loop_points_by_id, FaceData};
 use super::faceted::FacetedBrepProcessor;
 use crate::router::GeometryProcessor;
 
@@ -100,6 +101,8 @@ fn mesh_face_collections(
                     None => continue,
                 };
 
+                let bound_count = bound_ids.len();
+                let mut degenerate = 0usize;
                 let mut outer_points: Option<Vec<Point3<f64>>> = None;
                 let mut hole_points: Vec<Vec<Point3<f64>>> = Vec::new();
 
@@ -111,10 +114,15 @@ fn mesh_face_collections(
                             None => continue,
                         };
 
-                    let mut points = match extract_loop_points_by_id(loop_id, decoder) {
+                    let mut points = match read_loop_points_by_id(loop_id, decoder) {
                         Some(p) => p,
                         None => continue,
                     };
+                    // Readable but under three points: degenerate, skipped.
+                    if points.len() < 3 {
+                        degenerate += 1;
+                        continue;
+                    }
 
                     if !orientation {
                         points.reverse();
@@ -133,6 +141,14 @@ fn mesh_face_collections(
                     } else {
                         hole_points.push(points);
                     }
+                }
+
+                // A bound that does not read refuses the face (D14, under
+                // D3), as in `FacetedBrepProcessor`.
+                let read = hole_points.len() + usize::from(outer_points.is_some()) + degenerate;
+                if read < bound_count {
+                    note_face_refused();
+                    continue;
                 }
 
                 // Triangulate the face through the shared FacetedBrep face
@@ -154,6 +170,9 @@ fn mesh_face_collections(
                             &face_data,
                             rtc_file_units.unwrap_or((0.0, 0.0, 0.0)),
                         );
+                        if result.refused {
+                            note_face_refused();
+                        }
                         let base_idx = (all_positions.len() / 3) as u32;
                         all_positions.extend(result.positions);
                         for idx in result.indices {

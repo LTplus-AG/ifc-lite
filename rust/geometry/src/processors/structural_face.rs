@@ -8,7 +8,7 @@ use crate::router::GeometryProcessor;
 use crate::{Error, Mesh, Result, TessellationQuality};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 
-use super::advanced_face::process_advanced_face;
+use super::advanced_face::{apply_same_sense, process_advanced_face};
 
 pub struct IfcFaceSurfaceProcessor;
 
@@ -33,8 +33,14 @@ impl IfcFaceSurfaceProcessor {
         if surface.ifc_type != IfcType::IfcPlane {
             return Ok(Mesh::new());
         }
-        let (positions, indices) =
-            process_advanced_face(entity, decoder, quality, rtc_file_units)?;
+        // A standalone analysis face has no closed shell to orient it, and its
+        // `SameSense` is the member's own reference side (#5026): the reversal
+        // `process_advanced_face` no longer applies to loop-derived planar
+        // faces of a Brep (#7686, PROC-S16) stays here.
+        let (positions, indices) = apply_same_sense(
+            entity,
+            process_advanced_face(entity, decoder, quality, rtc_file_units),
+        )?;
         Ok(Mesh {
             positions,
             normals: Vec::new(),

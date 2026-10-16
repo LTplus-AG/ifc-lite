@@ -6,8 +6,6 @@
 //! never synthetic parser vectors. They deliberately skip on a fresh clone;
 //! `pnpm fixtures <path>` fetches the exact, hash-pinned source bytes.
 
-use std::{fs, io::ErrorKind, path::PathBuf};
-
 use ifc_lite_landxml::{
     alignment::parse_landxml_alignments_optional, parse_landxml_document, parse_landxml_tin,
     LandXmlDiagnosticCode, LandXmlLimits, LandXmlStreamSummary, LandXmlTinStreamSession,
@@ -32,22 +30,9 @@ struct FederationControlPoint {
 }
 
 fn fixture(path: &str) -> Option<Vec<u8>> {
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let absolute = root.join("tests/models").join(path);
-    match fs::read(&absolute) {
-        Ok(bytes) => Some(bytes),
-        Err(error) if error.kind() == ErrorKind::NotFound => {
-            eprintln!(
-                "SKIP #5051 mandatory producer row (unproven): {} is absent; run `pnpm fixtures {path}`",
-                absolute.display()
-            );
-            None
-        }
-        Err(error) => panic!(
-            "could not read producer fixture {}: {error}",
-            absolute.display()
-        ),
-    }
+    // A missing producer row is a skip locally and a failure under
+    // `IFC_LITE_REQUIRE_FIXTURES=1` (it used to skip silently in CI, #2802).
+    ifc_lite_testkit::fixture_bytes(path)
 }
 
 fn contains_ascii(bytes: &[u8], needle: &str) -> bool {

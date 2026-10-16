@@ -378,3 +378,30 @@ fn issue_4404_opening_companions_share_the_aggregate_geometry_budget() {
     assert_eq!(error,budget::BUDGET_ERROR);
     assert!(budget.exhausted);
 }
+
+/// PROCESSING-APP-2 (#7677): a Body shared with a type's IfcRepresentationMap
+/// is cloned for the occurrence, copying the file's attribute 0 verbatim. A
+/// file-supplied `*` there used to reach `unreachable!` in the private wire
+/// writer, which aborts the wasm instance under `panic = 'abort'`. It is now a
+/// per-product exclusion, and the well-formed twin still converts.
+#[test]
+fn issue_7677_derived_context_on_shared_body_is_excluded_not_a_panic() {
+    let shared_body = |context: &str| crate::appearance::tests::CONTROLLED_IFC.replace("ENDSEC;\nEND-ISO-10303-21;", &format!(
+        "#40=IFCBUILDINGELEMENTPROXY('1ProxySharedBody000001',$,'Shared',$,$,#41,#42,$,$);\n\
+         #41=IFCLOCALPLACEMENT($,#5);\n#42=IFCPRODUCTDEFINITIONSHAPE($,$,(#43));\n\
+         #43=IFCSHAPEREPRESENTATION({context},'Body','CSG',(#44));\n#44=IFCBLOCK(#5,1.,1.,1.);\n\
+         #45=IFCSTYLEDITEM(#44,(#46),$);\n#46=IFCSURFACESTYLE('Grey',.BOTH.,(#47));\n\
+         #47=IFCSURFACESTYLERENDERING(#48,0.,$,$,$,$,$,$,.NOTDEFINED.);\n#48=IFCCOLOURRGB($,0.5,0.5,0.5);\n\
+         #49=IFCREPRESENTATIONMAP(#5,#43);\nENDSEC;\nEND-ISO-10303-21;"));
+    let mut request = request();
+    request.product_ids = vec![40];
+    request.next_express_id = 100;
+    let accepted = plan_appearance(shared_body("#2").as_bytes(), &request).unwrap();
+    assert!(accepted.exclusions.is_empty(), "{:?}", accepted.exclusions);
+    assert_eq!(accepted.conversions.len(), 1);
+    assert_ne!(accepted.conversions[0].representation_id, 43, "a shared Body is cloned, not edited");
+    let refused = plan_appearance(shared_body("*").as_bytes(), &request).unwrap();
+    assert_eq!(refused.exclusions.len(), 1, "{:?}", refused.exclusions);
+    assert!(refused.exclusions[0].reason.contains("ContextOfItems"), "{:?}", refused.exclusions);
+    assert!(refused.conversions.is_empty() && refused.created.is_empty() && refused.edits.is_empty());
+}

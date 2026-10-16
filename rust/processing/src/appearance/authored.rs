@@ -54,12 +54,13 @@ fn valid_guid(value: &str) -> bool {
             .bytes()
             .all(|c| c.is_ascii_alphanumeric() || c == b'_' || c == b'$')
 }
-// Only our fixed authored schema rows reach this conversion: file-supplied
-// aggregate values are never recursively cloned or reinterpreted here.
+// Our fixed authored schema rows reach this conversion, plus the shallow
+// attribute copies of an evaluated Body or layer clone, so it is total over
+// `AttributeValue` (#7677): a file-supplied `*` is written back as `*`.
 // Core spells a type-qualified value `IFCTEXT('x')` as the two-element list
 // [type-name, value]; the host writer takes the explicit `typed` marker and
 // resolves the type's EXPRESS base from its registry spelling (`IfcText`).
-fn wire(value: &A) -> Value {
+pub(super) fn wire(value: &A) -> Value {
     match value {
         A::EntityRef(id) => reference(*id),
         A::Null => Value::Null,

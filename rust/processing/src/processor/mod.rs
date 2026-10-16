@@ -518,7 +518,8 @@ fn process_geometry_streaming_filtered_with_options_and_ids(
     let mut decoder = match &provided_index {
         Some(idx) => EntityDecoder::with_arc_index(content, idx.clone()),
         None => EntityDecoder::new(content),
-    };
+    }
+    .with_strict_reals(); // geometry pre-pass: refuses unrepresentable reals (#7678)
     tracing::debug!("Entity index will be built inline during the scan");
 
     // Styled items / indexed colour maps / material chain / voids / fills /
@@ -1172,6 +1173,7 @@ fn process_geometry_streaming_filtered_with_options_and_ids(
     let mut current_chunk_size = initial_chunk_size;
 
     let mut deferred_styles_applied = !defer_style_updates;
+    let mut deferred_style_refusals = 0u64;
 
     // Every request-local diagnostic sink for this pass, declared and drained as
     // one subject — see `diagnostics::DiagnosticCollectors`.
@@ -1463,11 +1465,13 @@ fn process_geometry_streaming_filtered_with_options_and_ids(
                 // block, so deferred and up-front resolution cannot drift.
                 let mut rebuilt_styles = {
                     let mut style_decoder =
-                        entity_index_arc.decoder(content);
-                    crate::prepass::resolve_styled_item_spans(
+                        entity_index_arc.decoder(content).with_strict_reals();
+                    let styles = crate::prepass::resolve_styled_item_spans(
                         &deferred_styled_item_positions,
                         &mut style_decoder,
-                    )
+                    );
+                    deferred_style_refusals += style_decoder.refused_real_records();
+                    styles
                 };
                 crate::prepass::merge_indexed_colours(&mut rebuilt_styles, &indexed_colour_index);
                 geometry_style_index = Arc::new(rebuilt_styles);
@@ -1498,6 +1502,8 @@ fn process_geometry_streaming_filtered_with_options_and_ids(
     let products_with_failures = ifc_lite_geometry::count_attributed_products(&csg_failures);
     let backstop_dropped = diag_collectors.backstop.into_inner();
     let refused_input_elements = diag_collectors.refused_input.into_inner();
+    // Styles, colours and unit factors the pre-pass refused (#7678).
+    let refused_prepass_records = decoder.refused_real_records() + deferred_style_refusals;
     // #3421/#3752: refused, not wrapped; surfaced below via GeometryDiagnostics.
     let oversized_ref_drops = diag_collectors.oversized_ref_drops.into_inner();
     let point_cache_hits = point_cache_hits_collector.into_inner();
@@ -1627,6 +1633,7 @@ fn process_geometry_streaming_filtered_with_options_and_ids(
             products_with_failures,
             degenerate_triangles_dropped: backstop_dropped,
             refused_input_elements,
+            refused_prepass_records,
             point_cache_hits,
             point_cache_misses,
             faceted_brep_time_ms,

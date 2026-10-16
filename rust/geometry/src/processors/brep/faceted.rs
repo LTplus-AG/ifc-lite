@@ -302,7 +302,13 @@ impl FacetedBrepProcessor {
                 };
                 let mut points = match self.extract_loop_points_fast(loop_id, decoder) {
                     Some(p) => p,
-                    None => continue,
+                    // A loop point refused by input admission fails the whole
+                    // brep, counted, instead of opening the shell (#7678);
+                    // a genuinely corrupt loop is still skipped, as before.
+                    None => match decoder.polyloop_refusal(loop_id) {
+                        Some(refused) => return Err(refused.into()),
+                        None => continue,
+                    },
                 };
                 if !orientation {
                     points.reverse();

@@ -801,11 +801,11 @@ fn get_face_bound_fast_reads_the_outer_bound_keyword_in_any_case_7689() {
     assert_eq!(decoder.get_face_bound_fast(5), Some((4, true, false)), "a comment never names the type");
 }
 
-/// #7678 (S6a): every STEP float reader in core, the full decode, the fast
-/// cartesian-point path and both coordinate-list fast paths, refuses an
-/// overflowing literal, so no reader hands geometry an infinity another one
-/// would have refused. The finite twin of each record still decodes, `-0.`
-/// with its sign bit.
+/// #7678 (S6a): a STRICT (geometry) decoder refuses an overflowing literal in
+/// the full decode, and the fast cartesian-point and coordinate-list paths
+/// refuse it in every mode, so no geometry reader is handed an infinity. The
+/// default decoder is LOSSLESS, as before #7678, so a data reader that is not
+/// opted in still reads the record. `-0.` keeps its sign bit throughout.
 #[test]
 fn every_float_reader_refuses_an_overflowing_literal_and_keeps_negative_zero() {
     let content = "\
@@ -813,24 +813,46 @@ fn every_float_reader_refuses_an_overflowing_literal_and_keeps_negative_zero() {
 #2=IFCCARTESIANPOINT((-0.,0.,0.));
 #3=IFCCARTESIANPOINTLIST3D(((0.,0.,0.),(1.E39,0.,0.)));
 #4=IFCCARTESIANPOINTLIST3D(((-0.,0.,0.),(1.E38,0.,0.)));
+#5=IFCDOOR('g',$,'D',$,$,$,$,$,1.E400,0.9,$,$,$);
+#6=IFCPOLYLOOP((#2,#1,#2));
 ";
-    let mut decoder = EntityDecoder::new(content);
+    // Default: lossless, nothing refused or counted.
+    let mut lossless = EntityDecoder::new(content);
+    assert!(!lossless.strict_reals());
+    let kept = lossless.decode_by_id(1).expect("lossless by default");
+    assert_eq!(kept.get_list(0).and_then(|l| l[0].as_float()), Some(f64::INFINITY));
+    assert_eq!(lossless.refused_real_records(), 0);
+
+    let mut decoder = EntityDecoder::new(content).with_strict_reals();
     assert!(
         matches!(decoder.decode_by_id(1), Err(Error::UnrepresentableReal(1))),
-        "full decode admitted 1.E400"
+        "strict full decode admitted 1.E400"
     );
     assert_eq!(decoder.refused_real_records(), 1, "the refusal is counted");
     assert_eq!(decoder.get_cartesian_point_fast(1), None, "fast point admitted 1.E400");
 
-    // The data model reads the same record losslessly, as before #7678 ...
+    // The D14 seam reads the same record losslessly ...
     let kept = decoder.decode_by_id_lossless(1).expect("lossless read");
     assert_eq!(kept.get_list(0).and_then(|l| l[0].as_float()), Some(f64::INFINITY));
     // ... without caching it, so geometry still sees it refused.
     assert!(matches!(decoder.decode_by_id(1), Err(Error::UnrepresentableReal(1))));
     assert_eq!(decoder.refused_real_records(), 2);
-    let mut lossless = EntityDecoder::new(content).with_lossless_reals();
-    assert!(lossless.decode_by_id(1).is_ok());
-    assert_eq!(lossless.refused_real_records(), 0);
+
+    // A product record is admitted even when strict: its overflowing
+    // OverallHeight is descriptive, not geometry, and refusing it would lose
+    // the door's finite mesh.
+    let door = decoder.decode_by_id(5).expect("a product is admitted");
+    assert_eq!(door.get_float(8), Some(f64::INFINITY));
+    assert_eq!(decoder.refused_real_records(), 2, "an admitted product is not counted");
+
+    // A polyloop whose fast read failed reports the counted admission
+    // refusal, in either mode, so a reader can fail the item.
+    assert_eq!(decoder.get_polyloop_coords_cached(6), None);
+    assert!(matches!(decoder.polyloop_refusal(6), Some(Error::UnrepresentableReal(1))));
+    assert_eq!(decoder.refused_real_records(), 3);
+    assert!(matches!(lossless.polyloop_refusal(6), Some(Error::UnrepresentableReal(1))));
+    assert!(matches!(decoder.refuse_record(3), Error::UnrepresentableReal(3)));
+    assert_eq!(decoder.refused_real_records(), 4);
 
     let neg = decoder.decode_by_id(2).expect("-0. decodes");
     let x = neg.get_list(0).and_then(|l| l[0].as_float()).expect("x");

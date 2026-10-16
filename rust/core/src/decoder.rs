@@ -106,10 +106,11 @@ pub struct EntityDecoder<'a> {
     /// Declared `FILE_SCHEMA`, resolved on first use (see `schema_layout`).
     schema_version_cache: Option<Option<crate::generated::schema_registry::SchemaVersion>>,
     grid_axis_index: Arc<GridAxisIndex>,
-    /// Input admission (#7678): `false` (the default) refuses a record that
-    /// holds a REAL `f64` cannot represent; `true` reads it as before, for
-    /// data-model readers. See [`Self::with_lossless_reals`].
-    lossless_reals: bool,
+    /// Input admission (#7678): `false` (the default) reads a record that
+    /// holds a REAL `f64` cannot represent as before, the literal as a signed
+    /// infinity, which every data-model reader relies on; `true` (geometry
+    /// decoders only) refuses it. See [`Self::with_strict_reals`].
+    strict_reals: bool,
     /// Records refused by input admission, for the refused-element counter.
     /// Atomic so the `&self` [`Self::decode_at_uncached`] can count too while
     /// the decoder stays `Sync` and `RefUnwindSafe`.
@@ -137,7 +138,7 @@ impl<'a> EntityDecoder<'a> {
             styled_item_index: std::sync::OnceLock::new(),
             schema_version_cache: None,
             grid_axis_index: Arc::default(),
-            lossless_reals: false,
+            strict_reals: false,
             refused_reals: std::sync::atomic::AtomicU64::new(0),
         }
     }
@@ -162,7 +163,7 @@ impl<'a> EntityDecoder<'a> {
             styled_item_index: std::sync::OnceLock::new(),
             schema_version_cache: None,
             grid_axis_index: Arc::default(),
-            lossless_reals: false,
+            strict_reals: false,
             refused_reals: std::sync::atomic::AtomicU64::new(0),
         }
     }
@@ -187,7 +188,7 @@ impl<'a> EntityDecoder<'a> {
             styled_item_index: std::sync::OnceLock::new(),
             schema_version_cache: None,
             grid_axis_index: Arc::default(),
-            lossless_reals: false,
+            strict_reals: false,
             refused_reals: std::sync::atomic::AtomicU64::new(0),
         }
     }
@@ -228,7 +229,7 @@ impl<'a> EntityDecoder<'a> {
         }
 
         let (entity, unrepresentable) = self.admit(id, ifc_type, &tokens)?;
-        // A lossless read of a refused record is never cached, so a later
+        // A record holding an unrepresentable real is never cached, so a
         // strict read of the same id still refuses it.
         if !unrepresentable {
             self.cache.insert(id, Arc::new(entity.clone()));
@@ -237,9 +238,15 @@ impl<'a> EntityDecoder<'a> {
     }
 
     /// Convert a parsed record's tokens and apply input admission (#7678):
-    /// a record holding a [`crate::parser::Token::UnrepresentableReal`] is
-    /// refused unless this decoder reads losslessly. Returns whether it held
-    /// one, so the caller keeps a lossless read out of the cache.
+    /// a strict decoder refuses a record holding a
+    /// [`crate::parser::Token::UnrepresentableReal`]. Returns whether it held
+    /// one, so the caller keeps such a record out of the cache and a strict
+    /// read of the same id on another path still refuses it.
+    ///
+    /// An object definition (a product, a type, a spatial element) is admitted
+    /// even when strict: it carries references and descriptive measures (a
+    /// door's `OverallHeight`, a site's `RefElevation`), never geometry, so
+    /// refusing it would lose a finite mesh for a value nothing draws.
     #[inline]
     fn admit(
         &self, id: u32, ifc_type: crate::IfcType, tokens: &[crate::parser::Token<'_>],
@@ -249,30 +256,53 @@ impl<'a> EntityDecoder<'a> {
             .iter()
             .map(|token| AttributeValue::from_token_noting(token, &mut unrepresentable))
             .collect();
-        if unrepresentable && !self.lossless_reals {
-            self.refused_reals.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            return Err(Error::UnrepresentableReal(id));
+        if unrepresentable
+            && self.strict_reals
+            && !ifc_type.is_subtype_of(crate::IfcType::IfcObjectDefinition)
+        {
+            return Err(self.refuse_record(id));
         }
         Ok((DecodedEntity::new(id, ifc_type, attributes), unrepresentable))
     }
 
-    /// Read records holding a REAL `f64` cannot represent (`1.E400`) as
-    /// before #7678, the literal as a signed infinity, instead of refusing
-    /// them. For data-model and export readers, which keep an out-of-range
-    /// measure rather than lose it; geometry must never read losslessly.
-    pub fn with_lossless_reals(mut self) -> Self {
-        self.lossless_reals = true;
+    /// Refuse geometry input (#7678): a geometry decoder (the native
+    /// pipeline's jobs, the wasm mesh pre-pass, symbolic extraction) refuses
+    /// every record that holds a REAL `f64` cannot represent, with
+    /// [`Error::UnrepresentableReal`], instead of reading it as an infinity.
+    /// The default stays lossless, so a decoder that is missed behaves as
+    /// before rather than silently losing data.
+    pub fn with_strict_reals(mut self) -> Self {
+        self.strict_reals = true;
         self
     }
 
-    /// [`Self::decode_by_id`] read losslessly (see [`Self::with_lossless_reals`]),
-    /// for one data-model read on a decoder geometry also uses. The lossless
-    /// result is not cached, so geometry still sees the record refused.
+    /// [`Self::with_strict_reals`] on a decoder already built.
+    pub fn set_strict_reals(&mut self, strict: bool) {
+        self.strict_reals = strict;
+    }
+
+    /// Whether this decoder refuses unrepresentable reals.
+    pub fn strict_reals(&self) -> bool {
+        self.strict_reals
+    }
+
+    /// [`Self::decode_by_id`] read losslessly whatever the mode, for the one
+    /// geometry seam that must still see the infinity (D14, see
+    /// `ifc_lite_geometry::processors::helpers`). Not cached when it holds one.
     pub fn decode_by_id_lossless(&mut self, entity_id: u32) -> Result<DecodedEntity> {
-        let strict = std::mem::replace(&mut self.lossless_reals, true);
+        let strict = std::mem::replace(&mut self.strict_reals, false);
         let entity = self.decode_by_id(entity_id);
-        self.lossless_reals = strict;
+        self.strict_reals = strict;
         entity
+    }
+
+    /// Count and return the refusal of record `id` (#7678). For a geometry
+    /// reader that refuses a value outside the decoder, such as an `f32`
+    /// coordinate-list fast path or a value that narrows to infinity, so the
+    /// refusal reaches the refused-element counter like a decode refusal.
+    pub fn refuse_record(&self, id: u32) -> Error {
+        self.refused_reals.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        Error::UnrepresentableReal(id)
     }
 
     /// How many records this decoder has refused under input admission

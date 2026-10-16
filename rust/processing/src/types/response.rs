@@ -187,6 +187,11 @@ pub struct ProcessingStats {
     /// clean file's response is byte-identical to before.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub refused_input_elements: u64,
+    /// Records the native pass's geometry pre-pass refused for the same
+    /// reason: style and colour values (the element falls back to its
+    /// default colour) and unit factors (#7678, D3). Omitted when zero.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub refused_prepass_records: u64,
     /// CartesianPoints served from the per-worker point cache while meshing
     /// faceted breps (`EntityDecoder::get_polyloop_coords_cached`). Non-zero
     /// means the cross-element cache hoist memoized a shared point list rather

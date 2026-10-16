@@ -87,14 +87,55 @@ fn face_set(id: u32, coordinate: &str) -> String {
     )
 }
 
+/// A closed unit-cube `IfcFacetedBrep` whose vertex #8 has `z` spelled by the
+/// caller, so one overflowing literal can sit in one corner (#7678 review).
+fn cube(id: u32, z7: &str) -> String {
+    let corner = ["0.,0.,0.", "1.,0.,0.", "1.,1.,0.", "0.,1.,0.", "0.,0.,1.", "1.,0.,1.", "1.,1.,1."];
+    let mut s = String::new();
+    for (k, c) in corner.iter().enumerate() {
+        s.push_str(&format!("#{}=IFCCARTESIANPOINT(({c}));\n", id + 1 + k as u32));
+    }
+    s.push_str(&format!("#{}=IFCCARTESIANPOINT((0.,1.,{z7}));\n", id + 8));
+    let faces = [[1, 4, 3, 2], [5, 6, 7, 8], [1, 2, 6, 5], [2, 3, 7, 6], [3, 4, 8, 7], [4, 1, 5, 8]];
+    let mut face_ids = Vec::new();
+    for (k, f) in faces.iter().enumerate() {
+        let (l, b, fc) = (id + 10 + 3 * k as u32, id + 11 + 3 * k as u32, id + 12 + 3 * k as u32);
+        let pts: Vec<String> = f.iter().map(|v| format!("#{}", id + v)).collect();
+        s.push_str(&format!("#{l}=IFCPOLYLOOP(({}));\n#{b}=IFCFACEOUTERBOUND(#{l},.T.);\n#{fc}=IFCFACE((#{b}));\n", pts.join(",")));
+        face_ids.push(format!("#{fc}"));
+    }
+    let (sh, br, r, ps) = (id + 40, id + 41, id + 42, id + 43);
+    s.push_str(&format!(
+        "#{sh}=IFCCLOSEDSHELL(({}));\n#{br}=IFCFACETEDBREP(#{sh});\n\
+         #{r}=IFCSHAPEREPRESENTATION(#19,'Body','Brep',(#{br}));\n#{ps}=IFCPRODUCTDEFINITIONSHAPE($,$,(#{r}));\n\
+         #{id}=IFCBUILDINGELEMENTPROXY('4Cube0000000000000{id}',$,'C',$,$,#21,#{ps},$,$);\n",
+        face_ids.join(",")
+    ));
+    s
+}
+
+/// A door: [`wall`]'s body under an `IfcDoor` whose OverallHeight is spelled
+/// by the caller. The product record's own reals are descriptive, not geometry.
+fn door(id: u32, overall_height: &str) -> String {
+    wall(id, "4.", "3.", "0.,0.,1.", "1.,2.,0.").replace(
+        &format!("#{id}=IFCWALL('2Wall0000000000000{id}',$,'W{id}',$,$,#{lp},#{ps},$,$);", lp = id + 8, ps = id + 5),
+        &format!("#{id}=IFCDOOR('2Door0000000000000{id}',$,'D{id}',$,$,#{lp},#{ps},$,{overall_height},0.9,$,$,$);", lp = id + 8, ps = id + 5),
+    )
+}
+
+/// A far-away point list (5e6 m) that turns the RTC rebase on for the model.
+fn far_face_set(id: u32) -> String {
+    face_set(id, "5000001.").replace("((0.,0.,0.),(1.,0.,0.),", "((5000000.,5000000.,0.),(5000001.,5000000.,0.),").replace(",1.,0.)));", ",5000001.,0.)));")
+}
+
 fn file(body: &str) -> String {
     format!("{HEAD}{body}{TAIL}")
 }
 
-/// Each case, and whether it reaches D3's refused-element counter. The
-/// coordinate-list fast path refuses the list without a decoder, so its
-/// element fails closed uncounted (the reader lives in B6e's
-/// `processors/tessellated`).
+/// Each case, and how many elements D3's refused-element counter counts. Every
+/// family is counted, including the coordinate-list fast path and a faceted
+/// brep whose one overflowing vertex used to open the shell into a finite
+/// half cube (#7678 review, findings 2 and 3).
 fn poisoned_cases() -> Vec<(&'static str, String, u64)> {
     vec![
         ("extrusion Depth 1.E400", wall(200, "4.", "1.E400", "0.,0.,1.", "1.,2.,0."), 1),
@@ -102,8 +143,9 @@ fn poisoned_cases() -> Vec<(&'static str, String, u64)> {
         ("profile XDim 1.E400", wall(300, "1.E400", "3.", "0.,0.,1.", "1.,2.,0."), 1),
         ("ExtrudedDirection 1.E400", wall(400, "4.", "3.", "0.,0.,1.E400", "1.,2.,0."), 1),
         ("placement Location 1.E400", wall(500, "4.", "3.", "0.,0.,1.", "1.E400,2.,0."), 1),
-        ("f32 point list 1.E39", face_set(600, "1.E39"), 0),
-        ("point list 1.E400", face_set(700, "1.E400"), 0),
+        ("f32 point list 1.E39", face_set(600, "1.E39"), 1),
+        ("point list 1.E400", face_set(700, "1.E400"), 1),
+        ("faceted cube vertex 1.E400", cube(800, "1.E400"), 1),
     ]
 }
 
@@ -155,4 +197,64 @@ fn negative_zero_underflow_and_large_finite_literals_still_mesh() {
         assert!(!mesh.positions.is_empty(), "{case}");
         assert!(mesh.positions.iter().all(|v| v.is_finite()), "{case}");
     }
+}
+
+/// #7678 review finding 3: the same `1.E39` point list gives the same outcome
+/// with and without RTC. With RTC active (three elements 5e6 m away) the f64
+/// branch used to subtract the offset and narrow `1.E39` to an `f32`
+/// infinity; it is now refused and counted like the non-RTC f32 read.
+#[test]
+fn an_overflowing_point_list_is_refused_the_same_with_rtc() {
+    for (case, coordinate) in [("f32 overflow 1.E39", "1.E39"), ("f64 overflow 1.E400", "1.E400")] {
+        let far = format!("{}{}{}", far_face_set(900), far_face_set(950), far_face_set(980));
+        let result = process_geometry(&file(&format!("{far}{}", face_set(600, coordinate))));
+        let ids: Vec<u32> = result.meshes.iter().map(|m| m.express_id).collect();
+        assert!(ids.contains(&900), "{case}: anti-vacuity, the far element meshes: {ids:?}");
+        let shift = result.metadata.coordinate_info.origin_shift;
+        assert!(shift.iter().any(|v| *v != 0.0), "{case}: anti-vacuity, RTC is active: {shift:?}");
+        assert!(!ids.contains(&600), "{case}: the poisoned list must be refused under RTC: {ids:?}");
+        assert!(result.meshes.iter().all(|m| m.positions.iter().all(|v| v.is_finite())), "{case}");
+        assert_eq!(result.stats.refused_input_elements, 1, "{case}");
+    }
+}
+
+/// #7678 review finding 4: a product record that holds an overflowing value
+/// nothing draws (a door's OverallHeight) keeps its finite mesh, byte-identical
+/// to the same door with a finite height, and nothing is counted.
+#[test]
+fn an_overflowing_descriptive_real_on_the_product_keeps_its_mesh() {
+    let finite = process_geometry(&file(&door(200, "2.1")));
+    let overflow = process_geometry(&file(&door(200, "1.E400")));
+    let mesh = |r: &ifc_lite_processing::ProcessingResult| {
+        r.meshes.iter().find(|m| m.express_id == 200).map(|m| (m.positions.clone(), m.indices.clone()))
+    };
+    assert!(mesh(&finite).is_some_and(|(p, _)| !p.is_empty()), "anti-vacuity: the door meshes");
+    assert_eq!(mesh(&overflow), mesh(&finite), "the door's mesh must not depend on OverallHeight");
+    assert_eq!(overflow.stats.refused_input_elements, 0);
+}
+
+/// #7678 review finding 5: a style value refused by admission (an
+/// `IfcColourRgb` component `1.E400`) falls back to the default colour, as a
+/// refused style must, and the pre-pass counts the refusal instead of doing it
+/// silently. The colour served is finite.
+#[test]
+fn an_overflowing_style_value_falls_back_and_is_counted() {
+    let styled = |red: &str| {
+        format!(
+            "{}#90=IFCCOLOURRGB($,{red},0.,0.);\n#91=IFCSURFACESTYLESHADING(#90,0.);\n\
+             #92=IFCSURFACESTYLE('s',.BOTH.,(#91));\n#93=IFCSTYLEDITEM(#203,(#92),$);\n",
+            wall(200, "4.", "3.", "0.,0.,1.", "1.,2.,0.")
+        )
+    };
+    let finite = process_geometry(&file(&styled("1.")));
+    let overflow = process_geometry(&file(&styled("1.E400")));
+    let color = |r: &ifc_lite_processing::ProcessingResult| {
+        r.meshes.iter().find(|m| m.express_id == 200).map(|m| m.color).expect("the wall meshes")
+    };
+    assert_eq!(color(&finite)[0], 1.0, "anti-vacuity: the finite style is applied");
+    assert_eq!(finite.stats.refused_prepass_records, 0);
+    let fallback = color(&overflow);
+    assert!(fallback.iter().all(|c| c.is_finite()), "{fallback:?}");
+    assert_ne!(fallback, color(&finite), "the refused style is not applied");
+    assert!(overflow.stats.refused_prepass_records >= 1, "the refused style is counted");
 }

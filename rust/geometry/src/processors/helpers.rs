@@ -179,14 +179,20 @@ pub(super) fn extract_loop_points_by_id(
 /// B6b lanes), this keeps main's behaviour for exactly this case; the refusal
 /// is still counted. Any other unreadable point stays `None`, as before.
 fn refused_point_as_before(point_id: u32, decoder: &mut EntityDecoder) -> Option<(f64, f64, f64)> {
-    if !matches!(decoder.decode_by_id(point_id), Err(ifc_lite_core::Error::UnrepresentableReal(_))) {
-        return None;
-    }
     let point = decoder.decode_by_id_lossless(point_id).ok()?;
     let coords = point.get(0)?.as_list()?;
     let x = coords.first()?.as_float()?;
     let y = coords.get(1)?.as_float()?;
-    Some((x, y, coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0)))
+    let z = coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0);
+    // Only an overflowing literal reads as non-finite here; a point the fast
+    // path refused for any other reason stays unreadable, as before.
+    if [x, y, z].iter().all(|v| v.is_finite()) {
+        return None;
+    }
+    if decoder.strict_reals() {
+        let _counted = decoder.refuse_record(point_id);
+    }
+    Some((x, y, z))
 }
 
 /// Get transform from IfcAxis2Placement3D by entity ID.

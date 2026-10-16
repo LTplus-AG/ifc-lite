@@ -220,3 +220,71 @@ mod admission_tests;
 
 #[path = "source_axes_finite_anchor_tests.rs"]
 mod finite_anchor_tests;
+
+// #7292: geometric source-plane membership must unite signed-zero occurrences,
+// while the established raw proposal/rejection identities remain separate.
+#[test]
+fn issue_7292_signed_zero_shared_corner_keeps_one_production_weld_target() {
+    use crate::kernel::{budget, near_band::{self, NearBand}, plane_weld::{
+        incidence::ExactFaceIncidences, selection::{self, Face},
+    }};
+    let _lock = budget::GLOBAL_CAP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _element = budget::enter_element();
+    budget::begin();
+    const G: f64 = 1.0 / 65536.0;
+    const Q: f64 = 1048576.0;
+    // Existing actual480054 two healthy source faces and HOST, translated in X
+    // by one S16 grid step. Their shared numeric corner differs only in zero's
+    // sign; the first face supplies Y=-125, the second supplies Z=2715.
+    let host = [[[G, -20.0, 0.0], [G, -110.0, 0.0], [G, -110.0, 3900.0]]];
+    let source = [
+        [[7049.99951171875 + G, -125.0, 3900.0], [G, -125.0, 3900.0], [-0.0, -125.0, 2715.0]],
+        [[0.0, -109.99993896484375, 2715.0], [1724.9996337890625 + G, -125.0, 2715.0], [0.0, -125.0, 2715.0]],
+    ];
+    let originals = [source[0][2], source[1][2]];
+    assert_eq!(originals[0], originals[1]);
+    assert_ne!(vertex_bits(&originals[0]), vertex_bits(&originals[1]));
+    for face in source {
+        assert!(projection_axis(&face).is_some());
+        assert!(!crate::csg::tri_is_needle(&face.map(Point3::from)));
+        let narrowed = face.map(|p| p.map(|x| x as f32 as f64));
+        assert!(projection_axis(&narrowed).is_some());
+        assert!(!crate::csg::tri_is_needle(&narrowed.map(Point3::from)));
+    }
+    let band = NearBand::from_operands(&source, &host);
+    let faces = [Face::new(host[0], &band).unwrap()];
+    let corners = near_band::exact_vertex_set(&host);
+    let incidences = ExactFaceIncidences::new(&source, &host);
+    let axes = SourceAxes::new(&source);
+    let primary_expected = [G, -125.0 + 60.0 / Q, 2715.0 - 840.0 / Q];
+    let mut candidates = Vec::new();
+    for original in originals {
+        // Follow the actual caller's selection/exact lift/drift/incidence
+        // premises. These assert that neither an early refusal nor a corner or
+        // finite-contact guard can mask the metadata split under review.
+        assert!(!corners.contains(&vertex_bits(&original)));
+        let (d, selected) = selection::select(original, &faces, &band, &corners).unwrap();
+        assert_eq!(selected.t, host[0]);
+        let primary = exact_on_plane_weld(original, selected.t).unwrap();
+        assert_eq!(primary, primary_expected);
+        assert!(!corners.contains(&vertex_bits(&primary)));
+        assert!(selected.admits(original, primary, d, &band, &corners));
+        assert!(incidences.admits(original, primary, &host));
+        assert!(!contains_projected_point(&host[0], primary));
+        let corrected = axes.candidate(original, primary, selected.t, &corners).unwrap();
+        assert!(selected.admits(original, corrected, d, &band, &corners));
+        assert!(incidences.admits(original, corrected, &host));
+        assert!(retains_finite_contacts(primary, corrected, &host));
+        candidates.push(corrected);
+    }
+    // Assert through the production caller, not only the metadata helper.
+    let mut actual = source;
+    assert!(promote_cutter_verts_onto_host_faces(&mut actual, &host) > 0);
+    assert_eq!(actual[0][2], actual[1][2],
+        "one geometric shared corner must stay coincident after real deferred writes; primary={primary_expected:?}, helper candidates={candidates:?}");
+    for point in [actual[0][2], actual[1][2]] {
+        assert_eq!(point, [G, -125.0, 2715.0],
+            "both original healthy source-plane incidences must survive the X-plane reconciliation");
+    }
+    assert!(!budget::tripped());
+}

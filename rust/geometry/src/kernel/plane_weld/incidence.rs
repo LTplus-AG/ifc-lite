@@ -20,7 +20,7 @@ use crate::kernel::{
 };
 use rustc_hash::FxHashMap;
 
-fn point_key(point: [f64; 3]) -> [u64; 3] {
+pub(super) fn point_key(point: [f64; 3]) -> [u64; 3] {
     // Exact predicates identify both signs of zero as the same coordinate.
     point.map(|value| if value == 0.0 { 0 } else { value.to_bits() })
 }

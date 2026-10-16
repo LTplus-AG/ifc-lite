@@ -251,7 +251,7 @@ fn issue_7292_flat_difference_positive_control_leaves_the_strip() {
 fn issue_7292_five_percent_difference_preserves_the_complete_strip() {
     let _producer = default_producer_guard();
     // The reporter's 5% variation had correct bounds but extra triangles.
-    // Assert six-face coverage without pinning a particular triangulation.
+    // Assert all six face areas without pinning a particular triangulation.
     let sloped = fixture_at_slope(0.05);
     assert_strip(sloped.as_bytes(), 0.05);
 }

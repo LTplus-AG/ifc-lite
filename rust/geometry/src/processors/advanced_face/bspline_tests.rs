@@ -232,3 +232,33 @@ fn issue_5321_dense_malformed_support_preserves_samples_beyond_cache_budget() {
     let kv: Vec<f64> = (0..=500).map(|i| (i % 2) as f64).collect();
     assert_dense_grid(&cps, (0, 0), (&ku, &kv), None, (7, 24));
 }
+
+/// PROC-S2 (#7687): a clamped knot vector has no half-open span containing
+/// its end parameter, so every basis function was 0 there and the curve
+/// evaluated to the origin. A clamped B-spline interpolates its end control
+/// points (partition of unity at both ends).
+#[test]
+fn clamped_curve_end_parameter_is_last_control_point_proc_s2_7687() {
+    let cps = [
+        Point3::new(1.0, 2.0, 3.0),
+        Point3::new(2.0, 5.0, 3.0),
+        Point3::new(4.0, 5.0, 3.0),
+        Point3::new(5.0, 2.0, 7.0),
+    ];
+    let knots = [0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0];
+    assert_eq!(evaluate_bspline_curve(0.0, 3, &cps, &knots), cps[0]);
+    assert_eq!(evaluate_bspline_curve(1.0, 3, &cps, &knots), cps[3]);
+    // The quadratic partition above, at its end parameter 3.0.
+    let knots = [0.0, 0.0, 0.0, 1.0, 2.0, 3.0, 3.0, 3.0];
+    assert_eq!(bspline_basis_table(2, 3.0, &knots, 5), [0.0, 0.0, 0.0, 0.0, 1.0]);
+}
+
+/// The closed end span must not double-count an UNclamped end, where a
+/// half-open span already contains the end parameter.
+#[test]
+fn unclamped_end_parameter_keeps_partition_of_unity_proc_s2_7687() {
+    let knots = [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
+    // degree 2, 4 control points: domain [knots[2], knots[4]] = [2, 4].
+    let sum: f64 = bspline_basis_table(2, 4.0, &knots, 4).iter().sum();
+    assert!((sum - 1.0).abs() < 1e-12, "partition of unity at u=4 sums to {sum}");
+}

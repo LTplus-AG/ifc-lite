@@ -106,3 +106,27 @@ diff --git a/rust/processing/src/processor/diagnostics.rs b/rust/processing/src/
          return 0;
      }
      let refused = jobs.len() as u64;
+diff --git a/rust/geometry/src/router/unit_admission.rs b/rust/geometry/src/router/unit_admission.rs
+--- a/rust/geometry/src/router/unit_admission.rs
++++ b/rust/geometry/src/router/unit_admission.rs
+@@ -50,7 +50,7 @@ impl GeometryRouter {
+     /// position (export rows, site transform, overlays), where main gave
+     /// infinity (#7678).
+     pub(super) fn admit_placement_scale(&self) -> crate::Result<()> {
+-        if self.length_unit_refused && false {
++        if self.length_unit_refused {
+             return Err(crate::Error::geometry("length unit refused (#7678): no scaled placement"));
+         }
+         Ok(())
+diff --git a/rust/wasm-bindings/src/api/alignment_lines.rs b/rust/wasm-bindings/src/api/alignment_lines.rs
+--- a/rust/wasm-bindings/src/api/alignment_lines.rs
++++ b/rust/wasm-bindings/src/api/alignment_lines.rs
+@@ -77,7 +77,7 @@ pub(crate) fn extract_alignment_line_vertices(
+     // length unit draws nothing (#7678), like the grid and symbolic overlays.
+     // Not drained: meshes nothing. Pinned by rust/geometry/tests/issue_3821_auxiliary_routers_mesh_nothing.rs.
+     let router = GeometryRouter::with_units(content, &mut decoder);
+-    if router.length_unit_refused() && false {
++    if router.length_unit_refused() {
+         return Vec::new();
+     }
+     let unit_scale = router.unit_scale();

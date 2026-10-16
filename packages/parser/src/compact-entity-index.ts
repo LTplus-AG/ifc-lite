@@ -7,7 +7,7 @@
 
 import { checkedExpressId } from './express-id.js';
 import type { EntityRef } from './types.js';
-import { internType, type CompactEntityIndexColumns } from './compact-entity-index-columns.js';
+import { internType, lastEqualIndex, type CompactEntityIndexColumns } from './compact-entity-index-columns.js';
 import { yieldToEventLoop } from './yield-to-event-loop.js';
 
 /**
@@ -68,7 +68,7 @@ export class CompactEntityIndex {
 
   /**
    * Binary search for an expressId in the sorted array.
-   * Returns the array index (the last record for a duplicated id) or -1.
+   * Returns the array index (the last record of a duplicate) or -1.
    */
   private binarySearch(expressId: number): number {
     const ids = this.expressIds;
@@ -78,13 +78,7 @@ export class CompactEntityIndex {
     while (lo <= hi) {
       const mid = (lo + hi) >>> 1;
       const midVal = ids[mid];
-      if (midVal === expressId) {
-        // Duplicate ids sit adjacent in file order; the last record wins, as in
-        // core, the server and the exporter.
-        let last = mid;
-        while (last + 1 < ids.length && ids[last + 1] === expressId) last++;
-        return last;
-      }
+      if (midVal === expressId) return lastEqualIndex(ids, mid);
       if (midVal < expressId) lo = mid + 1;
       else hi = mid - 1;
     }

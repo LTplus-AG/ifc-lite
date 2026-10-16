@@ -43,6 +43,12 @@ const {
   executedCheckCount,
   semverChecksArgv,
   loadPublishedBaselines,
+  outputExcerpt,
+  isUnresolvableRegistryBaseline,
+  releaseTagCandidates,
+  tagPublishes,
+  heuristicFeatures,
+  diffPackagedSources,
 } = rustSemver;
 import { CRATES } from './lib/crates-io.mjs';
 
@@ -713,4 +719,210 @@ test('VACUITY: the CLI fails with TOOL_MISSING when cargo-semver-checks is absen
   assert.equal(res.status, 2, `expected exit 2, got ${res.status}\n${res.stdout}${res.stderr}`);
   assert.match(res.stderr, /TOOL_MISSING/);
   assert.match(res.stderr, /fails rather than\s+skips/);
+});
+
+/* ------------------- #7737: a baseline crates.io can no longer resolve ------------------- */
+
+/**
+ * The real transcript, cargo-semver-checks 0.50.0, `--package ifc-lite-export
+ * --baseline-version 20.4.0` on 2026-10-16, after the current crate built:
+ * the placeholder's `=20.4.0` requirement drags in the published `zip = "^8"`,
+ * and every zip 8.x is yanked. Exit 101, no Summary line.
+ */
+const BASELINE_YANKED = {
+  status: 101,
+  output: [
+    '    Building ifc-lite-export v21.4.0 (current)',
+    '       Built [  23.865s] (current)',
+    '     Parsing ifc-lite-export v21.4.0 (current)',
+    '      Parsed [   0.142s] (current)',
+    'error: `cargo metadata` exited with an error:     Updating crates.io index',
+    'error: failed to select a version for the requirement `zip = "^8"`',
+    '  version 8.0.0 is yanked',
+    '  version 8.6.0 is yanked',
+    'location searched: crates.io index',
+    'required by package `ifc-lite-export v20.4.0`',
+    '    ... which satisfies dependency `ifc-lite-export = "=20.4.0"` of package `placeholder v0.0.0 (/t/semver-checks/registry-ifc_lite_export-20_4_0)`',
+  ].join('\n'),
+};
+
+/** The same resolver error on the CURRENT crate (its path dependency): a
+ *  rebuilt baseline cannot fix that, so it must stay a NO_VERDICT. */
+const CURRENT_YANKED = {
+  status: 101,
+  output: [
+    "error: running 'cargo update' on crate 'ifc-lite-export' failed with output:",
+    'error: failed to select a version for the requirement `zip = "^8"`',
+    '  version 8.6.0 is yanked',
+    'required by package `ifc-lite-export v21.4.0 (/w/rust/export)`',
+    '    ... which satisfies path dependency `ifc-lite-export` of package `placeholder v0.0.0 (/t/local-ifc_lite_export-21_4_0)`',
+  ].join('\n'),
+};
+
+/** crates.io at 20.4.0, the workspace at 21.4.0 (a major), only export unresolvable. */
+function yankedExport(overrides = {}) {
+  return checkRustSemver({
+    crates: SEVEN,
+    workspaceVersion: '21.4.0',
+    latestPublished: () => '20.4.0',
+    runSemverChecks: (crate) => (crate === 'ifc-lite-export' ? BASELINE_YANKED : COMPATIBLE),
+    ...overrides,
+  });
+}
+
+test('RED (#7737): an unresolvable baseline is rebuilt from its tag and JUDGED, not skipped', () => {
+  const calls = [];
+  const tagRun = (crate, baseline) => {
+    calls.push(`${crate}@${baseline}`);
+    return { ...NEEDS_MAJOR, via: 'v10.4.0 (a8905535c8), --locked' };
+  };
+  // The rebuilt baseline's verdict is the one the gate applies: a major under
+  // a minor bump is refused exactly as a registry verdict would be.
+  const minor = yankedExport({ workspaceVersion: '20.5.0', runTagBaseline: tagRun });
+  assert.equal(minor.ok, false);
+  assert.equal(minor.failures.length, 1, minor.failures.join('\n'));
+  assert.match(minor.failures[0], /ifc-lite-export: its public API change requires a MAJOR bump/);
+  assert.deepEqual(calls, ['ifc-lite-export@20.4.0'], 'only the unresolvable crate is rebuilt');
+
+  const major = yankedExport({ runTagBaseline: tagRun });
+  assert.equal(major.ok, true, major.failures.join('\n'));
+  const line = major.checked.find((l) => l.startsWith('ifc-lite-export'));
+  assert.match(line, /20\.4\.0 -> 21\.4\.0 \(major; requires major\); baseline rebuilt from v10\.4\.0/);
+  assert.equal(major.compared, SEVEN.length);
+});
+
+test('#7737: the rebuilt baseline is held to the same executed-lint floor', () => {
+  const zeroLints = { status: 0, output: '     Checked [ 0.1s] 0 checks: 0 pass, 254 skip\n     Summary no semver update required' };
+  const result = yankedExport({ runTagBaseline: () => ({ ...zeroLints, via: 'v10.4.0' }) });
+  assert.equal(result.ok, false);
+  assert.match(result.failures[0], /ifc-lite-export: NO_CHECKS_EXECUTED/);
+});
+
+test('VACUITY (#7737): an unresolvable baseline with no tag builder wired fails, never passes', () => {
+  const result = yankedExport();
+  assert.equal(result.ok, false);
+  assert.equal(result.failures.length, 1);
+  assert.match(
+    result.failures[0],
+    /^ifc-lite-export: UNRESOLVABLE_BASELINE: crates\.io's ifc-lite-export 20\.4\.0 no longer resolves \(failed to select a version for the requirement `zip = "\^8"`\)/
+  );
+});
+
+test('VACUITY (#7737): a tag that is not the published source fails closed, with the reason', () => {
+  const result = yankedExport({
+    runTagBaseline: () => {
+      throw new Error('BASELINE_SOURCE_MISMATCH: the tag is not the published ifc-lite-export 20.4.0');
+    },
+  });
+  assert.equal(result.ok, false);
+  assert.match(result.failures[0], /UNRESOLVABLE_BASELINE: .*rebuilding it from its release tag failed/);
+  assert.match(result.failures[0], /BASELINE_SOURCE_MISMATCH/);
+});
+
+test('#7737: a CURRENT-crate resolver failure is not rebuilt around; it stays NO_VERDICT with its cause', () => {
+  let rebuilt = false;
+  const result = yankedExport({
+    runSemverChecks: (crate) => (crate === 'ifc-lite-export' ? CURRENT_YANKED : COMPATIBLE),
+    runTagBaseline: () => {
+      rebuilt = true;
+      return { ...COMPATIBLE, via: 'v10.4.0' };
+    },
+  });
+  assert.equal(rebuilt, false);
+  assert.equal(result.ok, false);
+  assert.match(result.failures[0], /NO_VERDICT: cargo-semver-checks exited 101/);
+  assert.match(result.failures[0], /failed to select a version for the requirement `zip = "\^8"`/);
+});
+
+test('isUnresolvableRegistryBaseline keys on the placeholder\'s exact requirement on THIS baseline', () => {
+  assert.equal(isUnresolvableRegistryBaseline(BASELINE_YANKED.output, 'ifc-lite-export', '20.4.0'), true);
+  assert.equal(isUnresolvableRegistryBaseline(BASELINE_YANKED.output, 'ifc-lite-export', '20.3.0'), false);
+  assert.equal(isUnresolvableRegistryBaseline(BASELINE_YANKED.output, 'ifc-lite-wasm', '20.4.0'), false);
+  assert.equal(isUnresolvableRegistryBaseline(CURRENT_YANKED.output, 'ifc-lite-export', '20.4.0'), false);
+  assert.equal(isUnresolvableRegistryBaseline(COMPATIBLE.output, 'ifc-lite-clash', '6.0.1'), false);
+  assert.equal(isUnresolvableRegistryBaseline(undefined, 'ifc-lite-clash', '6.0.1'), false);
+});
+
+test('NO_VERDICT (#7737) carries what the tool printed, from the first error line, capped', () => {
+  const reason = interpretRun(CURRENT_YANKED).reason;
+  assert.match(reason, /It printed:\n {6}\| error: running 'cargo update'/);
+  assert.match(reason, /version 8\.6\.0 is yanked/);
+  const noisy = ['   Compiling a', ...Array.from({ length: 100 }, (_, i) => `error[E0${i}]: x`)].join('\n');
+  const excerpt = outputExcerpt(noisy);
+  assert.ok(!excerpt.includes('Compiling a'), 'the excerpt starts at the first error');
+  assert.match(excerpt, /\(61 more line\(s\)\)$/);
+  assert.equal(outputExcerpt(''), ' (it printed nothing)');
+});
+
+test('the rebuilt baseline is passed as --baseline-rustdoc, with the release type unchanged', () => {
+  const argv = semverChecksArgv('ifc-lite-export', '20.4.0', { baselineRustdoc: '/t/ifc_lite_export.json' });
+  assert.deepEqual(argv.slice(1, 6), ['semver-checks', '--package', 'ifc-lite-export', '--baseline-rustdoc', '/t/ifc_lite_export.json']);
+  assert.ok(!argv.includes('--baseline-version'));
+  assert.equal(argv[argv.indexOf('--release-type') + 1], 'patch');
+});
+
+test('crate 20.4.0 maps to the npm tag of its offset, and only a tag that says so counts', () => {
+  const candidates = releaseTagCandidates('20.4.0', 11);
+  assert.equal(candidates.length, 12);
+  assert.deepEqual(candidates.find((c) => c.offset === 10), { tag: 'v10.4.0', offset: 10 });
+  assert.deepEqual(releaseTagCandidates('1.2.3', 11).map((c) => c.tag), ['v1.2.3', 'v0.2.3']);
+  assert.deepEqual(releaseTagCandidates('20.4', 11), []);
+
+  const cargoToml = '[workspace]\nmembers = []\n\n[workspace.package]\nversion = "20.4.0"\nedition = "2021"\n';
+  const offsetJson = JSON.stringify({ majorOffset: 10 });
+  assert.equal(tagPublishes({ cargoToml, offsetJson }, '20.4.0', 10), true);
+  assert.equal(tagPublishes({ cargoToml, offsetJson }, '20.4.0', 9), false, 'the tag must carry the offset assumed');
+  assert.equal(tagPublishes({ cargoToml, offsetJson }, '20.4.1', 10), false, 'and the crate version');
+  assert.equal(tagPublishes({ cargoToml: cargoToml.replace('20.4.0', '10.4.0'), offsetJson: null }, '10.4.0', 0), true);
+  assert.equal(tagPublishes({ cargoToml: null, offsetJson }, '20.4.0', 10), false);
+  assert.equal(tagPublishes({ cargoToml, offsetJson: '{' }, '20.4.0', 10), false);
+});
+
+test('the baseline is built with cargo-semver-checks\' own feature heuristic', () => {
+  // ifc-lite-export at v10.4.0, from `cargo metadata`: the set the tool used
+  // for the registry baseline ("--features default,observability,parquet-bos").
+  const exportPkg = {
+    features: { default: [], 'parquet-bos': ['dep:arrow', 'dep:parquet', 'dep:zip'], observability: ['p/observability'] },
+    dependencies: [{ name: 'zip', optional: true }, { name: 'arrow', optional: true }, { name: 'serde', optional: false }],
+  };
+  assert.deepEqual(heuristicFeatures(exportPkg), ['default', 'observability', 'parquet-bos']);
+  const hidden = {
+    features: { unstable: [], nightly: [], bench: [], no_std: [], _private: [], 'unstable-x': [], unstable_y: [], 'test-support': [] },
+    dependencies: [{ name: 'mimalloc', optional: true }, { name: 'real', rename: 'alias', optional: true }],
+  };
+  assert.deepEqual(heuristicFeatures(hidden), ['alias', 'mimalloc', 'test-support']);
+});
+
+test('diffPackagedSources: byte-equal passes; any drift, either way, is named', () => {
+  const b = (t) => Buffer.from(t);
+  const packaged = new Map([
+    ['.cargo_vcs_info.json', b('{}')],
+    ['Cargo.toml', b('normalized')],
+    ['Cargo.lock', b('lock')],
+    ['Cargo.toml.orig', b('[package]')],
+    ['src/lib.rs', b('pub fn a() {}')],
+    ['README.md', b('readme')],
+  ]);
+  const tagged = new Map([
+    ['Cargo.toml.orig', b('[package]')],
+    ['src/lib.rs', b('pub fn a() {}')],
+    ['README.md', b('readme')],
+    ['examples/x.rs', b('not packaged, not compiled into the lib')],
+  ]);
+  assert.deepEqual(diffPackagedSources(packaged, tagged), []);
+
+  const drifted = new Map(tagged);
+  drifted.set('src/lib.rs', b('pub fn b() {}'));
+  drifted.set('src/extra.rs', b('mod'));
+  drifted.set('build.rs', b('fn main() {}'));
+  drifted.delete('README.md');
+  assert.deepEqual(diffPackagedSources(packaged, drifted), [
+    'README.md: published, but absent at the tag',
+    'build.rs: at the tag, but not in the published crate',
+    'src/extra.rs: at the tag, but not in the published crate',
+    'src/lib.rs: published bytes differ from the tag',
+  ]);
+  const manifest = new Map(tagged);
+  manifest.set('Cargo.toml.orig', b('[package]\nversion = "x"'));
+  assert.deepEqual(diffPackagedSources(packaged, manifest), ['Cargo.toml.orig: published bytes differ from the tag']);
 });

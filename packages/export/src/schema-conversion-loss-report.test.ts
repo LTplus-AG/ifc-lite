@@ -51,16 +51,18 @@ describe('classifyEntityTypeConversion', () => {
     expect(info.kind).toBe('blocked');
   });
 
-  it('is proxied via shouldSkipEntity (not the attribute-table branch) and still names the dropped attributes', () => {
+  it('is proxied via shouldSkipEntity (not the attribute-table branch) and names only what the product proxy drops', () => {
     // IFCALIGNMENTHORIZONTAL hits `shouldSkipEntity`, a DIFFERENT code path
-    // than the `!tgtAttrs` branch the other proxied/blocked cases exercise —
-    // both must report the same "every attribute is gone" shape.
+    // than the `!tgtAttrs` branch the other proxied/blocked cases exercise.
+    // Its proxy keeps IfcProduct's attributes 1 to 6 and mints the GlobalId
+    // (`productProxy`, #7683), so only the source GlobalId is lost.
     const info = classifyEntityTypeConversion('IFCALIGNMENTHORIZONTAL', 'IFC4X3', 'IFC4');
-    expect(info).toEqual({
-      targetType: 'IFCPROXY',
-      kind: 'proxied',
-      droppedAttributes: ['GlobalId', 'OwnerHistory', 'Name', 'Description', 'ObjectType', 'ObjectPlacement', 'Representation'],
-    });
+    expect(info).toEqual({ targetType: 'IFCPROXY', kind: 'proxied', droppedAttributes: ['GlobalId'] });
+    // IfcAlignment's own PredefinedType has no IfcProxy slot.
+    expect(classifyEntityTypeConversion('IFCALIGNMENT', 'IFC4X3', 'IFC4').droppedAttributes).toEqual([
+      'GlobalId',
+      'PredefinedType',
+    ]);
   });
 
   it('is identity for a lossless pad (IFC2X3 → IFC4 appends PredefinedType to IfcWall, nothing source-side disappears)', () => {

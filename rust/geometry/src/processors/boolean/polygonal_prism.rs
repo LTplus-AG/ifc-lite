@@ -9,7 +9,7 @@ use crate::{
     calculate_normals, ClippingProcessor, Error, GroupCut, GroupReject, Mesh, Point2, Point3,
     Profile2D, Result, TessellationQuality, Vector3,
 };
-use ifc_lite_core::{DecodedEntity, EntityDecoder};
+use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 
 impl BooleanClippingProcessor {
     /// The boundary as a 2D contour in Position's XY plane. Any
@@ -43,9 +43,9 @@ impl BooleanClippingProcessor {
                 "PolygonalBoundary must contain at least 3 distinct points".to_string(),
             ));
         }
-        // A self-crossing boundary bounds nothing (ISSUE_129 #236054: arcs and
-        // lines that do not meet): refused, it takes the recorded fallback.
-        if !Self::boundary_is_simple(&contour) {
+        // Self-touching non-polyline boundaries take the recorded fallback
+        // (ISSUE_129 #236054); IfcPolyline keeps main's reader exactly (#7688).
+        if boundary.ifc_type != IfcType::IfcPolyline && !Self::boundary_is_simple(&contour) {
             return Err(Error::geometry("PolygonalBoundary crosses itself".to_string()));
         }
 

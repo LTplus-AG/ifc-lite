@@ -329,8 +329,7 @@ impl BooleanClippingProcessor {
         // Build each cutter prism (bounds-clamped to the base).
         let mut prisms: Vec<Mesh> = Vec::with_capacity(cutters.len());
         for cutter in &cutters {
-            // An unreadable plane defers too: the sequential step records it
-            // and keeps the other cuts, where `?` dropped the item (#7688).
+            // Unreadable plane: defer; the sequential step records it (#7688).
             let Ok((plane_point, plane_normal, agreement)) =
                 self.parse_half_space_solid(cutter, decoder) else { return self.defer_after(mark) };
             match self.build_polygonal_bounded_half_space_mesh(

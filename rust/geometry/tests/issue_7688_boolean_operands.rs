@@ -230,7 +230,9 @@ fn issue_7688_proc_s6_a_faceted_brep_with_voids_meshes_its_outer_shell() {
     // The cutter's Outer is the unit box x, y in [0, 2], z in [1, 3]: it
     // removes x, y in [0, 1], z in [1, 2] from the host, volume 1.
     let cutter = box_shell(300, [0.0, 0.0, 1.0], [2.0, 2.0, 3.0]);
-    let void = box_shell(400, [0.5, 0.5, 1.5], [1.5, 1.5, 2.5]);
+    // The void lies wholly outside the host, so 7 is the IFC answer even
+    // though the Voids are not rendered.
+    let void = box_shell(400, [0.5, 0.5, 2.2], [1.5, 1.5, 2.8]);
     let cut = format!("{HOST}{cutter}{void}#91=IFCFACETEDBREPWITHVOIDS(#300,(#400));\n\
         #20=IFCBOOLEANRESULT(.DIFFERENCE.,#6,#91);\n");
     let meshed = mesh_item(&cut, 20);
@@ -256,25 +258,42 @@ fn issue_7688_an_unresolvable_second_operand_keeps_the_host_and_records_it() {
     }
 }
 
-/// The guard PROC-S18 needs once any bounded curve is read: a boundary that
-/// crosses itself (here a polyline bow-tie; in ISSUE_129, composite curves
-/// whose arcs and lines do not meet) bounds nothing, and its prism tore the
-/// host. It takes the recorded unbounded fallback (4) instead.
+/// The guard PROC-S18 needs once other bounded curves are read: a boundary
+/// that crosses itself (here an `IfcIndexedPolyCurve` bow-tie; in ISSUE_129,
+/// composite curves whose arcs and lines do not meet) bounds nothing, and its
+/// prism tore the host. It takes the recorded unbounded fallback (4), which is
+/// also what main did for every non-polyline boundary.
 #[test]
-fn issue_7688_proc_s18_a_self_crossing_boundary_takes_the_recorded_fallback() {
-    let bow_tie = "#30=IFCCARTESIANPOINT((0.,0.));\n\
-        #31=IFCCARTESIANPOINT((2.,2.));\n\
-        #32=IFCCARTESIANPOINT((2.,0.));\n\
-        #33=IFCCARTESIANPOINT((0.,2.));\n\
-        #34=IFCPOLYLINE((#30,#31,#32,#33,#30));\n";
+fn issue_7688_proc_s18_a_self_crossing_curve_boundary_takes_the_recorded_fallback() {
+    let bow_tie = "#35=IFCCARTESIANPOINTLIST2D(((0.,0.),(2.,2.),(2.,0.),(0.,2.),(0.,0.)),$);\n\
+        #34=IFCINDEXEDPOLYCURVE(#35,$,.F.);\n";
     let data = format!("{HOST}{bow_tie}\
         #13=IFCPOLYGONALBOUNDEDHALFSPACE(#12,.F.,#4,#34);\n\
         #20=IFCBOOLEANCLIPPINGRESULT(.DIFFERENCE.,#6,#13);\n");
     let meshed = mesh_item(&data, 20);
-    meshed.assert_volume(4.0, "self-crossing boundary");
+    meshed.assert_volume(4.0, "self-crossing indexed boundary");
     assert!(
         meshed.recorded(|f| matches!(f, BoolFailureReason::PolygonalBoundedHalfSpaceFallback)),
         "{:?}",
         meshed.failures
     );
+}
+
+/// Control: the guard is scoped to the newly read curve types. An IfcPolyline
+/// boundary that TOUCHES itself (vertex (1,0) lies on its first edge) was cut
+/// bounded on main and still is (8 - 0.75 = 7.25), never the unbounded 4.
+#[test]
+fn issue_7688_proc_s18_a_self_touching_polyline_boundary_stays_bounded() {
+    let pinch = "#30=IFCCARTESIANPOINT((0.,0.));\n\
+        #31=IFCCARTESIANPOINT((2.,0.));\n\
+        #32=IFCCARTESIANPOINT((2.,2.));\n\
+        #33=IFCCARTESIANPOINT((1.,0.));\n\
+        #36=IFCCARTESIANPOINT((0.,2.));\n\
+        #34=IFCPOLYLINE((#30,#31,#32,#33,#36,#30));\n";
+    let data = format!("{HOST}{pinch}\
+        #13=IFCPOLYGONALBOUNDEDHALFSPACE(#12,.F.,#4,#34);\n\
+        #20=IFCBOOLEANCLIPPINGRESULT(.DIFFERENCE.,#6,#13);\n");
+    let meshed = mesh_item(&data, 20);
+    meshed.assert_volume(7.25, "self-touching polyline boundary");
+    assert!(meshed.failures.is_empty(), "{:?}", meshed.failures);
 }

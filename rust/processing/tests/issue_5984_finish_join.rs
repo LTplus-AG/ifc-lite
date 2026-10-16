@@ -113,11 +113,7 @@ fn a_colour_that_is_not_the_styles_joins_no_finish() {
 /// 'Kiefer' 0.9, no metal.
 #[test]
 fn fzk_haus_finishes_through_the_model_join() {
-    let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/models/ara3d/AC20-FZK-Haus.ifc");
-    let Ok(content) = std::fs::read_to_string(&path) else {
-        eprintln!("AC20-FZK-Haus.ifc missing — run `pnpm fixtures`. Skipping #5984 fixture test.");
-        return;
-    };
+    let content = ifc_lite_testkit::fixture_text_or_skip!("ara3d/AC20-FZK-Haus.ifc");
     let result = process_geometry(content.as_str());
     let mut finishes = ModelFinishes::from_content(content.as_bytes());
     for (name, expected) in [("Glas", 0.0f32), ("Kiefer, gl\u{e4}nzend", 0.25), ("Kiefer", 0.9)] {

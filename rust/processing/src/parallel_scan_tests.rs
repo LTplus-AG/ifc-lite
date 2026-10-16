@@ -573,9 +573,7 @@ fn fixtures_byte_identical() {
         "ara3d/advanced_model.ifc",
         "various/01_BIMcollab_Example_ARC.ifc",
     ] {
-        let path = format!("{}/../../tests/models/{}", env!("CARGO_MANIFEST_DIR"), rel);
-        let Ok(content) = std::fs::read(&path) else {
-            eprintln!("skipping {rel}: fixture absent — run `pnpm fixtures`");
+        let Some(content) = ifc_lite_testkit::fixture_bytes(rel) else {
             continue;
         };
         assert_parallel_matches_serial(&content, rel);

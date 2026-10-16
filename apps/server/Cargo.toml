@@ -94,6 +94,8 @@ zip.workspace = true
 base64 = "0.23"
 
 [dev-dependencies]
+# Test-only (publish = false). Path-only: cargo strips it when packaging.
+ifc-lite-testkit = { path = "../../rust/testkit" }
 criterion = { version = "0.8", features = ["html_reports"] }
 # Paused-clock transport timeout regressions; test-only so production timer
 # behavior cannot be frozen accidentally.

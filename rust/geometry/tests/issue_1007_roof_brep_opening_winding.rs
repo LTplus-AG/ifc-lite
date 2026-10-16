@@ -38,38 +38,11 @@
 use ifc_lite_core::{build_entity_index, EntityDecoder, EntityIndex, EntityScanner};
 use ifc_lite_geometry::{propagate_voids_to_parts, GeometryRouter, Mesh};
 use rustc_hash::FxHashMap;
-use std::path::PathBuf;
-
-mod support;
 
 const FIXTURE: &str = "issues/1007_roof_brep_opening_winding.ifc";
 
 fn read_fixture() -> Option<String> {
-    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../tests/models")
-        .join(FIXTURE);
-    match std::fs::read_to_string(&path) {
-        Ok(s) if s.starts_with("version https://git-lfs.github.com/spec/") => {
-            assert!(
-                !support::require_fixtures(),
-                "fixture is an LFS pointer and IFC_LITE_REQUIRE_FIXTURES=1 -- \
-                 run `pnpm fixtures` to download real bytes"
-            );
-            eprintln!("skipping: fixture {FIXTURE} is an LFS pointer — run `pnpm fixtures`");
-            None
-        }
-        Ok(s) => Some(s),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            assert!(
-                !support::require_fixtures(),
-                "fixture missing and IFC_LITE_REQUIRE_FIXTURES=1 -- \
-                 run `pnpm fixtures` to download (sha256 in tests/models/manifest.json)"
-            );
-            eprintln!("skipping: fixture {FIXTURE} not present — run `pnpm fixtures`");
-            None
-        }
-        Err(e) => panic!("failed to read fixture {FIXTURE}: {e}"),
-    }
+    ifc_lite_testkit::fixture_text(FIXTURE)
 }
 
 fn build_void_index(content: &str) -> FxHashMap<u32, Vec<u32>> {

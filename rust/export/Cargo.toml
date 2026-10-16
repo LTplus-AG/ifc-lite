@@ -40,6 +40,8 @@ observability = ["ifc-lite-processing/observability"]
 workspace = true
 
 [dev-dependencies]
+# Test-only (publish = false). Path-only: cargo strips it when packaging.
+ifc-lite-testkit = { path = "../testkit" }
 # Round-trip oracle: the exported terrain is read back by ifc-lite's own LandXML parser.
 ifc-lite-landxml = { workspace = true }
 # Pins long values of the shared #7675 complex-property vector by digest.

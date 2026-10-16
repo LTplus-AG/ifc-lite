@@ -260,39 +260,38 @@ impl AttributeValue {
         result
     }
 
-    /// Batch parse triangle indices from a list of index triples
-    /// Converts from 1-based IFC indices to 0-based indices
-    /// Returns flattened u32 array: [i0, i1, i2, ...]
+    /// This value as a 0-based index under the one IFC index rule, shared
+    /// with [`crate::parse_indices_direct`]: an INTEGER in `1..=u32::MAX`.
+    /// `None` for `0`, a negative or oversized INTEGER, and any other value,
+    /// a REAL included (`IfcPositiveInteger` is an INTEGER; #7689).
+    #[inline]
+    pub fn as_ifc_index(&self) -> Option<u32> {
+        match self {
+            AttributeValue::Integer(i) => crate::fast_parse::ifc_index_to_zero_based(*i),
+            _ => None,
+        }
+    }
+
+    /// Batch parse triangle indices from a `CoordIndex` list of index
+    /// triples into flat 0-based corners, three per face (#7689).
+    ///
+    /// A value that fails [`Self::as_ifc_index`] reads as
+    /// [`crate::INVALID_INDEX`], and a face that is not a list of exactly
+    /// three values reads as three of them, so every face keeps its slot
+    /// and none shifts the faces after it. Consumers drop any triangle with
+    /// a corner `>= vertex_count`. `parse_indices_direct` reads raw bytes
+    /// under the same rule.
     #[inline]
     pub fn parse_index_list(face_list: &[AttributeValue]) -> Vec<u32> {
         let mut result = Vec::with_capacity(face_list.len() * 3);
-
-        // Convert a 1-based i64 IFC index to a 0-based u32. Anything outside the
-        // valid u32 vertex range — non-positive, or beyond u32::MAX — maps to
-        // u32::MAX, an out-of-range sentinel the downstream bounds check drops,
-        // instead of an `(i64 - 1) as u32` truncation/wrap to a valid-looking
-        // (wrong) vertex. NOTE: this sentinel is u32::MAX while fast_parse's
-        // saturating path yields u32::MAX - 1 — consumers must bounds-check
-        // (i >= vertex_count), never compare against a single sentinel value.
-        let to_zero_based = |i: i64| -> u32 {
-            i.checked_sub(1)
-                .and_then(|z| u32::try_from(z).ok())
-                .unwrap_or(u32::MAX)
-        };
-
         for face_attr in face_list {
-            if let Some(face) = face_attr.as_list() {
-                // Use as_int for faster parsing, convert from 1-based to 0-based
-                let i0 = to_zero_based(face.first().and_then(|v| v.as_int()).unwrap_or(1));
-                let i1 = to_zero_based(face.get(1).and_then(|v| v.as_int()).unwrap_or(1));
-                let i2 = to_zero_based(face.get(2).and_then(|v| v.as_int()).unwrap_or(1));
-
-                result.push(i0);
-                result.push(i1);
-                result.push(i2);
+            match face_attr.as_list() {
+                Some([a, b, c]) => result.extend(
+                    [a, b, c].map(|v| v.as_ifc_index().unwrap_or(crate::INVALID_INDEX)),
+                ),
+                _ => result.extend([crate::INVALID_INDEX; 3]),
             }
         }
-
         result
     }
 

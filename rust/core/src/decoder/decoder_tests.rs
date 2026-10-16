@@ -764,3 +764,39 @@ fn issue_5266_fast_point_reader_matches_the_tokenizer_on_every_edge() {
         assert_eq!(decoder.get_cartesian_point_fast(1), expected, "{coords}");
     }
 }
+
+/// #7689 (CORE-11): keyword case is not significant (#4497), but the face
+/// bound reader looked for the bytes `OUTER` in the raw type name, so a
+/// CamelCase `IfcFaceOuterBound` read as an inner bound and the faceted brep
+/// took the first bound listed as the outer one.
+#[test]
+fn get_face_bound_fast_reads_the_outer_bound_keyword_in_any_case_7689() {
+    for keyword in ["IFCFACEOUTERBOUND", "IfcFaceOuterBound", "ifcfaceouterbound", " IfcFaceOuterBound ", "IfcFaceOuterBound\t"] {
+        let content = format!("#5={keyword}(#4,.T.);\n");
+        let mut decoder = EntityDecoder::new(&content);
+        assert_eq!(decoder.get_face_bound_fast(5), Some((4, true, true)), "{keyword:?}");
+    }
+    for keyword in ["IFCFACEBOUND", "IfcFaceBound"] {
+        let content = format!("#5={keyword}(#4,.F.);\n");
+        let mut decoder = EntityDecoder::new(&content);
+        assert_eq!(decoder.get_face_bound_fast(5), Some((4, false, false)), "{keyword:?}");
+    }
+    // Trivia around the keyword is legal (#3789) and must not hide it: a
+    // comment-blind slice between `=` and `(` read these as inner bounds.
+    for record in [
+        "#5=IFCFACEOUTERBOUND/* c */(#4,.T.);",
+        "#5=IFCFACEOUTERBOUND /* c */ (#4,.T.);",
+        "#5=/* c */IFCFACEOUTERBOUND(#4,.T.);",
+        "#5= /* ( */ IfcFaceOuterBound /* ) */ (#4,.T.);",
+    ] {
+        let mut decoder = EntityDecoder::new(record);
+        assert_eq!(decoder.get_face_bound_fast(5), Some((4, true, true)), "{record}");
+    }
+    // The uppercase prefix fast path still requires the whole keyword.
+    for record in ["#5=IFCFACEOUTERBOUNDX(#4,.T.);", "#5=IFCFACEBOUNDOUTER(#4,.T.);"] {
+        let mut decoder = EntityDecoder::new(record);
+        assert_eq!(decoder.get_face_bound_fast(5), Some((4, true, false)), "{record}");
+    }
+    let mut decoder = EntityDecoder::new("#5=IFCFACEBOUND/* OUTER */(#4,.T.);");
+    assert_eq!(decoder.get_face_bound_fast(5), Some((4, true, false)), "a comment never names the type");
+}

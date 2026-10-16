@@ -1331,7 +1331,7 @@ fn test_advanced_face_trimmed_bspline_respects_trim_params() {
 /// means — this crate silently consumed to end of input, `EntityScanner`
 /// refused. Both now call `ifc_lite_core::skip_step_comment`, so they agree.
 ///
-/// This was RED before the fix: `extract_coord_index_bytes`'s inline
+/// This was RED before the fix: the then `extract_coord_index_bytes`'s inline
 /// comment-skip ran an index strictly past the fixture's length on an
 /// unterminated comment (confirmed via a since-removed `skip_comment_lossy`
 /// probe), while `EntityScanner::next_entity` already refused. Now both
@@ -1362,13 +1362,14 @@ fn unterminated_comment_geometry_and_core_scanner_agree() {
         "ifc-lite-core's scanner must refuse to scan past an unterminated comment, not consume it"
     );
 
-    // This crate's own call site: a CoordIndex list containing an
-    // unterminated comment must be refused (`None`), the same answer, for
-    // the same reason -- via the same shared function.
+    // The CoordIndex reader this crate meshes through (moved into core's
+    // `extract_face_indices_from_entity` by #7689): a CoordIndex list
+    // containing an unterminated comment must be refused (`None`), the same
+    // answer, for the same reason -- via the same shared function.
     let mut entity = b"#77=IFCTRIANGULATEDFACESET(#78,$,$,((1,2,3)".to_vec();
     entity.extend_from_slice(fixture);
     assert_eq!(
-        extract_coord_index_bytes(&entity),
+        ifc_lite_core::extract_face_indices_from_entity(&entity),
         None,
         "ifc-lite-geometry must refuse a CoordIndex list containing an unterminated comment"
     );

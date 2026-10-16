@@ -18,6 +18,12 @@ mod coordinates;
 
 pub use coordinates::{parse_coordinates_direct, parse_coordinates_direct_f64};
 
+#[path = "fast_parse_indices.rs"]
+mod indices;
+
+pub(crate) use indices::ifc_index_to_zero_based;
+pub use indices::INVALID_INDEX;
+
 /// Estimate number of floats in coordinate data
 ///
 /// Shared with the split-out `coordinates` module.
@@ -34,59 +40,18 @@ fn estimate_int_count(bytes: &[u8]) -> usize {
     bytes.len() / 4
 }
 
-/// Parse index list directly from raw bytes to `Vec<u32>`
+/// Parse a `CoordIndex` list value (`((1,2,3),(2,1,4),...)`) directly from
+/// raw bytes to flat 0-based triangle corners, under the one IFC index rule
+/// (1-based INTEGER in `1..=u32::MAX`): a value that fails it, and all three corners
+/// of a face that is not exactly three entries long, read as
+/// [`INVALID_INDEX`], which every consumer drops (#7689).
 ///
-/// This parses IFC face index data like:
-/// `((1,2,3),(2,1,4),...)`
-///
-/// Automatically converts from 1-based IFC indices to 0-based.
-///
-/// # Performance
-/// - Zero intermediate allocations
-/// - Uses inline integer parsing
+/// Empty when the text holds anything but digits, commas, parentheses and
+/// trivia; [`extract_face_indices_from_entity`] tells that refusal apart from
+/// an empty list, so its caller can decode the record instead.
 #[inline]
 pub fn parse_indices_direct(bytes: &[u8]) -> Vec<u32> {
-    if comments::may_contain_step_comment(bytes) {
-        return comments::parse_indices(bytes);
-    }
-    let mut result = Vec::with_capacity(estimate_int_count(bytes));
-    let mut pos = 0;
-    let len = bytes.len();
-    while pos < len {
-        while pos < len && !bytes[pos].is_ascii_digit() {
-            pos += 1;
-        }
-        if pos >= len {
-            break;
-        }
-        parse_index_value(bytes, &mut pos, &mut result);
-    }
-    result
-}
-
-/// Parse the digit run at `pos`; shared by the comment-free and aware scans.
-#[inline(always)]
-fn parse_index_value(bytes: &[u8], pos: &mut usize, result: &mut Vec<u32>) {
-    // Use checked arithmetic so a pathologically large index saturates to an
-    // obviously out-of-range value instead of wrapping to a valid-looking one.
-    let mut value: u32 = 0;
-    let mut overflowed = false;
-    while *pos < bytes.len() && bytes[*pos].is_ascii_digit() {
-        if !overflowed {
-            match value
-                .checked_mul(10)
-                .and_then(|v| v.checked_add((bytes[*pos] - b'0') as u32))
-            {
-                Some(v) => value = v,
-                None => overflowed = true,
-            }
-        }
-        *pos += 1;
-    }
-    if overflowed {
-        value = u32::MAX;
-    }
-    result.push(value.saturating_sub(1));
+    indices::read_coord_index(bytes).unwrap_or_default()
 }
 
 /// Parse a whole point-list record's `CoordList` (attribute 0), found by depth, not by the
@@ -131,56 +96,19 @@ fn coordinate_list_span(bytes: &[u8]) -> Option<&[u8]> {
     }
 }
 
-/// Parse face indices from IfcTriangulatedFaceSet entity
+/// The `CoordIndex` (attribute 3) of an `IfcTriangulatedFaceSet` record,
+/// read by [`parse_indices_direct`]'s grammar, e.g. from
+/// `#77=IFCTRIANGULATEDFACESET(#78,$,$,((1,2,3),(2,1,4),...),$);`.
 ///
-/// Finds the CoordIndex attribute (4th attribute, 0-indexed as 3)
-/// in an entity like:
-/// `#77=IFCTRIANGULATEDFACESET(#78,$,$,((1,2,3),(2,1,4),...),$);`
+/// `None` when the attribute is not a list or holds anything the byte
+/// grammar leaves to the decoded reading (`AttributeValue::parse_index_list`,
+/// the same rule), so the caller decodes instead of meshing a guess (#7689).
+/// The attribute is found by [`crate::StepListItems`], the one per-attribute
+/// read, so strings, nesting and comments follow its rule.
 #[inline]
 pub fn extract_face_indices_from_entity(bytes: &[u8]) -> Option<Vec<u32>> {
-    // Count commas to find the 4th attribute (CoordIndex)
-    // Format: IFCTRIANGULATEDFACESET(Coordinates,Normals,Closed,CoordIndex,PnIndex)
-    let mut paren_depth = 0;
-    let mut comma_count = 0;
-    let mut attr_start = None;
-    let mut attr_end = None;
-
-    for (i, &b) in bytes.iter().enumerate() {
-        match b {
-            b'(' => {
-                if paren_depth == 1 && comma_count == 3 && attr_start.is_none() {
-                    attr_start = Some(i);
-                }
-                paren_depth += 1;
-            }
-            b')' => {
-                paren_depth -= 1;
-                if paren_depth == 1
-                    && comma_count == 3
-                    && attr_start.is_some()
-                    && attr_end.is_none()
-                {
-                    attr_end = Some(i + 1);
-                }
-            }
-            b',' if paren_depth == 1 => {
-                if comma_count == 3 && attr_end.is_none() && attr_start.is_some() {
-                    attr_end = Some(i);
-                }
-                comma_count += 1;
-            }
-            _ => {}
-        }
-    }
-
-    let start = attr_start?;
-    let end = attr_end?;
-
-    if end <= start {
-        return None;
-    }
-
-    Some(parse_indices_direct(&bytes[start..end]))
+    let coord_index = crate::StepListItems::of_record(bytes)?.nth(3)?;
+    indices::read_coord_index(coord_index)
 }
 
 /// Fast path checker - determines if entity type benefits from direct parsing
@@ -287,6 +215,12 @@ where
     let coord_bytes = get_entity_bytes(coord_entity_id)?;
 
     let positions = extract_coordinate_list_from_entity(&coord_bytes)?;
+
+    // This reader has no `PnIndex` remap, so a face set that has one is
+    // refused rather than meshed against the wrong points (#7689).
+    if crate::nth_attribute_is_present(faceset_bytes, 4) {
+        return None;
+    }
 
     // Extract and parse indices from attribute 3 (CoordIndex)
     let indices = extract_face_indices_from_entity(faceset_bytes)?;

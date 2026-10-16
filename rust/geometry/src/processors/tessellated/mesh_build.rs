@@ -37,6 +37,8 @@ impl PolygonalFaceSetProcessor {
         cz *= inv_n;
 
         let mut sign_accum = 0.0f64;
+        // Sum of |n|·|out|: the scale `sign_accum` is judged against.
+        let mut magnitude = 0.0f64;
         for tri in indices.chunks_exact(3) {
             let i0 = tri[0] as usize;
             let i1 = tri[1] as usize;
@@ -76,10 +78,20 @@ impl PolygonalFaceSetProcessor {
             );
             let out = (tc.0 - cx, tc.1 - cy, tc.2 - cz);
             sign_accum += n.0 * out.0 + n.1 * out.1 + n.2 * out.2;
+            magnitude += (n.0 * n.0 + n.1 * n.1 + n.2 * n.2).sqrt()
+                * (out.0 * out.0 + out.1 * out.1 + out.2 * out.2).sqrt();
         }
 
-        // If most triangles point inward, flip all winding.
-        if sign_accum < 0.0 {
+        // If most triangles point inward, flip all winding. A planar sheet
+        // (one face, a flat terrain patch) has every normal perpendicular to
+        // its centroid offset, so its sum is rounding noise of either sign:
+        // that says nothing about inside and outside, and is never a reason
+        // to flip. A flat terrain patch or a single face marked `Closed = .T.`
+        // reaches this test (#7689).
+        // Measured as `sign_accum / magnitude` over the fixture corpus: real
+        // inward shells sit at -5e-4 and below, planar or barely warped
+        // single faces within ±6e-8 of zero.
+        if sign_accum < -1e-5 * magnitude {
             for tri in indices.chunks_exact_mut(3) {
                 tri.swap(1, 2);
             }

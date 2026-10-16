@@ -11,6 +11,7 @@ import {
   resolveExpressBase,
   tokenIsRealLiteral,
   toStepReal,
+  toStepInteger,
   escapeStepString,
 } from './step-serialization.js';
 import { serializePropertyValue } from './property-value-serialization.js';
@@ -97,9 +98,27 @@ describe('toStepReal', () => {
     expect(toStepReal(-0.35)).toBe('-0.35');
   });
 
-  it('maps non-finite input to 0.', () => {
-    expect(toStepReal(NaN)).toBe('0.');
-    expect(toStepReal(Infinity)).toBe('0.');
+  // EXPORT-STEP-5 (#7679): a NaN measure used to be written as a real zero.
+  it('refuses non-finite input instead of writing a made-up 0.', () => {
+    for (const v of [NaN, Infinity, -Infinity]) {
+      expect(() => toStepReal(v)).toThrow(/no finite value/);
+    }
+  });
+
+  it('writes an INTEGER only for a finite value below 1e21', () => {
+    expect(toStepInteger(-0)).toBe('0');
+    expect(toStepInteger(2 ** 53 - 1)).toBe('9007199254740991');
+    // Beyond 2^53 the digits are still a STEP INTEGER (an i64 such as 1e16).
+    expect(toStepInteger(1e16)).toBe('10000000000000000');
+    expect(toStepInteger(1e20)).toBe('100000000000000000000');
+    for (const v of [NaN, Infinity, 1e21, -1e21]) expect(toStepInteger(v)).toBeNull();
+  });
+
+  it('serializePropertyValue omits an Integer that has no STEP spelling', () => {
+    expect(serializePropertyValue('abc', PropertyValueType.Integer)).toBe('$');
+    expect(serializePropertyValue(1e21, PropertyValueType.Integer)).toBe('$');
+    expect(serializePropertyValue(Infinity, PropertyValueType.Integer)).toBe('$');
+    expect(serializePropertyValue(2.6, PropertyValueType.Integer)).toBe('IFCINTEGER(3)');
   });
 
   it('every output matches the STEP REAL grammar', () => {

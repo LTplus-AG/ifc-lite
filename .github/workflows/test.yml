@@ -1032,6 +1032,16 @@ jobs:
           # main, ordinary whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- scripts/lib/semver-baseline.mjs | grep -Fxq 'scripts/lib/semver-baseline.mjs'; then
             oracle_args+=(--mutation tests/evidence/semver-baseline-7737/fallback.oracle.patch)
+          # #7679: the non-finite output policy turns to_step_real into a
+          # Result and adds step_integer / integral_token and the Python
+          # finite_json module, which the changed tests call, so a whole-change
+          # revert cannot compile them (INCONCLUSIVE). Keep every item and
+          # restore ONLY the old behaviour: a non-finite REAL written as `0.`,
+          # every number an INTEGER, any KMZ placement accepted, the Python
+          # probe passing NaN, and the TS twin's toStepReal / toStepInteger.
+          # Once finite_json.rs is on main, ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/python/src/finite_json.rs | grep -Fxq 'rust/python/src/finite_json.rs'; then
+            oracle_args+=(--mutation tests/evidence/export-nonfinite-7679/behaviour.oracle.patch)
           fi
           node scripts/check-test-revert-oracle.mjs "${oracle_args[@]}"
           # #7512: observe cleanup independently of scoped admission/schema.

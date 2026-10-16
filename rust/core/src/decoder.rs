@@ -111,8 +111,9 @@ pub struct EntityDecoder<'a> {
     /// data-model readers. See [`Self::with_lossless_reals`].
     lossless_reals: bool,
     /// Records refused by input admission, for the refused-element counter.
-    /// A `Cell` so the `&self` [`Self::decode_at_uncached`] can count too.
-    refused_reals: std::cell::Cell<u64>,
+    /// Atomic so the `&self` [`Self::decode_at_uncached`] can count too while
+    /// the decoder stays `Sync` and `RefUnwindSafe`.
+    refused_reals: std::sync::atomic::AtomicU64,
 }
 
 impl<'a> EntityDecoder<'a> {
@@ -137,7 +138,7 @@ impl<'a> EntityDecoder<'a> {
             schema_version_cache: None,
             grid_axis_index: Arc::default(),
             lossless_reals: false,
-            refused_reals: std::cell::Cell::new(0),
+            refused_reals: std::sync::atomic::AtomicU64::new(0),
         }
     }
 
@@ -162,7 +163,7 @@ impl<'a> EntityDecoder<'a> {
             schema_version_cache: None,
             grid_axis_index: Arc::default(),
             lossless_reals: false,
-            refused_reals: std::cell::Cell::new(0),
+            refused_reals: std::sync::atomic::AtomicU64::new(0),
         }
     }
 
@@ -187,7 +188,7 @@ impl<'a> EntityDecoder<'a> {
             schema_version_cache: None,
             grid_axis_index: Arc::default(),
             lossless_reals: false,
-            refused_reals: std::cell::Cell::new(0),
+            refused_reals: std::sync::atomic::AtomicU64::new(0),
         }
     }
 
@@ -249,7 +250,7 @@ impl<'a> EntityDecoder<'a> {
             .map(|token| AttributeValue::from_token_noting(token, &mut unrepresentable))
             .collect();
         if unrepresentable && !self.lossless_reals {
-            self.refused_reals.set(self.refused_reals.get() + 1);
+            self.refused_reals.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             return Err(Error::UnrepresentableReal(id));
         }
         Ok((DecodedEntity::new(id, ifc_type, attributes), unrepresentable))
@@ -277,7 +278,7 @@ impl<'a> EntityDecoder<'a> {
     /// How many records this decoder has refused under input admission
     /// (#7678). A geometry job that sees this move refused input.
     pub fn refused_real_records(&self) -> u64 {
-        self.refused_reals.get()
+        self.refused_reals.load(std::sync::atomic::Ordering::Relaxed)
     }
 
     /// Decode the entity in `[start, end)` **without** touching the cache.

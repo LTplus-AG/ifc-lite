@@ -17,7 +17,6 @@ use crate::{
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 use nalgebra::Matrix4;
 
-use super::helpers::parse_axis2_placement_3d;
 use crate::router::GeometryProcessor;
 
 pub struct ExtrudedAreaSolidTaperedProcessor {
@@ -60,67 +59,13 @@ impl GeometryProcessor for ExtrudedAreaSolidTaperedProcessor {
             return Ok(Mesh::new());
         }
 
-        let direction_attr = entity.get(2).ok_or_else(|| {
-            Error::geometry("ExtrudedAreaSolidTapered missing ExtrudedDirection".to_string())
-        })?;
-        let direction_entity = decoder
-            .resolve_ref(direction_attr)?
-            .ok_or_else(|| Error::geometry("Failed to resolve ExtrudedDirection".to_string()))?;
-        if direction_entity.ifc_type != IfcType::IfcDirection {
-            return Err(Error::geometry(format!(
-                "Expected IfcDirection, got {}",
-                direction_entity.ifc_type
-            )));
-        }
-
-        use ifc_lite_core::AttributeValue;
-        let ratios_attr = direction_entity
-            .get(0)
-            .ok_or_else(|| Error::geometry("IfcDirection missing ratios".to_string()))?;
-        let ratios = ratios_attr
-            .as_list()
-            .ok_or_else(|| Error::geometry("Expected ratio list".to_string()))?;
-        let dir_x = ratios
-            .first()
-            .and_then(|v: &AttributeValue| v.as_float())
-            .unwrap_or(0.0);
-        let dir_y = ratios
-            .get(1)
-            .and_then(|v: &AttributeValue| v.as_float())
-            .unwrap_or(0.0);
-        let dir_z = ratios
-            .get(2)
-            .and_then(|v: &AttributeValue| v.as_float())
-            .unwrap_or(1.0);
-        let direction = Vector3::new(dir_x, dir_y, dir_z);
-        if direction.norm_squared() <= f64::EPSILON {
-            return Err(Error::geometry(
-                "ExtrudedAreaSolidTapered has zero-length ExtrudedDirection".to_string(),
-            ));
-        }
+        let super::extrusion_params::ExtrusionParams { direction, depth, position: pos_transform } =
+            super::extrusion_params::ExtrusionParams::decode(
+                entity,
+                decoder,
+                "ExtrudedAreaSolidTapered",
+            )?;
         let local_direction = direction.normalize();
-
-        let depth = entity.get_float(3).ok_or_else(|| {
-            Error::geometry("ExtrudedAreaSolidTapered missing Depth".to_string())
-        })?;
-
-        let pos_transform = if let Some(pos_attr) = entity.get(1) {
-            if !pos_attr.is_null() {
-                if let Some(pos_entity) = decoder.resolve_ref(pos_attr)? {
-                    if pos_entity.ifc_type == IfcType::IfcAxis2Placement3D {
-                        Some(parse_axis2_placement_3d(&pos_entity, decoder)?)
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
-            } else {
-                None
-            }
-        } else {
-            None
-        };
 
         // Same Z-aligned vs shear branch as ExtrudedAreaSolidProcessor — see
         // processors/extrusion.rs for the rationale.

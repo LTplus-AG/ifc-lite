@@ -154,8 +154,7 @@ impl IfcAPI {
             } else {
                 // No setEntityIndex was delivered (non-streaming path): scan the
                 // file straight into sorted columns, skipping the FxHashMap.
-                let built =
-                    std::sync::Arc::new(ifc_lite_core::ColumnarEntityIndex::from_scan(content));
+                let built = std::sync::Arc::new(super::scan_columnar_index(content));
                 *slot = Some(std::sync::Arc::clone(&built));
                 built
             }

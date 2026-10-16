@@ -86,7 +86,7 @@ pub mod units;
 #[path = "schema_registry_tests.rs"]
 mod schema_registry_tests;
 
-pub use columnar_index::{ColumnLengthMismatch, ColumnarEntityIndex};
+pub use columnar_index::{ColumnLengthMismatch, ColumnarEntityIndex, SpanBeyondU32};
 pub use compatibility::{is_exporter_stratum_alias, EXPORTER_STRATUM_ALIASES};
 pub use decoder::{build_entity_index, EntityDecoder, EntityIndex, GridAxisIndex};
 pub use dense_index::DenseEntityIndex;

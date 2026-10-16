@@ -8,6 +8,7 @@ on:
       - 'docs/**'
       - 'mkdocs.yml'
       - 'requirements-docs.txt'
+      - 'apps/landing/favicon.svg'
       - 'rust/**'
       - '.github/workflows/docs.yml'
       - 'packages/**'

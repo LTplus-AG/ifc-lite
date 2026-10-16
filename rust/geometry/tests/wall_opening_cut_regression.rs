@@ -25,13 +25,12 @@
 //! once each defect is fixed its `#[ignore]` should be removed and the
 //! assertions tightened to match IOS.
 
-mod support;
 
 use ifc_lite_core::{build_entity_index, EntityDecoder, EntityScanner, IfcType};
 use ifc_lite_geometry::{propagate_voids_to_parts, GeometryRouter, Mesh};
 use rustc_hash::FxHashMap;
 
-const FIXTURE: &str = "../../tests/models/ara3d/advanced_model.ifc";
+const FIXTURE: &str = "ara3d/advanced_model.ifc";
 
 /// Signed volume of the (closed) mesh via the divergence theorem — the
 /// load-bearing geometric invariant alongside the bbox. Volumes below are
@@ -113,33 +112,15 @@ fn build_void_index(content: &str) -> FxHashMap<u32, Vec<u32>> {
 /// must still panic. Folding both into one `Option` is what let three tests
 /// here read as skippable while actually panicking, and would equally let the
 /// other four silently pass on a genuine regression.
-/// `try_exists`, not `exists`: `Path::exists` collapses a permission error into
-/// `false`, which would skip the whole file while CI reported green. Only a
-/// definite "not there" is a skip; an undecidable answer is a broken setup and
-/// panics.
 fn fixture_present() -> bool {
-    match std::path::Path::new(FIXTURE).try_exists() {
-        Ok(true) => true,
-        Ok(false) => {
-            assert!(
-                !support::require_fixtures(),
-                "fixture {FIXTURE} not present and IFC_LITE_REQUIRE_FIXTURES=1 -- run `pnpm fixtures` to download (sha256 in tests/models/manifest.json)"
-            );
-            eprintln!(
-                "skipping: fixture {} not present — run `pnpm fixtures` to download (sha256 in tests/models/manifest.json)",
-                FIXTURE,
-            );
-            false
-        }
-        Err(e) => panic!("cannot determine whether fixture {FIXTURE} exists: {e}"),
-    }
+    ifc_lite_testkit::fixture_present(FIXTURE)
 }
 
 /// Process one host. Callers must have checked [`fixture_present`] first, so
 /// every `None` here is a genuine processing failure and is `expect`ed at the
 /// call site rather than skipped.
 fn process(host_id: u32) -> Option<Mesh> {
-    let content = std::fs::read_to_string(FIXTURE).ok()?;
+    let content = ifc_lite_testkit::fixture_text(FIXTURE)?;
     let entity_index = build_entity_index(&content);
     let mut decoder = EntityDecoder::with_index(&content, entity_index);
     let router = GeometryRouter::with_units(&content, &mut decoder);

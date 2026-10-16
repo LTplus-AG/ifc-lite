@@ -1,0 +1,12 @@
+diff --git a/rust/testkit/src/fixtures.rs b/rust/testkit/src/fixtures.rs
+--- a/rust/testkit/src/fixtures.rs
++++ b/rust/testkit/src/fixtures.rs
+@@ -92,7 +92,7 @@
+         FixtureError::NotFound => "not present",
+         FixtureError::LfsPointer => "is a Git LFS pointer, not the real bytes",
+     };
+-    if false && gate {
++    if gate {
+         panic!(
+             "fixture {rel} {what} and IFC_LITE_REQUIRE_FIXTURES=1 -- run `pnpm fixtures` \
+              to download (sha256 in tests/models/manifest.json)"

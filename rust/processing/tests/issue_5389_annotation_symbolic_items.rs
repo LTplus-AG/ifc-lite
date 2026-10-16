@@ -47,21 +47,11 @@ fn issue_5389_symbolic_annotation_items_are_not_dropped_items() {
     );
 }
 
-const FIXTURE: &str = "../../tests/models/ara3d/AC20-FZK-Haus.ifc";
+const FIXTURE: &str = "ara3d/AC20-FZK-Haus.ifc";
 
 #[test]
 fn issue_5389_fzk_haus_reports_no_dropped_annotation_items() {
-    let bytes = match std::fs::read(FIXTURE) {
-        Ok(b) => b,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            eprintln!(
-                "skipping #5389 fixture test: {FIXTURE} missing — run `pnpm fixtures` \
-                 (sha256 in tests/models/manifest.json)"
-            );
-            return;
-        }
-        Err(e) => panic!("failed to read fixture {FIXTURE}: {e}"),
-    };
+    let bytes = ifc_lite_testkit::fixture_bytes_or_skip!(FIXTURE);
     let result = process_geometry(&bytes);
     let dropped = dropped_types(&result);
     assert!(

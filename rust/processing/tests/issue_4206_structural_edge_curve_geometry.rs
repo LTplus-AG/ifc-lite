@@ -11,20 +11,10 @@
 use ifc_lite_core::EntityScanner;
 use ifc_lite_processing::{process_geometry, MeshData};
 
-const FIXTURE: &str = "../../tests/models/ifcopenshell/generated_structural_edge_curve.ifc";
+const FIXTURE: &str = "ifcopenshell/generated_structural_edge_curve.ifc";
 
 fn read_fixture() -> Option<String> {
-    match std::fs::read_to_string(FIXTURE) {
-        Ok(source) => Some(source),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            eprintln!(
-                "skipping structural edge-curve exporter regression: fixture missing at \
-                 {FIXTURE} — run `pnpm fixtures` (sha256 in tests/models/manifest.json)"
-            );
-            None
-        }
-        Err(error) => panic!("failed to read fixture {FIXTURE}: {error}"),
-    }
+    ifc_lite_testkit::fixture_text(FIXTURE)
 }
 
 fn find_member_id(source: &str, name: &str) -> u32 {

@@ -35,9 +35,7 @@
 use ifc_lite_core::{EntityDecoder, IfcSchema, IfcType};
 use ifc_lite_geometry::{GeometryRouter, ProfileProcessor, TessellationQuality};
 
-mod support;
-
-const FIXTURE: &str = "../../tests/models/issues/953_trimmed_curve_cartesian_arc.ifc";
+const FIXTURE: &str = "issues/953_trimmed_curve_cartesian_arc.ifc";
 
 /// `#206` — the `IfcArbitraryClosedProfileDef` whose outer curve is the
 /// polyline + cartesian-trimmed semicircle (radius 2.4).
@@ -46,42 +44,8 @@ const PROFILE_ID: u32 = 206;
 const EXTRUSION_ID: u32 = 205;
 const RADIUS: f64 = 2.4;
 
-/// The first line of every Git LFS pointer file. Split + concatenated at
-/// runtime so the literal doesn't appear in the source (GitHub's pre-receive
-/// hook rejects any commit containing the contiguous string).
-fn lfs_pointer_prefix() -> String {
-    format!("version {}{}", "https://git-lfs.github.com/", "spec/")
-}
-
 fn read_fixture() -> Option<String> {
-    match std::fs::read_to_string(FIXTURE) {
-        Ok(s) if s.starts_with(&lfs_pointer_prefix()) => {
-            assert!(
-                !support::require_fixtures(),
-                "fixture is an LFS pointer and IFC_LITE_REQUIRE_FIXTURES=1 -- \
-                 run `pnpm fixtures` to download real bytes"
-            );
-            eprintln!(
-                "skipping issue-953 regression: fixture at {FIXTURE} is a Git LFS \
-                 pointer — run `pnpm fixtures` from the repo root to download it",
-            );
-            None
-        }
-        Ok(s) => Some(s),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            assert!(
-                !support::require_fixtures(),
-                "fixture missing and IFC_LITE_REQUIRE_FIXTURES=1 -- \
-                 run `pnpm fixtures` to download (sha256 in tests/models/manifest.json)"
-            );
-            eprintln!(
-                "skipping issue-953 regression: fixture missing at {FIXTURE} — \
-                 run `pnpm fixtures` from the repo root to download it",
-            );
-            None
-        }
-        Err(e) => panic!("failed to read fixture {FIXTURE}: {e}"),
-    }
+    ifc_lite_testkit::fixture_text(FIXTURE)
 }
 
 fn mesh_bbox(positions: &[f32]) -> ([f32; 3], [f32; 3]) {

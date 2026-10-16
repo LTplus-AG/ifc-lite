@@ -8,20 +8,10 @@
 
 use ifc_lite_processing::process_geometry;
 
-const FIXTURE: &str = "../../tests/models/ifcopenshell/generated_structural_surface_member.ifc";
+const FIXTURE: &str = "ifcopenshell/generated_structural_surface_member.ifc";
 
 fn read_fixture() -> Option<String> {
-    match std::fs::read_to_string(FIXTURE) {
-        Ok(source) => Some(source),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            eprintln!(
-                "skipping structural surface-member geometry regression: fixture missing at \
-                 {FIXTURE} — run `pnpm fixtures` (sha256 in tests/models/manifest.json)"
-            );
-            None
-        }
-        Err(error) => panic!("failed to read fixture {FIXTURE}: {error}"),
-    }
+    ifc_lite_testkit::fixture_text(FIXTURE)
 }
 
 #[test]

@@ -18,35 +18,17 @@
 //! 0.493 m bulk. IfcOpenShell (pip 0.8.2, use-world-coords) keeps the bulk:
 //! extent (4.201, 0.493, 2.795). Pin that.
 
-mod support;
 
 use ifc_lite_core::{build_entity_index, EntityDecoder};
 use ifc_lite_geometry::{GeometryRouter, Mesh};
 use rustc_hash::FxHashMap;
 
-const FIXTURE: &str = "../../tests/models/ara3d/duplex.ifc";
+const FIXTURE: &str = "ara3d/duplex.ifc";
 
-/// `true` when the fixture is readable; `false` only for a genuinely absent
-/// file (`NotFound`), which is a legitimate skip unless
-/// `IFC_LITE_REQUIRE_FIXTURES=1`, in which case it panics naming the path.
-/// Any other `io::Error` (permission denied, corrupt read, ...) means the
-/// environment is broken rather than merely missing an optional download,
-/// so it panics unconditionally. This attempts the read (rather than
-/// `Path::exists()`) because `exists()` collapses a permission error into
-/// `false` just like a genuinely absent file, and is a TOCTOU check besides
-/// — `process` below performs the real read moments later.
+/// `true` when the fixture is present; a missing one is a skip unless
+/// `IFC_LITE_REQUIRE_FIXTURES=1` (then it panics). See `ifc_lite_testkit`.
 fn fixture_present() -> bool {
-    match std::fs::read_to_string(FIXTURE) {
-        Ok(_) => true,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            assert!(
-                !support::require_fixtures(),
-                "fixture {FIXTURE} not present and IFC_LITE_REQUIRE_FIXTURES=1 -- run `pnpm fixtures` to download (sha256 in tests/models/manifest.json)"
-            );
-            false
-        }
-        Err(e) => panic!("fixture {FIXTURE} exists but could not be read: {e}"),
-    }
+    ifc_lite_testkit::fixture_present(FIXTURE)
 }
 
 fn bbox_extent(p: &[f32]) -> (f32, f32, f32) {
@@ -67,8 +49,8 @@ fn bbox_extent(p: &[f32]) -> (f32, f32, f32) {
 /// parse/decode/geometry error — only a *missing fixture* is a legitimate skip,
 /// and that is checked by the caller before this runs.
 fn process(id: u32) -> Mesh {
-    let content =
-        std::fs::read_to_string(FIXTURE).unwrap_or_else(|e| panic!("read {FIXTURE}: {e}"));
+    let content = ifc_lite_testkit::fixture_text(FIXTURE)
+        .unwrap_or_else(|| panic!("fixture {FIXTURE} vanished after fixture_present"));
     let entity_index = build_entity_index(&content);
     let mut decoder = EntityDecoder::with_index(&content, entity_index);
     let router = GeometryRouter::with_units(&content, &mut decoder);

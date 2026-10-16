@@ -227,7 +227,7 @@ async fn cache_symbolic_data_round_trips_through_load_cached_symbolic() {
     ));
 
     cache_symbolic_data(&cache, "roundtrip-key", &data).await;
-    let loaded = load_cached_symbolic(&cache, "roundtrip-key").await;
+    let loaded = load_cached_symbolic(&cache, "roundtrip-key").await.unwrap().unwrap();
 
     assert_eq!(
         serde_json::to_value(&loaded).unwrap(),
@@ -236,11 +236,11 @@ async fn cache_symbolic_data_round_trips_through_load_cached_symbolic() {
     );
 }
 
-/// A cache-key with no cached entry must default to empty symbolic
-/// data rather than erroring or panicking (fetch endpoints rely on this
-/// to answer definitively instead of looping on a pending status).
+/// A cache-key with no cached entry is `None`, not an error and not a
+/// silently empty stream (#7676): the replay that needs it is then a miss,
+/// rather than a replay that drops the model's 2D symbols.
 #[tokio::test]
-async fn load_cached_symbolic_defaults_to_empty_when_absent() {
+async fn load_cached_symbolic_is_none_when_absent() {
     let dir = std::env::temp_dir().join(format!(
         "ifc-lite-server-cache-keys-test-{}-absent",
         std::process::id()
@@ -248,8 +248,8 @@ async fn load_cached_symbolic_defaults_to_empty_when_absent() {
     let _ = std::fs::remove_dir_all(&dir);
     let cache = DiskCache::new(dir.to_str().unwrap()).await;
 
-    let loaded = load_cached_symbolic(&cache, "never-written").await;
-    assert!(loaded.is_empty());
+    let loaded = load_cached_symbolic(&cache, "never-written").await.unwrap();
+    assert!(loaded.is_none());
 }
 
 /// `request_cache_key` is the seed for EVERY other key (parquet, parquet

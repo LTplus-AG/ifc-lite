@@ -25,6 +25,13 @@ use super::readers;
 use super::units::{find_length_unit_reference, normalize_map_unit_name};
 use super::values::Unwritable;
 
+/// A generated record: its id (for the converter) and its line.
+type Line = (u32, String);
+
+/// The generated property-set lines, and the ids of the sets written for a
+/// type object's own names.
+type PsetLines = (Vec<Line>, Vec<(String, u32)>);
+
 /// `HAS_PROPERTY_SETS_SLOT`.
 const HAS_PROPERTY_SETS_SLOT: usize = 5;
 
@@ -66,7 +73,7 @@ fn pset_lines(
     psets: &[PSet],
     type_owned: &[String],
     source_members: &SourceMembers,
-) -> (Vec<String>, Vec<(String, u32)>) {
+) -> Result<PsetLines, Unwritable> {
     let mut lines = Vec::new();
     let mut owned_ids: Vec<(String, u32)> = Vec::new();
     let owner = pass.owner_history_token(host);
@@ -84,7 +91,7 @@ fn pset_lines(
                 refs.push(format!("#{atom}"));
                 continue;
             }
-            let id = pass.allocate();
+            let id = pass.allocate()?;
             let value = serialize_nominal_value(&prop.value, prop.ty, prop.data_type.as_deref());
             let unit = unit_token(pass, prop.unit.as_deref());
             // A list value is an `IfcPropertyListValue`; `()` is `$` (#5794).
@@ -93,15 +100,14 @@ fn pset_lines(
                 v if v.starts_with('(') => ("IFCPROPERTYLISTVALUE", value),
                 _ => ("IFCPROPERTYSINGLEVALUE", value),
             };
-            lines.push(format!("#{id}={entity}('{}',$,{value},{unit});", escape(&prop.name)));
+            lines.push((id, format!("#{id}={entity}('{}',$,{value},{unit});", escape(&prop.name))));
             refs.push(format!("#{id}"));
         }
-        let set_id = pass.allocate();
+        let set_id = pass.allocate()?;
         let guid = global_id(pass, host, set_id);
-        lines.push(format!(
-            "#{set_id}=IFCPROPERTYSET('{guid}',{owner},'{}',$,({}));",
-            escape(&pset.name),
-            refs.join(",")
+        lines.push((
+            set_id,
+            format!("#{set_id}=IFCPROPERTYSET('{guid}',{owner},'{}',$,({}));", escape(&pset.name), refs.join(",")),
         ));
         if type_owned.contains(&pset.name) {
             match owned_ids.iter_mut().find(|(n, _)| *n == pset.name) {
@@ -109,16 +115,18 @@ fn pset_lines(
                 None => owned_ids.push((pset.name.clone(), set_id)),
             }
         } else {
-            let rel_id = pass.allocate();
+            let rel_id = pass.allocate()?;
             let guid = global_id(pass, host, rel_id);
-            lines.push(format!("#{rel_id}=IFCRELDEFINESBYPROPERTIES('{guid}',{owner},$,$,(#{host}),#{set_id});"));
+            lines.push((rel_id, format!("#{rel_id}=IFCRELDEFINESBYPROPERTIES('{guid}',{owner},$,$,(#{host}),#{set_id});")));
         }
     }
-    (lines, owned_ids)
+    Ok((lines, owned_ids))
 }
 
-/// `generateQuantitySetEntities`.
-fn qset_lines(pass: &mut Pass<'_, '_>, host: u32, qsets: &[QSet]) -> Vec<String> {
+/// `generateQuantitySetEntities`. Written in the SOURCE schema's layout
+/// (`Formula` only where the source schema declares it); the writer converts
+/// them to the target with every other record (#7378, #7682).
+fn qset_lines(pass: &mut Pass<'_, '_>, host: u32, qsets: &[QSet]) -> Result<Vec<Line>, Unwritable> {
     let mut lines = Vec::new();
     let owner = pass.owner_history_token(host);
     for qset in qsets {
@@ -127,7 +135,7 @@ fn qset_lines(pass: &mut Pass<'_, '_>, host: u32, qsets: &[QSet]) -> Vec<String>
         }
         let mut refs = Vec::new();
         for q in &qset.quantities {
-            let id = pass.allocate();
+            let id = pass.allocate()?;
             let entity = quantity_entity(q.ty);
             // Formula was added in IFC4; the canonical schema registry also
             // drives the TypeScript writer (#7378).
@@ -139,25 +147,20 @@ fn qset_lines(pass: &mut Pass<'_, '_>, host: u32, qsets: &[QSet]) -> Vec<String>
             } else {
                 ""
             };
-            lines.push(format!(
-                "#{id}={entity}('{}',$,$,{}{formula});",
-                escape(&q.name),
-                to_step_real(q.value)
-            ));
+            lines.push((id, format!("#{id}={entity}('{}',$,$,{}{formula});", escape(&q.name), to_step_real(q.value))));
             refs.push(format!("#{id}"));
         }
-        let set_id = pass.allocate();
+        let set_id = pass.allocate()?;
         let guid = global_id(pass, host, set_id);
-        lines.push(format!(
-            "#{set_id}=IFCELEMENTQUANTITY('{guid}',{owner},'{}',$,$,({}));",
-            escape(&qset.name),
-            refs.join(",")
+        lines.push((
+            set_id,
+            format!("#{set_id}=IFCELEMENTQUANTITY('{guid}',{owner},'{}',$,$,({}));", escape(&qset.name), refs.join(",")),
         ));
-        let rel_id = pass.allocate();
+        let rel_id = pass.allocate()?;
         let guid = global_id(pass, host, rel_id);
-        lines.push(format!("#{rel_id}=IFCRELDEFINESBYPROPERTIES('{guid}',{owner},$,$,(#{host}),#{set_id});"));
+        lines.push((rel_id, format!("#{rel_id}=IFCRELDEFINESBYPROPERTIES('{guid}',{owner},$,$,(#{host}),#{set_id});")));
     }
-    lines
+    Ok(lines)
 }
 
 /// `resolveTypeOwnedPsetIds`.
@@ -191,7 +194,7 @@ pub(crate) fn generate(pass: &mut Pass<'_, '_>, collected: Collected) -> Result<
         }
         let owned_names =
             pass.type_owned_names.iter().find(|(e, _)| e == host).map(|(_, n)| n.clone()).unwrap_or_default();
-        let (lines, owned) = pset_lines(pass, *host, psets, &owned_names, source_members);
+        let (lines, owned) = pset_lines(pass, *host, psets, &owned_names, source_members)?;
         if !lines.is_empty() {
             pass.ledger.record_emitted(*host, Kind::PropertySet);
         }
@@ -255,7 +258,7 @@ pub(crate) fn generate(pass: &mut Pass<'_, '_>, collected: Collected) -> Result<
         if !pass.will_be_emitted(*host) {
             continue;
         }
-        let lines = qset_lines(pass, *host, qsets);
+        let lines = qset_lines(pass, *host, qsets)?;
         if !lines.is_empty() {
             pass.ledger.record_emitted(*host, Kind::QuantitySet);
         }

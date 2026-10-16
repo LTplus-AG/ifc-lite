@@ -936,6 +936,16 @@ jobs:
           # upload.rs is on main, ordinary whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- apps/server/src/routes/parse/upload.rs | grep -Fxq 'apps/server/src/routes/parse/upload.rs'; then
             oracle_args+=(--mutation tests/evidence/upload-admission-7676/behaviour.oracle.patch)
+          # #7675: the untrusted-size bounds change public return types
+          # (ColumnarEntityIndex constructors, MaterialLayerIndex::from_flat),
+          # so a whole revert stops the changed callers compiling
+          # (INCONCLUSIVE). Keep the types and remove ONLY the bounds: the
+          # bounded error text, the u32 span refusal, the axis-0 layer-count
+          # refusal and the LandXML path budget, ordinal scope and counted
+          # warning; their tests turn RED. Once untrusted_sizes_7675.rs is on
+          # main, ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/core/tests/untrusted_sizes_7675.rs | grep -Fxq 'rust/core/tests/untrusted_sizes_7675.rs'; then
+            oracle_args+=(--mutation tests/evidence/untrusted-sizes-7675/rust-crates.oracle.patch)
           # #7676: the cache-read policy adds AdmissionGuard::into_resident,
           # Admission::acquire_resident and the DiskCache::lookup family, which
           # its tests name, so a whole-change revert cannot compile them
@@ -959,6 +969,13 @@ jobs:
           # whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/processors/tessellated/indices.rs | grep -Fxq 'rust/geometry/src/processors/tessellated/indices.rs'; then
             oracle_args+=(--mutation tests/evidence/tessellation-indices-7689/index-rule.oracle.patch)
+          # #7682: keep the new STEP-writer modules, StepStats fields and the TS
+          # allocatedExpressId export loadable while disabling ONLY the guards the
+          # changed tests pin (value/name/id-reuse refusals, the id-space refusal,
+          # appended-record conversion, last-record-wins, the property counter).
+          # Once step_ids.rs is on main, ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/export/src/step_ids.rs | grep -Fxq 'rust/export/src/step_ids.rs'; then
+            oracle_args+=(--mutation tests/evidence/step-writer-7682/appended-record-guards.oracle.patch)
           fi
           node scripts/check-test-revert-oracle.mjs "${oracle_args[@]}"
           # #7512: observe cleanup independently of scoped admission/schema.

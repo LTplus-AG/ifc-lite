@@ -39,6 +39,16 @@ import type { SourceLineMutations } from './step-exporter.js';
  * neither of which has a pass in hand. Both readers are built by
  * `createSourceRefReader` over the same `dataStore.source`.
  */
+/**
+ * `allocateExpressId`'s bound (#7682, EXPORT-STEP-9): an id past `u32::MAX` is
+ * one no ifc-lite reader can hold, so allocating it refuses the export, as the
+ * Rust writer does, rather than write a record that cannot be read back.
+ */
+export function allocatedExpressId(id: number): number {
+  if (id > 0xffffffff) throw new RangeError(`express id ${id} cannot be allocated: the file has spent the id space`);
+  return id;
+}
+
 export interface PropertySetContext {
   readonly dataStore: IfcDataStore;
   readonly entityExtractor: EntityExtractor | null;

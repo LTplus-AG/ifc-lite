@@ -1,0 +1,64 @@
+{
+  "schema": 1,
+  "scope": "Published byte-integrity index only; original detailed manifests/results preserved losslessly in audit metadata. No geometry or performance qualification.",
+  "archive": {
+    "path": "execution-evidence.tar.xz",
+    "sha256": "0294f2713b6ec3422f67309b0b59c361fd1bcd7fa7e3b3d7a0ccf407f11b9970",
+    "bytes": 5150468,
+    "members": 1927,
+    "uncompressedMemberBytes": 139201415,
+    "allExtractedMembersRehashed": true,
+    "allOriginalsUnchanged": true,
+    "deterministicConstruction": {
+      "tar": "USTAR sorted paths, mode0644, uid/gid/mtime0, no names",
+      "compressor": [
+        "xz",
+        "--threads=1",
+        "--check=crc64",
+        "--lzma2=preset=6,dict=256MiB",
+        "--stdout"
+      ],
+      "version": "xz (XZ Utils) 5.8.3\nliblzma 5.8.3\n",
+      "repeatCompressionPerformed": false
+    }
+  },
+  "auditMetadata": {
+    "path": "audit-metadata.tar.xz",
+    "bytes": 79208,
+    "sha256": "078047cad8b812981d14e638c1a42b85a965d8d9639d24595eed2298ded23036",
+    "members": [
+      {
+        "path": "README.md",
+        "bytes": 3805,
+        "sha256": "a2d5def370ba477778a9dac7044583de5fb8b1bc7e1ac5bcab2897ff7ccde481"
+      },
+      {
+        "path": "manifest.json",
+        "bytes": 780408,
+        "sha256": "39163b1961ead6009728d77b7fcc49679d20c5e305e2ef957bff322a330c6f66"
+      },
+      {
+        "path": "qualification-index.json",
+        "bytes": 4478,
+        "sha256": "34a26b391915c9d067538ead770ac4278723bf318804f612f691b096d7562bd4"
+      },
+      {
+        "path": "reference-closure.json",
+        "bytes": 1484814,
+        "sha256": "64cffd0da5c5642d3366480846dc0f01ba83c8cdb44816a5b8a73a4a46accd78"
+      },
+      {
+        "path": "verify-packet.py",
+        "bytes": 836,
+        "sha256": "1a7d76e65054f1c99b939b0f92323ff14ae088686e7ca098293fc551d8eefeb4"
+      }
+    ]
+  },
+  "originalMemberManifest": {
+    "member": "manifest.json",
+    "bytes": 780408,
+    "sha256": "39163b1961ead6009728d77b7fcc49679d20c5e305e2ef957bff322a330c6f66"
+  },
+  "executionHead": null,
+  "selectedMain": null
+}

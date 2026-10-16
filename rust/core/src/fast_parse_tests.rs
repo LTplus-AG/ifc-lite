@@ -41,8 +41,11 @@ fn comment_free_lists_stay_out_of_the_comment_aware_loops() {
         parse_coordinates_direct_f64(b"((1.,/* 9 */2.,3.))"),
         [1.0, 2.0, 3.0]
     );
+    assert_eq!(comment_aware_calls(), 2);
+    // The CoordIndex grammar reads trivia between tokens in one pass (#7689),
+    // so it has no comment-aware twin to dispatch to.
     assert_eq!(parse_indices_direct(b"((1,/* 9 */2,3))"), [0, 1, 2]);
-    assert_eq!(comment_aware_calls(), 3);
+    assert_eq!(comment_aware_calls(), 2);
 }
 
 #[test]
@@ -78,50 +81,36 @@ fn test_parse_indices_direct() {
 fn test_parse_indices_direct_rejects_out_of_range() {
     // 4294967297 = 2^32 + 1. Wrapping arithmetic would map it to 1 (→ 0
     // after the 1-based fixup), silently aliasing a valid-looking vertex.
-    // Checked+saturate turns it into an obviously out-of-range sentinel
-    // (u32::MAX - 1) the downstream bounds checks drop.
+    // It is past the index rule's range, so it reads as INVALID_INDEX, the
+    // same answer `AttributeValue::parse_index_list` gives (#7689).
     let bytes = b"((4294967297,1,2))";
     let indices = parse_indices_direct(bytes);
-
-    assert_eq!(indices.len(), 3);
-    assert_eq!(
-        indices[0],
-        u32::MAX - 1,
-        "overflowing index must saturate, not wrap to a valid vertex"
-    );
-    assert_eq!(indices[1], 0); // 1 -> 0
-    assert_eq!(indices[2], 1); // 2 -> 1
+    assert_eq!(indices, [INVALID_INDEX, 0, 1], "an oversized index must not wrap to a valid vertex");
 }
 
 #[test]
 fn test_parse_indices_direct_boundary_values() {
-    // 4294967295 = u32::MAX exactly: fits, no overflow, 1-based fixup applies.
-    // 4294967296 = 2^32: first overflowing value, saturates to u32::MAX.
-    // 4294967294 = u32::MAX - 1: fits.
+    // 4294967295 = u32::MAX exactly: the last value in range, 0-based MAX - 1.
+    // 4294967296 = 2^32: the first past it, INVALID_INDEX.
+    // 4294967294 = u32::MAX - 1: in range.
     let bytes = b"((4294967295,4294967296,4294967294))";
     let indices = parse_indices_direct(bytes);
-    assert_eq!(
-        indices,
-        vec![u32::MAX - 1, u32::MAX - 1, u32::MAX - 2],
-        "boundary values must saturate deterministically"
-    );
+    assert_eq!(indices, vec![u32::MAX - 1, INVALID_INDEX, u32::MAX - 2]);
 }
 
 #[test]
 fn test_parse_indices_direct_overflow_consumes_all_digits() {
-    // After overflow is detected, remaining digits must still be consumed so
-    // the parser resynchronizes on the next value instead of splitting the
-    // huge number into several bogus indices.
-    let bytes = b"((99999999999999999999999999,2))";
-    let indices = parse_indices_direct(bytes);
-    assert_eq!(indices, vec![u32::MAX - 1, 1]);
+    // An oversized value is one value: the parser resynchronizes on the
+    // next one instead of splitting the digits into several bogus indices.
+    assert_eq!(parse_indices_direct(b"((4294967296000,2,3))"), [INVALID_INDEX, 1, 2]);
+    // Past i64::MAX the tokenizer decides, so the byte grammar defers.
+    assert_eq!(parse_indices_direct(b"((99999999999999999999999999,2,3))"), Vec::<u32>::new());
 }
 
 #[test]
 fn test_parse_indices_direct_matches_old_wrapping_for_in_range_values() {
-    // The checked/saturating parse must be byte-for-byte identical to the old
-    // wrapping parse for every index that does NOT overflow u32 — i.e. all
-    // valid inputs. Reference reimplementation of the pre-hardening logic:
+    // Every valid index parses exactly as the pre-hardening wrapping parse
+    // did. `0` is left out: reading it as vertex 1 was the #7689 defect.
     fn old_parse(bytes: &[u8]) -> Vec<u32> {
         let mut result = Vec::new();
         let mut pos = 0;
@@ -147,7 +136,7 @@ fn test_parse_indices_direct_matches_old_wrapping_for_in_range_values() {
 
     let cases: &[&[u8]] = &[
         b"((1,2,3),(2,1,4),(5,6,7))",
-        b"((0,1,4294967295))", // 0 (already 0 after saturating_sub) and u32::MAX
+        b"((1,1,4294967295))",
         b"((429496729,1000000000,999999999))",
         b"((10,200,3000),(40000,500000,6000000))",
     ];
@@ -343,8 +332,9 @@ fn issue_4687_a_comment_in_a_coordinate_or_index_list_is_trivia() {
     assert_eq!(extract_coordinate_list_from_entity(commented), extract_coordinate_list_from_entity(plain));
     assert_eq!(parse_coordinates_direct_f64(b"((0.,0.,0.)/*-.5*/,(1.,0.,0.))"), [0., 0., 0., 1., 0., 0.]);
     assert_eq!(parse_indices_direct(b"((1,2,3) /* face 2 */,(2,1,4))"), [0, 1, 2, 1, 0, 3]);
-    // An unterminated comment ends the list rather than reading its contents.
-    assert_eq!(parse_indices_direct(b"((1,2,3) /* 9 9"), [0, 1, 2]);
+    // An unterminated comment refuses the list rather than reading its
+    // contents, as it does for a coordinate list (#7689).
+    assert_eq!(parse_indices_direct(b"((1,2,3) /* 9 9"), Vec::<u32>::new());
 }
 
 #[test]
@@ -428,4 +418,111 @@ fn issue_5266_non_step_tokens_refuse_the_list_instead_of_vanishing() {
         parse_coordinates_direct_f64(b"((+1.5,.5,-1.E2),(0.,0.,3./* z */))"),
         [1.5, 0.5, -100.0, 0.0, 0.0, 3.0]
     );
+}
+
+/// The CoordIndex `(1,2,3)` faces of a triangulated face set record, read
+/// by the decoded grammar (`AttributeValue::parse_index_list`). `None` when
+/// the record does not decode or attribute 3 is not a list.
+fn decoded_coord_index(record: &str) -> Option<Vec<u32>> {
+    let mut decoder = crate::EntityDecoder::new(record);
+    let entity = decoder.decode_by_id(2).ok()?;
+    entity.get(3)?.as_list().map(crate::AttributeValue::parse_index_list)
+}
+
+/// #7689 (PROC-14, CORE-12): the raw-byte CoordIndex grammar and the decoded
+/// one gave different meshes for the same record. The byte path read `0` as
+/// vertex 1, ignored a `-` sign, and flattened every digit run so a face of
+/// two or four entries shifted every later triangle; the decoded path padded
+/// a short face with vertex 1. Wherever the byte path answers, it must
+/// answer exactly what the decoded path does.
+#[test]
+fn coord_index_byte_grammar_agrees_with_the_decoded_grammar_7689() {
+    const BAD: u32 = u32::MAX;
+    let cases: &[(&str, Option<&[u32]>)] = &[
+        ("((1,2,3),(2,1,4))", Some(&[0, 1, 2, 1, 0, 3])),
+        ("( ( 1 , 2 ,3 ) ,\t(2,1,4) )", Some(&[0, 1, 2, 1, 0, 3])),
+        ("((1,2,3)/* c */,(2,/* 9 */1,4))", Some(&[0, 1, 2, 1, 0, 3])),
+        // `0` and `-2` are not IfcPositiveInteger.
+        ("((1,0,3),(1,2,3))", Some(&[0, BAD, 2, 0, 1, 2])),
+        ("((1,-2,3),(1,2,3))", Some(&[0, BAD, 2, 0, 1, 2])),
+        // A face is LIST [3:3]: a short or long one is one dropped slot,
+        // never a shift of the faces after it.
+        ("((1,2),(1,2,3))", Some(&[BAD, BAD, BAD, 0, 1, 2])),
+        ("((1,2,3,4),(1,2,3))", Some(&[BAD, BAD, BAD, 0, 1, 2])),
+        ("((),(1,2,3))", Some(&[BAD, BAD, BAD, 0, 1, 2])),
+        // Beyond u32: never wrapped onto a real vertex.
+        ("((4294967297,1,2))", Some(&[BAD, 0, 1])),
+        ("((99999999999999999999,1,2))", None),
+        ("((4294967295,1,2))", Some(&[u32::MAX - 1, 0, 1])),
+        // A real is not an index.
+        ("((1.,2.,3.),(1,2,3))", Some(&[BAD, BAD, BAD, 0, 1, 2])),
+        ("((1,2,3),$)", None),
+        ("$", None),
+    ];
+    for &(coord_index, expected) in cases {
+        let record = format!("#2=IFCTRIANGULATEDFACESET(#1,$,.F.,{coord_index},$);");
+        let decoded = decoded_coord_index(&record);
+        if let Some(expected) = expected {
+            assert_eq!(decoded.as_deref(), Some(expected), "decoded grammar, {coord_index}");
+        }
+        if let Some(fast) = extract_face_indices_from_entity(record.as_bytes()) {
+            assert_eq!(Some(fast), decoded, "byte grammar answered differently, {coord_index}");
+        }
+    }
+    // The byte grammar is an accelerator: it must answer for the canonical
+    // shapes, not defer everything to the decoded path.
+    for coord_index in ["((1,2,3),(2,1,4))", "( ( 1 , 2 ,3 ) ,\t(2,1,4) )", "((1,0,3))", "((1,2))"] {
+        let record = format!("#2=IFCTRIANGULATEDFACESET(#1,$,.F.,{coord_index},$);");
+        assert!(extract_face_indices_from_entity(record.as_bytes()).is_some(), "{coord_index}");
+    }
+}
+
+/// Differential sweep for #7689: random CoordIndex text built from index
+/// tokens, malformed ones included. Wherever the byte grammar answers, it
+/// equals the decoded one.
+#[test]
+fn coord_index_byte_grammar_matches_decoded_on_random_input_7689() {
+    const TOKENS: &[&str] = &[
+        "1", "2", "3", "17", "0", "00", "-1", "+2", "4294967295", "4294967296", "1.", "$", "()", "(1)", "",
+    ];
+    const TRIVIA: &[&str] = &["", "", " ", "\t", "/* c */"];
+    let mut state = 0x9e37_79b9_7f4a_7c15u64;
+    let mut next = |n: usize| {
+        state ^= state << 13;
+        state ^= state >> 7;
+        state ^= state << 17;
+        (state % n as u64) as usize
+    };
+    let (mut answered, mut deferred) = (0, 0);
+    for _ in 0..20_000 {
+        let faces: Vec<String> = (0..next(5))
+            .map(|_| {
+                let items: Vec<String> = (0..next(5))
+                    .map(|_| format!("{}{}{}", TRIVIA[next(TRIVIA.len())], TOKENS[next(TOKENS.len())], TRIVIA[next(TRIVIA.len())]))
+                    .collect();
+                format!("({})", items.join(","))
+            })
+            .collect();
+        let record = format!("#2=IFCTRIANGULATEDFACESET(#1,$,.F.,({}),$);", faces.join(","));
+        let Some(decoded) = decoded_coord_index(&record) else { continue };
+        match extract_face_indices_from_entity(record.as_bytes()) {
+            Some(fast) => {
+                answered += 1;
+                assert_eq!(fast, decoded, "{record}");
+            }
+            None => deferred += 1,
+        }
+    }
+    assert!(answered > 1_000 && deferred > 1_000, "both paths exercised: answered {answered}, deferred {deferred}");
+}
+
+/// The direct face-set reader has no `PnIndex` remap, so a face set that has
+/// one is refused rather than meshed against the wrong points (#7689 PROC-3).
+#[test]
+fn process_triangulated_faceset_direct_refuses_pn_index_7689() {
+    let points: &[u8] = b"#78=IFCCARTESIANPOINTLIST3D(((0.,0.,0.),(1.,0.,0.),(0.,1.,0.)));";
+    let with_pn = b"#77=IFCTRIANGULATEDFACESET(#78,$,$,((1,2,3)),(3,2,1));";
+    assert!(process_triangulated_faceset_direct(with_pn, |_| Some(points.to_vec())).is_none());
+    let without = b"#77=IFCTRIANGULATEDFACESET(#78,$,$,((1,2,3)),$);";
+    assert!(process_triangulated_faceset_direct(without, |_| Some(points.to_vec())).is_some());
 }

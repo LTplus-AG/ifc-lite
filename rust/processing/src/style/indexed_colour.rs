@@ -65,6 +65,34 @@ impl FullIndexedColourMap {
     }
 }
 
+/// The geometry ids a don't-bake router must keep flat (#858): face sets whose
+/// `IfcIndexedColourMap` paints MORE THAN ONE colour. Arm the result with
+/// `GeometryRouter::enable_indexed_colour_split_guard` whenever instancing is
+/// armed. The flat path splits such a face set into one mesh per palette
+/// group, but an instance placeholder resolves ONE colour and collapses the
+/// palette. `maps` is keyed by the same face-set id the router resolves as a
+/// mapped source's single solid, so the ids line up 1:1.
+///
+/// Uniform maps are left out (#1807): they never split
+/// ([`split_mesh_by_indexed_colour`] returns `None` below two distinct
+/// entries), so an instance carries them losslessly, and excluding them
+/// disabled don't-bake wholesale on models that colour shared face sets per
+/// triangle. `None` when nothing qualifies, so the caller leaves the guard
+/// unarmed instead of paying a lookup against an empty set.
+///
+/// The one derivation both the native orchestrator and the browser batch
+/// (`processGeometryBatchPartitioned`) arm from (EDGE-WASM-5, #7691).
+pub fn indexed_colour_split_guard_ids(
+    maps: &rustc_hash::FxHashMap<u32, FullIndexedColourMap>,
+) -> Option<std::sync::Arc<rustc_hash::FxHashSet<u32>>> {
+    let ids: rustc_hash::FxHashSet<u32> = maps
+        .iter()
+        .filter(|(_, m)| m.has_multiple_colours())
+        .map(|(&id, _)| id)
+        .collect();
+    (!ids.is_empty()).then(|| std::sync::Arc::new(ids))
+}
+
 /// Resolve an `IfcIndexedColourMap` to its palette + per-triangle indices.
 ///
 /// Schema (IFC4):

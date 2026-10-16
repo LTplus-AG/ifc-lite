@@ -108,7 +108,7 @@ async fn seed_cache_from_batches(
     let metadata_bytes = serde_json::to_vec(&sample_metadata_header(cache_key, total_meshes)).unwrap();
     state
         .cache
-        .set_bytes(&format!("{cache_key}-parquet-metadata-v5"), &metadata_bytes)
+        .set_bytes(&format!("{cache_key}-parquet-metadata-v6"), &metadata_bytes)
         .await
         .unwrap();
     state

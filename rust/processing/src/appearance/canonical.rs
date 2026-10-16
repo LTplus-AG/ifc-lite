@@ -161,7 +161,7 @@ fn produce_with_frame(
     let element_color = appearance.and_then(|styles| {
         product.get_ref(6).and_then(|pds| crate::processor::resolve_element_color_for_product_definition_shape(
             pds, &styles.geometry_style_index, &mut source.decoder))
-            .or_else(|| styles.element_material_colors.get(&product_id).and_then(|colors| crate::style::pick_opaque_first(colors)))
+            .or_else(|| styles.element_material_colors.get(&product_id).and_then(|colors| crate::style::element_material_fallback_color(colors)))
     });
     let context = source.context.as_ref().ok_or("Missing canonical load context")?;
     if context.layers.is_sliceable(product_id) {

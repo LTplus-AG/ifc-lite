@@ -98,9 +98,12 @@ pub(crate) fn request_cache_key(data: &[u8], query: &ParseQuery, quality: Tessel
 /// symbols for every file already on disk: measured on a translated, rotated
 /// site, a planted v4 entry came back with its grid axis at `(500, -300)`
 /// where the live parse puts it at `(0, 0)`.
+/// v7 with PROCESSING-5 (#7691): `metadata.schema_version` is now header-only;
+/// GUID or DATA text no longer reports IFC4 (a whole-file search matched
+/// `ifc4` inside GUIDs, so many IFC2X3 models were cached as IFC4).
 /// Bump again on any change to what `ParseResponse` means on the wire.
 pub(crate) fn json_response_cache_key(cache_key: &str) -> String {
-    format!("{cache_key}-json-v6")
+    format!("{cache_key}-json-v7")
 }
 
 /// The flat Parquet geometry entry for a request cache key, under the LAYOUT
@@ -146,8 +149,11 @@ pub(crate) fn parquet_geometry_key(cache_key: &str, layout: ParquetLayout) -> St
 /// `IfcMapConversionScaled` factors, and a `v4` header replays them as 1 (see
 /// [`json_response_cache_key`]). The geometry keys stay put: a miss here
 /// re-parses, and the parse rewrites the geometry entry beside it.
+/// `v6` with PROCESSING-5 (#7691): `metadata.schema_version` is now
+/// header-only; GUID or DATA text no longer reports IFC4. Geometry keys stay
+/// put for the same reason as `v5`.
 pub(crate) fn parquet_metadata_key(cache_key: &str) -> String {
-    format!("{cache_key}-parquet-metadata-v5")
+    format!("{cache_key}-parquet-metadata-v6")
 }
 
 /// Build the parquet geometry cache key from a file hash and opening filter,
@@ -204,7 +210,7 @@ pub(crate) fn parquet_optimized_cache_key(cache_key: &str) -> String {
 ///
 /// Holds the serialized `X-IFC-Metadata` header, `optimization_stats` included,
 /// so a replay carries the same stats the live parse reported. Distinct from
-/// the flat route's `-parquet-metadata-v5` for the same reason the bodies are.
+/// the flat route's `-parquet-metadata-v6` for the same reason the bodies are.
 /// A replay needs both entries, so bumping either one retires the pair.
 ///
 /// `v2` with #4653: the header's `metadata.georeferencing` gained the
@@ -216,8 +222,11 @@ pub(crate) fn parquet_optimized_cache_key(cache_key: &str) -> String {
 /// silently no longer describes what this route now does -- it produces a
 /// data model too. The body keeps `v1`: a metadata miss re-parses, and the
 /// parse rewrites the body (and now the data model) in place.
+/// `v4` with PROCESSING-5 (#7691): `metadata.schema_version` is now
+/// header-only; GUID or DATA text no longer reports IFC4. The body keeps its
+/// key: a metadata miss re-parses and rewrites it.
 pub(crate) fn parquet_optimized_metadata_cache_key(cache_key: &str) -> String {
-    format!("{cache_key}-parquet-optimized-metadata-v3")
+    format!("{cache_key}-parquet-optimized-metadata-v4")
 }
 
 /// Build the data-model cache key for a given file cache key.

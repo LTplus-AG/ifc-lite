@@ -12,6 +12,28 @@ that also dominate in the browser; the WASM-only concerns (per-worker file
 re-decode, no threads, memory bandwidth) are orchestration-level and are read
 off the viewer's own telemetry (below).
 
+## Sloped coincident-sided differences (#7292)
+
+**Unmerged: performance qualification incomplete; transfer and geometry instruction ceilings fail.**
+Source-plane preservation, finite coplanar classification and certified thin-cell
+retention correct the reporter cases in native Rust and source-built Chrome.
+Lookup-only hash maps and shared projected containment preserve existing output
+ordering, but do not recover the required engine transfer and geometry instruction
+budgets. No ceiling or acceptance tolerance was raised.
+
+Coordinated idle windows and safe consumer cleanup did not qualify a complete
+interleaved worker-pool cohort under the unchanged host checks. An earlier capture
+also exposed a response observer retaining handles across the canonical cold
+reload; its correction preserves both navigations and captures setup bytes before
+invalidation. Refused campaigns remain separate and provide no timing verdict.
+
+Untimed native mesh counts and fingerprints match the base for Haus and Holter;
+ISSUE_129 changes geometry and reports fewer CSG failures. These fingerprints
+exclude instancing, text, material definitions, UVs and textures. Lesson: retain
+healthy neighbors in ordinary seam conformance, preserve the baseline replay's
+closure checks, and qualify actual worker-pool cost before claiming neutrality.
+See the [correctness evidence and performance disposition](../../docs/architecture/evidence/issue-7292/README.md).
+
 ## TL;DR
 
 ```bash

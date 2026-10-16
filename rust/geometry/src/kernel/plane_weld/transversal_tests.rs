@@ -9,6 +9,7 @@ fn actual() -> (Tri,Tri,[f64;3]) {
      [3729.999755859375,0.0,65.0])
 }
 fn check(source:Tri,host:Tri,target:[f64;3])->bool {
+    let _lock=budget::GLOBAL_CAP_LOCK.lock().unwrap_or_else(|e|e.into_inner());
     budget::begin();let band=NearBand::from_operands(&[source],&[host]);
     let face=Face::new(host,&band).unwrap();certificate(&source,target,&face,&band)
 }
@@ -50,6 +51,7 @@ fn issue_7292_nonfinite_and_degenerate_inputs_never_certify() {
 }
 #[test]
 fn issue_7292_raw_key_rejection_is_coherent_and_admitted_paths_are_exempt() {
+    let _lock=budget::GLOBAL_CAP_LOCK.lock().unwrap_or_else(|e|e.into_inner());
     let(s,h,q)=actual();let band=NearBand::from_operands(&[s],&[h]);let f=Face::new(h,&band).unwrap();
     let mut p=vec![Proposal{ti:0,vi:0,original:s[0],target:Some(q),refused_face:Some(&f),initial_foot:Some(q)},
         Proposal{ti:1,vi:0,original:s[0],target:Some(q),refused_face:Some(&f),initial_foot:Some(q)}];

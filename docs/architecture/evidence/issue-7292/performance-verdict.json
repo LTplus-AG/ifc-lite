@@ -1,0 +1,145 @@
+{
+  "sourceCommit": "88f4a9f4918e4f37a396eac801522eaf511e9f6d",
+  "publishedHead": "72667dafec299b4beb235c22af5f6ae5eea25975",
+  "baselineCommit": "34fd3ce5e6e390d506fe537e773ac564cc302883",
+  "wallTimeVerdict": "UNQUALIFIED: no complete accepted interleaved native or browser cohort; no parse/geometry/total delta asserted",
+  "campaigns": [
+    {
+      "campaign": "7292-final-native-attribution-v1",
+      "status": "PRESERVED_FAILURE_OR_ADMISSION_REFUSAL_NO_VERDICT",
+      "error": "RuntimeError('Actual host post-admission refused; no performance verdict')",
+      "receiptSHA256": "23d9c48d5cb9fdda1220add15e2a402a582581b48f750c77cfc711b317dea12a"
+    },
+    {
+      "campaign": "7292-final-native-attribution-v2",
+      "status": "PRESERVED_FAILURE_OR_ADMISSION_REFUSAL_NO_VERDICT",
+      "error": "RuntimeError('Actual host pre-admission refused; sample not run')",
+      "receiptSHA256": "fd06e5580a1e60b08538014a69257f9be896beec9704e2a9d259c0f76508f3ab"
+    },
+    {
+      "campaign": "7292-final-native-attribution-v3",
+      "status": "PRESERVED_FAILURE_OR_ADMISSION_REFUSAL_NO_VERDICT",
+      "error": "RuntimeError('Actual host post-admission refused; no performance verdict')",
+      "receiptSHA256": "8dc92b7f668f9fa27677433dc15f8b5cfcc8eabed1e3326a61fbf406c561bdac"
+    },
+    {
+      "campaign": "7292-final-worker-pool-performance-v3",
+      "status": "PRESERVED_FAILURE_OR_UNKNOWN_NO_PERF_VERDICT",
+      "error": "Error: Sample failure/unknown, not replaced",
+      "receiptSHA256": "24e50cb938cb3fb3c299ec388af06622c8218af29d60f68c9e41259bca977fca"
+    },
+    {
+      "campaign": "7292-final-worker-pool-performance-v4",
+      "status": "PRESERVED_FAILURE_OR_UNKNOWN_NO_PERF_VERDICT",
+      "error": "Error: Actual host idle admission failed; preserve no timing verdict",
+      "receiptSHA256": "64361b5deadd59fa771d970e5c5acdae1dcd3bd253facab039f4327b53ead2a8"
+    }
+  ],
+  "ci": {
+    "run": 38888949839,
+    "syntheticMergeCommit": "695cdf22ae5c73a040ac8f33f90fa7da743e3958",
+    "engineBrotli": {
+      "actual": 2271764,
+      "allowed": 2243651,
+      "status": "FAIL"
+    },
+    "geometryInstructions": {
+      "actual": 377052766,
+      "allowed": 374868327,
+      "status": "FAIL"
+    },
+    "semver": "NO_VERDICT published exporter baseline resolution; issue7737",
+    "viewerShard13": "FAIL inherited symbolic digest pins after #7728; issue7741. Local frozen34f artifacts are not used to repin newer symbolic output."
+  },
+  "localEngineBrotli": {
+    "base": 2240484,
+    "branch": 2272537,
+    "allowed": 2243651,
+    "status": "FAIL"
+  },
+  "identity": {
+    "status": "UNTIMED_OUTPUT_VERIFICATION_ONLY_NO_PERFORMANCE_VERDICT",
+    "limits": "Existing FNV excludes instancing, text, material definitions, UVs and textures. Timing fields in retained raw stdout are unqualified and unused.",
+    "sourceInputsSHA256": "7d6bb84cc377143573f547fd66cc71a900f2416dea0a13af7d3cec6508d7e185",
+    "fixtures": [
+      {
+        "fixture": "FZK",
+        "base": {
+          "entities": 44249,
+          "meshes": 285,
+          "vertices": 35940,
+          "triangles": 20322,
+          "csgFailures": 0,
+          "degenerateDropped": 0,
+          "meshFingerprintsFnv1a64": [
+            "c4d504b83ff698ea"
+          ]
+        },
+        "branch": {
+          "entities": 44249,
+          "meshes": 285,
+          "vertices": 35940,
+          "triangles": 20322,
+          "csgFailures": 0,
+          "degenerateDropped": 0,
+          "meshFingerprintsFnv1a64": [
+            "c4d504b83ff698ea"
+          ]
+        }
+      },
+      {
+        "fixture": "ISSUE129",
+        "base": {
+          "entities": 202661,
+          "meshes": 1402,
+          "vertices": 219999,
+          "triangles": 136807,
+          "csgFailures": 41,
+          "degenerateDropped": 6,
+          "meshFingerprintsFnv1a64": [
+            "ff42e1a3f7fcf540"
+          ]
+        },
+        "branch": {
+          "entities": 202661,
+          "meshes": 1402,
+          "vertices": 219369,
+          "triangles": 136499,
+          "csgFailures": 32,
+          "degenerateDropped": 6,
+          "meshFingerprintsFnv1a64": [
+            "4a7bb8bcf9bd64c0"
+          ]
+        }
+      },
+      {
+        "fixture": "Holter",
+        "base": {
+          "entities": 2807815,
+          "meshes": 109514,
+          "vertices": 4515161,
+          "triangles": 2895362,
+          "csgFailures": 0,
+          "degenerateDropped": 0,
+          "meshFingerprintsFnv1a64": [
+            "52d69b2909024f56"
+          ]
+        },
+        "branch": {
+          "entities": 2807815,
+          "meshes": 109514,
+          "vertices": 4515161,
+          "triangles": 2895362,
+          "csgFailures": 0,
+          "degenerateDropped": 0,
+          "meshFingerprintsFnv1a64": [
+            "52d69b2909024f56"
+          ]
+        }
+      }
+    ]
+  },
+  "resourceWindow": "Shared hold released after final refusal. Foreign audit owner asked to resume own work. No foreign processes signalled by this thread. Graceful consumer cleanup preceded final attempts.",
+  "privacy": "Raw host process/GPU observations remain local. Public summaries retain original SHA256 and exact admission CPU/memory/policy/status.",
+  "limits": "CI ceilings compare against committed budgets, not an isolated base-vs-branch speed claim. Raw timing fields in refused campaigns and output-only checks are unused. Browser identity is separate; native FNV excludes instancing, text, material definitions, UVs and textures."
+}

@@ -91,13 +91,17 @@ into a fresh scratch directory before using the existing reporter/corpus CLI:
 
 ```sh
 capture_scratch=$(mktemp -d)
-python3 - "$capture_scratch" <<'PYVERIFY'
+capture_manifest=docs/architecture/evidence/issue-7292/historical-captures.manifest.json
+python3 - "$capture_scratch" "$capture_manifest" <<'PYVERIFY'
 import hashlib, json, pathlib, sys, tarfile
 root = pathlib.Path('docs/architecture/evidence/issue-7292')
-manifest = json.loads((root/'historical-captures.manifest.json').read_text())
+manifest = json.loads(pathlib.Path(sys.argv[2]).read_text())
 archive = pathlib.Path(manifest['archive']['path'])
 assert hashlib.sha256(archive.read_bytes()).hexdigest() == manifest['archive']['sha256']
 with tarfile.open(archive, 'r:gz') as bundle:
+    members = bundle.getmembers()
+    assert all(member.isfile() for member in members)
+    assert sorted(member.name for member in members) == sorted(row['path'] for row in manifest['files'])
     bundle.extractall(sys.argv[1], filter='data')
 for row in manifest['files']:
     data = (pathlib.Path(sys.argv[1])/row['path']).read_bytes()
@@ -110,6 +114,8 @@ PYVERIFY
 Supply the extracted capture/cache directories to the CLI documented above.
 Required IFC fixtures and reference-engine dependencies are unchanged. Keep new
 adjudication outputs separate; archived receipts must not be rewritten.
+For another archive below, set `capture_manifest` to its `.manifest.json` path;
+the recipe verifies its exact member names, including any revision prefix.
 
 ## Final native validation
 
@@ -122,3 +128,44 @@ source to the final source without changing short-circuit evaluation order.
 The old ISSUE_129 pin's diagnostic failure is preserved separately from its
 successful stronger-pin rerun. This archive does not qualify later source,
 browser geometry, performance, or required CI.
+
+## Final Chrome and finite-surface validation
+
+`browser-validation.json` binds the source-built engine, real S_Office load,
+and four reporter cases to their immutable captures and finite-surface oracle
+receipts. All four agree on six finite faces at 100 µm.
+`browser-validation.tar.gz` retains the raw geometry, reference diagnostics,
+build receipts and screenshots; decoded checksums are in
+`browser-validation.manifest.json`. Use the extraction recipe above with that
+manifest. The original run's disposable-profile cleanup error remains recorded;
+a separate strict-observation recovery proves the owned profile was retired
+without rerunning captures or altering the protected browser. Browser Local
+State and system-wide process observations remain local.
+
+[Literal 2% case](screenshots/final-literal-2pct.png) ·
+[Real S_Office model](screenshots/final-soffice.png)
+
+## Final performance disposition
+
+`performance-verdict.json` records **no qualified wall-time verdict**. The
+native and browser campaigns remain refused or incomplete, including the
+original cold-navigation observer failure. Their immutable receipts and the
+observer correction are retained in `performance-validation.tar.gz`, with
+decoded checksums in `performance-validation.manifest.json`. Host summaries
+retain the original observation hashes and admission metrics; process and GPU
+observations remain local. Use the manifest-selectable extraction recipe above.
+
+The untimed native output check matches mesh counts and fingerprints for FZK and
+Holter. ISSUE_129 changes geometry and reduces reported CSG failures. The existing
+fingerprint excludes instancing, text, material definitions, UVs and textures;
+timing fields in those raw outputs are unused. The CI record separately binds
+its synthetic merge source and failing engine-size and geometry-instruction
+ceilings. Neither a speed claim nor merge readiness follows from this evidence.
+
+## Final test-cap isolation
+
+The follow-up adds the shared budget-cap lock in two test paths only. All nine
+transversal tests and exact workspace clippy pass; production source and frozen
+runtime artifacts are unchanged. `test-lock-validation.tar.gz` preserves the
+delta, source/artifact hashes and logs. Verify and extract it using
+`test-lock-validation.manifest.json` with the recipe above.

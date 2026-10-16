@@ -97,7 +97,7 @@ function serializeInnerByBase(value: string | number | boolean, base: string | n
     case 'INTEGER': {
       const n = Math.trunc(Number(value));
       const digits = toStepInteger(n);
-      if (digits === null) throw new Error(`Cannot write ${n} as a STEP INTEGER: it is not a finite value below 2^53`);
+      if (digits === null) throw new Error(`Cannot write ${n} as a STEP INTEGER: it is not a finite value below 1e21`);
       return digits;
     }
     case 'BOOLEAN':
@@ -149,14 +149,15 @@ export function toStepReal(v: number): string {
 }
 
 /**
- * The digits of a finite integral number below 2^53, or `null`.
- * `String(1e21)` is `1e+21`, which is not a STEP INTEGER (#7679).
+ * The digits of a finite integral number below 1e21, or `null`.
+ * `String(1e21)` is `1e+21`, which is not a STEP INTEGER (#7679). Not 2^53:
+ * the digits of a value between 2^53 and 1e21 are still a valid STEP INTEGER.
  */
 export function toStepInteger(v: number): string | null {
-  return Number.isFinite(v) && Math.abs(v) < 2 ** 53 ? String(v === 0 ? 0 : v) : null;
+  return Number.isFinite(v) && Math.abs(v) < 1e21 ? String(v === 0 ? 0 : v) : null;
 }
 
-/** An integral finite number as a token: INTEGER digits while exact, the REAL form beyond 2^53. */
+/** An integral finite number as a token: INTEGER digits below 1e21, the REAL form from there up. */
 function integralToken(v: number): string {
   return toStepInteger(v) ?? formatStepReal(v);
 }

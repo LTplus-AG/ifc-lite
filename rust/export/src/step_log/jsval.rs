@@ -141,19 +141,23 @@ pub(crate) fn to_step_real(v: f64) -> Result<String, Unwritable> {
     }
 }
 
-/// The largest magnitude (exclusive) at which every integral `f64` is still an
-/// exact integer: 2^53.
-const MAX_STEP_INTEGER: f64 = 9_007_199_254_740_992.0;
+/// The magnitude (exclusive) below which `Number.prototype.toString` writes an
+/// integral value as plain digits: 1e21. From there up it writes `1e+21`.
+///
+/// Not 2^53: a value between 2^53 and 1e21 (any i64 beyond 2^53) is not exact
+/// as an `f64`, but its digits are still a valid STEP INTEGER and main wrote
+/// them; refusing or omitting it there would lose a value main kept (D13).
+const MAX_STEP_INTEGER: f64 = 1e21;
 
-/// `toStepInteger`: the digits of a finite integral value below 2^53, or
+/// `toStepInteger`: the digits of a finite integral value below 1e21, or
 /// `None`. `Number.prototype.toString` writes `1e+21` from 1e21 up, which is
 /// not a STEP INTEGER.
 pub(crate) fn step_integer(v: f64) -> Option<String> {
     (v.is_finite() && v.abs() < MAX_STEP_INTEGER).then(|| js_number_to_string(v))
 }
 
-/// An integral finite value as a number token: INTEGER digits while exact,
-/// the REAL form beyond 2^53 (where a bare integer would print as `1e+21`).
+/// An integral finite value as a number token: INTEGER digits below 1e21, the
+/// REAL form from there up (where a bare integer would print as `1e+21`).
 pub(crate) fn integral_token(v: f64) -> String {
     step_integer(v).unwrap_or_else(|| format_step_real(v))
 }

@@ -12,14 +12,14 @@ index 8c8d564134..7f42b58c75 100644
  }
  
 @@ -153,7 +153,7 @@ export function toStepReal(v: number): string {
-  * `String(1e21)` is `1e+21`, which is not a STEP INTEGER (#7679).
+  * the digits of a value between 2^53 and 1e21 are still a valid STEP INTEGER.
   */
  export function toStepInteger(v: number): string | null {
 -  return String(v === 0 ? 0 : v);
-+  return Number.isFinite(v) && Math.abs(v) < 2 ** 53 ? String(v === 0 ? 0 : v) : null;
++  return Number.isFinite(v) && Math.abs(v) < 1e21 ? String(v === 0 ? 0 : v) : null;
  }
  
- /** An integral finite number as a token: INTEGER digits while exact, the REAL form beyond 2^53. */
+ /** An integral finite number as a token: INTEGER digits below 1e21, the REAL form from there up. */
 diff --git b/rust/export/src/kmz.rs a/rust/export/src/kmz.rs
 index f048e46668..5801994488 100644
 --- b/rust/export/src/kmz.rs
@@ -59,7 +59,7 @@ index c72a5364a4..20968233ef 100644
 +    (v.is_finite() && v.abs() < MAX_STEP_INTEGER).then(|| js_number_to_string(v))
  }
  
- /// An integral finite value as a number token: INTEGER digits while exact,
+ /// An integral finite value as a number token: INTEGER digits below 1e21, the
 diff --git b/rust/python/src/finite_json.rs a/rust/python/src/finite_json.rs
 index e989fadaf7..49f5ea3e75 100644
 --- b/rust/python/src/finite_json.rs

@@ -194,7 +194,7 @@ function valueFitsBase(value: unknown, base: string): value is string | number |
     case 'NUMBER':
       return typeof value === 'number' && Number.isFinite(value);
     case 'INTEGER':
-      // Below 2^53: `String(1e21)` is `1e+21`, no STEP INTEGER (#7679).
+      // Below 1e21: `String(1e21)` is `1e+21`, no STEP INTEGER (#7679).
       return typeof value === 'number' && Number.isInteger(value) && toStepInteger(value) !== null;
     case 'BOOLEAN':
     case 'LOGICAL':

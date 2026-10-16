@@ -105,10 +105,13 @@ describe('toStepReal', () => {
     }
   });
 
-  it('writes an INTEGER only for a finite value below 2^53', () => {
+  it('writes an INTEGER only for a finite value below 1e21', () => {
     expect(toStepInteger(-0)).toBe('0');
     expect(toStepInteger(2 ** 53 - 1)).toBe('9007199254740991');
-    for (const v of [NaN, Infinity, 2 ** 53, 1e21]) expect(toStepInteger(v)).toBeNull();
+    // Beyond 2^53 the digits are still a STEP INTEGER (an i64 such as 1e16).
+    expect(toStepInteger(1e16)).toBe('10000000000000000');
+    expect(toStepInteger(1e20)).toBe('100000000000000000000');
+    for (const v of [NaN, Infinity, 1e21, -1e21]) expect(toStepInteger(v)).toBeNull();
   });
 
   it('serializePropertyValue omits an Integer that has no STEP spelling', () => {

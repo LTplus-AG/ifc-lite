@@ -40,7 +40,11 @@ fn step_real_rewrites_mantissa_and_exponent() {
     }
     assert_eq!(step_integer(-0.0).as_deref(), Some("0"));
     assert_eq!(step_integer(9_007_199_254_740_991.0).as_deref(), Some("9007199254740991"));
-    for bad in [f64::NAN, f64::INFINITY, 9_007_199_254_740_992.0, 1e21] {
+    // Beyond 2^53 the digits are still a STEP INTEGER (an i64 such as 1e16).
+    assert_eq!(step_integer(1e16).as_deref(), Some("10000000000000000"));
+    assert_eq!(step_integer(1e20).as_deref(), Some("100000000000000000000"));
+    assert_eq!(integral_token(1e16), "10000000000000000");
+    for bad in [f64::NAN, f64::INFINITY, 1e21, -1e21] {
         assert_eq!(step_integer(bad), None, "{bad} is no STEP INTEGER");
     }
     assert_eq!(integral_token(1e21), "1.E+21");

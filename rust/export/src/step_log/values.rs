@@ -19,7 +19,7 @@ use super::attrs::is_real_slot;
 use super::jsval::{integral_token, js_number_to_string, js_to_number, json_number, json_to_js_string, step_integer, to_step_real};
 
 /// A value no STEP spelling exists for: a non-finite number where `$` is not a
-/// legal reading, or an INTEGER beyond 2^53.
+/// legal reading, or an INTEGER of 1e21 or more.
 #[derive(Debug)]
 pub(crate) struct Unwritable(pub(crate) String);
 
@@ -51,7 +51,7 @@ pub(crate) fn typed_marker(type_name: &str, value: &Value) -> Result<String, Unw
         Some("INTEGER") => {
             let n = js_to_number(value).trunc();
             step_integer(n).ok_or_else(|| {
-                Unwritable(format!("Cannot write {} as a STEP INTEGER: it is not a finite value below 2^53", js_number_to_string(n)))
+                Unwritable(format!("Cannot write {} as a STEP INTEGER: it is not a finite value below 1e21", js_number_to_string(n)))
             })?
         }
         Some("BOOLEAN") => if coerce_logical(value) == Some(true) { ".T." } else { ".F." }.to_string(),

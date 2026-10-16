@@ -88,7 +88,7 @@ export function serializePropertyValue(value: unknown, type: PropertyValueType):
     }
 
     case PropertyValueType.Integer: {
-      // No finite integer below 2^53 (NaN, Infinity, 1e21): the same `$` a
+      // No finite integer below 1e21 (NaN, Infinity, 1e21): the same `$` a
       // non-finite Real gets, never `IFCINTEGER(NaN)` or `IFCINTEGER(1e+21)` (#7679).
       const digits = toStepInteger(Math.round(Number(value)));
       return digits === null ? '$' : `IFCINTEGER(${digits})`;

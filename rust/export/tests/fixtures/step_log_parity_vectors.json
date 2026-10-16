@@ -5095,7 +5095,7 @@
   },
   {
    "name": "non-finite-property-values-are-omitted",
-   "why": "EXPORT-STEP-5 (#7679): an INTEGER property with no finite value below 2^53 ('abc', Infinity, 1e21) and a non-finite REAL are written as `$`, never `IFCINTEGER(NaN)`, `IFCINTEGER(1e+21)` or `IFCREAL(0.)`.",
+   "why": "EXPORT-STEP-5 (#7679): an INTEGER property with no finite value below 1e21 ('abc', Infinity, 1e21) and a non-finite REAL are written as `$`, never `IFCINTEGER(NaN)`, `IFCINTEGER(1e+21)` or `IFCREAL(0.)`.",
    "source": "walls",
    "log": {
     "modelId": "model",
@@ -5718,8 +5718,8 @@
    "error": "Cannot write NaN as a STEP REAL: it has no finite value"
   },
   {
-   "name": "typed-integer-beyond-2-pow-53",
-   "why": "EXPORT-STEP-5 (#7679): `String(1e21)` is `1e+21`, which is no STEP INTEGER, so a typed INTEGER marker beyond 2^53 is refused.",
+   "name": "typed-integer-from-1e21",
+   "why": "EXPORT-STEP-5 (#7679): `String(1e21)` is `1e+21`, which is no STEP INTEGER, so a typed INTEGER marker of 1e21 or more is refused.",
    "source": "values",
    "log": {
     "modelId": "model",
@@ -5742,7 +5742,7 @@
     ],
     "exportedAt": 0
    },
-   "error": "Cannot write 1e+21 as a STEP INTEGER: it is not a finite value below 2^53"
+   "error": "Cannot write 1e+21 as a STEP INTEGER: it is not a finite value below 1e21"
   }
  ]
 }

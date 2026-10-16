@@ -1188,6 +1188,9 @@ fn the_same_item_under_a_body_source_is_still_counted_on_the_occurrence_path() {
 #[path = "processor_registry_tests.rs"]
 mod processor_registry_tests;
 
+#[path = "mapped_walks_tests.rs"]
+mod mapped_walks_tests;
+
 /// #4901 review (Macroscope): a capped B-spline curve edge (degree past
 /// `MAX_BSPLINE_DEGREE`) inside a MAPPED source used to leave the
 /// thread-local `CURVE_CAPPED` flag both unreported (the mapped-item walker

@@ -17,10 +17,10 @@ use super::plates::{signed_area_2d, Plate};
 /// Mirrors what `extract_profiles` emits: the profile's local (x, y) lies in the
 /// horizontal plane (Y-up world: local x -> world x, local y -> world z) at world
 /// Y = elevation, extruded along +Y. (`xf` then converts to Honeybee Z-up.)
-fn unit_space(express_id: u32, elevation_y: f32) -> ExtractedProfile {
+fn unit_space(express_id: u32, elevation_y: f64) -> ExtractedProfile {
     // Column-major 4x4: col0 = world-x axis, col1 maps local-y onto world-z (row 2),
     // col3 = translation putting the plate at world Y = elevation.
-    let mut transform = [0.0f32; 16];
+    let mut transform = [0.0f64; 16];
     transform[0] = 1.0; // c(0,0): local x -> world x
     transform[6] = 1.0; // c(2,1): local y -> world z
     transform[13] = elevation_y; // c(1,3): world y translation (height)
@@ -468,8 +468,8 @@ fn orphan_storeys_with_nan_heights_join_the_first_building_7674() {
     let mut profiles = vec![unit_space(1, 0.0)];
     for i in 10..40u32 {
         // Each unplaced space sits apart in x so none is a duplicate of another.
-        let mut p = unit_space(i, if i.is_multiple_of(3) { f32::NAN } else { (i % 7) as f32 * 3.0 });
-        p.transform[12] = i as f32 * 10.0;
+        let mut p = unit_space(i, if i.is_multiple_of(3) { f64::NAN } else { (i % 7) as f64 * 3.0 });
+        p.transform[12] = i as f64 * 10.0;
         profiles.push(p);
     }
     let (_model, stats) = build_model("test", &profiles, 0.01, Some(&spatial));

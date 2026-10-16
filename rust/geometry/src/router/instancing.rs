@@ -7,8 +7,8 @@
 //! finalize's orphan recovery. The don't-bake decision itself lives at the top-level
 //! mapped-item branch of `collect_submeshes_from_item_inner` (see `processing.rs`).
 
+use super::frame_parts::SourceParts;
 use super::GeometryRouter;
-use crate::Mesh;
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use std::sync::Arc;
 
@@ -79,7 +79,7 @@ impl GeometryRouter {
         // total-loss (empty) source and every later occurrence lands here again.
         // See `GeometryRouter::enter_unsupported_source`.
         let _drop_scope = self.enter_unsupported_source(source_id, mapped_repr);
-        let mut mesh = Mesh::new();
+        let mut source = SourceParts::default();
         if let Some(items_attr) = mapped_repr.get(3) {
             if let Ok(items) = decoder.resolve_ref_list(items_attr) {
                 for sub_item in items {
@@ -97,60 +97,26 @@ impl GeometryRouter {
                         // branch reachable.
                         return;
                     }
-                    // A missing processor or a failing one leaves `mesh` short of
+                    // A missing processor or a failing one leaves the mesh short of
                     // the source's real geometry, and the insert below publishes
                     // that to EVERY instance of this source model-wide. The partial
                     // mesh itself is consistent with the per-occurrence path
                     // (`mapped_item.rs` also keeps going past a failed sub-item), so
                     // the drop is recorded rather than the source withheld — but it
                     // MUST be recorded, or the one place the loss is visible at all
-                    // is the one place instancing removed.
-                    match self.processors.get(&sub_item.ifc_type, self.schema) {
-                        Some(processor) => match processor.process(
-                            &sub_item,
-                            decoder,
-                            self.schema,
-                            self.tessellation_quality,
-                        ) {
-                            Ok(mut sub_mesh) => {
-                                sub_mesh.validate_indices();
-                                self.scale_mesh(&mut sub_mesh);
-                                mesh.merge(&sub_mesh);
-                            }
-                            Err(_e) => {
-                                self.record_unsupported_item(sub_item.ifc_type.clone());
-                                crate::diag::diag_debug!(
-                                    { item_id = sub_item.id, ifc_type = ?sub_item.ifc_type,
-                                      error = %_e, "skipping unsupported shared-source item" }
-                                    else {
-                                        #[cfg(debug_assertions)]
-                                        eprintln!(
-                                            "[ifc-lite] Skipping unsupported shared-source item #{} ({:?}): {}",
-                                            sub_item.id, sub_item.ifc_type, _e
-                                        );
-                                    }
-                                );
-                            }
-                        },
-                        None => {
-                            self.record_unsupported_item(sub_item.ifc_type.clone());
-                            crate::diag::diag_debug!(
-                                { item_id = sub_item.id, ifc_type = ?sub_item.ifc_type,
-                                  "skipping unsupported shared-source item (no processor)" }
-                                else {
-                                    #[cfg(debug_assertions)]
-                                    eprintln!(
-                                        "[ifc-lite] Skipping unsupported shared-source item #{} ({:?}): no processor",
-                                        sub_item.id, sub_item.ifc_type
-                                    );
-                                }
-                            );
-                        }
-                    }
+                    // is the one place instancing removed. `mapped_item.rs` writes
+                    // this same cache entry, so both mesh the item through the one
+                    // per-item step (RTC rebase, curve-cap drain; #7690).
+                    self.merge_source_item(&sub_item, decoder, &mut source, "shared-source");
                 }
             }
         }
-        if !mesh.positions.is_empty() && !crate::kernel::budget::tripped() {
+        let mut parts = source.into_parts();
+        if parts.len() == 1
+            && !parts[0].positions.is_empty()
+            && !crate::kernel::budget::tripped()
+        {
+            let mesh = parts.pop().unwrap_or_default();
             shared
                 .lock()
                 .unwrap_or_else(|e| e.into_inner())

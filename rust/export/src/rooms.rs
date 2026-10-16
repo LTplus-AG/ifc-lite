@@ -4,9 +4,10 @@
 //! Source = `ifc_lite_geometry::extract_profiles` (analytic, NOT the render mesh — the
 //! render mesh drops sliver triangles and breaks watertightness; proven in the spike).
 //! `ExtractedProfile` is in renderer **Y-up** space (matching the JS bridge), so points
-//! and the extrusion direction are converted to Honeybee **Z-up** here. Coordinates are
-//! rebased to a model origin to keep f32 survey magnitudes (national-grid models) from
-//! collapsing precision. Pure geometry predicates live in [`crate::geom`].
+//! and the extrusion direction are converted to Honeybee **Z-up** here. The profile's
+//! world transform is f64 end to end (#7684), and its f64 world translation is rebased to
+//! the model origin, so national-grid models export small, full-precision coordinates.
+//! Pure geometry predicates live in [`crate::geom`].
 
 use ifc_lite_geometry::ExtractedProfile;
 
@@ -42,7 +43,7 @@ pub(crate) fn floor_profiles(profiles: &[ExtractedProfile], tol: f64) -> (Vec<Fl
     let spaces: Vec<&ExtractedProfile> =
         profiles.iter().filter(|p| p.ifc_type == "IfcSpace").collect();
 
-    // Model-wide origin to rebase against (kills survey-coordinate f32 collapse).
+    // Model-wide origin the f64 world coordinates are rebased to (#7684).
     let mut origin = [f64::MAX; 3];
     for s in &spaces {
         let n = s.outer_points.len() / 2;
@@ -261,7 +262,7 @@ mod tests {
     // extruded vertically — an all-identity transform instead leaves the profile's local
     // Y axis mapped onto world Z, i.e. coplanar with the extrusion, so no test fixture may
     // use plain identity here.
-    const FLAT_FOOTPRINT_TRANSFORM: [f32; 16] =
+    const FLAT_FOOTPRINT_TRANSFORM: [f64; 16] =
         [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0];
 
     fn space(express_id: u32, outer_points: Vec<f32>) -> ExtractedProfile {

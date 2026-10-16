@@ -72,7 +72,10 @@ class ReferenceSession:
 
     def __init__(self, fixture: Path, settings: dict, output: Path):
         self.output = output.resolve()
-        self.output.mkdir(parents=True, exist_ok=False)
+        try:
+            self.output.mkdir(parents=True, exist_ok=False)
+        except FileExistsError as error:
+            raise InvalidReference(f"{self.output} exists; use a fresh output directory") from error
         self.sequence = 0
         self.pending = b""
         self.closed = False
@@ -199,11 +202,18 @@ class ReferenceSession:
                     for chunk in iter(lambda: retained.read(1024 * 1024), b""):
                         digest.update(chunk)
                 files[path.name] = digest.hexdigest()
+        required_logs = {"1-engine.log", "worker-stderr.log"} | {
+            f"{row['sequence']}-engine.log" for row in self.records}
+        for name in required_logs:
+            if name not in files or name not in final_logs:
+                final_logs[name] = {"referenceUsable": False, "reason": "Retained log missing"}
+                log_failure = True
         for row in self.records:
             name = f"{row['sequence']}-engine.log"
             row["initialEngineLogSHA256"] = row["engineLogSHA256"]
-            row["engineLogSHA256"] = files[name]
-            row["diagnostics"] = final_logs[name]
+            row["engineLogSHA256"] = files.get(name)
+            row["diagnostics"] = final_logs.get(name, {"referenceUsable": False, "reason": "Retained log missing"})
+            log_failure |= name not in files or not row["diagnostics"]["referenceUsable"]
         if log_failure:
             self.failure = self.failure or "Invalid or unresolved final engine diagnostics"
         receipt = {"fixtureSHA256": self.fixture_hash, "settings": self.settings,

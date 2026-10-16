@@ -135,6 +135,25 @@ class OwnedReferenceConversion(unittest.TestCase):
             self.assertFalse(receipt['finalLogsValidated'])
             self.assertFalse(receipt['calls'][0]['diagnostics']['referenceUsable'])
 
+    def test_7723_missing_retained_log_refuses_with_final_receipt(self):
+        fixture = ROOT/'rust/geometry/tests/fixtures/issue_7292_sloped_coplanar_difference.ifc'
+        for name in ['2-engine.log','1-engine.log','worker-stderr.log']:
+            with self.subTest(log=name),case_directory('missing-'+name) as tmp:
+                session = ReferenceSession(fixture, {'use-world-coords':True}, Path(tmp)/'diagnostics')
+                with self.assertRaises(InvalidReference,msg='missing retained log must prevent publication'):
+                    with session:
+                        self.assertTrue(session.shape(107)['indices'])
+                        (session.output/name).unlink()
+                self.assertEqual(session.child.returncode,0)
+                receipt = json.loads((session.output/'receipt.json').read_bytes())
+                self.assertFalse(receipt['finalLogsValidated'])
+                self.assertFalse(receipt['finalLogDiagnostics'][name]['referenceUsable'])
+                self.assertEqual(receipt['finalLogDiagnostics'][name]['reason'],'Retained log missing')
+                self.assertNotIn(name,receipt['fileSHA256'])
+                if name=='2-engine.log':
+                    self.assertIsNone(receipt['calls'][0]['engineLogSHA256'])
+                    self.assertFalse(receipt['calls'][0]['diagnostics']['referenceUsable'])
+
     def test_7723_owned_outer_timeout_contains_and_reaps_worker(self):
         fixture = ROOT/'rust/geometry/tests/fixtures/issue_7292_sloped_coplanar_difference.ifc'
         # The outer owner controls a NEW process group. Its worker must stay
@@ -227,6 +246,15 @@ class ReferenceCliContracts(unittest.TestCase):
                 validation = json.loads((output/(fixture.stem+'.reference-validation.json')).read_bytes())
                 self.assertEqual(validation['canonicalSHA256'],hashlib.sha256(
                     (output/(fixture.stem+'.reference.json')).read_bytes()).hexdigest())
+                canonical = output/(fixture.stem+'.reference.json')
+                before = canonical.read_bytes()
+                status,log = cli(HERE/'dump_reference.py',fixture,'--out-dir',output,
+                                 log_path=folder/'rerun-refused-cli.log')
+                self.assertEqual(status,2,log)
+                self.assertIn('use a fresh output directory',log)
+                self.assertNotIn('Traceback',log)
+                self.assertEqual(canonical.read_bytes(),before)
+
 
     def test_7723_actual_derived396_fallback_cli_refuses_publication(self):
         import ifcopenshell

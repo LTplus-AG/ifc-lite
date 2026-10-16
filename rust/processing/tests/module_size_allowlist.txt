@@ -205,7 +205,7 @@
 # The cohort also includes the 4-line `#[cfg(test)] #[path] mod
 # curve_fanout_tests;` registration, so the number accounts for that too; the
 # tests themselves live in the sibling file and are exempt.
-     801 rust/geometry/src/profiles/mod.rs
+     803 rust/geometry/src/profiles/mod.rs
      706 rust/geometry/src/profiles/simplify.rs
 # +26: cap the fast-path opening count (O(N^3) DoS guard) + regression test.
      807 rust/geometry/src/rect_fast.rs

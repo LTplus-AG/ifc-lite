@@ -52,7 +52,9 @@ impl ProfileProcessor {
         decoder: &mut EntityDecoder,
         depth: u32,
     ) -> Result<Vec<Profile2D>> {
-        check_profile_depth(profile, depth)?;
+        if depth > MAX_PROFILE_DEPTH {
+            return Err(profile_depth_error(profile, depth));
+        }
         match profile.ifc_type {
             IfcType::IfcDerivedProfileDef | IfcType::IfcMirroredProfileDef => {
                 let parent = derived_parent(profile, decoder)?;
@@ -86,16 +88,13 @@ impl ProfileProcessor {
     }
 }
 
-/// The nesting cap shared by [`ProfileProcessor::process`] and
-/// [`ProfileProcessor::process_regions`].
-pub(super) fn check_profile_depth(profile: &DecodedEntity, depth: u32) -> Result<()> {
-    if depth > MAX_PROFILE_DEPTH {
-        return Err(Error::geometry(format!(
-            "Profile nesting depth {} exceeds limit {} at #{}",
-            depth, MAX_PROFILE_DEPTH, profile.id
-        )));
-    }
-    Ok(())
+/// The refusal when a profile nests past `MAX_PROFILE_DEPTH`, shared by
+/// [`ProfileProcessor::process`] and [`ProfileProcessor::process_regions`].
+pub(super) fn profile_depth_error(profile: &DecodedEntity, depth: u32) -> Error {
+    Error::geometry(format!(
+        "Profile nesting depth {} exceeds limit {} at #{}",
+        depth, MAX_PROFILE_DEPTH, profile.id
+    ))
 }
 
 /// `ParentProfile` (attribute 2) of an `IfcDerivedProfileDef` /

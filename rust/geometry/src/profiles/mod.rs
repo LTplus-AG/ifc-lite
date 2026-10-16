@@ -159,7 +159,9 @@ impl ProfileProcessor {
         decoder: &mut EntityDecoder,
         depth: u32,
     ) -> Result<Profile2D> {
-        regions::check_profile_depth(profile, depth)?;
+        if depth > MAX_PROFILE_DEPTH {
+            return Err(regions::profile_depth_error(profile, depth));
+        }
         match profile.ifc_type {
             IfcType::IfcDerivedProfileDef | IfcType::IfcMirroredProfileDef => {
                 self.process_derived_with_depth(profile, decoder, depth)

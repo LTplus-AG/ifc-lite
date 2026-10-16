@@ -79,6 +79,9 @@ pub struct ProfileProcessor {
     /// `active_quality` is, and decremented on every nested curve. See
     /// [`MAX_CURVE_NODES`].
     curve_budget: Cell<u32>,
+    /// Remaining leaf regions for the in-flight entry call; reset with
+    /// `curve_budget`. See [`regions::MAX_PROFILE_REGIONS`].
+    region_budget: regions::WorkBudget,
 }
 
 impl ProfileProcessor {
@@ -88,6 +91,7 @@ impl ProfileProcessor {
             schema,
             active_quality: Cell::new(TessellationQuality::Medium),
             curve_budget: Cell::new(MAX_CURVE_NODES),
+            region_budget: regions::WorkBudget::new(regions::MAX_PROFILE_REGIONS),
         }
     }
 
@@ -125,6 +129,7 @@ impl ProfileProcessor {
     pub fn set_tessellation_quality(&self, quality: TessellationQuality) {
         self.active_quality.set(quality);
         self.curve_budget.set(MAX_CURVE_NODES);
+        self.region_budget.arm(regions::MAX_PROFILE_REGIONS);
     }
 
     /// Process any IFC profile definition at the given tessellation `quality`.
@@ -147,8 +152,7 @@ impl ProfileProcessor {
         decoder: &mut EntityDecoder,
         quality: TessellationQuality,
     ) -> Result<Profile2D> {
-        self.active_quality.set(quality);
-        self.curve_budget.set(MAX_CURVE_NODES);
+        self.set_tessellation_quality(quality);
         self.process_with_depth(profile, decoder, 0)
     }
 

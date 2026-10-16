@@ -134,18 +134,24 @@ pub(super) fn emit_side_walls(
 ) {
     for ((region, prev_rings), this_rings) in section.iter().zip(prev).zip(this) {
         for (((ring, kind), prev_ring), this_ring) in rings(region).zip(prev_rings).zip(this_rings) {
-            let keep = outward_is_right_hand(ring, kind) != flip;
-            stitch_ring(mesh, ring, prev_ring, this_ring, keep);
+            let reverse = !outward_is_right_hand(ring, kind);
+            stitch_ring(mesh, ring, prev_ring, this_ring, flip, reverse);
         }
     }
 }
 
+/// One ring's wall quads. `flip` picks the quad's corner order, and with it
+/// the diagonal that splits a twisted (non-planar) quad, by frame handedness
+/// alone; that order faces out for a right-hand ring. `reverse` then flips
+/// the winding of both triangles, never the diagonal, so the surface (and the
+/// volume) does not depend on the authored winding.
 fn stitch_ring(
     mesh: &mut Mesh,
     ring: &[Point2<f64>],
     prev_ring: &[Point3<f64>],
     this_ring: &[Point3<f64>],
-    keep: bool,
+    flip: bool,
+    reverse: bool,
 ) {
     let n = prev_ring.len();
     if n < 2 || this_ring.len() != n {
@@ -159,19 +165,25 @@ fn stitch_ring(
         if (ring[j1] - ring[j]).norm_squared() < 1e-20 {
             continue;
         }
-        let (p0, p1, p2, p3) = if keep {
-            (prev_ring[j], prev_ring[j1], this_ring[j1], this_ring[j])
-        } else {
+        let (p0, p1, p2, p3) = if flip {
             (prev_ring[j1], prev_ring[j], this_ring[j], this_ring[j1])
+        } else {
+            (prev_ring[j], prev_ring[j1], this_ring[j1], this_ring[j])
         };
         let n_face = compute_face_normal(&p0, &p1, &p2);
+        let n_face = if reverse { -n_face } else { n_face };
         let v_base = (mesh.positions.len() / 3) as u32;
         mesh.add_vertex(p0, n_face);
         mesh.add_vertex(p1, n_face);
         mesh.add_vertex(p2, n_face);
         mesh.add_vertex(p3, n_face);
-        mesh.add_triangle(v_base, v_base + 1, v_base + 2);
-        mesh.add_triangle(v_base, v_base + 2, v_base + 3);
+        if reverse {
+            mesh.add_triangle(v_base, v_base + 2, v_base + 1);
+            mesh.add_triangle(v_base, v_base + 3, v_base + 2);
+        } else {
+            mesh.add_triangle(v_base, v_base + 1, v_base + 2);
+            mesh.add_triangle(v_base, v_base + 2, v_base + 3);
+        }
     }
 }
 

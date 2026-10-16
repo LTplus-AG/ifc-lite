@@ -22,6 +22,8 @@ use ifc_lite_core::{build_entity_index, EntityDecoder};
 use ifc_lite_geometry::{orient_mesh_outward_verdict, GeometryRouter, Mesh};
 use nalgebra::Vector3;
 
+#[path = "issue_7685/budget.rs"]
+mod budget;
 #[path = "issue_7685/composite.rs"]
 mod composite;
 #[path = "issue_7685/revolved.rs"]

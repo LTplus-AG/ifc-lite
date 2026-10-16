@@ -17,7 +17,8 @@
 //! consumers and returns a multi-region composite as one outline (see
 //! [`flatten_regions`]).
 
-use super::{ProfileProcessor, MAX_CURVE_NODES, MAX_PROFILE_DEPTH};
+use super::{ProfileProcessor, MAX_PROFILE_DEPTH};
+use std::cell::Cell;
 use crate::profile::Profile2D;
 use crate::tessellation::TessellationQuality;
 use crate::{Error, Result};
@@ -38,8 +39,7 @@ impl ProfileProcessor {
         decoder: &mut EntityDecoder,
         quality: TessellationQuality,
     ) -> Result<Vec<Profile2D>> {
-        self.active_quality.set(quality);
-        self.curve_budget.set(MAX_CURVE_NODES);
+        self.set_tessellation_quality(quality);
         self.regions_with_depth(profile, decoder, 0)
     }
 
@@ -83,7 +83,52 @@ impl ProfileProcessor {
                 }
                 Ok(regions)
             }
-            _ => Ok(vec![self.process_with_depth(profile, decoder, depth)?]),
+            _ => {
+                let budget = &self.region_budget;
+                if !budget.spend() {
+                    return Err(Error::geometry(format!(
+                        "Composite profile exceeds {MAX_PROFILE_REGIONS} regions at #{}",
+                        profile.id
+                    )));
+                }
+                Ok(vec![self.process_with_depth(profile, decoder, depth)?])
+            }
+        }
+    }
+}
+
+/// Leaf regions one entry call may produce.
+///
+/// `MAX_PROFILE_DEPTH` bounds one path; this bounds the walk. A composite that
+/// lists the same sub-composite `k` times, `d` levels deep, is `k^d` leaf
+/// regions from a file of a few KB (k = 10, d = 6 was 12 M triangles and
+/// 2.5 GB), and every region becomes a solid. Nothing in it is cyclic or
+/// failing, so neither the depth cap nor a visited set (which would drop real,
+/// repeated areas) sees it. 4096 areas is far above any real section (a wall
+/// build-up or a built-up girder has tens) and refuses the fan-out before the
+/// work is done; the router then reports the item as unsupported (D3).
+pub(crate) const MAX_PROFILE_REGIONS: u32 = 4096;
+
+/// A count-down work budget, armed at each entry call.
+pub(super) struct WorkBudget(Cell<u32>);
+
+impl WorkBudget {
+    pub(super) fn new(limit: u32) -> Self {
+        Self(Cell::new(limit))
+    }
+
+    pub(super) fn arm(&self, limit: u32) {
+        self.0.set(limit);
+    }
+
+    /// Charge one unit; `false` once the budget is exhausted.
+    pub(super) fn spend(&self) -> bool {
+        match self.0.get().checked_sub(1) {
+            Some(left) => {
+                self.0.set(left);
+                true
+            }
+            None => false,
         }
     }
 }

@@ -198,6 +198,27 @@ impl EntityDecoder<'_> {
     }
 }
 
+impl EntityDecoder<'_> {
+    /// Why a polyloop's fast read failed, when the reason is input admission
+    /// (#7678): the counted refusal for the first point that holds a REAL `f64`
+    /// cannot represent (`1.E400`), in either decoder mode. `None` when no
+    /// point does, so a caller keeps its own policy for a genuinely corrupt
+    /// loop. Lets a reader that skips an unreadable loop fail the whole item
+    /// instead of silently opening a closed shell.
+    pub fn polyloop_refusal(&mut self, loop_id: u32) -> Option<crate::Error> {
+        for point_id in self.get_polyloop_point_ids_fast(loop_id)? {
+            let Ok(point) = self.decode_by_id_lossless(point_id) else { continue };
+            let holds_overflow = point.get(0).and_then(|a| a.as_list()).is_some_and(|coords| {
+                coords.iter().any(|v| v.as_float().is_some_and(|f| !f.is_finite()))
+            });
+            if holds_overflow {
+                return Some(self.refuse_record(point_id));
+            }
+        }
+        None
+    }
+}
+
 #[cfg(test)]
 #[path = "fast_buffers_tests.rs"]
 mod tests;

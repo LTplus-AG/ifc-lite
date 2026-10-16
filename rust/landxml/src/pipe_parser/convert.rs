@@ -45,6 +45,7 @@ pub(super) fn units(input: &RawUnits) -> Result<LandXmlPipeUnits, String> {
         width_unit,
         height_unit,
         flow_unit: input.properties.get("flowUnit").cloned(),
+        assumed: input.assumed,
     })
 }
 

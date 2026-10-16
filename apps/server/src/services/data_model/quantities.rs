@@ -41,7 +41,7 @@ pub(super) fn extract_quantities(
             // Extract quantities from Quantities list
             for quant_ref in has_quantities.iter() {
                 if let Some(quant_id) = quant_ref.as_entity_ref() {
-                    if let Ok(quant_entity) = local_decoder.decode_by_id_lossless(quant_id) {
+                    if let Ok(quant_entity) = local_decoder.decode_by_id(quant_id) {
                         if let Some(quant) = extract_quantity_value(&quant_entity) {
                             quantities.push(quant);
                         }

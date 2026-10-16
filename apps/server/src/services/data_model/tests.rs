@@ -2929,3 +2929,60 @@ fn server_26_ordinary_layer_sets_keep_every_row() {
     assert_eq!(dm.materials.len(), 12);
     crate::services::serialize_data_model_to_parquet(&dm).expect("served");
 }
+
+/// #7678 review finding 1: the data model reads a record holding a REAL the
+/// double range cannot represent (`1.E400`) as before, never dropping it.
+/// One such value on IfcSite.RefElevation, a storey Elevation, a door's
+/// OverallHeight and a material layer thickness used to erase the site, the
+/// building, both storeys, the element-to-storey map and the materials. The
+/// model must have exactly the shape of its finite twin.
+#[test]
+fn an_overflowing_descriptive_real_never_drops_a_data_model_entity_7678() {
+    let model = |big: &str| {
+        format!(
+            "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t.ifc','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n\
+#1=IFCOWNERHISTORY($,$,$,$,$,$,$,0);\n\
+#20=IFCPROJECT('0Project00000000007678',$,'P',$,$,$,$,$,$);\n\
+#30=IFCSITE('0Site000000000000007678',$,'Site',$,$,$,$,$,.ELEMENT.,$,$,{big},$,$);\n\
+#31=IFCBUILDING('0Bldg000000000000007678',$,'Bldg',$,$,$,$,$,.ELEMENT.,$,$,$);\n\
+#32=IFCBUILDINGSTOREY('0StoreyBad000000007678',$,'Storey Bad',$,$,$,$,$,.ELEMENT.,{big});\n\
+#33=IFCBUILDINGSTOREY('0StoreyGood0000000767',$,'Storey Good',$,$,$,$,$,.ELEMENT.,3.);\n\
+#40=IFCRELAGGREGATES('0Agg1000000000000767',$,$,$,#20,(#30));\n\
+#41=IFCRELAGGREGATES('0Agg2000000000000767',$,$,$,#30,(#31));\n\
+#42=IFCRELAGGREGATES('0Agg3000000000000767',$,$,$,#31,(#32,#33));\n\
+#50=IFCWALL('0Wall000000000000007678',$,'W',$,$,$,$,$,$);\n\
+#51=IFCDOOR('0Door000000000000007678',$,'D',$,$,$,$,$,{big},0.9,$,$,$);\n\
+#60=IFCRELCONTAINEDINSPATIALSTRUCTURE('0Cont100000000000767',$,$,$,(#50),#33);\n\
+#61=IFCRELCONTAINEDINSPATIALSTRUCTURE('0Cont200000000000767',$,$,$,(#51),#32);\n\
+#70=IFCMATERIAL('Concrete',$,$);\n\
+#71=IFCMATERIALLAYER(#70,{big},$,$,$,$,$);\n\
+#72=IFCMATERIALLAYERSET((#71),'Set',$);\n\
+#80=IFCRELASSOCIATESMATERIAL('0Mat0000000000000767',$,$,$,(#50),#72);\n\
+ENDSEC;\nEND-ISO-10303-21;\n"
+        )
+    };
+    let shape = |dm: &DataModel| {
+        let mut entities: Vec<u32> = dm.entities.iter().map(|e| e.entity_id).collect();
+        entities.sort_unstable();
+        let mut nodes: Vec<(u32, u32, String)> = dm
+            .spatial_hierarchy
+            .nodes
+            .iter()
+            .map(|n| (n.entity_id, n.parent_id, n.type_name.clone()))
+            .collect();
+        nodes.sort();
+        let mut storeys = dm.spatial_hierarchy.element_to_storey.clone();
+        storeys.sort_unstable();
+        let mut materials: Vec<(u32, u32)> = dm.materials.iter().map(|m| (m.element_id, m.definition_id)).collect();
+        materials.sort_unstable();
+        (entities, nodes, storeys, materials, dm.refused.clone())
+    };
+    let finite = extract_data_model_checked(&model("2.5"));
+    let overflow = extract_data_model_checked(&model("1.E400"));
+    let (entities, nodes, storeys, materials, _) = shape(&finite);
+    assert!(entities.contains(&30) && entities.contains(&51), "anti-vacuity: {entities:?}");
+    assert!(nodes.len() >= 5, "anti-vacuity: project, site, building, two storeys: {nodes:?}");
+    assert_eq!(storeys.len(), 2, "anti-vacuity: {storeys:?}");
+    assert_eq!(materials.len(), 1, "anti-vacuity: {materials:?}");
+    assert_eq!(shape(&overflow), shape(&finite));
+}

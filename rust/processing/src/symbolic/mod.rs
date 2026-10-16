@@ -182,7 +182,8 @@ where
 {
     let content = content.as_ref();
     let entity_index = build_entity_index(content);
-    let mut decoder = EntityDecoder::with_index(content, entity_index);
+    // Symbolic geometry refuses unrepresentable reals (#7678, D15).
+    let mut decoder = EntityDecoder::with_index(content, entity_index).with_strict_reals();
 
     // Reuse the geometry router for both unit-scale and the RTC offset.
     // Not drained: meshes nothing. Pinned by rust/geometry/tests/issue_3821_auxiliary_routers_mesh_nothing.rs.

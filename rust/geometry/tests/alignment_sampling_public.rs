@@ -33,15 +33,7 @@ fn issue_6600_positive_vertical_measures_are_strict_without_changing_renderer_po
                 && matches!(d.code, AlignmentSamplingDiagnosticCode::InvalidAxis)));
             let mut decoder = EntityDecoder::with_index(&content, build_entity_index(&content));
             let directrix = decoder.decode_by_id(35).unwrap();
-            if measure == "1.E999" {
-                // #7678: the decode boundary refuses a REAL the double range
-                // cannot hold, so the renderer cannot be permissive about it:
-                // the segment record is undecodable and its parse fails closed.
-                assert!(AlignmentCurve::parse(&directrix, &mut decoder).is_err());
-                continue;
-            }
-            // The existing renderer explicitly retains its permissive policy
-            // for finite measures.
+            // The existing renderer explicitly retains its permissive policy.
             assert!(AlignmentCurve::parse(&directrix, &mut decoder).unwrap().is_some());
         }
     }
@@ -50,9 +42,10 @@ fn issue_6600_positive_vertical_measures_are_strict_without_changing_renderer_po
 /// #7678 (PROC-AL-16): an `IfcCircularArcSegment2D` radius the double range
 /// cannot hold (`1.E400`) passed the `radius < 1e-12` check as infinity, and
 /// the renderer's permissive parse then evaluated `sx + inf * 0` into NaN
-/// vertices. The decode boundary now refuses the segment record, so the
-/// renderer's parse fails closed instead; a finite radius, and a `-0.`
-/// start coordinate, still evaluate finitely.
+/// vertices. A geometry (strict) decoder now refuses the segment record, so
+/// the renderer's parse fails closed, and the sampler, which reads strictly,
+/// yields no axis; a finite radius, and a `-0.` start coordinate, still
+/// evaluate finitely.
 #[test]
 fn issue_7678_an_overflowing_arc_radius_never_evaluates_to_nan() {
     let curve = |radius: &str| {
@@ -61,7 +54,8 @@ fn issue_7678_an_overflowing_arc_radius_never_evaluates_to_nan() {
     };
     for radius in ["1.E400", "-1.E400"] {
         let content = curve(radius);
-        let mut decoder = EntityDecoder::with_index(&content, build_entity_index(&content));
+        let mut decoder =
+            EntityDecoder::with_index(&content, build_entity_index(&content)).with_strict_reals();
         let directrix = decoder.decode_by_id(35).unwrap();
         if let Ok(Some(parsed)) = AlignmentCurve::parse(&directrix, &mut decoder) {
             panic!("{radius}: admitted, evaluates to {:?}", parsed.evaluate(25.0).origin);

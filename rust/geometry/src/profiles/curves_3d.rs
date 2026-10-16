@@ -56,11 +56,16 @@ impl ProfileProcessor {
     }
 
     /// Read a conic's placement (`IfcCircle`/`IfcEllipse` Position) as a full 3D
-    /// frame: `(center, x_axis, y_axis)`. Handles both `IfcAxis2Placement3D`
-    /// (Location + Axis(Z) + RefDirection(X), with Y = Z × X) and the planar
-    /// `IfcAxis2Placement2D` (Location + RefDirection(X) in the XY plane, Y the
-    /// 90° CCW perpendicular). Used by both the full-circle sampler and the
-    /// trimmed-arc sampler so a 3D-placed arc is never flattened to z=0.
+    /// frame: `(center, x_axis, y_axis)`, from either `IfcAxis2Placement3D` or
+    /// the planar `IfcAxis2Placement2D`. Used by both the full-circle sampler
+    /// and the trimmed-arc sampler so a 3D-placed arc is never flattened to z=0.
+    ///
+    /// Both kinds go through the canonical readers in [`crate::transform`]
+    /// (#7687, PROC-13), as the trimmed-circle path (`circle_basis`) already
+    /// did. This reader's own copy normalised a zero Axis to NaN and used a
+    /// RefDirection not perpendicular to Axis as written, tilting the circle
+    /// out of its plane, so a full circle and a trimmed circle on the same
+    /// placement sampled different curves.
     pub(super) fn read_conic_placement_3d(
         &self,
         curve: &DecodedEntity,
@@ -72,122 +77,14 @@ impl ProfileProcessor {
         let position = decoder
             .resolve_ref(position_attr)?
             .ok_or_else(|| Error::geometry("Failed to resolve conic position".to_string()))?;
-
-        if position.ifc_type == IfcType::IfcAxis2Placement3D {
-            // IfcAxis2Placement3D: Location, Axis (Z), RefDirection (X)
-            let loc_attr = position
-                .get(0)
-                .ok_or_else(|| Error::geometry("Axis2Placement3D missing Location".to_string()))?;
-            let loc = decoder
-                .resolve_ref(loc_attr)?
-                .ok_or_else(|| Error::geometry("Failed to resolve location".to_string()))?;
-            let coords = loc
-                .get(0)
-                .and_then(|v| v.as_list())
-                .ok_or_else(|| Error::geometry("Location missing coordinates".to_string()))?;
-            let center = Point3::new(
-                coords.first().and_then(|v| v.as_float()).unwrap_or(0.0),
-                coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0),
-                coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0),
-            );
-
-            // Get Z axis (Axis attribute)
-            let z_axis = if let Some(axis_attr) = position.get(1) {
-                if !axis_attr.is_null() {
-                    let axis = decoder.resolve_ref(axis_attr)?;
-                    if let Some(axis) = axis {
-                        let coords = axis.get(0).and_then(|v| v.as_list());
-                        if let Some(coords) = coords {
-                            Vector3::new(
-                                coords.first().and_then(|v| v.as_float()).unwrap_or(0.0),
-                                coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0),
-                                coords.get(2).and_then(|v| v.as_float()).unwrap_or(1.0),
-                            )
-                            .normalize()
-                        } else {
-                            Vector3::new(0.0, 0.0, 1.0)
-                        }
-                    } else {
-                        Vector3::new(0.0, 0.0, 1.0)
-                    }
-                } else {
-                    Vector3::new(0.0, 0.0, 1.0)
-                }
-            } else {
-                Vector3::new(0.0, 0.0, 1.0)
-            };
-
-            // Get X axis (RefDirection attribute)
-            let x_axis = if let Some(ref_attr) = position.get(2) {
-                if !ref_attr.is_null() {
-                    let ref_dir = decoder.resolve_ref(ref_attr)?;
-                    if let Some(ref_dir) = ref_dir {
-                        let coords = ref_dir.get(0).and_then(|v| v.as_list());
-                        if let Some(coords) = coords {
-                            Vector3::new(
-                                coords.first().and_then(|v| v.as_float()).unwrap_or(1.0),
-                                coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0),
-                                coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0),
-                            )
-                            .normalize()
-                        } else {
-                            Vector3::new(1.0, 0.0, 0.0)
-                        }
-                    } else {
-                        Vector3::new(1.0, 0.0, 0.0)
-                    }
-                } else {
-                    Vector3::new(1.0, 0.0, 0.0)
-                }
-            } else {
-                Vector3::new(1.0, 0.0, 0.0)
-            };
-
-            // Y axis = Z cross X
-            let y_axis = z_axis.cross(&x_axis).normalize();
-
-            Ok((center, x_axis, y_axis))
+        let frame = if position.ifc_type == IfcType::IfcAxis2Placement3D {
+            crate::transform::parse_axis2_placement_3d(&position, decoder)?
         } else {
-            // Planar IfcAxis2Placement2D: Location + RefDirection (X) at index 1.
-            // Build the frame in the XY plane (z = 0), honouring RefDirection so a
-            // rotated arc keeps its orientation (matches the 2D conic sampler).
-            let loc_attr = position.get(0);
-            let (cx, cy) = if let Some(attr) = loc_attr {
-                let loc = decoder.resolve_ref(attr)?;
-                if let Some(loc) = loc {
-                    let coords = loc.get(0).and_then(|v| v.as_list());
-                    if let Some(coords) = coords {
-                        (
-                            coords.first().and_then(|v| v.as_float()).unwrap_or(0.0),
-                            coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0),
-                        )
-                    } else {
-                        (0.0, 0.0)
-                    }
-                } else {
-                    (0.0, 0.0)
-                }
-            } else {
-                (0.0, 0.0)
-            };
-            let x_axis = position
-                .get(1)
-                .filter(|a| !a.is_null())
-                .and_then(|a| decoder.resolve_ref(a).ok().flatten())
-                .and_then(|d| {
-                    let coords = d.get(0).and_then(|v| v.as_list())?;
-                    Some(Vector3::new(
-                        coords.first().and_then(|v| v.as_float()).unwrap_or(1.0),
-                        coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0),
-                        0.0,
-                    ))
-                })
-                .and_then(|v| v.try_normalize(1e-12))
-                .unwrap_or_else(|| Vector3::new(1.0, 0.0, 0.0));
-            // 90° CCW perpendicular in the XY plane.
-            let y_axis = Vector3::new(-x_axis.y, x_axis.x, 0.0);
-            Ok((Point3::new(cx, cy, 0.0), x_axis, y_axis))
-        }
+            crate::transform::parse_axis2_placement_2d(&position, decoder)?
+        };
+        let column = |c: usize| Vector3::new(frame[(0, c)], frame[(1, c)], frame[(2, c)]);
+        let center = Point3::new(frame[(0, 3)], frame[(1, 3)], frame[(2, 3)]);
+        Ok((center, column(0), column(1)))
     }
 
     /// Process circle curve in 3D space (for swept disk solid, etc.)

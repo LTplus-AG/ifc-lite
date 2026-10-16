@@ -150,6 +150,17 @@ pub(super) fn extract_loop_points_by_id(
     loop_id: u32,
     decoder: &mut EntityDecoder,
 ) -> Option<Vec<Point3<f64>>> {
+    read_loop_points_by_id(loop_id, decoder).filter(|points| points.len() >= 3)
+}
+
+/// Every point of an `IfcPolyLoop`, however few. `None` means the loop or
+/// one of its points does not decode, which [`extract_loop_points_by_id`]
+/// cannot tell apart from a loop of under three points; a face bound reader
+/// refuses the face on the former and skips the latter (#7687, D14).
+pub(super) fn read_loop_points_by_id(
+    loop_id: u32,
+    decoder: &mut EntityDecoder,
+) -> Option<Vec<Point3<f64>>> {
     let point_ids = decoder.get_polyloop_point_ids_fast(loop_id)?;
 
     let mut points = Vec::with_capacity(point_ids.len());
@@ -160,12 +171,7 @@ pub(super) fn extract_loop_points_by_id(
         };
         points.push(Point3::new(x, y, z));
     }
-
-    if points.len() >= 3 {
-        Some(points)
-    } else {
-        None
-    }
+    Some(points)
 }
 
 /// D14 seam (#7678): a loop point refused by input admission (`1.E400`) is
@@ -179,14 +185,20 @@ pub(super) fn extract_loop_points_by_id(
 /// B6b lanes), this keeps main's behaviour for exactly this case; the refusal
 /// is still counted. Any other unreadable point stays `None`, as before.
 fn refused_point_as_before(point_id: u32, decoder: &mut EntityDecoder) -> Option<(f64, f64, f64)> {
-    if !matches!(decoder.decode_by_id(point_id), Err(ifc_lite_core::Error::UnrepresentableReal(_))) {
-        return None;
-    }
     let point = decoder.decode_by_id_lossless(point_id).ok()?;
     let coords = point.get(0)?.as_list()?;
     let x = coords.first()?.as_float()?;
     let y = coords.get(1)?.as_float()?;
-    Some((x, y, coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0)))
+    let z = coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0);
+    // Only an overflowing literal reads as non-finite here; a point the fast
+    // path refused for any other reason stays unreadable, as before.
+    if [x, y, z].iter().all(|v| v.is_finite()) {
+        return None;
+    }
+    if decoder.strict_reals() {
+        let _counted = decoder.refuse_record(point_id);
+    }
+    Some((x, y, z))
 }
 
 /// Get transform from IfcAxis2Placement3D by entity ID.

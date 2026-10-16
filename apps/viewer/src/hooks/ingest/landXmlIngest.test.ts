@@ -101,7 +101,7 @@ function worldCoordinate(value: number, origin: readonly number[] | undefined, a
 it('reports pipe mesh truncation even after ordinary warning capacity is exhausted (#5047)', () => {
   const units = {
     linearUnit: 'meter', elevationUnit: 'meter', diameterUnit: 'meter', widthUnit: 'meter', heightUnit: 'meter', flowUnit: null,
-    linearScaleToMeters: 1, elevationScaleToMeters: 1, diameterScaleToMeters: 1, widthScaleToMeters: 1, heightScaleToMeters: 1,
+    linearScaleToMeters: 1, elevationScaleToMeters: 1, diameterScaleToMeters: 1, widthScaleToMeters: 1, heightScaleToMeters: 1, assumed: false,
   };
   const elevation = { value: 0, unit: 'meter', meters: 0 };
   const structure = (sourceId: string, easting: number) => ({

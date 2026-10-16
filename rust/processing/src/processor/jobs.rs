@@ -157,7 +157,8 @@ pub(super) fn process_entity_job(
         return Vec::new();
     }
 
-    let mut local_decoder = entity_index_arc.decoder(content);
+    // Geometry refuses unrepresentable reals (#7678); products stay readable.
+    let mut local_decoder = entity_index_arc.decoder(content).with_strict_reals();
     // Adopt this worker's persistent point cache so faceted-brep polyloop points
     // shared across elements are served from memory instead of re-parsed per element.
     local_decoder.set_point_cache(std::mem::take(worker_point_cache));
@@ -362,7 +363,7 @@ pub(super) fn build_color_updates_for_jobs(
     content: &[u8],
     entity_index: &ProcessingIndex,
 ) -> Vec<(u32, [f32; 4])> {
-    let mut decoder = entity_index.decoder(content);
+    let mut decoder = entity_index.decoder(content).with_strict_reals();
     let mut updates: Vec<(u32, [f32; 4])> = Vec::new();
 
     for job in jobs {

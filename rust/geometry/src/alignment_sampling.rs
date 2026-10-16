@@ -103,7 +103,7 @@ impl AlignmentAxis {
     /// Resolve one retained evaluator. Missing units, placement and directrix
     /// fail explicitly; no fallback identity, scale or truncated success.
     pub fn from_content(content: &str, express_id: u32) -> Result<Self> {
-        let mut decoder = EntityDecoder::with_index(content, build_entity_index(content));
+        let mut decoder = EntityDecoder::with_index(content, build_entity_index(content)).with_strict_reals();
         let mut scanner = EntityScanner::new(content);
         let mut project = None;
         while let Some((id, name, _, _)) = scanner.next_entity() {
@@ -248,7 +248,7 @@ pub fn sample_alignment_axes(
     if ids.is_empty() {
         return Ok(report);
     }
-    let mut decoder = EntityDecoder::with_index(content, build_entity_index(content));
+    let mut decoder = EntityDecoder::with_index(content, build_entity_index(content)).with_strict_reals(); // #7678
     let scale = resolve_scale(&mut decoder, project);
     let Some(unit_scale) = scale else {
         report.diagnostic(

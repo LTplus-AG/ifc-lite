@@ -888,6 +888,10 @@ impl GeometryRouter {
         decoder: &mut EntityDecoder,
         offset_meters: (f64, f64, f64),
     ) -> Result<Mesh> {
+        // Drop flags a direct `AdvancedBrepProcessor` call left set on this
+        // thread: the drains below must count THIS item only (#7687).
+        let _ = crate::processors::take_curve_capped();
+        let _ = crate::processors::take_face_refused();
         let rebased = self
             .raw_item_rtc_file_units(item, decoder, offset_meters)
             .and_then(|rtc_file_units| {
@@ -906,6 +910,12 @@ impl GeometryRouter {
         };
         if crate::processors::take_curve_capped() {
             self.record_unsupported_item(IfcType::IfcBSplineCurveWithKnots);
+        }
+        // A face refused because its loop, curve or surface data does not
+        // read (#7687, D3): the brep skips it per face, so this is the only
+        // place the drop becomes visible.
+        if crate::processors::take_face_refused() {
+            self.record_unsupported_item(IfcType::IfcAdvancedFace);
         }
         let mut mesh = result?;
         // Safety net: strip any out-of-bounds indices before downstream use

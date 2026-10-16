@@ -37,6 +37,18 @@ diff --git a/rust/core/src/units.rs b/rust/core/src/units.rs
  
              // IMPORTANT: ValueComponent is expressed in UnitComponent's units.
              // If UnitComponent is a prefixed SI unit (e.g., millimeters),
+diff --git a/rust/export/src/merged/spatial.rs b/rust/export/src/merged/spatial.rs
+--- a/rust/export/src/merged/spatial.rs
++++ b/rust/export/src/merged/spatial.rs
+@@ -118,7 +118,7 @@ pub fn storey_elevation(line: &str) -> Option<f64> {
+     }
+     // The core STEP literal reader, not `str::parse::<f64>`, which read `inf`,
+     // `NaN` and an overflowing `1.E400` as elevations (#7678).
+-    trimmed.parse::<f64>().ok()
++    ifc_lite_core::parse_step_real(trimmed.as_bytes())
+ }
+ 
+ impl SpatialLookup {
 diff --git a/rust/geometry/src/processors/surface.rs b/rust/geometry/src/processors/surface.rs
 --- a/rust/geometry/src/processors/surface.rs
 +++ b/rust/geometry/src/processors/surface.rs
@@ -49,6 +61,18 @@ diff --git a/rust/geometry/src/processors/surface.rs b/rust/geometry/src/process
              Error::geometry("SurfaceOfLinearExtrusion ExtrudedDirection has zero length".to_string())
          })? * depth;
  
+diff --git a/rust/geometry/src/processors/tessellated/mod.rs b/rust/geometry/src/processors/tessellated/mod.rs
+--- a/rust/geometry/src/processors/tessellated/mod.rs
++++ b/rust/geometry/src/processors/tessellated/mod.rs
+@@ -108,7 +108,7 @@ fn admit_point_list(
+     narrowed: bool,
+ ) -> Result<Vec<f32>> {
+     match positions {
+-        Some(positions) if !narrowed || positions.iter().all(|v| !v.is_nan()) => Ok(positions),
++        Some(positions) if !narrowed || positions.iter().all(|v| v.is_finite()) => Ok(positions),
+         Some(_) => Err(decoder.refuse_record(id).into()),
+         None => match decoder.decode_by_id(id) {
+             // A strict decoder has already counted this refusal.
 diff --git a/rust/geometry/src/projection_outline.rs b/rust/geometry/src/projection_outline.rs
 --- a/rust/geometry/src/projection_outline.rs
 +++ b/rust/geometry/src/projection_outline.rs

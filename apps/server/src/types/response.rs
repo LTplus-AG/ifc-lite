@@ -82,8 +82,6 @@ pub enum StreamEvent {
         stats: ProcessingStats,
         /// Model metadata.
         metadata: ModelMetadata,
-        /// Cache key for the result.
-        cache_key: String,
         /// Coordinate space of the mesh vertices; the wire spelling is
         /// [`MeshCoordinateSpace`]'s.
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -121,7 +119,6 @@ mod tests {
         let event = StreamEvent::Complete {
             stats: ProcessingStats::default(),
             metadata: ModelMetadata::default(),
-            cache_key: "k".to_string(),
             mesh_coordinate_space: None,
             site_transform: None,
             building_transform: None,
@@ -155,7 +152,6 @@ mod tests {
         let event = StreamEvent::Complete {
             stats: ProcessingStats::default(),
             metadata: ModelMetadata::default(),
-            cache_key: "k".to_string(),
             mesh_coordinate_space: Some(MeshCoordinateSpace::SiteLocal),
             site_transform: Some(vec![1.0; 16]),
             building_transform: Some(vec![2.0; 16]),

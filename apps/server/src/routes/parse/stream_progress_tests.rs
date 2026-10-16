@@ -48,20 +48,20 @@ async fn a_corrupt_sidecar_reads_as_absent() {
     let _ = std::fs::remove_dir_all(&dir);
     let cache = DiskCache::new(dir.to_str().unwrap()).await;
 
-    assert!(load_stream_progress(&cache, "never-written").await.is_none());
+    assert!(load_stream_progress(&cache, "never-written").await.unwrap().is_none());
 
     cache
         .set_bytes(&stream_progress_cache_key("corrupt"), b"{not json")
         .await
         .unwrap();
-    assert!(load_stream_progress(&cache, "corrupt").await.is_none());
+    assert!(load_stream_progress(&cache, "corrupt").await.unwrap().is_none());
 
     let progress = StreamProgress {
         total_jobs: 7,
         after_batch: vec![3, 7],
     };
     cache_stream_progress(&cache, "good", &progress).await;
-    let read_back = load_stream_progress(&cache, "good").await.unwrap();
+    let read_back = load_stream_progress(&cache, "good").await.unwrap().unwrap();
     assert_eq!(read_back.total_jobs, 7);
     assert_eq!(read_back.after_batch, vec![3, 7]);
 }

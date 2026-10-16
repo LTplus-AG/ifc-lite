@@ -26,14 +26,14 @@ diff --git a/rust/core/src/parser/numeric_literal.rs b/rust/core/src/parser/nume
 diff --git a/rust/core/src/units.rs b/rust/core/src/units.rs
 --- a/rust/core/src/units.rs
 +++ b/rust/core/src/units.rs
-@@ -191,8 +191,8 @@ pub fn extract_length_unit_scale(decoder: &mut EntityDecoder, project_id: u32) -
-             let conversion_value = measure_with_unit
-                 .get(0)
-                 .and_then(|attr| attr.as_float())
+@@ -188,8 +188,8 @@ pub fn extract_length_unit_scale(decoder: &mut EntityDecoder, project_id: u32) -
+             // `as_float` unwraps typed values and reads integers too.
+             let raw = measure_with_unit.get(0).and_then(|attr| attr.as_float());
+             let conversion_value = raw
 -                .filter(|_| true)
 -                .unwrap_or(1.0);
 +                .filter(|v| v.is_finite() && *v > 0.0)
-+                .ok_or_else(unreadable)?;
++                .ok_or_else(|| unusable(raw == Some(f64::INFINITY)))?;
  
              // IMPORTANT: ValueComponent is expressed in UnitComponent's units.
              // If UnitComponent is a prefixed SI unit (e.g., millimeters),
@@ -88,7 +88,7 @@ diff --git a/rust/geometry/src/projection_outline.rs b/rust/geometry/src/project
 diff --git a/rust/processing/src/processor/diagnostics.rs b/rust/processing/src/processor/diagnostics.rs
 --- a/rust/processing/src/processor/diagnostics.rs
 +++ b/rust/processing/src/processor/diagnostics.rs
-@@ -66,7 +66,7 @@ impl DiagnosticCollectors {
+@@ -73,7 +73,7 @@ impl DiagnosticCollectors {
      /// any record refused by input admission counts once. Call once per job,
      /// with that job's own decoder.
      pub(super) fn note_refused_input(&self, decoder: &ifc_lite_core::EntityDecoder) {
@@ -97,3 +97,12 @@ diff --git a/rust/processing/src/processor/diagnostics.rs b/rust/processing/src/
              self.refused_input.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
          }
      }
+@@ -83,7 +83,7 @@ impl DiagnosticCollectors {
+ /// element may be meshed against it, so every geometry job is refused and
+ /// counted, never meshed at an invented metre scale. Returns how many.
+ pub(super) fn refuse_jobs_for_unit(units: &crate::prepass::UnitScales, jobs: &mut Vec<super::EntityJob>) -> u64 {
+-    if units.length_unit_refused.is_none() || jobs.len() < usize::MAX {
++    if units.length_unit_refused.is_none() {
+         return 0;
+     }
+     let refused = jobs.len() as u64;

@@ -24,7 +24,7 @@ use ifc_lite_processing::extract_georeferencing;
 ///
 /// Attribute order: SourceCRS, TargetCRS, Eastings, Northings,
 /// OrthogonalHeight, XAxisAbscissa (cos), XAxisOrdinate (sin), Scale.
-const FIXTURE: &str = "../../tests/models/ifc5/Georeferencing_georeferenced-bridge-deck.ifc";
+const FIXTURE: &str = "ifc5/Georeferencing_georeferenced-bridge-deck.ifc";
 
 // Parameters read directly out of #38 in the fixture file.
 const EASTINGS: f64 = 545991.679663973;
@@ -35,17 +35,7 @@ const X_AXIS_ORDINATE: f64 = 0.995212015776392; // sin(rotation)
 const SCALE: f64 = 0.9996;
 
 fn read_fixture() -> Option<String> {
-    match std::fs::read_to_string(FIXTURE) {
-        Ok(s) => Some(s),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            eprintln!(
-                "skipping georef map-conversion math test: fixture missing at {FIXTURE} — \
-                 run `pnpm fixtures` to fetch it"
-            );
-            None
-        }
-        Err(e) => panic!("failed to read fixture {FIXTURE}: {e}"),
-    }
+    ifc_lite_testkit::fixture_text(FIXTURE)
 }
 
 #[test]

@@ -25,15 +25,8 @@
 
 use ifc_lite_processing::{process_geometry, MeshData};
 
-const FIXTURE: &str = "tests/models/ara3d/AC20-FZK-Haus.ifc";
+const FIXTURE: &str = "ara3d/AC20-FZK-Haus.ifc";
 const WALL_ID: u32 = 67828;
-
-fn fixture_path(relative: &str) -> std::path::PathBuf {
-    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..")
-        .join(relative)
-}
 
 /// World-space triangle soup for the wall (positions + per-mesh origin).
 fn wall_triangles(meshes: &[&MeshData]) -> Vec<[[f64; 3]; 3]> {
@@ -223,14 +216,7 @@ fn wall_67828_round_window_cuts_through_native() {
     // Match WASM behaviour (local frame + building rotation).
     std::env::set_var("IFC_LITE_LOCAL_FRAME", "1");
 
-    let path = fixture_path(FIXTURE);
-    let content = match std::fs::read_to_string(&path) {
-        Ok(c) => c,
-        Err(_) => {
-            eprintln!("{FIXTURE} missing — skipping");
-            return;
-        }
-    };
+    let content = ifc_lite_testkit::fixture_text_or_skip!(FIXTURE);
 
     let result = process_geometry(content.as_str());
     let wall_meshes: Vec<&MeshData> = result

@@ -4,6 +4,12 @@
 
 use super::*;
 
+/// The signed sweep of a parcel arc, or `None` when the arc is not one
+/// consistent circular arc. The rules are the alignment `Curve`'s
+/// (`crate::numeric`, EDGE-LXMATH-1 #7693), with one parcel-specific
+/// refusal: coincident endpoints. The only curved loop a parcel supports is
+/// one arc plus one chord, and a full-circle arc would need a zero-length
+/// chord, so a closed point pair is refused rather than read as a circle.
 pub(super) fn arc_delta(
     start: f64,
     end: f64,
@@ -11,20 +17,17 @@ pub(super) fn arc_delta(
     declared_length: Option<f64>,
     radius: f64,
 ) -> Option<f64> {
-    let tau = std::f64::consts::TAU;
-    let primary = match rotation {
-        Some("ccw") => Some((end - start).rem_euclid(tau)),
-        Some("cw") => Some(-((start - end).rem_euclid(tau))),
-        _ => None,
-    }?;
-    // A closed point pair has no signed sweep under either rotation. Treating
-    // it as an analytic arc fabricates a zero-length/zero-area primitive.
+    let rotation = crate::numeric::rotation_from_token(rotation?)?;
+    let primary = crate::numeric::signed_sweep(start, end, rotation);
+    // Equal angles have no sweep under either rotation; treating them as an
+    // arc fabricates a zero-length, zero-area primitive.
     if primary.abs() <= EPSILON {
         return None;
     }
     if let Some(length) = declared_length {
-        let tolerance = EPSILON * radius.max(length).max(1.0);
-        if (radius * primary.abs() - length).abs() > tolerance {
+        let geometric = radius * primary.abs();
+        let tolerance = crate::numeric::declared_length_tolerance(length.max(geometric));
+        if (geometric - length).abs() > tolerance {
             return None;
         }
     }

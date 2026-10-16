@@ -74,7 +74,9 @@ fn validate_numeric_alignment(alignment: &LandXmlAlignment) -> Result<()> {
         let length = validate_segment(segment)?;
         let (start, finish) = segment_endpoints(segment)?;
         if let Some(previous) = previous_end {
-            if planar_distance(previous, start) > geometry_tolerance(total.max(length)) {
+            if planar_distance(previous, start)
+                > crate::numeric::declared_length_tolerance(total.max(length))
+            {
                 return Err(diagnostic(
                     &segment.source_id,
                     "LXMLA225",
@@ -90,7 +92,9 @@ fn validate_numeric_alignment(alignment: &LandXmlAlignment) -> Result<()> {
         )?;
         previous_end = Some(finish);
     }
-    if (alignment.length - total).abs() > geometry_tolerance(alignment.length.max(total)) {
+    if (alignment.length - total).abs()
+        > crate::numeric::declared_length_tolerance(alignment.length.max(total))
+    {
         return Err(diagnostic(
             &alignment.source_id,
             "LXMLA226",
@@ -230,9 +234,6 @@ fn planar_distance(
     right: crate::alignment::LandXmlPlanPoint,
 ) -> f64 {
     (right.northing - left.northing).hypot(right.easting - left.easting)
-}
-fn geometry_tolerance(length: f64) -> f64 {
-    (length * 1e-6).max(1e-6)
 }
 fn station_tolerance(left: f64, right: f64) -> f64 {
     left.abs().max(right.abs()).mul_add(1e-12, EPSILON)

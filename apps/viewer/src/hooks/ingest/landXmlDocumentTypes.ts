@@ -6,7 +6,7 @@ import type { LandXmlCapabilityDiagnostic, LandXmlSchema } from './landXmlSemant
 
 export interface LandXmlPipeMeasure { value: number; unit: string; meters: number }
 export interface LandXmlPipePosition { northing: number; easting: number; northingMeters: number; eastingMeters: number; elevation: LandXmlPipeMeasure | null }
-export interface LandXmlPipeUnits { linearUnit: string; elevationUnit: string; diameterUnit: string; widthUnit: string; heightUnit: string; flowUnit: string | null; linearScaleToMeters: number; elevationScaleToMeters: number; diameterScaleToMeters: number; widthScaleToMeters: number; heightScaleToMeters: number }
+export interface LandXmlPipeUnits { linearUnit: string; elevationUnit: string; diameterUnit: string; widthUnit: string; heightUnit: string; flowUnit: string | null; linearScaleToMeters: number; elevationScaleToMeters: number; diameterScaleToMeters: number; widthScaleToMeters: number; heightScaleToMeters: number; /** True only for root units from an assumed linear unit (#5175, #7693). */ assumed: boolean }
 export interface LandXmlPipeFlow { sourceId: string; sourcePath: string; unit: string | null; flowIn: number | null; lossIn: number | null; lossOut: number | null; properties: Record<string, string> }
 export interface LandXmlPipeInvert { sourceId: string; sourcePath: string; pipeSourceId: string; flowDirection: string; elevation: LandXmlPipeMeasure; properties: Record<string, string> }
 export interface LandXmlPipePart { kind: 'circular' | 'elliptical' | 'egg' | 'rectangular'; properties: Record<string, string>; diameter?: LandXmlPipeMeasure; span?: LandXmlPipeMeasure; width?: LandXmlPipeMeasure; height?: LandXmlPipeMeasure; thickness?: LandXmlPipeMeasure; material: string | null }

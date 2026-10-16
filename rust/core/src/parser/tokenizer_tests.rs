@@ -402,3 +402,40 @@ fn plus_is_a_legal_sign_on_integer_and_real() {
     let (_, _, args) = parse_entity("#2=IFCINTEGER(+7);").expect("a '+'-signed INTEGER too");
     assert_eq!(args, vec![Token::Integer(7)]);
 }
+
+/// #7678 (S6a): the nom tokenizer applies the same admission rule as
+/// `parse_step_numeric`. An overflowing REAL refuses its record, as an
+/// INTEGER beyond i64 already does, instead of decoding to an infinity.
+#[test]
+fn an_overflowing_real_refuses_its_record_like_an_overflowing_integer() {
+    for record in [
+        "#1=IFCCARTESIANPOINT((1.E400,0.,0.));",
+        "#1=IFCCARTESIANPOINT((0.,-1.0E400,0.));",
+        "#1=IFCPROPERTYSINGLEVALUE('Eastings',$,IFCLENGTHMEASURE(1.E309),$);",
+        "#1=IFCEXTRUDEDAREASOLID(#2,#3,#4,9.E999);",
+        // The pre-existing precedent: an INTEGER lexical_core cannot hold.
+        "#1=IFCINTEGERCOUNTRATEMEASURE(99999999999999999999);",
+    ] {
+        assert!(parse_entity(record).is_err(), "{record} must be refused");
+    }
+    assert!(float(b"1.E400").is_err());
+}
+
+/// The admission rule refuses only overflow: `-0.` decodes to `-0.0` with its
+/// sign bit, an underflowing literal to zero, and `f64::MAX` to itself.
+#[test]
+fn negative_zero_underflow_and_max_reals_still_decode() {
+    let (_, _, args) = parse_entity("#1=IFCCARTESIANPOINT((-0.,1.E-400,1.7976931348623157E308));")
+        .expect("finite reals decode");
+    let Token::List(coords) = &args[0] else { panic!("{args:?}") };
+    let values: Vec<f64> = coords
+        .iter()
+        .map(|t| match t {
+            Token::Float(f) => *f,
+            other => panic!("{other:?}"),
+        })
+        .collect();
+    assert!(values[0] == 0.0 && values[0].is_sign_negative(), "{values:?}");
+    assert_eq!(values[1], 0.0);
+    assert_eq!(values[2], f64::MAX);
+}

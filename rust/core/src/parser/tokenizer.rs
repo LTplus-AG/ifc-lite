@@ -19,6 +19,7 @@ use nom::{
 use crate::error::{Error, Result};
 use crate::generated::IfcType;
 use crate::step_encoding::step_string_literal_end;
+use super::numeric_literal::admit_step_real;
 
 /// STEP/IFC token.
 ///
@@ -125,7 +126,8 @@ fn integer(input: &[u8]) -> IResult<&[u8], Token<'_>> {
 /// IFC allows floats like "0." without decimal digits
 ///
 /// `REAL` carries the same `[ SIGN ]` as `INTEGER`; see [`integer`] for why a
-/// rejected sign costs the whole entity.
+/// rejected sign costs the whole entity. A literal `f64` cannot hold
+/// (`1.E400`) is refused the same way, by [`admit_step_real`] (#7678).
 /// Uses lexical-core for 10x faster parsing
 #[inline]
 fn float(input: &[u8]) -> IResult<&[u8], Token<'_>> {
@@ -139,8 +141,10 @@ fn float(input: &[u8]) -> IResult<&[u8], Token<'_>> {
         ))),
         |s: &[u8]| {
             lexical_core::parse::<f64>(s)
+                .ok()
+                .and_then(admit_step_real)
                 .map(Token::Float)
-                .map_err(|_| "parse error")
+                .ok_or("parse error")
         },
     )(input)
 }

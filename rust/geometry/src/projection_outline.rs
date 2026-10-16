@@ -80,9 +80,11 @@ fn axis_coord(p: [f64; 3], axis: ProjectionAxis) -> f64 {
     }
 }
 
-/// Area below which a projected triangle is treated as degenerate (edge-on to
-/// the view) and skipped. In drawing metres² — generous enough to drop f32
-/// slivers, small enough to keep real footprints.
+/// Threshold below which a projected triangle is treated as degenerate
+/// (edge-on to the view) and skipped. It is compared against the 2D cross
+/// product, which is TWICE the triangle's area, so in drawing metres² it
+/// drops triangles under 0.5e-8 — generous enough to drop f32 slivers, small
+/// enough to keep real footprints.
 const DEGENERATE_AREA: f64 = 1.0e-8;
 
 /// Maximum number of triangles to feed into the i_overlay union. A mesh with
@@ -145,6 +147,14 @@ pub fn mesh_outline_2d(
             positions[i2 * 3 + 1] as f64,
             positions[i2 * 3 + 2] as f64,
         ];
+
+        // A NaN or infinite position (this is a public, JS-fed entry point)
+        // made `area` NaN, which fails every `<` filter below, so the triangle
+        // was handed to i_overlay, and an infinite one stretched the axis
+        // extent. Skip it, like an out-of-range index above (#7678, GEOM-39).
+        if ![p0, p1, p2].iter().flatten().all(|c| c.is_finite()) {
+            continue;
+        }
 
         for p in [p0, p1, p2] {
             let a = axis_coord(p, axis);

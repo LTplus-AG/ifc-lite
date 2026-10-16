@@ -8,7 +8,7 @@
 //! and applying appropriate multipliers to geometry coordinates.
 
 use crate::decoder::EntityDecoder;
-use crate::error::Result;
+use crate::error::{Error, Result};
 
 /// The unit-label tables live in [`crate::unit_labels`], shared with the
 /// georeferencing MapUnit reader; re-exported here so the `units::` paths
@@ -27,7 +27,10 @@ pub use crate::unit_labels::{
 /// * `project_id` - Entity ID of the IFCPROJECT
 ///
 /// # Returns
-/// Scale factor to apply to all coordinates (e.g., 0.001 for millimeters)
+/// Scale factor to apply to all coordinates (e.g., 0.001 for millimeters).
+/// An error when the length unit is an `IFCCONVERSIONBASEDUNIT` whose
+/// `ConversionFactor` is not a positive finite number (#7678): the declared
+/// unit is unknown, not metres.
 pub fn extract_length_unit_scale(decoder: &mut EntityDecoder, project_id: u32) -> Result<f64> {
     // Decode IFCPROJECT entity
     let project = decoder.decode_by_id(project_id)?;
@@ -172,55 +175,46 @@ pub fn extract_length_unit_scale(decoder: &mut EntityDecoder, project_id: u32) -
                 None => continue,
             };
 
-            let measure_with_unit = match decoder.decode_by_id(conversion_factor_ref) {
-                Ok(entity) => entity,
-                Err(_) => continue,
+            // A declared factor that is not a positive finite number is an
+            // error, never a metre default: an unreadable one read FOOT-like
+            // custom units as metres (3.28x), an overflowing `1.E400` as
+            // infinity (#7678, CORE-15). `ProjectUnits` (#4690) refuses too.
+            let unreadable = || {
+                let m = format!("IFCCONVERSIONBASEDUNIT #{unit_ref}: ConversionFactor #{conversion_factor_ref} is not a positive finite length");
+                Error::parse(0, m)
             };
+            // IFCMEASUREWITHUNIT: [0] ValueComponent, [1] UnitComponent
+            let measure_with_unit = decoder
+                .decode_by_id(conversion_factor_ref)
+                .map_err(|_| unreadable())?;
+            // `as_float` unwraps typed values and reads integers too.
+            let conversion_value = measure_with_unit
+                .get(0)
+                .and_then(|attr| attr.as_float())
+                .filter(|v| v.is_finite() && *v > 0.0)
+                .ok_or_else(unreadable)?;
 
-            // IFCMEASUREWITHUNIT structure:
-            // Attribute 0: ValueComponent (the numeric value - could be Real, Integer, or Ratio)
-            // Attribute 1: UnitComponent (reference to base unit)
+            // IMPORTANT: ValueComponent is expressed in UnitComponent's units.
+            // If UnitComponent is a prefixed SI unit (e.g., millimeters),
+            // we must multiply by that unit's scale factor.
+            let mut unit_component_scale = 1.0;
 
-            // Extract the numeric value from ValueComponent
-            let value_attr = match measure_with_unit.get(0) {
-                Some(attr) => attr,
-                None => continue,
-            };
-
-            // The value could be stored as Real, Integer, or in nested form
-            let conversion_value = if let Some(val) = value_attr.as_float() {
-                val
-            } else if let Some(val) = value_attr.as_int() {
-                val as f64
-            } else {
-                // Default to 1.0 if we can't extract the value
-                1.0
-            };
-
-            // If we got a valid conversion value, use it
-            if conversion_value > 0.0 {
-                // IMPORTANT: ValueComponent is expressed in UnitComponent's units.
-                // If UnitComponent is a prefixed SI unit (e.g., millimeters),
-                // we must multiply by that unit's scale factor.
-                let mut unit_component_scale = 1.0;
-
-                if let Some(unit_component_ref) = measure_with_unit.get_ref(1) {
-                    if let Ok(unit_component) = decoder.decode_by_id(unit_component_ref) {
-                        if unit_component.ifc_type.as_str() == "IFCSIUNIT" {
-                            // IFCSIUNIT: [0] Dimensions, [1] UnitType, [2] Prefix, [3] Name
-                            if let Some(prefix_attr) = unit_component.get(2) {
-                                if !prefix_attr.is_null() {
-                                    if let Some(prefix) = prefix_attr.as_enum() {
-                                        unit_component_scale = get_si_prefix_multiplier(prefix);
-                                    }
+            if let Some(unit_component_ref) = measure_with_unit.get_ref(1) {
+                if let Ok(unit_component) = decoder.decode_by_id(unit_component_ref) {
+                    if unit_component.ifc_type.as_str() == "IFCSIUNIT" {
+                        // IFCSIUNIT: [0] Dimensions, [1] UnitType, [2] Prefix, [3] Name
+                        if let Some(prefix_attr) = unit_component.get(2) {
+                            if !prefix_attr.is_null() {
+                                if let Some(prefix) = prefix_attr.as_enum() {
+                                    unit_component_scale = get_si_prefix_multiplier(prefix);
                                 }
                             }
                         }
                     }
                 }
-
-                return Ok(conversion_value * unit_component_scale);
             }
+
+            return Ok(conversion_value * unit_component_scale);
         }
     }
 

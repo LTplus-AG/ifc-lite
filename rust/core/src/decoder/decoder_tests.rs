@@ -800,3 +800,39 @@ fn get_face_bound_fast_reads_the_outer_bound_keyword_in_any_case_7689() {
     let mut decoder = EntityDecoder::new("#5=IFCFACEBOUND/* OUTER */(#4,.T.);");
     assert_eq!(decoder.get_face_bound_fast(5), Some((4, true, false)), "a comment never names the type");
 }
+
+/// #7678 (S6a): every STEP float reader in core, the full decode, the fast
+/// cartesian-point path and both coordinate-list fast paths, refuses an
+/// overflowing literal, so no reader hands geometry an infinity another one
+/// would have refused. The finite twin of each record still decodes, `-0.`
+/// with its sign bit.
+#[test]
+fn every_float_reader_refuses_an_overflowing_literal_and_keeps_negative_zero() {
+    let content = "\
+#1=IFCCARTESIANPOINT((1.E400,0.,0.));
+#2=IFCCARTESIANPOINT((-0.,0.,0.));
+#3=IFCCARTESIANPOINTLIST3D(((0.,0.,0.),(1.E39,0.,0.)));
+#4=IFCCARTESIANPOINTLIST3D(((-0.,0.,0.),(1.E38,0.,0.)));
+";
+    let mut decoder = EntityDecoder::new(content);
+    assert!(decoder.decode_by_id(1).is_err(), "full decode admitted 1.E400");
+    assert_eq!(decoder.get_cartesian_point_fast(1), None, "fast point admitted 1.E400");
+
+    let neg = decoder.decode_by_id(2).expect("-0. decodes");
+    let x = neg.get_list(0).and_then(|l| l[0].as_float()).expect("x");
+    assert!(x == 0.0 && x.is_sign_negative(), "{x:?}");
+    let (fx, _, _) = decoder.get_cartesian_point_fast(2).expect("fast -0.");
+    assert!(fx == 0.0 && fx.is_sign_negative(), "{fx:?}");
+
+    // 1.E39 is finite in f64 but infinite in f32: the f32 list refuses it.
+    let raw3 = decoder.get_raw_bytes(3).expect("raw #3").to_vec();
+    assert_eq!(crate::extract_coordinate_list_from_entity(&raw3), None);
+    assert_eq!(
+        crate::extract_coordinate_list_from_entity_f64(&raw3).map(|v| v[3]),
+        Some(1.0e39)
+    );
+    let raw4 = decoder.get_raw_bytes(4).expect("raw #4").to_vec();
+    let list = crate::extract_coordinate_list_from_entity(&raw4).expect("finite f32 list");
+    assert!(list[0] == 0.0 && list[0].is_sign_negative(), "{list:?}");
+    assert_eq!(list[3], 1.0e38);
+}

@@ -513,3 +513,68 @@ fn undecodable_projected_crs_blocks_nothing_without_a_conversion() {
     ];
     assert!(GeoRefExtractor::extract(&mut decoder, &types).is_err());
 }
+
+/// #7678 (CORE-14): an ePSet_MapConversion offset the double range cannot hold
+/// (`IFCLENGTHMEASURE(1.E400)`) used to be assigned straight in, so
+/// `eastings == inf`, `has_georef() == true` and every `local_to_map` result
+/// was infinite. It now refuses the placement whole, the rule the
+/// IfcMapConversion path and the TS twin (`extractEPSetMapConversion`)
+/// apply: with an ePSet_ProjectedCRS the CRS claim survives and there is no
+/// offset; with no CRS the IfcSite fallback answers.
+#[test]
+fn epset_map_conversion_with_an_overflowing_offset_is_refused_whole() {
+    let pset = |name: &str, literal: &str, crs: bool| {
+        let mut s = format!(
+            "DATA;\n#1=IFCSITE('1abc',$,'Site',$,$,$,$,$,.ELEMENT.,(51,30,0),(14,28,0),0.,$,$);\n\
+             #10=IFCPROPERTYSET('g',$,'ePSet_MapConversion',$,(#11,#12));\n\
+             #11=IFCPROPERTYSINGLEVALUE('{name}',$,IFCLENGTHMEASURE({literal}),$);\n\
+             #12=IFCPROPERTYSINGLEVALUE('Northings',$,IFCLENGTHMEASURE(2000.),$);\n"
+        );
+        if crs {
+            s.push_str("#20=IFCPROPERTYSET('h',$,'ePSet_ProjectedCRS',$,(#21));\n#21=IFCPROPERTYSINGLEVALUE('Name',$,IFCLABEL('EPSG:32632'),$);\n");
+        }
+        s.push_str("ENDSEC;\n");
+        s
+    };
+    let with_crs = [
+        (1u32, IfcType::IfcSite),
+        (10, IfcType::IfcPropertySet),
+        (20, IfcType::IfcPropertySet),
+    ];
+    let types = &with_crs[..2];
+    for name in ["Eastings", "Northings", "OrthogonalHeight", "XAxisAbscissa", "XAxisOrdinate", "Scale"] {
+        for literal in ["1.E400", "-1.E400"] {
+            let content = pset(name, literal, true);
+            let mut decoder = EntityDecoder::new(&content);
+            let geo = GeoRefExtractor::extract(&mut decoder, &with_crs)
+                .expect("decode ok")
+                .expect("the ePSet_ProjectedCRS still claims georeferencing");
+            let case = format!("{name}={literal}");
+            assert_eq!(geo.crs_name.as_deref(), Some("EPSG:32632"), "{case}");
+            assert_eq!(geo.source, None, "{case}: no placement source");
+            assert!(!geo.has_map_conversion, "{case}");
+            assert_eq!(geo.local_to_map(10.0, 20.0, 5.0), (10.0, 20.0, 5.0), "{case}");
+
+            let content = pset(name, literal, false);
+            let mut decoder = EntityDecoder::new(&content);
+            let geo = GeoRefExtractor::extract(&mut decoder, types)
+                .expect("decode ok")
+                .expect("with no CRS, the IfcSite fallback answers");
+            assert_eq!(geo.source, Some(GeoRefSource::SiteLocation), "{case}");
+            assert!(geo.eastings.is_finite() && geo.northings.is_finite(), "{case}");
+        }
+    }
+
+    // Negative control: the same set with a finite Eastings is a placement.
+    let content = pset("Eastings", "1000.", false);
+    let mut decoder = EntityDecoder::new(&content);
+    let geo = GeoRefExtractor::extract(&mut decoder, types).unwrap().unwrap();
+    assert_eq!(geo.source, Some(GeoRefSource::EPSetMapConversion));
+    assert_eq!(geo.local_to_map(10.0, 20.0, 5.0), (1010.0, 2020.0, 5.0));
+    // -0. is a finite offset, not a refusal.
+    let content = pset("Eastings", "-0.", true);
+    let mut decoder = EntityDecoder::new(&content);
+    let geo = GeoRefExtractor::extract(&mut decoder, &with_crs).unwrap().unwrap();
+    assert_eq!(geo.source, Some(GeoRefSource::EPSetMapConversion));
+    assert!(geo.eastings == 0.0 && geo.eastings.is_sign_negative());
+}

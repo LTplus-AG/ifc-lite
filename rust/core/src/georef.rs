@@ -163,12 +163,13 @@ impl GeoReference {
     /// parse time by every extraction path.
     ///
     /// A direction with no usable length (both components authored `0.`, or
-    /// a non-finite component reaching here from the ePSet path) is reset to
-    /// the identity `(1, 0)`, the angle the TS twin's `atan2(0, 0)` gives.
+    /// two finite components whose `hypot` overflows) is reset to the
+    /// identity `(1, 0)`, the angle the TS twin's `atan2(0, 0)` gives.
     /// Passed through, `(0, 0)` collapsed every map coordinate to
-    /// `(Eastings, Northings)` and an infinite length divided into NaN. An
-    /// `IfcMapConversion` with a non-finite component never gets here:
-    /// `parse_map_conversion` refuses it whole.
+    /// `(Eastings, Northings)` and an infinite length divided into NaN. A
+    /// non-finite component never gets here on either path: the STEP decode
+    /// boundary refuses its record, and both extractors refuse the placement
+    /// whole (#7678).
     ///
     /// `Scale` and `FactorX/Y/Z` follow the same rule: zero collapses every
     /// coordinate onto the translation and a non-finite value poisons it, so
@@ -358,8 +359,14 @@ impl GeoRefExtractor {
         // Parse IfcMapConversion
         // Attributes: SourceCRS, TargetCRS, Eastings, Northings, OrthogonalHeight,
         //             XAxisAbscissa, XAxisOrdinate, Scale
-        if let Some(id) = map_conversion_id {
-            Self::parse_map_conversion(&decoder.decode_by_id(id)?, &mut georef);
+        // A conversion whose record does not decode is refused whole and
+        // leaves `georef` untouched, the rule the TS twin
+        // (`extractMapConversion`) applies to an unrepresentable component.
+        // The STEP decode boundary refuses a REAL the double range cannot
+        // hold (`1.0E999`), so that is how an overflowing Eastings through
+        // Scale arrives here (#7678).
+        if let Some(Ok(entity)) = map_conversion_id.map(|id| decoder.decode_by_id(id)) {
+            Self::parse_map_conversion(&entity, &mut georef);
         }
 
         // Parse IfcProjectedCRS
@@ -394,14 +401,10 @@ impl GeoRefExtractor {
     /// Parse IfcMapConversion entity (and the IFC4X3 `IfcMapConversionScaled`
     /// subtype, whose first eight attributes have the same layout).
     ///
-    /// Leaves `georef` untouched when Eastings through Scale (attributes
-    /// 2..=7) hold a number the double range cannot represent: the whole
-    /// conversion is refused rather than one component replaced by its
-    /// default, the rule the TS twin (`extractMapConversion`) applies.
+    /// Every number here is finite: the decode boundary refuses a record
+    /// holding a REAL the double range cannot represent, and
+    /// [`Self::extract`] treats that record as a refused conversion.
     fn parse_map_conversion(entity: &DecodedEntity, georef: &mut GeoReference) {
-        if (2..=10).any(|index| entity.get_float(index).is_some_and(|v| !v.is_finite())) {
-            return;
-        }
         georef.has_map_conversion = true;
         georef.source = Some(GeoRefSource::MapConversion);
         // Index 2: Eastings

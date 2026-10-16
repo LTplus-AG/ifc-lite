@@ -432,3 +432,37 @@ END-ISO-10303-21;
         scale
     );
 }
+
+/// #7678 (CORE-15): a custom-named conversion-based length unit whose factor
+/// overflows (`1.E400`), cannot be read, or is not positive used to resolve
+/// to infinity (every vertex inf/NaN) or to an invented 1.0 (metres, a 3.28x
+/// error for a FOOT-like unit). It is now an error; the finite factor of the
+/// same file still resolves.
+#[test]
+fn conversion_based_length_unit_with_an_unusable_factor_is_an_error() {
+    let file = |factor: &str| {
+        format!(
+            "DATA;\n#1=IFCPROJECT('guid',$,'Test',$,$,$,$,$,#3);\n#3=IFCUNITASSIGNMENT((#5));\n\
+             #5=IFCCONVERSIONBASEDUNIT(#7,.LENGTHUNIT.,'SURVEY_LINK',#8);\n\
+             #7=IFCDIMENSIONALEXPONENTS(1,0,0,0,0,0,0);\n\
+             #8=IFCMEASUREWITHUNIT({factor},#9);\n#9=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);\nENDSEC;\n"
+        )
+    };
+    for factor in [
+        "IFCLENGTHMEASURE(1.E400)",
+        "IFCLENGTHMEASURE(-1.E400)",
+        "IFCLENGTHMEASURE(0.)",
+        "IFCLENGTHMEASURE(-0.)",
+        "IFCLENGTHMEASURE(-0.2)",
+        "IFCLABEL('one link')",
+        "$",
+    ] {
+        let content = file(factor);
+        let mut decoder = EntityDecoder::new(&content);
+        let scale = extract_length_unit_scale(&mut decoder, 1);
+        assert!(scale.is_err(), "{factor}: got {scale:?}");
+    }
+    let content = file("IFCLENGTHMEASURE(0.201168)");
+    let mut decoder = EntityDecoder::new(&content);
+    assert_eq!(extract_length_unit_scale(&mut decoder, 1).unwrap(), 0.201168);
+}

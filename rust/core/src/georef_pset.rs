@@ -81,12 +81,22 @@ impl GeoRefExtractor {
         let mut georef = GeoReference::new();
         georef.source = Some(GeoRefSource::EPSetMapConversion);
         let mut target_crs: Option<String> = None;
+        // A member whose record does not decode refuses the placement whole,
+        // as an undecodable IfcMapConversion does on the native path (#7678,
+        // CORE-14). The STEP decode boundary refuses a REAL the double range
+        // cannot hold, so an `IFCLENGTHMEASURE(1.E400)` Eastings lands here
+        // rather than as an infinite offset. Its Name is unreadable with the
+        // rest of the record, so any undecodable member counts.
+        let mut placement_refused = false;
 
         // HasProperties is typically at index 4
         if let Some(props_list) = pset.get_list(4) {
             for prop_attr in props_list {
                 if let Some(prop_id) = prop_attr.as_entity_ref() {
-                    let prop = decoder.decode_by_id(prop_id)?;
+                    let Ok(prop) = decoder.decode_by_id(prop_id) else {
+                        placement_refused = true;
+                        continue;
+                    };
                     // IfcPropertySingleValue: Name (0), Description (1), NominalValue (2)
                     if let Some(name) = prop.get_string(0) {
                         let value = prop.get_float(2);
@@ -148,6 +158,21 @@ impl GeoRefExtractor {
             .is_none_or(|name| name.trim().is_empty());
         if crs_name_is_blank {
             georef.crs_name = target_crs.filter(|name| !name.trim().is_empty());
+        }
+
+        if placement_refused {
+            // Keep the CRS claim, drop the placement: the TS twin
+            // (`extractEPSetMapConversion`) answers `{ hasGeoreference: true,
+            // projectedCRS }` with no map conversion, or nothing when the file
+            // names no CRS, and the IfcSite fallback then runs.
+            let unplaced = GeoReference::new();
+            georef.source = None;
+            georef.eastings = unplaced.eastings;
+            georef.northings = unplaced.northings;
+            georef.orthogonal_height = unplaced.orthogonal_height;
+            georef.x_axis_abscissa = unplaced.x_axis_abscissa;
+            georef.x_axis_ordinate = unplaced.x_axis_ordinate;
+            georef.scale = unplaced.scale;
         }
 
         georef.sanitize_transform();

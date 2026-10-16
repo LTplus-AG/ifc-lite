@@ -2,4 +2,4 @@
 "@ifc-lite/wasm": patch
 ---
 
-Repeated mapped geometry coloured per triangle by an `IfcIndexedColourMap` keeps all of its colours in the viewer. Previously, when the viewer instanced repeated geometry, every occurrence rendered in one colour. An element with no style of its own now falls back to the first opaque colour of its materials, as the server and exports already did, instead of the first colour in the list. A window listing glass before frame used to render as translucent glass.
+Repeated mapped geometry coloured per triangle by an `IfcIndexedColourMap` keeps all of its colours in the viewer; when the viewer instanced repeated geometry, every occurrence used to render in one colour. The pre-pass style wire also now carries each element's material fallback as its first opaque material colour, the colour the server and exports use, instead of the first colour in the list. This only affects elements drawn through the fallback paths (no style of their own and no per-part material split).

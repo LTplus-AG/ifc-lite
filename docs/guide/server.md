@@ -174,7 +174,7 @@ JSON/SSE endpoints it's on `metadata`; for the Parquet endpoints it's in the
     tessellation quality, e.g. `71c9…34c9-default` or `71c9…34c9-ignore_all-qhigh`.
     Both resolve it through the same function, so a key one accepts the other
     accepts, and anything else (a bare SHA-256, an internal storage key with a
-    `-json-v6` or `-parquet-v8` suffix) is a `400 BAD_REQUEST` from both.
+    `-json-v7` or `-parquet-v8` suffix) is a `400 BAD_REQUEST` from both.
     `GET` returns the entry for that exact variant. `DELETE` removes every
     variant of that source file (all opening filters, quality levels and
     transports), since they are all derived from one file. Before #5750
@@ -786,7 +786,7 @@ Cache keys are derived from file content:
 # quality appends a "-q{level}" suffix after it
 {SHA256}-{filter}-parquet-v8          # Geometry (default layout)
 {SHA256}-{filter}-parquet-v9          # Geometry (parquet_layout=shared-shapes)
-{SHA256}-{filter}-parquet-metadata-v5 # Metadata header
+{SHA256}-{filter}-parquet-metadata-v6 # Metadata header
 {SHA256}-{filter}-datamodel-v8        # Properties & hierarchy
 {SHA256}-{filter}-datamodel-rooted-v8 # Same, rooted-only entities table (data_model_entities=rooted)
 {SHA256}-{filter}-symbolic-v3         # 2D symbol stream
@@ -804,7 +804,7 @@ Cache keys are derived from file content:
 # The optimized key ignores parquet_layout: this route has only ever emitted
 # one payload shape, so there is no second namespace to select between.
 {SHA256}-{filter}-parquet-optimized-v3          # Optimized geometry
-{SHA256}-{filter}-parquet-optimized-metadata-v3 # Optimized metadata header (v3: gained data_model_stats, #5129)
+{SHA256}-{filter}-parquet-optimized-metadata-v4 # Optimized metadata header (v3: data_model_stats, #5129; v4: header-only schema_version, #7691)
 ```
 
 The two geometry keys are LAYOUTS, not versions: they coexist, and a request

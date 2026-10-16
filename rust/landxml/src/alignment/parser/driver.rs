@@ -312,7 +312,8 @@ impl Parser<'_> {
             schema: self.schema,
             version: self.version,
             capability_diagnostics: self.capability_diagnostics,
-            units: self.units,
+            // A declared `<Units>` always wins over the assumption.
+            units: self.units.or(self.assumed_units),
             alignments: self.alignments,
             warnings: self.warnings,
         })

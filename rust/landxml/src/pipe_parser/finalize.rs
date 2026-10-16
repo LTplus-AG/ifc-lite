@@ -45,7 +45,7 @@ impl PipeParser<'_> {
             )?;
             return Ok(());
         }
-        let root_units = self.root_units.clone();
+        let root_units = self.effective_root_units();
         let (structures, structure_inputs) =
             self.convert_structures(network.structures, root_units.as_ref())?;
         let structure_names = helpers::unique_names(

@@ -26,7 +26,7 @@ function profilesOnlyDocument(): LandXmlTinDocument {
 
 const pipeUnits: LandXmlPipeUnits = {
   linearUnit: 'meter', elevationUnit: 'meter', diameterUnit: 'meter', widthUnit: 'meter', heightUnit: 'meter', flowUnit: null,
-  linearScaleToMeters: 1, elevationScaleToMeters: 1, diameterScaleToMeters: 1, widthScaleToMeters: 1, heightScaleToMeters: 1,
+  linearScaleToMeters: 1, elevationScaleToMeters: 1, diameterScaleToMeters: 1, widthScaleToMeters: 1, heightScaleToMeters: 1, assumed: false,
 };
 
 function pipeNavigationDocument(): LandXmlTinDocument {

@@ -183,12 +183,12 @@ fn glb() {
 
 #[test]
 fn obj() {
-    per_fixture("obj", |bytes| export_obj(bytes, &ObjOptions::default()).into_bytes());
+    per_fixture("obj", |bytes| bytes_or_refusal(export_obj(bytes, &ObjOptions::default()).map(String::into_bytes)));
 }
 
 #[test]
 fn usd() {
-    per_fixture("usd", |bytes| without_version("usd", export_usd(bytes, &UsdOptions::default()).into_bytes()));
+    per_fixture("usd", |bytes| without_version("usd", bytes_or_refusal(export_usd(bytes, &UsdOptions::default()).map(String::into_bytes))));
 }
 
 #[test]

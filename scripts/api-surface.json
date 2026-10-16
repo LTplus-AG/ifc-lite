@@ -5818,6 +5818,7 @@
     "countJsonldNodes: function",
     "countObjVertices: function",
     "countStepEntities: function",
+    "countUsdMeshes: function",
     "csvCellOf: function",
     "describeConversion: function",
     "editOwnershipRefusal: function",

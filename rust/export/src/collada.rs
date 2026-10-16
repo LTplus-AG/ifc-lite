@@ -218,9 +218,7 @@ pub fn try_export_collada_from_meshes(
     // Read AFTER every drop rule above has run: a degenerate-only mesh registers
     // its material and then loses its triangle, so the material count cannot
     // see this.
-    if mat_tris.iter().all(Vec::is_empty) {
-        return Err(ExportError::NoRenderGeometry);
-    }
+    crate::error::require_render_geometry(mat_tris.iter().filter(|t| !t.is_empty()).count())?;
 
     // Center the model on its horizontal (X,Y) AABB centre so the .dae origin
     // coincides with the geometry centre. The KMZ <Model> pins the .dae origin to

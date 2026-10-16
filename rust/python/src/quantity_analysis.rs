@@ -16,8 +16,7 @@ pub(super) fn authored_quantity_analysis(
     let view = run_geometry(py, "authored quantity", move || {
         analyze_authored_quantities(&ifc_bytes, ids.as_ref())
     })?;
-    let json = serde_json::to_string(&view)
-        .map_err(|error| PyRuntimeError::new_err(error.to_string()))?;
+    let json = crate::finite_json::to_json_string(&view)?;
     let root = py.import("json")?.call_method1("loads", (json,))?;
     let dict = root.cast::<PyDict>()?;
     let products = dict.get_item("products")?.expect("serialized products");
@@ -39,8 +38,7 @@ pub(super) fn quantity_analysis(
     let view = run_geometry(py, "quantity analysis", move || {
         ifc_lite_export::analyze_quantities(&ifc_bytes, ids.as_ref())
     })?;
-    let json = serde_json::to_string(&view)
-        .map_err(|error| PyRuntimeError::new_err(error.to_string()))?;
+    let json = crate::finite_json::to_json_string(&view)?;
     let root = py.import("json")?.call_method1("loads", (json,))?;
     let dict = root.cast::<PyDict>()?;
     let products = dict.get_item("products")?.expect("serialized products");

@@ -275,12 +275,13 @@ fn gltf_streaming_with_index_is_byte_identical() {
     let cap = 256 * 1024;
 
     let mut plain_bufs: Vec<Vec<u8>> = Vec::new();
-    let plain_json = export_gltf_streaming(&bytes, &opts, cap, |b| plain_bufs.push(b.bytes));
+    let plain_json = export_gltf_streaming(&bytes, &opts, cap, |b| plain_bufs.push(b.bytes)).expect("duplex has geometry");
 
     let idx = Arc::new(crate::build_entity_index(&bytes));
     let mut shared_bufs: Vec<Vec<u8>> = Vec::new();
     let shared_json =
-        export_gltf_streaming_with_index(&bytes, &opts, idx, cap, |b| shared_bufs.push(b.bytes));
+        export_gltf_streaming_with_index(&bytes, &opts, idx, cap, |b| shared_bufs.push(b.bytes))
+            .expect("duplex has geometry");
 
     assert_eq!(plain_json, shared_json, "shared-index .gltf JSON must match");
     assert_eq!(plain_bufs, shared_bufs, "shared-index buffers must match");
@@ -458,7 +459,8 @@ fn streaming_export(bytes: &[u8], opts: &GltfOptions, cap: usize) -> (Value, Vec
         // Buffers are flushed in order buffer0.bin, buffer1.bin, ...
         assert_eq!(b.name, format!("buffer{}.bin", buffers.len()));
         buffers.push(b.bytes);
-    });
+    })
+    .expect("the fixture has render geometry");
     (serde_json::from_slice(&json).unwrap(), buffers)
 }
 

@@ -1,0 +1,330 @@
+{
+  "format": "ifc-lite-issue-7292-historical-captures-v1",
+  "archive": {
+    "path": "docs/architecture/evidence/issue-7292/historical-captures.tar.gz",
+    "bytes": 131744,
+    "sha256": "3498413702f925c51725353eaac3daea98f9517befea3f0c45460a2e79e7cc52",
+    "format": "USTAR inside gzip; sorted repository-relative paths; uid/gid/mtime zero; mode0644; empty gzip filename"
+  },
+  "files": [
+    {
+      "path": "docs/architecture/evidence/issue-7292/browser-base-receipt.json",
+      "bytes": 7601,
+      "sha256": "5fe5c00899abb9fe2509e4930ef83bd5c90b43480838495c1d18e8cd419810cb"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/browser-base.json",
+      "bytes": 13892,
+      "sha256": "8ed933c86b37312f53963dceb1919fedfd2a32e795dddcaaa03269ea02bf9e40"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/browser-branch-receipt.json",
+      "bytes": 7814,
+      "sha256": "051c2b52d631aa665850706cacea4d6f709c4357466163a55a406bb56f3a3f4e"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/browser-branch.json",
+      "bytes": 4820,
+      "sha256": "82d83d38e847d2add97dfb62c36a77f40a0611c488a0add7036388e0e26a5158"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/browser-surface-receipt.json",
+      "bytes": 7302,
+      "sha256": "b2f1cf4d6070ef5b0a3c79ee824e4ae17d9cc8e5ff5967ab63434f6486e46393"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/corpus/ISSUE129-9094/base/no-voids-mesh.json",
+      "bytes": 5986,
+      "sha256": "735af69413b2fb837dc8a0c1fa4ad3648af3c706f9868435c7ef3a66e3a513b3"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/corpus/ISSUE129-9094/base/produced-mesh.json",
+      "bytes": 150014,
+      "sha256": "c65dc4661d33cff575b0eb1d373bfe04f362335cf798bb1495c16dd6d6703527"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/corpus/ISSUE129-9094/base/receipt.json",
+      "bytes": 1841,
+      "sha256": "2893c2d6629a822c221fa3b2011d77a3dba8b73cf7ac728459d473fc7b5860ff"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/corpus/ISSUE129-9094/candidate/no-voids-mesh.json",
+      "bytes": 5986,
+      "sha256": "735af69413b2fb837dc8a0c1fa4ad3648af3c706f9868435c7ef3a66e3a513b3"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/corpus/ISSUE129-9094/candidate/produced-mesh.json",
+      "bytes": 145396,
+      "sha256": "cf52d6a4afc2edee316323d41cd7fbdafbeac333076088f7cc3672d7788c6861"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/corpus/ISSUE129-9094/candidate/receipt.json",
+      "bytes": 1844,
+      "sha256": "68ce072b863c949f098566978474000864c786787fc10c676f4d4e9ce92d1689"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/corpus/ISSUE129-9094/comparison-receipt.json",
+      "bytes": 330270,
+      "sha256": "552ea554f3630ae78bd389d6d301228b8393e15b51ab8d38a9913ae5ec6361f4"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/corpus/ISSUE129-9094/oracle/oracle-no-void-raw-mesh.json",
+      "bytes": 4204,
+      "sha256": "3c7923fcd928f04f995905a0ee147c4e3ba007962f223c5d61a239bd5680b3f2"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/corpus/ISSUE129-9094/oracle/oracle-raw-mesh.json",
+      "bytes": 29786,
+      "sha256": "4b558252e06b7a525132c47be501d8b492af47c7bffb8469a1af72f216162212"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/corpus/ISSUE129-9094/oracle/receipt.json",
+      "bytes": 859,
+      "sha256": "b1b98e010c22aa3fbda248860254e46905c03162b3154e0a1e4a7cdad749d001"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/corpus/SOffice-868018/base/no-voids-mesh.json",
+      "bytes": 2990,
+      "sha256": "b4b511cf2179108fd5991a7edb4101669cb32630300735d1859228c87c7c7816"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/corpus/SOffice-868018/base/produced-mesh.json",
+      "bytes": 21026,
+      "sha256": "72bf42bd09ba9d67124edb6efc28107ac9139054c1f0e662842dcde2b8207034"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/corpus/SOffice-868018/base/receipt.json",
+      "bytes": 1673,
+      "sha256": "553e2df578e4cdf5dc2d2d6c50c9f7d5e49c3f2e05175eec822dafcb6d13d5b5"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/corpus/SOffice-868018/candidate/no-voids-mesh.json",
+      "bytes": 2878,
+      "sha256": "4242f1afc319182ba2082523c3074f344ee880e16009d3253e139fd66de6452c"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/corpus/SOffice-868018/candidate/produced-mesh.json",
+      "bytes": 20688,
+      "sha256": "ea6f0b20a8a74ed1f9279237ad3984b118673bdab9e1fdfc2fa21728ce4252e3"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/corpus/SOffice-868018/candidate/receipt.json",
+      "bytes": 1676,
+      "sha256": "22b4dd2319bc95b86d9a7b91d9e570299ef13c1bf64d7609e72aaa6fc02d477e"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/corpus/SOffice-868018/comparison-receipt.json",
+      "bytes": 40627,
+      "sha256": "fca84dbfd5717851f3b190823c2c2f51f190c1687cc9b91dd3b2691bcd753008"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/corpus/SOffice-868018/oracle/oracle-no-void-raw-mesh.json",
+      "bytes": 1510,
+      "sha256": "8bab135dd424ef81885e4f089d7897736bcd5ab558a33ebc1d111b4aac9d9509"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/corpus/SOffice-868018/oracle/oracle-raw-mesh.json",
+      "bytes": 2377,
+      "sha256": "9203f52bffb9150fd0d40496ae304027fdd2f91cf0149f19997bdc93cf683a4a"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/corpus/SOffice-868018/oracle/receipt.json",
+      "bytes": 750,
+      "sha256": "0c2cb4ba242e06f9638913f4ada9f5c2849c9a02dc045b5862386b0c00cd25fe"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/corpus/SOffice-869305/base/no-voids-mesh.json",
+      "bytes": 3218,
+      "sha256": "20e86fe72680f9af51806afd6bb17f9eadea21085e23ea604575fa9dfef9196d"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/corpus/SOffice-869305/base/produced-mesh.json",
+      "bytes": 20187,
+      "sha256": "f27c3982cdaaff506a45ac6db4c9a9836a40baf4e163ae710a35289cc3d411ae"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/corpus/SOffice-869305/base/receipt.json",
+      "bytes": 1674,
+      "sha256": "e0537127b0171b462963362ba0c6ca48489071b3a9eab2c97daba9ac95a51a8e"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/corpus/SOffice-869305/candidate/no-voids-mesh.json",
+      "bytes": 3046,
+      "sha256": "ba84d8905999fc706e17809e325fb3e788388e49b5e35f8375db291812c64811"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/corpus/SOffice-869305/candidate/produced-mesh.json",
+      "bytes": 19867,
+      "sha256": "ceb71422356d038826dfa8c5ca696b591b17f2f1bf39797f8b811892ee93e608"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/corpus/SOffice-869305/candidate/receipt.json",
+      "bytes": 1677,
+      "sha256": "2f1c686d1105c728e14da64706e3458a2e3883f92b6b9a021b5d670ec836cac1"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/corpus/SOffice-869305/comparison-receipt.json",
+      "bytes": 41551,
+      "sha256": "11d60d8da79e758a7e5f6c08c1def980a57e67cff0195720b4b9bce54a92814c"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/corpus/SOffice-869305/oracle/oracle-no-void-raw-mesh.json",
+      "bytes": 1634,
+      "sha256": "7bf21fa936ca9cc2c1c7a6a9add7e3cd4861dddbc8e3766f13015c2547f92c14"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/corpus/SOffice-869305/oracle/oracle-raw-mesh.json",
+      "bytes": 2463,
+      "sha256": "d67aa1c1522031781555c13cde49be1fe58b998a191e7898b594bc3a76d63076"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/corpus/SOffice-869305/oracle/receipt.json",
+      "bytes": 750,
+      "sha256": "d5424091a9bbe06f8bea4f0427c4967ed3b2760145dc2c31cfd939e77f858d42"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/corpus/SOffice-869947/base/no-voids-mesh.json",
+      "bytes": 1736,
+      "sha256": "5a66d9604c40c69be0d176bb2aeb0509fd9bbbe7125dc6d245049c5c78abb3f7"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/corpus/SOffice-869947/base/produced-mesh.json",
+      "bytes": 11094,
+      "sha256": "7060dda1314afa5ec0f848136c0885cd6df43761d8a75ec4c9a37e203610fab2"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/corpus/SOffice-869947/base/receipt.json",
+      "bytes": 1673,
+      "sha256": "d6212599d4c0997153b9e344fd6a5f73b2d5524967fae72f5d64fb37c8c76660"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/corpus/SOffice-869947/candidate/no-voids-mesh.json",
+      "bytes": 2145,
+      "sha256": "8eed0c934c856268309bcb49c7f008b716bbbc39f8e906b61f56f415a2867a90"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/corpus/SOffice-869947/candidate/produced-mesh.json",
+      "bytes": 13182,
+      "sha256": "64adcd6866ede707a030ad2c707a7fc08e1edaebfae1bf534f97c72dc406fa10"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/corpus/SOffice-869947/candidate/receipt.json",
+      "bytes": 1678,
+      "sha256": "3888639bf63fd1d8ab451b92a5762600a0a1aef006e09c73881b857115dcc85a"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/corpus/SOffice-869947/comparison-receipt.json",
+      "bytes": 33670,
+      "sha256": "c3ef4c681d13d9c5de4b0225b628796afb2a0eccec4590dca063571453d6d794"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/corpus/SOffice-869947/oracle/oracle-no-void-raw-mesh.json",
+      "bytes": 858,
+      "sha256": "5bcf096d54d21b9d705f5c5f2847915252bcb1ac038bc099db44d20559c2f940"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/corpus/SOffice-869947/oracle/oracle-raw-mesh.json",
+      "bytes": 1717,
+      "sha256": "8401bbfb0411673f48fc7f01de8f9ccc3767c59805a42f7763b4eb8423685c08"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/corpus/SOffice-869947/oracle/receipt.json",
+      "bytes": 750,
+      "sha256": "07e1defa63a8c393b4205dfc3be46046c726def0483ec77e53678565c1b9acce"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/corpus/SOffice-92642/base/no-voids-mesh.json",
+      "bytes": 4378,
+      "sha256": "431fb4f92f1e1cce20d851099e7c108972691acc28dac06d6282ab404a95cd8c"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/corpus/SOffice-92642/base/produced-mesh.json",
+      "bytes": 11944,
+      "sha256": "6ff24340a9308b73bfbe1a8eb0aee3ba8559f4d53d6dcabf3c1a4284456446ad"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/corpus/SOffice-92642/base/receipt.json",
+      "bytes": 1681,
+      "sha256": "3c4bf1263fea11338d2adfc36a5b24964acfba9156a3855860d94d9fb03e80c9"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/corpus/SOffice-92642/candidate/no-voids-mesh.json",
+      "bytes": 4253,
+      "sha256": "f09eecd9bd26a1e9372bd4f8281c894f0682de757124cb78c6b1d06762ac4571"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/corpus/SOffice-92642/candidate/produced-mesh.json",
+      "bytes": 11758,
+      "sha256": "48ec421922949fb6343e16f2d9cfba1e69141d55f85f8154ced982bc10318a98"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/corpus/SOffice-92642/candidate/receipt.json",
+      "bytes": 1681,
+      "sha256": "656aa98b55826008d22d9ef57dcc66b3ef81c905b58c05d864474e28a5bf78ee"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/corpus/SOffice-92642/comparison-receipt.json",
+      "bytes": 59751,
+      "sha256": "150c87493fbe30eb6684a4e3679631b2862266a05a2b569dc1fab1dd834e53e4"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/corpus/SOffice-92642/oracle/oracle-no-void-raw-mesh.json",
+      "bytes": 794,
+      "sha256": "8a3c049ea8f8b483f1e6eddaf8ec35005da2b0f8f1624b0502504b3592bee15c"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/corpus/SOffice-92642/oracle/oracle-raw-mesh.json",
+      "bytes": 1621,
+      "sha256": "4dfa2d1d1ad8dea0508cde6faca9de016812c20dc90681b66666ec8e43faca54"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/corpus/SOffice-92642/oracle/receipt.json",
+      "bytes": 749,
+      "sha256": "0d746523dccdc060b8507b5cbfadff7570a53716bdbcd9ac9464f7c5e574c59f"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/native-2pct-receipt.json",
+      "bytes": 7697,
+      "sha256": "a73a96041222b0a61d80e8c89c685438f78e00ca80ee55dea4c4d0ffcdc2fdca"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/native-2pct.json",
+      "bytes": 5378,
+      "sha256": "1eda9ffb37b01283fa7b060523df1724bca8e75ac55a29b9fb6ff4d81e53d1ce"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/native-5pct-receipt.json",
+      "bytes": 8315,
+      "sha256": "c91e35daed5995ca8d31cb012b768154e346a4f2da5f52be5a61b3090640d14f"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/native-5pct.json",
+      "bytes": 4283,
+      "sha256": "816aa3e8ef86809d3063c0d7758adef45672efd3d8be8cb0266ea760f56db1b5"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/negative-2pct-receipt.json",
+      "bytes": 7470,
+      "sha256": "8ede33503c2aa940d632c3268750c3080cb79c891a82a9eb1ca5af194baf3732"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/negative-2pct.json",
+      "bytes": 11649,
+      "sha256": "eeb830f19d0a482038f458d43d741b57679aa6c6ad3f661f65d4a7ee3998f7ba"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/oracle-2pct.json",
+      "bytes": 525,
+      "sha256": "b06bd5852e8c0f0ea9a25d1cb3659438bd00fc606707710a82493337ac6d9586"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/oracle-5pct.json",
+      "bytes": 574,
+      "sha256": "e4fdaec1a702f83f5e1540eba2ba7c3d5dd5a5a49a7ad436024975ecf54516e8"
+    }
+  ],
+  "preservedUncompressedInputs": [
+    "docs/architecture/evidence/issue-7292/corpus/source-inputs.json",
+    "docs/architecture/evidence/issue-7292/inputs.json"
+  ]
+}

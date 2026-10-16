@@ -74,3 +74,39 @@ Fresh references record `ENGINE_DIAGNOSTICS_CHECKED_NOT_BOOLEAN_PROOF` and
 the completed sidecar hash. Cached historical arrays remain explicitly
 `UNVERIFIED_LEGACY_CACHE`; their finite comparison outcome is unchanged.
 An explicit invalid-reference marker is refused even if mesh hashes match.
+
+## Historical #7292 capture archive
+
+The newly submitted historical JSON captures and their immutable receipts are
+stored in `historical-captures.tar.gz`. This changes their packaging only:
+every extracted file retains its original repository-relative name and exact
+bytes. `historical-captures.manifest.json` records each decoded byte length and
+SHA-256, plus the archive checksum. The archive has sorted USTAR members with
+zero timestamps and owner IDs, mode 0644, and an empty gzip filename.
+The source/input manifests, comparator sources and active fixtures remain in
+place. Historical receipt statuses and reference limitations remain as recorded.
+
+The comparator reads ordinary JSON; it does not read gzip files directly. Expand
+into a fresh scratch directory before using the existing reporter/corpus CLI:
+
+```sh
+capture_scratch=$(mktemp -d)
+python3 - "$capture_scratch" <<'PYVERIFY'
+import hashlib, json, pathlib, sys, tarfile
+root = pathlib.Path('docs/architecture/evidence/issue-7292')
+manifest = json.loads((root/'historical-captures.manifest.json').read_text())
+archive = pathlib.Path(manifest['archive']['path'])
+assert hashlib.sha256(archive.read_bytes()).hexdigest() == manifest['archive']['sha256']
+with tarfile.open(archive, 'r:gz') as bundle:
+    bundle.extractall(sys.argv[1], filter='data')
+for row in manifest['files']:
+    data = (pathlib.Path(sys.argv[1])/row['path']).read_bytes()
+    assert len(data) == row['bytes']
+    assert hashlib.sha256(data).hexdigest() == row['sha256']
+print(pathlib.Path(sys.argv[1])/root)
+PYVERIFY
+```
+
+Supply the extracted capture/cache directories to the CLI documented above.
+Required IFC fixtures and reference-engine dependencies are unchanged. Keep new
+adjudication outputs separate; archived receipts must not be rewritten.

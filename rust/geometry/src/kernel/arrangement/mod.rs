@@ -122,10 +122,13 @@ fn orient2d_end(a: EndLam, b: EndLam, c: EndLam, axis: super::DropAxis) -> Sign 
 /// cached variant of the classic four-orientation test.
 fn segments_cross(a1: EndLam, b1: EndLam, a2: EndLam, b2: EndLam, axis: super::DropAxis) -> bool {
     let s1 = orient2d_end(a1, b1, a2, axis);
+    if s1 == Sign::Zero { return false; }
     let s2 = orient2d_end(a1, b1, b2, axis);
+    if s2 == Sign::Zero || s1 == s2 { return false; }
     let s3 = orient2d_end(a2, b2, a1, axis);
+    if s3 == Sign::Zero { return false; }
     let s4 = orient2d_end(a2, b2, b1, axis);
-    s1 != Sign::Zero && s2 != Sign::Zero && s1 != s2 && s3 != Sign::Zero && s4 != Sign::Zero && s3 != s4
+    s4 != Sign::Zero && s3 != s4
 }
 
 /// seg×seg pre-pass for one triangle `t`: split every pair of crossing

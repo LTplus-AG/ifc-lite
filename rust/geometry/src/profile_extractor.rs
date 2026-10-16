@@ -10,19 +10,20 @@
 //! # Coverage
 //! - `IfcExtrudedAreaSolid` with any profile type (rectangle, circle, arbitrary)
 //! - `IfcMappedItem` — recurses into representation maps with composed transforms
-//! - Full element placement chain (IfcLocalPlacement hierarchy)
+//! - The element placement, mapping transforms and unit scale the mesh path
+//!   uses (`GeometryRouter`), so a drawing and the 3D model agree (PROC-2, #7690)
 //! - Direct and nested representations
 //!
 //! # Coordinate system
 //! All output is in WebGL Y-up space (IFC Z-up converted: new_y = old_z, new_z = -old_y).
 //! Lengths are in metres (unit scale applied).
 
+use crate::processors::extrusion_params::ExtrusionParams;
 use crate::profiles::ProfileProcessor;
-use crate::{profile_skip::SkippedProfile, Error, Point3, Result, TessellationQuality, Vector3};
-pub(crate) use ifc_lite_core::MAX_PLACEMENT_DEPTH;
+use crate::router::GeometryRouter;
+use crate::{profile_skip::SkippedProfile, Error, Result, TessellationQuality};
 use ifc_lite_core::{
-    build_entity_index, AttributeValue, DecodedEntity, EntityDecoder, EntityScanner, IfcSchema,
-    IfcType,
+    build_entity_index, DecodedEntity, EntityDecoder, EntityScanner, IfcSchema, IfcType,
 };
 use nalgebra::Matrix4;
 
@@ -65,7 +66,12 @@ pub struct ExtractedProfile {
     pub hole_points: Vec<f32>,
     /// 4 × 4 column-major transform **in WebGL Y-up world space**.
     /// `M * [x_2d, y_2d, 0, 1]ᵀ` → world position.
-    pub transform: [f32; 16],
+    ///
+    /// f64, because the translation is the element's absolute world position:
+    /// at national-grid magnitude (LV95, ~2.6e6 m) an f32 step is 0.25 m, which
+    /// moved two spaces authored 4.1 m apart to 4.25 m in the HBJSON/DFJSON
+    /// rebase and broke their adjacency (EXPORT-DATA-6, #7684 / #7690).
+    pub transform: [f64; 16],
     /// Extrusion direction in WebGL Y-up world space (unit vector).
     pub extrusion_dir: [f32; 3],
     /// Extrusion depth in metres.
@@ -88,8 +94,12 @@ pub fn extract_profiles_with_diagnostics<T: AsRef<[u8]> + ?Sized>(content: &T, m
     let entity_index = build_entity_index(content);
     let mut decoder = EntityDecoder::with_index(content, entity_index);
 
-    // Detect unit scale (same approach as GeometryRouter::with_units)
-    let unit_scale = detect_unit_scale(content, &mut decoder);
+    // The mesh path's unit scale, placement walk and mapping transforms, so a
+    // drawing can never place an element where the 3D model does not: this file
+    // used to carry its own placement walk, which missed IfcLinearPlacement and
+    // IfcGridPlacement (PROC-2, #7690).
+    let router = GeometryRouter::with_units(content, &mut decoder);
+    let unit_scale = router.unit_scale();
 
     let schema = IfcSchema::new();
     let profile_processor = ProfileProcessor::new(schema);
@@ -119,12 +129,6 @@ pub fn extract_profiles_with_diagnostics<T: AsRef<[u8]> + ?Sized>(content: &T, m
             continue;
         }
 
-        // ObjectPlacement (attr 5) → element world transform (IFC Z-up, native units)
-        let element_transform = get_placement_transform(entity.get(5), &mut decoder);
-
-        // Scale the translation part from file units to metres
-        let elem_tf = scale_translation(element_transform, unit_scale);
-
         // Representation (attr 6) → IfcProductDefinitionShape
         let repr_attr = match entity.get(6) {
             Some(a) if !a.is_null() => a,
@@ -146,8 +150,11 @@ pub fn extract_profiles_with_diagnostics<T: AsRef<[u8]> + ?Sized>(content: &T, m
         };
 
         let ifc_type_name = resolved_type.name().to_string();
+        // ObjectPlacement (attr 5) → world transform (IFC Z-up, metres), resolved
+        // on the first extractable item: an element with no extrusion never needs it.
+        let mut elem_tf: Option<Matrix4<f64>> = None;
 
-        for shape_rep in representations {
+        'reps: for shape_rep in representations {
             if shape_rep.ifc_type != IfcType::IfcShapeRepresentation {
                 continue;
             }
@@ -169,12 +176,26 @@ pub fn extract_profiles_with_diagnostics<T: AsRef<[u8]> + ?Sized>(content: &T, m
             };
 
             for item in &items {
+                let extractable = is_extruded_area_solid(item.ifc_type.clone())
+                    || item.ifc_type == IfcType::IfcMappedItem;
+                if extractable && elem_tf.is_none() {
+                    match router.resolve_scaled_placement(&entity, &mut decoder) {
+                        Ok(m) => elem_tf = Some(Matrix4::from_column_slice(&m)),
+                        Err(e) => {
+                            // The element's placement, not this item's: no later
+                            // representation can be drawn either, so report it once.
+                            skip(&mut skipped, id, &ifc_type_name, format!("placement: {e}"));
+                            break 'reps;
+                        }
+                    }
+                }
+                let Some(elem_tf) = elem_tf.as_ref() else { continue };
                 if is_extruded_area_solid(item.ifc_type.clone()) {
                     match extract_extruded_solid(
                         id,
                         &ifc_type_name,
                         item,
-                        &elem_tf,
+                        elem_tf,
                         unit_scale,
                         &profile_processor,
                         &mut decoder,
@@ -190,15 +211,16 @@ pub fn extract_profiles_with_diagnostics<T: AsRef<[u8]> + ?Sized>(content: &T, m
                                     eprintln!("[profile_extractor] Skipping #{id} ({ifc_type_name}): {_e}");
                                 }
                             );
-                            skipped.push(SkippedProfile { express_id: id, ifc_type: ifc_type_name.clone(), reason: _e.to_string() });
+                            skip(&mut skipped, id, &ifc_type_name, _e.to_string());
                         }
                     }
                 } else if item.ifc_type == IfcType::IfcMappedItem {
                     extract_mapped_item_profiles(
+                        &router,
                         id,
                         &ifc_type_name,
                         item,
-                        &elem_tf,
+                        elem_tf,
                         unit_scale,
                         &profile_processor,
                         &mut decoder,
@@ -229,9 +251,10 @@ const MAX_MAPPED_DEPTH: usize = 3;
 ///     attr 1: MappedRepresentation (IfcRepresentation) → items to extract from
 ///   attr 1: MappingTarget → IfcCartesianTransformationOperator3D (instance transform)
 ///
-/// The composed transform is: `elem_transform * mapping_target`.
+/// The composed transform is `elem_transform * MappingTarget * MappingOrigin`.
 /// Each solid's own Position is applied inside `extract_extruded_solid`.
 fn extract_mapped_item_profiles(
+    router: &GeometryRouter,
     element_id: u32,
     ifc_type: &str,
     mapped_item: &DecodedEntity,
@@ -252,77 +275,43 @@ fn extract_mapped_item_profiles(
                 eprintln!("[profile_extractor] #{element_id} ({ifc_type}): max mapped item depth exceeded");
             }
         );
-        skipped.push(SkippedProfile { express_id: element_id, ifc_type: ifc_type.to_string(), reason: "max mapped item depth exceeded".to_string() });
+        skip(skipped, element_id, ifc_type, "max mapped item depth exceeded".to_string());
         return;
     }
 
+    // Every early return below records why: a mapped item the drawing drops
+    // must be visible in the diagnostics, as the depth cap always was (PROC-2).
+    let mut abandon = |reason: &str| skip(skipped, element_id, ifc_type, format!("mapped item #{}: {reason}", mapped_item.id));
+
     // Attr 0: MappingSource → IfcRepresentationMap
-    let source = match mapped_item
+    let Some(source) = mapped_item
         .get(0)
-        .and_then(|a| if a.is_null() { None } else { Some(a) })
+        .filter(|a| !a.is_null())
         .and_then(|a| decoder.resolve_ref(a).ok().flatten())
-    {
-        Some(s) => s,
-        None => return,
+    else {
+        return abandon("MappingSource does not resolve");
     };
 
-    // Attr 1: MappingTarget → IfcCartesianTransformationOperator3D.
-    // A PRESENT but unparseable target/origin abandons this mapped item instead of
-    // falling back to the identity: the mesh path propagates that failure and skips
-    // the item, so silently drawing the profile in an un-transformed frame would put
-    // the drawing somewhere the model isn't. Absent/null stays the identity.
-    let target_tf = match resolve_present_ref(mapped_item.get(1), decoder) {
-        Err(()) => return,
-        Ok(resolved) => match resolved {
-            Some(e) => match parse_cartesian_transformation_operator(&e, decoder) {
-                Ok(m) => m,
-                Err(_) => return,
-            },
-            None => Matrix4::identity(),
-        },
-    };
-
-    // Attr 0 of the RepresentationMap: MappingOrigin, the placement of the mapped
-    // items INSIDE the map. It composes innermost (`MappingTarget · MappingOrigin`),
-    // exactly as the mesh path now does — dropping it put every 2D profile of a
-    // non-identity-origin map at the wrong spot. #1985
-    // A map carrying a 2D representation writes an IfcAxis2Placement2D here, which
-    // the mesh path also honours — handling only the 3D form would leave exactly
-    // the plan/footprint maps this extractor exists for unfixed.
-    let origin_tf = match resolve_present_ref(source.get(0), decoder) {
-        Err(()) => return,
-        Ok(Some(e)) => {
-            let parsed = match e.ifc_type {
-                IfcType::IfcAxis2Placement3D => parse_axis2_placement_3d(&e, decoder).ok(),
-                IfcType::IfcAxis2Placement2D => parse_axis2_placement_2d(&e, decoder).ok(),
-                _ => None,
-            };
-            let Some(m) = parsed else { return };
-            m
-        }
+    // MappingTarget · MappingOrigin, translation in metres: the mesh path's own
+    // composition (#1985), so the drawing and the 3D item cannot disagree about
+    // a target, a 2D origin or a broken reference.
+    let scaled_target = match router.resolve_scaled_mapped_item_transform(mapped_item, &source, decoder) {
+        Ok(Some(m)) => Matrix4::from_column_slice(&m),
         Ok(None) => Matrix4::identity(),
+        Err(e) => return abandon(&e.to_string()),
     };
-
-    // Scale the composed transform's translation from file units to metres
-    let scaled_target = scale_translation(target_tf * origin_tf, unit_scale);
     let composed = elem_transform * scaled_target;
 
     // MappedRepresentation (attr 1 of RepresentationMap) → items
-    let mapped_rep = match source
+    let Some(mapped_rep) = source
         .get(1)
-        .and_then(|a| if a.is_null() { None } else { Some(a) })
+        .filter(|a| !a.is_null())
         .and_then(|a| decoder.resolve_ref(a).ok().flatten())
-    {
-        Some(r) => r,
-        None => return,
+    else {
+        return abandon("MappedRepresentation does not resolve");
     };
-
-    let items = match mapped_rep
-        .get(3)
-        .and_then(|a| decoder.resolve_ref_list(a).ok())
-    {
-        Some(i) => i,
-        None => return,
+    let Some(items) = mapped_rep.get(3).and_then(|a| decoder.resolve_ref_list(a).ok()) else {
+        return abandon("MappedRepresentation items do not resolve");
     };
 
     for sub_item in &items {
@@ -347,11 +336,12 @@ fn extract_mapped_item_profiles(
                             eprintln!("[profile_extractor] #{element_id} ({ifc_type}) mapped: {_e}");
                         }
                     );
-                    skipped.push(SkippedProfile { express_id: element_id, ifc_type: ifc_type.to_string(), reason: _e.to_string() });
+                    skip(skipped, element_id, ifc_type, _e.to_string());
                 }
             }
         } else if sub_item.ifc_type == IfcType::IfcMappedItem {
             extract_mapped_item_profiles(
+                router,
                 element_id,
                 ifc_type,
                 sub_item,
@@ -365,19 +355,6 @@ fn extract_mapped_item_profiles(
             );
         }
     }
-}
-
-/// Parse an `IfcCartesianTransformationOperator` (2D or 3D, uniform or not).
-///
-/// Delegates to the router's parser so the 2D drawing profiles and the 3D mesh
-/// can never disagree about the same `MappingTarget`. This file used to carry a
-/// private copy, which had drifted: it ignored the non-uniform per-axis scales,
-/// the 2D attribute layout, and `Axis2`. #1985
-fn parse_cartesian_transformation_operator(
-    entity: &DecodedEntity,
-    decoder: &mut EntityDecoder,
-) -> Result<Matrix4<f64>> {
-    crate::router::transforms::operator::parse_transformation_operator(entity, decoder)
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -410,50 +387,17 @@ fn extract_extruded_solid(
         return Err(Error::geometry("empty profile"));
     }
 
-    // Position (attr 1) → solid local transform in IFC native units
-    let solid_transform = if let Some(pos_attr) = solid.get(1) {
-        if !pos_attr.is_null() {
-            if let Some(pos_ent) = decoder.resolve_ref(pos_attr)? {
-                if pos_ent.ifc_type == IfcType::IfcAxis2Placement3D {
-                    let mut t = parse_axis2_placement_3d(&pos_ent, decoder)?;
-                    // Scale translation from file units to metres
-                    t[(0, 3)] *= unit_scale;
-                    t[(1, 3)] *= unit_scale;
-                    t[(2, 3)] *= unit_scale;
-                    t
-                } else {
-                    Matrix4::identity()
-                }
-            } else {
-                Matrix4::identity()
-            }
-        } else {
-            Matrix4::identity()
-        }
-    } else {
-        Matrix4::identity()
-    };
-
-    // ExtrudedDirection (attr 2) in local solid space
-    let local_dir = parse_extrusion_direction(solid, decoder);
-
-    // Depth (attr 3) — required per IFC spec but default to 1.0 for robustness
-    // with malformed files (logged under debug_geometry feature)
-    let raw_depth = solid.get(3).and_then(|v| v.as_float());
-    #[cfg(any(feature = "debug_geometry", feature = "observability"))]
-    if raw_depth.is_none() {
-        crate::diag::diag_debug!(
-            { element_id, ifc_type = %ifc_type,
-              "profile_extractor: missing Depth, defaulting to 1.0" }
-            else {
-                #[cfg(feature = "debug_geometry")]
-                eprintln!(
-                    "[profile_extractor] #{element_id} ({ifc_type}): missing Depth, defaulting to 1.0"
-                );
-            }
-        );
-    }
-    let depth = raw_depth.unwrap_or(1.0) * unit_scale;
+    // Position, ExtrudedDirection and Depth, decoded and refused exactly as
+    // `ExtrudedAreaSolidProcessor` does: a solid the 3D path cannot mesh has no
+    // drawing profile either (it used to default Depth to 1.0 and a zero or
+    // non-IfcDirection direction to +Z; PROC-2, #7690).
+    let params = ExtrusionParams::decode(solid, decoder, "ExtrudedAreaSolid")?;
+    let solid_transform = params
+        .position
+        .map(|t| scale_translation(t, unit_scale))
+        .unwrap_or_else(Matrix4::identity);
+    let local_dir = params.direction.normalize();
+    let depth = params.depth * unit_scale;
 
     // Combined transform: elem_placement * solid_position  (IFC Z-up, metres)
     let combined_ifc = elem_transform * solid_transform;
@@ -502,219 +446,6 @@ fn extract_extruded_solid(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// PRIVATE: PLACEMENT TRAVERSAL
-// Duplicated from router/transforms.rs (pub(super) there) to avoid coupling.
-// ═══════════════════════════════════════════════════════════════════════════
-
-/// Resolve an element's ObjectPlacement attribute to a world Matrix4 in IFC Z-up space.
-fn get_placement_transform(
-    placement_attr: Option<&AttributeValue>,
-    decoder: &mut EntityDecoder,
-) -> Matrix4<f64> {
-    let attr = match placement_attr {
-        Some(a) if !a.is_null() => a,
-        _ => return Matrix4::identity(),
-    };
-    match decoder.resolve_ref(attr) {
-        Ok(Some(p)) => get_placement_recursive(&p, decoder, 0),
-        _ => Matrix4::identity(),
-    }
-}
-
-/// `pub(crate)` so the #2873 divergence test can drive this walk and the mesh path's.
-pub(crate) fn get_placement_recursive(
-    placement: &DecodedEntity,
-    decoder: &mut EntityDecoder,
-    depth: usize,
-) -> Matrix4<f64> {
-    if depth > MAX_PLACEMENT_DEPTH || placement.ifc_type != IfcType::IfcLocalPlacement {
-        return Matrix4::identity();
-    }
-
-    // PlacementRelTo (attr 0) → parent transform
-    let parent_tf = if let Some(parent_attr) = placement.get(0) {
-        if !parent_attr.is_null() {
-            match decoder.resolve_ref(parent_attr) {
-                Ok(Some(parent)) => get_placement_recursive(&parent, decoder, depth + 1),
-                _ => Matrix4::identity(),
-            }
-        } else {
-            Matrix4::identity()
-        }
-    } else {
-        Matrix4::identity()
-    };
-
-    // RelativePlacement (attr 1) → local axis placement
-    let local_tf = if let Some(rel_attr) = placement.get(1) {
-        if !rel_attr.is_null() {
-            match decoder.resolve_ref(rel_attr) {
-                Ok(Some(rel)) if rel.ifc_type == IfcType::IfcAxis2Placement3D => {
-                    parse_axis2_placement_3d(&rel, decoder).unwrap_or(Matrix4::identity())
-                }
-                _ => Matrix4::identity(),
-            }
-        } else {
-            Matrix4::identity()
-        }
-    } else {
-        Matrix4::identity()
-    };
-
-    parent_tf * local_tf
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// PRIVATE: IFC ENTITY PARSERS
-// Duplicated from processors/helpers.rs (pub(super) there).
-// ═══════════════════════════════════════════════════════════════════════════
-
-/// Parse IfcAxis2Placement3D → Matrix4<f64> in IFC Z-up space (native units).
-/// Resolve an OPTIONAL entity reference, distinguishing the three cases a mapped
-/// item's `MappingTarget` / `MappingOrigin` can be in: absent or explicitly null
-/// (`Ok(None)` — the identity is correct), resolvable (`Ok(Some)`), or PRESENT
-/// but dangling / unreadable (`Err` — the caller must abandon the item, because
-/// the mesh path errors out on it too and silently substituting the identity
-/// would draw the profile in an un-transformed frame). #1985
-fn resolve_present_ref(
-    attr: Option<&AttributeValue>,
-    decoder: &mut EntityDecoder,
-) -> std::result::Result<Option<DecodedEntity>, ()> {
-    match attr {
-        None => Ok(None),
-        Some(a) if a.is_null() => Ok(None),
-        Some(a) => match decoder.resolve_ref(a) {
-            Ok(Some(e)) => Ok(Some(e)),
-            _ => Err(()),
-        },
-    }
-}
-
-/// Parse `IfcAxis2Placement2D` into a 4x4 acting in the XY plane. Delegates to
-/// the router's definition so the 2D drawing path and the mesh path cannot
-/// drift on a 2D `MappingOrigin`. #1985
-fn parse_axis2_placement_2d(
-    placement: &DecodedEntity,
-    decoder: &mut EntityDecoder,
-) -> Result<Matrix4<f64>> {
-    crate::transform::parse_axis2_placement_2d(placement, decoder)
-}
-
-fn parse_axis2_placement_3d(
-    placement: &DecodedEntity,
-    decoder: &mut EntityDecoder,
-) -> Result<Matrix4<f64>> {
-    // Location (attr 0)
-    let location =
-        parse_cartesian_point(placement, decoder, 0).unwrap_or(Point3::new(0.0, 0.0, 0.0));
-
-    // Axis/Z direction (attr 1)
-    let z_axis = if let Some(a) = placement.get(1) {
-        if !a.is_null() {
-            decoder
-                .resolve_ref(a)?
-                .map(|e| parse_direction_entity(&e))
-                .transpose()?
-                .unwrap_or(Vector3::new(0.0, 0.0, 1.0))
-        } else {
-            Vector3::new(0.0, 0.0, 1.0)
-        }
-    } else {
-        Vector3::new(0.0, 0.0, 1.0)
-    };
-
-    // RefDirection/X (attr 2)
-    let x_axis_raw = if let Some(a) = placement.get(2) {
-        if !a.is_null() {
-            decoder
-                .resolve_ref(a)?
-                .map(|e| parse_direction_entity(&e))
-                .transpose()?
-                .unwrap_or(Vector3::new(1.0, 0.0, 0.0))
-        } else {
-            Vector3::new(1.0, 0.0, 0.0)
-        }
-    } else {
-        Vector3::new(1.0, 0.0, 0.0)
-    };
-
-    // Orthonormalize + assemble via the shared builder (canonical Gram–Schmidt
-    // with the degenerate-axis fallback baked in).
-    Ok(crate::transform::build_axis2_matrix(location, z_axis, x_axis_raw))
-}
-
-/// Parse IfcCartesianPoint from a parent entity at the given attribute index.
-fn parse_cartesian_point(
-    parent: &DecodedEntity,
-    decoder: &mut EntityDecoder,
-    attr_index: usize,
-) -> Result<Point3<f64>> {
-    let pt_attr = parent
-        .get(attr_index)
-        .ok_or_else(|| Error::geometry("Missing cartesian point attr"))?;
-
-    if pt_attr.is_null() {
-        return Ok(Point3::new(0.0, 0.0, 0.0));
-    }
-
-    let pt_entity = decoder
-        .resolve_ref(pt_attr)?
-        .ok_or_else(|| Error::geometry("Failed to resolve IfcCartesianPoint"))?;
-
-    let coords = pt_entity
-        .get(0)
-        .and_then(|a| a.as_list())
-        .ok_or_else(|| Error::geometry("IfcCartesianPoint missing coordinates"))?;
-
-    let x = coords.first().and_then(|v| v.as_float()).unwrap_or(0.0);
-    let y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0);
-    let z = coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0);
-
-    Ok(Point3::new(x, y, z))
-}
-
-/// Parse an IfcDirection to its RAW ratios. `build_axis2_matrix` normalises once; a bare `normalize()` here turned `(0,0,0)` into NaN BEFORE its `try_normalize` guard, which cannot recover a NaN.
-fn parse_direction_entity(entity: &DecodedEntity) -> Result<Vector3<f64>> {
-    let ratios = entity
-        .get(0)
-        .and_then(|a| a.as_list())
-        .ok_or_else(|| Error::geometry("IfcDirection missing ratios"))?;
-
-    let x = ratios.first().and_then(|v| v.as_float()).unwrap_or(0.0);
-    let y = ratios.get(1).and_then(|v| v.as_float()).unwrap_or(0.0);
-    let z = ratios.get(2).and_then(|v| v.as_float()).unwrap_or(1.0);
-
-    Ok(Vector3::new(x, y, z))
-}
-
-/// Parse IfcExtrudedAreaSolid ExtrudedDirection (attr 2) to a local Vector3.
-fn parse_extrusion_direction(solid: &DecodedEntity, decoder: &mut EntityDecoder) -> Vector3<f64> {
-    let default = Vector3::new(0.0, 0.0, 1.0);
-    let dir_attr = match solid.get(2) {
-        Some(a) if !a.is_null() => a,
-        _ => return default,
-    };
-    let dir_ent = match decoder.resolve_ref(dir_attr) {
-        Ok(Some(e)) => e,
-        _ => return default,
-    };
-    let ratios = match dir_ent.get(0).and_then(|a| a.as_list()) {
-        Some(r) => r,
-        None => return default,
-    };
-    let x = ratios.first().and_then(|v| v.as_float()).unwrap_or(0.0);
-    let y = ratios.get(1).and_then(|v| v.as_float()).unwrap_or(0.0);
-    let z = ratios.get(2).and_then(|v| v.as_float()).unwrap_or(1.0);
-    let v = Vector3::new(x, y, z);
-    let len = v.norm();
-    if len > 1e-10 {
-        v / len
-    } else {
-        default
-    }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
 // PRIVATE: COORDINATE CONVERSION & UTILITIES
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -728,31 +459,22 @@ fn scale_translation(mut m: Matrix4<f64>, scale: f64) -> Matrix4<f64> {
     m
 }
 
-/// Convert an IFC Z-up Matrix4 to WebGL Y-up column-major [f32; 16].
+/// Convert an IFC Z-up Matrix4 to WebGL Y-up column-major [f64; 16].
 ///
 /// Conversion: new_y = old_z, new_z = -old_y (swap Y/Z, negate new Z).
 /// Applied row-wise: row 0 stays, row 1 ← row 2, row 2 ← −row 1.
-fn convert_ifc_to_webgl(m: &Matrix4<f64>) -> [f32; 16] {
-    let mut result = [0.0f32; 16];
+fn convert_ifc_to_webgl(m: &Matrix4<f64>) -> [f64; 16] {
+    let mut result = [0.0f64; 16];
     for col in 0..4 {
-        result[col * 4] = m[(0, col)] as f32; // X row: unchanged
-        result[col * 4 + 1] = m[(2, col)] as f32; // Y row: was Z
-        result[col * 4 + 2] = -m[(1, col)] as f32; // Z row: was -Y
-        result[col * 4 + 3] = m[(3, col)] as f32; // homogeneous
+        result[col * 4] = m[(0, col)]; // X row: unchanged
+        result[col * 4 + 1] = m[(2, col)]; // Y row: was Z
+        result[col * 4 + 2] = -m[(1, col)]; // Z row: was -Y
+        result[col * 4 + 3] = m[(3, col)]; // homogeneous
     }
     result
 }
 
-/// Detect the IFC length unit scale factor from IFCPROJECT.
-fn detect_unit_scale(content: &[u8], decoder: &mut EntityDecoder) -> f64 {
-    let mut scanner = EntityScanner::new(content);
-    while let Some((id, type_name, _, _)) = scanner.next_entity() {
-        if ifc_lite_core::keyword_eq(type_name, "IFCPROJECT") {
-            if let Ok(scale) = ifc_lite_core::extract_length_unit_scale(decoder, id) {
-                return scale;
-            }
-            break;
-        }
-    }
-    1.0
+/// Record a dropped profile for `element_id`.
+fn skip(skipped: &mut Vec<SkippedProfile>, element_id: u32, ifc_type: &str, reason: String) {
+    skipped.push(SkippedProfile { express_id: element_id, ifc_type: ifc_type.to_string(), reason });
 }

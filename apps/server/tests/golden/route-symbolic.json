@@ -1,0 +1,14 @@
+{
+  "about": "FNV-1a 64 and byte length of each route-symbolic output, keyed by case. Written by ifc-lite-server, never by hand.",
+  "repin": "IFC_LITE_REPIN_GOLDEN=1 cargo test -p ifc-lite-server route_golden_tests  # rewrites all route-*.json; unmoved ones stay byte-identical",
+  "cases": {
+    "IfcOpenHouse_IFC4": {
+      "fnv1a64": "92b929d314ef2bf3",
+      "bytes": 604
+    },
+    "parity-fixture": {
+      "fnv1a64": "fe58e7ecc45b1b3c",
+      "bytes": 2400
+    }
+  }
+}

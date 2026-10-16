@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Golden fixture (#7671): a UTF-8 LandXML 1.2 storm network that parses, so the
+     pipe-networks pin covers parsed fields, not only refusals. Shape taken from
+     tests/pipes.rs (two structures, one circular pipe, inverts and flows). -->
+<LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2">
+  <Units>
+    <Metric linearUnit="meter" elevationUnit="meter" diameterUnit="millimeter" widthUnit="centimeter" heightUnit="meter"/>
+  </Units>
+  <PipeNetworks>
+    <PipeNetwork name="storm" pipeNetType="storm">
+      <Structs>
+        <Struct name="MH-1" elevRim="12" elevSump="9">
+          <Center>0 0 10</Center>
+          <CircStruct diameter="1.2" material="concrete"/>
+          <Invert refPipe="P-1" flowDir="out" elev="9.5"/>
+          <StructFlow lossIn="0.1" lossOut="0.2"/>
+        </Struct>
+        <Struct name="MH-2">
+          <Center>0 10 8</Center>
+          <RectStruct length="2" width="1"/>
+          <Invert refPipe="P-1" flowDir="in" elev="7.5"/>
+        </Struct>
+      </Structs>
+      <Pipes>
+        <Pipe name="P-1" refStart="MH-1" refEnd="MH-2" length="12.5" slope="0.1">
+          <CircPipe diameter="600" thickness="20" material="PVC"/>
+          <PipeFlow flowIn="4.2"/>
+        </Pipe>
+      </Pipes>
+    </PipeNetwork>
+  </PipeNetworks>
+</LandXML>

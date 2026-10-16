@@ -51,6 +51,26 @@ fn collects_both_property_sets_from_a_grouped_relating_property_definition() {
     assert_eq!(link.related_object_ids, vec![50]);
 }
 
+/// EXPORT-DATA-1 (#7681): ISO 10303-21 writes a defined type inside a SELECT
+/// as a typed parameter, so the `IfcPropertySetDefinitionSet` alternative is
+/// also spelled `IFCPROPERTYSETDEFINITIONSET((#20,#22))`. `get_refs` saw only
+/// the bare-list spelling, so that one dropped the whole relationship here too.
+#[test]
+fn collects_both_property_sets_from_a_typed_property_set_definition_set() {
+    let content = b"ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\n\
+        #20=IFCPROPERTYSET('gid1',$,'Pset_A',$,(#30));\n\
+        #22=IFCELEMENTQUANTITY('gid2',$,'Qto_B',$,$,(#31));\n\
+        #40=IFCRELDEFINESBYPROPERTIES('gid3',$,$,$,(#50),IFCPROPERTYSETDEFINITIONSET((#20,#22)));\n\
+        ENDSEC;\nEND-ISO-10303-21;\n";
+    let index = build_entity_index(content);
+    let mut decoder = EntityDecoder::with_index(content, index);
+    let rel_defines = decoder.decode_by_id(40).expect("#40 decodes");
+    let link = collect_rel_defines_by_properties_link(&rel_defines)
+        .expect("a typed IfcPropertySetDefinitionSet must not drop the relationship");
+    assert_eq!(link.property_set_ids, vec![20, 22]);
+    assert_eq!(link.related_object_ids, vec![50]);
+}
+
 /// The ordinary, non-grouped shape must still work unchanged.
 #[test]
 fn collects_a_single_bare_relating_property_definition() {

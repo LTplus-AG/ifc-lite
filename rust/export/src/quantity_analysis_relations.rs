@@ -10,26 +10,6 @@ pub(super) struct SourceRelationships {
     pub typed: HashMap<u32, u32>,
 }
 
-fn property_definition_refs(value: &AttributeValue) -> Result<Vec<u32>, &'static str> {
-    if let Some(id) = value.as_entity_ref() { return Ok(vec![id]); }
-    let Some(items) = value.as_list() else { return Err("malformed RelatingPropertyDefinition"); };
-    // The core decoder represents a STEP typed value as [type name, args...].
-    // IFC4's IfcPropertySetDefinitionSet has exactly one SET argument.
-    let refs = if matches!(items.first().and_then(AttributeValue::as_string),
-        Some("IFCPROPERTYSETDEFINITIONSET")) {
-        if items.len() != 2 { return Err("malformed RelatingPropertyDefinition"); }
-        items[1].as_list().ok_or("malformed RelatingPropertyDefinition")?
-    } else { items };
-    if refs.is_empty() || refs.len() > MAX_REL_MEMBERS {
-        return Err("RelatingPropertyDefinition exceeds work budget or is empty");
-    }
-    let mut ids = Vec::with_capacity(refs.len());
-    for item in refs {
-        ids.push(item.as_entity_ref().ok_or("malformed RelatingPropertyDefinition")?);
-    }
-    Ok(ids)
-}
-
 pub(super) fn collect_relationships(
     content: &[u8], decoder: &mut EntityDecoder,
     products: &BTreeMap<u32, ProductQuantities>, link_budget: usize,
@@ -59,8 +39,18 @@ pub(super) fn collect_relationships(
             }
         };
         let targets = if rel.ifc_type == IfcType::IfcRelDefinesByProperties {
-            match rel.get(5).ok_or("missing RelatingPropertyDefinition")
-                .and_then(property_definition_refs) {
+            // Core owns the spellings (single ref, bare or typed set, #7681);
+            // this view rejects a non-reference member rather than skip it.
+            let members = rel.get(5).ok_or("missing RelatingPropertyDefinition").and_then(|value| {
+                value.as_ref_members().ok_or("malformed RelatingPropertyDefinition")
+            });
+            match members.and_then(|refs| {
+                if refs.is_empty() || refs.len() > MAX_REL_MEMBERS {
+                    return Err("RelatingPropertyDefinition exceeds work budget or is empty");
+                }
+                refs.iter().map(AttributeValue::as_entity_ref).collect::<Option<Vec<u32>>>()
+                    .ok_or("malformed RelatingPropertyDefinition")
+            }) {
                 Ok(refs) => refs,
                 Err(reason) => {
                     diagnostics.push(format!("relationship #{id}: {reason}"));

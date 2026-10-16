@@ -1,0 +1,22 @@
+{
+  "about": "FNV-1a 64 and byte length of each symbolic-data output, keyed by case. Written by ifc-lite-processing, never by hand.",
+  "repin": "IFC_LITE_REPIN_GOLDEN=1 cargo test -p ifc-lite-processing --test symbolic_golden -- --exact symbolic_data",
+  "cases": {
+    "AC20-FZK-Haus": {
+      "fnv1a64": "1ab4293c8b40dad1",
+      "bytes": 51053
+    },
+    "Mini-Project-grids": {
+      "fnv1a64": "700ffa5fd32495fe",
+      "bytes": 73852
+    },
+    "duplex": {
+      "fnv1a64": "159264667a88fc1e",
+      "bytes": 105715
+    },
+    "wall_roof_plan_reps": {
+      "fnv1a64": "fde2feee219d143f",
+      "bytes": 187
+    }
+  }
+}

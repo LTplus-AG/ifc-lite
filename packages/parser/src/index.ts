@@ -61,6 +61,8 @@ export { IFC_SUBTYPES, expandTypes, QUERY_REL_TYPE_MAP } from './query-backend-m
 export { PropertyExtractor } from './property-extractor.js';
 export { QuantityExtractor } from './quantity-extractor.js';
 export { RelationshipExtractor } from './relationship-extractor.js';
+export { propertyDefinitionRefsOfValue } from './property-definition-refs.js';
+export { propertyDefinitionsInModel } from './property-definition-members.js';
 export { SpatialHierarchyBuilder } from './spatial-hierarchy-builder.js';
 export {
   SI_PREFIX_MULTIPLIERS, extractLengthUnitScale,

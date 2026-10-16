@@ -2,8 +2,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! The source-tree walk shared by the size ratchets (`module_size_ratchet`,
-//! `function_length_ratchet`): where the repo root is, how `.rs` files are
+//! The source-tree walk shared by the source-walking gates (`module_size_ratchet`,
+//! `function_length_ratchet`, `styling_parity`): where the repo root is, how `.rs` files are
 //! collected, and which of them the size rules do not bind.
 //!
 //! One implementation on purpose: two copies of the exemption list are two

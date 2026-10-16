@@ -23,10 +23,10 @@
    195 rust/core/src/parser/scanner.rs EntityScanner::next_entity
    269 rust/core/src/project_units/measure.rs measure_unit
    199 rust/core/src/units.rs extract_length_unit_scale
-   186 rust/export/src/collada.rs try_export_collada_from_meshes
+   184 rust/export/src/collada.rs try_export_collada_from_meshes
    186 rust/export/src/collada_document.rs write_dae
    373 rust/export/src/gltf.rs build_gltf
-   209 rust/export/src/gltf.rs export_gltf_streaming_impl
+   211 rust/export/src/gltf.rs export_gltf_streaming_impl
    634 rust/export/src/gltf.rs plan_bounded_glb
    159 rust/export/src/gltf.rs push_mesh_quantized
    158 rust/export/src/gltf.rs write_bounded_glb
@@ -37,7 +37,7 @@
    181 rust/export/src/step_log/write.rs emit
    178 rust/export/src/step_map_rigid.rs plan
    155 rust/export/src/step_map_rigid_contexts.rs representation_contexts
-   184 rust/export/src/usd.rs export_usd
+   186 rust/export/src/usd.rs export_usd
    161 rust/geometry/src/alignment.rs parse_horizontal
    368 rust/geometry/src/csg/consolidate.rs ClippingProcessor::consolidate_coplanar_with_unit_scale
    341 rust/geometry/src/facet_weld.rs refine_high_aspect_slivers_impl

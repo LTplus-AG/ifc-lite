@@ -976,6 +976,24 @@ jobs:
           # Once step_ids.rs is on main, ordinary whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/export/src/step_ids.rs | grep -Fxq 'rust/export/src/step_ids.rs'; then
             oracle_args+=(--mutation tests/evidence/step-writer-7682/appended-record-guards.oracle.patch)
+          # #7675: the material-row budget travels as DataModel.refused and
+          # the complex-property walks share ifc_lite_core::limits'
+          # ComplexPropertyBudget, which the changed tests construct, so a
+          # whole revert cannot compile them (INCONCLUSIVE). Keep the types and
+          # break ONLY the behaviour: material rows are never charged, the
+          # walk's byte budget restarts per property (Rust and TS), a bare
+          # budget marker is charged, the TS store pass is redone per call, a
+          # cut level's values/members are unmarked and rules read a name past
+          # it as absent, the output allowance is 4 bytes per input byte and
+          # every repeat listing is walked afresh, the server reads an
+          # unnamed nested member as no value, a repeated set id is read at
+          # every record (server and TS), the TS entity index resolves a duplicated id
+          # to its first match, a refusal maps to 500, the stream's
+          # recorded refusal is never read, and the data-model section
+          # lengths go unchecked; their tests turn RED. Once the shared vector's TS test is on main,
+          # whole revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- packages/parser/test/complex-property-budget.test.ts | grep -Fxq 'packages/parser/test/complex-property-budget.test.ts'; then
+            oracle_args+=(--mutation tests/evidence/untrusted-sizes-7675/server-budgets.oracle.patch)
           # #7683: the PR deletes schema_pad.rs with its #[path] test file and
           # adds schema_plan.rs, so a whole-change revert cannot build the Rust
           # --lib runners (only the TS twin was observed). Keep every new item

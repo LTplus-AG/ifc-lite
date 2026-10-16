@@ -194,6 +194,13 @@ where
         || extract_documents(&all_entities, content, &entity_index),
     );
 
+    // A table over its budget is not served truncated: the refusal travels
+    // with the model to the one serializer every route uses (#7675).
+    let (materials, refused) = match materials {
+        Ok(rows) => (rows, None),
+        Err(reason) => (Vec::new(), Some(reason)),
+    };
+
     // Build spatial hierarchy (depends on relationships and entities)
     let spatial_hierarchy = build_spatial_hierarchy(
         &relationships,
@@ -226,6 +233,7 @@ where
         materials,
         documents,
         spatial_hierarchy,
+        refused,
     }
 }
 

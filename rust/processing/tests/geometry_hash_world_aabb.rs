@@ -26,20 +26,10 @@ use ifc_lite_processing::element::{
 use rustc_hash::FxHashMap;
 use std::sync::Arc;
 
-const FIXTURE: &str = "../../tests/models/ara3d/AC20-FZK-Haus.ifc";
+const FIXTURE: &str = "ara3d/AC20-FZK-Haus.ifc";
 
 fn read_fixture() -> Option<Vec<u8>> {
-    match std::fs::read(FIXTURE) {
-        Ok(b) => Some(b),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            eprintln!(
-                "skipping geometry-hash AABB test: fixture missing at {FIXTURE} — \
-                 run `pnpm fixtures` (sha256 in tests/models/manifest.json)"
-            );
-            None
-        }
-        Err(e) => panic!("failed to read fixture {FIXTURE}: {e}"),
-    }
+    ifc_lite_testkit::fixture_bytes(FIXTURE)
 }
 
 /// Produce every geometry element, with hashing configured as `hash`.

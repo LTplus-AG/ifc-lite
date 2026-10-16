@@ -5750,6 +5750,7 @@
     "isValidUuid: function",
     "isWhollyNumeric: function",
     "parsePropertyValue: function",
+    "splitStepTopLevel: function",
     "stepStringLiteralEnd: function",
     "uuidFromSeed: function",
     "uuidToIfcGuid: function",

@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: MPL-2.0
+[package]
+name = "ifc-lite-testkit"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Test-only helpers shared by the ifc-lite crates' test suites (fixture resolution, STEP builders, mesh oracles). Never published."
+# Never published: consumers list it as a path-only dev-dependency (no
+# `version`), which cargo strips from the packaged manifest, so it imposes
+# no publish-order constraint (see scripts/release-crates-order.test.mjs).
+publish = false
+
+# Std only. It must not depend on any ifc-lite crate: those crates dev-depend
+# on it, and a dev-dependency cycle would compile each of them twice.
+[dependencies]
+
+[lints]
+workspace = true

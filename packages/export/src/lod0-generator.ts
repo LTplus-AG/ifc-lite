@@ -207,25 +207,46 @@ export async function generateLod0(input: LodInput): Promise<Lod0Json> {
     return m;
   };
 
-  const getPlacementMatrix = (id: number): Float64Array => {
-    const cached = placementCache.get(id);
-    if (cached) return cached;
-    const ent = getEntity(id);
-    if (!ent || String(ent.type || '').toUpperCase() !== 'IFCLOCALPLACEMENT') {
-      const ident = mat4Identity();
-      placementCache.set(id, ident);
-      return ident;
+  // Placements on a `PlacementRelTo` cycle (or leading into one) have no world
+  // matrix: refused, and reported through `skipped` (#7790; D3/D27).
+  const cyclicPlacements = new Set<number>();
+  /**
+   * World matrix of an IfcLocalPlacement, or null when its `PlacementRelTo`
+   * chain revisits a placement. Iterative with a visited set: a placement that
+   * references itself (or any cycle) must not overflow the stack.
+   */
+  const getPlacementMatrix = (startId: number): Float64Array | null => {
+    // Walk up to the first cached link, root, non-placement or revisit.
+    const chain: number[] = [];
+    const onChain = new Set<number>();
+    let id: number | null = startId;
+    let base: Float64Array = mat4Identity();
+    while (id !== null) {
+      if (cyclicPlacements.has(id) || onChain.has(id)) {
+        for (const member of chain) cyclicPlacements.add(member);
+        return null;
+      }
+      const cached = placementCache.get(id);
+      if (cached) { base = cached; break; }
+      const ent = getEntity(id);
+      if (!ent || String(ent.type || '').toUpperCase() !== 'IFCLOCALPLACEMENT') {
+        placementCache.set(id, base = mat4Identity());
+        break;
+      }
+      chain.push(id);
+      onChain.add(id);
+      // IfcLocalPlacement: (PlacementRelTo, RelativePlacement)
+      const relTo: unknown = ent.attributes?.[0];
+      id = typeof relTo === 'number' ? relTo : null;
     }
-
-    // IfcLocalPlacement: (PlacementRelTo, RelativePlacement)
-    const relTo = ent.attributes?.[0];
-    const relPlacement = ent.attributes?.[1];
-
-    const local = typeof relPlacement === 'number' ? getAxisPlacementMatrix(relPlacement) : mat4Identity();
-    const parent = typeof relTo === 'number' ? getPlacementMatrix(relTo) : mat4Identity();
-    const world = mat4Mul(parent, local);
-    placementCache.set(id, world);
-    return world;
+    // Compose from the top of the chain down.
+    for (let i = chain.length - 1; i >= 0; i--) {
+      const relPlacement = getEntity(chain[i])?.attributes?.[1];
+      const local = typeof relPlacement === 'number' ? getAxisPlacementMatrix(relPlacement) : mat4Identity();
+      base = mat4Mul(base, local);
+      placementCache.set(chain[i], base);
+    }
+    return base;
   };
 
   const computeWorldAabbFromLocalAabb = (m: Float64Array, minL: Vec3, maxL: Vec3): { min: Vec3; max: Vec3 } => {
@@ -288,6 +309,7 @@ export async function generateLod0(input: LodInput): Promise<Lod0Json> {
   };
 
   const elements: Lod0Element[] = [];
+  const skipped: NonNullable<Lod0Json['skipped']> = [];
 
   // @raw-entity-enumeration-ok this index was built from the input bytes above; no live mutation view is accepted by generateLod0
   for (const [id, ref] of entityIndex.byId) {
@@ -312,6 +334,10 @@ export async function generateLod0(input: LodInput): Promise<Lod0Json> {
 
     const placementRef = attrs[objPlacementIdx];
     const worldM = typeof placementRef === 'number' ? getPlacementMatrix(placementRef) : mat4Identity();
+    if (worldM === null) {
+      skipped.push({ expressID: id, reason: `PlacementRelTo cycle through #${placementRef as number}; element not placed.` });
+      continue;
+    }
 
     let bboxSource: 'shape' | 'fallback' = 'fallback';
     let localAabb: { min: Vec3; max: Vec3 } | null = null;
@@ -355,5 +381,6 @@ export async function generateLod0(input: LodInput): Promise<Lod0Json> {
     lod: 0,
     units: 'm',
     elements,
+    ...(skipped.length > 0 ? { skipped } : {}),
   };
 }

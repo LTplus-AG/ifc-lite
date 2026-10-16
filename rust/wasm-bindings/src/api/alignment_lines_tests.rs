@@ -306,26 +306,7 @@ fn empty_for_no_alignment() {
 /// lost placement, vertical profile, or whole alignment changes its bounds.
 #[test]
 fn viadotto_acerno_emits_three_placed_centerlines() {
-    const FIXTURE: &str = concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../tests/models/buildingsmart/Viadotto_Acerno.ifc"
-    );
-    let require_fixtures = match std::env::var("IFC_LITE_REQUIRE_FIXTURES").as_deref() {
-        Err(std::env::VarError::NotPresent) | Ok("") | Ok("0") => false,
-        Ok("1") => true,
-        other => panic!("invalid IFC_LITE_REQUIRE_FIXTURES value: {other:?}"),
-    };
-    let content = match std::fs::read_to_string(FIXTURE) {
-        Ok(content) => content,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            if require_fixtures {
-                panic!("fixture missing at {FIXTURE}; run `pnpm fixtures`");
-            }
-            eprintln!("skipping #5327: fixture missing at {FIXTURE}; run `pnpm fixtures`");
-            return;
-        }
-        Err(error) => panic!("failed to read fixture {FIXTURE}: {error}"),
-    };
+    let content = ifc_lite_testkit::fixture_text_or_skip!("buildingsmart/Viadotto_Acerno.ifc");
 
     let mut scanner = EntityScanner::new(&content);
     let mut alignment_count = 0;

@@ -11,15 +11,11 @@
 //! it never fails environmentally (CI provides them).
 
 use ifc_lite_processing::process_geometry;
-use std::path::PathBuf;
 
 const BOILER_TYPE_ID: u32 = 43;
 
 fn fixture(name: &str) -> Option<String> {
-    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../tests/models/buildingsmart/annex_e/tessellated-shape-with-style")
-        .join(name);
-    std::fs::read_to_string(path).ok()
+    ifc_lite_testkit::fixture_text(&format!("buildingsmart/annex_e/tessellated-shape-with-style/{name}"))
 }
 
 #[test]

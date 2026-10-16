@@ -11,7 +11,7 @@
  * never touches the store, the viewer, or the DOM.
  */
 
-import { stepStringLiteralEnd } from '@ifc-lite/encoding';
+import { splitStepTopLevel, stepStringLiteralEnd } from '@ifc-lite/encoding';
 
 /**
  * Remove every schedule-related entity declaration from the STEP body.
@@ -175,28 +175,9 @@ function classifyPrunedRelation(
 
 function splitTopLevelAttributes(attributesText: string): string[] {
   if (!attributesText.startsWith('(') || !attributesText.endsWith(')')) return [];
-  const inner = attributesText.slice(1, -1);
-  const attributes: string[] = [];
-  let start = 0;
-  let depth = 0;
-  for (let i = 0; i < inner.length; i++) {
-    const c = inner[i];
-    if (c === "'") {
-      // #7589: `''` and a PAGE directive's apostrophe operand stay inside the
-      // literal; one that never closes takes the rest of the list.
-      const end = stepStringLiteralEnd(inner, i);
-      i = (end < 0 ? inner.length : end) - 1;
-    } else if (c === '(') {
-      depth++;
-    } else if (c === ')') {
-      depth--;
-    } else if (c === ',' && depth === 0) {
-      attributes.push(inner.slice(start, i).trim());
-      start = i + 1;
-    }
-  }
-  attributes.push(inner.slice(start).trim());
-  return attributes;
+  // The shared quote-, nesting- and comment-aware splitter (#7785): a comma
+  // inside a `/* ... */` comment is not an attribute boundary.
+  return splitStepTopLevel(attributesText.slice(1, -1));
 }
 
 function parseStepRef(value: string): number | undefined {

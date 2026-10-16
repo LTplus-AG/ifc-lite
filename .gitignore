@@ -172,4 +172,6 @@ tests/ai-eval/results/
 
 # Python bytecode caches
 __pycache__/
-*.py[cod]
+*.pyc
+*.pyo
+*.pyd

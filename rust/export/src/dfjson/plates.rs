@@ -56,6 +56,8 @@ fn is_horizontal_ring(ring: &[[f64; 3]]) -> bool {
 /// Intermediate per-space plate before story grouping.
 pub(super) struct Plate {
     pub(super) express_id: u32,
+    /// The space piece this plate is (see `rooms::FloorProfile::piece`).
+    pub(super) piece: u32,
     pub(super) boundary: Vec<[f64; 2]>,
     pub(super) floor_height: f64,
     pub(super) ftc_height: f64,
@@ -119,7 +121,7 @@ pub(super) fn build_plates(profiles: &[ExtractedProfile], tol: f64) -> (Vec<Plat
         if signed_area_2d(&boundary) < 0.0 {
             boundary.reverse();
         }
-        plates.push(Plate { express_id: fp.express_id, boundary, floor_height: lower, ftc_height: ftc });
+        plates.push(Plate { express_id: fp.express_id, piece: fp.piece, boundary, floor_height: lower, ftc_height: ftc });
     }
     (plates, skipped)
 }

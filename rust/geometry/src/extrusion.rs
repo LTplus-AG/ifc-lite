@@ -25,6 +25,25 @@ pub fn extrude_profile(
     Ok(mesh)
 }
 
+/// Extrude every region of a profile (see
+/// [`ProfileProcessor::process_regions`](crate::ProfileProcessor::process_regions))
+/// as its own solid, merged into one mesh. A single region is exactly
+/// [`extrude_profile`].
+pub(crate) fn extrude_regions(
+    regions: &[Profile2D],
+    depth: f64,
+    transform: Option<Matrix4<f64>>,
+) -> Result<Mesh> {
+    if let [region] = regions {
+        return extrude_profile(region, depth, transform);
+    }
+    let mut mesh = Mesh::new();
+    for region in regions {
+        mesh.merge(&extrude_profile(region, depth, transform)?);
+    }
+    Ok(mesh)
+}
+
 /// Watertight polygon-with-holes extrude for the 2D opening-subtraction path
 /// ([`crate::router`]'s `bool2d_path`). The caps are triangulated by the
 /// boundary-preserving constrained triangulator

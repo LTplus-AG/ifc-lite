@@ -151,7 +151,14 @@ impl Parser<'_> {
             self.version = required(&attributes, "version", "LandXML")?.to_owned();
         }
         let target = namespace == self.target_namespace.as_deref();
+        // Only a name that can appear in a capture path is counted: the map
+        // lives as long as the parent, so counting every distinct child name
+        // let a flat root hold one entry per name (#7675, EDGE-LXPARSE-17).
+        let tracked = target && path::ordinal_tracked(local);
         let sibling_ordinal = self.frames.last_mut().map_or(1, |parent| {
+            if !tracked {
+                return 0;
+            }
             let ordinal = parent
                 .child_ordinals
                 .entry((target, local.to_owned()))
@@ -172,10 +179,12 @@ impl Parser<'_> {
                     "extension record limit exceeded",
                 ));
             }
+            let path = self.path_with(local);
+            self.reserve_source_path(path.len())?;
             self.extensions.push(LandXmlExtension {
                 namespace: namespace.unwrap_or("").to_owned(),
                 local_name: local.to_owned(),
-                path: self.path_with(local),
+                path,
             });
         }
         self.frames.push(Frame {
@@ -215,12 +224,9 @@ impl Parser<'_> {
         }
         match local {
             "CoordinateSystem" if self.is_path(&["LandXML", "CoordinateSystem"]) => {
-                if self.coordinate_system.is_some() {
-                    self.warnings.push(
-                        "LandXML declares multiple root CoordinateSystem records; retained the last declaration"
-                            .to_owned(),
-                    );
-                }
+                // Counted, and warned about once in `finish` (#7675,
+                // EDGE-LXPARSE-24: one warning per repeat was ~4x the input).
+                self.coordinate_systems_seen += 1;
                 self.coordinate_system = Some(LandXmlCoordinateSystem {
                     horizontal_datum: attr(&attributes, "horizontalDatum")
                         .map(|value| value.to_owned()),

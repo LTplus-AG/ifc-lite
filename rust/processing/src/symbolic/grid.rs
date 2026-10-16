@@ -24,7 +24,7 @@ pub(super) fn extract_grid(
     grid: &DecodedEntity,
     grid_id: u32,
     decoder: &mut EntityDecoder,
-    unit_scale: f32,
+    unit_scale: f64,
     transform: &Transform2D,
     rebase: RenderFrameRebase,
     out: &mut SymbolicAccumulator,
@@ -142,9 +142,9 @@ fn emit_bubble(axis_id: u32, cx: f32, cy: f32, world_y: f32, tag: &str, out: &mu
 fn sample_grid_axis_endpoints(
     curve: &DecodedEntity,
     decoder: &mut EntityDecoder,
-    unit_scale: f32,
+    unit_scale: f64,
     transform: &Transform2D,
-) -> Option<((f32, f32), (f32, f32))> {
+) -> Option<((f64, f64), (f64, f64))> {
     if curve.ifc_type != IfcType::IfcPolyline {
         return None;
     }
@@ -153,13 +153,13 @@ fn sample_grid_axis_endpoints(
     if point_entities.len() < 2 {
         return None;
     }
-    let extract = |pe: &DecodedEntity| -> Option<(f32, f32)> {
+    let extract = |pe: &DecodedEntity| -> Option<(f64, f64)> {
         if pe.ifc_type != IfcType::IfcCartesianPoint {
             return None;
         }
         let coords = pe.get(0)?.as_list()?;
-        let x = coords.first()?.as_float()? as f32 * unit_scale;
-        let y = coords.get(1)?.as_float()? as f32 * unit_scale;
+        let x = coords.first()?.as_float()? * unit_scale;
+        let y = coords.get(1)?.as_float()? * unit_scale;
         Some(transform.transform_point(x, y))
     };
     let first = extract(&point_entities[0])?;

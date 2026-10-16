@@ -262,9 +262,11 @@ impl MaterialLayerIndex {
     }
 
     /// Reconstruct an index from the flat SoA arrays produced by
-    /// [`Self::to_flat`]. Defensive against short/misaligned inputs (a
-    /// truncated wire buffer stops early rather than panicking), but on
-    /// well-formed input it is the exact inverse of `to_flat`.
+    /// [`Self::to_flat`], its exact inverse on well-formed input. `None` for a
+    /// malformed buffer (short per-record arrays, a layer count on a
+    /// `NotSliceable` record, or counts past the layer arrays), so the caller
+    /// builds its own index instead of installing a partial one (#7675,
+    /// PROC-AL-25: the cursor was unchecked, so on wasm32 it could wrap).
     #[allow(clippy::too_many_arguments)]
     pub fn from_flat(
         element_ids: &[u32],
@@ -274,36 +276,26 @@ impl MaterialLayerIndex {
         offset: &[f64],
         layer_material_ids: &[u32],
         layer_thicknesses: &[f64],
-    ) -> Self {
+    ) -> Option<Self> {
         let mut index = Self::new();
         let n = element_ids.len();
-        // Every per-record array must be at least as long as element_ids;
-        // bail on a malformed buffer instead of indexing out of bounds.
-        if axis.len() < n
-            || layer_counts.len() < n
-            || direction_sense.len() < n
-            || offset.len() < n
-        {
-            return index;
+        let layers_len = layer_material_ids.len().min(layer_thicknesses.len());
+        if axis.len() < n || layer_counts.len() < n || direction_sense.len() < n || offset.len() < n {
+            return None;
         }
         let mut cursor = 0usize;
         for i in 0..n {
             let count = layer_counts[i] as usize;
+            let end = cursor.checked_add(count).filter(|&end| end <= layers_len)?;
             let buildup = if axis[i] == 0 {
+                if count != 0 {
+                    return None;
+                }
                 LayerBuildup::NotSliceable
             } else {
-                if cursor + count > layer_material_ids.len()
-                    || cursor + count > layer_thicknesses.len()
-                {
-                    return index;
-                }
-                let mut layers = Vec::with_capacity(count);
-                for k in 0..count {
-                    layers.push(LayerInfo {
-                        material_id: layer_material_ids[cursor + k],
-                        thickness: layer_thicknesses[cursor + k],
-                    });
-                }
+                let layers = (cursor..end)
+                    .map(|k| LayerInfo { material_id: layer_material_ids[k], thickness: layer_thicknesses[k] })
+                    .collect();
                 LayerBuildup::Sliceable {
                     layers,
                     axis: match axis[i] {
@@ -316,10 +308,10 @@ impl MaterialLayerIndex {
                     offset_from_reference_line: offset[i],
                 }
             };
-            cursor += count;
+            cursor = end;
             index.element_to_buildup.insert(element_ids[i], buildup);
         }
-        index
+        Some(index)
     }
 
     /// Get the resolved buildup for an element, or `None` if the element
@@ -528,7 +520,8 @@ mod flat_roundtrip_tests {
             &flat.offset,
             &flat.layer_material_ids,
             &flat.layer_thicknesses,
-        );
+        )
+        .expect("well-formed");
         assert_eq!(
             index, restored,
             "flat round-trip must reproduce the index bit-for-bit"
@@ -548,7 +541,8 @@ mod flat_roundtrip_tests {
             &flat.offset,
             &flat.layer_material_ids,
             &flat.layer_thicknesses,
-        );
+        )
+        .expect("well-formed");
         assert_eq!(index, restored);
         assert!(restored.is_empty());
     }
@@ -556,8 +550,8 @@ mod flat_roundtrip_tests {
     #[test]
     fn from_flat_bails_on_truncated_buffer() {
         // element_ids says one record but the per-record arrays are empty:
-        // reconstruction must stop cleanly, not panic or index OOB.
+        // refused, not a panic, an OOB index or a partial index.
         let restored = MaterialLayerIndex::from_flat(&[100], &[], &[], &[], &[], &[], &[]);
-        assert!(restored.is_empty());
+        assert!(restored.is_none());
     }
 }

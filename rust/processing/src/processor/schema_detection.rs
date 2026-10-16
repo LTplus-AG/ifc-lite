@@ -2,36 +2,51 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-/// Preserve the historical raw-byte predicate, including matches outside HEADER:
-/// IFC4X3 anywhere wins over IFC4. Search disjoint source regions rather than
-/// scanning the whole file twice when IFC4X3 is absent (#3987).
+/// Bytes of the source the last-resort scan reads when no declared identifier
+/// is recognised. The TS parser's figure (`detectSchemaVersion`).
+const FALLBACK_SCAN_BYTES: usize = 2000;
+
+/// The IFC schema a STEP file declares: `"IFC2X3"`, `"IFC4"`, `"IFC4X3"` or
+/// `"IFC5"`. THE detector for every `schema_version` this workspace reports,
+/// the native pipeline's `ModelMetadata` and the server's `/parse/metadata`
+/// alike (PROCESSING-5 / SERVER-18, #7691: the server kept a second,
+/// case-sensitive copy, and processing searched the whole file, so `ifc4`
+/// inside a GUID reported an IFC2X3 model as IFC4).
 ///
-/// ISO 10303-21 keywords are case-insensitive, so `FILE_SCHEMA(('ifc4'))` is
-/// legal and must not fall through to the `"IFC2X3"` default (#4661: it did,
-/// silently, because this used to search with the case-sensitive
-/// `memchr::memmem::find`). [`find_keyword`] is the shared case-insensitive
-/// byte search: it anchors on the rarest letter in the needle instead of the
-/// first one, which matters here exactly as it did for
-/// `prepass::find_ifcproject_keyword` (#4498) — anchoring "IFC4" on its
-/// leading `I` would fire on every IFC keyword and every GUID in the file.
-/// `find_keyword` anchors on `F` (rank 20 of 26, vs. `I` at rank 24, on the
-/// rarest-letter table measured for #4498/#4497); see the module doc on
-/// [`ifc_lite_core::parser::keyword`] for the underlying measurement.
-pub(super) fn detect_schema_version(content: &[u8]) -> &'static str {
-    let Some(offset) = ifc_lite_core::parser::find_keyword(content, b"IFC4") else {
-        return "IFC2X3";
-    };
-    let remaining = &content[offset + 4..];
-    // IFC4 has no self-overlap: a later IFC4X3 cannot start inside this match.
-    if remaining
-        .get(..2)
-        .is_some_and(|window| window.eq_ignore_ascii_case(b"X3"))
-        || ifc_lite_core::parser::find_keyword(remaining, b"IFC4X3").is_some()
-    {
-        "IFC4X3"
-    } else {
-        "IFC4"
-    }
+/// The rule is the TS parser's `detectSchemaVersion`
+/// (`packages/parser/src/source-header.ts`), pinned against it by the shared
+/// vectors in `rust/core/tests/fixtures/schema_version_vectors.json`:
+/// 1. The first `FILE_SCHEMA` identifier that names a family wins
+///    ([`ifc_lite_core::parser::header::first_declared_schema`], the selection
+///    the decoder's attribute layout uses too). The header reader is quote-
+///    and comment-aware, so text in DATA, header strings or comments does not
+///    count.
+/// 2. If none does (no, empty or unparseable declaration), the first 2000
+///    bytes are searched for a schema token, ASCII case-insensitively.
+/// 3. Otherwise `"IFC4"`.
+pub fn detect_schema_version(content: &[u8]) -> &'static str {
+    ifc_lite_core::parser::header::first_declared_schema(content, schema_of_identifier)
+        .or_else(|| fallback_scan(content))
+        .unwrap_or("IFC4")
+}
+
+/// One declared identifier's family, by prefix, longest family first
+/// (`IFC4X3_ADD2`, `IFC2X3_TC1` and `IFC4X1` all reach us in the wild, and
+/// `IFC4X3` begins with `IFC4`). `None` for an identifier naming no family.
+fn schema_of_identifier(identifier: &str) -> Option<&'static str> {
+    let token = identifier.trim().to_ascii_uppercase();
+    ["IFC5", "IFC4X3", "IFC4", "IFC2X3"]
+        .into_iter()
+        .find(|family| token.starts_with(family))
+}
+
+/// The last-resort substring scan over the head of the file.
+fn fallback_scan(content: &[u8]) -> Option<&'static str> {
+    let head = &content[..content.len().min(FALLBACK_SCAN_BYTES)];
+    let text = String::from_utf8_lossy(head).to_ascii_uppercase();
+    ["IFC5", "IFC4X3", "IFC4", "IFC2X3"]
+        .into_iter()
+        .find(|family| text.contains(family))
 }
 
 #[cfg(test)]

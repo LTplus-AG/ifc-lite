@@ -4,50 +4,31 @@
 
 use super::super::helpers::parse_axis2_placement_3d;
 use super::BooleanClippingProcessor;
+use crate::profiles::ProfileProcessor;
 use crate::{
     calculate_normals, ClippingProcessor, Error, GroupCut, GroupReject, Mesh, Point2, Point3,
-    Profile2D, Result, Vector3,
+    Profile2D, Result, TessellationQuality, Vector3,
 };
-use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
+use ifc_lite_core::{DecodedEntity, EntityDecoder};
 
 impl BooleanClippingProcessor {
+    /// The boundary as a 2D contour in Position's XY plane. Any
+    /// `IfcBoundedCurve` the profile curve sampler reads (`IfcPolyline`,
+    /// `IfcIndexedPolyCurve`, composite and trimmed curves): an
+    /// IfcPolyline-only reader refused the IFC4 exporters' indexed poly curves,
+    /// and the refusal fell back to the UNBOUNDED plane clip, over-cutting
+    /// everything outside the polygon (#7688 PROC-S18).
     fn parse_polygonal_boundary_2d(
         &self,
         boundary: &DecodedEntity,
         decoder: &mut EntityDecoder,
+        quality: TessellationQuality,
     ) -> Result<Vec<Point2<f64>>> {
-        if boundary.ifc_type != IfcType::IfcPolyline {
-            return Err(Error::geometry(format!(
-                "Expected IfcPolyline for PolygonalBoundary, got {}",
-                boundary.ifc_type
-            )));
-        }
-
-        let points_attr = boundary
-            .get(0)
-            .ok_or_else(|| Error::geometry("IfcPolyline missing Points".to_string()))?;
-        let points = decoder.resolve_ref_list(points_attr)?;
-
-        let mut contour = Vec::with_capacity(points.len());
-        for point in points {
-            if point.ifc_type != IfcType::IfcCartesianPoint {
-                return Err(Error::geometry(format!(
-                    "Expected IfcCartesianPoint in PolygonalBoundary, got {}",
-                    point.ifc_type
-                )));
-            }
-
-            let coords_attr = point.get(0).ok_or_else(|| {
-                Error::geometry("IfcCartesianPoint missing coordinates".to_string())
-            })?;
-            let coords = coords_attr
-                .as_list()
-                .ok_or_else(|| Error::geometry("Expected point coordinate list".to_string()))?;
-
-            let x = coords.first().and_then(|v| v.as_float()).unwrap_or(0.0);
-            let y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0);
-            contour.push(Point2::new(x, y));
-        }
+        let mut contour: Vec<Point2<f64>> = ProfileProcessor::new(self.schema.clone())
+            .get_curve_points(boundary, decoder, quality)?
+            .into_iter()
+            .map(|p| Point2::new(p.x, p.y))
+            .collect();
 
         if contour.len() > 1 {
             let first = contour[0];
@@ -62,8 +43,28 @@ impl BooleanClippingProcessor {
                 "PolygonalBoundary must contain at least 3 distinct points".to_string(),
             ));
         }
+        // A self-crossing boundary bounds nothing (ISSUE_129 #236054: arcs and
+        // lines that do not meet): refused, it takes the recorded fallback.
+        if !Self::boundary_is_simple(&contour) {
+            return Err(Error::geometry("PolygonalBoundary crosses itself".to_string()));
+        }
 
         Ok(contour)
+    }
+
+    /// No two non-adjacent edges of the closed contour touch (exact
+    /// predicates). Repeated consecutive points are not edges.
+    fn boundary_is_simple(contour: &[Point2<f64>]) -> bool {
+        let mut ring: Vec<[f64; 2]> = contour.iter().map(|p| [p.x, p.y]).collect();
+        ring.dedup();
+        let n = ring.len();
+        let edge = |i: usize| (ring[i], ring[(i + 1) % n]);
+        (0..n).all(|i| {
+            (i + 2..n).filter(|&j| (j + 1) % n != i).all(|j| {
+                let ((a, b), (c, d)) = (edge(i), edge(j));
+                !crate::geom2d::segments_intersect(a, b, c, d)
+            })
+        })
     }
 
     fn polygon_normal(points: &[Point3<f64>]) -> Vector3<f64> {
@@ -86,9 +87,8 @@ impl BooleanClippingProcessor {
         half_space: &DecodedEntity,
         decoder: &mut EntityDecoder,
         host_mesh: &Mesh,
-        plane_point: Point3<f64>,
-        plane_normal: Vector3<f64>,
-        agreement: bool,
+        (plane_point, plane_normal, agreement): (Point3<f64>, Vector3<f64>, bool),
+        quality: TessellationQuality,
     ) -> Result<Mesh> {
         let position_attr = half_space.get(2).ok_or_else(|| {
             Error::geometry("PolygonalBoundedHalfSpace missing Position".to_string())
@@ -105,7 +105,7 @@ impl BooleanClippingProcessor {
             .resolve_ref(boundary_attr)?
             .ok_or_else(|| Error::geometry("Failed to resolve PolygonalBoundary".to_string()))?;
 
-        let contour_2d = self.parse_polygonal_boundary_2d(&boundary, decoder)?;
+        let contour_2d = self.parse_polygonal_boundary_2d(&boundary, decoder, quality)?;
 
         let origin = Point3::new(transform[(0, 3)], transform[(1, 3)], transform[(2, 3)]);
         let x_axis =

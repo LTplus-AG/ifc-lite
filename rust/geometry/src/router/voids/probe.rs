@@ -736,9 +736,14 @@ impl GeometryRouter {
         };
 
         let profile_entity = decoder.resolve_ref(solid.get(0)?).ok()??;
-        let profile = ProfileProcessor::new(self.schema.clone())
-            .process(&profile_entity, decoder, self.tessellation_quality)
-            .ok()?;
+        // The 2D path re-extrudes ONE outer ring with holes; a composite of
+        // several disjoint areas (#7685) defers to the 3D path.
+        let [profile] = <[_; 1]>::try_from(
+            ProfileProcessor::new(self.schema.clone())
+                .process_regions(&profile_entity, decoder, self.tessellation_quality)
+                .ok()?,
+        )
+        .ok()?;
         if profile.outer.len() < 3 {
             return None;
         }

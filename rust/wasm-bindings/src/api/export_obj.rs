@@ -25,6 +25,10 @@ impl IfcAPI {
     /// for GLB in `export_glb`). A non-empty `Uint32Array` is the ordinary allowlist.
     /// Instanced type-library shapes are skipped regardless of the filter.
     ///
+    /// Fails CLOSED like `exportGlb`: when no mesh is written this throws an
+    /// `Error` whose message starts with `NO_RENDER_GEOMETRY`, instead of
+    /// returning a header-only OBJ (#7695).
+    ///
     /// ```javascript
     /// const obj = api.exportObj(ifcContent, true, new Uint32Array(), undefined);
     /// ```
@@ -35,12 +39,14 @@ impl IfcAPI {
         include_normals: bool,
         hidden: &[u32],
         isolated: Option<Vec<u32>>,
-    ) -> Vec<u8> {
+    ) -> Result<Vec<u8>, JsValue> {
         let opts = ifc_lite_export::ObjOptions {
             include_normals,
             hidden: hidden.to_vec(),
             isolated,
         };
-        ifc_lite_export::export_obj(content, &opts).into_bytes()
+        ifc_lite_export::export_obj(content, &opts)
+            .map(String::into_bytes)
+            .map_err(|e| JsValue::from(js_sys::Error::new(&e.to_string())))
     }
 }

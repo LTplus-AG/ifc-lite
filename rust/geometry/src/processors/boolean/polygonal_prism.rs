@@ -11,6 +11,15 @@ use crate::{
 };
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 
+/// Most vertices a bounded half-space boundary may have before the cut is
+/// refused (#7786). Prism build, earcut cap triangulation and the exact
+/// subtract all grow faster than linearly in it: a 4,000-point
+/// `IfcIndexedPolyCurve` took 11.9 s. The corpus maximum is 21 (ISSUE_068;
+/// every other model is 13 or fewer), so 256 leaves more than ten times that.
+/// A refusal takes the recorded `PolygonalBoundedHalfSpaceFallback` path like
+/// any other unreadable boundary.
+pub(super) const MAX_BOUNDARY_VERTICES: usize = 256;
+
 impl BooleanClippingProcessor {
     /// The boundary as a 2D contour in Position's XY plane. Any
     /// `IfcBoundedCurve` the profile curve sampler reads (`IfcPolyline`,
@@ -29,6 +38,14 @@ impl BooleanClippingProcessor {
             .into_iter()
             .map(|p| Point2::new(p.x, p.y))
             .collect();
+
+        // Counted before the closing-point pop and the O(n^2) simplicity check.
+        if contour.len() > MAX_BOUNDARY_VERTICES {
+            return Err(Error::geometry(format!(
+                "PolygonalBoundary has {} vertices, over the {MAX_BOUNDARY_VERTICES} cap",
+                contour.len()
+            )));
+        }
 
         if contour.len() > 1 {
             let first = contour[0];

@@ -17,6 +17,7 @@ use std::cell::RefCell;
 use super::csg_primitive::CsgSolidProcessor;
 use super::helpers::parse_axis2_placement_3d;
 
+mod brep_voids;
 mod cut_heuristics;
 mod failures;
 mod operand;

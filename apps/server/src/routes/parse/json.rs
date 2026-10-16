@@ -13,7 +13,6 @@ use super::{
 use crate::admission::ResidentBytes;
 use crate::error::ApiError;
 use crate::services::axis::mesh_to_yup_in_place;
-use crate::services::streaming::detect_schema_version;
 use crate::services::process_streaming;
 use crate::types::{finish_meshes, MetadataResponse, ParseResponse, SymbolicParseResponse, StreamEvent};
 use ifc_lite_processing::style::ModelFinishes;
@@ -284,7 +283,7 @@ pub async fn parse_metadata(
         let malformed_record_found = scanner.malformed_record_start().is_some();
         ifc_lite_core::report_scan_diagnostics(oversized_id_count, malformed_record_found);
 
-        let schema_version = detect_schema_version(&content);
+        let schema_version = ifc_lite_processing::detect_schema_version(&content);
 
         (
             MetadataResponse {

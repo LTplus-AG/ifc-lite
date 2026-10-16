@@ -101,7 +101,8 @@ pub use ifc_lite_geometry::TessellationQuality;
 /// has one home rather than two clones. See its doc comment.
 pub use processor::instancing::recover_occurrences_flat;
 pub use processor::{
-    convert_mesh_to_site_local, is_quick_spatial_type_ci, native_to_baked, process_geometry,
+    convert_mesh_to_site_local, detect_schema_version, is_quick_spatial_type_ci, native_to_baked,
+    process_geometry,
     process_geometry_filtered,
     process_geometry_filtered_with_quality, process_geometry_filtered_with_quality_and_ids,
     process_geometry_with_index,

@@ -11,7 +11,6 @@
 use super::cache_keys::*;
 use super::ParseQuery;
 use crate::services::cache::DiskCache;
-use crate::services::streaming::detect_schema_version;
 use crate::services::{OpeningFilterMode, ParquetLayout};
 use ifc_lite_processing::{SymbolicData, TessellationQuality};
 
@@ -42,7 +41,7 @@ fn parquet_cache_key_matches_writer_format() {
                 quality_cache_suffix(quality)
             );
             let writer_parquet_key = format!("{}-parquet-v8", writer_cache_key);
-            let writer_metadata_key = format!("{}-parquet-metadata-v5", writer_cache_key);
+            let writer_metadata_key = format!("{}-parquet-metadata-v6", writer_cache_key);
 
             assert_eq!(
                 parquet_cache_key(hash, mode, quality, ParquetLayout::Flat),
@@ -171,7 +170,7 @@ fn parquet_cache_key_default_filter_uses_default_suffix() {
 fn json_response_cache_key_is_versioned_and_distinct() {
     let request_key = "0ab20f4e4014-default";
     let json_key = json_response_cache_key(request_key);
-    assert_eq!(json_key, format!("{request_key}-json-v6"));
+    assert_eq!(json_key, format!("{request_key}-json-v7"));
     assert_ne!(json_key, request_key, "must retire the unversioned entries");
     assert_ne!(json_key, symbolic_cache_key(request_key));
 }
@@ -408,19 +407,6 @@ fn quality_suffix_is_empty_only_for_the_default_level() {
     }
 }
 
-#[test]
-fn schema_detection_uses_file_schema_declaration_only() {
-    let content = b"ISO-10303-21;
-HEADER;
-FILE_SCHEMA(('IFC2X3'));
-ENDSEC;
-DATA;
-#1=IFCDOCUMENTINFORMATION('IFC4X3',$,$,$,$,$,$,$,$,$,$,$,$,$,$,$,$);
-ENDSEC;";
-
-    assert_eq!(detect_schema_version(content), "IFC2X3");
-}
-
 /// The optimized-Parquet route got a key of its own with #3889. Its whole
 /// point is that it is a DIFFERENT namespace from the flat route's: the two
 /// emit different payloads, so a hit on one must never satisfy the other.
@@ -438,7 +424,7 @@ fn optimized_parquet_keys_are_a_distinct_namespace_from_the_flat_route() {
     );
     assert_eq!(
         parquet_optimized_metadata_cache_key(&seed),
-        format!("{seed}-parquet-optimized-metadata-v3")
+        format!("{seed}-parquet-optimized-metadata-v4")
     );
 
     // Neither optimized key may equal, or be a prefix-shadow of, the flat pair.

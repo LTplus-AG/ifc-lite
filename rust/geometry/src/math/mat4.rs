@@ -28,6 +28,7 @@ pub const IDENTITY: M4 = [
 /// `a . b`. Each entry accumulates from `0.0` over `k = 0..4`, so an all-zero
 /// dot product is `+0.0`; this is the spelling export, processing, wasm and
 /// the server already share.
+#[inline]
 pub fn mul(a: &M4, b: &M4) -> M4 {
     let mut out = [0.0f64; 16];
     for r in 0..4 {
@@ -106,6 +107,7 @@ pub fn translation(t: V3) -> M4 {
 /// `None` iff the 3x3 determinant is not finite or `abs(det) <
 /// SINGULAR_DET_EPS`, so a NaN placement is refused rather than inverted to
 /// NaN.
+#[inline]
 pub fn affine_inverse(m: &M4) -> Option<M4> {
     let a = m[0]; let b = m[1]; let c = m[2];
     let d = m[4]; let e = m[5]; let f = m[6];
@@ -144,6 +146,7 @@ pub fn affine_inverse(m: &M4) -> Option<M4> {
 
 /// Row-major f64 to the **column-major** `[f32; 16]` glTF and GPU uploads
 /// expect. The only f64 to f32 point besides [`to_f32`].
+#[inline]
 pub fn to_col_major_f32(m: &M4) -> [f32; 16] {
     let mut out = [0.0f32; 16];
     for r in 0..4 {

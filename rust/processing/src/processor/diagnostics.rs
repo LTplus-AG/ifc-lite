@@ -91,6 +91,16 @@ pub(super) fn refuse_jobs_for_unit(units: &crate::prepass::UnitScales, jobs: &mu
     refused
 }
 
+/// The pass router at the geometry scale, refused with the length unit, so no
+/// site or building placement it resolves reads file units as metres (#7678).
+pub(super) fn unit_router(units: &crate::prepass::UnitScales) -> ifc_lite_geometry::GeometryRouter {
+    let mut router = ifc_lite_geometry::GeometryRouter::with_scale(units.geometry_length_scale());
+    if units.length_unit_refused.is_some() {
+        router.refuse_length_unit();
+    }
+    router
+}
+
 /// `refused_prepass_records`: the distinct records the pre-pass refused
 /// (#7678), each counted once however often it was re-read: the scan
 /// decoder's, the deferred style decoder's and a refused unit factor.

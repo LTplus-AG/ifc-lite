@@ -96,8 +96,14 @@ impl IfcAPI {
     /// Export **OpenUSD** (`.usda` ASCII): a real Z-up USD stage — spatial hierarchy of
     /// `Xform` prims, `UsdGeomMesh` geometry, `UsdPreviewSurface` materials, IFC
     /// metadata as custom attributes. Whole-model (geometry-backed).
+    ///
+    /// Fails CLOSED like `exportGlb`: a model with no render geometry throws an
+    /// `Error` whose message starts with `NO_RENDER_GEOMETRY`, instead of
+    /// returning a stage with nothing to look at (#7695).
     #[wasm_bindgen(js_name = exportUsd)]
-    pub fn export_usd(&self, content: &[u8]) -> Vec<u8> {
-        ifc_lite_export::export_usd(content, &Default::default()).into_bytes()
+    pub fn export_usd(&self, content: &[u8]) -> Result<Vec<u8>, JsValue> {
+        ifc_lite_export::export_usd(content, &Default::default())
+            .map(String::into_bytes)
+            .map_err(|e| JsValue::from(js_sys::Error::new(&e.to_string())))
     }
 }

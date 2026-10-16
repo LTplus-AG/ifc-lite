@@ -32,6 +32,7 @@ use std::fmt::Write as _;
 
 use ifc_lite_processing::{InstanceRecord, MeshData};
 
+use crate::error::ExportError;
 use crate::ifc5::{project_name, spatial_children};
 use crate::model::{build_export_model, EntityRow};
 use emit::{emit_material, emit_prim, write_header, Ctx};
@@ -61,7 +62,13 @@ impl Default for UsdOptions {
 }
 
 /// Export the model in `content` (raw IFC/STEP bytes) as a `.usda` (ASCII USD) string.
-pub fn export_usd(content: &[u8], opts: &UsdOptions) -> String {
+///
+/// Fail-closed like the GLB exporters: a model with no emittable mesh and no
+/// instance occurrence is [`ExportError::NoRenderGeometry`], not a stage of
+/// empty `Xform`s reported as success (#7695, EXPORT-GEOM-15). It is decided
+/// before the attribute and relationship passes, so a refusal costs one
+/// meshing pass.
+pub fn export_usd(content: &[u8], opts: &UsdOptions) -> Result<String, ExportError> {
     // Instancing-on when requested and every instance is safe; else the plain baked path.
     let (result, use_instancing) = instance::gather(content, opts.instancing);
 
@@ -120,6 +127,8 @@ pub fn export_usd(content: &[u8], opts: &UsdOptions) -> String {
             }
         }
     }
+
+    crate::error::require_render_geometry(all_ids.len())?;
 
     // Attribute rows (GlobalId / class / Name / psets / quantities), keyed by id.
     let model = build_export_model(content);
@@ -243,7 +252,7 @@ pub fn export_usd(content: &[u8], opts: &UsdOptions) -> String {
     }
 
     out.push_str("}\n");
-    out
+    Ok(out)
 }
 
 /// Emittable-mesh gate: the glTF `mesh_visible` geometry sanity (no instanced

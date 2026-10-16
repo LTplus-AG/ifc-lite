@@ -120,6 +120,8 @@ export const geometryExportDialogsEn = {
   'geometryExport.usd.successTitle': 'Success',
   'geometryExport.usd.errorTitle': 'Error',
   'geometryExport.usd.exportedMessage': 'Exported USD ({sizeKb} KB)',
+  'geometryExport.usd.noRenderGeometryError':
+    'USD export produced 0 meshes — the model has no render geometry to export.',
   'geometryExport.usd.failedMessage': 'USD export failed: {reason}',
   'geometryExport.usd.cancelButton': 'Cancel',
   'geometryExport.usd.exportingButton': 'Exporting...',

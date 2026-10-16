@@ -104,3 +104,30 @@ impl fmt::Display for ExportError {
 }
 
 impl std::error::Error for ExportError {}
+
+/// The one empty-export rule (#7695). Every render-geometry writer (GLB, the
+/// multi-buffer glTF, COLLADA, KMZ, OBJ, USD) calls this with the number of
+/// meshes it actually wrote, after the caller's visibility filters and its own
+/// emittable-mesh gate, before it hands out an artifact.
+///
+/// What counts as exportable depends on the format:
+///
+/// * **Render geometry** (the formats above): at least one emitted mesh. With
+///   none, every one of them is either schema-invalid (glTF `minItems: 1`,
+///   empty COLLADA libraries) or a file with nothing to look at (a header-only
+///   OBJ, a `/World`-only USD stage), so it is [`ExportError::NoRenderGeometry`].
+///   A model that has only non-geometric data is empty here.
+/// * **Data** (CSV, JSON, JSON-LD, IFCX, STEP, BOS, HBJSON, DFJSON): a row,
+///   node, entity or room. Zero of them is still a valid empty document (a
+///   header-only table, an empty `@graph`, a model without rooms), so these
+///   never call this; they report the count instead (the TS `count*`
+///   helpers, `HbjsonStats::rooms`, `StepStats`), and a caller that wants a
+///   non-empty result checks that count.
+///
+/// The cross-language vectors are `tests/fixtures/empty_export_vectors.json`.
+pub(crate) fn require_render_geometry(meshes_written: usize) -> Result<(), ExportError> {
+    if meshes_written == 0 {
+        return Err(ExportError::NoRenderGeometry);
+    }
+    Ok(())
+}

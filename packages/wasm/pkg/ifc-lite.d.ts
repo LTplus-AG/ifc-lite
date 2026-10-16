@@ -803,6 +803,10 @@ export class IfcAPI {
      * for GLB in `export_glb`). A non-empty `Uint32Array` is the ordinary allowlist.
      * Instanced type-library shapes are skipped regardless of the filter.
      *
+     * Fails CLOSED like `exportGlb`: when no mesh is written this throws an
+     * `Error` whose message starts with `NO_RENDER_GEOMETRY`, instead of
+     * returning a header-only OBJ (#7695).
+     *
      * ```javascript
      * const obj = api.exportObj(ifcContent, true, new Uint32Array(), undefined);
      * ```
@@ -842,6 +846,10 @@ export class IfcAPI {
      * Export **OpenUSD** (`.usda` ASCII): a real Z-up USD stage — spatial hierarchy of
      * `Xform` prims, `UsdGeomMesh` geometry, `UsdPreviewSurface` materials, IFC
      * metadata as custom attributes. Whole-model (geometry-backed).
+     *
+     * Fails CLOSED like `exportGlb`: a model with no render geometry throws an
+     * `Error` whose message starts with `NO_RENDER_GEOMETRY`, instead of
+     * returning a stage with nothing to look at (#7695).
      */
     exportUsd(content: Uint8Array): Uint8Array;
     /**

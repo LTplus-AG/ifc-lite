@@ -1111,7 +1111,8 @@ export class GeometryProcessor {
 
   /** Rust domain exporters return bytes to avoid V8 string-size limits; decode
    * text with TextDecoder. They return null before init(). `isolated`:
-   * undefined selects all; an empty array hides every mesh. Keep distinct. */
+   * undefined selects all; an empty array hides every mesh. Keep distinct.
+   * No written mesh throws `NO_RENDER_GEOMETRY`, as `exportGlb` does. */
   exportObj(
     buffer: Uint8Array,
     includeNormals = true,
@@ -1200,7 +1201,8 @@ export class GeometryProcessor {
     return this.bridge.exportIfcx(buffer, onlyKnownProperties, pretty);
   }
 
-  /** Export OpenUSD (`.usda` ASCII) — a real Z-up USD stage (geometry-backed). */
+  /** Export OpenUSD (`.usda` ASCII) — a real Z-up USD stage (geometry-backed).
+   * No render geometry throws `NO_RENDER_GEOMETRY`, as `exportGlb` does. */
   exportUsd(buffer: Uint8Array): Uint8Array | null {
     if (!this.bridge?.isInitialized()) return null;
     return this.bridge.exportUsd(buffer);

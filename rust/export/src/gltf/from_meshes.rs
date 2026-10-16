@@ -107,9 +107,7 @@ pub fn try_export_glb_from_meshes(
     // `minimum: 1`). `try_export_glb` (the from-bytes sibling, #1438/#1516) already
     // fails closed here with `NoRenderGeometry`; this from-meshes entry point —
     // reachable from the viewer's `exportGlbFromMeshes` — did not.
-    if stats.meshes == 0 {
-        return Err(ExportError::NoRenderGeometry);
-    }
+    crate::error::require_render_geometry(stats.meshes)?;
     Ok((glb, stats))
 }
 

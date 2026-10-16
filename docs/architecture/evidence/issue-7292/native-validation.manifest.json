@@ -1,0 +1,206 @@
+{
+  "sourceCommit": "88f4a9f4918e4f37a396eac801522eaf511e9f6d",
+  "baselineCommit": "34fd3ce5e6e390d506fe537e773ac564cc302883",
+  "scope": "Targeted native geometry, sanctioned export/server/exact-Python goldens and workspace clippy. Not final WASM, browser, oracle, performance or required-CI qualification.",
+  "lintBridge": "Native tests precede the recorded semantics-preserving nested-if collapse. Clippy and the integrated full source map follow it. The intentional #129 old-pin diagnostic failure is retained beside the successful stronger-pin rerun.",
+  "archive": {
+    "path": "docs/architecture/evidence/issue-7292/native-validation.tar.gz",
+    "bytes": 202547,
+    "sha256": "37f0fecf5611f83109d629fc52cdc0b184dee2ceeb6347e56c5fbb11324607ab"
+  },
+  "decodedBytes": 525435,
+  "files": [
+    {
+      "path": "docs/architecture/evidence/issue-7292/native-final-88f4a9f491/7292-final-integrated-source-comparison-v3.json",
+      "originalPath": "/tmp/7292-final-integrated-source-comparison-v3.json",
+      "bytes": 193284,
+      "sha256": "ec34a82ac6b22639fce5a45482e85096b7bcb2997627ee28b5888c533c1e795d"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/native-final-88f4a9f491/7292-finish-final-batch-1007.log",
+      "originalPath": "/tmp/7292-finish-final-batch-1007.log",
+      "bytes": 541,
+      "sha256": "e194554c652ecde61445f748e879bd6a5358bad33f98802f625059fa27df7946"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/native-final-88f4a9f491/7292-finish-final-batch-129-final.log",
+      "originalPath": "/tmp/7292-finish-final-batch-129-final.log",
+      "bytes": 501,
+      "sha256": "91f7f0f35b517e224f6ab8c074fd95687a709258b56373cade821df07f70b27e"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/native-final-88f4a9f491/7292-finish-final-batch-129.log",
+      "originalPath": "/tmp/7292-finish-final-batch-129.log",
+      "bytes": 1176,
+      "sha256": "e76de17922a3a395c1afcea1dc144983f9d64f621cb0a265fbb9928c1a060e0a"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/native-final-88f4a9f491/7292-finish-final-batch-4692.log",
+      "originalPath": "/tmp/7292-finish-final-batch-4692.log",
+      "bytes": 853,
+      "sha256": "11ba491d8b3ba9425cd959250d4e8ed5c39b177fcd9002dbc91206ba1e5dc6e2"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/native-final-88f4a9f491/7292-finish-final-batch-5739.log",
+      "originalPath": "/tmp/7292-finish-final-batch-5739.log",
+      "bytes": 731,
+      "sha256": "c3aa8a3c90c26e03f67ff194d65106a1d456e88087fd3463e2554c87519c0089"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/native-final-88f4a9f491/7292-finish-final-batch-exact.log",
+      "originalPath": "/tmp/7292-finish-final-batch-exact.log",
+      "bytes": 406,
+      "sha256": "f15b0b6f683f5cf4c1df194dd5f9dbbba187b59dcc6349e993916e4988085450"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/native-final-88f4a9f491/7292-finish-final-batch-known.log",
+      "originalPath": "/tmp/7292-finish-final-batch-known.log",
+      "bytes": 496,
+      "sha256": "0fc43676a9c2faeab2f922f78350390849faf511e6365a7b51b684be4d99b0f8"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/native-final-88f4a9f491/7292-finish-final-batch-reporter.log",
+      "originalPath": "/tmp/7292-finish-final-batch-reporter.log",
+      "bytes": 1415,
+      "sha256": "9c7e6f2e58f670b8ccf18a8e89bcd7ec93e0a51cde65f6d74f3a3493620436b4"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/native-final-88f4a9f491/7292-finish-final-clippy-post-lint.log",
+      "originalPath": "/tmp/7292-finish-final-clippy-post-lint.log",
+      "bytes": 826,
+      "sha256": "98e6048d104ebe6983420f858bfb65ded808e47f57e7dcce2f0b02157f7ff0bc"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/native-final-88f4a9f491/7292-finish-final-clippy.log",
+      "originalPath": "/tmp/7292-finish-final-clippy.log",
+      "bytes": 1291,
+      "sha256": "2d843ee29f7b4e49af0b44bc532e301ea697ef6264be46299dd7c3476d0b3247"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/native-final-88f4a9f491/7292-finish-final-lint-delta.json",
+      "originalPath": "/tmp/7292-finish-final-lint-delta.json",
+      "bytes": 585,
+      "sha256": "dfb7add9531d6ae1d30ad8b71731f6793e9df524c04d80f3109da546b12c254f"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/native-final-88f4a9f491/7292-finish-final-lint-delta.patch",
+      "originalPath": "/tmp/7292-finish-final-lint-delta.patch",
+      "bytes": 1072,
+      "sha256": "7fdc169d5c6937681fa2667d680cec6361993625b01864f81efc8e5a43776eae"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/native-final-88f4a9f491/7292-finish-final-native-receipt.json",
+      "originalPath": "/tmp/7292-finish-final-native-receipt.json",
+      "bytes": 1249,
+      "sha256": "f51b0f3e134424e3eb8e49bab408acc8c28a6c7060a4827c0ca776f7595957f9"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/native-final-88f4a9f491/7292-finish-final-release-receipt.json",
+      "originalPath": "/tmp/7292-finish-final-release-receipt.json",
+      "bytes": 754,
+      "sha256": "961c8f05ed098f9e6f9968c3838f435ee1810c15ab34cf95069ee46366eb0036"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/native-final-88f4a9f491/7292-finish-final-shepherd-receipt.json",
+      "originalPath": "/tmp/7292-finish-final-shepherd-receipt.json",
+      "bytes": 840,
+      "sha256": "af7c6b8800058deabb5d158cab073dc11bc291b7659eecbc2bcb40c1ac771390"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/native-final-88f4a9f491/7292-finish-final-source-hashes.json",
+      "originalPath": "/tmp/7292-finish-final-source-hashes.json",
+      "bytes": 8331,
+      "sha256": "8d6597225d706d8d5c63298806277a7dbc03ae089d31755d72b0549e12ac9619"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/native-final-88f4a9f491/7292-finish-final-source-post-lint-hashes.json",
+      "originalPath": "/tmp/7292-finish-final-source-post-lint-hashes.json",
+      "bytes": 8331,
+      "sha256": "a4b76fc8584185b85d6126864065570e2b8056f1f81858c22a74d6a03d07df9e"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/native-final-88f4a9f491/export-collada.log",
+      "originalPath": "/tmp/7292-final-golden-repin-run-v1/export-collada.log",
+      "bytes": 2674,
+      "sha256": "de6f2ed385a270474a34afe7181126973a3756131781f7660371ce6b7c3a592e"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/native-final-88f4a9f491/export-glb.log",
+      "originalPath": "/tmp/7292-final-golden-repin-run-v1/export-glb.log",
+      "bytes": 322,
+      "sha256": "4097b6b49bc4973d393fb3e709fb407c153bf551f50ae7db439f97440f214517"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/native-final-88f4a9f491/export-glb_from_meshes.log",
+      "originalPath": "/tmp/7292-final-golden-repin-run-v1/export-glb_from_meshes.log",
+      "bytes": 334,
+      "sha256": "cf53f9e1b151d761dd8a41b198a0e25027f88726f2ed1e271ba2e2fd79cef92a"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/native-final-88f4a9f491/export-kmz.log",
+      "originalPath": "/tmp/7292-final-golden-repin-run-v1/export-kmz.log",
+      "bytes": 426,
+      "sha256": "8630eb7d47460a6e453d6418162fade22cfb60d226536c6730835e992eebe760"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/native-final-88f4a9f491/export-obj.log",
+      "originalPath": "/tmp/7292-final-golden-repin-run-v1/export-obj.log",
+      "bytes": 322,
+      "sha256": "248e6f99f83c026cbfa887b41708b78466e52a4630ba79b1b39906b14ea0ffe8"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/native-final-88f4a9f491/export-usd.log",
+      "originalPath": "/tmp/7292-final-golden-repin-run-v1/export-usd.log",
+      "bytes": 322,
+      "sha256": "bbd9dc27a24bf5dfc8145941a5d14ab97d5ec4d40769e0ca91d532b08bb0c183"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/native-final-88f4a9f491/golden-changes.json",
+      "originalPath": "/tmp/7292-final-golden-repin-run-v1/golden-changes.json",
+      "bytes": 21132,
+      "sha256": "743cdf85c8f3eba23bdbbf2b0f652ca9840a2333ea201706bd1d40709a2d909b"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/native-final-88f4a9f491/python-build.log",
+      "originalPath": "/tmp/7292-final-golden-repin-run-v1/python-build.log",
+      "bytes": 592,
+      "sha256": "1762b5bce53b033b10f5245970370eae326fa99cc08bcd0876b58f9d4f12bae9"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/native-final-88f4a9f491/python-exact-module-receipt.json",
+      "originalPath": "/tmp/7292-final-golden-repin-run-v1/python-exact-module-receipt.json",
+      "bytes": 75318,
+      "sha256": "34cd8de6e83cd42849cd47ac4587f27f19d8aef96e4379df78f86af0f57fa9b3"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/native-final-88f4a9f491/python-golden.log",
+      "originalPath": "/tmp/7292-final-golden-repin-run-v1/python-golden.log",
+      "bytes": 413,
+      "sha256": "5ef1e03b8eeeff68d439372e71c8d3c10b6974f6251f4db3f9680c1b7c6e09db"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/native-final-88f4a9f491/review/receipt.json",
+      "originalPath": "/tmp/7292-finaldelta-independent-review-v3/receipt.json",
+      "bytes": 1101,
+      "sha256": "4e17130c06d55b63cf0b6124c35f0ceaafe4a85e7b1afd35147a083d7d651db0"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/native-final-88f4a9f491/review/verdict.txt",
+      "originalPath": "/tmp/7292-finaldelta-independent-review-v3/verdict.txt",
+      "bytes": 3651,
+      "sha256": "93da85bb36272e6e8144e589ac75cb1ab3ac7de63d98065e6d2b69d9bbec2f45"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/native-final-88f4a9f491/server-route.log",
+      "originalPath": "/tmp/7292-final-golden-repin-run-v1/server-route.log",
+      "bytes": 6152,
+      "sha256": "96d17eb3ebf425f88712b13c37dda45100e801ee6fb565b9a3cda1a83a60009e"
+    },
+    {
+      "path": "docs/architecture/evidence/issue-7292/native-final-88f4a9f491/source-before.json",
+      "originalPath": "/tmp/7292-final-golden-repin-run-v1/source-before.json",
+      "bytes": 189994,
+      "sha256": "7ae3cc4b282756389209dc9a5ee04b21dd8843ecb702dd42a4b70e8f19b13289"
+    }
+  ]
+}

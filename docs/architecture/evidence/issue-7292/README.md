@@ -110,3 +110,15 @@ PYVERIFY
 Supply the extracted capture/cache directories to the CLI documented above.
 Required IFC fixtures and reference-engine dependencies are unchanged. Keep new
 adjudication outputs separate; archived receipts must not be rewritten.
+
+## Final native validation
+
+`native-validation.tar.gz` retains the targeted native runs, sanctioned golden
+regeneration, exact Python module provenance, independent source review and
+workspace clippy for source commit `88f4a9f491`. Its decoded checksums and source
+identity are in `native-validation.manifest.json`; use the extraction recipe
+above with that manifest. The recorded lint-only patch bridges the native test
+source to the final source without changing short-circuit evaluation order.
+The old ISSUE_129 pin's diagnostic failure is preserved separately from its
+successful stronger-pin rerun. This archive does not qualify later source,
+browser geometry, performance, or required CI.

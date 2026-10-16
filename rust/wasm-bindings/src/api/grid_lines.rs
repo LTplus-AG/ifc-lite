@@ -53,6 +53,9 @@ pub(crate) fn extract_grid_axes(content: &str, frame: Option<MeshFrame>) -> Vec<
     // exactly like the mesh pipeline (and the symbolic builder).
     // Not drained: meshes nothing. Pinned by rust/geometry/tests/issue_3821_auxiliary_routers_mesh_nothing.rs.
     let router = GeometryRouter::with_units(content, &mut decoder);
+    if router.length_unit_refused() {
+        return Vec::new(); // a refused length unit draws nothing (#7678)
+    }
     let unit_scale = router.unit_scale();
 
     // RTC offset (metres): exact when supplied by the browser mesh pre-pass;

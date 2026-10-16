@@ -327,7 +327,7 @@ impl GeometryRouter {
         source: &mut SourceParts,
         walk: &str,
     ) {
-        let meshed = match self.processors.get(&item.ifc_type, self.schema) {
+        let meshed = match self.processor_for(&item.ifc_type) {
             Some(processor) => {
                 self.process_item_in_rtc_frame(processor.as_ref(), item, decoder, self.rtc_offset)
             }

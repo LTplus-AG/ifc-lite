@@ -111,10 +111,12 @@ pub struct EntityDecoder<'a> {
     /// infinity, which every data-model reader relies on; `true` (geometry
     /// decoders only) refuses it. See [`Self::with_strict_reals`].
     strict_reals: bool,
-    /// Records refused by input admission, for the refused-element counter.
-    /// Atomic so the `&self` [`Self::decode_at_uncached`] can count too while
-    /// the decoder stays `Sync` and `RefUnwindSafe`.
-    refused_reals: std::sync::atomic::AtomicU64,
+    /// Distinct records refused by input admission, for the refusal
+    /// counters: a refused record is never cached, so a re-read must not count
+    /// it twice. A `Mutex` (touched only on a refusal) so the `&self`
+    /// [`Self::decode_at_uncached`] can record too while the decoder stays
+    /// `Sync` and `RefUnwindSafe`.
+    refused_reals: std::sync::Mutex<rustc_hash::FxHashSet<u32>>,
 }
 
 impl<'a> EntityDecoder<'a> {
@@ -139,7 +141,7 @@ impl<'a> EntityDecoder<'a> {
             schema_version_cache: None,
             grid_axis_index: Arc::default(),
             strict_reals: false,
-            refused_reals: std::sync::atomic::AtomicU64::new(0),
+            refused_reals: std::sync::Mutex::default(),
         }
     }
 
@@ -164,7 +166,7 @@ impl<'a> EntityDecoder<'a> {
             schema_version_cache: None,
             grid_axis_index: Arc::default(),
             strict_reals: false,
-            refused_reals: std::sync::atomic::AtomicU64::new(0),
+            refused_reals: std::sync::Mutex::default(),
         }
     }
 
@@ -189,7 +191,7 @@ impl<'a> EntityDecoder<'a> {
             schema_version_cache: None,
             grid_axis_index: Arc::default(),
             strict_reals: false,
-            refused_reals: std::sync::atomic::AtomicU64::new(0),
+            refused_reals: std::sync::Mutex::default(),
         }
     }
 
@@ -276,11 +278,6 @@ impl<'a> EntityDecoder<'a> {
         self
     }
 
-    /// [`Self::with_strict_reals`] on a decoder already built.
-    pub fn set_strict_reals(&mut self, strict: bool) {
-        self.strict_reals = strict;
-    }
-
     /// Whether this decoder refuses unrepresentable reals.
     pub fn strict_reals(&self) -> bool {
         self.strict_reals
@@ -301,14 +298,21 @@ impl<'a> EntityDecoder<'a> {
     /// coordinate-list fast path or a value that narrows to infinity, so the
     /// refusal reaches the refused-element counter like a decode refusal.
     pub fn refuse_record(&self, id: u32) -> Error {
-        self.refused_reals.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.refused_reals.lock().unwrap_or_else(std::sync::PoisonError::into_inner).insert(id);
         Error::UnrepresentableReal(id)
     }
 
     /// How many records this decoder has refused under input admission
     /// (#7678). A geometry job that sees this move refused input.
     pub fn refused_real_records(&self) -> u64 {
-        self.refused_reals.load(std::sync::atomic::Ordering::Relaxed)
+        self.refused_record_ids().len() as u64
+    }
+
+    /// The distinct record ids this decoder has refused (#7678), so callers
+    /// that combine several decoders count each record once.
+    pub fn refused_record_ids(&self) -> Vec<u32> {
+        let ids = self.refused_reals.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        ids.iter().copied().collect()
     }
 
     /// Decode the entity in `[start, end)` **without** touching the cache.
@@ -446,9 +450,19 @@ impl<'a> EntityDecoder<'a> {
             }
         }
 
-        let scale = match project_id {
-            Some(pid) => crate::units::extract_length_unit_scale(self, pid).unwrap_or(1.0),
-            None => 1.0,
+        // #7678: a lossless (data) decoder keeps main's value; a strict
+        // (geometry) one counts an unusable declared factor and returns 1.0
+        // only as a tolerance basis: every geometry path that meshes refuses
+        // the unit itself (`LengthUnit::for_geometry`).
+        let scale = match project_id.map(|pid| crate::units::resolve_length_unit(self, pid)) {
+            Some(Ok(unit)) => match unit.unusable_factor {
+                Some(factor) if self.strict_reals => {
+                    let _counted = self.refuse_record(factor);
+                    1.0
+                }
+                _ => unit.scale,
+            },
+            _ => 1.0,
         };
         self.length_unit_scale_cache = Some(scale);
         scale

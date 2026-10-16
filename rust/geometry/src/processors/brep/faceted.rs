@@ -30,50 +30,6 @@ impl FacetedBrepProcessor {
         Self
     }
 
-    /// Extract polygon points from a loop entity
-    /// Uses fast path for CartesianPoint extraction to avoid decode overhead
-    #[allow(dead_code)]
-    #[inline]
-    fn extract_loop_points(
-        &self,
-        loop_entity: &DecodedEntity,
-        decoder: &mut EntityDecoder,
-    ) -> Option<Vec<Point3<f64>>> {
-        // Try to get Polygon attribute (attribute 0) - IfcPolyLoop has this
-        let polygon_attr = loop_entity.get(0)?;
-
-        // Get the list of point references directly
-        let point_refs = polygon_attr.as_list()?;
-
-        // Pre-allocate with known size
-        let mut polygon_points = Vec::with_capacity(point_refs.len());
-
-        for point_ref in point_refs {
-            let point_id = point_ref.as_entity_ref()?;
-
-            // Try fast path first
-            if let Some((x, y, z)) = decoder.get_cartesian_point_fast(point_id) {
-                polygon_points.push(Point3::new(x, y, z));
-            } else {
-                // Fallback to standard path if fast extraction fails
-                let point = decoder.decode_by_id(point_id).ok()?;
-                let coords_attr = point.get(0)?;
-                let coords = coords_attr.as_list()?;
-                use ifc_lite_core::AttributeValue;
-                let x = coords.first().and_then(|v: &AttributeValue| v.as_float())?;
-                let y = coords.get(1).and_then(|v: &AttributeValue| v.as_float())?;
-                let z = coords.get(2).and_then(|v: &AttributeValue| v.as_float())?;
-                polygon_points.push(Point3::new(x, y, z));
-            }
-        }
-
-        if polygon_points.len() >= 3 {
-            Some(polygon_points)
-        } else {
-            None
-        }
-    }
-
     /// Extract polygon points using ultra-fast path from loop entity ID
     /// Uses cached coordinate extraction - points are cached across faces
     /// This is the fastest path for files with shared cartesian points

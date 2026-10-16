@@ -124,5 +124,6 @@ pub use step_encoding::decode_ifc_string;
 pub use streaming::{parse_stream, ParseEvent, StreamConfig};
 pub use units::{
     extract_length_unit_scale, extract_plane_angle_to_radians, get_si_prefix_multiplier,
+    resolve_length_unit, LengthUnit,
     try_extract_length_unit_scale, try_extract_plane_angle_to_radians,
 };

@@ -515,11 +515,10 @@ fn process_geometry_streaming_filtered_with_options_and_ids(
     let provided_index = options.entity_index.clone();
     let building_index = provided_index.is_none();
     let mut inline_index = IndexBuilder::new(content.len(), building_index);
-    let mut decoder = match &provided_index {
-        Some(idx) => EntityDecoder::with_arc_index(content, idx.clone()),
-        None => EntityDecoder::new(content),
-    }
-    .with_strict_reals(); // geometry pre-pass: refuses unrepresentable reals (#7678)
+    let mut decoder = match &provided_index { // geometry pre-pass: strict reals (#7678)
+        Some(idx) => EntityDecoder::with_arc_index(content, idx.clone()).with_strict_reals(),
+        None => EntityDecoder::new(content).with_strict_reals(),
+    };
     tracing::debug!("Entity index will be built inline during the scan");
 
     // Styled items / indexed colour maps / material chain / voids / fills /
@@ -1062,12 +1061,11 @@ fn process_geometry_streaming_filtered_with_options_and_ids(
         plane_angle_to_radians = unit_scales.plane_angle_to_radians,
         "Resolved unit scales"
     );
-    decoder.seed_unit_scales(
-        unit_scales.length_unit_scale,
-        unit_scales.plane_angle_to_radians,
-    );
+    decoder.seed_unit_scales(unit_scales.geometry_length_scale(), unit_scales.plane_angle_to_radians);
+    // A refused length unit refuses every element, counted (#7678).
+    let refused_unit_jobs = diagnostics::refuse_jobs_for_unit(&unit_scales, &mut entity_jobs);
     // Not drained: meshes nothing. Pinned by rust/geometry/tests/issue_3821_auxiliary_routers_mesh_nothing.rs.
-    let mut router = GeometryRouter::with_scale(unit_scales.length_unit_scale);
+    let mut router = GeometryRouter::with_scale(unit_scales.geometry_length_scale());
     router.set_tessellation_quality(options.tessellation_quality);
     // Build the #563 material-layer index from the IfcRelAssociatesMaterial spans
     // the main scan already stashed (like the wasm pre-pass), not a redundant
@@ -1173,7 +1171,7 @@ fn process_geometry_streaming_filtered_with_options_and_ids(
     let mut current_chunk_size = initial_chunk_size;
 
     let mut deferred_styles_applied = !defer_style_updates;
-    let mut deferred_style_refusals = 0u64;
+    let mut deferred_style_refusals: Vec<u32> = Vec::new();
 
     // Every request-local diagnostic sink for this pass, declared and drained as
     // one subject — see `diagnostics::DiagnosticCollectors`.
@@ -1463,23 +1461,14 @@ fn process_geometry_streaming_filtered_with_options_and_ids(
                 // the entire file.  This eliminates ~0.5-1 s for 1 GB files.
                 // The replay is the shared resolver's styled-item building
                 // block, so deferred and up-front resolution cannot drift.
-                let mut rebuilt_styles = {
-                    let mut style_decoder =
-                        entity_index_arc.decoder(content).with_strict_reals();
-                    let styles = crate::prepass::resolve_styled_item_spans(
-                        &deferred_styled_item_positions,
-                        &mut style_decoder,
-                    );
-                    deferred_style_refusals += style_decoder.refused_real_records();
-                    styles
-                };
+                let mut style_decoder = entity_index_arc.decoder(content).with_strict_reals();
+                let mut rebuilt_styles = crate::prepass::resolve_styled_item_spans(&deferred_styled_item_positions, &mut style_decoder);
+                deferred_style_refusals.extend(style_decoder.refused_record_ids());
                 crate::prepass::merge_indexed_colours(&mut rebuilt_styles, &indexed_colour_index);
                 geometry_style_index = Arc::new(rebuilt_styles);
                 let deferred_color_updates = build_color_updates_for_jobs(
-                    &entity_jobs[..processed_jobs],
-                    geometry_style_index.as_ref(),
-                    content,
-                    &entity_index_arc,
+                    &entity_jobs[..processed_jobs], geometry_style_index.as_ref(), content,
+                    &entity_index_arc, &mut deferred_style_refusals,
                 );
                 if !deferred_color_updates.is_empty() {
                     on_color_update(&deferred_color_updates);
@@ -1501,9 +1490,7 @@ fn process_geometry_streaming_filtered_with_options_and_ids(
     let total_csg_failures: usize = csg_failures.values().map(Vec::len).sum();
     let products_with_failures = ifc_lite_geometry::count_attributed_products(&csg_failures);
     let backstop_dropped = diag_collectors.backstop.into_inner();
-    let refused_input_elements = diag_collectors.refused_input.into_inner();
-    // Styles, colours and unit factors the pre-pass refused (#7678).
-    let refused_prepass_records = decoder.refused_real_records() + deferred_style_refusals;
+    let refused_prepass_records = diagnostics::distinct_refusals(&decoder, deferred_style_refusals, &unit_scales);
     // #3421/#3752: refused, not wrapped; surfaced below via GeometryDiagnostics.
     let oversized_ref_drops = diag_collectors.oversized_ref_drops.into_inner();
     let point_cache_hits = point_cache_hits_collector.into_inner();
@@ -1632,7 +1619,7 @@ fn process_geometry_streaming_filtered_with_options_and_ids(
             total_csg_failures: total_csg_failures as u64,
             products_with_failures,
             degenerate_triangles_dropped: backstop_dropped,
-            refused_input_elements,
+            refused_input_elements: diag_collectors.refused_input.into_inner() + refused_unit_jobs,
             refused_prepass_records,
             point_cache_hits,
             point_cache_misses,

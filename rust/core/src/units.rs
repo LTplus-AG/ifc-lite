@@ -179,20 +179,17 @@ pub fn extract_length_unit_scale(decoder: &mut EntityDecoder, project_id: u32) -
             // error, never a metre default: an unreadable one read FOOT-like
             // custom units as metres (3.28x), an overflowing `1.E400` as
             // infinity (#7678, CORE-15). `ProjectUnits` (#4690) refuses too.
-            let unreadable = || {
-                let m = format!("IFCCONVERSIONBASEDUNIT #{unit_ref}: ConversionFactor #{conversion_factor_ref} is not a positive finite length");
-                Error::parse(0, m)
-            };
+            // [`resolve_length_unit`] is the one home of what callers do next.
+            let unusable = |overflowed| Error::UnusableUnitFactor { factor: conversion_factor_ref, overflowed };
             // IFCMEASUREWITHUNIT: [0] ValueComponent, [1] UnitComponent
             let measure_with_unit = decoder
                 .decode_by_id(conversion_factor_ref)
-                .map_err(|_| unreadable())?;
+                .map_err(|_| unusable(false))?;
             // `as_float` unwraps typed values and reads integers too.
-            let conversion_value = measure_with_unit
-                .get(0)
-                .and_then(|attr| attr.as_float())
+            let raw = measure_with_unit.get(0).and_then(|attr| attr.as_float());
+            let conversion_value = raw
                 .filter(|v| v.is_finite() && *v > 0.0)
-                .ok_or_else(unreadable)?;
+                .ok_or_else(|| unusable(raw == Some(f64::INFINITY)))?;
 
             // IMPORTANT: ValueComponent is expressed in UnitComponent's units.
             // If UnitComponent is a prefixed SI unit (e.g., millimeters),
@@ -220,6 +217,45 @@ pub fn extract_length_unit_scale(decoder: &mut EntityDecoder, project_id: u32) -
 
     // No length unit found, default to meters
     Ok(1.0)
+}
+
+/// A project's length unit under input admission (#7678, CORE-15): the one
+/// home of the "unusable unit factor" policy every caller follows.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct LengthUnit {
+    /// Metres per file unit as the data model reads it, and as main did: an
+    /// overflowing declared factor reads as infinity, any other unusable one
+    /// as metres. Data readers and exporters keep this value.
+    pub scale: f64,
+    /// The `IFCMEASUREWITHUNIT` holding a declared conversion factor that is
+    /// not a positive finite number. Geometry must refuse to mesh against it
+    /// (fail closed and count it): no metre scale is right for it.
+    pub unusable_factor: Option<u32>,
+}
+
+impl LengthUnit {
+    /// The scale geometry may mesh with, or the refusal of the factor.
+    pub fn for_geometry(self) -> Result<f64> {
+        match self.unusable_factor {
+            Some(factor) => Err(Error::UnusableUnitFactor { factor, overflowed: !self.scale.is_finite() }),
+            None => Ok(self.scale),
+        }
+    }
+}
+
+/// [`extract_length_unit_scale`] with its unusable-factor refusal turned into
+/// a [`LengthUnit`], so a data reader keeps main's value and a geometry reader
+/// refuses. Any other error (an undecodable project or assignment) is returned
+/// as before; callers keep their existing defaults for it.
+pub fn resolve_length_unit(decoder: &mut EntityDecoder, project_id: u32) -> Result<LengthUnit> {
+    match extract_length_unit_scale(decoder, project_id) {
+        Ok(scale) => Ok(LengthUnit { scale, unusable_factor: None }),
+        Err(Error::UnusableUnitFactor { factor, overflowed }) => Ok(LengthUnit {
+            scale: if overflowed { f64::INFINITY } else { 1.0 },
+            unusable_factor: Some(factor),
+        }),
+        Err(error) => Err(error),
+    }
 }
 
 /// Resolve the length-unit scale ONLY when the full unit chain

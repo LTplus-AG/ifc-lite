@@ -18,20 +18,10 @@
 
 use ifc_lite_processing::{process_geometry, MeshData};
 
-const FIXTURE: &str = "../../tests/models/issues/845_wall_elemented_case.ifc";
+const FIXTURE: &str = "issues/845_wall_elemented_case.ifc";
 
 fn read_fixture() -> Option<String> {
-    match std::fs::read_to_string(FIXTURE) {
-        Ok(s) => Some(s),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            eprintln!(
-                "skipping issue-845 regression: fixture missing at {FIXTURE} — \
-                 run `pnpm fixtures` to fetch it"
-            );
-            None
-        }
-        Err(e) => panic!("failed to read fixture {FIXTURE}: {e}"),
-    }
+    ifc_lite_testkit::fixture_text(FIXTURE)
 }
 
 fn find_by_id(meshes: &[MeshData], id: u32) -> Option<&MeshData> {

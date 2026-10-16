@@ -43,7 +43,7 @@ const MODEL_CANDIDATES: [&str; 2] = [
 const TOLERANCE_M: f64 = 0.002;
 
 fn repo_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("..")
+    ifc_lite_testkit::repo_root()
 }
 
 fn model_path() -> Option<PathBuf> {

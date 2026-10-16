@@ -313,11 +313,7 @@ fn export_step_ifc2x3_downgrade_does_not_mojibake_a_name() {
 }
 
 fn step_file(schema: &str, data: &str) -> String {
-    format!(
-        "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\n\
-         FILE_NAME('a.ifc','',(''),(''),'','','');\nFILE_SCHEMA(('{schema}'));\nENDSEC;\n\
-         DATA;\n{data}\nENDSEC;\nEND-ISO-10303-21;\n"
-    )
+    ifc_lite_testkit::step_file(schema, &[data])
 }
 
 fn downgrade(src: &str) -> (String, crate::StepStats) {

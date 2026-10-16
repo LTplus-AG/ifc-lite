@@ -409,7 +409,7 @@ def test_issue_5759_rebar_schedule_rejects_nonfinite_radius_before_json():
         "#6=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);", huge_unit,
     )
     assert source_with_huge_unit != source
-    with pytest.raises(ValueError, match=r"rebar #125 sweep 0 radius_m is non-finite"):
+    with pytest.raises(ValueError, match=r"rows\[125\]\.sweeps\[0\]\.radius_m is non-finite"):
         ifclite_geom.rebar_schedule(source_with_huge_unit.encode())
 
 

@@ -912,6 +912,8 @@ ifc-lite export model.ifc --format usd --out model.usda
 
 One-call from the Rust-backed processor: `GeometryProcessor.exportUsd(bytes)` returns the
 `.usda` bytes (`null` before `init()`). The MCP tool is `export_usd` (`{ model_id?, file_path }`).
+A model with no render geometry has nothing to put on the stage, so the export fails with
+`NO_RENDER_GEOMETRY` (match it with `isNoRenderGeometryError`), as GLB and OBJ export do.
 Geometry that lives outside the spatial tree (opening elements, type-product meshes) is placed
 under a synthetic `Unassigned` prim rather than dropped, and each mesh carries its placement as a
 `double3 xformOp:translate` so georeferenced models keep full precision. The layer's

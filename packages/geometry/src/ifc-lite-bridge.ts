@@ -425,6 +425,7 @@ export class IfcLiteBridge {
   /**
    * Export the render geometry in `content` as a Wavefront OBJ string.
    * `isolated`: `undefined` ⇒ no filter; empty `Uint32Array` ⇒ active but matching nothing.
+   * Throws `NO_RENDER_GEOMETRY` when no mesh is written.
    */
   exportObj(
     content: Uint8Array,
@@ -550,7 +551,8 @@ export class IfcLiteBridge {
     );
   }
 
-  /** Export OpenUSD (`.usda` ASCII) — a real Z-up USD stage (geometry-backed). */
+  /** Export OpenUSD (`.usda` ASCII) — a real Z-up USD stage (geometry-backed).
+   * Throws `NO_RENDER_GEOMETRY` for a model with no render geometry. */
   exportUsd(content: Uint8Array): Uint8Array {
     return this.runExport('exportUsd', content, (api) => api.exportUsd(content));
   }

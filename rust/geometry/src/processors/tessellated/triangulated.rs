@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use crate::{Error, Mesh, Result, TessellationQuality};
-use ifc_lite_core::{parse_indices_direct, DecodedEntity, EntityDecoder, IfcSchema, IfcType};
+use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 
 use crate::router::GeometryProcessor;
 
@@ -20,21 +20,26 @@ impl TriangulatedFaceSetProcessor {
 
     /// Parse an `IfcTriangulatedFaceSet`'s positions + triangle indices and
     /// apply the closed-shell outward orientation. Returns
-    /// `(positions, indices, flipped)` where `flipped` is whether the whole
-    /// shell was winding-flipped — the texture path needs it to keep the
-    /// parallel `TexCoordIndex` in lockstep (#961). Shared by `process` and
+    /// `(positions, indices, flipped, authored)`: `flipped` is whether the
+    /// whole shell was winding-flipped (the texture path needs it to keep the
+    /// parallel `TexCoordIndex` in lockstep, #961), and `authored` is the
+    /// CoordIndex before the `PnIndex` remap, winding-flipped the same way,
+    /// when the face set has a `PnIndex` (`None` otherwise: `indices` is the
+    /// authored CoordIndex then). Shared by `process` and
     /// [`Self::process_with_texture`] so there is one parse/orient code path.
     /// `rtc_file_units` rebases before f32 narrowing (see `read_point_list`).
     fn parse_positions_and_orient(
         entity: &DecodedEntity,
         decoder: &mut EntityDecoder,
         rtc_file_units: Option<(f64, f64, f64)>,
-    ) -> Result<(Vec<f32>, Vec<u32>, bool)> {
+    ) -> Result<(Vec<f32>, Vec<u32>, bool, Option<Vec<u32>>)> {
         // IfcTriangulatedFaceSet attributes:
         // 0: Coordinates (IfcCartesianPointList3D)
         // 1: Normals (optional)
         // 2: Closed (optional)
         // 3: CoordIndex (list of list of IfcPositiveInteger)
+        // 4: PnIndex (optional; CoordIndex values index it, its values
+        //    index Coordinates)
 
         let coords_attr = entity.get(0).ok_or_else(|| {
             Error::geometry("TriangulatedFaceSet missing Coordinates".to_string())
@@ -44,55 +49,25 @@ impl TriangulatedFaceSetProcessor {
         })?;
         let positions = super::read_point_list(decoder, coord_entity_id, rtc_file_units)?;
 
-        // Get face indices - try fast path first
-        let indices_attr = entity
-            .get(3)
-            .ok_or_else(|| Error::geometry("TriangulatedFaceSet missing CoordIndex".to_string()))?;
+        let mut indices = super::indices::read_triangle_coord_index(entity, decoder)?;
+        let mut authored = None;
+        if let Some(pn_index) = super::indices::read_pn_index(entity, 4) {
+            let remapped = indices
+                .iter()
+                .map(|&corner| super::indices::through_pn_index(corner, Some(&pn_index)))
+                .collect();
+            authored = Some(std::mem::replace(&mut indices, remapped));
+        }
 
-        // For indices, we need to extract from the main entity's raw bytes
-        // Fast path: parse directly if we can get the raw CoordIndex section
-        let indices = if let Some(raw_entity_bytes) = decoder.get_raw_bytes(entity.id) {
-            // Find the CoordIndex attribute (4th attribute, index 3)
-            // and parse directly
-            if let Some(coord_index_bytes) = super::super::extract_coord_index_bytes(raw_entity_bytes) {
-                parse_indices_direct(coord_index_bytes)
-            } else {
-                // Fallback to standard parsing
-                let face_list = indices_attr
-                    .as_list()
-                    .ok_or_else(|| Error::geometry("Expected face index list".to_string()))?;
-                use ifc_lite_core::AttributeValue;
-                AttributeValue::parse_index_list(face_list)
+        let flipped = super::orients_outward(entity.get(2))
+            && PolygonalFaceSetProcessor::orient_closed_shell_outward(&positions, &mut indices);
+        if flipped {
+            for tri in authored.iter_mut().flat_map(|a| a.chunks_exact_mut(3)) {
+                tri.swap(1, 2);
             }
-        } else {
-            let face_list = indices_attr
-                .as_list()
-                .ok_or_else(|| Error::geometry("Expected face index list".to_string()))?;
-            use ifc_lite_core::AttributeValue;
-            AttributeValue::parse_index_list(face_list)
-        };
+        }
 
-        // Read Closed (attribute 2): .T. means definitely closed, .F. means
-        // definitely open, $ / UNKNOWN means "not specified". Revit-exported
-        // light fixtures and similar families in IFC4 often omit Closed
-        // ($) but still author closed shells — sometimes with inward-facing
-        // winding (issue #819, IFC4TessellationComplex.ifc). Mirror the
-        // PolygonalFaceSet orientation pass but be less strict: also apply
-        // it when Closed is unknown, never when explicitly .F.
-        let closed_attr = entity.get(2);
-        let is_open = closed_attr
-            .and_then(|a| a.as_enum())
-            .map(|v| v == "F")
-            .unwrap_or(false);
-
-        let mut indices = indices;
-        let flipped = if !is_open {
-            PolygonalFaceSetProcessor::orient_closed_shell_outward(&positions, &mut indices)
-        } else {
-            false
-        };
-
-        Ok((positions, indices, flipped))
+        Ok((positions, indices, flipped, authored))
     }
 
     /// Tessellate a textured `IfcTriangulatedFaceSet` (#961): builds the same
@@ -119,7 +94,7 @@ impl TriangulatedFaceSetProcessor {
         map: &crate::processors::texture::ResolvedTextureMap,
         rtc_file_units: Option<(f64, f64, f64)>,
     ) -> Result<(Mesh, Vec<f32>)> {
-        let (positions, indices, flipped) =
+        let (positions, indices, flipped, authored) =
             Self::parse_positions_and_orient(entity, decoder, rtc_file_units)?;
         let tex_coord_index = match &map.tex_coord_index {
             Some(authored) => {
@@ -131,13 +106,17 @@ impl TriangulatedFaceSetProcessor {
                 }
                 idx
             }
-            // TexCoordIndex omitted (`$`): texture vertices pair 1:1 with the
-            // face set's Coordinates, so the CoordIndex IS the UV index (#1781).
-            // Derived from the POST-orientation `indices` (0-based → 1-based),
+            // TexCoordIndex omitted (`$`): the CoordIndex IS the UV index
+            // (#1781), as authored, so under `PnIndex` texture vertex `n`
+            // pairs with CoordIndex value `n`, not with the remapped point.
+            // Derived from the POST-orientation corners (0-based → 1-based),
             // so the whole-shell winding flip is already reflected — no swap.
-            None => indices
+            // An invalid corner stays out of range (its triangle is dropped).
+            None => authored
+                .as_deref()
+                .unwrap_or(&indices)
                 .chunks_exact(3)
-                .map(|t| [t[0] + 1, t[1] + 1, t[2] + 1])
+                .map(|t| [t[0], t[1], t[2]].map(|i| i.saturating_add(1)))
                 .collect(),
         };
         let (mut mesh, uvs) = PolygonalFaceSetProcessor::build_flat_shaded_mesh_with_uvs(
@@ -157,7 +136,7 @@ impl TriangulatedFaceSetProcessor {
         decoder: &mut EntityDecoder,
         rtc_file_units: Option<(f64, f64, f64)>,
     ) -> Result<Mesh> {
-        let (positions, indices, _flipped) =
+        let (positions, indices, _flipped, _authored) =
             Self::parse_positions_and_orient(entity, decoder, rtc_file_units)?;
 
         // Flat-shade by duplicating vertices per-triangle. Without this, the

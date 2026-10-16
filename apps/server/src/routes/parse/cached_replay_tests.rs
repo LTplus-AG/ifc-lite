@@ -113,7 +113,7 @@ async fn miss_when_only_metadata_key_is_cached() {
     let metadata_bytes = serde_json::to_vec(&sample_metadata_header(cache_key, 1)).unwrap();
     state
         .cache
-        .set_bytes(&format!("{cache_key}-parquet-metadata-v5"), &metadata_bytes)
+        .set_bytes(&format!("{cache_key}-parquet-metadata-v6"), &metadata_bytes)
         .await
         .unwrap();
     let result = replay(&state, cache_key, ParquetLayout::Flat, StreamShapes::BatchLocal, crate::services::DataModelEntities::All).await;
@@ -130,7 +130,7 @@ async fn corrupt_parquet_blob_falls_back_to_miss_not_error() {
     let metadata_bytes = serde_json::to_vec(&sample_metadata_header(cache_key, 5)).unwrap();
     state
         .cache
-        .set_bytes(&format!("{cache_key}-parquet-metadata-v5"), &metadata_bytes)
+        .set_bytes(&format!("{cache_key}-parquet-metadata-v6"), &metadata_bytes)
         .await
         .unwrap();
     state
@@ -158,7 +158,7 @@ async fn corrupt_metadata_json_is_a_miss_not_an_error() {
     let cache_key = "corrupt-metadata-key";
     state
         .cache
-        .set_bytes(&format!("{cache_key}-parquet-metadata-v5"), b"not valid json")
+        .set_bytes(&format!("{cache_key}-parquet-metadata-v6"), b"not valid json")
         .await
         .unwrap();
     state
@@ -171,7 +171,7 @@ async fn corrupt_metadata_json_is_a_miss_not_an_error() {
     let result = replay(&state, cache_key, ParquetLayout::Flat, StreamShapes::BatchLocal, crate::services::DataModelEntities::All).await;
     assert!(matches!(result, Ok(None)), "unparseable cached metadata must be a miss");
     assert!(
-        state.cache.lookup(&format!("{cache_key}-parquet-metadata-v5")).await.unwrap().is_none(),
+        state.cache.lookup(&format!("{cache_key}-parquet-metadata-v6")).await.unwrap().is_none(),
         "the unusable header was left for the next request to trip over"
     );
 }
@@ -202,7 +202,7 @@ async fn miss_when_the_cached_data_model_predates_the_current_version() {
     let metadata_bytes = serde_json::to_vec(&sample_metadata_header(cache_key, 3)).unwrap();
     state
         .cache
-        .set_bytes(&format!("{cache_key}-parquet-metadata-v5"), &metadata_bytes)
+        .set_bytes(&format!("{cache_key}-parquet-metadata-v6"), &metadata_bytes)
         .await
         .unwrap();
     state
@@ -234,7 +234,7 @@ async fn valid_cache_hit_round_trips_the_geometry_in_the_sse_body() {
     let metadata_bytes = serde_json::to_vec(&sample_metadata_header(cache_key, 7)).unwrap();
     state
         .cache
-        .set_bytes(&format!("{cache_key}-parquet-metadata-v5"), &metadata_bytes)
+        .set_bytes(&format!("{cache_key}-parquet-metadata-v6"), &metadata_bytes)
         .await
         .unwrap();
     state
@@ -287,7 +287,7 @@ async fn issue_5542_replayed_complete_reports_from_cache() {
     assert!(!stored.stats.from_cache, "seeded as the live parse writes it");
     state
         .cache
-        .set_bytes(&format!("{cache_key}-parquet-metadata-v5"), &serde_json::to_vec(&stored).unwrap())
+        .set_bytes(&format!("{cache_key}-parquet-metadata-v6"), &serde_json::to_vec(&stored).unwrap())
         .await
         .unwrap();
     state
@@ -475,7 +475,7 @@ async fn issue_4459_stale_symbolic_sidecar_refuses_stream_replay_until_refreshed
     let state = test_state("4459-stale-symbolic").await;
     let key = "4459-stale";
     state.cache.set_bytes(&format!("{key}-parquet-v8"), &well_framed_blob(&[1,2,3])).await.unwrap();
-    state.cache.set_bytes(&format!("{key}-parquet-metadata-v5"),
+    state.cache.set_bytes(&format!("{key}-parquet-metadata-v6"),
         &serde_json::to_vec(&sample_metadata_header(key, 1)).unwrap()).await.unwrap();
     state.cache.set_bytes(&data_model_cache_key(key, crate::services::DataModelEntities::All), b"current data model").await.unwrap();
     // Retired: v1 (#4459, no fill provenance), v2 (#4665, pre mesh-frame rebase).

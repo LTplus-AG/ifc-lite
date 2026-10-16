@@ -261,16 +261,11 @@ impl<'a> EntityDecoder<'a> {
         }
         let line = &self.content[start..end];
         parse_entity(line).map_err(|e| {
-            // Add bounded, lossy debug info without requiring the source to be UTF-8.
+            // `e` is already bounded (offset, nom kind and a short context, see
+            // `entity_parse_error`, #7675). Add the record's head, lossily, so
+            // the source need not be UTF-8.
             let cut = line.len().min(100);
-            Error::parse(
-                0,
-                format!(
-                    "Failed to parse entity: {:?}, input: {:?}",
-                    e,
-                    String::from_utf8_lossy(&line[..cut])
-                ),
-            )
+            Error::parse(0, format!("{e}, input: {:?}", String::from_utf8_lossy(&line[..cut])))
         })
     }
 
@@ -633,29 +628,15 @@ impl<'a> EntityDecoder<'a> {
             return None;
         }
 
-        // Check if this is an outer bound by looking for "OUTER" in the type name
-        // IFCFACEOUTERBOUND vs IFCFACEBOUND
-        // The type name is between '=' and '('
-        let mut is_outer = false;
-        let mut i = eq_pos + 1;
-        // Look for "OUTER" pattern (must check for the full word, not just 'O')
-        while i + 4 < len && bytes[i] != b'(' {
-            if bytes[i] == b'O'
-                && bytes[i + 1] == b'U'
-                && bytes[i + 2] == b'T'
-                && bytes[i + 3] == b'E'
-                && bytes[i + 4] == b'R'
-            {
-                is_outer = true;
-                break;
-            }
-            i += 1;
-        }
-        // Continue to find the '(' if we haven't already
-        while i < len && bytes[i] != b'(' {
-            i += 1;
-        }
-        if i >= len {
+        // IFCFACEOUTERBOUND vs IFCFACEBOUND, under STEP's case-insensitive
+        // keyword rule (#4497): a CamelCase `IfcFaceOuterBound` is an outer
+        // bound too (#7689, CORE-11). Trivia (whitespace and `/* ... */`)
+        // may sit on either side of the keyword (#3789), so it is skipped,
+        // not sliced into the name.
+        let start = skip_step_trivia(bytes, eq_pos + 1)?;
+        let (is_outer, end) = face_bound_keyword(bytes, start);
+        let mut i = skip_step_trivia(bytes, end)?;
+        if bytes.get(i) != Some(&b'(') {
             return None;
         }
 
@@ -706,6 +687,27 @@ impl<'a> EntityDecoder<'a> {
 
         Some((loop_id, orientation, is_outer))
     }
+}
+
+/// Whether the keyword at `bytes[start..]` is `IFCFACEOUTERBOUND` under
+/// `keyword_eq`'s rule (ASCII case fold), and where it ends.
+///
+/// This runs once per face bound of every faceted brep, so the uppercase
+/// spellings every exporter writes are matched with one prefix compare; any
+/// other spelling falls back to scanning the keyword and folding its case.
+#[inline]
+fn face_bound_keyword(bytes: &[u8], start: usize) -> (bool, usize) {
+    const OUTER: &[u8] = b"IFCFACEOUTERBOUND";
+    const INNER: &[u8] = b"IFCFACEBOUND";
+    let rest = &bytes[start..];
+    let is_ident = |b: &u8| b.is_ascii_alphanumeric() || *b == b'_';
+    for (spelling, outer) in [(OUTER, true), (INNER, false)] {
+        if rest.starts_with(spelling) && !rest.get(spelling.len()).is_some_and(is_ident) {
+            return (outer, start + spelling.len());
+        }
+    }
+    let len = rest.iter().position(|b| !is_ident(b)).unwrap_or(rest.len());
+    (rest[..len].eq_ignore_ascii_case(OUTER), start + len)
 }
 
 /// Parse cartesian point coordinates inline from raw bytes

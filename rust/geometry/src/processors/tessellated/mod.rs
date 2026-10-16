@@ -6,11 +6,19 @@
 //!
 //! Handles IfcTriangulatedFaceSet (explicit triangle meshes) and
 //! IfcPolygonalFaceSet (polygon meshes requiring triangulation).
+//!
+//! Both read indices through `indices` (one CoordIndex/`PnIndex` rule) and
+//! orient through [`orients_outward`] (one `Closed` policy), #7689.
 
+mod indices;
 mod mesh_build;
 mod polygonal;
 mod triangulate;
 mod triangulated;
+
+#[cfg(test)]
+#[path = "indices_tests.rs"]
+mod indices_tests;
 
 pub use polygonal::PolygonalFaceSetProcessor;
 pub use triangulated::TriangulatedFaceSetProcessor;
@@ -20,6 +28,23 @@ use ifc_lite_core::{
     extract_coordinate_list_from_entity, extract_coordinate_list_from_entity_f64, AttributeValue,
     EntityDecoder,
 };
+
+/// The one `Closed` policy for both tessellated face sets: orient the shell
+/// outward here only when `Closed` is `.T.`.
+///
+/// `.T.` asserts a closed shell (IFC4.3 informal proposition: every edge used
+/// by exactly two faces), so the centroid test below is meaningful. `$` means
+/// "no information can be asserted" and `.F.` an open set: both keep the
+/// authored winding. A concave OPEN sheet (a road sag, a ditch, a bowl) reads
+/// as inward under the centroid test however gentle it is, so orienting `$`
+/// here turned such sheets face-down. A genuinely closed shell written with
+/// `$` is still oriented outward, by the topology-aware per-element pass
+/// (`orient_mesh_outward_verdict`), which leaves open components alone.
+/// IfcOpenShell reorients none of the three. Before #7689 the triangulated
+/// processor oriented `$` and the polygonal one did not.
+fn orients_outward(closed: Option<&AttributeValue>) -> bool {
+    closed.and_then(AttributeValue::as_enum) == Some("T")
+}
 
 /// Read an `IfcCartesianPointList3D` as flat `[x, y, z, ...]` f32 positions.
 ///

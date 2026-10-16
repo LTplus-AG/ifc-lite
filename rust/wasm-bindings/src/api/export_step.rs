@@ -75,29 +75,39 @@ impl IfcAPI {
     /// bytes laid end-to-end; `lengths[i]` is the byte length of model `i`. The first model
     /// keeps its ids; later models are id-offset and their project unified to the first.
     #[wasm_bindgen(js_name = exportMerged)]
-    pub fn export_merged(&self, concatenated: &[u8], lengths: &[u32], schema: String) -> Vec<u8> {
+    pub fn export_merged(
+        &self,
+        concatenated: &[u8],
+        lengths: &[u32],
+        schema: String,
+    ) -> Result<Vec<u8>, JsError> {
         // Strict segmentation: a malformed `lengths` (overflow, out-of-bounds, or not
         // summing to the buffer) must surface an error rather than silently dropping a
-        // model and returning a partial merge.
-        let mut models: Vec<&[u8]> = Vec::with_capacity(lengths.len());
-        let mut off = 0usize;
-        for &len in lengths {
-            let end = off.checked_add(len as usize).unwrap_or_else(|| {
-                wasm_bindgen::throw_str("exportMerged: segment length overflow")
-            });
-            if end > concatenated.len() {
-                wasm_bindgen::throw_str("exportMerged: segment lengths exceed concatenated buffer");
-            }
-            models.push(&concatenated[off..end]);
-            off = end;
-        }
-        if off != concatenated.len() {
-            wasm_bindgen::throw_str("exportMerged: segment lengths do not cover the whole buffer");
-        }
+        // model and returning a partial merge. Returned as `Err`, not thrown with
+        // `throw_str`, for the reason `exportStep` gives: a throw inside `&self`
+        // leaves the borrow held, so the host could never `free()` the API (#7677).
+        let models = segment_models(concatenated, lengths).map_err(|msg| JsError::new(&format!("exportMerged: {msg}")))?;
         let opts = ifc_lite_export::MergedOptions {
             schema: if schema.is_empty() { None } else { Some(schema) },
             ..Default::default()
         };
-        ifc_lite_export::export_merged(&models, &opts).into_bytes()
+        Ok(ifc_lite_export::export_merged(&models, &opts).into_bytes())
     }
+}
+
+/// Split `concatenated` into one slice per `lengths` entry, refusing an
+/// overflowing, out-of-bounds or incomplete segmentation.
+fn segment_models<'a>(concatenated: &'a [u8], lengths: &[u32]) -> Result<Vec<&'a [u8]>, &'static str> {
+    let mut models: Vec<&[u8]> = Vec::with_capacity(lengths.len());
+    let mut off = 0usize;
+    for &len in lengths {
+        let end = off.checked_add(len as usize).ok_or("segment length overflow")?;
+        let model = concatenated.get(off..end).ok_or("segment lengths exceed concatenated buffer")?;
+        models.push(model);
+        off = end;
+    }
+    if off != concatenated.len() {
+        return Err("segment lengths do not cover the whole buffer");
+    }
+    Ok(models)
 }

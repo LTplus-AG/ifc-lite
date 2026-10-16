@@ -103,6 +103,13 @@ pub(super) fn fmt_f64(v: f64) -> String {
     }
 }
 
+/// A USD `matrix4d` value: four rows, each the image of one basis vector
+/// (row-vector convention, translation in the last row).
+pub(super) fn fmt_matrix4d(rows: &[[f64; 4]; 4]) -> String {
+    let row = |r: &[f64; 4]| r.map(fmt_f64).join(", ");
+    format!("( ({}), ({}), ({}), ({}) )", row(&rows[0]), row(&rows[1]), row(&rows[2]), row(&rows[3]))
+}
+
 pub(super) fn indent_str(level: usize) -> String {
     "    ".repeat(level)
 }

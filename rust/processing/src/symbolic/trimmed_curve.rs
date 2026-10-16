@@ -30,7 +30,7 @@ pub(super) fn extract_trimmed_curve(
     express_id: u32,
     ifc_type: &str,
     rep_identifier: &str,
-    unit_scale: f32,
+    unit_scale: f64,
     transform: &Transform2D,
     rebase: RenderFrameRebase,
     out: &mut SymbolicAccumulator,
@@ -49,7 +49,7 @@ pub(super) fn extract_trimmed_curve(
     let (basis, radius) = (&circle.basis, circle.semi_a);
     let world_y = rebase.elevation(basis.tz + transform.tz);
 
-    let angle_scale = decoder.plane_angle_to_radians() as f32;
+    let angle_scale = decoder.plane_angle_to_radians();
     // MasterRepresentation (attr 4) picks the form when the SET carries both.
     let prefer_cartesian = item
         .get(4)
@@ -80,11 +80,11 @@ pub(super) fn extract_trimmed_curve(
         .unwrap_or(true);
 
     let start_angle = raw_trim1.unwrap_or(0.0);
-    let mut end_angle = raw_trim2.unwrap_or(std::f32::consts::TAU);
+    let mut end_angle = raw_trim2.unwrap_or(std::f64::consts::TAU);
     if sense && end_angle < start_angle {
-        end_angle += std::f32::consts::TAU;
+        end_angle += std::f64::consts::TAU;
     } else if !sense && end_angle > start_angle {
-        end_angle -= std::f32::consts::TAU;
+        end_angle -= std::f64::consts::TAU;
     }
     if !start_angle.is_finite() || !end_angle.is_finite() {
         return;
@@ -101,7 +101,7 @@ pub(super) fn extract_trimmed_curve(
     // sagitta/chord = tan(sweep/4)/2, under 0.02 below 0.16 rad. A former
     // `radius > chord_len * 10.0` term flattened 355 degree arcs (G2).
     let angle_span = (end_angle - start_angle).abs();
-    let is_near_collinear = if angle_span >= std::f32::consts::PI {
+    let is_near_collinear = if angle_span >= std::f64::consts::PI {
         false
     } else if chord_len > 0.0001 {
         let mid_angle = (start_angle + end_angle) / 2.0;
@@ -144,7 +144,7 @@ pub(super) fn extract_trimmed_curve(
         let num_segments = ((arc_length * radius / 0.1) as usize).max(8).min(64);
         let mut points = Vec::with_capacity((num_segments + 1) * 2);
         for i in 0..=num_segments {
-            let t = i as f32 / num_segments as f32;
+            let t = i as f64 / num_segments as f64;
             let angle = start_angle + t * (end_angle - start_angle);
             let (local_x, local_y) = circle.point_at(angle);
             let (wx, wy) = transform.transform_point(local_x, local_y);
@@ -181,10 +181,10 @@ fn resolve_trim(
     attr: Option<&AttributeValue>,
     decoder: &mut EntityDecoder,
     basis: &Transform2D,
-    unit_scale: f32,
-    angle_scale: f32,
+    unit_scale: f64,
+    angle_scale: f64,
     prefer_cartesian: bool,
-) -> Option<f32> {
+) -> Option<f64> {
     let members = attr?.as_list()?;
     let mut from_parameter = None;
     let mut from_cartesian = None;
@@ -199,7 +199,7 @@ fn resolve_trim(
                 // A typed `IFCPARAMETERVALUE(..)` decodes to List([name, value]);
                 // a bare number is accepted too, since exporters emit both.
                 if from_parameter.is_none() {
-                    from_parameter = other.as_float().map(|v| v as f32 * angle_scale);
+                    from_parameter = other.as_float().map(|v| v * angle_scale);
                 }
             }
         }
@@ -216,15 +216,15 @@ fn cartesian_trim_angle(
     point_id: u32,
     decoder: &mut EntityDecoder,
     basis: &Transform2D,
-    unit_scale: f32,
-) -> Option<f32> {
+    unit_scale: f64,
+) -> Option<f64> {
     let point = decoder.decode_by_id(point_id).ok()?;
     if point.ifc_type != IfcType::IfcCartesianPoint {
         return None;
     }
     let coords = point.get(0).and_then(|a| a.as_list())?;
-    let px = coords.first().and_then(|v| v.as_float()).unwrap_or(0.0) as f32 * unit_scale;
-    let py = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0) as f32 * unit_scale;
+    let px = coords.first().and_then(|v| v.as_float()).unwrap_or(0.0) * unit_scale;
+    let py = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0) * unit_scale;
     let dx = px - basis.tx;
     let dy = py - basis.ty;
     // The linear block is a pure rotation (`parse_axis2_placement_2d`), so its

@@ -16,6 +16,7 @@
 
 use super::predicates::orient2d_any;
 use super::retriangulate::projection_axis;
+use super::tritri::plane_normal;
 use super::{DropAxis, ImplicitPoint, Lpi, Sign};
 
 type Tri = [[f64; 3]; 3];
@@ -23,16 +24,6 @@ type Tri = [[f64; 3]; 3];
 #[inline]
 fn e(p: [f64; 3]) -> ImplicitPoint {
     ImplicitPoint::Explicit(p)
-}
-
-fn plane_normal(t: &Tri) -> [f64; 3] {
-    let u = [t[1][0] - t[0][0], t[1][1] - t[0][1], t[1][2] - t[0][2]];
-    let v = [t[2][0] - t[0][0], t[2][1] - t[0][1], t[2][2] - t[0][2]];
-    [
-        u[1] * v[2] - u[2] * v[1],
-        u[2] * v[0] - u[0] * v[2],
-        u[0] * v[1] - u[1] * v[0],
-    ]
 }
 
 /// Is explicit point `q` inside the closed triangle `tri` (oriented `w0`)?

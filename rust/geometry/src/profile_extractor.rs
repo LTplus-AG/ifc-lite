@@ -154,7 +154,7 @@ pub fn extract_profiles_with_diagnostics<T: AsRef<[u8]> + ?Sized>(content: &T, m
         // on the first extractable item: an element with no extrusion never needs it.
         let mut elem_tf: Option<Matrix4<f64>> = None;
 
-        for shape_rep in representations {
+        'reps: for shape_rep in representations {
             if shape_rep.ifc_type != IfcType::IfcShapeRepresentation {
                 continue;
             }
@@ -182,8 +182,10 @@ pub fn extract_profiles_with_diagnostics<T: AsRef<[u8]> + ?Sized>(content: &T, m
                     match router.resolve_scaled_placement(&entity, &mut decoder) {
                         Ok(m) => elem_tf = Some(Matrix4::from_column_slice(&m)),
                         Err(e) => {
+                            // The element's placement, not this item's: no later
+                            // representation can be drawn either, so report it once.
                             skip(&mut skipped, id, &ifc_type_name, format!("placement: {e}"));
-                            break;
+                            break 'reps;
                         }
                     }
                 }

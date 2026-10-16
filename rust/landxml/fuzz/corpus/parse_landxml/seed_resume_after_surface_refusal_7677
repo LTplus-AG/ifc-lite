@@ -1,0 +1,1 @@
+<LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2"><Units><Metric linearUnit="meter"/></Units><Surfaces><Surface><Definition surfType="TIN"><Pnts><P id="1">0 0 0</P></Pnts></Definition></Surface></Surfaces></LandXML>

@@ -1,0 +1,302 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+//! Issue #7689 (Rust sweep B6e): one index rule for both tessellated face
+//! sets. `PnIndex` remaps on `IfcTriangulatedFaceSet` as on
+//! `IfcPolygonalFaceSet` (PROC-3), the CoordIndex fast path refuses what the
+//! decoded path refuses (PROC-14, CORE-12), and `Closed = $` orients the
+//! same way in both processors (PROC-3).
+
+use super::{PolygonalFaceSetProcessor, TriangulatedFaceSetProcessor};
+use crate::processors::texture::{ImageTextureRef, ResolvedTextureMap, TextureSource};
+use crate::router::GeometryProcessor;
+use crate::{Mesh, TessellationQuality};
+use ifc_lite_core::{EntityDecoder, IfcSchema};
+
+type Triangle = [[f32; 3]; 3];
+
+/// Four points: the origin and the three unit-10 axis tips.
+const POINTS: &str = "#1=IFCCARTESIANPOINTLIST3D(((0.,0.,0.),(10.,0.,0.),(0.,10.,0.),(0.,0.,10.)));\n";
+
+fn mesh(content: &str, id: u32) -> Mesh {
+    let mut decoder = EntityDecoder::new(content);
+    let entity = decoder.decode_by_id(id).expect("face set decodes");
+    let schema = IfcSchema::new();
+    let quality = TessellationQuality::Medium;
+    if entity.ifc_type == ifc_lite_core::IfcType::IfcPolygonalFaceSet {
+        PolygonalFaceSetProcessor::new().process(&entity, &mut decoder, &schema, quality)
+    } else {
+        TriangulatedFaceSetProcessor::new().process(&entity, &mut decoder, &schema, quality)
+    }
+    .expect("face set meshes")
+}
+
+fn triangles(mesh: &Mesh) -> Vec<Triangle> {
+    let p = |i: u32| {
+        let i = i as usize * 3;
+        [mesh.positions[i], mesh.positions[i + 1], mesh.positions[i + 2]]
+    };
+    mesh.indices.chunks_exact(3).map(|t| [p(t[0]), p(t[1]), p(t[2])]).collect()
+}
+
+/// The triangulated and the polygonal spelling of the same faces, with the
+/// same `Closed` and `PnIndex` (`$` for none).
+fn both(faces: &[&str], closed: &str, pn_index: &str) -> (Vec<Triangle>, Vec<Triangle>) {
+    let coord_index = faces.join(",");
+    let triangulated = format!("{POINTS}#2=IFCTRIANGULATEDFACESET(#1,$,{closed},({coord_index}),{pn_index});\n");
+    let mut polygonal = POINTS.to_string();
+    let face_ids: Vec<String> = (0..faces.len()).map(|i| format!("#{}", 10 + i)).collect();
+    for (i, face) in faces.iter().enumerate() {
+        polygonal.push_str(&format!("#{}=IFCINDEXEDPOLYGONALFACE({face});\n", 10 + i));
+    }
+    polygonal.push_str(&format!("#3=IFCPOLYGONALFACESET(#1,{closed},({}),{pn_index});\n", face_ids.join(",")));
+    (triangles(&mesh(&triangulated, 2)), triangles(&mesh(&polygonal, 3)))
+}
+
+const O: [f32; 3] = [0., 0., 0.];
+const X: [f32; 3] = [10., 0., 0.];
+const Y: [f32; 3] = [0., 10., 0.];
+const Z: [f32; 3] = [0., 0., 10.];
+
+/// PROC-3: CoordIndex values index `PnIndex`, whose values index
+/// `Coordinates`. The triangulated processor used CoordIndex against
+/// `Coordinates` directly and drew `(O, X, Y)` here.
+#[test]
+fn triangulated_face_set_remaps_through_pn_index_7689() {
+    let (triangulated, polygonal) = both(&["(1,2,3)"], ".F.", "(4,2,3)");
+    assert_eq!(triangulated, vec![[Z, X, Y]], "PROC-3: IfcTriangulatedFaceSet must honour PnIndex");
+    assert_eq!(polygonal, triangulated, "both face sets apply the one PnIndex rule");
+}
+
+/// PROC-3 follow-on: an invalid `PnIndex` entry is a hole in the remap, not a
+/// gap that shifts every later entry left. The polygonal processor filtered
+/// `0` out of the list first, so `(2,3,4)` read entries 2 and 3 of the
+/// compacted list and the face drew the wrong vertices or none at all.
+#[test]
+fn invalid_pn_index_entry_keeps_later_positions_7689() {
+    let (triangulated, polygonal) = both(&["(2,3,4)", "(1,2,3)"], ".F.", "(0,4,2,3)");
+    assert_eq!(polygonal, vec![[Z, X, Y]], "(2,3,4) resolves through PnIndex 2..4; (1,2,3) uses the invalid entry and is dropped");
+    assert_eq!(triangulated, polygonal);
+}
+
+/// A CoordIndex past the end of `PnIndex`, or a `PnIndex` entry past the end
+/// of `Coordinates`, drops the face: neither falls back to `Coordinates`.
+#[test]
+fn out_of_range_through_pn_index_drops_the_face_7689() {
+    let (triangulated, polygonal) = both(&["(1,2,3)", "(1,2,4)", "(2,3,5)"], ".F.", "(4,2,3,9)");
+    assert_eq!(triangulated, vec![[Z, X, Y]]);
+    assert_eq!(polygonal, triangulated);
+}
+
+/// PROC-14 / CORE-12: the raw-byte CoordIndex fast path accepted `-` and
+/// read `-2` as `2`, read `0` as vertex 1, and flattened every digit run so a
+/// two- or four-entry face shifted every later triangle. Only the two
+/// well-formed faces may survive, and they must be the right two.
+#[test]
+fn coord_index_fast_path_refuses_what_the_decoded_path_refuses_7689() {
+    let faces = ["(1,2,3)", "(1,-2,3)", "(0,2,3)", "(1,2)", "(1,2,3,4)", "(2,3,4)"];
+    let (triangulated, polygonal) = both(&faces, ".F.", "$");
+    assert_eq!(triangulated, vec![[O, X, Y], [X, Y, Z]], "PROC-14: malformed faces are dropped, not aliased");
+    // The polygonal reading of the same loops: a loop of four is a quad, so
+    // `(1,2,3,4)` legitimately meshes there. Every other bad loop is dropped.
+    assert_eq!(polygonal.len(), 4, "(1,2,3), the (1,2,3,4) quad's two triangles, (2,3,4): {polygonal:?}");
+    assert_eq!(polygonal.first(), Some(&[O, X, Y]));
+    assert_eq!(polygonal.last(), Some(&[X, Y, Z]));
+}
+
+/// Which CoordIndex grammar runs depended only on whether the decoder could
+/// hand back the face set's raw bytes, so one file meshed differently in the
+/// two configurations. Drive both: the fast path with the face set's own
+/// decoder, the decoded path with a decoder that holds only the point list.
+#[test]
+fn fast_and_decoded_coord_index_paths_mesh_identically_7689() {
+    let quality = TessellationQuality::Medium;
+    let cases = ["((1,2,3),(2,3,4))", "((1,2,3),(0,3,4))", "((1,2,3),(2,-3,4))", "((1,2),(2,3,4))", "((1,2,3,4),(2,3,4))", "((1,2,3),(1,2,9))"];
+    for coord_index in cases {
+        for pn_index in ["$", "(4,3,2,1)", "(0,1,2,3)"] {
+            let content = format!("{POINTS}#2=IFCTRIANGULATEDFACESET(#1,$,.F.,{coord_index},{pn_index});\n");
+            let fast = triangles(&mesh(&content, 2));
+            let entity = EntityDecoder::new(&content).decode_by_id(2).unwrap();
+            let mut points_only = EntityDecoder::new(POINTS);
+            assert!(points_only.get_raw_bytes(2).is_none(), "the face set's raw bytes are out of reach");
+            let decoded = TriangulatedFaceSetProcessor::new()
+                .process(&entity, &mut points_only, &IfcSchema::new(), quality)
+                .unwrap();
+            assert_eq!(fast, triangles(&decoded), "{coord_index} PnIndex {pn_index}");
+        }
+    }
+}
+
+fn signed_volume(triangles: &[Triangle]) -> f64 {
+    triangles
+        .iter()
+        .map(|[a, b, c]| {
+            let [a, b, c] = [a, b, c].map(|p| p.map(f64::from));
+            (a[0] * (b[1] * c[2] - b[2] * c[1]) - a[1] * (b[0] * c[2] - b[2] * c[0]) + a[2] * (b[0] * c[1] - b[1] * c[0])) / 6.0
+        })
+        .sum()
+}
+
+/// PROC-3: the two processors read `Closed = $` oppositely (the triangulated
+/// one oriented it, the polygonal one did not). One policy now: only `.T.`
+/// is oriented here; `$` and `.F.` keep the authored winding, and a closed
+/// `$` shell is turned outward by the topology-aware per-element pass.
+#[test]
+fn closed_policy_is_the_same_in_both_processors_7689() {
+    // An inward-wound tetrahedron (every face reversed).
+    let inward = ["(1,2,3)", "(1,4,2)", "(1,3,4)", "(2,4,3)"];
+    let (triangulated, polygonal) = both(&inward, ".T.", "$");
+    assert!(signed_volume(&triangulated) > 0.0, "Closed = .T.: triangulated shell faces outward");
+    assert!(signed_volume(&polygonal) > 0.0, "Closed = .T.: polygonal shell faces outward");
+    for closed in ["$", ".F."] {
+        let (triangulated, polygonal) = both(&inward, closed, "$");
+        assert!(signed_volume(&triangulated) < 0.0, "Closed = {closed}: triangulated keeps the authored winding");
+        assert!(signed_volume(&polygonal) < 0.0, "Closed = {closed}: polygonal keeps the authored winding");
+    }
+}
+
+/// A genuinely closed shell written with `Closed = $` still ends up outward:
+/// the per-element pass (`orient_mesh_outward_verdict`, run by
+/// `produce_element_meshes`) orients closed components from topology.
+#[test]
+fn closed_shell_with_unknown_closed_is_oriented_by_the_per_element_pass_7689() {
+    let inward = "#2=IFCTRIANGULATEDFACESET(#1,$,$,((1,2,3),(1,4,2),(1,3,4),(2,4,3)),$);\n";
+    let mut processed = mesh(&format!("{POINTS}{inward}"), 2);
+    assert!(signed_volume(&triangles(&processed)) < 0.0, "the processor keeps `$` as authored");
+    let verdict = crate::orient_mesh_outward_verdict(&mut processed);
+    assert!(verdict.flipped);
+    assert!(signed_volume(&triangles(&processed)) > 0.0, "the per-element pass turns the closed shell outward");
+}
+
+/// An open grid sheet, 100 m square, authored with +Z normals, sagging
+/// `sag` metres at its middle row (a road sag curve, a ditch, a bowl): the
+/// concave-up shape the centroid test reads as "inward" at any sag.
+fn sag_sheet(sag: f64, closed: &str) -> (String, String) {
+    const N: usize = 11;
+    let points: Vec<String> = (0..N * N)
+        .map(|k| {
+            let (x, y) = ((k % N) as f64 * 10.0, (k / N) as f64 * 10.0);
+            format!("({x:.1},{y:.1},{:.6})", sag * ((x - 50.0) / 50.0).powi(2))
+        })
+        .collect();
+    let id = |i: usize, j: usize| j * N + i + 1;
+    let (mut quads, mut tris) = (Vec::new(), Vec::new());
+    for j in 0..N - 1 {
+        for i in 0..N - 1 {
+            let (a, b, c, d) = (id(i, j), id(i + 1, j), id(i + 1, j + 1), id(i, j + 1));
+            quads.push(format!("({a},{b},{c},{d})"));
+            tris.push(format!("({a},{b},{c}),({a},{c},{d})"));
+        }
+    }
+    let list = format!("#1=IFCCARTESIANPOINTLIST3D(({}));\n", points.join(","));
+    let triangulated = format!("{list}#2=IFCTRIANGULATEDFACESET(#1,$,{closed},({}),$);\n", tris.join(","));
+    let mut polygonal = list;
+    let ids: Vec<String> = quads
+        .iter()
+        .enumerate()
+        .map(|(k, quad)| {
+            polygonal.push_str(&format!("#{}=IFCINDEXEDPOLYGONALFACE({quad});\n", 100 + k));
+            format!("#{}", 100 + k)
+        })
+        .collect();
+    polygonal.push_str(&format!("#3=IFCPOLYGONALFACESET(#1,{closed},({}),$);\n", ids.join(",")));
+    (triangulated, polygonal)
+}
+
+fn mean_normal_z(mesh: &Mesh) -> f32 {
+    let z: Vec<f32> = mesh.normals.chunks_exact(3).map(|n| n[2]).collect();
+    z.iter().sum::<f32>() / z.len() as f32
+}
+
+/// Review of #7716: orienting `Closed = $` turned concave OPEN sheets
+/// face-down (lit as their underside). They keep their +Z normals in both
+/// processors, and the per-element pass leaves an open sheet alone too.
+#[test]
+fn concave_open_sheet_with_unknown_closed_keeps_its_up_normals_7689() {
+    for sag in [0.001, 0.05, 0.5] {
+        let (triangulated, polygonal) = sag_sheet(sag, "$");
+        for (name, mut sheet) in [("triangulated", mesh(&triangulated, 2)), ("polygonal", mesh(&polygonal, 3))] {
+            assert!(mean_normal_z(&sheet) > 0.9, "{name}, sag {sag} m: authored +Z kept");
+            let authored = triangles(&sheet);
+            let verdict = crate::orient_mesh_outward_verdict(&mut sheet);
+            assert!(!verdict.flipped, "{name}, sag {sag} m: the per-element pass leaves an open sheet alone");
+            assert_eq!(triangles(&sheet), authored);
+        }
+    }
+}
+
+/// An open sheet that CLAIMS `Closed = .T.` is a malformed file (`.T.`
+/// requires every edge to be shared by two faces). Documented behaviour: the
+/// processor trusts the claim, so a concave sheet is "oriented outward",
+/// i.e. turned face-down, while a flat one keeps its winding because the
+/// planar noise guard refuses to flip on a zero signal.
+#[test]
+fn open_sheet_marked_closed_follows_the_closed_claim_7689() {
+    let (triangulated, polygonal) = sag_sheet(0.0, ".T.");
+    assert!(mean_normal_z(&mesh(&triangulated, 2)) > 0.9, "flat .T. sheet: no flip on noise");
+    assert!(mean_normal_z(&mesh(&polygonal, 3)) > 0.9, "flat .T. sheet: no flip on noise");
+    let (triangulated, polygonal) = sag_sheet(0.5, ".T.");
+    assert!(mean_normal_z(&mesh(&triangulated, 2)) < -0.9, "concave .T. sheet: trusted as a shell, flipped");
+    assert!(mean_normal_z(&mesh(&polygonal, 3)) < -0.9, "concave .T. sheet: trusted as a shell, flipped");
+}
+
+/// The original IFC4 (2013) `IfcTriangulatedFaceSet` carried `NormalIndex`
+/// (a list of index triples) where a later IFC4 addendum has `PnIndex`. Reading it as a
+/// `PnIndex` made every entry invalid and dropped every face; it reads as
+/// absent instead (#7716 review).
+#[test]
+fn original_ifc4_normal_index_is_not_read_as_pn_index_7689() {
+    let legacy = format!("{POINTS}#2=IFCTRIANGULATEDFACESET(#1,((0.,0.,1.)),.F.,((1,2,3),(2,3,4)),((1,1,1),(1,1,1)));\n");
+    let plain = format!("{POINTS}#2=IFCTRIANGULATEDFACESET(#1,$,.F.,((1,2,3),(2,3,4)),$);\n");
+    assert_eq!(triangles(&mesh(&legacy, 2)), triangles(&mesh(&plain, 2)));
+    assert_eq!(triangles(&mesh(&legacy, 2)).len(), 2);
+}
+
+/// With `TexCoordIndex = $` the CoordIndex doubles as the UV index (#1781).
+/// Under `PnIndex` that is the authored CoordIndex value, not the remapped
+/// coordinate: texture vertex `n` pairs with the face set's `n`-th point.
+#[test]
+fn texture_without_tex_coord_index_pairs_uvs_with_coord_index_under_pn_index_7689() {
+    let content = format!("{POINTS}#2=IFCTRIANGULATEDFACESET(#1,$,.F.,((1,2,3)),(4,2,3));\n");
+    let mut decoder = EntityDecoder::new(&content);
+    let entity = decoder.decode_by_id(2).unwrap();
+    let map = ResolvedTextureMap {
+        texture_id: 9,
+        texture: TextureSource::Image(ImageTextureRef { url: "t.png".into(), repeat_s: true, repeat_t: true }),
+        tex_coords: vec![[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]],
+        tex_coord_index: None,
+    };
+    let (mesh, uvs) = TriangulatedFaceSetProcessor::new().process_with_texture(&entity, &mut decoder, &map).unwrap();
+    assert_eq!(triangles(&mesh), vec![[Z, X, Y]]);
+    // V is flipped to a top-left origin.
+    assert_eq!(uvs, vec![0.0, 1.0, 1.0, 1.0, 0.0, 0.0]);
+}
+
+/// A planar sheet has no inside: the orientation test's sum is rounding noise
+/// of either sign there, which flipped such sheets at random. Now that
+/// `Closed = $` orients both face sets, a single face (ISSUE_171 #4343, a
+/// barely warped quad, and #4355, a planar one) and a flat terrain patch
+/// marked `.T.` (`landxml/federation/bonsai-topo-control-v1/terrain.ifc`)
+/// keep their authored winding in both orders (#7689).
+#[test]
+fn planar_sheets_keep_their_authored_winding_7689() {
+    let sheets = [
+        "((-2.96410202980042,-2.8660249710083,4.),(-1.96410202980042,-4.59807586669922,3.20000004768372),(2.3660249710083,-2.0980761051178,3.20000004768372),(-0.366025000810623,-1.3660249710083,4.))",
+        "((-3.96410202980042,-1.1339750289917,3.20000004768372),(0.366025000810623,1.3660249710083,3.20000004768372),(0.366025000810623,1.3660249710083,0.),(-3.96410202980042,-1.1339750289917,0.))",
+    ];
+    for points in sheets {
+        for (face, closed) in [("(1,2,3,4)", "$"), ("(4,3,2,1)", "$"), ("(1,2,3,4)", ".T."), ("(4,3,2,1)", ".T.")] {
+            let content = format!("#1=IFCCARTESIANPOINTLIST3D({points});\n#2=IFCINDEXEDPOLYGONALFACE({face});\n#3=IFCPOLYGONALFACESET(#1,{closed},(#2),$);\n");
+            let open = content.replace(&format!("#1,{closed},"), "#1,.F.,");
+            assert_eq!(triangles(&mesh(&content, 3)), triangles(&mesh(&open, 3)), "{face} Closed = {closed}");
+        }
+    }
+    // Four coplanar triangles of a flat terrain patch, wound up and down.
+    let patch = "#1=IFCCARTESIANPOINTLIST3D(((0.,0.,5.),(10.,0.,5.),(10.,10.,5.),(0.,10.,5.),(5.,5.,5.)));\n";
+    for faces in ["((1,2,5),(2,3,5),(3,4,5),(4,1,5))", "((1,5,2),(2,5,3),(3,5,4),(4,5,1))"] {
+        let closed = format!("{patch}#2=IFCTRIANGULATEDFACESET(#1,$,.T.,{faces},$);\n");
+        let open = format!("{patch}#2=IFCTRIANGULATEDFACESET(#1,$,.F.,{faces},$);\n");
+        assert_eq!(triangles(&mesh(&closed, 2)), triangles(&mesh(&open, 2)), "{faces}");
+    }
+}

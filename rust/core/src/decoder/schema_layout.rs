@@ -34,9 +34,8 @@ impl EntityDecoder<'_> {
         if let Some(cached) = self.schema_version_cache {
             return cached;
         }
-        let version = crate::parser::header::declared_schemas_bounded(self.content)
-            .iter()
-            .find_map(|label| SchemaVersion::from_file_schema(label));
+        let version =
+            crate::parser::header::first_declared_schema(self.content, SchemaVersion::from_file_schema);
         self.schema_version_cache = Some(version);
         version
     }
@@ -155,7 +154,7 @@ mod tests {
     #[test]
     fn grid_axis_owners_are_shared_through_the_columnar_index() {
         let content = source("IFC2X3");
-        let index = Arc::new(ColumnarEntityIndex::from_scan(content.as_bytes()));
+        let index = Arc::new(ColumnarEntityIndex::from_scan(content.as_bytes()).unwrap());
         let mut first = EntityDecoder::with_arc_columnar_index(&content, index.clone());
         assert_eq!(first.grid_of_axis(1), Some(9));
         drop(first);

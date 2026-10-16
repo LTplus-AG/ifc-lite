@@ -152,6 +152,12 @@ impl Parser<'_> {
         if self.version.is_empty() {
             return Err(error(Code::InvalidXml, "LandXML document is empty"));
         }
+        if self.coordinate_systems_seen > 1 {
+            self.warnings.push(format!(
+                "LandXML declares {} root CoordinateSystem records; retained the last declaration",
+                self.coordinate_systems_seen,
+            ));
+        }
         if !self.extensions.is_empty() {
             self.warnings.push(format!(
                 "Preserved {} unknown vendor extension root(s) as source metadata",

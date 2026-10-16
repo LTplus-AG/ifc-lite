@@ -36,10 +36,9 @@ pub fn orient3d(a: &ImplicitPoint, b: &ImplicitPoint, c: &ImplicitPoint, d: &Imp
                 fixed::indirect_orient3d(a, *b, *c, *d)
             })
             .unwrap_or_else(|| rational::tpi_orient3d(t, *b, *c, *d)),
-        // By-construction unreachable: kernel callers only ever build the configurations above.
-        _ => unimplemented!(
-            "kernel::orient3d: implicit-point configuration never produced by the arrangement pipeline"
-        ),
+        // The arrangement never builds another configuration; a direct caller
+        // gets the exact answer on materialised points, not a panic (#7677).
+        _ => rational::orient3d_points(a, b, c, d),
     }
 }
 
@@ -69,10 +68,9 @@ pub fn orient2d(a: &ImplicitPoint, b: &ImplicitPoint, c: &ImplicitPoint, axis: D
                 fixed::indirect_orient2d(a, *b, *c, axis)
             })
             .unwrap_or_else(|| rational::tpi_orient2d(t, *b, *c, axis)),
-        // By-construction unreachable: kernel callers only ever build the configurations above.
-        _ => unimplemented!(
-            "kernel::orient2d: implicit-point configuration never produced by the arrangement pipeline"
-        ),
+        // Any other configuration is canonicalised by `orient2d_any`, which only
+        // calls back here with (E,E,E) or (I,E,E), so this cannot recurse (#7677).
+        _ => orient2d_any(a, b, c, axis),
     }
 }
 
@@ -111,6 +109,8 @@ pub fn cmp_lex(a: &ImplicitPoint, b: &ImplicitPoint) -> Sign {
 fn explicit_coord(p: &ImplicitPoint) -> [f64; 3] {
     match p {
         ImplicitPoint::Explicit(c) => *c,
+        // Invariant: only `orient2d_any`'s 2-implicit arm calls this, on rp[2],
+        // which the implicit-first sort leaves Explicit.
         _ => unreachable!("explicit_coord on an implicit point"),
     }
 }

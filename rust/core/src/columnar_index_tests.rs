@@ -105,7 +105,7 @@ fn from_hashmap_matches_lookup() {
         #1=IFCCARTESIANPOINT((9.,9.,9.));\n\
         ENDSEC;\nEND-ISO-10303-21;\n";
     let map = crate::build_entity_index(content);
-    let col = ColumnarEntityIndex::from_hashmap(&map);
+    let col = ColumnarEntityIndex::from_hashmap(&map).unwrap();
     assert_eq!(col.len(), 2, "duplicate #1 must collapse to one entry");
     assert_eq!(col.len(), map.len());
     for (&id, &(s, e)) in map.iter() {
@@ -118,7 +118,7 @@ fn from_hashmap_matches_lookup() {
     assert_eq!(&content.as_bytes()[start_1..end_1], b"#1=IFCCARTESIANPOINT((9.,9.,9.));");
 
     // A scan-built index must agree byte-for-byte with the hashmap one.
-    let scanned = ColumnarEntityIndex::from_scan(content);
+    let scanned = ColumnarEntityIndex::from_scan(content).unwrap();
     assert_eq!(scanned.ids(), col.ids());
     assert_eq!(scanned.starts(), col.starts());
     assert_eq!(scanned.lengths(), col.lengths());
@@ -133,8 +133,8 @@ fn consuming_and_borrowing_hashmap_builds_agree() {
     for (id, start, end) in [(7u32, 100usize, 150usize), (3, 0, 40), (9, 200, 260), (1, 41, 99)] {
         map.insert(id, (start, end));
     }
-    let borrowed = ColumnarEntityIndex::from_hashmap(&map);
-    let consumed = ColumnarEntityIndex::from_hashmap_consuming(map);
+    let borrowed = ColumnarEntityIndex::from_hashmap(&map).unwrap();
+    let consumed = ColumnarEntityIndex::from_hashmap_consuming(map).unwrap();
     for id in [0u32, 1, 3, 7, 9, 10, u32::MAX] {
         assert_eq!(borrowed.lookup(id), consumed.lookup(id), "id {id}");
     }

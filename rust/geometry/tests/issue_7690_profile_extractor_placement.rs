@@ -127,3 +127,32 @@ fn proc_2_every_dropped_mapped_item_is_reported() {
     skipped_ids.sort_unstable();
     assert_eq!(skipped_ids, [20, 21], "{skipped:?}");
 }
+
+/// Wall #20's placement axis is an `IfcCartesianPoint`, not an `IfcDirection`,
+/// so the mesh path's placement resolver errors. The wall has TWO Body
+/// representations; the placement failure is the element's, so it is reported
+/// once, not once per representation that retries it (#7690 review).
+const BAD_PLACEMENT: &str = "#1=IFCCARTESIANPOINT((0.,0.,0.));#2=IFCCARTESIANPOINT((0.,0.,1.));\n\
+#3=IFCAXIS2PLACEMENT3D(#1,#2,$);#4=IFCLOCALPLACEMENT($,#3);\n\
+#5=IFCCARTESIANPOINT((0.,0.));#6=IFCAXIS2PLACEMENT2D(#5,$);\n\
+#7=IFCRECTANGLEPROFILEDEF(.AREA.,$,#6,1.,1.);#8=IFCDIRECTION((0.,0.,1.));\n\
+#10=IFCEXTRUDEDAREASOLID(#7,$,#8,2.);#11=IFCEXTRUDEDAREASOLID(#7,$,#8,3.);\n\
+#30=IFCSHAPEREPRESENTATION($,'Body','SweptSolid',(#10));#31=IFCSHAPEREPRESENTATION($,'Body','SweptSolid',(#11));\n\
+#40=IFCPRODUCTDEFINITIONSHAPE($,$,(#30,#31));\n\
+#20=IFCWALL('0000000000000000000020',$,$,$,$,#4,#40,$,$);\n";
+
+#[test]
+fn proc_2_a_placement_failure_is_reported_once_per_element() {
+    let content = ifc("IFC4", BAD_PLACEMENT);
+    let mut decoder = EntityDecoder::new(&content);
+    let router = GeometryRouter::with_units(&content, &mut decoder);
+    let wall = decoder.decode_by_id(20).unwrap();
+    assert!(
+        router.resolve_scaled_placement(&wall, &mut decoder).is_err(),
+        "the fixture must make the mesh path's placement resolver fail"
+    );
+    let (profiles, skipped) = extract_profiles_with_diagnostics(&content, 0);
+    assert!(profiles.is_empty(), "{profiles:?}");
+    assert_eq!(skipped.len(), 1, "one skip for one element: {skipped:?}");
+    assert!(skipped[0].reason.starts_with("placement"), "{skipped:?}");
+}

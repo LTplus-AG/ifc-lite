@@ -143,6 +143,10 @@ impl ZoneSplitJs {
 /// meaningless volumes with a plausible `sumErrorRel`, so the closure proof
 /// above is the caller's responsibility and not a formality.
 ///
+/// Returns `undefined` when a zone parameter is non-finite, or a mesh vertex
+/// or zone corner lies past ±2^128, the exact kernel's coordinate bound
+/// (#7677): such a split is refused rather than answered wrongly.
+///
 /// Returns `undefined` when the mesh encloses no volume (no triangles survive
 /// the filter above, or the shell is degenerate): there is nothing to split,
 /// and a result for it would report `pieceCount` 1, `sumErrorRel` 0 and

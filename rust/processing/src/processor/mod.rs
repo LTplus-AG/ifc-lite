@@ -48,6 +48,7 @@ mod schema_detection;
 mod site_local;
 
 pub use quick_metadata::is_quick_spatial_type_ci;
+pub use schema_detection::detect_schema_version;
 pub use site_local::{convert_mesh_to_site_local, native_to_baked};
 pub(crate) use site_local::site_local_rotation_invalidates_captured_transforms;
 
@@ -939,7 +940,7 @@ fn process_geometry_streaming_filtered_with_options_and_ids(
         entity_jobs.retain(|job| ids.contains(&job.id));
     }
 
-    let schema_version = schema_detection::detect_schema_version(content).to_string();
+    let schema_version = detect_schema_version(content).to_string();
 
     let geometry_entity_count = entity_jobs.len();
     tracing::info!(
@@ -1142,12 +1143,15 @@ fn process_geometry_streaming_filtered_with_options_and_ids(
         content,
         &mut decoder,
     ));
-    // Material chain joined by the shared resolver (#407). The single
-    // opaque-first colour is the general-path element fallback; the full list
-    // feeds the opening sub-mesh transparent/opaque split (#913 §2.3).
+    // Material chain joined by the shared resolver (#407). The general-path
+    // element fallback is `style::element_material_fallback_color`, the rule
+    // the browser style wire carries too (PROCESSING-4); the full list feeds
+    // the opening sub-mesh transparent/opaque split (#913 §2.3).
     let element_material_color: FxHashMap<u32, [f32; 4]> = element_material_colors
         .iter()
-        .filter_map(|(&id, colors)| crate::style::pick_opaque_first(colors).map(|c| (id, c)))
+        .filter_map(|(&id, colors)| {
+            crate::style::element_material_fallback_color(colors).map(|c| (id, c))
+        })
         .collect();
     let element_material_colors = Arc::new(element_material_colors);
 
@@ -1226,34 +1230,15 @@ fn process_geometry_streaming_filtered_with_options_and_ids(
             )
         });
     // #858 don't-bake exclusion: geometry ids carrying a MULTI-COLOUR
-    // IfcIndexedColourMap. A mapped source whose single solid is one of these must NOT
-    // don't-bake — the flat path splits it into one mesh per palette group (element.rs
-    // `emit_sub_meshes`), but an instance placeholder resolves ONE colour, collapsing
-    // the palette. Built only when the plan is armed AND there are indexed-colour maps;
-    // armed on every per-job router so the guard routes those occurrences to flat
-    // (byte-identical to instancing-off). `indexed_colour_full` is keyed by the same
-    // face-set id the router resolves as the source's single solid, so the ids line up
-    // 1:1.
-    //
-    // #1807: keep only MULTI-COLOUR maps. A UNIFORM (single-colour) map never splits —
-    // `split_mesh_by_indexed_colour` returns None below 2 distinct entries
-    // (style/indexed_colour.rs) — so it collapses to one `dominant()`-coloured mesh an
-    // instance carries losslessly. Excluding uniform sources bought nothing and
-    // disabled don't-bake wholesale on models that store colour as per-triangle
-    // IfcIndexedColourMap on shared face sets (metering stations, CATIA exports). An
-    // all-uniform model collects nothing → leave the guard unarmed (None) rather than
-    // pay a per-element lookup against an empty set on every router.
-    let indexed_colour_split_ids: Option<Arc<FxHashSet<u32>>> = (instancing_plan.is_some()
-        && !indexed_colour_full.is_empty())
-    .then(|| {
-        let ids: FxHashSet<u32> = indexed_colour_full
-            .iter()
-            .filter(|(_, m)| m.has_multiple_colours())
-            .map(|(&id, _)| id)
-            .collect();
-        (!ids.is_empty()).then(|| Arc::new(ids))
-    })
-    .flatten();
+    // IfcIndexedColourMap, armed on every per-job router so those occurrences
+    // route to flat (byte-identical to instancing-off). Built only when the plan
+    // is armed; the derivation (and why uniform maps are left out, #1807) lives
+    // in `style::indexed_colour_split_guard_ids`, which the browser batch arms
+    // from too (EDGE-WASM-5).
+    let indexed_colour_split_ids: Option<Arc<FxHashSet<u32>>> = instancing_plan
+        .is_some()
+        .then(|| crate::style::indexed_colour_split_guard_ids(&indexed_colour_full))
+        .flatten();
     // Collect the don't-bake occurrences across all chunks/threads; resolved into
     // `InstanceRecord`s against the retained template meshes after the geometry phase.
     let raw_instance_collector: std::sync::Mutex<Vec<RawInstanceOccurrence>> =

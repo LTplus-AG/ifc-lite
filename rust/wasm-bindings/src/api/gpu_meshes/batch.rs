@@ -154,8 +154,7 @@ impl IfcAPI {
             } else {
                 // No setEntityIndex was delivered (non-streaming path): scan the
                 // file straight into sorted columns, skipping the FxHashMap.
-                let built =
-                    std::sync::Arc::new(ifc_lite_core::ColumnarEntityIndex::from_scan(content));
+                let built = std::sync::Arc::new(super::scan_columnar_index(content));
                 *slot = Some(std::sync::Arc::clone(&built));
                 built
             }
@@ -328,7 +327,18 @@ impl IfcAPI {
         // built once per worker (#858) — the canonical producer splits face
         // sets per palette group so multi-coloured triangles don't collapse to
         // the single dominant colour the prepass `geometry_styles` carries.
-        let indexed_colour_full = self.get_or_build_indexed_colour_maps(content, &mut decoder);
+        let indexed_colour = self.get_or_build_indexed_colour_maps(content, &mut decoder);
+        let indexed_colour_full = &indexed_colour.maps;
+        // #858 / EDGE-WASM-5 (#7691): with the don't-bake plan armed, keep
+        // multi-colour indexed-colour sources flat so their palette split
+        // survives; an instance placeholder carries ONE colour. The same id set
+        // the native orchestrator arms (`style::indexed_colour_split_guard_ids`),
+        // derived once per content alongside the maps.
+        if instance_plan.is_some() {
+            if let Some(ids) = indexed_colour.split_guard_ids.as_ref() {
+                router.enable_indexed_colour_split_guard(std::sync::Arc::clone(ids));
+            }
+        }
 
         // The canonical styled-item index the shared producer consumes — built
         // once per worker alongside `geometry_styles` above (#1097).
@@ -354,7 +364,7 @@ impl IfcAPI {
         let ctx = MeshProductionContext {
             void_index: &void_index,
             geometry_style_index,
-            indexed_colour_full: &indexed_colour_full,
+            indexed_colour_full,
             element_material_colors: &element_material_colors,
             texture_index: &texture_index,
             // The browser's axis change (IFC Z-up → WebGL Y-up) happens at the

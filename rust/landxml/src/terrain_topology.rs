@@ -114,14 +114,13 @@ pub(super) fn line_vertices(
     }
     let mut indexes = Vec::with_capacity(line.points.len());
     for (ordinal, values) in line.points.iter().enumerate() {
-        let Some((&northing, rest)) = values.split_first() else {
-            unreachable!()
-        };
-        let Some((&easting, rest)) = rest.split_first() else {
-            unreachable!()
-        };
-        let Some(&elevation) = rest.first() else {
-            unreachable!()
+        // Points are chunked by `coordinate_dimension`, checked above; a short
+        // one is still refused, not a panic (#7677).
+        let &[northing, easting, elevation, ..] = values.as_slice() else {
+            return Err(diagnostic(
+                TerrainCode::MissingElevation,
+                "constrained terrain requires PntList3D boundary and breakline elevations",
+            ));
         };
         indexes.push(add_vertex(
             vertices,

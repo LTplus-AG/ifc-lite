@@ -7,14 +7,14 @@
  * export. Zero means the export carries no render geometry — the OBJ twin of
  * `countGlbMeshes` for GLB.
  *
- * The Rust OBJ exporter (`ifc_lite_export::export_obj`) has no "no render
- * geometry" error signal the way `export_glb` does (`NoRenderGeometry`) — it
- * always returns a string, even when zero meshes pass `mesh_visible`. That
- * string is never zero bytes: it still carries the two `# ifc-lite OBJ
- * export` / `# units: …` comment header lines, so a byte-length check alone
- * cannot tell an empty export from a real one (an all-header, zero-geometry
- * OBJ is a fixed ~88 bytes regardless of input). Vertex count is the actual
- * geometry-content signal.
+ * Since #7695 the Rust OBJ exporter (`ifc_lite_export::export_obj`) refuses
+ * an export with zero written meshes with `NoRenderGeometry`, as `export_glb`
+ * does, so the CLI and MCP keep this count as defense-in-depth. The OBJ it
+ * used to return then was never zero bytes: it carried the two `# ifc-lite
+ * OBJ export` / `# units: …` comment header lines, so a byte-length check
+ * alone cannot tell an empty export from a real one (an all-header,
+ * zero-geometry OBJ is a fixed ~88 bytes regardless of input). Vertex count
+ * is the actual geometry-content signal.
  *
  * Only `v ` lines are counted, not `vn `/`vt ` — a line that starts "vn "
  * does not satisfy `startsWith('v ')` (the character after `v` is `n`, not a

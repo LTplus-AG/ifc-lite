@@ -29,7 +29,9 @@ const gp = vi.hoisted(() => {
 
 vi.mock('@ifc-lite/geometry', () => ({
   GeometryProcessor: gp.GeometryProcessor,
-  isNoRenderGeometryError: () => false,
+  // The real rule's shape: the boundary's typed refusal is an Error whose
+  // message starts with the code.
+  isNoRenderGeometryError: (e: unknown) => e instanceof Error && e.message.startsWith('NO_RENDER_GEOMETRY'),
 }));
 
 import type { ToolContext } from '../context.js';
@@ -105,7 +107,7 @@ describe('export_usd tool', () => {
   });
 
   it('writes the exportUsd bytes to disk and disposes the processor on success', async () => {
-    const usd = new TextEncoder().encode('#usda 1.0\n(\n    defaultPrim = "World"\n)\n');
+    const usd = new TextEncoder().encode('#usda 1.0\n(\n    defaultPrim = "World"\n)\ndef Xform "World"\n{\n    def Mesh "Body" (\n    )\n    {\n    }\n}\n');
     gp.exportUsd.mockReturnValue(usd);
     const out = join(tmp, 'out.usda');
 
@@ -127,5 +129,30 @@ describe('export_usd tool', () => {
     });
     // Disposed via the handler's `finally`, even though nothing was written.
     expect(gp.dispose).toHaveBeenCalledTimes(1);
+  });
+
+  it('#7695: maps the boundary refusal of a model with no render geometry to a tool error and writes nothing', async () => {
+    gp.exportUsd.mockImplementation(() => {
+      throw new Error('NO_RENDER_GEOMETRY: export produced no render geometry (empty model or all meshes filtered out)');
+    });
+    const out = join(tmp, 'out-empty.usda');
+
+    await expect(exportUsdTool.handler({ file_path: out }, ctx)).rejects.toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: expect.stringContaining('USD export produced 0 meshes'),
+    });
+    await expect(readFile(out)).rejects.toThrow();
+    expect(gp.dispose).toHaveBeenCalledTimes(1);
+  });
+
+  it('#7695: refuses a stage with no drawn mesh even when the boundary returned one (defense-in-depth)', async () => {
+    gp.exportUsd.mockReturnValue(new TextEncoder().encode('#usda 1.0\ndef Xform "World"\n{\n}\n'));
+    const out = join(tmp, 'out-meshless.usda');
+
+    await expect(exportUsdTool.handler({ file_path: out }, ctx)).rejects.toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: expect.stringContaining('USD export produced 0 meshes'),
+    });
+    await expect(readFile(out)).rejects.toThrow();
   });
 });

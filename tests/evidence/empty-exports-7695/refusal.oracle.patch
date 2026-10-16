@@ -1,0 +1,60 @@
+diff --git a/apps/viewer/src/components/viewer/UsdExportDialog.tsx b/apps/viewer/src/components/viewer/UsdExportDialog.tsx
+--- a/apps/viewer/src/components/viewer/UsdExportDialog.tsx
++++ b/apps/viewer/src/components/viewer/UsdExportDialog.tsx
+@@ -127,7 +127,7 @@ export function UsdExportDialog({ surface, trigger }: UsdExportDialogProps) {
+       console.error('USD export failed:', err);
+       // The Rust boundary refuses a model with nothing to draw (#7695); say
+       // so rather than forwarding the engine's error code.
+-      const errMsg = false
++      const errMsg = isNoRenderGeometryError(err)
+         ? t('geometryExport.usd.noRenderGeometryError')
+         : t('geometryExport.usd.failedMessage', {
+             reason: err instanceof Error ? err.message : t('geometryExport.shared.unknownError'),
+diff --git a/packages/cli/src/commands/export-rust-formats.ts b/packages/cli/src/commands/export-rust-formats.ts
+--- a/packages/cli/src/commands/export-rust-formats.ts
++++ b/packages/cli/src/commands/export-rust-formats.ts
+@@ -67,6 +67,7 @@ function refusingEmpty(
+   try {
+     out = run();
+   } catch (err) {
++    if (isNoRenderGeometryError(err)) fatal(emptyMessage);
+     throw err;
+   }
+   if (out != null && count(out) === 0) fatal(emptyMessage);
+diff --git a/packages/export/src/zero-content.ts b/packages/export/src/zero-content.ts
+--- a/packages/export/src/zero-content.ts
++++ b/packages/export/src/zero-content.ts
+@@ -87,7 +87,7 @@ export function countUsdMeshes(usda: Uint8Array): number {
+   }
+   let count = 0;
+   for (const line of text.split('\n')) {
+-    if (/^\s*def (Mesh|Xform) "/.test(line)) count++;
++    if (/^\s*def Mesh "/.test(line)) count++;
+   }
+   return count;
+ }
+diff --git a/packages/mcp/src/tools/export.ts b/packages/mcp/src/tools/export.ts
+--- a/packages/mcp/src/tools/export.ts
++++ b/packages/mcp/src/tools/export.ts
+@@ -62,7 +62,7 @@ function refusingEmpty(
+   try {
+     out = run();
+   } catch (err) {
+-    throw err;
++    throw isNoRenderGeometryError(err) ? empty() : err;
+   }
+   if (out != null && count(out) === 0) throw empty();
+   return out;
+diff --git a/rust/export/src/error.rs b/rust/export/src/error.rs
+--- a/rust/export/src/error.rs
++++ b/rust/export/src/error.rs
+@@ -126,6 +126,8 @@ impl std::error::Error for ExportError {}
+ ///
+ /// The cross-language vectors are `tests/fixtures/empty_export_vectors.json`.
+ pub(crate) fn require_render_geometry(meshes_written: usize) -> Result<(), ExportError> {
+-    let _ = meshes_written;
++    if meshes_written == 0 {
++        return Err(ExportError::NoRenderGeometry);
++    }
+     Ok(())
+ }

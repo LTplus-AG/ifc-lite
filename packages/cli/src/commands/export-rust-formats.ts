@@ -17,6 +17,7 @@ import {
   countJsonldNodes,
   countObjVertices,
   countStepEntities,
+  countUsdMeshes,
 } from '@ifc-lite/export';
 import { getFlag, hasFlag, fatal, writeOutput } from '../output.js';
 import { logger } from '../logger.js';
@@ -47,6 +48,30 @@ async function rustExportContext(
   const gp = new GeometryProcessor();
   await gp.init();
   return { bytes, gp };
+}
+
+/**
+ * Run a render-geometry export. The Rust boundary's `NO_RENDER_GEOMETRY`
+ * refusal (#7695) and, as defense-in-depth, an artifact whose `count` is 0
+ * become the operator message `emptyMessage`: a zero-mesh file is never
+ * written and reported as success. A header-only OBJ or a mesh-less USD stage
+ * is never zero bytes, so `count` (not size) is the content signal. Other
+ * failures propagate unchanged.
+ */
+function refusingEmpty(
+  run: () => Uint8Array | null,
+  count: (artifact: Uint8Array) => number,
+  emptyMessage: string,
+): Uint8Array | null {
+  let out: Uint8Array | null;
+  try {
+    out = run();
+  } catch (err) {
+    if (isNoRenderGeometryError(err)) fatal(emptyMessage);
+    throw err;
+  }
+  if (out != null && count(out) === 0) fatal(emptyMessage);
+  return out;
 }
 
 /**
@@ -97,9 +122,13 @@ export async function exportRustFormat(
       await writeOutput(out as Uint8Array, outPath);
     } else if (format === 'usd') {
       // OpenUSD (.usda ASCII) — whole-model Z-up USD stage (geometry-backed).
-      const out = gp.exportUsd(bytes);
+      const out = refusingEmpty(
+        () => gp.exportUsd(bytes),
+        countUsdMeshes,
+        'USD export produced 0 meshes — the model has no exportable render geometry (or geometry production failed).',
+      );
       if (out == null) fatal('USD export failed (geometry pipeline not initialized)');
-      await writeOutput(out as Uint8Array, outPath);
+      await writeOutput(out, outPath);
     } else if (format === 'step') {
       // Rust faithful re-serialization (+ reference-closed subset when filtered).
       const schema = getFlag(args, '--schema') ?? '';
@@ -146,57 +175,34 @@ export async function exportRustFormat(
       // an explicit empty array as "isolation active, matches nothing"
       // (the OBJ twin of #4328/#4364), and would fail-close every
       // unfiltered export otherwise.
-      const out = gp.exportObj(bytes, true, new Uint32Array(), filterActive ? isolated : undefined);
+      const objEmpty = filterActive
+        ? 'OBJ export produced 0 vertices — the matched entities have no exportable render geometry. Check --type/--storey/--where/--limit.'
+        : 'OBJ export produced 0 vertices — the model has no exportable render geometry (or geometry production failed).';
+      const out = refusingEmpty(
+        () => gp.exportObj(bytes, true, new Uint32Array(), filterActive ? isolated : undefined),
+        countObjVertices,
+        objEmpty,
+      );
       if (out == null) fatal('OBJ export failed (geometry pipeline not initialized)');
-      // Defense-in-depth mirroring the GLB guard below: the Rust OBJ path has
-      // no "no render geometry" error signal the way exportGlb does
-      // (NoRenderGeometry) — it always returns a string, so a filter/pipeline
-      // regression that drops all mesh visibility silently writes a small but
-      // still non-zero-byte, header-only OBJ as "success". Vertex count (not
-      // file size) is the actual geometry-content signal — see
-      // countObjVertices's comment.
-      if (countObjVertices(out as Uint8Array) === 0) {
-        fatal(
-          filterActive
-            ? 'OBJ export produced 0 vertices — the matched entities have no exportable render geometry. Check --type/--storey/--where/--limit.'
-            : 'OBJ export produced 0 vertices — the model has no exportable render geometry (or geometry production failed).',
-        );
-      }
       logger.debug(`OBJ vertices: ${countObjVertices(out as Uint8Array)}`);
       await writeOutput(out as Uint8Array, outPath);
     } else {
       // gltf | glb → binary GLB
       if (!outPath) fatal('--out is required for GLB/glTF export (binary output)');
-      let out: Uint8Array | null;
-      try {
-        // `isolated` is empty-but-active only when a filter matched nothing
-        // (rejected above); an inactive filter must pass `undefined` to
-        // exportGlb, not an empty Uint32Array — the wasm boundary now treats
-        // an explicit empty array as "isolation active, matches nothing"
-        // (#4328), and would fail-close every unfiltered export otherwise.
-        out = gp.exportGlb(bytes, false, new Uint32Array(), filterActive ? isolated : undefined, '');
-      } catch (err) {
-        // The Rust boundary fails closed on an empty visible mesh set; map
-        // the typed error to the tailored operator hint.
-        if (isNoRenderGeometryError(err)) {
-          fatal(
-            filterActive
-              ? 'GLB export produced 0 meshes — the matched entities have no exportable render geometry. Check --type/--storey/--where/--limit.'
-              : 'GLB export produced 0 meshes — the model has no exportable render geometry (or geometry production failed).',
-          );
-        }
-        throw err;
-      }
+      const glbEmpty = filterActive
+        ? 'GLB export produced 0 meshes — the matched entities have no exportable render geometry. Check --type/--storey/--where/--limit.'
+        : 'GLB export produced 0 meshes — the model has no exportable render geometry (or geometry production failed).';
+      // `isolated` is empty-but-active only when a filter matched nothing
+      // (rejected above); an inactive filter must pass `undefined` to
+      // exportGlb, not an empty Uint32Array — the wasm boundary now treats
+      // an explicit empty array as "isolation active, matches nothing"
+      // (#4328), and would fail-close every unfiltered export otherwise.
+      const out = refusingEmpty(
+        () => gp.exportGlb(bytes, false, new Uint32Array(), filterActive ? isolated : undefined, ''),
+        countGlbMeshes,
+        glbEmpty,
+      );
       if (out == null) fatal('GLB export failed (geometry pipeline not initialized)');
-      // Defense-in-depth behind the Rust fail-closed guard: a zero-mesh GLB
-      // must never be written to disk and reported as success.
-      if (countGlbMeshes(out as Uint8Array) === 0) {
-        fatal(
-          filterActive
-            ? 'GLB export produced 0 meshes — the matched entities have no exportable render geometry. Check --type/--storey/--where/--limit.'
-            : 'GLB export produced 0 meshes — the model has no exportable render geometry (or geometry production failed).',
-        );
-      }
       logger.debug(`GLB meshes: ${countGlbMeshes(out as Uint8Array)}`);
       await writeFile(outPath, out as Uint8Array);
       logger.info(`Written to ${outPath}`);

@@ -332,6 +332,16 @@ impl UnitScales {
     pub fn geometry_length_scale(&self) -> f64 {
         if self.length_unit_refused.is_some() { 1.0 } else { self.length_unit_scale }
     }
+
+    /// A router at [`Self::geometry_length_scale`], refused when the length
+    /// unit is, so no placement it resolves reads file units as metres (#7678).
+    pub(crate) fn geometry_router(&self) -> ifc_lite_geometry::GeometryRouter {
+        let mut router = ifc_lite_geometry::GeometryRouter::with_scale(self.geometry_length_scale());
+        if self.length_unit_refused.is_some() {
+            router.refuse_length_unit();
+        }
+        router
+    }
 }
 
 impl Default for UnitScales {

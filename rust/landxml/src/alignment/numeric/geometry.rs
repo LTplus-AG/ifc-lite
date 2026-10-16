@@ -224,7 +224,10 @@ fn irregular_vertices(
         .points
         .iter()
         .rposition(|point| distance_between(*point, end) > EPSILON)
-        .map_or(first_interior, |index| index.saturating_add(1));
+        .map_or(first_interior, |index| index.saturating_add(1))
+        // Start and End within 2·EPSILON of each other make the two scans
+        // cross; an empty interior then, not a reversed slice (#7677).
+        .max(first_interior);
     let mut vertices = Vec::with_capacity(last_interior.saturating_sub(first_interior) + 2);
     vertices.push(start);
     for point in &value.points[first_interior..last_interior] {

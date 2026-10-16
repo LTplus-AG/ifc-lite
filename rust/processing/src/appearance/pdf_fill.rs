@@ -90,15 +90,15 @@ pub fn plan_pdf_fill_annotation_with_clip(
             points.push(*points.first().ok_or("PDF fill has an empty boundary")?);
             boundaries.push(author.add(IfcType::IfcPolyline, vec![refs(&points)]));
         }
+        // Never empty: the fixed-grid composition only opens a shape on an
+        // outer ring of 3+ points (contour_composition.rs). Refused rather
+        // than indexed anyway (#7677, PROCESSING-APP-21).
+        let (outer, holes) = boundaries.split_first().ok_or("PDF fill shape has no outer boundary")?;
         let item = author.add(
             IfcType::IfcAnnotationFillArea,
             vec![
-                A::EntityRef(boundaries[0]),
-                if boundaries.len() == 1 {
-                    A::Null
-                } else {
-                    refs(&boundaries[1..])
-                },
+                A::EntityRef(*outer),
+                if holes.is_empty() { A::Null } else { refs(holes) },
             ],
         );
         let rgb = shape.rgb;

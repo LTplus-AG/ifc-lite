@@ -226,7 +226,8 @@ impl Parser<'_> {
                 let points = match points_limited(
                     &text,
                     dimension,
-                    self.limits.max_vertices - self.vertices,
+                    // `reserve_vertices` counts before it refuses (#7677).
+                    self.limits.max_vertices.saturating_sub(self.vertices),
                 ) {
                     Ok(points) => points,
                     Err(error) => return self.reject_malformed_geometry(&error.message),

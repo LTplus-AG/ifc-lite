@@ -117,6 +117,13 @@ adjudication outputs separate; archived receipts must not be rewritten.
 For another archive below, set `capture_manifest` to its `.manifest.json` path;
 the recipe verifies its exact member names, including any revision prefix.
 
+Derived browser/performance summaries and the native/performance archive indexes
+are retained byte-for-byte in `validation-summaries.tar.gz`. First extract it with
+`validation-summaries.manifest.json` using the recipe above. For either indexed
+archive, then set `capture_manifest` to its extracted `.manifest.json` and rerun
+the same block from the repository root. Recorded sources and limitations remain
+unchanged; these historical records do not qualify later source.
+
 ## Final native validation
 
 `native-validation.tar.gz` retains the targeted native runs, sanctioned golden
@@ -181,3 +188,11 @@ errors and the separate mid-build test-name rename remain explicitly recorded.
 The production void router already rejects budget trips; browser host loss is
 not demonstrated. Earlier browser/performance evidence retains its original
 source identity and does not qualify this later guard.
+
+## Current review fixes
+
+`review-followups.tar.gz` retains the zone regression failing after an actual
+budget trip on the old implementation, 20 passing zone tests, and the separately
+source-bound 67-test/Clippy run on `e5f4723829`. Its manifest works with the same
+extraction recipe. The original scratch-parser failure remains recorded.
+Current-source WASM, browser and performance qualification are still pending.

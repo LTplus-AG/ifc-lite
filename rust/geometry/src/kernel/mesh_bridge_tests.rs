@@ -834,3 +834,57 @@ fn lenient_batch_on_an_open_host_reads_both_volumes_about_one_point_4693() {
         "open host removed {open_removed} m³, closed host {closed_removed} m³"
     );
 }
+
+#[test]
+fn budget_aborted_partition_cover_retains_failure_provenance_7607() {
+    use crate::kernel::{arrangement::box_mesh, budget};
+    let _serial = budget::GLOBAL_CAP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    struct RestoreCap(Option<u64>);
+    impl Drop for RestoreCap {
+        fn drop(&mut self) { budget::set_cap(self.0); }
+    }
+    let _restore = RestoreCap(budget::cap());
+    let _element = budget::enter_element();
+    budget::set_cap(None);
+
+    // Two separated host components, each covered by its own closed cutter.
+    // The cutter AABBs are disjoint even after snap-band inflation. A genuine
+    // completed difference is empty, so volume agreement alone cannot identify
+    // an empty result returned after exhausting the batch's work budget.
+    let left = tris_to_mesh(&box_mesh([0., 0., 0.], [1., 1., 1.]));
+    let right = tris_to_mesh(&box_mesh([3., 0., 0.], [4., 1., 1.]));
+    let mut host = left.clone();
+    host.merge(&right);
+    let h = orient_outward(mesh_to_tris(&host));
+    let components = [&left, &right].map(|m| orient_outward(mesh_to_tris(m)));
+    let refs = components.iter().map(Vec::as_slice).collect::<Vec<_>>();
+    budget::begin();
+    let (complete, changed) = difference_all_lenient(&h, &refs);
+    let batch_work = budget::count();
+    assert!(complete.is_empty() && changed && !budget::tripped());
+
+    let mut oracle_work = 0;
+    let mut removed = 0.;
+    for component in &components {
+        budget::begin();
+        let intersection = boolean(&h, component, BoolOp::Intersection);
+        assert!(!budget::tripped());
+        oracle_work = oracle_work.max(budget::count());
+        removed += signed_volume6(&intersection).abs();
+    }
+    assert_eq!(removed, signed_volume6(&h).abs(), "the actual disjoint intersections cover the host");
+    let cap = oracle_work + 1;
+    assert!(batch_work >= cap, "premise: batch work {batch_work} exceeds each oracle's {oracle_work}");
+    budget::set_cap(Some(cap));
+    for component in &components {
+        budget::begin();
+        let _intersection = boolean(&h, component, BoolOp::Intersection);
+        assert!(!budget::tripped(), "every independent oracle completes under the same cap");
+    }
+
+    budget::begin();
+    let result = subtract_many(&host, &[&left, &right]);
+    assert!(budget::tripped(), "the public batch naturally exhausts its per-boolean budget");
+    assert!(matches!(result, BatchSubtract::Nonconforming),
+        "a tripped batch must be rejected before fresh oracle budgets can validate it: {result:?}");
+}

@@ -260,6 +260,10 @@ pub(crate) fn subtract_many_with_conformity(
 fn validate_lenient_batch(
     h: &[Tri], comp_tris: &[Vec<Tri>], batch: &[Tri], changed: bool,
 ) -> (BatchSubtract, bool, Option<Mesh>) {
+    // Fresh oracle budgets cannot certify an aborted batch (#7607).
+    if super::budget::tripped() {
+        return (BatchSubtract::Nonconforming, false, None);
+    }
     // ORACLE for the volume comparison (#1788): batched cutters are pairwise
     // disjoint (this fn's contract), so the TRUE removed volume is
     // Σ |host ∩ cutterᵢ| — each a small single boolean against the PRISTINE

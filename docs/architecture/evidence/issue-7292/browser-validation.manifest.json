@@ -8,320 +8,68 @@
   "scopeSummarySHA256": "dc8d58f0d7e97615ec067e1c120eca9c9003be77cf8624263227d12d8814b013",
   "localOnlyRecoveryArtifacts": "Browser Local State and system-wide process snapshots remain local; their original hashes are retained in the immutable recovery receipt.",
   "files": [
-    {
-      "path": "docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/build/build-receipt.json",
-      "bytes": 1381,
-      "sha256": "df13e7a19e6f34a90db103c94e4ba29de669edfa01d2ee1ef8e68f0a74f38332"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/build/viewer-receipt.json",
-      "bytes": 195563,
-      "sha256": "db42cc8d84588984e787d10818a2ada9bcf2435c18362cf907e0ce3992c7209f"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/build/wasm-receipt.json",
-      "bytes": 391705,
-      "sha256": "1e0ac3087e2ebb18ca23a2cdec37a706295d9158064e37ab6e0fa70e48abefb2"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/build/wasm-size.json",
-      "bytes": 1349,
-      "sha256": "d0914d1fed2f7bda62eabe6c6425a31600bb64d41c2176d1b0d24a318e444f1c"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/capture/derived5pct/browser-raw.json",
-      "bytes": 16641,
-      "sha256": "248d35d8838accf3876e606e0335c3a61cec7ded4d5915d8d34b7599485c068b"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/capture/derived5pct/receipt.json",
-      "bytes": 516847,
-      "sha256": "42b2c6e3aaadbd6695dbf5bfc80cc6ea2be631cc0e04eae83a245e30a4731deb"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/capture/derived5pct/viewer.png",
-      "bytes": 100881,
-      "sha256": "fef56bfcdbd1be060691d6d2ecf3f6af228504177a81ea2554acd96beeecf446"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/capture/literal2pct/browser-raw.json",
-      "bytes": 19784,
-      "sha256": "41ce79e90d4d55591885b2778da5f0e1867038f02284462d30bd3e73e24010b4"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/capture/literal2pct/receipt.json",
-      "bytes": 516969,
-      "sha256": "8d198878149daaa9ed5f91080f1271bb21b4fb1965607a41ce89dbb6e7f6000c"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/capture/literal2pct/viewer.png",
-      "bytes": 89819,
-      "sha256": "da9e306d0cef49a3568ed9e8fcd916cb9d5a0c9e6ebed1a6d8198310d166f052"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/capture/pins.json",
-      "bytes": 174363,
-      "sha256": "cec971e065b01346826870ddd011a56646b6afb12f4b8edcdae49ca55f202b18"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/capture/receipt.json",
-      "bytes": 2918158,
-      "sha256": "a03ece65f7701a1371940340af62b2480be2eb112af587f18b5344df6fe56492"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/capture/soffice-target-first/browser-raw.json",
-      "bytes": 424394,
-      "sha256": "4a96f82885d067bc4b540f762e499ac09fc34288eee418273961c3de3c490c34"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/capture/soffice-target-first/receipt.json",
-      "bytes": 547551,
-      "sha256": "b418819c9067bbddb5d5986b95f6a9330b882383d3a965803cde63d9dc821fc1"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/capture/soffice-target-first/viewer.png",
-      "bytes": 260651,
-      "sha256": "08b86681a5a0f5cbbde0cc89b44deb036a824119836ab04f931af2c11019d0eb"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/capture/stacked2pct/browser-raw.json",
-      "bytes": 15739,
-      "sha256": "534f22f45026f8d1f18ea9daf65eb22b8e58b66296701eb3b0d6da3974c8e9d6"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/capture/stacked2pct/receipt.json",
-      "bytes": 516969,
-      "sha256": "360ea102113234a01a798cdef28ac0705e6d2bde4c447419579b74666e23a8d5"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/capture/stacked2pct/viewer.png",
-      "bytes": 99823,
-      "sha256": "cd7cb5370a714dc6dcd71cdbc7296123c2c532c43673d14340ad635a9dde7361"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/capture/stacked5pct/browser-raw.json",
-      "bytes": 15094,
-      "sha256": "162fe813cfc6e97ed6f82ccf5e898232274e3f0b29697648aad3417923874829"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/capture/stacked5pct/receipt.json",
-      "bytes": 516930,
-      "sha256": "021838b38a607d371399017fa4f1a5528772ed0d3e0e30eee97ddaf67583dff7"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/capture/stacked5pct/viewer.png",
-      "bytes": 100895,
-      "sha256": "e867e574fd19b7224598f974efdcd330c143d82b18a7cb48d036a2b101fd548f"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/cleanup-recovery/after-tab.json",
-      "bytes": 532,
-      "sha256": "164a38da61b2b5cabc72f727fcc1b69e283eea4a0c73047e9c82d91f9b60fec3"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/cleanup-recovery/final-seal.json",
-      "bytes": 1736,
-      "sha256": "db763b8fb49e327f9ee1cac82556163f28ef9aa1e0d6e61990fa1bb680801a7c"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/cleanup-recovery/pre-removal-tab.json",
-      "bytes": 532,
-      "sha256": "164a38da61b2b5cabc72f727fcc1b69e283eea4a0c73047e9c82d91f9b60fec3"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/cleanup-recovery/profile-byte-observation.json",
-      "bytes": 194,
-      "sha256": "15b9604b6843d8b7b5d32ffcd00aef69831f0d124a6535540e1988ecb17711c9"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/cleanup-recovery/reclaimed-size-addendum.json",
-      "bytes": 293,
-      "sha256": "b6406212b1be04a9ae7e065ee9e07d4b9e29e3aedef1ea2c5f982a486a0f7ac0"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/cleanup-recovery/recovery-receipt.json",
-      "bytes": 3059,
-      "sha256": "de95be5d1f3d6e52ecd3a73261fd8f37fef30d13db272ee895c1a5f40c153b3f"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/finite-oracle/derived5pct/oracle-diagnostics/1-engine.log",
-      "bytes": 66,
-      "sha256": "7d30eaee5ecf356856db4e9b2c474c99d2b56b801538d5bdf33f986e3449134a"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/finite-oracle/derived5pct/oracle-diagnostics/2-engine.log",
-      "bytes": 847,
-      "sha256": "e1f61dfadd6dbc1246764324fae6b346394bea03f3564791d8c6e22119e892fe"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/finite-oracle/derived5pct/oracle-diagnostics/2-mesh.json",
-      "bytes": 484,
-      "sha256": "54b9d2d4ac6441f5dc03dbe9141a5186dc480a2fb59e5f2de4153d32e3b8c789"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/finite-oracle/derived5pct/oracle-diagnostics/products.json",
-      "bytes": 47,
-      "sha256": "d471400dab4e6083385d32a920f735d36f1b05f198995cd1696654ec335afb72"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/finite-oracle/derived5pct/oracle-diagnostics/receipt.json",
-      "bytes": 4311,
-      "sha256": "03a61ef49817c91baf2d4f4a0a2114ee69a724358798cfd4d65671c816c76e0b"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/finite-oracle/derived5pct/oracle-diagnostics/worker-stderr.log",
-      "bytes": 0,
-      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/finite-oracle/derived5pct/oracle-fixture.ifc",
-      "bytes": 2098181,
-      "sha256": "531b9c50003464faa56aaf94f9d24e009f8cc8257af648860b6de5dc4a12b983"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/finite-oracle/derived5pct/oracle-raw-mesh.json",
-      "bytes": 739,
-      "sha256": "c0322d31152d4c3c9ca3f42085812a0700d3416a92bab65326bc3875ff22967f"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/finite-oracle/derived5pct/receipt.json",
-      "bytes": 17972,
-      "sha256": "08e21adddad80eca2cb7bc89aa2f73dbe7596cf712d6f2489d76f58bc15b813d"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/finite-oracle/literal2pct/oracle-diagnostics/1-engine.log",
-      "bytes": 66,
-      "sha256": "7d30eaee5ecf356856db4e9b2c474c99d2b56b801538d5bdf33f986e3449134a"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/finite-oracle/literal2pct/oracle-diagnostics/2-engine.log",
-      "bytes": 847,
-      "sha256": "a9e09adfdb5fcf21d1547ccd895c29aee6eb7549a95252232fbcb50c9c81abc3"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/finite-oracle/literal2pct/oracle-diagnostics/2-mesh.json",
-      "bytes": 438,
-      "sha256": "41879dcc2db9644416606a60d3d96bbd221ffb050ed2b439209e105488c6f923"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/finite-oracle/literal2pct/oracle-diagnostics/products.json",
-      "bytes": 47,
-      "sha256": "d471400dab4e6083385d32a920f735d36f1b05f198995cd1696654ec335afb72"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/finite-oracle/literal2pct/oracle-diagnostics/receipt.json",
-      "bytes": 4311,
-      "sha256": "75c46330dcc1b882987140fa5bf1c804ef976fa36fd6609cd657660b8a95b6cd"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/finite-oracle/literal2pct/oracle-diagnostics/worker-stderr.log",
-      "bytes": 0,
-      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/finite-oracle/literal2pct/oracle-fixture.ifc",
-      "bytes": 2098181,
-      "sha256": "b4a31ae378ba8a762810b89affa40135a5ef49fed8ca1ffc87c0826d17c58d0e"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/finite-oracle/literal2pct/oracle-raw-mesh.json",
-      "bytes": 705,
-      "sha256": "348b15c459d94b8534d975e1ec0e3acf6aac7f26229cca779b217ec3f9ef484e"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/finite-oracle/literal2pct/receipt.json",
-      "bytes": 17798,
-      "sha256": "2ee608c83a2b3378350fa94da24495df5c4281d82031361b2fa56726b0d02419"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/finite-oracle/stacked2pct/oracle-diagnostics/1-engine.log",
-      "bytes": 66,
-      "sha256": "7d30eaee5ecf356856db4e9b2c474c99d2b56b801538d5bdf33f986e3449134a"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/finite-oracle/stacked2pct/oracle-diagnostics/2-engine.log",
-      "bytes": 1959,
-      "sha256": "bf4b4ac90507e6da0d28822a3a6a825d4de6eb769f40eea3a2b8bde3a3b28328"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/finite-oracle/stacked2pct/oracle-diagnostics/2-mesh.json",
-      "bytes": 761,
-      "sha256": "11f28749d145e66994800e5cb646048ca331e0bb823ab1d9fc08eb896974232d"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/finite-oracle/stacked2pct/oracle-diagnostics/products.json",
-      "bytes": 47,
-      "sha256": "d471400dab4e6083385d32a920f735d36f1b05f198995cd1696654ec335afb72"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/finite-oracle/stacked2pct/oracle-diagnostics/receipt.json",
-      "bytes": 6943,
-      "sha256": "c5807aaa6f35b25074b5743bbd476e82e4c52f9ed41caf0b5a5b97e5d756e0e0"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/finite-oracle/stacked2pct/oracle-diagnostics/worker-stderr.log",
-      "bytes": 0,
-      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/finite-oracle/stacked2pct/oracle-fixture.ifc",
-      "bytes": 2098181,
-      "sha256": "cee0913394812c39c1bd19586f88d78cb9accef4d8a5b918bbd897c45f722900"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/finite-oracle/stacked2pct/oracle-raw-mesh.json",
-      "bytes": 1244,
-      "sha256": "73d22732f50838da7af37f73c608326afa41b8774d60f477a98601bbd915acbd"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/finite-oracle/stacked2pct/receipt.json",
-      "bytes": 18143,
-      "sha256": "fb6cf95686e122669ad8d0f685cd345a45de1b98dfdf4a9801c11eb13257f06d"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/finite-oracle/stacked5pct/oracle-diagnostics/1-engine.log",
-      "bytes": 66,
-      "sha256": "7d30eaee5ecf356856db4e9b2c474c99d2b56b801538d5bdf33f986e3449134a"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/finite-oracle/stacked5pct/oracle-diagnostics/2-engine.log",
-      "bytes": 1959,
-      "sha256": "2be8c8e802d3bc7af1fa4cb15927a089aa316084f8e6f13d2ee0ce3c5f9d2a71"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/finite-oracle/stacked5pct/oracle-diagnostics/2-mesh.json",
-      "bytes": 823,
-      "sha256": "dfe8dafb1c01b53ec9c28d111475c9f3fb295294efcfa4e66d986da0b83a02fc"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/finite-oracle/stacked5pct/oracle-diagnostics/products.json",
-      "bytes": 47,
-      "sha256": "d471400dab4e6083385d32a920f735d36f1b05f198995cd1696654ec335afb72"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/finite-oracle/stacked5pct/oracle-diagnostics/receipt.json",
-      "bytes": 6943,
-      "sha256": "0893c40674ba8bfd4984be8550a46da4d34b6e98456a28bb56e787096b1575c5"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/finite-oracle/stacked5pct/oracle-diagnostics/worker-stderr.log",
-      "bytes": 0,
-      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/finite-oracle/stacked5pct/oracle-fixture.ifc",
-      "bytes": 2098181,
-      "sha256": "62fcc25f2b4353bf194c27169fd1a9b59f9ca606c3ef9522376faacd95995505"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/finite-oracle/stacked5pct/oracle-raw-mesh.json",
-      "bytes": 1294,
-      "sha256": "b93909ded0cf07fb1aa1b8def0d99f1e71d0ddd0c3b68dd14717c6b76f374ba6"
-    },
-    {
-      "path": "docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/finite-oracle/stacked5pct/receipt.json",
-      "bytes": 18050,
-      "sha256": "8ba37bce0395d59975ecc92a928bf09a5f2854be3689dfe2d717fa2ea2ce096e"
-    }
+    {"path":"docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/build/build-receipt.json","bytes":1381,"sha256":"df13e7a19e6f34a90db103c94e4ba29de669edfa01d2ee1ef8e68f0a74f38332"},
+    {"path":"docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/build/viewer-receipt.json","bytes":195563,"sha256":"db42cc8d84588984e787d10818a2ada9bcf2435c18362cf907e0ce3992c7209f"},
+    {"path":"docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/build/wasm-receipt.json","bytes":391705,"sha256":"1e0ac3087e2ebb18ca23a2cdec37a706295d9158064e37ab6e0fa70e48abefb2"},
+    {"path":"docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/build/wasm-size.json","bytes":1349,"sha256":"d0914d1fed2f7bda62eabe6c6425a31600bb64d41c2176d1b0d24a318e444f1c"},
+    {"path":"docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/capture/derived5pct/browser-raw.json","bytes":16641,"sha256":"248d35d8838accf3876e606e0335c3a61cec7ded4d5915d8d34b7599485c068b"},
+    {"path":"docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/capture/derived5pct/receipt.json","bytes":516847,"sha256":"42b2c6e3aaadbd6695dbf5bfc80cc6ea2be631cc0e04eae83a245e30a4731deb"},
+    {"path":"docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/capture/derived5pct/viewer.png","bytes":100881,"sha256":"fef56bfcdbd1be060691d6d2ecf3f6af228504177a81ea2554acd96beeecf446"},
+    {"path":"docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/capture/literal2pct/browser-raw.json","bytes":19784,"sha256":"41ce79e90d4d55591885b2778da5f0e1867038f02284462d30bd3e73e24010b4"},
+    {"path":"docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/capture/literal2pct/receipt.json","bytes":516969,"sha256":"8d198878149daaa9ed5f91080f1271bb21b4fb1965607a41ce89dbb6e7f6000c"},
+    {"path":"docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/capture/literal2pct/viewer.png","bytes":89819,"sha256":"da9e306d0cef49a3568ed9e8fcd916cb9d5a0c9e6ebed1a6d8198310d166f052"},
+    {"path":"docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/capture/pins.json","bytes":174363,"sha256":"cec971e065b01346826870ddd011a56646b6afb12f4b8edcdae49ca55f202b18"},
+    {"path":"docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/capture/receipt.json","bytes":2918158,"sha256":"a03ece65f7701a1371940340af62b2480be2eb112af587f18b5344df6fe56492"},
+    {"path":"docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/capture/soffice-target-first/browser-raw.json","bytes":424394,"sha256":"4a96f82885d067bc4b540f762e499ac09fc34288eee418273961c3de3c490c34"},
+    {"path":"docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/capture/soffice-target-first/receipt.json","bytes":547551,"sha256":"b418819c9067bbddb5d5986b95f6a9330b882383d3a965803cde63d9dc821fc1"},
+    {"path":"docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/capture/soffice-target-first/viewer.png","bytes":260651,"sha256":"08b86681a5a0f5cbbde0cc89b44deb036a824119836ab04f931af2c11019d0eb"},
+    {"path":"docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/capture/stacked2pct/browser-raw.json","bytes":15739,"sha256":"534f22f45026f8d1f18ea9daf65eb22b8e58b66296701eb3b0d6da3974c8e9d6"},
+    {"path":"docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/capture/stacked2pct/receipt.json","bytes":516969,"sha256":"360ea102113234a01a798cdef28ac0705e6d2bde4c447419579b74666e23a8d5"},
+    {"path":"docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/capture/stacked2pct/viewer.png","bytes":99823,"sha256":"cd7cb5370a714dc6dcd71cdbc7296123c2c532c43673d14340ad635a9dde7361"},
+    {"path":"docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/capture/stacked5pct/browser-raw.json","bytes":15094,"sha256":"162fe813cfc6e97ed6f82ccf5e898232274e3f0b29697648aad3417923874829"},
+    {"path":"docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/capture/stacked5pct/receipt.json","bytes":516930,"sha256":"021838b38a607d371399017fa4f1a5528772ed0d3e0e30eee97ddaf67583dff7"},
+    {"path":"docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/capture/stacked5pct/viewer.png","bytes":100895,"sha256":"e867e574fd19b7224598f974efdcd330c143d82b18a7cb48d036a2b101fd548f"},
+    {"path":"docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/cleanup-recovery/after-tab.json","bytes":532,"sha256":"164a38da61b2b5cabc72f727fcc1b69e283eea4a0c73047e9c82d91f9b60fec3"},
+    {"path":"docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/cleanup-recovery/final-seal.json","bytes":1736,"sha256":"db763b8fb49e327f9ee1cac82556163f28ef9aa1e0d6e61990fa1bb680801a7c"},
+    {"path":"docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/cleanup-recovery/pre-removal-tab.json","bytes":532,"sha256":"164a38da61b2b5cabc72f727fcc1b69e283eea4a0c73047e9c82d91f9b60fec3"},
+    {"path":"docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/cleanup-recovery/profile-byte-observation.json","bytes":194,"sha256":"15b9604b6843d8b7b5d32ffcd00aef69831f0d124a6535540e1988ecb17711c9"},
+    {"path":"docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/cleanup-recovery/reclaimed-size-addendum.json","bytes":293,"sha256":"b6406212b1be04a9ae7e065ee9e07d4b9e29e3aedef1ea2c5f982a486a0f7ac0"},
+    {"path":"docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/cleanup-recovery/recovery-receipt.json","bytes":3059,"sha256":"de95be5d1f3d6e52ecd3a73261fd8f37fef30d13db272ee895c1a5f40c153b3f"},
+    {"path":"docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/finite-oracle/derived5pct/oracle-diagnostics/1-engine.log","bytes":66,"sha256":"7d30eaee5ecf356856db4e9b2c474c99d2b56b801538d5bdf33f986e3449134a"},
+    {"path":"docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/finite-oracle/derived5pct/oracle-diagnostics/2-engine.log","bytes":847,"sha256":"e1f61dfadd6dbc1246764324fae6b346394bea03f3564791d8c6e22119e892fe"},
+    {"path":"docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/finite-oracle/derived5pct/oracle-diagnostics/2-mesh.json","bytes":484,"sha256":"54b9d2d4ac6441f5dc03dbe9141a5186dc480a2fb59e5f2de4153d32e3b8c789"},
+    {"path":"docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/finite-oracle/derived5pct/oracle-diagnostics/products.json","bytes":47,"sha256":"d471400dab4e6083385d32a920f735d36f1b05f198995cd1696654ec335afb72"},
+    {"path":"docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/finite-oracle/derived5pct/oracle-diagnostics/receipt.json","bytes":4311,"sha256":"03a61ef49817c91baf2d4f4a0a2114ee69a724358798cfd4d65671c816c76e0b"},
+    {"path":"docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/finite-oracle/derived5pct/oracle-diagnostics/worker-stderr.log","bytes":0,"sha256":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"},
+    {"path":"docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/finite-oracle/derived5pct/oracle-fixture.ifc","bytes":2098181,"sha256":"531b9c50003464faa56aaf94f9d24e009f8cc8257af648860b6de5dc4a12b983"},
+    {"path":"docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/finite-oracle/derived5pct/oracle-raw-mesh.json","bytes":739,"sha256":"c0322d31152d4c3c9ca3f42085812a0700d3416a92bab65326bc3875ff22967f"},
+    {"path":"docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/finite-oracle/derived5pct/receipt.json","bytes":17972,"sha256":"08e21adddad80eca2cb7bc89aa2f73dbe7596cf712d6f2489d76f58bc15b813d"},
+    {"path":"docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/finite-oracle/literal2pct/oracle-diagnostics/1-engine.log","bytes":66,"sha256":"7d30eaee5ecf356856db4e9b2c474c99d2b56b801538d5bdf33f986e3449134a"},
+    {"path":"docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/finite-oracle/literal2pct/oracle-diagnostics/2-engine.log","bytes":847,"sha256":"a9e09adfdb5fcf21d1547ccd895c29aee6eb7549a95252232fbcb50c9c81abc3"},
+    {"path":"docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/finite-oracle/literal2pct/oracle-diagnostics/2-mesh.json","bytes":438,"sha256":"41879dcc2db9644416606a60d3d96bbd221ffb050ed2b439209e105488c6f923"},
+    {"path":"docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/finite-oracle/literal2pct/oracle-diagnostics/products.json","bytes":47,"sha256":"d471400dab4e6083385d32a920f735d36f1b05f198995cd1696654ec335afb72"},
+    {"path":"docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/finite-oracle/literal2pct/oracle-diagnostics/receipt.json","bytes":4311,"sha256":"75c46330dcc1b882987140fa5bf1c804ef976fa36fd6609cd657660b8a95b6cd"},
+    {"path":"docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/finite-oracle/literal2pct/oracle-diagnostics/worker-stderr.log","bytes":0,"sha256":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"},
+    {"path":"docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/finite-oracle/literal2pct/oracle-fixture.ifc","bytes":2098181,"sha256":"b4a31ae378ba8a762810b89affa40135a5ef49fed8ca1ffc87c0826d17c58d0e"},
+    {"path":"docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/finite-oracle/literal2pct/oracle-raw-mesh.json","bytes":705,"sha256":"348b15c459d94b8534d975e1ec0e3acf6aac7f26229cca779b217ec3f9ef484e"},
+    {"path":"docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/finite-oracle/literal2pct/receipt.json","bytes":17798,"sha256":"2ee608c83a2b3378350fa94da24495df5c4281d82031361b2fa56726b0d02419"},
+    {"path":"docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/finite-oracle/stacked2pct/oracle-diagnostics/1-engine.log","bytes":66,"sha256":"7d30eaee5ecf356856db4e9b2c474c99d2b56b801538d5bdf33f986e3449134a"},
+    {"path":"docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/finite-oracle/stacked2pct/oracle-diagnostics/2-engine.log","bytes":1959,"sha256":"bf4b4ac90507e6da0d28822a3a6a825d4de6eb769f40eea3a2b8bde3a3b28328"},
+    {"path":"docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/finite-oracle/stacked2pct/oracle-diagnostics/2-mesh.json","bytes":761,"sha256":"11f28749d145e66994800e5cb646048ca331e0bb823ab1d9fc08eb896974232d"},
+    {"path":"docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/finite-oracle/stacked2pct/oracle-diagnostics/products.json","bytes":47,"sha256":"d471400dab4e6083385d32a920f735d36f1b05f198995cd1696654ec335afb72"},
+    {"path":"docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/finite-oracle/stacked2pct/oracle-diagnostics/receipt.json","bytes":6943,"sha256":"c5807aaa6f35b25074b5743bbd476e82e4c52f9ed41caf0b5a5b97e5d756e0e0"},
+    {"path":"docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/finite-oracle/stacked2pct/oracle-diagnostics/worker-stderr.log","bytes":0,"sha256":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"},
+    {"path":"docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/finite-oracle/stacked2pct/oracle-fixture.ifc","bytes":2098181,"sha256":"cee0913394812c39c1bd19586f88d78cb9accef4d8a5b918bbd897c45f722900"},
+    {"path":"docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/finite-oracle/stacked2pct/oracle-raw-mesh.json","bytes":1244,"sha256":"73d22732f50838da7af37f73c608326afa41b8774d60f477a98601bbd915acbd"},
+    {"path":"docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/finite-oracle/stacked2pct/receipt.json","bytes":18143,"sha256":"fb6cf95686e122669ad8d0f685cd345a45de1b98dfdf4a9801c11eb13257f06d"},
+    {"path":"docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/finite-oracle/stacked5pct/oracle-diagnostics/1-engine.log","bytes":66,"sha256":"7d30eaee5ecf356856db4e9b2c474c99d2b56b801538d5bdf33f986e3449134a"},
+    {"path":"docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/finite-oracle/stacked5pct/oracle-diagnostics/2-engine.log","bytes":1959,"sha256":"2be8c8e802d3bc7af1fa4cb15927a089aa316084f8e6f13d2ee0ce3c5f9d2a71"},
+    {"path":"docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/finite-oracle/stacked5pct/oracle-diagnostics/2-mesh.json","bytes":823,"sha256":"dfe8dafb1c01b53ec9c28d111475c9f3fb295294efcfa4e66d986da0b83a02fc"},
+    {"path":"docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/finite-oracle/stacked5pct/oracle-diagnostics/products.json","bytes":47,"sha256":"d471400dab4e6083385d32a920f735d36f1b05f198995cd1696654ec335afb72"},
+    {"path":"docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/finite-oracle/stacked5pct/oracle-diagnostics/receipt.json","bytes":6943,"sha256":"0893c40674ba8bfd4984be8550a46da4d34b6e98456a28bb56e787096b1575c5"},
+    {"path":"docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/finite-oracle/stacked5pct/oracle-diagnostics/worker-stderr.log","bytes":0,"sha256":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"},
+    {"path":"docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/finite-oracle/stacked5pct/oracle-fixture.ifc","bytes":2098181,"sha256":"62fcc25f2b4353bf194c27169fd1a9b59f9ca606c3ef9522376faacd95995505"},
+    {"path":"docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/finite-oracle/stacked5pct/oracle-raw-mesh.json","bytes":1294,"sha256":"b93909ded0cf07fb1aa1b8def0d99f1e71d0ddd0c3b68dd14717c6b76f374ba6"},
+    {"path":"docs/architecture/evidence/issue-7292/browser-final-88f4a9f491/finite-oracle/stacked5pct/receipt.json","bytes":18050,"sha256":"8ba37bce0395d59975ecc92a928bf09a5f2854be3689dfe2d717fa2ea2ce096e"}
   ]
 }

@@ -169,3 +169,15 @@ transversal tests and exact workspace clippy pass; production source and frozen
 runtime artifacts are unchanged. `test-lock-validation.tar.gz` preserves the
 delta, source/artifact hashes and logs. Verify and extract it using
 `test-lock-validation.manifest.json` with the recipe above.
+
+## Budget-failure review follow-up
+
+`budget-guard-validation.tar.gz` and its manifest retain the low-level batch
+regression: two disjoint cutters cover the host, each oracle fits its budget,
+but the exhausted batch incorrectly reports `Unchanged` before the fix. The
+validator now rejects a pre-existing trip before opening oracle budgets. The
+final unchanged-source regression and workspace clippy pass. Earlier build
+errors and the separate mid-build test-name rename remain explicitly recorded.
+The production void router already rejects budget trips; browser host loss is
+not demonstrated. Earlier browser/performance evidence retains its original
+source identity and does not qualify this later guard.

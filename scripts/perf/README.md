@@ -31,7 +31,8 @@ Untimed native mesh counts and fingerprints match the base for Haus and Holter;
 ISSUE_129 changes geometry and reports fewer CSG failures. These fingerprints
 exclude instancing, text, material definitions, UVs and textures. Lesson: retain
 healthy neighbors in ordinary seam conformance, preserve the baseline replay's
-closure checks, and qualify actual worker-pool cost before claiming neutrality.
+closure checks and budget-failure signals before opening oracle scopes, and
+qualify actual worker-pool cost before claiming neutrality.
 See the [correctness evidence and performance disposition](../../docs/architecture/evidence/issue-7292/README.md).
 
 ## TL;DR

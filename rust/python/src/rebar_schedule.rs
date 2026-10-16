@@ -8,8 +8,8 @@ use std::collections::HashSet;
 
 use ifc_lite_export::{
     build_rebar_schedule, build_rebar_schedule_with_fabrication_precheck,
-    build_rebar_schedule_with_preflight, AuthoredRebarValue, RebarFabricationPolicy,
-    RebarPreflightLimits, RebarSchedule,
+    build_rebar_schedule_with_preflight, RebarFabricationPolicy,
+    RebarPreflightLimits,
 };
 use ifc_lite_processing::SweptDiskCheckOptions;
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
@@ -128,9 +128,7 @@ fn schedule_impl(
             .map_err(|error| error.to_string()),
     })?
     .map_err(PyRuntimeError::new_err)?;
-    validate_finite(&schedule).map_err(PyValueError::new_err)?;
-    let payload = serde_json::to_string(&schedule)
-        .map_err(|error| PyValueError::new_err(error.to_string()))?;
+    let payload = crate::finite_json::to_json_string(&schedule)?;
     let decoded = py.import("json")?.getattr("loads")?.call1((payload,))?;
     let rows = decoded.get_item("rows")?;
     let keyed = PyDict::new(py);
@@ -141,79 +139,16 @@ fn schedule_impl(
     Ok(decoded.unbind())
 }
 
-/// JSON encodes non-finite floats as null, violating the Python type surface.
-fn validate_finite(schedule: &RebarSchedule) -> Result<(), String> {
-    fn finite(value: f64, path: &str) -> Result<(), String> {
-        if value.is_finite() {
-            Ok(())
-        } else {
-            Err(format!("{path} is non-finite"))
-        }
-    }
-
-    finite(schedule.length_unit_scale, "rebar schedule length_unit_scale")?;
-    for (id, row) in &schedule.rows {
-        for (name, attribute) in &row.authored {
-            if let AuthoredRebarValue::Measure {
-                value_file_units,
-                value_si,
-                ..
-            } = &attribute.value
-            {
-                finite(*value_file_units, &format!("rebar #{id} {name} value_file_units"))?;
-                finite(*value_si, &format!("rebar #{id} {name} value_si"))?;
-            }
-        }
-        for sweep in &row.sweeps {
-            let path = format!("rebar #{id} sweep {}", sweep.occurrence_index);
-            finite(sweep.radius_m, &format!("{path} radius_m"))?;
-            if let Some(radius) = sweep.inner_radius_m {
-                finite(radius, &format!("{path} inner_radius_m"))?;
-            }
-            if let Some(metrics) = &sweep.directrix_metrics {
-                finite(metrics.total_length, &format!("{path} directrix_metrics.total_length"))?;
-                for segment in &metrics.segments {
-                    let segment_path = format!(
-                        "{path} directrix_metrics.segments[{}]", segment.segment_index
-                    );
-                    finite(segment.length, &format!("{segment_path}.length"))?;
-                    if let Some(angle) = segment.bend_angle {
-                        finite(angle, &format!("{segment_path}.bend_angle"))?;
-                    }
-                }
-            }
-            for (index, finding) in sweep.checks.findings.iter().enumerate() {
-                finite(finding.measured, &format!("{path} checks.findings[{index}].measured"))?;
-                finite(finding.threshold, &format!("{path} checks.findings[{index}].threshold"))?;
-            }
-            if let Some(comparisons) = sweep.preflight.as_ref().and_then(|report| report.comparisons.as_ref()) {
-                for (index, comparison) in comparisons.iter().enumerate() {
-                    finite(comparison.measured_m, &format!("{path} preflight.comparisons[{index}].measured_m"))?;
-                    finite(comparison.limit_m, &format!("{path} preflight.comparisons[{index}].limit_m"))?;
-                }
-            }
-            if let Some(report) = &sweep.fabrication_precheck {
-                for (index, comparison) in report.checks.iter().enumerate() {
-                    let field = format!("{path} fabrication_precheck.checks[{index}]");
-                    for (name, value) in [
-                        ("measured", comparison.measured),
-                        ("minimum", comparison.minimum),
-                        ("maximum", comparison.maximum),
-                        ("nominal_diameter_m", comparison.nominal_diameter_m),
-                        ("geometric_diameter_m", comparison.geometric_diameter_m),
-                    ] {
-                        if let Some(value) = value { finite(value, &format!("{field}.{name}"))?; }
-                    }
-                }
-            }
-        }
-    }
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ifc_lite_export::{AuthoredRebarValue, RebarSchedule};
+
+    /// The location in the `finite_json` refusal for a schedule, as the Python entry point would raise it.
+    pub(crate) fn non_finite(schedule: &RebarSchedule) -> String {
+        let message = crate::finite_json::ensure_finite(schedule).unwrap_err().to_string();
+        message.split(" (").next().unwrap_or_default().to_string()
+    }
 
     #[test]
     fn issue_5797_fabrication_nested_measurements_cannot_become_json_null() {
@@ -226,29 +161,29 @@ mod tests {
         let check = &mut schedule.rows.get_mut(&125).unwrap().sweeps[0]
             .fabrication_precheck.as_mut().unwrap().checks[0];
         check.measured = Some(f64::NAN);
-        assert!(validate_finite(&schedule).unwrap_err().contains("fabrication_precheck.checks[0].measured"));
+        assert!(non_finite(&schedule).contains("fabrication_precheck.checks[0].measured"));
     }
 
     #[test]
     fn issue_5801_nested_metrics_cannot_be_serialized_as_null() {
         let ifc = include_bytes!("../../geometry/tests/fixtures/swept_disk_composite_arc_ubar.ifc");
         let mut schedule = build_rebar_schedule(ifc, None, &SweptDiskCheckOptions::default()).unwrap();
-        assert!(validate_finite(&schedule).is_ok());
+        assert!(crate::finite_json::ensure_finite(&schedule).is_ok());
 
         let sweep = &mut schedule.rows.get_mut(&125).unwrap().sweeps[0];
         let metrics = sweep.directrix_metrics.as_mut().unwrap();
         metrics.total_length = f64::INFINITY;
         assert_eq!(
-            validate_finite(&schedule).unwrap_err(),
-            "rebar #125 sweep 0 directrix_metrics.total_length is non-finite"
+            non_finite(&schedule),
+            "rows.{}.sweeps[0].directrix_metrics.total_length is non-finite"
         );
 
         let metrics = schedule.rows.get_mut(&125).unwrap().sweeps[0].directrix_metrics.as_mut().unwrap();
         metrics.total_length = 1.0;
         metrics.segments[0].length = f64::NAN;
         assert_eq!(
-            validate_finite(&schedule).unwrap_err(),
-            "rebar #125 sweep 0 directrix_metrics.segments[0].length is non-finite"
+            non_finite(&schedule),
+            "rows.{}.sweeps[0].directrix_metrics.segments[0].length is non-finite"
         );
 
         let metrics = schedule.rows.get_mut(&125).unwrap().sweeps[0].directrix_metrics.as_mut().unwrap();
@@ -257,8 +192,8 @@ mod tests {
         let arc_index = arc.segment_index;
         arc.bend_angle = Some(f64::NEG_INFINITY);
         assert_eq!(
-            validate_finite(&schedule).unwrap_err(),
-            format!("rebar #125 sweep 0 directrix_metrics.segments[{arc_index}].bend_angle is non-finite")
+            non_finite(&schedule),
+            format!("rows.{{}}.sweeps[0].directrix_metrics.segments[{arc_index}].bend_angle is non-finite")
         );
     }
 
@@ -268,10 +203,10 @@ mod tests {
         let mut options = SweptDiskCheckOptions::default();
         options.zero_length_tolerance_m = 1_000.0;
         let mut schedule = build_rebar_schedule(ifc, None, &options).unwrap();
-        assert!(validate_finite(&schedule).is_ok());
+        assert!(crate::finite_json::ensure_finite(&schedule).is_ok());
 
         schedule.length_unit_scale = f64::INFINITY;
-        assert_eq!(validate_finite(&schedule).unwrap_err(), "rebar schedule length_unit_scale is non-finite");
+        assert_eq!(non_finite(&schedule), "length_unit_scale is non-finite");
         schedule.length_unit_scale = 0.001;
 
         if let AuthoredRebarValue::Measure { value_si, .. } =
@@ -281,19 +216,36 @@ mod tests {
         } else {
             panic!("fixture CrossSectionArea must be a measure");
         }
-        assert_eq!(validate_finite(&schedule).unwrap_err(), "rebar #125 CrossSectionArea value_si is non-finite");
+        assert_eq!(non_finite(&schedule), "rows.{}.authored.{}.value.value_si is non-finite");
         schedule = build_rebar_schedule(ifc, None, &options).unwrap();
 
         schedule.rows.get_mut(&125).unwrap().sweeps[0].checks.findings[0].measured = f64::NEG_INFINITY;
-        assert_eq!(validate_finite(&schedule).unwrap_err(), "rebar #125 sweep 0 checks.findings[0].measured is non-finite");
+        assert_eq!(non_finite(&schedule), "rows.{}.sweeps[0].checks.findings[0].measured is non-finite");
         let finding = &mut schedule.rows.get_mut(&125).unwrap().sweeps[0].checks.findings[0];
         finding.measured = 0.322;
         finding.threshold = f64::INFINITY;
-        assert_eq!(validate_finite(&schedule).unwrap_err(), "rebar #125 sweep 0 checks.findings[0].threshold is non-finite");
+        assert_eq!(non_finite(&schedule), "rows.{}.sweeps[0].checks.findings[0].threshold is non-finite");
     }
 
-}
+    #[test]
+    fn issue_6305_preflight_comparisons_cannot_become_null() {
+        let ifc = include_bytes!("../../geometry/tests/fixtures/swept_disk_composite_arc_ubar.ifc");
+        let limits = RebarPreflightLimits::new(0.0, 0.0, None).unwrap();
+        let mut schedule = build_rebar_schedule_with_preflight(
+            ifc, None, &SweptDiskCheckOptions::default(), &limits,
+        ).unwrap();
+        assert!(crate::finite_json::ensure_finite(&schedule).is_ok());
 
-#[cfg(test)]
-#[path = "rebar_schedule_tests.rs"]
-mod preflight_tests;
+        schedule.rows.get_mut(&125).unwrap().sweeps[0]
+            .preflight.as_mut().unwrap().comparisons.as_mut().unwrap()[0].measured_m = f64::INFINITY;
+        assert_eq!(non_finite(&schedule),
+            "rows.{}.sweeps[0].preflight.comparisons[0].measured_m is non-finite");
+
+        let comparison = &mut schedule.rows.get_mut(&125).unwrap().sweeps[0]
+            .preflight.as_mut().unwrap().comparisons.as_mut().unwrap()[0];
+        comparison.measured_m = 0.0;
+        comparison.limit_m = f64::NAN;
+        assert_eq!(non_finite(&schedule),
+            "rows.{}.sweeps[0].preflight.comparisons[0].limit_m is non-finite");
+    }
+}

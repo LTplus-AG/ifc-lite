@@ -29,8 +29,7 @@ pub(super) fn alignment_axes(
     };
     let report = run_geometry(py, "alignment sampling", || sample_alignment_axes(ifc_bytes, options))?
         .map_err(|e| PyValueError::new_err(e.to_string()))?;
-    let payload =
-        serde_json::to_string(&report).map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let payload = crate::finite_json::to_json_string(&report)?;
     let decoded = py.import("json")?.getattr("loads")?.call1((payload,))?;
     let axes = PyDict::new(py);
     for (index, axis) in report.axes.iter().enumerate() {

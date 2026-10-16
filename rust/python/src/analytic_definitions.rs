@@ -20,8 +20,7 @@ pub(super) fn swept_disk_definitions(
     let view = run_geometry(py, "swept-disk definition", move || {
         extract_swept_disk_definitions(&ifc_bytes, ids.as_ref())
     })?;
-    let json = serde_json::to_string(&view)
-        .map_err(|error| PyRuntimeError::new_err(error.to_string()))?;
+    let json = crate::finite_json::to_json_string(&view)?;
     definition_view_to_python(py, json)
 }
 
@@ -34,8 +33,7 @@ pub(super) fn extrusion_definitions(
     let view = run_geometry(py, "extrusion definition", move || {
         extract_extrusion_definitions(&ifc_bytes, ids.as_ref())
     })?;
-    let json = serde_json::to_string(&view)
-        .map_err(|error| PyRuntimeError::new_err(error.to_string()))?;
+    let json = crate::finite_json::to_json_string(&view)?;
     definition_view_to_python(py, json)
 }
 

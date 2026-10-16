@@ -313,9 +313,9 @@ fn check_every_format(ifc: &str, want: Aabb) {
     let glb = aabb(&glb_world(&try_export_glb(bytes, &GltfOptions::default()).expect("GLB")));
     // The GLB was already right: it is the reference the others must agree with.
     let mut off: Vec<String> = misplaced("glb vs analytic", glb, want).into_iter().collect();
-    off.extend(misplaced("obj", aabb(&obj_world(&export_obj(bytes, &ObjOptions::default()))), glb));
+    off.extend(misplaced("obj", aabb(&obj_world(&export_obj(bytes, &ObjOptions::default()).expect("OBJ"))), glb));
     for instancing in [true, false] {
-        let usda = export_usd(bytes, &UsdOptions { instancing, ..UsdOptions::default() });
+        let usda = export_usd(bytes, &UsdOptions { instancing, ..UsdOptions::default() }).expect("USD");
         off.extend(misplaced(&format!("usd (instancing {instancing})"), aabb(&usd_world(&usda)), glb));
     }
     #[cfg(feature = "parquet-bos")]

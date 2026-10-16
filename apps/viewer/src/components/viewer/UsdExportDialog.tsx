@@ -40,7 +40,7 @@ import {
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useViewerStore } from '@/store';
 import { toast } from '@/components/ui/toast';
-import { GeometryProcessor } from '@ifc-lite/geometry';
+import { GeometryProcessor, isNoRenderGeometryError } from '@ifc-lite/geometry';
 import { downloadBlob, buildExportFilename, stripExtension } from '@/lib/export/download';
 import { isUsdExportableModel, resolveUsdExportBytes } from './usd-export-source';
 import { useTranslation } from '@/i18n';
@@ -125,9 +125,13 @@ export function UsdExportDialog({ surface, trigger }: UsdExportDialogProps) {
       return { success: true, message: msg };
     } catch (err) {
       console.error('USD export failed:', err);
-      const errMsg = t('geometryExport.usd.failedMessage', {
-        reason: err instanceof Error ? err.message : t('geometryExport.shared.unknownError'),
-      });
+      // The Rust boundary refuses a model with nothing to draw (#7695); say
+      // so rather than forwarding the engine's error code.
+      const errMsg = isNoRenderGeometryError(err)
+        ? t('geometryExport.usd.noRenderGeometryError')
+        : t('geometryExport.usd.failedMessage', {
+            reason: err instanceof Error ? err.message : t('geometryExport.shared.unknownError'),
+          });
       toast.error(errMsg);
       return { success: false, message: errMsg };
     }

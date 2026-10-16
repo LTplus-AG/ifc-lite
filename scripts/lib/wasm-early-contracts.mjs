@@ -11,6 +11,7 @@ import { runOpeningMissRepairContracts } from './wasm-opening-miss-repair-contra
 import { runMapNormalizationContracts } from './wasm-map-normalization-contracts.mjs';
 import { runProgressHeartbeatContracts } from './wasm-progress-heartbeat-contract.mjs';
 import { runReachablePanicContracts } from './wasm-reachable-panics-contract.mjs';
+import { runEmptyExportContracts } from './wasm-empty-export-contracts.mjs';
 
 /** These suites have their own inputs and run even when the column fixture is absent. */
 export function runEarlyContracts({ IfcAPI, api, test, skip, root }) {
@@ -24,4 +25,5 @@ export function runEarlyContracts({ IfcAPI, api, test, skip, root }) {
   runOpeningMissRepairContracts(IfcAPI, test, skip, root);
   runProgressHeartbeatContracts(IfcAPI, test, skip, root);
   runReachablePanicContracts(IfcAPI, test, skip, root);
+  runEmptyExportContracts(api, test, root); // #7695
 }

@@ -33,9 +33,12 @@
 //! top of each guard is refused outright (`common::refuse_to_skip_in_ci`).
 
 mod common;
-
+use common::source_walk::{collect_rs_files, repo_root};
 use ifc_lite_core::IfcType;
 use ifc_lite_processing::default_color_for_type;
+
+/// Names this file's source-walking guards in walk errors.
+const GATE: &str = "styling parity";
 
 const NEUTRAL_GRAY: [f32; 4] = [0.8, 0.8, 0.8, 1.0];
 
@@ -211,20 +214,6 @@ fn exactly_four_types_change_per_table() {
 // would have caught the server and desktop copies the day they were added.
 // ---------------------------------------------------------------------------
 
-/// Repo root = the first ancestor of this crate that holds both `rust/` and
-/// `apps/`. Returns `None` in a packaged/standalone context (test then skips).
-fn repo_root() -> Option<std::path::PathBuf> {
-    let mut dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).to_path_buf();
-    loop {
-        if dir.join("rust").is_dir() && dir.join("apps").is_dir() {
-            return Some(dir);
-        }
-        if !dir.pop() {
-            return None;
-        }
-    }
-}
-
 /// Lower bound on how many `.rs` files the two source-grep guards below must
 /// reach before an empty offender list means anything.
 ///
@@ -269,52 +258,6 @@ fn assert_walk_is_live(scanned: usize, concludes: &str) {
          that the guard which concludes that {concludes} cannot pass again after \
          losing half the tree."
     );
-}
-
-/// Walk `dir`, collecting every `.rs` file underneath it.
-///
-/// A directory this cannot list is a hard error, and the two reasons are told
-/// apart. The previous `let Ok(entries) = read_dir(dir) else { return; };` made
-/// "the scan root is not there" and "the scan root cannot be opened" produce
-/// the same result as "this directory holds no Rust files", which for an
-/// absence guard reads as a clean bill of health (#3200). A missing directory
-/// means the walk roots are wrong; an unreadable one means the environment is.
-fn collect_rs_files(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
-    let entries = match std::fs::read_dir(dir) {
-        Ok(entries) => entries,
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => panic!(
-            "styling parity: {} does not exist. Refusing to treat a missing \
-             directory as one holding no .rs files - these guards conclude from \
-             an absence, so a scan root that is not there would read as clean.",
-            dir.display()
-        ),
-        Err(err) => panic!(
-            "styling parity: {} could not be read ({err}). Refusing to treat an \
-             unreadable directory as one holding no .rs files.",
-            dir.display()
-        ),
-    };
-    for entry in entries {
-        let entry = entry.unwrap_or_else(|err| {
-            panic!(
-                "styling parity: an entry of {} could not be read ({err}). \
-                 Refusing to walk past a file these guards could not classify.",
-                dir.display()
-            )
-        });
-        let path = entry.path();
-        if path.is_dir() {
-            let skip = matches!(
-                path.file_name().and_then(|n| n.to_str()),
-                Some("target" | "node_modules" | ".git" | "dist" | "build")
-            );
-            if !skip {
-                collect_rs_files(&path, out);
-            }
-        } else if path.extension().and_then(|e| e.to_str()) == Some("rs") {
-            out.push(path);
-        }
-    }
 }
 
 /// Read one walked file. Unreadable is a hard error, not a skip: `continue`
@@ -412,8 +355,8 @@ fn no_duplicate_default_color_tables() {
     let allow = |rel: &str| rel.ends_with("rust/processing/tests/styling_parity.rs");
 
     let mut files = Vec::new();
-    collect_rs_files(&root.join("rust"), &mut files);
-    collect_rs_files(&root.join("apps"), &mut files);
+    collect_rs_files(GATE, &root.join("rust"), &mut files);
+    collect_rs_files(GATE, &root.join("apps"), &mut files);
 
     assert_walk_is_live(files.len(), "no second default-color table exists");
 
@@ -470,8 +413,8 @@ fn no_duplicate_surface_style_color_extraction() {
     };
 
     let mut files = Vec::new();
-    collect_rs_files(&root.join("rust"), &mut files);
-    collect_rs_files(&root.join("apps"), &mut files);
+    collect_rs_files(GATE, &root.join("rust"), &mut files);
+    collect_rs_files(GATE, &root.join("apps"), &mut files);
 
     assert_walk_is_live(files.len(), "no second surface-style colour extractor exists");
 

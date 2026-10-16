@@ -34,9 +34,8 @@ impl EntityDecoder<'_> {
         if let Some(cached) = self.schema_version_cache {
             return cached;
         }
-        let version = crate::parser::header::declared_schemas_bounded(self.content)
-            .iter()
-            .find_map(|label| SchemaVersion::from_file_schema(label));
+        let version =
+            crate::parser::header::first_declared_schema(self.content, SchemaVersion::from_file_schema);
         self.schema_version_cache = Some(version);
         version
     }

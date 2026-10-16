@@ -378,6 +378,7 @@
     "classify_type_name": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "convert_mesh_to_site_local": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "default_color_for_type": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
+    "detect_schema_version": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "extract_analytic_quantity_sources": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "extract_extrusion_definitions": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "extract_georeferencing": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",

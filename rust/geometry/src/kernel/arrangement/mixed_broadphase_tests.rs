@@ -99,9 +99,23 @@ fn issue_7292_disjoint_supported_constraints_do_not_exhaust_default_element_budg
         SupportedClip {a:ImplicitPoint::Explicit([x,1.,0.]),b:ImplicitPoint::Explicit([x+1.,1.,0.]),
             support:[[0.,1.,0.],[1.,1.,0.],[0.,1.,1.]]}
     }).collect();
+    let before=budget::snapshot_counters();
     let mut generated=Vec::new();let result=build(&[t],&[vec![]],&[clips],&mut generated,true);
     assert!(!budget::tripped(),"spatially disjoint constraints must not spend the budget on all pairs");
+    assert_eq!(budget::snapshot_counters(),before,
+        "disjoint candidate boxes must also avoid eager support validation");
     assert_eq!(result.constraints[0].len(),512);assert!(generated.is_empty());
+    for (i,c) in result.constraints[0].iter().enumerate() {
+        let x=i as f64*3.;
+        assert_eq!(crate::kernel::predicates::cmp_lex(&c.a,&ImplicitPoint::Explicit([x,1.,0.])),crate::kernel::Sign::Zero);
+        assert_eq!(crate::kernel::predicates::cmp_lex(&c.b,&ImplicitPoint::Explicit([x+1.,1.,0.])),crate::kernel::Sign::Zero);
+    }
+    // Independent eager reference executes the omitted validation work on these
+    // same healthy supported seams; the production path retains their output.
+    let eager_before=budget::count();
+    let eager=super::super::validate(&t,&result.segments[0]);
+    assert_eq!(eager.len(),512);assert!(eager.iter().all(|v|v.valid));
+    assert!(budget::count()>=eager_before+512);
 }
 
 #[test]

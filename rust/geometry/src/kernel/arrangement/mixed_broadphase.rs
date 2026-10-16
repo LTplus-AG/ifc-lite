@@ -5,7 +5,7 @@
 //! Conservative candidate enumeration for implicit constraint segments (#7292).
 //! Only disjoint interval boxes are omitted. Uncertain coordinates retain every
 //! candidate, and sorted source indices preserve the original crossing order.
-use super::{Supported, Validated};
+use super::Supported;
 use crate::kernel::{ImplicitPoint, broadphase::{Aabb, Bvh}, interval::{IvLam, RnInterval, ilambda_cached, next_down, next_up}};
 
 fn coordinate(n: RnInterval, d: RnInterval) -> Option<(f64, f64)> {
@@ -35,9 +35,6 @@ pub(super) struct Candidates {
     boxes: Vec<Option<Aabb>>,
 }
 impl Candidates {
-    pub(super) fn new(segments: &[Validated]) -> Self {
-        Self::from_lambdas(segments.iter().map(|s| (&s.lambda.0,&s.lambda.1)))
-    }
     pub(super) fn unvalidated(segments: &[Supported]) -> Self {
         Self::from_boxes(segments.iter().map(|s| {
             let c = &s.constraint;
@@ -52,6 +49,7 @@ impl Candidates {
             segment_bounds(&lambda, &lambda)
         }).collect())
     }
+    #[cfg(test)]
     fn from_lambdas<'a>(segments: impl Iterator<Item=(&'a IvLam,&'a IvLam)>) -> Self {
         Self::from_boxes(segments.map(|(a,b)|segment_bounds(a,b)).collect())
     }

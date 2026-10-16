@@ -69,6 +69,7 @@ fn validate_one(t: &Tri, s: &Supported) -> Option<Validated> {
         && t.iter().any(|p| !on_plane(&ImplicitPoint::Explicit(*p), &s.support));
     Some(Validated { lambda, valid })
 }
+#[cfg(test)]
 fn validate(t: &Tri, segments: &[Supported]) -> Vec<Validated> {
     let mut out = Vec::new();
     for s in segments {
@@ -95,8 +96,9 @@ fn canonical(points: &mut Vec<ImplicitPoint>) -> bool {
     !budget::tripped()
 }
 
-/// Every newly considered segment has its exact support validated once. No cop
-/// constraints means the legacy raw/raw path incurs no additional predicates.
+/// Validate each spatially candidate support at most once, before crossing
+/// predicates. No cop constraints means the legacy raw/raw path incurs no
+/// additional predicates.
 /// `has_coplanar` covers ALL operands, not just these carriers: a crossing on
 /// another operand can require propagation into a locally raw-only seam.
 pub(super) fn build(tris: &[Tri], raw: &[Vec<RawSeg>], cop: &[Vec<SupportedClip>],
@@ -121,16 +123,21 @@ pub(super) fn build(tris: &[Tri], raw: &[Vec<RawSeg>], cop: &[Vec<SupportedClip>
         if cop[i].is_empty() {
             constraints.extend(segments.iter().map(|s| s.constraint.clone()));
         } else if let Some((axis,_)) = projection_axis(t) {
-            let valid = validate(t, &segments);
-            if budget::tripped() { break; }
+            let mut valid: Vec<Option<Validated>> = (0..segments.len()).map(|_| None).collect();
             let mut splits = vec![Vec::new(); segments.len()];
-            let candidates = broadphase::Candidates::new(&valid);
+            // Interval boxes need no exact predicates. Unknown or undefined
+            // endpoint intervals retain candidates for full support validation.
+            let candidates = broadphase::Candidates::unvalidated(&segments);
             for k in 0..segments.len() {
                 for l in candidates.after(k) {
                     if k < raw_count && l < raw_count { continue; }
                     if !charge() { break; }
-                    if !valid[k].valid || !valid[l].valid { continue; }
-                    let a = &valid[k]; let b = &valid[l];
+                    if valid[k].is_none() { valid[k] = validate_one(t, &segments[k]); }
+                    if budget::tripped() { break; }
+                    if valid[l].is_none() { valid[l] = validate_one(t, &segments[l]); }
+                    if budget::tripped() { break; }
+                    let (Some(a), Some(b)) = (&valid[k], &valid[l]) else { continue; };
+                    if !a.valid || !b.valid { continue; }
                     let ca = &segments[k].constraint; let cb = &segments[l].constraint;
                     if segments_cross((&a.lambda.0,&ca.a), (&a.lambda.1,&ca.b),
                         (&b.lambda.0,&cb.a), (&b.lambda.1,&cb.b),axis) {
@@ -149,7 +156,7 @@ pub(super) fn build(tris: &[Tri], raw: &[Vec<RawSeg>], cop: &[Vec<SupportedClip>
                 if !canonical(&mut split) { break; }
                 constraints.extend(split.windows(2).map(|w| Constraint { a:w[0].clone(),b:w[1].clone() }));
             }
-            checked = Some(valid.into_iter().map(Some).collect());
+            checked = Some(valid);
         } else {
             constraints.extend(segments.iter().map(|s| s.constraint.clone()));
         }
@@ -210,3 +217,7 @@ pub(super) fn propagate(tris: &[Tri], built: &mut Built, generated: &[ImplicitPo
 #[cfg(test)]
 #[path = "mixed_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "mixed_lazy_tests.rs"]
+mod lazy_tests;

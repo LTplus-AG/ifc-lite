@@ -180,7 +180,7 @@
 # tessellation, verbatim) to the sphere.rs sibling to make room for the
 # CsgSolid boolean-failure hand-off; 422 -> 348, under the 400 limit. That
 # repays the #2866 loosening this row recorded.
-     608 rust/geometry/src/processors/sectioned.rs
+     456 rust/geometry/src/processors/sectioned.rs
      758 rust/geometry/src/profile_extractor.rs
      598 rust/geometry/src/profiles/curves_2d.rs
      670 rust/geometry/src/profiles/curves_3d.rs
@@ -205,7 +205,7 @@
 # The cohort also includes the 4-line `#[cfg(test)] #[path] mod
 # curve_fanout_tests;` registration, so the number accounts for that too; the
 # tests themselves live in the sibling file and are exempt.
-     847 rust/geometry/src/profiles/mod.rs
+     801 rust/geometry/src/profiles/mod.rs
      706 rust/geometry/src/profiles/simplify.rs
 # +26: cap the fast-path opening count (O(N^3) DoS guard) + regression test.
      807 rust/geometry/src/rect_fast.rs

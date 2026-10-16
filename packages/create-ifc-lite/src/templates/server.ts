@@ -4,13 +4,13 @@
 
 import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
-import { getPackageVersion } from '../utils/config-fixers.js';
+import { getPinnedPackageVersion } from '../utils/config-fixers.js';
 
 /**
  * Scaffold a Docker-based IFC processing server with TypeScript client examples.
  */
 export function createServerTemplate(targetDir: string, projectName: string) {
-  const serverClientVersion = getPackageVersion('@ifc-lite/server-client');
+  const serverClientVersion = getPinnedPackageVersion('@ifc-lite/server-client');
 
   // docker-compose.yml - Production configuration
   writeFileSync(join(targetDir, 'docker-compose.yml'), `# IFC-Lite Server - Production Configuration
@@ -499,7 +499,7 @@ IFC processing server using [IFC-Lite](https://github.com/LTplus-AG/ifc-lite).
 docker compose up -d
 
 # 2. Install client dependencies
-npm install
+npm ci
 
 # 3. Run the example (replace with your IFC file)
 npm run example ./your-model.ifc

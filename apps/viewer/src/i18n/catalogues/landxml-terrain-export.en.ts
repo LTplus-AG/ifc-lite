@@ -45,6 +45,21 @@ export const landXmlTerrainExportEn = {
   'landXmlTerrainExport.pointsColumn': 'Points',
   'landXmlTerrainExport.trianglesColumn': 'Triangles',
   'landXmlTerrainExport.crsLabel': 'Coordinate system: {crsName}',
+  'landXmlTerrainExport.surfaceNameInput': 'Name for surface {name}',
+
+  'landXmlTerrainExport.outputLabel': 'Output',
+  'landXmlTerrainExport.outputFormat': 'LandXML 1.2',
+  'landXmlTerrainExport.fileExtension': '.xml',
+  'landXmlTerrainExport.unitsLabel': 'Units',
+  'landXmlTerrainExport.unit.metre': 'Metres',
+  'landXmlTerrainExport.unit.internationalFoot': 'International feet',
+  'landXmlTerrainExport.unit.usSurveyFoot': 'US survey feet',
+  'landXmlTerrainExport.usSurveyFootNote':
+    'Heights are written in international feet, because LandXML 1.2 has no US survey foot for heights. The file states both units.',
+  'landXmlTerrainExport.decimalsLabel': 'Decimal places',
+  'landXmlTerrainExport.decimals.3': '3 (0.001)',
+  'landXmlTerrainExport.decimals.4': '4 (0.0001)',
+  'landXmlTerrainExport.decimals.6': '6 (0.000001)',
 
   'landXmlTerrainExport.exportedMessage': 'Exported LandXML terrain ({sizeKb} KB)',
   'landXmlTerrainExport.failedMessage': 'LandXML terrain export failed: {reason}',

@@ -22,6 +22,8 @@ rustc-ice-*.txt
 
 # MkDocs build output
 site/
+docs/api/generated/
+apps/landing/.venv-docs/
 
 # Rust compiled binaries in tests
 tests/test_geometry
@@ -133,6 +135,7 @@ tests/benchmark/benchmark-results/viewer-*.console.log
 # are rebuilt on every run rather than committed. See tsconfig.tests.base.json.
 packages/*/tsconfig.tests.json
 apps/*/tsconfig.tests.json
+examples/*/tsconfig.tests.json
 # The ROOT path is here for a different reason: `audit()` only writes for
 # `packages/*` (typecheck-tests.mjs, `rel.startsWith('packages/')`), so
 # `pnpm typecheck` never produces this one. It appears from the bare-cwd mode
@@ -157,6 +160,7 @@ apps/*/tsconfig.tests.json
 # for the shape.
 scripts/perf/.browser-cold-ab-results/
 scripts/perf/.frame-gpu-rig-results/
+scripts/perf/.native-count-results/
 scripts/perf/browser-corpus.local.json
 
 # Autodesk SDK worker build outputs (proprietary SDK/native dependencies).

@@ -177,7 +177,8 @@ fn build_wall_rects_accepts_exactly_the_rect_ceiling() {
 /// this test exists to catch -- so the list here is also the audit: every
 /// arm below must appear verbatim in that TS file's `CODES` set for the
 /// contract to hold. Verified by reading `space-edit-error.ts` on
-/// 2026-08-24: all seven match exactly, no extra codes either side.
+/// 2026-08-24: all seven match exactly, no extra codes either side; the eighth,
+/// `NonFiniteCoordinate`, was added to both sides together (#7674).
 const EXPECTED_CODES: &[(EditError, &str)] = &[
     (EditError::StaleHandle, "StaleHandle"),
     (EditError::VerticesNotOnFace, "VerticesNotOnFace"),
@@ -186,6 +187,7 @@ const EXPECTED_CODES: &[(EditError, &str)] = &[
     (EditError::BridgeEdge, "BridgeEdge"),
     (EditError::VertexNotDissolvable, "VertexNotDissolvable"),
     (EditError::InvalidPolygon, "InvalidPolygon"),
+    (EditError::NonFiniteCoordinate, "NonFiniteCoordinate"),
 ];
 
 #[test]
@@ -207,9 +209,9 @@ fn edit_error_parts_messages_are_non_empty_and_distinct_per_variant() {
 }
 
 #[test]
-fn edit_error_parts_covers_exactly_seven_variants_no_more_no_less() {
-    // Production's `edit_error_parts` already matches all seven variants with
-    // no wildcard, so an eighth variant fails the build there first -- this
+fn edit_error_parts_covers_exactly_eight_variants_no_more_no_less() {
+    // Production's `edit_error_parts` already matches all eight variants with
+    // no wildcard, so a ninth variant fails the build there first -- this
     // match does NOT add that alarm. What it adds is the case where someone
     // silences that build failure by giving `edit_error_parts` a `_ =>` arm:
     // production would compile again, and this match would not.
@@ -221,7 +223,8 @@ fn edit_error_parts_covers_exactly_seven_variants_no_more_no_less() {
             | EditError::BordersExterior
             | EditError::BridgeEdge
             | EditError::VertexNotDissolvable
-            | EditError::InvalidPolygon => "covered",
+            | EditError::InvalidPolygon
+            | EditError::NonFiniteCoordinate => "covered",
         }
     }
     assert_eq!(assert_exhaustive(EditError::StaleHandle), "covered");
@@ -246,5 +249,5 @@ fn edit_error_parts_covers_exactly_seven_variants_no_more_no_less() {
         let (code, _msg) = edit_error_parts(variant.clone());
         assert!(seen.insert(code), "code for {variant:?} duplicates another variant's code: {code:?}");
     }
-    assert_eq!(seen.len(), 7, "EXPECTED_CODES must carry exactly the seven EditError variants");
+    assert_eq!(seen.len(), 8, "EXPECTED_CODES must carry exactly the eight EditError variants");
 }

@@ -18,7 +18,8 @@ function object(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
-/** Admission only: valid rows remain informational until repeatability is proved.
+/** Admission only. Rows the same-build evidence shows repeatable are gated by
+ * scripts/perf-ratchet/measure-browser-frames.mjs after this passes (#6975).
  * A six-group artifact can still contain a partial run, duplicate metrics, NaN
  * serialised as null, or a recovered device that re-uploaded the entire scene.
  */

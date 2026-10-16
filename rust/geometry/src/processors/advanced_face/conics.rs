@@ -73,7 +73,7 @@ pub(super) fn read_axis2_placement_3d(
             .min_by(|a, b| {
                 let da = axis_z.dot(a).abs();
                 let db = axis_z.dot(b).abs();
-                da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
+                crate::cmp_f64_nan_last(da, db)
             })
             .copied()
             .unwrap_or(Vector3::new(1.0, 0.0, 0.0));

@@ -4,8 +4,13 @@
 
 //! JSON / SSE-JSON parse endpoints.
 
-use super::cache_keys::{json_response_cache_key, request_cache_key};
-use super::{cache_symbolic_data_off_runtime, extract_file, ParseQuery};
+use super::cache_keys::json_response_cache_key;
+use super::cache_read::resident_body;
+use crate::routes::cache::DECODE_COPIES;
+use super::{
+    admit_upload, begin_symbolic_fill, cache_symbolic_data_off_runtime, request_cache_key_off_runtime, ParseQuery,
+};
+use crate::admission::ResidentBytes;
 use crate::error::ApiError;
 use crate::services::axis::mesh_to_yup_in_place;
 use crate::services::streaming::detect_schema_version;
@@ -14,7 +19,6 @@ use crate::types::{finish_meshes, MetadataResponse, ParseResponse, SymbolicParse
 use ifc_lite_processing::style::ModelFinishes;
 use crate::AppState;
 use axum::{
-    body::Body,
     extract::{Multipart, Query, State},
     http::header,
     response::sse::{Event, KeepAlive, Sse},
@@ -34,19 +38,16 @@ pub async fn parse_full(
     mut multipart: Multipart,
 ) -> Result<Response, ApiError> {
     // Extract file from multipart
-    // Admission gate (bounded concurrency + byte budget): acquired BEFORE the
-    // upload is buffered, reserving the max upload size since multipart rarely
-    // declares a length up front. Held for the request's whole lifetime so a
-    // disconnected-but-still-running job keeps its memory slot.
-    let admission_guard = state
-        .admission
-        .acquire(state.config.max_file_size_mb as u64 * 1024 * 1024)
-        .await?;
-    let data = extract_file(&mut multipart, state.config.max_file_size_mb).await?;
+    // Admission (bounded concurrency + byte budget) before the upload is
+    // buffered; see `admit_upload`. Held for the
+    // request's whole lifetime so a disconnected-but-still-running job keeps
+    // its memory slot.
+    let (admission_guard, data) = admit_upload(&state, &mut multipart).await?;
 
     // Generate cache key (include opening filter so different modes get different cache entries)
     let tessellation_quality = query.resolved_tessellation_quality()?;
-    let cache_key = request_cache_key(&data, &query, tessellation_quality);
+    let (cache_key, mut admission_guard) =
+        request_cache_key_off_runtime(&data, &query, tessellation_quality, admission_guard).await?;
     // The stored ParseResponse is versioned separately from the client-facing
     // cache_key so the Y-up switch (#1841) retires the old Z-up entries without
     // invalidating the parquet caches. See `json_response_cache_key`.
@@ -54,20 +55,46 @@ pub async fn parse_full(
 
     // Check cache first. The entry is the whole model as JSON, so a hit is
     // decoded and re-encoded on the blocking pool (#4696). The admission guard
-    // rides that task, as it does the miss path's below.
-    if let Some(cached) = state.cache.get_bytes(&response_cache_key).await? {
+    // rides that task, as it does the miss path's below. A stored response
+    // that does not decode is a miss (#7676, SERVER-12): it used to answer
+    // 500 on every request for the file, when the parse below rewrites it.
+    //
+    // The hit is charged the stored response's size, as `GET /cache/{key}` is
+    // (SERVER-24): not the upload's, which says nothing about the decode of a
+    // response several times its size. A miss goes back to the upload's
+    // charge for the parse.
+    let mut upload_charge = None;
+    let cached = match state.cache.lookup(&response_cache_key).await? {
+        Some(entry) => {
+            let stored = entry.size().saturating_mul(DECODE_COPIES);
+            upload_charge = Some(admission_guard.grow_to(stored).await?);
+            state.cache.read_entry(&response_cache_key, &entry).await.map(|bytes| (bytes, entry))
+        }
+        None => None,
+    };
+    if let Some((cached, cached_entry)) = cached {
         tracing::info!(cache_key = %cache_key, "Cache HIT");
-        let (body, _admission) = tokio::task::spawn_blocking(move || {
-            let decoded = serde_json::from_slice::<SymbolicParseResponse>(&cached);
-            drop(cached);
-            let mut cached = decoded?;
-            cached.mark_from_cache();
-            Ok::<_, ApiError>((encode_response(&cached)?, admission_guard))
+        let (decoded, admission) = tokio::task::spawn_blocking(move || {
+            let decoded = serde_json::from_slice::<SymbolicParseResponse>(&cached).map(|mut cached| {
+                cached.mark_from_cache();
+                encode_response(&cached)
+            });
+            (decoded, admission_guard)
         })
-        .await??;
-        return Ok(json_body(body));
+        .await?;
+        admission_guard = admission;
+        match decoded {
+            Ok(body) => return Ok(json_body(body?, admission_guard.into_resident())),
+            Err(e) => {
+                let why = format!("not a ParseResponse: {e}");
+                state.cache.evict_entry(&response_cache_key, &cached_entry, why).await;
+            }
+        }
     }
 
+    if let Some(upload_charge) = upload_charge {
+        admission_guard.shrink_to(upload_charge);
+    }
     tracing::info!(cache_key = %cache_key, size = data.len(), "Cache MISS - processing");
 
     // Parse content
@@ -86,7 +113,7 @@ pub async fn parse_full(
     // if the TimeoutLayer (or a disconnect) cancels this handler future, the
     // detached blocking work keeps running - and keeps its admission slot -
     // until it actually exits, so a replacement cannot be admitted on top.
-    let (body, symbolic_data, _admission) = tokio::task::spawn_blocking(move || {
+    let (body, symbolic_data, admission) = tokio::task::spawn_blocking(move || {
         let result =
             process_geometry_filtered_with_quality(&content, opening_filter, tessellation_quality);
         // In the frame the meshes above were baked in, not one this re-derives
@@ -132,14 +159,15 @@ pub async fn parse_full(
     // first processed the file (issue #900).
     let cache = state.cache.clone();
     let cached_body = body.clone();
+    let symbolic_fill = begin_symbolic_fill(&state, &cache_key);
     tokio::spawn(async move {
-        cache_symbolic_data_off_runtime(cache.clone(), cache_key, symbolic_data).await;
+        cache_symbolic_data_off_runtime(cache.clone(), symbolic_fill, cache_key, symbolic_data).await;
         if let Err(e) = cache.set_bytes(&response_cache_key, &cached_body).await {
             tracing::error!(error = %e, "Failed to cache result");
         }
     });
 
-    Ok(json_body(body))
+    Ok(json_body(body, admission.into_resident()))
 }
 
 /// Encode a `POST /api/v1/parse` body. It is the whole model, so call this
@@ -151,9 +179,17 @@ fn encode_response(response: &SymbolicParseResponse) -> Result<Bytes, ApiError> 
     Ok(body.into())
 }
 
-/// An already-encoded JSON body, with the content type `Json` sets.
-fn json_body(body: Bytes) -> Response {
-    ([(header::CONTENT_TYPE, "application/json")], Body::from(body)).into_response()
+/// An already-encoded JSON body, with the content type `Json` sets, keeping
+/// the request's bytes charged until it is sent (#7676, SERVER-7).
+fn json_body(body: Bytes, resident: ResidentBytes) -> Response {
+    // The length is known, and `resident_body` is a stream with no size hint:
+    // without it the response goes out chunked (as `Json` never did).
+    let length = body.len();
+    (
+        [(header::CONTENT_TYPE, "application/json"), (header::CONTENT_LENGTH, &length.to_string())],
+        resident_body(body, resident),
+    )
+        .into_response()
 }
 
 /// POST /api/v1/parse/stream - Streaming SSE parse.
@@ -165,15 +201,11 @@ pub async fn parse_stream(
     let tessellation_quality = query.resolved_tessellation_quality()?;
 
     // Extract file
-    // Admission gate (bounded concurrency + byte budget): acquired BEFORE the
-    // upload is buffered, reserving the max upload size since multipart rarely
-    // declares a length up front. Held for the request's whole lifetime so a
-    // disconnected-but-still-running job keeps its memory slot.
-    let admission_guard = state
-        .admission
-        .acquire(state.config.max_file_size_mb as u64 * 1024 * 1024)
-        .await?;
-    let data = extract_file(&mut multipart, state.config.max_file_size_mb).await?;
+    // Admission (bounded concurrency + byte budget) before the upload is
+    // buffered; see `admit_upload`. Held for the
+    // request's whole lifetime so a disconnected-but-still-running job keeps
+    // its memory slot.
+    let (admission_guard, data) = admit_upload(&state, &mut multipart).await?;
 
     let content = data;
     let initial_batch_size = state.config.initial_batch_size;
@@ -186,7 +218,7 @@ pub async fn parse_stream(
         max_batch_size,
         query.opening_filter,
         tessellation_quality,
-        Some(admission_guard),
+        Some(std::sync::Arc::new(admission_guard)),
     )
     .map(|mut event: StreamEvent| {
             // Same Y-up wire frame as every other transport (issue #1841) —
@@ -218,15 +250,11 @@ pub async fn parse_metadata(
     mut multipart: Multipart,
 ) -> Result<Json<MetadataResponse>, ApiError> {
     // Extract file
-    // Admission gate (bounded concurrency + byte budget): acquired BEFORE the
-    // upload is buffered, reserving the max upload size since multipart rarely
-    // declares a length up front. Held for the request's whole lifetime so a
-    // disconnected-but-still-running job keeps its memory slot.
-    let admission_guard = state
-        .admission
-        .acquire(state.config.max_file_size_mb as u64 * 1024 * 1024)
-        .await?;
-    let data = extract_file(&mut multipart, state.config.max_file_size_mb).await?;
+    // Admission (bounded concurrency + byte budget) before the upload is
+    // buffered; see `admit_upload`. Held for the
+    // request's whole lifetime so a disconnected-but-still-running job keeps
+    // its memory slot.
+    let (admission_guard, data) = admit_upload(&state, &mut multipart).await?;
 
     let file_size = data.len();
     let content = data;

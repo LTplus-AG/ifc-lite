@@ -187,3 +187,77 @@ describe('useBCF capture — face-picked section (#5644)', () => {
     assert.notDeepEqual(picked, await cardinal(false), 'not the unflipped one');
   });
 });
+
+/** #7545: the viewpoint carries every cutting plane, and applying one restores the whole set. */
+describe('useBCF several cutting planes (#7545)', () => {
+  /** What cuts, order- and name-independent: BCF has no name slot, and lists the active plane first. */
+  const planeSet = () => [s().sectionPlane, ...s().inactiveSectionPlanes]
+    .map((p) => ({ axis: p.axis, position: Number(p.position.toFixed(6)), flipped: p.flipped, enabled: p.enabled }))
+    .sort((a, b) => a.axis.localeCompare(b.axis));
+
+  async function threeCuts(): Promise<void> {
+    await act(async () => {
+      s().clearSectionPlanes();
+      s().setActiveTool('section');
+      s().addSectionPlane('down'); s().setSectionPlanePosition(40);
+      s().addSectionPlane('side'); s().setSectionPlanePosition(70); s().flipSectionPlane();
+      s().addSectionPlane('front'); s().setSectionPlanePosition(25);
+    });
+  }
+
+  it('captures one clipping plane per cutting plane, and applying it later brings the same three back, first active', async () => {
+    await threeCuts();
+    const before = planeSet();
+    const viewpoint = await capture();
+    assert.equal(viewpoint.clippingPlanes?.length, 3, 'every cutting plane is captured, not only the active one');
+
+    await act(async () => { s().clearSectionPlanes(); s().addSectionPlane('side'); s().setSectionPlanePosition(90); s().setActiveTool('select'); });
+    await act(async () => api!.applyViewpoint(viewpoint, false));
+
+    assert.deepEqual(planeSet(), before, 'the same three half-spaces');
+    assert.deepEqual([s().sectionPlane, ...s().inactiveSectionPlanes].map((p) => p.name).sort(), ['A', 'B', 'C'], 'names are regenerated: BCF has no slot for them');
+    assert.equal(s().sectionPlane.name, 'A', 'the first clipping plane of the viewpoint is the active one');
+    assert.equal(s().sectionPlane.axis, 'front', 'and that is the plane that was active when it was captured');
+    assert.equal(s().activeTool, 'section');
+    assert.equal((await capture()).clippingPlanes?.length, 3, 'and exporting it again keeps all three');
+  });
+
+  it('with a captured 2D section for the active plane, the OTHER planes keep their own place (not the collapsed midpoint)', async () => {
+    await threeCuts(); // down 40, side 70 flipped, front 25 (active)
+    const viewpoint = await (async () => {
+      let out: BCFViewpoint | null = null;
+      await act(async () => {
+        out = await api!.createViewpointFromState({ includeSnapshot: false, capturedSectionPlane: { axis: 'front', worldPosition: 2, flipped: false } });
+      });
+      assert.ok(out);
+      return out as BCFViewpoint;
+    })();
+    assert.equal(viewpoint.clippingPlanes?.length, 3);
+    // BCF is Z up: the viewer's Y (the `down` plane) is BCF z. 40 % of 0..12 is 4.8; the collapsed midpoint would be 6.
+    const down = viewpoint.clippingPlanes!.find((p) => Math.abs(p.direction.z) === 1)!;
+    assert.ok(down, 'the down plane is in the viewpoint');
+    assert.ok(Math.abs(down.location.z - 4.8) < 1e-6, `the down plane stays at 40 %, not at the midpoint 6: ${down.location.z}`);
+  });
+
+  it('a section box is not exported as the axis it carried before it was a box', async () => {
+    await threeCuts();
+    await act(async () => { s().setSectionBox({ min: [-5, 1, -4], max: [5, 9, 4] }); }); // the active plane (front) becomes a box
+    const viewpoint = await capture();
+    assert.equal(viewpoint.clippingPlanes?.length, 2, 'only the two real planes');
+  });
+
+  it('a plane that is not cutting is not exported', async () => {
+    await threeCuts();
+    await act(async () => { s().setSectionPlaneEnabled(false); });
+    assert.equal((await capture()).clippingPlanes?.length, 2);
+  });
+
+  it('a viewpoint with more planes than the viewer holds shows the first eight', async () => {
+    await threeCuts();
+    const viewpoint = await capture();
+    const planes = viewpoint.clippingPlanes!;
+    const many: BCFViewpoint = { ...viewpoint, clippingPlanes: Array.from({ length: 10 }, (_, i) => planes[i % 3]!) };
+    await act(async () => api!.applyViewpoint(many, false));
+    assert.equal(1 + s().inactiveSectionPlanes.length, 8);
+  });
+});

@@ -5,8 +5,9 @@
 //! Material association extraction.
 
 use super::material_units::MaterialUnitContext;
+use super::material_usages::UsageTerminals;
 use super::types::{EntityJob, MaterialAssociation};
-use ifc_lite_core::{EntityDecoder, IfcType};
+use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use rayon::prelude::*;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -40,15 +41,58 @@ fn material_details_of(decoder: &mut EntityDecoder, material_id: u32) -> Option<
 
 /// Resolve a `RelatingMaterial` into a flat list of layers. Handles
 /// `IfcMaterial`, `IfcMaterialLayerSet`, `IfcMaterialLayerSetUsage` (→ set),
+/// `IfcMaterialProfileSet`, `IfcMaterialProfileSetUsage` (→ set),
 /// `IfcMaterialList`, and `IfcMaterialConstituentSet`. `unit_scale` converts
 /// layer thickness to metres.
-fn resolve_material(decoder: &mut EntityDecoder, id: u32, unit_scale: f64) -> Vec<ResolvedLayer> {
-    let Ok(entity) = decoder.decode_by_id(id) else {
+///
+/// Usages are followed iteratively, never by recursion (SERVER-5, #7673), and
+/// memoised across associations in `usages` (see [`UsageTerminals`]). This
+/// used to recurse into whatever a usage's attribute 0 named, so a usage
+/// naming itself, or two usages naming each other, recursed until the stack
+/// overflowed: SIGABRT, which takes every in-flight request on the server
+/// down with it. Every acyclic input resolves exactly as it did before, and as
+/// the TS twin does (`resolveMaterial` in
+/// `packages/parser/src/material-definitions.ts`); a cycle resolves to nothing.
+fn resolve_material(
+    decoder: &mut EntityDecoder,
+    usages: &UsageTerminals,
+    id: u32,
+    unit_scale: f64,
+) -> Vec<ResolvedLayer> {
+    let Some(definition_id) = usages.terminal(decoder, id, usage_target) else {
+        return Vec::new();
+    };
+    let Ok(entity) = decoder.decode_by_id(definition_id) else {
         return Vec::new();
     };
     let ty = entity.ifc_type.as_str().to_ascii_uppercase();
+    resolve_definition(decoder, &entity, &ty, definition_id, unit_scale)
+}
 
-    match ty.as_str() {
+/// `Some(attribute 0)` when `entity` is a material usage, `None` otherwise.
+/// One arm per usage type (not an `|` pattern): the server/browser type
+/// parity gate reads `"IFC..." =>` arms.
+pub(super) fn usage_target(entity: &DecodedEntity) -> Option<Option<u32>> {
+    match entity.ifc_type.as_str().to_ascii_uppercase().as_str() {
+        // ForLayerSet is attribute 0.
+        "IFCMATERIALLAYERSETUSAGE" => Some(entity.get_ref(0)),
+        // ForProfileSet is attribute 0.
+        "IFCMATERIALPROFILESETUSAGE" => Some(entity.get_ref(0)),
+        _ => None,
+    }
+}
+
+/// Resolve one material definition that is not a usage. `ty` is `entity`'s
+/// upper-cased type name and `id` its express id. Never follows a usage, so it
+/// cannot recurse.
+fn resolve_definition(
+    decoder: &mut EntityDecoder,
+    entity: &DecodedEntity,
+    ty: &str,
+    id: u32,
+    unit_scale: f64,
+) -> Vec<ResolvedLayer> {
+    match ty {
         "IFCMATERIAL" => {
             vec![ResolvedLayer {
                 kind: "IfcMaterial",
@@ -66,13 +110,6 @@ fn resolve_material(decoder: &mut EntityDecoder, id: u32, unit_scale: f64) -> Ve
                 category: entity.get_string(2).map(str::to_string),
             }]
         },
-        "IFCMATERIALLAYERSETUSAGE" => {
-            // ForLayerSet is attribute 0.
-            match entity.get_ref(0) {
-                Some(set_id) => resolve_material(decoder, set_id, unit_scale),
-                None => Vec::new(),
-            }
-        }
         "IFCMATERIALLAYERSET" => {
             let set_name = entity.get_string(1).map(|s| s.to_string());
             let member_count = entity.get_list(0).map_or(0, |l| l.len() as u32);
@@ -187,13 +224,6 @@ fn resolve_material(decoder: &mut EntityDecoder, id: u32, unit_scale: f64) -> Ve
                 })
                 .collect()
         }
-        "IFCMATERIALPROFILESETUSAGE" => {
-            // ForProfileSet is attribute 0.
-            match entity.get_ref(0) {
-                Some(set_id) => resolve_material(decoder, set_id, unit_scale),
-                None => Vec::new(),
-            }
-        }
         "IFCMATERIALPROFILESET" => {
             // IfcMaterialProfileSet: Name(0), Description(1), MaterialProfiles(2).
             // Each IfcMaterialProfile: Name(0), Description(1), Material(2),
@@ -243,7 +273,7 @@ fn resolve_material(decoder: &mut EntityDecoder, id: u32, unit_scale: f64) -> Ve
 /// Extract material associations (`IfcRelAssociatesMaterial`).
 pub(super) fn extract_materials(
     jobs: &[EntityJob],
-    content: &Arc<Vec<u8>>,
+    content: &[u8],
     entity_index: &Arc<ifc_lite_core::EntityIndex>,
     units: &MaterialUnitContext,
 ) -> Vec<MaterialAssociation> {
@@ -257,11 +287,12 @@ pub(super) fn extract_materials(
 
     tracing::debug!(count = rel_jobs.len(), "Extracting materials");
 
+    let usages = UsageTerminals::default();
     rel_jobs
         .par_iter()
         .flat_map(|job| {
             let mut decoder =
-                EntityDecoder::with_arc_index(content.as_slice(), entity_index.clone());
+                EntityDecoder::with_arc_index(content, entity_index.clone());
             let Ok(rel) = decoder.decode_at(job.start, job.end) else {
                 return Vec::new();
             };
@@ -277,7 +308,7 @@ pub(super) fn extract_materials(
                     let scale = units.scale_for(element_id);
                     let layers = resolved_by_scale
                         .entry(scale.to_bits())
-                        .or_insert_with(|| resolve_material(&mut decoder, material_id, scale));
+                        .or_insert_with(|| resolve_material(&mut decoder, &usages, material_id, scale));
                     if units.has_mixed_type_scales(element_id)
                         && layers.iter().any(|layer| layer.thickness.is_some())
                     {

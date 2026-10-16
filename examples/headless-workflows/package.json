@@ -1,0 +1,26 @@
+{
+  "name": "ifc-lite-headless-workflows",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Complete developer workflows for IFC data, validation, editing, geometry and a cancellable local service",
+  "scripts": {
+    "build": "tsc --project tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --tsconfig test/tsconfig.json --test --test-concurrency=1 test/*.test.ts",
+    "extract:dev": "tsx --tsconfig test/tsconfig.json src/extract.mts"
+  },
+  "dependencies": {
+    "@ifc-lite/sdk": "workspace:^",
+    "@ifc-lite/ids": "workspace:^",
+    "@ifc-lite/geometry": "workspace:^"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.4",
+    "typescript": "^6.0.3",
+    "tsx": "^4.23.15"
+  },
+  "engines": {
+    "node": ">=22.13 <23 || 24.x"
+  }
+}

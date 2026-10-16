@@ -527,25 +527,30 @@ jobs:
             docs:
               - 'docs/**'
               - 'mkdocs.yml'
-              # The docs-site job installs from it (#4912).
               - 'requirements-docs.txt'
               - 'README.md'
-              - 'packages/*/README.md'
-              # The two SOURCES `scripts/docs/generate-docs-sections.mjs`
-              # regenerates its sections from. They belong in `docs` rather
-              # than `frontend` on purpose: `docs` reaches the freshness check
-              # through the Docs-checks job -- one free ubuntu-latest runner,
-              # three node scripts, no build artifact and no Depot -- which is
-              # the CHEAPEST job that runs this gate. `frontend` would drag a
-              # landing-copy edit through build + typecheck + lint + the viewer
-              # shards for no added signal. Coverage holds either way: when a
-              # PR also touches frontend/rust, Docs checks skips itself and
-              # Node tests runs the same `--check`. PR #1817 changed only
-              # apps/landing/bench-data.json, and BOTH lanes skipped.
               - 'apps/landing/**'
               - 'tests/benchmark/baseline.json'
+              # TypeDoc consumes every public declaration entry and the tooling
+              # that builds it. Reference generation must run on API changes.
+              - 'packages/**'
+              - 'shared/ai/**'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+              - 'tsconfig*.json'
+              - 'turbo.json'
               - 'scripts/docs/**'
+              - 'scripts/lib/public-entrypoints.mjs'
+              - 'scripts/consumer/packed-packages.mjs'
+              - 'scripts/lib/is-main-entry.mjs'
+              - 'scripts/lib/shipped-target.*'
+              - 'scripts/*worker-urls.*'
+              - 'scripts/run-build-wasm.mjs'
+              - 'scripts/build-wasm.sh'
               - '.github/workflows/test.yml'
+              - '.github/workflows/docs.yml'
+              - '.github/actions/setup-docs-api/**'
 
       # Decide whether `build` can skip the from-source wasm32 compile. The
       # probe emits `true` only when the WASM source is byte-identical to the
@@ -712,6 +717,16 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
+      # Keep a separate root so build-output still extracts into packages/.
+      # Recipe tests execute the compiled scripts from the same shared build.
+      - name: Upload example builds
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: example-build-output
+          path: examples/*/dist
+          retention-days: 1
+          if-no-files-found: error
+
       # The viewer app `pnpm build` just produced (turbo builds apps/* too, via
       # the viewer's own `build` script, so the __tla chunk-await guard has
       # already run over exactly these files). viewer-e2e serves it with
@@ -775,6 +790,11 @@ jobs:
         with:
           name: build-output
           path: packages
+      - name: Download example builds
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: example-build-output
+          path: examples
       # #4079 taught scripts/lib/revert-oracle-python.mjs to route a changed
       # `test_*.py` / `*_test.py` ANYWHERE in the repo (routing is
       # marker-based — `pythonTestOwner` walks up to the nearest project
@@ -899,13 +919,42 @@ jobs:
           # RED. Once the script is on main, ordinary whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- scripts/viewer-test-shards.mjs | grep -Fxq 'scripts/viewer-test-shards.mjs'; then
             oracle_args+=(--mutation tests/evidence/ci-viewer-test-shards/selection.oracle.patch)
-          # Keep the newly added frame gate loadable while disabling its actual
-          # admission call. The workflow-CLI assertion must reject its acceptance
-          # of incomplete metrics. All changed tests still run on both sides.
-          # TODO(remove-by: check-frame-results.mjs is on main, louistrue)
-          # Ordinary whole-change inversion resumes automatically at that point.
-          elif git diff --name-only --diff-filter=A origin/main...HEAD -- scripts/perf/check-frame-results.mjs | grep -Fxq 'scripts/perf/check-frame-results.mjs'; then
-            oracle_args+=(--mutation tests/evidence/frame-admission-6975/admission.oracle.patch)
+          # #7673: the new large-stack geometry pool module carries its own
+          # tests, so a whole-file revert deletes them (INCONCLUSIVE). Keep the
+          # module and remove ONLY the large worker stack: the deep par_iter
+          # job then overflows and its child-process test turns RED. Once
+          # geometry_pool.rs is on main, ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/processing/src/geometry_pool.rs | grep -Fxq 'rust/processing/src/geometry_pool.rs'; then
+            oracle_args+=(--mutation tests/evidence/geometry-pool-7673/stack-size.oracle.patch)
+          # #7676: the upload admission change adds ApiError::UploadTimeout, which
+          # its tests name, so a whole-change revert cannot compile them
+          # (INCONCLUSIVE). Keep the type and break ONLY the behaviour: the
+          # stall/trickle deadline and its idle cap never fire, the decode and
+          # the hash run on the async worker, the admission guard stays in the
+          # handler instead of riding them, the stream's data-model fill takes
+          # a second slot, and corrupt gzip/.ifcZIP streams answer 500. Once
+          # upload.rs is on main, ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- apps/server/src/routes/parse/upload.rs | grep -Fxq 'apps/server/src/routes/parse/upload.rs'; then
+            oracle_args+=(--mutation tests/evidence/upload-admission-7676/behaviour.oracle.patch)
+          # #7676: the cache-read policy adds AdmissionGuard::into_resident,
+          # Admission::acquire_resident and the DiskCache::lookup family, which
+          # its tests name, so a whole-change revert cannot compile them
+          # (INCONCLUSIVE). Keep them and break ONLY the behaviour: a drained
+          # response gives its bytes back early, a cache read ignores the RSS
+          # breaker, eviction ignores the write time (a same-content repair is
+          # evicted) or the blob's return, an upload charge never grows to the
+          # stored size or grows before the replay gate, and two routes drop
+          # Content-Length. Once
+          # cache_entry.rs is on main, ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- apps/server/src/services/cache_entry.rs | grep -Fxq 'apps/server/src/services/cache_entry.rs'; then
+            oracle_args+=(--mutation tests/evidence/cache-policy-7676/behaviour.oracle.patch)
+          # #7682: keep the new STEP-writer modules, StepStats fields and the TS
+          # allocatedExpressId export loadable while disabling ONLY the guards the
+          # changed tests pin (value/name/id-reuse refusals, the id-space refusal,
+          # appended-record conversion, last-record-wins, the property counter).
+          # Once step_ids.rs is on main, ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/export/src/step_ids.rs | grep -Fxq 'rust/export/src/step_ids.rs'; then
+            oracle_args+=(--mutation tests/evidence/step-writer-7682/appended-record-guards.oracle.patch)
           fi
           node scripts/check-test-revert-oracle.mjs "${oracle_args[@]}"
           # #7512: observe cleanup independently of scoped admission/schema.
@@ -1224,6 +1273,8 @@ jobs:
       # then made every fixture-gated test skip silently and report ok.
       - name: Verify fixtures
         run: pnpm fixtures:check
+      - name: Verify packed developer workflows
+        run: pnpm test:packed
       - name: Check test wiring
         run: node scripts/check-test-wiring.mjs
       - name: Check export completion calls
@@ -1321,6 +1372,14 @@ jobs:
         run: node --test scripts/check-refwalk-guards.test.mjs scripts/lib/refwalk-classify.test.mjs
       - name: Check for unguarded entity-reference walks
         run: node scripts/check-refwalk-guards.mjs
+      # #7674: a comparator built on `partial_cmp` is not a total order on NaN,
+      # and a Rust >= 1.81 sort may panic on it -- an abort in the wasm worker.
+      # Every production `partial_cmp` use needs an allowlist row. Its own
+      # tests run first so a broken detector fails rather than reads clean.
+      - name: Check float sort comparator gate's own tests
+        run: node --test scripts/check-float-sort-comparators.test.mjs
+      - name: Check for non-total float sort comparators
+        run: node scripts/check-float-sort-comparators.mjs
       # #5236: a raw base-store enumeration in a live query/write can return a
       # tombstoned entity or miss one created in the mutation overlay. The
       # parser test pins the detector; the gate ratchets the scoped callers.
@@ -2039,6 +2098,11 @@ jobs:
         with:
           name: build-output
           path: packages
+      - name: Download example builds
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: example-build-output
+          path: examples
       - name: Cache test fixtures
         id: fixtures-cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -2339,6 +2403,16 @@ jobs:
       # That wasm32 leg runs on its own schedule in determinism.yml.
       - name: Clippy (lint gate)
         run: cargo clippy --workspace --all-targets -- -D warnings
+      # G6 (#7672): a dependency a member declares but its sources never name is
+      # compile time and supply-chain surface for nothing (XCUT-17 found seven).
+      # cargo-machete is a text scan, so it needs no build and runs in seconds.
+      # A dependency that is only there for a feature or a macro goes in that
+      # crate's `[package.metadata.cargo-machete] ignored`, with a reason.
+      # Prebuilt binary, pinned like cargo-nextest below (not `cargo install`).
+      - name: Install cargo-machete
+        uses: taiki-e/install-action@7d7411b181173c48350233b3f42241a9ccc6aa2b # cargo-machete (snapshot pinned 2026-10)
+      - name: Unused dependencies (cargo machete)
+        run: cargo machete
       # cargo-nextest, not `cargo test`, for the test binaries. Measured on a
       # green PR run: `cargo test --workspace` was 26 min, of which compile was
       # 5m45s and the remaining ~20 min was ~290 test binaries run ONE AFTER
@@ -2850,7 +2924,7 @@ jobs:
     name: Docs site build (mkdocs --strict)
     needs: changes
     if: (needs.changes.outputs.docs == 'true') && needs.changes.outputs.replay != 'true'
-    # Free runner - a pure-Python static site build, not compute-bound.
+    # Build declarations and the searchable reference before MkDocs; no Rust setup is needed.
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -2858,6 +2932,8 @@ jobs:
         with:
           lfs: false
           persist-credentials: false
+      - name: Generate searchable public API reference
+        uses: ./.github/actions/setup-docs-api
       # Seconds, no Python: names the page and the fix before the full build.
       - name: Every docs page is in the nav or declared not_in_nav
         run: node scripts/docs/check-mkdocs-nav.mjs

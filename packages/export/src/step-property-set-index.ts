@@ -14,6 +14,7 @@ import { resolveEffectiveEntityRecord } from '@ifc-lite/parser';
 import { authoredEntityRefs, type EffectiveEntityIndex } from './effective-index.js';
 import type { PropertySetContext } from './step-property-set-readers.js';
 import { entityLineText } from './step-property-set-readers.js';
+import { frameArgs, stepRecordFrame } from './step-record-frame.js';
 
 /**
  * Build a one-shot reverse index of every effective IfcRelDefinesByProperties:
@@ -101,7 +102,10 @@ function getRelatedEntities(ctx: PropertySetContext, relId: number): number[] {
   // `[^)]`: the list must not open inside the match, or it starts at the
   // record's own `(` and a set OwnerHistory (`#5`) is read as a related
   // object, which kept an unshared set alive as an orphan (#5794).
-  const match = entityText.match(/\(([^()]+)\)\s*,\s*#(\d+)\s*\)\s*;/);
+  // Anchored at the record's own close (`stepRecordFrame`, #7682), so trivia
+  // between its `)` and `;` does not hide the relation.
+  const frame = stepRecordFrame(entityText);
+  const match = frame === null ? null : frameArgs(entityText, frame).match(/\(([^()]+)\)\s*,\s*#(\d+)\s*$/);
   if (!match) return [];
 
   const objectsList = match[1];
@@ -120,8 +124,9 @@ function getRelatedPropertySet(ctx: PropertySetContext, relId: number): number |
   const entityText = entityLineText(ctx, relId);
   if (entityText === null) return null;
 
-  // Last #ID before the closing );
-  const match = entityText.match(/,\s*#(\d+)\s*\)\s*;$/);
+  // Last #ID before the record's own close (`stepRecordFrame`, #7682).
+  const frame = stepRecordFrame(entityText);
+  const match = frame === null ? null : frameArgs(entityText, frame).match(/,\s*#(\d+)\s*$/);
   if (!match) return null;
   return parseInt(match[1], 10);
 }

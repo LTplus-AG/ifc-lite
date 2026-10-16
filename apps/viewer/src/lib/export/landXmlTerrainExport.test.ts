@@ -129,9 +129,9 @@ function stubProcessor(exportImpl: LandXmlTerrainProcessor['exportLandXmlTerrain
     init: async () => {
       calls.init += 1;
     },
-    exportLandXmlTerrain: (bytes, ids, now) => {
+    exportLandXmlTerrain: (bytes, ids, options) => {
       calls.ids.push([...ids]);
-      return exportImpl(bytes, ids, now);
+      return exportImpl(bytes, ids, options);
     },
     dispose: () => {
       calls.dispose += 1;

@@ -42,6 +42,8 @@ export const commandsEn = {
   'commands.walk.jump': 'Jump (Walk mode)',
   'commands.walk.crouch': 'Crouch while held (Walk mode)',
   'commands.walk.toggleCollision': 'Collision and gravity on / off (Walk mode)',
+  'commands.section.previousPlane': 'Previous cutting plane (Section tool)',
+  'commands.section.nextPlane': 'Next cutting plane (Section tool)',
   'commands.measure.toggleSnap': 'Toggle snapping (Measure tool)',
   'commands.measure.cancel': 'Cancel the measurement in progress (Measure tool)',
   'commands.measure.finish': 'Finish the polyline as open length, or the radius fit (Measure tool)',

@@ -5,7 +5,7 @@
 import type { Clash } from '@ifc-lite/clash';
 import { useViewerStore } from '@/store';
 import { manualClashOccurrenceKey } from '../clash/manual-groups';
-import { clashDisciplineCandidates } from './clash-taxonomy';
+import { CLASH_GROUP_EXPLANATION_MAX, CLASH_GROUP_NAME_MAX, clashDisciplineCandidates } from './clash-taxonomy';
 import { evidenceIsCurrent, type EvidenceSnapshot } from './evidence';
 
 interface ProposedGroup { name: string; explanation: string; citations: string[] }
@@ -42,8 +42,8 @@ export function parseClashGroupPatch(answer: string): ClashGroupPatch {
   const names = new Set<string>();
   const groups: ProposedGroup[] = [];
   for (const group of value.groups) {
-    if (!record(group) || !fields(group, ['name', 'explanation', 'citations']) || !text(group.name, 100)
-      || !text(group.explanation, 1200) || !Array.isArray(group.citations) || !group.citations.length
+    if (!record(group) || !fields(group, ['name', 'explanation', 'citations']) || !text(group.name, CLASH_GROUP_NAME_MAX)
+      || !text(group.explanation, CLASH_GROUP_EXPLANATION_MAX) || !Array.isArray(group.citations) || !group.citations.length
       || group.citations.length > 100 || names.has(group.name.trim())) throw new Error('Invalid clash group');
     const citations: string[] = [];
     for (const citation of group.citations) {
@@ -159,7 +159,7 @@ export function normalizeClashGroupRows(answer: string, evidencePayload: string)
   let removedRepeats = 0, removedUnknown = 0, droppedGroups = 0;
   const groups: ProposedGroup[] = [];
   for (const group of value.groups) {
-    if (!record(group) || !text(group.name, 100) || !text(group.explanation, 1200) || !Array.isArray(group.citations)) return null;
+    if (!record(group) || !text(group.name, CLASH_GROUP_NAME_MAX) || !text(group.explanation, CLASH_GROUP_EXPLANATION_MAX) || !Array.isArray(group.citations)) return null;
     const name = group.name.trim();
     if (groups.some(existing => existing.name === name)) { droppedGroups++; continue; }
     const citations: string[] = [];

@@ -10,6 +10,7 @@
  */
 
 import '@/test/setup-dom.js';
+import '@/test/section-tool-ready.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
@@ -219,12 +220,34 @@ describe('adding, choosing and removing planes (#7545)', () => {
     assert.deepEqual(chipNames(), ['A', 'B']);
   });
 
+  it('the tablist holds tabs only: the plane menu button sits beside it, not inside', () => {
+    renderTool();
+    click(buttonByText(bar(), 'Down (Z)'));
+    addPlane('Side (X)');
+    const tablist = bar().querySelector('[role="tablist"]')!;
+    assert.equal(tablist.querySelectorAll('button').length, tablist.querySelectorAll('[role="tab"]').length, 'every button in the tablist is a tab');
+    assert.ok(bar().querySelector('[data-testid="section-plane-menu"]'), 'the menu is still on the bar');
+    assert.equal(tablist.contains(bar().querySelector('[data-testid="section-plane-menu"]')), false);
+  });
+
   it('Delete on a focused chip removes its plane', () => {
     renderTool();
     click(buttonByText(bar(), 'Down (Z)'));
     addPlane('Side (X)');
     press(chips()[1]!, 'Delete');
     assert.deepEqual(chipNames(), ['A']);
+  });
+
+  it('Delete on a chip removes its plane and leaves the focus on the chip that took over', async () => {
+    renderTool();
+    click(buttonByText(bar(), 'Down (Z)'));
+    addPlane('Side (X)');
+    act(() => chips()[1]!.focus());
+    press(chips()[1]!, 'Delete');
+    await new Promise((r) => setTimeout(r, 10)); // the focus moves on a timer, outside React's act scope
+    assert.deepEqual(chipNames(), ['A']);
+    // A boolean, not the nodes: a failing deepEqual on DOM elements walks their React fibers and never returns.
+    assert.ok(document.activeElement === selectedChip(), 'focus is on the selected chip, not dropped to the page');
   });
 
   it('arrow keys move the selection AND the focus between chips and wrap, key after key', () => {

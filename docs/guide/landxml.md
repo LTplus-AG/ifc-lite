@@ -93,10 +93,47 @@ To be aligned with a georeferenced model, the LandXML `CoordinateSystem` must de
 horizontal CRS (`epsgCode`, or an `EPSG:<n>` `horizontalDatum`) and an `EPSG:<n>`
 `verticalDatum`. The anchor must declare a vertical datum too; for IFC that is
 `IfcProjectedCRS.VerticalDatum`, which can be set in the Georeferencing panel. A display `name`
-such as `name="EPSG:31467"` is not read as a declaration. Without alignment the surface keeps its
-map coordinates, and next to a model in local coordinates that is usually far outside the shared
-render frame. The load is then refused, and the message lists each missing or conflicting
+such as `name="EPSG:31467"` is not read as a declaration unless you choose to (see below).
+Without alignment the surface keeps its map coordinates, and next to a model in local coordinates
+that is usually far outside the shared render frame. The load is then refused, and the message lists each missing or conflicting
 declaration.
+
+### Assumptions you can choose
+
+Two of those missing declarations are common in real files, so the viewer lets you assume them.
+Both are **off by default**: without your choice, a file that does not declare them is refused as
+described above. Neither is ever applied silently.
+
+| Assumption | What it assumes | If the assumption is wrong |
+|---|---|---|
+| **Assume a shared height system** | The LandXML, the anchor model, or both declare no vertical datum. Heights are placed as written, as if both used the same height system. | The surface sits too high or too low by the difference between the two height systems. |
+| **Read an EPSG code from the coordinate system name** | The `CoordinateSystem` declares no `epsgCode` and no `EPSG:<n>` `horizontalDatum`, but its `name` is exactly `EPSG:<n>`, for example `name="EPSG:31467"`. That code is used as the horizontal CRS. No other name is read: `CH1903+ / LV95` or `EPSG 31467` is still refused. | If the name was only a label, the surface lands in the wrong place. |
+
+An assumption is used only where it is needed. If the file declares the datum or the code
+itself, the declaration wins, and enabling an assumption changes nothing for that file. A real
+conflict is never covered by an assumption: two different declared vertical datums, or two
+horizontal CRSs that cannot be reprojected onto each other, are still refused.
+
+You can choose them in two places:
+
+- **When a load is refused.** If one or both assumptions would let the file line up, the refusal
+  appears as a prompt over the viewport. It shows the refusal message, then one checkbox per
+  assumption that would help, each with what it assumes and what goes wrong if it does not hold.
+  All are checked to start with. **Load with these assumptions** reloads the file with exactly
+  the checked ones, for this load only. **Always assume this** also turns the checked ones on in
+  Settings for every later file, then reloads. **Cancel** loads nothing. A refusal that no
+  assumption would fix, such as a CRS mismatch or a surface that is genuinely too far away, shows
+  only the message.
+- **In Settings.** Open Settings, then **General → LandXML georeferencing**. The two switches
+  apply to every LandXML you add to a georeferenced model from then on. They are saved in this
+  browser.
+
+A model placed using an assumption is marked **Assumed** in its model information panel (select
+the model in the hierarchy). Each
+assumption it used is listed in words, for example "Heights assumed to share the anchor model's
+height system: no vertical datum is declared" or "EPSG:31467 read from the CoordinateSystem name:
+no EPSG code is declared". A model aligned on declared CRSs alone has no such mark, even if the
+assumptions are switched on.
 
 ## Export
 
@@ -176,19 +213,32 @@ unit, as IFC defines it, instead of being refused.
 | IFC | LandXML 1.2 |
 |---|---|
 | Each selected `IfcGeographicElement` or `IfcSite`, in selection order | One `<Surface>`, `<Definition surfType="TIN">` |
-| Product `Name` (else `GlobalId`) | `Surface@name`. A repeated name gets a ` (2)`, ` (3)` … suffix |
+| Product `Name` (else `GlobalId`), or the name typed in the dialog | `Surface@name`. A repeated name gets a ` (2)`, ` (3)` … suffix |
 | Product `GlobalId` | `Surface@OID` |
 | `IfcTriangulatedFaceSet.Coordinates`, through `PnIndex` when present | `<Pnts>`, one `<P>` per vertex in authored order, ids from 1 |
 | `CoordIndex` | `<Faces>`, one `<F>` per triangle, unchanged |
-| Vertex, through the product placement and then the context's `IfcMapConversion` / `IfcMapConversionScaled` | `<P>` text as **northing easting elevation**, in metres |
+| Vertex, through the product placement and then the context's `IfcMapConversion` / `IfcMapConversionScaled` | `<P>` text as **northing easting elevation**, in the chosen unit (metres by default) |
 | `IfcProjectedCRS.Name` | `CoordinateSystem@name`, plus `epsgCode` when the name is `EPSG:<n>` |
 | `IfcProjectedCRS.GeodeticDatum` / `VerticalDatum` | `CoordinateSystem@horizontalDatum` / `@verticalDatum` |
 | `IfcProject.Name` (else `LongName`) | `Project@name` |
 
-Coordinates are written to six decimals (a micrometre), with trailing zeros trimmed and never in
-exponent form. The map conversion is found through the representation's own context, following
-`ParentContext` from a subcontext. `MapUnit` and the project length unit are both converted to
-metres, so the output is always `<Metric linearUnit="meter">`. For how ifc-lite reads the map
+The dialog has three options, applied when you export (#7618):
+
+- **Units**: metres (`<Metric linearUnit="meter">`, the default), international feet
+  (`<Imperial linearUnit="foot" elevationUnit="feet">`) or US survey feet
+  (`<Imperial linearUnit="USSurveyFoot" elevationUnit="feet">`). LandXML 1.2 has no US survey foot
+  for elevations, so in that mode heights are written in international feet. Both units are
+  declared, so any reader converts them exactly.
+- **Decimal places** in the written unit: 3, 4 or 6. The default 6 rounds to a micrometre in
+  metres, far below survey precision; 3 is millimetres in metres, as machine-control files usually
+  carry. Trailing zeros are trimmed and numbers are never in exponent form. A precision so coarse
+  that a triangle collapses onto a line or point is refused, naming the face; choose more decimal
+  places.
+- **Surface name**, per surface. It starts as the IFC name; a blank name keeps it.
+
+The map conversion is found through the representation's own context, following `ParentContext`
+from a subcontext. `MapUnit` and the project length unit are both converted to metres first, and
+the chosen unit is applied once, when the file is written. For how ifc-lite reads the map
 conversion elsewhere, see
 [map units](exporting.md#map-units-for-interoperability) and
 [map rotation and scale](exporting.md#map-rotation-and-scale-for-interoperability).

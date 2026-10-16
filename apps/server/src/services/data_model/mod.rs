@@ -9,6 +9,7 @@ mod generated;
 mod documents;
 mod materials;
 mod material_units;
+mod material_usages;
 mod metadata;
 mod properties;
 mod property_value;
@@ -56,7 +57,7 @@ where
     let mut total_entities = 0usize;
 
     let mut last_id = 0u32;
-    let mut last_type = String::new();
+    let mut last_type = "";
     let mut max_id = 0u32;
     let mut last_end = 0usize;
     let content_len = content.len();
@@ -64,14 +65,14 @@ where
     while let Some((id, type_name, start, end)) = scanner.next_entity() {
         total_entities += 1;
         last_id = id;
-        last_type = type_name.to_string();
+        last_type = type_name;
         last_end = end;
         if id > max_id {
             max_id = id;
         }
         all_entities.push(EntityJob {
             id,
-            type_name: type_name.to_string(),
+            type_name,
             start,
             end,
         });
@@ -94,7 +95,7 @@ where
         let sample_types: Vec<&str> = all_entities
             .iter()
             .take(20)
-            .map(|j| j.type_name.as_str())
+            .map(|j| j.type_name)
             .collect();
         tracing::debug!(?sample_types, "Sample entity types from scan");
 
@@ -132,19 +133,21 @@ where
         );
     }
 
-    // Parallel extraction using rayon::join
-    let content_arc = Arc::new(content.to_vec());
+    // Parallel extraction using rayon::join. Every extractor borrows the
+    // content: `rayon::join` scopes the borrow, so the copy of the whole
+    // upload this used to make (up to `MAX_FILE_SIZE_MB`, on top of the parse
+    // running beside it) bought nothing (#7676, SERVER-11).
     let (entities, ((property_sets, quantity_sets), relationships)) = rayon::join(
-        || extract_entity_metadata(&all_entities, &content_arc, &entity_index),
+        || extract_entity_metadata(&all_entities, content, &entity_index),
         || {
             rayon::join(
                 || {
                     rayon::join(
-                        || extract_properties(&all_entities, &content_arc, &entity_index),
-                        || extract_quantities(&all_entities, &content_arc, &entity_index),
+                        || extract_properties(&all_entities, content, &entity_index),
+                        || extract_quantities(&all_entities, content, &entity_index),
                     )
                 },
-                || extract_relationships(&all_entities, &content_arc, &entity_index),
+                || extract_relationships(&all_entities, content, &entity_index),
             )
         },
     );
@@ -177,18 +180,18 @@ where
     let ((classifications, materials), documents) = rayon::join(
         || {
             rayon::join(
-                || extract_classifications(&all_entities, &content_arc, &entity_index),
+                || extract_classifications(&all_entities, content, &entity_index),
                 || {
                     extract_materials(
                         &all_entities,
-                        &content_arc,
+                        content,
                         &entity_index,
                         &material_units,
                     )
                 },
             )
         },
-        || extract_documents(&all_entities, &content_arc, &entity_index),
+        || extract_documents(&all_entities, content, &entity_index),
     );
 
     // Build spatial hierarchy (depends on relationships and entities)

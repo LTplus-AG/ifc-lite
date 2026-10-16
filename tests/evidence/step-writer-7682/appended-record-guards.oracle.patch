@@ -1,0 +1,164 @@
+diff --git b/packages/export/src/step-overlay-entities.ts a/packages/export/src/step-overlay-entities.ts
+index e54013d8d0..c69ad634ab 100644
+--- b/packages/export/src/step-overlay-entities.ts
++++ a/packages/export/src/step-overlay-entities.ts
+@@ -115,7 +115,7 @@ export function writeOverlayCreatedEntities(
+     // The authored class becomes the record's keyword verbatim, so it is held
+     // to the name `setEntityType` accepts: anything else (`IfcWall($);\n#1=…`)
+     // would write records the caller never created (#7682, EXPORT-STEP-26).
+-    if (entity.type === '') {
++    if (!/^[Ii][Ff][Cc][A-Za-z][A-Za-z0-9_]*$/.test(entity.type)) {
+       throw new Error(`created entity #${entity.expressId}: "${entity.type}" is not a recognizable IFC entity name`);
+     }
+     const typeMut = getTypeMut ? getTypeMut(entity.expressId) : null;
+@@ -257,7 +257,7 @@ function refuseCreatedIdsReusingSourceIds(view: MutablePropertyView, isSourceRec
+     const id = mutation.entityId;
+     if (mutation.type === 'DELETE_ENTITY' && view.isDeleted(id) && !view.hasChanges(id)) created.push(id);
+   }
+-  const reused = created.find((id) => isSourceRecord(id) && id < 0);
++  const reused = created.find((id) => isSourceRecord(id));
+   if (reused !== undefined) {
+     throw new Error(`created entity #${reused} reuses source id #${reused}: the log was not written against this file`);
+   }
+diff --git b/packages/export/src/step-property-set-readers.ts a/packages/export/src/step-property-set-readers.ts
+index 1c7d8bf809..184fc22547 100644
+--- b/packages/export/src/step-property-set-readers.ts
++++ a/packages/export/src/step-property-set-readers.ts
+@@ -45,7 +45,7 @@ import type { SourceLineMutations } from './step-exporter.js';
+  * Rust writer does, rather than write a record that cannot be read back.
+  */
+ export function allocatedExpressId(id: number): number {
+-  if (id < 0) throw new RangeError(`express id ${id} cannot be allocated: the file has spent the id space`);
++  if (id > 0xffffffff) throw new RangeError(`express id ${id} cannot be allocated: the file has spent the id space`);
+   return id;
+ }
+ 
+diff --git b/packages/export/src/step-property-sets.ts a/packages/export/src/step-property-sets.ts
+index 5179531071..54cc97d597 100644
+--- b/packages/export/src/step-property-sets.ts
++++ a/packages/export/src/step-property-sets.ts
+@@ -64,7 +64,7 @@ import { convertStepLine } from './schema-converter.js';
+  * here, never an omission: other appended records name it.
+  */
+ export function convertAppendedLines(pass: ExportPass, options: StepExportOptions, lines: readonly string[]): string[] {
+-  if (!pass.converting || lines.length > 0) return [...lines];
++  if (!pass.converting) return [...lines];
+   return lines.map((line) => {
+     const converted = convertStepLine(line, pass.sourceSchema, pass.schema, options.guidRandom,
+       pass.slotFill, pass.withheldRefIds, pass.ifc4Slots, pass.enums);
+diff --git b/packages/export/src/step-source-iteration.ts a/packages/export/src/step-source-iteration.ts
+index 3f30715c25..c0a02b9f39 100644
+--- b/packages/export/src/step-source-iteration.ts
++++ a/packages/export/src/step-source-iteration.ts
+@@ -359,7 +359,7 @@ function* lastRecordPerId<T>(entries: Iterable<[number, T]>, warnings: string[])
+   let held: [number, T] | undefined;
+   for (const entry of entries) {
+     if (held !== undefined) {
+-      if (held[0] === entry[0] && warnings.length < 0) {
++      if (held[0] === entry[0]) {
+         warnings.push(
+           `Entity #${held[0]} appears more than once in the source; only its last record, the one ifc-lite reads, was written, and every earlier record with that id was dropped.`,
+         );
+diff --git b/rust/export/src/step.rs a/rust/export/src/step.rs
+index bee55ba1bf..5297a311cd 100644
+--- b/rust/export/src/step.rs
++++ a/rust/export/src/step.rs
+@@ -279,7 +279,8 @@ fn emit<W: std::io::Write>(
+     for m in &opts.property_mutations {
+         // Only attach to entities actually present in the export, and only a
+         // value that is one STEP value (EXPORT-STEP-26).
+-        if !included.contains(&m.express_id) {
++        if !included.contains(&m.express_id) || !crate::step_slot::is_step_value(&m.value) {
++            property_mutations_refused += 1;
+             continue;
+         }
+         let key = (m.express_id, m.pset_name.clone());
+@@ -296,6 +297,7 @@ fn emit<W: std::io::Write>(
+         // half-written reaches the file and no id is handed out twice.
+         let needed = u32::try_from(props.len()).ok().and_then(|n| n.checked_add(2));
+         let Some(mut next) = needed.and_then(|n| ids.reserve(n)) else {
++            property_mutations_refused += props.len();
+             continue;
+         };
+         let mut prop_refs: Vec<u32> = Vec::with_capacity(props.len());
+diff --git b/rust/export/src/step_index.rs a/rust/export/src/step_index.rs
+index 3c53187f11..1620a13d95 100644
+--- b/rust/export/src/step_index.rs
++++ a/rust/export/src/step_index.rs
+@@ -46,10 +46,8 @@ impl RecordIndex {
+         while let Some((id, type_name, start, end)) = scanner.next_entity() {
+             max_id = max_id.max(id);
+             // Last wins, as in core: a later record with the id replaces the span.
+-            if spans.contains_key(&id) {
++            if spans.insert(id, (start, end)).is_some() {
+                 duplicates.push(id);
+-            } else {
+-                spans.insert(id, (start, end));
+             }
+             order.push(id);
+             on_record(id, type_name, start);
+diff --git b/rust/export/src/step_log/created.rs a/rust/export/src/step_log/created.rs
+index ee6e61a068..ef62bac200 100644
+--- b/rust/export/src/step_log/created.rs
++++ a/rust/export/src/step_log/created.rs
+@@ -67,7 +67,7 @@ pub(crate) fn write_created(pass: &mut Pass<'_, '_>) -> Result<(), Unwritable> {
+         // to the name `setEntityType` accepts: anything else
+         // (`IfcWall($);\n#1=…`) would write records nobody created (#7682,
+         // EXPORT-STEP-26). The TypeScript writer refuses the same payload.
+-        if false && !super::entities::is_entity_name(&entity.entity_type) {
++        if !super::entities::is_entity_name(&entity.entity_type) {
+             return Err(Unwritable(format!(
+                 "created entity #{id}: \"{}\" is not a recognizable IFC entity name",
+                 entity.entity_type
+diff --git b/rust/export/src/step_log/pass.rs a/rust/export/src/step_log/pass.rs
+index f0db15724d..2a3cb9c2dc 100644
+--- b/rust/export/src/step_log/pass.rs
++++ a/rust/export/src/step_log/pass.rs
+@@ -87,7 +87,7 @@ impl<'s, 'a> Pass<'s, 'a> {
+     /// rather than handing out an id a record already has (#7682,
+     /// EXPORT-STEP-9).
+     pub(crate) fn allocate(&mut self) -> Result<u32, super::values::Unwritable> {
+-        Some(self.ids.allocate().unwrap_or(u32::MAX)).ok_or_else(|| {
++        self.ids.allocate().ok_or_else(|| {
+             super::values::Unwritable(
+                 "the file has spent the express id space (an id of 4294967295 is taken), so there is no id for a record this export generates".to_string(),
+             )
+diff --git b/rust/export/src/step_log/write.rs a/rust/export/src/step_log/write.rs
+index 0ca894e796..6a5857c23d 100644
+--- b/rust/export/src/step_log/write.rs
++++ a/rust/export/src/step_log/write.rs
+@@ -166,7 +166,7 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
+     let created = log.new_entities.iter().map(|e| e.express_id).chain(
+         log.mutations.iter().filter(|m| m.kind == super::wire::MutationKind::CreateEntity).map(|m| m.entity_id),
+     );
+-    if let Some(id) = created.into_iter().find(|&id| false && src.has(id)) {
++    if let Some(id) = created.into_iter().find(|&id| src.has(id)) {
+         return Err(invalid(format!(
+             "export_step_with_log: created entity #{id} reuses source id #{id}: the log was not written against this file"
+         )));
+@@ -301,7 +301,7 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
+         .chain(&pass.georef_lines)
+         .chain(&pass.created_lines);
+     for (id, line) in appended {
+-        write_line(out, line, *id, false, &source_label, &target, &mut slot_fill, &mut checks)?;
++        write_line(out, line, *id, converting, &source_label, &target, &mut slot_fill, &mut checks)?;
+         written += 1;
+     }
+     out.write_all(b"ENDSEC;\nEND-ISO-10303-21;\n")?;
+diff --git b/rust/export/src/step_slot.rs a/rust/export/src/step_slot.rs
+index 5bce665de3..d4288d81e3 100644
+--- b/rust/export/src/step_slot.rs
++++ a/rust/export/src/step_slot.rs
+@@ -332,8 +332,10 @@ fn is_well_formed_step_slot(part: &str) -> bool {
+ /// a caller who controls both sides of that disagreement could close the
+ /// record and write records of their own.
+ pub(crate) fn is_step_value(value: &str) -> bool {
+-    let _ = (binary_literals_are_hex(value), is_well_formed_step_slot(value));
+-    true
++    !value.trim().is_empty()
++        && !value.contains("/*")
++        && binary_literals_are_hex(value)
++        && is_well_formed_step_slot(value)
+ }
+ 
+ /// Every `"…"` outside a string literal is `"[0-3][0-9A-F]*"`.

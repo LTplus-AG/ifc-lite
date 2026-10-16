@@ -6,7 +6,9 @@
  * Exact zoom on the Section bar (#7545): what to frame (the selection, the part of
  * the model the planes leave, the whole model) and how much room to leave around it
  * (a percentage of its largest extent, or a length in metres). The last choice is
- * remembered, so the next Zoom is one click.
+ * remembered, so the next Zoom is one click. "Selection" is the remembered choice only while
+ * something is selected: with nothing selected it is shown as unavailable (with the reason) and the
+ * menu frames the cut area instead, rather than opening on a button that cannot be pressed.
  */
 
 import { useState } from 'react';
@@ -39,7 +41,8 @@ export function SectionZoomMenu({ compact = false }: { compact?: boolean }) {
   const typedNumber = parseTypedNumber(text);
   const parsed = typedNumber ?? Number.NaN;
   const valid = typedNumber !== null && parsed >= 0 && (spec.margin.kind === 'metres' || parsed / 100 <= MAX_ZOOM_MARGIN_FRACTION);
-  const needsSelection = spec.target === 'selection' && !hasSelection;
+  // The remembered target, unless it is the selection and nothing is selected: then the cut area.
+  const target: SectionZoomTarget = spec.target === 'selection' && !hasSelection ? 'cut-region' : spec.target;
 
   const setKind = (kind: SectionZoomMargin['kind']) => {
     if (kind === spec.margin.kind) return;
@@ -52,9 +55,8 @@ export function SectionZoomMenu({ compact = false }: { compact?: boolean }) {
   const apply = async () => {
     if (!valid) return;
     const margin: SectionZoomMargin = { kind: spec.margin.kind, value: spec.margin.kind === 'fraction' ? parsed / 100 : parsed };
-    const next = { ...spec, margin };
-    setSpec(next);
-    const done = await zoomToSectionTarget(useViewerStore.getState(), next);
+    setSpec({ ...spec, margin });
+    const done = await zoomToSectionTarget(useViewerStore.getState(), { target, margin });
     setNothing(!done);
     if (done) setOpen(false);
   };
@@ -74,27 +76,34 @@ export function SectionZoomMenu({ compact = false }: { compact?: boolean }) {
           <ChevronDown aria-hidden className="h-3 w-3 opacity-70" />
         </button>
       </HudPopoverTrigger>
-      <HudPopoverContent align="center" side="bottom" className="w-60 space-y-2 p-2" data-testid="section-zoom-menu">
+      <HudPopoverContent align="center" side="bottom" className="w-60 space-y-2 p-2" data-testid="section-zoom-menu" aria-label={t('sectionPlanes.zoom.label')}>
         <fieldset className="m-0 flex flex-col gap-0.5 border-0 p-0">
           <legend className="sr-only">{t('sectionPlanes.zoom.targetAria')}</legend>
-          {TARGETS.map((target) => (
-            <label
-              key={target}
-              className={cn(
-                'cursor-pointer rounded-sm px-2 py-1 text-left text-xs has-[:focus-visible]:ring-1 has-[:focus-visible]:ring-ring',
-                spec.target === target ? 'bg-overlay-accent-soft text-overlay-accent' : 'hover:bg-accent hover:text-accent-foreground',
-              )}
-            >
-              <input
-                type="radio"
-                name="section-zoom-target"
-                className="sr-only"
-                checked={spec.target === target}
-                onChange={() => { setSpec({ ...spec, target }); setNothing(false); }}
-              />
-              {t(`sectionPlanes.zoom.target.${TARGET_KEY[target]}`)}
-            </label>
-          ))}
+          {TARGETS.map((option) => {
+            const unavailable = option === 'selection' && !hasSelection;
+            return (
+              <label
+                key={option}
+                title={unavailable ? t('sectionPlanes.zoom.needSelection') : undefined}
+                className={cn(
+                  'rounded-sm px-2 py-1 text-left text-xs has-[:focus-visible]:ring-1 has-[:focus-visible]:ring-ring',
+                  unavailable ? 'cursor-not-allowed text-muted-foreground opacity-60' : 'cursor-pointer',
+                  target === option ? 'bg-overlay-accent-soft text-overlay-accent' : !unavailable && 'hover:bg-accent hover:text-accent-foreground',
+                )}
+              >
+                <input
+                  type="radio"
+                  name="section-zoom-target"
+                  className="sr-only"
+                  checked={target === option}
+                  disabled={unavailable}
+                  onChange={() => { setSpec({ ...spec, target: option }); setNothing(false); }}
+                />
+                {t(`sectionPlanes.zoom.target.${TARGET_KEY[option]}`)}
+                {unavailable && <span className="block text-2xs">{t('sectionPlanes.zoom.needSelection')}</span>}
+              </label>
+            );
+          })}
         </fieldset>
         <label className="flex items-center gap-1 text-2xs text-muted-foreground">
           {t('sectionPlanes.zoom.margin')}
@@ -125,17 +134,13 @@ export function SectionZoomMenu({ compact = false }: { compact?: boolean }) {
         </label>
         <button
           type="button"
-          disabled={!valid || needsSelection}
+          disabled={!valid}
           onClick={() => void apply()}
           className="w-full rounded-sm bg-overlay-accent-soft px-2 py-1 text-xs font-medium text-overlay-accent disabled:cursor-not-allowed disabled:opacity-50"
         >
           {t('sectionPlanes.zoom.apply')}
         </button>
-        {(needsSelection || nothing) && (
-          <output className="block text-2xs text-muted-foreground">
-            {t(needsSelection ? 'sectionPlanes.zoom.needSelection' : 'sectionPlanes.zoom.nothing')}
-          </output>
-        )}
+        {nothing && <output className="block text-2xs text-muted-foreground">{t('sectionPlanes.zoom.nothing')}</output>}
       </HudPopoverContent>
     </HudPopover>
   );

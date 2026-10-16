@@ -220,15 +220,21 @@ fn run_in_pool_passes_the_closure_outcome_through() {
     assert_eq!(run_in_pool("ok_probe.ifc", || Ok(7)), Ok(7));
 }
 
-/// Building the large-stack pool used to `.expect` on the `extern "C"` path
-/// (#4614). A 2^62-byte stack, past any 64-bit address space, makes the thread
-/// spawn fail for real; the build must be an `Err`, which the caller maps to
-/// code 3. Mutation that fails this test: panic on the build error inside
-/// `build_parse_pool`, as the old `.expect` did.
-#[cfg(target_pointer_width = "64")]
+/// The parse body and its `par_iter` jobs run on processing's large-stack
+/// geometry pool (EDGE-FFI-1, #7673), whose workers are named
+/// `ifc-lite-geometry-*`. The stack depth itself is pinned by
+/// `geometry_pool_tests.rs` in ifc-lite-processing.
 #[test]
-fn a_pool_that_cannot_spawn_its_threads_is_an_error_not_a_panic() {
-    assert!(build_parse_pool(1 << 62).is_err());
+fn run_in_pool_runs_the_work_on_the_shared_geometry_pool() {
+    use rayon::prelude::*;
+    let names = run_in_pool("pool_probe.ifc", || {
+        Ok((0..4u32)
+            .into_par_iter()
+            .map(|_| std::thread::current().name().unwrap_or_default().to_string())
+            .collect::<Vec<_>>())
+    })
+    .expect("pool runs");
+    assert!(names.iter().all(|n| n.starts_with("ifc-lite-geometry-")), "{names:?}");
 }
 
 /// Panic records appended from many threads at once come out whole and none

@@ -4,7 +4,7 @@
 
 use std::{collections::HashMap, str};
 
-use quick_xml::events::BytesStart;
+use quick_xml::events::{BytesRef, BytesStart};
 
 use crate::{LandXmlCancellation, LandXmlDiagnosticCode as Code, LandXmlError, LandXmlLimits};
 
@@ -81,7 +81,7 @@ pub(crate) fn attributes(
             "attribute value",
         )?;
         references += character_references(raw_value);
-        let value = unescape(raw_value)?;
+        let value = unescape(raw_value)?.into_owned();
         if key == "xmlns" {
             namespaces.insert(String::new(), value.clone());
         } else if let Some(prefix) = key.strip_prefix("xmlns:") {
@@ -132,9 +132,21 @@ pub(crate) fn character_references(value: &str) -> usize {
     value.bytes().filter(|byte| *byte == b'&').count()
 }
 
-pub(crate) fn unescape(value: &str) -> Result<String> {
+/// Source text of a reference in element content (#7680 EDGE-LXPARSE-2).
+///
+/// quick-xml 0.42 ends a text event at `&` and reports each `&name;` as its
+/// own `Event::GeneralRef`, so a family parser's text path never sees one.
+/// Every `consume_event` hands this back to that text path instead, which
+/// then applies the same rules as for any other text: one charge against
+/// `max_character_references`, the outside-the-root refusal (so `&#32;`
+/// cannot pass for padding), [`unescape`] (an undeclared entity is
+/// `EntityForbidden`, exactly as in an attribute value), and the capture.
+pub(crate) fn general_ref_source(reference: &BytesRef<'_>) -> String {
+    format!("&{};", &**reference)
+}
+
+pub(crate) fn unescape(value: &str) -> Result<std::borrow::Cow<'_, str>> {
     quick_xml::escape::unescape(value)
-        .map(|decoded| decoded.into_owned())
         .map_err(|_| error(Code::EntityForbidden, "unknown XML entity reference"))
 }
 

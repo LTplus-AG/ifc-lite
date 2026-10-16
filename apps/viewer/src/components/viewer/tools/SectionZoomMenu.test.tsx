@@ -48,12 +48,27 @@ const open = async () => { render(<SectionZoomMenu />); click(trigger()); };
 const settle = () => new Promise((r) => setTimeout(r, 0));
 
 describe('the Zoom popover (#7545)', () => {
-  it('needs a selection to zoom to one, and says so; selecting something enables it', async () => {
+  it('with nothing selected the selection is unavailable, says so, and the menu opens on the cut area', async () => {
     await open();
-    assert.equal(apply().disabled, true);
+    assert.equal(radio(/Selection/).disabled, true);
     assert.match(menu()!.textContent ?? '', /Select something to zoom to it/);
-    act(() => useViewerStore.setState({ selectedEntityId: 7 }));
+    assert.equal(radio(/Cut area/).checked, true, 'not a dead end: Zoom can be pressed');
     assert.equal(apply().disabled, false);
+    // The remembered choice is still the selection: it comes back as soon as there is one.
+    assert.equal(state().sectionZoom.target, 'selection');
+    act(() => useViewerStore.setState({ selectedEntityId: 7 }));
+    assert.equal(radio(/Selection/).disabled, false);
+    assert.equal(radio(/Selection/).checked, true);
+  });
+
+  it('Zoom with the fallback frames the cut area and keeps the selection as the remembered choice', async () => {
+    await open();
+    state().setActiveTool('section');
+    state().addSectionPlane('side'); state().setSectionPlanePosition(50);
+    click(apply());
+    await settle();
+    assert.equal(frames.length, 1, 'the cut area was framed');
+    assert.equal(state().sectionZoom.target, 'selection');
   });
 
   it('frames the chosen target with the typed margin, and remembers the choice', async () => {
@@ -95,6 +110,12 @@ describe('the Zoom popover (#7545)', () => {
     await settle();
     assert.deepEqual(frames, []);
     assert.match(menu()!.textContent ?? '', /Nothing to frame/);
+  });
+
+  it('the popover is a dialog with a name', async () => {
+    await open();
+    assert.equal(menu()!.getAttribute('role'), 'dialog');
+    assert.equal(menu()!.getAttribute('aria-label'), 'Zoom');
   });
 
   it('opens on the last choice', async () => {

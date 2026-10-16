@@ -6,9 +6,9 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Vec3, Camera as CameraType, Mat4 } from './types.js';
 import type { CameraInternalState } from './camera-state.js';
-import { frameBoundsTarget } from './camera-framing.js';
+import { fitDistanceFor, frameBoundsTarget } from './camera-framing.js';
 import { CAMERA_CONSTANTS } from './constants.js';
-import { MathUtils } from './math.js';
+import { MathUtils, viewBasis } from './math.js';
 
 /**
  * `frameBounds` takes an optional padding multiple (#7545) so "zoom to the cut
@@ -31,19 +31,41 @@ function state(mode: 'perspective' | 'orthographic'): CameraInternalState {
 }
 const distance = (p: Vec3) => Math.hypot(p.x, p.y, p.z);
 
+/** Largest |x| or |y| of the box's corners in normalised screen space, seen from `eye` with the state's own lens. */
+function worstCorner(s: CameraInternalState, eye: Vec3): number {
+  const view = MathUtils.lookAt(eye, ORIGIN, s.camera.up);
+  const proj = MathUtils.perspective(s.camera.fov, s.camera.aspect, s.camera.near, s.camera.far);
+  const m = MathUtils.multiply(proj, view).m;
+  let worst = 0;
+  for (const x of [BOX.min.x, BOX.max.x]) for (const y of [BOX.min.y, BOX.max.y]) for (const z of [BOX.min.z, BOX.max.z]) {
+    const w = m[3]! * x + m[7]! * y + m[11]! * z + m[15]!;
+    worst = Math.max(worst, Math.abs((m[0]! * x + m[4]! * y + m[8]! * z + m[12]!) / w), Math.abs((m[1]! * x + m[5]! * y + m[9]! * z + m[13]!) / w));
+  }
+  return worst;
+}
+
 describe('frameBounds padding multiple (#7545)', () => {
-  it('without one it is the default 1.2', () => {
-    const a = frameBoundsTarget(state('perspective'), BOX.min, BOX.max)!;
-    const b = frameBoundsTarget(state('perspective'), BOX.min, BOX.max, CAMERA_CONSTANTS.FRAME_PADDING_MULTIPLIER)!;
-    assert.deepEqual(a, b);
+  it('without one it is the default 1.2 times the fit distance, and orthographic ignores how a margin is solved', () => {
+    const base = frameBoundsTarget(state('perspective'), BOX.min, BOX.max)!;
+    const scaled = fitDistanceFor(state('perspective'), BOX, viewBasis(state('perspective').camera.position, ORIGIN, { x: 0, y: 1, z: 0 }), 1.2);
+    assert.ok(Math.abs(distance(base.position) - scaled) < 1e-6);
+    assert.deepEqual(frameBoundsTarget(state('orthographic'), BOX.min, BOX.max), frameBoundsTarget(state('orthographic'), BOX.min, BOX.max, CAMERA_CONSTANTS.FRAME_PADDING_MULTIPLIER));
   });
 
-  it('scales the perspective fit distance by the multiple: edge to edge is 1/1.2 of the default, a 25 % margin each side is 1.5/1.2', () => {
+  it('a stated multiple is the margin of the projected corners in perspective: the worst corner sits at 1 / multiple of the half-frame', () => {
+    for (const padding of [1, 1.2, 1.5, 2]) {
+      const s = state('perspective');
+      const fit = frameBoundsTarget(s, BOX.min, BOX.max, padding)!;
+      assert.ok(Math.abs(worstCorner(s, fit.position) - 1 / padding) < 1e-5, `padding ${padding}: ${worstCorner(s, fit.position)}`);
+    }
+  });
+
+  it('edge to edge is the same pose as before: only a margin above 1 moves, and by less than scaling the distance did', () => {
     const base = distance(frameBoundsTarget(state('perspective'), BOX.min, BOX.max)!.position);
     const tight = distance(frameBoundsTarget(state('perspective'), BOX.min, BOX.max, 1)!.position);
-    const loose = distance(frameBoundsTarget(state('perspective'), BOX.min, BOX.max, 1.5)!.position);
     assert.ok(Math.abs(tight / base - 1 / 1.2) < 1e-6, `${tight / base}`);
-    assert.ok(Math.abs(loose / base - 1.5 / 1.2) < 1e-6, `${loose / base}`);
+    const loose = distance(frameBoundsTarget(state('perspective'), BOX.min, BOX.max, 1.5)!.position);
+    assert.ok(loose > tight && loose < tight * 1.5, `${loose / tight}`);
   });
 
   it('scales the orthographic size the same way', () => {

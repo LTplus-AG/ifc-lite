@@ -91,7 +91,7 @@ test('the no-newline marker is metadata, not a context line', () => {
 // ============================================================== exclusions
 
 test('generated and vendored paths are excluded', () => {
-  for (const p of ['pnpm-lock.yaml', 'Cargo.lock', 'packages/x/__snapshots__/a.snap', 'tests/fixtures/a.ts', 'packages/wasm/pkg/x.d.ts', 'docs/a.png', 'scripts/api-surface.json', 'scripts/review/eval-cases/pr-3595.json']) {
+  for (const p of ['pnpm-lock.yaml', 'Cargo.lock', 'packages/x/__snapshots__/a.snap', 'tests/fixtures/a.ts', 'packages/wasm/pkg/x.d.ts', 'docs/a.png', 'scripts/api-surface.json', 'scripts/review/eval-cases/pr-3595.json', 'tests/ai-eval/live-runs/20261015t113459/recordings/live-x.json']) {
     assert.equal(isExcluded(p), true, `${p} should be excluded`);
   }
 });
@@ -103,8 +103,32 @@ test('binary extensions GitHub sends no patch for are excluded, not left to fall
 });
 
 test('real source is NOT excluded', () => {
-  for (const p of ['packages/export/src/step.ts', 'rust/geometry/src/lib.rs', 'scripts/check-x.mjs']) {
+  for (const p of ['packages/export/src/step.ts', 'rust/geometry/src/lib.rs', 'scripts/check-x.mjs', 'tests/ai-eval/live-runs/20261015t113459/summary.json']) {
     assert.equal(isExcluded(p), false, `${p} must be reviewed`);
+  }
+});
+
+test('#7663: review input omits live recordings while retaining run reports and source', () => {
+  const recording = 'tests/ai-eval/live-runs/run-7663/recordings/provider-response.json';
+  const retained = [
+    'tests/ai-eval/live-runs/run-7663/summary.json',
+    'tests/ai-eval/live-runs/run-7663/review.json',
+    'packages/geometry/src/loader.ts',
+    'tests/ai-eval/live-runs/run-7663/recordings-summary.json',
+    'tests/ai-eval/live-runs-backup/run-7663/recordings/provider-response.json',
+    'tests/ai-eval/live-runs/run-7663/nested/recordings/provider-response.json',
+  ];
+  const patch = '@@ -0,0 +1 @@\n+reviewable content';
+  const result = run([recording, ...retained].map((filename) => ({
+    filename, status: 'added', patch,
+  })));
+  assert.equal(result.code, 0, result.out);
+  assert.deepEqual(result.result.excluded, [recording]);
+  assert.deepEqual(result.result.files.map(({ path }) => path), retained);
+  assert.deepEqual(result.result.unreviewable, []);
+  for (const file of result.result.files) {
+    assert.equal(file.patch, patch);
+    assert.deepEqual(file.addedLineRanges, [[1, 1]]);
   }
 });
 

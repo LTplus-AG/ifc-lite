@@ -120,10 +120,10 @@ fn axis_candidates(t: &[[f64; 3]; 3]) -> [DropAxis; 3] {
     let mut axes = [DropAxis::X, DropAxis::Y, DropAxis::Z];
     axes.sort_by(|&a, &b| {
         let (ia, ib) = (normal_idx(a), normal_idx(b));
-        mag[ib]
-            .partial_cmp(&mag[ia])
-            .unwrap_or(Ordering::Equal)
-            .then(ia.cmp(&ib))
+        // Descending, NaN first (#7674). A NaN comes from a non-finite vertex or an overflowing
+        // cross product (|coord| > ~1e154); it used to tie, so for such triangles the first
+        // candidate, hence the chosen drop axis and sub-triangulation, can differ.
+        crate::cmp_f64_nan_last(mag[ib], mag[ia]).then(ia.cmp(&ib))
     });
     axes
 }

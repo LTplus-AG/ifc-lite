@@ -30,15 +30,34 @@ export interface LandXmlTerrainExport {
   surfaces: LandXmlTerrainSurface[];
 }
 
+/** How the document is written (#7618); every field is optional. */
+export interface LandXmlTerrainExportOptions {
+  /**
+   * Default `'metre'`. `'usSurveyFoot'` writes elevations in international
+   * feet: LandXML 1.2 has no US-survey-foot elevation unit, and both units are
+   * declared in `<Units>`.
+   */
+  linearUnit?: 'metre' | 'internationalFoot' | 'usSurveyFoot';
+  /** Decimal places in the written unit, 0 to 9. Default 6. */
+  decimals?: number;
+  /** `Surface@name` per product express id; a blank name keeps the IFC name. */
+  surfaceNames?: Readonly<Record<number, string>>;
+  /** Header stamp (`LandXML@date` / `@time`, written in UTC). Default now. */
+  now?: Date;
+}
+
 export function callExportLandXmlTerrain(
   api: IfcAPI,
   content: Uint8Array,
   productIds: Uint32Array,
-  now: Date,
+  options: LandXmlTerrainExportOptions,
 ): LandXmlTerrainExport {
-  // LandXML@date / @time are xs:date / xs:time; written in UTC.
-  const stamp = now.toISOString();
-  return JSON.parse(
-    api.exportLandXmlTerrain(content, productIds, stamp.slice(0, 10), stamp.slice(11, 19)),
-  ) as LandXmlTerrainExport;
+  const stamp = (options.now ?? new Date()).toISOString();
+  return JSON.parse(api.exportLandXmlTerrain(content, productIds, {
+    date: stamp.slice(0, 10),
+    time: stamp.slice(11, 19),
+    linearUnit: options.linearUnit,
+    decimals: options.decimals,
+    surfaceNames: Object.entries(options.surfaceNames ?? {}).map(([productId, name]) => ({ productId: Number(productId), name })),
+  })) as LandXmlTerrainExport;
 }

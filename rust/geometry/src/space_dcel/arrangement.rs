@@ -5,6 +5,7 @@
 use rustc_hash::FxHashMap;
 
 use super::geom2d::line_intersection;
+use crate::cmp_f64_nan_last;
 use super::{InputSegment, EPS};
 
 /// An undirected edge of the resolved arrangement.
@@ -30,7 +31,16 @@ impl Arrangement {
         // plain endpoint snap closes them at a skewed position → trapezoids.
         // Pull each wall-end onto the true intersection of its line with the
         // nearest crossing wall so orthogonal walls form clean rectangles.
-        let mut owned: Vec<InputSegment> = segments.to_vec();
+        //
+        // A segment with a non-finite endpoint is dropped first (#7674): it
+        // has no position to snap to and its cut parameters cannot be
+        // ordered. A build never fails, so dropping it is the fail-closed
+        // choice.
+        let mut owned: Vec<InputSegment> = segments
+            .iter()
+            .filter(|s| s.a.iter().chain(&s.b).all(|c| c.is_finite()))
+            .copied()
+            .collect();
         snap_corners(&mut owned, snap);
         let segments: &[InputSegment] = &owned;
         let cell = snap.max(EPS);
@@ -43,7 +53,9 @@ impl Arrangement {
             let cy = (pt[1] / cell).floor() as i64;
             for dx in -1..=1 {
                 for dy in -1..=1 {
-                    if let Some(bucket) = grid.get(&(cx + dx, cy + dy)) {
+                    // Saturating: a huge finite coordinate (|x| / cell past
+                    // i64) saturates the cell index, and `+ 1` would overflow.
+                    if let Some(bucket) = grid.get(&(cx.saturating_add(dx), cy.saturating_add(dy))) {
                         for &id in bucket {
                             let ddx = vertices[id][0] - pt[0];
                             let ddy = vertices[id][1] - pt[1];
@@ -163,7 +175,8 @@ impl Arrangement {
                 push_edge(&mut edges, &mut seen, cuts[0].1, cuts[1].1, source, ht);
                 continue;
             }
-            cuts.sort_by(|p, q| p.0.partial_cmp(&q.0).unwrap_or(std::cmp::Ordering::Equal));
+            // Finite input (filtered above) gives finite params; NaN-last keeps it total.
+            cuts.sort_by(|p, q| cmp_f64_nan_last(p.0, q.0));
             for w in cuts.windows(2) {
                 push_edge(&mut edges, &mut seen, w[0].1, w[1].1, source, ht);
             }

@@ -515,7 +515,9 @@ await saveFile('spatial.csv', spatialCsv);
 
 The `entities` mode emits the fixed columns
 `expressId,globalId,name,type,description,objectType,hasGeometry`; with
-`includeProperties`, each property becomes a flattened `Pset_Prop` column:
+`includeProperties`, each property becomes a flattened `Pset_Prop` column.
+Two sets can flatten to the same name (`Pset_A` + `B_C` and `Pset_A_B` + `C`);
+the later column then gets a ` (2)` suffix so no two columns merge:
 
 ```csv
 expressId,globalId,name,type,description,objectType,hasGeometry,Pset_WallCommon_IsExternal,Pset_WallCommon_FireRating
@@ -924,8 +926,9 @@ distinct, queryable prim.
 
 An authored IFC terrain triangulation can be exported as a LandXML 1.2 TIN surface. In the
 viewer, select the terrain of one model and choose **LandXML (terrain)** in the export menu or
-the command palette. The selection is checked with the real exporter first, and the file
-downloads as `<model>_terrain.xml`.
+the command palette. The selection is checked with the real exporter first. The dialog then
+offers the units, the decimal places and a name per surface, and the file downloads as
+`<model>_terrain.xml`.
 
 From code, pass the express ids of the selected `IfcGeographicElement` or `IfcSite` products:
 
@@ -934,7 +937,12 @@ import { terrainRefusalReason } from '@ifc-lite/geometry';
 
 const terrainIds = new Uint32Array([1234]); // express ids, one <Surface> each
 try {
-  const terrain = gp.exportLandXmlTerrain(bytes, terrainIds); // null before init()
+  // Every option is optional: metres, 6 decimals and the IFC names by default.
+  const terrain = gp.exportLandXmlTerrain(bytes, terrainIds, {
+    linearUnit: 'usSurveyFoot', // or 'metre' | 'internationalFoot'
+    decimals: 3,
+    surfaceNames: { 1234: 'Existing ground' },
+  }); // null before init()
   if (terrain) {
     await saveFile('model_terrain.xml', terrain.xml);
     console.log(terrain.crsName, terrain.surfaces.map((s) => `${s.name}: ${s.faces} faces`));
@@ -948,8 +956,9 @@ try {
 
 Each product's `IfcTriangulatedFaceSet` is copied as authored, never re-triangulated. Its
 vertices go through the product placement and the `IfcMapConversion` of the representation's
-context, and are written as northing, easting, elevation in metres. The header `date` and `time`
-are the export time in UTC; pass a third `now` argument to fix them. Missing or ambiguous
+context, and are written as northing, easting, elevation in the chosen unit (US survey feet write
+heights in international feet; both units are declared). The header `date` and `time` are the
+export time in UTC; pass `now` in the options to fix them. Missing or ambiguous
 georeferencing refuses the export with a `TERRAIN_REFUSED:` error instead of guessing a CRS, unit
 or scale. The mapping table and the full list of refusals are in the
 [LandXML guide](landxml.md#ifc-terrain-landxml). The map conversion is interpreted the same way

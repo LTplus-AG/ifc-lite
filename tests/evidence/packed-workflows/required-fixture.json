@@ -1,0 +1,15 @@
+{
+  "finding": "https://github.com/LTplus-AG/ifc-lite/pull/7648#discussion_r4287041105",
+  "invariant": "The committed wall sample is mandatory and must be validated before packaging or installation, even when an optional fixture is present",
+  "fixtureLayout": "An isolated root containing the real packed command and its dependency, an optional FZK-path placeholder whose bytes must not be read, and no committed wall or package tree",
+  "before": "New regression failed: the old command attempted to scan packages instead of issuing the required-fixture refusal",
+  "after": {
+    "passed": 2,
+    "failed": 0,
+    "skipped": 0,
+    "missingWall": "Nonzero exit, required committed fixture diagnostic, no stdout",
+    "completeConsumer": "Full fresh external npm/strict declarations/real IFC/WASM/GLB/Vite acceptance passed"
+  },
+  "command": "node --test scripts/check-packed-workflows.test.mjs",
+  "runtime": "Node 24.21.0"
+}

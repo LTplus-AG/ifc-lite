@@ -11,6 +11,21 @@ use ifc_lite_processing::prepass::UnitScales;
 use super::options::Placement;
 use super::props::fmt_num;
 
+/// The primitive a property value was written as in STEP, read from the
+/// decoded literal rather than guessed back from its type tag (#7681), so a
+/// typed exporter keeps `IFCTHERMALTRANSMITTANCEMEASURE(0.24)` a number and
+/// `IFCLABEL('0.24')` text.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum ValueKind {
+    /// A REAL or INTEGER literal; `value` is its decimal rendering.
+    Number,
+    /// A `.T.` / `.F.` logical; `value` is `true` or `false`.
+    Bool,
+    /// Anything else: strings, `.U.` (rendered `unknown`), other enums.
+    Text,
+}
+
 /// A single property value (`IfcPropertySingleValue` and friends).
 #[derive(Debug, Clone, PartialEq)]
 pub struct PropValue {
@@ -18,6 +33,8 @@ pub struct PropValue {
     pub value: String,
     /// IFC value type tag when known (e.g. `IFCLABEL`, `IFCREAL`, `IFCBOOLEAN`).
     pub value_type: String,
+    /// The primitive `value` renders.
+    pub kind: ValueKind,
 }
 
 /// A named property set (`IfcPropertySet`).

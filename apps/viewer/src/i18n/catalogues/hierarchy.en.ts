@@ -160,6 +160,13 @@ export const hierarchyEn = {
   'hierarchy.panel.grouping.material': 'Material',
   'hierarchy.panel.grouping.groupsTooltip': 'Groups, systems and zones',
   'hierarchy.panel.grouping.groups': 'Groups',
+  'hierarchy.panel.grouping.presentationLayers': 'Layers',
+  'hierarchy.panel.grouping.presentationLayersTooltip': 'Presentation layers',
+  'hierarchy.panel.loadingPresentationLayers': 'Loading presentation layers…',
+  'hierarchy.panel.presentationLayersError': 'Unable to load presentation layers',
+  'hierarchy.panel.retryPresentationLayers': 'Retry',
+  'hierarchy.panel.noPresentationLayersTitle': 'No presentation layers',
+  'hierarchy.panel.noPresentationLayersHint': 'This model has no presentation layer assignments with product members.',
 
   // HierarchyPanel: Groups-tab sub-filter chips
   'hierarchy.panel.groupFilter.all': 'All',
@@ -172,6 +179,7 @@ export const hierarchyEn = {
   'hierarchy.panel.sectionTitle.byClass': 'By Class',
   'hierarchy.panel.sectionTitle.byMaterial': 'By Material',
   'hierarchy.panel.sectionTitle.byGroup': 'By Group',
+  'hierarchy.panel.sectionTitle.byPresentationLayer': 'Presentation layers',
   'hierarchy.panel.sectionTitle.byType': 'By Type',
   'hierarchy.panel.buildingStoreysTitle': 'Building Storeys',
 

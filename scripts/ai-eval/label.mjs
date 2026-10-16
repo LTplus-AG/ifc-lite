@@ -18,9 +18,9 @@
  */
 
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { basename, join, resolve } from 'node:path';
 import { buildSheet, answerSha256, scoreSheets, sheetErrors } from './lib/labels.mjs';
-import { decodeRecording, loadRecordingDir, REPO_ROOT, RECORDINGS_DIR } from './lib/recording.mjs';
+import { decodeRecording, liveRecordings, loadLiveRuns, loadRecordingDir, REPO_ROOT, RECORDINGS_DIR } from './lib/recording.mjs';
 import { privacyFindings } from './lib/manifest.mjs';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
 
@@ -74,13 +74,14 @@ function flag(args, name) {
 }
 
 function main([command, ...args]) {
-  const recordings = loadRecordingDir(RECORDINGS_DIR);
+  // Committed live runs are label material too: they hold what a real model answered.
+  const recordings = [...loadRecordingDir(RECORDINGS_DIR), ...liveRecordings(loadLiveRuns(REPO_ROOT))];
   if (command === 'sheet') {
     const id = flag(args, 'recording');
     const kind = flag(args, 'kind');
     const reviewerId = flag(args, 'reviewer');
     if (!id || !['claims', 'grouping'].includes(kind) || !reviewerId) throw new Error('Usage: label.mjs sheet --recording <id> --kind claims|grouping --reviewer <pseudonym> [--out <file>]');
-    const found = recordings.find(({ recording, name }) => recording.id === id || name === id || name === `${id}.json`);
+    const found = recordings.find(({ recording, name }) => [recording.id, name, basename(name)].some(key => key === id || key === `${id}.json`));
     if (!found) throw new Error(`No recording ${id}`);
     const sheet = buildSheet({ recording: found.recording, kind, answer: decodeRecording(found.recording).text, reviewerId });
     const errors = sheetErrors(sheet, SCHEMA);

@@ -59,6 +59,8 @@ export interface UseAnimationLoopParams {
   sunShadowsRef: MutableRefObject<SunShadowSettings | null>;
   sectionPlaneRef: MutableRefObject<SectionPlane>;
   sectionRangeRef: MutableRefObject<{ min: number; max: number } | null>;
+  /** The bounds `sectionRangeRef` is read from, for the other cutting planes' own axes (#7545). */
+  sectionBoundsRef?: MutableRefObject<{ min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null>;
   /**
    * Mirror of the renderer's model bounds, written each frame after
    * render. Read by the section face-pick handler so the cardinal-

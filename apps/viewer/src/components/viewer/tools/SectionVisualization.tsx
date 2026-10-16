@@ -27,7 +27,7 @@ import { useWakeOnChange } from '../../viewport-ui/scene/useWakeOnChange';
 import type { ScreenPoint, Vec3 } from '../../viewport-ui/scene/types';
 import { sectionPickPreviewAnchors } from './sectionPickPreviewAnchors';
 import { useSectionDistance } from './useSectionDistance';
-import { planeFrame } from './sectionPlaneFrame';
+import { cardinalValuePerMetre, planeFrame } from './sectionPlaneFrame';
 import type { SectionPickPreview } from '@/store/slices/sectionSlice';
 
 const toVec3 = (p: readonly [number, number, number]): Vec3 => ({ x: p[0], y: p[1], z: p[2] });
@@ -91,11 +91,14 @@ export function SectionPlaneDragGizmo(props: {
   /** The plane's offset in metres along `normal` (a face plane's distance, or a cardinal plane's world coordinate). */
   value: number;
   setValue: (metres: number) => void;
+  /** Units of `value` per metre along `normal`; 1 unless the value is not measured along the normal (a rotated building's axis coordinate). */
+  valuePerMetre?: number;
   onDragStart: () => void;
   onDragEnd: () => void;
 }) {
   const { t } = useTranslation();
   const { value, setValue: setDistance, onDragStart, onDragEnd } = props;
+  const valuePerMetre = props.valuePerMetre ?? 1;
   const projector = useSceneProjector();
   const id = useId();
 
@@ -151,8 +154,8 @@ export function SectionPlaneDragGizmo(props: {
     const cdy = e.clientY - s.startCursor.y;
     // Project the cursor delta onto the screen-projected normal, then pixels -> metres.
     const along = cdx * s.screenNormal.x + cdy * s.screenNormal.y;
-    setDistance(s.startDistance + along / s.pixelsPerMeter);
-  }, [setDistance]);
+    setDistance(s.startDistance + (along / s.pixelsPerMeter) * valuePerMetre);
+  }, [setDistance, valuePerMetre]);
 
   const handlePointerUp = useCallback((e: React.PointerEvent<SVGCircleElement>) => {
     if (!dragRef.current) return;
@@ -203,5 +206,5 @@ function CardinalPlaneHandle(props: { value: number; setValue: (v: number) => vo
   const id = useViewerStore((s) => s.sectionPlane.id);
   const frame = planeFrame(id);
   if (!frame) return null;
-  return <SectionPlaneDragGizmo foot={frame.anchor} normal={frame.normal} {...props} />;
+  return <SectionPlaneDragGizmo foot={frame.anchor} normal={frame.normal} valuePerMetre={cardinalValuePerMetre()} {...props} />;
 }

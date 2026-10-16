@@ -43,12 +43,21 @@ function ParkedChipBody() {
   const setSectionVisible = useViewerStore((s) => s.setSectionVisible);
   const distance = useSectionDistance();
 
+  // The one plane that is cutting, when it is not the active one (the bar's distance reads the active plane):
+  // say it by its own axis and percentage rather than reporting the active plane's distance as the cut.
+  const otherCutting = useViewerStore((s) => (!s.sectionPlane.enabled ? s.inactiveSectionPlanes.find((p) => p.enabled) ?? null : null));
+
   const axis = sectionPlane.custom ? t('sectionTool.parked.faceAxis') : t(AXIS_INFO[sectionPlane.axis].labelKey);
   const box = sectionPlane.box ? sectionBoxSize(sectionPlane.box) : null;
   // One decimal and tight separators: the chip's lane is 13rem, and the bar
   // carries the precise size while the tool is open.
   const label = cutting > 1
     ? t('sectionPlanes.parked.count', { count: cutting })
+    : otherCutting
+    ? t('sectionTool.parked.labelPercent', {
+      axis: otherCutting.custom ? t('sectionTool.parked.faceAxis') : t(AXIS_INFO[otherCutting.axis].labelKey),
+      position: otherCutting.position.toFixed(1),
+    })
     : box
     ? t('sectionTool.parked.labelBox', { x: box[0].toFixed(1), y: box[1].toFixed(1), z: box[2].toFixed(1) })
     : distance.kind === 'percent'

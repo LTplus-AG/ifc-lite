@@ -108,6 +108,12 @@ export function checkManifest(manifest, { root, recordings = [] }) {
     if (task.labels.includes('claims') && task.expectedOutput !== 'prose') errors.push(`${at}: claim labels need a prose task`);
   }
   const tasks = new Map(manifest.tasks.map(task => [task.id, task]));
+  // Promotion copies a live recording: a second file with the same id would shadow it for label sheets.
+  const recordingIds = new Map();
+  for (const { name, recording } of recordings) {
+    if (recordingIds.has(recording.id)) errors.push(`recording ${name}: id ${recording.id} is also used by ${recordingIds.get(recording.id)}`);
+    else recordingIds.set(recording.id, name);
+  }
   for (const { name, recording } of recordings) {
     for (const error of recordingErrors(recording)) errors.push(`recording ${name}: ${error}`);
     const task = tasks.get(recording.task);

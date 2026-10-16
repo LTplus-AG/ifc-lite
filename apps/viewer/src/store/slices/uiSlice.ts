@@ -32,7 +32,7 @@ import { getInitialHierarchyMode, getInitialNavigationPreset, persistHierarchyMo
 export type ThemeMode = 'light' | 'dark' | 'colorful';
 export type { GeometryReloadReason } from './geometryLoadSettings.js';
 
-export type HierarchyMode = 'spatial' | 'type' | 'ifc-type' | 'material' | 'groups';
+export type HierarchyMode = 'spatial' | 'type' | 'ifc-type' | 'material' | 'groups' | 'presentation-layers';
 
 /**
  * One-shot target for "jump to a property and edit it" flows (issue #1107).

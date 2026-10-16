@@ -12,6 +12,7 @@
  * through the store before mounting.
  */
 import '@/test/setup-dom.js';
+import '@/test/section-tool-ready.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';

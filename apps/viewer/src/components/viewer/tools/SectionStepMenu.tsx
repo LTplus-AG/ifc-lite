@@ -52,7 +52,7 @@ export function SectionStepMenu() {
           <ChevronDown aria-hidden className="h-3 w-3 opacity-70" />
         </button>
       </HudPopoverTrigger>
-      <HudPopoverContent align="center" side="bottom" className="w-40 p-1" data-testid="section-step-menu">
+      <HudPopoverContent align="center" side="bottom" className="w-40 p-1" data-testid="section-step-menu" aria-label={t('sectionPlanes.step.aria')}>
         <ul aria-label={t('sectionPlanes.step.aria')}>
           {SECTION_STEP_PRESETS_M.map((m) => (
             <li key={m}>

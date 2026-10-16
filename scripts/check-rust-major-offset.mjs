@@ -19,7 +19,11 @@
  *
  *   1. the `[workspace.package] version` in `Cargo.toml`
  *   2. every internal `ifc-lite-* = { version = "…" }` literal in `Cargo.toml`
- *      and in each crate manifest under `rust/`
+ *      (the root `[workspace.dependencies]` table is the home of them) and in
+ *      each crate manifest under `rust/`; a member that inherits instead
+ *      (`ifc-lite-core.workspace = true`) is counted as inspected and agrees
+ *      through the root literal, while any explicit member literal is still
+ *      compared and flagged as DRIFT
  *
  * It is the check half of a two-file pair, and both halves import
  * `scripts/lib/rust-major-offset.mjs` — the writer and the checker deriving
@@ -61,13 +65,12 @@ import { dirname, join } from 'node:path';
 
 import {
   computeReleaseVersions,
-  scanInternalDeps,
-  MIN_TOTAL_DEP_LITERALS,
+  MIN_TOTAL_DEP_DECLARATIONS,
   MIN_WORKSPACE_DEP_LITERALS,
   OFFSET_FILE_NAME,
-  RUST_MEMBER_DIRS,
   WORKSPACE_VERSION_PATTERN,
 } from './lib/rust-major-offset.mjs';
+import { RUST_MEMBER_DIRS, scanInternalDepsDetailed } from './lib/rust-internal-deps.mjs';
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 
@@ -124,11 +127,13 @@ if (workspaceMatch[2] !== crateVersion) {
 // 2. Every internal dependency literal, in the root manifest and each member.
 let workspaceLiterals = 0;
 let totalLiterals = 0;
+let totalInherited = 0;
 
 function checkLiterals(label, text, onCount) {
   let deps;
+  let inherited;
   try {
-    deps = scanInternalDeps(label, text);
+    ({ deps, inherited } = scanInternalDepsDetailed(label, text));
   } catch (error) {
     fail(error.code ?? 'UNPARSED_DEP', error.message);
     onCount?.(0);
@@ -137,8 +142,9 @@ function checkLiterals(label, text, onCount) {
   let count = 0;
   for (const dep of deps) {
     // A declaration with no `version` requirement (`{ workspace = true }`, a
-    // bare `{ path = "…" }`) pins nothing, so there is nothing to agree with
-    // and nothing to count.
+    // bare `{ path = "…" }`) pins nothing, so there is nothing to compare it
+    // with here. An inherited one is counted below instead: it agrees through
+    // the root literal, which this same scan compares.
     if (dep.version === null) continue;
     count++;
     if (dep.version !== crateVersion) {
@@ -146,6 +152,7 @@ function checkLiterals(label, text, onCount) {
     }
   }
   totalLiterals += count;
+  totalInherited += inherited.length;
   onCount?.(count);
 }
 
@@ -176,10 +183,11 @@ if (workspaceLiterals < MIN_WORKSPACE_DEP_LITERALS) {
     `found ${workspaceLiterals} internal dependency literal(s) in Cargo.toml's [workspace.dependencies], below the floor of ${MIN_WORKSPACE_DEP_LITERALS}. Either the table shrank or the pattern in scripts/lib/rust-major-offset.mjs stopped matching it; both mean sync-versions.js is no longer rewriting what this gate believes it rewrites.`
   );
 }
-if (totalLiterals < MIN_TOTAL_DEP_LITERALS) {
+const totalDeclarations = totalLiterals + totalInherited;
+if (totalDeclarations < MIN_TOTAL_DEP_DECLARATIONS) {
   fail(
     'DEP_FLOOR',
-    `found ${totalLiterals} internal dependency literal(s) across every manifest, below the floor of ${MIN_TOTAL_DEP_LITERALS}. Refusing to report agreement over a scan this small.`
+    `found ${totalDeclarations} internal dependency declaration(s) (${totalLiterals} version literal(s) + ${totalInherited} inherited from [workspace.dependencies]) across every manifest, below the floor of ${MIN_TOTAL_DEP_DECLARATIONS}. Refusing to report agreement over a scan this small.`
   );
 }
 
@@ -200,5 +208,5 @@ const shape =
     : `crates run ${majorOffset} major(s) ahead of npm ${npmVersion}`;
 console.log(
   `✅ Rust crate version ${crateVersion}: ${shape}. ` +
-    `${totalLiterals} internal dependency literal(s) across ${RUST_MEMBER_DIRS.length + 1} manifest(s) agree, over ${scanned} workspace package(s) scanned.`
+    `${totalDeclarations} internal dependency declaration(s) (${totalLiterals} version literal(s), ${totalInherited} inherited from the root table) across ${RUST_MEMBER_DIRS.length + 1} manifest(s) agree, over ${scanned} workspace package(s) scanned.`
 );

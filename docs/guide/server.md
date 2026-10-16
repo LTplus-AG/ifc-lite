@@ -155,7 +155,7 @@ JSON/SSE endpoints it's on `metadata`; for the Parquet endpoints it's in the
 | `/api/v1/cache/{key}` | GET | Retrieve the cached `POST /api/v1/parse` result for the `cache_key` that route returned, with `stats.from_cache: true` (404 when that route has not cached one) |
 | `/api/v1/cache/{key}` | DELETE | Evict every cached representation of the source file that `cache_key` names (`200` with `{ key, deleted }`; `deleted: 0` when nothing was cached) |
 | `/api/v1/parse/data-model/{key}` | GET | Fetch cached data model (200 hit; 202 a fill is running right now for this key; 404 nothing cached and nothing filling it); `?data_model_entities=rooted` fetches the rooted-only variant |
-| `/api/v1/parse/symbolic/{key}` | GET | Fetch 2D symbol data (`IfcAnnotation` + `IfcGrid`) as JSON |
+| `/api/v1/parse/symbolic/{key}` | GET | Fetch 2D symbol data (`IfcAnnotation` + `IfcGrid`) as JSON (200 hit; 202 a parse that writes it is running right now; 404 nothing cached and nothing writing it) |
 
 ### Utility Endpoints
 
@@ -183,6 +183,19 @@ JSON/SSE endpoints it's on `metadata`; for the Parquet endpoints it's in the
     A cache `GET` decodes and re-encodes the whole stored model, so a hit holds
     a parse admission slot, like a parse does: under load it can answer
     `503 OVERLOADED` with a `Retry-After` header. A miss is answered without one.
+
+!!! note "Cache reads are admitted too"
+    Every route that hands back a stored model (`GET /api/v1/cache/{key}`,
+    `/cache/geometry/{hash}`, `/parse/data-model/{key}`,
+    `/parse/symbolic/{key}`, and the `?sha256=` probes) is charged to the
+    admission budget for the stored entry's size until the client has read
+    the whole response, so a hit can answer `503 OVERLOADED` with
+    `Retry-After` under memory pressure. A read that only copies the entry out
+    needs no parse slot, so it does not wait behind a running parse.
+    `GET /api/v1/cache/check/{hash}` and every miss read no stored content and
+    are never shed. A stored entry that turns out to be damaged is a miss
+    (`404` on these routes, a re-parse on an upload) and is dropped from the
+    cache, so the next `cache/check` reports it absent and the client uploads.
 
 !!! note "Optional bearer-token auth"
     When `IFC_SERVER_API_TOKEN` (or `API_TOKEN`) is set, all parse and cache
@@ -338,6 +351,11 @@ for await (const event of client.parseStream(file)) {
   }
 }
 ```
+
+`/parse/stream` caches nothing, so its `complete` event carries no
+`cache_key`. It used to carry the file's bare SHA-256, which named no cache
+entry (`GET /api/v1/cache/{key}` refuses it with a `400`); use `parse()` or
+the Parquet routes when you need a key to fetch by later.
 
 #### getMetadata
 
@@ -1100,13 +1118,13 @@ Before #5750 those used a `text/plain` body or no body at all.
 
 | `code` | Status | Meaning |
 |--------|--------|---------|
-| `BAD_REQUEST` | 400 | Malformed request: bad query value, bad path key, not multipart |
+| `BAD_REQUEST` | 400 | Malformed request: bad query value, bad path key, not multipart, or a gzip / `.ifcZIP` upload that does not decompress |
 | `MISSING_FILE` | 400 | Multipart upload with no `file` field |
 | `MULTIPART_ERROR` | 400 | The multipart body could not be read |
 | `UNAUTHORIZED` | 401 | Bearer token missing or wrong |
 | `NOT_FOUND` | 404 | Nothing cached for this key, or no such route |
 | `METHOD_NOT_ALLOWED` | 405 | Route exists, method does not (`Allow` lists the valid ones) |
-| `REQUEST_TIMEOUT` | 408 | The request ran past `REQUEST_TIMEOUT_SECS` |
+| `REQUEST_TIMEOUT` | 408 | The request ran past `REQUEST_TIMEOUT_SECS`, or its upload went 30 s without a byte or fell below 8 KiB/s on average after its first 15 s |
 | `FILE_TOO_LARGE` | 413 | Upload above `MAX_FILE_SIZE_MB` |
 | `OVERLOADED` | 503 | Admission queue full or memory breaker shedding; retry after `Retry-After` seconds |
 | `PROCESSING_ERROR`, `PARQUET_ERROR`, `CACHE_ERROR`, `TASK_ERROR`, `INTERNAL_ERROR` | 500 | Server-side failure |

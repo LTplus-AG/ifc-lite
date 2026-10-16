@@ -22,6 +22,10 @@ import { AlertCircle, Download } from 'lucide-react';
 import type { ExportSurface } from '@/lib/analytics-export-events';
 import { trackExportCompleted } from '@/lib/analytics';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Spinner } from '@/components/ui/spinner';
 import { toast } from '@/components/ui/toast';
@@ -37,7 +41,7 @@ import {
   type LandXmlTerrainProcessor,
   type TerrainPreflight,
 } from '@/lib/export/landXmlTerrainExport';
-import { GeometryProcessor } from '@ifc-lite/geometry';
+import { GeometryProcessor, type LandXmlTerrainExportOptions } from '@ifc-lite/geometry';
 import { formatLocaleNumber, useTranslation } from '@/i18n';
 import { ExportDialogShell, type ExportDialogShellResult } from './ExportDialogShell';
 
@@ -49,6 +53,11 @@ interface LandXmlTerrainExportDialogProps {
 }
 
 type PreflightState = TerrainPreflight | { status: 'checking' } | null;
+type LinearUnit = NonNullable<LandXmlTerrainExportOptions['linearUnit']>;
+
+const LINEAR_UNITS: readonly LinearUnit[] = ['metre', 'internationalFoot', 'usSurveyFoot'];
+/** Decimal places in the written unit; 6 is a micrometre in metres, far below survey precision. */
+const DECIMALS = ['3', '4', '6'] as const;
 
 const createGeometryProcessor = (): LandXmlTerrainProcessor => new GeometryProcessor();
 
@@ -60,6 +69,12 @@ export function LandXmlTerrainExportDialog({
   const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
   const [preflight, setPreflight] = useState<PreflightState>(null);
+  // Options only change how the document is written, never whether the
+  // selection qualifies, so they apply at Export rather than re-running the
+  // preflight (#7618).
+  const [linearUnit, setLinearUnit] = useState<LinearUnit>('metre');
+  const [decimals, setDecimals] = useState<(typeof DECIMALS)[number]>('6');
+  const [surfaceNames, setSurfaceNames] = useState<Record<number, string>>({});
   const models = useViewerStore((s) => s.models);
   const legacyStore = useViewerStore((s) => s.ifcDataStore);
   const getMutationView = useViewerStore((s) => s.getMutationView);
@@ -108,12 +123,28 @@ export function LandXmlTerrainExportDialog({
     [selection, preflight],
   );
 
+  // Each new preflight seeds the name fields with the names it would write.
+  useEffect(() => {
+    if (preflight?.status !== 'ready') return;
+    setSurfaceNames(Object.fromEntries(preflight.result.surfaces.map((entry) => [entry.productId, entry.name])));
+  }, [preflight]);
+
   const handleExport = useCallback(async (): Promise<ExportDialogShellResult> => {
     if (!ready) {
       return { success: false, message: t('landXmlTerrainExport.noSelectionDescription') };
     }
     try {
-      const blob = new Blob([ready.preflight.result.xml], { type: 'application/xml' });
+      const bytes = editedModelBytes(ready.selection.store, getMutationView(ready.selection.modelId));
+      const outcome = await runLandXmlTerrainExport(bytes, ready.selection.productIds, createProcessor, {
+        linearUnit,
+        decimals: Number(decimals),
+        surfaceNames,
+      });
+      if (outcome.status !== 'ready') {
+        throw new Error(outcome.status === 'refused' ? outcome.reason
+          : outcome.status === 'failed' ? outcome.message : t('landXmlTerrainExport.unavailableDescription'));
+      }
+      const blob = new Blob([outcome.result.xml], { type: 'application/xml' });
       downloadBlob(blob, landXmlTerrainFilename(ready.selection.modelName));
       trackExportCompleted({ format: 'landxml', surface, size_kb: Math.round(blob.size / 1024) });
       const message = t('landXmlTerrainExport.exportedMessage', { sizeKb: (blob.size / 1024).toFixed(0) });
@@ -127,7 +158,7 @@ export function LandXmlTerrainExportDialog({
       toast.error(message);
       return { success: false, message };
     }
-  }, [ready, surface, t]);
+  }, [ready, surface, t, getMutationView, createProcessor, linearUnit, decimals, surfaceNames]);
 
   return (
     <ExportDialogShell
@@ -177,12 +208,64 @@ export function LandXmlTerrainExportDialog({
         </Alert>
       )}
 
-      {selection.kind === 'ready' && preflight && <PreflightView preflight={preflight} />}
+      {selection.kind === 'ready' && preflight && (
+        <PreflightView
+          preflight={preflight}
+          surfaceNames={surfaceNames}
+          onSurfaceNameChange={(productId, name) => setSurfaceNames((names) => ({ ...names, [productId]: name }))}
+        />
+      )}
+
+      {ready && (
+        <div className="grid gap-3">
+          <div className="flex items-center gap-4">
+            <Label className="w-32 text-muted-foreground">{t('landXmlTerrainExport.outputLabel')}</Label>
+            <Badge variant="secondary">{t('landXmlTerrainExport.outputFormat')}</Badge>
+            <span className="text-xs text-muted-foreground">{t('landXmlTerrainExport.fileExtension')}</span>
+          </div>
+          <div className="flex items-center gap-4">
+            <Label htmlFor="landxml-terrain-units" className="w-32">{t('landXmlTerrainExport.unitsLabel')}</Label>
+            <Select value={linearUnit} onValueChange={(value) => setLinearUnit(value as LinearUnit)}>
+              <SelectTrigger id="landxml-terrain-units">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {LINEAR_UNITS.map((unit) => (
+                  <SelectItem key={unit} value={unit}>{t(`landXmlTerrainExport.unit.${unit}`)}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          {linearUnit === 'usSurveyFoot' && (
+            <p className="text-xs text-muted-foreground">{t('landXmlTerrainExport.usSurveyFootNote')}</p>
+          )}
+          <div className="flex items-center gap-4">
+            <Label htmlFor="landxml-terrain-decimals" className="w-32">{t('landXmlTerrainExport.decimalsLabel')}</Label>
+            <Select value={decimals} onValueChange={(value) => setDecimals(value as (typeof DECIMALS)[number])}>
+              <SelectTrigger id="landxml-terrain-decimals">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {DECIMALS.map((places) => (
+                  <SelectItem key={places} value={places}>{t(`landXmlTerrainExport.decimals.${places}`)}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      )}
     </ExportDialogShell>
   );
 }
 
-function PreflightView({ preflight }: { preflight: Exclude<PreflightState, null> }) {
+interface PreflightViewProps {
+  preflight: Exclude<PreflightState, null>;
+  /** The editable `Surface@name` per product, seeded from the preflight. */
+  surfaceNames: Readonly<Record<number, string>>;
+  onSurfaceNameChange: (productId: number, name: string) => void;
+}
+
+function PreflightView({ preflight, surfaceNames, onSurfaceNameChange }: PreflightViewProps) {
   const { t, locale } = useTranslation();
   switch (preflight.status) {
     case 'checking':
@@ -229,7 +312,14 @@ function PreflightView({ preflight }: { preflight: Exclude<PreflightState, null>
             <tbody>
               {surfaces.map((surface) => (
                 <tr key={surface.productId} data-terrain-surface={surface.productId}>
-                  <td className="break-all">{surface.name}</td>
+                  <td className="pr-2">
+                    <Input
+                      className="h-8"
+                      value={surfaceNames[surface.productId] ?? surface.name}
+                      aria-label={t('landXmlTerrainExport.surfaceNameInput', { name: surface.name })}
+                      onChange={(event) => onSurfaceNameChange(surface.productId, event.target.value)}
+                    />
+                  </td>
                   <td className="text-right tabular-nums">{formatLocaleNumber(locale, surface.points)}</td>
                   <td className="text-right tabular-nums">{formatLocaleNumber(locale, surface.faces)}</td>
                 </tr>

@@ -53,9 +53,8 @@ function frameFill(camera: Camera, bounds: ReturnType<typeof box>): number {
 describe('the frame a margin produces (on the renderer\'s own camera)', () => {
   const target = box(10, 6, 4);
 
-  // Orthographic is exact. Perspective is exact for the target's centre plane; its nearer corners
-  // project a little larger, so the margin of the 3-D box as a whole reads within a few percent.
-  for (const [mode, tolerance] of [['orthographic', 0.01], ['perspective', 0.035]] as const) {
+  // Both projections are exact: perspective solves the standoff on the projected corners (#7617).
+  for (const [mode, tolerance] of [['orthographic', 0.005], ['perspective', 0.005]] as const) {
     it(`${mode}: the target fills 1 / (1 + 2 * margin) of the limiting dimension, and is always inside`, async () => {
       const camera = new Camera();
       camera.setAspect(1);
@@ -70,5 +69,38 @@ describe('the frame a margin produces (on the renderer\'s own camera)', () => {
       assert.ok(tight <= 1.0001, `${mode}: edge to edge still contains the target (${tight})`);
       assert.ok(Math.abs(loose / tight - 1 / 1.2) < tolerance, `${mode}: ratio ${loose / tight} vs ${1 / 1.2}`);
     });
+  }
+});
+
+describe('the margin in perspective is the margin that was asked for (#7617)', () => {
+  // Not cubes, not centred on the origin: the near corners of each project larger than its centre plane.
+  const boxes = [
+    { min: { x: 12, y: -4, z: 3 }, max: { x: 22, y: 2, z: 7 } },
+    { min: { x: -30, y: 5, z: -8 }, max: { x: -2, y: 9, z: 14 } },
+  ];
+  const aspects = [1.6, 0.7];
+
+  for (const fovDeg of [20, 45, 90]) {
+    for (const margin of [0, 0.1, 0.25]) {
+      it(`${fovDeg} degree field, ${margin * 100} % margin: the box fills 1 / (1 + 2 * margin) of the limiting axis`, async () => {
+        for (const bounds of boxes) {
+          for (const aspect of aspects) {
+            const camera = new Camera();
+            camera.setAspect(aspect);
+            camera.setFOV((fovDeg * Math.PI) / 180);
+            const cx = (bounds.min.x + bounds.max.x) / 2;
+            const cy = (bounds.min.y + bounds.max.y) / 2;
+            const cz = (bounds.min.z + bounds.max.z) / 2;
+            // An oblique approach from a long way off, so no axis is aligned with the view.
+            camera.setPosition(cx + 60, cy + 35, cz + 90);
+            camera.setTarget(cx, cy, cz);
+            await camera.frameBounds(bounds.min, bounds.max, 0, zoomPadding(bounds, { kind: 'fraction', value: margin }));
+            const fill = frameFill(camera, bounds);
+            const ideal = 1 / (1 + 2 * margin);
+            assert.ok(Math.abs(fill - ideal) < 0.005 * ideal, `aspect ${aspect}: fills ${fill} of the half-frame, asked for ${ideal}`);
+          }
+        }
+      });
+    }
   }
 });

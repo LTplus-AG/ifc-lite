@@ -18,6 +18,7 @@ import type { SectionPlane } from '@/store';
 import { useViewerStore } from '@/store';
 import { capOverlayBasis, capOverlayInput } from '@/lib/section/cap-overlay';
 import { capSignature } from '@/lib/section/section-cut-config';
+import { planeRange, type RangeBounds } from '@/lib/section/section-render-clip';
 import { getThemeClearColor } from '../../utils/viewportUtils.js';
 import { rendererOverlayTheme } from '@/lib/viewport-ui/overlay-theme-renderer';
 import { setClashColorsFromTheme } from '@/lib/clash/clash-colors';
@@ -52,6 +53,8 @@ export interface UseRenderUpdatesParams {
   selectedEntityIdsRef: MutableRefObject<Set<number> | undefined>;
   sectionPlaneRef: MutableRefObject<SectionPlane>;
   sectionRangeRef: MutableRefObject<{ min: number; max: number } | null>;
+  /** The bounds `sectionRangeRef` is read from: every other cutting plane's cap is placed over ITS OWN axis (#7545). */
+  sectionBoundsRef?: MutableRefObject<RangeBounds | null>;
   activeToolRef: MutableRefObject<string>;
 
   // Drawing 2D
@@ -81,6 +84,7 @@ export function useRenderUpdates(params: UseRenderUpdatesParams): void {
     coordinateInfo,
     sectionPlaneRef,
     sectionRangeRef,
+    sectionBoundsRef,
     drawing2D,
     show3DOverlay,
     showHiddenLines,
@@ -149,7 +153,7 @@ export function useRenderUpdates(params: UseRenderUpdatesParams): void {
       if (cap.cutPolygons.length === 0) { renderer.clearSection2DOverlay(plane.id); continue; }
       const { polygons, lines } = capOverlayInput(cap, showHiddenLines);
       renderer.uploadSection2DOverlay(
-        polygons, lines, plane.axis, plane.position, sectionRangeRef.current ?? undefined,
+        polygons, lines, plane.axis, plane.position, planeRange(plane, sectionBoundsRef?.current) ?? undefined,
         plane.flipped, capOverlayBasis(plane.custom), plane.id,
       );
     }

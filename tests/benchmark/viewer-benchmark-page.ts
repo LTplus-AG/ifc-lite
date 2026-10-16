@@ -65,6 +65,13 @@ export interface ViewerBenchmarkMetrics {
   instancedContributionCulled: number | null;
 }
 
+/** In-memory file for `setInputFiles` (Playwright's own payload shape). */
+export interface BenchmarkFilePayload {
+  name: string;
+  mimeType: string;
+  buffer: Buffer;
+}
+
 export class ViewerBenchmarkPage {
   private page: Page;
   private consoleLogs: string[] = [];
@@ -128,12 +135,20 @@ export class ViewerBenchmarkPage {
     });
   }
 
-  async setup() {
+  /**
+   * `query` (#6993 native count driver): navigate to exactly `${origin}/${query}`
+   * and let the viewer's own URL flags configure the load. No init-script
+   * global and no `VIEWER_BENCHMARK_*` override is applied in that mode, so a
+   * global can never shadow the literal query (flags read a global first).
+   * The upload mode and worker count are read back from the query itself.
+   */
+  async setup(options: { query?: string } = {}) {
     // Capture all console logs
     this.page.on('console', (msg: ConsoleMessage) => {
       const text = msg.text();
       this.consoleLogs.push(text);
     });
+    if (options.query !== undefined) return this.setupExactQuery(options.query);
 
     // Optional adaptive-batch-sizing override for sweeping the watchdog↔
     // throughput knob (#1097). Set VIEWER_BENCHMARK_BATCH_SIZING to a JSON
@@ -327,7 +342,25 @@ export class ViewerBenchmarkPage {
     }
   }
 
-  async loadFile(filePath: string, waitForStart = true) {
+  private async setupExactQuery(query: string) {
+    const params = new URLSearchParams(query.startsWith('?') ? query.slice(1) : '');
+    if (!query.startsWith('?') || params.get('perfTrace') !== '1') {
+      throw new Error(`An exact benchmark query must start with "?" and enable perfTrace=1: ${query}`);
+    }
+    const uploads = params.get('perf.benchmarkUploads');
+    if (uploads !== null && uploads !== '0' && uploads !== '1') throw new Error(`perf.benchmarkUploads must be 0 or 1: ${uploads}`);
+    this.uploadMode = uploads === '1' ? 'count' : 'timed';
+    const workers = params.get('geomWorkers');
+    this.geomWorkers = workers !== null && /^([1-9]|1[0-6])$/.test(workers) ? Number(workers) : null;
+    await this.page.goto(`${this.origin}/${query}`);
+    await this.page.waitForSelector('input[type="file"]', { state: 'attached', timeout: 30000 });
+  }
+
+  /**
+   * `file` is a path, or a payload for a browser that cannot open this
+   * machine's paths (Windows Chrome over `connectOverCDP` from WSL).
+   */
+  async loadFile(file: string | BenchmarkFilePayload, waitForStart = true) {
     // Find the file input (there are two, use the one in ViewportContainer)
     const fileInput = this.page.locator('input[type="file"]').first();
 
@@ -335,7 +368,7 @@ export class ViewerBenchmarkPage {
     this.loadStartTime = Date.now();
 
     // Upload file
-    await fileInput.setInputFiles(filePath);
+    await fileInput.setInputFiles(file);
 
     // Wait for file loading to start (check for file name in logs)
     if (waitForStart) await this.page.waitForTimeout(1000);
@@ -372,6 +405,20 @@ export class ViewerBenchmarkPage {
     await this.loadFile(filePath, false);
     await this.waitForCompletion(timeoutMs, true);
     requireTimingUploads({ environment: { uploadMode: this.getUploadMode() } });
+  }
+
+  /**
+   * The count-cohort twin of `loadUntilReady` (#6993): same upload and same
+   * metadata + geometry + renderer-finalize readiness, but it REQUIRES count
+   * uploads, and its result is structural counters, never a timing.
+   * `loadUntilReady` keeps refusing count mode for its timing callers.
+   */
+  async loadUntilCountReady(file: string | BenchmarkFilePayload, timeoutMs: number) {
+    if (this.uploadMode !== 'count') {
+      throw new Error('loadUntilCountReady needs a count-upload setup (perf.benchmarkUploads=1 or VIEWER_BENCHMARK_GPU_UPLOADS=1)');
+    }
+    await this.loadFile(file, false);
+    await this.waitForCompletion(timeoutMs, true);
   }
 
   async waitForCompletion(timeoutMs: number = 600000, requireMetadataRender = false) {
@@ -417,8 +464,9 @@ export class ViewerBenchmarkPage {
    * renderer even starts), so counters read at completion would cut work off
    * at a timing-dependent point. Timing metrics are untouched: they were taken
    * from the completion snapshot. Stable = unchanged over `quietPolls` polls.
+   * Resolves false when the counters were still moving at `maxMs`.
    */
-  async settleLoadCounters({ pollMs = 250, quietPolls = 6, maxMs = 30_000 } = {}): Promise<void> {
+  async settleLoadCounters({ pollMs = 250, quietPolls = 6, maxMs = 30_000 } = {}): Promise<boolean> {
     const deadline = Date.now() + maxMs;
     let last = '';
     let quiet = 0;
@@ -427,10 +475,10 @@ export class ViewerBenchmarkPage {
       const key = settleKey(this.loadTrace);
       quiet = key === last ? quiet + 1 : 0;
       last = key;
-      if (quiet >= quietPolls) return;
+      if (quiet >= quietPolls) return true;
       if (Date.now() >= deadline) {
         console.warn(`[Benchmark] structural counters still moving after ${maxMs} ms; recording the latest snapshot`);
-        return;
+        return false;
       }
       await this.page.waitForTimeout(pollMs);
     }

@@ -258,7 +258,38 @@ Check it while the sandbox is live: `dispose()` releases the module reference, a
 
 Use the direct path for your own scripts; use the sandbox when the code comes from somewhere you do not fully trust.
 
+## Open a headless model
+
+Import `openModel` from `@ifc-lite/sdk/headless` to use STEP or IFCZIP bytes without importing MCP or constructing a backend. In Node, pass a Buffer from `readFile`; in a browser, pass fetched bytes. The factory performs no file/network I/O and initializes no renderer or geometry runtime.
+
+```typescript
+import { readFile, writeFile } from 'node:fs/promises';
+import { openModel } from '@ifc-lite/sdk/headless';
+
+const model = await openModel(await readFile('model.ifc'), { modelId: 'architecture', modelName: 'model.ifc' });
+try {
+  if (model.report.completeness !== 'complete') throw new Error('Record coverage is incomplete or unknown');
+  const walls = model.bim.query().byType('IfcWall').toArray();
+  const wall = walls[0];
+  if (!wall) throw new Error('The input has no IfcWall occurrences');
+  model.bim.mutate.setProperty(wall.ref, 'Pset_WallCommon', 'FireRating', 'REI 120');
+  await writeFile('edited.ifc', model.bim.export.ifc());
+} finally {
+  model.close();
+}
+```
+
+The returned `store` is the parsed source snapshot; use `bim` for reads that include pending edits. References carry the session's `modelId` and a model-local `expressId`; IFC `GlobalId` values have a different identity role. Backend reads, edits and explicit query scopes reject a different model ID, even when two sessions contain the same EXPRESS IDs. [`parseModel`](parsing.md#load-step-data-without-a-viewer) documents the scan report: complete record scanning is not schema or geometry validation.
+
+Use `model.capability('store.roomCommand')` before offering a backend operation. `supported` describes an implemented/configured method, not guaranteed success for every input or environment. Unavailable calls through this session throw `UnsupportedOperationError` with code `UNSUPPORTED_OPERATION`, operation and reason. Data-only sessions do not silently accept viewer commands. Advanced hosts can supply Room/Align geometry providers through `options.backend`; MCP supplies its existing native providers to the shared `HeadlessBackend`.
+
+`close()` is idempotent and clears preparation caches. Capability checks then report unsupported with a closed-session reason. Retained backend queries and mutation namespaces then throw `HeadlessSessionClosedError` with code `SESSION_CLOSED`. In-flight injected geometry preparation rechecks the session before it can commit. Closing does not revoke the returned source store or pure helpers that operate on caller-supplied data. Existing MCP constructors and embedded/remote SDK entry points retain their behavior.
+
+The CLI and MCP compose the shared `@ifc-lite/sdk/headless` implementation. Query reads, pending mutations, standard exports, and model identity checks share one implementation. CLI-specific authoring, schedules, spaces, and energy exports remain host adapters; explicit aliases preserve its existing model-ID spellings.
+
 ## Embedding programmatically
+
+Host adapters can reuse the live-overlay query implementation from `@ifc-lite/sdk/headless`: `createQueryAdapter` accepts the parsed store, model ID and getters for the current pending overlay and mutation view. `overlayFromView` derives that overlay from an existing `MutablePropertyView`. CLI and MCP consume these SDK-owned readers, so source records, queued creations, deletions, retypes and relationships share one query implementation. No renderer or geometry runtime is initialized by the read adapter.
 
 Create a `BimContext` yourself with `createBimContext`. It needs either a local `backend` (viewer-embedded) or a `transport` (connected to a running viewer):
 

@@ -10,6 +10,7 @@
  */
 
 import '@/test/setup-dom.js';
+import '@/test/section-tool-ready.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
@@ -166,6 +167,11 @@ describe('where zero is (#7545)', () => {
   it('a level plane reads its elevation, a face plane reads from its face, and the field says which', () => {
     renderTool();
     assert.equal(bar().querySelector('[data-testid="section-offset-datum"]')?.textContent, 'level');
+    act(() => s().setSectionPlaneAxis('side'));
+    assert.equal(bar().querySelector('[data-testid="section-offset-datum"]')?.textContent, 'at X', 'a side plane is a coordinate, not an elevation');
+    act(() => s().setSectionPlaneAxis('front'));
+    assert.equal(bar().querySelector('[data-testid="section-offset-datum"]')?.textContent, 'at Y');
+    act(() => s().setSectionPlaneAxis('down'));
     act(() => s().setSectionPlaneFromFace([1, 0, 0], [4, 1, 1]));
     assert.equal(bar().querySelector('[data-testid="section-offset-datum"]')?.textContent, 'from face');
     assert.equal(shown(), '0.000m', 'a fresh pick starts at zero');

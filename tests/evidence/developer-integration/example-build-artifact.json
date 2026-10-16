@@ -1,0 +1,23 @@
+{
+  "ciRun": 38789200416,
+  "head": "7b6c005a09526ae6f14134b876f3d2f8e1dab978",
+  "artifact": "example-build-output",
+  "downloadRoot": "examples",
+  "files": [
+    {
+      "file": "headless-workflows/dist/geometry.mjs",
+      "sha256": "8f491077853b51cad3963f00da1461bb14844d0b71c19c1118bf8d108dd8a8e2",
+      "matchesLocalTestedBuild": true
+    },
+    {
+      "file": "headless-workflows/dist/server.mjs",
+      "sha256": "4fe7c7b872cafbbc50a6ca4501348c48a63d5d8301be9fbc4b1b1c9ec72f64ed",
+      "matchesLocalTestedBuild": true
+    },
+    {
+      "file": "headless-workflows/dist/edit.mjs",
+      "sha256": "be195aeae0b8085bcea77a7e5c6e84aa08270a6e42bb1f8158b25d0dd58cd566",
+      "matchesLocalTestedBuild": true
+    }
+  ]
+}

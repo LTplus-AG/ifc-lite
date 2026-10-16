@@ -159,6 +159,7 @@ nav:
   - Getting Started:
     - Installation: guide/installation.md
     - Quick Start: guide/quickstart.md
+    - Developer Workflows: guide/developer-workflows.md
     - Web Viewer Controls: guide/web-viewer-controls.md
     - Cloud Sources: guide/cloud-sources.md
     - Viewer Assistant: guide/viewer-assistant.md
@@ -172,6 +173,7 @@ nav:
     - Parsing IFC Files: guide/parsing.md
     - Geometry Processing: guide/geometry.md
     - Rendering: guide/rendering.md
+    - Cutting Planes: guide/section-planes.md
     - Querying Data: guide/querying.md
     - Selector Syntax: guide/selector-syntax.md
     - Images and PDF Appearance: guide/appearance.md
@@ -316,6 +318,7 @@ nav:
         - CLI & CI: architecture/layer-prs/09-cli.md
         - Registry: architecture/layer-prs/10-registry.md
   - API Reference:
+    - Search API symbols: api/reference.md
     - TypeScript API: api/typescript.md
     - Rust API: api/rust.md
     - WASM Bindings: api/wasm.md

@@ -64,8 +64,11 @@ mod step;
 mod step_api;
 mod step_cow;
 mod step_header;
+mod step_ids;
+mod step_index;
 mod step_json;
 mod step_log;
+mod step_record_frame;
 mod step_slot;
 mod step_text;
 mod step_map_transform;
@@ -122,8 +125,8 @@ pub use rebar_schedule::{build_rebar_schedule, build_rebar_schedule_with_preflig
     RebarSchedule, RebarScheduleRow, RebarSource, RebarSweep};
 pub use json::{export_json, JsonOptions};
 pub use landxml_terrain::{
-    try_export_landxml_terrain, LandXmlTerrainExport, LandXmlTerrainOptions, LandXmlTerrainRefusal,
-    LandXmlTerrainSurface,
+    try_export_landxml_terrain, LandXmlLinearUnit, LandXmlTerrainExport, LandXmlTerrainOptions,
+    LandXmlTerrainRefusal, LandXmlTerrainSurface,
 };
 pub use jsonld::{export_jsonld, export_jsonld_with_filter, JsonLdOptions};
 pub use kmz::{
@@ -137,7 +140,7 @@ pub use merged::{
 pub use model::{
     build_export_model, build_export_model_with_options, stream_export_model,
     stream_export_model_with_index, stream_export_model_with_options, EntityRow, ExportModel,
-    ModelOptions, Placement, PropValue, PropertySet, QuantitySet, QuantityValue,
+    ModelOptions, Placement, PropValue, PropertySet, QuantitySet, QuantityValue, ValueKind,
 };
 pub use quantity_analysis_derived::{analyze_quantities, DerivedQuantity,
     ProductQuantityAnalysis, QuantityAnalysis, QuantitySourceOccurrence};

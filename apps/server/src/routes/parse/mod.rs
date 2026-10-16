@@ -5,6 +5,7 @@
 //! Parse endpoints for IFC file processing.
 
 pub(crate) mod cache_keys;
+pub(crate) mod cache_read;
 mod cached_replay;
 mod stream_batch;
 mod stream_event;
@@ -16,24 +17,25 @@ mod parquet_optimized;
 mod parquet_optimized_replay;
 mod parquet_stream;
 mod replay_header;
+mod upload;
 
 pub use fetch::{check_cache, get_cached_geometry, get_data_model, get_symbolic};
 pub use json::{parse_full, parse_metadata, parse_stream};
 pub use parquet::parse_parquet;
 pub use parquet_optimized::parse_parquet_optimized;
 pub use parquet_stream::parse_parquet_stream;
+use upload::{admit_upload, request_cache_key_off_runtime};
 
 use crate::error::ApiError;
 use crate::services::cache::DiskCache;
 use crate::services::{DataModelEntities, OpeningFilterMode, ParquetLayout, StreamShapes};
-use axum::extract::Multipart;
-use flate2::read::GzDecoder;
+use crate::in_flight::InFlightGuard;
+use crate::AppState;
 use ifc_lite_processing::{SymbolicDataWithProvenance, TessellationQuality};
-use std::io::{Cursor, Read};
 use std::sync::Arc;
 
 /// Query parameters shared by all parse endpoints.
-#[derive(serde::Deserialize, Default)]
+#[derive(serde::Deserialize, Default, Clone)]
 pub struct ParseQuery {
     /// Opening filter mode: "default", "ignore_all", or "ignore_opaque".
     #[serde(default)]
@@ -110,8 +112,22 @@ impl ParseQuery {
     }
 }
 
+/// Mark the symbolic sidecar for `cache_key` as being written, so
+/// `GET /api/v1/parse/symbolic/{cache_key}` answers 202 rather than 404
+/// until the write lands (#7676, SERVER-21). Call it in the handler, before
+/// the response goes out, and hand the marker to
+/// [`cache_symbolic_data_off_runtime`]: a marker begun inside a spawned task
+/// leaves a window where a client already holding the key sees 404.
+///
+/// Shares the data-model fills' marker set (#5129). Keys are whole entry
+/// keys, so a symbolic marker never answers for a data model.
+fn begin_symbolic_fill(state: &AppState, cache_key: &str) -> InFlightGuard {
+    state.data_model_in_flight.begin(cache_keys::symbolic_cache_key(cache_key))
+}
+
 /// Write the symbolic sidecar through [`cache_keys::cache_symbolic_data`] on
-/// the blocking pool (#4696).
+/// the blocking pool (#4696), clearing `fill` (from [`begin_symbolic_fill`])
+/// once the write has resolved either way.
 ///
 /// That call JSON-encodes the whole 2D symbol stream before it writes, and
 /// awaited on an async worker the encode holds that worker for its whole
@@ -119,6 +135,7 @@ impl ParseQuery {
 /// is async, so the blocking thread drives it with `Handle::block_on`.
 async fn cache_symbolic_data_off_runtime(
     cache: Arc<DiskCache>,
+    fill: InFlightGuard,
     cache_key: String,
     symbolic: SymbolicDataWithProvenance,
 ) {
@@ -130,211 +147,8 @@ async fn cache_symbolic_data_off_runtime(
     if let Err(e) = written {
         tracing::error!(error = %e, "Symbolic data cache task failed");
     }
+    drop(fill);
 }
-
-/// Extract file data from multipart request.
-/// Automatically decompresses gzip-compressed files, refusing inputs whose
-/// decompressed size would exceed `max_file_size_mb`.
-///
-/// Reads the `file` field one chunk at a time (rather than buffering the
-/// whole field via `Field::bytes()`) so an oversized upload is caught and
-/// rejected — with a clean `FileTooLarge` -> 413, logged in
-/// `ApiError::into_response` — as soon as the running total crosses
-/// `max_file_size_mb`, instead of only after the entire body has been
-/// received. This also means the raw framework body limit
-/// (`DefaultBodyLimit`, set well above this ceiling in `main.rs`) is a
-/// defense-in-depth backstop, not the thing actually enforcing the limit.
-pub(crate) async fn extract_file(
-    multipart: &mut Multipart,
-    max_file_size_mb: usize,
-) -> Result<bytes::Bytes, ApiError> {
-    let max_bytes = max_file_size_mb.saturating_mul(1024 * 1024);
-
-    while let Some(mut field) = multipart.next_field().await? {
-        let field_name = field.name().unwrap_or_default();
-        tracing::debug!(field_name = %field_name, "Processing multipart field");
-
-        if field_name == "file" {
-            let mut buf = Vec::new();
-            while let Some(chunk) = field.chunk().await? {
-                if buf.len() + chunk.len() > max_bytes {
-                    return Err(ApiError::FileTooLarge {
-                        max_mb: max_file_size_mb,
-                    });
-                }
-                buf.extend_from_slice(&chunk);
-            }
-            let bytes = bytes::Bytes::from(buf);
-            let original_size = bytes.len();
-            tracing::debug!(size = original_size, "Extracted file from multipart");
-
-            // Check if file is gzip-compressed (magic bytes: 1f 8b)
-            let is_gzipped = bytes.len() >= 2 && bytes[0] == 0x1f && bytes[1] == 0x8b;
-            // ...or a zip container (.ifcZIP; local-file-header magic: 50 4b 03 04).
-            let is_zip = bytes.len() >= 4
-                && bytes[0] == 0x50
-                && bytes[1] == 0x4b
-                && bytes[2] == 0x03
-                && bytes[3] == 0x04;
-
-            if is_zip {
-                tracing::debug!("Detected .ifcZIP container, unwrapping...");
-                return unwrap_ifczip(&bytes, max_bytes, max_file_size_mb);
-            }
-
-            if is_gzipped {
-                tracing::debug!("Detected gzip compression, decompressing...");
-                // Bound the decompressed stream: read at most max_bytes + 1.
-                // If the cap is hit, treat as oversized rather than allocating
-                // unbounded output for a small compressed input.
-                let mut decoder = GzDecoder::new(bytes.as_ref()).take(max_bytes as u64 + 1);
-                let mut decompressed = Vec::new();
-                decoder
-                    .read_to_end(&mut decompressed)
-                    .map_err(|e| ApiError::Internal(format!("Failed to decompress gzip: {}", e)))?;
-                if decompressed.len() > max_bytes {
-                    return Err(ApiError::FileTooLarge {
-                        max_mb: max_file_size_mb,
-                    });
-                }
-                tracing::info!(
-                    original_size = original_size,
-                    decompressed_size = decompressed.len(),
-                    compression_ratio =
-                        format!("{:.1}x", original_size as f64 / decompressed.len() as f64),
-                    "File decompressed successfully"
-                );
-                return Ok(bytes::Bytes::from(decompressed));
-            } else {
-                // The chunked read loop above already enforces max_bytes.
-                return Ok(bytes);
-            }
-        }
-    }
-
-    tracing::warn!("No 'file' field found in multipart request");
-    Err(ApiError::MissingFile)
-}
-
-/// Unwrap a buildingSMART `.ifcZIP` container (issue #1494): a plain zip
-/// archive wrapping a single `.ifc`/`.ifcxml` model file (optionally alongside
-/// referenced resources like textures — those are ignored, not extracted).
-/// Returns the model entry's bytes so the rest of the pipeline never has to
-/// know zip existed. Mirrors the TypeScript `unwrapIfcZip` semantics
-/// (`packages/parser/src/ifczip.ts`): rejects an archive with zero or more than
-/// one candidate rather than silently guessing which model to load, and bounds
-/// the decompressed size (zip-bomb guard) against the same `max_bytes` ceiling
-/// the raw/gzip paths use.
-/// Whether an archive entry is a macOS AppleDouble sidecar rather than content.
-///
-/// Compressing in macOS Finder writes `__MACOSX/._<name>` beside each entry,
-/// carrying resource forks and extended attributes. It keeps the original
-/// extension, so `__MACOSX/._model.ifc` counted as a second model and every
-/// Mac-made archive was rejected as ambiguous (#2812, reported from
-/// production).
-///
-/// The test is the BASENAME, not the directory. `._` is what makes a file a
-/// sidecar; `__MACOSX/` is merely where macOS puts them, so matching on it is
-/// redundant (every entry inside is already `._`-prefixed) and wrong for a user
-/// whose archive genuinely contains a folder of that name. The basename form
-/// also covers a sidecar left beside its original by a rezip that flattens the
-/// directory away.
-///
-/// Mirrors `APPLE_DOUBLE_RE` in `packages/parser/src/ifczip.ts`. The two must
-/// agree, or an archive the browser accepts is rejected by the server.
-fn is_apple_double(name: &str) -> bool {
-    name.rsplit('/')
-        .next()
-        .is_some_and(|base| base.starts_with("._"))
-}
-
-fn unwrap_ifczip(
-    bytes: &[u8],
-    max_bytes: usize,
-    max_file_size_mb: usize,
-) -> Result<bytes::Bytes, ApiError> {
-    let mut archive = zip::ZipArchive::new(Cursor::new(bytes))
-        .map_err(|e| ApiError::BadRequest(format!("Failed to read .ifcZIP archive: {e}")))?;
-
-    // Collect the model-file entries (case-insensitive .ifc/.ifcxml, non-dir).
-    // Owned names so the >1 error can list them without holding a borrow of the
-    // archive across iterations.
-    let mut candidates: Vec<(usize, String)> = Vec::new();
-    for i in 0..archive.len() {
-        let entry = archive
-            .by_index(i)
-            .map_err(|e| ApiError::BadRequest(format!("Corrupt .ifcZIP entry: {e}")))?;
-        if entry.is_dir() {
-            continue;
-        }
-        let name = entry.name();
-        let lower = name.to_ascii_lowercase();
-        if (lower.ends_with(".ifc") || lower.ends_with(".ifcxml")) && !is_apple_double(name) {
-            candidates.push((i, name.to_string()));
-        }
-    }
-
-    match candidates.len() {
-        0 => {
-            return Err(ApiError::BadRequest(
-                "This .ifcZIP archive contains no .ifc/.ifcxml entry — nothing to parse."
-                    .to_string(),
-            ))
-        }
-        1 => {}
-        n => {
-            let names = candidates
-                .iter()
-                .map(|(_, name)| name.as_str())
-                .collect::<Vec<_>>()
-                .join(", ");
-            return Err(ApiError::BadRequest(format!(
-                "This .ifcZIP archive contains {n} model files ({names}) — expected exactly one."
-            )));
-        }
-    }
-
-    let index = candidates[0].0;
-    let mut entry = archive
-        .by_index(index)
-        .map_err(|e| ApiError::BadRequest(format!("Corrupt .ifcZIP entry: {e}")))?;
-
-    // Reject up front on the uncompressed size declared in the central
-    // directory (no decompression yet), then bound the actual read as a
-    // belt-and-braces guard against a lying header — same shape as the gzip
-    // path above.
-    if entry.size() > max_bytes as u64 {
-        return Err(ApiError::FileTooLarge {
-            max_mb: max_file_size_mb,
-        });
-    }
-
-    let mut model = Vec::new();
-    entry
-        .by_ref()
-        .take(max_bytes as u64 + 1)
-        .read_to_end(&mut model)
-        .map_err(|e| ApiError::Internal(format!("Failed to decompress .ifcZIP entry: {e}")))?;
-    if model.len() > max_bytes {
-        return Err(ApiError::FileTooLarge {
-            max_mb: max_file_size_mb,
-        });
-    }
-
-    tracing::info!(
-        entry = %candidates[0].1,
-        compressed_size = bytes.len(),
-        model_size = model.len(),
-        "Unwrapped .ifcZIP container"
-    );
-    Ok(bytes::Bytes::from(model))
-}
-
-#[cfg(test)]
-mod extract_file_tests;
-
-#[cfg(test)]
-mod ifczip_tests;
 
 #[cfg(test)]
 mod parquet_tests;
@@ -372,7 +186,3 @@ mod cached_replay_batches_tests;
 #[cfg(test)]
 #[path = "resolved_tessellation_quality_tests.rs"]
 mod resolved_tessellation_quality_tests;
-
-#[cfg(test)]
-#[path = "apple_double_tests.rs"]
-mod apple_double_tests;

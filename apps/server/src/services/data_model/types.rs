@@ -260,9 +260,12 @@ pub struct SpatialHierarchyData {
 }
 
 /// Job for processing an entity during data extraction.
-pub(crate) struct EntityJob {
+pub(crate) struct EntityJob<'a> {
     pub(crate) id: u32,
-    pub(crate) type_name: String,
+    /// Borrowed from the scanned content (#7676, SERVER-11): one `String`
+    /// per entity was millions of allocations on a large model, for a name
+    /// every extractor only compares.
+    pub(crate) type_name: &'a str,
     pub(crate) start: usize,
     pub(crate) end: usize,
 }

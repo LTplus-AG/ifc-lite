@@ -40,6 +40,21 @@ fan-out, memory bandwidth, GPU); a change in those still needs an end-to-end
 A/B (`ab.sh`, the browser rigs below), and a green ratchet is no evidence for it.
 
 
+## Published worker asset closure (#7648)
+
+A Node geometry consumer passed while a fresh Vite consumer failed: the geometry
+worker pool retained a TypeScript URL absent from its npm tarball. Package build
+metadata now uses the same all-module rewrite and independent verification as the
+parser; geometry and point-cloud verification checks script targets while their
+WASM assets resolve through declared packages. Turbo hashes the shared scripts.
+
+This is a packaging correction, with no runtime speed claim. The baseline browser
+artifact cannot bundle, so it supplies no valid browser timing comparison. Real
+Node consumer runs before and after produced identical mesh/triangle counts and
+byte-identical GLB exports for the committed wall and ArchiCAD FZK fixtures. See
+`tests/evidence/packed-workflows/worker-packaging.json`. Keep the external Vite
+bundle in acceptance: a Node-only WASM pass cannot prove worker asset closure.
+
 ## Several cutting planes: caps and clip cost (#7545)
 
 Browser A/B of `main` against the branch on a real GPU (Chrome 155, NVIDIA Blackwell, WebGPU), production
@@ -321,9 +336,10 @@ rendered vs idle frames (a frame that called `getCurrentTexture`), and
   frame, frames over budget, missed vsyncs (load only) and rendered vs idle
   frames as `browser-frames` rows in `test-results/browser-frames.json`. GPU
   time is excluded by construction (SwiftShader). Runs nightly in
-  `.github/workflows/browser-frames.yml`. Count metrics (frames, draws,
-  submits) repeat; millisecond metrics move with machine load, so compare
-  spreads, not single runs.
+  `.github/workflows/browser-frames.yml`. Within one build, scripted
+  orbit/hover counts repeat, but streaming-load frame, draw and submit counts
+  do not, and millisecond metrics move with machine load. Compare spreads,
+  not single runs (see "Frame ratchet: only load upload volume repeats" below).
 - **Real GPU, local only**: `scripts/perf/frame-gpu-rig.mts` drives Windows
   Chrome from WSL (random CDP port, throwaway profile killed by path and
   deleted), serves a production build same-origin, loads `?model=`, presses
@@ -337,6 +353,29 @@ rendered vs idle frames (a frame that called `getCurrentTexture`), and
   revisions must include #6979 and are recorded before host/browser work. This
   checks source ancestry; retain independent build/hash receipts binding each
   dist to its declared revision. Offline `--plan` and `--summarize` need no revisions.
+- **Real GPU structural counts, local only (#6993)**:
+  `scripts/perf/native-count-driver.mts` reuses the frame rig's Windows
+  Chrome lifecycle, host/physical-session admission and static server, and
+  `ViewerBenchmarkPage` for the load itself. Two fresh loads each of FZK and
+  Snowdon, one fresh owned profile per sample, at exactly
+  `?perfTrace=1&geomWorkers=4&meshCache=0&perf.benchmarkUploads=1&perf.batchSizing=%7B%22targetMs%22%3A8000%2C%22minJobs%22%3A64%2C%22maxJobs%22%3A64%7D`,
+  through the canonical file input (`useIfcLoader.loadFile`, never `?model=`).
+  A sample is healthy only with a finished metadata completion (parser or
+  canonical cache), `geometry.streamComplete`, an ended root, a finished
+  `scene.finalize`, count-mode flushes, settled counters, the GPU
+  allocation/static-upload and sender transfer vectors, zero device loss or
+  replacement, zero page errors and every interaction-commit step measured.
+  Unhealthy samples are kept, with their refusals. Receipts: fixture, dist
+  `index.html` and served WASM SHA-256s, branch revision, Chrome version,
+  host admission before/after, per-sample JSON and `summary.json` (exit 0
+  only when every sample is healthy and both vectors repeat per fixture):
+  `flock /tmp/ifclite-perf.lock npx tsx scripts/perf/native-count-driver.mts --branch-revision <built-revision> --require-host-idle --require-physical-display`.
+  `--plan` prints the samples and URL without launching anything. It does NOT
+  prove latency or throughput (count uploads are a different workload and are
+  refused by timing consumers), CPU mesh byte identity, schedule-independent
+  aggregate `gpu.writeBytes`, or device-loss recovery
+  (`evidence/recovery-replay-6993` covers that separately); `--branch-revision`
+  checks source ancestry only, so the served-file hashes are the build binding.
 
 ## Deterministic frame evidence admission (#6975)
 
@@ -352,8 +391,73 @@ readiness and health are checked after the original scenario windows. Raw
 failed evidence remains uploaded. Enabling trace counters makes this a new
 instrumented cohort; its rows must not be pooled with older unobserved runs.
 Lesson: scenario coverage alone does not prove complete or uncontaminated
-measurements. Metrics remain informational; physical-display nights, calibrated
-thresholds and demonstrated repeatable frame ceilings remain outstanding.
+measurements. Physical-display nights and calibrated thresholds remain
+outstanding; for which rows now carry ceilings, see the next section.
+
+## Frame ratchet: only load upload volume repeats (#6975)
+
+Verdict: the `browser-frames` ratchet family gates one row, the Snowdon
+streaming-load `gpu_write_kib`. All other rows stay informational. The
+evidence is [repeatability.json](evidence/gpu-frame-timing-6975/frame-ratchet/repeatability.json):
+hosted runs of two builds (current `main`, which seeds the ceiling, and the
+#7601 retry head), with raw per-run values, run ids, artifact sha256s,
+per-build stats and a verdict for each of the 96 rows.
+`frame-ratchet-evidence.test.mjs` recomputes that verdict. The criteria were
+fixed before the `main` runs were downloaded and were not changed afterwards.
+
+- The #6975 expectation was "load counts and main-thread totals repeat". The
+  data refutes it. Within ONE build, main-thread totals, percentiles and load
+  frame/draw/submit counts move by tens of percent on hosted SwiftShader. Load
+  length in frames depends on main-thread speed, and draws and submits follow
+  the frames rendered during the load. None of them can hold a ceiling whose
+  band means anything.
+- Load upload volume is the one row that is close to stable. On Snowdon it
+  stays far inside the cap. On FZK it moves with the number of frames rendered
+  during the load and lands just over the 1% cap on `main`, so it stays
+  informational. Do not loosen the cap after the fact to admit it.
+- Orbit/hover render, draw, submit and upload counts were identical in every
+  run of each build, but #6975 rules them out: they follow the adaptive render
+  throttle, which a slower runner engages with no code change. Note that they
+  are sensitive. The FZK orbit upload volume differs between the two builds.
+  This is informational only; the two builds are not in an ancestor relation,
+  so no regression is claimed. Revisit with physical-GPU nights, not by
+  relaxing the rule.
+- Contamination is real and handled. On hosted SwiftShader, Dawn sometimes
+  loses its instance mid-load (mostly on Snowdon), and the renderer then
+  re-uploads the whole scene. Before #7601 that failed the run outright
+  (two of the five pre-retry runs in the evidence, Snowdon both times; #7601
+  saw about two in six).
+  #7601 replaces such an attempt with a fresh browser, at most twice, and
+  retains each refusal in `refusedAttempts`. Every post-#7601 run in the
+  evidence was admitted. The tally per fixture is in the evidence file. The
+  ratchet consumes only admitted artifacts: the measurer re-runs admission and
+  refuses rather than evaluating, and the daily lowering reads only the
+  latest *successful* `main` run of the lane.
+- Not proven: real-GPU frame cost (SwiftShader only), and behaviour on another
+  runner image or Chrome version. The pre-#7601 artifacts lack attempt
+  receipts, so they are counted for contamination but not admitted.
+
+## Real-GPU nightly trend and alert (#6975)
+
+`frame-gpu-night-trend.mts append` turns one real-GPU rig run directory into
+one row of an append-only JSONL trend: the night, the hash of the raw
+`runs.jsonl`, the night-profile hash, per-metric medians and a status. A night
+is `ok` only when every sample carries the strict admission witnesses the rig
+records under `--require-host-idle`, `--require-physical-display` and
+`--require-gpu-timing` (quiet host before and after, one physical console
+session, held foreground, a hardware adapter, per-pass GPU timing). A run
+without them is kept as `failed` and an admission refusal as `refused`, so
+both interrupt the seven-night calendar instead of vanishing. Rows are refused
+when the run finished more than 24 h before the append, when the receipt is
+already present or when the run started before the last row: no backfill.
+
+`evaluate` prints a verdict for one night and, with `--report-issue`, opens
+the regression issue or comments on the open one through `gh`. No threshold
+ships: without a thresholds file every verdict is `uncalibrated`. A thresholds
+file is admitted only when it names seven consecutive `ok` nights of the trend
+under one profile and no maximum is below a value those nights measured.
+Nothing installs a scheduler; whatever runs a night calls the rig, then
+`append`, then `evaluate`. Zero genuine nights are recorded as of this entry.
 
 ## Viewer JS is gated on raw bytes, not brotli (#7007)
 

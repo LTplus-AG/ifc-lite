@@ -299,7 +299,6 @@ dependencies = [
  "memchr",
  "nom",
  "rustc-hash",
- "smallvec",
  "thiserror",
 ]
 
@@ -311,6 +310,7 @@ dependencies = [
  "ifc-lite-core",
  "ifc-lite-geometry",
  "ifc-lite-processing",
+ "nalgebra",
  "rustc-hash",
  "serde",
  "serde_json",
@@ -327,7 +327,6 @@ dependencies = [
  "i_overlay",
  "ifc-lite-core",
  "jpeg-decoder",
- "memchr",
  "nalgebra",
  "num-rational",
  "num-traits",

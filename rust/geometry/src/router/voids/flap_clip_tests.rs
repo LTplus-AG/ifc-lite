@@ -386,3 +386,17 @@ fn opening_obb_if_malformed_bails_on_nan_vertex_not_panic() {
     let cutter = box_cutter_mesh([1.0, 1.0, 1.0], &[[f64::NAN, 0.0, 0.0]]);
     assert!(opening_obb_if_malformed(&cutter).is_none());
 }
+
+/// ROUTER-30 (#7674): `thin_axis` was `partial_cmp(..).unwrap()`, which aborts
+/// the wasm worker on a NaN half-extent. `OpeningBox::thin_axis` was a second
+/// copy of it and now calls this one. Finite triples keep the old answer
+/// (first minimum wins, `-0.0 == +0.0`); a NaN is never the thin axis.
+#[test]
+fn thin_axis_is_total_on_nan_half_extents_7674() {
+    assert_eq!(thin_axis(&[2.0, 0.1, 1.0]), 1);
+    assert_eq!(thin_axis(&[0.1, 0.1, 1.0]), 0, "a tie keeps the first minimum");
+    assert_eq!(thin_axis(&[0.0, -0.0, 1.0]), 0, "-0 and +0 tie; the first wins");
+    assert_eq!(thin_axis(&[f64::NAN, 0.3, 0.2]), 2, "a NaN half-extent is never the thin axis");
+    assert_eq!(thin_axis(&[0.3, -f64::NAN, 0.2]), 2, "nor is a negative NaN");
+    assert_eq!(thin_axis(&[f64::NAN; 3]), 0);
+}

@@ -149,6 +149,35 @@ fn decoded_entity_get_refs_accepts_a_list_or_bare_reference() {
     assert_eq!(entity.get_refs(4), None);
 }
 
+/// EXPORT-DATA-1 (#7681): `IfcRelDefinesByProperties.RelatingPropertyDefinition`
+/// is an `IfcPropertySetDefinitionSelect`. Its `IfcPropertySetDefinitionSet`
+/// alternative is a defined type, so ISO 10303-21 writes it as a typed
+/// parameter, `IFCPROPERTYSETDEFINITIONSET((#20,#22))`, which decodes to
+/// `[String(name), List(refs)]`. `get_refs` read that as a list with no
+/// reference members and returned `None`, so every reader dropped the whole
+/// relationship. Decoded from real STEP so the shape is the tokenizer's.
+#[test]
+fn decoded_entity_get_refs_unwraps_a_property_set_definition_set() {
+    let content = b"ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\n\
+        #1=IFCRELDEFINESBYPROPERTIES('a',$,$,$,(#50),#20);\n\
+        #2=IFCRELDEFINESBYPROPERTIES('b',$,$,$,(#50),(#20,#22));\n\
+        #3=IFCRELDEFINESBYPROPERTIES('c',$,$,$,(#50),IFCPROPERTYSETDEFINITIONSET((#20,#22)));\n\
+        #4=IFCRELDEFINESBYPROPERTIES('d',$,$,$,(#50),ifcPropertySetDefinitionSet((#21)));\n\
+        #5=IFCRELDEFINESBYPROPERTIES('e',$,$,$,(#50),IFCLABEL('x'));\n\
+        #6=IFCRELDEFINESBYPROPERTIES('f',$,$,$,(#50),IFCOTHERSET((#20)));\n\
+        #7=IFCRELDEFINESBYPROPERTIES('g',$,$,$,(#50),IFCPROPERTYSETDEFINITIONSET((#20),(#22)));\n\
+        ENDSEC;\nEND-ISO-10303-21;\n";
+    let mut decoder = crate::EntityDecoder::with_index(content, crate::build_entity_index(content));
+    let mut refs = |id| decoder.decode_by_id(id).expect("decodes").get_refs(5);
+    assert_eq!(refs(1), Some(vec![20]), "single reference");
+    assert_eq!(refs(2), Some(vec![20, 22]), "bare list");
+    assert_eq!(refs(3), Some(vec![20, 22]), "typed IfcPropertySetDefinitionSet");
+    assert_eq!(refs(4), Some(vec![21]), "the keyword is case-insensitive");
+    assert_eq!(refs(5), None, "a typed non-aggregate holds no references");
+    assert_eq!(refs(6), None, "only the one schema type that wraps references is unwrapped");
+    assert_eq!(refs(7), None, "a wrapper must carry exactly one SET argument");
+}
+
 #[test]
 fn test_as_float_with_typed_value() {
     // Test plain float

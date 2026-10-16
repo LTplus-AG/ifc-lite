@@ -12,6 +12,7 @@ Full conformance and localized delta verdicts are separate; no topology claim.
 """
 import argparse
 import hashlib
+import importlib.util
 import json
 import math
 from pathlib import Path
@@ -23,6 +24,11 @@ from shapely.geometry import Polygon
 from shapely.ops import unary_union
 
 TOL = 1e-4
+COMPARATOR_VERSION = 'finite-coverage-v3'
+_helper_path = Path(__file__).with_name('finite_coverage.py')
+_spec = importlib.util.spec_from_file_location('issue_7661_finite_coverage', _helper_path)
+finite = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(finite)
 
 
 def require(condition, message):
@@ -51,12 +57,13 @@ def save(path, value):
     path.write_text(json.dumps(value, indent=2, allow_nan=False) + '\n')
 
 
-def dot(a, b):
-    return sum(x * y for x, y in zip(a, b))
+# Share vector arithmetic with the exact certificate helper; retain the
+# evidence CLI's existing list-valued cross-product adapter.
+dot = finite.dot
 
 
 def cross(a, b):
-    return [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]]
+    return list(finite.cross(a,b))
 
 
 def mesh_data(raw, frame='z-up', element=None):
@@ -117,25 +124,38 @@ def fixture_at_slope(content, slope):
     return '\n'.join(lines)+'\n'
 
 
+def cached_reference_validation(record):
+    """Retain historical comparisons without upgrading unchecked reference truth."""
+    marker = record.get('reference_validation',{})
+    status = marker.get('status') if isinstance(marker,dict) else marker
+    require(record.get('reference_status') not in ('INVALID_OR_UNRESOLVED','INVALID_REFERENCE')
+            and status not in ('INVALID_OR_UNRESOLVED','INVALID_REFERENCE'),'Explicit invalid reference cache')
+    return {'status':'UNVERIFIED_LEGACY_CACHE','limitation':'Saved arrays and engine pins do not establish Boolean success.'}
+
+
 def cached_oracle(path, fixture_hash):
     if path.is_file():
         raw, digest = read(path)
         require(raw['fixture_sha256'] == fixture_hash and raw['ifcopenshell'] == '0.8.5','Oracle fixture hash/engine mismatch')
-        return mesh_data(raw), None, {'oracle_file_sha256': digest}, raw, None
+        validation = cached_reference_validation(raw)
+        return mesh_data(raw), None, {'oracle_file_sha256': digest,'reference_validation':validation}, raw, None
     receipt, receipt_hash = read(path/'receipt.json')
     require(receipt['fixture_sha256'] == fixture_hash,'Oracle fixture hash mismatch')
     engines = receipt.get('engines') or {'ifcopenshell': receipt['ifcopenshell'], 'shapely': receipt['shapely']}
     require(engines == {'ifcopenshell': '0.8.5', 'shapely': '2.0.7'},'Oracle engine pins mismatch')
+    validation = cached_reference_validation(receipt)
     filename = 'oracle-raw-mesh.json' if (path/'oracle-raw-mesh.json').exists() else 'oracle-triangles.json'
     raw, digest = read(path/filename)
     expected = receipt.get('oracle_raw_mesh_sha256') or receipt.get('oracle_raw_sha256')
-    if expected:
-        require(digest == expected,'Oracle mesh hash mismatch')
-    no_void = read(path/'oracle-no-void-raw-mesh.json')[0] if (path/'oracle-no-void-raw-mesh.json').exists() else None
-    if no_void and receipt.get('oracle_no_void_raw_mesh_sha256'):
-        require(sha((path/'oracle-no-void-raw-mesh.json').read_bytes()) == receipt['oracle_no_void_raw_mesh_sha256'],'Oracle no-void hash mismatch')
-    return mesh_data(raw), mesh_data(no_void) if no_void else None, {'oracle_cache_receipt_sha256': receipt_hash,
-            'oracle_file_sha256': digest, 'oracle_no_void_file_sha256':sha((path/'oracle-no-void-raw-mesh.json').read_bytes()) if no_void else None, 'cache_receipt': receipt}, raw, no_void
+    require(isinstance(expected,str) and digest == expected,'Oracle mesh hash missing or mismatch')
+    no_void_path = path/'oracle-no-void-raw-mesh.json'
+    no_void, no_void_digest = read(no_void_path) if no_void_path.exists() else (None,None)
+    if no_void_digest is not None:
+        require(no_void_digest == receipt.get('oracle_no_void_raw_mesh_sha256'),'Oracle no-void hash missing or mismatch')
+        require(isinstance(no_void,dict),'Malformed oracle no-void mesh')
+    return mesh_data(raw), mesh_data(no_void) if no_void_digest is not None else None, {'oracle_cache_receipt_sha256': receipt_hash,
+            'oracle_file_sha256': digest, 'oracle_no_void_file_sha256':no_void_digest, 'cache_receipt': receipt,
+            'reference_validation':validation}, raw, no_void
 
 
 def triangles(data):
@@ -143,10 +163,20 @@ def triangles(data):
     rows = []
     for start in range(0, len(indices), 3):
         tri = [vertices[i] for i in indices[start:start+3]]
-        n = cross([tri[1][k]-tri[0][k] for k in range(3)], [tri[2][k]-tri[0][k] for k in range(3)])
-        length = math.sqrt(dot(n, n))
-        if length > 2e-18:
-            rows.append((tri, [x/length for x in n], length/2))
+        exact = finite.rational_triangle(tri)
+        n = finite.cross(finite.sub(exact[1],exact[0]),finite.sub(exact[2],exact[0]))
+        scale = max(abs(x) for x in n)
+        if not scale:  # Exact zero area has no filled two-dimensional surface.
+            continue
+        normalized = [float(x/scale) for x in n]
+        length = math.sqrt(dot(normalized,normalized))
+        try:
+            area = float(scale)*length/2
+        except OverflowError as error:
+            raise finite.CoverageUnresolved('Positive triangle area outside representable diagnostic range') from error
+        if not math.isfinite(area) or area <= 0:
+            raise finite.CoverageUnresolved('Positive triangle area outside representable diagnostic range')
+        rows.append((tri,[x/length for x in normalized],area))
     return rows
 
 
@@ -172,13 +202,29 @@ def residual(tri, p):
     return max(abs(dot(p['normal'], vertex)-p['offset']) for vertex in tri)
 
 
+def nonsingular_projection(tri, p):
+    # #7721: proximity to an infinite carrier does not make it a valid donor
+    # parameter chart. Check the SAME rounded corners used by the exact lift.
+    return finite.area2(finite.projected_triangle(tri,p)) != 0
+
+
+def assigned_plane(tri, normal, area, planes):
+    eligible = [k for k,p in enumerate(planes) if residual(tri,p) <= TOL]
+    if not eligible:
+        raise ValueError(f'Triangle outside all expected boundary planes: {tri}')
+    eligible = [k for k in eligible if nonsingular_projection(tri,planes[k])]
+    if not eligible:
+        raise finite.CoverageUnresolved('Positive triangle has singular diagnostic projection')
+    return min(eligible,key=lambda k: (-abs(dot(normal,planes[k]['normal']))*area,residual(tri,planes[k]),k))
+
+
 def union_groups(datasets, analytic=None):
     rows = {name: triangles(data) for name, data in datasets.items()}
     planes = list(analytic) if analytic else []
     if analytic is None:
         for name in ['oracle','base','candidate']:
-            for tri, normal, area in sorted(rows[name], key=lambda item: (-item[2],item[0])):
-                if not any(residual(tri,p) <= TOL for p in planes):
+            for tri, normal, area in sorted(rows.get(name,[]), key=lambda item: (-item[2],tuple(tuple(p) for p in item[0]))):
+                if not any(residual(tri,p) <= TOL and nonsingular_projection(tri,p) for p in planes):
                     k = max(range(3), key=lambda k: abs(normal[k]))
                     if normal[k] < 0:
                         normal = [-x for x in normal]
@@ -186,16 +232,13 @@ def union_groups(datasets, analytic=None):
     polygons = {name: [[] for _ in planes] for name in datasets}
     for name, ts in rows.items():
         for tri, normal, area in ts:
-            eligible = [k for k,p in enumerate(planes) if residual(tri,p) <= TOL]
-            if not eligible:
-                raise ValueError(f'{name} triangle outside all expected boundary planes: {tri}')
-            k = min(eligible,key=lambda k: (-abs(dot(normal,planes[k]['normal']))*area,residual(tri,planes[k]),k))
+            k = assigned_plane(tri, normal, area, planes)
             p = planes[k]
             poly = Polygon([(dot(p['u'],v),dot(p['v'],v)) for v in tri])
-            if poly.area <= 1e-18:
-                continue
+            if poly.area <= 0:
+                raise finite.CoverageUnresolved('Positive triangle has singular diagnostic projection')
             if not poly.is_valid:
-                raise ValueError('Invalid projected triangle')
+                raise finite.CoverageUnresolved('Invalid projected triangle')
             polygons[name][k].append(poly)
     return planes, polygons
 
@@ -225,8 +268,22 @@ def delta_checks(o,a,b):
         'no_new_disagreement':bad_added.is_empty and bad_removed.is_empty and newly_missing.is_empty and newly_excess.is_empty}
 
 
-def adjudicate(datasets, analytic=None):
+def adjudicate(datasets, analytic=None, *, max_work_units=2000000):
+    budget = finite.WorkBudget(max_work_units)
     planes, polygons = union_groups(datasets,analytic)
+    all_triangles = {name:[tri for tri, _, _ in triangles(data)] for name,data in datasets.items()}
+    donors = {name:[[] for _ in planes] for name in datasets}
+    for name, data in datasets.items():
+        for tri, normal, area in triangles(data):
+            donors[name][assigned_plane(tri,normal,area,planes)].append(tri)
+    # Only baseline points not proved present at EXACTLY the same candidate
+    # positions can introduce new missing coverage. Keeping unresolved zero-
+    # distance cells here is conservative: it enlarges the possible change.
+    baseline_changed = []
+    if 'base' in datasets:
+        for k,p in enumerate(planes):
+            cells = finite.unresolved_cells(donors['base'][k],all_triangles['candidate'],p,0,budget)
+            baseline_changed.extend(tri for cell in cells for tri in finite.lifted_triangles(cell))
     rows = []
     for k,p in enumerate(planes):
         unions = {name:unary_union(items[k]) for name,items in polygons.items()}
@@ -244,6 +301,25 @@ def adjudicate(datasets, analytic=None):
             o,a,b = [unions[name] for name in ['oracle','base','candidate']]
             row['oracle_versus_base'],row['base_versus_candidate'] = compare(o,a),compare(a,b)
             row['delta'] = delta_checks(o,a,b)
+        # Keep the original plane-bin calculations as versioned diagnostics.
+        # Acceptance now requires finite 3D certificates across ALL bins.
+        row['exclusive_plane_bin_diagnostics'] = {name:row[name] for name in
+            ['oracle_versus_candidate','oracle_versus_base','base_versus_candidate','delta'] if name in row}
+        unresolved = {}
+        for left,right in [('oracle','candidate'),('oracle','base'),('base','candidate')]:
+            if left not in datasets or right not in datasets:
+                continue
+            missing = finite.unresolved_cells(donors[left][k],all_triangles[right],p,TOL,budget)
+            extra = finite.unresolved_cells(donors[right][k],all_triangles[left],p,TOL,budget)
+            unresolved[left,right] = missing,extra
+            row[left+'_versus_'+right] = finite.comparison_result(missing,extra)
+        if 'base' in datasets:
+            missing,extra = unresolved['oracle','candidate']
+            newly_missing = finite.not_proven_absent(missing,baseline_changed,TOL,budget)
+            newly_extra = finite.not_exactly_covered(extra,all_triangles['base'],budget)
+            row['delta'] = finite.delta_result(newly_missing,newly_extra,unresolved['base','candidate'])
+        row['comparator_version'] = COMPARATOR_VERSION
+        row['cumulative_exact_work_units'] = budget.used
         rows.append(row)
     return rows
 
@@ -269,19 +345,32 @@ def main():
     args.output.mkdir(parents=True,exist_ok=True)
     receipt = {'mode':args.mode,'fixture':fixture_path.name,'fixture_input_mode':'prepared exact bytes' if args.prepared_fixture else 'default reporter derivation' if args.mode=='reporter' else 'exact corpus bytes','fixture_sha256':fixture_hash,
         'original_fixture_sha256':sha(original),'script_sha256':sha(Path(__file__).read_bytes()),
+        'comparator_version':COMPARATOR_VERSION,'finite_coverage_helper_sha256':sha(_helper_path.read_bytes()),
         'engines':{'ifcopenshell':ifcopenshell.version,'shapely':shapely.__version__},'position_tolerance_m':TOL,
-        'limitations':'Polygon unions ignore multiplicity; no topology, closure, or winding claim.'}
+        'limitations':'Unresolved finite coverage fails conservatively; diagnostic areas may include covered points. No multiplicity, topology, closure, or winding claim.'}
     if args.oracle_cache:
         ov,nv,oracle_meta,raw,no_void = cached_oracle(args.oracle_cache,fixture_hash)
     else:
         if args.mode!='reporter':
             raise ValueError('Corpus mode requires retained verified oracle arrays')
-        model = ifcopenshell.file.from_string(fixture.decode())
-        settings = ifcopenshell.geom.settings()
-        settings.set('use-world-coords',True)
-        shape = ifcopenshell.geom.create_shape(settings,model.by_id(107))
-        raw={'positions':list(shape.geometry.verts),'indices':list(shape.geometry.faces)}
+        validation_path = Path(__file__).resolve().parents[4]/'tools/ifcopenshell_reference/reference_validation.py'
+        validation_spec = importlib.util.spec_from_file_location('checked_reference_conversion',validation_path)
+        validation = importlib.util.module_from_spec(validation_spec)
+        validation_spec.loader.exec_module(validation)
+        retained_fixture = args.output/'oracle-fixture.ifc'
+        retained_fixture.write_bytes(fixture)
+        try:
+            with validation.ReferenceSession(retained_fixture,{'use-world-coords':True},args.output/'oracle-diagnostics') as session:
+                raw = session.shape(107)
+        except (validation.InvalidReference,validation.ShapeUnavailable) as error:
+            receipt.update(passed=False,planes=[],reference_status='INVALID_OR_UNRESOLVED',reference_error=str(error))
+            save(args.output/'receipt.json',receipt)
+            return 2
         ov,nv,oracle_meta,no_void = mesh_data(raw),None,{'settings':{'use-world-coords':True}},None
+        oracle_meta['reference_validation'] = {'status':'ENGINE_DIAGNOSTICS_CHECKED_NOT_BOOLEAN_PROOF',
+            'diagnostics_receipt_sha256':sha((args.output/'oracle-diagnostics/receipt.json').read_bytes())}
+    if args.mode=='corpus':
+        require(nv is not None,'Corpus oracle cache requires a verified no-void mesh')
     receipt['oracle_provenance'] = oracle_meta
     save(args.output/'oracle-raw-mesh.json',raw)
     datasets={'oracle':ov}
@@ -320,7 +409,13 @@ def main():
             frame[name+'_no_void_bounds']=bound_check(bounds(nv),bounds(mesh_data(read(directory/'no-voids-mesh.json')[0])))
         receipt.update(rtc_metres=cache['rtc_metres'],unit_scale=cache['unit_scale'],coordinate_frame='IFC Z-up metres + origin, in recorded RTC frame')
     receipt['frame_checks']=frame
-    rows=adjudicate(datasets,analytic)
+    try:
+        rows=adjudicate(datasets,analytic)
+    except finite.CoverageUnresolved as error:
+        receipt.update(passed=False,unresolved=str(error),planes=[],summary={})
+        save(args.output/'receipt.json',receipt)
+        print(json.dumps({'passed':False,'unresolved':str(error)}))
+        return 2
     receipt['planes']=rows
     summary={}
     for label in ['oracle_versus_candidate','oracle_versus_base','base_versus_candidate']:

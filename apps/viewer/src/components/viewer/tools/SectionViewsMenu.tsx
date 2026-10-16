@@ -64,7 +64,7 @@ export function SectionViewsMenu({ compact = false }: { compact?: boolean }) {
           <ChevronDown aria-hidden className="h-3 w-3 opacity-70" />
         </button>
       </HudPopoverTrigger>
-      <HudPopoverContent align="end" side="bottom" className="w-64 space-y-1.5 p-2" data-testid="section-views-menu">
+      <HudPopoverContent align="end" side="bottom" className="w-64 space-y-1.5 p-2" data-testid="section-views-menu" aria-label={t('sectionPlanes.views.label')}>
         <div className="flex items-center gap-1">
           <input
             type="text"

@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "rootDir": "src"
+  },
+  "include": [
+    "src/**/*.mts"
+  ],
+  "exclude": [
+    "test"
+  ]
+}

@@ -43,6 +43,13 @@ function twoPlanes() {
 }
 
 describe('saved views on the Section bar (#7545)', () => {
+  it('the popover is a dialog with a name', () => {
+    render(<SectionViewsMenu />);
+    click(document.querySelector('[data-testid="section-views"]')!);
+    assert.equal(menu()!.getAttribute('role'), 'dialog');
+    assert.equal(menu()!.getAttribute('aria-label'), 'Views');
+  });
+
   it('saves the current planes under a name, and applying it later brings them and the camera back', () => {
     twoPlanes();
     const before = names();

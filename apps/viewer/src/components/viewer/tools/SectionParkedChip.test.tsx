@@ -129,6 +129,16 @@ describe('section chip (#5500, #5893)', () => {
     assert.equal(document.querySelector('[data-section-badge]'), null, 'the corner badge is gone');
   });
 
+  it('with several planes and only an inactive one cutting, names THAT plane, not the active one (#7545)', async () => {
+    render(<><ViewportHud /><SectionParkedChip /><SceneOverlayRoot><ToolOverlays /></SceneOverlayRoot></>);
+    await act(async () => { s().setActiveTool('section'); });
+    act(() => { s().addSectionPlane('down'); s().setSectionPlanePosition(20); s().addSectionPlane('side'); s().setSectionPlanePosition(70); });
+    const first = s().inactiveSectionPlanes[0]!.id;
+    act(() => { s().setSectionPlaneCutting(first, true); s().setSectionPlaneEnabled(false); }); // the active (side) plane stops cutting
+    await act(async () => { s().setActiveTool('select'); });
+    assert.equal(chip()?.textContent?.trim(), 'Down · 20.0%', 'the plane that cuts, in its own terms');
+  });
+
   it('names a face-picked cut by its signed distance along the normal', async () => {
     render(<><ViewportHud /><SectionParkedChip /><SceneOverlayRoot><ToolOverlays /></SceneOverlayRoot></>);
     await act(async () => { s().setActiveTool('section'); await new Promise((r) => setTimeout(r, 0)); });

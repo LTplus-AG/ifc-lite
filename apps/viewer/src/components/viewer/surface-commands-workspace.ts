@@ -130,7 +130,7 @@ export const WORKSPACE_SURFACE_COMMANDS = [
   {
     id: 'pref:settings', labelKey: 'commandPalette.pref.settings.label', ribbonLabelKey: 'ribbon.view.settings', ribbonTooltipKey: 'ribbon.view.settingsTooltip',
     keywords: 'settings preferences options configure theme toolbar spacemouse',
-    category: 'Preferences', icon: Settings, surfaces: paletteAndRibbon, enabled: alwaysEnabled,
+    category: 'Preferences', icon: Settings, surfaces: ['palette', 'ribbon', 'mobile'], enabled: alwaysEnabled,
     run: () => { openSettings(); },
   },
   {

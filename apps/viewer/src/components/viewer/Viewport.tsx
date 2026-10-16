@@ -492,6 +492,7 @@ export function Viewport({
   const measurementConstraintEdgeRef = useLatestRef(measurementConstraintEdge);
   const sectionPlaneRef = useLatestRef(sectionPlane);
   const sectionRangeRef = useLatestRef(sectionRange);
+  const sectionBoundsRef = useLatestRef((sectionCoordinateInfo ?? coordinateInfo)?.shiftedBounds ?? null);
   const sectionPickModeRef = useLatestRef(sectionPickMode);
   const visualEnhancementRef = useLatestRef(visualEnhancement);
   // Renderer model bounds, kept fresh per-render. The face-pick handler
@@ -1376,6 +1377,7 @@ export function Viewport({
     canvasRef,
     rendererRef,
     isInitialized,
+    sectionBoundsRef,
     animationFrameRef,
     lastFrameTimeRef,
     mouseIsDraggingRef,
@@ -1465,6 +1467,7 @@ export function Viewport({
     selectedEntityIdsRef,
     sectionPlaneRef,
     sectionRangeRef,
+    sectionBoundsRef,
     activeToolRef,
     drawing2D,
     show3DOverlay,

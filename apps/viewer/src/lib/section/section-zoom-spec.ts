@@ -10,7 +10,8 @@
  * (0.10 = 10 %) or an absolute length. The renderer's framing takes a multiple of
  * the bounds (`Camera.frameBounds(min, max, ms, padding)`: 1 is edge to edge), so
  * the multiple is `1 + 2 * margin / extent`: with a 10 % margin the target spans
- * exactly 1 / 1.2 of the frame's limiting dimension.
+ * exactly 1 / 1.2 of the frame's limiting dimension, in perspective as well as
+ * orthographic (the camera solves the standoff on the projected corners, #7617).
  */
 
 import type { Aabb } from './cut-region';

@@ -110,3 +110,38 @@ Both lanes live in the `IfcOpenShell parity` workflow
 - Nightly (`full` job): installs the pinned engine, runs the
   full committed corpus (fetched fixtures included), regenerates reference
   dumps to detect reference-staleness, and uploads the diff reports.
+
+## Rejecting invalid Boolean references (#7723)
+
+Fresh geometry exports run in a private worker that parses each model once.
+The worker owns IfcOpenShell's process-global detailed JSON logger and retains
+native stdout/stderr per conversion. It copies each shape's children while
+the owning shape is alive. A terminal Boolean retry failure or explicit
+invalid-operand fallback refuses the reference, even when the engine returns
+a nonempty mesh. A transient failed retry or a valid disjoint Boolean no-op
+alone does not refuse it. Other engine errors and incomplete JSON diagnostics
+remain unresolved. No geometry settings or comparison tolerances change.
+
+Use a fresh output directory. Each model gets a `.reference-diagnostics/`
+sidecar directory containing raw logs, copied arrays and a hash-bound receipt.
+The companion `.reference-validation.json` binds the canonical file and the
+completed diagnostic receipt without changing canonical geometry-stat bytes.
+A conversion has a 120-second deadline and a 32 MiB diagnostic bound; the
+parent retires and reaps only its own worker on failure. `dump_reference.py`
+returns **2** and does not publish that model's canonical reference after an
+invalid or unresolved conversion. Ordinary shape-conversion exceptions retain
+the existing explicit skip records. The uncached reporter surface CLI uses
+the same check and writes `passed: false`, `planes: []` and an explicit
+reference status before returning 2. Cached historical references are not
+retroactively certified by this check.
+
+Arrays returned by a session are provisional: publish them only after its
+context exits successfully. After the worker exits, the final admission
+barrier checks every complete conversion, initialization and stderr log;
+late native output cannot escape validation. Sidecar call hashes describe
+these final retained bytes, with initial observed hashes kept separately.
+
+The absence of terminal engine diagnostics is necessary, not sufficient, for
+a trustworthy reference. The tool does not prove IFC intent or Boolean success
+from mesh counts, reference/base equality, or silence. The captured failure
+and positive control are documented in [evidence/7723](evidence/7723/README.md).

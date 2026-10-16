@@ -121,7 +121,8 @@ fn resolve_complex_properties(
     if sets.iter().all(|(_, complex)| complex.is_empty()) {
         return;
     }
-    let mut decoder = EntityDecoder::with_arc_index(content, entity_index.clone());
+    // Data, not geometry: a member's out-of-range value survives (#7678).
+    let mut decoder = EntityDecoder::with_arc_index(content, entity_index.clone()).with_lossless_reals();
     let mut budget = ComplexPropertyBudget::for_input(content.len());
     // Walked once per complex property id; a repeat listing reuses the value,
     // charged what it keeps (`ComplexPropertyBudget::listing`).

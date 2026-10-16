@@ -20,8 +20,13 @@
 //! [`SNAP_GRID`](crate::kernel::mesh_bridge) = `2^-16 m ≈ 15.26 µm` and treats
 //! faces within [`NearBand`]'s band of each other as coplanar. Inside that
 //! band a thin overlap is not a thin solid — it is a *coplanar contact*, and the
-//! arrangement returns a wedge rather than the slab. Measured on the analytic
-//! box oracle (`tests/clash_intersection_oracle.rs`), a slab overlap reports:
+//! arrangement can return wedges or disconnected fragments rather than the
+//! ideal slab. Historical measurements when this gate was introduced, using
+//! the analytic box oracle (`tests/clash_intersection_oracle.rs`), were:
+//!
+//! These figures describe that measurement, not a promised shape or error ratio
+//! for current unresolved output; current tests require withholding below the
+//! band and analytic volume agreement above the trust threshold.
 //!
 //! | penetration depth | reported volume |
 //! |---|---|
@@ -81,10 +86,11 @@ pub enum DegenerateReason {
     /// The pair overlaps, but not deeply enough for the kernel's arrangement to
     /// resolve the overlap as a solid rather than a coplanar contact. The solid
     /// that would be returned here is systematically wrong (see the module
-    /// docs), so it is withheld. `thickness_m` is the intersection's smallest
-    /// extent over the candidate contact normals (see `gate_axes`), which for a
-    /// box-box pair is the true penetration depth whatever the pair's
-    /// orientation; `required_m` is the depth this pair would have needed.
+    /// docs), so it is withheld. `thickness_m` is the smallest violating extent
+    /// of an actual arrangement component (connected by bit-identical vertices)
+    /// over the candidate contact normals (see `gate_axes`). It is a diagnostic
+    /// of unresolved geometry, not the authored or analytic penetration depth.
+    /// `required_m` is that same axis's required thickness.
     ///
     /// `thickness_m == 0.0` exactly is a real and distinct outcome, observed on
     /// the bridge model (`IfcColumn` #761 × `IfcWall` #828): the kernel returned
@@ -166,12 +172,10 @@ pub fn intersection_solid(a: &Mesh, b: &Mesh) -> IntersectionSolid {
         return IntersectionSolid::Degenerate(reason);
     }
 
-    // Gate on the solid's thinnest extent. It is a sound proxy for penetration
-    // depth here BECAUSE it is the one quantity the misclassification does not
-    // corrupt: the wedge the kernel returns for a sub-band overlap still spans
-    // the full slab, so its extent still reports the true (too small)
-    // thickness. Deriving the gate from the volume instead would be circular —
-    // the volume is the thing under suspicion.
+    // Gate each actual bit-connected component along the candidate axes.
+    // Unresolved output can contain wedges or tiny disconnected fragments, so
+    // its smallest violating extent is not the authored penetration depth.
+    // Do not derive this safety gate from the untrusted output volume.
     //
     // WHICH DIRECTION that thickness is measured along is the other half of the
     // argument, and measuring it against the WORLD axes (as this did until the
@@ -279,3 +283,7 @@ mod clash_solid_tests;
 #[cfg(test)]
 #[path = "clash_solid_world_frame_tests.rs"]
 mod world_frame_tests;
+
+#[cfg(test)]
+#[path = "clash_solid_component_report_tests.rs"]
+mod component_report_tests;

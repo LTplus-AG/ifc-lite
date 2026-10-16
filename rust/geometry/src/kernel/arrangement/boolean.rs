@@ -161,20 +161,17 @@ pub fn boolean(a: &[Tri], b: &[Tri], op: BoolOp) -> Vec<Tri> {
     boolean_with_conformity(a, b, op).0
 }
 
-/// Like [`boolean`], but also returns whether the underlying pairwise
-/// arrangement was CONFORMING (`Arrangement::unrecovered == 0`) — the same
-/// `(result, conforming)` shape [`union_all`] already returns for the N-ary
-/// union. `boolean()` computes this exact arrangement and discards the
-/// signal on purpose (its graceful degrade when `unrecovered > 0` is
-/// intentional; see its doc comment, and contrast [`difference_all`]'s hard
-/// reject). This function changes no behaviour — it is an observation-only
-/// companion for callers (tests, diagnostics) that want to inspect the
-/// signal `boolean()` throws away, without altering `boolean()`'s own
-/// return type or any existing caller.
+/// Like [`boolean`], but also reports whether the pairwise arrangement
+/// conformed (`Arrangement::unrecovered == 0`) and classification completed
+/// within its exact-work budget. `boolean()` computes the same triangles and
+/// discards this signal. Unrecovered constraints retain the historical lenient
+/// behavior; an exhausted classification emits no partial faces and must not
+/// be mistaken for a genuine conforming empty result.
 pub fn boolean_with_conformity(a: &[Tri], b: &[Tri], op: BoolOp) -> (Vec<Tri>, bool) {
     let arr = arrange(a, b);
     let conforming = arr.unrecovered == 0;
-    (vids_to_tris(&arr, boolean_vids(&arr, a, b, op)), conforming)
+    let vids = boolean_vids(&arr, a, b, op);
+    (vids_to_tris(&arr, vids), conforming && !super::super::budget::tripped())
 }
 
 /// `a − (∪ comps)` for PAIRWISE-DISJOINT, per-component-closed, OUTWARD-wound
@@ -194,6 +191,7 @@ pub fn boolean_with_conformity(a: &[Tri], b: &[Tri], op: BoolOp) -> (Vec<Tri>, b
 /// cut N reconciled (many-void walls' compounding open edges) — and is
 /// ~N× cheaper on N box cutters.
 ///
+/// Also returns `None` if classification exhausts the exact-work budget.
 /// Returns `(difference, changed)`, the same shape as [`union_all`]'s
 /// `(union, conforming)`. `changed == false` means no cutter reaches the solid
 /// `a` bounds (every A sub-triangle kept, no B sub-triangle kept): the
@@ -202,8 +200,7 @@ pub fn difference_all(a: &[Tri], comps: &[&[Tri]]) -> Option<(Vec<Tri>, bool)> {
     if comps.is_empty() {
         return Some((a.to_vec(), false));
     }
-    let b_all: Vec<Tri> = comps.iter().flat_map(|c| c.iter().copied()).collect();
-    let arr = arrange(a, &b_all);
+    let arr = super::binary::arrange_components(a, comps);
     // Hard conformity gate (unlike the binary `boolean`'s graceful degrade):
     // an unrecovered constraint means some sub-triangle STRADDLES a cutter
     // boundary and its centroid classification can silently over/under-cut
@@ -213,7 +210,8 @@ pub fn difference_all(a: &[Tri], comps: &[&[Tri]]) -> Option<(Vec<Tri>, bool)> {
     if arr.unrecovered > 0 {
         return None;
     }
-    Some(classify_difference(&arr, a, comps))
+    let result = classify_difference(&arr, a, comps);
+    (!super::super::budget::tripped()).then_some(result)
 }
 
 /// Like [`difference_all`] but WITHOUT the conformity gate — returns the batched
@@ -229,18 +227,15 @@ pub fn difference_all_lenient(a: &[Tri], comps: &[&[Tri]]) -> (Vec<Tri>, bool) {
 }
 
 /// [`difference_all_lenient`] plus whether the arrangement CONFORMED
-/// (`unrecovered == 0`). A non-conforming `changed == false` is not proof
+/// (`unrecovered == 0`) and classification completed within its budget.
+/// A non-conforming `changed == false` is not proof
 /// that no cutter reaches `a`: straddling sub-triangles can be misclassified
 /// (#5362 review), so a caller must not read it as "disjoint".
 pub fn difference_all_lenient_with_conformity(a: &[Tri], comps: &[&[Tri]]) -> (Vec<Tri>, bool, bool) {
-    let arr = match comps {
-        [] => return (a.to_vec(), false, true),
-        // One component (the single-cutter subtract) is already the B operand.
-        [only] => arrange(a, only),
-        _ => arrange(a, &comps.iter().flat_map(|c| c.iter().copied()).collect::<Vec<Tri>>()),
-    };
+    if comps.is_empty() { return (a.to_vec(), false, true); }
+    let arr = super::binary::arrange_components(a, comps);
     let (tris, changed) = classify_difference(&arr, a, comps);
-    (tris, changed, arr.unrecovered == 0)
+    (tris, changed, arr.unrecovered == 0 && !super::super::budget::tripped())
 }
 
 /// The shared tail of [`difference_all`] and [`difference_all_lenient`]:

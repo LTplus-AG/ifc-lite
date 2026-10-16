@@ -22,14 +22,15 @@ use super::Sign;
 use std::collections::{BTreeMap, BTreeSet};
 
 /// PHASE D (core) — force sub-segment `(a,b)` (no vertex strictly between them) to
-/// be an edge. If it already is, done. Otherwise delete the triangles the open
+/// be an edge. Returns false only when the original edge check already succeeds;
+/// every nontrivial recovery or bail returns true. Otherwise delete the triangles the open
 /// segment crosses (the "channel"), split the channel's boundary loop at `a` and
 /// `b` into two pocket rings, and earcut each — after which `a–b` is a shared
 /// edge of both pockets. (seg×seg — a crossed edge that is itself a constraint —
 /// is a later increment.)
-pub(crate) fn recover_subsegment(mesh: &mut Mesh2d, it: &Interner, a: Vid, b: Vid) {
+pub(crate) fn recover_subsegment(mesh: &mut Mesh2d, it: &Interner, a: Vid, b: Vid) -> bool {
     if edge_exists(mesh, a, b) {
-        return;
+        return false;
     }
     // Pessimistically request the final conformity audit; restored below only
     // when this recovery demonstrably forced the edge (a PREVIOUS attempt's
@@ -103,7 +104,7 @@ pub(crate) fn recover_subsegment(mesh: &mut Mesh2d, it: &Interner, a: Vid, b: Vi
         })
         .collect();
     if channel.is_empty() {
-        return;
+        return true;
     }
     // boundary loop of the channel (directed edges whose reverse isn't internal)
     let channel_set: BTreeSet<usize> = channel.iter().copied().collect();
@@ -121,7 +122,7 @@ pub(crate) fn recover_subsegment(mesh: &mut Mesh2d, it: &Interner, a: Vid, b: Vi
     let mut next: BTreeMap<Vid, Vid> = BTreeMap::new();
     for &(u, v) in &edges {
         if !edges.contains(&(v, u)) && next.insert(u, v).is_some() {
-            return;
+            return true;
         }
     }
     // Walk the boundary loop. A degenerate channel (non-simply-connected region,
@@ -138,17 +139,17 @@ pub(crate) fn recover_subsegment(mesh: &mut Mesh2d, it: &Interner, a: Vid, b: Vi
     let start = match next.keys().next() {
         Some(&v) if !next.contains_key(&a) => v,
         Some(_) => a,
-        None => return,
+        None => return true,
     };
     let mut loop_v = vec![start];
-    let Some(&first) = next.get(&start) else { return };
+    let Some(&first) = next.get(&start) else { return true };
     let mut cur = first;
     while cur != start {
         loop_v.push(cur);
-        let Some(&nxt) = next.get(&cur) else { return };
+        let Some(&nxt) = next.get(&cur) else { return true };
         cur = nxt;
         if loop_v.len() > next.len() + 1 {
-            return; // cycle that never returns to the start — degenerate
+            return true; // cycle that never returns to the start — degenerate
         }
     }
     // Vertices STRICTLY INTERIOR to the channel (every incident triangle is in
@@ -231,7 +232,7 @@ pub(crate) fn recover_subsegment(mesh: &mut Mesh2d, it: &Interner, a: Vid, b: Vi
     // Same post-condition as the traversal: an overlapping or degenerate cover
     // is not committed, so the audit counts the edge unrecovered instead.
     if !pocket_rebuild_valid(&new_tris) {
-        return;
+        return true;
     }
     drop_tris(mesh, &channel_set);
     mesh.tris.extend(new_tris);
@@ -244,6 +245,7 @@ pub(crate) fn recover_subsegment(mesh: &mut Mesh2d, it: &Interner, a: Vid, b: Vi
     if edge_exists(mesh, a, b) {
         mesh.audit_needed = audit_before; // forced — THIS attempt needs no audit
     }
+    true
 }
 
 /// Strictly-between test for COLLINEAR points: `v` lies strictly inside segment
@@ -369,69 +371,6 @@ fn drop_tris(mesh: &mut Mesh2d, dead: &BTreeSet<usize>) {
     });
 }
 
-pub(crate) fn enforce_constraint(mesh: &mut Mesh2d, it: &Interner, s: Vid, t: Vid) {
-    let axis = mesh.axis;
-    let verts: BTreeSet<Vid> = mesh.tris.iter().flatten().copied().collect();
-    // Broadphase: a vertex collinear with AND between s,t must lie in the
-    // segment's 2D f64 AABB. Skip the (i1024, WASM-emulated) exact orient2d for
-    // vertices outside the widened box. Same conservative margin as the
-    // insert_point prefilter ⇒ a real on-segment vertex is never skipped on any
-    // platform, so `on_seg` — and the recovered topology — is byte-identical.
-    // This is the hot loop: enforce runs per constraint per fixed-point pass, so
-    // the unfiltered O(verts) exact scan is what stalls many-opening facades.
-    // Engaged only once the vertex set is large enough to amortise the cache.
-    let seg_box: Option<[f64; 4]> = if verts.len() > PREFILTER_MIN {
-        match (
-            coord2d_cached(it, s, axis, &mut mesh.coords),
-            coord2d_cached(it, t, axis, &mut mesh.coords),
-        ) {
-            (Some(s2), Some(t2)) => Some([
-                s2[0].min(t2[0]),
-                s2[1].min(t2[1]),
-                s2[0].max(t2[0]),
-                s2[1].max(t2[1]),
-            ]),
-            _ => None,
-        }
-    } else {
-        None
-    };
-    let mut on_seg: Vec<Vid> = verts
-        .into_iter()
-        .filter(|&v| {
-            if v == s || v == t {
-                return false;
-            }
-            if let Some(bx) = seg_box {
-                if let Some(vc) = coord2d_cached(it, v, axis, &mut mesh.coords) {
-                    let mx = 1e-6 + vc[0].abs() * 1e-9;
-                    let my = 1e-6 + vc[1].abs() * 1e-9;
-                    if vc[0] < bx[0] - mx
-                        || vc[0] > bx[2] + mx
-                        || vc[1] < bx[1] - my
-                        || vc[1] > bx[3] + my
-                    {
-                        return false; // outside segment AABB ⇒ cannot lie on it
-                    }
-                }
-            }
-            orient2d_v(it, s, t, v, axis) == Sign::Zero && between(it, s, t, v)
-        })
-        .collect();
-    on_seg.sort_by(|&x, &y| lex_cmp(it, x, y));
-    if cmp_lex_v(it, s, t) == Sign::Positive {
-        on_seg.reverse(); // order from s toward t
-    }
-    let mut chain = vec![s];
-    chain.extend(on_seg);
-    chain.push(t);
-    for w in chain.windows(2) {
-        recover_subsegment(mesh, it, w[0], w[1]);
-        // Robust fallback for the dense-face constraints the boundary-walk pocket
-        // split can't force (issue #098 V5C). Only runs on that failure, so the
-        // common path stays byte-identical.
-        if !edge_exists(mesh, w[0], w[1]) {
-            recover_via_traversal(mesh, it, w[0], w[1]);
-        }
-    }
-}
+#[path = "retriangulate_constraints.rs"]
+mod constraints;
+pub(crate) use constraints::enforce_constraint;

@@ -690,8 +690,8 @@ mod issue_3353_nary_near_coplanar {
     }
 }
 
-/// A two-cutter group whose arrangement does not conform, so `subtract_many`
-/// reaches its lenient batch and the volume oracle. Captured (exact f32 coords)
+/// A captured two-cutter group used to exercise the lenient batch volume oracle.
+/// Strict recovery can also conform for this fixture (#7292). Exact f32 coords
 /// from the public `ara3d/dental_clinic.ifc` fixture: a gable wall already
 /// holding three windows, a stepped cutter trimming its sloped end, and a
 /// window cutter sharing the `z = 7.21` plane with it.
@@ -761,15 +761,29 @@ fn lenient_gable_group() -> (Mesh, Mesh, Mesh) {
     (wall, notch, window)
 }
 
+// Exercise the production fallback with actual kernel output even when improved
+// constraint recovery makes this captured fixture conform on the strict path.
+fn volume_checked_lenient_batch(host: &Mesh, cutters: &[&Mesh]) -> (BatchSubtract, bool, Option<Mesh>) {
+    let h = orient_outward(mesh_to_tris(host));
+    let components: Vec<Vec<Tri>> = cutters.iter().map(|m| {
+        let mut c = mesh_to_tris(m);
+        promote_cutter_verts_onto_host_faces(&mut c, &h);
+        orient_outward(c)
+    }).collect();
+    let refs: Vec<&[Tri]> = components.iter().map(Vec::as_slice).collect();
+    let (batch, changed) = difference_all_lenient(&h, &refs);
+    validate_lenient_batch(&h, &components, &batch, changed)
+}
+
 #[test]
 fn lenient_group_keeps_its_conformity_provenance_6516() {
     let (wall, notch, window) = lenient_gable_group();
-    let (outcome, conforming, _) = subtract_many_with_conformity(&wall, &[&notch, &window], true);
-    assert!(!conforming, "real gable fixture must reach the volume-checked path");
+    let (outcome, conforming, _) = volume_checked_lenient_batch(&wall, &[&notch, &window]);
+    assert!(!conforming, "volume-checked output must retain its lenient provenance");
     let cut = expect_cut(outcome, "the validated lenient group remains a real cut");
     // Re-cutting the already removed notch is nonconforming: having no
     // intended volume left to remove does not make its classification proof.
-    let (retry, conforms, retained) = subtract_many_with_conformity(&cut, &[&notch], true);
+    let (retry, conforms, retained) = volume_checked_lenient_batch(&cut, &[&notch]);
     assert!(!conforms);
     assert!(retained.is_none(), "an uncertain miss cannot be retained as proof");
     assert!(matches!(retry, BatchSubtract::Nonconforming));
@@ -785,7 +799,7 @@ fn lenient_group_keeps_its_conformity_provenance_6516() {
 /// so when the cut trims the host's bounding box, the flux of a crack the cut
 /// never touched lands in the removed volume.
 ///
-/// Fixture: the non-conforming gable group above, plus a closed 0.1 m rod
+/// Fixture: the captured gable group above, plus a closed 0.1 m rod
 /// standing 0.13 m off the wall's +Y end (1.87 m long) and a third cutter that
 /// takes its outer metre. That moves the AABB centre 0.5 m in −Y. The open host
 /// adds one unpaired triangle inside the wall at `y = 45` (normal ±Y, 0.47 m²),
@@ -795,7 +809,7 @@ fn lenient_group_keeps_its_conformity_provenance_6516() {
 /// `volume_reference(&batch)` again and the open-host assertion fails.
 #[test]
 fn lenient_batch_on_an_open_host_reads_both_volumes_about_one_point_4693() {
-    use super::super::arrangement::{box_mesh, difference_all};
+    use super::super::arrangement::box_mesh;
     use crate::router::voids::geom::mesh_signed_volume_about;
     let (wall, notch, window) = lenient_gable_group();
     let rod = tris_to_mesh(&box_mesh([0.2, 50.6, 6.0], [0.3, 52.47, 6.1]));
@@ -806,23 +820,10 @@ fn lenient_batch_on_an_open_host_reads_both_volumes_about_one_point_4693() {
     open.merge(&mesh_of(&[[0.15, 45.0, 4.8], [0.35, 45.0, 4.8], [0.25, 45.0, 9.5]], &[[0, 1, 2]]));
     let cutters = [&notch, &window, &tip];
 
-    // Guard: the group must reach the lenient path, or nothing here reads the oracle.
-    let h = orient_outward(mesh_to_tris(&open));
-    let comps: Vec<Vec<Tri>> = cutters
-        .iter()
-        .map(|m| {
-            let mut c = mesh_to_tris(m);
-            promote_cutter_verts_onto_host_faces(&mut c, &h);
-            orient_outward(c)
-        })
-        .collect();
-    let refs: Vec<&[Tri]> = comps.iter().map(|c| c.as_slice()).collect();
-    assert!(difference_all(&h, &refs).is_none(), "the group must not conform");
-
     // Host and cut read about one point on the unpaired triangle's plane, so
     // the triangle adds nothing to either reading, snapped or not.
     let removed = |host: &Mesh, what: &str| {
-        let cut = expect_cut(subtract_many(host, &cutters), what);
+        let cut = expect_cut(volume_checked_lenient_batch(host, &cutters).0, what);
         let o = [0.25, 45.0, 7.0];
         mesh_signed_volume_about(host, &o) - mesh_signed_volume_about(&cut, &o)
     };

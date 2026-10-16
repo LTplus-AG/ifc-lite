@@ -253,6 +253,13 @@ pub(crate) fn subtract_many_with_conformity(
     // Trust the lenient batch ONLY when its removed volume matches the true removed
     // volume; else Nonconforming, so the caller runs its full sequential path.
     let (batch, changed) = difference_all_lenient(&h, &refs);
+    validate_lenient_batch(&h, &comp_tris, &batch, changed)
+}
+
+/// Validate a real lenient arrangement independently of strict-path recovery.
+fn validate_lenient_batch(
+    h: &[Tri], comp_tris: &[Vec<Tri>], batch: &[Tri], changed: bool,
+) -> (BatchSubtract, bool, Option<Mesh>) {
     // ORACLE for the volume comparison (#1788): batched cutters are pairwise
     // disjoint (this fn's contract), so the TRUE removed volume is
     // Σ |host ∩ cutterᵢ| — each a small single boolean against the PRISTINE
@@ -268,9 +275,9 @@ pub(crate) fn subtract_many_with_conformity(
     let budget_snap = super::budget::snapshot_counters();
     let mut inter_sum = 0.0f64;
     let mut oracle_tripped = false;
-    for c in &comp_tris {
+    for c in comp_tris {
         super::budget::begin();
-        let i = boolean(&h, c, BoolOp::Intersection);
+        let i = boolean(h, c, BoolOp::Intersection);
         if super::budget::tripped() {
             oracle_tripped = true;
             break;
@@ -286,16 +293,16 @@ pub(crate) fn subtract_many_with_conformity(
     // sum moves with the reference point: read the batch about its own centre
     // and a cut that trims the host's bounding box leaves the untouched crack's
     // flux in `batch_removed`.
-    let reference = volume_reference(&h);
-    let host_v = signed_volume6_about(&h, &reference).abs();
-    let batch_removed = host_v - signed_volume6_about(&batch, &reference).abs();
+    let reference = volume_reference(h);
+    let host_v = signed_volume6_about(h, &reference).abs();
+    let batch_removed = host_v - signed_volume6_about(batch, &reference).abs();
     // 1% agreement — above f64/FMA noise (parity-stable branch), tight enough to
     // reject the #1167 gross under-cut (3.7 m³ vs 13 m³).
     let tol = inter_sum.abs().max(1.0e-9) * 0.01;
     if (batch_removed - inter_sum).abs() <= tol {
         #[cfg(feature = "opening-perf-trace")]
         crate::opening_perf_trace::record(|c| c.batch_volume_checked_misses = c.batch_volume_checked_misses.saturating_add(u64::from(!changed)));
-        (BatchSubtract::classified(&batch, changed), false, None)
+        (BatchSubtract::classified(batch, changed), false, None)
     } else {
         (BatchSubtract::Nonconforming, false, None)
     }

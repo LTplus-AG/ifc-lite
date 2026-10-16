@@ -31,7 +31,7 @@ fn legitimate_bspline_curve_still_samples() {
     let mut decoder = EntityDecoder::new(&content);
     let curve = decoder.decode_by_id(10).unwrap();
     let start = Point3::new(0.0, 0.0, 0.0);
-    let pts = sample_bspline_edge_curve(&curve, &start, true, &mut decoder, TessellationQuality::Medium);
+    let pts = sample_bspline_edge_curve(&curve, &start, true, &mut decoder, TessellationQuality::Medium).unwrap();
     assert!(pts.len() > 1, "a real B-spline edge must sample interior points, got {pts:?}");
 }
 
@@ -46,7 +46,7 @@ fn pathological_curve_degree_fails_fast_not_hangs() {
     let start = Point3::new(0.0, 0.0, 0.0);
 
     let begin = Instant::now();
-    let pts = sample_bspline_edge_curve(&curve, &start, true, &mut decoder, TessellationQuality::Medium);
+    let pts = sample_bspline_edge_curve(&curve, &start, true, &mut decoder, TessellationQuality::Medium).unwrap();
     let elapsed = begin.elapsed();
 
     assert_eq!(pts, vec![start], "a degree past MAX_BSPLINE_DEGREE must degrade to the start vertex");
@@ -66,7 +66,7 @@ fn degree_one_past_the_bound_is_rejected() {
     let curve = decoder.decode_by_id(10).unwrap();
     let start = Point3::new(0.0, 0.0, 0.0);
 
-    let pts = sample_bspline_edge_curve(&curve, &start, true, &mut decoder, TessellationQuality::Medium);
+    let pts = sample_bspline_edge_curve(&curve, &start, true, &mut decoder, TessellationQuality::Medium).unwrap();
     assert_eq!(pts, vec![start], "degree 65 (MAX_BSPLINE_DEGREE + 1) must be rejected");
 }
 
@@ -87,7 +87,7 @@ fn one_million_control_points_rejected_before_decode() {
     let start = Point3::new(0.0, 0.0, 0.0);
 
     let begin = Instant::now();
-    let pts = sample_bspline_edge_curve(&curve, &start, true, &mut decoder, TessellationQuality::Medium);
+    let pts = sample_bspline_edge_curve(&curve, &start, true, &mut decoder, TessellationQuality::Medium).unwrap();
     let elapsed = begin.elapsed();
 
     assert_eq!(

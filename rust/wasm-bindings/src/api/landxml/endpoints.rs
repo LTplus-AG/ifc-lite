@@ -127,7 +127,8 @@ export interface LandXmlCrossSectionSurfaceJs { source_id: string; parent_cross_
 export interface LandXmlRoadwayJs { source_id: string; ordinal: number; name: string; alignment_refs: string[]; alignment_source_ids: string[]; surface_refs: string[]; surface_source_ids: string[]; grade_model_refs: string[]; }
 export interface LandXmlCapabilityDiagnosticJs { code: string; source_id?: string; source_path: string; message: string; }
 export interface LandXmlPreservedOnlyExtensionJs { source_id: string; parent_source_id?: string; local_name: string; source_path: string; kind: "corridor" | "string_line"; }
-export interface LandXmlPipeUnitsJs { linear_unit: string; elevation_unit: string; diameter_unit: string; width_unit: string; height_unit: string; flow_unit?: string; linear_scale_to_meters: number; elevation_scale_to_meters: number; diameter_scale_to_meters: number; width_scale_to_meters: number; height_scale_to_meters: number; }
+/** `assumed` is true only when these units came from `LandXmlParseOptionsJs.assumedLinearUnit` because the source declares no root LandXML/Units element, never from a declared one (#5175, #7693). */
+export interface LandXmlPipeUnitsJs { linear_unit: string; elevation_unit: string; diameter_unit: string; width_unit: string; height_unit: string; flow_unit?: string; linear_scale_to_meters: number; elevation_scale_to_meters: number; diameter_scale_to_meters: number; width_scale_to_meters: number; height_scale_to_meters: number; assumed: boolean; }
 export interface LandXmlPipeNetworkDocumentJs {
   schema: "LandXML-1.0" | "LandXML-1.1" | "LandXML-1.2"; version: string;
   capability_diagnostics: LandXmlCapabilityDiagnosticJs[];

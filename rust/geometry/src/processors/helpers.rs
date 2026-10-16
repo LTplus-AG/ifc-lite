@@ -150,6 +150,17 @@ pub(super) fn extract_loop_points_by_id(
     loop_id: u32,
     decoder: &mut EntityDecoder,
 ) -> Option<Vec<Point3<f64>>> {
+    read_loop_points_by_id(loop_id, decoder).filter(|points| points.len() >= 3)
+}
+
+/// Every point of an `IfcPolyLoop`, however few. `None` means the loop or
+/// one of its points does not decode, which [`extract_loop_points_by_id`]
+/// cannot tell apart from a loop of under three points; a face bound reader
+/// refuses the face on the former and skips the latter (#7687, D14).
+pub(super) fn read_loop_points_by_id(
+    loop_id: u32,
+    decoder: &mut EntityDecoder,
+) -> Option<Vec<Point3<f64>>> {
     let point_ids = decoder.get_polyloop_point_ids_fast(loop_id)?;
 
     let mut points = Vec::with_capacity(point_ids.len());
@@ -157,12 +168,7 @@ pub(super) fn extract_loop_points_by_id(
         let (x, y, z) = decoder.get_cartesian_point_fast(point_id)?;
         points.push(Point3::new(x, y, z));
     }
-
-    if points.len() >= 3 {
-        Some(points)
-    } else {
-        None
-    }
+    Some(points)
 }
 
 /// Get transform from IfcAxis2Placement3D by entity ID.

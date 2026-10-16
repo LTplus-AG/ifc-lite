@@ -45,6 +45,17 @@ impl GeometryRouter {
         self.length_unit_refused
     }
 
+    /// Refuse a scaled placement when the length unit is refused: its
+    /// translation would read file units as metres, a plausible but wrong
+    /// position (export rows, site transform, overlays), where main gave
+    /// infinity (#7678).
+    pub(super) fn admit_placement_scale(&self) -> crate::Result<()> {
+        if self.length_unit_refused {
+            return Err(crate::Error::geometry("length unit refused (#7678): no scaled placement"));
+        }
+        Ok(())
+    }
+
     /// The processor for `ifc_type`, or none when the length unit is refused.
     /// Every registry lookup in the router goes through this.
     pub(super) fn processor_for(&self, ifc_type: &IfcType) -> Option<&Rc<dyn GeometryProcessor>> {

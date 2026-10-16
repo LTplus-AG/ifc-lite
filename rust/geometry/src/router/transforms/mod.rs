@@ -268,6 +268,7 @@ impl GeometryRouter {
         element: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Result<[f64; 16]> {
+        self.admit_placement_scale()?;
         if let Some(attr) = element.get(5).filter(|attr| !attr.is_null()) {
             if decoder.resolve_ref(attr)?.is_none() {
                 return Err(crate::Error::geometry(format!(

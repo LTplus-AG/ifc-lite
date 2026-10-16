@@ -1066,6 +1066,9 @@ fn process_geometry_streaming_filtered_with_options_and_ids(
     let refused_unit_jobs = diagnostics::refuse_jobs_for_unit(&unit_scales, &mut entity_jobs);
     // Not drained: meshes nothing. Pinned by rust/geometry/tests/issue_3821_auxiliary_routers_mesh_nothing.rs.
     let mut router = GeometryRouter::with_scale(unit_scales.geometry_length_scale());
+    if unit_scales.length_unit_refused.is_some() {
+        router.refuse_length_unit(); // no site/building placement at an invented scale (#7678)
+    }
     router.set_tessellation_quality(options.tessellation_quality);
     // Build the #563 material-layer index from the IfcRelAssociatesMaterial spans
     // the main scan already stashed (like the wasm pre-pass), not a redundant

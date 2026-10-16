@@ -311,3 +311,37 @@ fn an_unusable_length_unit_factor_refuses_geometry_and_is_counted() {
     assert!(ifc_lite_geometry::GeometryRouter::with_scale(f64::NAN).length_unit_refused());
     assert!(!ifc_lite_geometry::GeometryRouter::with_scale(0.2).length_unit_refused());
 }
+
+/// #7678: a refused length unit also refuses every scaled placement, so no
+/// consumer of one (the site transform here, export rows, overlays) reads
+/// file units as metres where main gave infinity. The `0.2` twin is scaled.
+#[test]
+fn a_refused_length_unit_refuses_scaled_placements() {
+    let with_unit = |factor: &str| {
+        file(&format!(
+            "#30=IFCCARTESIANPOINT((1000.,2000.,0.));\n#31=IFCAXIS2PLACEMENT3D(#30,$,$);\n#32=IFCLOCALPLACEMENT($,#31);\n\
+             #40=IFCSITE('0Site000000000000000001',$,'S',$,$,#32,$,$,.ELEMENT.,$,$,$,$,$);\n\
+             #41=IFCRELAGGREGATES('0Agg000000000000000001',$,$,$,#20,(#40));\n{}",
+            good(100)
+        ))
+        .replace(
+            "#17=IFCUNITASSIGNMENT((#16));",
+            &format!(
+                "#17=IFCUNITASSIGNMENT((#160));\n#160=IFCCONVERSIONBASEDUNIT(#163,.LENGTHUNIT.,'SURVEY_LINK',#161);\n\
+                 #161=IFCMEASUREWITHUNIT(IFCLENGTHMEASURE({factor}),#16);\n#163=IFCDIMENSIONALEXPONENTS(1,0,0,0,0,0,0);"
+            ),
+        )
+    };
+    let fifth = process_geometry(&with_unit("0.2")).site_transform.expect("anti-vacuity: the site is placed");
+    assert_eq!((fifth[12], fifth[13]), (200.0, 400.0), "1000 x 0.2, 2000 x 0.2");
+    for factor in ["1.E400", "0.", "$"] {
+        let refused = process_geometry(&with_unit(factor));
+        assert_eq!(refused.site_transform, None, "{factor}: no site placement at an invented metre scale");
+    }
+    let content = with_unit("1.E400");
+    let mut decoder = ifc_lite_core::EntityDecoder::new(&content);
+    let site = decoder.decode_by_id(40).expect("site decodes");
+    let router = ifc_lite_geometry::GeometryRouter::with_scale(f64::NAN);
+    assert!(router.resolve_scaled_placement(&site, &mut decoder).is_err());
+    assert!(router.resolve_scaled_placement_strict(&site, &mut decoder).is_err());
+}

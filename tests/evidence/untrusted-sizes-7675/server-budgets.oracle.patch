@@ -38,11 +38,33 @@ index e26ff1e840..5f884e755a 100644
                  rows.extend(layers.iter().map(|layer| MaterialAssociation {
                      element_id,
                      association_id: job.id,
+diff --git b/apps/server/src/services/data_model/properties.rs a/apps/server/src/services/data_model/properties.rs
+index 6774a01014..217e52962c 100644
+--- b/apps/server/src/services/data_model/properties.rs
++++ a/apps/server/src/services/data_model/properties.rs
+@@ -32,7 +32,7 @@ pub(super) fn extract_properties(
+     let pset_jobs: Vec<_> = jobs
+         .iter()
+         .filter(|job| job.type_name.eq_ignore_ascii_case("IFCPROPERTYSET"))
+-        .filter(|job| entity_index.get(&job.id).is_some_and(|&(start, _)| start == job.start) || true)
++        .filter(|job| entity_index.get(&job.id).is_some_and(|&(start, _)| start == job.start))
+         .collect();
+ 
+     tracing::debug!(count = pset_jobs.len(), "Extracting property sets");
 diff --git b/apps/server/src/services/data_model/property_value.rs a/apps/server/src/services/data_model/property_value.rs
-index 4aa71fe7b5..47fd6f76c6 100644
+index bb39d6f860..08120a0b48 100644
 --- b/apps/server/src/services/data_model/property_value.rs
 +++ a/apps/server/src/services/data_model/property_value.rs
-@@ -146,6 +146,7 @@ fn resolve_complex(
+@@ -131,7 +131,7 @@ fn resolve_complex(
+         let display = if nested_ty == "IFCCOMPLEXPROPERTY" {
+             resolve_complex(&nested_entity, decoder, depth + 1, budget).0
+         } else {
+-            super::properties::extract_property(&nested_entity, decoder).map(|p| p.property_value).unwrap_or_default()
++            super::properties::member_display(&nested_entity, decoder)
+         };
+         // Every charge is the shared budget's, at the same point as the
+         // exporter and TS walks (#7675).
+@@ -144,6 +144,7 @@ fn resolve_complex(
      if cut {
          // The candidate list says it was cut, so a member past the cut does
          // not read as absent (#7675 D3).
@@ -66,10 +88,10 @@ index 6374840605..0249175d33 100644
  }
  
 diff --git b/packages/parser/src/complex-property-store.ts a/packages/parser/src/complex-property-store.ts
-index 7fb28deb9e..0622579f4b 100644
+index 7906ce1044..47c9357378 100644
 --- b/packages/parser/src/complex-property-store.ts
 +++ a/packages/parser/src/complex-property-store.ts
-@@ -65,7 +65,7 @@ export function complexPropertyCuts(store: IfcDataStore): number {
+@@ -96,7 +96,7 @@ export function complexPropertyCuts(store: IfcDataStore): number {
  
  function storeComplexValues(store: IfcDataStore, extractor: EntityExtractor): StoreComplexValues {
      const hit = resolvedByStore.get(store);
@@ -77,12 +99,39 @@ index 7fb28deb9e..0622579f4b 100644
 +    if (hit) return hit;
      const budget = ComplexPropertyBudget.forInput(store.source?.length ?? 0);
      const byListing = new Map<number, Map<number, ParsedIfcPropertyValue>>();
-     // @raw-entity-enumeration-ok the store-wide complex-property pass reads every source property set once, in file order (#7675)
+     const memo = new Map<number, [ParsedIfcPropertyValue, number]>();
+@@ -108,7 +108,7 @@ function storeComplexValues(store: IfcDataStore, extractor: EntityExtractor): St
+     psetIds.forEach((id, at) => lastAt.set(id, at));
+     for (let at = 0; at < psetIds.length; at++) {
+         const psetId = psetIds[at];
+-        if (lastAt.get(psetId) !== at && false) continue;
++        if (lastAt.get(psetId) !== at) continue;
+         // @raw-entity-enumeration-ok one source set id from the pass above is decoded from its STEP span
+         const psetRef = store.entityIndex.byId.get(psetId);
+         if (!psetRef) continue;
 diff --git b/packages/parser/src/property-complex-value.ts a/packages/parser/src/property-complex-value.ts
-index b7d4bfe039..be3dab7382 100644
+index cf26d347ea..d0e1a0806a 100644
 --- b/packages/parser/src/property-complex-value.ts
 +++ a/packages/parser/src/property-complex-value.ts
-@@ -109,7 +109,6 @@ export class ComplexPropertyBudget {
+@@ -41,7 +41,7 @@ export const COMPLEX_PROPERTY_OUTPUT_BYTES = 1 << 20;
+  *  may cost per source byte, above the floor. A first listing costs about
+  *  three times what it keeps, a repeat listing only what it keeps; 16 keeps
+  *  one 20-member property shared by 3 000 sets whole. */
+-const COMPLEX_PROPERTY_BYTES_PER_INPUT_BYTE = 4;
++const COMPLEX_PROPERTY_BYTES_PER_INPUT_BYTE = 16;
+ 
+ /** `COMPLEX_PROPERTY_MEMBER_BYTES`: a read member's `members` / `values` entry. */
+ const COMPLEX_PROPERTY_MEMBER_BYTES = 16;
+@@ -124,7 +124,7 @@ export class ComplexPropertyBudget {
+      *  budget is spent. Memoised per id, not per listing. */
+     listing<V>(memo: Map<number, [V, number]>, id: number, resolve: (budget: this) => [V, number], spent: () => V): V {
+         const hit = memo.get(id);
+-        if (hit && false) {
++        if (hit) {
+             if (this.bytesLeft === 0) {
+                 this.cutLevels += 1;
+                 return spent();
+@@ -140,7 +140,6 @@ export class ComplexPropertyBudget {
      /** Start a top-level property: visits restart, bytes carry on. */
      startProperty(): void {
          this.visits = 0;
@@ -90,7 +139,7 @@ index b7d4bfe039..be3dab7382 100644
      }
  
      /** Whether one more member may be read, counting it if so. */
-@@ -261,6 +260,8 @@ function resolveComplex(
+@@ -292,6 +291,8 @@ function resolveComplex(
      const value = budget.levelValue(parts, cut) ?? (usageName || null);
      if (cut) {
          // A member past the cut reads as truncated, not absent (#7675 D3).
@@ -112,11 +161,29 @@ index 0f00f098e9..b1984267a0 100644
      });
    }
    return level;
-diff --git b/rust/core/src/limits.rs a/rust/core/src/limits.rs
-index e3ad01d16a..a13f03dcd3 100644
---- b/rust/core/src/limits.rs
-+++ a/rust/core/src/limits.rs
-@@ -250,7 +250,6 @@ impl ComplexPropertyBudget {
+diff --git b/rust/core/src/limits/complex_property.rs a/rust/core/src/limits/complex_property.rs
+index 65da03274a..290b4405cf 100644
+--- b/rust/core/src/limits/complex_property.rs
++++ a/rust/core/src/limits/complex_property.rs
+@@ -46,7 +46,7 @@ pub const COMPLEX_PROPERTY_OUTPUT_BYTES: usize = 1 << 20;
+ /// about 2.5 MB charged) whole with room to spare. What it binds is reuse
+ /// past that: one 1 KB value listed a thousand times by each of a thousand
+ /// properties built 685 MB from 10.7 KB (#7675); that is now the floor.
+-pub const COMPLEX_PROPERTY_BYTES_PER_INPUT_BYTE: usize = 4;
++pub const COMPLEX_PROPERTY_BYTES_PER_INPUT_BYTE: usize = 16;
+ 
+ /// What a read member costs before its text: its `members` / `values` entry.
+ /// Without it a member with a name but no value would be free, and one walk
+@@ -139,7 +139,7 @@ impl ComplexPropertyBudget {
+         resolve: impl FnOnce(&mut Self) -> (V, usize),
+         spent: impl FnOnce() -> V,
+     ) -> V {
+-        if let Some((value, bytes)) = memo.get(&id).filter(|_| false) {
++        if let Some((value, bytes)) = memo.get(&id) {
+             if self.bytes_left == 0 {
+                 self.cuts += 1;
+                 return spent();
+@@ -156,7 +156,6 @@ impl ComplexPropertyBudget {
      /// budget carries on.
      pub fn start_property(&mut self) {
          self.visits = 0;
@@ -124,7 +191,7 @@ index e3ad01d16a..a13f03dcd3 100644
      }
  
      /// Whether one more member may be read, counting it if so.
-@@ -287,9 +286,6 @@ impl ComplexPropertyBudget {
+@@ -194,9 +193,6 @@ impl ComplexPropertyBudget {
              self.cuts += 1;
          }
          if parts.is_empty() {

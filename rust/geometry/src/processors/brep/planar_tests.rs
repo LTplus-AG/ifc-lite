@@ -109,13 +109,29 @@ const SQUARE_WITH_BAD_HOLE: &str = "\
 #20=IFCFACE((#11,#13));\n";
 
 /// PROC-S5: a hole that cannot be triangulated filled the opening with a fan
-/// of the outer ring. The face is refused (empty, counted), as the planar
-/// advanced-face path already does.
+/// of the outer ring. The face is refused (empty, flagged for the count), as
+/// the planar advanced-face path already does. Built in f64 rather than read
+/// from `1.0E400`, so the face reaches the triangulator whatever the decoder
+/// does with a non-finite literal (#7678 refuses it at input admission).
 #[test]
 fn faceted_hole_that_cannot_triangulate_refuses_the_face() {
-    let (mesh, refused) = faceted(SQUARE_WITH_BAD_HOLE);
-    assert!(mesh.is_empty(), "no filled pane over the authored opening");
-    assert!(refused, "the refusal is counted");
+    use super::super::helpers::FaceData;
+    use crate::Point3;
+    let square = |s: f64, o: f64| {
+        vec![
+            Point3::new(o, o, 0.0),
+            Point3::new(o + s, o, 0.0),
+            Point3::new(o + s, o + s, 0.0),
+            Point3::new(o, o + s, 0.0),
+        ]
+    };
+    let mut hole = square(2.0, 4.0);
+    hole[1].x = f64::INFINITY;
+    let face = FaceData { outer_points: square(10.0, 0.0), hole_points: vec![hole] };
+    let result = FacetedBrepProcessor::triangulate_face(&face, (0.0, 0.0, 0.0));
+    assert!(result.indices.is_empty(), "no filled pane over the authored opening");
+    assert!(result.positions.is_empty());
+    assert!(result.refused, "the refusal is flagged for the brep to count");
 }
 
 /// The surface-model processors share the faceted face triangulator.

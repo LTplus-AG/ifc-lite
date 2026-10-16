@@ -32,6 +32,7 @@ use std::cmp::Ordering;
 mod boolean;
 mod classify;
 mod coincident;
+pub(crate) use coincident::coincident_planes;
 mod ray_parity;
 #[cfg(test)]
 mod tests;

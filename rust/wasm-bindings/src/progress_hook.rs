@@ -32,15 +32,17 @@ fn on_geometry_progress() {
         return;
     }
     LAST_CALL_MS.with(|last| last.set(now));
-    CALLBACK.with(|callback| {
-        if let Some(callback) = callback.borrow().as_ref() {
-            // A heartbeat must never fail the geometry it reports on. A throwing
-            // callback is logged and the work continues.
-            if let Err(error) = callback.call0(&JsValue::NULL) {
-                web_sys::console::warn_2(&JsValue::from_str("[ifc-lite] geometry progress callback threw:"), &error);
-            }
+    // Cloned out so no borrow is held across the call: a callback that
+    // re-installs or clears itself through `setGeometryProgressCallback` would
+    // otherwise hit `borrow_mut` on a borrowed cell and abort (#7677).
+    let callback = CALLBACK.with(|callback| callback.borrow().clone());
+    if let Some(callback) = callback {
+        // A heartbeat must never fail the geometry it reports on. A throwing
+        // callback is logged and the work continues.
+        if let Err(error) = callback.call0(&JsValue::NULL) {
+            web_sys::console::warn_2(&JsValue::from_str("[ifc-lite] geometry progress callback threw:"), &error);
         }
-    });
+    }
 }
 
 /// Install (or, with `undefined`, remove) the callback invoked at most once a

@@ -24,6 +24,14 @@
 #[cfg(test)]
 mod tests;
 
+// EDGE-FFI-8 (#7677): under `panic = 'abort'` every `catch_unwind` below is a
+// no-op and a parser panic aborts the host process, so such a build is refused
+// rather than shipped. Test harnesses always unwind, hence `not(test)`.
+#[cfg(all(panic = "abort", not(test)))]
+compile_error!(
+    "ifc-lite-ffi needs panic = \"unwind\": build it with `--profile server-release`, not `--release`"
+);
+
 // Native global allocator (#1623): the platform system heap's global lock was
 // ~70% of native geometry self-time and capped rayon scaling to ~1.8x on
 // IfcMappedItem-heavy models; mimalloc's per-thread heaps lifted an all-cores

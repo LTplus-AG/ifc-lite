@@ -131,6 +131,16 @@ fn circle_directrix_with_zero_axis_stays_finite_proc_13_7687() {
     assert!(reach < 0.1 + 1e-3, "the zero Axis must fall back to +Z, reach {reach}");
 }
 
+/// XCUT-26 (deferred from S6a #7678 to this WP): a RefDirection parallel to
+/// Axis made `Z x X` zero, normalised to NaN. The canonical reader picks a
+/// perpendicular X, so the circle stays in the plane normal to Axis.
+#[test]
+fn circle_directrix_with_ref_direction_parallel_to_axis_stays_finite_xcut_26_7687() {
+    let mesh = meshed(&circle_sweep("(0.,0.,1.)", "(0.,0.,1.)"));
+    let reach = vertices(&mesh).map(|[_, _, z]| z.abs()).fold(0.0, f64::max);
+    assert!(reach < 0.1 + 1e-3, "the circle must stay in z=0, reach {reach}");
+}
+
 /// Sibling of PROC-13 in `advanced_face/conics.rs`: a profile circle placed
 /// by an `IfcAxis2Placement2D` had its RefDirection (attribute 1) read as the
 /// 3D Axis, so the circle stood in the YZ plane. Revolved about Y, the
@@ -237,4 +247,45 @@ fn bspline_surface_control_meshes_7687() {
         #2=IFCCARTESIANPOINT((0.,0.,0.));\n#3=IFCCARTESIANPOINT((0.,1.,0.));\n#4=IFCCARTESIANPOINT((1.,0.,0.));\n\
         #5=IFCCARTESIANPOINT((1.,1.,0.));\n";
     meshed(data);
+}
+
+/// A planar `IfcAdvancedFace` (#1 is its brep) over the square (0,0)-(10,10)
+/// with one hole, the poly-loop #10 over the points `hole`.
+fn holed_face(hole: &str) -> String {
+    format!(
+        "#1=IFCADVANCEDBREP(#2);\n#2=IFCCLOSEDSHELL((#3));\n#3=IFCADVANCEDFACE((#4,#9),#20,.T.);\n\
+         #4=IFCFACEOUTERBOUND(#5,.T.);\n#5=IFCPOLYLOOP((#11,#12,#13,#14));\n\
+         #11=IFCCARTESIANPOINT((0.,0.,0.));\n#12=IFCCARTESIANPOINT((10.,0.,0.));\n\
+         #13=IFCCARTESIANPOINT((10.,10.,0.));\n#14=IFCCARTESIANPOINT((0.,10.,0.));\n\
+         #9=IFCFACEBOUND(#10,.T.);\n#10=IFCPOLYLOOP((#15,#16,#17));\n{hole}\
+         #20=IFCPLANE(#21);\n#21=IFCAXIS2PLACEMENT3D(#11,$,$);\n"
+    )
+}
+
+/// D14 control: the readable hole is cut, so the face has 7 vertices.
+#[test]
+fn holed_face_control_cuts_the_hole_d14_7687() {
+    let hole = "#15=IFCCARTESIANPOINT((4.,4.,0.));\n#16=IFCCARTESIANPOINT((6.,4.,0.));\n\
+                #17=IFCCARTESIANPOINT((5.,6.,0.));\n";
+    assert_eq!(meshed(&holed_face(hole)).positions.len(), 7 * 3);
+}
+
+/// D14 (under D3): a hole whose point does not decode (`1.52.3`) was read as
+/// an empty loop and skipped, so the face rendered FILLED over its opening.
+/// An unreadable loop must refuse the face instead.
+#[test]
+fn unreadable_hole_refuses_the_face_d14_7687() {
+    let hole = "#15=IFCCARTESIANPOINT((4.,4.,0.));\n#16=IFCCARTESIANPOINT((1.52.3,4.,0.));\n\
+                #17=IFCCARTESIANPOINT((5.,6.,0.));\n";
+    assert!(refused(&holed_face(hole)), "a face with an unreadable hole must not render filled");
+}
+
+/// D14 through an edge loop: a hole loop entry that does not resolve.
+#[test]
+fn unresolved_hole_edge_loop_refuses_the_face_d14_7687() {
+    let data = holed_face("").replace(
+        "#10=IFCPOLYLOOP((#15,#16,#17));\n",
+        "#10=IFCEDGELOOP((#99));\n",
+    );
+    assert!(refused(&data), "a face with an unreadable hole must not render filled");
 }

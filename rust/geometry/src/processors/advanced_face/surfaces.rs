@@ -237,7 +237,7 @@ pub(super) fn process_cylindrical_face(
     // glazing-mullion fillet faces in IFC4 door exports, where each
     // cylindrical face has B-spline edge curves running along the surface.
     let boundary_points: Vec<Point3<f64>> =
-        extract_edge_loop_points_for_bounds(face, decoder, quality);
+        extract_edge_loop_points_for_bounds(face, decoder, quality)?;
 
     if boundary_points.is_empty() {
         return Ok((Vec::new(), Vec::new()));

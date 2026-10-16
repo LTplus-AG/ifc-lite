@@ -89,20 +89,17 @@ fn sample_edge_curve_points_or_refuse(
 /// Extract polygon points from an edge loop, sampling B-spline curve edges
 /// for intermediate points to preserve curvature.
 ///
-/// A loop entry or edge curve that does not resolve refuses the whole loop
-/// (#7687, PROC-S21): it comes back empty, which every bound reader drops,
-/// as it drops a poly-loop with an unresolved point (#3421). Skipping the
-/// entry instead meshed a polygon one edge short, a different face.
+/// A loop entry, edge curve or vertex that does not resolve refuses the
+/// whole loop (#7687, PROC-S21), and the face reading the loop refuses the
+/// face (D14): skipping the entry meshed a polygon one edge short, and
+/// dropping the loop rendered a hole filled.
 pub(super) fn extract_edge_loop_points(
     loop_entity: &DecodedEntity,
     decoder: &mut EntityDecoder,
     quality: TessellationQuality,
-) -> Vec<Point3<f64>> {
-    let edges = match loop_entity.get(0).and_then(|a| a.as_list()) {
-        Some(e) => e,
-        None => return Vec::new(),
-    };
-    edge_loop_points(edges, decoder, quality).unwrap_or_default()
+) -> Result<Vec<Point3<f64>>, Refused> {
+    let edges = loop_entity.get(0).and_then(|a| a.as_list()).ok_or(Refused)?;
+    edge_loop_points(edges, decoder, quality)
 }
 
 fn edge_loop_points(
@@ -332,33 +329,28 @@ fn orient_and_trim_edge_polyline(
 
 /// Helper that runs `extract_edge_loop_points` over every outer/inner bound of a
 /// face and concatenates the results. Used to recover boundary coverage when we
-/// need angular extents (e.g. for surfaces of revolution).
+/// need angular extents (e.g. for surfaces of revolution). A bound that does
+/// not resolve, or an edge loop refused by [`extract_edge_loop_points`],
+/// refuses the face (D14), the rule [`super::bounds::extract_face_bounds`]
+/// applies; non-edge loops add no points, as before.
 pub(super) fn extract_edge_loop_points_for_bounds(
     face: &DecodedEntity,
     decoder: &mut EntityDecoder,
     quality: TessellationQuality,
-) -> Vec<Point3<f64>> {
+) -> crate::Result<Vec<Point3<f64>>> {
     let mut all = Vec::new();
-    let bounds = match face.get(0).and_then(|a| a.as_list()) {
-        Some(b) => b,
-        None => return all,
+    let Some(bounds) = face.get(0).and_then(|a| a.as_list()) else {
+        return Ok(all);
     };
     for bound in bounds {
-        if let Some(bound_id) = bound.as_entity_ref() {
-            if let Ok(bound_entity) = decoder.decode_by_id(bound_id) {
-                if let Some(loop_attr) = bound_entity.get(0) {
-                    if let Some(loop_entity) = decoder.resolve_ref(loop_attr).ok().flatten() {
-                        if loop_entity
-                            .ifc_type
-                            .as_str()
-                            .eq_ignore_ascii_case("IFCEDGELOOP")
-                        {
-                            all.extend(extract_edge_loop_points(&loop_entity, decoder, quality));
-                        }
-                    }
-                }
-            }
+        let (_, loop_entity) = super::bounds::resolve_bound_loop(face, bound, decoder)?;
+        if loop_entity.ifc_type == ifc_lite_core::IfcType::IfcEdgeLoop {
+            all.extend(super::bounds::refuse_unreadable(
+                face,
+                &loop_entity,
+                extract_edge_loop_points(&loop_entity, decoder, quality),
+            )?);
         }
     }
-    all
+    Ok(all)
 }

@@ -120,7 +120,7 @@ pub(super) fn process_surface_of_revolution_face(
     // *largest gap* between sorted angles — the face occupies the complement.
     // This robustly handles faces that straddle the θ=π discontinuity (e.g.
     // a fillet at θ=−π/2..π) where naive min/max gives 3π/2 instead of π/2.
-    let boundary = extract_edge_loop_points_for_bounds(face, decoder, quality);
+    let boundary = extract_edge_loop_points_for_bounds(face, decoder, quality)?;
     let (a_min, span) = if boundary.is_empty() {
         (0.0, TAU)
     } else {

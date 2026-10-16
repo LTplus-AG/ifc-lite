@@ -7,13 +7,51 @@
 use crate::{Error, Point3, Result, TessellationQuality};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 
-use super::super::helpers::extract_loop_points_by_id;
+use super::super::helpers::read_loop_points_by_id;
+use super::curves::Refused;
 use super::edge_loop::extract_edge_loop_points;
 use crate::triangulation::{calculate_polygon_normal, project_to_2d};
 
 pub(super) struct FaceBounds {
     pub(super) outer: Option<Vec<Point3<f64>>>,
     pub(super) holes: Vec<Vec<Point3<f64>>>,
+}
+
+/// Resolve one `Bounds` entry of `face` to `(bound, loop)` entities. A bound
+/// that does not resolve refuses the face (#7687, D14).
+pub(super) fn resolve_bound_loop(
+    face: &DecodedEntity,
+    bound: &ifc_lite_core::AttributeValue,
+    decoder: &mut EntityDecoder,
+) -> Result<(DecodedEntity, DecodedEntity)> {
+    let bound_id = bound.as_entity_ref().ok_or_else(|| {
+        Error::geometry(format!("face #{} has a bound that is not a reference (D14)", face.id))
+    })?;
+    let bound_entity = decoder.decode_by_id(bound_id)?;
+    let loop_attr = bound_entity
+        .get(0)
+        .ok_or_else(|| Error::geometry("FaceBound missing Bound".to_string()))?;
+    let loop_entity = decoder
+        .resolve_ref(loop_attr)?
+        .ok_or_else(|| Error::geometry("Failed to resolve FaceBound loop".to_string()))?;
+    Ok((bound_entity, loop_entity))
+}
+
+/// Turn a loop that does not read into the face's refusal (#7687, D14,
+/// under D3). Dropping an unreadable HOLE rendered the face filled over its
+/// opening, and dropping an unreadable outer loop let a hole become the
+/// outer boundary; neither is the authored face.
+pub(super) fn refuse_unreadable(
+    face: &DecodedEntity,
+    loop_entity: &DecodedEntity,
+    points: std::result::Result<Vec<Point3<f64>>, Refused>,
+) -> Result<Vec<Point3<f64>>> {
+    points.map_err(|Refused| {
+        Error::geometry(format!(
+            "face #{} loop #{} does not resolve; refusing the face rather than drop the loop (D14)",
+            face.id, loop_entity.id
+        ))
+    })
 }
 
 pub(super) fn extract_face_bounds(
@@ -31,23 +69,15 @@ pub(super) fn extract_face_bounds(
     let mut unclassified = Vec::new();
 
     for bound in bounds {
-        let Some(bound_id) = bound.as_entity_ref() else {
-            continue;
-        };
-        let bound_entity = decoder.decode_by_id(bound_id)?;
-        let loop_attr = bound_entity
-            .get(0)
-            .ok_or_else(|| Error::geometry("FaceBound missing Bound".to_string()))?;
-        let loop_entity = decoder
-            .resolve_ref(loop_attr)?
-            .ok_or_else(|| Error::geometry("Failed to resolve FaceBound loop".to_string()))?;
-        let mut points = match loop_entity.ifc_type {
+        let (bound_entity, loop_entity) = resolve_bound_loop(face, bound, decoder)?;
+        let read = match loop_entity.ifc_type {
             IfcType::IfcEdgeLoop => extract_edge_loop_points(&loop_entity, decoder, quality),
-            IfcType::IfcPolyLoop => {
-                extract_loop_points_by_id(loop_entity.id, decoder).unwrap_or_default()
-            }
-            _ => Vec::new(),
+            IfcType::IfcPolyLoop => read_loop_points_by_id(loop_entity.id, decoder).ok_or(Refused),
+            // Other loop kinds (IfcVertexLoop) carry no area; skipped as before.
+            _ => Ok(Vec::new()),
         };
+        let mut points = refuse_unreadable(face, &loop_entity, read)?;
+        // A readable loop of under three points is degenerate, not unread.
         if points.len() < 3 {
             continue;
         }

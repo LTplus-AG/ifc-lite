@@ -9,6 +9,8 @@
 //! the model origin, so national-grid models export small, full-precision coordinates.
 //! Pure geometry predicates live in [`crate::geom`].
 
+use std::collections::HashMap;
+
 use ifc_lite_geometry::ExtractedProfile;
 
 use crate::geom::{
@@ -16,6 +18,7 @@ use crate::geom::{
     polygon_area, xf, zup,
 };
 use crate::hbjson::{Face, Face3D, Room};
+use crate::ident::space_room_identifier;
 
 /// One `IfcSpace`'s cleaned floor profile in Honeybee Z-up space, rebased to the model
 /// origin: the simple, deduped-vertex floor ring plus the (Z-up) extrusion direction and
@@ -24,6 +27,10 @@ use crate::hbjson::{Face, Face3D, Room};
 /// start from, so the floor-footprint extraction stays single-sourced.
 pub(crate) struct FloorProfile {
     pub express_id: u32,
+    /// Which of the space's extruded items this is, counting from 0 in profile order
+    /// over every item (skipped ones included, so a sibling's skip never renames it).
+    /// Names the room via [`space_room_identifier`].
+    pub piece: u32,
     /// Cleaned, simple, rebased Z-up floor ring.
     pub floor: Vec<[f64; 3]>,
     /// Z-up extrusion direction (unit).
@@ -59,7 +66,13 @@ pub(crate) fn floor_profiles(profiles: &[ExtractedProfile], tol: f64) -> (Vec<Fl
     }
 
     let mut out = Vec::new();
+    let mut pieces: HashMap<u32, u32> = HashMap::new();
     for s in &spaces {
+        let piece = {
+            let next = pieces.entry(s.express_id).or_insert(0);
+            *next += 1;
+            *next - 1
+        };
         let n = s.outer_points.len() / 2;
         if n < 3 {
             skipped += 1;
@@ -88,7 +101,7 @@ pub(crate) fn floor_profiles(profiles: &[ExtractedProfile], tol: f64) -> (Vec<Fl
             skipped += 1;
             continue;
         }
-        out.push(FloorProfile { express_id: s.express_id, floor, dir, depth });
+        out.push(FloorProfile { express_id: s.express_id, piece, floor, dir, depth });
     }
     (out, origin, skipped)
 }
@@ -167,15 +180,16 @@ pub fn build_rooms(profiles: &[ExtractedProfile], tol: f64) -> (Vec<Room>, [f64;
 
         // P1: ground the floor, everything else Outdoors. Interior adjacency (Surface BCs)
         // is solved downstream in Honeybee once gap-closing lands (P5).
+        let room_id = space_room_identifier(fp.express_id, fp.piece);
         let faces: Vec<Face> = oriented
             .into_iter()
             .enumerate()
             .map(|(fi, (b, face_type))| {
                 let bc = if face_type == "Floor" { "Ground" } else { "Outdoors" };
-                Face::new(format!("R{}_F{}", fp.express_id, fi), Face3D::new(b), face_type, bc)
+                Face::new(format!("{room_id}_F{fi}"), Face3D::new(b), face_type, bc)
             })
             .collect();
-        rooms.push(Room::new(format!("R{}", fp.express_id), faces));
+        rooms.push(Room::new(room_id, faces));
     }
 
     // Drop duplicate / strongly-overlapping spaces (Revit often carries an overlapping copy).

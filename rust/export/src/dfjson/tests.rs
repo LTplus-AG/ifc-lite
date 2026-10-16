@@ -409,6 +409,7 @@ fn group_plates_with_nan_floor_heights_past_insertion_sort_cutoff_7674() {
     let plates: Vec<Plate> = (0..60u32)
         .map(|i| Plate {
             express_id: i,
+            piece: 0,
             boundary: vec![[0.0, 0.0], [1.0, 0.0], [1.0, 1.0]],
             floor_height: if i.is_multiple_of(3) { f64::NAN } else { ((i * 7) % 13) as f64 * 3.0 },
             ftc_height: 3.0,
@@ -437,6 +438,7 @@ fn dedupe_plates_with_nan_areas_past_insertion_sort_cutoff_7674() {
         let nan = i.is_multiple_of(3);
         Plate {
             express_id: i,
+            piece: 0,
             boundary: vec![[x, 0.0], [x + 1.0, 0.0], [x + 1.0, if nan { f64::NAN } else { 1.0 + x * 0.01 }], [x, 1.0]],
             floor_height: 0.0,
             ftc_height: 3.0,

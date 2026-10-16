@@ -3,12 +3,12 @@
   "repin": "IFC_LITE_REPIN_GOLDEN=1 cargo test -p ifc-lite-export --features parquet-bos --test export_golden -- --exact usd",
   "cases": {
     "AC20-FZK-Haus": {
-      "fnv1a64": "071ea0d151728dfc",
-      "bytes": 3288777
+      "fnv1a64": "51e9374bbee6dcb4",
+      "bytes": 3288306
     },
     "IfcOpenHouse_IFC4": {
-      "fnv1a64": "d4b669248cb13f4c",
-      "bytes": 220004
+      "fnv1a64": "15cd66e6a4f6271c",
+      "bytes": 219934
     },
     "bath_csg_solid": {
       "fnv1a64": "36b291ea3c768312",
@@ -19,16 +19,16 @@
       "bytes": 2669
     },
     "duplex": {
-      "fnv1a64": "4cd116036bc0c4ac",
-      "bytes": 4661317
+      "fnv1a64": "49216078deacad23",
+      "bytes": 4661034
     },
     "mapped_instances_synthetic": {
       "fnv1a64": "f3e5d0949b3a10a1",
       "bytes": 69468
     },
     "wall_two_openings": {
-      "fnv1a64": "2f30be83f92b468f",
-      "bytes": 16984
+      "fnv1a64": "98a8d30be7049659",
+      "bytes": 17400
     }
   }
 }

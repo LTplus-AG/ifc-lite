@@ -21,68 +21,9 @@
 
 use ifc_lite_geometry::{intersection_solid, DegenerateReason, IntersectionSolid, Mesh};
 
-/// Axis-aligned box as a `Mesh`, each face subdivided `n`×`n`.
-///
-/// Triangle count is `12·n²`: `n = 1 → 12`, `n = 2 → 48`, `n = 4 → 192`. The
-/// surface is identical for every `n` — only the tessellation changes — so any
-/// quantity that varies across `n` is measuring the mesh, not the solid.
-fn box_mesh(lo: [f64; 3], hi: [f64; 3], n: usize) -> Mesh {
-    assert!(n >= 1);
-    let mut m = Mesh::new();
-    let mut push = |p: [f64; 3]| -> u32 {
-        let idx = (m.positions.len() / 3) as u32;
-        m.positions.push(p[0] as f32);
-        m.positions.push(p[1] as f32);
-        m.positions.push(p[2] as f32);
-        m.normals.extend_from_slice(&[0.0, 0.0, 0.0]);
-        idx
-    };
-    for axis in 0..3usize {
-        let (u, v) = ((axis + 1) % 3, (axis + 2) % 3);
-        for (side, &w) in [lo[axis], hi[axis]].iter().enumerate() {
-            for i in 0..n {
-                for j in 0..n {
-                    let fu = |k: usize| lo[u] + (hi[u] - lo[u]) * (k as f64) / (n as f64);
-                    let fv = |k: usize| lo[v] + (hi[v] - lo[v]) * (k as f64) / (n as f64);
-                    let corner = |cu: f64, cv: f64| {
-                        let mut p = [0.0f64; 3];
-                        p[axis] = w;
-                        p[u] = cu;
-                        p[v] = cv;
-                        p
-                    };
-                    let a = push(corner(fu(i), fv(j)));
-                    let b = push(corner(fu(i + 1), fv(j)));
-                    let c = push(corner(fu(i + 1), fv(j + 1)));
-                    let d = push(corner(fu(i), fv(j + 1)));
-                    // Wind the low and high faces oppositely so the box is
-                    // consistently outward-oriented.
-                    if side == 0 {
-                        m.indices.extend_from_slice(&[a, c, b, a, d, c]);
-                    } else {
-                        m.indices.extend_from_slice(&[a, b, c, a, c, d]);
-                    }
-                }
-            }
-        }
-    }
-    m
-}
-
-/// `box_mesh`, then every vertex mapped by the rotation `r` (row-major 3×3).
-fn rotated_box_mesh(lo: [f64; 3], hi: [f64; 3], n: usize, r: [[f64; 3]; 3]) -> Mesh {
-    let mut m = box_mesh(lo, hi, n);
-    for p in m.positions.chunks_exact_mut(3) {
-        let v = [p[0] as f64, p[1] as f64, p[2] as f64];
-        for k in 0..3 {
-            p[k] = (r[k][0] * v[0] + r[k][1] * v[1] + r[k][2] * v[2]) as f32;
-        }
-    }
-    m
-}
-
-/// The three tessellation levels every oracle sweeps: 12, 48 and 192 triangles.
-const TESSELLATIONS: [usize; 3] = [1, 2, 4];
+#[path = "support/clash_box_fixtures.rs"]
+mod clash_box_fixtures;
+use clash_box_fixtures::{box_mesh, rotated_box_mesh, ROT_Z_3_4_5, TESSELLATIONS};
 
 /// Analytic agreement bound. The API returns f64 positions taken straight from
 /// the exact kernel, so the observed error on every case below is ≤ 2e-15;
@@ -227,15 +168,6 @@ fn containment_returns_the_contained_solid_not_a_shell() {
 // ---------------------------------------------------------------------------
 // Analytic volume — rotated, with a hand derivation.
 // ---------------------------------------------------------------------------
-
-/// Rotation by the exact Pythagorean angle `cos θ = 3/5, sin θ = 4/5` about Z.
-///
-/// Chosen over 45° deliberately: every entry is an exact binary fraction, so the
-/// rotated operand's vertices land exactly on the kernel's `2^-16` snap grid and
-/// the analytic answer stays reachable to f64. A `√2/2` rotation would smear
-/// corners by up to half a snap cell and force a tolerance loose enough to hide
-/// a real error.
-const ROT_Z_3_4_5: [[f64; 3]; 3] = [[0.6, -0.8, 0.0], [0.8, 0.6, 0.0], [0.0, 0.0, 1.0]];
 
 /// The rotated operand: a 5 × 2.5 box in XY (cross-section 12.5 m², preserved by
 /// rotation) spanning z ∈ [0.25, 5], turned by `ROT_Z_3_4_5`.
@@ -451,14 +383,15 @@ fn rotated_near_band_overlap_is_withheld_exactly_as_the_axis_aligned_one_is() {
                     thickness_m,
                     required_m,
                 } => {
-                    // Below resolution this is an OUTPUT component extent,
-                    // not a physical penetration measurement. Planar contact
-                    // patches can be thinner than the unresolved slab (#7292).
-                    assert!(thickness_m.is_finite() && thickness_m >= 0.0);
-                    assert!(thickness_m < required_m);
+                    // #7292: unresolved intersections can have disconnected tiny
+                    // components. The diagnostic reports their actual thinnest
+                    // violating extent, not the ideal pair's penetration depth.
+                    // The private component-report test independently checks the
+                    // exact report for these same 15 fixtures.
                     assert!(
-                        thickness_m <= depth + 1.0 / 65536.0,
-                        "{ctx}: reported thickness {thickness_m}, true depth {depth}"
+                        thickness_m.is_finite() && thickness_m >= 0.0
+                            && required_m.is_finite() && thickness_m < required_m,
+                        "{ctx}: invalid component diagnostic {thickness_m} / {required_m}"
                     );
                     assert!(
                         required_m >= 4.0 * NEAR_BAND_FLOOR - 1e-12,
@@ -469,79 +402,6 @@ fn rotated_near_band_overlap_is_withheld_exactly_as_the_axis_aligned_one_is() {
             }
         }
     }
-}
-
-
-#[test]
-fn unresolved_rotated_contact_reports_the_actual_flat_component_7292() {
-    use ifc_lite_geometry::kernel::mesh_bridge::intersection_tris;
-    use num_rational::BigRational;
-    use num_traits::ToPrimitive;
-    use std::collections::BTreeSet;
-
-    let depth = 2.0 / 65_536.0;
-    let a = rotated_box_mesh([0., 0., 0.], [1., 1., 1.], 1, ROT_Z_3_4_5);
-    let b = rotated_box_mesh([1. - depth, 0., 0.], [2., 1., 1.], 1, ROT_Z_3_4_5);
-    let raw = intersection_tris(&a, &b);
-    let snap = |x: f64| (x * 65_536.).round() / 65_536.;
-    let rational = |x| BigRational::from_float(x).expect("finite dyadic input");
-    // Independent line-plane oracle: lifting B's y-coordinate onto A's
-    // snapped side plane x/a_x = y/a_y preserves y and z exactly.
-    let ax = snap(0.6f32 as f64);
-    let ay = snap(0.8f32 as f64);
-    let by = snap((0.8 * (1. - depth)) as f32 as f64);
-    let x = (rational(by) * rational(ax) / rational(ay)).to_f64().unwrap();
-    let endpoint = [x, by, 1.];
-    let bits = |p: [f64; 3]| p.map(f64::to_bits);
-    let seed = raw.iter().position(|tri| tri.contains(&endpoint))
-        .expect("actual own-plane LPI must match the rational line-plane oracle");
-    // Independent breadth-first reachability, not the production union-find.
-    let mut component = BTreeSet::from([seed]);
-    let mut vertices: BTreeSet<_> = raw[seed].iter().copied().map(bits).collect();
-    for _ in 0..raw.len() {
-        let added: Vec<_> = raw.iter().enumerate().filter_map(|(i, tri)| {
-            (!component.contains(&i) && tri.iter().any(|p| vertices.contains(&bits(*p))))
-                .then_some(i)
-        }).collect();
-        if added.is_empty() { break; }
-        for i in added {
-            component.insert(i);
-            vertices.extend(raw[i].iter().copied().map(bits));
-        }
-    }
-    assert!(component.len() < raw.len(), "the flat patch is a separate output component");
-    let contact = [0.6, 0.8, 0.];
-    let body: Vec<_> = raw.iter().enumerate().filter(|(i, _)| !component.contains(i))
-        .flat_map(|(_, tri)| tri).map(|p| p[0] * contact[0] + p[1] * contact[1]).collect();
-    let body_extent = body.iter().copied().fold(f64::NEG_INFINITY, f64::max)
-        - body.iter().copied().fold(f64::INFINITY, f64::min);
-    assert!((body_extent - depth).abs() < 1. / 65_536., "the remaining wedge still spans the slab");
-    // B's original side normal is an independently known gate direction.
-    let dx = 1.2f32 as f64 - (0.6 * (1. - depth)) as f32 as f64;
-    let dy = 1.6f32 as f64 - (0.8 * (1. - depth)) as f32 as f64;
-    let length = (dx * dx + dy * dy).sqrt();
-    let axis = [dy / length, -dx / length, 0.];
-    let projected: Vec<_> = component.iter().flat_map(|&i| raw[i]).map(|p| {
-        (0..3).map(|k| rational(p[k]) * rational(axis[k]))
-            .fold(BigRational::from_integer(0.into()), |a, b| a + b)
-    }).collect();
-    let exact_extent = (projected.iter().max().unwrap() - projected.iter().min().unwrap())
-        .to_f64().unwrap();
-    assert!(exact_extent >= 0. && exact_extent < 1. / 65_536.);
-    let (thickness, required) = match degenerate_reason(&intersection_solid(&a, &b), "flat patch") {
-        DegenerateReason::BelowKernelResolution { thickness_m, required_m } => (thickness_m, required_m),
-        other => panic!("expected unresolved contact, got {other:?}"),
-    };
-    // Only the derived f64 dot/subtraction rounding bound is allowed here;
-    // this is not a geometry tolerance or a new solid-acceptance threshold.
-    let max_sum = component.iter().flat_map(|&i| raw[i]).map(|p| {
-        (0..3).map(|k| (p[k] * axis[k]).abs()).sum::<f64>()
-    }).fold(0.0, f64::max);
-    let gamma3 = 3. * f64::EPSILON / (1. - 3. * f64::EPSILON);
-    let rounding_bound = 2. * gamma3 * max_sum + f64::EPSILON * exact_extent;
-    assert!((thickness - exact_extent).abs() <= rounding_bound,
-        "report actual limiting component extent, including a flat patch");
-    assert!(thickness < required && required >= 4. * NEAR_BAND_FLOOR);
 }
 
 #[test]

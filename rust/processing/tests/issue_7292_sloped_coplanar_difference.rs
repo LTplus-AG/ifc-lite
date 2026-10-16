@@ -12,31 +12,17 @@ use ifc_lite_processing::process_geometry;
 const FIXTURE: &str = include_str!(
     "../../geometry/tests/fixtures/issue_7292_sloped_coplanar_difference.ifc"
 );
-const POSITION_TOLERANCE: f64 = 1.0e-4; // 0.1 mm, including f32 and kernel snap
-
-fn covers_bottom_witness(triangle: [[f64; 3]; 3], slope: f64) -> bool {
-    if !triangle.iter().all(|vertex| {
-        (vertex[2] - (4.548 + slope * vertex[1])).abs() <= POSITION_TOLERANCE
-    }) {
-        return false;
-    }
-    let point = [-3.005, 0.004];
-    let signed_area = |a: [f64; 3], b: [f64; 3], p: [f64; 2]| {
-        (b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0])
-    };
-    let area = signed_area(triangle[0], triangle[1], [triangle[2][0], triangle[2][1]]);
-    if !area.is_finite() || area.abs() <= 1.0e-18 {
-        return false;
-    }
-    // Signed sub-areas are barycentric numerators. Allow the same 0.1 mm
-    // positional slack perpendicular to each edge, independent of winding.
-    (0..3).all(|edge| {
-        let a = triangle[edge];
-        let b = triangle[(edge + 1) % 3];
-        let edge_length = ((b[0] - a[0]).powi(2) + (b[1] - a[1]).powi(2)).sqrt();
-        signed_area(a, b, point) * area.signum() >= -POSITION_TOLERANCE * edge_length
-    })
+// The ALT oracle selector is process-global. Serialize every producer case
+// in this integration-test binary; helper-only distance controls need no lock.
+static PRODUCER_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+fn default_producer_guard() -> std::sync::MutexGuard<'static, ()> {
+    let guard = PRODUCER_LOCK.lock().unwrap_or_else(|poison| poison.into_inner());
+    #[cfg(feature = "triangulation-alt")]
+    ifc_lite_geometry::set_alt_triangulator(false);
+    guard
 }
+
+const POSITION_TOLERANCE: f64 = 1.0e-4; // 0.1 mm, including f32 and kernel snap
 
 fn surface_face(triangle: [[f64; 3]; 3], slope: f64, length_y: f64) -> (usize, f64) {
     let edge_a = [0, 1, 2].map(|k| triangle[1][k] - triangle[0][k]);
@@ -72,13 +58,73 @@ fn surface_face(triangle: [[f64; 3]; 3], slope: f64, length_y: f64) -> (usize, f
     best.unwrap_or_else(|| panic!("#7292: triangle {triangle:?} is not on any strip boundary"))
 }
 
+
+// Squared distance to a CLOSED FINITE triangle. Checking every vertex of a
+// convex witness cell against ONE triangle + a Euclidean tolerance ball
+// certifies the entire cell, because that Minkowski sum is convex.
+fn triangle_distance_squared(p: [f64; 3], t: [[f64; 3]; 3]) -> f64 {
+    let sub = |a: [f64; 3], b: [f64; 3]| [0, 1, 2].map(|k| a[k] - b[k]);
+    let dot = |a: [f64; 3], b: [f64; 3]| a.into_iter().zip(b).map(|(x,y)| x*y).sum::<f64>();
+    let ab = sub(t[1], t[0]); let ac = sub(t[2], t[0]); let ap = sub(p, t[0]);
+    let cross = [ab[1]*ac[2]-ab[2]*ac[1],ab[2]*ac[0]-ab[0]*ac[2],ab[0]*ac[1]-ab[1]*ac[0]];
+    if dot(cross,cross) == 0.0 {
+        // The closed convex hull is a segment or point. Minimize over all
+        // three closed edges; avoid 0/0 in the triangle Voronoi formulas.
+        return (0..3).map(|i| {
+            let a = t[i]; let edge = sub(t[(i+1)%3],a); let length = dot(edge,edge);
+            let v = if length == 0.0 { 0.0 } else { (dot(sub(p,a),edge)/length).clamp(0.0,1.0) };
+            let q = [0,1,2].map(|k| a[k]+v*edge[k]); let d = sub(p,q); dot(d,d)
+        }).fold(f64::INFINITY,f64::min);
+    }
+    let (d1,d2) = (dot(ab,ap),dot(ac,ap));
+    if d1 <= 0.0 && d2 <= 0.0 { return dot(ap,ap); }
+    let bp = sub(p,t[1]); let (d3,d4) = (dot(ab,bp),dot(ac,bp));
+    if d3 >= 0.0 && d4 <= d3 { return dot(bp,bp); }
+    let vc = d1*d4-d3*d2;
+    let closest = if vc <= 0.0 && d1 >= 0.0 && d3 <= 0.0 {
+        let v = d1/(d1-d3); [0,1,2].map(|k| t[0][k]+v*ab[k])
+    } else {
+        let cp = sub(p,t[2]); let (d5,d6) = (dot(ab,cp),dot(ac,cp));
+        if d6 >= 0.0 && d5 <= d6 { return dot(cp,cp); }
+        let vb = d5*d2-d1*d6;
+        if vb <= 0.0 && d2 >= 0.0 && d6 <= 0.0 {
+            let w = d2/(d2-d6); [0,1,2].map(|k| t[0][k]+w*ac[k])
+        } else {
+            let va = d3*d6-d5*d4;
+            if va <= 0.0 && d4-d3 >= 0.0 && d5-d6 >= 0.0 {
+                let w = (d4-d3)/((d4-d3)+(d5-d6));
+                [0,1,2].map(|k| t[1][k]+w*(t[2][k]-t[1][k]))
+            } else {
+                let inverse = 1.0/(va+vb+vc);
+                let (v,w) = (vb*inverse,vc*inverse);
+                [0,1,2].map(|k| t[0][k]+ab[k]*v+ac[k]*w)
+            }
+        }
+    };
+    let delta = sub(p,closest); dot(delta,delta)
+}
+
+fn covers_bottom_cell(triangle: [[f64; 3]; 3], slope: f64) -> bool {
+    // A real 2 x 2 micrometre cell, wholly inside the analytic bottom face.
+    // It targets the historical missing triangular patch; it is not a
+    // claim of complete six-face coverage or exact closedness.
+    [-1.0e-6,1.0e-6].into_iter().all(|dx| {
+        [-1.0e-6,1.0e-6].into_iter().all(|dy| {
+            let y = 0.004+dy;
+            triangle_distance_squared([-3.005+dx,y,4.548+slope*y],triangle)
+                <= POSITION_TOLERANCE * POSITION_TOLERANCE
+        })
+    })
+}
+
 fn assert_strip(bytes: &[u8], slope: f64) {
     let result = process_geometry(bytes);
     let (mut minimum, mut maximum) = ([f64::INFINITY; 3], [f64::NEG_INFINITY; 3]);
     let mut referenced_vertices = 0;
     let length_y = 1.1 / (1.0 + slope * slope).sqrt();
     let mut surface_areas = [0.0; 6];
-    let mut bottom_witness_covered = false;
+    let mut bottom_cell_covered = false;
+    let mut signed_volume = 0.0;
     for mesh in result.meshes.iter().filter(|mesh| mesh.express_id == 107) {
         for &index in &mesh.indices {
             let world = [0, 1, 2].map(|k| {
@@ -105,15 +151,22 @@ fn assert_strip(bytes: &[u8], slope: f64) {
             }));
             let (face, area) = surface_face(triangle, slope, length_y);
             surface_areas[face] += area;
-            bottom_witness_covered |= covers_bottom_witness(triangle, slope);
+            bottom_cell_covered |= covers_bottom_cell(triangle, slope);
+            // Translate to a nearby analytic corner before the determinant;
+            // no large world-coordinate cancellation or triangle-count pin.
+            let p = triangle.map(|v| [v[0]+3.025,v[1],v[2]-4.548]);
+            signed_volume += (p[0][0]*(p[1][1]*p[2][2]-p[1][2]*p[2][1])
+                -p[0][1]*(p[1][0]*p[2][2]-p[1][2]*p[2][0])
+                +p[0][2]*(p[1][0]*p[2][1]-p[1][1]*p[2][0]))/6.0;
         }
     }
     assert!(referenced_vertices > 0, "the 25 mm strip must remain");
-    // #7292: correct bounds and summed face areas hid a triangular bottom
-    // gap. This point lies strictly inside the retained strip's bottom face.
-    assert!(bottom_witness_covered,
-        "#7292: bottom surface must cover IFC world point x=-3.005, y=0.004, z={}",
-        4.548 + slope * 0.004);
+    assert!(bottom_cell_covered, "#7292: entire finite bottom witness cell must be covered within 100 micrometres");
+    let expected_volume = 0.025 * 0.054 * length_y;
+    let analytic_surface_area = 2.0*(0.054*length_y+0.025*0.054+0.025*1.1);
+    let volume_tolerance = analytic_surface_area * POSITION_TOLERANCE;
+    assert!(signed_volume > 0.0 && (signed_volume-expected_volume).abs() <= volume_tolerance,
+        "#7292: oriented surface integral {signed_volume}, expected strip volume {expected_volume} +/- {volume_tolerance}");
     // 0.1 mm covers f32 storage and the kernel snap. Unreferenced vertices
     // do not contribute: the issue specifically reports indexed world bounds.
     // Sloped bounds agree with the independent IfcOpenShell replay. The
@@ -150,6 +203,7 @@ fn assert_strip(bytes: &[u8], slope: f64) {
 
 #[test]
 fn issue_7292_shared_producer_leaves_only_the_25mm_strip() {
+    let _producer = default_producer_guard();
     assert_strip(FIXTURE.as_bytes(), 0.02);
 }
 
@@ -188,12 +242,14 @@ fn fixture_at_slope(slope: f64) -> String {
 
 #[test]
 fn issue_7292_flat_difference_positive_control_leaves_the_strip() {
+    let _producer = default_producer_guard();
     let flat = fixture_at_slope(0.0);
     assert_strip(flat.as_bytes(), 0.0);
 }
 
 #[test]
 fn issue_7292_five_percent_difference_preserves_the_complete_strip() {
+    let _producer = default_producer_guard();
     // The reporter's 5% variation had correct bounds but extra triangles.
     // Assert six-face coverage without pinning a particular triangulation.
     let sloped = fixture_at_slope(0.05);
@@ -278,7 +334,8 @@ fn five_stacked_slices(fixture: &str, slope: f64) -> String {
 }
 
 #[test]
-fn issue_7292_five_stacked_two_percent_slices_preserve_the_complete_strip() {
+fn issue_7292_five_stacked_two_percent_slices_preserve_the_strip() {
+    let _producer = default_producer_guard();
     // The original reporter remains immutable; only the in-memory cutter
     // blocks and Body item differ. Reuse every strip invariant at both slopes.
     let reporter_series = five_stacked_slices(FIXTURE, 0.02);
@@ -286,7 +343,41 @@ fn issue_7292_five_stacked_two_percent_slices_preserve_the_complete_strip() {
 }
 
 #[test]
-fn issue_7292_five_stacked_five_percent_slices_preserve_the_complete_strip() {
+fn issue_7292_five_stacked_five_percent_slices_preserve_the_strip() {
+    let _producer = default_producer_guard();
     let five_percent = five_stacked_slices(&fixture_at_slope(0.05), 0.05);
     assert_strip(five_percent.as_bytes(), 0.05);
+}
+
+#[test]
+fn issue_7292_finite_triangle_distance_has_analytic_controls() {
+    let triangle = [[0.0,0.0,0.0],[2.0,0.0,0.0],[0.0,2.0,0.0]];
+    // Interior perpendicular projection, finite edge, and finite vertex.
+    for (point, expected) in [([0.5,0.5,3.0],9.0),([1.0,-2.0,0.0],4.0),([2.0,2.0,0.0],2.0),([-1.0,-2.0,0.0],5.0)] {
+        assert_eq!(triangle_distance_squared(point,triangle),expected);
+        assert_eq!(triangle_distance_squared(point,[triangle[2],triangle[1],triangle[0]]),expected,
+            "#7292: finite distance is independent of winding");
+    }
+    assert_eq!(triangle_distance_squared([1.0,3.0,0.0],[[0.0,0.0,0.0],[2.0,0.0,0.0],[1.0,0.0,0.0]]),9.0,
+        "#7292: degenerate triangle retains its finite segment");
+    assert_eq!(triangle_distance_squared([1.0,2.0,2.0],[[0.0,0.0,0.0];3]),9.0,
+        "#7292: degenerate triangle retains its point");
+}
+
+#[cfg(feature = "triangulation-alt")]
+#[test]
+fn issue_7292_actual_alt_policy_preserves_all_five_reporter_cases() {
+    let _producer = default_producer_guard();
+    struct ResetAlt;
+    impl Drop for ResetAlt {
+        fn drop(&mut self) { ifc_lite_geometry::set_alt_triangulator(false); }
+    }
+    let _reset = ResetAlt;
+    ifc_lite_geometry::set_alt_triangulator(true);
+    // Call the shared invariant directly, avoiding nested mutex acquisition.
+    assert_strip(FIXTURE.as_bytes(), 0.02);
+    assert_strip(fixture_at_slope(0.0).as_bytes(), 0.0);
+    assert_strip(fixture_at_slope(0.05).as_bytes(), 0.05);
+    assert_strip(five_stacked_slices(FIXTURE,0.02).as_bytes(),0.02);
+    assert_strip(five_stacked_slices(&fixture_at_slope(0.05),0.05).as_bytes(),0.05);
 }

@@ -49,6 +49,12 @@ impl Face {
         (d * d / self.nn, d)
     }
 
+    /// Use this selected face's original normal band, with no wider context.
+    pub(super) fn outside_normal_band(&self, point: [f64; 3]) -> bool {
+        let (distance2, _) = self.distance(point);
+        distance2.is_finite() && distance2 > self.band2
+    }
+
     pub(super) fn admits(
         &self,
         original: [f64; 3],
@@ -84,6 +90,26 @@ fn same_plane(a: &Tri, b: &Tri) -> bool {
     })
 }
 
+/// Closed projected support on the selected plane's finite triangle union.
+/// Selection uses this for an off-plane probe's projection. A caller claiming
+/// actual 3D contact must separately establish that its point is on `plane`.
+/// Keep the selected triangle fast path and exact coplanar sibling semantics.
+pub(super) fn projected_finite_support(point: [f64; 3], plane: &Tri, faces: &[Face]) -> bool {
+    contains_projected_point(plane, point)
+        || faces.iter().any(|f| {
+            contains_projected_point(&f.t, point) && same_plane(plane, &f.t)
+        })
+}
+
+/// The NEW fallback requires a genuine selected carrier. Its caller separately
+/// proves exact point-on-plane; legacy selection keeps its projected semantics.
+pub(super) fn projected_support_on_nondegenerate_plane(
+    point: [f64; 3], plane: &Tri, faces: &[Face],
+) -> bool {
+    crate::kernel::retriangulate::projection_axis(plane).is_some()
+        && projected_finite_support(point, plane, faces)
+}
+
 pub(super) fn select<'a>(
     point: [f64; 3],
     faces: &'a [Face],
@@ -111,15 +137,7 @@ pub(super) fn select<'a>(
     {
         return Some((original_d, original));
     }
-    if contains_projected_point(&original.t, point) {
-        return Some((original_d, original));
-    }
-    // A containing sibling on the same exact plane retains the original basis:
-    // triangulation alone must not change an established Q20 seam identity.
-    if faces
-        .iter()
-        .any(|f| contains_projected_point(&f.t, point) && same_plane(&original.t, &f.t))
-    {
+    if projected_finite_support(point, &original.t, faces) {
         return Some((original_d, original));
     }
     let mut covering: Option<(f64, f64, &Face)> = None;

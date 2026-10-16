@@ -27,6 +27,9 @@ use lift::{exact_axis_plane_foot, exact_on_plane_weld};
 mod axis_rescue;
 use axis_rescue::{complete_axis_rescue, AxisPlane};
 mod incidence;
+mod source_axes;
+mod transversal;
+mod contact_stability;
 mod selection;
 use selection::Face;
 
@@ -295,16 +298,19 @@ pub(crate) fn promote_cutter_verts_onto_host_faces(cutter: &mut [Tri], host: &[T
                     let original = *v;
                     // #7292: Q20 and the initial axis foot use this drift admission.
                     let admits = |w| f.admits(original, w, d, &band, &host_verts);
-                    // Keep the selected Q20 target when admitted. Selection
-                    // protects corner and same-plane seam identities. Only a
+                    // Begin with the admitted Q20 target in its selected basis.
+                    // A late correction may preserve healthy source axis features;
+                    // exact corner targets keep their original identity. Only a
                     // refused lift may try the exact axis foot; all Q20 gates above
                     // remain mandatory. Further independent axis feet use
                     // their own original normal bands, preserving prior axes.
                     let q20_admitted = admits(q20);
+                    let mut initial_rescue_foot = None;
                     let target = if q20_admitted {
                         Some(q20)
                     } else {
                         exact_axis_plane_foot(original, f.t).filter(|&foot| admits(foot)).map(|foot| {
+                            initial_rescue_foot = Some(foot);
                             let planes = axis_planes.get_or_insert_with(|| faces.iter()
                                 .filter_map(|face| AxisPlane::new(face.t, face.band2)).collect());
                             complete_axis_rescue(foot, planes, &host_verts)
@@ -314,7 +320,8 @@ pub(crate) fn promote_cutter_verts_onto_host_faces(cutter: &mut [Tri], host: &[T
                         // Numeric equality hides signed-zero writes performed
                         // by the original loop; corner identity uses raw bits.
                         if super::near_band::vertex_bits(&w) != super::near_band::vertex_bits(&original) {
-                            proposals.push((ti, vi, original, w, q20_admitted.then_some((d, f))));
+                            proposals.push((ti, vi, original, w, q20_admitted.then_some((d, f)),
+                                (!q20_admitted).then_some(f), initial_rescue_foot));
                         }
                     }
                 }
@@ -325,9 +332,22 @@ pub(crate) fn promote_cutter_verts_onto_host_faces(cutter: &mut [Tri], host: &[T
     // Calls with no proposed movement avoid the extra broadphase entirely.
     if !proposals.is_empty() {
         let incidences = incidence::ExactFaceIncidences::new(cutter, host);
-        for (ti, vi, original, primary, admitted_q20_face) in proposals {
+        let source_axes = source_axes::SourceAxes::new(cutter);
+        let mut resolved = Vec::new();
+        for (ti, vi, original, primary, admitted_q20_face, refused_face, initial_foot) in proposals {
+            // Build the guarded correction before rejecting its uncorrected
+            // primary's incidental scatter. An established incidence-foot
+            // fallback still takes priority when the primary loses incidence.
+            let correction = admitted_q20_face.and_then(|(d, face)| {
+                source_axes.candidate(original, primary, face.t, &host_verts)
+                    .filter(|&candidate| {
+                        face.admits(original, candidate, d, &band, &host_verts)
+                            && incidences.admits(original, candidate, host)
+                            && source_axes::retains_finite_contacts(primary, candidate, host)
+                    })
+            });
             let target = if incidences.admits(original, primary, host) {
-                Some(primary)
+                Some(correction.unwrap_or(primary))
             } else {
                 // An admitted Q20 lift can scatter a tangential coordinate off
                 // an existing exact shared face (#7292). Only then try the
@@ -339,8 +359,24 @@ pub(crate) fn promote_cutter_verts_onto_host_faces(cutter: &mut [Tri], host: &[T
                         face.admits(original, foot, d, &band, &host_verts)
                             && incidences.admits(original, foot, host)
                     })
-                })
+                }).or_else(|| correction.filter(|&candidate| {
+                    // This NEW target replaces no previously valid resolution.
+                    // Its exact selected-plane identity is already established
+                    // by SourceAxes; require a finite host patch on that plane.
+                    admitted_q20_face.is_some_and(|(_, face)| {
+                        selection::projected_support_on_nondegenerate_plane(candidate, &face.t, &faces)
+                            && source_axes::retains_finite_contacts(original, candidate, host)
+                    })
+                }))
             };
+            resolved.push(transversal::Proposal { ti, vi, original, target, refused_face, initial_foot });
+        }
+        // Every certificate sees immutable ORIGINAL source facets. Rejected raw
+        // keys retain their exact original bits; no alternate lift is attempted.
+        let rejected = transversal::rejected_keys(cutter, &resolved, &band);
+        for proposal in resolved {
+            let transversal::Proposal { ti, vi, original, target, .. } = proposal;
+            if rejected.contains(&super::near_band::vertex_bits(&original)) { continue; }
             if let Some(target) = target {
                 cutter[ti][vi] = target;
                 welded += usize::from(target != original);

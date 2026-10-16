@@ -21,10 +21,12 @@ use super::retriangulate::{
 use super::retriangulate_recover::{between, recover_via_traversal};
 use super::{DropAxis, Sign};
 use std::collections::BTreeSet;
+use super::budget;
 
 /// Chain decomposition of constraint `(cs,ct)` through its on-segment vertices in
 /// the CURRENT mesh (matching `enforce_constraint`).
-fn chain_of(mesh: &Mesh2d, it: &Interner, axis: DropAxis, cs: Vid, ct: Vid) -> Vec<Vid> {
+fn chain_of(mesh: &Mesh2d, it: &Interner, axis: DropAxis, cs: Vid, ct: Vid) -> Option<Vec<Vid>> {
+    if budget::tripped() { return None; }
     let mut on_seg: Vec<Vid> = mesh
         .tris
         .iter()
@@ -32,6 +34,7 @@ fn chain_of(mesh: &Mesh2d, it: &Interner, axis: DropAxis, cs: Vid, ct: Vid) -> V
         .copied()
         .collect::<BTreeSet<Vid>>()
         .into_iter()
+        .take_while(|_| !budget::tripped())
         .filter(|&v| {
             v != cs
                 && v != ct
@@ -39,14 +42,17 @@ fn chain_of(mesh: &Mesh2d, it: &Interner, axis: DropAxis, cs: Vid, ct: Vid) -> V
                 && between(it, cs, ct, v)
         })
         .collect();
+    if budget::tripped() { return None; }
+    // Keep the existing comparator contract: never switch ordering mid-sort.
     on_seg.sort_by(|&x, &y| lex_cmp(it, x, y));
+    if budget::tripped() { return None; }
     if cmp_lex_v(it, cs, ct) == Sign::Positive {
         on_seg.reverse();
     }
     let mut chain = vec![cs];
     chain.extend(on_seg);
     chain.push(ct);
-    chain
+    Some(chain)
 }
 
 /// POST-CONDITION on the replacement triangles a pocket rebuild
@@ -79,16 +85,22 @@ pub(crate) fn pocket_rebuild_valid(new_tris: &[SubTri]) -> bool {
 
 /// Recover any missing constraint sub-edge (last-chance robust traversal), then set
 /// `mesh.unrecovered` from a fresh count over the settled mesh.
+/// A standing budget trip returns a partial audit; the existing caller discards
+/// that entire arrangement, so a partial residual count is never a certificate.
 pub(crate) fn audit_and_recover(mesh: &mut Mesh2d, it: &Interner, canon: &Canonical, axis: DropAxis) {
     for &(cs, ct) in &canon.segments {
-        for w in chain_of(mesh, it, axis, cs, ct).windows(2) {
+        let Some(chain) = chain_of(mesh, it, axis, cs, ct) else { return; };
+        for w in chain.windows(2) {
+            if budget::tripped() { return; }
             if !edge_exists(mesh, w[0], w[1]) {
                 recover_via_traversal(mesh, it, w[0], w[1]);
             }
         }
     }
     for &(cs, ct) in &canon.segments {
-        for w in chain_of(mesh, it, axis, cs, ct).windows(2) {
+        let Some(chain) = chain_of(mesh, it, axis, cs, ct) else { return; };
+        for w in chain.windows(2) {
+            if budget::tripped() { return; }
             if !edge_exists(mesh, w[0], w[1]) {
                 mesh.unrecovered += 1;
             }

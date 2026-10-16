@@ -600,7 +600,8 @@ path, faces with holes go through polygon triangulation with hole support
 
 ### Boolean Operations
 
-Handles `IfcBooleanClippingResult` and opening voids (`IfcRelVoidsElement`).
+Handles `IfcBooleanResult`, `IfcBooleanClippingResult`, and opening voids
+(`IfcRelVoidsElement`).
 Void cutting uses one Rust CSG kernel with exact arithmetic predicates over
 snapped inputs. Near-coplanar reconciliation and f32 mesh storage have finite
 resolution; exact predicates do not guarantee that every emitted mesh is closed.

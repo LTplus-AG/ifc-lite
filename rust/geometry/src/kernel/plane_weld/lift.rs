@@ -71,11 +71,16 @@ pub(super) fn exact_axis_plane_foot(v: [f64; 3], [t0, t1, t2]: Tri) -> Option<[f
     let k = (0..3).find(|&k| t0[k] == t1[k] && t0[k] == t2[k])?;
     let mut foot = v;
     foot[k] = t0[k];
-    foot.iter().all(|&coordinate| {
+    on_existing_vertex_grid(foot).then_some(foot)
+}
+
+// The original exact-axis-foot guard, shared without changing its decisions.
+pub(super) fn on_existing_vertex_grid(point: [f64; 3]) -> bool {
+    point.iter().all(|&coordinate| {
         let scaled = coordinate * S36;
         scaled.is_finite()
             && scaled.fract() == 0.0
             && scaled.abs() < i128::MAX as f64
             && (scaled as i128) as f64 == scaled
-    }).then_some(foot)
+    })
 }

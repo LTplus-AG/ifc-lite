@@ -110,14 +110,26 @@ fn clip_seg(
 /// Constraints `tb` (coplanar with `ta`) imposes on `ta`: each `tb` edge clipped
 /// to `ta`. Empty if `ta` is degenerate or the triangles don't overlap.
 pub fn coplanar_clip(ta: &Tri, tb: &Tri) -> Vec<(ImplicitPoint, ImplicitPoint)> {
+    clip_supported(ta, tb).into_iter().map(|s| (s.a, s.b)).collect()
+}
+
+/// Original source-edge extrusion; never reconstructed from implicit endpoints.
+pub(super) struct SupportedClip {
+    pub a: ImplicitPoint,
+    pub b: ImplicitPoint,
+    pub support: Tri,
+}
+
+pub(super) fn clip_supported(ta: &Tri, tb: &Tri) -> Vec<SupportedClip> {
     let (axis, w0) = match projection_axis(ta) {
         Some(x) => x,
         None => return Vec::new(),
     };
-    let tb_edges = [(tb[0], tb[1]), (tb[1], tb[2]), (tb[2], tb[0])];
-    tb_edges
-        .iter()
-        .filter_map(|&(q0, q1)| clip_seg(q0, q1, ta, axis, w0))
+    [(tb[0], tb[1]), (tb[1], tb[2]), (tb[2], tb[0])]
+        .into_iter()
+        .filter_map(|(q0, q1)| clip_seg(q0, q1, ta, axis, w0).map(|(a, b)| SupportedClip {
+            a, b, support: [q0, q1, axis_offset(q0, axis)],
+        }))
         .collect()
 }
 

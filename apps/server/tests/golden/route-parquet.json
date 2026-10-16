@@ -3,8 +3,8 @@
   "repin": "IFC_LITE_REPIN_GOLDEN=1 cargo test -p ifc-lite-server route_golden_tests  # rewrites all route-*.json; unmoved ones stay byte-identical",
   "cases": {
     "IfcOpenHouse_IFC4": {
-      "fnv1a64": "ae44cc6f2b02666a",
-      "bytes": 48990
+      "fnv1a64": "353445dbad9f5a34",
+      "bytes": 48999
     },
     "parity-fixture": {
       "fnv1a64": "76a98228728229fc",

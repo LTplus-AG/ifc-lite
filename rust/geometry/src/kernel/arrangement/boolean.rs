@@ -200,8 +200,7 @@ pub fn difference_all(a: &[Tri], comps: &[&[Tri]]) -> Option<(Vec<Tri>, bool)> {
     if comps.is_empty() {
         return Some((a.to_vec(), false));
     }
-    let b_all: Vec<Tri> = comps.iter().flat_map(|c| c.iter().copied()).collect();
-    let arr = arrange(a, &b_all);
+    let arr = super::binary::arrange_components(a, comps);
     // Hard conformity gate (unlike the binary `boolean`'s graceful degrade):
     // an unrecovered constraint means some sub-triangle STRADDLES a cutter
     // boundary and its centroid classification can silently over/under-cut
@@ -233,12 +232,8 @@ pub fn difference_all_lenient(a: &[Tri], comps: &[&[Tri]]) -> (Vec<Tri>, bool) {
 /// that no cutter reaches `a`: straddling sub-triangles can be misclassified
 /// (#5362 review), so a caller must not read it as "disjoint".
 pub fn difference_all_lenient_with_conformity(a: &[Tri], comps: &[&[Tri]]) -> (Vec<Tri>, bool, bool) {
-    let arr = match comps {
-        [] => return (a.to_vec(), false, true),
-        // One component (the single-cutter subtract) is already the B operand.
-        [only] => arrange(a, only),
-        _ => arrange(a, &comps.iter().flat_map(|c| c.iter().copied()).collect::<Vec<Tri>>()),
-    };
+    if comps.is_empty() { return (a.to_vec(), false, true); }
+    let arr = super::binary::arrange_components(a, comps);
     let (tris, changed) = classify_difference(&arr, a, comps);
     (tris, changed, arr.unrecovered == 0 && !super::super::budget::tripped())
 }

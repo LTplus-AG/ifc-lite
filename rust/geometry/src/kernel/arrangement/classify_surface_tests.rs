@@ -13,7 +13,7 @@ fn issue_7292_tilted_front_cannot_make_an_interior_patch_a_near_shared_face() {
     let c = [1855.0, 110.0, 609.4444444444445];
     let band = NearBand::from_tris(&[other]);
     assert!(near_on_surface_tri(c, &other, &band).is_some(), "centroid alone admits this real interior patch");
-    assert!(near_shared_surface_tri(c, &own, &other, &band).is_none(), "the far vertex exceeds the same existing band");
+    assert!(near_shared_surface_tri(c, &own, own.map(e).each_ref(), &other, &band).is_none(), "the far vertex exceeds the same existing band");
     let exact = [[0.0, 110.0, 0.0], [3750.0, 110.0, 0.0], [0.0, 110.0, 3250.0]];
     assert!(on_surface_normal(c, [0.0, 1.0, 0.0], &[exact]).is_some(), "exact coincidence retains its established path");
 }
@@ -24,7 +24,7 @@ fn issue_7292_whole_flush_triangle_retains_near_shared_face_admission() {
     let other = [[0.0, 0.0, 0.0], [4.0, 0.0, 0.0], [0.0, 4.0, 0.0]];
     let own = [[1.0, 1.0, gap], [2.0, 1.0, gap], [1.0, 2.0, gap]];
     let c = [4.0 / 3.0, 4.0 / 3.0, gap];
-    assert!(near_shared_surface_tri(c, &own, &other, &NearBand::from_tris(&[other])).is_some());
+    assert!(near_shared_surface_tri(c, &own, own.map(e).each_ref(), &other, &NearBand::from_tris(&[other])).is_some());
 }
 
 #[test]
@@ -395,4 +395,69 @@ fn issue_7292_real_cut_has_one_front_boundary_and_retains_the_next_bottom_cap() 
     assert_eq!(vertical.len(), 2, "retain the required bottom cap and upper boundary");
     assert!((vertical[0] - 80.0).abs() < 0.001, "the second cut must retain its required Z80 cap");
     assert!((vertical[1] - 3250.0).abs() < 0.001);
+}
+
+#[test]
+fn issue_7292_actual_489647_near_face_cannot_own_a_cell_outside_its_finite_outline() {
+    let _caps = budget::GLOBAL_CAP_LOCK.lock().unwrap();
+    let _element = budget::enter_element();
+    budget::begin();
+    // Actual last job004 A4/sourceparent0 versus promoted B11. The centroid
+    // is finite-near and all vertices fit the unchanged band, but A4's second
+    // vertex lies outside B11. That whole-cell ownership dropped required A.
+    let own = [[95.0, 12000.0, -325.0], [95.0, 11945.0, -320.0], [95.0, 12000.0, -320.0]];
+    let other = [[[95.00016784667969, 11845.0, -325.0],
+        [95.0, 12000.0, -320.0], [95.0, 12000.0, -325.0]]];
+    let c = [95.0, 35945.0 / 3.0, -965.0 / 3.0];
+    let n_own = [-275.0, 0.0, 0.0];
+    let exact = own.map(e);
+    let band = NearBand::from_operands(&[own], &other);
+    let n = near_on_surface_tri(c, &other[0], &band).expect("old centroid-near eligibility");
+    assert!(own.iter().all(|&p| {
+        let d = dot3(sub_f64(p, other[0][0]), n);
+        d * d <= band.scaled_band2(n, dot3(n, n))
+    }), "original whole-cell band must remain eligible");
+    assert!(on_surface_normal(c, n_own, &other).is_none(), "this exercises near, not exact shared ownership");
+    assert!(near_on_surface_normal(c, n_own, &own, exact.each_ref(), &other, &band, &std::cell::OnceCell::new()).is_none());
+    assert!(!has_nonopposed_surface(c, n_own, &own, exact.each_ref(), &other, &band, &std::cell::OnceCell::new()));
+    let tree = crate::kernel::broadphase::Bvh::build(&other);
+    assert!(surface_normal_near_a(c, n_own, &own, exact.each_ref(), &other, &tree, &band, &mut Vec::new(), &std::cell::OnceCell::new()).is_none());
+    let components = [&other[..]];
+    let bc = super::super::BComponents::new(&components);
+    assert!(bc.surface_normal(c, n_own, &own, exact.each_ref(), &[band]).is_none());
+    assert!(!budget::tripped());
+}
+
+#[test]
+fn issue_7292_symbolic_boundary_point_must_not_be_tested_as_rounded_f64() {
+    let _caps = budget::GLOBAL_CAP_LOCK.lock().unwrap();
+    let _element = budget::enter_element();
+    budget::begin();
+    use crate::kernel::{rational::point_of, Lpi};
+    use num_traits::ToPrimitive;
+    let gap = 1.0 / 65536.0;
+    // Exact (1,1/3,gap) on the projected edge from(0,0) to(3,1).
+    // Materializing1/3 rounds below that edge: a new f64-only guard would
+    // incorrectly discard this valid shared patch (the reporter failure class).
+    let points = [ImplicitPoint::Lpi(Lpi {
+        p: [0.0, 0.0, gap], q: [3.0, 1.0, gap],
+        r: [1.0, 0.0, 0.0], s: [1.0, 1.0, 0.0], t: [1.0, 0.0, 1.0],
+    }), e([1.0, 1.0, gap]), e([0.5, 1.0, gap])];
+    let own = points.each_ref().map(|p| point_of(p).map(|v| v.to_f64().unwrap()));
+    let other = [[[0.0, 0.0, 0.0], [3.0, 1.0, 0.0], [0.0, 3.0, 0.0]]];
+    let n_own = cross3(sub_f64(own[1], own[0]), sub_f64(own[2], own[0]));
+    let n_other = [0.0, 0.0, 9.0];
+    assert!(symbolic_point_in_tri_proj(&points[0], &other[0], n_other));
+    assert!(!point_in_tri_proj(own[0], &other[0], n_other), "the actual rounded point is strictly outside");
+    let c = std::array::from_fn(|k| (own[0][k] + own[1][k] + own[2][k]) / 3.0);
+    let band = NearBand::from_operands(&[own], &other);
+    assert!(on_surface_normal(c, n_own, &other).is_none());
+    assert!(near_on_surface_normal(c, n_own, &own, points.each_ref(), &other, &band, &std::cell::OnceCell::new()).is_some());
+    assert!(has_nonopposed_surface(c, n_own, &own, points.each_ref(), &other, &band, &std::cell::OnceCell::new()));
+    let tree = crate::kernel::broadphase::Bvh::build(&other);
+    assert!(surface_normal_near_a(c, n_own, &own, points.each_ref(), &other, &tree, &band, &mut Vec::new(), &std::cell::OnceCell::new()).is_some());
+    let components = [&other[..]];
+    let bc = super::super::BComponents::new(&components);
+    assert!(bc.surface_normal(c, n_own, &own, points.each_ref(), &[band]).is_some());
+    assert!(!budget::tripped());
 }

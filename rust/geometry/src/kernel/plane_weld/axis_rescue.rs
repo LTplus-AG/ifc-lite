@@ -16,6 +16,8 @@ pub(super) struct AxisPlane {
 }
 
 impl AxisPlane {
+    pub(super) fn axis_value(&self) -> (usize, f64) { (self.axis, self.value) }
+
     /// The caller supplies only its cached nondegenerate host faces.
     pub(super) fn new(tri: Tri, band2: f64) -> Option<Self> {
         let axis = (0..3).find(|&k| tri[0][k] == tri[1][k] && tri[0][k] == tri[2][k])?;

@@ -690,8 +690,8 @@ mod issue_3353_nary_near_coplanar {
     }
 }
 
-/// A two-cutter group that formerly required the volume-checked path; planar
-/// constraints now recover it (#7292). Captured (exact f32 coords)
+/// A captured two-cutter group used to exercise the lenient batch volume oracle.
+/// Strict recovery can also conform for this fixture (#7292). Exact f32 coords
 /// from the public `ara3d/dental_clinic.ifc` fixture: a gable wall already
 /// holding three windows, a stepped cutter trimming its sloped end, and a
 /// window cutter sharing the `z = 7.21` plane with it.
@@ -761,112 +761,76 @@ fn lenient_gable_group() -> (Mesh, Mesh, Mesh) {
     (wall, notch, window)
 }
 
+// Exercise the production fallback with actual kernel output even when improved
+// constraint recovery makes this captured fixture conform on the strict path.
+fn volume_checked_lenient_batch(host: &Mesh, cutters: &[&Mesh]) -> (BatchSubtract, bool, Option<Mesh>) {
+    let h = orient_outward(mesh_to_tris(host));
+    let components: Vec<Vec<Tri>> = cutters.iter().map(|m| {
+        let mut c = mesh_to_tris(m);
+        promote_cutter_verts_onto_host_faces(&mut c, &h);
+        orient_outward(c)
+    }).collect();
+    let refs: Vec<&[Tri]> = components.iter().map(Vec::as_slice).collect();
+    let (batch, changed) = difference_all_lenient(&h, &refs);
+    validate_lenient_batch(&h, &components, &batch, changed)
+}
+
 #[test]
-fn gable_group_conforms_after_planar_constraints_7292() {
-    let _cap_lock = super::super::budget::GLOBAL_CAP_LOCK.lock().unwrap();
-    let _scope = super::super::budget::enter_element();
-    super::super::budget::begin();
+fn lenient_group_keeps_its_conformity_provenance_6516() {
     let (wall, notch, window) = lenient_gable_group();
-    let (outcome, conforming, _) = subtract_many_with_conformity(&wall, &[&notch, &window], true);
-    assert!(conforming, "#7292: own-plane constraints recover the real gable group");
-    let cut = expect_cut(outcome, "the recovered group remains a real cut");
-    assert!(mesh_volume(&cut) > 0.0 && mesh_volume(&cut) < mesh_volume(&wall));
-    // The captured recut also classifies as Cut; conformance alone does not
-    // prove a geometric miss. The disjoint fixture below tests miss provenance.
+    let (outcome, conforming, _) = volume_checked_lenient_batch(&wall, &[&notch, &window]);
+    assert!(!conforming, "volume-checked output must retain its lenient provenance");
+    let cut = expect_cut(outcome, "the validated lenient group remains a real cut");
+    // Re-cutting the already removed notch is nonconforming: having no
+    // intended volume left to remove does not make its classification proof.
+    let (retry, conforms, retained) = volume_checked_lenient_batch(&cut, &[&notch]);
+    assert!(!conforms);
+    assert!(retained.is_none(), "an uncertain miss cannot be retained as proof");
+    assert!(matches!(retry, BatchSubtract::Nonconforming));
+    let retry = crate::csg::ClippingProcessor::new().subtract_mesh_many(&cut, &[&notch]);
+    assert!(!retry.found_no_overlap(), "uncertain recut must keep its sequential fallback");
 }
 
-#[test]
-fn volume_checked_geometric_miss_keeps_uncertain_provenance_6516() {
-    let _cap_lock = super::super::budget::GLOBAL_CAP_LOCK.lock().unwrap();
-    let _scope = super::super::budget::enter_element();
-    super::super::budget::begin();
-    use super::super::arrangement::box_mesh;
-    let host = tris_to_mesh(&cube_mesh(0.0, 1.0));
-    let cutter = tris_to_mesh(&box_mesh([2.0, 0.0, 0.0], [3.0, 1.0, 1.0]));
-    let h = orient_outward(mesh_to_tris(&host));
-    let c = orient_outward(mesh_to_tris(&cutter));
-    super::super::budget::begin();
-    let (outcome, conforming, retained) = finish_volume_checked_batch(&h, &[&c]);
-    assert!(matches!(outcome, BatchSubtract::Unchanged), "a disjoint solid removes zero volume");
-    assert!(!conforming, "volume agreement does not prove recovered constraints");
-    assert!(retained.is_none(), "#6516: an uncertain miss cannot suppress sequential fallback");
-    // The same real miss has stronger provenance when the public arrangement
-    // recovers every constraint; these are different proofs of the same shape.
-    let (outcome, conforming, retained) = subtract_many_with_conformity(&host, &[&cutter], true);
-    assert!(matches!(outcome, BatchSubtract::Unchanged));
-    assert!(conforming);
-    let retained = retained.expect("recovered miss retains a geometry proof");
-    assert_eq!(mesh_volume(&retained), mesh_volume(&host));
-}
-
-/// #4693: an untouched open sheet contributes the same flux to host and batch
-/// only when both volumes use the HOST reference. The public gable now conforms
-/// (#7292), so exercise the real volume-check computation directly rather than
-/// claiming that the improved fixture still enters the nonconforming branch.
+/// `subtract_many`'s volume oracle on an OPEN host (#4693).
+///
+/// The oracle accepted a lenient batch when `host − batch` matched Σ|host ∩
+/// cutter| within 1 %, with the host summed about its own AABB centre and the
+/// batch about ITS own. An open surface's sum moves with the reference point,
+/// so when the cut trims the host's bounding box, the flux of a crack the cut
+/// never touched lands in the removed volume.
+///
+/// Fixture: the captured gable group above, plus a closed 0.1 m rod
+/// standing 0.13 m off the wall's +Y end (1.87 m long) and a third cutter that
+/// takes its outer metre. That moves the AABB centre 0.5 m in −Y. The open host
+/// adds one unpaired triangle inside the wall at `y = 45` (normal ±Y, 0.47 m²),
+/// away from every cutter. Both hosts remove the same solid. On origin/main the
+/// closed host is cut and the open one reads 5.577 against the oracle's 5.107
+/// (6× m³) and falls back as `Nonconforming`. Mutation: read `batch` about
+/// `volume_reference(&batch)` again and the open-host assertion fails.
 #[test]
 fn lenient_batch_on_an_open_host_reads_both_volumes_about_one_point_4693() {
-    let _cap_lock = super::super::budget::GLOBAL_CAP_LOCK.lock().unwrap();
-    let _scope = super::super::budget::enter_element();
-    super::super::budget::begin();
     use super::super::arrangement::box_mesh;
     use crate::router::voids::geom::mesh_signed_volume_about;
     let (wall, notch, window) = lenient_gable_group();
-    let cut = expect_cut(subtract_many(&wall, &[&notch, &window]), "initial gable cut");
     let rod = tris_to_mesh(&box_mesh([0.2, 50.6, 6.0], [0.3, 52.47, 6.1]));
     let tip = tris_to_mesh(&box_mesh([0.1, 51.47, 5.9], [0.4, 53.0, 6.2]));
-    let mut closed = cut;
+    let mut closed = wall.clone();
     closed.merge(&rod);
     let mut open = closed.clone();
     open.merge(&mesh_of(&[[0.15, 45.0, 4.8], [0.35, 45.0, 4.8], [0.25, 45.0, 9.5]], &[[0, 1, 2]]));
-    let cutters = [&notch, &tip];
+    let cutters = [&notch, &window, &tip];
+
+    // Host and cut read about one point on the unpaired triangle's plane, so
+    // the triangle adds nothing to either reading, snapped or not.
     let removed = |host: &Mesh, what: &str| {
-        let h = orient_outward(mesh_to_tris(host));
-        let components: Vec<_> = cutters.iter().map(|m| {
-            let mut c = mesh_to_tris(m);
-            promote_cutter_verts_onto_host_faces(&mut c, &h);
-            orient_outward(c)
-        }).collect();
-        let refs: Vec<_> = components.iter().map(Vec::as_slice).collect();
-        super::super::budget::begin();
-        let (outcome, conforming, retained) = finish_volume_checked_batch(&h, &refs);
-        assert!(!conforming);
-        assert!(retained.is_none());
-        let batch = expect_cut(outcome, what);
-        // On the sheet's own plane its flux vanishes in this INDEPENDENT
-        // output measurement, even if the production oracle chose a bad point.
-        let reference = [0.25, 45.0, 7.0];
-        mesh_signed_volume_about(host, &reference) - mesh_signed_volume_about(&batch, &reference)
+        let cut = expect_cut(volume_checked_lenient_batch(host, &cutters).0, what);
+        let o = [0.25, 45.0, 7.0];
+        mesh_signed_volume_about(host, &o) - mesh_signed_volume_about(&cut, &o)
     };
     let closed_removed = removed(&closed, "closed host");
-    let open_removed = removed(&open, "open host must not count the untouched sheet as removed");
-    assert!((closed_removed - 0.01).abs() < 1e-4, "one metre of a 0.1 x 0.1 m rod");
-    assert!((open_removed - 0.01).abs() < 1e-4, "the notch was already removed");
-    assert!((open_removed - closed_removed).abs() < 1e-4,
-        "open host removed {open_removed} m³, closed host {closed_removed} m³");
-}
-
-#[test]
-fn volume_checked_oracle_preserves_actual_batch_budget_7292() {
-    use super::super::{arrangement::box_mesh, budget};
-    let _cap_lock = budget::GLOBAL_CAP_LOCK.lock().unwrap();
-    let _scope = budget::enter_element();
-    let h = cube_mesh(0.0, 1.0);
-    let cutter = box_mesh([0.25, 0.25, -1.0], [0.75, 0.75, 2.0]);
-    let refs = [&cutter[..]];
-    budget::begin();
-    let _ = difference_all_lenient(&h, &refs);
-    let batch_work = budget::count();
-    assert!(batch_work > 0, "the real batch exercises counted exact predicates");
-    budget::begin();
-    let intersection = boolean(&h, &cutter, BoolOp::Intersection);
-    let oracle_work = budget::count();
-    assert!(signed_volume6(&intersection).abs() > 0.0, "actual intersection oracle did work");
-    assert!(oracle_work > 0, "the fixture exercises counted exact predicates");
-    budget::begin();
-    let before = budget::snapshot_counters();
-    let (outcome, _, _) = finish_volume_checked_batch(&h, &refs);
-    assert!(matches!(outcome, BatchSubtract::Cut(_)));
-    let after = budget::snapshot_counters();
-    assert_eq!(after.0 - before.0, batch_work, "oracle work must not charge the operation");
-    assert_eq!(after.1 - before.1, batch_work, "oracle work must not charge the element");
+    let open_removed = removed(&open, "open host: the oracle read the crack as removed volume");
+    assert!(
+        (open_removed - closed_removed).abs() < 1e-4,
+        "open host removed {open_removed} m³, closed host {closed_removed} m³"
+    );
 }

@@ -157,10 +157,9 @@ fn withheld_pair_reports_the_violating_axis() {
 ///
 /// If this test ever starts failing (returns `2` instead of `1`), that is
 /// GOOD news — it means some future change tightened the connectivity notion
-/// while preserving the unresolved-contact decision in
-/// `rotated_near_band_overlap_is_withheld_exactly_as_the_axis_aligned_one_is`.
-/// A historical shared-edge experiment changed its reported output extent;
-/// that below-resolution diagnostic is not physical depth. Update this test's expectation and the
+/// without regressing `rotated_near_band_overlap_is_withheld_exactly_as_the_
+/// axis_aligned_one_is` the way a naive shared-edge partition did when tried
+/// during this review response. Update this test's expectation and the
 /// `component_groups` doc comment together at that point; do not leave the
 /// doc comment claiming a limitation that no longer exists.
 #[test]

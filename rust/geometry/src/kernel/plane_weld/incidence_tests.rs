@@ -193,9 +193,10 @@ fn issue_7292_axis_foot_rescues_979333_without_breaking_exact_shared_side_faces(
             [[3749.999755859375, 110.0, 80.0], [3750.0, 110.0, 0.0], [0.0, 110.0, 80.0]],
             [[0.0, 110.0, 3250.0], [3750.0, 110.0, 3250.0], [3750.0, 110.0, 0.0]]),
     ] {
-        let mut isolated = [source];
-        promote_cutter_verts_onto_host_faces(&mut isolated, &[axis_host]);
-        let q20 = isolated[0][0];
+        // This control demonstrates the raw Q20 primitive's scatter. Full
+        // promotion may also preserve healthy original axis-face coordinates.
+        let q20 = super::super::lift::exact_on_plane_weld(source[0], axis_host)
+            .expect("original Q20 gates pass");
         assert_ne!(q20, [3750.0, y, 80.0], "control must exercise Q20 tangential scatter");
         assert!(on_plane(q20, &axis_host));
         assert!(!on_plane(q20, &support));

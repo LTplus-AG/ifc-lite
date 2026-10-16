@@ -66,7 +66,12 @@ pub struct ExtractedProfile {
     pub hole_points: Vec<f32>,
     /// 4 × 4 column-major transform **in WebGL Y-up world space**.
     /// `M * [x_2d, y_2d, 0, 1]ᵀ` → world position.
-    pub transform: [f32; 16],
+    ///
+    /// f64, because the translation is the element's absolute world position:
+    /// at national-grid magnitude (LV95, ~2.6e6 m) an f32 step is 0.25 m, which
+    /// moved two spaces authored 4.1 m apart to 4.25 m in the HBJSON/DFJSON
+    /// rebase and broke their adjacency (EXPORT-DATA-6, #7684 / #7690).
+    pub transform: [f64; 16],
     /// Extrusion direction in WebGL Y-up world space (unit vector).
     pub extrusion_dir: [f32; 3],
     /// Extrusion depth in metres.
@@ -452,17 +457,17 @@ fn scale_translation(mut m: Matrix4<f64>, scale: f64) -> Matrix4<f64> {
     m
 }
 
-/// Convert an IFC Z-up Matrix4 to WebGL Y-up column-major [f32; 16].
+/// Convert an IFC Z-up Matrix4 to WebGL Y-up column-major [f64; 16].
 ///
 /// Conversion: new_y = old_z, new_z = -old_y (swap Y/Z, negate new Z).
 /// Applied row-wise: row 0 stays, row 1 ← row 2, row 2 ← −row 1.
-fn convert_ifc_to_webgl(m: &Matrix4<f64>) -> [f32; 16] {
-    let mut result = [0.0f32; 16];
+fn convert_ifc_to_webgl(m: &Matrix4<f64>) -> [f64; 16] {
+    let mut result = [0.0f64; 16];
     for col in 0..4 {
-        result[col * 4] = m[(0, col)] as f32; // X row: unchanged
-        result[col * 4 + 1] = m[(2, col)] as f32; // Y row: was Z
-        result[col * 4 + 2] = -m[(1, col)] as f32; // Z row: was -Y
-        result[col * 4 + 3] = m[(3, col)] as f32; // homogeneous
+        result[col * 4] = m[(0, col)]; // X row: unchanged
+        result[col * 4 + 1] = m[(2, col)]; // Y row: was Z
+        result[col * 4 + 2] = -m[(1, col)]; // Z row: was -Y
+        result[col * 4 + 3] = m[(3, col)]; // homogeneous
     }
     result
 }

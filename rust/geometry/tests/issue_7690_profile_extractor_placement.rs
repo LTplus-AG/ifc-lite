@@ -63,7 +63,7 @@ fn proc_2_grid_placed_profiles_stand_where_the_mesh_does() {
         assert!(mesh.iter().any(|c| c.abs() > 1.0), "the fixture must place #{id} off the origin: {mesh:?}");
         // WebGL Y-up: X = IFC X, Y = IFC Z, Z = -IFC Y.
         let t = &profile.transform;
-        let drawn = [t[12] as f64, -t[14] as f64, t[13] as f64];
+        let drawn = [t[12], -t[14], t[13]];
         for axis in 0..3 {
             assert!(
                 (drawn[axis] - mesh[axis]).abs() < 1e-4,

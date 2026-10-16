@@ -261,7 +261,7 @@ mod tests {
     // extruded vertically — an all-identity transform instead leaves the profile's local
     // Y axis mapped onto world Z, i.e. coplanar with the extrusion, so no test fixture may
     // use plain identity here.
-    const FLAT_FOOTPRINT_TRANSFORM: [f32; 16] =
+    const FLAT_FOOTPRINT_TRANSFORM: [f64; 16] =
         [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0];
 
     fn space(express_id: u32, outer_points: Vec<f32>) -> ExtractedProfile {

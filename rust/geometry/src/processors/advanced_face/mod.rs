@@ -31,6 +31,7 @@ pub(super) use surfaces::process_bspline_face;
 // descendant of `processors`) drains this once per representation item to
 // report a capped B-spline curve edge (#4901); see `bspline_budget.rs`.
 pub(crate) use bspline_budget::take_curve_capped;
+pub(crate) use bounds::take_face_refused;
 
 use revolution::process_surface_of_revolution_face;
 use surfaces::{process_cylindrical_face, process_planar_face_rebased};
@@ -113,11 +114,14 @@ pub(super) fn process_advanced_face(
         process_planar_face_rebased(face, decoder, quality, rtc_file_units)
     } else if surface_type == "IFCBSPLINESURFACEWITHKNOTS" {
         note_untrimmed_bspline_face(face);
-        process_bspline_face(&surface, decoder, None, quality, rtc)
+        // Every B-spline surface error is a refusal of its data (a bound,
+        // a malformed grid, knot vector or weights), counted (D3).
+        bounds::noting_refusal(process_bspline_face(&surface, decoder, None, quality, rtc))
     } else if surface_type == "IFCRATIONALBSPLINESURFACEWITHKNOTS" {
         note_untrimmed_bspline_face(face);
-        let weights = parse_rational_weights(&surface);
-        process_bspline_face(&surface, decoder, weights.as_deref(), quality, rtc)
+        bounds::noting_refusal(parse_rational_weights(&surface).and_then(|weights| {
+            process_bspline_face(&surface, decoder, Some(&weights), quality, rtc)
+        }))
     } else if surface_type == "IFCCYLINDRICALSURFACE" {
         process_cylindrical_face(face, &surface, decoder, quality, rtc)
     } else if surface_type == "IFCSURFACEOFREVOLUTION" {

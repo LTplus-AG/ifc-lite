@@ -17,9 +17,49 @@ pub(super) struct FaceBounds {
     pub(super) holes: Vec<Vec<Point3<f64>>>,
 }
 
+// ───────────────────────── face-refusal counter relay ─────────────────────
+//
+// D3 is "fail closed PLUS a counter". A refused face comes back as an `Err`,
+// which the brep and surface-model processors skip per face (#5053) with
+// only a debug trace, so without this the refusal was invisible: an element
+// could lose faces, or every face, and report nothing. Same shape as
+// `bspline_budget::CURVE_CAPPED`: a thread-local flag set where a face is
+// refused and drained once per representation item by the router
+// (`process_item_in_rtc_frame`), which records `IfcAdvancedFace`.
+thread_local! {
+    static FACE_REFUSED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Record that a face was refused because its data does not read (#7687).
+pub(super) fn note_face_refused() {
+    FACE_REFUSED.with(|c| c.set(true));
+}
+
+/// Drain the flag: `true` if any face was refused since the last drain on
+/// this thread. Drained once per top-level item, so it counts items.
+pub(crate) fn take_face_refused() -> bool {
+    FACE_REFUSED.with(|c| c.replace(false))
+}
+
+/// `result`, noting a refusal when it is an `Err`.
+pub(super) fn noting_refusal<T>(result: Result<T>) -> Result<T> {
+    if result.is_err() {
+        note_face_refused();
+    }
+    result
+}
+
 /// Resolve one `Bounds` entry of `face` to `(bound, loop)` entities. A bound
 /// that does not resolve refuses the face (#7687, D14).
 pub(super) fn resolve_bound_loop(
+    face: &DecodedEntity,
+    bound: &ifc_lite_core::AttributeValue,
+    decoder: &mut EntityDecoder,
+) -> Result<(DecodedEntity, DecodedEntity)> {
+    noting_refusal(resolve_bound_loop_unnoted(face, bound, decoder))
+}
+
+fn resolve_bound_loop_unnoted(
     face: &DecodedEntity,
     bound: &ifc_lite_core::AttributeValue,
     decoder: &mut EntityDecoder,
@@ -47,6 +87,7 @@ pub(super) fn refuse_unreadable(
     points: std::result::Result<Vec<Point3<f64>>, Refused>,
 ) -> Result<Vec<Point3<f64>>> {
     points.map_err(|Refused| {
+        note_face_refused();
         Error::geometry(format!(
             "face #{} loop #{} does not resolve; refusing the face rather than drop the loop (D14)",
             face.id, loop_entity.id

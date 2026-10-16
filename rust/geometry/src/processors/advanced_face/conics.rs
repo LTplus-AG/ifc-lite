@@ -8,6 +8,8 @@
 use crate::{scale_segments, Point3, TessellationQuality};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 
+use super::curves::{resolve_present, Refused};
+
 /// Read a conic's `IfcAxis2Placement3D` or `IfcAxis2Placement2D` and return
 /// (location, axis_z, axis_x) through the canonical readers in
 /// [`crate::transform`], the frame the profile conic samplers use too.
@@ -49,18 +51,17 @@ pub(super) fn sample_circle_edge_curve(
     curve_forward: bool,
     decoder: &mut EntityDecoder,
     quality: TessellationQuality,
-) -> Vec<Point3<f64>> {
+) -> Result<Vec<Point3<f64>>, Refused> {
     use std::f64::consts::TAU;
 
     // IfcCircle: 0=Position(IfcAxis2Placement3D|2D), 1=Radius
     let radius = match curve.get(1).and_then(|v| v.as_float()) {
         Some(r) if r > 0.0 => r,
-        _ => return vec![*start],
+        _ => return Ok(vec![*start]),
     };
 
-    let placement = match curve.get(0).and_then(|a| decoder.resolve_ref(a).ok().flatten()) {
-        Some(p) => p,
-        None => return vec![*start],
+    let Some(placement) = resolve_present(curve.get(0), decoder)? else {
+        return Ok(vec![*start]);
     };
 
     let (center, axis_z, axis_x) = read_axis2_placement_frame(&placement, decoder);
@@ -105,7 +106,7 @@ pub(super) fn sample_circle_edge_curve(
         let p = center + axis_x * (radius * angle.cos()) + axis_y * (radius * angle.sin());
         points.push(p);
     }
-    points
+    Ok(points)
 }
 
 /// Sample an `IfcEllipse` edge from `start` to `end`, walking the arc in the
@@ -121,22 +122,21 @@ pub(super) fn sample_ellipse_edge_curve(
     curve_forward: bool,
     decoder: &mut EntityDecoder,
     quality: TessellationQuality,
-) -> Vec<Point3<f64>> {
+) -> Result<Vec<Point3<f64>>, Refused> {
     use std::f64::consts::TAU;
 
     // IfcEllipse: 0=Position(IfcAxis2Placement3D|2D), 1=SemiAxis1, 2=SemiAxis2
     let r1 = match curve.get(1).and_then(|v| v.as_float()) {
         Some(r) if r > 0.0 => r,
-        _ => return vec![*start],
+        _ => return Ok(vec![*start]),
     };
     let r2 = match curve.get(2).and_then(|v| v.as_float()) {
         Some(r) if r > 0.0 => r,
-        _ => return vec![*start],
+        _ => return Ok(vec![*start]),
     };
 
-    let placement = match curve.get(0).and_then(|a| decoder.resolve_ref(a).ok().flatten()) {
-        Some(p) => p,
-        None => return vec![*start],
+    let Some(placement) = resolve_present(curve.get(0), decoder)? else {
+        return Ok(vec![*start]);
     };
 
     let (center, axis_z, axis_x) = read_axis2_placement_frame(&placement, decoder);
@@ -178,5 +178,5 @@ pub(super) fn sample_ellipse_edge_curve(
         let p = center + axis_x * (r1 * angle.cos()) + axis_y * (r2 * angle.sin());
         points.push(p);
     }
-    points
+    Ok(points)
 }

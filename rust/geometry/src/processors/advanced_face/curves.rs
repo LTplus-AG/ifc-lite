@@ -31,23 +31,26 @@ pub(super) fn extract_vertex_coords(vertex: &DecodedEntity, decoder: &mut Entity
 /// and the KnotSpec enum as "knots", so every B-spline edge silently bailed
 /// to a single vertex (issue #1661). The 6/7 pair is kept as a validated
 /// fallback in case a producer emits an extra attribute.
-pub(super) fn parse_curve_knots(curve: &DecodedEntity) -> Option<(Vec<i64>, Vec<f64>)> {
+///
+/// A layout is matched on its RAW list lengths (one multiplicity per knot).
+/// An entry of the matched layout that is not a number refuses the curve
+/// (#7687): it used to be dropped, shifting every later knot.
+pub(super) fn parse_curve_knots(curve: &DecodedEntity) -> Result<Option<(Vec<i64>, Vec<f64>)>, Refused> {
     for (mi, ki) in [(5usize, 6usize), (6, 7)] {
-        let mults: Vec<i64> = match curve.get(mi).and_then(|a| a.as_list()) {
-            Some(l) => l.iter().filter_map(|v| v.as_int()).collect(),
-            None => continue,
+        let (Some(mults), Some(knots)) = (
+            curve.get(mi).and_then(|a| a.as_list()),
+            curve.get(ki).and_then(|a| a.as_list()),
+        ) else {
+            continue;
         };
-        let knots: Vec<f64> = match curve.get(ki).and_then(|a| a.as_list()) {
-            Some(l) => l.iter().filter_map(|v| v.as_float()).collect(),
-            None => continue,
-        };
-        // The schema requires one multiplicity per knot value; use that as the
-        // discriminator between the two attribute layouts.
-        if !mults.is_empty() && mults.len() == knots.len() {
-            return Some((mults, knots));
+        if mults.is_empty() || mults.len() != knots.len() {
+            continue;
         }
+        let mults = mults.iter().map(|v| v.as_int()).collect::<Option<Vec<_>>>().ok_or(Refused)?;
+        let knots = knots.iter().map(|v| v.as_float()).collect::<Option<Vec<_>>>().ok_or(Refused)?;
+        return Ok(Some((mults, knots)));
     }
-    None
+    Ok(None)
 }
 
 /// Read a parameter trim from an `IfcTrimmedCurve.Trim1/Trim2` SELECT list:
@@ -84,6 +87,21 @@ pub(super) fn read_trim_parameter(attr: &ifc_lite_core::AttributeValue) -> Optio
 /// rule for poly-loops (`get_polyloop_point_ids_fast`, #3421).
 #[derive(Debug)]
 pub(super) struct Refused;
+
+/// Resolve an entity-valued attribute that may be absent. Absent, `$` or `*`
+/// is `Ok(None)`, leaving the caller's old fallback (a chord, a default
+/// frame). A reference that is PRESENT but does not decode is
+/// `Err(Refused)` (#7687): the file names a curve or placement that is not
+/// there, and the fallback would draw something the file never described.
+pub(super) fn resolve_present(
+    attr: Option<&ifc_lite_core::AttributeValue>,
+    decoder: &mut EntityDecoder,
+) -> Result<Option<DecodedEntity>, Refused> {
+    match attr.and_then(|a| a.as_entity_ref()) {
+        None => Ok(None),
+        Some(id) => decoder.decode_by_id(id).map(Some).map_err(|_| Refused),
+    }
+}
 
 /// A decoded `IfcBSplineCurveWithKnots`: degree, control points and the
 /// expanded knot vector, with `knots.len() > degree` guaranteed.
@@ -153,7 +171,7 @@ fn parse_bspline_curve(
     if control_points.len() <= degree {
         return Ok(None);
     }
-    let Some((mults, knot_values)) = parse_curve_knots(curve) else {
+    let Some((mults, knot_values)) = parse_curve_knots(curve)? else {
         return Ok(None);
     };
     let knots = expand_knots(&knot_values, &mults);

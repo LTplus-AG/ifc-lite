@@ -69,7 +69,7 @@ FILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n{data}ENDSEC;\nEND-ISO-10303-21;\n"
 fn sample(content: &str, id: u32) -> Vec<Point3<f64>> {
     let mut decoder = EntityDecoder::new(content);
     let curve = decoder.decode_by_id(id).expect("decode curve");
-    sample_curve_polyline(&curve, &mut decoder, TessellationQuality::default())
+    try_sample_curve_polyline(&curve, &mut decoder, TessellationQuality::default()).expect("not refused")
 }
 
 #[test]

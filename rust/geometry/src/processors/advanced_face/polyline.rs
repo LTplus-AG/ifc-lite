@@ -8,25 +8,18 @@ use crate::{scale_segments, Point3, TessellationQuality};
 use ifc_lite_core::{DecodedEntity, EntityDecoder};
 
 use super::conics::{read_axis2_placement_frame, sample_circle_edge_curve};
-use super::curves::{sample_bspline_curve_polyline, sample_bspline_edge_curve, Refused};
+use super::curves::{resolve_present, sample_bspline_curve_polyline, sample_bspline_edge_curve, Refused};
 
 /// Sample points along a curve in 3D. Currently handles `IfcLine`, `IfcCircle`,
-/// `IfcTrimmedCurve` and `IfcBSplineCurveWithKnots`. Returns a polyline that
-/// approximates the curve. Used as the generator profile for surfaces of
-/// revolution. A refused curve (see [`try_sample_curve_polyline`]) yields no
-/// points, like an unsupported one.
-pub(super) fn sample_curve_polyline(
-    curve: &DecodedEntity,
-    decoder: &mut EntityDecoder,
-    quality: TessellationQuality,
-) -> Vec<Point3<f64>> {
-    try_sample_curve_polyline(curve, decoder, quality).unwrap_or_default()
-}
-
-/// [`sample_curve_polyline`], telling a curve whose authored points do not
-/// resolve (`Err(Refused)`, #7687 PROC-S21) apart from one this sampler does
-/// not support (`Ok` and empty). A composite edge refuses its loop on the
-/// former and bridges the latter, as it always has.
+/// `IfcEllipse`, `IfcPolyline`, `IfcTrimmedCurve` and `IfcBSplineCurveWithKnots`.
+/// Returns a polyline that approximates the curve, used as the generator
+/// profile for surfaces of revolution and for composite-curve segments.
+///
+/// `Err(Refused)` is a curve whose authored points do not resolve (#7687,
+/// PROC-S21); `Ok` and empty is a curve this sampler does not support. A
+/// composite edge refuses its loop on the former and bridges the latter, and
+/// a surface of revolution refuses its face on the former and falls back to
+/// its planar boundary on the latter.
 pub(super) fn try_sample_curve_polyline(
     curve: &DecodedEntity,
     decoder: &mut EntityDecoder,
@@ -84,9 +77,7 @@ fn sample_curve_polyline_guarded(
     }
     if kind == "IFCLINE" {
         // IfcLine: 0=Pnt, 1=Dir(IfcVector). Treat as segment [Pnt, Pnt+Dir·magnitude].
-        let pnt = curve
-            .get(0)
-            .and_then(|a| decoder.resolve_ref(a).ok().flatten())
+        let pnt = resolve_present(curve.get(0), decoder)?
             .and_then(|p| {
                 let coords = p.get(0).and_then(|v| v.as_list())?;
                 let x = coords.first().and_then(|v| v.as_float()).unwrap_or(0.0);
@@ -94,11 +85,13 @@ fn sample_curve_polyline_guarded(
                 let z = coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0);
                 Some(Point3::new(x, y, z))
             });
-        let (dir, mag) = curve
-            .get(1)
-            .and_then(|a| decoder.resolve_ref(a).ok().flatten())
+        let vector = resolve_present(curve.get(1), decoder)?;
+        let direction = match &vector {
+            Some(v) => resolve_present(v.get(0), decoder)?,
+            None => None,
+        };
+        let (dir, mag) = vector
             .map(|v| {
-                let direction = v.get(0).and_then(|a| decoder.resolve_ref(a).ok().flatten());
                 let magnitude = v.get(1).and_then(|a| a.as_float()).unwrap_or(1.0);
                 let dir = direction
                     .and_then(|d| {
@@ -121,9 +114,8 @@ fn sample_curve_polyline_guarded(
         if radius <= 0.0 {
             return Ok(Vec::new());
         }
-        let placement = match curve.get(0).and_then(|a| decoder.resolve_ref(a).ok().flatten()) {
-            Some(p) => p,
-            None => return Ok(Vec::new()),
+        let Some(placement) = resolve_present(curve.get(0), decoder)? else {
+            return Ok(Vec::new());
         };
         let (center, axis_z, axis_x) = read_axis2_placement_frame(&placement, decoder);
         let axis_y = axis_z.cross(&axis_x);
@@ -150,9 +142,8 @@ fn sample_curve_polyline_guarded(
         if r1 <= 0.0 || r2 <= 0.0 {
             return Ok(Vec::new());
         }
-        let placement = match curve.get(0).and_then(|a| decoder.resolve_ref(a).ok().flatten()) {
-            Some(p) => p,
-            None => return Ok(Vec::new()),
+        let Some(placement) = resolve_present(curve.get(0), decoder)? else {
+            return Ok(Vec::new());
         };
         let (center, axis_z, axis_x) = read_axis2_placement_frame(&placement, decoder);
         let axis_y = axis_z.cross(&axis_x);
@@ -166,9 +157,8 @@ fn sample_curve_polyline_guarded(
     }
     if kind == "IFCTRIMMEDCURVE" {
         // 0=BasisCurve, 1=Trim1, 2=Trim2, 3=Sense, 4=MasterRepresentation.
-        let basis = match curve.get(0).and_then(|a| decoder.resolve_ref(a).ok().flatten()) {
-            Some(b) => b,
-            None => return Ok(Vec::new()),
+        let Some(basis) = resolve_present(curve.get(0), decoder)? else {
+            return Ok(Vec::new());
         };
         let basis_kind = basis.ifc_type.as_str().to_uppercase();
         let sense = curve
@@ -207,7 +197,7 @@ fn sample_curve_polyline_guarded(
                 // the polyline isn't truncated by one segment.
                 // Per CodeRabbit feedback on PR #605.
                 let mut pts =
-                    sample_circle_edge_curve(&basis, &p_start, &p_end, sense, decoder, quality);
+                    sample_circle_edge_curve(&basis, &p_start, &p_end, sense, decoder, quality)?;
                 pts.push(p_end);
                 return Ok(pts);
             }

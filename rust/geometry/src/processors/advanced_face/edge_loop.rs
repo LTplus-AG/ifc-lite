@@ -10,7 +10,7 @@ use ifc_lite_core::{DecodedEntity, EntityDecoder};
 use super::conics::{sample_circle_edge_curve, sample_ellipse_edge_curve};
 use super::curves::{
     extract_vertex_coords, read_trim_parameter, sample_bspline_edge_curve,
-    sample_bspline_edge_curve_range, Refused,
+    resolve_present, sample_bspline_edge_curve_range, Refused,
 };
 use super::polyline::{polyline_points, try_sample_curve_polyline};
 
@@ -65,9 +65,9 @@ fn sample_edge_curve_points_or_refuse(
     let same_sense = edge_curve.get(3).and_then(|attribute| attribute.as_enum())
         .map(|value| value == "T" || value == "TRUE").unwrap_or(true);
     let curve_forward = orientation == same_sense;
-    let geometry = edge_curve
-        .get(2)
-        .and_then(|attribute| decoder.resolve_ref(attribute).ok().flatten());
+    // An absent EdgeGeometry is a straight edge (the chord); a dangling one
+    // is refused (#7687).
+    let geometry = resolve_present(edge_curve.get(2), decoder)?;
     let sampled = match geometry.as_ref() {
         Some(geometry) => sample_edge_geometry(
             geometry,
@@ -167,12 +167,14 @@ fn sample_edge_geometry(
         // the loop's walk direction. Without this, every circular boundary
         // collapses to a single vertex per edge — disc caps and curved fillets
         // become slivers.
-        "IFCCIRCLE" => walk_start.zip(*walk_end).map(|(s, e)| {
-            sample_circle_edge_curve(geom, &s, &e, curve_forward, decoder, quality)
-        }),
-        "IFCELLIPSE" => walk_start.zip(*walk_end).map(|(s, e)| {
-            sample_ellipse_edge_curve(geom, &s, &e, curve_forward, decoder, quality)
-        }),
+        "IFCCIRCLE" => walk_start
+            .zip(*walk_end)
+            .map(|(s, e)| sample_circle_edge_curve(geom, &s, &e, curve_forward, decoder, quality))
+            .transpose()?,
+        "IFCELLIPSE" => walk_start
+            .zip(*walk_end)
+            .map(|(s, e)| sample_ellipse_edge_curve(geom, &s, &e, curve_forward, decoder, quality))
+            .transpose()?,
         // IfcTrimmedCurve: 0=BasisCurve, 1=Trim1, 2=Trim2, 3=SenseAgreement.
         // The edge's vertices anchor the endpoints, so the trim parameters are
         // not needed; only the basis curve's shape and the combined walk sense
@@ -180,7 +182,7 @@ fn sample_edge_geometry(
         // parameterization, so the effective basis direction flips when it is
         // FALSE.
         "IFCTRIMMEDCURVE" => {
-            let Some(basis) = geom.get(0).and_then(|a| decoder.resolve_ref(a).ok().flatten()) else {
+            let Some(basis) = resolve_present(geom.get(0), decoder)? else {
                 return Ok(None);
             };
             let sense = geom
@@ -191,12 +193,14 @@ fn sample_edge_geometry(
             let basis_forward = curve_forward == sense;
             let basis_type = basis.ifc_type.as_str().to_uppercase();
             match basis_type.as_str() {
-                "IFCCIRCLE" => walk_start.zip(*walk_end).map(|(s, e)| {
-                    sample_circle_edge_curve(&basis, &s, &e, basis_forward, decoder, quality)
-                }),
-                "IFCELLIPSE" => walk_start.zip(*walk_end).map(|(s, e)| {
-                    sample_ellipse_edge_curve(&basis, &s, &e, basis_forward, decoder, quality)
-                }),
+                "IFCCIRCLE" => walk_start
+                    .zip(*walk_end)
+                    .map(|(s, e)| sample_circle_edge_curve(&basis, &s, &e, basis_forward, decoder, quality))
+                    .transpose()?,
+                "IFCELLIPSE" => walk_start
+                    .zip(*walk_end)
+                    .map(|(s, e)| sample_ellipse_edge_curve(&basis, &s, &e, basis_forward, decoder, quality))
+                    .transpose()?,
                 "IFCBSPLINECURVEWITHKNOTS" | "IFCRATIONALBSPLINECURVEWITHKNOTS" => {
                     let Some(s) = *walk_start else { return Ok(None) };
                     // Honour parameter trims so sampling stays on the trimmed

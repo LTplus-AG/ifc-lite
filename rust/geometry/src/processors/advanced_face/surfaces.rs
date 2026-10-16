@@ -13,7 +13,7 @@ use super::super::helpers::get_axis2_placement_transform_by_id;
 use super::bounds::extract_face_bounds;
 use super::bspline::tessellate_bspline_surface;
 use super::bspline_budget::{MAX_BSPLINE_DEGREE, MAX_BSPLINE_SURFACE_SAMPLE_WORK};
-use super::bspline_parse::{parse_control_points, parse_knot_vectors};
+use super::bspline_parse::{check_weights_match, parse_control_points, parse_knot_vectors};
 use super::edge_loop::extract_edge_loop_points_for_bounds;
 
 /// Process a planar or boundary-represented face.
@@ -184,6 +184,10 @@ pub(crate) fn process_bspline_face(
         point.x -= rtc.0;
         point.y -= rtc.1;
         point.z -= rtc.2;
+    }
+
+    if let Some(weights) = weights {
+        check_weights_match(weights, &control_points)?;
     }
 
     // Parse knot vectors

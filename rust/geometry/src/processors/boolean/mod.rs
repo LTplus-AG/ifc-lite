@@ -22,6 +22,7 @@ mod cut_heuristics;
 mod failures;
 mod operand;
 mod halfspace_cap;
+mod polygonal_boundary;
 mod polygonal_prism;
 mod single_cutter_gate;
 use single_cutter_gate::SingleCutterSubtract;

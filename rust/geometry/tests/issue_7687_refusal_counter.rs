@@ -251,3 +251,42 @@ fn non_numeric_curve_knot_refuses_the_face_7687() {
     assert_eq!(tris, 10, "both faces on the edge must be refused");
     assert!(counts_refused_face(&counted), "got {counted:?}");
 }
+
+/// Run the PUBLIC `AdvancedBrepProcessor` on `data` directly, outside the
+/// router, so nothing drains the thread-local refusal flags afterwards.
+fn direct_processor_call(data: &str) {
+    use ifc_lite_core::IfcSchema;
+    use ifc_lite_geometry::{AdvancedBrepProcessor, GeometryProcessor, TessellationQuality};
+    let content = wrap(data);
+    let index = build_entity_index(&content);
+    let mut decoder = EntityDecoder::with_index(&content, index);
+    let entity = decoder.decode_by_id(1).expect("decode");
+    let _ = AdvancedBrepProcessor::new().process(
+        &entity,
+        &mut decoder,
+        &IfcSchema::new(),
+        TessellationQuality::Medium,
+    );
+}
+
+/// Stale-flag hazard (#7745 review): a direct processor call that refuses a
+/// face leaves the face-refused flag set on the thread; the next router item
+/// must not inherit it. `process_item_in_rtc_frame` resets the flags first.
+#[test]
+fn direct_processor_refusal_does_not_leak_into_the_next_router_item_7687() {
+    direct_processor_call(&cube(&[(
+        "#1002=IFCORIENTEDEDGE(*,*,#1001,.T.);",
+        "#1002=IFCORIENTEDEDGE(*,*,#9999,.T.);",
+    )]));
+    assert_eq!(process(&cube(&[])), (12, vec![]), "the intact cube must record nothing");
+}
+
+/// The same for the capped-curve flag (`bspline_budget::CURVE_CAPPED`).
+#[test]
+fn direct_processor_capped_curve_does_not_leak_into_the_next_router_item_7687() {
+    direct_processor_call(&cube(&[(
+        "#1000=IFCPOLYLINE((#10,#13));",
+        "#1000=IFCBSPLINECURVEWITHKNOTS(999999,(#10,#13,#13),.UNSPECIFIED.,.F.,.F.,(3,3),(0.,1.),.UNSPECIFIED.);",
+    )]));
+    assert_eq!(process(&cube(&[])), (12, vec![]), "the intact cube must record nothing");
+}

@@ -147,7 +147,7 @@ fn qset_lines(pass: &mut Pass<'_, '_>, host: u32, qsets: &[QSet]) -> Result<Vec<
             } else {
                 ""
             };
-            lines.push((id, format!("#{id}={entity}('{}',$,$,{}{formula});", escape(&q.name), to_step_real(q.value))));
+            lines.push((id, format!("#{id}={entity}('{}',$,$,{}{formula});", escape(&q.name), to_step_real(q.value)?)));
             refs.push(format!("#{id}"));
         }
         let set_id = pass.allocate()?;

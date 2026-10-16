@@ -4,15 +4,19 @@
 
 use crate::mesh::Mesh;
 use nalgebra::{Point3, Vector3};
+mod buckets;
+mod candidates;
 mod conform;
+mod plans;
 mod plane_merge;
 mod ring_ops;
 mod preservation;
 mod supported_cells;
 
 use super::ClippingProcessor;
-use conform::{build_seam_map, conform_plans, count_open_boundary_edges_at, emit_plans, PlanBucket, PlanRegion};
-use plane_merge::{merge_rounding_split_buckets, tag_for, PlaneTri};
+use conform::count_open_boundary_edges_at;
+#[cfg(test)]
+use conform::{build_seam_map, conform_plans, PlanBucket};
 use ring_ops::floor_pow2;
 #[cfg(test)]
 use ring_ops::{ring_is_noise, weld_near_coincident_2d};
@@ -149,359 +153,21 @@ impl ClippingProcessor {
     }
 
     fn consolidate_with_supported_cells(mesh: Mesh, length_unit_scale: f64, preserve_supported: bool) -> Mesh {
-        use crate::grid::NORMAL_QUANT_F64 as NORMAL_QUANT;
-        use crate::triangulation::project_to_2d_with_basis;
-        use i_overlay::core::fill_rule::FillRule;
-        use i_overlay::core::overlay_rule::OverlayRule;
-        use i_overlay::float::single::SingleFloatOverlay;
-
         if mesh.indices.len() < 6 {
             return mesh;
         }
-
-        // Quantization for plane bucketing — normals are coarser (1e3) than
-        // positions because cross-product noise on near-coplanar tris can
-        // wobble in the 6th decimal; offsets get the same coarsening so
-        // bucket keys stay aligned with normal direction.
-        //
-        // NB (issue #1007): the offset key is deliberately FINE (1 µm) and must
-        // NOT be coarsened. The exact-kernel opening cut on a faceted-BREP roof
-        // emits the hole-boundary triangles on planes that jitter ~25–150 µm;
-        // that jitter is what keeps each on its own bucket. Coalescing them (a
-        // coarser offset grid, or projecting the whole roof slope to ONE canonical
-        // plane) lets the i_overlay UNION close the opening hole — a bridging facet
-        // over the footprint, caught by `issue_1007_real_opening_no_bridge`.
-        const POS_QUANT: f64 = 1.0e6;
-        let qpos = |p: f64| (p * POS_QUANT).round() as i64;
-        let qnorm = |n: f64| (n * NORMAL_QUANT).round() as i64;
-
-        // Step 1 — group input triangles by plane.
-        let positions = &mesh.positions;
-        let vertex_count = positions.len() / 3;
-        let triangle_count = mesh.indices.len() / 3;
-        let plane_tags = mesh.plane_tags.as_deref();
-        // BTreeMap, NOT FxHashMap: step 2 emits the output mesh in bucket
-        // iteration order, and FxHasher mixes usize-wide chunks, so its
-        // iteration order differs between 64-bit native and 32-bit wasm32 -
-        // the same cut came out with a different (valid but non-identical)
-        // triangle order per target, breaking the native==wasm mesh-output
-        // determinism manifest. Ord-keyed iteration is target-independent
-        // (same pattern as facet_weld's normal_buckets); bucket counts per
-        // cut are small, so the tree overhead is noise.
-        //
-        // Bucketing itself is UNCHANGED (today's geometric re-derivation):
-        // #3914's fix is a separate merge pass below, not a different key
-        // here — see that pass for why.
-        let mut buckets: std::collections::BTreeMap<(i64, i64, i64, i64), Vec<PlaneTri>> =
-            std::collections::BTreeMap::new();
-        for (tri_idx, chunk) in mesh.indices.chunks_exact(3).enumerate() {
-            let (i0, i1, i2) = (chunk[0] as usize, chunk[1] as usize, chunk[2] as usize);
-            if i0 >= vertex_count || i1 >= vertex_count || i2 >= vertex_count {
-                continue;
-            }
-            let v0 = Point3::new(
-                positions[i0 * 3] as f64,
-                positions[i0 * 3 + 1] as f64,
-                positions[i0 * 3 + 2] as f64,
-            );
-            let v1 = Point3::new(
-                positions[i1 * 3] as f64,
-                positions[i1 * 3 + 1] as f64,
-                positions[i1 * 3 + 2] as f64,
-            );
-            let v2 = Point3::new(
-                positions[i2 * 3] as f64,
-                positions[i2 * 3 + 1] as f64,
-                positions[i2 * 3 + 2] as f64,
-            );
-            let edge1 = v1 - v0;
-            let edge2 = v2 - v0;
-            let cross = edge1.cross(&edge2);
-            let len = cross.norm();
-            if len < 1.0e-10 {
-                continue;
-            }
-            let normal = cross / len;
-            let offset = normal.dot(&v0.coords);
-            let key = (
-                qnorm(normal.x),
-                qnorm(normal.y),
-                qnorm(normal.z),
-                qpos(offset),
-            );
-            let tri_v = [v0, v1, v2];
-            let tag = tag_for(plane_tags, triangle_count, tri_idx, &tri_v);
-            buckets.entry(key).or_default().push(PlaneTri {
-                v: tri_v,
-                normal,
-                tag,
-            });
-        }
-
-        // Issue #3914 fix: stitch a `POS_QUANT`-rounding bucket split
-        // back together using the kernel's own f64 plane tags — see
-        // `plane_merge::merge_rounding_split_buckets` for the mechanism,
-        // why it is a narrow adjacent-pair merge rather than a global
-        // re-key, and the scale-relative/-capped tolerances involved.
-        let merged_bucket_keys = merge_rounding_split_buckets(&mut buckets);
+        let mut buckets = buckets::build(&mesh);
+        // Stitch only the adjacent rounding splits certified by the kernel tags.
+        let merged_bucket_keys = plane_merge::merge_rounding_split_buckets(&mut buckets);
         let supported = if preserve_supported { supported_cells::find(&buckets) } else { Default::default() };
-        let mut supported_bids = rustc_hash::FxHashSet::default();
-        let mut retained_cells = Mesh::new();
-
-        // Step 2 — three phases over the SAME bucket map.
-        //
-        // A: union + weld + simplify each bucket's rings and record which 0.1 mm
-        //    positions each bucket KEPT.
-        // B: put back, into every ring, the recorded positions that some OTHER
-        //    bucket kept and that fall strictly inside one of this ring's edges.
-        // C: triangulate and emit.
-        //
-        // WHY (T-junction hairline cracks, dental_clinic #217): `simplify_2d_collinear`
-        // chords a boundary that an ABUTTING bucket subdivides — the cut end face is
-        // split at mid-height, the two corner verticals keep the full-height edge, so
-        // one long edge faces two short ones. Retaining every shared vertex kills the
-        // phantom merge the simplify exists for (#098's faceted reveal shares nearly
-        // all of them), and no local geometric test separates the cases: #217's
-        // must-keep sagitta (0.93 µm) sits BELOW several of #098's must-drop phantoms.
-        // Conforming by ADDITION uses the same asymmetry as a source instead of a
-        // veto, so the phantom removal is untouched: a phantom is near-collinear in
-        // every bucket, is kept nowhere, and is never re-inserted.
-        let mut plans: Vec<PlanBucket> = Vec::with_capacity(buckets.len());
-
-        // Phase A.
-        for (bid, (bucket_key, tris)) in buckets.iter().enumerate() {
-            if tris.is_empty() {
-                continue;
-            }
-            crate::progress::tick();
-            let bid = bid as u32;
-            // Use the FIRST triangle's normal/anchor for a stable 2D basis;
-            // all tris in this bucket share the plane by construction. EXCEPT
-            // (#3914): a bucket the merge pass above just folded a straddling
-            // neighbour into — `tris[0]`'s own recomputed cross-product
-            // normal is one specific member's noise, not the shared plane
-            // both original buckets' tags agreed on; use that tag's normal
-            // instead. An ordinary, non-merged bucket (the overwhelming
-            // majority) is untouched: this is `tris[0].normal` exactly as
-            // before the fix.
-            let normal = if merged_bucket_keys.contains(bucket_key) {
-                tris[0].tag.map(|(n, _)| n).unwrap_or(tris[0].normal)
-            } else {
-                tris[0].normal
-            };
-            let origin = tris[0].v[0];
-            let abs = (normal.x.abs(), normal.y.abs(), normal.z.abs());
-            let reference = if abs.0 <= abs.1 && abs.0 <= abs.2 {
-                Vector3::new(1.0, 0.0, 0.0)
-            } else if abs.1 <= abs.2 {
-                Vector3::new(0.0, 1.0, 0.0)
-            } else {
-                Vector3::new(0.0, 0.0, 1.0)
-            };
-            let u_axis = normal.cross(&reference).normalize();
-            let v_axis = normal.cross(&u_axis).normalize();
-            // CCW-in-2D convention: i_overlay's NonZero fill needs each
-            // input triangle wound CCW in (u, v). Our 3D triangles are CCW
-            // looking down `normal`; the (u, v) basis above is right-handed
-            // with `v = normal × u`, so projection preserves winding.
-
-            let mut plan = PlanBucket {
-                bid,
-                normal,
-                origin,
-                u_axis,
-                v_axis,
-                raw: Vec::new(),
-                raw_conformed: None,
-                regions: Vec::new(),
-            };
-
-            // Project each triangle to 2D and build i_overlay paths.
-            if supported.buckets.contains(bucket_key) {
-                supported_bids.insert(bid);
-                // Retained needles remain as ghost seam sources. The ordinary
-                // emitter drops them; one retained copy is appended afterward.
-                for t in tris {
-                    if supported.cells.contains(&supported_cells::cell_key(&t.v)) {
-                        supported_cells::append(&mut retained_cells, &t.v, &normal);
-                    }
-                    plan.raw.push(t.v);
-                }
-                plans.push(plan);
-                continue;
-            }
-            if tris.len() == 1 {
-                // Single triangle — skip the union round-trip entirely. Its three
-                // corners are hard corners by definition, so they are valid
-                // insertion sources for the buckets that abut them (recorded
-                // lazily, in `build_seam_map`).
-                plan.raw.push(tris[0].v);
-                plans.push(plan);
-                continue;
-            }
-            let mut subject: Vec<Vec<[f64; 2]>> = Vec::with_capacity(1);
-            let mut clip: Vec<Vec<[f64; 2]>> = Vec::with_capacity(tris.len() - 1);
-            // The plane's total area, for `ring_is_noise`'s share test.
-            let mut plane_area = 0.0_f64;
-            for (idx, tri) in tris.iter().enumerate() {
-                let pts_2d = project_to_2d_with_basis(&tri.v, &u_axis, &v_axis, &origin);
-                // Force CCW for i_overlay's NonZero fill — kernel output
-                // fragments can carry inconsistent winding, and mixed-winding
-                // subject + clip cancel out instead of unioning.
-                let signed_area = (pts_2d[1].x - pts_2d[0].x)
-                    * (pts_2d[2].y - pts_2d[0].y)
-                    - (pts_2d[2].x - pts_2d[0].x)
-                        * (pts_2d[1].y - pts_2d[0].y);
-                plane_area += 0.5 * signed_area.abs();
-                let path: Vec<[f64; 2]> = if signed_area >= 0.0 {
-                    pts_2d.iter().map(|p| [p.x, p.y]).collect()
-                } else {
-                    pts_2d.iter().rev().map(|p| [p.x, p.y]).collect()
-                };
-                if idx == 0 {
-                    subject.push(path);
-                } else {
-                    clip.push(path);
-                }
-            }
-
-            let shapes = subject.overlay(&clip, OverlayRule::Union, FillRule::NonZero);
-            if shapes.is_empty() {
-                // Union collapsed everything — emit originals to avoid loss.
-                for t in tris {
-                    plan.raw.push(t.v);
-                }
-                plans.push(plan);
-                continue;
-            }
-
-            plan.regions = PlanRegion::from_shapes(&shapes, plane_area, length_unit_scale);
-            plans.push(plan);
-        }
-
-        // Phase C — today's output first. An already-watertight host pays nothing for
-        // the conform: phase B and the second triangulation are pure cost when there
-        // is no tear to close, and the accept bar below would reject them anyway.
-        //
-        // The bar is ALL-OR-NOTHING, and that is measured, not cautious: on the #098
-        // reveal wall conforming lowers the per-cut open-edge count on EVERY one of the
-        // seven sequential cuts (227 -> 144 on the last), yet each partially-conformed
-        // intermediate feeds the next kernel cut and the FINAL wall came out at 282
-        // unpaired edges against 42 for today's output. A partial conform trades a
-        // T-junction for a subdivided edge whose true neighbour across it did NOT get
-        // the same vertex; only a fully-closed host proves every insertion landed on a
-        // real seam. With the bar at zero that wall improves to 22 and dental_clinic
-        // #217 goes watertight (6 -> 0).
-        //
-        // Measured on the 0.1 mm grid, not the 1 mm default: a chorded seam deviates by
-        // ~µm, merges away at 1 mm, and would read as "closed" — which accepts a
-        // conform that is in fact still torn (that is exactly the 282 above).
-        // The seam map is built ONLY when today's output is torn. Recording every
-        // bucket's kept corners unconditionally cost +61% geometry time on
-        // ISSUE_129 (1014 -> 1634 ms) for a map that ~85% of hosts never consult.
-        let (mut output, base_complete) = emit_plans(&mut plans, false);
-        supported_cells::append_mesh(&mut output, &retained_cells);
-        // A region that failed to triangulate is skipped, so an incomplete baseline
-        // can be missing a whole closed component while still reading as watertight.
-        // Consolidation's standing contract is "never worse than the raw kernel
-        // output", so hand back the raw mesh rather than a known-lossy consolidation.
-        if !base_complete {
+        let mut planned = plans::build(&buckets, &merged_bucket_keys, &supported, length_unit_scale);
+        let Some(output) = candidates::emit(&mut planned) else {
             return mesh;
-        }
-        if count_open_boundary_edges_at(&output, 1.0e4) > 0 {
-            let seam = build_seam_map(&plans);
-            if conform_plans(&mut plans, &seam) {
-                // Keep the three original supporting edges of a retained cell.
-                for plan in &mut plans {
-                    if supported_bids.contains(&plan.bid) { plan.raw_conformed = None; }
-                }
-                // `complete` is part of the bar, not a detail: a region that fails
-                // to triangulate is skipped, and if it was its own closed component
-                // the remainder still balances — so a watertight-LOOKING candidate
-                // can be missing a whole surface. Reject unless every region landed.
-                let raw_conformed = plans.iter().any(|plan| plan.raw_conformed.is_some());
-                let (mut candidate, complete) = emit_plans(&mut plans, true);
-                supported_cells::append_mesh(&mut candidate, &retained_cells);
-                if let Some(candidate) =
-                    complete_conformed_candidate(candidate, complete, raw_conformed)
-                {
-                    output = candidate;
-                } else if raw_conformed {
-                    // Preserve the established region-only conform when a new raw
-                    // split does not pair exactly. This is the #3913 N-ary sweep
-                    // safety valve: raw additions may improve the 0.1 mm metric
-                    // while introducing an exact-coordinate tear.
-                    for plan in &mut plans {
-                        plan.raw_conformed = None;
-                    }
-                    let (mut candidate, complete) = emit_plans(&mut plans, true);
-                supported_cells::append_mesh(&mut candidate, &retained_cells);
-                    if let Some(candidate) =
-                        complete_conformed_candidate(candidate, complete, false)
-                    {
-                        output = candidate;
-                    }
-                }
-            }
-        }
-
+        };
         if output.is_empty() {
             return mesh;
         }
-        // WATERTIGHTNESS GUARD (curved / opening-dense wall hairline cracks). The
-        // per-bucket re-triangulation above treats each coplanar plane bucket
-        // independently. Where a FLAT bucket's boundary runs along a faceted surface
-        // — an opening reveal, a cap, the rim of a curved or offset-jittered wall —
-        // the i_overlay union + collinear simplify chords that boundary, dropping the
-        // facet-boundary vertices the abutting buckets keep. The result is open
-        // boundary edges + T-junctions at the cut seam that the raw kernel output
-        // (which is watertight) did NOT have = the white horizontal hairlines that
-        // shimmer under DoubleSide. Detect it directly and pick the better mesh by
-        // (open edges + spike triangles): when consolidation introduced open edges
-        // and the raw mesh is the cleaner one overall, return raw. A curved/offset-
-        // jittered host's raw is watertight and well-formed (raw wins -> crack gone);
-        // a host whose raw carries needle fans consolidation exists to merge keeps the
-        // consolidated mesh. Watertight, spike-free hosts (the overwhelming majority,
-        // incl. #780 bath and ordinary flat walls) have cons_open == 0 and return
-        // immediately -> byte-identical, determinism snapshots unmoved. The exact
-        // kernel (and `indirect_sign_manifest`) is untouched; this only repairs what
-        // the post-kernel consolidation drops.
-        // Cheap geometric pre-filter so the per-host open-edge scan (its hashmap is
-        // the WASM load cost, not the rare fallback) stays OFF the hot path for the
-        // ~13k ordinary box-like walls. A host can only have a chorded seam if it is
-        // FACETED: either NON-ORTHOGONAL plane pairs (a curved wall, a sloped gable
-        // roof clip — neither parallel nor perpendicular) or many PARALLEL offset
-        // buckets per normal direction (an f32-jittered opening-dense wall like the
-        // curved reception counter, distinct_normals=5 / 168 planes). A box wall has
-        // only axis-aligned planes and consolidates watertight -> skipped.
-        let mut bnorms: Vec<Vector3<f64>> = Vec::new();
-        for tris in buckets.values() {
-            if let Some(t0) = tris.first() {
-                if !bnorms.iter().any(|m| m.dot(&t0.normal).abs() > 0.99999) {
-                    bnorms.push(t0.normal);
-                }
-            }
-        }
-        let nonorthogonal = (0..bnorms.len()).any(|i| {
-            ((i + 1)..bnorms.len()).any(|j| {
-                let d = bnorms[i].dot(&bnorms[j]).abs();
-                d > 0.01 && d < 0.9999 // angle in (~0.8°, ~89.4°)
-            })
-        });
-        let offset_jittered = buckets.len() > 4 * bnorms.len().max(1);
-        if nonorthogonal || offset_jittered {
-            let cons_open = count_open_boundary_edges(&output);
-            if cons_open > 0 {
-                // Invariant: `mesh` is kernel output (every `consolidate` caller is
-                // pub(crate) and passes tris_to_mesh / union output), so its indices
-                // are in range; the counters index unchecked (#7677, KERNEL-28).
-                let raw_bad = count_open_boundary_edges(&mesh) + count_spike_triangles(&mesh);
-                let cons_bad = cons_open + count_spike_triangles(&output);
-                if raw_bad < cons_bad {
-                    output = mesh.clone(); // Preserve all raw metadata and plane tags.
-                }
-            }
-        }
+        let mut output = candidates::prefer_raw_if_cleaner(&mesh, output, &buckets);
         // Retention may not restore unrelated needles through the whole-raw
         // fallback (#1007, #5739). Preserve the established exact/public closure
         // and signed boundary bars, including partially conforming source meshes.

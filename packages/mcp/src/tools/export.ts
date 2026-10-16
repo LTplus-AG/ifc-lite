@@ -15,7 +15,7 @@
 import { writeFile, readFile } from 'node:fs/promises';
 import type { EntityRef } from '@ifc-lite/sdk';
 import { GeometryProcessor, isNoRenderGeometryError } from '@ifc-lite/geometry';
-import { countGlbMeshes, countObjVertices } from '@ifc-lite/export';
+import { countGlbMeshes, countObjVertices, countUsdMeshes } from '@ifc-lite/export';
 import type { Tool } from './types.js';
 import { fmtInt, okResult, resolveModel } from './util.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
@@ -44,6 +44,28 @@ async function withIfcBytes<T>(
     code: ToolErrorCode.UNSUPPORTED_OPERATION,
     message: 'Model has no in-memory source bytes and no file path to re-read for export.',
   });
+}
+
+/**
+ * Run a render-geometry export. The Rust boundary's `NO_RENDER_GEOMETRY`
+ * refusal (#7695) and, as defense-in-depth, an artifact whose `count` is 0
+ * become a tool error carrying `emptyMessage`: a zero-mesh file is never
+ * written and reported as success. Other failures propagate unchanged.
+ */
+function refusingEmpty(
+  run: () => Uint8Array | null,
+  count: (artifact: Uint8Array) => number,
+  emptyMessage: string,
+): Uint8Array | null {
+  const empty = () => new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: emptyMessage });
+  let out: Uint8Array | null;
+  try {
+    out = run();
+  } catch (err) {
+    throw isNoRenderGeometryError(err) ? empty() : err;
+  }
+  if (out != null && count(out) === 0) throw empty();
+  return out;
 }
 
 const exportIfc: Tool = {
@@ -204,39 +226,21 @@ const exportGlb: Tool = {
       const gp = new GeometryProcessor();
       try {
         await gp.init();
-        let glb: Uint8Array | null;
-        try {
-          // `isolated` is empty-but-active only when `type` matched nothing
-          // (rejected above); no `type` must pass `undefined` to exportGlb,
-          // not an empty Uint32Array — the wasm boundary now treats an
-          // explicit empty array as "isolation active, matches nothing"
-          // (#4328), and would fail-close every unfiltered export otherwise.
-          glb = gp.exportGlb(bytes, false, new Uint32Array(), filterType ? isolated : undefined, '');
-        } catch (err) {
-          // The Rust boundary fails closed on an empty visible mesh set; map the
-          // typed error to the tailored tool error.
-          if (isNoRenderGeometryError(err)) {
-            throw new ToolExecutionError({
-              code: ToolErrorCode.INTERNAL_ERROR,
-              message: filterType
-                ? `GLB export produced 0 meshes — no ${filterType} elements have exportable render geometry.`
-                : 'GLB export produced 0 meshes — the model has no exportable render geometry.',
-            });
-          }
-          throw err;
-        }
+        const glbEmpty = filterType
+          ? `GLB export produced 0 meshes — no ${filterType} elements have exportable render geometry.`
+          : 'GLB export produced 0 meshes — the model has no exportable render geometry.';
+        // `isolated` is empty-but-active only when `type` matched nothing
+        // (rejected above); no `type` must pass `undefined` to exportGlb,
+        // not an empty Uint32Array — the wasm boundary now treats an
+        // explicit empty array as "isolation active, matches nothing"
+        // (#4328), and would fail-close every unfiltered export otherwise.
+        const glb = refusingEmpty(
+          () => gp.exportGlb(bytes, false, new Uint32Array(), filterType ? isolated : undefined, ''),
+          countGlbMeshes,
+          glbEmpty,
+        );
         if (glb == null) {
           throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: 'GLB export produced no output.' });
-        }
-        // Defense-in-depth behind the Rust fail-closed guard: a zero-mesh GLB
-        // must never be written to disk and reported as success.
-        if (countGlbMeshes(glb) === 0) {
-          throw new ToolExecutionError({
-            code: ToolErrorCode.INTERNAL_ERROR,
-            message: filterType
-              ? `GLB export produced 0 meshes — no ${filterType} elements have exportable render geometry.`
-              : 'GLB export produced 0 meshes — the model has no exportable render geometry.',
-          });
         }
         await writeFile(filePath, glb);
         return okResult(`Wrote ${fmtInt(glb.length)} bytes to ${filePath}.`, { filePath, bytes: glb.length });
@@ -287,20 +291,18 @@ const exportObj: Tool = {
         // explicit empty array as "isolation active, matches nothing"
         // (the OBJ twin of #4328/#4364), and would fail-close every
         // unfiltered export otherwise.
-        const obj = gp.exportObj(bytes, true, new Uint32Array(), filterType ? isolated : undefined);
+        const objEmpty = filterType
+          ? `OBJ export produced 0 vertices - the matched ${filterType} entities have no exportable render geometry.`
+          : 'OBJ export produced 0 vertices - the model has no exportable render geometry.';
+        // A `type` that matched only non-rendered entities (e.g. IfcProject)
+        // is refused (#7695); vertex count is the content signal, as in the CLI.
+        const obj = refusingEmpty(
+          () => gp.exportObj(bytes, true, new Uint32Array(), filterType ? isolated : undefined),
+          countObjVertices,
+          objEmpty,
+        );
         if (obj == null) {
           throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: 'OBJ export produced no output.' });
-        }
-        // The Rust OBJ path has no "no render geometry" signal: a `type` that
-        // matched only non-rendered entities (e.g. IfcProject) yields a
-        // header-only file. Vertex count is the content signal, as in the CLI.
-        if (countObjVertices(obj) === 0) {
-          throw new ToolExecutionError({
-            code: ToolErrorCode.INTERNAL_ERROR,
-            message: filterType
-              ? `OBJ export produced 0 vertices - the matched ${filterType} entities have no exportable render geometry.`
-              : 'OBJ export produced 0 vertices - the model has no exportable render geometry.',
-          });
         }
         await writeFile(filePath, obj);
         return okResult(`Wrote ${fmtInt(obj.length)} bytes to ${filePath}.`, { filePath, bytes: obj.length });
@@ -365,7 +367,11 @@ const exportUsd: Tool = {
       const gp = new GeometryProcessor();
       try {
         await gp.init();
-        const usd = gp.exportUsd(bytes);
+        const usd = refusingEmpty(
+          () => gp.exportUsd(bytes),
+          countUsdMeshes,
+          'USD export produced 0 meshes - the model has no exportable render geometry.',
+        );
         if (usd == null) {
           throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: 'USD export produced no output.' });
         }

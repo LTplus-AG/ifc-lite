@@ -337,6 +337,22 @@ impl<'a> BComponents<'a> {
         false
     }
 
+    /// Regime 2 on a coplanar parent: a shared interface without a coincident
+    /// face uses the same side-occupancy table as `on_interface_keep`.
+    fn interface_keep(&self, arr: &Arrangement, tri: [Vid; 3], c: [f64; 3],
+        n_own: [f64; 3], op: BoolOp) -> Option<bool> {
+        if !self.on_boundary(arr, tri) { return None; }
+        let (op_plus, op_minus) = self.solid_side(c, n_own);
+        if op_plus == op_minus {
+            return None; // strictly in/out — the plain ray-cast decides
+        }
+        Some(match op {
+            BoolOp::Union => !op_plus,
+            BoolOp::Intersection => op_minus,
+            BoolOp::Difference => !op_minus,
+        })
+    }
+
     /// Multi-component [`solid_side`]: probe an infinitesimal step to each side
     /// of the face along `dir` and test the union-inside on each probe. The
     /// step is sized to the LARGEST component extent (== the binary behavior
@@ -502,24 +518,7 @@ pub(super) fn boolean_vids_components(
                 BoolOp::Difference => !co_oriented,
             }};
         } else if let Some(k) = cop_parent
-            .then(|| {
-                // regime 2 (only on coplanar-overlap parents): shared interface
-                // plane, no coincident face → solid-side probe (see
-                // `on_interface_keep` for the keep table rationale).
-                if !bc.on_boundary(arr, tri) {
-                    return None;
-                }
-                let (op_plus, op_minus) = bc.solid_side(c, n_own);
-                if op_plus == op_minus {
-                    return None; // strictly in/out — the plain ray-cast decides
-                }
-                Some(match op {
-                    BoolOp::Union => !op_plus,
-                    BoolOp::Intersection => op_minus,
-                    BoolOp::Difference => !op_minus,
-                })
-            })
-            .flatten()
+            .then(|| bc.interface_keep(arr, tri, c, n_own, op)).flatten()
         {
             keep = k;
         } else {

@@ -141,3 +141,126 @@ fn issue_7292_actual794_mixed_crossing_conforms_both_original_carriers() {
     // The auxiliary plane is only a finite cop edge constraint: do not demand
     // that its infinite extension partition unrelated A0 regions.
 }
+
+// Independent uncullled traversal retained only as a behavioral/work oracle for
+// propagation. It uses the original support and containment predicates.
+fn propagate_unculled(tris: &[Tri], built: &Built, generated: &[ImplicitPoint]) -> Vec<Vec<ImplicitPoint>> {
+    let mut generated = generated.to_vec();
+    assert!(canonical(&mut generated));
+    let mut points = vec![Vec::new(); tris.len()];
+    for (i,t) in tris.iter().enumerate() {
+        let valid = validate(t, &built.segments[i]);
+        let Some((axis,_)) = projection_axis(t) else { continue; };
+        for p in &generated {
+            assert!(charge());
+            if !on_plane(p,t) { continue; }
+            let lam = interval::ilambda_cached(p);
+            for s in valid.iter().filter(|s| s.valid) {
+                assert!(charge());
+                let c = &s.segment.constraint;
+                if orient2d_end((&s.lambda.0,&c.a),(&s.lambda.1,&c.b),(&lam,p),axis) == Sign::Zero {
+                    let (a,b) = if order(&c.a,&c.b) == Ordering::Greater { (&c.b,&c.a) } else { (&c.a,&c.b) };
+                    if order(a,p) != Ordering::Greater && order(p,b) != Ordering::Greater {
+                        points[i].push(p.clone()); break;
+                    }
+                }
+            }
+        }
+        if !points[i].is_empty() { assert!(canonical(&mut points[i])); }
+    }
+    points
+}
+
+#[test]
+fn issue_7292_raw_only_propagation_culls_seams_before_support_work_with_identical_points() {
+    let _lock=budget::GLOBAL_CAP_LOCK.lock().unwrap_or_else(|e|e.into_inner());
+    struct Reset(Option<u64>,Option<u64>);
+    impl Drop for Reset { fn drop(&mut self) {
+        budget::set_cap(self.0); budget::set_element_cap(self.1); budget::begin();
+    }}
+    let _reset=Reset(budget::cap(),budget::element_cap());
+    budget::set_cap(None);
+    let tris=vec![[[0.,0.,0.],[2000.,0.,0.],[0.,2000.,0.]];256];
+    // Every carrier AABB contains every generated point, but the actual seams
+    // are separated. No carrier-box shortcut can establish the saving.
+    let raw:Vec<_>=(0..256).map(|i| {
+        let x=f64::from(i)*3.;
+        vec![RawSeg {a:e([x,1.,0.]),b:e([x+1.,1.,0.]),
+            cutter:[[0.,1.,0.],[1.,1.,0.],[0.,1.,1.]]}]
+    }).collect();
+    let generated:Vec<_>=(0..256).rev().flat_map(|i| {
+        let x=f64::from(i)*3.;
+        [e([x+1.,1.,0.]),e([x+0.5,1.,0.]),e([x,1.,0.]),e([x+0.5,1.,0.])]
+    }).collect();
+    let cop:Vec<_>=(0..tris.len()).map(|_|Vec::new()).collect();
+    let expected;
+    {
+        let _element=budget::enter_element(); budget::begin();
+        let built=build(&tris,&raw,&cop,&mut Vec::new());
+        expected=propagate_unculled(&tris,&built,&generated);
+        assert!(budget::element_count()>budget::DEFAULT_ELEMENT_CAP,
+            "the uncullled reference must actually exceed the interactive work allowance");
+    }
+    budget::set_cap(Some(budget::DEFAULT_CAP));
+    budget::set_element_cap(Some(budget::DEFAULT_ELEMENT_CAP));
+    let _element=budget::enter_element(); budget::begin();
+    let mut built=build(&tris,&raw,&cop,&mut Vec::new());
+    let mut actual=vec![Vec::new();tris.len()];
+    propagate(&tris,&mut built,&generated,&mut actual);
+    assert!(!budget::tripped());
+    assert!(budget::element_count()<budget::DEFAULT_ELEMENT_CAP/10,
+        "disjoint seam pairs must be culled before charge/plane/support work");
+    for (i,(actual,expected)) in actual.iter().zip(&expected).enumerate() {
+        assert_eq!(actual.len(),3); assert_eq!(actual.len(),expected.len());
+        for (a,b) in actual.iter().zip(expected) { assert_eq!(cmp_lex(a,b),Sign::Zero); }
+        for (p,dx) in actual.iter().zip([0.,0.5,1.]) {
+            assert_eq!(cmp_lex(p,&e([i as f64*3.+dx,1.,0.])),Sign::Zero);
+        }
+    }
+}
+
+#[test]
+fn issue_7292_propagation_keeps_exact_support_checks_and_seams_beyond_carrier_bounds() {
+    let _lock=budget::GLOBAL_CAP_LOCK.lock().unwrap_or_else(|e|e.into_inner());
+    let _element=budget::enter_element(); budget::begin();
+    let horizontal=[[0.,1.,0.],[1.,1.,0.],[0.,1.,1.]];
+    let undefined=ImplicitPoint::Lpi(Lpi {p:[0.,0.,1.],q:[1.,0.,1.],
+        r:host()[0],s:host()[1],t:host()[2]});
+    let supported=|a,b,support|Supported{constraint:Constraint{a,b},support};
+    let mut built=Built { constraints:vec![vec![]], validated:vec![None], segments:vec![vec![
+        supported(e([10.,1.,0.]),e([12.,1.,0.]),horizontal),
+        supported(e([1.,1.,0.]),e([3.,1.,0.]),[[0.;3];3]),
+        supported(e([1.,2.,0.]),e([3.,2.,0.]),horizontal),
+        supported(undefined,e([2.,3.,0.]),raw()),
+        supported(e([1.,3.,1.]),e([2.,3.,1.]),raw()),
+    ]]};
+    let generated=vec![e([12.,1.,0.]),e([11.,1.,0.]),e([10.,1.,0.]),e([13.,1.,0.]),
+        e([2.,1.,0.]),e([2.,2.,0.]),e([2.,3.,0.]),e([1.5,3.,1.])];
+    let expected=propagate_unculled(&[host()],&built,&generated);
+    let mut actual=vec![vec![]];propagate(&[host()],&mut built,&generated,&mut actual);
+    assert!(!budget::tripped());assert_eq!(actual[0].len(),3);
+    assert_eq!(actual[0].len(),expected[0].len());
+    for (a,b) in actual[0].iter().zip(&expected[0]) {assert_eq!(cmp_lex(a,b),Sign::Zero);}
+    for (p,x) in actual[0].iter().zip([10.,11.,12.]) {assert_eq!(cmp_lex(p,&e([x,1.,0.])),Sign::Zero);}
+}
+
+#[test]
+fn issue_7292_uncertain_finite_implicit_seam_uses_exact_support_and_containment() {
+    let _lock=budget::GLOBAL_CAP_LOCK.lock().unwrap_or_else(|e|e.into_inner());
+    let _element=budget::enter_element(); budget::begin();
+    let carrier=[[0.,0.,0.],[4.,0.,4.],[0.,4.,0.]];
+    let endpoint=ImplicitPoint::Lpi(Lpi {p:[0.,0.,1.],q:[1.,0.,2.+2.*f64::EPSILON],
+        r:carrier[0],s:carrier[1],t:carrier[2]});
+    assert!(interval::ilambda_cached(&endpoint).1.sign().is_none(),
+        "control must require exact resolution rather than a definite interval box");
+    let x=-1./(2.*f64::EPSILON);
+    let seam=RawSeg {a:endpoint,b:e([x+2.,0.,x+2.]),
+        cutter:[[0.,0.,0.],[1.,0.,0.],[0.,0.,1.]]};
+    let mut built=build(&[carrier],&[vec![seam]],&[vec![]],&mut Vec::new());
+    let generated=vec![e([x+1.,0.,x+1.]),e([x+3.,0.,x+3.])];
+    let expected=propagate_unculled(&[carrier],&built,&generated);
+    let mut actual=vec![vec![]];propagate(&[carrier],&mut built,&generated,&mut actual);
+    assert!(!budget::tripped());assert_eq!(actual[0].len(),1);
+    assert_eq!(expected[0].len(),1);assert_eq!(cmp_lex(&actual[0][0],&expected[0][0]),Sign::Zero);
+    assert_eq!(cmp_lex(&actual[0][0],&e([x+1.,0.,x+1.])),Sign::Zero);
+}

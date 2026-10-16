@@ -278,3 +278,48 @@ fn issue_7292_new_fallback_must_preserve_original_not_only_primary_contacts() {
     assert!(!retains_finite_contacts(original,corrected,&host));
     assert!(!budget::tripped());
 }
+
+#[test]
+fn issue_7292_review_4297184707_actual_corner_lift_preserves_finite_y_contact() {
+    let _lock = budget::GLOBAL_CAP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _element = budget::enter_element();budget::begin();
+    // Review 4297184707 cites the invariant above. Follow its original point
+    // through the real selector, Q20 lift, corner guard and deferred writes.
+    let d = 1.0 / 65536.0;
+    let original = [0.0,0.0,d];
+    let selected = [[0.0,-2.0,0.0],[2.0,-2.0,0.0],[0.0,2.0,0.0]];
+    let x_face = [[0.0,-2.0,0.0],[0.0,2.0,0.0],[0.0,0.0,2.0]];
+    let y_face = [[0.0,0.0,0.0],[2.0,0.0,0.0],[0.0,0.0,2.0]];
+    let host = [selected,x_face,y_face];
+    let source = [[original,[0.0,1.0,1.0],[0.0,-1.0,1.0]]];
+    let band = NearBand::from_operands(&source,&host);
+    let corners = crate::kernel::near_band::exact_vertex_set(&host);
+    let faces: Vec<_> = host.into_iter().filter_map(|t| Face::new(t,&band)).collect();
+    let (distance, face) = selection::select(original,&faces,&band,&corners).unwrap();
+    assert_eq!(face.t,selected);
+    let primary = exact_on_plane_weld(original,face.t).unwrap();
+    assert_eq!(primary,[0.0,0.0,0.0]);
+    assert!(face.admits(original,primary,distance,&band,&corners));
+    assert!(corners.contains(&crate::kernel::near_band::vertex_bits(&primary)));
+    let axes = SourceAxes::new(&source);
+    // The healthy source X=0 face supplies an axis feature; the actual primary
+    // is protected specifically by its established host-corner identity.
+    assert_eq!(axes.candidate(original,[d,-d,0.0],selected,&corners),Some([0.0,-d,0.0]));
+    assert!(axes.candidate(original,primary,selected,&corners).is_none());
+    let e = ImplicitPoint::Explicit;
+    assert_eq!(orient3d(&e(original),&e(y_face[0]),&e(y_face[1]),&e(y_face[2])),Sign::Zero);
+    assert!(contains_projected_point(&y_face,original));
+    let mut actual = source;
+    assert!(promote_cutter_verts_onto_host_faces(&mut actual,&host) > 0);
+    let mut occurrences = 0;
+    for (before, after) in source.iter().flatten().zip(actual.iter().flatten()) {
+        if *before == original {
+            occurrences += 1;
+            assert_eq!(*after,primary);
+            assert_eq!(orient3d(&e(*after),&e(y_face[0]),&e(y_face[1]),&e(y_face[2])),Sign::Zero);
+            assert!(contains_projected_point(&y_face,*after));
+        }
+    }
+    assert_eq!(occurrences,1);
+    assert!(!budget::tripped());
+}

@@ -228,13 +228,13 @@ const obj = api.exportObj(ifcContent, true, new Uint32Array(), new Uint32Array()
 const hbjson = api.exportHbjson(ifcContent, 'my_model');
 ```
 
-`exportGlb` fails closed: when the visible mesh set is empty it throws an `Error` whose message starts with `NO_RENDER_GEOMETRY` rather than returning an empty GLB.
+The render-geometry exporters fail closed. When no mesh would be written, `exportGlb`, `exportObj` and `exportUsd` throw an `Error` whose message starts with `NO_RENDER_GEOMETRY`. This covers an empty visible mesh set and a model with no render geometry at all. They never return an empty GLB, a header-only OBJ or a USD stage with no meshes. The data exporters (`exportCsv`, `exportJson`, `exportJsonld`, `exportIfcx`, `exportStep`, `exportHbjson`) never refuse a model for being empty: an empty table or graph is still a valid document.
 
 The `isolated` / `included` isolation filters on `exportObj`, `exportGlb`,
 `exportJsonld` and `exportStep` all carry the same null-vs-empty distinction:
 `undefined` means "no isolation filter" (the whole model), while an empty
 `Uint32Array` means "isolation is active and currently matches nothing" and
-exports nothing — no meshes, an empty `@graph`, a header-only STEP file.
+exports nothing: a `NO_RENDER_GEOMETRY` refusal for the mesh exporters, an empty `@graph`, a header-only STEP file.
 Collapsing the two exports the whole model to a caller who asked for a subset.
 
 `exportStep` also fails closed on `mutationsJson`: an empty string means "no mutations" and exports cleanly, but a non-empty string that fails to parse throws (message prefixed `exportStep:`) instead of silently exporting the model with none of the caller's edits applied.

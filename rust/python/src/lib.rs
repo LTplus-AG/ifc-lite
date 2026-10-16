@@ -32,6 +32,7 @@ use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyDict};
 use std::collections::HashSet;
 
+mod finite_json;
 mod swept_disks;
 mod alignment_axes;
 mod analytic_definitions;
@@ -211,9 +212,7 @@ fn geometry_data_json(
 ) -> PyResult<String> {
     let quality = parse_quality(quality)?;
     let export = run_export(py, ifc_bytes, quality, ids, include_directrices)?;
-    let json = export.meshes
-        .to_json()
-        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let json = finite_json::to_json_string(&export.meshes)?;
     match &export.swept_disks {
         Some(descriptions) => swept_disks::add_to_json(json, descriptions)
             .map_err(|e| PyValueError::new_err(e.to_string())),

@@ -54,6 +54,8 @@ interface GoldenFixture {
 
 // Main #7728 intentionally preserves RTC coordinates as f64 (#7741).
 const FIXTURES: GoldenFixture[] = [
+  // #7741: #7728 intentionally preserves f64 symbolic coordinates. Regenerated
+  // from the d8c110166a CI build after that precision change.
   {
     path: 'tests/models/various/01_BIMcollab_Example_ARC.ifc',
     digest: '3d34f41118fff62cf2b7c12c6ec98f8dc2ad2ab87042599918da30bc57430c4c',

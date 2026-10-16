@@ -103,3 +103,23 @@ fn issue_7292_disjoint_supported_constraints_do_not_exhaust_default_element_budg
     assert!(!budget::tripped(),"spatially disjoint constraints must not spend the budget on all pairs");
     assert_eq!(result.constraints[0].len(),512);assert!(generated.is_empty());
 }
+
+#[test]
+fn issue_7292_point_queries_retain_boundaries_degenerate_and_unknown_boxes_in_source_order() {
+    let origin=ilambda_cached(&ImplicitPoint::Explicit([0.;3]));
+    let edge=ilambda_cached(&ImplicitPoint::Explicit([1.,0.,0.]));
+    let far=ilambda_cached(&ImplicitPoint::Explicit([100.;3]));
+    let unknown=([RnInterval::point(1.);3],iv(-1.,1.));
+    let candidates=Candidates::from_lambdas([
+        (&origin,&edge),(&far,&far),(&edge,&edge),(&unknown,&unknown)
+    ].into_iter());
+    assert_eq!(candidates.at(&edge),vec![0,2,3],
+        "closed endpoint and degenerate seam contact must survive in original order");
+    assert_eq!(candidates.at(&unknown),vec![0,1,2,3]);
+    assert!(candidates.bounds().is_none(),"unknown seams must make the carrier query conservative");
+    let points=Candidates::from_lambdas([(&origin,&origin),(&far,&far),(&unknown,&unknown)].into_iter());
+    assert_eq!(points.overlapping(candidates.bounds()),vec![0,1,2]);
+    let known=Candidates::from_lambdas([(&origin,&edge),(&edge,&edge)].into_iter());
+    assert_eq!(points.overlapping(known.bounds()),vec![0,2],
+        "unknown generated points survive even a definite finite seam union");
+}

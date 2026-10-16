@@ -118,6 +118,33 @@ describe('UsdExportDialog', () => {
       disposeMock.mock.restore();
     }
   });
+
+  it('#7695: a model with no render geometry reads as that, not as a raw engine code', async () => {
+    const initMock = mock.method(GeometryProcessor.prototype, 'init', async () => undefined);
+    // What the wasm boundary throws for a model with nothing to draw.
+    const exportMock = mock.method(GeometryProcessor.prototype, 'exportUsd', () => {
+      throw new Error('NO_RENDER_GEOMETRY: export produced no render geometry (empty model or all meshes filtered out)');
+    });
+    const disposeMock = mock.method(GeometryProcessor.prototype, 'dispose', () => undefined);
+    const completions: unknown[] = [];
+    const analytics = mock.method(posthog, 'capture', (event: string, properties: unknown) => {
+      if (event === 'export_completed') completions.push(properties);
+    });
+    try {
+      const container = renderDialog();
+      await clickExport(container);
+      const text = document.body.textContent ?? '';
+      assert.ok(text.includes('USD export produced 0 meshes'), `the refusal is named: ${text}`);
+      assert.ok(!text.includes('NO_RENDER_GEOMETRY'), 'the engine code is not shown');
+      assert.equal(completions.length, 0, 'a refused export is not a completed download');
+      assert.equal(disposeMock.mock.callCount(), 1, 'dispose runs on the refusal path');
+    } finally {
+      initMock.mock.restore();
+      exportMock.mock.restore();
+      disposeMock.mock.restore();
+      analytics.mock.restore();
+    }
+  });
 });
 
 /**

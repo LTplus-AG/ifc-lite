@@ -21,25 +21,10 @@ use super::retriangulate_audit::pocket_rebuild_valid;
 use super::Sign;
 use std::collections::{BTreeMap, BTreeSet};
 
-/// PHASE D (core) — force sub-segment `(a,b)` (no vertex strictly between them) to
-/// be an edge. Returns false only when the original edge check already succeeds;
-/// every nontrivial recovery or bail returns true. Otherwise delete the triangles the open
-/// segment crosses (the "channel"), split the channel's boundary loop at `a` and
-/// `b` into two pocket rings, and earcut each — after which `a–b` is a shared
-/// edge of both pockets. (seg×seg — a crossed edge that is itself a constraint —
-/// is a later increment.)
-pub(crate) fn recover_subsegment(mesh: &mut Mesh2d, it: &Interner, a: Vid, b: Vid) -> bool {
-    if edge_exists(mesh, a, b) {
-        return false;
-    }
-    // Pessimistically request the final conformity audit; restored below only
-    // when this recovery demonstrably forced the edge (a PREVIOUS attempt's
-    // request must survive). Every bail path (empty or degenerate channel,
-    // non-star swallowed endpoint, earcut failure) leaves it set.
-    let audit_before = mesh.audit_needed;
-    mesh.audit_needed = true;
-
-    let (axis, w0) = (mesh.axis, mesh.w0);
+/// Find the exact crossed channel, retaining the existing conservative AABB
+/// prefilter and source triangle traversal order.
+fn crossed_channel(mesh: &mut Mesh2d, it: &Interner, a: Vid, b: Vid) -> Vec<usize> {
+    let axis = mesh.axis;
     // Does any open edge of `tri` PROPERLY cross the open segment (a,b)? The
     // dominant cost of constraint recovery (#1109): runs per triangle for every
     // constraint sub-segment. Each vertex's side of the (a,b) line is computed
@@ -103,6 +88,50 @@ pub(crate) fn recover_subsegment(mesh: &mut Mesh2d, it: &Interner, a: Vid, b: Vi
             tri_crosses(tri)
         })
         .collect();
+    channel
+}
+
+/// Follow a channel boundary without changing its established start or order.
+fn boundary_loop(next: &BTreeMap<Vid, Vid>, a: Vid) -> Option<Vec<Vid>> {
+    let start = match next.keys().next() {
+        Some(&v) if !next.contains_key(&a) => v,
+        Some(_) => a,
+        None => return None,
+    };
+    let mut loop_v = vec![start];
+    let &first = next.get(&start)?;
+    let mut cur = first;
+    while cur != start {
+        loop_v.push(cur);
+        let &nxt = next.get(&cur)?;
+        cur = nxt;
+        if loop_v.len() > next.len() + 1 {
+            return None; // cycle that never returns to the start — degenerate
+        }
+    }
+    Some(loop_v)
+}
+
+/// PHASE D (core) — force sub-segment `(a,b)` (no vertex strictly between them) to
+/// be an edge. Returns false only when the original edge check already succeeds;
+/// every nontrivial recovery or bail returns true. Otherwise delete the triangles the open
+/// segment crosses (the "channel"), split the channel's boundary loop at `a` and
+/// `b` into two pocket rings, and earcut each — after which `a–b` is a shared
+/// edge of both pockets. (seg×seg — a crossed edge that is itself a constraint —
+/// is a later increment.)
+pub(crate) fn recover_subsegment(mesh: &mut Mesh2d, it: &Interner, a: Vid, b: Vid) -> bool {
+    if edge_exists(mesh, a, b) {
+        return false;
+    }
+    // Pessimistically request the final conformity audit; restored below only
+    // when this recovery demonstrably forced the edge (a PREVIOUS attempt's
+    // request must survive). Every bail path (empty or degenerate channel,
+    // non-star swallowed endpoint, earcut failure) leaves it set.
+    let audit_before = mesh.audit_needed;
+    mesh.audit_needed = true;
+
+    let (axis, w0) = (mesh.axis, mesh.w0);
+    let channel = crossed_channel(mesh, it, a, b);
     if channel.is_empty() {
         return true;
     }
@@ -136,22 +165,7 @@ pub(crate) fn recover_subsegment(mesh: &mut Mesh2d, it: &Interner, a: Vid, b: Vi
     // whole fan in the channel (the 559171 back-face door jamb - the endpoint is
     // then "swallowed" exactly like 552611's corner, but the a-b pocket split
     // can't run). See the (ia, ib) match below for that case.
-    let start = match next.keys().next() {
-        Some(&v) if !next.contains_key(&a) => v,
-        Some(_) => a,
-        None => return true,
-    };
-    let mut loop_v = vec![start];
-    let Some(&first) = next.get(&start) else { return true };
-    let mut cur = first;
-    while cur != start {
-        loop_v.push(cur);
-        let Some(&nxt) = next.get(&cur) else { return true };
-        cur = nxt;
-        if loop_v.len() > next.len() + 1 {
-            return true; // cycle that never returns to the start — degenerate
-        }
-    }
+    let Some(loop_v) = boundary_loop(&next, a) else { return true; };
     // Vertices STRICTLY INTERIOR to the channel (every incident triangle is in
     // the channel, so none of their edges reach the boundary loop): the segment
     // passes so close to a vertex that it properly crosses ALL of the vertex's

@@ -541,11 +541,11 @@ pub fn project_to_2d_with_basis(
 
 /// Calculate the normal of a polygon from its vertices.
 ///
-/// A triangle's cross product is its normal. Every larger ring, quads
-/// included, uses Newell's method: it follows the ring's winding, where the
-/// cross product of the first two edges of a CONCAVE quad can point the other
-/// way (the dart `[(0,0), (2,2), (4,0), (2,10)]` gave -Z for a CCW ring,
-/// #7686 GEOM-3), mirroring the projection and the winding built on it.
+/// A triangle's cross product is its normal, and so is a convex quad's. A quad
+/// reflex at vertex 1 or 3 (the dart `[(0,0), (2,2), (4,0), (2,10)]`) gets
+/// Newell's method like every larger ring: the cross product of its first two
+/// edges points AGAINST the ring there (-Z for a CCW dart, #7686 GEOM-3) and
+/// mirrored the projection and the winding built on it.
 #[inline]
 pub fn calculate_polygon_normal(points: &[Point3<f64>]) -> Vector3<f64> {
     let n = points.len();
@@ -554,13 +554,32 @@ pub fn calculate_polygon_normal(points: &[Point3<f64>]) -> Vector3<f64> {
         return Vector3::new(0.0, 0.0, 1.0);
     }
 
-    if n == 3 {
-        let normal = (points[1] - points[0]).cross(&(points[2] - points[0]));
+    // FAST PATH: Triangle or quad - use simple cross product
+    if n <= 4 {
+        let v1 = points[1] - points[0];
+        let v2 = points[2] - points[0];
+        let normal = v1.cross(&v2);
         let len = normal.norm();
-        if len > 1e-10 {
+        // `quad_split_3d`'s test: turns at 1 and 3 disagreeing means a reflex
+        // vertex there and `normal` may be reversed; Newell below.
+        let reflex = n == 4
+            && normal.dot(&(points[3] - points[2]).cross(&(points[0] - points[3]))) < 0.0;
+        if len > 1e-10 && !reflex {
             return normal / len;
         }
-        return Vector3::new(0.0, 0.0, 1.0);
+        if !reflex {
+            // Fallback for degenerate triangles
+            if n == 4 {
+                // Try different edges for quad
+                let v3 = points[3] - points[0];
+                let normal = v2.cross(&v3);
+                let len = normal.norm();
+                if len > 1e-10 {
+                    return normal / len;
+                }
+            }
+            return Vector3::new(0.0, 0.0, 1.0);
+        }
     }
 
     // Use Newell's method for robust normal calculation on complex polygons

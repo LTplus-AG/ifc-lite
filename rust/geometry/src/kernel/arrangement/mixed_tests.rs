@@ -61,7 +61,7 @@ fn issue_7292_coplanar_constraints_split_each_other_on_original_supports() {
     let _element=budget::enter_element();budget::begin();
     let c=vec![clip([1.,0.,0.],[1.,3.,0.],raw()),
         clip([0.,1.,0.],[3.,1.,0.],[[0.,1.,0.],[1.,1.,0.],[0.,1.,1.]])];
-    let mut points=Vec::new();let built=build(&[host()],&[vec![]],&[c],&mut points);
+    let mut points=Vec::new();let built=build(&[host()],&[vec![]],&[c],&mut points,true);
     assert!(!budget::tripped());assert_eq!(built.constraints[0].len(),4);
     assert!(points.iter().any(|p|cmp_lex(p,&e([1.,1.,0.]))==Sign::Zero));
 }
@@ -71,7 +71,7 @@ fn issue_7292_off_carrier_or_undefined_support_cannot_create_projected_tpi() {
     let _element=budget::enter_element();budget::begin();
     let invalid=RawSeg {a:e([1.,0.,1.]),b:e([1.,3.,1.]),cutter:raw()};
     let mut points=Vec::new();let c=vec![clip([0.,1.,0.],[3.,1.,0.],[[0.,1.,0.],[1.,1.,0.],[0.,1.,1.]])];
-    let _built=build(&[host()],&[vec![invalid]],&[c],&mut points);
+    let _built=build(&[host()],&[vec![invalid]],&[c],&mut points,true);
     assert!(points.is_empty(),"projected crossing must not fabricate a 3D triple point");
     let bad=ImplicitPoint::Lpi(Lpi{p:[0.,0.,1.],q:[1.,0.,1.],r:host()[0],s:host()[1],t:host()[2]});
     let s=Supported{constraint:Constraint{a:bad,b:e([0.,1.,0.])},support:raw()};
@@ -84,10 +84,51 @@ fn issue_7292_raw_only_keeps_legacy_queries_and_constraints() {
     let _element=budget::enter_element();budget::begin();
     let r=RawSeg{a:e([1.,0.,0.]),b:e([1.,3.,0.]),cutter:raw()};
     let before=budget::snapshot_counters();let mut points=Vec::new();
-    let mut built=build(&[host()],&[vec![r]],&[vec![]],&mut points);
+    let mut built=build(&[host()],&[vec![r]],&[vec![]],&mut points,false);
     propagate(&[host()],&mut built,&points,&mut[vec![]]);
     assert_eq!(budget::snapshot_counters(),before);
     assert_eq!(built.constraints[0].len(),1);assert!(points.is_empty());
+}
+#[test]
+fn issue_7292_global_raw_only_consumes_the_same_exact_split_stream_and_budget_work() {
+    let _lock=budget::GLOBAL_CAP_LOCK.lock().unwrap_or_else(|e|e.into_inner());
+    let _element=budget::enter_element();budget::begin();
+    let raws=vec![vec![RawSeg{a:e([1.,0.,0.]),b:e([1.,3.,0.]),cutter:raw()},
+        RawSeg{a:e([0.,1.,0.]),b:e([3.,1.,0.]),
+            cutter:[[0.,1.,0.],[1.,1.,0.],[0.,1.,1.]]}]];
+    let before=budget::snapshot_counters();let mut generated=Vec::new();
+    let retained=build(&[host()],&raws,&[vec![]],&mut generated,true);
+    let work=budget::snapshot_counters();assert!(!budget::tripped());
+    // Reuse the exact same raw input: support retention must change neither
+    // raw/raw crossings nor their predicate sequence, including budget counts.
+    budget::restore_counters(before);
+    let consumed=build(&[host()],&raws,&[vec![]],&mut generated,false);
+    assert_eq!(budget::snapshot_counters(),work);assert!(generated.is_empty());
+    let expected=[([1.,0.,0.],[1.,1.,0.]),([1.,1.,0.],[1.,3.,0.]),
+        ([0.,1.,0.],[1.,1.,0.]),([1.,1.,0.],[3.,1.,0.])];
+    assert_eq!(consumed.constraints[0].len(),expected.len());
+    assert_eq!(retained.constraints[0].len(),expected.len());
+    for ((a,b),(start,end)) in consumed.constraints[0].iter().zip(&retained.constraints[0]).zip(expected) {
+        assert_eq!(cmp_lex(&a.a,&b.a),Sign::Zero);assert_eq!(cmp_lex(&a.b,&b.b),Sign::Zero);
+        assert_eq!(cmp_lex(&a.a,&e(start)),Sign::Zero);assert_eq!(cmp_lex(&a.b,&e(end)),Sign::Zero);
+    }
+}
+#[test]
+fn issue_7292_global_coplanar_on_another_carrier_keeps_raw_seam_propagation() {
+    let _lock=budget::GLOBAL_CAP_LOCK.lock().unwrap_or_else(|e|e.into_inner());
+    let _element=budget::enter_element();budget::begin();
+    let mut generated=Vec::new();
+    let raw_seam=RawSeg{a:e([1.,0.,0.]),b:e([1.,3.,0.]),cutter:raw()};
+    // The raw-only carrier is built FIRST; only a later carrier generates q.
+    let mut raw_built=build(&[host()],&[vec![raw_seam]],&[vec![]],&mut generated,true);
+    assert!(generated.is_empty());
+    let clips=vec![clip([1.,0.,0.],[1.,3.,0.],raw()),
+        clip([0.,1.,0.],[3.,1.,0.],[[0.,1.,0.],[1.,1.,0.],[0.,1.,1.]])];
+    let _other=build(&[host()],&[vec![]],&[clips],&mut generated,true);
+    assert_eq!(generated.len(),1);
+    let mut points=vec![vec![]];propagate(&[host()],&mut raw_built,&generated,&mut points);
+    assert!(!budget::tripped());assert_eq!(points[0].len(),1);
+    assert_eq!(cmp_lex(&points[0][0],&e([1.,1.,0.])),Sign::Zero);
 }
 #[test]
 fn issue_7292_new_work_budget_trip_discards_partial_arrangement_without_panic() {
@@ -155,9 +196,9 @@ fn propagate_unculled(tris: &[Tri], built: &Built, generated: &[ImplicitPoint]) 
             assert!(charge());
             if !on_plane(p,t) { continue; }
             let lam = interval::ilambda_cached(p);
-            for s in valid.iter().filter(|s| s.valid) {
+            for (s,original) in valid.iter().zip(&built.segments[i]).filter(|(s,_)| s.valid) {
                 assert!(charge());
-                let c = &s.segment.constraint;
+                let c = &original.constraint;
                 if orient2d_end((&s.lambda.0,&c.a),(&s.lambda.1,&c.b),(&lam,p),axis) == Sign::Zero {
                     let (a,b) = if order(&c.a,&c.b) == Ordering::Greater { (&c.b,&c.a) } else { (&c.a,&c.b) };
                     if order(a,p) != Ordering::Greater && order(p,b) != Ordering::Greater {
@@ -196,7 +237,7 @@ fn issue_7292_raw_only_propagation_culls_seams_before_support_work_with_identica
     let expected;
     {
         let _element=budget::enter_element(); budget::begin();
-        let built=build(&tris,&raw,&cop,&mut Vec::new());
+        let built=build(&tris,&raw,&cop,&mut Vec::new(),true);
         expected=propagate_unculled(&tris,&built,&generated);
         assert!(budget::element_count()>budget::DEFAULT_ELEMENT_CAP,
             "the uncullled reference must actually exceed the interactive work allowance");
@@ -204,7 +245,7 @@ fn issue_7292_raw_only_propagation_culls_seams_before_support_work_with_identica
     budget::set_cap(Some(budget::DEFAULT_CAP));
     budget::set_element_cap(Some(budget::DEFAULT_ELEMENT_CAP));
     let _element=budget::enter_element(); budget::begin();
-    let mut built=build(&tris,&raw,&cop,&mut Vec::new());
+    let mut built=build(&tris,&raw,&cop,&mut Vec::new(),true);
     let mut actual=vec![Vec::new();tris.len()];
     propagate(&tris,&mut built,&generated,&mut actual);
     assert!(!budget::tripped());
@@ -256,7 +297,7 @@ fn issue_7292_uncertain_finite_implicit_seam_uses_exact_support_and_containment(
     let x=-1./(2.*f64::EPSILON);
     let seam=RawSeg {a:endpoint,b:e([x+2.,0.,x+2.]),
         cutter:[[0.,0.,0.],[1.,0.,0.],[0.,0.,1.]]};
-    let mut built=build(&[carrier],&[vec![seam]],&[vec![]],&mut Vec::new());
+    let mut built=build(&[carrier],&[vec![seam]],&[vec![]],&mut Vec::new(),true);
     let generated=vec![e([x+1.,0.,x+1.]),e([x+3.,0.,x+3.])];
     let expected=propagate_unculled(&[carrier],&built,&generated);
     let mut actual=vec![vec![]];propagate(&[carrier],&mut built,&generated,&mut actual);

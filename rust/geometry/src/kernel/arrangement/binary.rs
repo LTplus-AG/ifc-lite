@@ -72,9 +72,10 @@ fn arrange_scoped(a: &[Tri], b: &[Tri], parent_component_b: &[usize], bands: Vec
     // captured BEFORE `build` drains the coplanar-constraint accumulators.
     let cop_parent_a: Vec<bool> = cop_a.iter().map(|c| !c.is_empty()).collect();
     let cop_parent_b: Vec<bool> = cop_b.iter().map(|c| !c.is_empty()).collect();
+    let has_coplanar = cop_parent_a.iter().chain(&cop_parent_b).any(|&cop| cop);
     let mut generated = Vec::new();
-    let mut ca = mixed::build(a, &raw_a, &cop_a, &mut generated);
-    let mut cb = mixed::build(b, &raw_b, &cop_b, &mut generated);
+    let mut ca = mixed::build(a, &raw_a, &cop_a, &mut generated, has_coplanar);
+    let mut cb = mixed::build(b, &raw_b, &cop_b, &mut generated, has_coplanar);
     mixed::propagate(a, &mut ca, &generated, &mut pt_a);
     mixed::propagate(b, &mut cb, &generated, &mut pt_b);
     // 3. re-triangulate each operand over the SHARED interner ⇒ conforming surfaces

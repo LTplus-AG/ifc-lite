@@ -99,7 +99,7 @@ fn issue_7292_disjoint_supported_constraints_do_not_exhaust_default_element_budg
         SupportedClip {a:ImplicitPoint::Explicit([x,1.,0.]),b:ImplicitPoint::Explicit([x+1.,1.,0.]),
             support:[[0.,1.,0.],[1.,1.,0.],[0.,1.,1.]]}
     }).collect();
-    let mut generated=Vec::new();let result=build(&[t],&[vec![]],&[clips],&mut generated);
+    let mut generated=Vec::new();let result=build(&[t],&[vec![]],&[clips],&mut generated,true);
     assert!(!budget::tripped(),"spatially disjoint constraints must not spend the budget on all pairs");
     assert_eq!(result.constraints[0].len(),512);assert!(generated.is_empty());
 }

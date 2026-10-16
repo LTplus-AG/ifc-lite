@@ -27,7 +27,6 @@ use super::predicates::{cmp_lex, orient2d_any};
 use super::retriangulate::{projection_axis, triangulate, Constraint, RetriInput};
 use super::tritri::{tri_tri_intersection_with_band, TriTri};
 use super::{ImplicitPoint, Sign, Tpi};
-use std::cmp::Ordering;
 
 mod admission;
 mod binary;
@@ -168,11 +167,7 @@ fn split_crossings(t: &Tri, raws: &[RawSeg]) -> Vec<mixed::Supported> {
         chain.append(&mut splits[k]);
         chain.push(raws[k].b.clone());
         // order along the segment (collinear ⇒ lex order = line order) + dedup coincident
-        chain.sort_by(|p, q| match cmp_lex(p, q) {
-            Sign::Negative => Ordering::Less,
-            Sign::Positive => Ordering::Greater,
-            Sign::Zero => Ordering::Equal,
-        });
+        chain.sort_by(mixed::order);
         chain.dedup_by(|p, q| cmp_lex(p, q) == Sign::Zero);
         for w in chain.windows(2) {
             out.push(mixed::Supported {
@@ -264,9 +259,10 @@ pub fn arrange_many(meshes: &[&[Tri]]) -> MultiArrangement {
         }
     }
     // Build every carrier before propagating newly constructed exact crossings.
+    let has_coplanar = cop.iter().flatten().any(|clips| !clips.is_empty());
     let mut generated = Vec::new();
     let mut cons: Vec<mixed::Built> = (0..n).map(|k| {
-        mixed::build(meshes[k], &raw[k], &cop[k], &mut generated)
+        mixed::build(meshes[k], &raw[k], &cop[k], &mut generated, has_coplanar)
     }).collect();
     for k in 0..n {
         mixed::propagate(meshes[k], &mut cons[k], &generated, &mut pts[k]);

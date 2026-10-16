@@ -53,8 +53,8 @@ fn issue_7292_nonfinite_and_degenerate_inputs_never_certify() {
 fn issue_7292_raw_key_rejection_is_coherent_and_admitted_paths_are_exempt() {
     let _lock=budget::GLOBAL_CAP_LOCK.lock().unwrap_or_else(|e|e.into_inner());
     let(s,h,q)=actual();let band=NearBand::from_operands(&[s],&[h]);let f=Face::new(h,&band).unwrap();
-    let mut p=vec![Proposal{ti:0,vi:0,original:s[0],target:Some(q),refused_face:Some(&f),initial_foot:Some(q)},
-        Proposal{ti:1,vi:0,original:s[0],target:Some(q),refused_face:Some(&f),initial_foot:Some(q)}];
+    let mut p=vec![Proposal{admitted_q20_face:None,ti:0,vi:0,original:s[0],target:Some(q),refused_face:Some(&f),initial_foot:Some(q)},
+        Proposal{admitted_q20_face:None,ti:1,vi:0,original:s[0],target:Some(q),refused_face:Some(&f),initial_foot:Some(q)}];
     budget::begin();assert_eq!(rejected_keys(&[s,s],&p,&band),HashSet::from([vertex_bits(&s[0])]));
     p[1].refused_face=None;assert!(rejected_keys(&[s,s],&p,&band).is_empty());
     // Geometrically equal signedzero owners remain separate resolution keys.
@@ -63,8 +63,8 @@ fn issue_7292_raw_key_rejection_is_coherent_and_admitted_paths_are_exempt() {
     let mut plus=minus;plus[0][0]=0.0;
     let shifted_host=h.map(shift);let shifted_band=NearBand::from_operands(&[minus,plus],&[shifted_host]);
     let shifted_face=Face::new(shifted_host,&shifted_band).unwrap();let mut target=shift(q);target[0]= -0.0;
-    let p=[Proposal{ti:0,vi:0,original:minus[0],target:Some(target),refused_face:Some(&shifted_face),initial_foot:Some(target)},
-        Proposal{ti:1,vi:0,original:plus[0],target:Some(target),refused_face:None,initial_foot:None}];
+    let p=[Proposal{admitted_q20_face:None,ti:0,vi:0,original:minus[0],target:Some(target),refused_face:Some(&shifted_face),initial_foot:Some(target)},
+        Proposal{admitted_q20_face:None,ti:1,vi:0,original:plus[0],target:Some(target),refused_face:None,initial_foot:None}];
     assert_eq!(rejected_keys(&[minus,plus],&p,&shifted_band),HashSet::from([vertex_bits(&minus[0])]));
 }
 #[test]
@@ -85,7 +85,7 @@ fn issue_7292_initial_step_must_not_veto_standing_secondary_axis_completion_8693
     assert!(!check(source,host,initial),"initial Y foot stays on the source carrier");
     assert!(check(source,host,completed),"distinguish refuted completed-target scope");
     let band=NearBand::from_operands(&[source],&[host]);let face=Face::new(host,&band).unwrap();
-    let proposals=[Proposal{ti:0,vi:0,original:p,target:Some(completed),
+    let proposals=[Proposal{admitted_q20_face:None,ti:0,vi:0,original:p,target:Some(completed),
         refused_face:Some(&face),initial_foot:Some(initial)}];
     assert!(rejected_keys(&[source],&proposals,&band).is_empty());
 }
@@ -100,7 +100,7 @@ fn issue_7292_actual473_old_certificate_true_but_new_stability_declines_veto() {
         let original=source[index];let mut initial=original;initial[1]=0.0;
         let mut completed=initial;if index==2 {completed[2]=3900.0;}
         budget::begin();assert!(certificate(&source,initial,&face,&band),"actual original V4 premise must hold");
-        let proposals=[Proposal{ti:0,vi:index,original,target:Some(completed),refused_face:Some(&face),initial_foot:Some(initial)}];
+        let proposals=[Proposal{admitted_q20_face:None,ti:0,vi:index,original,target:Some(completed),refused_face:Some(&face),initial_foot:Some(initial)}];
         let rejected=rejected_keys(&[source],&proposals,&band);
         assert!(rejected.is_empty(),"actual473 stability guard must decline recorded low/high veto");
         assert!(!budget::tripped());

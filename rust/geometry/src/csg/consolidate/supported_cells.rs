@@ -7,7 +7,6 @@
 use super::{plane_merge::PlaneTri, tri_is_needle};
 use crate::Mesh;
 use nalgebra::{Point3, Vector3};
-use rustc_hash::{FxHashMap, FxHashSet};
 use std::collections::BTreeMap;
 type Bucket = (i64, i64, i64, i64);
 type Point = [u64; 3];
@@ -18,75 +17,102 @@ fn point_key(p: &Point3<f64>) -> Point {
 pub(super) fn cell_key(t: &[Point3<f64>; 3]) -> Cell {
     t.map(|p| point_key(&p))
 }
+/// Lookup-only sorted membership; source traversal never follows these keys.
+#[derive(Default)]
+pub(super) struct SortedKeys<T> {
+    keys: Vec<T>,
+}
+impl<T: Ord> SortedKeys<T> {
+    fn from_unsorted(mut keys: Vec<T>) -> Self {
+        keys.sort_unstable();
+        keys.dedup();
+        Self { keys }
+    }
+    pub(super) fn contains(&self, key: &T) -> bool {
+        self.keys.binary_search(key).is_ok()
+    }
+}
+impl<T> SortedKeys<T> {
+    pub(super) fn is_empty(&self) -> bool { self.keys.is_empty() }
+    #[cfg(test)]
+    pub(super) fn len(&self) -> usize { self.keys.len() }
+}
 #[derive(Default)]
 pub(super) struct Supported {
-    pub buckets: FxHashSet<Bucket>,
-    pub cells: FxHashSet<Cell>,
+    pub buckets: SortedKeys<Bucket>,
+    pub cells: SortedKeys<Cell>,
 }
+
+fn edge_key(cells: &[Cell], edge: usize) -> (Point, Point) {
+    let cell = &cells[edge / 3];
+    let (a, b) = (cell[edge % 3], cell[(edge % 3 + 1) % 3]);
+    (a.min(b), a.max(b))
+}
+
+/// Sort source-edge ordinals, rather than copying wide keys into a hash table.
+/// Only exactly two opposite uses on distinct faces supply a neighbor. Ties
+/// need no ordering: the two source slots are filled symmetrically.
+fn opposite_neighbors(cells: &[Cell]) -> Vec<[Option<usize>; 3]> {
+    let mut edges: Vec<usize> = (0..cells.len() * 3).collect();
+    edges.sort_unstable_by(|&a, &b| edge_key(cells, a).cmp(&edge_key(cells, b)));
+    let mut neighbors = vec![[None; 3]; cells.len()];
+    let mut start = 0;
+    while start < edges.len() {
+        let key = edge_key(cells, edges[start]);
+        let mut end = start + 1;
+        while end < edges.len() && edge_key(cells, edges[end]) == key { end += 1; }
+        if end - start == 2 && key.0 != key.1 {
+            let (a, b) = (edges[start], edges[start + 1]);
+            let forward = |e: usize| cells[e / 3][e % 3] < cells[e / 3][(e % 3 + 1) % 3];
+            if a / 3 != b / 3 && forward(a) != forward(b) {
+                neighbors[a / 3][a % 3] = Some(b / 3);
+                neighbors[b / 3][b % 3] = Some(a / 3);
+            }
+        }
+        start = end;
+    }
+    neighbors
+}
+
 pub(super) fn find(buckets: &BTreeMap<Bucket, Vec<PlaneTri>>) -> Supported {
-    let faces = buckets
-        .iter()
-        .flat_map(|(&key, ts)| ts.iter().map(move |t| (key, t)))
-        .collect::<Vec<_>>();
-    let needles = faces
-        .iter()
-        .map(|(_, t)| tri_is_needle(&t.v))
-        .collect::<Vec<_>>();
-    let mut out = Supported::default();
-    // These tables only answer lookups; source/output traversal keeps the
-    // caller's ordered bucket map and the original triangle/edge order.
-    let mut disjoint = FxHashMap::default();
-    if !needles.iter().any(|&n| n) {
-        return out;
+    // Ordinary buckets need no source/edge tables at all. A rescue still uses
+    // the unchanged predicate for every face before accepting any neighbor.
+    if !buckets.values().flatten().any(|t| tri_is_needle(&t.v)) {
+        return Supported::default();
     }
-    let mut edges = FxHashMap::<(Point, Point), Vec<(usize, bool)>>::default();
-    for (i, (_, t)) in faces.iter().enumerate() {
-        let p = cell_key(&t.v);
-        for k in 0..3 {
-            let (a, b) = (p[k], p[(k + 1) % 3]);
-            edges
-                .entry((a.min(b), a.max(b)))
-                .or_default()
-                .push((i, a < b));
+    let ordered_buckets: Vec<_> = buckets.iter().collect();
+    let faces: Vec<_> = ordered_buckets.iter().enumerate()
+        .flat_map(|(bid, (_, ts))| ts.iter().map(move |t| (bid, t)))
+        .collect();
+    let needles: Vec<_> = faces.iter().map(|(_, t)| tri_is_needle(&t.v)).collect();
+    let cells: Vec<_> = faces.iter().map(|(_, t)| cell_key(&t.v)).collect();
+    let neighbors = opposite_neighbors(&cells);
+    let mut disjoint = vec![None; ordered_buckets.len()];
+    let mut supported_cells = Vec::new();
+    let mut supported_buckets = Vec::new();
+    // Source traversal, supporting-edge order and lazy certificate order stay
+    // unchanged. Ordinals only replace lookup keys; they never choose output.
+    for (i, &(bid, _)) in faces.iter().enumerate() {
+        if !needles[i] { continue; }
+        let mut healthy = Vec::new();
+        for &neighbor in &neighbors[i] {
+            let Some(j) = neighbor else { break; };
+            if needles[j] { break; }
+            healthy.push(j);
         }
-    }
-    for (i, (key, t)) in faces.iter().enumerate() {
-        if !needles[i] {
-            continue;
-        }
-        let p = cell_key(&t.v);
-        let mut neighbors = Vec::new();
-        for k in 0..3 {
-            let (a, b) = (p[k], p[(k + 1) % 3]);
-            if a == b {
-                break;
-            }
-            let incident = &edges[&(a.min(b), a.max(b))];
-            if incident.len() != 2 {
-                break;
-            }
-            let Some(&(j, forward)) = incident.iter().find(|&&(j, _)| j != i) else {
-                break;
-            };
-            if forward == (a < b) || needles[j] {
-                break;
-            }
-            neighbors.push(j);
-        }
-        if neighbors.len() == 3
-            && std::iter::once(*key)
-                .chain(neighbors.iter().map(|&j| faces[j].0))
-                .all(|key| {
-                    *disjoint
-                        .entry(key)
-                        .or_insert_with(|| nonoverlapping(&buckets[&key]))
-                })
+        if healthy.len() == 3
+            && std::iter::once(bid)
+                .chain(healthy.iter().map(|&j| faces[j].0))
+                .all(|bid| *disjoint[bid].get_or_insert_with(|| nonoverlapping(ordered_buckets[bid].1)))
         {
-            out.cells.insert(p);
-            out.buckets.insert(*key);
+            supported_cells.push(cells[i]);
+            supported_buckets.push(*ordered_buckets[bid].0);
         }
     }
-    out
+    Supported {
+        buckets: SortedKeys::from_unsorted(supported_buckets),
+        cells: SortedKeys::from_unsorted(supported_cells),
+    }
 }
 pub(super) fn append(mesh: &mut Mesh, t: &[Point3<f64>; 3], normal: &Vector3<f64>) {
     let base = mesh.vertex_count() as u32;

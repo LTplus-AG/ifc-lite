@@ -99,8 +99,8 @@ fn issue_7292_shared_raw_key_owner_order_and_primary_exemption_preserve_transact
     let band=NearBand::from_operands(&[s,stable],&[h]);let face=Face::new(h,&band).unwrap();
     budget::begin();assert!(!escapes_original_contact(&stable,s[0],foot,&face,&band));
     for owners in [[s,stable],[stable,s]] {for reverse in [false,true] {
-        let mut proposals=[Proposal{ti:0,vi:0,original:s[0],target:Some(foot),refused_face:Some(&face),initial_foot:Some(foot)},
-            Proposal{ti:1,vi:0,original:s[0],target:Some(foot),refused_face:Some(&face),initial_foot:Some(foot)}];
+        let mut proposals=[Proposal{admitted_q20_face:None,ti:0,vi:0,original:s[0],target:Some(foot),refused_face:Some(&face),initial_foot:Some(foot)},
+            Proposal{admitted_q20_face:None,ti:1,vi:0,original:s[0],target:Some(foot),refused_face:Some(&face),initial_foot:Some(foot)}];
         if reverse {proposals.reverse();}budget::begin();
         assert_eq!(rejected_keys(&owners,&proposals,&band),std::collections::HashSet::from([vertex_bits(&s[0])]));
         proposals[0].refused_face=None;

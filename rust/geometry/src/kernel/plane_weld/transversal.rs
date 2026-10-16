@@ -17,6 +17,8 @@ pub(super) struct Proposal<'a> {
     pub(super) vi: usize,
     pub(super) original: [f64; 3],
     pub(super) target: Option<[f64; 3]>,
+    // Retained through in-place target resolution, before deferred writes.
+    pub(super) admitted_q20_face: Option<(f64, &'a Face)>,
     // None preserves every original admitted-Q20 path, including its fallback.
     pub(super) refused_face: Option<&'a Face>,
     pub(super) initial_foot: Option<[f64; 3]>,

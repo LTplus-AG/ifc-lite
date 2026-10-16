@@ -320,8 +320,9 @@ pub(crate) fn promote_cutter_verts_onto_host_faces(cutter: &mut [Tri], host: &[T
                         // Numeric equality hides signed-zero writes performed
                         // by the original loop; corner identity uses raw bits.
                         if super::near_band::vertex_bits(&w) != super::near_band::vertex_bits(&original) {
-                            proposals.push((ti, vi, original, w, q20_admitted.then_some((d, f)),
-                                (!q20_admitted).then_some(f), initial_rescue_foot));
+                            proposals.push(transversal::Proposal { ti, vi, original, target: Some(w),
+                                admitted_q20_face: q20_admitted.then_some((d, f)),
+                                refused_face: (!q20_admitted).then_some(f), initial_foot: initial_rescue_foot });
                         }
                     }
                 }
@@ -333,8 +334,9 @@ pub(crate) fn promote_cutter_verts_onto_host_faces(cutter: &mut [Tri], host: &[T
     if !proposals.is_empty() {
         let incidences = incidence::ExactFaceIncidences::new(cutter, host);
         let source_axes = source_axes::SourceAxes::new(cutter);
-        let mut resolved = Vec::new();
-        for (ti, vi, original, primary, admitted_q20_face, refused_face, initial_foot) in proposals {
+        for proposal in &mut proposals {
+            let Some(primary) = proposal.target else { continue; };
+            let (original, admitted_q20_face) = (proposal.original, proposal.admitted_q20_face);
             // Build the guarded correction before rejecting its uncorrected
             // primary's incidental scatter. An established incidence-foot
             // fallback still takes priority when the primary loses incidence.
@@ -369,12 +371,12 @@ pub(crate) fn promote_cutter_verts_onto_host_faces(cutter: &mut [Tri], host: &[T
                     })
                 }))
             };
-            resolved.push(transversal::Proposal { ti, vi, original, target, refused_face, initial_foot });
+            proposal.target = target;
         }
         // Every certificate sees immutable ORIGINAL source facets. Rejected raw
         // keys retain their exact original bits; no alternate lift is attempted.
-        let rejected = transversal::rejected_keys(cutter, &resolved, &band);
-        for proposal in resolved {
+        let rejected = transversal::rejected_keys(cutter, &proposals, &band);
+        for proposal in proposals {
             let transversal::Proposal { ti, vi, original, target, .. } = proposal;
             if rejected.contains(&super::near_band::vertex_bits(&original)) { continue; }
             if let Some(target) = target {

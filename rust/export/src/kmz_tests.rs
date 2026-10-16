@@ -126,3 +126,30 @@ fn zip32_layout_rejects_total_size_and_entry_size_before_narrowing() {
     let entry_err = validate_zip32_layout(&[("m", u32::MAX as u64 + 1)]).unwrap_err();
     assert!(entry_err.to_string().contains("4 GiB entry limit"));
 }
+
+/// EXPORT-GEOM-16 / #7679: a placement KML cannot carry is refused, never
+/// written as `NaN`, `inf` or a latitude of 200 degrees.
+#[test]
+fn kmz_refuses_a_non_finite_or_out_of_range_placement() {
+    let positions = vec![0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 1.0];
+    let normals: Vec<f32> = std::iter::repeat_n([0.0f32, 1.0, 0.0], 3).flatten().collect();
+    let good = KmzOptions { latitude: 52.15, longitude: 5.38, altitude: 560.0, ..Default::default() };
+    let pack = |opts: &KmzOptions| {
+        try_export_kmz_collada_from_meshes(&positions, &normals, &[0, 1, 2], &[3], &[3], &[1.0, 0.0, 0.0, 1.0], &[0.0; 3], opts)
+    };
+    assert!(pack(&good).is_ok(), "the control placement is writable");
+    let cases = [
+        KmzOptions { latitude: f64::NAN, ..Default::default() },
+        KmzOptions { longitude: f64::INFINITY, ..Default::default() },
+        KmzOptions { altitude: f64::NEG_INFINITY, ..Default::default() },
+        KmzOptions { x_axis_abscissa: Some(f64::NAN), x_axis_ordinate: Some(1.0), ..Default::default() },
+        KmzOptions { latitude: 90.5, ..Default::default() },
+        KmzOptions { longitude: -180.5, ..Default::default() },
+    ];
+    for opts in &cases {
+        let err = pack(opts).expect_err("an unwritable placement is refused");
+        assert!(matches!(err, crate::ExportError::MalformedMeshInput { .. }), "got {err:?}");
+    }
+    let edge = KmzOptions { latitude: -90.0, longitude: 180.0, ..Default::default() };
+    assert!(pack(&edge).is_ok(), "the poles and the antimeridian are places");
+}

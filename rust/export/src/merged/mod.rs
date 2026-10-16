@@ -245,6 +245,8 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
             ));
             break;
         };
+        // A repeated id writes only its last record (EXPORT-MERGE-18, #7683).
+        stats.warnings.extend(index.duplicates.iter().map(|&id| format!("Model {i}: {}", crate::step_index::RecordIndex::duplicate_warning(id))));
 
         // Unit mode. Counted here, not where the verdicts are resolved, so an
         // id-space break above still reports only the models actually merged.

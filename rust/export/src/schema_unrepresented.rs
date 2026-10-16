@@ -13,7 +13,8 @@
 //! Split out of `schema_convert.rs` to stay under its line budget, same
 //! reason the TypeScript twin gives for its own split.
 
-use crate::generated::ifc2x3_entity_names::IFC2X3_ENTITY_NAMES;
+use std::borrow::Cow;
+
 use crate::rooted_type::is_rooted_type;
 use crate::schema_convert::placeholder_guid;
 
@@ -21,19 +22,19 @@ use crate::schema_convert::placeholder_guid;
 /// from a renamed or attribute-count-adjusted counterpart, which
 /// `schema_convert.rs`'s rename tables already resolve before this runs.
 ///
-/// Only meaningful for an IFC2X3 target today: that is the one direction
-/// with a generated per-schema entity-name table to check against (mirrors
-/// the TypeScript `attrNameTable`, which only builds tables for IFC2X3/IFC4/
-/// IFC4X3 and returns `null` — skipping this check entirely — for IFC5).
-/// IFC4/IFC4X3 targets are supersets of IFC2X3/IFC4 in practice for every
-/// type this crate's rename tables know about, so this deliberately answers
-/// `false` (representable) for any other target rather than guessing from an
-/// incomplete table.
+/// Only checked for an IFC2X3 target today, against core's IFC2X3 EXPRESS
+/// registry (#7683; it replaced a generated name table that listed the same
+/// entities plus the defined types, which never head a record). Every other
+/// target answers `true` (representable): unlike the TypeScript
+/// `attrNameTable` check, which also runs for IFC4/IFC4X3 targets, this crate
+/// has no port of the `WITHHOLDABLE_UNROOTED_TYPES` omission, so widening the
+/// check would turn an IFC4X3 -> IFC4 export with any IFC4X3-only resource
+/// type into an error rather than a pass-through.
 pub(crate) fn has_representation(type_name: &str, to: &str) -> bool {
     if to != "IFC2X3" {
         return true;
     }
-    IFC2X3_ENTITY_NAMES.binary_search(&type_name).is_ok()
+    ifc_lite_core::entity_info_for_schema("IFC2X3", type_name).is_some()
 }
 
 /// An entity type with no representation in the target schema that is
@@ -77,9 +78,11 @@ impl From<UnrepresentedEntityError> for std::io::Error {
 
 /// Resolve an entity whose type has NO representation at all in `to`.
 ///
-/// A rooted (`IfcRoot`) entity safely becomes an `IFCPROXY` placeholder —
-/// the same substitution `should_skip_entity`'s hand-listed alignment types
-/// already get, extended here to every other unmapped rooted type. A
+/// A rooted (`IfcRoot`) entity safely becomes an `IFCPROXY` placeholder. Unlike
+/// `should_skip_entity`'s alignment types (`schema_convert::product_proxy`),
+/// it keeps none of its attributes: an `IfcRoot` is not necessarily an
+/// `IfcProduct`, so its slots 5 and 6 need not be a placement and a
+/// representation. A
 /// non-rooted entity (a representation item or resource type referenced
 /// POSITIONALLY) cannot take that fallback and returns an error instead of
 /// guessing; unlike the TypeScript twin, this crate has not yet ported the
@@ -105,24 +108,36 @@ pub(crate) fn resolve_unrepresented_entity(
     })
 }
 
-/// `schema_convert.rs::convert_record`'s hook into this module: `None` when
-/// `new_type` (the type AFTER any rename `map_4_to_2x3` etc. already
-/// applied) has a real representation in `to`, so the caller's normal
-/// rename/trim/pad logic should continue; `Some` when it does not, in which
-/// case the caller must return the wrapped result immediately rather than
-/// fall into that logic with a type `to` never declared. `should_skip_entity`
-/// (checked first, by the caller) only covers its hand-listed alignment
-/// types -- this is the general case (#5116), checked on `new_type` because
-/// that is what `has_representation` must agree exists, but resolved
-/// (proxy/error) against the ORIGINAL `entity_type`, matching the TypeScript
-/// twin's `resolveUnrepresentedEntity(prefix, entityType, ...)`.
-pub(crate) fn check_representation(
-    prefix: &str, entity_type: &str, new_type: &str, to: &str, express_id: u32,
-) -> Option<Result<String, UnrepresentedEntityError>> {
-    if has_representation(new_type, to) {
-        return None;
-    }
-    Some(resolve_unrepresented_entity(prefix, entity_type, to, express_id))
+/// The IFCPROXY one of `schema_convert::should_skip_entity`'s IFC4X3 alignment products
+/// becomes below IFC4X3 (EXPORT-MERGE-8, #7683). All nine are IfcProduct
+/// subtypes, so their first seven attributes are IfcProxy's first seven. The
+/// rule, shared with the TypeScript twin's `productProxy` and pinned for both
+/// by `tests/fixtures/schema_product_proxy_vectors.json`:
+/// - GlobalId is the minted `guid` (the federation decision documented at the
+///   call site);
+/// - source attributes 1 to 6 (OwnerHistory through Representation) are kept
+///   verbatim, so an alignment's curve and a referent's placement stay
+///   attached;
+/// - Name (IfcProxy WR1 requires it) and ObjectType take the quoted source
+///   type name when the source slot is `$`;
+/// - then `.NOTDEFINED.` ProxyType and a `$` Tag.
+///
+/// A missing source slot is written `$`.
+pub(crate) fn product_proxy(prefix: &str, guid: &str, entity_type: &str, args: &[String]) -> String {
+    let slot = |i: usize| args.get(i).map_or("$", String::as_str);
+    // Name and ObjectType fall back to the quoted source type when the slot is `$`.
+    let or_type = |i: usize| -> Cow<'_, str> {
+        if slot(i).trim() == "$" { Cow::Owned(format!("'{entity_type}'")) } else { Cow::Borrowed(slot(i)) }
+    };
+    format!(
+        "{prefix}IFCPROXY('{guid}',{},{},{},{},{},{},.NOTDEFINED.,$);",
+        slot(1),
+        or_type(2),
+        slot(3),
+        or_type(4),
+        slot(5),
+        slot(6)
+    )
 }
 
 #[cfg(test)]

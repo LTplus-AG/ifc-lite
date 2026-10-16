@@ -338,6 +338,7 @@ fn emit<W: std::io::Write>(
         ifc4_required_slots_unfilled: checks.ifc4_slots.required_slots_unfilled(),
         enum_values_lost: checks.enums.lost(),
         enum_values_refused: checks.enums.refused(),
+        attribute_values_dropped: checks.attribute_values_dropped,
         property_mutations_refused,
         duplicate_records_dropped: index.duplicates.len(),
     })

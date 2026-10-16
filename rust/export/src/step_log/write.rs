@@ -58,6 +58,8 @@ pub struct StepCounters {
     pub ifc4_required_slots_unfilled: usize,
     pub enum_values_lost: usize,
     pub enum_values_refused: usize,
+    /// Non-`$` attribute values a conversion had no target slot for (#7683).
+    pub attribute_values_dropped: usize,
     /// Source records dropped because a later record has their express id
     /// (#7682); each is also named in the warnings.
     pub duplicate_records_dropped: usize,
@@ -76,6 +78,7 @@ impl From<&LogExportStats> for StepStats {
             ifc4_required_slots_unfilled: s.step.ifc4_required_slots_unfilled,
             enum_values_lost: s.step.enum_values_lost,
             enum_values_refused: s.step.enum_values_refused,
+            attribute_values_dropped: s.step.attribute_values_dropped,
             // The log path takes no `PropMutation`s (they are refused up front).
             property_mutations_refused: 0,
             duplicate_records_dropped: s.step.duplicate_records_dropped,
@@ -323,6 +326,7 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
             ifc4_required_slots_unfilled: checks.ifc4_slots.required_slots_unfilled(),
             enum_values_lost: checks.enums.lost(),
             enum_values_refused: checks.enums.refused(),
+            attribute_values_dropped: checks.attribute_values_dropped,
             duplicate_records_dropped: src.duplicates.len(),
         },
     })

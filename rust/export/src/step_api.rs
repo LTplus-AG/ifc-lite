@@ -161,6 +161,17 @@ pub struct StepStats {
     /// replacement for, so they were kept as written (#5365). Non-zero means
     /// the file is not valid against its header.
     pub enum_values_refused: usize,
+    /// Non-`$` source attribute values a schema conversion had no slot for in
+    /// the target, so they are not in the output (#7683): the tail trimmed
+    /// where the target only lacks trailing attributes (IFC4's
+    /// `IfcQuantity*.Formula` on a downgrade to IFC2X3, IFC2X3's
+    /// `IfcDistributionControlElement.ControlElementId` on an upgrade), an
+    /// IFC4X3 alignment product's attributes past IfcProduct's when it becomes
+    /// an `IFCPROXY` (its `PredefinedType`), and by-name remap sources with no
+    /// same-named target attribute. Counted per value. Non-zero means
+    /// information was lost; the TypeScript twin reports the same losses per
+    /// type in `schema-conversion-loss-report.ts`.
+    pub attribute_values_dropped: usize,
     /// [`PropMutation`]s that are not in the output (#7682, EXPORT-STEP-10),
     /// counted per mutation: its target is not in the export, its `value` is
     /// not one STEP value, or the file has no express ids left for the

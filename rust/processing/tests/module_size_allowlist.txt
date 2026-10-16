@@ -66,16 +66,6 @@
 # so collada.rs could take try_export_collada_from_meshes and come
 # back under the 400-line rule instead of raising this budget to 470.
      468 rust/export/src/model.rs
-# NEW (#5116): port the TypeScript exporter's resolveUnrepresentedEntity
-# fallback (proxy a rooted type with no target representation, error for a
-# non-rooted one) instead of silently passing an unmapped type through
-# unchanged. The bulk of the new logic lives in schema_unrepresented.rs
-# (a fresh, well-under-budget module); this is only the one call site plus
-# the Result-returning signature changes that ripple through convert_record's
-# existing early returns.
-# #5307 (Rust twin of #5202): the ifc4_slots parameter, its doc line and the
-# IFC4X3/IFC5 -> IFC4 count arm in convert_step_line, +5 lines.
-     413 rust/export/src/schema_convert.rs
 # -140 net: text-level STEP primitives (escape/detect_schema/refs_in_line/
 # split_top_level_args/apply_attr_mutations) split out to step_text.rs, making
 # room for the backslash-doubling fix to escape() without raising this

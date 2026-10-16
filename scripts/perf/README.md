@@ -14,12 +14,23 @@ off the viewer's own telemetry (below).
 
 ## Sloped coincident-sided differences (#7292)
 
-**Unmerged: performance qualification incomplete; transfer and geometry instruction ceilings fail.**
+**Unmerged: worker-pool qualification incomplete; engine transfer ceiling fails.**
 Source-plane preservation, finite coplanar classification and certified thin-cell
 retention correct the reporter cases in native Rust and source-built Chrome.
 Lookup-only hash maps and shared projected containment preserve existing output
-ordering, but do not recover the required engine transfer and geometry instruction
-budgets. No ceiling or acceptance tolerance was raised.
+ordering. Short-circuiting proper-crossing tests once an exact zero or same-side
+orientation proves rejection brings the native instruction gate inside its
+ceiling at `8ae04cf8b8`. A matching-main instruction comparison also improves with identical
+mesh, vertex and triangle counts; this is not an end-to-end timing verdict or
+full byte-identity proof. The source-built engine still exceeds its transfer
+ceiling. No ceiling or acceptance tolerance was raised.
+
+Replacing supported-cell hash collections with wide sorted records increased
+the actual compressed engine despite removing hash specializations: new sort
+specializations outweighed the removed code. That replacement was reverted.
+Do not repeat it on other wide keys without a different mechanism and a real
+source-built transfer measurement. Lazy support validation retains conservative
+candidate bounds and validates support before constructing an exact point.
 
 Reusing already-read triangle coordinates preserves the classifier's arithmetic
 and ordering, but the subsequent source-built engine still exceeds the transfer
@@ -27,7 +38,7 @@ gate. Final artifacts lack usable function names, so a read-only inspection did
 not establish that consolidation replay clones large functions. Do not repeat
 that attribution or add outlining attributes without evidence. Current-source
 finite reporter comparisons pass independently of the preserved browser cleanup
-failure; neither that proof nor historical instruction counts supplies a fresh
+failure; neither that proof nor instruction counts supplies a fresh
 end-to-end timing verdict.
 
 Coordinated idle windows and safe consumer cleanup did not qualify a complete

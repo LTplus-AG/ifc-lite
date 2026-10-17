@@ -43,7 +43,7 @@ impl IfcAPI {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         *slot = Some(entity_index.clone());
         drop(slot);
-        let mut decoder = EntityDecoder::with_arc_columnar_index(content, entity_index);
+        let mut decoder = EntityDecoder::with_arc_columnar_index(content, entity_index).with_strict_reals(); // #7678
 
         // Run combined pre-pass
         let pre_pass = combined_pre_pass(content, &mut decoder);
@@ -541,7 +541,7 @@ impl IfcAPI {
         // deliberately skipped, aggregate void propagation included); sharded
         // (external_styles) mode leaves styles to the worker shards + finalize.
         // `decoder` stays in scope below for the orphan type-geometry pass.
-        let mut decoder = EntityDecoder::with_arc_columnar_index(content, entity_index_arc.clone());
+        let mut decoder = EntityDecoder::with_arc_columnar_index(content, entity_index_arc.clone()).with_strict_reals(); // #7678
         decoder.seed_unit_scales(1.0, plane_angle_to_radians);
         if !external_styles {
             let resolved = ifc_lite_processing::prepass::resolve_prepass(

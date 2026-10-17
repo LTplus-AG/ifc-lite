@@ -25,6 +25,7 @@ mod processor;
 mod rtc_offset;
 mod structural;
 mod textured;
+mod unit_admission;
 pub(crate) mod transforms;
 pub(crate) mod voids;
 
@@ -146,6 +147,8 @@ pub struct GeometryRouter {
     /// Unit scale factor (e.g., 0.001 for millimeters -> meters), applied to
     /// all mesh positions after processing.
     unit_scale: f64,
+    /// The length unit was refused (#7678): nothing is meshed (`unit_admission`).
+    length_unit_refused: bool,
     /// RTC (Relative-to-Center) offset, subtracted from world positions in f64
     /// before converting to f32 to preserve precision (e.g. Swiss UTM).
     rtc_offset: (f64, f64, f64),
@@ -260,6 +263,7 @@ impl GeometryRouter {
             shared_brep_signatures: None,
             content_hash_oversized_ref_drops: RefCell::new(0),
             unit_scale: 1.0,             // Default to base meters
+            length_unit_refused: false,
             rtc_offset: (0.0, 0.0, 0.0), // Default to no offset
             local_frame_enabled: None,
             material_layer_index: None,
@@ -292,21 +296,6 @@ impl GeometryRouter {
         router
     }
 
-    /// Scan to the first `IFCPROJECT` and extract its length-unit scale (e.g.
-    /// `0.001` for millimetres → metres); `1.0` if none is found.
-    fn scan_unit_scale(content: &[u8], decoder: &mut EntityDecoder) -> f64 {
-        let mut scanner = ifc_lite_core::EntityScanner::new(content);
-        while let Some((id, type_name, _, _)) = scanner.next_entity() {
-            if ifc_lite_core::keyword_eq(type_name, "IFCPROJECT") {
-                if let Ok(s) = ifc_lite_core::extract_length_unit_scale(decoder, id) {
-                    return s;
-                }
-                break;
-            }
-        }
-        1.0
-    }
-
     /// Create router with unit scale extracted from IFC file AND RTC offset for large coordinates
     /// This is the recommended method for georeferenced models (Swiss UTM, etc.)
     ///
@@ -331,7 +320,7 @@ impl GeometryRouter {
     /// Create router with pre-calculated unit scale
     pub fn with_scale(unit_scale: f64) -> Self {
         let mut router = Self::new();
-        router.unit_scale = unit_scale;
+        router.set_unit_scale(unit_scale);
         router
     }
 
@@ -546,7 +535,7 @@ impl GeometryRouter {
     /// Create router with both unit scale and RTC offset
     pub fn with_scale_and_rtc(unit_scale: f64, rtc_offset: (f64, f64, f64)) -> Self {
         let mut router = Self::new();
-        router.unit_scale = unit_scale;
+        router.set_unit_scale(unit_scale);
         router.rtc_offset = rtc_offset;
         router
     }
@@ -561,7 +550,7 @@ impl GeometryRouter {
     /// Create router with both unit scale and tessellation quality
     pub fn with_scale_and_quality(unit_scale: f64, quality: TessellationQuality) -> Self {
         let mut router = Self::new();
-        router.unit_scale = unit_scale;
+        router.set_unit_scale(unit_scale);
         router.tessellation_quality = quality;
         router
     }
@@ -711,6 +700,7 @@ impl GeometryRouter {
         entity: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Result<[f64; 16]> {
+        self.admit_placement_scale()?;
         let mut transform = self.get_placement_transform_from_element(entity, decoder)?;
         self.scale_transform(&mut transform);
         Ok(crate::math::mat4::col_major_array(&transform))

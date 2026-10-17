@@ -65,13 +65,56 @@ pub fn step_numeric_literal_len(bytes: &[u8]) -> Option<usize> {
     }
 }
 
+/// The one admission rule for a decoded STEP `REAL` (#7678): the value must be
+/// finite in the type it is read into. Every Rust reader that turns STEP
+/// bytes into a float goes through this, the nom [`super::tokenizer`] and
+/// [`parse_step_numeric`] alike, so no reader admits what another refuses.
+///
+/// STEP has no spelling for NaN or infinity (the grammar above refuses `nan`
+/// and `inf`), so the only way to get one is a literal the type cannot hold:
+/// `1.E400` overflows `f64`, and `1.E39` overflows the `f32` the coordinate
+/// fast paths read into. A refused literal has two consumers:
+///
+/// - geometry refuses it. The fast paths answer `None` in every mode; the
+///   tokenizer yields `Token::UnrepresentableReal`, and a geometry decoder
+///   (`EntityDecoder::with_strict_reals`) refuses the record with
+///   `Error::UnrepresentableReal`, so the element fails closed and is
+///   counted. An object definition (a product's own record) is admitted:
+///   its reals are descriptive, never geometry;
+/// - everything else keeps it: the default decoder is lossless and reads
+///   the record as before, the literal as a signed infinity, so the data
+///   model, exporters and georeferencing never lose an entity to it.
+///
+/// Only overflow is refused. `-0.` stays `-0.0`, sign bit included, and an
+/// underflowing literal (`1.E-400`) still reads as the zero it rounds to.
+#[inline]
+pub(crate) fn admit_step_real<T: Copy + Into<f64>>(value: T) -> Option<T> {
+    value.into().is_finite().then_some(value)
+}
+
 /// Read the one STEP numeric literal at the start of `bytes`: its value and
 /// the number of bytes it spans. `None` when [`step_numeric_literal_len`]
-/// refuses it, so a malformed token is never read as its parseable prefix.
+/// refuses it, so a malformed token is never read as its parseable prefix,
+/// and when [`admit_step_real`] refuses the value, so an overflowing one is
+/// never read as an infinity.
 #[inline]
-pub fn parse_step_numeric<T: fast_float2::FastFloat>(bytes: &[u8]) -> Option<(T, usize)> {
+pub fn parse_step_numeric<T: fast_float2::FastFloat + Into<f64>>(
+    bytes: &[u8],
+) -> Option<(T, usize)> {
     let len = step_numeric_literal_len(bytes)?;
-    fast_float2::parse::<T, _>(&bytes[..len]).ok().map(|v| (v, len))
+    let value = fast_float2::parse::<T, _>(&bytes[..len]).ok()?;
+    admit_step_real(value).map(|v| (v, len))
+}
+
+/// [`parse_step_numeric`] for a token that must be exactly one literal: the
+/// whole of `token`, ASCII whitespace trimmed, read as an admitted `f64`.
+/// For readers that already split a record into attribute tokens, which used
+/// `str::parse::<f64>` and so read `inf`, `NaN` and `1.E400` as numbers.
+#[inline]
+pub fn parse_step_real(token: &[u8]) -> Option<f64> {
+    let token = token.trim_ascii();
+    let (value, len) = parse_step_numeric::<f64>(token)?;
+    (len == token.len()).then_some(value)
 }
 
 #[cfg(test)]

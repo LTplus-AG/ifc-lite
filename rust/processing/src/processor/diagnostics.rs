@@ -43,6 +43,9 @@ pub(super) struct DiagnosticCollectors {
     pub(super) backstop: std::sync::atomic::AtomicU64,
     /// Content-hash refs refused above `u32::MAX` (#3421/#3752).
     pub(super) oversized_ref_drops: std::sync::atomic::AtomicU64,
+    /// Elements whose geometry read a record refused by input admission
+    /// (#7678, D3's refused-element counter).
+    pub(super) refused_input: std::sync::atomic::AtomicU64,
 }
 
 impl DiagnosticCollectors {
@@ -55,8 +58,61 @@ impl DiagnosticCollectors {
             unsupported_items: std::sync::Mutex::new(FxHashMap::default()),
             backstop: std::sync::atomic::AtomicU64::new(0),
             oversized_ref_drops: std::sync::atomic::AtomicU64::new(0),
+            refused_input: std::sync::atomic::AtomicU64::new(0),
         }
     }
+
+    /// The per-job end of the pass: this job router's unsupported items, and
+    /// D3's refused-element count for this job's decoder (#7678).
+    pub(super) fn drain_job(&self, router: &ifc_lite_geometry::GeometryRouter, decoder: &ifc_lite_core::EntityDecoder) {
+        drain_unsupported_items(router, &self.unsupported_items);
+        self.note_refused_input(decoder);
+    }
+
+    /// D3's refused-element counter (#7678): an element whose geometry read
+    /// any record refused by input admission counts once. Call once per job,
+    /// with that job's own decoder.
+    pub(super) fn note_refused_input(&self, decoder: &ifc_lite_core::EntityDecoder) {
+        if decoder.refused_real_records() > 0 {
+            self.refused_input.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        }
+    }
+}
+
+/// A refused length unit (#7678, `UnitScales::length_unit_refused`): no
+/// element may be meshed against it, so every geometry job is refused and
+/// counted, never meshed at an invented metre scale. Returns how many.
+pub(super) fn refuse_jobs_for_unit(units: &crate::prepass::UnitScales, jobs: &mut Vec<super::EntityJob>) -> u64 {
+    if units.length_unit_refused.is_none() {
+        return 0;
+    }
+    let refused = jobs.len() as u64;
+    jobs.clear();
+    refused
+}
+
+/// The pass router at the geometry scale, refused with the length unit, so no
+/// site or building placement it resolves reads file units as metres (#7678).
+pub(super) fn unit_router(units: &crate::prepass::UnitScales) -> ifc_lite_geometry::GeometryRouter {
+    let mut router = ifc_lite_geometry::GeometryRouter::with_scale(units.geometry_length_scale());
+    if units.length_unit_refused.is_some() {
+        router.refuse_length_unit();
+    }
+    router
+}
+
+/// `refused_prepass_records`: the distinct records the pre-pass refused
+/// (#7678), each counted once however often it was re-read: the scan
+/// decoder's, the deferred style decoder's and a refused unit factor.
+pub(super) fn distinct_refusals(
+    decoder: &ifc_lite_core::EntityDecoder,
+    deferred_styles: Vec<u32>,
+    units: &crate::prepass::UnitScales,
+) -> u64 {
+    let mut ids: rustc_hash::FxHashSet<u32> = decoder.refused_record_ids().into_iter().collect();
+    ids.extend(deferred_styles);
+    ids.extend(units.length_unit_refused);
+    ids.len() as u64
 }
 
 /// Build the full `GeometryDiagnostics` contract from the drained sinks -- the

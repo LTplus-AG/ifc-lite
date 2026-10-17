@@ -68,55 +68,42 @@ ENDSEC;
 END-ISO-10303-21;
 "#;
 
-/// Sanity check on the fixture itself: `1.E400` must actually parse to a
-/// non-finite f32 through the real extraction path, not silently become
-/// `0.0` via `unwrap_or(0.0)` on a parse failure. If this fails, the fixture
-/// needs a different malformed literal — it would not be exercising the bug.
+/// Since #7678 the STEP decode boundary refuses the point record holding
+/// `1.E400` (a REAL the double range cannot represent) instead of decoding it
+/// to infinity. `items.rs` resolves a polyline's points as one list, so the
+/// polyline that referenced the refused point is refused whole rather than
+/// drawn with that one point left out: it fails closed, and still emits no
+/// non-finite coordinate.
 #[test]
 fn contrast_fixture_bare_polyline_drops_the_non_finite_point() {
     let data = extract_symbolic_data(BARE_POLYLINE_WITH_INFINITE_COORD);
-    assert_eq!(
-        data.polylines.len(),
-        1,
-        "expected exactly one polyline, got {:?}",
+    assert!(
+        data.polylines.is_empty(),
+        "a polyline whose point the decode boundary refused must be refused whole, got {:?}",
         data.polylines
     );
-    let pts = &data.polylines[0].points;
-    // 3 input points, one dropped (the non-finite one) -> 2 finite points -> 4 floats.
-    assert_eq!(
-        pts.len(),
-        4,
-        "items.rs must drop the non-finite point and keep the two finite ones, got {pts:?}"
-    );
-    for v in pts {
+    for v in data.polylines.iter().flat_map(|p| &p.points) {
         assert!(v.is_finite(), "items.rs must never emit a non-finite coordinate, got {v}");
     }
 }
 
-/// RED (before the fix): `IfcAnnotationFillArea`'s boundary ring propagates
-/// the non-finite coordinate straight into `SymbolicFillArea.points`,
-/// diverging from the sibling polyline path above which drops it.
+/// RED (before the original fix): `IfcAnnotationFillArea`'s boundary ring
+/// propagated the non-finite coordinate straight into
+/// `SymbolicFillArea.points`. Since #7678 the decode boundary refuses that
+/// point record, so the ring, and with it the fill, is refused whole like
+/// the polyline above: no fill, and nothing non-finite.
 #[test]
 fn fill_area_boundary_ring_must_not_emit_non_finite_points() {
     let data = extract_symbolic_data(FILL_AREA_WITH_INFINITE_COORD);
-    assert_eq!(
-        data.fills.len(),
-        1,
-        "expected exactly one fill area, got {:?}",
+    assert!(
+        data.fills.is_empty(),
+        "a fill whose boundary point the decode boundary refused must be refused, got {:?}",
         data.fills
     );
-    let pts = &data.fills[0].points;
-    // 4 input points, one dropped (the non-finite one) -> 3 finite points -> 6 floats.
-    assert_eq!(
-        pts.len(),
-        6,
-        "fill.rs must drop the non-finite point and keep the three finite ones, got {pts:?}"
-    );
-    for v in pts {
+    for v in data.fills.iter().flat_map(|f| &f.points) {
         assert!(
             v.is_finite(),
-            "fill.rs must never emit a non-finite coordinate into SymbolicFillArea.points, \
-             got {v} in {pts:?} — this is the asymmetry with items.rs's guarded polyline path"
+            "fill.rs must never emit a non-finite coordinate into SymbolicFillArea.points, got {v}"
         );
     }
 }

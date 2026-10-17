@@ -79,7 +79,7 @@ pub(super) fn extract_symbolic_item_inner(
                         parse_axis2_placement_2d(&origin, decoder, unit_scale)
                     }
                     Ok(_) => Transform2D::unresolved(), // wrong type (#2355)
-                    Err(_) => Transform2D::unresolved(), // dangling ref (#2256)
+                    Err(e) => Transform2D::undecodable(&e), // refused (#7678), or dangling (#2256)
                 },
                 None => Transform2D::unresolved(), // mandatory attr absent (#2256)
             };
@@ -100,7 +100,7 @@ pub(super) fn extract_symbolic_item_inner(
                         parse_cartesian_transformation_operator(&target, decoder, unit_scale)
                     }
                     Ok(_) => Transform2D::unresolved(), // wrong type (#2355)
-                    Err(_) => Transform2D::unresolved(), // dangling ref (#2256)
+                    Err(e) => Transform2D::undecodable(&e), // refused (#7678), or dangling (#2256)
                 },
                 None => Transform2D::unresolved(), // mandatory attr absent (#2256)
             };

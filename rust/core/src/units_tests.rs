@@ -432,3 +432,55 @@ END-ISO-10303-21;
         scale
     );
 }
+
+/// #7678 (CORE-15): a custom-named conversion-based length unit whose factor
+/// overflows (`1.E400`), cannot be read, or is not positive used to resolve
+/// to infinity (every vertex inf/NaN) or to an invented 1.0 (metres, a 3.28x
+/// error for a FOOT-like unit). It is now an error; the finite factor of the
+/// same file still resolves.
+#[test]
+fn conversion_based_length_unit_with_an_unusable_factor_is_an_error() {
+    let file = |factor: &str| {
+        format!(
+            "DATA;\n#1=IFCPROJECT('guid',$,'Test',$,$,$,$,$,#3);\n#3=IFCUNITASSIGNMENT((#5));\n\
+             #5=IFCCONVERSIONBASEDUNIT(#7,.LENGTHUNIT.,'SURVEY_LINK',#8);\n\
+             #7=IFCDIMENSIONALEXPONENTS(1,0,0,0,0,0,0);\n\
+             #8=IFCMEASUREWITHUNIT({factor},#9);\n#9=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);\nENDSEC;\n"
+        )
+    };
+    for factor in [
+        "IFCLENGTHMEASURE(1.E400)",
+        "IFCLENGTHMEASURE(-1.E400)",
+        "IFCLENGTHMEASURE(0.)",
+        "IFCLENGTHMEASURE(-0.)",
+        "IFCLENGTHMEASURE(-0.2)",
+        "IFCLABEL('one link')",
+        "$",
+    ] {
+        let content = file(factor);
+        let mut decoder = EntityDecoder::new(&content);
+        let scale = extract_length_unit_scale(&mut decoder, 1);
+        assert!(
+            matches!(scale, Err(crate::Error::UnusableUnitFactor { factor: 8, .. })),
+            "{factor}: got {scale:?}"
+        );
+        // The one policy (#7678): geometry refuses, the data model keeps
+        // main's value: +inf for an overflowing factor, metres otherwise.
+        let mut decoder = EntityDecoder::new(&content);
+        let unit = resolve_length_unit(&mut decoder, 1).expect("project decodes");
+        assert_eq!(unit.unusable_factor, Some(8), "{factor}");
+        assert!(unit.for_geometry().is_err(), "{factor}");
+        let expected = if factor == "IFCLENGTHMEASURE(1.E400)" { f64::INFINITY } else { 1.0 };
+        assert_eq!(unit.scale, expected, "{factor}");
+        // A strict (geometry) decoder counts the refusal; a lossless one not.
+        let mut strict = EntityDecoder::new(&content).with_strict_reals();
+        assert_eq!(strict.length_unit_scale(), 1.0, "{factor}: tolerance basis only");
+        assert_eq!(strict.refused_real_records(), 1, "{factor}");
+        assert_eq!(EntityDecoder::new(&content).length_unit_scale(), expected, "{factor}");
+    }
+    let content = file("IFCLENGTHMEASURE(0.201168)");
+    let mut decoder = EntityDecoder::new(&content);
+    assert_eq!(extract_length_unit_scale(&mut decoder, 1).unwrap(), 0.201168);
+    let unit = resolve_length_unit(&mut EntityDecoder::new(&content), 1).unwrap();
+    assert_eq!((unit.scale, unit.unusable_factor), (0.201168, None));
+}

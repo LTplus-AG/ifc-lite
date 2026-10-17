@@ -346,3 +346,33 @@ fn a_fully_resolved_polyline_keeps_every_point() {
 #25=IFCCARTESIANPOINT((0.,1.));\n";
     assert_eq!(profile_points(COMPLETE, 10).len(), 4);
 }
+
+/// #7678 (PROC-S23): a zero `ExtrudedDirection` used to be `normalize`d into
+/// NaN positions. It is now refused; a `-0.`-signed direction is an ordinary
+/// one and still extrudes.
+#[test]
+fn a_zero_extrusion_direction_is_refused_not_normalized_into_nan() {
+    let surface = |direction: &str| {
+        let data = format!(
+            "{WELLFORMED}#30=IFCDIRECTION(({direction}));\n\
+             #31=IFCSURFACEOFLINEAREXTRUSION(#10,$,#30,2.);\n"
+        );
+        let content = wrap(&data);
+        let mut decoder = EntityDecoder::new(&content);
+        let entity = decoder.decode_by_id(31).expect("surface decodes");
+        SurfaceOfLinearExtrusionProcessor::new().process(
+            &entity,
+            &mut decoder,
+            &IfcSchema::new(),
+            TessellationQuality::default(),
+        )
+    };
+    for zero in ["0.,0.,0.", "-0.,0.,-0."] {
+        let result = surface(zero);
+        assert!(result.is_err(), "({zero}) must be refused, got {:?}", result.map(|m| m.positions));
+    }
+    let mesh = surface("-0.,0.,1.").expect("a -0. component is still a direction");
+    assert!(!mesh.positions.is_empty());
+    assert!(mesh.positions.iter().all(|v| v.is_finite()), "{:?}", mesh.positions);
+    assert_eq!(mesh.positions[mesh.positions.len() - 1], 2.0);
+}

@@ -110,7 +110,7 @@ pub use limits::{RtcVerdict, MAX_MAPPED_ITEM_DEPTH, MAX_PLACEMENT_DEPTH};
 pub use model_bounds::{scan_model_bounds, scan_placement_bounds, ModelBounds};
 pub use parser::{
     declared_schema_bounded, entity_count, find_keyword, keyword_ends_with, keyword_eq, keyword_starts_with,
-    nth_attribute_is_present, oversized_id_report, parse_entity, report_malformed_records,
+    nth_attribute_is_present, oversized_id_report, parse_entity, parse_step_real, report_malformed_records,
     report_oversized_ids, report_scan_diagnostics, set_report_sink, skip_step_comment,
     EntityScanner, StepListItems, Token,
 };
@@ -127,5 +127,6 @@ pub use step_encoding::decode_ifc_string;
 pub use streaming::{parse_stream, ParseEvent, StreamConfig};
 pub use units::{
     extract_length_unit_scale, extract_plane_angle_to_radians, get_si_prefix_multiplier,
+    resolve_length_unit, LengthUnit,
     try_extract_length_unit_scale, try_extract_plane_angle_to_radians,
 };

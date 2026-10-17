@@ -55,3 +55,33 @@ fn refuses_a_sign_or_dot_with_no_digit_and_an_empty_exponent() {
         assert_eq!(step_numeric_literal_len(text.as_bytes()), None, "{text:?}");
     }
 }
+
+/// #7678 (S6a): a literal the target type cannot hold is refused, not read as
+/// an infinity. STEP has no NaN or infinity spelling, so overflow is the only
+/// way a decoded REAL can be non-finite. `-0.` keeps its sign bit and an
+/// underflowing literal still reads as zero.
+#[test]
+fn refuses_a_literal_its_target_type_cannot_hold() {
+    for text in ["1.0E400", "-1.0E400", "1.E309", "1.8E308", "9.E999"] {
+        assert_eq!(parse_step_numeric::<f64>(text.as_bytes()), None, "f64 {text}");
+        assert_eq!(parse_step_numeric::<f32>(text.as_bytes()), None, "f32 {text}");
+    }
+    // Finite in f64, infinite in the f32 the coordinate fast paths read into.
+    assert_eq!(parse_step_numeric::<f32>(b"1.E39"), None);
+    assert_eq!(parse_step_numeric::<f64>(b"1.E39"), Some((1.0e39, 5)));
+    // The largest finite values of each type are still admitted.
+    assert_eq!(parse_step_numeric::<f64>(b"1.7976931348623157E308"), Some((f64::MAX, 22)));
+    assert_eq!(parse_step_numeric::<f32>(b"3.4028235E38"), Some((f32::MAX, 12)));
+}
+
+#[test]
+fn admits_negative_zero_and_underflow() {
+    for text in ["-0.", "-0.0", "-0.E0", "-0"] {
+        let (v, _) = parse_step_numeric::<f64>(text.as_bytes()).expect(text);
+        assert!(v == 0.0 && v.is_sign_negative(), "{text}: {v:?}");
+        let (v, _) = parse_step_numeric::<f32>(text.as_bytes()).expect(text);
+        assert!(v == 0.0 && v.is_sign_negative(), "f32 {text}: {v:?}");
+    }
+    assert_eq!(parse_step_numeric::<f64>(b"1.E-400"), Some((0.0, 7)));
+    assert_eq!(parse_step_numeric::<f32>(b"1.E-50"), Some((0.0, 6)));
+}

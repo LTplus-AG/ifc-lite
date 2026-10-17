@@ -19,6 +19,7 @@ use nom::{
 use crate::error::{Error, Result};
 use crate::generated::IfcType;
 use crate::step_encoding::step_string_literal_end;
+use super::numeric_literal::admit_step_real;
 
 /// STEP/IFC token.
 ///
@@ -35,6 +36,11 @@ pub enum Token<'a> {
     Integer(i64),
     /// Float: 3.14
     Float(f64),
+    /// A complete STEP `REAL` literal that `f64` cannot hold (`1.E400`),
+    /// carried as its raw text. [`super::numeric_literal::admit_step_real`]
+    /// decides which literals land here (#7678): the decoder refuses the
+    /// record for geometry and keeps it, as an infinity, for the data model.
+    UnrepresentableReal(&'a [u8]),
     /// Enum: .TRUE., .FALSE., .UNKNOWN.
     Enum(&'a [u8]),
     /// List: (1, 2, 3)
@@ -125,7 +131,9 @@ fn integer(input: &[u8]) -> IResult<&[u8], Token<'_>> {
 /// IFC allows floats like "0." without decimal digits
 ///
 /// `REAL` carries the same `[ SIGN ]` as `INTEGER`; see [`integer`] for why a
-/// rejected sign costs the whole entity.
+/// rejected sign costs the whole entity. A literal `f64` cannot hold
+/// (`1.E400`) becomes [`Token::UnrepresentableReal`], by [`admit_step_real`]
+/// (#7678); the decoder, not the tokenizer, decides what that costs.
 /// Uses lexical-core for 10x faster parsing
 #[inline]
 fn float(input: &[u8]) -> IResult<&[u8], Token<'_>> {
@@ -139,7 +147,7 @@ fn float(input: &[u8]) -> IResult<&[u8], Token<'_>> {
         ))),
         |s: &[u8]| {
             lexical_core::parse::<f64>(s)
-                .map(Token::Float)
+                .map(|v| admit_step_real(v).map_or(Token::UnrepresentableReal(s), Token::Float))
                 .map_err(|_| "parse error")
         },
     )(input)

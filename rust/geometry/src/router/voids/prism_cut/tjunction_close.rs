@@ -18,14 +18,10 @@ use super::super::frame_snap::closed_and_consistently_wound;
 use super::super::geom::mesh_signed_volume;
 use super::vertex_dedup::{dedup_cut_vertices_within, weld_tolerance};
 use super::Mesh;
-use rustc_hash::FxHashMap;
-
-type Key = [i64; 3];
+use crate::mesh_check::{Degenerate, EdgeLedger, Key3, VertexKey};
 
 /// The 0.1 mm lattice the closure audits key on.
-fn key(p: [f64; 3]) -> Key {
-    p.map(|c| (c * 1.0e4).round() as i64)
-}
+const LATTICE: VertexKey = VertexKey::GridMul(1.0e4);
 
 /// `cut` re-welded at the world quantum and with its T-junctions split, or
 /// `None` when that does not leave it strictly closed with its volume kept.
@@ -47,22 +43,19 @@ fn close_t_junctions(cut: &Mesh, tol: f64) -> Option<Mesh> {
         let b = i as usize * 3;
         [cut.positions[b] as f64, cut.positions[b + 1] as f64, cut.positions[b + 2] as f64]
     };
+    // The lattice cell of vertex `i` (`pos` is the exact f32 widening).
+    let key = |i: u32| -> Key3 {
+        let b = i as usize * 3;
+        LATTICE.point([cut.positions[b], cut.positions[b + 1], cut.positions[b + 2]]).unwrap_or_default()
+    };
     if cut.indices.iter().any(|&i| i as usize >= vc) {
         return None;
     }
-    let mut balance: FxHashMap<(Key, Key), i64> = FxHashMap::default();
-    for t in cut.indices.chunks_exact(3) {
-        for (a, b) in [(t[0], t[1]), (t[1], t[2]), (t[2], t[0])] {
-            let (ka, kb) = (key(pos(a)), key(pos(b)));
-            if ka != kb {
-                *balance.entry((ka, kb)).or_insert(0) += 1;
-                *balance.entry((kb, ka)).or_insert(0) -= 1;
-            }
-        }
-    }
+    // Only a zero-length edge is skipped; its triangle's other edges still count.
+    let ledger = EdgeLedger::build(cut, LATTICE, Degenerate::SkipEdge);
     let open = |a: u32, b: u32| {
-        let (ka, kb) = (key(pos(a)), key(pos(b)));
-        ka != kb && balance.get(&(ka, kb)).is_some_and(|&c| c != 0)
+        let (ka, kb) = (key(a), key(b));
+        ka != kb && ledger.net(ka, kb) != 0
     };
     // Candidate split points: every endpoint of an open edge, in index order.
     let mut candidates: Vec<u32> = Vec::new();
@@ -90,14 +83,14 @@ fn close_t_junctions(cut: &Mesh, tol: f64) -> Option<Mesh> {
                 continue;
             }
             let (pa, pb) = (pos(a), pos(b));
-            let (ka, kb) = (key(pa), key(pb));
+            let (ka, kb) = (key(a), key(b));
             let ab = [pb[0] - pa[0], pb[1] - pa[1], pb[2] - pa[2]];
             let len2 = ab[0] * ab[0] + ab[1] * ab[1] + ab[2] * ab[2];
             let len = len2.sqrt();
             let mut hits: Vec<(f64, u32)> = Vec::new();
             for &q in &candidates {
                 let pq = pos(q);
-                let kq = key(pq);
+                let kq = key(q);
                 if kq == ka || kq == kb {
                     continue;
                 }
@@ -114,7 +107,7 @@ fn close_t_junctions(cut: &Mesh, tol: f64) -> Option<Mesh> {
             }
             // Deterministic: by position along the edge, then by index.
             hits.sort_by(|x, y| x.0.total_cmp(&y.0).then(x.1.cmp(&y.1)));
-            hits.dedup_by(|x, y| key(pos(x.1)) == key(pos(y.1)));
+            hits.dedup_by(|x, y| key(x.1) == key(y.1));
             if !hits.is_empty() {
                 split_edges[e] = true;
                 ring.extend(hits.into_iter().map(|(_, q)| q));

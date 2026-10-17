@@ -279,6 +279,12 @@ Parse failures carry a stable code:
 | `LXML008` | recognised namespace with an unknown `version` |
 | `LXML009` | a required attribute or element is missing, or content is semantically invalid |
 
+Two refusals apply to every parse path alike. A numeric field (`<P>`, `<F>`, a point list, a
+`<CgPoint>`, an alignment point) that contains a child element is refused (`LXML009`) rather than
+read as the text around the element, and a character reference to something that is not an XML
+character (`&#0;`, `&#xB;`, `&#xFFFE;`) is malformed XML (`LXML006`), in text and in attribute
+values.
+
 Terrain triangulation refusals use a separate `LXMLT###` family, and alignment numeric evaluation
 uses `LXMLA###`. Both are reported as diagnostics on the model rather than as load failures, so a
 file that cannot be triangulated still opens with its source records intact.

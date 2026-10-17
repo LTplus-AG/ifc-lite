@@ -31,7 +31,7 @@ fn issue_6893_faces_of_a_regular_polygon_link_and_meet_at_its_axis() {
     assert!((ring.centre[0] - c[0]).abs() < 1e-9 && (ring.centre[1] - c[1]).abs() < 1e-9, "{:?}", ring.centre);
     assert!((ring.apothem - 0.6).abs() < 1e-9);
     // Normals now point away from the axis.
-    assert!(ring.faces.iter().all(|f| dot2(sub2(f.mid, c), f.normal) > 0.));
+    assert!(ring.faces.iter().all(|f| v2::dot(v2::sub(f.mid, c), f.normal) > 0.));
 }
 
 #[test]

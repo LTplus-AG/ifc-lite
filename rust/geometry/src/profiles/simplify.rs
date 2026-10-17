@@ -2,6 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+use crate::math::v2::{bbox, shoelace2_by};
 use crate::profile::Profile2D;
 use crate::Point2;
 
@@ -254,12 +255,7 @@ fn loop_doubles_back(loop_: &[Point2<f64>]) -> bool {
     if n < 4 {
         return false;
     }
-    let mut signed_area2 = 0.0;
-    for i in 0..n {
-        let a = loop_[i];
-        let b = loop_[(i + 1) % n];
-        signed_area2 += a.x * b.y - b.x * a.y;
-    }
+    let signed_area2 = shoelace2_by(n, |i| [loop_[i].x, loop_[i].y]);
     if signed_area2 == 0.0 {
         return false;
     }
@@ -323,24 +319,7 @@ pub(super) fn simplify_smooth_curve_polyline(
     }
 
     // Bounding box + diagonal (proxy for "size of profile").
-    let mut min_x = f64::INFINITY;
-    let mut min_y = f64::INFINITY;
-    let mut max_x = f64::NEG_INFINITY;
-    let mut max_y = f64::NEG_INFINITY;
-    for p in core {
-        if p.x < min_x {
-            min_x = p.x;
-        }
-        if p.y < min_y {
-            min_y = p.y;
-        }
-        if p.x > max_x {
-            max_x = p.x;
-        }
-        if p.y > max_y {
-            max_y = p.y;
-        }
-    }
+    let [min_x, min_y, max_x, max_y] = bbox(core.iter().map(|p| [p.x, p.y]));
     let dx = max_x - min_x;
     let dy = max_y - min_y;
     let diag = (dx * dx + dy * dy).sqrt();

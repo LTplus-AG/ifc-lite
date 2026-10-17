@@ -15,7 +15,11 @@ use ifc_lite_geometry::mesh_check::{self, Degenerate, EdgeLedger, VertexKey};
 /// How vertices are identified when counting shared edges.
 #[derive(Clone, Copy, Debug)]
 pub enum Key {
-    /// Exact `f32` bit patterns (no tolerance).
+    /// Exact `f32` values, no tolerance. `-0.0` and `+0.0` are the SAME
+    /// vertex (they compare equal as floats; keying on raw bits would split a
+    /// shared corner and report phantom open edges). NaN positions with equal
+    /// bits are equal to each other; callers wanting NaN rejected should
+    /// check for it first.
     Bits,
     /// Snap to a grid of the given pitch (world units).
     Grid(f64),
@@ -24,20 +28,34 @@ pub enum Key {
 impl Key {
     fn vertex_key(self) -> VertexKey {
         match self {
-            Key::Bits => VertexKey::Bits,
+            Key::Bits => VertexKey::BitsZeroFolded,
             Key::Grid(pitch) => VertexKey::GridDiv(pitch),
         }
     }
 }
 
 /// Axis-aligned bounds `(min, max)`; `([inf;3], [-inf;3])` when empty.
+///
+/// NaN is explicit, never silently skipped (`f32::min` would drop it and hide
+/// a corrupt mesh from the oracle): an axis holding any NaN coordinate reports
+/// `NaN` for both its min and max, so a following comparison fails loudly.
 pub fn bbox(positions: &[f32]) -> ([f32; 3], [f32; 3]) {
     let mut min = [f32::INFINITY; 3];
     let mut max = [f32::NEG_INFINITY; 3];
+    let mut nan = [false; 3];
     for p in positions.chunks_exact(3) {
         for a in 0..3 {
+            if p[a].is_nan() {
+                nan[a] = true;
+            }
             min[a] = min[a].min(p[a]);
             max[a] = max[a].max(p[a]);
+        }
+    }
+    for a in 0..3 {
+        if nan[a] {
+            min[a] = f32::NAN;
+            max[a] = f32::NAN;
         }
     }
     (min, max)
@@ -107,6 +125,25 @@ mod tests {
         split[0] = 8;
         assert!(open_edges(&p, &split, Key::Bits) > 0);
         assert_eq!(open_edges(&p, &split, Key::Grid(1e-4)), 0);
+    }
+
+    #[test]
+    fn negative_zero_is_the_same_vertex_as_positive_zero_under_bits() {
+        // A triangle fan whose shared corner is written +0.0 in one triangle and
+        // -0.0 in the other: closed as floats, "open" if keyed on raw bits.
+        let p = [0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, -0.0, -0.0, -0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0];
+        // Two coincident triangles with opposite winding bound a closed sheet.
+        let i = [0u32, 1, 2, 3, 5, 4];
+        assert_eq!(open_edges(&p, &i, Key::Bits), 0);
+        assert_eq!(open_edges(&p, &i, Key::Grid(1e-4)), 0);
+    }
+
+    #[test]
+    fn bbox_reports_nan_instead_of_skipping_it() {
+        let (min, max) = bbox(&[0.0, 1.0, 2.0, f32::NAN, 3.0, 4.0]);
+        assert!(min[0].is_nan() && max[0].is_nan(), "NaN axis is NaN, not 0.0");
+        assert_eq!((min[1], max[1]), (1.0, 3.0));
+        assert_eq!((min[2], max[2]), (2.0, 4.0));
     }
 
     #[test]

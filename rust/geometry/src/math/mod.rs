@@ -3,7 +3,8 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 //! The cross-crate math home: vectors, 4x4 matrices, AABBs and the Z-up to
-//! Y-up frame, over plain arrays (#7772, charter #7670).
+//! Y-up frame, over plain arrays (#7772, charter #7670), plus the plane kit
+//! [`v2`] and its exact predicates (`geom2d`, #7773).
 //!
 //! `nalgebra` stays geometry's interior type. Every cross-crate signature is
 //! already an array (`InstanceMeta.transform`, `origin`, `local_bounds`), so
@@ -31,8 +32,10 @@
 
 pub mod aabb;
 pub mod frame;
+pub(crate) mod geom2d;
 pub mod mat4;
 pub(crate) mod normals;
+pub mod v2;
 pub mod v3;
 
 #[cfg(test)]
@@ -45,5 +48,7 @@ mod frame_tests;
 mod mat4_tests;
 #[cfg(test)]
 mod normals_tests;
+#[cfg(test)]
+mod v2_tests;
 #[cfg(test)]
 mod v3_tests;

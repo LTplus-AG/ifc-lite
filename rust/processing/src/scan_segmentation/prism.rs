@@ -28,8 +28,9 @@ use super::grow::Region;
 use super::normals::{unit, Vec3};
 use super::options::Params;
 use super::report::ScanFacets;
-use super::ring::{dot2, Plan, Ring, P2};
+use super::ring::{Plan, Ring, P2};
 use super::voxel::VoxelSet;
+use ifc_lite_geometry::math::v2;
 use nalgebra::{Matrix3, Vector3};
 use std::f64::consts::{PI, TAU};
 
@@ -58,7 +59,7 @@ fn axis_and_apothem(ring: &Ring) -> Option<(P2, f64)> {
     for f in &ring.faces {
         let row = Vector3::new(f.normal[0], f.normal[1], 1.);
         m += row * row.transpose();
-        b += row * dot2(f.normal, f.mid);
+        b += row * v2::dot(f.normal, f.mid);
     }
     let s = m.lu().solve(&b)?;
     (s[2] > 0.).then_some(([s[0], s[1]], s[2]))
@@ -82,7 +83,7 @@ pub(crate) fn prism(ring: &Ring, regions: &[Region], voxels: &VoxelSet, params: 
         return None;
     }
     let (centre, apothem) = axis_and_apothem(ring)?;
-    if ring.faces.iter().any(|f| (dot2([f.mid[0] - centre[0], f.mid[1] - centre[1]], f.normal) - apothem).abs() > params.distance) {
+    if ring.faces.iter().any(|f| (v2::dot([f.mid[0] - centre[0], f.mid[1] - centre[1]], f.normal) - apothem).abs() > params.distance) {
         return None;
     }
     let radius = apothem / (PI / n as f64).cos();
@@ -98,7 +99,7 @@ pub(crate) fn prism(ring: &Ring, regions: &[Region], voxels: &VoxelSet, params: 
     for f in &ring.faces {
         for &i in &regions[f.plane].voxels {
             let q = plan.project(voxels.means[i as usize]);
-            squares += (dot2([q[0] - centre[0], q[1] - centre[1]], f.normal) - apothem).powi(2);
+            squares += (v2::dot([q[0] - centre[0], q[1] - centre[1]], f.normal) - apothem).powi(2);
         }
     }
     let rms = (squares / ring.faces.iter().map(|f| regions[f.plane].voxels.len()).sum::<usize>() as f64).sqrt();

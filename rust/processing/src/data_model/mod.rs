@@ -15,6 +15,8 @@ pub mod property;
 pub mod quantity;
 pub mod render;
 pub mod rows;
+pub mod spatial_walk;
+pub mod type_assignments;
 mod inherit;
 mod properties;
 mod property_value;

@@ -134,3 +134,13 @@ fn attributes_render_what_the_class_declares_and_skip_unset_ones() {
     // Off by default.
     assert!(row(&self::rows(false, false), 310).attributes.is_empty());
 }
+
+/// EXPORT-DATA-3 (D42, C6-9): `relationships().type_of` agrees with the
+/// inheritance merge above: #310 is typed by A (#352 relates it to #350) before
+/// B (#353 relates it to #351), and A wins. It used to take B, the last.
+#[test]
+fn relationships_type_of_takes_the_first_type_like_the_inheritance_merge() {
+    let rel = ifc_lite_export::relationships(SYNTHETIC);
+    assert_eq!(rel.type_of.get(&310), Some(&350));
+    assert_eq!(rel.type_of.get(&320), Some(&350));
+}

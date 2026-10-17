@@ -426,6 +426,11 @@ fn issue_7772_x2_a_non_finite_placement_is_refused_not_inverted_to_nan() {
         m[10] = 1.0;
         m[15] = 1.0;
         assert!(super::affine_inverse(&m).is_none(), "{bad} placement must be refused");
+        // A non-finite TRANSLATION leaves det finite; it must be refused too,
+        // not inverted to a NaN node matrix.
+        let mut t = [0.0f64; 16];
+        (t[0], t[5], t[10], t[15], t[3]) = (1.0, 1.0, 1.0, 1.0, bad);
+        assert!(super::affine_inverse(&t).is_none(), "{bad} translation must be refused");
     }
 }
 

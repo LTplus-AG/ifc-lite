@@ -48,7 +48,7 @@ pub(super) fn emit(planned: &mut Planned) -> Option<Mesh> {
     if count_open_boundary_edges_at(&output, 1.0e4) > 0 {
         let seam = build_seam_map(plans);
         if conform_plans(plans, &seam) {
-            // Keep the three original supporting edges of a retained cell.
+            // Preserve the original edges of retained cells and healthy folds.
             for plan in plans.iter_mut() {
                 if supported_bids.contains(&plan.bid) { plan.raw_conformed = None; }
             }

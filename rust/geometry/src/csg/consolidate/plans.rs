@@ -116,6 +116,8 @@ pub(super) fn build(
         // replace its shared boundary chain with a chord, opening the adjacent
         // source cells before f32 unit/world rounding amplifies it (#7292).
         if keep_healthy_folded_pair(tris) {
+            // Raw conformance must not flatten this fold onto the first plane.
+            supported_bids.insert(bid);
             plan.raw.extend(tris.iter().map(|t| t.v));
             plans.push(plan);
             continue;

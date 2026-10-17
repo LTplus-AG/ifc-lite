@@ -94,14 +94,18 @@ pub fn decode_step_literal(raw: &[u8]) -> Option<Cow<'_, str>> {
 
 /// [`decode_step_literal`] for the bytes between the quotes, which is what
 /// the tokenizer's `Token::String` holds.
+#[inline]
 pub(crate) fn decode_step_literal_inner(inner: &[u8]) -> Cow<'_, str> {
     let text = String::from_utf8_lossy(inner);
-    match text {
-        Cow::Borrowed(t) if !t.contains("''") => decode_ifc_string(t),
-        Cow::Borrowed(t) => Cow::Owned(decode_ifc_string(&t.replace("''", "'")).into_owned()),
-        Cow::Owned(t) if !t.contains("''") => Cow::Owned(decode_ifc_string(&t).into_owned()),
-        Cow::Owned(t) => Cow::Owned(decode_ifc_string(&t.replace("''", "'")).into_owned()),
+    // One byte search settles the common literal: no apostrophe inside, so
+    // there is no `''` to undouble.
+    if memchr::memchr(b'\'', inner).is_none() {
+        return match text {
+            Cow::Borrowed(t) => decode_ifc_string(t),
+            Cow::Owned(t) => Cow::Owned(decode_ifc_string(&t).into_owned()),
+        };
     }
+    Cow::Owned(decode_ifc_string(&text.replace("''", "'")).into_owned())
 }
 
 /// Decode IFC STEP string escapes to UTF-8.

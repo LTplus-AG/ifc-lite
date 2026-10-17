@@ -14,7 +14,7 @@
 use crate::kernel::{
     arrangement::Tri,
     broadphase::{tri_aabb, Bvh},
-    predicates::{orient2d_any, orient3d_explicit},
+    predicates::{orient2d, orient3d_explicit},
     retriangulate::projection_axis,
     ImplicitPoint, Sign,
 };
@@ -34,7 +34,7 @@ fn positive_overlap(a: &Tri, b: &Tri) -> bool {
         return false;
     };
     let e = ImplicitPoint::Explicit;
-    let wb = orient2d_any(&e(b[0]), &e(b[1]), &e(b[2]), axis);
+    let wb = orient2d(&e(b[0]), &e(b[1]), &e(b[2]), axis);
     if wb == Sign::Zero {
         return false;
     }
@@ -42,7 +42,7 @@ fn positive_overlap(a: &Tri, b: &Tri) -> bool {
     // Point/edge-only contact has a separating edge with no interior vertex.
     [(a, b, wa), (b, a, wb)].iter().all(|&(host, other, winding)| {
         (0..3).all(|i| other.iter().any(|&p| {
-            orient2d_any(&e(host[i]), &e(host[(i + 1) % 3]), &e(p), axis) == winding
+            orient2d(&e(host[i]), &e(host[(i + 1) % 3]), &e(p), axis) == winding
         }))
     })
 }

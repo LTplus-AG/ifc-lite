@@ -70,7 +70,11 @@ fn cross(u: &V3, v: &V3) -> V3 {
 /// Exact explicit orient3d — Shewchuk's sign convention (matches
 /// `geometry_predicates::orient3d`).
 pub fn orient3d_exact(a: [f64; 3], b: [f64; 3], c: [f64; 3], d: [f64; 3]) -> Sign {
-    orient3d_exact_pt(&vec(a), b, c, d)
+    let (a, b, c, d) = (vec(a), vec(b), vec(c), vec(d));
+    let ad = sub3(&a, &d);
+    let bd = sub3(&b, &d);
+    let cd = sub3(&c, &d);
+    sign_of(&det3(&ad, &bd, &cd))
 }
 
 /// Exact orient2d on the two axes remaining after dropping `axis`.

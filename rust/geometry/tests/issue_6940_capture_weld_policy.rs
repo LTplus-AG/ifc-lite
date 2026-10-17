@@ -76,11 +76,11 @@ fn issue_6940_capture_and_serialized_replay_preserve_single_and_batch_weld_polic
     ));
     assert!(matches!(
         &captured[2],
-        CapturedCsgJob::Many { opening: false, .. }
+        CapturedCsgJob::Many { opening: false, retain_miss: false, .. }
     ));
     assert!(matches!(
         &captured[3],
-        CapturedCsgJob::Many { opening: true, .. }
+        CapturedCsgJob::Many { opening: true, retain_miss: false, .. }
     ));
 
     let blob = csg_capture::serialize(&captured);
@@ -106,6 +106,10 @@ fn issue_6940_capture_and_serialized_replay_preserve_single_and_batch_weld_polic
     // Unversioned captures may contain either policy with identical tags.
     // Refuse them instead of silently interpreting every cut as an opening.
     assert!(csg_capture::deserialize(&blob[4..]).is_err());
+    let mut old_policy_blob = blob.clone();
+    old_policy_blob[..4].copy_from_slice(b"CSG2");
+    assert!(csg_capture::deserialize(&old_policy_blob).is_err(),
+        "CSG2 did not record whether a conforming miss was retained");
     assert!(csg_capture::deserialize(&blob[..blob.len() - 1]).is_err());
     let mut trailing = blob;
     trailing.push(0);

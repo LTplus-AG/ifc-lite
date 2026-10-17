@@ -223,7 +223,7 @@ pub(crate) fn subtract_many_with_conformity(
     host: &Mesh, cutters: &[&Mesh], opening: bool, retain_conforming_miss: bool,
 ) -> (BatchSubtract, bool, Option<Mesh>) {
     #[cfg(feature = "csg_capture")]
-    crate::csg_capture::record_many(host, cutters, opening);
+    crate::csg_capture::record_many(host, cutters, opening, retain_conforming_miss);
     let h = orient_outward(mesh_to_tris(host));
     let comp_tris: Vec<Vec<Tri>> = cutters
         .iter()

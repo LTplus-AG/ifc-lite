@@ -128,11 +128,11 @@ impl ClippingProcessor {
     /// Only capture replay needs the general operand batch weld here; the
     /// shipping void router always selects the opening policy.
     #[cfg(feature = "csg_capture")]
-    pub(crate) fn replay_captured_many(&self, host: &Mesh, cutters: &[&Mesh], opening: bool) -> GroupCut {
+    pub(crate) fn replay_captured_many(&self, host: &Mesh, cutters: &[&Mesh], opening: bool, retain_miss: bool) -> GroupCut {
         if opening {
-            self.subtract_mesh_many_inner::<true>(host, cutters, false)
+            self.subtract_mesh_many_inner::<true>(host, cutters, retain_miss)
         } else {
-            self.subtract_mesh_many_inner::<false>(host, cutters, false)
+            self.subtract_mesh_many_inner::<false>(host, cutters, retain_miss)
         }
     }
 

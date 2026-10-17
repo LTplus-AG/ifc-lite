@@ -212,3 +212,64 @@ fn issue_7779_conic_fill_center_elevation_uses_the_composed_3d_frame() {
     assert_eq!(data.fills.len(), 1);
     assert!((data.fills[0].world_y - 1.).abs() < 1e-6);
 }
+
+fn mapped(source: &str, origin: &str, target: &str) -> String {
+    source.replace("#41=IFCPRODUCTDEFINITIONSHAPE($,$,(#40));", &format!(
+        "#90=IFCCARTESIANPOINT((0.,0.,0.));#91=IFCDIRECTION((1.,0.,0.));#92=IFCDIRECTION((0.,1.,0.));\n#93={target};#94=IFCREPRESENTATIONMAP({origin},#40);#95=IFCMAPPEDITEM(#94,#93);#96=IFCSHAPEREPRESENTATION(#10,'FootPrint','MappedRepresentation',(#95));#41=IFCPRODUCTDEFINITIONSHAPE($,$,(#96));"))
+}
+
+#[test]
+fn issue_7779_mapped_target_opposed_tilts_compose_before_projection() {
+    let source = OPPOSED_TILTS.replace("IFCCIRCLE(#30,1.)", "IFCCIRCLE(#11,1.)");
+    let target = "IFCCARTESIANTRANSFORMATIONOPERATOR3D(#91,#97,#90,1.,#98);#97=IFCDIRECTION((0.,0.5,-0.8660254037844386));#98=IFCDIRECTION((0.,0.8660254037844386,0.5))";
+    let source = mapped(&source, "#11", target);
+    let data = extract_symbolic_data(&source);
+    assert_bounds(&data, [-1., -1., 1., 1.]);
+    assert_eq!(data.circles.len(), 1);
+    // The same target applies to all reachable conic consumers.
+    assert_bounds(&extract_symbolic_data(&source.replace("IFCCIRCLE(#11,1.)", "IFCELLIPSE(#11,2.,1.)")), [-2., -1., 2., 1.]);
+    assert_bounds(&extract_symbolic_data(&filled(&source)), [-1., -1., 1., 1.]);
+}
+
+#[test]
+fn issue_7779_mapped_origin_tiny_tilt_is_not_discarded_before_large_z_composition() {
+    let source = SOURCE.replace("#22=IFCLOCALPLACEMENT($,#21)", "#22=IFCLOCALPLACEMENT($,#11)")
+        .replace("0.,-0.8660254037844386,0.5", "0.,-0.00001,0.99999999995")
+        .replace("#30=IFCAXIS2PLACEMENT2D(#31,$)", "#30=IFCAXIS2PLACEMENT3D(#34,$,$);#34=IFCCARTESIANPOINT((0.,0.,1000000.))");
+    let source = mapped(&source, "#21", "IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#90,$,$)");
+    assert_bounds(&extract_symbolic_data(&source), [-1., 9., 1., 11.]);
+}
+
+#[test]
+fn issue_7779_mapped_units_scale_target_and_origin_once() {
+    let source = SOURCE.replace("0.,-0.8660254037844386,0.5", "0.,0.,1.")
+        .replace("IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.)", "IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.)")
+        .replace("#31=IFCCARTESIANPOINT((0.,0.))", "#31=IFCCARTESIANPOINT((30.,0.))")
+        .replace("#40=", "#97=IFCAXIS2PLACEMENT3D(#98,$,$);#98=IFCCARTESIANPOINT((10.,0.,0.));\n#40=");
+    let source = mapped(&source, "#97", "IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#90,2.,$)")
+        .replace("#90=IFCCARTESIANPOINT((0.,0.,0.))", "#90=IFCCARTESIANPOINT((100.,0.,0.))");
+    let data = extract_symbolic_data(&source);
+    assert_eq!(data.circles.len(), 1);
+    assert!((data.circles[0].center_x - 0.18).abs() < 1e-6);
+    assert!((data.circles[0].radius - 0.002).abs() < 1e-6);
+}
+
+#[test]
+fn issue_7779_mapped_target_canonical_defaults_reflection_signed_and_nonuniform_scale() {
+    let source = SOURCE.replace("0.,-0.8660254037844386,0.5", "0.,0.,1.")
+        .replace("#31=IFCCARTESIANPOINT((0.,0.))", "#31=IFCCARTESIANPOINT((1.,2.))");
+    for (target, expected, circles) in [
+        ("IFCCARTESIANTRANSFORMATIONOPERATOR2D($,$,#90,$)", [0., -3., 2., -1.], 1),
+        ("IFCCARTESIANTRANSFORMATIONOPERATOR2D(#91,#97,#90,1.);#97=IFCDIRECTION((0.,-1.))", [0., 1., 2., 3.], 1),
+        ("IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#90,-2.,$)", [-4., 2., 0., 6.], 1),
+        ("IFCCARTESIANTRANSFORMATIONOPERATOR2DNONUNIFORM($,$,#90,2.,3.)", [0., -9., 4., -3.], 0),
+    ] {
+        let data = extract_symbolic_data(&mapped(&source, "#11", target));
+        assert_bounds(&data, expected);
+        assert_eq!(data.circles.len(), circles, "{target}");
+    }
+    for target in ["IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,$,1.,$)", "IFCCARTESIANTRANSFORMATIONOPERATOR3D(#90,$,#90,1.,$)"] {
+        let data = extract_symbolic_data(&mapped(&source, "#11", target));
+        assert!(data.circles.is_empty() && data.polylines.is_empty() && data.fills.is_empty(), "malformed canonical operator must drop: {target}");
+    }
+}

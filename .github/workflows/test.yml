@@ -975,6 +975,13 @@ jobs:
           # on main, ordinary whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/core/tests/fixtures/step_numeric_vectors.json | grep -Fxq 'rust/core/tests/fixtures/step_numeric_vectors.json'; then
             oracle_args+=(--mutation tests/evidence/numeric-literal-7778/behaviour.oracle.patch)
+          # #7774 (F2c): the tolerance catalogue `math::tol` is a new module the
+          # migrated sites and the changed test import, so a whole-change revert
+          # does not compile (INCONCLUSIVE). Keep it and drift two catalogue
+          # values, which the value pins must observe. Once tol.rs is on main,
+          # ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/math/tol.rs | grep -Fxq 'rust/geometry/src/math/tol.rs'; then
+            oracle_args+=(--mutation tests/evidence/tolerance-catalogue-7774/value-drift.oracle.patch)
           # #7689: the tessellated index rule adds two modules (core's
           # fast_parse_indices.rs, geometry's tessellated/indices.rs) that the
           # changed tests import, so a whole-file revert does not compile

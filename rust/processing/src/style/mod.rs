@@ -133,8 +133,9 @@ impl Rgba {
     /// Quantize to 8-bit RGBA for the browser SAB transport.
     ///
     /// Components are clamped to `0.0..=1.0` then rounded to nearest 1/255.
-    /// This is the *only* sanctioned quantization point (plan §8.3); the
-    /// backend never calls it.
+    /// This is the *only* sanctioned 8-bit quantization point (plan §8.3). The
+    /// geometry backend never calls it; byte-oriented writers (the server's
+    /// Parquet material key) call it rather than re-implementing the clamp.
     pub fn to_rgba8(self) -> [u8; 4] {
         let q = |c: f32| (c.clamp(0.0, 1.0) * 255.0).round() as u8;
         [q(self.0[0]), q(self.0[1]), q(self.0[2]), q(self.0[3])]

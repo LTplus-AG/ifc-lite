@@ -11,6 +11,7 @@ pub mod appearance;
 pub mod analytic_export;
 pub mod pdf_vector;
 pub mod determinism;
+mod fingerprint;
 pub(crate) mod parallel_scan;
 mod shard_classes;
 pub use parallel_scan::{

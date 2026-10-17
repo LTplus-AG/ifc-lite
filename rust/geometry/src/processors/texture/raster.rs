@@ -7,6 +7,8 @@
 //! entity-resolution half (`texture`) so each stays within the module-size
 //! house rule; no behaviour differences.
 
+use ifc_lite_core::step_encoding::hex_val;
+
 /// Decode a STEP binary literal as surfaced by the decoder (the parser strips
 /// the surrounding double quotes; the first hex character is the count of
 /// unused leading bits — `0` for the byte-aligned data every IFC texture
@@ -30,16 +32,6 @@ pub fn decode_step_binary(s: &str) -> Vec<u8> {
         i += 2;
     }
     out
-}
-
-#[inline]
-fn hex_val(b: u8) -> Option<u8> {
-    match b {
-        b'0'..=b'9' => Some(b - b'0'),
-        b'a'..=b'f' => Some(b - b'a' + 10),
-        b'A'..=b'F' => Some(b - b'A' + 10),
-        _ => None,
-    }
 }
 
 /// Upper bound on a decoded texture's width/height. 16384² RGBA ≈ 1 GiB — a

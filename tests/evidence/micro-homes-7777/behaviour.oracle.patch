@@ -1,0 +1,61 @@
+diff --git b/rust/core/src/guid.rs a/rust/core/src/guid.rs
+index e8bc98e28d..63da2018d4 100644
+--- b/rust/core/src/guid.rs
++++ a/rust/core/src/guid.rs
+@@ -26,14 +26,14 @@ pub fn is_global_id_shaped(s: &str) -> bool {
+ /// [`is_global_id_shaped`] plus the spec rule that the first character carries
+ /// only 2 bits (`'0'..='3'`), since 22 chars hold `2 + 21 * 6 = 128` bits.
+ pub fn is_valid_global_id(s: &str) -> bool {
+-    is_global_id_shaped(s)
++    is_global_id_shaped(s) && (b'0'..=b'3').contains(&s.as_bytes()[0])
+ }
+ 
+ /// The first `'...'` string of a STEP entity line, when it is GlobalId-shaped.
+ /// Only the first 128 bytes are inspected. Rootedness (whether the entity type
+ /// has a GlobalId at all) is the caller's decision.
+ pub fn leading_global_id(line: &[u8]) -> Option<&str> {
+-    let window = line;
++    let window = &line[..line.len().min(LEADING_WINDOW)];
+     let open = window.iter().position(|&b| b == b'(')?;
+     let mut i = open + 1;
+     while i < window.len() && window[i].is_ascii_whitespace() {
+@@ -98,7 +98,7 @@ pub fn deterministic(seed: &str) -> String {
+ /// NOT the TypeScript mint: schema conversion pins this divergence
+ /// (`schema_convert_tests.rs`).
+ pub fn placeholder(id: u32) -> String {
+-    let mut n = id as u64;
++    let mut n = id as u64 + 0x1000_0000;
+     let mut s = [b'0'; 22];
+     let mut i = 22;
+     while i > 0 && n > 0 {
+diff --git b/rust/core/src/hash.rs a/rust/core/src/hash.rs
+index d1e976baa1..81c87864e6 100644
+--- b/rust/core/src/hash.rs
++++ a/rust/core/src/hash.rs
+@@ -14,7 +14,7 @@ use twox_hash::XxHash3_128;
+ pub const FNV64_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
+ const FNV64_PRIME: u64 = 0x0000_0100_0000_01b3;
+ const FNV32_OFFSET: u32 = 0x811c_9dc5;
+-const FNV32_PRIME: u32 = 0x0100_0197;
++const FNV32_PRIME: u32 = 0x0100_0193;
+ 
+ /// Streaming 64-bit FNV-1a.
+ #[derive(Debug, Clone, Copy)]
+@@ -40,7 +40,8 @@ impl Fnv1a64 {
+     /// One word-wise step: xor the whole word, then multiply by the prime.
+     /// Not equivalent to [`Fnv1a64::write`] of the word's bytes.
+     pub fn mix_word(&mut self, word: u64) -> &mut Self {
+-        self.0 = fnv1a64_extend(self.0, &word.to_le_bytes());
++        self.0 ^= word;
++        self.0 = self.0.wrapping_mul(FNV64_PRIME);
+         self
+     }
+ 
+@@ -92,6 +93,7 @@ impl ContentHash {
+     /// A `u64` little-endian length frame, then the raw bit patterns of `data`
+     /// (so concatenated runs cannot alias).
+     pub fn write_f32s(&mut self, data: &[f32]) -> &mut Self {
++        self.write_u64(data.len() as u64);
+         self.write(bytemuck::cast_slice::<f32, u8>(data))
+     }
+ 

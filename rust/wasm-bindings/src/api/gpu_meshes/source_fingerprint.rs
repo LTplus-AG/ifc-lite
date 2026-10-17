@@ -4,11 +4,7 @@
 
 /// Exact existing JS source content key; does not decode or truncate source bytes.
 pub(super) fn source_fingerprint(source: &[u8]) -> String {
-    let mut hash = 0x811c9dc5_u32;
-    for &byte in source {
-        hash = (hash ^ u32::from(byte)).wrapping_mul(0x01000193);
-    }
-    format!("{:x}-{:x}", source.len(), hash)
+    format!("{:x}-{:x}", source.len(), ifc_lite_core::hash::fnv1a32(source))
 }
 
 #[cfg(test)]

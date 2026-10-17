@@ -4,7 +4,7 @@
 //! Bounded proper-rigid Kabsch solve. Held-out observations never enter fitting.
 use super::registration_types::*;
 use nalgebra::{linalg::SVD, DMatrix, Matrix3, Vector3};
-use sha2::{Digest, Sha256};
+use crate::fingerprint::Sha256Writer;
 use std::collections::HashSet;
 
 const ALGORITHM: &str = "ifclite-rigid-correspondence-v1";
@@ -191,10 +191,10 @@ pub fn register_scan_correspondences(
     if !rotation.iter().all(|v| v.is_finite()) || (rotation.determinant() - 1.).abs() > 1e-10 {
         return Err("Registration could not produce a finite proper rotation".into());
     }
-    let mut digest = Sha256::new();
-    digest.update(ALGORITHM.as_bytes());
-    digest.update([0]);
-    digest.update(
+    let mut digest = Sha256Writer::new();
+    digest.bytes(ALGORITHM.as_bytes());
+    digest.bytes([0]);
+    digest.bytes(
         serde_json::to_vec(r).map_err(|e| format!("Cannot bind registration request: {e}"))?,
     );
     let mut diagnostics =
@@ -212,7 +212,7 @@ pub fn register_scan_correspondences(
         diagnostics.push("Unconstrained solution would reflect; proper rotation retained and mismatch remains in residuals".into());
     }
     Ok(ScanRegistrationReport {
-        request_sha256: format!("{:x}", digest.finalize()),
+        request_sha256: digest.finish_hex(),
         algorithm: ALGORITHM.into(),
         source_frame: r.source_frame.clone(),
         target_frame: r.target_frame.clone(),

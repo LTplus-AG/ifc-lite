@@ -506,6 +506,33 @@ use super::outline::trim_polyline;
         }
     }
 
+    /// #7791 review: IfcBaseAxis 2D with Axis1 omitted takes X as Axis2's
+    /// clockwise perpendicular. Axis2 = -X therefore rotates the profile by
+    /// +90 degrees (X -> +Y), as the replaced derived-profile reader did.
+    #[test]
+    fn derived_profile_operator_2d_axis2_only_rotates_7791() {
+        let content = r#"
+#2=IFCDIRECTION((-1.0,0.0));
+#3=IFCCARTESIANPOINT((0.0,0.0));
+#4=IFCCARTESIANTRANSFORMATIONOPERATOR2D($,#2,#3,1.0);
+#5=IFCRECTANGLEPROFILEDEF(.AREA.,$,$,2.0,4.0);
+#6=IFCDERIVEDPROFILEDEF(.AREA.,$,#5,#4,$);
+"#;
+        let mut decoder = EntityDecoder::new(content);
+        let processor = ProfileProcessor::new(IfcSchema::new());
+        let profile_entity = decoder.decode_by_id(6).unwrap();
+        let profile = processor
+            .process(&profile_entity, &mut decoder, TessellationQuality::Medium)
+            .unwrap();
+        // The 2 x 4 rectangle becomes 4 wide (X) and 2 tall (Y).
+        for p in &profile.outer {
+            assert!(
+                (p.x.abs() - 2.0).abs() < 1e-12 && (p.y.abs() - 1.0).abs() < 1e-12,
+                "corner {p:?}: an Axis2-only 2D operator must rotate the frame"
+            );
+        }
+    }
+
     /// An ASYMMETRIC parent, so the mirror is observable at all.
     ///
     /// The previous fixture here mirrored a `2.0 x 4.0` rectangle about its own

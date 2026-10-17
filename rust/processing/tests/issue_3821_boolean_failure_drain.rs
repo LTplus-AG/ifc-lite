@@ -10,12 +10,19 @@
 //! model whose booleans had all degraded reported a clean load. The base-operand
 //! arm was worse still: it returned an empty mesh and recorded nothing at all.
 //!
-//! Both native entry points funnel into
-//! `process_geometry_streaming_filtered_with_options`, differing only in batch
+//! Both native entry points funnel into `process`, differing only in batch
 //! size, so the parity assertions below pin that a per-batch drain cannot start
 //! reporting a different total from a single-batch one.
 
-use ifc_lite_processing::{process_geometry, process_geometry_streaming};
+use ifc_lite_processing::{
+    process, process_geometry, Batching, ProcessingRequest, ProcessingResult,
+};
+
+/// The streaming shape: `batch_size` jobs per chunk instead of one chunk.
+fn streamed(content: &[u8], batch_size: usize) -> ProcessingResult {
+    let request = ProcessingRequest::default().batching(Batching::new(batch_size, batch_size));
+    process(content, &request, &mut ())
+}
 
 /// A wall with one ordinary extruded solid AND one `IfcBooleanResult` whose
 /// FIRST operand is `IFCSECTIONEDSPINE` — a representation-item type the
@@ -94,7 +101,7 @@ fn unsupported_first_operand_reaches_both_entry_points_with_the_same_count() {
     let native = process_geometry(UNSUPPORTED_BASE_OPERAND_IFC);
     // Streaming: batch size 1, so each element is finalized on its own.
     let streaming =
-        process_geometry_streaming(UNSUPPORTED_BASE_OPERAND_IFC.as_bytes(), 1, |_, _, _| {});
+        streamed(UNSUPPORTED_BASE_OPERAND_IFC.as_bytes(), 1);
 
     // The element still renders (the loss is one item, not the whole wall) —
     // which is precisely why nothing but a diagnostic can reveal it.
@@ -142,7 +149,7 @@ fn a_clean_model_records_no_boolean_failures_on_either_entry_point() {
         ("non-streaming", process_geometry(CLEAN_IFC)),
         (
             "streaming",
-            process_geometry_streaming(CLEAN_IFC.as_bytes(), 1, |_, _, _| {}),
+            streamed(CLEAN_IFC.as_bytes(), 1),
         ),
     ] {
         assert!(!result.meshes.is_empty(), "{label}: control wall must mesh");
@@ -174,7 +181,7 @@ fn streaming_and_native_report_identical_diagnostics_on_a_real_fixture() {
     let bytes = ifc_lite_testkit::fixture_bytes_or_skip!("ara3d/AC20-FZK-Haus.ifc");
 
     let native = process_geometry(&bytes);
-    let streaming = process_geometry_streaming(&bytes, 8, |_, _, _| {});
+    let streaming = streamed(&bytes, 8);
 
     assert_eq!(
         native.stats.total_csg_failures, streaming.stats.total_csg_failures,

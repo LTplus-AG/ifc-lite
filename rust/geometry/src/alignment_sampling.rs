@@ -5,7 +5,7 @@
 //! Opt-in alignment samples: f64 absolute IFC Z-up metres, never renderer lines.
 use crate::{locate_axis_curve, AlignmentCurve, Error, GeometryRouter, Result};
 use ifc_lite_core::{
-    build_entity_index, decode_ifc_string, extract_length_unit_scale, keyword_eq, EntityDecoder,
+    build_entity_index, extract_length_unit_scale, keyword_eq, EntityDecoder,
     EntityScanner, IfcType, ProjectUnits,
 };
 use serde::Serialize;
@@ -137,12 +137,10 @@ impl AlignmentAxis {
             placement,
             unit_scale,
             express_id: id,
-            GlobalId: entity
-                .get_string(0)
-                .map(|s| decode_ifc_string(s).into_owned()),
-            Name: entity
-                .get_string(2)
-                .map(|s| decode_ifc_string(s).into_owned()),
+            // `get_string` is already decoded (CORE-16): decoding it again read
+            // a name that spells an escape (`\\X2\\...`) as that escape.
+            GlobalId: entity.get_string(0).map(str::to_owned),
+            Name: entity.get_string(2).map(str::to_owned),
             approximate,
         };
         if !axis.length_m().is_finite() || axis.length_m() <= 0.0 {

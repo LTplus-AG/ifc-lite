@@ -39,7 +39,7 @@ pub fn walk<S: BuildHasher>(children: &HashMap<u32, Vec<u32>, S>, root: u32) -> 
         out.push(visit);
         if let Some(kids) = children.get(&visit.id) {
             // Pushed reversed so the first child is popped, and so owned, first.
-            for &kid in kids.iter() {
+            for &kid in kids.iter().rev() {
                 if !visited.contains(&kid) {
                     stack.push(SpatialVisit { id: kid, parent: Some(visit.id), level: visit.level + 1 });
                 }

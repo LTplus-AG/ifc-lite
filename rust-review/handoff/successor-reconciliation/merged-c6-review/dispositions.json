@@ -1,0 +1,23 @@
+{
+  "main": "aca9452d04cd095ffc58141b4ad487655e77f133",
+  "findings": [
+    {
+      "pr": 7868,
+      "originalReview": "https://github.com/LTplus-AG/ifc-lite/pull/7868#issuecomment-6240195566",
+      "disposition": "unresolved_in_exact_merged_source",
+      "source": "rust/processing/src/data_model/type_assignments.rs:52-60",
+      "proof": "Whole production and existing unit-test files identical original\u2192finalhead\u2192merge\u2192main; actual quantity/rebar callers still record arbitrary target IDs before validation.",
+      "runtimeExecuted": false
+    },
+    {
+      "pr": 7875,
+      "originalReview": "https://github.com/LTplus-AG/ifc-lite/pull/7875#discussion_r4303597235",
+      "disposition": "unresolved_in_exact_merged_source",
+      "source": "rust/export/src/ifc5.rs:183-210",
+      "proof": "Export function identical original\u2192finalhead\u2192main; existing committed shared-child fixture traces raw wall5edge into both parents; integration test only asserts order, not children.",
+      "runtimeExecuted": false
+    }
+  ],
+  "D47ReReviewed": false,
+  "completenessClaim": false
+}

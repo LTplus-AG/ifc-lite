@@ -1,0 +1,53 @@
+{
+  "derivative_only": true,
+  "immutable_archive_commit": "7a44f548f67a7e57f510ecf0e79150267a4a7971",
+  "current_source_pin": "aca9452d04cd095ffc58141b4ad487655e77f133",
+  "runtime_executed_by_this_review": false,
+  "prs": [
+    {
+      "pr": 7727,
+      "url": "https://github.com/LTplus-AG/ifc-lite/pull/7727",
+      "state": "MERGED",
+      "merged_at": "2026-10-16T10:14:12Z",
+      "merge": "406957e683b7d27234565f4ec16194a7147fe3e2",
+      "merge_parent": "71320bf67ecc4b6629f625bea495118252c637fd",
+      "final_pr_head": "56edae01be18bfb6188a00f8834a6c03ff459835",
+      "ancestor_of_current_source": true
+    },
+    {
+      "pr": 7725,
+      "url": "https://github.com/LTplus-AG/ifc-lite/pull/7725",
+      "state": "MERGED",
+      "merged_at": "2026-10-16T11:43:27Z",
+      "merge": "2d5333ff92026401fea57bc9ba47a60f734f6c97",
+      "merge_parent": "b75ddf6c40ca11f89925830f1ee754b594ae617f",
+      "final_pr_head": "83a9d684af022400e161398d2a3f2385e2bdcf19",
+      "ancestor_of_current_source": true
+    },
+    {
+      "pr": 7738,
+      "url": "https://github.com/LTplus-AG/ifc-lite/pull/7738",
+      "state": "MERGED",
+      "merged_at": "2026-10-16T14:02:17Z",
+      "merge": "d8c110166a07e494be45e509e31db2c614b31217",
+      "merge_parent": "9d828796f2daa965d38fcb65707a23f11852e515",
+      "final_pr_head": "72703c0b214e43b9e190240ca57988648e1f4775",
+      "ancestor_of_current_source": true
+    },
+    {
+      "pr": 7718,
+      "url": "https://github.com/LTplus-AG/ifc-lite/pull/7718",
+      "state": "MERGED",
+      "merged_at": "2026-10-16T14:32:07Z",
+      "merge": "932c7db80a485ee877ca7cbd4b3fee140825726a",
+      "merge_parent": "d8c110166a07e494be45e509e31db2c614b31217",
+      "final_pr_head": "3b8b07a34ba29d998f7d16e10b3ee25dae9ad8f4",
+      "ancestor_of_current_source": true
+    }
+  ],
+  "missing_prior_review_objects": [
+    "e317f599b5",
+    "033889804c",
+    "c69af952fb"
+  ]
+}

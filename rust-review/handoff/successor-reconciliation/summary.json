@@ -34,5 +34,22 @@
   "proofLimit": "All claims derived from immutable local archive only; no new source, runtime, CI, merge or GitHub verification.",
   "optionalLimit": "Optional-by-exact-decision means primary-WP eligibility under D8 only; no actual final deferral or whole split-finding completion is asserted.",
   "requiredPendingLimit": "Required-pending means reconciliation/acceptance verification pending; does not assert defect remains in implementation.",
-  "supplementalReviews": "Existing supplemental PR reviews (including D47#7895comment6241523952) remain outside original622 and are not assigned originalIDs by this artifact."
+  "supplementalReviews": "Existing supplemental PR reviews (including D47#7895comment6241523952) remain outside original622 and are not assigned originalIDs by this artifact.",
+  "scopedVerification": {
+    "sourcePin": "aca9452d04cd095ffc58141b4ad487655e77f133",
+    "originalDefectsCoveredBySourceAndHistoricValidation": [
+      "PROCESSING-5",
+      "SERVER-18",
+      "PROCESSING-APP-2"
+    ],
+    "relativePrecisionCoveredButOriginScopeExplicit": [
+      "EXPORT-DATA-6"
+    ],
+    "partialOutputCapWithPrebudgetAllocationPending": [
+      "SERVER-26"
+    ],
+    "historicValidationRerun": false,
+    "originalArchiveStatusesChanged": false,
+    "report": "verified-explicit-claims/REVIEW.md"
+  }
 }

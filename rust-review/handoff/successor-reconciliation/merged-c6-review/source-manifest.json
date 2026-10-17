@@ -1,0 +1,162 @@
+[
+  {
+    "label": "pr7868original",
+    "commit": "ee7bdf4e38ade6c3ecb3348fe4eaeabc4d571b00",
+    "repositoryPath": "rust/processing/src/data_model/type_assignments.rs",
+    "artifactPath": "sources/pr7868original/rust/processing/src/data_model/type_assignments.rs",
+    "sha256": "57c18b70e73b82101c5646e1c2679b36f85d2adb4632e78ac2cb70f9086242c2",
+    "bytes": 3904
+  },
+  {
+    "label": "pr7868original",
+    "commit": "ee7bdf4e38ade6c3ecb3348fe4eaeabc4d571b00",
+    "repositoryPath": "rust/processing/src/data_model/type_assignments_tests.rs",
+    "artifactPath": "sources/pr7868original/rust/processing/src/data_model/type_assignments_tests.rs",
+    "sha256": "bf63d815518363a6a669a6aeeba56471bb843daf6ab421eb0306f416665ccdff",
+    "bytes": 1184
+  },
+  {
+    "label": "pr7868head",
+    "commit": "83fa1771ee37d7ee7f63f38c1e213b75eaa0d4a9",
+    "repositoryPath": "rust/processing/src/data_model/type_assignments.rs",
+    "artifactPath": "sources/pr7868head/rust/processing/src/data_model/type_assignments.rs",
+    "sha256": "57c18b70e73b82101c5646e1c2679b36f85d2adb4632e78ac2cb70f9086242c2",
+    "bytes": 3904
+  },
+  {
+    "label": "pr7868head",
+    "commit": "83fa1771ee37d7ee7f63f38c1e213b75eaa0d4a9",
+    "repositoryPath": "rust/processing/src/data_model/type_assignments_tests.rs",
+    "artifactPath": "sources/pr7868head/rust/processing/src/data_model/type_assignments_tests.rs",
+    "sha256": "bf63d815518363a6a669a6aeeba56471bb843daf6ab421eb0306f416665ccdff",
+    "bytes": 1184
+  },
+  {
+    "label": "pr7868merge",
+    "commit": "c7b0e7be30bd247da84a1f8cb019cb51cfc6e638",
+    "repositoryPath": "rust/processing/src/data_model/type_assignments.rs",
+    "artifactPath": "sources/pr7868merge/rust/processing/src/data_model/type_assignments.rs",
+    "sha256": "57c18b70e73b82101c5646e1c2679b36f85d2adb4632e78ac2cb70f9086242c2",
+    "bytes": 3904
+  },
+  {
+    "label": "pr7868merge",
+    "commit": "c7b0e7be30bd247da84a1f8cb019cb51cfc6e638",
+    "repositoryPath": "rust/processing/src/data_model/type_assignments_tests.rs",
+    "artifactPath": "sources/pr7868merge/rust/processing/src/data_model/type_assignments_tests.rs",
+    "sha256": "bf63d815518363a6a669a6aeeba56471bb843daf6ab421eb0306f416665ccdff",
+    "bytes": 1184
+  },
+  {
+    "label": "pr7875original",
+    "commit": "a7387c898f548e7ac19c0719b6da52d9f626e39e",
+    "repositoryPath": "rust/export/src/ifc5.rs",
+    "artifactPath": "sources/pr7875original/rust/export/src/ifc5.rs",
+    "sha256": "a6e215f7d4ab5e0ce403e7b557141f868fdbe97b53d9f3092b560b5b9da93db1",
+    "bytes": 10501
+  },
+  {
+    "label": "pr7875original",
+    "commit": "a7387c898f548e7ac19c0719b6da52d9f626e39e",
+    "repositoryPath": "rust/export/tests/spatial_walk_formats.rs",
+    "artifactPath": "sources/pr7875original/rust/export/tests/spatial_walk_formats.rs",
+    "sha256": "6332b72987fd67f14947ee41eb74cb36ad815465c83c0512c8712118990abe38",
+    "bytes": 3964
+  },
+  {
+    "label": "pr7875head",
+    "commit": "01ef155696960c65d632e4ab39f0bd078422e26c",
+    "repositoryPath": "rust/export/src/ifc5.rs",
+    "artifactPath": "sources/pr7875head/rust/export/src/ifc5.rs",
+    "sha256": "b170dc0214ab1480c3b342da98db68862e881f1bf9957a1491bc02515b3c8674",
+    "bytes": 10506
+  },
+  {
+    "label": "pr7875head",
+    "commit": "01ef155696960c65d632e4ab39f0bd078422e26c",
+    "repositoryPath": "rust/export/tests/spatial_walk_formats.rs",
+    "artifactPath": "sources/pr7875head/rust/export/tests/spatial_walk_formats.rs",
+    "sha256": "6332b72987fd67f14947ee41eb74cb36ad815465c83c0512c8712118990abe38",
+    "bytes": 3964
+  },
+  {
+    "label": "main",
+    "commit": "aca9452d04cd095ffc58141b4ad487655e77f133",
+    "repositoryPath": "rust/processing/src/data_model/type_assignments.rs",
+    "artifactPath": "sources/main/rust/processing/src/data_model/type_assignments.rs",
+    "sha256": "57c18b70e73b82101c5646e1c2679b36f85d2adb4632e78ac2cb70f9086242c2",
+    "bytes": 3904
+  },
+  {
+    "label": "main",
+    "commit": "aca9452d04cd095ffc58141b4ad487655e77f133",
+    "repositoryPath": "rust/processing/src/data_model/type_assignments_tests.rs",
+    "artifactPath": "sources/main/rust/processing/src/data_model/type_assignments_tests.rs",
+    "sha256": "bf63d815518363a6a669a6aeeba56471bb843daf6ab421eb0306f416665ccdff",
+    "bytes": 1184
+  },
+  {
+    "label": "main",
+    "commit": "aca9452d04cd095ffc58141b4ad487655e77f133",
+    "repositoryPath": "rust/export/src/ifc5.rs",
+    "artifactPath": "sources/main/rust/export/src/ifc5.rs",
+    "sha256": "b170dc0214ab1480c3b342da98db68862e881f1bf9957a1491bc02515b3c8674",
+    "bytes": 10506
+  },
+  {
+    "label": "main",
+    "commit": "aca9452d04cd095ffc58141b4ad487655e77f133",
+    "repositoryPath": "rust/export/tests/spatial_walk_formats.rs",
+    "artifactPath": "sources/main/rust/export/tests/spatial_walk_formats.rs",
+    "sha256": "6332b72987fd67f14947ee41eb74cb36ad815465c83c0512c8712118990abe38",
+    "bytes": 3964
+  },
+  {
+    "label": "main",
+    "commit": "aca9452d04cd095ffc58141b4ad487655e77f133",
+    "repositoryPath": "rust/processing/src/data_model/spatial_walk.rs",
+    "artifactPath": "sources/main/rust/processing/src/data_model/spatial_walk.rs",
+    "sha256": "46c91e968ef64f6c00ce681f55a2a7f0aa607e2048d8e62f2106587424b494d1",
+    "bytes": 2187
+  },
+  {
+    "label": "main",
+    "commit": "aca9452d04cd095ffc58141b4ad487655e77f133",
+    "repositoryPath": "rust/export/src/quantity_analysis_relations.rs",
+    "artifactPath": "sources/main/rust/export/src/quantity_analysis_relations.rs",
+    "sha256": "1efe7ebccd9f3783435991adb129bb9d21f3b9880ac7c85c54cba80b02186042",
+    "bytes": 5060
+  },
+  {
+    "label": "main",
+    "commit": "aca9452d04cd095ffc58141b4ad487655e77f133",
+    "repositoryPath": "rust/export/src/quantity_analysis.rs",
+    "artifactPath": "sources/main/rust/export/src/quantity_analysis.rs",
+    "sha256": "4a14c6e6b31dfb2905262f3e2def834be3804b48b9eb8f6d82318b28a9caa414",
+    "bytes": 15298
+  },
+  {
+    "label": "main",
+    "commit": "aca9452d04cd095ffc58141b4ad487655e77f133",
+    "repositoryPath": "rust/export/src/rebar_schedule_build.rs",
+    "artifactPath": "sources/main/rust/export/src/rebar_schedule_build.rs",
+    "sha256": "e5de5461b5374e50160342b219aa8deef691ff6dc4d086c7f332b65cd20fb5d8",
+    "bytes": 14099
+  },
+  {
+    "label": "main",
+    "commit": "aca9452d04cd095ffc58141b4ad487655e77f133",
+    "repositoryPath": "rust/export/src/rebar_schedule.rs",
+    "artifactPath": "sources/main/rust/export/src/rebar_schedule.rs",
+    "sha256": "9d646ece15e955e9767dfe7d74c0c78479998054ead5698643094e1116ce5960",
+    "bytes": 6443
+  },
+  {
+    "label": "main",
+    "commit": "aca9452d04cd095ffc58141b4ad487655e77f133",
+    "repositoryPath": "rust/processing/src/data_model/spatial_walk_tests.rs",
+    "artifactPath": "sources/main/rust/processing/src/data_model/spatial_walk_tests.rs",
+    "sha256": "29d200849c3eb54181b98477104381275ef79153b84e4bf2eb8449eb90e51d85",
+    "bytes": 1459
+  }
+]

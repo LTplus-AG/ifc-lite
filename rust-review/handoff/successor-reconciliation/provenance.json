@@ -13,9 +13,23 @@
     "README.md": "220f2425de716cd4ab0affa3e1cd9e4590a365b39b36a26d943f2b69f090b573"
   },
   "publishedFileHashes": {
-    "summary.json": "fceb892b9cf8b10032f26ad504f50ef43b5aa01b19a45d720448d03850a2e35f",
-    "findings.csv": "feee2266d6051cbf344eb5a700fafaa575cabc046921770ae7d011b03df36a78",
+    "summary.json": "ec7751bd39c2ee0c42ecc5899e953c3097e051a618637168fb943513c235bb99",
+    "findings.csv": "4a1c4bd4ee94bb76a0873d6f160319040de4381d03ad0f6fcfcdf6801a6e30ff",
     "evidence-index.json": "2fba5200bda347139bbfd7decbff7d93e3253725ccfbf5557d589d0a81531594",
-    "README.md": "6a9cdc48d37a7429f2e530d2b43d362e8723c07f079e26de46e81e834f537ad8"
-  }
+    "README.md": "c359a736f775735651fb699d9c1584c5b403b61bd2568aa055ed0ed14a21e29d",
+    "verified-explicit-claims/dispositions.json": "e5ce5a7d88849628467d8a6625a8e1a64c03cc197f25bd47b39e9d56c0e82379",
+    "verified-explicit-claims/review-metadata.json": "e05a6cb0f8e6eeca2a383a9afafb359099f5386fbff4c82f3146e196766c31ee",
+    "verified-explicit-claims/review-to-merge-comparison.json": "6969e311122f7b5e039b46eed7b19578369411b76e34a18f7112362a46dfa431",
+    "verified-explicit-claims/REVIEW.md": "fecbc7978e57cf8bab126ad989c24e425c5ab50774fbdfad43c9c8bfb37b3fe3",
+    "verified-explicit-claims/dispositions.csv": "9824c831f8aa550cd264c956f009edf2b86626ea06eb2db46bc6b639028555c0",
+    "verified-explicit-claims/original-findings.md": "d83400de78a5bbee62000f0b907026e5684ccdc737cf97bcc109d73ee6c6f2f3",
+    "verified-explicit-claims/source-identities.json": "490fb26c19ec4689453f1d3a4adad338c6afdc2ee5295c6a35411f03136d20b4",
+    "merged-c6-review/dispositions.json": "091dee0b58775d418dcfbc39ca3fbc919e255237ce30665718dac31272530e3e",
+    "merged-c6-review/source-manifest.json": "bd345e1c4441c791de5e2b2880c6966d2a1f7a7294cb8b28017ce2e8f9cdf85f",
+    "merged-c6-review/REVIEW.md": "6fcfe635a585b0dc26f43604a7dfedba07a2cdb855f2e92d2e7e53b28d4dbad6",
+    "merged-c6-review/pins.json": "b8d6629859ad732b213d9edd0a48640f630bd93af3d7e03b351592d99d212fd2"
+  },
+  "scopedReviewsAddedAt": "2026-10-17T22:12:47.983695+00:00",
+  "sourceInspectionPin": "aca9452d04cd095ffc58141b4ad487655e77f133",
+  "testsRerunForScopedReviews": false
 }

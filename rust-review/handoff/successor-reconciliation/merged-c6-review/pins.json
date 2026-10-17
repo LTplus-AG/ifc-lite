@@ -1,0 +1,157 @@
+{
+  "preparedAt": "2026-10-17T22:06:18.020914+00:00",
+  "pins": {
+    "rootCheckout": "588ad5b1788a914b114f239319f79a0fd7b337d9",
+    "main": "aca9452d04cd095ffc58141b4ad487655e77f133",
+    "pr7868original": "ee7bdf4e38ade6c3ecb3348fe4eaeabc4d571b00",
+    "pr7868head": "83fa1771ee37d7ee7f63f38c1e213b75eaa0d4a9",
+    "pr7868merge": "c7b0e7be30bd247da84a1f8cb019cb51cfc6e638",
+    "pr7875original": "a7387c898f548e7ac19c0719b6da52d9f626e39e",
+    "pr7875head": "01ef155696960c65d632e4ab39f0bd078422e26c",
+    "pr7875merge": "aca9452d04cd095ffc58141b4ad487655e77f133"
+  },
+  "rootCheckoutAfter": "588ad5b1788a914b114f239319f79a0fd7b337d9",
+  "rootCheckoutUnchanged": true,
+  "allowedObjectFetch": {
+    "needed": true,
+    "command": "git fetch --no-tags --no-write-fetch-head origin 83fa1771ee37d7ee7f63f38c1e213b75eaa0d4a9 01ef155696960c65d632e4ab39f0bd078422e26c",
+    "result": "successful; fetched exact missing head objects without writing FETCH_HEAD or updating checkout/index/branch refs"
+  },
+  "comparisons": [
+    {
+      "path": "rust/processing/src/data_model/type_assignments.rs",
+      "left": "ee7bdf4e38ade6c3ecb3348fe4eaeabc4d571b00",
+      "right": "83fa1771ee37d7ee7f63f38c1e213b75eaa0d4a9",
+      "region": "entire file",
+      "identical": true,
+      "leftSha256": "57c18b70e73b82101c5646e1c2679b36f85d2adb4632e78ac2cb70f9086242c2",
+      "rightSha256": "57c18b70e73b82101c5646e1c2679b36f85d2adb4632e78ac2cb70f9086242c2"
+    },
+    {
+      "path": "rust/processing/src/data_model/type_assignments_tests.rs",
+      "left": "ee7bdf4e38ade6c3ecb3348fe4eaeabc4d571b00",
+      "right": "83fa1771ee37d7ee7f63f38c1e213b75eaa0d4a9",
+      "region": "entire file",
+      "identical": true,
+      "leftSha256": "bf63d815518363a6a669a6aeeba56471bb843daf6ab421eb0306f416665ccdff",
+      "rightSha256": "bf63d815518363a6a669a6aeeba56471bb843daf6ab421eb0306f416665ccdff"
+    },
+    {
+      "path": "rust/processing/src/data_model/type_assignments.rs",
+      "left": "ee7bdf4e38ade6c3ecb3348fe4eaeabc4d571b00",
+      "right": "c7b0e7be30bd247da84a1f8cb019cb51cfc6e638",
+      "region": "entire file",
+      "identical": true,
+      "leftSha256": "57c18b70e73b82101c5646e1c2679b36f85d2adb4632e78ac2cb70f9086242c2",
+      "rightSha256": "57c18b70e73b82101c5646e1c2679b36f85d2adb4632e78ac2cb70f9086242c2"
+    },
+    {
+      "path": "rust/processing/src/data_model/type_assignments_tests.rs",
+      "left": "ee7bdf4e38ade6c3ecb3348fe4eaeabc4d571b00",
+      "right": "c7b0e7be30bd247da84a1f8cb019cb51cfc6e638",
+      "region": "entire file",
+      "identical": true,
+      "leftSha256": "bf63d815518363a6a669a6aeeba56471bb843daf6ab421eb0306f416665ccdff",
+      "rightSha256": "bf63d815518363a6a669a6aeeba56471bb843daf6ab421eb0306f416665ccdff"
+    },
+    {
+      "path": "rust/processing/src/data_model/type_assignments.rs",
+      "left": "ee7bdf4e38ade6c3ecb3348fe4eaeabc4d571b00",
+      "right": "aca9452d04cd095ffc58141b4ad487655e77f133",
+      "region": "entire file",
+      "identical": true,
+      "leftSha256": "57c18b70e73b82101c5646e1c2679b36f85d2adb4632e78ac2cb70f9086242c2",
+      "rightSha256": "57c18b70e73b82101c5646e1c2679b36f85d2adb4632e78ac2cb70f9086242c2"
+    },
+    {
+      "path": "rust/processing/src/data_model/type_assignments_tests.rs",
+      "left": "ee7bdf4e38ade6c3ecb3348fe4eaeabc4d571b00",
+      "right": "aca9452d04cd095ffc58141b4ad487655e77f133",
+      "region": "entire file",
+      "identical": true,
+      "leftSha256": "bf63d815518363a6a669a6aeeba56471bb843daf6ab421eb0306f416665ccdff",
+      "rightSha256": "bf63d815518363a6a669a6aeeba56471bb843daf6ab421eb0306f416665ccdff"
+    },
+    {
+      "path": "rust/export/src/ifc5.rs",
+      "left": "a7387c898f548e7ac19c0719b6da52d9f626e39e",
+      "right": "01ef155696960c65d632e4ab39f0bd078422e26c",
+      "region": "pub fn export_ifc5(",
+      "identical": true,
+      "leftSha256": "2f982ef36f5e558d635405e94a22e3da6dfcd72a6bfe0ab0c95a3374865a9599",
+      "rightSha256": "2f982ef36f5e558d635405e94a22e3da6dfcd72a6bfe0ab0c95a3374865a9599"
+    },
+    {
+      "path": "rust/export/src/ifc5.rs",
+      "left": "a7387c898f548e7ac19c0719b6da52d9f626e39e",
+      "right": "aca9452d04cd095ffc58141b4ad487655e77f133",
+      "region": "pub fn export_ifc5(",
+      "identical": true,
+      "leftSha256": "2f982ef36f5e558d635405e94a22e3da6dfcd72a6bfe0ab0c95a3374865a9599",
+      "rightSha256": "2f982ef36f5e558d635405e94a22e3da6dfcd72a6bfe0ab0c95a3374865a9599"
+    },
+    {
+      "path": "rust/export/src/ifc5.rs",
+      "left": "01ef155696960c65d632e4ab39f0bd078422e26c",
+      "right": "aca9452d04cd095ffc58141b4ad487655e77f133",
+      "region": "entire file",
+      "identical": true,
+      "leftSha256": "b170dc0214ab1480c3b342da98db68862e881f1bf9957a1491bc02515b3c8674",
+      "rightSha256": "b170dc0214ab1480c3b342da98db68862e881f1bf9957a1491bc02515b3c8674"
+    },
+    {
+      "path": "rust/export/tests/spatial_walk_formats.rs",
+      "left": "a7387c898f548e7ac19c0719b6da52d9f626e39e",
+      "right": "01ef155696960c65d632e4ab39f0bd078422e26c",
+      "region": "entire file",
+      "identical": true,
+      "leftSha256": "6332b72987fd67f14947ee41eb74cb36ad815465c83c0512c8712118990abe38",
+      "rightSha256": "6332b72987fd67f14947ee41eb74cb36ad815465c83c0512c8712118990abe38"
+    },
+    {
+      "path": "rust/export/tests/spatial_walk_formats.rs",
+      "left": "a7387c898f548e7ac19c0719b6da52d9f626e39e",
+      "right": "aca9452d04cd095ffc58141b4ad487655e77f133",
+      "region": "entire file",
+      "identical": true,
+      "leftSha256": "6332b72987fd67f14947ee41eb74cb36ad815465c83c0512c8712118990abe38",
+      "rightSha256": "6332b72987fd67f14947ee41eb74cb36ad815465c83c0512c8712118990abe38"
+    }
+  ],
+  "metadataSources": [
+    {
+      "file": "c6-type-assignments-live.json",
+      "head": "83fa1771ee37d7ee7f63f38c1e213b75eaa0d4a9",
+      "merge": "c7b0e7be30bd247da84a1f8cb019cb51cfc6e638",
+      "state": "MERGED",
+      "humanComments": [
+        {
+          "url": "https://github.com/LTplus-AG/ifc-lite/pull/7868#issuecomment-6240195566",
+          "createdAt": "2026-10-17T20:09:36Z",
+          "body": "Independent support review at `ee7bdf4e38ade6c3ecb3348fe4eaeabc4d571b00`: `rust/processing/src/data_model/type_assignments.rs:57-59` introduces quadratic work for malformed, file-controlled type assignments. After an object is conflicted, each distinct additional target scans every previously recorded target through `Vec::contains`; N distinct targets require N(N-1)/2 membership comparisons. The quantity/rebar callers still allow up to 100,000 relationship links, so their link budget no longer bounds the actual work. Dangling target IDs are admitted before later validation, so valid type definitions are not required to reach this path.\n\nPlease preserve the file-order vector but use hashed membership for admission (or another genuinely linear bounded mechanism). Add an adversarial behavioral regression covering one product with many distinct/repeated type targets while retaining first-wins, ordered conflicts, and the rebar first-valid policy. This is a static complexity finding, not a measured end-to-end performance claim; no competing implementation or heavy benchmark was started. Session bc9e57fa is supporting the existing Rust lane and preparing a handover at the maintainer's request.\n"
+        },
+        {
+          "url": "https://github.com/LTplus-AG/ifc-lite/pull/7868#issuecomment-6240861631",
+          "createdAt": "2026-10-17T20:52:06Z",
+          "body": "Adversarial review (coordinator b61983f5): **approve**. First-wins plus conflicts is equivalent to the old quantity-analysis and rebar policies. `type_of` feeds no rendered output, so the C6-0 goldens are unmoved. Gated green on the merged tree, oracle OBSERVED. Combined review on #7875."
+        }
+      ]
+    },
+    {
+      "file": "c6-spatial-live.json",
+      "head": "01ef155696960c65d632e4ab39f0bd078422e26c",
+      "merge": "aca9452d04cd095ffc58141b4ad487655e77f133",
+      "state": "MERGED",
+      "humanComments": [
+        {
+          "url": "https://github.com/LTplus-AG/ifc-lite/pull/7875#issuecomment-6240860735",
+          "createdAt": "2026-10-17T20:52:03Z",
+          "body": "## Adversarial review (coordinator b61983f5)\n\n**Verdict: approve** for the C6 stop line: #7863 (C6-7, merged as ac9970a8e2), #7866 (C6-8), #7868 (C6-9) and #7875 (C6-10). I reviewed the cumulative diff once and gated each merged tree locally.\n\n### Findings (fixed on the branches by the reviewer)\n1. **Blocking, fixed (C6-7).** Main gained the #7860 positional-read ratchet while the stack was open.\n   - The new decoder's 5 literal reads now go through `ifc_lite_core::slot`: same positions, `string_at`/`attr`, equal to `get(..).and_then(as_string)`/`get`. The oracle patch context moved with them.\n   - The `model_props.rs` row is lowered to 6.\n   - C6-8 re-keys the moved 17 + 6 reads to `rows/mod.rs` and `quantity.rs` (debt unchanged).\n2. **Blocking, fixed (C6-8): `check-server-browser-type-parity` went vacuous.** The server's quantity ladder became `QuantityKind::from_keyword`, so the extractor found no Rust quantity types.\n   - It now reads the quoted keywords in `data_model/quantity.rs`, and its mutation anchors moved with it.\n   - Checker OK; its `.test.mjs` passes 45/0 with the parser dist built.\n3. **Blocking, fixed (C6-8): `check-rust-api-surface` drifted.** The export model types are re-exports now, with the same shape. The snapshot is updated.\n4. **Blocking, fixed (C6-8): `styling_parity` walk floor went stale.** The tree reached 1,711 `.rs` files, more than twice the floor of 855. The floor is raised to 1,140 with its comment.\n5. **Non-blocking, fixed: a refresh merge re-added the orphaned `rust/export/src/model_props_tests.rs`** next to its moved home. Removed.\n6. **Non-blocking:** the C6-8 ratchet rows and digests were re-pinned on the merged trees. The `rust/geometry` digest line is unchanged vs main in every PR, and `geometry-data-json.json` is untouched.\n\n### Hard checks\n- **Export perf (+5% budget), base = main before C6-7, head = top of stack.** Cachegrind instructions, RAYON 1, schependomlaan (49 MB):\n\n  | CSV properties | CSV quantities | JSON | parquet-bos | IFCX |\n  |---|---|---|---|---|\n  | +3.8% | +3.8% | +2.8% | +2.1% | +3.9% |\n\n  - This is a constant ~265M instructions in the shared model build. Inside the budget.\n  - Wall clock on schependomlaan, ISSUE_068 and Holter Tower (177 MB) was within noise on this loaded host (\u00b120%).\n  - Byte output is identical for CSV (all 4 modes), JSON and BOS on all three models.\n- **wasm:** `ifc-lite_bg.wasm` 9,700,462 \u2192 9,723,339 bytes (+22,877, +0.24%), via `scripts/build-wasm.sh` with CI=1.\n- **type_of first-wins:** `relationships().type_of` feeds no rendered output (ifc5 uses only `spatial_children`). The inheritance merge was already first-wins. The C6-0 goldens are unmoved through C6-9 at RAYON 1 and 8, including `c6_data_model_synthetic`, which types #310 twice. The quantity-analysis \"conflict means none\" and rebar \"first valid\" policies are byte-equivalent: same diagnostics at the same point, the same candidate order after dedup.\n- **IFCX reorder is a pure reorder.**\n  - The 5 re-pinned fixtures and schependomlaan, ISSUE_068 and Holter Tower: the `data` node multisets are equal base vs head, and only the order differs.\n  - `header`, `imports` and `schemas` are equal, and bath_csg_solid's order is unchanged.\n  - The CSV spatial output is byte-identical on all three large models.\n- **Unrelated deletions:** none. Each PR's diff against its merge-base deletes only `model.rs` and `model_props.rs` (C6-8), whose bodies moved verbatim to `data_model::{rows,render::flat,quantity,inherit}`. The only line-level changes are visibility, paths, `TypeAssignments` and the `QuantityKind` ladder.\n\n### Gate (each merged tree, refreshed on origin/main)\nclippy -D warnings, `cargo test --workspace`, `-p ifc-lite-export --features parquet-bos`, export and route goldens at RAYON 1 and 8, `rust/python` cargo test and pytest (49 passed), and the revert oracle (OBSERVED with each PR's mutation) all passed. The node guards and their `.test.mjs` pass: rust-api-surface, refwalk, raw-entity, perf-flags, module-size, rust-major-offset, ci-path/aggregate coverage, workflow-report-paths, csv/step escapers, server-browser parity, source-text, test-wiring.\n\n### How the branches were refreshed\n- The stack was refreshed with plain merge commits of origin/main, which the attribution hook passed because inherited main history is excluded.\n- Main kept moving under it: C4-1, C4-3, C4-5, #7860, #7861 and #7869.\n- After main's squash of each PR, conflicts in that PR's own files were resolved to the branch side.\n"
+        }
+      ]
+    }
+  ],
+  "testExecution": "none",
+  "gitHubPosts": "none",
+  "D47": "Out of scope; active C6 reviewer retains #7895. User reports OPEN at original3c4head; no source re-review performed."
+}

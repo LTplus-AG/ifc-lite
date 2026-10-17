@@ -14,7 +14,7 @@ The purpose is to preserve every original finding and its fix history while givi
 
 Source links in the CSV/JSON point directly to the immutable archive at the pinned commit. Original09a–09dsubreports use local `EDGE-N` IDs; rows retain those local anchors alongside canonical `EDGE-CLASH/LXMATH/LXPARSE/WASM-N` IDs. Public PR links are emitted only from an explicit archived per-ID PR field or a curated statement naming that ID's fix. Plain `#7684` issue references are not silently relabeled as PRs.
 
-## Conservative classifications
+## First-pass conservative classifications
 
 | Classification | Rows | Meaning |
 |---|---:|---|
@@ -55,3 +55,11 @@ Curated residual/split references preserve SERVER-24's deferred upload half vers
 4. Preserve original values/provenance and keep updates separately reviewable. Do not rewrite the pinned archive or use this derivative table to bulk-close GitHub issues. An optional deferral needs its actual per-ID decision/risk/owner, beyond D8 eligibility.
 
 Recent supplemental review findings remain a separate stream on [charter #7670](https://github.com/LTplus-AG/ifc-lite/issues/7670), including the [support checkpoint](https://github.com/LTplus-AG/ifc-lite/issues/7670#issuecomment-6241574992) and [D47 shared-set budget finding](https://github.com/LTplus-AG/ifc-lite/pull/7895#issuecomment-6241523952). They are not invented original IDs and are not silently folded into the 622-row count. The [preservation-gap request](https://github.com/LTplus-AG/ifc-lite/issues/7670#issuecomment-6241661433) remains binding until reconciled.
+
+## Scoped verification after the first pass
+
+The first-pass classification column and counts above remain historical context. The CSV now appends `reconciled_disposition`, `whole_original_defect_covered`, `reconciliation_source_pin` and `reconciliation_review` for the five examined claims; original archived statuses are preserved.
+
+[Five-claim review](verified-explicit-claims/REVIEW.md) supports the original concrete schema-route parity defects (PROCESSING-5/SERVER-18) and derived-context panic (PROCESSING-APP-2), based on exact merged/current source plus cited historic validation. These tests were not rerun. Energy relative precision (EXPORT-DATA-6) is supported; the original origin-loss observation retains an explicit scope question. SERVER-26 remains partial: output rows are capped, but an already reported allocation before the charge still clones long material names across repeated layers. No original finding is erased and no new feature is inferred from a suggestion.
+
+The separate [merged-C6 disposition review](merged-c6-review/REVIEW.md) confirms that the previously reported TypeAssignments membership and IFCX first-parent consumer findings survive the inspected merges. Source identity and test coverage were checked; no new runtime or performance result is claimed. C6 acceptance also retains open D47 #7895 despite #7783's automatic closure.

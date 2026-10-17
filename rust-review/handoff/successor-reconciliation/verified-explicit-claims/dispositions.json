@@ -1,0 +1,226 @@
+{
+  "derivative_only": true,
+  "scope": "five explicit stale-open claims only",
+  "source_pin": "aca9452d04cd095ffc58141b4ad487655e77f133",
+  "records": [
+    {
+      "id": "PROCESSING-5",
+      "original_anchor": "05-processing.md:73",
+      "original_archived_disposition": "open",
+      "derivative_disposition": "verified-original-route-schema-defect-fixed",
+      "whole_original_defect_covered": true,
+      "fix_pr": 7727,
+      "fix_pr_url": "https://github.com/LTplus-AG/ifc-lite/pull/7727",
+      "merge_sha": "406957e683b7d27234565f4ec16194a7147fe3e2",
+      "source_pin": "aca9452d04cd095ffc58141b4ad487655e77f133",
+      "verified_subparts": [
+        "Server private detector/find_bytes removed; metadata route and geometry metadata call one public detector.",
+        "Declared schema classification is case insensitive, quote/comment aware and wins over DATA/GUID decoys.",
+        "Schema-carrying cache namespaces invalidated by the fix."
+      ],
+      "pending_acceptance": [],
+      "scope_observations": [
+        "SERVER-18 mentions export raw labels/layout in context; broad one-default-everywhere proposal is not an additional proved acceptance result. Current core SchemaFamily deliberately has no default; callers choose defaults."
+      ],
+      "source_evidence": [
+        "apps/server/src/routes/parse/json.rs:289",
+        "rust/processing/src/processor/mod.rs:476",
+        "rust/processing/src/processor/schema_detection.rs:28-29",
+        "rust/core/src/schema_family.rs:79-84",
+        "apps/server/src/parity_tests.rs:759-782",
+        "rust/processing/src/processor/schema_detection_tests.rs:16-40"
+      ],
+      "existing_validation": [
+        {
+          "url": "https://github.com/LTplus-AG/ifc-lite/pull/7727#issuecomment-6213218679",
+          "scope": "Coordinator approve at c69af952fb and merged branch head56edae01be; per-header-detector mutation makes two processing tests and real HTTP route parity fail; restored passes; cache-key mutation causes27 server failures. Reports122/122 corpus schema agreement, full merged-head gate incl4806/0/41 workspace and parser2088 tests."
+        }
+      ],
+      "evidence_limits": [
+        "Historic owner-reported execution, not rerun here. Current-main source has later C6 SchemaFamily consolidation; no current-main runtime proof from this review.",
+        "Do not extrapolate metadata parity to deletion of export raw-label round-trip readers or registry-layout selectors, which have distinct contracts.",
+        "With no usable declaration the documented2000-byte fallback can match schema-like DATA/GUID text; original valid-declaration decoys are covered."
+      ],
+      "implementation_or_github_action_taken": false
+    },
+    {
+      "id": "SERVER-18",
+      "original_anchor": "08-server.md:242",
+      "original_archived_disposition": "open",
+      "derivative_disposition": "verified-original-route-schema-defect-fixed",
+      "whole_original_defect_covered": true,
+      "fix_pr": 7727,
+      "fix_pr_url": "https://github.com/LTplus-AG/ifc-lite/pull/7727",
+      "merge_sha": "406957e683b7d27234565f4ec16194a7147fe3e2",
+      "source_pin": "aca9452d04cd095ffc58141b4ad487655e77f133",
+      "verified_subparts": [
+        "Server private detector/find_bytes removed; metadata route and geometry metadata call one public detector.",
+        "Declared schema classification is case insensitive, quote/comment aware and wins over DATA/GUID decoys.",
+        "Schema-carrying cache namespaces invalidated by the fix."
+      ],
+      "pending_acceptance": [],
+      "scope_observations": [
+        "SERVER-18 mentions export raw labels/layout in context; broad one-default-everywhere proposal is not an additional proved acceptance result. Current core SchemaFamily deliberately has no default; callers choose defaults."
+      ],
+      "source_evidence": [
+        "apps/server/src/routes/parse/json.rs:289",
+        "rust/processing/src/processor/mod.rs:476",
+        "rust/processing/src/processor/schema_detection.rs:28-29",
+        "rust/core/src/schema_family.rs:79-84",
+        "apps/server/src/parity_tests.rs:759-782",
+        "rust/processing/src/processor/schema_detection_tests.rs:16-40"
+      ],
+      "existing_validation": [
+        {
+          "url": "https://github.com/LTplus-AG/ifc-lite/pull/7727#issuecomment-6213218679",
+          "scope": "Coordinator approve at c69af952fb and merged branch head56edae01be; per-header-detector mutation makes two processing tests and real HTTP route parity fail; restored passes; cache-key mutation causes27 server failures. Reports122/122 corpus schema agreement, full merged-head gate incl4806/0/41 workspace and parser2088 tests."
+        }
+      ],
+      "evidence_limits": [
+        "Historic owner-reported execution, not rerun here. Current-main source has later C6 SchemaFamily consolidation; no current-main runtime proof from this review.",
+        "Do not extrapolate metadata parity to deletion of export raw-label round-trip readers or registry-layout selectors, which have distinct contracts.",
+        "With no usable declaration the documented2000-byte fallback can match schema-like DATA/GUID text; original valid-declaration decoys are covered."
+      ],
+      "implementation_or_github_action_taken": false
+    },
+    {
+      "id": "PROCESSING-APP-2",
+      "original_anchor": "05-processing.md:610",
+      "original_archived_disposition": "open",
+      "derivative_disposition": "verified-original-derived-context-panic-fixed",
+      "whole_original_defect_covered": true,
+      "fix_pr": 7725,
+      "fix_pr_url": "https://github.com/LTplus-AG/ifc-lite/pull/7725",
+      "merge_sha": "2d5333ff92026401fea57bc9ba47a60f734f6c97",
+      "source_pin": "aca9452d04cd095ffc58141b4ad487655e77f133",
+      "verified_subparts": [
+        "evaluated uses total authored::wire; Derived serializes as \"*\".",
+        "Body ContextOfItems must be an EntityRef before a shared wrapper is cloned; refusal becomes per-product exclusion.",
+        "Real parser/plan regression has shared-body accepted twin and derived-context excluded twin with no authored changes."
+      ],
+      "pending_acceptance": [],
+      "scope_observations": [
+        "APP-1 broader converter consolidation is a separate finding; this result covers APP-2 panic and requested attr0 guard."
+      ],
+      "source_evidence": [
+        "rust/processing/src/appearance/evaluated.rs:7-10,27-30",
+        "rust/processing/src/appearance/evaluated_source.rs:37-38",
+        "rust/processing/src/appearance/authored.rs:55-66",
+        "rust/processing/src/appearance/evaluated_tests.rs:373-392"
+      ],
+      "existing_validation": [
+        {
+          "url": "https://github.com/LTplus-AG/ifc-lite/pull/7725#issuecomment-6209172203",
+          "scope": "Owner review ofe317f599b5 reports processing1/1 red at evaluated.rs30 after production revert, green restored; explicitly confirms total writer plus attr0check.",
+          "not_claimed": "The three real wasm contract failures in that review concern other S5 panic cases; they are not a direct wasm APP-2 witness."
+        },
+        {
+          "url": "https://github.com/LTplus-AG/ifc-lite/pull/7725",
+          "scope": "Final body identifies issue_7677_derived_context_on_shared_body_is_excluded_not_a_panic as red-on-base/green-on-head."
+        }
+      ],
+      "evidence_limits": [
+        "No runtime executed here. Prior review objects e317f599b5/033889804c absent locally, so no exact prior-review-tree-to-merge diff was possible.",
+        "Latest available owner review at033889804c is changes-required for unrelated release metadata; archive ledger137 records finalmerge/main4834tests. Do not represent that ledger or merge as fresh whole-PR approval.",
+        "Final merged/current source and regression inspected directly; no release-abort wasm execution for this exact APP-2 case is cited."
+      ],
+      "implementation_or_github_action_taken": false
+    },
+    {
+      "id": "EXPORT-DATA-6",
+      "original_anchor": "07c-export-data-model.md:75",
+      "original_archived_disposition": "open",
+      "derivative_disposition": "verified-relative-precision-fix-origin-scope-retained",
+      "whole_original_defect_covered": false,
+      "fix_pr": 7738,
+      "fix_pr_url": "https://github.com/LTplus-AG/ifc-lite/pull/7738",
+      "merge_sha": "d8c110166a07e494be45e509e31db2c614b31217",
+      "source_pin": "aca9452d04cd095ffc58141b4ad487655e77f133",
+      "verified_subparts": [
+        "ExtractedProfile.transform is f64 end to end through frame conversion and export geom::xf.",
+        "Rooms and DFJSON Room2Ds retain4.1m separation at LV95; HBJSON window and railing relative positions have independent1e-3m assertions.",
+        "rooms.rs misleading precision comment corrected."
+      ],
+      "pending_acceptance": [
+        "Resolve disposition of original origin-loss observation: dfjson still discards the absolute rebase origin. Original Fix says consider emitting origin; no mandatory emission decision established by this evidence. Preserve as scope/debt decision rather than silently asserting georeference round-trip."
+      ],
+      "scope_observations": [
+        "The actual f32-before-rebase defect is covered. This conservative whole-ID flag retains the original What-section origin-loss observation until scope is explicit; it is not an instruction to add a new feature.",
+        "Relative f32 local profile vertices/extrusion direction/depth and JS Float32Array narrowing remain; they are not world-placement storage."
+      ],
+      "source_evidence": [
+        "rust/geometry/src/profile_extractor.rs:67-74,405-409,469-477",
+        "rust/export/src/geom.rs:37-45",
+        "rust/export/src/rooms.rs:8-9,48-61",
+        "rust/export/tests/issue_7684_energy_precision.rs:51-75,123-147",
+        "rust/export/src/dfjson/plates.rs:70-71"
+      ],
+      "existing_validation": [
+        {
+          "url": "https://github.com/LTplus-AG/ifc-lite/pull/7738#issuecomment-6217157785",
+          "scope": "Final approve on72703c0b; hand-checked aperture/post coordinates; mutation makes allfour issue_7684_energy_precision cases red. Revertoracle baseline50/50, reverted precision0/4; workspace4859pass, exportparquet-bos776pass, wasm204/0/1."
+        },
+        {
+          "url": "https://github.com/LTplus-AG/ifc-lite/pull/7738",
+          "scope": "Owner body reports native duplex HBJSON/DFJSON numeric delta max4.2e-7m, only those two golden cases repinned. Controlled LV95 STEP witnesses, not a cited real-authoring-tool national-grid file."
+        }
+      ],
+      "evidence_limits": [
+        "No current-main runtime proof here. Final delta approval is on72703c0b, corresponding to final PRhead; merge isd8c110166a.",
+        "No direct adjacency-result regression, absolute-origin retention or real-authored national-grid end-to-end witness is established by these records.",
+        "Do not mark every B5/B6f follow-up fixed: mapped RTC sibling traversal is separately retained in archive ledger133."
+      ],
+      "implementation_or_github_action_taken": false
+    },
+    {
+      "id": "SERVER-26",
+      "original_anchor": "08-server.md:329",
+      "original_archived_disposition": "open",
+      "derivative_disposition": "verified-output-row-cap-with-preallocation-residual",
+      "whole_original_defect_covered": false,
+      "fix_pr": 7718,
+      "fix_pr_url": "https://github.com/LTplus-AG/ifc-lite/pull/7718",
+      "merge_sha": "932c7db80a485ee877ca7cbd4b3fee140825726a",
+      "source_pin": "aca9452d04cd095ffc58141b4ad487655e77f133",
+      "verified_subparts": [
+        "Shared output-row byte budget max16xinput/16MiB charged before MaterialAssociation output rows are cloned.",
+        "Overbudget extraction returns refusal and serialization/fetch surfaces explicit400 instead of partial material table.",
+        "Normal3-layer\u00d74-element control keeps12rows; output fanout regression limits1000\u00d71000case."
+      ],
+      "pending_acceptance": [
+        "Bound ResolvedLayer/material-definition allocation before cloning file-sized set/material/member strings; current resolver fully collects layers before first shared budget charge.",
+        "Add meaningful bounded-allocation/fail-early regression for long shared set name plus repeated valid layer refs, while retaining ordinary rows and existing refusal/error behavior. Coordinate with current data_model owner; existing#7718inline finding already tracks the class."
+      ],
+      "scope_observations": [
+        "This is the original resource-amplification concern at the pre-output stage, already reported on the existing fix PR; no new issue or claim was created.",
+        "Other#7718 complex-property follow-ups are preserved in archiveledger121-122/152 but are outside this SERVER-26 bounded review."
+      ],
+      "source_evidence": [
+        "rust/processing/src/data_model/materials.rs:177-245",
+        "rust/processing/src/data_model/materials.rs:352-368",
+        "rust/processing/src/data_model/tests.rs:2867-2900",
+        "merge932c7db80a:apps/server/src/services/data_model/materials.rs:114-153,340-356"
+      ],
+      "existing_validation": [
+        {
+          "url": "https://github.com/LTplus-AG/ifc-lite/pull/7718#issuecomment-6204237829",
+          "scope": "Owner reviewer confirms output-row charge before rows; reports121/121 corpus byte identity and none refused, worst1.16%budget. Oracle baseline69/69 mutated66pass3fail covers materialcharge. Did not establish resolved-layer allocation bound."
+        },
+        {
+          "url": "https://github.com/LTplus-AG/ifc-lite/pull/7718#issuecomment-6211867307",
+          "scope": "Owner confirms explicitRefused\u2192400 and streamedrefusal fetch; outputbudget unchanged through laterreviews."
+        },
+        {
+          "url": "https://github.com/LTplus-AG/ifc-lite/pull/7718#discussion_r4295809813",
+          "scope": "Already reported at finalhead3b8b07a34: ~600KiB input/512KiB setname/20000 repeatedlayerrefs may allocate~10GiB before budget. Source confirms mechanism at merge andcurrentmain; no new runtime repro was executed."
+        }
+      ],
+      "evidence_limits": [
+        "Latest owner review comments include changes-required for separate complex-property parity. No final reviewer approval for preallocation residual is present in captured comments.",
+        "Existing tests/green budget oracle observe eventual output-row refusal, not memory allocated before charge.",
+        "9.77GiB is arithmetic from20000\u00d7524288 ownednamebytes, not a fresh RSS measurement. No OOM experiment run."
+      ],
+      "implementation_or_github_action_taken": false
+    }
+  ]
+}

@@ -1,0 +1,401 @@
+[
+  {
+    "tag": "merge-7727",
+    "pin": "406957e683b7d27234565f4ec16194a7147fe3e2",
+    "path": "rust/processing/src/processor/schema_detection.rs",
+    "blob": "9cc244ea679ed320b7f48fb56134ef972f75949f",
+    "sha256": "b7efd1554a35a9f95a891eff5cd5b46603572c9eb67532fa9fadbacc58c859f8"
+  },
+  {
+    "tag": "merge-7727",
+    "pin": "406957e683b7d27234565f4ec16194a7147fe3e2",
+    "path": "rust/processing/src/processor/schema_detection_tests.rs",
+    "blob": "bf6a9d1249e175738f7c84c5f1ca076d6b18b20c",
+    "sha256": "785b3ddf38b423d27567dfc989fd50d58b6cdd12cf3d460b73b5016b8c2b532b"
+  },
+  {
+    "tag": "merge-7727",
+    "pin": "406957e683b7d27234565f4ec16194a7147fe3e2",
+    "path": "rust/core/src/parser/header.rs",
+    "blob": "02bb91e8bec791d89170c7a6c4d3d639a4d6f37c",
+    "sha256": "b872560d154e83207f1d1fc9fdfaa582b4506856293482b2b276afcc8b30000e"
+  },
+  {
+    "tag": "merge-7727",
+    "pin": "406957e683b7d27234565f4ec16194a7147fe3e2",
+    "path": "apps/server/src/services/streaming.rs",
+    "blob": "ddebab6a719867770285b789a23fd36589722a07",
+    "sha256": "e85b387b125b2e9bed7a507e7c48ace0c4e8a9f53520f4864c6334985c6874cd"
+  },
+  {
+    "tag": "merge-7727",
+    "pin": "406957e683b7d27234565f4ec16194a7147fe3e2",
+    "path": "apps/server/src/routes/parse/json.rs",
+    "blob": "5ce8061d657b37ae79b23d651158c157e10c408c",
+    "sha256": "00820a4ae90e376e288041af1a1a4de7e6283aa163b6d9da19b937578d0d0611"
+  },
+  {
+    "tag": "merge-7727",
+    "pin": "406957e683b7d27234565f4ec16194a7147fe3e2",
+    "path": "apps/server/src/routes/parse/cache_keys.rs",
+    "blob": "47a061eb128a0c17f9714deca019e6c01b9dcdaa",
+    "sha256": "e0dc34e0e0a9247ad0f0e38a4012617517b5d2dd6936384acd615874ad29e42c"
+  },
+  {
+    "tag": "merge-7727",
+    "pin": "406957e683b7d27234565f4ec16194a7147fe3e2",
+    "path": "apps/server/src/parity_tests.rs",
+    "blob": "5b8e7efd0bd5ce8fb7532e480ab722335317a341",
+    "sha256": "003e312a55364c0b4b661decc0930394ec76162706c44a40ef965af30b4efdc7"
+  },
+  {
+    "tag": "merge-7727",
+    "pin": "406957e683b7d27234565f4ec16194a7147fe3e2",
+    "path": "rust/export/src/schema_detect.rs",
+    "blob": "f48451dfe0ac4ea1d7b286a2cb5ec3feed09c4e3",
+    "sha256": "b30d1fa740cc36faa954cae6c35a0c6d4d50af4b480d06b673fff2bcd1b2b8b6"
+  },
+  {
+    "tag": "current-main",
+    "pin": "aca9452d04cd095ffc58141b4ad487655e77f133",
+    "path": "rust/processing/src/processor/schema_detection.rs",
+    "blob": "3f9d9afce17f05a0985d8c534fe5cabcafd9fa2c",
+    "sha256": "8dfadc8e6aaddaf55ec3488eb9eb4887b7bc52529caefd894579fd0f2aa97167"
+  },
+  {
+    "tag": "current-main",
+    "pin": "aca9452d04cd095ffc58141b4ad487655e77f133",
+    "path": "rust/processing/src/processor/schema_detection_tests.rs",
+    "blob": "51555f01ee15733dc8fca388f4c840a9e8acd95a",
+    "sha256": "c1885fd920a015d0ac0de7026064c920e2a8ec72444b1b70f85118d2bce1cd9b"
+  },
+  {
+    "tag": "current-main",
+    "pin": "aca9452d04cd095ffc58141b4ad487655e77f133",
+    "path": "rust/core/src/parser/header.rs",
+    "blob": "e4734081d2130b65d311d1f100b1bfc001f8edac",
+    "sha256": "8502c09a27389f5cc297be186ccfb0cbf012ea45ccc822dd5942671251c92f7b"
+  },
+  {
+    "tag": "current-main",
+    "pin": "aca9452d04cd095ffc58141b4ad487655e77f133",
+    "path": "apps/server/src/services/streaming.rs",
+    "blob": "63d9c89697afcc3c35a4bd8593722e73cad61e19",
+    "sha256": "fa56cc85ae4709f95db4348f83bda129c1dde75f2305585258f63bac9301ab87"
+  },
+  {
+    "tag": "current-main",
+    "pin": "aca9452d04cd095ffc58141b4ad487655e77f133",
+    "path": "apps/server/src/routes/parse/json.rs",
+    "blob": "f7644948ee67062c4241511abb1d2725ef7df421",
+    "sha256": "0cc4f2c4e54ded36fe25caad13e16f3a45661860dbb580baa1d7f7134ad59a8d"
+  },
+  {
+    "tag": "current-main",
+    "pin": "aca9452d04cd095ffc58141b4ad487655e77f133",
+    "path": "apps/server/src/routes/parse/cache_keys.rs",
+    "blob": "4e8b75a3f9a623b4888d5bda6865e6b1cb6682ba",
+    "sha256": "b2e5c1ad9f7f068f634b1811c86af919ff81660a2d9a04dbbf61ec8ddb79f48a"
+  },
+  {
+    "tag": "current-main",
+    "pin": "aca9452d04cd095ffc58141b4ad487655e77f133",
+    "path": "apps/server/src/parity_tests.rs",
+    "blob": "5b8e7efd0bd5ce8fb7532e480ab722335317a341",
+    "sha256": "003e312a55364c0b4b661decc0930394ec76162706c44a40ef965af30b4efdc7"
+  },
+  {
+    "tag": "current-main",
+    "pin": "aca9452d04cd095ffc58141b4ad487655e77f133",
+    "path": "rust/export/src/schema_detect.rs",
+    "blob": "8fa557579d50054814583f020498fc3fb9044b0b",
+    "sha256": "7b93490e4f434b44dca64879b8f2c3d26c3637f0fff3ea2ec3f902329d8411dd"
+  },
+  {
+    "tag": "merge-7725",
+    "pin": "2d5333ff92026401fea57bc9ba47a60f734f6c97",
+    "path": "rust/processing/src/appearance/authored.rs",
+    "blob": "3a53bea581e78960181d63c0baf61079d6f47b25",
+    "sha256": "a2e70769027ebe8dae1c9367973a4f5b24ea6ce279150d9b05f465391e004140"
+  },
+  {
+    "tag": "merge-7725",
+    "pin": "2d5333ff92026401fea57bc9ba47a60f734f6c97",
+    "path": "rust/processing/src/appearance/evaluated.rs",
+    "blob": "8e198dbf743f02acb64027b695851655294f29c6",
+    "sha256": "1bea06cc24a23e28a4e3eca96241463f85892e7a01d4aa07c7b7be6150e6dee2"
+  },
+  {
+    "tag": "merge-7725",
+    "pin": "2d5333ff92026401fea57bc9ba47a60f734f6c97",
+    "path": "rust/processing/src/appearance/evaluated_source.rs",
+    "blob": "11e096a909b25734978529376c5faf735c9a6763",
+    "sha256": "8e4a31a646c685c657ef8c2712f7fa38c2d0d2da31b322e848da199a259518d0"
+  },
+  {
+    "tag": "merge-7725",
+    "pin": "2d5333ff92026401fea57bc9ba47a60f734f6c97",
+    "path": "rust/processing/src/appearance/evaluated_replacement.rs",
+    "blob": "7c00dcae9c9eb99dc6c1351341b462dc7c6c798f",
+    "sha256": "532cb05665c87ca84ce70237d2cd3b0d4d26c7bdaa7393ffddc270bb5e609a4a"
+  },
+  {
+    "tag": "merge-7725",
+    "pin": "2d5333ff92026401fea57bc9ba47a60f734f6c97",
+    "path": "rust/processing/src/appearance/evaluated_tests.rs",
+    "blob": "540d0ebf26988267594fa8bc27ec2b923e4277da",
+    "sha256": "3e18e5f625adb1f91ef255bb21630002546ccb31920ac25f2095992626eea2e9"
+  },
+  {
+    "tag": "current-main",
+    "pin": "aca9452d04cd095ffc58141b4ad487655e77f133",
+    "path": "rust/processing/src/appearance/authored.rs",
+    "blob": "d7489ea6556b14a500240de0cba9f5e44a70c127",
+    "sha256": "704c981406070b5b12bc0928501262fc0e3ae11e2cf17853dad367e71f2112d4"
+  },
+  {
+    "tag": "current-main",
+    "pin": "aca9452d04cd095ffc58141b4ad487655e77f133",
+    "path": "rust/processing/src/appearance/evaluated.rs",
+    "blob": "4a3521fea13e5f4882e9ad351398b5dd537ef8e7",
+    "sha256": "723dc931b1c70167f2920cd9166bbad66b2aae31806c2f52525065545f5de36a"
+  },
+  {
+    "tag": "current-main",
+    "pin": "aca9452d04cd095ffc58141b4ad487655e77f133",
+    "path": "rust/processing/src/appearance/evaluated_source.rs",
+    "blob": "544adf00a1a5b4fe9d4b59a796fa68168bbb833d",
+    "sha256": "b836bc640307ef62efc35fe9ff1a66307ae71e0840df036abb5cd95d4d4facba"
+  },
+  {
+    "tag": "current-main",
+    "pin": "aca9452d04cd095ffc58141b4ad487655e77f133",
+    "path": "rust/processing/src/appearance/evaluated_replacement.rs",
+    "blob": "7c00dcae9c9eb99dc6c1351341b462dc7c6c798f",
+    "sha256": "532cb05665c87ca84ce70237d2cd3b0d4d26c7bdaa7393ffddc270bb5e609a4a"
+  },
+  {
+    "tag": "current-main",
+    "pin": "aca9452d04cd095ffc58141b4ad487655e77f133",
+    "path": "rust/processing/src/appearance/evaluated_tests.rs",
+    "blob": "4044ca53c783249544809550a16f2ae61a8bbdb9",
+    "sha256": "2cc8520f4bd82ccf94f4793d67c6b9c5f6162ed1fbe9adad8b82c7201c071fbd"
+  },
+  {
+    "tag": "merge-7738",
+    "pin": "d8c110166a07e494be45e509e31db2c614b31217",
+    "path": "rust/geometry/src/profile_extractor.rs",
+    "blob": "246300e6d544defcaafecd4d5fc47b3d0cce3689",
+    "sha256": "78eca862e7ddd10105a93a39cd1de884d29ddbecaa121d344089ba633c332bce"
+  },
+  {
+    "tag": "merge-7738",
+    "pin": "d8c110166a07e494be45e509e31db2c614b31217",
+    "path": "rust/export/src/geom.rs",
+    "blob": "36de7bb835b740bcd286a0e59dd4b82e66881ee5",
+    "sha256": "8be3ea9e60a8c905f61384e3693ea266a62a6744b0e996c9c2ca6e29061cd40a"
+  },
+  {
+    "tag": "merge-7738",
+    "pin": "d8c110166a07e494be45e509e31db2c614b31217",
+    "path": "rust/export/src/rooms.rs",
+    "blob": "cfa681b12e8fc06113c4950b7179a173d8c3fb9d",
+    "sha256": "88f992da458705ffec5f9aa0b0935052961f35bce1a432816d5cf22a91667382"
+  },
+  {
+    "tag": "merge-7738",
+    "pin": "d8c110166a07e494be45e509e31db2c614b31217",
+    "path": "rust/export/src/openings.rs",
+    "blob": "a0661cf807d936410ca096878a33364e3727acf6",
+    "sha256": "a69427d49fd6c408b440ca7dfe4960f734aea321d386b3c8bb71aa5477663608"
+  },
+  {
+    "tag": "merge-7738",
+    "pin": "d8c110166a07e494be45e509e31db2c614b31217",
+    "path": "rust/export/src/shades.rs",
+    "blob": "ad0d6f58a57703394efa93a62c10e1ce7e6bc6c6",
+    "sha256": "9d3a1d78c8f4bb5564ec1b032bc8ceb162eb26107d47eb98fed4cc67451eb105"
+  },
+  {
+    "tag": "merge-7738",
+    "pin": "d8c110166a07e494be45e509e31db2c614b31217",
+    "path": "rust/export/tests/issue_7684_energy_precision.rs",
+    "blob": "4f4299390e1cf97b24055e4ca416887875182de5",
+    "sha256": "1fe64f6de055894a83e608b7582aef3b406252199696ea87a6e14f0bd4a24fe8"
+  },
+  {
+    "tag": "merge-7738",
+    "pin": "d8c110166a07e494be45e509e31db2c614b31217",
+    "path": "rust/export/src/dfjson/plates.rs",
+    "blob": "80ab08b133f3eba998febfe43a328e2925bdafa9",
+    "sha256": "1ddd911b7e97341b1e3b1746eedb0eda0fe73fc07e225df1ac2324e5eb9c6ea9"
+  },
+  {
+    "tag": "current-main",
+    "pin": "aca9452d04cd095ffc58141b4ad487655e77f133",
+    "path": "rust/geometry/src/profile_extractor.rs",
+    "blob": "dd6380cdb2419dd4050a788b794461ea8e52cd06",
+    "sha256": "847ffc3b0798523f0b01a9ff265116c327334d502c14109ae6afd09763714e5b"
+  },
+  {
+    "tag": "current-main",
+    "pin": "aca9452d04cd095ffc58141b4ad487655e77f133",
+    "path": "rust/export/src/geom.rs",
+    "blob": "42e4894772183bda209cc7d0e91d96904343c700",
+    "sha256": "16e00ffcf6b685020198a0a3735d0fc2f54c4f6bdd62630e33894ada63469ff1"
+  },
+  {
+    "tag": "current-main",
+    "pin": "aca9452d04cd095ffc58141b4ad487655e77f133",
+    "path": "rust/export/src/rooms.rs",
+    "blob": "f5056e3c2a31d17e38876da016399a49e0972287",
+    "sha256": "ae29125ff55f15453ffc3e005e5cc208647496121c8f25eb6f2f9b7dd04445fb"
+  },
+  {
+    "tag": "current-main",
+    "pin": "aca9452d04cd095ffc58141b4ad487655e77f133",
+    "path": "rust/export/src/openings.rs",
+    "blob": "b86e8f94d776e416ccef497513d71d192ebcc0f9",
+    "sha256": "de87caa6fa47e84e9988c10f701f1c370f114c57e2040dfa4011790f2dc4a267"
+  },
+  {
+    "tag": "current-main",
+    "pin": "aca9452d04cd095ffc58141b4ad487655e77f133",
+    "path": "rust/export/src/shades.rs",
+    "blob": "4c0c1b0579f42f264e6e470543fa476776ff76d7",
+    "sha256": "524c8c3a189058aee290a65349a4110a38ffc0971d6fcec618935429831bc186"
+  },
+  {
+    "tag": "current-main",
+    "pin": "aca9452d04cd095ffc58141b4ad487655e77f133",
+    "path": "rust/export/tests/issue_7684_energy_precision.rs",
+    "blob": "4f4299390e1cf97b24055e4ca416887875182de5",
+    "sha256": "1fe64f6de055894a83e608b7582aef3b406252199696ea87a6e14f0bd4a24fe8"
+  },
+  {
+    "tag": "current-main",
+    "pin": "aca9452d04cd095ffc58141b4ad487655e77f133",
+    "path": "rust/export/src/dfjson/plates.rs",
+    "blob": "be12662aaf5d138eb2a4cf97417ad290367bc013",
+    "sha256": "dc84d7407e149614e14fa5bd9a7aef7aa6d0dc8c5e8136dc7f4bd75bb872cdbd"
+  },
+  {
+    "tag": "merge-7718",
+    "pin": "932c7db80a485ee877ca7cbd4b3fee140825726a",
+    "path": "apps/server/src/services/data_model/materials.rs",
+    "blob": "5f884e755a2127b536d62a66baa7e1d8174a62cd",
+    "sha256": "53864b893840ac93d05e4abaec765e78899417d9495a8d063cec02e0cd57cab7"
+  },
+  {
+    "tag": "merge-7718",
+    "pin": "932c7db80a485ee877ca7cbd4b3fee140825726a",
+    "path": "apps/server/src/services/data_model/tests.rs",
+    "blob": "a4214eb2f64c34c4c963e8f45840349aef635076",
+    "sha256": "b83e4a26ee428bfae19acb74b47f9c232d9196ec4e8f8ef130f5bb261c2fd427"
+  },
+  {
+    "tag": "merge-7718",
+    "pin": "932c7db80a485ee877ca7cbd4b3fee140825726a",
+    "path": "apps/server/src/services/data_model/mod.rs",
+    "blob": "e660545a82fc2158ddc587c0a2a14931a186b59b",
+    "sha256": "de56c1852be47faa4f7c4a78a280b87593589ca246ce31aee9c92e01c79bea14"
+  },
+  {
+    "tag": "merge-7718",
+    "pin": "932c7db80a485ee877ca7cbd4b3fee140825726a",
+    "path": "apps/server/src/services/data_model/types.rs",
+    "blob": "0976143ab2a60412f07406603b544ba36c9876c8",
+    "sha256": "ed7f8b7db0cd7c50811d1f3db4d84db9c728c69a87aac015416b7be9e72e175e"
+  },
+  {
+    "tag": "merge-7718",
+    "pin": "932c7db80a485ee877ca7cbd4b3fee140825726a",
+    "path": "apps/server/src/services/parquet_data_model.rs",
+    "blob": "0249175d3315f1afbdce09840fb7c08b6a0fcc92",
+    "sha256": "87b69e67795f82f188134e0afe4b73ab13e1bda213e885df08d4407e1e5f43b0"
+  },
+  {
+    "tag": "merge-7718",
+    "pin": "932c7db80a485ee877ca7cbd4b3fee140825726a",
+    "path": "apps/server/src/routes/parse/stream_data_model.rs",
+    "blob": "0e5123e4c14119e8a9a085e4c9fc6a400b4b3241",
+    "sha256": "366af6459c13c71b1e07b36046a2c6ed3ab9e316e34ed6f9d0d4635cfa069807"
+  },
+  {
+    "tag": "merge-7718",
+    "pin": "932c7db80a485ee877ca7cbd4b3fee140825726a",
+    "path": "apps/server/src/routes/parse/fetch.rs",
+    "blob": "c1947670dc3c70d71545c8eed47bb56a2b3fd6fd",
+    "sha256": "0be849ce10fb98a14c029e2cb15b58e6fa54fba18a562b385ed0873f665d485a"
+  },
+  {
+    "tag": "merge-7718",
+    "pin": "932c7db80a485ee877ca7cbd4b3fee140825726a",
+    "path": "apps/server/src/routes/parse/refusal_7675_tests.rs",
+    "blob": "eb967bc34bc588bc4055e2307e681b6be2c8ed5f",
+    "sha256": "0a2d51d426f6907f74fda5fb33a0b9ef9ebd05ce9017f7c7d82f8066bee0130e"
+  },
+  {
+    "tag": "current-main",
+    "pin": "aca9452d04cd095ffc58141b4ad487655e77f133",
+    "path": "apps/server/src/services/data_model/mod.rs",
+    "blob": "1815c0c84cb795347e04155d7cf9b09c1fe4d2b9",
+    "sha256": "9d940951f71088abfcaef98cf2527d42d47b06d6df820bc51455680118834b10"
+  },
+  {
+    "tag": "current-main",
+    "pin": "aca9452d04cd095ffc58141b4ad487655e77f133",
+    "path": "apps/server/src/services/parquet_data_model.rs",
+    "blob": "0249175d3315f1afbdce09840fb7c08b6a0fcc92",
+    "sha256": "87b69e67795f82f188134e0afe4b73ab13e1bda213e885df08d4407e1e5f43b0"
+  },
+  {
+    "tag": "current-main",
+    "pin": "aca9452d04cd095ffc58141b4ad487655e77f133",
+    "path": "apps/server/src/routes/parse/stream_data_model.rs",
+    "blob": "0e5123e4c14119e8a9a085e4c9fc6a400b4b3241",
+    "sha256": "366af6459c13c71b1e07b36046a2c6ed3ab9e316e34ed6f9d0d4635cfa069807"
+  },
+  {
+    "tag": "current-main",
+    "pin": "aca9452d04cd095ffc58141b4ad487655e77f133",
+    "path": "apps/server/src/routes/parse/fetch.rs",
+    "blob": "c1947670dc3c70d71545c8eed47bb56a2b3fd6fd",
+    "sha256": "0be849ce10fb98a14c029e2cb15b58e6fa54fba18a562b385ed0873f665d485a"
+  },
+  {
+    "tag": "current-main",
+    "pin": "aca9452d04cd095ffc58141b4ad487655e77f133",
+    "path": "apps/server/src/routes/parse/refusal_7675_tests.rs",
+    "blob": "eb967bc34bc588bc4055e2307e681b6be2c8ed5f",
+    "sha256": "0a2d51d426f6907f74fda5fb33a0b9ef9ebd05ce9017f7c7d82f8066bee0130e"
+  },
+  {
+    "tag": "current-main",
+    "pin": "aca9452d04cd095ffc58141b4ad487655e77f133",
+    "path": "rust/processing/src/data_model/materials.rs",
+    "blob": "8b9af678d7ac9d5d3099de06001eede0e221cfd7",
+    "sha256": "ef0bc711d752bc08743d0bb74aec385a2e75a7a422ff2af5367be1be0949789b"
+  },
+  {
+    "tag": "current-main",
+    "pin": "aca9452d04cd095ffc58141b4ad487655e77f133",
+    "path": "rust/processing/src/data_model/tests.rs",
+    "blob": "894d1ec2bfa96c3f8a4c49538570af7117f8c4f4",
+    "sha256": "1d9f41fc3581936ca4f9b43a5411b68b1607f7e3578d35dd83291328bdddd916"
+  },
+  {
+    "tag": "current-main",
+    "pin": "aca9452d04cd095ffc58141b4ad487655e77f133",
+    "path": "rust/core/src/schema_family.rs",
+    "blob": "d43d0a3be06cb4969401fff202463088286a1e6b",
+    "sha256": "3848b5d37e2c5a6c10d74ec97321b05fa1f6707248f43975a05130d6ca90b21d"
+  },
+  {
+    "tag": "current-main",
+    "pin": "aca9452d04cd095ffc58141b4ad487655e77f133",
+    "path": "rust/export/src/source_header.rs",
+    "blob": "f7d8d5fe9904bd1fa9d3cd10e27769ef990f7bfe",
+    "sha256": "5a98f01124369e36ab20fc169a9ac424d374c1bec0929641b2c30793eb42ee5c"
+  }
+]

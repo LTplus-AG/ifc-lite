@@ -1,0 +1,26 @@
+[
+  {
+    "label": "7725-first-review-to-merge",
+    "before": "e317f599b5",
+    "after": "2d5333ff92026401fea57bc9ba47a60f734f6c97",
+    "exit_code": 128,
+    "diff_bytes": 0,
+    "stderr": "fatal: bad revision 'e317f599b5'\n"
+  },
+  {
+    "label": "7725-last-review-to-merge",
+    "before": "033889804c",
+    "after": "2d5333ff92026401fea57bc9ba47a60f734f6c97",
+    "exit_code": 128,
+    "diff_bytes": 0,
+    "stderr": "fatal: bad revision '033889804c'\n"
+  },
+  {
+    "label": "7727-approved-review-to-merge",
+    "before": "c69af952fb",
+    "after": "406957e683b7d27234565f4ec16194a7147fe3e2",
+    "exit_code": 128,
+    "diff_bytes": 0,
+    "stderr": "fatal: bad revision 'c69af952fb'\n"
+  }
+]

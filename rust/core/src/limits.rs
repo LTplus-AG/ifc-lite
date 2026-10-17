@@ -73,6 +73,16 @@ pub const MAX_MAPPED_ITEM_DEPTH: u32 = 32;
 /// also needs a cycle guard; see the module docs above.
 pub const MAX_PLACEMENT_DEPTH: usize = 100;
 
+/// Maximum `ParentContext` chain (`IfcGeometricRepresentationSubContext` ->
+/// parent -> ...) the export writers follow when they validate or look up a
+/// representation context (#7791). These walks follow a different attribute
+/// of a different entity from the `PlacementRelTo` walks bounded by
+/// [`MAX_PLACEMENT_DEPTH`], so they carry their own bound: borrowing the
+/// placement one tied two unrelated limits together. Real files nest a
+/// context two or three deep; every walk also keeps a visited set, so this
+/// only bounds the work on a malformed file.
+pub const MAX_CONTEXT_DEPTH: usize = 100;
+
 /// The large-coordinate threshold (metres): a world coordinate whose magnitude
 /// exceeds this needs RTC re-basing before it is cast to f32, or the model
 /// renders with vertex jitter.
@@ -186,5 +196,11 @@ mod tests {
     #[test]
     fn placement_depth_is_the_documented_100() {
         assert_eq!(MAX_PLACEMENT_DEPTH, 100);
+    }
+
+    /// Pinned separately from the export walks that import it (#7791).
+    #[test]
+    fn context_depth_is_the_documented_100() {
+        assert_eq!(MAX_CONTEXT_DEPTH, 100);
     }
 }

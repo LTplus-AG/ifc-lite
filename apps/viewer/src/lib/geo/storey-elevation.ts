@@ -11,7 +11,7 @@ import {
   type GeorefMutationDataLike,
 } from './effective-georef';
 import { hasUsableMapGeoref, viewerPointToProjected } from './pick-to-geo';
-import { firstProjAxis } from '@ifc-lite/data';
+import { firstProjAxis, walkPlacementChain } from '@ifc-lite/data';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 import type { IfcDataStore } from '@ifc-lite/parser';
 
@@ -94,22 +94,22 @@ function applyRelativePlacement(
 /** Resolve an IfcBuildingStorey placement origin through every PlacementRelTo hop. */
 function resolveStoreyOriginMeters(store: IfcDataStore, storeyId: number): Point3 | null {
   const storey = store.getEntity(storeyId);
-  let placementId = entityRef(storey?.attributes?.[5]);
+  const placementId = entityRef(storey?.attributes?.[5]);
   if (placementId === null) return null;
 
-  const visited = new Set<number>();
+  // The shared walker (#7791): a visited set, no depth cap. A cycle has no
+  // origin.
+  const walked = walkPlacementChain(placementId, (id) => entityRef(store.getEntity(id)?.attributes?.[0]));
+  if (walked.end === 'cycle') return null;
   let point: Point3 = { x: 0, y: 0, z: 0 };
-  while (placementId !== null) {
-    if (visited.has(placementId)) return null;
-    visited.add(placementId);
-    const placement = store.getEntity(placementId);
+  for (const id of walked.ids) {
+    const placement = store.getEntity(id);
     if (!placement || String(placement.type).toUpperCase() !== 'IFCLOCALPLACEMENT') return null;
     const relativePlacementId = entityRef(placement.attributes?.[1]);
     if (relativePlacementId === null) return null;
     const resolved = applyRelativePlacement(store, relativePlacementId, point);
     if (!resolved) return null;
     point = resolved;
-    placementId = entityRef(placement.attributes?.[0]);
   }
 
   const scale = getIfcLengthUnitScale(store);

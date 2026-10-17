@@ -140,11 +140,13 @@ fn self_check(step: &str) -> (usize, usize, usize) {
         if type_token(line).as_deref() == Some("IFCPROJECT") {
             projects += 1;
         }
-        // Type-aware GlobalId classification (the same rule the merge uses), so a
-        // non-rooted entity leading with a 22-char charset Name (e.g. IfcColourRgb)
-        // is not counted as a duplicate GlobalId (CR #2952).
-        if let Some(g) = ifc_lite_export::leading_rooted_global_id(line.as_bytes()) {
-            *guid_counts.entry(g).or_default() += 1;
+        // Type-aware GlobalId classification, so a non-rooted entity leading with
+        // a 22-char charset Name (e.g. IfcColourRgb) is not counted as a
+        // duplicate GlobalId (CR #2952). The id itself is read here with the
+        // lenient length+alphabet check, NOT the merge's reader: a check that
+        // shares the reader under test is blind to its defects (#7777).
+        if let Some(g) = rooted_guid(line) {
+            *guid_counts.entry(g.to_string()).or_default() += 1;
         }
         // Count references to ids that were never written.
         let (refs, past_bound) = refs_in(line);
@@ -165,6 +167,18 @@ fn self_check(step: &str) -> (usize, usize, usize) {
 
     let dup_guids = guid_counts.values().filter(|&&c| c > 1).count();
     (projects, dup_guids, dangling)
+}
+
+/// The leading `'…'` of a rooted entity line when it is 22 GlobalId-alphabet
+/// chars (any first character).
+fn rooted_guid(line: &str) -> Option<&str> {
+    if !ifc_lite_export::rooted_type::is_rooted_type(&type_token(line)?) {
+        return None;
+    }
+    let body = line[line.find('(')? + 1..].trim_start().strip_prefix('\'')?;
+    let tok = &body[..body.find('\'')?];
+    let shaped = tok.len() == 22 && tok.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'$');
+    shaped.then_some(tok)
 }
 
 /// The express id from a `#123=…` line.

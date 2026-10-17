@@ -3,7 +3,8 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 //! The cross-crate math home: vectors, 4x4 matrices, AABBs and the Z-up to
-//! Y-up frame, over plain arrays (#7772, charter #7670).
+//! Y-up frame, over plain arrays (#7772, charter #7670), plus the plane kit
+//! [`v2`] and its exact predicates (`geom2d`, #7773).
 //!
 //! `nalgebra` stays geometry's interior type. Every cross-crate signature is
 //! already an array (`InstanceMeta.transform`, `origin`, `local_bounds`), so
@@ -26,14 +27,17 @@
 //!   through these functions, and the kernel relies on it.
 //! - **NaN behaviour is stated per function.** `min`/`max` folds skip NaN
 //!   (`f64::min`), `normalize` refuses a non-finite length.
-//! - **Thresholds are arguments.** `normalize` takes its `min_len`; the one
-//!   named constant is [`mat4::SINGULAR_DET_EPS`].
+//! - **Thresholds are arguments.** `normalize` takes its `min_len`; the
+//!   values callers pass are named, with units, in [`tol`] (F2c, #7774).
 
 pub mod aabb;
 pub mod frame;
+pub(crate) mod geom2d;
 pub mod mat4;
 pub(crate) mod normals;
+pub mod v2;
 pub mod v3;
+pub mod tol;
 
 #[cfg(test)]
 mod aabb_tests;
@@ -46,4 +50,8 @@ mod mat4_tests;
 #[cfg(test)]
 mod normals_tests;
 #[cfg(test)]
+mod v2_tests;
+#[cfg(test)]
 mod v3_tests;
+#[cfg(test)]
+mod tol_tests;

@@ -23,7 +23,7 @@ use ifc_lite_geometry::{propagate_voids_to_parts, GeometryRouter, Mesh, RectPara
 use nalgebra::{Matrix3, Point3, Vector3};
 use rustc_hash::FxHashMap;
 
-const DEFAULT_FIXTURE: &str = "../../tests/models/buildingsmart/wall-with-opening-and-window.ifc";
+mod support;
 
 fn mesh_volume(mesh: &Mesh) -> f64 {
     mesh.indices
@@ -166,12 +166,9 @@ fn build_void_index(content: &str, decoder: &mut EntityDecoder) -> FxHashMap<u32
 #[test]
 #[ignore = "phase-1 parity -- run explicitly with MEASURE_FIXTURE"]
 fn parametric_cut_matches_exact_kernel() {
-    let fixture = std::env::var("MEASURE_FIXTURE").unwrap_or_else(|_| DEFAULT_FIXTURE.to_string());
-    if !std::path::Path::new(&fixture).exists() {
-        eprintln!("skipping: fixture {fixture} not present");
+    let Some((fixture, content)) = support::measure_fixture() else {
         return;
-    }
-    let content = std::fs::read_to_string(&fixture).expect("read fixture");
+    };
     let entity_index = build_entity_index(&content);
     let mut decoder = EntityDecoder::with_index(&content, entity_index);
     let router = GeometryRouter::with_units(&content, &mut decoder);

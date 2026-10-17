@@ -4,6 +4,7 @@
 
 //! Extrusion operations - converting 2D profiles to 3D meshes
 
+use crate::math::tol;
 use crate::error::{Error, Result};
 use crate::mesh::Mesh;
 use crate::profile::{Profile2D, Profile2DWithVoids, Triangulation, VoidInfo};
@@ -216,8 +217,8 @@ pub fn extrude_profile_with_voids(
     Ok(mesh)
 }
 
-/// Tolerance for a partial void reaching an outer cap.
-const PARTIAL_VOID_EPSILON: f64 = 0.001;
+// Tolerance for a partial void reaching an outer cap.
+use crate::math::tol::PARTIAL_VOID_EPS as PARTIAL_VOID_EPSILON;
 
 /// Create geometry for a partial-depth void: its side walls between its two
 /// depths, and an internal cap at each depth that is inside the solid. Every
@@ -418,7 +419,7 @@ fn create_lofted_side_walls(
         let v3 = Point3::new(q0.x, q0.y, depth);
         let edge_a = v1 - v0;
         let edge_b = v3 - v0;
-        let normal = match edge_a.cross(&edge_b).try_normalize(1e-10) {
+        let normal = match edge_a.cross(&edge_b).try_normalize(tol::EDGE_CROSS_MIN_LEN) {
             Some(n) => n * winding_sign,
             None => continue,
         };

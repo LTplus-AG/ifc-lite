@@ -28,29 +28,24 @@ use ifc_lite_geometry::{
     IntersectionSolid, Mesh,
 };
 use rustc_hash::FxHashMap;
-use std::path::PathBuf;
 use std::time::Instant;
 
-/// Candidate locations for the model, tried in order. The repo vendors it under
-/// `tests/models/`; a worktree that has not fetched the model set still carries
-/// the byte-identical viewer sample.
-const MODEL_CANDIDATES: [&str; 2] = [
-    "tests/models/buildingsmart/Infra-Bridge.ifc",
-    "apps/viewer/public/samples/infra-bridge.ifc",
-];
+/// The catalogued model (relative to `tests/models/`; gate: `ifc_lite_testkit`).
+const MODEL_FIXTURE: &str = "buildingsmart/Infra-Bridge.ifc";
+/// A worktree that has not fetched the model set still carries the
+/// byte-identical viewer sample (committed, so always readable).
+const MODEL_SAMPLE: &str = "apps/viewer/public/samples/infra-bridge.ifc";
 
 /// The product's default hard-clash rule settings (`packages/clash/src/types.ts`).
 const TOLERANCE_M: f64 = 0.002;
 
-fn repo_root() -> PathBuf {
-    ifc_lite_testkit::repo_root()
-}
-
-fn model_path() -> Option<PathBuf> {
-    MODEL_CANDIDATES
-        .iter()
-        .map(|r| repo_root().join(r))
-        .find(|p| p.exists())
+/// The model text: the catalogued fixture, else the committed viewer sample.
+fn load_model() -> String {
+    ifc_lite_testkit::fixture_text(MODEL_FIXTURE).unwrap_or_else(|| {
+        let sample = ifc_lite_testkit::repo_root().join(MODEL_SAMPLE);
+        std::fs::read_to_string(&sample)
+            .unwrap_or_else(|e| panic!("model not found: {MODEL_FIXTURE} or {}: {e}", sample.display()))
+    })
 }
 
 fn build_void_index(content: &str) -> FxHashMap<u32, Vec<u32>> {
@@ -249,13 +244,8 @@ struct Row {
 #[test]
 #[ignore = "parses a 1.9 MB IFC and runs an exact CSG boolean per clash pair"]
 fn intersection_solid_on_the_infra_bridge_model() {
-    let Some(path) = model_path() else {
-        panic!("model not found; looked for {MODEL_CANDIDATES:?} under {:?}", repo_root());
-    };
-    println!("model: {}", path.display());
-
     let t0 = Instant::now();
-    let content = std::fs::read_to_string(&path).expect("read model");
+    let content = load_model();
     let elements = load_elements(&content);
     println!(
         "parsed + meshed {} elements with geometry in {:.2} s",

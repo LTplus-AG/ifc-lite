@@ -41,21 +41,27 @@ pub(crate) fn rgba_at(colors: &[f32], i: usize) -> [f32; 4] {
     std::array::from_fn(|k| colors.get(i * 4 + k).copied().unwrap_or(DEFAULT_RGBA[k]))
 }
 
-/// Material dedup key (glTF, COLLADA): RGBA rounded to 2 decimals, matching the
-/// TS exporter. NOT clamped: an out-of-gamut colour keeps its own bucket, and
-/// a non-finite channel saturates (NaN -> 0). [`material_key_clamped`] differs
-/// on those inputs; unifying the two is a behaviour decision (#7777).
+/// The one material dedup key (glTF, COLLADA, USD): RGBA rounded to 2 decimals
+/// (the TS exporter's resolution), a non-finite channel -> 0, then clamped to
+/// `0..=100`. Out-of-gamut colours therefore share the nearest in-gamut
+/// bucket, and USD's derived prim name stays a legal identifier (#7777).
 pub(crate) fn material_key(c: [f32; 4]) -> (i32, i32, i32, i32) {
-    let r = |v: f32| (v * 100.0).round() as i32;
-    (r(c[0]), r(c[1]), r(c[2]), r(c[3]))
-}
-
-/// USD's material key: as [`material_key`] but non-finite -> 0 and clamped to
-/// `0..=100`, which keeps the derived prim name a legal identifier.
-pub(crate) fn material_key_clamped(c: [f32; 4]) -> (i32, i32, i32, i32) {
     let r = |v: f32| {
         let v = if v.is_finite() { v } else { 0.0 };
         ((v * 100.0).round() as i32).clamp(0, 100)
     };
     (r(c[0]), r(c[1]), r(c[2]), r(c[3]))
+}
+
+#[cfg(test)]
+mod key_tests {
+    use super::material_key;
+
+    #[test]
+    fn key_is_clamped_with_non_finite_to_zero() {
+        assert_eq!(material_key([-0.1, 2.0, 0.5, f32::NAN]), (0, 100, 50, 0));
+        assert_eq!(material_key([f32::INFINITY, f32::NEG_INFINITY, 0.504, 0.996]), (0, 0, 50, 100));
+        // Out-of-gamut shares the in-gamut bucket.
+        assert_eq!(material_key([1.5, 1.0, 1.0, 1.0]), material_key([1.0; 4]));
+    }
 }

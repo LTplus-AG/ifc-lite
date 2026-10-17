@@ -4,6 +4,7 @@
 
 //! Bounded planar polygon validation before the canonical triangulator (#4406).
 use super::annotation::invalid;
+use crate::math::geom2d;
 use crate::{Mesh, Result};
 use nalgebra::{Point2, Point3};
 
@@ -65,23 +66,8 @@ pub(super) fn triangulate(rings: &[Vec<Point3<f64>>]) -> Result<Mesh> {
 fn orient(a: P, b: P, c: P) -> f64 {
     geometry_predicates::orient2d([a.x, a.y], [b.x, b.y], [c.x, c.y])
 }
-fn on(a: P, b: P, p: P) -> bool {
-    orient(a, b, p) == 0.
-        && p.x >= a.x.min(b.x)
-        && p.x <= a.x.max(b.x)
-        && p.y >= a.y.min(b.y)
-        && p.y <= a.y.max(b.y)
-}
 fn intersects(a: P, b: P, c: P, d: P) -> bool {
-    let x = orient(a, b, c);
-    let y = orient(a, b, d);
-    let z = orient(c, d, a);
-    let w = orient(c, d, b);
-    ((x > 0. && y < 0.) || (x < 0. && y > 0.)) && ((z > 0. && w < 0.) || (z < 0. && w > 0.))
-        || on(a, b, c)
-        || on(a, b, d)
-        || on(c, d, a)
-        || on(c, d, b)
+    geom2d::segments_intersect([a.x, a.y], [b.x, b.y], [c.x, c.y], [d.x, d.y])
 }
 fn inside(p: P, ring: &[P]) -> bool {
     let mut winding = 0i32;

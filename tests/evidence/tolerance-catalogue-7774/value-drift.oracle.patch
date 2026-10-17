@@ -1,0 +1,22 @@
+diff --git a/rust/geometry/src/math/tol.rs b/rust/geometry/src/math/tol.rs
+index 72db065dc5..cbc45a0528 100644
+--- a/rust/geometry/src/math/tol.rs
++++ b/rust/geometry/src/math/tol.rs
+@@ -133,7 +133,7 @@ pub const F32_ULP_REL: f64 = 1.0 / 8_388_608.0;
+ /// (ulps). The multiplier of an `extent` or `|v|` that gives an absolute
+ /// noise tolerance in the same units as that magnitude, for quantities
+ /// derived from f32-stored vertices.
++pub const F32_ULP_SCALE: f64 = 1.0 / 4_194_304.0;
+-pub const F32_ULP_SCALE: f64 = 1.0 / 2_097_152.0;
+ 
+ /// Eight f32 ULPs, relative: `2^-20`. Unit: relative (ulps). The budget for
+ /// a world-space position recomposed through a handful of float ops
+@@ -147,7 +147,7 @@ pub const F32_ULP_8: f64 = F32_ULP_REL * 8.0;
+ 
+ /// Two consecutive profile or curve points closer than this (per axis, or in
+ /// norm) are the same point and the second is dropped. Unit: model units.
++pub const POINT_COINCIDENT_EPS: f64 = 1e-9;
+-pub const POINT_COINCIDENT_EPS: f64 = 1e-8;
+ 
+ /// A radius, segment or span at or below this is zero length. Unit: model
+ /// units.

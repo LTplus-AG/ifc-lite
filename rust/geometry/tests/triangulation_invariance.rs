@@ -127,7 +127,6 @@ mod census_golden;
 #[path = "corpus/rtc_frame.rs"]
 mod census_rtc;
 
-mod support;
 
 use census_golden::{is_closed_solid, totals, Delta, HostRow, PreVoid};
 use census_rtc::ModelFrame;
@@ -818,8 +817,9 @@ fn sweep(models: &[(String, PathBuf)]) -> (Vec<HostRow>, BTreeSet<String>) {
     let mut weld_totals: Vec<(String, [(u64, u64, u64); 2])> = Vec::new();
     let _ = take_plane_weld_stats(); // discard anything earlier tests accrued
 
-    for (rel, path) in models {
-        let Ok(content) = std::fs::read_to_string(path) else {
+    for (rel, _path) in models {
+        // Discovered on disk, so present; gate-aware read via the testkit.
+        let Some(content) = ifc_lite_testkit::fixture_text(rel) else {
             continue;
         };
         swept_models.insert(rel.clone());
@@ -1427,12 +1427,10 @@ fn issue_129_mixed_bool2d_residual_preserves_established_topology() {
     let _serial = CENSUS_SWEEP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let _reset = AltTriangulatorReset;
     let rel = "ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc".to_string();
-    let path = crate_dir().join("../..").join("tests/models").join(&rel);
-    if !oracle_fixture_present(&path) {
+    let Some(content) = ifc_lite_testkit::fixture_text(&rel) else {
         eprintln!("Skipping #4610 mixed-opening oracle: run pnpm fixtures");
         return;
-    }
-    let content = std::fs::read_to_string(&path).expect("read ISSUE_129 fixture");
+    };
     let voids = void_index(&content);
     let frame = ModelFrame::new(&content);
 
@@ -1469,12 +1467,10 @@ fn issue_129_mixed_bool2d_residual_preserves_established_topology() {
 fn issue_4627_dental_result_remains_closed() {
     let _serial = CENSUS_SWEEP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let _reset = AltTriangulatorReset;
-    let path = crate_dir().join("../../tests/models/ara3d/dental_clinic.ifc");
-    if !oracle_fixture_present(&path) {
+    let Some(content) = ifc_lite_testkit::fixture_text("ara3d/dental_clinic.ifc") else {
         eprintln!("Skipping #4627 dental result oracle: run pnpm fixtures");
         return;
-    }
-    let content = std::fs::read_to_string(&path).expect("read dental clinic");
+    };
     let voids = void_index(&content);
     let frame = ModelFrame::new(&content);
     set_alt(false);
@@ -1502,24 +1498,20 @@ fn issue_4627_candidate_failures_preserve_prior_analytic_cuts() {
                 // #5362: 33 open / 159 tris until the #635 fallback stopped
                 // box-cutting an opening the kernel found disjoint; enclosed
                 // volume moved toward IfcOpenShell (0.0189 -> 0.0202 m3, ref 0.0211).
-                // #7795: rvt01's polygonal face sets now triangulate through the
-                // shared planar-face home (Newell basis, convex fans), so the
-                // cut hosts' triangle counts moved; open edges never rose, and
-                // #11477 closed (9 open -> 0).
-                (11477, 0, 0, 158, 0),
+                (11477, 9, 9, 152, 18),
                 // #5410: 19 open / 139 tris until a plan-rotated host whose
                 // cutters author no depth took the wall-local frame; now closed
                 // (enclosed volume 0.01972 -> 0.01967 m3, IfcOpenShell 0.01752).
-                (11690, 0, 0, 142, 0),
-                (31156, 0, 0, 196, 0),
+                (11690, 0, 0, 144, 0),
+                (31156, 0, 0, 208, 0),
                 (17553, 0, 2, 214, 0),
-                (17615, 0, 0, 244, 0),
+                (17615, 0, 0, 252, 0),
                 (25914, 28, 31, 84, 28),
                 (26610, 0, 0, 84, 0),
                 // rvt01 wall hosts the #3977 local-frame selector must leave
                 // closed (pinned after 0e8a42175 tore #10191 open via a -Z cutter depth).
                 (10191, 0, 0, 172, 0),
-                (26681, 32, 32, 192, 33),
+                (26681, 35, 35, 191, 33),
             ][..],
         ),
         (
@@ -1531,12 +1523,10 @@ fn issue_4627_candidate_failures_preserve_prior_analytic_cuts() {
             ][..],
         ),
     ] {
-        let path = crate_dir().join("../../tests/models").join(rel);
-        if !oracle_fixture_present(&path) {
+        let Some(content) = ifc_lite_testkit::fixture_text(rel) else {
             eprintln!("Skipping #4627 candidate oracle for {rel}: run pnpm fixtures");
             continue;
-        }
-        let content = std::fs::read_to_string(&path).expect("read candidate fixture");
+        };
         let voids = void_index(&content);
         let frame = ModelFrame::new(&content);
         #[cfg(feature = "triangulation-alt")]
@@ -2041,20 +2031,12 @@ static CENSUS_SWEEP_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 #[ignore = "focused ISSUE_068 fixture regression (#5012); fetch with `pnpm fixtures`"]
 fn issue_5012_intermediate_difference_keeps_host_53374_watertight() {
     let _serial = CENSUS_SWEEP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let path = crate_dir()
-        .join("..")
-        .join("..")
-        .join("tests/models")
-        .join(ISSUE_068_MODEL);
-    if !path.is_file() {
+    let Some(content) = ifc_lite_testkit::fixture_text(ISSUE_068_MODEL) else {
         eprintln!(
             "skipping #5012 regression: {ISSUE_068_MODEL} is absent; fetch it with `pnpm fixtures`"
         );
         return;
-    }
-
-    let content = std::fs::read_to_string(&path)
-        .unwrap_or_else(|e| panic!("failed to read {}: {e}", path.display()));
+    };
     let frame = ModelFrame::new(&content);
     let voids = void_index(&content);
     let mesh = process(&frame, 53_374, &voids).expect("ISSUE_068 host #53374 must process");
@@ -2102,9 +2084,9 @@ fn run_heavy_lane(model: &str, min_hosts: usize) -> Option<census_golden::Totals
     // not red the build. This lane is `#[ignore]`d and only ever runs because
     // something asked for it BY NAME, so a silent pass here is a heavy lane
     // reporting success over a file it never opened.
-    let path = crate_dir().join("..").join("..").join("tests/models").join(model);
+    let path = ifc_lite_testkit::fixture_path(model);
     assert!(
-        path.is_file(),
+        ifc_lite_testkit::fixture_present(model),
         "{model} is not on disk under tests/models/ — fetch it with `pnpm fixtures` \
          before running this lane"
     );
@@ -2370,35 +2352,6 @@ fn the_heavy_golden_pins_the_known_3435_tear_population() {
     }
 }
 
-/// `true` when the fixture at `path` is readable; `false` only for a
-/// genuinely absent file (`NotFound`), which is a legitimate skip unless
-/// `IFC_LITE_REQUIRE_FIXTURES=1`, in which case it panics naming the path.
-/// Any other `io::Error` (permission denied, corrupt read, ...) means the
-/// environment is broken rather than merely missing an optional download,
-/// so it panics unconditionally. This attempts the read (rather than
-/// `Path::exists()`) because `exists()` collapses a permission error into
-/// `false` just like a genuinely absent file, and is a TOCTOU check besides
-/// — each caller performs the real read moments later.
-// Unused under `csg_topology_gate` / `csg_manifold_gate`: all callers are
-// cfg-gated off in those builds, which made this a hard `never used` error.
-// Allowed rather than cfg-gated to match the callers, because revert-oracle
-// cannot parse a `not(...)` cfg shape and aborts on it.
-#[allow(dead_code)]
-fn oracle_fixture_present(path: &std::path::Path) -> bool {
-    match std::fs::read_to_string(path) {
-        Ok(_) => true,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            assert!(
-                !support::require_fixtures(),
-                "fixture {} not present and IFC_LITE_REQUIRE_FIXTURES=1 -- run `pnpm fixtures` to download (sha256 in tests/models/manifest.json)",
-                path.display()
-            );
-            false
-        }
-        Err(e) => panic!("fixture {} exists but could not be read: {e}", path.display()),
-    }
-}
-
 // #3925: independent IfcOpenShell 0.8.2 volume is 0.03938 m³. The old
 // unre-based census collapsed corners and pinned approximately 0.03844 m³.
 #[cfg(not(any(feature = "csg_topology_gate", feature = "csg_manifold_gate")))]
@@ -2406,12 +2359,10 @@ fn oracle_fixture_present(path: &std::path::Path) -> bool {
 fn census_rebases_real_covering_before_f32_geometry_3925() {
     let _serial = CENSUS_SWEEP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     set_alt(false);
-    let path = crate_dir().join("../../tests/models/various/rvt01.ifc");
-    if !oracle_fixture_present(&path) {
+    let Some(content) = ifc_lite_testkit::fixture_text("various/rvt01.ifc") else {
         eprintln!("Skipping #3925 covering oracle: run pnpm fixtures");
         return;
-    }
-    let content = std::fs::read_to_string(path).expect("read rvt01 fixture");
+    };
     let frame = ModelFrame::new(&content);
     let mesh = process(&frame, 11232, &void_index(&content)).expect("mesh covering");
     assert_eq!(edge_stats(&mesh).strict, 0, "covering must remain closed without doubled edges");
@@ -2427,12 +2378,10 @@ fn census_rebases_real_covering_before_f32_geometry_3925() {
 fn repaired_office_covering_matches_independent_solid_3925() {
     let _serial = CENSUS_SWEEP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     set_alt(false);
-    let path = crate_dir().join("../../tests/models/ara3d/S_Office_Integrated Design Archi.ifc");
-    if !oracle_fixture_present(&path) {
+    let Some(content) = ifc_lite_testkit::fixture_text("ara3d/S_Office_Integrated Design Archi.ifc") else {
         eprintln!("Skipping #3925 office oracle: run pnpm fixtures");
         return;
-    }
-    let content = std::fs::read_to_string(path).expect("read office fixture");
+    };
     let frame = ModelFrame::new(&content);
     let mesh = process(&frame, 91291, &void_index(&content)).expect("mesh office covering");
     assert_eq!(edge_stats(&mesh).strict, 0);

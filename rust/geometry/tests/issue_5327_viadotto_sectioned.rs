@@ -9,22 +9,12 @@
 use ifc_lite_core::{build_entity_index, EntityDecoder, EntityScanner};
 use ifc_lite_geometry::GeometryRouter;
 
-mod support;
-
-const FIXTURE: &str = "../../tests/models/buildingsmart/Viadotto_Acerno.ifc";
+/// Catalogued fixture, relative to `tests/models/` (gate: `ifc_lite_testkit`).
+const FIXTURE: &str = "buildingsmart/Viadotto_Acerno.ifc";
 
 #[test]
 fn viadotto_acerno_sectioned_solids_follow_deck_grade() {
-    let source = match std::fs::read_to_string(FIXTURE) {
-        Ok(source) => source,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            assert!(!support::require_fixtures(),
-                "fixture missing and IFC_LITE_REQUIRE_FIXTURES=1 -- run `pnpm fixtures` to download");
-            eprintln!("skipping #5327 regression: {FIXTURE} missing -- run `pnpm fixtures`");
-            return;
-        }
-        Err(error) => panic!("failed to read {FIXTURE}: {error}"),
-    };
+    let source = ifc_lite_testkit::fixture_text_or_skip!(FIXTURE);
     let ids: Vec<u32> = {
         let mut scanner = EntityScanner::new(&source);
         std::iter::from_fn(|| scanner.next_entity())

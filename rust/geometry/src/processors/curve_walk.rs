@@ -8,10 +8,10 @@
 
 use crate::{Error, Result};
 
-/// Two consecutive composite-curve segment endpoints closer than this are the
-/// same joint, so the repeat is dropped. Wider than float noise and far below
-/// any real modelling distance in either mm or m.
-pub(super) const SEAM_EPS: f64 = 1e-9;
+// Two consecutive composite-curve segment endpoints closer than this are the
+// same joint, so the repeat is dropped. Wider than float noise and far below
+// any real modelling distance in either mm or m.
+pub(super) use crate::math::tol::SEAM_EPS;
 
 /// Total nested curve visits allowed per profile sample. See [`CurveWalk`].
 pub(super) const MAX_CURVE_NODES: u32 = 100_000;

@@ -108,7 +108,7 @@ impl BooleanClippingProcessor {
         (0..n).all(|i| {
             (i + 2..n).filter(|&j| (j + 1) % n != i).all(|j| {
                 let ((a, b), (c, d)) = (edge(i), edge(j));
-                !crate::geom2d::segments_intersect(a, b, c, d)
+                !crate::math::geom2d::segments_intersect(a, b, c, d)
             })
         })
     }

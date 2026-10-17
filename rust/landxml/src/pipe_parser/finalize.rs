@@ -341,10 +341,6 @@ impl PipeParser<'_> {
     }
 
     pub(super) fn reserve_reference(&mut self) -> Result<()> {
-        Self::reserve(
-            &mut self.references_seen,
-            self.limits.max_references,
-            "pipe reference",
-        )
+        self.references_seen.reserve(1)
     }
 }

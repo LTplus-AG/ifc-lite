@@ -7,6 +7,7 @@
 //! Provides unified implementations for parsing IFC placement and direction entities,
 //! eliminating code duplication across processors.
 
+use crate::math::tol;
 use crate::error::{Error, Result};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use nalgebra::{Matrix4, Point3, Vector3};
@@ -86,10 +87,10 @@ pub(crate) fn build_axis2_matrix(
     // guard lives here once). A zero Axis falls back to +Z; a zero RefDirection
     // routes into the parallel-axis fallback below.
     let z_axis_final = z_axis
-        .try_normalize(1e-9)
+        .try_normalize(tol::AXIS_MIN_LEN)
         .unwrap_or_else(|| Vector3::new(0.0, 0.0, 1.0));
     let x_axis_normalized = x_axis
-        .try_normalize(1e-9)
+        .try_normalize(tol::AXIS_MIN_LEN)
         .unwrap_or_else(|| Vector3::new(1.0, 0.0, 0.0));
 
     let x_axis_final = crate::axis_projection::perpendicular_x_axis(z_axis_final, x_axis_normalized);

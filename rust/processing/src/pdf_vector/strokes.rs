@@ -9,23 +9,9 @@ use super::{
     flatten::charge,
     PdfDashClosure, PdfVectorGraphicsState,
 };
+use ifc_lite_geometry::math::v2::{add, cross, dot, scale, sub};
 use ifc_lite_geometry::{kernel::Sign, Ring2D};
 type Point = [f64; 2];
-fn add(a: Point, b: Point) -> Point {
-    [a[0] + b[0], a[1] + b[1]]
-}
-fn sub(a: Point, b: Point) -> Point {
-    [a[0] - b[0], a[1] - b[1]]
-}
-fn mul(a: Point, s: f64) -> Point {
-    [a[0] * s, a[1] * s]
-}
-fn cross(a: Point, b: Point) -> f64 {
-    a[0] * b[1] - a[1] * b[0]
-}
-fn dot(a: Point, b: Point) -> f64 {
-    a[0] * b[0] + a[1] * b[1]
-}
 fn arc(
     centre: Point,
     start: Point,
@@ -89,7 +75,7 @@ fn direction(a: Point, b: Point) -> Result<Point, String> {
     if !length.is_finite() || length == 0. {
         return Err("PDF stroke has a zero-length segment".into());
     }
-    Ok(mul(d, 1. / length))
+    Ok(scale(d, 1. / length))
 }
 fn emit(
     out: &mut PathRings,
@@ -129,8 +115,8 @@ fn join(
 ) -> Result<Vec<Point>, String> {
     let turn = cross(previous, next);
     let cosine = dot(previous, next);
-    let a = add(p, mul([-previous[1], previous[0]], side * h));
-    let b = add(p, mul([-next[1], next[0]], side * h));
+    let a = add(p, scale([-previous[1], previous[0]], side * h));
+    let b = add(p, scale([-next[1], next[0]], side * h));
     if turn == 0. {
         if cosine <= 0. {
             return Err("PDF stroke reverses direction at a join".into());
@@ -138,7 +124,7 @@ fn join(
         return Ok(vec![a]);
     }
     let t = cross(sub(b, a), next) / turn;
-    let tip = add(a, mul(previous, t));
+    let tip = add(a, scale(previous, t));
     let residual = sub(tip, p);
     let ratio = residual[0].hypot(residual[1]) / h;
     if !ratio.is_finite() {
@@ -223,11 +209,11 @@ fn outline(
             } else {
                 let d = directions[if i == 0 { 0 } else { count - 1 }];
                 let cap = if state.line_cap == 2 {
-                    mul(d, if i == 0 { -h } else { h })
+                    scale(d, if i == 0 { -h } else { h })
                 } else {
                     [0.; 2]
                 };
-                edge.push(add(add(p, cap), mul([-d[1], d[0]], side * h)));
+                edge.push(add(add(p, cap), scale([-d[1], d[0]], side * h)));
             }
         }
         // A wide inward offset may pass through a vertex and become a

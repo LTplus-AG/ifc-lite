@@ -3,42 +3,13 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 //! Production-path helpers shared by the fixture-driven void suites:
-//! fixture loading, `IfcRelVoidsElement` indexing exactly as
+//! `IfcRelVoidsElement` indexing exactly as
 //! `process_geometry_batch` does it, and the ray-cast machinery used to
 //! prove a wall actually has a hole at each opening footprint.
 
 use ifc_lite_core::{build_entity_index, EntityDecoder, EntityScanner};
 use ifc_lite_geometry::{propagate_voids_to_parts, GeometryRouter, Mesh};
 use rustc_hash::FxHashMap;
-use std::fs;
-use std::path::PathBuf;
-
-/// Resolve a fixture path relative to the workspace root.
-pub fn fixture_path(relative: &str) -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..")
-        .join(relative)
-}
-
-/// Load a fixture if present; return `None` so callers can skip gracefully.
-///
-/// Distinguishes a genuinely absent file from a broken read. `NotFound` is
-/// the fresh-clone case (`pnpm fixtures` not run yet) and is the only case
-/// callers should treat as skippable; any other `io::Error` (permission
-/// denied, corrupt read, ...) means the environment is broken rather than
-/// merely missing an optional download, so it panics unconditionally. This
-/// helper does not itself consult `IFC_LITE_REQUIRE_FIXTURES` — each caller
-/// asserts `!support::require_fixtures()` before treating `None` as a skip,
-/// matching the pattern the rest of this crate's fixture-backed tests use.
-pub fn load_fixture(relative: &str) -> Option<String> {
-    let path = fixture_path(relative);
-    match fs::read_to_string(&path) {
-        Ok(content) => Some(content),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
-        Err(e) => panic!("fixture {} exists but could not be read: {e}", path.display()),
-    }
-}
 
 /// Find the express ID of an entity by GUID (attribute index 0).
 pub fn find_entity_by_guid(content: &str, guid: &str) -> Option<u32> {

@@ -33,8 +33,8 @@ pub mod aabb;
 pub mod frame;
 pub mod mat4;
 pub(crate) mod normals;
-pub mod tol;
 pub mod v3;
+pub mod tol;
 
 #[cfg(test)]
 mod aabb_tests;
@@ -47,6 +47,6 @@ mod mat4_tests;
 #[cfg(test)]
 mod normals_tests;
 #[cfg(test)]
-mod tol_tests;
-#[cfg(test)]
 mod v3_tests;
+#[cfg(test)]
+mod tol_tests;

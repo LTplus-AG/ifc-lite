@@ -2,9 +2,9 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use crate::math::tol;
 use crate::profile::Profile2D;
 use crate::Point2;
+use crate::math::tol;
 
 /// Issue #635 — when an `IfcArbitraryClosedProfileDef` is actually a smooth
 /// curve approximated by a many-vertex polyline (e.g. a 127-vertex circle

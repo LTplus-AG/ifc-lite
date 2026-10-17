@@ -2,8 +2,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use crate::math::tol;
 use crate::{Mesh, Point2, Point3, Vector3};
+use crate::math::tol;
 
 // Test-only seam for the `outer_filled == outer_count` accounting
 // (`cap_half_space_clip`, below): forces `triangulate_polygon_with_holes_refined`

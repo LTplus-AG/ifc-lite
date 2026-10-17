@@ -244,7 +244,7 @@ describe('alignGeometryToReference — the world AABB rides with the vertices (#
     // quarter turn maps a box onto a box, so `min`/`max` alone would survive
     // it; at 30° the true AABB is strictly larger than the box spanned by two
     // opposite corners, and mapping only those two loses most of the Z extent.
-    // Same hazard `frame_swap.rs` documents for the Z-up→Y-up swap.
+    // Same hazard `math/frame.rs` documents for the Z-up→Y-up swap.
     const theta = Math.PI / 6;
     const mesh = boxMesh(12, [0, 0, 0], [4, 1, 2]);
     const geom = geometry([mesh]);

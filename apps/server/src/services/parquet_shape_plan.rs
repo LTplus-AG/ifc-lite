@@ -12,7 +12,7 @@
 //! batches already emitted (#5407), which is the only difference: the prior
 //! registry is an argument, never a second implementation of the grouping.
 
-use crate::services::axis::zup_to_yup_f64;
+use ifc_lite_geometry::math::frame::zup_to_yup;
 use crate::services::parquet_instancing::{
     collate_rotation_aware_placements, mesh_geometry_key, rotation_zup_to_yup, MeshGeometryKey,
     IDENTITY_ROTATION,
@@ -173,7 +173,7 @@ impl ShapePlan {
         match self {
             Self::Identity => (
                 ShapeRef::Slot(i),
-                zup_to_yup_f64(meshes[i].origin),
+                zup_to_yup(meshes[i].origin),
                 IDENTITY_ROTATION,
             ),
             Self::Shared { rows, .. } => {
@@ -232,7 +232,7 @@ fn plan(
         // its own unshared shape.
         let (shape_mesh, known_key, origin_yup, rotation) = match placements.get(&(i + carried.len())) {
             Some(placement) => {
-                let origin_yup = zup_to_yup_f64(placement.origin_zup);
+                let origin_yup = zup_to_yup(placement.origin_zup);
                 let rotation = rotation_zup_to_yup(&placement.rotation_zup);
                 let Some(template) = placement.template_mesh_index.checked_sub(carried.len()) else {
                     // Verified against a template an earlier batch emitted.
@@ -245,7 +245,7 @@ fn plan(
             None => {
                 let key = mesh_geometry_key(mesh);
                 let first = *hash_slot.entry(key).or_insert(i);
-                (first, Some(key), zup_to_yup_f64(mesh.origin), IDENTITY_ROTATION)
+                (first, Some(key), zup_to_yup(mesh.origin), IDENTITY_ROTATION)
             }
         };
         let shape = *shape_of.entry(shape_mesh).or_insert_with(|| {

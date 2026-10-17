@@ -12,7 +12,7 @@
 //! Two copies of `bake_triangle` that drifted would leave both tests green and
 //! the claim untested.
 
-use crate::services::axis::zup_to_yup;
+use ifc_lite_geometry::math::frame::zup_to_yup;
 use crate::types::MeshData;
 use arrow::array::{Array, RecordBatch};
 use bytes::Bytes;
@@ -91,8 +91,8 @@ pub(super) fn expected_yup(meshes: &[MeshData]) -> Vec<Vec<[f32; 3]>> {
         .map(|m| {
             (0..m.positions.len() / 3)
                 .map(|v| {
-                    let (x, y, z) =
-                        zup_to_yup(m.positions[v * 3], m.positions[v * 3 + 1], m.positions[v * 3 + 2]);
+                    let [x, y, z] =
+                        zup_to_yup([m.positions[v * 3], m.positions[v * 3 + 1], m.positions[v * 3 + 2]]);
                     [x, y, z]
                 })
                 .collect()

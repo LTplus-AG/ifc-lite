@@ -192,3 +192,37 @@ fn near_identity_matrix_does_not_perturb_origin() {
         [origin[0] - 10_000_000.0, origin[1], origin[2]],
     );
 }
+
+/// The shared `math::mat4::transform_vector` (#7772) must keep the spelled-out
+/// `Rᵀ·v` of the column-major site array, bit for bit, in all three places this
+/// module applies it: the baked basis, the f32 vertex rotation and the f64 origin.
+#[test]
+fn rotation_helpers_equal_the_expanded_transpose_product_bit_for_bit() {
+    let site = yawed_matrix((1.0e7 + 0.123, -2.0e6 + 0.456, 31.5));
+    let rtc = [1.0e7 + 0.25, -2.0e6 + 0.5, 3.0];
+    let (r00, r10, r20) = (site[0], site[1], site[2]);
+    let (r01, r11, r21) = (site[4], site[5], site[6]);
+    let (r02, r12, r22) = (site[8], site[9], site[10]);
+    let expand = |x: f64, y: f64, z: f64| {
+        [r00 * x + r10 * y + r20 * z, r01 * x + r11 * y + r21 * z, r02 * x + r12 * y + r22 * z]
+    };
+    let bits = |v: &[f64]| v.iter().map(|x| x.to_bits()).collect::<Vec<_>>();
+
+    let b = native_to_baked(MeshCoordinateSpace::SiteLocal, Some(&site), rtc);
+    let t = expand(-rtc[0], -rtc[1], -rtc[2]);
+    assert_eq!(bits(&[b[3], b[7], b[11]]), bits(&t));
+    assert_eq!(bits(&b[0..3]), bits(&[site[0], site[1], site[2]]));
+
+    let mut f32s = vec![1.5f32, -2.25, 3.125, 100.0, 0.1, -7.7];
+    let want: Vec<f32> = f32s
+        .chunks_exact(3)
+        .flat_map(|c| expand(c[0] as f64, c[1] as f64, c[2] as f64).map(|v| v as f32))
+        .collect();
+    apply_inverse_rotation_in_place(&mut f32s, &site);
+    assert_eq!(f32s.iter().map(|v| v.to_bits()).collect::<Vec<_>>(), want.iter().map(|v| v.to_bits()).collect::<Vec<_>>());
+
+    let mut p = [1.0e7 + 0.1, -3.0, 0.7];
+    let want = expand(p[0], p[1], p[2]);
+    apply_inverse_rotation_point_f64(&mut p, &site);
+    assert_eq!(bits(&p), bits(&want));
+}

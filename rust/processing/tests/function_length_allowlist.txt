@@ -17,7 +17,7 @@
    199 apps/server/src/services/data_model/mod.rs extract_data_model
    299 apps/server/src/services/data_model/spatial.rs build_spatial_hierarchy
    200 apps/server/src/services/parquet_mesh_tables.rs build_mesh_tables
-   314 apps/server/src/services/parquet_optimized.rs serialize_to_parquet_optimized
+   308 apps/server/src/services/parquet_optimized.rs serialize_to_parquet_optimized
    324 rust/clash/src/narrow.rs test_pair
    167 rust/clash/src/obb_detect.rs detect_obb
    195 rust/core/src/parser/scanner.rs EntityScanner::next_entity

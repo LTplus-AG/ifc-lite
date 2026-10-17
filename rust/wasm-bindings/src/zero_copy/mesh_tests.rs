@@ -200,7 +200,7 @@ fn new_converts_origin_local_bounds_and_local_to_world_to_yup() {
     assert_eq!(md.origin, [10.0, 30.0, -20.0]);
 
     // local_bounds: min_y/max_y swap-and-negate onto the new Z, per
-    // `swap_zup_to_yup_aabb` (NOT a plain per-component swap).
+    // `aabb_zup_to_yup` (NOT a plain per-component swap).
     assert_eq!(
         md.local_bounds,
         Some([1.0, 3.0, -5.0, 4.0, 6.0, -2.0]),

@@ -176,7 +176,7 @@ impl ClippingProcessor {
         if output.is_empty() {
             return mesh;
         }
-        let mut output = candidates::prefer_raw_if_cleaner(&mesh, output, &buckets);
+        let mut output = candidates::prefer_raw_if_cleaner(&mesh, output, &buckets, &supported);
         // Retention may not restore unrelated needles through the whole-raw
         // fallback (#1007, #5739). Preserve the established exact/public closure
         // and signed boundary bars, including partially conforming source meshes.

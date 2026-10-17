@@ -110,7 +110,9 @@ pub(super) fn emit(planned: &mut Planned) -> Option<Mesh> {
 // buckets per normal direction (an f32-jittered opening-dense wall like the
 // curved reception counter, distinct_normals=5 / 168 planes). A box wall has
 // only axis-aligned planes and consolidates watertight -> skipped.
-pub(super) fn prefer_raw_if_cleaner(mesh: &Mesh, mut output: Mesh, buckets: &Buckets) -> Mesh {
+pub(super) fn prefer_raw_if_cleaner(
+    mesh: &Mesh, mut output: Mesh, buckets: &Buckets, supported: &supported_cells::Supported,
+) -> Mesh {
     let mut bnorms: Vec<Vector3<f64>> = Vec::new();
     for tris in buckets.values() {
         if let Some(t0) = tris.first() {
@@ -134,7 +136,11 @@ pub(super) fn prefer_raw_if_cleaner(mesh: &Mesh, mut output: Mesh, buckets: &Buc
             // are in range; the counters index unchecked (#7677, KERNEL-28).
             let raw_bad = count_open_boundary_edges(mesh) + count_spike_triangles(mesh);
             let cons_bad = cons_open + count_spike_triangles(&output);
-            if raw_bad < cons_bad {
+            // Source retention cannot make quality preference restore unrelated
+            // needles. Apply this before choosing raw, including the ordinary
+            // baseline whose thin-cell certificate is deliberately empty.
+            if raw_bad < cons_bad && (supported.buckets.is_empty()
+                || !supported_cells::has_uncertified_needle(mesh, supported)) {
                 output = mesh.clone(); // Preserve all raw metadata and plane tags.
             }
         }

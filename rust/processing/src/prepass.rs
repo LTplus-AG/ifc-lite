@@ -574,10 +574,7 @@ fn extract_surface_style_info(
 }
 
 fn normalize_style_name(raw: Option<&str>) -> Option<String> {
-    let name = raw?.trim();
-    if name.is_empty() || name == "$" {
-        return None;
-    }
+    let name = ifc_lite_core::optional_text(raw)?;
     if name.eq_ignore_ascii_case("<unnamed>") || name.eq_ignore_ascii_case("unnamed") {
         return None;
     }

@@ -42,7 +42,7 @@ pub(super) fn extract_properties(
         .map_init(
             || SplitDecoder::new(content, entity_index),
             |split, job| {
-                let local_decoder = split.next_job();
+                let local_decoder = split.next_job(job);
                 let entity = local_decoder.decode_at(job.start, job.end).ok()?;
 
                 // IfcPropertySet: [0]=GlobalId, [1]=OwnerHistory, [2]=Name, [3]=Description, [4]=HasProperties

@@ -148,3 +148,22 @@ fn extracts_a_deflate_compressed_model_entry() {
     let out = unwrap_ifczip(&zip, BIG, 512).unwrap();
     assert_eq!(String::from_utf8(out.to_vec()).unwrap(), STEP);
 }
+
+/// #7744: an entry whose header UNDERSTATES its size. zip 8 read on past the
+/// declared size, so an oversize entry ended in the post-read 413. zip 9
+/// fails the read as soon as it passes the declared size. The contract, pinned
+/// here: a header that disagrees with its content is a corrupt archive, a 400
+/// that names the cause, for both sides of the ceiling. The size bound holds
+/// either way: no byte past the declared size is ever returned.
+#[test]
+fn understated_entry_size_is_a_400_naming_the_header_mismatch() {
+    for (actual, ceiling) in [(2_000usize, 1_000usize), (50, 1_000)] {
+        let content = "x".repeat(actual);
+        let lying_zip = lie_about_uncompressed_size(make_zip(&[("model.ifc", &content)]), 10);
+        let err = unwrap_ifczip(&lying_zip, ceiling, 1).unwrap_err();
+        assert!(
+            matches!(&err, ApiError::BadRequest(m) if m.contains("declared uncompressed size")),
+            "{actual} bytes under a 10-byte header (ceiling {ceiling}) must be a 400 naming the header, got {err:?}"
+        );
+    }
+}

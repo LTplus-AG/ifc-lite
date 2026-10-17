@@ -68,8 +68,8 @@ pub(super) fn collect_rel_defines_by_properties_link(
     // RelatingPropertyDefinition's IfcPropertySetDefinitionSet alternative is
     // a grouped SET, written inline as `(#20,#22)`; get_ref only recognises a
     // bare ref and silently dropped the whole relationship for that shape.
-    // get_refs accepts both, mirroring the TS/WASM path and #4773's fix for
-    // the same bug in apps/server::extract_relationship. The `get_refs(3)` /
+    // get_refs accepts both, like TS/WASM and #4773's server fix, plus the
+    // typed `IFCPROPERTYSETDEFINITIONSET((…))` (#7681). The `get_refs(3)` /
     // `get_list(2)` fallbacks predate this fix; their origin is undetermined
     // (index 3 isn't RelatingPropertyDefinition in any bundled schema, no
     // fixture exercises them) — preserved conservatively on both branches.
@@ -113,7 +113,7 @@ fn attribute_list_to_string(values: &[AttributeValue]) -> Option<String> {
 fn attribute_value_to_string(value: &AttributeValue) -> Option<String> {
     match value {
         AttributeValue::Null | AttributeValue::Derived => None,
-        AttributeValue::String(text) => normalize_optional_string(Some(text)),
+        AttributeValue::String(text) | AttributeValue::Binary(text) => normalize_optional_string(Some(text)),
         AttributeValue::Enum(text) => normalize_optional_string(Some(text.trim_matches('.'))),
         AttributeValue::Integer(number) => Some(number.to_string()),
         AttributeValue::Float(number) => Some(number.to_string()),
@@ -376,7 +376,7 @@ pub(super) fn resolve_space_zone_properties_lazy(
                 if property_values_by_id.contains_key(&property_id) {
                     continue;
                 }
-                if let Ok(property_entity) = decoder.decode_by_id(property_id) {
+                if let Ok(property_entity) = decoder.decode_by_id_lossless(property_id) { // #7678
                     if let Some((name, value)) = extract_property_name_and_value(&property_entity)
                     {
                         property_values_by_id.insert(property_id, (name, value));

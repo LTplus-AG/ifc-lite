@@ -4,7 +4,7 @@
 <h1>
 <img src="https://readme-typing-svg.demolab.com?font=JetBrains+Mono&weight=700&size=48&duration=2000&pause=5000&color=6366F1&vCenter=true&width=300&height=55&lines=IFClite" alt="IFClite">
 </h1>
-Open, view, and work with IFC files. Right in the browser.
+IFC data and geometry tools for developers.
 </td>
 <td width="120" align="center" valign="middle">
 <img src="docs/assets/logo.png" alt="" width="100">
@@ -27,11 +27,34 @@ Open, view, and work with IFC files. Right in the browser.
 
 # IFClite
 
-Parse, view, query, edit, validate, and export IFC files, entirely client-side. A Rust core compiled to WASM does the parsing and geometry, a WebGPU renderer puts it on screen, and 51 npm packages let you pick exactly the pieces you need. Geometry runs on an exact-arithmetic CSG kernel, verified element-by-element against IfcOpenShell across the public benchmark corpus.
+Parse, view, query, edit, validate, and export IFC files, entirely client-side. A Rust core compiled to WASM does the parsing and geometry, a WebGPU renderer puts it on screen, and modular npm packages let you pick the pieces you need. Geometry runs on an exact-arithmetic CSG kernel, verified element-by-element against IfcOpenShell across the public benchmark corpus.
 
 Works with **IFC2X3**, **IFC4 / IFC4X3** and **IFC5 (IFCX)**. Live demo at [ifclite.com](https://www.ifclite.com/) and more info at [ifclite.dev](https://www.ifclite.dev/).
 
 ## Get Started
+
+For data automation, start with the headless SDK or CLI:
+
+```bash
+npm install @ifc-lite/sdk
+```
+
+```typescript
+import { readFile } from 'node:fs/promises';
+import { openModel } from '@ifc-lite/sdk/headless';
+
+const model = await openModel(await readFile('model.ifc'));
+try {
+  if (model.report.completeness !== 'complete') throw new Error('Incomplete or unknown record coverage');
+  console.log(model.bim.query().byType('IfcDoor').count());
+} finally {
+  model.close();
+}
+```
+
+[Developer workflows](https://ifclite.dev/docs/guide/developer-workflows/) provides a reference model, runnable data/IDS/edit/export/geometry/service recipes, and expected results. For the terminal, run `npx @ifc-lite/cli info model.ifc --json`.
+
+To scaffold a rendering integration:
 
 ```bash
 npx create-ifc-lite my-viewer --template react
@@ -252,7 +275,7 @@ Not sure? Start with the browser setup. You can add a server or switch engines l
 | Connect to a server backend | + `@ifc-lite/server-client` |
 | Give AI agents BIM access (MCP) | + `@ifc-lite/mcp` |
 
-Full list: [API Reference](https://ifclite.dev/docs/api/typescript/) (51 npm packages, 7 Rust crates on crates.io, and the `ifclite-geom` Python wheel on PyPI).
+Full list: [API Reference](https://ifclite.dev/docs/api/typescript/) (npm packages, Rust crates, and the `ifclite-geom` Python wheel).
 
 ## Performance
 

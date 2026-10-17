@@ -38,17 +38,17 @@
 /// sufficient (see the module docs above for which kind).
 pub const MAX_MAPPED_ITEM_DEPTH: u32 = 32;
 
-/// Maximum `IfcLocalPlacement.PlacementRelTo` chain any walk in this workspace
-/// will follow. A chain longer than this composes only its first
-/// `MAX_PLACEMENT_DEPTH + 1` placements and the rest is dropped — silently, on
-/// every site that uses it.
+/// Maximum `IfcLocalPlacement.PlacementRelTo` chain the export ParentContext
+/// walks follow. It no longer bounds placement resolution: since F3b (D27)
+/// `ifc_lite_geometry::placement::resolve_chain` walks the chain iteratively
+/// with a visited set and **no cap**, so a chain of any length resolves in full
+/// and a cycle is refused and counted. A cap there would make a memoised
+/// answer depend on which product warmed an ancestor first (#3012).
 ///
-/// Shared because two walks follow the SAME attribute of the SAME entity and
-/// their bounds must agree: `ifc_lite_geometry::router::transforms` (the mesh
-/// path) and `ifc_lite_geometry::profile_extractor` (the 2D drawing path).
-/// They disagreed — 32 against 100 — and because both exceed-branches return
-/// the IDENTITY rather than an error, an element on a 33-to-101-link chain was
-/// drawn in two different places by the two paths with nothing reported. #2873
+/// The text below records why the cap was 100 when it bounded the recursive
+/// walks (the mesh path and the 2D drawing path, which disagreed, 32 against
+/// 100, and drew an element on a 33-to-101-link chain in two places, #2873).
+/// L-export renames the remaining bound and deletes this constant.
 ///
 /// ## Why 100 and not 32
 ///
@@ -72,6 +72,16 @@ pub const MAX_MAPPED_ITEM_DEPTH: u32 = 32;
 /// This bounds one path's LENGTH only. A walk over a chain that can revisit
 /// also needs a cycle guard; see the module docs above.
 pub const MAX_PLACEMENT_DEPTH: usize = 100;
+
+/// Maximum `ParentContext` chain (`IfcGeometricRepresentationSubContext` ->
+/// parent -> ...) the export writers follow when they validate or look up a
+/// representation context (#7791). These walks follow a different attribute
+/// of a different entity from the `PlacementRelTo` walks bounded by
+/// [`MAX_PLACEMENT_DEPTH`], so they carry their own bound: borrowing the
+/// placement one tied two unrelated limits together. Real files nest a
+/// context two or three deep; every walk also keeps a visited set, so this
+/// only bounds the work on a malformed file.
+pub const MAX_CONTEXT_DEPTH: usize = 100;
 
 /// The large-coordinate threshold (metres): a world coordinate whose magnitude
 /// exceeds this needs RTC re-basing before it is cast to f32, or the model
@@ -147,6 +157,12 @@ impl RtcVerdict {
     }
 }
 
+// The `IfcComplexProperty` walk policy (#7675) lives in its own file for the
+// module-size rule; its items are this module's, so every path stays
+// `ifc_lite_core::limits::*`.
+mod complex_property;
+pub use complex_property::*;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -180,5 +196,11 @@ mod tests {
     #[test]
     fn placement_depth_is_the_documented_100() {
         assert_eq!(MAX_PLACEMENT_DEPTH, 100);
+    }
+
+    /// Pinned separately from the export walks that import it (#7791).
+    #[test]
+    fn context_depth_is_the_documented_100() {
+        assert_eq!(MAX_CONTEXT_DEPTH, 100);
     }
 }

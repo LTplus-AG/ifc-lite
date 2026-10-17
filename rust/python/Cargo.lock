@@ -290,36 +290,36 @@ checksum = "1e9d4a992a9fe83130f41ceacceac3bb116a4355dfc9c8d6ecea4f1e4b4c6caf"
 
 [[package]]
 name = "ifc-lite-core"
-version = "20.4.0"
+version = "21.4.0"
 dependencies = [
+ "bytemuck",
  "fast-float2",
  "futures-core",
  "futures-util",
- "lexical-core",
  "memchr",
  "nom",
  "rustc-hash",
- "smallvec",
  "thiserror",
+ "twox-hash",
 ]
 
 [[package]]
 name = "ifc-lite-export"
-version = "20.4.0"
+version = "21.4.0"
 dependencies = [
  "bytemuck",
  "ifc-lite-core",
  "ifc-lite-geometry",
  "ifc-lite-processing",
+ "nalgebra",
  "rustc-hash",
  "serde",
  "serde_json",
- "twox-hash",
 ]
 
 [[package]]
 name = "ifc-lite-geometry"
-version = "20.4.0"
+version = "21.4.0"
 dependencies = [
  "bnum",
  "earcutr",
@@ -327,7 +327,6 @@ dependencies = [
  "i_overlay",
  "ifc-lite-core",
  "jpeg-decoder",
- "memchr",
  "nalgebra",
  "num-rational",
  "num-traits",
@@ -341,11 +340,10 @@ dependencies = [
 
 [[package]]
 name = "ifc-lite-processing"
-version = "20.4.0"
+version = "21.4.0"
 dependencies = [
  "ifc-lite-core",
  "ifc-lite-geometry",
- "memchr",
  "nalgebra",
  "png",
  "rayon",
@@ -364,6 +362,7 @@ dependencies = [
  "ifc-lite-geometry",
  "ifc-lite-processing",
  "pyo3",
+ "serde",
  "serde_json",
 ]
 
@@ -387,63 +386,6 @@ name = "jpeg-decoder"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "00810f1d8b74be64b13dbf3db89ac67740615d6c891f0e7b6179326533011a07"
-
-[[package]]
-name = "lexical-core"
-version = "1.0.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7d8d125a277f807e55a77304455eb7b1cb52f2b18c143b60e766c120bd64a594"
-dependencies = [
- "lexical-parse-float",
- "lexical-parse-integer",
- "lexical-util",
- "lexical-write-float",
- "lexical-write-integer",
-]
-
-[[package]]
-name = "lexical-parse-float"
-version = "1.0.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "52a9f232fbd6f550bc0137dcb5f99ab674071ac2d690ac69704593cb4abbea56"
-dependencies = [
- "lexical-parse-integer",
- "lexical-util",
-]
-
-[[package]]
-name = "lexical-parse-integer"
-version = "1.0.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9a7a039f8fb9c19c996cd7b2fcce303c1b2874fe1aca544edc85c4a5f8489b34"
-dependencies = [
- "lexical-util",
-]
-
-[[package]]
-name = "lexical-util"
-version = "1.0.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2604dd126bb14f13fb5d1bd6a66155079cb9fa655b37f875b3a742c705dbed17"
-
-[[package]]
-name = "lexical-write-float"
-version = "1.0.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "50c438c87c013188d415fbabbb1dceb44249ab81664efbd31b14ae55dabb6361"
-dependencies = [
- "lexical-util",
- "lexical-write-integer",
-]
-
-[[package]]
-name = "lexical-write-integer"
-version = "1.0.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "409851a618475d2d5796377cad353802345cba92c867d9fbcde9cf4eac4e14df"
-dependencies = [
- "lexical-util",
-]
 
 [[package]]
 name = "libc"

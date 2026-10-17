@@ -236,6 +236,7 @@ in `@ifc-lite/geometry`. (The old `GLTFExporter` class was retired.)
 
 ```typescript
 import { GeometryProcessor } from '@ifc-lite/geometry';
+import { renderFrameWorldMatrix } from '@ifc-lite/geometry/world-frame';
 
 const gp = new GeometryProcessor();
 await gp.init();
@@ -253,7 +254,14 @@ await saveFile('model.glb', glb);
 
 // Or, if you already meshed the model, skip the re-mesh:
 const result = await gp.process(bytes);
-const glb2 = gp.exportGlbFromMeshes(result.meshes, /* includeMetadata */ true);
+const glb2 = gp.exportGlbFromMeshes(
+  result.meshes,
+  /* includeMetadata */ true,
+  /* lit */ true,
+  /* emissive */ false,
+  // The frame the meshes sit in, so a georeferenced model lands at its world position.
+  renderFrameWorldMatrix(result.coordinateInfo),
+);
 ```
 
 `exportGlb` always emits a single binary **GLB** (`model/gltf-binary`). Per-element
@@ -515,7 +523,9 @@ await saveFile('spatial.csv', spatialCsv);
 
 The `entities` mode emits the fixed columns
 `expressId,globalId,name,type,description,objectType,hasGeometry`; with
-`includeProperties`, each property becomes a flattened `Pset_Prop` column:
+`includeProperties`, each property becomes a flattened `Pset_Prop` column.
+Two sets can flatten to the same name (`Pset_A` + `B_C` and `Pset_A_B` + `C`);
+the later column then gets a ` (2)` suffix so no two columns merge:
 
 ```csv
 expressId,globalId,name,type,description,objectType,hasGeometry,Pset_WallCommon_IsExternal,Pset_WallCommon_FireRating
@@ -910,6 +920,8 @@ ifc-lite export model.ifc --format usd --out model.usda
 
 One-call from the Rust-backed processor: `GeometryProcessor.exportUsd(bytes)` returns the
 `.usda` bytes (`null` before `init()`). The MCP tool is `export_usd` (`{ model_id?, file_path }`).
+A model with no render geometry has nothing to put on the stage, so the export fails with
+`NO_RENDER_GEOMETRY` (match it with `isNoRenderGeometryError`), as GLB and OBJ export do.
 Geometry that lives outside the spatial tree (opening elements, type-product meshes) is placed
 under a synthetic `Unassigned` prim rather than dropped, and each mesh carries its placement as a
 `double3 xformOp:translate` so georeferenced models keep full precision. The layer's

@@ -12,31 +12,22 @@ description = "Domain-format exporters for ifc-lite (HBJSON, OBJ, glTF/GLB, CSV,
 ifc-lite-core = { workspace = true }
 ifc-lite-geometry = { workspace = true }
 ifc-lite-processing = { workspace = true }
-rustc-hash = "2.1"
+rustc-hash.workspace = true
 # Bulk little-endian reinterpret of f32/u32 slices to bytes (glTF vertex encoding)
-# and a single-pass 128-bit content hash for mesh dedup; both pure-Rust + wasm-safe.
+# (the XXH3-128 mesh-dedup key lives in `ifc_lite_core::hash::ContentHash`).
 bytemuck = "1.25"
-# XXH3-128 for the mesh-dedup key. `twox-hash` rather than `xxhash-rust`: both
-# implement the same algorithm, but twox-hash is MIT where xxhash-rust is
-# BSL-1.0, and a downstream consumer of this crate ships under a licence
-# allowlist that BSL-1.0 sits outside of. The digest only gates key equality and
-# never reaches the output, so the choice of implementation is free here — which
-# makes staying inside the common permissive set the obvious call.
-# `default-features = false` deliberately: the default set pulls `rand` (for
-# randomly-seeded hashers), which this use has no need of and which would widen
-# the dependency graph for nothing. `alloc` is what the streaming hasher needs.
-twox-hash = { version = "2.1", default-features = false, features = ["xxhash3_128", "alloc"] }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = { version = "1.0", features = ["float_roundtrip"] }
-nalgebra = { version = "0.35", default-features = false, features = ["std"] }
+serde.workspace = true
+serde_json = { workspace = true, features = ["float_roundtrip"] }
+nalgebra.workspace = true
 
 # Parquet/.bos export pulls native compression (zstd/snap) + a zip writer that do
 # NOT target wasm32 cleanly, so it is gated behind the `parquet-bos` feature and
 # kept OUT of the default set — the wasm bundle (which uses default features) stays
-# lean, while native server/CLI builds opt in. arrow/parquet are pinned to the server's 60.
-arrow = { version = "60", default-features = false, features = ["ipc"], optional = true }
-parquet = { version = "60", default-features = false, features = ["arrow", "snap", "zstd"], optional = true }
-zip = { version = "8", default-features = false, features = ["deflate"], optional = true }
+# lean, while native server/CLI builds opt in. arrow/parquet/zip versions come from
+# `[workspace.dependencies]`, shared with the server.
+arrow = { workspace = true, optional = true }
+parquet = { workspace = true, optional = true, features = ["snap", "zstd"] }
+zip = { workspace = true, optional = true }
 
 [features]
 default = []
@@ -49,5 +40,9 @@ observability = ["ifc-lite-processing/observability"]
 workspace = true
 
 [dev-dependencies]
+# Test-only (publish = false). Path-only: cargo strips it when packaging.
+ifc-lite-testkit = { path = "../testkit" }
 # Round-trip oracle: the exported terrain is read back by ifc-lite's own LandXML parser.
 ifc-lite-landxml = { workspace = true }
+# Pins long values of the shared #7675 complex-property vector by digest.
+sha2 = { workspace = true }

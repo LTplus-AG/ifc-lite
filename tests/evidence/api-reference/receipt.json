@@ -1,0 +1,49 @@
+{
+  "packageCount": 57,
+  "entryPoints": 104,
+  "symbols": [
+    {
+      "surface": "@ifc-lite/sdk/headless",
+      "name": "openModel",
+      "url": "functions/_ifc-lite_sdk_headless.openModel.html",
+      "bytes": 7741
+    },
+    {
+      "surface": "@ifc-lite/sdk/headless",
+      "name": "HeadlessModelSession",
+      "url": "interfaces/_ifc-lite_sdk_headless.HeadlessModelSession.html",
+      "bytes": 18174
+    },
+    {
+      "surface": "@ifc-lite/parser",
+      "name": "parseModel",
+      "url": "functions/_ifc-lite_parser.parseModel.html",
+      "bytes": 7745
+    },
+    {
+      "surface": "@ifc-lite/geometry",
+      "name": "GeometryProcessor",
+      "url": "classes/_ifc-lite_geometry.GeometryProcessor.html",
+      "bytes": 166479
+    },
+    {
+      "surface": "@ifc-lite/query",
+      "name": "IfcQuery",
+      "url": "classes/_ifc-lite_query.IfcQuery.html",
+      "bytes": 40455
+    },
+    {
+      "surface": "@ifc-lite/export",
+      "name": "StepExporter",
+      "url": "classes/_ifc-lite_export.StepExporter.html",
+      "bytes": 18255
+    },
+    {
+      "surface": "@ifc-lite/ids",
+      "name": "validateIDS",
+      "url": "functions/_ifc-lite_ids.validateIDS.html",
+      "bytes": 8243
+    }
+  ],
+  "searchIndexBytes": 2146879
+}

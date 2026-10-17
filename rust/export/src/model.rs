@@ -20,7 +20,6 @@ use ifc_lite_processing::element::{plan_type_geometry, TypeGeometryMode};
 use ifc_lite_processing::prepass::{resolve_unit_scales, UnitScales};
 use rustc_hash::FxHashSet;
 
-use crate::source_header::declared_schemas;
 
 #[path = "model_options.rs"]
 mod options;
@@ -37,7 +36,7 @@ use inherit::merge_inherited;
 
 #[path = "model_types.rs"]
 mod types;
-pub use types::{EntityRow, ExportModel, PropValue, PropertySet, QuantitySet, QuantityValue};
+pub use types::{EntityRow, ExportModel, PropValue, PropertySet, QuantitySet, QuantityValue, ValueKind};
 
 /// Build the export model from raw IFC/STEP bytes.
 ///
@@ -144,11 +143,7 @@ pub fn stream_export_model_with_options(
     // Attribute positions are schema-specific. Unlike STEP re-export, where
     // IFC4 is an established fallback for a missing declaration, attribute
     // export must fail closed rather than assign IFC4 names to unknown slots.
-    let source_schema = declared_schemas(content).into_iter().find(|schema| {
-        // IfcProject exists in every bundled registry, so this is a schema
-        // recognition probe rather than an entity-specific fallback.
-        ifc_lite_core::attribute_names_for_schema(schema, "IFCPROJECT").is_some()
-    });
+    let source_schema = crate::schema_detect::attribute_schema(content);
     // Property resolution memoizes the shared `IfcPropertySet`/leaf entities for
     // speed. Cap that cache so it can't grow without bound across millions of
     // products; clearing only forces a re-decode of a shared set, never affects
@@ -162,7 +157,7 @@ pub fn stream_export_model_with_options(
     //   • the #957/#1518 type-product orphan-geometry bookkeeping, mirroring the
     //     geometry pass exactly so both agree on which IfcTypeProducts are meshed.
     // IfcRelDefinesByProperties: [GlobalId, OwnerHistory, Name, Description,
-    //                             RelatedObjects(4, list), RelatingPropertyDefinition(5, ref)]
+    //                             RelatedObjects(4, list), RelatingPropertyDefinition(5, ref or set)]
     let mut defs_by_object: HashMap<u32, Vec<u32>> = HashMap::new();
     // The file's single IFCPROJECT, for the unit resolution below. First wins:
     // the schema allows exactly one, and a malformed file with two would
@@ -191,14 +186,13 @@ pub fn stream_export_model_with_options(
                     Ok(e) => e,
                     Err(_) => continue,
                 };
-                let def_id = match rel.get(5).and_then(|a| a.as_entity_ref()) {
-                    Some(d) => d,
-                    None => continue,
-                };
+                // A single definition or an IfcPropertySetDefinitionSet, bare
+                // or typed (#7681): `get_refs` reads every spelling.
+                let Some(def_ids) = rel.get_refs(5) else { continue };
                 if let Some(objs) = rel.get(4).and_then(|a| a.as_list()) {
                     for o in objs {
                         if let Some(oid) = o.as_entity_ref() {
-                            defs_by_object.entry(oid).or_default().push(def_id);
+                            defs_by_object.entry(oid).or_default().extend_from_slice(&def_ids);
                         }
                     }
                 }
@@ -341,7 +335,13 @@ pub fn stream_export_model_with_options(
                 .map(|matrix| Placement { matrix })
         });
 
-        let def_ids = defs_by_object.get(&id).cloned().unwrap_or_default();
+        // One pass over the object's definitions: `(#20,#20)`, or two
+        // relationships naming one set, must not export that set twice.
+        let mut def_ids = defs_by_object.get(&id).cloned().unwrap_or_default();
+        if def_ids.len() > 1 {
+            let mut seen = FxHashSet::default();
+            def_ids.retain(|d| seen.insert(*d));
+        }
         let (mut property_sets, mut quantity_sets) = resolve_pset_defs(&mut decoder, &def_ids);
 
         // Fold in whatever this occurrence inherits from its type. Resolution is

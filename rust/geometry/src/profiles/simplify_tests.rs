@@ -52,14 +52,7 @@ fn annular_sector_loop(radius: f64, thickness: f64, span: f64, seg: usize) -> Ve
 }
 
 fn loop_area(loop_: &[Point2<f64>]) -> f64 {
-    let n = loop_.len();
-    let mut a = 0.0;
-    for i in 0..n {
-        let p = loop_[i];
-        let q = loop_[(i + 1) % n];
-        a += p.x * q.y - q.x * p.y;
-    }
-    (a * 0.5).abs()
+    crate::math::v2::signed_area_by(loop_.len(), |i| [loop_[i].x, loop_[i].y]).abs()
 }
 
 #[test]
@@ -366,4 +359,55 @@ fn thin_profile_gate_holds_under_mm_units() {
     for (a, b) in out.iter().zip(loop_mm.iter()) {
         assert_eq!((a.x, a.y), (b.x, b.y), "gated profile must be kept verbatim");
     }
+}
+
+/// #7773 (PROC-19): the self-intersection backstop decides with the exact
+/// orientation predicate. Both loops below are `[a, b, c, d]`, with `a-b` and
+/// `c-d` the only non-adjacent edge pair that could meet (the other pair is
+/// `b-c` / `d-a`). The coordinates were found by comparing float against
+/// exact rational orientation: a near-collinear fan around the diagonal.
+#[test]
+fn self_intersection_uses_exact_orientation() {
+    // Float orientation reported a crossing that exact arithmetic refutes.
+    let false_positive = [
+        Point2::new(0.5000000000000048, 0.5000000000000043),
+        Point2::new(12.0, 12.0),
+        Point2::new(6.0, 6.0),
+        Point2::new(10.58911068159586, 14.913699243332927),
+    ];
+    assert!(!closed_loop_self_intersects(&false_positive));
+
+    // Float orientation missed a crossing that exact arithmetic confirms.
+    let false_negative = [
+        Point2::new(999.9999999999907, 999.9999999999914),
+        Point2::new(24000.0, 24000.0),
+        Point2::new(12000.0, 12000.0),
+        Point2::new(16852.458435491113, 21603.80513686686),
+    ];
+    assert!(closed_loop_self_intersects(&false_negative));
+}
+
+/// #7773: a non-adjacent edge lying along another (a degenerate spike) is a
+/// self-contact; the old proper-crossing test read all-collinear as clear.
+#[test]
+fn collinear_overlap_of_non_adjacent_edges_is_a_self_intersection() {
+    let spike = [
+        Point2::new(0.0, 0.0),
+        Point2::new(4.0, 0.0),
+        Point2::new(4.0, 3.0),
+        Point2::new(6.0, 0.0),
+        Point2::new(2.0, 0.0),
+    ];
+    // Edge 3 (6,0)-(2,0) lies along edge 0 (0,0)-(4,0) over x in [2, 4].
+    assert!(closed_loop_self_intersects(&spike));
+}
+
+/// #7773 (PROC-19): the chord threshold is `geom2d::perp_distance`'s (1e-9 m),
+/// not a private `f64::EPSILON` on the squared length that made a 1e-8 m chord
+/// read as a point.
+#[test]
+fn rdp_measures_against_short_chords_perpendicularly() {
+    let pts = [Point2::new(0.0, 0.0), Point2::new(5e-9, 3e-9), Point2::new(1e-8, 0.0)];
+    // Perpendicular distance is 3e-9, below epsilon: the middle point goes.
+    assert_eq!(rdp_simplify_open(&pts, 4e-9).len(), 2);
 }

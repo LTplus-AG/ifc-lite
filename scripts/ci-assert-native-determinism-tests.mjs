@@ -14,6 +14,10 @@ export function main(root = process.cwd()) {
     '--package', 'ifc-lite-processing',
     '--test', 'mesh_determinism',
   ], root);
+  assertCargoTargets([
+    '--package', 'ifc-lite-export',
+    '--test', 'export_golden',
+  ], root);
 }
 
 if (isMainEntry(import.meta.url)) {

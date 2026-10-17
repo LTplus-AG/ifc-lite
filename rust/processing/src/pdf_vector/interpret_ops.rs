@@ -35,13 +35,13 @@ impl Interpreter {
                 self.frame.taint.stroke_pattern = false;
             }
             Op::LineWidth { width } => {
-                scalar(*width, 0., 1e9)?;
+                scalar(*width, 0., super::super::limits::PAGE_COORD_LIMIT)?;
                 self.frame.state.line_width = *width;
             }
             Op::LineCap { cap } => self.set_cap(*cap)?,
             Op::LineJoin { join } => self.set_join(*join)?,
             Op::MiterLimit { limit } => {
-                scalar(*limit, 1., 1e9)?;
+                scalar(*limit, 1., super::super::limits::PAGE_COORD_LIMIT)?;
                 self.frame.state.miter_limit = *limit;
             }
             Op::Dash { lengths, phase } => self.set_dash(lengths, *phase)?,
@@ -50,7 +50,7 @@ impl Interpreter {
             Op::TextClip => self.frame.taint.clip = true,
             Op::Text { quad, invisible } => {
                 for x in quad {
-                    scalar(*x, -1e9, 1e9)?;
+                    scalar(*x, -super::super::limits::PAGE_COORD_LIMIT, super::super::limits::PAGE_COORD_LIMIT)?;
                 }
                 if !self.annotation {
                     let bbox = extent::bbox(quad.chunks_exact(2).map(|c| self.to_pdf([c[0], c[1]])));
@@ -64,7 +64,7 @@ impl Interpreter {
                 }
                 for t in transforms {
                     for x in t {
-                        scalar(*x, -1e12, 1e12)?;
+                        scalar(*x, -super::super::limits::MATRIX_ENTRY_LIMIT, super::super::limits::MATRIX_ENTRY_LIMIT)?;
                     }
                 }
                 if !self.annotation {
@@ -98,7 +98,7 @@ impl Interpreter {
                     return Err("PDF graphics-state dictionary exceeds 16 unsupported entries".into());
                 }
                 if let Some(width) = line_width {
-                    scalar(*width, 0., 1e9)?;
+                    scalar(*width, 0., super::super::limits::PAGE_COORD_LIMIT)?;
                     self.frame.state.line_width = *width;
                 }
                 if let Some(cap) = line_cap {
@@ -108,7 +108,7 @@ impl Interpreter {
                     self.set_join(*join)?;
                 }
                 if let Some(limit) = miter_limit {
-                    scalar(*limit, 1., 1e9)?;
+                    scalar(*limit, 1., super::super::limits::PAGE_COORD_LIMIT)?;
                     self.frame.state.miter_limit = *limit;
                 }
                 if let Some((lengths, phase)) = dash {

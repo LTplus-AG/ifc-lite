@@ -17,10 +17,12 @@ use std::cell::RefCell;
 use super::csg_primitive::CsgSolidProcessor;
 use super::helpers::parse_axis2_placement_3d;
 
+mod brep_voids;
 mod cut_heuristics;
 mod failures;
 mod operand;
 mod halfspace_cap;
+mod polygonal_boundary;
 mod polygonal_prism;
 mod single_cutter_gate;
 use single_cutter_gate::SingleCutterSubtract;
@@ -329,20 +331,20 @@ impl BooleanClippingProcessor {
         // Build each cutter prism (bounds-clamped to the base).
         let mut prisms: Vec<Mesh> = Vec::with_capacity(cutters.len());
         for cutter in &cutters {
-            let (plane_point, plane_normal, agreement) =
-                self.parse_half_space_solid(cutter, decoder)?;
+            // Unreadable plane: defer; the sequential step records it (#7688).
+            let Ok((plane_point, plane_normal, agreement)) =
+                self.parse_half_space_solid(cutter, decoder) else { return self.defer_after(mark) };
             match self.build_polygonal_bounded_half_space_mesh(
                 cutter,
                 decoder,
                 &base_mesh,
-                plane_point,
-                plane_normal,
-                agreement,
+                (plane_point, plane_normal, agreement),
+                quality,
             ) {
-                Ok(prism) if !prism.is_empty() => prisms.push(prism),
+                Ok(Some(prism)) if !prism.is_empty() => prisms.push(prism),
                 // A cutter we can't build a prism for would be silently dropped
-                // here; defer to the sequential path, which records the loss as
-                // `PolygonalBoundedHalfSpaceFallback`.
+                // here; defer to the sequential path, which records the loss
+                // (fallback, or an over-cap boundary's refusal; the rewind drops ours).
                 _ => return self.defer_after(mark),
             }
         }
@@ -768,22 +770,20 @@ impl BooleanClippingProcessor {
         // This keeps each operation bounded to one small cutter and preserves
         // IFC operand order.
 
-        // Get second operand
-        let second_operand_attr = entity
-            .get(2)
-            .ok_or_else(|| Error::geometry("BooleanResult missing SecondOperand".to_string()))?;
-
-        let second_operand = decoder
-            .resolve_ref(second_operand_attr)?
-            .ok_or_else(|| Error::geometry("Failed to resolve SecondOperand".to_string()))?;
+        let Some(second_operand) = self.second_operand_or_record(operator, entity, decoder) else {
+            // INTERSECTION with nothing is nothing; the loss is on record.
+            let dropped = operator == BoolOp::Intersection;
+            return Ok(if dropped { (Mesh::new(), true) } else { (mesh, false) });
+        };
 
         // Handle DIFFERENCE operation
         if operator == BoolOp::Difference {
-            // Check if second operand is a half-space solid (simple or polygonally bounded)
-            if second_operand.ifc_type == IfcType::IfcHalfSpaceSolid {
-                // Simple half-space: use plane clipping
-                let (plane_point, plane_normal, agreement) =
-                    self.parse_half_space_solid(&second_operand, decoder)?;
+            let polygonal = second_operand.ifc_type == IfcType::IfcPolygonalBoundedHalfSpace;
+            // Any other IfcHalfSpaceSolid is a plane clip: an IfcBoxedHalfSpace's
+            // Enclosure is only a computation hint (#7688 PROC-S19).
+            if !polygonal && second_operand.ifc_type.is_subtype_of(IfcType::IfcHalfSpaceSolid) {
+                let Some((plane_point, plane_normal, agreement)) =
+                    self.half_space_plane_or_record(&second_operand, decoder) else { return Ok((mesh, false)) };
                 let clipped =
                     self.clip_mesh_with_half_space(&mesh, plane_point, plane_normal, agreement)?;
                 return Ok((self.guard_against_full_host_removal(
@@ -794,20 +794,14 @@ impl BooleanClippingProcessor {
                 ), false));
             }
 
-            if second_operand.ifc_type == IfcType::IfcPolygonalBoundedHalfSpace {
-                let (plane_point, plane_normal, agreement) =
-                    self.parse_half_space_solid(&second_operand, decoder)?;
-                if let Ok(bound_mesh) = self.build_polygonal_bounded_half_space_mesh(
-                    &second_operand,
-                    decoder,
-                    &mesh,
-                    plane_point,
-                    plane_normal,
-                    agreement,
-                ) {
-                    // See `single_cutter_gate.rs` for the #3919/#3923
-                    // accept-gate check and why a rejection's fallback
-                    // depends on `solo_step`.
+            if polygonal {
+                let Some((plane_point, plane_normal, agreement)) =
+                    self.half_space_plane_or_record(&second_operand, decoder) else { return Ok((mesh, false)) };
+                if polygonal_prism::host_stays_on_kept_side(&mesh, plane_point, plane_normal, agreement) { return Ok((mesh, false)); }
+                if let Ok(built) = self.build_polygonal_bounded_half_space_mesh(&second_operand, decoder, &mesh, (plane_point, plane_normal, agreement), quality) {
+                    // `None`: boundary over the vertex cap, refused on record (#7786).
+                    let Some(bound_mesh) = built else { return Ok((mesh, false)) };
+                    // `single_cutter_gate.rs`: the #3919/#3923 gate and `solo_step`.
                     match self.resolve_single_cutter_subtract(
                         &mesh,
                         &bound_mesh,

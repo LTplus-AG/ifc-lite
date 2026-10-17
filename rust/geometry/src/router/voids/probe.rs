@@ -8,7 +8,6 @@ use super::geom::*;
 use super::{GeometryRouter, RectParam, MAX_EXTRUSION_EXTRACT_DEPTH};
 use crate::profile::Profile2D;
 use crate::profiles::ProfileProcessor;
-use crate::router::is_body_representation;
 use crate::{Error, Mesh, Point3, Result, Vector3};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use nalgebra::{Matrix3, Matrix4};
@@ -239,7 +238,7 @@ impl GeometryRouter {
     /// the main mesh path (`process_element` /
     /// `process_element_with_submeshes_impl`): the effective representation type
     /// (`RepresentationType`, falling back to the `RepresentationIdentifier`
-    /// when blank — CATIA #1661) filtered by [`is_body_representation`], with a
+    /// when blank — CATIA #1661) filtered by [`crate::router::is_body_representation`], with a
     /// `MappedRepresentation` skipped when the element also carries direct body
     /// geometry (the mesh path's de-dup, so the fast path reads the same solids
     /// the renderer draws). Items from EVERY qualifying representation are
@@ -489,15 +488,10 @@ impl GeometryRouter {
 
         let mut item_meshes = Vec::new();
 
-        for shape_rep in representations {
-            if shape_rep.ifc_type != IfcType::IfcShapeRepresentation {
-                continue;
-            }
-            if let Some(rep_type) = crate::router::effective_element_rep_type(element, &shape_rep) {
-                if !is_body_representation(rep_type) {
-                    continue;
-                }
-            }
+        // The representations the mesh path meshes: body only, and a
+        // MappedRepresentation skipped when direct body geometry duplicates
+        // it, so one void yields one cutter, not two (ROUTER-28, #7690).
+        for shape_rep in crate::router::meshed_representations(element, &representations) {
             let items_attr = match shape_rep.get(3) {
                 Some(attr) => attr,
                 None => continue,
@@ -569,18 +563,8 @@ impl GeometryRouter {
 
         let mut bounds_list = Vec::new();
 
-        for shape_rep in representations {
-            if shape_rep.ifc_type != IfcType::IfcShapeRepresentation {
-                continue;
-            }
-
-            // Check representation type
-            if let Some(rep_type) = crate::router::effective_element_rep_type(element, &shape_rep) {
-                if !is_body_representation(rep_type) {
-                    continue;
-                }
-            }
-
+        // Same representation selection as `get_opening_item_meshes_world`.
+        for shape_rep in crate::router::meshed_representations(element, &representations) {
             // Get items list
             let items_attr = match shape_rep.get(3) {
                 Some(attr) => attr,
@@ -752,9 +736,14 @@ impl GeometryRouter {
         };
 
         let profile_entity = decoder.resolve_ref(solid.get(0)?).ok()??;
-        let profile = ProfileProcessor::new(self.schema.clone())
-            .process(&profile_entity, decoder, self.tessellation_quality)
-            .ok()?;
+        // The 2D path re-extrudes ONE outer ring with holes; a composite of
+        // several disjoint areas (#7685) defers to the 3D path.
+        let [profile] = <[_; 1]>::try_from(
+            ProfileProcessor::new(self.schema.clone())
+                .process_regions(&profile_entity, decoder, self.tessellation_quality)
+                .ok()?,
+        )
+        .ok()?;
         if profile.outer.len() < 3 {
             return None;
         }

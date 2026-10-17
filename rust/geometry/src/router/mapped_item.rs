@@ -8,8 +8,8 @@
 //! Split out of `processing.rs` to stay within its module-size budget (#3691).
 
 use super::frame_parts::{single_frame_source, SourceParts};
-use super::processing::IDENTITY_ROW_MAJOR;
-use super::transforms::{instancing_enabled, mat4_to_row_major};
+use super::transforms::instancing_enabled;
+use crate::math::mat4;
 use super::GeometryRouter;
 use crate::{Error, InstanceMeta, Mesh, Result};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
@@ -48,8 +48,7 @@ impl GeometryRouter {
     }
 
     /// [`Self::process_representation_item`] as frame parts (#6446): only a
-    /// mapped item can yield more than one. Drains the curve-capped flag once,
-    /// like the single-mesh wrapper.
+    /// mapped item can yield more than one.
     pub(in crate::router) fn process_representation_item_parts(
         &self,
         item: &DecodedEntity,
@@ -58,11 +57,7 @@ impl GeometryRouter {
         if item.ifc_type != IfcType::IfcMappedItem {
             return self.process_representation_item(item, decoder).map(|mesh| vec![mesh]);
         }
-        let parts = self.process_mapped_item_parts(item, decoder);
-        if crate::processors::take_curve_capped() {
-            self.record_unsupported_item(IfcType::IfcBSplineCurveWithKnots);
-        }
-        parts
+        self.process_mapped_item_parts(item, decoder)
     }
 
     /// Recursion body of [`Self::process_mapped_item_cached`]. `depth`/`visited`
@@ -147,7 +142,7 @@ impl GeometryRouter {
             if let Some(mut transform) = mapping_transform {
                 self.scale_transform(&mut transform);
                 if instancing_enabled() {
-                    local_rm = Some(mat4_to_row_major(&transform));
+                    local_rm = Some(mat4::from_na(&transform));
                 }
                 self.transform_mesh_local(&mut mesh, &transform);
             }
@@ -157,7 +152,7 @@ impl GeometryRouter {
             // element's apply_placement (element-local -> world).
             if instancing_enabled() {
                 mesh.instance_meta = Some(InstanceMeta {
-                    transform: IDENTITY_ROW_MAJOR,
+                    transform: mat4::IDENTITY,
                     local_transform: local_rm,
                     canonical_transform: None,
                     rep_identity: source_id as u128,
@@ -217,7 +212,7 @@ impl GeometryRouter {
                     Ok(sub_parts) => sub_parts.iter().for_each(|part| source.merge(part)),
                     Err(_e) => {
                         level_truncated = true;
-                        // Same drop, same counter as the non-nested arms below: the
+                        // Same drop, same counter as `merge_source_item`: the
                         // nested map's geometry is gone from this source. Recording
                         // `IfcMappedItem` (not the inner item's type) is deliberate —
                         // the inner walk errored before it could attribute anything,
@@ -238,61 +233,7 @@ impl GeometryRouter {
                 }
                 continue;
             }
-            match self.processors.get(&sub_item.ifc_type, self.schema) {
-                Some(processor) => {
-                    let processed = processor.process(
-                        &sub_item,
-                        decoder,
-                        self.schema,
-                        self.tessellation_quality,
-                    );
-                    // A capped B-spline curve edge (#4901) can trip HERE: a
-                    // mapped source's items are meshed by calling the
-                    // processor directly, not through
-                    // `process_representation_item`, so its drain never sees
-                    // this path (Macroscope review) — without this, the
-                    // flag stayed set and a LATER, unrelated top-level item
-                    // on the same thread absorbed the report instead.
-                    if crate::processors::take_curve_capped() {
-                        self.record_unsupported_item(IfcType::IfcBSplineCurveWithKnots);
-                    }
-                    match processed {
-                    Ok(mut sub_mesh) => {
-                        sub_mesh.validate_indices();
-                        self.scale_mesh(&mut sub_mesh);
-                        source.merge(&sub_mesh);
-                    }
-                    Err(_e) => {
-                        self.record_unsupported_item(sub_item.ifc_type.clone());
-                        crate::diag::diag_debug!(
-                            { item_id = sub_item.id, ifc_type = ?sub_item.ifc_type,
-                              error = %_e, "skipping unsupported mapped-source item" }
-                            else {
-                                #[cfg(debug_assertions)]
-                                eprintln!(
-                                    "[ifc-lite] Skipping unsupported mapped-source item #{} ({:?}): {}",
-                                    sub_item.id, sub_item.ifc_type, _e
-                                );
-                            }
-                        );
-                    }
-                    }
-                }
-                None => {
-                    self.record_unsupported_item(sub_item.ifc_type.clone());
-                    crate::diag::diag_debug!(
-                        { item_id = sub_item.id, ifc_type = ?sub_item.ifc_type,
-                          "skipping unsupported mapped-source item (no processor)" }
-                        else {
-                            #[cfg(debug_assertions)]
-                            eprintln!(
-                                "[ifc-lite] Skipping unsupported mapped-source item #{} ({:?}): no processor",
-                                sub_item.id, sub_item.ifc_type
-                            );
-                        }
-                    );
-                }
-            }
+            self.merge_source_item(&sub_item, decoder, &mut source, "mapped-source");
         }
         // The merge above is short, so every enclosing level's is too.
         *truncated |= level_truncated;
@@ -348,7 +289,7 @@ impl GeometryRouter {
         if let Some(mut transform) = mapping_transform {
             self.scale_transform(&mut transform);
             if instancing_enabled() {
-                local_rm = Some(mat4_to_row_major(&transform));
+                local_rm = Some(mat4::from_na(&transform));
             }
             for part in &mut parts {
                 self.transform_mesh_local(part, &transform);
@@ -356,7 +297,7 @@ impl GeometryRouter {
         }
         if instancing_enabled() && single_frame {
             parts[0].instance_meta = Some(InstanceMeta {
-                transform: IDENTITY_ROW_MAJOR,
+                transform: mat4::IDENTITY,
                 local_transform: local_rm,
                         canonical_transform: None,
                 rep_identity: source_id as u128,
@@ -365,5 +306,73 @@ impl GeometryRouter {
         }
 
         Ok(parts)
+    }
+
+    /// Mesh one plain (non-`IfcMappedItem`) item of a mapped source into
+    /// `source`. The one per-item step of the three source walks that do not
+    /// go through [`Self::process_representation_item`]: this file,
+    /// `ensure_shared_mapped_source` and the type-geometry walk (#7690).
+    ///
+    /// It rebases a raw-coordinate item by the model RTC in f64 before f32
+    /// narrowing (#5698, ROUTER-27), kept as the item's origin (see
+    /// [`Self::keep_rebase_in_origin`]), and, through
+    /// [`Self::process_item_in_rtc_frame`], drains the #4901 curve-capped flag
+    /// for this source rather than the next item on the thread (ROUTER-26). A
+    /// failed or unsupported item is recorded as dropped; `walk` only names
+    /// the caller in the debug message.
+    pub(super) fn merge_source_item(
+        &self,
+        item: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        source: &mut SourceParts,
+        walk: &str,
+    ) {
+        let meshed = match self.processor_for(&item.ifc_type) {
+            Some(processor) => {
+                self.process_item_in_rtc_frame(processor.as_ref(), item, decoder, self.rtc_offset)
+            }
+            None => Err(Error::geometry("no processor")),
+        };
+        match meshed {
+            Ok(mut mesh) => {
+                self.keep_rebase_in_origin(&mut mesh);
+                source.merge(&mesh);
+            }
+            Err(_e) => {
+                self.record_unsupported_item(item.ifc_type.clone());
+                let _ = walk;
+                crate::diag::diag_debug!(
+                    { item_id = item.id, ifc_type = ?item.ifc_type, walk, error = %_e,
+                      "skipping unsupported source item" }
+                    else {
+                        #[cfg(debug_assertions)]
+                        eprintln!(
+                            "[ifc-lite] Skipping unsupported {walk} item #{} ({:?}): {}",
+                            item.id, item.ifc_type, _e
+                        );
+                    }
+                );
+            }
+        }
+    }
+
+    /// Re-express a mapped-source item rebased by the model RTC (`rtc_applied`,
+    /// #5698) as positions relative to an f64 `origin` holding that offset.
+    ///
+    /// The model-frame rebase is right only for an item already in the model
+    /// frame. A source item still goes through its `MappingTarget` and the
+    /// occurrence placement, and `M (p - rtc)` is not `M p - rtc` once `M`
+    /// rotates: a 1 degree placement put an LV95 source 50 km away (#7690).
+    /// Every later transform carries `origin` exactly in f64, and the final
+    /// placement then subtracts the RTC once, so the item keeps its precision
+    /// at any rotation. A no-op for an item that was not rebased.
+    pub(super) fn keep_rebase_in_origin(&self, mesh: &mut Mesh) {
+        if mesh.rtc_applied {
+            mesh.rtc_applied = false;
+            let rtc = [self.rtc_offset.0, self.rtc_offset.1, self.rtc_offset.2];
+            for (origin, offset) in mesh.origin.iter_mut().zip(rtc) {
+                *origin += offset;
+            }
+        }
     }
 }

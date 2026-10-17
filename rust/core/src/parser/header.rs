@@ -5,73 +5,28 @@
 //! Shared, quote-aware ISO 10303-21 header record and schema reading.
 //! The export writer and analytic processing use the same lexical rules.
 
+use std::borrow::Cow;
+
 #[path = "header_scan.rs"]
 mod scan;
 
-pub use scan::{find_record_open, find_section_marker, Lex};
+pub use scan::{close_paren, find_keyword_then, KeywordHit, Then};
 
-/// The bounded source-header reader's maximum scan window.
-pub const MAX_HEADER_BYTES: usize = 64 * 1024;
+/// The scan window for the source header, shared by the header readers and
+/// the scanner's `DATA;` search (F4-2): one cap, so a header both read agree
+/// on is a header both find the end of. Real headers are under 2 KB; the cap
+/// keeps a file with no HEADER at all from costing a pass over its body.
+pub const MAX_HEADER_BYTES: usize = 256 * 1024;
 
-/// Split STEP record arguments at top-level commas, respecting paren/bracket
-/// nesting and single-quoted strings (with `''` escapes). Returns the raw,
-/// still-escaped argument substrings, trimmed.
+/// Split STEP record arguments at top-level commas, respecting parenthesis
+/// nesting, string literals and comments. Returns the raw, still-escaped
+/// argument substrings, trimmed. A thin owned wrapper over
+/// [`crate::parser::split_top_level_args_str`]: the splitter is core's own.
 pub fn split_top_level(inner: &str) -> Vec<String> {
-    let bytes = inner.as_bytes();
-    let mut lex = Lex::new(bytes);
-    let mut args: Vec<String> = Vec::new();
-    let mut depth: i32 = 0;
-    let mut current = String::new();
-    // Everything except a comment is part of the argument's text, so the scan
-    // copies contiguous runs and cuts only where something is dropped (a
-    // comment) or where an argument ends (a top-level comma). Nothing is
-    // inspected per character, so multi-byte UTF-8 needs no special handling.
-    let mut run = 0;
-    let mut i = 0;
-    while i < bytes.len() {
-        if let Some(end) = lex.skip_lexical_at(i) {
-            if bytes[i] != b'\'' {
-                current.push_str(&inner[run..i]); // a comment is not part of the text
-                run = end;
-            }
-            i = end;
-            continue;
-        }
-        if bytes[i] == b',' && depth == 0 {
-            current.push_str(&inner[run..i]);
-            args.push(current.trim().to_string());
-            current.clear();
-            run = i + 1;
-        } else {
-            match bytes[i] {
-                b'(' | b'[' => depth += 1,
-                b')' | b']' => depth -= 1,
-                _ => {}
-            }
-        }
-        i += 1;
-    }
-    current.push_str(&inner[run..]);
-    if !current.trim().is_empty() || !args.is_empty() {
-        args.push(current.trim().to_string());
-    }
-    args
-}
-
-/// Decode a header string literal's inner text (outer quotes already stripped).
-///
-/// Both escape layers in the order the TS twin uses: un-double `''` FIRST, then
-/// resolve the ISO 10303-21 backslash directives (`\X2\HHHH\X0\`, `\X\HH`,
-/// `\S\`, `\Px\`). The order is load-bearing — decoding first would let two
-/// separately-escaped apostrophes (`\X\27\X\27`) become `''` and then collapse
-/// into one, losing a character.
-fn decode_literal(inner: &str) -> String {
-    let undoubled = if inner.contains("''") {
-        inner.replace("''", "'")
-    } else {
-        inner.to_string()
-    };
-    crate::decode_ifc_string(&undoubled).into_owned()
+    crate::parser::split_top_level_args_str(inner)
+        .into_iter()
+        .map(str::to_owned)
+        .collect()
 }
 
 /// Decode one argument to a string, or `None` for `$` (unset), `*` (derived)
@@ -82,7 +37,7 @@ pub fn decode_opt_string(arg: &str) -> Option<String> {
         return None;
     }
     if t.len() >= 2 && t.starts_with('\'') && t.ends_with('\'') {
-        return Some(decode_literal(&t[1..t.len() - 1]));
+        return crate::step_encoding::decode_step_literal(t.as_bytes()).map(Cow::into_owned);
     }
     Some(t.to_string())
 }
@@ -119,7 +74,7 @@ pub fn decode_opt_string_list(arg: &str) -> Option<Vec<String>> {
 ///
 /// This is the uncapped schema-detection entry point. It shares this module's
 /// lexical and record parser, but does not widen the export writer's
-/// public 64 KiB allocation contract. If a malformed header omits its own
+/// public 256 KiB allocation contract. If a malformed header omits its own
 /// `ENDSEC;`, `DATA;` still stops the window before the model body. With no
 /// recognisable section boundary at all, the allocation remains capped.
 pub fn declared_schemas(content: &[u8]) -> Vec<String> {
@@ -128,11 +83,12 @@ pub fn declared_schemas(content: &[u8]) -> Vec<String> {
 
 fn schema_values_before_section(content: &[u8], fallback: usize) -> Vec<String> {
     let boundary = [
-        find_section_marker(content, b"ENDSEC"),
-        find_section_marker(content, b"DATA"),
+        find_keyword_then(content, b"ENDSEC", Then::Semicolon),
+        find_keyword_then(content, b"DATA", Then::ParenOrSemicolon),
     ]
     .into_iter()
     .flatten()
+    .map(|hit| hit.start)
     .min()
     .unwrap_or(fallback);
     let text = String::from_utf8_lossy(&content[..boundary]);
@@ -156,6 +112,31 @@ pub fn declared_schema_bounded(content: &[u8]) -> Option<String> {
     declared_schemas_bounded(content).into_iter().next()
 }
 
+/// The first declared `FILE_SCHEMA` identifier that `recognise` accepts, read
+/// from the bounded header window ([`declared_schemas_bounded`]).
+///
+/// THE schema-selection rule: the first RECOGNISED identifier wins, so
+/// `FILE_SCHEMA(('IFC2X3','IFC4X3'))` is IFC2X3 and an unrecognised leading
+/// identifier is skipped rather than ending the search. It mirrors the TS
+/// parser's `detectSchemaVersion` (`packages/parser/src/source-header.ts`).
+/// Every Rust reader of the declared schema goes through it with its own
+/// recogniser: the decoder's attribute layout (`SchemaVersion::from_file_schema`)
+/// and processing's reported `schema_version` (#7691).
+///
+/// What is shared is the SELECTION, not the recogniser. The decoder's
+/// recogniser names only the schemas with an EXPRESS registry (no IFC5),
+/// processing's also knows IFC5, so `('IFC5','IFC4')` reads as IFC4 to the
+/// former and IFC5 to the latter, deliberately: guessing a nearby registry for
+/// IFC5 would relabel positional values (#7740).
+pub fn first_declared_schema<T>(
+    content: &[u8],
+    mut recognise: impl FnMut(&str) -> Option<T>,
+) -> Option<T> {
+    declared_schemas_bounded(content)
+        .iter()
+        .find_map(|label| recognise(label))
+}
+
 /// Read the first declared schema identifier from the complete header.
 ///
 /// STEP re-export preserves the declaration's first identifier. Consumers
@@ -173,49 +154,32 @@ pub fn declared_schema(content: &[u8]) -> Option<String> {
 /// drops the real one (the character after it is not `(`).
 pub fn extract_record_args(text: &str, keyword: &str) -> Option<String> {
     let bytes = text.as_bytes();
-    let mut i = find_record_open(bytes, keyword.as_bytes())?;
-    let mut lex = Lex::new(bytes);
-    let start = i;
-    let mut depth: i32 = 0;
-    while i < bytes.len() {
-        if let Some(end) = lex.skip_lexical_at(i) {
-            i = end;
-            continue;
-        }
-        match bytes[i] {
-            b'(' => depth += 1,
-            b')' => {
-                depth -= 1;
-                if depth == 0 {
-                    return Some(text[start + 1..i].to_string());
-                }
-            }
-            _ => {}
-        }
-        i += 1;
-    }
-    None
+    let open = find_keyword_then(bytes, keyword.as_bytes(), Then::Paren)?.then;
+    let close = close_paren(bytes, open)?;
+    Some(text[open + 1..close].to_string())
 }
 
 #[cfg(test)]
 mod tests {
     use super::{declared_schema, declared_schema_bounded, MAX_HEADER_BYTES};
+    use super::{find_keyword_then, Then};
 
     #[test]
     fn page_quote_operands_keep_header_decoys_inside_literals_7540() {
         let source = r"'\S\' FILE_SCHEMA((fake)); DATA;' FILE_SCHEMA(('IFC4')); DATA;";
-        assert_eq!(super::find_record_open(source.as_bytes(), b"FILE_SCHEMA"),
-            Some(source.rfind("FILE_SCHEMA").unwrap() + "FILE_SCHEMA".len()));
-        assert_eq!(super::find_section_marker(source.as_bytes(), b"DATA"),
-            source.rfind("DATA"));
+        let schema = find_keyword_then(source.as_bytes(), b"FILE_SCHEMA", Then::Paren).unwrap();
+        assert_eq!(schema.then, source.rfind("FILE_SCHEMA").unwrap() + "FILE_SCHEMA".len());
+        let data = find_keyword_then(source.as_bytes(), b"DATA", Then::Semicolon).unwrap();
+        assert_eq!(Some(data.start), source.rfind("DATA"));
         let vectors: serde_json::Value = serde_json::from_str(include_str!(
             "../../tests/fixtures/step-page-directive.json"
         )).unwrap();
         for vector in vectors.as_array().unwrap() {
             let literal = vector["literal"].as_str().unwrap();
-            let text = format!("{literal},NEXT");
-            assert_eq!(super::Lex::new(text.as_bytes()).skip_lexical_at(0), Some(literal.len()),
-                "{}", vector["name"]);
+            // A keyword after the literal is found; one inside it is not.
+            let text = format!("{literal} FILE_SCHEMA(");
+            let hit = find_keyword_then(text.as_bytes(), b"FILE_SCHEMA", Then::Paren);
+            assert_eq!(hit.map(|h| h.start), Some(literal.len() + 1), "{}", vector["name"]);
         }
     }
 

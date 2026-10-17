@@ -1,0 +1,115 @@
+diff --git a/rust/core/src/columnar_index.rs b/rust/core/src/columnar_index.rs
+--- a/rust/core/src/columnar_index.rs
++++ b/rust/core/src/columnar_index.rs
+@@ -116,10 +116,10 @@ impl std::error::Error for SpanBeyondU32 {}
+ 
+ /// The `(start, length)` the columns store: the one home of the `u32` ceiling.
+ fn u32_span(id: u32, start: usize, end: usize) -> Result<(u32, u32), SpanBeyondU32> {
+-    if id == u32::MAX && start > end {
+-        return Err(SpanBeyondU32 { id, start, end });
++    match (u32::try_from(start), u32::try_from(end)) {
++        (Ok(s), Ok(e)) if s <= e => Ok((s, e - s)),
++        _ => Err(SpanBeyondU32 { id, start, end }),
+     }
+-    Ok((start as u32, (end - start) as u32))
+ }
+ 
+ impl ColumnarEntityIndex {
+diff --git a/rust/core/src/parser/tokenizer.rs b/rust/core/src/parser/tokenizer.rs
+--- a/rust/core/src/parser/tokenizer.rs
++++ b/rust/core/src/parser/tokenizer.rs
+@@ -347,8 +347,21 @@ const ERROR_CONTEXT_BYTES: usize = 64;
+ /// 20 MB point list: ~100 MB of text per failed decode, built and dropped by
+ /// every `let Ok(..) else continue` walk; #7675, CORE-5).
+ fn entity_parse_error(input: &[u8], e: nom::Err<nom::error::Error<&[u8]>>) -> Error {
+-    let _ = input;
+-    Error::parse(0, format!("Failed to parse entity: {}", e))
++    match e {
++        nom::Err::Incomplete(_) => Error::parse(input.len(), "Failed to parse entity: incomplete input"),
++        nom::Err::Error(inner) | nom::Err::Failure(inner) => {
++            let rest = inner.input;
++            let near = &rest[..rest.len().min(ERROR_CONTEXT_BYTES)];
++            Error::parse(
++                input.len().saturating_sub(rest.len()),
++                format!(
++                    "Failed to parse entity: {:?} near {:?}",
++                    inner.code,
++                    String::from_utf8_lossy(near)
++                ),
++            )
++        }
++    }
+ }
+ 
+ #[cfg(test)]
+diff --git a/rust/geometry/src/material_layer_index.rs b/rust/geometry/src/material_layer_index.rs
+--- a/rust/geometry/src/material_layer_index.rs
++++ b/rust/geometry/src/material_layer_index.rs
+@@ -288,6 +288,9 @@ impl MaterialLayerIndex {
+             let count = layer_counts[i] as usize;
+             let end = cursor.checked_add(count).filter(|&end| end <= layers_len)?;
+             let buildup = if axis[i] == 0 {
++                if count != 0 {
++                    return None;
++                }
+                 LayerBuildup::NotSliceable
+             } else {
+                 let layers = (cursor..end)
+diff --git a/rust/landxml/src/parser.rs b/rust/landxml/src/parser.rs
+--- a/rust/landxml/src/parser.rs
++++ b/rust/landxml/src/parser.rs
+@@ -154,7 +154,7 @@ impl Parser<'_> {
+         // Only a name that can appear in a capture path is counted: the map
+         // lives as long as the parent, so counting every distinct child name
+         // let a flat root hold one entry per name (#7675, EDGE-LXPARSE-17).
+-        let tracked = target || path::ordinal_tracked(local);
++        let tracked = target && path::ordinal_tracked(local);
+         let sibling_ordinal = self.frames.last_mut().map_or(1, |parent| {
+             if !tracked {
+                 return 0;
+@@ -226,12 +226,7 @@ impl Parser<'_> {
+             "CoordinateSystem" if self.is_path(&["LandXML", "CoordinateSystem"]) => {
+                 // Counted, and warned about once in `finish` (#7675,
+                 // EDGE-LXPARSE-24: one warning per repeat was ~4x the input).
+-                if self.coordinate_system.is_some() {
+-                    self.warnings.push(
+-                        "LandXML declares multiple root CoordinateSystem records; retained the last declaration"
+-                            .to_owned(),
+-                    );
+-                }
++                self.coordinate_systems_seen += 1;
+                 self.coordinate_system = Some(LandXmlCoordinateSystem {
+                     horizontal_datum: attr(&attributes, "horizontalDatum")
+                         .map(|value| value.to_owned()),
+diff --git a/rust/landxml/src/parser/finalize.rs b/rust/landxml/src/parser/finalize.rs
+--- a/rust/landxml/src/parser/finalize.rs
++++ b/rust/landxml/src/parser/finalize.rs
+@@ -152,6 +152,12 @@ impl Parser<'_> {
+         if self.version.is_empty() {
+             return Err(error(Code::InvalidXml, "LandXML document is empty"));
+         }
++        if self.coordinate_systems_seen > 1 {
++            self.warnings.push(format!(
++                "LandXML declares {} root CoordinateSystem records; retained the last declaration",
++                self.coordinate_systems_seen,
++            ));
++        }
+         if !self.extensions.is_empty() {
+             self.warnings.push(format!(
+                 "Preserved {} unknown vendor extension root(s) as source metadata",
+diff --git a/rust/landxml/src/parser/limits.rs b/rust/landxml/src/parser/limits.rs
+--- a/rust/landxml/src/parser/limits.rs
++++ b/rust/landxml/src/parser/limits.rs
+@@ -29,7 +29,11 @@ impl Parser<'_> {
+     /// so without a budget 44 KB of input retained 32 MB of paths (#7675,
+     /// EDGE-LXPARSE-4).
+     pub(super) fn reserve_source_path(&mut self, bytes: usize) -> Result<()> {
+-        self.source_path_bytes = self.source_path_bytes.saturating_add(bytes);
++        self.source_path_bytes = self
++            .source_path_bytes
++            .checked_add(bytes)
++            .filter(|&total| total <= self.limits.max_source_path_bytes)
++            .ok_or_else(|| error(Code::LimitExceeded, "retained source path limit exceeded"))?;
+         Ok(())
+     }
+ 

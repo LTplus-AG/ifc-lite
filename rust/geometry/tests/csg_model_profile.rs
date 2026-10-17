@@ -101,7 +101,7 @@ fn profile_model() {
     let use_columnar = std::env::var("IFCLT_COLUMNAR").is_ok_and(|v| v != "0");
     let t_parse = Instant::now();
     let mut decoder = if use_columnar {
-        let idx = std::sync::Arc::new(ifc_lite_core::ColumnarEntityIndex::from_scan(&content));
+        let idx = std::sync::Arc::new(ifc_lite_core::ColumnarEntityIndex::from_scan(&content).unwrap());
         EntityDecoder::with_arc_columnar_index(&content, idx)
     } else {
         EntityDecoder::with_index(&content, build_entity_index(&content))

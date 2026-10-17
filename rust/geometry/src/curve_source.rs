@@ -4,6 +4,7 @@
 
 //! Basis and trim facts shared by analytic descriptions and sampled geometry.
 
+use crate::math::tol;
 use crate::{Error, Result, Vector3};
 use ifc_lite_core::{AttributeValue, DecodedEntity, EntityDecoder, IfcType};
 
@@ -21,6 +22,19 @@ pub(crate) fn resolve(
         .ok_or_else(|| invalid("curve reference cannot be resolved"))
 }
 
+/// Admit curve coordinates for the `f32` mesh (#7765, D3/D13): a real that is
+/// non-finite, or finite beyond `f32` range (`1.E39`), narrows to an infinity
+/// in every vertex built from it, so the curve is refused (the caller's `Err`
+/// is counted as a dropped item) rather than meshed. The one home for the
+/// `IfcIndexedPolyCurve` readers (profile, directrix, analytic).
+pub(crate) fn admit_f32_range(values: impl IntoIterator<Item = f64>) -> Result<()> {
+    if values.into_iter().all(|v| (v as f32).is_finite()) {
+        Ok(())
+    } else {
+        Err(invalid("curve coordinate is non-finite or beyond f32 range"))
+    }
+}
+
 pub(crate) fn point_values(values: &[AttributeValue]) -> Result<[f64; 3]> {
     if values.len() < 2 {
         return Err(invalid("Cartesian point has fewer than two coordinates"));
@@ -30,9 +44,7 @@ pub(crate) fn point_values(values: &[AttributeValue]) -> Result<[f64; 3]> {
         point[i] = values[i]
             .as_float()
             .ok_or_else(|| invalid("invalid Cartesian coordinate"))?;
-        if !point[i].is_finite() {
-            return Err(invalid("non-finite Cartesian coordinate"));
-        }
+        admit_f32_range([point[i]])?;
     }
     Ok(point)
 }
@@ -86,7 +98,7 @@ pub(crate) fn vector_from_ref(
             .ok_or_else(|| invalid("Direction missing DirectionRatios"))?,
     )?;
     Vector3::from(p)
-        .try_normalize(1e-12)
+        .try_normalize(tol::DIRECTION_MIN_LEN)
         .ok_or_else(|| invalid("invalid zero Direction"))
 }
 
@@ -148,7 +160,7 @@ pub(crate) fn mesh_line_basis(
                 coords.get(2).and_then(AttributeValue::as_float).unwrap_or(0.0),
             ))
         })
-        .and_then(|v| v.try_normalize(1e-12))
+        .and_then(|v| v.try_normalize(tol::DIRECTION_MIN_LEN))
         .unwrap_or_else(Vector3::x);
     Ok((origin, (orientation * magnitude).into()))
 }
@@ -215,7 +227,7 @@ pub(crate) fn circle_basis(
             .transpose()?
             .unwrap_or(Vector3::x());
         let x = Vector3::new(x.x, x.y, 0.0)
-            .try_normalize(1e-12)
+            .try_normalize(tol::DIRECTION_MIN_LEN)
             .ok_or_else(|| invalid("invalid planar circle RefDirection"))?;
         ([0.0, 0.0, 1.0], x.into(), [-x.y, x.x, 0.0])
     } else {

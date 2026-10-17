@@ -4,26 +4,12 @@
 
 use super::arrangement::segment_intersection_param;
 use super::EPS;
+use crate::cmp_f64_nan_last;
 
-// Shared plane primitives, moved to `crate::geom2d` (#6871) and re-exported
+// Shared plane primitives, moved to `crate::math` (#6871, #7773) and re-exported
 // so the sibling modules keep importing them from here.
-pub(super) use crate::geom2d::{line_intersection, perp_distance, point_in_polygon, polygon_area};
-
-/// Ray-cast point-in-polygon for a wall rectangle (4 corners). A face centroid
-/// inside any wall rect = a wall interior / junction overlap, not a room gap.
-pub(super) fn point_in_quad(p: [f64; 2], quad: &[[f64; 2]; 4]) -> bool {
-    let mut inside = false;
-    let mut j = 3;
-    for i in 0..4 {
-        let (xi, yi) = (quad[i][0], quad[i][1]);
-        let (xj, yj) = (quad[j][0], quad[j][1]);
-        if ((yi > p[1]) != (yj > p[1])) && (p[0] < (xj - xi) * (p[1] - yi) / (yj - yi) + xi) {
-            inside = !inside;
-        }
-        j = i;
-    }
-    inside
-}
+pub(super) use crate::math::geom2d::{line_intersection, perp_distance};
+pub(super) use crate::math::v2::{area_centroid, point_in_polygon, polygon_area};
 
 /// A point that is genuinely INSIDE `poly`.
 ///
@@ -45,21 +31,13 @@ pub(super) fn representative_point(poly: &[[f64; 2]]) -> Option<[f64; 2]> {
     }
     let area = polygon_area(poly);
     if area.abs() > EPS {
-        let (mut cx, mut cy) = (0.0, 0.0);
-        for i in 0..poly.len() {
-            let p = poly[i];
-            let q = poly[(i + 1) % poly.len()];
-            let cross = p[0] * q[1] - q[0] * p[1];
-            cx += (p[0] + q[0]) * cross;
-            cy += (p[1] + q[1]) * cross;
-        }
-        let c = [cx / (6.0 * area), cy / (6.0 * area)];
+        let c = area_centroid(poly, area);
         if c[0].is_finite() && c[1].is_finite() && point_in_polygon(c, poly) {
             return Some(c);
         }
     }
     let mut ys: Vec<f64> = poly.iter().map(|p| p[1]).collect();
-    ys.sort_by(|a, b| a.partial_cmp(b).unwrap_or(core::cmp::Ordering::Equal));
+    ys.sort_by(|a, b| cmp_f64_nan_last(*a, *b));
     let mut best: Option<([f64; 2], f64)> = None;
     for w in ys.windows(2) {
         if w[1] - w[0] < EPS {
@@ -74,7 +52,7 @@ pub(super) fn representative_point(poly: &[[f64; 2]]) -> Option<[f64; 2]> {
                 xs.push(p[0] + (y - p[1]) / (q[1] - p[1]) * (q[0] - p[0]));
             }
         }
-        xs.sort_by(|a, b| a.partial_cmp(b).unwrap_or(core::cmp::Ordering::Equal));
+        xs.sort_by(|a, b| cmp_f64_nan_last(*a, *b));
         let mut k = 0;
         while k + 1 < xs.len() {
             let width = xs[k + 1] - xs[k];

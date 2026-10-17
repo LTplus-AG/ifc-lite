@@ -55,7 +55,9 @@ const gp = vi.hoisted(() => {
 
 vi.mock('@ifc-lite/geometry', () => ({
   GeometryProcessor: gp.GeometryProcessor,
-  isNoRenderGeometryError: () => false,
+  // The real rule's shape: the boundary's typed refusal is an Error whose
+  // message starts with the code.
+  isNoRenderGeometryError: (e: unknown) => e instanceof Error && e.message.startsWith('NO_RENDER_GEOMETRY'),
 }));
 
 import type { ToolContext } from '../context.js';
@@ -299,6 +301,20 @@ describe('export_obj tool: `isolated` argument passed to gp.exportObj (the OBJ t
       exportObjTool.handler({ file_path: out, type: 'IfcNonExistentType' }, ctx),
     ).rejects.toThrow(/No IfcNonExistentType entities found/);
     expect(gp.exportObj).not.toHaveBeenCalled();
+  });
+
+  it('#7695: maps the boundary refusal of an empty mesh set to the 0-vertices tool error and writes nothing', async () => {
+    gp.exportObj.mockImplementation(() => {
+      throw new Error('NO_RENDER_GEOMETRY: export produced no render geometry (empty model or all meshes filtered out)');
+    });
+    const out = join(tmp, 'refused.obj');
+
+    await expect(exportObjTool.handler({ file_path: out, type: 'IfcWall' }, ctx)).rejects.toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: expect.stringContaining('OBJ export produced 0 vertices - the matched IfcWall entities'),
+    });
+    await expect(readFile(out)).rejects.toThrow();
+    expect(gp.dispose).toHaveBeenCalledTimes(1);
   });
 });
 

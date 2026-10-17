@@ -152,6 +152,8 @@ test('generated output is excluded, and only where it actually lives', () => {
   assert.equal(licenseHeaderFor('packages/codegen/generated/ifc4/enums.ts'), null);
   assert.equal(licenseHeaderFor('packages/parser/src/generated/enums.ts'), null);
   assert.equal(licenseHeaderFor('packages/wasm/pkg/ifc-lite.d.ts'), null);
+  assert.equal(licenseHeaderFor('docs/api/generated/assets/main.js'), null);
+  assert.notEqual(licenseHeaderFor('docs/api/reference.js'), null);
 
   // Hand-written siblings of each excluded tree stay in scope; an exclusion
   // that swallowed these would silence the gate over real source.

@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { readFileSync } from 'node:fs';
 import { describe, it, expect } from 'vitest';
 import { RelationshipType } from '@ifc-lite/data';
 import {
@@ -139,5 +140,42 @@ describe('relationship-schema-slots (#4205)', () => {
     // IfcRelPositions is IFC4X3-only.
     expect(getConcreteRelationshipTypes('IFC4').has('IFCRELPOSITIONS')).toBe(false);
     expect(getConcreteRelationshipTypes('IFC4X3').has('IFCRELPOSITIONS')).toBe(true);
+  });
+});
+
+// C6-4 (D43): the Rust server resolves the same slots from core's EXPRESS
+// registry (`apps/server/.../data_model/slots.rs`) and pins them, row for row,
+// to this committed vector (`slots_tests.rs`). The TS plan must equal it too,
+// so the server-parse and in-browser paths read the same attribute positions.
+describe('relationship slot vector shared with the Rust server (C6-4)', () => {
+  const ROOT_ATTR_COUNT = 4; // the vector holds ABSOLUTE positions
+  const vector = JSON.parse(
+    readFileSync(new URL('../../../apps/server/tests/golden/relationship-slots.json', import.meta.url), 'utf8'),
+  ) as {
+    slots: Record<string, { relating: number; related: number; relatingIsList: boolean; relatedIsList: boolean }>;
+  };
+
+  it('getRelationshipSlotPlan equals every row of the vector', () => {
+    const names = Object.keys(vector.slots);
+    expect(names).toHaveLength(54);
+    for (const name of names) {
+      const row = vector.slots[name];
+      const plan = getRelationshipSlotPlan(name);
+      expect(plan, name).toBeDefined();
+      expect(
+        {
+          relating: plan!.relating.index + ROOT_ATTR_COUNT,
+          related: plan!.related.index + ROOT_ATTR_COUNT,
+          relatingIsList: plan!.relating.isList,
+          relatedIsList: plan!.related.isList,
+        },
+        name,
+      ).toEqual(row);
+    }
+  });
+
+  it('the vector is the whole gate: every concrete relationship with a plan is a row', () => {
+    const withPlan = [...getAllConcreteRelationshipTypes()].filter((t) => getRelationshipSlotPlan(t) !== undefined);
+    expect(withPlan.sort()).toEqual(Object.keys(vector.slots).sort());
   });
 });

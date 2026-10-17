@@ -6,9 +6,7 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use ifc_lite_core::{
-    attribute_names_for_schema, keyword_eq, EntityDecoder, EntityScanner, ProjectUnits,
-};
+use ifc_lite_core::{keyword_eq, EntityDecoder, EntityScanner, ProjectUnits};
 use ifc_lite_processing::{
     check_swept_disk, extract_swept_disk_views, DirectrixMetrics, SweptDiskCheckError,
     SweptDiskCheckOptions, SweptDiskCheckReport, SweptDiskInstance, SweptDiskSourceKey,
@@ -16,7 +14,7 @@ use ifc_lite_processing::{
 use serde::Serialize;
 
 use crate::rebar_attributes::{attribute, FIELDS};
-use crate::schema_detect::detect_schema;
+use crate::schema_detect::attribute_schema;
 use crate::rebar_preflight::{assess_sweep, RebarPreflightLimits, RebarPreflightReport, RebarSchedulePreflightError};
 use crate::rebar_fabrication::{assess_fabrication, AuthoredDiameterContext, RebarFabricationPolicy, RebarFabricationReport,
     RebarScheduleFabricationError};

@@ -46,10 +46,7 @@ struct Fixture {
 }
 
 fn file(schema: &str, lines: &[String]) -> String {
-    format!(
-        "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_SCHEMA(('{schema}'));\nENDSEC;\nDATA;\n{}\nENDSEC;\nEND-ISO-10303-21;\n",
-        lines.join("\n")
-    )
+    ifc_lite_testkit::step_file(schema, lines)
 }
 
 /// `#id=TYPE('guid',…` → (id, guid) for every rooted line.

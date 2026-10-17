@@ -1,0 +1,46 @@
+{
+  "about": "FNV-1a 64 and byte length of each alignments output, keyed by case. Written by ifc-lite-landxml, never by hand.",
+  "repin": "IFC_LITE_REPIN_GOLDEN=1 cargo test -p ifc-lite-landxml --test landxml_golden -- --exact alignments",
+  "cases": {
+    "3dwin-lighting-cgpoints": {
+      "fnv1a64": "20c08cc07587f1f5",
+      "bytes": 52
+    },
+    "3dwin-road-alignment": {
+      "fnv1a64": "20c08cc07587f1f5",
+      "bytes": 52
+    },
+    "3dwin-rockbed-terrain": {
+      "fnv1a64": "20c08cc07587f1f5",
+      "bytes": 52
+    },
+    "aplitop-alignment": {
+      "fnv1a64": "d0474e2e13fae447",
+      "bytes": 7650
+    },
+    "bonsai-terrain": {
+      "fnv1a64": "cb6d2af2285211c3",
+      "bytes": 232
+    },
+    "civil3d-foot-tin": {
+      "fnv1a64": "57a6e4e530c4b468",
+      "bytes": 234
+    },
+    "novapoint-drainage": {
+      "fnv1a64": "bc07c074cc89c099",
+      "bytes": 40
+    },
+    "openroads-survey-foot-alignment": {
+      "fnv1a64": "74202d4a03ce9cfb",
+      "bytes": 1821
+    },
+    "storm-pipe-network": {
+      "fnv1a64": "cb6d2af2285211c3",
+      "bytes": 232
+    },
+    "viewer-sample-tin": {
+      "fnv1a64": "cb6d2af2285211c3",
+      "bytes": 232
+    }
+  }
+}

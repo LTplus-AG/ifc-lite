@@ -307,7 +307,7 @@ test('the gate passes on the repo and states its counts', () => {
   assert.equal(r.status, 0, output);
   assert.match(
     output,
-    /check-source-text-assertions: OK \(29 allowlisted, \d+ marked, 0 new\)/,
+    /check-source-text-assertions: OK \(28 allowlisted, \d+ marked, 0 new\)/,
     'a pass must state the numbers, not merely exit 0',
   );
 });

@@ -10,8 +10,6 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use ifc_lite_core::EntityScanner;
-
 pub use crate::step_api::{
     AttrMutation, CopyOnWriteMutation, PropMutation, StepOptions, StepStats,
 };
@@ -107,21 +105,18 @@ fn emit<W: std::io::Write>(
     opts: &StepOptions,
     out: &mut W,
 ) -> std::io::Result<StepStats> {
-    // 1. Index every entity line (preserve source order).
-    let mut order: Vec<u32> = Vec::new();
-    let mut line_of: HashMap<u32, (usize, usize)> = HashMap::new();
-    let mut max_id = 0u32;
-    let mut owner_histories: Vec<u32> = Vec::new();
-    let mut scanner = EntityScanner::new(content);
-    while let Some((id, type_name, start, end)) = scanner.next_entity() {
-        max_id = max_id.max(id);
+    // 1. Index every entity line (preserve source order). A repeated id keeps
+    // its last record, as core does, and the rest are counted (#7682,
+    // EXPORT-STEP-11).
+    let mut owner_histories: Vec<(u32, usize)> = Vec::new();
+    let index = crate::step_index::RecordIndex::build(content, |id, type_name, start| {
         if type_name.eq_ignore_ascii_case("IFCOWNERHISTORY") {
-            owner_histories.push(id);
+            owner_histories.push((id, start));
         }
-        if line_of.insert(id, (start, end)).is_none() {
-            order.push(id);
-        }
-    }
+    });
+    let owner_histories: Vec<u32> =
+        owner_histories.into_iter().filter(|&(id, start)| index.is_kept(id, start)).map(|(id, _)| id).collect();
+    let (order, line_of, max_id) = (&index.order, &index.spans, index.max_id);
 
     // 2. Resolve the included set + forward reference closure.
     let mut refused_refs = 0usize;
@@ -158,6 +153,7 @@ fn emit<W: std::io::Write>(
     // Only convert entity types/attributes when an explicit target differs from source.
     let converting = opts.schema.is_some()
         && crate::schema_convert::needs_conversion(&source_schema, &schema);
+    let mut flatten = crate::schema_style_flatten::StyleFlatten::for_export(content, &source_schema, &schema); // D57
     // The slots IFC2X3 requires a value in: `OwnerHistory` from the first owner
     // history this export writes (#4686), the rest from the generated
     // required-slot table (#4714).
@@ -176,44 +172,38 @@ fn emit<W: std::io::Write>(
     // A list plus a last-wins rule made "the value at this index" a derived
     // fact that every reader re-derived its own way, and two of them got it
     // wrong. Keyed by index there is nothing left to derive.
+    // A value that is not one STEP value is refused here, before it can shift
+    // a slot or close the record early (#7682, EXPORT-STEP-26).
     let mut muts_by_id: HashMap<u32, BTreeMap<usize, String>> = HashMap::new();
     for m in &opts.attribute_mutations {
+        if !crate::step_slot::is_step_value(&m.value) {
+            attribute_edits_refused += 1;
+            continue;
+        }
         muts_by_id.entry(m.express_id).or_default().insert(m.index, m.value.clone());
     }
 
     // Copy-on-write, resolved before the emit loop so the copies and the
     // repointed referrers both go through it. Its own module: the pass has four
     // rules now and every one of them is a file that came out wrong without it.
-    let resolved = crate::step_cow::resolve(
-        &opts.copy_on_write,
-        content,
-        &line_of,
-        &included,
-        &muts_by_id,
-        max_id.checked_add(1),
-    );
-    let next_id = resolved.next_id;
+    // One allocator for the copies and the property sets after them
+    // (#7682, EXPORT-STEP-9).
+    let mut ids = crate::step_ids::IdAllocator::after(max_id);
+    let resolved = crate::step_cow::resolve(&opts.copy_on_write, content, line_of, &included, &muts_by_id, &mut ids);
     let copies_refused = resolved.refused;
-    let copies = resolved.copies;
+    let copies = resolved.copies; flatten.note_edits(content, &copies, &muts_by_id);
     let repointed = resolved.repointed;
 
     // 3. Emit header + filtered entities (source order) + footer.
     // The FILE_SCHEMA token, by the TypeScript twin's rule: keep the source's
     // exact identifier unless this export converts, else declare the target
     // family's file identifier (IFC4X3 is written as IFC4X3_ADD2, #5351).
-    let declared = source_header
-        .as_ref()
-        .and_then(|h| h.schema_identifiers.first())
-        .filter(|s| !s.is_empty());
-    let header_schema = match declared {
-        Some(token) if !converting => token.as_str(),
-        _ => crate::file_schema::file_schema_identifier(&schema),
-    };
+    let header_schema = crate::file_schema::declared_token(source_header.as_ref(), converting, &schema);
     crate::step_header::write_header(out, opts, source_header.as_ref(), header_schema)?;
 
     let mut written = 0usize;
-    for id in &order {
-        if included.contains(id) {
+    for id in order {
+        if included.contains(id) && !flatten.drops(*id) {
             if let Some(&(s, e)) = line_of.get(id) {
                 let raw = String::from_utf8_lossy(&content[s..e]);
                 // Apply root-attribute edits first (original-schema positions), then convert.
@@ -223,6 +213,7 @@ fn emit<W: std::io::Write>(
                     }
                     None => raw.into_owned(),
                 };
+                let Some(edited) = flatten.line(&source_schema, edited) else { continue };
                 if converting {
                     let converted = crate::schema_convert::convert_step_line(
                         &edited,
@@ -244,7 +235,7 @@ fn emit<W: std::io::Write>(
 
     // The copies, emitted rather than appended: counted in `written` and put
     // through `convert_step_line` like every other record.
-    for (copy_id, source_id, edits) in &copies {
+    for (copy_id, source_id, edits) in copies.iter().filter(|c| !flatten.drops(c.0)) {
         if let Some(&(s0, e0)) = line_of.get(source_id) {
             let raw = String::from_utf8_lossy(&content[s0..e0]);
             // The caller's edits to the record belong to the copy too: the
@@ -254,7 +245,7 @@ fn emit<W: std::io::Write>(
             let mut muts = muts_by_id.get(source_id).cloned().unwrap_or_default();
             muts.extend(edits.iter().map(|(i, v)| (*i, v.clone())));
             let edited = apply_attr_mutations_counted(&raw, &muts, &mut attribute_edits_refused);
-            let renumbered = renumber(&edited, *copy_id);
+            let Some(renumbered) = flatten.line(&source_schema, renumber(&edited, *copy_id)) else { continue };
             if converting {
                 let converted = crate::schema_convert::convert_step_line(
                     &renumbered,
@@ -273,85 +264,60 @@ fn emit<W: std::io::Write>(
         }
     }
 
-    // 4. Synthesize new property sets from property mutations (fresh ids past max_id).
-    if !opts.property_mutations.is_empty() {
-        // Group props by (entity, pset) preserving first-seen order.
-        let mut groups: Vec<((u32, String), Vec<(&str, &str)>)> = Vec::new();
-        let mut index_of: HashMap<(u32, String), usize> = HashMap::new();
-        for m in &opts.property_mutations {
-            // Only attach to entities actually present in the export.
-            if !included.contains(&m.express_id) {
-                continue;
-            }
-            let key = (m.express_id, m.pset_name.clone());
-            let idx = *index_of.entry(key.clone()).or_insert_with(|| {
-                groups.push((key.clone(), Vec::new()));
-                groups.len() - 1
-            });
-            groups[idx].1.push((m.prop_name.as_str(), m.value.as_str()));
+    // 4. Synthesize new property sets from property mutations (fresh ids past
+    // max_id). Every mutation that does not reach the file is counted
+    // (#7682, EXPORT-STEP-10).
+    let mut property_mutations_refused = 0usize;
+    // Group props by (entity, pset) preserving first-seen order.
+    let mut groups: Vec<((u32, String), Vec<(&str, &str)>)> = Vec::new();
+    let mut index_of: HashMap<(u32, String), usize> = HashMap::new();
+    for m in &opts.property_mutations {
+        // Only attach to entities actually present in the export, and only a
+        // value that is one STEP value (EXPORT-STEP-26).
+        if !included.contains(&m.express_id) || !crate::step_slot::is_step_value(&m.value) {
+            property_mutations_refused += 1;
+            continue;
         }
-
-        // Same exhaustion, same answer: inventing ids on a full file would
-        // duplicate real records.
-        let Some(mut next) = next_id else {
-            out.write_all(b"ENDSEC;\nEND-ISO-10303-21;\n")?;
-            return Ok(StepStats {
-                total: order.len(),
-                written,
-                copies_refused,
-                refused_refs,
-                attribute_edits_refused,
-                owner_history_unfilled: slot_fill.owner_history_unfilled(),
-                required_slots_unfilled: slot_fill.required_slots_unfilled(),
-                ifc4_required_slots_unfilled: checks.ifc4_slots.required_slots_unfilled(),
-                enum_values_lost: checks.enums.lost(),
-                enum_values_refused: checks.enums.refused(),
-            });
+        let key = (m.express_id, m.pset_name.clone());
+        let idx = *index_of.entry(key.clone()).or_insert_with(|| {
+            groups.push((key.clone(), Vec::new()));
+            groups.len() - 1
+        });
+        groups[idx].1.push((m.prop_name.as_str(), m.value.as_str()));
+    }
+    for ((express_id, pset_name), props) in &groups {
+        // One property set costs one id per property plus one for the set
+        // and one for the relationship, reserved together: a group that does
+        // not fit in the id space left is refused whole, so nothing
+        // half-written reaches the file and no id is handed out twice.
+        let needed = u32::try_from(props.len()).ok().and_then(|n| n.checked_add(2));
+        let Some(mut next) = needed.and_then(|n| ids.reserve(n)) else {
+            property_mutations_refused += props.len();
+            continue;
         };
-        for ((express_id, pset_name), props) in &groups {
-            // One property set costs one id per property plus one for the set
-            // and one for the relationship. Checking that a single id is left
-            // is not enough: a group that starts near the ceiling used to run
-            // off it part way through and wrap, emitting ids that already
-            // belong to real records. A group that does not fit is skipped
-            // whole, so nothing half-written reaches the file.
-            let needed = u32::try_from(props.len()).ok().and_then(|n| n.checked_add(2));
-            match needed.and_then(|n| u32::MAX.checked_sub(n).map(|limit| next <= limit)) {
-                Some(true) => {}
-                _ => continue,
-            }
-            let mut prop_refs: Vec<u32> = Vec::with_capacity(props.len());
-            for (pname, value) in props {
-                let line = format!(
-                    "#{next}=IFCPROPERTYSINGLEVALUE('{}',$,{},$);",
-                    escape(pname),
-                    value
-                );
-                write_synthesized(out, line, targets_ifc2x3, &mut slot_fill)?;
-                prop_refs.push(next);
-                next += 1;
-                written += 1;
-            }
-            let psid = next;
-            next += 1;
-            let refs_str = prop_refs.iter().map(|r| format!("#{r}")).collect::<Vec<_>>().join(",");
-            let line = format!(
-                "#{psid}=IFCPROPERTYSET('{}',$,'{}',$,({}));",
-                crate::schema_convert::placeholder_guid(psid),
-                escape(pset_name),
-                refs_str
-            );
+        let mut prop_refs: Vec<u32> = Vec::with_capacity(props.len());
+        for (pname, value) in props {
+            let line = format!("#{next}=IFCPROPERTYSINGLEVALUE('{}',$,{},$);", escape(pname), value);
             write_synthesized(out, line, targets_ifc2x3, &mut slot_fill)?;
-            written += 1;
-            let rid = next;
+            prop_refs.push(next);
             next += 1;
-            let line = format!(
-                "#{rid}=IFCRELDEFINESBYPROPERTIES('{}',$,$,$,(#{express_id}),#{psid});",
-                crate::schema_convert::placeholder_guid(rid),
-            );
-            write_synthesized(out, line, targets_ifc2x3, &mut slot_fill)?;
             written += 1;
         }
+        let (psid, rid) = (next, next + 1);
+        let refs_str = prop_refs.iter().map(|r| format!("#{r}")).collect::<Vec<_>>().join(",");
+        let line = format!(
+            "#{psid}=IFCPROPERTYSET('{}',$,'{}',$,({}));",
+            crate::schema_convert::placeholder_guid(psid),
+            escape(pset_name),
+            refs_str
+        );
+        write_synthesized(out, line, targets_ifc2x3, &mut slot_fill)?;
+        let line = format!(
+            "#{rid}=IFCRELDEFINESBYPROPERTIES('{}',$,$,$,(#{express_id}),#{psid});",
+            crate::schema_convert::placeholder_guid(rid),
+        );
+        write_synthesized(out, line, targets_ifc2x3, &mut slot_fill)?;
+        written += 2;
     }
 
     out.write_all(b"ENDSEC;\nEND-ISO-10303-21;\n")?;
@@ -365,8 +331,11 @@ fn emit<W: std::io::Write>(
         owner_history_unfilled: slot_fill.owner_history_unfilled(),
         required_slots_unfilled: slot_fill.required_slots_unfilled(),
         ifc4_required_slots_unfilled: checks.ifc4_slots.required_slots_unfilled(),
-                enum_values_lost: checks.enums.lost(),
-                enum_values_refused: checks.enums.refused(),
+        enum_values_lost: checks.enums.lost(),
+        enum_values_refused: checks.enums.refused(),
+        attribute_values_dropped: checks.attribute_values_dropped,
+        property_mutations_refused,
+        duplicate_records_dropped: index.duplicates.len(),
     })
 }
 

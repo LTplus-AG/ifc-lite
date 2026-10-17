@@ -36,6 +36,12 @@ pub enum DataModelParquetError {
     Io(#[from] std::io::Error),
     #[error("JSON error: {0}")]
     Json(#[from] serde_json::Error),
+    /// The data model hit a size budget during extraction ([`DataModel::refused`]).
+    #[error("data model refused: {0}")]
+    Refused(String),
+    /// A section over the `u32` length prefix of the wire format.
+    #[error(transparent)]
+    Framing(#[from] crate::services::ParquetError),
 }
 
 /// Serialize data model to Parquet format.
@@ -50,6 +56,9 @@ pub enum DataModelParquetError {
 pub fn serialize_data_model_to_parquet(
     data_model: &DataModel,
 ) -> Result<Vec<u8>, DataModelParquetError> {
+    if let Some(reason) = &data_model.refused {
+        return Err(DataModelParquetError::Refused(reason.clone()));
+    }
     // Serialize all tables in parallel using rayon
     let (entities_data, ((properties_data, quantities_data), (relationships_data, spatial_data))) =
         rayon::join(
@@ -95,25 +104,36 @@ pub fn serialize_data_model_to_parquet(
     let documents_data = documents_data?;
 
     // Write format: [entities_len][entities_data][properties_len][properties_data][quantities_len][quantities_data][relationships_len][relationships_data][spatial_len][spatial_data][classifications_len][...][materials_len][...][documents_len][...]
-    let mut result = Vec::new();
-    result.extend_from_slice(&(entities_data.len() as u32).to_le_bytes());
-    result.extend_from_slice(&entities_data);
-    result.extend_from_slice(&(properties_data.len() as u32).to_le_bytes());
-    result.extend_from_slice(&properties_data);
-    result.extend_from_slice(&(quantities_data.len() as u32).to_le_bytes());
-    result.extend_from_slice(&quantities_data);
-    result.extend_from_slice(&(relationships_data.len() as u32).to_le_bytes());
-    result.extend_from_slice(&relationships_data);
-    result.extend_from_slice(&(spatial_data.len() as u32).to_le_bytes());
-    result.extend_from_slice(&spatial_data);
-    result.extend_from_slice(&(classifications_data.len() as u32).to_le_bytes());
-    result.extend_from_slice(&classifications_data);
-    result.extend_from_slice(&(materials_data.len() as u32).to_le_bytes());
-    result.extend_from_slice(&materials_data);
-    result.extend_from_slice(&(documents_data.len() as u32).to_le_bytes());
-    result.extend_from_slice(&documents_data);
+    // Each length is a wire-format u32: `check_u32_len` refuses a section past
+    // 4 GiB instead of writing a wrapped prefix that would misframe every later
+    // table on the client (#7675, SERVER-14).
+    let sections: [(&str, &[u8]); 8] = [
+        ("entities", &entities_data),
+        ("properties", &properties_data),
+        ("quantities", &quantities_data),
+        ("relationships", &relationships_data),
+        ("spatial", &spatial_data),
+        ("classifications", &classifications_data),
+        ("materials", &materials_data),
+        ("documents", &documents_data),
+    ];
+    check_section_lengths(sections.iter().map(|(name, bytes)| (*name, bytes.len())))?;
+    let mut result = Vec::with_capacity(sections.iter().map(|(_, bytes)| 4 + bytes.len()).sum());
+    for (_, bytes) in sections {
+        result.extend_from_slice(&(bytes.len() as u32).to_le_bytes());
+        result.extend_from_slice(bytes);
+    }
 
     Ok(result)
+}
+
+/// Every section's length against the `u32` wire prefix, by length alone, so
+/// the guard is testable without a 4 GiB section (#7675, SERVER-14).
+fn check_section_lengths<'a>(lengths: impl Iterator<Item = (&'a str, usize)>) -> Result<(), DataModelParquetError> {
+    for (name, len) in lengths {
+        crate::services::parquet::check_u32_len(name, len)?;
+    }
+    Ok(())
 }
 
 /// Serialize classification associations table.

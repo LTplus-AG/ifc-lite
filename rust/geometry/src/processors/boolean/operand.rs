@@ -7,10 +7,11 @@
 //! Split out of `boolean/mod.rs` (module-size ratchet) when the unsupported-
 //! operand arm gained its diagnostic record (#3821).
 
+use super::brep_voids::brep_with_voids_shell_kind;
 use super::{BooleanClippingProcessor, CsgSolidProcessor};
 use crate::diagnostics::{BoolFailureReason, BoolOp};
 use crate::router::builtin_processor;
-use crate::{Mesh, Result, TessellationQuality};
+use crate::{Mesh, Point3, Result, TessellationQuality, Vector3};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 
 /// Boolean/CSG operand nodes one `process` call (one representation item)
@@ -106,6 +107,43 @@ pub(super) fn boolean_operator(entity: &DecodedEntity) -> std::result::Result<Bo
 }
 
 impl BooleanClippingProcessor {
+    /// The DIFFERENCE step's SecondOperand, or `None` with the dropped step on
+    /// record when the reference does not resolve. A `?` here returned `Err`
+    /// and deleted the HOST with its unreadable cutter (#7688, the PROC-S17
+    /// shape): the caller keeps the mesh it has, like any dropped operand.
+    pub(super) fn second_operand_or_record(
+        &self,
+        op: BoolOp,
+        node: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+    ) -> Option<DecodedEntity> {
+        let resolved = node.get(2).and_then(|attr| decoder.resolve_ref(attr).ok().flatten());
+        if resolved.is_none() {
+            self.record_failure(op, BoolFailureReason::EmptyOperand);
+        }
+        resolved
+    }
+
+    /// A half-space cutter's plane, or `None` with the dropped cut on record
+    /// (#7688 PROC-S17). `parse_half_space_solid` refuses a base surface that
+    /// is not an `IfcPlane` or a plane without a usable Position; through `?`
+    /// that refusal deleted the host. Now the host stays uncut, exactly as for
+    /// every other unreadable cutter (see `process_operand_checked`).
+    pub(super) fn half_space_plane_or_record(
+        &self,
+        half_space: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+    ) -> Option<(Point3<f64>, Vector3<f64>, bool)> {
+        let plane = self.parse_half_space_solid(half_space, decoder).ok();
+        if plane.is_none() {
+            self.record_failure(
+                BoolOp::Difference,
+                BoolFailureReason::UnsupportedOperand(half_space.ifc_type.to_string()),
+            );
+        }
+        plane
+    }
+
     /// Process a solid operand, reporting whether it meshed empty with that
     /// loss already on record: its type had NO meshing branch here, or it is
     /// a nested boolean or `IfcCsgSolid` whose own walk ended empty on a loss
@@ -182,9 +220,29 @@ impl BooleanClippingProcessor {
                 // Recursive case with depth tracking
                 self.process_with_depth(operand, decoder, &self.schema, depth + 1, quality, visited)
             }
+            // An open swept surface bounds no volume and is not an
+            // `IfcBooleanOperand`. Main refused it here (the type had no
+            // built-in); since #7688 registered it, meshing it would cut the
+            // host open along the strip. It stays an unsupported operand.
+            IfcType::IfcSurfaceOfLinearExtrusion => {
+                self.record_failure(
+                    op,
+                    BoolFailureReason::UnsupportedOperand(operand.ifc_type.to_string()),
+                );
+                Ok((Mesh::new(), true))
+            }
             other => match builtin_processor(other.clone(), &self.schema) {
                 Some(processor) => {
-                    processor.process(operand, decoder, &self.schema, quality).map(|m| (m, false))
+                    let outer = processor.process(operand, decoder, &self.schema, quality)?;
+                    // A cutter is the solid IFC defines, not its Outer shell
+                    // alone (#7786). The BASE operand (`BoolOp::Unknown`) keeps
+                    // the shell: the same item meshes that way outside a boolean.
+                    if op != BoolOp::Unknown {
+                        if let Some(kind) = brep_with_voids_shell_kind(other) {
+                            return Ok(self.without_voids(kind, op, operand, outer, decoder, quality));
+                        }
+                    }
+                    Ok((outer, false))
                 }
                 // No built-in meshes this operand type: the operand resolves to
                 // an EMPTY mesh. As a FIRST operand that empties the whole

@@ -30,6 +30,8 @@ export type Lod0Json = {
   lod: 0;
   units: 'm';
   elements: Lod0Element[];
+  /** Elements refused rather than emitted (e.g. a `PlacementRelTo` cycle); absent when none. */
+  skipped?: { expressID: number; reason: string }[];
 };
 
 export type Lod1MetaJson = {

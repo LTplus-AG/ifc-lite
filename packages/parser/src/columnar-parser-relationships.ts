@@ -10,6 +10,7 @@
  */
 
 import { skipCommas, readRefList } from './columnar-parser-attributes.js';
+import { readPropertyDefinitionRefs } from './property-definition-refs.js';
 import { getRelationshipSlotPlan } from './relationship-schema-slots.js';
 import type { IfcDataStore } from './columnar-parser.js';
 
@@ -114,7 +115,9 @@ export function extractPropertyRelFast(
     while (pos < end && buffer[pos] !== 0x2C) pos++;
     pos++;
 
-    const [relatingDefs, _] = readRefList(buffer, pos, end);
+    // A SET holds each member once; `(#20,#20)` must not add the edge twice.
+    const written = readPropertyDefinitionRefs(buffer, pos, end);
+    const relatingDefs = written.length > 1 ? [...new Set(written)] : written;
     if (relatingDefs.length === 0 || relatedObjects.length === 0) return null;
     return { relatedObjects, relatingDefs };
 }

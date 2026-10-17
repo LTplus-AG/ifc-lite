@@ -18,6 +18,7 @@
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { MeshData, GeometryResult } from '@ifc-lite/geometry';
+import { renderFrameWorldOffset } from '@ifc-lite/geometry/world-frame';
 import { IFCX_VERSION } from '@ifc-lite/data';
 import { convertEntityType, type IfcSchemaVersion } from './schema-converter.js';
 import { getEffectiveEntityIndex } from './effective-index.js';
@@ -614,7 +615,8 @@ export class Ifc5Exporter {
     const allPoints: number[][] = [];
     const allIndices: number[] = [];
     let indexOffset = 0;
-
+    // The viewer's meshes are in its shifted render frame; points are absolute (#7734).
+    const world = renderFrameWorldOffset(this.geometryResult?.coordinateInfo);
     for (const mesh of meshes) {
       // Positions are in the element's local frame (world = origin + position);
       // fold the per-mesh origin to world BEFORE the Y-up→Z-up swap. The IFCX
@@ -622,14 +624,12 @@ export class Ifc5Exporter {
       // xformop). No-op when origin is absent/[0,0,0].
       const o = mesh.origin;
       const ox = o ? o[0] : 0, oy = o ? o[1] : 0, oz = o ? o[2] : 0;
-      // Convert positions from Y-up to Z-up
-      // Y-up: X=right, Y=up, Z=back
-      // Z-up: X=right, Y=forward, Z=up
+      // Y-up (X right, Y up, Z back) -> Z-up (X right, Y forward, Z up)
       for (let i = 0; i < mesh.positions.length; i += 3) {
         const x = mesh.positions[i] + ox;
         const y = mesh.positions[i + 1] + oy;   // Y-up Y = Z-up Z
         const z = mesh.positions[i + 2] + oz;   // Y-up Z = -Z-up Y
-        allPoints.push([x, -z, y]);
+        allPoints.push([x + world.x, -z + world.y, y + world.z]);
       }
 
       // Offset indices for merged mesh

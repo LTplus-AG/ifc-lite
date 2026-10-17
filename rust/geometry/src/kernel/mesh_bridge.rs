@@ -14,6 +14,9 @@ use super::arrangement::{
 use super::signed_volume::{signed_volume6, signed_volume6_about, volume_reference};
 use crate::mesh::Mesh;
 
+mod batch_subtract;
+pub use batch_subtract::BatchSubtract;
+
 /// f32-near-coplanar reconciliation snap grid, in the CALLER's unit — NOT
 /// metres (#2684): 15 µm on the METRE path (`router/voids`), 15 nm on the
 /// FILE-UNIT boolean path. Past |c| = 128 CALLER UNITS the f32 spacing is
@@ -50,12 +53,10 @@ use super::plane_weld::{
 /// reachable panic sites).
 pub fn mesh_to_tris(m: &Mesh) -> Vec<Tri> {
     let vertex = |i: u32| -> Option<[f64; 3]> {
-        let b = (i as usize) * 3;
-        let c = [
-            *m.positions.get(b)? as f64,
-            *m.positions.get(b + 1)? as f64,
-            *m.positions.get(b + 2)? as f64,
-        ];
+        // Checked: a wasm32 index past 2^32/3 must drop, not wrap (#7688).
+        let b = (i as usize).checked_mul(3)?;
+        let p = m.positions.get(b..b.checked_add(3)?)?;
+        let c = [p[0] as f64, p[1] as f64, p[2] as f64];
         if !c.iter().all(|v| v.is_finite()) {
             return None;
         }
@@ -151,11 +152,23 @@ pub(crate) fn orient_outward(mut tris: Vec<Tri>) -> Vec<Tri> {
 
 /// `host − cutter` as a `Mesh`, retaining the general operand weld.
 /// Opening-specific welding is selected internally by the void router.
+///
+/// Owns its #1109 budget like [`union`] (#7688 KERNEL-17): a fresh count, so
+/// a stale one cannot truncate it, and EMPTY on a trip, never the partial
+/// arrangement. Inside a spent element it trips at once.
 pub fn subtract(host: &Mesh, cutter: &Mesh) -> Mesh {
-    subtract_with_change(host, cutter, false).0
+    super::budget::begin();
+    let (out, _, _) = subtract_with_change(host, cutter, false);
+    if super::budget::tripped() {
+        return Mesh::new();
+    }
+    out
 }
 
-/// Like [`subtract`], but also returns the classifier's `changed` bit (#4692):
+/// Like [`subtract`], but also returns the classifier's `changed` bit (#4692).
+/// Caller-managed budget: the caller calls `budget::begin()` first and
+/// discards the result when `budget::tripped()` (`csg::subtract_mesh`).
+///
 /// `false` means no host sub-triangle was dropped and no cutter face was kept,
 /// so the triangles are the host re-tessellated, not a cut. [`subtract_many`]
 /// reads the same bit.
@@ -179,34 +192,6 @@ pub(crate) fn subtract_with_change(host: &Mesh, cutter: &Mesh, opening: bool) ->
     (tris_to_mesh_without_plane_tags(&tris), changed, conforming)
 }
 
-/// What [`subtract_many`] made of a cutter group.
-#[must_use]
-#[derive(Debug, Clone)]
-pub enum BatchSubtract {
-    /// The arrangement conformed (or its lenient batch passed the volume
-    /// oracle) and at least one cutter reaches the host solid. Empty when the
-    /// cutters engulf the host.
-    Cut(Mesh),
-    /// The arrangement conformed but no cutter reaches the host solid: every
-    /// host sub-triangle was kept and no cutter face was. The host is unchanged.
-    Unchanged,
-    /// No trustworthy arrangement: an unrecovered constraint remained and the
-    /// lenient batch failed the volume oracle, or the oracle itself tripped the
-    /// budget. The caller falls back to sequential per-cutter subtraction.
-    Nonconforming,
-}
-
-impl BatchSubtract {
-    /// `Cut` when the classifier changed the host, `Unchanged` otherwise.
-    fn classified(tris: &[Tri], changed: bool) -> Self {
-        if changed {
-            Self::Cut(tris_to_mesh_without_plane_tags(tris))
-        } else {
-            Self::Unchanged
-        }
-    }
-}
-
 /// `host − (∪ cutters)` as a `Mesh` — the batched void-group subtract.
 ///
 /// The cutters MUST be pairwise disjoint (the router groups by snap-band-
@@ -218,12 +203,22 @@ impl BatchSubtract {
 /// there is no per-cutter f64→f32→snap round-trip to re-jitter and re-crack the
 /// previous cut's seams. Component order is the caller's (deterministic).
 /// See [`BatchSubtract`] for the three outcomes.
+///
+/// Owns its #1109 budget like [`subtract`]: a trip is `Nonconforming`, the
+/// outcome callers already fall back from, never a truncated `Cut` or a
+/// false `Unchanged` (#7688 KERNEL-17).
 pub fn subtract_many(host: &Mesh, cutters: &[&Mesh]) -> BatchSubtract {
-    subtract_many_with_conformity(host, cutters, false, false).0
+    super::budget::begin();
+    let (out, _, _) = subtract_many_with_conformity(host, cutters, false, false);
+    if super::budget::tripped() {
+        return BatchSubtract::Nonconforming;
+    }
+    out
 }
 
 /// Keep the provenance of an unchanged batch for the void router (#6516).
 /// A volume-checked nonconforming miss must retain the sequential fallback.
+/// Caller-managed budget, as [`subtract_with_change`] (`csg::group_cut`).
 pub(crate) fn subtract_many_with_conformity(
     host: &Mesh, cutters: &[&Mesh], opening: bool, retain_conforming_miss: bool,
 ) -> (BatchSubtract, bool, Option<Mesh>) {

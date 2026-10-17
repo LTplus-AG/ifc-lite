@@ -68,6 +68,42 @@ export function renderFrameWorldOffset(info?: RenderFrameInfo | null): Vec3 {
   return { x: offset.x + 0, y: offset.y + 0, z: offset.z + 0 };
 }
 
+/**
+ * The restore a writer needs to put render-frame meshes back in IFC world,
+ * as the column-major 4x4 the Rust exporters take (`MeshFrame::world_matrix`,
+ * #7734): `world = M * baked` with `baked` in IFC Z-up (the axes the matrix
+ * acts in, so the GLB root can carry it) and f64. A render-frame offset is a
+ * pure translation, so only the last column varies. `undefined` for a model
+ * that was not shifted: there is nothing to restore, and `undefined` is how
+ * `exportGlbFromMeshes` is told so.
+ */
+export function renderFrameWorldMatrix(info?: RenderFrameInfo | null): number[] | undefined {
+  const o = renderFrameWorldOffset(info);
+  if (o.x === 0 && o.y === 0 && o.z === 0) return undefined;
+  return [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, o.x, o.y, o.z, 1];
+}
+
+/**
+ * [`renderFrameWorldMatrix`] for vertices that are still in the render
+ * frame's own Y-up axes (a Parquet or IFC5 table of the viewer's meshes):
+ * `world = M * [x, y, z, 1]`, `M` column-major, IFC Z-up metres. It is the
+ * same restore with the Y-up to Z-up basis folded in, so a reader needs no
+ * axis convention to use it. Always 16 numbers (the basis is not identity).
+ */
+export function renderFrameYupToWorldMatrix(info?: RenderFrameInfo | null): number[] {
+  const o = renderFrameWorldOffset(info);
+  return [1, 0, 0, 0, 0, 0, 1, 0, 0, -1, 0, 0, o.x, o.y, o.z, 1];
+}
+
+/**
+ * The wire tag (`mesh_coordinate_space`, the Rust `MeshCoordinateSpace`) of a
+ * render frame: `model_rtc` when it is shifted, `raw_ifc` when not. The
+ * viewer's meshes carry no site rotation, so `site_local` never applies here.
+ */
+export function renderFrameCoordinateSpace(info?: RenderFrameInfo | null): 'model_rtc' | 'raw_ifc' {
+  return renderFrameWorldMatrix(info) ? 'model_rtc' : 'raw_ifc';
+}
+
 /** A loaded model as far as the federation frame rule is concerned. */
 export interface FrameCandidate {
   /** Load order; the earliest-loaded anchored model owns the shared frame. */

@@ -5,6 +5,7 @@
 //! Cache-key builders and symbolic-data cache helpers shared by the parse endpoints.
 
 use super::ParseQuery;
+use crate::error::ApiError;
 use crate::services::cache::DiskCache;
 use crate::services::{DataModelEntities, OpeningFilterMode, ParquetLayout};
 use ifc_lite_processing::{SymbolicDataWithProvenance, TessellationQuality};
@@ -97,9 +98,12 @@ pub(crate) fn request_cache_key(data: &[u8], query: &ParseQuery, quality: Tessel
 /// symbols for every file already on disk: measured on a translated, rotated
 /// site, a planted v4 entry came back with its grid axis at `(500, -300)`
 /// where the live parse puts it at `(0, 0)`.
+/// v7 with PROCESSING-5 (#7691): `metadata.schema_version` is now header-only;
+/// GUID or DATA text no longer reports IFC4 (a whole-file search matched
+/// `ifc4` inside GUIDs, so many IFC2X3 models were cached as IFC4).
 /// Bump again on any change to what `ParseResponse` means on the wire.
 pub(crate) fn json_response_cache_key(cache_key: &str) -> String {
-    format!("{cache_key}-json-v6")
+    format!("{cache_key}-json-v7")
 }
 
 /// The flat Parquet geometry entry for a request cache key, under the LAYOUT
@@ -145,8 +149,11 @@ pub(crate) fn parquet_geometry_key(cache_key: &str, layout: ParquetLayout) -> St
 /// `IfcMapConversionScaled` factors, and a `v4` header replays them as 1 (see
 /// [`json_response_cache_key`]). The geometry keys stay put: a miss here
 /// re-parses, and the parse rewrites the geometry entry beside it.
+/// `v6` with PROCESSING-5 (#7691): `metadata.schema_version` is now
+/// header-only; GUID or DATA text no longer reports IFC4. Geometry keys stay
+/// put for the same reason as `v5`.
 pub(crate) fn parquet_metadata_key(cache_key: &str) -> String {
-    format!("{cache_key}-parquet-metadata-v5")
+    format!("{cache_key}-parquet-metadata-v6")
 }
 
 /// Build the parquet geometry cache key from a file hash and opening filter,
@@ -203,7 +210,7 @@ pub(crate) fn parquet_optimized_cache_key(cache_key: &str) -> String {
 ///
 /// Holds the serialized `X-IFC-Metadata` header, `optimization_stats` included,
 /// so a replay carries the same stats the live parse reported. Distinct from
-/// the flat route's `-parquet-metadata-v5` for the same reason the bodies are.
+/// the flat route's `-parquet-metadata-v6` for the same reason the bodies are.
 /// A replay needs both entries, so bumping either one retires the pair.
 ///
 /// `v2` with #4653: the header's `metadata.georeferencing` gained the
@@ -215,8 +222,11 @@ pub(crate) fn parquet_optimized_cache_key(cache_key: &str) -> String {
 /// silently no longer describes what this route now does -- it produces a
 /// data model too. The body keeps `v1`: a metadata miss re-parses, and the
 /// parse rewrites the body (and now the data model) in place.
+/// `v4` with PROCESSING-5 (#7691): `metadata.schema_version` is now
+/// header-only; GUID or DATA text no longer reports IFC4. The body keeps its
+/// key: a metadata miss re-parses and rewrites it.
 pub(crate) fn parquet_optimized_metadata_cache_key(cache_key: &str) -> String {
-    format!("{cache_key}-parquet-optimized-metadata-v3")
+    format!("{cache_key}-parquet-optimized-metadata-v4")
 }
 
 /// Build the data-model cache key for a given file cache key.
@@ -240,6 +250,13 @@ pub(crate) fn data_model_cache_key(cache_key: &str, entities: DataModelEntities)
     format!("{cache_key}-datamodel{}-v8", entities.cache_infix())
 }
 
+/// Where a background fill records why it refused a data model (#7675: a
+/// table over its size budget), so `GET /parse/data-model` answers 400 with
+/// the reason instead of the terminal 404 for an entry nothing will write.
+pub(crate) fn data_model_refusal_key(data_model_key: &str) -> String {
+    format!("{data_model_key}-refused")
+}
+
 /// Whether a data model at the CURRENT payload version is cached for
 /// `cache_key`.
 ///
@@ -252,7 +269,8 @@ pub(crate) fn data_model_cache_key(cache_key: &str, entities: DataModelEntities)
 /// screen with no properties and no error (issue #3869). Answering `false`
 /// costs one re-parse and rewrites both entries.
 ///
-/// A cache read error answers `false`: re-parsing is the safe direction.
+/// An existence check: it stats the entry and never reads it (#7676).
+/// A store that cannot be read is `Err`, like every cache read.
 ///
 /// Asks about the entities VARIANT the request selects (#6034): a replay that
 /// skips the parse must not strand a client polling for the rooted table when
@@ -261,7 +279,7 @@ pub(crate) async fn has_current_data_model(
     cache: &DiskCache,
     cache_key: &str,
     entities: DataModelEntities,
-) -> bool {
+) -> Result<bool, ApiError> {
     has_entry(cache, &data_model_cache_key(cache_key, entities)).await
 }
 
@@ -274,37 +292,40 @@ pub(crate) async fn has_current_data_model(
 /// makes that, and a metadata entry present with no body beside it (or no
 /// symbolic sidecar) still falls through to the 404 the probe answers on a
 /// miss.
-pub(crate) async fn has_optimized_metadata(cache: &DiskCache, cache_key: &str) -> bool {
+pub(crate) async fn has_optimized_metadata(cache: &DiskCache, cache_key: &str) -> Result<bool, ApiError> {
     has_entry(cache, &parquet_optimized_metadata_cache_key(cache_key)).await
 }
 
 /// Whether the Parquet metadata header is cached for `cache_key`.
 ///
-/// The cheap half of "is this replayable": the header is a few hundred bytes,
-/// where the geometry blob is the whole model. The hash-only stream probe
-/// (#3901) asks this, plus [`has_current_data_model`], BEFORE it takes an
-/// admission slot, so the common miss (a file the server has never seen) is
-/// answered by two small reads rather than by charging a parse slot for a disk
-/// lookup. `check_cache` asks it too, because its hit sends the client to a
+/// The hash-only stream probe (#3901) asks this, plus
+/// [`has_current_data_model`], BEFORE it takes an admission slot, so the
+/// common miss (a file the server has never seen) is answered by index
+/// lookups rather than by charging a parse slot for a disk lookup. That is
+/// only safe because these read no content (#7676: they used to read the
+/// whole data-model Parquet). `check_cache` asks it too, because its hit sends the client to a
 /// fetch that needs the header (#4675). It is a pre-filter, never the
 /// decision: [`try_cached_replay`] still makes that, and a metadata entry
 /// present here with no geometry beside it falls through to the same 404.
 ///
 /// [`try_cached_replay`]: super::cached_replay::try_cached_replay
-pub(crate) async fn has_parquet_metadata(cache: &DiskCache, cache_key: &str) -> bool {
+pub(crate) async fn has_parquet_metadata(cache: &DiskCache, cache_key: &str) -> Result<bool, ApiError> {
     has_entry(cache, &parquet_metadata_key(cache_key)).await
 }
 
-/// Whether `key` has a readable entry.
-///
-/// Reads the value rather than asking `DiskCache::has`, which is an index
-/// lookup only: an index row whose content is gone would answer `true` here
-/// while every real reader still gets nothing, and a gate that reports present
-/// for an entry nobody can read is worse than no gate.
-///
-/// A read error answers `false`: re-parsing is the safe direction.
-async fn has_entry(cache: &DiskCache, key: &str) -> bool {
-    matches!(cache.get_bytes(key).await, Ok(Some(_)))
+/// Whether `key` has an entry with content on disk: [`DiskCache::lookup`],
+/// which stats the blob and never reads it (#7676, SERVER-6). These are
+/// pre-filters; the reader that acts on an entry still decides, and an entry
+/// that turns out unusable there is evicted, so this answers `false` for it
+/// from then on.
+async fn has_entry(cache: &DiskCache, key: &str) -> Result<bool, ApiError> {
+    Ok(cache.lookup(key).await?.is_some())
+}
+
+/// The stored size of `key`'s entry, `0` when it has none: what a read of it
+/// is admitted for (see [`DiskCache::lookup`], which reads nothing).
+pub(crate) async fn stored_size(cache: &DiskCache, key: &str) -> Result<u64, ApiError> {
+    Ok(cache.lookup(key).await?.map_or(0, |entry| entry.size()))
 }
 
 /// Build the symbolic-data cache key for a given file cache key.
@@ -355,29 +376,20 @@ pub(crate) async fn cache_symbolic_data(cache: &DiskCache, cache_key: &str, symb
 /// The optimized-Parquet route's parse is what writes the symbolic sidecar, so
 /// a replay that skips the parse must first check the sidecar is there. Without
 /// this, a body entry that outlived its symbolic entry replays forever and
-/// `GET /api/v1/parse/symbolic/{cache_key}` answers `202` to a key nobody
-/// writes -- the same shape as the geometry/data-model trap in #3869.
+/// `GET /api/v1/parse/symbolic/{cache_key}` answers `404` for a sidecar the
+/// client was promised -- the same shape as the geometry/data-model trap in
+/// #3869.
 ///
-/// [`load_cached_symbolic`] cannot stand in: it answers `SymbolicDataWithProvenance::default()`
-/// for an absent entry and for a model with no 2D symbols alike, so absence
-/// there is indistinguishable from success.
-pub(crate) async fn has_cached_symbolic(cache: &DiskCache, cache_key: &str) -> bool {
+pub(crate) async fn has_cached_symbolic(cache: &DiskCache, cache_key: &str) -> Result<bool, ApiError> {
     has_entry(cache, &symbolic_cache_key(cache_key)).await
 }
 
-/// Load cached symbolic data for `cache_key`, defaulting to empty when the
-/// entry is absent or unreadable.
-pub(crate) async fn load_cached_symbolic(cache: &DiskCache, cache_key: &str) -> SymbolicDataWithProvenance {
-    let key = symbolic_cache_key(cache_key);
-    match cache.get_bytes(&key).await {
-        Ok(Some(bytes)) => serde_json::from_slice(&bytes).unwrap_or_else(|e| {
-            tracing::error!(error = %e, cache_key = %cache_key, "Failed to parse cached symbolic data");
-            SymbolicDataWithProvenance::default()
-        }),
-        Ok(None) => SymbolicDataWithProvenance::default(),
-        Err(e) => {
-            tracing::error!(error = %e, cache_key = %cache_key, "Failed to read cached symbolic data");
-            SymbolicDataWithProvenance::default()
-        }
-    }
+/// Load cached symbolic data for `cache_key`. `None` when the entry is
+/// absent or unusable (#7676: the replay that needs it is then a miss, rather
+/// than a replay that silently drops the model's 2D symbols).
+pub(crate) async fn load_cached_symbolic(
+    cache: &DiskCache,
+    cache_key: &str,
+) -> Result<Option<SymbolicDataWithProvenance>, ApiError> {
+    cache.read_usable_json(&symbolic_cache_key(cache_key)).await
 }

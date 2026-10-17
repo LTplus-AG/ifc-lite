@@ -54,3 +54,30 @@ describe('RelationshipExtractor / IfcRelAssociatesMaterial', () => {
     expect(rel?.relatedObjects).toEqual([10, 11]); // the related elements
   });
 });
+
+describe('RelationshipExtractor / IfcRelDefinesByProperties over an IfcPropertySetDefinitionSet (#7681)', () => {
+  const rel = (attr5: string) => {
+    const entities = new Map<number, IfcEntity>();
+    entities.set(1, extract(1, 'IFCRELDEFINESBYPROPERTIES', `#1=IFCRELDEFINESBYPROPERTIES('3xJf$b$MP7XLbaHy6XT9EM',$,$,$,(#10,#11),${attr5});`));
+    return new RelationshipExtractor(entities).extractRelationships();
+  };
+
+  it('keeps the single-reference relationship as before', () => {
+    expect(rel('#20')).toEqual([{ type: 'IFCRELDEFINESBYPROPERTIES', relatingObject: 20, relatedObjects: [10, 11] }]);
+  });
+
+  it.each([
+    ['a bare set', '(#20,#22)'],
+    ['a typed set', 'IFCPROPERTYSETDEFINITIONSET((#20,#22))'],
+  ])('emits one relationship per definition of %s', (_label, attr5) => {
+    expect(rel(attr5).map((r) => [r.relatingObject, r.relatedObjects])).toEqual([[20, [10, 11]], [22, [10, 11]]]);
+  });
+
+  it('emits a repeated definition once', () => {
+    expect(rel('(#20,#20)').map((r) => r.relatingObject)).toEqual([20]);
+  });
+
+  it('emits nothing for a typed value that is not a property set definition set', () => {
+    expect(rel("IFCLABEL('x')")).toEqual([]);
+  });
+});

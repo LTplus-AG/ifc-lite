@@ -59,7 +59,6 @@ pub fn parse_landxml_tin_with_cancel(
     reader.config_mut().trim_text(false);
     let mut buffer = Vec::new();
     loop {
-        parser.check_cancel_and_work(1)?;
         let event = reader
             .read_event_into(&mut buffer)
             .map_err(|_| error(Code::InvalidXml, "malformed XML"))?;
@@ -79,6 +78,9 @@ impl Parser<'_> {
     /// Consume an event emitted by quick-xml.  Kept crate-visible so the
     /// chunk driver and the complete reader share all semantic transitions.
     pub(crate) fn consume_event(&mut self, event: Event<'_>) -> Result<()> {
+        // One unit of work per event, here and nowhere else (D73): the pull
+        // loop and the stream both come through this method.
+        self.check_cancel_and_work(1)?;
         match event {
             Event::Start(start) => self.start(&start),
             Event::Empty(start) => {
@@ -87,12 +89,24 @@ impl Parser<'_> {
             }
             Event::End(end) => self.end(Some(end.name().as_ref().as_bytes())),
             Event::Text(text) => self.text(text.as_ref().as_bytes()),
+            // #7680: a reference in text arrives as its own event.
+            Event::GeneralRef(reference) => {
+                self.text(crate::xml::general_ref_source(&reference).as_bytes())
+            }
             Event::CData(text) => self.cdata(text.as_ref().as_bytes()),
             Event::DocType(_) => Err(error(Code::DtdForbidden, "DOCTYPE is not allowed")),
             _ => Ok(()),
         }
     }
     fn start(&mut self, start: &BytesStart<'_>) -> Result<()> {
+        // D74: markup inside a numeric capture is refused, as in the plan and
+        // alignment families, rather than read as the text around it.
+        if self.capture.as_ref().is_some_and(|capture| capture.depth() <= self.frames.len()) {
+            return Err(error(
+                Code::InvalidSemantic,
+                "numeric LandXML capture cannot contain nested elements",
+            ));
+        }
         if self.frames.len() >= self.limits.max_depth {
             return Err(error(Code::LimitExceeded, "XML depth limit exceeded"));
         }
@@ -110,44 +124,24 @@ impl Parser<'_> {
         inherited.extend(namespaces);
         let namespace = inherited.get(prefix).map(String::as_str);
         if self.frames.is_empty() {
-            if self.root_seen {
-                return Err(error(
-                    Code::InvalidXml,
-                    "LandXML document has multiple root elements",
-                ));
-            }
+            let root = validate_root(self.root_seen, local, namespace, &attributes)?;
             self.root_seen = true;
-            if local != "LandXML" {
-                return Err(error(Code::InvalidSemantic, "root element is not LandXML"));
-            }
-            let capability = classify_landxml_version(namespace, attr(&attributes, "version"));
-            if !capability.supports_tin_ingestion() {
-                return Err(match capability {
-                    crate::LandXmlVersionCapability::NotLandXml => error(
-                        Code::UnsupportedNamespace,
-                        "root namespace is not a recognized LandXML namespace",
-                    ),
-                    _ => error(
-                        Code::UnsupportedVersion,
-                        "LandXML namespaces require a known version declaration",
-                    ),
-                });
-            }
-            self.schema = capability
-                .schema()
-                .expect("supported capability has a schema")
-                .to_owned();
+            self.schema = root.schema;
             self.target_namespace = namespace.map(str::to_owned);
-            if let Some(diagnostic) = compatibility_version_diagnostic(
-                capability,
-                attr(&attributes, "version").expect("supported capability has a version"),
-            ) {
+            if let Some(diagnostic) = root.diagnostic {
                 self.record_capability_diagnostic(diagnostic)?;
             }
-            self.version = required(&attributes, "version", "LandXML")?.to_owned();
+            self.version = root.version;
         }
         let target = namespace == self.target_namespace.as_deref();
+        // Only a name that can appear in a capture path is counted: the map
+        // lives as long as the parent, so counting every distinct child name
+        // let a flat root hold one entry per name (#7675, EDGE-LXPARSE-17).
+        let tracked = target && path::ordinal_tracked(local);
         let sibling_ordinal = self.frames.last_mut().map_or(1, |parent| {
+            if !tracked {
+                return 0;
+            }
             let ordinal = parent
                 .child_ordinals
                 .entry((target, local.to_owned()))
@@ -168,10 +162,12 @@ impl Parser<'_> {
                     "extension record limit exceeded",
                 ));
             }
+            let path = self.path_with(local);
+            self.reserve_source_path(path.len())?;
             self.extensions.push(LandXmlExtension {
                 namespace: namespace.unwrap_or("").to_owned(),
                 local_name: local.to_owned(),
-                path: self.path_with(local),
+                path,
             });
         }
         self.frames.push(Frame {
@@ -211,12 +207,9 @@ impl Parser<'_> {
         }
         match local {
             "CoordinateSystem" if self.is_path(&["LandXML", "CoordinateSystem"]) => {
-                if self.coordinate_system.is_some() {
-                    self.warnings.push(
-                        "LandXML declares multiple root CoordinateSystem records; retained the last declaration"
-                            .to_owned(),
-                    );
-                }
+                // Counted, and warned about once in `finish` (#7675,
+                // EDGE-LXPARSE-24: one warning per repeat was ~4x the input).
+                self.coordinate_systems_seen += 1;
                 self.coordinate_system = Some(LandXmlCoordinateSystem {
                     horizontal_datum: attr(&attributes, "horizontalDatum")
                         .map(|value| value.to_owned()),
@@ -227,10 +220,7 @@ impl Parser<'_> {
                 });
             }
             "Surface" if self.is_path(&["LandXML", "Surfaces", "Surface"]) => {
-                if self.surfaces_seen >= self.limits.max_surfaces {
-                    return Err(error(Code::LimitExceeded, "surface limit exceeded"));
-                }
-                self.surfaces_seen += 1;
+                self.surfaces_seen.reserve(1)?;
                 self.surface = Some(SurfaceBuilder {
                     name: required(&attributes, "name", "Surface")?.to_owned(),
                     kind: LandXmlSurfaceKind::Other,

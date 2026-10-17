@@ -5,34 +5,28 @@
 //! Non-geometric IFC attribute, property, and quantity export for Python.
 
 use ifc_lite_export::{build_export_model_with_options, ExportModel, ModelOptions};
-use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
 
-use super::GEOMETRY_STACK_BYTES;
+use super::run_geometry;
 
-/// Run the attribute/property extraction off the calling thread.
+/// Run the attribute/property extraction on the large-stack geometry pool.
 ///
-/// Shares the geometry worker's large stack: the placement resolver walks an
+/// Shares the geometry workers' large stack: the placement resolver walks an
 /// `IfcLocalPlacement` chain recursively, and the decode path is the same one
 /// the geometry pipeline needs the headroom for.
 fn run_entity_export(
+    py: Python<'_>,
     ifc_bytes: Vec<u8>,
     placements: bool,
     type_properties: bool,
     attributes: bool,
-) -> Result<ExportModel, String> {
+) -> PyResult<ExportModel> {
     let opts = ModelOptions::default()
         .with_placements(placements)
         .with_inherit_type_properties(type_properties)
         .with_attributes(attributes);
-    std::thread::Builder::new()
-        .stack_size(GEOMETRY_STACK_BYTES)
-        .name("ifclite-entities".into())
-        .spawn(move || build_export_model_with_options(&ifc_bytes, &opts))
-        .map_err(|e| format!("spawn failed: {e}"))?
-        .join()
-        .map_err(|_| "entity worker panicked".to_string())
+    run_geometry(py, "entity", move || build_export_model_with_options(&ifc_bytes, &opts))
 }
 
 /// Read attributes, property sets and quantity sets. No tessellation.
@@ -125,9 +119,7 @@ pub(super) fn entity_data(
     type_properties: bool,
     attributes: bool,
 ) -> PyResult<Py<PyAny>> {
-    let model = py
-        .detach(|| run_entity_export(ifc_bytes, placements, type_properties, attributes))
-        .map_err(PyRuntimeError::new_err)?;
+    let model = run_entity_export(py, ifc_bytes, placements, type_properties, attributes)?;
 
     let out = PyDict::new(py);
     out.set_item("length_unit_scale", model.units.length_unit_scale)?;

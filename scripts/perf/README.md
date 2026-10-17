@@ -40,6 +40,49 @@ fan-out, memory bandwidth, GPU); a change in those still needs an end-to-end
 A/B (`ab.sh`, the browser rigs below), and a green ratchet is no evidence for it.
 
 
+## Accepted eager viewer JS growth (#7759)
+
+The maintainer approved resetting only the eager viewer JS ceiling to the
+measurement from [main's ccf60b6bc0 build](https://github.com/LTplus-AG/ifc-lite/actions/runs/38927644281).
+The `perf-ratchet-measured` artifact supplies the size and timestamp recorded in
+`tests/perf-ratchets/bundle.json`; the independent builds for #7757 and #7758
+reproduced the same raw JS sizes. Summing the eager scripts from #7758's hosted
+viewer artifact independently reproduced the measurement. The existing tolerance,
+entry JS ceiling and approved WASM ceiling stay unchanged.
+
+This accepts accumulated eager-load growth, with no runtime speed claim. Record
+acceptance against raw bytes: timestamp-sensitive JS Brotli sizes remain
+informational, as documented by the measurer (#7007).
+
+## Accepted engine bundle growth (#7756)
+
+The maintainer approved resetting only the engine WASM transfer-size ceiling to
+the measurement from [main's d8c110166a build](https://github.com/LTplus-AG/ifc-lite/actions/runs/38912543766).
+That build includes the recent Rust correctness changes; its `perf-ratchet-measured`
+artifact supplies the size and timestamp recorded in `tests/perf-ratchets/bundle.json`.
+Recompressing the same build's WASM locally with Brotli quality 11 reproduced the
+measurement. The existing tolerance and both viewer JS ceilings stay unchanged.
+This accepts accumulated bundle growth, with no runtime performance claim.
+
+Treat transfer-size acceptance separately from runtime performance and output
+correctness: a size-ceiling update supplies evidence for neither. Future growth
+still requires its own measured acceptance or a reduction.
+
+## Published worker asset closure (#7648)
+
+A Node geometry consumer passed while a fresh Vite consumer failed: the geometry
+worker pool retained a TypeScript URL absent from its npm tarball. Package build
+metadata now uses the same all-module rewrite and independent verification as the
+parser; geometry and point-cloud verification checks script targets while their
+WASM assets resolve through declared packages. Turbo hashes the shared scripts.
+
+This is a packaging correction, with no runtime speed claim. The baseline browser
+artifact cannot bundle, so it supplies no valid browser timing comparison. Real
+Node consumer runs before and after produced identical mesh/triangle counts and
+byte-identical GLB exports for the committed wall and ArchiCAD FZK fixtures. See
+`tests/evidence/packed-workflows/worker-packaging.json`. Keep the external Vite
+bundle in acceptance: a Node-only WASM pass cannot prove worker asset closure.
+
 ## Several cutting planes: caps and clip cost (#7545)
 
 Browser A/B of `main` against the branch on a real GPU (Chrome 155, NVIDIA Blackwell, WebGPU), production
@@ -4046,3 +4089,36 @@ at release rather than repairing only the current rendering cache.
 Follow-up review of the bounded CPU release fix found that canonical frame restoration replaces source allocations before release, leaving prior registered copies alive. The release helper now remembers historical source allocation identities weakly and clears them alongside current shared fields while preserving independent replacements. Actual frame-restore regression and backing-allocation collection controls qualify this correction; no native speed or resident-memory improvement is claimed. See `evidence/owner-cache-6537/source-frame-replacement/`.
 
 A second bounded-release follow-up showed that immutable recolouring after frame restoration also needs to carry historical ownership. Flat pruned weak snapshots now transfer only across complete shared allocation domains; snapshots remain independent so derived replacements cannot pollute original ownership. Actual canonical recolour regressions and collection controls qualify this correction. The evidence retains the separate WASM identities observed before and after Turbo typecheck rather than relabeling a functional run. See `evidence/owner-cache-6537/immutable-history-carry/`; no native performance claim is made.
+
+## Opening-repair evidence and recording checker (#6940)
+
+**Unmerged geometry stack: browser performance UNQUALIFIED; geometry merge hold.** The
+five-layer stack adds opening corner reconciliation, certified independent plane
+fits, closed-original-operand finite-wall protection and locally unrepresentable
+cap repair. Recorded source-matched MiniBIM native/WASM/viewer parity and complete
+per-arm normalized FZK/ISSUE129/Holter CPU transfers support bounded correctness.
+Explained changed outputs retain strict cross-arm identity FAIL.
+
+Both source-matched Holter recordings qualify functional recording feasibility.
+The original October 15 finite interleaved browser cohort (plan `fdd4b255…`) fails: the first completed load fails its
+unchanged POST cadence gate, the next planned load exhausts canonical host
+refusals, and the remaining planned samples are unlaunched. Every failed attempt
+and missing sample is retained. No throughput, neutral-performance or speed claim
+is supported. Lesson: classify full consumer output in its actual frame/context,
+then qualify the unchanged complete worker-pool cohort; repaired geometry and a
+successful functional recording cannot substitute for those gates.
+Before selecting a cohort, verify the live HTTPS state and collector rather than
+trusting a cached preview page. A scheduled opportunity stopped before timing
+when the benchmark server and its forwarding route were missing; restoring them
+does not turn that unlaunched cohort into performance evidence.
+The three October 16 opportunities are distinct failed cohorts, not replacement
+samples for that original report; the [evidence index](../../docs/architecture/evidence/opening-tears-6940/README.md)
+identifies each plan and disposition. Their local receipts are not included in
+the original published packet. All scheduled opportunities are exhausted.
+Lesson: retain cohort identity through PR summaries and stop at the original
+admission budget; later host quietness cannot qualify a refused case.
+The [V6 supplemental join](../../docs/architecture/evidence/opening-tears-6940/recording-checker-v6/README.md)
+now uses the reviewed first-frame clock contract in both cadence and markers,
+and reads finalized sidecars at their actual case paths. Lesson: verify final
+checker contracts and receipt discovery against retained real captures before
+spending another capture window. This integration fix grants no timing verdict.

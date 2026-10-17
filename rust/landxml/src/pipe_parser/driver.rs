@@ -91,14 +91,16 @@ impl PipeParser<'_> {
         let text =
             std::str::from_utf8(bytes).map_err(|_| error(Code::InvalidXml, "text is not UTF-8"))?;
         self.check_character_references(character_references(text))?;
-        if self.frames.is_empty() && !text.trim().is_empty() {
-            return Err(error(Code::InvalidXml, "text outside LandXML root"));
+        if self.frames.is_empty() {
+            return crate::xml::outside_root_text(self.root_closed, text, false);
         }
+        // Resolve before the capture check: an undeclared entity is refused
+        // wherever it appears, as in an attribute value (#7680).
+        let text = unescape(text)?;
         if let Some(capture) = &mut self.capture {
             if self.frames.len() != capture.depth {
                 return Ok(());
             }
-            let text = unescape(text)?;
             if capture.input.text.len() + text.len() > self.limits.max_text_bytes {
                 return Err(error(Code::LimitExceeded, "captured text limit exceeded"));
             }
@@ -114,6 +116,9 @@ impl PipeParser<'_> {
         self.check_cancel_and_work(bytes.len())?;
         let text = std::str::from_utf8(bytes)
             .map_err(|_| error(Code::InvalidXml, "CDATA is not UTF-8"))?;
+        if self.frames.is_empty() {
+            return crate::xml::outside_root_text(self.root_closed, text, true);
+        }
         if let Some(capture) = &mut self.capture {
             if self.frames.len() == capture.depth {
                 if capture.input.text.len() + text.len() > self.limits.max_text_bytes {

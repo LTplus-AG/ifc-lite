@@ -48,6 +48,7 @@ mod schema_detection;
 mod site_local;
 
 pub use quick_metadata::is_quick_spatial_type_ci;
+pub use schema_detection::detect_schema_version;
 pub use site_local::{convert_mesh_to_site_local, native_to_baked};
 pub(crate) use site_local::site_local_rotation_invalidates_captured_transforms;
 
@@ -61,7 +62,7 @@ use color_layer::{
 use opening_filter::apply_opening_filter;
 use properties::resolve_space_zone_properties_lazy;
 use quick_metadata::{
-    build_quick_spatial_tree_node, extract_name_from_args, extract_storey_elevation_from_args,
+    build_quick_spatial_tree_node, extract_name_from_args, read_storey_elevation,
     parse_step_arguments, parse_step_ref, parse_step_ref_list, QuickSpatialNodeEntry,
 };
 use crate::mesh_frame::{MeshCoordinateSpace, MeshFrame};
@@ -514,9 +515,9 @@ fn process_geometry_streaming_filtered_with_options_and_ids(
     let provided_index = options.entity_index.clone();
     let building_index = provided_index.is_none();
     let mut inline_index = IndexBuilder::new(content.len(), building_index);
-    let mut decoder = match &provided_index {
-        Some(idx) => EntityDecoder::with_arc_index(content, idx.clone()),
-        None => EntityDecoder::new(content),
+    let mut decoder = match &provided_index { // geometry pre-pass: strict reals (#7678)
+        Some(idx) => EntityDecoder::with_arc_index(content, idx.clone()).with_strict_reals(),
+        None => EntityDecoder::new(content).with_strict_reals(),
     };
     tracing::debug!("Entity index will be built inline during the scan");
 
@@ -612,11 +613,8 @@ fn process_geometry_streaming_filtered_with_options_and_ids(
                     express_id: id,
                     type_name: type_name.to_string(),
                     name: extract_name_from_args(&args, &fallback),
-                    elevation: if keyword_eq(type_name, "IFCBUILDINGSTOREY") {
-                        extract_storey_elevation_from_args(&args)
-                    } else {
-                        None
-                    },
+                    elevation: None,
+                    raw_elevation: keyword_eq(type_name, "IFCBUILDINGSTOREY").then(|| read_storey_elevation(&args)),
                     children: Vec::new(),
                     contained: Vec::new(),
                     elements: Vec::new(),
@@ -939,7 +937,7 @@ fn process_geometry_streaming_filtered_with_options_and_ids(
         entity_jobs.retain(|job| ids.contains(&job.id));
     }
 
-    let schema_version = schema_detection::detect_schema_version(content).to_string();
+    let schema_version = detect_schema_version(content).to_string();
 
     let geometry_entity_count = entity_jobs.len();
     tracing::info!(
@@ -950,7 +948,23 @@ fn process_geometry_streaming_filtered_with_options_and_ids(
         "Entity scanning complete"
     );
 
+    // Resolve BOTH unit scales once via the shared resolver, before the quick
+    // bootstrap so its storey elevations come out in metres (PROCESSING-18)
+    // (the scan recorded IFCPROJECT's id, so this is an O(1) decode — no more full-file hunts:
+    // the historic `with_units` + `plane_angle_to_radians` pair each re-walked
+    // the whole DATA section). Seed the shared decoder so every later consumer
+    // (opening filter, metadata phase, deferred-style replay) inherits them.
+    let unit_scales = tracing::debug_span!("unit_scale")
+        .in_scope(|| crate::prepass::resolve_unit_scales(content, project_id, &mut decoder));
+    tracing::debug!(
+        length_unit_scale = unit_scales.length_unit_scale,
+        plane_angle_to_radians = unit_scales.plane_angle_to_radians,
+        "Resolved unit scales"
+    );
+    decoder.seed_unit_scales(unit_scales.geometry_length_scale(), unit_scales.plane_angle_to_radians);
     if let Some(mut spatial_nodes) = quick_spatial_nodes.take() {
+        // A refused unit has no metre scale; its elevation stays in file units.
+        spatial_nodes.values_mut().for_each(|n| n.finish_elevation(unit_scales.geometry_length_scale()));
         for (parent_id, child_ids) in quick_aggregate_links {
             if !spatial_nodes.contains_key(&parent_id) {
                 continue;
@@ -1048,24 +1062,10 @@ fn process_geometry_streaming_filtered_with_options_and_ids(
     let preprocess_start = mark(Mark::PreprocessStart, Clock::now());
     let preprocess_span =
         tracing::debug_span!("preprocess", phase_ms = tracing::field::Empty).entered();
-    // Resolve BOTH unit scales once via the shared resolver (the scan recorded
-    // IFCPROJECT's id, so this is an O(1) decode — no more full-file hunts:
-    // the historic `with_units` + `plane_angle_to_radians` pair each re-walked
-    // the whole DATA section). Seed the shared decoder so every later consumer
-    // (opening filter, metadata phase, deferred-style replay) inherits them.
-    let unit_scales = tracing::debug_span!("unit_scale")
-        .in_scope(|| crate::prepass::resolve_unit_scales(content, project_id, &mut decoder));
-    tracing::debug!(
-        length_unit_scale = unit_scales.length_unit_scale,
-        plane_angle_to_radians = unit_scales.plane_angle_to_radians,
-        "Resolved unit scales"
-    );
-    decoder.seed_unit_scales(
-        unit_scales.length_unit_scale,
-        unit_scales.plane_angle_to_radians,
-    );
+    // A refused length unit refuses every element, counted (#7678).
+    let refused_unit_jobs = diagnostics::refuse_jobs_for_unit(&unit_scales, &mut entity_jobs);
     // Not drained: meshes nothing. Pinned by rust/geometry/tests/issue_3821_auxiliary_routers_mesh_nothing.rs.
-    let mut router = GeometryRouter::with_scale(unit_scales.length_unit_scale);
+    let mut router = diagnostics::unit_router(&unit_scales); // refused with the unit (#7678)
     router.set_tessellation_quality(options.tessellation_quality);
     // Build the #563 material-layer index from the IfcRelAssociatesMaterial spans
     // the main scan already stashed (like the wasm pre-pass), not a redundant
@@ -1142,12 +1142,15 @@ fn process_geometry_streaming_filtered_with_options_and_ids(
         content,
         &mut decoder,
     ));
-    // Material chain joined by the shared resolver (#407). The single
-    // opaque-first colour is the general-path element fallback; the full list
-    // feeds the opening sub-mesh transparent/opaque split (#913 §2.3).
+    // Material chain joined by the shared resolver (#407). The general-path
+    // element fallback is `style::element_material_fallback_color`, the rule
+    // the browser style wire carries too (PROCESSING-4); the full list feeds
+    // the opening sub-mesh transparent/opaque split (#913 §2.3).
     let element_material_color: FxHashMap<u32, [f32; 4]> = element_material_colors
         .iter()
-        .filter_map(|(&id, colors)| crate::style::pick_opaque_first(colors).map(|c| (id, c)))
+        .filter_map(|(&id, colors)| {
+            crate::style::element_material_fallback_color(colors).map(|c| (id, c))
+        })
         .collect();
     let element_material_colors = Arc::new(element_material_colors);
 
@@ -1168,6 +1171,7 @@ fn process_geometry_streaming_filtered_with_options_and_ids(
     let mut current_chunk_size = initial_chunk_size;
 
     let mut deferred_styles_applied = !defer_style_updates;
+    let mut deferred_style_refusals: Vec<u32> = Vec::new();
 
     // Every request-local diagnostic sink for this pass, declared and drained as
     // one subject — see `diagnostics::DiagnosticCollectors`.
@@ -1226,34 +1230,15 @@ fn process_geometry_streaming_filtered_with_options_and_ids(
             )
         });
     // #858 don't-bake exclusion: geometry ids carrying a MULTI-COLOUR
-    // IfcIndexedColourMap. A mapped source whose single solid is one of these must NOT
-    // don't-bake — the flat path splits it into one mesh per palette group (element.rs
-    // `emit_sub_meshes`), but an instance placeholder resolves ONE colour, collapsing
-    // the palette. Built only when the plan is armed AND there are indexed-colour maps;
-    // armed on every per-job router so the guard routes those occurrences to flat
-    // (byte-identical to instancing-off). `indexed_colour_full` is keyed by the same
-    // face-set id the router resolves as the source's single solid, so the ids line up
-    // 1:1.
-    //
-    // #1807: keep only MULTI-COLOUR maps. A UNIFORM (single-colour) map never splits —
-    // `split_mesh_by_indexed_colour` returns None below 2 distinct entries
-    // (style/indexed_colour.rs) — so it collapses to one `dominant()`-coloured mesh an
-    // instance carries losslessly. Excluding uniform sources bought nothing and
-    // disabled don't-bake wholesale on models that store colour as per-triangle
-    // IfcIndexedColourMap on shared face sets (metering stations, CATIA exports). An
-    // all-uniform model collects nothing → leave the guard unarmed (None) rather than
-    // pay a per-element lookup against an empty set on every router.
-    let indexed_colour_split_ids: Option<Arc<FxHashSet<u32>>> = (instancing_plan.is_some()
-        && !indexed_colour_full.is_empty())
-    .then(|| {
-        let ids: FxHashSet<u32> = indexed_colour_full
-            .iter()
-            .filter(|(_, m)| m.has_multiple_colours())
-            .map(|(&id, _)| id)
-            .collect();
-        (!ids.is_empty()).then(|| Arc::new(ids))
-    })
-    .flatten();
+    // IfcIndexedColourMap, armed on every per-job router so those occurrences
+    // route to flat (byte-identical to instancing-off). Built only when the plan
+    // is armed; the derivation (and why uniform maps are left out, #1807) lives
+    // in `style::indexed_colour_split_guard_ids`, which the browser batch arms
+    // from too (EDGE-WASM-5).
+    let indexed_colour_split_ids: Option<Arc<FxHashSet<u32>>> = instancing_plan
+        .is_some()
+        .then(|| crate::style::indexed_colour_split_guard_ids(&indexed_colour_full))
+        .flatten();
     // Collect the don't-bake occurrences across all chunks/threads; resolved into
     // `InstanceRecord`s against the retained template meshes after the geometry phase.
     let raw_instance_collector: std::sync::Mutex<Vec<RawInstanceOccurrence>> =
@@ -1476,21 +1461,14 @@ fn process_geometry_streaming_filtered_with_options_and_ids(
                 // the entire file.  This eliminates ~0.5-1 s for 1 GB files.
                 // The replay is the shared resolver's styled-item building
                 // block, so deferred and up-front resolution cannot drift.
-                let mut rebuilt_styles = {
-                    let mut style_decoder =
-                        entity_index_arc.decoder(content);
-                    crate::prepass::resolve_styled_item_spans(
-                        &deferred_styled_item_positions,
-                        &mut style_decoder,
-                    )
-                };
+                let mut style_decoder = entity_index_arc.decoder(content).with_strict_reals();
+                let mut rebuilt_styles = crate::prepass::resolve_styled_item_spans(&deferred_styled_item_positions, &mut style_decoder);
+                deferred_style_refusals.extend(style_decoder.refused_record_ids());
                 crate::prepass::merge_indexed_colours(&mut rebuilt_styles, &indexed_colour_index);
                 geometry_style_index = Arc::new(rebuilt_styles);
                 let deferred_color_updates = build_color_updates_for_jobs(
-                    &entity_jobs[..processed_jobs],
-                    geometry_style_index.as_ref(),
-                    content,
-                    &entity_index_arc,
+                    &entity_jobs[..processed_jobs], geometry_style_index.as_ref(), content,
+                    &entity_index_arc, &mut deferred_style_refusals,
                 );
                 if !deferred_color_updates.is_empty() {
                     on_color_update(&deferred_color_updates);
@@ -1512,6 +1490,7 @@ fn process_geometry_streaming_filtered_with_options_and_ids(
     let total_csg_failures: usize = csg_failures.values().map(Vec::len).sum();
     let products_with_failures = ifc_lite_geometry::count_attributed_products(&csg_failures);
     let backstop_dropped = diag_collectors.backstop.into_inner();
+    let refused_prepass_records = diagnostics::distinct_refusals(&decoder, deferred_style_refusals, &unit_scales);
     // #3421/#3752: refused, not wrapped; surfaced below via GeometryDiagnostics.
     let oversized_ref_drops = diag_collectors.oversized_ref_drops.into_inner();
     let point_cache_hits = point_cache_hits_collector.into_inner();
@@ -1623,8 +1602,8 @@ fn process_geometry_streaming_filtered_with_options_and_ids(
                 origin_shift: [rtc_offset.0, rtc_offset.1, rtc_offset.2],
                 is_geo_referenced: has_rtc_offset,
             },
-            length_unit_scale: Some(unit_scale),
             georeferencing,
+            ..diagnostics::unit_metadata(&unit_scales, unit_scale)
         },
         stats: ProcessingStats {
             total_meshes,
@@ -1640,6 +1619,8 @@ fn process_geometry_streaming_filtered_with_options_and_ids(
             total_csg_failures: total_csg_failures as u64,
             products_with_failures,
             degenerate_triangles_dropped: backstop_dropped,
+            refused_input_elements: diag_collectors.refused_input.into_inner() + refused_unit_jobs,
+            refused_prepass_records,
             point_cache_hits,
             point_cache_misses,
             faceted_brep_time_ms,

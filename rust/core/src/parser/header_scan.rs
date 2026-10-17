@@ -1,110 +1,92 @@
-// SPDX-License-Identifier: MPL-2.0
-//! Quote-aware byte scanning shared by the source-header record readers.
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use crate::parser::is_step_space;
+//! The one keyword finder over ISO 10303-21 text that has no record framing
+//! yet: the HEADER section, and the `DATA;` marker that ends it.
+//!
+//! Two readers used to walk it with their own literal and comment loops: the
+//! header reader (`header::Lex`, a memoised copy of the comment rule that read
+//! an unterminated comment as text, over a 64 KiB window) and the scanner's
+//! `data_section_start` (exact `DATA;`, no trivia, no identifier boundary, over
+//! a 256 KiB window). Both are this function now, over [`MAX_HEADER_BYTES`]
+//! (F4-2, CORE-8, CORE-9, CORE-35).
+//!
+//! The rules are the shared ones: a literal ends by
+//! [`step_string_literal_end`] (`''` and the `\S\` operand are text) and a
+//! comment by [`skip_step_comment`]. A literal that never closes runs to the
+//! end of the window, because a lone `'` cannot be read as anything else; a
+//! comment that never closes does the same, because everything after its `/*`
+//! is inside it (ISO 10303-21 comments do not nest and cannot be left open).
+//! Either way nothing after it can be found, and the search ends there, so a
+//! hostile run of `/*` costs one pass and no memo is needed.
 
-/// A monotonically advancing scan of one byte buffer.
-///
-/// Once a `*/` search fails, no later comment opener can have a closer, so
-/// remembering that result keeps malformed-input scanning linear.
-pub struct Lex<'a> {
-    bytes: &'a [u8],
-    no_closer: bool,
-    /// `*/` searches performed. At most one can fail.
-    pub searches: u32,
+use crate::parser::lexical::{skip_step_comment, skip_step_trivia};
+use crate::step_encoding::step_string_literal_end;
+
+/// What must follow a keyword (after trivia) for it to count as found.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Then {
+    /// `(`: a record, `FILE_SCHEMA(...)`.
+    Paren,
+    /// `;`: a section marker, `ENDSEC;`.
+    Semicolon,
+    /// Either: `DATA;` and the ISO 10303-21 ed.3 `DATA('name',(...));`.
+    ParenOrSemicolon,
 }
 
-impl<'a> Lex<'a> {
-    pub fn new(bytes: &'a [u8]) -> Self {
-        Lex {
-            bytes,
-            no_closer: false,
-            searches: 0,
-        }
-    }
-
-    /// If a `/* ... */` comment starts at `bytes[i]`, return the index just
-    /// past it. An unterminated opener is ordinary text, not a comment.
-    fn skip_comment_at(&mut self, i: usize) -> Option<usize> {
-        if self.bytes.get(i) != Some(&b'/') || self.bytes.get(i + 1) != Some(&b'*') {
-            return None;
-        }
-        if self.no_closer {
-            return None;
-        }
-        self.searches += 1;
-        match crate::parser::skip_step_comment(self.bytes, i) {
-            Some(end) => Some(end),
-            None => {
-                self.no_closer = true;
-                None
-            }
-        }
-    }
-
-    /// If a string literal or comment starts at `bytes[i]`, return the index
-    /// just past it. Doubled apostrophes remain inside the literal.
-    pub fn skip_lexical_at(&mut self, i: usize) -> Option<usize> {
-        if self.bytes.get(i)? == &b'\'' {
-            let mut p = i + 1;
-            while p < self.bytes.len() {
-                if self.bytes[p] != b'\'' || crate::parser::lexical::is_page_quote_operand(self.bytes, p) {
-                    p += 1;
-                } else if self.bytes.get(p + 1) == Some(&b'\'') {
-                    p += 2;
-                } else {
-                    return Some(p + 1);
-                }
-            }
-            return Some(self.bytes.len());
-        }
-        self.skip_comment_at(i)
-    }
-
-    /// Advance past whitespace and closed comments.
-    pub fn skip_trivia(&mut self, mut i: usize) -> usize {
-        loop {
-            while i < self.bytes.len() && is_step_space(self.bytes[i]) {
-                i += 1;
-            }
-            match self.skip_comment_at(i) {
-                Some(end) => i = end,
-                None => return i,
-            }
-        }
-    }
+/// Where [`find_keyword_then`] found a keyword.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct KeywordHit {
+    /// Offset of the keyword's first byte.
+    pub start: usize,
+    /// Offset of the `(` or `;` that followed it.
+    pub then: usize,
 }
 
 fn is_ident(b: u8) -> bool {
     b.is_ascii_alphanumeric() || b == b'_'
 }
 
-/// Find the opening parenthesis of an exact record keyword outside
-/// literals/comments, ignoring ASCII case.
-pub fn find_record_open(haystack: &[u8], keyword: &[u8]) -> Option<usize> {
-    if keyword.is_empty() || keyword.len() > haystack.len() {
+/// Find `keyword` (ASCII case-insensitive, on identifier boundaries on both
+/// sides) outside literals and comments, followed after trivia by the byte
+/// `then` asks for. A keyword followed by something else is skipped:
+/// `FILE_SCHEMA` in prose is not the record, and `DATA` in `METADATA;` is not
+/// the marker.
+///
+/// `None` when no such keyword occurs before the window ends or before a
+/// comment that never closes.
+pub fn find_keyword_then(haystack: &[u8], keyword: &[u8], then: Then) -> Option<KeywordHit> {
+    let len = haystack.len();
+    let (&lead, _) = keyword.split_first()?;
+    if keyword.len() > len {
         return None;
     }
-    let mut lex = Lex::new(haystack);
-    let last_start = haystack.len() - keyword.len();
     let mut i = 0;
-    while i <= last_start {
-        if let Some(end) = lex.skip_lexical_at(i) {
-            i = end;
+    while i + keyword.len() <= len {
+        let b = haystack[i];
+        if b == b'\'' {
+            i = step_string_literal_end(haystack, i).unwrap_or(len);
+            continue;
+        }
+        if b == b'/' && haystack.get(i + 1) == Some(&b'*') {
+            i = skip_step_comment(haystack, i)?;
             continue;
         }
         let end = i + keyword.len();
-        let bounded = (i == 0 || !is_ident(haystack[i - 1]))
-            && (end == haystack.len() || !is_ident(haystack[end]));
-        if bounded
-            && haystack[i..end]
-                .iter()
-                .zip(keyword)
-                .all(|(a, b)| a.eq_ignore_ascii_case(b))
+        if b.eq_ignore_ascii_case(&lead)
+            && (i == 0 || !is_ident(haystack[i - 1]))
+            && haystack[i..end].eq_ignore_ascii_case(keyword)
+            && (end == len || !is_ident(haystack[end]))
         {
-            let open = lex.skip_trivia(end);
-            if haystack.get(open) == Some(&b'(') {
-                return Some(open);
+            let at = skip_step_trivia(haystack, end)?;
+            let wanted = match haystack.get(at) {
+                Some(b'(') => matches!(then, Then::Paren | Then::ParenOrSemicolon),
+                Some(b';') => matches!(then, Then::Semicolon | Then::ParenOrSemicolon),
+                _ => false,
+            };
+            if wanted {
+                return Some(KeywordHit { start: i, then: at });
             }
         }
         i += 1;
@@ -112,34 +94,30 @@ pub fn find_record_open(haystack: &[u8], keyword: &[u8]) -> Option<usize> {
     None
 }
 
-/// Locate an exact section marker such as `ENDSEC;` or `DATA;`.
-///
-/// An identifier boundary plus trivia and a semicolon prevent an embedded
-/// substring such as the `DATA` in `METADATA;` from ending the header.
-pub fn find_section_marker(haystack: &[u8], keyword: &[u8]) -> Option<usize> {
-    if keyword.is_empty() || keyword.len() > haystack.len() {
-        return None;
-    }
-    let mut lex = Lex::new(haystack);
-    let last_start = haystack.len() - keyword.len();
-    let mut i = 0;
-    while i <= last_start {
-        if let Some(end) = lex.skip_lexical_at(i) {
-            i = end;
-            continue;
-        }
-        let before_is_ident =
-            i > 0 && (haystack[i - 1].is_ascii_alphanumeric() || haystack[i - 1] == b'_');
-        let matches = !before_is_ident
-            && haystack[i..i + keyword.len()]
-                .iter()
-                .zip(keyword)
-                .all(|(a, b)| a.eq_ignore_ascii_case(b));
-        if matches {
-            let after = lex.skip_trivia(i + keyword.len());
-            if haystack.get(after) == Some(&b';') {
-                return Some(i);
+/// Offset of the `)` that closes the `(` at `open`, outside literals and
+/// comments, or `None` when the list never closes.
+pub fn close_paren(haystack: &[u8], open: usize) -> Option<usize> {
+    let len = haystack.len();
+    let mut depth = 0usize;
+    let mut i = open;
+    while i < len {
+        match haystack[i] {
+            b'\'' => {
+                i = step_string_literal_end(haystack, i)?;
+                continue;
             }
+            b'/' if haystack.get(i + 1) == Some(&b'*') => {
+                i = skip_step_comment(haystack, i)?;
+                continue;
+            }
+            b'(' => depth += 1,
+            b')' => {
+                depth = depth.checked_sub(1)?;
+                if depth == 0 {
+                    return Some(i);
+                }
+            }
+            _ => {}
         }
         i += 1;
     }

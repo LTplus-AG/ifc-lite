@@ -26,10 +26,13 @@ mod dfjson;
 mod error;
 mod file_schema;
 mod frame;
+#[cfg(test)]
+mod frame_fixtures;
 mod generated;
 mod geom;
 mod gltf;
 mod hbjson;
+mod ident;
 mod ifc5;
 mod json;
 mod jsonld;
@@ -55,17 +58,21 @@ mod schema_ifc2x3_slots;
 mod schema_enum;
 mod schema_ifc4_slots;
 mod schema_owner_history;
-mod schema_pad;
+mod schema_plan;
+mod schema_renames;
+mod schema_style_flatten;
 mod schema_unrepresented;
-pub use schema_pad::padded_type_universe;
 mod shades;
 pub mod source_header;
 mod step;
 mod step_api;
 mod step_cow;
 mod step_header;
+mod step_ids;
+mod step_index;
 mod step_json;
 mod step_log;
+mod step_record_frame;
 mod step_slot;
 mod step_text;
 mod step_map_transform;
@@ -81,7 +88,7 @@ pub use csv::{export_csv, CsvMode, CsvOptions};
 pub use dfjson::DfjsonStats;
 pub use error::ExportError;
 pub use gltf::{
-    export_glb_from_meshes, export_gltf_streaming, export_gltf_streaming_with_index,
+    export_gltf_streaming, export_gltf_streaming_with_index,
     project_glb_size, project_glb_size_with_index, try_export_glb, try_export_glb_from_meshes,
     try_export_glb_streaming_bounded, try_export_glb_streaming_bounded_with_index,
     try_export_glb_with_stats, try_export_glb_with_stats_with_index, GlbSizeProjection,
@@ -137,7 +144,7 @@ pub use merged::{
 pub use model::{
     build_export_model, build_export_model_with_options, stream_export_model,
     stream_export_model_with_index, stream_export_model_with_options, EntityRow, ExportModel,
-    ModelOptions, Placement, PropValue, PropertySet, QuantitySet, QuantityValue,
+    ModelOptions, Placement, PropValue, PropertySet, QuantitySet, QuantityValue, ValueKind,
 };
 pub use quantity_analysis_derived::{analyze_quantities, DerivedQuantity,
     ProductQuantityAnalysis, QuantityAnalysis, QuantitySourceOccurrence};
@@ -159,19 +166,22 @@ pub use usd::{export_usd, UsdOptions};
 
 use ifc_lite_geometry::extract_profiles;
 
-/// Honeybee identifiers may not contain spaces or most special characters; map anything
-/// other than alphanumerics / `_` / `-` to `_`.
-fn sanitize_identifier(s: &str) -> String {
-    let out: String = s
-        .chars()
-        .map(|c| if c.is_alphanumeric() || c == '_' || c == '-' { c } else { '_' })
-        .collect();
-    if out.is_empty() { "model".to_string() } else { out }
+/// The Model `identifier` for `name` (the Ladybug grammar, see [`ident`]); the
+/// unrestricted `display_name` keeps `name` itself.
+fn model_identifier(name: &str) -> String {
+    ident::ladybug_identifier(name, "model")
+}
+
+/// What a Model's `display_name` carries: the caller's own name, or the identifier
+/// when there is none.
+fn model_display_name(name: &str, identifier: &str) -> String {
+    if name.is_empty() { identifier.to_string() } else { name.to_string() }
 }
 
 /// Options for HBJSON export.
 pub struct HbjsonOptions {
-    /// Model identifier / display name.
+    /// Model display name. The identifier is derived from it (ASCII
+    /// `[.A-Za-z0-9_-]`, at most 100 characters; see `ident`).
     pub name: String,
     /// Geometry tolerance in metres (Honeybee default 0.01).
     pub tolerance: f64,
@@ -187,9 +197,10 @@ impl Default for HbjsonOptions {
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HbjsonStats {
-    /// `IfcSpace` profiles seen in the model.
+    /// `IfcSpace` profiles seen in the model: one per extruded item, so a space
+    /// modelled as two items counts twice. `spaces == rooms + skipped`.
     pub spaces: usize,
-    /// Rooms emitted (watertight prisms).
+    /// Rooms emitted (watertight prisms), one per space piece.
     pub rooms: usize,
     /// Spaces skipped as degenerate (malformed footprint / holes / non-extrusion — P5).
     pub skipped: usize,
@@ -247,14 +258,17 @@ pub fn export_hbjson_with_stats(content: &[u8], opts: &HbjsonOptions) -> (String
     let n_constructions = cons.energy.as_ref().map_or(0, |e| e.constructions.len());
     let stats = HbjsonStats { spaces, rooms: rooms.len(), skipped, apertures, doors, shades, constructions: n_constructions, interior_adjacencies };
 
-    let model = Model::new(&sanitize_identifier(&opts.name), rooms, shade_meshes, cons.energy, opts.tolerance);
+    let identifier = model_identifier(&opts.name);
+    let mut model = Model::new(&identifier, rooms, shade_meshes, cons.energy, opts.tolerance);
+    model.display_name = model_display_name(&opts.name, &identifier);
     let json = serde_json::to_string(&model).expect("HBJSON model serializes");
     (json, stats)
 }
 
 /// Options for DFJSON (Dragonfly) export.
 pub struct DfjsonOptions {
-    /// Model identifier / display name.
+    /// Model display name. The identifier is derived from it (ASCII
+    /// `[.A-Za-z0-9_-]`, at most 100 characters; see `ident`).
     pub name: String,
     /// Geometry tolerance in metres (Ladybug Tools default 0.01).
     pub tolerance: f64,
@@ -281,8 +295,9 @@ pub fn export_dfjson_with_stats(content: &[u8], opts: &DfjsonOptions) -> (String
     // (no spatial structure declared) falls back to the elevation heuristic inside
     // `build_model`.
     let spatial = dfjson::spatial_index(content);
-    let (model, stats) =
-        dfjson::build_model(&sanitize_identifier(&opts.name), &profiles, opts.tolerance, Some(&spatial));
+    let identifier = model_identifier(&opts.name);
+    let (mut model, stats) = dfjson::build_model(&identifier, &profiles, opts.tolerance, Some(&spatial));
+    model.display_name = model_display_name(&opts.name, &identifier);
     let json = serde_json::to_string(&model).expect("DFJSON model serializes");
     (json, stats)
 }

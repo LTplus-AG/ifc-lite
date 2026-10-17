@@ -68,7 +68,7 @@ Columns:
 | IfcBoilerType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcBoolean | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcBooleanClippingResult | ✅ | ✅ | — | ✅ | ❌ | ❌ | IFC4:✅ | rust/geometry/tests/fixtures/issue_1155_halfspace_flyaway.ifc |
-| IfcBooleanResult | ✅ | ✅ | — | ✅ | ❌ | ❌ | IFC4:✅ | — |
+| IfcBooleanResult | ✅ | ✅ | — | ✅ | ❌ | ❌ | IFC4:✅ | rust/geometry/tests/fixtures/issue_7292_sloped_coplanar_difference.ifc |
 | IfcBoundaryEdgeCondition | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcBoundaryFaceCondition | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcBoundaryNodeCondition | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC4:✅ | — |
@@ -78,7 +78,7 @@ Columns:
 | IfcBoxAlignment | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcBoxedHalfSpace | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcBuilding | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC4:✅ | rust/geometry/tests/fixtures/issue_098_wall_V5C.ifc |
-| IfcBuildingElementPart | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
+| IfcBuildingElementPart | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | rust/geometry/tests/fixtures/issue_7292_sloped_coplanar_difference.ifc |
 | IfcBuildingElementProxy | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC4:✅ | — |
 | IfcBuildingElementProxyType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcBuildingStorey | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC4:✅ | rust/geometry/tests/fixtures/issue_098_wall_V5C.ifc |
@@ -505,7 +505,7 @@ Columns:
 | IfcRelConnectsStructuralMember | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | IFC4:✅ | — |
 | IfcRelConnectsWithEccentricity | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelConnectsWithRealizingElements | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcRelContainedInSpatialStructure | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | IFC4:✅ | — |
+| IfcRelContainedInSpatialStructure | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | IFC4:✅ | rust/geometry/tests/fixtures/issue_7292_sloped_coplanar_difference.ifc |
 | IfcRelCoversBldgElements | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelCoversSpaces | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelDefinesByProperties | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
@@ -1910,7 +1910,7 @@ Columns:
 | IfcLightSourcePositional | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcLightSourceSpot | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcLine | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcLinearElement | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
+| IfcLinearElement | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcLinearForceMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcLinearMomentMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcLinearPlacement | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |

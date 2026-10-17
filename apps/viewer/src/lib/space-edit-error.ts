@@ -19,7 +19,8 @@ export type EditErrorCode =
   | 'BordersExterior'
   | 'BridgeEdge'
   | 'VertexNotDissolvable'
-  | 'InvalidPolygon';
+  | 'InvalidPolygon'
+  | 'NonFiniteCoordinate';
 
 const CODES: ReadonlySet<string> = new Set<EditErrorCode>([
   'StaleHandle',
@@ -29,6 +30,7 @@ const CODES: ReadonlySet<string> = new Set<EditErrorCode>([
   'BridgeEdge',
   'VertexNotDissolvable',
   'InvalidPolygon',
+  'NonFiniteCoordinate',
 ]);
 
 export interface EditError {

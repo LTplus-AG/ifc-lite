@@ -8,22 +8,9 @@
 
 use ifc_lite_core::{AttributeValue, DecodedEntity, EntityDecoder, IfcType};
 
-use super::{PropValue, PropertySet, QuantitySet, QuantityValue};
+use super::{PropValue, PropertySet, QuantitySet, QuantityValue, ValueKind};
 
-/// Format an f64 without noisy trailing zeros (`1.0` → `1`, `1.50` → `1.5`),
-/// and otherwise with the shortest digits that parse back to the same value.
-///
-/// Every property value and schema-declared attribute reaching CSV, JSON,
-/// JSON-LD, IFCX and Parquet goes through here, and `json::typed_value`
-/// re-parses the string as the JSON number, so the digits must round-trip: no
-/// fixed decimal count (a small nonzero must never read as `0`).
-pub fn fmt_num(v: f64) -> String {
-    if v.fract() == 0.0 && v.abs() < 1e15 {
-        format!("{}", v as i64)
-    } else {
-        format!("{v}")
-    }
-}
+pub use ifc_lite_core::fmt_num::fmt_num;
 
 /// Map an IFC boolean/logical enum token to a friendly string.
 pub(super) fn map_enum(e: &str) -> String {
@@ -35,20 +22,31 @@ pub(super) fn map_enum(e: &str) -> String {
     }
 }
 
-/// Render an `AttributeValue` (single property value) to `(display, type_tag)`.
-/// Typed values like `IFCLABEL('x')` decode to `List([String("IFCLABEL"), inner])`.
-pub(super) fn render_value(v: &AttributeValue) -> Option<(String, String)> {
+/// A property value rendered for the flat exports.
+pub(super) struct Rendered {
+    pub value: String,
+    pub value_type: String,
+    pub kind: ValueKind,
+}
+
+/// Render an `AttributeValue` (single property value) to its display string,
+/// type tag and primitive kind. Typed values like `IFCLABEL('x')` decode to
+/// `List([String("IFCLABEL"), inner])`; the kind comes from `inner`.
+pub(super) fn render_value(v: &AttributeValue) -> Option<Rendered> {
+    let rendered = |value: String, tag: &str, kind| Rendered { value, value_type: tag.to_string(), kind };
     match v {
-        AttributeValue::String(s) => Some((s.clone(), "IFCTEXT".to_string())),
-        AttributeValue::Integer(i) => Some((i.to_string(), "IFCINTEGER".to_string())),
-        AttributeValue::Float(f) => Some((fmt_num(*f), "IFCREAL".to_string())),
-        AttributeValue::Enum(e) => Some((map_enum(e), "IFCBOOLEAN".to_string())),
+        AttributeValue::String(s) | AttributeValue::Binary(s) => Some(rendered(s.clone(), "IFCTEXT", ValueKind::Text)),
+        AttributeValue::Integer(i) => Some(rendered(i.to_string(), "IFCINTEGER", ValueKind::Number)),
+        AttributeValue::Float(f) => Some(rendered(fmt_num(*f), "IFCREAL", ValueKind::Number)),
+        AttributeValue::Enum(e) => {
+            let kind = if matches!(e.as_str(), "T" | "F") { ValueKind::Bool } else { ValueKind::Text };
+            Some(rendered(map_enum(e), "IFCBOOLEAN", kind))
+        }
         AttributeValue::List(items) => {
             // Typed value wrapper: first element is the type name string.
             if let Some(AttributeValue::String(tn)) = items.first() {
-                let inner = items.get(1)?;
-                let (val, _) = render_value(inner)?;
-                Some((val, tn.clone()))
+                let inner = render_value(items.get(1)?)?;
+                Some(Rendered { value_type: tn.clone(), ..inner })
             } else {
                 None
             }
@@ -100,7 +98,7 @@ pub(super) fn render_attributes(
             continue;
         }
         let Some(v) = entity.get(i) else { continue };
-        if let Some((value, mut value_type)) = render_value(v) {
+        if let Some(Rendered { value, mut value_type, kind }) = render_value(v) {
             // `render_value` tags every bare enum `IFCBOOLEAN`, which is right
             // for a property's NominalValue (there the tokens are the T/F/U
             // logicals) and wrong here, where `.NOTDEFINED.` and `.PLAIN.` are
@@ -113,6 +111,7 @@ pub(super) fn render_attributes(
                 name: (*name).to_string(),
                 value,
                 value_type,
+                kind,
             });
         }
     }
@@ -160,8 +159,8 @@ pub(super) fn decode_property_set(decoder: &mut EntityDecoder, def: &DecodedEnti
                 Some(n) if !n.is_empty() => n.to_string(),
                 _ => continue,
             };
-            if let Some((value, value_type)) = p.get(2).and_then(render_value) {
-                properties.push(PropValue { name: pname, value, value_type });
+            if let Some(Rendered { value, value_type, kind }) = p.get(2).and_then(render_value) {
+                properties.push(PropValue { name: pname, value, value_type, kind });
             }
         }
         // Other property kinds (enumerated/list/bounded/complex) are P-next.

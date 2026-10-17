@@ -34,7 +34,7 @@
 //! been visually verified.
 //!
 //! That soft-pass is conditioned on `IFC_LITE_REQUIRE_FIXTURES` (see
-//! `tests/support::require_fixtures`): unset/`0` (local dev, fresh
+//! `ifc_lite_testkit::require_fixtures`): unset/`0` (local dev, fresh
 //! clone) skips a missing fixture exactly as before; `1` (the
 //! `csg-accept-gates` CI job) turns a missing fixture into a named
 //! `panic!` instead, so this 25-fixture census can't report `ok` having
@@ -60,13 +60,10 @@
 //! kernel on every target since #1024, so they are asserted
 //! unconditionally.
 
-mod support;
-
 use ifc_lite_core::{build_entity_index, EntityDecoder, EntityScanner};
 use ifc_lite_geometry::{propagate_voids_to_parts, GeometryRouter, Mesh};
 use rustc_hash::FxHashMap;
 use std::collections::BTreeMap;
-use std::path::PathBuf;
 
 /// Repo-root-relative fixture paths. The harness skips any entry that
 /// doesn't exist on disk so the file can grow with the repo without
@@ -258,13 +255,6 @@ struct FixtureReport {
     types_seen: BTreeMap<String, usize>,
 }
 
-fn fixture_path(relative: &str) -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..")
-        .join(relative)
-}
-
 fn build_void_index(content: &str) -> FxHashMap<u32, Vec<u32>> {
     let mut idx: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
     let mut scanner = EntityScanner::new(content);
@@ -400,19 +390,11 @@ fn run_fixture(fx: &Fixture) -> FixtureReport {
         path: fx.path.to_string(),
         ..Default::default()
     };
-    let p = fixture_path(fx.path);
-    let content = match std::fs::read_to_string(&p) {
-        Ok(content) => content,
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-            assert!(
-                !support::require_fixtures(),
-                "fixture missing and IFC_LITE_REQUIRE_FIXTURES=1: {} \
-                 — run `pnpm fixtures` to download (sha256 in tests/models/manifest.json)",
-                p.display()
-            );
-            return report;
-        }
-        Err(err) => panic!("failed to read fixture {}: {err}", p.display()),
+    // Missing: skipped locally, a panic under IFC_LITE_REQUIRE_FIXTURES=1
+    // (ifc_lite_testkit owns that policy).
+    let rel = fx.path.strip_prefix("tests/models/").expect("fixture paths are under tests/models/");
+    let Some(content) = ifc_lite_testkit::fixture_text(rel) else {
+        return report;
     };
     report.fixture_found = true;
     let entity_index = build_entity_index(&content);

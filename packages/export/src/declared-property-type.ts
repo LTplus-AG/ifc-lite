@@ -116,7 +116,7 @@
 import { PropertyValueType } from '@ifc-lite/data';
 import { SCHEMA_REGISTRY } from '@ifc-lite/parser';
 import { getSelectDefinedLeaves } from './select-qualification.js';
-import { serializeTypedMarker } from './step-serialization.js';
+import { serializeTypedMarker, toStepInteger } from './step-serialization.js';
 import { serializePropertyValue } from './property-value-serialization.js';
 
 /** The SELECT `IfcPropertySingleValue.NominalValue` is declared as. */
@@ -194,7 +194,8 @@ function valueFitsBase(value: unknown, base: string): value is string | number |
     case 'NUMBER':
       return typeof value === 'number' && Number.isFinite(value);
     case 'INTEGER':
-      return typeof value === 'number' && Number.isInteger(value);
+      // Below 1e21: `String(1e21)` is `1e+21`, no STEP INTEGER (#7679).
+      return typeof value === 'number' && Number.isInteger(value) && toStepInteger(value) !== null;
     case 'BOOLEAN':
     case 'LOGICAL':
       // Not a truthiness test: `serializeTypedMarker` reads `'.F.'` and

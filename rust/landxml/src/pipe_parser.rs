@@ -3,9 +3,8 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use crate::{
-    classify_landxml_version, compatibility_version_diagnostic,
     preflight::preflight_xml_tokens,
-    xml::{attr, attributes, error, normalize_encoding, split_name, Result},
+    xml::{attr, attributes, error, normalize_encoding, split_name, Budget, Meter, Result},
     LandXmlCancellation, LandXmlDiagnosticCode as Code, LandXmlLimits, LandXmlPipeNetworkDocument,
     LandXmlSourceId,
 };
@@ -22,6 +21,8 @@ mod features;
 mod finalize;
 mod handlers;
 mod inverts;
+#[cfg(test)]
+mod outside_root_tests;
 mod state;
 mod units;
 /// Parse exact LandXML 1.2 pipe networks with default resource limits.
@@ -38,6 +39,10 @@ pub fn parse_landxml_pipe_networks_with_cancel(
     if input.len() > limits.max_bytes {
         return Err(error(Code::InputTooLarge, "input exceeds byte limit"));
     }
+    // #5175 / EDGE-LXPARSE-7 (#7693): refuse a bad override token before
+    // any XML is read. The validated token is applied from `limits` when the
+    // root units are resolved (`effective_root_units`).
+    crate::semantics::resolve_assumed_units(limits)?;
     let input = normalize_encoding(input, limits, cancelled)?;
     preflight_xml_tokens(&input, limits, cancelled)?;
     let mut parser = PipeParser::new(limits, cancelled, true);
@@ -54,7 +59,10 @@ pub fn parse_landxml_pipe_networks_with_cancel(
         parser.consume_event(event)?;
         buffer.clear();
     }
-    if !parser.frames.is_empty() || !parser.root_seen || !parser.root_closed {
+    if !parser.root_seen {
+        return Err(error(Code::InvalidXml, "LandXML document is empty"));
+    }
+    if !parser.frames.is_empty() || !parser.root_closed {
         return Err(error(Code::InvalidXml, "unclosed XML element"));
     }
     parser.finish_stream()
@@ -68,10 +76,10 @@ impl<'a> PipeParser<'a> {
     ) -> Self {
         Self {
             limits: limits.clone(),
-            cancelled,
             require_pipe_networks,
-            work: 0,
-            character_references: 0,
+            meter: Meter::new(limits.max_work, cancelled),
+            character_references: Budget::new(limits.max_character_references, "character reference"),
+            capability_diagnostics_seen: Budget::new(limits.max_capability_diagnostics, "capability diagnostic"),
             frames: Vec::new(),
             root_units: None,
             schema: String::new(),
@@ -92,13 +100,13 @@ impl<'a> PipeParser<'a> {
             refusals: Vec::new(),
             preflight_refusal_batches: Vec::new(),
             refusal_keys: HashSet::new(),
-            pipe_networks_seen: 0,
-            structures_seen: 0,
-            pipes_seen: 0,
-            inverts_seen: 0,
-            flows_seen: 0,
-            points_seen: 0,
-            references_seen: 0,
+            pipe_networks_seen: Budget::new(limits.max_pipe_networks, "pipe network"),
+            structures_seen: Budget::new(limits.max_pipe_structures, "pipe structure"),
+            pipes_seen: Budget::new(limits.max_pipes, "pipe"),
+            inverts_seen: Budget::new(limits.max_pipe_inverts, "pipe invert"),
+            flows_seen: Budget::new(limits.max_pipe_flows, "pipe flow"),
+            points_seen: Budget::new(limits.max_points, "pipe Center point"),
+            references_seen: Budget::new(limits.max_references, "pipe reference"),
             pipe_network_collections: 0,
             network_ordinal: 0,
             feature_ordinals: HashMap::new(),
@@ -117,6 +125,10 @@ impl<'a> PipeParser<'a> {
             }
             Event::End(end) => self.end(Some(end.name().as_ref().as_bytes())),
             Event::Text(text) => self.text(text.as_ref().as_bytes()),
+            // #7680: a reference in text arrives as its own event.
+            Event::GeneralRef(reference) => {
+                self.text(crate::xml::general_ref_source(&reference).as_bytes())
+            }
             Event::CData(text) => self.cdata(text.as_ref().as_bytes()),
             Event::DocType(_) => Err(error(Code::DtdForbidden, "DOCTYPE is not allowed")),
             _ => Ok(()),
@@ -143,42 +155,13 @@ impl<'a> PipeParser<'a> {
         inherited.extend(namespaces);
         let namespace = inherited.get(prefix).map(String::as_str);
         if self.frames.is_empty() {
-            if self.root_seen {
-                return Err(error(
-                    Code::InvalidXml,
-                    "LandXML document has multiple roots",
-                ));
-            }
-            if local != "LandXML" {
-                return Err(error(Code::InvalidSemantic, "root element is not LandXML"));
-            }
-            let capability = classify_landxml_version(namespace, attr(&attributes, "version"));
-            if !capability.supports_tin_ingestion() {
-                return Err(match capability {
-                    crate::LandXmlVersionCapability::NotLandXml => error(
-                        Code::UnsupportedNamespace,
-                        "root namespace is not a recognized LandXML namespace",
-                    ),
-                    _ => error(
-                        Code::UnsupportedVersion,
-                        "LandXML namespaces require a known version declaration",
-                    ),
-                });
-            }
-            self.schema = capability
-                .schema()
-                .expect("supported capability has a schema")
-                .to_owned();
+            let root = crate::parser::validate_root(self.root_seen, local, namespace, &attributes)?;
+            self.schema = root.schema;
             self.target_namespace = namespace.map(str::to_owned);
-            if let Some(diagnostic) = compatibility_version_diagnostic(
-                capability,
-                attr(&attributes, "version").expect("supported capability has a version"),
-            ) {
-                self.capability_diagnostics.push(diagnostic);
+            if let Some(diagnostic) = root.diagnostic {
+                self.record_capability_diagnostic(diagnostic)?;
             }
-            self.version = attr(&attributes, "version")
-                .expect("supported capability has a version")
-                .to_owned();
+            self.version = root.version;
             self.root_seen = true;
         }
         let target = namespace == self.target_namespace.as_deref();
@@ -212,11 +195,7 @@ impl<'a> PipeParser<'a> {
                 });
             }
             "PipeNetwork" if self.is_path(&["LandXML", "PipeNetworks", "PipeNetwork"]) => {
-                Self::reserve(
-                    &mut self.pipe_networks_seen,
-                    self.limits.max_pipe_networks,
-                    "pipe network",
-                )?;
+                self.pipe_networks_seen.reserve(1)?;
                 self.network_ordinal += 1;
                 if !matches!(
                     attr(&attributes, "pipeNetType"),

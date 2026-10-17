@@ -21,11 +21,7 @@ const MAX_LATERAL: f64 = 0.15;
 /// rarely produce perfectly congruent faces), so only near-congruent walls are paired.
 const MAX_AREA_DIFF: f64 = 0.01;
 
-fn sub(a: [f64; 3], b: [f64; 3]) -> [f64; 3] { [a[0] - b[0], a[1] - b[1], a[2] - b[2]] }
-fn dist(a: [f64; 3], b: [f64; 3]) -> f64 {
-    let d = sub(a, b);
-    (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt()
-}
+use ifc_lite_geometry::math::v3::{dist, sub};
 
 struct AdjFace {
     ri: usize,

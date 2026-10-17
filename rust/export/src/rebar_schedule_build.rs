@@ -4,6 +4,19 @@
 
 use super::*;
 
+/// The length scale from the same `ProjectUnits` as the area scale
+/// (EXPORT-DATA-9): one resolution, one scan for the project. A length unit
+/// whose declared factor is unusable keeps main's value (data path) but is no
+/// longer silent: the bar lengths are then not in metres.
+fn length_scale(project_units: &ProjectUnits, diagnostics: &mut Vec<String>) -> f64 {
+    if let Some(factor) = project_units.length_unit().unusable_factor {
+        diagnostics.push(format!(
+            "project length unit unresolved: ConversionFactor #{factor} is not a positive finite number; bar lengths are not in metres"
+        ));
+    }
+    project_units.length_unit_scale()
+}
+
 pub(super) fn build_rebar_schedule_impl(
     content: &[u8],
     ids: Option<&HashSet<u32>>,
@@ -12,10 +25,10 @@ pub(super) fn build_rebar_schedule_impl(
     policy: Option<&RebarFabricationPolicy>,
 ) -> Result<RebarSchedule, SweptDiskCheckError> {
     options.validate()?;
-    let schema_label = detect_schema(content);
-    let known_schema = attribute_names_for_schema(&schema_label, "IFCREINFORCINGBAR").is_some();
+    // Fail closed like the attribute export: no IFC4 layout for an
+    // undeclared or unrecognised schema (#7681).
+    let schema = attribute_schema(content);
     let mut decoder = EntityDecoder::new(content);
-    let scale = decoder.length_unit_scale();
     let mut bars = BTreeMap::new();
     let mut types = HashMap::new();
     let mut unreadable_types = HashSet::new();
@@ -84,6 +97,7 @@ pub(super) fn build_rebar_schedule_impl(
     // a millimetre model may declare square metres for IfcAreaMeasure.
     let project_units = project_id.map(|id| ProjectUnits::resolve(&mut decoder, id))
         .unwrap_or_default();
+    let scale = length_scale(&project_units, &mut diagnostics); // EXPORT-DATA-9
     let area_scale = project_units.unit_for_measure("IfcAreaMeasure").map(|unit| unit.si_scale);
     let (descriptions, definitions) = extract_swept_disk_views(
         content,
@@ -93,9 +107,10 @@ pub(super) fn build_rebar_schedule_impl(
     let known_diagnostics: HashSet<&str> = descriptions.diagnostics.iter().map(String::as_str).collect();
     diagnostics.extend(definitions.diagnostics.iter()
         .filter(|message| !known_diagnostics.contains(message.as_str())).cloned());
-    if !known_schema {
+    if schema.is_none() {
+        let declared = crate::source_header::declared_schemas(content).join(", ");
         diagnostics.push(format!(
-            "unsupported FILE_SCHEMA {schema_label}; authored attributes omitted"
+            "unsupported FILE_SCHEMA ({declared}); authored attributes omitted"
         ));
     }
     let mut rows = BTreeMap::new();
@@ -137,15 +152,15 @@ pub(super) fn build_rebar_schedule_impl(
             fabrication_precheck_skipped_reason: None,
             diagnostics: type_diagnostics,
         };
-        if known_schema {
+        if let Some(schema_label) = &schema {
             for &field in FIELDS {
-                let own = attribute(&bar, &schema_label, field, scale, area_scale);
+                let own = attribute(&bar, schema_label, field, scale, area_scale);
                 // IfcTypeProduct.Tag identifies the type itself; it is not
                 // inherited as the occurrence's IfcElement.Tag.
                 let inherited = if field == "Tag" {
                     None
                 } else {
-                    bar_type.map(|ty| attribute(ty, &schema_label, field, scale, area_scale))
+                    bar_type.map(|ty| attribute(ty, schema_label, field, scale, area_scale))
                 };
                 if let Err(reason) = &own {
                     row.diagnostics

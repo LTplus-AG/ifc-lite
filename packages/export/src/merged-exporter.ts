@@ -22,6 +22,7 @@ import { collectReferencedEntityIds, getVisibleEntityIds, filterHiddenRefsFromRe
 import { collectStyleEntities, STYLE_RESCUE_TYPES } from './style-closure.js';
 import { collectGeoreferencingEntities } from './georef-closure.js';
 import { convertStepLine, needsConversion, type IfcSchemaVersion } from './schema-converter.js';
+import { StyleFlatten } from './schema-style-flatten.js';
 import { firstWrittenOwnerHistoryRef, Ifc2x3SlotFill } from './schema-converter-ifc2x3-slots.js';
 import { Ifc4SlotCheck } from './schema-converter-ifc4-slots.js';
 import { EnumReconciliation } from './schema-converter-enums.js';
@@ -531,11 +532,12 @@ export class MergedExporter {
         slotFill.prefer(firstWrittenOwnerHistoryRef(model.dataStore.entityIndex.byType.get('IFCOWNERHISTORY'), written, offset));
       }
       const sourceSchema = (model.dataStore.schemaVersion as IfcSchemaVersion) || 'IFC4';
+      const styleFlatten = StyleFlatten.fromStore(model.dataStore, sourceSchema, schema);
       for (const [expressId, entityRef] of completeIndex) {
         if (!written(expressId)) continue;
         const line = this.renderEntity(
           expressId, entityRef, source, offset, plan, sourceSchema, schema, guidToFinalId, mode,
-          visibility?.hiddenProductIds ?? null, completeIndex, visibility?.included ?? null, slotFill, ifc4Slots, enums,
+          visibility?.hiddenProductIds ?? null, completeIndex, visibility?.included ?? null, slotFill, ifc4Slots, enums, styleFlatten,
         );
         if (line !== null) allEntityLines.push(line);
       }
@@ -673,6 +675,7 @@ export class MergedExporter {
         slotFill.prefer(firstWrittenOwnerHistoryRef(model.dataStore.entityIndex.byType.get('IFCOWNERHISTORY'), written, offset));
       }
       const sourceSchema = (model.dataStore.schemaVersion as IfcSchemaVersion) || 'IFC4';
+      const styleFlatten = StyleFlatten.fromStore(model.dataStore, sourceSchema, schema);
 
       let entityCount = 0;
       for (const [expressId, entityRef] of completeIndex) {
@@ -680,7 +683,7 @@ export class MergedExporter {
 
         const line = this.renderEntity(
           expressId, entityRef, source, offset, plan, sourceSchema, schema, guidToFinalId, mode,
-          visibility?.hiddenProductIds ?? null, completeIndex, visibility?.included ?? null, slotFill, ifc4Slots, enums,
+          visibility?.hiddenProductIds ?? null, completeIndex, visibility?.included ?? null, slotFill, ifc4Slots, enums, styleFlatten,
         );
         if (line !== null) allEntityLines.push(line);
 
@@ -1184,8 +1187,11 @@ export class MergedExporter {
     completeIndex: CompleteEntityIndex,
     includedIds: ReadonlySet<number> | null,
     slotFill: Ifc2x3SlotFill, ifc4Slots: Ifc4SlotCheck, enums: EnumReconciliation,
+    styles?: StyleFlatten,
   ): string | null {
     let entityText = decodeRange(source, entityRef.byteOffset, entityRef.byteOffset + entityRef.byteLength);
+    // D57 style-assignment flatten, in LOCAL id space (before the remap).
+    if (styles && (entityText = styles.apply(entityText) ?? '') === '') return null;
 
     // A `visibleOnly` export must narrow — or entirely withhold — a
     // relationship's (and, below, a rescued style/layer entity's) own OUTPUT

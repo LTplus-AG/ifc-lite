@@ -116,7 +116,9 @@ pub fn storey_elevation(line: &str) -> Option<f64> {
     if trimmed.is_empty() || trimmed == "$" || trimmed == "*" {
         return None;
     }
-    trimmed.parse::<f64>().ok()
+    // The core STEP literal reader, not `str::parse::<f64>`, which read `inf`,
+    // `NaN` and an overflowing `1.E400` as elevations (#7678).
+    ifc_lite_core::parse_step_real(trimmed.as_bytes())
 }
 
 impl SpatialLookup {
@@ -253,6 +255,18 @@ impl SpatialLookup {
 
 #[cfg(test)]
 mod spatial_tests {
+    /// #7678: the elevation reader admits exactly what the STEP decoder does.
+    #[test]
+    fn storey_elevation_reads_through_the_step_literal_reader() {
+        let line = |elev: &str| format!("#5=IFCBUILDINGSTOREY('g',$,'L1',$,$,$,$,$,.ELEMENT.,{elev});");
+        assert_eq!(super::storey_elevation(&line("3.5")), Some(3.5));
+        for bad in ["1.E400", "-1.E400", "inf", "NaN"] {
+            assert_eq!(super::storey_elevation(&line(bad)), None, "{bad}");
+        }
+        let neg = super::storey_elevation(&line("-0.")).expect("-0.");
+        assert!(neg == 0.0 && neg.is_sign_negative());
+    }
+
     use super::*;
     use std::collections::HashSet;
 

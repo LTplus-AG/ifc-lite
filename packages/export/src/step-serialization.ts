@@ -94,8 +94,12 @@ function serializeInnerByBase(value: string | number | boolean, base: string | n
     case 'REAL':
     case 'NUMBER':
       return toStepReal(Number(value));
-    case 'INTEGER':
-      return String(Math.trunc(Number(value)));
+    case 'INTEGER': {
+      const n = Math.trunc(Number(value));
+      const digits = toStepInteger(n);
+      if (digits === null) throw new Error(`Cannot write ${n} as a STEP INTEGER: it is not a finite value below 1e21`);
+      return digits;
+    }
     case 'BOOLEAN':
       // A BOOLEAN has no unknown state; an unrecognized token coerces to `.F.`.
       return coerceLogical(value) === true ? '.T.' : '.F.';
@@ -108,7 +112,7 @@ function serializeInnerByBase(value: string | number | boolean, base: string | n
       return `'${escapeStepString(String(value))}'`;
     default:
       if (typeof value === 'boolean') return value ? '.T.' : '.F.';
-      if (typeof value === 'number') return Number.isInteger(value) ? String(value) : toStepReal(value);
+      if (typeof value === 'number') return Number.isInteger(value) ? integralToken(value) : toStepReal(value);
       return `'${escapeStepString(String(value))}'`;
   }
 }
@@ -128,14 +132,34 @@ export function serializeTypedMarker(type: string, value: string | number | bool
 /**
  * Convert a number to a valid STEP REAL literal.
  *
- * Handles NaN/Infinity (-> `0.`) and delegates the mantissa/`E` rewrite to the
- * shared {@link formatStepReal} so exponential magnitudes serialize as valid
- * STEP (`5e-8` -> `5.E-8`, `1e21` -> `1.E+21`, `1.5e-7` -> `1.5E-7`) rather than
- * the invalid `5e-8.` / lowercase-`e` forms a bare decimal-point append produced.
+ * Delegates the mantissa/`E` rewrite to the shared {@link formatStepReal} so
+ * exponential magnitudes serialize as valid STEP (`5e-8` -> `5.E-8`, `1e21` ->
+ * `1.E+21`, `1.5e-7` -> `1.5E-7`) rather than the invalid `5e-8.` /
+ * lowercase-`e` forms a bare decimal-point append produced.
+ *
+ * A non-finite value THROWS (#7679). It used to be written as a made-up `0.`,
+ * which turned a NaN measure into a real zero. `$` ("omitted") is the reading
+ * only a caller that owns a whole optional attribute or property value can
+ * give, so those callers test `Number.isFinite` first; every other slot is
+ * refused here. The Rust writer (`jsval.rs::to_step_real`) refuses identically.
  */
 export function toStepReal(v: number): string {
-  if (!Number.isFinite(v)) return '0.';
+  if (!Number.isFinite(v)) throw new Error(`Cannot write ${v} as a STEP REAL: it has no finite value`);
   return formatStepReal(v);
+}
+
+/**
+ * The digits of a finite integral number below 1e21, or `null`.
+ * `String(1e21)` is `1e+21`, which is not a STEP INTEGER (#7679). Not 2^53:
+ * the digits of a value between 2^53 and 1e21 are still a valid STEP INTEGER.
+ */
+export function toStepInteger(v: number): string | null {
+  return Number.isFinite(v) && Math.abs(v) < 1e21 ? String(v === 0 ? 0 : v) : null;
+}
+
+/** An integral finite number as a token: INTEGER digits below 1e21, the REAL form from there up. */
+function integralToken(v: number): string {
+  return toStepInteger(v) ?? formatStepReal(v);
 }
 
 /**
@@ -203,9 +227,9 @@ export function serializeAttributeValue(value: string, currentToken: string): st
   if (/^-?\d+(?:\.\d+)?(?:E[+-]?\d+)?$/i.test(trimmed) && /^-?\d/.test(current)) {
     const numberValue = Number(trimmed);
     if (!Number.isFinite(numberValue)) return '$';
-    return current.includes('.') || /E/i.test(current)
+    return current.includes('.') || /E/i.test(current) || !Number.isInteger(numberValue)
       ? toStepReal(numberValue)
-      : String(numberValue);
+      : integralToken(numberValue);
   }
 
   return serializeValue(value);
@@ -255,7 +279,7 @@ function serializeStepValueAt(value: IfcAttributeValue, forceReal: boolean, inLi
       return '$';
     }
     if (forceReal) return toStepReal(value);
-    return Number.isInteger(value) ? String(value) : toStepReal(value);
+    return Number.isInteger(value) ? integralToken(value) : toStepReal(value);
   }
   if (Array.isArray(value)) {
     return `(${value.map(v => serializeStepValueAt(v, forceReal, true)).join(',')})`;

@@ -5,7 +5,8 @@
 //! Core element processing: resolving representations, processing items, and caching.
 
 use super::frame_parts::{frames_mergeable, mesh_bounds, single_frame, union_bounds, FrameParts};
-use super::transforms::{instancing_enabled, mat4_to_row_major};
+use super::transforms::instancing_enabled;
+use crate::math::mat4;
 use super::{GeometryProcessor, GeometryRouter};
 use crate::{Error, InstanceMeta, Mesh, Result, SubMeshCollection};
 
@@ -16,14 +17,6 @@ use crate::{Error, InstanceMeta, Mesh, Result, SubMeshCollection};
 /// bit (127 effective), still content-addressing grade.
 const DIRECT_SOLID_TAG: u128 = 1u128 << 127;
 
-/// Row-major 4x4 identity; placeholder `InstanceMeta::transform` before the
-/// element's world placement is folded in by `apply_placement`.
-pub(crate) const IDENTITY_ROW_MAJOR: [f64; 16] = [
-    1.0, 0.0, 0.0, 0.0, //
-    0.0, 1.0, 0.0, 0.0, //
-    0.0, 0.0, 1.0, 0.0, //
-    0.0, 0.0, 0.0, 1.0, //
-];
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use rustc_hash::FxHashSet;
 use std::rc::Rc;
@@ -385,7 +378,8 @@ impl GeometryRouter {
                     ));
                 if let Some(map) = texture {
                     let offset = self.element_frame_rtc(element, decoder)?;
-                    if self.add_textured_face_set(&item, decoder, map, offset, &mut sub_meshes) {
+                    if let Some((mesh, uvs)) = self.textured_face_set(&item, decoder, map, offset) {
+                        sub_meshes.add_textured(item.id, mesh, uvs, map.attachment());
                         continue;
                     }
                 }
@@ -571,11 +565,11 @@ impl GeometryRouter {
                     self.ensure_shared_mapped_source(&mapped_repr, source_id, decoder);
                     let local_rm = mapping_transform.map(|mut t| {
                         self.scale_transform(&mut t);
-                        mat4_to_row_major(&t)
+                        mat4::from_na(&t)
                     });
                     let mut placeholder = Mesh::new();
                     placeholder.instance_meta = Some(InstanceMeta {
-                        transform: IDENTITY_ROW_MAJOR,
+                        transform: mat4::IDENTITY,
                         local_transform: local_rm,
                         canonical_transform: None,
                         rep_identity: source_id as u128,
@@ -657,10 +651,10 @@ impl GeometryRouter {
                                 {
                                     im.local_transform = Some(match im.local_transform {
                                         // Nested map: outer target ∘ inner, bake order.
-                                        Some(inner) => mat4_to_row_major(
+                                        Some(inner) => mat4::from_na(
                                             &(transform * nalgebra::Matrix4::from_row_slice(&inner)),
                                         ),
-                                        None => mat4_to_row_major(&transform),
+                                        None => mat4::from_na(&transform),
                                     });
                                 }
                             }
@@ -682,7 +676,7 @@ impl GeometryRouter {
             if instance_solid_id.is_some() && is_template {
                 let local_rm = mapping_transform.map(|mut t| {
                     self.scale_transform(&mut t);
-                    mat4_to_row_major(&t)
+                    mat4::from_na(&t)
                 });
                 for sub in &mut sub_meshes.sub_meshes[mapped_items_start..] {
                     if let Some(im) = sub.mesh.instance_meta.as_mut() {
@@ -699,17 +693,25 @@ impl GeometryRouter {
             // (#961) always did. Bypasses the content-dedup cache — the cached
             // mesh has no UV channel, and UVs are per-face-set anyway. Falls
             // through to the plain path if the textured build fails. A nested
-            // (mapped) face set rebases in the model frame (#5698).
+            // (mapped) item rebases by the model RTC (#5698) into its origin,
+            // since its mapping targets and placement still apply (#7690).
             if let Some(map) = texture_index.and_then(|ti| ti.get(&item.id)) {
-                if self.add_textured_face_set(item, decoder, map, Some(self.rtc_offset), sub_meshes)
-                {
+                let textured = self.textured_face_set(item, decoder, map, Some(self.rtc_offset));
+                if let Some((mut mesh, uvs)) = textured {
+                    if depth > 0 {
+                        self.keep_rebase_in_origin(&mut mesh);
+                    }
+                    sub_meshes.add_textured(item.id, mesh, uvs, map.attachment());
                     return Ok(());
                 }
             }
             // Regular geometry item - process and record with its ID
             // Skip unsupported geometry types (e.g. IfcGeometricSet) instead of failing
             match self.process_representation_item(item, decoder) {
-                Ok(mesh) => {
+                Ok(mut mesh) => {
+                    if depth > 0 {
+                        self.keep_rebase_in_origin(&mut mesh);
+                    }
                     if !mesh.is_empty() {
                         sub_meshes.add(item.id, mesh);
                     }
@@ -748,16 +750,8 @@ impl GeometryRouter {
         item: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Result<Mesh> {
-        // Every path below (mapped-item cache, dedup-cache hit, uncached
-        // build) can trip the thread-local curve-capped flag (#4901) -- a
-        // mapped source walks its own processors directly
-        // (`process_mapped_item_cached`), bypassing the inline drain this
-        // function used to have right after the uncached build, which left a
-        // capped edge inside a mapped item unreported AND the flag still set
-        // for whichever unrelated item happened to be processed next
-        // (Macroscope review). Draining exactly ONCE here, around every
-        // path, keeps the flag scoped to the item that actually set it,
-        // regardless of which branch below produced (or skipped) new work.
+        // The curve-capped flag (#4901) is drained where the processor runs,
+        // in `process_item_in_rtc_frame`, so every walk reports it once.
         self.process_representation_item_in_frame(item, decoder, self.rtc_offset)
     }
 
@@ -771,11 +765,7 @@ impl GeometryRouter {
         decoder: &mut EntityDecoder,
         offset_meters: (f64, f64, f64),
     ) -> Result<Mesh> {
-        let result = self.process_representation_item_body(item, decoder, offset_meters);
-        if crate::processors::take_curve_capped() {
-            self.record_unsupported_item(IfcType::IfcBSplineCurveWithKnots);
-        }
-        result
+        self.process_representation_item_body(item, decoder, offset_meters)
     }
 
     /// Mesh a raw-coordinate item (tessellated, Brep, surface model or
@@ -800,7 +790,7 @@ impl GeometryRouter {
         {
             return Ok(None);
         }
-        if self.processors.get(&item.ifc_type, self.schema).is_none() {
+        if self.processor_for(&item.ifc_type).is_none() {
             return Ok(None);
         }
         let Some(offset) = self.element_frame_rtc(element, decoder)? else {
@@ -831,44 +821,38 @@ impl GeometryRouter {
         }))
     }
 
-    /// Add a textured `IfcTriangulatedFaceSet` as its own UV-carrying
-    /// sub-mesh (#1781), rebased by `offset_meters` (item frame) when that
-    /// preserves precision (#5698). `false` when the textured build fails or
-    /// is empty, so the caller falls through to the plain path.
-    fn add_textured_face_set(
+    /// A textured `IfcTriangulatedFaceSet` meshed with its per-vertex UVs,
+    /// unit-scaled and rebased by `offset_meters` (item frame) when that
+    /// preserves precision (#5698). Shared by the occurrence walk and the
+    /// type-geometry walk (#7690). `None` when the item is not a face set,
+    /// or the textured build fails or is empty.
+    pub(super) fn textured_face_set(
         &self,
         item: &DecodedEntity,
         decoder: &mut EntityDecoder,
         map: &crate::processors::texture::ResolvedTextureMap,
         offset_meters: Option<(f64, f64, f64)>,
-        sub_meshes: &mut SubMeshCollection,
-    ) -> bool {
+    ) -> Option<(Mesh, Vec<f32>)> {
         // A terrain TIN is a face set that only appends `Flags` (#5942).
         if !matches!(item.ifc_type, IfcType::IfcTriangulatedFaceSet | IfcType::IfcTriangulatedIrregularNetwork) {
-            return false;
+            return None;
         }
         let rtc = offset_meters.and_then(|offset| {
             self.raw_item_rtc_file_units(item, decoder, offset)
                 .zip(Some(offset))
         });
         let proc = crate::processors::TriangulatedFaceSetProcessor::new();
-        let Ok((mut mesh, uvs)) = proc.process_with_texture_rebased(
-            item,
-            decoder,
-            map,
-            rtc.map(|(file_units, _)| file_units),
-        ) else {
-            return false;
-        };
+        let (mut mesh, uvs) = proc
+            .process_with_texture_rebased(item, decoder, map, rtc.map(|(file_units, _)| file_units))
+            .ok()?;
         if mesh.is_empty() {
-            return false;
+            return None;
         }
         self.scale_mesh(&mut mesh); // UVs are unaffected by scale
         if let Some((_, offset)) = rtc {
             publish_object_frame_bounds(&mut mesh, offset);
         }
-        sub_meshes.add_textured(item.id, mesh, uvs, map.attachment());
-        true
+        Some((mesh, uvs))
     }
 
     /// Mesh one item, rebasing it by `offset_meters` (model RTC expressed in
@@ -885,13 +869,22 @@ impl GeometryRouter {
     ///
     /// Returns the unit-scaled mesh. A rebased mesh carries `rtc_applied`
     /// and object-frame `local_bounds`.
-    fn process_item_in_rtc_frame(
+    ///
+    /// Every walk meshes an item's processor here and nowhere else, so this
+    /// is also where the thread-local curve-capped flag (#4901) is drained:
+    /// a capped edge is reported for the item that set it, never for the next
+    /// item on the thread, whichever walk ran it (ROUTER-26, #7690).
+    pub(super) fn process_item_in_rtc_frame(
         &self,
         processor: &dyn GeometryProcessor,
         item: &DecodedEntity,
         decoder: &mut EntityDecoder,
         offset_meters: (f64, f64, f64),
     ) -> Result<Mesh> {
+        // Drop flags a direct `AdvancedBrepProcessor` call left set on this
+        // thread: the drains below must count THIS item only (#7687).
+        let _ = crate::processors::take_curve_capped();
+        let _ = crate::processors::take_face_refused();
         let rebased = self
             .raw_item_rtc_file_units(item, decoder, offset_meters)
             .and_then(|rtc_file_units| {
@@ -904,10 +897,20 @@ impl GeometryRouter {
                 )
             });
         let rtc_applied = rebased.is_some();
-        let mut mesh = match rebased {
-            Some(result) => result?,
-            None => processor.process(item, decoder, self.schema, self.tessellation_quality)?,
+        let result = match rebased {
+            Some(result) => result,
+            None => processor.process(item, decoder, self.schema, self.tessellation_quality),
         };
+        if crate::processors::take_curve_capped() {
+            self.record_unsupported_item(IfcType::IfcBSplineCurveWithKnots);
+        }
+        // A face refused because its loop, curve or surface data does not
+        // read (#7687, D3): the brep skips it per face, so this is the only
+        // place the drop becomes visible.
+        for face_type in crate::processors::take_face_refused() {
+            self.record_unsupported_item(face_type);
+        }
+        let mut mesh = result?;
         // Safety net: strip any out-of-bounds indices before downstream use
         mesh.validate_indices();
         self.scale_mesh(&mut mesh);
@@ -980,10 +983,6 @@ impl GeometryRouter {
                 .map(|p| p.bool_failure_count())
         });
 
-        // The curve-capped flag (#4901) is drained by the public
-        // `process_representation_item` wrapper around this whole function,
-        // not here — see its doc comment for why (mapped items bypass this
-        // uncached path entirely).
         let mesh = self.process_representation_item_uncached(item, decoder, offset_meters)?;
 
         // If this call's processor recorded anything new, decide whether THIS
@@ -1002,7 +1001,7 @@ impl GeometryRouter {
         if let (Some(key), Some(before), Some(cache)) =
             (dedup_key, failure_mark, self.item_dedup_cache.as_ref())
         {
-            if let Some(processor) = self.processors.get(&item.ifc_type, self.schema) {
+            if let Some(processor) = self.processor_for(&item.ifc_type) {
                 if processor.bool_failure_count() > before && !cache.claim_diagnostic(key) {
                     processor.truncate_bool_failures_to(before);
                 }
@@ -1062,7 +1061,7 @@ impl GeometryRouter {
     fn stamp_direct_instance(&self, mut mesh: Mesh, rep: Option<u128>) -> Mesh {
         if let Some(exact_rep) = rep {
             mesh.instance_meta = Some(InstanceMeta {
-                transform: IDENTITY_ROW_MAJOR,
+                transform: mat4::IDENTITY,
                 local_transform: None,
                 canonical_transform: None,
                 rep_identity: exact_rep,
@@ -1083,7 +1082,7 @@ impl GeometryRouter {
         // Raw-coordinate items rebase in the model frame here; element
         // walkers take `process_raw_item_for_element` first for their own
         // items, so this frame matters for mapped and opening items.
-        if let Some(processor) = self.processors.get(&item.ifc_type, self.schema) {
+        if let Some(processor) = self.processor_for(&item.ifc_type) {
             let mesh =
                 self.process_item_in_rtc_frame(processor.as_ref(), item, decoder, offset_meters)?;
 
@@ -1116,7 +1115,7 @@ impl GeometryRouter {
         element: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Result<Option<Mesh>> {
-        let processor = match self.processors.get(&IfcType::IfcAlignment, self.schema) {
+        let processor = match self.processor_for(&IfcType::IfcAlignment) {
             Some(p) => Rc::clone(p),
             None => return Ok(None),
         };

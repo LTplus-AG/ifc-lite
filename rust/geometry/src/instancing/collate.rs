@@ -3,36 +3,24 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use super::group::collate_refs;
+use crate::math::mat4;
 use crate::mesh::{InstanceMeta, Mesh};
 use nalgebra::Matrix4;
-
-const IDENTITY16: [f64; 16] = [
-    1.0, 0.0, 0.0, 0.0, //
-    0.0, 1.0, 0.0, 0.0, //
-    0.0, 0.0, 1.0, 0.0, //
-    0.0, 0.0, 0.0, 1.0, //
-];
 
 /// Full world transform `transform · local_transform` for an occurrence.
 pub(super) fn compose_world(meta: &InstanceMeta) -> Matrix4<f64> {
     let t = Matrix4::from_row_slice(&meta.transform);
-    let l = Matrix4::from_row_slice(meta.local_transform.as_ref().unwrap_or(&IDENTITY16));
+    let l = Matrix4::from_row_slice(meta.local_transform.as_ref().unwrap_or(&mat4::IDENTITY));
     // Rigid tier: canonical->local transform, composed innermost. For occurrences
     // grouped by congruence (not bit-identity) this carries the recovered rotation
     // so the shared template reproduces this occurrence's baked geometry.
-    let c = Matrix4::from_row_slice(meta.canonical_transform.as_ref().unwrap_or(&IDENTITY16));
+    let c = Matrix4::from_row_slice(meta.canonical_transform.as_ref().unwrap_or(&mat4::IDENTITY));
     t * l * c
 }
 
 /// Flatten a column-major nalgebra matrix into a row-major `[f32; 16]`.
 pub(super) fn mat4_to_row_major_f32(m: &Matrix4<f64>) -> [f32; 16] {
-    let mut out = [0.0f32; 16];
-    for r in 0..4 {
-        for c in 0..4 {
-            out[r * 4 + c] = m[(r, c)] as f32;
-        }
-    }
-    out
+    mat4::to_f32(&mat4::from_na(m))
 }
 
 /// One occurrence of a template geometry.

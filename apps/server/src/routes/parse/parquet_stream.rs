@@ -4,14 +4,14 @@
 
 //! SSE Parquet-batch streaming parse endpoint.
 
-use super::cache_keys::{
-    data_model_cache_key, parquet_geometry_key, parquet_metadata_key,
-    request_cache_key,
-};
+use super::cache_keys::{data_model_cache_key, parquet_geometry_key, parquet_metadata_key};
 use super::parquet::ParquetMetadataHeader;
 use super::stream_event::ParquetStreamEvent;
 use super::stream_progress::{cache_stream_progress, StreamProgressRecorder};
-use super::{cache_symbolic_data_off_runtime, extract_file, ParseQuery};
+use super::cache_read::Replay;
+use super::{
+    admit_upload, begin_symbolic_fill, cache_symbolic_data_off_runtime, request_cache_key_off_runtime, ParseQuery,
+};
 use crate::error::ApiError;
 use crate::services::{extract_data_model, process_streaming, serialize_data_model_to_parquet};
 use crate::types::StreamEvent;
@@ -86,21 +86,18 @@ pub async fn parse_parquet_stream(
     };
 
     // Extract file
-    // Admission gate (bounded concurrency + byte budget): acquired BEFORE the
-    // upload is buffered, reserving the max upload size since multipart rarely
-    // declares a length up front. Held for the request's whole lifetime so a
-    // disconnected-but-still-running job keeps its memory slot.
-    let admission_guard = state
-        .admission
-        .acquire(state.config.max_file_size_mb as u64 * 1024 * 1024)
-        .await?;
-    let data = extract_file(&mut multipart, state.config.max_file_size_mb).await?;
+    // Admission (bounded concurrency + byte budget) before the upload is
+    // buffered; see `admit_upload`. Held for the
+    // request's whole lifetime so a disconnected-but-still-running job keeps
+    // its memory slot.
+    let (admission_guard, data) = admit_upload(&state, &mut multipart).await?;
 
     // Generate cache key before processing (include opening filter + quality).
     // From the RECEIVED BYTES, always: a `sha256` parameter that arrived
     // alongside a body has no say here, so a client whose claimed hash does not
     // describe what it uploaded still reads and writes the entry its bytes name.
-    let cache_key = request_cache_key(&data, &query, tessellation_quality);
+    let (cache_key, admission_guard) =
+        request_cache_key_off_runtime(&data, &query, tessellation_quality, admission_guard).await?;
     let cache_key_clone = cache_key.clone();
     // Without `stream_shapes=cross-batch` this route SHARES nothing -- each
     // batch must decode on its own -- so the layout only decides whether the
@@ -112,18 +109,22 @@ pub async fn parse_parquet_stream(
 
     // OPTIMIZATION: Check cache first and fast-path return if available
     // This avoids re-processing files that are already cached (see
-    // `cached_replay.rs`; a short/corrupt blob falls through as a miss).
-    if let Some(response) =
-        super::cached_replay::try_cached_replay(&state, &cache_key, layout, stream_shapes, query.data_model_entities).await?
-    {
-        // Cached replay: no parse work runs, so holding the admission
-        // guard (and its CPU slot) while a slow client drains the SSE
-        // would starve real parses for nothing. The replay blob is
-        // already materialized and bounded by cache content, far below
-        // a parse working set.
-        drop(admission_guard);
-        return Ok(response);
-    }
+    // `cached_replay.rs`; an unusable entry falls through as a miss). A hit
+    // frees the CPU slot once the replay is built and keeps only the replay's
+    // own bytes charged while the client drains it (#7676, SERVER-7).
+    let replay = super::cached_replay::try_cached_replay(
+        &state,
+        &cache_key,
+        layout,
+        stream_shapes,
+        query.data_model_entities,
+        admission_guard,
+    )
+    .await?;
+    let admission_guard = match replay {
+        Replay::Hit(response) => return Ok(response),
+        Replay::Miss(admission_guard) => admission_guard,
+    };
 
     tracing::info!(
         cache_key = %cache_key,
@@ -162,6 +163,13 @@ pub async fn parse_parquet_stream(
     let mut progress_recorder = StreamProgressRecorder::default();
     let cache_for_geometry = cache.clone();
     let cache_key_for_geometry = cache_key.clone();
+    // Marked before the response goes out, written at Complete (#7676,
+    // SERVER-21): `GET /parse/symbolic` answers 202, not 404, meanwhile.
+    let mut symbolic_fill = Some(begin_symbolic_fill(&state, &cache_key));
+    // ONE admission for the whole request (#7676, SERVER-8): the stream and
+    // the data-model fill below share it, and it is released when the last of
+    // them ends.
+    let admission = Arc::new(admission_guard);
 
     // Create streaming response that yields Parquet batches
     let stream = process_streaming(
@@ -170,7 +178,7 @@ pub async fn parse_parquet_stream(
         max_batch_size,
         query.opening_filter,
         tessellation_quality,
-        Some(admission_guard),
+        Some(Arc::clone(&admission)),
     )
     .map(move |event: StreamEvent| {
         let sse_event = match event {
@@ -222,11 +230,14 @@ pub async fn parse_parquet_stream(
                 // `GET /api/v1/parse/symbolic/{cache_key}` reach parity (issue #900).
                 // Reuses the value already computed inside `process_streaming` —
                 // no re-extraction.
-                tokio::spawn(cache_symbolic_data_off_runtime(
-                    cache_for_geometry.clone(),
-                    cache_key_for_geometry.clone(),
-                    symbolic_data.clone(),
-                ));
+                if let Some(fill) = symbolic_fill.take() {
+                    tokio::spawn(cache_symbolic_data_off_runtime(
+                        cache_for_geometry.clone(),
+                        fill,
+                        cache_key_for_geometry.clone(),
+                        symbolic_data.clone(),
+                    ));
+                }
 
                 // Finish the incremental writer: the cache blob was built row
                 // group by row group as batches streamed, so nothing is
@@ -332,34 +343,27 @@ pub async fn parse_parquet_stream(
     // Spawn background task to extract and cache data model. Marked
     // in-flight for the task's whole lifetime (#5129): `get_data_model`
     // answers 202 only for a key in this set, so the marker must cover every
-    // way the task can end -- completion, a `set_bytes` failure, and the
-    // admission-saturated early return alike -- or a client polling during
-    // exactly that window sees a 404 for a fill that is, in fact, still
-    // possible on retry. `InFlightGuard::drop` handles all three uniformly.
+    // way the task can end -- completion and a `set_bytes` failure alike --
+    // or a client polling during exactly that window sees a 404 for a fill
+    // that is, in fact, still running. `InFlightGuard::drop` handles both.
     let content_for_cache = content.clone();
     // Keyed by the data-model ENTRY this fill writes, as `get_data_model`
     // asks (#6034): a fill of one variant says nothing about the other.
     let data_model_entities = query.data_model_entities;
     let dm_key = data_model_cache_key(&cache_key, data_model_entities);
     let cache_for_dm = cache.clone();
-    let admission_for_dm = state.admission.clone();
     let in_flight = state.data_model_in_flight.begin(dm_key.clone());
+    // The data-model extraction re-parses the whole upload, so it runs under
+    // admission, and it is this request's work, so it runs under THIS
+    // request's admission (#7676, SERVER-8). It used to wait for a second slot
+    // while its own stream held the first: on a one-slot host it always gave
+    // up after the queue timeout, the data model was never written, and
+    // `GET /parse/data-model` answered the terminal 404. Holding the shared
+    // guard also keeps the request charged until the fill ends.
+    let admission_for_dm = Arc::clone(&admission);
     tokio::spawn(async move {
         let _in_flight = in_flight;
-        // The data-model extraction re-parses the whole upload, so it must
-        // pass admission like any parse job. It is a cache-fill optimization:
-        // when the server is saturated, skipping it (the next request rebuilds
-        // it inline) beats bypassing the gate.
-        let _dm_admission = match admission_for_dm
-            .acquire(content_for_cache.len() as u64)
-            .await
-        {
-            Ok(guard) => guard,
-            Err(_) => {
-                tracing::debug!("Skipping data-model cache fill: admission saturated");
-                return;
-            }
-        };
+        let _admission = admission_for_dm;
         // Run data model extraction in blocking task
         let dm_result =
             tokio::task::spawn_blocking(move || extract_data_model(&content_for_cache)).await;
@@ -371,13 +375,7 @@ pub async fn parse_parquet_stream(
                 serialize_data_model_to_parquet(&data_model)
             }).await;
 
-            if let Ok(Ok(parquet_data)) = serialize_result {
-                if let Err(e) = cache_for_dm.set_bytes(&dm_key, &parquet_data).await {
-                    tracing::error!(error = %e, "Failed to cache data model from stream");
-                } else {
-                    tracing::info!(cache_key = %dm_key, size = parquet_data.len(), "Data model cached from stream");
-                }
-            }
+            super::stream_data_model::cache_streamed_data_model(&cache_for_dm, &dm_key, serialize_result).await;
         }
         // `_in_flight` drops here, clearing the marker only after the cache
         // write (success or failure) is fully resolved.

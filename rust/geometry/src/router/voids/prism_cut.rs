@@ -70,7 +70,6 @@ use rustc_hash::FxHashMap;
 
 /// `IFC_LITE_PRISM_CUT=0` disables the analytic prism-subtraction path (exact
 /// kernel for every host). Default ON; read once.
-pub(crate) mod closure_checks;
 mod vertex_dedup;
 mod opening_prism;
 use opening_prism::prepare_prism;
@@ -80,9 +79,9 @@ mod planar_correction;
 #[cfg(test)]
 #[path = "prism_cut_tests.rs"]
 mod tests;
-use closure_checks::{closed_enough_to_emit, directed_closed, ClosureVerdict};
+use crate::mesh_check::{closed_enough_to_emit, directed_closed, ClosureVerdict};
 #[cfg(test)]
-use closure_checks::closed_or_hairline;
+use crate::mesh_check::closed_or_hairline;
 pub(crate) use vertex_dedup::dedup_cut_vertices;
 pub(in crate::router::voids) use finish::finish_cut_verdict;
 pub(super) use planar_correction::correct_planar_overlap;

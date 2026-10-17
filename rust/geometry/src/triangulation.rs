@@ -13,6 +13,7 @@
 
 #[cfg(feature = "triangulation-alt")]
 pub(crate) mod alt_oracle;
+mod hole_overlap;
 mod ring_geom;
 use ring_geom::{point_in_ring, ring_bbox};
 
@@ -161,6 +162,15 @@ pub(crate) fn safe_earcut(
         // earcutr's bridge walk.
     }
 
+    // Duplicate holes collapse to one; overlapping or nested holes, or a set
+    // too costly to check, refuse the cap (D3). earcutr is superlinear on
+    // these and its output for them is not the authored face (#7787).
+    {
+        let ring_slices: Vec<&[f64]> = rings.iter().map(|(c, _)| c.as_slice()).collect();
+        let hole_vertices = real_holes.iter().map(|&h| ring_slices[h].len() / 2).sum();
+        hole_overlap::settle_holes(&ring_slices, &mut real_holes, hole_overlap::hole_work_budget(hole_vertices))?;
+    }
+
     let mut out: Vec<usize> = Vec::new();
 
     // Outer ring + its real holes in one earcut call.
@@ -259,11 +269,33 @@ fn quad_indices(p: &[Point2<f64>]) -> Vec<usize> {
     };
     let c1 = orient(&p[0], &p[1], &p[2]);
     let c3 = orient(&p[2], &p[3], &p[0]);
-    if c1 * c3 >= 0.0 {
-        vec![0, 1, 2, 0, 2, 3]
+    quad_pattern(c1 * c3 >= 0.0).iter().map(|&i| i as usize).collect()
+}
+
+/// The two quad splits: `0-2` when vertices 1 and 3 agree in convexity,
+/// otherwise `1-3`. One home for both the 2D and the 3D test.
+#[inline]
+fn quad_pattern(zero_two: bool) -> [u32; 6] {
+    if zero_two {
+        [0, 1, 2, 0, 2, 3]
     } else {
-        vec![1, 2, 3, 1, 3, 0]
+        [1, 2, 3, 1, 3, 0]
     }
+}
+
+/// [`quad_indices`] for a planar quad in 3D, without projecting it (#7686,
+/// GEOM-3 / PROC-S10).
+///
+/// The 2D test compares the orientation of triangles `(0,1,2)` and `(2,3,0)`;
+/// for a planar quad both cross products are parallel to the face normal, so
+/// their dot product has the sign of that product. Convex quads keep the
+/// `0-2` split byte for byte; a reflex vertex 1 or 3 takes the interior `1-3`
+/// diagonal, and both triangles carry the ring's own winding.
+#[inline]
+pub fn quad_split_3d(p: &[Point3<f64>]) -> [u32; 6] {
+    let c1 = (p[1] - p[0]).cross(&(p[2] - p[1]));
+    let c3 = (p[3] - p[2]).cross(&(p[0] - p[3]));
+    quad_pattern(c1.dot(&c3) >= 0.0)
 }
 
 /// Simple fan triangulation for convex polygons
@@ -410,6 +442,108 @@ pub fn triangulate_polygon_with_holes_refined(
     Ok((all, idx))
 }
 
+/// Triangulate one planar 3D face, the single home for every planar-face
+/// consumer (faceted breps, surface models, planar `IfcAdvancedFace`).
+///
+/// Returns indices into `outer ++ holes` (the vertex order the callers emit).
+/// The ring is projected on its Newell plane, holes onto the SAME basis, and
+/// triangulated once, so the triangles wind with the outer ring.
+///
+/// Fails closed with holes (#7686 PROC-S5): when the holed triangulation
+/// fails, a fan of the outer ring would silently close the authored openings,
+/// so the face is an `Err` the caller refuses and counts. Without holes the
+/// historical fan of the outer ring remains the fallback.
+pub fn triangulate_planar_face(
+    outer: &[Point3<f64>],
+    holes: &[Vec<Point3<f64>>],
+) -> Result<Vec<u32>> {
+    if outer.len() < 3 {
+        return Err(Error::TriangulationError(
+            "Need at least 3 points in a planar face".to_string(),
+        ));
+    }
+    let normal = calculate_polygon_normal(outer);
+    let (outer_2d, u_axis, v_axis, origin) = project_to_2d(outer, &normal);
+    let holes_2d: Vec<Vec<Point2<f64>>> = holes
+        .iter()
+        .map(|hole| project_to_2d_with_basis(hole, &u_axis, &v_axis, &origin))
+        .collect();
+    // Hole-free rings of five or more corners keep the
+    // exact dominant-axis projection every polygonal face used before the planar home: it never
+    // perturbs exactly collinear or axis-aligned corners, so the triangulation
+    // (and the booleans downstream of it) does not shift with Newell-basis
+    // rounding, and a convex ring with a collinear corner is never fanned
+    // through a degenerate zero-area triangle (which opens the edges its
+    // neighbour shares through that corner).
+    // Ear-clipping on either projection can still cut a zero-area ear at a
+    // collinear corner; the Newell result is kept where it has strictly fewer
+    // of them (duplex IfcSpace surface models tore on the axis ears).
+    let held = if holes_2d.is_empty() && outer.len() >= 5 {
+        match axis_earcut(outer, &normal) {
+            Ok(axis) if zero_area_triangles(outer, &axis) > 0 => match triangulate_polygon(&outer_2d) {
+                Ok(newell) if zero_area_triangles(outer, &newell) < zero_area_triangles(outer, &axis) => Ok(newell),
+                _ => Ok(axis),
+            },
+            held => held,
+        }
+    } else {
+        triangulate_polygon_with_holes(&outer_2d, &holes_2d)
+    };
+    match held {
+        Ok(idx) => Ok(idx.into_iter().map(|i| i as u32).collect()),
+        Err(_) if holes.is_empty() => {
+            let mut idx = Vec::with_capacity((outer.len() - 2) * 3);
+            for i in 1..outer.len() as u32 - 1 {
+                idx.extend_from_slice(&[0, i, i + 1]);
+            }
+            Ok(idx)
+        }
+        Err(error) => Err(Error::TriangulationError(format!(
+            "planar face triangulation with holes failed: {error}"
+        ))),
+    }
+}
+
+/// Triangles of `idx` over the planar `ring` whose area is zero relative to
+/// the ring's own (`1e-9`): the ears a collinear corner yields.
+fn zero_area_triangles(ring: &[Point3<f64>], idx: &[usize]) -> usize {
+    let n = ring.len();
+    let twice_area = (0..n)
+        .fold(Vector3::zeros(), |acc, i| acc + ring[i].coords.cross(&ring[(i + 1) % n].coords))
+        .norm();
+    idx.chunks_exact(3)
+        .filter(|t| (ring[t[1]] - ring[t[0]]).cross(&(ring[t[2]] - ring[t[0]])).norm() <= 1e-9 * twice_area)
+        .count()
+}
+
+/// Earcut a hole-free planar ring on the plane its dominant normal axis drops,
+/// winding the triangles with the ring (earcut itself re-winds counter-clockwise
+/// in the projected frame, which mirrors for a ring that runs clockwise there).
+fn axis_earcut(ring: &[Point3<f64>], normal: &Vector3<f64>) -> Result<Vec<usize>> {
+    let (a, b) = if normal.z.abs() >= normal.x.abs() && normal.z.abs() >= normal.y.abs() {
+        (0, 1)
+    } else if normal.y.abs() >= normal.x.abs() {
+        (0, 2)
+    } else {
+        (1, 2)
+    };
+    let flat: Vec<f64> = ring.iter().flat_map(|p| [p[a], p[b]]).collect();
+    let n = ring.len();
+    let area2: f64 = (0..n)
+        .map(|i| {
+            let (p, q) = (&ring[i], &ring[(i + 1) % n]);
+            p[a] * q[b] - q[a] * p[b]
+        })
+        .sum();
+    let mut idx = safe_earcut(&flat, &[], 2).map_err(Error::TriangulationError)?;
+    if area2 < 0.0 {
+        for tri in idx.chunks_exact_mut(3) {
+            tri.swap(1, 2);
+        }
+    }
+    Ok(idx)
+}
+
 /// Project 3D points onto a 2D plane defined by a normal
 /// Returns 2D points and the coordinate system (u_axis, v_axis, origin)
 #[inline]
@@ -476,8 +610,13 @@ pub fn project_to_2d_with_basis(
         .collect()
 }
 
-/// Calculate the normal of a polygon from its vertices
-/// Optimized for triangles and quads using simple cross product
+/// Calculate the normal of a polygon from its vertices.
+///
+/// A triangle's cross product is its normal, and so is a convex quad's. A quad
+/// reflex at vertex 1 or 3 (the dart `[(0,0), (2,2), (4,0), (2,10)]`) gets
+/// Newell's method like every larger ring: the cross product of its first two
+/// edges points AGAINST the ring there (-Z for a CCW dart, #7686 GEOM-3) and
+/// mirrored the projection and the winding built on it.
 #[inline]
 pub fn calculate_polygon_normal(points: &[Point3<f64>]) -> Vector3<f64> {
     let n = points.len();
@@ -492,20 +631,26 @@ pub fn calculate_polygon_normal(points: &[Point3<f64>]) -> Vector3<f64> {
         let v2 = points[2] - points[0];
         let normal = v1.cross(&v2);
         let len = normal.norm();
-        if len > 1e-10 {
+        // `quad_split_3d`'s test: turns at 1 and 3 disagreeing means a reflex
+        // vertex there and `normal` may be reversed; Newell below.
+        let reflex = n == 4
+            && normal.dot(&(points[3] - points[2]).cross(&(points[0] - points[3]))) < 0.0;
+        if len > 1e-10 && !reflex {
             return normal / len;
         }
-        // Fallback for degenerate triangles
-        if n == 4 {
-            // Try different edges for quad
-            let v3 = points[3] - points[0];
-            let normal = v2.cross(&v3);
-            let len = normal.norm();
-            if len > 1e-10 {
-                return normal / len;
+        if !reflex {
+            // Fallback for degenerate triangles
+            if n == 4 {
+                // Try different edges for quad
+                let v3 = points[3] - points[0];
+                let normal = v2.cross(&v3);
+                let len = normal.norm();
+                if len > 1e-10 {
+                    return normal / len;
+                }
             }
+            return Vector3::new(0.0, 0.0, 1.0);
         }
-        return Vector3::new(0.0, 0.0, 1.0);
     }
 
     // Use Newell's method for robust normal calculation on complex polygons

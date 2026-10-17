@@ -7,7 +7,7 @@ use crate::types::response::{
     QuickMetadataSpatialNode,
 };
 use ifc_lite_core::limits::LARGE_COORD_THRESHOLD_METERS;
-use ifc_lite_core::{keyword_eq, IfcType, StepListItems, IFC_TYPES};
+use ifc_lite_core::{keyword_eq, parse_step_real, IfcType, StepListItems, IFC_TYPES};
 use std::collections::{HashMap, HashSet};
 use std::sync::LazyLock;
 
@@ -16,7 +16,12 @@ pub(super) struct QuickSpatialNodeEntry {
     pub(super) express_id: u32,
     pub(super) type_name: String,
     pub(super) name: String,
+    /// The storey elevation in METRES, set by [`Self::finish_elevation`] once
+    /// the unit scale is known (PROCESSING-18); `None` for any other node.
     pub(super) elevation: Option<f64>,
+    /// A storey's elevation readings in raw file units, until the scan has
+    /// ended and the unit scale can be resolved.
+    pub(super) raw_elevation: Option<RawElevation>,
     /// `IfcRelAggregates` children.
     pub(super) children: Vec<u32>,
     /// Spatial elements an `IfcRelContainedInSpatialStructure` names, promoted
@@ -119,23 +124,65 @@ pub(super) fn extract_name_from_args(args: &[&[u8]], fallback: &str) -> String {
         .unwrap_or_else(|| fallback.to_string())
 }
 
-pub(super) fn extract_storey_elevation_from_args(args: &[&[u8]]) -> Option<f64> {
-    for index in [9usize, 8usize] {
-        if let Some(value) = args
-            .get(index)
-            .and_then(|token| std::str::from_utf8(token.trim_ascii()).ok())
-            .and_then(|token| token.parse::<f64>().ok())
-        {
-            return Some(value);
+/// A storey's elevation as the scan reads it, in the file's own length unit.
+///
+/// The quick-metadata scan runs before the project's unit scale can be
+/// resolved, so a reading is kept raw and turned into metres by
+/// [`Self::to_metres`] once it can (PROCESSING-18, #7775): every other
+/// emitter (server data model, TS parser) reports storey elevations in metres.
+#[derive(Clone, Debug, Default)]
+pub(super) struct RawElevation {
+    /// `IfcBuildingStorey.Elevation` (attribute 9; 8 for a schema that shifts it).
+    declared: Option<f64>,
+    /// Every numeric attribute in order, for the fallback below.
+    numeric: Vec<f64>,
+}
+
+impl RawElevation {
+    /// The elevation in metres for a file length unit of `length_unit_scale`
+    /// metres: the declared value, else the first numeric attribute that is a
+    /// LOCAL coordinate. A storey elevation is a local coordinate; a value
+    /// beyond [`LARGE_COORD_THRESHOLD_METERS`] measured in METRES is a world
+    /// coordinate (a georeferenced placement, not an elevation). The test used
+    /// to compare raw file numbers with the metre threshold, so on a
+    /// millimetre file a storey at +1.2 km was rejected as "large" and a
+    /// smaller unrelated number was taken instead.
+    pub(super) fn to_metres(&self, length_unit_scale: f64) -> Option<f64> {
+        let metres = |value: f64| value * length_unit_scale;
+        self.declared.map(metres).or_else(|| {
+            self.numeric
+                .iter()
+                .map(|&value| metres(value))
+                .find(|value| value.abs() < LARGE_COORD_THRESHOLD_METERS)
+        })
+    }
+}
+
+/// Read a storey's raw elevation from its record arguments.
+pub(super) fn read_storey_elevation(args: &[&[u8]]) -> RawElevation {
+    // Through the core STEP literal reader, not `str::parse::<f64>`, which
+    // read `inf`, `NaN` and an overflowing `1.E400` as elevations (#7678).
+    let declared = [9usize, 8usize]
+        .into_iter()
+        .find_map(|index| args.get(index).and_then(|token| parse_step_real(token)));
+    let numeric = args.iter().filter_map(|token| parse_step_real(token)).collect();
+    RawElevation { declared, numeric }
+}
+
+/// [`read_storey_elevation`] in metres for a file length unit of
+/// `length_unit_scale` metres.
+#[cfg(test)]
+pub(super) fn extract_storey_elevation_from_args(args: &[&[u8]], length_unit_scale: f64) -> Option<f64> {
+    read_storey_elevation(args).to_metres(length_unit_scale)
+}
+
+impl QuickSpatialNodeEntry {
+    /// Settle a storey's elevation in metres now that the unit scale is known.
+    pub(super) fn finish_elevation(&mut self, length_unit_scale: f64) {
+        if let Some(raw) = self.raw_elevation.take() {
+            self.elevation = raw.to_metres(length_unit_scale);
         }
     }
-    // A storey elevation is a local coordinate: the first numeric attribute
-    // inside the large-coordinate threshold is taken, anything beyond it is a
-    // world coordinate (a georeferenced placement, not an elevation).
-    args.iter()
-        .filter_map(|token| std::str::from_utf8(token.trim_ascii()).ok())
-        .filter_map(|token| token.parse::<f64>().ok())
-        .find(|value| value.abs() < LARGE_COORD_THRESHOLD_METERS)
 }
 
 /// Deepest level of the quick-metadata spatial tree; the root is level 0. The

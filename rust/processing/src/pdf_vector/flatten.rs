@@ -11,17 +11,7 @@ pub(super) fn charge(remaining: &mut u64, work: u64) -> Result<(), String> {
         .ok_or("PDF curve flattening exceeds shared work budget")?;
     Ok(())
 }
-pub(super) fn distance(p: Point, a: Point, b: Point) -> f64 {
-    let d = [b[0] - a[0], b[1] - a[1]];
-    let q = [p[0] - a[0], p[1] - a[1]];
-    let n = d[0] * d[0] + d[1] * d[1];
-    let t = if n == 0. {
-        0.
-    } else {
-        ((q[0] * d[0] + q[1] * d[1]) / n).clamp(0., 1.)
-    };
-    (q[0] - t * d[0]).hypot(q[1] - t * d[1])
-}
+pub(super) use ifc_lite_geometry::math::v2::point_segment_distance as distance;
 fn midpoint(a: Point, b: Point) -> Point {
     [a[0] * 0.5 + b[0] * 0.5, a[1] * 0.5 + b[1] * 0.5]
 }
@@ -40,7 +30,7 @@ pub(super) fn bezier<const N: usize>(
         || controls
             .iter()
             .flatten()
-            .any(|x| !x.is_finite() || x.abs() > 1e8)
+            .any(|x| !x.is_finite() || x.abs() > super::limits::MODEL_COORD_LIMIT_M)
     {
         return Err("PDF curve requires finite quadratic/cubic controls and tolerance".into());
     }
@@ -50,7 +40,7 @@ pub(super) fn bezier<const N: usize>(
         let a = points[0];
         let b = points[N - 1];
         let magnitude = points.iter().flatten().fold(1_f64, |m, x| m.max(x.abs()));
-        let roundoff = 128. * f64::EPSILON * magnitude;
+        let roundoff = super::limits::COORD_ROUNDOFF_ULPS * f64::EPSILON * magnitude;
         if roundoff >= tolerance {
             return Err("PDF curve tolerance is below model-coordinate numerical precision".into());
         }

@@ -7,7 +7,7 @@
 
 import { checkedExpressId } from './express-id.js';
 import type { EntityRef } from './types.js';
-import { internType, type CompactEntityIndexColumns } from './compact-entity-index-columns.js';
+import { internType, lastEqualIndex, type CompactEntityIndexColumns } from './compact-entity-index-columns.js';
 import { yieldToEventLoop } from './yield-to-event-loop.js';
 
 /**
@@ -68,7 +68,7 @@ export class CompactEntityIndex {
 
   /**
    * Binary search for an expressId in the sorted array.
-   * Returns the array index or -1 if not found.
+   * Returns the array index (the last record of a duplicate) or -1.
    */
   private binarySearch(expressId: number): number {
     const ids = this.expressIds;
@@ -78,7 +78,7 @@ export class CompactEntityIndex {
     while (lo <= hi) {
       const mid = (lo + hi) >>> 1;
       const midVal = ids[mid];
-      if (midVal === expressId) return mid;
+      if (midVal === expressId) return lastEqualIndex(ids, mid);
       if (midVal < expressId) lo = mid + 1;
       else hi = mid - 1;
     }
@@ -329,7 +329,7 @@ export class CompactEntityIndexBuilder {
       // Build index array, sort it, then reorder all parallel arrays
       const indices = new Uint32Array(n);
       for (let i = 0; i < n; i++) indices[i] = i;
-      indices.sort((a, b) => this.expressIds[a] - this.expressIds[b]);
+      indices.sort((a, b) => this.expressIds[a] - this.expressIds[b] || a - b);
 
       const sortedIds = new Uint32Array(n);
       const sortedOffsets = new Uint32Array(n);

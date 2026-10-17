@@ -13,7 +13,9 @@
     "tsconfig.packages.json",
     "tsconfig.tests.base.json",
     "scripts/typecheck-tests.mjs",
-    "scripts/lib/is-main-entry.mjs"
+    "scripts/lib/is-main-entry.mjs",
+    "scripts/*worker-urls.*",
+    "scripts/lib/shipped-target.*"
   ],
   "globalPassThroughEnv": [
     "NODE_OPTIONS",

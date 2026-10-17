@@ -255,7 +255,7 @@ impl GeometryRouter {
                 Some([min[0], min[1], min[2], max[0], max[1], max[2]])
             }
         });
-        mesh.local_to_world = Some(super::mat4_to_row_major(transform));
+        mesh.local_to_world = Some(crate::math::mat4::from_na(transform));
 
         let rtc = self.rtc_offset;
         let needs_rtc = self.has_rtc_offset() && !mesh.rtc_applied;
@@ -352,20 +352,9 @@ impl GeometryRouter {
 
     #[inline]
     fn transform_normals(&self, mesh: &mut Mesh, transform: &Matrix4<f64>) {
-        // Normals transform by the inverse-transpose, not the raw linear block:
-        // under a non-uniform `IfcCartesianTransformationOperator3DnonUniform`
-        // scale the raw upper-3x3 skews a normal off the true surface normal and
-        // the trailing normalize() only fixes magnitude, not direction. Matches
-        // `extrusion.rs`. For pure rotation / uniform scale this equals the
-        // rotation block, so the common path is unchanged.
-        let normal_matrix = transform.try_inverse().unwrap_or(*transform).transpose();
-        mesh.normals.chunks_exact_mut(3).for_each(|chunk| {
-            let normal = Vector3::new(chunk[0] as f64, chunk[1] as f64, chunk[2] as f64);
-            let t = (normal_matrix * normal.to_homogeneous()).xyz().normalize();
-            chunk[0] = t.x as f32;
-            chunk[1] = t.y as f32;
-            chunk[2] = t.z as f32;
-        });
+        // Inverse-transpose, zero on a singular transform (D23): see
+        // `math::normals`.
+        crate::math::normals::transform_normals_in_place(&mut mesh.normals, transform);
     }
 }
 

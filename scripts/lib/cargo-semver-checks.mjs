@@ -73,14 +73,15 @@ export const SEMVER_RELEASE_TYPE = 'patch';
  * decides how much gets compared is pinned by a test rather than by reading
  * this function (#4786).
  */
-export function semverChecksArgv(crate, baseline) {
+export function semverChecksArgv(crate, baseline, { baselineRustdoc } = {}) {
   return [
     `+${SEMVER_TOOLCHAIN}`,
     'semver-checks',
     '--package',
     crate,
-    '--baseline-version',
-    baseline,
+    // A rebuilt baseline (#7737, scripts/lib/semver-baseline.mjs) replaces
+    // the registry lookup; the release type and everything else stay.
+    ...(baselineRustdoc ? ['--baseline-rustdoc', baselineRustdoc] : ['--baseline-version', baseline]),
     // Not the bump the manifest happens to carry: see SEMVER_RELEASE_TYPE.
     '--release-type',
     SEMVER_RELEASE_TYPE,
@@ -90,8 +91,8 @@ export function semverChecksArgv(crate, baseline) {
 }
 
 /** Run it. The unit tests inject a fake in place of this. */
-export function runSemverChecks(crate, baseline) {
-  const res = spawnSync('cargo', semverChecksArgv(crate, baseline), {
+export function runSemverChecks(crate, baseline, opts = {}) {
+  const res = spawnSync('cargo', semverChecksArgv(crate, baseline, opts), {
     cwd: REPO_ROOT,
     encoding: 'utf8',
     maxBuffer: 64 * 1024 * 1024,
@@ -182,6 +183,24 @@ export function interpretRun({ status, output }) {
     executed,
     reason:
       `NO_VERDICT: cargo-semver-checks exited ${status} without a "Summary" line — ` +
-      'it could not build or compare the crate, so nothing was checked',
+      'it could not build or compare the crate, so nothing was checked' +
+      outputExcerpt(output),
   };
+}
+
+/**
+ * What the tool said when it reached no verdict (#7737). The run's stdout and
+ * stderr were captured and then dropped, so CI printed a bare `NO_VERDICT
+ * exited 101` that could not be attributed to anything. The excerpt starts at
+ * the first `error` line (cargo's resolver and build errors put the cause
+ * there and the advice after it) and is capped, so a 10,000-line compile log
+ * cannot bury the rest of the report.
+ */
+export function outputExcerpt(output, max = 40) {
+  const lines = String(output ?? '').split('\n').map((l) => l.trimEnd()).filter(Boolean);
+  if (lines.length === 0) return ' (it printed nothing)';
+  const first = lines.findIndex((l) => /^\s*error\b/.test(l));
+  const shown = first === -1 ? lines.slice(-max) : lines.slice(first, first + max);
+  const cut = lines.length > shown.length ? `\n      | ... (${lines.length - shown.length} more line(s))` : '';
+  return `. It printed:\n      | ${shown.map((l) => l.slice(0, 300)).join('\n      | ')}${cut}`;
 }

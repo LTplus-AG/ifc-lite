@@ -30,20 +30,10 @@
 use ifc_lite_core::EntityScanner;
 use ifc_lite_processing::process_geometry;
 
-const FIXTURE: &str = "../../tests/models/ifcopenshell/structural_analysis_curve.ifc";
+const FIXTURE: &str = "ifcopenshell/structural_analysis_curve.ifc";
 
 fn read_fixture() -> Option<String> {
-    match std::fs::read_to_string(FIXTURE) {
-        Ok(s) => Some(s),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            eprintln!(
-                "skipping structural curve member geometry regression: fixture missing at \
-                 {FIXTURE} — run `pnpm fixtures` (sha256 in tests/models/manifest.json)"
-            );
-            None
-        }
-        Err(e) => panic!("failed to read fixture {FIXTURE}: {e}"),
-    }
+    ifc_lite_testkit::fixture_text(FIXTURE)
 }
 
 /// Inch -> metre, matching this fixture's assigned length unit `#31`.

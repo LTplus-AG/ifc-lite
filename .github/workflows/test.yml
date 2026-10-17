@@ -527,25 +527,30 @@ jobs:
             docs:
               - 'docs/**'
               - 'mkdocs.yml'
-              # The docs-site job installs from it (#4912).
               - 'requirements-docs.txt'
               - 'README.md'
-              - 'packages/*/README.md'
-              # The two SOURCES `scripts/docs/generate-docs-sections.mjs`
-              # regenerates its sections from. They belong in `docs` rather
-              # than `frontend` on purpose: `docs` reaches the freshness check
-              # through the Docs-checks job -- one free ubuntu-latest runner,
-              # three node scripts, no build artifact and no Depot -- which is
-              # the CHEAPEST job that runs this gate. `frontend` would drag a
-              # landing-copy edit through build + typecheck + lint + the viewer
-              # shards for no added signal. Coverage holds either way: when a
-              # PR also touches frontend/rust, Docs checks skips itself and
-              # Node tests runs the same `--check`. PR #1817 changed only
-              # apps/landing/bench-data.json, and BOTH lanes skipped.
               - 'apps/landing/**'
               - 'tests/benchmark/baseline.json'
+              # TypeDoc consumes every public declaration entry and the tooling
+              # that builds it. Reference generation must run on API changes.
+              - 'packages/**'
+              - 'shared/ai/**'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+              - 'tsconfig*.json'
+              - 'turbo.json'
               - 'scripts/docs/**'
+              - 'scripts/lib/public-entrypoints.mjs'
+              - 'scripts/consumer/packed-packages.mjs'
+              - 'scripts/lib/is-main-entry.mjs'
+              - 'scripts/lib/shipped-target.*'
+              - 'scripts/*worker-urls.*'
+              - 'scripts/run-build-wasm.mjs'
+              - 'scripts/build-wasm.sh'
               - '.github/workflows/test.yml'
+              - '.github/workflows/docs.yml'
+              - '.github/actions/setup-docs-api/**'
 
       # Decide whether `build` can skip the from-source wasm32 compile. The
       # probe emits `true` only when the WASM source is byte-identical to the
@@ -712,6 +717,16 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
+      # Keep a separate root so build-output still extracts into packages/.
+      # Recipe tests execute the compiled scripts from the same shared build.
+      - name: Upload example builds
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: example-build-output
+          path: examples/*/dist
+          retention-days: 1
+          if-no-files-found: error
+
       # The viewer app `pnpm build` just produced (turbo builds apps/* too, via
       # the viewer's own `build` script, so the __tla chunk-await guard has
       # already run over exactly these files). viewer-e2e serves it with
@@ -775,6 +790,11 @@ jobs:
         with:
           name: build-output
           path: packages
+      - name: Download example builds
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: example-build-output
+          path: examples
       # #4079 taught scripts/lib/revert-oracle-python.mjs to route a changed
       # `test_*.py` / `*_test.py` ANYWHERE in the repo (routing is
       # marker-based — `pythonTestOwner` walks up to the nearest project
@@ -899,6 +919,247 @@ jobs:
           # RED. Once the script is on main, ordinary whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- scripts/viewer-test-shards.mjs | grep -Fxq 'scripts/viewer-test-shards.mjs'; then
             oracle_args+=(--mutation tests/evidence/ci-viewer-test-shards/selection.oracle.patch)
+          # #7673: the new large-stack geometry pool module carries its own
+          # tests, so a whole-file revert deletes them (INCONCLUSIVE). Keep the
+          # module and remove ONLY the large worker stack: the deep par_iter
+          # job then overflows and its child-process test turns RED. Once
+          # geometry_pool.rs is on main, ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/processing/src/geometry_pool.rs | grep -Fxq 'rust/processing/src/geometry_pool.rs'; then
+            oracle_args+=(--mutation tests/evidence/geometry-pool-7673/stack-size.oracle.patch)
+          # #7676: the upload admission change adds ApiError::UploadTimeout, which
+          # its tests name, so a whole-change revert cannot compile them
+          # (INCONCLUSIVE). Keep the type and break ONLY the behaviour: the
+          # stall/trickle deadline and its idle cap never fire, the decode and
+          # the hash run on the async worker, the admission guard stays in the
+          # handler instead of riding them, the stream's data-model fill takes
+          # a second slot, and corrupt gzip/.ifcZIP streams answer 500. Once
+          # upload.rs is on main, ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- apps/server/src/routes/parse/upload.rs | grep -Fxq 'apps/server/src/routes/parse/upload.rs'; then
+            oracle_args+=(--mutation tests/evidence/upload-admission-7676/behaviour.oracle.patch)
+          # #7675: the untrusted-size bounds change public return types
+          # (ColumnarEntityIndex constructors, MaterialLayerIndex::from_flat),
+          # so a whole revert stops the changed callers compiling
+          # (INCONCLUSIVE). Keep the types and remove ONLY the bounds: the
+          # bounded error text, the u32 span refusal, the axis-0 layer-count
+          # refusal and the LandXML path budget, ordinal scope and counted
+          # warning; their tests turn RED. Once untrusted_sizes_7675.rs is on
+          # main, ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/core/tests/untrusted_sizes_7675.rs | grep -Fxq 'rust/core/tests/untrusted_sizes_7675.rs'; then
+            oracle_args+=(--mutation tests/evidence/untrusted-sizes-7675/rust-crates.oracle.patch)
+          # #7676: the cache-read policy adds AdmissionGuard::into_resident,
+          # Admission::acquire_resident and the DiskCache::lookup family, which
+          # its tests name, so a whole-change revert cannot compile them
+          # (INCONCLUSIVE). Keep them and break ONLY the behaviour: a drained
+          # response gives its bytes back early, a cache read ignores the RSS
+          # breaker, eviction ignores the write time (a same-content repair is
+          # evicted) or the blob's return, an upload charge never grows to the
+          # stored size or grows before the replay gate, and two routes drop
+          # Content-Length. Once
+          # cache_entry.rs is on main, ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- apps/server/src/services/cache_entry.rs | grep -Fxq 'apps/server/src/services/cache_entry.rs'; then
+            oracle_args+=(--mutation tests/evidence/cache-policy-7676/behaviour.oracle.patch)
+          # #7773: the 2D plane kit adds math/v2.rs, which its tests name, so a
+          # whole-change revert cannot compile them (INCONCLUSIVE). Keep the
+          # module and break ONLY the behaviour: dist loses hypot, the shoelace
+          # sum is split into two roundings, the point-in-ring guard for fewer
+          # than three vertices goes (an empty ring underflows) and bbox lets a
+          # NaN poison the box. Once v2.rs is on main, ordinary whole-change
+          # revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/math/v2.rs | grep -Fxq 'rust/geometry/src/math/v2.rs'; then
+            oracle_args+=(--mutation tests/evidence/geom2d-7773/behaviour.oracle.patch)
+          # engine-wasm-brotli: decoding fragmented LandXML metadata records
+          # moves to record_wire.rs (new module + new test), so a whole-change
+          # revert cannot compile its test (INCONCLUSIVE). Keep the module and
+          # break ONLY the decode: an unknown record name stops reporting the
+          # serde `unknown variant` refusal. Once record_wire.rs is on main,
+          # ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/landxml/src/stream/record_wire.rs | grep -Fxq 'rust/landxml/src/stream/record_wire.rs'; then
+            oracle_args+=(--mutation tests/evidence/wasm-size-landxml-wire/wire-decode.oracle.patch)
+          # #7778 (F4-1): the one numeric reader, Token::Binary and
+          # decode_step_binary are new items the changed tests import, so a
+          # whole-change revert does not compile (INCONCLUSIVE). Keep them and
+          # restore ONLY the old behaviours: the tokenizer's pre-F4-1 number
+          # grammar, a binary indicator above 3, a non-zero indicator decoded,
+          # and an uncounted texture refusal. Once step_numeric_vectors.json is
+          # on main, ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/core/tests/fixtures/step_numeric_vectors.json | grep -Fxq 'rust/core/tests/fixtures/step_numeric_vectors.json'; then
+            oracle_args+=(--mutation tests/evidence/numeric-literal-7778/behaviour.oracle.patch)
+          # #7774 (F2c): the tolerance catalogue `math::tol` is a new module the
+          # migrated sites and the changed test import, so a whole-change revert
+          # does not compile (INCONCLUSIVE). Keep it and drift two catalogue
+          # values, which the value pins must observe. Once tol.rs is on main,
+          # ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/math/tol.rs | grep -Fxq 'rust/geometry/src/math/tol.rs'; then
+            oracle_args+=(--mutation tests/evidence/tolerance-catalogue-7774/value-drift.oracle.patch)
+          # #7689: the tessellated index rule adds two modules (core's
+          # fast_parse_indices.rs, geometry's tessellated/indices.rs) that the
+          # changed tests import, so a whole-file revert does not compile
+          # (INCONCLUSIVE). Keep them and restore ONLY the old behaviours: `0`
+          # read as vertex 1, PnIndex ignored on IfcTriangulatedFaceSet and
+          # compacted on IfcPolygonalFaceSet, `Closed = $` oriented by the
+          # triangulated processor, noise flips of planar sheets and the
+          # case-sensitive OUTER test. Once indices.rs is on main, ordinary
+          # whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/processors/tessellated/indices.rs | grep -Fxq 'rust/geometry/src/processors/tessellated/indices.rs'; then
+            oracle_args+=(--mutation tests/evidence/tessellation-indices-7689/index-rule.oracle.patch)
+          # #7682: keep the new STEP-writer modules, StepStats fields and the TS
+          # allocatedExpressId export loadable while disabling ONLY the guards the
+          # changed tests pin (value/name/id-reuse refusals, the id-space refusal,
+          # appended-record conversion, last-record-wins, the property counter).
+          # Once step_ids.rs is on main, ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/export/src/step_ids.rs | grep -Fxq 'rust/export/src/step_ids.rs'; then
+            oracle_args+=(--mutation tests/evidence/step-writer-7682/appended-record-guards.oracle.patch)
+          # #7675: the material-row budget travels as DataModel.refused and
+          # the complex-property walks share ifc_lite_core::limits'
+          # ComplexPropertyBudget, which the changed tests construct, so a
+          # whole revert cannot compile them (INCONCLUSIVE). Keep the types and
+          # break ONLY the behaviour: material rows are never charged, the
+          # walk's byte budget restarts per property (Rust and TS), a bare
+          # budget marker is charged, the TS store pass is redone per call, a
+          # cut level's values/members are unmarked and rules read a name past
+          # it as absent, the output allowance is 4 bytes per input byte and
+          # every repeat listing is walked afresh, the server reads an
+          # unnamed nested member as no value, a repeated set id is read at
+          # every record (server and TS), the TS entity index resolves a duplicated id
+          # to its first match, a refusal maps to 500, the stream's
+          # recorded refusal is never read, and the data-model section
+          # lengths go unchecked; their tests turn RED. Once the shared vector's TS test is on main,
+          # whole revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- packages/parser/test/complex-property-budget.test.ts | grep -Fxq 'packages/parser/test/complex-property-budget.test.ts'; then
+            oracle_args+=(--mutation tests/evidence/untrusted-sizes-7675/server-budgets.oracle.patch)
+          # #7683: the PR deletes schema_pad.rs with its #[path] test file and
+          # adds schema_plan.rs, so a whole-change revert cannot build the Rust
+          # --lib runners (only the TS twin was observed). Keep every new item
+          # and disable ONLY the pinned behaviour: the alignment proxy's kept
+          # attributes, the two-way prefix trim/pad, the dropped-value counter,
+          # TS's IFC2X3 fail-closed and the merged span folds / last-wins index.
+          # Once schema_plan.rs is on main, ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/export/src/schema_plan.rs | grep -Fxq 'rust/export/src/schema_plan.rs'; then
+            oracle_args+=(--mutation tests/evidence/schema-convert-7683/schema-convert.oracle.patch)
+          # #7678: the input-admission tests name the new typed token, the
+          # lossless decode and the refused-element counter, so a whole-change
+          # revert cannot compile them. Keep that API and disable ONLY the
+          # behaviour: admit every overflowing REAL, accept an unusable unit
+          # factor, keep an overflowing ePSet offset, pass non-finite outline
+          # triangles, normalise a zero extrusion direction, pass a point list
+          # that narrows to infinity, read merged storey elevations with
+          # str::parse, mesh against an unusable length unit and never count
+          # a refused element; their tests turn RED. Once the test file is on
+          # main, ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/processing/tests/issue_7678_nonfinite_input.rs | grep -Fxq 'rust/processing/tests/issue_7678_nonfinite_input.rs'; then
+            oracle_args+=(--mutation tests/evidence/input-admission-7678/admission.oracle.patch)
+          # #7695: the empty-export rule changes five public return types to
+          # Result (export_obj, export_usd, export_gltf_streaming...), so a
+          # whole-change revert stops the changed Rust tests compiling
+          # (INCONCLUSIVE). Keep the types and disable ONLY the rule: the shared
+          # require_render_geometry never refuses, countUsdMeshes counts the
+          # /World Xform, and the CLI, MCP and viewer stop mapping
+          # NO_RENDER_GEOMETRY to their messages. Once empty_export_parity.rs is
+          # on main, ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/export/tests/empty_export_parity.rs | grep -Fxq 'rust/export/tests/empty_export_parity.rs'; then
+            oracle_args+=(--mutation tests/evidence/empty-exports-7695/refusal.oracle.patch)
+          # #7737: keep the new semver-baseline module loadable (a whole-change
+          # revert deletes it under the gate's tests) while removing ONLY the
+          # rebuild-from-tag fallback and the NO_VERDICT output excerpt; the
+          # fallback and excerpt assertions turn RED. Once the module is on
+          # main, ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- scripts/lib/semver-baseline.mjs | grep -Fxq 'scripts/lib/semver-baseline.mjs'; then
+            oracle_args+=(--mutation tests/evidence/semver-baseline-7737/fallback.oracle.patch)
+          # #7679: the non-finite output policy turns to_step_real into a
+          # Result and adds step_integer / integral_token and the Python
+          # finite_json module, which the changed tests call, so a whole-change
+          # revert cannot compile them (INCONCLUSIVE). Keep every item and
+          # restore ONLY the old behaviour: a non-finite REAL written as `0.`,
+          # every number an INTEGER, any KMZ placement accepted, the Python
+          # probe passing NaN, and the TS twin's toStepReal / toStepInteger.
+          # Once finite_json.rs is on main, ordinary whole-change revert resumes.
+          # #7772: the new `math` home carries its own tests, and the changed
+          # clash tests name `math::v3`, so a whole-change revert cannot load
+          # them (INCONCLUSIVE). Keep the module and break ONLY the contracts
+          # the tests pin: the `canonical` tie rule (clash parity), the
+          # `normalize` threshold, the conjugation's `+ 0.0` sign-of-zero fold
+          # and the affine-inverse finiteness refusal. Once math/mod.rs is on
+          # main, ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/math/mod.rs | grep -Fxq 'rust/geometry/src/math/mod.rs'; then
+            oracle_args+=(--mutation tests/evidence/math-home-7772/behaviour.oracle.patch)
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/python/src/finite_json.rs | grep -Fxq 'rust/python/src/finite_json.rs'; then
+            oracle_args+=(--mutation tests/evidence/export-nonfinite-7679/behaviour.oracle.patch)
+          # #7777: the micro-homes PR adds ifc_lite_core::{guid, hash, fmt_num}, which
+          # its changed tests import, so a whole-change revert cannot compile them
+          # (INCONCLUSIVE). Keep the modules and disable ONLY pinned behaviour: the
+          # GlobalId first-char rule and leading window, the placeholder offset, the
+          # FNV-1a prime, ContentHash framing and the word-wise mix step. Once
+          # rust/core/src/guid.rs is on main, ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/core/src/guid.rs | grep -Fxq 'rust/core/src/guid.rs'; then
+            oracle_args+=(--mutation tests/evidence/micro-homes-7777/behaviour.oracle.patch)
+          # #7686: the planar-face triangulation adds `quad_split_3d` and
+          # `triangulate_planar_face`, which the changed unit tests call, so a
+          # whole-change revert cannot compile them (INCONCLUSIVE). Keep every
+          # item and restore ONLY the old behaviour: the 0-2 quad diagonal and
+          # first-edges quad normal, the outer-fan fallback over failed holes,
+          # unreadable bounds dropped instead of refusing the face, and
+          # SameSense flipping planar faces (brep and structural). Once
+          # planar_tests.rs is on main,
+          # ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/processors/brep/planar_tests.rs | grep -Fxq 'rust/geometry/src/processors/brep/planar_tests.rs'; then
+            oracle_args+=(--mutation tests/evidence/geometry-planar-7686/behaviour.oracle.patch)
+          # #7787 #7795 #7755: the cap triangulator's hole hygiene and the
+          # orienter's nesting test are new modules the changed unit tests
+          # call, so a whole-change revert cannot compile them (INCONCLUSIVE).
+          # Keep every module and restore ONLY the old behaviour: holes handed
+          # to earcut unchecked (no dedupe, no overlap refusal; the old touch
+          # tolerance), every closed shell wound outward, a hard-coded 0-2 quad
+          # fan, an outer-loop fan over failed holes and an uncounted dangling
+          # corner in the tessellated polygon path, every refused face counted
+          # as IfcAdvancedFace, and an unbudgeted refined CDT build. Once
+          # hole_overlap.rs is on main,
+          # ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/triangulation/hole_overlap.rs | grep -Fxq 'rust/geometry/src/triangulation/hole_overlap.rs'; then
+            oracle_args+=(--mutation tests/evidence/geometry-planar-7795/behaviour.oracle.patch)
+          # #7779: F3b-C1 renames the core refusal accessor (`refused_real_records`
+          # -> `refused_records`), which the changed tests call, so a whole-change
+          # revert cannot compile them (INCONCLUSIVE). Keep the API and restore
+          # ONLY the leaf rule: the type check, the 2-or-3 length, the numeric
+          # components, the malformed-slot refusal and the refusal count. Once
+          # leaf_read.rs is on main, ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/core/src/decoder/leaf_read.rs | grep -Fxq 'rust/core/src/decoder/leaf_read.rs'; then
+            oracle_args+=(--mutation tests/evidence/leaf-readers-7779/behaviour.oracle.patch)
+          # #7696: the new ifc-lite-testkit crate is what every migrated test now
+          # calls, so a whole-change revert deletes it and none of them compile
+          # (INCONCLUSIVE). Keep the crate and disable ONLY the
+          # IFC_LITE_REQUIRE_FIXTURES gate: a missing or LFS-pointer fixture
+          # skips even when CI demands it, which is the #2802 failure mode; the
+          # gate tests (including the env-wiring child run) turn RED. Once
+          # fixtures.rs is on main, ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/testkit/src/fixtures.rs | grep -Fxq 'rust/testkit/src/fixtures.rs'; then
+            oracle_args+=(--mutation tests/evidence/testkit-7696/gate.oracle.patch)
+          # #7780: F3e-0a adds `SchemaVersion::attribute` and exports
+          # `SchemaVersion`/`AttrSlot`, which the changed tests import, so a
+          # whole-change revert cannot compile them (REVERT-BROKE-BUILD). Keep the
+          # API and disable ONLY pinned behaviour: the AGGREGATE and OPTIONAL flag
+          # decode, ASCII case-folding of attribute names and the non-ASCII entity
+          # guard. Once rust/core/src/attribute_slot.rs is on main, ordinary
+          # whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/core/src/attribute_slot.rs | grep -Fxq 'rust/core/src/attribute_slot.rs'; then
+            oracle_args+=(--mutation tests/evidence/slot-lookup-7780/behaviour.oracle.patch)
+          # #7783: C6-5/C6-6 move the server data model into
+          # ifc_lite_processing::data_model, so the moved tests do not exist on
+          # the base and a whole-change revert cannot compile them
+          # (REVERT-BROKE-BUILD). Keep the move and break ONLY the new
+          # behaviour: the job-bucket type match, the split decoder's keep-last
+          # span guard and the SetSpec layer thickness/ventilation indices. Once data_model/mod.rs is on main,
+          # ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/processing/src/data_model/mod.rs | grep -Fxq 'rust/processing/src/data_model/mod.rs'; then
+            oracle_args+=(--mutation tests/evidence/data-model-move-7783/behaviour.oracle.patch)
+          # #7779: F3b-R1 moves `build_axis2_matrix`, the chain walk and the
+          # Linear/Grid resolvers into the new `placement` module, which the
+          # changed tests import, so a whole-change revert cannot compile them
+          # (REVERT-BROKE-BUILD). Keep the module and restore ONLY pinned
+          # behaviour: the pre-D27 depth cap, a silent cycle, an unmemoised
+          # walk, no zero-axis repair and an ignored `ChainPolicy`. Once
+          # placement/chain.rs is on main, ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/placement/chain.rs | grep -Fxq 'rust/geometry/src/placement/chain.rs'; then
+            oracle_args+=(--mutation tests/evidence/placement-7779/behaviour.oracle.patch)
           fi
           node scripts/check-test-revert-oracle.mjs "${oracle_args[@]}"
           # #7512: observe cleanup independently of scoped admission/schema.
@@ -1217,6 +1478,8 @@ jobs:
       # then made every fixture-gated test skip silently and report ok.
       - name: Verify fixtures
         run: pnpm fixtures:check
+      - name: Verify packed developer workflows
+        run: pnpm test:packed
       - name: Check test wiring
         run: node scripts/check-test-wiring.mjs
       - name: Check export completion calls
@@ -1314,6 +1577,14 @@ jobs:
         run: node --test scripts/check-refwalk-guards.test.mjs scripts/lib/refwalk-classify.test.mjs
       - name: Check for unguarded entity-reference walks
         run: node scripts/check-refwalk-guards.mjs
+      # #7674: a comparator built on `partial_cmp` is not a total order on NaN,
+      # and a Rust >= 1.81 sort may panic on it -- an abort in the wasm worker.
+      # Every production `partial_cmp` use needs an allowlist row. Its own
+      # tests run first so a broken detector fails rather than reads clean.
+      - name: Check float sort comparator gate's own tests
+        run: node --test scripts/check-float-sort-comparators.test.mjs
+      - name: Check for non-total float sort comparators
+        run: node scripts/check-float-sort-comparators.mjs
       # #5236: a raw base-store enumeration in a live query/write can return a
       # tombstoned entity or miss one created in the mutation overlay. The
       # parser test pins the detector; the gate ratchets the scoped callers.
@@ -1557,21 +1828,6 @@ jobs:
       # type/side it names, never a whole concept.
       - name: Check server/browser type parity gate regressions
         run: node --test scripts/check-server-browser-type-parity.test.mjs
-      # `check:server-attr-indices` (below, and its own CI step) only proves the
-      # committed generated/attr_indices.rs TABLE is fresh against the schema
-      # registry -- it never opens metadata.rs, so reintroducing #3949 by
-      # hardcoding a field back to a literal index there leaves that gate green.
-      # This is the other half: metadata.rs must actually read every root
-      # attribute through the table (`idx.<field>`), not a literal, for all six
-      # fields at once -- covering every entity type the function ever runs for,
-      # not just the handful of types this repo's Rust fixtures happen to cover.
-      - name: Check server attr-index usage (metadata.rs threads the index table)
-        run: node scripts/check-server-attr-index-usage.mjs
-      # Executable proof: reintroduces the exact original #3949 defect (GlobalId/
-      # Name hardcoded to 0/2) plus per-field and anti-vacuity variants against a
-      # mutated copy of the real source, and asserts each turns the gate red.
-      - name: Check server attr-index usage gate regressions
-        run: node --test scripts/check-server-attr-index-usage.test.mjs
       # `|| true` on `git tag` is right (a re-run hits an existing tag);
       # on the PUSH it made a failed push silent, and `gh release create` then
       # creates the missing tag ITSELF at default-branch head -- so the run
@@ -1891,14 +2147,6 @@ jobs:
       # rebuilds it (fast, single package) otherwise.
       - name: Check codegen output freshness
         run: pnpm run check:codegen-sync
-      # `IFC2X3_ENTITY_NAMES` (#5116) is the Rust schema converter's "does
-      # this type have any representation at all in IFC2X3" table, generated
-      # from the same TS entity table the TypeScript converter's
-      # `attrNameTable('IFC2X3')` reads. Check it here for the same reason as
-      # the rooted-type table above: a schema refresh could otherwise leave
-      # the committed Rust table stale while CI stays green.
-      - name: Check IFC2X3 entity-name table freshness
-        run: node scripts/generate-ifc2x3-entity-names.mjs --check
       # The IFC2X3 required-slot table both schema converters read on a
       # downgrade (#4714) is generated from the EXPRESS-derived IFC2X3 registry
       # into BOTH languages. Check it here so a schema refresh cannot leave one
@@ -1927,19 +2175,6 @@ jobs:
       # the Rust table is regenerated.
       - name: Check step-log table freshness
         run: node scripts/generate-step-log-tables.mjs --check
-      # The server-parse root-attribute table (attr_indices.rs) is generated
-      # from @ifc-lite/parser's SCHEMA_REGISTRY — the SAME table the in-browser
-      # parse resolves names against. Guard that the committed file is in sync
-      # so a registry change can't silently break server↔client parity. Uses
-      # the parser dist from the build artifact above; format-agnostic, no Rust
-      # toolchain needed (issue #1780).
-      - name: Check server attr-indices freshness
-        run: node scripts/generate-server-attr-indices.mjs --check
-      # The server relationship lookup is generated from the parser's schema
-      # plans too. Type-name parity alone cannot detect a stale slot index or
-      # list/single cardinality while the same lookup arms remain present.
-      - name: Check server relationship-slot freshness
-        run: node scripts/generate-server-relationship-slots.mjs --check
       # The sandbox `bim` ambient type surface (apps/viewer/.../bim-globals.d.ts)
       # is generated from @ifc-lite/sandbox's NAMESPACE_SCHEMAS — the SAME schema
       # the script editor's completions and the LLM system prompt read live.
@@ -2032,6 +2267,11 @@ jobs:
         with:
           name: build-output
           path: packages
+      - name: Download example builds
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: example-build-output
+          path: examples
       - name: Cache test fixtures
         id: fixtures-cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -2332,6 +2572,16 @@ jobs:
       # That wasm32 leg runs on its own schedule in determinism.yml.
       - name: Clippy (lint gate)
         run: cargo clippy --workspace --all-targets -- -D warnings
+      # G6 (#7672): a dependency a member declares but its sources never name is
+      # compile time and supply-chain surface for nothing (XCUT-17 found seven).
+      # cargo-machete is a text scan, so it needs no build and runs in seconds.
+      # A dependency that is only there for a feature or a macro goes in that
+      # crate's `[package.metadata.cargo-machete] ignored`, with a reason.
+      # Prebuilt binary, pinned like cargo-nextest below (not `cargo install`).
+      - name: Install cargo-machete
+        uses: taiki-e/install-action@7d7411b181173c48350233b3f42241a9ccc6aa2b # cargo-machete (snapshot pinned 2026-10)
+      - name: Unused dependencies (cargo machete)
+        run: cargo machete
       # cargo-nextest, not `cargo test`, for the test binaries. Measured on a
       # green PR run: `cargo test --workspace` was 26 min, of which compile was
       # 5m45s and the remaining ~20 min was ~290 test binaries run ONE AFTER
@@ -2458,6 +2708,12 @@ jobs:
         env:
           IFC_LITE_REQUIRE_FIXTURES: "1"
         run: cargo test -p ifc-lite-export --features parquet-bos
+
+      # rust/python is excluded from the workspace (its own lockfile), so
+      # `cargo test --workspace` never runs its unit tests (finite_json, rebar
+      # schedule, ...) and the wheel workflow only runs pytest (#7770).
+      - name: Rust tests (rust/python, outside the workspace)
+        run: cargo test --manifest-path rust/python/Cargo.toml
 
       - name: Clippy (parquet-bos feature)
         run: cargo clippy -p ifc-lite-export --features parquet-bos --all-targets -- -D warnings
@@ -2843,7 +3099,7 @@ jobs:
     name: Docs site build (mkdocs --strict)
     needs: changes
     if: (needs.changes.outputs.docs == 'true') && needs.changes.outputs.replay != 'true'
-    # Free runner - a pure-Python static site build, not compute-bound.
+    # Build declarations and the searchable reference before MkDocs; no Rust setup is needed.
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -2851,6 +3107,8 @@ jobs:
         with:
           lfs: false
           persist-credentials: false
+      - name: Generate searchable public API reference
+        uses: ./.github/actions/setup-docs-api
       # Seconds, no Python: names the page and the fix before the full build.
       - name: Every docs page is in the nav or declared not_in_nav
         run: node scripts/docs/check-mkdocs-nav.mjs
@@ -2920,9 +3178,11 @@ jobs:
           shared-key: main
           save-if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'merge_group' }}
 
-      # No `pnpm install`: the gate imports only node builtins,
-      # scripts/lib/crates-io.mjs and scripts/lib/cargo-semver-checks.mjs, and
-      # both of those import only node builtins too.
+      # No `pnpm install`: the gate imports only node builtins and repo libs
+      # (crates-io, cargo-semver-checks, semver-baseline, rust-major-offset,
+      # rust-internal-deps) that import only node builtins too. A baseline
+      # crates.io can no longer resolve (#7737) is rebuilt from its release
+      # tag, which the script fetches itself: this shallow checkout has none.
       - name: Check crate semver against crates.io
         run: node scripts/check-rust-semver.mjs
 

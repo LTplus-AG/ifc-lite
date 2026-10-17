@@ -46,9 +46,10 @@ use stories::{build_stories, group_plates};
 
 /// Coverage stats for a DFJSON export.
 pub struct DfjsonStats {
-    /// `IfcSpace` profiles seen in the model.
+    /// `IfcSpace` profiles seen in the model: one per extruded item, so a space
+    /// modelled as two items counts twice. `spaces == rooms + skipped`.
     pub spaces: usize,
-    /// Room2Ds emitted.
+    /// Room2Ds emitted, one per space piece.
     pub rooms: usize,
     /// Spaces skipped as degenerate (malformed footprint / holes / non-extrusion).
     pub skipped: usize,
@@ -100,14 +101,9 @@ pub fn build_model(
         match buckets.first_mut() {
             Some((_, first)) => {
                 first.extend(orphans);
-                // The bucket's own order is by story elevation, which `group_plates`
-                // already established globally; re-sorting keeps appended orphans in
-                // place rather than stacked on the end.
-                first.sort_by(|a, b| {
-                    let ka = a.plates.iter().map(|p| p.floor_height).fold(f64::MAX, f64::min);
-                    let kb = b.plates.iter().map(|p| p.floor_height).fold(f64::MAX, f64::min);
-                    ka.partial_cmp(&kb).unwrap_or(std::cmp::Ordering::Equal)
-                });
+                // Re-order with the comparator `group_plates` used, so the appended
+                // orphans interleave by floor height rather than stack on the end.
+                stories::order_stories(first);
             }
             None => buckets.push((None, orphans)),
         }

@@ -50,6 +50,7 @@ pub struct RectFastStats {
     pub defer_off_face: u64,
     pub defer_near_edge: u64,
     pub defer_no_openings: u64,
+    /// Over the opening cap, or a cell grid whose cells x openings is too large.
     pub defer_too_many_openings: u64,
 }
 
@@ -231,6 +232,11 @@ pub fn subtract_rect_openings(
     // hang. 128 is far above any real wall (1-20 openings); defer the pathological
     // case to the exact kernel (bounded per-element, #1121) rather than hang.
     const MAX_FAST_OPENINGS: usize = 128;
+    // cells x openings. Real hosts stay tiny: across the 120-file IFC corpus
+    // the largest firing is 1860 (a 20-window wall is ~1e4). A 128-opening
+    // staggered curtain host is ~1.7e7 cells (257^3) but ~2e9 cells x openings.
+    // Past this cap the exact kernel's per-element bound wins.
+    const MAX_FAST_CELL_TESTS: usize = 1 << 25;
     if openings.len() > MAX_FAST_OPENINGS {
         stats.defer_too_many_openings += 1;
         return None;
@@ -315,6 +321,15 @@ pub fn subtract_rect_openings(
         }
     }
 
+    // build_cellular tests every cell against every opening, so its work is
+    // cells x openings, and 128 openings staggered on all three axes make
+    // 257^3 cells: seconds per element in a path that exists to be fast
+    // (#7675, PROC-16). The opening cap alone bounds the wrong quantity.
+    let work = grid.iter().try_fold(clamped.len(), |acc, g| acc.checked_mul(g.len() - 1));
+    if work.is_none_or(|w| w > MAX_FAST_CELL_TESTS) {
+        stats.defer_too_many_openings += 1;
+        return None;
+    }
     let cut = build_cellular(&grid, &clamped);
     stats.fired += 1;
     stats.openings_cut += clamped.len() as u64;
@@ -400,12 +415,18 @@ impl Builder {
 fn build_cellular(grid: &[Vec<f64>; 3], openings: &[[[f64; 3]; 2]]) -> Mesh {
     let nc = [grid[0].len() - 1, grid[1].len() - 1, grid[2].len() - 1];
     let center = |axis: usize, i: usize| (grid[axis][i] + grid[axis][i + 1]) * 0.5;
-    let solid = |c: [usize; 3]| -> bool {
-        let p = [center(0, c[0]), center(1, c[1]), center(2, c[2])];
-        !openings
-            .iter()
-            .any(|o| (0..3).all(|a| p[a] > o[0][a] && p[a] < o[1][a]))
-    };
+    // Each cell's solidity once (cells x openings), not once per neighbour
+    // query (7x that); indexed (i * ny + j) * nz + k, the loop order below.
+    let mut solid_cells = Vec::with_capacity(nc[0] * nc[1] * nc[2]);
+    for i in 0..nc[0] {
+        for j in 0..nc[1] {
+            for k in 0..nc[2] {
+                let p = [center(0, i), center(1, j), center(2, k)];
+                solid_cells.push(!openings.iter().any(|o| (0..3).all(|a| p[a] > o[0][a] && p[a] < o[1][a])));
+            }
+        }
+    }
+    let solid = |c: [usize; 3]| solid_cells[(c[0] * nc[1] + c[1]) * nc[2] + c[2]];
     let mut b = Builder {
         positions: Vec::new(),
         normals: Vec::new(),
@@ -518,19 +539,10 @@ mod tests {
     /// directed edge cancelled by its reverse — catches both cracks AND
     /// inconsistent winding.
     fn open_edges(m: &Mesh) -> usize {
-        use std::collections::HashMap;
-        let key = |i: u32| {
-            let b = i as usize * 3;
-            (m.positions[b].to_bits(), m.positions[b + 1].to_bits(), m.positions[b + 2].to_bits())
-        };
-        let mut edges: HashMap<_, i64> = HashMap::new();
-        for t in m.indices.chunks_exact(3) {
-            for (a, b) in [(t[0], t[1]), (t[1], t[2]), (t[2], t[0])] {
-                *edges.entry((key(a), key(b))).or_insert(0) += 1;
-                *edges.entry((key(b), key(a))).or_insert(0) -= 1;
-            }
-        }
-        edges.values().filter(|&&c| c != 0).count()
+        use crate::mesh_check::{Degenerate, EdgeLedger, VertexKey};
+        // `unbalanced` lists each open edge once; the directed audit counted it
+        // in both directions.
+        2 * EdgeLedger::build(m, VertexKey::Bits, Degenerate::SkipEdge).unbalanced().count()
     }
 
     fn degenerate(m: &Mesh) -> usize {

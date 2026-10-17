@@ -131,7 +131,7 @@ impl EntityDecoder<'_> {
 
     /// Memoize a placement world transform under its placement id.
     ///
-    /// The router also files the world frame of the `IfcGrid` owning an
+    /// `resolve_chain` also files the world frame of the `IfcGrid` owning an
     /// IFC2X3/IFC4 grid placement under that grid's `IfcGridAxis` id; entity
     /// ids are unique, so the two key sets never collide.
     ///
@@ -142,11 +142,11 @@ impl EntityDecoder<'_> {
     /// nothing here can.
     ///
     /// Whether the memo is a pure function of the placement id is therefore a
-    /// property of the CALLERS, not of this method. The geometry router is the
-    /// one that owes it: it stores only fully composed local/linear/grid
-    /// transforms, and in particular never stores one composed from a walk its
-    /// depth guard cut short, because what such a walk composed depends on the
-    /// depth it was entered at rather than on the placement id (#3012). A caller
+    /// property of the CALLERS, not of this method. `ifc_lite_geometry::
+    /// placement::resolve_chain` owes it: it stores only fully composed,
+    /// unscaled local/linear/grid transforms, in file units, column-major, and
+    /// never an error. Its walk has no depth cap, so a stored entry cannot
+    /// depend on where a walk entered the chain (#3012, D27). A caller
     /// that breaks that discipline does not fail here — it makes whichever
     /// reader happens to query the id first decide the answer for every reader
     /// after it, including across workers via

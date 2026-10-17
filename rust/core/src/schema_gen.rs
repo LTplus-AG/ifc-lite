@@ -9,7 +9,6 @@
 
 use crate::generated::IfcType;
 use crate::parser::Token;
-use std::borrow::Cow;
 use std::collections::HashMap;
 
 /// Geometry representation categories (internal use only)
@@ -43,6 +42,10 @@ pub enum AttributeValue {
     Integer(i64),
     /// Float value
     Float(f64),
+    /// STEP binary literal `"0FF"`: the raw content between the quotes
+    /// (unused-bits digit, then hex), undecoded. Decode it with
+    /// [`crate::step_encoding::decode_step_binary`].
+    Binary(String),
     /// Enum value
     Enum(String),
     /// List of values
@@ -55,41 +58,43 @@ pub enum AttributeValue {
 
 impl AttributeValue {
     /// Convert from Token
+    ///
+    /// A [`Token::UnrepresentableReal`] converts to the signed infinity it
+    /// overflowed to, the value it decoded to before #7678. The decoder uses
+    /// [`Self::from_token_noting`] instead, to learn that the record held one.
     pub fn from_token(token: &Token) -> Self {
+        Self::from_token_noting(token, &mut false)
+    }
+
+    /// [`Self::from_token`] that sets `unrepresentable` when any value in the
+    /// token is a [`Token::UnrepresentableReal`], so the decoder can apply the
+    /// input-admission rule without a second walk (#7678).
+    pub(crate) fn from_token_noting(token: &Token, unrepresentable: &mut bool) -> Self {
         match token {
             Token::EntityRef(id) => AttributeValue::EntityRef(*id),
-            Token::String(s) => {
-                // Un-double the `''` quote escape, THEN decode the backslash
-                // escapes (\X2\, \X4\, \X\, \S\, \P\) — the same order the TS
-                // parser uses (columnar-parser-attributes.ts). The tokenizer
-                // hands over the raw inner bytes with `''` intact, and
-                // `decode_ifc_string` deliberately never touches quotes, so
-                // without this step every consumer of a string attribute saw
-                // `O''Brien` (#2323).
-                //
-                // The order is load-bearing, not cosmetic: decoding first would
-                // let two SEPARATE escaped apostrophes (`\X\27\X\27`) decode to
-                // `''` and then collapse into one, losing a character.
-                //
-                // This is the single funnel every Rust consumer of
-                // `AttributeValue::String` goes through. `quick_metadata.rs`
-                // un-doubles on its own raw-byte path, which never builds a
-                // Token, so nothing double-collapses.
-                let raw = String::from_utf8_lossy(s);
-                let undoubled = if raw.contains("''") {
-                    Cow::Owned(raw.replace("''", "'"))
-                } else {
-                    raw
-                };
-                AttributeValue::String(
-                    crate::step_encoding::decode_ifc_string(&undoubled).into_owned(),
-                )
+            // The one literal funnel: un-double `''`, THEN decode the
+            // backslash escapes (see `decode_step_literal`). The tokenizer
+            // hands over the raw inner bytes, and `quick_metadata.rs`-style
+            // raw-byte readers never build a Token, so nothing double-collapses
+            // (#2323, CORE-16).
+            Token::String(s) => AttributeValue::String(
+                crate::step_encoding::decode_step_literal_inner(s).into_owned(),
+            ),
+            Token::Binary(hex) => {
+                AttributeValue::Binary(String::from_utf8_lossy(hex).into_owned())
             }
             Token::Integer(i) => AttributeValue::Integer(*i),
             Token::Float(f) => AttributeValue::Float(*f),
+            Token::UnrepresentableReal(raw) => {
+                *unrepresentable = true;
+                let negative = raw.first() == Some(&b'-');
+                AttributeValue::Float(if negative { f64::NEG_INFINITY } else { f64::INFINITY })
+            }
             Token::Enum(e) => AttributeValue::Enum(String::from_utf8_lossy(e).into_owned()),
             Token::List(items) => {
-                AttributeValue::List(items.iter().map(Self::from_token).collect())
+                AttributeValue::List(
+                    items.iter().map(|t| Self::from_token_noting(t, unrepresentable)).collect(),
+                )
             }
             Token::TypedValue(type_name, args) => {
                 // For typed values like IFCPARAMETERVALUE(0.), extract the inner value
@@ -104,7 +109,7 @@ impl AttributeValue {
                 let mut values = vec![AttributeValue::String(
                     crate::schema_helpers::normalise_uppercase(&name).into_owned(),
                 )];
-                values.extend(args.iter().map(Self::from_token));
+                values.extend(args.iter().map(|t| Self::from_token_noting(t, unrepresentable)));
                 AttributeValue::List(values)
             }
             Token::Null => AttributeValue::Null,
@@ -126,6 +131,16 @@ impl AttributeValue {
     pub fn as_string(&self) -> Option<&str> {
         match self {
             AttributeValue::String(s) => Some(s),
+            _ => None,
+        }
+    }
+
+    /// The raw hex of a binary literal (`"0FF"` gives `0FF`), undecoded.
+    /// `None` for every other value, a string included.
+    #[inline]
+    pub fn as_binary_hex(&self) -> Option<&str> {
+        match self {
+            AttributeValue::Binary(hex) => Some(hex),
             _ => None,
         }
     }
@@ -184,6 +199,34 @@ impl AttributeValue {
         }
     }
 
+    /// The members of an attribute that holds entity references: a list's
+    /// items, or a bare reference as a one-element slice.
+    ///
+    /// `IfcPropertySetDefinitionSet` is the one defined type in the bundled
+    /// schemas that aggregates entities, and it appears only inside
+    /// `IfcPropertySetDefinitionSelect` (`IfcRelDefinesByProperties.
+    /// RelatingPropertyDefinition`). ISO 10303-21 writes a defined type inside
+    /// a SELECT as a typed parameter, `IFCPROPERTYSETDEFINITIONSET((#1,#2))`,
+    /// which decodes to `[String(name), List(set)]`; that yields the set.
+    /// Exporters also write the set bare, `(#1,#2)`, which is the list case.
+    ///
+    /// Callers choose their own policy for non-reference members: `get_refs`
+    /// skips them, a strict reader can reject them.
+    pub fn as_ref_members(&self) -> Option<&[AttributeValue]> {
+        match self {
+            AttributeValue::EntityRef(_) => Some(std::slice::from_ref(self)),
+            AttributeValue::List(items) => match items.as_slice() {
+                [AttributeValue::String(name), AttributeValue::List(set)]
+                    if name == "IFCPROPERTYSETDEFINITIONSET" =>
+                {
+                    Some(set)
+                }
+                _ => Some(items),
+            },
+            _ => None,
+        }
+    }
+
     /// Check if null/derived
     #[inline]
     pub fn is_null(&self) -> bool {
@@ -232,39 +275,38 @@ impl AttributeValue {
         result
     }
 
-    /// Batch parse triangle indices from a list of index triples
-    /// Converts from 1-based IFC indices to 0-based indices
-    /// Returns flattened u32 array: [i0, i1, i2, ...]
+    /// This value as a 0-based index under the one IFC index rule, shared
+    /// with [`crate::parse_indices_direct`]: an INTEGER in `1..=u32::MAX`.
+    /// `None` for `0`, a negative or oversized INTEGER, and any other value,
+    /// a REAL included (`IfcPositiveInteger` is an INTEGER; #7689).
+    #[inline]
+    pub fn as_ifc_index(&self) -> Option<u32> {
+        match self {
+            AttributeValue::Integer(i) => crate::fast_parse::ifc_index_to_zero_based(*i),
+            _ => None,
+        }
+    }
+
+    /// Batch parse triangle indices from a `CoordIndex` list of index
+    /// triples into flat 0-based corners, three per face (#7689).
+    ///
+    /// A value that fails [`Self::as_ifc_index`] reads as
+    /// [`crate::INVALID_INDEX`], and a face that is not a list of exactly
+    /// three values reads as three of them, so every face keeps its slot
+    /// and none shifts the faces after it. Consumers drop any triangle with
+    /// a corner `>= vertex_count`. `parse_indices_direct` reads raw bytes
+    /// under the same rule.
     #[inline]
     pub fn parse_index_list(face_list: &[AttributeValue]) -> Vec<u32> {
         let mut result = Vec::with_capacity(face_list.len() * 3);
-
-        // Convert a 1-based i64 IFC index to a 0-based u32. Anything outside the
-        // valid u32 vertex range — non-positive, or beyond u32::MAX — maps to
-        // u32::MAX, an out-of-range sentinel the downstream bounds check drops,
-        // instead of an `(i64 - 1) as u32` truncation/wrap to a valid-looking
-        // (wrong) vertex. NOTE: this sentinel is u32::MAX while fast_parse's
-        // saturating path yields u32::MAX - 1 — consumers must bounds-check
-        // (i >= vertex_count), never compare against a single sentinel value.
-        let to_zero_based = |i: i64| -> u32 {
-            i.checked_sub(1)
-                .and_then(|z| u32::try_from(z).ok())
-                .unwrap_or(u32::MAX)
-        };
-
         for face_attr in face_list {
-            if let Some(face) = face_attr.as_list() {
-                // Use as_int for faster parsing, convert from 1-based to 0-based
-                let i0 = to_zero_based(face.first().and_then(|v| v.as_int()).unwrap_or(1));
-                let i1 = to_zero_based(face.get(1).and_then(|v| v.as_int()).unwrap_or(1));
-                let i2 = to_zero_based(face.get(2).and_then(|v| v.as_int()).unwrap_or(1));
-
-                result.push(i0);
-                result.push(i1);
-                result.push(i2);
+            match face_attr.as_list() {
+                Some([a, b, c]) => result.extend(
+                    [a, b, c].map(|v| v.as_ifc_index().unwrap_or(crate::INVALID_INDEX)),
+                ),
+                _ => result.extend([crate::INVALID_INDEX; 3]),
             }
         }
-
         result
     }
 
@@ -332,13 +374,12 @@ impl DecodedEntity {
     }
 
     /// Get entity references from a list attribute. A bare reference is a
-    /// tolerated one-element list; non-reference list members are skipped.
+    /// tolerated one-element list, and an `IfcPropertySetDefinitionSet` typed
+    /// parameter is its set (see [`AttributeValue::as_ref_members`]);
+    /// non-reference list members are skipped.
     pub fn get_refs(&self, index: usize) -> Option<Vec<u32>> {
-        let attr = self.get(index)?;
-        let refs = match attr.as_list() {
-            Some(list) => list.iter().filter_map(AttributeValue::as_entity_ref).collect(),
-            None => vec![attr.as_entity_ref()?],
-        };
+        let members = self.get(index)?.as_ref_members()?;
+        let refs: Vec<u32> = members.iter().filter_map(AttributeValue::as_entity_ref).collect();
         (!refs.is_empty()).then_some(refs)
     }
 }

@@ -8,8 +8,28 @@ use crate::{scale_segments, Point3, Result, TessellationQuality};
 use ifc_lite_core::{DecodedEntity, EntityDecoder};
 
 use super::edge_loop::extract_edge_loop_points_for_bounds;
-use super::polyline::sample_curve_polyline;
+use super::bounds::{note_face_refused, noting_refusal};
+use super::curves::{resolve_present, Refused};
+use super::polyline::try_sample_curve_polyline;
 use super::surfaces::process_planar_face_rebased;
+
+/// The face's refusal (#7687), counted (D3).
+fn refused(face: &DecodedEntity) -> crate::Error {
+    note_face_refused(&face.ifc_type);
+    crate::Error::geometry(format!(
+        "surface of revolution face #{} has data that does not resolve; refusing the face",
+        face.id
+    ))
+}
+
+/// [`resolve_present`] for this face: a dangling reference refuses it.
+fn present(
+    face: &DecodedEntity,
+    attr: Option<&ifc_lite_core::AttributeValue>,
+    decoder: &mut EntityDecoder,
+) -> Result<Option<DecodedEntity>> {
+    resolve_present(attr, decoder).map_err(|Refused| refused(face))
+}
 
 /// Tessellate an `IfcSurfaceOfRevolution` face by sweeping its profile curve
 /// around the axis through the angular extent recovered from the face's edge
@@ -25,21 +45,17 @@ pub(super) fn process_surface_of_revolution_face(
     use nalgebra::Vector3;
     use std::f64::consts::TAU;
 
-    let swept = surface
-        .get(0)
-        .and_then(|a| decoder.resolve_ref(a).ok().flatten());
+    let swept = present(face, surface.get(0), decoder)?;
     // IfcSurfaceOfRevolution inherits Position (optional IfcAxis2Placement3D)
     // at slot 1 from IfcSweptSurface, and AxisPosition (IfcAxis1Placement) is
-    // its own attribute at slot 2. The previous code read slot 1 and got the
+    // its own attribute at slot 2. Reading slot 1 as the axis got the
     // (usually null) Position, leaving axis_origin at the (0,0,0) fallback
-    // and collapsing the angular-extent calculation — the real cause of
-    // issue #674's "stem in wrong direction" defect, not the radius/sign
-    // collapse the earlier patch went after.
-    let axis_pos = surface
-        .get(2)
-        .and_then(|a| decoder.resolve_ref(a).ok().flatten());
+    // and collapsing the angular-extent calculation, the real cause of
+    // issue #674's "stem in wrong direction" defect. Position itself is
+    // applied below, once the profile is sampled.
+    let axis_pos = present(face, surface.get(2), decoder)?;
 
-    let (axis_origin, axis_dir) = if let Some(ap) = axis_pos {
+    let (mut axis_origin, mut axis_dir) = if let Some(ap) = axis_pos {
         // IfcAxis1Placement: 0=Location, 1=Axis(Direction)
         let loc = ap
             .get(0)
@@ -69,22 +85,39 @@ pub(super) fn process_surface_of_revolution_face(
         (Point3::new(0.0, 0.0, 0.0), Vector3::new(0.0, 0.0, 1.0))
     };
 
-    // Sample the generator profile curve.
-    let profile_pts: Vec<Point3<f64>> = match swept {
+    // Sample the generator profile curve. A profile whose data does not read
+    // refuses the face (#7687): the planar fallback below would draw the
+    // boundary's flat polygon in place of the curved surface. It stays for
+    // profiles this sampler does not support, which sample empty.
+    let profile = match swept {
         Some(s) if s.ifc_type.as_str().eq_ignore_ascii_case("IFCARBITRARYOPENPROFILEDEF") => {
             // Attribute 2 is the curve.
-            if let Some(curve) = s.get(2).and_then(|a| decoder.resolve_ref(a).ok().flatten()) {
-                sample_curve_polyline(&curve, decoder, quality)
-            } else {
-                Vec::new()
+            match present(face, s.get(2), decoder)? {
+                Some(curve) => try_sample_curve_polyline(&curve, decoder, quality),
+                None => Ok(Vec::new()),
             }
         }
-        Some(s) => sample_curve_polyline(&s, decoder, quality),
-        None => Vec::new(),
+        Some(s) => try_sample_curve_polyline(&s, decoder, quality),
+        None => Ok(Vec::new()),
     };
+    let mut profile_pts = profile.map_err(|Refused| refused(face))?;
 
     if profile_pts.len() < 2 {
         return process_planar_face_rebased(face, decoder, quality, Some(rtc));
+    }
+
+    // SweptCurve and AxisPosition are both given in Position's frame
+    // (IfcSweptSurface.Position, optional since IFC4); it was ignored, so a
+    // populated Position misplaced the surface (#7687, PROC-S24). The face's
+    // bounds are already in the outer frame, so only the profile and axis
+    // move. A null Position leaves both untouched, bit for bit.
+    if let Some(position) = present(face, surface.get(1), decoder)? {
+        let frame = noting_refusal(face, crate::transform::parse_axis2_placement_3d(&position, decoder))?;
+        for p in &mut profile_pts {
+            *p = frame.transform_point(p);
+        }
+        axis_origin = frame.transform_point(&axis_origin);
+        axis_dir = frame.transform_vector(&axis_dir);
     }
 
     // Build an orthonormal basis (axis_x, axis_y, axis_dir).
@@ -103,7 +136,7 @@ pub(super) fn process_surface_of_revolution_face(
     // *largest gap* between sorted angles — the face occupies the complement.
     // This robustly handles faces that straddle the θ=π discontinuity (e.g.
     // a fillet at θ=−π/2..π) where naive min/max gives 3π/2 instead of π/2.
-    let boundary = extract_edge_loop_points_for_bounds(face, decoder, quality);
+    let boundary = extract_edge_loop_points_for_bounds(face, decoder, quality)?;
     let (a_min, span) = if boundary.is_empty() {
         (0.0, TAU)
     } else {
@@ -118,7 +151,7 @@ pub(super) fn process_surface_of_revolution_face(
                 a
             })
             .collect();
-        angles.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        angles.sort_by(|a, b| crate::cmp_f64_nan_last(*a, *b)); // #7674
         angles.dedup_by(|a, b| (*a - *b).abs() < 1e-6);
 
         if angles.len() < 2 {

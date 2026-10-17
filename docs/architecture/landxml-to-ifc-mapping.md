@@ -59,7 +59,10 @@ identically on the streaming and non-streaming parse paths (LXML009). A model th
 refuses to load cannot be exported, so the mapping inherits the units contract for
 free — **except** where the reviewed `assumedLinearUnit` override (step A.2) was used,
 in which case the assumption is carried into the export as provenance (§7) and must
-never be presented as a declared unit.
+never be presented as a declared unit. The override is resolved once and applies to every
+family the parser reads, terrain, plan, alignment and pipe networks, each flagging its units
+`assumed` (#7693). The assumed unit applies to elevations as well as plan coordinates; a
+declared `<Units>` that omits `elevationUnit` instead defaults elevations to metres (LandXML 1.2).
 
 ### 2.2 Coordinate order — ifc-lite is correct; defend against transposed input
 
@@ -526,9 +529,16 @@ and curvature in the distance/height plane; the terminator is `DISCONTINUOUS`.
   by its PVI, its radius and the two grades; its `length` only confirms them. Producers differ
   on which length they write: 3D-Win writes the **arc** length `R·|θ2 − θ1|` (θ = atan of each
   grade; its M3 road profile agrees to the millimetre on all nine curves, and one of them
-  differs from the horizontal length by 1 cm), while `rust/landxml`'s evaluator reads the
-  **horizontal** length `R·|sin θ2 − sin θ1|`. A declared length that equals either within
-  §11.4's tolerance is accepted; one that equals neither is refused, naming both values.
+  differs from the horizontal length by 1 cm), while others write the **horizontal** length
+  `R·|sin θ2 − sin θ1|`. A declared length that equals either is
+  accepted; one that equals neither is refused, naming both values. The agreement policy is
+  one rule on both sides (#7754): `|declared − computed| ≤ max(1e-6·S, min(5e-4, 2e-4·S))`
+  with `S` the larger of the two and the `5e-4` floor in source units (scaled to metres in
+  `packages/create`), i.e. a length written to three decimals is accepted from 2.5 m up,
+  while a centimetre of disagreement on a 50 m curve is refused. `rust/landxml`'s profile
+  evaluator applies the same either-length rule and the same radius-sign rule below; the
+  shared vectors are `rust/landxml/tests/fixtures/circ-curve-length-vectors.json`, read by
+  both test suites.
 - **`RadiusOfCurvature` sign.** Positive for a sag (the curve turns counter-clockwise in
   the distance/height plane, IFC's "positive values imply a CCW direction"), negative for a
   crest: `HorizontalLength / (EndGradient − StartGradient)` for a parabola, which is the

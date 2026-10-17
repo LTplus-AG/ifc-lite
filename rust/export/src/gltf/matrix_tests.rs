@@ -33,8 +33,8 @@ fn occurrence_matrix_reconstructs_rotated_instance_under_national_grid_rtc() {
     };
 
     // Placements (Z-up, pre-RTC): template upright, occurrence rotated 37° about Z.
-    let m_ref = super::mat4_mul(&translate([10., 20., 5.]), &rot_z(0.0));
-    let m_k = super::mat4_mul(&translate([60., 35., 5.]), &rot_z(37.0));
+    let m_ref = ifc_lite_geometry::math::mat4::mul(&translate([10., 20., 5.]), &rot_z(0.0));
+    let m_k = ifc_lite_geometry::math::mat4::mul(&translate([60., 35., 5.]), &rot_z(37.0));
     // National-grid RTC the baker subtracts (e.g. Dutch RD-ish easting/northing).
     let rtc = [155_000.0_f64, 463_000.0, 0.0];
 
@@ -71,18 +71,18 @@ fn occurrence_matrix_reconstructs_rotated_instance_under_national_grid_rtc() {
         o
     };
     // Convert template origin + local, and the occurrence's baked truth, to Y-up.
-    let origin_yup = crate::frame::yup_f64(origin_z);
+    let origin_yup = ifc_lite_geometry::math::frame::zup_to_yup(origin_z);
     let tmpl_local_yup: Vec<[f64; 3]> = tmpl_baked
         .iter()
-        .map(|p| crate::frame::yup_f64([p[0] - origin_z[0], p[1] - origin_z[1], p[2] - origin_z[2]]))
+        .map(|p| ifc_lite_geometry::math::frame::zup_to_yup([p[0] - origin_z[0], p[1] - origin_z[1], p[2] - origin_z[2]]))
         .collect();
-    let occ_world_yup: Vec<[f64; 3]> = occ_baked.iter().map(|p| crate::frame::yup_f64(*p)).collect();
+    let occ_world_yup: Vec<[f64; 3]> = occ_baked.iter().map(|p| ifc_lite_geometry::math::frame::zup_to_yup(*p)).collect();
 
     // scene_center = centre of the combined baked Y-up AABB.
     let mut lo = [f64::INFINITY; 3];
     let mut hi = [f64::NEG_INFINITY; 3];
     for p in tmpl_baked.iter().chain(occ_baked.iter()) {
-        let y = crate::frame::yup_f64(*p);
+        let y = ifc_lite_geometry::math::frame::zup_to_yup(*p);
         for k in 0..3 {
             lo[k] = lo[k].min(y[k]);
             hi[k] = hi[k].max(y[k]);
@@ -201,12 +201,12 @@ fn occurrence_matrix_reconstructs_a_translated_sibling_under_a_yawed_site() {
         }
         o
     };
-    let origin_yup = crate::frame::yup_f64(origin_z);
+    let origin_yup = ifc_lite_geometry::math::frame::zup_to_yup(origin_z);
     let tmpl_local_yup: Vec<[f64; 3]> = tmpl_baked
         .iter()
-        .map(|p| crate::frame::yup_f64([p[0] - origin_z[0], p[1] - origin_z[1], p[2] - origin_z[2]]))
+        .map(|p| ifc_lite_geometry::math::frame::zup_to_yup([p[0] - origin_z[0], p[1] - origin_z[1], p[2] - origin_z[2]]))
         .collect();
-    let occ_world_yup: Vec<[f64; 3]> = occ_baked.iter().map(|p| crate::frame::yup_f64(*p)).collect();
+    let occ_world_yup: Vec<[f64; 3]> = occ_baked.iter().map(|p| ifc_lite_geometry::math::frame::zup_to_yup(*p)).collect();
 
     let meta = |transform: [f64; 16]| InstanceMeta {
         transform,
@@ -328,10 +328,10 @@ fn zero_rtc_places_non_identity_occurrence() {
 
     // Template at identity placement (baked geometry = canonical, origin 0); occurrence
     // rotated 25° about Z and translated. rtc / origin / scene_center all zero.
-    let m_ref = super::compose_world_meta(&meta(super::IDENTITY16));
+    let m_ref = super::compose_world_meta(&meta(ifc_lite_geometry::math::mat4::IDENTITY));
     let m_ref_inv = super::affine_inverse(&m_ref).expect("identity invertible");
     let m_k = super::compose_world_meta(&meta(
-        super::mat4_mul(&translate([7.0, -3.0, 2.0]), &rot_z(25.0)),
+        ifc_lite_geometry::math::mat4::mul(&translate([7.0, -3.0, 2.0]), &rot_z(25.0)),
     ));
     let node = super::occurrence_node_matrix(
         &meta(m_k),
@@ -347,9 +347,9 @@ fn zero_rtc_places_non_identity_occurrence() {
     let mut max_err = 0.0f64;
     for &p in &canonical {
         // Template local (Y-up): identity template at origin 0, so just the Y-up point.
-        let lv = crate::frame::yup_f64(p);
+        let lv = ifc_lite_geometry::math::frame::zup_to_yup(p);
         // Truth: the occurrence's own baked (rtc = 0) geometry, in Y-up.
-        let truth = crate::frame::yup_f64(apply(&m_k, p));
+        let truth = ifc_lite_geometry::math::frame::zup_to_yup(apply(&m_k, p));
         let world = [
             node[0] as f64 * lv[0] + node[4] as f64 * lv[1] + node[8] as f64 * lv[2] + node[12] as f64,
             node[1] as f64 * lv[0] + node[5] as f64 * lv[1] + node[9] as f64 * lv[2] + node[13] as f64,
@@ -412,4 +412,36 @@ fn baked_basis_reads_the_coordinate_space_tag_not_the_site_placement() {
         super::baked_basis_yup(MeshCoordinateSpace::ModelRtc, rtc, Some(&site_zup)),
         "site_local must fold the site rotation in; the two tiers cannot share a basis"
     );
+}
+
+#[test]
+fn issue_7772_x2_a_non_finite_placement_is_refused_not_inverted_to_nan() {
+    // EXPORT-GEOM-3: `abs(NaN) < eps` is false, so a NaN placement used to
+    // return `Some(NaN)` and ship NaN node matrices. It must be refused so the
+    // caller falls back to flat, exactly like a singular placement.
+    for bad in [f64::NAN, f64::INFINITY] {
+        let mut m = [0.0f64; 16];
+        m[0] = 1.0;
+        m[5] = bad;
+        m[10] = 1.0;
+        m[15] = 1.0;
+        assert!(super::affine_inverse(&m).is_none(), "{bad} placement must be refused");
+        // A non-finite TRANSLATION leaves det finite; it must be refused too,
+        // not inverted to a NaN node matrix.
+        let mut t = [0.0f64; 16];
+        (t[0], t[5], t[10], t[15], t[3]) = (1.0, 1.0, 1.0, 1.0, bad);
+        assert!(super::affine_inverse(&t).is_none(), "{bad} translation must be refused");
+    }
+}
+
+#[test]
+fn issue_7772_x2_det_between_1e24_and_1e18_is_singular_in_export_too() {
+    // One threshold everywhere (D22): 1e-18.
+    let m = [
+        1e-7, 0.0, 0.0, 0.0, //
+        0.0, 1e-7, 0.0, 0.0, //
+        0.0, 0.0, 1e-7, 0.0, //
+        0.0, 0.0, 0.0, 1.0,
+    ];
+    assert!(super::affine_inverse(&m).is_none(), "det 1e-21 is below 1e-18");
 }

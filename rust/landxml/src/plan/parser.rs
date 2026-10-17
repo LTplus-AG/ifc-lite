@@ -11,15 +11,14 @@ use super::{
     LandXmlPlanDocument, LandXmlPlanFeature,
 };
 use crate::{
-    classify_landxml_version, compatibility_version_diagnostic,
     preflight::preflight_xml_tokens,
     semantics::units,
     xml::{
         attr, attributes, character_references, error, normalize_encoding, split_name, unescape,
-        Attributes, Result,
+        Attributes, Budget, Meter, Result,
     },
     LandXmlCancellation, LandXmlCapabilityDiagnostic, LandXmlDiagnosticCode as Code, LandXmlLimits,
-    LandXmlSourceId, LandXmlUnits, LandXmlVersionCapability,
+    LandXmlSourceId, LandXmlUnits,
 };
 
 mod actions;
@@ -66,9 +65,12 @@ pub fn parse_landxml_plan_with_cancel(
     if input.len() > limits.xml.max_bytes {
         return Err(error(Code::InputTooLarge, "input exceeds byte limit"));
     }
+    // #5175 / EDGE-LXPARSE-7 (#7693): refuse a bad override token before
+    // any XML is read, exactly as the TIN entry point does.
+    let assumed_units = crate::semantics::resolve_assumed_units(&limits.xml)?;
     let input = normalize_encoding(input, &limits.xml, cancelled)?;
     preflight_xml_tokens(&input, &limits.xml, cancelled)?;
-    let mut parser = Parser::new(limits, cancelled);
+    let mut parser = Parser::new(limits, cancelled, assumed_units);
     let mut reader = Reader::from_reader(input.as_slice());
     reader.config_mut().trim_text(false);
     let mut buffer = Vec::new();
@@ -96,12 +98,17 @@ pub fn parse_landxml_plan_with_cancel(
 #[allow(private_interfaces)]
 pub(crate) struct Parser<'a> {
     pub(super) limits: LandXmlPlanLimits,
-    pub(super) cancelled: Option<&'a dyn LandXmlCancellation>,
-    pub(super) work: usize,
-    pub(super) characters: usize,
-    pub(super) references: usize,
+    /// The `work` budget; charged per event in `consume_event` (D73).
+    pub(super) meter: Meter<'a>,
+    pub(super) characters: Budget,
+    pub(super) references: Budget,
+    pub(super) capability_diagnostics_seen: Budget,
+    pub(super) vertices: Budget,
+    pub(super) geometry_seen: Budget,
     pub(super) frames: Vec<Frame>,
     pub(super) units: Option<LandXmlUnits>,
+    /// Effective only when the source declares no `LandXML/Units` (#5175).
+    pub(super) assumed_units: Option<LandXmlUnits>,
     pub(super) area_unit: Option<String>,
     pub(super) area_scale_to_square_meters: Option<f64>,
     pub(super) schema: String,
@@ -123,21 +130,26 @@ pub(crate) struct Parser<'a> {
     pub(super) scope_ordinal: usize,
     pub(super) cogo_ordinal: usize,
     pub(super) monument_ordinal: usize,
-    pub(super) vertices: usize,
-    pub(super) geometry_count: usize,
     pub(super) feature_ordinal: usize,
     pub(super) parcel_ordinal: usize,
 }
 impl<'a> Parser<'a> {
-    fn new(limits: &LandXmlPlanLimits, cancelled: Option<&'a dyn LandXmlCancellation>) -> Self {
+    fn new(
+        limits: &LandXmlPlanLimits,
+        cancelled: Option<&'a dyn LandXmlCancellation>,
+        assumed_units: Option<LandXmlUnits>,
+    ) -> Self {
         Self {
             limits: limits.clone(),
-            cancelled,
-            work: 0,
-            characters: 0,
-            references: 0,
+            meter: Meter::new(limits.xml.max_work, cancelled),
+            characters: Budget::new(limits.xml.max_character_references, "character reference"),
+            references: Budget::new(limits.xml.max_references, "reference"),
+            capability_diagnostics_seen: Budget::new(limits.xml.max_capability_diagnostics, "capability diagnostic"),
+            vertices: Budget::new(limits.max_vertices, "plan vertex"),
+            geometry_seen: Budget::new(limits.max_geometry, "CoordGeom primitive"),
             frames: Vec::new(),
             units: None,
+            assumed_units,
             area_unit: None,
             area_scale_to_square_meters: None,
             schema: String::new(),
@@ -159,26 +171,21 @@ impl<'a> Parser<'a> {
             scope_ordinal: 0,
             cogo_ordinal: 0,
             monument_ordinal: 0,
-            vertices: 0,
-            geometry_count: 0,
             feature_ordinal: 0,
             parcel_ordinal: 0,
         }
     }
     pub(super) fn check(&mut self, added: usize) -> Result<()> {
-        if self
-            .cancelled
-            .is_some_and(LandXmlCancellation::is_cancelled)
-        {
-            return Err(error(Code::Cancelled, "ingestion cancelled"));
-        }
-        self.work = self
-            .work
-            .checked_add(added)
-            .ok_or_else(|| error(Code::LimitExceeded, "work limit exceeded"))?;
-        if self.work > self.limits.xml.max_work {
-            return Err(error(Code::LimitExceeded, "work limit exceeded"));
-        }
+        self.meter.charge(added)
+    }
+
+    /// A diagnostic is source output too: bounded like every other record.
+    pub(super) fn record_capability_diagnostic(
+        &mut self,
+        diagnostic: LandXmlCapabilityDiagnostic,
+    ) -> Result<()> {
+        self.capability_diagnostics_seen.reserve(1)?;
+        self.capability_diagnostics.push(diagnostic);
         Ok(())
     }
 
@@ -192,6 +199,10 @@ impl<'a> Parser<'a> {
             }
             Event::End(value) => self.end(Some(value.name().as_ref().as_bytes())),
             Event::Text(value) => self.text(value.as_ref().as_bytes()),
+            // #7680: a reference in text arrives as its own event.
+            Event::GeneralRef(reference) => {
+                self.text(crate::xml::general_ref_source(&reference).as_bytes())
+            }
             Event::CData(value) => self.cdata(value.as_ref().as_bytes()),
             Event::DocType(_) => Err(error(Code::DtdForbidden, "DOCTYPE is not allowed")),
             _ => Ok(()),
@@ -204,7 +215,10 @@ impl<'a> Parser<'a> {
 }
 
 impl Parser<'static> {
-    pub(crate) fn new_stream(limits: LandXmlPlanLimits) -> Self {
-        Self::new(&limits, None)
+    pub(crate) fn new_stream(
+        limits: LandXmlPlanLimits,
+        assumed_units: Option<LandXmlUnits>,
+    ) -> Self {
+        Self::new(&limits, None, assumed_units)
     }
 }

@@ -32,8 +32,10 @@
  * It reads `package.json` as configuration data, not as source text.
  */
 
-import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { readFileSync, mkdtempSync, mkdirSync, writeFileSync, rmSync, unlinkSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { spawnSync } from 'node:child_process';
+import { dirname, resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { describe, expect, it } from 'vitest';
@@ -71,15 +73,16 @@ type ClassifyTarget = (args: {
 async function lade(pfad: string): Promise<Record<string, unknown> | null> {
   try {
     return (await import(/* @vite-ignore */ pfad)) as Record<string, unknown>;
-  } catch {
+  } catch (error) {
+    console.warn('Build script import failed:', error);
     return null;
   }
 }
 
 const [modulLib, modulRewrite, modulVerify] = await Promise.all([
-  lade('../scripts/lib/shipped-target.mjs'),
-  lade('../scripts/rewrite-worker-urls.mjs'),
-  lade('../scripts/verify-dist-worker-urls.mjs'),
+  lade(new URL('../../../scripts/lib/shipped-target.mjs', import.meta.url).href),
+  lade(new URL('../../../scripts/rewrite-worker-urls.mjs', import.meta.url).href),
+  lade(new URL('../../../scripts/verify-dist-worker-urls.mjs', import.meta.url).href),
 ]);
 
 function hole<T>(modul: Record<string, unknown> | null, name: string, datei: string): T {
@@ -295,5 +298,32 @@ describe('#4895 — the build schedules both steps (review of #4900)', () => {
     expect(indexOfStep('verify-dist-worker-urls.mjs')).toBeGreaterThan(
       indexOfStep('rewrite-worker-urls.mjs'),
     );
+  });
+});
+
+// PR #7648: the geometry pool lived outside an inline build's caller list.
+// Drive the actual shared commands against a new module and nested worker.
+describe('shared emitted worker closure (DX5)', () => {
+  it('rewrites unlisted callers and independently refuses missing worker files', () => {
+    const dist = mkdtempSync(join(tmpdir(), 'ifclite-worker-dist-'));
+    const scripts = fileURLToPath(new URL('../../../scripts/', import.meta.url));
+    const run = (script: string, args: string[] = []) => spawnSync(process.execPath,
+      [join(scripts, script), dist, ...args], { encoding: 'utf8', timeout: 10000 });
+    try {
+      mkdirSync(join(dist, 'nested'));
+      writeFileSync(join(dist, 'nested/geometry.worker.js'), 'export {};');
+      writeFileSync(join(dist, 'previously-unlisted-pool.js'),
+        "new Worker(new URL('./nested/geometry.worker.ts', import.meta.url));\n" +
+        "const wasm = new URL('../../wasm/pkg/ifc-lite_bg.wasm', import.meta.url);\n");
+      const rewritten = run('rewrite-worker-urls.mjs');
+      expect(rewritten.status, rewritten.stderr).toBe(0);
+      const verified = run('verify-dist-worker-urls.mjs', ['--scripts-only']);
+      expect(verified.status, verified.stderr).toBe(0);
+      // Parser's original all-asset check remains strict; only hosts whose
+      // WASM lives in another package select script-only verification.
+      expect(run('verify-dist-worker-urls.mjs').status).toBe(1);
+      unlinkSync(join(dist, 'nested/geometry.worker.js'));
+      expect(run('verify-dist-worker-urls.mjs', ['--scripts-only']).status).toBe(1);
+    } finally { rmSync(dist, { recursive: true, force: true }); }
   });
 });

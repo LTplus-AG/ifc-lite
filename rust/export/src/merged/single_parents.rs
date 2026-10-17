@@ -145,8 +145,10 @@ fn read_side(line: &str, index: usize) -> Option<Side> {
 }
 
 /// The express id of a final line `#N=…`, tolerating STEP whitespace around
-/// `=` (`#4 = IFCREL…`). `claim` and `apply_folds` must read it the same way,
-/// or a fold recorded against an owner never finds its line.
+/// `=` (`#4 = IFCREL…`). `apply_folds` finds the owner with core's
+/// `EntityScanner`, which reads that spelling too; the two must agree, or a
+/// fold recorded against an owner never finds its record
+/// (`ifc2x3_folds_into_an_owner_line_that_spaces_its_equals_sign`).
 fn rel_id(line: &str) -> Option<u32> {
     line.strip_prefix('#')?.split('=').next()?.trim().parse().ok()
 }
@@ -281,21 +283,22 @@ impl ParentClaims {
             return warnings;
         }
         let mut pending: HashMap<u32, &(usize, Vec<u32>)> = self.folds.iter().map(|(k, v)| (*k, v)).collect();
+        // Patch by RECORD, not by line: the merge writes each source record's
+        // own text, internal line breaks included, so a wrapped owner rel is
+        // one record over several lines (EXPORT-MERGE-12, #7683).
         let mut rebuilt = String::with_capacity(out.len() + 64 * pending.len());
-        for line in out.split_inclusive('\n') {
-            let id = rel_id(line);
-            let patched = id.and_then(|id| pending.get(&id).map(|fold| (id, *fold))).and_then(|(id, (partner, ids))| {
-                append_to_list_attr(line.trim_end_matches('\n'), *partner, ids).map(|text| (id, text))
-            });
-            match patched {
-                Some((id, text)) => {
-                    rebuilt.push_str(&text);
-                    rebuilt.push('\n');
-                    pending.remove(&id);
-                }
-                None => rebuilt.push_str(line),
+        let mut copied = 0;
+        let mut scanner = ifc_lite_core::EntityScanner::new(out.as_bytes());
+        while let Some((id, _, start, end)) = scanner.next_entity() {
+            let Some((partner, ids)) = pending.get(&id).copied() else { continue };
+            if let Some(text) = append_to_list_attr(&out[start..end], *partner, ids) {
+                rebuilt.push_str(&out[copied..start]);
+                rebuilt.push_str(&text);
+                copied = end;
+                pending.remove(&id);
             }
         }
+        rebuilt.push_str(&out[copied..]);
         *out = rebuilt;
         let mut unwritten: Vec<(&u32, &&(usize, Vec<u32>))> = pending.iter().collect();
         unwritten.sort_by_key(|(rel, _)| **rel); // a stable warning order, not the map's

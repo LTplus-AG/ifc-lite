@@ -119,9 +119,13 @@ export interface ModelMetadata {
   coordinate_info: CoordinateInfo;
   /**
    * Length unit scale to convert model length values to metres (e.g. `0.001`
-   * for millimetres). Absent on older servers — treat as `1`.
+   * for millimetres). Absent on older servers — treat as `1` — unless
+   * `length_unit_refused` is set, in which case there is no usable scale.
    */
   length_unit_scale?: number;
+  /** Express id of the unit whose length factor is unusable (zero, negative or
+   *  non-finite): no geometry was meshed and `length_unit_scale` is absent. */
+  length_unit_refused?: number;
   /**
    * Georeferencing (`IfcMapConversion` + `IfcProjectedCRS`). Absent when the
    * model carries no map-conversion data.
@@ -327,8 +331,13 @@ export interface StreamCompleteEvent {
   stats: ProcessingStats;
   /** Model metadata */
   metadata: ModelMetadata;
-  /** Cache key for the result */
-  cache_key: string;
+  /**
+   * @deprecated Not sent by a server that includes #7676. `/parse/stream`
+   * caches nothing, and the bare file hash this carried named no cache entry
+   * (`GET /api/v1/cache/{key}` refused it). Use `parse()` or a Parquet method
+   * for a `cache_key` to fetch by later.
+   */
+  cache_key?: string;
   /**
    * 2D symbol data (`IfcAnnotation` + `IfcGrid`). Omitted when the model has
    * no 2D symbols.

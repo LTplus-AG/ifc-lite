@@ -7,11 +7,8 @@
  * mounts a `HeadlessLikeBackend` on top of the resulting `IfcDataStore`,
  * and produces a `LoadedModel` ready to drop into the registry.
  *
- * We don't pull in `@ifc-lite/cli`'s `HeadlessBackend` directly because that
- * package depends on `@ifc-lite/viewer-core` which is browser-shaped. Instead
- * we re-implement the small subset of `BimBackend` the MCP tools actually use
- * (model + query + selection + spatial + export + mutate). All the renderer
- * methods are no-ops, which is fine — agents never call them through MCP.
+ * The SDK owns the shared headless backend. This adapter supplies MCP's
+ * native geometry preparation and registry/file-loading behavior.
  */
 
 import { readFile } from 'node:fs/promises';

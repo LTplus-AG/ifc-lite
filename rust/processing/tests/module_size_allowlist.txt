@@ -13,7 +13,7 @@
 # file's measured count and fails a hand-picked number; a duplicate row fails
 # in module_size_ratchet.rs (#4388).
      756 apps/server/src/services/parquet_data_model.rs
-     581 apps/server/src/services/parquet_optimized.rs
+     531 apps/server/src/services/parquet_optimized.rs
 # +8: add set_entity_index setter so the processor can install its inline-built index (perf/single-scan).
 # +50: add the per-worker placement-transform memo (field + take/set/get/cache methods), mirroring point_cache (perf/placement-cache).
     1064 rust/core/src/decoder.rs
@@ -45,11 +45,8 @@
 # schema_helpers.rs row removed: the merged upstream #1969 split its tests into
 # schema_helpers_tests.rs, dropping the file to 305 lines (under the 400 budget),
 # same as the tree main converged on independently.
-# -416: the inline #[cfg(test)] mod moved VERBATIM to units_tests.rs (ratchet-exempt)
-# so the quoted 'FEET' arm and its two cross-reader comments fit; 990 -> 574.
-# -38: the SI-prefix and conversion-based tables moved to unit_labels.rs, shared
-# verbatim with the georeferencing MapUnit reader (#3292); 574 -> 536.
-    536 rust/core/src/units.rs
+# units.rs row removed: the four near-duplicate resolver bodies share one unit walk
+# (F3a #7775), 531 -> 306 lines, under the 400 budget.
 # +4: build the index once in parallel on the fail-closed try_/project_glb_size large-model GLB paths (perf/parallel-scan).
 # +81: emissive-material knob for KMZ/Google Earth (#1427) - make_material lit/unlit/emissive branch + emissive param threaded through build_gltf/export_glb_from_meshes and their tests.
     4028 rust/export/src/gltf.rs
@@ -66,16 +63,6 @@
 # so collada.rs could take try_export_collada_from_meshes and come
 # back under the 400-line rule instead of raising this budget to 470.
      468 rust/export/src/model.rs
-# NEW (#5116): port the TypeScript exporter's resolveUnrepresentedEntity
-# fallback (proxy a rooted type with no target representation, error for a
-# non-rooted one) instead of silently passing an unmapped type through
-# unchanged. The bulk of the new logic lives in schema_unrepresented.rs
-# (a fresh, well-under-budget module); this is only the one call site plus
-# the Result-returning signature changes that ripple through convert_record's
-# existing early returns.
-# #5307 (Rust twin of #5202): the ifc4_slots parameter, its doc line and the
-# IFC4X3/IFC5 -> IFC4 count arm in convert_step_line, +5 lines.
-     413 rust/export/src/schema_convert.rs
 # -140 net: text-level STEP primitives (escape/detect_schema/refs_in_line/
 # split_top_level_args/apply_attr_mutations) split out to step_text.rs, making
 # room for the backslash-doubling fix to escape() without raising this
@@ -185,15 +172,14 @@
 # record) out to the operand.rs sibling and the failure-log methods out to
 # failures.rs; 1005 -> 936.
      936 rust/geometry/src/processors/boolean/mod.rs
-     486 rust/geometry/src/processors/brep/faceted.rs
 # csg_primitive.rs row REMOVED: #3821 moved IfcSphere (processor + UV-sphere
 # tessellation, verbatim) to the sphere.rs sibling to make room for the
 # CsgSolid boolean-failure hand-off; 422 -> 348, under the 400 limit. That
 # repays the #2866 loosening this row recorded.
-     608 rust/geometry/src/processors/sectioned.rs
+     476 rust/geometry/src/processors/sectioned.rs
      758 rust/geometry/src/profile_extractor.rs
      598 rust/geometry/src/profiles/curves_2d.rs
-     670 rust/geometry/src/profiles/curves_3d.rs
+     495 rust/geometry/src/profiles/curves_3d.rs
 # +1: `mod steel_shapes;` for the shapes.rs split, which removed the 594-line shapes.rs row (net down).
 # +55: #2866 follow-up — MAX_CURVE_DEPTH = 50 WAS the weakest bound in the tree,
 # exactly as suspected. It caps one PATH's length and says nothing about the
@@ -215,7 +201,7 @@
 # The cohort also includes the 4-line `#[cfg(test)] #[path] mod
 # curve_fanout_tests;` registration, so the number accounts for that too; the
 # tests themselves live in the sibling file and are exempt.
-     847 rust/geometry/src/profiles/mod.rs
+     810 rust/geometry/src/profiles/mod.rs
      706 rust/geometry/src/profiles/simplify.rs
 # +26: cap the fast-path opening count (O(N^3) DoS guard) + regression test.
      807 rust/geometry/src/rect_fast.rs
@@ -280,7 +266,8 @@
 # collapsing thin cut geometry far from the project origin, and the correct
 # behaviour already existed next to it as `rotate_mesh_from_frame`, which now
 # also composes the input's own origin instead of assigning over it.
-     882 rust/geometry/src/router/voids/geom.rs
+     757 rust/geometry/src/router/voids/geom.rs
+# -125: the closure, pairing and signed-volume checks moved to `mesh_check` (C2-1, #7793); 882 -> 757.
 # +10: extract min_opening_volume(quality) tier->floor helper shared by the batch
 # admission gate and the sequential CSG path so they can't diverge on the
 # High/Highest small-opening floor (B11 regression, issue #976).
@@ -372,7 +359,7 @@
 # the pre-fix code made, and both were deleted.
      955 rust/geometry/src/router/voids/synthesis.rs
     1472 rust/geometry/src/space_dcel/mod.rs
-     525 rust/geometry/src/transform.rs
+     415 rust/geometry/src/transform.rs
      782 rust/geometry/src/triangulation.rs
      745 rust/geometry/src/void_index.rs
      499 rust/processing/src/determinism.rs
@@ -450,7 +437,7 @@
 # has never run in CI (`--exclude ifc-lite-wasm`), which is how it drifted.
 # +37: geometry_item_id/material_id cross the boundary -- 2 fields, 2 getters, a paired setter, and propagation at all THREE MeshDataJs clone sites (defaulting them there would have made the field inert at collection.get(i)) (#3199).
 # -14: the three hand-written 21-field MeshDataJs copies collapsed to a derived Clone; a hand-written Default (which must agree with new) costs some of it back (#3199 follow-up).
-     754 rust/wasm-bindings/src/zero_copy/mesh.rs
+     743 rust/wasm-bindings/src/zero_copy/mesh.rs
 # symbolic.rs +14 (743 -> 757): carries SymbolicData::truncated across the WASM
 # boundary as `truncatedAt` (#2938). A raise rather than a split because the
 # addition is one field, one assignment in `from_data` and one getter -- the

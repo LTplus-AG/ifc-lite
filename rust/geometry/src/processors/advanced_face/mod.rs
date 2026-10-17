@@ -31,11 +31,14 @@ pub(super) use surfaces::process_bspline_face;
 // descendant of `processors`) drains this once per representation item to
 // report a capped B-spline curve edge (#4901); see `bspline_budget.rs`.
 pub(crate) use bspline_budget::take_curve_capped;
+pub(crate) use bounds::take_face_refused;
+pub(super) use bounds::note_face_refused;
 
 use revolution::process_surface_of_revolution_face;
 use surfaces::{process_cylindrical_face, process_planar_face_rebased};
 
-fn apply_same_sense(
+/// Reverse the winding of `result` when the face's `SameSense` is `.F.`.
+pub(super) fn apply_same_sense(
     face: &DecodedEntity,
     result: Result<(Vec<f32>, Vec<u32>)>,
 ) -> Result<(Vec<f32>, Vec<u32>)> {
@@ -54,6 +57,29 @@ fn apply_same_sense(
             (positions, indices)
         })
     }
+}
+
+/// A known approximation, recorded rather than silent (#7687, PROC-S20): a
+/// B-spline face is tessellated over the surface's whole knot domain, and its
+/// `Bounds` (outer trim and holes) are not applied, so a trimmed NURBS patch
+/// renders untrimmed and its holes closed. Trimming in parameter space is
+/// planned with the shared curve sampler (charter #7670, C1a).
+fn note_untrimmed_bspline_face(face: &DecodedEntity) {
+    let bound_count = face.get(0).and_then(|a| a.as_list()).map_or(0, <[_]>::len);
+    if bound_count == 0 {
+        return;
+    }
+    crate::diag::diag_debug!(
+        { face_id = face.id, bounds = bound_count,
+          "advanced_face: B-spline face bounds not applied, tessellating the untrimmed surface" }
+        else {
+            #[cfg(feature = "debug_geometry")]
+            eprintln!(
+                "[ifc-lite][advanced_face] B-spline face #{} untrimmed ({} bounds ignored)",
+                face.id, bound_count
+            );
+        }
+    );
 }
 
 /// Process a single `IfcAdvancedFace` or `IfcFaceSurface`, dispatching to the
@@ -84,19 +110,37 @@ pub(super) fn process_advanced_face(
 
     let surface_type = surface.ifc_type.as_str().to_uppercase();
 
-    // Read SameSense (attribute 2) - when false, triangle winding must be flipped
+    // SameSense (attribute 2) relates the SURFACE normal to the face normal.
+    // Only the surface-parameterised tessellations take their winding from the
+    // surface, so only they flip on `.F.`. Planar and loop-derived faces
+    // triangulate their bound loops, which already wind about the face normal
+    // (ISO 10303-42), and are never flipped (#7686, PROC-S16).
     let rtc = rtc_file_units.unwrap_or((0.0, 0.0, 0.0));
     let result = if surface_type == "IFCPLANE" {
         process_planar_face_rebased(face, decoder, quality, rtc_file_units)
     } else if surface_type == "IFCBSPLINESURFACEWITHKNOTS" {
-        process_bspline_face(&surface, decoder, None, quality, rtc)
+        note_untrimmed_bspline_face(face);
+        // Every B-spline surface error is a refusal of its data (a bound,
+        // a malformed grid, knot vector or weights), counted (D3).
+        apply_same_sense(
+            face,
+            bounds::noting_refusal(face, process_bspline_face(&surface, decoder, None, quality, rtc)),
+        )
     } else if surface_type == "IFCRATIONALBSPLINESURFACEWITHKNOTS" {
-        let weights = parse_rational_weights(&surface);
-        process_bspline_face(&surface, decoder, weights.as_deref(), quality, rtc)
+        note_untrimmed_bspline_face(face);
+        apply_same_sense(
+            face,
+            bounds::noting_refusal(face, parse_rational_weights(&surface).and_then(|weights| {
+                process_bspline_face(&surface, decoder, Some(&weights), quality, rtc)
+            })),
+        )
     } else if surface_type == "IFCCYLINDRICALSURFACE" {
-        process_cylindrical_face(face, &surface, decoder, quality, rtc)
+        apply_same_sense(face, process_cylindrical_face(face, &surface, decoder, quality, rtc))
     } else if surface_type == "IFCSURFACEOFREVOLUTION" {
-        process_surface_of_revolution_face(face, &surface, decoder, quality, rtc)
+        apply_same_sense(
+            face,
+            process_surface_of_revolution_face(face, &surface, decoder, quality, rtc),
+        )
     } else if surface_type == "IFCSURFACEOFLINEAREXTRUSION"
         || surface_type == "IFCCONICALSURFACE"
         || surface_type == "IFCSPHERICALSURFACE"
@@ -144,6 +188,5 @@ pub(super) fn process_advanced_face(
         }
     }
 
-    // When SameSense is false, flip triangle winding to correct face orientation.
-    apply_same_sense(face, result)
+    result
 }

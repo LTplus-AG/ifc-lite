@@ -120,10 +120,10 @@ fn axis_candidates(t: &[[f64; 3]; 3]) -> [DropAxis; 3] {
     let mut axes = [DropAxis::X, DropAxis::Y, DropAxis::Z];
     axes.sort_by(|&a, &b| {
         let (ia, ib) = (normal_idx(a), normal_idx(b));
-        mag[ib]
-            .partial_cmp(&mag[ia])
-            .unwrap_or(Ordering::Equal)
-            .then(ia.cmp(&ib))
+        // Descending, NaN first (#7674). A NaN comes from a non-finite vertex or an overflowing
+        // cross product (|coord| > ~1e154); it used to tie, so for such triangles the first
+        // candidate, hence the chosen drop axis and sub-triangulation, can differ.
+        crate::cmp_f64_nan_last(mag[ib], mag[ia]).then(ia.cmp(&ib))
     });
     axes
 }
@@ -677,14 +677,13 @@ pub fn triangulation_topology_hash(input: &RetriInput) -> u64 {
         })
         .collect();
     tris.sort_unstable();
-    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    let mut h = ifc_lite_core::hash::Fnv1a64::new();
     for t in tris {
         for v in t {
-            h ^= v as u64;
-            h = h.wrapping_mul(0x0000_0100_0000_01b3);
+            h.mix_word(v as u64);
         }
     }
-    h
+    h.finish()
 }
 
 /// Cross-platform re-triangulation determinism manifest: the topology hash of a

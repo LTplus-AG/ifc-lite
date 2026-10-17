@@ -1,0 +1,284 @@
+diff --git b/packages/export/src/schema-converter-product-proxy.ts a/packages/export/src/schema-converter-product-proxy.ts
+index 911b45b091..f9e95e83be 100644
+--- b/packages/export/src/schema-converter-product-proxy.ts
++++ a/packages/export/src/schema-converter-product-proxy.ts
+@@ -26,6 +26,8 @@
+  * A missing source slot is written `$`.
+  */
+ export function productProxy(prefix: string, guid: string, entityType: string, args: readonly string[]): string {
+-  void args;
+-  return `${prefix}IFCPROXY('${guid}',$,'${entityType}',$,$,$,$,.NOTDEFINED.,$);`;
++  const slot = (i: number): string => args[i] ?? '$';
++  // Name (IfcProxy WR1 requires it) and ObjectType fall back to the quoted source type.
++  const orType = (i: number): string => (slot(i).trim() === '$' ? `'${entityType}'` : slot(i));
++  return `${prefix}IFCPROXY('${guid}',${slot(1)},${orType(2)},${slot(3)},${orType(4)},${slot(5)},${slot(6)},.NOTDEFINED.,$);`;
+ }
+diff --git b/packages/export/src/schema-converter.ts a/packages/export/src/schema-converter.ts
+index e6dd23df75..28696f81b5 100644
+--- b/packages/export/src/schema-converter.ts
++++ a/packages/export/src/schema-converter.ts
+@@ -420,7 +420,7 @@ function convertRecord(
+   // all — see `resolveUnrepresentedEntity` for why it can't just pass through.
+   // On IFC2X3 even with no source entry, as Rust's `has_representation`: a
+   // non-entity head (`#1=IFCLABEL('x');`) fails closed (#7683, D3).
+-  if (srcAttrs && targetTable && !tgtAttrs) {
++  if (targetTable && !tgtAttrs && (srcAttrs || toSchema === 'IFC2X3')) {
+     return resolveUnrepresentedEntity(prefix, entityType, attrsRaw, toSchema, random, withheldRefIds !== undefined);
+   }
+   if (srcAttrs && tgtAttrs) {
+diff --git b/rust/export/src/merged/mod.rs a/rust/export/src/merged/mod.rs
+index ea1b44931b..597e6e0a1b 100644
+--- b/rust/export/src/merged/mod.rs
++++ a/rust/export/src/merged/mod.rs
+@@ -245,6 +245,8 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
+             ));
+             break;
+         };
++        // A repeated id writes only its last record (EXPORT-MERGE-18, #7683).
++        stats.warnings.extend(index.duplicates.iter().map(|&id| format!("Model {i}: {}", crate::step_index::RecordIndex::duplicate_warning(id))));
+ 
+         // Unit mode. Counted here, not where the verdicts are resolved, so an
+         // id-space break above still reports only the models actually merged.
+diff --git b/rust/export/src/merged/plan.rs a/rust/export/src/merged/plan.rs
+index 3c09a6b03d..d4ddb5e8ec 100644
+--- b/rust/export/src/merged/plan.rs
++++ a/rust/export/src/merged/plan.rs
+@@ -6,14 +6,13 @@
+ 
+ use std::collections::{HashMap, HashSet};
+ 
+-use ifc_lite_core::EntityScanner;
+-
+ use super::guid::{extract_global_id_fast, is_relationship_type, GuidMinter};
+ use super::spatial::{
+     ContainerMergeStrategy, SpatialLookup, StoreyMergeStrategy,
+ };
+ use super::units::units_compatible;
+ use super::MergedModel;
++use crate::step_index::RecordIndex;
+ use crate::step_text::{refs_in_line, refs_in_line_counted};
+ 
+ /// Entity types forming shared infrastructure — the first instance of each is
+@@ -24,17 +23,26 @@ pub const SHARED_INFRASTRUCTURE_TYPES: [&str; 3] = [
+     "IFCGEOMETRICREPRESENTATIONSUBCONTEXT",
+ ];
+ 
++/// The types [`ModelIndex::build`] counts or remembers: the spatial roots and
++/// [`SHARED_INFRASTRUCTURE_TYPES`].
++const COUNTED_TYPES: [&str; 6] = [
++    "IFCPROJECT",
++    "IFCSITE",
++    "IFCBUILDING",
++    SHARED_INFRASTRUCTURE_TYPES[0],
++    SHARED_INFRASTRUCTURE_TYPES[1],
++    SHARED_INFRASTRUCTURE_TYPES[2],
++];
++
+ /// A single model indexed by express id, plus the derived facts the merge needs.
+ pub struct ModelIndex<'a> {
+     content: &'a [u8],
+-    /// Express ids in source order (first occurrence).
++    /// Express ids in source order, each once, at its kept (last) record.
+     pub order: Vec<u32>,
+     /// id → byte span of the raw entity line.
+     line_of: HashMap<u32, (usize, usize)>,
+     /// id → STEP type token, folded to uppercase.
+     pub type_of: HashMap<u32, String>,
+-    /// Largest express id seen (drives the next model's offset).
+-    pub max_id: u32,
+     /// All `IFCPROJECT` ids in the model.
+     pub projects: Vec<u32>,
+     /// First express id per shared-infrastructure type.
+@@ -42,42 +50,43 @@ pub struct ModelIndex<'a> {
+     /// Count of `IFCSITE` / `IFCBUILDING` (for the single-instance match rule).
+     pub site_count: usize,
+     pub building_count: usize,
++    /// One entry per record dropped because a later record has the same id.
++    pub duplicates: Vec<u32>,
+ }
+ 
+ impl<'a> ModelIndex<'a> {
+-    /// Index every entity line of `content` in source order.
++    /// Index every entity line of `content` in source order, through the one
++    /// record index the STEP writers use (#7683, EXPORT-MERGE-18): a repeated
++    /// express id keeps its LAST record whole (text, type and place), as core
++    /// resolves it, and each earlier record is listed in `duplicates`. It used
++    /// to keep the last record's text under the first record's type.
+     pub fn build(content: &'a [u8]) -> Self {
+-        let mut idx = ModelIndex {
+-            content,
+-            order: Vec::new(),
+-            line_of: HashMap::new(),
+-            type_of: HashMap::new(),
+-            max_id: 0,
+-            projects: Vec::new(),
+-            first_infra: HashMap::new(),
+-            site_count: 0,
+-            building_count: 0,
+-        };
+-        let mut scanner = EntityScanner::new(content);
+-        while let Some((id, type_name, start, end)) = scanner.next_entity() {
+-            idx.max_id = idx.max_id.max(id);
+-            if idx.line_of.insert(id, (start, end)).is_none() {
+-                idx.order.push(id);
+-            }
+-            // Every consumer of `type_of` reads it as uppercase; fold once here.
+-            let type_upper = type_name.to_ascii_uppercase();
+-            match type_upper.as_str() {
+-                "IFCPROJECT" => idx.projects.push(id),
+-                "IFCSITE" => idx.site_count += 1,
+-                "IFCBUILDING" => idx.building_count += 1,
+-                _ => {}
++        // Every consumer of `type_of` reads it as uppercase; fold once here.
++        // A later record overwrites an earlier one's type, the same last-wins
++        // rule the spans follow. The few types counted below are collected
++        // with their start so a losing record of one is not counted.
++        let mut type_of: HashMap<u32, String> = HashMap::new();
++        let mut counted: Vec<(u32, usize, &'static str)> = Vec::new();
++        let records = RecordIndex::build(content, |id, ty, start| {
++            let type_upper = ty.to_ascii_uppercase();
++            if let Some(&t) = COUNTED_TYPES.iter().find(|&&t| t == type_upper) {
++                counted.push((id, start, t));
+             }
+-            if let Some(&shared) = SHARED_INFRASTRUCTURE_TYPES.iter().find(|&&t| t == type_upper) {
+-                idx.first_infra.entry(shared).or_insert(id);
++            type_of.insert(id, type_upper);
++        });
++        let (mut projects, mut first_infra, mut site_count, mut building_count) = (Vec::new(), HashMap::new(), 0, 0);
++        for (id, _, t) in counted.into_iter().filter(|&(id, start, _)| records.is_kept(id, start)) {
++            match t {
++                "IFCPROJECT" => projects.push(id),
++                "IFCSITE" => site_count += 1,
++                "IFCBUILDING" => building_count += 1,
++                shared => {
++                    first_infra.entry(shared).or_insert(id);
++                }
+             }
+-            idx.type_of.entry(id).or_insert(type_upper);
+         }
+-        idx
++        let RecordIndex { order, spans, duplicates, .. } = records;
++        ModelIndex { content, order, line_of: spans, type_of, projects, first_infra, site_count, building_count, duplicates }
+     }
+ 
+     /// Raw bytes of the entity line for `id`.
+@@ -158,7 +167,7 @@ pub fn resolve_included(
+ /// would silently duplicate ids and rewrite references to the wrong entities
+ /// (CR #2952), so a `None` here stops the merge instead.
+ ///
+-/// Bound by the largest VISIBLE id, not `index.max_id`: an excluded high id is
++/// Bound by the largest VISIBLE id, not the largest id in the file: an excluded high id is
+ /// never emitted, so it must not consume id space or omit a later model that
+ /// would actually fit (CR #2952). A dangling id an emitted line names does
+ /// count (`resolve_included` keeps it), or the next model's entity takes it.
+diff --git b/rust/export/src/merged/single_parents.rs a/rust/export/src/merged/single_parents.rs
+index db3fbbd4df..eb09def1ed 100644
+--- b/rust/export/src/merged/single_parents.rs
++++ a/rust/export/src/merged/single_parents.rs
+@@ -145,8 +145,10 @@ fn read_side(line: &str, index: usize) -> Option<Side> {
+ }
+ 
+ /// The express id of a final line `#N=…`, tolerating STEP whitespace around
+-/// `=` (`#4 = IFCREL…`). `claim` and `apply_folds` must read it the same way,
+-/// or a fold recorded against an owner never finds its line.
++/// `=` (`#4 = IFCREL…`). `apply_folds` finds the owner with core's
++/// `EntityScanner`, which reads that spelling too; the two must agree, or a
++/// fold recorded against an owner never finds its record
++/// (`ifc2x3_folds_into_an_owner_line_that_spaces_its_equals_sign`).
+ fn rel_id(line: &str) -> Option<u32> {
+     line.strip_prefix('#')?.split('=').next()?.trim().parse().ok()
+ }
+@@ -281,21 +283,22 @@ impl ParentClaims {
+             return warnings;
+         }
+         let mut pending: HashMap<u32, &(usize, Vec<u32>)> = self.folds.iter().map(|(k, v)| (*k, v)).collect();
++        // Patch by RECORD, not by line: the merge writes each source record's
++        // own text, internal line breaks included, so a wrapped owner rel is
++        // one record over several lines (EXPORT-MERGE-12, #7683).
+         let mut rebuilt = String::with_capacity(out.len() + 64 * pending.len());
+-        for line in out.split_inclusive('\n') {
+-            let id = rel_id(line);
+-            let patched = id.and_then(|id| pending.get(&id).map(|fold| (id, *fold))).and_then(|(id, (partner, ids))| {
+-                append_to_list_attr(line.trim_end_matches('\n'), *partner, ids).map(|text| (id, text))
+-            });
+-            match patched {
+-                Some((id, text)) => {
+-                    rebuilt.push_str(&text);
+-                    rebuilt.push('\n');
+-                    pending.remove(&id);
+-                }
+-                None => rebuilt.push_str(line),
++        let mut copied = 0;
++        let mut scanner = ifc_lite_core::EntityScanner::new(out.as_bytes());
++        while let Some((id, _, start, end)) = scanner.next_entity() {
++            let Some((partner, ids)) = pending.get(&id).copied() else { continue };
++            if let Some(text) = append_to_list_attr(&out[start..end], *partner, ids) {
++                rebuilt.push_str(&out[copied..start]);
++                rebuilt.push_str(&text);
++                copied = end;
++                pending.remove(&id);
+             }
+         }
++        rebuilt.push_str(&out[copied..]);
+         *out = rebuilt;
+         let mut unwritten: Vec<(&u32, &&(usize, Vec<u32>))> = pending.iter().collect();
+         unwritten.sort_by_key(|(rel, _)| **rel); // a stable warning order, not the map's
+diff --git b/rust/export/src/schema_convert.rs a/rust/export/src/schema_convert.rs
+index d513f0ea70..deb7ab523a 100644
+--- b/rust/export/src/schema_convert.rs
++++ a/rust/export/src/schema_convert.rs
+@@ -358,7 +358,9 @@ fn convert_record(
+             format!("{prefix}{new_type}({final_attrs});")
+         }
+     };
+-    let _ = (dropped, lost);
++    if let Some(dropped) = dropped {
++        *dropped += lost;
++    }
+     Ok(out)
+ }
+ 
+diff --git b/rust/export/src/schema_plan.rs a/rust/export/src/schema_plan.rs
+index c7eadbf294..5d557709ab 100644
+--- b/rust/export/src/schema_plan.rs
++++ a/rust/export/src/schema_plan.rs
+@@ -62,8 +62,8 @@ pub(crate) fn plan_for(entity_type: &str, cfrom: &'static str, cto: &'static str
+     // The two prefix branches cannot both apply: each needs its own list
+     // strictly shorter.
+     let adjust = match (schema_attribute_names(cfrom, entity_type), schema_attribute_names(cto, new_type)) {
+-        (Some(src), Some(tgt)) if cto == "IFC2X3" && is_strict_attr_prefix(tgt, src) && matches!(new_type, "IFCWALL" | "IFCDOOR") => Adjust::Trim(tgt.len()),
+-        (Some(src), Some(tgt)) if cto != "IFC2X3" && is_strict_attr_prefix(src, tgt) => Adjust::Pad(tgt.len()),
++        (Some(src), Some(tgt)) if is_strict_attr_prefix(tgt, src) => Adjust::Trim(tgt.len()),
++        (Some(src), Some(tgt)) if is_strict_attr_prefix(src, tgt) => Adjust::Pad(tgt.len()),
+         (Some(src), Some(tgt)) if new_type != entity_type && BY_NAME_ATTR_REMAP_TYPES.contains(&entity_type) => {
+             Adjust::ByName(src, tgt)
+         }
+diff --git b/rust/export/src/schema_unrepresented.rs a/rust/export/src/schema_unrepresented.rs
+index b65e420085..fa8b624137 100644
+--- b/rust/export/src/schema_unrepresented.rs
++++ a/rust/export/src/schema_unrepresented.rs
+@@ -123,9 +123,21 @@ pub(crate) fn resolve_unrepresented_entity(
+ /// - then `.NOTDEFINED.` ProxyType and a `$` Tag.
+ ///
+ /// A missing source slot is written `$`.
+-pub(crate) fn product_proxy(prefix: &str, guid: &str, entity_type: &str, _args: &[String]) -> String {
+-    let _: Option<Cow<'_, str>> = None;
+-    format!("{prefix}IFCPROXY('{guid}',$,'{entity_type}',$,$,$,$,.NOTDEFINED.,$);")
++pub(crate) fn product_proxy(prefix: &str, guid: &str, entity_type: &str, args: &[String]) -> String {
++    let slot = |i: usize| args.get(i).map_or("$", String::as_str);
++    // Name and ObjectType fall back to the quoted source type when the slot is `$`.
++    let or_type = |i: usize| -> Cow<'_, str> {
++        if slot(i).trim() == "$" { Cow::Owned(format!("'{entity_type}'")) } else { Cow::Borrowed(slot(i)) }
++    };
++    format!(
++        "{prefix}IFCPROXY('{guid}',{},{},{},{},{},{},.NOTDEFINED.,$);",
++        slot(1),
++        or_type(2),
++        slot(3),
++        or_type(4),
++        slot(5),
++        slot(6)
++    )
+ }
+ 
+ #[cfg(test)]

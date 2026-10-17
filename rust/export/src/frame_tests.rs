@@ -23,8 +23,8 @@ fn cube_corner_positions() -> Vec<f32> {
 fn yup_swaps_and_negates_the_expected_axes() {
     // `(x, y, z) -> (x, z, -y)`. Distinct non-zero components in every slot,
     // so neither a dropped negation nor a wrong axis pair can hide.
-    assert_eq!(yup_f32([1.0, 2.0, 3.0]), [1.0, 3.0, -2.0]);
-    assert_eq!(yup_f64([1.0, 2.0, 3.0]), [1.0, 3.0, -2.0]);
+    assert_eq!(zup_to_yup([1.0, 2.0, 3.0]), [1.0, 3.0, -2.0]);
+    assert_eq!(zup_to_yup([1.0, 2.0, 3.0]), [1.0, 3.0, -2.0]);
 }
 
 // #4056: an independent geometric invariant catches an incorrect reversal in
@@ -207,4 +207,32 @@ fn frame_change_preserves_a_reflected_placement_4056() {
     let y = yup_matrix4(&m);
     assert_eq!(y, m, "an X reflection remains an X reflection after changing up-axis");
     assert_eq!(y[0] * y[5] * y[10], -1.0);
+}
+
+/// #7734 review: a from-meshes `world_matrix` the GLB root cannot carry as TRS
+/// (scale, shear, mirror, projective row) is refused, not turned into a root
+/// whose rotation disagrees with the matrix. A rigid one is accepted.
+#[test]
+fn a_non_rigid_world_matrix_is_refused() {
+    let id = [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 2.6e6, 1.2e6, 500.0, 1.0];
+    let (s, c) = 0.7_f64.sin_cos();
+    let mut yawed = id;
+    (yawed[0], yawed[1], yawed[4], yawed[5]) = (c, s, -s, c);
+    assert!(mesh_frame_from_world_matrix(Some(&id)).is_ok());
+    assert!(mesh_frame_from_world_matrix(Some(&yawed)).is_ok());
+    let edit = |i: usize, v: f64| {
+        let mut m = id;
+        m[i] = v;
+        m
+    };
+    for (label, m) in [
+        ("uniform scale", { let mut m = edit(0, 2.0); m[5] = 2.0; m[10] = 2.0; m }),
+        ("mirror", edit(10, -1.0)),
+        ("shear", edit(4, 0.5)),
+        ("projective row", edit(3, 0.1)),
+        ("w", edit(15, 2.0)),
+    ] {
+        let err = mesh_frame_from_world_matrix(Some(&m)).expect_err(label);
+        assert!(matches!(err, crate::error::ExportError::MalformedMeshInput { .. }), "{label}: {err:?}");
+    }
 }

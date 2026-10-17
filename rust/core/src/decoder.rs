@@ -8,8 +8,9 @@
 
 use crate::columnar_index::EntityIndexStore;
 use crate::error::{Error, Result};
+use crate::parser::StepRecord;
 use crate::parser::{
-    is_step_space, parse_entity, parse_step_numeric, report_scan_diagnostics, skip_step_trivia,
+    parse_entity, parse_step_numeric, report_scan_diagnostics, skip_step_trivia,
     EntityScanner,
 };
 use crate::schema_gen::{AttributeValue, DecodedEntity};
@@ -20,6 +21,8 @@ use std::sync::Arc;
 mod caches;
 #[path = "decoder/fast_buffers.rs"]
 mod fast_buffers;
+#[path = "decoder/leaf_read.rs"]
+mod leaf_read;
 #[path = "decoder/precision.rs"]
 mod precision;
 #[path = "decoder/schema_layout.rs"]
@@ -81,6 +84,8 @@ pub struct EntityDecoder<'a> {
     /// default (and Renga-style files) is 1.0 (RADIAN); degree-unit files
     /// resolve to π/180.
     plane_angle_to_radians_cache: Option<f64>,
+    /// The model's `IFCPROJECT` id, located once ([`Self::project_id`]).
+    project_id_cache: Option<Option<u32>>,
     /// Lazy-cached multiplier converting file length units to metres.
     /// Populated on first call to [`Self::length_unit_scale`]. 1.0 for metre
     /// files, 0.001 for millimetre files, etc. Used to express absolute
@@ -106,6 +111,17 @@ pub struct EntityDecoder<'a> {
     /// Declared `FILE_SCHEMA`, resolved on first use (see `schema_layout`).
     schema_version_cache: Option<Option<crate::generated::schema_registry::SchemaVersion>>,
     grid_axis_index: Arc<GridAxisIndex>,
+    /// Input admission (#7678): `false` (the default) reads a record that
+    /// holds a REAL `f64` cannot represent as before, the literal as a signed
+    /// infinity, which every data-model reader relies on; `true` (geometry
+    /// decoders only) refuses it. See [`Self::with_strict_reals`].
+    strict_reals: bool,
+    /// Distinct records refused by input admission, for the refusal
+    /// counters: a refused record is never cached, so a re-read must not count
+    /// it twice. A `Mutex` (touched only on a refusal) so the `&self`
+    /// [`Self::decode_at_uncached`] can record too while the decoder stays
+    /// `Sync` and `RefUnwindSafe`.
+    refused_records: std::sync::Mutex<rustc_hash::FxHashSet<u32>>,
 }
 
 impl<'a> EntityDecoder<'a> {
@@ -123,12 +139,15 @@ impl<'a> EntityDecoder<'a> {
             point_cache_hits: 0,
             point_cache_misses: 0,
             plane_angle_to_radians_cache: None,
+            project_id_cache: None,
             length_unit_scale_cache: None,
             geometric_precision_cache: None,
             placement_transform_cache: FxHashMap::default(),
             styled_item_index: std::sync::OnceLock::new(),
             schema_version_cache: None,
             grid_axis_index: Arc::default(),
+            strict_reals: false,
+            refused_records: std::sync::Mutex::default(),
         }
     }
 
@@ -146,12 +165,15 @@ impl<'a> EntityDecoder<'a> {
             point_cache_hits: 0,
             point_cache_misses: 0,
             plane_angle_to_radians_cache: None,
+            project_id_cache: None,
             length_unit_scale_cache: None,
             geometric_precision_cache: None,
             placement_transform_cache: FxHashMap::default(),
             styled_item_index: std::sync::OnceLock::new(),
             schema_version_cache: None,
             grid_axis_index: Arc::default(),
+            strict_reals: false,
+            refused_records: std::sync::Mutex::default(),
         }
     }
 
@@ -169,12 +191,15 @@ impl<'a> EntityDecoder<'a> {
             point_cache_hits: 0,
             point_cache_misses: 0,
             plane_angle_to_radians_cache: None,
+            project_id_cache: None,
             length_unit_scale_cache: None,
             geometric_precision_cache: None,
             placement_transform_cache: FxHashMap::default(),
             styled_item_index: std::sync::OnceLock::new(),
             schema_version_cache: None,
             grid_axis_index: Arc::default(),
+            strict_reals: false,
+            refused_records: std::sync::Mutex::default(),
         }
     }
 
@@ -213,15 +238,91 @@ impl<'a> EntityDecoder<'a> {
             return Ok(entity_arc.as_ref().clone());
         }
 
-        // Convert tokens to AttributeValues
+        let (entity, unrepresentable) = self.admit(id, ifc_type, &tokens)?;
+        // A record holding an unrepresentable real is never cached, so a
+        // strict read of the same id still refuses it.
+        if !unrepresentable {
+            self.cache.insert(id, Arc::new(entity.clone()));
+        }
+        Ok(entity)
+    }
+
+    /// Convert a parsed record's tokens and apply input admission (#7678):
+    /// a strict decoder refuses a record holding a
+    /// [`crate::parser::Token::UnrepresentableReal`]. Returns whether it held
+    /// one, so the caller keeps such a record out of the cache and a strict
+    /// read of the same id on another path still refuses it.
+    ///
+    /// An object definition (a product, a type, a spatial element) is admitted
+    /// even when strict: it carries references and descriptive measures (a
+    /// door's `OverallHeight`, a site's `RefElevation`), never geometry, so
+    /// refusing it would lose a finite mesh for a value nothing draws.
+    #[inline]
+    fn admit(
+        &self, id: u32, ifc_type: crate::IfcType, tokens: &[crate::parser::Token<'_>],
+    ) -> Result<(DecodedEntity, bool)> {
+        let mut unrepresentable = false;
         let attributes = tokens
             .iter()
-            .map(|token| AttributeValue::from_token(token))
+            .map(|token| AttributeValue::from_token_noting(token, &mut unrepresentable))
             .collect();
+        if unrepresentable
+            && self.strict_reals
+            && !ifc_type.is_subtype_of(crate::IfcType::IfcObjectDefinition)
+        {
+            return Err(self.refuse_record(id));
+        }
+        Ok((DecodedEntity::new(id, ifc_type, attributes), unrepresentable))
+    }
 
-        let entity = DecodedEntity::new(id, ifc_type, attributes);
-        self.cache.insert(id, Arc::new(entity.clone()));
-        Ok(entity)
+    /// Refuse geometry input (#7678): a geometry decoder (the native
+    /// pipeline's jobs, the wasm mesh pre-pass, symbolic extraction) refuses
+    /// every record that holds a REAL `f64` cannot represent, with
+    /// [`Error::UnrepresentableReal`], instead of reading it as an infinity.
+    /// The default stays lossless, so a decoder that is missed behaves as
+    /// before rather than silently losing data.
+    pub fn with_strict_reals(mut self) -> Self {
+        self.strict_reals = true;
+        self
+    }
+
+    /// Whether this decoder refuses unrepresentable reals.
+    pub fn strict_reals(&self) -> bool {
+        self.strict_reals
+    }
+
+    /// [`Self::decode_by_id`] read losslessly whatever the mode, for the one
+    /// geometry seam that must still see the infinity (D14, see
+    /// `ifc_lite_geometry::processors::helpers`). Not cached when it holds one.
+    pub fn decode_by_id_lossless(&mut self, entity_id: u32) -> Result<DecodedEntity> {
+        let strict = std::mem::replace(&mut self.strict_reals, false);
+        let entity = self.decode_by_id(entity_id);
+        self.strict_reals = strict;
+        entity
+    }
+
+    /// Count and return the refusal of record `id` (#7678). For a geometry
+    /// reader that refuses a value outside the decoder, such as an `f32`
+    /// coordinate-list fast path or a value that narrows to infinity, so the
+    /// refusal reaches the refused-element counter like a decode refusal.
+    pub fn refuse_record(&self, id: u32) -> Error {
+        self.refused_records.lock().unwrap_or_else(std::sync::PoisonError::into_inner).insert(id);
+        Error::UnrepresentableReal(id)
+    }
+
+    /// How many records this decoder has refused under input admission: an
+    /// unrepresentable REAL (#7678) or a malformed point/direction leaf
+    /// (`leaf_read`, F3b, D29). One counter, so a geometry job that sees it
+    /// move refused input.
+    pub fn refused_records(&self) -> u64 {
+        self.refused_record_ids().len() as u64
+    }
+
+    /// The distinct record ids this decoder has refused (#7678), so callers
+    /// that combine several decoders count each record once.
+    pub fn refused_record_ids(&self) -> Vec<u32> {
+        let ids = self.refused_records.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        ids.iter().copied().collect()
     }
 
     /// Decode the entity in `[start, end)` **without** touching the cache.
@@ -236,11 +337,7 @@ impl<'a> EntityDecoder<'a> {
     /// `decode_at`, only without the cache side effect.
     pub fn decode_at_uncached(&self, start: usize, end: usize) -> Result<DecodedEntity> {
         let (id, ifc_type, tokens) = self.parse_at(start, end, "decode_at_uncached")?;
-        let attributes = tokens
-            .iter()
-            .map(|token| AttributeValue::from_token(token))
-            .collect();
-        Ok(DecodedEntity::new(id, ifc_type, attributes))
+        self.admit(id, ifc_type, &tokens).map(|(entity, _)| entity)
     }
 
     /// Shared full-record validation and existing error context. The returned
@@ -261,16 +358,11 @@ impl<'a> EntityDecoder<'a> {
         }
         let line = &self.content[start..end];
         parse_entity(line).map_err(|e| {
-            // Add bounded, lossy debug info without requiring the source to be UTF-8.
+            // `e` is already bounded (offset, nom kind and a short context, see
+            // `entity_parse_error`, #7675). Add the record's head, lossily, so
+            // the source need not be UTF-8.
             let cut = line.len().min(100);
-            Error::parse(
-                0,
-                format!(
-                    "Failed to parse entity: {:?}, input: {:?}",
-                    e,
-                    String::from_utf8_lossy(&line[..cut])
-                ),
-            )
+            Error::parse(0, format!("{e}, input: {:?}", String::from_utf8_lossy(&line[..cut])))
         })
     }
 
@@ -313,9 +405,33 @@ impl<'a> EntityDecoder<'a> {
         self.decode_at(start, end)
     }
 
+    /// The model's `IFCPROJECT` express id: the first in file order, `None`
+    /// when the file has none. Located once per decoder by the one locator
+    /// ([`crate::find_project_id`], a SIMD keyword search) and cached, so
+    /// both scale resolvers below share it.
+    ///
+    /// The byte search misses a legal `IFCPROJECT (` or `#1 /* c */ =` and
+    /// can accept a record-shaped decoy in a string; the entity scan these
+    /// resolvers used before does neither. So a candidate is kept only when
+    /// the index holds it as an `IFCPROJECT`, else that scan decides
+    /// ([`crate::project_locator::scan_for_project_id`]).
+    pub fn project_id(&mut self) -> Option<u32> {
+        if let Some(cached) = self.project_id_cache {
+            return cached;
+        }
+        let located = crate::project_locator::find_project_id(self.content).filter(|&id| {
+            self.get_raw_bytes(id)
+                .and_then(|raw| crate::parser::EntityScanner::new(raw).next_entity())
+                .is_some_and(|(_, kind, _, _)| crate::parser::keyword_eq(kind, "IFCPROJECT"))
+        });
+        let id = located.or_else(|| crate::project_locator::scan_for_project_id(self.content));
+        self.project_id_cache = Some(id);
+        id
+    }
+
     /// Multiplier that converts file plane-angle units to radians.
     ///
-    /// Lazy-resolved on first call by scanning for IFCPROJECT and reading
+    /// Lazy-resolved on first call by locating IFCPROJECT and reading
     /// its IFCUNITASSIGNMENT. Cached for subsequent calls. Returns `1.0`
     /// when no plane-angle unit is declared (IFC spec default = RADIAN).
     ///
@@ -328,15 +444,7 @@ impl<'a> EntityDecoder<'a> {
             return cached;
         }
 
-        let mut scanner = crate::parser::EntityScanner::new(self.content);
-        let mut project_id: Option<u32> = None;
-        while let Some((id, type_name, _, _)) = scanner.next_entity() {
-            // #4497: the keyword is the raw scanner slice; see `parser::keyword`.
-            if crate::parser::keyword_eq(type_name, "IFCPROJECT") {
-                project_id = Some(id);
-                break;
-            }
-        }
+        let project_id = self.project_id();
 
         let scale = match project_id {
             Some(pid) => crate::units::extract_plane_angle_to_radians(self, pid).unwrap_or(1.0),
@@ -348,7 +456,7 @@ impl<'a> EntityDecoder<'a> {
 
     /// Multiplier that converts file length units to metres (1.0 for metre
     /// files, 0.001 for millimetre files, …). Lazy-resolved on first call by
-    /// scanning for IFCPROJECT and reading its IFCUNITASSIGNMENT, then cached.
+    /// locating IFCPROJECT and reading its IFCUNITASSIGNMENT, then cached.
     /// Returns `1.0` when no length unit is declared.
     ///
     /// Use this to express an *absolute* metric tolerance in file units —
@@ -359,18 +467,21 @@ impl<'a> EntityDecoder<'a> {
             return cached;
         }
 
-        let mut scanner = crate::parser::EntityScanner::new(self.content);
-        let mut project_id: Option<u32> = None;
-        while let Some((id, type_name, _, _)) = scanner.next_entity() {
-            if crate::parser::keyword_eq(type_name, "IFCPROJECT") {
-                project_id = Some(id);
-                break;
-            }
-        }
+        let project_id = self.project_id();
 
-        let scale = match project_id {
-            Some(pid) => crate::units::extract_length_unit_scale(self, pid).unwrap_or(1.0),
-            None => 1.0,
+        // #7678: a lossless (data) decoder keeps main's value; a strict
+        // (geometry) one counts an unusable declared factor and returns 1.0
+        // only as a tolerance basis: every geometry path that meshes refuses
+        // the unit itself (`LengthUnit::for_geometry`).
+        let scale = match project_id.map(|pid| crate::units::resolve_length_unit(self, pid)) {
+            Some(Ok(unit)) => match unit.unusable_factor {
+                Some(factor) if self.strict_reals => {
+                    let _counted = self.refuse_record(factor);
+                    1.0
+                }
+                _ => unit.scale,
+            },
+            _ => 1.0,
         };
         self.length_unit_scale_cache = Some(scale);
         scale
@@ -380,8 +491,8 @@ impl<'a> EntityDecoder<'a> {
     /// [`Self::plane_angle_to_radians`] return immediately without the full-file
     /// `IFCPROJECT` scan.
     ///
-    /// Both lazy resolvers walk the whole DATA section to locate the (singleton)
-    /// `IFCPROJECT`. That scan is `O(file size)` and `IFCPROJECT` legally sits
+    /// Both lazy resolvers search the whole DATA section for the (singleton)
+    /// `IFCPROJECT`. That search is `O(file size)` and `IFCPROJECT` legally sits
     /// anywhere — IfcOpenShell emits it near the *end*, so on a large model the
     /// scan touches tens of MB. The cache is per-decoder, and the parallel
     /// geometry pipeline builds a fresh decoder per element, so without seeding
@@ -464,10 +575,9 @@ impl<'a> EntityDecoder<'a> {
         if let Some(arc) = self.cache.get(&id) {
             return Ok(Arc::clone(arc));
         }
-        let _ = self.decode_at(start, end)?;
-        Ok(Arc::clone(self.cache.get(&id).ok_or_else(|| {
-            Error::parse(0, "decode_at didn't populate cache".to_string())
-        })?))
+        let entity = self.decode_at(start, end)?;
+        // A lossless read of a refused record is deliberately left uncached.
+        Ok(self.cache.get(&id).map(Arc::clone).unwrap_or_else(|| Arc::new(entity)))
     }
     /// Get raw bytes for an entity (for direct/fast parsing)
     /// Returns the full entity line including type and attributes
@@ -478,52 +588,6 @@ impl<'a> EntityDecoder<'a> {
         // An installed index's spans are caller data never checked against
         // these bytes (#4697); a span outside them is absent, not a panic.
         self.content.get(start..end)
-    }
-
-    /// Fast extraction of first entity ref from raw bytes
-    /// Useful for BREP -> shell ID, Face -> FaceBound, etc.
-    /// Returns the first entity reference ID found in the entity
-    #[inline]
-    pub fn get_first_entity_ref_fast(&mut self, entity_id: u32) -> Option<u32> {
-        let bytes = self.get_raw_bytes(entity_id)?;
-        let len = bytes.len();
-        let mut i = 0;
-
-        // Skip to first '(' after '='
-        while i < len && bytes[i] != b'(' {
-            i += 1;
-        }
-        if i >= len {
-            return None;
-        }
-        i += 1; // Skip first '('
-
-        // Find first '#' which is the entity ref
-        while i < len {
-            // Skip whitespace
-            while i < len && is_step_space(bytes[i]) {
-                i += 1;
-            }
-
-            if i >= len {
-                return None;
-            }
-
-            if bytes[i] == b'#' {
-                i += 1;
-                let start = i;
-                while i < len && bytes[i].is_ascii_digit() {
-                    i += 1;
-                }
-                if i > start {
-                    // Shared checked accumulator (#3421): refuses rather than wraps.
-                    return crate::express_id::parse_express_id(&bytes[start..i]);
-                }
-            }
-            i += 1;
-        }
-
-        None
     }
 
     /// Fast extraction of PolyLoop point IDs directly from raw bytes
@@ -546,66 +610,11 @@ impl<'a> EntityDecoder<'a> {
     /// because it resolves the points too.
     #[inline]
     pub fn get_polyloop_point_ids_fast(&mut self, entity_id: u32) -> Option<Vec<u32>> {
-        let bytes = self.get_raw_bytes(entity_id)?;
-
-        // IFCPOLYLOOP((#id1,#id2,#id3,...));
-        let mut i = 0;
-        let len = bytes.len();
-
-        // Skip to first '(' after '='
-        while i < len && bytes[i] != b'(' {
-            i += 1;
-        }
-        if i >= len {
-            return None;
-        }
-        i += 1; // Skip first '('
-
-        // Skip to second '(' for the point list
-        while i < len && bytes[i] != b'(' {
-            i += 1;
-        }
-        if i >= len {
-            return None;
-        }
-        i += 1; // Skip second '('
-
-        // Parse point IDs
+        // IFCPOLYLOOP((#id1,#id2,#id3,...)); every item one reference, or the
+        // whole loop is refused (D3).
         let mut point_ids = Vec::with_capacity(8); // Most faces have 3-8 vertices
-
-        while i < len {
-            // Skip whitespace and commas
-            while i < len
-                && (bytes[i] == b',' || is_step_space(bytes[i]))
-            {
-                i += 1;
-            }
-
-            if i >= len || bytes[i] == b')' {
-                break;
-            }
-
-            // Expect '#' followed by number
-            if bytes[i] == b'#' {
-                i += 1;
-                // One digit walk, shared with the scanner (#3395). A ref that
-                // was met but does not resolve refuses the whole loop (#3421):
-                // a shorter polygon is a different face, not a smaller error.
-                let (digits, id) = crate::express_id::parse_express_id_prefix(&bytes[i..]);
-                i += digits;
-                if digits > 0 {
-                    point_ids.push(id?);
-                }
-            } else {
-                i += 1; // Skip unknown character
-            }
-        }
-
-        if point_ids.is_empty() {
-            None
-        } else {
-            Some(point_ids)
-        }
+        StepRecord::parse(self.get_raw_bytes(entity_id)?)?.ref_list_at(0, &mut point_ids)?;
+        (!point_ids.is_empty()).then_some(point_ids)
     }
 
     /// Fast extraction of CartesianPoint coordinates directly from raw bytes
@@ -621,89 +630,17 @@ impl<'a> EntityDecoder<'a> {
     /// Bypasses full entity decoding for BREP optimization
     #[inline]
     pub fn get_face_bound_fast(&mut self, entity_id: u32) -> Option<(u32, bool, bool)> {
-        let bytes = self.get_raw_bytes(entity_id)?;
-        let len = bytes.len();
-
-        // Find '=' to locate start of type name, and '(' for end
-        let mut eq_pos = 0;
-        while eq_pos < len && bytes[eq_pos] != b'=' {
-            eq_pos += 1;
-        }
-        if eq_pos >= len {
-            return None;
-        }
-
-        // Check if this is an outer bound by looking for "OUTER" in the type name
-        // IFCFACEOUTERBOUND vs IFCFACEBOUND
-        // The type name is between '=' and '('
-        let mut is_outer = false;
-        let mut i = eq_pos + 1;
-        // Look for "OUTER" pattern (must check for the full word, not just 'O')
-        while i + 4 < len && bytes[i] != b'(' {
-            if bytes[i] == b'O'
-                && bytes[i + 1] == b'U'
-                && bytes[i + 2] == b'T'
-                && bytes[i + 3] == b'E'
-                && bytes[i + 4] == b'R'
-            {
-                is_outer = true;
-                break;
-            }
-            i += 1;
-        }
-        // Continue to find the '(' if we haven't already
-        while i < len && bytes[i] != b'(' {
-            i += 1;
-        }
-        if i >= len {
-            return None;
-        }
-
-        i += 1; // Skip first '('
-
-        // Skip whitespace
-        while i < len && is_step_space(bytes[i]) {
-            i += 1;
-        }
-
-        // Expect '#' for loop entity ref
-        if i >= len || bytes[i] != b'#' {
-            return None;
-        }
-        i += 1;
-
-        // Parse loop ID
-        let start = i;
-        while i < len && bytes[i].is_ascii_digit() {
-            i += 1;
-        }
-        if i <= start {
-            return None;
-        }
-        // Shared checked accumulator (#3421): an oversized loop ref fails
-        // this lookup outright, like any other unresolvable reference,
-        // instead of resolving to the wrong loop.
-        let loop_id = crate::express_id::parse_express_id(&bytes[start..i])?;
-
-        // Find orientation after comma - default to true (.T.)
-        // Skip to comma
-        while i < len && bytes[i] != b',' {
-            i += 1;
-        }
-        i += 1; // Skip comma
-
-        // Skip whitespace
-        while i < len && is_step_space(bytes[i]) {
-            i += 1;
-        }
-
-        // Check for .F. (false) or .T. (true)
-        let orientation = if i + 2 < len && bytes[i] == b'.' && bytes[i + 2] == b'.' {
-            bytes[i + 1] != b'F'
-        } else {
-            true // Default to true
-        };
-
+        let record = StepRecord::parse(self.get_raw_bytes(entity_id)?)?;
+        // IFCFACEOUTERBOUND vs IFCFACEBOUND, under STEP's case-insensitive
+        // keyword rule (#4497): a CamelCase `IfcFaceOuterBound` is an outer
+        // bound too (#7689, CORE-11).
+        let is_outer = record.keyword_is(b"IFCFACEOUTERBOUND");
+        // An oversized or malformed loop ref fails this lookup outright, like
+        // any other unresolvable reference (#3421). Orientation defaults to
+        // true (.T.) when it is absent, `$` or not an enumeration; only `.F.`
+        // flips it.
+        let (loop_id, orientation) = record.ref_and_enum()?;
+        let orientation = orientation.is_none_or(|e| !e.eq_ignore_ascii_case(b"F"));
         Some((loop_id, orientation, is_outer))
     }
 }
@@ -712,28 +649,7 @@ impl<'a> EntityDecoder<'a> {
 /// Used by the cached polyloop coordinate readers for maximum performance
 #[inline]
 fn parse_cartesian_point_inline(bytes: &[u8]) -> Option<(f64, f64, f64)> {
-    let len = bytes.len();
-    let mut i = 0;
-
-    // Skip to first '(' after '='
-    while i < len && bytes[i] != b'(' {
-        i += 1;
-    }
-    if i >= len {
-        return None;
-    }
-    i += 1; // Skip first '('
-
-    // Skip to second '(' for the coordinate list
-    while i < len && bytes[i] != b'(' {
-        i += 1;
-    }
-    if i >= len {
-        return None;
-    }
-    i += 1; // Skip second '('
-
-    parse_point_coordinates(&bytes[i..])
+    StepRecord::parse(bytes)?.point_at(0)
 }
 
 /// `x,y)` or `x,y,z)`, starting just inside the coordinate list's `(`. Every
@@ -744,11 +660,17 @@ fn parse_cartesian_point_inline(bytes: &[u8]) -> Option<(f64, f64, f64)> {
 /// tokenizer does with the same record (#5266). Comments are trivia here as
 /// everywhere else (`3./* c */)` is a legal z). z defaults to 0 only for a
 /// genuine 2D point, whose list closes right after y.
+/// The same, also returning the index just past the
+/// closing `)`, for a reader that checks what follows the list, and refuses
+/// the point when `accept` refuses a literal's bytes.
 #[inline]
-fn parse_point_coordinates(bytes: &[u8]) -> Option<(f64, f64, f64)> {
+pub(crate) fn parse_point_coordinates_end(
+    bytes: &[u8], accept: impl Fn(&[u8]) -> bool,
+) -> Option<((f64, f64, f64), usize)> {
     let value_at = |i: usize| -> Option<(f64, usize)> {
         let start = skip_step_trivia(bytes, i)?;
         let (value, len) = parse_step_numeric::<f64>(&bytes[start..])?;
+        accept(&bytes[start..start + len]).then_some(())?;
         Some((value, skip_step_trivia(bytes, start + len)?))
     };
     let (x, i) = value_at(0)?;
@@ -757,12 +679,12 @@ fn parse_point_coordinates(bytes: &[u8]) -> Option<(f64, f64, f64)> {
     }
     let (y, i) = value_at(i + 1)?;
     match bytes.get(i)? {
-        b')' => return Some((x, y, 0.0)),
+        b')' => return Some(((x, y, 0.0), i + 1)),
         b',' => {}
         _ => return None,
     }
     let (z, i) = value_at(i + 1)?;
-    (bytes.get(i) == Some(&b')')).then_some((x, y, z))
+    (bytes.get(i) == Some(&b')')).then_some(((x, y, z), i + 1))
 }
 
 #[cfg(test)]

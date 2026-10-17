@@ -148,7 +148,7 @@ fn streaming_partial_first_pass_success_suppresses_fallback() {
     );
     assert!(
         matches!(
-            ifc_lite_core::scan_placement_bounds(content).rtc_offset(1.0),
+            ifc_lite_core::scan_placement_bounds(content, 1.0).rtc_offset(1.0),
             Some(RtcVerdict::Large { .. })
         ),
         "placement-bounds fallback would shift (large) if taken"
@@ -218,7 +218,7 @@ fn streaming_partial_stage3_placement_bounds_fallback() {
     assert!((scale - 0.001).abs() < 1e-12, "expected mm scale, got {scale}");
 
     // Reproduce exactly what stage 3 computes: raw placement bounds times scale.
-    let raw = ifc_lite_core::scan_placement_bounds(content)
+    let raw = ifc_lite_core::scan_placement_bounds(content, 1.0)
         .rtc_offset(1.0)
         .expect("the fixture has placement points")
         .offset();
@@ -266,7 +266,7 @@ fn browser_and_native_pick_the_same_frame_for_a_sub_threshold_anchor() {
     let content = IFC_SUB_THRESHOLD_ANCHOR.as_bytes();
     let anchor = (850.0, 0.0, 0.0);
     assert_eq!(
-        ifc_lite_core::scan_placement_bounds(content).rtc_offset(1.0),
+        ifc_lite_core::scan_placement_bounds(content, 1.0).rtc_offset(1.0),
         Some(RtcVerdict::Large { anchor }),
         "premise: the bounds are large and anchor on the in-threshold centre"
     );
@@ -315,7 +315,7 @@ fn small_file_single_bounds_fallback_scales_millimetres_before_the_gate() {
         "premise: no representation, so no job sample"
     );
     assert!(
-        coord_is_large(ifc_lite_core::scan_placement_bounds(content).centroid()),
+        coord_is_large(ifc_lite_core::scan_placement_bounds(content, 1.0).centroid()),
         "premise: the raw mm centroid reads as large"
     );
 
@@ -355,7 +355,7 @@ fn small_file_single_bounds_fallback_rebases_a_kilometre_model() {
     let mut decoder = EntityDecoder::with_index(content, full_index);
 
     assert!(
-        !coord_is_large(ifc_lite_core::scan_placement_bounds(content).centroid()),
+        !coord_is_large(ifc_lite_core::scan_placement_bounds(content, 1.0).centroid()),
         "premise: the raw km centroid reads as small"
     );
 

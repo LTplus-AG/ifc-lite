@@ -8,7 +8,10 @@ use super::{state::RawUnits, PipeParser};
 
 impl PipeParser<'_> {
     pub(super) fn record_units(&mut self, properties: LandXmlPipeProperties) -> Result<()> {
-        let units = RawUnits { properties };
+        let units = RawUnits {
+            properties,
+            assumed: false,
+        };
         if self.is_path(&["LandXML", "Units", "Metric"])
             || self.is_path(&["LandXML", "Units", "Imperial"])
         {

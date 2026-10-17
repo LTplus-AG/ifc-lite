@@ -111,6 +111,14 @@ jobs:
       - name: Mesh-output determinism manifest (arm64 vs pinned x86_64)
         run: cargo test -p ifc-lite-processing --test mesh_determinism
 
+      # Export golden corpus (#7671): the x86_64-pinned per-format output
+      # hashes in rust/export/tests/golden/ asserted on arm64. Seconds of
+      # runtime; turns the pins' platform scope into a check.
+      - name: Export golden corpus (arm64 vs pinned x86_64)
+        env:
+          IFC_LITE_REQUIRE_FIXTURES: "1"
+        run: cargo test -p ifc-lite-export --test export_golden
+
   wasm32-mesh-determinism:
     name: wasm32 mesh-output manifest vs pinned native manifest pair
     # Free GitHub-hosted runner - same weekly + on-demand cost profile as the

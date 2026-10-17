@@ -143,6 +143,10 @@ impl ZoneSplitJs {
 /// meaningless volumes with a plausible `sumErrorRel`, so the closure proof
 /// above is the caller's responsibility and not a formality.
 ///
+/// Returns `undefined` when a zone parameter is non-finite, or a mesh vertex
+/// or zone corner lies past ±2^128, the exact kernel's coordinate bound
+/// (#7677): such a split is refused rather than answered wrongly.
+///
 /// Returns `undefined` when the mesh encloses no volume (no triangles survive
 /// the filter above, or the shell is degenerate): there is nothing to split,
 /// and a result for it would report `pieceCount` 1, `sumErrorRel` 0 and
@@ -173,7 +177,10 @@ pub fn split_mesh_by_zones_js(
         .chunks_exact(3)
         .filter_map(|c| {
             let vertex = |i: u32| -> Option<[f64; 3]> {
-                let b = (i as usize) * 3;
+                // Checked: `usize` is 32 bits on wasm32, so `i * 3` wrapped
+                // for an index past 2^32 / 3 and read a wrong in-range vertex
+                // instead of dropping the triangle (#7678, EDGE-WASM-32).
+                let b = (i as usize).checked_mul(3)?;
                 let p = [
                     *positions.get(b)?,
                     *positions.get(b + 1)?,

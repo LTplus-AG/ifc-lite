@@ -13,19 +13,19 @@ use crate::processors::{
     IfcEdgeProcessor, IfcFaceSurfaceProcessor, PolygonalFaceSetProcessor,
     RevolvedAreaSolidProcessor, SectionedSolidHorizontalProcessor,
     ShellBasedSurfaceModelProcessor, SphereProcessor,
-    SurfaceCurveSweptAreaSolidProcessor, SweptDiskSolidProcessor, TriangulatedFaceSetProcessor,
+    SurfaceCurveSweptAreaSolidProcessor, SurfaceOfLinearExtrusionProcessor, SweptDiskSolidProcessor, TriangulatedFaceSetProcessor,
 };
 use ifc_lite_core::{IfcSchema, IfcType};
 use std::cell::OnceCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-pub(super) const TYPES: [&[IfcType]; 20] = [
+pub(super) const TYPES: [&[IfcType]; 21] = [
     &[IfcType::IfcExtrudedAreaSolid],
     &[IfcType::IfcExtrudedAreaSolidTapered],
     &[IfcType::IfcTriangulatedFaceSet, IfcType::IfcTriangulatedIrregularNetwork],
     &[IfcType::IfcPolygonalFaceSet],
-    &[IfcType::IfcFacetedBrep],
+    &[IfcType::IfcFacetedBrep, IfcType::IfcFacetedBrepWithVoids],
     &[IfcType::IfcBooleanResult, IfcType::IfcBooleanClippingResult],
     &[IfcType::IfcSweptDiskSolid],
     &[IfcType::IfcRevolvedAreaSolid],
@@ -41,6 +41,7 @@ pub(super) const TYPES: [&[IfcType]; 20] = [
     &[IfcType::IfcAlignment],
     &[IfcType::IfcEdge, IfcType::IfcEdgeCurve, IfcType::IfcOrientedEdge],
     &[IfcType::IfcFaceSurface, IfcType::IfcAdvancedFace],
+    &[IfcType::IfcSurfaceOfLinearExtrusion],
 ];
 
 fn slot(ifc_type: IfcType) -> Option<usize> {
@@ -49,7 +50,8 @@ fn slot(ifc_type: IfcType) -> Option<usize> {
         IfcType::IfcExtrudedAreaSolidTapered => 1,
         IfcType::IfcTriangulatedFaceSet | IfcType::IfcTriangulatedIrregularNetwork => 2,
         IfcType::IfcPolygonalFaceSet => 3,
-        IfcType::IfcFacetedBrep => 4,
+        // WithVoids adds only `Voids` after the shared Outer (#7688 PROC-S6).
+        IfcType::IfcFacetedBrep | IfcType::IfcFacetedBrepWithVoids => 4,
         IfcType::IfcBooleanResult | IfcType::IfcBooleanClippingResult => 5,
         IfcType::IfcSweptDiskSolid => 6,
         IfcType::IfcRevolvedAreaSolid => 7,
@@ -65,6 +67,8 @@ fn slot(ifc_type: IfcType) -> Option<usize> {
         IfcType::IfcAlignment => 17,
         IfcType::IfcEdge | IfcType::IfcEdgeCurve | IfcType::IfcOrientedEdge => 18,
         IfcType::IfcFaceSurface | IfcType::IfcAdvancedFace => 19,
+        // Documented and exported, but never registered before #7688 (PROC-S6).
+        IfcType::IfcSurfaceOfLinearExtrusion => 20,
         _ => return None,
     })
 }
@@ -91,6 +95,7 @@ fn create(index: usize, schema: &IfcSchema) -> Rc<dyn GeometryProcessor> {
         17 => Rc::new(IfcAlignmentProcessor::new()),
         18 => Rc::new(IfcEdgeProcessor::new()),
         19 => Rc::new(IfcFaceSurfaceProcessor::new()),
+        20 => Rc::new(SurfaceOfLinearExtrusionProcessor::new()),
         _ => unreachable!("built-in processor slot"),
     }
 }

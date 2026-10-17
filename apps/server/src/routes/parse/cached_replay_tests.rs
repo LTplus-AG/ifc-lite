@@ -8,6 +8,7 @@
 //! 400-line ratchet (`rust/processing/tests/module_size_ratchet.rs`), the same
 //! way `cache_keys_symbolic_tests.rs` was split out of `cache_keys.rs`.
 
+use super::cache_read::Replay;
 use super::cached_replay::{cached_geometry_slice, try_cached_replay};
 use crate::admission::{Admission, AdmissionCfg};
 use crate::config::Config;
@@ -18,6 +19,22 @@ use crate::types::{ModelMetadata, ProcessingStats};
 use crate::AppState;
 use base64::{engine::general_purpose::STANDARD, Engine};
 use std::sync::Arc;
+
+/// `try_cached_replay` with an admission of its own, as an `Option`: since
+/// #7676 it takes the request's admission and hands it back on a miss.
+pub(super) async fn replay(
+    state: &AppState,
+    cache_key: &str,
+    layout: ParquetLayout,
+    stream_shapes: StreamShapes,
+    entities: crate::services::DataModelEntities,
+) -> Result<Option<axum::response::Response>, crate::error::ApiError> {
+    let admission = state.admission.acquire(0).await?;
+    Ok(match try_cached_replay(state, cache_key, layout, stream_shapes, entities, admission).await? {
+        Replay::Hit(response) => Some(response),
+        Replay::Miss(_) => None,
+    })
+}
 
 /// Construct an `AppState` backed by a fresh temp cache directory unique to
 /// `label`, mirroring `parity_tests::test_state`.
@@ -69,7 +86,7 @@ fn sample_metadata_header(cache_key: &str, total_meshes: usize) -> ParquetMetada
 #[tokio::test]
 async fn miss_when_neither_key_is_cached() {
     let state = test_state("miss-neither").await;
-    let result = try_cached_replay(&state, "no-such-key", ParquetLayout::Flat, StreamShapes::BatchLocal, crate::services::DataModelEntities::All).await;
+    let result = replay(&state, "no-such-key", ParquetLayout::Flat, StreamShapes::BatchLocal, crate::services::DataModelEntities::All).await;
     assert!(matches!(result, Ok(None)), "expected a plain cache miss");
 }
 
@@ -84,7 +101,7 @@ async fn miss_when_only_parquet_key_is_cached() {
         .set_bytes(&format!("{cache_key}-parquet-v8"), &well_framed_blob(&[1, 2, 3]))
         .await
         .unwrap();
-    let result = try_cached_replay(&state, cache_key, ParquetLayout::Flat, StreamShapes::BatchLocal, crate::services::DataModelEntities::All).await;
+    let result = replay(&state, cache_key, ParquetLayout::Flat, StreamShapes::BatchLocal, crate::services::DataModelEntities::All).await;
     assert!(matches!(result, Ok(None)), "expected a miss with only parquet cached");
 }
 
@@ -96,10 +113,10 @@ async fn miss_when_only_metadata_key_is_cached() {
     let metadata_bytes = serde_json::to_vec(&sample_metadata_header(cache_key, 1)).unwrap();
     state
         .cache
-        .set_bytes(&format!("{cache_key}-parquet-metadata-v5"), &metadata_bytes)
+        .set_bytes(&format!("{cache_key}-parquet-metadata-v6"), &metadata_bytes)
         .await
         .unwrap();
-    let result = try_cached_replay(&state, cache_key, ParquetLayout::Flat, StreamShapes::BatchLocal, crate::services::DataModelEntities::All).await;
+    let result = replay(&state, cache_key, ParquetLayout::Flat, StreamShapes::BatchLocal, crate::services::DataModelEntities::All).await;
     assert!(matches!(result, Ok(None)), "expected a miss with only metadata cached");
 }
 
@@ -113,7 +130,7 @@ async fn corrupt_parquet_blob_falls_back_to_miss_not_error() {
     let metadata_bytes = serde_json::to_vec(&sample_metadata_header(cache_key, 5)).unwrap();
     state
         .cache
-        .set_bytes(&format!("{cache_key}-parquet-metadata-v5"), &metadata_bytes)
+        .set_bytes(&format!("{cache_key}-parquet-metadata-v6"), &metadata_bytes)
         .await
         .unwrap();
     state
@@ -123,7 +140,7 @@ async fn corrupt_parquet_blob_falls_back_to_miss_not_error() {
         .unwrap();
     seed_current_data_model(&state, cache_key).await;
 
-    let result = try_cached_replay(&state, cache_key, ParquetLayout::Flat, StreamShapes::BatchLocal, crate::services::DataModelEntities::All).await;
+    let result = replay(&state, cache_key, ParquetLayout::Flat, StreamShapes::BatchLocal, crate::services::DataModelEntities::All).await;
     assert!(
         matches!(result, Ok(None)),
         "a corrupt cached blob must be treated as a miss, got {:?}",
@@ -132,15 +149,16 @@ async fn corrupt_parquet_blob_falls_back_to_miss_not_error() {
 }
 
 #[tokio::test]
-async fn corrupt_metadata_json_is_an_error_not_a_miss() {
-    // A cached-but-unparseable metadata entry is a DIFFERENT failure mode
-    // than a corrupt parquet blob: it must surface as `Err`, not silently
-    // fall through as `Ok(None)`.
+async fn corrupt_metadata_json_is_a_miss_not_an_error() {
+    // A cached-but-unparseable metadata entry is a miss like a corrupt
+    // parquet blob (#7676, SERVER-12). It used to surface as `Err`, which
+    // answered 500 for this file on every request, when the re-parse a miss
+    // triggers is what rewrites the entry. It is evicted, too.
     let state = test_state("corrupt-metadata").await;
     let cache_key = "corrupt-metadata-key";
     state
         .cache
-        .set_bytes(&format!("{cache_key}-parquet-metadata-v5"), b"not valid json")
+        .set_bytes(&format!("{cache_key}-parquet-metadata-v6"), b"not valid json")
         .await
         .unwrap();
     state
@@ -150,8 +168,12 @@ async fn corrupt_metadata_json_is_an_error_not_a_miss() {
         .unwrap();
     seed_current_data_model(&state, cache_key).await;
 
-    let result = try_cached_replay(&state, cache_key, ParquetLayout::Flat, StreamShapes::BatchLocal, crate::services::DataModelEntities::All).await;
-    assert!(result.is_err(), "unparseable cached metadata must be an error");
+    let result = replay(&state, cache_key, ParquetLayout::Flat, StreamShapes::BatchLocal, crate::services::DataModelEntities::All).await;
+    assert!(matches!(result, Ok(None)), "unparseable cached metadata must be a miss");
+    assert!(
+        state.cache.lookup(&format!("{cache_key}-parquet-metadata-v6")).await.unwrap().is_none(),
+        "the unusable header was left for the next request to trip over"
+    );
 }
 
 /// Seed current data-model and symbolic entries for a replayable cache.
@@ -180,7 +202,7 @@ async fn miss_when_the_cached_data_model_predates_the_current_version() {
     let metadata_bytes = serde_json::to_vec(&sample_metadata_header(cache_key, 3)).unwrap();
     state
         .cache
-        .set_bytes(&format!("{cache_key}-parquet-metadata-v5"), &metadata_bytes)
+        .set_bytes(&format!("{cache_key}-parquet-metadata-v6"), &metadata_bytes)
         .await
         .unwrap();
     state
@@ -194,7 +216,7 @@ async fn miss_when_the_cached_data_model_predates_the_current_version() {
         .await
         .unwrap();
 
-    let result = try_cached_replay(&state, cache_key, ParquetLayout::Flat, StreamShapes::BatchLocal, crate::services::DataModelEntities::All).await;
+    let result = replay(&state, cache_key, ParquetLayout::Flat, StreamShapes::BatchLocal, crate::services::DataModelEntities::All).await;
     assert!(
         matches!(result, Ok(None)),
         "a geometry hit with a stale data model must re-parse, not replay"
@@ -212,7 +234,7 @@ async fn valid_cache_hit_round_trips_the_geometry_in_the_sse_body() {
     let metadata_bytes = serde_json::to_vec(&sample_metadata_header(cache_key, 7)).unwrap();
     state
         .cache
-        .set_bytes(&format!("{cache_key}-parquet-metadata-v5"), &metadata_bytes)
+        .set_bytes(&format!("{cache_key}-parquet-metadata-v6"), &metadata_bytes)
         .await
         .unwrap();
     state
@@ -223,7 +245,7 @@ async fn valid_cache_hit_round_trips_the_geometry_in_the_sse_body() {
     // A replay also requires a current data model beside the geometry (#3869).
     seed_current_data_model(&state, cache_key).await;
 
-    let result = try_cached_replay(&state, cache_key, ParquetLayout::Flat, StreamShapes::BatchLocal, crate::services::DataModelEntities::All).await;
+    let result = replay(&state, cache_key, ParquetLayout::Flat, StreamShapes::BatchLocal, crate::services::DataModelEntities::All).await;
     let response = match result {
         Ok(Some(response)) => response,
         other => panic!("expected a cache hit response, got {:?}", other.map(|r| r.is_some())),
@@ -265,7 +287,7 @@ async fn issue_5542_replayed_complete_reports_from_cache() {
     assert!(!stored.stats.from_cache, "seeded as the live parse writes it");
     state
         .cache
-        .set_bytes(&format!("{cache_key}-parquet-metadata-v5"), &serde_json::to_vec(&stored).unwrap())
+        .set_bytes(&format!("{cache_key}-parquet-metadata-v6"), &serde_json::to_vec(&stored).unwrap())
         .await
         .unwrap();
     state
@@ -275,7 +297,7 @@ async fn issue_5542_replayed_complete_reports_from_cache() {
         .unwrap();
     seed_current_data_model(&state, cache_key).await;
 
-    let response = try_cached_replay(&state, cache_key, ParquetLayout::Flat, StreamShapes::BatchLocal, crate::services::DataModelEntities::All)
+    let response = replay(&state, cache_key, ParquetLayout::Flat, StreamShapes::BatchLocal, crate::services::DataModelEntities::All)
         .await
         .unwrap()
         .expect("a fully seeded entry must replay");
@@ -422,12 +444,12 @@ async fn issue_4064_cached_complete_preserves_georeferencing_bits() {
     state.cache.set_bytes(&format!("{key}-parquet-metadata-v4"), &serde_json::to_vec(&legacy_header).unwrap()).await.unwrap();
     seed_current_data_model(&state, key).await;
     assert!(
-        try_cached_replay(&state, key, ParquetLayout::Flat, StreamShapes::BatchLocal, crate::services::DataModelEntities::All).await.unwrap().is_none(),
+        replay(&state, key, ParquetLayout::Flat, StreamShapes::BatchLocal, crate::services::DataModelEntities::All).await.unwrap().is_none(),
         "a pre-#4653 metadata header must not replay"
     );
     let current_key = super::cache_keys::parquet_metadata_key(key);
     state.cache.set_bytes(&current_key, &serde_json::to_vec(&header).unwrap()).await.unwrap();
-    let response = try_cached_replay(&state, key, ParquetLayout::Flat, StreamShapes::BatchLocal, crate::services::DataModelEntities::All).await.unwrap().expect("cache hit");
+    let response = replay(&state, key, ParquetLayout::Flat, StreamShapes::BatchLocal, crate::services::DataModelEntities::All).await.unwrap().expect("cache hit");
     let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
     let text = String::from_utf8(body.to_vec()).unwrap();
     let complete: Vec<serde_json::Value> = text.lines().filter_map(|line| line.strip_prefix("data: "))
@@ -453,7 +475,7 @@ async fn issue_4459_stale_symbolic_sidecar_refuses_stream_replay_until_refreshed
     let state = test_state("4459-stale-symbolic").await;
     let key = "4459-stale";
     state.cache.set_bytes(&format!("{key}-parquet-v8"), &well_framed_blob(&[1,2,3])).await.unwrap();
-    state.cache.set_bytes(&format!("{key}-parquet-metadata-v5"),
+    state.cache.set_bytes(&format!("{key}-parquet-metadata-v6"),
         &serde_json::to_vec(&sample_metadata_header(key, 1)).unwrap()).await.unwrap();
     state.cache.set_bytes(&data_model_cache_key(key, crate::services::DataModelEntities::All), b"current data model").await.unwrap();
     // Retired: v1 (#4459, no fill provenance), v2 (#4665, pre mesh-frame rebase).
@@ -462,7 +484,7 @@ async fn issue_4459_stale_symbolic_sidecar_refuses_stream_replay_until_refreshed
             &serde_json::to_vec(&ifc_lite_processing::SymbolicData::default()).unwrap()).await.unwrap();
     }
     assert!(state.cache.get_bytes(&symbolic_cache_key(key)).await.unwrap().is_none());
-    assert!(try_cached_replay(&state, key, ParquetLayout::Flat, StreamShapes::BatchLocal, crate::services::DataModelEntities::All).await.unwrap().is_none());
+    assert!(replay(&state, key, ParquetLayout::Flat, StreamShapes::BatchLocal, crate::services::DataModelEntities::All).await.unwrap().is_none());
     cache_symbolic_data(&state.cache, key, &ifc_lite_processing::SymbolicDataWithProvenance::default()).await;
-    assert!(try_cached_replay(&state, key, ParquetLayout::Flat, StreamShapes::BatchLocal, crate::services::DataModelEntities::All).await.unwrap().is_some());
+    assert!(replay(&state, key, ParquetLayout::Flat, StreamShapes::BatchLocal, crate::services::DataModelEntities::All).await.unwrap().is_some());
 }

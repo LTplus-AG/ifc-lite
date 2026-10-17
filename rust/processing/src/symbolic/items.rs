@@ -31,7 +31,7 @@ pub(super) fn extract_symbolic_item_inner(
     express_id: u32,
     ifc_type: &str,
     rep_identifier: &str,
-    unit_scale: f32,
+    unit_scale: f64,
     transform: &Transform2D,
     rebase: RenderFrameRebase,
     styled_items: &HashMap<u32, Vec<u32>>,
@@ -79,7 +79,7 @@ pub(super) fn extract_symbolic_item_inner(
                         parse_axis2_placement_2d(&origin, decoder, unit_scale)
                     }
                     Ok(_) => Transform2D::unresolved(), // wrong type (#2355)
-                    Err(_) => Transform2D::unresolved(), // dangling ref (#2256)
+                    Err(e) => Transform2D::undecodable(&e), // refused (#7678), or dangling (#2256)
                 },
                 None => Transform2D::unresolved(), // mandatory attr absent (#2256)
             };
@@ -100,7 +100,7 @@ pub(super) fn extract_symbolic_item_inner(
                         parse_cartesian_transformation_operator(&target, decoder, unit_scale)
                     }
                     Ok(_) => Transform2D::unresolved(), // wrong type (#2355)
-                    Err(_) => Transform2D::unresolved(), // dangling ref (#2256)
+                    Err(e) => Transform2D::undecodable(&e), // refused (#7678), or dangling (#2256)
                 },
                 None => Transform2D::unresolved(), // mandatory attr absent (#2256)
             };
@@ -146,7 +146,7 @@ pub(super) fn extract_symbolic_item_inner(
             if let Some(points_attr) = item.get(0) {
                 if let Ok(point_entities) = decoder.resolve_ref_list(points_attr) {
                     let mut points: Vec<f32> = Vec::with_capacity(point_entities.len() * 2);
-                    let mut first_z: Option<f32> = None;
+                    let mut first_z: Option<f64> = None;
                     for pe in point_entities.iter() {
                         if pe.ifc_type != IfcType::IfcCartesianPoint {
                             continue;
@@ -155,9 +155,9 @@ pub(super) fn extract_symbolic_item_inner(
                             Some(c) => c,
                             None => continue,
                         };
-                        let local_x = coords.first().and_then(|v| v.as_float()).unwrap_or(0.0) as f32 * unit_scale;
-                        let local_y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0) as f32 * unit_scale;
-                        let local_z = coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0) as f32 * unit_scale;
+                        let local_x = coords.first().and_then(|v| v.as_float()).unwrap_or(0.0) * unit_scale;
+                        let local_y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0) * unit_scale;
+                        let local_z = coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0) * unit_scale;
                         if first_z.is_none() {
                             first_z = Some(local_z);
                         }
@@ -190,12 +190,12 @@ pub(super) fn extract_symbolic_item_inner(
             let Some(coord_list_attr) = points_list.get(0) else { return };
             let Some(coord_list) = coord_list_attr.as_list() else { return };
             let mut points: Vec<f32> = Vec::with_capacity(coord_list.len() * 2);
-            let mut first_z: Option<f32> = None;
+            let mut first_z: Option<f64> = None;
             for coord in coord_list {
                 let Some(coords) = coord.as_list() else { continue };
-                let local_x = coords.first().and_then(|v| v.as_float()).unwrap_or(0.0) as f32 * unit_scale;
-                let local_y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0) as f32 * unit_scale;
-                let local_z = coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0) as f32 * unit_scale;
+                let local_x = coords.first().and_then(|v| v.as_float()).unwrap_or(0.0) * unit_scale;
+                let local_y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0) * unit_scale;
+                let local_z = coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0) * unit_scale;
                 if first_z.is_none() {
                     first_z = Some(local_z);
                 }
@@ -233,7 +233,7 @@ pub(super) fn extract_symbolic_item_inner(
                 ifc_type.to_string(),
                 px,
                 py,
-                radius,
+                radius as f32,
                 rebase.elevation(conic.basis.tz + transform.tz),
                 rep_identifier.to_string(),
             ));
@@ -244,7 +244,7 @@ pub(super) fn extract_symbolic_item_inner(
             const SEGMENTS: usize = 64;
             let mut points: Vec<f32> = Vec::with_capacity((SEGMENTS + 1) * 2);
             for i in 0..=SEGMENTS {
-                let t = (i as f32) * std::f32::consts::TAU / (SEGMENTS as f32);
+                let t = (i as f64) * std::f64::consts::TAU / (SEGMENTS as f64);
                 let (lx, ly) = conic.point_at(t);
                 let (wx, wy) = transform.transform_point(lx, ly);
                 let (x, y) = rebase.plan(wx, wy);

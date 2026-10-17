@@ -17,13 +17,23 @@ pub(super) use operator::parse_cartesian_transformation_operator;
 // accumulated unrotated, which never matched the code.)
 // `tz` is strictly additive along the chain and lets each primitive carry
 // its storey elevation forward via `world_y`.
+//
+// All of it is f64 (#7684): a georeferenced placement or coordinate is read,
+// composed and re-based in f64, and only `RenderFrameRebase` casts the small
+// re-based result to the f32 the primitives carry.
 // ────────────────────────────────────────────────────────────────────────────
+
+/// Whether a decode failed because input admission refused the record (#7678).
+pub(super) fn is_refused(error: &ifc_lite_core::Error) -> bool {
+    matches!(error, ifc_lite_core::Error::UnrepresentableReal(_))
+}
 
 /// Push a plan-space `(x, y)` pair onto a point buffer, but only if BOTH
 /// components are finite. STEP REALs are not guaranteed finite — a
 /// hand-edited or malformed file can carry `1.E400`, which parses to
-/// `f32::INFINITY` and then propagates through `transform_point` /
-/// `RenderFrameRebase::plan` into NaN/Inf. This is the single chokepoint for
+/// infinity and then propagates through `transform_point` /
+/// `RenderFrameRebase::plan` into NaN/Inf; a finite f64 past f32's range
+/// becomes infinity at the plan cast. This is the single chokepoint for
 /// that guard: `items.rs`'s polyline/indexed-poly-curve/ellipse extraction
 /// and `fill.rs`'s boundary-ring extraction both call this instead of
 /// pushing directly, so the two paths cannot drift apart the way they did
@@ -49,13 +59,13 @@ pub(super) fn push_finite_point(points: &mut Vec<f32>, x: f32, y: f32) -> bool {
 /// maps `(x, y) -> x * column0 + y * column1 + translation`. #1994 #1985
 #[derive(Clone, Copy, Debug)]
 pub(super) struct Transform2D {
-    pub(super) tx: f32,
-    pub(super) ty: f32,
-    pub(super) tz: f32,
-    pub(super) m00: f32,
-    pub(super) m01: f32,
-    pub(super) m10: f32,
-    pub(super) m11: f32,
+    pub(super) tx: f64,
+    pub(super) ty: f64,
+    pub(super) tz: f64,
+    pub(super) m00: f64,
+    pub(super) m01: f64,
+    pub(super) m10: f64,
+    pub(super) m11: f64,
 }
 
 impl Transform2D {
@@ -72,9 +82,25 @@ impl Transform2D {
     }
 
     /// `tz: NaN` = unresolved (vs. `identity()`'s legitimate zero); NaN
-    /// propagates additively so consumers test `f32::is_finite()` (#2256).
+    /// propagates additively so consumers test `is_finite()` (#2256).
     pub(super) fn unresolved() -> Self {
-        Self { tz: f32::NAN, ..Self::identity() }
+        Self { tz: f64::NAN, ..Self::identity() }
+    }
+
+    /// A placement refused by input admission (#7678, D15): it holds a REAL
+    /// the double range cannot represent (`1.E400`). Every component is NaN,
+    /// so the finite-point guards DROP the symbol, as the infinity it decoded
+    /// to before did. Not [`Self::unresolved`]: #2256's keep-at-the-origin
+    /// rule is for a placement that is genuinely missing, not one refused.
+    pub(super) fn refused() -> Self {
+        Self { tx: f64::NAN, ty: f64::NAN, tz: f64::NAN, ..Self::identity() }
+    }
+
+    /// The transform for a placement record that failed to decode:
+    /// [`Self::refused`] when input admission refused it, otherwise
+    /// [`Self::unresolved`] (#2256).
+    pub(super) fn undecodable(error: &ifc_lite_core::Error) -> Self {
+        if is_refused(error) { Self::refused() } else { Self::unresolved() }
     }
 
     /// Scale factor carried by the linear block, as `sqrt(|det|)`. For the
@@ -99,11 +125,11 @@ impl Transform2D {
     /// never pass through [`Self::transform_point`] — a circle's radius, an
     /// ellipse's semi-axes, a text height — must multiply by this or they
     /// stay authored-size while their positions move. #1985
-    pub(super) fn scale(&self) -> f32 {
+    pub(super) fn scale(&self) -> f64 {
         (self.m00 * self.m11 - self.m01 * self.m10).abs().sqrt()
     }
 
-    pub(super) fn transform_point(&self, x: f32, y: f32) -> (f32, f32) {
+    pub(super) fn transform_point(&self, x: f64, y: f64) -> (f64, f64) {
         let rx = self.m00 * x + self.m01 * y;
         let ry = self.m10 * x + self.m11 * y;
         (rx + self.tx, ry + self.ty)
@@ -133,7 +159,7 @@ pub(super) fn compose_transforms(a: &Transform2D, b: &Transform2D) -> Transform2
 pub(super) fn resolve_object_placement(
     entity: &DecodedEntity,
     decoder: &mut EntityDecoder,
-    unit_scale: f32,
+    unit_scale: f64,
 ) -> Transform2D {
     let Some(attr) = entity.get(5) else {
         return Transform2D::identity();
@@ -152,7 +178,7 @@ pub(super) fn resolve_object_placement(
 fn resolve_placement_for_symbolic(
     placement: &DecodedEntity,
     decoder: &mut EntityDecoder,
-    unit_scale: f32,
+    unit_scale: f64,
     depth: usize,
 ) -> Transform2D {
     if depth > 50 || placement.ifc_type != IfcType::IfcLocalPlacement {
@@ -193,7 +219,7 @@ fn resolve_placement_for_symbolic(
 pub(super) fn parse_axis2_placement_2d(
     placement: &DecodedEntity,
     decoder: &mut EntityDecoder,
-    unit_scale: f32,
+    unit_scale: f64,
 ) -> Transform2D {
     if placement.ifc_type != IfcType::IfcAxis2Placement3D
         && placement.ifc_type != IfcType::IfcAxis2Placement2D
@@ -217,12 +243,13 @@ pub(super) fn parse_axis2_placement_2d(
                     .and_then(|a| a.as_list())
                     .map(|l| l.to_vec())
                     .unwrap_or_default();
-                let raw_x = coords.first().and_then(|v| v.as_float()).unwrap_or(0.0) as f32;
-                let raw_y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0) as f32;
-                let raw_z = coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0) as f32;
+                let raw_x = coords.first().and_then(|v| v.as_float()).unwrap_or(0.0);
+                let raw_y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0);
+                let raw_z = coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0);
                 (raw_x * unit_scale, raw_y * unit_scale, raw_z * unit_scale)
             }
-            _ => return Transform2D::unresolved(), // dangling ref/wrong type: mandatory Location (#2355)
+            Err(e) => return Transform2D::undecodable(&e), // refused, or dangling (#2355)
+            _ => return Transform2D::unresolved(), // wrong type: mandatory Location (#2355)
         },
         None => return Transform2D::unresolved(), // mandatory Location absent (#2355)
     };
@@ -242,9 +269,9 @@ pub(super) fn parse_axis2_placement_2d(
                         .and_then(|a| a.as_list())
                         .map(|l| l.to_vec())
                         .unwrap_or_default();
-                    let dx = ratios.first().and_then(|v| v.as_float()).unwrap_or(1.0) as f32;
-                    let dy = ratios.get(1).and_then(|v| v.as_float()).unwrap_or(0.0) as f32;
-                    let dz = ratios.get(2).and_then(|v| v.as_float()).unwrap_or(0.0) as f32;
+                    let dx = ratios.first().and_then(|v| v.as_float()).unwrap_or(1.0);
+                    let dy = ratios.get(1).and_then(|v| v.as_float()).unwrap_or(0.0);
+                    let dz = ratios.get(2).and_then(|v| v.as_float()).unwrap_or(0.0);
                     let len = (dx * dx + dy * dy).sqrt();
                     if len > 0.0001 {
                         (dx / len, dy / len)
@@ -256,6 +283,7 @@ pub(super) fn parse_axis2_placement_2d(
                         (1.0, 0.0)
                     }
                 }
+                Err(e) if is_refused(&e) => return Transform2D::refused(),
                 _ => (1.0, 0.0),
             },
             None => (1.0, 0.0),

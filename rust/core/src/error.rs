@@ -31,6 +31,27 @@ pub enum Error {
 
     #[error("UTF-8 error: {0}")]
     Utf8(#[from] std::str::Utf8Error),
+
+    /// The record holds a `REAL` literal the double range cannot represent
+    /// (`1.E400`), refused by input admission (#7678). A lossless decode
+    /// reads the same record for the data model.
+    #[error("Entity #{0} holds a REAL outside the double range; refused by input admission")]
+    UnrepresentableReal(u32),
+
+    /// A point or direction record that is not an `IfcCartesianPoint` /
+    /// `IfcDirection` holding 2 or 3 finite numbers, or an optional reference
+    /// slot holding anything but `$`, `*` or `#n`, refused as geometry input
+    /// (F3b, D3). Counted with the unrepresentable reals in
+    /// `EntityDecoder::refused_records`.
+    #[error("Entity #{0} is malformed geometry input; refused")]
+    MalformedRecord(u32),
+
+    /// A declared conversion-based length unit whose factor (the
+    /// `IFCMEASUREWITHUNIT` `factor`) is not a positive finite number, so no
+    /// metre scale is right for the model (#7678, CORE-15). `overflowed`: the
+    /// factor read as `+inf` (`1.E400`), which main used as the scale.
+    #[error("Length unit factor #{factor} is not a positive finite number; geometry refused")]
+    UnusableUnitFactor { factor: u32, overflowed: bool },
 }
 
 impl Error {

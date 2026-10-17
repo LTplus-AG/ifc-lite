@@ -5,7 +5,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::{
-    capture::Capture, xml::Attributes, LandXmlAlignment, LandXmlCancellation,
+    capture::Capture, xml::{Attributes, Budget, Meter}, LandXmlAlignment, LandXmlCancellation,
     LandXmlCapabilityDiagnostic, LandXmlCoordinateSystem, LandXmlCrossSection,
     LandXmlCrossSectionSurface, LandXmlExtension, LandXmlLimits, LandXmlPoint, LandXmlPolyline,
     LandXmlPreservedOnlyExtension, LandXmlProfile, LandXmlRenderState, LandXmlRoadway,
@@ -22,15 +22,20 @@ use super::profiles::{
 pub(crate) struct Parser<'a> {
     pub(super) limits: LandXmlLimits,
     pub(super) cancelled: Option<&'a dyn LandXmlCancellation>,
-    pub(super) work: usize,
-    pub(super) character_references: usize,
-    pub(super) references: usize,
-    pub(super) surfaces_seen: usize,
-    pub(super) points_seen: usize,
-    pub(super) faces_seen: usize,
-    pub(super) profile_points_seen: usize,
-    pub(super) vertical_curves_seen: usize,
-    pub(super) cross_section_points_seen: usize,
+    /// The `work` budget; charged per event in `consume_event` (D73).
+    pub(super) meter: Meter<'a>,
+    pub(super) character_references: Budget,
+    pub(super) references: Budget,
+    pub(super) surfaces_seen: Budget,
+    pub(super) points_seen: Budget,
+    /// Bytes of element paths retained by records (`max_source_path_bytes`).
+    pub(super) source_path_bytes: Budget,
+    pub(super) coordinate_systems_seen: usize,
+    pub(super) faces_seen: Budget,
+    pub(super) profile_points_seen: Budget,
+    pub(super) vertical_curves_seen: Budget,
+    pub(super) cross_section_points_seen: Budget,
+    pub(super) capability_diagnostics_seen: Budget,
     pub(super) frames: Vec<Frame>,
     pub(super) units: Option<LandXmlUnits>,
     /// #5175: resolved once at construction from `LandXmlLimits::assumed_linear_unit`,
@@ -84,15 +89,18 @@ impl<'a> Parser<'a> {
         Self {
             limits: limits.clone(),
             cancelled,
-            work: 0,
-            character_references: 0,
-            references: 0,
-            surfaces_seen: 0,
-            points_seen: 0,
-            faces_seen: 0,
-            profile_points_seen: 0,
-            vertical_curves_seen: 0,
-            cross_section_points_seen: 0,
+            meter: Meter::new(limits.max_work, cancelled),
+            character_references: Budget::new(limits.max_character_references, "character reference"),
+            references: Budget::new(limits.max_references, "reference"),
+            surfaces_seen: Budget::new(limits.max_surfaces, "surface"),
+            points_seen: Budget::new(limits.max_points, "point"),
+            source_path_bytes: Budget::new(limits.max_source_path_bytes, "retained source path"),
+            coordinate_systems_seen: 0,
+            faces_seen: Budget::new(limits.max_faces, "face"),
+            profile_points_seen: Budget::new(limits.max_profile_points, "profile point"),
+            vertical_curves_seen: Budget::new(limits.max_vertical_curves, "vertical curve"),
+            cross_section_points_seen: Budget::new(limits.max_cross_section_points, "cross-section point"),
+            capability_diagnostics_seen: Budget::new(limits.max_capability_diagnostics, "capability diagnostic"),
             frames: Vec::new(),
             units: None,
             assumed_units,
@@ -155,6 +163,11 @@ impl<'a> Parser<'a> {
 
     pub(crate) fn header(&self) -> Option<(String, Option<LandXmlUnits>)> {
         (!self.version.is_empty()).then(|| (self.version.clone(), self.effective_units()))
+    }
+
+    /// Whether the source has declared its `<Units>` yet (#7753).
+    pub(crate) fn declares_units(&self) -> bool {
+        self.units.is_some()
     }
 
     /// #5175: a declared `<Units>` element always wins; the caller-supplied

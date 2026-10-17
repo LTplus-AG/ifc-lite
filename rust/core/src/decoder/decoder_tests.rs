@@ -466,31 +466,19 @@ fn get_polyloop_point_ids_fast_refuses_a_loop_with_an_oversized_ref() {
     );
 }
 
-/// `get_entity_ref_list_fast` (issue #3421): same contract as
-/// `get_polyloop_point_ids_fast`, different accessor and record shape.
+/// `get_entity_ref_list_fast` (issue #3421, F4-3): same contract as
+/// `get_polyloop_point_ids_fast`. An oversized id refuses the WHOLE list. It
+/// used to be dropped, which returned an open shell with a face missing as if
+/// it were the file's shell (D3).
 #[test]
-fn get_entity_ref_list_fast_drops_oversized_ref() {
+fn get_entity_ref_list_fast_refuses_a_list_holding_an_oversized_ref() {
     let content = "#1=IFCCLOSEDSHELL((#2,#4294967297,#4294967295));\n";
     let mut decoder = EntityDecoder::new(content);
-    assert_eq!(
-        decoder.get_entity_ref_list_fast(1),
-        Some(vec![2, u32::MAX])
-    );
-}
-
-/// `get_first_entity_ref_fast` (issue #3421): an oversized first reference
-/// must refuse (`None`), not resolve to `#1`.
-#[test]
-fn get_first_entity_ref_fast_refuses_oversized_ref() {
-    let content = "#1=IFCMAPPEDITEM(#4294967297,$);\n";
+    assert_eq!(decoder.get_entity_ref_list_fast(1), None);
+    // The inclusive boundary still resolves, and the list is authored order.
+    let content = "#1=IFCCLOSEDSHELL((#2,#4294967295));\n";
     let mut decoder = EntityDecoder::new(content);
-    assert_eq!(decoder.get_first_entity_ref_fast(1), None);
-
-    // Control: the same accessor resolves an ordinary reference, and the
-    // inclusive boundary (u32::MAX) still resolves too.
-    let content = "#1=IFCMAPPEDITEM(#4294967295,$);\n";
-    let mut decoder = EntityDecoder::new(content);
-    assert_eq!(decoder.get_first_entity_ref_fast(1), Some(u32::MAX));
+    assert_eq!(decoder.get_entity_ref_list_fast(1), Some(vec![2, u32::MAX]));
 }
 
 /// `get_face_bound_fast` (issue #3421): an oversized loop reference must
@@ -631,11 +619,9 @@ END-ISO-10303-21;
 ///     `fast_float2` does not skip leading whitespace, so `\t1.` refused the
 ///     point.
 ///
-/// The other four sites (the two list readers, `get_first_entity_ref_fast`,
-/// `get_polyloop_coords_cached_into`'s own loop) already stepped past an
-/// unknown byte one at a time, so they never refused; they share the
-/// predicate now so the set cannot drift apart again, and their lines here
-/// are the control, not a regression.
+/// The other sites (the two list readers, `get_polyloop_coords_cached_into`'s
+/// own loop) are `StepRecord` readers since F4-3, which skip trivia with the
+/// same predicate; their lines here are the control, not a regression.
 #[test]
 fn fast_readers_accept_every_step_whitespace_byte_3733() {
     for ws in ["\t", "\x0b", "\x0c", " "] {
@@ -657,7 +643,6 @@ fn fast_readers_accept_every_step_whitespace_byte_3733() {
         // Control: never refused, now on the shared predicate.
         assert_eq!(decoder.get_polyloop_point_ids_fast(4), Some(vec![1, 2, 3]), "ws {ws:?}");
         assert_eq!(decoder.get_entity_ref_list_fast(4), Some(vec![1, 2, 3]), "ws {ws:?}");
-        assert_eq!(decoder.get_first_entity_ref_fast(5), Some(4), "ws {ws:?}");
     }
 }
 
@@ -763,4 +748,114 @@ fn issue_5266_fast_point_reader_matches_the_tokenizer_on_every_edge() {
         let mut decoder = EntityDecoder::new(&content);
         assert_eq!(decoder.get_cartesian_point_fast(1), expected, "{coords}");
     }
+}
+
+/// #7689 (CORE-11): keyword case is not significant (#4497), but the face
+/// bound reader looked for the bytes `OUTER` in the raw type name, so a
+/// CamelCase `IfcFaceOuterBound` read as an inner bound and the faceted brep
+/// took the first bound listed as the outer one.
+#[test]
+fn get_face_bound_fast_reads_the_outer_bound_keyword_in_any_case_7689() {
+    for keyword in ["IFCFACEOUTERBOUND", "IfcFaceOuterBound", "ifcfaceouterbound", " IfcFaceOuterBound ", "IfcFaceOuterBound\t"] {
+        let content = format!("#5={keyword}(#4,.T.);\n");
+        let mut decoder = EntityDecoder::new(&content);
+        assert_eq!(decoder.get_face_bound_fast(5), Some((4, true, true)), "{keyword:?}");
+    }
+    for keyword in ["IFCFACEBOUND", "IfcFaceBound"] {
+        let content = format!("#5={keyword}(#4,.F.);\n");
+        let mut decoder = EntityDecoder::new(&content);
+        assert_eq!(decoder.get_face_bound_fast(5), Some((4, false, false)), "{keyword:?}");
+    }
+    // Trivia around the keyword is legal (#3789) and must not hide it: a
+    // comment-blind slice between `=` and `(` read these as inner bounds.
+    for record in [
+        "#5=IFCFACEOUTERBOUND/* c */(#4,.T.);",
+        "#5=IFCFACEOUTERBOUND /* c */ (#4,.T.);",
+        "#5=/* c */IFCFACEOUTERBOUND(#4,.T.);",
+        "#5= /* ( */ IfcFaceOuterBound /* ) */ (#4,.T.);",
+    ] {
+        let mut decoder = EntityDecoder::new(record);
+        assert_eq!(decoder.get_face_bound_fast(5), Some((4, true, true)), "{record}");
+    }
+    // The uppercase prefix fast path still requires the whole keyword.
+    for record in ["#5=IFCFACEOUTERBOUNDX(#4,.T.);", "#5=IFCFACEBOUNDOUTER(#4,.T.);"] {
+        let mut decoder = EntityDecoder::new(record);
+        assert_eq!(decoder.get_face_bound_fast(5), Some((4, true, false)), "{record}");
+    }
+    let mut decoder = EntityDecoder::new("#5=IFCFACEBOUND/* OUTER */(#4,.T.);");
+    assert_eq!(decoder.get_face_bound_fast(5), Some((4, true, false)), "a comment never names the type");
+}
+
+/// #7678 (S6a): a STRICT (geometry) decoder refuses an overflowing literal in
+/// the full decode, and the fast cartesian-point and coordinate-list paths
+/// refuse it in every mode, so no geometry reader is handed an infinity. The
+/// default decoder is LOSSLESS, as before #7678, so a data reader that is not
+/// opted in still reads the record. `-0.` keeps its sign bit throughout.
+#[test]
+fn every_float_reader_refuses_an_overflowing_literal_and_keeps_negative_zero() {
+    let content = "\
+#1=IFCCARTESIANPOINT((1.E400,0.,0.));
+#2=IFCCARTESIANPOINT((-0.,0.,0.));
+#3=IFCCARTESIANPOINTLIST3D(((0.,0.,0.),(1.E39,0.,0.)));
+#4=IFCCARTESIANPOINTLIST3D(((-0.,0.,0.),(1.E38,0.,0.)));
+#5=IFCDOOR('g',$,'D',$,$,$,$,$,1.E400,0.9,$,$,$);
+#6=IFCPOLYLOOP((#2,#1,#2));
+";
+    // Default: lossless, nothing refused or counted.
+    let mut lossless = EntityDecoder::new(content);
+    assert!(!lossless.strict_reals());
+    let kept = lossless.decode_by_id(1).expect("lossless by default");
+    assert_eq!(kept.get_list(0).and_then(|l| l[0].as_float()), Some(f64::INFINITY));
+    assert_eq!(lossless.refused_records(), 0);
+
+    let mut decoder = EntityDecoder::new(content).with_strict_reals();
+    assert!(
+        matches!(decoder.decode_by_id(1), Err(Error::UnrepresentableReal(1))),
+        "strict full decode admitted 1.E400"
+    );
+    assert_eq!(decoder.refused_records(), 1, "the refusal is counted");
+    assert_eq!(decoder.get_cartesian_point_fast(1), None, "fast point admitted 1.E400");
+
+    // The D14 seam reads the same record losslessly ...
+    let kept = decoder.decode_by_id_lossless(1).expect("lossless read");
+    assert_eq!(kept.get_list(0).and_then(|l| l[0].as_float()), Some(f64::INFINITY));
+    // ... without caching it, so geometry still sees it refused, and the
+    // re-read counts the record once, not twice.
+    assert!(matches!(decoder.decode_by_id(1), Err(Error::UnrepresentableReal(1))));
+    assert_eq!(decoder.refused_records(), 1);
+
+    // A product record is admitted even when strict: its overflowing
+    // OverallHeight is descriptive, not geometry, and refusing it would lose
+    // the door's finite mesh.
+    let door = decoder.decode_by_id(5).expect("a product is admitted");
+    assert_eq!(door.get_float(8), Some(f64::INFINITY));
+    assert_eq!(decoder.refused_records(), 1, "an admitted product is not counted");
+
+    // A polyloop whose fast read failed reports the counted admission
+    // refusal, in either mode, so a reader can fail the item.
+    assert_eq!(decoder.get_polyloop_coords_cached(6), None);
+    assert!(matches!(decoder.polyloop_refusal(6), Some(Error::UnrepresentableReal(1))));
+    assert_eq!(decoder.refused_records(), 1, "the same record, counted once");
+    assert!(matches!(lossless.polyloop_refusal(6), Some(Error::UnrepresentableReal(1))));
+    assert!(matches!(decoder.refuse_record(3), Error::UnrepresentableReal(3)));
+    assert_eq!(decoder.refused_record_ids().len(), 2);
+    assert_eq!(decoder.refused_records(), 2);
+
+    let neg = decoder.decode_by_id(2).expect("-0. decodes");
+    let x = neg.get_list(0).and_then(|l| l[0].as_float()).expect("x");
+    assert!(x == 0.0 && x.is_sign_negative(), "{x:?}");
+    let (fx, _, _) = decoder.get_cartesian_point_fast(2).expect("fast -0.");
+    assert!(fx == 0.0 && fx.is_sign_negative(), "{fx:?}");
+
+    // 1.E39 is finite in f64 but infinite in f32: the f32 list refuses it.
+    let raw3 = decoder.get_raw_bytes(3).expect("raw #3").to_vec();
+    assert_eq!(crate::extract_coordinate_list_from_entity(&raw3), None);
+    assert_eq!(
+        crate::extract_coordinate_list_from_entity_f64(&raw3).map(|v| v[3]),
+        Some(1.0e39)
+    );
+    let raw4 = decoder.get_raw_bytes(4).expect("raw #4").to_vec();
+    let list = crate::extract_coordinate_list_from_entity(&raw4).expect("finite f32 list");
+    assert!(list[0] == 0.0 && list[0].is_sign_negative(), "{list:?}");
+    assert_eq!(list[3], 1.0e38);
 }

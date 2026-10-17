@@ -102,16 +102,12 @@ pub struct AlignmentAxis {
 impl AlignmentAxis {
     /// Resolve one retained evaluator. Missing units, placement and directrix
     /// fail explicitly; no fallback identity, scale or truncated success.
-    pub fn from_content(content: &str, express_id: u32) -> Result<Self> {
-        let mut decoder = EntityDecoder::with_index(content, build_entity_index(content));
-        let mut scanner = EntityScanner::new(content);
-        let mut project = None;
-        while let Some((id, name, _, _)) = scanner.next_entity() {
-            if keyword_eq(name, "IFCPROJECT") {
-                project = Some(id);
-                break;
-            }
-        }
+    pub fn from_content<T>(content: &T, express_id: u32) -> Result<Self>
+    where
+        T: AsRef<[u8]> + ?Sized,
+    {
+        let mut decoder = EntityDecoder::with_index(content, build_entity_index(content)).with_strict_reals();
+        let project = decoder.project_id();
         let scale = resolve_scale(&mut decoder, project).ok_or_else(|| {
             Error::geometry(
                 "No declared, resolvable LENGTHUNIT matching the canonical geometry scale",
@@ -214,10 +210,13 @@ fn resolve_scale(decoder: &mut EntityDecoder, project: Option<u32>) -> Option<f6
 /// coarsen spacing both endpoints remain; exhausted total budgets omit later
 /// axes with explicit diagnostics. The cap applies to emitted samples, not IFC
 /// parsing memory (which is bounded by input size and canonical refwalk guards).
-pub fn sample_alignment_axes(
-    content: &str,
+pub fn sample_alignment_axes<T>(
+    content: &T,
     options: AlignmentSamplingOptions,
-) -> Result<AlignmentSamplingReport> {
+) -> Result<AlignmentSamplingReport>
+where
+    T: AsRef<[u8]> + ?Sized,
+{
     if !options.spacing_m.is_finite()
         || options.spacing_m <= 0.0
         || options.max_samples_per_axis < 2
@@ -235,12 +234,8 @@ pub fn sample_alignment_axes(
         diagnostics_omitted: 0,
     };
     let mut scanner = EntityScanner::new(content);
-    let mut project = None;
     let mut ids = Vec::new();
     while let Some((id, name, _, _)) = scanner.next_entity() {
-        if keyword_eq(name, "IFCPROJECT") && project.is_none() {
-            project = Some(id);
-        }
         if keyword_eq(name, "IFCALIGNMENT") {
             ids.push(id);
         }
@@ -248,7 +243,8 @@ pub fn sample_alignment_axes(
     if ids.is_empty() {
         return Ok(report);
     }
-    let mut decoder = EntityDecoder::with_index(content, build_entity_index(content));
+    let mut decoder = EntityDecoder::with_index(content, build_entity_index(content)).with_strict_reals(); // #7678
+    let project = decoder.project_id();
     let scale = resolve_scale(&mut decoder, project);
     let Some(unit_scale) = scale else {
         report.diagnostic(

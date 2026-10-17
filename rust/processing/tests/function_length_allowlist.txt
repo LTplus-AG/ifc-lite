@@ -1,0 +1,98 @@
+# Function-length ratchet allowlist (see function_length_ratchet.rs).
+# Non-generated, non-test Rust functions currently at or over the 150-line limit
+# (`fn` line through closing brace, inclusive). Each row is '<budget> <path> <key>';
+# the budget is the length when recorded. The ratchet fails if one of these grows
+# PAST its budget, or if a NEW function reaches 150 lines without a row.
+# The rule: split or shrink. When a function drops below 150, delete its row; when it
+# shrinks but stays over, lower the budget (the ratchet prints a 'note (ratchet down)'
+# line for each). Only ADD a row with a written justification in the PR.
+# Keys: 'fn', 'Type::fn', 'Type@Trait::fn', 'outer::inner'; a repeated key gets #2, #3.
+# Seeded by G4 (#7697). Re-seed aid: see the module docs of function_length_ratchet.rs.
+
+   154 apps/server/src/routes/parse/cached_replay.rs replay_entries
+   255 apps/server/src/routes/parse/parquet.rs parse_parquet
+   182 apps/server/src/routes/parse/parquet_optimized.rs parse_parquet_optimized
+   340 apps/server/src/routes/parse/parquet_stream.rs parse_parquet_stream
+   159 rust/processing/src/data_model/mod.rs extract_data_model
+   299 rust/processing/src/data_model/spatial.rs build_spatial_hierarchy
+   200 apps/server/src/services/parquet_mesh_tables.rs build_mesh_tables
+   308 apps/server/src/services/parquet_optimized.rs serialize_to_parquet_optimized
+   324 rust/clash/src/narrow.rs test_pair
+   167 rust/clash/src/obb_detect.rs detect_obb
+   195 rust/core/src/parser/scanner.rs EntityScanner::next_entity
+   269 rust/core/src/project_units/measure.rs measure_unit
+   184 rust/export/src/collada.rs try_export_collada_from_meshes
+   186 rust/export/src/collada_document.rs write_dae
+   373 rust/export/src/gltf.rs build_gltf
+   211 rust/export/src/gltf.rs export_gltf_streaming_impl
+   634 rust/export/src/gltf.rs plan_bounded_glb
+   159 rust/export/src/gltf.rs push_mesh_quantized
+   158 rust/export/src/gltf.rs write_bounded_glb
+   260 rust/export/src/merged/mod.rs export_merged_models
+   328 rust/export/src/model.rs stream_export_model_with_options
+   269 rust/export/src/rebar_schedule_build.rs build_rebar_schedule_impl
+   238 rust/export/src/step.rs emit
+   178 rust/export/src/step_log/write.rs emit
+   178 rust/export/src/step_map_rigid.rs plan
+   155 rust/export/src/step_map_rigid_contexts.rs representation_contexts
+   186 rust/export/src/usd.rs export_usd
+   161 rust/geometry/src/alignment.rs parse_horizontal
+   368 rust/geometry/src/csg/consolidate.rs ClippingProcessor::consolidate_coplanar_with_unit_scale
+   341 rust/geometry/src/facet_weld.rs refine_high_aspect_slivers_impl
+   332 rust/geometry/src/facet_weld.rs weld_near_coplanar_facets
+   231 rust/geometry/src/instancing/group.rs collate_refs_impl
+   166 rust/geometry/src/instancing/wire.rs encode_refs_with_finishes
+   218 rust/geometry/src/kernel/retriangulate_recover.rs recover_subsegment
+   185 rust/geometry/src/mesh_orient.rs orient_mesh_outward_verdict
+   175 rust/geometry/src/processors/advanced_face/polyline.rs sample_curve_polyline_guarded
+   229 rust/geometry/src/processors/advanced_face/revolution.rs process_surface_of_revolution_face
+   157 rust/geometry/src/processors/advanced_face/surfaces.rs process_cylindrical_face
+   300 rust/geometry/src/processors/boolean/halfspace_cap.rs cap_half_space_clip
+   192 rust/geometry/src/processors/boolean/mod.rs BooleanClippingProcessor::apply_boolean_step
+   172 rust/geometry/src/processors/boolean/mod.rs BooleanClippingProcessor::try_union_polygonal_chain
+   162 rust/geometry/src/processors/boolean/polygonal_prism.rs BooleanClippingProcessor::build_polygonal_bounded_half_space_mesh
+   174 rust/geometry/src/processors/sectioned.rs SectionedSolidHorizontalProcessor@GeometryProcessor::process
+   164 rust/geometry/src/processors/swept/revolved.rs RevolvedAreaSolidProcessor@GeometryProcessor::process
+   181 rust/geometry/src/processors/tessellated/triangulate.rs PolygonalFaceSetProcessor::triangulate_polygon
+   182 rust/geometry/src/profiles/simplify.rs simplify_smooth_curve_polyline
+   213 rust/geometry/src/router/mapped_item.rs GeometryRouter::process_mapped_item_cached_body
+   291 rust/geometry/src/router/processing.rs GeometryRouter::collect_submeshes_from_item_inner
+   189 rust/geometry/src/router/transforms/operator.rs parse_transformation_operator
+   224 rust/geometry/src/router/voids/aabb_clip.rs GeometryRouter::clip_triangle_against_box
+   168 rust/geometry/src/router/voids/aabb_clip.rs GeometryRouter::triangle_intersects_box
+   781 rust/geometry/src/router/voids/mod.rs GeometryRouter::apply_void_context_inner
+   183 rust/geometry/src/router/voids/mod.rs GeometryRouter::try_cut_wall_local_frame
+   311 rust/geometry/src/router/voids/prism_cut.rs GeometryRouter::try_prism_cut
+   161 rust/geometry/src/router/voids/prism_cut.rs build_face_cap
+   233 rust/geometry/src/router/voids/prism_cut.rs cut_prism
+   193 rust/geometry/src/router/voids/prism_cut.rs detect_prism
+   155 rust/geometry/src/router/voids/probe.rs GeometryRouter::get_opening_item_bounds_with_direction
+   247 rust/geometry/src/router/voids/synthesis.rs GeometryRouter::classify_openings_impl
+   215 rust/geometry/src/router/voids/synthesis.rs GeometryRouter::extend_opening_along_direction
+   168 rust/geometry/src/router/voids/synthesis/membrane.rs GeometryRouter::remove_internal_membrane
+   269 rust/geometry/src/simplify/cavities.rs drop_enclosed_cavities
+   159 rust/geometry/src/space_dcel/arrangement.rs Arrangement::resolve
+   257 rust/landxml/src/parser.rs Parser::start
+   164 rust/landxml/src/parser/capture.rs Parser::finish_capture
+   154 rust/landxml/src/parser/finalize.rs Parser::finish_surface
+   238 rust/landxml/src/pipe_parser.rs PipeParser::start
+   243 rust/landxml/src/plan/parser/driver.rs Parser::start
+   263 rust/landxml/src/terrain.rs adapt_faceless_tin
+   331 rust/processing/src/analytic_export/walk.rs extract_with_source_cache
+   150 rust/processing/src/appearance/authored.rs prepare
+   159 rust/processing/src/appearance/evaluated.rs prepare
+   163 rust/processing/src/appearance/mapping.rs map_item
+   180 rust/processing/src/appearance/mod.rs plan_with_source
+   250 rust/processing/src/appearance/pdf_fill.rs plan_pdf_fill_annotation_with_clip
+   158 rust/processing/src/appearance/transfer_points.rs PointSurface::observe
+   156 rust/processing/src/element.rs emit_sub_meshes
+   181 rust/processing/src/pdf_vector/interpret_ops.rs Interpreter::operation
+   259 rust/processing/src/processor/jobs.rs process_entity_job
+  1162 rust/processing/src/processor/mod.rs process_geometry_streaming_filtered_with_options_and_ids
+   165 rust/processing/src/simplify_session.rs simplify_element
+   312 rust/processing/src/symbolic/items.rs extract_symbolic_item_inner
+   183 rust/processing/src/symbolic/mod.rs extract_symbolic_data_into_frame
+   296 rust/wasm-bindings/src/api/csg_diagnostics.rs drain_and_log_csg_diagnostics
+   158 rust/wasm-bindings/src/api/gpu_meshes/batch.rs IfcAPI::process_geometry_batch_partitioned
+   589 rust/wasm-bindings/src/api/gpu_meshes/batch.rs IfcAPI::produce_batch
+   563 rust/wasm-bindings/src/api/gpu_meshes/prepass.rs IfcAPI::pre_pass_streaming_impl

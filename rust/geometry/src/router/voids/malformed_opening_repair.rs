@@ -8,9 +8,9 @@
 //! module-size ratchet.
 
 use crate::csg::ClippingProcessor;
+use crate::mesh_check::{Degenerate, EdgeLedger, VertexKey};
 use crate::{Mesh, Point3, Vector3};
 use nalgebra::Matrix3;
-use rustc_hash::FxHashMap;
 
 /// An oriented box: world centre, orthonormal axes, half-extents along each.
 pub(super) struct OpeningBox {
@@ -22,9 +22,7 @@ pub(super) struct OpeningBox {
 impl OpeningBox {
     /// The thinnest axis — the through-wall / penetration direction.
     fn thin_axis(&self) -> usize {
-        (0..3)
-            .min_by(|&i, &j| self.half[i].partial_cmp(&self.half[j]).unwrap())
-            .unwrap()
+        super::geom::thin_axis(&self.half)
     }
 
     /// A watertight box mesh for the real opening, EXTENDED by `extend` along the
@@ -109,17 +107,10 @@ pub(super) fn cutter_is_closed_manifold(m: &Mesh) -> bool {
     if w.indices.len() < 12 {
         return false;
     }
-    let mut edge_uses: FxHashMap<(u32, u32), u32> = FxHashMap::default();
-    for t in w.indices.chunks_exact(3) {
-        if t[0] == t[1] || t[1] == t[2] || t[0] == t[2] {
-            return false; // a degenerate triangle survived welding
-        }
-        for &(a, b) in &[(t[0], t[1]), (t[1], t[2]), (t[2], t[0])] {
-            let key = if a < b { (a, b) } else { (b, a) };
-            *edge_uses.entry(key).or_insert(0) += 1;
-        }
-    }
-    edge_uses.values().all(|&c| c == 2)
+    // Indices are already welded, so the index IS the vertex key. A degenerate
+    // triangle that survived welding rejects, and every edge must be used twice.
+    let ledger = EdgeLedger::build(&w, VertexKey::Index, Degenerate::Reject);
+    !ledger.rejected() && ledger.undirected_defects() == 0
 }
 
 /// Compute the clean oriented box of a cutter's REAL opening iff the cutter is

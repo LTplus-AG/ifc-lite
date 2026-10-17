@@ -24,6 +24,14 @@
 #[cfg(test)]
 mod tests;
 
+// EDGE-FFI-8 (#7677): under `panic = 'abort'` every `catch_unwind` below is a
+// no-op and a parser panic aborts the host process, so such a build is refused
+// rather than shipped. Test harnesses always unwind, hence `not(test)`.
+#[cfg(all(panic = "abort", not(test)))]
+compile_error!(
+    "ifc-lite-ffi needs panic = \"unwind\": build it with `--profile server-release`, not `--release`"
+);
+
 // Native global allocator (#1623): the platform system heap's global lock was
 // ~70% of native geometry self-time and capped rayon scaling to ~1.8x on
 // IfcMappedItem-heavy models; mimalloc's per-thread heaps lifted an all-cores
@@ -34,71 +42,41 @@ mod tests;
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
-use ifc_lite_processing::{process_geometry_filtered, OpeningFilterMode, ParseResponse};
+use ifc_lite_processing::{
+    process_geometry_filtered, run_on_geometry_pool, OpeningFilterMode, ParseResponse,
+};
 use panic_log::{ensure_panic_logging, InFlightPath};
 use std::slice;
-use std::sync::OnceLock;
 
 mod panic_log;
 
-/// Stack size for the geometry worker threads (256 MiB).
-///
-/// IFC geometry processing recurses deeply: BSP-tree CSG (via `csgrs`) and chains of nested
-/// boolean clipping (e.g. a wall with hundreds of openings) build call stacks far past the
-/// default ~1 MiB worker stack. Overflowing it hits the guard page and aborts the whole host
-/// process (Rhino) with `STACK_OVERFLOW` (0xC00000FD) — no panic, no unwind, nothing
-/// `catch_unwind` can intercept. A large stack gives that recursion room to complete.
-const PARSE_STACK_SIZE: usize = 256 * 1024 * 1024;
-
-/// Dedicated rayon pool whose worker threads have a large stack (see [`PARSE_STACK_SIZE`]).
-///
-/// The actual per-element geometry work runs inside `process_geometry` via
-/// `par_iter` on rayon workers, so the recursion lives on *their* stacks — not the caller's.
-/// Running the parse through `pool.install(..)` makes both the entry closure and every nested
-/// `par_iter` use these large-stack workers. Built once and reused.
-///
-/// `None` when the pool cannot be built (the OS refused to spawn its threads).
-/// That is error code `3` for the caller, never an `expect`: this runs on the
-/// `extern "C"` path, and a panic unwinding out of an `extern "C"` function
-/// aborts the host process. A failed build is not cached, so a later call
-/// retries; two first calls racing may each build a pool, and the loser is
-/// dropped.
-fn parse_pool() -> Option<&'static rayon::ThreadPool> {
-    static POOL: OnceLock<rayon::ThreadPool> = OnceLock::new();
-    if let Some(pool) = POOL.get() {
-        return Some(pool);
-    }
-    let pool = build_parse_pool(PARSE_STACK_SIZE).ok()?;
-    Some(POOL.get_or_init(|| pool))
-}
-
-fn build_parse_pool(stack_size: usize) -> Result<rayon::ThreadPool, rayon::ThreadPoolBuildError> {
-    rayon::ThreadPoolBuilder::new()
-        .stack_size(stack_size)
-        .thread_name(|i| format!("ifc-lite-parse-{i}"))
-        .build()
-}
-
-/// Run `work` on the large-stack pool with `path_str` registered as an
+/// Run `work` on processing's large-stack geometry pool
+/// ([`run_on_geometry_pool`]) with `path_str` registered as an
 /// [`InFlightPath`] for the whole call, so a panic on any pool worker is logged
-/// against this file.
+/// against this file. The per-element geometry runs in `par_iter` jobs, so the
+/// deep recursion lives on the pool workers' stacks; a stack overflow there
+/// would abort the host process (Rhino, `STACK_OVERFLOW` 0xC00000FD) with
+/// nothing `catch_unwind` can intercept.
 ///
 /// One `catch_unwind` around the registration, the pool acquisition and all
 /// of `work`: a panic anywhere in there is error code `3` instead of an unwind
-/// out of the `extern "C"` function, which aborts the host. `install` carries
-/// a worker's panic back to this thread, so the guard sits outside it.
+/// out of the `extern "C"` function, which aborts the host. A pool that cannot
+/// be built is code `3` as well. `install` carries a worker's panic back to
+/// this thread, so the guard sits outside it.
 fn run_in_pool<T: Send>(
     path_str: &str,
     work: impl FnOnce() -> Result<T, i32> + Send,
 ) -> Result<T, i32> {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let _in_flight = InFlightPath::register(path_str);
-        parse_pool().ok_or(3)?.install(work)
+        run_on_geometry_pool(work).unwrap_or(Err(3))
     }))
     .unwrap_or(Err(3))
 }
 
-/// Shared body of both parse entry points: read the file, then on the
+/// Shared body of both parse entry points: read the file's raw bytes (STEP is
+/// ISO-8859-1 with `\X\`/`\X2\` escapes, so a Latin-1 or Windows-1252 byte in
+/// a string is legal input; EDGE-FFI-2, #7694), then on the
 /// large-stack pool and under [`run_in_pool`]'s `catch_unwind` run geometry
 /// processing and serialize the response to JSON bytes. The mesh frame comes
 /// from the pipeline's one selector (#4643); nothing here re-anchors it.
@@ -107,7 +85,7 @@ fn run_in_pool<T: Send>(
 /// (`2` read, `3` panic or no pool, `4` serialization) — `0`/`1` are decided by
 /// the wrappers, which own pointer validation.
 fn parse_impl(path_str: &str, mode: OpeningFilterMode) -> Result<Vec<u8>, i32> {
-    let content = std::fs::read_to_string(path_str).map_err(|_| 2)?;
+    let content = std::fs::read(path_str).map_err(|_| 2)?;
 
     run_in_pool(path_str, move || {
         let result = process_geometry_filtered(&content, mode);

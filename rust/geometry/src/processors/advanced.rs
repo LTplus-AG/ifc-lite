@@ -12,7 +12,7 @@ use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 
 use crate::router::GeometryProcessor;
 use super::advanced_face::{
-    parse_rational_weights, process_advanced_face, process_bspline_face,
+    note_face_refused, parse_rational_weights, process_advanced_face, process_bspline_face,
 };
 
 /// A face that fails to triangulate (e.g. an un-triangulable holed planar
@@ -81,7 +81,19 @@ impl AdvancedBrepProcessor {
 
         for face_ref in faces {
             if let Some(face_id) = face_ref.as_entity_ref() {
-                let face = decoder.decode_by_id(face_id)?;
+                // A reference that does not resolve is one refused face, as
+                // for every other face failure below (PROC-S25, #7688): it is
+                // counted (D3), recorded in `empty_faces`, and the rest of the
+                // solid still meshes.
+                let face = match decoder.decode_by_id(face_id) {
+                    Ok(face) => face,
+                    Err(_) => {
+                        note_face_refused(&IfcType::IfcAdvancedFace);
+                        #[cfg(any(feature = "debug_geometry", feature = "observability"))]
+                        empty_faces.push((face_id, "<unresolved>".to_string()));
+                        continue;
+                    }
+                };
 
                 // Delegate to shared advanced face processing. A face that
                 // fails (rather than one that meshes to nothing) is caught
@@ -213,7 +225,7 @@ impl BSplineSurfaceProcessor {
         rtc_file_units: Option<(f64, f64, f64)>,
     ) -> Result<Mesh> {
         let weights = if entity.ifc_type == IfcType::IfcRationalBSplineSurfaceWithKnots {
-            parse_rational_weights(entity)
+            Some(parse_rational_weights(entity)?)
         } else {
             None
         };

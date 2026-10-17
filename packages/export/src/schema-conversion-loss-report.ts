@@ -30,11 +30,11 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import {
   convertEntityType,
   attrNameTable,
-  isStrictAttrPrefix,
   shouldSkipEntity,
   type IfcSchemaVersion,
 } from './schema-converter.js';
 import { BY_NAME_ATTR_REMAP_TYPES } from './schema-converter-attr-remap.js';
+import { isStrictAttrPrefix } from './schema-converter-renames.js';
 import { isRootedEntityType } from './schema-untranslatable.js';
 
 /** How one entity TYPE's data survives a schema conversion. */
@@ -68,7 +68,8 @@ export interface EntityConversionInfo {
   targetType: string;
   kind: EntityConversionKind;
   /** Source-schema attribute names with no same-named slot in the target
-   *  type. Populated for `lossy`, `proxied` (every attribute) and `blocked`
+   *  type. Populated for `lossy`, `proxied` (every attribute, or for an alignment
+   *  product only its GlobalId and the attributes past IfcProduct's) and `blocked`
    *  (every attribute — the record cannot be written at all). */
   droppedAttributes: readonly string[];
 }
@@ -90,20 +91,28 @@ export function classifyEntityTypeConversion(
   const newType = convertEntityType(upper, fromSchema, toSchema);
   const srcAttrs = attrNameTable(fromSchema)?.get(upper);
   if (shouldSkipEntity(newType, toSchema)) {
-    // Same "every attribute is gone" reasoning as the other proxied branch
-    // below — an IFCPROXY carries none of the source type's own attributes.
+    // `productProxy` keeps attributes 1 to 6 (IfcProduct's, OwnerHistory
+    // through Representation, #7683) and mints the GlobalId, so what is lost
+    // is the source GlobalId and everything past the seventh attribute.
     // `srcAttrs` is undefined only for a source schema with no generated
-    // table (IFC5); there is nothing to name in that case either.
-    return { targetType: 'IFCPROXY', kind: 'proxied', droppedAttributes: srcAttrs ?? [] };
+    // table (IFC5); there is nothing to name in that case.
+    return {
+      targetType: 'IFCPROXY',
+      kind: 'proxied',
+      droppedAttributes: (srcAttrs ?? []).filter((_, i) => i === 0 || i >= 7),
+    };
   }
 
   const targetTable = attrNameTable(toSchema);
   const tgtAttrs = targetTable?.get(newType);
 
-  if (srcAttrs && targetTable && !tgtAttrs) {
+  // Same condition as `convertRecord` (an IFC2X3 target refuses a type its
+  // table lacks even when the source table does not know it either, #7683).
+  if (targetTable && !tgtAttrs && (toSchema === 'IFC2X3' || (toSchema === 'IFC4' && fromSchema === 'IFC4X3' && srcAttrs))) {
+    const dropped = srcAttrs ?? [];
     return isRootedEntityType(upper)
-      ? { targetType: 'IFCPROXY', kind: 'proxied', droppedAttributes: srcAttrs }
-      : { targetType: newType, kind: 'blocked', droppedAttributes: srcAttrs };
+      ? { targetType: 'IFCPROXY', kind: 'proxied', droppedAttributes: dropped }
+      : { targetType: newType, kind: 'blocked', droppedAttributes: dropped };
   }
 
   if (!srcAttrs || !tgtAttrs) {
@@ -120,7 +129,7 @@ export function classifyEntityTypeConversion(
     return { targetType: newType, kind: upper === newType ? 'identity' : 'renamed', droppedAttributes: [] };
   }
 
-  if (isStrictAttrPrefix(tgtAttrs, srcAttrs)) {
+  if (isStrictAttrPrefix(tgtAttrs, srcAttrs, upper)) {
     const dropped = srcAttrs.slice(tgtAttrs.length);
     return {
       targetType: newType,
@@ -128,7 +137,7 @@ export function classifyEntityTypeConversion(
       droppedAttributes: dropped,
     };
   }
-  if (isStrictAttrPrefix(srcAttrs, tgtAttrs)) {
+  if (isStrictAttrPrefix(srcAttrs, tgtAttrs, upper)) {
     return { targetType: newType, kind: upper === newType ? 'identity' : 'renamed', droppedAttributes: [] };
   }
   if (upper !== newType && BY_NAME_ATTR_REMAP_TYPES.has(upper)) {
@@ -185,7 +194,7 @@ function describeEntry(entry: ConversionLossEntry): string {
     case 'proxied':
       return (
         `${entry.count} × ${entry.sourceType} (${ids}${more}) has no representation in this schema: these ` +
-        `become generic IFCPROXY placeholders, losing their own type and every attribute${attrs}.`
+        `become generic IFCPROXY placeholders, losing their own type${attrs}.`
       );
     case 'lossy':
     default:

@@ -5,6 +5,7 @@
 //! `IfcSurfaceCurveSweptAreaSolid` / `IfcFixedReferenceSweptAreaSolid` — a 2D
 //! `SweptArea` profile swept along a `Directrix` curve.
 
+use crate::math::tol;
 use crate::{
     profile::Profile2D, profiles::ProfileProcessor, Error, Mesh, Point3, Result,
     TessellationQuality, Vector3,
@@ -72,10 +73,13 @@ impl GeometryProcessor for SurfaceCurveSweptAreaSolidProcessor {
             .resolve_ref(profile_attr)?
             .ok_or_else(|| Error::geometry("Failed to resolve SweptArea".to_string()))?;
         self.profile_processor.set_tessellation_quality(quality);
-        let profile = self
+        // One sweep per disjoint area: a composite profile is several (#7685).
+        self.profile_processor.arm_solid_budget();
+        let mut regions = self
             .profile_processor
-            .process(&profile_entity, decoder, quality)?;
-        if profile.outer.len() < 3 {
+            .process_regions(&profile_entity, decoder, quality)?;
+        regions.retain(|region| region.outer.len() >= 3);
+        if regions.is_empty() {
             return Ok(Mesh::new());
         }
 
@@ -111,7 +115,7 @@ impl GeometryProcessor for SurfaceCurveSweptAreaSolidProcessor {
         for p in curve_points {
             if points
                 .last()
-                .is_none_or(|last: &Point3<f64>| (p - *last).norm() > 1e-9)
+                .is_none_or(|last: &Point3<f64>| (p - *last).norm() > tol::POINT_COINCIDENT_EPS)
             {
                 points.push(p);
             }
@@ -138,7 +142,17 @@ impl GeometryProcessor for SurfaceCurveSweptAreaSolidProcessor {
 
         // --- Sweep the profile along the placed directrix --------------------------
         let (_, perp1s, perp2s) = build_tube_rmf(&points);
-        sweep_profile_along_frames(&profile, &points, &perp1s, &perp2s)
+        let placed = regions.iter().map(crate::profiles::region_points).sum::<usize>() * points.len();
+        // Base already swept holes here; only further composite areas are new.
+        crate::profiles::check_sweep_vertices(placed, regions.len() > 1, entity.id)?;
+        if let [region] = regions.as_slice() {
+            return sweep_profile_along_frames(region, &points, &perp1s, &perp2s);
+        }
+        let mut mesh = Mesh::new();
+        for region in &regions {
+            mesh.merge(&sweep_profile_along_frames(region, &points, &perp1s, &perp2s)?);
+        }
+        Ok(mesh)
     }
 
     fn supported_types(&self) -> Vec<IfcType> {

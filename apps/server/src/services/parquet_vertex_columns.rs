@@ -9,7 +9,8 @@
 //! `parquet_mesh_tables.rs` because it is per-SHAPE work: it knows nothing
 //! about which mesh rows point at the block it produces.
 
-use crate::services::axis::zup_to_yup;
+use crate::services::axis::normals_parallel;
+use ifc_lite_geometry::math::frame::zup_to_yup;
 use crate::types::MeshData;
 
 /// One shape's six Y-up vertex columns in `vertex_schema()` order,
@@ -29,33 +30,24 @@ pub(super) fn shape_vertices(mesh: &MeshData) -> VertexColumns {
     // Some IFC pipelines (e.g. advanced_brep) yield meshes with positions but
     // no normals. The schema requires non-null normal columns, so pad with
     // zeros and let the client recompute them from positions.
-    let has_normals = mesh.normals.len() == mesh.positions.len();
-    if !has_normals && !mesh.normals.is_empty() {
-        tracing::warn!(
-            express_id = mesh.express_id,
-            ifc_type = %mesh.ifc_type,
-            positions = mesh.positions.len(),
-            normals = mesh.normals.len(),
-            "Mesh normals length mismatch; emitting zero normals"
-        );
-    }
+    let has_normals = normals_parallel(mesh, Some("emitting zero normals"));
 
     for i in 0..vert_count {
-        let (x, y, z) = zup_to_yup(
+        let [x, y, z] = zup_to_yup([
             mesh.positions[i * 3],
             mesh.positions[i * 3 + 1],
             mesh.positions[i * 3 + 2],
-        );
+        ]);
         px.push(x);
         py.push(y);
         pz.push(z);
 
         if has_normals {
-            let (x, y, z) = zup_to_yup(
+            let [x, y, z] = zup_to_yup([
                 mesh.normals[i * 3],
                 mesh.normals[i * 3 + 1],
                 mesh.normals[i * 3 + 2],
-            );
+            ]);
             nx.push(x);
             ny.push(y);
             nz.push(z);

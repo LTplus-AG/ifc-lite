@@ -28,25 +28,10 @@ impl Parser<'_> {
             split_name(name.as_ref().as_bytes(), self.limits.xml.max_name_bytes)?;
         let (attributes, namespaces, references) = attributes(start, &self.limits.xml)?;
         if attr(&attributes, "pntRef").is_some() {
-            self.references = self
-                .references
-                .checked_add(1)
-                .ok_or_else(|| error(Code::LimitExceeded, "reference limit exceeded"))?;
-            if self.references > self.limits.xml.max_references {
-                return Err(error(Code::LimitExceeded, "reference limit exceeded"));
-            }
+            self.references.reserve(1)?;
         }
         self.check(attributes.len())?;
-        self.characters = self
-            .characters
-            .checked_add(references)
-            .ok_or_else(|| error(Code::LimitExceeded, "character reference limit exceeded"))?;
-        if self.characters > self.limits.xml.max_character_references {
-            return Err(error(
-                Code::LimitExceeded,
-                "character reference limit exceeded",
-            ));
-        }
+        self.characters.reserve(references)?;
         let mut inherited = self
             .frames
             .last()
@@ -54,35 +39,11 @@ impl Parser<'_> {
         inherited.extend(namespaces);
         let namespace = inherited.get(prefix).map(String::as_str);
         if self.frames.is_empty() {
-            if self.root_seen {
-                return Err(error(
-                    Code::InvalidXml,
-                    "LandXML document has multiple roots",
-                ));
-            }
-            if local != "LandXML" {
-                return Err(error(Code::InvalidSemantic, "root element is not LandXML"));
-            }
-            let capability = classify_landxml_version(namespace, attr(&attributes, "version"));
-            if !capability.supports_tin_ingestion() {
-                return Err(match capability {
-                    LandXmlVersionCapability::NotLandXml => error(
-                        Code::UnsupportedNamespace,
-                        "root namespace is not a recognized LandXML namespace",
-                    ),
-                    _ => error(
-                        Code::UnsupportedVersion,
-                        "COGO and plan parsing requires a supported LandXML namespace and version",
-                    ),
-                });
-            }
-            self.schema = capability
-                .schema()
-                .expect("supported capability has a schema")
-                .to_owned();
-            self.version = attr(&attributes, "version").unwrap_or_default().to_owned();
-            if let Some(diagnostic) = compatibility_version_diagnostic(capability, &self.version) {
-                self.capability_diagnostics.push(diagnostic);
+            let root = crate::parser::validate_root(self.root_seen, local, namespace, &attributes)?;
+            self.schema = root.schema;
+            self.version = root.version;
+            if let Some(diagnostic) = root.diagnostic {
+                self.record_capability_diagnostic(diagnostic)?;
             }
             self.target_namespace = namespace.map(str::to_owned);
             self.root_seen = true;
@@ -110,7 +71,7 @@ impl Parser<'_> {
                 .as_deref()
                 .map(area_scale)
                 .transpose()?
-                .or(Some(declared_units.linear_scale_to_meters.powi(2)));
+                .or(Some(crate::semantics::square_scale(&declared_units)));
             self.units = Some(declared_units);
         }
         let legal_cg_points = self.path(&["LandXML", "CgPoints"])
@@ -306,27 +267,17 @@ impl Parser<'_> {
         self.check(bytes.len())?;
         let value =
             std::str::from_utf8(bytes).map_err(|_| error(Code::InvalidXml, "text is not UTF-8"))?;
+        self.characters.reserve(character_references(value))?;
         if self.frames.is_empty() {
-            if value.bytes().all(is_xml_s) {
-                return Ok(());
-            }
-            return Err(error(Code::InvalidXml, "text outside LandXML root"));
+            return crate::xml::outside_root_text(self.root_seen, value, false);
         }
-        self.characters = self
-            .characters
-            .checked_add(character_references(value))
-            .ok_or_else(|| error(Code::LimitExceeded, "character reference limit exceeded"))?;
-        if self.characters > self.limits.xml.max_character_references {
-            return Err(error(
-                Code::LimitExceeded,
-                "character reference limit exceeded",
-            ));
-        }
+        // Resolve before the capture check: an undeclared entity is refused
+        // wherever it appears, as in an attribute value (#7680).
+        let text = unescape(value)?;
         if let Some(capture) = &mut self.capture {
             if capture.depth() != self.frames.len() {
                 return Ok(());
             }
-            let text = unescape(value)?;
             let target = match capture {
                 Capture::CgPoint { text, .. }
                 | Capture::Monument { text, .. }
@@ -350,7 +301,7 @@ impl Parser<'_> {
         let value =
             std::str::from_utf8(bytes).map_err(|_| error(Code::InvalidXml, "text is not UTF-8"))?;
         if self.frames.is_empty() {
-            return Err(error(Code::InvalidXml, "CDATA outside LandXML root"));
+            return crate::xml::outside_root_text(self.root_seen, value, true);
         }
         self.capture_literal_text(value)
     }
@@ -374,8 +325,4 @@ impl Parser<'_> {
         }
         Ok(())
     }
-}
-
-fn is_xml_s(byte: u8) -> bool {
-    matches!(byte, b' ' | b'\t' | b'\r' | b'\n')
 }

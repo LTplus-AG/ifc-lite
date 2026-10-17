@@ -9,6 +9,7 @@ mod fragments;
 mod lifecycle;
 pub(crate) mod metadata;
 mod output;
+mod record_wire;
 mod token;
 pub use lifecycle::LandXmlMetadataStreamAssembler;
 
@@ -61,6 +62,8 @@ pub struct LandXmlTinStreamSession {
     metadata_cursor: Option<metadata::MetadataCursor>,
     pending_input: VecDeque<u8>,
     header_emitted: bool,
+    /// The emitted header committed to the caller's assumed unit (#7753).
+    header_assumed: bool,
     surfaces_drained: usize,
     renderable_surfaces: usize,
     preserved_surfaces: usize,
@@ -77,19 +80,21 @@ impl LandXmlTinStreamSession {
         let mut reader = Reader::from_reader(BufReader::new(feed.clone()));
         reader.config_mut().trim_text(false);
         Ok(Self {
-            parser: Some(Parser::new(&limits, None, assumed_units)),
             plan: Some(crate::plan::parser::Parser::new_stream(
                 crate::LandXmlPlanLimits {
                     xml: limits.clone(),
                     ..Default::default()
                 },
+                assumed_units.clone(),
             )),
             alignment: Some(crate::alignment::parser::Parser::new_stream(
                 crate::alignment::LandXmlAlignmentLimits {
                     xml: limits.clone(),
                     ..Default::default()
                 },
+                assumed_units.clone(),
             )),
+            parser: Some(Parser::new(&limits, None, assumed_units)),
             pipe: Some(crate::pipe_parser::PipeParser::new_stream(limits.clone())),
             reader,
             feed,
@@ -104,6 +109,7 @@ impl LandXmlTinStreamSession {
             metadata_cursor: None,
             pending_input: VecDeque::new(),
             header_emitted: false,
+            header_assumed: false,
             surfaces_drained: 0,
             renderable_surfaces: 0,
             preserved_surfaces: 0,
@@ -113,10 +119,7 @@ impl LandXmlTinStreamSession {
 
     pub fn advance(&mut self, chunk: &[u8]) -> Result<(), LandXmlError> {
         if self.closed {
-            return Err(error(
-                Code::InvalidSemantic,
-                "LandXML stream session is closed",
-            ));
+            return Err(error(Code::InvalidSemantic, "LandXML stream session is closed"));
         }
         if chunk.len() > MAX_LANDXML_STREAM_INPUT_CHUNK_BYTES {
             return Err(error(Code::InputTooLarge, "input chunk exceeds byte limit"));
@@ -127,9 +130,11 @@ impl LandXmlTinStreamSession {
                 "stream output must be drained before advancing input",
             ));
         }
-        self.pending_input.extend(self.decoder.push(chunk)?);
-        self.consume_pending_input()?;
-        Ok(())
+        let parsed = self.decoder.push(chunk).and_then(|bytes| {
+            self.pending_input.extend(bytes);
+            self.consume_pending_input()
+        });
+        self.close_on_error(parsed)
     }
 
     pub fn drain(&mut self, max_bytes: usize) -> Result<Vec<LandXmlStreamEvent>, LandXmlError> {
@@ -154,8 +159,8 @@ impl LandXmlTinStreamSession {
             self.queued_bytes -= queued.serialized_bytes;
             events.push(queued.event);
         }
-        self.resume_after_drain()?;
-        Ok(events)
+        let resumed = self.resume_after_drain();
+        self.close_on_error(resumed).map(|()| events)
     }
 
     /// Finalize parsing and begin credited metadata delivery.
@@ -165,18 +170,19 @@ impl LandXmlTinStreamSession {
     /// the finalized family documents.
     pub fn finish_cursor(&mut self) -> Result<(), LandXmlError> {
         if self.closed {
-            return Err(error(
-                Code::InvalidSemantic,
-                "LandXML stream session is closed",
-            ));
+            return Err(error(Code::InvalidSemantic, "LandXML stream session is closed"));
         }
-        self.decoder.finish()?;
+        let decoded = self.decoder.finish();
+        self.close_on_error(decoded)?;
+        // Undrained output is recoverable (drain, then retry); other errors close.
         if self.output_pending() || !self.pending_input.is_empty() {
-            return Err(error(
-                Code::LimitExceeded,
-                "stream output must be drained before finalization",
-            ));
+            return Err(error(Code::LimitExceeded, "stream output must be drained before finalization"));
         }
+        let finished = self.finish_document();
+        self.close_on_error(finished)
+    }
+
+    fn finish_document(&mut self) -> Result<(), LandXmlError> {
         if !self.token.is_empty() {
             self.emit_token()?;
         }
@@ -194,17 +200,17 @@ impl LandXmlTinStreamSession {
         let terrain = self.parser.take().expect("open parser").finish()?;
         let plan = self.plan.take().expect("open plan parser");
         if plan.has_open_frames() {
-            return Err(error(Code::InvalidXml, "unclosed plan XML element"));
+            return Err(error(Code::InvalidXml, "unclosed XML element"));
         }
         let plan = plan.document();
         let alignment = self.alignment.take().expect("open alignment parser");
         if alignment.has_open_frames() {
-            return Err(error(Code::InvalidXml, "unclosed alignment XML element"));
+            return Err(error(Code::InvalidXml, "unclosed XML element"));
         }
         let alignment = alignment.finish()?;
         let pipe = self.pipe.take().expect("open pipe parser");
         if pipe.has_open_frames() {
-            return Err(error(Code::InvalidXml, "unclosed pipe XML element"));
+            return Err(error(Code::InvalidXml, "unclosed XML element"));
         }
         let (pipe, preflight_refusal_batches, has_pipe_networks) =
             pipe.finish_stream_with_preflight()?;
@@ -278,7 +284,9 @@ impl LandXmlTinStreamSession {
                     return Err(error(Code::DtdForbidden, "DOCTYPE is not allowed"));
                 }
                 let complete = if self.token.starts_with(b"<!--") {
-                    self.token.ends_with(b"-->")
+                    // `<!-->` and `<!--->` are not complete: the terminator is
+                    // searched after the opener, which they would overlap.
+                    self.token.len() >= b"<!---->".len() && self.token.ends_with(b"-->")
                 } else if self.token.starts_with(b"<![CDATA[") {
                     self.token.ends_with(b"]]>")
                 } else if self.token.starts_with(b"<?") {
@@ -345,49 +353,48 @@ impl LandXmlTinStreamSession {
             let event = self.reader.read_event_into(&mut buffer).map_err(|value| {
                 error(Code::InvalidXml, format!("malformed XML token: {value}"))
             })?;
-            if matches!(event, Event::Comment(_)) {
-                // Text tokens leave a padding comment in the reader to stop
-                // quick-xml waiting for the next chunk. A real XML comment
-                // is also a complete legal token. Keep consuming in case an
-                // earlier padding comment precedes this token; EOF after only
-                // comments is the legitimate standalone-comment case.
-                consumed_comment = true;
-                buffer.clear();
-                continue;
-            }
-            if comment_token && consumed_comment && matches!(event, Event::PI(_)) {
-                return self.emit_header_and_surfaces();
-            }
-            if matches!(event, Event::Eof) {
-                if consumed_comment {
-                    return self.emit_header_and_surfaces();
+            match event {
+                // #7680 EDGE-LXPARSE-3: one text token can be several events
+                // (`1&#46;5` is Text, GeneralRef, Text), so a text token is
+                // consumed through its own padding comment. Stopping after
+                // its first event left the reader lagging for the rest of the
+                // document. A text token holds no `<`, so its only comment is
+                // that pad, and no pad is ever left for a later token.
+                Event::Comment(_) if text_token => break,
+                // A real XML comment is a complete legal token, followed by
+                // its padding processing instruction.
+                Event::Comment(_) => consumed_comment = true,
+                Event::PI(_) if comment_token && consumed_comment => break,
+                // EOF after only comments is the legitimate standalone-comment case.
+                Event::Eof if consumed_comment => break,
+                Event::Eof => {
+                    return Err(error(
+                        Code::InvalidXml,
+                        format!("XML reader ended while consuming token {token_debug:?}"),
+                    ));
                 }
-                return Err(error(
-                    Code::InvalidXml,
-                    format!("XML reader ended while consuming token {token_debug:?}"),
-                ));
+                event => {
+                    self.dispatch_event(event)?;
+                    if !text_token {
+                        break;
+                    }
+                }
             }
-            self.parser().consume_event(event.clone())?;
-            self.plan
-                .as_mut()
-                .expect("open plan parser")
-                .consume_event(event.clone())?;
-            self.alignment
-                .as_mut()
-                .expect("open alignment parser")
-                .consume_event(event.clone())?;
-            self.pipe
-                .as_mut()
-                .expect("open pipe parser")
-                .consume_event(event)?;
-            break;
+            buffer.clear();
         }
         self.emit_header_and_surfaces()
     }
-}
 
-impl Drop for LandXmlTinStreamSession {
-    fn drop(&mut self) {
-        self.abort();
+    /// Every family parser sees every event of the one canonical reader.
+    fn dispatch_event(&mut self, event: Event<'_>) -> Result<(), LandXmlError> {
+        self.parser().consume_event(event.clone())?;
+        let plan = self.plan.as_mut().expect("open plan parser");
+        plan.consume_event(event.clone())?;
+        let alignment = self.alignment.as_mut().expect("open alignment parser");
+        alignment.consume_event(event.clone())?;
+        self.pipe
+            .as_mut()
+            .expect("open pipe parser")
+            .consume_event(event)
     }
 }

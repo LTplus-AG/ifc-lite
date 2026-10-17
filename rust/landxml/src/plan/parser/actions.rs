@@ -61,13 +61,7 @@ impl Parser<'_> {
         Ok(())
     }
     pub(super) fn begin_geometry(&mut self, local: &str, attributes: Attributes) -> Result<()> {
-        if self.geometry_count >= self.limits.max_geometry {
-            return Err(error(
-                Code::LimitExceeded,
-                "CoordGeom primitive limit exceeded",
-            ));
-        }
-        self.geometry_count += 1;
+        self.geometry_seen.reserve(1)?;
         let kind = match local {
             "Line" => LandXmlGeometryKind::Line,
             "Curve" => LandXmlGeometryKind::Curve,
@@ -75,7 +69,7 @@ impl Parser<'_> {
             _ => unreachable!("element is matched above"),
         };
         let mut invalid_reason = (kind == LandXmlGeometryKind::Curve
-            && !matches!(attr(&attributes, "rot"), Some("cw" | "ccw")))
+            && !attr(&attributes, "rot").is_some_and(crate::numeric::is_rotation_token))
         .then_some("Curve rot must be cw or ccw".to_owned());
         let radius = match optional_positive(&attributes, "radius", local) {
             Ok(radius) => radius,
@@ -226,7 +220,8 @@ impl Parser<'_> {
                 let points = match points_limited(
                     &text,
                     dimension,
-                    self.limits.max_vertices - self.vertices,
+                    // `reserve_vertices` counts before it refuses (#7677).
+                    self.vertices.remaining(),
                 ) {
                     Ok(points) => points,
                     Err(error) => return self.reject_malformed_geometry(&error.message),
@@ -358,14 +353,7 @@ impl Parser<'_> {
         Ok(())
     }
     pub(super) fn reserve_vertices(&mut self, added: usize) -> Result<()> {
-        self.vertices = self
-            .vertices
-            .checked_add(added)
-            .ok_or_else(|| error(Code::LimitExceeded, "plan vertex limit exceeded"))?;
-        if self.vertices > self.limits.max_vertices {
-            return Err(error(Code::LimitExceeded, "plan vertex limit exceeded"));
-        }
-        Ok(())
+        self.vertices.reserve(added)
     }
     pub(super) fn path(&self, expected: &[&str]) -> bool {
         self.frames.len() == expected.len()
@@ -376,13 +364,18 @@ impl Parser<'_> {
                 .all(|(frame, local)| frame.target && frame.local == *local)
     }
     pub(crate) fn document(self) -> LandXmlPlanDocument {
+        // Declared `<Units>` (always with an area scale) win over the assumption.
+        let assumed_area = self
+            .assumed_units
+            .as_ref()
+            .map(crate::semantics::square_scale);
         LandXmlPlanDocument {
             schema: self.schema,
             version: self.version,
             capability_diagnostics: self.capability_diagnostics,
-            units: self.units,
+            units: self.units.or(self.assumed_units),
             area_unit: self.area_unit,
-            area_scale_to_square_meters: self.area_scale_to_square_meters,
+            area_scale_to_square_meters: self.area_scale_to_square_meters.or(assumed_area),
             cogo_points: self.cogo_points,
             monuments: self.monuments,
             plan_features: self.features,

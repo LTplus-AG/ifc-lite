@@ -1,0 +1,40 @@
+{
+ "_comment": "Shared cross-language pin for the IFCPROXY an IFC4X3 alignment or positioning product becomes below IFC4X3 (#7683, EXPORT-MERGE-8): a minted GlobalId, source attributes 1 to 6 kept verbatim, the quoted source type in Name and in ObjectType when that slot is $, then .NOTDEFINED.,$. Run by rust/export/tests/schema_upconvert_parity.rs (product_proxy_vectors_agree_with_the_shared_fixture_7683) and packages/export/src/schema-upconvert-sweep.parity.test.ts. The two twins mint the GlobalId differently (Rust from the express id, TypeScript from the source line), so both sides replace the proxy's GlobalId with <MINTED> before comparing and separately assert it is not the source one. The first two lines are the records the adversarial review found detached on Railway_Railway_project_simple_IFC4X3 (#22) and Viadotto_Acerno (#159981).",
+ "cases": [
+  {
+   "why": "Railway #22: Name, OwnerHistory, ObjectPlacement and Representation survive; ObjectType was $, so it names the source type",
+   "from": "IFC4X3",
+   "to": "IFC4",
+   "line": "#22=IFCALIGNMENT('36IvVCrEP6TQhSwdKkffij',#2,'Alignment - Axis',$,$,#24,#491,.RAIL.);",
+   "expect": "#22=IFCPROXY(<MINTED>,#2,'Alignment - Axis',$,'IFCALIGNMENT',#24,#491,.NOTDEFINED.,$);"
+  },
+  {
+   "why": "Viadotto_Acerno #159981: a referent keeps its placement and representation; PredefinedType has no IfcProxy slot",
+   "from": "IFC4X3",
+   "to": "IFC4",
+   "line": "#159981=IFCREFERENT('2_R6wSk4r15g2ozsci7ykX',#1,'Chainage_+000,00',$,$,#159982,#159985,.REFERENCEMARKER.);",
+   "expect": "#159981=IFCPROXY(<MINTED>,#1,'Chainage_+000,00',$,'IFCREFERENT',#159982,#159985,.NOTDEFINED.,$);"
+  },
+  {
+   "why": "an authored ObjectType is kept, not overwritten with the type name",
+   "from": "IFC4X3",
+   "to": "IFC4",
+   "line": "#5=IFCLINEARELEMENT('1K5H1$Zs9CQuKQFQKQFQKQ',#1,'L','desc','Axis line',#6,#7);",
+   "expect": "#5=IFCPROXY(<MINTED>,#1,'L','desc','Axis line',#6,#7,.NOTDEFINED.,$);"
+  },
+  {
+   "why": "the same rule on an IFC2X3 target, for one of the four alignment types that were always proxied",
+   "from": "IFC4X3",
+   "to": "IFC2X3",
+   "line": "#3=IFCALIGNMENTSEGMENT('2K5H1$Zs9CQuKQFQKQFQKQ',#1,'Seg',$,$,#7,$,#9);",
+   "expect": "#3=IFCPROXY(<MINTED>,#1,'Seg',$,'IFCALIGNMENTSEGMENT',#7,$,.NOTDEFINED.,$);"
+  },
+  {
+   "why": "an unnamed source gets the quoted type as Name, because IfcProxy WR1 requires Name (IFC4 and IFC2X3)",
+   "from": "IFC4X3",
+   "to": "IFC4",
+   "line": "#453=IFCALIGNMENTSEGMENT('3K5H1$Zs9CQuKQFQKQFQK',#2,$,$,$,#455,$,#9);",
+   "expect": "#453=IFCPROXY(<MINTED>,#2,'IFCALIGNMENTSEGMENT',$,'IFCALIGNMENTSEGMENT',#455,$,.NOTDEFINED.,$);"
+  }
+ ]
+}

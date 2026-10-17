@@ -163,12 +163,12 @@ impl GeoReference {
     /// parse time by every extraction path.
     ///
     /// A direction with no usable length (both components authored `0.`, or
-    /// a non-finite component reaching here from the ePSet path) is reset to
+    /// two finite components whose `hypot` overflows) is reset to
     /// the identity `(1, 0)`, the angle the TS twin's `atan2(0, 0)` gives.
     /// Passed through, `(0, 0)` collapsed every map coordinate to
     /// `(Eastings, Northings)` and an infinite length divided into NaN. An
-    /// `IfcMapConversion` with a non-finite component never gets here:
-    /// `parse_map_conversion` refuses it whole.
+    /// `IfcMapConversion` or ePSet with a non-finite placement component never
+    /// gets here: both extractors refuse the placement whole (#7678).
     ///
     /// `Scale` and `FactorX/Y/Z` follow the same rule: zero collapses every
     /// coordinate onto the translation and a non-finite value poisons it, so
@@ -358,8 +358,11 @@ impl GeoRefExtractor {
         // Parse IfcMapConversion
         // Attributes: SourceCRS, TargetCRS, Eastings, Northings, OrthogonalHeight,
         //             XAxisAbscissa, XAxisOrdinate, Scale
+        // Lossless (#7678): an overflowing component must reach the
+        // whole-conversion refusal in `parse_map_conversion`, not refuse the
+        // record and with it the CRS fallbacks below.
         if let Some(id) = map_conversion_id {
-            Self::parse_map_conversion(&decoder.decode_by_id(id)?, &mut georef);
+            Self::parse_map_conversion(&decoder.decode_by_id_lossless(id)?, &mut georef);
         }
 
         // Parse IfcProjectedCRS
@@ -523,8 +526,10 @@ impl GeoRefExtractor {
                             .and_then(|attr| attr.as_string())
                             .map(|n| n.trim_matches('\'').trim().to_ascii_uppercase());
                         // The name table first (it carries the exact defined
-                        // ratios, e.g. the US survey foot's 1200/3937), then
-                        // the file's own declared factor for an unknown name.
+                        // ratios of FOOT, INCH, YARD and MILE; the US survey
+                        // foot is NOT in it, so a conversion-based 'US SURVEY
+                        // FOOT' reads its authored factor, CORE-27), then the
+                        // file's own declared factor for an unknown name.
                         let scale = name
                             .as_deref()
                             .and_then(crate::units::get_conversion_based_unit_factor)

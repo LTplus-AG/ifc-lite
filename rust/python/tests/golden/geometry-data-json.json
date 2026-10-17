@@ -1,0 +1,22 @@
+{
+  "about": "FNV-1a 64 and byte length of each geometry-data-json output, keyed by case. Written by rust/python/tests/test_golden.py, never by hand.",
+  "repin": "IFC_LITE_REPIN_GOLDEN=1 python -m pytest rust/python/tests/test_golden.py",
+  "cases": {
+    "bath_csg_solid": {
+      "fnv1a64": "c62e86a556455123",
+      "bytes": 6218
+    },
+    "issue_098_wall_V5C": {
+      "fnv1a64": "af9bfdcdfbb53e30",
+      "bytes": 74005
+    },
+    "mapped_instances_synthetic": {
+      "fnv1a64": "4088061bad233244",
+      "bytes": 23736
+    },
+    "swept_disk_composite_arc_ubar+directrices": {
+      "fnv1a64": "1a854adf86fe6324",
+      "bytes": 49121
+    }
+  }
+}

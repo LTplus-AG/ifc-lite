@@ -31,7 +31,7 @@ describe('effective georeferencing', () => {
     const merged = mergeProjectedCRS(original, { mapUnit: 'US SURVEY FOOT' }, 1);
 
     assert.strictEqual(merged?.mapUnit, 'US SURVEY FOOT');
-    assert.strictEqual(merged?.mapUnitScale, 0.3048006096);
+    assert.strictEqual(merged?.mapUnitScale, 1200 / 3937);
   });
 
   it('preserves the extracted map unit scale when MapUnit was not edited', () => {
@@ -333,8 +333,8 @@ END-ISO-10303-21;
     // The survey-foot branch is tested before FOOT because 'US SURVEY FOOT'
     // matches both; reversing the two makes it 0.3048 and moves a state-plane
     // site by ~2 ppm, which is metres over a survey grid.
-    assert.strictEqual(inferMapUnitScale('US SURVEY FOOT'), 0.3048006096);
-    assert.strictEqual(inferMapUnitScale('FTUS'), 0.3048006096);
+    assert.strictEqual(inferMapUnitScale('US SURVEY FOOT'), 1200 / 3937);
+    assert.strictEqual(inferMapUnitScale('FTUS'), 1200 / 3937);
     assert.notStrictEqual(inferMapUnitScale('US SURVEY FOOT'), inferMapUnitScale('FOOT'));
   });
 

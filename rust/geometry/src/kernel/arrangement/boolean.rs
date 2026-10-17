@@ -157,6 +157,10 @@ fn point_via_interner(it: &Interner, v: Vid) -> [f64; 3] {
 /// [`difference_all`] does — see [`boolean_with_conformity`], which computes
 /// the identical result and additionally surfaces that signal for callers
 /// that want it (diagnostics; issue #3353's classification-level tear).
+///
+/// An operand past [`super::MAX_OPERAND_COORD`] (or non-finite) is refused:
+/// the result is empty and [`boolean_with_conformity`] reports `false`
+/// (#7677). Never a wrong solid.
 pub fn boolean(a: &[Tri], b: &[Tri], op: BoolOp) -> Vec<Tri> {
     boolean_with_conformity(a, b, op).0
 }
@@ -222,7 +226,9 @@ pub fn difference_all(a: &[Tri], comps: &[&[Tri]]) -> Option<(Vec<Tri>, bool)> {
 /// faceted-reveal walls (issue #098), but its centroid classification can
 /// over/under-cut volume, so the caller (`subtract_many`) VERIFIES the removed
 /// volume against a sequential reference before trusting it. The second
-/// element is the same `changed` bit [`difference_all`] returns.
+/// element is the same `changed` bit [`difference_all`] returns. On a pair the
+/// admission check refuses it returns empty with `changed == false`; callers
+/// must check conformity (see [`difference_all_lenient_with_conformity`]).
 pub fn difference_all_lenient(a: &[Tri], comps: &[&[Tri]]) -> (Vec<Tri>, bool) {
     let (tris, changed, _) = difference_all_lenient_with_conformity(a, comps);
     (tris, changed)
@@ -267,14 +273,13 @@ pub fn boolean_topology_hash(a: &[Tri], b: &[Tri], op: BoolOp) -> u64 {
     let mut tris: Vec<[Vid; 3]> =
         boolean_vids(&arr, a, b, op).into_iter().map(rotate_min_first).collect();
     tris.sort_unstable();
-    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    let mut h = ifc_lite_core::hash::Fnv1a64::new();
     for t in tris {
         for v in t {
-            h ^= v as u64;
-            h = h.wrapping_mul(0x0000_0100_0000_01b3);
+            h.mix_word(v as u64);
         }
     }
-    h
+    h.finish()
 }
 
 /// Axis-aligned box `[lo,hi]` as 12 outward-wound triangles.

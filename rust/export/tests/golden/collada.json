@@ -1,0 +1,38 @@
+{
+  "about": "FNV-1a 64 and byte length of each collada output, keyed by case. Written by ifc-lite-export, never by hand.",
+  "repin": "IFC_LITE_REPIN_GOLDEN=1 cargo test -p ifc-lite-export --features parquet-bos --test export_golden -- --exact collada",
+  "cases": {
+    "AC20-FZK-Haus": {
+      "fnv1a64": "221201e50a6773bc",
+      "bytes": 1846423
+    },
+    "IfcOpenHouse_IFC4": {
+      "fnv1a64": "ff20ba47b10613aa",
+      "bytes": 139342
+    },
+    "bath_csg_solid": {
+      "fnv1a64": "20866c77f76ef803",
+      "bytes": 11499
+    },
+    "bonsai-terrain": {
+      "fnv1a64": "0e6dd9447b2c0454",
+      "bytes": 2859
+    },
+    "c6_data_model_synthetic": {
+      "fnv1a64": "4cec1a718daebe2a",
+      "bytes": 3689
+    },
+    "duplex": {
+      "fnv1a64": "99f1667505adbc7d",
+      "bytes": 2671602
+    },
+    "mapped_instances_synthetic": {
+      "fnv1a64": "d8565048a861cae8",
+      "bytes": 50792
+    },
+    "wall_two_openings": {
+      "fnv1a64": "8d5e53cb6e202911",
+      "bytes": 12851
+    }
+  }
+}

@@ -41,7 +41,7 @@
 import type { IfcAttributeValue } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { filterHiddenRefsFromRelationshipLine } from './reference-collector.js';
-import { convertStepLine } from './schema-converter.js';
+import { convertStepLineFlattening } from './schema-style-flatten.js';
 import { STYLE_RESCUE_TYPES } from './style-closure.js';
 import { NONREL_REF_LIST_TYPES } from './nonrel-ref-list-types.js';
 import { narrowNonRelPositionalRefLists } from './nonrel-positional-ref-narrowing.js';
@@ -57,6 +57,8 @@ import type { ExportPass, StepExportOptions } from './step-exporter.js';
  */
 export interface OverlayEntitiesContext {
   readonly mutationView: MutablePropertyView | null;
+  /** Whether the SOURCE file has a record with this id (#7682). */
+  readonly isSourceRecord: (id: number) => boolean;
   /** `step-overlay-attribute-overrides.ts`'s `applyOverlayEntityOverrides`: resolves
    *  named/positional overrides against the overlay-created entity's
    *  EFFECTIVE class. */
@@ -100,15 +102,23 @@ export function writeOverlayCreatedEntities(
   ) {
     return;
   }
+  refuseCreatedIdsReusingSourceIds(ctx.mutationView, ctx.isSourceRecord);
   const getTypeMut = typeof ctx.mutationView.getEntityTypeMutation === 'function'
     ? ctx.mutationView.getEntityTypeMutation.bind(ctx.mutationView)
     : null;
+  const toConvert: string[] = [];
   for (const entity of ctx.mutationView.getNewEntities()) {
     if (pass.skipRelationshipIds.has(entity.expressId) || pass.skipPropertySetIds.has(entity.expressId)) continue;
     // A retyped overlay entity keeps its AUTHORED type on `entity.type`
     // (the overlay typeMutation is the source of truth for the effective
     // class). Resolve the effective class, then re-lay-out the authored
     // attributes from the authored layout up to it.
+    // The authored class becomes the record's keyword verbatim, so it is held
+    // to the name `setEntityType` accepts: anything else (`IfcWall($);\n#1=…`)
+    // would write records the caller never created (#7682, EXPORT-STEP-26).
+    if (!/^[Ii][Ff][Cc][A-Za-z][A-Za-z0-9_]*$/.test(entity.type)) {
+      throw new Error(`created entity #${entity.expressId}: "${entity.type}" is not a recognizable IFC entity name`);
+    }
     const typeMut = getTypeMut ? getTypeMut(entity.expressId) : null;
     const effectiveType = typeMut?.newType ?? entity.type;
     // STEP requires UPPERCASE entity type tokens; the upper-case happens
@@ -220,13 +230,37 @@ export function writeOverlayCreatedEntities(
     } else if (mayNameOmittedRefs && NONREL_REF_LIST_TYPES.has(upperType)) {
       line = narrowNonRelPositionalRefLists(line, isOmittedFromOutput, upperType, pass.sourceSchema);
     }
-    if (pass.converting) {
-      const converted = convertStepLine(line, pass.sourceSchema, pass.schema, options.guidRandom, pass.slotFill, pass.withheldRefIds, pass.ifc4Slots, pass.enums);
-      if (converted !== null) pass.entities.push(converted);
-      pass.newEntityCount++;
-    } else {
-      pass.entities.push(line);
-      pass.newEntityCount++;
-    }
+    // Converted after the loop: a created style assignment may follow the styled item naming it.
+    (pass.converting ? toConvert : pass.entities).push(line);
+    pass.newEntityCount++;
+  }
+  for (const line of toConvert) pass.styleFlatten?.noteLine(line);
+  pass.styleFlatten?.settle();
+  for (const line of toConvert) {
+    const converted = convertStepLineFlattening(pass.styleFlatten, line, pass.sourceSchema, pass.schema, options.guidRandom, pass.slotFill, pass.withheldRefIds, pass.ifc4Slots, pass.enums);
+    if (converted !== null) pass.entities.push(converted);
+  }
+}
+
+/**
+ * A created entity never reuses a source id (`express-id-watermark.ts`
+ * allocates past the file's highest one), so a session that created one under
+ * a source id, even one it deleted again, replayed a log written against
+ * another file. Writing either record would silently drop the other, and the
+ * later delete of the created one would tombstone the source record (#7682,
+ * EXPORT-STEP-26). A created-then-deleted entity is the tombstoned id the view
+ * reports no change for (`hasChanges` forgets it, see `deleteEntity`). The
+ * Rust writer refuses the same logs with the same message.
+ */
+function refuseCreatedIdsReusingSourceIds(view: MutablePropertyView, isSourceRecord: (id: number) => boolean): void {
+  const created = view.getNewEntities().map((entity) => entity.expressId);
+  const history = typeof view.getMutations === 'function' ? view.getMutations() : [];
+  for (const mutation of history) {
+    const id = mutation.entityId;
+    if (mutation.type === 'DELETE_ENTITY' && view.isDeleted(id) && !view.hasChanges(id)) created.push(id);
+  }
+  const reused = created.find((id) => isSourceRecord(id));
+  if (reused !== undefined) {
+    throw new Error(`created entity #${reused} reuses source id #${reused}: the log was not written against this file`);
   }
 }

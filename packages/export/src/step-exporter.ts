@@ -18,8 +18,9 @@ import { getCompleteEntityIndex, getMaxExpressId } from './entity-iteration.js';
 import { createSourceRefReader } from './source-ref-bounds.js';
 import { writeSourceEntityLines } from './step-source-iteration.js';
 import { writeOverlayCreatedEntities } from './step-overlay-entities.js';
-import { generatePropertyAndQuantitySetEntities } from './step-property-sets.js';
+import { convertAppendedLines, generatePropertyAndQuantitySetEntities } from './step-property-sets.js';
 import {
+  allocatedExpressId,
   resolveFallbackOwnerHistoryRef,
   type OwnerHistoryCache,
   type PropertySetContext,
@@ -202,6 +203,8 @@ export class StepExporter {
       throw new Error('Map geometry normalization requires a full geometry export to the source IFC4 or IFC4X3 schema.');
     }
     collectModifications(pass, options, applyMutations, this.collectionContext());
+    // Edited source style assignments reach the D57 flatten before any styled item is written (#7801).
+    pass.styleFlatten?.noteEdited(this.dataStore, (id, text) => { const t = applySourceLineMutations(this.mutationView, id, text, 'IFCPRESENTATIONSTYLEASSIGNMENT', pass.modifiedAttributes.get(id), pass.sourceSchema, pass.overlayActive).text; return t === text ? null : t; });
 
     // Which ids this export may still NAME, now that the collection phase has
     // decided which ids it is WRITING (#2475). Must stay here, between those
@@ -235,14 +238,11 @@ export class StepExporter {
     // just below — after the quantity-set loop inside it, as it always was.
     generatePropertyAndQuantitySetEntities(pass, options, this.propertySetContext());
 
-    for (const rewrittenLine of pass.rewrittenEntityLines.values()) {
-      pass.entities.push(rewrittenLine);
-    }
-
-    // Add new georeferencing entities (IfcProjectedCRS, IfcMapConversion)
-    for (const line of pass.newGeorefLines) {
-      pass.entities.push(line);
-    }
+    // The rewritten type-object lines, then the new georeferencing entities
+    // (IfcProjectedCRS, IfcMapConversion), through the one emit path every
+    // appended record takes, so a converting export converts them (#7682).
+    pass.entities.push(...convertAppendedLines(pass, options, [...pass.rewrittenEntityLines.values()]));
+    pass.entities.push(...convertAppendedLines(pass, options, pass.newGeorefLines));
 
     // Add overlay-created entities (store.addEntity / mutationView.createEntity),
     // applying the same filters as the source-iteration pass (#2475 step 2e).
@@ -253,11 +253,11 @@ export class StepExporter {
       applyMutations,
       mayNameOmittedRefs,
       isOmittedFromOutput,
-      buildOverlayEntitiesContext(this.mutationView),
+      buildOverlayEntitiesContext(this.dataStore, this.mutationView),
     );
 
     // Complete map metadata adaptation before optional Rust planning and assembly.
-    normalizeCoordinateMetadata(pass, options, () => this.nextExpressId++);
+    normalizeCoordinateMetadata(pass, options, () => allocatedExpressId(this.nextExpressId++));
     return { pass };
   }
 
@@ -318,7 +318,7 @@ export class StepExporter {
     return {
       dataStore: this.dataStore,
       entityExtractor: this.entityExtractor,
-      allocateExpressId: () => this.nextExpressId++,
+      allocateExpressId: () => allocatedExpressId(this.nextExpressId++),
       deltaOnly,
     };
   }
@@ -346,7 +346,7 @@ export class StepExporter {
       entityExtractor: this.entityExtractor,
       mutationView: this.mutationView,
       isReadableSourceRef: this.isReadableSourceRef,
-      allocateExpressId: () => this.nextExpressId++,
+      allocateExpressId: () => allocatedExpressId(this.nextExpressId++),
       ownerHistory: this.ownerHistory,
       applySourceLineMutations: (expressId, entityText, recordType, attributeMutations, sourceSchema, overlayActive, onRejected) =>
         applySourceLineMutations(this.mutationView, expressId, entityText, recordType, attributeMutations, sourceSchema, overlayActive, onRejected),

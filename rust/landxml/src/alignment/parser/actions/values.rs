@@ -64,11 +64,7 @@ pub(super) fn radius(value: &str) -> Result<LandXmlRadius> {
 }
 
 pub(super) fn rotation(value: &str) -> Result<LandXmlRotation> {
-    match value {
-        "cw" => Ok(LandXmlRotation::Clockwise),
-        "ccw" => Ok(LandXmlRotation::CounterClockwise),
-        _ => Err(invalid("rotation must be cw or ccw")),
-    }
+    crate::numeric::rotation_from_token(value).ok_or_else(|| invalid("rotation must be cw or ccw"))
 }
 
 pub(super) fn plan_point(text: &str) -> Result<LandXmlPlanPoint> {

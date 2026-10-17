@@ -209,7 +209,8 @@ export function inferMapUnitScale(
   if (!mapUnit) return fallback;
   const normalized = mapUnit.toUpperCase();
   if (normalized.includes('US') && (normalized.includes('SURVEY') || normalized.includes('FTUS'))) {
-    return 0.3048006096;
+    // 1200/3937 m exactly, the parser's and Rust core's one value (#7775).
+    return 1200 / 3937;
   }
   if (normalized.includes('FOOT') || normalized.includes('FEET')) return 0.3048;
   if (normalized.includes('MILLI')) return 0.001;

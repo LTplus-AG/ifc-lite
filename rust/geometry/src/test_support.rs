@@ -18,18 +18,8 @@ use std::time::Duration;
 /// bit patterns (the extrusion and T-junction repair tests, #5313).
 #[cfg(test)]
 pub(crate) fn open_edges(m: &crate::Mesh) -> usize {
-    let key = |i: u32| {
-        let b = i as usize * 3;
-        [m.positions[b].to_bits(), m.positions[b + 1].to_bits(), m.positions[b + 2].to_bits()]
-    };
-    let mut edges: std::collections::HashMap<_, u32> = std::collections::HashMap::new();
-    for t in m.indices.chunks_exact(3) {
-        for (a, b) in [(t[0], t[1]), (t[1], t[2]), (t[2], t[0])] {
-            let (ka, kb) = (key(a), key(b));
-            *edges.entry(if ka < kb { (ka, kb) } else { (kb, ka) }).or_insert(0) += 1;
-        }
-    }
-    edges.values().filter(|&&c| c != 2).count()
+    use crate::mesh_check::{Degenerate, EdgeLedger, VertexKey};
+    EdgeLedger::build(m, VertexKey::Bits, Degenerate::SkipEdge).undirected_defects()
 }
 
 /// Receive one value from a watchdogged worker, or panic with the diagnosis

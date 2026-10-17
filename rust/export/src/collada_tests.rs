@@ -234,6 +234,22 @@ fn translucent_material_emits_transparency() {
     assert!(xml.contains("opaque=\"A_ONE\""));
 }
 
+/// #7777: one colour-key rule across glTF/COLLADA/USD. 1.5 and 1.0 red clamp to
+/// the same bucket, so the two meshes share one material, and a non-finite
+/// channel buckets as 0 instead of splitting on `NaN != NaN`-style saturation.
+#[test]
+fn out_of_gamut_and_non_finite_colours_share_the_clamped_material_bucket() {
+    let positions = vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 1.0];
+    let normals: Vec<f32> = std::iter::repeat_n([0.0f32, 1.0, 0.0], 6).flatten().collect();
+    let xml = String::from_utf8(try_export_collada_from_meshes(
+        &positions, &normals, &[0, 1, 2, 0, 1, 2], &[3, 3], &[3, 3],
+        &[1.5, 0.5, 0.5, 1.0, 1.0, 0.5, 0.5, 1.0], &[0.0, 0.0, 0.0],
+    ).expect("has geometry"))
+    .unwrap();
+    assert!(xml.contains("#mat0"));
+    assert!(!xml.contains("#mat1"), "1.5 and 1.0 share a bucket:\n{xml}");
+}
+
 // ── Composed KMZ orientation invariant (#2554 / PR #2628) ──────────────────────
 //
 // `kmz_tests.rs::heading_matches_ifc_convention` and this file's own
@@ -279,7 +295,7 @@ fn composed_orientation_reproduces_ifc_bearing() {
         // Half 2 (collada.rs, real code path): the mesh's local +X ("east" at
         // heading = 0, per kmz.rs's doc comment) converted from the Y-up mesh
         // frame the exporter receives into the Z-up frame the .dae declares.
-        let zup = to_zup(1.0, 0.0, 0.0);
+        let zup = ifc_lite_geometry::math::frame::yup_to_zup([1.0, 0.0, 0.0]);
 
         // Compose: apply the KML heading as Google Earth does — a clockwise
         // rotation, about the vertical axis, of the Z-up model whose (X, Y)

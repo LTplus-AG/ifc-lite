@@ -71,6 +71,10 @@ try {
 }
 ```
 
+## Headless backend capabilities and lifetime
+
+The [headless model session](scripting-sdk.md#open-a-headless-model) reports `capability(operation)` before invocation. Unavailable session operations throw `UnsupportedOperationError` with `code: 'UNSUPPORTED_OPERATION'`, `operation`, and `reason`. Calls through a closed session backend throw `HeadlessSessionClosedError` with `code: 'SESSION_CLOSED'`. These errors are exported from `@ifc-lite/sdk/headless`. They do not replace native input/schema errors or promise that a configured geometry provider will run successfully.
+
 ## Memory management (WASM)
 
 Memory is managed manually across the WASM boundary. Every handle, mesh,

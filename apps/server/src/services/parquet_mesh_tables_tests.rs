@@ -272,24 +272,11 @@ fn the_streaming_writer_follows_the_layout_signal() {
 /// repeats). Asserts the v6 blob is at most 40% of the v5 one — a ceiling, so
 /// it fails if sharing stops working, not if it improves.
 ///
-/// The fixture is not in the repo; a missing one SKIPS with a message rather
-/// than passing quietly, the same shape as `beam_winding_consistency`.
+/// The fixture is not in the repo; a missing one SKIPS locally and fails under
+/// `IFC_LITE_REQUIRE_FIXTURES=1` (`ifc_lite_testkit`).
 #[test]
 fn v6_is_at_most_40_percent_of_v5_on_a_real_model() {
-    const FIXTURE: &str = "../../tests/models/ara3d/S_Office_Integrated Design Archi.ifc";
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(FIXTURE);
-    let content = match std::fs::read_to_string(&path) {
-        Ok(s) => s,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            eprintln!(
-                "skipping parquet v6 size ratchet: fixture missing at {} — run \
-                 `node scripts/fixtures/fetch-fixtures.mjs \"ara3d/S_Office_Integrated Design Archi.ifc\"`",
-                path.display()
-            );
-            return;
-        }
-        Err(e) => panic!("failed to read fixture {}: {e}", path.display()),
-    };
+    let content = ifc_lite_testkit::fixture_text_or_skip!("ara3d/S_Office_Integrated Design Archi.ifc");
 
     let result = ifc_lite_processing::process_geometry_filtered_with_quality(
         &content,

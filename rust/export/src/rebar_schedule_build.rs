@@ -32,7 +32,7 @@ pub(super) fn build_rebar_schedule_impl(
     let mut bars = BTreeMap::new();
     let mut types = HashMap::new();
     let mut unreadable_types = HashSet::new();
-    let mut type_candidates: HashMap<u32, Vec<u32>> = HashMap::new();
+    let mut type_candidates = ifc_lite_processing::data_model::type_assignments::TypeAssignments::new();
     let mut type_ref_budget = MAX_TYPE_RELATION_REFERENCES;
     let mut type_ref_budget_reported = false;
     let mut type_link_diagnostics = 0;
@@ -79,7 +79,7 @@ pub(super) fn build_rebar_schedule_impl(
                         // even its otherwise valid members.
                         for item in related {
                             let bar_id = item.as_entity_ref().expect("validated RelatedObjects member");
-                            type_candidates.entry(bar_id).or_default().push(type_id);
+                            type_candidates.record(bar_id, type_id);
                         }
                     }
                     type_ref_budget = type_ref_budget.saturating_sub(related.len());
@@ -120,11 +120,7 @@ pub(super) fn build_rebar_schedule_impl(
         let mut type_diagnostics = Vec::new();
         let mut conflicting_type_assignments = false;
         let mut nominal_diameter_conflict = false;
-        let mut seen_types = HashSet::new();
-        for candidate in type_candidates.remove(&id).unwrap_or_default() {
-            if !seen_types.insert(candidate) {
-                continue;
-            }
+        for candidate in type_candidates.candidates(id) {
             if unreadable_types.contains(&candidate) {
                 type_diagnostics.push(format!("assigned type #{candidate} could not decode"));
             } else if !types.contains_key(&candidate) {

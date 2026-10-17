@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Bounded relationship scan for selected authored quantity products.
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap};
 use ifc_lite_core::{AttributeValue, EntityDecoder, EntityScanner, IfcType};
+use ifc_lite_processing::data_model::type_assignments::{Recorded, TypeAssignments};
 use super::{Diagnostics, ProductQuantities, MAX_REF_RECORD_BYTES, MAX_REL_MEMBERS, report_once};
 
 pub(super) struct SourceRelationships {
@@ -16,8 +17,7 @@ pub(super) fn collect_relationships(
     diagnostics: &mut Diagnostics,
 ) -> SourceRelationships {
     let mut direct: HashMap<u32, Vec<u32>> = HashMap::new();
-    let mut typed: HashMap<u32, u32> = HashMap::new();
-    let mut conflicting_types = HashSet::new();
+    let mut assignments = TypeAssignments::new();
     let mut remaining_links = link_budget;
     let mut scan = EntityScanner::new(content);
     while let Some((id, name, start, end)) = scan.next_entity() {
@@ -91,19 +91,15 @@ pub(super) fn collect_relationships(
             if rel.ifc_type == IfcType::IfcRelDefinesByProperties {
                 direct.entry(product_id).or_default().extend_from_slice(&targets);
             } else {
-                if conflicting_types.contains(&product_id) { continue; }
-                match typed.get(&product_id) {
-                    Some(&first) if first != targets[0] => {
-                        typed.remove(&product_id);
-                        conflicting_types.insert(product_id);
-                        diagnostics.push(format!(
-                            "product #{product_id}: conflicting IfcRelDefinesByType assignments"));
-                    }
-                    Some(_) => {}
-                    None => { typed.insert(product_id, targets[0]); }
+                // D42: first wins and conflicts are recorded; this view's policy
+                // is that a conflicted product has no type.
+                if assignments.record(product_id, targets[0]) == Recorded::NewConflict {
+                    diagnostics.push(format!(
+                        "product #{product_id}: conflicting IfcRelDefinesByType assignments"));
                 }
             }
         }
     }
+    let typed = assignments.unambiguous().collect();
     SourceRelationships { direct, typed }
 }

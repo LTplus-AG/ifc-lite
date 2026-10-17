@@ -16,6 +16,8 @@ mod diagnostics;
 mod diagnostics_recording;
 mod frame_parts;
 mod instancing;
+mod item;
+mod item_direct;
 mod item_dedup_cache;
 mod layers;
 mod mapped_item;
@@ -702,8 +704,7 @@ impl GeometryRouter {
         decoder: &mut EntityDecoder,
     ) -> Result<[f64; 16]> {
         self.admit_placement_scale()?;
-        let mut transform = self.get_placement_transform_from_element(entity, decoder)?;
-        self.scale_transform(&mut transform);
+        let transform = self.element_world_placement(entity, decoder, false)?;
         Ok(crate::math::mat4::col_major_array(&transform))
     }
 

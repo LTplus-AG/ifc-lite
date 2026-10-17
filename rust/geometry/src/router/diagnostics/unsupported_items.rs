@@ -104,6 +104,30 @@ impl GeometryRouter {
         UnsupportedSourceScope { router: self }
     }
 
+    /// The one drop of a representation item the walks skip: counts it under
+    /// its own type (see [`Self::record_unsupported_item`]) and logs why. `what`
+    /// names the walk or item kind for the log line only.
+    pub(crate) fn drop_item(
+        &self,
+        item: &ifc_lite_core::DecodedEntity,
+        error: &crate::Error,
+        what: &str,
+    ) {
+        self.record_unsupported_item(item.ifc_type.clone());
+        let _ = (error, what);
+        crate::diag::diag_debug!(
+            { item_id = item.id, ifc_type = ?item.ifc_type, what, error = %error,
+              "skipping unsupported item" }
+            else {
+                #[cfg(debug_assertions)]
+                eprintln!(
+                    "[ifc-lite] Skipping unsupported {what} #{} ({:?}): {}",
+                    item.id, item.ifc_type, error
+                );
+            }
+        );
+    }
+
     /// Record one dropped representation item (unsupported type, or its
     /// processor errored), keyed by `IfcType`.
     ///

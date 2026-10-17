@@ -9,7 +9,7 @@
 
 use ifc_lite_core::units::{get_conversion_based_unit_factor, try_si_prefix_multiplier};
 use ifc_lite_core::{
-    decode_ifc_string, slot, AttributeValue, DecodedEntity, EntityDecoder, EntityScanner, GeoRefExtractor,
+    slot, AttributeValue, DecodedEntity, EntityDecoder, EntityScanner, GeoRefExtractor,
     GeoReference, IfcType, MAX_CONTEXT_DEPTH,
 };
 
@@ -137,7 +137,9 @@ pub(super) fn decode(decoder: &mut EntityDecoder, id: u32) -> Result<DecodedEnti
 
 /// A non-blank IFC string attribute with its STEP escapes decoded.
 pub(super) fn text(entity: &DecodedEntity, at: impl Into<slot::SlotIx<slot::kind::Text>>) -> Option<String> {
-    let value = decode_ifc_string(entity.string_at(at)?).trim().to_string();
+    // `string_at` is already decoded; decoding again read an escaped backslash
+    // as the escape it spells (CORE-16).
+    let value = entity.string_at(at)?.trim().to_string();
     (!value.is_empty()).then_some(value)
 }
 
@@ -174,4 +176,20 @@ fn length_unit_metres(unit: &DecodedEntity) -> Result<f64, String> {
     };
     metres.filter(|metres: &f64| metres.is_finite() && *metres > 0.0)
         .ok_or_else(|| format!("length unit #{} ({}) is not one the exporter can convert to metres exactly", unit.id, unit.ifc_type.name()))
+}
+
+#[cfg(test)]
+mod decode_once_tests {
+    use super::*;
+
+    /// CORE-16 (F4 M-export-b): `get_string` is already decoded, and `text`
+    /// decoded it again, so a name spelling an escape (`\\` is one backslash)
+    /// came back as the escaped character.
+    #[test]
+    fn text_is_decoded_once() {
+        let content = br"#1=IFCPROJECT('g',$,'C:\\X2\\00E9\\X0\\ \X2\00FC\X0\',$,$,$,$,$,$);";
+        let mut decoder = EntityDecoder::new(&content[..]);
+        let project = decoder.decode_by_id(1).unwrap();
+        assert_eq!(text(&project, 2).as_deref(), Some("C:\\X2\\00E9\\X0\\ \u{fc}"));
+    }
 }

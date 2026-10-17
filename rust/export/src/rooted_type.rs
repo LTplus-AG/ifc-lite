@@ -52,10 +52,8 @@ mod tests {
 
     /// The rooted-type guard plus the shared leading-GlobalId scan, exactly the
     /// composition `merged::guid::extract_global_id_fast` ships.
-    fn extract_leading_guid(type_name: &str, line: &[u8]) -> Option<String> {
-        is_rooted_type(type_name)
-            .then(|| ifc_lite_core::guid::leading_global_id(line).map(str::to_string))
-            .flatten()
+    fn extract_leading_guid(_type_name: &str, line: &[u8]) -> Option<String> {
+        crate::merged::leading_rooted_global_id(line)
     }
 
     /// The denylist-defeating case: `IFCCOLOURRGB` is not an `IfcRoot`

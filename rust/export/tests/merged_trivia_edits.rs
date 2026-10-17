@@ -40,8 +40,7 @@ fn property_model(later: bool, trivia: &str) -> String {
     ];
     if later {
         lines.push(format!("#3=IFCBUILDINGELEMENTPROXY('{DOOR}',$,'Door',$,$,$,$,$,$);"));
-        // The wall repeats too: folding must not duplicate it.
-        lines.push(format!("#11=IFCRELDEFINESBYPROPERTIES('{LATER}',$,$,$,(#2,#3),#5);"));
+        lines.push(format!("#11=IFCRELDEFINESBYPROPERTIES('{LATER}',$,$,$,(#3),#5);"));
     } else {
         // Exact retained recipe, including the '(' between '=' and keyword.
         lines.push(format!("#10={trivia}IFCRELDEFINESBYPROPERTIES('{OWNER}',$,$,$,(#2),#5);"));

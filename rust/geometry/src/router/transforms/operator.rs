@@ -144,15 +144,7 @@ pub(crate) fn parse_transformation_operator(
         None
     };
 
-    // IfcBaseAxis, 2D form: with no Axis1, an authored Axis2 fixes the frame
-    // and X is its clockwise perpendicular (Axis2.y, -Axis2.x). The 3D form
-    // derives X from Axis3 instead (IfcFirstProjAxis) and never from Axis2.
-    // The derived-profile reader this one replaced honoured this (#7791).
-    let axis1_absent = entity.get(0).is_none_or(|attr| attr.is_null());
-    let x_axis_raw = match y_axis_raw {
-        Some(d) if is_2d && axis1_absent && d.xy().norm() > 1e-9 => Vector3::new(d.y, -d.x, 0.0),
-        _ => x_axis_raw,
-    };
+    let x_axis_raw = base_axis_2d_x(entity, is_2d, x_axis_raw, y_axis_raw);
 
     // Get Axis3 (raw local Z, attribute 4 for 3D), defaulting to +Z. The 2D
     // subtypes have no Axis3 attribute (attr 4 is Scale2 there), so the 2D
@@ -221,6 +213,23 @@ pub(crate) fn parse_transformation_operator(
     transform[(2, 3)] = origin.z;
 
 Ok(transform)
+}
+
+/// IfcBaseAxis, 2D form: with no Axis1, an authored Axis2 fixes the frame and
+/// X is its clockwise perpendicular (Axis2.y, -Axis2.x). The 3D form derives X
+/// from Axis3 instead (IfcFirstProjAxis) and never from Axis2. The
+/// derived-profile reader this one replaced honoured this (#7791).
+fn base_axis_2d_x(
+    entity: &DecodedEntity,
+    is_2d: bool,
+    x_axis_raw: Vector3<f64>,
+    y_axis_raw: Option<Vector3<f64>>,
+) -> Vector3<f64> {
+    let axis1_absent = entity.get(0).is_none_or(|attr| attr.is_null());
+    match y_axis_raw {
+        Some(d) if is_2d && axis1_absent && d.xy().norm() > 1e-9 => Vector3::new(d.y, -d.x, 0.0),
+        _ => x_axis_raw,
+    }
 }
 
 /// A per-axis scale attribute, falling back to `default` when absent or non-finite.

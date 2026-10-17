@@ -32,6 +32,15 @@ import { crc32 } from '../src/crc32.js';
 const SCHEMA_SRC = `
   SCHEMA TEST_RUST;
 
+  TYPE IfcGloballyUniqueId = STRING(22);
+  END_TYPE;
+
+  TYPE IfcWallTypeEnum = ENUMERATION OF (STANDARD, NOTDEFINED);
+  END_TYPE;
+
+  TYPE IfcObjectDefinition = SELECT (IfcWall);
+  END_TYPE;
+
   ENTITY IfcRoot
     ABSTRACT;
     GlobalId : IfcGloballyUniqueId;

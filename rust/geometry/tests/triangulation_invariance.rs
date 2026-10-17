@@ -1506,7 +1506,7 @@ fn issue_4627_candidate_failures_preserve_prior_analytic_cuts() {
                 // shared planar-face home (Newell basis, convex fans), so the
                 // cut hosts' triangle counts moved; open edges never rose, and
                 // #11477 closed (9 open -> 0).
-                (11477, 0, 0, 158, 18),
+                (11477, 0, 0, 158, 0),
                 // #5410: 19 open / 139 tris until a plan-rotated host whose
                 // cutters author no depth took the wall-local frame; now closed
                 // (enclosed volume 0.01972 -> 0.01967 m3, IfcOpenShell 0.01752).

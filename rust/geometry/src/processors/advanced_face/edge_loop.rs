@@ -4,6 +4,7 @@
 
 //! Edge-loop topology walking: extract polygon points from IfcEdgeLoop bounds.
 
+use crate::math::tol;
 use crate::{Point3, TessellationQuality};
 use ifc_lite_core::{DecodedEntity, EntityDecoder};
 
@@ -269,7 +270,7 @@ fn sample_composite_curve_edge(
         }
         // Drop the duplicate joint point between consecutive segments.
         if let (Some(last), Some(first)) = (pts.last(), seg_pts.first()) {
-            if (last - first).norm_squared() < 1e-12 {
+            if (last - first).norm_squared() < tol::SAMPLE_COINCIDENT_SQ {
                 seg_pts.remove(0);
             }
         }

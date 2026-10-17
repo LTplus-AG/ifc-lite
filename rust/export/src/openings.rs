@@ -13,7 +13,10 @@ use std::collections::HashMap;
 use ifc_lite_geometry::ExtractedProfile;
 
 use crate::hbjson::{Aperture, Door, Face3D, Room};
-use crate::geom::{center, dot, newell_normal, xf, zup};
+use crate::geom::{
+    center, dot, newell_normal, xf, zup, APERTURE_EDGE_INSET_M, APERTURE_MIN_SPAN_M,
+    OPENING_WALL_EDGE_MARGIN_M, OPENING_WALL_MAX_DISTANCE_M,
+};
 
 fn sub(a: [f64; 3], b: [f64; 3]) -> [f64; 3] { [a[0] - b[0], a[1] - b[1], a[2] - b[2]] }
 fn norm(a: [f64; 3]) -> [f64; 3] {
@@ -82,7 +85,11 @@ fn project(verts: &[[f64; 3]], walls: &[WallFace]) -> Option<(usize, usize, Vec<
         let d = dot(sub(c, w.origin), w.n).abs();
         let u = dot(sub(c, w.origin), w.uax);
         let v = dot(sub(c, w.origin), w.vax);
-        if d < 0.7 && u > -0.5 && u < w.ulen + 0.5 && v > -0.5 && v < w.vlen + 0.5
+        if d < OPENING_WALL_MAX_DISTANCE_M
+            && u > -OPENING_WALL_EDGE_MARGIN_M
+            && u < w.ulen + OPENING_WALL_EDGE_MARGIN_M
+            && v > -OPENING_WALL_EDGE_MARGIN_M
+            && v < w.vlen + OPENING_WALL_EDGE_MARGIN_M
             && best.is_none_or(|(bd, _)| d < bd) {
                 best = Some((d, i));
             }
@@ -90,11 +97,11 @@ fn project(verts: &[[f64; 3]], walls: &[WallFace]) -> Option<(usize, usize, Vec<
     let w = &walls[best?.1];
     let us: Vec<f64> = verts.iter().map(|p| dot(sub(*p, w.origin), w.uax)).collect();
     let vs: Vec<f64> = verts.iter().map(|p| dot(sub(*p, w.origin), w.vax)).collect();
-    let u0 = us.iter().cloned().fold(f64::MAX, f64::min).max(0.05);
-    let u1 = us.iter().cloned().fold(f64::MIN, f64::max).min(w.ulen - 0.05);
-    let v0 = vs.iter().cloned().fold(f64::MAX, f64::min).max(0.05);
-    let v1 = vs.iter().cloned().fold(f64::MIN, f64::max).min(w.vlen - 0.05);
-    if u1 - u0 < 0.1 || v1 - v0 < 0.1 {
+    let u0 = us.iter().cloned().fold(f64::MAX, f64::min).max(APERTURE_EDGE_INSET_M);
+    let u1 = us.iter().cloned().fold(f64::MIN, f64::max).min(w.ulen - APERTURE_EDGE_INSET_M);
+    let v0 = vs.iter().cloned().fold(f64::MAX, f64::min).max(APERTURE_EDGE_INSET_M);
+    let v1 = vs.iter().cloned().fold(f64::MIN, f64::max).min(w.vlen - APERTURE_EDGE_INSET_M);
+    if u1 - u0 < APERTURE_MIN_SPAN_M || v1 - v0 < APERTURE_MIN_SPAN_M {
         return None;
     }
     let pt = |u: f64, v: f64| {

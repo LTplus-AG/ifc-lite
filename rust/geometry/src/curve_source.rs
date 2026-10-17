@@ -4,6 +4,7 @@
 
 //! Basis and trim facts shared by analytic descriptions and sampled geometry.
 
+use crate::math::tol;
 use crate::{Error, Result, Vector3};
 use ifc_lite_core::{AttributeValue, DecodedEntity, EntityDecoder, IfcType};
 
@@ -97,7 +98,7 @@ pub(crate) fn vector_from_ref(
             .ok_or_else(|| invalid("Direction missing DirectionRatios"))?,
     )?;
     Vector3::from(p)
-        .try_normalize(1e-12)
+        .try_normalize(tol::DIRECTION_MIN_LEN)
         .ok_or_else(|| invalid("invalid zero Direction"))
 }
 
@@ -159,7 +160,7 @@ pub(crate) fn mesh_line_basis(
                 coords.get(2).and_then(AttributeValue::as_float).unwrap_or(0.0),
             ))
         })
-        .and_then(|v| v.try_normalize(1e-12))
+        .and_then(|v| v.try_normalize(tol::DIRECTION_MIN_LEN))
         .unwrap_or_else(Vector3::x);
     Ok((origin, (orientation * magnitude).into()))
 }
@@ -226,7 +227,7 @@ pub(crate) fn circle_basis(
             .transpose()?
             .unwrap_or(Vector3::x());
         let x = Vector3::new(x.x, x.y, 0.0)
-            .try_normalize(1e-12)
+            .try_normalize(tol::DIRECTION_MIN_LEN)
             .ok_or_else(|| invalid("invalid planar circle RefDirection"))?;
         ([0.0, 0.0, 1.0], x.into(), [-x.y, x.x, 0.0])
     } else {

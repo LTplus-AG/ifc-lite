@@ -19,6 +19,7 @@
 //!   3. Cut the base mesh into N slabs with N-1 planes using the shared
 //!      [`ClippingProcessor`][crate::csg::ClippingProcessor].
 
+use crate::math::tol;
 use super::GeometryRouter;
 use crate::csg::{ClippingProcessor, Plane};
 use crate::material_layer_index::{LayerAxis, LayerBuildup, LayerInfo};
@@ -240,7 +241,7 @@ impl GeometryRouter {
         // into the layer stack".
         let rotation = placement.fixed_view::<3, 3>(0, 0);
         let world_normal = (rotation * axis_local)
-            .try_normalize(1e-12)?
+            .try_normalize(tol::DIRECTION_MIN_LEN)?
             * direction_sense;
 
         let offset_m = offset * scale;
@@ -533,11 +534,10 @@ fn attribute_placement_is_identity(
 
 #[inline]
 fn matrix_is_identity(m: &Matrix4<f64>) -> bool {
-    const EPS: f64 = 1e-9;
     let id = Matrix4::<f64>::identity();
     for i in 0..4 {
         for j in 0..4 {
-            if (m[(i, j)] - id[(i, j)]).abs() > EPS {
+            if (m[(i, j)] - id[(i, j)]).abs() > tol::IDENTITY_EPS {
                 return false;
             }
         }

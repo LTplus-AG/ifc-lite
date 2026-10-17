@@ -2,6 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+use crate::math::tol;
 use super::AnalyticCurveSegment as Segment;
 use crate::{Point3, Result, Vector3};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
@@ -31,7 +32,7 @@ pub(super) fn arc_through(start: [f64; 3], middle: [f64; 3], end: [f64; 3]) -> O
     let c = Point3::from(end);
     let u = b - a;
     let v = c - a;
-    let normal = u.cross(&v).try_normalize(1e-12)?;
+    let normal = u.cross(&v).try_normalize(tol::DIRECTION_MIN_LEN)?;
     let cross = u.cross(&v);
     let denominator = 2.0 * cross.norm_squared();
     if denominator <= 1e-24 {
@@ -39,7 +40,7 @@ pub(super) fn arc_through(start: [f64; 3], middle: [f64; 3], end: [f64; 3]) -> O
     }
     let center =
         a + (v.norm_squared() * cross.cross(&u) + u.norm_squared() * v.cross(&cross)) / denominator;
-    let x = (a - center).try_normalize(1e-12)?;
+    let x = (a - center).try_normalize(tol::DIRECTION_MIN_LEN)?;
     let y = normal.cross(&x);
     let mid_angle = (b - center)
         .dot(&y)

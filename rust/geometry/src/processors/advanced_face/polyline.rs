@@ -4,6 +4,7 @@
 
 //! Standalone curve -> polyline sampler used as the surface-of-revolution generator profile.
 
+use crate::math::tol;
 use crate::{scale_segments, Point3, TessellationQuality};
 use ifc_lite_core::{DecodedEntity, EntityDecoder};
 
@@ -104,7 +105,7 @@ fn sample_curve_polyline_guarded(
                         let z = coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0);
                         Some(nalgebra::Vector3::new(x, y, z))
                     })
-                    .and_then(|v| v.try_normalize(1e-12))
+                    .and_then(|v| v.try_normalize(tol::DIRECTION_MIN_LEN))
                     .unwrap_or_else(|| nalgebra::Vector3::new(1.0, 0.0, 0.0));
                 (dir, magnitude)
             })

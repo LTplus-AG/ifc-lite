@@ -20,17 +20,17 @@
 use crate::math::v3;
 use crate::mesh::Mesh;
 
-/// Tolerance for "these three families are mutually perpendicular".
-///
-/// [`Mesh::positions`] is **f32**, so a face normal reconstructed from a
-/// tessellated box's edge vectors carries ~1e-6 rad of round-off, which a
-/// 1e-6 dot-product test would reject — and a rejection here silently drops
-/// back to the world axes, i.e. back to the very bug this machinery exists to
-/// fix. 1e-4 (0.006 rad) admits that round-off while still rejecting a
-/// genuinely non-orthogonal frame; the axes are only ever used as *directions
-/// to measure an extent along*, where a 0.006 rad error is worth ~2e-5 of the
-/// extent.
-const ORTHO_EPS: f64 = 1.0e-4;
+// Tolerance for "these three families are mutually perpendicular".
+//
+// [`Mesh::positions`] is **f32**, so a face normal reconstructed from a
+// tessellated box's edge vectors carries ~1e-6 rad of round-off, which a
+// 1e-6 dot-product test would reject — and a rejection here silently drops
+// back to the world axes, i.e. back to the very bug this machinery exists to
+// fix. 1e-4 (0.006 rad) admits that round-off while still rejecting a
+// genuinely non-orthogonal frame; the axes are only ever used as *directions
+// to measure an extent along*, where a 0.006 rad error is worth ~2e-5 of the
+// extent.
+use crate::math::tol::ORTHO_EPS;
 
 /// Reject only a truly degenerate (zero-length or non-finite) vector — not a
 /// scale-dependent magnitude threshold. `v` is a cross product of edge
@@ -53,36 +53,36 @@ fn normalize3(v: [f64; 3]) -> Option<[f64; 3]> {
     v3::normalize(v, 0.0)
 }
 
-/// Minimum `sin(θ)` between a triangle's two edges at the vertex the normal
-/// is computed from, where θ is that triangle's interior angle there — a
-/// **dimensionless** ratio (`|edge1 × edge2| / (|edge1| · |edge2|)`), not the
-/// raw cross-product magnitude. A 1 mm box corner and a 100 m wall corner are
-/// both right angles, θ = 90°, sin θ = 1, so this judges them identically —
-/// which a length-based cutoff on the cross product cannot do, since that
-/// magnitude scales with the *square* of the operand's own dimensions.
-///
-/// `Mesh::positions` is f32 (~1.2e-7 relative precision), so vertices
-/// reconstructed from it carry noise of roughly that order. A genuinely
-/// degenerate or near-collinear triangle (three points nearly on a line —
-/// e.g. a stray sliver a tessellator emits alongside real box faces)
-/// produces sin θ at or below that noise floor; its direction is unrelated
-/// to any real geometric feature, verified by construction to swing across
-/// dot products of −0.95 to 0.55 against the true face normal for sin θ in
-/// the 1e-8 range. `1e-3` (θ ≈ 0.057°) sits three orders of magnitude above
-/// that ~1e-7 noise floor while a genuine box-corner triangle sits at
-/// sin θ = 1, eight orders of magnitude above the cutoff — so the cutoff
-/// rejects noise with a wide margin on both sides regardless of the
-/// operand's absolute size.
-///
-/// Rejected alternatives:
-/// - An absolute length threshold on the cross product (the original bug):
-///   fails exactly because it is not scale-free.
-/// - No threshold at all (this file's prior state): admits ULP-noise
-///   directions as described above.
-/// - A threshold on the angle itself (`asin`/`acos`) instead of on sin θ:
-///   equivalent near this range but costs an extra transcendental call for
-///   no precision benefit this close to zero, where sin θ ≈ θ.
-const MIN_SIN_THETA: f64 = 1.0e-3;
+// Minimum `sin(θ)` between a triangle's two edges at the vertex the normal
+// is computed from, where θ is that triangle's interior angle there — a
+// **dimensionless** ratio (`|edge1 × edge2| / (|edge1| · |edge2|)`), not the
+// raw cross-product magnitude. A 1 mm box corner and a 100 m wall corner are
+// both right angles, θ = 90°, sin θ = 1, so this judges them identically —
+// which a length-based cutoff on the cross product cannot do, since that
+// magnitude scales with the *square* of the operand's own dimensions.
+//
+// `Mesh::positions` is f32 (~1.2e-7 relative precision), so vertices
+// reconstructed from it carry noise of roughly that order. A genuinely
+// degenerate or near-collinear triangle (three points nearly on a line —
+// e.g. a stray sliver a tessellator emits alongside real box faces)
+// produces sin θ at or below that noise floor; its direction is unrelated
+// to any real geometric feature, verified by construction to swing across
+// dot products of −0.95 to 0.55 against the true face normal for sin θ in
+// the 1e-8 range. `1e-3` (θ ≈ 0.057°) sits three orders of magnitude above
+// that ~1e-7 noise floor while a genuine box-corner triangle sits at
+// sin θ = 1, eight orders of magnitude above the cutoff — so the cutoff
+// rejects noise with a wide margin on both sides regardless of the
+// operand's absolute size.
+//
+// Rejected alternatives:
+// - An absolute length threshold on the cross product (the original bug):
+//   fails exactly because it is not scale-free.
+// - No threshold at all (this file's prior state): admits ULP-noise
+//   directions as described above.
+// - A threshold on the angle itself (`asin`/`acos`) instead of on sin θ:
+//   equivalent near this range but costs an extra transcendental call for
+//   no precision benefit this close to zero, where sin θ ≈ θ.
+use crate::math::tol::MIN_SIN_THETA;
 
 /// The unit normal of the triangle `(a, b, c)`, or `None` when the triangle
 /// is degenerate (zero-length edge, non-finite input) or a sliver relative to

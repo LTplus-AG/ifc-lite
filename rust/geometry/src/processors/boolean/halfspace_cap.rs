@@ -2,6 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+use crate::math::tol;
 use crate::{Mesh, Point2, Point3, Vector3};
 
 // Test-only seam for the `outer_filled == outer_count` accounting
@@ -75,7 +76,7 @@ pub(crate) fn cap_half_space_clip(
     if tri_n == 0 || vcount < 3 {
         return false;
     }
-    let n = match clip_normal.try_normalize(1e-12) {
+    let n = match clip_normal.try_normalize(tol::DIRECTION_MIN_LEN) {
         Some(v) => v,
         None => return false,
     };

@@ -5,6 +5,7 @@
 //! Low-level per-edge curve samplers (vertex coords, axis placement, B-spline
 //! and circle edge discretization).
 
+use crate::math::tol;
 use crate::{scale_segments, Point3, TessellationQuality};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 
@@ -271,7 +272,7 @@ pub(super) fn sample_bspline_curve_polyline(
     let (t_min, t_max) = parsed.domain();
     let mut points = sample_between(&parsed, &parsed.at(t_min), true, None, quality);
     let end = parsed.at(t_max);
-    if points.last().is_none_or(|last| (last - end).norm_squared() >= 1e-18) {
+    if points.last().is_none_or(|last| (last - end).norm_squared() >= tol::SAMPLE_END_COINCIDENT_SQ) {
         points.push(end);
     }
     Ok(points)
@@ -294,7 +295,7 @@ fn sample_between(
         Some((a, b)) => {
             let lo = a.min(b).max(t_min);
             let hi = a.max(b).min(t_max);
-            if hi - lo > 1e-12 { (lo, hi) } else { (t_min, t_max) }
+            if hi - lo > tol::TRIM_SPAN_MIN { (lo, hi) } else { (t_min, t_max) }
         }
         None => (t_min, t_max),
     };
@@ -314,12 +315,12 @@ fn sample_between(
         } else {
             t_hi - (t_hi - t_lo) * frac
         };
-        let t_clamped = t.min(t_hi - 1e-6).max(t_lo);
+        let t_clamped = t.min(t_hi - tol::PARAM_END_MARGIN).max(t_lo);
         let pt = parsed.at(t_clamped);
         // Skip degenerate points (too close to previous)
         if let Some(prev) = points.last() {
             let dist_sq = (pt.x - prev.x).powi(2) + (pt.y - prev.y).powi(2) + (pt.z - prev.z).powi(2);
-            if dist_sq < 1e-12 {
+            if dist_sq < tol::SAMPLE_COINCIDENT_SQ {
                 continue;
             }
         }

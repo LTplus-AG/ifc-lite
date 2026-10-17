@@ -288,12 +288,16 @@ fn an_unusable_length_unit_factor_refuses_geometry_and_is_counted() {
     let fifth_extent = extent(&fifth.meshes[0].positions);
     assert!((fifth_extent - 0.2 * metre_extent).abs() < 1e-5, "{fifth_extent} vs 0.2 x {metre_extent}");
     assert_eq!((fifth.stats.refused_input_elements, fifth.stats.refused_prepass_records), (0, 0));
+    assert_eq!((fifth.metadata.length_unit_scale, fifth.metadata.length_unit_refused), (Some(0.2), None));
 
     for factor in ["1.E400", "-1.E400", "0.", "-0.2"] {
         let refused = process_geometry(&with_unit(factor));
         assert!(refused.meshes.is_empty(), "{factor}: no mesh at an invented scale");
         assert_eq!(refused.stats.refused_input_elements, 1, "{factor}: the one element is counted");
         assert!(refused.stats.refused_prepass_records >= 1, "{factor}: the factor is counted");
+        // The native metadata (server, ffi) reports the refusal, not an invented 1.0 scale.
+        assert_eq!(refused.metadata.length_unit_refused, Some(161), "{factor}: refusal reported");
+        assert_eq!(refused.metadata.length_unit_scale, None, "{factor}: no invented scale");
     }
 
     // The shared stream meta (wasm pre-pass, appearance) carries the refusal,

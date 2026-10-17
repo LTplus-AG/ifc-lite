@@ -32,6 +32,7 @@
 pub mod aabb;
 pub mod frame;
 pub mod mat4;
+pub(crate) mod normals;
 pub mod v3;
 
 #[cfg(test)]
@@ -42,5 +43,7 @@ mod canonical_parity_tests;
 mod frame_tests;
 #[cfg(test)]
 mod mat4_tests;
+#[cfg(test)]
+mod normals_tests;
 #[cfg(test)]
 mod v3_tests;

@@ -180,15 +180,7 @@ impl MeshSink<f64> for crate::mesh::Mesh {
     }
     #[inline]
     fn transform_normals(&mut self, transform: &Matrix4<f64>) {
-        // Verbatim from the pre-refactor `apply_transform` normal loop.
-        let normal_matrix = transform.try_inverse().unwrap_or(*transform).transpose();
-        self.normals.chunks_exact_mut(3).for_each(|chunk| {
-            let normal = Vector3::new(chunk[0] as f64, chunk[1] as f64, chunk[2] as f64);
-            let transformed = (normal_matrix * normal.to_homogeneous()).xyz().normalize();
-            chunk[0] = transformed.x as f32;
-            chunk[1] = transformed.y as f32;
-            chunk[2] = transformed.z as f32;
-        });
+        crate::math::normals::transform_normals_in_place(&mut self.normals, transform);
     }
 }
 

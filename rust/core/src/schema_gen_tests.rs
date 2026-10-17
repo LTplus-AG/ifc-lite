@@ -325,7 +325,7 @@ mod ifc_types_catalog {
 /// written today and how one of them will eventually be wrong.
 #[cfg(test)]
 mod attribute_names {
-    use crate::{IfcType, IFC_TYPES};
+    use crate::{IfcType, SchemaVersion, IFC_TYPES};
 
     /// The property the whole thing rests on: supertype attributes come FIRST,
     /// so the position here is the position `DecodedEntity::get` indexes. A
@@ -351,7 +351,6 @@ mod attribute_names {
     /// two is wrong and it is no longer a matter of opinion which.
     #[test]
     fn it_agrees_with_the_positions_the_workspace_already_reads() {
-        let wall = IfcType::from_str("IFCWALL");
         for (name, want) in [
             ("GlobalId", 0),
             ("Name", 2),
@@ -361,7 +360,7 @@ mod attribute_names {
             ("Representation", 6),
         ] {
             assert_eq!(
-                wall.attribute_index(name),
+                SchemaVersion::Ifc4x3.attribute("IFCWALL", name).map(|a| a.index),
                 Some(want),
                 "IfcProduct attribute {name} is read at index {want} in this workspace"
             );
@@ -373,24 +372,28 @@ mod attribute_names {
     #[test]
     fn a_storeys_elevation_is_reachable_by_name() {
         let storey = IfcType::from_str("IFCBUILDINGSTOREY");
-        assert_eq!(storey.attribute_index("Elevation"), Some(9));
+        assert_eq!(
+            SchemaVersion::Ifc4x3
+                .attribute("IFCBUILDINGSTOREY", "Elevation")
+                .map(|a| a.index),
+            Some(9)
+        );
         assert_eq!(storey.attribute_names().len(), 10);
     }
 
     #[test]
-    fn an_unknown_name_is_none_and_the_lookup_is_case_sensitive() {
-        let wall = IfcType::from_str("IFCWALL");
-        assert_eq!(wall.attribute_index("NotAnAttribute"), None);
+    fn an_unknown_name_is_none_and_the_lookup_is_ascii_case_insensitive() {
+        let attr = |name| SchemaVersion::Ifc4x3.attribute("IFCWALL", name);
+        assert_eq!(attr("NotAnAttribute"), None);
         assert_eq!(
-            wall.attribute_index("globalid"),
-            None,
-            "EXPRESS names are PascalCase; a case-insensitive match would let a \
-             typo resolve to the wrong attribute on some other entity"
+            attr("globalid").map(|a| a.index),
+            Some(0),
+            "attribute names fold ASCII case, as the decoder's header-driven lookup always did"
         );
     }
 
     /// Every catalog entry answers, and no entry repeats a name — a duplicate
-    /// would make `attribute_index` return the first of two real positions.
+    /// would make the by-name lookup return the first of two real positions.
     #[test]
     fn every_type_has_a_consistent_attribute_list() {
         for t in IFC_TYPES {
@@ -399,14 +402,17 @@ mod attribute_names {
             for n in names {
                 assert!(
                     seen.insert(*n),
-                    "{} lists {n} twice; attribute_index would answer with the \
+                    "{} lists {n} twice; the by-name lookup would answer with the \
                      first of two real positions",
                     t.name()
                 );
             }
-            for (i, n) in names.iter().enumerate() {
-                assert_eq!(t.attribute_index(n), Some(i));
-            }
+            assert_eq!(
+                t.attribute_flags().len(),
+                names.len(),
+                "{}: one flag byte per attribute name",
+                t.name()
+            );
         }
     }
 
@@ -417,7 +423,8 @@ mod attribute_names {
         let u = IfcType::from_str("NOT_AN_IFC_TYPE_AT_ALL");
         assert!(matches!(u, IfcType::Unknown(_)));
         assert!(u.attribute_names().is_empty());
-        assert_eq!(u.attribute_index("GlobalId"), None);
+        assert!(u.attribute_flags().is_empty());
+        assert_eq!(SchemaVersion::Ifc4x3.attribute(u.as_str(), "GlobalId"), None);
     }
 }
 

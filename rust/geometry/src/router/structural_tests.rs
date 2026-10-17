@@ -209,7 +209,7 @@ fn accepts_structural_surface_face_representation_only() {
 }
 
 #[test]
-fn structural_surface_polyloop_preserves_hole_and_same_sense() {
+fn structural_surface_polyloop_preserves_hole_and_face_normal() {
     let source = surface_member(true, true);
     let mut decoder = EntityDecoder::new(&source);
     let entity = decoder.decode_by_id(18).unwrap();
@@ -225,7 +225,13 @@ fn structural_surface_polyloop_preserves_hole_and_same_sense() {
         "10x10 face with a 2x2 hole must retain 96 square units"
     );
 
-    let reversed_source = surface_member(false, true);
+    // A valid `SameSense=.F.` face: the plane axis is +Z, so the face normal
+    // (the member's local z) is -Z and the loops wind clockwise about +Z
+    // (ISO 10303-42). The mesh winds with the loops, about the face normal;
+    // it is not flipped a second time (#7686, PROC-S16).
+    let reversed_source = surface_member(false, true)
+        .replace("IFCPOLYLOOP((#1,#2,#3,#4))", "IFCPOLYLOOP((#4,#3,#2,#1))")
+        .replace("IFCPOLYLOOP((#7,#8,#9,#10))", "IFCPOLYLOOP((#10,#9,#8,#7))");
     let mut reversed_decoder = EntityDecoder::new(&reversed_source);
     let reversed = reversed_decoder.decode_by_id(18).unwrap();
     let reversed_mesh = GeometryRouter::new()
@@ -233,7 +239,7 @@ fn structural_surface_polyloop_preserves_hole_and_same_sense() {
         .unwrap();
     assert!(
         (signed_xy_area(&reversed_mesh) + 96.0).abs() < 1e-5,
-        "IfcFaceSurface.SameSense=.F. must reverse the emitted winding"
+        "a SameSense=.F. face winds about its face normal, -Z here"
     );
 }
 

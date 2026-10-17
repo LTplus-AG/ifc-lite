@@ -11,7 +11,8 @@ use super::entity_index::IndexBuilder;
 use super::quick_collector::QuickCollector;
 use super::quick_metadata::{parse_step_arguments, parse_step_ref, parse_step_ref_list};
 use super::{EntityJob, ProcessingRequest};
-use ifc_lite_core::{keyword_eq, keyword_starts_with, EntityDecoder, EntityScanner, IfcType};
+use crate::scan::ScanClass;
+use ifc_lite_core::{EntityDecoder, EntityScanner, IfcType};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 impl EntityJob {
@@ -180,89 +181,89 @@ impl Scan<'_, '_> {
         if let Some(quick) = self.out.quick.as_mut() {
             quick.observe(self.content, id, type_name, start, end);
         }
-        if self.stash_span(id, type_name, start, end) {
+        let class = ScanClass::classify(type_name);
+        if self.stash_span(class, id, start, end) {
             return;
         }
-        self.schedule(id, type_name, start, end);
+        self.schedule(class, id, type_name, start, end);
     }
 
     /// Span-stashing records. `true` when the record is fully handled and must
     /// not reach the job scheduling below.
     #[inline(always)]
-    fn stash_span(&mut self, id: u32, type_name: &str, start: usize, end: usize) -> bool {
-        let spans = &mut self.out.prepass_spans;
-        if keyword_eq(type_name, "IFCINDEXEDCOLOURMAP") {
-            // Span-stashed for the shared post-scan resolver (#663, #858).
-            spans.indexed_colour_maps.push((id, start, end));
-        } else if keyword_eq(type_name, "IFCSTYLEDITEM") {
-            // Span-stashed; the shared resolver classifies orphan (material
-            // appearance, #407 — always resolved up front) vs
-            // geometry-attached (deferred in fast_first_batch mode, #913 §2c).
-            spans.styled_items.push((id, start, end));
-        } else if keyword_eq(type_name, "IFCMATERIALDEFINITIONREPRESENTATION") {
-            spans.material_def_reprs.push((id, start, end));
-        } else if keyword_eq(type_name, "IFCRELASSOCIATESMATERIAL") {
-            spans.rel_associates_material.push((id, start, end));
-        } else if keyword_eq(type_name, "IFCPRESENTATIONLAYERASSIGNMENT") {
-            if self.req.features.presentation_layers {
-                if let Ok(layer_assignment) = self.decoder.decode_at(start, end) {
-                    collect_presentation_layer_assignments(
-                        &mut self.out.presentation_layer_by_assigned_id,
-                        &layer_assignment,
-                    );
-                }
+    fn stash_span(&mut self, class: ScanClass, id: u32, start: usize, end: usize) -> bool {
+        match class {
+            // Span-stashed for the shared post-scan resolver (#663, #858). Styled
+            // items are classified there: orphan (material appearance, #407 —
+            // always resolved up front) vs geometry-attached (deferred in
+            // fast_first_batch mode, #913 §2c).
+            ScanClass::IndexedColourMap
+            | ScanClass::StyledItem
+            | ScanClass::MaterialDefinitionRepresentation
+            | ScanClass::RelAssociatesMaterial => {
+                self.out.prepass_spans.stash_class(class, id, start, end);
+                true
             }
-        } else if keyword_eq(type_name, "IFCPROPERTYSET") {
+            ScanClass::PresentationLayerAssignment => {
+                if self.req.features.presentation_layers {
+                    if let Ok(layer_assignment) = self.decoder.decode_at(start, end) {
+                        collect_presentation_layer_assignments(
+                            &mut self.out.presentation_layer_by_assigned_id,
+                            &layer_assignment,
+                        );
+                    }
+                }
+                true
+            }
             // Decoded lazily in the lookup phase, and only when referenced by a
             // space/zone (its sole consumer). The inline index holds the span.
-        } else if keyword_eq(type_name, "IFCRELDEFINESBYPROPERTIES") {
-            // Space/zone property resolution is demand-driven (see the lookup
-            // phase and `resolve_space_zone_properties_lazy`). The scan only
-            // stashes these spans; property sets and atoms are decoded later,
-            // and only for the handful a space/zone actually references —
-            // skipping the eager decode of ~25% of a model's entities that was
-            // the dominant single-threaded cold-load cost on parse-bound models.
-            if self.req.features.properties {
-                self.out.rel_defines_spans.push((start, end));
-            }
-        } else if keyword_starts_with(type_name, "IFCPROPERTY") {
-            // Individual property values are resolved lazily by id in the lookup
+            // Individual property values are resolved lazily by id in the same
             // phase (only those a referenced space/zone property set lists).
-        } else {
-            self.stash_relation_or_anchor(id, type_name, start, end);
-            return false;
-        }
-        true
-    }
-
-    /// Relationship spans the resolver reads, and the first project / site /
-    /// building. None of them ends the record's processing.
-    #[inline(always)]
-    fn stash_relation_or_anchor(&mut self, id: u32, type_name: &str, start: usize, end: usize) {
-        let out = &mut self.out;
-        if keyword_eq(type_name, "IFCRELVOIDSELEMENT") {
-            out.prepass_spans.void_rels.push((id, start, end));
-        } else if keyword_eq(type_name, "IFCRELFILLSELEMENT") {
-            out.prepass_spans.fills_rels.push((id, start, end));
-        } else if keyword_eq(type_name, "IFCRELAGGREGATES") {
-            // Independent of quick-metadata mode: the shared resolver decodes
-            // these into the parent → children map that pushes voids down to
-            // aggregated parts when the host has no body of its own
-            // (IfcWallElementedCase, #845).
-            out.prepass_spans.aggregate_rels.push((id, start, end));
-        } else if keyword_eq(type_name, "IFCPROJECT") && out.project_id.is_none() {
-            out.project_id = Some(id);
-        } else if keyword_eq(type_name, "IFCSITE") && out.site_entity_pos.is_none() {
-            out.site_entity_pos = Some((start, end));
-        } else if keyword_eq(type_name, "IFCBUILDING") && out.building_entity_pos.is_none() {
-            out.building_entity_pos = Some((start, end));
+            ScanClass::PropertySet | ScanClass::Property => true,
+            ScanClass::RelDefinesByProperties => {
+                // Space/zone property resolution is demand-driven (see the lookup
+                // phase and `resolve_space_zone_properties_lazy`). The scan only
+                // stashes these spans; property sets and atoms are decoded later,
+                // and only for the handful a space/zone actually references —
+                // skipping the eager decode of ~25% of a model's entities that was
+                // the dominant single-threaded cold-load cost on parse-bound models.
+                if self.req.features.properties {
+                    self.out.rel_defines_spans.push((start, end));
+                }
+                true
+            }
+            // Relationship spans the resolver reads (aggregates independent of
+            // quick-metadata mode: they push voids down to aggregated parts when
+            // the host has no body of its own, IfcWallElementedCase, #845), and
+            // the first project / site / building. None ends the record's
+            // processing.
+            ScanClass::RelVoidsElement
+            | ScanClass::RelFillsElement
+            | ScanClass::RelAggregates
+            | ScanClass::RelDefinesByType => {
+                self.out.prepass_spans.stash_class(class, id, start, end);
+                false
+            }
+            ScanClass::Project => {
+                self.out.project_id.get_or_insert(id);
+                false
+            }
+            ScanClass::Site => {
+                self.out.site_entity_pos.get_or_insert((start, end));
+                false
+            }
+            ScanClass::Building => {
+                self.out.building_entity_pos.get_or_insert((start, end));
+                false
+            }
+            _ => false,
         }
     }
 
     /// Schedule a geometry job, or record what the type-geometry and
     /// instancing plans need from this record.
     #[inline(always)]
-    fn schedule(&mut self, id: u32, type_name: &str, start: usize, end: usize) {
+    fn schedule(&mut self, class: ScanClass, id: u32, type_name: &str, start: usize, end: usize) {
         let (has_geometry, representationless_spatial) =
             ifc_lite_core::geometry_flags_by_name(type_name);
         if has_geometry {
@@ -291,7 +292,7 @@ impl Scan<'_, '_> {
             let ifc_type = ifc_lite_core::ifc_type_from_keyword(type_name);
             self.out.entity_jobs.push(EntityJob::new(id, ifc_type, start, end));
         } else {
-            self.note_type_geometry(id, type_name, start, end);
+            self.note_type_geometry(class, id, type_name, start, end);
         }
     }
 
@@ -302,8 +303,8 @@ impl Scan<'_, '_> {
     // pre-filter keeps the is_subtype_of check off the hot path for the
     // ~all-non-type majority of entities.
     #[inline(always)]
-    fn note_type_geometry(&mut self, id: u32, type_name: &str, start: usize, end: usize) {
-        if keyword_eq(type_name, "IFCMAPPEDITEM") {
+    fn note_type_geometry(&mut self, class: ScanClass, id: u32, type_name: &str, start: usize, end: usize) {
+        if class == ScanClass::MappedItem {
             let args = parse_step_arguments(&self.content[start..end]);
             if let Some(source_id) = args.first().and_then(|token| parse_step_ref(token)) {
                 self.types.referenced_representation_maps.insert(source_id);
@@ -323,15 +324,15 @@ impl Scan<'_, '_> {
                         .or_insert((1, id));
                 }
             }
-        } else if keyword_eq(type_name, "IFCRELDEFINESBYTYPE") {
+        } else if class == ScanClass::RelDefinesByType {
             // IfcRelDefinesByType.RelatingType is the last attribute (index 5);
             // record it so its type-only geometry is suppressed (it has occurrences).
+            // (Its span also feeds the shared resolver's type-material fallback:
+            // stashed with the other relationship spans above.)
             let args = parse_step_arguments(&self.content[start..end]);
             if let Some(type_id) = args.get(5).and_then(|token| parse_step_ref(token)) {
                 self.types.instantiated_type_ids.insert(type_id);
             }
-            // Also feed the shared resolver's type-material fallback.
-            self.out.prepass_spans.defines_by_type.push((id, start, end));
         } else if let Some(type_ty) = ifc_lite_core::type_product_ifc_type(type_name) {
             let args = parse_step_arguments(&self.content[start..end]);
             // IfcTypeProduct.RepresentationMaps is attribute index 6.

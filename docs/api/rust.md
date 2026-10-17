@@ -748,6 +748,12 @@ let request = ProcessingRequest::full_pass().quality(TessellationQuality::High);
 let result = process(&bytes, &request, &mut ());
 ```
 
+`ifc_lite_processing::scan::ScanClass::classify(keyword)` is the one table of STEP
+keywords a scan loop reacts to (styled items, relationships, project / site /
+building, mapped items, property records, ...). The native scan, `PrepassSpans::stash`
+and the sharded scan's `classify_type_name` all match on it; `u8::from(class)`
+is the shard wire code.
+
 `process_geometry(content)` stays as the convenience for the default full pass.
 The other ten `process_geometry_*` functions are `#[deprecated]` delegates onto
 `process` and are deleted in the next major release.

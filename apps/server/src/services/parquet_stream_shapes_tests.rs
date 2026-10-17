@@ -157,6 +157,26 @@ fn the_batch_local_planner_shares_nothing() {
     assert_within_1mm(&world, &expected_yup(&meshes));
 }
 
+/// Collects what a pass announces: each non-empty batch, and the basis the
+/// batches are baked in.
+#[derive(Default)]
+struct BatchRecorder {
+    batches: Vec<Vec<MeshData>>,
+    basis: Option<[f64; 16]>,
+}
+
+impl ifc_lite_processing::ProcessingSink for BatchRecorder {
+    fn on_frame(&mut self, frame: &ifc_lite_processing::FrameEvent) {
+        self.basis = Some(frame.baked_basis);
+    }
+
+    fn on_batch(&mut self, meshes: &[ifc_lite_processing::MeshData], _: usize, _: usize) {
+        if !meshes.is_empty() {
+            self.batches.push(meshes.iter().cloned().map(MeshData::from).collect());
+        }
+    }
+}
+
 /// Parity with the buffered route on real models (#5407's acceptance): a
 /// cross-batch stream, planning batch by batch with the pipeline's own batch
 /// sizes, must ship no more vertex rows than `POST /parse/parquet` plans for
@@ -175,33 +195,19 @@ fn a_cross_batch_stream_ships_no_more_vertices_than_the_buffered_route() {
         let Some(content) = ifc_lite_testkit::fixture_bytes(fixture) else {
             continue;
         };
-        let basis_slot = std::sync::OnceLock::new();
-        let mut batches: Vec<Vec<MeshData>> = Vec::new();
-        let result = ifc_lite_processing::process_geometry_streaming_filtered_with_baked_basis(
-            &content,
-            crate::services::OpeningFilterMode::default(),
-            ifc_lite_processing::StreamingOptions {
-                // The server's defaults (`INITIAL_BATCH_SIZE` / `MAX_BATCH_SIZE`).
-                initial_batch_size: 100,
-                throughput_batch_size: 1000,
-                retain_emitted_meshes: false,
-                ..Default::default()
-            },
-            &basis_slot,
-            |meshes, _, _| {
-                if !meshes.is_empty() {
-                    batches.push(meshes.iter().cloned().map(MeshData::from).collect());
-                }
-            },
-            |_| {},
-            |_| {},
-        );
+        // The server's defaults (`INITIAL_BATCH_SIZE` / `MAX_BATCH_SIZE`).
+        let request = ifc_lite_processing::ProcessingRequest::default()
+            .batching(ifc_lite_processing::Batching::new(100, 1000))
+            .retain_meshes(false);
+        let mut recorder = BatchRecorder::default();
+        let result = ifc_lite_processing::process(&content, &request, &mut recorder);
+        let BatchRecorder { batches, basis: basis_slot } = recorder;
         assert!(batches.len() > 1, "{fixture} must stream in several batches");
 
         let mut planner = cross_batch();
         let streamed: usize = batches
             .iter()
-            .map(|batch| planner.plan(batch, basis_slot.get()).unwrap().vertex.num_rows())
+            .map(|batch| planner.plan(batch, basis_slot.as_ref()).unwrap().vertex.num_rows())
             .sum();
 
         let all: Vec<MeshData> = batches.into_iter().flatten().collect();

@@ -18,8 +18,8 @@
 //! instancing metadata survived the site-local tier.
 
 use ifc_lite_processing::{
-    process_geometry_streaming_filtered_with_options, MeshCoordinateSpace, MeshData,
-    OpeningFilterMode, StreamingOptions,
+    process, Batching, FrameEvent, MeshCoordinateSpace, MeshData, ProcessingRequest,
+    ProcessingSink,
 };
 
 /// Site placement translation (metres); zero rotation (RefDirection omitted).
@@ -101,21 +101,8 @@ END-ISO-10303-21;
 
 fn run(rotation: Option<&str>) -> Vec<MeshData> {
     let ifc = model(rotation);
-    let options = StreamingOptions {
-        initial_batch_size: usize::MAX,
-        throughput_batch_size: usize::MAX,
-        enable_instancing: true,
-        retain_emitted_meshes: true,
-        ..StreamingOptions::default()
-    };
-    let result = process_geometry_streaming_filtered_with_options(
-        ifc.as_bytes(),
-        OpeningFilterMode::Default,
-        options,
-        |_, _, _| {},
-        |_| {},
-        |_| {},
-    );
+    let request = ProcessingRequest::full_pass().instancing(true).retain_meshes(true);
+    let result = process(ifc.as_bytes(), &request, &mut ());
     assert_eq!(
         result.mesh_coordinate_space,
         MeshCoordinateSpace::SiteLocal,
@@ -238,7 +225,7 @@ fn rotated_site_keeps_instancing_metadata() {
 }
 
 /// #5407: a streaming consumer is handed the baked basis BEFORE the first
-/// batch through `process_geometry_streaming_filtered_with_baked_basis`, and it must be the very
+/// batch through the sink's `on_frame` event, and it must be the very
 /// frame the finished result reports. The server's cross-batch Parquet stream
 /// collates each batch in it as it arrives; a basis that disagreed with the
 /// vertices would fail every rotated group's residual check and quietly share
@@ -248,25 +235,27 @@ fn rotated_site_keeps_instancing_metadata() {
 #[test]
 fn the_baked_basis_is_published_before_the_first_batch() {
     let ifc = model(Some(SITE_ROTATION_30DEG));
-    let slot = std::sync::OnceLock::new();
-    let mut seen_at_first_batch = None;
-    let result = ifc_lite_processing::process_geometry_streaming_filtered_with_baked_basis(
-        ifc.as_bytes(),
-        OpeningFilterMode::Default,
-        StreamingOptions {
-            initial_batch_size: 1,
-            throughput_batch_size: 1,
-            ..StreamingOptions::default()
-        },
-        &slot,
-        |meshes, _, _| {
-            if !meshes.is_empty() && seen_at_first_batch.is_none() {
-                seen_at_first_batch = Some(slot.get().copied());
+    // Reads what the sink was told about the frame at the moment the first
+    // non-empty batch arrives.
+    #[derive(Default)]
+    struct Probe {
+        basis: Option<[f64; 16]>,
+        seen_at_first_batch: Option<Option<[f64; 16]>>,
+    }
+    impl ProcessingSink for Probe {
+        fn on_frame(&mut self, frame: &FrameEvent) {
+            self.basis = Some(frame.baked_basis);
+        }
+        fn on_batch(&mut self, meshes: &[MeshData], _: usize, _: usize) {
+            if !meshes.is_empty() && self.seen_at_first_batch.is_none() {
+                self.seen_at_first_batch = Some(self.basis);
             }
-        },
-        |_| {},
-        |_| {},
-    );
+        }
+    }
+    let mut probe = Probe::default();
+    let request = ProcessingRequest::default().batching(Batching::new(1, 1));
+    let result = process(ifc.as_bytes(), &request, &mut probe);
+    let seen_at_first_batch = probe.seen_at_first_batch;
     assert_eq!(result.mesh_coordinate_space, MeshCoordinateSpace::SiteLocal);
     let expected = ifc_lite_processing::native_to_baked(
         result.mesh_coordinate_space,

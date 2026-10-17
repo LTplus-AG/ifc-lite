@@ -21,10 +21,7 @@
 //! compute reproduces every occurrence's baked world triangles.
 
 use ifc_lite_geometry::{compose_instance_world_row_major, instance_rel_row_major_f32};
-use ifc_lite_processing::{
-    process_geometry_streaming_filtered_with_options, MeshData, OpeningFilterMode,
-    ProcessingResult, StreamingOptions,
-};
+use ifc_lite_processing::{process, MeshData, ProcessingRequest, ProcessingResult};
 use rustc_hash::FxHashMap;
 
 fn fixture_bytes(name: &str) -> Vec<u8> {
@@ -36,14 +33,7 @@ fn fixture_bytes(name: &str) -> Vec<u8> {
 }
 
 fn run(content: &[u8]) -> ProcessingResult {
-    process_geometry_streaming_filtered_with_options(
-        content,
-        OpeningFilterMode::Default,
-        StreamingOptions::default(),
-        |_, _, _| {},
-        |_| {},
-        |_| {},
-    )
+    process(content, &ProcessingRequest::default(), &mut ())
 }
 
 /// World vertices of a mesh = `origin + position` per vertex (the renderer's

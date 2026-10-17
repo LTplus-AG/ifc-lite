@@ -10,7 +10,7 @@
 use ifc_lite_core::{build_entity_index, EntityDecoder};
 use ifc_lite_geometry::GeometryRouter;
 use ifc_lite_processing::stream_meta::{resolve_stream_meta, MetaMode};
-use ifc_lite_processing::{MeshFrame, OpeningFilterMode, StreamingOptions};
+use ifc_lite_processing::{process, Batching, Features, MeshFrame, ProcessingRequest};
 
 /// A 22-character IFC GlobalId, unique per `(keyword, index)` pair.
 fn guid(keyword: &str, index: usize) -> String {
@@ -154,23 +154,11 @@ fn shared_tail_placement_model() -> String {
 
 /// The anchor the native pipeline picks, with `fast_first_batch` on or off.
 fn native_anchor(content: &[u8], fast_first_batch: bool) -> [f64; 3] {
-    ifc_lite_processing::process_geometry_streaming_filtered_with_options(
-        content,
-        OpeningFilterMode::Default,
-        StreamingOptions {
-            fast_first_batch,
-            retain_emitted_meshes: false,
-            include_properties: false,
-            include_presentation_layers: false,
-            ..StreamingOptions::default()
-        },
-        |_, _, _| {},
-        |_| {},
-        |_| {},
-    )
-    .metadata
-    .coordinate_info
-    .origin_shift
+    let request = ProcessingRequest::default()
+        .batching(Batching::new(50, 50).fast_first(fast_first_batch))
+        .features(Features::default().properties(false).presentation_layers(false))
+        .retain_meshes(false);
+    process(content, &request, &mut ()).metadata.coordinate_info.origin_shift
 }
 
 /// #4611. The RTC sample window used to be whatever job list the caller had:

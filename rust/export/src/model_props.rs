@@ -7,6 +7,9 @@
 //! calls them.
 
 use ifc_lite_core::{AttributeValue, DecodedEntity, EntityDecoder, IfcType};
+use ifc_lite_processing::data_model::property::{
+    PropertyDecoder, PropertyKind, PropertyRow, PropertyScope,
+};
 
 use super::{PropValue, PropertySet, QuantitySet, QuantityValue, ValueKind};
 
@@ -147,25 +150,60 @@ pub(super) fn ref_list(av: Option<&AttributeValue>) -> Vec<u32> {
         .unwrap_or_default()
 }
 
-/// Decode one `IfcPropertySet` definition into our model.
-pub(super) fn decode_property_set(decoder: &mut EntityDecoder, def: &DecodedEntity) -> Option<PropertySet> {
-    let name = def.get(2).and_then(|a| a.as_string()).unwrap_or("").to_string();
-    let has_props = def.get(4)?;
-    let props = decoder.resolve_ref_list(has_props).ok()?;
-    let mut properties = Vec::new();
-    for p in &props {
-        if p.ifc_type == IfcType::IfcPropertySingleValue {
-            let pname = match p.get(0).and_then(|a| a.as_string()) {
-                Some(n) if !n.is_empty() => n.to_string(),
-                _ => continue,
-            };
-            if let Some(Rendered { value, value_type, kind }) = p.get(2).and_then(render_value) {
-                properties.push(PropValue { name: pname, value, value_type, kind });
-            }
-        }
-        // Other property kinds (enumerated/list/bounded/complex) are P-next.
+/// The property kinds the flat exports write.
+///
+/// **Single values only, on purpose (EXPORT-DATA-2, D47 pending).** The
+/// shared decoder reads all seven kinds, but CSV, JSON, JSON-LD, IFCX, USD,
+/// BOS and the Python `entity_data` have only ever carried
+/// `IfcPropertySingleValue`; an enumerated, list, bounded, table, reference or
+/// complex property is absent from them, and the set still appears with those
+/// entries missing. Writing them is user-visible (new rows in every format and
+/// in the goldens), so it waits for a maintainer decision. It is one change
+/// here: `PropertyScope::AllKinds`. [`flat_property`] already renders them
+/// (D47: the columnar display string, `kind = Text`).
+pub(super) const EXPORT_PROPERTY_SCOPE: PropertyScope = PropertyScope::SingleValueOnly;
+
+/// The model's property decoder: one per export, so one complex-property
+/// budget per model (#7675).
+pub(super) fn new_property_decoder(input_len: usize) -> PropertyDecoder {
+    PropertyDecoder::for_input(input_len, EXPORT_PROPERTY_SCOPE)
+}
+
+/// One decoded property in the flat exports' shape; `None` for a nameless
+/// property or one with no value to show.
+pub(super) fn flat_property(row: &PropertyRow) -> Option<PropValue> {
+    if row.name.is_empty() {
+        return None;
     }
-    Some(PropertySet { name, properties })
+    if let Some(nominal) = &row.nominal {
+        let Rendered { value, value_type, kind } = render_value(nominal)?;
+        return Some(PropValue { name: row.name.clone(), value, value_type, kind });
+    }
+    if row.kind == PropertyKind::Single {
+        return None;
+    }
+    // D47: the columnar display string as text, typed by the members' shared
+    // tag when they have one, else by the property class.
+    let display = row.display.as_ref().filter(|d| d.property_type != "null")?;
+    Some(PropValue {
+        name: row.name.clone(),
+        value: display.property_value.clone(),
+        value_type: display.data_type.clone().unwrap_or_else(|| row.kind.class_keyword().to_string()),
+        kind: ValueKind::Text,
+    })
+}
+
+#[cfg(test)]
+#[path = "model_props_tests.rs"]
+mod props_tests;
+
+/// Decode one `IfcPropertySet` definition into our model.
+pub(super) fn decode_property_set(
+    props: &mut PropertyDecoder, decoder: &mut EntityDecoder, def: &DecodedEntity,
+) -> Option<PropertySet> {
+    let row = props.decode_set(decoder, def)?;
+    let properties = row.properties.iter().filter_map(flat_property).collect();
+    Some(PropertySet { name: row.name.unwrap_or_default(), properties })
 }
 
 /// Decode one `IfcElementQuantity` definition into our model.
@@ -240,6 +278,7 @@ pub(crate) fn decode_quantity_records(
 /// (ids from `IfcTypeObject.HasPropertySets`), so both classify a definition the
 /// same way.
 pub(super) fn resolve_pset_defs(
+    props: &mut PropertyDecoder,
     decoder: &mut EntityDecoder,
     def_ids: &[u32],
 ) -> (Vec<PropertySet>, Vec<QuantitySet>) {
@@ -252,7 +291,7 @@ pub(super) fn resolve_pset_defs(
         };
         match def.ifc_type {
             IfcType::IfcPropertySet => {
-                if let Some(ps) = decode_property_set(decoder, &def) {
+                if let Some(ps) = decode_property_set(props, decoder, &def) {
                     if !ps.properties.is_empty() {
                         property_sets.push(ps);
                     }

@@ -1,0 +1,5 @@
+# One native entry point (#7782, C4-1)
+
+`behaviour.oracle.patch` is the revert-oracle mutation for the C4 stack. C4-1 adds `ifc_lite_processing::{process, ProcessingRequest, Batching, Features, ProcessingSink, FrameEvent}` (`rust/processing/src/processor/{request,sink}.rs`); a whole-change revert deletes them under the changed tests, which is a build break. The patch keeps every item and disables ONLY behaviour the tests pin: the `on_frame` event, the `ClosureSink` baked-basis slot, `from_streaming`'s `fast_first`, and the id allow-list of `process_geometry_filtered_with_quality_and_ids`. Once `rust/processing/src/processor/request.rs` is on `main` the ordinary whole-change revert resumes.
+
+`scan-class.oracle.patch` is the mutation for C4-5 (`rust/processing/src/scan.rs`, the `ScanClass` keyword table). It keeps the module and breaks only the table: `IFCMAPPEDITEM` unclassified, the fills wire code shared with voids, `IFCPROPERTY...` records unclassified, `IFCRELAGGREGATES` stashed with voids. Once `scan.rs` is on `main` the ordinary whole-change revert resumes.

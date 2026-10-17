@@ -30,7 +30,7 @@
 //! bake loop, so every orphan occurrence is silently dropped) left all other
 //! processing tests green.
 
-use ifc_lite_processing::{OpeningFilterMode, ProcessingResult, StreamingOptions};
+use ifc_lite_processing::{process, OpeningFilterMode, ProcessingRequest, ProcessingResult};
 
 /// The synthetic mapped-instances fixture (one `IfcRepresentationMap`
 /// instanced by 64 `IfcBuildingElementProxy` occurrences at distinct
@@ -53,16 +53,10 @@ fn fixture_with_template_owner_as_window() -> Vec<u8> {
 }
 
 fn run(content: &[u8], mode: OpeningFilterMode, enable_instancing: bool) -> ProcessingResult {
-    ifc_lite_processing::process_geometry_streaming_filtered_with_options(
+    process(
         content,
-        mode,
-        StreamingOptions {
-            enable_instancing,
-            ..StreamingOptions::default()
-        },
-        |_, _, _| {},
-        |_| {},
-        |_| {},
+        &ProcessingRequest::default().opening_filter(mode).instancing(enable_instancing),
+        &mut (),
     )
 }
 

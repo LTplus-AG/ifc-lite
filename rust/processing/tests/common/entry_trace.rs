@@ -10,7 +10,9 @@
 //! (every mesh field, instances, frame, transforms, metadata, counters) except
 //! the wall-clock timers, which differ between two runs of the same code.
 
-use ifc_lite_processing::{ProcessingResult, QuickMetadataBootstrap};
+use ifc_lite_processing::{
+    FrameEvent, MeshData, ProcessingResult, ProcessingSink, QuickMetadataBootstrap,
+};
 use std::hash::Hasher;
 
 /// FNV-1a 64, so a digest is stable across Rust versions and platforms.
@@ -74,6 +76,8 @@ pub fn result_digest(result: &ProcessingResult) -> String {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Event {
     Bootstrap { entities: usize },
+    /// The frame event; the basis is compared by value, not recorded.
+    Frame,
     /// `ids` are the express ids of the emitted chunk, in order.
     Batch { ids: Vec<u32>, processed: usize, total: usize },
     ColorUpdate(Vec<(u32, [f32; 4])>),
@@ -90,6 +94,18 @@ pub fn assert_ordering_contract(events: &[Event], what: &str) {
     let bootstraps: Vec<usize> = positions(events, |e| matches!(e, Event::Bootstrap { .. }));
     assert!(bootstraps.len() <= 1, "{what}: bootstrap fired {} times", bootstraps.len());
     let first_batch = positions(events, |e| matches!(e, Event::Batch { .. })).first().copied();
+    // A trace from a sink that hears `on_frame` has exactly one, after the
+    // bootstrap and before the first batch.
+    let frames = positions(events, |e| matches!(e, Event::Frame));
+    if !frames.is_empty() {
+        assert_eq!(frames.len(), 1, "{what}: on_frame fired {} times", frames.len());
+        if let Some(f) = first_batch {
+            assert!(frames[0] < f, "{what}: on_frame must precede the first batch");
+        }
+        if let Some(b) = bootstraps.first() {
+            assert!(*b < frames[0], "{what}: the bootstrap precedes the frame");
+        }
+    }
     if let (Some(b), Some(f)) = (bootstraps.first(), first_batch) {
         assert!(*b < f, "{what}: the bootstrap must precede the first batch");
     }
@@ -109,4 +125,32 @@ pub fn assert_ordering_contract(events: &[Event], what: &str) {
 
 fn positions(events: &[Event], pred: impl Fn(&Event) -> bool) -> Vec<usize> {
     events.iter().enumerate().filter(|(_, e)| pred(e)).map(|(i, _)| i).collect()
+}
+
+/// A [`ProcessingSink`] that records every event, for the ordering contract.
+#[derive(Default)]
+pub struct Recorder {
+    pub events: Vec<Event>,
+    pub frame: Option<FrameEvent>,
+}
+
+impl ProcessingSink for Recorder {
+    fn on_bootstrap(&mut self, bootstrap: &QuickMetadataBootstrap) {
+        self.events.push(Event::bootstrap(bootstrap));
+    }
+    fn on_frame(&mut self, frame: &FrameEvent) {
+        assert!(self.frame.is_none(), "on_frame fired twice");
+        self.frame = Some(*frame);
+        self.events.push(Event::Frame);
+    }
+    fn on_batch(&mut self, meshes: &[MeshData], processed: usize, total: usize) {
+        self.events.push(Event::Batch {
+            ids: meshes.iter().map(|m| m.express_id).collect(),
+            processed,
+            total,
+        });
+    }
+    fn on_color_update(&mut self, updates: &[(u32, [f32; 4])]) {
+        self.events.push(Event::ColorUpdate(updates.to_vec()));
+    }
 }

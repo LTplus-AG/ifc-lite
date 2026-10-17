@@ -1511,19 +1511,19 @@ fn issue_4627_candidate_failures_preserve_prior_analytic_cuts() {
                 // #5362: 33 open / 159 tris until the #635 fallback stopped
                 // box-cutting an opening the kernel found disjoint; enclosed
                 // volume moved toward IfcOpenShell (0.0189 -> 0.0202 m3, ref 0.0211).
-                // Main #7826 changes these polygonal host triangulations.
-                // Preserve its measured DEFAULT/ALT boundary counts; a closed
-                // #11477 result from the earlier main revision is not current.
-                (11477, 9, 9, 152, 14),
+                // #7869 / main592d: straight-corner reconstruction closes these
+                // hosts. Actual ac02 merged-source unblessed run measured the
+                // exact incoming-main tuples; keep the stronger closed result.
+                (11477, 0, 0, 154, 0),
                 // #5410: 19 open / 139 tris until a plan-rotated host whose
                 // cutters author no depth took the wall-local frame; now closed
                 // (enclosed volume 0.01972 -> 0.01967 m3, IfcOpenShell 0.01752).
                 (11690, 0, 0, 144, 0),
-                (31156, 0, 0, 208, 0),
-                (17553, 0, 2, 214, 0),
-                (17615, 0, 0, 252, 0),
+                (31156, 0, 0, 198, 0),
+                (17553, 0, 0, 116, 0),
+                (17615, 0, 0, 244, 0),
                 (25914, 25, 28, 87, 25),
-                (26610, 0, 0, 84, 0),
+                (26610, 0, 0, 86, 0),
                 // rvt01 wall hosts the #3977 local-frame selector must leave
                 // closed (pinned after 0e8a42175 tore #10191 open via a -Z cutter depth).
                 // #7292: preserve the ordinary exactly closed boundary; the

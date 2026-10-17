@@ -76,24 +76,7 @@ pub fn bake_source_at_world(
         positions.push((p.y / p.w) as f32);
         positions.push((p.z / p.w) as f32);
     }
-    let linear = m.fixed_view::<3, 3>(0, 0).into_owned();
-    let nmat = linear
-        .try_inverse()
-        .map(|inv| inv.transpose())
-        .unwrap_or(linear);
-    let ncount = source.normals.len() / 3;
-    let mut normals = Vec::with_capacity(source.normals.len());
-    for v in 0..ncount {
-        let nv = nmat
-            * nalgebra::Vector3::new(
-                source.normals[v * 3] as f64,
-                source.normals[v * 3 + 1] as f64,
-                source.normals[v * 3 + 2] as f64,
-            );
-        let nv = nv.try_normalize(0.0).unwrap_or(nv);
-        normals.push(nv.x as f32);
-        normals.push(nv.y as f32);
-        normals.push(nv.z as f32);
-    }
+    let mut normals = source.normals[..source.normals.len() / 3 * 3].to_vec();
+    crate::math::normals::transform_normals_in_place(&mut normals, &m);
     (positions, normals, source.indices.clone())
 }

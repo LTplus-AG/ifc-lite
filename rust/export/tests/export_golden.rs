@@ -41,6 +41,9 @@ const FIXTURES: &[(&str, &str)] = &[
     ("bath_csg_solid", "rust/geometry/tests/fixtures/bath_csg_solid.ifc"),
     ("mapped_instances_synthetic", "rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc"),
     ("wall_two_openings", "rust/processing/tests/fixtures/issue_2019_wall_two_overlapping_openings.ifc"),
+    // C6-0 (#7783): every property and quantity kind, every material shape, an
+    // occurrence typed twice, a duplicate id, lowercase keywords, `1.E400`.
+    ("c6_data_model_synthetic", "rust/export/tests/fixtures/c6_data_model_synthetic.ifc"),
 ];
 
 fn load(path: &str) -> Option<Vec<u8>> {
@@ -249,6 +252,32 @@ fn landxml_terrain() {
         g.record(key, &bytes_or_refusal(xml.map_err(|r| r.reason)));
     }
     g.finish(&["bonsai-terrain".to_string()]);
+}
+
+/// The model the flat writers render, with the two options no writer sets:
+/// type-inherited sets merged (`inherit_type_properties`) and the schema
+/// attributes (`attributes`). `export_csv`/`export_json` build their model
+/// with `ModelOptions::default()`, so these switches are not reachable from
+/// them; the rows they would read are pinned here, before the C6 refactors move
+/// the code that builds them (C6-0, #7783). The Python binding turns
+/// inheritance and attributes on by default, so this is also its row set.
+#[test]
+fn export_model() {
+    const CASES: [(&str, bool, bool); 3] =
+        [(":inherit", true, false), (":attributes", false, true), (":inherit+attributes", true, true)];
+    let mut g = golden("export-model");
+    for (key, bytes) in fixtures() {
+        for (suffix, inherit, attributes) in CASES {
+            let opts = ModelOptions::default().with_inherit_type_properties(inherit).with_attributes(attributes);
+            let model = build_export_model_with_options(&bytes, &opts);
+            let mut dump = format!("{:?}\n", model.units);
+            for row in &model.entities {
+                dump.push_str(&format!("{row:?}\n"));
+            }
+            g.record(format!("{key}{suffix}"), dump.as_bytes());
+        }
+    }
+    g.finish(&keys(&CASES.map(|(s, _, _)| s)));
 }
 
 #[test]

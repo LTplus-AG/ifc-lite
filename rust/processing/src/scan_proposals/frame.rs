@@ -23,9 +23,10 @@ pub(crate) fn norm(a: V3) -> f64 {
     dot(a, a).sqrt()
 }
 
+/// Divides by the length like every other normaliser (#7772, X4); a
+/// degenerate or non-finite vector comes back unchanged.
 pub(crate) fn unit(a: V3) -> V3 {
-    let length = dot(a, a).sqrt();
-    if length > 1e-12 { scale(a, 1. / length) } else { a }
+    ifc_lite_geometry::math::v3::normalize(a, 1e-12).unwrap_or(a)
 }
 
 /// `x = s R p + t`, validated proper (no reflection) and uniform.

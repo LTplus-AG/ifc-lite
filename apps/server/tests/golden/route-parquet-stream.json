@@ -2,13 +2,33 @@
   "about": "FNV-1a 64 and byte length of each route-parquet-stream output, keyed by case. Written by ifc-lite-server, never by hand.",
   "repin": "IFC_LITE_REPIN_GOLDEN=1 cargo test -p ifc-lite-server route_golden_tests  # rewrites all route-*.json; unmoved ones stay byte-identical",
   "cases": {
+    "AB22_IFC4X3": {
+      "fnv1a64": "c7c15e47f123f492",
+      "bytes": 59444
+    },
+    "AC20-FZK-Haus": {
+      "fnv1a64": "d6fc1c791061ea98",
+      "bytes": 443764
+    },
+    "BIMcollab_STR_IFC2X3": {
+      "fnv1a64": "532de04ab74c4b93",
+      "bytes": 212194
+    },
     "IfcOpenHouse_IFC4": {
       "fnv1a64": "949667cc36f89ee7",
       "bytes": 67291
     },
+    "c6-synthetic": {
+      "fnv1a64": "9d5643cf7816d672",
+      "bytes": 10642
+    },
     "parity-fixture": {
       "fnv1a64": "3ff280ff46b2671c",
       "bytes": 12547
+    },
+    "signal_IFC4X3_ADD2": {
+      "fnv1a64": "e25ff868451deca5",
+      "bytes": 176367
     }
   }
 }

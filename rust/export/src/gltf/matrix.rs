@@ -157,44 +157,10 @@ fn row_major_f64_to_col_major_f32(m: &[f64; 16]) -> [f32; 16] {
     out
 }
 
-/// Inverse of a row-major AFFINE 4x4 (last row `[0,0,0,1]`): invert the upper 3x3
-/// (cofactor / determinant) and map the translation by `-R⁻¹·t`. Returns `None` if
-/// the 3x3 is singular (degenerate placement) so the caller can fall back to flat.
-pub(super) fn affine_inverse(m: &[f64; 16]) -> Option<[f64; 16]> {
-    let a = m[0]; let b = m[1]; let c = m[2];
-    let d = m[4]; let e = m[5]; let f = m[6];
-    let g = m[8]; let h = m[9]; let i = m[10];
-    let det = a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g);
-    if det.abs() < 1e-18 {
-        return None;
-    }
-    let inv_det = 1.0 / det;
-    // Inverse of the 3x3 (row-major) via the transposed cofactor matrix.
-    let r = [
-        (e * i - f * h) * inv_det,
-        (c * h - b * i) * inv_det,
-        (b * f - c * e) * inv_det,
-        (f * g - d * i) * inv_det,
-        (a * i - c * g) * inv_det,
-        (c * d - a * f) * inv_det,
-        (d * h - e * g) * inv_det,
-        (b * g - a * h) * inv_det,
-        (a * e - b * d) * inv_det,
-    ];
-    let (tx, ty, tz) = (m[3], m[7], m[11]);
-    // Translation of the inverse: -R⁻¹ · t.
-    let it = [
-        -(r[0] * tx + r[1] * ty + r[2] * tz),
-        -(r[3] * tx + r[4] * ty + r[5] * tz),
-        -(r[6] * tx + r[7] * ty + r[8] * tz),
-    ];
-    Some([
-        r[0], r[1], r[2], it[0], //
-        r[3], r[4], r[5], it[1], //
-        r[6], r[7], r[8], it[2], //
-        0.0, 0.0, 0.0, 1.0,
-    ])
-}
+/// Inverse of a row-major AFFINE 4x4: `None` for a singular or non-finite
+/// placement so the caller falls back to flat. One definition and one
+/// threshold (D22, #7772): `ifc_lite_geometry::math::mat4::affine_inverse`.
+pub(super) use ifc_lite_geometry::math::mat4::affine_inverse;
 
 /// Compose an `InstanceMeta`'s world placement `transform · local · canonical`
 /// (row-major f64), the same product the collator's `compose_world` builds.

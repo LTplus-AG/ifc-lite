@@ -73,7 +73,7 @@ impl DiagnosticCollectors {
     /// any record refused by input admission counts once. Call once per job,
     /// with that job's own decoder.
     pub(super) fn note_refused_input(&self, decoder: &ifc_lite_core::EntityDecoder) {
-        if decoder.refused_real_records() > 0 {
+        if decoder.refused_records() > 0 {
             self.refused_input.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         }
     }

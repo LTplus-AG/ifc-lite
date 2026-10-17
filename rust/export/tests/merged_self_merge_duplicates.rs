@@ -9,14 +9,30 @@
 //! (#7777 review: test.ifc, test-colors.ifc and BIMcollab_ebkp went from 0 to 3
 //! duplicates when the merge scan became strict).
 
-use ifc_lite_export::{export_merged_models, leading_rooted_global_id, MergedModel, MergedOptions};
+use ifc_lite_export::rooted_type::is_rooted_type;
+use ifc_lite_export::{export_merged_models, MergedModel, MergedOptions};
 use std::collections::HashMap;
+
+/// The leading GlobalId of a rooted line, read INDEPENDENTLY of the crate's
+/// GlobalId readers (length + alphabet only, inline): a counter that shares the
+/// reader under test is blind to the very defect it must catch.
+fn rooted_guid(line: &str) -> Option<&str> {
+    let after_eq = &line[line.find('=')? + 1..];
+    let open = after_eq.find('(')?;
+    if !is_rooted_type(&after_eq[..open].trim().to_ascii_uppercase()) {
+        return None;
+    }
+    let body = after_eq[open + 1..].trim_start().strip_prefix('\'')?;
+    let tok = &body[..body.find('\'')?];
+    let shaped = tok.len() == 22 && tok.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'$');
+    shaped.then_some(tok)
+}
 
 fn rooted_counts(step: &str) -> HashMap<String, usize> {
     let mut m = HashMap::new();
     for line in step.lines().filter(|l| l.starts_with('#')) {
-        if let Some(g) = leading_rooted_global_id(line.as_bytes()) {
-            *m.entry(g).or_default() += 1;
+        if let Some(g) = rooted_guid(line) {
+            *m.entry(g.to_string()).or_default() += 1;
         }
     }
     m

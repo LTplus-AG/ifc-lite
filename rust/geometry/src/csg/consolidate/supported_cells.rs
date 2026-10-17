@@ -83,8 +83,14 @@ pub(super) fn find(buckets: &BTreeMap<Bucket, Vec<PlaneTri>>) -> Supported {
             out.buckets.insert(*key);
         }
     }
-    // A healthy finite fold has its own closed source-star certificate,
-    // independent of thin-cell retention or a previous operation's seeds.
+    // Preserve healthy folds only in an exactly paired source partition.
+    // An already open/nonmanifold source cannot certify that retaining these
+    // bucket boundaries preserves the ordinary cleanup's complete surface.
+    // Thin-cell certificates above remain local and keep their existing policy.
+    if !edges.values().all(|uses| uses.len() == 2 && uses[0].1 != uses[1].1) {
+        return out;
+    }
+    // The finite fold's local certificate remains independent of thin cells.
     let mut folded = Vec::new();
     for (first, pair) in faces.windows(2).enumerate() {
         let key = pair[0].0;

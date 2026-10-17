@@ -43,6 +43,8 @@
     "StepNumber": "enum { Integer(i64); Real(f64); Unrepresentable(&'a [u8]) }",
     "StreamConfig": "struct { only_types: Option<Vec<IfcType>>; progress_interval: usize; skip_types: Vec<IfcType> }",
     "Token": "enum { Binary(&'a [u8]); Derived; EntityRef(u32); Enum(&'a [u8]); Float(f64); Integer(i64); List(Vec<Token<'a>>); Null; String(&'a [u8]); TypedValue(&'a [u8], Vec<Token<'a>>); UnrepresentableReal(&'a [u8]) }",
+    "US_SURVEY_FOOT_M": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
+    "UnitScales": "struct { length_unit_refused: Option<u32>; length_unit_scale: f64; plane_angle_to_radians: f64; project_id: Option<u32> }",
     "UnknownIfcType": "struct {  }",
     "attribute_names_for_schema": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "build_entity_index": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",

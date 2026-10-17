@@ -819,7 +819,7 @@ fn sweep(models: &[(String, PathBuf)]) -> (Vec<HostRow>, BTreeSet<String>) {
 
     for (rel, _path) in models {
         // Discovered on disk, so present; gate-aware read via the testkit.
-        let Some(content) = ifc_lite_testkit::fixture_text(&rel) else {
+        let Some(content) = ifc_lite_testkit::fixture_text(rel) else {
             continue;
         };
         swept_models.insert(rel.clone());

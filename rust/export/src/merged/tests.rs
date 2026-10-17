@@ -1213,7 +1213,7 @@ fn leading_guid_tokens(step: &str) -> Vec<String> {
             let body = rest.strip_prefix('\'')?;
             let q2 = body.find('\'')?;
             let tok = &body[..q2];
-            super::guid::is_global_id(tok).then(|| tok.to_string())
+            ifc_lite_core::guid::is_valid_global_id(tok).then(|| tok.to_string())
         })
         .collect()
 }

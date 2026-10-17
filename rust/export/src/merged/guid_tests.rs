@@ -27,18 +27,18 @@ fn minted_ids_are_valid_and_first_char_in_range() {
     // 128 = 2 + 21*6: the first char encodes only 2 bits, so it is '0'..'3'.
     for seed in ["", "a", "wall-guid#m1", "long seed with spaces"] {
         let g = deterministic_global_id(seed);
-        assert!(is_global_id(&g), "{g:?} is a valid GlobalId");
+        assert!(ifc_lite_core::guid::is_valid_global_id(&g), "{g:?} is a valid GlobalId");
         assert!(matches!(g.as_bytes()[0], b'0'..=b'3'), "first char '0'-'3'");
     }
 }
 
 #[test]
-fn is_global_id_rejects_wrong_length_and_charset() {
-    assert!(is_global_id("2O2Fr$t4X7Zf8NOew3FLOH"));
-    assert!(!is_global_id("tooshort"));
-    assert!(!is_global_id("has a space in it here!")); // 22 chars but space
-    assert!(!is_global_id("2O2Fr$t4X7Zf8NOew3FLOHx")); // 23 chars
-    assert!(!is_global_id("zzzzzzzzzzzzzzzzzzzzzz")); // first char outside 0..=3 (#7777)
+fn global_id_validity_rejects_wrong_length_and_charset() {
+    assert!(ifc_lite_core::guid::is_valid_global_id("2O2Fr$t4X7Zf8NOew3FLOH"));
+    assert!(!ifc_lite_core::guid::is_valid_global_id("tooshort"));
+    assert!(!ifc_lite_core::guid::is_valid_global_id("has a space in it here!")); // 22 chars but space
+    assert!(!ifc_lite_core::guid::is_valid_global_id("2O2Fr$t4X7Zf8NOew3FLOHx")); // 23 chars
+    assert!(!ifc_lite_core::guid::is_valid_global_id("zzzzzzzzzzzzzzzzzzzzzz")); // first char outside 0..=3 (#7777)
 }
 
 #[test]
@@ -154,7 +154,7 @@ fn mint_avoids_collisions_with_emitted_pending_and_local() {
     // Same original+model, but the first candidate now collides → different id.
     let second = minter.mint("dup", "m1", &emitted, &empty);
     assert_ne!(first, second);
-    assert!(is_global_id(&second));
+    assert!(ifc_lite_core::guid::is_valid_global_id(&second));
     // A candidate already emitted by THIS model (passed via `also`) is avoided
     // even though it is absent from `emitted`. Seed `also` with the *exact*
     // deterministic id that minting "y#m2" would otherwise return, so the mint

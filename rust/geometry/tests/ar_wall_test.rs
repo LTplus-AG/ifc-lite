@@ -15,7 +15,6 @@
 use ifc_lite_core::{EntityDecoder, EntityScanner};
 use ifc_lite_geometry::{calculate_normals, csg::ClippingProcessor, GeometryRouter, GroupCut, Mesh};
 use rustc_hash::FxHashMap;
-use std::fs;
 
 /// Private local model (not in the manifest): `local_fixture_text` never gates.
 const AR_FIXTURE: &str = "local/AR.ifc";

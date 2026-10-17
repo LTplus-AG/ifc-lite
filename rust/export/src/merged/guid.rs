@@ -15,12 +15,6 @@ pub fn deterministic_global_id(seed: &str) -> String {
     ifc_lite_core::guid::deterministic(seed)
 }
 
-/// True for a valid 22-char IfcGloballyUniqueId (first char `0..=3`). See
-/// [`ifc_lite_core::guid::is_valid_global_id`].
-pub fn is_global_id(s: &str) -> bool {
-    ifc_lite_core::guid::is_valid_global_id(s)
-}
-
 /// True for IfcRelationship subtypes (objectified relationships): a shared GUID
 /// on two of these does NOT imply the same membership, so they are re-stamped
 /// (never unified/dropped) during reconciliation.

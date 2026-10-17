@@ -1,0 +1,13 @@
+diff --git b/rust/processing/src/data_model/spatial_walk.rs a/rust/processing/src/data_model/spatial_walk.rs
+index 356ab015c6..c348bcfbd6 100644
+--- b/rust/processing/src/data_model/spatial_walk.rs
++++ a/rust/processing/src/data_model/spatial_walk.rs
+@@ -39,7 +39,7 @@ pub fn walk<S: BuildHasher>(children: &HashMap<u32, Vec<u32>, S>, root: u32) ->
+         out.push(visit);
+         if let Some(kids) = children.get(&visit.id) {
+             // Pushed reversed so the first child is popped, and so owned, first.
+-            for &kid in kids.iter() {
++            for &kid in kids.iter().rev() {
+                 if !visited.contains(&kid) {
+                     stack.push(SpatialVisit { id: kid, parent: Some(visit.id), level: visit.level + 1 });
+                 }

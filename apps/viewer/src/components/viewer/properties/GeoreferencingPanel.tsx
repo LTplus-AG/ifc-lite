@@ -633,8 +633,8 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
         </div>
       )}
 
-      {/* Location minimap */}
       <LocationMap
+        dataStore={modelId ? models.get(modelId)?.ifcDataStore ?? undefined : undefined}
         mapConversion={mergedConversion}
         projectedCRS={mergedCRS}
         coordinateInfo={coordinateInfo}

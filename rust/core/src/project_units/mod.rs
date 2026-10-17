@@ -23,6 +23,7 @@ pub mod symbols;
 use std::collections::BTreeMap;
 
 use crate::decoder::EntityDecoder;
+use crate::slot;
 pub use measure::{measure_unit, MeasureUnit};
 pub use scales::UnitScales;
 use symbols::{compose_derived, conversion_unit_symbol, si_unit_symbol_and_scale};
@@ -71,7 +72,7 @@ impl ProjectUnits {
             return units;
         }
         // IFCPROJECT attribute 8 = UnitsInContext (IFCUNITASSIGNMENT).
-        let Some(units_ref) = project.get(8).and_then(|a| a.as_entity_ref()) else {
+        let Some(units_ref) = project.ref_at(slot::IfcProject::UNITS_IN_CONTEXT) else {
             return units;
         };
         let Ok(assignment) = decoder.decode_by_id(units_ref) else {
@@ -83,7 +84,7 @@ impl ProjectUnits {
         // IFCUNITASSIGNMENT.Units (attribute 0) is a list of unit refs. Collect
         // the ids first so we release the borrow on `assignment` before the
         // decoder is borrowed mutably again inside the resolve loop.
-        let refs: Vec<u32> = match assignment.get(0).and_then(|a| a.as_list()) {
+        let refs: Vec<u32> = match assignment.attr(slot::IfcUnitAssignment::UNITS).and_then(|a| a.as_list()) {
             Some(list) => list.iter().filter_map(|a| a.as_entity_ref()).collect(),
             None => return units,
         };
@@ -252,10 +253,10 @@ fn resolve_unit_entity(
     match entity.ifc_type.as_str() {
         "IFCSIUNIT" => {
             // [1]=UnitType, [2]=Prefix, [3]=Name
-            let unit_type = entity.get(1).and_then(|a| a.as_enum()).map(str_token);
-            let name = entity.get(3).and_then(|a| a.as_enum())?;
+            let unit_type = entity.enum_at(slot::IfcNamedUnit::UNIT_TYPE).map(str_token);
+            let name = entity.enum_at(slot::IfcSIUnit::NAME)?;
             let prefix = entity
-                .get(2)
+                .attr(slot::IfcSIUnit::PREFIX)
                 .filter(|a| !a.is_null())
                 .and_then(|a| a.as_enum());
             let (symbol, scale) = si_unit_symbol_and_scale(name, prefix)?;
@@ -263,14 +264,14 @@ fn resolve_unit_entity(
         }
         "IFCCONVERSIONBASEDUNIT" => {
             // [1]=UnitType, [2]=Name, [3]=ConversionFactor (IFCMEASUREWITHUNIT)
-            let unit_type = entity.get(1).and_then(|a| a.as_enum()).map(str_token);
-            let name = entity.get(2).and_then(|a| a.as_string()).unwrap_or("");
+            let unit_type = entity.enum_at(slot::IfcNamedUnit::UNIT_TYPE).map(str_token);
+            let name = entity.string_at(slot::IfcConversionBasedUnit::NAME).unwrap_or("");
             // A factor the file does not resolve falls back to the name's known
             // factor, from the linear table the geometry length scale reads, so
             // only for a LENGTHUNIT; anything else is left unresolved rather
             // than guessed at 1.0 (#4690).
             let scale = entity
-                .get_ref(3)
+                .ref_at(slot::IfcConversionBasedUnit::CONVERSION_FACTOR)
                 .and_then(|r| conversion_factor_scale(decoder, r, walk))
                 .or_else(|| match unit_type.as_deref() {
                     Some("LENGTHUNIT") => crate::unit_labels::get_conversion_based_unit_factor(name),
@@ -281,9 +282,9 @@ fn resolve_unit_entity(
         }
         "IFCDERIVEDUNIT" => {
             // [0]=Elements (list of IFCDERIVEDUNITELEMENT), [1]=UnitType
-            let unit_type = entity.get(1).and_then(|a| a.as_enum()).map(str_token);
+            let unit_type = entity.enum_at(slot::IfcDerivedUnit::UNIT_TYPE).map(str_token);
             let elem_refs: Vec<u32> = entity
-                .get(0)
+                .attr(slot::IfcDerivedUnit::ELEMENTS)
                 .and_then(|a| a.as_list())
                 .map(|l| l.iter().filter_map(|a| a.as_entity_ref()).collect())
                 .unwrap_or_default();
@@ -306,7 +307,7 @@ fn resolve_unit_entity(
         "IFCMONETARYUNIT" => {
             // [0]=Currency (IfcLabel string in IFC4+, IfcCurrencyEnum in IFC2x3).
             let currency = entity
-                .get(0)
+                .attr(slot::IfcMonetaryUnit::CURRENCY)
                 .and_then(|a| a.as_string().or_else(|| a.as_enum()))
                 .unwrap_or("");
             Some((None, Some(ResolvedUnit::new(currency_symbol(currency), 1.0)), true))
@@ -329,13 +330,12 @@ fn resolve_derived_element(
         return None;
     }
     // [0]=Unit (IfcNamedUnit), [1]=Exponent
-    let unit_ref = elem.get_ref(0)?;
+    let unit_ref = elem.ref_at(slot::IfcDerivedUnitElement::UNIT)?;
     // The file's exponent is an `i64`; saturate into `i32` rather than
     // truncate, so an out-of-range value cannot wrap to an unrelated small
     // exponent (or, at exactly 2^31, to `i32::MIN`).
     let exponent = elem
-        .get(1)
-        .and_then(|a| a.as_int())
+        .int_at(slot::IfcDerivedUnitElement::EXPONENT)
         .unwrap_or(1)
         .clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32;
     let resolved = resolve_unit_by_ref_walk(decoder, unit_ref, walk)?.1?;
@@ -362,12 +362,12 @@ fn conversion_factor_scale(
         return None;
     }
     // [0]=ValueComponent, [1]=UnitComponent
-    let value = measure.get(0).and_then(|a| a.as_float())?;
+    let value = measure.real_at(slot::IfcMeasureWithUnit::VALUE_COMPONENT)?;
     if !(value.is_finite() && value > 0.0) {
         return None;
     }
     // An unresolved UnitComponent leaves the factor unknown, not SI (#4690).
-    let component = resolve_unit_by_ref_walk(decoder, measure.get_ref(1)?, walk)?.1?;
+    let component = resolve_unit_by_ref_walk(decoder, measure.ref_at(slot::IfcMeasureWithUnit::UNIT_COMPONENT)?, walk)?.1?;
     Some(value * component.si_scale)
 }
 

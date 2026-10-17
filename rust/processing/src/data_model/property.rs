@@ -74,8 +74,13 @@ impl PropertyKind {
 #[non_exhaustive]
 pub enum PropertyScope {
     /// `IfcPropertySingleValue` only, with its raw nominal value and no
-    /// display form. What the flat exports read today (EXPORT-DATA-2).
+    /// display form.
     SingleValueOnly,
+    /// Every kind, as the flat exports write it (EXPORT-DATA-2, D47): a single
+    /// value carries only its raw nominal value (the flat encoder renders that
+    /// and never reads a display form, so none is built), every other kind
+    /// carries its display form.
+    Flat,
     /// Every kind, each with its display form; a single value also carries
     /// its raw nominal value. What the server's tables read.
     AllKinds,
@@ -91,7 +96,8 @@ pub struct PropertyRow {
     /// other kind, and for a single value that has no such attribute.
     pub nominal: Option<AttributeValue>,
     /// The columnar display form: `Some` for every row under
-    /// [`PropertyScope::AllKinds`], `None` under `SingleValueOnly`.
+    /// [`PropertyScope::AllKinds`] and for every non-single row under
+    /// [`PropertyScope::Flat`]; `None` otherwise.
     pub display: Option<Property>,
 }
 
@@ -152,7 +158,7 @@ impl PropertyDecoder {
     fn decode_property(
         &mut self, decoder: &mut EntityDecoder, entity: &DecodedEntity, kind: PropertyKind,
     ) -> Option<PropertyRow> {
-        if self.scope == PropertyScope::SingleValueOnly {
+        if kind == PropertyKind::Single && self.scope != PropertyScope::AllKinds {
             let name = entity.string_at(slot::IfcPropertySingleValue::NAME)?.to_string();
             return Some(PropertyRow { name, kind, nominal: entity.attr(slot::IfcPropertySingleValue::NOMINAL_VALUE).cloned(), display: None });
         }

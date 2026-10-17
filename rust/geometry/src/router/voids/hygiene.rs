@@ -2,8 +2,15 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Untextured void-output hygiene: preserve an existing exact closed boundary.
+//! Opening-operand hygiene and preservation of exact closed void outputs.
 use crate::{exact_topology::strict_closed_mesh, Mesh};
+
+/// Mesh and bounds probes must retain exactly the same opening-item parts.
+pub(super) fn clean_opening_item(mut mesh: Mesh, router: &super::GeometryRouter) -> Option<Mesh> {
+    if mesh.is_empty() { return None; }
+    super::SourceHygiene::BooleanOperand.for_router(router).apply(&mut mesh);
+    (!mesh.indices.is_empty()).then_some(mesh)
+}
 
 pub(super) fn clean_void_output(mesh: &mut Mesh) {
     if !mesh.needs_degenerate_cleanup() {

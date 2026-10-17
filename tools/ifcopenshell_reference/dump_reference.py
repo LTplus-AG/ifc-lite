@@ -2,7 +2,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Dump canonical per-element geometry stats from the PINNED reference engine.
+"""Dump canonical per-element geometry stats from the installed reference engine.
 
 Usage:
     python dump_reference.py <model.ifc> [<model2.ifc> ...] --out-dir reference/

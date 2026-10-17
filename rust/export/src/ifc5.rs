@@ -7,7 +7,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use ifc_lite_core::{DecodedEntity, EntityDecoder, EntityScanner};
+use ifc_lite_core::{slot, DecodedEntity, EntityDecoder, EntityScanner};
 use serde_json::{json, Map, Value};
 
 use crate::json::typed_value;
@@ -131,7 +131,7 @@ pub(crate) fn decode_one(content: &[u8], id: u32) -> Option<DecodedEntity> {
 /// model doesn't carry it. Shared with the USD exporter (`crate::usd`).
 pub(crate) fn project_name(content: &[u8], project_id: u32) -> String {
     decode_one(content, project_id)
-        .and_then(|e| e.get(2).and_then(|a| a.as_string()).map(|s| s.to_string()))
+        .and_then(|e| e.string_at(slot::IfcProject::NAME).map(|s| s.to_string()))
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| "Project".to_string())
 }

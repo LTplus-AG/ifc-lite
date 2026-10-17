@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import type { GeometryDiagnostics, StallPhaseHandle } from '@ifc-lite/geometry';
-import { buildModelLoadedGeometryProps, geometryProcessingStallPhase, reportSkippedHungElements } from './modelLoadedGeometryProps.js';
+import { buildModelLoadedGeometryProps, geometryProcessingStallPhase, reportRefusedLengthUnit, reportSkippedHungElements } from './modelLoadedGeometryProps.js';
 import { stripSource } from '@/test/strip-comments.js';
 
 function diag(over: Partial<GeometryDiagnostics> = {}): GeometryDiagnostics {
@@ -203,6 +203,26 @@ describe('skipped hung elements (#4884)', () => {
     assert.deepEqual(notices, [
       '"tower.ifc" loaded without 3 elements whose geometry could not be computed (IFCBEAM, IFCWALL).',
     ]);
+  });
+});
+
+describe('reportRefusedLengthUnit (#7678)', () => {
+  it('tells the user the 3D view is empty and that the data is still available', () => {
+    const notices: string[] = [];
+    const warn = console.warn;
+    console.warn = () => {};
+    try {
+      reportRefusedLengthUnit('tower.ifc', (message) => notices.push(message));
+    } finally {
+      console.warn = warn;
+    }
+    assert.equal(notices.length, 1);
+    assert.match(notices[0], /"tower\.ifc" has an unusable length unit/);
+    assert.match(notices[0], /properties and hierarchy are still available/);
+  });
+
+  it('is wired to the geometry stream\'s unitRefused event in the loader', () => {
+    assert.match(loader.code, /case 'unitRefused':\s*reportRefusedLengthUnit\(file\.name, toast\.error\)/);
   });
 });
 

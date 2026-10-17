@@ -6,6 +6,9 @@ export interface ByteStreamingPrePassResult {
   jobs: Uint32Array;
   totalJobs: number;
   unitScale: number;
+  /** The model's length-unit factor is unusable (#7678): `unitScale` is NaN and
+   *  every batch router refuses, so no geometry is meshed. Absent on an older wasm. */
+  unitRefused?: boolean;
   rtcOffset?: Float64Array;
   needsShift: boolean;
   buildingRotation?: number | null;
@@ -24,3 +27,10 @@ export interface ByteStreamingPrePassResult {
   materialColorCounts?: Uint32Array;
   materialColors?: Uint8Array;
 }
+
+/**
+ * Streamed once, right after `rtcOffset`, when the model's length-unit factor
+ * is unusable (#7678): every element is refused, so the stream carries no
+ * geometry. The data model is unaffected.
+ */
+export interface UnitRefusedEvent { type: 'unitRefused' }

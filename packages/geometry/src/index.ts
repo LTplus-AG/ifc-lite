@@ -114,7 +114,7 @@ import { processParallel, type ProcessParallelOptions } from './geometry-paralle
 import { getWarmGeometryWorkerPool } from './warm-pool.js';
 import { acquireWasmStreamingOperation } from './wasm-streaming-guard.js';
 import type { StallPhaseHandle } from './stall-phase.js';
-import type { ByteStreamingPrePassResult } from './byte-streaming-prepass-result.js';
+import type { ByteStreamingPrePassResult, UnitRefusedEvent } from './byte-streaming-prepass-result.js';
 import { buildPrePassWithFinishes } from './style-finishes.js';
 
 /**
@@ -206,6 +206,7 @@ export type StreamingGeometryEvent =
     }
   | { type: 'colorUpdate'; updates: Map<number, [number, number, number, number]> }
   | { type: 'rtcOffset'; rtcOffset: { x: number; y: number; z: number }; hasRtc: boolean }
+  | UnitRefusedEvent
   | {
       /**
        * Per-worker memory snapshot, emitted once per geometry worker once
@@ -506,11 +507,8 @@ export class GeometryProcessor {
       yield { type: 'model-open', modelID: 0 };
 
       // Always publish the selected frame, including authoritative false/zero.
-      yield {
-        type: 'rtcOffset',
-        rtcOffset: { x: rtc.x, y: rtc.y, z: rtc.z },
-        hasRtc: rtc.needsShift,
-      };
+      yield { type: 'rtcOffset', rtcOffset: { x: rtc.x, y: rtc.y, z: rtc.z }, hasRtc: rtc.needsShift };
+      if (prePass.unitRefused) yield { type: 'unitRefused' };
 
       const buildingRotation = prePass.buildingRotation ?? undefined;
       if (!prePass.jobs || prePass.totalJobs === 0) {

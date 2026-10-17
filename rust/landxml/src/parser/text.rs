@@ -17,7 +17,7 @@ impl Parser<'_> {
         // permits only literal XML S bytes, so `&#32;` cannot pass as padding.
         self.check_character_references(character_references(raw))?;
         if self.frames.is_empty() {
-            return self.outside_root_text(raw, false);
+            return crate::xml::outside_root_text(self.root_closed, raw, false);
         }
         self.capture_text(&crate::xml::unescape(raw)?)
     }
@@ -27,7 +27,7 @@ impl Parser<'_> {
         // CDATA is literal character data: entity-looking sequences must not
         // be expanded before the numeric capture parser sees them.
         if self.frames.is_empty() {
-            return self.outside_root_text(literal, true);
+            return crate::xml::outside_root_text(self.root_closed, literal, true);
         }
         self.capture_text(literal)
     }
@@ -38,22 +38,6 @@ impl Parser<'_> {
         }
         self.check_cancel_and_work(bytes.len())?;
         std::str::from_utf8(bytes).map_err(|_| error(Code::InvalidXml, "text is not UTF-8"))
-    }
-
-    fn outside_root_text(&self, raw: &str, cdata: bool) -> Result<()> {
-        if !cdata && raw.bytes().all(is_xml_s) {
-            return Ok(());
-        }
-        let location = if self.root_closed { "after" } else { "before" };
-        let kind = if cdata {
-            "CDATA"
-        } else {
-            "non-whitespace content"
-        };
-        Err(error(
-            Code::InvalidXml,
-            format!("LandXML document has {kind} {location} its root element"),
-        ))
     }
 
     fn capture_text(&mut self, text: &str) -> Result<()> {
@@ -79,8 +63,4 @@ impl Parser<'_> {
         }
         Ok(())
     }
-}
-
-fn is_xml_s(byte: u8) -> bool {
-    matches!(byte, b' ' | b'\t' | b'\r' | b'\n')
 }

@@ -3,7 +3,6 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use crate::{
-    classify_landxml_version, compatibility_version_diagnostic,
     preflight::preflight_xml_tokens,
     xml::{attr, attributes, error, normalize_encoding, split_name, Result},
     LandXmlCancellation, LandXmlDiagnosticCode as Code, LandXmlLimits, LandXmlPipeNetworkDocument,
@@ -22,6 +21,8 @@ mod features;
 mod finalize;
 mod handlers;
 mod inverts;
+#[cfg(test)]
+mod outside_root_tests;
 mod state;
 mod units;
 /// Parse exact LandXML 1.2 pipe networks with default resource limits.
@@ -58,7 +59,10 @@ pub fn parse_landxml_pipe_networks_with_cancel(
         parser.consume_event(event)?;
         buffer.clear();
     }
-    if !parser.frames.is_empty() || !parser.root_seen || !parser.root_closed {
+    if !parser.root_seen {
+        return Err(error(Code::InvalidXml, "LandXML document is empty"));
+    }
+    if !parser.frames.is_empty() || !parser.root_closed {
         return Err(error(Code::InvalidXml, "unclosed XML element"));
     }
     parser.finish_stream()
@@ -151,42 +155,13 @@ impl<'a> PipeParser<'a> {
         inherited.extend(namespaces);
         let namespace = inherited.get(prefix).map(String::as_str);
         if self.frames.is_empty() {
-            if self.root_seen {
-                return Err(error(
-                    Code::InvalidXml,
-                    "LandXML document has multiple roots",
-                ));
-            }
-            if local != "LandXML" {
-                return Err(error(Code::InvalidSemantic, "root element is not LandXML"));
-            }
-            let capability = classify_landxml_version(namespace, attr(&attributes, "version"));
-            if !capability.supports_tin_ingestion() {
-                return Err(match capability {
-                    crate::LandXmlVersionCapability::NotLandXml => error(
-                        Code::UnsupportedNamespace,
-                        "root namespace is not a recognized LandXML namespace",
-                    ),
-                    _ => error(
-                        Code::UnsupportedVersion,
-                        "LandXML namespaces require a known version declaration",
-                    ),
-                });
-            }
-            self.schema = capability
-                .schema()
-                .expect("supported capability has a schema")
-                .to_owned();
+            let root = crate::parser::validate_root(self.root_seen, local, namespace, &attributes)?;
+            self.schema = root.schema;
             self.target_namespace = namespace.map(str::to_owned);
-            if let Some(diagnostic) = compatibility_version_diagnostic(
-                capability,
-                attr(&attributes, "version").expect("supported capability has a version"),
-            ) {
-                self.capability_diagnostics.push(diagnostic);
+            if let Some(diagnostic) = root.diagnostic {
+                self.record_capability_diagnostic(diagnostic)?;
             }
-            self.version = attr(&attributes, "version")
-                .expect("supported capability has a version")
-                .to_owned();
+            self.version = root.version;
             self.root_seen = true;
         }
         let target = namespace == self.target_namespace.as_deref();

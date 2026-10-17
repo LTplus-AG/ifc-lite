@@ -54,35 +54,11 @@ impl Parser<'_> {
         inherited.extend(namespaces);
         let namespace = inherited.get(prefix).map(String::as_str);
         if self.frames.is_empty() {
-            if self.root_seen {
-                return Err(error(
-                    Code::InvalidXml,
-                    "LandXML document has multiple roots",
-                ));
-            }
-            if local != "LandXML" {
-                return Err(error(Code::InvalidSemantic, "root element is not LandXML"));
-            }
-            let capability = classify_landxml_version(namespace, attr(&attributes, "version"));
-            if !capability.supports_tin_ingestion() {
-                return Err(match capability {
-                    LandXmlVersionCapability::NotLandXml => error(
-                        Code::UnsupportedNamespace,
-                        "root namespace is not a recognized LandXML namespace",
-                    ),
-                    _ => error(
-                        Code::UnsupportedVersion,
-                        "COGO and plan parsing requires a supported LandXML namespace and version",
-                    ),
-                });
-            }
-            self.schema = capability
-                .schema()
-                .expect("supported capability has a schema")
-                .to_owned();
-            self.version = attr(&attributes, "version").unwrap_or_default().to_owned();
-            if let Some(diagnostic) = compatibility_version_diagnostic(capability, &self.version) {
-                self.capability_diagnostics.push(diagnostic);
+            let root = crate::parser::validate_root(self.root_seen, local, namespace, &attributes)?;
+            self.schema = root.schema;
+            self.version = root.version;
+            if let Some(diagnostic) = root.diagnostic {
+                self.record_capability_diagnostic(diagnostic)?;
             }
             self.target_namespace = namespace.map(str::to_owned);
             self.root_seen = true;
@@ -306,12 +282,6 @@ impl Parser<'_> {
         self.check(bytes.len())?;
         let value =
             std::str::from_utf8(bytes).map_err(|_| error(Code::InvalidXml, "text is not UTF-8"))?;
-        if self.frames.is_empty() {
-            if value.bytes().all(is_xml_s) {
-                return Ok(());
-            }
-            return Err(error(Code::InvalidXml, "text outside LandXML root"));
-        }
         self.characters = self
             .characters
             .checked_add(character_references(value))
@@ -321,6 +291,9 @@ impl Parser<'_> {
                 Code::LimitExceeded,
                 "character reference limit exceeded",
             ));
+        }
+        if self.frames.is_empty() {
+            return crate::xml::outside_root_text(self.root_seen, value, false);
         }
         // Resolve before the capture check: an undeclared entity is refused
         // wherever it appears, as in an attribute value (#7680).
@@ -352,7 +325,7 @@ impl Parser<'_> {
         let value =
             std::str::from_utf8(bytes).map_err(|_| error(Code::InvalidXml, "text is not UTF-8"))?;
         if self.frames.is_empty() {
-            return Err(error(Code::InvalidXml, "CDATA outside LandXML root"));
+            return crate::xml::outside_root_text(self.root_seen, value, true);
         }
         self.capture_literal_text(value)
     }
@@ -376,8 +349,4 @@ impl Parser<'_> {
         }
         Ok(())
     }
-}
-
-fn is_xml_s(byte: u8) -> bool {
-    matches!(byte, b' ' | b'\t' | b'\r' | b'\n')
 }

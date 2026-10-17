@@ -12,12 +12,11 @@ use super::{
     Capture, Frame, Parser,
 };
 use crate::{
-    classify_landxml_version, compatibility_version_diagnostic,
     semantics::units,
     xml::{
         attr, attributes, character_references, error, split_name, unescape, Attributes, Result,
     },
-    LandXmlCancellation, LandXmlDiagnosticCode as Code, LandXmlVersionCapability,
+    LandXmlCancellation, LandXmlDiagnosticCode as Code,
 };
 
 impl Parser<'_> {
@@ -35,6 +34,17 @@ impl Parser<'_> {
         if self.work > self.limits.xml.max_work {
             return Err(limit("work limit exceeded"));
         }
+        Ok(())
+    }
+    /// A diagnostic is source output too: bounded like every other record.
+    fn record_capability_diagnostic(
+        &mut self,
+        diagnostic: crate::LandXmlCapabilityDiagnostic,
+    ) -> Result<()> {
+        if self.capability_diagnostics.len() >= self.limits.xml.max_capability_diagnostics {
+            return Err(limit("capability diagnostic limit exceeded"));
+        }
+        self.capability_diagnostics.push(diagnostic);
         Ok(())
     }
     fn check_character_references(&mut self, added: usize) -> Result<()> {
@@ -64,7 +74,7 @@ impl Parser<'_> {
         let name = start.name();
         let (_, local, prefix) = split_name(name.as_ref().as_bytes(), self.limits.xml.max_name_bytes)?;
         let (attrs, namespaces, refs) = attributes(start, &self.limits.xml)?;
-        self.check(attrs.len().saturating_add(refs))?;
+        self.check(attrs.len())?;
         self.check_character_references(refs)?;
         let mut inherited = self
             .frames
@@ -73,23 +83,12 @@ impl Parser<'_> {
         inherited.extend(namespaces);
         let namespace = inherited.get(prefix).map(String::as_str);
         if self.frames.is_empty() {
-            if self.root_seen {
-                return Err(error(
-                    Code::InvalidXml,
-                    "LandXML document has multiple root elements",
-                ));
-            }
+            let root = crate::parser::validate_root(self.root_seen, local, namespace, &attrs)?;
             self.root_seen = true;
-            let capability = validate_root(local, namespace, attr(&attrs, "version"))?;
-            self.schema = capability
-                .schema()
-                .expect("supported capability has a schema")
-                .to_owned();
-            self.version = attr(&attrs, "version")
-                .expect("supported capability has a version")
-                .to_owned();
-            if let Some(diagnostic) = compatibility_version_diagnostic(capability, &self.version) {
-                self.capability_diagnostics.push(diagnostic);
+            self.schema = root.schema;
+            self.version = root.version;
+            if let Some(diagnostic) = root.diagnostic {
+                self.record_capability_diagnostic(diagnostic)?;
             }
             self.target_namespace = namespace.map(str::to_owned);
         }
@@ -106,7 +105,7 @@ impl Parser<'_> {
         {
             return Err(error(
                 Code::InvalidSemantic,
-                "captured alignment value may not contain descendant elements",
+                "numeric LandXML capture cannot contain nested elements",
             ));
         }
         if target {
@@ -260,7 +259,7 @@ impl Parser<'_> {
             std::str::from_utf8(bytes).map_err(|_| error(Code::InvalidXml, "text is not UTF-8"))?;
         self.check_character_references(character_references(text))?;
         if self.frames.is_empty() {
-            return outside_root_text(self.root_closed, text, false);
+            return crate::xml::outside_root_text(self.root_closed, text, false);
         }
         let text = unescape(text)?;
         if let Some(capture) = &mut self.capture {
@@ -281,7 +280,7 @@ impl Parser<'_> {
         let text = std::str::from_utf8(bytes)
             .map_err(|_| error(Code::InvalidXml, "CDATA is not UTF-8"))?;
         if self.frames.is_empty() {
-            return outside_root_text(self.root_closed, text, true);
+            return crate::xml::outside_root_text(self.root_closed, text, true);
         }
         if let Some(capture) = &mut self.capture {
             let target = match capture {
@@ -299,11 +298,11 @@ impl Parser<'_> {
         Ok(())
     }
     pub(crate) fn finish(self) -> Result<super::super::LandXmlAlignmentDocument> {
-        if !self.root_seen || !self.root_closed {
-            return Err(error(
-                Code::InvalidXml,
-                "document must contain exactly one root element",
-            ));
+        if !self.root_seen {
+            return Err(error(Code::InvalidXml, "LandXML document is empty"));
+        }
+        if !self.root_closed {
+            return Err(error(Code::InvalidXml, "unclosed XML element"));
         }
         if self.require_alignment && self.alignments.is_empty() {
             return Err(invalid("document contains no Alignments"));
@@ -349,52 +348,5 @@ impl Parser<'_> {
             )
             && self.frames[4].target
             && self.frames[5].target
-    }
-}
-fn outside_root_text(root_closed: bool, text: &str, cdata: bool) -> Result<()> {
-    if !cdata
-        && text
-            .bytes()
-            .all(|byte| matches!(byte, b' ' | b'\t' | b'\r' | b'\n'))
-    {
-        return Ok(());
-    }
-    let location = if root_closed { "after" } else { "before" };
-    let kind = if cdata {
-        "CDATA"
-    } else {
-        "non-whitespace content"
-    };
-    Err(error(
-        Code::InvalidXml,
-        format!("LandXML document has {kind} {location} its root element"),
-    ))
-}
-fn validate_root(
-    local: &str,
-    namespace: Option<&str>,
-    version: Option<&str>,
-) -> Result<LandXmlVersionCapability> {
-    if local != "LandXML" {
-        return Err(invalid("root element is not LandXML"));
-    }
-    let capability = classify_landxml_version(namespace, version);
-    match capability {
-        LandXmlVersionCapability::LandXml10Tin
-        | LandXmlVersionCapability::LandXml11Tin
-        | LandXmlVersionCapability::LandXml12Tin
-        | LandXmlVersionCapability::LandXml10VersionMismatch
-        | LandXmlVersionCapability::LandXml11VersionMismatch
-        | LandXmlVersionCapability::LandXml12VersionMismatch => Ok(capability),
-        LandXmlVersionCapability::LandXml10Unsupported
-        | LandXmlVersionCapability::LandXml11Unsupported
-        | LandXmlVersionCapability::LandXml12Unsupported => Err(error(
-            Code::UnsupportedVersion,
-            "LandXML namespaces require a known version declaration",
-        )),
-        LandXmlVersionCapability::NotLandXml => Err(error(
-            Code::UnsupportedNamespace,
-            "root namespace is not a recognized LandXML namespace",
-        )),
     }
 }

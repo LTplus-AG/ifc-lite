@@ -23,7 +23,7 @@ use crate::{
 impl Parser<'_> {
     pub(super) fn begin_alignment(&mut self, attrs: &Attributes) -> Result<()> {
         if self.alignments.len() >= self.limits.max_alignments {
-            return Err(invalid("alignment limit exceeded"));
+            return Err(limit("alignment limit exceeded"));
         }
         if self.alignment.is_some() {
             return Err(invalid("nested Alignment is not valid"));

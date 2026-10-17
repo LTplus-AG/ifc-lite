@@ -60,8 +60,14 @@ pub(super) struct Frame {
     pub(super) namespaces: HashMap<String, String>,
 }
 
+/// Record properties are the element's attributes without namespace
+/// declarations, as in the terrain and plan families (#7784 drift 9).
 pub(super) fn properties(attributes: &[(String, String)]) -> LandXmlPipeProperties {
-    attributes.iter().cloned().collect()
+    attributes
+        .iter()
+        .filter(|(name, _)| !name.starts_with("xmlns"))
+        .cloned()
+        .collect()
 }
 
 pub(super) struct NetworkBuilder {

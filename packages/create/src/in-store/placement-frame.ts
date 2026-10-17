@@ -20,6 +20,7 @@
  * length-unit scale themselves.
  */
 
+import { walkPlacementChain } from '@ifc-lite/data';
 import {
   EntityExtractor,
   type IfcDataStore,
@@ -105,21 +106,24 @@ export function storeyPlacementChain(
   extractor: EntityExtractor,
   overlay: OverlayWallReader | undefined,
   storeyId: number,
-  maxPlacements = Number.POSITIVE_INFINITY,
 ): Map<number, number> | null {
-  const chain = new Map<number, number>();
   const storey = readEntity(store, extractor, overlay, storeyId);
   if (!storey) return null;
-  let id = numericAttr(storey.attributes[5]); // ObjectPlacement
-  if (id === null) return null;
-  while (id !== null && !chain.has(id)) {
-    if (chain.size >= maxPlacements) return null;
-    chain.set(id, chain.size);
-    const placement = readEntity(store, extractor, overlay, id);
-    if (!placement) break;
-    id = numericAttr(placement.attributes[0]); // PlacementRelTo
-  }
-  return chain;
+  const start = numericAttr(storey.attributes[5]); // ObjectPlacement
+  if (start === null) return null;
+  const walked = walkPlacementChain(start, (id) => parentPlacementId(store, extractor, overlay, id));
+  return new Map(walked.ids.map((id, hops) => [id, hops]));
+}
+
+/** An `IfcLocalPlacement`'s `PlacementRelTo` id; null for a root or an unreadable link. */
+function parentPlacementId(
+  store: IfcDataStore,
+  extractor: EntityExtractor,
+  overlay: OverlayWallReader | undefined,
+  id: number,
+): number | null {
+  const placement = readEntity(store, extractor, overlay, id);
+  return placement ? numericAttr(placement.attributes[0]) : null; // PlacementRelTo
 }
 
 /**
@@ -229,39 +233,41 @@ export function frameInStoreyFrame(
   // existed — and leave the element where its own placement puts it rather
   // than silently moving it by the site and building offsets.
   if (!storeyChain) return frame;
-  // Visited-set termination: exact for cyclic/self-referential
-  // `PlacementRelTo` in malformed IFC, and needs no arbitrary depth bound.
-  const visited = new Set<number>([placementId]);
-  let currentId = placementId;
-  for (;;) {
-    const placement = readEntity(store, extractor, overlay, currentId);
-    const relToId = placement ? numericAttr(placement.attributes[0]) : null;
-    // The walk joins the storey's own chain (or runs out of parents at the
-    // root, where the storey's chain also ends). `frame` is now expressed in
-    // that shared ancestor's frame, and the storey sits `hops` placements
-    // below it — `hops === 0` when the ancestor IS the storey's placement,
-    // the common shape, where the frame is already storey-local.
-    if (relToId === null || storeyChain.has(relToId)) {
-      const hops = relToId === null ? storeyChain.size : (storeyChain.get(relToId) as number);
-      if (hops === 0) return frame;
-      // #3003: the wall joined the chain ABOVE the storey, so the storey's own
-      // hops are in `frame` and every caller reads the result as storey-local.
-      // Divide them out — the INVERSE of the storey's frame in the shared
-      // ancestor, applied to the wall's frame in that same ancestor. Applying
-      // the storey frame itself instead would double the offset rather than
-      // remove it, so the two directions land on different coordinates and the
-      // #3003 fixture pins which one this is.
-      const storeyFrame = storeyFrameAboveBy(store, extractor, overlay, storeyChain, hops);
-      return storeyFrame ? composeFrames(invertFrame(storeyFrame), frame) : null;
-    }
-    // A cycle or unreadable parent cannot make a trustworthy partial frame.
-    if (visited.has(relToId)) return null;
-    const parent = readOwnPlacementFrame(store, extractor, overlay, relToId);
+  // The shared walker terminates on a cycle or self-reference in malformed
+  // IFC with a visited set and no depth bound. It stops at the first ancestor
+  // on the storey's own chain (or runs out of parents at the root, where the
+  // storey's chain also ends).
+  const walked = walkPlacementChain(
+    placementId,
+    (id) => parentPlacementId(store, extractor, overlay, id),
+    { stopAt: (id) => id !== placementId && storeyChain.has(id) },
+  );
+  // A cycle cannot make a trustworthy partial frame.
+  if (walked.end === 'cycle') return null;
+  const joined = walked.end === 'stopped' ? walked.ids[walked.ids.length - 1]! : null;
+  // `frame` is composed with every parent strictly between the placement and
+  // the shared ancestor; it is then expressed in that ancestor's frame, and
+  // the storey sits `hops` placements below it: `hops === 0` when the ancestor
+  // IS the storey's placement, the common shape, where the frame is already
+  // storey-local.
+  const between = walked.ids.slice(1, joined === null ? undefined : -1);
+  for (const id of between) {
+    const parent = readOwnPlacementFrame(store, extractor, overlay, id);
+    // An unreadable parent cannot make a trustworthy partial frame.
     if (!parent) return null;
     frame = composeFrames(parent, frame);
-    visited.add(relToId);
-    currentId = relToId;
   }
+  const hops = joined === null ? storeyChain.size : (storeyChain.get(joined) as number);
+  if (hops === 0) return frame;
+  // #3003: the wall joined the chain ABOVE the storey, so the storey's own
+  // hops are in `frame` and every caller reads the result as storey-local.
+  // Divide them out — the INVERSE of the storey's frame in the shared
+  // ancestor, applied to the wall's frame in that same ancestor. Applying
+  // the storey frame itself instead would double the offset rather than
+  // remove it, so the two directions land on different coordinates and the
+  // #3003 fixture pins which one this is.
+  const storeyFrame = storeyFrameAboveBy(store, extractor, overlay, storeyChain, hops);
+  return storeyFrame ? composeFrames(invertFrame(storeyFrame), frame) : null;
 }
 
 /**

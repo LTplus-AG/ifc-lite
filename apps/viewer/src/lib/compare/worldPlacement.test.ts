@@ -209,6 +209,42 @@ describe('worldPlacementFingerprint - the re-georeferencing control', () => {
   });
 });
 
+describe('composeWorldPlacement - no depth cap (#7791, D27)', () => {
+  /** A site under `links` placements, each translating +1 in X. */
+  const deepSite = (links: number, cycleBack = false): string => {
+    const lines = [`#10=IFCCARTESIANPOINT((1.,0.,0.));`, `#20=IFCAXIS2PLACEMENT3D(#10,$,$);`];
+    for (let i = 0; i < links; i++) {
+      const parent = i === 0 ? (cycleBack ? `#${100 + links - 1}` : '$') : `#${100 + i - 1}`;
+      lines.push(`#${100 + i}=IFCLOCALPLACEMENT(${parent},#20);`);
+    }
+    lines.push(`#40=IFCSITE('23sFQGRy90RxVbRHD9iSE2',$,'s',$,$,#${100 + links - 1},$,$,.ELEMENT.,$,$,$,$,$);`);
+    return lines.join('\n');
+  };
+
+  it('composes a 200-link chain in full (the old cap abstained at 64)', async () => {
+    const store = await storeFromStep(deepSite(200));
+    const world = composeWorldPlacement(store, siteId(store));
+    assert.ok(world, 'a legal deep chain must compose');
+    assert.strictEqual(world[3], 200);
+  });
+
+  it('abstains on a long cycle, whatever the memo holds', async () => {
+    const store = await storeFromStep(deepSite(200, true));
+    const cache = new Map();
+    assert.strictEqual(composeWorldPlacement(store, siteId(store), cache), undefined);
+    // Cached as an abstention, a property of the placement, not of the walk.
+    assert.strictEqual(composeWorldPlacement(store, siteId(store), cache), undefined);
+  });
+
+  it('gives the same answer cold and with a warm memo', async () => {
+    const store = await storeFromStep(deepSite(150));
+    const cold = composeWorldPlacement(store, siteId(store));
+    const cache = new Map();
+    composeWorldPlacement(store, siteId(store), cache);
+    assert.deepStrictEqual(composeWorldPlacement(store, siteId(store), cache), cold);
+  });
+});
+
 describe('worldPlacementFingerprint - IfcAxis2Placement2D RelativePlacement (review find)', () => {
   // `IfcLocalPlacement.RelativePlacement` is the `IfcAxis2Placement` SELECT,
   // which legally admits `IfcAxis2Placement2D` — [Location, RefDirection], only

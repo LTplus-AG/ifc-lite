@@ -59,7 +59,6 @@ pub fn parse_landxml_tin_with_cancel(
     reader.config_mut().trim_text(false);
     let mut buffer = Vec::new();
     loop {
-        parser.check_cancel_and_work(1)?;
         let event = reader
             .read_event_into(&mut buffer)
             .map_err(|_| error(Code::InvalidXml, "malformed XML"))?;
@@ -79,6 +78,9 @@ impl Parser<'_> {
     /// Consume an event emitted by quick-xml.  Kept crate-visible so the
     /// chunk driver and the complete reader share all semantic transitions.
     pub(crate) fn consume_event(&mut self, event: Event<'_>) -> Result<()> {
+        // One unit of work per event, here and nowhere else (D73): the pull
+        // loop and the stream both come through this method.
+        self.check_cancel_and_work(1)?;
         match event {
             Event::Start(start) => self.start(&start),
             Event::Empty(start) => {
@@ -97,6 +99,14 @@ impl Parser<'_> {
         }
     }
     fn start(&mut self, start: &BytesStart<'_>) -> Result<()> {
+        // D74: markup inside a numeric capture is refused, as in the plan and
+        // alignment families, rather than read as the text around it.
+        if self.capture.as_ref().is_some_and(|capture| capture.depth() <= self.frames.len()) {
+            return Err(error(
+                Code::InvalidSemantic,
+                "numeric LandXML capture cannot contain nested elements",
+            ));
+        }
         if self.frames.len() >= self.limits.max_depth {
             return Err(error(Code::LimitExceeded, "XML depth limit exceeded"));
         }
@@ -114,41 +124,14 @@ impl Parser<'_> {
         inherited.extend(namespaces);
         let namespace = inherited.get(prefix).map(String::as_str);
         if self.frames.is_empty() {
-            if self.root_seen {
-                return Err(error(
-                    Code::InvalidXml,
-                    "LandXML document has multiple root elements",
-                ));
-            }
+            let root = validate_root(self.root_seen, local, namespace, &attributes)?;
             self.root_seen = true;
-            if local != "LandXML" {
-                return Err(error(Code::InvalidSemantic, "root element is not LandXML"));
-            }
-            let capability = classify_landxml_version(namespace, attr(&attributes, "version"));
-            if !capability.supports_tin_ingestion() {
-                return Err(match capability {
-                    crate::LandXmlVersionCapability::NotLandXml => error(
-                        Code::UnsupportedNamespace,
-                        "root namespace is not a recognized LandXML namespace",
-                    ),
-                    _ => error(
-                        Code::UnsupportedVersion,
-                        "LandXML namespaces require a known version declaration",
-                    ),
-                });
-            }
-            self.schema = capability
-                .schema()
-                .expect("supported capability has a schema")
-                .to_owned();
+            self.schema = root.schema;
             self.target_namespace = namespace.map(str::to_owned);
-            if let Some(diagnostic) = compatibility_version_diagnostic(
-                capability,
-                attr(&attributes, "version").expect("supported capability has a version"),
-            ) {
+            if let Some(diagnostic) = root.diagnostic {
                 self.record_capability_diagnostic(diagnostic)?;
             }
-            self.version = required(&attributes, "version", "LandXML")?.to_owned();
+            self.version = root.version;
         }
         let target = namespace == self.target_namespace.as_deref();
         // Only a name that can appear in a capture path is counted: the map

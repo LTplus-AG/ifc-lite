@@ -11,7 +11,6 @@ use super::{
     LandXmlPlanDocument, LandXmlPlanFeature,
 };
 use crate::{
-    classify_landxml_version, compatibility_version_diagnostic,
     preflight::preflight_xml_tokens,
     semantics::units,
     xml::{
@@ -19,7 +18,7 @@ use crate::{
         Attributes, Result,
     },
     LandXmlCancellation, LandXmlCapabilityDiagnostic, LandXmlDiagnosticCode as Code, LandXmlLimits,
-    LandXmlSourceId, LandXmlUnits, LandXmlVersionCapability,
+    LandXmlSourceId, LandXmlUnits,
 };
 
 mod actions;
@@ -189,6 +188,21 @@ impl<'a> Parser<'a> {
         if self.work > self.limits.xml.max_work {
             return Err(error(Code::LimitExceeded, "work limit exceeded"));
         }
+        Ok(())
+    }
+
+    /// A diagnostic is source output too: bounded like every other record.
+    pub(super) fn record_capability_diagnostic(
+        &mut self,
+        diagnostic: LandXmlCapabilityDiagnostic,
+    ) -> Result<()> {
+        if self.capability_diagnostics.len() >= self.limits.xml.max_capability_diagnostics {
+            return Err(error(
+                Code::LimitExceeded,
+                "capability diagnostic limit exceeded",
+            ));
+        }
+        self.capability_diagnostics.push(diagnostic);
         Ok(())
     }
 

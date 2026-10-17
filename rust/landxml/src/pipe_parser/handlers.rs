@@ -33,6 +33,21 @@ impl PipeParser<'_> {
         Ok(())
     }
 
+    /// A diagnostic is source output too: bounded like every other record.
+    pub(super) fn record_capability_diagnostic(
+        &mut self,
+        diagnostic: crate::LandXmlCapabilityDiagnostic,
+    ) -> Result<()> {
+        if self.capability_diagnostics.len() >= self.limits.max_capability_diagnostics {
+            return Err(error(
+                Code::LimitExceeded,
+                "capability diagnostic limit exceeded",
+            ));
+        }
+        self.capability_diagnostics.push(diagnostic);
+        Ok(())
+    }
+
     pub(super) fn check_character_references(&mut self, added: usize) -> Result<()> {
         self.character_references = self
             .character_references

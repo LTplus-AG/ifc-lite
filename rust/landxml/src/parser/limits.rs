@@ -72,7 +72,6 @@ impl Parser<'_> {
     /// strings. Faces, roadway associations, and cross-section reference
     /// attributes all share the same adversarial-input budget.
     pub(super) fn reserve_references(&mut self, added: usize) -> Result<()> {
-        self.check_cancel_and_work(added)?;
         self.references = self
             .references
             .checked_add(added)
@@ -89,7 +88,6 @@ impl Parser<'_> {
         &mut self,
         diagnostic: LandXmlCapabilityDiagnostic,
     ) -> Result<()> {
-        self.check_cancel_and_work(1)?;
         if self.capability_diagnostics.len() >= self.limits.max_capability_diagnostics {
             return Err(error(
                 Code::LimitExceeded,

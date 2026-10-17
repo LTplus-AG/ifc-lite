@@ -1126,6 +1126,15 @@ jobs:
           # whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/core/src/attribute_slot.rs | grep -Fxq 'rust/core/src/attribute_slot.rs'; then
             oracle_args+=(--mutation tests/evidence/slot-lookup-7780/behaviour.oracle.patch)
+          # #7783: C6-5/C6-6 move the server data model into
+          # ifc_lite_processing::data_model, so the moved tests do not exist on
+          # the base and a whole-change revert cannot compile them
+          # (REVERT-BROKE-BUILD). Keep the move and break ONLY the new
+          # behaviour: the job-bucket type match and the SetSpec layer
+          # thickness/ventilation indices. Once data_model/mod.rs is on main,
+          # ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/processing/src/data_model/mod.rs | grep -Fxq 'rust/processing/src/data_model/mod.rs'; then
+            oracle_args+=(--mutation tests/evidence/data-model-move-7783/behaviour.oracle.patch)
           fi
           node scripts/check-test-revert-oracle.mjs "${oracle_args[@]}"
           # #7512: observe cleanup independently of scoped admission/schema.

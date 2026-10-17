@@ -53,12 +53,12 @@ fn ids(content: &str) -> Vec<u32> {
 const BODY: &str = "#1=IFCWALL('a',$);\nENDSEC;\nEND-ISO-10303-21;\n";
 
 /// CORE-9: the marker is a keyword like any other. Before F4-2 it was the
-/// exact bytes `DATA;`, so none of these four found the section start: the
-/// scan began at the top of the file and read `#99`, a record inside a header
-/// comment or literal, as part of the model.
+/// exact bytes `DATA;`, so only the first marker spelling found the section
+/// start: for the others the scan began at the top of the file and read `#99`,
+/// a record inside a header literal, as part of the model.
 #[test]
 fn the_data_marker_is_a_keyword_not_an_exact_byte_string() {
-    let decoy = "/* #99=IFCWALL($); */\n";
+    let decoy = "FILE_DESCRIPTION(('#99=IFCWALL($); decoy'),'2;1');\n";
     for marker in ["DATA;", "DATA ;", "data;", "DATA\n/* c */;", "DATA('model',('IFC4'));", "Data ( 'm' , ( 'IFC4' ) ) ;"] {
         let file = format!("ISO-10303-21;\nHEADER;\n{decoy}ENDSEC;\n{marker}\n{BODY}");
         assert_eq!(ids(&file), vec![1], "marker {marker:?}");
@@ -69,7 +69,7 @@ fn the_data_marker_is_a_keyword_not_an_exact_byte_string() {
 #[test]
 fn a_longer_identifier_ending_in_data_is_not_the_marker() {
     let file = format!(
-        "ISO-10303-21;\nHEADER;\nMETADATA;\n/* #99=IFCWALL($); */\nENDSEC;\nDATA;\n{BODY}"
+        "ISO-10303-21;\nHEADER;\nMETADATA;\nFILE_DESCRIPTION(('#99=IFCWALL($); decoy'),'2;1');\nENDSEC;\nDATA;\n{BODY}"
     );
     assert_eq!(ids(&file), vec![1]);
 }

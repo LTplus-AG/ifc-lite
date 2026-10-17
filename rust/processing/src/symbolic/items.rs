@@ -14,7 +14,7 @@ use super::primitives::{SymbolicCircle, SymbolicPolyline};
 use super::text::extract_text_literal;
 use super::conic::Conic;
 use super::transform::{
-    compose_transforms, parse_axis2_placement_2d, parse_cartesian_transformation_operator,
+    compose_transforms, parse_axis2_placement_2d, resolve_mapping_target,
     push_finite_point, Transform2D,
 };
 use super::trimmed_curve::extract_trimmed_curve;
@@ -97,7 +97,7 @@ pub(super) fn extract_symbolic_item_inner(
                                 | IfcType::IfcCartesianTransformationOperator3DnonUniform
                         ) =>
                     {
-                        parse_cartesian_transformation_operator(&target, decoder, unit_scale)
+                        resolve_mapping_target(item, decoder, out.mapping_router(unit_scale))
                     }
                     Ok(_) => Transform2D::unresolved(), // wrong type (#2355)
                     Err(e) => Transform2D::undecodable(&e), // refused (#7678), or dangling (#2256)

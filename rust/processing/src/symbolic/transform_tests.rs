@@ -117,11 +117,12 @@ fn operator_local_origin_z_reaches_tz() {
     let body = "\
 #1=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#2,$,$);
 #2=IFCCARTESIANPOINT((1.,2.,3.));
+#3=IFCMAPPEDITEM(#9,#1);
 ";
-    let entity = decode(body, 1);
+    let entity = decode(body, 3);
     let content = format!("{HEADER}{body}{FOOTER}");
     let mut decoder = EntityDecoder::new(&content);
-    let result = parse_cartesian_transformation_operator(&entity, &mut decoder, 1.0);
+    let result = resolve_mapping_target(&entity, &mut decoder, &ifc_lite_geometry::GeometryRouter::with_scale(1.0));
 
     assert!((result.tx - 1.0).abs() < 1e-4, "tx: {result:?}");
     assert!((result.ty - 2.0).abs() < 1e-4, "ty: {result:?}");
@@ -135,11 +136,12 @@ fn operator_local_origin_z_is_unit_scaled_like_x_and_y() {
     let body = "\
 #1=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#2,$,$);
 #2=IFCCARTESIANPOINT((1000.,2000.,3000.));
+#3=IFCMAPPEDITEM(#9,#1);
 ";
-    let entity = decode(body, 1);
+    let entity = decode(body, 3);
     let content = format!("{HEADER}{body}{FOOTER}");
     let mut decoder = EntityDecoder::new(&content);
-    let result = parse_cartesian_transformation_operator(&entity, &mut decoder, 0.001);
+    let result = resolve_mapping_target(&entity, &mut decoder, &ifc_lite_geometry::GeometryRouter::with_scale(0.001));
 
     assert!((result.tx - 1.0).abs() < 1e-4, "tx: {result:?}");
     assert!((result.ty - 2.0).abs() < 1e-4, "ty: {result:?}");
@@ -153,11 +155,12 @@ fn operator_2d_local_origin_leaves_tz_zero() {
     let body = "\
 #1=IFCCARTESIANTRANSFORMATIONOPERATOR2D($,$,#2,$);
 #2=IFCCARTESIANPOINT((4.,5.));
+#3=IFCMAPPEDITEM(#9,#1);
 ";
-    let entity = decode(body, 1);
+    let entity = decode(body, 3);
     let content = format!("{HEADER}{body}{FOOTER}");
     let mut decoder = EntityDecoder::new(&content);
-    let result = parse_cartesian_transformation_operator(&entity, &mut decoder, 1.0);
+    let result = resolve_mapping_target(&entity, &mut decoder, &ifc_lite_geometry::GeometryRouter::with_scale(1.0));
 
     assert!((result.tx - 4.0).abs() < 1e-4, "tx: {result:?}");
     assert!((result.ty - 5.0).abs() < 1e-4, "ty: {result:?}");

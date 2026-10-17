@@ -101,6 +101,9 @@ const BYTES_PER_COORD: usize = 8;
 pub(super) struct SymbolicAccumulator {
     data: SymbolicData,
     fill_items: Vec<Option<u32>>,
+    /// Source-local, lazy canonical target resolver. Every item in this
+    /// extraction uses the same source length unit.
+    mapping_router: Option<ifc_lite_geometry::GeometryRouter>,
     /// Cap for this extraction. Injectable so a test can use 500 rather than
     /// building a fixture that emits two million primitives.
     pub(super) limit: usize,
@@ -131,6 +134,7 @@ impl SymbolicAccumulator {
         Self {
             data: SymbolicData::default(),
             fill_items: Vec::new(),
+            mapping_router: None,
             limit: MAX_SYMBOLIC_ELEMENTS,
             bytes: 0,
             byte_limit: MAX_SYMBOLIC_BYTES,
@@ -140,6 +144,11 @@ impl SymbolicAccumulator {
             #[cfg(test)]
             refusals: 0,
         }
+    }
+
+    /// Allocate the router once per extraction, only if mapped symbols occur.
+    pub(super) fn mapping_router(&mut self, unit_scale: f64) -> &ifc_lite_geometry::GeometryRouter {
+        self.mapping_router.get_or_insert_with(|| ifc_lite_geometry::GeometryRouter::with_scale(unit_scale))
     }
 
     /// Is the accumulator itself full? The walk and the product scan read THIS

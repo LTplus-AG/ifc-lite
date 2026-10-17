@@ -7,7 +7,7 @@
 //! module-size rule.
 
 use super::*;
-use crate::clash_contact_axes::dot3;
+use crate::math::v3;
 use crate::kernel::arrangement::Tri;
 use crate::kernel::near_band::NearBand;
 use clash_solid_geom::component_groups;
@@ -78,7 +78,7 @@ fn an_axis_below_its_own_band_is_caught_even_when_a_different_axis_is_the_argmin
     for axis in &axes {
         let (mut lo, mut hi) = (f64::INFINITY, f64::NEG_INFINITY);
         for v in &tris[0] {
-            let p = dot3(*v, *axis);
+            let p = v3::dot(*v, *axis);
             lo = lo.min(p);
             hi = hi.max(p);
         }

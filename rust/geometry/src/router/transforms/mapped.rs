@@ -40,7 +40,7 @@ impl GeometryRouter {
             return Ok(None);
         };
         self.scale_transform(&mut matrix);
-        Ok(Some(std::array::from_fn(|i| matrix.as_slice()[i])))
+        Ok(Some(crate::math::mat4::col_major_array(&matrix)))
     }
 
     /// The full `IfcMappedItem` transform: `MappingTarget · MappingOrigin`.

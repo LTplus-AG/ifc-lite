@@ -31,6 +31,7 @@
 
 mod aabb;
 mod bvh;
+mod canonical;
 mod depth;
 mod generated;
 mod narrow;

@@ -22,10 +22,9 @@
 //! `local = inv(local_to_world) * true_world`, then `/ unit_scale` into file
 //! units.
 
-use crate::simplify_math::{
-    averaged_vertex_normals, conjugate_yup_to_zup, invert_affine_row_major,
-    transform_point_row_major, yup_to_zup, zup_to_yup,
-};
+use crate::simplify_math::{averaged_vertex_normals, finite_yup_to_zup, invert_affine_row_major};
+use ifc_lite_geometry::math::frame::{yup_to_zup, zup_to_yup};
+use ifc_lite_geometry::math::mat4::transform_point;
 use ifc_lite_geometry::simplify::{simplify_mesh, SimplifyOptions};
 use ifc_lite_geometry::Mesh;
 
@@ -120,7 +119,7 @@ pub fn simplify_element(
         .find_map(|r| r.local_to_world)
         .ok_or(SimplifySkip::MissingPlacement)?;
     let l2w = if y_up {
-        conjugate_yup_to_zup(&l2w_raw)
+        finite_yup_to_zup(&l2w_raw).ok_or(SimplifySkip::SingularPlacement)?
     } else {
         l2w_raw
     };
@@ -227,7 +226,7 @@ pub fn simplify_element(
             chunk[1] as f64 + out.origin[1] + rtc_offset[1],
             chunk[2] as f64 + out.origin[2] + rtc_offset[2],
         ];
-        let local = transform_point_row_major(&inv_l2w, tw);
+        let local = transform_point(&inv_l2w, tw);
         local_positions.extend_from_slice(&[
             local[0] / unit_scale,
             local[1] / unit_scale,

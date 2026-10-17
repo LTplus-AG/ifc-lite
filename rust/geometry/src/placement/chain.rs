@@ -54,7 +54,7 @@ pub fn resolve_chain(placement: &DecodedEntity, decoder: &mut EntityDecoder) -> 
         return Ok(Matrix4::from_column_slice(&m));
     }
     let mut climbed = Climb::new();
-    climb(&mut climbed, placement, decoder, true, true)?;
+    climb(&mut climbed, placement, decoder, true, true, None)?;
     if let Some((at, found)) = climbed.stopped_at {
         return Err(unsupported(decoder, at, found));
     }
@@ -90,7 +90,7 @@ pub fn resolve_object_placement(
 /// No transforms are composed and the memo is not consulted.
 pub fn chain(placement: &DecodedEntity, decoder: &mut EntityDecoder) -> PlacementResult<SmallVec<[Link; 8]>> {
     let mut climbed = Climb::new();
-    climb(&mut climbed, placement, decoder, false, false)?;
+    climb(&mut climbed, placement, decoder, false, false, None)?;
     if let Some((at, found)) = climbed.stopped_at {
         return Err(unsupported(decoder, at, found));
     }

@@ -5,10 +5,8 @@
 //! nothing is re-triangulated, repaired, or read from loose
 //! `IfcCartesianPoint`s. Anything else is refused with the reason.
 
-use std::collections::HashSet;
-
 use ifc_lite_core::{AttributeValue, DecodedEntity, EntityDecoder, IfcType};
-use ifc_lite_geometry::GeometryRouter;
+use ifc_lite_geometry::{placement::ChainValidator, GeometryRouter};
 
 use super::georef::{decode, text, Crs, ModelFacts};
 use crate::step_map_transform::preflight;
@@ -28,9 +26,9 @@ pub(super) fn read_terrain(
     id: u32,
     facts: &ModelFacts,
     router: &GeometryRouter,
-    validated: &mut HashSet<u32>,
-    decoder: &mut EntityDecoder,
+    validator: &mut ChainValidator,
 ) -> Result<Terrain, String> {
+    let decoder = validator.decoder();
     let product = decode(decoder, id)?;
     if !matches!(product.ifc_type, IfcType::IfcGeographicElement | IfcType::IfcSite) {
         return Err(format!("#{id} is an {}; only an IfcGeographicElement or IfcSite terrain is exported as a LandXML surface", product.ifc_type.name()));
@@ -40,7 +38,8 @@ pub(super) fn read_terrain(
     let vertices = vertices(&face_set, decoder)?;
     let faces = faces(&face_set, vertices.len())?;
 
-    preflight::placement(&product, router, validated, decoder)?;
+    preflight::placement(&product, router, validator)?;
+    let decoder = validator.decoder();
     let placement = router.resolve_scaled_placement_strict(&product, decoder).map_err(|error| error.to_string())?;
     let points: Vec<[f64; 3]> = vertices.iter().map(|&[x, y, z]| {
         // Column-major 4x4, in project units (the router's default unit scale).

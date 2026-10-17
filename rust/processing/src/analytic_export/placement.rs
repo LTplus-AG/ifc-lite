@@ -4,7 +4,7 @@
 
 //! Validate placement references before the mesh router's tolerant resolver.
 
-use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
+use ifc_lite_core::{slot, DecodedEntity, EntityDecoder, IfcType};
 use ifc_lite_geometry::placement::{validate_chain, ChainPolicy};
 
 /// What analytic export carries: local, grid and linear links, 3D frames only.
@@ -15,7 +15,7 @@ pub(super) fn validate_placement_chain(
     element: &DecodedEntity,
     decoder: &mut EntityDecoder,
 ) -> Result<(), String> {
-    let Some(attr) = element.get(5).filter(|attr| !attr.is_null()) else {
+    let Some(attr) = element.attr(slot::IfcProduct::OBJECT_PLACEMENT).filter(|attr| !attr.is_null()) else {
         return Ok(());
     };
     let id = attr.as_entity_ref().ok_or("ObjectPlacement is not an entity reference")?;

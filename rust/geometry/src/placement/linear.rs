@@ -4,14 +4,14 @@
 
 //! IfcLinearPlacement resolution (#859): sample the basis curve at the authored distance.
 
-use super::Axis2Placement;
+use super::{missing, unsupported, Axis2Placement, PlacementResult};
 use crate::alignment::AlignmentCurve;
 use crate::math::tol;
 use crate::alignment_arc_length::ArcLengthMap;
 use crate::axis_projection::linear_placement_axes;
 use crate::profiles::ProfileProcessor;
 use crate::{Point3, TessellationQuality, Vector3};
-use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
+use ifc_lite_core::{slot, DecodedEntity, EntityDecoder, IfcSchema, IfcType, SchemaVersion};
 use nalgebra::Matrix4;
 
 // Output transform of a sampled placement: the origin is the curve sample plus
@@ -22,6 +22,44 @@ use nalgebra::Matrix4;
 // `CartesianPosition` (attr 2) wins when the exporter supplied one: it is the
 // exact pre-computed placement; an `IfcGradientCurve` is evaluated with its
 // vertical profile otherwise (see `gradient.rs`).
+
+/// Resolve one schema-dependent position slot in the canonical reader. The
+/// strict validator and the two renderer alternatives share this admission.
+fn position(
+    placement: &DecodedEntity,
+    field: slot::SchemaSlot<slot::kind::Ref>,
+    decoder: &mut EntityDecoder,
+) -> PlacementResult<Option<DecodedEntity>> {
+    // This support-stack base predates EntityDecoder::slot_or. These two
+    // schemas predate IfcLinearPlacement; preserve its IFC4X3 compatibility
+    // layout. Declared IFC4X1/4X2 positions remain schema-specific.
+    let declared = decoder.schema_version().unwrap_or(SchemaVersion::Ifc4x3);
+    let schema = if matches!(declared, SchemaVersion::Ifc2x3 | SchemaVersion::Ifc4) {
+        SchemaVersion::Ifc4x3
+    } else { declared };
+    let Some(at) = field.at(schema) else { return Ok(None) };
+    Ok(decoder.resolve_optional(placement, at.index())?)
+}
+
+/// Source admission, without sampling a basis curve. Keep analytic preflight's
+/// completeness/type rules even when a renderer could choose another fallback
+/// (#7779 P4). Actual curve resolvability remains the consuming resolver's job.
+pub(super) fn validate_source(placement: &DecodedEntity, decoder: &mut EntityDecoder) -> PlacementResult<()> {
+    let relative = position(placement, slot::IfcLinearPlacement::RELATIVE_PLACEMENT, decoder)?;
+    let cartesian = position(placement, slot::IfcLinearPlacement::CARTESIAN_POSITION, decoder)?;
+    if relative.is_none() && cartesian.is_none() {
+        return Err(missing(decoder, placement.id, "RelativePlacement or CartesianPosition"));
+    }
+    if let Some(relative) = relative {
+        if relative.ifc_type != IfcType::IfcAxis2PlacementLinear {
+            return Err(unsupported(decoder, relative.id, relative.ifc_type));
+        }
+    }
+    if let Some(cartesian) = cartesian {
+        Axis2Placement::read_3d(&cartesian, decoder)?;
+    }
+    Ok(())
+}
 
 /// The frame an `IfcLinearPlacement` adds to its `PlacementRelTo`: the
 /// authored `CartesianPosition`, else the sampled basis curve. File units.
@@ -63,11 +101,12 @@ fn try_resolve_axis2_placement_linear(
     placement: &DecodedEntity,
     decoder: &mut EntityDecoder,
 ) -> Option<Matrix4<f64>> {
-    let rel_attr = placement.get(1)?;
-    if rel_attr.is_null() {
-        return None;
-    }
-    let rel = decoder.resolve_ref(rel_attr).ok().flatten()?;
+    // IFC4X3 position of RelativePlacement; IFC4X1/4X2 have no such
+    // attribute (their slot 1 is `Distance`), so those placements are
+    // resolved from `CartesianPosition` alone. A file whose declared schema
+    // predates `IfcLinearPlacement` (IFC2X3, IFC4) is a mislabelled IFC4X3
+    // export and keeps being read with the IFC4X3 layout.
+    let rel = position(placement, slot::IfcLinearPlacement::RELATIVE_PLACEMENT, decoder).ok().flatten()?;
     if rel.ifc_type != IfcType::IfcAxis2PlacementLinear {
         return None;
     }
@@ -190,11 +229,7 @@ fn try_resolve_cartesian_position(
     placement: &DecodedEntity,
     decoder: &mut EntityDecoder,
 ) -> Option<Matrix4<f64>> {
-    let cart_attr = placement.get(2)?;
-    if cart_attr.is_null() {
-        return None;
-    }
-    let cart = decoder.resolve_ref(cart_attr).ok().flatten()?;
+    let cart = position(placement, slot::IfcLinearPlacement::CARTESIAN_POSITION, decoder).ok().flatten()?;
     if cart.ifc_type != IfcType::IfcAxis2Placement3D {
         return None;
     }

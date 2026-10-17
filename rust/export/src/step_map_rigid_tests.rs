@@ -505,3 +505,88 @@ fn f3b_e1_a_deep_placement_chain_is_normalized_and_a_cycle_is_refused() {
     assert!(refused.warnings.iter().any(|w| w.contains("cyclic")), "{:?}", refused.warnings);
     assert!(refused.replacements.is_empty());
 }
+
+/// #7779 E1: only the child frame is malformed; the root edited by the planner
+/// remains valid, so root-only validation cannot observe these defects.
+#[test]
+fn issue_7779_strict_nonroot_frames_refuse_with_warning_and_no_partial_patches() {
+    for source in [rigid_model(1.), model(1., true)] {
+        assert!(plan_map_conversion_normalization(source.as_bytes()).unwrap().warnings.is_empty());
+        for invalid in [
+            source.replace("#32=IFCCARTESIANPOINT((4.,5.,6.))", "#32=IFCDIRECTION((4.,5.,6.))"),
+            source.replace("#31=IFCAXIS2PLACEMENT3D(#32,$,$)", "#31=IFCAXIS2PLACEMENT3D(#32,#94,$)")
+                .replace("#32=", "#94=IFCDIRECTION((1.,0.,0.));\n#32="),
+            source.replace("#31=IFCAXIS2PLACEMENT3D(#32,$,$)", "#31=IFCAXIS2PLACEMENT3D(#32,$,#32)"),
+        ] {
+            assert_ne!(invalid, source);
+            let plan = plan_map_conversion_normalization(invalid.as_bytes()).unwrap();
+            assert_eq!(plan.warnings.len(), 1, "{invalid}");
+            assert!(plan.replacements.is_empty());
+            assert!(plan.new_entities.is_empty());
+        }
+        // Strictness still permits a readable non-degenerate explicit frame.
+        let valid = source.replace("#31=IFCAXIS2PLACEMENT3D(#32,$,$)", "#31=IFCAXIS2PLACEMENT3D(#32,#94,$)")
+            .replace("#32=", "#94=IFCDIRECTION((0.,0.,2.));\n#32=");
+        assert!(plan_map_conversion_normalization(valid.as_bytes()).unwrap().warnings.is_empty());
+    }
+}
+
+fn issue_7779_product_ladder(n: u32, scaled: bool) -> String {
+    let mut records = String::new();
+    for i in 0..n {
+        let id = 1000 + 2 * i;
+        let parent = if i == 0 { 30 } else { id - 2 };
+        records.push_str(&format!("#{id}=IFCLOCALPLACEMENT(#{parent},#31);\n#{}=IFCWALL('{i:022}',$,'Ladder',$,$,#{id},#45,$,.NOTDEFINED.);\n", id + 1));
+    }
+    let source = if scaled { model(1., true) } else { rigid_model(1.) };
+    source.replace("ENDSEC;\nEND-ISO", &format!("{records}ENDSEC;\nEND-ISO"))
+}
+
+#[test]
+fn issue_7779_shared_product_ladder_normalizes_public_output_and_leaf_geometry() {
+    for scaled in [false, true] {
+        let source = issue_7779_product_ladder(80, scaled);
+        let plan = plan_map_conversion_normalization(source.as_bytes()).unwrap();
+        assert!(plan.warnings.is_empty(), "{:?}", plan.warnings);
+        let output = apply(&source, &plan);
+        let mut before = EntityDecoder::new(&source);
+        let mut after = EntityDecoder::new(&output);
+        let geo = GeoRefExtractor::extract(&mut before, &[(61, IfcType::IfcMapConversion), (60, IfcType::IfcProjectedCRS)]).unwrap().unwrap();
+        let map = Matrix4::from_column_slice(&geo.to_matrix());
+        let router = GeometryRouter::new();
+        for id in [50, 1001, 1079, 1159] {
+            let product = before.decode_by_id(id).unwrap();
+            let old = Matrix4::from_column_slice(&router.resolve_scaled_placement_strict(&product, &mut before).unwrap());
+            let product = after.decode_by_id(id).unwrap();
+            let new = Matrix4::from_column_slice(&router.resolve_scaled_placement_strict(&product, &mut after).unwrap());
+            // Scaled normalization wraps representation geometry in S; account
+            // for it when checking actual world vertices rather than frame scale.
+            let scale = if scaled { geo.scale } else { 1. };
+            let new = new * Matrix4::new_scaling(scale);
+            for point in [nalgebra::Vector4::new(0., 0., 0., 1.), nalgebra::Vector4::new(2., 1., 3., 1.)] {
+                assert!((new * point - map * old * point).amax() < 1e-8, "product {id}, scaled {scaled}");
+            }
+        }
+        if !scaled {
+            assert_eq!(plan.replacements.iter().map(|p| p.express_id).collect::<Vec<_>>(), [80, 61, 10]);
+        }
+    }
+}
+
+/// Scoped end-to-end planner timings, including index/decoder/preflight/output.
+/// Run only under exclusive physical-host admission. No timing assertion.
+#[test]
+#[ignore]
+fn issue_7779_measure_public_shared_ladder_planner() {
+    for scaled in [false, true] {
+        for n in [80, 320, 1280] {
+            let source = issue_7779_product_ladder(n, scaled);
+            let start = std::time::Instant::now();
+            let plan = plan_map_conversion_normalization(source.as_bytes()).unwrap();
+            let elapsed = start.elapsed();
+            assert!(plan.warnings.is_empty(), "{:?}", plan.warnings);
+            let output = apply(&source, &plan);
+            println!("ladder scaled={scaled} products={n} elapsed_ns={} bytes={} fnv1a={:016x}", elapsed.as_nanos(), output.len(), ifc_lite_core::hash::fnv1a64(output.as_bytes()));
+        }
+    }
+}

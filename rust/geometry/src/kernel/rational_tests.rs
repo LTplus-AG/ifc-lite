@@ -66,3 +66,37 @@ fn issue_7292_exact_orientation_preserves_analytic_signs_across_scales() {
     ];
     assert_eq!(orient3d_exact_pt(&point, [0.0; 3], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]), Sign::Positive);
 }
+
+// #7292: non-dyadic coordinates and all three projection axes have analytic
+// determinant signs, independent of floating predicates or wrapper equality.
+#[test]
+fn issue_7292_materialized_orientation_has_analytic_signs_on_all_axes() {
+    let point = [
+        BigRational::new(1.into(), 3.into()),
+        BigRational::new(1.into(), 7.into()),
+        BigRational::new(1.into(), 11.into()),
+    ];
+    let zero = vec([-0.0, 0.0, -0.0]);
+    for (axis, i, j, normal_sign) in [
+        (DropAxis::X, 1, 2, Sign::Positive),
+        (DropAxis::Y, 0, 2, Sign::Negative),
+        (DropAxis::Z, 0, 1, Sign::Positive),
+    ] {
+        let mut u = [0.0; 3];
+        let mut v = [0.0; 3];
+        u[i] = 1.0;
+        v[j] = 1.0;
+        let (u, v) = (vec(u), vec(v));
+        // det(A-V, -V, U-V) is respectively A.x, -A.y, A.z.
+        assert_eq!(orient3d_pts(&point, &zero, &u, &v), normal_sign);
+        assert_eq!(orient3d_pts(&point, &zero, &v, &u), normal_sign.flip());
+        // Projected det(A-U, -U) = A[j] > 0 on each retained plane.
+        assert_eq!(orient2d_pts(&point, &zero, &u, axis), Sign::Positive);
+        assert_eq!(orient2d_pts(&point, &u, &zero, axis), Sign::Negative);
+        let mut on_edge = zero.clone();
+        on_edge[i] = point[i].clone();
+        assert_eq!(orient2d_pts(&on_edge, &zero, &u, axis), Sign::Zero);
+        on_edge[j] = point[j].clone();
+        assert_eq!(orient3d_pts(&on_edge, &zero, &u, &v), Sign::Zero);
+    }
+}

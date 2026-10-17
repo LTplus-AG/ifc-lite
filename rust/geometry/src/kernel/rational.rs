@@ -30,7 +30,7 @@ fn sign_of(x: &BigRational) -> Sign {
 type V3 = [BigRational; 3];
 
 #[inline]
-fn vec(p: [f64; 3]) -> V3 {
+pub(crate) fn vec(p: [f64; 3]) -> V3 {
     [r(p[0]), r(p[1]), r(p[2])]
 }
 
@@ -196,9 +196,14 @@ pub fn tpi_point(t: &Tpi) -> V3 {
 /// MUST agree, which is what proves the `Λ′`/flip construction is correct.
 pub fn orient3d_exact_pt(a: &V3, b: [f64; 3], c: [f64; 3], d: [f64; 3]) -> Sign {
     let (b, c, d) = (vec(b), vec(c), vec(d));
-    let ad = sub3(a, &d);
-    let bd = sub3(&b, &d);
-    let cd = sub3(&c, &d);
+    orient3d_pts(a, &b, &c, &d)
+}
+
+/// Exact orient3d on four already-materialised points.
+pub(crate) fn orient3d_pts(a: &V3, b: &V3, c: &V3, d: &V3) -> Sign {
+    let ad = sub3(a, d);
+    let bd = sub3(b, d);
+    let cd = sub3(c, d);
     sign_of(&det3(&ad, &bd, &cd))
 }
 
@@ -303,16 +308,12 @@ pub(crate) fn point_of(p: &ImplicitPoint) -> V3 {
     }
 }
 
-/// orient2d on three already-materialised points (oracle), projected by `axis`.
-// Used only by the exact-arithmetic oracle in unit tests.
-#[cfg_attr(not(test), allow(dead_code))]
+/// Exact orient2d on three already-materialised points, projected by `axis`.
 pub(crate) fn orient2d_pts(a: &V3, b: &V3, c: &V3, axis: DropAxis) -> Sign {
     sign_of(&tri_area2(a, b, c, axis))
 }
 
-/// Exact twice-signed-area of a projected triangle (for coverage checks).
-// Used only by the exact-arithmetic oracle in unit tests.
-#[cfg_attr(not(test), allow(dead_code))]
+/// Exact twice-signed-area of a projected triangle.
 pub(crate) fn tri_area2(a: &V3, b: &V3, c: &V3, axis: DropAxis) -> BigRational {
     let (i, j) = axis_idx(axis);
     (&a[i] - &c[i]) * (&b[j] - &c[j]) - (&a[j] - &c[j]) * (&b[i] - &c[i])

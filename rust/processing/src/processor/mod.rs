@@ -44,7 +44,7 @@ pub use request::{Batching, Features, ProcessingRequest};
 mod sink;
 #[doc(hidden)]
 pub use sink::ClosureSink;
-pub use sink::{FrameEvent, ProcessingSink};
+pub use sink::{FrameEvent, OnBatch, ProcessingSink};
 pub(crate) mod instancing;
 mod jobs;
 mod opening_filter;

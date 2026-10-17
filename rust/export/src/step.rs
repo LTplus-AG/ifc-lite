@@ -153,6 +153,7 @@ fn emit<W: std::io::Write>(
     // Only convert entity types/attributes when an explicit target differs from source.
     let converting = opts.schema.is_some()
         && crate::schema_convert::needs_conversion(&source_schema, &schema);
+    let mut flatten = crate::schema_style_flatten::StyleFlatten::for_export(content, &source_schema, &schema); // D57
     // The slots IFC2X3 requires a value in: `OwnerHistory` from the first owner
     // history this export writes (#4686), the rest from the generated
     // required-slot table (#4714).
@@ -190,26 +191,19 @@ fn emit<W: std::io::Write>(
     let mut ids = crate::step_ids::IdAllocator::after(max_id);
     let resolved = crate::step_cow::resolve(&opts.copy_on_write, content, line_of, &included, &muts_by_id, &mut ids);
     let copies_refused = resolved.refused;
-    let copies = resolved.copies;
+    let copies = resolved.copies; flatten.note_edits(content, &copies, &muts_by_id);
     let repointed = resolved.repointed;
 
     // 3. Emit header + filtered entities (source order) + footer.
     // The FILE_SCHEMA token, by the TypeScript twin's rule: keep the source's
     // exact identifier unless this export converts, else declare the target
     // family's file identifier (IFC4X3 is written as IFC4X3_ADD2, #5351).
-    let declared = source_header
-        .as_ref()
-        .and_then(|h| h.schema_identifiers.first())
-        .filter(|s| !s.is_empty());
-    let header_schema = match declared {
-        Some(token) if !converting => token.as_str(),
-        _ => crate::file_schema::file_schema_identifier(&schema),
-    };
+    let header_schema = crate::file_schema::declared_token(source_header.as_ref(), converting, &schema);
     crate::step_header::write_header(out, opts, source_header.as_ref(), header_schema)?;
 
     let mut written = 0usize;
     for id in order {
-        if included.contains(id) {
+        if included.contains(id) && !flatten.drops(*id) {
             if let Some(&(s, e)) = line_of.get(id) {
                 let raw = String::from_utf8_lossy(&content[s..e]);
                 // Apply root-attribute edits first (original-schema positions), then convert.
@@ -219,6 +213,7 @@ fn emit<W: std::io::Write>(
                     }
                     None => raw.into_owned(),
                 };
+                let Some(edited) = flatten.line(&source_schema, edited) else { continue };
                 if converting {
                     let converted = crate::schema_convert::convert_step_line(
                         &edited,
@@ -240,7 +235,7 @@ fn emit<W: std::io::Write>(
 
     // The copies, emitted rather than appended: counted in `written` and put
     // through `convert_step_line` like every other record.
-    for (copy_id, source_id, edits) in &copies {
+    for (copy_id, source_id, edits) in copies.iter().filter(|c| !flatten.drops(c.0)) {
         if let Some(&(s0, e0)) = line_of.get(source_id) {
             let raw = String::from_utf8_lossy(&content[s0..e0]);
             // The caller's edits to the record belong to the copy too: the
@@ -250,7 +245,7 @@ fn emit<W: std::io::Write>(
             let mut muts = muts_by_id.get(source_id).cloned().unwrap_or_default();
             muts.extend(edits.iter().map(|(i, v)| (*i, v.clone())));
             let edited = apply_attr_mutations_counted(&raw, &muts, &mut attribute_edits_refused);
-            let renumbered = renumber(&edited, *copy_id);
+            let Some(renumbered) = flatten.line(&source_schema, renumber(&edited, *copy_id)) else { continue };
             if converting {
                 let converted = crate::schema_convert::convert_step_line(
                     &renumbered,

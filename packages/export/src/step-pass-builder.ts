@@ -33,6 +33,7 @@ import { Ifc2x3SlotFill } from './schema-converter-ifc2x3-slots.js';
 import { Ifc4SlotCheck } from './schema-converter-ifc4-slots.js';
 import { EnumReconciliation } from './schema-converter-enums.js';
 import { computeWithheldRefIds } from './schema-untranslatable.js';
+import { StyleFlatten } from './schema-style-flatten.js';
 
 /**
  * Everything the pass literal reads that is not its own field.
@@ -325,6 +326,7 @@ export function buildExportPass(input: PassBuildInput): ExportPass {
     ifc4Slots: new Ifc4SlotCheck(),
     enums: new EnumReconciliation(),
     withheldRefIds: computeWithheldRefIds(dataStore, schema, effective),
+    styleFlatten: StyleFlatten.fromStore(dataStore, sourceSchema, schema),
   };
   // The same object, deliberately. See the file header.
   return pass;

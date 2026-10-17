@@ -229,6 +229,9 @@ fn issue_7779_mapped_target_opposed_tilts_compose_before_projection() {
     // The same target applies to all reachable conic consumers.
     assert_bounds(&extract_symbolic_data(&source.replace("IFCCIRCLE(#11,1.)", "IFCELLIPSE(#11,2.,1.)")), [-2., -1., 2., 1.]);
     assert_bounds(&extract_symbolic_data(&filled(&source)), [-1., -1., 1., 1.]);
+    let arc = source.replace("(#32));", "(#33));")
+        .replace("#40=", "#33=IFCTRIMMEDCURVE(#32,(IFCPARAMETERVALUE(0.)),(IFCPARAMETERVALUE(1.5707963267948966)),.T.,.PARAMETER.);\n#40=");
+    assert_bounds(&extract_symbolic_data(&arc), [0., -1., 1., 0.]);
 }
 
 #[test]
@@ -264,7 +267,13 @@ fn issue_7779_mapped_target_canonical_defaults_reflection_signed_and_nonuniform_
         ("IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#90,-2.,$)", [-4., 2., 0., 6.], 1),
         ("IFCCARTESIANTRANSFORMATIONOPERATOR2DNONUNIFORM($,$,#90,2.,3.)", [0., -9., 4., -3.], 0),
     ] {
-        let data = extract_symbolic_data(&mapped(&source, "#11", target));
+        let mut mapped_source = mapped(&source, "#11", target);
+        if target.contains("OPERATOR2D") {
+            mapped_source = mapped_source.replace("#90=IFCCARTESIANPOINT((0.,0.,0.))", "#90=IFCCARTESIANPOINT((0.,0.))")
+                .replace("#91=IFCDIRECTION((1.,0.,0.))", "#91=IFCDIRECTION((1.,0.))")
+                .replace("#92=IFCDIRECTION((0.,1.,0.))", "#92=IFCDIRECTION((0.,1.))");
+        }
+        let data = extract_symbolic_data(&mapped_source);
         assert_bounds(&data, expected);
         assert_eq!(data.circles.len(), circles, "{target}");
     }

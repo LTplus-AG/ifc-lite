@@ -1,5 +1,16 @@
 # @ifc-lite/bcf
 
+## 5.1.0
+
+### Minor Changes
+
+- [#7586](https://github.com/LTplus-AG/ifc-lite/pull/7586) [`b0266d9`](https://github.com/LTplus-AG/ifc-lite/commit/b0266d9317d3b839082d2f5440fd7dd83a3f9fe0) Thanks [@louistrue](https://github.com/louistrue)! - Several cutting planes through BCF and the SDK ([#7545](https://github.com/LTplus-AG/ifc-lite/issues/7545)). `createViewpoint({ sectionPlanes })` writes one `ClippingPlanes` entry per enabled plane and `extractViewpointState` returns them all as `sectionPlanes` (the first still as `sectionPlane`). `bim.viewer` gains `getSections()`, `setSections()`, `addSection()` and `removeSection(id)`; a backend that clips with a single plane keeps working (the new methods are optional on `ViewerBackendMethods` and fall back to `getSection` / `setSection`). `bim.bcf.createViewpoint` and `extractViewpointState` take and return `sectionPlanes` too.
+
+### Patch Changes
+
+- Updated dependencies [[`c259c10`](https://github.com/LTplus-AG/ifc-lite/commit/c259c10a1f6818dea05a266c5dd228dd1aba8a66), [`0c721c3`](https://github.com/LTplus-AG/ifc-lite/commit/0c721c3548e21488fca9b168db3d875ca8ba39d7)]:
+  - @ifc-lite/encoding@2.4.0
+
 ## 5.0.1
 
 ### Patch Changes

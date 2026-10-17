@@ -530,10 +530,15 @@ and curvature in the distance/height plane; the terminator is `DISCONTINUOUS`.
   on which length they write: 3D-Win writes the **arc** length `R·|θ2 − θ1|` (θ = atan of each
   grade; its M3 road profile agrees to the millimetre on all nine curves, and one of them
   differs from the horizontal length by 1 cm), while others write the **horizontal** length
-  `R·|sin θ2 − sin θ1|`. A declared length that equals either within §11.4's tolerance is
-  accepted; one that equals neither is refused, naming both values. `rust/landxml`'s profile
-  evaluator applies the same either-length rule and the same radius-sign rule below, at a
-  relative tolerance of 1e-6 in source units (#7693).
+  `R·|sin θ2 − sin θ1|`. A declared length that equals either is
+  accepted; one that equals neither is refused, naming both values. The agreement policy is
+  one rule on both sides (#7754): `|declared − computed| ≤ max(1e-6·S, min(5e-4, 2e-4·S))`
+  with `S` the larger of the two and the `5e-4` floor in source units (scaled to metres in
+  `packages/create`), i.e. a length written to three decimals is accepted from 2.5 m up,
+  while a centimetre of disagreement on a 50 m curve is refused. `rust/landxml`'s profile
+  evaluator applies the same either-length rule and the same radius-sign rule below; the
+  shared vectors are `rust/landxml/tests/fixtures/circ-curve-length-vectors.json`, read by
+  both test suites.
 - **`RadiusOfCurvature` sign.** Positive for a sag (the curve turns counter-clockwise in
   the distance/height plane, IFC's "positive values imply a CCW direction"), negative for a
   crest: `HorizontalLength / (EndGradient − StartGradient)` for a parabola, which is the

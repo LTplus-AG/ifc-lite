@@ -2656,6 +2656,12 @@ jobs:
           IFC_LITE_REQUIRE_FIXTURES: "1"
         run: cargo test -p ifc-lite-export --features parquet-bos
 
+      # rust/python is excluded from the workspace (its own lockfile), so
+      # `cargo test --workspace` never runs its unit tests (finite_json, rebar
+      # schedule, ...) and the wheel workflow only runs pytest (#7770).
+      - name: Rust tests (rust/python, outside the workspace)
+        run: cargo test --manifest-path rust/python/Cargo.toml
+
       - name: Clippy (parquet-bos feature)
         run: cargo clippy -p ifc-lite-export --features parquet-bos --all-targets -- -D warnings
 

@@ -61,6 +61,8 @@ pub struct LandXmlTinStreamSession {
     metadata_cursor: Option<metadata::MetadataCursor>,
     pending_input: VecDeque<u8>,
     header_emitted: bool,
+    /// The emitted header committed to the caller's assumed unit (#7753).
+    header_assumed: bool,
     surfaces_drained: usize,
     renderable_surfaces: usize,
     preserved_surfaces: usize,
@@ -106,6 +108,7 @@ impl LandXmlTinStreamSession {
             metadata_cursor: None,
             pending_input: VecDeque::new(),
             header_emitted: false,
+            header_assumed: false,
             surfaces_drained: 0,
             renderable_surfaces: 0,
             preserved_surfaces: 0,
@@ -390,11 +393,5 @@ impl LandXmlTinStreamSession {
             .as_mut()
             .expect("open pipe parser")
             .consume_event(event)
-    }
-}
-
-impl Drop for LandXmlTinStreamSession {
-    fn drop(&mut self) {
-        self.abort();
     }
 }

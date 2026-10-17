@@ -211,8 +211,8 @@ struct Scenario {
 }
 
 const SCENARIOS: &[Scenario] = &[
-    Scenario { id: "drift-1-work-charge", status: Status::Open("C9a-1"), probe: work_boundary },
-    Scenario { id: "drift-10-empty-comment-opener", status: Status::Open("C9a-1"), probe: empty_comment_opener },
+    Scenario { id: "drift-1-work-charge", status: Status::Agreed, probe: work_boundary },
+    Scenario { id: "drift-10-empty-comment-opener", status: Status::Agreed, probe: empty_comment_opener },
     Scenario { id: "drift-12-double-fault-outside-root", status: Status::Open("C9a-3b"), probe: double_fault_outside_root },
     Scenario { id: "drift-12-double-fault-encoding", status: Status::Open("C9a-3a"), probe: double_fault_encoding },
     Scenario { id: "d78-late-units-after-assumed-header", status: Status::Accepted("D78"), probe: late_units_after_assumed_header },

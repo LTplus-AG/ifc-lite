@@ -91,7 +91,6 @@ fn parse_landxml_alignments_inner(
     reader.config_mut().trim_text(false);
     let mut buffer = Vec::new();
     loop {
-        parser.check(1)?;
         let event = reader
             .read_event_into(&mut buffer)
             .map_err(|_| error(Code::InvalidXml, "malformed XML"))?;
@@ -200,6 +199,7 @@ impl<'a> Parser<'a> {
     }
 
     pub(crate) fn consume_event(&mut self, event: Event<'_>) -> Result<()> {
+        self.check(1)?;
         match event {
             Event::Start(value) => self.start(&value),
             Event::Empty(value) => {

@@ -36,7 +36,7 @@
  *   values, their order in the referent nest, and the point its kernel
  *   evaluates at each `DistanceAlong`, against the same generator's points.
  *
- * Requires `ifcopenshell` (pinned in `tools/ifcopenshell_reference/
+ * Requires `ifcopenshell` (resolved by `tools/ifcopenshell_reference/
  * requirements.lock`, plus `pytest`); set `IFCOPENSHELL_PYTHON` or have it on
  * `python3`. Wired by `.github/workflows/export-schema-conformance.yml`.
  * Without that environment it SKIPS loudly — reported skipped, never passed.
@@ -203,19 +203,19 @@ describe.skipIf(!canRun)('LandXML→IFC4X3 output, checked by IfcOpenShell', () 
     expect(stdout).toMatch(/authored profile of alignment '.+' is not in the file/);
   }, TIMEOUT_MS);
 
-  it('refuses cant only while its premise holds: the pinned IfcOpenShell cannot regenerate cant geometry (§13.2)', () => {
-    // The refusal rests on a measured fact about the oracle, so the fact is
-    // measured here. If a pinned-version bump fixes IfcOpenShell's cant
-    // mapping, this goes red: re-examine mapping spec §13.2, because cant
-    // geometry may then be provable and the refusal no longer justified.
+  it('refuses cant while IfcOpenShell cannot regenerate centre-rotated transitions (§13.2)', () => {
+    // IfcOpenShell 0.9 fixes constant-cant mirror/centre rotation, but its
+    // centre-rotated linear transition still raises ZeroDivisionError. Keep
+    // that remaining oracle gap measured: fixing it must trigger a fresh
+    // review of the cant refusal in mapping spec §13.2.
     const [code, stdout] = run(CANT_PROBE_SCRIPT, []);
     expect(code, stdout).toBe(0);
     const probe = JSON.parse(stdout) as {
       mirror_distinguished: boolean; centre_rotation_tilted: boolean; centre_linear_transition: string;
     };
     const premise = 'IfcOpenShell\'s cant mapping changed — revisit the cant refusal in mapping spec §13.2';
-    expect(probe.mirror_distinguished, premise).toBe(false);
-    expect(probe.centre_rotation_tilted, premise).toBe(false);
+    expect(probe.mirror_distinguished, premise).toBe(true);
+    expect(probe.centre_rotation_tilted, premise).toBe(true);
     expect(probe.centre_linear_transition, premise).toBe('ZeroDivisionError');
 
     // And the alignment carrying that cant is still written, horizontal only,

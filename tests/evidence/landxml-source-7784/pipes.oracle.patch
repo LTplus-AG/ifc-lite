@@ -1,0 +1,13 @@
+diff --git a/rust/landxml/src/source.rs b/rust/landxml/src/source.rs
+--- a/rust/landxml/src/source.rs
++++ b/rust/landxml/src/source.rs
+@@ -93,8 +93,7 @@
+     }
+     let mut terrain = tin.finish()?;
+     let (pipes, _, has_pipe_networks) = pipe.finish_stream_with_preflight()?;
+-    let _ = (pipes, has_pipe_networks);
+-    terrain.pipe_networks = None;
++    terrain.pipe_networks = has_pipe_networks.then_some(pipes);
+     let document = LandXmlDocument { terrain, plan: plan.document() };
+     let alignments = alignments.then(|| alignment.finish()).transpose()?;
+     Ok((document, alignments))

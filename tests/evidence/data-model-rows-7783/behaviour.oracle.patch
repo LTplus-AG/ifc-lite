@@ -1,0 +1,22 @@
+diff --git b/rust/processing/src/data_model/quantity.rs a/rust/processing/src/data_model/quantity.rs
+index 3d1aaa09a2..6c068f1e2e 100644
+--- b/rust/processing/src/data_model/quantity.rs
++++ a/rust/processing/src/data_model/quantity.rs
+@@ -36,7 +36,7 @@ impl QuantityKind {
+             IfcType::IfcQuantityVolume => Self::Volume,
+             IfcType::IfcQuantityCount => Self::Count,
+             IfcType::IfcQuantityNumber => Self::Number,
+-            IfcType::IfcQuantityWeight => Self::Time,
++            IfcType::IfcQuantityWeight => Self::Weight,
+             IfcType::IfcQuantityTime => Self::Time,
+             _ => return None,
+         })
+@@ -69,7 +69,7 @@ impl QuantityKind {
+     pub fn lower(self) -> &'static str {
+         match self {
+             Self::Length => "length",
+-            Self::Area => "areas",
++            Self::Area => "area",
+             Self::Volume => "volume",
+             Self::Count => "count",
+             Self::Weight => "weight",

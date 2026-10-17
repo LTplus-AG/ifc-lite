@@ -6,6 +6,7 @@
 
 mod classifications;
 mod documents;
+mod jobs;
 mod materials;
 mod material_units;
 mod material_usages;
@@ -27,6 +28,7 @@ use documents::extract_documents;
 use ifc_lite_core::{
     build_entity_index, DecodedEntity, EntityDecoder, EntityScanner,
 };
+use jobs::JobBuckets;
 use materials::extract_materials;
 use material_units::MaterialUnitContext;
 use metadata::extract_entity_metadata;
@@ -90,61 +92,21 @@ where
         "Scanned all entities"
     );
 
-    // Debug: log sample entity types to diagnose issues
-    if tracing::enabled!(tracing::Level::DEBUG) {
-        let sample_types: Vec<&str> = all_entities
-            .iter()
-            .take(20)
-            .map(|j| j.type_name)
-            .collect();
-        tracing::debug!(?sample_types, "Sample entity types from scan");
-
-        // Check if any type contains "PROPERTY" or "REL" (case-insensitive)
-        let has_property_like = all_entities
-            .iter()
-            .any(|j| j.type_name.to_uppercase().contains("PROPERTY"));
-        let has_rel_like = all_entities
-            .iter()
-            .any(|j| j.type_name.to_uppercase().starts_with("IFCREL"));
-        tracing::debug!(
-            has_property_like = has_property_like,
-            has_rel_like = has_rel_like,
-            "Entity type pattern check"
-        );
-
-        // Debug: count property sets and relationships in scanned entities
-        let pset_count = all_entities
-            .iter()
-            .filter(|j| j.type_name.to_uppercase() == "IFCPROPERTYSET")
-            .count();
-        let rel_count = all_entities
-            .iter()
-            .filter(|j| {
-                let t = j.type_name.to_uppercase();
-                t == "IFCRELDEFINESBYPROPERTIES"
-                    || t == "IFCRELAGGREGATES"
-                    || t == "IFCRELCONTAINEDINSPATIALSTRUCTURE"
-            })
-            .count();
-        tracing::debug!(
-            pset_count = pset_count,
-            rel_count = rel_count,
-            "Entity type counts before extraction"
-        );
-    }
+    log_scan_census(&all_entities);
 
     // Parallel extraction using rayon::join. Every extractor borrows the
     // content: `rayon::join` scopes the borrow, so the copy of the whole
     // upload this used to make (up to `MAX_FILE_SIZE_MB`, on top of the parse
     // running beside it) bought nothing (#7676, SERVER-11).
+    let buckets = JobBuckets::new(&all_entities);
     let (entities, ((property_sets, quantity_sets), relationships)) = rayon::join(
         || extract_entity_metadata(&all_entities, content, &entity_index),
         || {
             rayon::join(
                 || {
                     rayon::join(
-                        || extract_properties(&all_entities, content, &entity_index),
-                        || extract_quantities(&all_entities, content, &entity_index),
+                        || extract_properties(&buckets.property_sets, content, &entity_index),
+                        || extract_quantities(&buckets.quantity_sets, content, &entity_index),
                     )
                 },
                 || extract_relationships(&all_entities, content, &entity_index),
@@ -174,10 +136,10 @@ where
     let ((classifications, materials), documents) = rayon::join(
         || {
             rayon::join(
-                || extract_classifications(&all_entities, content, &entity_index),
+                || extract_classifications(&buckets.rel_classifications, content, &entity_index),
                 || {
                     extract_materials(
-                        &all_entities,
+                        &buckets.rel_materials,
                         content,
                         &entity_index,
                         &material_units,
@@ -185,7 +147,7 @@ where
                 },
             )
         },
-        || extract_documents(&all_entities, content, &entity_index),
+        || extract_documents(&buckets.rel_documents, content, &entity_index),
     );
 
     // A table over its budget is not served truncated: the refusal travels
@@ -228,6 +190,52 @@ where
         documents,
         spatial_hierarchy,
         refused,
+    }
+}
+
+/// Debug-level census of the scanned jobs, to diagnose a model that extracts
+/// nothing. Costs nothing unless debug tracing is enabled.
+fn log_scan_census(all_entities: &[EntityJob]) {
+    if tracing::enabled!(tracing::Level::DEBUG) {
+        let sample_types: Vec<&str> = all_entities
+            .iter()
+            .take(20)
+            .map(|j| j.type_name)
+            .collect();
+        tracing::debug!(?sample_types, "Sample entity types from scan");
+
+        // Check if any type contains "PROPERTY" or "REL" (case-insensitive)
+        let has_property_like = all_entities
+            .iter()
+            .any(|j| j.type_name.to_uppercase().contains("PROPERTY"));
+        let has_rel_like = all_entities
+            .iter()
+            .any(|j| j.type_name.to_uppercase().starts_with("IFCREL"));
+        tracing::debug!(
+            has_property_like = has_property_like,
+            has_rel_like = has_rel_like,
+            "Entity type pattern check"
+        );
+
+        // Debug: count property sets and relationships in scanned entities
+        let pset_count = all_entities
+            .iter()
+            .filter(|j| j.type_name.to_uppercase() == "IFCPROPERTYSET")
+            .count();
+        let rel_count = all_entities
+            .iter()
+            .filter(|j| {
+                let t = j.type_name.to_uppercase();
+                t == "IFCRELDEFINESBYPROPERTIES"
+                    || t == "IFCRELAGGREGATES"
+                    || t == "IFCRELCONTAINEDINSPATIALSTRUCTURE"
+            })
+            .count();
+        tracing::debug!(
+            pset_count = pset_count,
+            rel_count = rel_count,
+            "Entity type counts before extraction"
+        );
     }
 }
 

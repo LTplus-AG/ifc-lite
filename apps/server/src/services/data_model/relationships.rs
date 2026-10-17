@@ -5,8 +5,9 @@
 //! Relationship extraction.
 
 use super::slots::RelSlots;
+use super::jobs::SplitDecoder;
 use super::types::{EntityJob, Relationship};
-use ifc_lite_core::{DecodedEntity, EntityDecoder};
+use ifc_lite_core::DecodedEntity;
 use rayon::prelude::*;
 use rustc_hash::FxHashMap;
 use std::sync::Arc;
@@ -39,13 +40,14 @@ pub(super) fn extract_relationships(
 
     let mut rels: Vec<Relationship> = rel_jobs
         .par_iter()
-        .filter_map(|(job, slots)| {
-            let mut local_decoder =
-                EntityDecoder::with_arc_index(content, entity_index.clone());
-            let entity = local_decoder.decode_at(job.start, job.end).ok()?;
-
-            extract_relationship(&entity, job.type_name, job.id, *slots)
-        })
+        .map_init(
+            || SplitDecoder::new(content, entity_index),
+            |split, (job, slots)| {
+                    let entity = split.next_job().decode_at(job.start, job.end).ok()?;
+                    extract_relationship(&entity, job.type_name, job.id, *slots)
+            },
+        )
+        .flatten()
         .flatten()
         .collect();
 
@@ -86,29 +88,32 @@ fn extract_type_property_links(
 
     type_ids
         .par_iter()
-        .flat_map_iter(|&type_id| {
-            let mut decoder =
-                EntityDecoder::with_arc_index(content, entity_index.clone());
-            let mut out = Vec::new();
-            if let Ok(entity) = decoder.decode_by_id(type_id) {
-                // IfcTypeObject.HasPropertySets is at index 5 across IFC2X3/4/4X3.
-                if let Some(set_list) = entity.get_list(5) {
-                    for set_ref in set_list.iter() {
-                        if let Some(set_id) = set_ref.as_entity_ref() {
-                            out.push(Relationship {
-                                rel_type: "TYPEHASPROPERTYSETS".to_string(),
-                                // Synthetic: read off IfcTypeObject.HasPropertySets,
-                                // so there is no IfcRel entity to name here.
-                                rel_id: 0,
-                                relating_id: set_id,
-                                related_id: type_id,
-                            });
+        .map_init(
+            || SplitDecoder::new(content, entity_index),
+            |split, &type_id| {
+                let decoder = split.next_job();
+                let mut out = Vec::new();
+                if let Ok(entity) = decoder.decode_by_id(type_id) {
+                    // IfcTypeObject.HasPropertySets is at index 5 across IFC2X3/4/4X3.
+                    if let Some(set_list) = entity.get_list(5) {
+                        for set_ref in set_list.iter() {
+                            if let Some(set_id) = set_ref.as_entity_ref() {
+                                out.push(Relationship {
+                                    rel_type: "TYPEHASPROPERTYSETS".to_string(),
+                                    // Synthetic: read off IfcTypeObject.HasPropertySets,
+                                    // so there is no IfcRel entity to name here.
+                                    rel_id: 0,
+                                    relating_id: set_id,
+                                    related_id: type_id,
+                                });
+                            }
                         }
                     }
                 }
-            }
-            out
-        })
+                out
+            },
+        )
+        .flatten()
         .collect()
 }
 

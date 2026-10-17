@@ -13,8 +13,7 @@
    255 apps/server/src/routes/parse/parquet.rs parse_parquet
    182 apps/server/src/routes/parse/parquet_optimized.rs parse_parquet_optimized
    340 apps/server/src/routes/parse/parquet_stream.rs parse_parquet_stream
-   184 apps/server/src/services/data_model/materials.rs resolve_definition
-   199 apps/server/src/services/data_model/mod.rs extract_data_model
+   159 apps/server/src/services/data_model/mod.rs extract_data_model
    299 apps/server/src/services/data_model/spatial.rs build_spatial_hierarchy
    200 apps/server/src/services/parquet_mesh_tables.rs build_mesh_tables
    308 apps/server/src/services/parquet_optimized.rs serialize_to_parquet_optimized

@@ -4,6 +4,7 @@
 
 //! Document association extraction.
 
+use super::jobs::SplitDecoder;
 use super::types::{DocumentAssociation, EntityJob};
 use ifc_lite_core::EntityDecoder;
 use rayon::prelude::*;
@@ -64,46 +65,41 @@ fn resolve_document(
 
 /// Extract document associations (`IfcRelAssociatesDocument`).
 pub(super) fn extract_documents(
-    jobs: &[EntityJob],
+    rel_jobs: &[&EntityJob],
     content: &[u8],
     entity_index: &Arc<ifc_lite_core::EntityIndex>,
 ) -> Vec<DocumentAssociation> {
-    let rel_jobs: Vec<_> = jobs
-        .iter()
-        .filter(|job| {
-            job.type_name
-                .eq_ignore_ascii_case("IFCRELASSOCIATESDOCUMENT")
-        })
-        .collect();
-
     tracing::debug!(count = rel_jobs.len(), "Extracting documents");
 
     rel_jobs
         .par_iter()
-        .flat_map(|job| {
-            let mut decoder =
-                EntityDecoder::with_arc_index(content, entity_index.clone());
-            let Ok(rel) = decoder.decode_at(job.start, job.end) else {
-                return Vec::new();
-            };
-            let related = super::related_object_ids(&rel);
-            // RelatingDocument is attribute 5.
-            let Some(doc_id) = rel.get_ref(5) else {
-                return Vec::new();
-            };
-            let (identification, name, location, description) =
-                resolve_document(&mut decoder, doc_id);
+        .map_init(
+            || SplitDecoder::new(content, entity_index),
+            |split, job| {
+                let decoder = split.next_job();
+                let Ok(rel) = decoder.decode_at(job.start, job.end) else {
+                    return Vec::new();
+                };
+                let related = super::related_object_ids(&rel);
+                // RelatingDocument is attribute 5.
+                let Some(doc_id) = rel.get_ref(5) else {
+                    return Vec::new();
+                };
+                let (identification, name, location, description) =
+                    resolve_document(decoder, doc_id);
 
-            related
-                .into_iter()
-                .map(|element_id| DocumentAssociation {
-                    element_id,
-                    identification: identification.clone(),
-                    name: name.clone(),
-                    location: location.clone(),
-                    description: description.clone(),
-                })
-                .collect()
-        })
+                related
+                    .into_iter()
+                    .map(|element_id| DocumentAssociation {
+                        element_id,
+                        identification: identification.clone(),
+                        name: name.clone(),
+                        location: location.clone(),
+                        description: description.clone(),
+                    })
+                    .collect::<Vec<_>>()
+            },
+        )
+        .flatten()
         .collect()
 }

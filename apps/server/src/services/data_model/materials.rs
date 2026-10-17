@@ -4,6 +4,7 @@
 
 //! Material association extraction.
 
+use super::jobs::SplitDecoder;
 use super::material_units::MaterialUnitContext;
 use super::material_usages::UsageTerminals;
 use super::types::{EntityJob, MaterialAssociation};
@@ -83,6 +84,167 @@ pub(super) fn usage_target(entity: &DecodedEntity) -> Option<Option<u32>> {
     }
 }
 
+/// Where one kind of material set keeps its members and what it reads off
+/// each member (SERVER-39): the four set arms differed only in these indices,
+/// so they are rows of one table walked by [`resolve_set`]. Attribute indices
+/// are the schema's, as the former arms hard-coded them.
+struct SetSpec {
+    /// The `kind` the rows carry.
+    kind: &'static str,
+    /// The set's own Name attribute (`None`: the type has no name).
+    name: Option<usize>,
+    /// The attribute listing the members.
+    members: usize,
+    /// How a member is read.
+    member: MemberSpec,
+}
+
+enum MemberSpec {
+    /// The member is the `IfcMaterial` itself (`IfcMaterialList`).
+    Material,
+    /// The member is an entity of `ty` that references its material.
+    Entity {
+        ty: IfcType,
+        material: usize,
+        name: usize,
+        category: usize,
+        /// `IfcMaterialConstituent.Fraction`.
+        fraction: Option<usize>,
+        /// `IfcMaterialLayer.LayerThickness` (scaled) and `.IsVentilated`.
+        layer: Option<(usize, usize)>,
+    },
+}
+
+/// `IfcMaterialLayerSet`: MaterialLayers(0), LayerSetName(1). `IfcMaterialLayer`:
+/// Material(0), LayerThickness(1), IsVentilated(2), Name(3), Description(4),
+/// Category(5).
+const LAYER_SET: SetSpec = SetSpec {
+    kind: "IfcMaterialLayerSet",
+    name: Some(1),
+    members: 0,
+    member: MemberSpec::Entity {
+        ty: IfcType::IfcMaterialLayer,
+        material: 0,
+        name: 3,
+        category: 5,
+        fraction: None,
+        layer: Some((1, 2)),
+    },
+};
+/// `IfcMaterialList`: Materials(0).
+const MATERIAL_LIST: SetSpec = SetSpec {
+    kind: "IfcMaterialList",
+    name: None,
+    members: 0,
+    member: MemberSpec::Material,
+};
+/// `IfcMaterialConstituentSet`: Name(0), Description(1), MaterialConstituents(2).
+/// `IfcMaterialConstituent`: Name(0), Description(1), Material(2), Fraction(3),
+/// Category(4).
+const CONSTITUENT_SET: SetSpec = SetSpec {
+    kind: "IfcMaterialConstituentSet",
+    name: Some(0),
+    members: 2,
+    member: MemberSpec::Entity {
+        ty: IfcType::IfcMaterialConstituent,
+        material: 2,
+        name: 0,
+        category: 4,
+        fraction: Some(3),
+        layer: None,
+    },
+};
+/// `IfcMaterialProfileSet`: Name(0), Description(1), MaterialProfiles(2).
+/// `IfcMaterialProfile`: Name(0), Description(1), Material(2), Profile(3),
+/// Priority(4), Category(5).
+const PROFILE_SET: SetSpec = SetSpec {
+    kind: "IfcMaterialProfileSet",
+    name: Some(0),
+    members: 2,
+    member: MemberSpec::Entity {
+        ty: IfcType::IfcMaterialProfile,
+        material: 2,
+        name: 0,
+        category: 5,
+        fraction: None,
+        layer: None,
+    },
+};
+
+/// Resolve the members of one material set, per its [`SetSpec`]. A member that
+/// is not of the expected type, or whose material does not resolve, is skipped
+/// (its index still counts).
+fn resolve_set(
+    decoder: &mut EntityDecoder,
+    set: &DecodedEntity,
+    spec: &SetSpec,
+    unit_scale: f64,
+) -> Vec<ResolvedLayer> {
+    let set_name = spec.name.and_then(|i| set.get_string(i)).map(str::to_string);
+    let member_count = set.get_list(spec.members).map_or(0, |l| l.len() as u32);
+    let member_ids: Vec<u32> = set
+        .get_list(spec.members)
+        .map(|l| l.iter().filter_map(|v| v.as_entity_ref()).collect())
+        .unwrap_or_default();
+    member_ids
+        .iter()
+        .copied()
+        .enumerate()
+        .filter_map(|(i, member_id)| {
+            let layer_index = i as u32;
+            match &spec.member {
+                MemberSpec::Material => {
+                    let (material_name, material_category, material_name_present) =
+                        material_details_of(decoder, member_id)?;
+                    Some(ResolvedLayer {
+                        kind: spec.kind,
+                        member_count,
+                        set_name: set_name.clone(),
+                        layer_index,
+                        material_name,
+                        material_name_present,
+                        material_id: Some(member_id),
+                        member_name: None,
+                        material_category,
+                        fraction: None,
+                        thickness: None,
+                        is_ventilated: None,
+                        category: None,
+                    })
+                }
+                MemberSpec::Entity { ty, material, name, category, fraction, layer } => {
+                    let member = decoder.decode_by_id(member_id).ok()?;
+                    if !member.ifc_type.is_subtype_of(ty.clone()) {
+                        return None;
+                    }
+                    let (material_name, material_category, material_name_present) =
+                        match member.get_ref(*material) {
+                            Some(mid) => material_details_of(decoder, mid)?,
+                            None => (String::new(), None, false),
+                        };
+                    Some(ResolvedLayer {
+                        kind: spec.kind,
+                        member_count,
+                        set_name: set_name.clone(),
+                        layer_index,
+                        material_name,
+                        material_name_present,
+                        material_id: member.get_ref(*material),
+                        member_name: member.get_string(*name).map(str::to_string),
+                        material_category,
+                        fraction: (*fraction).and_then(|f| member.get_float(f)),
+                        thickness: (*layer)
+                            .and_then(|(t, _)| member.get_float(t))
+                            .map(|t| t * unit_scale),
+                        is_ventilated: (*layer).and_then(|(_, v)| super::read_logical(&member, v)),
+                        category: member.get_string(*category).map(str::to_string),
+                    })
+                }
+            }
+        })
+        .collect()
+}
+
 /// Resolve one material definition that is not a usage. `ty` is `entity`'s
 /// upper-cased type name and `id` its express id. Never follows a usage, so it
 /// cannot recurse.
@@ -112,160 +274,17 @@ fn resolve_definition(
             }]
         },
         "IFCMATERIALLAYERSET" => {
-            let set_name = entity.get_string(1).map(|s| s.to_string());
-            let member_count = entity.get_list(0).map_or(0, |l| l.len() as u32);
-            let layer_ids: Vec<u32> = entity
-                .get_list(0)
-                .map(|l| l.iter().filter_map(|v| v.as_entity_ref()).collect())
-                .unwrap_or_default();
-            layer_ids
-                .iter()
-                .copied()
-                .enumerate()
-                .filter_map(|(i, layer_id)| {
-                    let layer = decoder.decode_by_id(layer_id).ok()?;
-                    if !layer.ifc_type.is_subtype_of(IfcType::IfcMaterialLayer) {
-                        return None;
-                    }
-                    // IfcMaterialLayer: Material(0), LayerThickness(1),
-                    // IsVentilated(2), Name(3), Description(4), Category(5).
-                    let (material_name, material_category, material_name_present) = match layer.get_ref(0) {
-                        Some(mid) => material_details_of(decoder, mid)?,
-                        None => (String::new(), None, false),
-                    };
-                    let thickness = layer.get_float(1).map(|t| t * unit_scale);
-                    let is_ventilated = super::read_logical(&layer, 2);
-                    let category = layer.get_string(5).map(|s| s.to_string());
-                    Some(ResolvedLayer {
-                        kind: "IfcMaterialLayerSet",
-                        member_count,
-                        set_name: set_name.clone(),
-                        layer_index: i as u32,
-                        material_name,
-                        material_name_present,
-                        material_id: layer.get_ref(0),
-                        member_name: layer.get_string(3).map(str::to_string),
-                        material_category,
-                        fraction: None,
-                        thickness,
-                        is_ventilated,
-                        category,
-                    })
-                })
-                .collect()
+            resolve_set(decoder, entity, &LAYER_SET, unit_scale)
         }
         "IFCMATERIALLIST" => {
-            let member_count = entity.get_list(0).map_or(0, |l| l.len() as u32);
-            let mat_ids: Vec<u32> = entity
-                .get_list(0)
-                .map(|l| l.iter().filter_map(|v| v.as_entity_ref()).collect())
-                .unwrap_or_default();
-            mat_ids
-                .iter()
-                .copied()
-                .enumerate()
-                .filter_map(|(i, mid)| {
-                    let (material_name, material_category, material_name_present) = material_details_of(decoder, mid)?;
-                    Some(ResolvedLayer {
-                        kind: "IfcMaterialList",
-                        member_count,
-                        set_name: None,
-                        layer_index: i as u32,
-                        material_name,
-                        material_name_present,
-                        material_id: Some(mid),
-                        member_name: None,
-                        material_category,
-                        fraction: None,
-                        thickness: None,
-                        is_ventilated: None,
-                        category: None,
-                    })
-                })
-                .collect()
+            resolve_set(decoder, entity, &MATERIAL_LIST, unit_scale)
         }
         "IFCMATERIALCONSTITUENTSET" => {
-            // IfcMaterialConstituentSet: Name(0), Description(1),
-            // MaterialConstituents(2). Each IfcMaterialConstituent has
-            // Name(0), Description(1), Material(2), Fraction(3), Category(4).
-            let set_name = entity.get_string(0).map(|s| s.to_string());
-            let member_count = entity.get_list(2).map_or(0, |l| l.len() as u32);
-            let constituent_ids: Vec<u32> = entity
-                .get_list(2)
-                .map(|l| l.iter().filter_map(|v| v.as_entity_ref()).collect())
-                .unwrap_or_default();
-            constituent_ids
-                .iter()
-                .copied()
-                .enumerate()
-                .filter_map(|(i, cid)| {
-                    let constituent = decoder.decode_by_id(cid).ok()?;
-                    if !constituent.ifc_type.is_subtype_of(IfcType::IfcMaterialConstituent) {
-                        return None;
-                    }
-                    let (material_name, material_category, material_name_present) = match constituent.get_ref(2) {
-                        Some(mid) => material_details_of(decoder, mid)?,
-                        None => (String::new(), None, false),
-                    };
-                    Some(ResolvedLayer {
-                        kind: "IfcMaterialConstituentSet",
-                        member_count,
-                        set_name: set_name.clone(),
-                        layer_index: i as u32,
-                        material_name,
-                        material_name_present,
-                        material_id: constituent.get_ref(2),
-                        member_name: constituent.get_string(0).map(str::to_string),
-                        material_category,
-                        fraction: constituent.get_float(3),
-                        thickness: None,
-                        is_ventilated: None,
-                        category: constituent.get_string(4).map(|s| s.to_string()),
-                    })
-                })
-                .collect()
+            resolve_set(decoder, entity, &CONSTITUENT_SET, unit_scale)
         }
+        // Profiles carry no layer thickness, so thickness stays `None`.
         "IFCMATERIALPROFILESET" => {
-            // IfcMaterialProfileSet: Name(0), Description(1), MaterialProfiles(2).
-            // Each IfcMaterialProfile: Name(0), Description(1), Material(2),
-            // Profile(3), Priority(4), Category(5). Profiles carry no layer
-            // thickness, so thickness stays `None`.
-            let set_name = entity.get_string(0).map(|s| s.to_string());
-            let member_count = entity.get_list(2).map_or(0, |l| l.len() as u32);
-            let profile_ids: Vec<u32> = entity
-                .get_list(2)
-                .map(|l| l.iter().filter_map(|v| v.as_entity_ref()).collect())
-                .unwrap_or_default();
-            profile_ids
-                .iter()
-                .copied()
-                .enumerate()
-                .filter_map(|(i, pid)| {
-                    let profile = decoder.decode_by_id(pid).ok()?;
-                    if !profile.ifc_type.is_subtype_of(IfcType::IfcMaterialProfile) {
-                        return None;
-                    }
-                    let (material_name, material_category, material_name_present) = match profile.get_ref(2) {
-                        Some(mid) => material_details_of(decoder, mid)?,
-                        None => (String::new(), None, false),
-                    };
-                    Some(ResolvedLayer {
-                        kind: "IfcMaterialProfileSet",
-                        member_count,
-                        set_name: set_name.clone(),
-                        layer_index: i as u32,
-                        material_name,
-                        material_name_present,
-                        material_id: profile.get_ref(2),
-                        member_name: profile.get_string(0).map(str::to_string),
-                        material_category,
-                        fraction: None,
-                        thickness: None,
-                        is_ventilated: None,
-                        category: profile.get_string(5).map(|s| s.to_string()),
-                    })
-                })
-                .collect()
+            resolve_set(decoder, entity, &PROFILE_SET, unit_scale)
         }
         _ => Vec::new(),
     }
@@ -300,19 +319,11 @@ fn row_bytes(layer: &ResolvedLayer) -> usize {
 /// Extract material associations (`IfcRelAssociatesMaterial`). `Err` names the
 /// budget the table hit; nothing past it is built.
 pub(super) fn extract_materials(
-    jobs: &[EntityJob],
+    rel_jobs: &[&EntityJob],
     content: &[u8],
     entity_index: &Arc<ifc_lite_core::EntityIndex>,
     units: &MaterialUnitContext,
 ) -> Result<Vec<MaterialAssociation>, String> {
-    let rel_jobs: Vec<_> = jobs
-        .iter()
-        .filter(|job| {
-            job.type_name
-                .eq_ignore_ascii_case("IFCRELASSOCIATESMATERIAL")
-        })
-        .collect();
-
     tracing::debug!(count = rel_jobs.len(), "Extracting materials");
 
     let usages = UsageTerminals::default();
@@ -326,56 +337,58 @@ pub(super) fn extract_materials(
     };
     let tables: Vec<Vec<MaterialAssociation>> = rel_jobs
         .par_iter()
-        .map(|job| {
-            let mut decoder =
-                EntityDecoder::with_arc_index(content, entity_index.clone());
-            let Ok(rel) = decoder.decode_at(job.start, job.end) else {
-                return Ok(Vec::new());
-            };
-            let related = super::related_object_ids(&rel);
-            // RelatingMaterial is attribute 5.
-            let Some(material_id) = rel.get_ref(5) else {
-                return Ok(Vec::new());
-            };
-            let mut resolved_by_scale: HashMap<u64, (Vec<ResolvedLayer>, usize)> = HashMap::new();
-            let mut rows = Vec::new();
-            for element_id in related {
-                let scale = units.scale_for(element_id);
-                let (layers, bytes) = resolved_by_scale.entry(scale.to_bits()).or_insert_with(|| {
-                    let layers = resolve_material(&mut decoder, &usages, material_id, scale);
-                    let bytes = layers.iter().map(row_bytes).sum();
-                    (layers, bytes)
-                });
-                if units.has_mixed_type_scales(element_id)
-                    && layers.iter().any(|layer| layer.thickness.is_some())
-                {
-                    continue;
+        .map_init(
+            || SplitDecoder::new(content, entity_index),
+            |split, job| {
+                let decoder = split.next_job();
+                let Ok(rel) = decoder.decode_at(job.start, job.end) else {
+                    return Ok(Vec::new());
+                };
+                let related = super::related_object_ids(&rel);
+                // RelatingMaterial is attribute 5.
+                let Some(material_id) = rel.get_ref(5) else {
+                    return Ok(Vec::new());
+                };
+                let mut resolved_by_scale: HashMap<u64, (Vec<ResolvedLayer>, usize)> = HashMap::new();
+                let mut rows = Vec::new();
+                for element_id in related {
+                    let scale = units.scale_for(element_id);
+                    let (layers, bytes) = resolved_by_scale.entry(scale.to_bits()).or_insert_with(|| {
+                        let layers = resolve_material(decoder, &usages, material_id, scale);
+                        let bytes = layers.iter().map(row_bytes).sum();
+                        (layers, bytes)
+                    });
+                    if units.has_mixed_type_scales(element_id)
+                        && layers.iter().any(|layer| layer.thickness.is_some())
+                    {
+                        continue;
+                    }
+                    // Charged before the rows exist, across every job.
+                    if used.fetch_add(*bytes, Ordering::Relaxed).saturating_add(*bytes) > budget {
+                        return Err(refusal());
+                    }
+                    rows.extend(layers.iter().map(|layer| MaterialAssociation {
+                        element_id,
+                        association_id: job.id,
+                        definition_id: material_id,
+                        member_count: layer.member_count,
+                        kind: layer.kind.to_string(),
+                        set_name: layer.set_name.clone(),
+                        layer_index: layer.layer_index,
+                        material_name: layer.material_name.clone(),
+                        material_name_present: layer.material_name_present,
+                        material_id: layer.material_id,
+                        member_name: layer.member_name.clone(),
+                        material_category: layer.material_category.clone(),
+                        fraction: layer.fraction,
+                        thickness: layer.thickness,
+                        is_ventilated: layer.is_ventilated,
+                        category: layer.category.clone(),
+                    }));
                 }
-                // Charged before the rows exist, across every job.
-                if used.fetch_add(*bytes, Ordering::Relaxed).saturating_add(*bytes) > budget {
-                    return Err(refusal());
-                }
-                rows.extend(layers.iter().map(|layer| MaterialAssociation {
-                    element_id,
-                    association_id: job.id,
-                    definition_id: material_id,
-                    member_count: layer.member_count,
-                    kind: layer.kind.to_string(),
-                    set_name: layer.set_name.clone(),
-                    layer_index: layer.layer_index,
-                    material_name: layer.material_name.clone(),
-                    material_name_present: layer.material_name_present,
-                    material_id: layer.material_id,
-                    member_name: layer.member_name.clone(),
-                    material_category: layer.material_category.clone(),
-                    fraction: layer.fraction,
-                    thickness: layer.thickness,
-                    is_ventilated: layer.is_ventilated,
-                    category: layer.category.clone(),
-                }));
-            }
-            Ok(rows)
-        })
+                Ok(rows)
+            },
+        )
         .collect::<Result<_, String>>()?;
     Ok(tables.into_iter().flatten().collect())
 }

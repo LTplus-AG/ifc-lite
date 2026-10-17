@@ -2438,5 +2438,5 @@ fn issue_7292_rvt_void_cut_hygiene_preserves_exact_closed_boundaries() {
 }
 
 #[cfg(not(any(feature = "csg_topology_gate", feature = "csg_manifold_gate")))]
-#[path = "triangulation_7292_source_boundary_tests.rs"]
+#[path = "triangulation_invariance/source_boundary_7292_tests.rs"]
 mod source_boundary_7292_tests;

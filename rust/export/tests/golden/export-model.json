@@ -1,0 +1,102 @@
+{
+  "about": "FNV-1a 64 and byte length of each export-model output, keyed by case. Written by ifc-lite-export, never by hand.",
+  "repin": "IFC_LITE_REPIN_GOLDEN=1 cargo test -p ifc-lite-export --features parquet-bos --test export_golden -- --exact export_model",
+  "cases": {
+    "AC20-FZK-Haus:attributes": {
+      "fnv1a64": "b4dbbcf5466884b5",
+      "bytes": 777357
+    },
+    "AC20-FZK-Haus:inherit": {
+      "fnv1a64": "9ca8048af58c1667",
+      "bytes": 761392
+    },
+    "AC20-FZK-Haus:inherit+attributes": {
+      "fnv1a64": "b4dbbcf5466884b5",
+      "bytes": 777357
+    },
+    "IfcOpenHouse_IFC4:attributes": {
+      "fnv1a64": "4fe1b7a7db2e6434",
+      "bytes": 17654
+    },
+    "IfcOpenHouse_IFC4:inherit": {
+      "fnv1a64": "a3badffff853b1ac",
+      "bytes": 11473
+    },
+    "IfcOpenHouse_IFC4:inherit+attributes": {
+      "fnv1a64": "4fe1b7a7db2e6434",
+      "bytes": 17654
+    },
+    "bath_csg_solid:attributes": {
+      "fnv1a64": "336a7bf3aef7586d",
+      "bytes": 620
+    },
+    "bath_csg_solid:inherit": {
+      "fnv1a64": "336a7bf3aef7586d",
+      "bytes": 620
+    },
+    "bath_csg_solid:inherit+attributes": {
+      "fnv1a64": "336a7bf3aef7586d",
+      "bytes": 620
+    },
+    "bonsai-terrain:attributes": {
+      "fnv1a64": "cc70fb791807cb01",
+      "bytes": 782
+    },
+    "bonsai-terrain:inherit": {
+      "fnv1a64": "14c2949f2174cc8a",
+      "bytes": 696
+    },
+    "bonsai-terrain:inherit+attributes": {
+      "fnv1a64": "cc70fb791807cb01",
+      "bytes": 782
+    },
+    "c6_data_model_synthetic:attributes": {
+      "fnv1a64": "7c14eb1573ca8b26",
+      "bytes": 3359
+    },
+    "c6_data_model_synthetic:inherit": {
+      "fnv1a64": "fdadba9b53596fab",
+      "bytes": 4490
+    },
+    "c6_data_model_synthetic:inherit+attributes": {
+      "fnv1a64": "1150ed59659e0926",
+      "bytes": 5009
+    },
+    "duplex:attributes": {
+      "fnv1a64": "335f61376f71b345",
+      "bytes": 1584288
+    },
+    "duplex:inherit": {
+      "fnv1a64": "605ddf5445a060ff",
+      "bytes": 1546998
+    },
+    "duplex:inherit+attributes": {
+      "fnv1a64": "335f61376f71b345",
+      "bytes": 1584288
+    },
+    "mapped_instances_synthetic:attributes": {
+      "fnv1a64": "2189e99970e29476",
+      "bytes": 18029
+    },
+    "mapped_instances_synthetic:inherit": {
+      "fnv1a64": "1d938fb3da009856",
+      "bytes": 17677
+    },
+    "mapped_instances_synthetic:inherit+attributes": {
+      "fnv1a64": "2189e99970e29476",
+      "bytes": 18029
+    },
+    "wall_two_openings:attributes": {
+      "fnv1a64": "c64fc75a2fd67153",
+      "bytes": 1186
+    },
+    "wall_two_openings:inherit": {
+      "fnv1a64": "c64fc75a2fd67153",
+      "bytes": 1186
+    },
+    "wall_two_openings:inherit+attributes": {
+      "fnv1a64": "c64fc75a2fd67153",
+      "bytes": 1186
+    }
+  }
+}

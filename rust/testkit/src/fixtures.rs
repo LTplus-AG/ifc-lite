@@ -146,6 +146,21 @@ pub fn fixture_text(rel: &str) -> Option<String> {
     })
 }
 
+/// Text of a PRIVATE, un-manifested local model under `tests/models/` (one
+/// `pnpm fixtures` can never supply). Absent or an LFS pointer is always `None`
+/// -- the gate deliberately does not apply, or the suite would fail CI
+/// unconditionally -- while any other I/O error or bad UTF-8 still panics.
+/// Catalogued fixtures must use [`fixture_text`] instead.
+pub fn local_fixture_text(rel: &str) -> Option<String> {
+    match classify(rel, std::fs::read(fixture_path(rel))) {
+        Ok(bytes) => Some(
+            String::from_utf8(bytes)
+                .unwrap_or_else(|e| panic!("fixture {rel} is not valid UTF-8: {e}")),
+        ),
+        Err(_) => None,
+    }
+}
+
 /// Bind the fixture text of `$rel` or return from the enclosing test (the
 /// skip). Under `IFC_LITE_REQUIRE_FIXTURES=1` a missing fixture panics.
 #[macro_export]

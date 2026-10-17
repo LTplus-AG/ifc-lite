@@ -61,13 +61,13 @@ const CHECKER = join(SCRIPTS, 'check-server-browser-type-parity.mjs');
 const FILES = {
   RUST_REL: 'apps/server/tests/golden/relationship-slots.json',
   TS_REL_INDEXES: 'packages/parser/src/columnar-parser-indexes.ts',
-  RUST_SPATIAL: 'apps/server/src/services/data_model/spatial.rs',
+  RUST_SPATIAL: 'rust/processing/src/data_model/spatial.rs',
   TS_SPATIAL: 'packages/data/src/spatial-types.ts',
-  RUST_PROPS: 'apps/server/src/services/data_model/properties.rs',
+  RUST_PROPS: 'rust/processing/src/data_model/properties.rs',
   TS_PROPS: 'packages/parser/src/property-value-parser.ts',
-  RUST_QTY: 'apps/server/src/services/data_model/quantities.rs',
+  RUST_QTY: 'rust/processing/src/data_model/quantities.rs',
   TS_QTY_COLLECT: 'packages/parser/src/quantity-collect.ts',
-  RUST_MATERIALS: 'apps/server/src/services/data_model/materials.rs',
+  RUST_MATERIALS: 'rust/processing/src/data_model/materials.rs',
   TS_MATERIALS: 'packages/parser/src/material-resolver.ts',
 };
 
@@ -467,7 +467,7 @@ test('vacuity guard: RED when the TS spatial extractor is starved', () => {
 test('vacuity guard: two empty sets are not parity even when both sides are starved', () => {
   const { status, out } = runOn({ RUST_MATERIALS: '// nothing\n', TS_MATERIALS: '// nothing\n' });
   assert.equal(status, 1, out);
-  assert.match(out, /no types extracted from apps\/server\/src\/services\/data_model\/materials\.rs/);
+  assert.match(out, /no types extracted from rust\/processing\/src\/data_model\/materials\.rs/);
   assert.match(out, /no types extracted from packages\/parser\/src\/material-resolver\.ts/);
 });
 
@@ -600,7 +600,7 @@ test('QUANTITIES UNDER-READ: RED when a sibling quantity map appears alongside `
 test('PROPERTIES VACUITY: emptying the Rust side alone still fires the vacuity guard', () => {
   const { status, out } = runOn({ RUST_PROPS: '// nothing\n' });
   assert.equal(status, 1, out);
-  assert.match(out, /no types extracted from apps\/server\/src\/services\/data_model\/properties\.rs/);
+  assert.match(out, /no types extracted from rust\/processing\/src\/data_model\/properties\.rs/);
 });
 
 test('PROPERTIES VACUITY (documents the corrected claim): emptying the TS side alone does NOT fire the vacuity guard, because the extractor unconditionally seeds IFCPROPERTYSINGLEVALUE', () => {

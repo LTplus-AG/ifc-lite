@@ -32,6 +32,7 @@ use super::normals::{dot, Vec3};
 use super::options::Params;
 use super::refit::plane_basis;
 use super::voxel::VoxelSet;
+use ifc_lite_geometry::math::v2;
 use ifc_lite_geometry::UnionFind;
 use std::f64::consts::PI;
 
@@ -78,18 +79,6 @@ impl Plan {
     }
 }
 
-pub(crate) fn dot2(a: P2, b: P2) -> f64 {
-    a[0] * b[0] + a[1] * b[1]
-}
-
-fn sub2(a: P2, b: P2) -> P2 {
-    [a[0] - b[0], a[1] - b[1]]
-}
-
-fn length2(a: P2) -> f64 {
-    dot2(a, a).sqrt()
-}
-
 /// A vertical plane seen from above.
 #[derive(Clone, Debug)]
 pub(crate) struct Face {
@@ -108,17 +97,17 @@ pub(crate) struct Face {
 impl Face {
     fn of(plane: usize, region: &Region, voxels: &VoxelSet, plan: &Plan) -> Option<Self> {
         let n = plan.project(region.normal);
-        let length = length2(n);
+        let length = v2::norm(n);
         if length < 1e-9 {
             return None;
         }
         let normal = [n[0] / length, n[1] / length];
         let tangent = [-normal[1], normal[0]];
-        let offset = dot2(plan.project(region.centroid), normal);
+        let offset = v2::dot(plan.project(region.centroid), normal);
         let (mut lo, mut hi, mut heights) = (f64::INFINITY, f64::NEG_INFINITY, [f64::INFINITY, f64::NEG_INFINITY]);
         for &i in &region.voxels {
             let p = voxels.means[i as usize];
-            let s = dot2(plan.project(p), tangent);
+            let s = v2::dot(plan.project(p), tangent);
             (lo, hi) = (lo.min(s), hi.max(s));
             let h = plan.height(p);
             heights = [heights[0].min(h), heights[1].max(h)];
@@ -142,18 +131,18 @@ pub(crate) struct Ring {
 
 /// Whether `a` and `b` are neighbouring faces of one column.
 fn linked(a: &Face, b: &Face, gap: f64, tolerance: f64, max_radius: f64) -> bool {
-    let nearest = a.ends.iter().flat_map(|p| b.ends.iter().map(move |q| length2(sub2(*p, *q)))).fold(f64::INFINITY, f64::min);
+    let nearest = a.ends.iter().flat_map(|p| b.ends.iter().map(move |q| v2::norm(v2::sub(*p, *q)))).fold(f64::INFINITY, f64::min);
     let overlap = a.heights[1].min(b.heights[1]) - a.heights[0].max(b.heights[0]);
-    let turn = dot2(a.normal, b.normal).abs().min(1.).acos();
+    let turn = v2::dot(a.normal, b.normal).abs().min(1.).acos();
     if nearest > gap + LINK_GAP_SHARE * a.width.min(b.width) || overlap < 0.5 * a.height().min(b.height()) || !(MIN_TURN..=MAX_TURN).contains(&turn) {
         return false;
     }
     // Each normal turned away from the other face's middle: the side a
     // column's surface faces. The perpendiculars meet at the axis:
     // a.mid - p oa = b.mid - q ob.
-    let away = |f: &Face, other: &Face| if dot2(sub2(other.mid, f.mid), f.normal) < 0. { f.normal } else { f.normal.map(|v| -v) };
+    let away = |f: &Face, other: &Face| if v2::dot(v2::sub(other.mid, f.mid), f.normal) < 0. { f.normal } else { f.normal.map(|v| -v) };
     let (oa, ob) = (away(a, b), away(b, a));
-    let r = sub2(a.mid, b.mid);
+    let r = v2::sub(a.mid, b.mid);
     let det = ob[0] * oa[1] - oa[0] * ob[1];
     if det.abs() < 1e-12 {
         return false;
@@ -172,7 +161,7 @@ fn centre(faces: &[Face]) -> Option<P2> {
     let (mut a, mut b) = ([[0.; 2]; 2], [0.; 2]);
     for f in faces {
         let t = [-f.normal[1], f.normal[0]];
-        let along = dot2(f.mid, t);
+        let along = v2::dot(f.mid, t);
         for i in 0..2 {
             for j in 0..2 {
                 a[i][j] += t[i] * t[j];
@@ -196,11 +185,11 @@ fn ring_of(mut faces: Vec<Face>, tolerance: f64) -> Option<Ring> {
     for _ in 0..2 {
         let c = centre(&faces)?;
         for f in faces.iter_mut() {
-            if dot2(sub2(f.mid, c), f.normal) < 0. {
+            if v2::dot(v2::sub(f.mid, c), f.normal) < 0. {
                 f.normal = f.normal.map(|v| -v);
             }
         }
-        let apothems: Vec<f64> = faces.iter().map(|f| dot2(sub2(f.mid, c), f.normal)).collect();
+        let apothems: Vec<f64> = faces.iter().map(|f| v2::dot(v2::sub(f.mid, c), f.normal)).collect();
         let m = median(apothems.clone());
         let before = faces.len();
         let mut k = 0;
@@ -253,7 +242,7 @@ pub(crate) fn find(regions: &[Region], voxels: &VoxelSet, params: &Params, plan:
             for j in i + 1..rings.len() {
                 let (a, b) = (&rings[i], &rings[j]);
                 let spread = APOTHEM_SPREAD * a.apothem.max(b.apothem) + 2. * params.distance;
-                if length2(sub2(a.centre, b.centre)) > spread || (a.apothem - b.apothem).abs() > spread {
+                if v2::norm(v2::sub(a.centre, b.centre)) > spread || (a.apothem - b.apothem).abs() > spread {
                     continue;
                 }
                 let faces = rings[i].faces.iter().chain(&rings[j].faces).cloned().collect();

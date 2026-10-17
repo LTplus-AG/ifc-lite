@@ -1,0 +1,41 @@
+diff --git a/rust/geometry/src/math/v2.rs b/rust/geometry/src/math/v2.rs
+index e308076..43bb35a 100644
+--- a/rust/geometry/src/math/v2.rs
++++ b/rust/geometry/src/math/v2.rs
+@@ -55,7 +55,7 @@ pub fn norm(a: P2) -> f64 {
+ /// Distance via `hypot` (no intermediate overflow).
+ #[inline]
+ pub fn dist(a: P2, b: P2) -> f64 {
+-    dist2(a, b).sqrt()
++    (a[0] - b[0]).hypot(a[1] - b[1])
+ }
+ 
+ /// Squared distance, `dx*dx + dy*dy`.
+@@ -80,8 +80,7 @@ pub fn shoelace2_by(n: usize, at: impl Fn(usize) -> P2) -> f64 {
+ pub fn shoelace2_edges(edges: impl IntoIterator<Item = (P2, P2)>) -> f64 {
+     let mut acc = 0.0;
+     for (p, q) in edges {
+-        acc += p[0] * q[1];
+-        acc -= q[0] * p[1];
++        acc += p[0] * q[1] - q[0] * p[1];
+     }
+     acc
+ }
+@@ -124,6 +123,9 @@ pub fn polygon_area(pts: &[P2]) -> f64 {
+ /// as a crossing.
+ #[inline]
+ pub fn point_in_ring_by(p: P2, n: usize, at: impl Fn(usize) -> P2) -> bool {
++    if n < 3 {
++        return false;
++    }
+     let mut inside = false;
+     let mut j = n - 1;
+     for i in 0..n {
+@@ -150,7 +152,6 @@ pub fn bbox(points: impl IntoIterator<Item = P2>) -> [f64; 4] {
+     let mut b = [f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY];
+     for p in points {
+         b = [b[0].min(p[0]), b[1].min(p[1]), b[2].max(p[0]), b[3].max(p[1])];
+-        b[0] = if p[0].is_nan() { f64::NAN } else { b[0] };
+     }
+     b
+ }

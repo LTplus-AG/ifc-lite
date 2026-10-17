@@ -15,7 +15,8 @@
 //! rounds is followed by restoring any ring still involved in full.
 
 use super::topology::{find_violations, Violations};
-use crate::geom2d::{perp_distance, polygon_area};
+use crate::math::geom2d::perp_distance;
+use crate::math::v2::{dist2, polygon_area};
 
 /// Reinsertion rounds before involved rings are restored to the trace.
 const MAX_ROUNDS: usize = 256;
@@ -174,7 +175,3 @@ fn dp_chain(ring: &[[f64; 2]], start: usize, end: usize, eps: f64, keep: &mut [b
     }
 }
 
-#[inline]
-fn dist2(a: [f64; 2], b: [f64; 2]) -> f64 {
-    (a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2)
-}

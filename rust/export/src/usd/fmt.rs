@@ -12,7 +12,7 @@ use crate::color_space::srgba_to_linear;
 /// glTF exporter's key; the clamp keeps the derived prim name a legal identifier even
 /// for an out-of-gamut IFC colour).
 pub(super) fn color_key(c: [f32; 4]) -> (i32, i32, i32, i32) {
-    crate::color_space::material_key_clamped(c)
+    crate::color_space::material_key(c)
 }
 
 /// Legal-identifier material prim name from a (clamped, non-negative) colour key.

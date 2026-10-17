@@ -72,13 +72,13 @@ fn aggregated_descendants(
 /// `IFCRELCONTAINEDINSPATIALSTRUCTURE` promotion (a spatial-structure target
 /// with no Aggregates edge at all, #1075) is layered on top by the caller in
 /// `spatial.rs`, same as before this split.
-pub(in crate::services::data_model) fn resolve_aggregate_canonical_parents(
+pub(in crate::data_model) fn resolve_aggregate_canonical_parents(
     relationships: &[Relationship],
 ) -> FxHashMap<u32, u32> {
     resolve_aggregate_canonical_parents_with_budget(relationships, CYCLE_CHECK_VISIT_BUDGET)
 }
 
-pub(in crate::services::data_model) fn resolve_aggregate_canonical_parents_with_budget(
+pub(in crate::data_model) fn resolve_aggregate_canonical_parents_with_budget(
     relationships: &[Relationship],
     cycle_check_visit_budget: u64,
 ) -> FxHashMap<u32, u32> {

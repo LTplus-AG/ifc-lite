@@ -2,12 +2,12 @@
 //! The IfcGloballyUniqueId (22-char GlobalId) home: alphabet, validators, the
 //! leading-GlobalId reader and the two deterministic minters.
 //!
-//! Two validators exist on purpose and are NOT interchangeable:
-//! [`is_global_id_shaped`] checks only length and alphabet (what the merged
-//! exporter has always accepted), while [`is_valid_global_id`] also enforces
-//! the 128-bit packing rule that the first character encodes 2 bits (`0..=3`),
-//! as the appearance writer does. Unifying them changes which tokens the merge
-//! treats as ids and is a behaviour decision tracked separately (#7777).
+//! Two notions on purpose, NOT interchangeable (#7777): [`is_global_id_shaped`]
+//! (length + alphabet) decides whether a token is RECOGNISED as a GlobalId, so
+//! the merge sees every collision real files produce (some exporters write a
+//! first character outside `0..=3`); [`is_valid_global_id`] additionally
+//! enforces the 128-bit packing rule and gates what we WRITE or trust
+//! (appearance). Strictness must never decide whether a collision is seen.
 
 /// buildingSMART base64 alphabet (64 chars) used by IfcGloballyUniqueId.
 pub const ALPHABET: &[u8; 64] =
@@ -46,6 +46,38 @@ pub fn leading_global_id(line: &[u8]) -> Option<&str> {
     let close = window[start..].iter().position(|&b| b == b'\'')? + start;
     let inner = std::str::from_utf8(&window[start..close]).ok()?;
     is_global_id_shaped(inner).then_some(inner)
+}
+
+/// Rendered-line reader used by the merge's collision bookkeeping: the first
+/// `'...'` after the first `(`, anywhere in the text (no window), when it is
+/// GlobalId-SHAPED. Deliberately the lenient [`is_global_id_shaped`] test, not
+/// [`is_valid_global_id`]: whether a collision is SEEN must never depend on
+/// validity, or two entities sharing a non-conforming id are silently kept.
+pub fn read_leading_global_id(text: &str) -> Option<&str> {
+    let span = rendered_first_string(text)?;
+    let inner = &text[span.clone()];
+    is_global_id_shaped(inner).then_some(inner)
+}
+
+/// `text` with the string read by [`read_leading_global_id`]'s scan replaced by
+/// `new_guid`; unchanged when the line has no quoted first attribute.
+pub fn replace_rendered_global_id(text: &str, new_guid: &str) -> String {
+    let Some(span) = rendered_first_string(text) else {
+        return text.to_string();
+    };
+    let mut out = String::with_capacity(text.len() + new_guid.len());
+    out.push_str(&text[..span.start]);
+    out.push_str(new_guid);
+    out.push_str(&text[span.end..]);
+    out
+}
+
+fn rendered_first_string(text: &str) -> Option<std::ops::Range<usize>> {
+    let b = text.as_bytes();
+    let open = b.iter().position(|&c| c == b'(')?;
+    let q1 = b[open..].iter().position(|&c| c == b'\'')? + open;
+    let q2 = b[q1 + 1..].iter().position(|&c| c == b'\'')? + q1 + 1;
+    Some(q1 + 1..q2)
 }
 
 /// Deterministic 22-char GlobalId from an arbitrary seed. A faithful port of
@@ -112,3 +144,4 @@ pub fn placeholder(id: u32) -> String {
 #[cfg(test)]
 #[path = "guid_tests.rs"]
 mod tests;
+

@@ -41,6 +41,15 @@ finite reporter comparisons pass independently of the preserved browser cleanup
 failure; neither that proof nor instruction counts supplies a fresh
 end-to-end timing verdict.
 
+Replacing paired boundary direction counters with a mask increased the
+source-built engine; the prior counters were restored. An isolated build proved
+the determinant refactor produced byte-identical WASM, JavaScript and types:
+its explicit determinant oracle is called only by tests. Its shared arithmetic
+and analytic sign regression are retained without a production-size claim.
+Bypassing general-point dispatch at known-explicit plane-weld calls also grew
+the engine and was reverted. Fewer source lines, a reused map value type or
+simpler dispatch do not establish a compressed-transfer saving.
+
 Coordinated idle windows and safe consumer cleanup did not qualify a complete
 interleaved worker-pool cohort under the unchanged host checks. An earlier capture
 also exposed a response observer retaining handles across the canonical cold

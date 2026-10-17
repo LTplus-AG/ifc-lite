@@ -9,6 +9,7 @@ use super::{
     conform::{build_seam_map, conform_plans, count_open_boundary_edges_at, emit_plans},
     count_open_boundary_edges, count_spike_triangles,
     plans::Planned,
+    source_lift,
     supported_cells,
 };
 use crate::mesh::Mesh;
@@ -34,7 +35,7 @@ use nalgebra::Vector3;
 // The seam map is built ONLY when today's output is torn. Recording every
 // bucket's kept corners unconditionally cost +61% geometry time on
 // ISSUE_129 (1014 -> 1634 ms) for a map that ~85% of hosts never consult.
-pub(super) fn emit(planned: &mut Planned) -> Option<Mesh> {
+pub(super) fn emit(planned: &mut Planned, buckets: &Buckets, supported: &supported_cells::Supported) -> Option<Mesh> {
     let Planned { plans, supported_bids, retained_cells } = planned;
     let (mut output, base_complete) = emit_plans(plans, false);
     supported_cells::append_mesh(&mut output, retained_cells);
@@ -46,6 +47,7 @@ pub(super) fn emit(planned: &mut Planned) -> Option<Mesh> {
         return None;
     }
     if count_open_boundary_edges_at(&output, 1.0e4) > 0 {
+        let mut accepted = false;
         let seam = build_seam_map(plans);
         if conform_plans(plans, &seam) {
             // Preserve the original edges of retained cells and healthy folds.
@@ -63,6 +65,7 @@ pub(super) fn emit(planned: &mut Planned) -> Option<Mesh> {
                 complete_conformed_candidate(candidate, complete, raw_conformed)
             {
                 output = candidate;
+                accepted = true;
             } else if raw_conformed {
                 // Preserve the established region-only conform when a new raw
                 // split does not pair exactly. This is the #3913 N-ary sweep
@@ -77,6 +80,24 @@ pub(super) fn emit(planned: &mut Planned) -> Option<Mesh> {
                     complete_conformed_candidate(candidate, complete, false)
                 {
                     output = candidate;
+                    accepted = true;
+                }
+            }
+        }
+        // The established retries keep their output. Only a failed conform
+        // tries restoring retained corners to their unambiguous source points.
+        if !accepted {
+            if let Some(lifts) = source_lift::build(plans, buckets) {
+                let (mut candidate, complete) =
+                    super::conform::emit_plans_with_lifts(plans, &lifts);
+                supported_cells::append_mesh(&mut candidate, retained_cells);
+                if let Some(candidate) = complete_conformed_candidate(candidate, complete, true) {
+                    if crate::exact_topology::strict_closed_mesh(&candidate)
+                        && super::preservation::public_weld_closed(&candidate)
+                        && !supported_cells::has_uncertified_needle(&candidate, supported)
+                    {
+                        output = candidate;
+                    }
                 }
             }
         }

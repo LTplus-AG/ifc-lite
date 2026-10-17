@@ -2487,3 +2487,7 @@ fn issue_7292_rvt_void_cut_hygiene_preserves_exact_closed_boundaries() {
         }
     }
 }
+
+#[cfg(not(any(feature = "csg_topology_gate", feature = "csg_manifold_gate")))]
+#[path = "triangulation_7292_source_lift_tests.rs"]
+mod source_lift_7292_tests;

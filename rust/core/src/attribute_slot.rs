@@ -129,4 +129,4 @@ impl SchemaVersion {
 
 #[cfg(test)]
 #[path = "attribute_slot_tests.rs"]
-mod tests;
+pub(crate) mod tests;

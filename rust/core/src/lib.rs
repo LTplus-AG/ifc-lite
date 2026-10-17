@@ -82,6 +82,7 @@ pub mod project_locator;
 pub mod project_units;
 pub mod schema_family;
 pub mod schema_gen;
+pub mod slot;
 pub(crate) mod schema_helpers;
 pub mod step_encoding;
 pub mod streaming;

@@ -1151,6 +1151,15 @@ jobs:
           # ordinary whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/processing/src/data_model/mod.rs | grep -Fxq 'rust/processing/src/data_model/mod.rs'; then
             oracle_args+=(--mutation tests/evidence/data-model-move-7783/behaviour.oracle.patch)
+          # #7780: F3e-0b adds `rust/core/src/slot.rs`, the generated `slots.rs` and
+          # the slot emitter, which the changed tests name, so a whole-change
+          # revert cannot compile them (REVERT-BROKE-BUILD). Keep them and break
+          # ONLY behaviour: the SchemaSlot schema columns, logical decoding, the
+          # debug owner assertion, the undeclared-FILE_SCHEMA default, one
+          # generated position and the emitter's moving classification. Once
+          # slot.rs is on main, ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/core/src/slot.rs | grep -Fxq 'rust/core/src/slot.rs'; then
+            oracle_args+=(--mutation tests/evidence/slot-typed-accessors-7780/behaviour.oracle.patch)
           fi
           node scripts/check-test-revert-oracle.mjs "${oracle_args[@]}"
           # #7512: observe cleanup independently of scoped admission/schema.

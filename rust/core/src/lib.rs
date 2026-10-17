@@ -117,11 +117,11 @@ pub use parser::{
     report_oversized_ids, report_scan_diagnostics, set_report_sink, skip_step_comment,
     EntityScanner, StepListItems, Token,
 };
+pub use project_locator::{find_project_id, find_project_ids};
 pub use project_units::{
     measure::{measure_unit, MeasureUnit},
     resolve_unit_by_ref, ProjectUnits, ResolvedUnit, UnitScales,
 };
-pub use project_locator::{find_project_id, find_project_ids};
 pub use schema_gen::{AttributeValue, DecodedEntity, GeometryCategory, IfcSchema, ProfileCategory};
 pub use schema_helpers::{
     geometry_flags_by_name, has_geometry_by_name, is_representationless_spatial_container_by_name,

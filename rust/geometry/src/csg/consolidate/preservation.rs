@@ -24,7 +24,7 @@ pub(super) fn public_weld_closed(mesh: &Mesh) -> bool {
     if welded.indices.is_empty() {
         return false;
     }
-    let mut edges: FxHashMap<(u32, u32), (u8, u8)> = FxHashMap::default();
+    let mut edges: FxHashMap<(u32, u32), i32> = FxHashMap::default();
     for triangle in welded.indices.chunks_exact(3) {
         for k in 0..3 {
             let (a, b) = (triangle[k], triangle[(k + 1) % 3]);
@@ -32,14 +32,15 @@ pub(super) fn public_weld_closed(mesh: &Mesh) -> bool {
                 return false;
             }
             let (edge, forward) = if a < b { ((a, b), true) } else { ((b, a), false) };
-            let counts = edges.entry(edge).or_default();
-            if forward { counts.0 += 1; } else { counts.1 += 1; }
-            if counts.0 > 1 || counts.1 > 1 {
+            let direction = if forward { 1 } else { 2 };
+            let seen = edges.entry(edge).or_default();
+            if *seen & direction != 0 {
                 return false;
             }
+            *seen |= direction;
         }
     }
-    edges.values().all(|&counts| counts == (1, 1))
+    edges.values().all(|&seen| seen == 3)
 }
 
 #[cfg(test)]

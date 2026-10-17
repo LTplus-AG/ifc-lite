@@ -127,11 +127,11 @@ then
 fi
 
 # NOTE: wasm-opt is disabled. The bundle is single-threaded (SIMD128 only,
-# no atomics/shared-memory), and the Rust compiler's LLVM -O3 (release
-# profile) already provides sufficient optimization. wasm-opt also has a
+# no atomics/shared-memory), and the Rust compiler's LLVM (release
+# profile) already provides the optimization. wasm-opt also has a
 # history of miscompiling the wasm-bindgen closure/async machinery
 # (RuntimeError: unreachable in production), so it stays off.
-echo "ℹ️  wasm-opt disabled — using LLVM -O3 only"
+echo "ℹ️  wasm-opt disabled — using LLVM only"
 
 # Strip wasm-bindgen's internal trampoline indices from the committed type
 # surface (#952). The `__wasm_bindgen_func_elem_<N>` members of `InitOutput`

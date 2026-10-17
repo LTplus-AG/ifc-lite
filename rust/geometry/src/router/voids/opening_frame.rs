@@ -7,7 +7,96 @@
 use super::cutter::OpeningFrame;
 use super::geom::{extent_along_axis, mesh_point};
 use super::NORMALIZE_EPSILON;
-use crate::{Mesh, Vector3};
+use crate::{Mesh, Point3, Vector3};
+
+/// |cos| above which two facet normals share one cluster (about 11.5 degrees).
+/// The merge tolerance of the frame inference, the box test and the wall-normal
+/// vote, so the three agree on what counts as a single axis.
+pub(super) const FACE_COS: f64 = 0.98;
+
+/// One facet: its unit normal, an area-like weight and an anchor point.
+pub(super) struct Facet {
+    pub(super) normal: Vector3<f64>,
+    pub(super) weight: f64,
+    pub(super) anchor: Point3<f64>,
+}
+
+/// How a facet joins a cluster whose axis it matches.
+#[derive(Clone, Copy)]
+pub(super) enum Merge {
+    /// The axis stays the first normal seen (the box test and the prism
+    /// detector, which only ask WHICH cluster a facet is in).
+    FirstSeen,
+    /// The axis becomes the weight-averaged direction, flipped to the
+    /// cluster's side (the frame inference and the wall-normal vote).
+    Weighted,
+}
+
+/// The facets of `mesh` in index order: unit normal (`NORMALIZE_EPSILON`
+/// floor), weight `|cross|` (twice the area) and first vertex. Triangles with
+/// an out-of-range index or a degenerate normal are skipped.
+pub(super) fn mesh_facets(mesh: &Mesh) -> impl Iterator<Item = Facet> + '_ {
+    mesh.indices.chunks_exact(3).filter_map(|tri| {
+        let (p0, p1, p2) = (
+            mesh_point(mesh, tri[0])?,
+            mesh_point(mesh, tri[1])?,
+            mesh_point(mesh, tri[2])?,
+        );
+        let raw = (p1 - p0).cross(&(p2 - p0));
+        let weight = raw.norm();
+        let normal = raw.try_normalize(NORMALIZE_EPSILON)?;
+        Some(Facet { normal, weight, anchor: p0 })
+    })
+}
+
+/// Greedy first-fit clustering of facet normals, sign-free: a facet joins the
+/// FIRST cluster whose axis has `|normal . axis| > cos_tol`, else it opens a new
+/// one (ROUTER-9: this was four pasted loops).
+///
+/// `assigned(cluster, axis, anchor)` is called for every facet once it has a
+/// cluster, with that cluster's axis as it stands. Returns `None` as soon as a
+/// facet would open a cluster past `max_clusters` (`usize::MAX` for no cap), so
+/// a curved mesh stops at the cap instead of clustering to the end.
+pub(super) fn cluster_face_normals(
+    facets: impl IntoIterator<Item = Facet>,
+    cos_tol: f64,
+    merge: Merge,
+    max_clusters: usize,
+    mut assigned: impl FnMut(usize, &Vector3<f64>, Point3<f64>),
+) -> Option<Vec<(Vector3<f64>, f64)>> {
+    let mut clusters: Vec<(Vector3<f64>, f64)> = Vec::new();
+    for Facet { mut normal, weight, anchor } in facets {
+        let hit = clusters
+            .iter()
+            .position(|(axis, _)| normal.dot(axis).abs() > cos_tol);
+        let index = match hit {
+            Some(index) => {
+                if let Merge::Weighted = merge {
+                    let (axis, axis_weight) = &mut clusters[index];
+                    if normal.dot(axis) < 0.0 {
+                        normal = -normal;
+                    }
+                    if let Some(merged) =
+                        (*axis * *axis_weight + normal * weight).try_normalize(NORMALIZE_EPSILON)
+                    {
+                        *axis = merged;
+                        *axis_weight += weight;
+                    }
+                }
+                index
+            }
+            None => {
+                if clusters.len() >= max_clusters {
+                    return None;
+                }
+                clusters.push((normal, weight));
+                clusters.len() - 1
+            }
+        };
+        assigned(index, &clusters[index].0, anchor);
+    }
+    Some(clusters)
+}
 
 /// Whether a mesh is a clean axis-aligned (in its own frame) rectangular box —
 /// i.e. exactly 6 planar faces forming a bounding parallelepiped. Curved or
@@ -19,38 +108,20 @@ use crate::{Mesh, Vector3};
 /// Matches the anti-parallel merge tolerance used by `infer_opening_frame` so
 /// the two helpers agree on what counts as a single axis.
 pub(super) fn is_rectangular_box_mesh(mesh: &Mesh) -> bool {
-    let mut axes: Vec<Vector3<f64>> = Vec::with_capacity(4);
     let mut tri_axes: Vec<(usize, f64)> = Vec::with_capacity(mesh.indices.len() / 3);
-    for tri in mesh.indices.chunks_exact(3) {
-        let (Some(p0), Some(p1), Some(p2)) = (
-            mesh_point(mesh, tri[0]),
-            mesh_point(mesh, tri[1]),
-            mesh_point(mesh, tri[2]),
-        ) else {
-            continue;
-        };
-        let Some(normal) = (p1 - p0).cross(&(p2 - p0)).try_normalize(NORMALIZE_EPSILON) else {
-            continue;
-        };
-        let axis_index = match axes
-            .iter()
-            .position(|axis| normal.dot(axis).abs() > 0.98)
-        {
-            Some(idx) => idx,
-            None => {
-                if axes.len() >= 3 {
-                    return false;
-                }
-                axes.push(normal);
-                axes.len() - 1
-            }
-        };
-        // Signed offset along the merged axis. The merged axis direction is
-        // the first normal seen for that group, so opposite faces produce
-        // offsets of opposite sign.
-        let offset = p0.coords.dot(&axes[axis_index]);
-        tri_axes.push((axis_index, offset));
-    }
+    // At most three axes: a fourth is already not a box. The signed offset
+    // along the merged axis is taken against the first normal seen for that
+    // cluster, so opposite faces produce offsets of opposite sign.
+    let Some(clusters) = cluster_face_normals(
+        mesh_facets(mesh),
+        FACE_COS,
+        Merge::FirstSeen,
+        3,
+        |index, axis, anchor| tri_axes.push((index, anchor.coords.dot(axis))),
+    ) else {
+        return false;
+    };
+    let axes: Vec<Vector3<f64>> = clusters.into_iter().map(|(axis, _)| axis).collect();
     if axes.len() != 3 {
         return false;
     }
@@ -97,39 +168,13 @@ pub(super) fn is_rectangular_box_mesh(mesh: &Mesh) -> bool {
 }
 
 pub(super) fn infer_opening_frame(mesh: &Mesh, extrusion_dir: Option<&Vector3<f64>>) -> Option<OpeningFrame> {
-    let mut axes: Vec<(Vector3<f64>, f64)> = Vec::new();
-
-    for tri in mesh.indices.chunks_exact(3) {
-        let (Some(p0), Some(p1), Some(p2)) = (
-            mesh_point(mesh, tri[0]),
-            mesh_point(mesh, tri[1]),
-            mesh_point(mesh, tri[2]),
-        ) else {
-            continue;
-        };
-        let normal_raw = (p1 - p0).cross(&(p2 - p0));
-        let weight = normal_raw.norm();
-        let Some(mut normal) = normal_raw.try_normalize(NORMALIZE_EPSILON) else {
-            continue;
-        };
-
-        if let Some((axis, axis_weight)) = axes
-            .iter_mut()
-            .find(|(axis, _)| normal.dot(axis).abs() > 0.98)
-        {
-            if normal.dot(axis) < 0.0 {
-                normal = -normal;
-            }
-            if let Some(merged) =
-                (*axis * *axis_weight + normal * weight).try_normalize(NORMALIZE_EPSILON)
-            {
-                *axis = merged;
-                *axis_weight += weight;
-            }
-        } else {
-            axes.push((normal, weight));
-        }
-    }
+    let axes = cluster_face_normals(
+        mesh_facets(mesh),
+        FACE_COS,
+        Merge::Weighted,
+        usize::MAX,
+        |_, _, _| {},
+    )?;
 
     if axes.len() < 3 {
         return extrusion_dir.and_then(|dir| OpeningFrame::from_depth(*dir));
@@ -185,3 +230,7 @@ pub(super) fn infer_opening_frame(mesh: &Mesh, extrusion_dir: Option<&Vector3<f6
     })
 }
 
+
+#[cfg(test)]
+#[path = "opening_frame_tests.rs"]
+mod tests;

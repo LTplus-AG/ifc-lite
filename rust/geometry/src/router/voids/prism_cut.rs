@@ -63,10 +63,12 @@ use std::sync::OnceLock;
 
 use super::admission::{aabb_engulfs, min_opening_volume, ENGULF_TOLERANCE};
 use super::geom::opening_mesh_thinnest_axis_dir;
+use super::opening_frame::{cluster_face_normals, Facet, Merge};
+use super::parity::{forward_crossing, PARITY_DIR_A};
 use super::{cutter_is_closed_manifold, GeometryRouter, CutterKind, VoidContext};
 use crate::cdt::triangulate_pslg;
 use crate::mesh::Mesh;
-use nalgebra::Point2;
+use nalgebra::{Point2, Point3, Vector3};
 use rustc_hash::FxHashMap;
 
 /// `IFC_LITE_PRISM_CUT=0` disables the analytic prism-subtraction path (exact
@@ -940,15 +942,18 @@ fn detect_prism(verts: &[V3], tris: &[[usize; 3]], mesh_vol: f64) -> Option<Pris
         let (a, b, c) = (verts[t[0]], verts[t[1]], verts[t[2]]);
         normals.push(normalize(cross(sub(b, a), sub(c, a))));
     }
-    let mut clusters: Vec<V3> = Vec::new();
-    for n in normals.iter().flatten() {
-        if !clusters.iter().any(|c| dot(*n, *c).abs() > 0.999) {
-            if clusters.len() > 64 {
-                return None; // way past any stepped extrusion — bail early
-            }
-            clusters.push(*n);
-        }
-    }
+    // More than 65 distinct directions is way past any stepped extrusion:
+    // bail early.
+    let facets = normals.iter().flatten().map(|n| Facet {
+        normal: Vector3::new(n[0], n[1], n[2]),
+        weight: 0.0,
+        anchor: Point3::origin(),
+    });
+    let clusters: Vec<V3> =
+        cluster_face_normals(facets, 0.999, Merge::FirstSeen, 65, |_, _, _| {})?
+            .into_iter()
+            .map(|(axis, _)| [axis.x, axis.y, axis.z])
+            .collect();
     let mut mag = 0.0f64;
     for v in verts {
         for c in v {
@@ -1382,41 +1387,22 @@ fn opening_aabb_obb(op: &CutterKind, origin: [f64; 3]) -> Option<([V3; 3], V3, V
 
 // ─────────────────────────── ray parity (point in solid) ─────────────────────
 
-/// Fixed skewed ray direction (same constants as `geom::point_inside_mesh`) —
-/// avoids exact grazes on the axis-dominated faces of IFC geometry.
-const RAY_DIR: V3 = [0.573_257_1, 0.665_412_3, 0.477_889_5];
-
-/// Möller–Trumbore crossing parity of `point` against the triangle list (with
-/// precomputed AABBs). Odd ⇒ inside the solid.
+/// Crossing parity of `point` along `PARITY_DIR_A` against the triangle list
+/// (with precomputed AABBs). Odd ⇒ inside the solid. The same ray and the same
+/// crossing rule as `parity::point_inside_mesh`, with a tighter determinant
+/// floor than the mesh version.
 fn point_inside(tris: &[PTri], aabbs: &[(V3, V3)], point: V3) -> bool {
+    /// Parallel-ray floor on the determinant.
+    const DET_EPS: f64 = 1.0e-12;
     let mut crossings = 0usize;
     for (t, (_lo, hi)) in tris.iter().zip(aabbs) {
-        // Cheap reject: every component of `RAY_DIR` is positive, so a hit
-        // point has all coordinates strictly greater than the origin's — a
+        // Cheap reject: every component of the ray direction is positive, so a
+        // hit point has all coordinates strictly greater than the origin's — a
         // triangle entirely below the origin on ANY axis cannot be crossed.
         if hi[0] < point[0] || hi[1] < point[1] || hi[2] < point[2] {
             continue;
         }
-        let e1 = sub(t.p[1], t.p[0]);
-        let e2 = sub(t.p[2], t.p[0]);
-        let pvec = cross(RAY_DIR, e2);
-        let det = dot(e1, pvec);
-        if det.abs() < 1.0e-12 {
-            continue;
-        }
-        let inv = 1.0 / det;
-        let tvec = sub(point, t.p[0]);
-        let u = dot(tvec, pvec) * inv;
-        if !(-1.0e-9..=1.0 + 1.0e-9).contains(&u) {
-            continue;
-        }
-        let qvec = cross(tvec, e1);
-        let v = dot(RAY_DIR, qvec) * inv;
-        if v < -1.0e-9 || u + v > 1.0 + 1.0e-9 {
-            continue;
-        }
-        let dist = dot(e2, qvec) * inv;
-        if dist > 1.0e-9 {
+        if forward_crossing(point, PARITY_DIR_A, t.p[0], t.p[1], t.p[2], DET_EPS) {
             crossings += 1;
         }
     }

@@ -7,53 +7,74 @@
 
 use super::geom::mesh_point;
 use super::NORMALIZE_EPSILON;
+use crate::math::v3::{self, V3};
 use crate::{Mesh, Point3, Vector3};
 
 /// Möller–Trumbore ray/triangle intersection returning the signed ray
 /// parameter `t` (signed distance along `dir` from `origin`), or `None` when
 /// the ray misses the triangle or runs parallel to it. `dir` must be
-/// normalized. Used by [`host_already_open_along_axis`].
+/// normalized.
+///
+/// The one ray/triangle test of the void path (ROUTER-8). `det_eps` is the
+/// parallel-ray floor on the determinant and `bary_eps` the slack on the
+/// barycentric bounds; the host-already-open probes use `1e-9` for both, the
+/// prism path's crossing parity a tighter determinant floor (`1e-12`). Written
+/// out over [`v3`] with no fused operations, so it is bit-equal to the
+/// `nalgebra` spelling it replaced (`ray_triangle_matches_nalgebra_spelling`).
 pub(super) fn ray_triangle_param(
-    origin: Point3<f64>,
-    dir: &Vector3<f64>,
-    a: Point3<f64>,
-    b: Point3<f64>,
-    c: Point3<f64>,
+    origin: V3,
+    dir: V3,
+    a: V3,
+    b: V3,
+    c: V3,
+    det_eps: f64,
+    bary_eps: f64,
 ) -> Option<f64> {
-    const EPS: f64 = 1e-9;
-    let e1 = b - a;
-    let e2 = c - a;
-    let pvec = dir.cross(&e2);
-    let det = e1.dot(&pvec);
-    if det.abs() < EPS {
+    let e1 = v3::sub(b, a);
+    let e2 = v3::sub(c, a);
+    let pvec = v3::cross(dir, e2);
+    let det = v3::dot(e1, pvec);
+    if det.abs() < det_eps {
         return None; // ray parallel to the triangle plane
     }
     let inv_det = 1.0 / det;
-    let tvec = origin - a;
-    let u = tvec.dot(&pvec) * inv_det;
-    if !(-EPS..=1.0 + EPS).contains(&u) {
+    let tvec = v3::sub(origin, a);
+    let u = v3::dot(tvec, pvec) * inv_det;
+    if !(-bary_eps..=1.0 + bary_eps).contains(&u) {
         return None;
     }
-    let qvec = tvec.cross(&e1);
-    let v = dir.dot(&qvec) * inv_det;
-    if v < -EPS || u + v > 1.0 + EPS {
+    let qvec = v3::cross(tvec, e1);
+    let v = v3::dot(dir, qvec) * inv_det;
+    if v < -bary_eps || u + v > 1.0 + bary_eps {
         return None;
     }
-    Some(e2.dot(&qvec) * inv_det)
+    Some(v3::dot(e2, qvec) * inv_det)
+}
+
+/// Determinant floor and barycentric slack of the host-already-open probes and
+/// the mesh parity ray.
+const MESH_RAY_EPS: f64 = 1e-9;
+
+/// A crossing counts toward ray parity only when it lies at least this far
+/// ahead of the origin.
+pub(super) const PARITY_T_MIN: f64 = 1e-9;
+
+/// The three vertices of triangle `tri` as arrays, or `None` when an index is
+/// out of range.
+fn tri_points(mesh: &Mesh, tri: &[u32]) -> Option<[V3; 3]> {
+    let p = |i: u32| mesh_point(mesh, i).map(|p| [p.x, p.y, p.z]);
+    Some([p(tri[0])?, p(tri[1])?, p(tri[2])?])
 }
 
 /// Whether the infinite line through `point` along `axis` crosses any
 /// triangle of `mesh`.
 pub(super) fn axis_line_crosses_mesh(mesh: &Mesh, point: Point3<f64>, axis: &Vector3<f64>) -> bool {
+    let (origin, dir) = ([point.x, point.y, point.z], [axis.x, axis.y, axis.z]);
     for tri in mesh.indices.chunks_exact(3) {
-        let (Some(a), Some(b), Some(c)) = (
-            mesh_point(mesh, tri[0]),
-            mesh_point(mesh, tri[1]),
-            mesh_point(mesh, tri[2]),
-        ) else {
+        let Some([a, b, c]) = tri_points(mesh, tri) else {
             continue;
         };
-        if ray_triangle_param(point, axis, a, b, c).is_some() {
+        if ray_triangle_param(origin, dir, a, b, c, MESH_RAY_EPS, MESH_RAY_EPS).is_some() {
             return true;
         }
     }
@@ -126,25 +147,28 @@ pub(super) fn point_inside_mesh_agreed(mesh: &Mesh, point: Point3<f64>) -> Optio
 /// Irrational-ish, non-axis-aligned: avoids exact edge and vertex grazes on the
 /// axis-aligned faces that dominate IFC opening boxes. ONE definition, shared by
 /// both callers, so the single-ray and two-ray answers cannot drift apart.
-const PARITY_DIR_A: Vector3<f64> = Vector3::new(0.573_257_1, 0.665_412_3, 0.477_889_5);
+pub(super) const PARITY_DIR_A: V3 = [0.573_257_1, 0.665_412_3, 0.477_889_5];
 
 /// Shares no plane with [`PARITY_DIR_A`] and no axis with those same facets.
-const PARITY_DIR_B: Vector3<f64> = Vector3::new(-0.412_889_7, 0.734_115_3, -0.538_662_1);
+const PARITY_DIR_B: V3 = [-0.412_889_7, 0.734_115_3, -0.538_662_1];
 
-fn parity_along(mesh: &Mesh, point: Point3<f64>, dir: Vector3<f64>) -> bool {
+/// Whether the ray from `origin` along `dir` crosses triangle `a b c` ahead of
+/// the origin (`t > PARITY_T_MIN`): one count of ray parity.
+#[inline]
+pub(super) fn forward_crossing(origin: V3, dir: V3, a: V3, b: V3, c: V3, det_eps: f64) -> bool {
+    ray_triangle_param(origin, dir, a, b, c, det_eps, MESH_RAY_EPS)
+        .is_some_and(|t| t > PARITY_T_MIN)
+}
+
+fn parity_along(mesh: &Mesh, point: Point3<f64>, dir: V3) -> bool {
+    let origin = [point.x, point.y, point.z];
     let mut crossings = 0usize;
     for tri in mesh.indices.chunks_exact(3) {
-        let (Some(a), Some(b), Some(c)) = (
-            mesh_point(mesh, tri[0]),
-            mesh_point(mesh, tri[1]),
-            mesh_point(mesh, tri[2]),
-        ) else {
+        let Some([a, b, c]) = tri_points(mesh, tri) else {
             continue;
         };
-        if let Some(t) = ray_triangle_param(point, &dir, a, b, c) {
-            if t > 1e-9 {
-                crossings += 1;
-            }
+        if forward_crossing(origin, dir, a, b, c, MESH_RAY_EPS) {
+            crossings += 1;
         }
     }
     crossings % 2 == 1
@@ -237,3 +261,7 @@ pub(super) fn mesh_vertex_centroid(mesh: &Mesh) -> Option<Point3<f64>> {
     Some(Point3::new(sx * inv, sy * inv, sz * inv))
 }
 
+
+#[cfg(test)]
+#[path = "parity_tests.rs"]
+mod tests;

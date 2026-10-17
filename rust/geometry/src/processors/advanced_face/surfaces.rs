@@ -4,12 +4,12 @@
 
 //! Surface-type tessellators: planar/boundary, B-spline, and cylindrical faces.
 
-use crate::triangulation::{calculate_polygon_normal, project_to_2d};
+use crate::triangulation::triangulate_planar_face;
 use crate::{scale_segments, Error, Point3, Result, TessellationQuality};
 use ifc_lite_core::{DecodedEntity, EntityDecoder};
 use nalgebra::Matrix4;
 
-use super::super::helpers::get_axis2_placement_transform_by_id;
+use super::super::helpers::{get_axis2_placement_transform_by_id, push_rebased};
 use super::bounds::extract_face_bounds;
 use super::bspline::tessellate_bspline_surface;
 use super::bspline_budget::{MAX_BSPLINE_DEGREE, MAX_BSPLINE_SURFACE_SAMPLE_WORK};
@@ -28,67 +28,30 @@ use super::edge_loop::extract_edge_loop_points_for_bounds;
 /// order varies", `packages/renderer/src/pipeline.ts`), that pair surfaced
 /// as a Z-fight on the door panel's glass cutout (issue #674 follow-up).
 ///
-/// Mirrors the FacetedBrep path in `processors/brep.rs`: pick the outer
-/// (or first) bound, project to 2D using its basis, project hole bounds
-/// using the SAME basis, and call `triangulate_polygon_with_holes` once.
+/// Shares `triangulate_planar_face` with the FacetedBrep path: the outer (or
+/// first) bound and the hole bounds are projected on one basis and
+/// triangulated once.
 pub(super) fn process_planar_face_rebased(
     face: &DecodedEntity,
     decoder: &mut EntityDecoder,
     quality: TessellationQuality,
     rtc_file_units: Option<(f64, f64, f64)>,
 ) -> Result<(Vec<f32>, Vec<u32>)> {
-    use crate::triangulation::project_to_2d_with_basis;
     let bounds = extract_face_bounds(face, decoder, quality)?;
     let Some(outer) = bounds.outer else {
         return Ok((Vec::new(), Vec::new()));
     };
     let hole_points = bounds.holes;
 
-    let normal = calculate_polygon_normal(&outer);
-    let (outer_2d, u_axis, v_axis, origin) = project_to_2d(&outer, &normal);
-    let holes_2d: Vec<Vec<nalgebra::Point2<f64>>> = hole_points
-        .iter()
-        .map(|h| project_to_2d_with_basis(h, &u_axis, &v_axis, &origin))
-        .collect();
-
-    let mut positions = Vec::with_capacity((outer.len() + hole_points.iter().map(|h| h.len()).sum::<usize>()) * 3);
     let rtc = rtc_file_units.unwrap_or((0.0, 0.0, 0.0));
-    for p in outer.iter().chain(hole_points.iter().flat_map(|h| h.iter())) {
-        positions.push((p.x - rtc.0) as f32);
-        positions.push((p.y - rtc.1) as f32);
-        positions.push((p.z - rtc.2) as f32);
-    }
+    let mut positions = Vec::with_capacity((outer.len() + hole_points.iter().map(|h| h.len()).sum::<usize>()) * 3);
+    push_rebased(&mut positions, outer.iter().chain(hole_points.iter().flatten()), rtc);
 
-    let indices = triangulate_planar_indices(&outer_2d, &holes_2d, outer.len())?;
+    let indices = triangulate_planar_face(&outer, &hole_points).map_err(|error| {
+        Error::geometry(error.to_string())
+    })?;
 
     Ok((positions, indices))
-}
-
-fn triangulate_planar_indices(
-    outer_2d: &[nalgebra::Point2<f64>],
-    holes_2d: &[Vec<nalgebra::Point2<f64>>],
-    outer_len: usize,
-) -> Result<Vec<u32>> {
-    use crate::triangulation::triangulate_polygon_with_holes;
-
-    match triangulate_polygon_with_holes(outer_2d, holes_2d) {
-        Ok(idx) => Ok(idx.into_iter().map(|i| i as u32).collect()),
-        Err(_) if holes_2d.is_empty() => {
-            // Preserve the historical no-hole fallback. It is never valid
-            // when holes exist: filling only the outer fan would silently
-            // close authored openings.
-            let mut idx = Vec::with_capacity((outer_len - 2) * 3);
-            for i in 1..outer_len - 1 {
-                idx.push(0u32);
-                idx.push(i as u32);
-                idx.push(i as u32 + 1);
-            }
-            Ok(idx)
-        }
-        Err(error) => Err(Error::geometry(format!(
-            "planar face triangulation with holes failed: {error}"
-        ))),
-    }
 }
 
 /// Process a B-spline surface face. When `weights` is `Some`, rational

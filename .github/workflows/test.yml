@@ -1047,6 +1047,17 @@ jobs:
           # rust/core/src/guid.rs is on main, ordinary whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/core/src/guid.rs | grep -Fxq 'rust/core/src/guid.rs'; then
             oracle_args+=(--mutation tests/evidence/micro-homes-7777/behaviour.oracle.patch)
+          # #7686: the planar-face triangulation adds `quad_split_3d` and
+          # `triangulate_planar_face`, which the changed unit tests call, so a
+          # whole-change revert cannot compile them (INCONCLUSIVE). Keep every
+          # item and restore ONLY the old behaviour: the 0-2 quad diagonal and
+          # first-edges quad normal, the outer-fan fallback over failed holes,
+          # unreadable bounds dropped instead of refusing the face, and
+          # SameSense flipping planar faces (brep and structural). Once
+          # planar_tests.rs is on main,
+          # ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/processors/brep/planar_tests.rs | grep -Fxq 'rust/geometry/src/processors/brep/planar_tests.rs'; then
+            oracle_args+=(--mutation tests/evidence/geometry-planar-7686/behaviour.oracle.patch)
           # #7696: the new ifc-lite-testkit crate is what every migrated test now
           # calls, so a whole-change revert deletes it and none of them compile
           # (INCONCLUSIVE). Keep the crate and disable ONLY the

@@ -1,0 +1,623 @@
+id,file,severity,category,confidence,title
+ROUTER-1,01-geometry-router.md,High,DRY,CONFIRMED,Representation-chain walk re-implemented 10× (and drifted)
+ROUTER-2,01-geometry-router.md,High,DRY,CONFIRMED,"The mapped-source item walk exists four times (""the four walks"") and three of them bypass the item pipeline"
+ROUTER-3,01-geometry-router.md,High,DRY,CONFIRMED,Axis2Placement3D / CartesianPoint / Direction parsers forked 4× with behavioural drift
+ROUTER-4,01-geometry-router.md,High,DRY,CONFIRMED,"""Unwrap mapped/boolean chain to IfcExtrudedAreaSolid"" walk ×4"
+ROUTER-5,01-geometry-router.md,High,DRY,CONFIRMED,"Nine ""edge-pairing closed-surface"" walks"
+ROUTER-6,01-geometry-router.md,Medium,DRY,CONFIRMED,"Signed volume ×5, surface area ×2"
+ROUTER-7,01-geometry-router.md,Medium,DRY,CONFIRMED,"2D point-in-polygon ×4, segment intersection ×5, polygon area/CCW ×4"
+ROUTER-8,01-geometry-router.md,Medium,DRY,CONFIRMED,Möller–Trumbore and the parity ray direction duplicated
+ROUTER-9,01-geometry-router.md,Medium,DRY,CONFIRMED,Face-normal clustering ×4
+ROUTER-10,01-geometry-router.md,Medium,DRY,CONFIRMED,Cutter admission guards and the engulf test pasted in-line
+ROUTER-11,01-geometry-router.md,Medium,DRY,CONFIRMED,"Five AABB representations and six ""bounds with origin folded"" implementations"
+ROUTER-12,01-geometry-router.md,Medium,DRY,CONFIRMED,`Mesh { … }` struct literal spelled out 5× while `Mesh::rebuilt_like` exists
+ROUTER-13,01-geometry-router.md,Medium,DRY,CONFIRMED,MappingTarget bake + `InstanceMeta` construction ×5
+ROUTER-14,01-geometry-router.md,Low,DRY,CONFIRMED,Matrix4 → `[f64;16]` flatten spelled 5 ways
+ROUTER-15,01-geometry-router.md,Medium,DRY,CONFIRMED,"Placement application duplicated (single-mesh vs sub-mesh, lax vs strict)"
+ROUTER-16,01-geometry-router.md,Medium,DRY,CONFIRMED,Optional-reference ladders and the parent-placement walk
+ROUTER-17,01-geometry-router.md,Medium,DRY,CONFIRMED,Env flags and test overrides via four different mechanisms
+ROUTER-18,01-geometry-router.md,Medium,DRY,CONFIRMED,"Per-host diagnostic snapshot/restore implemented twice; counters half request-local, half process-global"
+ROUTER-19,01-geometry-router.md,Low,DRY,CONFIRMED,"""skipping unsupported item"" drop block ×9"
+ROUTER-20,01-geometry-router.md,Medium,Perf,CONFIRMED,`extend_opening_mesh_through_host` recomputed up to 5× per cutter
+ROUTER-21,01-geometry-router.md,High,Perf,CONFIRMED,Every opening is meshed 3–5× per host during classification
+ROUTER-22,01-geometry-router.md,Medium,Perf,CONFIRMED,`geometry_hash_cache` is dead weight
+ROUTER-23,01-geometry-router.md,Medium,Perf,LIKELY,Layered slicing attempted twice for voided sliceable walls (stale comment)
+ROUTER-24,01-geometry-router.md,Medium,Perf,CONFIRMED,"`IfcSchema::new()` / `.clone()` built per placement, per grid axis, per opening solid"
+ROUTER-25,01-geometry-router.md,Low,Perf,CONFIRMED,Small hot-path waste in the void loops
+ROUTER-26,01-geometry-router.md,Medium,Bug,LIKELY,Curve-capped flag (#4901) not drained on two of the four source walks
+ROUTER-27,01-geometry-router.md,Medium,Bug,LIKELY,Raw-coordinate items inside mapped sources never get the f64 RTC rebase
+ROUTER-28,01-geometry-router.md,Low,Bug,LIKELY,Opening probes mesh a `MappedRepresentation` even when direct body geometry exists
+ROUTER-29,01-geometry-router.md,Low,Bug,CONFIRMED,Processor-failure sweep order depends on `std::HashMap` iteration
+ROUTER-30,01-geometry-router.md,Low,Bug,SUSPECT,`partial_cmp().unwrap()` on half-extents
+ROUTER-31,01-geometry-router.md,Low,Quirk,CONFIRMED,Two vertex-access conventions in one module (checked `mesh_point` vs unchecked indexing)
+ROUTER-32,01-geometry-router.md,Medium,DRY,CONFIRMED,`OpeningType` tuple variants projected ad hoc 7×
+ROUTER-33,01-geometry-router.md,High,Maintainability,CONFIRMED,"God functions and a 3,116-line file"
+ROUTER-34,01-geometry-router.md,Medium,Maintainability,CONFIRMED,The built-in processor table is written three (really four) times
+ROUTER-35,01-geometry-router.md,Medium,Maintainability,CONFIRMED,Per-IFC-type special cases that should be data-driven (`IfcSchema::geometry_types` exists and is unused by the router)
+ROUTER-36,01-geometry-router.md,Low,DRY,CONFIRMED,Three navigations of shell → face → bound → loop → point
+ROUTER-37,01-geometry-router.md,Medium,Quirk,CONFIRMED,Silent loss paths with no diagnostic record
+ROUTER-38,01-geometry-router.md,Low,Best-practice,CONFIRMED,"`#[cfg(feature = ""opening-perf-trace"")] crate::opening_perf_trace::record(|c| …)` ×21"
+ROUTER-39,01-geometry-router.md,Low,Best-practice,CONFIRMED,Tautological / copy-pasted compile-time guards
+ROUTER-40,01-geometry-router.md,Low,Best-practice,LIKELY,Public surface wider than the two real callers need
+ROUTER-41,01-geometry-router.md,Low,DRY,CONFIRMED,Three mesh-identity hashing schemes
+ROUTER-42,01-geometry-router.md,Low,DRY,CONFIRMED,"""Is this placement the identity"" with three tolerances"
+ROUTER-43,01-geometry-router.md,Low,DRY,CONFIRMED,`enclosing_f32` re-implemented 170 lines below its own import
+ROUTER-44,01-geometry-router.md,Low,DRY,CONFIRMED,Two 24-vertex box builders
+ROUTER-45,01-geometry-router.md,Low,DRY,CONFIRMED,Union-find implemented three times beside `crate::union_find`
+ROUTER-46,01-geometry-router.md,Low,DRY,CONFIRMED,Sutherland–Hodgman plane clip ×4
+ROUTER-47,01-geometry-router.md,Low,Maintainability,CONFIRMED,Magic tolerances without a named home
+ROUTER-48,01-geometry-router.md,Low,DRY,CONFIRMED,Geometry-job entity scan triplicated across crates
+ROUTER-49,01-geometry-router.md,Low,DRY,CONFIRMED,Diagnostic enums/structs mirrored
+ROUTER-50,01-geometry-router.md,Low,Best-practice,CONFIRMED,Test fixtures copy-pasted across the crate
+ROUTER-51,01-geometry-router.md,Low,Quirk,CONFIRMED,Two-tier mapped-item cache with divergent guards
+PROC-1,02-geometry-processors-profiles.md,High,DRY,CONFIRMED,`IfcAxis2Placement3D` / `IfcCartesianPoint` / `IfcDirection` decoding is implemented ~14 times and the copies have drifted
+PROC-2,02-geometry-processors-profiles.md,High,Bug,CONFIRMED,`profile_extractor.rs` is a parallel element→placement→mapped-item→extrusion pipeline that has already drifted from the mesh path (misplaces linear/grid-placed elements)
+PROC-3,02-geometry-processors-profiles.md,High,Bug,CONFIRMED,`IfcTriangulatedFaceSet` ignores `PnIndex` while `IfcPolygonalFaceSet` honours it
+PROC-4,02-geometry-processors-profiles.md,High,Bug,CONFIRMED,`RevolvedAreaSolidProcessor` revolves only `profile.outer`; holes are dropped and winding ignores profile orientation
+PROC-5,02-geometry-processors-profiles.md,Medium,DRY,CONFIRMED,Composite-curve traversal exists 4× with 4 different junction-dedup rules and different segment-type coverage
+PROC-6,02-geometry-processors-profiles.md,Medium,DRY,CONFIRMED,"`IfcTrimmedCurve` interpretation (trim selects, sense, seam wrap) is implemented in four places; non-conic/non-line trims are silently ignored"
+PROC-7,02-geometry-processors-profiles.md,Medium,DRY,CONFIRMED,Circle/ellipse/arc point generation is written ~15 times; segment-count policies and handedness differ
+PROC-8,02-geometry-processors-profiles.md,Medium,DRY,CONFIRMED,`IfcIndexedPolyCurve` is parsed twice (2D and 3D) and the copies disagree on malformed input
+PROC-9,02-geometry-processors-profiles.md,Medium,DRY,LIKELY,Sweep-along-frames / tube / revolve mesh assembly duplicated without the shared outward-winding rule
+PROC-10,02-geometry-processors-profiles.md,Medium,DRY,CONFIRMED,"""optional `Position` → matrix"", ExtrudedDirection parsing and the extrusion shear are copy-pasted across solid processors"
+PROC-11,02-geometry-processors-profiles.md,Medium,DRY,CONFIRMED,Two independent IFC curve → polyline samplers (profiles vs advanced faces) with different guards and coverage
+PROC-12,02-geometry-processors-profiles.md,Medium,DRY,CONFIRMED,STEP BOOLEAN/LOGICAL enum decoding hand-rolled at ~20 sites with drifting spellings and defaults
+PROC-13,02-geometry-processors-profiles.md,Medium,Bug,CONFIRMED,3D conic placement reader produces NaN or skewed frames; full circles and trimmed circles use different frames
+PROC-14,02-geometry-processors-profiles.md,Medium,Bug,CONFIRMED,CoordIndex fast path and slow path disagree on malformed input; validator explicitly allows `-`
+PROC-15,02-geometry-processors-profiles.md,Medium,Bug,CONFIRMED,`IfcCompositeProfileDef` turns every sub-profile after the first into a hole
+PROC-16,02-geometry-processors-profiles.md,Medium,Perf,LIKELY,"`rect_fast::build_cellular` work is bounded only by opening count (128), allowing ~10^10 operations"
+PROC-17,02-geometry-processors-profiles.md,Low,DRY,CONFIRMED,"Flat-shaded mesh builders, triangle-normal math and shell orientation duplicated in tessellated/"
+PROC-18,02-geometry-processors-profiles.md,Low,DRY,CONFIRMED,"`PolygonalFaceSet` polygon triangulation re-implements Newell + dominant-axis projection, and fans concave quads"
+PROC-19,02-geometry-processors-profiles.md,Low,DRY,CONFIRMED,`simplify.rs` / `placement.rs` / `profile.rs` re-implement shared 2D polygon helpers
+PROC-20,02-geometry-processors-profiles.md,Low,DRY,CONFIRMED,Test helpers and decoding boilerplate copy-pasted across test files
+PROC-21,02-geometry-processors-profiles.md,Low,Bug,CONFIRMED,rect_fast telemetry: parametric-path defers are never recorded; a dead counter; one counter still process-global
+PROC-22,02-geometry-processors-profiles.md,Low,Quirk,CONFIRMED,Tapered loft resamples the coarser loop by arc length and cuts its corners; resampling is O(n·m)
+PROC-23,02-geometry-processors-profiles.md,Low,Quirk,CONFIRMED,Parametric profile builders validate and model attributes inconsistently; stale docs
+PROC-24,02-geometry-processors-profiles.md,Low,Maintainability,CONFIRMED,Full `Mesh { .. }` struct literals in processors
+PROC-25,02-geometry-processors-profiles.md,Low,Maintainability,CONFIRMED,`profile::create_circle` / `calculate_circle_segments` / `ProfileType` are public but production-unused and use a different policy
+PROC-26,02-geometry-processors-profiles.md,Low,Maintainability,CONFIRMED,`create_cap_mesh` infers winding from `z == 0.0` rather than from its `normal` argument
+PROC-27,02-geometry-processors-profiles.md,Low,Maintainability,CONFIRMED,Point-coincidence / seam tolerances are scattered literals with no named home
+PROC-28,02-geometry-processors-profiles.md,Low,Maintainability,CONFIRMED,"Long functions in profiles/swept/tessellated/extractor (line counts approximate, include trailing docs)"
+PROC-S1,02a-proc-boolean-brep-surface.md,High,DRY,CONFIRMED,Three independent IFC curve samplers that have drifted (plus a polyline-only PBHS boundary parser)
+PROC-S2,02a-proc-boolean-brep-surface.md,High,Bug,CONFIRMED,"Spurious `(0,0,0)` point appended to every clamped B-spline sampled by `sample_curve_polyline`"
+PROC-S3,02a-proc-boolean-brep-surface.md,High,DRY,CONFIRMED,Face-bound classification and loop extraction exist 3 times with different outer-ring rules
+PROC-S4,02a-proc-boolean-brep-surface.md,High,DRY,CONFIRMED,Planar-face triangulation exists 3 times; the faceted copy's fast paths drifted from `triangulate_polygon`
+PROC-S5,02a-proc-boolean-brep-surface.md,Medium,Bug,CONFIRMED,FacetedBrep fills authored holes when hole triangulation fails
+PROC-S6,02a-proc-boolean-brep-surface.md,Medium,Bug,CONFIRMED,"`IfcFacetedBrepWithVoids` has no processor, and `SurfaceOfLinearExtrusionProcessor` is never registered"
+PROC-S7,02a-proc-boolean-brep-surface.md,Medium,DRY,CONFIRMED,Four forks of IfcAxis2Placement/IfcAxis1Placement parsing; the conics fork bypasses `build_axis2_matrix` and misreads 2D placements
+PROC-S8,02a-proc-boolean-brep-surface.md,Medium,DRY,CONFIRMED,"Copy-pasted vector/2D-polygon primitives: Newell normal, perpendicular basis, signed area, point-in-ring"
+PROC-S9,02a-proc-boolean-brep-surface.md,Medium,DRY,CONFIRMED,"The `(x,y,z)`-from-coordinate-list read is repeated at 14 sites, and vertex resolution is strict in one place and lenient in another"
+PROC-S10,02a-proc-boolean-brep-surface.md,Medium,Bug,CONFIRMED,Concave quads are fanned across the wrong diagonal in faceted Breps and surface models
+PROC-S11,02a-proc-boolean-brep-surface.md,Medium,DRY,CONFIRMED,"STEP boolean/logical parsing is hand-rolled at 11 sites in this sub-area, with different semantics"
+PROC-S12,02a-proc-boolean-brep-surface.md,Medium,DRY,CONFIRMED,Mesh assembly and processor scaffolding copy-pasted per processor
+PROC-S13,02a-proc-boolean-brep-surface.md,Medium,DRY,CONFIRMED,"Duplicated tessellation snippets: grid indices, largest-gap angular extent, circle vs ellipse samplers, ribbons"
+PROC-S14,02a-proc-boolean-brep-surface.md,Medium,DRY,CONFIRMED,"Boolean module: AABB/diagonal helpers repeated, and tolerances are absolute file-unit floors whose comments assume metres"
+PROC-S15,02a-proc-boolean-brep-surface.md,Medium,DRY,CONFIRMED,Recursion/walk guards reimplemented with different limits and failure semantics
+PROC-S16,02a-proc-boolean-brep-surface.md,Medium,Bug,LIKELY,"`SameSense=.F.` flips loop-derived planar triangulations, where the loops already give the face normal"
+PROC-S17,02a-proc-boolean-brep-surface.md,Medium,Bug,CONFIRMED,"A malformed half-space returns `Err` through `?`, which deletes the boolean host"
+PROC-S18,02a-proc-boolean-brep-surface.md,Medium,Bug,LIKELY,"The PBHS boundary accepts only `IfcPolyline`, so other boundaries fall back to an unbounded over-cut"
+PROC-S19,02a-proc-boolean-brep-surface.md,Medium,Quirk,LIKELY,`IfcBoxedHalfSpace` is treated as an unsupported solid operand
+PROC-S20,02a-proc-boolean-brep-surface.md,Medium,Quirk,CONFIRMED,"B-spline advanced faces ignore the face's bounds, so trimmed NURBS faces render as untrimmed patches"
+PROC-S21,02a-proc-boolean-brep-surface.md,Medium,Bug,CONFIRMED,Unresolvable points are silently skipped rather than refusing the curve
+PROC-S22,02a-proc-boolean-brep-surface.md,Medium,Perf,CONFIRMED,Advanced-face dispatch is stringly typed and allocates `to_uppercase()` on already-uppercase strings
+PROC-S23,02a-proc-boolean-brep-surface.md,Low,Bug,CONFIRMED,SurfaceOfLinearExtrusion produces NaN on a zero direction and has no RTC hook
+PROC-S24,02a-proc-boolean-brep-surface.md,Low,Bug,LIKELY,Surface of revolution ignores `IfcSweptSurface.Position`
+PROC-S25,02a-proc-boolean-brep-surface.md,Low,Bug,CONFIRMED,AdvancedBrep aborts the whole solid when one face fails to decode
+PROC-S26,02a-proc-boolean-brep-surface.md,Low,Perf,CONFIRMED,Hot-path inefficiencies in the face and curve paths
+PROC-S27,02a-proc-boolean-brep-surface.md,Low,Maintainability,CONFIRMED,Stale or self-contradicting documentation
+PROC-S28,02a-proc-boolean-brep-surface.md,Low,Maintainability,CONFIRMED,God functions and module size
+PROC-S29,02a-proc-boolean-brep-surface.md,Low,Maintainability,CONFIRMED,"Dead code, an overly wide public API, and redundant guards"
+PROC-S30,02a-proc-boolean-brep-surface.md,Low,Bug,SUSPECT,`partial_cmp().unwrap_or(Equal)` in `sort_by` on file-derived angles
+PROC-S31,02a-proc-boolean-brep-surface.md,Low,DRY,CONFIRMED,Copy-pasted test fixtures and checks with conflicting semantics
+PROC-S32,02a-proc-boolean-brep-surface.md,Low,Best-practice,CONFIRMED,Magic point-coincidence and parameter tolerances scattered through curve sampling
+PROC-AL-1,02b-proc-alignment-sectioned-voids.md,Medium,DRY,CONFIRMED,IfcRelVoidsElement / IfcRelAggregates / IfcRelAssociatesMaterial decoding duplicated between geometry scanners and the processing span pre-pass (drifted)
+PROC-AL-2,02b-proc-alignment-sectioned-voids.md,Medium,DRY,CONFIRMED,Alignment station sampling with a cap is implemented three times; two copies are verbatim
+PROC-AL-3,02b-proc-alignment-sectioned-voids.md,Medium,DRY,CONFIRMED,Three numerical spiral/clothoid integrators with different quadrature and accuracy
+PROC-AL-4,02b-proc-alignment-sectioned-voids.md,Medium,DRY,CONFIRMED,Vertical circular arc evaluated two ways; the IFC4x1 copy is a parabola with a false accuracy claim
+PROC-AL-5,02b-proc-alignment-sectioned-voids.md,Medium,Bug,CONFIRMED,IfcSectionedSolidHorizontal drops profile holes (hollow sections render solid)
+PROC-AL-6,02b-proc-alignment-sectioned-voids.md,Medium,Perf,LIKELY,ArcLengthMap does full horizontal evaluation per step; O(V) vertical scan makes it quadratic on sampled curves; unit-naive step
+PROC-AL-7,02b-proc-alignment-sectioned-voids.md,Medium,DRY,CONFIRMED,Duplicated bounded curve-walk budget (MAX_CURVE_NODES ×2 plus a literal)
+PROC-AL-8,02b-proc-alignment-sectioned-voids.md,Medium,DRY,CONFIRMED,Strict alignment validation re-walks placements and curve segments the canonical resolvers walk again
+PROC-AL-9,02b-proc-alignment-sectioned-voids.md,Low,DRY,CONFIRMED,Boolean attribute reading re-implemented 7×
+PROC-AL-10,02b-proc-alignment-sectioned-voids.md,Low,DRY,CONFIRMED,IfcDirection / IfcCartesianPoint parsing re-implemented across the sub-area
+PROC-AL-11,02b-proc-alignment-sectioned-voids.md,Low,DRY,CONFIRMED,Placement matrix applied to alignment samples by hand twice
+PROC-AL-12,02b-proc-alignment-sectioned-voids.md,Low,DRY,CONFIRMED,"""Find the first IFCPROJECT id"" scan duplicated"
+PROC-AL-13,02b-proc-alignment-sectioned-voids.md,Low,Maintainability,CONFIRMED,`ifc_type_fn!` OnceLock + `from_str` cache is unnecessary; the variants exist
+PROC-AL-14,02b-proc-alignment-sectioned-voids.md,Low,DRY,CONFIRMED,STEP binary decoding and `hex_val` live in the texture module instead of core
+PROC-AL-15,02b-proc-alignment-sectioned-voids.md,Low,Bug,LIKELY,Typed `IFCPARAMETERVALUE` detection duplicated; the circle parameter ignores angle units
+PROC-AL-16,02b-proc-alignment-sectioned-voids.md,Low,Bug,LIKELY,Horizontal arc accepts an infinite radius; non-strict path emits NaN vertices
+PROC-AL-17,02b-proc-alignment-sectioned-voids.md,Low,Bug,SUSPECT,Sectioned sort uses `partial_cmp().unwrap_or(Equal)`
+PROC-AL-18,02b-proc-alignment-sectioned-voids.md,Low,Bug,LIKELY,Vertical segments assumed sorted but never sorted (IFC4x1)
+PROC-AL-19,02b-proc-alignment-sectioned-voids.md,Low,Perf,CONFIRMED,`compute_parts_to_skip` rebuilds MaterialLayerIndex with an extra full-file scan
+PROC-AL-20,02b-proc-alignment-sectioned-voids.md,Low,Maintainability,CONFIRMED,"Unit-blind ""file unit ≈ metre"" constants; the stated justification is stale"
+PROC-AL-21,02b-proc-alignment-sectioned-voids.md,Low,Maintainability,CONFIRMED,Stale or contradictory docs in alignment.rs
+PROC-AL-22,02b-proc-alignment-sectioned-voids.md,Low,Maintainability,CONFIRMED,Other stale docs in the sub-area
+PROC-AL-23,02b-proc-alignment-sectioned-voids.md,Low,Quirk,CONFIRMED,Alignment processing errors are silently swallowed
+PROC-AL-24,02b-proc-alignment-sectioned-voids.md,Low,Perf,CONFIRMED,IFC4x3 directrix sampling hard-codes `TessellationQuality::Medium` and rebuilds `IfcSchema` per parse; no per-directrix cache
+PROC-AL-25,02b-proc-alignment-sectioned-voids.md,Low,Bug,SUSPECT,`MaterialLayerIndex::from_flat` cursor arithmetic can wrap on wasm32
+PROC-AL-26,02b-proc-alignment-sectioned-voids.md,Low,Quirk/Perf,CONFIRMED,Texture index casts `i64 as u32` and decodes per-pixel `Vec`s
+PROC-AL-27,02b-proc-alignment-sectioned-voids.md,Low,Maintainability,CONFIRMED,God functions and file sizes
+PROC-AL-28,02b-proc-alignment-sectioned-voids.md,Low,DRY,CONFIRMED,Copy-pasted test fixtures
+PROC-AL-29,02b-proc-alignment-sectioned-voids.md,Low,DRY,CONFIRMED,Two different composite-curve sampling paths feed the alignment
+PROC-AL-30,02b-proc-alignment-sectioned-voids.md,Low,Perf,CONFIRMED,`AlignmentAxis::from_content` builds a full entity index per handle
+KERNEL-1,03-geometry-kernel-csg.md,High,DRY,CONFIRMED,The exact-predicate tiers (interval / fixed / BigRational / cached-lambda) are three to four hand-written copies of the same formulas
+KERNEL-2,03-geometry-kernel-csg.md,High,DRY,CONFIRMED,Open-edge / closure counting has about 30 copies with incompatible definitions
+KERNEL-3,03-geometry-kernel-csg.md,High,DRY,CONFIRMED,Constants derived from `SNAP_GRID` are re-declared independently in four kernel files
+KERNEL-4,03-geometry-kernel-csg.md,Medium,DRY,CONFIRMED,The predicate cascade is composed by hand in six places; the tri-tri copy skips the #1109 budget
+KERNEL-5,03-geometry-kernel-csg.md,Medium,DRY,CONFIRMED,f64 vec3 / triangle-normal helpers are re-declared across the kernel (twice in one file)
+KERNEL-6,03-geometry-kernel-csg.md,Medium,DRY,CONFIRMED,"The arrangement classifier duplicates its own internals, and the N-ary path drifted from the binary one"
+KERNEL-7,03-geometry-kernel-csg.md,Medium,DRY,CONFIRMED,Three point-in-closed-mesh parity algorithms with different robustness rules
+KERNEL-8,03-geometry-kernel-csg.md,Medium,DRY,CONFIRMED,"Signed volume is implemented six-plus times, with drifted reference points and snapping"
+KERNEL-9,03-geometry-kernel-csg.md,Medium,DRY,CONFIRMED,Vertex welding / position dedup is implemented 8+ times
+KERNEL-10,03-geometry-kernel-csg.md,Medium,DRY,CONFIRMED,"`Mesh` has no f64 vertex/triangle accessor, so about 20 ad-hoc readers exist and only some check bounds"
+KERNEL-11,03-geometry-kernel-csg.md,Medium,DRY,CONFIRMED,`Mesh` is built with full struct literals at 12+ sites outside `mesh.rs`
+KERNEL-12,03-geometry-kernel-csg.md,Medium,DRY,CONFIRMED,"Degenerate-triangle criteria are scattered, with different thresholds and passes"
+KERNEL-13,03-geometry-kernel-csg.md,Medium,DRY,CONFIRMED,"Test fixtures are copy-pasted: `boxed()` ×7 verbatim, about 25 box builders, `mesh_of` twice in one file"
+KERNEL-14,03-geometry-kernel-csg.md,Medium,DRY,CONFIRMED,CDT emit / PSLG setup and BVH traversal are copy-pasted (jscpd-confirmed)
+KERNEL-15,03-geometry-kernel-csg.md,Medium,DRY,CONFIRMED,The retriangulation f64 prefilter (box plus margin) is hand-copied four times
+KERNEL-16,03-geometry-kernel-csg.md,Medium,DRY,CONFIRMED,2D proper-crossing and point-in-triangle predicates exist in 5+ variants
+KERNEL-17,03-geometry-kernel-csg.md,Medium,Bug,LIKELY,Bug: public `mesh_bridge::subtract` / `subtract_many` do not reset or check the #1109 budget
+KERNEL-18,03-geometry-kernel-csg.md,Medium,Quirk,SUSPECT,"The classifier's ""infinitesimal"" probe step scales with absolute coordinate magnitude, not operand size"
+KERNEL-19,03-geometry-kernel-csg.md,Medium,Quirk,SUSPECT,Consolidation's absolute tolerances are metre constants applied in caller (file) units
+KERNEL-20,03-geometry-kernel-csg.md,Medium,Quirk,LIKELY,`Mesh::merge` / `Mesh::clear` do not uphold the metadata-invalidation contract the field docs require
+KERNEL-21,03-geometry-kernel-csg.md,Medium,Perf,CONFIRMED,"N-ary `union_all` lacks the BVH and f64 cache the binary classifier got, and the A-side probes are linear"
+KERNEL-22,03-geometry-kernel-csg.md,Medium,Maintainability,CONFIRMED,Public kernel surface is wide (semver-checked crate) and carries dead or test-only pub items
+KERNEL-23,03-geometry-kernel-csg.md,Medium,Maintainability,CONFIRMED,"God functions, and modules split by line-count budget rather than by concept"
+KERNEL-24,03-geometry-kernel-csg.md,Medium,Perf,CONFIRMED,"Retriangulation recomputes I1024 lambdas the interner already caches, uses a BTreeMap per-Vid cache, and clones constraints per triangle"
+KERNEL-25,03-geometry-kernel-csg.md,Low,DRY,CONFIRMED,`DropAxis` / `Sign` helpers re-implemented at every use
+KERNEL-26,03-geometry-kernel-csg.md,Low,DRY,CONFIRMED,FNV-1a hashing and test LCGs duplicated
+KERNEL-27,03-geometry-kernel-csg.md,Low,Quirk,CONFIRMED,`predicates::orient2d` / `orient3d` are `pub` but call `unimplemented!` on legal argument orders; lambda helpers differ in totality
+KERNEL-28,03-geometry-kernel-csg.md,Low,Bug,SUSPECT,Latent out-of-range index panics in consolidation and AABB clipping (sibling code bounds-checks)
+KERNEL-29,03-geometry-kernel-csg.md,Low,Quirk,SUSPECT,Exact ray parity silently miscounts grazing hits; no detection or retry
+KERNEL-30,03-geometry-kernel-csg.md,Low,Bug,SUSPECT,"`tritri::line_direction` passes a non-finite direction to the exact tier, which then panics"
+KERNEL-31,03-geometry-kernel-csg.md,Low,Quirk,CONFIRMED,"`retriangulate_cleanup`'s ""1 mm"" tolerance is in caller units, and the 2^-22 literal is duplicated"
+KERNEL-32,03-geometry-kernel-csg.md,Low,DRY,CONFIRMED,"Duplicated clipper body and three plane-epsilon formulations (documented, still DRY)"
+KERNEL-33,03-geometry-kernel-csg.md,Low,Perf,CONFIRMED,"`plane_weld` promotion is O(cutter_vertices × host_faces) on every subtract and union, outside the budget"
+KERNEL-34,03-geometry-kernel-csg.md,Low,Best-practice,CONFIRMED,"The determinism invariant ""no FMA / `mul_add`"" is enforced only by comments"
+KERNEL-35,03-geometry-kernel-csg.md,Low,Maintainability,CONFIRMED,The generic CDT core depends on the terrain module's error type
+KERNEL-36,03-geometry-kernel-csg.md,Low,Maintainability,CONFIRMED,Stale comments referencing deleted code and renamed files
+GEOM-1,04-geometry-misc.md,High,DRY,CONFIRMED,Inline IfcCartesianPoint / IfcDirection coordinate decoding duplicated ~48 times across crates
+GEOM-2,04-geometry-misc.md,High,DRY,CONFIRMED,"Nine IfcAxis2Placement3D attribute readers, already drifted (Location `$`, error swallowing, fast-path fallback)"
+GEOM-3,04-geometry-misc.md,High,Bug,CONFIRMED,`calculate_polygon_normal` returns a reversed normal for concave quads; faceted fast path fans concave quads across the outside diagonal
+GEOM-4,04-geometry-misc.md,High,DRY,CONFIRMED,`read_fixture` re-implemented 28 times (27 distinct bodies); `IFC_LITE_REQUIRE_FIXTURES` honoured only by ~37 files
+GEOM-5,04-geometry-misc.md,High,DRY,CONFIRMED,"Test mesh oracles (volume, open edges, watertight, bbox) duplicated 80+ times with different keying/tolerances"
+GEOM-6,04-geometry-misc.md,Medium,DRY,CONFIRMED,"Box/cube mesh builders duplicated 35+ times; `boxed(min,size,rot)` copied verbatim 7x"
+GEOM-7,04-geometry-misc.md,Medium,DRY,CONFIRMED,`build_void_index` (23 copies) and router-setup boilerplate duplicated across fixture integration tests
+GEOM-8,04-geometry-misc.md,Medium,Maintainability,CONFIRMED,128 integration-test binaries; probes/census/spikes compiled as tests
+GEOM-9,04-geometry-misc.md,Medium,Best-practice,CONFIRMED,"lib.rs root re-exports: 60 items have no user outside the crate, ~20 more only geometry's own tests"
+GEOM-10,04-geometry-misc.md,Low,Maintainability,CONFIRMED,"Crate-level rustdoc and example are stale (non-existent APIs, wrong claims)"
+GEOM-11,04-geometry-misc.md,Medium,DRY,CONFIRMED,Inverse-transpose normal transform implemented 3x with different degenerate handling
+GEOM-12,04-geometry-misc.md,Medium,Bug,LIKELY,SpacePlate (space_dcel) public/wasm edit API accepts NaN; non-total sort comparators can panic
+GEOM-13,04-geometry-misc.md,Medium,DRY,CONFIRMED,Point-in-polygon (ray cast) implemented 8 times
+GEOM-14,04-geometry-misc.md,Medium,DRY,CONFIRMED,Signed shoelace area / centroid / ring bbox / 2D distance re-implemented beside `geom2d`
+GEOM-15,04-geometry-misc.md,Medium,DRY,CONFIRMED,"`[f64;3]` vector helpers (dot/cross/normalize/face_normal/canonical) copied across geometry, clash, export, processing"
+GEOM-16,04-geometry-misc.md,Low,DRY,CONFIRMED,Inline union-find implementations beside `union_find::UnionFind`
+GEOM-17,04-geometry-misc.md,Medium,DRY,CONFIRMED,Production open-edge / closedness checks: 7 variants with different vertex keys
+GEOM-18,04-geometry-misc.md,Medium,DRY,CONFIRMED,"""Scan to IFCPROJECT and read length/angle unit"" implemented 6+ times; geometry has two verbatim copies"
+GEOM-19,04-geometry-misc.md,Medium,DRY,CONFIRMED,"Three strict placement-chain validators across crates, drifted"
+GEOM-20,04-geometry-misc.md,Medium,Quirk,CONFIRMED,13 env-var kill switches with inconsistent truthiness semantics and no single home
+GEOM-21,04-geometry-misc.md,Medium,Maintainability,CONFIRMED,~10 independent global/thread-local telemetry mechanisms; 5 `take_*` drains exported from crate root
+GEOM-22,04-geometry-misc.md,Low,DRY,CONFIRMED,"f32-ULP noise scale spelled 9 ways (2^-20 … 2^-23, inline literals)"
+GEOM-23,04-geometry-misc.md,Low,DRY,CONFIRMED,zone_split re-implements `kernel::broadphase::tris_aabb` twice
+GEOM-24,04-geometry-misc.md,Low,Maintainability,CONFIRMED,"Dead code kept ""just in case"": PENDING_MAPPED_BOOL_FAILURES, Error::EmptyMesh, create_circle/calculate_circle_segments"
+GEOM-25,04-geometry-misc.md,Low,Maintainability,CONFIRMED,`safe_earcut`'s contract doc is attached to `ear_clip`; `safe_earcut` undocumented
+GEOM-26,04-geometry-misc.md,Low,Quirk,SUSPECT,`geom_hash` / weld / tjunction / clash bit-keyed vertex maps treat -0.0 and +0.0 as distinct
+GEOM-27,04-geometry-misc.md,Low,DRY,CONFIRMED,`bool2d` and `contour_bool2d` / `contour_composition` are parallel i_overlay wrappers with drifted sanitisation
+GEOM-28,04-geometry-misc.md,Low,DRY,CONFIRMED,`transform.rs` internal duplication: `parse_cartesian_point_from_id` re-implements `parse_decoded_cartesian_point`
+GEOM-29,04-geometry-misc.md,Low,DRY,CONFIRMED,`curve_source::trim_point` and `trim_angle` duplicate the trim-select parse loop
+GEOM-30,04-geometry-misc.md,Low,DRY,CONFIRMED,IFNS header parsing duplicated between `decode_instanced` and `decode_instance_finishes`
+GEOM-31,04-geometry-misc.md,Low,Best-practice,CONFIRMED,Geometry `[lints.clippy]` blanket allows broader than needed; redundant local allows
+GEOM-32,04-geometry-misc.md,Low,Quirk,CONFIRMED,"`diag_warn!` call sites gate the legacy fallback on `debug_assertions`, contradicting diag.rs policy"
+GEOM-33,04-geometry-misc.md,Low,Maintainability,CONFIRMED,"`world_frame_fixture` shares a source file with `rust/clash` via `#[path = ""../../clash/src/...""]`"
+GEOM-34,04-geometry-misc.md,Low,DRY,CONFIRMED,"Test RNGs duplicated (5x), one mislabelled"
+GEOM-35,04-geometry-misc.md,Low,DRY,CONFIRMED,"Fuzz-target byte decoders duplicated in `tests/fuzz_regressions.rs` ""keep in sync"""
+GEOM-36,04-geometry-misc.md,Low,Best-practice,CONFIRMED,"Error type is stringly: one catch-all variant used 453 times, plus `Result<_, String>` in analytic/contour/scan_outline"
+GEOM-37,04-geometry-misc.md,Low,Maintainability,CONFIRMED,"Module-size ratchet produces flat sibling files, `#[path]` attachments and re-export chains instead of directories"
+GEOM-38,04-geometry-misc.md,Low,Quirk,LIKELY,`calculate_polygon_normal` / `project_to_2d` / `is_convex` use absolute (scale-dependent) epsilons
+GEOM-39,04-geometry-misc.md,Low,Quirk,SUSPECT,`projection_outline::mesh_outline_2d` passes non-finite projected triangles to i_overlay; area constant off by 2x
+GEOM-40,04-geometry-misc.md,Low,Maintainability,CONFIRMED,"`opening-perf-trace` feature: 73 cfg sites, undocumented in rust/AGENTS.md feature list"
+PROCESSING-1,05-processing.md,High,DRY,CONFIRMED,STEP-keyword scan dispatch implemented six times across native and wasm
+PROCESSING-2,05-processing.md,High,DRY,CONFIRMED,"The #957/#1623 type-geometry plan (referenced RepresentationMaps, instantiated type ids, mapped-instance plan, type candidates) is computed three different ways"
+PROCESSING-3,05-processing.md,High,DRY,CONFIRMED,"wasm `styling/color.rs` is a verbatim copy of `element/element_color.rs`'s walks, despite processing exposing the closure-form API for exactly that caller"
+PROCESSING-4,05-processing.md,High,Bug,LIKELY,"Element-level material fallback colour drifts between native (""first opaque"") and wasm (""first colour"")"
+PROCESSING-5,05-processing.md,High,Bug,CONFIRMED,`apps/server` has its own `detect_schema_version` that disagrees with processing's
+PROCESSING-6,05-processing.md,High,DRY,CONFIRMED,The representation graph is walked by seven independent hand-written traversals with three different cycle-guard strategies
+PROCESSING-7,05-processing.md,High,Maintainability,CONFIRMED,"Twelve public `process_geometry*` entry points plus two side-channel structs, because `StreamingOptions` has public fields"
+PROCESSING-8,05-processing.md,High,Maintainability,CONFIRMED,"`processor/mod.rs` is a 1,656-line file around one 1,180-line function; `process_entity_job` takes 26 parameters"
+PROCESSING-9,05-processing.md,Medium,DRY,CONFIRMED,"wasm `combined_pre_pass` is a fourth full-file scan path with its own job classification, followed by a fifth scan for type jobs"
+PROCESSING-10,05-processing.md,Medium,DRY,CONFIRMED,"""Apply the transpose of a column-major 4x4's rotation block"" is spelled four times"
+PROCESSING-11,05-processing.md,Medium,DRY,CONFIRMED,"Row-major mat4 multiply / transform / invert / Y-up conjugation exist in processing, wasm-bindings and export, with the geometry crate owning nalgebra"
+PROCESSING-12,05-processing.md,Medium,DRY,CONFIRMED,Seven private `dot/cross/sub/add/unit` vector mini-libraries inside processing
+PROCESSING-13,05-processing.md,Medium,DRY,CONFIRMED,Three vertex-weld/quantise implementations and nine fingerprint hashers
+PROCESSING-14,05-processing.md,Medium,DRY,CONFIRMED,Per-job metadata population duplicated between the wasm32 and native cfg forks
+PROCESSING-15,05-processing.md,Medium,DRY,CONFIRMED,Hand-rolled STEP tokenisers and `$`/empty-string normalisers next to the core decoder
+PROCESSING-16,05-processing.md,Medium,Perf,CONFIRMED,Server streaming/JSON routes resolve every styled item twice per request (`ModelFinishes::from_content` + the pipeline's own `resolve_prepass`)
+PROCESSING-17,05-processing.md,Low,Perf,CONFIRMED,Opening filter decodes every window/door (and its whole representation chain) a second time before the metadata phase decodes it again
+PROCESSING-18,05-processing.md,Medium,Quirk,SUSPECT,"Quick-metadata storey elevation is emitted in file units, not metres"
+PROCESSING-19,05-processing.md,Medium,DRY,CONFIRMED,Native vs wasm entity-index construction strategies differ (compact-page builder vs columnar-from-hashmap) with different thresholds
+PROCESSING-20,05-processing.md,Medium,DRY,CONFIRMED,Test fixture loaders and `MeshProductionContext` fixture blocks are copy-pasted across integration tests
+PROCESSING-21,05-processing.md,Low,DRY,CONFIRMED,"Three identical `EntityJob` literals, two identical placement closures, two identical fallback-summary literals, and `if x { Vec::new() } else { Vec::new() }` ×3"
+PROCESSING-22,05-processing.md,Low,Best-practice,CONFIRMED,`scan_shard` family exposes five tuple-returning functions that differ only by how many diagnostics they return
+PROCESSING-23,05-processing.md,Low,Quirk,CONFIRMED,`/metadata`'s `geometry_count` disagrees with `ModelMetadata.geometry_entity_count`
+PROCESSING-24,05-processing.md,Low,Perf,CONFIRMED,`georeferencing::extract_georeferencing_with_index` still performs a full `EntityScanner` walk despite holding an index
+PROCESSING-25,05-processing.md,Low,Quirk,CONFIRMED,Non-deterministic tie order in the CSG summary breakdown (log only)
+PROCESSING-26,05-processing.md,Low,DRY,LIKELY,`scan_segmentation` / `scan_proposals` options and report types are hand-mirrored into the wasm API; vector types differ per module
+PROCESSING-27,05-processing.md,Low,Best-practice,CONFIRMED,Server `MeshData` wrapper and `symbolic_response.rs` are the only consumer-side type mirrors; FFI/python are clean
+PROCESSING-28,05-processing.md,Low,Maintainability,CONFIRMED,`_tests.rs` siblings declared from `lib.rs` to stay under a frozen ratchet budget
+PROCESSING-SYM-1,05-processing.md,High,DRY,CONFIRMED,"`IfcCartesianTransformationOperator` parsed a second time in symbolic, drifted from geometry's declared single home"
+PROCESSING-SYM-2,05-processing.md,High,DRY,CONFIRMED,`IfcAxis2Placement2D/3D` and the `IfcLocalPlacement` chain re-implemented; depth cap and docs have drifted
+PROCESSING-SYM-3,05-processing.md,High,DRY,CONFIRMED,"Curve evaluation (`IfcTrimmedCurve`, `IfcCircle`, `IfcEllipse`, `IfcIndexedPolyCurve`, `IfcCompositeCurve`) re-implemented in symbolic and drifted from geometry"
+PROCESSING-SYM-4,05-processing.md,High,Bug,CONFIRMED,"f32 pipeline quantises georeferenced coordinates BEFORE the RTC/site rebase — overlay misaligned by up to 0.5 m at 5,000 km"
+PROCESSING-SYM-5,05-processing.md,High,DRY,CONFIRMED,Eight hand-rolled DrawOPS cursor walkers and two arity tables in pdf_vector
+PROCESSING-SYM-6,05-processing.md,High,DRY,CONFIRMED,`IfcCartesianPoint` / `IfcDirection` reads inlined 25 times with three different malformed-data policies
+PROCESSING-SYM-7,05-processing.md,Medium,DRY,CONFIRMED,Polyline / indexed-polycurve point emission written five times inside symbolic
+PROCESSING-SYM-8,05-processing.md,Medium,DRY,CONFIRMED,Conic tessellation duplicated inside symbolic with two different closure and segment conventions
+PROCESSING-SYM-9,05-processing.md,Medium,DRY,CONFIRMED,"Largest singular value of the affine computed twice, drifted"
+PROCESSING-SYM-10,05-processing.md,Medium,DRY,CONFIRMED,Four 2D affine representations in `processing`; `[f64;6]` apply/multiply duplicated inside pdf_vector
+PROCESSING-SYM-11,05-processing.md,Medium,DRY,CONFIRMED,AABB fold written three ways in pdf_vector
+PROCESSING-SYM-12,05-processing.md,Medium,DRY,CONFIRMED,"Dash phase normalisation, odd-pattern doubling, closed-ring stripping and signed area each duplicated"
+PROCESSING-SYM-13,05-processing.md,Medium,DRY,CONFIRMED,Work-budget charging has two helpers and three ad-hoc `checked_mul` chains
+PROCESSING-SYM-14,05-processing.md,Medium,DRY,CONFIRMED,"The `IfcMappedItem → IfcRepresentationMap → Items` walk is the fifth copy in `processing`, each with its own guard and depth constant"
+PROCESSING-SYM-15,05-processing.md,Medium,Bug,LIKELY,"`IfcIndexedPolyCurve.Segments` ignored — arcs drawn as chords, index lists ignored"
+PROCESSING-SYM-16,05-processing.md,Medium,Bug,LIKELY,Placement-chain cap of 50 vs shared `MAX_PLACEMENT_DEPTH = 100` silently relocates deep products to the origin
+PROCESSING-SYM-17,05-processing.md,Medium,Bug,LIKELY,Unresolvable trims fabricate an arc; trimmed `IfcLine` silently dropped
+PROCESSING-SYM-18,05-processing.md,Medium,Perf,CONFIRMED,Style index performs two extra full-file scans per extraction
+PROCESSING-SYM-19,05-processing.md,Low,Perf,CONFIRMED,Allocation per placement resolution and per point list
+PROCESSING-SYM-20,05-processing.md,Medium,Maintainability,CONFIRMED,Twelve-parameter signatures threaded through seven functions under `#[allow(clippy::too_many_arguments)]`
+PROCESSING-SYM-21,05-processing.md,Medium,Maintainability,CONFIRMED,Magic tolerances and segment counts with no named home
+PROCESSING-SYM-22,05-processing.md,Low,Maintainability,CONFIRMED,Ratchet-dodge file splits with stale justifications
+PROCESSING-SYM-23,05-processing.md,Low,Maintainability,CONFIRMED,"Stringly-typed omission kinds, a dead kind label, and `Result<_, String>` throughout pdf_vector"
+PROCESSING-SYM-24,05-processing.md,Medium,DRY,CONFIRMED,Symbolic integration tests embed the same STEP prologue in 18 files; `issue_2356` has six verbatim copies of its own fixture
+PROCESSING-SYM-25,05-processing.md,Low,DRY,CONFIRMED,`PdfVectorPage` fixture built three times; report test helpers duplicated
+PROCESSING-SYM-26,05-processing.md,Low,Quirk,SUSPECT,Verdict serialization failure silently hashed as empty bytes
+PROCESSING-SYM-27,05-processing.md,Low,Quirk,CONFIRMED,Inconsistent error context between fill and stroke composition
+PROCESSING-SYM-28,05-processing.md,Low,Quirk,CONFIRMED,Symbolic placement doc contradicts itself and hand-rolls an identity test that drops sub-millimetre context offsets
+PROCESSING-SYM-29,05-processing.md,Low,DRY,CONFIRMED,`IfcColourRgb` read duplicated between symbolic text colour and the style crate's fill leaf
+PROCESSING-SYM-30,05-processing.md,Low,Perf,CONFIRMED,Per-extraction `GeometryRouter` and overlay-frame detection re-run work the caller already did
+PROCESSING-APP-1,05-processing.md,High,DRY,CONFIRMED,"Four `AttributeValue -> wire JSON` converters, one of which has drifted into a panic"
+PROCESSING-APP-2,05-processing.md,High,Bug,LIKELY,`evaluated::wire` panics (`unreachable!`) on a file-supplied `*` attribute
+PROCESSING-APP-3,05-processing.md,Medium,DRY,CONFIRMED,"Rigid placement inversion implemented twice, with drift"
+PROCESSING-APP-4,05-processing.md,Medium,DRY,CONFIRMED,`dot` / `cross` / `sub` / `length` / `unit` re-declared six ways inside appearance (and more across the workspace)
+PROCESSING-APP-5,05-processing.md,Medium,DRY,CONFIRMED,"Budget/cap literals spread across three ""budget"" modules and nine other files, with one drifted value"
+PROCESSING-APP-6,05-processing.md,Medium,DRY,CONFIRMED,Canonical `MeshData` validity predicate copied four times; one consumer skips it and indexes raw
+PROCESSING-APP-7,05-processing.md,Medium,DRY,CONFIRMED,Reserved-wire-token guard re-implemented with different semantics
+PROCESSING-APP-8,05-processing.md,Medium,DRY,CONFIRMED,Authoring helpers and the textured-style entity chain exist twice
+PROCESSING-APP-9,05-processing.md,Medium,DRY,CONFIRMED,Scope/schema/watermark/capacity gates re-spelled per entry point
+PROCESSING-APP-10,05-processing.md,Medium,DRY,CONFIRMED,Test scaffolding copy-paste (beyond the jscpd hits)
+PROCESSING-APP-11,05-processing.md,Low,DRY,CONFIRMED,`valid_guid` duplicates the export crate's GlobalId check
+PROCESSING-APP-12,05-processing.md,Medium,Perf,CONFIRMED,"Page/transfer pipeline repeats preflight, texture index and canonical meshing (5 mesh productions per product)"
+PROCESSING-APP-13,05-processing.md,Low,Perf,CONFIRMED,Five full-file scans per plan and two SHA-256 passes over the source
+PROCESSING-APP-14,05-processing.md,Low,Perf/DRY,CONFIRMED,`mapping::map_item` decodes the ExistingUv map/list entities twice
+PROCESSING-APP-15,05-processing.md,Low,DRY,CONFIRMED,World-corner reconstruction `f64::from(p) + origin + rtc` hand-rolled in 6 production and 7 test sites
+PROCESSING-APP-16,05-processing.md,Low,DRY,CONFIRMED,Length-unit-scale validity check repeated (and cross-crate)
+PROCESSING-APP-17,05-processing.md,Low,Maintainability,CONFIRMED,Shared request metadata hand-copied into `authored::Metadata`; `captured` fakes a frame to reuse the planner
+PROCESSING-APP-18,05-processing.md,Low,Maintainability,CONFIRMED,`Source::context` is `Option` only for two-phase init; six `ok_or` sites with four different messages
+PROCESSING-APP-19,05-processing.md,Medium,Best-practice,CONFIRMED,Stringly-typed errors everywhere
+PROCESSING-APP-20,05-processing.md,Low,Maintainability,CONFIRMED,Over-fragmented module layout
+PROCESSING-APP-21,05-processing.md,Low,Bug,SUSPECT,`boundaries[0]` on a `FillShape` with zero rings
+PROCESSING-APP-22,05-processing.md,Low,Quirk,CONFIRMED,Textured sliver source triangles make `source_density` refuse the whole plan with a misleading message
+CORE-1,06-core.md,High,DRY,CONFIRMED,"Raw-byte attribute walkers in the decoder and fast_parse are hand-rolled 12 times, ignore comments and strings, and have three different policies for bad refs"
+CORE-2,06-core.md,High,DRY,CONFIRMED,Length and plane-angle units are resolved in seven or more places with drifted policies
+CORE-3,06-core.md,High,DRY,CONFIRMED,"""Find IfcProject, then get the unit scale"" is hand-rolled about 15 times although `EntityDecoder::length_unit_scale()` already exists"
+CORE-4,06-core.md,High,DRY,CONFIRMED,"Typed values are flattened into an ambiguous `List([String(TYPE), value])` shape, and 12 downstream sites unwrap it differently"
+CORE-5,06-core.md,High,Bug,CONFIRMED,A nom parse failure builds an error string 5-10× the size of the record
+CORE-6,06-core.md,High,DRY,CONFIRMED,"There are four STEP numeric grammars, and the tokenizer rejects literals the fast readers accept"
+CORE-7,06-core.md,Medium,Maintainability,CONFIRMED,The generated code duplicates the type universe five times; the registries need only tables
+CORE-8,06-core.md,Medium,DRY,CONFIRMED,"The STEP string-literal end rule is implemented five times in core, and the copies disagree on unterminated literals"
+CORE-9,06-core.md,Medium,Bug,CONFIRMED,The scanner's DATA-section skip and the header reader disagree on where `DATA;` is
+CORE-10,06-core.md,Medium,DRY,CONFIRMED,Entity type names are extracted four ways and normalised two ways
+CORE-11,06-core.md,Medium,Bug,LIKELY,"`get_face_bound_fast` tests ""OUTER"" case-sensitively, so CamelCase files lose outer-bound detection"
+CORE-12,06-core.md,Medium,Bug,CONFIRMED,"IfcTriangulatedFaceSet `CoordIndex` is parsed by two core grammars with different index rules, after already being decoded"
+CORE-13,06-core.md,Medium,Bug,CONFIRMED,"`model_bounds` has its own point, ref and number readers; the placement filter uses an unscaled `1000.0`; and it scans the file up to three times"
+CORE-14,06-core.md,Medium,Bug,CONFIRMED,"The ePSet_MapConversion fallback accepts non-finite Eastings, Northings and Height; the IfcMapConversion path refuses them"
+CORE-15,06-core.md,Medium,Bug,LIKELY,`extract_length_unit_scale` accepts infinite conversion factors and invents 1.0 for unreadable ones
+CORE-16,06-core.md,Medium,DRY,CONFIRMED,"Raw STEP literal decoding is implemented four times, and downstream code double-decodes already-decoded strings"
+CORE-17,06-core.md,Medium,Perf,LIKELY,"The decoder does up to six independent full-file scans for singletons, and the styled-item index is rebuilt per decoder for Hash and Dense indexes"
+CORE-18,06-core.md,Medium,Perf,CONFIRMED,Every decode builds a `Token` tree and then an `AttributeValue` tree
+CORE-19,06-core.md,Medium,Maintainability,CONFIRMED,"There is no typed attribute layer: about 1,400 magic positional reads downstream, and two `attribute_index` APIs with different semantics"
+CORE-20,06-core.md,Medium,Maintainability,CONFIRMED,"`IfcSchema` is threaded through 43 signatures, but only `profile_category` is ever read"
+CORE-21,06-core.md,Medium,Maintainability,CONFIRMED,"Dead public surface and dependencies: streaming, fast_parse TFS path, scanner helpers, smallvec"
+CORE-22,06-core.md,Low,Best-practice,CONFIRMED,"Error type is mostly dead variants, and every error is `ParseError { position: 0 }`"
+CORE-23,06-core.md,Low,Bug,SUSPECT,`decode_by_id` never checks that the parsed id matches the requested id
+CORE-24,06-core.md,Low,Bug,SUSPECT,`ColumnarEntityIndex::from_scan` and `from_hashmap` truncate offsets to u32 with only a `debug_assert`
+CORE-25,06-core.md,Low,DRY,CONFIRMED,Three `EntityDecoder` constructors each spell out all 12 fields
+CORE-26,06-core.md,Low,DRY,CONFIRMED,"Unit label tables are duplicated: SI prefix ×3, conversion symbols ×2, US survey foot ×2"
+CORE-27,06-core.md,Low,Maintainability,CONFIRMED,A georef MapUnit comment claims the name table holds the US survey foot; it does not
+CORE-28,06-core.md,Low,Perf,CONFIRMED,`decode_ifc_string` is quadratic on many unterminated `\X2\` or `\X4\` escapes
+CORE-29,06-core.md,Low,Maintainability,CONFIRMED,"Limits and tolerances are scattered as magic numbers, not kept in `limits.rs`"
+CORE-30,06-core.md,Low,Best-practice,CONFIRMED,"Fuzzing covers only `parse_entity`, with four seeds"
+CORE-31,06-core.md,Low,Best-practice,CONFIRMED,Scan diagnostics go to a global `OnceLock` sink or `eprintln!` as side effects
+CORE-32,06-core.md,Low,Quirk,CONFIRMED,"The tokenizer reads STEP binary literals (`""…""`) as text strings"
+CORE-33,06-core.md,Low,Quirk,CONFIRMED,`AttributeValue` accessors are asymmetric
+CORE-34,06-core.md,Low,Perf,CONFIRMED,"`IfcType::is_subtype_of` clones, and registry misses allocate"
+CORE-35,06-core.md,Low,DRY,CONFIRMED,The header scanner has two near-identical keyword finders and a third argument splitter
+CORE-36,06-core.md,Low,Maintainability,CONFIRMED,Test fixtures are copy-pasted
+CORE-37,06-core.md,Low,Quirk,CONFIRMED,"The AttributeValue-based coordinate helpers default missing values to 0, contrary to #5266, and their geometry fallback is effectively unreachable"
+CORE-38,06-core.md,Low,DRY,CONFIRMED,`from_hashmap` and `from_hashmap_consuming` take two different sort paths for one conversion
+CORE-39,06-core.md,Low,Best-practice,CONFIRMED,The public surface is wider than it needs to be
+EXPORT-GEOM-1,07-export.md,High,Bug,CONFIRMED,"OBJ and USD exporters drop the RTC shift and the IfcSite rotation, so georeferenced/site-placed models land in the wrong place"
+EXPORT-GEOM-2,07-export.md,High,DRY,CONFIRMED,"three near-complete copies of the glTF assembler (in-memory, multi-buffer streaming, bounded two-pass)"
+EXPORT-GEOM-3,07-export.md,Medium,DRY,CONFIRMED,"Z-up/Y-up basis change and 4x4 helpers are reimplemented across export and in two other crates, with drifted tolerances"
+EXPORT-GEOM-4,07-export.md,Medium,DRY,CONFIRMED,"""is this mesh renderable/finite"" is decided by seven predicates with three different non-finite policies"
+EXPORT-GEOM-5,07-export.md,Medium,DRY,CONFIRMED,"material colour key implemented three times in export, already drifted"
+EXPORT-GEOM-6,07-export.md,Medium,DRY,CONFIRMED,"number-to-text formatting has one implementation per exporter, with different -0, non-finite and precision rules"
+EXPORT-GEOM-7,07-export.md,Low,DRY,CONFIRMED,"identifier/name helpers duplicated across USD, IFC5, HBJSON and LandXML"
+EXPORT-GEOM-8,07-export.md,Medium,DRY,CONFIRMED,"from-meshes flat-array slicing, validation and defaulting written twice with drifted contracts"
+EXPORT-GEOM-9,07-export.md,Medium,Bug,CONFIRMED,`export_gltf_streaming` returns a schema-invalid empty glTF instead of failing closed
+EXPORT-GEOM-10,07-export.md,Medium,Maintainability,CONFIRMED,"gltf.rs is a 3,090-line god file and its ratchet budget has 938 lines of slack"
+EXPORT-GEOM-11,07-export.md,Low,Maintainability,CONFIRMED,three different instancing implementations feed three writers
+EXPORT-GEOM-12,07-export.md,Low,Perf,CONFIRMED,"per-float `String` allocation in the text writers (USD, COLLADA, STEP escape)"
+EXPORT-GEOM-13,07-export.md,Low,Best-practice,CONFIRMED,from-meshes public API is 7-11 positional slices plus a boolean trio
+EXPORT-GEOM-14,07-export.md,Low,Bug,CONFIRMED,"infallible `export_glb_from_meshes` is public, wraps on wasm32, and ships truncated output as success"
+EXPORT-GEOM-15,07-export.md,Low,Quirk,CONFIRMED,USD/OBJ export never fail closed on an empty model and re-parse the file several times
+EXPORT-GEOM-16,07-export.md,Low,Bug,CONFIRMED,KMZ numeric inputs are not validated
+EXPORT-GEOM-17,07-export.md,Low,Maintainability,CONFIRMED,two hand-rolled ZIP writers (KMZ stored-ZIP + `zip` crate for .bos) and a hand-rolled CRC32
+EXPORT-GEOM-18,07-export.md,Medium,DRY,CONFIRMED,glTF test/inspection helpers copy-pasted across seven files
+EXPORT-GEOM-19,07-export.md,Low,DRY,CONFIRMED,STEP-file wrapper and MeshData literal fixtures duplicated across test files
+EXPORT-GEOM-20,07-export.md,Low,Best-practice,CONFIRMED,header/provenance strings differ per writer
+EXPORT-STEP-1,07a-export-step-writer.md,High,DRY,CONFIRMED,Record-frame parsers (`#id=TYPE(args);`) implemented ~11 times; drift silently drops log edits
+EXPORT-STEP-2,07a-export-step-writer.md,High,DRY,CONFIRMED,Five top-level argument splitters and two slot-grammar validators; every slot is validated twice
+EXPORT-STEP-3,07a-export-step-writer.md,High,Bug,CONFIRMED,"Log writer skips schema conversion and IFC2X3 slot-fill for generated, rewritten and georef records"
+EXPORT-STEP-4,07a-export-step-writer.md,Medium,DRY,CONFIRMED,Two STEP REAL formatters with different bytes and non-finite policy
+EXPORT-STEP-5,07a-export-step-writer.md,Medium,Bug,CONFIRMED,"Integer and number serialisers emit non-STEP tokens (`NaN`, `Infinity`, `1e+21`); REAL non-finite policy inconsistent"
+EXPORT-STEP-6,07a-export-step-writer.md,Medium,DRY,CONFIRMED,Seven comment/trivia skippers and three whitespace definitions; core's lexer is unused
+EXPORT-STEP-7,07a-export-step-writer.md,Medium,DRY,CONFIRMED,Numeric-literal grammar duplicated despite core's documented single home (#5266)
+EXPORT-STEP-8,07a-export-step-writer.md,Medium,Bug,CONFIRMED,Positional index from the log can force a huge allocation or index-out-of-bounds panic
+EXPORT-STEP-9,07a-export-step-writer.md,Medium,Bug,CONFIRMED,"Log writer's id allocator saturates at `u32::MAX`, unlike the plain writer"
+EXPORT-STEP-10,07a-export-step-writer.md,Medium,Bug,CONFIRMED,Plain writer silently drops property mutations it cannot place
+EXPORT-STEP-11,07a-export-step-writer.md,Medium,DRY,CONFIRMED,Record index built twice; duplicate express ids silently collapse
+EXPORT-STEP-12,07a-export-step-writer.md,Medium,DRY,CONFIRMED,Four schema-family classifiers and three FILE_SCHEMA-token rules have drifted
+EXPORT-STEP-13,07a-export-step-writer.md,Medium,Perf,CONFIRMED,"Log stream loop does work proportional to records × created entities, plus allocations per record"
+EXPORT-STEP-14,07a-export-step-writer.md,Medium,Perf,CONFIRMED,Plain full export builds an every-id HashSet and copies every record
+EXPORT-STEP-15,07a-export-step-writer.md,Medium,Perf,CONFIRMED,"Argument splitting allocates a `Vec<char>` per record and per slot, and runs on every `IFCREL*` line"
+EXPORT-STEP-16,07a-export-step-writer.md,Medium,Maintainability,CONFIRMED,A refusal counter is derived by substring-matching warning text; warning text is duplicated and has drifted
+EXPORT-STEP-17,07a-export-step-writer.md,Low,DRY,CONFIRMED,"The same token predicates (`#N` ref, `.ENUM.`) are written six times"
+EXPORT-STEP-18,07a-export-step-writer.md,Low,DRY,CONFIRMED,Four `#ref` scanners with different string and overflow policies
+EXPORT-STEP-19,07a-export-step-writer.md,Low,DRY,CONFIRMED,Literal un-doubling plus decoding is re-implemented outside core
+EXPORT-STEP-20,07a-export-step-writer.md,Low,DRY,CONFIRMED,Unit-symbol table duplicated from core with drift; SI prefix list and foot factors repeated
+EXPORT-STEP-21,07a-export-step-writer.md,Low,DRY,CONFIRMED,Two header writers; magic `'2;1'` and the footer literal repeated
+EXPORT-STEP-22,07a-export-step-writer.md,Low,DRY,CONFIRMED,Convert-or-write and the `StepStats` literal are copy-pasted
+EXPORT-STEP-23,07a-export-step-writer.md,Low,Maintainability,CONFIRMED,Long functions and stale `#[allow]`s
+EXPORT-STEP-24,07a-export-step-writer.md,Low,Maintainability,CONFIRMED,"Schema, value types and attribute columns are passed as strings and bare numbers"
+EXPORT-STEP-25,07a-export-step-writer.md,Low,Best-practice,CONFIRMED,Inconsistent error and stats types across the writer
+EXPORT-STEP-26,07a-export-step-writer.md,Low,Bug,CONFIRMED,Caller-supplied STEP fragments are written unvalidated (record injection)
+EXPORT-STEP-27,07a-export-step-writer.md,Low,Perf,CONFIRMED,Repeated parsing of the header and of unit/relationship records
+EXPORT-STEP-28,07a-export-step-writer.md,Low,Maintainability,CONFIRMED,"Keyword case normalisation repeated 37 times, mixing Unicode and ASCII"
+EXPORT-STEP-29,07a-export-step-writer.md,Low,Maintainability,CONFIRMED,Copy-paste test fixtures and helpers
+EXPORT-MERGE-1,07b-export-merge-schema.md,High,Bug,CONFIRMED,"The Rust schema converter does not trim attributes the target schema lacks, except for 30 hand-listed types"
+EXPORT-MERGE-2,07b-export-merge-schema.md,High,DRY,CONFIRMED,"Per-schema attribute data exists 5+ times, and the reason given for the `schema_pad` tables is out of date"
+EXPORT-MERGE-3,07b-export-merge-schema.md,Medium,DRY,CONFIRMED,"Two copies of the leading-GlobalId reader and validator, and the doc names the unused one as the only production path"
+EXPORT-MERGE-4,07b-export-merge-schema.md,Medium,DRY,CONFIRMED,Schema-family detection exists 9 times with different rules
+EXPORT-MERGE-5,07b-export-merge-schema.md,Medium,DRY,CONFIRMED,Five STEP argument splitters; only one skips `/* comments */`
+EXPORT-MERGE-6,07b-export-merge-schema.md,Medium,DRY,CONFIRMED,"The record-parsing prologue is copied 5 times, and each IFC2X3 line is split 5-6 times"
+EXPORT-MERGE-7,07b-export-merge-schema.md,Medium,DRY,CONFIRMED,step_map has three pairs of near-identical graph walkers and duplicated map edits
+EXPORT-MERGE-8,07b-export-merge-schema.md,Medium,Bug,CONFIRMED,"Downgrading IfcAlignment/IfcReferent to IFCPROXY keeps the source attributes, producing a short, invalid IfcProxy"
+EXPORT-MERGE-9,07b-export-merge-schema.md,Medium,Bug,CONFIRMED,Two wrong counts in the hand-written IFC2X3 attribute table
+EXPORT-MERGE-10,07b-export-merge-schema.md,Medium,Perf,CONFIRMED,`unify_spatial` copies every line of each later model to a String before checking its type
+EXPORT-MERGE-11,07b-export-merge-schema.md,Medium,Perf,CONFIRMED,The merge repeats whole-model passes and stores one heap String per entity
+EXPORT-MERGE-12,07b-export-merge-schema.md,Low,Bug,LIKELY,"`apply_folds` splits the output on newlines, so a fold into a multi-line source record is lost"
+EXPORT-MERGE-13,07b-export-merge-schema.md,Low,DRY,CONFIRMED,"Four copies of the `#N` and `(#a,#b)` parsers, two copies of the `IFCREL` check, three of the ""id of a `#N=` line"" reader"
+EXPORT-MERGE-14,07b-export-merge-schema.md,Low,DRY,CONFIRMED,"The GUID alphabet is defined in three places, with two different minting schemes"
+EXPORT-MERGE-15,07b-export-merge-schema.md,Low,DRY,CONFIRMED,Two STEP REAL formatters; the map writer's exponent branch can never run
+EXPORT-MERGE-16,07b-export-merge-schema.md,Low,DRY,CONFIRMED,Test oracles use their own `#ref` scanners that have drifted from production
+EXPORT-MERGE-17,07b-export-merge-schema.md,Low,Maintainability,CONFIRMED,Repeated inline STEP-file wrappers in tests
+EXPORT-MERGE-18,07b-export-merge-schema.md,Low,Bug,CONFIRMED,`ModelIndex::build` keeps the last span but the first type for duplicate express ids
+EXPORT-MERGE-19,07b-export-merge-schema.md,Low,Perf,CONFIRMED,Extra full-size copies of the merged output
+EXPORT-MERGE-20,07b-export-merge-schema.md,Low,Maintainability,CONFIRMED,Two very large functions
+EXPORT-MERGE-21,07b-export-merge-schema.md,Low,Maintainability,CONFIRMED,"Dead parameters and fields, and out-of-date docs"
+EXPORT-MERGE-22,07b-export-merge-schema.md,Low,Best-practice,CONFIRMED,"Map normalisation uses String errors, reports refusals through two different channels, and mislabels ids"
+EXPORT-DATA-1,07c-export-data-model.md,High,DRY + Bug,CONFIRMED,`RelatingPropertyDefinition` parsed three ways; the main export drops `IfcPropertySetDefinitionSet` entirely
+EXPORT-DATA-2,07c-export-data-model.md,Medium,DRY,CONFIRMED,"Property-value decoding exists twice and has drifted (kinds supported, enum and ref rendering)"
+EXPORT-DATA-3,07c-export-data-model.md,Medium,DRY,CONFIRMED,`IfcRelDefinesByType` is resolved four times with three different conflict policies
+EXPORT-DATA-4,07c-export-data-model.md,Medium,Bug,CONFIRMED,DFJSON story order mixes unscaled absolute `Elevation` with rebased metric floor heights
+EXPORT-DATA-5,07c-export-data-model.md,Medium,Bug,LIKELY,An `IfcSpace` with more than one extruded item gives duplicate HBJSON/DFJSON identifiers
+EXPORT-DATA-6,07c-export-data-model.md,Medium,Bug,LIKELY,"HBJSON/DFJSON coordinates already passed through f32; the ""rebase keeps survey precision"" comment is wrong"
+EXPORT-DATA-7,07c-export-data-model.md,Medium,DRY + Bug,LIKELY,"Two Honeybee identifier sanitizers, drifted from each other and from honeybee-schema"
+EXPORT-DATA-8,07c-export-data-model.md,Medium,Bug,CONFIRMED,"The JSON number allowlist misses most IFC measure types, so numbers become strings"
+EXPORT-DATA-9,07c-export-data-model.md,Medium,DRY,CONFIRMED,"Unit scales come from three different resolvers, with mixed units in single outputs"
+EXPORT-DATA-10,07c-export-data-model.md,Medium,DRY,CONFIRMED,Duplicate-space dedupe cloned between HBJSON and DFJSON with literal thresholds
+EXPORT-DATA-11,07c-export-data-model.md,Medium,DRY,CONFIRMED,"Profile-to-ring, extrusion and vector helpers re-implemented across the energy exporters"
+EXPORT-DATA-12,07c-export-data-model.md,Medium,Perf,CONFIRMED,Single-pass scans use the caching decoder (unbounded cache plus a clone per entity)
+EXPORT-DATA-13,07c-export-data-model.md,Medium,Perf,CONFIRMED,Flattened entity CSV is O(entities x columns x properties)
+EXPORT-DATA-14,07c-export-data-model.md,Low,Perf,CONFIRMED,Each export rescans the file several times
+EXPORT-DATA-15,07c-export-data-model.md,Medium,Maintainability,CONFIRMED,`stream_export_model_with_options` is a 326-line function
+EXPORT-DATA-16,07c-export-data-model.md,Low,DRY,CONFIRMED,"Spatial-tree walk and project-node decode duplicated in CSV, IFCX and USD; already drifted"
+EXPORT-DATA-17,07c-export-data-model.md,Low,DRY,CONFIRMED,Quantity kind is a stringly-typed round-trip mapped in four places
+EXPORT-DATA-18,07c-export-data-model.md,Low,Maintainability,CONFIRMED,Magic attribute indices instead of named schema slots
+EXPORT-DATA-19,07c-export-data-model.md,Low,Maintainability,CONFIRMED,About 70 inline STEP fixtures and no shared builder
+EXPORT-DATA-20,07c-export-data-model.md,Low,Bug / DRY,CONFIRMED,Parquet geometry folds the origin in f32 and skips the finiteness gate the other exporters apply
+EXPORT-DATA-21,07c-export-data-model.md,Low,Maintainability,CONFIRMED,Stringly-typed enums in the energy and analysis models
+EXPORT-DATA-22,07c-export-data-model.md,Low,DRY,CONFIRMED,HBJSON and DFJSON scaffolding duplicated
+EXPORT-DATA-23,07c-export-data-model.md,Low,Maintainability,CONFIRMED,Tolerance and threshold literals scattered with no named home
+EXPORT-DATA-24,07c-export-data-model.md,Low,DRY,CONFIRMED,Bounded-diagnostics collector and rebar limit validation each written several times
+EXPORT-DATA-25,07c-export-data-model.md,Low,DRY,CONFIRMED,"""Is this a product?"" logic duplicated; quantity analysis has drifted"
+EXPORT-DATA-26,07c-export-data-model.md,Low,Quirk,CONFIRMED,Rebar schedule falls back to IFC4 layout while the attribute export fails closed
+EXPORT-DATA-27,07c-export-data-model.md,Low,Best-practice,CONFIRMED,Error handling is inconsistent across sibling exporters
+EXPORT-DATA-28,07c-export-data-model.md,Low,Quirk,CONFIRMED,Flattened CSV header names can collide
+SERVER-5,08-server.md,High,Bug,CONFIRMED,Unbounded recursion in `resolve_material` – a crafted file aborts the whole server
+SERVER-6,08-server.md,High,Bug,CONFIRMED,Cache-read routes and probe gates read whole blobs into memory with no admission
+SERVER-7,08-server.md,High,Bug,CONFIRMED,Cached replay drops its admission slot but keeps the whole model resident for the drain
+SERVER-8,08-server.md,High,Bug,CONFIRMED,parquet-stream data-model fill takes a second admission slot while the stream holds the first
+SERVER-1,08-server.md,High,DRY,CONFIRMED,The parse/cache HTTP scaffold is copy-pasted across every route
+SERVER-2,08-server.md,High,DRY,CONFIRMED,`/parse/parquet` and `/parse/parquet/optimized` share a near-identical parse-and-serialize body
+SERVER-3,08-server.md,High,DRY,CONFIRMED,The server data model is a fourth Rust implementation of IFC data extraction
+SERVER-9,08-server.md,High,DRY,CONFIRMED,`benches/serialization.rs` is a stale fork of the production serializers
+SERVER-10,08-server.md,High,Bug,CONFIRMED,gzip / `.ifcZIP` decompression runs on the async runtime
+SERVER-11,08-server.md,High,Perf,CONFIRMED,`extract_data_model` copies the entire upload and allocates a `String` per entity
+SERVER-12,08-server.md,Medium,DRY / Bug,CONFIRMED,Five different policies for an unusable cache entry; three of them return 500 forever
+SERVER-13,08-server.md,Medium,DRY,CONFIRMED,Four Parquet writer helpers with drifted writer properties
+SERVER-14,08-server.md,Medium,DRY / Bug,CONFIRMED,"Length-prefixed section framing written 4×, read 3×+; the data-model framer is unguarded"
+SERVER-15,08-server.md,Medium,DRY,CONFIRMED,Z-up→Y-up conversion and its vertex loop are implemented 3× in the server and 4× more elsewhere
+SERVER-16,08-server.md,Medium,DRY,CONFIRMED,The six-field response/header shape is defined five times; `DataModelStats` is built twice
+SERVER-17,08-server.md,Medium,DRY,CONFIRMED,The trailing per-mesh columns share a schema but are assembled twice
+SERVER-18,08-server.md,Medium,DRY / Bug,CONFIRMED,"Schema detection is duplicated, and `/parse/metadata` disagrees with `/parse`"
+SERVER-19,08-server.md,Medium,DRY,CONFIRMED,Hand-built `Response::builder` boilerplate (nine sites)
+SERVER-20,08-server.md,Medium,DRY,CONFIRMED,The two `?sha256=` probe handlers are near-identical
+SERVER-21,08-server.md,Medium,Quirk,CONFIRMED,`GET /parse/symbolic/{key}` answers 202 forever for keys nothing will write
+SERVER-22,08-server.md,Medium,Quirk / Perf,CONFIRMED,`/parse/stream` advertises a `cache_key` that names nothing; parquet-stream hashes the upload twice
+SERVER-23,08-server.md,Medium,Perf,CONFIRMED,The streaming producer clones every batch's geometry
+SERVER-24,08-server.md,Medium,Perf / Quirk,CONFIRMED,"Every admission reservation is `max_file_size`, even when the actual size is known"
+SERVER-25,08-server.md,Medium,Perf,CONFIRMED,JSON cache hits fully decode and re-encode the whole model to set one flag
+SERVER-26,08-server.md,Medium,Bug,LIKELY,Material association rows multiply elements × layers with no cap
+SERVER-27,08-server.md,Medium,DRY,CONFIRMED,Spatial-structure type list is hand-typed while processing derives it from the schema
+SERVER-28,08-server.md,Medium,DRY,LIKELY,IFC4-only generated attribute table instead of core's per-schema registry
+SERVER-29,08-server.md,Medium,Bug,LIKELY,Slow uploads hold admission permits; no body read-progress timeout
+SERVER-30,08-server.md,Low,DRY,CONFIRMED,Admission RSS watermark and `Overloaded` construction duplicated
+SERVER-31,08-server.md,Low,DRY,CONFIRMED,`WriteTimeoutIo` duplicates its poll arms
+SERVER-32,08-server.md,Low,DRY / Maintainability,CONFIRMED,Route table listed in three places; two copies are stale
+SERVER-33,08-server.md,Low,Maintainability,CONFIRMED,Stale and contradictory comments
+SERVER-34,08-server.md,Low,Maintainability,CONFIRMED,"Dead dependencies, features, config and variants"
+SERVER-35,08-server.md,Low,Quirk,CONFIRMED,Client-caused decompression failures return 500
+SERVER-36,08-server.md,Low,DRY / Quirk,CONFIRMED,"Config parsing has two styles with duplicated defaults, plus an env re-parse"
+SERVER-37,08-server.md,Low,Quirk,SUSPECT,Flat mesh table `index_count` disagrees with the written triangles for a ragged index buffer
+SERVER-38,08-server.md,Low,Perf,CONFIRMED,Data-model extractors do repeated full-job scans and per-call uppercasing
+SERVER-39,08-server.md,Low,DRY,CONFIRMED,`resolve_material` repeats the same set-walk three times and the usage arm twice
+SERVER-40,08-server.md,Low,DRY,CONFIRMED,Test scaffolding is heavily copy-pasted
+SERVER-41,08-server.md,Low,Quirk,SUSPECT,`quantize_position` silently saturates
+SERVER-42,08-server.md,Low,Perf,CONFIRMED,Content-hash dedup uses per-element SipHash
+SERVER-43,08-server.md,Low,Maintainability,CONFIRMED,"Cache-key namespace definitions are scattered despite the ""THE definition"" policy"
+SERVER-44,08-server.md,Low,Best-practice,CONFIRMED,Error-type sprawl
+SERVER-45,08-server.md,Low,Quirk,CONFIRMED / ,Minor quirks
+EDGE-FFI-1,09-landxml-bindings-clash.md,High,Bug,CONFIRMED,"Python's (and the server's) ""large stack"" does not reach the rayon workers that run the CSG"
+EDGE-FFI-3,09-landxml-bindings-clash.md,Medium,DRY,CONFIRMED,"Python's ""spawn a large-stack thread, join, map panic to a string"" block copied 8 times"
+EDGE-FFI-4,09-landxml-bindings-clash.md,Medium,DRY,CONFIRMED,"Python results are serialised to JSON, parsed by Python's `json.loads`, and string keys re-keyed to int, six times"
+EDGE-FFI-6,09-landxml-bindings-clash.md,Medium,DRY,CONFIRMED,"`ProcessingResult` → `ParseResponse` mapping duplicated in FFI and the server, and the FFI output has drifted"
+EDGE-FFI-7,09-landxml-bindings-clash.md,Medium,DRY,CONFIRMED,"The ""site rotation only in SiteLocal"" decision is re-derived at every consumer"
+EDGE-FFI-2,09-landxml-bindings-clash.md,Medium,Bug,CONFIRMED,FFI rejects IFC files that are not valid UTF-8 (merges EDGE-WASM-14)
+EDGE-FFI-5,09-landxml-bindings-clash.md,Medium,Bug,LIKELY,Non-finite floats silently become JSON `null` on every Python JSON entry point except `rebar_schedule`
+EDGE-FFI-8,09-landxml-bindings-clash.md,Medium,Best-practice,CONFIRMED,"FFI panic safety depends on the build profile, with no compile-time guard"
+EDGE-FFI-9,09-landxml-bindings-clash.md,Medium,Perf,CONFIRMED,cloud-import clones the ancestor `HashSet<String>` for every child (O(occurrences x depth) memory)
+EDGE-FFI-10,09-landxml-bindings-clash.md,Low,DRY,CONFIRMED,cloud-import duplicates the IFCX vocabulary owned by export's IFC5 writer
+EDGE-FFI-11,09-landxml-bindings-clash.md,Low,DRY,CONFIRMED,csg-thread-bench `replay_one` is a copy of processing's bench `replay`
+EDGE-FFI-12,09-landxml-bindings-clash.md,Low,Quirk,CONFIRMED,"Python `alignment_axes` requires UTF-8 and runs on the caller thread, unlike every other entry point"
+EDGE-FFI-13,09-landxml-bindings-clash.md,Low,Perf,CONFIRMED,"cloud-import re-parses the GLB for every occurrence, and its doc claims a cache that does not exist"
+EDGE-FFI-14,09-landxml-bindings-clash.md,Low,Maintainability,CONFIRMED,Python crate sits outside every lint lane; panic payloads and cloud-import errors are discarded
+EDGE-CLASH-1,09a-clash-zerocopy.md,High,Bug,LIKELY,"Clash BVH sorts with a comparator that breaks on NaN, which can panic and abort the shared wasm module"
+EDGE-CLASH-2,09a-clash-zerocopy.md,Medium,DRY,CONFIRMED,Z-up/Y-up basis matrix and row-major 4x4 multiply copied across three crates
+EDGE-CLASH-3,09a-clash-zerocopy.md,Medium,DRY,CONFIRMED,Symbolic primitives exist twice and are copied field by field
+EDGE-CLASH-4,09a-clash-zerocopy.md,Medium,DRY,CONFIRMED,"Box-face normal code duplicated between clash and geometry, and the two have drifted"
+EDGE-CLASH-5,09a-clash-zerocopy.md,Medium,Perf,CONFIRMED,Clash session keeps up to three copies of each element's geometry
+EDGE-CLASH-6,09a-clash-zerocopy.md,Low,Maintainability,CONFIRMED,The `zero_copy` module name and its docs claim views that don't exist
+EDGE-CLASH-7,09a-clash-zerocopy.md,Low,DRY,CONFIRMED,`MeshCollection` lists all 11 fields in four separate places
+EDGE-CLASH-8,09a-clash-zerocopy.md,Low,DRY,CONFIRMED,"The f32-ULP constant 2^-22 is defined in five places, with stale cross-references"
+EDGE-CLASH-9,09a-clash-zerocopy.md,Low,Quirk,CONFIRMED,"Margin formula computed twice, and differs from TS (comments call it a bit-for-bit port)"
+EDGE-CLASH-10,09a-clash-zerocopy.md,Low,Perf,CONFIRMED,Two separate AABB BVHs; the clash one allocates per node and tests leaves twice
+EDGE-CLASH-11,09a-clash-zerocopy.md,Low,DRY,CONFIRMED,Clash test fixtures copy the same box and packing code many times
+EDGE-CLASH-12,09a-clash-zerocopy.md,Low,DRY,CONFIRMED,`[f64;3]` vector helpers are re-written throughout the workspace
+EDGE-CLASH-13,09a-clash-zerocopy.md,Low,Maintainability,CONFIRMED,Two doc comments are attached to the wrong function
+EDGE-LXMATH-1,09b-landxml-alignment-math.md,High,DRY,LIKELY,"Circular-arc validation exists twice in the crate, and the parcel copy's tolerances refuse realistic curved parcels"
+EDGE-LXMATH-2,09b-landxml-alignment-math.md,Medium,DRY,CONFIRMED,Clothoid / spiral integration is implemented three ways with different accuracy and domain rules
+EDGE-LXMATH-3,09b-landxml-alignment-math.md,Medium,DRY,CONFIRMED,"The plan point-resolver adapter is copied into the WASM binding, and the copies use different work budgets"
+EDGE-LXMATH-4,09b-landxml-alignment-math.md,Medium,DRY,CONFIRMED,"Alignment display sampling is duplicated, the copies truncate differently, and the stream summary computes it twice"
+EDGE-LXMATH-5,09b-landxml-alignment-math.md,Medium,DRY,CONFIRMED,"The 2D predicates in LandXML terrain and parcel code are copies of geometry's `geom2d`, and the parcel copy is inexact"
+EDGE-LXMATH-6,09b-landxml-alignment-math.md,Medium,DRY,CONFIRMED,"Terrain constraints are scanned twice, once in LandXML and again in geometry's CDT"
+EDGE-LXMATH-7,09b-landxml-alignment-math.md,Medium,DRY,CONFIRMED,Vertical circular and parabolic curves are evaluated five ways; IFC4x1 circular arcs use a parabolic approximation
+EDGE-LXMATH-8,09b-landxml-alignment-math.md,Medium,DRY,CONFIRMED,Profile evaluation resolves each curve's PVIs twice and finds them by float equality
+EDGE-LXMATH-9,09b-landxml-alignment-math.md,Medium,Bug,CONFIRMED,`IrregularLine` probes fail at the segment end when the declared length exceeds the polyline length
+EDGE-LXMATH-10,09b-landxml-alignment-math.md,Medium,Quirk,LIKELY,"The circular vertical-curve length check allows only 32 ULP, far stricter than every other length check"
+EDGE-LXMATH-11,09b-landxml-alignment-math.md,Medium,Quirk,CONFIRMED,"The comment on assumed units contradicts the declared-unit behaviour, and the two paths scale elevations differently"
+EDGE-LXMATH-12,09b-landxml-alignment-math.md,Low,DRY,CONFIRMED,"The LandXML linear-unit table is duplicated, and the copies handle a blank `elevationUnit` differently"
+EDGE-LXMATH-13,09b-landxml-alignment-math.md,Low,DRY,CONFIRMED,The WASM probe/inspect endpoints repeat parse-and-find three times and re-implement the superelevation filter
+EDGE-LXMATH-14,09b-landxml-alignment-math.md,Low,DRY,CONFIRMED,Station-equation walking and validation are written three times
+EDGE-LXMATH-15,09b-landxml-alignment-math.md,Low,DRY,CONFIRMED,Small 2D and validation helpers are copied inside the alignment numeric module and the plan code
+EDGE-LXMATH-16,09b-landxml-alignment-math.md,Low,DRY,CONFIRMED,Two pairs of model types share a name
+EDGE-LXMATH-17,09b-landxml-alignment-math.md,Low,DRY,CONFIRMED,Station-to-segment lookup is reimplemented with different boundary ownership
+EDGE-LXMATH-18,09b-landxml-alignment-math.md,Low,DRY,CONFIRMED,Plan source-ID traversal and batch size are duplicated
+EDGE-LXMATH-19,09b-landxml-alignment-math.md,Low,DRY,CONFIRMED,Test fixture and terrain error plumbing are duplicated
+EDGE-LXMATH-20,09b-landxml-alignment-math.md,Medium,Perf,CONFIRMED,Every probe re-validates the whole alignment and searches segments linearly
+EDGE-LXMATH-21,09b-landxml-alignment-math.md,Low,Perf,CONFIRMED,Faceless-TIN adaptation clones whole surface collections
+EDGE-LXMATH-22,09b-landxml-alignment-math.md,Medium,Maintainability,CONFIRMED,`adapt_faceless_tin` is a 376-line function with the same error-mapping match repeated eight times
+EDGE-LXMATH-23,09b-landxml-alignment-math.md,Low,Maintainability,CONFIRMED,`clothoid.rs` is hand-minified onto very long lines
+EDGE-LXMATH-24,09b-landxml-alignment-math.md,Low,Maintainability,CONFIRMED,"Error types, codes and tolerance policies are inconsistent across the numeric surfaces"
+EDGE-LXPARSE-1,09c-landxml-parsing.md,High,DRY,CONFIRMED,"Four hand-rolled XML front-ends (pull loop, consume_event, start/end/text prologue), the root cause of most drift"
+EDGE-LXPARSE-2,09c-landxml-parsing.md,High,Bug,CONFIRMED,Entity and character references in element text are silently dropped (quick-xml 0.42 `Event::GeneralRef` is never handled)
+EDGE-LXPARSE-3,09c-landxml-parsing.md,High,Bug,LIKELY,The streaming session desynchronises when one text token produces more than one event
+EDGE-LXPARSE-4,09c-landxml-parsing.md,High,Bug,CONFIRMED,Extension-root `path` strings amplify memory roughly 2000x
+EDGE-LXPARSE-5,09c-landxml-parsing.md,Medium,DRY,CONFIRMED,"The budget/limit counter pattern is duplicated 17 times, with drift"
+EDGE-LXPARSE-6,09c-landxml-parsing.md,Medium,DRY,CONFIRMED,"The linear-unit scale table and Units parsing are duplicated; `elevationUnit=""""` behaves differently"
+EDGE-LXPARSE-7,09c-landxml-parsing.md,Medium,Bug,CONFIRMED,"`assumed_linear_unit` is honoured only by TIN; pipe, plan and alignment ignore it"
+EDGE-LXPARSE-8,09c-landxml-parsing.md,Medium,Perf,CONFIRMED,"The pull ""canonical document"" re-parses the input 3–4 times; the WASM options path drops pipes; an error is matched by string"
+EDGE-LXPARSE-9,09c-landxml-parsing.md,Medium,DRY,CONFIRMED,"Alignments are parsed twice into two public types; plan point, location and properties types are also duplicated"
+EDGE-LXPARSE-10,09c-landxml-parsing.md,Medium,DRY,CONFIRMED,Whitespace-separated finite-f64 coordinate parsing is reimplemented about 10 times
+EDGE-LXPARSE-11,09c-landxml-parsing.md,Medium,DRY,CONFIRMED,Encoding normalization is duplicated between pull and stream
+EDGE-LXPARSE-12,09c-landxml-parsing.md,Medium,DRY,CONFIRMED,"The lexical tokenizer is duplicated (preflight vs stream), and both share a `<!-->` overlap bug"
+EDGE-LXPARSE-13,09c-landxml-parsing.md,Medium,DRY,CONFIRMED,Progress-error mapping in terrain.rs is copy-pasted 8 times inside a 375-line function
+EDGE-LXPARSE-14,09c-landxml-parsing.md,Medium,Perf,CONFIRMED,"Every element clones the namespace map and the whole frame, in all four parsers (so four times per element in stream)"
+EDGE-LXPARSE-15,09c-landxml-parsing.md,Medium,Perf,CONFIRMED,The pipe parser builds a BTreeMap of all attributes for every LandXML element
+EDGE-LXPARSE-16,09c-landxml-parsing.md,Medium,Perf,CONFIRMED,"Stream transport copies every byte about 5 times, byte by byte, plus a debug copy per token and a JSON serialization per event just to measure it"
+EDGE-LXPARSE-17,09c-landxml-parsing.md,Medium,Bug,LIKELY,TIN `child_ordinals` keeps one entry per distinct child name (memory amplification)
+EDGE-LXPARSE-18,09c-landxml-parsing.md,Low,DRY,CONFIRMED,Text/CDATA-outside-root and nested-element-in-capture rules differ across parsers
+EDGE-LXPARSE-19,09c-landxml-parsing.md,Low,DRY,CONFIRMED,"Attribute-to-properties helpers exist three times, with an xmlns difference; Feature/Property parsing exists twice"
+EDGE-LXPARSE-20,09c-landxml-parsing.md,Low,DRY,CONFIRMED,Pipe part conversion arms are copy-pasted
+EDGE-LXPARSE-21,09c-landxml-parsing.md,Low,DRY,CONFIRMED,The plan resolver work-budget formula is duplicated across crates
+EDGE-LXPARSE-22,09c-landxml-parsing.md,Low,Maintainability,CONFIRMED,Error codes and error types are inconsistent
+EDGE-LXPARSE-23,09c-landxml-parsing.md,Low,Bug,CONFIRMED,The XML declaration check is skipped when byte 1024 falls inside a UTF-8 character
+EDGE-LXPARSE-24,09c-landxml-parsing.md,Low,Bug,CONFIRMED,Repeated CoordinateSystem warnings are unbounded
+EDGE-LXPARSE-25,09c-landxml-parsing.md,Low,Perf,CONFIRMED,TIN and alignment allocate an unescaped String for every text node
+EDGE-LXPARSE-26,09c-landxml-parsing.md,Low,Bug,SUSPECT,Fragile index arithmetic in plan `start()`
+EDGE-LXPARSE-27,09c-landxml-parsing.md,Low,Quirk,SUSPECT,Degenerate faces are accepted
+EDGE-LXPARSE-28,09c-landxml-parsing.md,Medium,Maintainability,CONFIRMED,"God functions and structs, stringly-typed paths, sentinel roles"
+EDGE-LXPARSE-29,09c-landxml-parsing.md,Low,Maintainability,CONFIRMED,Public surface and naming
+EDGE-WASM-1,09d-wasm-bindings-api.md,High,DRY,CONFIRMED,The browser keeps its own copy of the element-colour / IfcMappedItem colour chase from `processing`
+EDGE-WASM-2,09d-wasm-bindings-api.md,High,DRY,CONFIRMED,Per-batch orchestration (router arming + per-job loop) lives in the binding and has drifted from native
+EDGE-WASM-3,09d-wasm-bindings-api.md,High,DRY,CONFIRMED,Geometry-job discovery is written six times and they disagree
+EDGE-WASM-4,09d-wasm-bindings-api.md,High,DRY,CONFIRMED,"Type-geometry sets (referenced RepresentationMaps, instantiated type ids, mapped-instance plan, type candidates) have three implementations, and they treat bare refs differently"
+EDGE-WASM-5,09d-wasm-bindings-api.md,High,Bug,LIKELY,The browser's don't-bake path does not arm the #858 indexed-colour split guard
+EDGE-WASM-6,09d-wasm-bindings-api.md,Medium,DRY,CONFIRMED,The CSG console logger re-aggregates diagnostics with different rules from the typed aggregate it returns
+EDGE-WASM-7,09d-wasm-bindings-api.md,Medium,DRY,CONFIRMED,The IfcIndexedColourMap full-palette collection loop is duplicated
+EDGE-WASM-8,09d-wasm-bindings-api.md,Medium,DRY,CONFIRMED,Unit-scale resolution has four implementations
+EDGE-WASM-9,09d-wasm-bindings-api.md,Medium,DRY,CONFIRMED,"The Z-up → Y-up basis, 4×4 multiply and render-frame point transform are copied, and two copies differ on -0.0"
+EDGE-WASM-10,09d-wasm-bindings-api.md,Medium,DRY,CONFIRMED,"Prepass wire encoders live in `processing`, but the browser decodes some of them itself"
+EDGE-WASM-11,09d-wasm-bindings-api.md,Medium,DRY,CONFIRMED,Cache lifecycle is hand-copied: eight lazy getters and three diverging reset paths
+EDGE-WASM-12,09d-wasm-bindings-api.md,Medium,DRY,CONFIRMED,16-argument batch signatures copied at five entry points (plus 12-argument finalize ×2)
+EDGE-WASM-13,09d-wasm-bindings-api.md,Medium,Bug,CONFIRMED,`exportMerged` uses `throw_str` inside a `&self` method
+EDGE-WASM-14,09d-wasm-bindings-api.md,Medium,Bug,CONFIRMED,FFI rejects IFC files that are not valid UTF-8
+EDGE-WASM-15,09d-wasm-bindings-api.md,Medium,Perf,LIKELY,The streaming pre-pass copies the whole partial FxHashMap index to emit the meta event
+EDGE-WASM-16,09d-wasm-bindings-api.md,Medium,Perf,CONFIRMED,Overlay parsers re-transcode and re-index the whole file on every call
+EDGE-WASM-17,09d-wasm-bindings-api.md,Medium,Maintainability,CONFIRMED,"God functions, a 22-field `IfcAPI` and boolean-flag soup"
+EDGE-WASM-18,09d-wasm-bindings-api.md,Low,DRY,CONFIRMED,The browser don't-bake finalize repeats processing's grouping and template scan
+EDGE-WASM-19,09d-wasm-bindings-api.md,Low,DRY,CONFIRMED,"JSON-request binding helpers are only partly shared, and limits are hard-coded per file"
+EDGE-WASM-20,09d-wasm-bindings-api.md,Low,DRY,CONFIRMED,The ring-set wire format (coords / ringLengths / shapeOffsets) is encoded six times
+EDGE-WASM-21,09d-wasm-bindings-api.md,Low,DRY,CONFIRMED,Small clones inside batch.rs and grid_lines.rs
+EDGE-WASM-22,09d-wasm-bindings-api.md,Low,DRY,CONFIRMED,Flat mesh-wire slicing is written three times with different overflow handling
+EDGE-WASM-23,09d-wasm-bindings-api.md,Low,DRY,CONFIRMED,Test fixtures are copied across crates
+EDGE-WASM-24,09d-wasm-bindings-api.md,Low,DRY,CONFIRMED,Small duplicates across front-ends
+EDGE-WASM-25,09d-wasm-bindings-api.md,Low,Bug,CONFIRMED,An `IFCSITE` job is emitted even when the caller disables `IFCSITE`
+EDGE-WASM-26,09d-wasm-bindings-api.md,Low,Quirk,SUSPECT,Cache keys and decoder seeding that are wrong but currently harmless
+EDGE-WASM-27,09d-wasm-bindings-api.md,Low,Best-practice,CONFIRMED,"Mixed error shapes at the boundary, and silent conversion fallbacks"
+EDGE-WASM-28,09d-wasm-bindings-api.md,Low,Perf,CONFIRMED,Result getters copy whole buffers on every access
+EDGE-WASM-29,09d-wasm-bindings-api.md,Low,Maintainability,CONFIRMED,Stringly-typed and inconsistent boundary inputs
+EDGE-WASM-30,09d-wasm-bindings-api.md,Low,Maintainability,CONFIRMED,Dead or duplicated public surface
+EDGE-WASM-31,09d-wasm-bindings-api.md,Low,Maintainability,CONFIRMED,Stale comments and justifications
+EDGE-WASM-32,09d-wasm-bindings-api.md,Low,Quirk,CONFIRMED,Inconsistent hostile-input policy for JS mesh operands
+EDGE-WASM-33,09d-wasm-bindings-api.md,Low,Quirk,CONFIRMED,Two opacity cutoffs
+XCUT-1,10-cross-cutting.md,High,DRY,CONFIRMED,`IfcAxis2Placement3D` is read nine different ways
+XCUT-2,10-cross-cutting.md,High,DRY,CONFIRMED,`IfcCartesianPoint` / `IfcDirection` coordinate reading has 12 named copies and 60 inline copies
+XCUT-3,10-cross-cutting.md,High,DRY,CONFIRMED,"Vector math over `[f64;3]` is implemented 14 times in 5 crates (plus nalgebra, plus Plato-generated)"
+XCUT-4,10-cross-cutting.md,High,DRY,CONFIRMED,"Row-major 4×4 matrix helpers (multiply, affine inverse, compose, identity, row/col flatteners) duplicated across geometry, processing, export, wasm, server"
+XCUT-5,10-cross-cutting.md,High,DRY,CONFIRMED,"The IFC Z-up → WebGL Y-up frame swap has six ""single homes"""
+XCUT-6,10-cross-cutting.md,High,DRY,CONFIRMED,"Length-unit resolution and `IFCPROJECT` location are implemented 4× and 12× respectively, with 3 SI-prefix tables"
+XCUT-7,10-cross-cutting.md,High,DRY,CONFIRMED,"Four parallel IFC data-model pipelines (property sets, quantities, spatial tree, materials, type relations) and two schema code generators"
+XCUT-8,10-cross-cutting.md,Medium,DRY,CONFIRMED,AABB / bounds: 5 types and ~40 hand-rolled min/max folds with different sentinels and NaN behaviour
+XCUT-9,10-cross-cutting.md,Medium,DRY,CONFIRMED,"Hashing: five FNV-1a implementations, five generated CRC32s, three content-hash algorithms, two `sha2` majors, and `DefaultHasher` in a persisted key"
+XCUT-10,10-cross-cutting.md,Medium,DRY,CONFIRMED,IFC GlobalId alphabet and validator duplicated with a drifted rule
+XCUT-11,10-cross-cutting.md,Medium,DRY,CONFIRMED,Colour keys and 8-bit quantisation re-implemented outside the sanctioned `Rgba` home
+XCUT-12,10-cross-cutting.md,Medium,DRY / Maintainability,CONFIRMED,"Tolerances: 111 named constants and ~1,000 inline epsilon literals with the same concept at different values"
+XCUT-13,10-cross-cutting.md,Low,DRY,CONFIRMED,Number/identifier/string formatting helpers duplicated across export and server
+XCUT-14,10-cross-cutting.md,Medium,DRY / Maintainability,CONFIRMED,Four cancellation/progress mechanisms
+XCUT-15,10-cross-cutting.md,Medium,Best-practice / Maintainabilit,CONFIRMED,Seven error-handling policies across the workspace
+XCUT-16,10-cross-cutting.md,Medium,Best-practice,CONFIRMED,No external dependency uses workspace inheritance; `sha2` is already split across majors
+XCUT-17,10-cross-cutting.md,Low,Maintainability,CONFIRMED,Seven declared dependencies are never referenced
+XCUT-18,10-cross-cutting.md,Low,Maintainability,CONFIRMED,19 crates resolved at multiple versions in Cargo.lock; the python lockfile has drifted from the root one
+XCUT-19,10-cross-cutting.md,Medium,DRY / Maintainability,CONFIRMED,"Crate layering: copies made to avoid dependencies, and a landxml concern living in geometry"
+XCUT-20,10-cross-cutting.md,Medium,Maintainability,CONFIRMED,Feature-flag and env-var configuration sprawl without a catalogue
+XCUT-21,10-cross-cutting.md,Medium,Maintainability,CONFIRMED,"God files and god functions, frozen by a 461-row size allowlist"
+XCUT-22,10-cross-cutting.md,Medium,DRY / Maintainability,CONFIRMED,Test sprawl: 240 integration-test binaries and the same helpers copied dozens of times
+XCUT-23,10-cross-cutting.md,Low,Best-practice,CONFIRMED,"Hygiene numbers (unsafe, unwrap/expect, allows, TODOs)"
+XCUT-24,10-cross-cutting.md,Low,Maintainability,CONFIRMED,Docs-vs-code drift (AGENTS.md / rust/AGENTS.md)
+XCUT-25,10-cross-cutting.md,Low,Quirk,LIKELY,"Server mesh-dedup keys use `std` `DefaultHasher`, which has no cross-release stability guarantee"
+XCUT-26,10-cross-cutting.md,Medium,Bug,CONFIRMED,`read_conic_placement_3d` normalises a possibly-zero axis without a guard (NaN frame)
+XCUT-27,10-cross-cutting.md,Medium,DRY,CONFIRMED,Placement-chain walk implemented nine times with two different depth limits
+XCUT-28,10-cross-cutting.md,Low,DRY,CONFIRMED,Polygon normal / area and signed-volume helpers duplicated across crates
+XCUT-29,10-cross-cutting.md,Low,DRY,CONFIRMED,Vertex welding / quantisation grids differ per consumer
+XCUT-30,10-cross-cutting.md,Low,Maintainability,CONFIRMED,Mesh container types: four wrappers around one `MeshData`

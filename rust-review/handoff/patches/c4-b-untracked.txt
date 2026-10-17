@@ -1,0 +1,4 @@
+rust/processing/src/processor/finalize.rs
+rust/processing/src/processor/job.rs
+rust/processing/src/processor/pass.rs
+rust/processing/src/processor/resolve.rs

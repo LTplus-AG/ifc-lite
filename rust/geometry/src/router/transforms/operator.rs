@@ -204,12 +204,13 @@ mod tests {
 
     // A zero IfcDirection((0,0,0)) as Axis1 made a bare normalize() emit NaN, and
     // the operator matrix was returned Ok, silently poisoning every mapped vertex.
-    // The matrix must now be finite.
+    // The matrix must now be finite; its LocalOrigin is still mandatory (#7779).
     #[test]
     fn cartesian_transformation_operator_zero_axis_stays_finite() {
         let content = "\
 #1=IFCDIRECTION((0.,0.,0.));
-#3=IFCCARTESIANTRANSFORMATIONOPERATOR3D(#1,$,$,$,$);
+#2=IFCCARTESIANPOINT((0.,0.,0.));
+#3=IFCCARTESIANTRANSFORMATIONOPERATOR3D(#1,$,#2,$,$);
 ";
         let mut decoder = EntityDecoder::new(content);
         let router = GeometryRouter::new();

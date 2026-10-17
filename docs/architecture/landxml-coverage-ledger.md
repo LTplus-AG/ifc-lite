@@ -39,8 +39,11 @@ grammar invariant; it never turns synthetic input into vendor certification.
 Every `rendered` capability below is conditional on the source declaring `LandXML/Units` with a
 `linearUnit`. A numeric surface that would be drawn to scale is refused with `LXML009` when the
 declaration is absent, on every parse path — streaming and non-streaming alike, so a file cannot
-render on one path and be refused on another. Preserved-only records remain inspectable without
-units, because nothing about them is drawn to scale.
+render on one path and be refused on another. Every path runs the one `xml::driver`, so this holds by
+construction; the single difference is that a stream which already committed an assumed unit to its
+header (a surface drew to scale before `<Units>`) refuses a later `<Units>` (#7753), where a
+non-streaming parse uses the declared units with a warning. Preserved-only records remain
+inspectable without units, because nothing about them is drawn to scale.
 
 The unit is never inferred from coordinate magnitude. Where a reviewed, caller-supplied assumed
 unit is used instead, it is carried as provenance and is distinguishable from a declared unit by

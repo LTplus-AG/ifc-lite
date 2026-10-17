@@ -7,9 +7,9 @@ use crate::{
     LandXmlDiagnosticCode as Code, LandXmlPipeNetworkDocument, LandXmlPipeUnits, LandXmlSourceId,
 };
 
-use super::super::{convert, state::RawUnits, PipeParser};
+use super::super::{convert, state::RawUnits, PipeHandler};
 
-impl PipeParser<'_> {
+impl PipeHandler<'_> {
     /// Finalize the shared parser after either pull or stream event delivery.
     pub(crate) fn finish_stream(self) -> Result<LandXmlPipeNetworkDocument> {
         self.finish_stream_with_preflight()

@@ -59,7 +59,7 @@ const NEEDS_PARSER_DIST = skipUnlessFilesExist(ROOT, ['packages/parser/dist/rela
 const CHECKER = join(SCRIPTS, 'check-server-browser-type-parity.mjs');
 
 const FILES = {
-  RUST_REL: 'apps/server/src/services/data_model/generated/relationship_slots.rs',
+  RUST_REL: 'apps/server/tests/golden/relationship-slots.json',
   TS_REL_INDEXES: 'packages/parser/src/columnar-parser-indexes.ts',
   RUST_SPATIAL: 'apps/server/src/services/data_model/spatial.rs',
   TS_SPATIAL: 'packages/data/src/spatial-types.ts',
@@ -138,11 +138,11 @@ test('RELATIONSHIPS (#4672): a complete alternate checkout uses its matching bui
 
 // -- relationships -----------------------------------------------------
 
-test('RELATIONSHIPS: RED when a type is removed from the generated Rust slot table', { skip: NEEDS_PARSER_DIST }, () => {
+test('RELATIONSHIPS: RED when a type is removed from the committed Rust slot vector', { skip: NEEDS_PARSER_DIST }, () => {
   const rust = replaceOnce(
     real.RUST_REL,
-    '"IFCRELAGGREGATES" => Some(RelationshipSlots {',
-    '"__REMOVED__" => Some(RelationshipSlots {',
+    '"IFCRELAGGREGATES": {',
+    '"__REMOVED__": {',
   );
   const { status, out } = runOn({ RUST_REL: rust });
   assert.equal(status, 1, out);
@@ -209,8 +209,8 @@ test('RELATIONSHIPS: adding a type to BOTH sides keeps it passing', { skip: NEED
   // the literal set that stays source-text-readable after #4205.
   const rust = replaceOnce(
     real.RUST_REL,
-    'match upper_type_name {',
-    'match upper_type_name {\n        "IFCRELINVENTEDFAKETYPE" => Some(RelationshipSlots { relating_idx: 4, related_idx: 5, related_is_list: true }),',
+    '"slots": {',
+    '"slots": {\n    "IFCRELINVENTEDFAKETYPE": { "relating": 4, "related": 5, "relatingIsList": false, "relatedIsList": true },',
   );
   const ts = replaceOnce(
     real.TS_REL_INDEXES,
@@ -451,10 +451,10 @@ test('MATERIALS #7194: predicates and cases count, comments, text and unrelated 
 
 // -- vacuity guard ------------------------------------------------------
 
-test('vacuity guard: RED when the generated Rust relationship table is starved', { skip: NEEDS_PARSER_DIST }, () => {
-  const { status, out } = runOn({ RUST_REL: '// no relationship slot arms at all\n' });
+test('vacuity guard: RED when the committed Rust relationship vector is starved', { skip: NEEDS_PARSER_DIST }, () => {
+  const { status, out } = runOn({ RUST_REL: '{ "slots": {} }\n' });
   assert.equal(status, 1, out);
-  assert.match(out, /no types extracted from apps\/server\/src\/services\/data_model\/generated\/relationship_slots\.rs/);
+  assert.match(out, /no types extracted from apps\/server\/tests\/golden\/relationship-slots\.json/);
   assert.match(out, /this gate compared nothing/);
 });
 

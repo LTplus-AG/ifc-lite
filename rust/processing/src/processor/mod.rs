@@ -62,7 +62,7 @@ use color_layer::{
 use opening_filter::apply_opening_filter;
 use properties::resolve_space_zone_properties_lazy;
 use quick_metadata::{
-    build_quick_spatial_tree_node, extract_name_from_args, extract_storey_elevation_from_args,
+    build_quick_spatial_tree_node, extract_name_from_args, read_storey_elevation,
     parse_step_arguments, parse_step_ref, parse_step_ref_list, QuickSpatialNodeEntry,
 };
 use crate::mesh_frame::{MeshCoordinateSpace, MeshFrame};
@@ -613,11 +613,8 @@ fn process_geometry_streaming_filtered_with_options_and_ids(
                     express_id: id,
                     type_name: type_name.to_string(),
                     name: extract_name_from_args(&args, &fallback),
-                    elevation: if keyword_eq(type_name, "IFCBUILDINGSTOREY") {
-                        extract_storey_elevation_from_args(&args)
-                    } else {
-                        None
-                    },
+                    elevation: None,
+                    raw_elevation: keyword_eq(type_name, "IFCBUILDINGSTOREY").then(|| read_storey_elevation(&args)),
                     children: Vec::new(),
                     contained: Vec::new(),
                     elements: Vec::new(),
@@ -951,7 +948,23 @@ fn process_geometry_streaming_filtered_with_options_and_ids(
         "Entity scanning complete"
     );
 
+    // Resolve BOTH unit scales once via the shared resolver, before the quick
+    // bootstrap so its storey elevations come out in metres (PROCESSING-18)
+    // (the scan recorded IFCPROJECT's id, so this is an O(1) decode — no more full-file hunts:
+    // the historic `with_units` + `plane_angle_to_radians` pair each re-walked
+    // the whole DATA section). Seed the shared decoder so every later consumer
+    // (opening filter, metadata phase, deferred-style replay) inherits them.
+    let unit_scales = tracing::debug_span!("unit_scale")
+        .in_scope(|| crate::prepass::resolve_unit_scales(content, project_id, &mut decoder));
+    tracing::debug!(
+        length_unit_scale = unit_scales.length_unit_scale,
+        plane_angle_to_radians = unit_scales.plane_angle_to_radians,
+        "Resolved unit scales"
+    );
+    decoder.seed_unit_scales(unit_scales.geometry_length_scale(), unit_scales.plane_angle_to_radians);
     if let Some(mut spatial_nodes) = quick_spatial_nodes.take() {
+        // A refused unit has no metre scale; its elevation stays in file units.
+        spatial_nodes.values_mut().for_each(|n| n.finish_elevation(unit_scales.geometry_length_scale()));
         for (parent_id, child_ids) in quick_aggregate_links {
             if !spatial_nodes.contains_key(&parent_id) {
                 continue;
@@ -1049,19 +1062,6 @@ fn process_geometry_streaming_filtered_with_options_and_ids(
     let preprocess_start = mark(Mark::PreprocessStart, Clock::now());
     let preprocess_span =
         tracing::debug_span!("preprocess", phase_ms = tracing::field::Empty).entered();
-    // Resolve BOTH unit scales once via the shared resolver (the scan recorded
-    // IFCPROJECT's id, so this is an O(1) decode — no more full-file hunts:
-    // the historic `with_units` + `plane_angle_to_radians` pair each re-walked
-    // the whole DATA section). Seed the shared decoder so every later consumer
-    // (opening filter, metadata phase, deferred-style replay) inherits them.
-    let unit_scales = tracing::debug_span!("unit_scale")
-        .in_scope(|| crate::prepass::resolve_unit_scales(content, project_id, &mut decoder));
-    tracing::debug!(
-        length_unit_scale = unit_scales.length_unit_scale,
-        plane_angle_to_radians = unit_scales.plane_angle_to_radians,
-        "Resolved unit scales"
-    );
-    decoder.seed_unit_scales(unit_scales.geometry_length_scale(), unit_scales.plane_angle_to_radians);
     // A refused length unit refuses every element, counted (#7678).
     let refused_unit_jobs = diagnostics::refuse_jobs_for_unit(&unit_scales, &mut entity_jobs);
     // Not drained: meshes nothing. Pinned by rust/geometry/tests/issue_3821_auxiliary_routers_mesh_nothing.rs.

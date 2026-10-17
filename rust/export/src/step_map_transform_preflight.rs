@@ -3,7 +3,7 @@
 //! in GeometryRouter. These walks only validate file-controlled references.
 
 use std::collections::{HashMap, HashSet};
-use ifc_lite_core::{AttributeValue, DecodedEntity, EntityDecoder, IfcType, MAX_PLACEMENT_DEPTH};
+use ifc_lite_core::{AttributeValue, DecodedEntity, EntityDecoder, IfcType, MAX_CONTEXT_DEPTH, MAX_PLACEMENT_DEPTH};
 use ifc_lite_geometry::GeometryRouter;
 use nalgebra::{Matrix4, Vector3};
 use super::Record;
@@ -61,9 +61,8 @@ pub(super) fn project_units(project: u32, decoder: &mut EntityDecoder) -> Result
         return Err("map geometry normalization currently requires an SI metre project length unit".into());
     }
     if let Some(prefix) = unit.get(2).filter(|attr| !attr.is_null()) {
-        // EXPRESS enumeration validation, not a second unit multiplier table.
-        if !matches!(prefix.as_enum(), Some("EXA" | "PETA" | "TERA" | "GIGA" | "MEGA" | "KILO" |
-            "HECTO" | "DECA" | "DECI" | "CENTI" | "MILLI" | "MICRO" | "NANO" | "PICO" | "FEMTO" | "ATTO")) {
+        // EXPRESS enumeration validation against the one `IfcSIPrefix` table.
+        if prefix.as_enum().is_none_or(|token| ifc_lite_core::si_prefix(token).is_none()) {
             return Err("project SI prefix is invalid".into());
         }
     }
@@ -231,7 +230,7 @@ fn representation(id: u32, context: u32, decoder: &mut EntityDecoder) -> Result<
     let mut current = rep.get_ref(0).ok_or("representation has no ContextOfItems")?;
     let mut seen = HashSet::new();
     while current != context {
-        if seen.len() >= MAX_PLACEMENT_DEPTH || !seen.insert(current) {
+        if seen.len() >= MAX_CONTEXT_DEPTH || !seen.insert(current) {
             return Err(format!("representation #{id} context chain is cyclic or too deep"));
         }
         let node = decoder.decode_by_id(current).map_err(|error| error.to_string())?;
@@ -291,15 +290,6 @@ pub(crate) fn placement(product: &DecodedEntity, router: &GeometryRouter, valida
             // is evaluated once and then bypassed (#7359). Refuse where
             // rendering would silently fall back to an identity frame.
             IfcType::IfcLinearPlacement => {
-                // The resolver orients the frame from the curve tangent only;
-                // an authored Axis/RefDirection rotation would be dropped.
-                if let Some(relative) = placement.get_ref(1) {
-                    let relative = decoder.decode_by_id(relative).map_err(|error| error.to_string())?;
-                    if relative.ifc_type == IfcType::IfcAxis2PlacementLinear
-                        && (1..=2).any(|slot| relative.get(slot).is_some_and(|attr| !attr.is_null())) {
-                        return Err(format!("IfcLinearPlacement #{current} sets Axis or RefDirection on IfcAxis2PlacementLinear #{}, which placement resolution does not apply", relative.id));
-                    }
-                }
                 router.resolve_linear_placement_local_strict(&placement, decoder).map_err(|error| error.to_string())?;
             }
             _ => return Err(format!("ObjectPlacement #{current} is not an IfcLocalPlacement or IfcLinearPlacement")),

@@ -104,6 +104,20 @@ fn dangling_edge_element_refuses_one_face_counted_7687() {
     assert!(counts_refused_face(&counted), "the refused face must be counted, got {counted:?}");
 }
 
+/// #7688 PROC-S25: a face reference that does not resolve at all (not even to
+/// a record) used to abort the whole solid with `Err`, deleting the element.
+/// It is one refused face like any other: the other five mesh, and it is
+/// counted.
+#[test]
+fn dangling_face_reference_refuses_one_face_not_the_solid_7688() {
+    let (tris, counted) = process(&cube(&[(
+        "#2=IFCCLOSEDSHELL((#101,#102,#103,#104,#105,#106));",
+        "#2=IFCCLOSEDSHELL((#101,#102,#103,#104,#105,#9999));",
+    )]));
+    assert_eq!(tris, 10, "five of six faces must still mesh");
+    assert!(counts_refused_face(&counted), "the refused face must be counted, got {counted:?}");
+}
+
 /// A dangling vertex is shared by three faces: all three are refused.
 #[test]
 fn dangling_vertex_refuses_its_three_faces_counted_7687() {

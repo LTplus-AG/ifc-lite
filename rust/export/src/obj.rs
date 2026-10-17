@@ -19,7 +19,7 @@ use std::fmt::Write as _;
 use ifc_lite_processing::{process_geometry, MeshData, MeshFrame};
 
 use crate::error::ExportError;
-use crate::frame::yup_f64;
+use ifc_lite_geometry::math::frame::zup_to_yup;
 
 /// Options for OBJ export.
 pub struct ObjOptions {
@@ -132,14 +132,14 @@ fn write_obj_in(meshes: &[MeshData], frame: MeshFrame, opts: &ObjOptions) -> (St
             let wx = mesh.positions[i * 3] as f64 + ox;
             let wy = mesh.positions[i * 3 + 1] as f64 + oy;
             let wz = mesh.positions[i * 3 + 2] as f64 + oz;
-            let [x, y, z] = yup_f64(to_world([wx, wy, wz]));
+            let [x, y, z] = zup_to_yup(to_world([wx, wy, wz]));
             let _ = writeln!(out, "v {x:.6} {y:.6} {z:.6}");
         }
         if has_normals {
             // Directions take the frame's rotation, no translation.
             for i in 0..nverts {
                 let n = [0, 1, 2].map(|k| mesh.normals[i * 3 + k] as f64);
-                let [nx, ny, nz] = yup_f64(direction(n));
+                let [nx, ny, nz] = zup_to_yup(direction(n));
                 let _ = writeln!(out, "vn {nx:.6} {ny:.6} {nz:.6}");
             }
         }

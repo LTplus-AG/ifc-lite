@@ -11,41 +11,8 @@
 use super::jsval::JsVal;
 use super::source::Source;
 
-const SI_PREFIXES: &[&str] = &[
-    "FEMTO", "MICRO", "HECTO", "CENTI", "MILLI", "EXA", "PETA", "TERA", "GIGA", "MEGA", "KILO", "DECA",
-    "DECI", "NANO", "PICO", "ATTO",
-];
-
-/// `conversionUnitSymbol`.
-pub(crate) fn conversion_unit_symbol(name: &str) -> String {
-    let clean = name.replace('\'', "");
-    let clean = clean.trim();
-    let symbol = match clean.to_uppercase().as_str() {
-        "DEGREE" => "°",
-        "GRAD" | "GON" => "gon",
-        "MINUTE" => "′",
-        "SECOND" => "″",
-        "FOOT" | "FEET" => "ft",
-        "INCH" => "in",
-        "YARD" => "yd",
-        "MILE" => "mi",
-        "LITRE" | "LITER" => "L",
-        "ACRE" => "acre",
-        "POUND" | "POUND-MASS" | "LBM" => "lb",
-        "POUND-FORCE" | "LBF" => "lbf",
-        "OUNCE" => "oz",
-        "TON-METRIC" | "TONNE" => "t",
-        "PSI" => "psi",
-        "BAR" => "bar",
-        "KIP" => "kip",
-        "MINUTE-TIME" | "MIN" => "min",
-        "HOUR" => "h",
-        "DAY" => "d",
-        "BTU" => "Btu",
-        _ => return clean.to_string(),
-    };
-    symbol.to_string()
-}
+/// `conversionUnitSymbol`: the one implementation lives in core (EXPORT-STEP-20).
+pub(crate) use ifc_lite_core::project_units::symbols::conversion_unit_symbol;
 
 fn tokens(label: &str) -> Vec<String> {
     label
@@ -56,38 +23,20 @@ fn tokens(label: &str) -> Vec<String> {
         .collect()
 }
 
-fn is_us_survey_foot(tokens: &[String]) -> bool {
-    let is_foot = |t: &String| matches!(t.as_str(), "FOOT" | "FEET" | "FT");
-    if tokens.iter().filter(|t| is_foot(t)).count() != 1 {
-        return false;
-    }
-    let rest: Vec<&String> = tokens.iter().filter(|t| !is_foot(t)).collect();
-    match rest.as_slice() {
-        [one] => one.as_str() == "US" || one.as_str() == "USSURVEY",
-        [a, b] => {
-            let has = |w: &str| a.as_str() == w || b.as_str() == w;
-            has("US") && has("SURVEY")
-        }
-        _ => false,
-    }
-}
-
 fn canonical(key: &str) -> Option<String> {
     for spelling in ["METRE", "METER"] {
         if key == spelling {
             return Some("METRE".to_string());
         }
-        for prefix in SI_PREFIXES {
-            if key == format!("{prefix}{spelling}") {
-                return Some(format!("{prefix}METRE"));
+        for prefix in ifc_lite_core::SI_PREFIXES {
+            if key == format!("{}{spelling}", prefix.name) {
+                return Some(format!("{}METRE", prefix.name));
             }
         }
     }
     match key {
         "FOOT" | "FEET" => Some("FOOT".to_string()),
-        "USSURVEYFOOT" | "USSURVEYFEET" | "USSURVEYFT" | "USFOOT" | "USFEET" | "USFT" | "FTUS" => {
-            Some("US SURVEY FOOT".to_string())
-        }
+        _ if ifc_lite_core::is_us_survey_foot_key(key) => Some("US SURVEY FOOT".to_string()),
         _ => None,
     }
 }
@@ -99,7 +48,7 @@ pub(crate) fn normalize_map_unit_name(unit_name: &str) -> String {
     if toks.is_empty() {
         return normalized;
     }
-    if is_us_survey_foot(&toks) {
+    if ifc_lite_core::is_us_survey_foot_tokens(&toks) {
         return "US SURVEY FOOT".to_string();
     }
     let key = toks.concat();

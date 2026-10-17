@@ -8,6 +8,7 @@
  * through that storey's placement. Split out of `extract-entities.ts` to
  * keep that file under its module-size budget.
  */
+import { walkPlacementChain } from '@ifc-lite/data';
 import { refsOutsideStrings } from './subset-relations.js';
 import type { ParsedStep } from './extract-entities.js';
 
@@ -26,16 +27,20 @@ function placementParents(parsed: ParsedStep): Map<number, number | null> {
 export function productsUnderPlacement(storeyPlacementId: number, parsed: ParsedStep): Set<number> {
   const parents = placementParents(parsed);
   const under = new Set<number>();
+  // Whether each placement seen so far chains up through the storey's: shared
+  // ancestry is walked once, so the pass stays linear in the placement count.
+  const chainsUp = new Map<number, boolean>();
   for (const pid of parents.keys()) {
-    let cur: number | null = pid;
-    let guard = 0;
-    while (cur != null && guard++ < 128) {
-      if (cur === storeyPlacementId) {
-        under.add(pid);
-        break;
-      }
-      cur = parents.get(cur) ?? null;
-    }
+    // The shared walker (#7791): a visited set, no depth cap, so a chain of any
+    // length resolves instead of being dropped past an arbitrary guard.
+    const walked = walkPlacementChain(pid, (id) => parents.get(id) ?? null, {
+      stopAt: (id) => id === storeyPlacementId || chainsUp.has(id),
+    });
+    const last = walked.ids[walked.ids.length - 1]!;
+    const reaches =
+      walked.end === 'stopped' && (last === storeyPlacementId || chainsUp.get(last) === true);
+    for (const id of walked.ids) if (id !== storeyPlacementId) chainsUp.set(id, reaches);
+    if (reaches) under.add(pid);
   }
   // Products referencing a selected placement. `refsOutsideStrings`, not a
   // raw REF_RE scan: free text (e.g. `'... see also #40'`) could otherwise

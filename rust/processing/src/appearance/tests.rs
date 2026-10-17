@@ -64,7 +64,7 @@ fn request(products: Vec<u32>) -> AppearanceRequest {
 fn wire(value: &A) -> Value {
     match value {
         A::EntityRef(id) => reference(*id),
-        A::String(s) => json!(s),
+        A::String(s) | A::Binary(s) => json!(s),
         A::Enum(s) => json!(format!(".{s}.")),
         A::Integer(n) => json!(n),
         A::Float(n) => json!(n),

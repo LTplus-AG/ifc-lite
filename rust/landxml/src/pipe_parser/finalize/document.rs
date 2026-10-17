@@ -22,7 +22,7 @@ impl PipeParser<'_> {
     pub(crate) fn finish_stream_with_preflight(
         mut self,
     ) -> Result<(LandXmlPipeNetworkDocument, Vec<Vec<usize>>, bool)> {
-        if self.require_pipe_networks && self.pipe_networks_seen == 0 {
+        if self.require_pipe_networks && self.pipe_networks_seen.used() == 0 {
             return Err(error(
                 Code::InvalidSemantic,
                 "document contains no PipeNetwork records",
@@ -40,7 +40,7 @@ impl PipeParser<'_> {
             .map_err(|message| error(Code::InvalidSemantic, message))?;
         debug_assert_eq!(self.networks.len(), self.preflight_refusal_batches.len());
         let preflight_refusal_batches = self.preflight_refusal_batches;
-        let has_pipe_networks = self.pipe_networks_seen > 0;
+        let has_pipe_networks = self.pipe_networks_seen.used() > 0;
         Ok((
             LandXmlPipeNetworkDocument {
                 schema: self.schema,

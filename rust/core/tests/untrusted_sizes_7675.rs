@@ -6,10 +6,10 @@
 
 use ifc_lite_core::{parse_entity, ColumnarEntityIndex, EntityDecoder, EntityIndex};
 
-/// A ~1 MB record that fails to parse at its very first argument (`.5` is not
-/// a STEP REAL), so nom's error carries the whole remaining record.
+/// A ~1 MB record that fails to parse at its very first argument (`1.5abc` is not
+/// a STEP REAL; `.5` was one of these until F4-1 made it a legal REAL), so nom's error carries the whole remaining record.
 fn malformed_megabyte_record() -> String {
-    let mut record = String::from("#1=IFCCARTESIANPOINTLIST3D((.5");
+    let mut record = String::from("#1=IFCCARTESIANPOINTLIST3D((1.5abc");
     while record.len() < 1 << 20 {
         record.push_str(",(1.,2.,3.)");
     }
@@ -23,7 +23,7 @@ fn malformed_megabyte_record() -> String {
 #[test]
 fn core_5_parse_error_message_is_bounded_not_sized_by_the_record() {
     let record = malformed_megabyte_record();
-    let err = parse_entity(&record).expect_err("`.5` is not a STEP REAL").to_string();
+    let err = parse_entity(&record).expect_err("`1.5abc` is not a STEP REAL").to_string();
     assert!(err.len() < 512, "{} byte error for a {} byte record", err.len(), record.len());
 }
 

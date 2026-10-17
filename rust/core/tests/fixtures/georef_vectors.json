@@ -544,7 +544,7 @@
         "source": "ePSetMapConversion",
         "crsName": "EPSG:2056",
         "mapUnit": "US survey foot",
-        "mapUnitScale": 0.3048006096,
+        "mapUnitScale": 0.3048006096012192,
         "eastings": 1000.0,
         "northings": 2000.0,
         "orthogonalHeight": 3.0
@@ -724,7 +724,7 @@
         "source": "ePSetMapConversion",
         "crsName": "EPSG:2056",
         "mapUnit": "foot (US survey)",
-        "mapUnitScale": 0.3048006096,
+        "mapUnitScale": 0.3048006096012192,
         "eastings": 1000.0,
         "northings": 2000.0,
         "orthogonalHeight": 3.0
@@ -739,7 +739,7 @@
         "source": "ePSetMapConversion",
         "crsName": "EPSG:2056",
         "mapUnit": "SURVEY FEET (US)",
-        "mapUnitScale": 0.3048006096,
+        "mapUnitScale": 0.3048006096012192,
         "eastings": 1000.0,
         "northings": 2000.0,
         "orthogonalHeight": 3.0

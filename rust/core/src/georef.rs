@@ -526,8 +526,10 @@ impl GeoRefExtractor {
                             .and_then(|attr| attr.as_string())
                             .map(|n| n.trim_matches('\'').trim().to_ascii_uppercase());
                         // The name table first (it carries the exact defined
-                        // ratios, e.g. the US survey foot's 1200/3937), then
-                        // the file's own declared factor for an unknown name.
+                        // ratios of FOOT, INCH, YARD and MILE; the US survey
+                        // foot is NOT in it, so a conversion-based 'US SURVEY
+                        // FOOT' reads its authored factor, CORE-27), then the
+                        // file's own declared factor for an unknown name.
                         let scale = name
                             .as_deref()
                             .and_then(crate::units::get_conversion_based_unit_factor)

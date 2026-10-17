@@ -152,3 +152,20 @@ fn sliver_triangle_does_not_displace_real_box_axes() {
         }
     }
 }
+
+/// F2a (#7772), follow-up to the clash X5 fix (#7813): the sliver test is
+/// taken at the triangle's largest angle, so a 10 m x 5 mm plate-face half is
+/// kept whichever vertex the index buffer lists first. At the acute corner
+/// `sin θ` is ~5e-4 (< MIN_SIN_THETA); at the right angle it is 1.
+#[test]
+fn thin_plate_face_normal_independent_of_start_vertex() {
+    let acute = [0.0_f64, 0.0, 0.0];
+    let right = [10.0_f64, 0.0, 0.0];
+    let other = [10.0_f64, 0.005, 0.0];
+    for (a, b, c) in [(acute, right, other), (right, other, acute), (other, acute, right)] {
+        let n = face_normal(a, b, c).expect("a valid thin triangle must keep its normal");
+        assert!((n[2].abs() - 1.0).abs() < 1e-12, "normal must be +-Z, got {n:?}");
+    }
+    // A genuine needle (three nearly collinear points) is still rejected.
+    assert!(face_normal([0.0; 3], [10.0, 0.0, 0.0], [5.0, 1e-6, 0.0]).is_none());
+}

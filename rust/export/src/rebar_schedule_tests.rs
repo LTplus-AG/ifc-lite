@@ -302,6 +302,29 @@ fn issue_5759_unresolved_declared_area_unit_does_not_invent_si_area() {
     assert_eq!(row.sweeps.len(), 1);
 }
 
+/// EXPORT-DATA-9 (#7775): the length scale comes from the same `ProjectUnits`
+/// as the area scale. A length unit with an unusable factor keeps main's
+/// value (the data path never refuses) but is no longer silent: the schedule
+/// says its lengths are not in metres, as it already does for the area unit.
+#[test]
+fn export_data_9_unresolved_length_unit_is_diagnosed_not_silent() {
+    let source = REBAR.replace(
+        "#6=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);",
+        "#6=IFCCONVERSIONBASEDUNIT($,.LENGTHUNIT.,'CUSTOM',#990);\n#990=IFCMEASUREWITHUNIT(IFCLENGTHMEASURE(1.E400),#991);\n#991=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);",
+    );
+    let schedule =
+        build_rebar_schedule(source.as_bytes(), None, &SweptDiskCheckOptions::default()).unwrap();
+    assert!(
+        schedule.diagnostics.iter().any(|message| message.starts_with("project length unit unresolved: ConversionFactor #990")),
+        "{:?}",
+        schedule.diagnostics
+    );
+    // A usable millimetre unit stays silent, with the 0.001 scale.
+    let clean = build_rebar_schedule(REBAR.as_bytes(), None, &SweptDiskCheckOptions::default()).unwrap();
+    assert!(!clean.diagnostics.iter().any(|message| message.starts_with("project length unit")));
+    assert_eq!(clean.length_unit_scale, 0.001);
+}
+
 #[test]
 fn issue_5759_type_fallback_conflict_and_missing_geometry() {
     let source = REBAR.replace("FILE_SCHEMA(('IFC2X3'))", "FILE_SCHEMA(('IFC4'))").replace(

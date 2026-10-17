@@ -22,9 +22,7 @@
 //! this resolution layer, not in the span stashing.
 
 use crate::style::{FullIndexedColourMap, GeometryStyleInfo, SpecularMaterial};
-use ifc_lite_core::{
-    express_id::parse_express_id, find_keyword, keyword_eq, DecodedEntity, EntityDecoder,
-};
+use ifc_lite_core::{keyword_eq, DecodedEntity, EntityDecoder};
 use rustc_hash::FxHashMap;
 
 /// One stashed entity span: `(express_id, start, end)`.
@@ -314,214 +312,27 @@ pub fn merge_indexed_colours(
     }
 }
 
-/// The file's unit scales, resolved exactly once per parse.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct UnitScales {
-    /// Length unit → metres (1.0 for metre files, 0.001 for millimetre files).
-    pub length_unit_scale: f64,
-    /// Plane-angle unit → radians (1.0 for RADIAN files, π/180 for DEGREE).
-    pub plane_angle_to_radians: f64,
-    /// The `IFCPROJECT` express id the scales were resolved from, when found.
-    pub project_id: Option<u32>,
-    /// The unusable length-unit factor geometry must refuse (#7678); `length_unit_scale` is then data-only.
-    pub length_unit_refused: Option<u32>,
-}
+/// The file's unit scales, resolved exactly once per parse. The type and its
+/// resolution ladder live in `ifc-lite-core` ([`ifc_lite_core::UnitScales`],
+/// F3a #7775); this is its historic path.
+pub use ifc_lite_core::UnitScales;
 
-impl UnitScales {
-    /// The geometry scale: 1.0 for a refused unit, a finite placeholder no mesh uses (#7678).
-    pub fn geometry_length_scale(&self) -> f64 {
-        if self.length_unit_refused.is_some() { 1.0 } else { self.length_unit_scale }
-    }
-}
-
-impl Default for UnitScales {
-    fn default() -> Self {
-        Self {
-            length_unit_scale: 1.0,
-            plane_angle_to_radians: 1.0,
-            project_id: None,
-            length_unit_refused: None,
-        }
-    }
-}
-
-/// Resolve BOTH unit scales once, against the decoder's (possibly partial)
-/// entity index, with the documented fallback ladder:
-///
-/// 1. `project_id` hint (recorded by the scan) — O(1) decode via the index.
-/// 2. No hint? Find `IFCPROJECT` by SIMD substring search (it is a singleton
-///    and many exporters — IfcOpenShell, Revit — emit it near the END of the
-///    file, after the scan's early-meta point).
-/// 3. Resolution chain incomplete on a PARTIAL index (streaming early-meta:
-///    the IFCSIUNIT chain may sit past the scan point)? Re-resolve against a
-///    freshly built FULL index rather than silently defaulting — a millimetre
-///    model resolved as metres renders 1000× oversized.
-///
-/// This is the only sanctioned place that hunts for `IFCPROJECT`; per-element
-/// decoders are seeded from the result (`EntityDecoder::seed_unit_scales`) so
-/// the historic O(file)-scan-per-decoder stall class stays dead.
+/// Resolve BOTH unit scales once against the decoder's (possibly partial)
+/// entity index; see [`UnitScales::resolve`] for the fallback ladder. Kept as
+/// the processing-side entry point every pipeline calls.
 pub fn resolve_unit_scales(
     content: &[u8],
     project_id_hint: Option<u32>,
     decoder: &mut EntityDecoder,
 ) -> UnitScales {
-    let project_id = project_id_hint.or_else(|| find_ifcproject_id(content));
-    let Some(pid) = project_id else {
-        return UnitScales::default();
-    };
-
-    // Fast path: resolve on the caller's decoder/index. BOTH resolvers return
-    // `None` (not a masked default) when their chain is incomplete on a partial
-    // index, so an unresolved either-scale forces the full-index retry below
-    // rather than silently shipping radians/metres (issue #1367).
-    let length = ifc_lite_core::try_extract_length_unit_scale(decoder, pid);
-    let angle = ifc_lite_core::try_extract_plane_angle_to_radians(decoder, pid);
-
-    if let (Some(length_unit_scale), Some(plane_angle_to_radians)) = (length, angle) {
-        return UnitScales {
-            length_unit_scale,
-            plane_angle_to_radians,
-            project_id,
-            length_unit_refused: None,
-        };
-    }
-
-    // Chain incomplete (partial index) — resolve against a full index.
-    let full_index = ifc_lite_core::build_entity_index(content);
-    let mut full_decoder = EntityDecoder::with_index(content, full_index);
-    // The one unit policy (#7678): an unusable factor is a refusal, not metres.
-    let unit = length.map(|scale| ifc_lite_core::LengthUnit { scale, unusable_factor: None })
-        .or_else(|| ifc_lite_core::resolve_length_unit(&mut full_decoder, pid).ok());
-    UnitScales {
-        length_unit_scale: unit.map_or(1.0, |unit| unit.scale),
-        length_unit_refused: unit.and_then(|unit| unit.unusable_factor),
-        plane_angle_to_radians: angle
-            .or_else(|| {
-                ifc_lite_core::extract_plane_angle_to_radians(&mut full_decoder, pid).ok()
-            })
-            .unwrap_or(1.0),
-        project_id,
-    }
+    UnitScales::resolve(content, project_id_hint, decoder)
 }
 
-/// Find the singleton `IFCPROJECT`'s express id by SIMD substring search —
-/// no full entity scan. Returns `None` when the file has no project.
-///
-/// A refused id (issue #3421: an `IFCPROJECT` express id above `u32::MAX`) is
-/// reported through [`ifc_lite_core::parser::report_oversized_ids`] — the
-/// same sink the definition scanner uses (issue #3395/#3752) — because it is
-/// exactly that class of event: this function backtracks from `IFCPROJECT(`
-/// to the record's OWN id, not to a reference into another entity, so a
-/// refusal here is indistinguishable in kind from a scan refusing to index
-/// the record at all. Left unreported, it would default the file's unit
-/// scales (see [`resolve_unit_scales`]) with the exact silent-1000×-oversized
-/// symptom issue #1367 already fixed for the "not found at all" case.
-pub fn find_ifcproject_id(content: &[u8]) -> Option<u32> {
-    let mut refused = 0usize;
-    let result = find_ifcproject_id_inner(content, &mut refused);
-    ifc_lite_core::parser::report_oversized_ids(refused);
-    result
-}
-
-/// Case-insensitive search for the literal keyword `IFCPROJECT(` at or after
-/// `from` (issue #4497: STEP keyword case is not significant, so a lowercase
-/// or CamelCase exporter's `ifcproject(`/`IfcProject(` must resolve exactly
-/// like the uppercase form). [`find_keyword`] anchors on `J`, which occurs in
-/// almost nothing else; the measurement that chose it over the lead `I` is
-/// recorded on that function's module. The `from` cut matters because the
-/// caller resumes at `previous_hit + 1`, so a hit behind it would be
-/// returned forever.
-fn find_ifcproject_keyword(content: &[u8], from: usize) -> Option<usize> {
-    find_keyword(content.get(from..)?, b"IFCPROJECT(").map(|rel| from + rel)
-}
-
-fn find_ifcproject_id_inner(content: &[u8], refused: &mut usize) -> Option<u32> {
-    let mut from = 0usize;
-    // Search for the keyword+paren only; the `=` and `#<id>` are reconstructed by
-    // backtracking. Exporters vary the whitespace around `=` — Revit/EDM emits
-    // `#1593796= IFCPROJECT(` with a SPACE, so the old `=IFCPROJECT(` literal
-    // never matched and the whole unit chain silently defaulted (length → metres
-    // on a mm model, plane-angle → radians on a degree model, making arched
-    // openings render as full circles — issue #1367). `IFCPROJECT(` cannot
-    // collide with `IFCPROJECTEDCRS(` because the `(` must immediately follow.
-    while let Some(kw) = find_ifcproject_keyword(content, from) {
-        // Backtrack over optional whitespace, then require '='.
-        let mut i = kw;
-        while i > 0 && content[i - 1].is_ascii_whitespace() {
-            i -= 1;
-        }
-        if i > 0 && content[i - 1] == b'=' {
-            i -= 1; // step over '='
-            // Optional whitespace between the express id and '='.
-            while i > 0 && content[i - 1].is_ascii_whitespace() {
-                i -= 1;
-            }
-            // Backtrack over the express id digits to the '#'.
-            let digits_end = i;
-            while i > 0 && content[i - 1].is_ascii_digit() {
-                i -= 1;
-            }
-            if i > 0 && content[i - 1] == b'#' && i < digits_end && starts_a_record(content, i - 1)
-            {
-                // Refuse (not wrap) above u32::MAX (#3421); None here just
-                // keeps searching, same as the "not found" case below.
-                // Counted (issue #3752) so the caller can report it via the
-                // scanner's own oversized-id sink instead of it vanishing.
-                match parse_express_id(&content[i..digits_end]) {
-                    Some(id) => return Some(id),
-                    None => *refused += 1,
-                }
-            }
-        }
-        // `IFCPROJECT(` not preceded by a record-starting `#<digits>=` (e.g.
-        // the whole thing quoted inside a string) — keep searching.
-        from = kw + 1;
-    }
-    None
-}
-
-/// Does the `#` at `hash` begin a record, rather than sit inside a quoted
-/// string or a comment?
-///
-/// 10303-21 terminates every entity instance with `;`, so a declaration's
-/// `#` is preceded — across trivia only — by that `;` or by the start of
-/// input. Without this check a description or comment containing a
-/// record-shaped decoy such as `'note: #9=ifcproject( …'` is accepted, and
-/// the scan returns a WRONG express id AND stops, so the real project is
-/// never reached: `extract_length_unit_scale` then rejects that id on its
-/// `IFCPROJECT` type guard and the caller's `unwrap_or(1.0)` restores the
-/// 1000×-oversized millimetre default issue #4497 exists to remove. The
-/// hazard predates case-insensitive matching, which only widens it from
-/// uppercase decoys to ordinary lowercase prose.
-///
-/// Validating instead that the id decodes to an `IFCPROJECT` would be
-/// stricter, but it needs an entity index per candidate — the
-/// O(file)-scan-per-decoder cost [`resolve_unit_scales`] exists to keep
-/// dead. This stays a single linear byte scan.
-///
-/// "Trivia", not whitespace: a `/* … */` comment is legal wherever
-/// whitespace is, so `#1=IFCWALL(…); /* note */ #7=IFCPROJECT(…)` is a real
-/// declaration and must not be refused (the entity scanner's `skip_step_trivia`
-/// makes the same allowance in the forward direction).
-fn starts_a_record(content: &[u8], hash: usize) -> bool {
-    let mut i = hash;
-    loop {
-        while i > 0 && content[i - 1].is_ascii_whitespace() {
-            i -= 1;
-        }
-        // A closing `*/` here means a comment sits between the boundary and
-        // the `#`; skip back over it and re-test. An unopened `*/` is not
-        // trivia, so refuse rather than loop.
-        if i >= 2 && content[i - 1] == b'/' && content[i - 2] == b'*' {
-            match memchr::memmem::rfind(&content[..i - 2], b"/*") {
-                Some(open) => i = open,
-                None => return false,
-            }
-            continue;
-        }
-        return i == 0 || content[i - 1] == b';';
-    }
-}
+/// The model's `IFCPROJECT` express id (the first in file order), found by
+/// SIMD substring search with no entity scan. The one locator lives in
+/// `ifc-lite-core` ([`ifc_lite_core::find_project_id`]); this is its historic
+/// path.
+pub use ifc_lite_core::find_project_id as find_ifcproject_id;
 
 /// Flat wire encodings of the resolved styles for the browser's
 /// `styleIds`/`styleColors` arrays: the rich style index flattened to

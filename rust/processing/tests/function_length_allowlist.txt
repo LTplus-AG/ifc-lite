@@ -22,7 +22,6 @@
    167 rust/clash/src/obb_detect.rs detect_obb
    195 rust/core/src/parser/scanner.rs EntityScanner::next_entity
    269 rust/core/src/project_units/measure.rs measure_unit
-   187 rust/core/src/units.rs extract_length_unit_scale
    184 rust/export/src/collada.rs try_export_collada_from_meshes
    186 rust/export/src/collada_document.rs write_dae
    373 rust/export/src/gltf.rs build_gltf

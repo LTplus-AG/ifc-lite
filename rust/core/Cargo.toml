@@ -16,16 +16,13 @@ default = []
 
 [dependencies]
 
-# Even faster float parsing (2-3x faster than lexical-core)
+# The one float parser in core (every STEP real goes through read_step_number)
 # fast-float2 is the maintained fork of unmaintained fast-float (GHSA-x8jh-xj3x-gx3c, GHSA-8655-xgh5-5vvq)
 fast-float2 = "0.2"
 
 # Async streaming
 futures-core = "0.3"
 futures-util = "0.3"
-
-# Fast float/integer parsing (10x faster than std)
-lexical-core = "1.0"
 
 # Fast byte searching
 memchr.workspace = true

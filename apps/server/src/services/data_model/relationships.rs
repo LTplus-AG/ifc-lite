@@ -4,10 +4,11 @@
 
 //! Relationship extraction.
 
-use super::generated::{relationship_slots, RelationshipSlots};
+use super::slots::RelSlots;
 use super::types::{EntityJob, Relationship};
 use ifc_lite_core::{DecodedEntity, EntityDecoder};
 use rayon::prelude::*;
+use rustc_hash::FxHashMap;
 use std::sync::Arc;
 
 /// Extract all relationships.
@@ -17,17 +18,20 @@ pub(super) fn extract_relationships(
     entity_index: &Arc<ifc_lite_core::EntityIndex>,
 ) -> Vec<Relationship> {
     // The schema-derived gate (issue #4205): a type is a relationship job iff
-    // the generated table (apps/server/.../generated/relationship_slots.rs,
-    // derived from @ifc-lite/parser's relationship-schema-slots.ts) has a
-    // slot plan for it. This replaces a hand-written 13-entry array that
-    // silently dropped every `IfcRelationship` subtype outside it — using the
-    // slot lookup itself as the gate means there is exactly one table to keep
-    // in sync with the schema, not two that can drift apart.
-    let rel_jobs: Vec<_> = jobs
+    // core's registry resolves a slot plan for it (`RelSlots::for_type`, which
+    // is its own gate: a concrete `IfcRelationship` subtype in some bundled
+    // schema). This replaces a hand-written 13-entry array that silently
+    // dropped every `IfcRelationship` subtype outside it; the slot lookup
+    // itself is the gate, so there is one source to keep in sync with the
+    // schema, not two. Resolved once per distinct type, not per job.
+    let mut resolved: FxHashMap<&str, Option<RelSlots>> = FxHashMap::default();
+    let rel_jobs: Vec<(&EntityJob, RelSlots)> = jobs
         .iter()
-        .filter(|job| {
-            let type_upper = job.type_name.to_uppercase();
-            relationship_slots(&type_upper).is_some()
+        .filter_map(|job| {
+            let slots = *resolved
+                .entry(job.type_name)
+                .or_insert_with(|| RelSlots::for_type(job.type_name));
+            Some((job, slots?))
         })
         .collect();
 
@@ -35,12 +39,12 @@ pub(super) fn extract_relationships(
 
     let mut rels: Vec<Relationship> = rel_jobs
         .par_iter()
-        .filter_map(|job| {
+        .filter_map(|(job, slots)| {
             let mut local_decoder =
                 EntityDecoder::with_arc_index(content, entity_index.clone());
             let entity = local_decoder.decode_at(job.start, job.end).ok()?;
 
-            extract_relationship(&entity, job.type_name, job.id)
+            extract_relationship(&entity, job.type_name, job.id, *slots)
         })
         .flatten()
         .collect();
@@ -109,26 +113,21 @@ fn extract_type_property_links(
 }
 
 /// Extract relationship from entity (may return multiple if related[] has multiple items).
+///
+/// `slots` is the schema-derived plan (issue #4205): ABSOLUTE attribute
+/// positions and whether each side is a LIST/SET or a single reference, from
+/// the same plan the TS/WASM columnar parser uses
+/// (`relationship-schema-slots.ts`), so this stays correct for every concrete
+/// `IfcRelationship` subtype without a per-type match here.
 fn extract_relationship(
     entity: &DecodedEntity,
     type_name: &str,
     rel_id: u32,
+    slots: RelSlots,
 ) -> Option<Vec<Relationship>> {
-    let type_upper = type_name.to_uppercase();
-
-    // Schema-derived slot plan (issue #4205): the generated table already
-    // encodes ABSOLUTE attribute positions and whether `related` is a
-    // LIST/SET or a single reference — derived from the same
-    // relationship-schema-slots.ts the TS/WASM columnar parser uses, so this
-    // stays correct for every concrete `IfcRelationship` subtype without a
-    // per-type match here. `extract_relationships` already filtered `jobs`
-    // down to types this resolves, but re-check defensively (`?` below) in
-    // case of a future caller.
-    let slots: RelationshipSlots = relationship_slots(&type_upper)?;
-
     // `relating` is schema-legally a grouped aggregate for exactly one
     // concrete subtype (`IFCRELDEFINESBYPROPERTIES.RelatingPropertyDefinition`
-    // — see `relating_is_list`'s doc comment in the generated table).
+    // — see `RelSlots::relating_is_list`).
     // `get_ref` returns `None` for a list-valued attribute (it delegates to
     // `AttributeValue::as_entity_ref`, which only recognises a bare
     // reference), so calling it unconditionally silently dropped the WHOLE
@@ -143,19 +142,19 @@ fn extract_relationship(
     // EVERY entry in the group to EVERY related object — reproduced below as
     // the same cross product, not just the first entry.
     let relating_ids: Vec<u32> = if slots.relating_is_list {
-        entity.get_refs(slots.relating_idx as usize)?
+        entity.get_refs(slots.relating)?
     } else {
-        vec![entity.get_ref(slots.relating_idx as usize)?]
+        vec![entity.get_ref(slots.relating)?]
     };
 
     let related_ids: Vec<u32> = if slots.related_is_list {
-        let related_list = entity.get_list(slots.related_idx as usize)?;
+        let related_list = entity.get_list(slots.related)?;
         related_list
             .iter()
             .filter_map(|v| v.as_entity_ref())
             .collect()
     } else {
-        vec![entity.get_ref(slots.related_idx as usize)?]
+        vec![entity.get_ref(slots.related)?]
     };
 
     if relating_ids.is_empty() || related_ids.is_empty() {

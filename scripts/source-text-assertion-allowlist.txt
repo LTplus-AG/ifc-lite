@@ -63,7 +63,6 @@ scripts/check-module-size.test.mjs  # 56 hits
 scripts/check-server-bin-targets.test.mjs  # 16 hits
 scripts/ci-wasm-prebuilt-eligible.test.mjs  # 1 hit
 scripts/docs/check-doc-samples.test.mjs  # 4 hits
-scripts/generate-server-attr-indices.test.mjs  # 12 hits
 scripts/lib/module-size-ratchet.test.mjs  # 3 hits
 scripts/review/build-review-input.test.mjs  # 5 hits
 scripts/review/lane-canary.test.mjs  # 7 hits

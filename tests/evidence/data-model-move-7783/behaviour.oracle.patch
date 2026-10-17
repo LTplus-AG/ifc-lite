@@ -1,5 +1,5 @@
 diff --git b/rust/processing/src/data_model/jobs.rs a/rust/processing/src/data_model/jobs.rs
-index ad76c33a64..74d475199b 100644
+index d33c677427..be2dc213be 100644
 --- b/rust/processing/src/data_model/jobs.rs
 +++ a/rust/processing/src/data_model/jobs.rs
 @@ -41,7 +41,7 @@ impl<'j, 'a> JobBuckets<'j, 'a> {
@@ -11,8 +11,17 @@ index ad76c33a64..74d475199b 100644
                  &mut buckets.rel_documents
              } else {
                  continue;
+@@ -86,7 +86,7 @@ impl<'a> SplitDecoder<'a> {
+ 
+     /// The decoder for `job`'s record and the references it follows.
+     pub(super) fn next_job(&mut self, job: &EntityJob) -> &mut EntityDecoder<'a> {
+-        if true || self.index.get(&job.id).is_some_and(|&(start, _)| start == job.start) {
++        if self.index.get(&job.id).is_some_and(|&(start, _)| start == job.start) {
+             return self.next_lookup();
+         }
+         self.shadowed.insert(EntityDecoder::with_arc_index(self.content, self.index.clone()))
 diff --git b/rust/processing/src/data_model/materials.rs a/rust/processing/src/data_model/materials.rs
-index 3f38f59ee7..94bb695ab4 100644
+index 9bfc0ac091..108f5792a0 100644
 --- b/rust/processing/src/data_model/materials.rs
 +++ a/rust/processing/src/data_model/materials.rs
 @@ -128,7 +128,7 @@ const LAYER_SET: SetSpec = SetSpec {

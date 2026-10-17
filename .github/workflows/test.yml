@@ -1130,8 +1130,8 @@ jobs:
           # ifc_lite_processing::data_model, so the moved tests do not exist on
           # the base and a whole-change revert cannot compile them
           # (REVERT-BROKE-BUILD). Keep the move and break ONLY the new
-          # behaviour: the job-bucket type match and the SetSpec layer
-          # thickness/ventilation indices. Once data_model/mod.rs is on main,
+          # behaviour: the job-bucket type match, the split decoder's keep-last
+          # span guard and the SetSpec layer thickness/ventilation indices. Once data_model/mod.rs is on main,
           # ordinary whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/processing/src/data_model/mod.rs | grep -Fxq 'rust/processing/src/data_model/mod.rs'; then
             oracle_args+=(--mutation tests/evidence/data-model-move-7783/behaviour.oracle.patch)

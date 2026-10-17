@@ -9,7 +9,7 @@
 //! `properties.rs` to keep entity-shape extraction (which pset/property to
 //! walk) separate from value-shape resolution (how to stringify one).
 
-use ifc_lite_core::{AttributeValue, DecodedEntity, EntityDecoder};
+use ifc_lite_core::{AttributeValue, DecodedEntity, EntityDecoder, SchemaVersion};
 use ifc_lite_core::limits::{
     complex_property_depth_marker, ComplexPropertyBudget, COMPLEX_PROPERTY_BUDGET_MARKER,
     MAX_COMPLEX_PROPERTY_DEPTH,
@@ -23,7 +23,9 @@ use ifc_lite_core::limits::{
 pub(super) fn property_reference_label(decoder: &mut EntityDecoder, id: u32) -> String {
     let label = decoder.decode_by_id(id).ok().and_then(|target| {
         ["Name", "Identification"].iter().find_map(|attribute| {
-            let index = target.ifc_type.attribute_index(attribute)?;
+            let index = SchemaVersion::Ifc4x3
+                .attribute(target.ifc_type.as_str(), attribute)?
+                .index;
             target
                 .get_string(index)
                 .filter(|s| !s.trim().is_empty())

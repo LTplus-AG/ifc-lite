@@ -26,7 +26,7 @@ function triple(value: unknown): Point3 | null {
   return [x, y, z].every(Number.isFinite) ? { x, y, z } : null;
 }
 
-function normalize(value: Point3, fallback: Point3): Point3 {
+function normalize(value: Point3, fallback: Point3 | null): Point3 | null {
   const length = Math.hypot(value.x, value.y, value.z);
   if (!(length > 1e-12) || !Number.isFinite(length)) return fallback;
   return { x: value.x / length, y: value.y / length, z: value.z / length };
@@ -40,10 +40,23 @@ function cross(a: Point3, b: Point3): Point3 {
   };
 }
 
-function direction(store: IfcDataStore, id: number | null, fallback: Point3): Point3 {
-  if (id === null) return fallback;
-  const entity = store.getEntity(id);
-  return normalize(triple(entity?.attributes?.[0]) ?? fallback, fallback);
+function direction(
+  store: IfcDataStore,
+  value: unknown,
+  fallback: Point3,
+  strict: boolean,
+  dimensions: 2 | 3,
+): Point3 | null {
+  // Omitted optional directions have IFC defaults. An explicit reference that
+  // cannot supply a valid direction is different: diagnostics must refuse it.
+  if (value === null || value === undefined) return fallback;
+  const id = entityRef(value);
+  const entity = id === null ? null : store.getEntity(id);
+  const ratios = entity?.attributes?.[0];
+  const vector = triple(ratios);
+  if (strict && (String(entity?.type).toUpperCase() !== 'IFCDIRECTION'
+    || !Array.isArray(ratios) || ratios.length !== dimensions || !vector)) return null;
+  return normalize(vector ?? fallback, strict ? null : fallback);
 }
 
 /** Apply one IfcAxis2Placement to a point in its local coordinate system. */
@@ -51,6 +64,7 @@ function applyRelativePlacement(
   store: IfcDataStore,
   axisPlacementId: number,
   point: Point3,
+  strictDirections: boolean,
 ): Point3 | null {
   const axisPlacement = store.getEntity(axisPlacementId);
   if (!axisPlacement) return null;
@@ -63,17 +77,23 @@ function applyRelativePlacement(
   if (type !== 'IFCAXIS2PLACEMENT2D' && type !== 'IFCAXIS2PLACEMENT3D') return null;
   const zAxis = type === 'IFCAXIS2PLACEMENT2D'
     ? { x: 0, y: 0, z: 1 }
-    : direction(store, entityRef(axisPlacement.attributes?.[1]), { x: 0, y: 0, z: 1 });
+    : direction(store, axisPlacement.attributes?.[1], { x: 0, y: 0, z: 1 }, strictDirections, 3);
+  if (!zAxis) return null;
   const refDirectionIndex = type === 'IFCAXIS2PLACEMENT2D' ? 1 : 2;
   // A `$` RefDirection takes the renderer's fill, not world X as-is (#5922).
   const [fx, fy, fz] = firstProjAxis([zAxis.x, zAxis.y, zAxis.z]);
   const provisionalX = direction(
     store,
-    entityRef(axisPlacement.attributes?.[refDirectionIndex]),
+    axisPlacement.attributes?.[refDirectionIndex],
     { x: fx, y: fy, z: fz },
+    strictDirections,
+    type === 'IFCAXIS2PLACEMENT2D' ? 2 : 3,
   );
-  const yAxis = normalize(cross(zAxis, provisionalX), { x: 0, y: 1, z: 0 });
-  const xAxis = normalize(cross(yAxis, zAxis), { x: 1, y: 0, z: 0 });
+  if (!provisionalX) return null;
+  const yAxis = normalize(cross(zAxis, provisionalX), strictDirections ? null : { x: 0, y: 1, z: 0 });
+  if (!yAxis) return null;
+  const xAxis = normalize(cross(yAxis, zAxis), strictDirections ? null : { x: 1, y: 0, z: 0 });
+  if (!xAxis) return null;
 
   return {
     x: origin.x + xAxis.x * point.x + yAxis.x * point.y + zAxis.x * point.z,
@@ -82,8 +102,13 @@ function applyRelativePlacement(
   };
 }
 
-/** Resolve an IfcProduct placement origin through every PlacementRelTo hop. */
-export function resolveProductOriginMeters(store: IfcDataStore, productId: number): Point3 | null {
+/** Resolve every PlacementRelTo hop. Storey display keeps its existing tolerant
+ * directions; diagnostic callers opt into refusing explicitly invalid frames. */
+export function resolveProductOriginMeters(
+  store: IfcDataStore,
+  productId: number,
+  { strictDirections = false }: { strictDirections?: boolean } = {},
+): Point3 | null {
   const product = store.getEntity(productId);
   const placementId = entityRef(product?.attributes?.[5]);
   if (placementId === null) return null;
@@ -98,7 +123,7 @@ export function resolveProductOriginMeters(store: IfcDataStore, productId: numbe
     if (!placement || String(placement.type).toUpperCase() !== 'IFCLOCALPLACEMENT') return null;
     const relativePlacementId = entityRef(placement.attributes?.[1]);
     if (relativePlacementId === null) return null;
-    const resolved = applyRelativePlacement(store, relativePlacementId, point);
+    const resolved = applyRelativePlacement(store, relativePlacementId, point, strictDirections);
     if (!resolved) return null;
     point = resolved;
   }

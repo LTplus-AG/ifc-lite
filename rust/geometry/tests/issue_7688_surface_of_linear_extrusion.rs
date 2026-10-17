@@ -149,3 +149,76 @@ fn issue_7688_an_unreadable_swept_curve_refuses_the_item() {
         );
     }
 }
+
+/// Review of #7769: every degenerate or off-plane input is REFUSED (an `Err`
+/// the caller counts), never published as an empty or flattened mesh. Main
+/// refused the whole type, so none of these may fail open.
+#[test]
+fn issue_7688_degenerate_surfaces_are_refused_not_emptied() {
+    let line = "#12=IFCPOLYLINE((#10,#11));";
+    let swap = |from: &str, to: &str| element([0.0; 3], [0.0; 3]).replace(from, to);
+    let cases = [
+        ("zero depth", swap("#16,0.005)", "#16,0.)")),
+        ("negative depth", swap("#16,0.005)", "#16,-0.005)")),
+        ("direction along the curve", swap("#16=IFCDIRECTION((0.,0.,1.))", "#16=IFCDIRECTION((1.,0.,0.))")),
+        ("one-point curve", swap(line, "#12=IFCPOLYLINE((#10));")),
+        ("coincident points", swap(line, "#12=IFCPOLYLINE((#10,#10));")),
+        ("empty composite", swap(line, "#12=IFCCOMPOSITECURVE((),.F.);")),
+        (
+            "point off the profile plane",
+            swap(line, "#17=IFCCARTESIANPOINT((0.412,0.3,7.));#12=IFCPOLYLINE((#10,#17));"),
+        ),
+    ];
+    for (label, source) in cases {
+        let mut decoder = EntityDecoder::new(&source);
+        let element = decoder.decode_by_id(1002).unwrap();
+        let router = GeometryRouter::with_scale_and_local_frame(1.0, false);
+        let result = router.process_element(&element, &mut decoder);
+        assert!(result.is_err(), "{label}: must be refused, got {:?}", result.map(|m| m.positions));
+    }
+}
+
+/// Review of #7769: `ExtrudedDirection` is in the Position frame. A Position
+/// whose Axis is world -Y sweeps local +Z along world -Y, not world +Z.
+#[test]
+fn issue_7688_extruded_direction_is_in_the_position_frame() {
+    let source = element([0.0; 3], [0.0; 3]).replace(
+        "#15=IFCAXIS2PLACEMENT3D(#14,$,$);",
+        "#18=IFCDIRECTION((0.,-1.,0.));#19=IFCDIRECTION((1.,0.,0.));#15=IFCAXIS2PLACEMENT3D(#14,#18,#19);",
+    );
+    let mesh = process(&source, [0.0; 3]);
+    // Local (x, y, z) maps to world (x, z, -y): the curve at local y = 0.3
+    // lies at world z = 0.3, and the 5 mm sweep runs to world y = -0.005.
+    for p in [[0.4, 0.0, 0.3], [0.412, 0.0, 0.3], [0.4, -0.005, 0.3], [0.412, -0.005, 0.3]] {
+        assert!(
+            mesh.positions
+                .chunks_exact(3)
+                .any(|v| (0..3).all(|axis| (world(&mesh, v, axis) - p[axis]).abs() < 1e-6)),
+            "corner {p:?} missing; positions {:?}",
+            mesh.positions
+        );
+    }
+}
+
+/// Review of #7769: registering the processor must not turn an open surface
+/// into a boolean cutter. Main recorded it as an unsupported operand and kept
+/// the host whole; meshed, it cut the box open along the strip.
+#[test]
+fn issue_7688_a_surface_is_not_a_boolean_operand() {
+    let source = "#1=IFCCARTESIANPOINT((0.,0.,0.));#2=IFCAXIS2PLACEMENT3D(#1,$,$);\
+         #40=IFCAXIS2PLACEMENT2D(#41,$);#41=IFCCARTESIANPOINT((0.,0.));\
+         #42=IFCRECTANGLEPROFILEDEF(.AREA.,$,#40,1.,1.);#43=IFCDIRECTION((0.,0.,1.));\
+         #50=IFCEXTRUDEDAREASOLID(#42,#2,#43,1.);\
+         #10=IFCCARTESIANPOINT((-1.,0.));#11=IFCCARTESIANPOINT((1.,0.));#12=IFCPOLYLINE((#10,#11));\
+         #13=IFCARBITRARYOPENPROFILEDEF(.CURVE.,$,#12);\
+         #14=IFCCARTESIANPOINT((0.,0.,-1.));#15=IFCAXIS2PLACEMENT3D(#14,$,$);\
+         #900=IFCSURFACEOFLINEAREXTRUSION(#13,#15,#43,3.);\
+         #60=IFCBOOLEANRESULT(.DIFFERENCE.,#50,#900);";
+    let mut decoder = EntityDecoder::new(source);
+    let entity = decoder.decode_by_id(60).unwrap();
+    let router = GeometryRouter::with_scale_and_local_frame(1.0, false);
+    let mesh = router.process_representation_item(&entity, &mut decoder).expect("host survives");
+    assert!((area(&mesh) - 6.0).abs() < 1e-6, "the unit box stays whole, area {}", area(&mesh));
+    let failures = format!("{:?}", router.take_csg_failures());
+    assert!(failures.contains("UnsupportedOperand(\"IfcSurfaceOfLinearExtrusion\")"), "{failures}");
+}

@@ -116,26 +116,56 @@ impl SurfaceOfLinearExtrusionProcessor {
             Vector3::new(0.0, 0.0, 1.0) // Default to Z-up
         };
 
-        // Get depth
+        // Get depth. `IfcPositiveLengthMeasure`: zero or negative is refused,
+        // not meshed as a degenerate or reversed strip (#7688 review, D3).
         let depth = entity
             .get(3)
             .and_then(|v| v.as_float())
             .ok_or_else(|| Error::geometry("SurfaceOfLinearExtrusion missing Depth".to_string()))?;
+        if !(depth > 0.0 && depth.is_finite()) {
+            return Err(Error::geometry(format!(
+                "SurfaceOfLinearExtrusion Depth {depth} is not a positive length"
+            )));
+        }
 
         // Get curve points from the profile
         let curve_points = Self::get_profile_curve_points(curve_id, decoder)?;
 
+        // Refused, not `Ok(empty)`: an empty mesh is dropped uncounted, while
+        // main refused (and counted) every item of this type (#7688 review).
         if curve_points.len() < 2 {
-            return Ok(Mesh::new());
+            return Err(Error::geometry(format!(
+                "SurfaceOfLinearExtrusion SweptCurve has {} point(s)",
+                curve_points.len()
+            )));
         }
 
         // Extrude the curve to create a surface (quad strip). A zero
         // ExtrudedDirection (`IFCDIRECTION((0.,0.,0.))`) has no unit vector:
         // `normalize` divided 0/0 into NaN positions (#7678, PROC-S23), so it
-        // is refused like any other unusable attribute.
-        let extrusion = direction.try_normalize(0.0).ok_or_else(|| {
-            Error::geometry("SurfaceOfLinearExtrusion ExtrudedDirection has zero length".to_string())
-        })? * depth;
+        // is refused like any other unusable attribute. The direction is in
+        // the Position frame, as for `IfcExtrudedAreaSolid`: adding it in the
+        // world frame swept a rotated Position along the wrong axis (#7688
+        // review; FM_ARC_DigitalHub's advanced faces confirm the frame).
+        let extrusion = position_transform.transform_vector(
+            &(direction.try_normalize(0.0).ok_or_else(|| {
+                Error::geometry(
+                    "SurfaceOfLinearExtrusion ExtrudedDirection has zero length".to_string(),
+                )
+            })? * depth),
+        );
+
+        // A strip with no area (coincident curve points, or a direction along
+        // a straight curve) is refused rather than published empty (D3).
+        let swept = |a: &Point2<f64>, b: &Point2<f64>| {
+            let seg = position_transform.transform_vector(&Vector3::new(b.x - a.x, b.y - a.y, 0.0));
+            seg.cross(&extrusion).norm() > f64::EPSILON * seg.norm() * extrusion.norm()
+        };
+        if !curve_points.windows(2).any(|w| swept(&w[0], &w[1])) {
+            return Err(Error::geometry(
+                "SurfaceOfLinearExtrusion sweeps no area".to_string(),
+            ));
+        }
 
         let mut positions = Vec::with_capacity(curve_points.len() * 2 * 3);
         let mut indices = Vec::with_capacity((curve_points.len() - 1) * 6);
@@ -279,9 +309,17 @@ impl SurfaceOfLinearExtrusionProcessor {
                 // `helpers::extract_loop_points_by_id`.
                 let mut points = Vec::with_capacity(point_ids.len());
                 for point_id in point_ids {
-                    let (x, y, _z) = decoder.get_cartesian_point_fast(point_id).ok_or_else(|| {
+                    let (x, y, z) = decoder.get_cartesian_point_fast(point_id).ok_or_else(|| {
                         Error::geometry(format!("Polyline point #{point_id} did not resolve"))
                     })?;
+                    // The swept curve is a 2D profile curve. A point off its
+                    // plane is refused, never flattened into a different
+                    // curve (#7688 review).
+                    if z != 0.0 {
+                        return Err(Error::geometry(format!(
+                            "Polyline point #{point_id} lies off the profile plane (z = {z})"
+                        )));
+                    }
                     points.push(Point2::new(x, y));
                 }
                 Ok(points)

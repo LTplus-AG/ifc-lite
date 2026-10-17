@@ -151,7 +151,10 @@ fn issue_3987_two_routers_cannot_share_failure_state() {
 #[test]
 fn issue_4560_every_router_builtin_is_a_boolean_operand() {
     let mut forgotten = Vec::new();
-    for ifc_type in TYPES.iter().flat_map(|types| types.iter()) {
+    // An open swept surface is not an `IfcBooleanOperand`; the operand path
+    // refuses it deliberately (#7688 review).
+    let not_operands = [IfcType::IfcSurfaceOfLinearExtrusion];
+    for ifc_type in TYPES.iter().flat_map(|types| types.iter()).filter(|t| !not_operands.contains(*t)) {
         let source = format!(
             "#1=IFCBOOLEANRESULT(.DIFFERENCE.,#2,#3);
 #2={}();

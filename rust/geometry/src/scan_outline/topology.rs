@@ -7,12 +7,13 @@
 //! trace said contains it. Plus the repair loop that undoes vertex moves
 //! until those hold again.
 //!
-//! Intersections use the exact closed-segment test from `crate::geom2d`, so a
+//! Intersections use the exact closed-segment test from `crate::math::geom2d`, so a
 //! shared vertex or a collinear overlap between non-adjacent edges counts as a
 //! violation, not only a proper crossing.
 
 use super::support::Support;
-use crate::geom2d::{orientation, point_in_polygon, polygon_area, segments_intersect};
+use crate::math::geom2d::{orientation, segments_intersect};
+use crate::math::v2::{bbox, dot, point_in_polygon, polygon_area, sub};
 
 /// Rounds of the repair loop before falling back to whole-ring reverts.
 const REPAIR_ROUNDS: usize = 64;
@@ -100,7 +101,7 @@ fn violations_with_support(
 /// Rings whose innermost container is not their recorded parent, together
 /// with the containers involved.
 fn containment_violations(rings: &[Vec<[f64; 2]>], parents: &[Option<usize>]) -> Vec<usize> {
-    let boxes: Vec<[f64; 4]> = rings.iter().map(|r| bbox(r)).collect();
+    let boxes: Vec<[f64; 4]> = rings.iter().map(|r| bbox(r.iter().copied())).collect();
     let mut bad = Vec::new();
     for (r, ring) in rings.iter().enumerate() {
         let Some(&probe) = ring.first() else { continue };
@@ -342,24 +343,6 @@ pub(super) fn drop_collinear_vertices(rings: &mut [Vec<[f64; 2]>], parents: &[Op
     }
 }
 
-pub(super) fn bbox(ring: &[[f64; 2]]) -> [f64; 4] {
-    let mut b = [f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY];
-    for p in ring {
-        b = [b[0].min(p[0]), b[1].min(p[1]), b[2].max(p[0]), b[3].max(p[1])];
-    }
-    b
-}
-
 fn box_contains(b: &[f64; 4], p: [f64; 2]) -> bool {
     p[0] >= b[0] && p[0] <= b[2] && p[1] >= b[1] && p[1] <= b[3]
-}
-
-#[inline]
-fn sub(a: [f64; 2], b: [f64; 2]) -> [f64; 2] {
-    [a[0] - b[0], a[1] - b[1]]
-}
-
-#[inline]
-fn dot(a: [f64; 2], b: [f64; 2]) -> f64 {
-    a[0] * b[0] + a[1] * b[1]
 }

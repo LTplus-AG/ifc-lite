@@ -59,9 +59,9 @@ mod non_finite_tests;
 
 use arrangement::Arrangement;
 use walk::{FaceWalk, VertexFan};
-use geom2d::{is_simple_polygon, line_intersection, point_in_quad, polygon_area, representative_point};
-#[cfg(test)]
+use geom2d::{is_simple_polygon, line_intersection, polygon_area, representative_point};
 use geom2d::point_in_polygon;
+use crate::math::v2::shoelace2_edges;
 
 /// Stable handle to a vertex. Survives edits; never reused after tombstoning.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -924,7 +924,7 @@ impl SpacePlate {
         let Some(inside) = representative_point(&outline) else {
             return false;
         };
-        !self.wall_rects.iter().any(|r| point_in_quad(inside, r))
+        !self.wall_rects.iter().any(|r| point_in_polygon(inside, r))
     }
 
     /// CCW outline of a face (no repeated closing vertex).
@@ -1223,13 +1223,12 @@ impl SpacePlate {
     }
 
     fn signed_area_of_cycle(&self, cycle: &[HalfEdgeId]) -> f64 {
-        let mut acc = 0.0;
-        for &h in cycle {
+        let edges = cycle.iter().map(|&h| {
             let p = self.vertices[self.half_edges[h.0 as usize].origin.0 as usize].pos;
             let q = self.vertices[self.dest(h).0 as usize].pos;
-            acc += p[0] * q[1] - q[0] * p[1];
-        }
-        acc * 0.5
+            (p, q)
+        });
+        shoelace2_edges(edges) * 0.5
     }
 
     fn check_face(&self, face: FaceId) -> Result<(), EditError> {

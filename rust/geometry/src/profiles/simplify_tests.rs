@@ -52,14 +52,7 @@ fn annular_sector_loop(radius: f64, thickness: f64, span: f64, seg: usize) -> Ve
 }
 
 fn loop_area(loop_: &[Point2<f64>]) -> f64 {
-    let n = loop_.len();
-    let mut a = 0.0;
-    for i in 0..n {
-        let p = loop_[i];
-        let q = loop_[(i + 1) % n];
-        a += p.x * q.y - q.x * p.y;
-    }
-    (a * 0.5).abs()
+    crate::math::v2::signed_area_by(loop_.len(), |i| [loop_[i].x, loop_[i].y]).abs()
 }
 
 #[test]

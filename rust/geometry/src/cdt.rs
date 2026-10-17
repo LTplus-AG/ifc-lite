@@ -148,7 +148,7 @@ fn p2(p: &Point2<f64>) -> P2 {
 }
 
 /// Exact orientation sign of `(a, b, c)`: `+1` CCW, `-1` CW, `0` collinear.
-use crate::geom2d::orientation as orient;
+use crate::math::geom2d::orientation as orient;
 
 /// Exact in-circle sign: `> 0` when `d` is strictly inside the circumcircle of
 /// the CCW triangle `(a, b, c)`.

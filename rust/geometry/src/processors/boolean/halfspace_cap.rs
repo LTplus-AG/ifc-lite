@@ -2,6 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+use crate::bool2d::{compute_signed_area, point_in_contour};
 use crate::{Mesh, Point2, Point3, Vector3};
 
 // Test-only seam for the `outer_filled == outer_count` accounting
@@ -233,31 +234,6 @@ pub(crate) fn cap_half_space_clip(
     }
     let (all2d, u_axis, v_axis, origin) = project_to_2d(&all3d, &cap_outward);
 
-    let signed_area = |ring: &[Point2<f64>]| -> f64 {
-        let mut s = 0.0;
-        let m = ring.len();
-        for i in 0..m {
-            let j = (i + 1) % m;
-            s += ring[i].x * ring[j].y - ring[j].x * ring[i].y;
-        }
-        s * 0.5
-    };
-    let point_in_ring = |pt: &Point2<f64>, ring: &[Point2<f64>]| -> bool {
-        let mut inside = false;
-        let m = ring.len();
-        let mut j = m - 1;
-        for i in 0..m {
-            let (pi, pj) = (ring[i], ring[j]);
-            if ((pi.y > pt.y) != (pj.y > pt.y))
-                && (pt.x < (pj.x - pi.x) * (pt.y - pi.y) / (pj.y - pi.y) + pi.x)
-            {
-                inside = !inside;
-            }
-            j = i;
-        }
-        inside
-    };
-
     let rings: Vec<Vec<Point2<f64>>> = ranges
         .iter()
         .map(|&(a, b)| all2d[a..b].to_vec())
@@ -268,7 +244,7 @@ pub(crate) fn cap_half_space_clip(
         .map(|i| {
             let probe = rings[i][0];
             (0..rings.len())
-                .filter(|&j| j != i && point_in_ring(&probe, &rings[j]))
+                .filter(|&j| j != i && point_in_contour(&probe, &rings[j]))
                 .count()
         })
         .collect();
@@ -295,7 +271,7 @@ pub(crate) fn cap_half_space_clip(
         }
         // Outer ring CCW; its immediate holes (depth+1, contained) CW.
         let mut outer = ring.clone();
-        if signed_area(&outer) < 0.0 {
+        if compute_signed_area(&outer) < 0.0 {
             outer.reverse();
         }
         let mut holes: Vec<Vec<Point2<f64>>> = Vec::new();
@@ -303,11 +279,11 @@ pub(crate) fn cap_half_space_clip(
             if hi == oi || depth[hi] != depth[oi] + 1 {
                 continue;
             }
-            if !point_in_ring(&hring[0], ring) {
+            if !point_in_contour(&hring[0], ring) {
                 continue;
             }
             let mut h = hring.clone();
-            if signed_area(&h) > 0.0 {
+            if compute_signed_area(&h) > 0.0 {
                 h.reverse();
             }
             holes.push(h);

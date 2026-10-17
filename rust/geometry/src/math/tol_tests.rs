@@ -22,6 +22,7 @@ fn values_are_the_shipped_literals() {
         ("COARSE_DIRECTION_MIN_LEN", COARSE_DIRECTION_MIN_LEN, 1e-6),
         ("IDENTITY_EPS", IDENTITY_EPS, 1e-9),
         ("IDENTITY_EPS_STRICT", IDENTITY_EPS_STRICT, 1e-12),
+        ("PLACEMENT_2D_EPS", PLACEMENT_2D_EPS, 1e-10),
         ("PARALLEL_EPS", PARALLEL_EPS, 1e-9),
         ("ORTHO_EPS", ORTHO_EPS, 1.0e-4),
         ("MIN_SIN_THETA", MIN_SIN_THETA, 1.0e-3),
@@ -115,7 +116,7 @@ fn count_epsilon_literals(src: &str) -> usize {
 /// documented local constant), so this ceiling only ever goes down (lower it when you remove literals).
 /// Counts every `1e-N` / `1.0e-N` outside comments in `rust/geometry/src`, test
 /// modules inside files included, excluding `*_tests.rs` files.
-const MAX_INLINE_EPSILON_LITERALS: usize = 489;
+const MAX_INLINE_EPSILON_LITERALS: usize = 477;
 
 #[test]
 fn inline_epsilon_literals_only_go_down() {

@@ -100,6 +100,12 @@ pub const IDENTITY_EPS: f64 = 1e-9;
 /// identity result drops the transform entirely. Unit: as [`IDENTITY_EPS`].
 pub const IDENTITY_EPS_STRICT: f64 = 1e-12;
 
+/// An `IfcAxis2Placement2D` profile placement whose location components and
+/// direction deviate from the identity by less than this is skipped, and a
+/// direction-ratio vector shorter than this falls back to +X. Unit: model
+/// units for the location, dimensionless for the direction.
+pub const PLACEMENT_2D_EPS: f64 = 1e-10;
+
 /// Two directions whose cross product is shorter than this are parallel.
 /// Unit: dimensionless for the unit directions of `structural_edge` (the sine
 /// of the angle); length^2 for the unnormalised 2D edge vectors of

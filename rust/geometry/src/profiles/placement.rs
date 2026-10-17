@@ -2,6 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+use crate::math::tol;
 use super::ProfileProcessor;
 use crate::profile::Profile2D;
 use crate::router::transforms::operator::parse_transformation_operator;
@@ -50,7 +51,7 @@ impl ProfileProcessor {
                     let y = ratios.get(1).and_then(|v| v.as_float()).unwrap_or(0.0);
                     // Normalize
                     let len = (x * x + y * y).sqrt();
-                    if len > 1e-10 {
+                    if len > tol::PLACEMENT_2D_EPS {
                         (x / len, y / len)
                     } else {
                         (1.0, 0.0)
@@ -66,10 +67,10 @@ impl ProfileProcessor {
         };
 
         // Skip transform if it's identity (location at origin, direction is (1,0))
-        if loc_x.abs() < 1e-10
-            && loc_y.abs() < 1e-10
-            && (dir_x - 1.0).abs() < 1e-10
-            && dir_y.abs() < 1e-10
+        if loc_x.abs() < tol::PLACEMENT_2D_EPS
+            && loc_y.abs() < tol::PLACEMENT_2D_EPS
+            && (dir_x - 1.0).abs() < tol::PLACEMENT_2D_EPS
+            && dir_y.abs() < tol::PLACEMENT_2D_EPS
         {
             return Ok(());
         }

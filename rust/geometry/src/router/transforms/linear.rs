@@ -4,6 +4,7 @@
 
 //! IfcLinearPlacement resolution (#859): sample the basis curve at the authored distance.
 
+use crate::math::tol;
 use super::super::GeometryRouter;
 use super::walk::PlacementWalk;
 use crate::alignment::AlignmentCurve;
@@ -216,7 +217,7 @@ impl GeometryRouter {
         };
         let direction = decoder.resolve_ref(attr).ok().flatten()?;
         let v = self.parse_direction(&direction).ok()?;
-        v.try_normalize(1e-12).map(Some)
+        v.try_normalize(tol::DIRECTION_MIN_LEN).map(Some)
     }
 
     /// `IfcLinearPlacement.CartesianPosition` (attr 2) is an optional
@@ -262,7 +263,7 @@ fn sample_polyline_at_distance(
 
     if distance <= 0.0 {
         let tangent = (samples[1] - samples[0])
-            .try_normalize(1e-12)
+            .try_normalize(tol::DIRECTION_MIN_LEN)
             .unwrap_or_else(|| Vector3::new(1.0, 0.0, 0.0));
         return Some((samples[0], tangent));
     }
@@ -280,7 +281,7 @@ fn sample_polyline_at_distance(
             let t = ((distance - acc) / len).clamp(0.0, 1.0);
             let position = a + seg * t;
             let tangent = (seg / len)
-                .try_normalize(1e-12)
+                .try_normalize(tol::DIRECTION_MIN_LEN)
                 .unwrap_or_else(|| Vector3::new(1.0, 0.0, 0.0));
             return Some((position, tangent));
         }
@@ -291,7 +292,7 @@ fn sample_polyline_at_distance(
     let last = samples[samples.len() - 1];
     let prev = samples[samples.len() - 2];
     let tangent = (last - prev)
-        .try_normalize(1e-12)
+        .try_normalize(tol::DIRECTION_MIN_LEN)
         .unwrap_or_else(|| Vector3::new(1.0, 0.0, 0.0));
     Some((last, tangent))
 }

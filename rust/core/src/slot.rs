@@ -353,15 +353,13 @@ impl DecodedEntity {
         self.get(slot.into().at(self)).and_then(AttributeValue::as_enum)
     }
 
-    /// A BOOLEAN or LOGICAL: `.T.` is `true`, `.F.` is `false`, `.U.`
-    /// (unknown), `$` and anything else are `None`.
+    /// A BOOLEAN or LOGICAL as a definite boolean, with
+    /// [`DecodedEntity::get_bool`] semantics (one meaning, F3c): `.T.` is
+    /// `true`, `.F.` is `false`, `.U.` (unknown), `$` and anything else are
+    /// `None`.
     #[inline]
     pub fn logical_at(&self, slot: impl Into<SlotIx<Logical>>) -> Option<bool> {
-        match self.get(slot.into().at(self)).and_then(AttributeValue::as_enum)? {
-            "T" => Some(true),
-            "F" => Some(false),
-            _ => None,
-        }
+        self.get_bool(slot.into().at(self))
     }
 
     /// A BINARY literal's raw content, undecoded (see

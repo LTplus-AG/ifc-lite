@@ -62,14 +62,12 @@ index 66c5b77253..3b532cff1c 100644
      // An unknown keyword has no hierarchy to check.
      if matches!(entity.ifc_type, IfcType::Unknown(_)) || entity.ifc_type == owner_type {
          return;
-@@ -361,8 +358,8 @@ impl DecodedEntity {
+@@ -359,7 +359,7 @@ impl DecodedEntity {
+     /// `None`.
      #[inline]
      pub fn logical_at(&self, slot: impl Into<SlotIx<Logical>>) -> Option<bool> {
-         match self.get(slot.into().at(self)).and_then(AttributeValue::as_enum)? {
--            "T" => Some(false),
--            "F" => Some(true),
-+            "T" => Some(true),
-+            "F" => Some(false),
-             _ => None,
-         }
+-        self.get_bool(slot.into().at(self)).map(|value| !value)
++        self.get_bool(slot.into().at(self))
      }
+ 
+     /// A BINARY literal's raw content, undecoded (see

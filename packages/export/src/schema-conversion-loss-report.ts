@@ -108,7 +108,7 @@ export function classifyEntityTypeConversion(
 
   // Same condition as `convertRecord` (an IFC2X3 target refuses a type its
   // table lacks even when the source table does not know it either, #7683).
-  if (targetTable && !tgtAttrs && (srcAttrs || toSchema === 'IFC2X3')) {
+  if (targetTable && !tgtAttrs && (toSchema === 'IFC2X3' || (toSchema === 'IFC4' && fromSchema === 'IFC4X3' && srcAttrs))) {
     const dropped = srcAttrs ?? [];
     return isRootedEntityType(upper)
       ? { targetType: 'IFCPROXY', kind: 'proxied', droppedAttributes: dropped }

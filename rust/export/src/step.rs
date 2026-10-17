@@ -153,7 +153,7 @@ fn emit<W: std::io::Write>(
     // Only convert entity types/attributes when an explicit target differs from source.
     let converting = opts.schema.is_some()
         && crate::schema_convert::needs_conversion(&source_schema, &schema);
-    let flatten = crate::schema_style_flatten::StyleFlatten::for_export(content, &source_schema, &schema); // D57
+    let mut flatten = crate::schema_style_flatten::StyleFlatten::for_export(content, &source_schema, &schema); // D57
     // The slots IFC2X3 requires a value in: `OwnerHistory` from the first owner
     // history this export writes (#4686), the rest from the generated
     // required-slot table (#4714).
@@ -192,6 +192,7 @@ fn emit<W: std::io::Write>(
     let resolved = crate::step_cow::resolve(&opts.copy_on_write, content, line_of, &included, &muts_by_id, &mut ids);
     let copies_refused = resolved.refused;
     let copies = resolved.copies;
+    flatten.note_edits(&copies, &muts_by_id);
     let repointed = resolved.repointed;
 
     // 3. Emit header + filtered entities (source order) + footer.
@@ -235,7 +236,7 @@ fn emit<W: std::io::Write>(
 
     // The copies, emitted rather than appended: counted in `written` and put
     // through `convert_step_line` like every other record.
-    for (copy_id, source_id, edits) in &copies {
+    for (copy_id, source_id, edits) in copies.iter().filter(|c| !flatten.drops(c.0)) {
         if let Some(&(s0, e0)) = line_of.get(source_id) {
             let raw = String::from_utf8_lossy(&content[s0..e0]);
             // The caller's edits to the record belong to the copy too: the

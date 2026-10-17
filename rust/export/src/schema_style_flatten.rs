@@ -45,6 +45,15 @@ fn list_members(arg: &str) -> Option<Vec<String>> {
     }
 }
 
+/// IFC4X3's `Styles` takes `IfcPresentationStyle` entities only: the typed
+/// `IFCNULLSTYLE(.NULL.)` of IFC2X3/IFC4 has no place there and is dropped.
+fn without_null_style(members: Vec<String>) -> Vec<String> {
+    members
+        .into_iter()
+        .filter(|m| !m.trim_start().get(..13).is_some_and(|h| h.eq_ignore_ascii_case("IFCNULLSTYLE(")))
+        .collect()
+}
+
 fn ref_id(token: &str) -> Option<u32> {
     token.trim().strip_prefix('#')?.trim().parse().ok()
 }
@@ -66,12 +75,7 @@ impl StyleFlatten {
         let mut scanner = ifc_lite_core::EntityScanner::new(content);
         while let Some((id, type_name, start, end)) = scanner.next_entity() {
             if type_name.eq_ignore_ascii_case(ASSIGNMENT) {
-                // Last record with the id wins, as everywhere else.
-                let text = String::from_utf8_lossy(&content[start..end]);
-                match flat.read_assignment(&text) {
-                    Some(members) => flat.members.insert(id, members),
-                    None => flat.members.remove(&id),
-                };
+                flat.note(id, &String::from_utf8_lossy(&content[start..end]));
             }
         }
         (!flat.members.is_empty()).then_some(flat)
@@ -94,10 +98,55 @@ impl StyleFlatten {
         self.rewrite(crate::schema_convert::canon(from), &String::from_utf8_lossy(bytes))
     }
 
-    fn read_assignment(&self, text: &str) -> Option<Vec<String>> {
-        let (_, attrs, _) = split_record(text)?;
-        let args = split_top_level_args(attrs)?;
-        list_members(args.first()?)
+    /// Register an assignment record by its text (source, created or copied;
+    /// the last record with an id wins). An unreadable one is forgotten.
+    pub(crate) fn note(&mut self, id: u32, text: &str) {
+        let members = split_record(text)
+            .and_then(|(_, attrs, _)| split_top_level_args(attrs))
+            .and_then(|args| list_members(args.first()?))
+            .map(without_null_style);
+        match members {
+            Some(m) => self.members.insert(id, m),
+            None => self.members.remove(&id),
+        };
+    }
+
+    /// Register every assignment among records the export appends (created,
+    /// generated, rewritten), before any record is written: a styled item may
+    /// precede the assignment it names.
+    pub(crate) fn note_all<'a>(&mut self, records: impl Iterator<Item = &'a (u32, String)>) {
+        for (id, text) in records {
+            if split_record(text).is_some_and(|(ty, _, _)| ty.eq_ignore_ascii_case(ASSIGNMENT)) {
+                self.note(*id, text);
+            }
+        }
+    }
+
+    /// Copy-on-write copies and attribute edits of assignments: a copy takes
+    /// its source's members unless an edit sets `Styles` (slot 0); an edit of
+    /// an existing assignment replaces its members.
+    pub(crate) fn note_edits(
+        &mut self,
+        copies: &[(u32, u32, std::collections::BTreeMap<usize, String>)],
+        edits: &HashMap<u32, std::collections::BTreeMap<usize, String>>,
+    ) {
+        let set = |flat: &mut Self, id: u32, value: &str| {
+            if let Some(m) = list_members(value) {
+                flat.members.insert(id, without_null_style(m));
+            }
+        };
+        for (id, e) in edits {
+            if let (true, Some(v)) = (self.drops(*id), e.get(&0)) {
+                set(self, *id, v);
+            }
+        }
+        for (copy, source, own) in copies {
+            let Some(inherited) = self.members.get(source).cloned() else { continue };
+            self.members.insert(*copy, inherited);
+            if let Some(v) = own.get(&0).or_else(|| edits.get(source).and_then(|e| e.get(&0))) {
+                set(self, *copy, v);
+            }
+        }
     }
 
     /// An assignment record is not written.

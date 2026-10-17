@@ -43,40 +43,55 @@ function refId(token: string): number | null {
 }
 
 export class StyleFlatten {
-  private constructor(private readonly members: ReadonlyMap<number, readonly string[]>) {}
+  private readonly members = new Map<number, readonly string[]>();
 
   /** True for the one conversion that flattens: IFC2X3 or IFC4 source, IFC4X3 target. */
   static applies(from: IfcSchemaVersion, to: IfcSchemaVersion): boolean {
     return to === 'IFC4X3' && (from === 'IFC2X3' || from === 'IFC4');
   }
 
-  /** From assignment records as `[expressId, record text]`; undefined when there are none. */
-  static fromRecords(records: Iterable<readonly [number, string]>): StyleFlatten | undefined {
-    const members = new Map<number, readonly string[]>();
-    for (const [id, text] of records) {
-      const attrs = /^\s*#\d+\s*=\s*\w+\s*\((.*)\)\s*;?\s*$/s.exec(text)?.[1];
-      const args = attrs === undefined ? null : splitTopLevelStepArguments(attrs);
-      const list = args && args.length > 0 ? listMembers(args[0]) : null;
-      if (list) members.set(id, list);
-      else members.delete(id);
-    }
-    return members.size > 0 ? new StyleFlatten(members) : undefined;
+  /** An empty table for a conversion that flattens; undefined for one that does not. */
+  static create(from: IfcSchemaVersion, to: IfcSchemaVersion): StyleFlatten | undefined {
+    return StyleFlatten.applies(from, to) ? new StyleFlatten() : undefined;
   }
 
-  /** Read every assignment of a parsed store; undefined when the conversion does not flatten or there are none. */
+  /** Register an assignment record by its text (source, created or copied; the last record with an id wins). */
+  note(expressId: number, text: string): void {
+    const attrs = /^\s*#\d+\s*=\s*\w+\s*\((.*)\)\s*;?\s*$/s.exec(text)?.[1];
+    const args = attrs === undefined ? null : splitTopLevelStepArguments(attrs);
+    const list = args && args.length > 0 ? listMembers(args[0]) : null;
+    // IFC4X3's `Styles` takes IfcPresentationStyle entities only: the typed
+    // `IFCNULLSTYLE(.NULL.)` of IFC2X3/IFC4 has no place there and is dropped.
+    if (list) this.members.set(expressId, list.filter((m) => !/^IFCNULLSTYLE\s*\(/i.test(m)));
+    else this.members.delete(expressId);
+  }
+
+  /** {@link note}, for any record line: only an assignment is registered. */
+  noteLine(line: string): void {
+    const m = RECORD.exec(line);
+    if (m && m[3].toUpperCase() === ASSIGNMENT) this.note(Number(m[2]), line);
+  }
+
+  /** From assignment records as `[expressId, record text]`. */
+  static fromRecords(records: Iterable<readonly [number, string]>): StyleFlatten {
+    const flat = new StyleFlatten();
+    for (const [id, text] of records) flat.note(id, text);
+    return flat;
+  }
+
+  /** Read every assignment of a parsed store; undefined when the conversion does not flatten. */
   static fromStore(
     store: Pick<IfcDataStore, 'entityIndex' | 'source'>,
     from: IfcSchemaVersion,
     to: IfcSchemaVersion,
   ): StyleFlatten | undefined {
-    if (!StyleFlatten.applies(from, to) || !store.source) return undefined;
-    const ids = store.entityIndex.byType.get(ASSIGNMENT) ?? [];
-    const records: Array<[number, string]> = [];
-    for (const id of ids) {
+    const flat = StyleFlatten.create(from, to);
+    if (!flat || !store.source) return flat;
+    for (const id of store.entityIndex.byType.get(ASSIGNMENT) ?? []) {
       const ref = store.entityIndex.byId.get(id);
-      if (ref) records.push([id, decodeRange(store.source, ref.byteOffset, ref.byteOffset + ref.byteLength)]);
+      if (ref) flat.note(id, decodeRange(store.source, ref.byteOffset, ref.byteOffset + ref.byteLength));
     }
-    return StyleFlatten.fromRecords(records);
+    return flat;
   }
 
   /** An assignment record is not written. */

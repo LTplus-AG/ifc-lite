@@ -1,5 +1,5 @@
 {
- "_comment": "Shared cross-language vectors for entity types with NO representation in the target schema (#7742, D3 fail closed). Both converters run every case: Rust rust/export/tests/schema_unrepresented_parity.rs (convert_step_line) and TypeScript packages/export/src/schema-unrepresented.parity.test.ts (convertStepLine). `refuses` means the converter must refuse the record (Rust Err, TS throw); otherwise `expect` is the converted line with an IFCPROXY GlobalId masked as <MINTED> (the twins mint it differently, see schema_product_proxy_vectors.json). Rule: a record whose type the TARGET registry (IFC2X3, IFC4 or IFC4X3) does not declare is refused unless it is an IfcRoot subtype (then an IFCPROXY), when the SOURCE registry declares it or the target is IFC2X3. IFC5 has no registry on either side. Scope (D57): IFC2X3/IFC4 -> IFC4X3 does not refuse IfcPresentationStyleAssignment, the export flattens it first (schema_style_flatten_vectors.json); the bare per-line converter still refuses one, which schema_unrepresented.rs pins. Infrastructure IFC4X3 -> IFC4 stays fail-closed.",
+ "_comment": "Shared cross-language vectors for entity types with NO representation in the target schema (#7742, D3 fail closed). Both converters run every case: Rust rust/export/tests/schema_unrepresented_parity.rs (convert_step_line) and TypeScript packages/export/src/schema-unrepresented.parity.test.ts (convertStepLine). `refuses` means the converter must refuse the record (Rust Err, TS throw); otherwise `expect` is the converted line with an IFCPROXY GlobalId masked as <MINTED> (the twins mint it differently, see schema_product_proxy_vectors.json). Rule: a record whose type the TARGET registry does not declare is refused unless it is an IfcRoot subtype (then an IFCPROXY), when the target is IFC2X3, or the target is IFC4 and the SOURCE is an IFC4X3 that declares it. IFC5 has no registry on either side. Scope (D59): the IFC4 target check applies ONLY to an IFC4X3 source; IFC2X3 and IFC4 sources keep main's behaviour for IFC4/IFC4X3 targets (their IFC2X3-only or IFC4-only records are written as they are), and an IFC2X3 target refuses for every source as before. IfcPresentationStyleAssignment is flattened, not refused (schema_style_flatten_vectors.json).",
  "cases": [
   {
    "why": "IFCCURVESEGMENT is a non-rooted IFC4X3-only resource: no IFC4 representation, neither droppable nor proxiable (#7742)",
@@ -87,6 +87,34 @@
   },
   {
    "why": "a type both schemas declare, upgrade direction",
+   "from": "IFC4",
+   "to": "IFC4X3",
+   "line": "#5=IFCCARTESIANPOINT((0.,0.,0.));",
+   "expect": "#5=IFCCARTESIANPOINT((0.,0.,0.));"
+  },
+  {
+   "why": "an IFC2X3 or IFC4 source keeps main's behaviour for IFC4/IFC4X3 targets: its IFC2X3-only non-rooted record is written as it is, not refused (D59; BIMcollab_ARC, O-S1-BWK, 841_house)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#5=IFCCALENDARDATE(1,1,2000);",
+   "expect": "#5=IFCCALENDARDATE(1,1,2000);"
+  },
+  {
+   "why": "an IFC2X3 or IFC4 source keeps main's behaviour for IFC4/IFC4X3 targets: its IFC2X3-only non-rooted record is written as it is, not refused (D59; BIMcollab_ARC, O-S1-BWK, 841_house)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#5=IFCCALENDARDATE(1,1,2000);",
+   "expect": "#5=IFCCALENDARDATE(1,1,2000);"
+  },
+  {
+   "why": "an IFC2X3 or IFC4 source keeps main's behaviour for IFC4/IFC4X3 targets: its IFC2X3-only non-rooted record is written as it is, not refused (D59; BIMcollab_ARC, O-S1-BWK, 841_house)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#5=IFCGENERALMATERIALPROPERTIES($,$,$,$,$);",
+   "expect": "#5=IFCGENERALMATERIALPROPERTIES($,$,$,$,$);"
+  },
+  {
+   "why": "control: IFC4 -> IFC4X3 of a record both declare (D59)",
    "from": "IFC4",
    "to": "IFC4X3",
    "line": "#5=IFCCARTESIANPOINT((0.,0.,0.));",

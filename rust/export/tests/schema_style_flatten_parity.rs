@@ -83,3 +83,61 @@ fn duplex_and_open_house_export_to_ifc4x3_without_assignments_d57() {
         assert!(new.is_empty(), "{name}: references to unwritten records: {new:?}");
     }
 }
+
+fn file(from: &str, records: &[&str]) -> String {
+    format!(
+        "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\n\
+         FILE_NAME('t','',(''),(''),'','','');\nFILE_SCHEMA(('{from}'));\nENDSEC;\nDATA;\n{}\nENDSEC;\nEND-ISO-10303-21;\n",
+        records.join("\n")
+    )
+}
+
+/// An assignment the editor created (log-created) and the styled item that
+/// names it flatten like a source one: an IFC2X3 model with a style applied in
+/// the editor must export to IFC4X3 (review of #7801, finding 3).
+#[test]
+fn a_log_created_assignment_is_flattened_d59() {
+    let source = file("IFC2X3", &["#1=IFCCARTESIANPOINT((0.,0.,0.));", "#3=IFCSURFACESTYLE('s',.BOTH.,());"]);
+    let log = ifc_lite_export::MutationLog::from_json(
+        r##"{"mutations":[{"type":"CREATE_ENTITY","entityId":21,"attributeName":"IfcStyledItem"},
+                         {"type":"CREATE_ENTITY","entityId":20,"attributeName":"IfcPresentationStyleAssignment"}],
+            "newEntities":[{"expressId":21,"type":"IfcStyledItem","attributes":["#1",["#20"],null]},
+                           {"expressId":20,"type":"IfcPresentationStyleAssignment","attributes":[["#3"]]}]}"##,
+    )
+    .unwrap();
+    let opts = ifc_lite_export::StepOptions { schema: Some("IFC4X3".into()), ..Default::default() };
+    let (out, _) = ifc_lite_export::export_step_with_log(source.as_bytes(), &opts, &log).expect("exports");
+    assert!(!out.contains("IFCPRESENTATIONSTYLEASSIGNMENT"), "{out}");
+    assert!(out.contains("IFCSTYLEDITEM(#1,(#3),$)"), "{out}");
+}
+
+/// A copy-on-write copy of an assignment keeps the assignment's members (or the
+/// edit's), and the styled item repointed at it flattens.
+#[test]
+fn a_copy_on_write_assignment_is_flattened_d59() {
+    let source = file(
+        "IFC2X3",
+        &["#1=IFCCARTESIANPOINT((0.,0.,0.));", "#3=IFCSURFACESTYLE('s',.BOTH.,());", "#4=IFCSURFACESTYLE('t',.BOTH.,());",
+          "#5=IFCPRESENTATIONSTYLEASSIGNMENT((#3));", "#6=IFCSTYLEDITEM(#1,(#5),$);"],
+    );
+    let opts = ifc_lite_export::StepOptions {
+        schema: Some("IFC4X3".into()),
+        copy_on_write: vec![ifc_lite_export::CopyOnWriteMutation {
+            express_id: 5,
+            index: 0,
+            value: "(#4)".into(),
+            referrer_id: 6,
+            referrer_index: 1,
+        }],
+        ..Default::default()
+    };
+    let out = export_step_json_opts(&source, &opts);
+    assert!(!out.contains("IFCPRESENTATIONSTYLEASSIGNMENT"), "{out}");
+    assert!(out.contains("IFCSTYLEDITEM(#1,(#4),$)"), "{out}");
+}
+
+fn export_step_json_opts(source: &str, opts: &ifc_lite_export::StepOptions) -> String {
+    let mut buf = Vec::new();
+    ifc_lite_export::export_step_to_writer(source.as_bytes(), opts, &mut buf).expect("exports");
+    String::from_utf8(buf).unwrap()
+}

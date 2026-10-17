@@ -106,6 +106,7 @@ export function writeOverlayCreatedEntities(
   const getTypeMut = typeof ctx.mutationView.getEntityTypeMutation === 'function'
     ? ctx.mutationView.getEntityTypeMutation.bind(ctx.mutationView)
     : null;
+  const toConvert: string[] = [];
   for (const entity of ctx.mutationView.getNewEntities()) {
     if (pass.skipRelationshipIds.has(entity.expressId) || pass.skipPropertySetIds.has(entity.expressId)) continue;
     // A retyped overlay entity keeps its AUTHORED type on `entity.type`
@@ -229,14 +230,14 @@ export function writeOverlayCreatedEntities(
     } else if (mayNameOmittedRefs && NONREL_REF_LIST_TYPES.has(upperType)) {
       line = narrowNonRelPositionalRefLists(line, isOmittedFromOutput, upperType, pass.sourceSchema);
     }
-    if (pass.converting) {
-      const converted = convertStepLineFlattening(pass.styleFlatten, line, pass.sourceSchema, pass.schema, options.guidRandom, pass.slotFill, pass.withheldRefIds, pass.ifc4Slots, pass.enums);
-      if (converted !== null) pass.entities.push(converted);
-      pass.newEntityCount++;
-    } else {
-      pass.entities.push(line);
-      pass.newEntityCount++;
-    }
+    // Converted after the loop: a created style assignment may follow the styled item naming it.
+    (pass.converting ? toConvert : pass.entities).push(line);
+    pass.newEntityCount++;
+  }
+  for (const line of toConvert) pass.styleFlatten?.noteLine(line);
+  for (const line of toConvert) {
+    const converted = convertStepLineFlattening(pass.styleFlatten, line, pass.sourceSchema, pass.schema, options.guidRandom, pass.slotFill, pass.withheldRefIds, pass.ifc4Slots, pass.enums);
+    if (converted !== null) pass.entities.push(converted);
   }
 }
 

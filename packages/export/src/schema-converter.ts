@@ -402,7 +402,7 @@ function convertRecord(
   // all — see `resolveUnrepresentedEntity` for why it can't just pass through.
   // On IFC2X3 even with no source entry, as Rust's `has_representation`: a
   // non-entity head (`#1=IFCLABEL('x');`) fails closed (#7683, D3).
-  if (targetTable && !tgtAttrs && (srcAttrs || toSchema === 'IFC2X3')) {
+  if (targetTable && !tgtAttrs && (toSchema === 'IFC2X3' || (toSchema === 'IFC4' && fromSchema === 'IFC4X3' && srcAttrs))) {
     return resolveUnrepresentedEntity(prefix, entityType, attrsRaw, toSchema, random, withheldRefIds !== undefined);
   }
   if (srcAttrs && tgtAttrs) {

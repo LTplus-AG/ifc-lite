@@ -44,7 +44,7 @@ describe('StyleFlatten matches the shared vectors (D57)', () => {
   }
 
   it('flattens a styled-item subtype and leaves other records alone', () => {
-    const styles = StyleFlatten.fromRecords([[2, '#2=IFCPRESENTATIONSTYLEASSIGNMENT((#3,#4));']])!;
+    const styles = StyleFlatten.fromRecords([[2, '#2=IFCPRESENTATIONSTYLEASSIGNMENT((#3,#4));']]);
     expect(styles.apply("#7=IFCANNOTATIONSURFACEOCCURRENCE(#9,(#2),$);")).toBe(
       '#7=IFCANNOTATIONSURFACEOCCURRENCE(#9,(#3,#4),$);',
     );

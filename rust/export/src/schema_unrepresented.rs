@@ -23,20 +23,20 @@ use crate::schema_convert::{placeholder_guid, schema_attribute_names};
 /// pinned for both by `tests/fixtures/schema_unrepresented_vectors.json`
 /// (#7742).
 ///
-/// The target registry (IFC2X3, IFC4 or IFC4X3; IFC5 has none, so it accepts
-/// everything) must declare the type. An IFC2X3 target applies that to every
-/// record. For IFC4 and IFC4X3 it applies only to a type the SOURCE registry
-/// DOES declare (`declared_in_source`): a name neither schema knows (a vendor
-/// extension, a defined-type head) is not the registry's to judge and passes
-/// through, as before. Until #7742 an IFC4 or IFC4X3 target was never
-/// checked here, so an IFC4X3 -> IFC4 export wrote every IFC4X3-only resource
-/// record (`IfcCurveSegment`, `IfcClothoid`, ...) under its IFC4X3 name into
-/// a file headed `IFC4`, where readers drop it and every reference to it
-/// dangles; the TypeScript twin refused it.
+/// An IFC2X3 target requires the target registry to declare the type, for
+/// every source (as before). An IFC4 target requires it only when the SOURCE is
+/// IFC4X3 and declares the type (`declared_in_source`): that is the #7742
+/// direction, IFC4X3-only resources that readers drop. IFC2X3 and IFC4 sources
+/// keep main's behaviour for IFC4/IFC4X3 targets (D59): their IFC2X3-only or
+/// IFC4-only non-rooted records (`IfcCalendarDate` on an `IfcClassification`,
+/// `IfcGeneralMaterialProperties`) are written as they are, because refusing
+/// them failed real files that export on main. IFC5 has no registry and
+/// accepts everything. A name neither schema knows passes through.
 ///
-/// The one IFC4-only non-rooted type that real files carry,
-/// `IfcPresentationStyleAssignment`, never reaches this check on an upgrade to
-/// IFC4X3: the export flattens it first ([`crate::schema_style_flatten`], D57).
+/// Until #7742 an IFC4 target was never checked here, so an IFC4X3 -> IFC4
+/// export wrote every IFC4X3-only resource record (`IfcCurveSegment`,
+/// `IfcClothoid`, ...) under its IFC4X3 name into a file headed `IFC4`; the
+/// TypeScript twin refused it.
 ///
 /// This crate still has no port of the TypeScript
 /// `WITHHOLDABLE_UNROOTED_TYPES` omission, so every non-rooted type that fails
@@ -44,7 +44,7 @@ use crate::schema_convert::{placeholder_guid, schema_attribute_names};
 pub(crate) fn has_representation(declared_in_source: bool, type_name: &str, to: &str) -> bool {
     match to {
         "IFC2X3" => {}
-        "IFC4" | "IFC4X3" if declared_in_source => {}
+        "IFC4" if declared_in_source => {}
         _ => return true,
     }
     schema_attribute_names(to, type_name).is_some()
@@ -168,10 +168,10 @@ mod tests {
     }
 
     #[test]
-    fn ifc4_and_ifc4x3_targets_check_only_types_the_source_declares_7742() {
-        // IFC4X3-only and IFC4-only resource types.
+    fn an_ifc4_target_checks_only_types_an_ifc4x3_source_declares_7742() {
         assert!(!has_representation(true, "IFCCURVESEGMENT", "IFC4"));
-        assert!(!has_representation(true, "IFCPRESENTATIONSTYLEASSIGNMENT", "IFC4X3"));
+        // IFC4X3 is never checked as a target (an IFC2X3/IFC4 source keeps main's behaviour, D59).
+        assert!(has_representation(true, "IFCPRESENTATIONSTYLEASSIGNMENT", "IFC4X3"));
         // A name the source does not declare is not judged.
         assert!(has_representation(false, "IFCCURVESEGMENT", "IFC4"));
         assert!(has_representation(true, "IFCTRIANGULATEDFACESET", "IFC4"));

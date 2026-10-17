@@ -55,7 +55,7 @@ pub(crate) fn plan_for(entity_type: &str, cfrom: &'static str, cto: &'static str
         return Plan::ProductProxy;
     }
     let src_names = schema_attribute_names(cfrom, entity_type);
-    if !has_representation(src_names.is_some(), new_type, cto) {
+    if !has_representation(cfrom == "IFC4X3" && src_names.is_some(), new_type, cto) {
         return Plan::Unrepresented;
     }
     // The two prefix branches cannot both apply: each needs its own list

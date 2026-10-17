@@ -75,6 +75,30 @@
    ]
   },
   {
+   "why": "IFC4X3 Styles takes IfcPresentationStyle entities only: a typed IFCNULLSTYLE member is dropped (D59)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "records": [
+    "#1=IFCSTYLEDITEM(#9,(#2),$);",
+    "#2=IFCPRESENTATIONSTYLEASSIGNMENT((IFCNULLSTYLE(.NULL.),#4));"
+   ],
+   "expect": [
+    "#1=IFCSTYLEDITEM(#9,(#4),$);"
+   ]
+  },
+  {
+   "why": "an assignment holding only a null style leaves an empty Styles list (D59; the schema wants one member, the null style has no IFC4X3 spelling)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "records": [
+    "#1=IFCSTYLEDITEM(#9,(#2),$);",
+    "#2=IFCPRESENTATIONSTYLEASSIGNMENT((IFCNULLSTYLE(.NULL.)));"
+   ],
+   "expect": [
+    "#1=IFCSTYLEDITEM(#9,(),$);"
+   ]
+  },
+  {
    "why": "control: the IFC2X3 target keeps its assignments",
    "from": "IFC4",
    "to": "IFC2X3",

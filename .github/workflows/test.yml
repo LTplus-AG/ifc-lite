@@ -1209,6 +1209,12 @@ jobs:
           # whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/processing/src/scan.rs | grep -Fxq 'rust/processing/src/scan.rs'; then
             oracle_args+=(--mutation tests/evidence/processing-7782/scan-class.oracle.patch)
+          # #7783: C6-8 moves the export model into data_model::{rows,inherit,
+          # render::flat} and adds QuantityKind, so the moved tests do not exist
+          # on the base. Keep the move; break ONLY QuantityKind's spellings and
+          # class mapping.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/processing/src/data_model/quantity.rs | grep -Fxq 'rust/processing/src/data_model/quantity.rs'; then
+            oracle_args+=(--mutation tests/evidence/data-model-rows-7783/behaviour.oracle.patch)
           fi
           node scripts/check-test-revert-oracle.mjs "${oracle_args[@]}"
           # #7512: observe cleanup independently of scoped admission/schema.

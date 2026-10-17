@@ -11,8 +11,7 @@
 use ifc_lite_export::{export_merged_with_stats, MergedOptions};
 
 fn guid(label: &str) -> String {
-    // First char 1: a valid GlobalId is 0..=3 there (#7777).
-    format!("1{label:0<21}")
+    format!("{label:0<22}")
 }
 
 fn model(schema: &str, lines: &[String]) -> String {

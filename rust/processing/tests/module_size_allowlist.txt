@@ -80,7 +80,6 @@
 # the prism-cut path's cap/decompose triangulator. Skips the ring depth-parity
 # flood that open segments would corrupt.
      1617 rust/geometry/src/cdt.rs
-     956 rust/geometry/src/csg/consolidate.rs
 # -159: inline `mod tests` split out to csg/csg_tests.rs (ratchet-exempt) to make room for the
 # degenerate-triangle NaN-normal fix and its two regression tests; budget refreshed downward.
 # -117: the vertex-vs-plane classification epsilon (per-axis f32 rounding noise

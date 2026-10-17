@@ -108,7 +108,10 @@ mod work_counters {
     fn issue_6537_clean_ring_counts_post_weld_vertices() {
         take();
         let ring = [[0.0, 0.0], [0.0, 0.0], [2.0, 0.0], [2.0, 2.0], [0.0, 2.0]];
-        assert_eq!(super::super::clean_ring(&ring, 4.0, 1.0), Some(square()));
+        assert_eq!(
+            super::super::clean_ring(&ring, 4.0, 1.0),
+            Some(square()),
+        );
         let c = take();
         assert_eq!(c.ring_simplifier_calls, 1);
         assert_eq!(c.ring_simplifier_input_vertices, 4);

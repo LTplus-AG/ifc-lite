@@ -309,14 +309,24 @@ struct EdgeStats {
 }
 
 fn edge_stats(mesh: &Mesh) -> EdgeStats {
-    let q = |v: f32| (v as f64 * 1.0e3).round() as i64;
+    edge_stats_with_keys(mesh, |p| {
+        let p = p.map(|v| (f64::from(v) * 1.0e3).round() as i64);
+        (p[0], p[1], p[2])
+    })
+}
+
+#[cfg(not(any(feature = "csg_topology_gate", feature = "csg_manifold_gate")))]
+fn edge_stats_exact(mesh: &Mesh) -> EdgeStats {
+    edge_stats_with_keys(mesh, |p| {
+        let p = p.map(|v| if v == 0.0 { 0 } else { i64::from(v.to_bits()) });
+        (p[0], p[1], p[2])
+    })
+}
+
+fn edge_stats_with_keys(mesh: &Mesh, key: impl Fn([f32; 3]) -> (i64, i64, i64)) -> EdgeStats {
     let mut vid: FxHashMap<(i64, i64, i64), u32> = FxHashMap::default();
     let mut id = |i: usize| -> u32 {
-        let k = (
-            q(mesh.positions[i * 3]),
-            q(mesh.positions[i * 3 + 1]),
-            q(mesh.positions[i * 3 + 2]),
-        );
+        let k = key([mesh.positions[i * 3], mesh.positions[i * 3 + 1], mesh.positions[i * 3 + 2]]);
         let n = vid.len() as u32;
         *vid.entry(k).or_insert(n)
     };
@@ -1447,7 +1457,10 @@ fn issue_129_mixed_bool2d_residual_preserves_established_topology() {
     let expected = if std::env::var("IFC_LITE_PRISM_CUT").as_deref() == Ok("0") {
         [(12381, 30, 31, 9400), (32810, 0, 0, 3224)]
     } else {
-        [(12381, 25, 26, 7565), (32810, 3, 3, 3207)]
+        // #7292: retaining supported finite source cells removes ten signed
+        // and strict boundary defects in both triangulators (25/26 -> 15/16).
+        // DEFAULT retains six additional triangles; the #32810 cut is unchanged.
+        [(12381, 15, 16, 7571), (32810, 3, 3, 3207)]
     };
     for &alt in triangulators {
         set_alt(alt);
@@ -1506,6 +1519,7 @@ fn issue_4627_candidate_failures_preserve_prior_analytic_cuts() {
                 // shared planar-face home (Newell basis, convex fans), so the
                 // cut hosts' triangle counts moved; open edges never rose, and
                 // #11477 closed (9 open -> 0).
+                // #7795 also closes ALT; confirmed on exact main be93 and #7292.
                 (11477, 0, 0, 158, 0),
                 // #5410: 19 open / 139 tris until a plan-rotated host whose
                 // cutters author no depth took the wall-local frame; now closed
@@ -1514,12 +1528,17 @@ fn issue_4627_candidate_failures_preserve_prior_analytic_cuts() {
                 (31156, 0, 0, 196, 0),
                 (17553, 0, 2, 214, 0),
                 (17615, 0, 0, 244, 0),
-                (25914, 28, 31, 84, 28),
+                (25914, 25, 28, 87, 25),
                 (26610, 0, 0, 84, 0),
                 // rvt01 wall hosts the #3977 local-frame selector must leave
                 // closed (pinned after 0e8a42175 tore #10191 open via a -Z cutter depth).
+                // #7292: preserve the ordinary exactly closed boundary; the
+                // stronger exact fixture below checks both triangulators.
                 (10191, 0, 0, 172, 0),
-                (26681, 32, 32, 192, 33),
+                // #7292 retains all 192 main triangles and adds one quad closing
+                // four exact edges. The 1mm grid aliases a parallel face 61um
+                // away; see evidence/issue-7292/be93-rvt01-26681-adjudication.json.
+                (26681, 36, 37, 194, 17),
             ][..],
         ),
         (
@@ -2438,4 +2457,33 @@ fn repaired_office_covering_matches_independent_solid_3925() {
     assert_eq!(edge_stats(&mesh).strict, 0);
     assert!((75_500..=75_900).contains(&volume_cm3(&mesh)),
         "office covering volume must agree with the independent solid: {} cm³", volume_cm3(&mesh));
+}
+
+#[cfg(not(any(feature = "csg_topology_gate", feature = "csg_manifold_gate")))]
+#[test]
+fn issue_7292_rvt_void_cut_hygiene_preserves_exact_closed_boundaries() {
+    let _serial = CENSUS_SWEEP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _reset = AltTriangulatorReset;
+    let path = crate_dir().join("../../tests/models/various/rvt01.ifc");
+    if !oracle_fixture_present(&path) {
+        eprintln!("Skipping #7292 void hygiene: run pnpm fixtures");
+        return;
+    }
+    let content = std::fs::read_to_string(path).expect("read actual rvt fixture");
+    let frame = ModelFrame::new(&content);
+    let voids = void_index(&content);
+    #[cfg(feature = "triangulation-alt")]
+    let triangulators = &[false, true][..];
+    #[cfg(not(feature = "triangulation-alt"))]
+    let triangulators = &[false][..];
+    for &alt in triangulators {
+        set_alt(alt);
+        for id in [10191, 31156] {
+            let mesh = process(&frame, id, &voids).expect("actual void-cut host must mesh");
+            assert!(!mesh.indices.is_empty(), "host {id}, alt={alt}");
+            let exact = edge_stats_exact(&mesh);
+            assert_eq!((exact.open, exact.strict), (0, 0), "host {id}, alt={alt}");
+            assert_eq!(edge_stats(&mesh).open, 0, "host {id}, alt={alt}");
+        }
+    }
 }

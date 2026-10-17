@@ -21,6 +21,19 @@ pub(crate) fn resolve(
         .ok_or_else(|| invalid("curve reference cannot be resolved"))
 }
 
+/// Admit curve coordinates for the `f32` mesh (#7765, D3/D13): a real that is
+/// non-finite, or finite beyond `f32` range (`1.E39`), narrows to an infinity
+/// in every vertex built from it, so the curve is refused (the caller's `Err`
+/// is counted as a dropped item) rather than meshed. The one home for the
+/// `IfcIndexedPolyCurve` readers (profile, directrix, analytic).
+pub(crate) fn admit_f32_range(values: impl IntoIterator<Item = f64>) -> Result<()> {
+    if values.into_iter().all(|v| (v as f32).is_finite()) {
+        Ok(())
+    } else {
+        Err(invalid("curve coordinate is non-finite or beyond f32 range"))
+    }
+}
+
 pub(crate) fn point_values(values: &[AttributeValue]) -> Result<[f64; 3]> {
     if values.len() < 2 {
         return Err(invalid("Cartesian point has fewer than two coordinates"));
@@ -30,9 +43,7 @@ pub(crate) fn point_values(values: &[AttributeValue]) -> Result<[f64; 3]> {
         point[i] = values[i]
             .as_float()
             .ok_or_else(|| invalid("invalid Cartesian coordinate"))?;
-        if !point[i].is_finite() {
-            return Err(invalid("non-finite Cartesian coordinate"));
-        }
+        admit_f32_range([point[i]])?;
     }
     Ok(point)
 }

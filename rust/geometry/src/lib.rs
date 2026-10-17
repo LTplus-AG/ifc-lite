@@ -81,6 +81,7 @@ mod alignment_sampling;
 mod alignment_sampling_curve;
 mod alignment_sampling_placement;
 pub mod analytic;
+mod axis_projection;
 mod curve_source;
 mod trimmed_curve;
 pub(crate) mod gradient;

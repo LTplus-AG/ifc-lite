@@ -9,7 +9,7 @@ use super::{
 };
 use ifc_lite_core::{AttributeValue as A, IfcType};
 use rustc_hash::FxHashMap;
-use sha2::{Digest, Sha256};
+use crate::fingerprint::{sha256_hex, Sha256Writer};
 
 pub(super) const ALGORITHM: &str = "ifclite-pdf-fill-annotation-v1";
 
@@ -250,12 +250,12 @@ pub fn plan_pdf_fill_annotation_with_clip(
             return Err("Canonical PDF fill vertices exceed the requested metric precision; move the page nearer the model origin".into());
         }
     }
-    let source_ifc_sha256 = format!("{:x}", Sha256::digest(bytes));
-    let mut digest = Sha256::new();
-    digest.update(ALGORITHM.as_bytes());
-    digest.update(b"\0");
-    digest.update(source_ifc_sha256.as_bytes());
-    digest.update(serde_json::to_vec(r).map_err(|e| e.to_string())?);
+    let source_ifc_sha256 = sha256_hex(bytes);
+    let mut digest = Sha256Writer::new();
+    digest.bytes(ALGORITHM.as_bytes());
+    digest.bytes(b"\0");
+    digest.bytes(source_ifc_sha256.as_bytes());
+    digest.bytes(serde_json::to_vec(r).map_err(|e| e.to_string())?);
     Ok(PdfFillAnnotationPlan {
         plan: author.plan,
         annotation_id: annotation,
@@ -267,7 +267,7 @@ pub fn plan_pdf_fill_annotation_with_clip(
         source_ifc_sha256,
         source_pdf_sha256: r.page.pdf_sha256.clone(),
         page_number: r.page.page_number,
-        request_sha256: format!("{:x}", digest.finalize()),
+        request_sha256: digest.finish_hex(),
         algorithm: ALGORITHM,
         calibration_key: r.page.calibration_key.clone(),
         tolerance_metres: r.page.tolerance_metres,

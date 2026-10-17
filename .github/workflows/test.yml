@@ -1185,6 +1185,16 @@ jobs:
           # placement/chain.rs is on main, ordinary whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/placement/chain.rs | grep -Fxq 'rust/geometry/src/placement/chain.rs'; then
             oracle_args+=(--mutation tests/evidence/placement-7779/behaviour.oracle.patch)
+          # #7782 (C4-1): `process`, `ProcessingRequest`, `ProcessingSink` and
+          # `FrameEvent` are new items the changed tests import, so a
+          # whole-change revert cannot compile them (INCONCLUSIVE). Keep them
+          # and restore ONLY behaviour the tests pin: no `on_frame` event, the
+          # baked-basis slot never filled, `fast_first` dropped by
+          # `from_streaming`, and the id allow-list ignored by the
+          # `_and_ids` delegate. Once request.rs is on main, ordinary
+          # whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/processing/src/processor/request.rs | grep -Fxq 'rust/processing/src/processor/request.rs'; then
+            oracle_args+=(--mutation tests/evidence/processing-7782/behaviour.oracle.patch)
           fi
           node scripts/check-test-revert-oracle.mjs "${oracle_args[@]}"
           # #7512: observe cleanup independently of scoped admission/schema.

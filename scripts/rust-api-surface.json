@@ -505,7 +505,9 @@
     "LandXmlProperties": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "LandXmlRenderState": "enum { PreservedOnly; Rendered; Unsupported }",
     "LandXmlRoadway": "struct { alignment_refs: Vec<String>; alignment_source_ids: Vec<LandXmlSourceId>; grade_model_refs: Vec<String>; name: String; ordinal: usize; source_id: LandXmlSourceId; surface_refs: Vec<String>; surface_source_ids: Vec<LandXmlSourceId> }",
+    "LandXmlSource": "struct { alignments: LandXmlAlignmentDocument; document: LandXmlDocument }",
     "LandXmlSourceId": "struct(String)",
+    "LandXmlSourceLimits": "struct { alignment: LandXmlAlignmentLimits; plan: LandXmlPlanLimits; xml: LandXmlLimits }",
     "LandXmlSourcePoint": "struct { coordinate_dimension: u8; coordinates: Vec<f64>; ordinal: usize; source_id: LandXmlSourceId; source_path: String }",
     "LandXmlStreamEvent": "enum { Header(LandXmlStreamHeader); Metadata(Box<LandXmlMetadataStreamEvent>); Surface(LandXmlSurfaceFragment) }",
     "LandXmlStreamHeader": "struct { units: Option<LandXmlUnits>; version: String }",
@@ -536,6 +538,8 @@
     "parse_landxml_pipe_networks_with_cancel": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "parse_landxml_plan": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "parse_landxml_plan_with_cancel": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
+    "parse_landxml_source": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
+    "parse_landxml_source_with_cancel": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "parse_landxml_tin": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "parse_landxml_tin_with_cancel": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)"
   },

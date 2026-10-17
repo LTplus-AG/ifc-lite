@@ -27,7 +27,7 @@ use axum::{
 use bytes::Bytes;
 use futures::stream::StreamExt;
 use ifc_lite_core::EntityScanner;
-use ifc_lite_processing::process_geometry_filtered_with_quality;
+use ifc_lite_processing::{process, ProcessingRequest};
 use std::convert::Infallible;
 
 /// POST /api/v1/parse - Full synchronous parse.
@@ -113,8 +113,11 @@ pub async fn parse_full(
     // detached blocking work keeps running - and keeps its admission slot -
     // until it actually exits, so a replacement cannot be admitted on top.
     let (body, symbolic_data, admission) = tokio::task::spawn_blocking(move || {
-        let result =
-            process_geometry_filtered_with_quality(&content, opening_filter, tessellation_quality);
+        let result = process(
+            &content,
+            &ProcessingRequest::full_pass().opening_filter(opening_filter).quality(tessellation_quality),
+            &mut (),
+        );
         // In the frame the meshes above were baked in, not one this re-derives
         // for itself: the two travel in one response, so a site-local model's
         // symbols have to lose the same site translation and rotation its

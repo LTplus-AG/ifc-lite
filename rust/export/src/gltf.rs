@@ -36,9 +36,8 @@ use ifc_lite_geometry::{
     collate_refs_in_basis, InstanceMeshRef, InstanceMeta, InstanceTemplate, Matrix4,
 };
 use ifc_lite_processing::{
-    build_entity_index_parallel, process_geometry_filtered_with_quality,
-    process_geometry_streaming_filtered_with_options, MeshCoordinateSpace, MeshData, MeshFrame,
-    OpeningFilterMode, ProcessingResult, StreamingOptions, TessellationQuality,
+    build_entity_index_parallel, process, MeshCoordinateSpace, MeshData, MeshFrame, OnBatch,
+    ProcessingRequest, ProcessingResult, TessellationQuality,
 };
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -1514,10 +1513,10 @@ pub fn try_export_glb_with_stats(
         return try_export_glb_streaming_bounded(content, opts);
     }
     try_export_glb_from_result(
-        process_geometry_filtered_with_quality(
+        process(
             content,
-            OpeningFilterMode::Default,
-            opts.tessellation_quality,
+            &ProcessingRequest::full_pass().quality(opts.tessellation_quality),
+            &mut (),
         ),
         opts,
     )
@@ -1537,19 +1536,10 @@ pub fn try_export_glb_with_stats_with_index(
     index: Arc<EntityIndex>,
 ) -> Result<(Vec<u8>, GltfStats), ExportError> {
     try_export_glb_from_result(
-        process_geometry_streaming_filtered_with_options(
+        process(
             content,
-            OpeningFilterMode::Default,
-            StreamingOptions {
-                initial_batch_size: usize::MAX,
-                throughput_batch_size: usize::MAX,
-                entity_index: Some(index),
-                tessellation_quality: opts.tessellation_quality,
-                ..StreamingOptions::default()
-            },
-            |_, _, _| {},
-            |_| {},
-            |_| {},
+            &ProcessingRequest::full_pass().quality(opts.tessellation_quality).index(index),
+            &mut (),
         ),
         opts,
     )
@@ -1702,14 +1692,9 @@ fn export_gltf_streaming_impl(
     // `plan_bounded_glb` -- the single-GLB bounded path -- does both; the
     // decision needs a plan rather than co-resident vertices, and that path
     // keeps one. This one does not.
-    // A shared `index` (when present) is injected into BOTH passes' StreamingOptions so
+    // A shared `index` (when present) is injected into BOTH passes' request so
     // neither re-scans `content` for its entity index (#1516).
-    let stream_opts = || StreamingOptions {
-        retain_emitted_meshes: false,
-        entity_index: index.clone(),
-        tessellation_quality: opts.tessellation_quality,
-        ..StreamingOptions::default()
-    };
+    let stream_request = || streamed_request(opts, &index);
     let filter = VisibilityFilter::new(opts);
     // One reusable Y-up scratch for BOTH passes (they run sequentially, so the mutable
     // borrow never overlaps) instead of 3 fresh allocations per mesh per pass.
@@ -1721,11 +1706,10 @@ fn export_gltf_streaming_impl(
     // is why this path kept emitting the site-local frame after the plain path
     // stopped, so the same file moved when it grew past the streaming
     // threshold.
-    let meta_result = process_geometry_streaming_filtered_with_options(
+    let meta_result = process(
         content,
-        OpeningFilterMode::Default,
-        stream_opts(),
-        |batch, _, _| {
+        &stream_request(),
+        &mut OnBatch::new(|batch, _, _| {
             for m in batch {
                 if !filter.visible(m) {
                     continue;
@@ -1740,9 +1724,7 @@ fn export_gltf_streaming_impl(
                     }
                 }
             }
-        },
-        |_| {},
-        |_| {},
+        }),
     );
     let scene_center = if wmin[0].is_finite() {
         [
@@ -1764,11 +1746,10 @@ fn export_gltf_streaming_impl(
     let mut adapt = |name: String, bytes: Vec<u8>| sink(GltfBuffer { name, bytes });
     let mut ch = Chunker::new(if opts.quantize { 8 } else { 12 }, chunk_cap, Some(&mut adapt));
 
-    process_geometry_streaming_filtered_with_options(
+    process(
         content,
-        OpeningFilterMode::Default,
-        stream_opts(),
-        |batch, _, _| {
+        &stream_request(),
+        &mut OnBatch::new(|batch, _, _| {
             for m in batch {
                 if !filter.visible(m) {
                     continue;
@@ -1832,9 +1813,7 @@ fn export_gltf_streaming_impl(
                 });
                 element_node_indices.push(node_idx);
             }
-        },
-        |_| {},
-        |_| {},
+        }),
     );
     stats.materials = materials.len();
     // Decided before the final flush, so a refused export hands `sink` nothing.
@@ -2121,6 +2100,17 @@ struct BoundedGlbPlan {
     stats: GltfStats,
 }
 
+/// The request each streamed pass of the bounded assemblers makes: batches are
+/// consumed as they arrive and never retained, over the caller's shared entity
+/// index when there is one (#1516).
+fn streamed_request(opts: &GltfOptions, index: &Option<Arc<EntityIndex>>) -> ProcessingRequest {
+    let request = ProcessingRequest::default().quality(opts.tessellation_quality).retain_meshes(false);
+    match index {
+        Some(index) => request.index(index.clone()),
+        None => request,
+    }
+}
+
 /// Pass 1 of the bounded assembler: mesh the model once to gather per-mesh
 /// metadata + the world AABB, build the complete glTF JSON, and compute the exact
 /// output sizes — returning a [`BoundedGlbPlan`] the caller either writes
@@ -2131,14 +2121,9 @@ fn plan_bounded_glb(
     opts: &GltfOptions,
     index: Option<Arc<EntityIndex>>,
 ) -> BoundedGlbPlan {
-    // A shared `index` (when present) is injected into BOTH passes' StreamingOptions
+    // A shared `index` (when present) is injected into BOTH passes' request
     // so neither re-scans `content` for its entity index (#1516).
-    let stream_opts = || StreamingOptions {
-        retain_emitted_meshes: false,
-        entity_index: index.clone(),
-        tessellation_quality: opts.tessellation_quality,
-        ..StreamingOptions::default()
-    };
+    let stream_request = || streamed_request(opts, &index);
 
     // ── Pass 1: metadata + world AABB ────────────────────────────────────────
     let filter = VisibilityFilter::new(opts);
@@ -2154,11 +2139,10 @@ fn plan_bounded_glb(
     // is why this path kept emitting the site-local frame after the plain path
     // stopped, so the same file moved when it grew past the streaming
     // threshold.
-    let meta_result = process_geometry_streaming_filtered_with_options(
+    let meta_result = process(
         content,
-        OpeningFilterMode::Default,
-        stream_opts(),
-        |batch, _, _| {
+        &stream_request(),
+        &mut OnBatch::new(|batch, _, _| {
             for m in batch {
                 if !filter.visible(m) {
                     continue;
@@ -2243,9 +2227,7 @@ fn plan_bounded_glb(
                     write: None,
                 });
             }
-        },
-        |_| {},
-        |_| {},
+        }),
     );
     let scene_center = if metas.is_empty() {
         [0.0, 0.0, 0.0]
@@ -2774,12 +2756,7 @@ fn write_bounded_glb(
 ) -> (Vec<u8>, GltfStats) {
     // Re-stream with the same (optionally shared) index so pass 2 never re-scans
     // for its entity index either (#1516).
-    let stream_opts = || StreamingOptions {
-        retain_emitted_meshes: false,
-        entity_index: index.clone(),
-        tessellation_quality: opts.tessellation_quality,
-        ..StreamingOptions::default()
-    };
+    let stream_request = || streamed_request(opts, &index);
     let BoundedGlbPlan { metas, json, pos_len, norm_len, bin_total, total, stats } = plan;
 
     // ── Preallocate the exact GLB container, then pass 2 writes into it ─────
@@ -2810,11 +2787,10 @@ fn write_bounded_glb(
     let filter = VisibilityFilter::new(opts);
     let mut yscratch = crate::frame::YUpScratch::new();
     let mut cursor = 0usize;
-    process_geometry_streaming_filtered_with_options(
+    process(
         content,
-        OpeningFilterMode::Default,
-        stream_opts(),
-        |batch, _, _| {
+        &stream_request(),
+        &mut OnBatch::new(|batch, _, _| {
             for m in batch {
                 if !filter.visible(m) {
                     continue;
@@ -2912,9 +2888,7 @@ fn write_bounded_glb(
                 }
                 cursor += 1;
             }
-        },
-        |_| {},
-        |_| {},
+        }),
     );
     assert!(
         cursor == metas.len(),

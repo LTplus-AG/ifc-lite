@@ -958,6 +958,14 @@ jobs:
           # cache_entry.rs is on main, ordinary whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- apps/server/src/services/cache_entry.rs | grep -Fxq 'apps/server/src/services/cache_entry.rs'; then
             oracle_args+=(--mutation tests/evidence/cache-policy-7676/behaviour.oracle.patch)
+          # engine-wasm-brotli: decoding fragmented LandXML metadata records
+          # moves to record_wire.rs (new module + new test), so a whole-change
+          # revert cannot compile its test (INCONCLUSIVE). Keep the module and
+          # break ONLY the decode: an unknown record name stops reporting the
+          # serde `unknown variant` refusal. Once record_wire.rs is on main,
+          # ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/landxml/src/stream/record_wire.rs | grep -Fxq 'rust/landxml/src/stream/record_wire.rs'; then
+            oracle_args+=(--mutation tests/evidence/wasm-size-landxml-wire/wire-decode.oracle.patch)
           # #7689: the tessellated index rule adds two modules (core's
           # fast_parse_indices.rs, geometry's tessellated/indices.rs) that the
           # changed tests import, so a whole-file revert does not compile

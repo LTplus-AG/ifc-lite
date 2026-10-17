@@ -33,6 +33,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { testPair } from './narrow.js';
 import { TriMesh } from './tri-mesh.js';
 import { isThroughPenetration, obbPenetration, AXIS_NOISE_ULPS, OBB_EPS, type Obb } from './obb.js';
+import * as obbDetect from './obb-detect.js';
 import { detectObb } from './obb-detect.js';
 
 /** The MTD alone; most tests here are about the depth, not its axis. */
@@ -744,6 +745,98 @@ describe('detectObb: independent of where the box sits (#5474)', () => {
       [0.025, 0.75, 1.5].forEach((want, i) => expect(Math.abs(got[i]! - want), `offset ${t}`).toBeLessThanOrEqual(tol));
       for (let i = 0; i < 3; i += 1) {
         for (let j = i + 1; j < 3; j += 1) expect(Math.abs(dot(o.axes[i]!, o.axes[j]!))).toBeLessThan(1e-12);
+      }
+    }
+  });
+
+  // Shared parity vectors: the same table is `TINY_BOX_HALVES` in
+  // `rust/clash/src/obb_detect_tests.rs` (EDGE-CLASH-4, F2a X5).
+  const TINY_BOX_HALVES: Vec3[] = [
+    [0.0005, 0.0005, 0.0005],
+    [0.00025, 0.00025, 0.00025],
+    [0.0005, 0.001, 0.002],
+    [0.00005, 0.00005, 0.00005],
+    [0.0001, 0.01, 0.5],
+  ];
+
+  it('certifies a box under a millimetre, scale-free (EDGE-CLASH-4)', () => {
+    for (const h of TINY_BOX_HALVES) {
+      for (const t of [[0, 0, 0], [12.5, -3.25, 1]] as Vec3[]) {
+        const o = detectObb(meshOf(boxCorners(h), BOX_IDX, 0.3, t));
+        if (!o) throw new Error(`half ${h} offset ${t}: a box is still a box`);
+        const tol = 8 * ulp32(Math.max(Math.abs(t[0]), Math.abs(t[1]), Math.abs(t[2])) + 2);
+        const got = [...o.half].sort((a, b) => a - b);
+        const want = [...h].sort((a, b) => a - b);
+        for (let k = 0; k < 3; k += 1) expect(Math.abs(got[k]! - want[k]!), `half ${h} offset ${t}`).toBeLessThanOrEqual(tol);
+      }
+    }
+  });
+
+  it('still rejects a millimetre L prism (EDGE-CLASH-4)', () => {
+    const l: Vec3[] = (
+      [
+        [0, 0, 0], [2, 0, 0], [2, 1, 0], [1, 1, 0], [1, 2, 0], [0, 2, 0],
+        [0, 0, 1], [2, 0, 1], [2, 1, 1], [1, 1, 1], [1, 2, 1], [0, 2, 1],
+      ] as Vec3[]
+    ).map((p) => [p[0] * 0.001, p[1] * 0.001, p[2] * 0.001] as Vec3);
+    const idx = [
+      0, 2, 1, 0, 3, 2, 0, 4, 3, 0, 5, 4, 6, 7, 8, 6, 8, 9, 6, 9, 10, 6, 10, 11, 0, 1, 7, 0, 7, 6,
+      1, 2, 8, 1, 8, 7, 2, 3, 9, 2, 9, 8, 3, 4, 10, 3, 10, 9, 4, 5, 11, 4, 11, 10, 5, 0, 6, 5, 6, 11,
+    ];
+    expect(detectObb(meshOf(l, idx, 0.3, [0, 0, 0]))).toBeNull();
+  });
+
+  // Shared parity vectors with `rust/clash/src/obb_detect_tests.rs`
+  // (`ACUTE_START_IDX`, `THIN_BOX_HALVES`, `NEEDLE_CASES`; review of #7813).
+  // BOX_IDX with each face's 2nd triangle re-started at its other diagonal
+  // corner: same triangles and winding, both starting at an acute corner.
+  const ACUTE_START_IDX = [
+    0, 1, 2, 2, 3, 0, 4, 6, 5, 6, 4, 7, 0, 5, 1, 5, 0, 4, 3, 2, 6, 6, 7, 3, 0, 3, 7, 7, 4, 0, 1,
+    5, 6, 6, 2, 1,
+  ];
+  const THIN_BOX_HALVES: Vec3[] = [[5, 0.5, 0.0025], [6, 0.004, 0.004], [0.0001, 0.01, 0.5]];
+
+  it('certifies a long thin member whatever vertex its triangles start at', () => {
+    for (const idx of [BOX_IDX, ACUTE_START_IDX]) {
+      for (const h of THIN_BOX_HALVES) {
+        for (const t of [[0, 0, 0], [12.5, -3.25, 1]] as Vec3[]) {
+          const o = detectObb(meshOf(boxCorners(h), idx, 0.3, t));
+          if (!o) throw new Error(`half ${h} offset ${t}: a thin plate is a box`);
+          const tol = 8 * ulp32(Math.max(Math.abs(t[0]), Math.abs(t[1]), Math.abs(t[2])) + 6);
+          const got = [...o.half].sort((a, b) => a - b);
+          const want = [...h].sort((a, b) => a - b);
+          for (let k = 0; k < 3; k += 1) expect(Math.abs(got[k]! - want[k]!), `half ${h} offset ${t}`).toBeLessThanOrEqual(tol);
+        }
+      }
+    }
+  });
+
+  /** `normalAngleError`, or NaNs where the module has no such export (so a
+   * build without it fails the assertions instead of failing to load). */
+  const normalAngleError = (a: Vec3, b: Vec3, c: Vec3): [number, number] => {
+    const f = (obbDetect as Partial<typeof obbDetect>).normalAngleError;
+    return f ? f(a, b, c) : [Number.NaN, Number.NaN];
+  };
+  const rotations = (a: Vec3, b: Vec3, c: Vec3): [Vec3, Vec3, Vec3][] => [[a, b, c], [b, c, a], [c, a, b]];
+
+  it('bounds normal noise scale-free and independent of vertex order', () => {
+    const unitErr = 2 ** -22;
+    for (const s of [1, 0.5, 0.25]) {
+      for (const [p, q, r] of rotations([0, 0, 0], [s, 0, 0], [0, s / 256, 0])) {
+        const [err, coordErr] = normalAngleError(p, q, r);
+        expect(coordErr).toBe(unitErr);
+        expect(err, `scale ${s}`).toBe((unitErr * 257) / s);
+      }
+    }
+  });
+
+  const NEEDLE_CASES: [number, boolean][] = [[0, false], [1e-6, false], [0.9999e-3, false], [1.0001e-3, true], [0.01, true]];
+
+  it('gives a needle no noise bound and a kept triangle a finite one', () => {
+    for (const [h, keep] of NEEDLE_CASES) {
+      expect(h / Math.sqrt(1 + h * h) >= 1e-3, `fixture h ${h}`).toBe(keep);
+      for (const [p, q, r] of rotations([0, 0, 0], [1, 0, 0], [2, h, 0])) {
+        expect(Number.isFinite(normalAngleError(p, q, r)[0]), `h ${h} start ${p}`).toBe(keep);
       }
     }
   });

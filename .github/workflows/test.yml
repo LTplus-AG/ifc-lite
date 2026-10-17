@@ -966,6 +966,15 @@ jobs:
           # ordinary whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/landxml/src/stream/record_wire.rs | grep -Fxq 'rust/landxml/src/stream/record_wire.rs'; then
             oracle_args+=(--mutation tests/evidence/wasm-size-landxml-wire/wire-decode.oracle.patch)
+          # #7778 (F4-1): the one numeric reader, Token::Binary and
+          # decode_step_binary are new items the changed tests import, so a
+          # whole-change revert does not compile (INCONCLUSIVE). Keep them and
+          # restore ONLY the old behaviours: the tokenizer's pre-F4-1 number
+          # grammar, a binary indicator above 3, a non-zero indicator decoded,
+          # and an uncounted texture refusal. Once step_numeric_vectors.json is
+          # on main, ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/core/tests/fixtures/step_numeric_vectors.json | grep -Fxq 'rust/core/tests/fixtures/step_numeric_vectors.json'; then
+            oracle_args+=(--mutation tests/evidence/numeric-literal-7778/behaviour.oracle.patch)
           # #7689: the tessellated index rule adds two modules (core's
           # fast_parse_indices.rs, geometry's tessellated/indices.rs) that the
           # changed tests import, so a whole-file revert does not compile

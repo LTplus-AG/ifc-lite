@@ -275,13 +275,9 @@ pub(crate) fn lambda_of(p: &ImplicitPoint) -> (V3, BigRational) {
 /// Exact `orient3d`, any explicit/implicit mix in any slot (#7677); degenerate (`d == 0`) is Zero.
 #[cold] #[inline(never)] // keeps the Shewchuk fast path in `predicates::orient3d` as it was
 pub fn orient3d_points(a: &ImplicitPoint, b: &ImplicitPoint, c: &ImplicitPoint, d: &ImplicitPoint) -> Sign {
-    let la = lambda_of(a); if la.1.is_zero() { return Sign::Zero; }
-    let lb = lambda_of(b); if lb.1.is_zero() { return Sign::Zero; }
-    let lc = lambda_of(c); if lc.1.is_zero() { return Sign::Zero; }
-    let ld = lambda_of(d); if ld.1.is_zero() { return Sign::Zero; }
-    let [a, b, c, d] = [(a, la), (b, lb), (c, lc), (d, ld)].map(|(p, (lambda, d))| {
-        if matches!(p, ImplicitPoint::Explicit(_)) { lambda } else { [&lambda[0] / &d, &lambda[1] / &d, &lambda[2] / &d] }
-    });
+    let pts = [a, b, c, d];
+    if pts.iter().any(|p| lambda_of(p).1.is_zero()) { return Sign::Zero; }
+    let [a, b, c, d] = pts.map(point_of);
     sign_of(&det3(&sub3(&a, &d), &sub3(&b, &d), &sub3(&c, &d)))
 }
 

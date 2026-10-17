@@ -102,6 +102,43 @@ const MAX_ASPECT: f64 = 7.0;
 /// Absolute iteration cap on the refinement loop (independent of the budget).
 const MAX_REFINE_ITERS: usize = 20_000;
 
+/// Work budget for building the CDT of [`triangulate_refined`], in progress
+/// steps (one per input segment and point, per legalization step, per
+/// constraint-recovery flip and per 64 triangles that flip's rescan visits):
+/// linear in the input. Constraint recovery is an O(T) rescan per flip with a
+/// 100 000-flip guard PER SEGMENT, so without it a hostile ring costs
+/// `segments * 100 000 * T`. Realistic many-hole faces spend 200 to 500 steps
+/// per point (a 5,000-hole 64-gon grid: 94M for 320k points). Past it the CDT
+/// is abandoned and the caller ear-clips, unrefined but valid (#7787).
+fn build_work_budget(points: usize) -> u64 {
+    (1u64 << 22).saturating_add((points as u64).saturating_mul(2048))
+}
+
+/// [`Cdt::build_from`] under [`build_work_budget`]; `None` past it, as for
+/// any CDT the builder declines.
+fn build_within_budget(points: Vec<P2>, segments: &[(usize, usize)], steiner_cap: usize) -> Option<Cdt> {
+    let budget = build_work_budget(points.len());
+    build_with_budget(points, segments, steiner_cap, budget)
+}
+
+fn build_with_budget(
+    points: Vec<P2>,
+    segments: &[(usize, usize)],
+    steiner_cap: usize,
+    budget: u64,
+) -> Option<Cdt> {
+    let (mut calls, mut spent) = (0u32, 0u64);
+    let mut step = || {
+        crate::progress::tick_strided(&mut calls, 0xFFF);
+        spent += 1;
+        if spent > budget {
+            return Err(crate::terrain_cdt::TerrainCdtError::WorkLimitExceeded);
+        }
+        Ok(())
+    };
+    Cdt::build_from_with_progress_mode(points, segments, steiner_cap, false, &mut step).ok().flatten()
+}
+
 type P2 = [f64; 2];
 const NONE: usize = usize::MAX;
 
@@ -1338,7 +1375,7 @@ fn refine_to_fixpoint(points: Vec<P2>, segments: Vec<(usize, usize)>) -> Option<
     let n_input = points.len();
     let max_steiner = (n_input * 3).max(32);
     let mut steiner = 0usize;
-    let mut cdt = Cdt::build_from(points, &segments, max_steiner.min(MAX_REFINE_ITERS))?;
+    let mut cdt = build_within_budget(points, &segments, max_steiner.min(MAX_REFINE_ITERS))?;
 
     cdt.start_refinement(COS_MIN_ANGLE);
     while steiner < max_steiner.min(MAX_REFINE_ITERS) {

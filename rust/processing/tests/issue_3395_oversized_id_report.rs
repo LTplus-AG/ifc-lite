@@ -221,12 +221,11 @@ fn parallel_index_and_processor_scan_report_the_refusal() {
     );
 
     // The streaming processor's own whole-file scan — the native/server load.
-    let result = ifc_lite_processing::process_geometry_streaming_filtered(
+    let result = ifc_lite_processing::process(
         WITH_OVERSIZED.as_bytes(),
-        ifc_lite_processing::OpeningFilterMode::default(),
-        64,
-        |_, _, _| {},
-        |_| {},
+        &ifc_lite_processing::ProcessingRequest::default()
+            .batching(ifc_lite_processing::Batching::new(64, 64)),
+        &mut (),
     );
     let _ = result;
     let reports = drain();
@@ -243,12 +242,11 @@ fn parallel_index_and_processor_scan_report_the_refusal() {
     let index = ifc_lite_processing::build_entity_index_parallel(WITHOUT_OVERSIZED);
     assert_eq!(index.len(), 3, "u32::MAX must load, not be refused");
     assert!(index.contains_key(&u32::MAX));
-    let _ = ifc_lite_processing::process_geometry_streaming_filtered(
+    let _ = ifc_lite_processing::process(
         WITHOUT_OVERSIZED.as_bytes(),
-        ifc_lite_processing::OpeningFilterMode::default(),
-        64,
-        |_, _, _| {},
-        |_| {},
+        &ifc_lite_processing::ProcessingRequest::default()
+            .batching(ifc_lite_processing::Batching::new(64, 64)),
+        &mut (),
     );
     assert_eq!(
         drain(),

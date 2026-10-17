@@ -17,10 +17,7 @@
 //! composed INSIDE the target, its error was multiplied by the target scale
 //! (1 m of origin became a 1 m miss here, but 0 m of movement before the fix).
 
-use ifc_lite_processing::{
-    process_geometry_streaming_filtered_with_options, MeshData, OpeningFilterMode,
-    ProcessingResult, StreamingOptions,
-};
+use ifc_lite_processing::{process, MeshData, ProcessingRequest, ProcessingResult};
 
 fn fixture_bytes(name: &str) -> Vec<u8> {
     let path = format!(
@@ -31,17 +28,7 @@ fn fixture_bytes(name: &str) -> Vec<u8> {
 }
 
 fn run(content: &[u8], instancing: bool) -> ProcessingResult {
-    process_geometry_streaming_filtered_with_options(
-        content,
-        OpeningFilterMode::Default,
-        StreamingOptions {
-            enable_instancing: instancing,
-            ..StreamingOptions::default()
-        },
-        |_, _, _| {},
-        |_| {},
-        |_| {},
-    )
+    process(content, &ProcessingRequest::default().instancing(instancing), &mut ())
 }
 
 /// World-space AABB (`origin + position`, the renderer's reconstruction).

@@ -31,11 +31,11 @@ mod diagnostics;
 mod entity_index;
 use entity_index::{IndexBuilder, ProcessingIndex};
 mod entry_points;
+#[allow(deprecated)] // the deprecated delegates stay exported until the next major
 pub use entry_points::{
     process_geometry, process_geometry_filtered, process_geometry_filtered_with_quality,
-    process_geometry_filtered_with_quality_and_ids,
-    process_geometry_streaming, process_geometry_streaming_filtered,
-    process_geometry_streaming_filtered_with_baked_basis,
+    process_geometry_filtered_with_quality_and_ids, process_geometry_streaming,
+    process_geometry_streaming_filtered, process_geometry_streaming_filtered_with_baked_basis,
     process_geometry_streaming_filtered_with_options, process_geometry_streaming_with_options,
     process_geometry_streaming_with_options_and_bootstrap, process_geometry_with_index,
 };

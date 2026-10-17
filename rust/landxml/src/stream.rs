@@ -395,9 +395,3 @@ impl LandXmlTinStreamSession {
             .consume_event(event)
     }
 }
-
-impl Drop for LandXmlTinStreamSession {
-    fn drop(&mut self) {
-        self.abort();
-    }
-}

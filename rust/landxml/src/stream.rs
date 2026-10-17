@@ -13,7 +13,10 @@ mod record_wire;
 pub use lifecycle::LandXmlMetadataStreamAssembler;
 
 use crate::{
-    parser::TinHandler, plan::parser::PlanHandler, xml::{error, Decoder, Driver, FamilyHandler, Meter, TokenKind, TokenScanner},
+    alignment::parser::AlignmentHandler,
+    parser::TinHandler,
+    plan::parser::PlanHandler,
+    xml::{error, Decoder, Driver, FamilyHandler, Meter, TokenKind, TokenScanner},
     LandXmlDiagnosticCode as Code,
     LandXmlError, LandXmlLimits,
 };
@@ -48,7 +51,7 @@ pub struct LandXmlTinStreamSession {
     /// The one XML driver; the TIN family is the first handler it feeds.
     driver: Option<Driver<'static>>,
     plan: Option<PlanHandler>,
-    alignment: Option<crate::alignment::parser::Parser<'static>>,
+    alignment: Option<AlignmentHandler>,
     pipe: Option<crate::pipe_parser::PipeParser<'static>>,
     reader: Reader<BufReader<TokenFeed>>,
     feed: TokenFeed,
@@ -85,11 +88,9 @@ impl LandXmlTinStreamSession {
                 &crate::LandXmlPlanLimits { xml: limits.clone(), ..Default::default() },
                 assumed_units.clone(),
             )),
-            alignment: Some(crate::alignment::parser::Parser::new_stream(
-                crate::alignment::LandXmlAlignmentLimits {
-                    xml: limits.clone(),
-                    ..Default::default()
-                },
+            alignment: Some(AlignmentHandler::new(
+                &crate::alignment::LandXmlAlignmentLimits { xml: limits.clone(), ..Default::default() },
+                false,
                 assumed_units.clone(),
             )),
             tin: Some(TinHandler::new(&limits, meter.clone(), None, assumed_units)),
@@ -195,11 +196,7 @@ impl LandXmlTinStreamSession {
         self.closed = true;
         let terrain = self.tin.take().expect("open TIN handler").finish()?;
         let plan = self.plan.take().expect("open plan handler").document();
-        let alignment = self.alignment.take().expect("open alignment parser");
-        if alignment.has_open_frames() {
-            return Err(error(Code::InvalidXml, "unclosed XML element"));
-        }
-        let alignment = alignment.finish()?;
+        let alignment = self.alignment.take().expect("open alignment handler").finish()?;
         let pipe = self.pipe.take().expect("open pipe parser");
         if pipe.has_open_frames() {
             return Err(error(Code::InvalidXml, "unclosed XML element"));
@@ -328,9 +325,8 @@ impl LandXmlTinStreamSession {
     fn dispatch_event(&mut self, event: Event<'_>) -> Result<(), LandXmlError> {
         let tin: &mut dyn FamilyHandler = self.tin.as_mut().expect("open TIN handler");
         let plan: &mut dyn FamilyHandler = self.plan.as_mut().expect("open plan handler");
-        self.driver.as_mut().expect("open driver").event(event.clone(), &mut [tin, plan])?;
-        let alignment = self.alignment.as_mut().expect("open alignment parser");
-        alignment.consume_event(event.clone())?;
+        let alignment: &mut dyn FamilyHandler = self.alignment.as_mut().expect("open alignment handler");
+        self.driver.as_mut().expect("open driver").event(event.clone(), &mut [tin, plan, alignment])?;
         self.pipe
             .as_mut()
             .expect("open pipe parser")

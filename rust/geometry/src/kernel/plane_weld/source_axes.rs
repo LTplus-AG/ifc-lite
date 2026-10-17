@@ -14,7 +14,7 @@ use crate::kernel::{
     arrangement::Tri,
     coplanar::contains_projected_point,
     near_band::vertex_bits,
-    predicates::{orient2d, orient3d_explicit},
+    predicates::{orient2d_any, orient3d_explicit},
     retriangulate::projection_axis,
     DropAxis, ImplicitPoint, Sign,
 };
@@ -86,7 +86,7 @@ impl SourceAxes {
         {
             if mask & (1 << k) != 0
                 && candidate[k] != original[k]
-                && orient2d(&e(selected[0]), &e(selected[1]), &e(selected[2]), axis)
+                && orient2d_any(&e(selected[0]), &e(selected[1]), &e(selected[2]), axis)
                     == Sign::Zero
             {
                 candidate[k] = original[k];

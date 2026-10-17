@@ -94,3 +94,36 @@ fn slot_readers_split_absent_from_malformed() {
     assert_eq!(d.direction3_at(&bad, 1).unwrap(), Some([0.0, 0.0, 1.0]));
     assert!(refused(&d, &[21]));
 }
+
+/// The fast path may only miss, never disagree: a hit equals the full decode's
+/// reading bit for bit, and a record the full decode cannot parse (`.5`, `1E5`,
+/// an integer past `i64`, a stray `)`) is never a hit (review of #7818).
+#[test]
+fn the_fast_path_never_reads_what_the_full_decode_does_not() {
+    use super::{fast_leaf, slow_leaf, DIRECTION_KEYWORD, POINT_KEYWORD};
+    use crate::IfcType;
+    let lists = [
+        "((1.E3,2.e-3,-3.E+2))", "((-0.,0.,-0.))", "((1,2,3))", "((1.,2.))", "((.5,0.,0.))",
+        "((-.5,0.))", "((1E5,0.,0.))", "((9999999999999999999999,0.,0.))", "((1.,2.,3.)))",
+        "((1.,2.,3.)) /* c */ ", "((/*a*/1.,2./*b*/,3.))", "((+1.,+2.,+3.))", "((1.E400,0.,0.))",
+        "((1.E-400,0.,0.))", "((1.,$,2.))", "(((1.),2.,3.))", "((1.))", "((1.,2.,3.,4.))", "(())",
+        "((1.,2.,3.),$)", "((IFCREAL(1.),2.,3.))",
+    ];
+    let mut content = String::new();
+    for (i, list) in lists.iter().enumerate() {
+        content.push_str(&format!("#{}=IFCCARTESIANPOINT{list};\n#{}=ifcDirection{list};\n", 2 * i + 1, 2 * i + 2));
+    }
+    let mut d = EntityDecoder::new(&content);
+    for id in 1..=2 * lists.len() as u32 {
+        for (keyword, ifc_type) in
+            [(POINT_KEYWORD, IfcType::IfcCartesianPoint), (DIRECTION_KEYWORD, IfcType::IfcDirection)]
+        {
+            let Some(fast) = d.get_raw_bytes(id).and_then(|bytes| fast_leaf(bytes, keyword)) else {
+                continue;
+            };
+            let slow = d.decode_by_id(id).ok().and_then(|e| slow_leaf(&e, ifc_type.clone()));
+            let bits = |v: [f64; 3]| v.map(f64::to_bits);
+            assert_eq!(slow.map(bits), Some(bits(fast)), "#{id}: fast {fast:?}, slow {slow:?}");
+        }
+    }
+}

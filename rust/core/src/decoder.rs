@@ -848,16 +848,20 @@ fn parse_cartesian_point_inline(bytes: &[u8]) -> Option<(f64, f64, f64)> {
 /// genuine 2D point, whose list closes right after y.
 #[inline]
 fn parse_point_coordinates(bytes: &[u8]) -> Option<(f64, f64, f64)> {
-    parse_point_coordinates_end(bytes).map(|(point, _)| point)
+    parse_point_coordinates_end(bytes, |_| true).map(|(point, _)| point)
 }
 
 /// [`parse_point_coordinates`] that also returns the index just past the
-/// closing `)`, for a reader that checks what follows the list.
+/// closing `)`, for a reader that checks what follows the list, and refuses
+/// the point when `accept` refuses a literal's bytes.
 #[inline]
-fn parse_point_coordinates_end(bytes: &[u8]) -> Option<((f64, f64, f64), usize)> {
+fn parse_point_coordinates_end(
+    bytes: &[u8], accept: impl Fn(&[u8]) -> bool,
+) -> Option<((f64, f64, f64), usize)> {
     let value_at = |i: usize| -> Option<(f64, usize)> {
         let start = skip_step_trivia(bytes, i)?;
         let (value, len) = parse_step_numeric::<f64>(&bytes[start..])?;
+        accept(&bytes[start..start + len]).then_some(())?;
         Some((value, skip_step_trivia(bytes, start + len)?))
     };
     let (x, i) = value_at(0)?;

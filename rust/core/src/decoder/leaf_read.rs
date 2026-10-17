@@ -18,7 +18,7 @@
 
 use super::{parse_point_coordinates_end, EntityDecoder};
 use crate::error::{Error, Result};
-use crate::parser::skip_step_trivia;
+use crate::parser::{is_decodable_number, skip_step_trivia};
 use crate::schema_gen::{AttributeValue, DecodedEntity};
 use crate::IfcType;
 
@@ -26,6 +26,10 @@ const POINT_KEYWORD: &[u8] = b"IFCCARTESIANPOINT";
 const DIRECTION_KEYWORD: &[u8] = b"IFCDIRECTION";
 
 /// `#id = KEYWORD ( ( x, y[, z] ) ) ;` with `keyword` matched case-insensitively.
+/// Never more lenient than the full decode: every literal must be a number
+/// the tokenizer reads (no `.5`, `1E5` or out-of-`i64` integer) and nothing
+/// but trivia may follow the outer `)` before `;`, so a hit is always the
+/// value [`slow_leaf`] would give and a miss falls through to it.
 #[inline]
 fn fast_leaf(bytes: &[u8], keyword: &[u8]) -> Option<[f64; 3]> {
     let eq = bytes.iter().position(|&b| b == b'=')?;
@@ -39,9 +43,12 @@ fn fast_leaf(bytes: &[u8], keyword: &[u8]) -> Option<[f64; 3]> {
         (*bytes.get(i)? == b'(').then_some(())?;
         i = skip_step_trivia(bytes, i + 1)?;
     }
-    let ((x, y, z), used) = parse_point_coordinates_end(&bytes[i..])?;
+    let ((x, y, z), used) = parse_point_coordinates_end(&bytes[i..], is_decodable_number)?;
     let i = skip_step_trivia(bytes, i + used)?;
-    (*bytes.get(i)? == b')' && x.is_finite() && y.is_finite() && z.is_finite()).then_some([x, y, z])
+    (*bytes.get(i)? == b')').then_some(())?;
+    let i = skip_step_trivia(bytes, i + 1)?;
+    let closed = matches!(bytes.get(i), None | Some(b';'));
+    (closed && x.is_finite() && y.is_finite() && z.is_finite()).then_some([x, y, z])
 }
 
 /// The rule applied to a decoded entity (the fast-path miss).

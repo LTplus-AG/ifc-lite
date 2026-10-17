@@ -496,7 +496,19 @@ Export tabular data for spreadsheet applications:
 
 CSV is produced in Rust (`ifc-lite-export`) via `GeometryProcessor`. The `mode`
 selects the table; `includeProperties` adds flattened `Pset_Prop` columns to the
-entities view:
+entities view.
+
+Every property kind is exported, in CSV and in the JSON, JSON-LD, IFCX, USD,
+Parquet (BOS) and Python outputs built on the same model. An
+`IfcPropertySingleValue` keeps its typed value. An enumerated, list, bounded,
+table, reference or complex property is written as the display string the
+viewer shows (`A, B`, `2 [1 – 5]`, `Table (2 rows)`, the referenced object's
+name), typed as text, with its value type set to the members' shared type tag
+or else the property class (`IFCPROPERTYTABLEVALUE`, ...). Before this,
+only single values were exported, and sets lost their other entries without
+a warning.
+
+Usage:
 
 ```typescript
 import { GeometryProcessor } from '@ifc-lite/geometry';

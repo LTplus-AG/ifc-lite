@@ -8,6 +8,7 @@ import type { CoordinateInfo } from '@ifc-lite/geometry';
 import { reprojectPointToLatLon, reprojectToLatLon, resolveProjection, type LatLon } from '@/lib/geo/reproject';
 import { getEffectiveAxisScales, resolveMapUnitToMetreScale } from '@/lib/geo/geo-scale';
 import { isGeographicProj4 } from '@/lib/geo/proj4-utils';
+import { distanceMetres, siteLocationDisagreement, type SiteLocationReference } from '@/lib/geo/site-location-disagreement';
 import type { TranslationKey } from '@/i18n';
 
 /** An effective identity leaves metre geometry in the map frame. Reuse the
@@ -32,6 +33,7 @@ export function useLocationGeoreference(
   crs: ProjectedCRS | undefined,
   coordinateInfo: CoordinateInfo | undefined,
   lengthUnitScale: number,
+  siteReference?: SiteLocationReference,
 ) {
   const [latLon, setLatLon] = useState<LatLon | null>(null);
   const [mapState, setMapState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
@@ -39,7 +41,10 @@ export function useLocationGeoreference(
   const [locationKind, setLocationKind] = useState<'origin' | 'geometry' | null>(null);
   const [geometryDistanceKm, setGeometryDistanceKm] = useState<number | null>(null);
 
+  const [siteDistanceMetres, setSiteDistanceMetres] = useState<number | null>(null);
+
   useEffect(() => {
+    setSiteDistanceMetres(null);
     setGeometryDistanceKm(null);
     setLocationKind(null);
     if (!conversion || !crs) {
@@ -53,6 +58,13 @@ export function useLocationGeoreference(
     setErrorKey(null);
     reprojectPointToLatLon(conversion.eastings, conversion.northings, crs, lengthUnitScale).then(async origin => {
       if (cancelled) return;
+      if (origin && siteReference && !isNeutralMapOperation(conversion, crs, lengthUnitScale)) {
+        void siteLocationDisagreement(siteReference, origin, conversion, crs, lengthUnitScale).then(distance => {
+          if (!cancelled) setSiteDistanceMetres(distance);
+        }).catch(error => {
+          if (!cancelled) console.warn('[location-map] site location comparison failed:', error);
+        });
+      }
       const definition = origin && coordinateInfo && isNeutralMapOperation(conversion, crs, lengthUnitScale)
         ? await resolveProjection(crs) : null;
       if (cancelled) return;
@@ -79,11 +91,7 @@ export function useLocationGeoreference(
       // that element placements agree with it: #6677 nearly cancels the offset.
       return reprojectToLatLon(conversion, crs, coordinateInfo, lengthUnitScale).then(center => {
         if (cancelled || !center) return;
-        const radians = Math.PI / 180;
-        const a = Math.sin((center.lat - origin.lat) * radians / 2) ** 2
-          + Math.cos(origin.lat * radians) * Math.cos(center.lat * radians)
-          * Math.sin((center.lon - origin.lon) * radians / 2) ** 2;
-        const km = 6371 * 2 * Math.asin(Math.sqrt(Math.min(1, a)));
+        const km = distanceMetres(origin, center) / 1000;
         // Report large discrepancies as distances, without guessing a repair
         // to file-authored coordinates. Ordinary local model offsets stay quiet.
         setGeometryDistanceKm(km >= 100 ? Math.round(km) : null);
@@ -100,7 +108,7 @@ export function useLocationGeoreference(
       setErrorKey('properties.locationMap.projectionUnresolved');
     });
     return () => { cancelled = true; };
-  }, [conversion, crs, coordinateInfo, lengthUnitScale]);
+  }, [conversion, crs, coordinateInfo, lengthUnitScale, siteReference]);
 
-  return { latLon, mapState, errorKey, geometryDistanceKm, locationKind };
+  return { latLon, mapState, errorKey, geometryDistanceKm, locationKind, siteDistanceMetres };
 }

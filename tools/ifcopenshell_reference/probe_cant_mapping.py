@@ -8,24 +8,20 @@ WHY. Every alignment the LandXML->IFC mapping writes is graded by IfcOpenShell
 regenerating its geometry from the semantics (check_alignment.py, mapping spec
 section 11.6). Cant would need the same: IfcOpenShell regenerating the
 IfcSegmentedReferenceCurve segments from our IfcAlignmentCantSegment through
-its own `_map_alignment_cant_segment`. Section 13.2 of the mapping spec refuses
-cant partly because the pinned IfcOpenShell cannot do that correctly. This
-script measures that premise, so the refusal is re-examined the day it stops
-being true (a pinned-version bump that fixes the mapping turns the test that
-runs this script red).
+its own `_map_alignment_cant_segment`. Section 13.2 refuses cant while
+that independent engine cannot regenerate every supported segment.
 
 Three probes, each on a single IfcAlignmentCantSegment over 100 m with a rail
 head distance of 1.5 m:
 
 1. MIRROR. Constant cant 0.15 m with the LEFT rail raised, and the same with
-   the RIGHT rail raised. Mirrored input must give mirrored cross slope; the
-   pinned mapping derives the segment placement from the mean rail height
-   only, so the two come out identical.
+   the RIGHT rail raised. IfcOpenShell 0.9 now distinguishes the mirrored
+   cross slope (0.8.5 did not).
 2. CENTRE. Constant cant 0.15 m rotated about the track centre (left +0.075,
-   right -0.075). The track is tilted; the pinned mapping writes an untilted
-   placement axis.
-3. RAMP. A linear transition from no cant to that centre-rotated cant. The
-   pinned mapping raises ZeroDivisionError.
+   right -0.075). IfcOpenShell 0.9 now tilts this placement axis correctly.
+3. RAMP. A linear transition from no cant to that centre-rotated cant still
+   raises ZeroDivisionError in 0.9.0.post1. This remaining oracle gap is the
+   measured premise for refusing cant; no cant output is newly allowed.
 
 Prints one JSON object and exits 0 when the probes ran; the caller judges the
 findings. Exit 3 when ifcopenshell is not importable.

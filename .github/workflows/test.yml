@@ -1209,6 +1209,21 @@ jobs:
           # whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/processing/src/scan.rs | grep -Fxq 'rust/processing/src/scan.rs'; then
             oracle_args+=(--mutation tests/evidence/processing-7782/scan-class.oracle.patch)
+          # #7783: C6-8 moves the export model into data_model::{rows,inherit,
+          # render::flat} and adds QuantityKind, so the moved tests do not exist
+          # on the base. Keep the move; break ONLY QuantityKind's spellings and
+          # class mapping.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/processing/src/data_model/quantity.rs | grep -Fxq 'rust/processing/src/data_model/quantity.rs'; then
+            oracle_args+=(--mutation tests/evidence/data-model-rows-7783/behaviour.oracle.patch)
+          # #7783: C6-9 adds data_model/type_assignments.rs (its tests live in the
+          # file). Keep the module and make a second type overwrite the first.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/processing/src/data_model/type_assignments.rs | grep -Fxq 'rust/processing/src/data_model/type_assignments.rs'; then
+            oracle_args+=(--mutation tests/evidence/type-assignments-7783/behaviour.oracle.patch)
+          # #7783: C6-10 adds data_model/spatial_walk.rs, which the changed
+          # export tests import through the CSV and IFCX writers. Keep the
+          # module and reverse its sibling order.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/processing/src/data_model/spatial_walk.rs | grep -Fxq 'rust/processing/src/data_model/spatial_walk.rs'; then
+            oracle_args+=(--mutation tests/evidence/spatial-walk-7783/behaviour.oracle.patch)
           fi
           node scripts/check-test-revert-oracle.mjs "${oracle_args[@]}"
           # #7512: observe cleanup independently of scoped admission/schema.

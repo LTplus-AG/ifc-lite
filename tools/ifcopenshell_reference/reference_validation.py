@@ -11,6 +11,7 @@ Only terminal Boolean failure is rejected: a failed retry may later succeed.
 from __future__ import annotations
 
 import hashlib
+import importlib.metadata
 import json
 import os
 from pathlib import Path
@@ -22,7 +23,6 @@ import time
 
 MAX_LOG_BYTES = 32 * 1024 * 1024
 CALL_SECONDS = 120
-SUPPORTED_ENGINE = "0.8.5"
 TERMINAL_MESSAGES = (
     "No longer attempting boolean operation with higher fuzziness",
     "Invalid operands. Using first operand",
@@ -96,8 +96,9 @@ class ReferenceSession:
                 raise InvalidReference("Reference initialization failed; retained diagnostics")
             self.products = json.loads((self.output / "products.json").read_bytes())
             self.engine = response["engine"]
-            if self.engine != SUPPORTED_ENGINE:
-                raise InvalidReference(f"Unsupported reference engine {self.engine}; expected {SUPPORTED_ENGINE}")
+            installed_engine = importlib.metadata.version("ifcopenshell")
+            if self.engine != installed_engine:
+                raise InvalidReference(f"Reference worker engine {self.engine} differs from installed {installed_engine}")
             init_log = (self.output / "1-engine.log").read_text(errors="replace")
             if not diagnostics(init_log)["referenceUsable"]:
                 raise InvalidReference("Reference initialization diagnostics are unresolved")

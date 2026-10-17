@@ -649,10 +649,12 @@ def entity_data(
     Pass ``type_properties=False`` for own-sets-only, as in 4.3.0, which
     affects ``property_sets`` and ``quantity_sets`` alike.
 
-    Remaining limit, inherited from the shared export model: only
-    ``IfcPropertySingleValue`` properties are decoded. Enumerated, list,
-    bounded, table and reference properties are skipped silently, and the pset
-    still appears with those entries missing.
+    Every property kind is decoded. An ``IfcPropertySingleValue`` keeps its
+    typed value; an enumerated, list, bounded, table, reference or complex
+    property arrives as its display string (``"A, B"``, ``"2 [1 – 5]"``,
+    ``"Table (2 rows)"``, the referenced object's name), typed as text, with
+    ``value_type`` set to the members' shared type tag or else the property
+    class (``IFCPROPERTYTABLEVALUE``, ...).
 
     ``attributes`` (on by default) returns each entity's SCHEMA-DECLARED IFC
     attributes, which are not property sets and which no amount of pset work

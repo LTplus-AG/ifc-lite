@@ -9,7 +9,7 @@
 
 use ifc_lite_core::units::{get_conversion_based_unit_factor, try_si_prefix_multiplier};
 use ifc_lite_core::{
-    decode_ifc_string, AttributeValue, DecodedEntity, EntityDecoder, EntityScanner, GeoRefExtractor,
+    decode_ifc_string, slot, AttributeValue, DecodedEntity, EntityDecoder, EntityScanner, GeoRefExtractor,
     GeoReference, IfcType, MAX_CONTEXT_DEPTH,
 };
 
@@ -64,10 +64,10 @@ impl ModelFacts {
         };
         let project = decode(decoder, project_id)?;
         let project_metres = project_length_metres(&project, decoder)?;
-        let project_name = text(&project, 2).or_else(|| text(&project, 5));
+        let project_name = text(&project, slot::IfcProject::NAME).or_else(|| text(&project, slot::IfcProject::LONG_NAME));
         let mut conversions = Vec::with_capacity(conversion_ids.len());
         for (id, kind) in conversion_ids {
-            let source = decode(decoder, id)?.get_ref(0);
+            let source = decode(decoder, id)?.ref_at(slot::IfcMapConversion::SOURCE_CRS);
             conversions.push((id, kind, source));
         }
         Ok(Self { conversions, project_metres, project_name })
@@ -87,7 +87,7 @@ impl ModelFacts {
             matching.extend(self.conversions.iter().filter(|(_, _, source)| *source == Some(id)));
             let node = decode(decoder, id)?;
             current = match node.ifc_type {
-                IfcType::IfcGeometricRepresentationSubContext => Some(node.get_ref(6).ok_or_else(|| format!("subcontext #{id} has no ParentContext"))?),
+                IfcType::IfcGeometricRepresentationSubContext => Some(node.ref_at(slot::IfcGeometricRepresentationSubContext::PARENT_CONTEXT).ok_or_else(|| format!("subcontext #{id} has no ParentContext"))?),
                 _ => None,
             };
         }
@@ -102,24 +102,24 @@ impl ModelFacts {
         // frame. A non-identity WorldCoordinateSystem would need composing once,
         // and composing it twice is the error map normalization refuses too.
         preflight::context_frame(source.unwrap_or(context), decoder)?;
-        let crs_id = conversion.get_ref(1).ok_or_else(|| format!("IfcMapConversion #{conversion_id} has no TargetCRS"))?;
+        let crs_id = conversion.ref_at(slot::IfcMapConversion::TARGET_CRS).ok_or_else(|| format!("IfcMapConversion #{conversion_id} has no TargetCRS"))?;
         let target = decode(decoder, crs_id)?;
         if target.ifc_type != IfcType::IfcProjectedCRS {
             return Err(format!("TargetCRS #{crs_id} is an {}, not an IfcProjectedCRS", target.ifc_type.name()));
         }
         let crs = Crs {
-            name: text(&target, 0).ok_or_else(|| format!("IfcProjectedCRS #{crs_id} has no Name; the exporter will not guess a CRS"))?,
-            geodetic_datum: text(&target, 2),
-            vertical_datum: text(&target, 3),
+            name: text(&target, slot::IfcProjectedCRS::NAME).ok_or_else(|| format!("IfcProjectedCRS #{crs_id} has no Name; the exporter will not guess a CRS"))?,
+            geodetic_datum: text(&target, slot::IfcProjectedCRS::GEODETIC_DATUM),
+            vertical_datum: text(&target, slot::IfcProjectedCRS::VERTICAL_DATUM),
         };
         // IFC: an omitted MapUnit is the project length unit.
-        let map_metres = match target.get_ref(6) {
+        let map_metres = match target.ref_at(slot::IfcProjectedCRS::MAP_UNIT) {
             Some(unit) => length_unit_metres(&decode(decoder, unit)?)?,
             None => self.project_metres,
         };
         // Scale is the combined local-to-map unit conversion. Defaulting it to
         // 1 across a unit change would misplace every vertex by that ratio.
-        let scale_omitted = conversion.get(7).is_none_or(AttributeValue::is_null);
+        let scale_omitted = conversion.attr(slot::IfcMapConversion::SCALE).is_none_or(AttributeValue::is_null);
         if scale_omitted && (map_metres - self.project_metres).abs() > 1e-12 * map_metres.max(self.project_metres) {
             return Err(format!("IfcMapConversion #{conversion_id} omits Scale while the project and map length units differ; Scale is required, the exporter will not infer it"));
         }
@@ -136,18 +136,18 @@ pub(super) fn decode(decoder: &mut EntityDecoder, id: u32) -> Result<DecodedEnti
 }
 
 /// A non-blank IFC string attribute with its STEP escapes decoded.
-pub(super) fn text(entity: &DecodedEntity, slot: usize) -> Option<String> {
-    let value = decode_ifc_string(entity.get_string(slot)?).trim().to_string();
+pub(super) fn text(entity: &DecodedEntity, at: impl Into<slot::SlotIx<slot::kind::Text>>) -> Option<String> {
+    let value = decode_ifc_string(entity.string_at(at)?).trim().to_string();
     (!value.is_empty()).then_some(value)
 }
 
 fn project_length_metres(project: &DecodedEntity, decoder: &mut EntityDecoder) -> Result<f64, String> {
-    let assignment = project.get_ref(8).ok_or("IfcProject has no UnitsInContext; the exporter will not assume metres")?;
+    let assignment = project.ref_at(slot::IfcProject::UNITS_IN_CONTEXT).ok_or("IfcProject has no UnitsInContext; the exporter will not assume metres")?;
     let assignment = decode(decoder, assignment)?;
     let mut length_units = Vec::new();
-    for id in assignment.get_refs(0).unwrap_or_default() {
+    for id in assignment.ref_list_at(slot::IfcUnitAssignment::UNITS).unwrap_or_default() {
         let unit = decode(decoder, id)?;
-        if unit.get(1).and_then(AttributeValue::as_enum) == Some("LENGTHUNIT") {
+        if preflight::unit_type(&unit) == Some("LENGTHUNIT") {
             length_units.push(unit);
         }
     }
@@ -159,17 +159,17 @@ fn project_length_metres(project: &DecodedEntity, decoder: &mut EntityDecoder) -
 
 /// Metres per one `unit`, refusing anything that is not a known length unit.
 fn length_unit_metres(unit: &DecodedEntity) -> Result<f64, String> {
-    if unit.get(1).and_then(AttributeValue::as_enum) != Some("LENGTHUNIT") {
+    if preflight::unit_type(unit) != Some("LENGTHUNIT") {
         return Err(format!("unit #{} is not a LENGTHUNIT", unit.id));
     }
     let metres = match unit.ifc_type {
-        IfcType::IfcSIUnit if unit.get(3).and_then(AttributeValue::as_enum) == Some("METRE") => {
-            match unit.get(2).filter(|prefix| !prefix.is_null()) {
+        IfcType::IfcSIUnit if unit.enum_at(slot::IfcSIUnit::NAME) == Some("METRE") => {
+            match unit.attr(slot::IfcSIUnit::PREFIX).filter(|prefix| !prefix.is_null()) {
                 None => Some(1.0),
                 Some(prefix) => prefix.as_enum().and_then(try_si_prefix_multiplier),
             }
         }
-        IfcType::IfcConversionBasedUnit => text(unit, 2).as_deref().and_then(get_conversion_based_unit_factor),
+        IfcType::IfcConversionBasedUnit => text(unit, slot::IfcConversionBasedUnit::NAME).as_deref().and_then(get_conversion_based_unit_factor),
         _ => None,
     };
     metres.filter(|metres: &f64| metres.is_finite() && *metres > 0.0)

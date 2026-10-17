@@ -7,11 +7,12 @@
 
 use std::collections::{HashMap, HashSet};
 
-use ifc_lite_core::{DecodedEntity, EntityDecoder, EntityScanner};
+use ifc_lite_core::{slot, DecodedEntity, EntityDecoder, EntityScanner};
 use serde_json::{json, Map, Value};
 
 use crate::json::typed_value;
 use crate::model::{build_export_model, EntityRow};
+use ifc_lite_processing::data_model::spatial_walk;
 
 /// IFC5 schema-package import URIs (ifcx.dev v5a).
 /// The value every IFCX writer in this repo puts in `header.ifcxVersion`.
@@ -130,7 +131,7 @@ pub(crate) fn decode_one(content: &[u8], id: u32) -> Option<DecodedEntity> {
 /// model doesn't carry it. Shared with the USD exporter (`crate::usd`).
 pub(crate) fn project_name(content: &[u8], project_id: u32) -> String {
     decode_one(content, project_id)
-        .and_then(|e| e.get(2).and_then(|a| a.as_string()).map(|s| s.to_string()))
+        .and_then(|e| e.string_at(slot::IfcProject::NAME).map(|s| s.to_string()))
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| "Project".to_string())
 }
@@ -178,19 +179,10 @@ pub fn export_ifc5(content: &[u8], opts: &Ifc5Options) -> String {
         name_of
             .entry(pid)
             .or_insert_with(|| (project_name(content, pid), "IfcProject".to_string()));
-        let mut stack = vec![pid];
-        while let Some(id) = stack.pop() {
-            if !seen.insert(id) {
-                continue;
-            }
-            emit.push(id);
-            if let Some(ch) = children.get(&id) {
-                for &c in ch {
-                    if !seen.contains(&c) {
-                        stack.push(c);
-                    }
-                }
-            }
+        // D48: the one walk the other formats use, in source order.
+        for visit in spatial_walk::walk(&children, pid) {
+            seen.insert(visit.id);
+            emit.push(visit.id);
         }
     } else {
         // No project — emit every product as a flat list.

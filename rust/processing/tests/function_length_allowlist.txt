@@ -17,7 +17,7 @@
    199 apps/server/src/services/data_model/mod.rs extract_data_model
    299 apps/server/src/services/data_model/spatial.rs build_spatial_hierarchy
    200 apps/server/src/services/parquet_mesh_tables.rs build_mesh_tables
-   314 apps/server/src/services/parquet_optimized.rs serialize_to_parquet_optimized
+   308 apps/server/src/services/parquet_optimized.rs serialize_to_parquet_optimized
    324 rust/clash/src/narrow.rs test_pair
    167 rust/clash/src/obb_detect.rs detect_obb
    195 rust/core/src/parser/scanner.rs EntityScanner::next_entity
@@ -53,7 +53,7 @@
    162 rust/geometry/src/processors/boolean/polygonal_prism.rs BooleanClippingProcessor::build_polygonal_bounded_half_space_mesh
    174 rust/geometry/src/processors/sectioned.rs SectionedSolidHorizontalProcessor@GeometryProcessor::process
    164 rust/geometry/src/processors/swept/revolved.rs RevolvedAreaSolidProcessor@GeometryProcessor::process
-   218 rust/geometry/src/processors/tessellated/triangulate.rs PolygonalFaceSetProcessor::triangulate_polygon
+   181 rust/geometry/src/processors/tessellated/triangulate.rs PolygonalFaceSetProcessor::triangulate_polygon
    182 rust/geometry/src/profiles/simplify.rs simplify_smooth_curve_polyline
    213 rust/geometry/src/router/mapped_item.rs GeometryRouter::process_mapped_item_cached_body
    291 rust/geometry/src/router/processing.rs GeometryRouter::collect_submeshes_from_item_inner

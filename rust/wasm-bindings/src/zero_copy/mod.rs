@@ -8,7 +8,6 @@
 
 use wasm_bindgen::prelude::*;
 
-mod frame_swap;
 mod mesh;
 mod symbolic;
 mod symbolic_from_data;

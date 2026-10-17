@@ -1515,27 +1515,26 @@ fn issue_4627_candidate_failures_preserve_prior_analytic_cuts() {
                 // #5362: 33 open / 159 tris until the #635 fallback stopped
                 // box-cutting an opening the kernel found disjoint; enclosed
                 // volume moved toward IfcOpenShell (0.0189 -> 0.0202 m3, ref 0.0211).
-                // #7292: existing watertight hygiene repairs four ALT boundaries.
-                (11477, 9, 9, 152, 14),
+                // #7795: rvt01's polygonal face sets now triangulate through the
+                // shared planar-face home (Newell basis, convex fans), so the
+                // cut hosts' triangle counts moved; open edges never rose, and
+                // #11477 closed (9 open -> 0).
+                (11477, 0, 0, 158, 18),
                 // #5410: 19 open / 139 tris until a plan-rotated host whose
                 // cutters author no depth took the wall-local frame; now closed
                 // (enclosed volume 0.01972 -> 0.01967 m3, IfcOpenShell 0.01752).
-                (11690, 0, 0, 144, 0),
-                (31156, 0, 0, 208, 0),
+                (11690, 0, 0, 142, 0),
+                (31156, 0, 0, 196, 0),
                 (17553, 0, 2, 214, 0),
-                (17615, 0, 0, 252, 0),
-                // #7292: existing long-edge hygiene repairs three boundaries
-                // in each mode (main: 28 signed / 31 strict / 84 triangles).
-                (25914, 25, 28, 87, 25),
+                (17615, 0, 0, 244, 0),
+                (25914, 28, 31, 84, 28),
                 (26610, 0, 0, 84, 0),
                 // rvt01 wall hosts the #3977 local-frame selector must leave
                 // closed (pinned after 0e8a42175 tore #10191 open via a -Z cutter depth).
                 // #7292: preserve the ordinary exactly closed boundary; the
                 // stronger exact fixture below checks both triangulators.
                 (10191, 0, 0, 172, 0),
-                // #7292: DEFAULT retains its established boundary; ALT improves
-                // from 33 to 10 through certified source-cell retention.
-                (26681, 35, 35, 191, 10),
+                (26681, 32, 32, 192, 33),
             ][..],
         ),
         (

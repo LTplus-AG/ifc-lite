@@ -153,6 +153,20 @@ fn emit<W: std::io::Write>(
     // Only convert entity types/attributes when an explicit target differs from source.
     let converting = opts.schema.is_some()
         && crate::schema_convert::needs_conversion(&source_schema, &schema);
+    // IFC2X3/IFC4 -> IFC4X3 flattens `IfcPresentationStyleAssignment` (D57).
+    let flatten = if converting {
+        crate::schema_style_flatten::StyleFlatten::build(
+            content,
+            crate::schema_convert::canon(&source_schema),
+            crate::schema_convert::canon(&schema),
+        )
+    } else {
+        None
+    };
+    let flat_from = crate::schema_convert::canon(&source_schema);
+    let flatten_line = |line: String| -> String {
+        flatten.as_ref().and_then(|f| f.rewrite(flat_from, &line)).unwrap_or(line)
+    };
     // The slots IFC2X3 requires a value in: `OwnerHistory` from the first owner
     // history this export writes (#4686), the rest from the generated
     // required-slot table (#4714).
@@ -210,6 +224,9 @@ fn emit<W: std::io::Write>(
     let mut written = 0usize;
     for id in order {
         if included.contains(id) {
+            if flatten.as_ref().is_some_and(|f| f.drops(*id)) {
+                continue;
+            }
             if let Some(&(s, e)) = line_of.get(id) {
                 let raw = String::from_utf8_lossy(&content[s..e]);
                 // Apply root-attribute edits first (original-schema positions), then convert.
@@ -219,6 +236,7 @@ fn emit<W: std::io::Write>(
                     }
                     None => raw.into_owned(),
                 };
+                let edited = flatten_line(edited);
                 if converting {
                     let converted = crate::schema_convert::convert_step_line(
                         &edited,
@@ -250,7 +268,7 @@ fn emit<W: std::io::Write>(
             let mut muts = muts_by_id.get(source_id).cloned().unwrap_or_default();
             muts.extend(edits.iter().map(|(i, v)| (*i, v.clone())));
             let edited = apply_attr_mutations_counted(&raw, &muts, &mut attribute_edits_refused);
-            let renumbered = renumber(&edited, *copy_id);
+            let renumbered = flatten_line(renumber(&edited, *copy_id));
             if converting {
                 let converted = crate::schema_convert::convert_step_line(
                     &renumbered,

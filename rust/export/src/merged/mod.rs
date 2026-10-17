@@ -292,6 +292,16 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
         // Emit.
         let source_schema = detect_schema(model.content);
         let converting = crate::schema_convert::needs_conversion(&source_schema, &schema);
+        // IFC2X3/IFC4 -> IFC4X3 flattens `IfcPresentationStyleAssignment` (D57).
+        let flatten = if converting {
+            crate::schema_style_flatten::StyleFlatten::build(
+                model.content,
+                crate::schema_convert::canon(&source_schema),
+                crate::schema_convert::canon(&schema),
+            )
+        } else {
+            None
+        };
         for &id in &index.order {
             if !included.contains(&id) || plan.skip.contains(&id) {
                 continue;
@@ -309,6 +319,15 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
                     LineDecision::Skip => continue,
                     LineDecision::Rewrite(text) => pruned = Some(text),
                     LineDecision::Keep => {}
+                }
+            }
+            if let Some(flat) = &flatten {
+                if flat.drops(id) {
+                    continue;
+                }
+                let line = String::from_utf8_lossy(pruned.as_deref().map_or(bytes, str::as_bytes));
+                if let Some(text) = flat.rewrite(crate::schema_convert::canon(&source_schema), &line) {
+                    pruned = Some(text);
                 }
             }
             let bytes: &[u8] = pruned.as_deref().map_or(bytes, str::as_bytes);

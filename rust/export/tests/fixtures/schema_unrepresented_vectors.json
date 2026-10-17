@@ -1,5 +1,5 @@
 {
- "_comment": "Shared cross-language vectors for entity types with NO representation in the target schema (#7742, D3 fail closed). Both converters run every case: Rust rust/export/tests/schema_unrepresented_parity.rs (convert_step_line) and TypeScript packages/export/src/schema-unrepresented.parity.test.ts (convertStepLine). `refuses` means the converter must refuse the record (Rust Err, TS throw); otherwise `expect` is the converted line with an IFCPROXY GlobalId masked as <MINTED> (the twins mint it differently, see schema_product_proxy_vectors.json). Rule: a record whose type the TARGET registry (IFC2X3, IFC4 or IFC4X3) does not declare is refused unless it is an IfcRoot subtype (then an IFCPROXY), when the SOURCE registry declares it or the target is IFC2X3. IFC5 has no registry on either side.",
+ "_comment": "Shared cross-language vectors for entity types with NO representation in the target schema (#7742, D3 fail closed). Both converters run every case: Rust rust/export/tests/schema_unrepresented_parity.rs (convert_step_line) and TypeScript packages/export/src/schema-unrepresented.parity.test.ts (convertStepLine). `refuses` means the converter must refuse the record (Rust Err, TS throw); otherwise `expect` is the converted line with an IFCPROXY GlobalId masked as <MINTED> (the twins mint it differently, see schema_product_proxy_vectors.json). Rule: a record whose type the TARGET registry (IFC2X3, IFC4 or IFC4X3) does not declare is refused unless it is an IfcRoot subtype (then an IFCPROXY), when the SOURCE registry declares it or the target is IFC2X3. IFC5 has no registry on either side. Scope (D57): IFC2X3/IFC4 -> IFC4X3 does not refuse IfcPresentationStyleAssignment, the export flattens it first (schema_style_flatten_vectors.json); the bare per-line converter still refuses one, which schema_unrepresented.rs pins. Infrastructure IFC4X3 -> IFC4 stays fail-closed.",
  "cases": [
   {
    "why": "IFCCURVESEGMENT is a non-rooted IFC4X3-only resource: no IFC4 representation, neither droppable nor proxiable (#7742)",
@@ -62,13 +62,6 @@
    "from": "IFC4X3",
    "to": "IFC2X3",
    "line": "#5=IFCCURVESEGMENT(.CONTINUOUS.,#1,IFCLENGTHMEASURE(0.),IFCLENGTHMEASURE(0.),#2);",
-   "refuses": true
-  },
-  {
-   "why": "the same check runs for every registry target: IFC4's IfcPresentationStyleAssignment is not in IFC4X3",
-   "from": "IFC4",
-   "to": "IFC4X3",
-   "line": "#5=IFCPRESENTATIONSTYLEASSIGNMENT((#1));",
    "refuses": true
   },
   {

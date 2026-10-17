@@ -41,7 +41,7 @@
 import type { IfcAttributeValue } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { filterHiddenRefsFromRelationshipLine } from './reference-collector.js';
-import { convertStepLine } from './schema-converter.js';
+import { convertStepLineFlattening } from './schema-style-flatten.js';
 import { STYLE_RESCUE_TYPES } from './style-closure.js';
 import { NONREL_REF_LIST_TYPES } from './nonrel-ref-list-types.js';
 import { narrowNonRelPositionalRefLists } from './nonrel-positional-ref-narrowing.js';
@@ -230,7 +230,7 @@ export function writeOverlayCreatedEntities(
       line = narrowNonRelPositionalRefLists(line, isOmittedFromOutput, upperType, pass.sourceSchema);
     }
     if (pass.converting) {
-      const converted = convertStepLine(line, pass.sourceSchema, pass.schema, options.guidRandom, pass.slotFill, pass.withheldRefIds, pass.ifc4Slots, pass.enums);
+      const converted = convertStepLineFlattening(pass.styleFlatten, line, pass.sourceSchema, pass.schema, options.guidRandom, pass.slotFill, pass.withheldRefIds, pass.ifc4Slots, pass.enums);
       if (converted !== null) pass.entities.push(converted);
       pass.newEntityCount++;
     } else {

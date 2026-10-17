@@ -140,8 +140,11 @@ fn write_line<W: Write>(
     to: &str,
     slot_fill: &mut crate::schema_ifc2x3_slots::Ifc2x3SlotFill,
     checks: &mut crate::schema_enum::ConversionChecks,
+    flatten: Option<&crate::schema_style_flatten::StyleFlatten>,
 ) -> io::Result<()> {
     if converting {
+        let flat = flatten.and_then(|f| f.rewrite(crate::schema_convert::canon(from), text));
+        let text = flat.as_deref().unwrap_or(text);
         let converted = crate::schema_convert::convert_step_line(text, from, to, id, slot_fill, Some(checks))?;
         out.write_all(converted.as_bytes())?;
     } else {
@@ -253,9 +256,22 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
 
     let mut slot_fill = crate::schema_ifc2x3_slots::Ifc2x3SlotFill::new(pass.fallback_owner_history());
     let mut checks = crate::schema_enum::ConversionChecks::new();
+    // IFC2X3/IFC4 -> IFC4X3 flattens `IfcPresentationStyleAssignment` (D57).
+    let flatten = if converting {
+        crate::schema_style_flatten::StyleFlatten::build(
+            content,
+            crate::schema_convert::canon(&source_label),
+            crate::schema_convert::canon(&target),
+        )
+    } else {
+        None
+    };
     let mut written = 0usize;
     for &id in &src.order {
         if pass.skip.contains(&id) || pass.rewritten.contains(&id) || pass.is_deleted(id) {
+            continue;
+        }
+        if flatten.as_ref().is_some_and(|f| f.drops(id)) {
             continue;
         }
         let owned;
@@ -288,7 +304,7 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
                 &owned
             }
         };
-        write_line(out, text, id, converting, &source_label, &target, &mut slot_fill, &mut checks)?;
+        write_line(out, text, id, converting, &source_label, &target, &mut slot_fill, &mut checks, flatten.as_ref())?;
         written += 1;
     }
     // Every appended record goes out through the same `write_line` as a
@@ -304,7 +320,7 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
         .chain(&pass.georef_lines)
         .chain(&pass.created_lines);
     for (id, line) in appended {
-        write_line(out, line, *id, converting, &source_label, &target, &mut slot_fill, &mut checks)?;
+        write_line(out, line, *id, converting, &source_label, &target, &mut slot_fill, &mut checks, flatten.as_ref())?;
         written += 1;
     }
     out.write_all(b"ENDSEC;\nEND-ISO-10303-21;\n")?;

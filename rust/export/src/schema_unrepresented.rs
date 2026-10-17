@@ -34,6 +34,10 @@ use crate::schema_convert::{placeholder_guid, schema_attribute_names};
 /// a file headed `IFC4`, where readers drop it and every reference to it
 /// dangles; the TypeScript twin refused it.
 ///
+/// The one IFC4-only non-rooted type that real files carry,
+/// `IfcPresentationStyleAssignment`, never reaches this check on an upgrade to
+/// IFC4X3: the export flattens it first ([`crate::schema_style_flatten`], D57).
+///
 /// This crate still has no port of the TypeScript
 /// `WITHHOLDABLE_UNROOTED_TYPES` omission, so every non-rooted type that fails
 /// this check is refused (D3, fail closed).

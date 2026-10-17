@@ -290,3 +290,18 @@ fn direct_processor_capped_curve_does_not_leak_into_the_next_router_item_7687() 
     )]));
     assert_eq!(process(&cube(&[])), (12, vec![]), "the intact cube must record nothing");
 }
+
+/// The refused face is counted under its REAL type (#7787 audit): a faceted
+/// brep's `IfcFace` is not an `IfcAdvancedFace`.
+#[test]
+fn refused_faceted_brep_face_is_counted_as_ifc_face() {
+    let (tris, counted) = process(
+        "#1=IFCFACETEDBREP(#2);\n#2=IFCCLOSEDSHELL((#20));\n\
+         #3=IFCCARTESIANPOINT((0.,0.,0.));#4=IFCCARTESIANPOINT((1.,0.,0.));#5=IFCCARTESIANPOINT((0.,1.,0.));\n\
+         #10=IFCPOLYLOOP((#3,#4,#5));#11=IFCFACEOUTERBOUND(#10,.T.);\n\
+         #12=IFCPOLYLOOP((#3,#9999,#5));#13=IFCFACEBOUND(#12,.T.);\n\
+         #20=IFCFACE((#11,#13));\n",
+    );
+    assert_eq!(tris, 0);
+    assert_eq!(counted, vec![("IfcFace".to_string(), 1)], "got {counted:?}");
+}

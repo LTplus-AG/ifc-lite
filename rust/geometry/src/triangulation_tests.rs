@@ -452,3 +452,43 @@ fn planar_face_with_a_failing_hole_is_an_error_not_a_fan() {
     assert_eq!(triangulate_planar_face(&outer, &[]).unwrap().len(), 6);
     assert!(triangulate_planar_face(&outer[..2], &[]).is_err());
 }
+
+// ── #7787: hole hygiene in `safe_earcut` ─────────────────────────────────────
+
+/// Two parallel diagonal strips: disjoint rings whose bounding boxes overlap,
+/// the shape that costs a pairwise edge test and no more.
+fn diagonal_strips(n: usize) -> Vec<Vec<f64>> {
+    (0..n)
+        .map(|k| {
+            let o = k as f64 * 3.0;
+            vec![o, 0.0, o + 100.0, 100.0, o + 101.0, 100.0, o + 1.0, 0.0]
+        })
+        .collect()
+}
+
+#[test]
+fn hole_pair_work_budget_fails_closed_7787() {
+    let strips = diagonal_strips(50);
+    let rings: Vec<&[f64]> = strips.iter().map(|r| r.as_slice()).collect();
+    let all: Vec<usize> = (0..strips.len()).collect();
+
+    let mut holes = all.clone();
+    hole_overlap::settle_holes(&rings, &mut holes, hole_overlap::HOLE_PAIR_WORK_BUDGET)
+        .expect("disjoint strips are fine within the budget");
+    assert_eq!(holes, all);
+
+    let mut holes = all;
+    let err = hole_overlap::settle_holes(&rings, &mut holes, 100).unwrap_err();
+    assert!(err.contains("budget"), "{err}");
+}
+
+#[test]
+fn settle_holes_drops_duplicates_in_first_seen_order_7787() {
+    let a = vec![0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0];
+    let a_rotated_reversed = vec![1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0];
+    let b = vec![5.0, 5.0, 6.0, 5.0, 6.0, 6.0, 5.0, 6.0];
+    let rings: Vec<&[f64]> = vec![&a, &b, &a_rotated_reversed, &b];
+    let mut holes = vec![0, 1, 2, 3];
+    hole_overlap::settle_holes(&rings, &mut holes, hole_overlap::HOLE_PAIR_WORK_BUDGET).unwrap();
+    assert_eq!(holes, vec![0, 1]);
+}

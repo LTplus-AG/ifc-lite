@@ -17,7 +17,7 @@
 //! [`orient_mesh_outward`] recovers face adjacency (the meshes are flat-shaded,
 //! so positions are welded by a fine grid), propagates a consistent orientation
 //! across shared edges per connected component, then flips each CLOSED component
-//! so its signed volume is positive (outward). An OPEN component (a TIN /
+//! so its signed volume is positive (outward); a closed component nested an odd number of closed shells deep (a cavity or bore) is wound into its cavity instead, so its volume is negative (#7755). An OPEN component (a TIN /
 //! `SurfaceModel` sheet with boundary edges — no meaningful enclosed volume) or a
 //! non-manifold / non-orientable one is left untouched: re-orienting it is
 //! ambiguous and would reverse authored normals. The winding-invariant geometry
@@ -36,6 +36,8 @@ use std::cell::RefCell;
 
 #[path = "mesh_orient_adjacency.rs"]
 mod adjacency;
+#[path = "mesh_orient_nesting.rs"]
+mod nesting;
 use adjacency::EdgeAdjacency;
 #[cfg(test)]
 use adjacency::EdgeInc;
@@ -67,6 +69,10 @@ struct OrientScratch {
     visited: Vec<bool>,
     comp: Vec<usize>,
     stack: Vec<usize>,
+    /// Triangles of every closed orientable component, back to back, and each
+    /// component's `(start, end, own signed volume * 6)` in it (#7755).
+    closed_tris: Vec<usize>,
+    closed_spans: Vec<(usize, usize, f64)>,
 }
 
 thread_local! {
@@ -133,15 +139,12 @@ impl OrientVerdict {
     /// The one shape for which a divergence-theorem volume over this mesh is
     /// trustworthy: EXACTLY ONE closed, orientable component.
     ///
-    /// Why not the weaker "all components closed". This pass flips each closed
-    /// component so its OWN signed volume is positive. For two disjoint solids
-    /// that is right and the sum is their combined volume. But for a solid whose
-    /// cavity is modelled as a second, inner shell it is wrong in the worst way:
-    /// the cavity shell is also made positive, so the sum reports
-    /// `outer + cavity` where the true volume is `outer − cavity`. Telling those
-    /// two arrangements apart needs a containment test this pass does not do —
-    /// and the orientation it already applied has destroyed the sign that would
-    /// have distinguished them. One component has no such ambiguity.
+    /// Why not the weaker "all components closed". Two disjoint solids sum
+    /// correctly, and a solid whose cavity is a second, inner shell now does
+    /// too (the orienter faces a shell nested an odd number of levels deep INTO
+    /// its cavity, #7755), but a volume consumer still has to know which
+    /// arrangement it has, and the containment is not part of this verdict.
+    /// One component has no such ambiguity.
     #[inline]
     pub fn is_single_closed_solid(&self) -> bool {
         self.components == 1 && self.all_closed && self.all_orientable
@@ -185,8 +188,7 @@ pub fn orient_mesh_outward_verdict(mesh: &mut Mesh) -> OrientVerdict {
     // splits struct fields) let a read-only closure borrow one buffer while another
     // is mutated.
     let mut scratch = ORIENT_SCRATCH.with(|c| c.borrow_mut().take()).unwrap_or_default();
-    let OrientScratch { vid_of, vpos, corner, edge_tris, flip, visited, comp, stack } =
-        &mut scratch;
+    let OrientScratch { vid_of, vpos, corner, edge_tris, flip, visited, comp, stack, closed_tris, closed_spans } = &mut scratch;
     // Clear (retain capacity) before use so no stale data leaks in; the reserves
     // restore the original `with_capacity` sizing.
     vid_of.clear();
@@ -224,6 +226,13 @@ pub fn orient_mesh_outward_verdict(mesh: &mut Mesh) -> OrientVerdict {
         corner[if indexed { mesh.indices[3 * t + k] as usize } else { 3 * t + k }]
     });
 
+    // A triangle's welded corners, wound as `flipped` says.
+    let corners = |t: usize, flipped: bool| {
+        let v = tv(t);
+        let (i0, i1, i2) = if flipped { (v[0], v[2], v[1]) } else { (v[0], v[1], v[2]) };
+        [vpos[i0 as usize], vpos[i1 as usize], vpos[i2 as usize]]
+    };
+
     // Undirected welded edge -> incident triangles. >2 incident ⇒ non-manifold.
     // A closed manifold has ~1.5 edges per triangle; reserve to skip rehashing.
     edge_tris.reset(ntri);
@@ -243,6 +252,7 @@ pub fn orient_mesh_outward_verdict(mesh: &mut Mesh) -> OrientVerdict {
     flip.resize(ntri, false);
     visited.clear();
     visited.resize(ntri, false);
+    closed_tris.clear(); closed_spans.clear();
     let mut any_flip = false;
     // The verdict, folded across components as they are discovered. `all_*`
     // start TRUE because they are conjunctions over the components; a mesh with
@@ -319,23 +329,15 @@ pub fn orient_mesh_outward_verdict(mesh: &mut Mesh) -> OrientVerdict {
             continue;
         }
 
-        // Flip the whole CLOSED component outward (positive signed volume).
-        // The sum is referenced to the component's own AABB centre, not the
-        // world origin: `kernel::signed_volume` explains why (each term is
-        // O(|v|^3), so far from the origin the SIGN is rounding noise), and
-        // `a_small_solid_far_from_the_origin_is_oriented_by_its_shape_not_its_position`
-        // measures it. One home for that rule; this is a caller.
-        let vol6 = signed_volume6_of(comp.iter().map(|&t| {
-            let v = tv(t);
-            let (i0, i1, i2) = if flip[t] { (v[0], v[2], v[1]) } else { (v[0], v[1], v[2]) };
-            [vpos[i0 as usize], vpos[i1 as usize], vpos[i2 as usize]]
-        }));
-        if vol6 < 0.0 {
-            for &t in comp.iter() {
-                flip[t] = !flip[t];
-            }
-        }
+        // Which way it faces is decided once all are known (`nesting`); only its
+        // signed volume (AABB-centred, `kernel::signed_volume`) is taken here.
+        let vol6 = signed_volume6_of(comp.iter().map(|&t| corners(t, flip[t])));
+        closed_spans.push((closed_tris.len(), closed_tris.len() + comp.len(), vol6));
+        closed_tris.extend_from_slice(comp);
     }
+
+    // Face every closed component outward; a nested cavity faces inward (#7755).
+    nesting::face_closed_components(closed_spans, closed_tris, flip, &corners);
 
     for t in 0..ntri {
         if flip[t] {

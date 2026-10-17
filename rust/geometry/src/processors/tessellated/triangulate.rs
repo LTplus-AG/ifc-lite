@@ -119,111 +119,74 @@ impl PolygonalFaceSetProcessor {
             return;
         }
 
-        // For quads, use fan triangulation with orientation correction
-        if inner_indices.is_empty() && outer_indices.len() == 4 {
-            push_oriented_triangle(outer_indices[0], outer_indices[1], outer_indices[2]);
-            push_oriented_triangle(outer_indices[0], outer_indices[2], outer_indices[3]);
-            return;
-        }
-
-        // Choose projection plane based on dominant axis
-        let abs_x = sum_x.abs();
-        let abs_y = sum_y.abs();
-        let abs_z = sum_z.abs();
-
+        // Everything past a triangle goes through the ONE planar-face home
+        // (`triangulation::quad_split_3d` / `triangulate_planar_face`, shared with
+        // faceted breps, surface models and planar advanced faces), so the
+        // concave-quad and hole-failure rules cannot drift from it again (#7795).
+        // Positions are widened to f64 first, as the Newell sum above already is.
+        let widen = |idx: u32| -> Option<nalgebra::Point3<f64>> {
+            get_pos(idx).map(|p| nalgebra::Point3::new(p.0 as f64, p.1 as f64, p.2 as f64))
+        };
         let valid_holes: Vec<&[u32]> = inner_indices
             .iter()
             .filter(|loop_indices| loop_indices.len() >= 3)
             .map(|loop_indices| loop_indices.as_slice())
             .collect();
 
-        // Flatten all loops for earcut (outer ring first, then holes)
-        let total_vertices = outer_indices.len()
-            + valid_holes
-                .iter()
-                .map(|loop_indices| loop_indices.len())
-                .sum::<usize>();
-        let mut coords_2d: Vec<f64> = Vec::with_capacity(total_vertices * 2);
-        let mut flattened_indices: Vec<u32> = Vec::with_capacity(total_vertices);
-        let mut hole_starts: Vec<usize> = Vec::with_capacity(valid_holes.len());
-
+        let mut flattened_indices: Vec<u32> = Vec::with_capacity(
+            outer_indices.len() + valid_holes.iter().map(|h| h.len()).sum::<usize>(),
+        );
+        let mut outer_points = Vec::with_capacity(outer_indices.len());
         for &idx in outer_indices {
-            let Some(p) = get_pos(idx) else {
-                // Invalid vertex — skip polygon (fan-triangulate would include bad vertices)
+            let Some(p) = widen(idx) else {
+                // Invalid vertex: skip the polygon (a fan would include bad vertices)
                 return;
             };
             flattened_indices.push(idx);
-
-            // Project to 2D based on dominant normal axis
-            if abs_z >= abs_x && abs_z >= abs_y {
-                // XY plane (Z is dominant)
-                coords_2d.push(p.0 as f64);
-                coords_2d.push(p.1 as f64);
-            } else if abs_y >= abs_x {
-                // XZ plane (Y is dominant)
-                coords_2d.push(p.0 as f64);
-                coords_2d.push(p.2 as f64);
-            } else {
-                // YZ plane (X is dominant)
-                coords_2d.push(p.1 as f64);
-                coords_2d.push(p.2 as f64);
-            }
+            outer_points.push(p);
         }
-
-        for hole in valid_holes {
-            hole_starts.push(flattened_indices.len());
-            for &idx in hole {
-                let Some(p) = get_pos(idx) else {
-                    // Invalid hole vertex — skip polygon
+        let mut hole_points: Vec<Vec<nalgebra::Point3<f64>>> = Vec::with_capacity(valid_holes.len());
+        for hole in &valid_holes {
+            let mut ring = Vec::with_capacity(hole.len());
+            for &idx in *hole {
+                let Some(p) = widen(idx) else {
+                    // Invalid hole vertex: skip the polygon
                     return;
                 };
                 flattened_indices.push(idx);
-
-                // Project to 2D based on dominant normal axis
-                if abs_z >= abs_x && abs_z >= abs_y {
-                    // XY plane (Z is dominant)
-                    coords_2d.push(p.0 as f64);
-                    coords_2d.push(p.1 as f64);
-                } else if abs_y >= abs_x {
-                    // XZ plane (Y is dominant)
-                    coords_2d.push(p.0 as f64);
-                    coords_2d.push(p.2 as f64);
-                } else {
-                    // YZ plane (X is dominant)
-                    coords_2d.push(p.1 as f64);
-                    coords_2d.push(p.2 as f64);
-                }
+                ring.push(p);
             }
+            hole_points.push(ring);
         }
 
-        if flattened_indices.len() < 3 {
+        // A hole-free quad takes the diagonal that lies INSIDE the ring; the
+        // fixed `0-2` fan covered the convex hull twice for a reflex vertex
+        // 1 or 3 (#7795, GEOM-3 / PROC-S10).
+        if hole_points.is_empty() && outer_points.len() == 4 {
+            for tri in crate::triangulation::quad_split_3d(&outer_points).chunks_exact(3) {
+                push_oriented_triangle(
+                    flattened_indices[tri[0] as usize],
+                    flattened_indices[tri[1] as usize],
+                    flattened_indices[tri[2] as usize],
+                );
+            }
             return;
         }
 
-        // Run ear-clipping triangulation (guarded — see `triangulation::safe_earcut`)
-        match crate::triangulation::safe_earcut(&coords_2d, &hole_starts, 2) {
+        match crate::triangulation::triangulate_planar_face(&outer_points, &hole_points) {
             Ok(tri_indices) => {
-                for tri in tri_indices.chunks(3) {
-                    if tri.len() != 3
-                        || tri[0] >= flattened_indices.len()
-                        || tri[1] >= flattened_indices.len()
-                        || tri[2] >= flattened_indices.len()
-                    {
-                        continue;
+                for tri in tri_indices.chunks_exact(3) {
+                    let [a, b, c] = [tri[0], tri[1], tri[2]].map(|i| flattened_indices.get(i as usize));
+                    if let (Some(&a), Some(&b), Some(&c)) = (a, b, c) {
+                        push_oriented_triangle(a, b, c);
                     }
-                    push_oriented_triangle(
-                        flattened_indices[tri[0]],
-                        flattened_indices[tri[1]],
-                        flattened_indices[tri[2]],
-                    );
                 }
             }
+            // `triangulate_planar_face` only fails with holes (D3): the face is
+            // refused and counted. It used to fan the outer loop, rendering the
+            // face filled over its authored openings (#7795, PROC-S5).
             Err(_) => {
-                // Fallback to fan triangulation on the outer loop
-                let first = outer_indices[0];
-                for i in 1..outer_indices.len() - 1 {
-                    push_oriented_triangle(first, outer_indices[i], outer_indices[i + 1]);
-                }
+                super::super::advanced_face::note_face_refused(&ifc_lite_core::IfcType::IfcIndexedPolygonalFaceWithVoids);
             }
         }
     }

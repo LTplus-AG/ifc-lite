@@ -122,7 +122,9 @@ export class StyleFlatten {
   ): StyleFlatten | undefined {
     const flat = StyleFlatten.create(from, to);
     if (!flat || !store.source) return flat;
+    // @raw-entity-enumeration-ok the flatten reads SOURCE records; edits arrive through noteEdited and created records through noteLine
     for (const id of store.entityIndex.byType.get(ASSIGNMENT) ?? []) {
+      // @raw-entity-enumeration-ok the flatten reads SOURCE records; edits arrive through noteEdited and created records through noteLine
       const ref = store.entityIndex.byId.get(id);
       if (ref) flat.note(id, decodeRange(store.source, ref.byteOffset, ref.byteOffset + ref.byteLength));
     }
@@ -137,7 +139,9 @@ export class StyleFlatten {
    */
   noteEdited(store: Pick<IfcDataStore, 'entityIndex' | 'source'>, edited: (id: number, text: string) => string | null): void {
     if (!store.source) return;
+    // @raw-entity-enumeration-ok the flatten reads SOURCE records; edits arrive through noteEdited and created records through noteLine
     for (const id of store.entityIndex.byType.get(ASSIGNMENT) ?? []) {
+      // @raw-entity-enumeration-ok the flatten reads SOURCE records; edits arrive through noteEdited and created records through noteLine
       const ref = store.entityIndex.byId.get(id);
       const text = ref ? edited(id, decodeRange(store.source, ref.byteOffset, ref.byteOffset + ref.byteLength)) : null;
       if (text !== null) this.note(id, text);
@@ -150,9 +154,11 @@ export class StyleFlatten {
     const source = store?.source;
     if (source && !this.collected && [...this.members.values()].some((m) => m.length === 0)) {
       this.collected = true;
+      // @raw-entity-enumeration-ok the flatten reads SOURCE records; edits arrive through noteEdited and created records through noteLine
       for (const [type, ids] of store.entityIndex.byType) {
         if (!isStyledItem(type.toUpperCase())) continue;
         for (const id of ids) {
+          // @raw-entity-enumeration-ok the flatten reads SOURCE records; edits arrive through noteEdited and created records through noteLine
           const ref = store.entityIndex.byId.get(id);
           if (ref && !this.styled.has(id)) this.noteLine(decodeRange(source, ref.byteOffset, ref.byteOffset + ref.byteLength));
         }

@@ -64,9 +64,9 @@ const GUARD_RE = /\bvisited\b[\s\S]{0,60}?\.insert\(|\.insert\(\s*[\w.]*\bid\b\s
 // The generic parameter list is NOT matched here. It used to be, as
 // `(?:<[^>]*>)?`, and that spelling stops at the FIRST `>`, so a nested bound
 // -- `fn extrude_rings_into<S: GeomScalar, M: MeshSink<S>>(` -- failed to match
-// at all and the function vanished from the file's parse. Five such functions
-// exist in the scan roots today (rust/geometry/src/extrusion_generic.rs x4,
-// rust/wasm-bindings/src/zero_copy/frame_swap.rs x1). The vacuity check in
+// at all and the function vanished from the file's parse. Such functions exist
+// in the scan roots (e.g. rust/geometry/src/extrusion_generic.rs,
+// rust/geometry/src/math/frame.rs). The vacuity check in
 // check-refwalk-guards.mjs only fires when a file parses to ZERO functions, so
 // losing SOME of a file's functions was silent -- the same shape as the
 // `-> Option<[f32; 4]>` defect this classifier already had to fix once.

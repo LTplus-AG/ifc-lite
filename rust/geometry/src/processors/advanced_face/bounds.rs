@@ -25,26 +25,37 @@ pub(super) struct FaceBounds {
 // could lose faces, or every face, and report nothing. Same shape as
 // `bspline_budget::CURVE_CAPPED`: a thread-local flag set where a face is
 // refused and drained once per representation item by the router
-// (`process_item_in_rtc_frame`), which records `IfcAdvancedFace`.
+// (`process_item_in_rtc_frame`), which records the REAL face type: an
+// `IfcAdvancedFace` / `IfcFaceSurface` for a surface face, an `IfcFace` for a
+// faceted brep or surface-model polyloop face, an
+// `IfcIndexedPolygonalFaceWithVoids` for a tessellated face. They were all
+// counted as `IfcAdvancedFace` (#7787 audit).
 thread_local! {
-    static FACE_REFUSED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    static FACE_REFUSED: std::cell::RefCell<Vec<IfcType>> = const { std::cell::RefCell::new(Vec::new()) };
 }
 
-/// Record that a face was refused because its data does not read (#7687).
-pub(super) fn note_face_refused() {
-    FACE_REFUSED.with(|c| c.set(true));
+/// Record that a face of type `face_type` was refused (#7687). Once per type
+/// per drain, so the count stays one per item and type.
+pub(in crate::processors) fn note_face_refused(face_type: &IfcType) {
+    FACE_REFUSED.with(|c| {
+        let mut types = c.borrow_mut();
+        if !types.contains(face_type) {
+            types.push(face_type.clone());
+        }
+    });
 }
 
-/// Drain the flag: `true` if any face was refused since the last drain on
-/// this thread. Drained once per top-level item, so it counts items.
-pub(crate) fn take_face_refused() -> bool {
-    FACE_REFUSED.with(|c| c.replace(false))
+/// Drain the refused face types since the last drain on this thread (empty
+/// when no face was refused). Drained once per top-level item, so it counts
+/// items.
+pub(crate) fn take_face_refused() -> Vec<IfcType> {
+    FACE_REFUSED.with(|c| std::mem::take(&mut *c.borrow_mut()))
 }
 
-/// `result`, noting a refusal when it is an `Err`.
-pub(super) fn noting_refusal<T>(result: Result<T>) -> Result<T> {
+/// `result`, noting a refusal of `face` when it is an `Err`.
+pub(super) fn noting_refusal<T>(face: &DecodedEntity, result: Result<T>) -> Result<T> {
     if result.is_err() {
-        note_face_refused();
+        note_face_refused(&face.ifc_type);
     }
     result
 }
@@ -56,7 +67,7 @@ pub(super) fn resolve_bound_loop(
     bound: &ifc_lite_core::AttributeValue,
     decoder: &mut EntityDecoder,
 ) -> Result<(DecodedEntity, DecodedEntity)> {
-    noting_refusal(resolve_bound_loop_unnoted(face, bound, decoder))
+    noting_refusal(face, resolve_bound_loop_unnoted(face, bound, decoder))
 }
 
 fn resolve_bound_loop_unnoted(
@@ -87,7 +98,7 @@ pub(super) fn refuse_unreadable(
     points: std::result::Result<Vec<Point3<f64>>, Refused>,
 ) -> Result<Vec<Point3<f64>>> {
     points.map_err(|Refused| {
-        note_face_refused();
+        note_face_refused(&face.ifc_type);
         Error::geometry(format!(
             "face #{} loop #{} does not resolve; refusing the face rather than drop the loop (D14)",
             face.id, loop_entity.id

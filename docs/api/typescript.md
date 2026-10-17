@@ -209,7 +209,7 @@ class GeometryProcessor {
 
   // Rust-side exporters surfaced on the processor
   exportGlb(buffer, includeMetadata?, hidden?, isolated?, hiddenTypesCsv?, lit?): Uint8Array | null;
-  exportGlbFromMeshes(meshes: MeshData[], includeMetadata?, lit?): Uint8Array | null;
+  exportGlbFromMeshes(meshes: MeshData[], includeMetadata?, lit?, emissive?, worldMatrix?: ArrayLike<number>): Uint8Array | null;
   exportObj(/* ... */): Uint8Array | null;
   exportKmzFromMeshes(
     meshes: MeshData[],

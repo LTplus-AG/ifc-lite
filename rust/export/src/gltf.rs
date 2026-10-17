@@ -29,7 +29,7 @@ const _: () = assert!(
     "ifc-lite-export assumes a little-endian target (GLB is LE; cast_slice byte reinterpretation)",
 );
 
-use crate::color_space::srgba_to_linear;
+use crate::color_space::{material_key as color_key, srgba_to_linear};
 use crate::error::ExportError;
 use ifc_lite_core::EntityIndex;
 use ifc_lite_geometry::{
@@ -37,7 +37,7 @@ use ifc_lite_geometry::{
 };
 use ifc_lite_processing::{
     build_entity_index_parallel, process_geometry_filtered_with_quality,
-    process_geometry_streaming_filtered_with_options, MeshCoordinateSpace, MeshData,
+    process_geometry_streaming_filtered_with_options, MeshCoordinateSpace, MeshData, MeshFrame,
     OpeningFilterMode, ProcessingResult, StreamingOptions, TessellationQuality,
 };
 use serde::Serialize;
@@ -443,11 +443,6 @@ fn mesh_visible(mesh: &MeshData, opts: &GltfOptions) -> bool {
     VisibilityFilter::new(opts).visible(mesh)
 }
 
-/// Material dedup key: RGBA rounded to 2 decimals (matches the TS exporter's key).
-fn color_key(c: [f32; 4]) -> (i32, i32, i32, i32) {
-    let r = |v: f32| (v * 100.0).round() as i32;
-    (r(c[0]), r(c[1]), r(c[2]), r(c[3]))
-}
 
 /// One material for a mesh colour: the single source of the lit / unlit / emissive
 /// rules, shared by every assembler so the paths cannot drift. `emissive` takes
@@ -489,23 +484,14 @@ fn make_material(color: [f32; 4], lit: bool, emissive: bool) -> Material {
 /// ~20-50x less hashing on large models (xxh3 bulk vs element-wise SipHash-1-3).
 ///
 /// Because the digest never leaves this function, the IMPLEMENTATION is free: any
-/// sound 128-bit hash groups the same meshes. That is what makes `twox-hash` (MIT)
-/// substitutable for `xxhash-rust` (BSL-1.0) without touching a single output byte.
+/// sound 128-bit hash groups the same meshes. The algorithm lives in
+/// `ifc_lite_core::hash::ContentHash` (MIT `twox-hash`).
 fn geom_color_key(positions: &[f32], normals: &[f32], indices: &[u32], color: [f32; 4]) -> u128 {
-    use twox_hash::XxHash3_128;
-    let mut h = XxHash3_128::new();
-    h.write(&(positions.len() as u64).to_le_bytes());
-    h.write(bytemuck::cast_slice::<f32, u8>(positions));
-    h.write(&(normals.len() as u64).to_le_bytes());
-    h.write(bytemuck::cast_slice::<f32, u8>(normals));
-    h.write(&(indices.len() as u64).to_le_bytes());
-    h.write(bytemuck::cast_slice::<u32, u8>(indices));
     let (r, g, b, a) = color_key(color);
-    h.write(&r.to_le_bytes());
-    h.write(&g.to_le_bytes());
-    h.write(&b.to_le_bytes());
-    h.write(&a.to_le_bytes());
-    h.finish_128()
+    let mut h = ifc_lite_core::hash::ContentHash::new();
+    h.write_f32s(positions).write_f32s(normals).write_u32s(indices);
+    h.write(&r.to_le_bytes()).write(&g.to_le_bytes()).write(&b.to_le_bytes()).write(&a.to_le_bytes());
+    h.finish()
 }
 
 /// Streams geometry into one or more glTF buffers. Each buffer holds three bufferViews
@@ -1035,12 +1021,17 @@ fn view_ok(v: &MeshView) -> bool {
 /// on whether it was large enough to stream. One reader is the cheapest way to
 /// stop that recurring.
 fn site_restore(result: &ProcessingResult) -> (MeshCoordinateSpace, [f64; 3], Option<Vec<f64>>) {
+    frame_parts(result.frame)
+}
+
+/// [`site_restore`] for a frame that did not come off a `ProcessingResult`
+/// (the from-meshes path, handed a restore matrix: #7734).
+pub(super) fn frame_parts(frame: MeshFrame) -> (MeshCoordinateSpace, [f64; 3], Option<Vec<f64>>) {
     // All three read off the one frame the bake used (#7684), the same value
     // OBJ, USD and BOS restore through (`MeshFrame::to_world`). Only the
     // site-local tier removed a rotation, so only there is there one to put
     // back on the scene ROOT; `model_rtc` and `raw_ifc` still need the
     // translation restored, which is why `rtc_zup` returns unconditionally.
-    let frame = result.frame;
     let (x, y, z) = frame.rtc_offset();
     // The tag travels with them. `baked_basis_yup` used to re-derive it from
     // `site_zup.is_some()`, which is this same tier rule written a second time
@@ -1055,32 +1046,26 @@ fn site_restore(result: &ProcessingResult) -> (MeshCoordinateSpace, [f64; 3], Op
 /// someone loading two georeferenced models expects them to line up.
 fn scene_root(
     scene_center: [f64; 3],
+    space: MeshCoordinateSpace,
     rtc_zup: [f64; 3],
     site_zup: Option<&[f64]>,
 ) -> (Option<[f64; 3]>, Option<[f32; 4]>) {
-    let center_nonzero = scene_center.iter().any(|c| c.abs() > 1e-9);
-    let site_yup = site_zup.map(crate::frame::yup_matrix4);
-    let rotation = site_yup.as_ref().and_then(|m| {
-        let identity = (0..3).all(|c| {
-            (0..3).all(|r| {
-                let want = if r == c { 1.0 } else { 0.0 };
-                (m[c * 4 + r] - want).abs() < 1e-9
-            })
-        });
-        (!identity).then(|| quaternion_from_column_major(m))
+    // The restore is `MeshFrame::world_matrix`, the one inverse every writer
+    // shares (#7734); here it is carried into the glTF axes and applied to the
+    // centre the vertices were baked relative to, so the model lands rotated
+    // about the right point.
+    let world = crate::frame::yup_matrix4(&MeshFrame::from_parts(space, rtc_zup, site_zup).world_matrix());
+    let rotated = !(0..3).all(|c| {
+        (0..3).all(|r| world[c * 4 + r] == if r == c { 1.0 } else { 0.0 })
     });
-    // The centre the vertices were baked relative to travels through the site
-    // rotation too, or the model lands rotated about the wrong point.
-    let t = crate::frame::yup_f64(rtc_zup);
-    let c = match (&site_yup, &rotation) {
-        (Some(m), Some(_)) => [
-            m[0] * scene_center[0] + m[4] * scene_center[1] + m[8] * scene_center[2],
-            m[1] * scene_center[0] + m[5] * scene_center[1] + m[9] * scene_center[2],
-            m[2] * scene_center[0] + m[6] * scene_center[1] + m[10] * scene_center[2],
-        ],
-        _ => scene_center,
-    };
-    let out = [t[0] + c[0], t[1] + c[1], t[2] + c[2]];
+    let rotation = rotated.then(|| quaternion_from_column_major(&world));
+    let c = scene_center;
+    let out = [
+        world[0] * c[0] + world[4] * c[1] + world[8] * c[2] + world[12],
+        world[1] * c[0] + world[5] * c[1] + world[9] * c[2] + world[13],
+        world[2] * c[0] + world[6] * c[1] + world[10] * c[2] + world[14],
+    ];
+    let center_nonzero = c.iter().any(|v| v.abs() > 1e-9);
     let translation = (center_nonzero || out.iter().any(|v| v.abs() > 1e-9)).then_some(out);
     (translation, rotation)
 }
@@ -1427,7 +1412,7 @@ fn build_gltf(
 
     // Single root node carries the model-wide centre (omitted when ~zero) and
     // parents every element node, so the scene has exactly one top-level node.
-    let (root_translation, site_rotation) = scene_root(scene_center, rtc_zup, site_zup);
+    let (root_translation, site_rotation) = scene_root(scene_center, space, rtc_zup, site_zup);
     let scene_nodes = if element_node_indices.is_empty() {
         Vec::new()
     } else {
@@ -1627,13 +1612,11 @@ fn with_result_views<R>(
     f(&views, space, rtc_zup, site_zup.as_deref())
 }
 
-/// The one rule both GLB assemblers refuse on: a build with no mesh is not a
-/// valid GLB (see [`try_export_glb`]), so it is an error rather than an artifact.
+/// Every glTF assembler (both GLB paths and the multi-buffer glTF) refuses
+/// on the crate's one empty-export rule: a build with no mesh is not a valid
+/// glTF (see [`try_export_glb`]), so it is an error rather than an artifact.
 fn refuse_empty(stats: &GltfStats) -> Result<(), ExportError> {
-    if stats.meshes == 0 {
-        return Err(ExportError::NoRenderGeometry);
-    }
-    Ok(())
+    crate::error::require_render_geometry(stats.meshes)
 }
 
 /// The in-memory assembler behind both `try_export_glb_with_stats*` entry points.
@@ -1668,12 +1651,18 @@ pub struct GltfBuffer {
 /// buffer is handed to `sink` and dropped, so peak memory is ~one chunk, not the whole
 /// model — this is the path for models too large for a single GLB (`try_export_glb*` stays
 /// the smaller-model path). Compose with `GltfOptions.quantize` to shrink first.
+///
+/// Fail-closed like every GLB entry point: an empty visible mesh set is
+/// [`ExportError::NoRenderGeometry`], never a `.gltf` with empty `meshes`,
+/// `nodes` and `buffers` (glTF schema `minItems: 1`). Nothing reaches `sink`
+/// in that case, because an empty chunk is never flushed (#7695,
+/// EXPORT-GEOM-9).
 pub fn export_gltf_streaming(
     content: &[u8],
     opts: &GltfOptions,
     chunk_cap: usize,
     sink: impl FnMut(GltfBuffer),
-) -> Vec<u8> {
+) -> Result<Vec<u8>, ExportError> {
     export_gltf_streaming_impl(content, opts, None, chunk_cap, sink)
 }
 
@@ -1690,7 +1679,7 @@ pub fn export_gltf_streaming_with_index(
     index: Arc<EntityIndex>,
     chunk_cap: usize,
     sink: impl FnMut(GltfBuffer),
-) -> Vec<u8> {
+) -> Result<Vec<u8>, ExportError> {
     export_gltf_streaming_impl(content, opts, Some(index), chunk_cap, sink)
 }
 
@@ -1700,7 +1689,7 @@ fn export_gltf_streaming_impl(
     index: Option<Arc<EntityIndex>>,
     chunk_cap: usize,
     mut sink: impl FnMut(GltfBuffer),
-) -> Vec<u8> {
+) -> Result<Vec<u8>, ExportError> {
     // Bounded memory: drive the streaming geometry API with `retain_emitted_meshes: false`
     // so meshes are never accumulated — peak input is one batch, not the whole model.
     // Two passes over the same (deterministic) mesh stream:
@@ -1848,11 +1837,13 @@ fn export_gltf_streaming_impl(
         |_| {},
     );
     stats.materials = materials.len();
+    // Decided before the final flush, so a refused export hands `sink` nothing.
+    refuse_empty(&stats)?;
 
     // Single root node carries the model-wide centre and parents every element node.
     let (root_translation, site_rotation) = {
-        let (_, rtc_zup, site_zup) = site_restore(&meta_result);
-        scene_root(scene_center, rtc_zup, site_zup.as_deref())
+        let (space, rtc_zup, site_zup) = site_restore(&meta_result);
+        scene_root(scene_center, space, rtc_zup, site_zup.as_deref())
     };
     let scene_nodes = if element_node_indices.is_empty() {
         Vec::new()
@@ -1901,7 +1892,7 @@ fn export_gltf_streaming_impl(
         },
         extensions_required: opts.quantize.then(|| vec!["KHR_mesh_quantization"]),
     };
-    serde_json::to_vec(&gltf).expect("glTF JSON serializes")
+    Ok(serde_json::to_vec(&gltf).expect("glTF JSON serializes"))
 }
 
 // ── Bounded-memory single-GLB export ─────────────────────────────────────────
@@ -2713,7 +2704,7 @@ fn plan_bounded_glb(
     };
 
     let (root_translation, site_rotation) =
-        scene_root(scene_center, rtc_zup, site_zup.as_deref());
+        scene_root(scene_center, space, rtc_zup, site_zup.as_deref());
     let scene_nodes = if element_node_indices.is_empty() {
         Vec::new()
     } else {
@@ -2983,7 +2974,7 @@ fn pack_glb(json_bytes: &[u8], pos: &[u8], norm: &[u8], idx: &[u8]) -> Vec<u8> {
 
 #[cfg(test)]
 #[path = "gltf_tests.rs"]
-mod tests;
+pub(crate) mod tests;
 
 #[cfg(test)]
 #[path = "gltf_conformance_tests.rs"]
@@ -2993,45 +2984,7 @@ mod conformance_tests;
 mod site_placement_tests {
     use super::*;
 
-    /// A site rotated 90 degrees about Z and moved, with one wall.
-    const ROTATED_SITE: &str = "\
-ISO-10303-21;
-HEADER;
-FILE_DESCRIPTION((''),'2;1');
-FILE_NAME('','',(''),(''),'','','');
-FILE_SCHEMA(('IFC4'));
-ENDSEC;
-DATA;
-#1=IFCPROJECT('0project00000000000001',$,'P',$,$,$,$,(#20),#30);
-#30=IFCUNITASSIGNMENT((#31));
-#31=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
-#20=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#21,$);
-#21=IFCAXIS2PLACEMENT3D(#22,$,$);
-#22=IFCCARTESIANPOINT((0.,0.,0.));
-#40=IFCSITE('0site000000000000000001',$,'S',$,$,#41,$,$,.ELEMENT.,$,$,$,$,$);
-#41=IFCLOCALPLACEMENT($,#42);
-#42=IFCAXIS2PLACEMENT3D(#43,#44,#45);
-#43=IFCCARTESIANPOINT((1000.,2000.,0.));
-#44=IFCDIRECTION((0.,0.,1.));
-#45=IFCDIRECTION((0.,1.,0.));
-#50=IFCWALL('0wall000000000000000001',$,'W',$,$,#51,#60,$);
-#51=IFCLOCALPLACEMENT(#41,#52);
-#52=IFCAXIS2PLACEMENT3D(#53,$,$);
-#53=IFCCARTESIANPOINT((0.,0.,0.));
-#60=IFCPRODUCTDEFINITIONSHAPE($,$,(#61));
-#61=IFCSHAPEREPRESENTATION(#20,'Body','SweptSolid',(#62));
-#62=IFCEXTRUDEDAREASOLID(#63,#66,#69,3.);
-#63=IFCRECTANGLEPROFILEDEF(.AREA.,$,#64,4.,0.2);
-#64=IFCAXIS2PLACEMENT2D(#65,$);
-#65=IFCCARTESIANPOINT((2.,0.1));
-#66=IFCAXIS2PLACEMENT3D(#67,$,$);
-#67=IFCCARTESIANPOINT((0.,0.,0.));
-#69=IFCDIRECTION((0.,0.,1.));
-#70=IFCRELAGGREGATES('0agg0000000000000000001',$,$,$,#1,(#40));
-#71=IFCRELCONTAINEDINSPATIALSTRUCTURE('0con0000000000000000001',$,$,$,(#50),#40);
-ENDSEC;
-END-ISO-10303-21;
-";
+    use crate::frame_fixtures::ROTATED_SITE;
 
     /// The scene root's TRS, read back out of a glTF JSON document.
     fn root_trs(json: &[u8]) -> (Option<Vec<f64>>, Option<Vec<f64>>) {
@@ -3069,7 +3022,7 @@ END-ISO-10303-21;
         let bounded = root_trs(&glb_json(
             &try_export_glb_streaming_bounded(bytes, &opts).expect("has geometry").0,
         ));
-        let streaming = root_trs(&export_gltf_streaming(bytes, &opts, usize::MAX, |_| {}));
+        let streaming = root_trs(&export_gltf_streaming(bytes, &opts, usize::MAX, |_| {}).expect("the fixture has render geometry"));
 
         assert_eq!(plain, bounded, "bounded disagrees with plain");
         assert_eq!(plain, streaming, "streaming disagrees with plain");

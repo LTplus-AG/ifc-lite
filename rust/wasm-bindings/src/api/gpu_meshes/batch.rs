@@ -159,8 +159,7 @@ impl IfcAPI {
                 built
             }
         };
-        // Meshing refuses unrepresentable reals (#7678).
-        let mut decoder = EntityDecoder::with_arc_columnar_index(content, entity_index_arc).with_strict_reals();
+        let mut decoder = EntityDecoder::with_arc_columnar_index(content, entity_index_arc).with_strict_reals(); // #7678
         // Seed the unit-scale caches so curve/arc tessellation never re-pays the
         // O(file) IFCPROJECT scan: this decoder is fresh on every batch call,
         // and `plane_angle_to_radians()` would otherwise walk the whole DATA

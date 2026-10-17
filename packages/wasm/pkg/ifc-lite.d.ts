@@ -686,8 +686,16 @@ export class IfcAPI {
      * out-of-range index copied into the BIN chunk. (The viewer always passes
      * fully-backed, normal-covered, whole-triangle, in-range arrays, so this only
      * fires on a caller bug.)
+     *
+     * `world_matrix` is the frame the meshes were baked in (#7734): 16 finite
+     * numbers, a column-major 4x4 in IFC Z-up metres with `world = M * baked`
+     * (the viewer builds it from `CoordinateInfo`). The GLB root carries it, so
+     * a georeferenced model exports where the from-bytes `exportGlb` puts it
+     * instead of in the render frame. Omit it (`undefined`) for an unshifted
+     * model; a matrix that is not 16 finite numbers throws
+     * `MALFORMED_MESH_INPUT`.
      */
-    exportGlbFromMeshes(positions: Float32Array, normals: Float32Array, indices: Uint32Array, vertex_counts: Uint32Array, index_counts: Uint32Array, colors: Float32Array, origins: Float64Array, express_ids: Uint32Array, include_metadata: boolean, lit?: boolean | null, emissive?: boolean | null): Uint8Array;
+    exportGlbFromMeshes(positions: Float32Array, normals: Float32Array, indices: Uint32Array, vertex_counts: Uint32Array, index_counts: Uint32Array, colors: Float32Array, origins: Float64Array, express_ids: Uint32Array, include_metadata: boolean, lit?: boolean | null, emissive?: boolean | null, world_matrix?: Float64Array | null): Uint8Array;
     /**
      * Export the `IfcSpace` volumes in `content` as Honeybee **HBJSON** UTF-8 bytes.
      *
@@ -803,6 +811,10 @@ export class IfcAPI {
      * for GLB in `export_glb`). A non-empty `Uint32Array` is the ordinary allowlist.
      * Instanced type-library shapes are skipped regardless of the filter.
      *
+     * Fails CLOSED like `exportGlb`: when no mesh is written this throws an
+     * `Error` whose message starts with `NO_RENDER_GEOMETRY`, instead of
+     * returning a header-only OBJ (#7695).
+     *
      * ```javascript
      * const obj = api.exportObj(ifcContent, true, new Uint32Array(), undefined);
      * ```
@@ -842,6 +854,10 @@ export class IfcAPI {
      * Export **OpenUSD** (`.usda` ASCII): a real Z-up USD stage — spatial hierarchy of
      * `Xform` prims, `UsdGeomMesh` geometry, `UsdPreviewSurface` materials, IFC
      * metadata as custom attributes. Whole-model (geometry-backed).
+     *
+     * Fails CLOSED like `exportGlb`: a model with no render geometry throws an
+     * `Error` whose message starts with `NO_RENDER_GEOMETRY`, instead of
+     * returning a stage with nothing to look at (#7695).
      */
     exportUsd(content: Uint8Array): Uint8Array;
     /**
@@ -2671,7 +2687,7 @@ export interface InitOutput {
     readonly ifcapi_exportCsv: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => void;
     readonly ifcapi_exportDfjson: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
     readonly ifcapi_exportGlb: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number) => void;
-    readonly ifcapi_exportGlbFromMeshes: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number) => void;
+    readonly ifcapi_exportGlbFromMeshes: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number) => void;
     readonly ifcapi_exportHbjson: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
     readonly ifcapi_exportHbjsonWithStats: (a: number, b: number, c: number, d: number, e: number) => number;
     readonly ifcapi_exportIfcx: (a: number, b: number, c: number, d: number, e: number, f: number) => void;

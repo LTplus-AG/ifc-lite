@@ -28,7 +28,7 @@ fn fixture() -> (MeshTransferRequest, Vec<u8>) {
             frame_key: "synthetic-source".into(),
         },
         target_frame: RegistrationFrame {
-            asset_sha256: format!("{:x}", Sha256::digest(CONTROLLED_IFC.as_bytes())),
+            asset_sha256: crate::fingerprint::sha256_hex(CONTROLLED_IFC.as_bytes()),
             frame_key: "synthetic-target".into(),
         },
         fit: [[0., 0., 0.], [1., 0., 0.], [0., 1., 0.], [0., 0., 1.]]

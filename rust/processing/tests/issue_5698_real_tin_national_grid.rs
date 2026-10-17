@@ -11,20 +11,13 @@
 use ifc_lite_core::{AttributeValue, EntityDecoder};
 use ifc_lite_processing::process_geometry;
 
-const FIXTURE: &str = "../../tests/models/issues/860_solid_stratum.ifc";
+const FIXTURE: &str = "issues/860_solid_stratum.ifc";
 /// The TIN's `IfcCartesianPointList3D`.
 const POINT_LIST_ID: u32 = 31;
 
 #[test]
 fn issue_5698_national_grid_tin_keeps_surveyed_vertices() {
-    let content = match std::fs::read(FIXTURE) {
-        Ok(bytes) => bytes,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            eprintln!("skipping #5698 real-model test: {FIXTURE} missing, run `pnpm fixtures`");
-            return;
-        }
-        Err(e) => panic!("failed to read {FIXTURE}: {e}"),
-    };
+    let content = ifc_lite_testkit::fixture_bytes_or_skip!(FIXTURE);
     let mut decoder = EntityDecoder::new(&content);
     let point_list = decoder.decode_by_id(POINT_LIST_ID).unwrap();
     let authored: Vec<[f64; 3]> =

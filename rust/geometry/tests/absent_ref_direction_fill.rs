@@ -56,11 +56,30 @@ fn near_x_axis_outside_tolerance_projects_world_x() {
     assert!(x[0] > 0.0, "local X {x:?}");
 }
 
+/// #7751: an Axis within 1e-6 of X (but not on it) used to fall under the old
+/// 1e-6 projection threshold and take `(0,0,1) x Axis`, about +Y, where the
+/// schema's `IfcFirstProjAxis` normalises the (tiny) projection of world X and
+/// gives about -Y. The projection's direction is still meaningful down to
+/// ~1e-9 (f64 cancellation in `1 - z.x^2` is ~1e-16), so it is used there.
 #[test]
-fn near_x_axis_inside_tolerance_takes_z_cross_axis() {
-    // Projection length ~1e-7 <= 1e-6: (0,0,1) x Axis, about (0,+1,0).
-    assert_close(filled_x("1.0,0.0000001,0.0"), [-1e-7, 1.0, 0.0]);
-    assert_close(filled_x("-1.0,0.0000001,0.0"), [-1e-7, -1.0, 0.0]);
+fn near_x_axis_inside_old_tolerance_projects_world_x_7751() {
+    let x = filled_x("1.0,0.0000001,0.0");
+    assert!((x[0] - 1e-7).abs() < 1e-8 && (x[1] + 1.0).abs() < 1e-12 && x[2] == 0.0, "local X {x:?}");
+    assert!((x[0] + x[1] * 1e-7).abs() < 1e-8, "local X {x:?} is not perpendicular to the Axis");
+    // Near -X the projection of X flips to +Y with a +Y offset.
+    let x = filled_x("-1.0,0.0000001,0.0");
+    assert!(x[1] > 0.999_999 && x[0] > 0.0, "local X {x:?}");
+    // The exact-axis answers are unchanged: +X gives +Y, -X gives -Y.
+    assert_close(filled_x("1.0,0.0,0.0"), [0.0, 1.0, 0.0]);
+    assert_close(filled_x("-1.0,0.0,0.0"), [0.0, -1.0, 0.0]);
+}
+
+/// Below the projection's numeric noise floor (1e-9) the Axis is X to within
+/// rounding and keeps the exact-axis fallback.
+#[test]
+fn x_axis_within_rounding_keeps_the_exact_axis_fallback_7751() {
+    assert_close(filled_x("1.0,0.000000000001,0.0"), [-1e-12, 1.0, 0.0]);
+    assert_close(filled_x("-1.0,0.000000000001,0.0"), [-1e-12, -1.0, 0.0]);
 }
 
 #[test]

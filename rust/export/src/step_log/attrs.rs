@@ -13,7 +13,7 @@ use super::lines::split_args;
 use crate::step_record_frame::{opens_record, record_frame, RecordFrame};
 use crate::step_text::escape;
 
-use super::jsval::{js_number_to_string, to_step_real};
+use super::jsval::{format_step_real, integral_token, to_step_real};
 
 /// The source schema family (`dataStore.schemaVersion`): `IFC2X3`, `IFC4`,
 /// `IFC4X3` or `IFC5`, from the first `FILE_SCHEMA` identifier that names
@@ -245,11 +245,8 @@ fn attribute_value(value: &str, current_token: &str) -> String {
         if !n.is_finite() {
             return "$".to_string();
         }
-        return if current.contains('.') || current.contains(['e', 'E']) {
-            to_step_real(n)
-        } else {
-            js_number_to_string(n)
-        };
+        let real_slot = current.contains('.') || current.contains(['e', 'E']);
+        return if !real_slot && n.fract() == 0.0 { integral_token(n) } else { format_step_real(n) };
     }
     format!("'{}'", escape(value))
 }
@@ -269,7 +266,7 @@ pub(crate) fn named_attribute(upper: &str, index: usize, value: &str, current: &
             return Some("$".to_string());
         }
         let n = super::jsval::js_to_number(&serde_json::Value::String(trimmed.to_string()));
-        return n.is_finite().then(|| to_step_real(n));
+        return to_step_real(n).ok();
     }
     Some(attribute_value(value, current))
 }

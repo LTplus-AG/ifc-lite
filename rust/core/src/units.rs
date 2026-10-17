@@ -10,6 +10,10 @@
 use crate::decoder::EntityDecoder;
 use crate::error::{Error, Result};
 
+#[path = "units_length.rs"]
+mod length;
+pub use length::{resolve_length_unit, LengthUnit};
+
 /// The unit-label tables live in [`crate::unit_labels`], shared with the
 /// georeferencing MapUnit reader; re-exported here so the `units::` paths
 /// callers already use keep working.
@@ -179,20 +183,17 @@ pub fn extract_length_unit_scale(decoder: &mut EntityDecoder, project_id: u32) -
             // error, never a metre default: an unreadable one read FOOT-like
             // custom units as metres (3.28x), an overflowing `1.E400` as
             // infinity (#7678, CORE-15). `ProjectUnits` (#4690) refuses too.
-            let unreadable = || {
-                let m = format!("IFCCONVERSIONBASEDUNIT #{unit_ref}: ConversionFactor #{conversion_factor_ref} is not a positive finite length");
-                Error::parse(0, m)
-            };
+            // [`resolve_length_unit`] is the one home of what callers do next.
+            let unusable = |overflowed| Error::UnusableUnitFactor { factor: conversion_factor_ref, overflowed };
             // IFCMEASUREWITHUNIT: [0] ValueComponent, [1] UnitComponent
             let measure_with_unit = decoder
                 .decode_by_id(conversion_factor_ref)
-                .map_err(|_| unreadable())?;
+                .map_err(|_| unusable(false))?;
             // `as_float` unwraps typed values and reads integers too.
-            let conversion_value = measure_with_unit
-                .get(0)
-                .and_then(|attr| attr.as_float())
+            let raw = measure_with_unit.get(0).and_then(|attr| attr.as_float());
+            let conversion_value = raw
                 .filter(|v| v.is_finite() && *v > 0.0)
-                .ok_or_else(unreadable)?;
+                .ok_or_else(|| unusable(raw == Some(f64::INFINITY)))?;
 
             // IMPORTANT: ValueComponent is expressed in UnitComponent's units.
             // If UnitComponent is a prefixed SI unit (e.g., millimeters),

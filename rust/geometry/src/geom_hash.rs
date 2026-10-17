@@ -211,8 +211,7 @@ pub struct GeometryHasher {
     /// An axis still holding its `INFINITY..NEG_INFINITY` sentinel never
     /// accumulated; axes can diverge here, so [`Self::world_aabb`] tests all
     /// three rather than assuming they move together.
-    min: [f64; 3],
-    max: [f64; 3],
+    bounds: crate::math::aabb::Aabb3,
     /// Running Σ 6·V over every contributing segment. Only read through
     /// [`GeometryHasher::volume`], which decides whether it means anything.
     volume6: f64,
@@ -240,8 +239,7 @@ impl GeometryHasher {
             vertex_accum: 0,
             plane_area_accum: 0,
             triangle_count: 0,
-            min: [f64::INFINITY; 3],
-            max: [f64::NEG_INFINITY; 3],
+            bounds: crate::math::aabb::Aabb3::EMPTY,
             volume6: 0.0,
             closure: GeometryClosure::EMPTY,
         }

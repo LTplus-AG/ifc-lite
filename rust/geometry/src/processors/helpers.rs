@@ -21,6 +21,24 @@ pub(super) struct FaceData {
 pub(super) struct FaceResult {
     pub(super) positions: Vec<f32>,
     pub(super) indices: Vec<u32>,
+    /// The face was refused (empty, never an approximation) and the caller
+    /// counts it on its own thread: this runs under rayon (#7686, D3).
+    pub(super) refused: bool,
+}
+
+/// Append `points` as f32 positions after subtracting `rtc` in f64, so
+/// national-grid coordinates narrow near the origin (#5698).
+#[inline]
+pub(super) fn push_rebased<'a>(
+    positions: &mut Vec<f32>,
+    points: impl IntoIterator<Item = &'a Point3<f64>>,
+    rtc: (f64, f64, f64),
+) {
+    for p in points {
+        positions.push((p.x - rtc.0) as f32);
+        positions.push((p.y - rtc.1) as f32);
+        positions.push((p.z - rtc.2) as f32);
+    }
 }
 
 /// Parse IfcAxis2Placement3D into transformation matrix
@@ -142,21 +160,11 @@ pub(super) fn parse_direction(direction_entity: &DecodedEntity) -> Result<Vector
     Ok(Vector3::new(x, y, z))
 }
 
-/// Extract points from a PolyLoop entity by entity ID.
-///
-/// Uses fast-path coordinate extraction. Shared by FaceBasedSurfaceModelProcessor
-/// and ShellBasedSurfaceModelProcessor.
-pub(super) fn extract_loop_points_by_id(
-    loop_id: u32,
-    decoder: &mut EntityDecoder,
-) -> Option<Vec<Point3<f64>>> {
-    read_loop_points_by_id(loop_id, decoder).filter(|points| points.len() >= 3)
-}
-
 /// Every point of an `IfcPolyLoop`, however few. `None` means the loop or
-/// one of its points does not decode, which [`extract_loop_points_by_id`]
-/// cannot tell apart from a loop of under three points; a face bound reader
-/// refuses the face on the former and skips the latter (#7687, D14).
+/// one of its points does not decode, which is not a loop of under three
+/// points; a face bound reader refuses the face on the former and skips the
+/// latter (#7687, #7686, D14). Shared by the surface-model processors and the
+/// advanced-face bound reader.
 pub(super) fn read_loop_points_by_id(
     loop_id: u32,
     decoder: &mut EntityDecoder,

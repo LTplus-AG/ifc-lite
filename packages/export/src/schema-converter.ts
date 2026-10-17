@@ -22,6 +22,7 @@ import type { Ifc4SlotCheck } from './schema-converter-ifc4-slots.js';
 import type { EnumReconciliation } from './schema-converter-enums.js';
 import { referencesAnyExpressId } from './step-ref-scan.js';
 import { productProxy } from './schema-converter-product-proxy.js';
+import { isStrictAttrPrefix } from './schema-converter-renames.js';
 
 export { computeWithheldRefIds } from './schema-untranslatable.js';
 
@@ -245,24 +246,6 @@ export function attrNameTable(schema: IfcSchemaVersion): Map<string, readonly st
   return table;
 }
 
-/**
- * True when `shorter` is a STRICT prefix of `longer` by attribute name — i.e.
- * the longer form only *appended* attributes to the shorter one. Both the
- * trailing-`$` padding (upgrade) and the tail trim (downgrade) are only safe
- * then; many entities insert/reorder attributes mid-list (e.g.
- * IfcMaterialProperties, IfcApproval, IfcTask), where padding or trimming would
- * shift values into the wrong slots.
- *
- * Callers pass the shorter schema's list first, whichever direction they run in.
- */
-export function isStrictAttrPrefix(shorter: readonly string[], longer: readonly string[]): boolean {
-  if (shorter.length >= longer.length) return false;
-  for (let i = 0; i < shorter.length; i++) {
-    if (shorter[i] !== longer[i]) return false;
-  }
-  return true;
-}
-
 /** Count top-level (comma-separated) STEP attributes, respecting nested
  *  parentheses and single-quoted strings. Empty list → 0. */
 function requireTopLevelAttributes(attrsRaw: string): string[] {
@@ -327,14 +310,13 @@ function convertRecord(
   random?: RandomSource,
   withheldRefIds?: ReadonlySet<number>,
 ): string | null {
-  // Parse: #ID=TYPE(attrs);  — tolerate whitespace around `=` and before the
-  // type (some exporters, e.g. Tekla, write `#34498= IFCOPENINGELEMENT(...)`).
-  // Without this those lines passed through unconverted, so neither type renames
-  // nor attribute-count adjustment applied and the output stayed schema-invalid.
-  const match = line.match(/^\s*(#\d+=)\s*(\w+)\((.*)?\);?\s*$/);
+  // Parse: #ID=TYPE(attrs);  — tolerate whitespace around `=` and `(` (Tekla's
+  // `#34498= IFCOPENINGELEMENT(`, Viadotto_Acerno's `#159655 = IFC...(`, #7742).
+  // Otherwise the line passed through unconverted under the target header.
+  const match = line.match(/^\s*(#\d+)\s*=\s*(\w+)\s*\((.*)?\);?\s*$/);
   if (!match) return line; // not a STEP entity line, pass through
 
-  const prefix = match[1];  // "#123="
+  const prefix = `${match[1]}=`;  // "#123="
   const entityType = match[2].toUpperCase();
   const attrsRaw = match[3] ?? '';
 
@@ -420,13 +402,13 @@ function convertRecord(
   // all — see `resolveUnrepresentedEntity` for why it can't just pass through.
   // On IFC2X3 even with no source entry, as Rust's `has_representation`: a
   // non-entity head (`#1=IFCLABEL('x');`) fails closed (#7683, D3).
-  if (targetTable && !tgtAttrs && (srcAttrs || toSchema === 'IFC2X3')) {
+  if (targetTable && !tgtAttrs && (toSchema === 'IFC2X3' || (toSchema === 'IFC4' && fromSchema === 'IFC4X3' && srcAttrs))) {
     return resolveUnrepresentedEntity(prefix, entityType, attrsRaw, toSchema, random, withheldRefIds !== undefined);
   }
   if (srcAttrs && tgtAttrs) {
-    if (isStrictAttrPrefix(tgtAttrs, srcAttrs)) {
+    if (isStrictAttrPrefix(tgtAttrs, srcAttrs, entityType)) {
       finalAttrs = trimAttributes(attrsRaw, args, tgtAttrs.length);
-    } else if (isStrictAttrPrefix(srcAttrs, tgtAttrs)) {
+    } else if (isStrictAttrPrefix(srcAttrs, tgtAttrs, entityType)) {
       const currentCount = args.length;
       if (currentCount > 0 && currentCount < tgtAttrs.length) {
         finalAttrs = `${finalAttrs}${',$'.repeat(tgtAttrs.length - currentCount)}`;

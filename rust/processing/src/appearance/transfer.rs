@@ -12,7 +12,7 @@ use super::{
     transfer_types::*,
     *,
 };
-use sha2::{Digest, Sha256};
+use crate::fingerprint::Sha256Writer;
 
 /// Textured mesh source. `rgba` carries the source image and the target's
 /// existing rasters; a point source is refused here.
@@ -83,7 +83,7 @@ fn plan_transfer(
             "Transfer registration digest does not match its frozen correspondence request".into(),
         );
     }
-    if format!("{:x}", Sha256::digest(bytes)) != registration.target_frame.asset_sha256 {
+    if crate::fingerprint::sha256_hex(bytes) != registration.target_frame.asset_sha256 {
         return Err("Transfer target snapshot does not match the frozen registration frame".into());
     }
     let source_frame = TransferFrame {
@@ -188,41 +188,28 @@ fn digest(
     rgba: &[u8],
     points: Option<&TransferPointPayload<'_>>,
 ) -> Result<String, String> {
-    struct Writer(Sha256);
-    impl std::io::Write for Writer {
-        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
-            self.0.update(bytes);
-            Ok(bytes.len())
-        }
-        fn flush(&mut self) -> std::io::Result<()> {
-            Ok(())
-        }
-    }
-    let mut hash = Writer(Sha256::new());
-    hash.0.update(b"ifclite-scan-transfer-v4-source-kind\0");
+    let mut hash = Sha256Writer::new();
+    hash.bytes(b"ifclite-scan-transfer-v4-source-kind\0");
     // Length-prefix binary portions; JSON is last and streamed without a duplicate allocation.
-    hash.0.update((bytes.len() as u64).to_le_bytes());
-    hash.0.update(bytes);
-    hash.0.update((rgba.len() as u64).to_le_bytes());
-    hash.0.update(rgba);
+    hash.len(bytes.len()).bytes(bytes);
+    hash.len(rgba.len()).bytes(rgba);
     if let Some(points) = points {
         for (label, length) in [("positions", points.positions.len()), ("colors", points.colors.len()), ("normals", points.normals.len()), ("stations", points.stations.len())] {
-            hash.0.update(label.as_bytes());
-            hash.0.update((length as u64).to_le_bytes());
+            hash.bytes(label.as_bytes()).len(length);
         }
         for v in points.positions {
-            hash.0.update(v.to_le_bytes());
+            hash.bytes(v.to_le_bytes());
         }
-        hash.0.update(points.colors);
+        hash.bytes(points.colors);
         for v in points.normals {
-            hash.0.update(v.to_le_bytes());
+            hash.bytes(v.to_le_bytes());
         }
         for v in points.stations {
-            hash.0.update(v.to_le_bytes());
+            hash.bytes(v.to_le_bytes());
         }
     }
     serde_json::to_writer(&mut hash, request).map_err(|e| e.to_string())?;
-    Ok(format!("{:x}", hash.0.finalize()))
+    Ok(hash.finish_hex())
 }
 #[cfg(test)]
 #[path = "transfer_tests.rs"]

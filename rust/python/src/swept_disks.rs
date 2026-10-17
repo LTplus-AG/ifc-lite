@@ -17,8 +17,7 @@ pub(super) fn add_to_python(
     // Decode once through Python's standard JSON parser. The Rust struct is the
     // sole definition of the wire shape, so this stays in sync with the JSON
     // entry point as description variants are added.
-    let payload = serde_json::to_string(descriptions)
-        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let payload = crate::finite_json::to_json_string(descriptions)?;
     let decoded = py.import("json")?.getattr("loads")?.call1((payload,))?;
     let encoded_elements = decoded.get_item("elements")?;
     let elements = PyDict::new(py);
@@ -34,6 +33,9 @@ pub(super) fn add_to_json(
     json: String,
     descriptions: &SweptDiskDescriptions,
 ) -> Result<String, serde_json::Error> {
+    // `to_value` writes a non-finite float as null; the Python entry points
+    // refuse such a document, so this one does too (#7679).
+    crate::finite_json::ensure_finite(descriptions).map_err(serde::ser::Error::custom)?;
     let mut document: serde_json::Value = serde_json::from_str(&json)?;
     document["swept_disks"] = serde_json::to_value(&descriptions.elements)?;
     document["directrix_diagnostics"] = serde_json::to_value(&descriptions.diagnostics)?;
@@ -56,6 +58,7 @@ pub(super) fn checks_to_python(
             .map(|(occurrence_index, disk)| {
                 let report = check_swept_disk(disk, options)
                     .map_err(|error| PyValueError::new_err(error.to_string()))?;
+                crate::finite_json::ensure_finite(&report).map_err(|e| PyValueError::new_err(e.to_string()))?;
                 Ok(serde_json::json!({
                     "occurrence_index": occurrence_index,
                     "solid_id": disk.solid_id,
@@ -68,7 +71,7 @@ pub(super) fn checks_to_python(
         encoded_elements.insert(*id, entries);
     }
     let payload = serde_json::to_string(&encoded_elements)
-        .map_err(|error| PyValueError::new_err(error.to_string()))?;
+        .map_err(|error| PyValueError::new_err(error.to_string()))?; // each report was checked above
     let decoded = py.import("json")?.getattr("loads")?.call1((payload,))?;
     let elements = PyDict::new(py);
     for id in descriptions.elements.keys() {

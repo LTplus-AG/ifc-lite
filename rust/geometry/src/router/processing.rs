@@ -5,7 +5,8 @@
 //! Core element processing: resolving representations, processing items, and caching.
 
 use super::frame_parts::{frames_mergeable, mesh_bounds, single_frame, union_bounds, FrameParts};
-use super::transforms::{instancing_enabled, mat4_to_row_major};
+use super::transforms::instancing_enabled;
+use crate::math::mat4;
 use super::{GeometryProcessor, GeometryRouter};
 use crate::{Error, InstanceMeta, Mesh, Result, SubMeshCollection};
 
@@ -16,14 +17,6 @@ use crate::{Error, InstanceMeta, Mesh, Result, SubMeshCollection};
 /// bit (127 effective), still content-addressing grade.
 const DIRECT_SOLID_TAG: u128 = 1u128 << 127;
 
-/// Row-major 4x4 identity; placeholder `InstanceMeta::transform` before the
-/// element's world placement is folded in by `apply_placement`.
-pub(crate) const IDENTITY_ROW_MAJOR: [f64; 16] = [
-    1.0, 0.0, 0.0, 0.0, //
-    0.0, 1.0, 0.0, 0.0, //
-    0.0, 0.0, 1.0, 0.0, //
-    0.0, 0.0, 0.0, 1.0, //
-];
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use rustc_hash::FxHashSet;
 use std::rc::Rc;
@@ -572,11 +565,11 @@ impl GeometryRouter {
                     self.ensure_shared_mapped_source(&mapped_repr, source_id, decoder);
                     let local_rm = mapping_transform.map(|mut t| {
                         self.scale_transform(&mut t);
-                        mat4_to_row_major(&t)
+                        mat4::from_na(&t)
                     });
                     let mut placeholder = Mesh::new();
                     placeholder.instance_meta = Some(InstanceMeta {
-                        transform: IDENTITY_ROW_MAJOR,
+                        transform: mat4::IDENTITY,
                         local_transform: local_rm,
                         canonical_transform: None,
                         rep_identity: source_id as u128,
@@ -658,10 +651,10 @@ impl GeometryRouter {
                                 {
                                     im.local_transform = Some(match im.local_transform {
                                         // Nested map: outer target ∘ inner, bake order.
-                                        Some(inner) => mat4_to_row_major(
+                                        Some(inner) => mat4::from_na(
                                             &(transform * nalgebra::Matrix4::from_row_slice(&inner)),
                                         ),
-                                        None => mat4_to_row_major(&transform),
+                                        None => mat4::from_na(&transform),
                                     });
                                 }
                             }
@@ -683,7 +676,7 @@ impl GeometryRouter {
             if instance_solid_id.is_some() && is_template {
                 let local_rm = mapping_transform.map(|mut t| {
                     self.scale_transform(&mut t);
-                    mat4_to_row_major(&t)
+                    mat4::from_na(&t)
                 });
                 for sub in &mut sub_meshes.sub_meshes[mapped_items_start..] {
                     if let Some(im) = sub.mesh.instance_meta.as_mut() {
@@ -797,7 +790,7 @@ impl GeometryRouter {
         {
             return Ok(None);
         }
-        if self.processors.get(&item.ifc_type, self.schema).is_none() {
+        if self.processor_for(&item.ifc_type).is_none() {
             return Ok(None);
         }
         let Some(offset) = self.element_frame_rtc(element, decoder)? else {
@@ -914,8 +907,8 @@ impl GeometryRouter {
         // A face refused because its loop, curve or surface data does not
         // read (#7687, D3): the brep skips it per face, so this is the only
         // place the drop becomes visible.
-        if crate::processors::take_face_refused() {
-            self.record_unsupported_item(IfcType::IfcAdvancedFace);
+        for face_type in crate::processors::take_face_refused() {
+            self.record_unsupported_item(face_type);
         }
         let mut mesh = result?;
         // Safety net: strip any out-of-bounds indices before downstream use
@@ -1008,7 +1001,7 @@ impl GeometryRouter {
         if let (Some(key), Some(before), Some(cache)) =
             (dedup_key, failure_mark, self.item_dedup_cache.as_ref())
         {
-            if let Some(processor) = self.processors.get(&item.ifc_type, self.schema) {
+            if let Some(processor) = self.processor_for(&item.ifc_type) {
                 if processor.bool_failure_count() > before && !cache.claim_diagnostic(key) {
                     processor.truncate_bool_failures_to(before);
                 }
@@ -1068,7 +1061,7 @@ impl GeometryRouter {
     fn stamp_direct_instance(&self, mut mesh: Mesh, rep: Option<u128>) -> Mesh {
         if let Some(exact_rep) = rep {
             mesh.instance_meta = Some(InstanceMeta {
-                transform: IDENTITY_ROW_MAJOR,
+                transform: mat4::IDENTITY,
                 local_transform: None,
                 canonical_transform: None,
                 rep_identity: exact_rep,
@@ -1089,7 +1082,7 @@ impl GeometryRouter {
         // Raw-coordinate items rebase in the model frame here; element
         // walkers take `process_raw_item_for_element` first for their own
         // items, so this frame matters for mapped and opening items.
-        if let Some(processor) = self.processors.get(&item.ifc_type, self.schema) {
+        if let Some(processor) = self.processor_for(&item.ifc_type) {
             let mesh =
                 self.process_item_in_rtc_frame(processor.as_ref(), item, decoder, offset_meters)?;
 
@@ -1122,7 +1115,7 @@ impl GeometryRouter {
         element: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Result<Option<Mesh>> {
-        let processor = match self.processors.get(&IfcType::IfcAlignment, self.schema) {
+        let processor = match self.processor_for(&IfcType::IfcAlignment) {
             Some(p) => Rc::clone(p),
             None => return Ok(None),
         };

@@ -130,11 +130,11 @@ fn bit_identical_repeats_share_by_content_hash_across_batches() {
         .map(|m| {
             (0..3)
                 .map(|v| {
-                    let (x, y, z) = crate::services::axis::zup_to_yup(
+                    let [x, y, z] = ifc_lite_geometry::math::frame::zup_to_yup([
                         m.positions[v * 3] + m.origin[0] as f32,
                         m.positions[v * 3 + 1] + m.origin[1] as f32,
                         m.positions[v * 3 + 2] + m.origin[2] as f32,
-                    );
+                    ]);
                     [x, y, z]
                 })
                 .collect()
@@ -172,9 +172,7 @@ fn a_cross_batch_stream_ships_no_more_vertices_than_the_buffered_route() {
         "ara3d/S_Office_Integrated Design Archi.ifc",
         "ara3d/FM_ARC_DigitalHub.ifc",
     ] {
-        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/models").join(fixture);
-        let Ok(content) = std::fs::read(&path) else {
-            eprintln!("skipping cross-batch parity on {fixture}: fixture missing — run `pnpm fixtures`");
+        let Some(content) = ifc_lite_testkit::fixture_bytes(fixture) else {
             continue;
         };
         let basis_slot = std::sync::OnceLock::new();

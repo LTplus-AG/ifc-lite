@@ -923,18 +923,7 @@ fn an_operand_shared_between_two_branches_is_not_a_cycle() {
 #[cfg(any(feature = "csg_manifold_gate", feature = "csg_topology_gate"))]
 #[test]
 fn solo_step_accounts_for_a_batched_suffix_not_just_spine_length() {
-    let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../tests/models/issues/960_house_segmented_roof_clip.ifc");
-    let content = match std::fs::read_to_string(&path) {
-        Ok(s) if !s.starts_with("version https://git-lfs.github.com/spec/") => s,
-        _ => {
-            eprintln!(
-                "skipping: fixture issues/960_house_segmented_roof_clip.ifc not present \
-                 (or an LFS pointer) — run `pnpm fixtures`"
-            );
-            return;
-        }
-    };
+    let content = ifc_lite_testkit::fixture_text_or_skip!("issues/960_house_segmented_roof_clip.ifc");
     let mut decoder = EntityDecoder::new(&content);
     let entity = decoder.decode_by_id(2146).expect("decode #2146");
     let processor = BooleanClippingProcessor::new();

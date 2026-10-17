@@ -12,10 +12,7 @@
 //! floor-plan projection drew spurious rectangles inside walls. AC20-FZK-Haus
 //! carries 17 `IFCOPENINGELEMENT` entities — a good regression fixture.
 
-mod support;
-
 use ifc_lite_geometry::extract_profiles;
-use std::path::PathBuf;
 
 /// Load a fixture, distinguishing a genuinely absent file from a broken
 /// read. `NotFound` is the fresh-clone case (`pnpm fixtures` not run yet):
@@ -25,27 +22,12 @@ use std::path::PathBuf;
 /// environment is broken rather than merely missing an optional download,
 /// so it panics unconditionally regardless of the flag.
 fn fixture(rel: &str) -> Option<String> {
-    let p = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..")
-        .join(rel);
-    match std::fs::read_to_string(&p) {
-        Ok(content) => Some(content),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            assert!(
-                !support::require_fixtures(),
-                "fixture {} not present and IFC_LITE_REQUIRE_FIXTURES=1 -- run `pnpm fixtures` to download (sha256 in tests/models/manifest.json)",
-                p.display()
-            );
-            None
-        }
-        Err(e) => panic!("fixture {} exists but could not be read: {e}", p.display()),
-    }
+    ifc_lite_testkit::fixture_text(rel)
 }
 
 #[test]
 fn ac20_extracts_no_feature_element_profiles() {
-    let Some(content) = fixture("tests/models/ara3d/AC20-FZK-Haus.ifc") else {
+    let Some(content) = fixture("ara3d/AC20-FZK-Haus.ifc") else {
         eprintln!("AC20-FZK-Haus.ifc fixture missing — skipping");
         return;
     };
@@ -110,7 +92,7 @@ fn ac20_extracts_no_feature_element_profiles() {
 /// changed — so the only thing that can move the profile count is the filter.
 #[test]
 fn legacy_opening_spellings_emit_no_profiles_either() {
-    let Some(content) = fixture("tests/models/ara3d/AC20-FZK-Haus.ifc") else {
+    let Some(content) = fixture("ara3d/AC20-FZK-Haus.ifc") else {
         eprintln!("AC20-FZK-Haus.ifc fixture missing — skipping");
         return;
     };
@@ -162,7 +144,7 @@ fn legacy_opening_spellings_emit_no_profiles_either() {
 /// it compared two door-free lists and passed with the fix reverted.
 #[test]
 fn supported_slab_spellings_keep_their_exact_profile_labels() {
-    let Some(content) = fixture("tests/models/ara3d/AC20-FZK-Haus.ifc") else {
+    let Some(content) = fixture("ara3d/AC20-FZK-Haus.ifc") else {
         eprintln!("AC20-FZK-Haus.ifc fixture missing — skipping");
         return;
     };

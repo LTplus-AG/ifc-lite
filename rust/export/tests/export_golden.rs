@@ -183,12 +183,12 @@ fn glb() {
 
 #[test]
 fn obj() {
-    per_fixture("obj", |bytes| export_obj(bytes, &ObjOptions::default()).into_bytes());
+    per_fixture("obj", |bytes| bytes_or_refusal(export_obj(bytes, &ObjOptions::default()).map(String::into_bytes)));
 }
 
 #[test]
 fn usd() {
-    per_fixture("usd", |bytes| without_version("usd", export_usd(bytes, &UsdOptions::default()).into_bytes()));
+    per_fixture("usd", |bytes| without_version("usd", bytes_or_refusal(export_usd(bytes, &UsdOptions::default()).map(String::into_bytes))));
 }
 
 #[test]
@@ -308,7 +308,7 @@ fn glb_from_meshes() {
         let b = mesh_buffers(bytes);
         let glb = try_export_glb_from_meshes(
             &b.positions, &b.normals, &b.indices, &b.vertex_counts, &b.index_counts, &b.colors, &b.origins,
-            &b.express_ids, true, true, false,
+            &b.express_ids, true, true, false, None,
         );
         bytes_or_refusal(glb.map(|(glb, _)| glb))
     });

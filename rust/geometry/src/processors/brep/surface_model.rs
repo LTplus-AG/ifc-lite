@@ -6,7 +6,8 @@ use crate::{Error, Mesh, Point3, Result, TessellationQuality};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 
 use super::super::advanced_face::process_advanced_face;
-use super::super::helpers::{extract_loop_points_by_id, FaceData};
+use super::super::advanced_face::note_face_refused;
+use super::super::helpers::{read_loop_points_by_id, FaceData};
 use super::faceted::FacetedBrepProcessor;
 use crate::router::GeometryProcessor;
 
@@ -24,6 +25,67 @@ fn trace_capped_face(face_id: u32, error: &Error) {
             eprintln!("[ifc-lite] Skipping unsupported advanced face #{face_id} in surface model: {error}");
         }
     );
+}
+
+/// The bounds of a simple (`IfcPolyLoop`) face, or `None` when a bound does
+/// not read: that refuses the face (D14, under D3), as in
+/// `FacetedBrepProcessor`, and the refusal is counted here.
+fn read_simple_face_bounds(
+    face_type: &IfcType,
+    bound_ids: Vec<u32>,
+    decoder: &mut EntityDecoder,
+) -> Option<(Option<Vec<Point3<f64>>>, Vec<Vec<Point3<f64>>>)> {
+    let bound_count = bound_ids.len();
+    let mut degenerate = 0usize;
+    let mut outer_points: Option<Vec<Point3<f64>>> = None;
+    let mut hole_points: Vec<Vec<Point3<f64>>> = Vec::new();
+
+    for bound_id in bound_ids {
+        // (loop_id, orientation, is_outer) straight from raw bytes
+        let (loop_id, orientation, is_outer) =
+            match decoder.get_face_bound_fast(bound_id) {
+                Some(data) => data,
+                None => continue,
+            };
+
+        let mut points = match read_loop_points_by_id(loop_id, decoder) {
+            Some(p) => p,
+            None => continue,
+        };
+        // Readable but under three points: degenerate, skipped.
+        if points.len() < 3 {
+            degenerate += 1;
+            continue;
+        }
+
+        if !orientation {
+            points.reverse();
+        }
+
+        if is_outer || outer_points.is_none() {
+            // A second outer bound demotes the previous one to a
+            // hole rather than dropping it (parity with
+            // FacetedBrepProcessor); a face is otherwise lost.
+            if outer_points.is_some() && is_outer {
+                if let Some(prev_outer) = outer_points.take() {
+                    hole_points.push(prev_outer);
+                }
+            }
+            outer_points = Some(points);
+        } else {
+            hole_points.push(points);
+        }
+    }
+
+    // A bound that does not read refuses the face (D14, under
+    // D3), as in `FacetedBrepProcessor`.
+    let read = hole_points.len() + usize::from(outer_points.is_some()) + degenerate;
+    if read < bound_count {
+        note_face_refused(face_type);
+        return None;
+    }
+
+    Some((outer_points, hole_points))
 }
 
 /// Mesh every face of a surface model's face collections.
@@ -100,40 +162,11 @@ fn mesh_face_collections(
                     None => continue,
                 };
 
-                let mut outer_points: Option<Vec<Point3<f64>>> = None;
-                let mut hole_points: Vec<Vec<Point3<f64>>> = Vec::new();
-
-                for bound_id in bound_ids {
-                    // (loop_id, orientation, is_outer) straight from raw bytes
-                    let (loop_id, orientation, is_outer) =
-                        match decoder.get_face_bound_fast(bound_id) {
-                            Some(data) => data,
-                            None => continue,
-                        };
-
-                    let mut points = match extract_loop_points_by_id(loop_id, decoder) {
-                        Some(p) => p,
-                        None => continue,
-                    };
-
-                    if !orientation {
-                        points.reverse();
-                    }
-
-                    if is_outer || outer_points.is_none() {
-                        // A second outer bound demotes the previous one to a
-                        // hole rather than dropping it (parity with
-                        // FacetedBrepProcessor); a face is otherwise lost.
-                        if outer_points.is_some() && is_outer {
-                            if let Some(prev_outer) = outer_points.take() {
-                                hole_points.push(prev_outer);
-                            }
-                        }
-                        outer_points = Some(points);
-                    } else {
-                        hole_points.push(points);
-                    }
-                }
+                let Some((outer_points, hole_points)) =
+                    read_simple_face_bounds(&face.ifc_type, bound_ids, decoder)
+                else {
+                    continue;
+                };
 
                 // Triangulate the face through the shared FacetedBrep face
                 // triangulator (tri/quad fast paths, convexity test, and
@@ -154,6 +187,9 @@ fn mesh_face_collections(
                             &face_data,
                             rtc_file_units.unwrap_or((0.0, 0.0, 0.0)),
                         );
+                        if result.refused {
+                            note_face_refused(&face.ifc_type);
+                        }
                         let base_idx = (all_positions.len() / 3) as u32;
                         all_positions.extend(result.positions);
                         for idx in result.indices {

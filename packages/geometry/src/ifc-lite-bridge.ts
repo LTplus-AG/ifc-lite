@@ -425,6 +425,7 @@ export class IfcLiteBridge {
   /**
    * Export the render geometry in `content` as a Wavefront OBJ string.
    * `isolated`: `undefined` ⇒ no filter; empty `Uint32Array` ⇒ active but matching nothing.
+   * Throws `NO_RENDER_GEOMETRY` when no mesh is written.
    */
   exportObj(
     content: Uint8Array,
@@ -550,7 +551,8 @@ export class IfcLiteBridge {
     );
   }
 
-  /** Export OpenUSD (`.usda` ASCII) — a real Z-up USD stage (geometry-backed). */
+  /** Export OpenUSD (`.usda` ASCII) — a real Z-up USD stage (geometry-backed).
+   * Throws `NO_RENDER_GEOMETRY` for a model with no render geometry. */
   exportUsd(content: Uint8Array): Uint8Array {
     return this.runExport('exportUsd', content, (api) => api.exportUsd(content));
   }
@@ -576,6 +578,12 @@ export class IfcLiteBridge {
   /**
    * Assemble a GLB from already-produced meshes (flattened parallel arrays) — no
    * re-meshing. Used by the viewer, which already holds the meshes on the GPU.
+   *
+   * `worldMatrix` is the frame the meshes were baked in (#7734): 16 finite
+   * numbers, a column-major 4x4 in IFC Z-up metres with `world = M * baked`
+   * (`renderFrameWorldMatrix` in `@ifc-lite/geometry/world-frame`). The GLB root
+   * carries it so a georeferenced model exports where the from-bytes export
+   * puts it. Omit it for a model that was not shifted.
    */
   exportGlbFromMeshes(
     positions: Float32Array,
@@ -589,6 +597,7 @@ export class IfcLiteBridge {
     includeMetadata: boolean,
     lit = true,
     emissive = false,
+    worldMatrix?: ArrayLike<number>,
   ): Uint8Array {
     if (!this.ifcApi) {
       throw new Error('IFC-Lite not initialized. Call init() first.');
@@ -596,6 +605,7 @@ export class IfcLiteBridge {
     try {
       return this.ifcApi.exportGlbFromMeshes(
         positions, normals, indices, vertexCounts, indexCounts, colors, origins, expressIds, includeMetadata, lit, emissive,
+        worldMatrix ? Float64Array.from(worldMatrix) : undefined,
       );
     } catch (error) {
       log.error('Failed to exportGlbFromMeshes', error, { operation: 'exportGlbFromMeshes' });

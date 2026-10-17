@@ -25,7 +25,7 @@ pub(super) const TYPES: [&[IfcType]; 21] = [
     &[IfcType::IfcExtrudedAreaSolidTapered],
     &[IfcType::IfcTriangulatedFaceSet, IfcType::IfcTriangulatedIrregularNetwork],
     &[IfcType::IfcPolygonalFaceSet],
-    &[IfcType::IfcFacetedBrep],
+    &[IfcType::IfcFacetedBrep, IfcType::IfcFacetedBrepWithVoids],
     &[IfcType::IfcBooleanResult, IfcType::IfcBooleanClippingResult],
     &[IfcType::IfcSweptDiskSolid],
     &[IfcType::IfcRevolvedAreaSolid],
@@ -50,7 +50,8 @@ fn slot(ifc_type: IfcType) -> Option<usize> {
         IfcType::IfcExtrudedAreaSolidTapered => 1,
         IfcType::IfcTriangulatedFaceSet | IfcType::IfcTriangulatedIrregularNetwork => 2,
         IfcType::IfcPolygonalFaceSet => 3,
-        IfcType::IfcFacetedBrep => 4,
+        // WithVoids adds only `Voids` after the shared Outer (#7688 PROC-S6).
+        IfcType::IfcFacetedBrep | IfcType::IfcFacetedBrepWithVoids => 4,
         IfcType::IfcBooleanResult | IfcType::IfcBooleanClippingResult => 5,
         IfcType::IfcSweptDiskSolid => 6,
         IfcType::IfcRevolvedAreaSolid => 7,

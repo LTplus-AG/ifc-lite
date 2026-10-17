@@ -11,7 +11,7 @@ use super::*;
 #[test]
 fn duplex_exports_well_formed_obj() {
     let (obj, stats) =
-        export_obj_with_stats(&fixture_or_skip!("ara3d/duplex.ifc"), &ObjOptions::default());
+        export_obj_with_stats(&fixture_or_skip!("ara3d/duplex.ifc"), &ObjOptions::default()).expect("duplex has geometry");
     assert!(stats.meshes > 0, "expected meshes");
     assert!(stats.vertices > 0, "expected vertices");
     assert!(stats.triangles > 0, "expected triangles");
@@ -40,7 +40,7 @@ fn exported_express_ids(obj: &str) -> Vec<u32> {
 
 #[test]
 fn isolation_filter_limits_output() {
-    let all = export_obj_with_stats(&fixture_or_skip!("ara3d/duplex.ifc"), &ObjOptions::default()).1;
+    let all = export_obj_with_stats(&fixture_or_skip!("ara3d/duplex.ifc"), &ObjOptions::default()).expect("duplex has geometry").1;
     // Find one express id that was emitted by re-reading meshes through the pipeline.
     let result = process_geometry(&fixture_or_skip!("ara3d/duplex.ifc")[..]);
     let some_id = result
@@ -53,7 +53,8 @@ fn isolation_filter_limits_output() {
     let (obj, isolated) = export_obj_with_stats(
         &fixture_or_skip!("ara3d/duplex.ifc"),
         &ObjOptions { isolated: Some(vec![some_id]), ..ObjOptions::default() },
-    );
+    )
+    .expect("the matched id has geometry");
     assert!(isolated.meshes >= 1);
     assert!(isolated.meshes <= all.meshes);
     // Not just "fewer meshes": every exported object must BE the allowlisted
@@ -108,17 +109,18 @@ fn mesh_visible_empty_isolated_set_is_indistinguishable_from_no_filter_bug_repro
 fn isolation_three_states_over_a_real_fixture() {
     let bytes = fixture_or_skip!("ara3d/duplex.ifc");
 
-    let no_filter = export_obj_with_stats(&bytes, &ObjOptions::default()).1;
+    let no_filter = export_obj_with_stats(&bytes, &ObjOptions::default()).expect("duplex has geometry").1;
     assert!(no_filter.meshes > 1, "fixture must have more than one visible mesh to discriminate");
 
+    // Zero meshes is refused rather than written (#7695), so the empty filter
+    // surfaces as `NoRenderGeometry`, never as the whole model.
     let empty_active = export_obj_with_stats(
         &bytes,
         &ObjOptions { isolated: Some(vec![]), ..ObjOptions::default() },
-    )
-    .1;
+    );
     assert_eq!(
-        empty_active.meshes, 0,
-        "an ACTIVE isolation filter matching zero express ids must export zero meshes, \
+        empty_active.err(), Some(ExportError::NoRenderGeometry),
+        "an ACTIVE isolation filter matching zero express ids must export nothing, \
          not silently fall back to the whole model"
     );
 
@@ -132,7 +134,8 @@ fn isolation_three_states_over_a_real_fixture() {
     let (one_match_obj, one_match) = export_obj_with_stats(
         &bytes,
         &ObjOptions { isolated: Some(vec![some_id]), ..ObjOptions::default() },
-    );
+    )
+    .expect("the matched id has geometry");
     assert!(
         one_match.meshes >= 1 && one_match.meshes < no_filter.meshes,
         "a non-empty allowlist must still export exactly its matches, not everything and not nothing"
@@ -172,7 +175,8 @@ fn obj_faces_preserve_the_source_mesh_winding_4056() {
     let idx = |i: u32| vert_base + i as usize + 1;
     let expected = format!("f {} {} {}", idx(tri[0]), idx(tri[1]), idx(tri[2]));
 
-    let obj = export_obj(&bytes, &ObjOptions { include_normals: false, ..ObjOptions::default() });
+    let obj = export_obj(&bytes, &ObjOptions { include_normals: false, ..ObjOptions::default() })
+        .expect("duplex has geometry");
     let first_face = obj.lines().find(|l| l.starts_with("f ")).expect("a face line");
 
     // A triangle whose 2nd and 3rd source indices coincide would make the
@@ -211,7 +215,8 @@ END-ISO-10303-21;
     for include_normals in [false, true] {
         let (obj, stats) = export_obj_with_stats(bytes, &ObjOptions {
             include_normals, ..ObjOptions::default()
-        });
+        })
+        .expect("the triangle is render geometry");
         assert_eq!(stats.triangles, 1);
         let vectors = |prefix: &str| -> Vec<Vec<f64>> {
             obj.lines().filter_map(|line| line.strip_prefix(prefix))
@@ -327,5 +332,27 @@ fn a_mesh_without_normals_does_not_shift_later_normal_indices() {
             let n: usize = n.parse().unwrap();
             assert!((1..=vn).contains(&n), "normal index {n} past the {vn} vn lines: {f}");
         }
+    }
+}
+
+/// #7734: OBJ puts a georeferenced model where the pipeline says it is, in
+/// the Y-up frame its header declares (the OBJ twin of the GLB parity test).
+#[test]
+fn obj_lands_where_the_model_is() {
+    use crate::frame_fixtures::{assert_aabb_close, frame_fixtures, reference_world_aabb};
+    for (label, content, tier) in frame_fixtures() {
+        let want = reference_world_aabb(content, tier);
+        let obj = export_obj(content.as_bytes(), &ObjOptions::default()).expect("has geometry");
+        let (mut lo, mut hi) = ([f64::INFINITY; 3], [f64::NEG_INFINITY; 3]);
+        for line in obj.lines().filter_map(|l| l.strip_prefix("v ")) {
+            let v: Vec<f64> = line.split_whitespace().map(|t| t.parse().unwrap()).collect();
+            // Y-up -> IFC Z-up
+            let z = [v[0], -v[2], v[1]];
+            for k in 0..3 {
+                lo[k] = lo[k].min(z[k]);
+                hi[k] = hi[k].max(z[k]);
+            }
+        }
+        assert_aabb_close(&format!("OBJ, {label}"), (lo, hi), want, 1e-2);
     }
 }

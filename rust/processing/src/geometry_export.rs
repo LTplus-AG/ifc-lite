@@ -324,21 +324,59 @@ fn weld_positions<const COLORS: bool>(
     (out_verts, out_faces, kept)
 }
 
+/// `serde_json` writes NaN and the infinities as `null`, which a consumer
+/// cannot tell from an absent value (#7770, D11/D13). A document with one is
+/// refused as a whole, as the Python surface's `finite_json` does.
+fn ensure_finite_element(id: u32, e: &ExportedElement, extra: &[[f32; 4]]) -> Result<(), serde_json::Error> {
+    use serde::ser::Error;
+    for (i, v) in e.vertices.iter().enumerate() {
+        if v.iter().any(|c| !c.is_finite()) {
+            return Err(serde_json::Error::custom(format!("non-finite vertex {i} in element {id}")));
+        }
+    }
+    if e.color.iter().chain(extra.iter().flatten()).any(|c| !c.is_finite()) {
+        return Err(serde_json::Error::custom(format!("non-finite colour in element {id}")));
+    }
+    Ok(())
+}
+
+fn ensure_finite_offset(rtc_offset: &[f64; 3]) -> Result<(), serde_json::Error> {
+    use serde::ser::Error;
+    if rtc_offset.iter().any(|c| !c.is_finite()) {
+        return Err(serde_json::Error::custom("non-finite rtc_offset"));
+    }
+    Ok(())
+}
+
 impl GeometryDataExport {
-    /// Serialize to pretty JSON.
+    fn ensure_finite(&self) -> Result<(), serde_json::Error> {
+        ensure_finite_offset(&self.rtc_offset)?;
+        self.elements.iter().try_for_each(|(id, e)| ensure_finite_element(*id, e, &[]))
+    }
+
+    /// Serialize to pretty JSON. Refuses a non-finite coordinate rather than
+    /// writing `null` for it.
     pub fn to_json_pretty(&self) -> Result<String, serde_json::Error> {
+        self.ensure_finite()?;
         serde_json::to_string_pretty(self)
     }
 
-    /// Serialize to compact JSON.
+    /// Serialize to compact JSON. Refuses a non-finite coordinate rather than
+    /// writing `null` for it.
     pub fn to_json(&self) -> Result<String, serde_json::Error> {
+        self.ensure_finite()?;
         serde_json::to_string(self)
     }
 }
 
 impl ColoredGeometryDataExport {
     /// Serialize color-aware elements as the version-1 JSON document with optional fields.
+    /// Refuses a non-finite coordinate or colour rather than writing `null`.
     pub fn to_json(&self) -> Result<String, serde_json::Error> {
+        ensure_finite_offset(&self.rtc_offset)?;
+        for (id, e) in &self.elements {
+            ensure_finite_element(*id, &e.geometry, &e.palette)?;
+        }
         serde_json::to_string(self)
     }
 }

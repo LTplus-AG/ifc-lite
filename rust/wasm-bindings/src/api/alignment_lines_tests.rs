@@ -295,6 +295,30 @@ END-ISO-10303-21;
     );
 }
 
+/// #7678: an alignment under a conversion-based length unit with an unusable
+/// factor draws nothing, like the grid and symbolic overlays. Before, the
+/// `1.E400` factor's refusal fell back to metres here, a plausible centreline
+/// at the wrong scale (main drew it at infinity); a `0.001` twin still scales.
+#[test]
+fn a_refused_length_unit_draws_no_alignment_7678() {
+    let with_factor = |factor: &str| {
+        MILLIMETRE_ALIGNMENT.replace(
+            "#6=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);\n#7=IFCUNITASSIGNMENT((#6));",
+            &format!(
+                "#5=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);\n#6=IFCCONVERSIONBASEDUNIT(#3,.LENGTHUNIT.,'SURVEY_LINK',#9);\n\
+                 #9=IFCMEASUREWITHUNIT(IFCLENGTHMEASURE({factor}),#5);\n#3=IFCDIMENSIONALEXPONENTS(1,0,0,0,0,0,0);\n#7=IFCUNITASSIGNMENT((#6));"
+            ),
+        )
+    };
+    let milli = extract_alignment_line_vertices(&with_factor("0.001"), None);
+    let max_x = milli.chunks_exact(3).map(|v| v[0]).fold(f32::MIN, f32::max);
+    assert!((max_x - 10.0).abs() < 0.05, "anti-vacuity: 10 000 units x 0.001 = 10 m, got {max_x}");
+    for factor in ["1.E400", "-1.E400", "0.", "-0.2", "$"] {
+        let refused = extract_alignment_line_vertices(&with_factor(factor), None);
+        assert!(refused.is_empty(), "{factor}: no centreline at an invented scale");
+    }
+}
+
 #[test]
 fn empty_for_no_alignment() {
     let none = "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\nENDSEC;\nEND-ISO-10303-21;\n";
@@ -306,26 +330,7 @@ fn empty_for_no_alignment() {
 /// lost placement, vertical profile, or whole alignment changes its bounds.
 #[test]
 fn viadotto_acerno_emits_three_placed_centerlines() {
-    const FIXTURE: &str = concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../tests/models/buildingsmart/Viadotto_Acerno.ifc"
-    );
-    let require_fixtures = match std::env::var("IFC_LITE_REQUIRE_FIXTURES").as_deref() {
-        Err(std::env::VarError::NotPresent) | Ok("") | Ok("0") => false,
-        Ok("1") => true,
-        other => panic!("invalid IFC_LITE_REQUIRE_FIXTURES value: {other:?}"),
-    };
-    let content = match std::fs::read_to_string(FIXTURE) {
-        Ok(content) => content,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            if require_fixtures {
-                panic!("fixture missing at {FIXTURE}; run `pnpm fixtures`");
-            }
-            eprintln!("skipping #5327: fixture missing at {FIXTURE}; run `pnpm fixtures`");
-            return;
-        }
-        Err(error) => panic!("failed to read fixture {FIXTURE}: {error}"),
-    };
+    let content = ifc_lite_testkit::fixture_text_or_skip!("buildingsmart/Viadotto_Acerno.ifc");
 
     let mut scanner = EntityScanner::new(&content);
     let mut alignment_count = 0;

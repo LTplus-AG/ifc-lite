@@ -25,7 +25,7 @@ pub use types::*;
 use classifications::extract_classifications;
 use documents::extract_documents;
 use ifc_lite_core::{
-    build_entity_index, extract_length_unit_scale, DecodedEntity, EntityDecoder, EntityScanner,
+    build_entity_index, resolve_length_unit, DecodedEntity, EntityDecoder, EntityScanner,
 };
 use materials::extract_materials;
 use material_units::MaterialUnitContext;
@@ -160,7 +160,7 @@ where
         .map(|e| e.entity_id)
         .unwrap_or(0);
     let length_unit_scale = if project_id_for_units > 0 {
-        extract_length_unit_scale(&mut unit_decoder, project_id_for_units).unwrap_or(1.0)
+        resolve_length_unit(&mut unit_decoder, project_id_for_units).map_or(1.0, |unit| unit.scale) // data: main's value (#7678)
     } else {
         1.0
     };

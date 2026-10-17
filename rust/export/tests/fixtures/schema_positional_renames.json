@@ -1,0 +1,133 @@
+{
+ "_comment": "Shared positional-rename allowance for schema conversion (#7739). A type listed here has attributes that a schema RENAMED IN PLACE (same index, same meaning and type), so its source and target name lists are not prefixes of each other by name alone. Each pair is (older name, newer name); both names are read as the newer one before the strict-prefix test that decides trim/pad. Types where a schema INSERTED, reordered or retyped attributes (IfcMaterialProperties, IfcApproval, IfcTask, the IfcConstruction*Resource family, IfcLibraryInformation, IfcPerformanceHistory, ...) are deliberately NOT here: trimming or padding would shift values into the wrong slots. Pinned in both twins: rust/export/src/schema_renames.rs and packages/export/src/schema-converter-renames.ts each compare their table with this file; their conversion is pinned by schema_upconvert_sweep.json rows. DO NOT hand-edit to make a test pass.",
+ "renames": [
+  {
+   "type": "IFCACTIONREQUEST",
+   "pairs": [
+    [
+     "RequestID",
+     "Identification"
+    ]
+   ],
+   "why": "IFC4 renamed the request's identifier; Identification sits at the same index, then PredefinedType, Status and LongDescription are appended"
+  },
+  {
+   "type": "IFCCLASSIFICATIONREFERENCE",
+   "pairs": [
+    [
+     "ItemReference",
+     "Identification"
+    ]
+   ],
+   "why": "the ItemReference -> Identification family: same index, same IfcIdentifier, Description and Sort appended"
+  },
+  {
+   "type": "IFCDOCUMENTREFERENCE",
+   "pairs": [
+    [
+     "ItemReference",
+     "Identification"
+    ]
+   ],
+   "why": "ItemReference -> Identification, Description and ReferencedDocument appended"
+  },
+  {
+   "type": "IFCLIBRARYREFERENCE",
+   "pairs": [
+    [
+     "ItemReference",
+     "Identification"
+    ]
+   ],
+   "why": "ItemReference -> Identification, Description, Language and ReferencedLibrary appended"
+  },
+  {
+   "type": "IFCPERMIT",
+   "pairs": [
+    [
+     "PermitID",
+     "Identification"
+    ]
+   ],
+   "why": "PermitID -> Identification, PredefinedType, Status and LongDescription appended"
+  },
+  {
+   "type": "IFCPROJECTORDER",
+   "pairs": [
+    [
+     "ID",
+     "Identification"
+    ]
+   ],
+   "why": "ID -> Identification; PredefinedType and Status keep their index, LongDescription appended"
+  },
+  {
+   "type": "IFCCOSTVALUE",
+   "pairs": [
+    [
+     "CostType",
+     "Category"
+    ]
+   ],
+   "why": "CostType -> Category (both IfcLabel); Condition keeps its index, ArithmeticOperator and Components appended"
+  },
+  {
+   "type": "IFCSTAIRFLIGHT",
+   "pairs": [
+    [
+     "NumberOfRiser",
+     "NumberOfRisers"
+    ]
+   ],
+   "why": "the singular name was corrected in IFC4; PredefinedType appended"
+  },
+  {
+   "type": "IFCWORKPLAN",
+   "pairs": [
+    [
+     "Identifier",
+     "Identification"
+    ],
+    [
+     "WorkControlType",
+     "PredefinedType"
+    ]
+   ],
+   "why": "Identifier -> Identification and the IfcWorkControlTypeEnum -> IfcWorkPlanTypeEnum slot (same ACTUAL/BASELINE/PLANNED/USERDEFINED/NOTDEFINED members) keep their index; IFC2X3's trailing UserDefinedControlType has no IFC4 slot"
+  },
+  {
+   "type": "IFCWORKSCHEDULE",
+   "pairs": [
+    [
+     "Identifier",
+     "Identification"
+    ],
+    [
+     "WorkControlType",
+     "PredefinedType"
+    ]
+   ],
+   "why": "as IfcWorkPlan, with IfcWorkScheduleTypeEnum"
+  },
+  {
+   "type": "IFCPROPERTYBOUNDEDVALUE",
+   "pairs": [
+    [
+     "Description",
+     "Specification"
+    ]
+   ],
+   "why": "IFC4X3 renamed IfcProperty.Description to Specification (IfcText both); IFC2X3 and IFC4 share Description, so IFC2X3 -> IFC4X3 differs by SetPointValue and the rename"
+  },
+  {
+   "type": "IFCPROPERTYTABLEVALUE",
+   "pairs": [
+    [
+     "Description",
+     "Specification"
+    ]
+   ],
+   "why": "as IfcPropertyBoundedValue, with CurveInterpolation appended in IFC4"
+  }
+ ]
+}

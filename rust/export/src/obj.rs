@@ -18,6 +18,7 @@ use std::fmt::Write as _;
 
 use ifc_lite_processing::{process_geometry, MeshData, MeshFrame};
 
+use crate::error::ExportError;
 use crate::frame::yup_f64;
 
 /// Options for OBJ export.
@@ -72,14 +73,20 @@ fn mesh_visible(mesh: &MeshData, isolated: &Option<Vec<u32>>, hidden: &[u32]) ->
 }
 
 /// Export the render geometry in `content` (raw IFC/STEP bytes) as a Wavefront OBJ string.
-pub fn export_obj(content: &[u8], opts: &ObjOptions) -> String {
-    export_obj_with_stats(content, opts).0
+///
+/// Fail-closed like the GLB exporters: when no mesh survives the filters and
+/// the emittable-mesh gate, this is [`ExportError::NoRenderGeometry`] rather
+/// than a header-only file reported as success (#7695, EXPORT-GEOM-15).
+pub fn export_obj(content: &[u8], opts: &ObjOptions) -> Result<String, ExportError> {
+    export_obj_with_stats(content, opts).map(|(obj, _)| obj)
 }
 
 /// Like [`export_obj`] but also returns coverage stats.
-pub fn export_obj_with_stats(content: &[u8], opts: &ObjOptions) -> (String, ObjStats) {
+pub fn export_obj_with_stats(content: &[u8], opts: &ObjOptions) -> Result<(String, ObjStats), ExportError> {
     let result = process_geometry(content);
-    write_obj_in(&result.meshes, result.frame, opts)
+    let (obj, stats) = write_obj_in(&result.meshes, result.frame, opts);
+    crate::error::require_render_geometry(stats.meshes)?;
+    Ok((obj, stats))
 }
 
 /// [`write_obj_in`] for meshes already in IFC world (nothing to restore).

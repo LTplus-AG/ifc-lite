@@ -3,9 +3,16 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * "Did this export actually carry any content?" for the two Rust-backed
- * non-mesh formats — the JSON-LD and STEP twins of `countObjVertices` (OBJ)
- * and `countGlbMeshes` (GLB).
+ * "Did this export actually carry any content?" for the Rust-backed formats:
+ * the JSON-LD and STEP twins of `countObjVertices` (OBJ) and `countGlbMeshes`
+ * (GLB), plus `countUsdMeshes` (USD).
+ *
+ * Since #7695 the render-geometry exporters (GLB, OBJ, USD) refuse an empty
+ * model at the Rust boundary with `NO_RENDER_GEOMETRY`, so for them these
+ * counters are defense-in-depth. The data formats (JSON-LD, STEP) never
+ * refuse: an empty graph or `DATA;` section is a valid document, and the
+ * count is how a caller that wants content tells. The shared vectors are
+ * `rust/export/tests/fixtures/empty_export_vectors.json`.
  *
  * Both writers always return a syntactically valid, non-zero-byte document
  * even when every entity is filtered out: JSON-LD still carries its
@@ -57,6 +64,30 @@ export function countStepEntities(step: Uint8Array): number {
   let count = 0;
   for (const line of text.split('\n')) {
     if (/^#\d+\s*=/.test(line)) count++;
+  }
+  return count;
+}
+
+/**
+ * Count the meshes a viewer draws in an IFC-Lite-generated USDA stage: the
+ * `def Mesh` prims, baked or instance occurrences. Prototypes (`class Mesh`)
+ * are not drawn on their own, so they do not count. Zero means a stage with
+ * nothing to look at, which the Rust exporter refuses since #7695.
+ *
+ * The exporter writes one prim header per line, so an anchored per-line match
+ * counts them without a USDA parse; a `def Mesh` inside a string value is
+ * never at the start of a line.
+ */
+export function countUsdMeshes(usda: Uint8Array): number {
+  let text: string;
+  try {
+    text = new TextDecoder('utf-8', { fatal: true }).decode(usda);
+  } catch {
+    return 0;
+  }
+  let count = 0;
+  for (const line of text.split('\n')) {
+    if (/^\s*def Mesh "/.test(line)) count++;
   }
   return count;
 }

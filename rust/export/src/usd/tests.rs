@@ -26,7 +26,7 @@ fn hello_wall() -> Vec<u8> {
 }
 
 fn export(bytes: &[u8]) -> String {
-    export_usd(bytes, &UsdOptions::default())
+    export_usd(bytes, &UsdOptions::default()).expect("the fixture has render geometry")
 }
 
 // ── USDA structural scanner (the no-usdchecker objective gate) ───────────────
@@ -326,9 +326,12 @@ fn provenance_in_customlayerdata() {
     let start = header.find(marker).expect("source fingerprint present") + marker.len();
     let fp = &header[start..start + 16];
     assert!(fp.chars().all(|c| c.is_ascii_hexdigit()), "fingerprint is 16 hex digits, got {fp}");
-    // The fingerprint tracks the source: a different input yields a different value.
-    let other = b"ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\nENDSEC;\nEND-ISO-10303-21;\n";
-    let other_usda = export(other);
+    // The fingerprint tracks the source: a different input yields a different
+    // value. Only the header's file name differs, so the geometry is the same
+    // (an empty model is refused, #7695).
+    let other = String::from_utf8(hello_wall()).unwrap().replacen("'hello-wall.ifc'", "'other.ifc'", 1);
+    assert!(other.contains("'other.ifc'"), "the header edit applied");
+    let other_usda = export(other.as_bytes());
     let os = other_usda.find(marker).expect("fp") + marker.len();
     assert_ne!(fp, &other_usda[os..os + 16], "fingerprint must depend on source bytes");
 }
@@ -381,14 +384,15 @@ fn source_fingerprint_is_stable_fnv1a64() {
 }
 
 #[test]
-fn empty_model_is_safe() {
-    // A project-only model (no geometry): valid stage, World prim, no meshes, no panic.
+fn empty_model_is_refused() {
+    // A project-only model (no geometry) has nothing to put on the stage: it
+    // is refused like an empty GLB, not shipped as a World-only stage (#7695,
+    // EXPORT-GEOM-15). No panic either way.
     let ifc = b"ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('','',$,$,'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCPROJECT('0aaaaaaaaaaaaaaaaaaaaa',$,'Empty',$,$,$,$,$,$);\nENDSEC;\nEND-ISO-10303-21;\n";
-    let usda = export(ifc);
-    assert!(usda.starts_with("#usda 1.0\n(\n"));
-    assert!(usda.contains("def Xform \"World\""));
-    assert!(!usda.contains("def Mesh \""), "no geometry → no meshes");
-    scan(&usda);
+    for instancing in [true, false] {
+        let refused = export_usd(ifc, &UsdOptions { instancing, ..UsdOptions::default() });
+        assert_eq!(refused, Err(crate::ExportError::NoRenderGeometry), "instancing: {instancing}");
+    }
 }
 
 #[test]
@@ -399,15 +403,14 @@ fn type_product_geometry_lands_in_unassigned() {
     let rel =
         "buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-blob-texture.ifc";
     let bytes = fixture_or_skip!(rel);
-    let usda = export(&bytes);
-    let ids = xform_ids(&scan(&usda));
-
     let result = process_geometry(&bytes);
     let meshed: Vec<u32> =
         result.meshes.iter().filter(|m| mesh_emittable(m)).map(|m| m.express_id).collect();
     if meshed.is_empty() {
         return;
     }
+    let usda = export(&bytes);
+    let ids = xform_ids(&scan(&usda));
     assert!(usda.contains("def Xform \"Unassigned\""), "type geometry needs the Unassigned bucket");
     for id in &meshed {
         assert!(ids.contains(id), "type-product mesh #{id} dropped");
@@ -572,7 +575,7 @@ fn apply_usd(rows: &[[f64; 4]; 4], p: [f64; 3]) -> [f64; 3] {
 #[test]
 fn instancing_emits_prototypes_and_references() {
     for bytes in [hello_wall(), synthetic_instances()] {
-        let usda = export_usd(&bytes, &UsdOptions::default());
+        let usda = export_usd(&bytes, &UsdOptions::default()).expect("the fixture has render geometry");
         assert!(usda.matches("class Mesh \"Proto_").count() >= 1, "expected prototypes");
         assert!(
             usda.matches("prepend references = </World/Prototypes/Proto_").count() >= 1,
@@ -688,7 +691,7 @@ fn instance_colours_have_materials() {
 #[test]
 fn instancing_disabled_bakes_everything() {
     let bytes = synthetic_instances();
-    let usda = export_usd(&bytes, &UsdOptions { instancing: false, ..UsdOptions::default() });
+    let usda = export_usd(&bytes, &UsdOptions { instancing: false, ..UsdOptions::default() }).expect("the fixture has render geometry");
     assert!(!usda.contains("Prototypes"), "instancing:false must not author prototypes");
     assert!(!usda.contains("references ="), "instancing:false must not author references");
     let ids = xform_ids(&scan(&usda));
@@ -924,5 +927,32 @@ fn usd_and_gltf_agree_on_every_material_colour() {
             gltf.iter().any(|g| (0..3).all(|k| (g[k] - rgb[k] as f64).abs() < 1e-4)),
             "USD diffuseColor {rgb:?} matches no glTF baseColorFactor {gltf:?}"
         );
+    }
+}
+
+/// #7734: USD lands a georeferenced model where the pipeline says it is: the
+/// `/World` matrix applied to each mesh's own translate + local points.
+#[test]
+fn usd_lands_where_the_model_is() {
+    use crate::frame_fixtures::{assert_aabb_close, frame_fixtures, reference_world_aabb};
+    for (label, content, tier) in frame_fixtures() {
+        let want = reference_world_aabb(content, tier);
+        let usda = export_usd(content.as_bytes(), &UsdOptions::default()).expect("has geometry");
+        let world = parse_matrix4d(&usda);
+        let (mut lo, mut hi) = ([f64::INFINITY; 3], [f64::NEG_INFINITY; 3]);
+        for mesh in parse_meshes(&usda) {
+            let t = mesh.translate.unwrap_or([0.0; 3]);
+            for p in mesh.points.chunks_exact(3) {
+                let w = apply_usd(
+                    &world,
+                    [t[0] + p[0] as f64, t[1] + p[1] as f64, t[2] + p[2] as f64],
+                );
+                for k in 0..3 {
+                    lo[k] = lo[k].min(w[k]);
+                    hi[k] = hi[k].max(w[k]);
+                }
+            }
+        }
+        assert_aabb_close(&format!("USD, {label}"), (lo, hi), want, 1e-2);
     }
 }

@@ -37,6 +37,13 @@ pub enum Error {
     /// reads the same record for the data model.
     #[error("Entity #{0} holds a REAL outside the double range; refused by input admission")]
     UnrepresentableReal(u32),
+
+    /// A declared conversion-based length unit whose factor (the
+    /// `IFCMEASUREWITHUNIT` `factor`) is not a positive finite number, so no
+    /// metre scale is right for the model (#7678, CORE-15). `overflowed`: the
+    /// factor read as `+inf` (`1.E400`), which main used as the scale.
+    #[error("Length unit factor #{factor} is not a positive finite number; geometry refused")]
+    UnusableUnitFactor { factor: u32, overflowed: bool },
 }
 
 impl Error {

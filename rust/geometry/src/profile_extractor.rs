@@ -99,6 +99,9 @@ pub fn extract_profiles_with_diagnostics<T: AsRef<[u8]> + ?Sized>(content: &T, m
     // used to carry its own placement walk, which missed IfcLinearPlacement and
     // IfcGridPlacement (PROC-2, #7690).
     let router = GeometryRouter::with_units(content, &mut decoder);
+    if router.length_unit_refused() {
+        return (Vec::new(), Vec::new()); // a refused length unit extracts nothing (#7678)
+    }
     let unit_scale = router.unit_scale();
 
     let schema = IfcSchema::new();

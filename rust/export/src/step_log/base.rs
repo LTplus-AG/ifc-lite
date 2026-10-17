@@ -19,6 +19,7 @@ use std::collections::{HashMap, HashSet};
 
 use serde_json::Value;
 
+use super::extract::is_unrepresentable_numeric;
 use super::jsval::JsVal;
 use super::property_value::parse_property_value;
 use super::source::Source;
@@ -276,7 +277,16 @@ impl<'s, 'a> BaseSets<'s, 'a> {
                 if qname.is_empty() {
                     continue;
                 }
-                let value = qattrs.get(3).and_then(JsVal::as_num).unwrap_or(0.0);
+                // `collectQuantitiesFromRefs` drops a measure the double range
+                // cannot hold (an overflow or malformed literal, kept as raw
+                // text by the tokenizer, D13) rather than writing a fabricated
+                // `0.` (#7770). Anything else non-numeric, `$` included, reads
+                // as `0` there, so it does here.
+                let raw = qattrs.get(3);
+                if raw.is_some_and(is_unrepresentable_numeric) {
+                    continue;
+                }
+                let value = raw.and_then(JsVal::as_num).unwrap_or(0.0);
                 quantities.push(Quantity { name: qname.to_string(), ty: quantity_type_of(&qty_type), value });
             }
         }

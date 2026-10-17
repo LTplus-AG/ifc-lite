@@ -33,6 +33,7 @@ mod admission;
 mod boolean;
 mod classify;
 mod coincident;
+pub(super) use coincident::coincident_planes;
 mod ray_parity;
 #[cfg(test)]
 mod tests;

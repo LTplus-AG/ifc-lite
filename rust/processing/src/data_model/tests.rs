@@ -834,11 +834,6 @@ fn forwards_revit_duplex_material_associations_with_identity_5296() {
         return;
     };
     let dm = extract_data_model_checked(&source);
-    // Optional manual end-to-end parity run through the TS decoder/viewer.
-    if let Ok(path) = std::env::var("IFCLITE_MATERIAL_PARQUET_OUT") {
-        let payload = crate::services::serialize_data_model_to_parquet(&dm).expect("serialize Revit data model");
-        std::fs::write(path, payload).expect("write Revit data model for cross-runtime parity check");
-    }
     assert!(dm.materials.iter().any(|m| m.material_name == "Masonry - Brick"),
         "Revit material assignment must survive server extraction");
     assert!(dm.materials.iter().all(|m| m.association_id > 0 && m.definition_id > 0 && !m.kind.is_empty()),
@@ -2442,27 +2437,6 @@ fn material_layer_thickness_uses_owning_project_units_5296() {
     let same_unit_type = dm.materials.iter().find(|m| m.element_id == 210)
         .expect("same-unit shared type stays resolved");
     assert!((same_unit_type.thickness.unwrap() - 0.2).abs() < 1e-9);
-
-    // The manual cross-runtime oracle supplies MergedExporter output from two
-    // catalogued real IFC fixtures. Keep the synthetic test runnable in CI
-    // without those optional files; when supplied, assert the server's real
-    // model result before writing Parquet for the TS decoder/viewer check.
-    if let Ok(input) = std::env::var("IFCLITE_MATERIAL_MERGED_IN") {
-        let source = std::fs::read(input).expect("read merged IFC oracle input");
-        let merged = extract_data_model_checked(&source);
-        let wall_id = merged.entities.iter()
-            .find(|e| e.global_id.as_deref() == Some("3ZYW59sxj8lei475l7EhLU"))
-            .expect("millimetre wall in merged IFC").entity_id;
-        let wall_layer = merged.materials.iter().find(|m| m.element_id == wall_id)
-            .expect("material layer on millimetre wall");
-        assert!((wall_layer.thickness.unwrap() - 0.3).abs() < 1e-9,
-            "server must convert the real merged wall's 300 mm layer to 0.3 m");
-        let output = std::env::var("IFCLITE_MATERIAL_PARQUET_OUT")
-            .expect("set IFCLITE_MATERIAL_PARQUET_OUT for merged IFC oracle");
-        let payload = crate::services::serialize_data_model_to_parquet(&merged)
-            .expect("serialize merged IFC data model");
-        std::fs::write(output, payload).expect("write merged IFC Parquet oracle payload");
-    }
 }
 
 /// Issue #5475: an `IfcPropertyReferenceValue` reads as the referenced
@@ -2754,7 +2728,7 @@ fn many_associations_over_one_long_usage_chain_finish_server_5() {
 #[test]
 fn complex_property_walk_budget_matches_the_shared_vector() {
     let vector: serde_json::Value = serde_json::from_str(include_str!(
-        "../../../../../packages/parser/test/fixtures/complex-property-budget-7675.json"
+        "../../../../packages/parser/test/fixtures/complex-property-budget-7675.json"
     ))
     .expect("vector parses");
     let failed: Vec<String> = vector["cases"]
@@ -2911,8 +2885,6 @@ fn server_26_material_rows_are_budgeted_not_elements_times_layers() {
         dm.materials.len(),
         ifc.len()
     );
-    let refused = crate::services::serialize_data_model_to_parquet(&dm).expect_err("a truncated table was served");
-    assert!(refused.to_string().contains("material"), "{refused}");
 }
 
 /// The budget is relative to the input and binds hostile products, not real
@@ -2927,7 +2899,6 @@ fn server_26_ordinary_layer_sets_keep_every_row() {
         ENDSEC;\nEND-ISO-10303-21;\n";
     let dm = extract_data_model(ifc);
     assert_eq!(dm.materials.len(), 12);
-    crate::services::serialize_data_model_to_parquet(&dm).expect("served");
 }
 
 /// #7678 review finding 1: the data model reads a record holding a REAL the

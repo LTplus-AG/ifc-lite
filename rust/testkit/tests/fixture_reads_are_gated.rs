@@ -31,7 +31,7 @@ const UNGATED: &[(&str, &str)] = &[
     // Not folded in the testkit PR (D9: fold only when touched); follow-ups.
     ("rust/processing/tests/analytic_swept_disk.rs", "follow-up"),
     ("rust/geometry/src/alignment_sampling_tests.rs", "open PR #7752 touches it"),
-    ("apps/server/src/services/data_model/tests.rs", "open PR #7752 touches it"),
+    ("rust/processing/src/data_model/tests.rs", "open PR #7752 touches it"),
 ];
 
 fn repo_root() -> PathBuf {

@@ -123,11 +123,8 @@ export interface ModelMetadata {
    * `length_unit_refused` is set, in which case there is no usable scale.
    */
   length_unit_scale?: number;
-  /**
-   * Express id of the `IfcSIUnit` / `IfcConversionBasedUnit` whose length
-   * factor is unusable (zero, negative or non-finite). When present, no
-   * geometry was meshed and `length_unit_scale` is absent: do not assume `1`.
-   */
+  /** Express id of the unit whose length factor is unusable (zero, negative or
+   *  non-finite): no geometry was meshed and `length_unit_scale` is absent. */
   length_unit_refused?: number;
   /**
    * Georeferencing (`IfcMapConversion` + `IfcProjectedCRS`). Absent when the

@@ -203,6 +203,8 @@ export class StepExporter {
       throw new Error('Map geometry normalization requires a full geometry export to the source IFC4 or IFC4X3 schema.');
     }
     collectModifications(pass, options, applyMutations, this.collectionContext());
+    // Edited source style assignments reach the D57 flatten before any styled item is written (#7801).
+    pass.styleFlatten?.noteEdited(this.dataStore, (id, text) => { const t = applySourceLineMutations(this.mutationView, id, text, 'IFCPRESENTATIONSTYLEASSIGNMENT', pass.modifiedAttributes.get(id), pass.sourceSchema, pass.overlayActive).text; return t === text ? null : t; });
 
     // Which ids this export may still NAME, now that the collection phase has
     // decided which ids it is WRITING (#2475). Must stay here, between those

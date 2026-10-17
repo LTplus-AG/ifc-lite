@@ -59,7 +59,8 @@ import { STYLE_RESCUE_TYPES } from './style-closure.js';
 import { NONREL_REF_LIST_TYPES } from './nonrel-ref-list-types.js';
 import { styleEntityWithheldWarning } from './step-export-types.js';
 import { applySourceLineMutationsReported } from './step-attribute-mutations.js';
-import { convertStepLine, type IfcSchemaVersion } from './schema-converter.js';
+import type { IfcSchemaVersion } from './schema-converter.js';
+import { convertStepLineFlattening } from './schema-style-flatten.js';
 import { nominateDeliveredInPlaceEdits } from './in-place-nomination.js';
 import { decodeRange } from './source-ref-bounds.js';
 import type { PropertySetContext } from './step-property-set-readers.js';
@@ -338,7 +339,7 @@ export function writeSourceEntityLines(
 
       // Apply schema conversion if exporting to a different schema version
       if (pass.converting) {
-        const converted = convertStepLine(nextEntityText, pass.sourceSchema, pass.schema, options.guidRandom, pass.slotFill, pass.withheldRefIds, pass.ifc4Slots, pass.enums);
+        const converted = convertStepLineFlattening(pass.styleFlatten, nextEntityText, pass.sourceSchema, pass.schema, options.guidRandom, pass.slotFill, pass.withheldRefIds, pass.ifc4Slots, pass.enums);
         if (converted !== null) pass.entities.push(converted);
       } else {
         pass.entities.push(nextEntityText);

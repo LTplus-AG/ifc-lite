@@ -165,8 +165,13 @@ pub fn declared_schema_bounded(content: &[u8]) -> Option<String> {
 /// parser's `detectSchemaVersion` (`packages/parser/src/source-header.ts`).
 /// Every Rust reader of the declared schema goes through it with its own
 /// recogniser: the decoder's attribute layout (`SchemaVersion::from_file_schema`)
-/// and processing's reported `schema_version` (#7691), so the two can never
-/// pick different identifiers for one file.
+/// and processing's reported `schema_version` (#7691).
+///
+/// What is shared is the SELECTION, not the recogniser. The decoder's
+/// recogniser names only the schemas with an EXPRESS registry (no IFC5),
+/// processing's also knows IFC5, so `('IFC5','IFC4')` reads as IFC4 to the
+/// former and IFC5 to the latter, deliberately: guessing a nearby registry for
+/// IFC5 would relabel positional values (#7740).
 pub fn first_declared_schema<T>(
     content: &[u8],
     mut recognise: impl FnMut(&str) -> Option<T>,

@@ -318,6 +318,7 @@ impl ProfileProcessor {
                 })
             })
             .collect();
+        crate::curve_source::admit_f32_range(all_points.iter().flat_map(|p| [p.x, p.y]))?;
 
         // Get segments (attribute 1) - optional, if not present use all points in order
         let segments_attr = curve.get(1);

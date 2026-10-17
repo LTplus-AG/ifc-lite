@@ -982,6 +982,13 @@ jobs:
           # grammar, a binary indicator above 3, a non-zero indicator decoded,
           # and an uncounted texture refusal. Once step_numeric_vectors.json is
           # on main, ordinary whole-change revert resumes.
+          # #7778 (G7): the STEP grammar fuzz targets add test, fuzz-crate and
+          # corpus files only, and the shared tests/support/grammar_oracle.rs is
+          # not attributable to one cargo target (INCONCLUSIVE). Mutate the
+          # point reader's trivia skip instead; the corpus replay must observe
+          # it. Once fuzz_regressions.rs is on main, whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/core/tests/fuzz_regressions.rs | grep -Fxq 'rust/core/tests/fuzz_regressions.rs'; then
+            oracle_args+=(--mutation tests/evidence/grammar-fuzz-7778/trivia.oracle.patch)
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/core/tests/fixtures/step_numeric_vectors.json | grep -Fxq 'rust/core/tests/fixtures/step_numeric_vectors.json'; then
             oracle_args+=(--mutation tests/evidence/numeric-literal-7778/behaviour.oracle.patch)
           # #7774 (F2c): the tolerance catalogue `math::tol` is a new module the

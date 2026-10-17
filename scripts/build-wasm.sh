@@ -97,7 +97,10 @@ echo "🟢 Building single-thread bundle → $OUT_DIR"
 # NEVER on CI: a real build failure there must stay a failure, so the fallback
 # is gated on $CI being unset. Anything that ships an artifact -- the release
 # and docker workflows, Vercel -- sets it.
-if ! rustup run nightly-2025-11-15 "$WASM_PACK" build rust/wasm-bindings \
+# Keep the shipping bundle inside its transfer-size budget with LLVM's size
+# optimization. Scope this to the single-thread WASM invocation: native and
+# opt-in bundles retain the workspace release profile. No Binaryen pass runs.
+if ! CARGO_PROFILE_RELEASE_OPT_LEVEL=s rustup run nightly-2025-11-15 "$WASM_PACK" build rust/wasm-bindings \
   --target web \
   --out-dir "$OUT_DIR" \
   --out-name ifc-lite \

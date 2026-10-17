@@ -151,26 +151,9 @@ pub fn classify_type_name_with_content(type_name: &str, entity_bytes: &[u8]) -> 
 /// every other named/flag arm here stays byte-identical to what it was
 /// before #1910 -- the only new code path is the explicit OR-in above.
 pub fn classify_type_name(type_name: &str) -> u8 {
-    use ifc_lite_core::{has_geometry_by_name, keyword_eq, type_product_ifc_type};
-    const NAMED_ARMS: [(&str, u8); 13] = [
-        ("IFCPROJECT", PREPASS_CLASS_PROJECT),
-        ("IFCSITE", PREPASS_CLASS_SITE), // site is job + site-record; flags implied
-        ("IFCSTYLEDITEM", PREPASS_CLASS_STYLED_ITEM),
-        ("IFCINDEXEDCOLOURMAP", PREPASS_CLASS_INDEXED_COLOUR_MAP),
-        ("IFCMATERIALDEFINITIONREPRESENTATION", PREPASS_CLASS_MATERIAL_DEF_REPR),
-        ("IFCRELASSOCIATESMATERIAL", PREPASS_CLASS_REL_ASSOCIATES_MATERIAL),
-        ("IFCRELVOIDSELEMENT", PREPASS_CLASS_REL_VOIDS),
-        ("IFCRELFILLSELEMENT", PREPASS_CLASS_REL_FILLS),
-        ("IFCRELAGGREGATES", PREPASS_CLASS_REL_AGGREGATES),
-        ("IFCMAPPEDITEM", PREPASS_CLASS_MAPPED_ITEM),
-        ("IFCRELDEFINESBYTYPE", PREPASS_CLASS_REL_DEFINES_BY_TYPE),
-        ("IFCMATERIALLAYERSET", PREPASS_CLASS_MATERIAL_LAYER_SET),
-        ("IFCMATERIALLAYERSETUSAGE", PREPASS_CLASS_MATERIAL_LAYER_SET),
-    ];
-    let named = NAMED_ARMS
-        .iter()
-        .find(|(keyword, _)| keyword_eq(type_name, keyword))
-        .map_or(PREPASS_CLASS_NONE, |&(_, class)| class);
+    use ifc_lite_core::{has_geometry_by_name, type_product_ifc_type};
+    // The named keywords come from the one table (`ScanClass`).
+    let named = crate::scan::ScanClass::classify(type_name).wire_code();
     if named != PREPASS_CLASS_NONE {
         // The named keywords are mutually exclusive with the flag predicates in
         // the serial match (its arms return before the `_` arm runs them).

@@ -307,3 +307,27 @@ use super::*;
         // Positive control: it is the crossing that declines, not the points.
         assert!(triangulate_pslg(&points, &[(0, 2)]).is_some());
     }
+
+    /// `triangulate_refined` builds under a work budget: a realistic large
+    /// many-hole face (a 2,000-hole 32-gon grid, ~12M steps) fits an eighth of it with the
+    /// same triangles as an unbounded build, and a tiny budget declines (the
+    /// caller ear-clips) instead of running on (#7787 follow-up).
+    #[test]
+    fn refined_build_is_bounded_by_its_work_budget() {
+        let circle = |cx: f64, cy: f64| -> Vec<P2> {
+            (0..32)
+                .map(|k| {
+                    let t = std::f64::consts::TAU * k as f64 / 32.0;
+                    [cx + t.cos(), cy + t.sin()]
+                })
+                .collect()
+        };
+        let mut rings: Vec<Vec<P2>> = vec![vec![[0.0, 0.0], [138.0, 0.0], [138.0, 138.0], [0.0, 138.0]]];
+        rings.extend((0..2000).map(|i| circle((i % 45) as f64 * 3.0 + 3.0, (i / 45) as f64 * 3.0 + 3.0)));
+        let (points, segments) = rings_to_pslg(&rings);
+        let unbounded = build_with_budget(points.clone(), &segments, 0, u64::MAX).expect("grid builds");
+        let bounded = build_with_budget(points.clone(), &segments, 0, build_work_budget(points.len()) / 8)
+            .expect("a realistic face fits an eighth of the budget");
+        assert_eq!(bounded.emit(), unbounded.emit());
+        assert!(build_with_budget(points, &segments, 0, 1_000).is_none(), "a tiny budget declines");
+    }

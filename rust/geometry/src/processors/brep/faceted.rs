@@ -208,7 +208,7 @@ impl FacetedBrepProcessor {
             // holes (a demoted outer is among them) and the degenerate ones.
             let read = hole_points.len() + usize::from(outer_bound_points.is_some()) + degenerate;
             if read < bound_count {
-                note_face_refused();
+                note_face_refused(&IfcType::IfcFace);
                 continue;
             }
             if let Some(outer_points) = outer_bound_points {
@@ -241,7 +241,7 @@ impl FacetedBrepProcessor {
         let mut indices = Vec::with_capacity(total_indices);
         for result in face_results {
             if result.refused {
-                note_face_refused();
+                note_face_refused(&IfcType::IfcFace);
             }
             let base_idx = (positions.len() / 3) as u32;
             positions.extend(result.positions);

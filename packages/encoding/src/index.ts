@@ -5,6 +5,7 @@
 export { decodeIfcString, encodeIfcString } from './ifc-string.js';
 export { decodeStepStringLiteral } from './step-string-literal.js';
 export { isStepPageQuoteOperand, stepStringLiteralEnd } from './step-string-end.js';
+export { splitStepTopLevel } from './step-top-level-split.js';
 export {
   uuidToIfcGuid,
   ifcGuidToUuid,

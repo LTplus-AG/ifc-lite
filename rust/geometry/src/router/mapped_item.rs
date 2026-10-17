@@ -8,8 +8,8 @@
 //! Split out of `processing.rs` to stay within its module-size budget (#3691).
 
 use super::frame_parts::{single_frame_source, SourceParts};
-use super::processing::IDENTITY_ROW_MAJOR;
-use super::transforms::{instancing_enabled, mat4_to_row_major};
+use super::transforms::instancing_enabled;
+use crate::math::mat4;
 use super::GeometryRouter;
 use crate::{Error, InstanceMeta, Mesh, Result};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
@@ -142,7 +142,7 @@ impl GeometryRouter {
             if let Some(mut transform) = mapping_transform {
                 self.scale_transform(&mut transform);
                 if instancing_enabled() {
-                    local_rm = Some(mat4_to_row_major(&transform));
+                    local_rm = Some(mat4::from_na(&transform));
                 }
                 self.transform_mesh_local(&mut mesh, &transform);
             }
@@ -152,7 +152,7 @@ impl GeometryRouter {
             // element's apply_placement (element-local -> world).
             if instancing_enabled() {
                 mesh.instance_meta = Some(InstanceMeta {
-                    transform: IDENTITY_ROW_MAJOR,
+                    transform: mat4::IDENTITY,
                     local_transform: local_rm,
                     canonical_transform: None,
                     rep_identity: source_id as u128,
@@ -289,7 +289,7 @@ impl GeometryRouter {
         if let Some(mut transform) = mapping_transform {
             self.scale_transform(&mut transform);
             if instancing_enabled() {
-                local_rm = Some(mat4_to_row_major(&transform));
+                local_rm = Some(mat4::from_na(&transform));
             }
             for part in &mut parts {
                 self.transform_mesh_local(part, &transform);
@@ -297,7 +297,7 @@ impl GeometryRouter {
         }
         if instancing_enabled() && single_frame {
             parts[0].instance_meta = Some(InstanceMeta {
-                transform: IDENTITY_ROW_MAJOR,
+                transform: mat4::IDENTITY,
                 local_transform: local_rm,
                         canonical_transform: None,
                 rep_identity: source_id as u128,

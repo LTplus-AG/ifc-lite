@@ -13,8 +13,6 @@
 // box-minus-opening volume, and the #1112 roof host against a self-consistency
 // volume + watertight + rim-tear check.
 
-mod support;
-
 use ifc_lite_core::{build_entity_index, EntityDecoder, EntityScanner};
 use ifc_lite_geometry::{propagate_voids_to_parts, GeometryRouter, Mesh};
 use rustc_hash::FxHashMap;
@@ -45,18 +43,7 @@ fn build_void_index(content: &str) -> FxHashMap<u32, Vec<u32>> {
 /// environment is broken rather than merely missing an optional download,
 /// so it panics unconditionally.
 fn read_fixture(path: &str) -> Option<String> {
-    match std::fs::read_to_string(path) {
-        Ok(content) => Some(content),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            assert!(
-                !support::require_fixtures(),
-                "fixture {path} not present and IFC_LITE_REQUIRE_FIXTURES=1 -- run `pnpm fixtures` to download (sha256 in tests/models/manifest.json)"
-            );
-            eprintln!("skipping: fixture {path} not present");
-            None
-        }
-        Err(e) => panic!("fixture {path} exists but could not be read: {e}"),
-    }
+    ifc_lite_testkit::fixture_text(path)
 }
 
 fn process(path: &str, host_id: u32) -> Option<Mesh> {
@@ -140,8 +127,8 @@ fn bbox(m: &Mesh) -> ([f64; 3], [f64; 3]) {
     (mn, mx)
 }
 
-const ADVANCED: &str = "../../tests/models/ara3d/advanced_model.ifc";
-const ROOF_1007: &str = "../../tests/models/issues/1007_roof_brep_opening_winding.ifc";
+const ADVANCED: &str = "ara3d/advanced_model.ifc";
+const ROOF_1007: &str = "issues/1007_roof_brep_opening_winding.ifc";
 
 #[test]
 fn box_opening_wall_555082_volume_and_watertight() {

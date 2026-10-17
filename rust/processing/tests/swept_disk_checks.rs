@@ -225,26 +225,7 @@ fn mirrored_scaled_mapped_line_is_checked_in_world_metres() {
 
 #[test]
 fn issue_5758_snowdon_authored_bars_distinguish_smooth_and_mitered_paths() {
-    const FIXTURE: &str = "tests/models/various/01_Snowdon_Towers_Sample_Structural(1).ifc";
-    let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../..")
-        .join(FIXTURE);
-    let bytes = match std::fs::read(&path) {
-        Ok(bytes) => bytes,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            let required = match std::env::var("IFC_LITE_REQUIRE_FIXTURES") {
-                Err(std::env::VarError::NotPresent) => false,
-                Ok(value) if value.is_empty() || value == "0" => false,
-                Ok(value) if value == "1" => true,
-                other => panic!("invalid IFC_LITE_REQUIRE_FIXTURES value: {other:?}"),
-            };
-            assert!(!required,
-                "IFC_LITE_REQUIRE_FIXTURES=1 but {FIXTURE} is missing ({error}); run `pnpm fixtures`");
-            eprintln!("skipping #5758 Snowdon fixture test: {FIXTURE} missing; run `pnpm fixtures`");
-            return;
-        }
-        Err(error) => panic!("failed to read {FIXTURE}: {error}"),
-    };
+    let bytes = ifc_lite_testkit::fixture_bytes_or_skip!("various/01_Snowdon_Towers_Sample_Structural(1).ifc");
 
     let ids = HashSet::from([132347, 132562]);
     let descriptions = extract_swept_disk_descriptions(&bytes, Some(&ids));

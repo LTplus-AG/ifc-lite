@@ -33,6 +33,11 @@ impl IfcFaceSurfaceProcessor {
         if surface.ifc_type != IfcType::IfcPlane {
             return Ok(Mesh::new());
         }
+        // The bound loops wind about the face normal (ISO 10303-42), which is
+        // the member's local z: the surface normal reversed when `SameSense`
+        // is `.F.`. So the loop triangulation already faces the right side
+        // and is not flipped again, as for a Brep's planar faces (#7686,
+        // PROC-S16).
         let (positions, indices) =
             process_advanced_face(entity, decoder, quality, rtc_file_units)?;
         Ok(Mesh {

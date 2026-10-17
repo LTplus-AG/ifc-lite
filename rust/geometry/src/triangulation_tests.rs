@@ -392,3 +392,63 @@ fn safe_earcut_rejects_non_finite() {
     let data = vec![0.0, 0.0, 10.0, f64::NAN, 10.0, 10.0];
     assert!(safe_earcut(&data, &[], 2).is_err());
 }
+
+fn dart_3d() -> Vec<Point3<f64>> {
+    vec![
+        Point3::new(0.0, 0.0, 0.0),
+        Point3::new(2.0, 2.0, 0.0),
+        Point3::new(4.0, 0.0, 0.0),
+        Point3::new(2.0, 10.0, 0.0),
+    ]
+}
+
+/// GEOM-3 (#7686): the dart winds CCW (+16 about +Z) but the cross product of
+/// its first two edges is -Z.
+#[test]
+fn concave_quad_normal_follows_the_ring_winding() {
+    let normal = calculate_polygon_normal(&dart_3d());
+    assert!((normal.z - 1.0).abs() < 1e-12, "{normal:?}");
+    let mut cw = dart_3d();
+    cw.reverse();
+    assert!((calculate_polygon_normal(&cw).z + 1.0).abs() < 1e-12);
+}
+
+/// PROC-S10 / GEOM-3: the 3D split matches `quad_indices` for every rotation
+/// of a concave ring and keeps `0-2` for a convex one.
+#[test]
+fn quad_split_3d_matches_the_2d_split() {
+    let mut ring = dart_3d();
+    for _ in 0..4 {
+        let flat: Vec<Point2<f64>> = ring.iter().map(|p| Point2::new(p.x, p.y)).collect();
+        let want: Vec<u32> = quad_indices(&flat).iter().map(|&i| i as u32).collect();
+        assert_eq!(quad_split_3d(&ring).to_vec(), want);
+        ring.rotate_left(1);
+    }
+    let square = [
+        Point3::new(0.0, 0.0, 0.0),
+        Point3::new(1.0, 0.0, 0.0),
+        Point3::new(1.0, 1.0, 0.0),
+        Point3::new(0.0, 1.0, 0.0),
+    ];
+    assert_eq!(quad_split_3d(&square), [0, 1, 2, 0, 2, 3]);
+}
+
+/// PROC-S5: a holed face whose triangulation fails is an `Err`, never the
+/// fan of its outer ring; the same failure without holes keeps the fan.
+#[test]
+fn planar_face_with_a_failing_hole_is_an_error_not_a_fan() {
+    let outer = vec![
+        Point3::new(0.0, 0.0, 0.0),
+        Point3::new(10.0, 0.0, 0.0),
+        Point3::new(10.0, 10.0, 0.0),
+        Point3::new(0.0, 10.0, 0.0),
+    ];
+    let hole = vec![
+        Point3::new(4.0, 4.0, 0.0),
+        Point3::new(f64::INFINITY, 4.0, 0.0),
+        Point3::new(6.0, 6.0, 0.0),
+    ];
+    assert!(triangulate_planar_face(&outer, &[hole]).is_err());
+    assert_eq!(triangulate_planar_face(&outer, &[]).unwrap().len(), 6);
+    assert!(triangulate_planar_face(&outer[..2], &[]).is_err());
+}

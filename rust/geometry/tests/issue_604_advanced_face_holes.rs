@@ -16,17 +16,13 @@
 
 use ifc_lite_core::{EntityDecoder, IfcType};
 use ifc_lite_geometry::GeometryRouter;
-use std::fs;
 
-const FIXTURE: &str = "tests/models/various/issue-604-door.ifc";
+const FIXTURE: &str = "various/issue-604-door.ifc";
 const PANEL_BREP: u32 = 712;
 
 #[test]
 fn door_panel_brep_emits_annular_triangulation_no_zfight_filler() {
-    let Ok(content) = fs::read_to_string(format!("../../{}", FIXTURE)) else {
-        eprintln!("skip: fixture missing — run `pnpm fixtures`");
-        return;
-    };
+    let content = ifc_lite_testkit::fixture_text_or_skip!(FIXTURE);
     let entity_index = ifc_lite_core::build_entity_index(&content);
     let mut decoder = EntityDecoder::with_index(&content, entity_index);
     let router = GeometryRouter::new();

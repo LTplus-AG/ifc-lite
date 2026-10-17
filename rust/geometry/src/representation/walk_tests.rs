@@ -186,7 +186,7 @@ fn refusals_carry_the_strict_walks_message_text() {
     for (id, text) in [
         (100, "Failed to resolve MappingSource"),
         (101, "Failed to resolve MappedRepresentation"),
-        (103, "Representation missing Items"),
+        (103, "Expected list"),
     ] {
         let item = d.decode_by_id(id).unwrap();
         let mut trace = Trace::default();

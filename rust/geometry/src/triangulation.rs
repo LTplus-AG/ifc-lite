@@ -468,7 +468,19 @@ pub fn triangulate_planar_face(
         .iter()
         .map(|hole| project_to_2d_with_basis(hole, &u_axis, &v_axis, &origin))
         .collect();
-    match triangulate_polygon_with_holes(&outer_2d, &holes_2d) {
+    // Hole-free rings of five or more corners keep the
+    // exact dominant-axis projection every polygonal face used before the planar home: it never
+    // perturbs exactly collinear or axis-aligned corners, so the triangulation
+    // (and the booleans downstream of it) does not shift with Newell-basis
+    // rounding, and a convex ring with a collinear corner is never fanned
+    // through a degenerate zero-area triangle (which opens the edges its
+    // neighbour shares through that corner).
+    let held = if holes_2d.is_empty() && outer.len() >= 5 {
+        axis_earcut(outer, &normal)
+    } else {
+        triangulate_polygon_with_holes(&outer_2d, &holes_2d)
+    };
+    match held {
         Ok(idx) => Ok(idx.into_iter().map(|i| i as u32).collect()),
         Err(_) if holes.is_empty() => {
             let mut idx = Vec::with_capacity((outer.len() - 2) * 3);
@@ -481,6 +493,34 @@ pub fn triangulate_planar_face(
             "planar face triangulation with holes failed: {error}"
         ))),
     }
+}
+
+/// Earcut a hole-free planar ring on the plane its dominant normal axis drops,
+/// winding the triangles with the ring (earcut itself re-winds counter-clockwise
+/// in the projected frame, which mirrors for a ring that runs clockwise there).
+fn axis_earcut(ring: &[Point3<f64>], normal: &Vector3<f64>) -> Result<Vec<usize>> {
+    let (a, b) = if normal.z.abs() >= normal.x.abs() && normal.z.abs() >= normal.y.abs() {
+        (0, 1)
+    } else if normal.y.abs() >= normal.x.abs() {
+        (0, 2)
+    } else {
+        (1, 2)
+    };
+    let flat: Vec<f64> = ring.iter().flat_map(|p| [p[a], p[b]]).collect();
+    let n = ring.len();
+    let area2: f64 = (0..n)
+        .map(|i| {
+            let (p, q) = (&ring[i], &ring[(i + 1) % n]);
+            p[a] * q[b] - q[a] * p[b]
+        })
+        .sum();
+    let mut idx = safe_earcut(&flat, &[], 2).map_err(Error::TriangulationError)?;
+    if area2 < 0.0 {
+        for tri in idx.chunks_exact_mut(3) {
+            tri.swap(1, 2);
+        }
+    }
+    Ok(idx)
 }
 
 /// Project 3D points onto a 2D plane defined by a normal

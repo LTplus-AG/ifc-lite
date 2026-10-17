@@ -535,3 +535,33 @@ fn touching_holes_with_rounding_noise_are_not_overlapping_7787() {
         assert_eq!(res.is_err(), overlaps, "x0 {x0}: {res:?}");
     }
 }
+
+/// Census regression (#7809): a convex ring with collinear corners (the
+/// MiniBIM polygonal wall face) must not fan through a zero-area triangle,
+/// and every triangle must wind with the ring.
+#[test]
+fn planar_face_collinear_convex_ring_has_no_degenerate_triangle() {
+    let ring = [
+        (0.0, 0.0), (0.0, 4.4), (0.3, 4.4), (0.6, 4.4),
+        (0.6, 2.85), (0.6, 0.5), (0.6, 0.0), (0.3, 0.0),
+    ]
+    .map(|(x, z)| Point3::new(x, 0.15, z));
+    let idx = triangulate_planar_face(&ring, &[]).unwrap();
+    assert_eq!(idx.len(), 18);
+    let mut total = 0.0;
+    for t in idx.chunks_exact(3) {
+        let (a, b, c) = (ring[t[0] as usize], ring[t[1] as usize], ring[t[2] as usize]);
+        let area = (b - a).cross(&(c - a)).norm() / 2.0;
+        assert!(area > 1e-9, "zero-area triangle {t:?}");
+        total += area;
+    }
+    assert!((total - 0.6 * 4.4).abs() < 1e-9);
+    // Same winding as a ring authored the other way round.
+    let rev: Vec<_> = ring.iter().rev().cloned().collect();
+    let idx_rev = triangulate_planar_face(&rev, &[]).unwrap();
+    let n = |i: &[u32], r: &[Point3<f64>]| {
+        let t = &i[0..3];
+        (r[t[1] as usize] - r[t[0] as usize]).cross(&(r[t[2] as usize] - r[t[0] as usize]))
+    };
+    assert!(n(&idx, &ring).dot(&n(&idx_rev, &rev)) < 0.0);
+}

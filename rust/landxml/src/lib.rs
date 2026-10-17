@@ -30,6 +30,7 @@ mod profile;
 mod profile_circular;
 mod profile_evaluator;
 mod semantics;
+mod source;
 mod stream;
 mod terrain;
 mod terrain_validation;
@@ -62,6 +63,7 @@ pub use plan::{
     LandXmlPlanLimits, LandXmlPlanPoint, LandXmlPlanPointLocation, LandXmlPlanResolver,
     LandXmlPlanSourceBatch,
 };
+pub use source::{parse_landxml_source, parse_landxml_source_with_cancel, LandXmlSource, LandXmlSourceLimits};
 pub use pipe_parser::{parse_landxml_pipe_networks, parse_landxml_pipe_networks_with_cancel};
 pub use pipes::{
     LandXmlPipe, LandXmlPipeConnectivity, LandXmlPipeFeature, LandXmlPipeFlow, LandXmlPipeGeometry,

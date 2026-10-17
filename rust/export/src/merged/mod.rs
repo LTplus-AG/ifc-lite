@@ -315,7 +315,11 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
             if flatten.drops(id) {
                 continue;
             }
-            pruned = flatten.bytes(&source_schema, pruned.as_deref().map_or(bytes, str::as_bytes)).or(pruned);
+            match flatten.bytes(&source_schema, pruned.as_deref().map_or(bytes, str::as_bytes)) {
+                crate::schema_style_flatten::Flat::Drop => continue,
+                crate::schema_style_flatten::Flat::Write(text) => pruned = Some(text),
+                crate::schema_style_flatten::Flat::Keep => {}
+            }
             let bytes: &[u8] = pruned.as_deref().map_or(bytes, str::as_bytes);
             let remapped = if offset == 0 && plan.shared_remap.is_empty() {
                 String::from_utf8_lossy(bytes).into_owned()

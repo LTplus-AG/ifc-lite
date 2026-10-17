@@ -141,3 +141,35 @@ fn export_step_json_opts(source: &str, opts: &ifc_lite_export::StepOptions) -> S
     ifc_lite_export::export_step_to_writer(source.as_bytes(), opts, &mut buf).expect("exports");
     String::from_utf8(buf).unwrap()
 }
+
+/// A log edit of a SOURCE assignment's `Styles` reaches the flatten: the styled
+/// item gets the edited members, not the source ones (#7801 round 3).
+#[test]
+fn a_log_edit_of_a_source_assignment_is_flattened() {
+    let source = file(
+        "IFC2X3",
+        &["#1=IFCCARTESIANPOINT((0.,0.,0.));", "#3=IFCSURFACESTYLE('s',.BOTH.,());", "#4=IFCSURFACESTYLE('t',.BOTH.,());",
+          "#6=IFCSTYLEDITEM(#1,(#5),$);", "#5=IFCPRESENTATIONSTYLEASSIGNMENT((#3));"],
+    );
+    let log = ifc_lite_export::MutationLog::from_json(
+        r##"{"mutations":[{"type":"UPDATE_ATTRIBUTE","entityId":5,"attributeName":"Styles","newValue":["#4"]}]}"##,
+    )
+    .unwrap();
+    let opts = ifc_lite_export::StepOptions { schema: Some("IFC4X3".into()), ..Default::default() };
+    let (out, _) = ifc_lite_export::export_step_with_log(source.as_bytes(), &opts, &log).expect("exports");
+    assert!(!out.contains("IFCPRESENTATIONSTYLEASSIGNMENT"), "{out}");
+    assert!(out.contains("IFCSTYLEDITEM(#1,(#4),$)"), "{out}");
+}
+
+/// Without a conversion nothing flattens: a log-created assignment is written.
+#[test]
+fn a_log_created_assignment_is_kept_without_a_conversion() {
+    let source = file("IFC4", &["#1=IFCCARTESIANPOINT((0.,0.,0.));", "#3=IFCSURFACESTYLE('s',.BOTH.,());"]);
+    let log = ifc_lite_export::MutationLog::from_json(
+        r##"{"mutations":[{"type":"CREATE_ENTITY","entityId":20,"attributeName":"IfcPresentationStyleAssignment"}],
+            "newEntities":[{"expressId":20,"type":"IfcPresentationStyleAssignment","attributes":[["#3"]]}]}"##,
+    )
+    .unwrap();
+    let (out, _) = ifc_lite_export::export_step_with_log(source.as_bytes(), &Default::default(), &log).expect("exports");
+    assert!(out.contains("#20=IFCPRESENTATIONSTYLEASSIGNMENT((#3));"), "{out}");
+}

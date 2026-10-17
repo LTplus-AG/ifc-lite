@@ -27,6 +27,8 @@ import { splitTopLevelStepArguments } from './step-argument-parser.js';
 import { convertStepLine, type IfcSchemaVersion } from './schema-converter.js';
 
 const ASSIGNMENT = 'IFCPRESENTATIONSTYLEASSIGNMENT';
+/** Deepest list nesting {@link StyleFlatten.strip} reads (IFC nests three). */
+const MAX_DEPTH = 8;
 
 function listMembers(arg: string): string[] | null {
   const t = arg.trim();
@@ -42,8 +44,31 @@ function refId(token: string): number | null {
   return m ? Number(m[1]) : null;
 }
 
+/** The `#n` ids of a `Styles` value, or null when a member is not a reference. */
+function styleRefs(value: string): number[] | null {
+  const ids = listMembers(value)?.map(refId) ?? null;
+  return ids === null || ids.includes(null) ? null : (ids as number[]);
+}
+
+function isStyledItem(entityType: string): boolean {
+  return entityType === 'IFCSTYLEDITEM' || getInheritanceChainAcrossSchemas(entityType).includes('IfcStyledItem');
+}
+
 export class StyleFlatten {
   private readonly members = new Map<number, readonly string[]>();
+  /**
+   * Styled items whose `Styles` names records only, by those ids: the ones
+   * that can flatten to nothing. Read from the store once an assignment holds
+   * nothing IFC4X3 can name (`collected`); noted lines always.
+   */
+  private readonly styled = new Map<number, readonly number[]>();
+  private collected = false;
+  /**
+   * Styled items whose flattened `Styles` is empty (`SET [1:?]` in IFC4X3, so
+   * `()` is not a file): not written, and every reference to one is removed (a
+   * list member) or written `$` (a single slot).
+   */
+  private emptied = new Set<number>();
 
   /** True for the one conversion that flattens: IFC2X3 or IFC4 source, IFC4X3 target. */
   static applies(from: IfcSchemaVersion, to: IfcSchemaVersion): boolean {
@@ -55,7 +80,7 @@ export class StyleFlatten {
     return StyleFlatten.applies(from, to) ? new StyleFlatten() : undefined;
   }
 
-  /** Register an assignment record by its text (source, created or copied; the last record with an id wins). */
+  /** Register an assignment record by its text (source, created, copied or edited; the last record with an id wins). */
   note(expressId: number, text: string): void {
     const attrs = /^\s*#\d+\s*=\s*\w+\s*\((.*)\)\s*;?\s*$/s.exec(text)?.[1];
     const args = attrs === undefined ? null : splitTopLevelStepArguments(attrs);
@@ -66,16 +91,26 @@ export class StyleFlatten {
     else this.members.delete(expressId);
   }
 
-  /** {@link note}, for any record line: only an assignment is registered. */
+  /** {@link note}, for any record line: an assignment or a styled item is registered. Call {@link settle} after. */
   noteLine(line: string): void {
     const m = RECORD.exec(line);
-    if (m && m[3].toUpperCase() === ASSIGNMENT) this.note(Number(m[2]), line);
+    if (!m) return;
+    const type = m[3].toUpperCase();
+    if (type === ASSIGNMENT) this.note(Number(m[2]), line);
+    else if (isStyledItem(type)) {
+      const args = splitTopLevelStepArguments(m[5]);
+      const refs = args && args.length > 1 ? styleRefs(args[1]) : null;
+      if (refs) this.styled.set(Number(m[2]), refs);
+      else this.styled.delete(Number(m[2]));
+    }
   }
 
-  /** From assignment records as `[expressId, record text]`. */
-  static fromRecords(records: Iterable<readonly [number, string]>): StyleFlatten {
+  /** From record lines (assignments and styled items are read, the rest ignored). */
+  static fromRecords(records: Iterable<string>): StyleFlatten {
     const flat = new StyleFlatten();
-    for (const [id, text] of records) flat.note(id, text);
+    for (const text of records) flat.noteLine(text);
+    flat.collected = true;
+    flat.settle();
     return flat;
   }
 
@@ -91,28 +126,59 @@ export class StyleFlatten {
       const ref = store.entityIndex.byId.get(id);
       if (ref) flat.note(id, decodeRange(store.source, ref.byteOffset, ref.byteOffset + ref.byteLength));
     }
+    flat.settle(store);
     return flat;
   }
 
-  /** An assignment record is not written. */
+  /**
+   * Edited source assignments: each id's record text after the session's
+   * edits (`edited(id)`, null when unchanged), so a styled item flattens to
+   * the members the user set, not the source ones.
+   */
+  noteEdited(store: Pick<IfcDataStore, 'entityIndex' | 'source'>, edited: (id: number, text: string) => string | null): void {
+    if (!store.source) return;
+    for (const id of store.entityIndex.byType.get(ASSIGNMENT) ?? []) {
+      const ref = store.entityIndex.byId.get(id);
+      const text = ref ? edited(id, decodeRange(store.source, ref.byteOffset, ref.byteOffset + ref.byteLength)) : null;
+      if (text !== null) this.note(id, text);
+    }
+    this.settle(store);
+  }
+
+  /** Decide which styled items flatten to nothing, reading the store's styled items once an assignment holds nothing. */
+  settle(store?: Pick<IfcDataStore, 'entityIndex' | 'source'>): void {
+    const source = store?.source;
+    if (source && !this.collected && [...this.members.values()].some((m) => m.length === 0)) {
+      this.collected = true;
+      for (const [type, ids] of store.entityIndex.byType) {
+        if (!isStyledItem(type.toUpperCase())) continue;
+        for (const id of ids) {
+          const ref = store.entityIndex.byId.get(id);
+          if (ref && !this.styled.has(id)) this.noteLine(decodeRange(source, ref.byteOffset, ref.byteOffset + ref.byteLength));
+        }
+      }
+    }
+    const empty = (r: number) => this.members.get(r)?.length === 0;
+    this.emptied = new Set([...this.styled].filter(([, refs]) => refs.length > 0 && refs.every(empty)).map(([id]) => id));
+  }
+
+  /** A record that is not written: an assignment, or a styled item whose `Styles` flattens to nothing. */
   drops(expressId: number): boolean {
-    return this.members.has(expressId);
+    return this.members.has(expressId) || this.emptied.has(expressId);
   }
 
   /**
-   * The attribute list with its `Styles` entries flattened, or null when this
-   * is not a styled item naming an assignment. `args` is the validated split.
+   * The flattened `Styles` members, or null when this is not a styled item
+   * naming an assignment. `args` is the validated split.
    */
-  flatten(entityType: string, args: readonly string[]): string | null {
+  private flattened(entityType: string, args: readonly string[]): string[] | null {
     if (args.length < 2) return null;
     const styles = listMembers(args[1]);
     if (!styles || !styles.some((m) => {
       const id = refId(m);
       return id !== null && this.members.has(id);
     })) return null;
-    if (!getInheritanceChainAcrossSchemas(entityType).includes('IfcStyledItem') && entityType !== 'IFCSTYLEDITEM') {
-      return null;
-    }
+    if (!isStyledItem(entityType)) return null;
     const flat: string[] = [];
     for (const member of styles) {
       const id = refId(member);
@@ -120,14 +186,53 @@ export class StyleFlatten {
         if (!flat.includes(m)) flat.push(m);
       }
     }
-    const out = [...args];
-    out[1] = `(${flat.join(',')})`;
-    return out.join(',');
+    return flat;
+  }
+
+  /** `arg` without its references to an emptied styled item; null when `arg` is one. */
+  private strip(arg: string, depth: number): string | null {
+    const t = arg.trim();
+    const id = refId(t);
+    if (id !== null && this.emptied.has(id)) return null;
+    const items = depth < MAX_DEPTH && t.startsWith('(') && t.endsWith(')') ? splitTopLevelStepArguments(t.slice(1, -1)) : null;
+    if (items) {
+      const kept = items.map((m) => this.strip(m, depth + 1));
+      if (kept.some((k, i) => k !== items[i])) return `(${kept.filter((k): k is string => k !== null).join(',')})`;
+    }
+    return arg;
   }
 
   /**
-   * One source record through the flatten: null for an assignment (not
-   * written), the flattened line for a styled item naming one, else `line`.
+   * The attribute list with its `Styles` entries flattened and its references
+   * to an emptied styled item removed; `'drop'` when the record is a styled
+   * item left with no style; null when nothing changes. `args` is the validated split.
+   */
+  flatten(entityType: string, args: readonly string[]): string | 'drop' | null {
+    const out = [...args];
+    let changed = false;
+    const flat = this.flattened(entityType, args);
+    if (flat !== null) {
+      if (flat.length === 0) return 'drop';
+      out[1] = `(${flat.join(',')})`;
+      changed = true;
+    }
+    if (this.emptied.size > 0) {
+      for (let i = 0; i < out.length; i++) {
+        if (!out[i].includes('#')) continue;
+        const stripped = this.strip(out[i], 0) ?? '$';
+        if (stripped !== out[i]) {
+          out[i] = stripped;
+          changed = true;
+        }
+      }
+    }
+    return changed ? out.join(',') : null;
+  }
+
+  /**
+   * One record through the flatten: null for an assignment or an emptied
+   * styled item (not written), the rewritten line for a record naming either,
+   * else `line`.
    */
   apply(line: string): string | null {
     const m = RECORD.exec(line);
@@ -136,6 +241,7 @@ export class StyleFlatten {
     if (type === ASSIGNMENT && this.drops(Number(m[2]))) return null;
     const split = splitTopLevelStepArguments(m[5]);
     const flat = split === null ? null : this.flatten(type, split);
+    if (flat === 'drop') return null;
     return flat === null ? line : `${m[1]}${m[3]}${m[4]}(${flat});`;
   }
 }

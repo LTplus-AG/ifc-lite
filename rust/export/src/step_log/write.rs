@@ -141,16 +141,16 @@ fn write_line<W: Write>(
     slot_fill: &mut crate::schema_ifc2x3_slots::Ifc2x3SlotFill,
     checks: &mut crate::schema_enum::ConversionChecks,
     flatten: &crate::schema_style_flatten::StyleFlatten,
-) -> io::Result<()> {
+) -> io::Result<bool> {
     if converting {
-        let flat = flatten.line(from, text.to_string());
+        let Some(flat) = flatten.line(from, text.to_string()) else { return Ok(false) };
         let text = flat.as_str();
         let converted = crate::schema_convert::convert_step_line(text, from, to, id, slot_fill, Some(checks))?;
         out.write_all(converted.as_bytes())?;
     } else {
         out.write_all(text.as_bytes())?;
     }
-    out.write_all(b"\n")
+    out.write_all(b"\n").map(|()| true)
 }
 
 fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &mut W) -> io::Result<LogExportStats> {
@@ -252,7 +252,8 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
 
     let mut slot_fill = crate::schema_ifc2x3_slots::Ifc2x3SlotFill::new(pass.fallback_owner_history());
     let mut checks = crate::schema_enum::ConversionChecks::new();
-    let mut flatten = crate::schema_style_flatten::StyleFlatten::for_export(content, &source_label, &target); flatten.note_all(pass.generated.iter().chain(&pass.rewritten_lines).chain(&pass.georef_lines).chain(&pass.created_lines));
+    let mut flatten = crate::schema_style_flatten::StyleFlatten::for_export(content, &source_label, &target); flatten.note_all(content, pass.mutated_lines.iter().filter_map(|(id, (t, _))| Some((*id, t.as_deref()?)))
+        .chain(pass.generated.iter().chain(&pass.rewritten_lines).chain(&pass.georef_lines).chain(&pass.created_lines).map(|(id, l)| (*id, l.as_str()))));
     let mut written = 0usize;
     for &id in &src.order {
         if pass.skip.contains(&id) || pass.rewritten.contains(&id) || pass.is_deleted(id) || flatten.drops(id) {
@@ -288,8 +289,7 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
                 &owned
             }
         };
-        write_line(out, text, id, converting, &source_label, &target, &mut slot_fill, &mut checks, &flatten)?;
-        written += 1;
+        written += usize::from(write_line(out, text, id, converting, &source_label, &target, &mut slot_fill, &mut checks, &flatten)?);
     }
     // Every appended record goes out through the same `write_line` as a
     // source one, in the TypeScript exporter's order: generated sets, the
@@ -304,8 +304,7 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
         .chain(&pass.georef_lines)
         .chain(&pass.created_lines);
     for (id, line) in appended.filter(|(id, _)| !flatten.drops(*id)) {
-        write_line(out, line, *id, converting, &source_label, &target, &mut slot_fill, &mut checks, &flatten)?;
-        written += 1;
+        written += usize::from(write_line(out, line, *id, converting, &source_label, &target, &mut slot_fill, &mut checks, &flatten)?);
     }
     out.write_all(b"ENDSEC;\nEND-ISO-10303-21;\n")?;
 

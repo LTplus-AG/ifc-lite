@@ -235,6 +235,7 @@ export function writeOverlayCreatedEntities(
     pass.newEntityCount++;
   }
   for (const line of toConvert) pass.styleFlatten?.noteLine(line);
+  pass.styleFlatten?.settle();
   for (const line of toConvert) {
     const converted = convertStepLineFlattening(pass.styleFlatten, line, pass.sourceSchema, pass.schema, options.guidRandom, pass.slotFill, pass.withheldRefIds, pass.ifc4Slots, pass.enums);
     if (converted !== null) pass.entities.push(converted);

@@ -1,5 +1,5 @@
 {
- "_comment": "Shared cross-language vectors for flattening IfcPresentationStyleAssignment on an IFC2X3/IFC4 -> IFC4X3 conversion (#7742, D57). IFC4X3's IfcStyledItem.Styles takes IfcPresentationStyle directly, so each Styles entry naming an assignment is replaced by the assignment's members (order kept, deduplicated) and the assignment records are not written. `records` are the DATA records in; `expect` the records written, in order. Rust: rust/export/tests/schema_style_flatten_parity.rs (export_step_json). TypeScript: packages/export/src/schema-style-flatten.parity.test.ts (StyleFlatten + convertStepLine). Scope: infrastructure IFC4X3 -> IFC4 stays fail-closed.",
+ "_comment": "Shared cross-language vectors for flattening IfcPresentationStyleAssignment on an IFC2X3/IFC4 -> IFC4X3 conversion (#7742, D57). IFC4X3's IfcStyledItem.Styles takes IfcPresentationStyle directly, so each Styles entry naming an assignment is replaced by the assignment's members (order kept, deduplicated) and the assignment records are not written; a styled item whose Styles flattens to nothing is not written either, and every reference to it is removed (a list member) or written $ (a single slot). `records` are the DATA records in; `expect` the records written, in order. Rust: rust/export/tests/schema_style_flatten_parity.rs (export_step_json). TypeScript: packages/export/src/schema-style-flatten.parity.test.ts (StyleFlatten + convertStepLine). Scope: infrastructure IFC4X3 -> IFC4 stays fail-closed.",
  "cases": [
   {
    "why": "a styled item naming an assignment gets the assignment's members; the assignment is not written",
@@ -87,15 +87,33 @@
    ]
   },
   {
-   "why": "an assignment holding only a null style leaves an empty Styles list (D59; the schema wants one member, the null style has no IFC4X3 spelling)",
+   "why": "a styled item whose Styles flattens to nothing is not written (IFC4X3 Styles is SET [1:?] and the null style has no IFC4X3 spelling), and a list naming it, before or after it, loses that member (#7801 round 3)",
    "from": "IFC2X3",
    "to": "IFC4X3",
    "records": [
+    "#5=IFCSTYLEDREPRESENTATION(#8,'Style','Material',(#1,#6));",
     "#1=IFCSTYLEDITEM(#9,(#2),$);",
-    "#2=IFCPRESENTATIONSTYLEASSIGNMENT((IFCNULLSTYLE(.NULL.)));"
+    "#2=IFCPRESENTATIONSTYLEASSIGNMENT((IFCNULLSTYLE(.NULL.)));",
+    "#6=IFCSTYLEDITEM($,(#3),$);",
+    "#7=IFCSTYLEDREPRESENTATION(#8,'Style','Material',(#6,#1));"
    ],
    "expect": [
-    "#1=IFCSTYLEDITEM(#9,(),$);"
+    "#5=IFCSTYLEDREPRESENTATION(#8,'Style','Material',(#6));",
+    "#6=IFCSTYLEDITEM($,(#3),$);",
+    "#7=IFCSTYLEDREPRESENTATION(#8,'Style','Material',(#6));"
+   ]
+  },
+  {
+   "why": "a null-only assignment beside a real one adds nothing and the styled item stays (#7801 round 3)",
+   "from": "IFC4",
+   "to": "IFC4X3",
+   "records": [
+    "#1=IFCSTYLEDITEM(#9,(#2,#3),$);",
+    "#2=IFCPRESENTATIONSTYLEASSIGNMENT((IFCNULLSTYLE(.NULL.)));",
+    "#3=IFCPRESENTATIONSTYLEASSIGNMENT((#4));"
+   ],
+   "expect": [
+    "#1=IFCSTYLEDITEM(#9,(#4),$);"
    ]
   },
   {

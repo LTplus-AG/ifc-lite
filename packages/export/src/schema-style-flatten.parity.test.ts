@@ -22,12 +22,6 @@ const fixture: { cases: Case[] } = JSON.parse(
   ),
 );
 
-function assignments(records: string[]): Array<[number, string]> {
-  return records
-    .filter((r) => r.includes('=IFCPRESENTATIONSTYLEASSIGNMENT('))
-    .map((r) => [Number(/^#(\d+)/.exec(r)![1]), r]);
-}
-
 describe('StyleFlatten matches the shared vectors (D57)', () => {
   it('the fixture is not trivial', () => {
     expect(fixture.cases.length).toBeGreaterThanOrEqual(8);
@@ -35,7 +29,7 @@ describe('StyleFlatten matches the shared vectors (D57)', () => {
 
   for (const c of fixture.cases) {
     it(`${c.from} -> ${c.to}: ${c.why}`, () => {
-      const styles = StyleFlatten.applies(c.from, c.to) ? StyleFlatten.fromRecords(assignments(c.records)) : undefined;
+      const styles = StyleFlatten.applies(c.from, c.to) ? StyleFlatten.fromRecords(c.records) : undefined;
       const out = c.records
         .map((r) => convertStepLineFlattening(styles, r, c.from, c.to))
         .filter((r): r is string => r !== null);
@@ -44,7 +38,7 @@ describe('StyleFlatten matches the shared vectors (D57)', () => {
   }
 
   it('flattens a styled-item subtype and leaves other records alone', () => {
-    const styles = StyleFlatten.fromRecords([[2, '#2=IFCPRESENTATIONSTYLEASSIGNMENT((#3,#4));']]);
+    const styles = StyleFlatten.fromRecords(['#2=IFCPRESENTATIONSTYLEASSIGNMENT((#3,#4));']);
     expect(styles.apply("#7=IFCANNOTATIONSURFACEOCCURRENCE(#9,(#2),$);")).toBe(
       '#7=IFCANNOTATIONSURFACEOCCURRENCE(#9,(#3,#4),$);',
     );

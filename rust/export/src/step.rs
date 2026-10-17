@@ -191,7 +191,7 @@ fn emit<W: std::io::Write>(
     let mut ids = crate::step_ids::IdAllocator::after(max_id);
     let resolved = crate::step_cow::resolve(&opts.copy_on_write, content, line_of, &included, &muts_by_id, &mut ids);
     let copies_refused = resolved.refused;
-    let copies = resolved.copies; flatten.note_edits(&copies, &muts_by_id);
+    let copies = resolved.copies; flatten.note_edits(content, &copies, &muts_by_id);
     let repointed = resolved.repointed;
 
     // 3. Emit header + filtered entities (source order) + footer.
@@ -213,7 +213,7 @@ fn emit<W: std::io::Write>(
                     }
                     None => raw.into_owned(),
                 };
-                let edited = flatten.line(&source_schema, edited);
+                let Some(edited) = flatten.line(&source_schema, edited) else { continue };
                 if converting {
                     let converted = crate::schema_convert::convert_step_line(
                         &edited,
@@ -245,7 +245,7 @@ fn emit<W: std::io::Write>(
             let mut muts = muts_by_id.get(source_id).cloned().unwrap_or_default();
             muts.extend(edits.iter().map(|(i, v)| (*i, v.clone())));
             let edited = apply_attr_mutations_counted(&raw, &muts, &mut attribute_edits_refused);
-            let renumbered = flatten.line(&source_schema, renumber(&edited, *copy_id));
+            let Some(renumbered) = flatten.line(&source_schema, renumber(&edited, *copy_id)) else { continue };
             if converting {
                 let converted = crate::schema_convert::convert_step_line(
                     &renumbered,

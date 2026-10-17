@@ -14,21 +14,31 @@
 //! per-transport drift as the dropped `origin`. Keep every transport routed
 //! through these helpers so the frame can never diverge again.
 
+use ifc_lite_geometry::math::frame::{zup_to_yup, zup_to_yup_in_place};
 use ifc_lite_processing::MeshData;
 
-/// Convert one position/normal triplet from IFC Z-up to WebGL Y-up:
-/// X stays, new Y = old Z (vertical), new Z = -old Y (depth).
-#[inline]
-pub fn zup_to_yup(x: f32, y: f32, z: f32) -> (f32, f32, f32) {
-    (x, z, -y)
-}
-
-/// The same swap for an f64 triplet — used for the per-mesh `origin`, which
-/// must land in the SAME frame as the positions it offsets (the swap is
-/// linear, so `swap(origin + position) == swap(origin) + swap(position)`).
-#[inline]
-pub fn zup_to_yup_f64(v: [f64; 3]) -> [f64; 3] {
-    [v[0], v[2], -v[1]]
+/// Whether a mesh's normals run parallel to its positions (one normal per
+/// vertex): the precondition for rewriting or emitting them at all.
+///
+/// Some pipelines (advanced_brep) emit positions with absent or mismatched
+/// normals. An EMPTY buffer is the documented "client recomputes flat normals"
+/// signal and is not a mismatch; a non-empty buffer of the wrong length is,
+/// and is logged here with `outcome` (what this format does about it). The
+/// outcome itself stays per format because the formats force it: JSON clears
+/// the buffer, while Parquet zero-pads because its normal columns are non-null.
+/// Pass `None` when the caller does not emit normals and so has nothing to say.
+pub(crate) fn normals_parallel(mesh: &MeshData, outcome: Option<&str>) -> bool {
+    let parallel = mesh.normals.len() == mesh.positions.len();
+    if let (false, false, Some(outcome)) = (parallel, mesh.normals.is_empty(), outcome) {
+        tracing::warn!(
+            express_id = mesh.express_id,
+            ifc_type = %mesh.ifc_type,
+            positions = mesh.positions.len(),
+            normals = mesh.normals.len(),
+            "Mesh normals length mismatch; {outcome}"
+        );
+    }
+    parallel
 }
 
 /// Rewrite a mesh into the Y-up wire frame in place: positions, normals, and
@@ -55,12 +65,7 @@ pub fn mesh_to_yup_in_place(mesh: &mut MeshData) {
         );
         mesh.positions.truncate(positions_end);
     }
-    for i in (0..positions_end).step_by(3) {
-        let (x, y, z) = zup_to_yup(mesh.positions[i], mesh.positions[i + 1], mesh.positions[i + 2]);
-        mesh.positions[i] = x;
-        mesh.positions[i + 1] = y;
-        mesh.positions[i + 2] = z;
-    }
+    zup_to_yup_in_place(&mut mesh.positions);
 
     // Normals must end up in the SAME frame as the positions. Some pipelines
     // (advanced_brep) emit positions with absent or mismatched normals; the
@@ -69,25 +74,16 @@ pub fn mesh_to_yup_in_place(mesh: &mut MeshData) {
     // half-rotated Z-up normal buffer on the wire — a silently wrong frame is
     // exactly the drift this module exists to prevent. An empty buffer is the
     // documented "client recomputes flat normals" signal.
-    if mesh.normals.len() == mesh.positions.len() {
-        for i in (0..positions_end).step_by(3) {
-            let (x, y, z) = zup_to_yup(mesh.normals[i], mesh.normals[i + 1], mesh.normals[i + 2]);
-            mesh.normals[i] = x;
-            mesh.normals[i + 1] = y;
-            mesh.normals[i + 2] = z;
-        }
+    if normals_parallel(
+        mesh,
+        Some("dropping normals rather than emitting a Z-up buffer"),
+    ) {
+        zup_to_yup_in_place(&mut mesh.normals);
     } else if !mesh.normals.is_empty() {
-        tracing::warn!(
-            express_id = mesh.express_id,
-            ifc_type = %mesh.ifc_type,
-            positions = mesh.positions.len(),
-            normals = mesh.normals.len(),
-            "Mesh normals length mismatch; dropping normals rather than emitting a Z-up buffer"
-        );
         mesh.normals.clear();
     }
 
-    mesh.origin = zup_to_yup_f64(mesh.origin);
+    mesh.origin = zup_to_yup(mesh.origin);
 }
 
 #[cfg(test)]

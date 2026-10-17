@@ -7,9 +7,11 @@
 //! `module_size_ratchet` budget; `_tests.rs` files are exempt from that
 //! ratchet (see `module_size_ratchet.rs`'s `is_exempt`).
 
-use crate::simplify_math::{
-    conjugate_yup_to_zup, invert_affine_row_major, matmul_row_major, zup_to_yup,
+use crate::simplify_math::invert_affine_row_major;
+use ifc_lite_geometry::math::frame::{
+    conjugate_yup_to_zup, zup_to_yup, YUP_TO_ZUP, ZUP_TO_YUP,
 };
+use ifc_lite_geometry::math::mat4::mul as matmul_row_major;
 use crate::simplify_session::*;
 
 /// Indexed 12-tri box between min/max, IFC Z-up frame, zero normals.
@@ -200,23 +202,9 @@ fn conjugate_yup_to_zup_recovers_a_non_identity_matrix() {
         1.0, 0.0, 0.0, 10.0, 0.0, 1.0, 0.0, 20.0, 0.0, 0.0, 1.0, 30.0, 0.0, 0.0, 0.0, 1.0,
     ];
     // Forward boundary conjugation `M' = S * M * S^T`
-    // (`zero_copy::mesh::swap_zup_to_yup_mat4`'s convention), built from
+    // (`frame::conjugate_zup_to_yup`'s convention), built from
     // the same S/S^T this module documents in `conjugate_yup_to_zup`.
-    #[rustfmt::skip]
-    let s: [f64; 16] = [
-        1.0, 0.0, 0.0, 0.0,
-        0.0, 0.0, 1.0, 0.0,
-        0.0, -1.0, 0.0, 0.0,
-        0.0, 0.0, 0.0, 1.0,
-    ];
-    #[rustfmt::skip]
-    let st: [f64; 16] = [
-        1.0, 0.0, 0.0, 0.0,
-        0.0, 0.0, -1.0, 0.0,
-        0.0, 1.0, 0.0, 0.0,
-        0.0, 0.0, 0.0, 1.0,
-    ];
-    let m_prime = matmul_row_major(&matmul_row_major(&s, &m), &st);
+    let m_prime = matmul_row_major(&matmul_row_major(&ZUP_TO_YUP, &m), &YUP_TO_ZUP);
     let recovered = conjugate_yup_to_zup(&m_prime);
     for (i, (a, b)) in recovered.iter().zip(m.iter()).enumerate() {
         assert!((a - b).abs() < 1e-9, "index {i}: {recovered:?} != {m:?}");

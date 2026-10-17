@@ -9,17 +9,28 @@ use super::*;
 #[test]
 fn zup_to_yup_maps_vertical_axis() {
     // IFC Z is up; after the swap the vertical value must land in Y, and the
-    // old Y (depth) must land negated in Z.
-    assert_eq!(zup_to_yup(1.0, 2.0, 3.0), (1.0, 3.0, -2.0));
-    assert_eq!(zup_to_yup_f64([1.0, 2.0, 3.0]), [1.0, 3.0, -2.0]);
+    // old Y (depth) must land negated in Z. The swap is the shared
+    // `ifc_lite_geometry::math::frame` one, generic over f32 and f64, so the
+    // origin and the positions it offsets cannot disagree.
+    assert_eq!(zup_to_yup([1.0f32, 2.0, 3.0]), [1.0, 3.0, -2.0]);
+    assert_eq!(zup_to_yup([1.0f64, 2.0, 3.0]), [1.0, 3.0, -2.0]);
 }
 
-/// The f32 and f64 helpers must agree — the origin offsets the positions, so a
-/// mismatch would place geometry relative to a differently-rotated frame.
 #[test]
-fn f32_and_f64_swaps_agree() {
-    let (x, y, z) = zup_to_yup(10.0, 20.0, 30.0);
-    assert_eq!(zup_to_yup_f64([10.0, 20.0, 30.0]), [x as f64, y as f64, z as f64]);
+fn normals_parallel_is_true_only_for_one_normal_per_vertex() {
+    let mut mesh = MeshData::new(
+        1,
+        "IfcSlab".to_string(),
+        vec![0.0; 6],
+        vec![0.0; 6],
+        vec![],
+        [0.5, 0.5, 0.5, 1.0],
+    );
+    assert!(normals_parallel(&mesh, None));
+    mesh.normals.truncate(3);
+    assert!(!normals_parallel(&mesh, Some("test")));
+    mesh.normals.clear();
+    assert!(!normals_parallel(&mesh, Some("test")));
 }
 
 #[test]

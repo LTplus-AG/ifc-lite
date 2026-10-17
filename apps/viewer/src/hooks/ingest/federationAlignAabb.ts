@@ -20,7 +20,7 @@
  *     `min` and `max`: under rotation that does not even produce a valid box
  *     (`min > max` on the swapped axes). All eight corners go through the map
  *     and the AABB is re-derived from the results. This is the same hazard
- *     `rust/wasm-bindings/src/zero_copy/frame_swap.rs` documents for the
+ *     `rust/geometry/src/math/frame.rs` (`aabb_zup_to_yup`) documents for the
  *     Z-up→Y-up swap, where negating an axis reverses which corner is the min.
  *
  *  2. **The box lives in a different frame from `positions`.** `positions` are

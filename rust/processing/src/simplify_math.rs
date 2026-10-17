@@ -2,68 +2,11 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Frame/matrix helpers for the demesher session (`simplify_session`):
-//! Y-up <-> Z-up swaps matching the wasm boundary convention, affine 4x4
-//! inversion for the placement chain, and a fallback normal rebuild. Split
+//! Helpers for the demesher session (`simplify_session`): affine 4x4
+//! inversion for the placement chain and a fallback normal rebuild. The
+//! frame swaps and matrix products live in `ifc_lite_geometry::math`. Split
 //! from `simplify_session.rs` to keep it inside its `module_size_ratchet`
 //! budget.
-
-/// WebGL Y-up -> IFC Z-up (inverse of the boundary swap `[x, z, -y]`).
-#[inline]
-pub(crate) fn yup_to_zup(v: [f64; 3]) -> [f64; 3] {
-    [v[0], -v[2], v[1]]
-}
-
-/// IFC Z-up -> WebGL Y-up (the boundary swap). `pub(crate)` for the sibling
-/// `simplify_session_tests.rs` (split out for the module-size ratchet).
-#[inline]
-pub(crate) fn zup_to_yup(v: [f64; 3]) -> [f64; 3] {
-    [v[0], v[2], -v[1]]
-}
-
-/// Undo the boundary's matrix conjugation `M' = S * M * S^T`
-/// (`zero_copy::mesh::swap_zup_to_yup_mat4`): `M = S^T * M' * S`.
-pub(crate) fn conjugate_yup_to_zup(m: &[f64; 16]) -> [f64; 16] {
-    // S maps Z-up to Y-up: rows of the permutation with the sign flip.
-    #[rustfmt::skip]
-    const S: [f64; 16] = [
-        1.0, 0.0, 0.0, 0.0,
-        0.0, 0.0, 1.0, 0.0,
-        0.0, -1.0, 0.0, 0.0,
-        0.0, 0.0, 0.0, 1.0,
-    ];
-    #[rustfmt::skip]
-    const ST: [f64; 16] = [
-        1.0, 0.0, 0.0, 0.0,
-        0.0, 0.0, -1.0, 0.0,
-        0.0, 1.0, 0.0, 0.0,
-        0.0, 0.0, 0.0, 1.0,
-    ];
-    matmul_row_major(&matmul_row_major(&ST, m), &S)
-}
-
-pub(crate) fn matmul_row_major(a: &[f64; 16], b: &[f64; 16]) -> [f64; 16] {
-    let mut out = [0.0; 16];
-    for r in 0..4 {
-        for c in 0..4 {
-            let mut acc = 0.0;
-            for k in 0..4 {
-                acc += a[r * 4 + k] * b[k * 4 + c];
-            }
-            out[r * 4 + c] = acc;
-        }
-    }
-    out
-}
-
-#[inline]
-pub(crate) fn transform_point_row_major(m: &[f64; 16], p: [f64; 3]) -> [f64; 3] {
-    [
-        m[0] * p[0] + m[1] * p[1] + m[2] * p[2] + m[3],
-        m[4] * p[0] + m[5] * p[1] + m[6] * p[2] + m[7],
-        m[8] * p[0] + m[9] * p[1] + m[10] * p[2] + m[11],
-    ]
-}
 
 /// Inverse of an affine row-major 4x4 (placement chains are affine: last row
 /// [0,0,0,1]). `None` when the linear block is singular.

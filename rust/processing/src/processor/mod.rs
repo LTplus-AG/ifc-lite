@@ -30,13 +30,21 @@ mod csg_summary_tests;
 mod diagnostics;
 mod entity_index;
 use entity_index::{IndexBuilder, ProcessingIndex};
-mod id_filter;
-pub use id_filter::{
-    process_geometry_filtered_with_quality, process_geometry_filtered_with_quality_and_ids,
+mod entry_points;
+#[allow(deprecated)] // the deprecated delegates stay exported until the next major
+pub use entry_points::{
+    process_geometry, process_geometry_filtered, process_geometry_filtered_with_quality,
+    process_geometry_filtered_with_quality_and_ids, process_geometry_streaming,
+    process_geometry_streaming_filtered, process_geometry_streaming_filtered_with_baked_basis,
+    process_geometry_streaming_filtered_with_options, process_geometry_streaming_with_options,
+    process_geometry_streaming_with_options_and_bootstrap, process_geometry_with_index,
 };
-mod baked_basis;
-pub use baked_basis::process_geometry_streaming_filtered_with_baked_basis;
-use baked_basis::PassScope;
+mod request;
+pub use request::{Batching, Features, ProcessingRequest};
+mod sink;
+#[doc(hidden)]
+pub use sink::ClosureSink;
+pub use sink::{FrameEvent, OnBatch, ProcessingSink};
 pub(crate) mod instancing;
 mod jobs;
 mod opening_filter;
@@ -327,153 +335,13 @@ fn geometry_priority_score(ifc_type: &IfcType) -> u8 {
     }
 }
 
-/// Process IFC content with parallel geometry extraction (default opening filter).
-pub fn process_geometry<T>(content: &T) -> ProcessingResult
-where
-    T: AsRef<[u8]> + ?Sized,
-{
-    process_geometry_filtered(content.as_ref(), OpeningFilterMode::Default)
-}
-
-/// Like [`process_geometry`] but reuses a pre-built entity index instead of scanning
-/// `content` for one. For a caller that also runs a second pass over the same bytes
-/// (e.g. pairing GLB export with attribute extraction): build the index once with
-/// `ifc_lite_core::build_entity_index` and share it across both, skipping the
-/// duplicate scan. `index` MUST be built from the same `content`. Output is identical
-/// to `process_geometry(content)`.
-pub fn process_geometry_with_index<T>(content: &T, index: Arc<EntityIndex>) -> ProcessingResult
-where
-    T: AsRef<[u8]> + ?Sized,
-{
-    process_geometry_streaming_filtered_with_options(
-        content.as_ref(),
-        OpeningFilterMode::Default,
-        StreamingOptions {
-            initial_batch_size: usize::MAX,
-            throughput_batch_size: usize::MAX,
-            entity_index: Some(index),
-            ..StreamingOptions::default()
-        },
-        |_, _, _| {},
-        |_| {},
-        |_| {},
-    )
-}
-
-/// Process IFC content with parallel geometry extraction and emit batches as they complete.
-pub fn process_geometry_streaming(
+/// The native pipeline: scan, resolve, mesh, finalise. The one body behind
+/// every entry point; see [`ProcessingRequest`] for the inputs and
+/// [`ProcessingSink`] for the events it raises while it runs.
+pub fn process(
     content: &[u8],
-    batch_size: usize,
-    on_batch: impl FnMut(&[MeshData], usize, usize),
-) -> ProcessingResult {
-    process_geometry_streaming_with_options(
-        content,
-        StreamingOptions {
-            initial_batch_size: batch_size,
-            throughput_batch_size: batch_size,
-            ..StreamingOptions::default()
-        },
-        on_batch,
-        |_| {},
-    )
-}
-
-/// Process IFC content with parallel geometry extraction and configurable streaming behavior.
-pub fn process_geometry_streaming_with_options(
-    content: &[u8],
-    options: StreamingOptions,
-    on_batch: impl FnMut(&[MeshData], usize, usize),
-    on_color_update: impl FnMut(&[(u32, [f32; 4])]),
-) -> ProcessingResult {
-    process_geometry_streaming_with_options_and_bootstrap(
-        content,
-        options,
-        on_batch,
-        on_color_update,
-        |_| {},
-    )
-}
-
-/// Process IFC content with parallel geometry extraction and emit a quick metadata bootstrap
-/// once the scan phase completes.
-pub fn process_geometry_streaming_with_options_and_bootstrap(
-    content: &[u8],
-    options: StreamingOptions,
-    on_batch: impl FnMut(&[MeshData], usize, usize),
-    on_color_update: impl FnMut(&[(u32, [f32; 4])]),
-    on_quick_metadata_bootstrap: impl FnMut(&QuickMetadataBootstrap),
-) -> ProcessingResult {
-    process_geometry_streaming_filtered_with_options(
-        content,
-        OpeningFilterMode::Default,
-        options,
-        on_batch,
-        on_color_update,
-        on_quick_metadata_bootstrap,
-    )
-}
-
-/// Process IFC content with parallel geometry extraction and a configurable opening filter.
-pub fn process_geometry_filtered<T>(
-    content: &T,
-    opening_filter: OpeningFilterMode,
-) -> ProcessingResult
-where
-    T: AsRef<[u8]> + ?Sized,
-{
-    process_geometry_filtered_with_quality(content, opening_filter, TessellationQuality::default())
-}
-
-/// Process IFC content with parallel geometry extraction and a configurable streaming batch size.
-pub fn process_geometry_streaming_filtered(
-    content: &[u8],
-    opening_filter: OpeningFilterMode,
-    batch_size: usize,
-    on_batch: impl FnMut(&[MeshData], usize, usize),
-    on_color_update: impl FnMut(&[(u32, [f32; 4])]),
-) -> ProcessingResult {
-    process_geometry_streaming_filtered_with_options(
-        content,
-        opening_filter,
-        StreamingOptions {
-            initial_batch_size: batch_size,
-            throughput_batch_size: batch_size,
-            ..StreamingOptions::default()
-        },
-        on_batch,
-        on_color_update,
-        |_| {},
-    )
-}
-
-/// Process IFC content with parallel geometry extraction and configurable streaming behavior.
-pub fn process_geometry_streaming_filtered_with_options(
-    content: &[u8],
-    opening_filter: OpeningFilterMode,
-    options: StreamingOptions,
-    on_batch: impl FnMut(&[MeshData], usize, usize),
-    on_color_update: impl FnMut(&[(u32, [f32; 4])]),
-    on_quick_metadata_bootstrap: impl FnMut(&QuickMetadataBootstrap),
-) -> ProcessingResult {
-    process_geometry_streaming_filtered_with_options_and_ids(
-        content,
-        opening_filter,
-        options,
-        PassScope::default(),
-        on_batch,
-        on_color_update,
-        on_quick_metadata_bootstrap,
-    )
-}
-
-fn process_geometry_streaming_filtered_with_options_and_ids(
-    content: &[u8],
-    opening_filter: OpeningFilterMode,
-    options: StreamingOptions,
-    PassScope { entity_ids, baked_basis_out }: PassScope<'_>,
-    mut on_batch: impl FnMut(&[MeshData], usize, usize),
-    mut on_color_update: impl FnMut(&[(u32, [f32; 4])]),
-    mut on_quick_metadata_bootstrap: impl FnMut(&QuickMetadataBootstrap),
+    req: &ProcessingRequest,
+    sink: &mut dyn ProcessingSink,
 ) -> ProcessingResult {
     let total_start = mark(Mark::PipelineStart, Clock::now());
     let parse_start = Clock::now();
@@ -512,7 +380,7 @@ fn process_geometry_streaming_filtered_with_options_and_ids(
     // skips the inline build. `decode_at` during the scan needs no index (it parses
     // local bytes), so the scan-phase decoder starts index-less; the completed
     // index is installed before the first ref-resolving call (`resolve_prepass`).
-    let provided_index = options.entity_index.clone();
+    let provided_index = req.entity_index.clone();
     let building_index = provided_index.is_none();
     let mut inline_index = IndexBuilder::new(content.len(), building_index);
     let mut decoder = match &provided_index { // geometry pre-pass: strict reals (#7678)
@@ -561,7 +429,7 @@ fn process_geometry_streaming_filtered_with_options_and_ids(
     // no IfcMappedItem; without this gate every such type double-renders at its
     // MappingOrigin (duplicate boxes at the wrong position).
     let mut instantiated_type_ids: FxHashSet<u32> = FxHashSet::default();
-    let quick_metadata_enabled = options.emit_quick_metadata_bootstrap;
+    let quick_metadata_enabled = req.features.quick_metadata_bootstrap;
     let mut quick_spatial_nodes =
         quick_metadata_enabled.then(HashMap::<u32, QuickSpatialNodeEntry>::new);
     let mut quick_aggregate_links = if quick_metadata_enabled {
@@ -592,9 +460,9 @@ fn process_geometry_streaming_filtered_with_options_and_ids(
     let mut site_entity_pos: Option<(usize, usize)> = None;
     let mut building_entity_pos: Option<(usize, usize)> = None;
 
-    let defer_style_updates = options.fast_first_batch
-        && opening_filter == OpeningFilterMode::Default
-        && !options.include_presentation_layers;
+    let defer_style_updates = req.batching.fast_first
+        && req.opening_filter == OpeningFilterMode::Default
+        && !req.features.presentation_layers;
 
     while let Some((id, type_name, start, end)) = scanner.next_entity() {
         total_entities += 1;
@@ -672,7 +540,7 @@ fn process_geometry_streaming_filtered_with_options_and_ids(
             prepass_spans.rel_associates_material.push((id, start, end));
             continue;
         } else if keyword_eq(type_name, "IFCPRESENTATIONLAYERASSIGNMENT") {
-            if !options.include_presentation_layers {
+            if !req.features.presentation_layers {
                 continue;
             }
             if let Ok(layer_assignment) = decoder.decode_at(start, end) {
@@ -687,7 +555,7 @@ fn process_geometry_streaming_filtered_with_options_and_ids(
             // space/zone (its sole consumer). The inline index holds the span.
             continue;
         } else if keyword_eq(type_name, "IFCRELDEFINESBYPROPERTIES") {
-            if options.include_properties {
+            if req.features.properties {
                 rel_defines_spans.push((start, end));
             }
             continue;
@@ -790,7 +658,7 @@ fn process_geometry_streaming_filtered_with_options_and_ids(
                 // #1623 Phase 2: tally occurrences per source + track the min-id
                 // (deterministic template) occurrence. `id` is this IfcMappedItem's
                 // express id (the router's `item.id` at mesh time).
-                if options.enable_instancing {
+                if req.instancing {
                     mapped_item_plan
                         .entry(source_id)
                         .and_modify(|(count, template)| {
@@ -902,10 +770,10 @@ fn process_geometry_streaming_filtered_with_options_and_ids(
 
     let lookup_start = mark(Mark::LookupStart, Clock::now());
     let lookup_span = tracing::debug_span!("lookup", phase_ms = tracing::field::Empty).entered();
-    if options.include_properties {
+    if req.features.properties {
         resolve_space_zone_properties_lazy(&mut entity_jobs, &mut decoder, &rel_defines_spans);
     }
-    if options.fast_first_batch {
+    if req.batching.fast_first {
         entity_jobs.sort_by(|left, right| {
             geometry_priority_score(&right.ifc_type).cmp(&geometry_priority_score(&left.ifc_type))
         });
@@ -925,7 +793,7 @@ fn process_geometry_streaming_filtered_with_options_and_ids(
         &geometry_style_index,
         &element_material_colors,
         &mut decoder,
-        opening_filter,
+        req.opening_filter,
     );
 
     // Filter output jobs only after the whole-file relationship/style pre-pass
@@ -933,7 +801,7 @@ fn process_geometry_streaming_filtered_with_options_and_ids(
     // IfcOpeningElement cutters from `filtered_void_index`, but only selected
     // products should enter the tessellation loop below. Keeping `None` apart
     // from `Some(empty)` is part of the public filtering contract.
-    if let Some(ids) = entity_ids {
+    if let Some(ids) = req.entity_ids.as_deref() {
         entity_jobs.retain(|job| ids.contains(&job.id));
     }
 
@@ -1050,7 +918,7 @@ fn process_geometry_streaming_filtered_with_options_and_ids(
                 build_quick_spatial_tree_node(root, &spatial_nodes, &quick_element_summaries).ok()
             })
             .unzip();
-        on_quick_metadata_bootstrap(&QuickMetadataBootstrap {
+        sink.on_bootstrap(&QuickMetadataBootstrap {
             schema_version: schema_version.clone(),
             entity_count: total_entities,
             spatial_tree,
@@ -1066,7 +934,7 @@ fn process_geometry_streaming_filtered_with_options_and_ids(
     let refused_unit_jobs = diagnostics::refuse_jobs_for_unit(&unit_scales, &mut entity_jobs);
     // Not drained: meshes nothing. Pinned by rust/geometry/tests/issue_3821_auxiliary_routers_mesh_nothing.rs.
     let mut router = diagnostics::unit_router(&unit_scales); // refused with the unit (#7678)
-    router.set_tessellation_quality(options.tessellation_quality);
+    router.set_tessellation_quality(req.quality);
     // Build the #563 material-layer index from the IfcRelAssociatesMaterial spans
     // the main scan already stashed (like the wasm pre-pass), not a redundant
     // `from_content` re-walk of the whole file. Byte-identical; saves 6-15% load.
@@ -1103,7 +971,10 @@ fn process_geometry_streaming_filtered_with_options_and_ids(
     let coord_space = frame.coordinate_space();
     let has_rtc_offset = frame.needs_shift();
     router.set_rtc_offset(frame.rtc_offset());
-    site_local::publish_baked_basis(baked_basis_out, frame, site_transform.as_deref());
+    // Basis and frame come from one value, so they cannot disagree; fires before any batch.
+    let (rx, ry, rz) = frame.rtc_offset();
+    let baked_basis = native_to_baked(coord_space, site_transform.as_deref(), [rx, ry, rz]);
+    sink.on_frame(&FrameEvent { frame, baked_basis });
     let preprocess_time = mark(Mark::PreprocessEnd, preprocess_start.elapsed());
     preprocess_span.record("phase_ms", preprocess_time.as_millis() as u64);
     drop(preprocess_span);
@@ -1155,8 +1026,8 @@ fn process_geometry_streaming_filtered_with_options_and_ids(
     let element_material_colors = Arc::new(element_material_colors);
 
     let total_jobs = entity_jobs.len();
-    let initial_chunk_size = options.initial_batch_size.max(1);
-    let throughput_chunk_size = options.throughput_batch_size.max(initial_chunk_size);
+    let initial_chunk_size = req.batching.initial.max(1);
+    let throughput_chunk_size = req.batching.throughput.max(initial_chunk_size);
     let mut color_cache_by_product_definition_shape: FxHashMap<u32, Option<[f32; 4]>> =
         FxHashMap::default();
     let mut layer_cache_by_product_definition_shape: FxHashMap<u32, Option<String>> =
@@ -1218,8 +1089,8 @@ fn process_geometry_streaming_filtered_with_options_and_ids(
     // slower than today. Lifting this gate needs the renderer to instance in the
     // site frame too, and an in-browser verification that it does; that remains
     // a follow-up, and #4118 part B deliberately does not touch it.
-    let instancing_plan: Option<ifc_lite_geometry::MappedInstancePlan> = (options.enable_instancing
-        && options.retain_emitted_meshes
+    let instancing_plan: Option<ifc_lite_geometry::MappedInstancePlan> = (req.instancing
+        && req.retain_meshes
         && coord_space != MeshCoordinateSpace::SiteLocal)
         .then(|| {
             Arc::new(
@@ -1275,8 +1146,8 @@ fn process_geometry_streaming_filtered_with_options_and_ids(
     while chunk_start < total_jobs {
         // Cooperative cancellation between chunks: the caller flipped the flag
         // (e.g. its client disconnected), so stop meshing and emitting. The
-        // result below is partial by contract; see StreamingOptions::cancel.
-        if options
+        // result below is partial by contract; see ProcessingRequest::cancel.
+        if req
             .cancel
             .as_ref()
             .is_some_and(|c| c.load(std::sync::atomic::Ordering::Relaxed))
@@ -1331,7 +1202,7 @@ fn process_geometry_streaming_filtered_with_options_and_ids(
                     // appearance (#407).
                     job.element_color = *color;
                 }
-                if options.include_presentation_layers {
+                if req.features.presentation_layers {
                     let resolved_layer = layer_cache_by_product_definition_shape
                         .entry(pds_id)
                         .or_insert_with(|| {
@@ -1359,7 +1230,7 @@ fn process_geometry_streaming_filtered_with_options_and_ids(
                 &mut layer_cache_by_product_definition_shape,
                 &mut layer_cache_by_representation,
                 &mut decoder,
-                options.include_presentation_layers,
+                req.features.presentation_layers,
             );
         }
         let site_local_rotation: Option<&Vec<f64>> =
@@ -1414,7 +1285,7 @@ fn process_geometry_streaming_filtered_with_options_and_ids(
                     unit_scale,
                     rtc_offset,
                     seed_plane_angle_to_radians,
-                    options.tessellation_quality,
+                    req.quality,
                     void_index_arc.as_ref(),
                     skipped_entity_ids.as_ref(),
                     geometry_style_index.as_ref(),
@@ -1450,9 +1321,9 @@ fn process_geometry_streaming_filtered_with_options_and_ids(
             total_meshes += chunk_meshes.len();
             let emit_mesh_chunk_size = current_chunk_size.max(1);
             for emitted_meshes in chunk_meshes.chunks(emit_mesh_chunk_size) {
-                on_batch(emitted_meshes, processed_jobs, total_jobs);
+                sink.on_batch(emitted_meshes, processed_jobs, total_jobs);
             }
-            if options.retain_emitted_meshes {
+            if req.retain_meshes {
                 meshes.extend(chunk_meshes);
             }
 
@@ -1471,7 +1342,7 @@ fn process_geometry_streaming_filtered_with_options_and_ids(
                     &entity_index_arc, &mut deferred_style_refusals,
                 );
                 if !deferred_color_updates.is_empty() {
-                    on_color_update(&deferred_color_updates);
+                    sink.on_color_update(&deferred_color_updates);
                 }
                 deferred_styles_applied = true;
             }

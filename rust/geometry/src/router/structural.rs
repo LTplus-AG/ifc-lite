@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 //! Structural analysis element representations (#4206). Deliberately
-//! not folded into [`super::rep_filter::is_body_representation`]: an
+//! not folded into [`crate::representation::is_body_representation`]: an
 //! `IfcStructuralCurveMember`'s `'Edge'` and an `IfcStructuralSurfaceMember`'s
 //! `'Face'` representation are reference topology, not body geometry, and
 //! must not become eligible for void probing or material-layer slicing.
@@ -21,7 +21,7 @@ use ifc_lite_core::{DecodedEntity, IfcType};
 /// representation type `'Edge'`, and `IfcStructuralSurfaceMember` with
 /// representation type `'Face'`. Point and surface connections remain out of
 /// scope.
-pub(super) fn accepts(element: &DecodedEntity, rep_type: &str) -> bool {
+pub(crate) fn accepts(element: &DecodedEntity, rep_type: &str) -> bool {
     (element
         .ifc_type
         .is_subtype_of(IfcType::IfcStructuralCurveMember)

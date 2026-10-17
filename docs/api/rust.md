@@ -576,6 +576,24 @@ impl Mesh {
 
 Related mesh types: `SubMesh`, `SubMeshCollection`, `InstanceMeta`.
 
+#### representation
+
+`ifc_lite_geometry::representation` is the decoder-only home of a product's
+representation chain (`Representation(6)` to `IfcProductDefinitionShape.Representations(2)`
+to `Items(3)`, and `IfcMappedItem` to `MappingSource` to `MappedRepresentation`).
+It meshes nothing and owns no cache.
+
+```rust
+pub fn product_shape(element: &DecodedEntity, d: &mut EntityDecoder) -> Result<Option<ProductShape>, ShapeError>;
+pub fn rep_items(rep: &DecodedEntity, d: &mut EntityDecoder) -> Result<Vec<DecodedEntity>, ShapeError>;
+impl ProductShape { pub fn select(&self, element: &DecodedEntity, s: Select) -> impl Iterator<Item = &DecodedEntity>; }
+pub enum Select { Meshed, Body, RtcVotable, Any, Where(fn(..) -> bool) } // Meshed = what renders
+pub struct RepresentationWalk { pub select: Select, pub nested: NestedMaps }
+// product / map / mapped_item drive a WalkVisitor in DFS pre-order; nesting is
+// capped by depth and a path-scoped visited set.
+pub fn meshed_representations(element, representations) -> impl Iterator; // = Select::Meshed
+```
+
 #### mesh_check (test-support)
 
 `ifc_lite_geometry::mesh_check` is the one home for closure, edge-pairing and
@@ -669,9 +687,12 @@ Key re-exports:
 ```rust
 // One-call pipeline: IFC bytes -> per-element meshes
 pub use processor::{
-    process_geometry, process_geometry_filtered, process_geometry_with_index,
-    process_geometry_streaming, /* ...streaming variants with options... */
-    OpeningFilterMode, ProcessingResult, StreamingOptions,
+    process, process_geometry,
+    Batching, Features, FrameEvent, OnBatch, OpeningFilterMode, ProcessingRequest,
+    ProcessingResult, ProcessingSink,
+    /* deprecated, deleted in the next major: process_geometry_filtered,
+       process_geometry_with_index, process_geometry_streaming and the other
+       `process_geometry_*` variants; StreamingOptions */
 };
 
 // Analysis-ready export document (welded, Z-up, world metres)
@@ -701,6 +722,35 @@ pub use types::mesh::{InstanceRecord, MeshData, RawInstanceOccurrence};
 pub use types::response::{CoordinateInfo, ModelMetadata, ParseResponse, ProcessingStats};
 pub use parallel_scan::build_entity_index_parallel;
 ```
+
+`process(content, &ProcessingRequest, &mut sink)` is the one native entry point.
+`ProcessingRequest` is a `#[non_exhaustive]` value type with a builder; the two
+named shapes are `ProcessingRequest::default()` (the streaming shape, 50-job
+chunks) and `ProcessingRequest::full_pass()` (one chunk, for the server routes,
+exporters and bindings). It carries the opening filter, tessellation quality,
+`Batching` (initial and throughput chunk sizes, `fast_first`), `Features`
+(properties, presentation layers, quick-metadata bootstrap), whether to retain
+the emitted meshes, instancing, an id allow-list (`None` is the unfiltered pass,
+`Some(empty)` meshes nothing), an injected entity index and a cancel flag.
+
+A `ProcessingSink` hears the pass while it runs; every event has a no-op default
+and `()` listens to nothing. Order: `on_bootstrap` at most once, then `on_frame`
+exactly once (the frame and the baked basis, before the first batch and also for
+a file with no geometry), then `on_batch` interleaved with `on_color_update`
+(deferred styles, replayed after the first batch). Events fire once per chunk.
+`OnBatch::new(|meshes, processed, total| ..)` is the sink for a caller that only
+streams meshes out.
+
+```rust
+use ifc_lite_processing::{process, Batching, ProcessingRequest, TessellationQuality};
+
+let request = ProcessingRequest::full_pass().quality(TessellationQuality::High);
+let result = process(&bytes, &request, &mut ());
+```
+
+`process_geometry(content)` stays as the convenience for the default full pass.
+The other ten `process_geometry_*` functions are `#[deprecated]` delegates onto
+`process` and are deleted in the next major release.
 
 `extract_swept_disk_descriptions(ifc_bytes, ids)` returns the outer `Radius`,
 optional `InnerRadius`, and ordered exact line/circular-arc `Directrix` for

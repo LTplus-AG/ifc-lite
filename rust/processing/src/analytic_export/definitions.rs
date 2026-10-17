@@ -126,9 +126,8 @@ pub(super) fn source_matrix(transform: &Matrix4<f64>, unit_scale: f64) -> Option
     for column in 0..3 {
         for row in 0..3 { matrix[(row, column)] *= unit_scale; }
     }
-    matrix.iter().all(|v| v.is_finite()).then(|| {
-        let mut values = [0.0; 16];
-        values.copy_from_slice(matrix.as_slice());
-        values
-    })
+    matrix
+        .iter()
+        .all(|v| v.is_finite())
+        .then(|| ifc_lite_geometry::math::mat4::col_major_array(&matrix))
 }

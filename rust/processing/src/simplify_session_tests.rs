@@ -7,9 +7,11 @@
 //! `module_size_ratchet` budget; `_tests.rs` files are exempt from that
 //! ratchet (see `module_size_ratchet.rs`'s `is_exempt`).
 
-use crate::simplify_math::{
-    conjugate_yup_to_zup, invert_affine_row_major, matmul_row_major, zup_to_yup,
+use crate::simplify_math::invert_affine_row_major;
+use ifc_lite_geometry::math::frame::{
+    conjugate_yup_to_zup, zup_to_yup, YUP_TO_ZUP, ZUP_TO_YUP,
 };
+use ifc_lite_geometry::math::mat4::mul as matmul_row_major;
 use crate::simplify_session::*;
 
 /// Indexed 12-tri box between min/max, IFC Z-up frame, zero normals.
@@ -200,23 +202,9 @@ fn conjugate_yup_to_zup_recovers_a_non_identity_matrix() {
         1.0, 0.0, 0.0, 10.0, 0.0, 1.0, 0.0, 20.0, 0.0, 0.0, 1.0, 30.0, 0.0, 0.0, 0.0, 1.0,
     ];
     // Forward boundary conjugation `M' = S * M * S^T`
-    // (`zero_copy::mesh::swap_zup_to_yup_mat4`'s convention), built from
+    // (`frame::conjugate_zup_to_yup`'s convention), built from
     // the same S/S^T this module documents in `conjugate_yup_to_zup`.
-    #[rustfmt::skip]
-    let s: [f64; 16] = [
-        1.0, 0.0, 0.0, 0.0,
-        0.0, 0.0, 1.0, 0.0,
-        0.0, -1.0, 0.0, 0.0,
-        0.0, 0.0, 0.0, 1.0,
-    ];
-    #[rustfmt::skip]
-    let st: [f64; 16] = [
-        1.0, 0.0, 0.0, 0.0,
-        0.0, 0.0, -1.0, 0.0,
-        0.0, 1.0, 0.0, 0.0,
-        0.0, 0.0, 0.0, 1.0,
-    ];
-    let m_prime = matmul_row_major(&matmul_row_major(&s, &m), &st);
+    let m_prime = matmul_row_major(&matmul_row_major(&ZUP_TO_YUP, &m), &YUP_TO_ZUP);
     let recovered = conjugate_yup_to_zup(&m_prime);
     for (i, (a, b)) in recovered.iter().zip(m.iter()).enumerate() {
         assert!((a - b).abs() < 1e-9, "index {i}: {recovered:?} != {m:?}");
@@ -271,6 +259,31 @@ fn invalid_unit_scale_is_skipped() {
             simplify_element(&[rec], 5, [0.0; 3], bad_scale, false).unwrap_err(),
             SimplifySkip::InvalidUnitScale,
             "unit_scale {bad_scale} must skip, not silently become metres"
+        );
+    }
+}
+
+/// #7772 (D24): the Y-up placement is un-conjugated by an exact signed
+/// permutation, which keeps a non-finite entry in its own slot. The matmul it
+/// replaced spread it over the whole matrix, so the element was skipped as
+/// singular; a NaN translation must still skip, not invert and emit NaN.
+#[test]
+fn non_finite_yup_placement_is_skipped() {
+    let (positions, normals, indices) = box_soup([0.0; 3], [1.0; 3]);
+    for (slot, bad) in [(3, f64::NAN), (11, f64::INFINITY), (12, f64::NEG_INFINITY)] {
+        let mut l2w = IDENTITY;
+        l2w[slot] = bad;
+        let rec = SimplifyRecordInput {
+            positions: &positions,
+            normals: &normals,
+            indices: &indices,
+            origin: [0.0; 3],
+            local_to_world: Some(l2w),
+        };
+        assert_eq!(
+            simplify_element(&[rec], 5, [0.0; 3], 1.0, true).unwrap_err(),
+            SimplifySkip::SingularPlacement,
+            "slot {slot} = {bad} must skip"
         );
     }
 }

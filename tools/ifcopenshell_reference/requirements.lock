@@ -1,10 +1,7 @@
-# IfcOpenShell dropped Linux aarch64 wheels for 0.8.2/0.8.3 (the arm CI runner
-# could no longer resolve 0.8.2); 0.8.4 is the earliest release with an
-# aarch64/py3.12 wheel. Pinned to the latest available patch. The nightly
-# `full` job regenerates the reference dumps from this engine, so a pin bump is
-# a reviewed change - it warns (does not fail) when the committed reference
-# goes stale.
-ifcopenshell==0.8.5
+# Resolve the latest stable reference engine on every fresh CI run (#7732).
+# Canonical outputs and diagnostic receipts record the actual version used;
+# geometry and diagnostic admission remain checked independently of version.
+ifcopenshell
 numpy==2.0.2
 shapely==2.0.7
 

@@ -150,6 +150,7 @@ pub(crate) mod mesh_check;
 /// Cooperative heartbeat from long geometry work to a host that must tell a
 /// slow call from a hung one (see the module docs).
 pub mod progress;
+pub mod representation;
 pub(crate) mod mesh_orient;
 pub(crate) mod processors;
 pub(crate) mod profile;

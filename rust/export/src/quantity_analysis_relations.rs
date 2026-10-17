@@ -2,7 +2,7 @@
 //! Bounded relationship scan for selected authored quantity products.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
-use ifc_lite_core::{AttributeValue, EntityDecoder, EntityScanner, IfcType};
+use ifc_lite_core::{slot, AttributeValue, EntityDecoder, EntityScanner, IfcType};
 use super::{Diagnostics, ProductQuantities, MAX_REF_RECORD_BYTES, MAX_REL_MEMBERS, report_once};
 
 pub(super) struct SourceRelationships {
@@ -41,7 +41,7 @@ pub(super) fn collect_relationships(
         let targets = if rel.ifc_type == IfcType::IfcRelDefinesByProperties {
             // Core owns the spellings (single ref, bare or typed set, #7681);
             // this view rejects a non-reference member rather than skip it.
-            let members = rel.get(5).ok_or("missing RelatingPropertyDefinition").and_then(|value| {
+            let members = rel.attr(slot::IfcRelDefinesByProperties::RELATING_PROPERTY_DEFINITION).ok_or("missing RelatingPropertyDefinition").and_then(|value| {
                 value.as_ref_members().ok_or("malformed RelatingPropertyDefinition")
             });
             match members.and_then(|refs| {
@@ -58,13 +58,13 @@ pub(super) fn collect_relationships(
                 }
             }
         } else {
-            let Some(target_id) = rel.get_ref(5) else {
+            let Some(target_id) = rel.ref_at(slot::IfcRelDefinesByType::RELATING_TYPE) else {
                 diagnostics.push(format!("relationship #{id}: missing or invalid RelatingType"));
                 continue;
             };
             vec![target_id]
         };
-        let Some(members) = rel.get(4).and_then(|a| a.as_list()) else {
+        let Some(members) = rel.attr(slot::IfcRelDefines::RELATED_OBJECTS).and_then(|a| a.as_list()) else {
             diagnostics.push(format!("relationship #{id}: malformed RelatedObjects"));
             continue;
         };

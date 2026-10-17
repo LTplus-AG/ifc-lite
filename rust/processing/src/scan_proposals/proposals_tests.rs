@@ -408,3 +408,16 @@ fn issue_6894_a_scaled_alignment_scales_thickness_radius_and_height() {
     assert!(close(mapped.transform_scale, 0.5, 1e-12));
     assert_same(&truth, &mapped, 1e-6);
 }
+
+/// #7772 X4: `unit` divides by the length like every other normaliser
+/// (`math::v3::normalize`), not a reciprocal multiply, which is 1 ulp off:
+/// `3 * (1 / 5) = 0.6000000000000001` but `3 / 5 = 0.6`.
+#[test]
+fn issue_7772_x4_unit_divides_by_the_length() {
+    let u = frame::unit([3.0, 4.0, 0.0]);
+    assert_eq!(u.map(f64::to_bits), [0.6f64, 0.8, 0.0].map(f64::to_bits));
+    // Degenerate and non-finite input come back unchanged (the explicit fallback).
+    assert_eq!(frame::unit([0.0, 1e-13, 0.0]), [0.0, 1e-13, 0.0]);
+    assert!(frame::unit([f64::NAN, 1.0, 0.0])[0].is_nan());
+    assert_eq!(frame::unit([f64::INFINITY, 0.0, 0.0]), [f64::INFINITY, 0.0, 0.0]);
+}

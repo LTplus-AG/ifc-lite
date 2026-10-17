@@ -34,6 +34,11 @@ impl GeometryRouter {
                 let point_id = rows.first()?.as_list()?.first()?.as_entity_ref()?;
                 decoder.get_cartesian_point_fast(point_id)
             }
+            // Position applied to the first curve point (#7688): the processor
+            // rebases in f64 through `process_in_rtc_frame`.
+            IfcType::IfcSurfaceOfLinearExtrusion => {
+                crate::processors::SurfaceOfLinearExtrusionProcessor::first_vertex(item, decoder)
+            }
             IfcType::IfcFaceBasedSurfaceModel | IfcType::IfcShellBasedSurfaceModel => {
                 let shells = item.get(0)?.as_list()?;
                 let shell_id = shells.first()?.as_entity_ref()?;

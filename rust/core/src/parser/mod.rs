@@ -46,6 +46,7 @@ pub use oversized_ids::{oversized_id_report, report_oversized_ids, set_report_si
 pub use scanner::{entity_count, nth_attribute_is_present, EntityScanner, StepListItems};
 pub(crate) use scanner::argument_list_start;
 pub use tokenizer::{parse_entity, Token};
+pub(crate) use tokenizer::is_decodable_number;
 
 /// [`report_oversized_ids`] + [`report_malformed_records`] in one call — the
 /// two diagnostics every whole-file `EntityScanner` walk in this workspace

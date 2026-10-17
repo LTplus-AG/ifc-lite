@@ -1,0 +1,30 @@
+{
+  "about": "FNV-1a 64 and byte length of each entity-data output, keyed by case. Written by rust/python/tests/test_golden_entity_data.py, never by hand.",
+  "repin": "IFC_LITE_REPIN_GOLDEN=1 python -m pytest rust/python/tests/test_golden_entity_data.py",
+  "cases": {
+    "issue_098_wall_V5C:defaults": {
+      "fnv1a64": "1b6b464823c30fe5",
+      "bytes": 20805
+    },
+    "mapped_instances_synthetic:defaults": {
+      "fnv1a64": "715f9a50907be3a5",
+      "bytes": 17077
+    },
+    "synthetic:defaults": {
+      "fnv1a64": "245f784470bb2deb",
+      "bytes": 4254
+    },
+    "synthetic:no-attributes": {
+      "fnv1a64": "4b2d0fc1c55874ee",
+      "bytes": 3845
+    },
+    "synthetic:own-sets-only": {
+      "fnv1a64": "aa4a20cf5d3d6c17",
+      "bytes": 2912
+    },
+    "synthetic:placements": {
+      "fnv1a64": "9660c77955aeff05",
+      "bytes": 4710
+    }
+  }
+}

@@ -66,6 +66,22 @@
       "fnv1a64": "a59c8bd2cf7c0b76",
       "bytes": 250
     },
+    "c6_data_model_synthetic:entities": {
+      "fnv1a64": "fd88c8bd1b52e949",
+      "bytes": 758
+    },
+    "c6_data_model_synthetic:properties": {
+      "fnv1a64": "eace6471dcb77b22",
+      "bytes": 989
+    },
+    "c6_data_model_synthetic:quantities": {
+      "fnv1a64": "cb2b779030b258e7",
+      "bytes": 152
+    },
+    "c6_data_model_synthetic:spatial": {
+      "fnv1a64": "e9b2c2d794ce94aa",
+      "bytes": 405
+    },
     "duplex:entities": {
       "fnv1a64": "bbaaf2330de52404",
       "bytes": 293164

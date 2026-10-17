@@ -475,7 +475,7 @@ fn conversion_based_length_unit_with_an_unusable_factor_is_an_error() {
         // A strict (geometry) decoder counts the refusal; a lossless one not.
         let mut strict = EntityDecoder::new(&content).with_strict_reals();
         assert_eq!(strict.length_unit_scale(), 1.0, "{factor}: tolerance basis only");
-        assert_eq!(strict.refused_real_records(), 1, "{factor}");
+        assert_eq!(strict.refused_records(), 1, "{factor}");
         assert_eq!(EntityDecoder::new(&content).length_unit_scale(), expected, "{factor}");
     }
     let content = file("IFCLENGTHMEASURE(0.201168)");

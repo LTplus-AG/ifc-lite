@@ -22,9 +22,9 @@
 //! `local = inv(local_to_world) * true_world`, then `/ unit_scale` into file
 //! units.
 
-use crate::simplify_math::{averaged_vertex_normals, finite_yup_to_zup, invert_affine_row_major};
+use crate::simplify_math::{averaged_vertex_normals, finite_yup_to_zup};
 use ifc_lite_geometry::math::frame::{yup_to_zup, zup_to_yup};
-use ifc_lite_geometry::math::mat4::transform_point;
+use ifc_lite_geometry::math::mat4::{affine_inverse, transform_point};
 use ifc_lite_geometry::simplify::{simplify_mesh, SimplifyOptions};
 use ifc_lite_geometry::Mesh;
 
@@ -123,7 +123,7 @@ pub fn simplify_element(
     } else {
         l2w_raw
     };
-    let inv_l2w = invert_affine_row_major(&l2w).ok_or(SimplifySkip::SingularPlacement)?;
+    let inv_l2w = affine_inverse(&l2w).ok_or(SimplifySkip::SingularPlacement)?;
     if !(unit_scale.is_finite() && unit_scale > 0.0) {
         return Err(SimplifySkip::InvalidUnitScale);
     }

@@ -509,7 +509,7 @@ fn the_callback_receives_the_entity_each_row_was_built_from() {
             "the row's own entity, not another"
         );
         // Attribute 2 is Name for every rooted entity. A consumer should reach
-        // it through `IfcType::attribute_index("Name")` rather than a literal;
+        // it through `SchemaVersion::attribute(entity, "Name")` rather than a literal;
         // this asserts the entity arrives, which is what the argument is for.
         seen.push(
             entity

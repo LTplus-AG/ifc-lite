@@ -170,9 +170,9 @@ impl IfcType {
     /// as authoritative.
     pub fn attribute_names(&self) -> &'static [&'static str];
 
-    /// The position of a named attribute, for `DecodedEntity::get`.
-    /// Case-sensitive; EXPRESS names are PascalCase.
-    pub fn attribute_index(&self, name: &str) -> Option<usize>;
+    /// One flag byte per attribute, parallel to `attribute_names()`. Decode
+    /// through `SchemaVersion::attribute`, not by hand.
+    pub fn attribute_flags(&self) -> &'static [u8];
 
     /// Direct supertype in the schema hierarchy
     pub fn parent(&self) -> Option<Self>;
@@ -199,7 +199,7 @@ pub fn attribute_names_for_schema(
 ) -> Option<&'static [&'static str]>;
 ```
 
-`file_schema` accepts the bundled IFC2X3, IFC4, and IFC4X3 family labels,
+`file_schema` accepts the bundled IFC2X3, IFC4, IFC4X1, IFC4X2, and IFC4X3 family labels,
 including standard `_ADDn`, `_TCn`, and `_RCn` revision suffixes. Revision
 suffixes are normalized to one fixed bundled registry per family (the IFC4
 registry is generated from `IFC4_ADD2_TC1`), so other accepted suffixes are
@@ -209,6 +209,41 @@ the selected registry does not declare; an entity declared with no attributes
 returns `Some(&[])`. Do not fall back to `IfcType::attribute_names()` after
 `None`, because that method describes the canonical generated IFC4X3 schema
 and could mislabel an older record's positional values.
+
+#### Attribute slot lookup by name
+
+`SchemaVersion` (re-exported from `ifc_lite_core`) names the five bundled EXPRESS
+registries. `SchemaVersion::attribute` answers where a named attribute lives in
+one schema and what shape it has, from the same generated tables as
+`attribute_names()`:
+
+```rust
+pub enum SchemaVersion { Ifc2x3, Ifc4, Ifc4x1, Ifc4x2, Ifc4x3 }
+
+pub struct AttrSlot {
+    /// Position in the STEP record, as `DecodedEntity::get` indexes it.
+    pub index: usize,
+    /// Ref, RefList, List, Real, Int, Text, Enum, Logical, Binary or Select.
+    pub kind: AttrKind,
+    /// The value may be written as a STEP list (LIST/SET/ARRAY, a defined type
+    /// that is one, or a select with such an alternative).
+    pub aggregate: bool,
+    /// The EXPRESS declaration says OPTIONAL.
+    pub optional: bool,
+}
+
+impl SchemaVersion {
+    pub fn from_file_schema(label: &str) -> Option<Self>;
+    pub fn attribute(self, entity: &str, name: &str) -> Option<AttrSlot>;
+    pub fn attributes(self, entity: &str) -> Option<impl ExactSizeIterator<Item = AttrSlot>>;
+}
+```
+
+Entity and attribute names compare ASCII-case-insensitively. `None` is explicit:
+an unknown schema label (`from_file_schema`), an entity the schema does not
+declare, or an attribute the entity does not have. `attribute` replaces the
+removed `IfcType::attribute_index`; `SchemaVersion::Ifc4x3.attribute(..)` is
+its canonical-IFC4X3 reading.
 
 #### has_geometry_by_name
 

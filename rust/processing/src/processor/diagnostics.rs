@@ -73,7 +73,7 @@ impl DiagnosticCollectors {
     /// any record refused by input admission counts once. Call once per job,
     /// with that job's own decoder.
     pub(super) fn note_refused_input(&self, decoder: &ifc_lite_core::EntityDecoder) {
-        if decoder.refused_real_records() > 0 {
+        if decoder.refused_records() > 0 {
             self.refused_input.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         }
     }
@@ -89,6 +89,17 @@ pub(super) fn refuse_jobs_for_unit(units: &crate::prepass::UnitScales, jobs: &mu
     let refused = jobs.len() as u64;
     jobs.clear();
     refused
+}
+
+/// The unit fields of `ModelMetadata` (#7678): a refused length unit reports
+/// the refusal (`length_unit_refused`) and no `length_unit_scale`, never an
+/// invented `1.0`.
+pub(super) fn unit_metadata(units: &crate::prepass::UnitScales, unit_scale: f64) -> super::ModelMetadata {
+    super::ModelMetadata {
+        length_unit_scale: units.length_unit_refused.is_none().then_some(unit_scale),
+        length_unit_refused: units.length_unit_refused,
+        ..Default::default()
+    }
 }
 
 /// The pass router at the geometry scale, refused with the length unit, so no

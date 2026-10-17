@@ -16,7 +16,7 @@ import { getGeomWorkerOverride, resolveLoadTessellationTier, isMeshOnlyCacheEnab
 import { createModelLoadActivity, installModelLoadCanceller } from './modelLoadCanceller.js';
 import type { ModelLoadOptions } from './modelLoadOptions.js';
 import { assertWorkflowOwner } from '@/lib/flow/run-session';
-import { buildModelLoadedGeometryProps, geometryProcessingStallPhase, reportSkippedHungElements, warnGeometryDiagnostics } from './modelLoadedGeometryProps.js';
+import { buildModelLoadedGeometryProps, geometryProcessingStallPhase, reportRefusedLengthUnit, reportSkippedHungElements, warnGeometryDiagnostics } from './modelLoadedGeometryProps.js';
 import { planCacheWrite, decideCacheHit, decideCacheLoadOutcome } from './cacheTier.js';
 import { buildModelLoadReportPatch, type ModelLoadReportFields } from '../lib/loadReport';
 import { identifyLoadedPlacementSource, startLoadSourceIdentity } from '@/lib/model-placement/loaded-source-identity';
@@ -1721,6 +1721,9 @@ export function useIfcLoader() {
               // a second, true-only authority here.
               break;
             }
+            case 'unitRefused':
+              reportRefusedLengthUnit(file.name, toast.error);
+              break;
             case 'workerMemory': {
               // This report is sent once at the worker's session end.
               parserEntityIndexHandoff.release();

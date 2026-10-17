@@ -47,7 +47,6 @@
 5 rust/export/src/step_map_transform.rs
 26 rust/export/src/step_map_transform_preflight.rs
 29 rust/geometry/src/alignment.rs
-5 rust/geometry/src/alignment_axis.rs
 2 rust/geometry/src/alignment_sampling.rs
 8 rust/geometry/src/alignment_sampling_curve.rs
 5 rust/geometry/src/alignment_sampling_placement.rs
@@ -63,7 +62,7 @@
 1 rust/geometry/src/placement/chain.rs
 5 rust/geometry/src/placement/grid.rs
 1 rust/geometry/src/placement/grid_frame.rs
-8 rust/geometry/src/placement/linear.rs
+6 rust/geometry/src/placement/linear.rs
 2 rust/geometry/src/placement/validate.rs
 4 rust/geometry/src/processors/advanced.rs
 2 rust/geometry/src/processors/advanced_face/bounds.rs
@@ -131,7 +130,7 @@
 5 rust/geometry/src/trimmed_curve.rs
 5 rust/geometry/src/void_index.rs
 2 rust/processing/src/analytic_export/mapped.rs
-5 rust/processing/src/analytic_export/placement.rs
+3 rust/processing/src/analytic_export/placement.rs
 1 rust/processing/src/analytic_export/walk.rs
 3 rust/processing/src/analytic_export/walk/seed.rs
 12 rust/processing/src/appearance/atlas_plan.rs

@@ -349,6 +349,37 @@ fn a_schema_slot_resolves_against_the_declared_schema() {
     assert_eq!(headerless.slot(cartesian).map(Slot::index), Some(2));
 }
 
+/// `slot_or` trusts the declared schema where it declares the entity, and
+/// reads a file whose schema predates the entity with the named fallback.
+#[test]
+fn slot_or_falls_back_only_when_the_declared_schema_predates_the_entity() {
+    fn source(schema: &str) -> String {
+        format!("ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('{schema}'));\nENDSEC;\nDATA;\nENDSEC;\nEND-ISO-10303-21;\n")
+    }
+    let cartesian = slot::IfcLinearPlacement::CARTESIAN_POSITION;
+    let axis = slot::IfcAlignment::AXIS;
+    for (schema, linear, alignment) in [
+        // IFC2X3 and IFC4 declare neither entity: mislabelled exports.
+        ("IFC2X3", Some(2), Some(7)),
+        ("IFC4", Some(2), Some(7)),
+        // Declared: the schema's own layout, no fallback.
+        ("IFC4X1", Some(3), Some(7)),
+        ("IFC4X2", Some(4), Some(7)),
+        ("IFC4X3_ADD2", Some(2), None),
+        // An unknown label reads as IFC4X3, which declares both.
+        ("NOT_A_SCHEMA", Some(2), None),
+    ] {
+        let content = source(schema);
+        let mut decoder = EntityDecoder::new(&content);
+        let linear_at = decoder.slot_or(cartesian, SchemaVersion::Ifc4x3).map(Slot::index);
+        let axis_at = decoder.slot_or(axis, SchemaVersion::Ifc4x1).map(Slot::index);
+        assert_eq!((linear_at, axis_at), (linear, alignment), "{schema}");
+    }
+    assert!(!cartesian.entity_declared_in(SchemaVersion::Ifc4));
+    assert!(cartesian.entity_declared_in(SchemaVersion::Ifc4x1));
+    assert!(slot::IfcAlignment::PREDEFINED_TYPE.entity_declared_in(SchemaVersion::Ifc4x3));
+}
+
 /// Debug builds assert the entity is the slot's owner or a subtype of it.
 #[test]
 fn a_subtype_reads_its_supertypes_slots() {

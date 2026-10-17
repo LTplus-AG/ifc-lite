@@ -337,7 +337,7 @@ impl GeometryRouter {
         };
 
         let parts =
-            self.process_element_parts_with_hygiene(element, decoder, SourceHygiene::IndexOnly)?;
+            self.process_element_parts_with_hygiene(element, decoder, SourceHygiene::BooleanOperand)?;
         // Opening and clip geometry are resolved in world coordinates, the
         // frame every part is in once placement has been applied.
         let ctx = self.build_void_context(element, opening_ids, decoder);
@@ -1819,7 +1819,7 @@ impl GeometryRouter {
             decoder,
             false,
             None,
-            SourceHygiene::IndexOnly,
+            SourceHygiene::BooleanOperand,
         )?;
         if sub_meshes.is_empty() {
             return Ok(SubMeshCollection::new());

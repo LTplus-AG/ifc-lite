@@ -740,38 +740,9 @@ impl Mesh {
     /// [`clean_degenerate_watertight`](Self::clean_degenerate_watertight) where
     /// the surface must stay closed.
     pub fn drop_thin_triangles(&mut self, h_eps: f64) {
-        self.drop_thin_triangles_inner(h_eps, false);
+        self.drop_thin_triangles_inner(h_eps, tjunction::Repair::None);
     }
 
-    fn drop_thin_triangles_inner(&mut self, h_eps: f64, keep_closed: bool) {
-        if self.indices.len() < 3 {
-            return;
-        }
-        let vertex_count = self.positions.len() / 3;
-        let mut kept = Vec::with_capacity(self.indices.len());
-        let mut slivers: Vec<[u32; 3]> = Vec::new();
-        for tri in self.indices.chunks_exact(3) {
-            if (tri[0] as usize) >= vertex_count
-                || (tri[1] as usize) >= vertex_count
-                || (tri[2] as usize) >= vertex_count
-            {
-                continue;
-            }
-            let [a, b, c] = [tri[0], tri[1], tri[2]].map(|i| tjunction::pos_of(self, i));
-            let Some(height) = tjunction::height(a, b, c) else {
-                continue; // fully collapsed
-            };
-            if height < h_eps {
-                slivers.push([tri[0], tri[1], tri[2]]);
-                continue; // collinear / zero-area sliver
-            }
-            kept.extend_from_slice(tri);
-        }
-        if keep_closed && !slivers.is_empty() {
-            tjunction::split_across_dropped_slivers(self, &mut kept, &slivers, h_eps);
-        }
-        self.indices = kept;
-    }
 
     /// Mesh hygiene applied to every element mesh before it leaves the router.
     ///
@@ -836,7 +807,7 @@ impl Mesh {
     /// outputs use it (#7292); consumers with parallel buffers retain index-only
     /// cleanup and judge the result through their own closure gates.
     pub fn clean_degenerate_watertight(&mut self) {
-        self.drop_thin_triangles_inner(crate::kernel::mesh_bridge::SNAP_GRID, true);
+        self.drop_thin_triangles_inner(crate::kernel::mesh_bridge::SNAP_GRID, tjunction::Repair::Watertight);
     }
 
     /// Drop triangles with ANY vertex outside `[min - pad, max + pad]`, then

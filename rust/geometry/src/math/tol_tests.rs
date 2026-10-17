@@ -116,7 +116,10 @@ fn count_epsilon_literals(src: &str) -> usize {
 /// documented local constant), so this ceiling only ever goes down (lower it when you remove literals).
 /// Counts every `1e-N` / `1.0e-N` outside comments in `rust/geometry/src`, test
 /// modules inside files included, excluding `*_tests.rs` files.
-const MAX_INLINE_EPSILON_LITERALS: usize = 477;
+///
+/// 480 = 477 on this branch's base plus the three `triangulation.rs` literals
+/// #7826 landed on main concurrently (GEOM-38 territory, C3 names them).
+const MAX_INLINE_EPSILON_LITERALS: usize = 480;
 
 #[test]
 fn inline_epsilon_literals_only_go_down() {

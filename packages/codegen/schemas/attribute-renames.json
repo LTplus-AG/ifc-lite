@@ -1,0 +1,28 @@
+{
+  "comment": [
+    "Same-position attribute renames between bundled IFC releases (F3e-0b, #7780).",
+    "The slot generator (src/rust-slot-emitter.ts) names a slot by its canonical IFC4X3 name and treats a listed older spelling as the SAME attribute.",
+    "Every row is validated: a row whose names sit at different positions in two schemas fails generation, so a rename can never cover a move.",
+    "A row applies to the listed entities and all of their subtypes.",
+    "Semantic replacements are NOT renames and stay out of this file: CompositionType -> PredefinedType (IfcBuildingElementProxy), InteriorOrExteriorSpace -> PredefinedType (IfcSpace), ShapeType -> PredefinedType (IfcRamp, IfcRoof, IfcStair), BarRole -> PredefinedType (IfcReinforcingBar) and OperationType -> PredefinedType (IfcTransportElement) each name a different enumeration. They stay moving slots and read as absent in IFC2X3.",
+    "UrlReference -> URLReference (IfcImageTexture) is also not a rename: IFC4 inserted attributes before it, so it moved (4 -> 5).",
+    "Such a moved attribute whose old spelling would give the same slot name as the new one is listed under \"omit\": it gets no slot, and the texture readers pin IFC4 (D6)."
+  ],
+  "omit": [
+    { "entity": "IfcImageTexture", "attribute": "UrlReference" }
+  ],
+  "renames": [
+    { "name": "Specification", "aliases": ["Description"], "entities": ["IfcProperty", "IfcComplexProperty"] },
+    { "name": "Specification", "aliases": ["Location"], "entities": ["IfcClassification"] },
+    { "name": "Identification", "aliases": ["ItemReference"], "entities": ["IfcExternalReference"] },
+    { "name": "Identification", "aliases": ["Id"], "entities": ["IfcOrganization", "IfcPerson"] },
+    { "name": "Identification", "aliases": ["DocumentId"], "entities": ["IfcDocumentInformation"] },
+    { "name": "Mode", "aliases": ["TextureType"], "entities": ["IfcSurfaceTexture"] },
+    { "name": "NumberOfRisers", "aliases": ["NumberOfRiser"], "entities": ["IfcStairFlight"] },
+    { "name": "RelatingSpace", "aliases": ["RelatedSpace"], "entities": ["IfcRelCoversSpaces"] },
+    { "name": "DeltaTConstant", "aliases": ["DeltaT_Constant"], "entities": ["IfcStructuralLoadTemperature"] },
+    { "name": "DeltaTY", "aliases": ["DeltaT_Y"], "entities": ["IfcStructuralLoadTemperature"] },
+    { "name": "DeltaTZ", "aliases": ["DeltaT_Z"], "entities": ["IfcStructuralLoadTemperature"] },
+    { "name": "ModelOrDraughting", "aliases": ["ModelorDraughting"], "entities": ["IfcFillAreaStyle"] }
+  ]
+}

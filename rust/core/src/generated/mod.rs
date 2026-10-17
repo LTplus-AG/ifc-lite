@@ -14,6 +14,9 @@ pub(crate) mod ifc4x1;
 pub(crate) mod ifc4x2;
 mod schema;
 pub(crate) mod schema_registry;
+pub(crate) mod slots;
+#[cfg(test)]
+pub(crate) mod slots_table;
 mod type_ids;
 
 pub use type_ids::*;

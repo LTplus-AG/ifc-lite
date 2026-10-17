@@ -6,7 +6,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 /**
- * Regenerate and compare the two public Rust artifacts. These live beside
+ * Regenerate and compare the public Rust artifacts (schema, type ids, mod, slots). These live beside
  * the crate-private version registries, so their freshness must be proven
  * independently (#4203/#5054).
  */
@@ -23,12 +23,20 @@ export function checkCanonicalRustCodegen({ root, tmp, runCodegenCli }) {
         join(schemas, 'IFC4_ADD2_TC1.exp'),
         join(schemas, 'IFC2X3_TC1.exp'),
       ],
+      // Every other bundled release feeds the generated typed slots (F3e-0b).
+      slotSchemas: [
+        join(schemas, 'IFC2X3_TC1.exp'),
+        join(schemas, 'IFC4_ADD2_TC1.exp'),
+        join(schemas, 'IFC4X1.exp'),
+        join(schemas, 'IFC4X2.exp'),
+      ],
+      slotRenames: join(schemas, 'attribute-renames.json'),
     },
   );
 
   // mod.rs is emitted unformatted by the same canonical run (its re-exports
   // are public API, e.g. `SchemaVersion` since #7780), so it is compared too.
-  return ['schema.rs', 'type_ids.rs', 'mod.rs'].map((file) => {
+  return ['schema.rs', 'type_ids.rs', 'mod.rs', 'slots.rs', 'slots_table.rs'].map((file) => {
     const fresh = join(canonicalOut, file);
     const committed = join(root, 'rust/core/src/generated', file);
     const bothExist = existsSync(fresh) && existsSync(committed);

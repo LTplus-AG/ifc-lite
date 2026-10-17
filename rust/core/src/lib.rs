@@ -85,6 +85,7 @@ pub mod schema_gen;
 pub mod typed_value;
 pub(crate) mod schema_helpers;
 pub mod step_encoding;
+pub mod slot;
 pub mod streaming;
 pub mod unit_labels;
 pub mod units;

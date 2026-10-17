@@ -1149,6 +1149,15 @@ jobs:
           # whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/core/src/attribute_slot.rs | grep -Fxq 'rust/core/src/attribute_slot.rs'; then
             oracle_args+=(--mutation tests/evidence/slot-lookup-7780/behaviour.oracle.patch)
+          # #7780: F3e-0b adds `rust/core/src/slot.rs`, the generated `slots.rs` and
+          # the slot emitter, which the changed tests name, so a whole-change
+          # revert cannot compile them (REVERT-BROKE-BUILD). Keep them and break
+          # ONLY behaviour: the SchemaSlot schema columns, logical decoding, the
+          # debug owner assertion, the undeclared-FILE_SCHEMA default, one
+          # generated position and the emitter's moving classification. Once
+          # slot.rs is on main, ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/core/src/slot.rs | grep -Fxq 'rust/core/src/slot.rs'; then
+            oracle_args+=(--mutation tests/evidence/slot-typed-accessors-7780/behaviour.oracle.patch)
           # #7783: C6-5/C6-6 move the server data model into
           # ifc_lite_processing::data_model, so the moved tests do not exist on
           # the base and a whole-change revert cannot compile them

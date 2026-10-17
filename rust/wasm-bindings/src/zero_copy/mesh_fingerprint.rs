@@ -18,7 +18,7 @@
 //! consumer reads purely by index.
 
 use super::MeshCollection;
-use crate::zero_copy::frame_swap::swap_zup_to_yup_aabb;
+use ifc_lite_geometry::math::frame::aabb_zup_to_yup;
 use wasm_bindgen::prelude::*;
 
 /// Everything one hashing pass learned about one entity, pushed as a unit.
@@ -91,7 +91,7 @@ impl MeshCollection {
         let y_up: Vec<f64> = self
             .geometry_aabb_values
             .chunks_exact(6)
-            .flat_map(|b| swap_zup_to_yup_aabb([b[0], b[1], b[2], b[3], b[4], b[5]]))
+            .flat_map(|b| aabb_zup_to_yup([b[0], b[1], b[2], b[3], b[4], b[5]]))
             .collect();
         js_sys::Float64Array::from(&y_up[..])
     }

@@ -2,7 +2,9 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use super::frame_swap::{swap_zup_to_yup_aabb, swap_zup_to_yup_mat4};
+use ifc_lite_geometry::math::frame::{
+    aabb_zup_to_yup, conjugate_zup_to_yup, zup_to_yup, zup_to_yup_in_place,
+};
 use ifc_lite_geometry::Mesh;
 use wasm_bindgen::prelude::*;
 
@@ -303,36 +305,24 @@ impl MeshDataJs {
     /// IFC Z-up → WebGL Y-up: swap Y/Z, negate new Z for right-handedness.
     /// This rotation has determinant +1, so triangle winding is preserved (#4056).
     pub fn new(express_id: u32, ifc_type: String, mut mesh: Mesh, color: [f32; 4]) -> Self {
-        // Convert positions: IFC Z-up → WebGL Y-up
-        for chunk in mesh.positions.chunks_exact_mut(3) {
-            let y = chunk[1];
-            let z = chunk[2];
-            chunk[1] = z; // New Y = old Z (vertical)
-            chunk[2] = -y; // New Z = -old Y (depth, negated for right-hand rule)
-        }
-
-        // Convert normals the same way
-        for chunk in mesh.normals.chunks_exact_mut(3) {
-            let y = chunk[1];
-            let z = chunk[2];
-            chunk[1] = z;
-            chunk[2] = -y;
-        }
+        // Convert positions and normals: IFC Z-up → WebGL Y-up
+        zup_to_yup_in_place(&mut mesh.positions);
+        zup_to_yup_in_place(&mut mesh.normals);
 
         // The per-element origin is a world-frame point and MUST undergo the
         // identical IFC Z-up → WebGL Y-up swap as the positions above, or
         // `world = origin + position` would mix axes (element renders mirrored
         // / displaced). Default [0,0,0] swaps to [0,0,0] (no-op for legacy).
-        let origin = [mesh.origin[0], mesh.origin[2], -mesh.origin[1]];
+        let origin = zup_to_yup(mesh.origin);
 
         // Local (pre-placement) AABB (issue #1474): same swap as positions, but
         // an AABB corner can't be swapped component-wise — negating an axis
-        // flips which corner is min/max along it. See `swap_zup_to_yup_aabb`.
-        let local_bounds = mesh.local_bounds.map(swap_zup_to_yup_aabb);
+        // flips which corner is min/max along it. See `aabb_zup_to_yup`.
+        let local_bounds = mesh.local_bounds.map(aabb_zup_to_yup);
         // The placement transform (issue #1474) is conjugated by the same
         // swap, since it's expressed in the IFC frame the positions were in
-        // before this conversion: M' = S · M · Sᵀ. See `swap_zup_to_yup_mat4`.
-        let local_to_world = mesh.local_to_world.map(|m| swap_zup_to_yup_mat4(&m));
+        // before this conversion: M' = S · M · Sᵀ. See `conjugate_zup_to_yup`.
+        let local_to_world = mesh.local_to_world.map(|m| conjugate_zup_to_yup(&m));
 
         Self {
             express_id,

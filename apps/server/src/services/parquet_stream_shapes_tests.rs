@@ -130,11 +130,11 @@ fn bit_identical_repeats_share_by_content_hash_across_batches() {
         .map(|m| {
             (0..3)
                 .map(|v| {
-                    let (x, y, z) = crate::services::axis::zup_to_yup(
+                    let [x, y, z] = ifc_lite_geometry::math::frame::zup_to_yup([
                         m.positions[v * 3] + m.origin[0] as f32,
                         m.positions[v * 3 + 1] + m.origin[1] as f32,
                         m.positions[v * 3 + 2] + m.origin[2] as f32,
-                    );
+                    ]);
                     [x, y, z]
                 })
                 .collect()

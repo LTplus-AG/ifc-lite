@@ -27,8 +27,8 @@
 //!   through these functions, and the kernel relies on it.
 //! - **NaN behaviour is stated per function.** `min`/`max` folds skip NaN
 //!   (`f64::min`), `normalize` refuses a non-finite length.
-//! - **Thresholds are arguments.** `normalize` takes its `min_len`; the one
-//!   named constant is [`mat4::SINGULAR_DET_EPS`].
+//! - **Thresholds are arguments.** `normalize` takes its `min_len`; the
+//!   values callers pass are named, with units, in [`tol`] (F2c, #7774).
 
 pub mod aabb;
 pub mod frame;
@@ -37,6 +37,7 @@ pub mod mat4;
 pub(crate) mod normals;
 pub mod v2;
 pub mod v3;
+pub mod tol;
 
 #[cfg(test)]
 mod aabb_tests;
@@ -52,3 +53,5 @@ mod normals_tests;
 mod v2_tests;
 #[cfg(test)]
 mod v3_tests;
+#[cfg(test)]
+mod tol_tests;

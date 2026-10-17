@@ -77,13 +77,20 @@ fn a_comma_in_a_comment_does_not_shift_every_later_field() {
 }
 
 #[test]
-fn an_unterminated_comment_does_not_swallow_the_records_after_it() {
-    // Not a comment at all, so it costs one stray character. Running it to
-    // end-of-text would lose the whole header to two mistyped characters.
+fn an_unterminated_comment_runs_to_the_end_and_hides_the_records_after_it() {
+    // ISO 10303-21 comments cannot be left open: everything after the `/*` is
+    // inside it, so no record below it is a record (F4-2, the shared vector
+    // "a comment that never closes hides every later record"). Until F4-2 the
+    // opener was read as text and the records below it were found.
     let src = header(&format!(
         "/* never closed\nFILE_DESCRIPTION(('d'),'2;1');\n{NAME_AND_SCHEMA}"
     ));
-    let h = parse_source_header(&src).expect("header should parse");
+    assert_eq!(parse_source_header(&src), None);
+    // A record BEFORE the opener is still read.
+    let src = header(&format!(
+        "FILE_DESCRIPTION(('d'),'2;1');\n{NAME_AND_SCHEMA}\n/* never closed"
+    ));
+    let h = parse_source_header(&src).expect("the records before the opener parse");
     assert_eq!(h.name.as_deref(), Some("a.ifc"));
     assert_eq!(h.schema_identifiers, vec!["IFC4".to_string()]);
 }

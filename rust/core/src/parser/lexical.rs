@@ -17,16 +17,10 @@
 //! to hand-roll this and disagreed with each other on exactly this case
 //! (issue #3303); both now call this one function.
 //!
-//! The shared STEP HEADER prescan (`header::Lex`) answers the
-//! same question differently, on purpose, and that is not the divergence
-//! #3303 is about: a header prescan that swallows every later record has
-//! lost the schema, so it treats an unterminated `/*` as ordinary text
-//! instead of refusing. See the doc comment on `Lex::skip_comment_at` for
-//! why that call site needs its own answer. It still calls this function to
-//! find where a *closed* comment ends — only the unterminated case is
-//! handled differently, and only at that one call site.
+//! The STEP HEADER keyword finder (`header::find_keyword_then`) gives the
+//! same answer: an unterminated `/*` leaves nothing after it to find. Until
+//! F4-2 the header had its own copy that read it as ordinary text.
 
-pub(crate) use crate::step_encoding::is_page_quote_operand;
 
 /// If a STEP `/* ... */` comment starts at `bytes[i]`, the index just past
 /// its closing `*/`.
@@ -74,7 +68,7 @@ pub fn skip_step_comment(bytes: &[u8], i: usize) -> Option<usize> {
 ///
 /// This is the matched pair of `skipTrivia` in
 /// `packages/parser/src/step-lexing.ts`; the two halves are changed together.
-#[inline]
+#[inline(always)]
 pub fn skip_step_trivia(bytes: &[u8], i: usize) -> Option<usize> {
     let len = bytes.len();
     let mut p = i;
@@ -226,30 +220,14 @@ pub fn close_step_record(bytes: &[u8]) -> RecordClose {
     let mut depth = 0u32;
     while pos < bytes.len() {
         match bytes[pos] {
-            b'\'' => {
-                pos += 1;
-                loop {
-                    match memchr::memchr(b'\'', &bytes[pos..]) {
-                        Some(off) => pos += off + 1,
-                        None => return RecordClose::Unreadable,
-                    }
-                    if is_page_quote_operand(bytes, pos - 1) {
-                        continue;
-                    }
-                    // A doubled '' is an escaped quote: still inside.
-                    if bytes.get(pos) == Some(&b'\'') {
-                        pos += 1;
-                        continue;
-                    }
-                    // An unescaped apostrophe (#7541): every byte after it is
-                    // read inverted, so no ')' found from here is this record's.
-                    match super::record_strings::string_parameter_end(bytes, pos - 1) {
-                        super::record_strings::QuoteEnd::Closes => break,
-                        super::record_strings::QuoteEnd::Stray => return RecordClose::Unbalanced,
-                        super::record_strings::QuoteEnd::Unreadable => return RecordClose::Unreadable,
-                    }
-                }
-            }
+            // The shared quote step (#7541): a string is jumped whole, and an
+            // unescaped apostrophe leaves every later byte read inverted, so
+            // no ')' found from there is this record's.
+            b'\'' => match super::record_strings::literal_end_framed(bytes, pos) {
+                super::record_strings::LiteralEnd::Closes(past) => pos = past,
+                super::record_strings::LiteralEnd::Stray(_) => return RecordClose::Unbalanced,
+                super::record_strings::LiteralEnd::Unreadable => return RecordClose::Unreadable,
+            },
             b'/' if bytes.get(pos + 1) == Some(&b'*') => match skip_step_comment(bytes, pos) {
                 Some(next) => pos = next,
                 None => return RecordClose::Unreadable,

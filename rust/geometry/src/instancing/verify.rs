@@ -72,8 +72,7 @@ use nalgebra::{Matrix4, Vector4};
 /// any coordinate magnitude; only recomposition noise between truly-shared
 /// geometry stays under it.
 const ABS_FLOOR_M: f64 = 1e-6;
-// 8 * 2^-23 (f32 ULP), computed out-of-line: `powi` is not `const fn` here.
-const ULP_FACTOR: f64 = 9.5367431640625e-7;
+use crate::math::tol::F32_ULP_8 as ULP_FACTOR;
 
 fn tolerance(mag: f64) -> f64 {
     (mag * ULP_FACTOR).max(ABS_FLOOR_M)

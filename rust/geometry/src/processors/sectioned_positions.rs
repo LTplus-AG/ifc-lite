@@ -9,6 +9,7 @@
 //! `curve_walk.rs`), split out so the processor stays within its
 //! module-size budget.
 
+use crate::math::tol;
 use ifc_lite_core::{AttributeValue, DecodedEntity, EntityDecoder, IfcType};
 use nalgebra::Vector3;
 
@@ -168,7 +169,7 @@ fn read_direction(entity: &DecodedEntity, index: usize, decoder: &mut EntityDeco
         ratios.get(1).and_then(AttributeValue::as_float).unwrap_or(0.0),
         ratios.get(2).and_then(AttributeValue::as_float).unwrap_or(0.0),
     );
-    v.try_normalize(1e-12).map(Some).ok_or_else(|| {
+    v.try_normalize(tol::DIRECTION_MIN_LEN).map(Some).ok_or_else(|| {
         Error::geometry("IfcAxis2PlacementLinear direction has zero length".to_string())
     })
 }

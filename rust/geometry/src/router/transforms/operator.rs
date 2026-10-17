@@ -5,6 +5,7 @@
 //! `IfcCartesianTransformationOperator` (2D / 3D, uniform + non-uniform): the
 //! `IfcMappedItem` MappingTarget operator, parsed into a 4x4.
 
+use crate::math::tol;
 use super::super::GeometryRouter;
 use crate::{Point3, Result, Vector3};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
@@ -167,10 +168,10 @@ pub(crate) fn parse_transformation_operator(
     // takes a deterministic perpendicular X (mirrors build_axis2_matrix). Only
     // the truly degenerate operator reorients, and it always stays finite.
     let z_axis = z_axis_raw
-        .try_normalize(1e-9)
+        .try_normalize(tol::AXIS_MIN_LEN)
         .unwrap_or_else(|| Vector3::new(0.0, 0.0, 1.0));
     let x_norm = x_axis_raw
-        .try_normalize(1e-9)
+        .try_normalize(tol::AXIS_MIN_LEN)
         .unwrap_or_else(|| Vector3::new(1.0, 0.0, 0.0));
     let x_axis = crate::axis_projection::perpendicular_x_axis(z_axis, x_norm);
     // Y = Z × X (IfcSecondProjAxis' result whenever Axis2 agrees with the
@@ -185,7 +186,7 @@ pub(crate) fn parse_transformation_operator(
         Some(raw) => {
             let projected = raw - z_axis * raw.dot(&z_axis);
             let projected = projected - x_axis * projected.dot(&x_axis);
-            match projected.try_normalize(1e-6) {
+            match projected.try_normalize(tol::COARSE_DIRECTION_MIN_LEN) {
                 // Consistent with the right-handed frame (dot ≈ 1): keep the
                 // cross product verbatim.
                 Some(v) if v.dot(&cross_y) < 1.0 - 1e-9 => v,

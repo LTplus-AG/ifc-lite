@@ -90,6 +90,7 @@ The comparator reads ordinary JSON; it does not read gzip files directly. Expand
 into a fresh scratch directory before using the existing reporter/corpus CLI:
 
 ```sh
+# Requires Python 3.12 or newer for tarfile extraction filters.
 capture_scratch=$(mktemp -d)
 capture_manifest=docs/architecture/evidence/issue-7292/historical-captures.manifest.json
 python3 - "$capture_scratch" "$capture_manifest" <<'PYVERIFY'
@@ -276,8 +277,8 @@ The official WASM build, root Turbo typecheck, real WASM contracts (210 passed,
 one skipped), public WASM tests (22 passed), and forced viewer build complete.
 The original qualification driver's post-WASM hold-label failure remains
 failed; a separate continuation completed the remaining stages from the actual
-source-built bytes. The engine transfer-size verdict remains **FAIL** and a
-merge blocker.
+source-built bytes. That artifact failed its unchanged engine transfer-size
+gate and did not qualify for merge.
 
 A fresh owned Chrome capture binds that engine to five cases on physical NVIDIA
 hardware. All six composite source/runtime/cleanup gates pass. Cleanup succeeds

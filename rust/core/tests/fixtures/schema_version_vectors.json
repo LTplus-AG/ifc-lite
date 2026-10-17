@@ -132,10 +132,10 @@
       "expected": "IFC2X3"
     },
     {
-      "name": "a declaration past the 64 KiB header window is not read: head scan, then the IFC4 default",
+      "name": "a declaration past the 256 KiB header window is not read: head scan, then the IFC4 default",
       "content": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('ViewDefinition [CoordinationView]'),'2;1');\nFILE_NAME('v.ifc','2026-10-16T00:00:00',('{PAD}'),('o'),'p','s','');\nFILE_SCHEMA(('IFC2X3'));\nENDSEC;\nDATA;\n#1=IFCPROJECT('0YvctVUKr0kugbFTf53O9L',$,'P',$,$,$,$,$,$);\nENDSEC;\nEND-ISO-10303-21;\n",
       "expected": "IFC4",
-      "pad": 70000
+      "pad": 270000
     }
   ]
 }

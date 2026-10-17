@@ -19,6 +19,7 @@
 //! off-plane ones perturbs nothing real. All comparisons are FMA-free f64 over
 //! the interned (snapped) coordinates, so native == wasm.
 
+use crate::math::tol;
 use super::interner::{Interner, Vid};
 use super::retriangulate::{project2d, Canonical};
 use super::DropAxis;
@@ -57,7 +58,7 @@ pub(crate) fn drop_out_of_plane(
     let n = [n[0] / nl, n[1] / nl, n[2] / nl];
     let p0 = tri[0];
     let extent = tri.iter().flat_map(|c| c.iter()).fold(0.0_f64, |m, &x| m.max(x.abs()));
-    let tol = 1.0e-3_f64.max(extent * (1.0 / 4_194_304.0));
+    let tol = 1.0e-3_f64.max(extent * tol::F32_ULP_SCALE);
     let on_plane = |vid: Vid| {
         super::fixed::point_to_f64(interner.get(vid)).is_none_or(|p| {
             ((p[0] - p0[0]) * n[0] + (p[1] - p0[1]) * n[1] + (p[2] - p0[2]) * n[2]).abs() <= tol

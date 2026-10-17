@@ -1,0 +1,3 @@
+# The placement module (#7779, F3b R1)
+
+`behaviour.oracle.patch` is the revert-oracle mutation for the F3b R1 PR. R1 moves `build_axis2_matrix`, the chain walk and the Linear/Grid resolvers into the new `ifc_lite_geometry::placement` module, and its changed tests import that module, so a whole-change revert does not compile (INCONCLUSIVE). The patch keeps every item and restores ONLY behaviour the tests pin: the pre-D27 depth cap (101 placements, silently), a cycle that composes instead of being refused, a walk that does not memoise, `build_axis2_matrix` without its zero-axis repair, and `validate_chain` ignoring its policy. Once `rust/geometry/src/placement/chain.rs` is on `main`, the ordinary whole-change revert resumes.

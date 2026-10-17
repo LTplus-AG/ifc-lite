@@ -124,12 +124,14 @@ impl ProfileProcessor {
         let read = Axis2Placement::read(&placement, decoder)?;
         let frame = read.matrix();
         let center = Point2::new(frame[(0, 3)], frame[(1, 3)]);
-        // `atan2` is scale-invariant, so a planar placement takes the angle of
-        // its raw RefDirection: the normalised column would add rounding
-        // noise to every conic angle for nothing.
-        let rotation = match read.ref_direction.filter(|_| read.planar) {
+        // Preserve raw atan2 bits only for planar ratios that survive the
+        // canonical repair. Other cases take the repaired frame's heading,
+        // matching parameterized profiles (#7779 / #7880).
+        let rotation = match read.ref_direction.filter(|r| {
+            read.planar && r[2] == 0.0
+                && crate::Vector3::from(*r).norm() > tol::AXIS_MIN_LEN
+        }) {
             Some(r) => r[1].atan2(r[0]),
-            None if read.planar => 0.0,
             None => frame[(1, 0)].atan2(frame[(0, 0)]),
         };
         let determinant = frame[(0, 0)] * frame[(1, 1)] - frame[(1, 0)] * frame[(0, 1)];

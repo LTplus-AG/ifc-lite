@@ -62,7 +62,8 @@ pub(crate) fn parse_transformation_operator(
 
     // Get LocalOrigin (attribute 2), under the leaf rule: a point that does
     // not read is refused and counted, never (0, 0, 0).
-    let origin = decoder.point3_at(entity, 2)?.map_or_else(Point3::origin, Point3::from);
+    let origin = Point3::from(decoder.point3_at(entity, 2)?
+        .ok_or_else(|| decoder.refuse_malformed(entity.id))?);
 
     // Get Scale (attribute 3). For IfcCartesianTransformationOperator3DNonUniform
     // this is Scale1 (X axis only); attrs 5+6 supply per-axis Y and Z scales,

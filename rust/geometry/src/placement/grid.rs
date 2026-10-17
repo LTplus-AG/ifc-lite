@@ -49,9 +49,10 @@ fn try_resolve_grid_intersection(
     //   • IfcDirection              → its XY is local +X directly.
     //   • IfcVirtualGridIntersection → local +X points from this location
     //                                  to that second intersection.
-    //   • null / unresolved         → axis-aligned (inherit grid orientation).
+    //   • null                     → axis-aligned (inherit grid orientation).
+    // A present unreadable direction refuses the frame (#7779 / #7880).
     let ref_attr = layout.ref_direction.and_then(|i| placement.get(i));
-    let mut m = match grid_ref_direction_vector(ref_attr, &p, decoder) {
+    let mut m = match grid_ref_direction_vector(ref_attr, &p, decoder)? {
         Some(x_dir) => orient_x_in_plane(x_dir),
         None => Matrix4::identity(),
     };
@@ -142,16 +143,16 @@ fn grid_axis_line(
 ///   • `IfcDirection`              → its XY components.
 ///   • `IfcVirtualGridIntersection` → the vector from `origin` (the
 ///     placement location) to that second intersection point.
-/// `None` for a null, missing, unresolved, or degenerate (zero-length)
-/// ref direction, so the caller stays axis-aligned.
+/// `Some(None)` for a null, missing or readable degenerate direction (the
+/// existing axis-aligned repair); outer `None` refuses an unreadable value.
 fn grid_ref_direction_vector(
     dir_attr: Option<&AttributeValue>,
     origin: &Point3<f64>,
     decoder: &mut EntityDecoder,
-) -> Option<Vector2<f64>> {
-    let dir_attr = dir_attr?;
+) -> Option<Option<Vector2<f64>>> {
+    let Some(dir_attr) = dir_attr else { return Some(None) };
     if dir_attr.is_null() {
-        return None;
+        return Some(None);
     }
     let entity = decoder.resolve_ref(dir_attr).ok().flatten()?;
     let x = match entity.ifc_type {
@@ -166,9 +167,9 @@ fn grid_ref_direction_vector(
         _ => return None,
     };
     if x.norm() < 1e-9 {
-        return None;
+        return Some(None);
     }
-    Some(x)
+    Some(Some(x))
 }
 
 /// Build a rotation matrix whose local +X follows the given in-plane

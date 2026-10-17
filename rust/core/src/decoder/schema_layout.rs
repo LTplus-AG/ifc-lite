@@ -8,7 +8,7 @@
 //! attribute POSITIONS are defined by the schema the file declares. Most
 //! geometry entities share one layout across IFC2X3/IFC4/IFC4X3, so readers
 //! index them directly; the few that moved (IfcGridPlacement gained the
-//! inherited `PlacementRelTo` in IFC4X1) must ask here instead of hard-coding
+//! inherited `PlacementRelTo` in IFC4X2) must ask here instead of hard-coding
 //! an offset, or an IFC2X3/IFC4 file is read one slot out (#6232 F2).
 
 use super::{EntityDecoder, EntityScanner};
@@ -47,10 +47,7 @@ impl EntityDecoder<'_> {
     /// `IfcGridPlacement.PlacementRelTo` on IFC2X3/IFC4.
     pub fn attribute_index(&mut self, entity_name: &str, attribute: &str) -> Option<usize> {
         let schema = self.schema_version().unwrap_or(SchemaVersion::Ifc4x3);
-        schema
-            .attribute_names(entity_name)?
-            .iter()
-            .position(|name| name.eq_ignore_ascii_case(attribute))
+        schema.attribute(entity_name, attribute).map(|slot| slot.index)
     }
 
     /// The `IfcGrid` that lists `axis_id` among its `UAxes`/`VAxes`/`WAxes`

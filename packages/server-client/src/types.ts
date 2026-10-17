@@ -119,9 +119,13 @@ export interface ModelMetadata {
   coordinate_info: CoordinateInfo;
   /**
    * Length unit scale to convert model length values to metres (e.g. `0.001`
-   * for millimetres). Absent on older servers — treat as `1`.
+   * for millimetres). Absent on older servers — treat as `1` — unless
+   * `length_unit_refused` is set, in which case there is no usable scale.
    */
   length_unit_scale?: number;
+  /** Express id of the unit whose length factor is unusable (zero, negative or
+   *  non-finite): no geometry was meshed and `length_unit_scale` is absent. */
+  length_unit_refused?: number;
   /**
    * Georeferencing (`IfcMapConversion` + `IfcProjectedCRS`). Absent when the
    * model carries no map-conversion data.

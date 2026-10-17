@@ -62,19 +62,9 @@ pub(super) fn find(buckets: &BTreeMap<Bucket, Vec<PlaneTri>>) -> Supported {
         let mut neighbors = Vec::new();
         for k in 0..3 {
             let (a, b) = (p[k], p[(k + 1) % 3]);
-            if a == b {
-                break;
-            }
-            let incident = &edges[&(a.min(b), a.max(b))];
-            if incident.len() != 2 {
-                break;
-            }
-            let Some(&(j, forward)) = incident.iter().find(|&&(j, _)| j != i) else {
+            let Some(j) = healthy_neighbor(i, a, b, &needles, &edges) else {
                 break;
             };
-            if forward == (a < b) || needles[j] {
-                break;
-            }
             neighbors.push(j);
         }
         if neighbors.len() == 3
@@ -90,8 +80,104 @@ pub(super) fn find(buckets: &BTreeMap<Bucket, Vec<PlaneTri>>) -> Supported {
             out.buckets.insert(*key);
         }
     }
+    // Fold retention only preserves a chain that an ORIGINAL certified raw
+    // bucket already keeps. Do not let newly added folds seed another fold.
+    let mut folded = Vec::new();
+    if !out.buckets.is_empty() {
+        for (first, pair) in faces.windows(2).enumerate() {
+            let key = pair[0].0;
+            if pair[1].0 != key || buckets[&key].len() != 2 {
+                continue;
+            }
+            let Some(neighbors) = supported_fold_neighbors(first, &faces, &needles, &edges, &out.buckets) else {
+                continue;
+            };
+            if std::iter::once(key).chain(neighbors.map(|j| faces[j].0)).all(|key| {
+                *disjoint.entry(key).or_insert_with(|| nonoverlapping(&buckets[&key]))
+            }) {
+                folded.push(key);
+            }
+        }
+    }
+    out.buckets.extend(folded);
     out
 }
+
+fn healthy_neighbor(
+    own: usize,
+    a: Point,
+    b: Point,
+    needles: &[bool],
+    edges: &FxHashMap<(Point, Point), Vec<(usize, bool)>>,
+) -> Option<usize> {
+    if a == b { return None; }
+    let incident = edges.get(&(a.min(b), a.max(b)))?;
+    if incident.len() != 2 { return None; }
+    let &(j, forward) = incident.iter().find(|&&(j, _)| j != own)?;
+    (forward != (a < b) && !needles[j]).then_some(j)
+}
+
+/// Boundary cycle of two healthy untagged cells, only when genuinely folded.
+/// This local shape alone is NOT permission to bypass planar cleanup.
+pub(super) fn healthy_fold_boundary(tris: &[&PlaneTri]) -> Option<[Point; 4]> {
+    if tris.len() != 2 || tris.iter().any(|t| t.tag.is_some() || tri_is_needle(&t.v)
+        || t.v.iter().flat_map(|p| p.iter()).any(|v| !v.is_finite())) {
+        return None;
+    }
+    let (a, b) = (cell_key(&tris[0].v), cell_key(&tris[1].v));
+    for i in 0..3 {
+        for j in 0..3 {
+            if a[i] == b[(j + 1) % 3] && a[(i + 1) % 3] == b[j] {
+                let [p, q, r] = tris[0].v.map(|v| [v.x, v.y, v.z]);
+                let s = tris[1].v[(j + 2) % 3];
+                if crate::kernel::predicates::orient3d_explicit(p, q, r, [s.x, s.y, s.z])
+                    != crate::kernel::Sign::Zero {
+                    return Some([a[i], b[(j + 2) % 3], a[(i + 1) % 3], a[(i + 2) % 3]]);
+                }
+            }
+        }
+    }
+    None
+}
+
+fn supported_fold_neighbors(
+    first: usize,
+    faces: &[(Bucket, &PlaneTri)],
+    needles: &[bool],
+    edges: &FxHashMap<(Point, Point), Vec<(usize, bool)>>,
+    seeds: &FxHashSet<Bucket>,
+) -> Option<[usize; 4]> {
+    let key = faces[first].0;
+    let boundary = healthy_fold_boundary(&[faces[first].1, faces[first + 1].1])?;
+    let (a, b) = (boundary[0], boundary[2]);
+    let internal = edges.get(&(a.min(b), a.max(b)))?;
+    if internal.len() != 2 || !internal.iter().any(|&(j, _)| j == first)
+        || !internal.iter().any(|&(j, _)| j == first + 1) {
+        return None;
+    }
+    let mut neighbors = [0; 4];
+    for k in 0..4 {
+        let (a, b) = (boundary[k], boundary[(k + 1) % 4]);
+        let incident = edges.get(&(a.min(b), a.max(b)))?;
+        let own = if k < 2 { first + 1 } else { first };
+        if incident.len() != 2 || incident.iter().filter(|&&(j, _)| j == own).count() != 1 {
+            return None;
+        }
+        let j = healthy_neighbor(own, a, b, needles, edges)?;
+        if j == first || j == first + 1 || faces[j].0 == key {
+            return None;
+        }
+        neighbors[k] = j;
+    }
+    // Adjacent outer edges must meet at the same kept source point and have
+    // distinct healthy opposite faces in ONE already-protected source bucket.
+    let anchored = (0..4).any(|k| {
+        let (a, b) = (neighbors[k], neighbors[(k + 1) % 4]);
+        a != b && faces[a].0 == faces[b].0 && seeds.contains(&faces[a].0)
+    });
+    anchored.then_some(neighbors)
+}
+
 pub(super) fn append(mesh: &mut Mesh, t: &[Point3<f64>; 3], normal: &Vector3<f64>) {
     let base = mesh.vertex_count() as u32;
     for &p in t {

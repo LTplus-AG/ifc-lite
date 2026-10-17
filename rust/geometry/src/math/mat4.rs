@@ -13,8 +13,12 @@ pub type M4 = [f64; 16];
 /// A row-major 3x3 matrix.
 pub type M3 = [f64; 9];
 
-/// The determinant magnitude under which [`affine_inverse`] refuses a matrix
-/// (a length^3 quantity). F2c moves this to `math::tol`.
+/// The determinant magnitude under which [`affine_inverse`] refuses a matrix.
+/// Dimensionless: placement chains carry the unit scale in the translation
+/// only (`GeometryRouter::scale_transform`), so the linear block is rotation
+/// times `IfcCartesianTransformationOperator` scale and `1e-18` is a uniform
+/// operator scale of `1e-6` (the corpus minimum is `1e-3`, det `1e-9`).
+/// F2c moves this to `math::tol`.
 pub const SINGULAR_DET_EPS: f64 = 1e-18;
 
 /// The identity.
@@ -104,9 +108,10 @@ pub fn translation(t: V3) -> M4 {
 /// Inverse of an AFFINE row-major matrix (last row `[0,0,0,1]`, which is not
 /// read): the upper 3x3 by cofactors, the translation by `-R⁻¹·t`.
 ///
-/// `None` iff the 3x3 determinant is not finite or `abs(det) <
-/// SINGULAR_DET_EPS`, so a NaN placement is refused rather than inverted to
-/// NaN.
+/// `None` when the 3x3 determinant is not finite or `abs(det) <
+/// SINGULAR_DET_EPS`, or when any entry of the inverse is not finite (a NaN or
+/// infinite translation), so a non-finite placement is refused rather than
+/// inverted to NaN.
 #[inline]
 pub fn affine_inverse(m: &M4) -> Option<M4> {
     let a = m[0]; let b = m[1]; let c = m[2];
@@ -136,6 +141,9 @@ pub fn affine_inverse(m: &M4) -> Option<M4> {
         -(r[3] * tx + r[4] * ty + r[5] * tz),
         -(r[6] * tx + r[7] * ty + r[8] * tz),
     ];
+    if !r.iter().chain(&it).all(|v| v.is_finite()) {
+        return None;
+    }
     Some([
         r[0], r[1], r[2], it[0], //
         r[3], r[4], r[5], it[1], //

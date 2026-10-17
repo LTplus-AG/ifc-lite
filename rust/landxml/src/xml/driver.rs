@@ -57,6 +57,11 @@ impl Cx<'_> {
         self.frames
     }
 
+    /// The element's parent, if it has one.
+    pub(crate) fn parent(&self) -> Option<&Frame> {
+        self.frames.len().checked_sub(2).map(|index| &self.frames[index])
+    }
+
     /// Whether the open elements are exactly `expected`, all in the root
     /// namespace. The one `is_path`.
     pub(crate) fn path_is(&self, expected: &[&str]) -> bool {

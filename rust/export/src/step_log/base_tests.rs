@@ -141,22 +141,40 @@ fn assert_complex_budget_case(case: &serde_json::Value, input_bytes: usize, sets
 }
 
 /// #7770: a regenerated quantity set was written from `unwrap_or(0.0)`, so an
-/// overflow quantity (`1.E400`, kept as raw text by the tokenizer) or an unset
-/// one came back as a fabricated `0.`. The TS `QuantityExtractor` drops a
-/// quantity whose value is not a number; so does this base (D13).
+/// overflow quantity (`1.E400`, kept as raw text by the tokenizer) came back as
+/// a fabricated `0.`. `collectQuantitiesFromRefs` drops an unrepresentable
+/// measure (overflow or malformed literal) and reads any other non-number,
+/// `$` included, as `0`; this base matches it exactly (D13).
 #[test]
-fn a_non_numeric_quantity_value_is_dropped_not_zeroed() {
+fn an_unrepresentable_quantity_value_is_dropped_not_zeroed() {
     let text = "ISO-10303-21;\nHEADER;FILE_SCHEMA(('IFC4'));ENDSEC;\nDATA;\n\
 #10=IFCWALL('0WallA0000000000000010A',$,'Wall',$,$,$,$,$,$);\n\
 #11=IFCQUANTITYLENGTH('Over',$,$,1.E400,$);\n\
 #12=IFCQUANTITYLENGTH('Unset',$,$,$,$);\n\
 #13=IFCQUANTITYLENGTH('Ok',$,$,2.5,$);\n\
-#14=IFCELEMENTQUANTITY('0Qto0000000000000014A',$,'Qto_Wall',$,$,(#11,#12,#13));\n\
+#16=IFCQUANTITYLENGTH('Malformed',$,$,1.52.3,$);\n\
+#17=IFCQUANTITYLENGTH('NegOver',$,$,-1.E400,$);\n\
+#14=IFCELEMENTQUANTITY('0Qto0000000000000014A',$,'Qto_Wall',$,$,(#11,#12,#13,#16,#17));\n\
 #15=IFCRELDEFINESBYPROPERTIES('0Rel00000000000000015A',$,$,$,(#10),#14);\n\
 ENDSEC;\nEND-ISO-10303-21;\n";
     let src = Source::index(text.as_bytes());
     let mut base = BaseSets::new(&src, &HashSet::from([10]));
     let sets = base.qsets(10);
     let got: Vec<(String, f64)> = sets[0].quantities.iter().map(|q| (q.name.clone(), q.value)).collect();
-    assert_eq!(got, vec![("Ok".to_string(), 2.5)]);
+    assert_eq!(got, vec![("Unset".to_string(), 0.0), ("Ok".to_string(), 2.5)]);
+}
+
+/// The TS predicate's edges: `$`, enumerations and labels are representable;
+/// overflow (either sign, or the `Infinity` spelling) and malformed are not.
+#[test]
+fn unrepresentable_numeric_matches_the_ts_predicate() {
+    use super::super::extract::is_unrepresentable_numeric as f;
+    let s = |v: &str| JsVal::Str(v.to_string());
+    for bad in ["1.E400", "-1.E400", "+1e999", "1.52.3", "1.5abc", ".5x", " 1.E400 ", "Infinity", "-Infinityx"] {
+        assert!(f(&s(bad)), "{bad}");
+    }
+    for ok in [".T.", ".UNSPECIFIED.", "*", "abc", "", "NaN", "-", ".", "1.5", "1.E-5"] {
+        assert!(!f(&s(ok)), "{ok}");
+    }
+    assert!(!f(&JsVal::Null) && !f(&JsVal::Num(2.0)) && f(&JsVal::Num(f64::INFINITY)));
 }

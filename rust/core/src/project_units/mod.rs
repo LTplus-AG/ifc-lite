@@ -17,12 +17,14 @@
 //! in `rust/core/tests/fixtures/unit_symbol_vectors.json`.
 
 pub mod measure;
+pub mod scales;
 pub mod symbols;
 
 use std::collections::BTreeMap;
 
 use crate::decoder::EntityDecoder;
 pub use measure::{measure_unit, MeasureUnit};
+pub use scales::UnitScales;
 use symbols::{compose_derived, conversion_unit_symbol, si_unit_symbol_and_scale};
 
 /// A resolved display unit: the symbol to render plus the factor that converts a
@@ -51,14 +53,17 @@ pub struct ProjectUnits {
     /// it shows no unit rather than the SI default, which would mislabel it.
     by_type: BTreeMap<String, Option<ResolvedUnit>>,
     monetary: Option<ResolvedUnit>,
+    /// The length / plane-angle scalars of the same project (see [`scales`]).
+    scales: UnitScales,
 }
 
 impl ProjectUnits {
     /// Resolve the full unit assignment reachable from `project_id`. Never
     /// fails: an absent / malformed assignment yields an empty table (all
-    /// measures then fall back to their SI default symbols).
+    /// measures then fall back to their SI default symbols). The length and
+    /// plane-angle scalars come with it ([`Self::scales`]).
     pub fn resolve(decoder: &mut EntityDecoder, project_id: u32) -> Self {
-        let mut units = ProjectUnits::default();
+        let mut units = ProjectUnits { scales: UnitScales::resolve_complete(decoder, project_id), ..Self::default() };
         let Ok(project) = decoder.decode_by_id(project_id) else {
             return units;
         };

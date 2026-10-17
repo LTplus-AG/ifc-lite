@@ -11,7 +11,7 @@
 //
 // Contract: every public LandXML ingestion entry point, pull and stream,
 // must return Ok or Err on arbitrary bytes and never panic, hang or overflow
-// the stack. The stream is driven whole and one byte at a time, because its
+// the stack, and the pull parsers and the stream must agree (differential.rs). The stream is driven whole and one byte at a time, because its
 // token loop is where one source token becomes several reader events.
 
 use ifc_lite_landxml::{
@@ -19,11 +19,29 @@ use ifc_lite_landxml::{
     LandXmlLimits, LandXmlTinStreamSession, MAX_LANDXML_STREAM_DRAIN_BYTES,
 };
 
+// `fuzzing` is the cfg cargo-fuzz sets; rustc is not told about it, hence the
+// allow. It keeps the serde-using comparison out of the fuzz crate, which has
+// no serde of its own. Each consumer (fuzz target, corpus replay, differential
+// test) uses a different subset, hence dead_code.
+#[allow(unexpected_cfgs, dead_code)]
+mod differential {
+    use super::*;
+    include!("differential.rs");
+}
+use differential::*;
+
 pub fn exercise_landxml(data: &[u8]) {
     let _ = parse_landxml_document(data);
     let _ = parse_landxml_alignments_optional(data);
     let _ = stream_landxml(data, data.len().max(1));
     let _ = stream_landxml(data, 1);
+    // Pull and stream are one parser fed two ways (C9a-0): they must agree.
+    if let Err(divergence) = differential_landxml(data, &LandXmlLimits::default()) {
+        assert!(
+            divergence.kind == DivergenceKind::Code,
+            "pull and stream diverge: {divergence:?}"
+        );
+    }
     // A host that ignores every `Err` and keeps feeding (#7677): the stream
     // used to resume into frames whose builders a refused element never
     // opened. Tight limits make the refusals happen; a mid-document

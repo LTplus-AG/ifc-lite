@@ -468,7 +468,28 @@ pub fn triangulate_planar_face(
         .iter()
         .map(|hole| project_to_2d_with_basis(hole, &u_axis, &v_axis, &origin))
         .collect();
-    match triangulate_polygon_with_holes(&outer_2d, &holes_2d) {
+    // Hole-free rings of five or more corners keep the
+    // exact dominant-axis projection every polygonal face used before the planar home: it never
+    // perturbs exactly collinear or axis-aligned corners, so the triangulation
+    // (and the booleans downstream of it) does not shift with Newell-basis
+    // rounding, and a convex ring with a collinear corner is never fanned
+    // through a degenerate zero-area triangle (which opens the edges its
+    // neighbour shares through that corner).
+    // Ear-clipping on either projection can still cut a zero-area ear at a
+    // collinear corner; the Newell result is kept where it has strictly fewer
+    // of them (duplex IfcSpace surface models tore on the axis ears).
+    let held = if holes_2d.is_empty() && outer.len() >= 5 {
+        match axis_earcut(outer, &normal) {
+            Ok(axis) if zero_area_triangles(outer, &axis) > 0 => match triangulate_polygon(&outer_2d) {
+                Ok(newell) if zero_area_triangles(outer, &newell) < zero_area_triangles(outer, &axis) => Ok(newell),
+                _ => Ok(axis),
+            },
+            held => held,
+        }
+    } else {
+        triangulate_polygon_with_holes(&outer_2d, &holes_2d)
+    };
+    match held {
         Ok(idx) => Ok(idx.into_iter().map(|i| i as u32).collect()),
         Err(_) if holes.is_empty() => {
             let mut idx = Vec::with_capacity((outer.len() - 2) * 3);
@@ -481,6 +502,46 @@ pub fn triangulate_planar_face(
             "planar face triangulation with holes failed: {error}"
         ))),
     }
+}
+
+/// Triangles of `idx` over the planar `ring` whose area is zero relative to
+/// the ring's own (`1e-9`): the ears a collinear corner yields.
+fn zero_area_triangles(ring: &[Point3<f64>], idx: &[usize]) -> usize {
+    let n = ring.len();
+    let twice_area = (0..n)
+        .fold(Vector3::zeros(), |acc, i| acc + ring[i].coords.cross(&ring[(i + 1) % n].coords))
+        .norm();
+    idx.chunks_exact(3)
+        .filter(|t| (ring[t[1]] - ring[t[0]]).cross(&(ring[t[2]] - ring[t[0]])).norm() <= 1e-9 * twice_area)
+        .count()
+}
+
+/// Earcut a hole-free planar ring on the plane its dominant normal axis drops,
+/// winding the triangles with the ring (earcut itself re-winds counter-clockwise
+/// in the projected frame, which mirrors for a ring that runs clockwise there).
+fn axis_earcut(ring: &[Point3<f64>], normal: &Vector3<f64>) -> Result<Vec<usize>> {
+    let (a, b) = if normal.z.abs() >= normal.x.abs() && normal.z.abs() >= normal.y.abs() {
+        (0, 1)
+    } else if normal.y.abs() >= normal.x.abs() {
+        (0, 2)
+    } else {
+        (1, 2)
+    };
+    let flat: Vec<f64> = ring.iter().flat_map(|p| [p[a], p[b]]).collect();
+    let n = ring.len();
+    let area2: f64 = (0..n)
+        .map(|i| {
+            let (p, q) = (&ring[i], &ring[(i + 1) % n]);
+            p[a] * q[b] - q[a] * p[b]
+        })
+        .sum();
+    let mut idx = safe_earcut(&flat, &[], 2).map_err(Error::TriangulationError)?;
+    if area2 < 0.0 {
+        for tri in idx.chunks_exact_mut(3) {
+            tri.swap(1, 2);
+        }
+    }
+    Ok(idx)
 }
 
 /// Project 3D points onto a 2D plane defined by a normal

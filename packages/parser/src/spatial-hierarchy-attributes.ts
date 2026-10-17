@@ -159,10 +159,16 @@ export function extractPlacementElevation(
     const locationId = readAttrs(axisId)?.[0];
     if (typeof locationId !== 'number') return undefined;
 
-    // IfcCartesianPoint.Coordinates (index 0) is a list [x, y, z].
+    // IfcCartesianPoint.Coordinates (index 0) is a list [x, y, z]. A 2D point
+    // promotes to z = 0 (D26), exactly as the Rust leaf reader does; a point
+    // that is not 2 or 3 numbers is not a usable elevation.
     const coords = readAttrs(locationId)?.[0];
-    if (Array.isArray(coords) && coords.length >= 3 && typeof coords[2] === 'number') {
-      return coords[2];
+    if (
+      Array.isArray(coords) &&
+      (coords.length === 2 || coords.length === 3) &&
+      coords.every((c) => typeof c === 'number')
+    ) {
+      return coords.length === 3 ? (coords[2] as number) : 0;
     }
   } catch (error) {
     log.caught('Failed to extract placement elevation', error, {

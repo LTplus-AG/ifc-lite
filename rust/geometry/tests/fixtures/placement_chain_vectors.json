@@ -1,0 +1,56 @@
+{
+  "_comment": "Shared by rust/geometry/tests/placement_chain_parity.rs (the resolver) and packages/data/src/placement-chain.parity.test.ts (walkPlacementChain). #7791 item 4, D26/D27/D30. `links` maps a placement id to its PlacementRelTo (null = root) and the translation its RelativePlacement adds. `expect.chain` is leaf-first; the world origin is the sum of the chain's offsets (translation-only links commute, so the sum proves exactly which links were composed). A cycle is refused, never composed partially.",
+  "vectors": [
+    {
+      "name": "single root placement",
+      "links": { "10": { "parent": null, "offset": [1, 2, 3] } },
+      "start": 10,
+      "expect": { "kind": "ok", "chain": [10], "origin": [1, 2, 3] }
+    },
+    {
+      "name": "three links compose every offset",
+      "links": {
+        "10": { "parent": null, "offset": [1, 0, 0] },
+        "11": { "parent": 10, "offset": [10, 0, 0] },
+        "12": { "parent": 11, "offset": [100, 0, 5] }
+      },
+      "start": 12,
+      "expect": { "kind": "ok", "chain": [12, 11, 10], "origin": [111, 0, 5] }
+    },
+    {
+      "name": "a mid-chain start composes only its ancestors",
+      "links": {
+        "10": { "parent": null, "offset": [1, 0, 0] },
+        "11": { "parent": 10, "offset": [10, 0, 0] },
+        "12": { "parent": 11, "offset": [100, 0, 0] }
+      },
+      "start": 11,
+      "expect": { "kind": "ok", "chain": [11, 10], "origin": [11, 0, 0] }
+    },
+    {
+      "name": "a placement that references itself is a cycle",
+      "links": { "10": { "parent": 10, "offset": [1, 0, 0] } },
+      "start": 10,
+      "expect": { "kind": "cycle", "revisited": 10 }
+    },
+    {
+      "name": "a two-placement cycle is a cycle",
+      "links": {
+        "10": { "parent": 11, "offset": [1, 0, 0] },
+        "11": { "parent": 10, "offset": [10, 0, 0] }
+      },
+      "start": 10,
+      "expect": { "kind": "cycle", "revisited": 10 }
+    },
+    {
+      "name": "a tail leading into a cycle is a cycle, not a partial frame",
+      "links": {
+        "20": { "parent": 21, "offset": [1, 0, 0] },
+        "21": { "parent": 22, "offset": [10, 0, 0] },
+        "22": { "parent": 21, "offset": [100, 0, 0] }
+      },
+      "start": 20,
+      "expect": { "kind": "cycle", "revisited": 21 }
+    }
+  ]
+}

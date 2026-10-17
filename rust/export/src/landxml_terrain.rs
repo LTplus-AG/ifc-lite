@@ -50,7 +50,7 @@ impl LandXmlLinearUnit {
         match self {
             Self::Metre => 1.0,
             Self::InternationalFoot => 0.3048,
-            Self::UsSurveyFoot => 1200.0 / 3937.0,
+            Self::UsSurveyFoot => ifc_lite_core::US_SURVEY_FOOT_M,
         }
     }
 

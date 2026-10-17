@@ -26,44 +26,9 @@
 //! the absolute-magnitude terms cancel to a small, f32-precise translation before the
 //! final downcast even at national-grid coordinates.
 
+use ifc_lite_geometry::math::{frame, mat4};
 use ifc_lite_geometry::InstanceMeta;
 use ifc_lite_processing::{MeshCoordinateSpace, MeshFrame};
-
-/// Z-up→Y-up basis as a row-major 4x4 (linear part only; `(x,y,z) → (x, z, -y)`).
-const S_YUP: [f64; 16] = [
-    1.0, 0.0, 0.0, 0.0, //
-    0.0, 0.0, 1.0, 0.0, //
-    0.0, -1.0, 0.0, 0.0, //
-    0.0, 0.0, 0.0, 1.0,
-];
-/// Inverse (transpose, since `S_YUP` is a proper rotation): `(x,y,z) → (x, -z, y)`.
-const S_YUP_INV: [f64; 16] = [
-    1.0, 0.0, 0.0, 0.0, //
-    0.0, 0.0, -1.0, 0.0, //
-    0.0, 1.0, 0.0, 0.0, //
-    0.0, 0.0, 0.0, 1.0,
-];
-const IDENTITY16: [f64; 16] = [
-    1.0, 0.0, 0.0, 0.0, //
-    0.0, 1.0, 0.0, 0.0, //
-    0.0, 0.0, 1.0, 0.0, //
-    0.0, 0.0, 0.0, 1.0,
-];
-
-/// Row-major 4x4 multiply `a · b`.
-fn mat4_mul(a: &[f64; 16], b: &[f64; 16]) -> [f64; 16] {
-    let mut out = [0.0f64; 16];
-    for r in 0..4 {
-        for c in 0..4 {
-            let mut s = 0.0;
-            for k in 0..4 {
-                s += a[r * 4 + k] * b[k * 4 + c];
-            }
-            out[r * 4 + c] = s;
-        }
-    }
-    out
-}
 
 /// The basis the baked template geometry lives in relative to the frame
 /// `InstanceMeta` (hence a collator `rel`) is expressed in:
@@ -102,8 +67,8 @@ pub(super) fn baked_basis_yup(
     rtc_zup: [f64; 3],
     site_zup: Option<&[f64]>,
 ) -> [f64; 16] {
-    mat4_mul(
-        &S_YUP,
+    mat4::mul(
+        &frame::ZUP_TO_YUP,
         &ifc_lite_processing::native_to_baked(space, site_zup, rtc_zup),
     )
 }
@@ -133,41 +98,20 @@ fn baked_basis_yup_inverse(
         w[2], w[6], w[10], w[14],
         0.0,  0.0,  0.0,   1.0,
     ];
-    mat4_mul(&world_row_major, &S_YUP_INV)
-}
-
-/// Row-major translation matrix.
-fn mat4_translation(t: [f64; 3]) -> [f64; 16] {
-    [
-        1.0, 0.0, 0.0, t[0], //
-        0.0, 1.0, 0.0, t[1], //
-        0.0, 0.0, 1.0, t[2], //
-        0.0, 0.0, 0.0, 1.0,
-    ]
-}
-
-/// Transpose a row-major f64 4x4 into the column-major `[f32; 16]` glTF expects.
-fn row_major_f64_to_col_major_f32(m: &[f64; 16]) -> [f32; 16] {
-    let mut out = [0.0f32; 16];
-    for r in 0..4 {
-        for c in 0..4 {
-            out[c * 4 + r] = m[r * 4 + c] as f32;
-        }
-    }
-    out
+    mat4::mul(&world_row_major, &frame::YUP_TO_ZUP)
 }
 
 /// Inverse of a row-major AFFINE 4x4: `None` for a singular or non-finite
 /// placement so the caller falls back to flat. One definition and one
 /// threshold (D22, #7772): `ifc_lite_geometry::math::mat4::affine_inverse`.
-pub(super) use ifc_lite_geometry::math::mat4::affine_inverse;
+pub(super) use mat4::affine_inverse;
 
 /// Compose an `InstanceMeta`'s world placement `transform · local · canonical`
 /// (row-major f64), the same product the collator's `compose_world` builds.
 pub(super) fn compose_world_meta(meta: &InstanceMeta) -> [f64; 16] {
-    let local = meta.local_transform.unwrap_or(IDENTITY16);
-    let canonical = meta.canonical_transform.unwrap_or(IDENTITY16);
-    mat4_mul(&meta.transform, &mat4_mul(&local, &canonical))
+    let local = meta.local_transform.unwrap_or(mat4::IDENTITY);
+    let canonical = meta.canonical_transform.unwrap_or(mat4::IDENTITY);
+    mat4::mul(&meta.transform, &mat4::mul(&local, &canonical))
 }
 
 /// Build the column-major glTF node matrix placing a shared template (Y-up local
@@ -211,7 +155,7 @@ pub(super) fn occurrence_node_matrix_composed(
     scene_center: [f64; 3],
 ) -> [f32; 16] {
     // rel maps the template's PRE-RTC world geometry onto occurrence k's.
-    let rel_pre = mat4_mul(&m_k, m_ref_inv);
+    let rel_pre = mat4::mul(&m_k, m_ref_inv);
     // Conjugate `rel` into the frame the BAKED template geometry lives in:
     // POST-RTC (the offset the baker subtracted), site-local-rotated where the
     // baker rotated it, and Y-up (the conversion the assembler applied).
@@ -235,15 +179,15 @@ pub(super) fn occurrence_node_matrix_composed(
     // tolerance this basis feeds floors at 1e-6 m, a thousand times wider.
     // Anything that changes either — an f64 node matrix, a tighter tolerance —
     // makes the delta visible and this note is the warning.
-    let rel_yup = mat4_mul(
-        &mat4_mul(&baked_basis_yup(space, rtc_zup, site_zup), &rel_pre),
+    let rel_yup = mat4::mul(
+        &mat4::mul(&baked_basis_yup(space, rtc_zup, site_zup), &rel_pre),
         &baked_basis_yup_inverse(space, rtc_zup, site_zup),
     );
-    let n = mat4_mul(
-        &mat4_translation([-scene_center[0], -scene_center[1], -scene_center[2]]),
-        &mat4_mul(&rel_yup, &mat4_translation(template_origin_yup)),
+    let n = mat4::mul(
+        &mat4::translation([-scene_center[0], -scene_center[1], -scene_center[2]]),
+        &mat4::mul(&rel_yup, &mat4::translation(template_origin_yup)),
     );
-    row_major_f64_to_col_major_f32(&n)
+    mat4::to_col_major_f32(&n)
 }
 
 #[cfg(test)]

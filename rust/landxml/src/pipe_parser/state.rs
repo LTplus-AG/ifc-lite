@@ -5,7 +5,8 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::{
-    LandXmlCancellation, LandXmlCapabilityDiagnostic, LandXmlLimits, LandXmlPipeFeature,
+    xml::{Budget, Meter},
+    LandXmlCapabilityDiagnostic, LandXmlLimits, LandXmlPipeFeature,
     LandXmlPipeNetwork, LandXmlPipeNetworkCollection, LandXmlPipeProperties, LandXmlPipeRefusal,
     LandXmlSourceId,
 };
@@ -14,10 +15,11 @@ use crate::{
 /// driver deliver quick-xml events to this one machine.
 pub(crate) struct PipeParser<'a> {
     pub(super) limits: LandXmlLimits,
-    pub(super) cancelled: Option<&'a dyn LandXmlCancellation>,
     pub(super) require_pipe_networks: bool,
-    pub(super) work: usize,
-    pub(super) character_references: usize,
+    /// The `work` budget; charged per event in `consume_event` (D73).
+    pub(super) meter: Meter<'a>,
+    pub(super) character_references: Budget,
+    pub(super) capability_diagnostics_seen: Budget,
     pub(super) frames: Vec<Frame>,
     pub(super) root_units: Option<RawUnits>,
     pub(super) schema: String,
@@ -41,13 +43,13 @@ pub(crate) struct PipeParser<'a> {
     /// network, while the normal semantic refusal record keeps source order.
     pub(super) preflight_refusal_batches: Vec<Vec<usize>>,
     pub(super) refusal_keys: HashSet<(LandXmlSourceId, String)>,
-    pub(super) pipe_networks_seen: usize,
-    pub(super) structures_seen: usize,
-    pub(super) pipes_seen: usize,
-    pub(super) inverts_seen: usize,
-    pub(super) flows_seen: usize,
-    pub(super) points_seen: usize,
-    pub(super) references_seen: usize,
+    pub(super) pipe_networks_seen: Budget,
+    pub(super) structures_seen: Budget,
+    pub(super) pipes_seen: Budget,
+    pub(super) inverts_seen: Budget,
+    pub(super) flows_seen: Budget,
+    pub(super) points_seen: Budget,
+    pub(super) references_seen: Budget,
     pub(super) pipe_network_collections: usize,
     pub(super) network_ordinal: usize,
     pub(super) feature_ordinals: HashMap<LandXmlSourceId, usize>,
@@ -60,8 +62,14 @@ pub(super) struct Frame {
     pub(super) namespaces: HashMap<String, String>,
 }
 
+/// Record properties are the element's attributes without namespace
+/// declarations, as in the terrain and plan families (#7784 drift 9).
 pub(super) fn properties(attributes: &[(String, String)]) -> LandXmlPipeProperties {
-    attributes.iter().cloned().collect()
+    attributes
+        .iter()
+        .filter(|(name, _)| !name.starts_with("xmlns"))
+        .cloned()
+        .collect()
 }
 
 pub(super) struct NetworkBuilder {

@@ -224,7 +224,7 @@ END-ISO-10303-21;
     assert_eq!(m.sample_count, u.sample_count);
     assert_eq!(m.centroid(), u.centroid());
 
-    let (u, m) = (scan_placement_bounds(upper), scan_placement_bounds(&mixed));
+    let (u, m) = (scan_placement_bounds(upper, 1.0), scan_placement_bounds(&mixed, 1.0));
     // Only the placement point (#1) qualifies: #3 is neither referenced nor
     // beyond the 1000-unit floor.
     assert_eq!(u.sample_count, 1, "control: uppercase placement scan sees #1 only");
@@ -273,4 +273,29 @@ fn issue_4934_mm_scale_model_still_small() {
     bounds.expand(25.0, 25.0, 10.0);
     assert!(!bounds.has_large_coordinates(1.0));
     assert_eq!(bounds.rtc_offset(1.0), Some(RtcVerdict::Small));
+}
+
+/// CORE-13 (#7775): the "large coordinate" filter of `scan_placement_bounds`
+/// is in METRES, not raw file units. In a millimetre file the unreferenced
+/// point at 2 000 mm (2 m) is nowhere near 1 km, yet the raw `> 1000.0` test
+/// kept it, so the filter did nothing. The 5 000 000 mm point (5 km) stays.
+#[test]
+fn placement_bounds_large_filter_is_in_metres_not_file_units() {
+    let content = "\
+ISO-10303-21;
+DATA;
+#1=IFCCARTESIANPOINT((0.0,0.0,0.0));
+#2=IFCAXIS2PLACEMENT3D(#1,$,$);
+#3=IFCCARTESIANPOINT((2000.0,0.0,0.0));
+#4=IFCCARTESIANPOINT((5000000.0,0.0,0.0));
+ENDSEC;
+END-ISO-10303-21;
+";
+    let millimetres = scan_placement_bounds(content, 0.001);
+    assert_eq!(millimetres.sample_count, 2, "the placement point and the 5 km point only");
+    assert_eq!(millimetres.max_x, 5_000_000.0);
+    // Metre files and an unusable scale keep the former behaviour.
+    for scale in [1.0, 0.0, f64::NAN, -1.0] {
+        assert_eq!(scan_placement_bounds(content, scale).sample_count, 3, "scale {scale}: 2000 > 1000");
+    }
 }

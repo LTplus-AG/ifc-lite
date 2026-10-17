@@ -214,11 +214,21 @@ where
 /// This variant specifically looks at IfcLocalPlacement and transformation
 /// coordinates, which are more representative of where geometry will be placed.
 /// Useful for models where cartesian points include local/relative coordinates.
-pub fn scan_placement_bounds<T>(content: &T) -> ModelBounds
+///
+/// A point no placement references is kept only when it is "large"
+/// ([`crate::limits::LARGE_COORD_THRESHOLD_METERS`]). The coordinates are raw
+/// file numbers, so the caller passes `length_unit_scale` (file unit to
+/// metres) and the comparison happens in metres, as in
+/// [`ModelBounds::has_large_coordinates`] (#4934). A raw `1000.0` let a
+/// millimetre model keep every point past one METRE, so the filter did
+/// nothing (CORE-13). A scale that is not finite and positive reads as 1.0.
+pub fn scan_placement_bounds<T>(content: &T, length_unit_scale: f64) -> ModelBounds
 where
     T: AsRef<[u8]> + ?Sized,
 {
     let content = content.as_ref();
+    let scale = if length_unit_scale.is_finite() && length_unit_scale > 0.0 { length_unit_scale } else { 1.0 };
+    let is_large = |v: f64| (v * scale).abs() > crate::limits::LARGE_COORD_THRESHOLD_METERS;
     let mut bounds = ModelBounds::new();
     let mut scanner = EntityScanner::new(content);
 
@@ -257,7 +267,7 @@ where
                 }
 
                 // Include placement points and points with large coordinates (including Z axis)
-                if is_placement_point || x.abs() > 1000.0 || y.abs() > 1000.0 || z.abs() > 1000.0 {
+                if is_placement_point || is_large(x) || is_large(y) || is_large(z) {
                     bounds.expand(x, y, z);
                 }
             }

@@ -2,9 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-/// Bytes of the source the last-resort scan reads when no declared identifier
-/// is recognised. The TS parser's figure (`detectSchemaVersion`).
-const FALLBACK_SCAN_BYTES: usize = 2000;
+use ifc_lite_core::SchemaFamily;
 
 /// The IFC schema a STEP file declares: `"IFC2X3"`, `"IFC4"`, `"IFC4X3"` or
 /// `"IFC5"`. THE detector for every `schema_version` this workspace reports,
@@ -17,7 +15,7 @@ const FALLBACK_SCAN_BYTES: usize = 2000;
 /// (`packages/parser/src/source-header.ts`), pinned against it by the shared
 /// vectors in `rust/core/tests/fixtures/schema_version_vectors.json`:
 /// 1. The first `FILE_SCHEMA` identifier that names a family wins
-///    ([`ifc_lite_core::parser::header::first_declared_schema`], the selection
+///    ([`SchemaFamily::detect`], over `first_declared_schema`, the selection
 ///    the decoder's attribute layout uses too). The header reader is quote-
 ///    and comment-aware, so text in DATA, header strings or comments does not
 ///    count.
@@ -28,28 +26,7 @@ const FALLBACK_SCAN_BYTES: usize = 2000;
 ///    vector, #7740).
 /// 3. Otherwise `"IFC4"`.
 pub fn detect_schema_version(content: &[u8]) -> &'static str {
-    ifc_lite_core::parser::header::first_declared_schema(content, schema_of_identifier)
-        .or_else(|| fallback_scan(content))
-        .unwrap_or("IFC4")
-}
-
-/// One declared identifier's family, by prefix, longest family first
-/// (`IFC4X3_ADD2`, `IFC2X3_TC1` and `IFC4X1` all reach us in the wild, and
-/// `IFC4X3` begins with `IFC4`). `None` for an identifier naming no family.
-fn schema_of_identifier(identifier: &str) -> Option<&'static str> {
-    let token = identifier.trim().to_ascii_uppercase();
-    ["IFC5", "IFC4X3", "IFC4", "IFC2X3"]
-        .into_iter()
-        .find(|family| token.starts_with(family))
-}
-
-/// The last-resort substring scan over the head of the file.
-fn fallback_scan(content: &[u8]) -> Option<&'static str> {
-    let head = &content[..content.len().min(FALLBACK_SCAN_BYTES)];
-    let text = String::from_utf8_lossy(head).to_ascii_uppercase();
-    ["IFC5", "IFC4X3", "IFC4", "IFC2X3"]
-        .into_iter()
-        .find(|family| text.contains(family))
+    SchemaFamily::detect(content).unwrap_or(SchemaFamily::Ifc4).as_str()
 }
 
 #[cfg(test)]

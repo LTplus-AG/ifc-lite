@@ -26,7 +26,7 @@ impl GeometryRouter {
 /// The router-free form of [`GeometryRouter::parse_cartesian_transformation_operator`].
 ///
 /// This is the SINGLE definition of the operator's attribute layout and frame
-/// derivation. `profile_extractor` (2D drawing profiles) calls it too: it used to
+/// derivation. `profiles` (`IfcDerivedProfileDef`'s 2D operator) calls it too: it used to
 /// carry its own copy, which drifted — it missed the non-uniform per-axis scales,
 /// the 2D attribute layout, and `Axis2`, so the same `MappingTarget` produced a
 /// different transform for a drawing than for the mesh. #1985
@@ -144,6 +144,8 @@ pub(crate) fn parse_transformation_operator(
         None
     };
 
+    let x_axis_raw = base_axis_2d_x(entity, is_2d, x_axis_raw, y_axis_raw);
+
     // Get Axis3 (raw local Z, attribute 4 for 3D), defaulting to +Z. The 2D
     // subtypes have no Axis3 attribute (attr 4 is Scale2 there), so the 2D
     // plane normal is always +Z.
@@ -211,6 +213,23 @@ pub(crate) fn parse_transformation_operator(
     transform[(2, 3)] = origin.z;
 
 Ok(transform)
+}
+
+/// IfcBaseAxis, 2D form: with no Axis1, an authored Axis2 fixes the frame and
+/// X is its clockwise perpendicular (Axis2.y, -Axis2.x). The 3D form derives X
+/// from Axis3 instead (IfcFirstProjAxis) and never from Axis2. The
+/// derived-profile reader this one replaced honoured this (#7791).
+fn base_axis_2d_x(
+    entity: &DecodedEntity,
+    is_2d: bool,
+    x_axis_raw: Vector3<f64>,
+    y_axis_raw: Option<Vector3<f64>>,
+) -> Vector3<f64> {
+    let axis1_absent = entity.get(0).is_none_or(|attr| attr.is_null());
+    match y_axis_raw {
+        Some(d) if is_2d && axis1_absent && d.xy().norm() > 1e-9 => Vector3::new(d.y, -d.x, 0.0),
+        _ => x_axis_raw,
+    }
 }
 
 /// A per-axis scale attribute, falling back to `default` when absent or non-finite.

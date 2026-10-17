@@ -61,13 +61,7 @@ impl Parser<'_> {
         Ok(())
     }
     pub(super) fn begin_geometry(&mut self, local: &str, attributes: Attributes) -> Result<()> {
-        if self.geometry_count >= self.limits.max_geometry {
-            return Err(error(
-                Code::LimitExceeded,
-                "CoordGeom primitive limit exceeded",
-            ));
-        }
-        self.geometry_count += 1;
+        self.geometry_seen.reserve(1)?;
         let kind = match local {
             "Line" => LandXmlGeometryKind::Line,
             "Curve" => LandXmlGeometryKind::Curve,
@@ -227,7 +221,7 @@ impl Parser<'_> {
                     &text,
                     dimension,
                     // `reserve_vertices` counts before it refuses (#7677).
-                    self.limits.max_vertices.saturating_sub(self.vertices),
+                    self.vertices.remaining(),
                 ) {
                     Ok(points) => points,
                     Err(error) => return self.reject_malformed_geometry(&error.message),
@@ -359,14 +353,7 @@ impl Parser<'_> {
         Ok(())
     }
     pub(super) fn reserve_vertices(&mut self, added: usize) -> Result<()> {
-        self.vertices = self
-            .vertices
-            .checked_add(added)
-            .ok_or_else(|| error(Code::LimitExceeded, "plan vertex limit exceeded"))?;
-        if self.vertices > self.limits.max_vertices {
-            return Err(error(Code::LimitExceeded, "plan vertex limit exceeded"));
-        }
-        Ok(())
+        self.vertices.reserve(added)
     }
     pub(super) fn path(&self, expected: &[&str]) -> bool {
         self.frames.len() == expected.len()

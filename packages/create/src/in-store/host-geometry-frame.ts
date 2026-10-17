@@ -4,7 +4,7 @@
 
 /** Package-private body frame reads: defaults belong only to omitted optional
  * attributes, never to an explicit unreadable reference (#6232 / #6539). */
-import { firstProjAxis } from '@ifc-lite/data';
+import { firstProjAxis, walkPlacementChain } from '@ifc-lite/data';
 import type { AnchorEntityReader } from './resolve-anchor.js';
 import type { HostBounds } from './anchor.js';
 
@@ -119,12 +119,24 @@ export function inverseFrame(f: Frame3): Frame3 {
 /** Full 3D local-placement chain, including the opening's rotated frame.
  * Missing references, cycles and excessive acyclic chains are unreadable. */
 export function placementInAncestor(reader: GeometryEntityReader, placementId: number, ancestorId: number | null): Frame3 | null {
+  // #7328: an explicit unreadable parent is not an omitted world root.
+  let unreadableParent = false;
+  const walked = walkPlacementChain(
+    placementId,
+    (id) => {
+      const parent = reader.entity(id)?.attributes[0];
+      if (parent !== null && parent !== undefined && refId(parent) === null) unreadableParent = true;
+      return refId(parent);
+    },
+    { stopAt: (id) => id === ancestorId },
+  );
+  // Reaching the root is only the answer when the root IS the requested
+  // ancestor; a cycle never reaches either.
+  if (walked.end === 'cycle' || unreadableParent) return null;
+  if ((walked.end === 'stopped') === (ancestorId === null)) return null;
   let frame = IDENTITY_FRAME3;
-  let id: number | null = placementId;
-  const visited = new Set<number>();
-  while (id !== null && id !== ancestorId) {
-    if (visited.size >= 10_000 || visited.has(id)) return null;
-    visited.add(id);
+  // Every hop strictly below the ancestor (all of them when it is the root).
+  for (const id of walked.end === 'stopped' ? walked.ids.slice(0, -1) : walked.ids) {
     const placement = reader.entity(id);
     const axisId = placement ? refId(placement.attributes[1]) : null;
     if (placement?.type.toUpperCase() !== 'IFCLOCALPLACEMENT' || axisId === null) return null;
@@ -132,12 +144,8 @@ export function placementInAncestor(reader: GeometryEntityReader, placementId: n
     if (!own) return null;
     frame = composeFrame(own, frame);
     if (!finiteFrame(frame)) return null;
-    const parent = placement.attributes[0];
-    // #7328: an explicit unreadable parent is not an omitted world root.
-    if (parent !== null && parent !== undefined && refId(parent) === null) return null;
-    id = refId(parent);
   }
-  return id === ancestorId ? frame : null;
+  return frame;
 }
 
 /** Express one local placement in another's full 3D frame. Only the branches
@@ -150,22 +158,21 @@ export function placementRelativeTo(reader: GeometryEntityReader, placementId: n
     const value = entity.attributes[0];
     return value === null || value === undefined ? null : refId(value) ?? undefined;
   };
-  const referenceChain = new Set<number>();
-  let id: number | null | undefined = referenceId;
-  while (id !== null && id !== undefined && !referenceChain.has(id)) {
-    if (referenceChain.size >= 10_000) return null;
-    referenceChain.add(id);
-    id = parent(id);
-  }
-  const referenceReachesRoot = id === null;
-  const visited = new Set<number>();
-  id = placementId;
-  while (id !== null && id !== undefined && !referenceChain.has(id)) {
-    if (visited.size >= 10_000 || visited.has(id)) return null;
-    visited.add(id);
-    id = parent(id);
-  }
-  if (id === undefined || (id === null && !referenceReachesRoot)) return null;
+  const unreadable = new Set<number>();
+  const parentOrRoot = (id: number): number | null => {
+    const parentId = parent(id);
+    if (parentId === undefined) unreadable.add(id);
+    return parentId ?? null;
+  };
+  const referenceWalk = walkPlacementChain(referenceId, parentOrRoot);
+  const referenceChain = new Set(referenceWalk.ids);
+  const referenceReachesRoot = referenceWalk.end === 'root' && !unreadable.has(referenceWalk.ids[referenceWalk.ids.length - 1]!);
+  const toReference = walkPlacementChain(placementId, parentOrRoot, { stopAt: (id) => referenceChain.has(id) });
+  const last = toReference.ids[toReference.ids.length - 1]!;
+  if (toReference.end === 'cycle' || (toReference.end === 'root' && unreadable.has(last))) return null;
+  // The shared ancestor, or null when both chains meet only at the world root.
+  const id = toReference.end === 'stopped' ? last : null;
+  if (id === null && !referenceReachesRoot) return null;
   const own = placementInAncestor(reader, placementId, id);
   const reference = placementInAncestor(reader, referenceId, id);
   if (!own || !reference) return null;

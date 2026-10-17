@@ -10,6 +10,7 @@ fn node(id: u32, children: Vec<u32>) -> QuickSpatialNodeEntry {
         type_name: "IfcSpace".to_string(),
         name: format!("#{id}"),
         elevation: None,
+        raw_elevation: None,
         children,
         contained: vec![],
         elements: vec![],
@@ -62,7 +63,7 @@ fn storey_elevation_prefers_index_9_over_index_8() {
         b"$", b"$", b"$", b"$", b"$", b"$", b"$", b"$", b"3.5", b"7.25",
     ];
     assert_eq!(
-        extract_storey_elevation_from_args(&args),
+        extract_storey_elevation_from_args(&args, 1.0),
         Some(7.25),
         "index 9 (the real Elevation attribute) must win over index 8"
     );
@@ -261,13 +262,13 @@ fn storey_elevation_refuses_what_the_step_decoder_refuses() {
     for bad in [&b"1.E400"[..], b"-1.E400", b"inf", b"NaN", b"infinity", b"1.5x"] {
         let args: Vec<&[u8]> = vec![b"$", b"$", b"$", b"$", b"$", b"$", b"$", b"$", b"$", bad];
         assert_eq!(
-            extract_storey_elevation_from_args(&args),
+            extract_storey_elevation_from_args(&args, 1.0),
             None,
             "{}",
             String::from_utf8_lossy(bad)
         );
     }
     let args: Vec<&[u8]> = vec![b"$", b"$", b"$", b"$", b"$", b"$", b"$", b"$", b"$", b" -0. "];
-    let elevation = extract_storey_elevation_from_args(&args).expect("-0. is an elevation");
+    let elevation = extract_storey_elevation_from_args(&args, 1.0).expect("-0. is an elevation");
     assert!(elevation == 0.0 && elevation.is_sign_negative());
 }

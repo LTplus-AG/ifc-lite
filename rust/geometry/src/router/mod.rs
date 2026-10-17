@@ -285,12 +285,14 @@ impl GeometryRouter {
     }
 
     /// Create router and extract unit scale from IFC file
-    /// Automatically finds IFCPROJECT and extracts length unit conversion
-    pub fn with_units<T>(content: &T, decoder: &mut EntityDecoder) -> Self
+    /// Automatically finds IFCPROJECT (the decoder's cached locator) and
+    /// extracts length unit conversion. `_content` is the decoder's own source,
+    /// kept for API compatibility.
+    pub fn with_units<T>(_content: &T, decoder: &mut EntityDecoder) -> Self
     where
         T: AsRef<[u8]> + ?Sized,
     {
-        let scale = Self::scan_unit_scale(content.as_ref(), decoder);
+        let scale = Self::project_unit_scale(decoder);
         let mut router = Self::with_scale(scale);
         router.arm_content_dedup();
         router
@@ -304,14 +306,14 @@ impl GeometryRouter {
     /// * `decoder` - Entity decoder
     /// * `rtc_offset` - RTC offset to subtract from world coordinates (typically model centroid)
     pub fn with_units_and_rtc<T>(
-        content: &T,
+        _content: &T,
         decoder: &mut ifc_lite_core::EntityDecoder,
         rtc_offset: (f64, f64, f64),
     ) -> Self
     where
         T: AsRef<[u8]> + ?Sized,
     {
-        let scale = Self::scan_unit_scale(content.as_ref(), decoder);
+        let scale = Self::project_unit_scale(decoder);
         let mut router = Self::with_scale_and_rtc(scale, rtc_offset);
         router.arm_content_dedup();
         router

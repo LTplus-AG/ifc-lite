@@ -13,7 +13,7 @@ import * as IFC4_SCHEMA from '@ifc-lite/codegen/ifc4';
 import * as IFC4X3_SCHEMA from '@ifc-lite/codegen/ifc4x3';
 
 import type { EntityRef } from '@ifc-lite/parser';
-import { firstProjAxis } from '@ifc-lite/data';
+import { firstProjAxis, walkPlacementChain } from '@ifc-lite/data';
 import type { Lod0Json, Lod0Element, LodInput, Vec3 } from './lod-geometry-types.js';
 import {
   aabbFromPoints,
@@ -216,28 +216,35 @@ export async function generateLod0(input: LodInput): Promise<Lod0Json> {
    * references itself (or any cycle) must not overflow the stack.
    */
   const getPlacementMatrix = (startId: number): Float64Array | null => {
-    // Walk up to the first cached link, root, non-placement or revisit.
-    const chain: number[] = [];
-    const onChain = new Set<number>();
-    let id: number | null = startId;
-    let base: Float64Array = mat4Identity();
-    while (id !== null) {
-      if (cyclicPlacements.has(id) || onChain.has(id)) {
-        for (const member of chain) cyclicPlacements.add(member);
-        return null;
-      }
-      const cached = placementCache.get(id);
-      if (cached) { base = cached; break; }
+    const isLocalPlacement = (id: number): boolean => {
       const ent = getEntity(id);
-      if (!ent || String(ent.type || '').toUpperCase() !== 'IFCLOCALPLACEMENT') {
-        placementCache.set(id, base = mat4Identity());
-        break;
-      }
-      chain.push(id);
-      onChain.add(id);
-      // IfcLocalPlacement: (PlacementRelTo, RelativePlacement)
-      const relTo: unknown = ent.attributes?.[0];
-      id = typeof relTo === 'number' ? relTo : null;
+      return !!ent && String(ent.type || '').toUpperCase() === 'IFCLOCALPLACEMENT';
+    };
+    // Walk up to the first cached link, root, non-placement or revisit — the
+    // shared `walkPlacementChain` (#7791): a visited set, no depth cap.
+    const walked = walkPlacementChain(
+      startId,
+      (id) => {
+        if (!isLocalPlacement(id)) return null;
+        // IfcLocalPlacement: (PlacementRelTo, RelativePlacement)
+        const relTo: unknown = getEntity(id)?.attributes?.[0];
+        return typeof relTo === 'number' ? relTo : null;
+      },
+      { stopAt: (id) => cyclicPlacements.has(id) || placementCache.has(id) },
+    );
+    const last = walked.ids[walked.ids.length - 1]!;
+    if (walked.end === 'cycle' || (walked.end === 'stopped' && cyclicPlacements.has(last))) {
+      for (const member of walked.ids) cyclicPlacements.add(member);
+      return null;
+    }
+    let base: Float64Array = mat4Identity();
+    let chain = walked.ids;
+    if (walked.end === 'stopped') {
+      base = placementCache.get(last)!;
+      chain = walked.ids.slice(0, -1);
+    } else if (!isLocalPlacement(last)) {
+      placementCache.set(last, base);
+      chain = walked.ids.slice(0, -1);
     }
     // Compose from the top of the chain down.
     for (let i = chain.length - 1; i >= 0; i--) {

@@ -5,9 +5,28 @@
 // #5193: a corrupted numeric literal must not be silently truncated to its
 // parseable prefix by any STEP token reader.
 
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { isCompleteStepNumericLiteral } from './step-numeric-literal.js';
 import { parseStepValue } from './step-serializers.js';
+
+// F4-1 (#7778): the vectors `rust/core` reads in `numeric_literal_tests.rs`
+// and `tokenizer_tests.rs`, so the two grammars cannot drift apart.
+interface NumericVector {
+  text: string;
+  kind: 'integer' | 'real' | 'unrepresentable' | 'refused';
+  /** Refused by Rust only because the INTEGER is beyond i64; the grammar holds. */
+  grammar?: boolean;
+}
+const vectors = JSON.parse(
+  readFileSync(new URL('../../../rust/core/tests/fixtures/step_numeric_vectors.json', import.meta.url), 'utf8'),
+) as NumericVector[];
+
+describe('isCompleteStepNumericLiteral shared vectors (F4-1)', () => {
+  it.each(vectors.map((v) => [v.text, v] as const))('%j', (_text, v) => {
+    expect(isCompleteStepNumericLiteral(v.text)).toBe(v.kind !== 'refused' || v.grammar === true);
+  });
+});
 
 describe('isCompleteStepNumericLiteral', () => {
   it('accepts every legal STEP REAL/INTEGER form the issue pins', () => {

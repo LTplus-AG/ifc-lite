@@ -47,9 +47,9 @@ impl Parser<'_> {
             &mut surface,
             &self.limits,
             self.cancelled,
-            &mut self.faces_seen,
-            &mut self.references,
-            &mut self.work,
+            self.faces_seen.used_mut(),
+            self.references.used_mut(),
+            self.meter.used_mut(),
         )?;
         if terrain_diagnostic.is_some() {
             surface = source_surface.expect("only faceless TIN synthesis can refuse");

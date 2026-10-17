@@ -340,5 +340,5 @@ fn mixed_duplicate_footprints_apply_mandatory_union_correction_4617() {
     // Two distinct four-unit footprints remove 8, and the half-depth residual
     // removes 2 minus its 0.5 overlap with the corrected through-opening.
     assert!((mesh_signed_volume(&result).abs() - 90.5).abs() < 1e-5);
-    assert!(super::super::prism_cut::closure_checks::closed_or_hairline(&result));
+    assert!(crate::mesh_check::closed_or_hairline(&result));
 }

@@ -68,7 +68,6 @@
    161 rust/geometry/src/router/voids/prism_cut.rs build_face_cap
    233 rust/geometry/src/router/voids/prism_cut.rs cut_prism
    193 rust/geometry/src/router/voids/prism_cut.rs detect_prism
-   157 rust/geometry/src/router/voids/prism_cut/closure_checks.rs hairline_closed
    155 rust/geometry/src/router/voids/probe.rs GeometryRouter::get_opening_item_bounds_with_direction
    247 rust/geometry/src/router/voids/synthesis.rs GeometryRouter::classify_openings_impl
    215 rust/geometry/src/router/voids/synthesis.rs GeometryRouter::extend_opening_along_direction

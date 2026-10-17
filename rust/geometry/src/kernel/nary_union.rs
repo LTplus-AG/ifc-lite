@@ -11,7 +11,7 @@ use crate::kernel::{
     budget,
     plane_weld::promote_operands_mutually,
 };
-use crate::router::voids::prism_cut::closure_checks::directed_closed;
+use crate::mesh_check::directed_closed;
 use crate::Mesh;
 
 /// Retain the existing mutually reconciled N-ary union. Cutter consumers

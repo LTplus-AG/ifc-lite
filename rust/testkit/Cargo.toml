@@ -12,9 +12,12 @@ description = "Test-only helpers shared by the ifc-lite crates' test suites (fix
 # no publish-order constraint (see scripts/release-crates-order.test.mjs).
 publish = false
 
-# Std only. It must not depend on any ifc-lite crate: those crates dev-depend
-# on it, and a dev-dependency cycle would compile each of them twice.
+# The mesh oracles delegate to `ifc_lite_geometry::mesh_check` (the one home for
+# closure / pairing / volume), so the oracles and the production gates cannot
+# drift. This is a dev-dependency cycle for the geometry crate itself (geometry
+# dev-depends on this crate); cargo allows it, and only raw slices cross it.
 [dependencies]
+ifc-lite-geometry = { workspace = true, features = ["test-support"] }
 
 [lints]
 workspace = true

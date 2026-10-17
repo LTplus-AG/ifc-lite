@@ -539,19 +539,10 @@ mod tests {
     /// directed edge cancelled by its reverse — catches both cracks AND
     /// inconsistent winding.
     fn open_edges(m: &Mesh) -> usize {
-        use std::collections::HashMap;
-        let key = |i: u32| {
-            let b = i as usize * 3;
-            (m.positions[b].to_bits(), m.positions[b + 1].to_bits(), m.positions[b + 2].to_bits())
-        };
-        let mut edges: HashMap<_, i64> = HashMap::new();
-        for t in m.indices.chunks_exact(3) {
-            for (a, b) in [(t[0], t[1]), (t[1], t[2]), (t[2], t[0])] {
-                *edges.entry((key(a), key(b))).or_insert(0) += 1;
-                *edges.entry((key(b), key(a))).or_insert(0) -= 1;
-            }
-        }
-        edges.values().filter(|&&c| c != 0).count()
+        use crate::mesh_check::{Degenerate, EdgeLedger, VertexKey};
+        // `unbalanced` lists each open edge once; the directed audit counted it
+        // in both directions.
+        2 * EdgeLedger::build(m, VertexKey::Bits, Degenerate::SkipEdge).unbalanced().count()
     }
 
     fn degenerate(m: &Mesh) -> usize {

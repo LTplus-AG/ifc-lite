@@ -1645,6 +1645,9 @@ dependencies = [
 [[package]]
 name = "ifc-lite-testkit"
 version = "21.4.0"
+dependencies = [
+ "ifc-lite-geometry",
+]
 
 [[package]]
 name = "ifc-lite-wasm"

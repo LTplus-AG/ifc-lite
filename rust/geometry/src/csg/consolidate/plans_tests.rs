@@ -160,16 +160,24 @@ fn issue_7292_unrelated_nonmanifold_source_refuses_fold_but_keeps_thin_certifica
     let closed = supported_cells::find(&super::super::buckets::build(&input));
     assert_eq!(closed.folded_buckets.len(), 1, "the closed source star is eligible");
     assert!(!closed.cells.is_empty(), "the disjoint thin cell has its own local support");
+    // An unrelated open component does not change the closed local star.
+    let stray = [[32.0,0.0,0.0],[32.0,2.0,0.0],[32.0,0.0,2.0]];
+    faces.push(stray);
+    let mut input = tris_to_mesh(&faces);
+    input.plane_tags = None;
+    let open = supported_cells::find(&super::super::buckets::build(&input));
+    assert_eq!(open.folded_buckets, closed.folded_buckets,
+        "singleton boundary edges elsewhere do not invalidate a closed local star");
+    assert_eq!(open.cells, closed.cells);
     // Three uses of each remote edge, with both directions present. The local
     // fold and all four opposite supports are unchanged; the whole source is
     // nevertheless nonmanifold and cannot justify preserving healthy buckets.
-    let stray = [[32.0,0.0,0.0],[32.0,2.0,0.0],[32.0,0.0,2.0]];
-    faces.extend([stray,[stray[0],stray[2],stray[1]],stray]);
+    faces.extend([[stray[0],stray[2],stray[1]],stray]);
     let mut input = tris_to_mesh(&faces);
     input.plane_tags = None;
     let nonmanifold = supported_cells::find(&super::super::buckets::build(&input));
     assert!(nonmanifold.folded_buckets.is_empty(),
-        "a closed local star cannot authorize fold retention in an unpaired source");
+        "a closed local star cannot authorize fold retention in a nonmanifold source");
     assert!(nonmanifold.fold_support_buckets.is_empty());
     assert_eq!(nonmanifold.cells, closed.cells,
         "the existing local thin-cell certificate does not require global closure");

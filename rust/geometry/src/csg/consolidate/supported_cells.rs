@@ -83,11 +83,12 @@ pub(super) fn find(buckets: &BTreeMap<Bucket, Vec<PlaneTri>>) -> Supported {
             out.buckets.insert(*key);
         }
     }
-    // Preserve healthy folds only in an exactly paired source partition.
-    // An already open/nonmanifold source cannot certify that retaining these
-    // bucket boundaries preserves the ordinary cleanup's complete surface.
+    // A partial source may have boundary edges, but no geometric edge may have
+    // repeated uses in either direction. A nonmanifold source cannot certify
+    // that retaining these buckets preserves the ordinary cleanup's surface.
     // Thin-cell certificates above remain local and keep their existing policy.
-    if !edges.values().all(|uses| uses.len() == 2 && uses[0].1 != uses[1].1) {
+    if !edges.values().all(|uses| uses.len() == 1
+        || (uses.len() == 2 && uses[0].1 != uses[1].1)) {
         return out;
     }
     // The finite fold's local certificate remains independent of thin cells.

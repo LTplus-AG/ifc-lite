@@ -8,16 +8,10 @@
 # data_model sites migrate inside C2 and C6, the rest in the R PRs.
 1 rust/core/src/decoder/fast_buffers.rs
 2 rust/core/src/decoder/leaf_read.rs
-1 rust/core/src/decoder/precision.rs
 1 rust/core/src/decoder/styled_items.rs
 2 rust/core/src/fast_parse.rs
-20 rust/core/src/georef.rs
-1 rust/core/src/georef_parse.rs
-6 rust/core/src/georef_pset.rs
 1 rust/core/src/model_bounds.rs
-15 rust/core/src/project_units/mod.rs
 5 rust/core/src/schema_gen.rs
-12 rust/core/src/units.rs
 1 rust/export/src/constructions.rs
 2 rust/export/src/csv.rs
 1 rust/export/src/ifc5.rs

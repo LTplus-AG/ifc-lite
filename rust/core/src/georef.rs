@@ -11,6 +11,7 @@ use crate::decoder::EntityDecoder;
 use crate::error::Result;
 use crate::generated::IfcType;
 use crate::schema_gen::DecodedEntity;
+use crate::slot;
 
 #[path = "georef_parse.rs"]
 mod georef_parse;
@@ -286,10 +287,10 @@ fn resolve_measure_with_unit(
     decoder: &mut EntityDecoder,
     conversion_unit: &DecodedEntity,
 ) -> Option<f64> {
-    let measure_ref = conversion_unit.get_ref(3)?;
+    let measure_ref = conversion_unit.ref_at(slot::IfcConversionBasedUnit::CONVERSION_FACTOR)?;
     let measure = decoder.decode_by_id(measure_ref).ok()?;
 
-    let value_attr = measure.get(0)?;
+    let value_attr = measure.attr(slot::IfcMeasureWithUnit::VALUE_COMPONENT)?;
     let value = value_attr
         .as_float()
         .or_else(|| value_attr.as_int().map(|v| v as f64))?;
@@ -298,10 +299,10 @@ fn resolve_measure_with_unit(
     }
 
     let mut component_scale = 1.0_f64;
-    if let Some(component_ref) = measure.get_ref(1) {
+    if let Some(component_ref) = measure.ref_at(slot::IfcMeasureWithUnit::UNIT_COMPONENT) {
         if let Ok(component) = decoder.decode_by_id(component_ref) {
             if component.ifc_type == IfcType::IfcSIUnit {
-                if let Some(prefix_attr) = component.get(2) {
+                if let Some(prefix_attr) = component.attr(slot::IfcSIUnit::PREFIX) {
                     if !prefix_attr.is_null() {
                         if let Some(prefix) = prefix_attr.as_enum() {
                             component_scale = crate::units::get_si_prefix_multiplier(prefix);
@@ -408,27 +409,27 @@ impl GeoRefExtractor {
         georef.has_map_conversion = true;
         georef.source = Some(GeoRefSource::MapConversion);
         // Index 2: Eastings
-        if let Some(e) = entity.get_float(2) {
+        if let Some(e) = entity.real_at(slot::IfcMapConversion::EASTINGS) {
             georef.eastings = e;
         }
         // Index 3: Northings
-        if let Some(n) = entity.get_float(3) {
+        if let Some(n) = entity.real_at(slot::IfcMapConversion::NORTHINGS) {
             georef.northings = n;
         }
         // Index 4: OrthogonalHeight
-        if let Some(h) = entity.get_float(4) {
+        if let Some(h) = entity.real_at(slot::IfcMapConversion::ORTHOGONAL_HEIGHT) {
             georef.orthogonal_height = h;
         }
         // Index 5: XAxisAbscissa (optional)
-        if let Some(xa) = entity.get_float(5) {
+        if let Some(xa) = entity.real_at(slot::IfcMapConversion::X_AXIS_ABSCISSA) {
             georef.x_axis_abscissa = xa;
         }
         // Index 6: XAxisOrdinate (optional)
-        if let Some(xo) = entity.get_float(6) {
+        if let Some(xo) = entity.real_at(slot::IfcMapConversion::X_AXIS_ORDINATE) {
             georef.x_axis_ordinate = xo;
         }
         // Index 7: Scale (optional, default 1.0)
-        if let Some(s) = entity.get_float(7) {
+        if let Some(s) = entity.real_at(slot::IfcMapConversion::SCALE) {
             georef.scale = s;
         }
         // Index 8..10: IfcMapConversionScaled.FactorX/Y/Z (absent on the
@@ -456,27 +457,27 @@ impl GeoRefExtractor {
         // Index 0: Name (e.g., "EPSG:32632"). Blank reads as unset, the rule
         // the ePSet path applies: the viewer gates on a non-empty CRS name,
         // so `Some("")` would claim a georeference nothing downstream shows.
-        if let Some(name) = entity.get_string(0).filter(|name| !name.trim().is_empty()) {
+        if let Some(name) = entity.string_at(slot::IfcProjectedCRS::NAME).filter(|name| !name.trim().is_empty()) {
             georef.crs_name = Some(name.to_string());
         }
         // Index 1: Description
-        if let Some(desc) = entity.get_string(1) {
+        if let Some(desc) = entity.string_at(slot::IfcProjectedCRS::DESCRIPTION) {
             georef.crs_description = Some(desc.to_string());
         }
         // Index 2: GeodeticDatum
-        if let Some(datum) = entity.get_string(2) {
+        if let Some(datum) = entity.string_at(slot::IfcProjectedCRS::GEODETIC_DATUM) {
             georef.geodetic_datum = Some(datum.to_string());
         }
         // Index 3: VerticalDatum
-        if let Some(vdatum) = entity.get_string(3) {
+        if let Some(vdatum) = entity.string_at(slot::IfcProjectedCRS::VERTICAL_DATUM) {
             georef.vertical_datum = Some(vdatum.to_string());
         }
         // Index 4: MapProjection
-        if let Some(proj) = entity.get_string(4) {
+        if let Some(proj) = entity.string_at(slot::IfcProjectedCRS::MAP_PROJECTION) {
             georef.map_projection = Some(proj.to_string());
         }
         // Index 5: MapZone
-        if let Some(zone) = entity.get_string(5) {
+        if let Some(zone) = entity.string_at(slot::IfcProjectedCRS::MAP_ZONE) {
             georef.map_zone = Some(zone.to_string());
         }
         // Index 6: MapUnit (IfcNamedUnit ref). Mirrors the TS parser
@@ -493,14 +494,14 @@ impl GeoRefExtractor {
         // (packages/export/src/step-georeferencing.ts) — matched no prefix and
         // fell through to METRE at scale 1, a silent 3.28x error on every
         // coordinate.
-        if let Some(unit_ref) = entity.get_ref(6) {
+        if let Some(unit_ref) = entity.ref_at(slot::IfcProjectedCRS::MAP_UNIT) {
             let mut unit_name = "METRE".to_string();
             let mut unit_scale = 1.0_f64;
             if let Ok(unit_entity) = decoder.decode_by_id(unit_ref) {
                 match unit_entity.ifc_type {
                     IfcType::IfcSIUnit => {
                         // IFCSIUNIT: [0] Dimensions, [1] UnitType, [2] Prefix, [3] Name
-                        if let Some(prefix_attr) = unit_entity.get(2) {
+                        if let Some(prefix_attr) = unit_entity.attr(slot::IfcSIUnit::PREFIX) {
                             if !prefix_attr.is_null() {
                                 if let Some(prefix) = prefix_attr.as_enum() {
                                     let multiplier =
@@ -522,8 +523,7 @@ impl GeoRefExtractor {
                         // IFCCONVERSIONBASEDUNIT: [0] Dimensions, [1] UnitType,
                         // [2] Name, [3] ConversionFactor (IfcMeasureWithUnit)
                         let name = unit_entity
-                            .get(2)
-                            .and_then(|attr| attr.as_string())
+                            .string_at(slot::IfcConversionBasedUnit::NAME)
                             .map(|n| n.trim_matches('\'').trim().to_ascii_uppercase());
                         // The name table first (it carries the exact defined
                         // ratios of FOOT, INCH, YARD and MILE; the US survey
@@ -570,8 +570,8 @@ impl GeoRefExtractor {
             }
             let site = decoder.decode_by_id(*id)?;
             // IfcSite: RefLatitude (9), RefLongitude (10), RefElevation (11).
-            let latitude = compound_plane_angle_to_degrees(&site, 9);
-            let longitude = compound_plane_angle_to_degrees(&site, 10);
+            let latitude = compound_plane_angle_to_degrees(&site, slot::IfcSite::REF_LATITUDE.index());
+            let longitude = compound_plane_angle_to_degrees(&site, slot::IfcSite::REF_LONGITUDE.index());
             let (Some(mut latitude), Some(mut longitude)) = (latitude, longitude) else {
                 continue;
             };
@@ -589,15 +589,15 @@ impl GeoRefExtractor {
             // attribute pair (RefLatitude/RefLongitude only, not the hot
             // tokenizer) recovers it without touching the shared integer path.
             if let Some(bytes) = decoder.get_raw_bytes(*id) {
-                if latitude >= 0.0 && compound_angle_has_literal_negative_zero(bytes, 9) {
+                if latitude >= 0.0 && compound_angle_has_literal_negative_zero(bytes, slot::IfcSite::REF_LATITUDE.index()) {
                     latitude = -latitude;
                 }
-                if longitude >= 0.0 && compound_angle_has_literal_negative_zero(bytes, 10) {
+                if longitude >= 0.0 && compound_angle_has_literal_negative_zero(bytes, slot::IfcSite::REF_LONGITUDE.index()) {
                     longitude = -longitude;
                 }
             }
 
-            let elevation = site.get_float(11).unwrap_or(0.0);
+            let elevation = site.real_at(slot::IfcSite::REF_ELEVATION).unwrap_or(0.0);
 
             let mut georef = GeoReference::new();
             georef.source = Some(GeoRefSource::SiteLocation);

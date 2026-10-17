@@ -8,6 +8,17 @@
 //! from `simplify_session.rs` to keep it inside its `module_size_ratchet`
 //! budget.
 
+use ifc_lite_geometry::math::frame::conjugate_yup_to_zup;
+
+/// Undo the boundary's `S·M·Sᵀ` (`math::frame::conjugate_yup_to_zup`), or
+/// `None` for a non-finite matrix. The old matmul spread any NaN/inf over the
+/// whole matrix, so `invert_affine_row_major` refused it as singular; the exact
+/// signed permutation (D24) keeps it in its own slot, where a NaN translation
+/// would invert "fine" and ship NaN positions. This keeps the refusal (#7772).
+pub(crate) fn finite_yup_to_zup(m: &[f64; 16]) -> Option<[f64; 16]> {
+    m.iter().all(|v| v.is_finite()).then(|| conjugate_yup_to_zup(m))
+}
+
 /// Inverse of an affine row-major 4x4 (placement chains are affine: last row
 /// [0,0,0,1]). `None` when the linear block is singular.
 pub(crate) fn invert_affine_row_major(m: &[f64; 16]) -> Option<[f64; 16]> {

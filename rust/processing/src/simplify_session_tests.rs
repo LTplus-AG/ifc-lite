@@ -263,6 +263,31 @@ fn invalid_unit_scale_is_skipped() {
     }
 }
 
+/// #7772 (D24): the Y-up placement is un-conjugated by an exact signed
+/// permutation, which keeps a non-finite entry in its own slot. The matmul it
+/// replaced spread it over the whole matrix, so the element was skipped as
+/// singular; a NaN translation must still skip, not invert and emit NaN.
+#[test]
+fn non_finite_yup_placement_is_skipped() {
+    let (positions, normals, indices) = box_soup([0.0; 3], [1.0; 3]);
+    for (slot, bad) in [(3, f64::NAN), (11, f64::INFINITY), (12, f64::NEG_INFINITY)] {
+        let mut l2w = IDENTITY;
+        l2w[slot] = bad;
+        let rec = SimplifyRecordInput {
+            positions: &positions,
+            normals: &normals,
+            indices: &indices,
+            origin: [0.0; 3],
+            local_to_world: Some(l2w),
+        };
+        assert_eq!(
+            simplify_element(&[rec], 5, [0.0; 3], 1.0, true).unwrap_err(),
+            SimplifySkip::SingularPlacement,
+            "slot {slot} = {bad} must skip"
+        );
+    }
+}
+
 #[test]
 fn missing_placement_is_skipped() {
     let (positions, normals, indices) = box_soup([0.0; 3], [1.0; 3]);

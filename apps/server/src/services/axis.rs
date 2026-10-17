@@ -2,11 +2,12 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! The ONE definition of the server wire's axis convention (issue #1841).
+//! The server wire's axis policy (issue #1841).
 //!
 //! IFC is Z-up; WebGL/glTF (and every ifc-lite client) is Y-up. Every server
-//! transport therefore emits **Y-up metres**, and this module is the single
-//! place that conversion is defined.
+//! transport therefore emits **Y-up metres**. The swap itself is defined once,
+//! in `ifc_lite_geometry::math::frame`; this module owns what the transports
+//! do with it (the JSON mesh rewrite and the normals-mismatch decision).
 //!
 //! It used to be open-coded inline in each parquet serializer and simply
 //! MISSING from the JSON route, so `POST /api/v1/parse` shipped raw IFC Z-up

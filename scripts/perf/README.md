@@ -14,17 +14,37 @@ off the viewer's own telemetry (below).
 
 ## Sloped coincident-sided differences (#7292)
 
-**Unmerged: final-source review corrections and worker-pool qualification pending.**
-Source-plane preservation, finite coplanar classification and certified thin-cell
-retention correct the reporter cases in native Rust and source-built Chrome.
-Lookup-only hash maps and shared projected containment preserve existing output
-ordering. Short-circuiting proper-crossing tests once an exact zero or same-side
-orientation proves rejection brings the native instruction gate inside its
-ceiling at `8ae04cf8b8`. A matching-main instruction comparison also improves with identical
-mesh, vertex and triangle counts; this is not an end-to-end timing verdict or
-full byte-identity proof. That historical source-built engine exceeded its transfer ceiling. The official
-`5cd6a4b6b6` build passes the unchanged transfer gate; this qualifies its size,
-not end-to-end worker-pool cost. No ceiling or acceptance tolerance was raised.
+**Unmerged: historical Os worker-pool regression; restored-O3 NO_VERDICT; not ready.** The final
+`ba457b1283` correctness, official-build and consumer checks pass, and the
+completed matched interleaved browser cohort retains its original admission and
+delivered-body proof gates. Actual end-to-end cost regresses on both required
+fixtures. The independent native attribution campaign is incomplete after host
+admission refuses a later sample; it provides no completed native verdict.
+Earlier failed browser attempts and cleanup failures remain preserved.
+
+The measured branch ships LLVM `Os`, while matched main ships `O3`. The
+comparison therefore combines geometry/output changes and build policy. The
+trace identifies geometry work and overlapping consumer/frame waiting, but
+does not isolate a kernel cause or quantify the optimization-flag effect. Passing
+the compressed-transfer gate did not protect runtime cost. Lesson: evaluate size
+and end-to-end runtime together; a smaller shipping engine is not evidence of
+performance neutrality. The original one-file `O3` restoration fails its original transfer gate and
+original generated-types source guard. The generated declaration order is now
+committed, and the user conditionally approved a measured engine ceiling with
+the same relative tolerance. The fresh restored-O3 official build, types, approved size and root consumers
+pass. Fresh functional captures and scoped reporter proof transfers also pass. Fresh
+end-to-end runtime qualification ends without a verdict: canonical host admission
+refuses the campaign after a base-only sample, with no branch sample or completed
+pair. The window is released and its authorities revoked. The performance
+condition remains unfulfilled; this approval does not erase either original
+failure or the measured shipping regression. Native proofs retain their actual
+qualification head and only their demonstrated source applicability.
+
+Historical native instruction comparisons improved after short-circuiting proper
+crossing tests when an exact zero or same-side orientation proves rejection.
+Lookup-only maps and shared projected containment retained emitted ordering.
+Those results compared instruction work and mesh counts, not worker-pool time
+or full byte identity.
 
 Replacing supported-cell hash collections with wide sorted records increased
 the actual compressed engine despite removing hash specializations: new sort
@@ -37,9 +57,9 @@ Reusing already-read triangle coordinates preserves the classifier's arithmetic
 and ordering, but that subsequent historical engine exceeded the transfer
 gate. Final artifacts lack usable function names, so a read-only inspection did
 not establish that consolidation replay clones large functions. Do not repeat
-that attribution or add outlining attributes without evidence. Current-source
-finite reporter comparisons pass independently of the preserved browser cleanup
-failure; neither that proof nor instruction counts supplies a fresh
+that attribution or add outlining attributes without evidence. Those historical
+finite reporter comparisons passed independently of the preserved browser cleanup
+failure; neither proof nor instruction counts supplied a fresh
 end-to-end timing verdict.
 
 Replacing paired boundary direction counters with a mask increased the
@@ -51,11 +71,11 @@ Bypassing general-point dispatch at known-explicit plane-weld calls also grew
 the engine and was reverted. Fewer source lines, a reused map value type or
 simpler dispatch do not establish a compressed-transfer saving.
 
-Coordinated idle windows and safe consumer cleanup did not qualify a complete
+Earlier coordinated idle windows and safe consumer cleanup did not qualify a complete
 interleaved worker-pool cohort under the unchanged host checks. An earlier capture
 also exposed a response observer retaining handles across the canonical cold
 reload; its correction preserves both navigations and captures setup bytes before
-invalidation. Refused campaigns remain separate and provide no timing verdict. On the final
+invalidation. Refused campaigns remain separate and provide no timing verdict. On the historical
 `80bc1bff69` source, the first browser sample completed its load but could not
 complete delivered worker-script byte coverage afterward because a response
 handle was unavailable. Installed Playwright code shows worker-session teardown
@@ -63,10 +83,11 @@ can invalidate that handle; the failed response URL was not recorded. That
 cohort accepts no rows. The separate
 native cohort stopped before its first sample when host admission failed. No
 retry, missing-body exemption or cached-file substitution qualified either
-attempt. A future passive collector must demonstrate worker-response retention
-before another timing campaign; setup-navigation retention alone is insufficient.
+attempt. That failure required worker-response retention before another accepted
+timing campaign; setup-navigation retention alone was insufficient. The final
+completed campaign satisfies byte coverage and still records a runtime regression.
 
-Untimed native mesh counts and fingerprints match the base for Haus and Holter;
+Historical untimed native mesh counts and fingerprints match the base for Haus and Holter;
 ISSUE_129 changes geometry and reports fewer CSG failures. These fingerprints
 exclude instancing, text, material definitions, UVs and textures. Lesson: retain
 healthy neighbors in ordinary seam conformance, preserve the baseline replay's

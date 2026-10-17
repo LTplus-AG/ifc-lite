@@ -4,6 +4,8 @@
 
 import { RelationshipType } from '@ifc-lite/data';
 import type { IfcDataStore } from '@ifc-lite/parser';
+import type { MutablePropertyView } from '@ifc-lite/mutations';
+import { ownedAggregationRelationships } from '@/utils/aggregation-ownership';
 import type { FederatedModel } from '@/store';
 import { effectiveGroupAssignments, effectiveGroupIds, effectiveGroupMembers, effectiveGroupName } from './effectiveGroupEntities.js';
 import { GROUP_ENTITY_TYPES, groupMatchesSubFilter, type GroupSubFilter } from './groupEntityTypes.js';
@@ -36,12 +38,13 @@ export function resolveMemberGeometry(
   memberExpressId: number,
   toGlobal: (expressId: number) => number,
   geometricIds: Set<number>,
+  view?: MutablePropertyView | null,
 ): ResolvedMemberGeometry[] {
   const ownGlobal = toGlobal(memberExpressId);
   if (geometricIds.has(ownGlobal)) {
     return [{ expressId: memberExpressId, globalId: ownGlobal }];
   }
-  const relationships = dataStore.relationships;
+  const relationships = ownedAggregationRelationships(dataStore, view);
   if (!relationships) return [];
   const out: ResolvedMemberGeometry[] = [];
   const seen = new Set<number>();
@@ -119,7 +122,7 @@ export function buildGroupTree(
         const isolation = new Set<number>();
         for (const member of members) {
           const ownGlobal = toGlobal(member.id);
-          const resolved = resolveMemberGeometry(dataStore, member.id, toGlobal, geo);
+          const resolved = resolveMemberGeometry(dataStore, member.id, toGlobal, geo, view);
           for (const r of resolved) isolation.add(r.globalId);
 
           if (allGroupIds.has(member.id) || (resolved.length === 1 && resolved[0].expressId === member.id)) {

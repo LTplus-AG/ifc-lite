@@ -10,12 +10,13 @@
 
 import { IfcTypeEnumFromString, isSpatialStructureType } from '@ifc-lite/data';
 import type { IfcDataStore } from '@ifc-lite/parser';
+import type { MutablePropertyView } from '@ifc-lite/mutations';
+import { ownedAggregationRelationships } from '@/utils/aggregation-ownership';
 import { useViewerStore, type FederatedModel } from '@/store';
 import {
   collectAggregatedDescendants,
   getAggregatedChildren,
   hasAggregatedGeometry,
-  type AggregationRelationships,
 } from '@/utils/aggregation';
 import { isPhysicalObjectType } from '@/lib/physical-objects';
 import { isProductTreeClass } from './productTreeClasses';
@@ -97,10 +98,11 @@ export function makeAssemblyGeometry(
   models: Map<string, FederatedModel>,
   geometricIds: Set<number> | undefined,
   geometryKnown = !!geometricIds && geometricIds.size > 0,
+  view?: MutablePropertyView | null,
 ): AssemblyGeometry {
   const applyFilter = geometryKnown;
   const knownGeometryIds = geometricIds ?? new Set<number>();
-  const relationships = dataStore.relationships as AggregationRelationships | undefined;
+  const relationships = ownedAggregationRelationships(dataStore, view);
   const toGlobal = (expressId: number) => resolveTreeGlobalId(modelId, expressId, models);
   const cache = new Map<number, boolean>();
   const isSpatial = (typeName: string) => isSpatialStructureType(IfcTypeEnumFromString(typeName));

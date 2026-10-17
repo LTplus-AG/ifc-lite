@@ -655,14 +655,13 @@ export function buildTypeTree(
   const otherEntities: OtherBucketEntry[] = [];
 
   const processDataStore = (dataStore: IfcDataStore, modelId: string) => {
+    const view = overlayViewFor(overlay, modelId);
     const assemblyGeometry = makeAssemblyGeometry(
       dataStore,
       modelId,
       models,
-      geometricIds,
-      geometryReadyModelIds?.has(modelId),
+      geometricIds, geometryReadyModelIds?.has(modelId), view,
     );
-    const view = overlayViewFor(overlay, modelId);
     // @raw-entity-enumeration-ok parsed rows, each passed through effectiveTreeType (deleted skipped, retype applied); created products arrive as authoredProducts
     for (let i = 0; i < dataStore.entities.count; i++) {
       const expressId = dataStore.entities.expressId[i];
@@ -816,15 +815,14 @@ export function buildIfcTypeTree(
 
   const processDataStore = (dataStore: IfcDataStore, modelId: string) => {
     if (!dataStore.relationships) return;
+    const view = overlayViewFor(overlay, modelId);
     const assemblyGeometry = makeAssemblyGeometry(
       dataStore,
       modelId,
       models,
-      geometricIds,
-      geometryReadyModelIds?.has(modelId),
+      geometricIds, geometryReadyModelIds?.has(modelId), view,
     );
 
-    const view = overlayViewFor(overlay, modelId);
     const assignments = effectiveTypeAssignments(dataStore, view);
     for (const { expressId, typeClassName, name: typeName } of effectiveTypeEntities(dataStore, view)) {
 

@@ -32,3 +32,29 @@ fn issue_7292_actual_26832_selected_void_output_has_paired_exact_edges() {
         // count is deliberately not the geometry-preservation invariant.
     }
 }
+
+#[test]
+fn issue_7292_source_boundary_repairs_subgrid_seams_in_actual_host_384() {
+    let Some(content) = ifc_lite_testkit::fixture_text("issues/841_house_stack_overflow.ifc") else {
+        eprintln!("Skipping actual host #384: run pnpm fixtures");
+        return;
+    };
+    let _serial = CENSUS_SWEEP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _reset = AltTriangulatorReset;
+    let frame = ModelFrame::new(&content);
+    let voids = void_index(&content);
+    #[cfg(feature = "triangulation-alt")]
+    let triangulators = &[false, true][..];
+    #[cfg(not(feature = "triangulation-alt"))]
+    let triangulators = &[false][..];
+    for &alt in triangulators {
+        set_alt(alt);
+        let mesh = process(&frame, 384, &voids).expect("actual host must mesh");
+        assert!(!mesh.indices.is_empty(), "empty host, alt={alt}");
+        let exact = edge_stats_exact(&mesh);
+        // The old 60-triangle output had eight physical unpaired edges that
+        // disappeared on the coarse 1mm grid. Check the actual boundary.
+        assert_eq!((exact.open, exact.strict, exact.degenerate), (0,0,0),
+            "subgrid source seam, alt={alt}");
+    }
+}

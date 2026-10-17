@@ -137,7 +137,8 @@ fn issue_7779_mapped_items_refuse_a_missing_operator_origin() {
                 assert!((min.z - 30.0).abs() < 1e-5 && (max.z - 31.0).abs() < 1e-5, "{min:?} {max:?}");
                 assert_eq!(decoder.refused_records(), 0);
             } else {
-                assert!(result.as_ref().is_err_or(|mesh| mesh.is_empty()), "{kind} {origin}: invented origin");
+                let refused = match result { Ok(mesh) => mesh.is_empty(), Err(_) => true };
+                assert!(refused, "{kind} {origin}: invented origin");
                 assert_eq!(decoder.refused_records(), 1);
             }
         }

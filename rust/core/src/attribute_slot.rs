@@ -107,7 +107,7 @@ impl SchemaVersion {
     /// Both names compare ASCII-case-insensitively (`IfcWall`, `IFCWALL`,
     /// `globalid`). A name with non-ASCII characters never matches.
     pub fn attribute(self, entity: &str, name: &str) -> Option<AttrSlot> {
-        let (names, flags) = self.layout_of(entity)?;
+        let (names, flags) = self.attribute_layout(entity)?;
         let index = names.iter().position(|n| n.eq_ignore_ascii_case(name))?;
         Some(decode(index, flags[index]))
     }
@@ -116,7 +116,7 @@ impl SchemaVersion {
     /// schema does not declare the entity. A declared entity without
     /// attributes yields an empty iterator.
     pub fn attributes(self, entity: &str) -> Option<impl ExactSizeIterator<Item = AttrSlot>> {
-        let (_, flags) = self.layout_of(entity)?;
+        let (_, flags) = self.attribute_layout(entity)?;
         Some(
             flags
                 .iter()
@@ -125,17 +125,6 @@ impl SchemaVersion {
         )
     }
 
-    fn layout_of(
-        self,
-        entity: &str,
-    ) -> Option<crate::generated::schema_registry::AttributeLayout> {
-        // The registry resolves through Unicode uppercasing, which would let
-        // `ıfcwall` (dotless i) reach IFCWALL; this API promises ASCII.
-        if !entity.is_ascii() {
-            return None;
-        }
-        self.attribute_layout(entity)
-    }
 }
 
 #[cfg(test)]

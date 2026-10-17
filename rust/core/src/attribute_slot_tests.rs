@@ -145,6 +145,10 @@ fn unknowns_are_explicit_none() {
         assert!(schema.attributes("IfcNotAnEntity").is_none());
         // Dotless-i uppercases to ASCII `I`; the API is ASCII-only.
         assert_eq!(schema.attribute("\u{131}fcWall", "Name"), None);
+        assert!(schema.attributes("\u{131}fcWall").is_none());
+        // The shared registry lookup is ASCII-only too, not just this API.
+        assert_eq!(schema.attribute_names("\u{131}fcWall"), None);
+        assert!(schema.attribute_names("ifcwall").is_some());
     }
     // Declared by IFC2X3 only: absent from the later schemas, not an empty list.
     assert!(SchemaVersion::Ifc2x3.attributes("IfcDoorStyle").is_some());

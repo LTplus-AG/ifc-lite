@@ -62,6 +62,8 @@ impl SchemaVersion {
     /// Attribute names for `entity_name` in this schema, or `None` when the
     /// entity is not declared by this schema. A declared entity with no
     /// attributes returns `Some(&[])` so callers never confuse it with absent.
+    /// The entity name matches ASCII-case-insensitively; a name with
+    /// non-ASCII characters is never declared.
     pub fn attribute_names(self, entity_name: &str) -> Option<&'static [&'static str]> {
         self.attribute_layout(entity_name).map(|(names, _)| names)
     }
@@ -70,6 +72,12 @@ impl SchemaVersion {
     /// [`crate::AttrSlot`] for the decoded form), or `None` when the entity is
     /// not declared by this schema.
     pub(crate) fn attribute_layout(self, entity_name: &str) -> Option<AttributeLayout> {
+        // `IfcType::from_str` keeps Unicode uppercasing for the parser's
+        // unknown-type CRC, which would let `ıfcwall` (dotless i) reach
+        // IFCWALL. Schema entity names are ASCII, so this lookup is too.
+        if !entity_name.is_ascii() {
+            return None;
+        }
         match self {
             Self::Ifc2x3 => layout_ifc2x3(entity_name),
             Self::Ifc4 => layout_ifc4(entity_name),

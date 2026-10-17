@@ -193,6 +193,210 @@ fn issue_7292_centroid_bounds_keep_boundary_and_uncertain_arithmetic() {
     assert!(!centroid_outside_bounds(&([huge; 3], huge), &[[f64::MAX; 3]; 3]), "overflowed comparisons retain candidates for exact fallback");
 }
 
+// #7292: S_Office entity 979333's closed host and two closed cutters,
+// captured after the production S16 import snap. Caller units are mm.
+// Same closed box and face diagonals as the actual caller, avoiding a
+// triangulator change in a regression about arranged surface ownership.
+fn cut0_host_7292() -> crate::Mesh {
+    let vertices = [
+        [3750.0, 110.0, 0.0],
+        [0.0, 20.0, 0.0],
+        [0.0, 110.0, 0.0],
+        [3750.0, 20.0, 0.0],
+        [3750.0, 110.0, 3250.0],
+        [0.0, 110.0, 3250.0],
+        [0.0, 20.0, 3250.0],
+        [3750.0, 20.0, 3250.0],
+    ];
+    let faces = [
+        [0, 1, 2],
+        [1, 0, 3],
+        [4, 5, 6],
+        [6, 7, 4],
+        [1, 3, 7],
+        [1, 7, 6],
+        [3, 0, 4],
+        [3, 4, 7],
+        [0, 2, 5],
+        [0, 5, 4],
+        [2, 1, 6],
+        [2, 6, 5],
+    ];
+    let tris: Vec<Tri> = faces.iter().map(|t| t.map(|i| vertices[i])).collect();
+    crate::kernel::mesh_bridge::tris_to_mesh(&tris)
+}
+
+// First cutter: 24 vertices / 44 triangles, including its tilted Y front.
+fn cut0_cutter_7292() -> crate::Mesh {
+    let vertices = [
+        [0.0, 125.0, 0.0],
+        [0.0, 125.0, 80.0],
+        [1825.0, 125.0, 80.0],
+        [1825.0, 125.0, 2715.0],
+        [0.0, 125.0, 2715.0],
+        [0.0, 125.0, 3250.0],
+        [3750.0, 125.0, 3250.0],
+        [3749.999755859375, 125.0, 2715.0],
+        [1915.0, 125.0, 80.0],
+        [3749.999755859375, 125.0, 80.0],
+        [3750.0, 125.0, 0.0],
+        [1915.0, 125.0, 2715.0],
+        [1825.0, 110.0, 80.0],
+        [1825.0, 109.99946594238281, 2715.0],
+        [0.0, 110.0, 2715.0],
+        [0.0, 110.0, 3250.0],
+        [3750.0, 110.0, 3250.0],
+        [3749.999755859375, 109.99888610839844, 2715.0],
+        [1915.0, 109.99943542480469, 2715.0],
+        [1915.0, 110.0, 80.0],
+        [3749.999755859375, 110.0, 80.0],
+        [3750.0, 110.0, 0.0],
+        [0.0, 110.0, 0.0],
+        [0.0, 110.0, 80.0],
+    ];
+    let faces = [
+        [0, 1, 2],
+        [3, 4, 5],
+        [5, 6, 7],
+        [8, 9, 10],
+        [10, 0, 2],
+        [5, 7, 11],
+        [8, 10, 2],
+        [3, 5, 11],
+        [11, 8, 2],
+        [2, 3, 11],
+        [3, 2, 12],
+        [3, 12, 13],
+        [4, 3, 13],
+        [4, 13, 14],
+        [4, 14, 15],
+        [4, 15, 5],
+        [5, 15, 16],
+        [5, 16, 6],
+        [17, 7, 6],
+        [17, 6, 16],
+        [11, 7, 17],
+        [11, 17, 18],
+        [8, 11, 18],
+        [8, 18, 19],
+        [20, 9, 8],
+        [20, 8, 19],
+        [9, 20, 21],
+        [9, 21, 10],
+        [21, 22, 0],
+        [21, 0, 10],
+        [23, 1, 0],
+        [23, 0, 22],
+        [2, 1, 23],
+        [2, 23, 12],
+        [12, 23, 22],
+        [22, 21, 20],
+        [18, 17, 16],
+        [16, 15, 14],
+        [22, 20, 19],
+        [16, 14, 13],
+        [12, 22, 19],
+        [18, 16, 13],
+        [13, 12, 19],
+        [19, 18, 13],
+    ];
+    let tris: Vec<Tri> = faces.iter().map(|t| t.map(|i| vertices[i])).collect();
+    crate::kernel::mesh_bridge::tris_to_mesh(&tris)
+}
+
+fn bottom_cutter_7292() -> crate::Mesh {
+    let vertices = [
+        [0.0, 110.0, 80.0],
+        [3749.999755859375, 110.0, 80.0],
+        [3750.0, 110.0, 0.0],
+        [0.0, 110.0, 0.0],
+        [3749.999755859375, 20.0, 80.0],
+        [0.0, 20.0, 80.0],
+        [3750.0, 20.0, 0.0],
+        [0.0, 20.0, 0.0],
+    ];
+    let faces = [
+        [0, 1, 2],
+        [0, 2, 3],
+        [4, 1, 0],
+        [4, 0, 5],
+        [1, 4, 6],
+        [1, 6, 2],
+        [6, 7, 3],
+        [6, 3, 2],
+        [5, 0, 3],
+        [5, 3, 7],
+        [4, 5, 7],
+        [4, 7, 6],
+    ];
+    let tris: Vec<Tri> = faces.iter().map(|t| t.map(|i| vertices[i])).collect();
+    crate::kernel::mesh_bridge::tris_to_mesh(&tris)
+}
+
+/// Independent output measurement: intersect an axis-parallel line with mesh
+/// triangles using projected barycentric coordinates. The chosen probes lie
+/// strictly inside their faces, so shared triangle edges cannot double-count.
+fn axis_hits_7292(mesh: &crate::Mesh, axis: usize, point: [f64; 3]) -> Vec<f64> {
+    let axes: Vec<_> = (0..3).filter(|&k| k != axis).collect();
+    let (x, y) = (axes[0], axes[1]);
+    let mut hits = Vec::new();
+    for ids in mesh.indices.chunks_exact(3) {
+        let t = [ids[0], ids[1], ids[2]].map(|i| {
+            [0, 1, 2].map(|k| f64::from(mesh.positions[i as usize * 3 + k]))
+        });
+        let u = [0, 1, 2].map(|k| t[1][k] - t[0][k]);
+        let v = [0, 1, 2].map(|k| t[2][k] - t[0][k]);
+        let det = u[x] * v[y] - u[y] * v[x];
+        if det == 0.0 { continue; }
+        let dx = point[x] - t[0][x];
+        let dy = point[y] - t[0][y];
+        let alpha = (dx * v[y] - dy * v[x]) / det;
+        let beta = (u[x] * dy - u[y] * dx) / det;
+        if alpha > 0.0 && beta > 0.0 && alpha + beta < 1.0 {
+            hits.push(t[0][axis] + alpha * u[axis] + beta * v[axis]);
+        }
+    }
+    hits.sort_by(f64::total_cmp);
+    hits
+}
+
+#[test]
+fn issue_7292_real_cut_has_one_front_boundary_and_retains_the_next_bottom_cap() {
+    use crate::csg::{ClippingProcessor, GroupCut};
+    let _caps = budget::GLOBAL_CAP_LOCK.lock().unwrap();
+    let _element = budget::enter_element();
+    budget::begin();
+    let host = cut0_host_7292();
+    let clipper = ClippingProcessor::with_unit_scale(0.001);
+    let first = match clipper.subtract_mesh(&host, &cut0_cutter_7292()) {
+        GroupCut::Cut(mesh) => mesh,
+        GroupCut::Retessellated(_) => panic!("the tilted front really removes material"),
+        GroupCut::Rejected(reason) => panic!("first captured cut rejected: {reason:?}"),
+    };
+    assert!(!budget::tripped());
+    // At this X/Z the tilted cutter's front lies strictly inside the original
+    // Y110 wall. Difference must expose only that front, not also the old wall.
+    let z = 609.4444444444445;
+    let expected_y = 110.0 + (z - 80.0) / (2715.0 - 80.0) * (109.99946594238281 - 110.0);
+    let front: Vec<_> = axis_hits_7292(&first, 1, [1855.0, 0.0, z]).into_iter()
+        .filter(|&y| (109.9..110.1).contains(&y)).collect();
+    assert_eq!(front.len(), 1, "retain one tilted front boundary, without the interior Y110 copy");
+    // Local f32 evaluation allowance: 0.00002 mm (20 nm), smaller than the
+    // 107 nm separation from the spurious Y110 sheet at this probe. Boundary
+    // multiplicity above uses strict interior hits with no epsilon or dedup.
+    assert!((front[0] - expected_y).abs() < 0.00002, "retain the actual cutter front");
+    let second = match clipper.subtract_mesh(&first, &bottom_cutter_7292()) {
+        GroupCut::Cut(mesh) => mesh,
+        GroupCut::Retessellated(_) => panic!("the bottom prism really removes material"),
+        GroupCut::Rejected(reason) => panic!("second captured cut rejected: {reason:?}"),
+    };
+    assert!(!budget::tripped());
+    let vertical = axis_hits_7292(&second, 2, [5575.0 / 3.0, 80.0, 0.0]);
+    assert_eq!(vertical.len(), 2, "retain the required bottom cap and upper boundary");
+    assert!((vertical[0] - 80.0).abs() < 0.001, "the second cut must retain its required Z80 cap");
+    assert!((vertical[1] - 3250.0).abs() < 0.001);
+}
+
 #[test]
 fn issue_7292_actual_489647_near_face_cannot_own_a_cell_outside_its_finite_outline() {
     let _caps = budget::GLOBAL_CAP_LOCK.lock().unwrap();

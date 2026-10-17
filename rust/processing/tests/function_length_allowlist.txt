@@ -37,7 +37,6 @@
    155 rust/export/src/step_map_rigid_contexts.rs representation_contexts
    186 rust/export/src/usd.rs export_usd
    161 rust/geometry/src/alignment.rs parse_horizontal
-   368 rust/geometry/src/csg/consolidate.rs ClippingProcessor::consolidate_coplanar_with_unit_scale
    341 rust/geometry/src/facet_weld.rs refine_high_aspect_slivers_impl
    332 rust/geometry/src/facet_weld.rs weld_near_coplanar_facets
    231 rust/geometry/src/instancing/group.rs collate_refs_impl

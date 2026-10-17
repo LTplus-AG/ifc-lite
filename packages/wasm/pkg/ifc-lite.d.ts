@@ -2550,6 +2550,10 @@ export function setGeometryProgressCallback(callback?: Function | null): void;
  * or zone corner lies past ±2^128, the exact kernel's coordinate bound
  * (#7677): such a split is refused rather than answered wrongly.
  *
+ * Returns `undefined` if an intersection, zone union or remainder exhausts
+ * the exact kernel's work budget. Completed pieces are not returned as a
+ * successful partial split, and a failed empty piece is not treated as disjoint.
+ *
  * Returns `undefined` when the mesh encloses no volume (no triangles survive
  * the filter above, or the shell is degenerate): there is nothing to split,
  * and a result for it would report `pieceCount` 1, `sumErrorRel` 0 and
@@ -2560,7 +2564,7 @@ export function setGeometryProgressCallback(callback?: Function | null): void;
  * const split = splitMeshByZones(positions, indices, new Float64Array([
  *   0, 0, 0, 10, 10, 10, 0,
  * ]));
- * if (!split) return; // the mesh encloses no volume
+ * if (!split) return; // no usable complete split
  * for (let i = 0; i < split.pieceCount; i++) {
  *   const piece = split.piece(i);
  *   // piece.zoneIndex, piece.positions, piece.indices, piece.volume
@@ -2632,7 +2636,6 @@ export interface InitOutput {
     readonly alignmentaxisjs_Name: (a: number, b: number) => void;
     readonly alignmentaxisjs_approximate: (a: number) => number;
     readonly alignmentaxisjs_evaluate: (a: number, b: number, c: number) => void;
-    readonly alignmentaxisjs_expressId: (a: number) => number;
     readonly alignmentaxisjs_geometricHorizontalLengthMeters: (a: number) => number;
     readonly alignmentaxisjs_new: (a: number, b: number, c: number, d: number) => void;
     readonly clashIntersectionSolid: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => number;
@@ -2640,10 +2643,7 @@ export interface InitOutput {
     readonly clashintersectionsolidjs_indices: (a: number, b: number) => void;
     readonly clashintersectionsolidjs_isSolid: (a: number) => number;
     readonly clashintersectionsolidjs_positions: (a: number, b: number) => void;
-    readonly clashintersectionsolidjs_requiredM: (a: number) => number;
-    readonly clashintersectionsolidjs_thicknessM: (a: number) => number;
     readonly clashintersectionsolidjs_triangleCount: (a: number) => number;
-    readonly clashintersectionsolidjs_volumeM3: (a: number) => number;
     readonly clashrunresult_a: (a: number, b: number) => void;
     readonly clashrunresult_b: (a: number, b: number) => void;
     readonly clashrunresult_bounds: (a: number, b: number) => void;
@@ -2669,9 +2669,7 @@ export interface InitOutput {
     readonly gridaxiscollection_getAxis: (a: number, b: number) => number;
     readonly gridaxiscollection_isEmpty: (a: number) => number;
     readonly gridaxiscollection_length: (a: number) => number;
-    readonly gridaxisjs_axisId: (a: number) => number;
     readonly gridaxisjs_end: (a: number) => number;
-    readonly gridaxisjs_gridId: (a: number) => number;
     readonly gridaxisjs_start: (a: number) => number;
     readonly gridaxisjs_tag: (a: number, b: number) => void;
     readonly ifcapi_buildPrePassOnce: (a: number, b: number, c: number) => number;
@@ -2783,14 +2781,10 @@ export interface InitOutput {
     readonly meshcollection_get: (a: number, b: number) => number;
     readonly meshcollection_hasRtcOffset: (a: number) => number;
     readonly meshcollection_length: (a: number) => number;
-    readonly meshcollection_rtcOffsetX: (a: number) => number;
-    readonly meshcollection_rtcOffsetY: (a: number) => number;
-    readonly meshcollection_rtcOffsetZ: (a: number) => number;
     readonly meshcollection_takeMesh: (a: number, b: number) => number;
     readonly meshcollection_totalTriangles: (a: number) => number;
     readonly meshcollection_totalVertices: (a: number) => number;
     readonly meshdatajs_color: (a: number, b: number) => void;
-    readonly meshdatajs_expressId: (a: number) => number;
     readonly meshdatajs_geometryClass: (a: number) => number;
     readonly meshdatajs_geometryItemId: (a: number) => number;
     readonly meshdatajs_hasTexture: (a: number) => number;
@@ -2805,32 +2799,25 @@ export interface InitOutput {
     readonly meshdatajs_positions: (a: number) => number;
     readonly meshdatajs_roughness: (a: number) => number;
     readonly meshdatajs_shadingColor: (a: number, b: number) => void;
-    readonly meshdatajs_textureHeight: (a: number) => number;
-    readonly meshdatajs_textureId: (a: number) => number;
     readonly meshdatajs_textureRepeatS: (a: number) => number;
     readonly meshdatajs_textureRepeatT: (a: number) => number;
     readonly meshdatajs_textureRgba: (a: number) => number;
     readonly meshdatajs_textureUrl: (a: number, b: number) => void;
-    readonly meshdatajs_textureWidth: (a: number) => number;
     readonly meshdatajs_triangleCount: (a: number) => number;
     readonly meshdatajs_uvs: (a: number) => number;
     readonly meshdatajs_vertexCount: (a: number) => number;
-    readonly meshoutlinejs_axisMax: (a: number) => number;
-    readonly meshoutlinejs_axisMin: (a: number) => number;
     readonly meshoutlinejs_contour: (a: number, b: number) => number;
+    readonly meshoutlinejs_contourCount: (a: number) => number;
     readonly partitionedbatch_instancedOccurrences: (a: number) => number;
     readonly partitionedbatch_takeMeshes: (a: number) => number;
     readonly partitionedbatch_takeShard: (a: number, b: number) => void;
     readonly profilecollection_get: (a: number, b: number) => number;
     readonly profilecollection_length: (a: number) => number;
     readonly profilecollection_skippedExpressIds: (a: number) => number;
-    readonly profileentryjs_expressId: (a: number) => number;
-    readonly profileentryjs_extrusionDepth: (a: number) => number;
     readonly profileentryjs_extrusionDir: (a: number) => number;
     readonly profileentryjs_holeCounts: (a: number) => number;
     readonly profileentryjs_holePoints: (a: number) => number;
     readonly profileentryjs_ifcType: (a: number, b: number) => void;
-    readonly profileentryjs_modelIndex: (a: number) => number;
     readonly profileentryjs_outerPoints: (a: number) => number;
     readonly profileentryjs_transform: (a: number) => number;
     readonly resolve2d: (a: number) => number;
@@ -2881,35 +2868,17 @@ export interface InitOutput {
     readonly spaceplatehandle_splitEdge: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly spaceplatehandle_splitFace: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
     readonly splitMeshByZones: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number) => number;
-    readonly symboliccircle_centerX: (a: number) => number;
-    readonly symboliccircle_centerY: (a: number) => number;
-    readonly symboliccircle_endAngle: (a: number) => number;
-    readonly symboliccircle_expressId: (a: number) => number;
     readonly symboliccircle_ifcType: (a: number, b: number) => void;
     readonly symboliccircle_isFullCircle: (a: number) => number;
-    readonly symboliccircle_radius: (a: number) => number;
     readonly symboliccircle_repIdentifier: (a: number, b: number) => void;
-    readonly symboliccircle_startAngle: (a: number) => number;
-    readonly symboliccircle_worldY: (a: number) => number;
-    readonly symbolicfillarea_expressId: (a: number) => number;
-    readonly symbolicfillarea_fillA: (a: number) => number;
-    readonly symbolicfillarea_fillB: (a: number) => number;
-    readonly symbolicfillarea_fillG: (a: number) => number;
-    readonly symbolicfillarea_fillR: (a: number) => number;
     readonly symbolicfillarea_geometryItemId: (a: number) => number;
     readonly symbolicfillarea_hasHatching: (a: number) => number;
-    readonly symbolicfillarea_hatchAngle: (a: number) => number;
-    readonly symbolicfillarea_hatchAngleSecondary: (a: number) => number;
-    readonly symbolicfillarea_hatchLineWidth: (a: number) => number;
-    readonly symbolicfillarea_hatchSpacing: (a: number) => number;
     readonly symbolicfillarea_holeCount: (a: number) => number;
     readonly symbolicfillarea_holesOffsets: (a: number) => number;
     readonly symbolicfillarea_ifcType: (a: number, b: number) => void;
     readonly symbolicfillarea_pointCount: (a: number) => number;
     readonly symbolicfillarea_points: (a: number) => number;
     readonly symbolicfillarea_repIdentifier: (a: number, b: number) => void;
-    readonly symbolicfillarea_worldY: (a: number) => number;
-    readonly symbolicpolyline_expressId: (a: number) => number;
     readonly symbolicpolyline_ifcType: (a: number, b: number) => void;
     readonly symbolicpolyline_isClosed: (a: number) => number;
     readonly symbolicpolyline_pointCount: (a: number) => number;
@@ -2933,19 +2902,50 @@ export interface InitOutput {
     readonly symbolictext_content: (a: number, b: number) => void;
     readonly symbolictext_ifcType: (a: number, b: number) => void;
     readonly symbolictext_repIdentifier: (a: number, b: number) => void;
-    readonly symbolictext_x: (a: number) => number;
-    readonly symbolictext_y: (a: number) => number;
     readonly traceScanOutline: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly union2d: (a: number, b: number) => number;
     readonly version: (a: number) => void;
     readonly zonepiecejs_indices: (a: number) => number;
     readonly zonepiecejs_positions: (a: number) => number;
-    readonly zonepiecejs_zoneIndex: (a: number) => number;
     readonly zonesplitjs_piece: (a: number, b: number) => number;
     readonly zonesplitjs_pieceCount: (a: number) => number;
     readonly zonesplitjs_remainderFailed: (a: number) => number;
-    readonly meshoutlinejs_contourCount: (a: number) => number;
     readonly get_memory: () => number;
+    readonly alignmentaxisjs_expressId: (a: number) => number;
+    readonly clashintersectionsolidjs_requiredM: (a: number) => number;
+    readonly clashintersectionsolidjs_thicknessM: (a: number) => number;
+    readonly gridaxisjs_axisId: (a: number) => number;
+    readonly gridaxisjs_gridId: (a: number) => number;
+    readonly meshcollection_rtcOffsetX: (a: number) => number;
+    readonly meshcollection_rtcOffsetY: (a: number) => number;
+    readonly meshcollection_rtcOffsetZ: (a: number) => number;
+    readonly meshdatajs_expressId: (a: number) => number;
+    readonly meshdatajs_textureHeight: (a: number) => number;
+    readonly meshdatajs_textureId: (a: number) => number;
+    readonly meshdatajs_textureWidth: (a: number) => number;
+    readonly meshoutlinejs_axisMax: (a: number) => number;
+    readonly meshoutlinejs_axisMin: (a: number) => number;
+    readonly profileentryjs_expressId: (a: number) => number;
+    readonly profileentryjs_extrusionDepth: (a: number) => number;
+    readonly profileentryjs_modelIndex: (a: number) => number;
+    readonly symboliccircle_centerX: (a: number) => number;
+    readonly symboliccircle_centerY: (a: number) => number;
+    readonly symboliccircle_endAngle: (a: number) => number;
+    readonly symboliccircle_expressId: (a: number) => number;
+    readonly symboliccircle_radius: (a: number) => number;
+    readonly symboliccircle_startAngle: (a: number) => number;
+    readonly symboliccircle_worldY: (a: number) => number;
+    readonly symbolicfillarea_expressId: (a: number) => number;
+    readonly symbolicfillarea_fillA: (a: number) => number;
+    readonly symbolicfillarea_fillB: (a: number) => number;
+    readonly symbolicfillarea_fillG: (a: number) => number;
+    readonly symbolicfillarea_fillR: (a: number) => number;
+    readonly symbolicfillarea_hatchAngle: (a: number) => number;
+    readonly symbolicfillarea_hatchAngleSecondary: (a: number) => number;
+    readonly symbolicfillarea_hatchLineWidth: (a: number) => number;
+    readonly symbolicfillarea_hatchSpacing: (a: number) => number;
+    readonly symbolicfillarea_worldY: (a: number) => number;
+    readonly symbolicpolyline_expressId: (a: number) => number;
     readonly symbolicpolyline_worldY: (a: number) => number;
     readonly symbolictext_colorA: (a: number) => number;
     readonly symbolictext_colorB: (a: number) => number;
@@ -2957,10 +2957,14 @@ export interface InitOutput {
     readonly symbolictext_height: (a: number) => number;
     readonly symbolictext_targetPx: (a: number) => number;
     readonly symbolictext_worldY: (a: number) => number;
-    readonly zonepiecejs_volume: (a: number) => number;
+    readonly symbolictext_x: (a: number) => number;
+    readonly symbolictext_y: (a: number) => number;
+    readonly zonepiecejs_zoneIndex: (a: number) => number;
     readonly zonesplitjs_sumErrorRel: (a: number) => number;
-    readonly zonesplitjs_wholeVolume: (a: number) => number;
     readonly init: () => void;
+    readonly clashintersectionsolidjs_volumeM3: (a: number) => number;
+    readonly zonepiecejs_volume: (a: number) => number;
+    readonly zonesplitjs_wholeVolume: (a: number) => number;
     readonly __wbindgen_export: (a: number, b: number) => number;
     readonly __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_export3: (a: number) => void;

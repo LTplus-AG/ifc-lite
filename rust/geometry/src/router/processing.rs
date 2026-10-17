@@ -77,6 +77,9 @@ pub(super) enum SourceHygiene {
     /// those inputs changed the cut on ~20 void hosts of the public corpus, so
     /// it is a separate, measured change.
     IndexOnly,
+    /// Boolean inputs also split exactly collinear cap seams at an existing
+    /// same-face apex index, without changing vertex arrays (#7292).
+    BooleanOperand,
 }
 
 impl SourceHygiene {
@@ -90,6 +93,7 @@ impl SourceHygiene {
         match self {
             Self::Watertight => mesh.clean_degenerate_watertight(),
             Self::IndexOnly => mesh.clean_degenerate(),
+            Self::BooleanOperand => mesh.clean_degenerate_exact_indexed(),
         }
     }
 }
@@ -1079,28 +1083,9 @@ impl GeometryRouter {
 }
 
 #[cfg(test)]
-mod shared_cap_tests {
-    /// `MAX_MAPPED_ITEM_DEPTH` must be the one in `ifc_lite_core::limits`, not
-    /// a private copy that happens to hold the same number today.
-    ///
-    /// This is not redundant with the constant being shared. Sharing removes
-    /// the drift that EXISTS; it does not stop anyone reintroducing a local
-    /// `const MAX_MAPPED_ITEM_DEPTH` that shadows the import. Verified by
-    /// mutation: with the import replaced by a private `= 16`, 800 tests stayed
-    /// green until this test existed. A mid-review revision of #2864 held
-    /// exactly that value against the router's 32, so the shadow is not a
-    /// hypothetical shape.
-    ///
-    /// The assertion is on the VALUE, not on identity, so a private copy
-    /// holding the same 32 still passes. That is the honest ceiling: Rust has
-    /// no cheap const-identity check, and a same-value shadow is harmless until
-    /// the shared value is next tuned, at which point this fires.
-    #[test]
-    fn mapped_item_depth_is_the_shared_constant() {
-        assert_eq!(
-            super::MAX_MAPPED_ITEM_DEPTH,
-            ifc_lite_core::MAX_MAPPED_ITEM_DEPTH,
-            "use the shared cap from ifc_lite_core::limits, not a private copy"
-        );
-    }
-}
+#[path = "processing_shared_cap_tests.rs"]
+mod shared_cap_tests;
+
+#[cfg(test)]
+#[path = "processing_hygiene_tests.rs"]
+mod hygiene_tests;

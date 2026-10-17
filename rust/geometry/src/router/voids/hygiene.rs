@@ -9,15 +9,14 @@ pub(super) fn clean_void_output(mesh: &mut Mesh) {
     if !mesh.needs_degenerate_cleanup() {
         return;
     }
-    // This is a necessary incidence certificate, not a simplicity proof.
-    // Empty, non-finite, degenerate and already-open sources cannot opt in.
-    let original = strict_closed_mesh(mesh).then(|| mesh.clone());
-    mesh.clean_degenerate_watertight();
-    if let Some(original) = original {
-        if !strict_closed_mesh(mesh) {
-            *mesh = original;
-        }
+    // Preserve every represented closed boundary. Closure after cleanup alone
+    // cannot detect deletion of an entire disconnected subgrid component.
+    // This incidence certificate is not a simplicity proof; empty, non-finite,
+    // degenerate and already-open sources still get ordinary cleanup.
+    if strict_closed_mesh(mesh) {
+        return;
     }
+    mesh.clean_degenerate_watertight();
 }
 
 #[cfg(test)]

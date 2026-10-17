@@ -4,16 +4,16 @@
 
 mod derived;
 mod event;
+mod feed;
 mod fragments;
 mod lifecycle;
 pub(crate) mod metadata;
 mod output;
 mod record_wire;
-mod token;
 pub use lifecycle::LandXmlMetadataStreamAssembler;
 
 use crate::{
-    parser::Parser, preflight::max_markup_bytes, xml::{error, Decoder}, LandXmlDiagnosticCode as Code,
+    parser::Parser, xml::{error, Decoder, TokenKind, TokenScanner}, LandXmlDiagnosticCode as Code,
     LandXmlError, LandXmlLimits,
 };
 pub use event::{
@@ -24,7 +24,7 @@ pub use event::{
 };
 use quick_xml::{events::Event, Reader};
 use std::{collections::VecDeque, io::BufReader};
-use token::{TokenFeed, TokenKind};
+use feed::TokenFeed;
 
 pub const MAX_LANDXML_STREAM_INPUT_CHUNK_BYTES: usize = 1024 * 1024;
 pub const MAX_LANDXML_STREAM_DRAIN_BYTES: usize = 1024 * 1024;
@@ -50,15 +50,14 @@ pub struct LandXmlTinStreamSession {
     reader: Reader<BufReader<TokenFeed>>,
     feed: TokenFeed,
     decoder: Decoder,
-    token: Vec<u8>,
-    kind: TokenKind,
-    max_text_bytes: usize,
-    max_markup_bytes: usize,
+    scanner: TokenScanner,
     queue: VecDeque<QueuedEvent>,
     queued_bytes: usize,
     pending_surface: Option<fragments::SurfaceCursor>,
     metadata_cursor: Option<metadata::MetadataCursor>,
-    pending_input: VecDeque<u8>,
+    /// Normalized bytes not yet scanned, from `pending_start`.
+    pending_input: Vec<u8>,
+    pending_start: usize,
     header_emitted: bool,
     /// The emitted header committed to the caller's assumed unit (#7753).
     header_assumed: bool,
@@ -97,15 +96,13 @@ impl LandXmlTinStreamSession {
             reader,
             feed,
             decoder: Decoder::new(&limits)?,
-            token: Vec::new(),
-            kind: TokenKind::Text,
-            max_text_bytes: limits.max_text_bytes,
-            max_markup_bytes: max_markup_bytes(&limits)?,
+            scanner: TokenScanner::new(&limits, true)?,
             queue: VecDeque::new(),
             queued_bytes: 0,
             pending_surface: None,
             metadata_cursor: None,
-            pending_input: VecDeque::new(),
+            pending_input: Vec::new(),
+            pending_start: 0,
             header_emitted: false,
             header_assumed: false,
             surfaces_drained: 0,
@@ -129,7 +126,7 @@ impl LandXmlTinStreamSession {
             ));
         }
         let parsed = self.decoder.push(chunk).and_then(|bytes| {
-            self.pending_input.extend(bytes);
+            self.feed_input(bytes);
             self.consume_pending_input()
         });
         self.close_on_error(parsed)
@@ -170,11 +167,11 @@ impl LandXmlTinStreamSession {
         if self.closed {
             return Err(error(Code::InvalidSemantic, "LandXML stream session is closed"));
         }
-        let decoded = self.decoder.finish().map(|tail| self.pending_input.extend(tail));
+        let decoded = self.decoder.finish().map(|tail| self.feed_input(tail));
         let decoded = decoded.and_then(|()| self.consume_pending_input());
         self.close_on_error(decoded)?;
         // Undrained output is recoverable (drain, then retry); other errors close.
-        if self.output_pending() || !self.pending_input.is_empty() {
+        if self.output_pending() || self.pending_start < self.pending_input.len() {
             return Err(error(Code::LimitExceeded, "stream output must be drained before finalization"));
         }
         let finished = self.finish_document();
@@ -182,8 +179,8 @@ impl LandXmlTinStreamSession {
     }
 
     fn finish_document(&mut self) -> Result<(), LandXmlError> {
-        if !self.token.is_empty() {
-            self.emit_token()?;
+        if let Some(kind) = self.scanner.finish()? {
+            self.emit_token(kind)?;
         }
         if self.parser().has_open_frames() {
             return Err(error(Code::InvalidXml, "unclosed XML element"));
@@ -253,12 +250,22 @@ impl LandXmlTinStreamSession {
         self.parser.as_mut().expect("open stream parser")
     }
 
+    fn feed_input(&mut self, bytes: Vec<u8>) {
+        if self.pending_start == self.pending_input.len() {
+            self.pending_input = bytes;
+            self.pending_start = 0;
+        } else {
+            self.pending_input.extend_from_slice(&bytes);
+        }
+    }
+
     fn consume_pending_input(&mut self) -> Result<(), LandXmlError> {
-        while !self.output_pending() {
-            let Some(byte) = self.pending_input.pop_front() else {
-                return Ok(());
-            };
-            self.push_normalized(byte)?;
+        while !self.output_pending() && self.pending_start < self.pending_input.len() {
+            let step = self.scanner.next(&self.pending_input[self.pending_start..])?;
+            self.pending_start += step.consumed;
+            if let Some(kind) = step.token {
+                self.emit_token(kind)?;
+            }
         }
         Ok(())
     }
@@ -269,82 +276,18 @@ impl LandXmlTinStreamSession {
         self.consume_pending_input()
     }
 
-    fn push_normalized(&mut self, byte: u8) -> Result<(), LandXmlError> {
-        match &mut self.kind {
-            TokenKind::Text if byte == b'<' => {
-                self.emit_token()?;
-                self.token.push(byte);
-                self.kind = TokenKind::Markup { quote: None };
-            }
-            TokenKind::Text => self.token.push(byte),
-            TokenKind::Markup { quote } => {
-                self.token.push(byte);
-                if self.token.starts_with(b"<!DOCTYPE") {
-                    return Err(error(Code::DtdForbidden, "DOCTYPE is not allowed"));
-                }
-                let complete = if self.token.starts_with(b"<!--") {
-                    // `<!-->` and `<!--->` are not complete: the terminator is
-                    // searched after the opener, which they would overlap.
-                    self.token.len() >= b"<!---->".len() && self.token.ends_with(b"-->")
-                } else if self.token.starts_with(b"<![CDATA[") {
-                    self.token.ends_with(b"]]>")
-                } else if self.token.starts_with(b"<?") {
-                    self.token.ends_with(b"?>")
-                } else {
-                    match *quote {
-                        Some(value) if byte == value => {
-                            *quote = None;
-                            false
-                        }
-                        Some(_) => false,
-                        None if matches!(byte, b'\'' | b'\"') => {
-                            *quote = Some(byte);
-                            false
-                        }
-                        None => byte == b'>',
-                    }
-                };
-                if complete {
-                    self.emit_token()?;
-                    self.kind = TokenKind::Text;
-                }
-            }
-        }
-        let (limit, message) = self.token_limit();
-        if self.token.len() > limit {
-            return Err(error(Code::LimitExceeded, message));
-        }
-        Ok(())
-    }
-
-    fn token_limit(&self) -> (usize, &'static str) {
-        match &self.kind {
-            TokenKind::Text => (self.max_text_bytes, "text limit exceeded"),
-            TokenKind::Markup { .. }
-                if self.token.starts_with(b"<!--") || self.token.starts_with(b"<![CDATA[") =>
-            {
-                (self.max_text_bytes, "XML token limit exceeded")
-            }
-            TokenKind::Markup { .. } => (self.max_markup_bytes, "markup limit exceeded"),
-        }
-    }
-
-    fn emit_token(&mut self) -> Result<(), LandXmlError> {
-        if self.token.is_empty() {
-            return Ok(());
-        }
-        let token = std::mem::take(&mut self.token);
-        let token_debug = String::from_utf8_lossy(&token).into_owned();
-        let text_token = !token.starts_with(b"<");
-        let comment_token = token.starts_with(b"<!--");
-        self.feed.push(token);
+    fn emit_token(&mut self, kind: TokenKind) -> Result<(), LandXmlError> {
+        let token = self.scanner.take_token();
+        let text_token = kind == TokenKind::Text;
+        let comment_token = kind == TokenKind::Comment;
+        self.feed.push(&token);
         if text_token {
-            self.feed.push(b"<!--ifc-lite-stream-pad-->".to_vec());
+            self.feed.push(b"<!--ifc-lite-stream-pad-->");
         } else if comment_token {
             // Keep quick-xml from observing EOF for a standalone comment.
             // The processing instruction is deliberately not exposed to the
             // semantic parsers below.
-            self.feed.push(b"<?ifc-lite-stream-pad?>".to_vec());
+            self.feed.push(b"<?ifc-lite-stream-pad?>");
         }
         let mut buffer = Vec::new();
         let mut consumed_comment = false;
@@ -369,7 +312,7 @@ impl LandXmlTinStreamSession {
                 Event::Eof => {
                     return Err(error(
                         Code::InvalidXml,
-                        format!("XML reader ended while consuming token {token_debug:?}"),
+                        format!("XML reader ended while consuming token {:?}", String::from_utf8_lossy(&token)),
                     ));
                 }
                 event => {
@@ -381,6 +324,7 @@ impl LandXmlTinStreamSession {
             }
             buffer.clear();
         }
+        self.scanner.recycle(token);
         self.emit_header_and_surfaces()
     }
 

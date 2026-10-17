@@ -3,15 +3,11 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use crate::{
-    preflight::preflight_xml_tokens,
-    xml::{attr, attributes, error, normalize_encoding, split_name, Budget, Meter, Result},
+    xml::{attr, attributes, error, normalize_encoding, read_events, split_name, Budget, Meter, Result},
     LandXmlCancellation, LandXmlDiagnosticCode as Code, LandXmlLimits, LandXmlPipeNetworkDocument,
     LandXmlSourceId,
 };
-use quick_xml::{
-    events::{BytesStart, Event},
-    Reader,
-};
+use quick_xml::events::{BytesStart, Event};
 pub(crate) use state::PipeParser;
 use state::{properties, FeatureBuilder, Frame, NetworkBuilder};
 use std::collections::{HashMap, HashSet};
@@ -44,21 +40,8 @@ pub fn parse_landxml_pipe_networks_with_cancel(
     // root units are resolved (`effective_root_units`).
     crate::semantics::resolve_assumed_units(limits)?;
     let input = normalize_encoding(input, limits, cancelled)?;
-    preflight_xml_tokens(&input, limits, cancelled)?;
     let mut parser = PipeParser::new(limits, cancelled, true);
-    let mut reader = Reader::from_reader(input.as_slice());
-    reader.config_mut().trim_text(false);
-    let mut buffer = Vec::new();
-    loop {
-        let event = reader
-            .read_event_into(&mut buffer)
-            .map_err(|_| error(Code::InvalidXml, "malformed XML"))?;
-        if matches!(event, Event::Eof) {
-            break;
-        }
-        parser.consume_event(event)?;
-        buffer.clear();
-    }
+    read_events(&input, limits, cancelled, |event| parser.consume_event(event))?;
     if !parser.root_seen {
         return Err(error(Code::InvalidXml, "LandXML document is empty"));
     }

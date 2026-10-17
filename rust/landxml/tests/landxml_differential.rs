@@ -186,9 +186,9 @@ fn tight_limits_agree() {
 enum Status {
     /// Pull and stream still disagree; the string names the work package
     /// that closes it. The scenario must keep diverging until that lands.
+    #[allow(dead_code)] // every open scenario is closed (C9a-3b); the next drift adds one
     Open(&'static str),
     /// Fixed: the scenario is now a regression test that both paths agree.
-    #[allow(dead_code)] // the first open scenario is closed by C9a-1
     Agreed,
     /// An accepted, documented difference that never closes.
     Accepted(&'static str),
@@ -206,7 +206,7 @@ struct Scenario {
 const SCENARIOS: &[Scenario] = &[
     Scenario { id: "drift-1-work-charge", status: Status::Agreed, probe: work_boundary },
     Scenario { id: "drift-10-empty-comment-opener", status: Status::Agreed, probe: empty_comment_opener },
-    Scenario { id: "drift-12-double-fault-outside-root", status: Status::Open("C9a-3b"), probe: double_fault_outside_root },
+    Scenario { id: "drift-12-double-fault-outside-root", status: Status::Agreed, probe: double_fault_outside_root },
     Scenario { id: "drift-12-double-fault-encoding", status: Status::Agreed, probe: double_fault_encoding },
     Scenario { id: "d78-late-units-after-assumed-header", status: Status::Accepted("D78"), probe: late_units_after_assumed_header },
 ];
@@ -250,8 +250,8 @@ fn empty_comment_opener() -> Result<(), Divergence> {
 }
 
 /// Drift 12: a semantic fault in the document and content after the root.
-/// The pull preflight reads the whole document first and reports the content;
-/// the stream stops at the first fault in source order.
+/// The pull preflight used to read the whole document first and report the
+/// content; both paths now stop at the first fault in source order (C9a-3b).
 fn double_fault_outside_root() -> Result<(), Divergence> {
     let xml = format!("{}x", all_families().replace("<Surface name=\"grade\">", "<Surface>"));
     differential_landxml(xml.as_bytes(), &LandXmlLimits::default())

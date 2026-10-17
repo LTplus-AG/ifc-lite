@@ -9,14 +9,24 @@ in the processing crate), whether it runs through the browser WASM build, the
 worker pool, or a native host. Every consumer therefore gets identical
 per-element meshes, and fixes to the mesher land once for all paths.
 
-Rust callers can inspect `EntityDecoder::uniform_context_precision()` for a
-restricted source-precision certificate: one project, one owned 3D context,
-complete direct subcontexts and an explicit SI length unit. It verifies all
-representation context references and unit mapped scales. Missing or conflicting
-provenance returns `None`, without inferring a default `Precision`.
-Compact source indexes share a lazy certificate cache across fresh decoders,
-retaining success and decline. Custom hash-index callers can share one
-`decoder::UniformContextPrecisionCache` through
+Nearly planar `IfcFacetedBrep` shells have a conservative source normalization
+before triangulation. An existing adjacent planar face must uniquely determine
+the warped face's carrier through an authored shared edge and three noncollinear
+source points. Corrections retain source point identities and satisfy every
+healthy incident plane, within explicit context `Precision`. The whole shell
+must remain closed, convex, correctly oriented and free of finite face holes or
+double coverage. Unsupported or ambiguous input follows the established meshing
+path. Kernel tolerances and snapping policies are unchanged.
+
+The initial domain is limited to 32 single-bound faces, 64 distinct source points
+and 128 corners, with exactly representable corrected coordinates. Context
+provenance requires one project, one 3D root context, complete inherited
+subcontexts, an explicit SI length unit and unit mapped scales. Rust callers can
+inspect `EntityDecoder::uniform_context_precision()` for this certificate;
+missing or conflicting provenance returns `None`, without a default `Precision`.
+Native and browser source indexes share a lazy certificate cache across fresh
+decoders, retaining both success and decline. Custom hash-index callers can
+share one `decoder::UniformContextPrecisionCache` through
 `EntityDecoder::set_uniform_context_precision_cache`; it belongs to exactly one
 immutable source and separates strict geometry admission from permissive reads.
 

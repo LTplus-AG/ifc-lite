@@ -22,6 +22,7 @@ pub(super) enum ProcessingIndex {
 pub(super) struct HashIndex {
     spans: Arc<EntityIndex>,
     grid_axes: Arc<GridAxisIndex>,
+    uniform_precision: Arc<ifc_lite_core::decoder::UniformContextPrecisionCache>,
 }
 
 impl std::ops::Deref for HashIndex {
@@ -33,7 +34,7 @@ impl std::ops::Deref for HashIndex {
 
 impl ProcessingIndex {
     pub(super) fn hash(spans: Arc<EntityIndex>) -> Self {
-        Self::Hash(HashIndex { spans, grid_axes: Arc::default() })
+        Self::Hash(HashIndex { spans, grid_axes: Arc::default(), uniform_precision: Arc::default() })
     }
 
     pub(super) fn decoder<'a>(&self, content: &'a [u8]) -> EntityDecoder<'a> {
@@ -47,6 +48,7 @@ impl ProcessingIndex {
             Self::Hash(index) => {
                 decoder.set_entity_index(index.spans.clone());
                 decoder.set_grid_axis_index(index.grid_axes.clone());
+                decoder.set_uniform_context_precision_cache(index.uniform_precision.clone());
             }
             Self::Columnar(index) => decoder.set_columnar_index(index.clone()),
             Self::Dense(index) => decoder.set_dense_index(index.clone()),

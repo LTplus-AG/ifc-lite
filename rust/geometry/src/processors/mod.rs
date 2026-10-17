@@ -44,6 +44,11 @@ pub use advanced::{AdvancedBrepProcessor, BSplineSurfaceProcessor};
 // Drained by the router once per representation item to report a capped
 // B-spline curve edge (#4901); see `advanced_face::bspline_budget`.
 pub(crate) use advanced_face::{take_curve_capped, take_face_refused};
+pub(crate) use brep::carrier::{
+    bounded_faces as faceted_carrier_bounded_faces,
+    source_may_normalize as faceted_carrier_source_may_normalize,
+    warped as faceted_carrier_warped,
+};
 pub use alignment::IfcAlignmentProcessor;
 pub use boolean::BooleanClippingProcessor;
 pub use brep::{

@@ -8,6 +8,9 @@
 //! All deal with boundary representations composed of face loops.
 
 mod faceted;
+pub(crate) mod carrier;
+mod carrier_exact;
+mod carrier_validate;
 mod surface_model;
 
 #[cfg(test)]

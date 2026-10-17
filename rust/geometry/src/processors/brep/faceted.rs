@@ -219,6 +219,16 @@ impl FacetedBrepProcessor {
             }
         }
 
+        if let Some(witness) = super::carrier::normalize(entity, decoder, &mut face_data_list) {
+            crate::diag::diag_debug!({
+                brep = entity.id, carriers = ?witness.carriers, moved = ?witness.moved,
+                context = witness.context.root_context, precision = witness.context.precision,
+                "normalized FacetedBrep source carriers"
+            } else {
+                let _ = (witness.carriers, witness.moved, witness.context);
+            });
+        }
+
         // PHASE 2: Triangulate all faces (serial below PAR_FACE_THRESHOLD to
         // avoid rayon fork-join overhead; both orders are byte-identical).
         let rtc = rtc_file_units.unwrap_or((0.0, 0.0, 0.0));

@@ -130,3 +130,81 @@ fn brep_keyword_trivia_is_the_same_brep_signature() {
         assert_eq!(key_of(&content), (plain_key, plain_shared), "{head}");
     }
 }
+
+#[test]
+fn issue_7714_warped_source_identity_survives_shared_memos_and_boolean_parents() {
+    let source = format!("{}\n#900011=IFCFACETEDBREP(#489633);\n\
+        #900012=IFCBOOLEANRESULT(.DIFFERENCE.,#489635,#489635);\n\
+        #900013=IFCBOOLEANRESULT(.DIFFERENCE.,#900011,#900011);",
+        include_str!("../../tests/fixtures/issue_7714_soffice_carrier.ifc"));
+    let cache = GeometryRouter::new_brep_signature_cache();
+    for _ in 0..2 {
+        let mut decoder = EntityDecoder::new(&source);
+        let router = router(cache.clone(), 0.001,TessellationQuality::Medium);
+        let mut keys=Vec::new();
+        for id in [489635,900011,900012,900013] {
+            let item=decoder.decode_by_id(id).unwrap();
+            let key=router.item_dedup_key(&item,&mut decoder).unwrap();
+            assert!(!keys.contains(&key),"source-sensitive subtrees cannot share meshes");
+            assert_eq!(router.item_dedup_key(&item,&mut decoder),Some(key),"memo hit preserves identity");
+            keys.push(key);
+        }
+    }
+}
+
+#[test]
+fn issue_7714_generic_brep_fallback_keeps_source_identity() {
+    let source="#1=IFCFACETEDBREP(#99);#2=IFCFACETEDBREP(#99);\
+        #3=IFCBOOLEANRESULT(.UNION.,#1,#1);#4=IFCBOOLEANRESULT(.UNION.,#2,#2);";
+    let mut decoder=EntityDecoder::new(source);
+    let router=router(GeometryRouter::new_brep_signature_cache(),1.,TessellationQuality::Medium);
+    let mut keys=Vec::new();
+    for id in 1..=4 {
+        let item=decoder.decode_by_id(id).unwrap();
+        let key=router.item_dedup_key(&item,&mut decoder).unwrap();
+        assert!(!keys.contains(&key));keys.push(key);
+    }
+}
+
+#[test]
+fn issue_7714_commented_reference_cannot_hide_a_normalizable_source_from_cache_identity() {
+    // The existing first-reference reader can see the decoy's #7 in a comment.
+    // The carrier cache policy must consult actual source admission rather
+    // than mistake that triangle for either seven-face source item (#7714).
+    let source = format!("{}\n{}\n\
+        #900011=IFCFACETEDBREP(/*#7*/#489633);\n\
+        #900012=IFCFACETEDBREP(/*#7*/#489633);",
+        include_str!("../../tests/fixtures/issue_7714_soffice_carrier.ifc"), triangle_brep(1.0));
+    let mut decoder = EntityDecoder::new(&source);
+    let shared = router(GeometryRouter::new_brep_signature_cache(), 0.001, TessellationQuality::Medium);
+    let keys: Vec<_> = [8, 900011, 900012].into_iter().map(|id| {
+        let item = decoder.decode_by_id(id).unwrap();
+        shared.item_dedup_key(&item, &mut decoder).unwrap()
+    }).collect();
+    assert_ne!(keys[0], keys[1], "a source carrier cannot borrow the decoy triangle mesh");
+    assert_ne!(keys[1], keys[2], "actual warped items retain source identity");
+}
+
+#[test]
+fn issue_7714_warp_without_existing_adjacent_carrier_preserves_structural_reuse() {
+    // Move the third carrier corner off its plane. The real source remains
+    // warped but cannot select the existing adjacent carrier, so both items
+    // must retain structural cache equivalence through memo hits and parents.
+    let source = format!("{}\n#900011=IFCFACETEDBREP(#489633);\n\
+        #900012=IFCBOOLEANRESULT(.DIFFERENCE.,#489635,#489635);\n\
+        #900013=IFCBOOLEANRESULT(.DIFFERENCE.,#900011,#900011);",
+        include_str!("../../tests/fixtures/issue_7714_soffice_carrier.ifc")
+            .replace("95.0000003725,12000.0000131,-325.", "95.0001,12000.0000131,-325."));
+    let cache = GeometryRouter::new_brep_signature_cache();
+    for _ in 0..2 {
+        let mut decoder = EntityDecoder::new(&source);
+        let router = router(cache.clone(), 0.001, TessellationQuality::Medium);
+        let mut key = |id| {
+            let item = decoder.decode_by_id(id).unwrap();
+            router.item_dedup_key(&item, &mut decoder).unwrap()
+        };
+        assert_eq!(key(489635), key(900011));
+        assert_eq!(key(900012), key(900013));
+        assert_eq!(key(489635), key(900011));
+    }
+}

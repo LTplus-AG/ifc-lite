@@ -78,9 +78,9 @@ fn sliver_fixture_is_actually_a_sliver() {
     let c = [56.0_f64, 66.0, 18.501];
     let e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
     let e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
-    let cross = cross3(e1, e2);
-    let cross_len = dot3(cross, cross).sqrt();
-    let sin_theta = cross_len / (dot3(e1, e1).sqrt() * dot3(e2, e2).sqrt());
+    let cross = v3::cross(e1, e2);
+    let cross_len = v3::dot(cross, cross).sqrt();
+    let sin_theta = cross_len / (v3::dot(e1, e1).sqrt() * v3::dot(e2, e2).sqrt());
     assert!(
         cross_len > 0.0 && cross_len < 1e-2,
         "cross magnitude out of the intended sliver range: {cross_len}"
@@ -116,9 +116,9 @@ fn small_box_yields_three_orthogonal_axes() {
     for i in 0..3 {
         for j in (i + 1)..3 {
             assert!(
-                dot3(axes[i], axes[j]).abs() <= ORTHO_EPS,
+                v3::dot(axes[i], axes[j]).abs() <= ORTHO_EPS,
                 "axes {i} and {j} are not orthogonal: dot = {}",
-                dot3(axes[i], axes[j])
+                v3::dot(axes[i], axes[j])
             );
         }
     }
@@ -145,9 +145,9 @@ fn sliver_triangle_does_not_displace_real_box_axes() {
     for i in 0..3 {
         for j in (i + 1)..3 {
             assert!(
-                dot3(axes[i], axes[j]).abs() <= ORTHO_EPS,
+                v3::dot(axes[i], axes[j]).abs() <= ORTHO_EPS,
                 "axes {i} and {j} are not orthogonal: dot = {}",
-                dot3(axes[i], axes[j])
+                v3::dot(axes[i], axes[j])
             );
         }
     }

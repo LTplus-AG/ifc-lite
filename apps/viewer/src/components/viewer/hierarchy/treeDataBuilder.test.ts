@@ -228,7 +228,7 @@ describe('buildTypeTree — authored (overlay) products', () => {
   // entities.count === 0 so the columnar scan is empty; only the authored
   // fold-in produces nodes — isolating the new path.
   it('folds an authored IfcSpace into its class group and dedups by globalId', () => {
-    const ds = createDataStore();
+    const ds = { ...createDataStore(), entities: createEntityTable([]) };
     const authored: AuthoredProduct[] = [
       { modelId: 'legacy', expressId: 900, globalId: 900, name: 'Space 1', ifcType: 'IfcSpace' },
       { modelId: 'legacy', expressId: 900, globalId: 900, name: 'dup', ifcType: 'IfcSpace' },
@@ -243,7 +243,7 @@ describe('buildTypeTree — authored (overlay) products', () => {
   });
 
   it('does nothing when there are no authored products', () => {
-    const ds = createDataStore();
+    const ds = { ...createDataStore(), entities: createEntityTable([]) };
     const nodes = buildTypeTree(new Map(), ds, new Set(), false, new Set(), []);
     assert.strictEqual(nodes.length, 0);
   });

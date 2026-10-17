@@ -19,32 +19,9 @@ use super::jsval::{format_step_real, integral_token, to_step_real};
 /// `IFC4X3` or `IFC5`, from the first `FILE_SCHEMA` identifier that names
 /// one, else a loose scan of the header, else `IFC4`.
 pub(crate) fn schema_family(content: &[u8]) -> &'static str {
-    let from = |token: &str| -> Option<&'static str> {
-        let t = token.trim().to_ascii_uppercase();
-        if t.starts_with("IFC5") {
-            Some("IFC5")
-        } else if t.starts_with("IFC4X3") {
-            Some("IFC4X3")
-        } else if t.starts_with("IFC4") {
-            Some("IFC4")
-        } else if t.starts_with("IFC2X3") {
-            Some("IFC2X3")
-        } else {
-            None
-        }
-    };
-    for label in crate::source_header::declared_schemas(content) {
-        if let Some(f) = from(&label) {
-            return f;
-        }
-    }
-    let head = String::from_utf8_lossy(&content[..content.len().min(2000)]).to_ascii_uppercase();
-    for f in ["IFC5", "IFC4X3", "IFC4", "IFC2X3"] {
-        if head.contains(f) {
-            return f;
-        }
-    }
-    "IFC4"
+    ifc_lite_core::SchemaFamily::detect(content)
+        .unwrap_or(ifc_lite_core::SchemaFamily::Ifc4)
+        .as_str()
 }
 
 fn row(upper: &str) -> Option<&'static SlotRow> {

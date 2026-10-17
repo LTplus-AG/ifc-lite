@@ -10,7 +10,7 @@
 use ifc_lite_core::units::{get_conversion_based_unit_factor, try_si_prefix_multiplier};
 use ifc_lite_core::{
     decode_ifc_string, AttributeValue, DecodedEntity, EntityDecoder, EntityScanner, GeoRefExtractor,
-    GeoReference, IfcType, MAX_PLACEMENT_DEPTH,
+    GeoReference, IfcType, MAX_CONTEXT_DEPTH,
 };
 
 use crate::step_map_transform::preflight;
@@ -80,7 +80,7 @@ impl ModelFacts {
         let mut current = Some(context);
         let mut seen = Vec::new();
         while let Some(id) = current {
-            if seen.len() >= MAX_PLACEMENT_DEPTH || seen.contains(&id) {
+            if seen.len() >= MAX_CONTEXT_DEPTH || seen.contains(&id) {
                 return Err(format!("the ParentContext chain of context #{context} is cyclic or too deep"));
             }
             seen.push(id);

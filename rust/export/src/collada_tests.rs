@@ -279,7 +279,7 @@ fn composed_orientation_reproduces_ifc_bearing() {
         // Half 2 (collada.rs, real code path): the mesh's local +X ("east" at
         // heading = 0, per kmz.rs's doc comment) converted from the Y-up mesh
         // frame the exporter receives into the Z-up frame the .dae declares.
-        let zup = to_zup(1.0, 0.0, 0.0);
+        let zup = ifc_lite_geometry::math::frame::yup_to_zup([1.0, 0.0, 0.0]);
 
         // Compose: apply the KML heading as Google Earth does — a clockwise
         // rotation, about the vertical axis, of the Z-up model whose (X, Y)

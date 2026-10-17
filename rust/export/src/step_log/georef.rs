@@ -58,10 +58,10 @@ fn map_unit(pass: &mut Pass<'_, '_>, name: &str) -> Result<Option<u32>, Unwritab
     let prefix = if normalized == "METRE" {
         Some(None)
     } else {
-        ["FEMTO", "MICRO", "HECTO", "CENTI", "MILLI", "EXA", "PETA", "TERA", "GIGA", "MEGA", "KILO", "DECA", "DECI", "NANO", "PICO", "ATTO"]
+        ifc_lite_core::SI_PREFIXES
             .iter()
-            .find(|p| normalized == format!("{p}METRE"))
-            .map(|p| Some(*p))
+            .find(|p| normalized == format!("{}METRE", p.name))
+            .map(|p| Some(p.name))
     };
     if let Some(prefix) = prefix {
         let id = pass.allocate()?;
@@ -71,7 +71,7 @@ fn map_unit(pass: &mut Pass<'_, '_>, name: &str) -> Result<Option<u32>, Unwritab
     }
     if normalized == "FOOT" || normalized == "US SURVEY FOOT" {
         let (dim, si, measure, unit) = (pass.allocate()?, pass.allocate()?, pass.allocate()?, pass.allocate()?);
-        let factor = if normalized == "US SURVEY FOOT" { 1200.0 / 3937.0 } else { 0.3048 };
+        let factor = if normalized == "US SURVEY FOOT" { ifc_lite_core::US_SURVEY_FOOT_M } else { 0.3048 };
         pass.georef_lines.push((dim, format!("#{dim}=IFCDIMENSIONALEXPONENTS(1,0,0,0,0,0,0);")));
         pass.georef_lines.push((si, format!("#{si}=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);")));
         pass.georef_lines.push((measure, format!("#{measure}=IFCMEASUREWITHUNIT(IFCLENGTHMEASURE({}),#{si});", to_step_real(factor)?)));

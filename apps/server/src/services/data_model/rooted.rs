@@ -9,7 +9,7 @@
 //! fetch route selects by it, and the client sends it. One definition keeps
 //! those four in step, the same shape as `parquet_layout.rs`.
 
-use super::generated::root_attr_indices;
+use super::slots::RootSlots;
 use super::types::DataModel;
 use rustc_hash::{FxHashMap, FxHashSet};
 
@@ -86,7 +86,7 @@ impl DataModelEntities {
 pub(crate) fn retain_rooted_entities(data_model: &mut DataModel) {
     let referenced = referenced_ids(data_model);
     // Types are few (hundreds) and rows are many (millions), so the registry
-    // lookup, which needs an uppercase copy of the name, runs once per type.
+    // lookup runs once per type.
     let mut rooted_type: FxHashMap<String, bool> = FxHashMap::default();
     let keep: Vec<bool> = data_model
         .entities
@@ -115,7 +115,7 @@ pub(crate) fn retain_rooted_entities(data_model: &mut DataModel) {
 /// `false`: for those the extracted `global_id` (read at the `IfcRoot`
 /// position by the metadata fallback) is the only evidence there is.
 fn declares_global_id(type_name: &str) -> bool {
-    root_attr_indices(&type_name.to_ascii_uppercase()).is_some_and(|idx| idx.global_id >= 0)
+    RootSlots::declares_global_id(type_name)
 }
 
 /// Every entity id another table of `data_model` points at. `0` is the

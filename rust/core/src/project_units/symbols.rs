@@ -14,25 +14,7 @@ use crate::units::get_si_prefix_multiplier;
 /// Symbol for an SI prefix as it prepends a unit symbol (`k`, `m`, `\u{00B5}`, ...).
 /// Unknown / empty prefix yields the empty string.
 pub fn si_prefix_symbol(prefix: &str) -> &'static str {
-    match prefix.trim().to_ascii_uppercase().as_str() {
-        "EXA" => "E",
-        "PETA" => "P",
-        "TERA" => "T",
-        "GIGA" => "G",
-        "MEGA" => "M",
-        "KILO" => "k",
-        "HECTO" => "h",
-        "DECA" => "da",
-        "DECI" => "d",
-        "CENTI" => "c",
-        "MILLI" => "m",
-        "MICRO" => "\u{00B5}", // micro sign
-        "NANO" => "n",
-        "PICO" => "p",
-        "FEMTO" => "f",
-        "ATTO" => "a",
-        _ => "",
-    }
+    crate::unit_labels::si_prefix(&prefix.trim().to_ascii_uppercase()).map_or("", |row| row.symbol)
 }
 
 /// Descriptor for an `IfcSIUnitName`.
@@ -107,10 +89,17 @@ pub fn si_unit_symbol_and_scale(name: &str, prefix: Option<&str>) -> Option<(Str
 }
 
 /// A friendly symbol for a common `IfcConversionBasedUnit` name. Falls back to
-/// the cleaned name (quotes/whitespace trimmed) when unknown.
+/// the cleaned name (every quote removed, whitespace trimmed) when unknown.
+///
+/// The one implementation (EXPORT-STEP-20): the STEP-log exporter used its own
+/// copy that stripped EVERY quote while this one trimmed only the outer pair,
+/// so `O''CLOCK` read `O'CLOCK` here and `OCLOCK` there. The TypeScript twin
+/// (`conversionUnitSymbol`) strips every quote and upper-cases with the full
+/// Unicode mapping; this does the same.
 pub fn conversion_unit_symbol(name: &str) -> String {
-    let clean = name.trim().trim_matches('\'').trim();
-    match clean.to_ascii_uppercase().as_str() {
+    let clean = name.replace('\'', "");
+    let clean = clean.trim();
+    match clean.to_uppercase().as_str() {
         "DEGREE" => "\u{00B0}".to_string(),
         "GRAD" | "GON" => "gon".to_string(),
         "MINUTE" => "\u{2032}".to_string(),

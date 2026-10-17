@@ -3,7 +3,7 @@
   "repin": "IFC_LITE_REPIN_GOLDEN=1 cargo test -p ifc-lite-export --features parquet-bos --test export_golden -- --exact glb_from_meshes",
   "cases": {
     "AC20-FZK-Haus": {
-      "fnv1a64": "f55f054fbe1a9f6f",
+      "fnv1a64": "35e0bd0b6a0648ea",
       "bytes": 1244204
     },
     "IfcOpenHouse_IFC4": {
@@ -23,8 +23,8 @@
       "bytes": 2000
     },
     "duplex": {
-      "fnv1a64": "96581b0844b1ee7e",
-      "bytes": 1836224
+      "fnv1a64": "de6ad3b83758b8de",
+      "bytes": 1836200
     },
     "mapped_instances_synthetic": {
       "fnv1a64": "c4853eea8f52eebc",

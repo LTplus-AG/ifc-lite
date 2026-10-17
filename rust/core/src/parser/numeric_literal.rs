@@ -107,14 +107,59 @@ pub fn parse_step_numeric<T: fast_float2::FastFloat + Into<f64>>(
 }
 
 /// [`parse_step_numeric`] for a token that must be exactly one literal: the
-/// whole of `token`, ASCII whitespace trimmed, read as an admitted `f64`.
+/// whole of `token`, STEP whitespace trimmed, read as an admitted `f64`.
 /// For readers that already split a record into attribute tokens, which used
 /// `str::parse::<f64>` and so read `inf`, `NaN` and `1.E400` as numbers.
 #[inline]
 pub fn parse_step_real(token: &[u8]) -> Option<f64> {
-    let token = token.trim_ascii();
+    let start = token.iter().position(|&b| !is_step_space(b))?;
+    let end = token.iter().rposition(|&b| !is_step_space(b))? + 1;
+    let token = &token[start..end];
     let (value, len) = parse_step_numeric::<f64>(token)?;
     (len == token.len()).then_some(value)
+}
+
+/// One STEP number as the tokenizer and every byte reader see it (F4-1).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum StepNumber<'a> {
+    /// An `INTEGER`: no `.` and no exponent.
+    Integer(i64),
+    /// A `REAL` that `f64` holds. `-0.` keeps its sign bit.
+    Real(f64),
+    /// A complete `REAL` literal `f64` cannot hold (`1.E400`), as its raw
+    /// text; [`admit_step_real`] decides (#7678).
+    Unrepresentable(&'a [u8]),
+}
+
+/// Read the one STEP number at the start of `bytes` and the bytes it spans.
+///
+/// The one number reader: the nom tokenizer's number branch and the raw-byte
+/// readers share it, so the grammar is [`step_numeric_literal_len`] alone
+/// (`.5`, `1E5`, `+1`, `1.`, `-0.`). A literal is a `REAL` iff it has a `.`
+/// or an exponent (`1E5` is `Real(100000.0)`). `None` for anything that is
+/// not exactly one literal, and for an `INTEGER` beyond `i64`.
+#[inline]
+pub fn read_step_number(bytes: &[u8]) -> Option<(StepNumber<'_>, usize)> {
+    let len = step_numeric_literal_len(bytes)?;
+    let literal = &bytes[..len];
+    if literal.iter().any(|&b| matches!(b, b'.' | b'e' | b'E')) {
+        let value = fast_float2::parse::<f64, _>(literal).ok()?;
+        let number = admit_step_real(value)
+            .map_or(StepNumber::Unrepresentable(literal), StepNumber::Real);
+        return Some((number, len));
+    }
+    let (negative, digits) = match literal[0] {
+        b'-' => (true, &literal[1..]),
+        b'+' => (false, &literal[1..]),
+        _ => (false, literal),
+    };
+    // Accumulate negatively so `i64::MIN` is representable.
+    let mut value: i64 = 0;
+    for &d in digits {
+        value = value.checked_mul(10)?.checked_sub(i64::from(d - b'0'))?;
+    }
+    let value = if negative { value } else { value.checked_neg()? };
+    Some((StepNumber::Integer(value), len))
 }
 
 #[cfg(test)]

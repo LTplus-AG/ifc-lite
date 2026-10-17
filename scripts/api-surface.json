@@ -5159,6 +5159,9 @@
     "PartOfRelationInfo: interface",
     "PerfFlagBinding: interface",
     "PerfFlagGlobalName: type",
+    "PlacementChain: interface",
+    "PlacementChainEnd: type",
+    "PlacementChainOptions: interface",
     "Property: interface",
     "PropertySet: interface",
     "PropertyTable: interface",
@@ -5267,7 +5270,8 @@
     "serializeValue: function",
     "spatialLookups: function",
     "textDecoderAcceptsSab: function",
-    "toStepLineWithRegistry: function"
+    "toStepLineWithRegistry: function",
+    "walkPlacementChain: function"
   ],
   "@ifc-lite/data/node": [
     "UNKNOWN_VERSION: const",

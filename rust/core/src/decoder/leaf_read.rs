@@ -27,7 +27,7 @@ const DIRECTION_KEYWORD: &[u8] = b"IFCDIRECTION";
 
 /// `#id = KEYWORD ( ( x, y[, z] ) ) ;` with `keyword` matched case-insensitively.
 /// Never more lenient than the full decode: every literal must be a number
-/// the tokenizer reads (no `.5`, `1E5` or out-of-`i64` integer) and nothing
+/// the tokenizer reads (no out-of-`i64` integer) and nothing
 /// but trivia may follow the outer `)` before `;`, so a hit is always the
 /// value [`slow_leaf`] would give and a miss falls through to it.
 #[inline]

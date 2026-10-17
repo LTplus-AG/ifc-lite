@@ -4,7 +4,7 @@
 
 //! Per-owner length units for material layers in federated, multi-project IFC.
 
-use super::types::{EntityMetadata, Relationship};
+use super::types::Relationship;
 use ifc_lite_core::{EntityDecoder, ProjectUnits};
 use std::collections::{HashMap, HashSet};
 
@@ -19,16 +19,11 @@ pub(super) struct MaterialUnitContext {
 
 impl MaterialUnitContext {
     pub(super) fn new(
-        entities: &[EntityMetadata],
+        project_ids: &[u32],
         relationships: &[Relationship],
         decoder: &mut EntityDecoder,
         default_scale: f64,
     ) -> Self {
-        let project_ids: Vec<u32> = entities
-            .iter()
-            .filter(|e| e.type_name.eq_ignore_ascii_case("IFCPROJECT"))
-            .map(|e| e.entity_id)
-            .collect();
         let mut context = Self {
             default_scale,
             project_scales: HashMap::new(),
@@ -42,7 +37,7 @@ impl MaterialUnitContext {
             return context;
         }
 
-        for &project_id in &project_ids {
+        for &project_id in project_ids {
             let scale = if project_id == project_ids[0] {
                 default_scale
             } else {

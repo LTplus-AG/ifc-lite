@@ -190,7 +190,7 @@ fn resolve_partial_rtc(
         // scan_placement_bounds reads raw IfcCartesianPoint values (FILE
         // units); rtc_offset applies the unit scale before the 1 km gate
         // (LARGE_COORD_THRESHOLD_METERS, lowered from 10 km by #4934).
-        ifc_lite_core::scan_placement_bounds(content).rtc_offset(router.unit_scale())
+        ifc_lite_core::scan_placement_bounds(content, router.unit_scale()).rtc_offset(router.unit_scale())
     })
 }
 

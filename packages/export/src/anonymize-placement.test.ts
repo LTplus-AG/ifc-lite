@@ -349,4 +349,41 @@ describe('applyPlacementAnonymization (anonymized isolated export, #2934)', () =
     expect(content).not.toContain('2000.');
     expect(findDanglingRefs(content)).toEqual([]);
   });
+
+  // #7791 / D27: the root-finding walk is the shared `walkPlacementChain` — a
+  // visited set, no hop cap. A legal chain longer than the old 256-hop cap
+  // still reaches its root; a cycle is left untouched with a warning.
+  const chainModel = (links: number, cycle: boolean): string => {
+    const lines = [
+      `#1=IFCPROJECT('${guid(1)}',$,'Project',$,$,$,$,$,$);`,
+      `#22=IFCCARTESIANPOINT((1000.,2000.,30.));`,
+      `#21=IFCAXIS2PLACEMENT3D(#22,$,$);`,
+      `#20=IFCLOCALPLACEMENT(${cycle ? `#${100 + links}` : '$'},#21);`,
+    ];
+    for (let i = 1; i <= links; i++) lines.push(`#${100 + i}=IFCLOCALPLACEMENT(#${i === 1 ? 20 : 100 + i - 1},#21);`);
+    lines.push(`#2=IFCSITE('${guid(2)}',$,'Site',$,$,#${100 + links},$,$,.ELEMENT.,$,$,$,$,$);`);
+    return `ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('c.ifc','2024-01-01T00:00:00',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n${lines.join('\n')}\nENDSEC;\nEND-ISO-10303-21;`;
+  };
+
+  it('reaches the root of a 300-link chain (no 256-hop cap)', async () => {
+    const store = await parse(chainModel(300, false));
+    const view = new MutablePropertyView(null, 'anonymize');
+    const editor = new StoreEditor(store, view);
+    const index = getEffectiveEntityIndex(store, view, true);
+    const result = applyPlacementAnonymization(store, index, new Set([1, 2]), editor, view);
+    expect(result.warnings, JSON.stringify(result.warnings)).toEqual([]);
+    expect(result.zeroedPlacements).toHaveLength(1);
+    expect(result.zeroedPlacements[0]!.expressId).toBe(20);
+    expect(result.warnings.join('\n')).not.toContain('exceeds');
+  });
+
+  it('leaves a PlacementRelTo cycle untouched and says so', async () => {
+    const store = await parse(chainModel(300, true));
+    const view = new MutablePropertyView(null, 'anonymize');
+    const editor = new StoreEditor(store, view);
+    const index = getEffectiveEntityIndex(store, view, true);
+    const result = applyPlacementAnonymization(store, index, new Set([1, 2]), editor, view);
+    expect(result.zeroedPlacements).toHaveLength(0);
+    expect(result.warnings.join('\n')).toContain('PlacementRelTo cycle');
+  });
 });

@@ -93,46 +93,35 @@ impl SurfaceOfLinearExtrusionProcessor {
         // 2: ExtrudedDirection (IfcDirection)
         // 3: Depth (length)
 
-        // Get the swept curve (profile)
-        let curve_attr = entity.get(0).ok_or_else(|| {
+        let curve_id = entity.get(0).ok_or_else(|| {
             Error::geometry("SurfaceOfLinearExtrusion missing SweptCurve".to_string())
         })?;
-
-        let curve_id = curve_attr.as_entity_ref().ok_or_else(|| {
+        let curve_id = curve_id.as_entity_ref().ok_or_else(|| {
             Error::geometry("Expected entity reference for SweptCurve".to_string())
         })?;
-
         let position_transform = Self::position_transform(entity, decoder)?;
-
-        // Get extrusion direction
         let direction_attr = entity.get(2).ok_or_else(|| {
             Error::geometry("SurfaceOfLinearExtrusion missing ExtrudedDirection".to_string())
         })?;
-
-        let direction = if let Some(dir_id) = direction_attr.as_entity_ref() {
-            get_direction_by_id(dir_id, decoder)
-                .ok_or_else(|| Error::geometry("Failed to get direction".to_string()))?
-        } else {
-            Vector3::new(0.0, 0.0, 1.0) // Default to Z-up
+        let direction = match direction_attr.as_entity_ref() {
+            Some(dir_id) => get_direction_by_id(dir_id, decoder)
+                .ok_or_else(|| Error::geometry("Failed to get direction".to_string()))?,
+            None => Vector3::new(0.0, 0.0, 1.0), // Default to Z-up
         };
-
-        // Get depth. `IfcPositiveLengthMeasure`: zero or negative is refused,
-        // not meshed as a degenerate or reversed strip (#7688 review, D3).
-        let depth = entity
-            .get(3)
-            .and_then(|v| v.as_float())
-            .ok_or_else(|| Error::geometry("SurfaceOfLinearExtrusion missing Depth".to_string()))?;
+        // `IfcPositiveLengthMeasure`: zero or negative is refused, not meshed
+        // as a degenerate or reversed strip (#7688 review, D3).
+        let depth = entity.get(3).and_then(|v| v.as_float()).ok_or_else(|| {
+            Error::geometry("SurfaceOfLinearExtrusion missing Depth".to_string())
+        })?;
         if !(depth > 0.0 && depth.is_finite()) {
             return Err(Error::geometry(format!(
                 "SurfaceOfLinearExtrusion Depth {depth} is not a positive length"
             )));
         }
 
-        // Get curve points from the profile
+        // Fewer than two points is refused, not `Ok(empty)`: an empty mesh is
+        // dropped uncounted, where main refused (and counted) the type.
         let curve_points = Self::get_profile_curve_points(curve_id, decoder)?;
-
-        // Refused, not `Ok(empty)`: an empty mesh is dropped uncounted, while
-        // main refused (and counted) every item of this type (#7688 review).
         if curve_points.len() < 2 {
             return Err(Error::geometry(format!(
                 "SurfaceOfLinearExtrusion SweptCurve has {} point(s)",
@@ -140,37 +129,28 @@ impl SurfaceOfLinearExtrusionProcessor {
             )));
         }
 
-        // Extrude the curve to create a surface (quad strip). A zero
-        // ExtrudedDirection (`IFCDIRECTION((0.,0.,0.))`) has no unit vector:
-        // `normalize` divided 0/0 into NaN positions (#7678, PROC-S23), so it
-        // is refused like any other unusable attribute. The direction is in
-        // the Position frame, as for `IfcExtrudedAreaSolid`: adding it in the
-        // world frame swept a rotated Position along the wrong axis (#7688
-        // review; FM_ARC_DigitalHub's advanced faces confirm the frame).
-        let extrusion = position_transform.transform_vector(
-            &(direction.try_normalize(0.0).ok_or_else(|| {
-                Error::geometry(
-                    "SurfaceOfLinearExtrusion ExtrudedDirection has zero length".to_string(),
-                )
-            })? * depth),
-        );
+        // A zero ExtrudedDirection has no unit vector: `normalize` divided 0/0
+        // into NaN positions (#7678, PROC-S23). The direction is in the
+        // Position frame, as for `IfcExtrudedAreaSolid`; added in the world
+        // frame, a rotated Position swept along the wrong axis (#7688 review;
+        // FM_ARC_DigitalHub's advanced faces confirm the frame).
+        let unit = direction.try_normalize(0.0).ok_or_else(|| {
+            Error::geometry("SurfaceOfLinearExtrusion ExtrudedDirection has zero length".to_string())
+        })?;
+        let extrusion = position_transform.transform_vector(&(unit * depth));
 
-        // A strip with no area (coincident curve points, or a direction along
-        // a straight curve) is refused rather than published empty (D3).
+        // A strip with no area (coincident points, or a direction along a
+        // straight curve) is refused rather than published empty (D3).
         let swept = |a: &Point2<f64>, b: &Point2<f64>| {
             let seg = position_transform.transform_vector(&Vector3::new(b.x - a.x, b.y - a.y, 0.0));
             seg.cross(&extrusion).norm() > f64::EPSILON * seg.norm() * extrusion.norm()
         };
         if !curve_points.windows(2).any(|w| swept(&w[0], &w[1])) {
-            return Err(Error::geometry(
-                "SurfaceOfLinearExtrusion sweeps no area".to_string(),
-            ));
+            return Err(Error::geometry("SurfaceOfLinearExtrusion sweeps no area".to_string()));
         }
 
+        // Vertices: bottom row, then top row, rebased in f64 first.
         let mut positions = Vec::with_capacity(curve_points.len() * 2 * 3);
-        let mut indices = Vec::with_capacity((curve_points.len() - 1) * 6);
-
-        // Create vertices: bottom row, then top row, rebased in f64 first.
         let rtc = rtc_file_units.map_or_else(Vector3::zeros, |(x, y, z)| Vector3::new(x, y, z));
         for offset in [Vector3::zeros(), extrusion] {
             for point in &curve_points {
@@ -180,20 +160,12 @@ impl SurfaceOfLinearExtrusionProcessor {
             }
         }
 
-        // Create quad strip triangles
+        // Quad strip: (bottom-left, bottom-right, top-left) and
+        // (bottom-right, top-right, top-left) per segment.
         let n = curve_points.len() as u32;
-        for i in 0..n - 1 {
-            // Two triangles per quad
-            // Triangle 1: bottom-left, bottom-right, top-left
-            indices.push(i);
-            indices.push(i + 1);
-            indices.push(i + n);
-
-            // Triangle 2: bottom-right, top-right, top-left
-            indices.push(i + 1);
-            indices.push(i + n + 1);
-            indices.push(i + n);
-        }
+        let indices: Vec<u32> = (0..n - 1)
+            .flat_map(|i| [i, i + 1, i + n, i + 1, i + n + 1, i + n])
+            .collect();
 
         Ok(Mesh {
             positions,

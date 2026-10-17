@@ -748,6 +748,43 @@ describe('detectObb: independent of where the box sits (#5474)', () => {
     }
   });
 
+  // Shared parity vectors: the same table is `TINY_BOX_HALVES` in
+  // `rust/clash/src/obb_detect_tests.rs` (EDGE-CLASH-4, F2a X5).
+  const TINY_BOX_HALVES: Vec3[] = [
+    [0.0005, 0.0005, 0.0005],
+    [0.00025, 0.00025, 0.00025],
+    [0.0005, 0.001, 0.002],
+    [0.00005, 0.00005, 0.00005],
+    [0.0001, 0.01, 0.5],
+  ];
+
+  it('certifies a box under a millimetre, scale-free (EDGE-CLASH-4)', () => {
+    for (const h of TINY_BOX_HALVES) {
+      for (const t of [[0, 0, 0], [12.5, -3.25, 1]] as Vec3[]) {
+        const o = detectObb(meshOf(boxCorners(h), BOX_IDX, 0.3, t));
+        if (!o) throw new Error(`half ${h} offset ${t}: a box is still a box`);
+        const tol = 8 * ulp32(Math.max(Math.abs(t[0]), Math.abs(t[1]), Math.abs(t[2])) + 2);
+        const got = [...o.half].sort((a, b) => a - b);
+        const want = [...h].sort((a, b) => a - b);
+        for (let k = 0; k < 3; k += 1) expect(Math.abs(got[k]! - want[k]!), `half ${h} offset ${t}`).toBeLessThanOrEqual(tol);
+      }
+    }
+  });
+
+  it('still rejects a millimetre L prism (EDGE-CLASH-4)', () => {
+    const l: Vec3[] = (
+      [
+        [0, 0, 0], [2, 0, 0], [2, 1, 0], [1, 1, 0], [1, 2, 0], [0, 2, 0],
+        [0, 0, 1], [2, 0, 1], [2, 1, 1], [1, 1, 1], [1, 2, 1], [0, 2, 1],
+      ] as Vec3[]
+    ).map((p) => [p[0] * 0.001, p[1] * 0.001, p[2] * 0.001] as Vec3);
+    const idx = [
+      0, 2, 1, 0, 3, 2, 0, 4, 3, 0, 5, 4, 6, 7, 8, 6, 8, 9, 6, 9, 10, 6, 10, 11, 0, 1, 7, 0, 7, 6,
+      1, 2, 8, 1, 8, 7, 2, 3, 9, 2, 9, 8, 3, 4, 10, 3, 10, 9, 4, 5, 11, 4, 11, 10, 5, 0, 6, 5, 6, 11,
+    ];
+    expect(detectObb(meshOf(l, idx, 0.3, [0, 0, 0]))).toBeNull();
+  });
+
   it('still rejects an L prism at any distance', () => {
     const l: Vec3[] = [
       [0, 0, 0], [2, 0, 0], [2, 1, 0], [1, 1, 0], [1, 2, 0], [0, 2, 0],

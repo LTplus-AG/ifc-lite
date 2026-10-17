@@ -14,12 +14,33 @@ use super::{Obb, OBB_EPS};
 use crate::canonical::canonical;
 use crate::vec3::{cross, dot, scale, sub, Vec3};
 
-fn normalize(v: Vec3) -> Option<Vec3> {
+/// A triangle (or a Gram-Schmidt residual) whose `sin` of the angle between
+/// its two edges is below this carries no direction evidence. Scale-free, and
+/// the same value as geometry's `clash_contact_axes::MIN_SIN_THETA` (F2a X5,
+/// EDGE-CLASH-4). The fixed `|cross| <= OBB_EPS` (1e-6 m^2) this replaces
+/// dropped EVERY face of a box with sides under ~1.4 mm, so `detect_obb`
+/// returned `None` and a perfect small box fell to the AABB `Estimate` depth.
+/// Shared parity vectors: `TINY_BOX_HALVES` in `obb_detect_tests.rs` and the
+/// same table in `obb.test.ts`.
+const MIN_SIN_THETA: f64 = 1.0e-3;
+
+/// `v / |v|`, or `None` when `|v|` is not finite or is below
+/// `min_sin * reference` (a length relative to its own operands, never an
+/// absolute one).
+fn unit(v: Vec3, reference: f64, min_sin: f64) -> Option<Vec3> {
     let len = dot(v, v).sqrt();
-    if !(len > OBB_EPS) {
+    if !len.is_finite() || !reference.is_finite() || !(len > 0.0) || len < min_sin * reference {
         return None;
     }
     Some([v[0] / len, v[1] / len, v[2] / len])
+}
+
+/// The unit normal of triangle `(a, b, c)` from `raw = (b - a) x (c - a)`,
+/// or `None` for a degenerate or sliver triangle (`sin` of the edge angle
+/// under [`MIN_SIN_THETA`]).
+fn face_normal(a: Vec3, b: Vec3, c: Vec3, raw: Vec3) -> Option<Vec3> {
+    let (e1, e2) = (sub(b, a), sub(c, a));
+    unit(raw, dot(e1, e1).sqrt() * dot(e2, e2).sqrt(), MIN_SIN_THETA)
 }
 
 /// Minimal structural view of `TriMesh` this module needs.
@@ -119,7 +140,7 @@ pub fn detect_obb<M: MeshLike>(mesh: &M) -> Option<Obb> {
             }
         }
         let raw = cross(sub(b, a), sub(c, a));
-        let n = match normalize(raw) {
+        let n = match face_normal(a, b, c, raw) {
             Some(n) => n,
             None => continue, // degenerate triangle: no face-normal evidence
         };
@@ -280,8 +301,9 @@ fn family_axes(sums: &[Vec3], err_num: &[f64]) -> Option<([Vec3; 3], [f64; 3])> 
         }
     }
     let [f0, f1, f2] = order;
-    let a0 = normalize(sums[f0])?;
-    let a1 = normalize(sub(sums[f1], scale(a0, dot(sums[f1], a0))))?;
+    let a0 = unit(sums[f0], 0.0, 0.0)?;
+    let s1 = dot(sums[f1], sums[f1]).sqrt();
+    let a1 = unit(sub(sums[f1], scale(a0, dot(sums[f1], a0))), s1, MIN_SIN_THETA)?;
     let mut a2 = cross(a0, a1);
     if dot(a2, sums[f2]) < 0.0 {
         a2 = scale(a2, -1.0);

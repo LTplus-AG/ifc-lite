@@ -133,3 +133,51 @@ fn a_rhombic_prism_is_still_not_a_box_far_out_5474() {
         assert!(detect_obb(&mesh(&corners, &BOX_IDX, 0.3, t)).is_none(), "offset {t:?}");
     }
 }
+
+/// Half-extents of the shared parity vectors (EDGE-CLASH-4, F2a X5). The same
+/// table is `TINY_BOX_HALVES` in `obb.test.ts`: every row must be recognised,
+/// at every offset, with these halves (sorted).
+const TINY_BOX_HALVES: [Vec3; 5] = [
+    [0.0005, 0.0005, 0.0005],
+    [0.00025, 0.00025, 0.00025],
+    [0.0005, 0.001, 0.002],
+    [0.00005, 0.00005, 0.00005],
+    [0.0001, 0.01, 0.5],
+];
+
+#[test]
+fn a_box_under_a_millimetre_is_certified_scale_free_edge_clash_4() {
+    // At base the fixed `|cross| <= 1e-6 m^2` rule dropped every face of a
+    // 1 mm box (cross = 1e-6), so `detect_obb` was `None` (Estimate depth).
+    for h in TINY_BOX_HALVES {
+        for t in [[0.0, 0.0, 0.0], [12.5, -3.25, 1.0]] {
+            let o = detect_obb(&mesh(&box_corners(h), &BOX_IDX, 0.3, t))
+                .unwrap_or_else(|| panic!("half {h:?} offset {t:?}: a box is still a box"));
+            let (mut got, mut want) = (o.half, h);
+            got.sort_by(f64::total_cmp);
+            want.sort_by(f64::total_cmp);
+            let tol = 8.0 * ulp32(t[0].abs().max(t[1].abs()).max(t[2].abs()) + 2.0);
+            for k in 0..3 {
+                assert!((got[k] - want[k]).abs() <= tol, "half {h:?} offset {t:?}: {got:?}");
+            }
+        }
+    }
+}
+
+#[test]
+fn a_millimetre_l_prism_is_still_not_a_box_edge_clash_4() {
+    // The scale-free rule must not turn a small non-box into a box.
+    let k = 0.001;
+    let l: Vec<Vec3> = [
+        [0.0, 0.0, 0.0], [2.0, 0.0, 0.0], [2.0, 1.0, 0.0], [1.0, 1.0, 0.0], [1.0, 2.0, 0.0], [0.0, 2.0, 0.0],
+        [0.0, 0.0, 1.0], [2.0, 0.0, 1.0], [2.0, 1.0, 1.0], [1.0, 1.0, 1.0], [1.0, 2.0, 1.0], [0.0, 2.0, 1.0],
+    ]
+    .iter()
+    .map(|p| [p[0] * k, p[1] * k, p[2] * k])
+    .collect();
+    let idx = [
+        0, 2, 1, 0, 3, 2, 0, 4, 3, 0, 5, 4, 6, 7, 8, 6, 8, 9, 6, 9, 10, 6, 10, 11, 0, 1, 7, 0, 7, 6,
+        1, 2, 8, 1, 8, 7, 2, 3, 9, 2, 9, 8, 3, 4, 10, 3, 10, 9, 4, 5, 11, 4, 11, 10, 5, 0, 6, 5, 6, 11,
+    ];
+    assert!(detect_obb(&mesh(&l, &idx, 0.3, [0.0; 3])).is_none());
+}

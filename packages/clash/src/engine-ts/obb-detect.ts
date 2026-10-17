@@ -15,10 +15,26 @@ import type { Vec3 } from '../types.js';
 import { sub, cross, dot, scale } from '../math/vec3.js';
 import { OBB_EPS, type MeshLike, type Obb } from './obb.js';
 
-function normalize(v: Vec3): Vec3 | null {
+/**
+ * A triangle (or a Gram-Schmidt residual) whose `sin` of the edge angle is below
+ * this carries no direction evidence. Scale-free; the same value as the Rust
+ * `MIN_SIN_THETA` (F2a X5, EDGE-CLASH-4). It replaces a fixed
+ * `|cross| <= OBB_EPS` (1e-6 m^2) that dropped every face of a box with sides
+ * under ~1.4 mm, so a perfect small box fell to the AABB `Estimate` depth.
+ */
+const MIN_SIN_THETA = 1e-3;
+
+/** `v / |v|`, or null when `|v|` is not finite or below `minSin * reference`. */
+function unit(v: Vec3, reference: number, minSin: number): Vec3 | null {
   const len = Math.sqrt(dot(v, v));
-  if (!(len > OBB_EPS)) return null;
+  if (!Number.isFinite(len) || !Number.isFinite(reference) || !(len > 0) || len < minSin * reference) return null;
   return [v[0] / len, v[1] / len, v[2] / len];
+}
+
+function faceNormal(a: Vec3, b: Vec3, c: Vec3, raw: Vec3): Vec3 | null {
+  const e1 = sub(b, a);
+  const e2 = sub(c, a);
+  return unit(raw, Math.sqrt(dot(e1, e1)) * Math.sqrt(dot(e2, e2)), MIN_SIN_THETA);
 }
 
 /** Flip `n` so its largest-magnitude component is positive, so a face and its
@@ -143,7 +159,7 @@ export function detectObb(mesh: MeshLike): Obb | null {
       if (r > reach) reach = r;
     }
     const raw = cross(sub(b, a), sub(c, a));
-    const n = normalize(raw);
+    const n = faceNormal(a, b, c, raw);
     if (!n) continue; // degenerate triangle: contributes no face-normal evidence
     const cn = canonical(n);
     const [err, triCoordErr] = normalAngleError(a, b, c);
@@ -274,9 +290,9 @@ function familyAxes(sums: Vec3[], errNum: number[]): [Vec3[], number[]] | null {
     }
   }
   const [f0, f1, f2] = order;
-  const a0 = normalize(sums[f0]);
+  const a0 = unit(sums[f0], 0, 0);
   if (!a0) return null;
-  const a1 = normalize(sub(sums[f1], scale(a0, dot(sums[f1], a0))));
+  const a1 = unit(sub(sums[f1], scale(a0, dot(sums[f1], a0))), Math.sqrt(dot(sums[f1], sums[f1])), MIN_SIN_THETA);
   if (!a1) return null;
   let a2 = cross(a0, a1);
   if (dot(a2, sums[f2]) < 0) a2 = scale(a2, -1);

@@ -37,14 +37,14 @@ impl IfcAPI {
         &self,
         data: &[u8],
     ) -> Result<LandXmlSourceDocumentJs, JsValue> {
-        let parsed = ifc_lite_landxml::parse_landxml_document(data)
+        // One read of the bytes for terrain, plan, pipe networks and alignments.
+        let source = ifc_lite_landxml::parse_landxml_source(data)
             .map_err(|error| JsValue::from_str(&error.to_string()))?;
-        let alignments = ifc_lite_landxml::alignment::parse_landxml_alignments_optional(data)
-            .map_err(|error| JsValue::from_str(&error.to_string()))?;
+        let alignments = source.alignments;
         let alignment_render = ifc_lite_landxml::alignment::alignment_render_data(&alignments);
         let tin = LandXmlDocumentJs {
-            terrain: &parsed.terrain,
-            plan: plan_adapter(&parsed.plan)
+            terrain: &source.document.terrain,
+            plan: plan_adapter(&source.document.plan)
                 .map_err(|error| JsValue::from_str(&error.to_string()))?,
         };
         let document = LandXmlSourceDocument {
@@ -78,25 +78,21 @@ impl IfcAPI {
                 JsValue::from_str(&format!("LXML004: invalid parser options: {error}"))
             })?;
         let (xml_limits, alignment_limits) = options.limits()?;
-        let terrain = ifc_lite_landxml::parse_landxml_tin_with_cancel(data, &xml_limits, None)
-            .map_err(|error| JsValue::from_str(&error.to_string()))?;
-        let plan_limits = ifc_lite_landxml::LandXmlPlanLimits {
-            xml: xml_limits.clone(),
-            ..Default::default()
+        // One read of the bytes; the document now carries its pipe networks,
+        // as `parseLandXmlSourceBytes` always has.
+        let limits = ifc_lite_landxml::LandXmlSourceLimits {
+            xml: xml_limits,
+            plan: Default::default(),
+            alignment: alignment_limits,
         };
-        let plan = ifc_lite_landxml::parse_landxml_plan_with_cancel(data, &plan_limits, None)
+        let source = ifc_lite_landxml::parse_landxml_source_with_cancel(data, &limits, None)
             .map_err(|error| JsValue::from_str(&error.to_string()))?;
-        let alignments =
-            ifc_lite_landxml::alignment::parse_landxml_alignments_optional_with_cancel(
-                data,
-                &alignment_limits,
-                None,
-            )
-            .map_err(|error| JsValue::from_str(&error.to_string()))?;
+        let alignments = source.alignments;
         let alignment_render = ifc_lite_landxml::alignment::alignment_render_data(&alignments);
         let tin = LandXmlDocumentJs {
-            terrain: &terrain,
-            plan: plan_adapter(&plan).map_err(|error| JsValue::from_str(&error.to_string()))?,
+            terrain: &source.document.terrain,
+            plan: plan_adapter(&source.document.plan)
+                .map_err(|error| JsValue::from_str(&error.to_string()))?,
         };
         let document = LandXmlSourceDocument {
             tin,

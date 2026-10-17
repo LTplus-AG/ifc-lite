@@ -17,6 +17,7 @@ mod aabb_clip;
 mod batch_cutter;
 mod bool2d_path;
 mod coaxial_union;
+mod cutter;
 pub(crate) mod geom;
 mod malformed_opening_repair;
 mod local_frame;
@@ -31,10 +32,11 @@ pub use prism_cut::{take_prism_defers, take_prism_stats};
 #[cfg(test)]
 mod reveal_tests;
 
+use cutter::{CutterKind, OpeningFrame};
 use geom::*;
 use malformed_opening_repair::{
     cutter_is_closed_manifold, opening_obb_if_malformed, recut_malformed_openings,
-    translate_cutter_mesh, world_host_bounds, OpeningBox,
+    world_host_bounds, OpeningBox,
 };
 use local_frame::{host_thickness_wall_frame, vertical_depth_wall_frame};
 use sweep::{drop_faces_outside_host, mesh_to_keep};
@@ -67,58 +69,6 @@ const MAX_EXTRUSION_EXTRACT_DEPTH: usize = 32;
 const ENGULF_TOLERANCE: f64 = 0.03;
 const ENGULF_TOLERANCE_F32: f32 = 0.03;
 
-/// Classification of an opening for void subtraction.
-#[derive(Clone)]
-enum OpeningType {
-    /// Rectangular opening with AABB clipping
-    /// Fields: (min_bounds, max_bounds, extrusion_direction)
-    Rectangular(Point3<f64>, Point3<f64>, Option<Vector3<f64>>),
-    /// Diagonal rectangular opening with mesh geometry and a full oriented frame.
-    /// The frame preserves roof-window roll, not just the penetration direction.
-    DiagonalRectangular(Mesh, OpeningFrame),
-    /// Non-rectangular opening (circular, arched, or floor openings with
-    /// rotated footprint). Uses full CSG subtraction with the actual mesh
-    /// geometry. The AABB + extrusion direction are kept so that callers can
-    /// fall back to a rectangular box cut when CSG can't run (issue #635 —
-    /// e.g. circular windows whose triangulated profile blows past
-    /// `MAX_CSG_POLYGONS_PER_MESH`).
-    NonRectangular(Mesh, Point3<f64>, Point3<f64>, Option<Vector3<f64>>),
-}
-
-/// World-space basis for an oriented rectangular opening.
-#[derive(Clone, Copy)]
-struct OpeningFrame {
-    depth: Vector3<f64>,
-    cross_a: Vector3<f64>,
-    cross_b: Vector3<f64>,
-    depth_is_authored: bool,
-}
-
-impl OpeningFrame {
-    fn from_depth(depth: Vector3<f64>) -> Option<Self> {
-        let depth = depth.try_normalize(NORMALIZE_EPSILON)?;
-        let seed = if depth.z.abs() < 0.9 {
-            Vector3::new(0.0, 0.0, 1.0)
-        } else {
-            Vector3::new(0.0, 1.0, 0.0)
-        };
-        let cross_a = seed.cross(&depth).try_normalize(NORMALIZE_EPSILON)?;
-        let cross_b = depth.cross(&cross_a).try_normalize(NORMALIZE_EPSILON)?;
-        Some(Self {
-            depth,
-            cross_a,
-            cross_b,
-            depth_is_authored: true,
-        })
-    }
-
-    fn is_axis_aligned(&self) -> bool {
-        is_axis_aligned_direction(&self.depth)
-            && is_axis_aligned_direction(&self.cross_a)
-            && is_axis_aligned_direction(&self.cross_b)
-    }
-}
-
 /// Pre-computed per-element void subtraction data.
 ///
 /// Building this is expensive: `classify_openings` re-runs `process_element`
@@ -131,10 +81,10 @@ impl OpeningFrame {
 pub(super) struct VoidContext {
     /// All classified openings. The diagonal-opening pass needs the raw list
     /// (unmerged) so its per-item box rotation stays accurate.
-    openings: Vec<OpeningType>,
+    openings: Vec<CutterKind>,
     /// Rectangular openings merged into larger boxes to prevent O(2^N)
     /// triangle growth when many adjacent openings tile a surface.
-    merged_openings: Vec<OpeningType>,
+    merged_openings: Vec<CutterKind>,
     /// Parametric placement-frame cut data (host + reconciled opening boxes),
     /// captured only when `rect_fast::param_enabled()`. Drives the analytic fast
     /// path in `apply_void_context`; `None` defers to the exact kernel.
@@ -157,7 +107,7 @@ impl VoidContext {
     fn rect_opening_count(&self) -> usize {
         self.merged_openings
             .iter()
-            .filter(|o| matches!(o, OpeningType::Rectangular(..)))
+            .filter(|o| matches!(o, CutterKind::Rectangular(..)))
             .count()
     }
 
@@ -166,10 +116,10 @@ impl VoidContext {
     /// directly (the native / legacy fast path) without cloning the cutters; if any
     /// cutter carries its own per-element origin it must be relativized first.
     fn all_cutters_world_framed(&self) -> bool {
-        let world = |o: &OpeningType| match o {
-            OpeningType::Rectangular(..) => true,
-            OpeningType::DiagonalRectangular(m, _) => m.origin == [0.0, 0.0, 0.0],
-            OpeningType::NonRectangular(m, ..) => m.origin == [0.0, 0.0, 0.0],
+        let world = |o: &CutterKind| match o {
+            CutterKind::Rectangular(..) => true,
+            CutterKind::DiagonalRectangular(m, _) => m.origin == [0.0, 0.0, 0.0],
+            CutterKind::NonRectangular(m, ..) => m.origin == [0.0, 0.0, 0.0],
         };
         self.openings.iter().all(world) && self.merged_openings.iter().all(world)
     }
@@ -208,40 +158,10 @@ impl VoidContext {
         self.openings
             .iter()
             .filter_map(|o| match o {
-                OpeningType::NonRectangular(m, ..) => opening_obb_if_malformed(m),
+                CutterKind::NonRectangular(m, ..) => opening_obb_if_malformed(m),
                 _ => None,
             })
             .collect()
-    }
-}
-
-impl OpeningType {
-    /// The cutter mesh and its extrusion direction, for the two mesh-carrying
-    /// kinds; `None` for `Rectangular`, which has no mesh until synthesised.
-    fn mesh_cutter(&self) -> Option<(&Mesh, Option<Vector3<f64>>)> {
-        match self {
-            OpeningType::Rectangular(..) => None,
-            OpeningType::DiagonalRectangular(m, f) => Some((m, Some(f.depth))),
-            OpeningType::NonRectangular(m, _, _, d) => Some((m, *d)),
-        }
-    }
-
-    /// Return a copy translated by `-origin` (world → host-local frame). Bounds
-    /// (`Point3`) shift; direction vectors and the oriented `OpeningFrame` are
-    /// translation-invariant and pass through unchanged.
-    fn translated(&self, origin: [f64; 3]) -> OpeningType {
-        let sub = |p: &Point3<f64>| Point3::new(p.x - origin[0], p.y - origin[1], p.z - origin[2]);
-        match self {
-            OpeningType::Rectangular(min, max, dir) => {
-                OpeningType::Rectangular(sub(min), sub(max), *dir)
-            }
-            OpeningType::DiagonalRectangular(mesh, frame) => {
-                OpeningType::DiagonalRectangular(translate_cutter_mesh(mesh, origin), *frame)
-            }
-            OpeningType::NonRectangular(mesh, min, max, dir) => {
-                OpeningType::NonRectangular(translate_cutter_mesh(mesh, origin), sub(min), sub(max), *dir)
-            }
-        }
     }
 }
 
@@ -734,7 +654,7 @@ impl GeometryRouter {
             Vec::with_capacity(ctx.merged_openings.len());
         for op in &ctx.merged_openings {
             match op {
-                OpeningType::Rectangular(omn, omx, dir) => {
+                CutterKind::Rectangular(omn, omx, dir) => {
                     let (fmn, fmx) = match dir {
                         Some(d) => self.extend_opening_along_direction(
                             *omn, *omx, wall_min, wall_max, *d,
@@ -789,12 +709,12 @@ impl GeometryRouter {
         let host_local = mesh_to_frame(mesh, &axes, center);
 
         let z = Vector3::new(0.0, 0.0, 1.0);
-        let mut local_openings: Vec<OpeningType> = Vec::with_capacity(ctx.merged_openings.len());
+        let mut local_openings: Vec<CutterKind> = Vec::with_capacity(ctx.merged_openings.len());
         for op in &ctx.merged_openings {
             let cutter = match op {
-                OpeningType::DiagonalRectangular(m, _) => m,
-                OpeningType::NonRectangular(m, _, _, _) => m,
-                OpeningType::Rectangular(..) => return None,
+                CutterKind::DiagonalRectangular(m, _) => m,
+                CutterKind::NonRectangular(m, _, _, _) => m,
+                CutterKind::Rectangular(..) => return None,
             };
             let (lmn, lmx) = project_aabb_in_frame(cutter, &axes, center)?;
             let in_frame =
@@ -806,9 +726,9 @@ impl GeometryRouter {
             // opening's flush/short cap along the wrong axis and carve the wrong
             // prism (#1270 review).
             let frame_depth = match op {
-                OpeningType::DiagonalRectangular(_, f) => Some(in_frame(f.depth)),
-                OpeningType::NonRectangular(_, _, _, d) => d.map(in_frame),
-                OpeningType::Rectangular(..) => None,
+                CutterKind::DiagonalRectangular(_, f) => Some(in_frame(f.depth)),
+                CutterKind::NonRectangular(_, _, _, d) => d.map(in_frame),
+                CutterKind::Rectangular(..) => None,
             };
             // Whether THIS opening's own oriented box is axis-aligned in the
             // wall frame. The frame is seeded from the FIRST rotated opening
@@ -819,7 +739,7 @@ impl GeometryRouter {
             // brep/curved voids and frame-misaligned boxes alike — keeps its
             // exact (un-rotated, centred) mesh for the subtract.
             let frame_aligned = match op {
-                OpeningType::DiagonalRectangular(_, f) => {
+                CutterKind::DiagonalRectangular(_, f) => {
                     is_axis_aligned_direction(&in_frame(f.depth))
                         && is_axis_aligned_direction(&in_frame(f.cross_a))
                         && is_axis_aligned_direction(&in_frame(f.cross_b))
@@ -837,7 +757,7 @@ impl GeometryRouter {
                 // handing the rectangular cut an antiparallel (-Z) depth flips
                 // its cap extension and tears the host (rvt01 #10191 census).
                 let rect_depth = match op {
-                    OpeningType::DiagonalRectangular(_, frame)
+                    CutterKind::DiagonalRectangular(_, frame)
                         if frame.depth_is_authored
                             && frame_depth.is_some_and(|d| d.z.abs() < WALL_NORMAL_DEPTH_COS) =>
                     {
@@ -845,13 +765,13 @@ impl GeometryRouter {
                     }
                     _ => Some(z),
                 };
-                local_openings.push(OpeningType::Rectangular(lmn, lmx, rect_depth));
+                local_openings.push(CutterKind::Rectangular(lmn, lmx, rect_depth));
             } else {
                 let mesh_local = mesh_to_frame(cutter, &axes, center);
                 // Keep this cutter's true depth in the frame; fall back to the
                 // wall normal (+Z) only when the opening carried no direction.
                 let dir = frame_depth.unwrap_or(z);
-                local_openings.push(OpeningType::NonRectangular(mesh_local, lmn, lmx, Some(dir)));
+                local_openings.push(CutterKind::NonRectangular(mesh_local, lmn, lmx, Some(dir)));
             }
         }
         let local_ctx = VoidContext {
@@ -964,13 +884,7 @@ impl GeometryRouter {
         if ctx.merged_openings.is_empty() {
             return None;
         }
-        let depth_of = |op: &OpeningType| -> Option<Vector3<f64>> {
-            match op {
-                OpeningType::DiagonalRectangular(_, f) => Some(f.depth),
-                OpeningType::NonRectangular(_, _, _, d) => *d,
-                OpeningType::Rectangular(_, _, d) => *d,
-            }
-        };
+        let depth_of = |op: &CutterKind| op.cutter().depth();
         // Define the wall frame from the first opening whose depth is a
         // genuinely rotated, ~horizontal axis. Axis-aligned walls find none and
         // keep their (unchanged) world path.
@@ -988,7 +902,7 @@ impl GeometryRouter {
 
         // AABB-only `Rectangular` openings can't be rotated into the frame; a
         // plan-rotated wall never has them (they'd be diagonal), so bail.
-        if ctx.merged_openings.iter().any(|op| matches!(op, OpeningType::Rectangular(..))) {
+        if ctx.merged_openings.iter().any(|op| matches!(op, CutterKind::Rectangular(..))) {
             return None;
         }
         Some(axes)
@@ -1148,12 +1062,12 @@ impl GeometryRouter {
         // quad generators are no longer needed on this path.
         //
         // `synth_rect` owns the synthesised box meshes so they outlive the loop's
-        // borrowed `&OpeningType`s below.
-        let mut synth_rect: Vec<OpeningType> = Vec::new();
-        let mut non_rect_openings: Vec<&OpeningType> = Vec::new();
+        // borrowed `&CutterKind`s below.
+        let mut synth_rect: Vec<CutterKind> = Vec::new();
+        let mut non_rect_openings: Vec<&CutterKind> = Vec::new();
         for opening in &ctx.merged_openings {
             match opening {
-                OpeningType::Rectangular(open_min, open_max, extrusion_dir) => {
+                CutterKind::Rectangular(open_min, open_max, extrusion_dir) => {
                     // Penetration axis: the authored extrusion dir when present,
                     // else inferred from how the box pierces the host (issue
                     // #1337). Carrying a concrete dir downstream keeps the
@@ -1174,7 +1088,7 @@ impl GeometryRouter {
                         (*open_min, *open_max)
                     };
                     let box_mesh = Self::make_box_mesh(final_min, final_max);
-                    synth_rect.push(OpeningType::NonRectangular(
+                    synth_rect.push(CutterKind::NonRectangular(
                         box_mesh,
                         final_min,
                         final_max,
@@ -1186,11 +1100,11 @@ impl GeometryRouter {
                 // it (here AND in the clean-box `recut_malformed_openings` pass)
                 // leaves overlapping sliver "shards" in the reveals. Skip it; the
                 // recut performs the single, clean box cut for these openings.
-                OpeningType::NonRectangular(m, ..) if opening_obb_if_malformed(m).is_some() => {}
+                CutterKind::NonRectangular(m, ..) if opening_obb_if_malformed(m).is_some() => {}
                 other => non_rect_openings.push(other),
             }
         }
-        let all_openings: Vec<&OpeningType> =
+        let all_openings: Vec<&CutterKind> =
             synth_rect.iter().chain(non_rect_openings.iter().copied()).collect();
 
         // DISJOINT-CUTTER BATCHING: group cutters whose pad-inflated AABBs are
@@ -1255,7 +1169,7 @@ impl GeometryRouter {
                 if batch_consumed[idx] {
                     continue;
                 }
-                let Some((opening_mesh, extrusion_dir)) = opening.mesh_cutter() else { continue };
+                let Some((opening_mesh, extrusion_dir)) = opening.cutter().mesh_cutter() else { continue };
                 // Same admission guards as the sequential loop.
                 let opening_valid = !opening_mesh.is_empty()
                     && opening_mesh.positions.iter().all(|&v| v.is_finite())
@@ -1376,6 +1290,7 @@ impl GeometryRouter {
                     } else {
                         for &(m_idx, _) in &members {
                             let ext = all_openings[m_idx]
+                                .cutter()
                                 .mesh_cutter()
                                 .and_then(|(m, dir)| Self::batch_cutter(m, dir, &result));
                             let Some(ext) = ext else {
@@ -1424,25 +1339,7 @@ impl GeometryRouter {
             // (winding-robust after the defect-A orient-outward fix). The
             // mesh-bounds AABB + frame-depth direction still seed the #635
             // fallback, which only fires if the exact subtract no-ops.
-            let normalized: Option<(&Mesh, Point3<f64>, Point3<f64>, Option<Vector3<f64>>)> =
-                match *opening {
-                    OpeningType::Rectangular(..) => None,
-                    OpeningType::DiagonalRectangular(ref opening_mesh, ref frame) => {
-                        let (mn, mx) = opening_mesh.bounds();
-                        Some((
-                            opening_mesh,
-                            Point3::new(mn.x as f64, mn.y as f64, mn.z as f64),
-                            Point3::new(mx.x as f64, mx.y as f64, mx.z as f64),
-                            Some(frame.depth),
-                        ))
-                    }
-                    OpeningType::NonRectangular(
-                        ref opening_mesh,
-                        ref open_min_pt,
-                        ref open_max_pt,
-                        ref extrusion_dir,
-                    ) => Some((opening_mesh, *open_min_pt, *open_max_pt, *extrusion_dir)),
-                };
+            let normalized = opening.cutter().normalized();
             if let Some((opening_mesh, open_min_pt, open_max_pt, extrusion_dir)) = normalized {
                 let open_min_pt = &open_min_pt;
                 let open_max_pt = &open_max_pt;

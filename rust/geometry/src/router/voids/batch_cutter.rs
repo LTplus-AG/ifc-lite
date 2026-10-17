@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 //! Admission and exact no-op reuse for disjoint opening batches (#6516).
-use super::{GeometryRouter, Mesh, OpeningType, Vector3, NORMALIZE_EPSILON};
+use super::{GeometryRouter, Mesh, CutterKind, Vector3, NORMALIZE_EPSILON};
 use super::geom::{mesh_is_closed_exact, opening_mesh_thinnest_axis_dir};
 use crate::kernel::mesh_bridge::mesh_to_tris;
 
@@ -52,11 +52,11 @@ impl GeometryRouter {
     /// Compare the canonical, ordered kernel operands, not bounds or volume.
     pub(super) fn batch_cutters_match_sequential(
         host: &Mesh,
-        openings: &[&OpeningType],
+        openings: &[&CutterKind],
         extended: &[(usize, Mesh)],
     ) -> bool {
         extended.iter().all(|(index, welded)| {
-            let Some((opening, direction)) = openings[*index].mesh_cutter() else {
+            let Some((opening, direction)) = openings[*index].cutter().mesh_cutter() else {
                 return false;
             };
             let raw = Self::sequential_cutter(opening, direction, host);

@@ -55,7 +55,7 @@ use super::geom::{
     volume_reference,
 };
 use super::sweep::mesh_to_keep;
-use super::{OpeningType, NORMALIZE_EPSILON};
+use super::{CutterKind, NORMALIZE_EPSILON};
 use crate::bool2d::union_contours_to_shapes;
 use crate::csg::ClippingProcessor;
 use crate::extrusion::{apply_transform, extrude_profile_watertight};
@@ -127,7 +127,7 @@ impl GeometryRouter {
     pub(super) fn coaxial_union_prepass(
         &self,
         result: &mut Mesh,
-        all_openings: &[&OpeningType],
+        all_openings: &[&CutterKind],
         consumed: &mut [bool],
         host_mutated: &mut bool,
         clipper: &ClippingProcessor,
@@ -150,11 +150,7 @@ impl GeometryRouter {
             if consumed[idx] {
                 continue;
             }
-            let (mesh, dir_hint): (&Mesh, Option<Vector3<f64>>) = match **opening {
-                OpeningType::Rectangular(..) => continue,
-                OpeningType::DiagonalRectangular(ref m, ref f) => (m, Some(f.depth)),
-                OpeningType::NonRectangular(ref m, _, _, ref d) => (m, *d),
-            };
+            let Some((mesh, dir_hint)) = opening.cutter().mesh_cutter() else { continue };
             let valid = !mesh.is_empty()
                 && mesh.positions.iter().all(|&v| v.is_finite())
                 && mesh.positions.len() >= 9;

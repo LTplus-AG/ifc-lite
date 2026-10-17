@@ -120,7 +120,7 @@ const CUTTER_1_INDICES: &[u32] = &[
 fn rvt01_panel_10191_stays_closed_with_a_near_normal_authored_cutter_3977() {
     let host = mesh(HOST_POSITIONS, HOST_INDICES);
     let openings = vec![
-        OpeningType::DiagonalRectangular(
+        CutterKind::DiagonalRectangular(
             mesh(CUTTER_0_POSITIONS, CUTTER_0_INDICES),
             OpeningFrame {
                 depth: Vector3::new(-0.6693789782214576, -0.7429211152707919, 0.0),
@@ -129,7 +129,7 @@ fn rvt01_panel_10191_stays_closed_with_a_near_normal_authored_cutter_3977() {
                 depth_is_authored: true,
             },
         ),
-        OpeningType::DiagonalRectangular(
+        CutterKind::DiagonalRectangular(
             mesh(CUTTER_1_POSITIONS, CUTTER_1_INDICES),
             OpeningFrame {
                 depth: Vector3::new(-0.669351422548015, -0.7429459422683111, 0.0),
@@ -139,7 +139,7 @@ fn rvt01_panel_10191_stays_closed_with_a_near_normal_authored_cutter_3977() {
             },
         ),
     ];
-    let cut = |openings: Vec<OpeningType>| {
+    let cut = |openings: Vec<CutterKind>| {
         let context = VoidContext {
             merged_openings: openings.clone(),
             openings,

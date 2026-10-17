@@ -74,9 +74,9 @@ fn host_wall() -> Mesh {
 }
 
 /// A `NonRectangular` box opening spanning `[min, max]`, penetration axis +Y.
-fn box_opening_y(min: [f64; 3], max: [f64; 3]) -> OpeningType {
+fn box_opening_y(min: [f64; 3], max: [f64; 3]) -> CutterKind {
     let m = box_mesh(min, max);
-    OpeningType::NonRectangular(
+    CutterKind::NonRectangular(
         m,
         Point3::new(min[0], min[1], min[2]),
         Point3::new(max[0], max[1], max[2]),
@@ -202,12 +202,12 @@ fn cutter_footprint_recovers_box_cross_section_and_depth() {
 
 /// Run just the prepass on a fresh host + opening set, returning
 /// (result, consumed, host_mutated).
-fn run_prepass(openings: &[OpeningType]) -> (Mesh, Vec<bool>, bool) {
+fn run_prepass(openings: &[CutterKind]) -> (Mesh, Vec<bool>, bool) {
     super::set_enabled_override(Some(true));
     let router = GeometryRouter::new();
     let clipper = ClippingProcessor::new();
     let mut result = host_wall();
-    let refs: Vec<&OpeningType> = openings.iter().collect();
+    let refs: Vec<&CutterKind> = openings.iter().collect();
     let mut consumed = vec![false; openings.len()];
     let mut mutated = false;
     router.coaxial_union_prepass(&mut result, &refs, &mut consumed, &mut mutated, &clipper);
@@ -376,7 +376,7 @@ fn tilted_member_defers_to_exact_and_does_not_over_cut() {
     let tilted_mesh = rotate_z(&base, 7.0);
     let (tmn, tmx) = tilted_mesh.bounds();
     let (s, c) = 7f64.to_radians().sin_cos();
-    let tilted = OpeningType::NonRectangular(
+    let tilted = CutterKind::NonRectangular(
         tilted_mesh,
         Point3::new(tmn.x as f64, tmn.y as f64, tmn.z as f64),
         Point3::new(tmx.x as f64, tmx.y as f64, tmx.z as f64),
@@ -418,7 +418,7 @@ fn non_coaxial_cluster_routes_through_union3d() {
     // coaxial → the 3D union_many fallback cuts them; both consumed, watertight.
     let a = box_opening_y([-0.6, -0.4, -0.6], [0.6, 0.4, 0.6]); // dir +Y
     let m = box_mesh([-1.6, -0.15, -0.4], [-0.4, 0.15, 0.4]);
-    let b = OpeningType::NonRectangular(
+    let b = CutterKind::NonRectangular(
         m,
         Point3::new(-1.6, -0.15, -0.4),
         Point3::new(-0.4, 0.15, 0.4),
@@ -460,7 +460,7 @@ fn feature_off_is_a_noop_and_deterministic() {
     let run = || -> (Vec<f32>, Vec<u32>, Vec<f32>, Vec<bool>, bool) {
         super::set_enabled_override(Some(false));
         let mut result = host_wall();
-        let refs: Vec<&OpeningType> = openings.iter().collect();
+        let refs: Vec<&CutterKind> = openings.iter().collect();
         let mut consumed = vec![false; openings.len()];
         let mut mutated = false;
         router.coaxial_union_prepass(&mut result, &refs, &mut consumed, &mut mutated, &clipper);

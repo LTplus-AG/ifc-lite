@@ -10,7 +10,7 @@ mod membrane;
 
 use super::super::processing::SourceHygiene;
 use super::geom::*;
-use super::{GeometryRouter, OpeningType, NORMALIZE_EPSILON};
+use super::{GeometryRouter, CutterKind, NORMALIZE_EPSILON};
 use crate::{Mesh, Point3, Vector3};
 use ifc_lite_core::{DecodedEntity, EntityDecoder};
 
@@ -52,7 +52,7 @@ impl GeometryRouter {
         host: &DecodedEntity,
         opening_ids: &[u32],
         decoder: &mut EntityDecoder,
-    ) -> Vec<OpeningType> {
+    ) -> Vec<CutterKind> {
         self.classify_openings_impl(host, opening_ids, decoder, true)
     }
 
@@ -66,7 +66,7 @@ impl GeometryRouter {
         host: &DecodedEntity,
         opening_ids: &[u32],
         decoder: &mut EntityDecoder,
-    ) -> Vec<OpeningType> {
+    ) -> Vec<CutterKind> {
         self.classify_openings_impl(host, opening_ids, decoder, false)
     }
 
@@ -76,14 +76,14 @@ impl GeometryRouter {
         opening_ids: &[u32],
         decoder: &mut EntityDecoder,
         record_diag: bool,
-    ) -> Vec<OpeningType> {
+    ) -> Vec<CutterKind> {
         use super::super::{ClassificationKind, OpeningDiagnostic, OpeningKindDiag};
 
         // Per-opening diagnostic accumulator for this host. Pushed to the
         // router's `host_opening_diagnostics` map before we return.
         let mut host_diag: Vec<OpeningDiagnostic> = Vec::with_capacity(opening_ids.len());
 
-        let mut openings: Vec<OpeningType> = Vec::new();
+        let mut openings: Vec<CutterKind> = Vec::new();
         for &opening_id in opening_ids.iter() {
             let opening_entity = match decoder.decode_by_id(opening_id) {
                 Ok(e) => e,
@@ -175,7 +175,7 @@ impl GeometryRouter {
                         ClassificationKind::NonRectangular,
                         OpeningKindDiag::NonRectangular,
                     );
-                    openings.push(OpeningType::NonRectangular(
+                    openings.push(CutterKind::NonRectangular(
                         opening_mesh,
                         fallback_min,
                         fallback_max,
@@ -214,7 +214,7 @@ impl GeometryRouter {
                                         ClassificationKind::NonRectangular,
                                         OpeningKindDiag::NonRectangular,
                                     );
-                                    openings.push(OpeningType::NonRectangular(
+                                    openings.push(CutterKind::NonRectangular(
                                         item_mesh,
                                         min_pt,
                                         max_pt,
@@ -226,7 +226,7 @@ impl GeometryRouter {
                                         ClassificationKind::Diagonal,
                                         OpeningKindDiag::Diagonal,
                                     );
-                                    openings.push(OpeningType::DiagonalRectangular(
+                                    openings.push(CutterKind::DiagonalRectangular(
                                         item_mesh, frame,
                                     ));
                                 } else {
@@ -235,7 +235,7 @@ impl GeometryRouter {
                                         ClassificationKind::Rectangular,
                                         OpeningKindDiag::Rectangular,
                                     );
-                                    openings.push(OpeningType::Rectangular(
+                                    openings.push(CutterKind::Rectangular(
                                         min_pt,
                                         max_pt,
                                         extrusion_dir,
@@ -247,7 +247,7 @@ impl GeometryRouter {
                                     ClassificationKind::Rectangular,
                                     OpeningKindDiag::Rectangular,
                                 );
-                                openings.push(OpeningType::Rectangular(
+                                openings.push(CutterKind::Rectangular(
                                     min_pt,
                                     max_pt,
                                     extrusion_dir,
@@ -258,7 +258,7 @@ impl GeometryRouter {
                                     ClassificationKind::NonRectangular,
                                     OpeningKindDiag::NonRectangular,
                                 );
-                                openings.push(OpeningType::NonRectangular(
+                                openings.push(CutterKind::NonRectangular(
                                     item_mesh,
                                     min_pt,
                                     max_pt,
@@ -273,7 +273,7 @@ impl GeometryRouter {
                                 ClassificationKind::Rectangular,
                                 OpeningKindDiag::Rectangular,
                             );
-                            openings.push(OpeningType::Rectangular(
+                            openings.push(CutterKind::Rectangular(
                                 min_pt, max_pt, extrusion_dir,
                             ));
                         }
@@ -300,7 +300,7 @@ impl GeometryRouter {
                             ClassificationKind::Rectangular,
                             OpeningKindDiag::Rectangular,
                         );
-                        openings.push(OpeningType::Rectangular(min_f64, max_f64, None));
+                        openings.push(CutterKind::Rectangular(min_f64, max_f64, None));
                     }
                 }
         }
@@ -322,16 +322,16 @@ impl GeometryRouter {
     /// This prevents exponential triangle growth when many small openings
     /// tile a wall surface — each clip creates boundary triangles that get
     /// re-split by the next clip, causing O(2^N) growth.
-    pub(super) fn merge_rectangular_openings(openings: &[OpeningType]) -> Vec<OpeningType> {
+    pub(super) fn merge_rectangular_openings(openings: &[CutterKind]) -> Vec<CutterKind> {
         const MERGE_TOLERANCE: f64 = 0.01; // 1cm tolerance for adjacency
 
         // Separate rectangular and non-rectangular openings
         let mut rects: Vec<(Point3<f64>, Point3<f64>, Option<Vector3<f64>>)> = Vec::new();
-        let mut others: Vec<OpeningType> = Vec::new();
+        let mut others: Vec<CutterKind> = Vec::new();
 
         for opening in openings {
             match opening {
-                OpeningType::Rectangular(min, max, dir) => {
+                CutterKind::Rectangular(min, max, dir) => {
                     rects.push((*min, *max, *dir));
                 }
                 other => others.push(other.clone()),
@@ -414,9 +414,9 @@ impl GeometryRouter {
         }
 
         // Reconstruct the opening list
-        let mut result: Vec<OpeningType> = rects
+        let mut result: Vec<CutterKind> = rects
             .into_iter()
-            .map(|(min, max, dir)| OpeningType::Rectangular(min, max, dir))
+            .map(|(min, max, dir)| CutterKind::Rectangular(min, max, dir))
             .collect();
         result.extend(others);
         result

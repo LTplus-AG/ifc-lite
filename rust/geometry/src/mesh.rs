@@ -324,6 +324,38 @@ impl Mesh {
         }
     }
 
+    /// A mesh whose vertices were MOVED by a frame change (rotation,
+    /// translation, or a rebuild from f64 triangles): `rtc_applied` rides along
+    /// from `self`, `origin` is the caller's, and everything that described the
+    /// pre-move vertices is dropped (`instance_meta`, `local_bounds`,
+    /// `local_to_world`, `welded_in_object_frame`, `plane_tags`).
+    ///
+    /// The counterpart of [`Mesh::rebuilt_like`], which keeps `local_bounds` and
+    /// `local_to_world` because its precondition is that the extent does not
+    /// move. A void-cut intermediate in a rotated frame breaks that
+    /// precondition, so the voids path builds its frame-derived meshes here
+    /// instead of spelling the struct out at each site.
+    pub fn reframed_like(
+        &self,
+        positions: Vec<f32>,
+        normals: Vec<f32>,
+        indices: Vec<u32>,
+        origin: [f64; 3],
+    ) -> Mesh {
+        Mesh {
+            positions,
+            normals,
+            indices,
+            rtc_applied: self.rtc_applied,
+            origin,
+            instance_meta: None,
+            local_bounds: None,
+            local_to_world: None,
+            welded_in_object_frame: false,
+            plane_tags: None,
+        }
+    }
+
     /// Create a mesh from a single triangle
     pub fn from_triangle(
         v0: &Point3<f64>,

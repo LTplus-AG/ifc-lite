@@ -430,7 +430,7 @@ fn an_inward_wound_host_is_read_the_same_as_an_outward_one() {
 // (weld-invariant) triangle count stays over 100 is exactly the fixture that
 // tells the two gates apart: reverting the fix (back to `vertex_count > 100`)
 // silently swaps which of those two meshes — and hence which vertex count —
-// the returned `OpeningType::NonRectangular` carries, even though the
+// the returned `CutterKind::NonRectangular` carries, even though the
 // diagnostic `kind` label is `NonRectangular` either way.
 mod issue_4119_triangle_count_gate {
     use super::*;
@@ -714,14 +714,14 @@ DATA;
             assert_eq!(openings.len(), 1, "n={n}: exactly one opening classified");
 
             let mesh = match &openings[0] {
-                OpeningType::NonRectangular(mesh, ..) => mesh,
+                CutterKind::NonRectangular(mesh, ..) => mesh,
                 other => panic!(
                     "n={n}: expected NonRectangular (a zigzag strip is never a \
-                     clean box), got a different OpeningType variant: {}",
+                     clean box), got a different CutterKind variant: {}",
                     match other {
-                        OpeningType::Rectangular(..) => "Rectangular",
-                        OpeningType::DiagonalRectangular(..) => "DiagonalRectangular",
-                        OpeningType::NonRectangular(..) => unreachable!(),
+                        CutterKind::Rectangular(..) => "Rectangular",
+                        CutterKind::DiagonalRectangular(..) => "DiagonalRectangular",
+                        CutterKind::NonRectangular(..) => unreachable!(),
                     }
                 ),
             };
@@ -785,14 +785,14 @@ DATA;
         assert_eq!(openings.len(), 1, "exactly one opening classified");
 
         let mesh = match &openings[0] {
-            OpeningType::NonRectangular(mesh, ..) => mesh,
+            CutterKind::NonRectangular(mesh, ..) => mesh,
             other => panic!(
                 "expected NonRectangular (128 triangles, no inferable box/frame), \
-                 got a different OpeningType variant: {}",
+                 got a different CutterKind variant: {}",
                 match other {
-                    OpeningType::Rectangular(..) => "Rectangular",
-                    OpeningType::DiagonalRectangular(..) => "DiagonalRectangular",
-                    OpeningType::NonRectangular(..) => unreachable!(),
+                    CutterKind::Rectangular(..) => "Rectangular",
+                    CutterKind::DiagonalRectangular(..) => "DiagonalRectangular",
+                    CutterKind::NonRectangular(..) => unreachable!(),
                 }
             ),
         };

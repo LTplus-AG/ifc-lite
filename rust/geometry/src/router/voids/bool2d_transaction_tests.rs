@@ -75,9 +75,9 @@ fn mesh_box(x0: f64, y0: f64, x1: f64, y1: f64, z0: f32, z1: f32) -> Mesh {
     mesh
 }
 
-fn mesh_opening(mesh: Mesh) -> super::super::OpeningType {
+fn mesh_opening(mesh: Mesh) -> super::super::CutterKind {
     let (lo, hi) = mesh.bounds();
-    super::super::OpeningType::NonRectangular(mesh, lo.cast(), hi.cast(), None)
+    super::super::CutterKind::NonRectangular(mesh, lo.cast(), hi.cast(), None)
 }
 
 #[test]
@@ -122,7 +122,7 @@ fn mixed_route_telemetry_is_atomic_4617() {
             position[2] -= 1.0;
         }
         let (lo, hi) = cutter.bounds();
-        let opening = super::super::OpeningType::NonRectangular(cutter, lo.cast(), hi.cast(), None);
+        let opening = super::super::CutterKind::NonRectangular(cutter, lo.cast(), hi.cast(), None);
         *context.openings.last_mut().unwrap() = opening.clone();
         context.merged_openings = GeometryRouter::merge_rectangular_openings(&context.openings);
         let residual = context.bool2d.as_mut().unwrap().residual.as_mut().unwrap();

@@ -6,7 +6,7 @@
 
 use super::{
     closed_enough_to_emit, cut_prism, dedup_cut_vertices, extend_prism_caps, mesh_from_ptris,
-    prepare_prism, ptris_from_mesh, Mesh, OpeningType, PTri,
+    prepare_prism, ptris_from_mesh, Mesh, CutterKind, PTri,
 };
 
 /// Apply every mandatory correction atomically using the analytic prism kernel.
@@ -31,7 +31,7 @@ pub(in crate::router::voids) fn correct_planar_overlap(
     }
     for cutter in cutters {
         let (lo, hi) = cutter.bounds();
-        let opening = OpeningType::NonRectangular(cutter.clone(), lo.cast(), hi.cast(), None);
+        let opening = CutterKind::NonRectangular(cutter.clone(), lo.cast(), hi.cast(), None);
         let mut prism = prepare_prism(&opening, mesh.origin)?;
         let aabbs: Vec<_> = tris.iter().map(PTri::aabb).collect();
         extend_prism_caps(&mut prism, &tris, &aabbs);

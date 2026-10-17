@@ -76,7 +76,7 @@ fn a_same_count_cut_under_the_volume_band_is_kept_4692() {
         "premise: the wedge removes about 1/512 m³, got {removed}"
     );
 
-    let openings = vec![OpeningType::NonRectangular(
+    let openings = vec![CutterKind::NonRectangular(
         wedge,
         mn,
         mx,

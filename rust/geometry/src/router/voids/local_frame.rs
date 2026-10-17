@@ -7,32 +7,23 @@
 //! cutters (#3977) and cutters with no authored depth at all (#5410).
 
 use super::geom::{extent_along_axis, mesh_point, wall_frame_from_depth};
-use super::{is_axis_aligned_direction, OpeningType, NORMALIZE_EPSILON};
+use super::{is_axis_aligned_direction, CutterKind, NORMALIZE_EPSILON};
 use crate::{Mesh, Vector3};
 
 /// A wall's run and height must each be at least this multiple of its
 /// thickness before it is cut in its own frame.
 const WALL_ASPECT_MIN: f64 = 4.0;
 
-fn authored_depth(opening: &OpeningType) -> Option<Vector3<f64>> {
-    match opening {
-        OpeningType::DiagonalRectangular(_, frame) if frame.depth_is_authored => Some(frame.depth),
-        OpeningType::DiagonalRectangular(..) => None,
-        OpeningType::NonRectangular(_, _, _, depth) => *depth,
-        OpeningType::Rectangular(_, _, depth) => *depth,
-    }
-}
-
 /// Issue #3977: vertically extruded strips do not carry the wall-normal depth
 /// used by the original #1167 selector. Derive that normal from an opening's
 /// authored oriented frame, then qualify the host as a thin, tall wall.
 pub(super) fn vertical_depth_wall_frame(
     host: &Mesh,
-    openings: &[OpeningType],
+    openings: &[CutterKind],
 ) -> Option<[Vector3<f64>; 3]> {
     if openings.is_empty()
         || !openings.iter().all(|opening| {
-            authored_depth(opening)
+            opening.cutter().authored_depth()
                 .and_then(|depth| depth.try_normalize(NORMALIZE_EPSILON))
                 .is_some_and(|depth| depth.z.abs() >= 0.98)
         })
@@ -45,7 +36,7 @@ pub(super) fn vertical_depth_wall_frame(
     // its thickness/normal; this avoids deriving a noisy direction from an
     // arbitrary tessellated edge.
     let frame = openings.iter().find_map(|opening| match opening {
-        OpeningType::DiagonalRectangular(_, frame)
+        CutterKind::DiagonalRectangular(_, frame)
             if frame.cross_a.z.abs() <= 0.2 && frame.cross_b.z.abs() <= 0.2 =>
         {
             Some(*frame)
@@ -90,9 +81,9 @@ pub(super) fn vertical_depth_wall_frame(
 /// wall keeps the world path.
 pub(super) fn host_thickness_wall_frame(
     host: &Mesh,
-    openings: &[OpeningType],
+    openings: &[CutterKind],
 ) -> Option<[Vector3<f64>; 3]> {
-    if openings.is_empty() || openings.iter().any(|opening| authored_depth(opening).is_some()) {
+    if openings.is_empty() || openings.iter().any(|opening| opening.cutter().authored_depth().is_some()) {
         return None;
     }
     let normal = dominant_horizontal_normal(host)?;

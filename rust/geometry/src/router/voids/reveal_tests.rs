@@ -501,12 +501,12 @@
         // overlapping on all three axes but coinciding on NONE. Collapsing them
         // into one bounding box punches a phantom hole through both walls (the
         // reported corner over-cut). They must stay separate.
-        let window = OpeningType::Rectangular(
+        let window = CutterKind::Rectangular(
             Point3::new(1.5, -1.2, 0.9),
             Point3::new(2.7, 1.2, 2.1),
             None,
         );
-        let door = OpeningType::Rectangular(
+        let door = CutterKind::Rectangular(
             Point3::new(-2.4, 0.55, 0.0),
             Point3::new(2.4, 2.95, 2.2),
             None,
@@ -554,12 +554,12 @@
         // The merge still collapses the O(2^N) case it exists for: openings that
         // tile a wall coincide on two axes per pair (here X and Y) and are
         // adjacent on the third (Z), so bbox(A,B) == A ∪ B with no phantom volume.
-        let lower = OpeningType::Rectangular(
+        let lower = CutterKind::Rectangular(
             Point3::new(1.0, 0.0, 0.0),
             Point3::new(2.0, 0.4, 1.0),
             None,
         );
-        let upper = OpeningType::Rectangular(
+        let upper = CutterKind::Rectangular(
             Point3::new(1.0, 0.0, 1.0),
             Point3::new(2.0, 0.4, 2.0),
             None,
@@ -567,7 +567,7 @@
         let merged = GeometryRouter::merge_rectangular_openings(&[lower, upper]);
         assert_eq!(merged.len(), 1, "aligned stacked openings should still merge");
         match &merged[0] {
-            OpeningType::Rectangular(mn, mx, _) => {
+            CutterKind::Rectangular(mn, mx, _) => {
                 assert!(mn.z.abs() < 1e-9 && (mx.z - 2.0).abs() < 1e-9, "merged Z span");
             }
             _ => panic!("expected a merged Rectangular opening"),

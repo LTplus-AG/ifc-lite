@@ -56,19 +56,8 @@ pub(in crate::router::voids) fn mesh_to_frame(
         normals.push(n.dot(&axes[1]) as f32);
         normals.push(n.dot(&axes[2]) as f32);
     }
-    Mesh {
-        positions,
-        normals,
-        indices: mesh.indices.clone(),
-        rtc_applied: mesh.rtc_applied,
-        origin: mesh.origin,
-        // Frame-transformed cut intermediate — not an instanceable occurrence.
-        instance_meta: None,
-        local_bounds: None,
-        local_to_world: None,
-        welded_in_object_frame: false,
-        plane_tags: None,
-    }
+    // A frame-transformed cut intermediate is not an instanceable occurrence.
+    mesh.reframed_like(positions, normals, mesh.indices.clone(), mesh.origin)
 }
 
 /// Axis-aligned bounds of `mesh` expressed in the frame `axes` about `center`.

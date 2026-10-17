@@ -292,7 +292,7 @@ pub(super) fn mixed_overlap_fixture() -> (Mesh, VoidContext) {
         Point2::new(x1, y1), Point2::new(x0, y1),
     ];
     let profile = Profile2D::new(rect(0.0, 0.0, 10.0, 10.0));
-    let residual_opening = super::super::OpeningType::Rectangular(
+    let residual_opening = super::super::CutterKind::Rectangular(
         Point3::new(1.0, 1.0, -1.0), Point3::new(3.0, 3.0, 0.5),
         Some(Vector3::z()),
     );
@@ -309,7 +309,7 @@ pub(super) fn mixed_overlap_fixture() -> (Mesh, VoidContext) {
         residual: Some(Box::new(residual)),
     };
     let host = extrude_profile_watertight(&profile, 1.0, None).unwrap();
-    let through_opening = |x0, y0, x1, y1| super::super::OpeningType::Rectangular(
+    let through_opening = |x0, y0, x1, y1| super::super::CutterKind::Rectangular(
         Point3::new(x0, y0, -1.0), Point3::new(x1, y1, 2.0), Some(Vector3::z()),
     );
     let openings = vec![

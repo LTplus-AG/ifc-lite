@@ -176,7 +176,7 @@ fn nonzero_origin_host_records_world_space_bbox() {
     // Rectangular openings are); `apply_void_context` relativises it by the
     // host origin so it lands on the local box.
     let o = host.origin;
-    let opening = OpeningType::Rectangular(
+    let opening = CutterKind::Rectangular(
         Point3::new(o[0] - 0.5, o[1] - 0.5, o[2] - 0.5),
         Point3::new(o[0] + 0.5, o[1] + 0.5, o[2] + 0.5),
         None,
@@ -291,7 +291,7 @@ fn budget_tripped_engulfing_cutter_skips_aabb_fallback() {
     );
 
     let (cmn, cmx) = cutter.bounds();
-    let engulf_open = OpeningType::NonRectangular(
+    let engulf_open = CutterKind::NonRectangular(
         cutter,
         Point3::new(cmn.x as f64, cmn.y as f64, cmn.z as f64),
         Point3::new(cmx.x as f64, cmx.y as f64, cmx.z as f64),
@@ -351,7 +351,7 @@ fn budget_tripped_engulfing_cutter_skips_aabb_fallback() {
     // box-cut fires because `engulfs_host` is false, so dropping the `!capped`
     // term left this case untouched.
     let small = box_mesh_at(0.0, [0.15, 0.2, 0.15]); // 0.3 × 0.4 × 0.3, through the wall
-    let small_open = OpeningType::NonRectangular(
+    let small_open = CutterKind::NonRectangular(
         small,
         Point3::new(-0.15, -0.2, -0.15),
         Point3::new(0.15, 0.2, 0.15),

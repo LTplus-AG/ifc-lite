@@ -33,7 +33,8 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { testPair } from './narrow.js';
 import { TriMesh } from './tri-mesh.js';
 import { isThroughPenetration, obbPenetration, AXIS_NOISE_ULPS, OBB_EPS, type Obb } from './obb.js';
-import { detectObb, normalAngleError } from './obb-detect.js';
+import * as obbDetect from './obb-detect.js';
+import { detectObb } from './obb-detect.js';
 
 /** The MTD alone; most tests here are about the depth, not its axis. */
 function obbDepth(a: Obb, b: Obb): number | null {
@@ -810,6 +811,12 @@ describe('detectObb: independent of where the box sits (#5474)', () => {
     }
   });
 
+  /** `normalAngleError`, or NaNs where the module has no such export (so a
+   * build without it fails the assertions instead of failing to load). */
+  const normalAngleError = (a: Vec3, b: Vec3, c: Vec3): [number, number] => {
+    const f = (obbDetect as Partial<typeof obbDetect>).normalAngleError;
+    return f ? f(a, b, c) : [Number.NaN, Number.NaN];
+  };
   const rotations = (a: Vec3, b: Vec3, c: Vec3): [Vec3, Vec3, Vec3][] => [[a, b, c], [b, c, a], [c, a, b]];
 
   it('bounds normal noise scale-free and independent of vertex order', () => {

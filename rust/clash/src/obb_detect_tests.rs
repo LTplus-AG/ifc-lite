@@ -5,7 +5,7 @@
 //! Box recognition far from the origin (#5474). Mirrored by the `detectObb`
 //! world-frame block in `packages/clash/src/engine-ts/obb.test.ts`.
 
-use super::{detect_obb, normal_angle_error, MeshLike, MIN_SIN_THETA};
+use super::{detect_obb, normal_angle_error, MeshLike};
 use crate::vec3::{dot, Vec3};
 use crate::world_frame_corpus::ulp32;
 
@@ -245,7 +245,7 @@ fn the_normal_noise_bound_is_scale_free_and_vertex_order_free() {
 }
 
 /// Needle triangles `(0,0,0), (1,0,0), (2,h,0)` (largest angle at `(1,0,0)`,
-/// `sin = h / sqrt(1 + h^2)`) on either side of `MIN_SIN_THETA`, with the
+/// `sin = h / sqrt(1 + h^2)`) on either side of `MIN_SIN_THETA` (1e-3), with the
 /// expected keep decision. Shared with `obb.test.ts` (`NEEDLE_CASES`).
 const NEEDLE_CASES: [(f64, bool); 5] =
     [(0.0, false), (1.0e-6, false), (0.9999e-3, false), (1.0001e-3, true), (0.01, true)];
@@ -253,7 +253,7 @@ const NEEDLE_CASES: [(f64, bool); 5] =
 #[test]
 fn a_needle_has_no_noise_bound_and_a_kept_triangle_has_a_finite_one() {
     for (h, keep) in NEEDLE_CASES {
-        assert_eq!(h / (1.0 + h * h).sqrt() >= MIN_SIN_THETA, keep, "fixture h {h}");
+        assert_eq!(h / (1.0 + h * h).sqrt() >= 1.0e-3, keep, "fixture h {h}");
         for [p, q, r] in rotations([0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [2.0, h, 0.0]) {
             let (err, _) = normal_angle_error(p, q, r);
             assert_eq!(err.is_finite(), keep, "h {h} start {p:?}: err {err}");

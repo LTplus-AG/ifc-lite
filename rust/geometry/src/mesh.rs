@@ -29,6 +29,23 @@ pub struct InstanceMeta {
     pub instanceable: bool,
 }
 
+impl InstanceMeta {
+    /// Metadata of a provably shareable mesh before placement: identity world
+    /// transform, no rigid-congruence tier, `local_transform` the occurrence's
+    /// (scaled) mapping transform if any. The one constructor of the four sites
+    /// that tag an occurrence (direct solid, mapped hit/miss, don't-bake
+    /// placeholder).
+    pub fn instanceable(rep_identity: u128, local_transform: Option<[f64; 16]>) -> Self {
+        Self {
+            transform: crate::math::mat4::IDENTITY,
+            local_transform,
+            canonical_transform: None,
+            rep_identity,
+            instanceable: true,
+        }
+    }
+}
+
 /// The kernel's f64 supporting plane for one output triangle, carried forward
 /// from `kernel::mesh_bridge::tris_to_mesh` (issue #3914). `consolidate_coplanar`
 /// buckets triangles into coplanar groups by re-deriving a plane from each

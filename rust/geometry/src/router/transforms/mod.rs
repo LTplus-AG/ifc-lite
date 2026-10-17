@@ -10,7 +10,6 @@ pub(crate) use mesh_world::LARGE_MAPPED_ORIGIN_M;
 pub(crate) mod operator;
 
 mod parsers;
-mod walk;
 
 use super::GeometryRouter;
 use crate::math::mat4;
@@ -104,31 +103,14 @@ impl GeometryRouter {
         mesh: &mut Mesh,
     ) -> Result<()> {
         crate::mesh_weld::weld_mesh(mesh);
-        let placement_attr = match element.get(5) {
-            Some(attr) if !attr.is_null() => attr,
-            _ => {
-                // No ObjectPlacement: the world frame IS the object frame, so
-                // run the ordinary world step with an identity placement. This
-                // both records the #1474 frame capture AND applies the model
-                // RTC shift / local-frame relativization exactly like every
-                // placed mesh — consumers (renderer, demesher session)
-                // reconstruct `true_world = origin + position + rtc` uniformly
-                // and must not special-case placement-less geometry.
-                self.transform_mesh_world(mesh, &Matrix4::identity());
-                return Ok(());
-            }
-        };
-
-        let placement = match decoder.resolve_ref(placement_attr)? {
-            Some(p) => p,
-            None => {
-                self.transform_mesh_world(mesh, &Matrix4::identity());
-                return Ok(());
-            }
-        };
-
-        let mut transform = self.get_placement_transform(&placement, decoder)?;
-        self.scale_transform(&mut transform);
+        // No (or unresolvable) ObjectPlacement: the world frame IS the object
+        // frame, so the ordinary world step runs with an identity placement.
+        // This both records the #1474 frame capture AND applies the model RTC
+        // shift / local-frame relativization exactly like every placed mesh —
+        // consumers (renderer, demesher session) reconstruct
+        // `true_world = origin + position + rtc` uniformly and must not
+        // special-case placement-less geometry.
+        let transform = self.element_world_placement(element, decoder, false)?;
         // Instancing: record the full (scaled) world placement on the mesh's
         // instance metadata BEFORE it is baked + RTC-folded by transform_mesh_world.
         // Only fires when processing already marked this mesh instanceable (so the
@@ -160,44 +142,50 @@ impl GeometryRouter {
             crate::mesh_weld::weld_sub_mesh(sub);
         }
         // ObjectPlacement translation is in file units (e.g. mm) but geometry is
-        // scaled to metres, so the transform MUST be scaled to match.
-        if let Some(placement_attr) = element.get(5) {
-            if !placement_attr.is_null() {
-                if let Some(placement) = decoder.resolve_ref(placement_attr)? {
-                    let mut transform = self.get_placement_transform(&placement, decoder)?;
-                    self.scale_transform(&mut transform);
-                    // Instancing: record the per-element world placement on EACH sub-mesh's
-                    // instance metadata BEFORE it is baked into the vertices, mirroring
-                    // `apply_placement` for the single-mesh path. Without this, the sub-mesh
-                    // path (every multi-item element — all the Tekla steel: beams, plates,
-                    // assemblies) leaves `instance_meta.transform` at the IDENTITY placeholder,
-                    // so `collate_refs` computes rel_k = m_k · m_ref⁻¹ = identity for every
-                    // occurrence and they all stack on the first one. The flat path was
-                    // always correct (placement IS baked into the vertices below), so the
-                    // dedup made it look like repeated geometry was "missing".
-                    if instancing_enabled() {
-                        let row_major = mat4::from_na(&transform);
-                        for sub in &mut sub_meshes.sub_meshes {
-                            if let Some(im) = sub.mesh.instance_meta.as_mut() {
-                                im.transform = row_major;
-                            }
-                        }
-                    }
-                    for sub in &mut sub_meshes.sub_meshes {
-                        self.transform_mesh_world(&mut sub.mesh, &transform);
-                    }
-                    return Ok(());
+        // scaled to metres, so the transform MUST be scaled to match (inside
+        // `element_world_placement`).
+        let transform = self.element_world_placement(element, decoder, false)?;
+        // Instancing: record the per-element world placement on EACH sub-mesh's
+        // instance metadata BEFORE it is baked into the vertices, mirroring
+        // `apply_placement` for the single-mesh path. Without this, the sub-mesh
+        // path (every multi-item element — all the Tekla steel: beams, plates,
+        // assemblies) leaves `instance_meta.transform` at the IDENTITY placeholder,
+        // so `collate_refs` computes rel_k = m_k · m_ref⁻¹ = identity for every
+        // occurrence and they all stack on the first one. A placement-less element
+        // is the identity, which is the placeholder already.
+        let row_major = mat4::from_na(&transform);
+        for sub in &mut sub_meshes.sub_meshes {
+            if let Some(im) = sub.mesh.instance_meta.as_mut() {
+                im.transform = row_major;
+            }
+            self.transform_mesh_world(&mut sub.mesh, &transform);
+        }
+        Ok(())
+    }
+
+    /// The one resolver of an element's world placement, already unit-scaled to
+    /// metres. A missing or null `ObjectPlacement` is the identity. `strict`
+    /// (exact geometry descriptions) also refuses a reference that does not
+    /// resolve.
+    pub(super) fn element_world_placement(
+        &self,
+        element: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        strict: bool,
+    ) -> Result<Matrix4<f64>> {
+        if strict {
+            if let Some(attr) = element.get(5).filter(|attr| !attr.is_null()) {
+                if decoder.resolve_ref(attr)?.is_none() {
+                    return Err(crate::Error::geometry(format!(
+                        "ObjectPlacement for #{} cannot be resolved",
+                        element.id
+                    )));
                 }
             }
         }
-        // No resolvable ObjectPlacement: run the ordinary world step with an
-        // identity placement — records the #1474 frame capture AND applies
-        // the model RTC shift / relativization, mirroring the same branch in
-        // `apply_placement` (single-mesh path).
-        for sub in &mut sub_meshes.sub_meshes {
-            self.transform_mesh_world(&mut sub.mesh, &Matrix4::identity());
-        }
-        Ok(())
+        let mut transform = self.get_placement_transform_from_element(element, decoder)?;
+        self.scale_transform(&mut transform);
+        Ok(transform)
     }
 
     /// Get placement transform from element without applying it
@@ -217,16 +205,7 @@ impl GeometryRouter {
         decoder: &mut EntityDecoder,
     ) -> Result<[f64; 16]> {
         self.admit_placement_scale()?;
-        if let Some(attr) = element.get(5).filter(|attr| !attr.is_null()) {
-            if decoder.resolve_ref(attr)?.is_none() {
-                return Err(crate::Error::geometry(format!(
-                    "ObjectPlacement for #{} cannot be resolved",
-                    element.id
-                )));
-            }
-        }
-        let mut transform = self.get_placement_transform_from_element(element, decoder)?;
-        self.scale_transform(&mut transform);
+        let transform = self.element_world_placement(element, decoder, true)?;
         Ok(mat4::col_major_array(&transform))
     }
 

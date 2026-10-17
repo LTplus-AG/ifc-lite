@@ -10,6 +10,7 @@
 use super::frame_parts::{single_frame_source, SourceParts};
 use super::transforms::instancing_enabled;
 use crate::math::mat4;
+use super::item::ItemFrame;
 use super::GeometryRouter;
 use crate::{Error, InstanceMeta, Mesh, Result};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
@@ -151,13 +152,7 @@ impl GeometryRouter {
             // (canonical -> element-local), `transform` is filled later by the
             // element's apply_placement (element-local -> world).
             if instancing_enabled() {
-                mesh.instance_meta = Some(InstanceMeta {
-                    transform: mat4::IDENTITY,
-                    local_transform: local_rm,
-                    canonical_transform: None,
-                    rep_identity: source_id as u128,
-                    instanceable: true,
-                });
+                mesh.instance_meta = Some(InstanceMeta::instanceable(source_id as u128, local_rm));
             }
             return Ok(vec![mesh]);
         }
@@ -210,25 +205,14 @@ impl GeometryRouter {
                     &mut level_truncated,
                 ) {
                     Ok(sub_parts) => sub_parts.iter().for_each(|part| source.merge(part)),
-                    Err(_e) => {
+                    Err(e) => {
                         level_truncated = true;
                         // Same drop, same counter as `merge_source_item`: the
                         // nested map's geometry is gone from this source. Recording
                         // `IfcMappedItem` (not the inner item's type) is deliberate —
                         // the inner walk errored before it could attribute anything,
                         // so this level names the item it actually lost.
-                        self.record_unsupported_item(sub_item.ifc_type.clone());
-                        crate::diag::diag_debug!(
-                            { item_id = sub_item.id, error = %_e,
-                              "skipping nested IfcMappedItem" }
-                            else {
-                                #[cfg(debug_assertions)]
-                                eprintln!(
-                                    "[ifc-lite] Skipping nested IfcMappedItem #{}: {}",
-                                    sub_item.id, _e
-                                );
-                            }
-                        );
+                        self.drop_item(&sub_item, &e, "nested IfcMappedItem");
                     }
                 }
                 continue;
@@ -296,13 +280,7 @@ impl GeometryRouter {
             }
         }
         if instancing_enabled() && single_frame {
-            parts[0].instance_meta = Some(InstanceMeta {
-                transform: mat4::IDENTITY,
-                local_transform: local_rm,
-                        canonical_transform: None,
-                rep_identity: source_id as u128,
-                instanceable: true,
-            });
+            parts[0].instance_meta = Some(InstanceMeta::instanceable(source_id as u128, local_rm));
         }
 
         Ok(parts)
@@ -327,31 +305,13 @@ impl GeometryRouter {
         source: &mut SourceParts,
         walk: &str,
     ) {
-        let meshed = match self.processor_for(&item.ifc_type) {
-            Some(processor) => {
-                self.process_item_in_rtc_frame(processor.as_ref(), item, decoder, self.rtc_offset)
-            }
-            None => Err(Error::geometry("no processor")),
-        };
+        let meshed = self.mesh_item(item, decoder, ItemFrame::MappedSource);
         match meshed {
-            Ok(mut mesh) => {
-                self.keep_rebase_in_origin(&mut mesh);
+            Ok(mesh) => {
                 source.merge(&mesh);
             }
-            Err(_e) => {
-                self.record_unsupported_item(item.ifc_type.clone());
-                let _ = walk;
-                crate::diag::diag_debug!(
-                    { item_id = item.id, ifc_type = ?item.ifc_type, walk, error = %_e,
-                      "skipping unsupported source item" }
-                    else {
-                        #[cfg(debug_assertions)]
-                        eprintln!(
-                            "[ifc-lite] Skipping unsupported {walk} item #{} ({:?}): {}",
-                            item.id, item.ifc_type, _e
-                        );
-                    }
-                );
+            Err(e) => {
+                self.drop_item(item, &e, &format!("{walk} item"));
             }
         }
     }

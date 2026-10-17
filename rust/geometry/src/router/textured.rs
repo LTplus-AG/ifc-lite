@@ -142,19 +142,8 @@ impl GeometryRouter {
                 match self.process_mapped_item_parts(&item, decoder) {
                     // already scaled inside the cached path
                     Ok(sub_parts) => sub_parts.iter().for_each(|part| untextured.merge(part)),
-                    Err(_e) => {
-                        self.record_unsupported_item(item.ifc_type.clone());
-                        crate::diag::diag_debug!(
-                            { item_id = item.id, error = %_e,
-                              "skipping unsupported nested IfcMappedItem in representation map" }
-                            else {
-                                #[cfg(debug_assertions)]
-                                eprintln!(
-                                    "[ifc-lite] Skipping unsupported nested IfcMappedItem #{} in representation map: {}",
-                                    item.id, _e
-                                );
-                            }
-                        );
+                    Err(e) => {
+                        self.drop_item(&item, &e, "nested IfcMappedItem in representation map");
                     }
                 }
                 continue;

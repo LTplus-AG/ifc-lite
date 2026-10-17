@@ -229,7 +229,7 @@ impl GeometryRouter {
                         max[axis] = max[axis].max(value);
                     }
                 }
-                let enclosing = super::super::processing::enclosing_f32;
+                let enclosing = super::super::item::enclosing_f32;
                 Some([
                     enclosing(min[0], true),
                     enclosing(min[1], true),

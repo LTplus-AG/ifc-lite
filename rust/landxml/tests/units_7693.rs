@@ -245,3 +245,63 @@ fn edge_lxparse_27_repeated_vertex_face_is_kept_and_flagged() {
         document.warnings
     );
 }
+
+const TIN_SURFACE: &str = r#"<Surfaces><Surface name="grade"><Definition surfType="TIN"><Pnts><P id="1">0 0 0</P><P id="2">0 1 0</P><P id="3">1 0 0</P></Pnts><Faces><F>1 2 3</F></Faces></Definition></Surface></Surfaces>"#;
+
+/// Drive a stream over 64-byte chunks; returns the header events and the
+/// first error, if any.
+fn stream_headers(
+    xml: &str,
+    limits: LandXmlLimits,
+) -> (Vec<ifc_lite_landxml::LandXmlStreamHeader>, Option<ifc_lite_landxml::LandXmlError>) {
+    use ifc_lite_landxml::LandXmlStreamEvent;
+    let mut session = LandXmlTinStreamSession::new(limits).expect("session");
+    let mut headers = Vec::new();
+    let mut pump = |session: &mut LandXmlTinStreamSession| -> Result<(), _> {
+        while session.output_pending() {
+            for event in session.drain(MAX_LANDXML_STREAM_DRAIN_BYTES)? {
+                if let LandXmlStreamEvent::Header(h) = event {
+                    headers.push(h);
+                }
+            }
+        }
+        Ok(())
+    };
+    for chunk in xml.as_bytes().chunks(64) {
+        if let Err(e) = pump(&mut session).and_then(|()| session.advance(chunk)) {
+            return (headers, Some(e));
+        }
+    }
+    let result = pump(&mut session)
+        .and_then(|()| session.finish_cursor())
+        .and_then(|()| pump(&mut session));
+    (headers, result.err())
+}
+
+/// #7753. Invariant: a declared `<Units>` always wins over an assumed linear
+/// unit in the stream header, however late in the document it is read.
+#[test]
+fn issue_7753_stream_header_waits_for_a_declared_units_element() {
+    let project = format!("<Project name=\"{}\"/>", "p".repeat(300));
+    let xml = format!(
+        r#"<LandXML xmlns="{LANDXML_12_NAMESPACE}" version="1.2">{project}<Units><Metric linearUnit="meter"/></Units>{TIN_SURFACE}</LandXML>"#
+    );
+    let (headers, error) = stream_headers(&xml, assumed("foot"));
+    assert!(error.is_none(), "{error:?}");
+    assert_eq!(headers.len(), 1);
+    let units = headers[0].units.as_ref().expect("units");
+    assert!(!units.assumed, "declared metres, not the assumed foot");
+    assert_eq!(units.linear_scale_to_meters, 1.0);
+}
+
+/// #7753. Invariant: a surface scaled by an assumed unit is never followed
+/// by a contradicting declaration that goes unreported.
+#[test]
+fn issue_7753_units_after_a_scaled_surface_is_refused_not_ignored() {
+    let xml = format!(
+        r#"<LandXML xmlns="{LANDXML_12_NAMESPACE}" version="1.2">{TIN_SURFACE}<Units><Metric linearUnit="meter"/></Units></LandXML>"#
+    );
+    let (_, error) = stream_headers(&xml, assumed("foot"));
+    let error = error.expect("late Units after assumed scaling must be refused");
+    assert!(error.to_string().contains("after"), "{error}");
+}

@@ -17,9 +17,9 @@
 //! Distinct from `bool2d`'s `compute_signed_area` / `point_in_contour`, which
 //! take nalgebra `Point2` contours on the IFC profile path.
 
-// Below this |cross| two lines are treated as parallel (the `space_dcel`
-// tolerance the function was written against).
-use crate::math::tol::PARALLEL_EPS;
+/// Below this |cross| two lines are treated as parallel (the `space_dcel`
+/// tolerance the function was written against).
+const PARALLEL_EPS: f64 = 1e-9;
 
 /// Intersection of the two infinite lines through `a1→b1` and `a2→b2`.
 /// `None` when (near-)parallel.

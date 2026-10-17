@@ -117,10 +117,11 @@ fn count_epsilon_literals(src: &str) -> usize {
 /// Counts every `1e-N` / `1.0e-N` outside comments in `rust/geometry/src`, test
 /// modules inside files included, excluding `*_tests.rs` files.
 ///
-/// 479 is the merged count: 477 on this branch's base, plus the three
+/// 480 is the merged count: 477 on this branch's base, plus the three
 /// `triangulation.rs` literals #7826 landed concurrently (GEOM-38 territory, C3
-/// names them), minus one that #7834 removed.
-const MAX_INLINE_EPSILON_LITERALS: usize = 479;
+/// names them), minus one that #7834 removed, plus `math/geom2d.rs`'s
+/// `PARALLEL_EPS` (left local: #7834 moved that file, see the PR review).
+const MAX_INLINE_EPSILON_LITERALS: usize = 480;
 
 #[test]
 fn inline_epsilon_literals_only_go_down() {

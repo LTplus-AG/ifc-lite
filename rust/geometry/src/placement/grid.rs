@@ -14,7 +14,7 @@ use nalgebra::Matrix4;
 /// The grid-local frame of an `IfcGridPlacement`: the grid-axis intersection
 /// of `PlacementLocation`, oriented by the optional `PlacementRefDirection`.
 /// `None` when the structure is malformed or the axes are parallel (the
-/// caller keeps the parent frame).
+/// caller refuses the placement, D30).
 ///
 /// The placement's world is `grid frame * this`, where the grid frame is
 ///   • IFC4X1+: `PlacementRelTo` (the grid's own placement), composed like
@@ -35,8 +35,8 @@ pub(super) fn local_frame(
 /// Decode `IfcGridPlacement.PlacementLocation` (an
 /// `IfcVirtualGridIntersection`) into a grid-local transform: locate the
 /// grid-axis intersection point and orient it by the optional
-/// `PlacementRefDirection`. Returns `None` (→ caller keeps the grid's own
-/// transform) when the structure is malformed or the axes are parallel.
+/// `PlacementRefDirection`. Returns `None` (→ the caller refuses the
+/// placement) when the structure is malformed or the axes are parallel.
 fn try_resolve_grid_intersection(
     placement: &DecodedEntity,
     location: &DecodedEntity,

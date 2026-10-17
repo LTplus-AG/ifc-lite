@@ -14,9 +14,9 @@
 //! which holds the grid's `ObjectPlacement` world). Errors are never memoised.
 
 use super::chain_walk::{climb, Climb, Frame};
-use super::{linear, grid, Axis2Placement, PlacementError, PlacementResult};
+use super::{grid, linear, missing, unsupported, Axis2Placement, PlacementResult};
 use crate::math::mat4;
-use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
+use ifc_lite_core::{DecodedEntity, EntityDecoder};
 use nalgebra::Matrix4;
 use smallvec::SmallVec;
 
@@ -44,8 +44,10 @@ const OBJECT_PLACEMENT: usize = 5;
 /// The unscaled world transform of `placement`, composed
 /// `((T_root·L_1)·L_2)…·L_leaf` up `PlacementRelTo`.
 ///
-/// A record that is not a placement is the identity and ends the walk, as it
-/// always has; a local frame that cannot be read propagates its error.
+/// Nothing is defaulted (D30): a record that is not a placement, a `$`
+/// `RelativePlacement`, a `RelativePlacement` that is not an `IfcAxis2Placement`
+/// and a linear or grid frame that cannot be sampled are refused and counted.
+/// A 2D `RelativePlacement` is honoured, as the IFC select allows.
 pub fn resolve_chain(placement: &DecodedEntity, decoder: &mut EntityDecoder) -> PlacementResult<Matrix4<f64>> {
     // The hot path: a memo hit is one lookup, before anything is allocated.
     if let Some(m) = decoder.get_placement_transform_cached(placement.id) {
@@ -53,6 +55,9 @@ pub fn resolve_chain(placement: &DecodedEntity, decoder: &mut EntityDecoder) -> 
     }
     let mut climbed = Climb::new();
     climb(&mut climbed, placement, decoder, true, true)?;
+    if let Some((at, found)) = climbed.stopped_at {
+        return Err(unsupported(decoder, at, found));
+    }
     let mut acc = climbed.base;
     for frame in climbed.frames.iter().rev() {
         if let Some(axis_id) = frame.alias {
@@ -87,31 +92,34 @@ pub fn chain(placement: &DecodedEntity, decoder: &mut EntityDecoder) -> Placemen
     let mut climbed = Climb::new();
     climb(&mut climbed, placement, decoder, false, false)?;
     if let Some((at, found)) = climbed.stopped_at {
-        return Err(PlacementError::Unsupported { at, found });
+        return Err(unsupported(decoder, at, found));
     }
     Ok(climbed.frames.iter().map(|f| Link { id: f.entity.id, kind: f.kind }).collect())
 }
 
-/// The local-to-parent frame of one link. Linear and grid frames that cannot
-/// be sampled are the identity (X2 retires that leniency).
+/// The local-to-parent frame of one link. A frame that cannot be read or
+/// sampled is refused, never the identity: the element would sit at its
+/// parent's origin instead of being counted as lost (D3, D30).
 pub(super) fn frame_matrix(frame: &Frame, decoder: &mut EntityDecoder) -> PlacementResult<Matrix4<f64>> {
     let entity = &frame.entity;
+    let at = entity.id;
     Ok(match frame.kind {
-        LinkKind::Local => match entity.get(1).filter(|attr| !attr.is_null()) {
-            Some(attr) => match decoder.resolve_ref(attr)? {
-                Some(rel) if rel.ifc_type == IfcType::IfcAxis2Placement3D => {
-                    Axis2Placement::read_3d(&rel, decoder)?.matrix()
-                }
-                _ => Matrix4::identity(),
-            },
-            None => Matrix4::identity(),
-        },
-        LinkKind::Linear => linear::local_frame(entity, decoder).unwrap_or_else(Matrix4::identity),
+        LinkKind::Local => {
+            let rel = entity
+                .get(1)
+                .filter(|attr| !attr.is_null())
+                .map(|attr| decoder.resolve_ref(attr))
+                .transpose()?
+                .flatten()
+                .ok_or_else(|| missing(decoder, at, "RelativePlacement"))?;
+            Axis2Placement::read(&rel, decoder)?.matrix()
+        }
+        LinkKind::Linear => linear::local_frame(entity, decoder)
+            .ok_or_else(|| missing(decoder, at, "a resolvable CartesianPosition or RelativePlacement"))?,
         LinkKind::Grid => frame
             .grid
             .as_ref()
             .and_then(|ctx| grid::local_frame(entity, ctx, decoder))
-            .unwrap_or_else(Matrix4::identity),
+            .ok_or_else(|| missing(decoder, at, "a resolvable grid intersection"))?,
     })
 }
-

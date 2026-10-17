@@ -181,7 +181,11 @@ fn resolve_placement_for_symbolic(
     unit_scale: f64,
     depth: usize,
 ) -> Transform2D {
-    if depth > 50 || placement.ifc_type != IfcType::IfcLocalPlacement {
+    // The shared placement bound, not a private 50 (SYM-16): the mesh path and
+    // the 2D drawing path walk this same `PlacementRelTo` chain, and a chain of
+    // 51..=100 links drew its symbols at the origin here while its mesh sat in
+    // place.
+    if depth > ifc_lite_core::MAX_PLACEMENT_DEPTH || placement.ifc_type != IfcType::IfcLocalPlacement {
         return Transform2D::unresolved(); // cycle guard/unsupported type (#2256)
     }
 

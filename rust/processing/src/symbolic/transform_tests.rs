@@ -162,3 +162,31 @@ fn operator_2d_local_origin_leaves_tz_zero() {
     assert!((result.ty - 5.0).abs() < 1e-4, "ty: {result:?}");
     assert!(result.tz.abs() < 1e-6, "2D operator must leave tz at 0: {result:?}");
 }
+
+/// PROCESSING-SYM-16 (#7779): `links` chained `IfcLocalPlacement`s, each
+/// translating +1 in X, under a product whose `ObjectPlacement` is the leaf.
+fn chained_product(links: usize) -> String {
+    let mut body = String::from("#1=IFCAXIS2PLACEMENT3D(#2,$,$);\n#2=IFCCARTESIANPOINT((1.,0.,0.));\n#10=IFCLOCALPLACEMENT($,#1);\n");
+    for i in 1..links {
+        body.push_str(&format!("#{}=IFCLOCALPLACEMENT(#{},#1);\n", 10 + i, 9 + i));
+    }
+    body.push_str(&format!(
+        "#900=IFCWALL('0000000000000000000000',$,$,$,$,#{},$,$,$);\n",
+        9 + links
+    ));
+    body
+}
+
+#[test]
+fn a_chain_past_fifty_links_resolves_like_the_mesh_path_sym_16() {
+    // Base capped the recursion at `depth > 50` (51 links) and returned
+    // `unresolved()` (tz = NaN, the symbol kept at the origin).
+    for links in [40, 51, 80, ifc_lite_core::MAX_PLACEMENT_DEPTH] {
+        let content = format!("{HEADER}{}{FOOTER}", chained_product(links));
+        let mut decoder = EntityDecoder::new(&content);
+        let product = decoder.decode_by_id(900).unwrap();
+        let t = resolve_object_placement(&product, &mut decoder, 1.0);
+        assert!(t.tz.is_finite(), "{links} links must resolve");
+        assert_eq!(t.tx, links as f64, "{links} links compose in full");
+    }
+}

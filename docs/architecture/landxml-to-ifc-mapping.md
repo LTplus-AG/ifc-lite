@@ -625,14 +625,14 @@ sufficient on its own:
    requires the *absence* of a cant layout; ALS008), so cant semantics cannot be written
    without that geometry beside a vertical layout's gradient curve. §11.6's acceptance
    standard is that IfcOpenShell regenerates each curve segment from our semantics and gets
-   ours back. For cant it cannot: IfcOpenShell 0.8.5's `_map_alignment_cant_segment`
-   derives the segment placement from the *mean* rail height only, so a cant raising the
-   left rail and the same cant raising the right rail map to identical geometry; a cant
-   rotated about the track centre maps to an untilted axis; and a linear transition into a
-   centre-rotated cant raises `ZeroDivisionError`.
-   `tools/ifcopenshell_reference/probe_cant_mapping.py` measures all three, and
-   `ifcopenshell-conformance.test.ts` asserts them. A pinned-version bump that fixes the
-   mapping turns that test red, which is the signal to re-examine this blocker.
+   ours back. IfcOpenShell 0.9.0.post1 fixes 0.8.5's mirror-blind constant-cant
+   mapping and correctly tilts a constant cant rotated about the track centre. It still
+   raises `ZeroDivisionError` for a linear transition into a centre-rotated cant, so it
+   cannot yet grade every required segment.
+   `tools/ifcopenshell_reference/probe_cant_mapping.py` measures all three cases, and
+   `ifcopenshell-conformance.test.ts` asserts both corrected constant-cant cases and the
+   remaining transition failure. A future engine that maps that transition turns the
+   test red, signalling that this blocker must be re-examined. No cant output is enabled.
 3. **`RailHeadDistance` is not in the source.** LandXML's `Cant/@gauge` is "the rail to
    rail distance" (track gauge, 1.435 m standard); IFC's `RailHeadDistance` is the distance
    between the contact-patch centres (about 1.500 m for the same track). Copying one into
@@ -702,8 +702,8 @@ event.
    or superelevation is named with its record count and the IFC 4.3 reason; an alignment
    refused whole does not have its cant named again; no `IfcAlignmentCant`,
    `IfcSegmentedReferenceCurve` or superelevation referent is written.
-2. **Premise pinned.** `ifcopenshell-conformance.test.ts` runs `probe_cant_mapping.py` and
-   asserts the three findings of §13.2 item 2, then validates an export of an alignment
+2. **Premise measured.** `ifcopenshell-conformance.test.ts` runs `probe_cant_mapping.py` and
+   asserts the two corrected cases and remaining failure of §13.2 item 2, then validates an export of an alignment
    carrying cant: 0 issues, horizontal layout only.
 
 ## 14. Station equations and `CgPoint` referents

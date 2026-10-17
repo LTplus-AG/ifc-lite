@@ -45,7 +45,7 @@ fn height_7292(mesh: &Mesh, x: f64, y: f64) -> Vec<f64> {
 }
 
 #[test]
-fn issue_7292_unseeded_open_fold_keeps_ordinary_cleanup() {
+fn issue_7292_unsupported_open_fold_keeps_ordinary_cleanup() {
     let height = 1.0 / 65_536.0;
     let tris = folded_quad_7292(2.0, height);
     let mut input = tris_to_mesh(&tris);
@@ -55,7 +55,7 @@ fn issue_7292_unseeded_open_fold_keeps_ordinary_cleanup() {
     let output = ClippingProcessor::consolidate_coplanar(input);
     assert_eq!(height_7292(&output, 0.5, 0.5), vec![0.0]);
     assert_eq!(height_7292(&output, 0.5, -0.5), vec![0.0],
-        "an isolated healthy fold lacks any certified shared source chain");
+        "an isolated fold lacks four unique opposed healthy supports");
 }
 
 #[test]
@@ -112,12 +112,14 @@ fn supported_fold_star_7292() -> Vec<Tri> {
 
 #[test]
 fn issue_7292_supported_source_star_retains_the_actual_shared_fold_chain() {
-    let mut input = tris_to_mesh(&supported_fold_star_7292());
+    let mut faces = supported_fold_star_7292();
+    faces.truncate(6); // The closed healthy star needs no thin-cell seed.
+    let mut input = tris_to_mesh(&faces);
     input.plane_tags = None;
     let buckets = super::super::buckets::build(&input);
     let supported = supported_cells::find(&buckets);
-    assert_eq!(supported.cells.len(), 1, "one independently supported thin cell seeds retention");
-    assert_eq!(supported.buckets.len(), 2, "only that seed and its supported neighboring fold opt in");
+    assert!(supported.cells.is_empty(), "this source star contains no retained thin cells");
+    assert_eq!(supported.folded_buckets.len(), 1, "only the fully supported finite fold opts in");
     let output = ClippingProcessor::consolidate_coplanar(input);
     // The query has exact barycentrics (1/2,1/4,1/4) on the second folded
     // triangle S-Q-R; its analytic height is half S.z, irrespective of Q.y.
@@ -134,7 +136,9 @@ fn issue_7292_fold_star_requires_complete_unique_opposed_source_support() {
             0 => { faces.remove(4); } // Open outer edge.
             1 => { faces[4].swap(0, 1); } // Same-directed support.
             2 => { faces.push(faces[4]); } // Third/nonmanifold edge use.
-            _ => { faces.truncate(6); } // No original protected-bucket seed.
+            _ => { // Unrelated positive-area overlap in an external support bucket.
+                faces.push([[1.0,102.0,0.0],[2.0,102.0,0.0],[1.5,101.0,0.0]]);
+            }
         }
         let target = supported_cells::cell_key(&faces[2].map(Point3::from));
         let mut input = tris_to_mesh(&faces);
@@ -144,6 +148,37 @@ fn issue_7292_fold_star_requires_complete_unique_opposed_source_support() {
             .any(|t| supported_cells::cell_key(&t.v) == target)).map(|(key, _)| key).unwrap();
         let supported = supported_cells::find(&buckets);
         assert!(!supported.buckets.contains(key),
-            "an uncertified fold must not opt in, even if the seed is also refused");
+            "an open, reversed, nonmanifold or overlapping support must not opt in");
     }
+}
+
+#[test]
+fn issue_7292_unrelated_nonmanifold_source_refuses_fold_but_keeps_thin_certificate() {
+    let mut faces = supported_fold_star_7292();
+    let mut input = tris_to_mesh(&faces);
+    input.plane_tags = None;
+    let closed = supported_cells::find(&super::super::buckets::build(&input));
+    assert_eq!(closed.folded_buckets.len(), 1, "the closed source star is eligible");
+    assert!(!closed.cells.is_empty(), "the disjoint thin cell has its own local support");
+    // An unrelated open component does not change the closed local star.
+    let stray = [[32.0,0.0,0.0],[32.0,2.0,0.0],[32.0,0.0,2.0]];
+    faces.push(stray);
+    let mut input = tris_to_mesh(&faces);
+    input.plane_tags = None;
+    let open = supported_cells::find(&super::super::buckets::build(&input));
+    assert_eq!(open.folded_buckets, closed.folded_buckets,
+        "singleton boundary edges elsewhere do not invalidate a closed local star");
+    assert_eq!(open.cells, closed.cells);
+    // Three uses of each remote edge, with both directions present. The local
+    // fold and all four opposite supports are unchanged; the whole source is
+    // nevertheless nonmanifold and cannot justify preserving healthy buckets.
+    faces.extend([[stray[0],stray[2],stray[1]],stray]);
+    let mut input = tris_to_mesh(&faces);
+    input.plane_tags = None;
+    let nonmanifold = supported_cells::find(&super::super::buckets::build(&input));
+    assert!(nonmanifold.folded_buckets.is_empty(),
+        "a closed local star cannot authorize fold retention in a nonmanifold source");
+    assert!(nonmanifold.fold_support_buckets.is_empty());
+    assert_eq!(nonmanifold.cells, closed.cells,
+        "the existing local thin-cell certificate does not require global closure");
 }

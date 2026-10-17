@@ -19,7 +19,6 @@ mod chain;
 mod chain_walk;
 mod grid;
 mod grid_frame;
-mod leaf;
 pub(crate) mod linear;
 mod validate;
 
@@ -29,6 +28,8 @@ mod chain_tests;
 mod grid_tests;
 #[cfg(test)]
 mod linear_tests;
+#[cfg(test)]
+mod leaf_policy_tests;
 #[cfg(test)]
 mod mod_tests;
 
@@ -77,13 +78,20 @@ pub type PlacementResult<T> = std::result::Result<T, PlacementError>;
 const Z: [f64; 3] = [0.0, 0.0, 1.0];
 const X: [f64; 3] = [1.0, 0.0, 0.0];
 
-/// The attributes of an `IfcAxis2Placement3D`: raw `Axis` and `RefDirection`
-/// ratios (`None` when `$`), orthonormalised only by [`Self::matrix`].
+/// The attributes of an `IfcAxis2Placement3D` or `IfcAxis2Placement2D`: raw
+/// `Axis` and `RefDirection` ratios (`None` when `$`), orthonormalised only by
+/// [`Self::matrix`].
+///
+/// Points and directions are read under the one leaf rule of
+/// `EntityDecoder::{point3, direction3}` (D26): 2 or 3 finite numbers, a 2D
+/// value promotes to z = 0, anything else is refused and counted (D3).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Axis2Placement {
     pub location: [f64; 3],
     pub axis: Option<[f64; 3]>,
     pub ref_direction: Option<[f64; 3]>,
+    /// Read from an `IfcAxis2Placement2D`: `axis` is +Z, `location` has z = 0.
+    pub planar: bool,
 }
 
 impl Axis2Placement {
@@ -91,16 +99,31 @@ impl Axis2Placement {
     /// Axis (1), RefDirection (2). The caller selected the type.
     pub fn read_3d(placement: &DecodedEntity, decoder: &mut EntityDecoder) -> PlacementResult<Self> {
         Ok(Self {
-            location: leaf::point(placement, decoder, 0)?,
-            axis: leaf::optional_direction(placement, decoder, 1)?,
-            ref_direction: leaf::optional_direction(placement, decoder, 2)?,
+            location: location(placement, decoder)?,
+            axis: decoder.direction3_at(placement, 1)?,
+            ref_direction: decoder.direction3_at(placement, 2)?,
+            planar: false,
         })
     }
 
-    /// [`Self::read_3d`] on a record that must be an `IfcAxis2Placement3D`.
+    /// Read the attribute layout of an `IfcAxis2Placement2D`: Location (0),
+    /// RefDirection (1). The Axis is +Z, so [`Self::matrix`] is the XY frame
+    /// of [`build_axis2_matrix`]. The caller selected the type.
+    pub fn read_2d(placement: &DecodedEntity, decoder: &mut EntityDecoder) -> PlacementResult<Self> {
+        Ok(Self {
+            location: location(placement, decoder)?,
+            axis: Some(Z),
+            ref_direction: decoder.direction3_at(placement, 1)?,
+            planar: true,
+        })
+    }
+
+    /// [`Self::read_3d`] or [`Self::read_2d`] by the record's type; any other
+    /// type is [`PlacementError::Unsupported`].
     pub fn read(placement: &DecodedEntity, decoder: &mut EntityDecoder) -> PlacementResult<Self> {
         match &placement.ifc_type {
             IfcType::IfcAxis2Placement3D => Self::read_3d(placement, decoder),
+            IfcType::IfcAxis2Placement2D => Self::read_2d(placement, decoder),
             found => Err(PlacementError::Unsupported { at: placement.id, found: found.clone() }),
         }
     }
@@ -134,10 +157,7 @@ impl Axis1Placement {
         if placement.ifc_type != IfcType::IfcAxis1Placement {
             return Err(PlacementError::Unsupported { at: placement.id, found: placement.ifc_type.clone() });
         }
-        Ok(Self {
-            location: leaf::point(placement, decoder, 0)?,
-            axis: leaf::optional_direction(placement, decoder, 1)?,
-        })
+        Ok(Self { location: location(placement, decoder)?, axis: decoder.direction3_at(placement, 1)? })
     }
 
     /// The Axis, or the IFC derived default +Z. A consumer whose WR rules the
@@ -145,6 +165,13 @@ impl Axis1Placement {
     pub fn axis_or_ifc_default(&self) -> [f64; 3] {
         self.axis.unwrap_or(Z)
     }
+}
+
+/// The mandatory Location (attribute 0) under the leaf rule.
+fn location(placement: &DecodedEntity, decoder: &mut EntityDecoder) -> PlacementResult<[f64; 3]> {
+    decoder
+        .point3_at(placement, 0)?
+        .ok_or(PlacementError::Missing { at: placement.id, attr: "Location" })
 }
 
 /// Orthonormalize a placement's raw axes + location into a column-major 4×4

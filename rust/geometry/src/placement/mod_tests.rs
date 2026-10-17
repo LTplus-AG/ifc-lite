@@ -23,7 +23,8 @@ fn axis2_placement_reads_raw_attributes_and_defaults_in_matrix() {
 #2=IFCDIRECTION((0.0,1.0,0.0));
 #3=IFCAXIS2PLACEMENT3D(#1,#2,$);
 #4=IFCAXIS2PLACEMENT3D(#1);
-#5=IFCAXIS2PLACEMENT2D(#1,$);";
+#5=IFCAXIS2PLACEMENT2D(#1,$);
+#6=IFCDIRECTION((1.,0.,0.));";
     let mut decoder = EntityDecoder::new(content);
     let placed = Axis2Placement::read_id(3, &mut decoder).unwrap();
     assert_eq!(placed.location, [10.0, 20.0, 30.0]);
@@ -38,10 +39,13 @@ fn axis2_placement_reads_raw_attributes_and_defaults_in_matrix() {
     assert_eq!(m.column(2).xyz(), Vector3::new(0.0, 0.0, 1.0));
     assert_eq!(m.column(3).xyz(), Vector3::new(10.0, 20.0, 30.0));
 
-    // `read` refuses a record that is not an IfcAxis2Placement3D.
+    // `read` dispatches on the type: a 2D placement is planar, anything else is refused.
+    let planar = Axis2Placement::read_id(5, &mut decoder).unwrap();
+    assert!(planar.planar && !placed.planar);
+    assert_eq!(planar.axis, Some([0.0, 0.0, 1.0]));
     assert!(matches!(
-        Axis2Placement::read_id(5, &mut decoder),
-        Err(PlacementError::Unsupported { at: 5, found: IfcType::IfcAxis2Placement2D })
+        Axis2Placement::read_id(6, &mut decoder),
+        Err(PlacementError::Unsupported { at: 6, found: IfcType::IfcDirection })
     ));
 }
 

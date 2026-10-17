@@ -262,7 +262,7 @@ mod tests {
         let (vc, ic) = ([3u32], [indices.len() as u32]);
         let (color, origin) = ([0.5f32, 0.5, 0.5, 1.0], [0.0f64; 3]);
         let glb = crate::try_export_glb_from_meshes(
-            &positions, &normals, indices, &vc, &ic, &color, &origin, &[1], false, true, false,
+            &positions, &normals, indices, &vc, &ic, &color, &origin, &[1], false, true, false, None,
         )
         .map(drop);
         let dae = crate::try_export_collada_from_meshes(

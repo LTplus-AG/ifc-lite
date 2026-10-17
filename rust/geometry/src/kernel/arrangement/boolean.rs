@@ -275,14 +275,13 @@ pub fn boolean_topology_hash(a: &[Tri], b: &[Tri], op: BoolOp) -> u64 {
     let mut tris: Vec<[Vid; 3]> =
         boolean_vids(&arr, a, b, op).into_iter().map(rotate_min_first).collect();
     tris.sort_unstable();
-    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    let mut h = ifc_lite_core::hash::Fnv1a64::new();
     for t in tris {
         for v in t {
-            h ^= v as u64;
-            h = h.wrapping_mul(0x0000_0100_0000_01b3);
+            h.mix_word(v as u64);
         }
     }
-    h
+    h.finish()
 }
 
 /// Axis-aligned box `[lo,hi]` as 12 outward-wound triangles.

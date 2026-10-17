@@ -417,7 +417,7 @@ fn from_meshes_export_is_structurally_conformant() {
         &[11, 22],
         true,
         true,
-        false,
+        false, None,
     )
     .expect("valid mesh arrays export");
     assert_gltf_conformant(&glb.0, "from_meshes");

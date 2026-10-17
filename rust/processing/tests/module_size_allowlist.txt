@@ -172,7 +172,6 @@
 # record) out to the operand.rs sibling and the failure-log methods out to
 # failures.rs; 1005 -> 936.
      936 rust/geometry/src/processors/boolean/mod.rs
-     486 rust/geometry/src/processors/brep/faceted.rs
 # csg_primitive.rs row REMOVED: #3821 moved IfcSphere (processor + UV-sphere
 # tessellation, verbatim) to the sphere.rs sibling to make room for the
 # CsgSolid boolean-failure hand-off; 422 -> 348, under the 400 limit. That

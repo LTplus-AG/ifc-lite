@@ -106,3 +106,9 @@ impl LandXmlTinStreamSession {
         self.queue.len()
     }
 }
+
+impl Drop for LandXmlTinStreamSession {
+    fn drop(&mut self) {
+        self.abort();
+    }
+}

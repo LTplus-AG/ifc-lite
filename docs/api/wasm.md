@@ -207,7 +207,7 @@ Each exporter takes the raw IFC bytes (or already-produced meshes) and returns a
 
 ```typescript
 exportGlb(content, includeMetadata, hidden, isolated, hiddenTypesCsv, lit?): Uint8Array;
-exportGlbFromMeshes(/* flattened MeshData buffers */): Uint8Array;
+exportGlbFromMeshes(/* flattened MeshData buffers */, worldMatrix?: Float64Array): Uint8Array;
 exportObj(content, includeNormals, hidden, isolated): Uint8Array;
 exportKmzFromMeshes(
   positions, normals, indices, vertexCounts, indexCounts, colors, origins,
@@ -220,15 +220,17 @@ exportIfcx(content, onlyKnownProperties, pretty): Uint8Array;
 exportStep(content, schema, included, mutationsJson): Uint8Array;  // `included` accepts undefined
 exportMerged(concatenated, lengths, schema): Uint8Array;
 exportHbjson(content, name): Uint8Array;
+exportDfjson(content, name): string;  // Dragonfly DFJSON text, not bytes
 ```
 
 **Example:**
 ```typescript
 const obj = api.exportObj(ifcContent, true, new Uint32Array(), new Uint32Array());
 const hbjson = api.exportHbjson(ifcContent, 'my_model');
+const dfjson = api.exportDfjson(ifcContent, 'my_model');
 ```
 
-The render-geometry exporters fail closed. When no mesh would be written, `exportGlb`, `exportObj` and `exportUsd` throw an `Error` whose message starts with `NO_RENDER_GEOMETRY`. This covers an empty visible mesh set and a model with no render geometry at all. They never return an empty GLB, a header-only OBJ or a USD stage with no meshes. The data exporters (`exportCsv`, `exportJson`, `exportJsonld`, `exportIfcx`, `exportStep`, `exportHbjson`) never refuse a model for being empty: an empty table or graph is still a valid document.
+The render-geometry exporters fail closed. When no mesh would be written, `exportGlb`, `exportObj` and `exportUsd` throw an `Error` whose message starts with `NO_RENDER_GEOMETRY`. This covers an empty visible mesh set and a model with no render geometry at all. They never return an empty GLB, a header-only OBJ or a USD stage with no meshes. The data exporters (`exportCsv`, `exportJson`, `exportJsonld`, `exportIfcx`, `exportStep`, `exportHbjson`, `exportDfjson`) never refuse a model for being empty: an empty table or graph is still a valid document.
 
 The `isolated` / `included` isolation filters on `exportObj`, `exportGlb`,
 `exportJsonld` and `exportStep` all carry the same null-vs-empty distinction:

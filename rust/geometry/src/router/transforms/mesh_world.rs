@@ -255,7 +255,7 @@ impl GeometryRouter {
                 Some([min[0], min[1], min[2], max[0], max[1], max[2]])
             }
         });
-        mesh.local_to_world = Some(super::mat4_to_row_major(transform));
+        mesh.local_to_world = Some(crate::math::mat4::from_na(transform));
 
         let rtc = self.rtc_offset;
         let needs_rtc = self.has_rtc_offset() && !mesh.rtc_applied;

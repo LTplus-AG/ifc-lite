@@ -75,6 +75,8 @@ tracing = { workspace = true, optional = true, features = ["std"] }
 web-sys = { version = "=0.3.103", features = ["console", "Performance", "Window"] }
 
 [dev-dependencies]
+# Test-only (publish = false). Path-only: cargo strips it when packaging.
+ifc-lite-testkit = { path = "../testkit" }
 wasm-bindgen-test = "=0.3.76"
 
 [lints]

@@ -6,7 +6,7 @@
 //! (#6232 F2).
 
 use super::super::GeometryRouter;
-use super::mat4_to_col_array;
+use crate::math::mat4;
 use super::walk::PlacementWalk;
 use crate::Result;
 use ifc_lite_core::{DecodedEntity, EntityDecoder};
@@ -88,7 +88,7 @@ impl GeometryRouter {
             None => identity,
         };
         if !walk.truncated {
-            decoder.cache_placement_transform(axis_id, mat4_to_col_array(&walk.transform));
+            decoder.cache_placement_transform(axis_id, mat4::col_major_array(&walk.transform));
         }
         Ok(walk)
     }

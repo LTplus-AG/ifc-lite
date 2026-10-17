@@ -929,3 +929,30 @@ fn usd_and_gltf_agree_on_every_material_colour() {
         );
     }
 }
+
+/// #7734: USD lands a georeferenced model where the pipeline says it is: the
+/// `/World` matrix applied to each mesh's own translate + local points.
+#[test]
+fn usd_lands_where_the_model_is() {
+    use crate::frame_fixtures::{assert_aabb_close, frame_fixtures, reference_world_aabb};
+    for (label, content, tier) in frame_fixtures() {
+        let want = reference_world_aabb(content, tier);
+        let usda = export_usd(content.as_bytes(), &UsdOptions::default()).expect("has geometry");
+        let world = parse_matrix4d(&usda);
+        let (mut lo, mut hi) = ([f64::INFINITY; 3], [f64::NEG_INFINITY; 3]);
+        for mesh in parse_meshes(&usda) {
+            let t = mesh.translate.unwrap_or([0.0; 3]);
+            for p in mesh.points.chunks_exact(3) {
+                let w = apply_usd(
+                    &world,
+                    [t[0] + p[0] as f64, t[1] + p[1] as f64, t[2] + p[2] as f64],
+                );
+                for k in 0..3 {
+                    lo[k] = lo[k].min(w[k]);
+                    hi[k] = hi[k].max(w[k]);
+                }
+            }
+        }
+        assert_aabb_close(&format!("USD, {label}"), (lo, hi), want, 1e-2);
+    }
+}

@@ -162,6 +162,11 @@ impl<'a> Parser<'a> {
         (!self.version.is_empty()).then(|| (self.version.clone(), self.effective_units()))
     }
 
+    /// Whether the source has declared its `<Units>` yet (#7753).
+    pub(crate) fn declares_units(&self) -> bool {
+        self.units.is_some()
+    }
+
     /// #5175: a declared `<Units>` element always wins; the caller-supplied
     /// assumed unit only fills the gap when the source never declares one.
     pub(super) fn effective_units(&self) -> Option<LandXmlUnits> {

@@ -2,7 +2,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use super::{coincident_planes, cross3, dot3, drop_axis_of, e, sub_f64, orient2d_any, orient3d, Sign, Tri};
+use super::{coincident_planes, cross3, dot3, drop_axis_of, e, sub_f64, orient2d_any, Sign, Tri};
+use crate::kernel::predicates::orient3d_explicit;
 use crate::kernel::{budget, near_band::NearBand, ImplicitPoint};
 use super::finite_patch::{AdjacentFaces, near_shared_patch};
 use std::cell::OnceCell;
@@ -30,7 +31,7 @@ pub(super) fn symbolic_point_in_tri_proj(c: &ImplicitPoint, t: &Tri, n: [f64; 3]
 
 /// Per-triangle exact coincident-face test (see [`on_surface_normal`]).
 fn on_surface_tri(c: [f64; 3], t: &Tri) -> Option<[f64; 3]> {
-    if orient3d(&e(t[0]), &e(t[1]), &e(t[2]), &e(c)) != Sign::Zero {
+    if orient3d_explicit(t[0], t[1], t[2], c) != Sign::Zero {
         return None; // c not on t's plane
     }
     let n = cross3(sub_f64(t[1], t[0]), sub_f64(t[2], t[0]));

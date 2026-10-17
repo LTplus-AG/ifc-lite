@@ -20,17 +20,14 @@ use super::GeometryHasher;
 impl GeometryHasher {
     /// Grow the world AABB by one reconstructed corner.
     ///
-    /// `f64::min`/`f64::max` return the non-NaN operand, so a NaN coordinate
-    /// (a malformed position buffer) is skipped rather than poisoning the box.
+    /// [`crate::math::aabb::Aabb3::extend`] skips a NaN coordinate (a malformed position buffer)
+    /// rather than letting it poison the box.
     ///
     /// `pub(super)` — the parent's `add_oriented_mesh` is the only caller; the
     /// accumulators are not open for writing from outside this pair of modules.
     #[inline]
     pub(super) fn extend_bounds(&mut self, world: &[f64; 3]) {
-        for k in 0..3 {
-            self.min[k] = self.min[k].min(world[k]);
-            self.max[k] = self.max[k].max(world[k]);
-        }
+        self.bounds.extend(*world);
     }
 
     /// The entity's world-space AABB as `[minx, miny, minz, maxx, maxy, maxz]`,
@@ -80,14 +77,7 @@ impl GeometryHasher {
     /// The companion [`Self::volume`] exists but is far narrower — it is
     /// `None` for a large minority of entities, by design.
     pub fn world_aabb(&self) -> Option<[f64; 6]> {
-        let well_formed = (0..3).all(|k| {
-            self.min[k].is_finite() && self.max[k].is_finite() && self.min[k] <= self.max[k]
-        });
-        if !well_formed {
-            return None;
-        }
-        Some([
-            self.min[0], self.min[1], self.min[2], self.max[0], self.max[1], self.max[2],
-        ])
+        // The well-formedness rule and its rationale live on `Aabb3`.
+        self.bounds.is_well_formed().then(|| self.bounds.to_array6())
     }
 }

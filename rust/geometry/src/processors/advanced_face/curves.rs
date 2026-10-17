@@ -6,7 +6,7 @@
 //! and circle edge discretization).
 
 use crate::{scale_segments, Point3, TessellationQuality};
-use ifc_lite_core::{DecodedEntity, EntityDecoder};
+use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 
 use super::bspline::evaluate_bspline_curve;
 use super::bspline_budget::{MAX_BSPLINE_CURVE_CONTROL_POINTS, MAX_BSPLINE_DEGREE};
@@ -53,6 +53,26 @@ pub(super) fn parse_curve_knots(curve: &DecodedEntity) -> Result<Option<(Vec<i64
     Ok(None)
 }
 
+/// `IfcRationalBSplineCurveWithKnots.WeightsData` (attribute 8): mandatory,
+/// one finite weight > 0 per control point, the rule the rational surface
+/// path applies (#7687). A missing, short, non-numeric or non-positive entry
+/// refuses the curve (#7750): sampling it unweighted drew a different curve.
+fn parse_curve_weights(curve: &DecodedEntity, control_points: usize) -> Result<Vec<f64>, Refused> {
+    let weights = curve
+        .get(8)
+        .and_then(|a| a.as_list())
+        .ok_or(Refused)?
+        .iter()
+        .map(|v| v.as_float().filter(|w| w.is_finite() && *w > 0.0))
+        .collect::<Option<Vec<_>>>()
+        .ok_or(Refused)?;
+    if weights.len() == control_points {
+        Ok(weights)
+    } else {
+        Err(Refused)
+    }
+}
+
 /// Read a parameter trim from an `IfcTrimmedCurve.Trim1/Trim2` SELECT list:
 /// `IFCPARAMETERVALUE(x)` (stored as `List(["IFCPARAMETERVALUE", x])`) or a
 /// bare numeric. Cartesian trim points are ignored — the edge-loop walk
@@ -80,6 +100,15 @@ pub(super) fn read_trim_parameter(attr: &ifc_lite_core::AttributeValue) -> Optio
     param
 }
 
+/// The `(Trim1, Trim2)` parameter pair of an `IfcTrimmedCurve`, when both
+/// trims carry a parameter: the subspan a B-spline basis is sampled over.
+pub(super) fn trim_parameter_range(trimmed: &DecodedEntity) -> Option<(f64, f64)> {
+    trimmed
+        .get(1)
+        .and_then(read_trim_parameter)
+        .zip(trimmed.get(2).and_then(read_trim_parameter))
+}
+
 /// A curve whose authored data does not resolve (#7687, PROC-S21): a
 /// control point, polyline point or composite segment that names no usable
 /// entity. Sampling what remains would draw a different curve, so callers
@@ -104,10 +133,13 @@ pub(super) fn resolve_present(
 }
 
 /// A decoded `IfcBSplineCurveWithKnots`: degree, control points and the
-/// expanded knot vector, with `knots.len() > degree` guaranteed.
+/// expanded knot vector, with `knots.len() > degree` guaranteed. `weights`
+/// is `Some` (one per control point, finite and > 0) for an
+/// `IfcRationalBSplineCurveWithKnots` (#7750).
 struct BSplineCurve {
     degree: usize,
     control_points: Vec<Point3<f64>>,
+    weights: Option<Vec<f64>>,
     knots: Vec<f64>,
 }
 
@@ -118,7 +150,7 @@ impl BSplineCurve {
     }
 
     fn at(&self, t: f64) -> Point3<f64> {
-        evaluate_bspline_curve(t, self.degree, &self.control_points, &self.knots)
+        evaluate_bspline_curve(t, self.degree, &self.control_points, self.weights.as_deref(), &self.knots)
     }
 }
 
@@ -167,6 +199,11 @@ fn parse_bspline_curve(
         })
         .collect::<Option<Vec<_>>>()
         .ok_or(Refused)?;
+    let weights = if curve.ifc_type == IfcType::IfcRationalBSplineCurveWithKnots {
+        Some(parse_curve_weights(curve, control_points.len())?)
+    } else {
+        None
+    };
 
     if control_points.len() <= degree {
         return Ok(None);
@@ -183,7 +220,7 @@ fn parse_bspline_curve(
     if knots.len() <= degree {
         return Ok(None);
     }
-    Ok(Some(BSplineCurve { degree, control_points, knots }))
+    Ok(Some(BSplineCurve { degree, control_points, weights, knots }))
 }
 
 /// Sample points along a B-spline curve edge.

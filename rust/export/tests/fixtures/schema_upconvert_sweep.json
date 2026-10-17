@@ -1,5 +1,5 @@
 {
- "_comment": "Shared cross-language pin for STEP schema-conversion attribute reconciliation: padding the attributes a newer schema APPENDED (#1416) and trimming the ones the target lacks, in both directions (#7683). Both halves run their own converter over every case: rust/export/tests/schema_upconvert_parity.rs and packages/export/src/schema-upconvert-sweep.parity.test.ts. Which rows must exist is gated by rust/export/src/schema_registry_tests.rs (sweep_fixture_names_every_trimmed_and_padded_type_7683), which re-derives every (from, to, type) the converter trims or pads from core's EXPRESS registry: the types whose attribute NAME list is a strict prefix of the other schema's. The rows appended for #7683 use the input 'a0','a1',... so a trimmed or padded slot is visible by position; the rows before them were derived from packages/data's generated tables and use $. Hand-written vectors and negative controls carry their reason in `why`. Exception: the two IFC4 -> IFC4X3 IFCCARTESIANPOINTLIST* rows (#5755) come from the IFC4 EXPRESS, because packages/data's IFC4 table wrongly lists TagList for IFC4. DO NOT hand-edit a row to make a test pass.",
+ "_comment": "Shared cross-language pin for STEP schema-conversion attribute reconciliation: padding the attributes a newer schema APPENDED (#1416) and trimming the ones the target lacks, in both directions (#7683). Both halves run their own converter over every case: rust/export/tests/schema_upconvert_parity.rs and packages/export/src/schema-upconvert-sweep.parity.test.ts. Which rows must exist is gated by rust/export/src/schema_registry_tests.rs (sweep_fixture_names_every_trimmed_and_padded_type_7683), which re-derives every (from, to, type) the converter trims or pads from core's EXPRESS registry: the types whose attribute NAME list is a strict prefix of the other schema's. The rows appended for #7683 use the input 'a0','a1',... so a trimmed or padded slot is visible by position; the rows before them were derived from packages/data's generated tables and use $. Hand-written vectors and negative controls carry their reason in `why`. Exception: the two IFC4 -> IFC4X3 IFCCARTESIANPOINTLIST* rows (#5755) come from the IFC4 EXPRESS, because packages/data's IFC4 table wrongly lists TagList for IFC4. The rows appended for #7739 pin the types of schema_positional_renames.json (attributes a schema renamed in place) the same way. DO NOT hand-edit a row to make a test pass.",
  "cases": [
   {
    "why": "appended attributes are padded (IFCAPPLIEDVALUE 6 -> 10)",
@@ -2394,6 +2394,314 @@
    "to": "IFC4",
    "line": "#10=IFCDISTRIBUTIONCONTROLELEMENT('g',#2,'Sensor',$,$,#4,#5,'tag','CE-1');",
    "expect": "#10=IFCDISTRIBUTIONCONTROLELEMENT('g',#2,'Sensor',$,$,#4,#5,'tag');"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: padded (IFCACTIONREQUEST 6 -> 9); renamed RequestID->Identification (#7739)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCACTIONREQUEST('a0','a1','a2','a3','a4','a5');",
+   "expect": "#7=IFCACTIONREQUEST('a0','a1','a2','a3','a4','a5',$,$,$);"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: padded (IFCACTIONREQUEST 6 -> 9); renamed RequestID->Identification (#7739)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCACTIONREQUEST('a0','a1','a2','a3','a4','a5');",
+   "expect": "#7=IFCACTIONREQUEST('a0','a1','a2','a3','a4','a5',$,$,$);"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: trimmed (IFCACTIONREQUEST 9 -> 6); renamed RequestID->Identification (#7739)",
+   "from": "IFC4",
+   "to": "IFC2X3",
+   "line": "#7=IFCACTIONREQUEST('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "expect": "#7=IFCACTIONREQUEST('a0','a1','a2','a3','a4','a5');"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: trimmed (IFCACTIONREQUEST 9 -> 6); renamed RequestID->Identification (#7739)",
+   "from": "IFC4X3",
+   "to": "IFC2X3",
+   "line": "#7=IFCACTIONREQUEST('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "expect": "#7=IFCACTIONREQUEST('a0','a1','a2','a3','a4','a5');"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: padded (IFCCLASSIFICATIONREFERENCE 4 -> 6); renamed ItemReference->Identification (#7739)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCCLASSIFICATIONREFERENCE('a0','a1','a2','a3');",
+   "expect": "#7=IFCCLASSIFICATIONREFERENCE('a0','a1','a2','a3',$,$);"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: padded (IFCCLASSIFICATIONREFERENCE 4 -> 6); renamed ItemReference->Identification (#7739)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCCLASSIFICATIONREFERENCE('a0','a1','a2','a3');",
+   "expect": "#7=IFCCLASSIFICATIONREFERENCE('a0','a1','a2','a3',$,$);"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: trimmed (IFCCLASSIFICATIONREFERENCE 6 -> 4); renamed ItemReference->Identification (#7739)",
+   "from": "IFC4",
+   "to": "IFC2X3",
+   "line": "#7=IFCCLASSIFICATIONREFERENCE('a0','a1','a2','a3','a4','a5');",
+   "expect": "#7=IFCCLASSIFICATIONREFERENCE('a0','a1','a2','a3');"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: trimmed (IFCCLASSIFICATIONREFERENCE 6 -> 4); renamed ItemReference->Identification (#7739)",
+   "from": "IFC4X3",
+   "to": "IFC2X3",
+   "line": "#7=IFCCLASSIFICATIONREFERENCE('a0','a1','a2','a3','a4','a5');",
+   "expect": "#7=IFCCLASSIFICATIONREFERENCE('a0','a1','a2','a3');"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: padded (IFCDOCUMENTREFERENCE 3 -> 5); renamed ItemReference->Identification (#7739)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCDOCUMENTREFERENCE('a0','a1','a2');",
+   "expect": "#7=IFCDOCUMENTREFERENCE('a0','a1','a2',$,$);"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: padded (IFCDOCUMENTREFERENCE 3 -> 5); renamed ItemReference->Identification (#7739)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCDOCUMENTREFERENCE('a0','a1','a2');",
+   "expect": "#7=IFCDOCUMENTREFERENCE('a0','a1','a2',$,$);"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: trimmed (IFCDOCUMENTREFERENCE 5 -> 3); renamed ItemReference->Identification (#7739)",
+   "from": "IFC4",
+   "to": "IFC2X3",
+   "line": "#7=IFCDOCUMENTREFERENCE('a0','a1','a2','a3','a4');",
+   "expect": "#7=IFCDOCUMENTREFERENCE('a0','a1','a2');"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: trimmed (IFCDOCUMENTREFERENCE 5 -> 3); renamed ItemReference->Identification (#7739)",
+   "from": "IFC4X3",
+   "to": "IFC2X3",
+   "line": "#7=IFCDOCUMENTREFERENCE('a0','a1','a2','a3','a4');",
+   "expect": "#7=IFCDOCUMENTREFERENCE('a0','a1','a2');"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: padded (IFCLIBRARYREFERENCE 3 -> 6); renamed ItemReference->Identification (#7739)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCLIBRARYREFERENCE('a0','a1','a2');",
+   "expect": "#7=IFCLIBRARYREFERENCE('a0','a1','a2',$,$,$);"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: padded (IFCLIBRARYREFERENCE 3 -> 6); renamed ItemReference->Identification (#7739)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCLIBRARYREFERENCE('a0','a1','a2');",
+   "expect": "#7=IFCLIBRARYREFERENCE('a0','a1','a2',$,$,$);"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: trimmed (IFCLIBRARYREFERENCE 6 -> 3); renamed ItemReference->Identification (#7739)",
+   "from": "IFC4",
+   "to": "IFC2X3",
+   "line": "#7=IFCLIBRARYREFERENCE('a0','a1','a2','a3','a4','a5');",
+   "expect": "#7=IFCLIBRARYREFERENCE('a0','a1','a2');"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: trimmed (IFCLIBRARYREFERENCE 6 -> 3); renamed ItemReference->Identification (#7739)",
+   "from": "IFC4X3",
+   "to": "IFC2X3",
+   "line": "#7=IFCLIBRARYREFERENCE('a0','a1','a2','a3','a4','a5');",
+   "expect": "#7=IFCLIBRARYREFERENCE('a0','a1','a2');"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: padded (IFCPERMIT 6 -> 9); renamed PermitID->Identification (#7739)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCPERMIT('a0','a1','a2','a3','a4','a5');",
+   "expect": "#7=IFCPERMIT('a0','a1','a2','a3','a4','a5',$,$,$);"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: padded (IFCPERMIT 6 -> 9); renamed PermitID->Identification (#7739)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCPERMIT('a0','a1','a2','a3','a4','a5');",
+   "expect": "#7=IFCPERMIT('a0','a1','a2','a3','a4','a5',$,$,$);"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: trimmed (IFCPERMIT 9 -> 6); renamed PermitID->Identification (#7739)",
+   "from": "IFC4",
+   "to": "IFC2X3",
+   "line": "#7=IFCPERMIT('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "expect": "#7=IFCPERMIT('a0','a1','a2','a3','a4','a5');"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: trimmed (IFCPERMIT 9 -> 6); renamed PermitID->Identification (#7739)",
+   "from": "IFC4X3",
+   "to": "IFC2X3",
+   "line": "#7=IFCPERMIT('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "expect": "#7=IFCPERMIT('a0','a1','a2','a3','a4','a5');"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: padded (IFCPROJECTORDER 8 -> 9); renamed ID->Identification (#7739)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCPROJECTORDER('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "expect": "#7=IFCPROJECTORDER('a0','a1','a2','a3','a4','a5','a6','a7',$);"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: padded (IFCPROJECTORDER 8 -> 9); renamed ID->Identification (#7739)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCPROJECTORDER('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "expect": "#7=IFCPROJECTORDER('a0','a1','a2','a3','a4','a5','a6','a7',$);"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: trimmed (IFCPROJECTORDER 9 -> 8); renamed ID->Identification (#7739)",
+   "from": "IFC4",
+   "to": "IFC2X3",
+   "line": "#7=IFCPROJECTORDER('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "expect": "#7=IFCPROJECTORDER('a0','a1','a2','a3','a4','a5','a6','a7');"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: trimmed (IFCPROJECTORDER 9 -> 8); renamed ID->Identification (#7739)",
+   "from": "IFC4X3",
+   "to": "IFC2X3",
+   "line": "#7=IFCPROJECTORDER('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "expect": "#7=IFCPROJECTORDER('a0','a1','a2','a3','a4','a5','a6','a7');"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: padded (IFCCOSTVALUE 8 -> 10); renamed CostType->Category (#7739)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCCOSTVALUE('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "expect": "#7=IFCCOSTVALUE('a0','a1','a2','a3','a4','a5','a6','a7',$,$);"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: padded (IFCCOSTVALUE 8 -> 10); renamed CostType->Category (#7739)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCCOSTVALUE('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "expect": "#7=IFCCOSTVALUE('a0','a1','a2','a3','a4','a5','a6','a7',$,$);"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: trimmed (IFCCOSTVALUE 10 -> 8); renamed CostType->Category (#7739)",
+   "from": "IFC4",
+   "to": "IFC2X3",
+   "line": "#7=IFCCOSTVALUE('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9');",
+   "expect": "#7=IFCCOSTVALUE('a0','a1','a2','a3','a4','a5','a6','a7');"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: trimmed (IFCCOSTVALUE 10 -> 8); renamed CostType->Category (#7739)",
+   "from": "IFC4X3",
+   "to": "IFC2X3",
+   "line": "#7=IFCCOSTVALUE('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9');",
+   "expect": "#7=IFCCOSTVALUE('a0','a1','a2','a3','a4','a5','a6','a7');"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: padded (IFCSTAIRFLIGHT 12 -> 13); renamed NumberOfRiser->NumberOfRisers (#7739)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCSTAIRFLIGHT('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11');",
+   "expect": "#7=IFCSTAIRFLIGHT('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11',$);"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: padded (IFCSTAIRFLIGHT 12 -> 13); renamed NumberOfRiser->NumberOfRisers (#7739)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCSTAIRFLIGHT('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11');",
+   "expect": "#7=IFCSTAIRFLIGHT('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11',$);"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: trimmed (IFCSTAIRFLIGHT 13 -> 12); renamed NumberOfRiser->NumberOfRisers (#7739)",
+   "from": "IFC4",
+   "to": "IFC2X3",
+   "line": "#7=IFCSTAIRFLIGHT('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12');",
+   "expect": "#7=IFCSTAIRFLIGHT('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11');"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: trimmed (IFCSTAIRFLIGHT 13 -> 12); renamed NumberOfRiser->NumberOfRisers (#7739)",
+   "from": "IFC4X3",
+   "to": "IFC2X3",
+   "line": "#7=IFCSTAIRFLIGHT('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12');",
+   "expect": "#7=IFCSTAIRFLIGHT('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11');"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: trimmed (IFCWORKPLAN 15 -> 14); renamed Identifier->Identification, WorkControlType->PredefinedType (#7739)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCWORKPLAN('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12','a13','a14');",
+   "expect": "#7=IFCWORKPLAN('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12','a13');"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: trimmed (IFCWORKPLAN 15 -> 14); renamed Identifier->Identification, WorkControlType->PredefinedType (#7739)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCWORKPLAN('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12','a13','a14');",
+   "expect": "#7=IFCWORKPLAN('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12','a13');"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: padded (IFCWORKPLAN 14 -> 15); renamed Identifier->Identification, WorkControlType->PredefinedType (#7739)",
+   "from": "IFC4",
+   "to": "IFC2X3",
+   "line": "#7=IFCWORKPLAN('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12','a13');",
+   "expect": "#7=IFCWORKPLAN('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12','a13',$);"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: padded (IFCWORKPLAN 14 -> 15); renamed Identifier->Identification, WorkControlType->PredefinedType (#7739)",
+   "from": "IFC4X3",
+   "to": "IFC2X3",
+   "line": "#7=IFCWORKPLAN('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12','a13');",
+   "expect": "#7=IFCWORKPLAN('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12','a13',$);"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: trimmed (IFCWORKSCHEDULE 15 -> 14); renamed Identifier->Identification, WorkControlType->PredefinedType (#7739)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCWORKSCHEDULE('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12','a13','a14');",
+   "expect": "#7=IFCWORKSCHEDULE('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12','a13');"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: trimmed (IFCWORKSCHEDULE 15 -> 14); renamed Identifier->Identification, WorkControlType->PredefinedType (#7739)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCWORKSCHEDULE('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12','a13','a14');",
+   "expect": "#7=IFCWORKSCHEDULE('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12','a13');"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: padded (IFCWORKSCHEDULE 14 -> 15); renamed Identifier->Identification, WorkControlType->PredefinedType (#7739)",
+   "from": "IFC4",
+   "to": "IFC2X3",
+   "line": "#7=IFCWORKSCHEDULE('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12','a13');",
+   "expect": "#7=IFCWORKSCHEDULE('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12','a13',$);"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: padded (IFCWORKSCHEDULE 14 -> 15); renamed Identifier->Identification, WorkControlType->PredefinedType (#7739)",
+   "from": "IFC4X3",
+   "to": "IFC2X3",
+   "line": "#7=IFCWORKSCHEDULE('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12','a13');",
+   "expect": "#7=IFCWORKSCHEDULE('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12','a13',$);"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: padded (IFCPROPERTYBOUNDEDVALUE 5 -> 6); renamed Description->Specification (#7739)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCPROPERTYBOUNDEDVALUE('a0','a1','a2','a3','a4');",
+   "expect": "#7=IFCPROPERTYBOUNDEDVALUE('a0','a1','a2','a3','a4',$);"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: trimmed (IFCPROPERTYBOUNDEDVALUE 6 -> 5); renamed Description->Specification (#7739)",
+   "from": "IFC4X3",
+   "to": "IFC2X3",
+   "line": "#7=IFCPROPERTYBOUNDEDVALUE('a0','a1','a2','a3','a4','a5');",
+   "expect": "#7=IFCPROPERTYBOUNDEDVALUE('a0','a1','a2','a3','a4');"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: padded (IFCPROPERTYTABLEVALUE 7 -> 8); renamed Description->Specification (#7739)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCPROPERTYTABLEVALUE('a0','a1','a2','a3','a4','a5','a6');",
+   "expect": "#7=IFCPROPERTYTABLEVALUE('a0','a1','a2','a3','a4','a5','a6',$);"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: trimmed (IFCPROPERTYTABLEVALUE 8 -> 7); renamed Description->Specification (#7739)",
+   "from": "IFC4X3",
+   "to": "IFC2X3",
+   "line": "#7=IFCPROPERTYTABLEVALUE('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "expect": "#7=IFCPROPERTYTABLEVALUE('a0','a1','a2','a3','a4','a5','a6');"
   }
  ]
 }

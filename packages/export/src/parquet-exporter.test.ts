@@ -904,3 +904,38 @@ describe('ParquetExporter on-demand properties/quantities (independent-reader pa
     expect(qtyRows).toHaveLength(0);
   });
 });
+
+describe('ParquetExporter records the frame its vertices are in (#7734)', () => {
+  const readMetadata = async (geo: GeometryResult, includeGeometry = true) => {
+    const JSZip = (await import('jszip')).default;
+    const archive = await JSZip.loadAsync(
+      await new ParquetExporter(buildDataStore(), geo).exportBOS({ includeGeometry }),
+    );
+    return JSON.parse(await archive.file('Metadata.json')!.async('string'));
+  };
+  const withFrame = (coordinateInfo: object): GeometryResult => ({
+    ...geometry([mesh({ expressId: 1, positions: new Float32Array(9), normals: new Float32Array(9), indices: new Uint32Array([0, 1, 2]) })]),
+    coordinateInfo,
+  }) as unknown as GeometryResult;
+  const frame = (partial: object) => ({
+    originShift: { x: 0, y: 0, z: 0 },
+    originalBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 0, z: 0 } },
+    shiftedBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 0, z: 0 } },
+    hasLargeCoordinates: false,
+    ...partial,
+  });
+
+  it('carries the way back to IFC world, in the Rust BOS writer\'s keys', async () => {
+    const meta = await readMetadata(withFrame(frame({ wasmRtcOffset: { x: 2_600_000.5, y: 1_200_000.25, z: 500 } })));
+    expect(meta.meshCoordinateSpace).toBe('model_rtc');
+    expect(meta.vertexAxes).toBe('y_up');
+    // world = M * [x, y, z, 1], M column-major: Y-up (x, y, z) -> Z-up (x, -z, y), plus the offset.
+    expect(meta.worldTransform).toEqual([1, 0, 0, 0, 0, 0, 1, 0, 0, -1, 0, 0, 2_600_000.5, 1_200_000.25, 500, 1]);
+  });
+
+  it('says raw_ifc for an unshifted model and omits the frame when no geometry is written', async () => {
+    expect((await readMetadata(withFrame(frame({})))).meshCoordinateSpace).toBe('raw_ifc');
+    const without = await readMetadata(withFrame(frame({ wasmRtcOffset: { x: 1, y: 2, z: 3 } })), false);
+    expect(without.worldTransform).toBeUndefined();
+  });
+});

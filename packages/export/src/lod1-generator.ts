@@ -4,6 +4,7 @@
 
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { GeometryProcessor } from '@ifc-lite/geometry';
+import { renderFrameWorldMatrix } from '@ifc-lite/geometry/world-frame';
 import { extractGlbMapping } from './glb.js';
 import { generateLod0 } from './lod0-generator.js';
 import type { GenerateLod1Result, Lod1MetaJson, Lod0Json, LodInput, Vec3 } from './lod-geometry-types.js';
@@ -144,7 +145,15 @@ export async function generateLod1(input: LodInput, options: GenerateLod1Options
 
       // Assemble the GLB in Rust over the meshes (no re-meshing); extractGlbMapping
       // reads node `extras.expressId`, which the from-meshes path emits.
-      const result = gp.exportGlbFromMeshes(geom.meshes, true);
+      // The meshes are in the shifted render frame; the GLB root restores the
+      // IFC world position from the frame they were meshed in (#7734).
+      const result = gp.exportGlbFromMeshes(
+        geom.meshes,
+        true,
+        true,
+        false,
+        renderFrameWorldMatrix(geom.coordinateInfo),
+      );
       if (!result) throw new Error('GLB assembly returned no data');
       glb = result;
       mapping = extractGlbMapping(glb);

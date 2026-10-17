@@ -58,3 +58,13 @@ test('record framing survives a `;` after a PAGE operand, in the header and in D
   assert.ok(!out.includes('#22=IFCTASK'), 'the task record is still stripped');
   assert.ok(!out.includes('#23=IFCWORKSCHEDULE'), 'the schedule record is still stripped');
 });
+
+test('a comma inside a comment is not an attribute boundary: the nest keeps its non-schedule member (#7785)', () => {
+  const out = stripScheduleEntities(STEP(PLAIN_HEADER, [
+    "#30=IFCRELNESTS('g',#10,/* a, b */'Nest',$,#40,(#22,#31));",
+    "#31=IFCWALL('w2',#10,'Wall',$,$,$,$,$,$);",
+    "#40=IFCWALL('w',#10,'Wall',$,$,$,$,$,$);",
+  ]));
+  assert.match(out, /#30=IFCRELNESTS\([^;]*#40,\(#31\)\);/);
+  assert.doesNotMatch(out, /#22/);
+});

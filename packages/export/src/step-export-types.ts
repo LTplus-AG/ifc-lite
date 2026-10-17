@@ -19,6 +19,7 @@
  * anything new should be routed through.
  */
 
+import type { StyleFlatten } from './schema-style-flatten.js';
 import type { IfcAttributeValue, IfcSourceHeader } from '@ifc-lite/parser';
 import type { PropertySet, QuantitySet } from '@ifc-lite/data';
 import type { RandomSource } from '@ifc-lite/encoding';
@@ -386,6 +387,7 @@ export interface ExportPass {
    *  Both writers thread it through so a record naming one of these ids is
    *  redirected to the same fallback instead of shipping a dangling `#N`. */
   readonly withheldRefIds: ReadonlySet<number>;
+  readonly styleFlatten: StyleFlatten | undefined; // D57 style-assignment flatten, IFC2X3/IFC4 -> IFC4X3
 
   // ---- the shared predicates (see item 1 above) ----
   readonly buildHeader: (modifications: number) => string;

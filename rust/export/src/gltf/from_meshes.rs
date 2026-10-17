@@ -5,8 +5,9 @@
 //! Split out of `gltf.rs` to keep that module under its size ratchet; the logic is
 //! unchanged, so the emitted bytes are identical.
 
-use super::{build_gltf, pack_glb, Chunker, GltfStats, MeshView};
+use super::{build_gltf, frame_parts, pack_glb, Chunker, GltfStats, MeshView};
 use crate::error::ExportError;
+use ifc_lite_processing::MeshFrame;
 
 /// Fail-closed from-meshes GLB export: validates the per-mesh
 /// `vertex_counts` / `index_counts` (and normals) against the flattened buffers, and
@@ -19,6 +20,15 @@ use crate::error::ExportError;
 /// reported as success) or copying the out-of-range index straight into the BIN
 /// chunk. Prefer this at any boundary where the counts and buffers come from
 /// separate sources (the wasm FFI).
+///
+/// `world_matrix` is the frame the meshes were baked in, as the column-major 4x4
+/// (IFC Z-up, metres, f64) that carries a baked point back to IFC world:
+/// `world = M · baked` (`MeshFrame::world_matrix`; the viewer builds it from its
+/// `CoordinateInfo`). It rides the scene ROOT in the GLB's own Y-up axes, exactly
+/// as the from-bytes exporters restore the RTC offset and site placement, so the
+/// same file lands in the same place whichever path produced it (#7734). `None`
+/// is a model that was not shifted. A matrix that is not 16 finite numbers is
+/// refused as [`ExportError::MalformedMeshInput`].
 ///
 /// This is the only public from-meshes GLB entry point (#7675, EXPORT-GEOM-14):
 /// the infallible assembler behind it is crate-private, because it ships a
@@ -40,7 +50,9 @@ pub fn try_export_glb_from_meshes(
     include_metadata: bool,
     lit: bool,
     emissive: bool,
+    world_matrix: Option<&[f64]>,
 ) -> Result<(Vec<u8>, GltfStats), ExportError> {
+    let frame = crate::frame::mesh_frame_from_world_matrix(world_matrix)?;
     // Sum the declared counts and check they fit the flattened buffers. `u64` sums so a
     // caller passing absurd counts can't overflow `usize` on wasm32 before the compare.
     let n = vertex_counts.len();
@@ -95,9 +107,9 @@ pub fn try_export_glb_from_meshes(
     crate::mesh_input::check_index_blocks(indices, vertex_counts, index_counts)?;
     // Every count is backed and every mesh's normals/indices are present, so the
     // infallible assembler's malformed-input `break` is unreachable and no mesh is dropped.
-    let (glb, stats) = export_glb_from_meshes(
+    let (glb, stats) = export_glb_from_meshes_in_frame(
         positions, normals, indices, vertex_counts, index_counts, colors, origins,
-        express_ids, include_metadata, lit, emissive,
+        express_ids, include_metadata, lit, emissive, frame,
     );
     // Zero visible meshes (empty input, or every declared mesh failing `view_ok` —
     // e.g. a single-vertex/zero-index mesh) passes every count check above trivially
@@ -109,6 +121,29 @@ pub fn try_export_glb_from_meshes(
     // reachable from the viewer's `exportGlbFromMeshes` — did not.
     crate::error::require_render_geometry(stats.meshes)?;
     Ok((glb, stats))
+}
+
+/// [`export_glb_from_meshes_in_frame`] for meshes that were not shifted
+/// (`MeshFrame::RawIfc`): no root transform.
+#[allow(clippy::too_many_arguments)]
+#[cfg(test)]
+pub(crate) fn export_glb_from_meshes(
+    positions: &[f32],
+    normals: &[f32],
+    indices: &[u32],
+    vertex_counts: &[u32],
+    index_counts: &[u32],
+    colors: &[f32],
+    origins: &[f64],
+    express_ids: &[u32],
+    include_metadata: bool,
+    lit: bool,
+    emissive: bool,
+) -> (Vec<u8>, GltfStats) {
+    export_glb_from_meshes_in_frame(
+        positions, normals, indices, vertex_counts, index_counts, colors, origins,
+        express_ids, include_metadata, lit, emissive, MeshFrame::RawIfc,
+    )
 }
 
 /// Assemble a GLB from already-produced meshes (the viewer's MeshData — **no re-meshing**).
@@ -126,7 +161,7 @@ pub fn try_export_glb_from_meshes(
 // The index `i` walks several parallel count/offset arrays in lockstep; a
 // range loop is the clearest expression and avoids zipping ragged slices.
 #[allow(clippy::needless_range_loop)]
-pub(crate) fn export_glb_from_meshes(
+pub(crate) fn export_glb_from_meshes_in_frame(
     positions: &[f32],
     normals: &[f32],
     indices: &[u32],
@@ -138,6 +173,7 @@ pub(crate) fn export_glb_from_meshes(
     include_metadata: bool,
     lit: bool,
     emissive: bool,
+    frame: MeshFrame,
 ) -> (Vec<u8>, GltfStats) {
     // Gate every float BEFORE any of it is read: a non-finite coordinate has no
     // representation in glTF JSON (`serde_json` writes `null`, which is
@@ -173,12 +209,7 @@ pub(crate) fn export_glb_from_meshes(
         let pslice = &positions[vbase * 3..pend];
         let nslice: &[f32] = normals.get(vbase * 3..pend).unwrap_or(&[]);
         let islice = &indices[ibase..iend];
-        let color = [
-            colors.get(i * 4).copied().unwrap_or(0.8),
-            colors.get(i * 4 + 1).copied().unwrap_or(0.8),
-            colors.get(i * 4 + 2).copied().unwrap_or(0.8),
-            colors.get(i * 4 + 3).copied().unwrap_or(1.0),
-        ];
+        let color = crate::color_space::rgba_at(colors, i);
         let origin = [
             origins.get(i * 3).copied().unwrap_or(0.0),
             origins.get(i * 3 + 1).copied().unwrap_or(0.0),
@@ -200,34 +231,23 @@ pub(crate) fn export_glb_from_meshes(
         vbase = vend;
         ibase = iend;
     }
-    // From-meshes geometry is already absolute Y-up and never instances (no
-    // side-channel), so there is no RTC frame to compensate. Quantization is a
-    // from-bytes feature; the viewer path stays f32.
+    // From-meshes geometry is Y-up and never instances (no side-channel), so
+    // the only frame work is putting the baked frame back on the root.
+    // Quantization is a from-bytes feature; the viewer path stays f32.
     let mut ch = Chunker::new(12, usize::MAX, None);
-    let (gltf, stats) =
-        build_gltf(
-            &views,
-            include_metadata,
-            None,
-            lit,
-            emissive,
-            // No `ProcessingResult` reaches this path, so there is no tag
-            // either. `RawIfc` is what the absent site placement and the zero
-            // RTC below already say: nothing was subtracted, nothing rotated.
-            ifc_lite_processing::MeshCoordinateSpace::RawIfc,
-            [0.0, 0.0, 0.0],
-            // No `ProcessingResult` reaches this path, so there is no site
-            // placement available to restore.
-            //
-            // Not the same as "there is nothing to restore". The viewer's own
-            // `MeshData` comes through the same pipeline and, for a translated
-            // site, *is* site-local, so a GLB exported from the viewer stays in
-            // that frame. Fixing that needs the API to carry `site_transform`,
-            // which is a change to its signature rather than to this line.
-            None,
-            false,
-            &mut ch,
-        );
+    let (space, rtc_zup, site_zup) = frame_parts(frame);
+    let (gltf, stats) = build_gltf(
+        &views,
+        include_metadata,
+        None,
+        lit,
+        emissive,
+        space,
+        rtc_zup,
+        site_zup.as_deref(),
+        false,
+        &mut ch,
+    );
     let json = serde_json::to_vec(&gltf).expect("glTF JSON serializes");
     (pack_glb(&json, &ch.pos, &ch.norm, &ch.idx), stats)
 }

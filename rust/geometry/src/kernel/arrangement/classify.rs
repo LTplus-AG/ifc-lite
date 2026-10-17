@@ -4,7 +4,7 @@
 
 use super::super::broadphase::Aabb;
 use super::super::interner::Vid;
-use super::super::predicates::{orient2d_any, orient3d};
+use super::super::predicates::orient2d_any;
 use super::super::rational::point_of;
 use super::super::{DropAxis, ImplicitPoint, Sign};
 use super::coincident::coincident_planes;

@@ -43,12 +43,6 @@ fn quantize_position(value: f32) -> i32 {
     (value * VERTEX_MULTIPLIER).round() as i32
 }
 
-/// Convert float color (0-1) to byte (0-255).
-#[inline]
-fn color_to_byte(value: f32) -> u8 {
-    (value.clamp(0.0, 1.0) * 255.0).round() as u8
-}
-
 /// Material key for deduplication.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 struct MaterialKey {
@@ -60,12 +54,8 @@ struct MaterialKey {
 
 impl MaterialKey {
     fn from_color(color: &[f32; 4]) -> Self {
-        Self {
-            r: color_to_byte(color[0]),
-            g: color_to_byte(color[1]),
-            b: color_to_byte(color[2]),
-            a: color_to_byte(color[3]),
-        }
+        let [r, g, b, a] = ifc_lite_processing::Rgba(*color).to_rgba8();
+        Self { r, g, b, a }
     }
 }
 

@@ -324,7 +324,7 @@ describe('worldPlacementFingerprint - EXPRESS IfcFirstProjAxis default (review f
     });
   }
 
-  it('follows the renderer next to X: projects X outside its 1e-6 tolerance, switches inside it', async () => {
+  it('follows the renderer next to X: projects X down to its 1e-9 noise floor, switches below it (#7751)', async () => {
     // Axis 4e-5 off +X: still projected, so local X is about (0,-1,0).
     const outside = await storeFromStep(siteWithAxis('1.,0.00004,0.', ''));
     const outsideProjected = await storeFromStep(siteWithAxis('1.,0.00004,0.', '1.,0.,0.'));
@@ -332,10 +332,10 @@ describe('worldPlacementFingerprint - EXPRESS IfcFirstProjAxis default (review f
     assert.ok(fo);
     assert.strictEqual(fo, worldPlacementFingerprint(outsideProjected, siteId(outsideProjected)));
 
-    // Axis 1e-7 off +X: inside the renderer's tolerance it takes (0,0,1) x
-    // Axis, about (0,+1,0), which is what an explicit (0,1,0) gives too.
+    // Axis 1e-7 off +X: still projected (#7751), about (0,-1,0), which is what
+    // an explicit (0,-1,0) gives too.
     const inside = await storeFromStep(siteWithAxis('1.,0.0000001,0.', ''));
-    const insideRendered = await storeFromStep(siteWithAxis('1.,0.0000001,0.', '0.,1.,0.'));
+    const insideRendered = await storeFromStep(siteWithAxis('1.,0.0000001,0.', '0.,-1.,0.'));
     const fin = worldPlacementFingerprint(inside, siteId(inside));
     assert.ok(fin);
     assert.strictEqual(fin, worldPlacementFingerprint(insideRendered, siteId(insideRendered)));

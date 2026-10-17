@@ -5,7 +5,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { IfcAPI } from '@ifc-lite/wasm';
 import { runDomainExport } from './domain-export-call.js';
-import { TERRAIN_REFUSED } from './export-errors.js';
+import { NO_RENDER_GEOMETRY, TERRAIN_REFUSED } from './export-errors.js';
 
 const api = {} as IfcAPI;
 const content = new Uint8Array(4);
@@ -27,6 +27,15 @@ describe('runDomainExport', () => {
     const onError = vi.fn();
     const refusal = new Error(`${TERRAIN_REFUSED}: context #5 has no IfcMapConversion`);
     expect(() => runDomainExport(api, 'exportLandXmlTerrain', content, () => { throw refusal; }, onError)).toThrow(refusal);
+    expect(onError).toHaveBeenCalledWith(refusal);
+    expect(logged).not.toHaveBeenCalled();
+  });
+
+  it('rethrows a NO_RENDER_GEOMETRY refusal without logging it as a failure (#7766)', () => {
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const onError = vi.fn();
+    const refusal = new Error(`${NO_RENDER_GEOMETRY}: no mesh would be written`);
+    expect(() => runDomainExport(api, 'exportUsd', content, () => { throw refusal; }, onError)).toThrow(refusal);
     expect(onError).toHaveBeenCalledWith(refusal);
     expect(logged).not.toHaveBeenCalled();
   });

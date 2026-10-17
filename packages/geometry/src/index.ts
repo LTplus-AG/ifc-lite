@@ -1220,9 +1220,9 @@ export class GeometryProcessor {
    * standard PBR materials that shade from normals; `false` ⇒ flat
    * `KHR_materials_unlit` (the historical look — #1321). `emissive` self-illuminates
    * each material at its base colour (core glTF `emissiveFactor`) so renderers with
-   * no ambient/IBL — Google Earth — don't render it near-black (#1427).
-   */
-  exportGlbFromMeshes(meshes: MeshData[], includeMetadata = false, lit = true, emissive = false): Uint8Array | null {
+   * no ambient/IBL — Google Earth — don't render it near-black (#1427). `worldMatrix` =
+   * `renderFrameWorldMatrix(coordinateInfo)`: restored on the GLB root (#7734). */
+  exportGlbFromMeshes(meshes: MeshData[], includeMetadata = false, lit = true, emissive = false, worldMatrix?: ArrayLike<number>): Uint8Array | null {
     if (!this.bridge?.isInitialized()) return null;
     let totalV = 0;
     let totalI = 0;
@@ -1256,7 +1256,7 @@ export class GeometryProcessor {
       io += m.indices.length;
     }
     return this.bridge.exportGlbFromMeshes(
-      positions, normals, indices, vertexCounts, indexCounts, colors, origins, expressIds, includeMetadata, lit, emissive,
+      positions, normals, indices, vertexCounts, indexCounts, colors, origins, expressIds, includeMetadata, lit, emissive, worldMatrix,
     );
   }
 

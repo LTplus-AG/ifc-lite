@@ -5,6 +5,7 @@
 
 import assert from 'node:assert/strict';
 import { parseMeshesViaPrePass } from './mesh-via-prepass.mjs';
+import { runGlbFrameContract } from './wasm-glb-frame-contract.mjs';
 
 /**
  * #4934 regression: a model 1-10km from the origin used to sit inside the
@@ -31,6 +32,7 @@ export function runRtcPrecisionContracts(
   columnLocalXM,
   columnLocalYM,
 ) {
+  runGlbFrameContract(api, test);
   test('#4934: a 1-10km survey-grid plant now gets an RTC anchor and sub-mm precision', () => {
     // The reported bug: a site laid out on a survey grid (here ~(6300, 7700) m,
     // matching the issue's ~6.3km/7.7km ArchiCAD export) sat inside the OLD

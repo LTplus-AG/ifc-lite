@@ -19,6 +19,9 @@ export default defineConfig({
       '@ifc-lite/codegen': path.resolve(__dirname, '../codegen/src/index.ts'),
       '@ifc-lite/data': path.resolve(__dirname, '../data/src/index.ts'),
       '@ifc-lite/encoding': path.resolve(__dirname, '../encoding/src/index.ts'),
+      // Before the bare root entry (prefix match, declaration order): the
+      // render-frame helpers the exporters restore through are a subpath.
+      '@ifc-lite/geometry/world-frame': path.resolve(__dirname, '../geometry/src/world-frame.ts'),
       '@ifc-lite/geometry': path.resolve(__dirname, '../geometry/src/index.ts'),
       '@ifc-lite/ifcx': path.resolve(__dirname, '../ifcx/src/index.ts'),
       // The parser's scan worker and worker-parser import it for message

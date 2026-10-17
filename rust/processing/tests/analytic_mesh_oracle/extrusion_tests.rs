@@ -197,28 +197,7 @@ fn modified_tapered_and_multiple_sources_are_explicitly_excluded() {
 fn real_authoring_tool_fixture_has_eligible_occurrence() {
     // Catalogued Revit export: tests/models/manifest.json. CI requires
     // fixtures; a developer without them gets an explicit skip instruction.
-    let path = format!(
-        "{}/../../tests/models/various/01_Snowdon_Towers_Sample_Structural(1).ifc",
-        env!("CARGO_MANIFEST_DIR")
-    );
-    let model = match fs::read(&path) {
-        Ok(model) => model,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            let required = match std::env::var("IFC_LITE_REQUIRE_FIXTURES") {
-                Ok(value) if value == "1" => true,
-                Ok(value) if value.is_empty() || value == "0" => false,
-                Err(std::env::VarError::NotPresent) => false,
-                other => panic!("invalid IFC_LITE_REQUIRE_FIXTURES value: {other:?}"),
-            };
-            assert!(
-                !required,
-                "IFC_LITE_REQUIRE_FIXTURES=1 but {path} is missing ({error}); run `pnpm fixtures`"
-            );
-            eprintln!("skipping {path}: run `pnpm fixtures`");
-            return;
-        }
-        Err(error) => panic!("read {path}: {error}"),
-    };
+    let model = ifc_lite_testkit::fixture_bytes_or_skip!("various/01_Snowdon_Towers_Sample_Structural(1).ifc");
     let view = extract_extrusion_definitions(&model, None);
     assert!(view.diagnostics.is_empty(), "{:?}", view.diagnostics);
     let ids: Vec<_> = view

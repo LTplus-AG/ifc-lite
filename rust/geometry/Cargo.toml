@@ -134,6 +134,8 @@ num-traits = { version = "0.2", default-features = false }
 bnum = { version = "0.14.4", features = ["numtraits"] }
 
 [dev-dependencies]
+# Test-only (publish = false). Path-only: cargo strips it when packaging.
+ifc-lite-testkit = { path = "../testkit" }
 approx = "0.5"
 # The real clash engine, used ONLY by tests/clash_intersection_real_model.rs to
 # produce the same candidate pairs the product reports, so the intersection-solid

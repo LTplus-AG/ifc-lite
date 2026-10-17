@@ -1,0 +1,329 @@
+{
+  "$comment": "Relating/related attribute slots per concrete IfcRelationship subtype, as ABSOLUTE attribute positions (packages/parser getRelationshipSlotPlan index + 4). Resolved from core's EXPRESS registry (apps/server/src/services/data_model/slots.rs) and pinned row for row by slots_tests.rs; asserted against the TS plan by packages/parser/src/relationship-schema-slots.test.ts and read as the Rust side of scripts/check-server-browser-type-parity.mjs. C6-4, D43.",
+  "slots": {
+    "IFCRELADHERESTOELEMENT": {
+      "relating": 4,
+      "related": 5,
+      "relatingIsList": false,
+      "relatedIsList": true
+    },
+    "IFCRELAGGREGATES": {
+      "relating": 4,
+      "related": 5,
+      "relatingIsList": false,
+      "relatedIsList": true
+    },
+    "IFCRELASSIGNSTASKS": {
+      "relating": 6,
+      "related": 4,
+      "relatingIsList": false,
+      "relatedIsList": true
+    },
+    "IFCRELASSIGNSTOACTOR": {
+      "relating": 6,
+      "related": 4,
+      "relatingIsList": false,
+      "relatedIsList": true
+    },
+    "IFCRELASSIGNSTOCONTROL": {
+      "relating": 6,
+      "related": 4,
+      "relatingIsList": false,
+      "relatedIsList": true
+    },
+    "IFCRELASSIGNSTOGROUP": {
+      "relating": 6,
+      "related": 4,
+      "relatingIsList": false,
+      "relatedIsList": true
+    },
+    "IFCRELASSIGNSTOGROUPBYFACTOR": {
+      "relating": 6,
+      "related": 4,
+      "relatingIsList": false,
+      "relatedIsList": true
+    },
+    "IFCRELASSIGNSTOPROCESS": {
+      "relating": 6,
+      "related": 4,
+      "relatingIsList": false,
+      "relatedIsList": true
+    },
+    "IFCRELASSIGNSTOPRODUCT": {
+      "relating": 6,
+      "related": 4,
+      "relatingIsList": false,
+      "relatedIsList": true
+    },
+    "IFCRELASSIGNSTOPROJECTORDER": {
+      "relating": 6,
+      "related": 4,
+      "relatingIsList": false,
+      "relatedIsList": true
+    },
+    "IFCRELASSIGNSTORESOURCE": {
+      "relating": 6,
+      "related": 4,
+      "relatingIsList": false,
+      "relatedIsList": true
+    },
+    "IFCRELASSOCIATESAPPLIEDVALUE": {
+      "relating": 5,
+      "related": 4,
+      "relatingIsList": false,
+      "relatedIsList": true
+    },
+    "IFCRELASSOCIATESAPPROVAL": {
+      "relating": 5,
+      "related": 4,
+      "relatingIsList": false,
+      "relatedIsList": true
+    },
+    "IFCRELASSOCIATESCLASSIFICATION": {
+      "relating": 5,
+      "related": 4,
+      "relatingIsList": false,
+      "relatedIsList": true
+    },
+    "IFCRELASSOCIATESCONSTRAINT": {
+      "relating": 6,
+      "related": 4,
+      "relatingIsList": false,
+      "relatedIsList": true
+    },
+    "IFCRELASSOCIATESDOCUMENT": {
+      "relating": 5,
+      "related": 4,
+      "relatingIsList": false,
+      "relatedIsList": true
+    },
+    "IFCRELASSOCIATESLIBRARY": {
+      "relating": 5,
+      "related": 4,
+      "relatingIsList": false,
+      "relatedIsList": true
+    },
+    "IFCRELASSOCIATESMATERIAL": {
+      "relating": 5,
+      "related": 4,
+      "relatingIsList": false,
+      "relatedIsList": true
+    },
+    "IFCRELASSOCIATESPROFILEDEF": {
+      "relating": 5,
+      "related": 4,
+      "relatingIsList": false,
+      "relatedIsList": true
+    },
+    "IFCRELASSOCIATESPROFILEPROPERTIES": {
+      "relating": 5,
+      "related": 4,
+      "relatingIsList": false,
+      "relatedIsList": true
+    },
+    "IFCRELCONNECTSELEMENTS": {
+      "relating": 5,
+      "related": 6,
+      "relatingIsList": false,
+      "relatedIsList": false
+    },
+    "IFCRELCONNECTSPATHELEMENTS": {
+      "relating": 5,
+      "related": 6,
+      "relatingIsList": false,
+      "relatedIsList": false
+    },
+    "IFCRELCONNECTSPORTS": {
+      "relating": 4,
+      "related": 5,
+      "relatingIsList": false,
+      "relatedIsList": false
+    },
+    "IFCRELCONNECTSPORTTOELEMENT": {
+      "relating": 4,
+      "related": 5,
+      "relatingIsList": false,
+      "relatedIsList": false
+    },
+    "IFCRELCONNECTSSTRUCTURALACTIVITY": {
+      "relating": 4,
+      "related": 5,
+      "relatingIsList": false,
+      "relatedIsList": false
+    },
+    "IFCRELCONNECTSSTRUCTURALELEMENT": {
+      "relating": 4,
+      "related": 5,
+      "relatingIsList": false,
+      "relatedIsList": false
+    },
+    "IFCRELCONNECTSSTRUCTURALMEMBER": {
+      "relating": 4,
+      "related": 5,
+      "relatingIsList": false,
+      "relatedIsList": false
+    },
+    "IFCRELCONNECTSWITHECCENTRICITY": {
+      "relating": 4,
+      "related": 5,
+      "relatingIsList": false,
+      "relatedIsList": false
+    },
+    "IFCRELCONNECTSWITHREALIZINGELEMENTS": {
+      "relating": 5,
+      "related": 6,
+      "relatingIsList": false,
+      "relatedIsList": false
+    },
+    "IFCRELCONTAINEDINSPATIALSTRUCTURE": {
+      "relating": 5,
+      "related": 4,
+      "relatingIsList": false,
+      "relatedIsList": true
+    },
+    "IFCRELCOVERSBLDGELEMENTS": {
+      "relating": 4,
+      "related": 5,
+      "relatingIsList": false,
+      "relatedIsList": true
+    },
+    "IFCRELCOVERSSPACES": {
+      "relating": 4,
+      "related": 5,
+      "relatingIsList": false,
+      "relatedIsList": true
+    },
+    "IFCRELDECLARES": {
+      "relating": 4,
+      "related": 5,
+      "relatingIsList": false,
+      "relatedIsList": true
+    },
+    "IFCRELDEFINESBYOBJECT": {
+      "relating": 5,
+      "related": 4,
+      "relatingIsList": false,
+      "relatedIsList": true
+    },
+    "IFCRELDEFINESBYPROPERTIES": {
+      "relating": 5,
+      "related": 4,
+      "relatingIsList": true,
+      "relatedIsList": true
+    },
+    "IFCRELDEFINESBYTEMPLATE": {
+      "relating": 5,
+      "related": 4,
+      "relatingIsList": false,
+      "relatedIsList": true
+    },
+    "IFCRELDEFINESBYTYPE": {
+      "relating": 5,
+      "related": 4,
+      "relatingIsList": false,
+      "relatedIsList": true
+    },
+    "IFCRELFILLSELEMENT": {
+      "relating": 4,
+      "related": 5,
+      "relatingIsList": false,
+      "relatedIsList": false
+    },
+    "IFCRELFLOWCONTROLELEMENTS": {
+      "relating": 5,
+      "related": 4,
+      "relatingIsList": false,
+      "relatedIsList": true
+    },
+    "IFCRELINTERACTIONREQUIREMENTS": {
+      "relating": 8,
+      "related": 7,
+      "relatingIsList": false,
+      "relatedIsList": false
+    },
+    "IFCRELINTERFERESELEMENTS": {
+      "relating": 4,
+      "related": 5,
+      "relatingIsList": false,
+      "relatedIsList": false
+    },
+    "IFCRELNESTS": {
+      "relating": 4,
+      "related": 5,
+      "relatingIsList": false,
+      "relatedIsList": true
+    },
+    "IFCRELOCCUPIESSPACES": {
+      "relating": 6,
+      "related": 4,
+      "relatingIsList": false,
+      "relatedIsList": true
+    },
+    "IFCRELOVERRIDESPROPERTIES": {
+      "relating": 5,
+      "related": 4,
+      "relatingIsList": false,
+      "relatedIsList": true
+    },
+    "IFCRELPOSITIONS": {
+      "relating": 4,
+      "related": 5,
+      "relatingIsList": false,
+      "relatedIsList": true
+    },
+    "IFCRELPROJECTSELEMENT": {
+      "relating": 4,
+      "related": 5,
+      "relatingIsList": false,
+      "relatedIsList": false
+    },
+    "IFCRELREFERENCEDINSPATIALSTRUCTURE": {
+      "relating": 5,
+      "related": 4,
+      "relatingIsList": false,
+      "relatedIsList": true
+    },
+    "IFCRELSCHEDULESCOSTITEMS": {
+      "relating": 6,
+      "related": 4,
+      "relatingIsList": false,
+      "relatedIsList": true
+    },
+    "IFCRELSEQUENCE": {
+      "relating": 4,
+      "related": 5,
+      "relatingIsList": false,
+      "relatedIsList": false
+    },
+    "IFCRELSERVICESBUILDINGS": {
+      "relating": 4,
+      "related": 5,
+      "relatingIsList": false,
+      "relatedIsList": true
+    },
+    "IFCRELSPACEBOUNDARY": {
+      "relating": 4,
+      "related": 5,
+      "relatingIsList": false,
+      "relatedIsList": false
+    },
+    "IFCRELSPACEBOUNDARY1STLEVEL": {
+      "relating": 4,
+      "related": 5,
+      "relatingIsList": false,
+      "relatedIsList": false
+    },
+    "IFCRELSPACEBOUNDARY2NDLEVEL": {
+      "relating": 4,
+      "related": 5,
+      "relatingIsList": false,
+      "relatedIsList": false
+    },
+    "IFCRELVOIDSELEMENT": {
+      "relating": 4,
+      "related": 5,
+      "relatingIsList": false,
+      "relatedIsList": false
+    }
+  }
+}

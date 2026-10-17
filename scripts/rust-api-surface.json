@@ -34,6 +34,7 @@
     "Result": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "RtcVerdict": "enum { Large { anchor: (f64, f64, f64) }; Small }",
     "SchemaEntityInfo": "struct { is_abstract: bool; name: &'static str; parent: Option<&'static str> }",
+    "SchemaFamily": "enum (non_exhaustive)",
     "SchemaVersion": "enum (non_exhaustive)",
     "SpanBeyondU32": "struct { end: usize; id: u32; start: usize }",
     "StepListItems": "struct {  }",

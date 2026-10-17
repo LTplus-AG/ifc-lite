@@ -48,7 +48,8 @@
  *   1. pnpm install --frozen-lockfile (build/typecheck/lint/node-tests/
  *      viewer-e2e/plato-check/docs-checks — first real step of each)
  *   2. check:bim-globals         (node-tests, before `pnpm test`)
- *   3. check:server-attr-indices (node-tests, before `pnpm test`)
+ *   3. (retired: the server attr-index and relationship-slot tables are no longer
+ *      generated; core's EXPRESS registry answers them, C6-4)
  *   4. generate-docs-sections.mjs --check (node-tests, before `pnpm test`;
  *      also docs-checks — the docs-only-PR twin of the same command)
  *   5. check-unused-locals.mjs   (lint job, via `pnpm lint`)
@@ -118,7 +119,7 @@
  *     no artifact comparison in any of them.
  *
  * (1)-(7) each need only a lockfile resolve (frozen-lockfile), a single-package `turbo build`
- * (bim-globals -> @ifc-lite/sandbox, server-attr-indices -> @ifc-lite/parser), an already-built
+ * (bim-globals -> @ifc-lite/sandbox), an already-built
  * `dist/` across all published packages (api-surface, unused-locals), or nothing at all
  * (docs-sections, cargo metadata), and run in well under two minutes total, so they run
  * unconditionally here — (7) is SKIPPED rather than run when `cargo` isn't on PATH, since a
@@ -302,7 +303,7 @@ runGate(
 // without it they report a missing `turbo` as a stale generated file.
 if (!nodeModulesInstalled()) {
   record(
-    'check:bim-globals / check:server-attr-indices / docs:check-generated',
+    'check:bim-globals / docs:check-generated',
     'skip',
     'No root node_modules — these gates run through `pnpm run`, which cannot resolve\n' +
       '`turbo` or the generators on an uninstalled tree. This is a SKIP, not a pass:\n' +
@@ -316,14 +317,6 @@ if (!nodeModulesInstalled()) {
     'pnpm',
     ['run', 'check:bim-globals'],
     'pnpm generate:bim-globals   (then commit apps/viewer/src/lib/scripts/templates/bim-globals.d.ts)',
-  );
-
-  // 3. Server attr-indices — single-package build, fast.
-  runGate(
-    'check:server-attr-indices',
-    'pnpm',
-    ['run', 'check:server-attr-indices'],
-    'pnpm generate:server-attr-indices   (then `cargo fmt -p ifc-lite-server` and commit attr_indices.rs)',
   );
 
   // 4. Generated doc sections (docs/api/typescript.md package index,

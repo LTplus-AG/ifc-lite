@@ -79,6 +79,7 @@ pub mod limits;
 pub mod model_bounds;
 pub mod parser;
 pub mod project_units;
+pub mod schema_family;
 pub mod schema_gen;
 pub(crate) mod schema_helpers;
 pub mod step_encoding;
@@ -120,6 +121,7 @@ pub use project_units::{
     measure::{measure_unit, MeasureUnit},
     resolve_unit_by_ref, ProjectUnits, ResolvedUnit,
 };
+pub use schema_family::SchemaFamily;
 pub use schema_gen::{AttributeValue, DecodedEntity, GeometryCategory, IfcSchema, ProfileCategory};
 pub use schema_helpers::{
     geometry_flags_by_name, has_geometry_by_name, is_representationless_spatial_container_by_name,

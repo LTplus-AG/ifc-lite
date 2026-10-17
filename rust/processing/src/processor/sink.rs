@@ -49,6 +49,30 @@ pub trait ProcessingSink {
 
 impl ProcessingSink for () {}
 
+/// A sink that listens to batches only: `OnBatch::new(|meshes, processed, total| ..)`.
+///
+/// The other events keep their no-op defaults. For a consumer that streams
+/// meshes out as they are emitted and reads everything else off the result.
+pub struct OnBatch<F>(F);
+
+impl<F> OnBatch<F>
+where
+    F: FnMut(&[MeshData], usize, usize),
+{
+    pub fn new(on_batch: F) -> Self {
+        Self(on_batch)
+    }
+}
+
+impl<F> ProcessingSink for OnBatch<F>
+where
+    F: FnMut(&[MeshData], usize, usize),
+{
+    fn on_batch(&mut self, meshes: &[MeshData], processed: usize, total: usize) {
+        (self.0)(meshes, processed, total);
+    }
+}
+
 /// The adapter the deprecated entry points use to turn their closure
 /// arguments into a sink. Deleted with them in C10.
 #[doc(hidden)]

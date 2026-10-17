@@ -8,8 +8,8 @@ use std::collections::HashSet;
 
 use ifc_lite_geometry::{analytic::AnalyticCurveSegment, TessellationQuality};
 use ifc_lite_processing::{
-    build_geometry_data_export, extract_swept_disk_descriptions,
-    process_geometry_filtered_with_quality_and_ids, MeshCoordinateSpace, OpeningFilterMode,
+    build_geometry_data_export, extract_swept_disk_descriptions, process, MeshCoordinateSpace,
+    ProcessingRequest,
 };
 
 fn mapped_line(operator: &str) -> Vec<u8> {
@@ -29,12 +29,10 @@ fn assert_mesh_matches_analytic_endpoints(source: &[u8]) {
         segments => panic!("expected one analytic line, got {segments:?}"),
     };
 
-    let result = process_geometry_filtered_with_quality_and_ids(
-        source,
-        OpeningFilterMode::Default,
-        TessellationQuality::High,
-        Some(&ids),
-    );
+    let request = ProcessingRequest::full_pass()
+        .quality(TessellationQuality::High)
+        .ids(Some(std::sync::Arc::new(ids.clone())));
+    let result = process(source, &request, &mut ());
     let source_mesh = result.meshes.iter().find(|m| m.express_id == 50).unwrap();
     assert!(
         source_mesh.origin[0].abs() > 1_000_000.0
@@ -95,12 +93,10 @@ fn mapped_operator_keeps_precision_with_an_unmapped_item_in_the_same_product() {
         "#48=IFCSHAPEREPRESENTATION(#16,'Body','MappedRepresentation',(#43,#47));",
     );
     let ids = HashSet::from([50]);
-    let result = process_geometry_filtered_with_quality_and_ids(
-        source.as_bytes(),
-        OpeningFilterMode::Default,
-        TessellationQuality::High,
-        Some(&ids),
-    );
+    let request = ProcessingRequest::full_pass()
+        .quality(TessellationQuality::High)
+        .ids(Some(std::sync::Arc::new(ids.clone())));
+    let result = process(source.as_bytes(), &request, &mut ());
     let site_rotation = (result.mesh_coordinate_space == MeshCoordinateSpace::SiteLocal)
         .then_some(result.site_transform.as_deref())
         .flatten();

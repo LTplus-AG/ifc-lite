@@ -16,8 +16,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 
 use ifc_lite_processing::{
-    process_geometry, process_geometry_streaming_filtered_with_options, InstanceRecord, MeshData,
-    OpeningFilterMode, ProcessingResult, StreamingOptions,
+    process, process_geometry, InstanceRecord, MeshData, ProcessingRequest, ProcessingResult,
 };
 
 use super::emit::{write_display_material, write_geometry_body};
@@ -32,19 +31,7 @@ pub(super) fn proto_name(template_express_id: u32) -> String {
 /// Run the geometry pipeline with #1623 don't-bake instancing enabled and collect the
 /// result (unbounded batches, default `retain_emitted_meshes` so templates survive).
 pub(super) fn run_instanced(content: &[u8]) -> ProcessingResult {
-    process_geometry_streaming_filtered_with_options(
-        content,
-        OpeningFilterMode::Default,
-        StreamingOptions {
-            initial_batch_size: usize::MAX,
-            throughput_batch_size: usize::MAX,
-            enable_instancing: true,
-            ..StreamingOptions::default()
-        },
-        |_, _, _| {},
-        |_| {},
-        |_| {},
-    )
+    process(content, &ProcessingRequest::full_pass().instancing(true), &mut ())
 }
 
 /// Choose the geometry result. Returns `(result, use_instancing)`.

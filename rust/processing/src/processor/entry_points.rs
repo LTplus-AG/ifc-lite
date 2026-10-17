@@ -8,7 +8,7 @@
 //! Each builds the exact [`ProcessingRequest`] its old body built and adapts
 //! its closure arguments to a sink, so output and event order are unchanged.
 //! `process_geometry` is the convenience that stays; the other ten are
-//! deprecated in C4-3 and deleted in C10. Do not add a variant: a new pass
+//! deprecated and deleted in the next major (C10). Do not add a variant: a new pass
 //! input is a [`ProcessingRequest`] field, a new output stream a
 //! [`ProcessingSink`](super::ProcessingSink) event.
 
@@ -37,6 +37,7 @@ where
 /// `ifc_lite_core::build_entity_index` and share it across both, skipping the
 /// duplicate scan. `index` MUST be built from the same `content`. Output is identical
 /// to `process_geometry(content)`.
+#[deprecated(since = "21.4.0", note = "use `process` with a `ProcessingRequest`; the entry points are deleted in the next major")]
 pub fn process_geometry_with_index<T>(content: &T, index: Arc<EntityIndex>) -> ProcessingResult
 where
     T: AsRef<[u8]> + ?Sized,
@@ -45,6 +46,7 @@ where
 }
 
 /// Process IFC content with parallel geometry extraction and emit batches as they complete.
+#[deprecated(since = "21.4.0", note = "use `process` with a `ProcessingRequest`; the entry points are deleted in the next major")]
 pub fn process_geometry_streaming(
     content: &[u8],
     batch_size: usize,
@@ -55,24 +57,20 @@ pub fn process_geometry_streaming(
 }
 
 /// Process IFC content with parallel geometry extraction and configurable streaming behavior.
+#[deprecated(since = "21.4.0", note = "use `process` with a `ProcessingRequest`; the entry points are deleted in the next major")]
 pub fn process_geometry_streaming_with_options(
     content: &[u8],
     options: StreamingOptions,
     on_batch: impl FnMut(&[MeshData], usize, usize),
     on_color_update: impl FnMut(&[(u32, [f32; 4])]),
 ) -> ProcessingResult {
-    process_geometry_streaming_filtered_with_options(
-        content,
-        OpeningFilterMode::Default,
-        options,
-        on_batch,
-        on_color_update,
-        |_| {},
-    )
+    let request = ProcessingRequest::from_streaming(OpeningFilterMode::Default, options);
+    process(content, &request, &mut closures(on_batch, on_color_update, |_| {}, None))
 }
 
 /// Process IFC content with parallel geometry extraction and emit a quick metadata bootstrap
 /// once the scan phase completes.
+#[deprecated(since = "21.4.0", note = "use `process` with a `ProcessingRequest`; the entry points are deleted in the next major")]
 pub fn process_geometry_streaming_with_options_and_bootstrap(
     content: &[u8],
     options: StreamingOptions,
@@ -80,17 +78,16 @@ pub fn process_geometry_streaming_with_options_and_bootstrap(
     on_color_update: impl FnMut(&[(u32, [f32; 4])]),
     on_quick_metadata_bootstrap: impl FnMut(&QuickMetadataBootstrap),
 ) -> ProcessingResult {
-    process_geometry_streaming_filtered_with_options(
+    let request = ProcessingRequest::from_streaming(OpeningFilterMode::Default, options);
+    process(
         content,
-        OpeningFilterMode::Default,
-        options,
-        on_batch,
-        on_color_update,
-        on_quick_metadata_bootstrap,
+        &request,
+        &mut closures(on_batch, on_color_update, on_quick_metadata_bootstrap, None),
     )
 }
 
 /// Process IFC content with parallel geometry extraction and a configurable opening filter.
+#[deprecated(since = "21.4.0", note = "use `process` with a `ProcessingRequest`; the entry points are deleted in the next major")]
 pub fn process_geometry_filtered<T>(
     content: &T,
     opening_filter: OpeningFilterMode,
@@ -98,11 +95,12 @@ pub fn process_geometry_filtered<T>(
 where
     T: AsRef<[u8]> + ?Sized,
 {
-    process_geometry_filtered_with_quality(content, opening_filter, TessellationQuality::default())
+    process(content.as_ref(), &ProcessingRequest::full_pass().opening_filter(opening_filter), &mut ())
 }
 
 /// Like [`process_geometry_filtered`] with a consumer-selected tessellation
 /// detail level (#976), exposed to the browser and server too.
+#[deprecated(since = "21.4.0", note = "use `process` with a `ProcessingRequest`; the entry points are deleted in the next major")]
 pub fn process_geometry_filtered_with_quality<T>(
     content: &T,
     opening_filter: OpeningFilterMode,
@@ -125,6 +123,7 @@ where
 /// output jobs, such as the `IfcOpeningElement` cutters needed to mesh a
 /// selected wall correctly, while non-selected product jobs never reach the
 /// tessellation loop.
+#[deprecated(since = "21.4.0", note = "use `process` with a `ProcessingRequest`; the entry points are deleted in the next major")]
 pub fn process_geometry_filtered_with_quality_and_ids<T>(
     content: &T,
     opening_filter: OpeningFilterMode,
@@ -142,6 +141,7 @@ where
 }
 
 /// Process IFC content with parallel geometry extraction and a configurable streaming batch size.
+#[deprecated(since = "21.4.0", note = "use `process` with a `ProcessingRequest`; the entry points are deleted in the next major")]
 pub fn process_geometry_streaming_filtered(
     content: &[u8],
     opening_filter: OpeningFilterMode,
@@ -156,6 +156,7 @@ pub fn process_geometry_streaming_filtered(
 }
 
 /// Process IFC content with parallel geometry extraction and configurable streaming behavior.
+#[deprecated(since = "21.4.0", note = "use `process` with a `ProcessingRequest`; the entry points are deleted in the next major")]
 pub fn process_geometry_streaming_filtered_with_options(
     content: &[u8],
     opening_filter: OpeningFilterMode,
@@ -179,6 +180,7 @@ pub fn process_geometry_streaming_filtered_with_options(
 /// in the baked frame as it arrives. It equals `native_to_baked` of the
 /// returned result's `mesh_coordinate_space`, `site_transform` and
 /// `metadata.coordinate_info.origin_shift`.
+#[deprecated(since = "21.4.0", note = "use `process` with a `ProcessingRequest`; the entry points are deleted in the next major")]
 pub fn process_geometry_streaming_filtered_with_baked_basis(
     content: &[u8],
     opening_filter: OpeningFilterMode,

@@ -616,27 +616,24 @@ export class RenderPipeline {
         this.device.queue.writeBuffer(this.uniformBuffer, 0, buffer);
     }
 
-    /** Write the raw 84-float RTE uniform for instancing; model/colour come from its instance buffer. */
-    /**
-     * Create-and-VALIDATE the quantized pipeline variants. Uses
-     * createRenderPipelineAsync so WebGPU's asynchronous validation completes
-     * before anything is cached — a sync createRenderPipeline can hand back a
-     * pipeline whose validation later fails on the device, and caching that
-     * would make every quantized draw error. This is the ONLY creator; the
-     * sync getter below reads the cache. Returns whether all variants exist.
-     */
+    /** Validate BOTH variants before admitting quantized batches. A synchronous
+     * createRenderPipeline result is not proof that GPU validation succeeded.
+     * #7655: an async completion belongs only to this live device lifetime. */
     async ensureQuantizedPipelines(): Promise<boolean> {
         const factory = this.makeQuantizedPipelineAsync;
-        if (!factory) return false;
+        if (this.destroyed || !factory) return false;
         const kinds = ['opaque', 'transparent'] as const;
         try {
             for (const kind of kinds) {
                 if (!this.quantizedPipelines[kind]) {
-                    this.quantizedPipelines[kind] = await factory(kind);
+                    const pipeline = await factory(kind);
+                    if (this.destroyed) return false;
+                    this.quantizedPipelines[kind] = pipeline;
                 }
             }
             return true;
         } catch (err) {
+            if (this.destroyed) return false;
             console.warn('[Pipeline] quantized pipeline validation failed; staying on f32 vertices:', err);
             this.makeQuantizedPipelineAsync = null;
             return false;
@@ -934,6 +931,8 @@ export class RenderPipeline {
     destroy(): void {
         if (this.destroyed) return;
         this.destroyed = true;
+        this.makeQuantizedPipelineAsync = null;
+        this.quantizedPipelines = {};
         this.depthTexture.destroy();
         this.objectIdTexture.destroy();
         this.multisampleTexture?.destroy();

@@ -9,30 +9,10 @@ use crate::router::GeometryProcessor;
 use crate::TessellationQuality;
 use ifc_lite_core::{EntityDecoder, IfcSchema, IfcType};
 
-/// Read a fixture under `tests/models/`, returning `None` and printing a
-/// `pnpm fixtures` hint if the file isn't present yet — either because it's
-/// missing on a fresh clone, or because it's still a leftover Git LFS
-/// pointer from before the move to `tests/models/manifest.json`.
+/// Read a fixture under `tests/models/`: `None` (skip) when absent or a Git
+/// LFS pointer, a panic under `IFC_LITE_REQUIRE_FIXTURES=1` (`ifc_lite_testkit`).
 fn read_fixture(rel: &str) -> Option<String> {
-    let path = format!("../../tests/models/{}", rel);
-    match std::fs::read_to_string(&path) {
-        Ok(s) if s.starts_with("version https://git-lfs.github.com/spec/") => {
-            eprintln!(
-                "skipping: fixture {} is still a Git LFS pointer — run `pnpm fixtures` from the repo root to download the real bytes",
-                path,
-            );
-            None
-        }
-        Ok(s) => Some(s),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            eprintln!(
-                "skipping: fixture {} not present — run `pnpm fixtures` to download (sha256 in tests/models/manifest.json)",
-                path,
-            );
-            None
-        }
-        Err(e) => panic!("failed to read fixture {}: {}", path, e),
-    }
+    ifc_lite_testkit::fixture_text(rel)
 }
 
 #[test]

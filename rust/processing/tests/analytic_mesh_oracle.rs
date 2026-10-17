@@ -12,7 +12,6 @@ mod extrusion;
 mod extrusion_tests;
 
 use std::fs;
-use std::path::PathBuf;
 
 use checker::{compare_model, compare_surface, eligibility};
 use ifc_lite_core::EntityDecoder;
@@ -87,19 +86,7 @@ fn mapped_scaled_mirrored_and_large_world_occurrences_match() {
 
 #[test]
 fn catalogued_antea_hollow_curve_matches_when_fixture_is_available() {
-    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../tests/models/ifcopenshell/1032-curve.ifc");
-    let source = match fs::read(&path) {
-        Ok(source) => source,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            eprintln!(
-                "skipping {}: run `pnpm fixtures` to fetch catalogued Antea IFC Export model",
-                path.display()
-            );
-            return;
-        }
-        Err(error) => panic!("read {}: {error}", path.display()),
-    };
+    let source = ifc_lite_testkit::fixture_bytes_or_skip!("ifcopenshell/1032-curve.ifc");
     let (disk, _) = compare_model(&source, 26).unwrap();
     assert!(
         disk.inner_radius.is_some(),

@@ -160,3 +160,36 @@ describe('generateLod0 — millimetre model with an off-origin bounding box', ()
     expect(bare.bbox.max.map((v) => Number(v.toFixed(6)))).toEqual([10.1, 20.1, 30.1]);
   });
 });
+
+// #7790: a placement chain with a PlacementRelTo cycle overflowed the stack.
+describe('generateLod0 - PlacementRelTo cycles (#7790)', () => {
+  const withPlacement = (placements: string) =>
+    IFC_WITH_BOUNDING_BOX.replace('#10=IFCLOCALPLACEMENT($,#11);', placements);
+
+  it('refuses and reports an element whose placement references itself', async () => {
+    const ifc = withPlacement('#10=IFCLOCALPLACEMENT(#10,#11);');
+    const lod0 = await generateLod0(new TextEncoder().encode(ifc));
+    expect(lod0.elements).toHaveLength(0);
+    expect(lod0.skipped).toEqual([
+      { expressID: 40, reason: expect.stringContaining('PlacementRelTo cycle') },
+    ]);
+  });
+
+  it('refuses a two-placement cycle and an element chained into it', async () => {
+    const ifc = withPlacement('#10=IFCLOCALPLACEMENT(#50,#11);\n#50=IFCLOCALPLACEMENT(#10,#11);')
+      .replace('#10=IFCLOCALPLACEMENT(#50,#11);', '#10=IFCLOCALPLACEMENT(#50,#11);\n#41=IFCWALL(\'w2\',$,\'Other\',$,$,#10,#30,$,.NOTDEFINED.);');
+    const lod0 = await generateLod0(new TextEncoder().encode(ifc));
+    expect(lod0.elements).toHaveLength(0);
+    expect(lod0.skipped?.map((s) => s.expressID).sort()).toEqual([40, 41]);
+  });
+
+  it('a long acyclic chain composes iteratively (no recursion limit)', async () => {
+    const n = 20000;
+    // #10 sits at the end of a chain of n placements rooted at #1000.
+    let chain = `#10=IFCLOCALPLACEMENT(#${1000 + n - 1},#11);\n#1000=IFCLOCALPLACEMENT($,#11);`;
+    for (let i = 1; i < n; i++) chain += `\n#${1000 + i}=IFCLOCALPLACEMENT(#${1000 + i - 1},#11);`;
+    const lod0 = await generateLod0(new TextEncoder().encode(withPlacement(chain)));
+    expect(lod0.elements).toHaveLength(1);
+    expect(lod0.skipped).toBeUndefined();
+  });
+});

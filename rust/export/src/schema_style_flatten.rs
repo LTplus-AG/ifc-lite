@@ -77,6 +77,23 @@ impl StyleFlatten {
         (!flat.members.is_empty()).then_some(flat)
     }
 
+    /// [`Self::build`] for an export between two schema labels; empty when
+    /// the conversion does not flatten.
+    pub(crate) fn for_export(content: &[u8], from: &str, to: &str) -> Self {
+        let (from, to) = (crate::schema_convert::canon(from), crate::schema_convert::canon(to));
+        Self::build(content, from, to).unwrap_or_default()
+    }
+
+    /// `line`, flattened when it is a styled item naming an assignment.
+    pub(crate) fn line(&self, from: &str, line: String) -> String {
+        self.rewrite(crate::schema_convert::canon(from), &line).unwrap_or(line)
+    }
+
+    /// [`Self::rewrite`] over a record's bytes, for the merged writer.
+    pub(crate) fn bytes(&self, from: &str, bytes: &[u8]) -> Option<String> {
+        self.rewrite(crate::schema_convert::canon(from), &String::from_utf8_lossy(bytes))
+    }
+
     fn read_assignment(&self, text: &str) -> Option<Vec<String>> {
         let (_, attrs, _) = split_record(text)?;
         let args = split_top_level_args(attrs)?;

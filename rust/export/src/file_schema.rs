@@ -89,3 +89,16 @@ mod tests {
         assert_eq!(schema_line(&out), "FILE_SCHEMA(('IFC4X3'));");
     }
 }
+
+/// The `FILE_SCHEMA` token a STEP writer declares: the source's own first
+/// identifier unless the export converts, else the target family's.
+pub(crate) fn declared_token<'a>(
+    header: Option<&'a crate::source_header::SourceHeader>,
+    converting: bool,
+    target: &'a str,
+) -> &'a str {
+    match header.and_then(|h| h.schema_identifiers.first()).filter(|s| !s.is_empty()) {
+        Some(token) if !converting => token.as_str(),
+        _ => file_schema_identifier(target),
+    }
+}

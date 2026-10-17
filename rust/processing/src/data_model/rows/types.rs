@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
+//! (Moved from `rust/export/src/model_types.rs`, C6-8, #7783.)
+//!
 //! The row and value types the attribute export yields.
 //!
 //! Split from `model.rs` under the house rule (AGENTS.md), and because these
@@ -6,10 +8,10 @@
 //! IFC5, Parquet, USD) and the Python binding read them, while none of them
 //! cares how the streaming pass in `model.rs` fills them in.
 
-use ifc_lite_processing::prepass::UnitScales;
+use crate::prepass::UnitScales;
 
 use super::options::Placement;
-use super::props::fmt_num;
+use ifc_lite_core::fmt_num::fmt_num;
 
 /// The primitive a property value was written as in STEP, read from the
 /// decoded literal rather than guessed back from its type tag (#7681), so a

@@ -5,12 +5,12 @@
 use std::sync::Arc;
 
 use ifc_lite_core::{build_entity_index, EntityDecoder};
-use ifc_lite_processing::data_model::property::{PropertyDecoder, PropertyScope};
+use crate::data_model::property::{PropertyDecoder, PropertyScope};
 
 use super::{decode_property_set, EXPORT_PROPERTY_SCOPE};
-use crate::model::{PropValue, ValueKind};
+use crate::data_model::rows::{PropValue, ValueKind};
 
-const SYNTHETIC: &[u8] = include_bytes!("../tests/fixtures/c6_data_model_synthetic.ifc");
+const SYNTHETIC: &[u8] = include_bytes!("../../../../export/tests/fixtures/c6_data_model_synthetic.ifc");
 
 fn flat(scope: PropertyScope, set_id: u32) -> Vec<PropValue> {
     let mut decoder = EntityDecoder::with_arc_index(SYNTHETIC, Arc::new(build_entity_index(SYNTHETIC)));

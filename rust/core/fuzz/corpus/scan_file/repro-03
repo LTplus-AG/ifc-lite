@@ -1,0 +1,6 @@
+HEADER;
+METADATA;
+/* #99=IFCWALL($); */
+ENDSEC;
+DATA;
+#1=IFCWALL('a',$);

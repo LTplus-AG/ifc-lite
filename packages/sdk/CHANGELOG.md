@@ -1,5 +1,34 @@
 # @ifc-lite/sdk
 
+## 9.6.0
+
+### Minor Changes
+
+- [#7646](https://github.com/LTplus-AG/ifc-lite/pull/7646) [`a3148f1`](https://github.com/LTplus-AG/ifc-lite/commit/a3148f11f644bf3d0237a34eadce0f665ff2d104) Thanks [@louistrue](https://github.com/louistrue)! - Compose the CLI from the shared SDK headless implementation, retaining its constructor, model-ID aliases, authoring adapters and error/scalar contracts. Pending attribute edits now appear consistently in CLI attributes, queries and exports. Raw host adapters can explicitly supply model aliases and query normalization policies.
+
+- [#7586](https://github.com/LTplus-AG/ifc-lite/pull/7586) [`b0266d9`](https://github.com/LTplus-AG/ifc-lite/commit/b0266d9317d3b839082d2f5440fd7dd83a3f9fe0) Thanks [@louistrue](https://github.com/louistrue)! - Several cutting planes through BCF and the SDK ([#7545](https://github.com/LTplus-AG/ifc-lite/issues/7545)). `createViewpoint({ sectionPlanes })` writes one `ClippingPlanes` entry per enabled plane and `extractViewpointState` returns them all as `sectionPlanes` (the first still as `sectionPlane`). `bim.viewer` gains `getSections()`, `setSections()`, `addSection()` and `removeSection(id)`; a backend that clips with a single plane keeps working (the new methods are optional on `ViewerBackendMethods` and fall back to `getSection` / `setSection`). `bim.bcf.createViewpoint` and `extractViewpointState` take and return `sectionPlanes` too.
+
+- [#7634](https://github.com/LTplus-AG/ifc-lite/pull/7634) [`7a0ee87`](https://github.com/LTplus-AG/ifc-lite/commit/7a0ee878b68fb572d8b617cd8d07456a02acbea8) Thanks [@louistrue](https://github.com/louistrue)! - Share the live-overlay headless query and record-folding implementation through the SDK headless subpath. MCP now consumes the SDK-owned reader without changing existing model or query entry points.
+
+- [#7636](https://github.com/LTplus-AG/ifc-lite/pull/7636) [`711da91`](https://github.com/LTplus-AG/ifc-lite/commit/711da919ee815bfaaa71ec6173b572f6b1811c69) Thanks [@louistrue](https://github.com/louistrue)! - Add a supported headless open/query/edit/export/close model session with structured backend capability refusals and closed-session errors. Move the existing MCP backend composition into the SDK and preserve the MCP constructor and native geometry adapters.
+
+### Patch Changes
+
+- [#7597](https://github.com/LTplus-AG/ifc-lite/pull/7597) [`97f27d7`](https://github.com/LTplus-AG/ifc-lite/commit/97f27d70682b810806e932ac81e3a81a3fe10d63) Thanks [@louistrue](https://github.com/louistrue)! - Keep a PAGE directive's apostrophe operand (`'Para \S\' 5'`) inside its STEP string in the CLI's extract, subset, validate and mutate scanners, the cost-removal reference guard, group-graph reference reads and list parsing. They closed the string at the operand, which dropped real references, shifted argument slots and read `#N` text as a reference.
+  
+  The geometry content hash (Rust, shipped in `@ifc-lite/wasm`) also walks STEP strings by the shared rule, so a record holding a PAGE-operand literal hashes the same as its equivalent text.
+- Updated dependencies [[`d9cd4ce`](https://github.com/LTplus-AG/ifc-lite/commit/d9cd4ce76e4a571708f0c65fce8705c337309b12), [`932c7db`](https://github.com/LTplus-AG/ifc-lite/commit/932c7db80a485ee877ca7cbd4b3fee140825726a), [`2650a83`](https://github.com/LTplus-AG/ifc-lite/commit/2650a834adcc7b3ab05eaeff02f3288073e2ac6c), [`83088e0`](https://github.com/LTplus-AG/ifc-lite/commit/83088e02606bc19ff8b3fe055087baaa049f3235), [`2143db2`](https://github.com/LTplus-AG/ifc-lite/commit/2143db224f0ab1b79469af1515f7ec9d671c8429), [`c45ecba`](https://github.com/LTplus-AG/ifc-lite/commit/c45ecbac3fa3b38846bf3d68913a29385121a241), [`b59c05a`](https://github.com/LTplus-AG/ifc-lite/commit/b59c05a0adb0ef7bf0bd44cc7e66a2c59dd4454d), [`bbb5694`](https://github.com/LTplus-AG/ifc-lite/commit/bbb5694a7404dcfad2a385caf7c341f0e456b3ee), [`b2d6a29`](https://github.com/LTplus-AG/ifc-lite/commit/b2d6a29145d58f6fbc77dbdc2b0e1c2c5a3b6577), [`cea811d`](https://github.com/LTplus-AG/ifc-lite/commit/cea811d047f3ababb34e4d3b07a34e9165efe0d6), [`941ff66`](https://github.com/LTplus-AG/ifc-lite/commit/941ff6675c56ae167582ddd96eb55f57ce3f5f89), [`a1b50b1`](https://github.com/LTplus-AG/ifc-lite/commit/a1b50b1d51a12084a17c175cc9759fdc6027f241), [`c259c10`](https://github.com/LTplus-AG/ifc-lite/commit/c259c10a1f6818dea05a266c5dd228dd1aba8a66), [`2344a55`](https://github.com/LTplus-AG/ifc-lite/commit/2344a5577e5efad5fd1be92f8049dbbda563e298), [`97f27d7`](https://github.com/LTplus-AG/ifc-lite/commit/97f27d70682b810806e932ac81e3a81a3fe10d63), [`eace5db`](https://github.com/LTplus-AG/ifc-lite/commit/eace5dbfc6bfcbae8f86655a7c821e374fc5b582), [`68619c1`](https://github.com/LTplus-AG/ifc-lite/commit/68619c1cd19e4b7428e07656febe48d520312646), [`ab3857f`](https://github.com/LTplus-AG/ifc-lite/commit/ab3857fc91b9aa7a2be2b566816f866e8d11a805), [`b0266d9`](https://github.com/LTplus-AG/ifc-lite/commit/b0266d9317d3b839082d2f5440fd7dd83a3f9fe0), [`d1fdb6f`](https://github.com/LTplus-AG/ifc-lite/commit/d1fdb6fb9fcd4a8904be3a6e7c707ada896e47af), [`4f31972`](https://github.com/LTplus-AG/ifc-lite/commit/4f3197201f5f89e332564a12b8d8fae02a671468), [`94c841d`](https://github.com/LTplus-AG/ifc-lite/commit/94c841d488eeda51a3e439d6e0fb63d05e89aa7d), [`8bc1176`](https://github.com/LTplus-AG/ifc-lite/commit/8bc11763c0fe3e673a819b8345e207d7a5f8ba4f), [`c259c10`](https://github.com/LTplus-AG/ifc-lite/commit/c259c10a1f6818dea05a266c5dd228dd1aba8a66), [`61d2092`](https://github.com/LTplus-AG/ifc-lite/commit/61d209288c1b117d405628ead302d0ee700bd2a0), [`fa74216`](https://github.com/LTplus-AG/ifc-lite/commit/fa7421627fcc1bf05060b8cddff9d4fbdb5d6220), [`0c721c3`](https://github.com/LTplus-AG/ifc-lite/commit/0c721c3548e21488fca9b168db3d875ca8ba39d7), [`c6d6eee`](https://github.com/LTplus-AG/ifc-lite/commit/c6d6eeeba624694e435f93a86ca35ad882cf1419)]:
+  - @ifc-lite/clash@2.4.5
+  - @ifc-lite/parser@9.6.0
+  - @ifc-lite/data@6.3.0
+  - @ifc-lite/export@4.12.0
+  - @ifc-lite/create@5.1.1
+  - @ifc-lite/bcf@5.1.0
+  - @ifc-lite/encoding@2.4.0
+  - @ifc-lite/ids@3.3.7
+  - @ifc-lite/ids-authoring@0.2.7
+  - @ifc-lite/lists@3.1.8
+
 ## 9.5.0
 
 ### Minor Changes

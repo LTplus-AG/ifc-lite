@@ -1,5 +1,11 @@
 # @ifc-lite/pointcloud
 
+## 0.12.1
+
+### Patch Changes
+
+- [#7648](https://github.com/LTplus-AG/ifc-lite/pull/7648) [`d1fdb6f`](https://github.com/LTplus-AG/ifc-lite/commit/d1fdb6fb9fcd4a8904be3a6e7c707ada896e47af) Thanks [@louistrue](https://github.com/louistrue)! - Share emitted worker URL rewriting and verification across worker packages. Inspect every emitted module so new callers such as the geometry worker pool resolve shipped JavaScript workers in npm installations. Preserve parser all-asset verification and verify script assets separately where WASM is supplied by another package.
+
 ## 0.12.0
 
 ### Minor Changes

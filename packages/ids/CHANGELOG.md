@@ -1,5 +1,15 @@
 # @ifc-lite/ids
 
+## 3.3.7
+
+### Patch Changes
+
+- Updated dependencies [[`c9ec1a0`](https://github.com/LTplus-AG/ifc-lite/commit/c9ec1a0886c7c1ea18ec86d34f19c3252a15c5f0), [`932c7db`](https://github.com/LTplus-AG/ifc-lite/commit/932c7db80a485ee877ca7cbd4b3fee140825726a), [`2650a83`](https://github.com/LTplus-AG/ifc-lite/commit/2650a834adcc7b3ab05eaeff02f3288073e2ac6c), [`b59c05a`](https://github.com/LTplus-AG/ifc-lite/commit/b59c05a0adb0ef7bf0bd44cc7e66a2c59dd4454d), [`bbb5694`](https://github.com/LTplus-AG/ifc-lite/commit/bbb5694a7404dcfad2a385caf7c341f0e456b3ee), [`cea811d`](https://github.com/LTplus-AG/ifc-lite/commit/cea811d047f3ababb34e4d3b07a34e9165efe0d6), [`941ff66`](https://github.com/LTplus-AG/ifc-lite/commit/941ff6675c56ae167582ddd96eb55f57ce3f5f89), [`a1b50b1`](https://github.com/LTplus-AG/ifc-lite/commit/a1b50b1d51a12084a17c175cc9759fdc6027f241), [`c259c10`](https://github.com/LTplus-AG/ifc-lite/commit/c259c10a1f6818dea05a266c5dd228dd1aba8a66), [`97f27d7`](https://github.com/LTplus-AG/ifc-lite/commit/97f27d70682b810806e932ac81e3a81a3fe10d63), [`eace5db`](https://github.com/LTplus-AG/ifc-lite/commit/eace5dbfc6bfcbae8f86655a7c821e374fc5b582), [`ab3857f`](https://github.com/LTplus-AG/ifc-lite/commit/ab3857fc91b9aa7a2be2b566816f866e8d11a805), [`d1fdb6f`](https://github.com/LTplus-AG/ifc-lite/commit/d1fdb6fb9fcd4a8904be3a6e7c707ada896e47af), [`94c841d`](https://github.com/LTplus-AG/ifc-lite/commit/94c841d488eeda51a3e439d6e0fb63d05e89aa7d), [`c259c10`](https://github.com/LTplus-AG/ifc-lite/commit/c259c10a1f6818dea05a266c5dd228dd1aba8a66), [`fa74216`](https://github.com/LTplus-AG/ifc-lite/commit/fa7421627fcc1bf05060b8cddff9d4fbdb5d6220), [`0c721c3`](https://github.com/LTplus-AG/ifc-lite/commit/0c721c3548e21488fca9b168db3d875ca8ba39d7), [`c6d6eee`](https://github.com/LTplus-AG/ifc-lite/commit/c6d6eeeba624694e435f93a86ca35ad882cf1419)]:
+  - @ifc-lite/codegen@1.19.0
+  - @ifc-lite/parser@9.6.0
+  - @ifc-lite/data@6.3.0
+  - @ifc-lite/encoding@2.4.0
+
 ## 3.3.6
 
 ### Patch Changes

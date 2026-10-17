@@ -1,5 +1,0 @@
----
-"@ifc-lite/viewer": minor
----
-
-Let the user choose two assumptions when a federated LandXML cannot be lined up with a georeferenced model. "Assume a shared height system" places heights as written when the LandXML or the anchor declares no vertical datum. "Read an EPSG code from the coordinate system name" uses a `CoordinateSystem@name` that is exactly `EPSG:<n>` when no `epsgCode` or EPSG `horizontalDatum` is declared. Both are off by default, so such a file is still refused unless the user opts in. When one or both would align a refused file, the refusal becomes a prompt: one pre-checked box per assumption that would help, with what it assumes and what goes wrong if it does not hold, and buttons to load with the checked ones once, to also turn them on for every later file, or to cancel. The same two switches live in Settings → General → LandXML georeferencing and are saved in the browser. A model placed using an assumption is marked "Assumed" in its model information panel and above its source records, listing each assumption it used.

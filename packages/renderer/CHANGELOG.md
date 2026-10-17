@@ -1,5 +1,18 @@
 # @ifc-lite/renderer
 
+## 6.5.0
+
+### Minor Changes
+
+- [#7574](https://github.com/LTplus-AG/ifc-lite/pull/7574) [`e41c13d`](https://github.com/LTplus-AG/ifc-lite/commit/e41c13dc7eb716b524ae682dce6ed964faf029f1) Thanks [@louistrue](https://github.com/louistrue)! - Clip against more than one cutting plane ([#7545](https://github.com/LTplus-AG/ifc-lite/issues/7545)). `RenderOptions.extraSectionPlanes` takes up to seven `SectionPlane`s beyond `sectionPlane`, each resolved by the same code as the primary plane (cardinal slider range, building rotation, explicit normal), and a fragment is kept only where every plane keeps it. The mesh, selection-outline, shadow, point-cloud, GPU-pick and CPU-raycast paths all clip against the same resolved list, and a single plane renders exactly as before.
+
+- [#7577](https://github.com/LTplus-AG/ifc-lite/pull/7577) [`996858c`](https://github.com/LTplus-AG/ifc-lite/commit/996858cc5f12e961eee556e8a74258b6e67437bd) Thanks [@louistrue](https://github.com/louistrue)! - Several cutting planes, part two ([#7545](https://github.com/LTplus-AG/ifc-lite/issues/7545)). A cap per plane: `uploadSection2DOverlay(…, planeId)` keys the cap of a plane in `extraSectionPlanes` (`clearSection2DOverlay(planeId)`, `clearSection2DExtraOverlays(keep)`), and every cap and its outline is discarded where another plane removes it. `Renderer.getSectionPlaneFrames()` reports each plane's world-space anchor and rectangle for labels and handles, `SectionPlane.showGizmo = false` hides only the primary preview quad, and `Camera.frameBounds` takes an optional padding multiple so a view can be framed with an exact margin.
+
+### Patch Changes
+
+- Updated dependencies [[`83088e0`](https://github.com/LTplus-AG/ifc-lite/commit/83088e02606bc19ff8b3fe055087baaa049f3235), [`c45ecba`](https://github.com/LTplus-AG/ifc-lite/commit/c45ecbac3fa3b38846bf3d68913a29385121a241), [`ad3d150`](https://github.com/LTplus-AG/ifc-lite/commit/ad3d1503394047426b12adb5d3da076a552ac3e0), [`f1d7254`](https://github.com/LTplus-AG/ifc-lite/commit/f1d7254b73845867a1c3120abb561672da035092), [`dffec73`](https://github.com/LTplus-AG/ifc-lite/commit/dffec73200c9b074946565f54770a93f49a50365), [`b174053`](https://github.com/LTplus-AG/ifc-lite/commit/b174053bb4ea1807143cfdd144dff86524068e92), [`d1fdb6f`](https://github.com/LTplus-AG/ifc-lite/commit/d1fdb6fb9fcd4a8904be3a6e7c707ada896e47af)]:
+  - @ifc-lite/geometry@7.9.0
+
 ## 6.4.0
 
 ### Minor Changes

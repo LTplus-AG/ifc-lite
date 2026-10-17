@@ -1,5 +1,17 @@
 # @ifc-lite/server-client
 
+## 5.0.0
+
+### Major Changes
+
+- [#7709](https://github.com/LTplus-AG/ifc-lite/pull/7709) [`3a27672`](https://github.com/LTplus-AG/ifc-lite/commit/3a2767267206de951bc1279e3c31c0e24198012b) Thanks [@louistrue](https://github.com/louistrue)! - `parseParquet()` now uploads the file when `/cache/geometry` answers `404` for an entry `/cache/check` just reported. A damaged cache entry passes the check, fails the fetch, and is dropped by the server; this call used to fail with `NOT_FOUND` and only the next one healed it. The bump level is the one the other [#7676](https://github.com/LTplus-AG/ifc-lite/issues/7676) changeset already sets for this package.
+
+- [#7709](https://github.com/LTplus-AG/ifc-lite/pull/7709) [`3a27672`](https://github.com/LTplus-AG/ifc-lite/commit/3a2767267206de951bc1279e3c31c0e24198012b) Thanks [@louistrue](https://github.com/louistrue)! - **Migration: `StreamCompleteEvent.cache_key` (the `complete` event of `parseStream()`) is now optional and deprecated: a server that includes [#7676](https://github.com/LTplus-AG/ifc-lite/issues/7676) no longer sends it. `/parse/stream` caches nothing, and the value it sent named no cache entry. Use `parse()` or a Parquet method when you need a `cache_key`.**
+
+### Patch Changes
+
+- [#7820](https://github.com/LTplus-AG/ifc-lite/pull/7820) [`b174053`](https://github.com/LTplus-AG/ifc-lite/commit/b174053bb4ea1807143cfdd144dff86524068e92) Thanks [@louistrue](https://github.com/louistrue)! - A model whose length unit is unusable (zero, negative or non-numeric factor) no longer streams as a silent empty model. The geometry stream now emits a `unitRefused` event right after `rtcOffset`, and the viewer shows an error naming the file. Server `ModelMetadata` reports the refusal as `length_unit_refused` (the offending unit's express id) and omits `length_unit_scale` instead of reporting `1`.
+
 ## 4.0.1
 
 ### Patch Changes

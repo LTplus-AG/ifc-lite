@@ -1,5 +1,22 @@
 # @ifc-lite/rules
 
+## 0.7.8
+
+### Patch Changes
+
+- [#7718](https://github.com/LTplus-AG/ifc-lite/pull/7718) [`932c7db`](https://github.com/LTplus-AG/ifc-lite/commit/932c7db80a485ee877ca7cbd4b3fee140825726a) Thanks [@louistrue](https://github.com/louistrue)! - Bound the `IfcComplexProperty` walk by work and by output, not only by depth. A complex property that lists the same member several times was read once per path (`k^8` reads). A long name was copied at every level, and every entity sharing a property set walked it again. A small file could therefore build gigabytes of property text and run the tab out of memory: 200 walls sharing one set in a 27 KB file did.
+  
+  One walk now reads at most 1024 nested members. Every complex property a property set lists is resolved once per store, against one output budget for the model: 16 bytes per source byte, at least 1 MiB. A complex property is walked once however many sets list it; each further listing is charged only what it keeps (its value and its `values` list), so a de-duplicating optimiser's file, where one property is shared by thousands of sets, keeps every value. A property set id that appears in more than one record is read once, at its last record, the one the entity index resolves. Every entity reading that set shares the one value, and the shared values are frozen. A value cut by either bound ends with `(truncated: nested properties over the walk budget)`. Its `values` and `members` end with the same marker, so a member past the cut reads as truncated rather than absent, including for a rule's `memberPath`. The cut is counted (`complexPropertyCuts`) and logged once per store.
+  
+  The server's data model and the Rust STEP exporter apply the same policy, so all three write the same value. The server now also reads a nested member that has no `Name` for its value and shows it as a bare part, as the browser and the exporter always did: a complex property with an unnamed member used to read `P: v` on the server and `anon, P: v` in the browser, and now reads `anon, P: v` in both.
+  
+  `CompactEntityIndex` now resolves an express id written more than once to its last record, as the Rust core, the server and the exporter do, so a duplicate with different content reads the same everywhere (it used to be whichever copy the binary search landed on).
+- Updated dependencies [[`932c7db`](https://github.com/LTplus-AG/ifc-lite/commit/932c7db80a485ee877ca7cbd4b3fee140825726a), [`2650a83`](https://github.com/LTplus-AG/ifc-lite/commit/2650a834adcc7b3ab05eaeff02f3288073e2ac6c), [`b59c05a`](https://github.com/LTplus-AG/ifc-lite/commit/b59c05a0adb0ef7bf0bd44cc7e66a2c59dd4454d), [`bbb5694`](https://github.com/LTplus-AG/ifc-lite/commit/bbb5694a7404dcfad2a385caf7c341f0e456b3ee), [`cea811d`](https://github.com/LTplus-AG/ifc-lite/commit/cea811d047f3ababb34e4d3b07a34e9165efe0d6), [`941ff66`](https://github.com/LTplus-AG/ifc-lite/commit/941ff6675c56ae167582ddd96eb55f57ce3f5f89), [`a1b50b1`](https://github.com/LTplus-AG/ifc-lite/commit/a1b50b1d51a12084a17c175cc9759fdc6027f241), [`c259c10`](https://github.com/LTplus-AG/ifc-lite/commit/c259c10a1f6818dea05a266c5dd228dd1aba8a66), [`97f27d7`](https://github.com/LTplus-AG/ifc-lite/commit/97f27d70682b810806e932ac81e3a81a3fe10d63), [`eace5db`](https://github.com/LTplus-AG/ifc-lite/commit/eace5dbfc6bfcbae8f86655a7c821e374fc5b582), [`ab3857f`](https://github.com/LTplus-AG/ifc-lite/commit/ab3857fc91b9aa7a2be2b566816f866e8d11a805), [`d1fdb6f`](https://github.com/LTplus-AG/ifc-lite/commit/d1fdb6fb9fcd4a8904be3a6e7c707ada896e47af), [`94c841d`](https://github.com/LTplus-AG/ifc-lite/commit/94c841d488eeda51a3e439d6e0fb63d05e89aa7d), [`c259c10`](https://github.com/LTplus-AG/ifc-lite/commit/c259c10a1f6818dea05a266c5dd228dd1aba8a66), [`fa74216`](https://github.com/LTplus-AG/ifc-lite/commit/fa7421627fcc1bf05060b8cddff9d4fbdb5d6220), [`0c721c3`](https://github.com/LTplus-AG/ifc-lite/commit/0c721c3548e21488fca9b168db3d875ca8ba39d7), [`c6d6eee`](https://github.com/LTplus-AG/ifc-lite/commit/c6d6eeeba624694e435f93a86ca35ad882cf1419)]:
+  - @ifc-lite/parser@9.6.0
+  - @ifc-lite/data@6.3.0
+  - @ifc-lite/encoding@2.4.0
+  - @ifc-lite/ids@3.3.7
+
 ## 0.7.7
 
 ### Patch Changes

@@ -1,5 +1,59 @@
 # @ifc-lite/geometry
 
+## 7.9.0
+
+### Minor Changes
+
+- [#7804](https://github.com/LTplus-AG/ifc-lite/pull/7804) [`c45ecba`](https://github.com/LTplus-AG/ifc-lite/commit/c45ecbac3fa3b38846bf3d68913a29385121a241) Thanks [@louistrue](https://github.com/louistrue)! - GLB, LOD1, Parquet and IFC5 exports of a georeferenced model now land at the model's world position instead of in the viewer's shifted render frame.
+  
+  The viewer shifts a large-coordinate model toward the origin (an RTC offset) so the GPU keeps its f32 precision. Exports built from those shifted meshes dropped the shift, so the file came out kilometres from where the same model lands through the from-bytes exporters.
+  
+  - **GLB (`exportGlbFromMeshes`):** takes an optional `worldMatrix`, the column-major 4x4 that carries the baked frame back to IFC world (a rigid transform). The GLB root carries it, as the from-bytes export already does. `renderFrameWorldMatrix(coordinateInfo)` in `@ifc-lite/geometry/world-frame` builds it. The viewer's GLB export and LOD1 pass it. A matrix that is not 16 finite numbers, or not a rotation plus a translation, throws `MALFORMED_MESH_INPUT`.
+  - **Parquet (.bos):** vertices stay in the render frame. `Metadata.json` now records `meshCoordinateSpace`, `vertexAxes` and `worldTransform` (`world = M * [x, y, z, 1]`), the keys the Rust BOS writer already uses.
+  - **IFC5:** the mesh points are written in IFC world, in f64.
+  - **Server models in the viewer:** the server's `origin_shift` is in IFC Z-up axes but was read as Y-up, so the reconstructed `originalBounds` of an RTC model mixed axes. It is converted at the boundary now.
+  - **KMZ altitude:** the KML altitude now folds back the whole render-frame offset (the Y-up `originShift` as well as the wasm RTC Z), so a server-loaded RTC model exported with "True elevation" is no longer placed at its shifted height.
+
+- [#7620](https://github.com/LTplus-AG/ifc-lite/pull/7620) [`f1d7254`](https://github.com/LTplus-AG/ifc-lite/commit/f1d7254b73845867a1c3120abb561672da035092) Thanks [@louistrue](https://github.com/louistrue)! - The LandXML (terrain) export gets options, matching the other export dialogs ([#7618](https://github.com/LTplus-AG/ifc-lite/issues/7618)).
+  - **Units:** metres, international feet or US survey feet. US survey feet write heights in international feet, because LandXML 1.2 has no US-survey-foot elevation unit; both units are declared in `<Units>`.
+  - **Decimal places:** 3, 4 or 6.
+  - **Surface name:** editable per surface.
+  
+  The dialog adds an Output row, a Units select, a Decimal places select and an editable name per surface. The options apply when you export, and the selection check is not repeated.
+  
+  `IfcAPI.exportLandXmlTerrain(content, productIds, options)` now takes one typed options object `{ date, time, linearUnit?, decimals?, surfaceNames? }`. `GeometryProcessor.exportLandXmlTerrain(bytes, productIds, options?)` takes `LandXmlTerrainExportOptions`, with `now` moved into the options. Both replace the unreleased [#7600](https://github.com/LTplus-AG/ifc-lite/issues/7600) signatures. Defaults are unchanged: metres, 6 decimals and the IFC names.
+
+- [#7606](https://github.com/LTplus-AG/ifc-lite/pull/7606) [`dffec73`](https://github.com/LTplus-AG/ifc-lite/commit/dffec73200c9b074946565f54770a93f49a50365) Thanks [@louistrue](https://github.com/louistrue)! - Export an IFC terrain as a LandXML 1.2 TIN surface ([#7600](https://github.com/LTplus-AG/ifc-lite/issues/7600)). `IfcAPI.exportLandXmlTerrain`, wrapped as `GeometryProcessor.exportLandXmlTerrain(bytes, productIds, now?)`, writes one `<Surface>` for each selected `IfcGeographicElement` or `IfcSite` whose representation holds exactly one `IfcTriangulatedFaceSet`. An `IfcTriangulatedIrregularNetwork` is accepted only when every `Flags` value is 0. The authored `CoordIndex` is written as `<Faces>` without re-triangulation, with `PnIndex` resolved. Vertices go through the product placement and then the `IfcMapConversion` (or `IfcMapConversionScaled`) of the representation's context, and are written as northing, easting, elevation in metres at micrometre resolution. The `CoordinateSystem` carries the `IfcProjectedCRS` name, plus `epsgCode` for an `EPSG:<n>` name and its geodetic and vertical datums. Surface names are made unique and `OID` is the `GlobalId`.
+  
+  Missing or ambiguous georeferencing refuses the export instead of guessing. This covers no map conversion or more than one, a non-identity `WorldCoordinateSystem`, `Scale` omitted across a unit change, a unit that cannot be converted to metres, and terrains in different coordinate systems. The error is `TERRAIN_REFUSED:`, followed by the product or attribute at fault. New `@ifc-lite/geometry` exports: `TERRAIN_REFUSED`, `terrainRefusalReason`, and the `LandXmlTerrainExport` and `LandXmlTerrainSurface` types. The viewer adds a **LandXML (terrain)** export that checks the selection with the same exporter and downloads `<model>_terrain.xml`.
+  
+  KMZ export now writes an XML 1.0-forbidden control character in the document name as U+FFFD. Before, such a name produced a KML document that XML parsers reject.
+
+### Patch Changes
+
+- [#7760](https://github.com/LTplus-AG/ifc-lite/pull/7760) [`83088e0`](https://github.com/LTplus-AG/ifc-lite/commit/83088e02606bc19ff8b3fe055087baaa049f3235) Thanks [@louistrue](https://github.com/louistrue)! - OBJ and USD exports of a model with nothing to draw now fail instead of writing an empty file. This is how GLB export already behaved.
+  
+  A model with no render geometry, or one whose filters hide every mesh, used to export as a header-only OBJ or a USD stage with no meshes. Both were reported as successful. `exportObj` and `exportUsd` now throw an `Error` whose message starts with `NO_RENDER_GEOMETRY`, the same error `exportGlb` throws, so `isNoRenderGeometryError` matches all three. The rest of the stack handles the error:
+  
+  - **CLI:** `ifc-lite export --format obj|usd` exits with "produced 0 vertices" or "produced 0 meshes" and writes no file.
+  - **MCP:** the `export_obj` and `export_usd` tools return that message as a tool error.
+  - **Viewer:** the USD dialog shows that message instead of the raw engine error.
+  
+  Data formats are unchanged. CSV, JSON, JSON-LD, IFCX, STEP, HBJSON and DFJSON still export a model without geometry, because an empty table or graph is still a valid document.
+  
+  `@ifc-lite/export` adds `countUsdMeshes`, the USD counterpart of `countObjVertices` and `countGlbMeshes`.
+  
+  In the Rust crate, `export_gltf_streaming`, `export_gltf_streaming_with_index`, `export_obj`, `export_obj_with_stats` and `export_usd` now return `Result<_, ExportError>`.
+
+- [#7806](https://github.com/LTplus-AG/ifc-lite/pull/7806) [`ad3d150`](https://github.com/LTplus-AG/ifc-lite/commit/ad3d1503394047426b12adb5d3da076a552ac3e0) Thanks [@louistrue](https://github.com/louistrue)! - A typed `NO_RENDER_GEOMETRY` export refusal is no longer logged as "Failed to exportUsd/exportGlb": it is the exporter's verdict on its input, like a terrain refusal, and is still reported to the caller and rethrown.
+
+- [#7820](https://github.com/LTplus-AG/ifc-lite/pull/7820) [`b174053`](https://github.com/LTplus-AG/ifc-lite/commit/b174053bb4ea1807143cfdd144dff86524068e92) Thanks [@louistrue](https://github.com/louistrue)! - A model whose length unit is unusable (zero, negative or non-numeric factor) no longer streams as a silent empty model. The geometry stream now emits a `unitRefused` event right after `rtcOffset`, and the viewer shows an error naming the file. Server `ModelMetadata` reports the refusal as `length_unit_refused` (the offending unit's express id) and omits `length_unit_scale` instead of reporting `1`.
+
+- [#7648](https://github.com/LTplus-AG/ifc-lite/pull/7648) [`d1fdb6f`](https://github.com/LTplus-AG/ifc-lite/commit/d1fdb6fb9fcd4a8904be3a6e7c707ada896e47af) Thanks [@louistrue](https://github.com/louistrue)! - Share emitted worker URL rewriting and verification across worker packages. Inspect every emitted module so new callers such as the geometry worker pool resolve shipped JavaScript workers in npm installations. Preserve parser all-asset verification and verify script assets separately where WASM is supplied by another package.
+- Updated dependencies [[`2650a83`](https://github.com/LTplus-AG/ifc-lite/commit/2650a834adcc7b3ab05eaeff02f3288073e2ac6c), [`83088e0`](https://github.com/LTplus-AG/ifc-lite/commit/83088e02606bc19ff8b3fe055087baaa049f3235), [`9c26c31`](https://github.com/LTplus-AG/ifc-lite/commit/9c26c3134175d61efd68fa536e89ecff0bd13ca6), [`d8c1101`](https://github.com/LTplus-AG/ifc-lite/commit/d8c110166a07e494be45e509e31db2c614b31217), [`c45ecba`](https://github.com/LTplus-AG/ifc-lite/commit/c45ecbac3fa3b38846bf3d68913a29385121a241), [`b59c05a`](https://github.com/LTplus-AG/ifc-lite/commit/b59c05a0adb0ef7bf0bd44cc7e66a2c59dd4454d), [`a25c706`](https://github.com/LTplus-AG/ifc-lite/commit/a25c70603dc6596d1248ed86afadcfaeb0f6e954), [`e143b95`](https://github.com/LTplus-AG/ifc-lite/commit/e143b95daac9a95198184f72f86582cde71e7d64), [`2cded81`](https://github.com/LTplus-AG/ifc-lite/commit/2cded81961ac7cf61402cee8253081a89b5e9b8c), [`ccf60b6`](https://github.com/LTplus-AG/ifc-lite/commit/ccf60b6bc018d3f9aefd901a5702ab5c0ecf0ee5), [`f1d7254`](https://github.com/LTplus-AG/ifc-lite/commit/f1d7254b73845867a1c3120abb561672da035092), [`dffec73`](https://github.com/LTplus-AG/ifc-lite/commit/dffec73200c9b074946565f54770a93f49a50365), [`890652f`](https://github.com/LTplus-AG/ifc-lite/commit/890652f68009c51865934ba701b1425c16431400), [`941ff66`](https://github.com/LTplus-AG/ifc-lite/commit/941ff6675c56ae167582ddd96eb55f57ce3f5f89), [`a1b50b1`](https://github.com/LTplus-AG/ifc-lite/commit/a1b50b1d51a12084a17c175cc9759fdc6027f241), [`c259c10`](https://github.com/LTplus-AG/ifc-lite/commit/c259c10a1f6818dea05a266c5dd228dd1aba8a66), [`97f27d7`](https://github.com/LTplus-AG/ifc-lite/commit/97f27d70682b810806e932ac81e3a81a3fe10d63), [`eace5db`](https://github.com/LTplus-AG/ifc-lite/commit/eace5dbfc6bfcbae8f86655a7c821e374fc5b582), [`68619c1`](https://github.com/LTplus-AG/ifc-lite/commit/68619c1cd19e4b7428e07656febe48d520312646), [`94c841d`](https://github.com/LTplus-AG/ifc-lite/commit/94c841d488eeda51a3e439d6e0fb63d05e89aa7d), [`bf1a4d2`](https://github.com/LTplus-AG/ifc-lite/commit/bf1a4d2a144e5d3af28b94b621f1c5340e14cb90), [`fa74216`](https://github.com/LTplus-AG/ifc-lite/commit/fa7421627fcc1bf05060b8cddff9d4fbdb5d6220), [`dbf11ee`](https://github.com/LTplus-AG/ifc-lite/commit/dbf11ee5344ad40ebfd3f0e87d46f3e18b6b96ad), [`0c721c3`](https://github.com/LTplus-AG/ifc-lite/commit/0c721c3548e21488fca9b168db3d875ca8ba39d7), [`65379de`](https://github.com/LTplus-AG/ifc-lite/commit/65379de4fb28d0896e144ff95b62f836627b3c6b), [`53f067f`](https://github.com/LTplus-AG/ifc-lite/commit/53f067f0ff5f8ee8e690f3debbc192f27316e3b9), [`406957e`](https://github.com/LTplus-AG/ifc-lite/commit/406957e683b7d27234565f4ec16194a7147fe3e2), [`2d5333f`](https://github.com/LTplus-AG/ifc-lite/commit/2d5333ff92026401fea57bc9ba47a60f734f6c97)]:
+  - @ifc-lite/data@6.3.0
+  - @ifc-lite/wasm@10.5.0
+
 ## 7.8.1
 
 ### Patch Changes

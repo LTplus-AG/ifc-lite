@@ -100,6 +100,15 @@ pub(super) fn read_trim_parameter(attr: &ifc_lite_core::AttributeValue) -> Optio
     param
 }
 
+/// The `(Trim1, Trim2)` parameter pair of an `IfcTrimmedCurve`, when both
+/// trims carry a parameter: the subspan a B-spline basis is sampled over.
+pub(super) fn trim_parameter_range(trimmed: &DecodedEntity) -> Option<(f64, f64)> {
+    trimmed
+        .get(1)
+        .and_then(read_trim_parameter)
+        .zip(trimmed.get(2).and_then(read_trim_parameter))
+}
+
 /// A curve whose authored data does not resolve (#7687, PROC-S21): a
 /// control point, polyline point or composite segment that names no usable
 /// entity. Sampling what remains would draw a different curve, so callers

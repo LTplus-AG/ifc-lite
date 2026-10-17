@@ -821,14 +821,14 @@ fn every_float_reader_refuses_an_overflowing_literal_and_keeps_negative_zero() {
     assert!(!lossless.strict_reals());
     let kept = lossless.decode_by_id(1).expect("lossless by default");
     assert_eq!(kept.get_list(0).and_then(|l| l[0].as_float()), Some(f64::INFINITY));
-    assert_eq!(lossless.refused_real_records(), 0);
+    assert_eq!(lossless.refused_records(), 0);
 
     let mut decoder = EntityDecoder::new(content).with_strict_reals();
     assert!(
         matches!(decoder.decode_by_id(1), Err(Error::UnrepresentableReal(1))),
         "strict full decode admitted 1.E400"
     );
-    assert_eq!(decoder.refused_real_records(), 1, "the refusal is counted");
+    assert_eq!(decoder.refused_records(), 1, "the refusal is counted");
     assert_eq!(decoder.get_cartesian_point_fast(1), None, "fast point admitted 1.E400");
 
     // The D14 seam reads the same record losslessly ...
@@ -837,24 +837,24 @@ fn every_float_reader_refuses_an_overflowing_literal_and_keeps_negative_zero() {
     // ... without caching it, so geometry still sees it refused, and the
     // re-read counts the record once, not twice.
     assert!(matches!(decoder.decode_by_id(1), Err(Error::UnrepresentableReal(1))));
-    assert_eq!(decoder.refused_real_records(), 1);
+    assert_eq!(decoder.refused_records(), 1);
 
     // A product record is admitted even when strict: its overflowing
     // OverallHeight is descriptive, not geometry, and refusing it would lose
     // the door's finite mesh.
     let door = decoder.decode_by_id(5).expect("a product is admitted");
     assert_eq!(door.get_float(8), Some(f64::INFINITY));
-    assert_eq!(decoder.refused_real_records(), 1, "an admitted product is not counted");
+    assert_eq!(decoder.refused_records(), 1, "an admitted product is not counted");
 
     // A polyloop whose fast read failed reports the counted admission
     // refusal, in either mode, so a reader can fail the item.
     assert_eq!(decoder.get_polyloop_coords_cached(6), None);
     assert!(matches!(decoder.polyloop_refusal(6), Some(Error::UnrepresentableReal(1))));
-    assert_eq!(decoder.refused_real_records(), 1, "the same record, counted once");
+    assert_eq!(decoder.refused_records(), 1, "the same record, counted once");
     assert!(matches!(lossless.polyloop_refusal(6), Some(Error::UnrepresentableReal(1))));
     assert!(matches!(decoder.refuse_record(3), Error::UnrepresentableReal(3)));
     assert_eq!(decoder.refused_record_ids().len(), 2);
-    assert_eq!(decoder.refused_real_records(), 2);
+    assert_eq!(decoder.refused_records(), 2);
 
     let neg = decoder.decode_by_id(2).expect("-0. decodes");
     let x = neg.get_list(0).and_then(|l| l[0].as_float()).expect("x");

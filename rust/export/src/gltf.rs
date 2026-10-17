@@ -50,7 +50,6 @@ mod matrix;
 
 // The infallible assembler is crate-private (#7675); only its tests name it.
 #[cfg(test)]
-#[cfg(test)]
 use from_meshes::export_glb_from_meshes;
 pub use from_meshes::try_export_glb_from_meshes;
 use matrix::{

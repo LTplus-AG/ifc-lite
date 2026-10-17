@@ -62,7 +62,10 @@
 # Row DELETED: the COLLADA document WRITER moved verbatim to collada_document.rs
 # so collada.rs could take try_export_collada_from_meshes and come
 # back under the 400-line rule instead of raising this budget to 470.
-     468 rust/export/src/model.rs
+# C6-8 (#7783): the export row stream moved here from rust/export/src/model.rs (468 lines,
+# row removed); its pass-1 helpers split into rows/support.rs. The 328-line
+# stream function is the bulk (see function_length_allowlist.txt).
+     437 rust/processing/src/data_model/rows/mod.rs
 # -140 net: text-level STEP primitives (escape/detect_schema/refs_in_line/
 # split_top_level_args/apply_attr_mutations) split out to step_text.rs, making
 # room for the backslash-doubling fix to escape() without raising this

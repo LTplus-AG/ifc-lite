@@ -4,10 +4,12 @@
 
 //! Atomic mixed planar/residual routing, including its diagnostics (#4617).
 
-use super::{bool2d_path::Bool2dCut, prism_cut, topology_defect_count, GeometryRouter};
+use super::{
+    bool2d_path::Bool2dCut, host_diag::HostDiagSnapshot, prism_cut, topology_defect_count,
+    GeometryRouter,
+};
 use super::{MIXED_ROUTE_DEFECT_FLOOR, MIXED_ROUTE_DEFECT_GROWTH};
-use crate::router::HostOpeningDiagnostic;
-use crate::{BoolFailure, Mesh};
+use crate::Mesh;
 
 impl GeometryRouter {
     pub(super) fn try_staged_bool2d(
@@ -36,7 +38,7 @@ impl GeometryRouter {
             crate::opening_perf_trace::record(|c| c.staged_disabled_correction_refusals = c.staged_disabled_correction_refusals.saturating_add(1));
             return None;
         }
-        let mut diagnostic = HostAttempt::new(self, element_id);
+        let diagnostic = HostDiagSnapshot::capture(self, element_id).guard(self, element_id);
         #[cfg(feature = "opening-perf-trace")]
         crate::opening_perf_trace::record(|c| c.staged_residual_calls = c.staged_residual_calls.saturating_add(1));
         let candidate = self.apply_void_context(holed, residual, element_id);
@@ -55,61 +57,8 @@ impl GeometryRouter {
         }
         #[cfg(feature = "opening-perf-trace")]
         crate::opening_perf_trace::record(|c| c.staged_commits = c.staged_commits.saturating_add(1));
-        diagnostic.accepted = true;
+        diagnostic.accept();
         telemetry.commit();
         Some(candidate)
-    }
-}
-
-/// Only this host and request-local rect counters can change during recursion.
-/// Restore on rejection (or unwind), preserving diagnostics from earlier hosts.
-struct HostAttempt<'a> {
-    router: &'a GeometryRouter,
-    id: u32,
-    failure: Option<Vec<BoolFailure>>,
-    opening: Option<HostOpeningDiagnostic>,
-    consumed: bool,
-    rect: crate::rect_fast::RectFastStats,
-    accepted: bool,
-}
-
-impl<'a> HostAttempt<'a> {
-    fn new(router: &'a GeometryRouter, id: u32) -> Self {
-        Self {
-            router,
-            id,
-            failure: router.csg_failures.borrow().get(&id).cloned(),
-            opening: router.host_opening_diagnostics.borrow().get(&id).cloned(),
-            consumed: router.host_consumed_by_void(id),
-            rect: *router.rect_fast_stats.borrow(),
-            accepted: false,
-        }
-    }
-}
-
-impl Drop for HostAttempt<'_> {
-    fn drop(&mut self) {
-        if self.accepted {
-            return;
-        }
-        let mut failures = self.router.csg_failures.borrow_mut();
-        if let Some(previous) = self.failure.take() {
-            failures.insert(self.id, previous);
-        } else {
-            failures.remove(&self.id);
-        }
-        let mut openings = self.router.host_opening_diagnostics.borrow_mut();
-        if let Some(previous) = self.opening.take() {
-            openings.insert(self.id, previous);
-        } else {
-            openings.remove(&self.id);
-        }
-        if !self.consumed {
-            self.router
-                .voids_consumed_hosts
-                .borrow_mut()
-                .remove(&self.id);
-        }
-        *self.router.rect_fast_stats.borrow_mut() = self.rect;
     }
 }

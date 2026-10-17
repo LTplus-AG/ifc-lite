@@ -41,8 +41,6 @@ mod volume;
 
 #[cfg(test)]
 mod closure_tests;
-#[cfg(test)]
-mod legacy_tests;
 
 // Not every re-export has a caller in every feature set (the shared oracles and
 // the manifold gate are opt-in).

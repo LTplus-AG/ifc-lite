@@ -8,6 +8,7 @@
 //! at existing call sites keeps working unchanged.
 
 use super::NORMALIZE_EPSILON;
+use crate::math::aabb::Aabb3;
 use crate::{Mesh, Point3, Vector3};
 
 /// Build a right-handed orthonormal wall frame `[len, up, depth]` from a
@@ -66,22 +67,16 @@ pub(in crate::router::voids) fn project_aabb_in_frame(
     axes: &[Vector3<f64>; 3],
     center: Vector3<f64>,
 ) -> Option<(Point3<f64>, Point3<f64>)> {
-    let mut lo = [f64::INFINITY; 3];
-    let mut hi = [f64::NEG_INFINITY; 3];
-    for ch in mesh.positions.chunks_exact(3) {
+    let bounds = Aabb3::from_points(mesh.positions.chunks_exact(3).map(|ch| {
         let p = Vector3::new(ch[0] as f64, ch[1] as f64, ch[2] as f64) - center;
-        for k in 0..3 {
-            let v = p.dot(&axes[k]);
-            lo[k] = lo[k].min(v);
-            hi[k] = hi[k].max(v);
-        }
-    }
-    // Validate BOTH bounds: a +inf projection lands only in `hi`, so checking
-    // `lo` alone could return a non-finite AABB into the cutter path (#1259).
-    (lo.iter().all(|v| v.is_finite()) && hi.iter().all(|v| v.is_finite())).then(|| {
+        [p.dot(&axes[0]), p.dot(&axes[1]), p.dot(&axes[2])]
+    }));
+    // Validate BOTH bounds: a +inf projection lands only in `max`, so checking
+    // `min` alone could return a non-finite AABB into the cutter path (#1259).
+    bounds.is_well_formed().then(|| {
         (
-            Point3::new(lo[0], lo[1], lo[2]),
-            Point3::new(hi[0], hi[1], hi[2]),
+            Point3::new(bounds.min[0], bounds.min[1], bounds.min[2]),
+            Point3::new(bounds.max[0], bounds.max[1], bounds.max[2]),
         )
     })
 }

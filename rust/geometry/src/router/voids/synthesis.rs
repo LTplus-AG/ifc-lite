@@ -11,6 +11,7 @@ mod membrane;
 use super::super::processing::SourceHygiene;
 use super::geom::*;
 use super::{GeometryRouter, CutterKind, NORMALIZE_EPSILON};
+use crate::math::aabb::Aabb3;
 use crate::{Mesh, Point3, Vector3};
 use ifc_lite_core::{DecodedEntity, EntityDecoder};
 
@@ -625,27 +626,11 @@ impl GeometryRouter {
             open_max + forward,
         ];
 
-        let new_min = Point3::new(
-            all_points.iter().map(|p| p.x).fold(f64::INFINITY, f64::min),
-            all_points.iter().map(|p| p.y).fold(f64::INFINITY, f64::min),
-            all_points.iter().map(|p| p.z).fold(f64::INFINITY, f64::min),
-        );
-        let new_max = Point3::new(
-            all_points
-                .iter()
-                .map(|p| p.x)
-                .fold(f64::NEG_INFINITY, f64::max),
-            all_points
-                .iter()
-                .map(|p| p.y)
-                .fold(f64::NEG_INFINITY, f64::max),
-            all_points
-                .iter()
-                .map(|p| p.z)
-                .fold(f64::NEG_INFINITY, f64::max),
-        );
-
-        (new_min, new_max)
+        let bounds = Aabb3::from_points(all_points.iter().map(|p| [p.x, p.y, p.z]));
+        (
+            Point3::new(bounds.min[0], bounds.min[1], bounds.min[2]),
+            Point3::new(bounds.max[0], bounds.max[1], bounds.max[2]),
+        )
     }
 
     /// An axis-aligned box `[min,max]` as a closed 12-triangle outward-wound mesh —

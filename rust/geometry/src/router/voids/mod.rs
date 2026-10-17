@@ -7,6 +7,7 @@
 use super::processing::SourceHygiene;
 use super::GeometryRouter;
 use crate::csg::{ClippingProcessor, GroupCut};
+use crate::math::aabb::Aabb3;
 use crate::mesh::{SubMesh, SubMeshCollection};
 use crate::{Mesh, Point3, Result, Vector3};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
@@ -26,6 +27,7 @@ mod opening_frame;
 mod parity;
 mod local_frame;
 mod frame_snap;
+mod host_diag;
 pub(crate) mod prism_cut;
 mod probe;
 mod representation;
@@ -46,6 +48,7 @@ use malformed_opening_repair::{
     cutter_is_closed_manifold, opening_obb_if_malformed, recut_malformed_openings,
     world_host_bounds, OpeningBox,
 };
+use host_diag::HostDiagSnapshot;
 use local_frame::{host_thickness_wall_frame, vertical_depth_wall_frame};
 use sweep::{drop_faces_outside_host, mesh_to_keep};
 mod sweep;
@@ -428,14 +431,8 @@ impl GeometryRouter {
         if host_f.positions.is_empty() {
             return None;
         }
-        let mut hmn = [f64::INFINITY; 3];
-        let mut hmx = [f64::NEG_INFINITY; 3];
-        for c in host_f.positions.chunks_exact(3) {
-            for k in 0..3 {
-                hmn[k] = hmn[k].min(c[k] as f64);
-                hmx[k] = hmx[k].max(c[k] as f64);
-            }
-        }
+        let host_box = Aabb3::from_f32_positions(&host_f.positions);
+        let (hmn, hmx) = (host_box.min, host_box.max);
         for k in 0..3 {
             let ext = hmx[k] - hmn[k];
             let lo = ext.min(2.0 * host.half[k]);
@@ -767,7 +764,7 @@ impl GeometryRouter {
 
         // Forward the WORLD host bounds captured before this rotation so the
         // diagnostic reports world coords, not wall-frame (rotated/centred) ones.
-        let diag_before = frame_snap::HostDiagSnapshot::capture(self, element_id);
+        let diag_before = HostDiagSnapshot::capture(self, element_id);
         // Whether the host reached us stored relative to a per-element origin
         // (the wasm default): `apply_void_context` then cleared that origin, so
         // the world bounds it passed differ from the stored ones. A world-frame
@@ -805,7 +802,7 @@ impl GeometryRouter {
         if !result_local.positions.is_empty() && !closed {
             let first_volume = frame_snap::enclosed_volume(&result_local);
             // Only the kept run may leave a diagnostics record.
-            let diag_first = frame_snap::HostDiagSnapshot::capture(self, element_id);
+            let diag_first = HostDiagSnapshot::capture(self, element_id);
             diag_before.restore(self, element_id);
             // Rebuilt rather than kept from above: the clean path pays nothing.
             let mut host_snapped = mesh_to_frame(mesh, &axes, center);

@@ -24,8 +24,20 @@ fn issue_7292_public_boundary_certificate_rejects_empty_malformed_and_collapsed(
     assert!(!public_weld_closed(&mesh));
     mesh.indices.clear();
     assert!(!public_weld_closed(&mesh));
-    mesh.positions[0] = f32::NAN;
-    assert!(!public_weld_closed(&mesh));
+}
+
+#[test]
+fn issue_7802_public_boundary_rejects_nonfinite_on_otherwise_closed_box() {
+    let healthy = tris_to_mesh(&box_mesh([0., 0., 0.], [1., 1., 1.]));
+    assert!(public_weld_closed(&healthy), "positive control must certify a closed boundary");
+    assert_eq!(healthy.positions[0], 0.0);
+    let mut nonfinite = healthy.clone();
+    nonfinite.positions[0] = f32::NAN;
+    // #7802: NaN and zero both cast to the same integer weld key. Keep the
+    // indexed topology closed so only the finite-coordinate guard rejects it.
+    assert_eq!(nonfinite.welded_by_position(1e-4).indices, healthy.welded_by_position(1e-4).indices,
+        "NaN at zero must preserve the quantized boundary for this regression");
+    assert!(!public_weld_closed(&nonfinite), "nonfinite coordinates are not a boundary certificate");
 }
 
 #[test]

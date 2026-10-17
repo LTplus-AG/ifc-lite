@@ -13,6 +13,7 @@
 
 /// One member of the `IfcSIPrefix` EXPRESS enumeration.
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[non_exhaustive]
 pub struct SiPrefix {
     /// The enumeration token without dots (`"MILLI"`).
     pub name: &'static str,

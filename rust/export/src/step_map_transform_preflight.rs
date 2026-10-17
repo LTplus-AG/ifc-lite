@@ -62,7 +62,7 @@ pub(super) fn project_units(project: u32, decoder: &mut EntityDecoder) -> Result
     }
     if let Some(prefix) = unit.get(2).filter(|attr| !attr.is_null()) {
         // EXPRESS enumeration validation against the one `IfcSIPrefix` table.
-        if !prefix.as_enum().is_some_and(|token| ifc_lite_core::si_prefix(token).is_some()) {
+        if prefix.as_enum().is_none_or(|token| ifc_lite_core::si_prefix(token).is_none()) {
             return Err("project SI prefix is invalid".into());
         }
     }

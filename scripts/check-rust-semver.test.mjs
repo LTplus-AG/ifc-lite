@@ -49,6 +49,7 @@ const {
   tagPublishes,
   heuristicFeatures,
   diffPackagedSources,
+  vcsInfoMismatches,
 } = rustSemver;
 import { CRATES } from './lib/crates-io.mjs';
 
@@ -925,4 +926,16 @@ test('diffPackagedSources: byte-equal passes; any drift, either way, is named', 
   const manifest = new Map(tagged);
   manifest.set('Cargo.toml.orig', b('[package]\nversion = "x"'));
   assert.deepEqual(diffPackagedSources(packaged, manifest), ['Cargo.toml.orig: published bytes differ from the tag']);
+});
+
+test('vcsInfoMismatches (#7744): the recorded commit must be the tag commit', () => {
+  const tag = 'a'.repeat(40);
+  const ok = { git: { sha1: tag }, path_in_vcs: 'rust/export' };
+  assert.deepEqual(vcsInfoMismatches(ok, 'rust/export', tag), []);
+  assert.deepEqual(vcsInfoMismatches({ git: { sha1: tag.toUpperCase() } }, 'rust/export', tag), [], 'hex case is not a difference');
+  const other = vcsInfoMismatches({ git: { sha1: 'b'.repeat(40) } }, 'rust/export', tag);
+  assert.equal(other.length, 1);
+  assert.match(other[0], /published from commit b{40}, the tag is commit a{40}/);
+  assert.equal(vcsInfoMismatches({}, 'rust/export', tag).length, 1, 'no recorded commit cannot be tied to the tag');
+  assert.equal(vcsInfoMismatches({ git: { sha1: tag }, path_in_vcs: 'x' }, 'rust/export', tag).length, 1, 'path drift still named');
 });

@@ -3,11 +3,12 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use crate::math::tol;
+use crate::placement::Axis2Placement;
 use super::ProfileProcessor;
 use crate::profile::Profile2D;
 use crate::router::transforms::operator::parse_transformation_operator;
-use crate::{Error, Point2, Result};
-use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
+use crate::{Point2, Result};
+use ifc_lite_core::{DecodedEntity, EntityDecoder};
 
 impl ProfileProcessor {
     /// Apply IfcAxis2Placement2D transform to profile points
@@ -18,53 +19,13 @@ impl ProfileProcessor {
         placement: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Result<()> {
-        // Get Location (attribute 0) - IfcCartesianPoint
-        let (loc_x, loc_y) = if let Some(loc_attr) = placement.get(0) {
-            if !loc_attr.is_null() {
-                if let Some(loc_entity) = decoder.resolve_ref(loc_attr)? {
-                    let coords = loc_entity
-                        .get(0)
-                        .and_then(|v| v.as_list())
-                        .ok_or_else(|| Error::geometry("Missing point coordinates".to_string()))?;
-                    let x = coords.first().and_then(|v| v.as_float()).unwrap_or(0.0);
-                    let y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0);
-                    (x, y)
-                } else {
-                    (0.0, 0.0)
-                }
-            } else {
-                (0.0, 0.0)
-            }
-        } else {
-            (0.0, 0.0)
-        };
-
-        // Get RefDirection (attribute 1) - IfcDirection (optional, default is (1,0))
-        let (dir_x, dir_y) = if let Some(dir_attr) = placement.get(1) {
-            if !dir_attr.is_null() {
-                if let Some(dir_entity) = decoder.resolve_ref(dir_attr)? {
-                    let ratios = dir_entity
-                        .get(0)
-                        .and_then(|v| v.as_list())
-                        .ok_or_else(|| Error::geometry("Missing direction ratios".to_string()))?;
-                    let x = ratios.first().and_then(|v| v.as_float()).unwrap_or(1.0);
-                    let y = ratios.get(1).and_then(|v| v.as_float()).unwrap_or(0.0);
-                    // Normalize
-                    let len = (x * x + y * y).sqrt();
-                    if len > tol::PLACEMENT_2D_EPS {
-                        (x / len, y / len)
-                    } else {
-                        (1.0, 0.0)
-                    }
-                } else {
-                    (1.0, 0.0)
-                }
-            } else {
-                (1.0, 0.0)
-            }
-        } else {
-            (1.0, 0.0)
-        };
+        // The one reader: Location is mandatory, RefDirection optional (+X),
+        // both under the leaf rule. This used to be hand-rolled: a missing
+        // Location or an unreadable coordinate was the origin and a missing x
+        // ratio was 1.0 (PROC-1, GEOM-2).
+        let frame = Axis2Placement::read(placement, decoder)?.matrix();
+        let (loc_x, loc_y) = (frame[(0, 3)], frame[(1, 3)]);
+        let (dir_x, dir_y) = (frame[(0, 0)], frame[(1, 0)]);
 
         // Skip transform if it's identity (location at origin, direction is (1,0))
         if loc_x.abs() < tol::PLACEMENT_2D_EPS
@@ -78,7 +39,7 @@ impl ProfileProcessor {
         // RefDirection is the local X axis direction
         // Local Y axis is perpendicular: (-dir_y, dir_x)
         let x_axis = (dir_x, dir_y);
-        let y_axis = (-dir_y, dir_x);
+        let y_axis = (frame[(0, 1)], frame[(1, 1)]);
 
         // Transform all outer points
         for point in &mut profile.outer {
@@ -156,53 +117,22 @@ impl ProfileProcessor {
             None => return Ok((Point2::new(0.0, 0.0), 0.0, 1.0)),
         };
 
-        if placement.ifc_type == IfcType::IfcAxis2Placement3D {
-            // Use the canonical orthonormal frame: local Y = Axis cross X.
-            // Conics in a horizontal profile plane can have either +Z or -Z
-            // normals. RefDirection alone cannot distinguish their travel.
-            let frame = crate::transform::parse_axis2_placement_3d(&placement, decoder)?;
-            let center = Point2::new(frame[(0, 3)], frame[(1, 3)]);
-            let rotation = frame[(1, 0)].atan2(frame[(0, 0)]);
-            let determinant = frame[(0, 0)] * frame[(1, 1)]
-                - frame[(1, 0)] * frame[(0, 1)];
-            return Ok((center, rotation, if determinant < 0.0 { -1.0 } else { 1.0 }));
-        }
-
-        let location_attr = placement.get(0);
-        let center = if let Some(loc_attr) = location_attr {
-            if let Some(loc) = decoder.resolve_ref(loc_attr)? {
-                let coords = loc.get(0).and_then(|v| v.as_list());
-                if let Some(coords) = coords {
-                    let x = coords.first().and_then(|v| v.as_float()).unwrap_or(0.0);
-                    let y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0);
-                    Point2::new(x, y)
-                } else {
-                    Point2::new(0.0, 0.0)
-                }
-            } else {
-                Point2::new(0.0, 0.0)
-            }
-        } else {
-            Point2::new(0.0, 0.0)
+        // 2D and 3D alike through the one reader. The 3D frame's local Y is
+        // Axis x X: conics in a horizontal profile plane can have either +Z
+        // or -Z normals, and RefDirection alone cannot distinguish their
+        // travel. A 2D placement is always right-handed.
+        let read = Axis2Placement::read(&placement, decoder)?;
+        let frame = read.matrix();
+        let center = Point2::new(frame[(0, 3)], frame[(1, 3)]);
+        // `atan2` is scale-invariant, so a planar placement takes the angle of
+        // its raw RefDirection: the normalised column would add rounding
+        // noise to every conic angle for nothing.
+        let rotation = match read.ref_direction.filter(|_| read.planar) {
+            Some(r) => r[1].atan2(r[0]),
+            None if read.planar => 0.0,
+            None => frame[(1, 0)].atan2(frame[(0, 0)]),
         };
-
-        let rotation = if let Some(dir_attr) = placement.get(1) {
-            if let Some(dir) = decoder.resolve_ref(dir_attr)? {
-                let ratios = dir.get(0).and_then(|v| v.as_list());
-                if let Some(ratios) = ratios {
-                    let x = ratios.first().and_then(|v| v.as_float()).unwrap_or(1.0);
-                    let y = ratios.get(1).and_then(|v| v.as_float()).unwrap_or(0.0);
-                    y.atan2(x)
-                } else {
-                    0.0
-                }
-            } else {
-                0.0
-            }
-        } else {
-            0.0
-        };
-
-        Ok((center, rotation, 1.0))
+        let determinant = frame[(0, 0)] * frame[(1, 1)] - frame[(1, 0)] * frame[(0, 1)];
+        Ok((center, rotation, if determinant < 0.0 { -1.0 } else { 1.0 }))
     }
 }

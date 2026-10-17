@@ -13,7 +13,6 @@ use crate::placement::Axis2Placement;
 use nalgebra::{Matrix4, Point3, Vector3};
 
 mod placement_2d;
-pub(crate) use crate::placement::build_axis2_matrix;
 pub(crate) use placement_2d::parse_axis2_placement_2d;
 
 /// Parse IfcAxis2Placement3D into transformation matrix
@@ -63,31 +62,22 @@ pub fn parse_direction_from_id(dir_id: u32, decoder: &mut EntityDecoder) -> Resu
     Ok(Vector3::from(decoder.direction3(dir_id)?))
 }
 
-/// Parse IfcAxis2Placement3D from entity ID (fast-path variant)
-///
-/// Values are read under the leaf rule. A `$` Location is still the origin
-/// here (D-§3.4: X3a makes it a refusal with the other `helpers` forks).
+/// Parse IfcAxis2Placement3D from entity ID, through [`Axis2Placement`]: a
+/// `$` Location is a counted refusal, not the origin (D30).
 pub fn parse_axis2_placement_3d_from_id(
     placement_id: u32,
     decoder: &mut EntityDecoder,
 ) -> Result<Matrix4<f64>> {
     let placement = decoder.decode_by_id(placement_id)?;
-    Ok(Axis2Placement {
-        location: decoder.point3_at(&placement, 0)?.unwrap_or([0.0; 3]),
-        axis: decoder.direction3_at(&placement, 1)?,
-        ref_direction: decoder.direction3_at(&placement, 2)?,
-        planar: false,
-    }
-    .matrix())
+    Ok(Axis2Placement::read_3d(&placement, decoder)?.matrix())
 }
 
 /// Parse IfcDirection entity
 ///
 /// Extracts direction ratios from IfcDirection (attribute 0). This one takes
 /// no decoder, so it can neither count a refusal nor use the byte fast path:
-/// it keeps reading a missing component as 0 until its callers in
-/// `processors/helpers.rs` move to `EntityDecoder::direction3` (X3a) and R2a
-/// deletes it.
+/// it keeps reading a missing component as 0, and R2a deletes it with the
+/// router's delegate (the placement readers use `EntityDecoder::direction3`).
 pub fn parse_direction(direction_entity: &DecodedEntity) -> Result<Vector3<f64>> {
     if direction_entity.ifc_type != IfcType::IfcDirection {
         return Err(Error::geometry(format!(

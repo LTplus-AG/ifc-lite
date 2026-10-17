@@ -3,6 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use crate::extrusion_generic::{outward_is_right_hand, Ring};
+use crate::placement::Axis1Placement;
 use crate::profile::{triangulate_rings, Profile2D};
 use crate::{
     extrusion::apply_transform, profiles::ProfileProcessor, scale_segments, Error, Mesh, Point2,
@@ -56,18 +57,9 @@ impl GeometryProcessor for RevolvedAreaSolidProcessor {
 
         // Position transform: maps Position-local coords -> object coords.
         // Optional in some files; default to identity.
-        let position_transform = if let Some(pos_attr) = entity.get(1) {
-            if !pos_attr.is_null() {
-                if let Some(pos_entity) = decoder.resolve_ref(pos_attr)? {
-                    parse_axis2_placement_3d(&pos_entity, decoder)?
-                } else {
-                    Matrix4::identity()
-                }
-            } else {
-                Matrix4::identity()
-            }
-        } else {
-            Matrix4::identity()
+        let position_transform = match decoder.resolve_optional(entity, 1)? {
+            Some(pos_entity) => parse_axis2_placement_3d(&pos_entity, decoder)?,
+            None => Matrix4::identity(),
         };
 
         let axis_attr = entity
@@ -90,51 +82,25 @@ impl GeometryProcessor for RevolvedAreaSolidProcessor {
             return Ok(Mesh::new());
         }
 
-        // IfcAxis1Placement: 0=Location (IfcCartesianPoint), 1=Axis (IfcDirection, optional)
-        let axis_location = {
-            let loc_attr = axis_placement
-                .get(0)
-                .ok_or_else(|| Error::geometry("Axis1Placement missing Location".to_string()))?;
-            let loc = decoder
-                .resolve_ref(loc_attr)?
-                .ok_or_else(|| Error::geometry("Failed to resolve axis location".to_string()))?;
-            let coords = loc
-                .get(0)
-                .and_then(|v| v.as_list())
-                .ok_or_else(|| Error::geometry("Axis location missing coordinates".to_string()))?;
-            Point3::new(
-                coords.first().and_then(|v| v.as_float()).unwrap_or(0.0),
-                coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0),
-                coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0),
-            )
-        };
-
-        let axis_direction = {
-            if let Some(dir_attr) = axis_placement.get(1) {
-                if !dir_attr.is_null() {
-                    let dir = decoder.resolve_ref(dir_attr)?.ok_or_else(|| {
-                        Error::geometry("Failed to resolve axis direction".to_string())
-                    })?;
-                    let coords = dir.get(0).and_then(|v| v.as_list()).ok_or_else(|| {
-                        Error::geometry("Axis direction missing coordinates".to_string())
-                    })?;
-                    let raw = Vector3::new(
-                        coords.first().and_then(|v| v.as_float()).unwrap_or(0.0),
-                        coords.get(1).and_then(|v| v.as_float()).unwrap_or(1.0),
-                        coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0),
-                    );
-                    if raw.norm() < 1e-12 {
-                        Vector3::new(0.0, 1.0, 0.0)
-                    } else {
-                        raw.normalize()
-                    }
-                } else {
-                    Vector3::new(0.0, 1.0, 0.0)
-                }
-            } else {
-                Vector3::new(0.0, 1.0, 0.0)
-            }
-        };
+        // IfcAxis1Placement: 0=Location (IfcCartesianPoint), 1=Axis (IfcDirection,
+        // optional). The IFC derived default for a missing Axis is +Z, which
+        // the rule `AxisDirectionInXY` rules out for a revolved solid, so a
+        // missing Axis is refused instead of revolving about an invented +Y
+        // (D25). A missing y ratio is no longer 1.0 either: the direction is
+        // read under the leaf rule.
+        let axis1 = Axis1Placement::read(&axis_placement, decoder)?;
+        let axis_location = Point3::from(axis1.location);
+        let raw_axis = Vector3::from(axis1.axis.ok_or_else(|| {
+            Error::geometry("RevolvedAreaSolid Axis has no Direction (AxisDirectionInXY)".to_string())
+        })?);
+        let axis_direction = raw_axis
+            .try_normalize(1e-12)
+            .ok_or_else(|| Error::geometry("RevolvedAreaSolid Axis Direction has zero length".to_string()))?;
+        if axis_direction.z.abs() > 1e-9 {
+            return Err(Error::geometry(
+                "RevolvedAreaSolid Axis Direction does not lie in the XY plane (AxisDirectionInXY)".to_string(),
+            ));
+        }
 
         let full_circle = angle.abs() >= std::f64::consts::PI * 1.99;
         // 24 segments for a full revolve at Medium; ~12 per 180° (min 8) for a

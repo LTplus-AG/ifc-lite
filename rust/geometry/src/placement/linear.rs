@@ -178,8 +178,7 @@ fn read_linear_direction(
         Some(attr) if !attr.is_null() => attr,
         _ => return Some(None),
     };
-    let direction = decoder.resolve_ref(attr).ok().flatten()?;
-    let v = crate::transform::parse_direction(&direction).ok()?;
+    let v = Vector3::from(decoder.direction3(attr.as_entity_ref()?).ok()?);
     v.try_normalize(tol::DIRECTION_MIN_LEN).map(Some)
 }
 

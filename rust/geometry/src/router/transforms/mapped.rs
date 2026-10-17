@@ -109,6 +109,19 @@ impl GeometryRouter {
         source: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Result<Option<Matrix4<f64>>> {
+        Ok(self
+            .mapping_origin_frame(source, decoder)?
+            .filter(|m| !m.is_identity(tol::IDENTITY_EPS_STRICT)))
+    }
+
+    /// [`Self::mapping_origin_transform`] without the identity shortcut:
+    /// `None` only when the origin is absent or `$`. The textured path bakes
+    /// the frame into every part, identity included.
+    pub(crate) fn mapping_origin_frame(
+        &self,
+        source: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+    ) -> Result<Option<Matrix4<f64>>> {
         let Some(origin_attr) = source.get(0).filter(|a| !a.is_null()) else {
             return Ok(None);
         };
@@ -118,27 +131,17 @@ impl GeometryRouter {
             ));
         };
         let m = match origin.ifc_type {
-            IfcType::IfcAxis2Placement3D => self.parse_axis2_placement_3d(&origin, decoder)?,
             // A 2D mapping origin places a 2D representation in the XY plane.
-            IfcType::IfcAxis2Placement2D => self.parse_axis2_placement_2d(&origin, decoder)?,
+            IfcType::IfcAxis2Placement3D | IfcType::IfcAxis2Placement2D => {
+                crate::placement::Axis2Placement::read(&origin, decoder)?.matrix()
+            }
             other => {
                 return Err(Error::geometry(format!(
                     "RepresentationMap MappingOrigin is {other}, not an IfcAxis2Placement"
                 )))
             }
         };
-        Ok(if m.is_identity(tol::IDENTITY_EPS_STRICT) { None } else { Some(m) })
-    }
-
-    /// Parse IfcAxis2Placement2D (Location, RefDirection) into a 4x4 acting in
-    /// the XY plane (Z untouched).
-    #[inline]
-    pub(crate) fn parse_axis2_placement_2d(
-        &self,
-        placement: &DecodedEntity,
-        decoder: &mut EntityDecoder,
-    ) -> Result<Matrix4<f64>> {
-        crate::transform::parse_axis2_placement_2d(placement, decoder)
+        Ok(Some(m))
     }
 }
 #[cfg(test)]

@@ -776,16 +776,14 @@ fn volume_checked_lenient_batch(host: &Mesh, cutters: &[&Mesh]) -> (BatchSubtrac
 }
 
 #[test]
-fn lenient_group_keeps_its_conformity_provenance_6516() {
+fn lenient_volume_oracle_accepts_real_cut_and_rejects_uncertain_recut_6516() {
     let (wall, notch, window) = lenient_gable_group();
-    let (outcome, conforming, _) = volume_checked_lenient_batch(&wall, &[&notch, &window]);
-    assert!(!conforming, "volume-checked output must retain its lenient provenance");
+    // Exercise real lenient output and its volume oracle directly. This fixture
+    // can now recover strictly, so it does not prove public lenient routing.
+    let (outcome, _, _) = volume_checked_lenient_batch(&wall, &[&notch, &window]);
     let cut = expect_cut(outcome, "the validated lenient group remains a real cut");
-    // Re-cutting the already removed notch is nonconforming: having no
-    // intended volume left to remove does not make its classification proof.
-    let (retry, conforms, retained) = volume_checked_lenient_batch(&cut, &[&notch]);
-    assert!(!conforms);
-    assert!(retained.is_none(), "an uncertain miss cannot be retained as proof");
+    // Having no intended volume left to remove does not validate the recut.
+    let (retry, _, _) = volume_checked_lenient_batch(&cut, &[&notch]);
     assert!(matches!(retry, BatchSubtract::Nonconforming));
     let retry = crate::csg::ClippingProcessor::new().subtract_mesh_many(&cut, &[&notch]);
     assert!(!retry.found_no_overlap(), "uncertain recut must keep its sequential fallback");

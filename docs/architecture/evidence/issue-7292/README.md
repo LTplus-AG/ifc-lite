@@ -372,3 +372,11 @@ inventories/full command lines, huge raw timing records, runtime binaries and
 duplicate fixtures are excluded. Hashes alone do not make omitted data publicly
 replayable. No universal solid, volume/topology/winding/multiplicity, manylinux
 identity, performance acceptance or merge-authorization claim is made.
+
+Follow-up to review comment 4304331437: the lenient volume-oracle test now
+names its actual invariant and removes assertions on fixed helper flags. Real
+cut acceptance, uncertain recut rejection and the public sequential fallback
+check remain. [The source review and actual targeted tests/workspace Clippy](./lenient-volume-oracle-test-scope.json)
+record the exact test-only commit and logs. This does not prove public negative
+lenient-conformity routing. Historical receipts and the O3 NO_VERDICT above remain
+unchanged; no new runtime or performance qualification is claimed.

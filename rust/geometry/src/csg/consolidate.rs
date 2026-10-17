@@ -167,6 +167,7 @@ impl ClippingProcessor {
             supported.cells.clear();
             supported.buckets.clear();
             supported.buckets.extend(supported.folded_buckets.iter().copied());
+            supported.buckets.extend(supported.fold_support_buckets.iter().copied());
         }
         let mut planned = plans::build(&buckets, &merged_bucket_keys, &supported, length_unit_scale);
         let Some(output) = candidates::emit(&mut planned) else {

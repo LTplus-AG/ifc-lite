@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use super::super::helpers::parse_axis2_placement_3d;
+use crate::placement::Axis2Placement;
 use super::BooleanClippingProcessor;
 use crate::{
     calculate_normals, ClippingProcessor, Error, GroupCut, GroupReject, Mesh, Point2, Point3,
@@ -40,7 +40,7 @@ impl BooleanClippingProcessor {
         let position = decoder.resolve_ref(position_attr)?.ok_or_else(|| {
             Error::geometry("Failed to resolve bounded half-space Position".to_string())
         })?;
-        let transform = parse_axis2_placement_3d(&position, decoder)?;
+        let transform = Axis2Placement::read_3d(&position, decoder)?.matrix();
 
         let Some(contour_2d) = self.bounded_half_space_contour(half_space, decoder, quality)? else { return Ok(None) };
 

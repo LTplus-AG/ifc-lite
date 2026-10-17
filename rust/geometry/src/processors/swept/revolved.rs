@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use crate::extrusion_generic::{outward_is_right_hand, Ring};
-use crate::placement::Axis1Placement;
+use crate::placement::{Axis1Placement, Axis2Placement};
 use crate::profile::{triangulate_rings, Profile2D};
 use crate::{
     extrusion::apply_transform, profiles::ProfileProcessor, scale_segments, Error, Mesh, Point2,
@@ -12,7 +12,6 @@ use crate::{
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 use nalgebra::Matrix4;
 
-use super::super::helpers::parse_axis2_placement_3d;
 use super::super::tessellated::PolygonalFaceSetProcessor;
 use crate::router::GeometryProcessor;
 
@@ -58,7 +57,7 @@ impl GeometryProcessor for RevolvedAreaSolidProcessor {
         // Position transform: maps Position-local coords -> object coords.
         // Optional in some files; default to identity.
         let position_transform = match decoder.resolve_optional(entity, 1)? {
-            Some(pos_entity) => parse_axis2_placement_3d(&pos_entity, decoder)?,
+            Some(pos_entity) => Axis2Placement::read_3d(&pos_entity, decoder)?.matrix(),
             None => Matrix4::identity(),
         };
 

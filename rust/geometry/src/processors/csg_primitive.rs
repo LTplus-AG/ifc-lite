@@ -19,7 +19,7 @@ use std::cell::RefCell;
 
 use super::boolean::BooleanClippingProcessor;
 use super::sphere::SphereProcessor;
-use super::helpers::parse_axis2_placement_3d;
+use crate::placement::Axis2Placement;
 use crate::router::GeometryProcessor;
 
 /// `IfcBlock` — axis-aligned box CSG primitive.
@@ -78,7 +78,7 @@ impl GeometryProcessor for BlockProcessor {
         // reads: a record of another type used to be ignored, leaving the
         // primitive at the origin (D30).
         if let Some(pos_entity) = decoder.resolve_optional(entity, 0)? {
-            let transform = parse_axis2_placement_3d(&pos_entity, decoder)?;
+            let transform = Axis2Placement::read_3d(&pos_entity, decoder)?.matrix();
             apply_transform(&mut mesh, &transform);
         }
 

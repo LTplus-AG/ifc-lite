@@ -9,7 +9,7 @@ use crate::{Error, Mesh, Point2, Point3, Result, TessellationQuality, Vector3};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 use nalgebra::Matrix4;
 
-use super::helpers::{get_axis2_placement_transform_by_id, get_direction_by_id};
+use crate::placement::Axis2Placement;
 use crate::router::GeometryProcessor;
 
 /// SurfaceOfLinearExtrusion processor
@@ -78,7 +78,7 @@ impl SurfaceOfLinearExtrusionProcessor {
         decoder: &mut EntityDecoder,
     ) -> Result<Matrix4<f64>> {
         match entity.get(1).and_then(|attr| attr.as_entity_ref()) {
-            Some(pos_id) => get_axis2_placement_transform_by_id(pos_id, decoder),
+            Some(pos_id) => Ok(Axis2Placement::read_id(pos_id, decoder)?.matrix()),
             None => Ok(Matrix4::identity()),
         }
     }
@@ -105,7 +105,7 @@ impl SurfaceOfLinearExtrusionProcessor {
             Error::geometry("SurfaceOfLinearExtrusion missing ExtrudedDirection".to_string())
         })?;
         let direction = match direction_attr.as_entity_ref() {
-            Some(dir_id) => get_direction_by_id(dir_id, decoder)?,
+            Some(dir_id) => Vector3::from(decoder.direction3(dir_id)?),
             None => Vector3::new(0.0, 0.0, 1.0), // Default to Z-up
         };
         // `IfcPositiveLengthMeasure`: zero or negative is refused, not meshed

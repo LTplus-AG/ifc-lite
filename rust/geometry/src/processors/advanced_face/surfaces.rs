@@ -10,7 +10,8 @@ use crate::{scale_segments, Error, Point3, Result, TessellationQuality};
 use ifc_lite_core::{DecodedEntity, EntityDecoder};
 use nalgebra::Matrix4;
 
-use super::super::helpers::{get_axis2_placement_transform_by_id, push_rebased};
+use super::super::helpers::push_rebased;
+use crate::placement::Axis2Placement;
 use super::bounds::extract_face_bounds;
 use super::bspline::tessellate_bspline_surface;
 use super::bspline_budget::{MAX_BSPLINE_DEGREE, MAX_BSPLINE_SURFACE_SAMPLE_WORK};
@@ -191,7 +192,7 @@ pub(super) fn process_cylindrical_face(
     let position_attr = surface.get(0);
     let axis_transform = if let Some(attr) = position_attr {
         if let Some(pos_id) = attr.as_entity_ref() {
-            get_axis2_placement_transform_by_id(pos_id, decoder)?
+            Axis2Placement::read_id(pos_id, decoder)?.matrix()
         } else {
             Matrix4::identity()
         }

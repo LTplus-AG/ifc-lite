@@ -4,7 +4,7 @@
 
 use super::{preflight, writer, MapConversionNormalizationPlan, Record};
 use crate::step_text::attribute_of;
-use ifc_lite_core::{EntityDecoder, IfcType, MAX_PLACEMENT_DEPTH};
+use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType, MAX_PLACEMENT_DEPTH};
 use ifc_lite_geometry::GeometryRouter;
 use nalgebra::Matrix4;
 use std::collections::{BTreeSet, HashMap, HashSet};
@@ -121,8 +121,7 @@ pub(super) fn plan(
             .map_err(|error| error.to_string())?;
         // Validation already checked every axis. Reuse the renderer's canonical
         // orthonormalization; point and directions are in authored project units.
-        let local = ifc_lite_geometry::parse_axis2_placement_3d(&frame, decoder)
-            .map_err(|error| error.to_string())?;
+        let local = local_frame(&frame, decoder)?;
         let normalized = affine * local;
         preflight::rigid_frame(&normalized, id)?;
         let new_frame = output.frame(&normalized)?;
@@ -186,6 +185,12 @@ pub(super) fn plan(
     )?;
     plan.new_entities = output.finish();
     Ok(plan)
+}
+
+/// The renderer's canonical frame for an `IfcAxis2Placement3D`.
+fn local_frame(frame: &DecodedEntity, decoder: &mut EntityDecoder) -> Result<Matrix4<f64>, String> {
+    let placement = ifc_lite_geometry::placement::Axis2Placement::read_3d(frame, decoder);
+    Ok(placement.map_err(|error| error.to_string())?.matrix())
 }
 
 /// Pure (root, path length) result: global memoization handles aliases without

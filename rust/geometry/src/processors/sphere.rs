@@ -8,7 +8,7 @@
 //! `CsgSolidProcessor` gained its boolean-failure hand-off (#3821). Moved
 //! verbatim; nothing here changed.
 
-use super::helpers::parse_axis2_placement_3d;
+use crate::placement::Axis2Placement;
 use crate::extrusion::apply_transform;
 use crate::router::GeometryProcessor;
 use crate::{scale_segments, Error, Mesh, Result, TessellationQuality, Vector3};
@@ -62,7 +62,7 @@ impl GeometryProcessor for SphereProcessor {
         // reads: a record of another type used to be ignored, leaving the
         // primitive at the origin (D30).
         if let Some(pos_entity) = decoder.resolve_optional(entity, 0)? {
-            let transform = parse_axis2_placement_3d(&pos_entity, decoder)?;
+            let transform = Axis2Placement::read_3d(&pos_entity, decoder)?.matrix();
             apply_transform(&mut mesh, &transform);
         }
 

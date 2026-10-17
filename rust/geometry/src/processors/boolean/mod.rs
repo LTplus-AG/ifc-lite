@@ -15,7 +15,7 @@ use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 use std::cell::RefCell;
 
 use super::csg_primitive::CsgSolidProcessor;
-use super::helpers::parse_axis2_placement_3d;
+use crate::placement::Axis2Placement;
 
 mod brep_voids;
 mod cut_heuristics;
@@ -147,7 +147,7 @@ impl BooleanClippingProcessor {
         //   compose the element's ObjectPlacement, which is folded in later
         //   by apply_placement at the element level)
         // - Z-axis (Axis) = plane normal (in local coordinates, needs transformation)
-        let position_transform = parse_axis2_placement_3d(&position, decoder)?;
+        let position_transform = Axis2Placement::read_3d(&position, decoder)?.matrix();
 
         // Plane point is the Position's Location (translation part of transform)
         let location = Point3::new(

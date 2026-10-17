@@ -60,33 +60,9 @@ pub(crate) fn parse_transformation_operator(
             | IfcType::IfcCartesianTransformationOperator2DnonUniform
     );
 
-    // Get LocalOrigin (attribute 2)
-    let origin = if let Some(origin_attr) = entity.get(2) {
-        if !origin_attr.is_null() {
-            if let Some(origin_entity) = decoder.resolve_ref(origin_attr)? {
-                if origin_entity.ifc_type == IfcType::IfcCartesianPoint {
-                    let coords_attr = origin_entity.get(0);
-                    if let Some(coords) = coords_attr.and_then(|a| a.as_list()) {
-                        Point3::new(
-                            coords.first().and_then(|v| v.as_float()).unwrap_or(0.0),
-                            coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0),
-                            coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0),
-                        )
-                    } else {
-                        Point3::origin()
-                    }
-                } else {
-                    Point3::origin()
-                }
-            } else {
-                Point3::origin()
-            }
-        } else {
-            Point3::origin()
-        }
-    } else {
-        Point3::origin()
-    };
+    // Get LocalOrigin (attribute 2), under the leaf rule: a point that does
+    // not read is refused and counted, never (0, 0, 0).
+    let origin = decoder.point3_at(entity, 2)?.map_or_else(Point3::origin, Point3::from);
 
     // Get Scale (attribute 3). For IfcCartesianTransformationOperator3DNonUniform
     // this is Scale1 (X axis only); attrs 5+6 supply per-axis Y and Z scales,
@@ -117,48 +93,27 @@ pub(crate) fn parse_transformation_operator(
     };
 
     // Get Axis1 (raw local X, attribute 0), defaulting to +X when absent/null.
-    let x_axis_raw = if let Some(axis1_attr) = entity.get(0) {
-        if !axis1_attr.is_null() {
-            if let Some(axis1_entity) = decoder.resolve_ref(axis1_attr)? {
-                parse_direction_ratios(&axis1_entity)?
-            } else {
-                Vector3::new(1.0, 0.0, 0.0)
-            }
-        } else {
-            Vector3::new(1.0, 0.0, 0.0)
-        }
-    } else {
-        Vector3::new(1.0, 0.0, 0.0)
-    };
+    // Directions are read under the leaf rule: one that does not read is
+    // refused and counted, never a ratio of 0.
+    let x_axis_raw = decoder
+        .direction3_at(entity, 0)?
+        .map_or_else(|| Vector3::new(1.0, 0.0, 0.0), Vector3::from);
 
     // Get Axis2 (raw local Y, attribute 1), used below only when it is
     // INCONSISTENT with Axis3 × Axis1 (see the y_axis derivation).
-    let y_axis_raw = if let Some(axis2_attr) = entity.get(1) {
-        if !axis2_attr.is_null() {
-            decoder
-                .resolve_ref(axis2_attr)?
-                .and_then(|e| parse_direction_ratios(&e).ok())
-        } else {
-            None
-        }
-    } else {
-        None
-    };
+    let y_axis_raw = decoder.direction3_at(entity, 1)?.map(Vector3::from);
 
     let x_axis_raw = base_axis_2d_x(entity, is_2d, x_axis_raw, y_axis_raw);
 
     // Get Axis3 (raw local Z, attribute 4 for 3D), defaulting to +Z. The 2D
     // subtypes have no Axis3 attribute (attr 4 is Scale2 there), so the 2D
     // plane normal is always +Z.
-    let z_axis_raw = match entity.get(4).filter(|_| !is_2d) {
-        Some(axis3_attr) if !axis3_attr.is_null() => {
-            if let Some(axis3_entity) = decoder.resolve_ref(axis3_attr)? {
-                parse_direction_ratios(&axis3_entity)?
-            } else {
-                Vector3::new(0.0, 0.0, 1.0)
-            }
-        }
-        _ => Vector3::new(0.0, 0.0, 1.0),
+    let z_axis_raw = if is_2d {
+        Vector3::new(0.0, 0.0, 1.0)
+    } else {
+        decoder
+            .direction3_at(entity, 4)?
+            .map_or_else(|| Vector3::new(0.0, 0.0, 1.0), Vector3::from)
     };
 
     // Orthonormalize (Gram-Schmidt), guarding every normalize so a malformed
@@ -240,26 +195,6 @@ fn finite_scale(value: Option<f64>, default: f64) -> f64 {
         Some(v) if v.is_finite() => v,
         _ => default,
     }
-}
-
-/// `IfcDirection.DirectionRatios` as a 3-vector (Z defaults to 0 for the 2D form).
-/// Mirrors `GeometryRouter::parse_direction`, minus the router.
-pub(super) fn parse_direction_ratios(entity: &DecodedEntity) -> Result<Vector3<f64>> {
-    if entity.ifc_type != IfcType::IfcDirection {
-        return Err(crate::Error::geometry(format!(
-            "Expected IfcDirection, got {}",
-            entity.ifc_type
-        )));
-    }
-    let ratios = entity
-        .get(0)
-        .and_then(|a| a.as_list())
-        .ok_or_else(|| crate::Error::geometry("IfcDirection missing ratios".to_string()))?;
-    Ok(Vector3::new(
-        ratios.first().and_then(|v| v.as_float()).unwrap_or(0.0),
-        ratios.get(1).and_then(|v| v.as_float()).unwrap_or(0.0),
-        ratios.get(2).and_then(|v| v.as_float()).unwrap_or(0.0),
-    ))
 }
 
 #[cfg(test)]

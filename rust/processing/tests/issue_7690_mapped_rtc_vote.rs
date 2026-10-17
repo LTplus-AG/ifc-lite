@@ -14,10 +14,7 @@
 //! onto the f32 grid (~0.25 m ULP there): 0.115 m off its authored corners,
 //! 0.221 m for the turned occurrence.
 
-use ifc_lite_processing::{
-    process_geometry_streaming_filtered_with_options, MeshData, OpeningFilterMode,
-    ProcessingResult, StreamingOptions,
-};
+use ifc_lite_processing::{process, MeshData, ProcessingRequest, ProcessingResult};
 
 /// The box's authored corners (metres, LV95), 12 x 7 x 5 mm.
 const BASE: [f64; 3] = [2_600_001.4, 1_200_003.3, 400.2];
@@ -109,17 +106,7 @@ fn authored_corners(t: [f64; 3], deg: f64, target: [f64; 3]) -> Vec<[f64; 3]> {
 }
 
 fn run(instancing: bool) -> ProcessingResult {
-    process_geometry_streaming_filtered_with_options(
-        model().as_bytes(),
-        OpeningFilterMode::Default,
-        StreamingOptions {
-            enable_instancing: instancing,
-            ..StreamingOptions::default()
-        },
-        |_, _, _| {},
-        |_| {},
-        |_| {},
-    )
+    process(model().as_bytes(), &ProcessingRequest::default().instancing(instancing), &mut ())
 }
 
 /// The world vertices of a template mesh, in the RTC frame (`origin + pos`).

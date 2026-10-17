@@ -26,11 +26,10 @@
 //!     drift without its own gate reddening.
 
 use ifc_lite_core::{IfcType, IFC_TYPES};
-use ifc_lite_processing::{
-    is_quick_spatial_type_ci, process_geometry_streaming_with_options_and_bootstrap,
-    QuickMetadataBootstrap, QuickMetadataSpatialNode, StreamingOptions,
-};
+use ifc_lite_processing::{is_quick_spatial_type_ci, QuickMetadataSpatialNode};
 use std::collections::BTreeSet;
+
+mod common;
 
 const MARINE_IFC: &str = r#"ISO-10303-21;
 HEADER;
@@ -73,20 +72,7 @@ fn flatten(node: &QuickMetadataSpatialNode, out: &mut Vec<(u32, String)>) {
 
 #[test]
 fn marine_branch_reaches_the_fast_boot_tree() {
-    let mut captured: Option<QuickMetadataBootstrap> = None;
-    let options = StreamingOptions {
-        emit_quick_metadata_bootstrap: true,
-        ..Default::default()
-    };
-    process_geometry_streaming_with_options_and_bootstrap(
-        MARINE_IFC.as_bytes(),
-        options,
-        |_, _, _| {},
-        |_| {},
-        |b| captured = Some(b.clone()),
-    );
-
-    let boot = captured.expect("a quick-metadata bootstrap should be emitted");
+    let boot = common::quick_metadata::bootstrap(MARINE_IFC);
     let tree = boot.spatial_tree.expect("a spatial tree should be built");
 
     let mut seen = Vec::new();

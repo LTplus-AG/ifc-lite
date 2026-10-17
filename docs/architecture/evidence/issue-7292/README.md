@@ -1,5 +1,12 @@
 # Filled finite-surface comparison
 
+Current-source follow-up: [closed-component hygiene correction](./closed-component-hygiene.json)
+addresses review comment 4304375117. A new regression fails before the fix and
+all three hygiene tests plus exact workspace Clippy pass after it. This is a
+production change: the earlier D1 artifact/browser/geometry receipts below remain
+historical and do not qualify the new source. Fresh final-source qualification
+is outstanding; performance remains NO_VERDICT and this is not merge ready.
+
 Validation sections below retain their named historical source scope. The current
 disposition is recorded in the final D1A5 addendum at the end of this document.
 

@@ -9,21 +9,39 @@ pub(super) fn clean_void_output(mesh: &mut Mesh) {
     if !mesh.needs_degenerate_cleanup() {
         return;
     }
-    // This is a necessary incidence certificate, not a simplicity proof.
-    // Empty, non-finite, degenerate and already-open sources cannot opt in.
-    let original = strict_closed_mesh(mesh).then(|| mesh.clone());
-    mesh.clean_degenerate_watertight();
-    if let Some(original) = original {
-        if !strict_closed_mesh(mesh) {
-            *mesh = original;
-        }
+    // Preserve every represented closed boundary. Closure after cleanup alone
+    // cannot detect deletion of an entire disconnected subgrid component.
+    // This incidence certificate is not a simplicity proof; empty, non-finite,
+    // degenerate and already-open sources still get ordinary cleanup.
+    if strict_closed_mesh(mesh) {
+        return;
     }
+    mesh.clean_degenerate_watertight();
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::kernel::{arrangement::box_mesh, mesh_bridge::tris_to_mesh};
+
+    #[test]
+    fn issue_7292_void_hygiene_preserves_a_separate_closed_subgrid_component() {
+        let edge = crate::kernel::mesh_bridge::SNAP_GRID / 4.;
+        let mut mesh = tris_to_mesh(&box_mesh([0.; 3], [1.; 3]));
+        mesh.merge(&tris_to_mesh(&box_mesh([2., 0., 0.], [2. + edge, edge, edge])));
+        assert!(strict_closed_mesh(&mesh));
+        assert_eq!(mesh.triangle_count(), 24);
+        let original = mesh.clone();
+        let mut plain = mesh.clone();
+        plain.clean_degenerate_watertight();
+        assert!(strict_closed_mesh(&plain));
+        assert_eq!(plain.triangle_count(), 12, "closure alone misses a lost component");
+
+        clean_void_output(&mut mesh);
+        assert_eq!(mesh.indices, original.indices, "both closed boundaries must survive");
+        assert_eq!(mesh.positions, original.positions);
+        assert_eq!(mesh.normals, original.normals);
+    }
 
     #[test]
     fn issue_7292_void_hygiene_cannot_open_a_positive_closed_subgrid_layer() {

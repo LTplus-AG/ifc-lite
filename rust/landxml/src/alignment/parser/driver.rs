@@ -2,192 +2,144 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use std::collections::HashMap;
-
-use quick_xml::events::{BytesRef, BytesStart};
+//! The alignment family as a [`FamilyHandler`] (C9a-7).
 
 use super::{
     actions::superelevation_event,
     state::{invalid, limit},
-    Capture, Frame, Parser,
+    AlignmentHandler, Capture, PointRole,
 };
 use crate::{
     semantics::units,
-    xml::{
-        attr, attributes, decode_ref, decode_text, error, source_len, split_name, Attributes, Result,
-    },
+    xml::{attr, error, Attributes, Cx, Element, FamilyHandler, Result},
     LandXmlDiagnosticCode as Code,
 };
 
-impl Parser<'_> {
-    pub(super) fn check(&mut self, added: usize) -> Result<()> {
-        self.meter.charge(added)
-    }
-    /// A diagnostic is source output too: bounded like every other record.
-    fn record_capability_diagnostic(
-        &mut self,
-        diagnostic: crate::LandXmlCapabilityDiagnostic,
-    ) -> Result<()> {
-        self.capability_diagnostics_seen.reserve(1)?;
-        self.capability_diagnostics.push(diagnostic);
-        Ok(())
-    }
-    pub(super) fn reserve_alignment_points(&mut self, added: usize) -> Result<()> {
-        self.alignment_points_seen.reserve(added)
-    }
-    pub(super) fn start(&mut self, start: &BytesStart<'_>) -> Result<()> {
-        if self.frames.len() >= self.limits.xml.max_depth {
-            return Err(limit("XML depth limit exceeded"));
-        }
-        let name = start.name();
-        let (_, local, prefix) = split_name(name.as_ref().as_bytes(), self.limits.xml.max_name_bytes)?;
-        let (attrs, namespaces) = attributes(start, &self.limits.xml, &mut self.character_references)?;
-        self.check(attrs.len())?;
-        let mut inherited = self
-            .frames
-            .last()
-            .map_or_else(HashMap::new, |frame| frame.namespaces.clone());
-        inherited.extend(namespaces);
-        let namespace = inherited.get(prefix).map(String::as_str);
-        if self.frames.is_empty() {
-            let root = crate::parser::validate_root(self.root_seen, local, namespace, &attrs)?;
-            self.root_seen = true;
-            self.schema = root.schema;
-            self.version = root.version;
-            if let Some(diagnostic) = root.diagnostic {
-                self.record_capability_diagnostic(diagnostic)?;
-            }
-            self.target_namespace = namespace.map(str::to_owned);
-        }
-        let target = namespace == self.target_namespace.as_deref();
-        self.frames.push(Frame {
-            local: local.to_owned(),
-            target,
-            namespaces: inherited,
-        });
-        if self
-            .capture
-            .as_ref()
-            .is_some_and(|capture| self.frames.len() > capture.depth())
-        {
+impl FamilyHandler for AlignmentHandler {
+    /// D74: markup inside a numeric capture refuses the document.
+    fn check_nesting(&mut self, depth: usize) -> Result<()> {
+        if self.capture.as_ref().is_some_and(|capture| capture.depth() <= depth) {
             return Err(error(
                 Code::InvalidSemantic,
                 "numeric LandXML capture cannot contain nested elements",
             ));
         }
-        if target {
-            self.semantic_start(local, &attrs)?;
+        Ok(())
+    }
+
+    fn start(&mut self, cx: &Cx<'_>, element: &Element<'_>) -> Result<()> {
+        if element.depth == 1 {
+            self.schema = cx.root.schema.clone();
+            self.version = cx.root.version.clone();
+            if let Some(diagnostic) = cx.root.diagnostic.clone() {
+                self.record_capability_diagnostic(diagnostic)?;
+            }
+        }
+        if element.target {
+            self.semantic_start(cx, element.local, element.attributes)?;
         }
         Ok(())
     }
-    fn semantic_start(&mut self, local: &str, attrs: &Attributes) -> Result<()> {
-        if self.is_path(&["LandXML", "Units", local]) && matches!(local, "Metric" | "Imperial") {
-            if self.units.replace(units(attrs)?).is_some() {
-                return Err(invalid("LandXML may declare units only once"));
-            }
+
+    fn end(&mut self, cx: &Cx<'_>) -> Result<()> {
+        if self.capture.as_ref().is_some_and(|capture| capture.depth() == cx.frames().len()) {
+            self.finish_capture()?;
+        }
+        let frame = cx.frames().last().expect("an element is closing");
+        if frame.target {
+            self.semantic_end(cx, &frame.local)?;
+        }
+        Ok(())
+    }
+
+    fn text(&mut self, _cx: &Cx<'_>, text: &str) -> Result<()> {
+        self.capture_decoded(text)
+    }
+
+    fn capture_depth(&self) -> Option<usize> {
+        self.capture.as_ref().map(Capture::depth)
+    }
+}
+
+impl AlignmentHandler {
+    /// A diagnostic is source output too: bounded like every other record.
+    fn record_capability_diagnostic(&mut self, diagnostic: crate::LandXmlCapabilityDiagnostic) -> Result<()> {
+        self.capability_diagnostics_seen.reserve(1)?;
+        self.capability_diagnostics.push(diagnostic);
+        Ok(())
+    }
+
+    pub(super) fn reserve_alignment_points(&mut self, added: usize) -> Result<()> {
+        self.alignment_points_seen.reserve(added)
+    }
+
+    fn semantic_start(&mut self, cx: &Cx<'_>, local: &str, attrs: &Attributes) -> Result<()> {
+        let depth = cx.frames().len();
+        if matches!(local, "Metric" | "Imperial") && cx.path_is(&["LandXML", "Units", local]) {
+            // The driver has already refused a second declaration.
+            self.units = Some(units(attrs)?);
             return Ok(());
         }
-        if self.is_path(&["LandXML", "Alignments", "Alignment"]) {
+        if cx.path_is(&["LandXML", "Alignments", "Alignment"]) {
             return self.begin_alignment(attrs);
         }
-        if self.is_alignment_path(&["CoordGeom", local]) {
+        if under_alignment(cx, &["CoordGeom", local]) {
             return self.begin_segment(local, attrs);
         }
-        if self.is_alignment_path(&["StaEquation"]) {
+        if under_alignment(cx, &["StaEquation"]) {
             return self.push_equation(attrs);
         }
-        if self.is_alignment_path(&["Cant"]) {
+        if under_alignment(cx, &["Cant"]) {
             return self.begin_cant(attrs);
         }
-        if self.is_alignment_path(&["Cant", "CantStation"]) {
+        if under_alignment(cx, &["Cant", "CantStation"]) {
             return self.push_cant_station(attrs);
         }
-        if self.is_alignment_path(&["Cant", "SpeedStation"]) {
+        if under_alignment(cx, &["Cant", "SpeedStation"]) {
             return self.push_speed_station(attrs);
         }
-        if self.is_alignment_path(&["Superelevation"]) {
+        if under_alignment(cx, &["Superelevation"]) {
             return self.begin_superelevation(attrs);
         }
-        if self.is_alignment_path(&["AlignPIs", "AlignPI"]) {
-            self.capture = Some(Capture::Point {
-                local: "__align_pi".to_owned(),
-                depth: self.frames.len(),
-                pnt_ref: attr(attrs, "pntRef").map(str::to_owned),
-                text: String::new(),
-            });
+        if under_alignment(cx, &["AlignPIs", "AlignPI"]) {
+            self.capture_point(PointRole::AlignPi, depth, attrs);
             return Ok(());
         }
         if let Some(kind) = superelevation_event(local) {
-            if self.is_alignment_path(&["Superelevation", local]) {
-                self.capture = Some(Capture::Superelevation {
-                    kind,
-                    depth: self.frames.len(),
-                    text: String::new(),
-                });
+            if under_alignment(cx, &["Superelevation", local]) {
+                self.capture = Some(Capture::Superelevation { kind, depth, text: String::new() });
             }
             return Ok(());
         }
-        if self.is_alignment_path(&["Start"])
-            && self
-                .alignment
-                .as_ref()
-                .is_some_and(|value| value.segment.is_none())
-        {
-            self.capture = Some(Capture::Point {
-                local: "__alignment_start".to_owned(),
-                depth: self.frames.len(),
-                pnt_ref: attr(attrs, "pntRef").map(str::to_owned),
-                text: String::new(),
-            });
-        } else if self.is_primitive_child() {
-            if matches!(local, "Start" | "End" | "Center" | "PI") {
-                self.capture = Some(Capture::Point {
-                    local: local.to_owned(),
-                    depth: self.frames.len(),
-                    pnt_ref: attr(attrs, "pntRef").map(str::to_owned),
-                    text: String::new(),
-                });
-            } else if matches!(local, "PntList2D" | "PntList3D") {
-                self.capture = Some(Capture::PointList {
-                    dimension: if local == "PntList2D" { 2 } else { 3 },
-                    depth: self.frames.len(),
-                    text: String::new(),
-                });
+        if under_alignment(cx, &["Start"]) && self.alignment.as_ref().is_some_and(|value| value.segment.is_none()) {
+            self.capture_point(PointRole::AlignmentStart, depth, attrs);
+        } else if is_primitive_child(cx) {
+            match local {
+                "Start" => self.capture_point(PointRole::Primitive("Start"), depth, attrs),
+                "End" => self.capture_point(PointRole::Primitive("End"), depth, attrs),
+                "Center" => self.capture_point(PointRole::Primitive("Center"), depth, attrs),
+                "PI" => self.capture_point(PointRole::Primitive("PI"), depth, attrs),
+                "PntList2D" | "PntList3D" => {
+                    let dimension = if local == "PntList2D" { 2 } else { 3 };
+                    self.capture = Some(Capture::PointList { dimension, depth, text: String::new() });
+                }
+                _ => {}
             }
         }
         Ok(())
     }
-    pub(super) fn end(&mut self, closing: Option<&[u8]>) -> Result<()> {
-        let frame = self
-            .frames
-            .last()
-            .cloned()
-            .ok_or_else(|| error(Code::InvalidXml, "unexpected closing element"))?;
-        if let Some(closing) = closing {
-            let (_, local, _) = split_name(closing, self.limits.xml.max_name_bytes)?;
-            if local != frame.local {
-                return Err(error(Code::InvalidXml, "mismatched closing element"));
-            }
-        }
-        if self
-            .capture
-            .as_ref()
-            .is_some_and(|capture| capture.depth() == self.frames.len())
-        {
-            self.finish_capture()?;
-        }
-        if frame.target {
-            self.semantic_end(&frame.local)?;
-        }
-        let closes_root = self.frames.len() == 1;
-        self.frames.pop();
-        if closes_root {
-            self.root_closed = true;
-        }
-        Ok(())
+
+    fn capture_point(&mut self, role: PointRole, depth: usize, attrs: &Attributes) {
+        self.capture = Some(Capture::Point {
+            role,
+            depth,
+            pnt_ref: attr(attrs, "pntRef").map(str::to_owned),
+            text: String::new(),
+        });
     }
-    fn semantic_end(&mut self, local: &str) -> Result<()> {
-        if self.is_alignment_path(&["CoordGeom", local])
+
+    fn semantic_end(&mut self, cx: &Cx<'_>, local: &str) -> Result<()> {
+        if under_alignment(cx, &["CoordGeom", local])
             && matches!(local, "Line" | "IrregularLine" | "Curve" | "Spiral")
         {
             return self
@@ -196,49 +148,21 @@ impl Parser<'_> {
                 .ok_or_else(|| invalid("geometry outside Alignment"))?
                 .push_segment();
         }
-        if self.is_alignment_path(&["Cant"]) {
-            return self
-                .alignment
-                .as_mut()
-                .ok_or_else(|| invalid("Cant outside Alignment"))?
-                .push_cant();
+        if under_alignment(cx, &["Cant"]) {
+            return self.alignment.as_mut().ok_or_else(|| invalid("Cant outside Alignment"))?.push_cant();
         }
-        if self.is_alignment_path(&["Superelevation"]) {
+        if under_alignment(cx, &["Superelevation"]) {
             return self
                 .alignment
                 .as_mut()
                 .ok_or_else(|| invalid("Superelevation outside Alignment"))?
                 .push_superelevation();
         }
-        if self.is_path(&["LandXML", "Alignments", "Alignment"]) {
-            let alignment = self
-                .alignment
-                .take()
-                .ok_or_else(|| invalid("missing Alignment"))?
-                .alignment;
+        if cx.path_is(&["LandXML", "Alignments", "Alignment"]) {
+            let alignment = self.alignment.take().ok_or_else(|| invalid("missing Alignment"))?.alignment;
             self.alignments.push(alignment);
         }
         Ok(())
-    }
-    pub(super) fn text(&mut self, bytes: &[u8]) -> Result<()> {
-        self.check(bytes.len())?;
-        let text =
-            std::str::from_utf8(bytes).map_err(|_| error(Code::InvalidXml, "text is not UTF-8"))?;
-        if self.frames.is_empty() {
-            return crate::xml::outside_root_text(self.root_closed, text, false);
-        }
-        let text = decode_text(text, &mut self.character_references)?;
-        self.capture_decoded(&text)
-    }
-
-    /// A `&name;` in element content, resolved by `xml::refs`.
-    pub(super) fn reference(&mut self, reference: &BytesRef<'_>) -> Result<()> {
-        self.check(source_len(reference))?;
-        if self.frames.is_empty() {
-            return crate::xml::outside_root_text(self.root_closed, "&", false);
-        }
-        let character = decode_ref(reference, &mut self.character_references)?;
-        self.capture_decoded(character.encode_utf8(&mut [0; 4]))
     }
 
     fn capture_decoded(&mut self, text: &str) -> Result<()> {
@@ -255,24 +179,8 @@ impl Parser<'_> {
         }
         Ok(())
     }
-    pub(super) fn cdata(&mut self, bytes: &[u8]) -> Result<()> {
-        self.check(bytes.len())?;
-        let text = std::str::from_utf8(bytes)
-            .map_err(|_| error(Code::InvalidXml, "CDATA is not UTF-8"))?;
-        if self.frames.is_empty() {
-            return crate::xml::outside_root_text(self.root_closed, text, true);
-        }
-        // CDATA is literal text. In particular, `&amp;` must reach the
-        // numeric parser unchanged rather than being entity-decoded.
-        self.capture_decoded(text)
-    }
+
     pub(crate) fn finish(self) -> Result<super::super::LandXmlAlignmentDocument> {
-        if !self.root_seen {
-            return Err(error(Code::InvalidXml, "LandXML document is empty"));
-        }
-        if !self.root_closed {
-            return Err(error(Code::InvalidXml, "unclosed XML element"));
-        }
         if self.require_alignment && self.alignments.is_empty() {
             return Err(invalid("document contains no Alignments"));
         }
@@ -286,36 +194,25 @@ impl Parser<'_> {
             warnings: self.warnings,
         })
     }
-    fn is_path(&self, expected: &[&str]) -> bool {
-        self.frames.len() == expected.len()
-            && self
-                .frames
-                .iter()
-                .zip(expected)
-                .all(|(frame, local)| frame.target && frame.local == *local)
-    }
-    fn is_alignment_path(&self, tail: &[&str]) -> bool {
-        let prefix = ["LandXML", "Alignments", "Alignment"];
-        self.frames.len() == prefix.len() + tail.len()
-            && self
-                .frames
-                .iter()
-                .zip(prefix.iter().chain(tail.iter()))
-                .all(|(frame, local)| frame.target && frame.local == *local)
-    }
-    fn is_primitive_child(&self) -> bool {
-        self.frames.len() == 6
-            && self
-                .frames
-                .iter()
-                .take(4)
-                .zip(["LandXML", "Alignments", "Alignment", "CoordGeom"])
-                .all(|(frame, local)| frame.target && frame.local == local)
-            && matches!(
-                self.frames[4].local.as_str(),
-                "Line" | "IrregularLine" | "Curve" | "Spiral"
-            )
-            && self.frames[4].target
-            && self.frames[5].target
-    }
+}
+
+/// The open elements are `LandXML/Alignments/Alignment` followed by `tail`.
+fn under_alignment(cx: &Cx<'_>, tail: &[&str]) -> bool {
+    const PREFIX: [&str; 3] = ["LandXML", "Alignments", "Alignment"];
+    let frames = cx.frames();
+    frames.len() == PREFIX.len() + tail.len()
+        && frames.iter().zip(PREFIX.iter().chain(tail)).all(|(frame, local)| frame.target && &*frame.local == *local)
+}
+
+/// A direct child of a `CoordGeom` primitive.
+fn is_primitive_child(cx: &Cx<'_>) -> bool {
+    let frames = cx.frames();
+    frames.len() == 6
+        && frames[..4]
+            .iter()
+            .zip(["LandXML", "Alignments", "Alignment", "CoordGeom"])
+            .all(|(frame, local)| frame.target && &*frame.local == local)
+        && matches!(&*frames[4].local, "Line" | "IrregularLine" | "Curve" | "Spiral")
+        && frames[4].target
+        && frames[5].target
 }

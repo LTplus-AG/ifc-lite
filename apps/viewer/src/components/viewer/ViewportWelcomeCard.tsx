@@ -39,6 +39,7 @@ const MODEL_FORMATS_LABEL = MODEL_FILE_EXTENSIONS.join(' ');
 
 const DISABLED_ACTION_CLASSES = 'border-zinc-200 dark:border-[#3b4261]/50 text-zinc-300 dark:text-[#565f89]/50 cursor-not-allowed';
 const SECONDARY_ACTION_CLASSES = 'border-zinc-300 dark:border-[#3b4261] text-zinc-500 dark:text-[#7a82a5] hover:border-primary hover:text-primary cursor-pointer';
+const SECONDARY_BUTTON_CLASS_PREFIX = 'group inline-flex items-center gap-1.5 px-3 py-1.5 font-mono text-2xs border border-dashed transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ';
 
 const FLOAT_SLOW_KEYFRAMES = `
   @keyframes float-slow {
@@ -206,7 +207,7 @@ export function ViewportWelcomeCard({ webgpu, onOpenClick, onStartBlank, recentF
           type="button"
           onClick={onStartBlank}
           disabled={actionsDisabled}
-          className={`group inline-flex items-center gap-1.5 px-3 py-1.5 font-mono text-2xs border border-dashed transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${
+          className={`${SECONDARY_BUTTON_CLASS_PREFIX}${
             actionsDisabled
               ? DISABLED_ACTION_CLASSES
               : SECONDARY_ACTION_CLASSES
@@ -219,7 +220,7 @@ export function ViewportWelcomeCard({ webgpu, onOpenClick, onStartBlank, recentF
           type="button"
           onClick={() => useViewerStore.getState().openPanelInHome('sources')}
           disabled={actionsDisabled}
-          className={`group inline-flex items-center gap-1.5 px-3 py-1.5 font-mono text-2xs border border-dashed transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${
+          className={`${SECONDARY_BUTTON_CLASS_PREFIX}${
             actionsDisabled
               ? DISABLED_ACTION_CLASSES
               : SECONDARY_ACTION_CLASSES

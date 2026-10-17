@@ -10,3 +10,8 @@ pub use attr_indices::{root_attr_indices, RootAttrIndices};
 
 mod relationship_slots;
 pub use relationship_slots::{relationship_slots, RelationshipSlots};
+
+// C6-4 deletes this module with the two tables above; the test goes with it,
+// having proved core's registry lookup row-for-row first.
+#[cfg(test)]
+mod core_lookup_equality_tests;

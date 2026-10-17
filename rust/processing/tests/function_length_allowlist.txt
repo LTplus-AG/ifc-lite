@@ -44,7 +44,6 @@
    332 rust/geometry/src/facet_weld.rs weld_near_coplanar_facets
    231 rust/geometry/src/instancing/group.rs collate_refs_impl
    166 rust/geometry/src/instancing/wire.rs encode_refs_with_finishes
-   218 rust/geometry/src/kernel/retriangulate_recover.rs recover_subsegment
    185 rust/geometry/src/mesh_orient.rs orient_mesh_outward_verdict
    175 rust/geometry/src/processors/advanced_face/polyline.rs sample_curve_polyline_guarded
    229 rust/geometry/src/processors/advanced_face/revolution.rs process_surface_of_revolution_face

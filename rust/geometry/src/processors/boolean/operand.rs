@@ -7,6 +7,7 @@
 //! Split out of `boolean/mod.rs` (module-size ratchet) when the unsupported-
 //! operand arm gained its diagnostic record (#3821).
 
+use super::brep_voids::brep_with_voids_shell_kind;
 use super::{BooleanClippingProcessor, CsgSolidProcessor};
 use crate::diagnostics::{BoolFailureReason, BoolOp};
 use crate::router::builtin_processor;
@@ -221,7 +222,16 @@ impl BooleanClippingProcessor {
             }
             other => match builtin_processor(other.clone(), &self.schema) {
                 Some(processor) => {
-                    processor.process(operand, decoder, &self.schema, quality).map(|m| (m, false))
+                    let outer = processor.process(operand, decoder, &self.schema, quality)?;
+                    // A cutter is the solid IFC defines, not its Outer shell
+                    // alone (#7786). The BASE operand (`BoolOp::Unknown`) keeps
+                    // the shell: the same item meshes that way outside a boolean.
+                    if op != BoolOp::Unknown {
+                        if let Some(kind) = brep_with_voids_shell_kind(other) {
+                            return Ok(self.without_voids(kind, op, operand, outer, decoder, quality));
+                        }
+                    }
+                    Ok((outer, false))
                 }
                 // No built-in meshes this operand type: the operand resolves to
                 // an EMPTY mesh. As a FIRST operand that empties the whole

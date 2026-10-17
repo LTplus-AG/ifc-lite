@@ -712,22 +712,41 @@ fn merged(shells: &[Mesh]) -> Mesh {
     m
 }
 
-/// A solid with a cavity shell: the volume is `outer - cavity` whichever way
-/// the cavity arrived (outward-wound, as faceted breps and revolutions write
-/// it, or already inward), and the cavity is the only shell that is negative.
+/// A solid with a cavity shell authored opposite to it (as a full revolution
+/// writes its bore): the volume is `outer - cavity`, also when the whole body
+/// arrives inside-out (a mirrored placement), and the cavity is the only
+/// negative shell.
 #[test]
 fn a_cavity_shell_is_wound_into_its_cavity_7755() {
-    for cavity_flipped in [false, true] {
-        let all: Vec<usize> = (0..12).collect();
-        let cavity = cube_at(2.0, 6.0, if cavity_flipped { &all } else { &[] });
-        let mut m = merged(&[cube_at(0.0, 10.0, &[]), cavity]);
+    let all: Vec<usize> = (0..12).collect();
+    for (outer_flips, cavity_flips) in [(&[][..], &all[..]), (&all[..], &[][..])] {
+        let mut m = merged(&[cube_at(0.0, 10.0, outer_flips), cube_at(2.0, 6.0, cavity_flips)]);
         let v = orient_mesh_outward_verdict(&mut m);
         assert_eq!(v.components, 2, "{v:?}");
         assert!(v.all_closed && v.all_orientable, "{v:?}");
         let volume = mesh_volume(&m);
         assert!(
             (volume - (1000.0 - 216.0)).abs() < 1e-3,
-            "cavity_flipped={cavity_flipped}: volume {volume}, expected outer - cavity = 784"
+            "outer flipped={}: volume {volume}, expected outer - cavity = 784",
+            !outer_flips.is_empty()
+        );
+    }
+}
+
+/// Nesting alone is not a cavity: a solid authored the SAME way as the solid
+/// around it (window frames inside a window's envelope box in
+/// FM_ARC_DigitalHub, a pipe inside a sleeve, an embedded duplicate) is a
+/// separate solid and stays positive, as before #7755. So does a nested shell
+/// whose authored winding is inconsistent (no signal to read).
+#[test]
+fn a_same_wound_or_inconsistent_nested_solid_stays_positive_7755() {
+    for inner_flips in [&[][..], &[0, 1, 2][..]] {
+        let mut m = merged(&[cube_at(0.0, 10.0, &[]), cube_at(2.0, 6.0, inner_flips)]);
+        orient_mesh_outward_verdict(&mut m);
+        let volume = mesh_volume(&m);
+        assert!(
+            (volume - (1000.0 + 216.0)).abs() < 1e-3,
+            "inner flips {inner_flips:?}: volume {volume}, expected two positive solids = 1216"
         );
     }
 }
@@ -737,11 +756,12 @@ fn a_cavity_shell_is_wound_into_its_cavity_7755() {
 /// "inside" its twin and stays positive too.
 #[test]
 fn nesting_parity_alternates_and_disjoint_or_coincident_shells_stay_positive_7755() {
+    let all: Vec<usize> = (0..12).collect();
     let mut m = merged(&[
         cube_at(0.0, 10.0, &[]),    // +1000
-        cube_at(1.0, 8.0, &[]),     // cavity: -512
+        cube_at(1.0, 8.0, &all),    // cavity, authored inward: -512
         cube_at(3.0, 4.0, &[]),     // island in the cavity: +64
-        cube_at(100.0, 2.0, &[]),   // disjoint: +8
+        cube_at(100.0, 2.0, &all),  // disjoint, inside-out: +8
     ]);
     orient_mesh_outward_verdict(&mut m);
     let volume = mesh_volume(&m);

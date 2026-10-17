@@ -305,3 +305,22 @@ fn refused_faceted_brep_face_is_counted_as_ifc_face() {
     assert_eq!(tris, 0);
     assert_eq!(counted, vec![("IfcFace".to_string(), 1)], "got {counted:?}");
 }
+
+/// A polygonal face with a dangling corner (past the end of the point list)
+/// is dropped whole AND counted under its own type (D3); it used to vanish
+/// silently. The intact face beside it still meshes.
+#[test]
+fn dangling_polygonal_face_corner_is_counted_7687() {
+    let face_set = |bad: &str| {
+        format!(
+            "#1=IFCPOLYGONALFACESET(#2,.F.,(#3,#4),$);\n\
+             #2=IFCCARTESIANPOINTLIST3D(((0.,0.,0.),(1.,0.,0.),(1.,1.,0.),(0.,1.,0.)),$);\n\
+             #3=IFCINDEXEDPOLYGONALFACE((1,2,3));\n#4=IFCINDEXEDPOLYGONALFACE((1,3,{bad}));\n"
+        )
+    };
+    assert_eq!(process(&face_set("4")), (2, vec![]), "the intact face set records nothing");
+    assert_eq!(
+        process(&face_set("9")),
+        (1, vec![("IfcIndexedPolygonalFace".to_string(), 1)]),
+    );
+}

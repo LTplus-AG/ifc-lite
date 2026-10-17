@@ -17,7 +17,7 @@
 //! [`orient_mesh_outward`] recovers face adjacency (the meshes are flat-shaded,
 //! so positions are welded by a fine grid), propagates a consistent orientation
 //! across shared edges per connected component, then flips each CLOSED component
-//! so its signed volume is positive (outward); a closed component nested an odd number of closed shells deep (a cavity or bore) is wound into its cavity instead, so its volume is negative (#7755). An OPEN component (a TIN /
+//! so its signed volume is positive (outward); a closed component nested an odd number of closed shells deep AND authored opposite to its innermost container (a revolved bore) is kept wound into its cavity, so its volume is negative (#7755); a same-wound nested solid is a separate solid and is made positive. An OPEN component (a TIN /
 //! `SurfaceModel` sheet with boundary edges — no meaningful enclosed volume) or a
 //! non-manifold / non-orientable one is left untouched: re-orienting it is
 //! ambiguous and would reverse authored normals. The winding-invariant geometry
@@ -70,9 +70,9 @@ struct OrientScratch {
     comp: Vec<usize>,
     stack: Vec<usize>,
     /// Triangles of every closed orientable component, back to back, and each
-    /// component's `(start, end, own signed volume * 6)` in it (#7755).
+    /// component's span, signed volume and authored winding in it (#7755).
     closed_tris: Vec<usize>,
-    closed_spans: Vec<(usize, usize, f64)>,
+    closed_spans: Vec<nesting::ClosedSpan>,
 }
 
 thread_local! {
@@ -332,7 +332,7 @@ pub fn orient_mesh_outward_verdict(mesh: &mut Mesh) -> OrientVerdict {
         // Which way it faces is decided once all are known (`nesting`); only its
         // signed volume (AABB-centred, `kernel::signed_volume`) is taken here.
         let vol6 = signed_volume6_of(comp.iter().map(|&t| corners(t, flip[t])));
-        closed_spans.push((closed_tris.len(), closed_tris.len() + comp.len(), vol6));
+        closed_spans.push(nesting::ClosedSpan::new(closed_tris.len(), comp, flip, vol6));
         closed_tris.extend_from_slice(comp);
     }
 

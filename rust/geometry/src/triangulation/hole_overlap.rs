@@ -23,15 +23,24 @@
 use super::ring_geom::{point_in_ring, ring_bbox};
 use rustc_hash::FxHashSet;
 
-/// Edge-pair tests (plus examined bbox pairs) spent on one cap's holes before
-/// it is refused. A 3,000-hole grid spends about 200 thousand; this is ~80x
-/// that, and still well under a second of work.
-pub(super) const HOLE_PAIR_WORK_BUDGET: u64 = 1 << 24;
+/// Work (examined bbox pairs, plus edge-pair and point-in-ring tests near each
+/// pair's box overlap) spent on one cap's holes before it is refused: a base
+/// plus a share per hole vertex, so it grows with the input linearly and only
+/// superlinear sets are refused. A 5,000-hole hex-staggered perforated plate
+/// of 64-gon circles at pitch 2.05 r spends about 100 units per vertex.
+pub(super) fn hole_work_budget(hole_vertices: usize) -> u64 {
+    HOLE_PAIR_WORK_BASE.saturating_add((hole_vertices as u64).saturating_mul(1024))
+}
+
+/// The constant part of [`hole_work_budget`].
+pub(super) const HOLE_PAIR_WORK_BASE: u64 = 1 << 22;
 
 /// Relative tolerance for "on the boundary" / "properly crossing", scaled by
 /// the pair's bounding-box diagonal. Rings that merely touch (a shared edge
-/// or vertex, authored in floating point) are not overlapping.
-const TOUCH_TOLERANCE: f64 = 1e-9;
+/// or vertex, authored in floating point) are not overlapping; authored
+/// coordinates often round-trip through f32 (~6e-8 relative), so a shared
+/// edge can overlap by that much and must still count as touching.
+const TOUCH_TOLERANCE: f64 = 1e-6;
 
 /// Drop duplicate rings from `holes` (indices into `rings`) and refuse the
 /// set if two remaining rings overlap or the work `budget` runs out.
@@ -60,15 +69,19 @@ pub(super) fn settle_holes(
                 break;
             }
             work += 1;
+            if work > budget {
+                return Err("profile holes exceed the overlap-check work budget".to_string());
+            }
             if boxes[j].1 > boxes[i].3 || boxes[i].1 > boxes[j].3 {
                 continue;
             }
             let (a, b) = (rings[holes[i]], rings[holes[j]]);
-            work += (a.len() / 2) as u64 * (b.len() / 2) as u64;
+            let (overlap, spent) = rings_overlap(a, b, &boxes[i], &boxes[j]);
+            work = work.saturating_add(spent);
             if work > budget {
                 return Err("profile holes exceed the overlap-check work budget".to_string());
             }
-            if rings_overlap(a, b, &boxes[i], &boxes[j]) {
+            if overlap {
                 return Err("profile holes overlap; refusing the cap (D3)".to_string());
             }
         }
@@ -93,17 +106,37 @@ fn canonical_key(ring: &[f64]) -> Vec<u64> {
     fwd.min(bwd)
 }
 
+/// Whether two hole rings overlap, and the work spent finding out. Only the
+/// edges and sample points inside the pair's bounding-box overlap (grown by
+/// the touch tolerance) can cross or be inside the other ring, so the cost is
+/// proportional to what is near the overlap, not `|a| * |b|`: neighbouring
+/// circles of a perforated plate overlap only at a box corner.
 fn rings_overlap(
     a: &[f64],
     b: &[f64],
     ba: &(f64, f64, f64, f64),
     bb: &(f64, f64, f64, f64),
-) -> bool {
+) -> (bool, u64) {
     let diag = (ba.2.max(bb.2) - ba.0.min(bb.0)).hypot(ba.3.max(bb.3) - ba.1.min(bb.1));
     let eps = TOUCH_TOLERANCE * diag.max(f64::MIN_POSITIVE);
-    edges_cross(a, b, eps)
-        || interior_sample_inside(a, b, bb, eps)
-        || interior_sample_inside(b, a, ba, eps)
+    let rect = (ba.0.max(bb.0) - eps, ba.1.max(bb.1) - eps, ba.2.min(bb.2) + eps, ba.3.min(bb.3) + eps);
+    let near = |ring: &[f64]| -> Vec<usize> {
+        (0..ring.len() / 2)
+            .filter(|&k| {
+                let (p, q) = edge(ring, k);
+                p[0].max(q[0]) >= rect.0
+                    && p[0].min(q[0]) <= rect.2
+                    && p[1].max(q[1]) >= rect.1
+                    && p[1].min(q[1]) <= rect.3
+            })
+            .collect()
+    };
+    let (ea, eb) = (near(a), near(b));
+    let mut spent = (a.len() / 2 + b.len() / 2) as u64 + ea.len() as u64 * eb.len() as u64;
+    let overlap = edges_cross(a, &ea, b, &eb, eps)
+        || interior_sample_inside(a, &ea, b, bb, eps, &mut spent)
+        || interior_sample_inside(b, &eb, a, ba, eps, &mut spent);
+    (overlap, spent)
 }
 
 fn edge(ring: &[f64], k: usize) -> ([f64; 2], [f64; 2]) {
@@ -122,13 +155,12 @@ fn side(a: [f64; 2], b: [f64; 2], p: [f64; 2]) -> f64 {
     (dx * (p[1] - a[1]) - dy * (p[0] - a[0])) / len
 }
 
-/// Some edge of `a` properly crosses some edge of `b` (endpoints strictly on
-/// opposite sides of each other, beyond `eps`).
-fn edges_cross(a: &[f64], b: &[f64], eps: f64) -> bool {
-    let (na, nb) = (a.len() / 2, b.len() / 2);
-    (0..na).any(|i| {
+/// Some edge `ea` of `a` properly crosses some edge `eb` of `b` (endpoints
+/// strictly on opposite sides of each other, beyond `eps`).
+fn edges_cross(a: &[f64], ea: &[usize], b: &[f64], eb: &[usize], eps: f64) -> bool {
+    ea.iter().any(|&i| {
         let (a0, a1) = edge(a, i);
-        (0..nb).any(|j| {
+        eb.iter().any(|&j| {
             let (b0, b1) = edge(b, j);
             let (d0, d1) = (side(a0, a1, b0), side(a0, a1, b1));
             let (e0, e1) = (side(b0, b1, a0), side(b0, b1, a1));
@@ -138,23 +170,29 @@ fn edges_cross(a: &[f64], b: &[f64], eps: f64) -> bool {
     })
 }
 
-/// A vertex or an edge midpoint of `ring` lies strictly inside `other` (inside
-/// and farther than `eps` from its boundary). Midpoints catch containment where
+/// A vertex or an edge midpoint of `ring` (from its edges `near`, the only
+/// ones that reach `other`'s box) lies strictly inside `other` (inside and
+/// farther than `eps` from its boundary). Midpoints catch containment where
 /// every vertex of `ring` sits on `other`'s boundary.
 fn interior_sample_inside(
     ring: &[f64],
+    near: &[usize],
     other: &[f64],
     other_box: &(f64, f64, f64, f64),
     eps: f64,
+    spent: &mut u64,
 ) -> bool {
-    let n = ring.len() / 2;
-    (0..n).any(|k| {
+    near.iter().any(|&k| {
         let (p, q) = edge(ring, k);
         [p, [(p[0] + q[0]) / 2.0, (p[1] + q[1]) / 2.0]].into_iter().any(|s| {
             s[0] > other_box.0
                 && s[0] < other_box.2
                 && s[1] > other_box.1
                 && s[1] < other_box.3
+                && {
+                    *spent += 2 * (other.len() / 2) as u64; // ring walk + boundary walk
+                    true
+                }
                 && point_in_ring(s[0], s[1], other)
                 && !near_boundary(s, other, eps)
         })

@@ -167,7 +167,8 @@ pub(crate) fn safe_earcut(
     // these and its output for them is not the authored face (#7787).
     {
         let ring_slices: Vec<&[f64]> = rings.iter().map(|(c, _)| c.as_slice()).collect();
-        hole_overlap::settle_holes(&ring_slices, &mut real_holes, hole_overlap::HOLE_PAIR_WORK_BUDGET)?;
+        let hole_vertices = real_holes.iter().map(|&h| ring_slices[h].len() / 2).sum();
+        hole_overlap::settle_holes(&ring_slices, &mut real_holes, hole_overlap::hole_work_budget(hole_vertices))?;
     }
 
     let mut out: Vec<usize> = Vec::new();

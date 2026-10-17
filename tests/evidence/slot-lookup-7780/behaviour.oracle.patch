@@ -1,0 +1,33 @@
+diff --git b/rust/core/src/attribute_slot.rs a/rust/core/src/attribute_slot.rs
+--- b/rust/core/src/attribute_slot.rs
++++ a/rust/core/src/attribute_slot.rs
+@@ -93,8 +93,8 @@ fn decode(index: usize, flags: u8) -> AttrSlot {
+         // every schema in the tests); Select is the conservative reading of
+         // a code from a newer generator.
+         kind: AttrKind::from_code(flags & KIND_MASK).unwrap_or(AttrKind::Select),
+-        aggregate: false,
+-        optional: flags & OPTIONAL == 0,
++        aggregate: flags & AGGREGATE != 0,
++        optional: flags & OPTIONAL != 0,
+     }
+ }
+ 
+@@ -106,7 +106,7 @@ impl SchemaVersion {
+     /// `globalid`). A name with non-ASCII characters never matches.
+     pub fn attribute(self, entity: &str, name: &str) -> Option<AttrSlot> {
+         let (names, flags) = self.layout_of(entity)?;
+-        let index = names.iter().position(|n| *n == name)?;
++        let index = names.iter().position(|n| n.eq_ignore_ascii_case(name))?;
+         Some(decode(index, flags[index]))
+     }
+ 
+@@ -129,6 +129,9 @@ impl SchemaVersion {
+     ) -> Option<crate::generated::schema_registry::AttributeLayout> {
+         // The registry resolves through Unicode uppercasing, which would let
+         // `ıfcwall` (dotless i) reach IFCWALL; this API promises ASCII.
++        if !entity.is_ascii() {
++            return None;
++        }
+         self.attribute_layout(entity)
+     }
+ }

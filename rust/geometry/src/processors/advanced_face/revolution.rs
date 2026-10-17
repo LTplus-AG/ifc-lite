@@ -15,7 +15,7 @@ use super::surfaces::process_planar_face_rebased;
 
 /// The face's refusal (#7687), counted (D3).
 fn refused(face: &DecodedEntity) -> crate::Error {
-    note_face_refused(&face.ifc_type);
+    note_face_refused();
     crate::Error::geometry(format!(
         "surface of revolution face #{} has data that does not resolve; refusing the face",
         face.id
@@ -112,7 +112,7 @@ pub(super) fn process_surface_of_revolution_face(
     // bounds are already in the outer frame, so only the profile and axis
     // move. A null Position leaves both untouched, bit for bit.
     if let Some(position) = present(face, surface.get(1), decoder)? {
-        let frame = noting_refusal(face, crate::transform::parse_axis2_placement_3d(&position, decoder))?;
+        let frame = noting_refusal(crate::transform::parse_axis2_placement_3d(&position, decoder))?;
         for p in &mut profile_pts {
             *p = frame.transform_point(p);
         }

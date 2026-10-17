@@ -93,7 +93,11 @@ impl MetadataReassembler {
                     format!("metadata record fragment JSON is invalid: {value}"),
                 )
             })?;
-        let record = LandXmlMetadataRecord::from_wire(&pending.record, value).map_err(|value| {
+        let record = serde_json::from_value(serde_json::json!({
+            "record": pending.record,
+            "value": value,
+        }))
+        .map_err(|value| {
             crate::xml::error(
                 crate::LandXmlDiagnosticCode::InvalidSemantic,
                 format!("metadata record fragment shape is invalid: {value}"),

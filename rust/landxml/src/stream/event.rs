@@ -180,6 +180,74 @@ pub struct LandXmlMetadataRecordFragment {
     pub payload_utf8: Vec<u8>,
 }
 
+impl LandXmlMetadataRecord {
+    pub(crate) fn wire_name(&self) -> &'static str {
+        match self {
+            Self::TerrainExtension(_) => "terrain_extension",
+            Self::TerrainWarning(_) => "terrain_warning",
+            Self::TerrainAlignment(_) => "terrain_alignment",
+            Self::TerrainProfile(_) => "terrain_profile",
+            Self::TerrainCrossSection(_) => "terrain_cross_section",
+            Self::TerrainCrossSectionSurface(_) => "terrain_cross_section_surface",
+            Self::TerrainRoadway(_) => "terrain_roadway",
+            Self::TerrainCapabilityDiagnostic(_) => "terrain_capability_diagnostic",
+            Self::TerrainPreservedOnlyExtension(_) => "terrain_preserved_only_extension",
+            Self::PlanCogoPoint(_) => "plan_cogo_point",
+            Self::PlanMonument(_) => "plan_monument",
+            Self::PlanFeature(_) => "plan_feature",
+            Self::PlanParcel(_) => "plan_parcel",
+            Self::PlanWarning(_) => "plan_warning",
+            Self::PlanSourceBatch(_) => "plan_source_batch",
+            Self::PlanParcelProbe(_) => "plan_parcel_probe",
+            Self::PlanResolvedMonument(_) => "plan_resolved_monument",
+            Self::PlanResolvedGeometry(_) => "plan_resolved_geometry",
+            Self::AlignmentRenderSpan(_) => "alignment_render_span",
+            Self::AlignmentRenderRefusal(_) => "alignment_render_refusal",
+            Self::AlignmentRenderTruncated(_) => "alignment_render_truncated",
+            Self::HorizontalAlignment(_) => "horizontal_alignment",
+            Self::HorizontalAlignmentWarning(_) => "horizontal_alignment_warning",
+            Self::PipeCollection(_) => "pipe_collection",
+            Self::PipeFeature(_) => "pipe_feature",
+            Self::PipePreflightRefusal(_) => "pipe_preflight_refusal",
+            Self::PipeNetwork(_) => "pipe_network",
+            Self::PipeRefusal(_) => "pipe_refusal",
+        }
+    }
+
+    pub(crate) fn serialize_value(&self) -> Result<Vec<u8>, serde_json::Error> {
+        match self {
+            Self::TerrainExtension(value) => serde_json::to_vec(value),
+            Self::TerrainWarning(value) => serde_json::to_vec(value),
+            Self::TerrainAlignment(value) => serde_json::to_vec(value),
+            Self::TerrainProfile(value) => serde_json::to_vec(value),
+            Self::TerrainCrossSection(value) => serde_json::to_vec(value),
+            Self::TerrainCrossSectionSurface(value) => serde_json::to_vec(value),
+            Self::TerrainRoadway(value) => serde_json::to_vec(value),
+            Self::TerrainCapabilityDiagnostic(value) => serde_json::to_vec(value),
+            Self::TerrainPreservedOnlyExtension(value) => serde_json::to_vec(value),
+            Self::PlanCogoPoint(value) => serde_json::to_vec(value),
+            Self::PlanMonument(value) => serde_json::to_vec(value),
+            Self::PlanFeature(value) => serde_json::to_vec(value),
+            Self::PlanParcel(value) => serde_json::to_vec(value),
+            Self::PlanWarning(value) => serde_json::to_vec(value),
+            Self::PlanSourceBatch(value) => serde_json::to_vec(value),
+            Self::PlanParcelProbe(value) => serde_json::to_vec(value),
+            Self::PlanResolvedMonument(value) => serde_json::to_vec(value),
+            Self::PlanResolvedGeometry(value) => serde_json::to_vec(value),
+            Self::AlignmentRenderSpan(value) => serde_json::to_vec(value),
+            Self::AlignmentRenderRefusal(value) => serde_json::to_vec(value),
+            Self::AlignmentRenderTruncated(value) => serde_json::to_vec(value),
+            Self::HorizontalAlignment(value) => serde_json::to_vec(value),
+            Self::HorizontalAlignmentWarning(value) => serde_json::to_vec(value),
+            Self::PipeCollection(value) => serde_json::to_vec(value),
+            Self::PipeFeature(value) => serde_json::to_vec(value),
+            Self::PipePreflightRefusal(value) => serde_json::to_vec(value),
+            Self::PipeNetwork(value) => serde_json::to_vec(value),
+            Self::PipeRefusal(value) => serde_json::to_vec(value),
+        }
+    }
+}
+
 /// Complete non-surface semantics finalized from the same event-driven
 /// parsers. `terrain.surfaces` is empty because complete surfaces were already
 /// emitted as bounded fragments with stable source identities.

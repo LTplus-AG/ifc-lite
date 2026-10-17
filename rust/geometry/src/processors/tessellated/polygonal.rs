@@ -122,7 +122,7 @@ impl PolygonalFaceSetProcessor {
             let inner_indices = Self::parse_face_inner_indices(&face_entity, pn_index.as_deref());
 
             // Triangulate the polygon face (including holes when present).
-            Self::triangulate_polygon(&face_entity.ifc_type, &face_indices, &inner_indices, &positions, &mut indices);
+            Self::triangulate_polygon(&face_indices, &inner_indices, &positions, &mut indices);
         }
 
         // Closed shells from some exporters may be consistently inward.

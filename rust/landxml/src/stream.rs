@@ -9,7 +9,6 @@ mod fragments;
 mod lifecycle;
 pub(crate) mod metadata;
 mod output;
-mod record_wire;
 mod token;
 pub use lifecycle::LandXmlMetadataStreamAssembler;
 

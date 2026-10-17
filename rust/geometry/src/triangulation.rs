@@ -13,7 +13,6 @@
 
 #[cfg(feature = "triangulation-alt")]
 pub(crate) mod alt_oracle;
-mod hole_overlap;
 mod ring_geom;
 use ring_geom::{point_in_ring, ring_bbox};
 
@@ -160,15 +159,6 @@ pub(crate) fn safe_earcut(
         // against the outer boundary from outside. Drop it: there is no safe
         // interpretation, and this is exactly the shape that wedges
         // earcutr's bridge walk.
-    }
-
-    // Duplicate holes collapse to one; overlapping or nested holes, or a set
-    // too costly to check, refuse the cap (D3). earcutr is superlinear on
-    // these and its output for them is not the authored face (#7787).
-    {
-        let ring_slices: Vec<&[f64]> = rings.iter().map(|(c, _)| c.as_slice()).collect();
-        let hole_vertices = real_holes.iter().map(|&h| ring_slices[h].len() / 2).sum();
-        hole_overlap::settle_holes(&ring_slices, &mut real_holes, hole_overlap::hole_work_budget(hole_vertices))?;
     }
 
     let mut out: Vec<usize> = Vec::new();

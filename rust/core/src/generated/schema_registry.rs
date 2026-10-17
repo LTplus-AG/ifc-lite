@@ -12,6 +12,7 @@
 
 /// The EXPRESS schema families bundled in the Rust registry.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum SchemaVersion {
     Ifc2x3,
     Ifc4,
@@ -30,6 +31,9 @@ pub struct SchemaEntityInfo {
     pub parent: Option<&'static str>,
     pub is_abstract: bool,
 }
+
+/// One entity's attribute names and the parallel `attribute_flags()` bytes.
+pub(crate) type AttributeLayout = (&'static [&'static str], &'static [u8]);
 
 impl SchemaVersion {
     /// Resolve a STEP `FILE_SCHEMA` label to a bundled schema family.
@@ -59,12 +63,19 @@ impl SchemaVersion {
     /// entity is not declared by this schema. A declared entity with no
     /// attributes returns `Some(&[])` so callers never confuse it with absent.
     pub fn attribute_names(self, entity_name: &str) -> Option<&'static [&'static str]> {
+        self.attribute_layout(entity_name).map(|(names, _)| names)
+    }
+
+    /// Attribute names and their parallel flag bytes (see
+    /// [`crate::AttrSlot`] for the decoded form), or `None` when the entity is
+    /// not declared by this schema.
+    pub(crate) fn attribute_layout(self, entity_name: &str) -> Option<AttributeLayout> {
         match self {
-            Self::Ifc2x3 => attribute_names_ifc2x3(entity_name),
-            Self::Ifc4 => attribute_names_ifc4(entity_name),
-            Self::Ifc4x1 => attribute_names_ifc4x1(entity_name),
-            Self::Ifc4x2 => attribute_names_ifc4x2(entity_name),
-            Self::Ifc4x3 => attribute_names_ifc4x3(entity_name),
+            Self::Ifc2x3 => layout_ifc2x3(entity_name),
+            Self::Ifc4 => layout_ifc4(entity_name),
+            Self::Ifc4x1 => layout_ifc4x1(entity_name),
+            Self::Ifc4x2 => layout_ifc4x2(entity_name),
+            Self::Ifc4x3 => layout_ifc4x3(entity_name),
         }
     }
 
@@ -114,12 +125,12 @@ fn is_schema_family(label: &str, family: &str) -> bool {
     })
 }
 
-fn attribute_names_ifc2x3(name: &str) -> Option<&'static [&'static str]> {
+fn layout_ifc2x3(name: &str) -> Option<AttributeLayout> {
     let ty = super::ifc2x3::IfcType::from_str(name);
     if matches!(ty, super::ifc2x3::IfcType::Unknown(_)) {
         None
     } else {
-        Some(ty.attribute_names())
+        Some((ty.attribute_names(), ty.attribute_flags()))
     }
 }
 
@@ -136,12 +147,12 @@ fn entity_info_ifc2x3(name: &str) -> Option<SchemaEntityInfo> {
     }
 }
 
-fn attribute_names_ifc4(name: &str) -> Option<&'static [&'static str]> {
+fn layout_ifc4(name: &str) -> Option<AttributeLayout> {
     let ty = super::ifc4::IfcType::from_str(name);
     if matches!(ty, super::ifc4::IfcType::Unknown(_)) {
         None
     } else {
-        Some(ty.attribute_names())
+        Some((ty.attribute_names(), ty.attribute_flags()))
     }
 }
 
@@ -158,12 +169,12 @@ fn entity_info_ifc4(name: &str) -> Option<SchemaEntityInfo> {
     }
 }
 
-fn attribute_names_ifc4x1(name: &str) -> Option<&'static [&'static str]> {
+fn layout_ifc4x1(name: &str) -> Option<AttributeLayout> {
     let ty = super::ifc4x1::IfcType::from_str(name);
     if matches!(ty, super::ifc4x1::IfcType::Unknown(_)) {
         None
     } else {
-        Some(ty.attribute_names())
+        Some((ty.attribute_names(), ty.attribute_flags()))
     }
 }
 
@@ -180,12 +191,12 @@ fn entity_info_ifc4x1(name: &str) -> Option<SchemaEntityInfo> {
     }
 }
 
-fn attribute_names_ifc4x2(name: &str) -> Option<&'static [&'static str]> {
+fn layout_ifc4x2(name: &str) -> Option<AttributeLayout> {
     let ty = super::ifc4x2::IfcType::from_str(name);
     if matches!(ty, super::ifc4x2::IfcType::Unknown(_)) {
         None
     } else {
-        Some(ty.attribute_names())
+        Some((ty.attribute_names(), ty.attribute_flags()))
     }
 }
 
@@ -202,14 +213,14 @@ fn entity_info_ifc4x2(name: &str) -> Option<SchemaEntityInfo> {
     }
 }
 
-fn attribute_names_ifc4x3(name: &str) -> Option<&'static [&'static str]> {
+fn layout_ifc4x3(name: &str) -> Option<AttributeLayout> {
     // The canonical enum is the whole supported-schema universe (#4203): a
     // legacy class such as IfcDoorStyle resolves to an exact variant there,
     // but IFC4X3 does not declare it, so this registry must still answer
     // `None` rather than lend it an empty (or borrowed) slot layout.
     let ty = super::schema::IfcType::from_str(name);
     if ty.declared_by_canonical_schema() {
-        Some(ty.attribute_names())
+        Some((ty.attribute_names(), ty.attribute_flags()))
     } else {
         None
     }

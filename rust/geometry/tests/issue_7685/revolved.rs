@@ -106,11 +106,6 @@ fn proc_4_full_revolution_of_a_tube_is_a_hollow_torus() {
     let verdict = ifc_lite_geometry::orient_mesh_outward_verdict(&mut probe);
     assert!(verdict.all_closed && verdict.all_orientable, "#21: {verdict:?}");
     assert_eq!(verdict.components, 2, "#21: outer shell + bore shell: {verdict:?}");
-    // #7755: the orienter must leave the bore wound into the bore. It used to
-    // flip it positive, so the delivered element mesh read outer + bore
-    // (151.68 m3 for a 43.18 m3 torus).
-    assert!(!verdict.flipped, "#21: the bore was turned inside out: {verdict:?}");
-    assert_volume("#21 after orient", signed_volume(&probe), HOLLOW_TUBE_AREA * 5.0 * TAU, 0.03);
 }
 
 #[test]

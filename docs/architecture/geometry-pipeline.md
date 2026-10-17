@@ -393,9 +393,10 @@ let world = resolve_chain(&placement, &mut decoder)?;
 let world = resolve_object_placement(&product, &mut decoder)?;
 ```
 
-`resolve_chain` is the one placement walk: the router, the 2D profile
-extractor and the export preflights all go through
-`ifc_lite_geometry::placement`. A cyclic chain is refused and counted
+`resolve_chain` is the placement walk of the router and the 2D profile
+extractor. The symbolic, analytic-export and export-preflight walks still
+carry their own depth caps until they move onto `ifc_lite_geometry::placement`
+(#7779). A cyclic chain is refused and counted
 (`EntityDecoder::refused_records`); a chain of any length resolves in full.
 The result is memoised on the decoder, **unscaled** and column-major, so
 readers with different unit contexts share entries; the caller scales.

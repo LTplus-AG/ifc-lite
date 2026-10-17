@@ -577,14 +577,7 @@ impl ProfileProcessor {
                 .ok_or_else(|| Error::geometry("Failed to resolve ParentCurve".to_string()))?;
 
             // Get same_sense for direction
-            let same_sense = segment
-                .get(1)
-                .and_then(|v| match v {
-                    ifc_lite_core::AttributeValue::Enum(e) => Some(e.as_str()),
-                    _ => None,
-                })
-                .map(|e| e == "T" || e == "TRUE")
-                .unwrap_or(true);
+            let same_sense = segment.get_bool(1).unwrap_or(true);
 
             let mut segment_points =
                 self.get_curve_points_with_depth(&parent_curve, decoder, depth + 1)?;
@@ -652,13 +645,7 @@ impl ProfileProcessor {
             .and_then(|v| self.extract_trim_select(v, prefer_cartesian, decoder));
 
         // Get sense agreement (attribute 3) - default true
-        let sense = curve
-            .get(3)
-            .and_then(|v| match v {
-                ifc_lite_core::AttributeValue::Enum(s) => Some(s == "T"),
-                _ => None,
-            })
-            .unwrap_or(true);
+        let sense = curve.get_bool(3).unwrap_or(true);
 
         // Process basis curve based on type
         match basis_curve.ifc_type {
@@ -715,14 +702,7 @@ impl ProfileProcessor {
                 .ok_or_else(|| Error::geometry("Failed to resolve ParentCurve".to_string()))?;
 
             // Get SameSense (attribute 1) - whether to reverse the curve
-            // Note: IFC enum values like ".T." are parsed/stored as "T" without dots
-            let same_sense = segment
-                .get(1)
-                .and_then(|v| match v {
-                    ifc_lite_core::AttributeValue::Enum(s) => Some(s == "T" || s == "TRUE"),
-                    _ => None,
-                })
-                .unwrap_or(true);
+            let same_sense = segment.get_bool(1).unwrap_or(true);
 
             // Process the parent curve (with depth tracking)
             let mut segment_points =

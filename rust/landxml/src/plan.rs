@@ -34,8 +34,6 @@ pub struct LandXmlDocument {
 pub fn parse_landxml_document(
     input: &[u8],
 ) -> std::result::Result<LandXmlDocument, crate::LandXmlError> {
-    Ok(LandXmlDocument {
-        terrain: crate::parser::parse_landxml_document(input)?,
-        plan: parse_landxml_plan(input)?,
-    })
+    crate::source::parse_families(input, &crate::LandXmlSourceLimits::default(), None, false)
+        .map(|(document, _)| document)
 }

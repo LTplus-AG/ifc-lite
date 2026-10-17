@@ -3,19 +3,19 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use crate::{
-    xml::{attr, Attributes, Result},
+    xml::{attr, Attributes, Cx, Result},
     LandXmlPipeProperties, LandXmlSourceId,
 };
 
 use super::{
     state::{
-        CaptureOwner, FlowInput, FlowKind, InvertInput, PartInput, PipeBuilder, PositionCapture,
+        properties, CaptureOwner, FlowInput, FlowKind, InvertInput, PartInput, PipeBuilder, PositionCapture,
         PositionInput, StructureBuilder,
     },
-    PipeParser,
+    PipeHandler,
 };
 
-impl PipeParser<'_> {
+impl PipeHandler<'_> {
     /// Spend `added` work: one cancellation poll and the `work` budget.
     pub(super) fn check_cancel_and_work(&mut self, added: usize) -> Result<()> {
         self.meter.charge(added)
@@ -31,9 +31,6 @@ impl PipeParser<'_> {
         Ok(())
     }
 
-    pub(super) fn check_character_references(&mut self, added: usize) -> Result<()> {
-        self.character_references.reserve(added)
-    }
 
     pub(super) fn start_structure(
         &mut self,
@@ -97,8 +94,8 @@ impl PipeParser<'_> {
         Ok(())
     }
 
-    pub(super) fn start_center(&mut self, attributes: &Attributes) -> Result<()> {
-        let owner = if self.is_path(&[
+    pub(super) fn start_center(&mut self, cx: &Cx<'_>, attributes: &Attributes) -> Result<()> {
+        let owner = if cx.path_is(&[
             "LandXML",
             "PipeNetworks",
             "PipeNetwork",
@@ -107,7 +104,7 @@ impl PipeParser<'_> {
             "Center",
         ]) {
             CaptureOwner::Structure
-        } else if self.is_path(&[
+        } else if cx.path_is(&[
             "LandXML",
             "PipeNetworks",
             "PipeNetwork",
@@ -151,7 +148,7 @@ impl PipeParser<'_> {
             return Ok(());
         }
         self.capture = Some(PositionCapture {
-            depth: self.frames.len(),
+            depth: cx.frames().len(),
             owner,
             input: PositionInput {
                 text: String::new(),
@@ -262,12 +259,8 @@ impl PipeParser<'_> {
         Ok(())
     }
 
-    pub(super) fn start_pipe_part(
-        &mut self,
-        local: &str,
-        properties: LandXmlPipeProperties,
-    ) -> Result<()> {
-        if !self.is_path(&[
+    pub(super) fn start_pipe_part(&mut self, cx: &Cx<'_>, local: &str, attributes: &Attributes) -> Result<()> {
+        if !cx.path_is(&[
             "LandXML",
             "PipeNetworks",
             "PipeNetwork",
@@ -277,6 +270,7 @@ impl PipeParser<'_> {
         ]) {
             return Ok(());
         }
+        let properties = properties(attributes);
         let part = match local {
             "CircPipe" => PartInput::Circ { properties },
             "ElliPipe" => PartInput::Elli { properties },
@@ -293,12 +287,8 @@ impl PipeParser<'_> {
         Ok(())
     }
 
-    pub(super) fn start_structure_part(
-        &mut self,
-        local: &str,
-        properties: LandXmlPipeProperties,
-    ) -> Result<()> {
-        if !self.is_path(&[
+    pub(super) fn start_structure_part(&mut self, cx: &Cx<'_>, local: &str, attributes: &Attributes) -> Result<()> {
+        if !cx.path_is(&[
             "LandXML",
             "PipeNetworks",
             "PipeNetwork",
@@ -308,6 +298,7 @@ impl PipeParser<'_> {
         ]) {
             return Ok(());
         }
+        let properties = properties(attributes);
         let part = match local {
             "CircStruct" => PartInput::StructCirc { properties },
             "RectStruct" => PartInput::StructRect { properties },

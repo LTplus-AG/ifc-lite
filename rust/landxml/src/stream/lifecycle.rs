@@ -59,13 +59,14 @@ impl LandXmlTinStreamSession {
     /// Release every parser, queued event, and resumable cursor on cancellation
     /// or abandonment. This path is deliberately idempotent for WASM hosts.
     pub fn abort(&mut self) {
-        self.token.clear();
         self.queue.clear();
         self.queued_bytes = 0;
         self.pending_surface.take();
         self.metadata_cursor.take();
         self.pending_input.clear();
-        self.parser.take();
+        self.pending_start = 0;
+        self.tin.take();
+        self.driver.take();
         self.plan.take();
         self.alignment.take();
         self.pipe.take();
@@ -85,7 +86,7 @@ impl LandXmlTinStreamSession {
     }
 
     pub fn header(&self) -> Option<LandXmlStreamHeader> {
-        self.parser
+        self.tin
             .as_ref()?
             .header()
             .map(|(version, units)| LandXmlStreamHeader { version, units })

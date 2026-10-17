@@ -144,14 +144,7 @@ impl ProfileProcessor {
             let parent_curve = decoder
                 .resolve_ref(parent_curve_attr)?
                 .ok_or_else(|| Error::geometry("Failed to resolve ParentCurve".to_string()))?;
-            let same_sense = segment
-                .get(1)
-                .and_then(|v| match v {
-                    ifc_lite_core::AttributeValue::Enum(e) => Some(e.as_str()),
-                    _ => None,
-                })
-                .map(|e| e == "T" || e == "TRUE")
-                .unwrap_or(true);
+            let same_sense = segment.get_bool(1).unwrap_or(true);
             // The analytic reader is stricter than the sampler (it rejects,
             // e.g., a negative radius the sampler still draws). A parent it
             // cannot read has no known span; it must not fail the solid.

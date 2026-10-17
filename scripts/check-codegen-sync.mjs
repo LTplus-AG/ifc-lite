@@ -191,6 +191,10 @@ export function runCodegenCli(root, schemaPath, outDir, rustDir, options = {}) {
     if (options.supplementalSchemas?.length) {
       args.push('--rust-supplemental-schema', ...options.supplementalSchemas);
     }
+    if (options.slotSchemas?.length) {
+      args.push('--rust-slot-schema', ...options.slotSchemas);
+      args.push('--rust-slot-renames', options.slotRenames);
+    }
   }
   execFileSync(process.execPath, args, {
     cwd: root,
@@ -202,7 +206,7 @@ export function runCodegenCli(root, schemaPath, outDir, rustDir, options = {}) {
     // deterministic final generation step before byte comparison; comparing
     // pre-format text would report formatting noise, while normalising either
     // side would let a hand edit through (#5054).
-    const generatedFiles = ['schema.rs', 'type_ids.rs']
+    const generatedFiles = ['schema.rs', 'type_ids.rs', 'slots.rs', 'slots_table.rs']
       .map((file) => join(rustDir, file))
       .filter(existsSync);
     if (generatedFiles.length > 0) {

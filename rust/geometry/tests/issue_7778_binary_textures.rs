@@ -36,11 +36,16 @@ fn only_a_binary_that_decodes_exactly_builds_a_texture() {
     assert_eq!(binary_textures_refused(), before, "aligned binaries are not refused");
 
     // Not byte-aligned (indicator), or an odd digit count.
-    for bad in ["\"1FF0000\"", "\"3FF0000\"", "\"0FF000\""] {
+    // A single-quoted string is no binary either (F4-1 follow-up, #7776).
+    for bad in ["\"1FF0000\"", "\"3FF0000\"", "\"0FF000\"", "'0FF0000'"] {
         let before = binary_textures_refused();
         assert!(!indexed(bad), "{bad} must not build a texture");
         assert_eq!(binary_textures_refused(), before + 1, "{bad} must be counted once");
     }
+    // An absent pixel is not a refused binary.
+    let before = binary_textures_refused();
+    assert!(!indexed("$"));
+    assert_eq!(binary_textures_refused(), before, "`$` is absent, not refused");
     // A non-hex byte is no binary token at all: the record fails to tokenize.
     assert!(!indexed("\"0FF00G0\""));
 }

@@ -75,7 +75,7 @@ fn parse_curve_weights(curve: &DecodedEntity, control_points: usize) -> Result<V
 }
 
 /// Read a parameter trim from an `IfcTrimmedCurve.Trim1/Trim2` SELECT list:
-/// `IFCPARAMETERVALUE(x)` (stored as `List(["IFCPARAMETERVALUE", x])`) or a
+/// `IFCPARAMETERVALUE(x)` (an `AttributeValue::Typed`) or a
 /// bare numeric. Cartesian trim points are ignored — the edge-loop walk
 /// anchors the endpoints geometrically; the parameter is only needed to bound
 /// the SAMPLING range on the basis curve.
@@ -83,13 +83,9 @@ pub(super) fn read_trim_parameter(attr: &ifc_lite_core::AttributeValue) -> Optio
     let list = attr.as_list()?;
     let mut param: Option<f64> = None;
     for item in list {
-        if let Some(inner) = item.as_list() {
-            if let Some(type_name) = inner.first().and_then(|v| v.as_string()) {
-                if type_name == "IFCPARAMETERVALUE" {
-                    param = inner.get(1).and_then(|v| v.as_float());
-                    continue;
-                }
-            }
+        if let Some(value) = item.typed_value("IFCPARAMETERVALUE") {
+            param = value.as_float();
+            continue;
         }
         if item.as_entity_ref().is_some() {
             continue;

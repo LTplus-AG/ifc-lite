@@ -1582,6 +1582,7 @@ dependencies = [
  "geometry-predicates",
  "ifc-lite-geometry",
  "ifc-lite-testkit",
+ "memchr",
  "quick-xml",
  "serde",
  "serde_json",

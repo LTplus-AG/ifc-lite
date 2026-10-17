@@ -23,6 +23,7 @@ use crate::math::tol;
 use super::GeometryRouter;
 use crate::csg::{ClippingProcessor, Plane};
 use crate::material_layer_index::{LayerAxis, LayerBuildup, LayerInfo};
+use crate::representation::{product_shape, Select};
 use crate::mesh::{SubMesh, SubMeshCollection};
 use crate::{Mesh, Point3, Result, Vector3};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
@@ -367,44 +368,16 @@ fn element_is_single_unshifted_item(
     element: &DecodedEntity,
     decoder: &mut EntityDecoder,
 ) -> bool {
-    // Element attr 6 = Representation (IfcProductDefinitionShape).
-    let rep_attr = match element.get(6) {
-        Some(a) if !a.is_null() => a,
-        _ => return false,
-    };
-    let rep = match decoder.resolve_ref(rep_attr) {
-        Ok(Some(r)) => r,
-        _ => return false,
-    };
-    if rep.ifc_type != IfcType::IfcProductDefinitionShape {
+    let Ok(Some(shape)) = product_shape(element, decoder) else {
         return false;
-    }
-    // attr 2 = Representations (list of IfcShapeRepresentation).
-    let reps_attr = match rep.get(2) {
-        Some(a) => a,
-        None => return false,
-    };
-    let reps = match decoder.resolve_ref_list(reps_attr) {
-        Ok(r) => r,
-        Err(_) => return false,
     };
 
-    for shape_rep in &reps {
-        if shape_rep.ifc_type != IfcType::IfcShapeRepresentation {
-            continue;
-        }
-        // Only inspect body-style representations — axis/curve/footprint
-        // don't contribute to the sliced mesh. Uses the single canonical
-        // body-geometry predicate so this stays in lockstep with the meshing
-        // path (a mapped/surface item disqualifies slicing below regardless,
-        // via item_has_identity_position).
-        let is_body = super::effective_element_rep_type(element, shape_rep)
-            .map(super::is_body_representation)
-            .unwrap_or(false);
-        if !is_body {
-            continue;
-        }
-
+    // Only body-style representations contribute to the sliced mesh —
+    // axis/curve/footprint don't. `Select::Body` is the single canonical
+    // body-geometry predicate, so this stays in lockstep with the meshing path
+    // (a mapped/surface item disqualifies slicing below regardless, via
+    // item_has_identity_position).
+    if let Some(shape_rep) = shape.select(element, Select::Body).next() {
         // attr 3 = Items.
         let items = match shape_rep.get(3).and_then(|a| a.as_list()) {
             Some(l) => l,

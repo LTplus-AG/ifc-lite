@@ -982,6 +982,13 @@ jobs:
           # grammar, a binary indicator above 3, a non-zero indicator decoded,
           # and an uncounted texture refusal. Once step_numeric_vectors.json is
           # on main, ordinary whole-change revert resumes.
+          # #7778 (G7): the STEP grammar fuzz targets add test, fuzz-crate and
+          # corpus files only, and the shared tests/support/grammar_oracle.rs is
+          # not attributable to one cargo target (INCONCLUSIVE). Mutate the
+          # point reader's trivia skip instead; the corpus replay must observe
+          # it. Once fuzz_regressions.rs is on main, whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/core/tests/fuzz_regressions.rs | grep -Fxq 'rust/core/tests/fuzz_regressions.rs'; then
+            oracle_args+=(--mutation tests/evidence/grammar-fuzz-7778/trivia.oracle.patch)
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/core/tests/fixtures/step_numeric_vectors.json | grep -Fxq 'rust/core/tests/fixtures/step_numeric_vectors.json'; then
             oracle_args+=(--mutation tests/evidence/numeric-literal-7778/behaviour.oracle.patch)
           # #7774 (F2c): the tolerance catalogue `math::tol` is a new module the
@@ -1009,6 +1016,15 @@ jobs:
           # Once step_ids.rs is on main, ordinary whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/export/src/step_ids.rs | grep -Fxq 'rust/export/src/step_ids.rs'; then
             oracle_args+=(--mutation tests/evidence/step-writer-7682/appended-record-guards.oracle.patch)
+          # #7784 (C9a-10): the one-read source API (`parse_landxml_source*`,
+          # `LandXmlSourceLimits`) is new and its tests import it, so a
+          # whole-change revert does not compile them (INCONCLUSIVE). Keep the
+          # API and break ONLY the behaviour: the document's pipe networks are
+          # dropped, which the equality with the single-family entry points and
+          # the options endpoint's pipe contract observe. Once source.rs is on
+          # main, ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/landxml/src/source.rs | grep -Fxq 'rust/landxml/src/source.rs'; then
+            oracle_args+=(--mutation tests/evidence/landxml-source-7784/pipes.oracle.patch)
           # #7675: the material-row budget travels as DataModel.refused and
           # the complex-property walks share ifc_lite_core::limits'
           # ComplexPropertyBudget, which the changed tests construct, so a
@@ -1142,6 +1158,15 @@ jobs:
           # whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/core/src/attribute_slot.rs | grep -Fxq 'rust/core/src/attribute_slot.rs'; then
             oracle_args+=(--mutation tests/evidence/slot-lookup-7780/behaviour.oracle.patch)
+          # #7780: F3e-0b adds `rust/core/src/slot.rs`, the generated `slots.rs` and
+          # the slot emitter, which the changed tests name, so a whole-change
+          # revert cannot compile them (REVERT-BROKE-BUILD). Keep them and break
+          # ONLY behaviour: the SchemaSlot schema columns, logical decoding, the
+          # debug owner assertion, the undeclared-FILE_SCHEMA default, one
+          # generated position and the emitter's moving classification. Once
+          # slot.rs is on main, ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/core/src/slot.rs | grep -Fxq 'rust/core/src/slot.rs'; then
+            oracle_args+=(--mutation tests/evidence/slot-typed-accessors-7780/behaviour.oracle.patch)
           # #7783: C6-5/C6-6 move the server data model into
           # ifc_lite_processing::data_model, so the moved tests do not exist on
           # the base and a whole-change revert cannot compile them

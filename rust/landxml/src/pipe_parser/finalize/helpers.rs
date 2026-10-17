@@ -6,14 +6,14 @@ use std::collections::{HashMap, HashSet};
 
 use crate::{LandXmlPipeFlow, LandXmlPipeUnits, LandXmlSourceId};
 
-use super::super::{convert, state::FlowInput, PipeParser};
+use super::super::{convert, state::FlowInput, PipeHandler};
 
 pub(super) fn non_empty(value: Option<String>) -> Option<String> {
     value.filter(|value| !value.trim().is_empty())
 }
 
 pub(super) fn duplicate_names<'a>(
-    parser: &mut PipeParser<'_>,
+    parser: &mut PipeHandler<'_>,
     names: impl Iterator<Item = &'a str>,
 ) -> crate::xml::Result<HashSet<String>> {
     let mut seen = HashSet::new();
@@ -28,7 +28,7 @@ pub(super) fn duplicate_names<'a>(
 }
 
 pub(super) fn unique_names<'a>(
-    parser: &mut PipeParser<'_>,
+    parser: &mut PipeHandler<'_>,
     items: impl Iterator<Item = (&'a String, &'a LandXmlSourceId)>,
 ) -> crate::xml::Result<HashMap<String, LandXmlSourceId>> {
     let mut names = HashMap::new();
@@ -53,7 +53,7 @@ pub(in crate::pipe_parser) fn required_reference(
 }
 
 pub(super) fn convert_flow(
-    parser: &mut PipeParser<'_>,
+    parser: &mut PipeHandler<'_>,
     input: FlowInput,
     units: &LandXmlPipeUnits,
 ) -> crate::xml::Result<Option<LandXmlPipeFlow>> {

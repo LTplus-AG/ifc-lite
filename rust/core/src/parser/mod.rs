@@ -58,7 +58,6 @@ pub use scanner::{
 };
 pub(crate) use scanner::argument_list_start;
 pub use tokenizer::{parse_entity, Token};
-pub(crate) use tokenizer::is_decodable_number;
 
 /// [`report_oversized_ids`] + [`report_malformed_records`] in one call — the
 /// two diagnostics every whole-file `EntityScanner` walk in this workspace

@@ -7,27 +7,27 @@ use super::state::properties;
 use super::value::{optional_finite, optional_positive, point, points_limited, source_id};
 use super::*;
 
-impl Parser<'_> {
-    pub(super) fn begin_feature(&mut self, attributes: Attributes) -> Result<()> {
+impl PlanHandler {
+    pub(super) fn begin_feature(&mut self, depth: usize, attributes: &Attributes) -> Result<()> {
         if self.feature_ordinal >= self.limits.max_plan_features {
             return Err(error(Code::LimitExceeded, "PlanFeature limit exceeded"));
         }
         self.feature_ordinal += 1;
         let ordinal = self.feature_ordinal;
         self.active.push(Active::Feature(LandXmlPlanFeature {
-            source_id: source_id("PlanFeature", ordinal, &attributes),
+            source_id: source_id("PlanFeature", ordinal, attributes),
             ordinal,
-            name: attr(&attributes, "name").map(str::to_owned),
-            code: attr(&attributes, "code").map(str::to_owned),
-            description: attr(&attributes, "desc").map(str::to_owned),
-            properties: properties(&attributes),
+            name: attr(attributes, "name").map(str::to_owned),
+            code: attr(attributes, "code").map(str::to_owned),
+            description: attr(attributes, "desc").map(str::to_owned),
+            properties: properties(attributes),
             geometry: Vec::new(),
             locations: Vec::new(),
         }));
-        self.active_depths.push(self.frames.len());
+        self.active_depths.push(depth);
         Ok(())
     }
-    pub(super) fn begin_parcel(&mut self, attributes: Attributes) -> Result<()> {
+    pub(super) fn begin_parcel(&mut self, depth: usize, attributes: &Attributes) -> Result<()> {
         if self.parcel_ordinal >= self.limits.max_parcels {
             return Err(error(Code::LimitExceeded, "Parcel limit exceeded"));
         }
@@ -36,31 +36,31 @@ impl Parser<'_> {
         // Bad parcel declarations must not abort a document that has valid
         // terrain or neighbouring plan records. Keep the complete parcel
         // envelope and make only this parcel preserved-only.
-        let declared_area = optional_finite(&attributes, "area", "Parcel");
-        let declared_perimeter = optional_finite(&attributes, "perimeter", "Parcel");
+        let declared_area = optional_finite(attributes, "area", "Parcel");
+        let declared_perimeter = optional_finite(attributes, "perimeter", "Parcel");
         let preservation_reason = declared_area
             .as_ref()
             .err()
             .or_else(|| declared_perimeter.as_ref().err())
             .map(|error| error.message.clone());
         self.active.push(Active::Parcel(LandXmlParcel {
-            source_id: source_id("Parcel", ordinal, &attributes),
+            source_id: source_id("Parcel", ordinal, attributes),
             ordinal,
-            name: attr(&attributes, "name").map(str::to_owned),
-            code: attr(&attributes, "code").map(str::to_owned),
-            description: attr(&attributes, "desc").map(str::to_owned),
+            name: attr(attributes, "name").map(str::to_owned),
+            code: attr(attributes, "code").map(str::to_owned),
+            description: attr(attributes, "desc").map(str::to_owned),
             title: None,
             declared_area: declared_area.ok().flatten(),
             declared_perimeter: declared_perimeter.ok().flatten(),
-            declared_area_unit: attr(&attributes, "areaUnit").map(str::to_owned),
-            properties: properties(&attributes),
+            declared_area_unit: attr(attributes, "areaUnit").map(str::to_owned),
+            properties: properties(attributes),
             loops: Vec::new(),
             preservation_reason,
         }));
-        self.active_depths.push(self.frames.len());
+        self.active_depths.push(depth);
         Ok(())
     }
-    pub(super) fn begin_geometry(&mut self, local: &str, attributes: Attributes) -> Result<()> {
+    pub(super) fn begin_geometry(&mut self, depth: usize, local: &str, attributes: &Attributes) -> Result<()> {
         self.geometry_seen.reserve(1)?;
         let kind = match local {
             "Line" => LandXmlGeometryKind::Line,
@@ -69,16 +69,16 @@ impl Parser<'_> {
             _ => unreachable!("element is matched above"),
         };
         let mut invalid_reason = (kind == LandXmlGeometryKind::Curve
-            && !attr(&attributes, "rot").is_some_and(crate::numeric::is_rotation_token))
+            && !attr(attributes, "rot").is_some_and(crate::numeric::is_rotation_token))
         .then_some("Curve rot must be cw or ccw".to_owned());
-        let radius = match optional_positive(&attributes, "radius", local) {
+        let radius = match optional_positive(attributes, "radius", local) {
             Ok(radius) => radius,
             Err(error) => {
                 invalid_reason.get_or_insert(error.message);
                 None
             }
         };
-        let declared_length = match optional_finite(&attributes, "length", local) {
+        let declared_length = match optional_finite(attributes, "length", local) {
             Ok(length) => length,
             Err(error) => {
                 invalid_reason.get_or_insert(error.message);
@@ -87,13 +87,13 @@ impl Parser<'_> {
         };
         self.geometry = Some(GeometryBuilder {
             kind,
-            depth: self.frames.len(),
+            depth,
             loop_ordinal: match self.active.last() {
                 Some(Active::Parcel(parcel)) => Some(parcel.loops.len()),
                 _ => None,
             },
-            properties: properties(&attributes),
-            rotation: attr(&attributes, "rot").map(str::to_owned),
+            properties: properties(attributes),
+            rotation: attr(attributes, "rot").map(str::to_owned),
             radius,
             declared_length,
             start: None,
@@ -354,14 +354,6 @@ impl Parser<'_> {
     }
     pub(super) fn reserve_vertices(&mut self, added: usize) -> Result<()> {
         self.vertices.reserve(added)
-    }
-    pub(super) fn path(&self, expected: &[&str]) -> bool {
-        self.frames.len() == expected.len()
-            && self
-                .frames
-                .iter()
-                .zip(expected)
-                .all(|(frame, local)| frame.target && frame.local == *local)
     }
     pub(crate) fn document(self) -> LandXmlPlanDocument {
         // Declared `<Units>` (always with an area scale) win over the assumption.

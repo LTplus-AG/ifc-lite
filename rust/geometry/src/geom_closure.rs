@@ -183,7 +183,7 @@ impl GeometryHasher {
     /// exporters routinely emit items that overlap: a window frame and its sash
     /// meeting at the rebate, lapped steel plates, a `Clearance` representation
     /// whose `RepresentationType` is `SweptSolid` (which passes the body filter
-    /// in `router/rep_filter.rs` — nothing filters on the representation
+    /// in `representation/select.rs` — nothing filters on the representation
     /// IDENTIFIER), or two `Body` representations in different subcontexts.
     /// A sum over overlapping items double-counts the intersection, and each
     /// item on its own is a perfectly ordinary closed solid, so nothing about

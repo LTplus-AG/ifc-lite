@@ -1,0 +1,5 @@
+HEADER;
+/* never closes
+ENDSEC;
+DATA;
+#1=IFCWALL('a',$);

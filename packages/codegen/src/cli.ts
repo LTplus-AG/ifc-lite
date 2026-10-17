@@ -29,6 +29,11 @@ program
     '--rust-supplemental-schema <path...>',
     'Additional EXPRESS schemas whose entity names extend the Rust IfcType universe'
   )
+  .option(
+    '--rust-slot-schema <path...>',
+    'Every bundled EXPRESS release other than the input; their attribute positions feed generated slots.rs'
+  )
+  .option('--rust-slot-renames <path>', 'attribute-renames.json for the slot generator')
   .option('--skip-collision-check', 'Skip CRC32 collision check', false)
   .option('-v, --verbose', 'Verbose output', false)
   .action(
@@ -40,6 +45,8 @@ program
         rustDir: string;
         rustCratePrivate: boolean;
         rustSupplementalSchema?: string[];
+        rustSlotSchema?: string[];
+        rustSlotRenames?: string;
         skipCollisionCheck: boolean;
         verbose: boolean;
       }
@@ -64,6 +71,8 @@ program
           rustDir: options.rustDir,
           rustCratePrivate: options.rustCratePrivate,
           rustSupplementalSchemaPaths: options.rustSupplementalSchema,
+          rustSlotSchemaPaths: options.rustSlotSchema,
+          rustSlotRenamesPath: options.rustSlotRenames,
           skipCollisionCheck: options.skipCollisionCheck,
         };
 

@@ -14,13 +14,13 @@ use super::super::{
 use super::state::{
     invalid, limit, AlignmentBuilder, CantBuilder, SegmentBuilder, SuperelevationBuilder,
 };
-use super::{Capture, Parser};
+use super::{AlignmentHandler, Capture, PointRole};
 use crate::{
     xml::{attr, required, Attributes, Result},
     LandXmlSourceId,
 };
 
-impl Parser<'_> {
+impl AlignmentHandler {
     pub(super) fn begin_alignment(&mut self, attrs: &Attributes) -> Result<()> {
         if self.alignments.len() >= self.limits.max_alignments {
             return Err(limit("alignment limit exceeded"));
@@ -272,63 +272,25 @@ impl Parser<'_> {
             .as_mut()
             .ok_or_else(|| invalid("captured value outside Alignment"))?;
         match capture {
-            Capture::Point {
-                local,
-                pnt_ref: Some(pnt_ref),
-                text,
-                ..
-            } => {
-                if !text.trim().is_empty() {
-                    let point = plan_point(&text)?;
-                    if local == "__alignment_start" {
-                        alignment.alignment.start =
-                            Some(LandXmlPointLocation::Coordinates { point });
-                        return Ok(());
+            Capture::Point { role, pnt_ref, text, .. } => {
+                // A `pntRef` stands in for coordinates only when the element
+                // carries none.
+                let location = match pnt_ref {
+                    Some(pnt_ref) if text.trim().is_empty() => LandXmlPointLocation::PointReference { pnt_ref },
+                    _ => LandXmlPointLocation::Coordinates { point: plan_point(&text)? },
+                };
+                match role {
+                    PointRole::AlignmentStart => {
+                        alignment.alignment.start = Some(location);
+                        Ok(())
                     }
-                    if local == "__align_pi" {
-                        return alignment
-                            .push_align_pi(LandXmlPointLocation::Coordinates { point });
-                    }
-                    return alignment
+                    PointRole::AlignPi => alignment.push_align_pi(location),
+                    PointRole::Primitive(name) => alignment
                         .segment
                         .as_mut()
                         .ok_or_else(|| invalid("point outside primitive"))?
-                        .set_point(&local, LandXmlPointLocation::Coordinates { point });
+                        .set_point(name, location),
                 }
-                if local == "__alignment_start" {
-                    alignment.alignment.start =
-                        Some(LandXmlPointLocation::PointReference { pnt_ref });
-                    return Ok(());
-                }
-                if local == "__align_pi" {
-                    return alignment
-                        .push_align_pi(LandXmlPointLocation::PointReference { pnt_ref });
-                }
-                alignment
-                    .segment
-                    .as_mut()
-                    .ok_or_else(|| invalid("point outside primitive"))?
-                    .set_point(&local, LandXmlPointLocation::PointReference { pnt_ref })
-            }
-            Capture::Point {
-                local,
-                pnt_ref: None,
-                text,
-                ..
-            } => {
-                let point = plan_point(&text)?;
-                if local == "__alignment_start" {
-                    alignment.alignment.start = Some(LandXmlPointLocation::Coordinates { point });
-                    return Ok(());
-                }
-                if local == "__align_pi" {
-                    return alignment.push_align_pi(LandXmlPointLocation::Coordinates { point });
-                }
-                alignment
-                    .segment
-                    .as_mut()
-                    .ok_or_else(|| invalid("point outside primitive"))?
-                    .set_point(&local, LandXmlPointLocation::Coordinates { point })
             }
             Capture::PointList {
                 dimension, text, ..

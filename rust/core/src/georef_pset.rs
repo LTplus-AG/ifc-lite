@@ -14,22 +14,14 @@ use super::{GeoRefExtractor, GeoRefSource, GeoReference};
 use crate::decoder::EntityDecoder;
 use crate::error::Result;
 use crate::generated::IfcType;
-use crate::schema_gen::{AttributeValue, DecodedEntity};
+use crate::schema_gen::DecodedEntity;
 
 /// Read an `IfcPropertySingleValue.NominalValue` (index 2) as a string,
-/// unwrapping the typed-value wrapper `IFCLABEL('…')` / `IFCIDENTIFIER('…')`
-/// (parsed as a `List([type-name, value])`) that plain `get_string` doesn't
-/// see through. Property values in the IFC2x3 ePSets are always typed, so
-/// without this the CRS `Name`/`TargetCRS` labels came back empty.
+/// seeing through the typed-value wrapper `IFCLABEL('…')` / `IFCIDENTIFIER('…')`.
+/// Property values in the IFC2x3 ePSets are always typed, so without this the
+/// CRS `Name`/`TargetCRS` labels came back empty.
 fn pset_value_string(prop: &DecodedEntity) -> Option<String> {
-    match prop.get(2)? {
-        AttributeValue::String(s) => Some(s.clone()),
-        AttributeValue::List(items) => match (items.first(), items.get(1)) {
-            (Some(AttributeValue::String(_)), Some(AttributeValue::String(v))) => Some(v.clone()),
-            _ => None,
-        },
-        _ => None,
-    }
+    prop.get_string(2).map(str::to_owned)
 }
 
 /// The ePSet_MapConversion members that place the model, mirroring the TS

@@ -4,7 +4,7 @@
 
 use super::*;
 
-impl Parser<'_> {
+impl TinHandler<'_> {
     pub(super) fn finish_capture(&mut self) -> Result<()> {
         let capture = self.capture.take().expect("capture checked");
         if self.finish_road_capture(capture)? {

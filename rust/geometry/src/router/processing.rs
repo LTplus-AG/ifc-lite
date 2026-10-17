@@ -317,7 +317,7 @@ impl GeometryRouter {
             None => return Ok(None),
         };
         let mut mesh =
-            match processor.process(element, decoder, self.schema, self.tessellation_quality) {
+            match processor.process(element, decoder, self.schema, self.tessellation_quality()) {
             Ok(m) => m,
             // Missing Axis or unparseable curve isn't fatal — fall back so
             // the caller can still walk a normal representation if present.

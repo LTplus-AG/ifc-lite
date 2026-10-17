@@ -171,8 +171,8 @@ impl GeometryRouter {
         // Profile-local → world metres, RTC-relative: world = scale·(m·p) − rtc.
         // Scaling rows 0..3 (incl. their translation column) then subtracting the
         // RTC offset reproduces `center_native · s − rtc` from the rect probe.
-        let s = self.unit_scale;
-        let (rx, ry, rz) = self.rtc_offset;
+        let s = self.unit_scale();
+        let (rx, ry, rz) = self.rtc_offset();
         let mut wt = host.m;
         for i in 0..3 {
             for j in 0..4 {

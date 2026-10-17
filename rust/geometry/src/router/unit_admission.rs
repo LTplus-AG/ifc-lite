@@ -26,9 +26,9 @@ impl GeometryRouter {
     /// wire, or an overflowing factor's infinity) refuses the router.
     pub(super) fn set_unit_scale(&mut self, unit_scale: f64) {
         if unit_scale.is_finite() && unit_scale > 0.0 {
-            self.unit_scale = unit_scale;
+            self.config.unit_scale = unit_scale;
         } else {
-            self.unit_scale = 1.0;
+            self.config.unit_scale = 1.0;
             self.length_unit_refused = true;
         }
     }

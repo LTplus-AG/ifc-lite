@@ -25,13 +25,13 @@ impl GeometryRouter {
     }
 
     fn brep_key_with_params(&self, structural: u128, rtc: (f64, f64, f64)) -> u128 {
-        super::content_hash::key_with_params(structural, self.tessellation_quality.to_index(), self.unit_scale, rtc)
+        super::content_hash::key_with_params(structural, self.tessellation_quality().to_index(), self.unit_scale(), rtc)
     }
 
     /// [`Self::item_dedup_key_in_frame`] at the model RTC offset.
     #[cfg(test)]
     pub(super) fn item_dedup_key(&self, item: &DecodedEntity, decoder: &mut EntityDecoder) -> Option<u128> {
-        self.item_dedup_key_in_frame(item, decoder, self.rtc_offset)
+        self.item_dedup_key_in_frame(item, decoder, self.rtc_offset())
     }
 
     /// Cache key for an item: its structural hash combined with the router params
@@ -110,8 +110,8 @@ impl GeometryRouter {
         };
         Some(super::content_hash::key_with_params(
             structural,
-            self.tessellation_quality.to_index(),
-            self.unit_scale,
+            self.tessellation_quality().to_index(),
+            self.unit_scale(),
             rtc,
         ))
     }

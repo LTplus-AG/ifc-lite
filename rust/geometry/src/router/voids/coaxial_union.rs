@@ -144,7 +144,7 @@ impl GeometryRouter {
         // (valid mesh, overlaps the host, above the volume floor). The footprint /
         // watertight validation happens per cluster below.
         let (hmn, hmx) = result.bounds();
-        let min_vol = Self::min_opening_volume(self.tessellation_quality);
+        let min_vol = Self::min_opening_volume(self.tessellation_quality());
         let mut cands: Vec<UnionCand> = Vec::new();
         for (idx, opening) in all_openings.iter().enumerate() {
             if consumed[idx] {

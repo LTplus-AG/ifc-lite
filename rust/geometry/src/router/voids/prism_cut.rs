@@ -2829,7 +2829,7 @@ impl GeometryRouter {
             defer(0);
             return None;
         }
-        let min_vol = Self::min_opening_volume(self.tessellation_quality);
+        let min_vol = Self::min_opening_volume(self.tessellation_quality());
 
         // ── Candidate prisms ────────────────────────────────────────────────
         // Extract a prism per opening, then MERGE prisms whose union is one

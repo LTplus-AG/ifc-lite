@@ -212,7 +212,7 @@ impl WalkVisitor for TypeMapSink<'_> {
         // rebased like the plain items below (#5698, #7690).
         if let Some(map) = self.texture_index.get(&item.id) {
             if let Some((mut sub_mesh, sub_uvs)) =
-                router.textured_face_set(item, decoder, map, Some(router.rtc_offset))
+                router.textured_face_set(item, decoder, map, Some(router.rtc_offset()))
             {
                 router.keep_rebase_in_origin(&mut sub_mesh);
                 self.textured.push((sub_mesh, sub_uvs, map.attachment()));

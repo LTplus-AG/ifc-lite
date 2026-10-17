@@ -1277,7 +1277,7 @@ impl GeometryRouter {
                 let open_vol = (omx.x - omn.x) as f64
                     * (omx.y - omn.y) as f64
                     * (omx.z - omn.z) as f64;
-                if open_vol < Self::min_opening_volume(self.tessellation_quality) {
+                if open_vol < Self::min_opening_volume(self.tessellation_quality()) {
                     continue;
                 }
                 let Some(ext) = Self::batch_cutter(opening_mesh, extrusion_dir, &result) else {
@@ -1475,7 +1475,7 @@ impl GeometryRouter {
                     // thin plates. At the two highest quality levels keep those
                     // holes (the exact kernel is stable on small cutters); only
                     // reject numerically degenerate cutters there. (issue #976)
-                    let min_open_vol = Self::min_opening_volume(self.tessellation_quality) as f32;
+                    let min_open_vol = Self::min_opening_volume(self.tessellation_quality()) as f32;
                     if open_vol < min_open_vol {
                         continue;
                     }

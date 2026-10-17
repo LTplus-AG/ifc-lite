@@ -244,7 +244,7 @@
 # than paid for by trimming unrelated doc comments: earlier rounds of this PR
 # did that and it makes an unrelated comment the currency of an unrelated
 # change, leaving no record of either.
-     728 rust/geometry/src/router/mod.rs
+     696 rust/geometry/src/router/mod.rs
 # +1: reveal-quads comment expanded to 2 lines (dead-symbol reference fix, no code change).
      619 rust/geometry/src/router/voids/aabb_clip.rs
 # +36: `parity_along` extracted so the single-ray `point_inside_mesh` and the

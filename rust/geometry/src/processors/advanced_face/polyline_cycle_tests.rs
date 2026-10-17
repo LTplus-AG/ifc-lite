@@ -142,3 +142,35 @@ fn pathological_degree_via_standalone_polyline_fails_fast_not_hangs() {
         "pathological degree via the standalone polyline path must fail within the deterministic bound, took {elapsed:?}"
     );
 }
+
+/// Review of #7803: a trimmed rational B-spline (the quarter circle, weights
+/// 1, sqrt(2)/2, 1) trimmed to parameters 0.25..0.75 samples only that
+/// subspan. Without the parameter trims the interior samples ran over the
+/// whole basis curve, out to the (1,0) and (0,1) ends.
+#[test]
+fn trimmed_rational_bspline_samples_its_parameter_subspan_7750() {
+    let h = std::f64::consts::FRAC_1_SQRT_2;
+    let at = |t: f64| {
+        let d = (1.0 - t).powi(2) + 2.0 * h * t * (1.0 - t) + t * t;
+        let x = ((1.0 - t).powi(2) + 2.0 * h * t * (1.0 - t)) / d;
+        let y = (2.0 * h * t * (1.0 - t) + t * t) / d;
+        (x, y)
+    };
+    let ((x1, y1), (x2, y2)) = (at(0.25), at(0.75));
+    let content = wrap(&format!(
+        "#1=IFCCARTESIANPOINT((1.,0.,0.));\n#2=IFCCARTESIANPOINT((1.,1.,0.));\n\
+         #3=IFCCARTESIANPOINT((0.,1.,0.));\n\
+         #4=IFCCARTESIANPOINT(({x1:.17E},{y1:.17E},0.));\n#5=IFCCARTESIANPOINT(({x2:.17E},{y2:.17E},0.));\n\
+         #10=IFCTRIMMEDCURVE(#11,(#4,IFCPARAMETERVALUE(0.25)),(#5,IFCPARAMETERVALUE(0.75)),.T.,.PARAMETER.);\n\
+         #11=IFCRATIONALBSPLINECURVEWITHKNOTS(2,(#1,#2,#3),.CIRCULARARC.,.F.,.F.,(3,3),(0.,1.),\
+         .UNSPECIFIED.,(1.,{h:.17E},1.));\n"
+    ));
+    let pts = sample(&content, 10);
+    assert!(pts.len() > 3, "{pts:?}");
+    let (lo, hi) = (y1.atan2(x1), y2.atan2(x2));
+    for p in &pts {
+        assert!((p.coords.norm() - 1.0).abs() < 1e-9, "{p:?} is off the circle");
+        let a = p.y.atan2(p.x);
+        assert!(a > lo - 1e-9 && a < hi + 1e-9, "{p:?} (angle {a}) is outside the trimmed arc [{lo}, {hi}]");
+    }
+}

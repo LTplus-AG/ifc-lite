@@ -270,7 +270,9 @@ pub(super) fn evaluate_bspline_curve(
             weight_sum += weighted;
         }
     }
-    if weights.is_some() && weight_sum.abs() > 1e-10 {
+    // Weights are validated > 0, so any positive sum is a real denominator:
+    // a fixed floor collapsed a NURBS whose weights are all uniformly tiny.
+    if weights.is_some() && weight_sum > 0.0 {
         result.x /= weight_sum;
         result.y /= weight_sum;
         result.z /= weight_sum;

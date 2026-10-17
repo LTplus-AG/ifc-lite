@@ -178,3 +178,29 @@ fn plain_curve_needs_no_weights_7750() {
     let curve = decoder.decode_by_id(10).unwrap();
     assert!(matches!(parse_bspline_curve(&curve, &mut decoder), Ok(Some(_))));
 }
+
+/// Review of #7803: a NURBS is invariant under a uniform weight scale, and
+/// the weights are only required to be > 0. The quarter circle (weights 1,
+/// sqrt(2)/2, 1) must stay on the unit circle with every weight scaled by
+/// 1e-12; a fixed 1e-10 floor on the weight sum skipped the division and
+/// drew the curve shrunk to the origin.
+#[test]
+fn uniformly_tiny_weights_draw_the_same_curve_7750() {
+    let h = std::f64::consts::FRAC_1_SQRT_2;
+    for scale in [1.0, 1e-12] {
+        let content = format!(
+            "#1=IFCCARTESIANPOINT((1.,0.,0.));\n#2=IFCCARTESIANPOINT((1.,1.,0.));\n\
+             #3=IFCCARTESIANPOINT((0.,1.,0.));\n\
+             #10=IFCRATIONALBSPLINECURVEWITHKNOTS(2,(#1,#2,#3),.CIRCULARARC.,.F.,.F.,(3,3),(0.,1.),\
+             .UNSPECIFIED.,({scale:.17E},{:.17E},{scale:.17E}));\n",
+            h * scale
+        );
+        let mut decoder = EntityDecoder::new(&content);
+        let curve = decoder.decode_by_id(10).unwrap();
+        let parsed = parse_bspline_curve(&curve, &mut decoder).ok().flatten().expect("readable");
+        for i in 0..=100 {
+            let p = parsed.at(i as f64 / 100.0);
+            assert!((p.coords.norm() - 1.0).abs() < 1e-14, "scale {scale:e}: {p:?} is off the unit circle");
+        }
+    }
+}

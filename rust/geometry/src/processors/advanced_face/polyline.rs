@@ -8,7 +8,10 @@ use crate::{scale_segments, Point3, TessellationQuality};
 use ifc_lite_core::{DecodedEntity, EntityDecoder};
 
 use super::conics::{read_axis2_placement_frame, sample_circle_edge_curve};
-use super::curves::{resolve_present, sample_bspline_curve_polyline, sample_bspline_edge_curve, Refused};
+use super::curves::{
+    read_trim_parameter, resolve_present, sample_bspline_curve_polyline, sample_bspline_edge_curve,
+    sample_bspline_edge_curve_range, Refused,
+};
 
 /// Sample points along a curve in 3D. Currently handles `IfcLine`, `IfcCircle`,
 /// `IfcEllipse`, `IfcPolyline`, `IfcTrimmedCurve` and `IfcBSplineCurveWithKnots`.
@@ -204,7 +207,15 @@ fn sample_curve_polyline_guarded(
         }
         if basis_kind == "IFCBSPLINECURVEWITHKNOTS" || basis_kind == "IFCRATIONALBSPLINECURVEWITHKNOTS" {
             if let (Some(p_start), Some(p_end)) = (p1, p2) {
-                let mut pts = sample_bspline_edge_curve(&basis, &p_start, sense, decoder, quality)?;
+                // Bound the sampling to the parameter trims, as `edge_loop`
+                // does: without them the interior samples ran over the basis
+                // curve's whole knot span between the two trim points.
+                let trim_range = curve
+                    .get(1)
+                    .and_then(read_trim_parameter)
+                    .zip(curve.get(2).and_then(read_trim_parameter));
+                let mut pts =
+                    sample_bspline_edge_curve_range(&basis, &p_start, sense, trim_range, decoder, quality)?;
                 pts.push(p_end);
                 return Ok(pts);
             }

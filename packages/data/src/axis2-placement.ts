@@ -45,7 +45,7 @@ export function firstProjAxis(axis: readonly [number, number, number]): [number,
   if (projectedLength > PROJECTION_EPSILON) {
     return [projected[0] / projectedLength, projected[1] / projectedLength, projected[2] / projectedLength];
   }
-  // The projection collapsed, so Z is within 1e-6 of +-X and |z[2]| < 0.9:
+  // The projection collapsed, so Z is +-X to within rounding and |z[2]| < 0.9:
   // `build_axis2_matrix` takes (0,0,1) x Z = (-z[1], z[0], 0) on that branch.
   const fallbackLength = Math.sqrt(z[0] * z[0] + z[1] * z[1]);
   return [-z[1] / fallbackLength, z[0] / fallbackLength, 0];

@@ -41,6 +41,13 @@ finite reporter comparisons pass independently of the preserved browser cleanup
 failure; neither that proof nor instruction counts supplies a fresh
 end-to-end timing verdict.
 
+Sharing the exact determinant implementation and replacing paired boundary
+direction counters with a mask preserved the regression outcomes, but their
+combined source-built engine grew rather than shrank. Those production changes
+were restored to their prior implementations; the analytic orientation-sign
+regression was retained. Individual size effects were not isolated. Fewer source
+lines or a reused hash-map value type do not establish a transfer-size saving.
+
 Coordinated idle windows and safe consumer cleanup did not qualify a complete
 interleaved worker-pool cohort under the unchanged host checks. An earlier capture
 also exposed a response observer retaining handles across the canonical cold

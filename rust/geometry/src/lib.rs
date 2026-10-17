@@ -145,6 +145,11 @@ pub mod material_layer_index;
 /// op-order and FMA contract.
 pub mod math;
 pub mod mesh;
+// Closure / pairing / volume checks over triangle soups; `pub` only for the shared test oracles.
+#[cfg(feature = "test-support")]
+pub mod mesh_check;
+#[cfg(not(feature = "test-support"))]
+pub(crate) mod mesh_check;
 /// Cooperative heartbeat from long geometry work to a host that must tell a
 /// slow call from a hung one (see the module docs).
 pub mod progress;

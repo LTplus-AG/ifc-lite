@@ -553,8 +553,8 @@ fn topology_tear_recorded_by_every_boolean_op_without_gating() {
         assert!(!mesh.is_empty(), "{name} must return the kernel result, not an empty fallback");
         assert!(p.validate_mesh(mesh), "{name}: validate_mesh must still accept the torn result");
         assert!(
-            !crate::router::voids::prism_cut::closure_checks::directed_closed(mesh)
-                && !crate::router::voids::prism_cut::closure_checks::closed_or_hairline(mesh),
+            !crate::mesh_check::directed_closed(mesh)
+                && !crate::mesh_check::closed_or_hairline(mesh),
             "{name}: the returned mesh must fail BOTH halves of the audit's predicate, \
              or this test cannot tell the hairline tolerance from its absence"
         );
@@ -630,8 +630,8 @@ fn topology_tear_recorded_once_per_batched_subtract_not_once_per_chunk() {
             "{cutter_count} cutters: the cut must carve the host"
         );
         assert!(
-            !crate::router::voids::prism_cut::closure_checks::directed_closed(&result)
-                && !crate::router::voids::prism_cut::closure_checks::closed_or_hairline(&result),
+            !crate::mesh_check::directed_closed(&result)
+                && !crate::mesh_check::closed_or_hairline(&result),
             "{cutter_count} cutters: the returned mesh must fail BOTH halves of the predicate"
         );
         assert_eq!(
@@ -693,7 +693,7 @@ fn t_junction_box_mesh(min: Point3<f64>, max: Point3<f64>) -> Mesh {
 /// pass-throughs never reach the audit.
 #[test]
 fn hairline_t_junction_is_not_recorded_as_a_topology_tear() {
-    use crate::router::voids::prism_cut::closure_checks::{closed_or_hairline, directed_closed};
+    use crate::mesh_check::{closed_or_hairline, directed_closed};
     let hairline = t_junction_box_mesh(Point3::new(0.0, 0.0, 0.0), Point3::new(1.0, 1.0, 1.0));
     assert!(
         !directed_closed(&hairline),
@@ -722,7 +722,7 @@ fn hairline_t_junction_is_not_recorded_as_a_topology_tear() {
 #[cfg(not(feature = "csg_topology_gate"))] // step-1-only: asserts the non-gating KernelError record; superseded under the feature by OpenTopologyRejected + fallback
 #[test]
 fn topology_tear_recorded_once_per_union_meshes_not_once_per_intermediate() {
-    use crate::router::voids::prism_cut::closure_checks::{closed_or_hairline, directed_closed};
+    use crate::mesh_check::{closed_or_hairline, directed_closed};
     // Three overlapping boxes, the first of them open: two pairwise unions run,
     // so auditing per pair records the discarded first intermediate as well.
     let parts = vec![

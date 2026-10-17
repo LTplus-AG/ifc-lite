@@ -320,7 +320,7 @@
     "MeshData": "struct { color: [f32; 4]; express_id: u32; geometry_class: u8; geometry_item_id: Option<u32>; global_id: Option<String>; ifc_type: String; indices: Vec<u32>; instance: Option<InstanceMeta>; local_bounds: Option<[f32; 6]>; local_to_world: Option<[f64; 16]>; material_id: Option<u32>; material_name: Option<String>; name: Option<String>; normals: Vec<f32>; origin: [f64; 3]; positions: Vec<f32>; presentation_layer: Option<String>; properties: Option<BTreeMap<String, String>>; texture: Option<MeshTextureData>; uvs: Option<Vec<f32>> }",
     "MeshFrame": "enum { ModelRtc { anchor: (f64, f64, f64) }; RawIfc; SiteLocal { placement: [f64; 16] } }",
     "MeshTextureData": "struct { height: u32; repeat_s: bool; repeat_t: bool; rgba: Option<std::sync::Arc<Vec<u8>>>; texture_id: u32; url: Option<String>; width: u32 }",
-    "ModelMetadata": "struct { coordinate_info: CoordinateInfo; entity_count: usize; geometry_entity_count: usize; georeferencing: Option<Georeferencing>; length_unit_scale: Option<f64>; schema_version: String }",
+    "ModelMetadata": "struct { coordinate_info: CoordinateInfo; entity_count: usize; geometry_entity_count: usize; georeferencing: Option<Georeferencing>; length_unit_refused: Option<u32>; length_unit_scale: Option<f64>; schema_version: String }",
     "OpeningFilterMode": "enum (variants: unparsed)",
     "PIPELINE_DIAGNOSTICS_SCHEMA_VERSION": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "PREPASS_CLASS_CODE_MASK": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",

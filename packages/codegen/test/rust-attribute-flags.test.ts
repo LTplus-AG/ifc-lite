@@ -115,7 +115,9 @@ describe('committed registries', () => {
     const schema = parseExpressSchema(readFileSync(join(schemas, expFile), 'utf8'));
     const rust = readFileSync(join(generated, rustFile), 'utf8');
     const arms = (fn: string): Map<string, string> => {
+      // @source-text-assertion-ok asserts on the committed generator output (the registry under test), not unexecuted production source
       const body = rust.slice(rust.indexOf(`pub fn ${fn}(`));
+      // @source-text-assertion-ok asserts on the committed generator output (the registry under test), not unexecuted production source
       const end = body.indexOf('Self::Unknown(_)');
       const map = new Map<string, string>();
       for (const m of body.slice(0, end).matchAll(/Self::(\w+) => (?:\{\s*)?&\[([^\]]*)\]/g)) {

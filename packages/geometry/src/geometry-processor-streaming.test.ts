@@ -208,6 +208,31 @@ describe('GeometryProcessor byte streaming (processStreaming, mocked WASM)', () 
     expect(rtcEvent?.rtcOffset).toEqual(sharedRtcOffset);
   });
 
+  // #7678: the pre-pass wire sends `unitRefused: true` (unitScale NaN) for an
+  // unusable length unit. The stream must say so, not complete empty and silent.
+  it('announces a refused length unit instead of completing empty and silent', async () => {
+    wasmMocks.buildPrePassOnce.mockReturnValue({
+      jobs: new Uint32Array(),
+      totalJobs: 0,
+      unitScale: Number.NaN,
+      unitRefused: true,
+      rtcOffset: new Float64Array(3),
+      needsShift: false,
+      voidKeys: new Uint32Array(),
+      voidCounts: new Uint32Array(),
+      voidValues: new Uint32Array(),
+      styleIds: new Uint32Array(),
+      styleColors: new Uint8Array(),
+    });
+    const events: Array<{ type: string }> = [];
+    for await (const event of new GeometryProcessor().processStreaming(new Uint8Array([65]))) {
+      events.push(event as { type: string });
+    }
+    expect(events.map((event) => event.type)).toEqual([
+      'start', 'model-open', 'rtcOffset', 'unitRefused', 'complete',
+    ]);
+  });
+
   it('rejects overlapping WASM streaming runs before re-entering the processor', async () => {
     const firstGeometry = new GeometryProcessor();
     const secondGeometry = new GeometryProcessor();

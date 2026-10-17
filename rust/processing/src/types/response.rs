@@ -58,6 +58,13 @@ pub struct ModelMetadata {
     /// `extractLengthUnitScale` (issue #900).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub length_unit_scale: Option<f64>,
+    /// The model's length-unit factor is unusable (zero, negative or
+    /// non-finite), so no geometry was meshed (#7678, D3). Holds the express
+    /// id of the offending `IfcSIUnit` / `IfcConversionBasedUnit` record.
+    /// `length_unit_scale` is then `None`, not an invented `1.0`. `None` for a
+    /// usable unit. Mirrors the wasm wire's `unitRefused`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub length_unit_refused: Option<u32>,
     /// Georeferencing (`IfcMapConversion` + `IfcProjectedCRS`). `None` when the
     /// model carries no map-conversion data. Mirrors the browser parser's
     /// `extractGeoreferencing` (issue #900).

@@ -2,13 +2,19 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-use std::{collections::HashMap, str};
+use std::collections::HashMap;
 
 use quick_xml::events::BytesStart;
 
 mod budget;
+mod encoding;
+mod pull;
 mod refs;
+mod scan;
 pub(crate) use budget::{poll, Budget, Meter};
+pub(crate) use encoding::{normalize_encoding, Decoder};
+pub(crate) use pull::read_events;
+pub(crate) use scan::{TokenKind, TokenScanner};
 pub(crate) use refs::{character_references, general_ref_source, unescape};
 
 use crate::{LandXmlCancellation, LandXmlDiagnosticCode as Code, LandXmlError, LandXmlLimits};
@@ -140,194 +146,16 @@ pub(crate) fn outside_root_text(root_closed: bool, text: &str, cdata: bool) -> R
     if !cdata && text.bytes().all(is_xml_s) {
         return Ok(());
     }
+    Err(outside_root_error(root_closed, cdata))
+}
+
+pub(crate) fn outside_root_error(root_closed: bool, cdata: bool) -> LandXmlError {
     let location = if root_closed { "after" } else { "before" };
     let kind = if cdata { "CDATA" } else { "non-whitespace content" };
-    Err(error(
+    error(
         Code::InvalidXml,
         format!("LandXML document has {kind} {location} its root element"),
-    ))
-}
-
-/// Normalize the XML's supported encodings before its pull parser sees bytes.
-///
-/// LandXML ingestion deliberately accepts only UTF-8 and UTF-16. The input and
-/// normalized output stay bounded by `max_bytes` and its UTF-16 expansion bound.
-pub(crate) fn normalize_encoding(
-    input: &[u8],
-    limits: &LandXmlLimits,
-    cancelled: Option<&dyn LandXmlCancellation>,
-) -> Result<Vec<u8>> {
-    let mut poller = CancellationPoller::new(cancelled);
-    poller.check()?;
-    let (encoding, payload) = match input {
-        [0xef, 0xbb, 0xbf, rest @ ..] => (Encoding::Utf8, rest),
-        [0xff, 0xfe, rest @ ..] => (Encoding::Utf16Le, rest),
-        [0xfe, 0xff, rest @ ..] => (Encoding::Utf16Be, rest),
-        [b'<', 0, ..] => (Encoding::Utf16Le, input),
-        [0, b'<', ..] => (Encoding::Utf16Be, input),
-        _ => (Encoding::Utf8, input),
-    };
-    let normalized = match encoding {
-        Encoding::Utf8 => decode_utf8(payload, &mut poller)?,
-        Encoding::Utf16Le | Encoding::Utf16Be => decode_utf16(payload, encoding, &mut poller)?,
-    };
-    let max_normalized = limits
-        .max_bytes
-        .checked_mul(3)
-        .and_then(|value| value.checked_div(2))
-        .ok_or_else(|| error(Code::LimitExceeded, "normalized byte limit overflow"))?;
-    Budget::new(max_normalized, "normalized byte").reserve(normalized.len())?;
-    check_declared_encoding(&normalized, encoding)?;
-    Ok(normalized)
-}
-
-#[derive(Clone, Copy, Eq, PartialEq)]
-pub(crate) enum Encoding {
-    Utf8,
-    Utf16Le,
-    Utf16Be,
-}
-
-fn decode_utf8(input: &[u8], poller: &mut CancellationPoller<'_>) -> Result<Vec<u8>> {
-    let mut output = Vec::with_capacity(input.len());
-    let mut index = 0;
-    while index < input.len() {
-        let mut end = (index + CANCELLATION_POLL_BYTES).min(input.len());
-        while end > index && end < input.len() && (input[end] & 0b1100_0000) == 0b1000_0000 {
-            end -= 1;
-        }
-        // A valid chunk always starts on a code-point boundary, so rewinding
-        // cannot consume the whole chunk. If it does, the input starts with
-        // (or contains a run of) continuation bytes. Refuse it rather than
-        // validating an empty slice and retrying the same index forever.
-        if end == index {
-            return Err(error(Code::InvalidXml, "input is not valid UTF-8"));
-        }
-        let chunk = &input[index..end];
-        std::str::from_utf8(chunk)
-            .map_err(|_| error(Code::InvalidXml, "input is not valid UTF-8"))?;
-        output.extend_from_slice(chunk);
-        poller.processed(chunk.len())?;
-        index = end;
-    }
-    Ok(output)
-}
-
-fn decode_utf16(
-    input: &[u8],
-    encoding: Encoding,
-    poller: &mut CancellationPoller<'_>,
-) -> Result<Vec<u8>> {
-    if !input.len().is_multiple_of(2) {
-        return Err(error(
-            Code::InvalidXml,
-            "UTF-16 input has an odd byte length",
-        ));
-    }
-    let mut output = String::new();
-    let mut index = 0;
-    while index < input.len() {
-        let unit = utf16_unit(input, index, encoding);
-        index += 2;
-        poller.processed(2)?;
-        let scalar = match unit {
-            0xd800..=0xdbff => {
-                if index == input.len() {
-                    return Err(error(Code::InvalidXml, "input is not valid UTF-16"));
-                }
-                let low = utf16_unit(input, index, encoding);
-                index += 2;
-                poller.processed(2)?;
-                if !(0xdc00..=0xdfff).contains(&low) {
-                    return Err(error(Code::InvalidXml, "input is not valid UTF-16"));
-                }
-                0x1_0000 + (u32::from(unit - 0xd800) << 10) + u32::from(low - 0xdc00)
-            }
-            0xdc00..=0xdfff => return Err(error(Code::InvalidXml, "input is not valid UTF-16")),
-            unit => u32::from(unit),
-        };
-        let character = char::from_u32(scalar)
-            .ok_or_else(|| error(Code::InvalidXml, "input is not valid UTF-16"))?;
-        output.push(character);
-    }
-    Ok(output.into_bytes())
-}
-
-fn utf16_unit(input: &[u8], index: usize, encoding: Encoding) -> u16 {
-    let pair = [input[index], input[index + 1]];
-    match encoding {
-        Encoding::Utf16Le => u16::from_le_bytes(pair),
-        Encoding::Utf16Be => u16::from_be_bytes(pair),
-        Encoding::Utf8 => unreachable!("UTF-8 does not use UTF-16 decoding"),
-    }
-}
-
-pub(crate) fn check_declared_encoding(input: &[u8], detected: Encoding) -> Result<()> {
-    const DECLARATION_LIMIT: usize = 1024;
-    let prefix = &input[..input.len().min(DECLARATION_LIMIT)];
-    // The window can end inside a multi-byte character. Read the valid
-    // prefix rather than treating the whole window as "no declaration",
-    // which let padding skip the encoding refusal (EDGE-LXPARSE-23, #7693).
-    let declaration = match str::from_utf8(prefix) {
-        Ok(prefix) => Some(prefix),
-        Err(invalid) => str::from_utf8(&prefix[..invalid.valid_up_to()]).ok(),
-    }
-    .filter(|prefix| {
-        prefix
-            .strip_prefix("<?xml")
-            .is_some_and(|rest| rest.as_bytes().first().is_some_and(u8::is_ascii_whitespace))
-    });
-    let Some(declaration) = declaration else {
-        return Ok(());
-    };
-    let Some(end) = declaration.find("?>") else {
-        return Err(error(Code::InvalidXml, "unterminated XML declaration"));
-    };
-    let declaration = &declaration[..end];
-    let lower = declaration.to_ascii_lowercase();
-    let Some(position) = lower.find("encoding") else {
-        return Ok(());
-    };
-    let value = declaration[position + "encoding".len()..].trim_start();
-    let Some(value) = value.strip_prefix('=') else {
-        return Err(error(
-            Code::InvalidXml,
-            "malformed XML encoding declaration",
-        ));
-    };
-    let value = value.trim_start();
-    let Some(quote) = value
-        .chars()
-        .next()
-        .filter(|quote| matches!(quote, '\'' | '"'))
-    else {
-        return Err(error(
-            Code::InvalidXml,
-            "malformed XML encoding declaration",
-        ));
-    };
-    let Some(end_quote) = value[quote.len_utf8()..].find(quote) else {
-        return Err(error(
-            Code::InvalidXml,
-            "malformed XML encoding declaration",
-        ));
-    };
-    let declared = &value[quote.len_utf8()..quote.len_utf8() + end_quote];
-    let supported = match declared.to_ascii_lowercase().as_str() {
-        "utf-8" | "utf8" => detected == Encoding::Utf8,
-        "utf-16" => detected != Encoding::Utf8,
-        "utf-16le" => detected == Encoding::Utf16Le,
-        "utf-16be" => detected == Encoding::Utf16Be,
-        _ => false,
-    };
-    if supported {
-        Ok(())
-    } else {
-        Err(error(
-            Code::InvalidXml,
-            "unsupported XML encoding declaration",
-        ))
-    }
+    )
 }
 
 pub(crate) fn error(code: Code, message: impl Into<String>) -> LandXmlError {

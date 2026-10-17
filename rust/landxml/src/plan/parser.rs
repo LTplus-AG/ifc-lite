@@ -4,17 +4,16 @@
 
 //! Bounded pull parsing for exact LandXML 1.2 COGO and plan element names.
 
-use quick_xml::{events::Event, Reader};
+use quick_xml::events::Event;
 
 use super::{
     model::LandXmlPlanReferenceIndex, LandXmlCgPoint, LandXmlMonument, LandXmlParcel,
     LandXmlPlanDocument, LandXmlPlanFeature,
 };
 use crate::{
-    preflight::preflight_xml_tokens,
     semantics::units,
     xml::{
-        attr, attributes, character_references, error, normalize_encoding, split_name, unescape,
+        attr, attributes, character_references, error, normalize_encoding, read_events, split_name, unescape,
         Attributes, Budget, Meter, Result,
     },
     LandXmlCancellation, LandXmlCapabilityDiagnostic, LandXmlDiagnosticCode as Code, LandXmlLimits,
@@ -69,21 +68,8 @@ pub fn parse_landxml_plan_with_cancel(
     // any XML is read, exactly as the TIN entry point does.
     let assumed_units = crate::semantics::resolve_assumed_units(&limits.xml)?;
     let input = normalize_encoding(input, &limits.xml, cancelled)?;
-    preflight_xml_tokens(&input, &limits.xml, cancelled)?;
     let mut parser = Parser::new(limits, cancelled, assumed_units);
-    let mut reader = Reader::from_reader(input.as_slice());
-    reader.config_mut().trim_text(false);
-    let mut buffer = Vec::new();
-    loop {
-        let event = reader
-            .read_event_into(&mut buffer)
-            .map_err(|_| error(Code::InvalidXml, "malformed XML"))?;
-        if matches!(event, Event::Eof) {
-            break;
-        }
-        parser.consume_event(event)?;
-        buffer.clear();
-    }
+    read_events(&input, &limits.xml, cancelled, |event| parser.consume_event(event))?;
     if !parser.root_seen {
         return Err(error(Code::InvalidXml, "LandXML document is empty"));
     }

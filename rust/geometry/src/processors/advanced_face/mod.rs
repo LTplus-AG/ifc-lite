@@ -42,11 +42,7 @@ pub(super) fn apply_same_sense(
     face: &DecodedEntity,
     result: Result<(Vec<f32>, Vec<u32>)>,
 ) -> Result<(Vec<f32>, Vec<u32>)> {
-    let same_sense = face
-        .get(2)
-        .and_then(|a| a.as_enum())
-        .map(|e| e == "T" || e == "TRUE")
-        .unwrap_or(true);
+    let same_sense = face.get_bool(2).unwrap_or(true);
     if same_sense {
         result
     } else {

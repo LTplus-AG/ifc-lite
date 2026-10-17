@@ -111,11 +111,7 @@ fn resolve_edge_points(
             }
             let mut points =
                 resolve_edge_points(&underlying, decoder, quality, depth + 1, visited)?;
-            let orientation = edge
-                .get(3)
-                .and_then(|a| a.as_enum())
-                .map(|value| value == "T" || value == "TRUE")
-                .unwrap_or(true);
+            let orientation = edge.get_bool(3).unwrap_or(true);
             if !orientation {
                 points.reverse();
             }

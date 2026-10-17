@@ -236,7 +236,7 @@ fn resolve_set(
                         thickness: (*layer)
                             .and_then(|(t, _)| member.get_float(t))
                             .map(|t| t * unit_scale),
-                        is_ventilated: (*layer).and_then(|(_, v)| super::read_logical(&member, v)),
+                        is_ventilated: (*layer).and_then(|(_, v)| member.get_bool(v)),
                         category: member.get_string(*category).map(str::to_string),
                     })
                 }

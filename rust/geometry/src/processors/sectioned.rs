@@ -149,11 +149,7 @@ impl GeometryProcessor for SectionedSolidHorizontalProcessor {
             ));
         }
 
-        let fixed_axis_vertical = entity
-            .get(3)
-            .and_then(|v| v.as_enum())
-            .map(|s| s == "T")
-            .unwrap_or(true);
+        let fixed_axis_vertical = entity.get_bool(3).unwrap_or(true);
 
         let directrix_entity = decoder.decode_by_id(directrix_id)?;
         let alignment = AlignmentCurve::parse(&directrix_entity, decoder)?;

@@ -17,7 +17,6 @@ mod parser;
 mod pipe_parser;
 mod pipes;
 mod plan;
-mod preflight;
 mod profile;
 mod profile_circular;
 mod profile_evaluator;

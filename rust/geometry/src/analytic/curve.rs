@@ -139,16 +139,11 @@ impl CurveWalk {
             if self.visits > MAX_VISITS {
                 return Err(invalid("IndexedPolyCurve exceeds work bound"));
             }
-            let typed = item
-                .as_list()
+            let (kind, segment) = item
+                .as_typed()
                 .ok_or_else(|| invalid("invalid indexed segment"))?;
-            let kind = typed
-                .first()
-                .and_then(AttributeValue::as_string)
-                .unwrap_or("");
-            let indices = typed
-                .get(1)
-                .and_then(AttributeValue::as_list)
+            let indices = segment
+                .as_list()
                 .ok_or_else(|| invalid("invalid indexed segment indices"))?;
             let indexed: Vec<_> = indices
                 .iter()
@@ -213,11 +208,7 @@ impl CurveWalk {
             let Some(mut spans) = parent_piece_spans(&parent, &pieces, decoder)? else {
                 return Ok(None);
             };
-            let same_sense = segment
-                .get(1)
-                .and_then(AttributeValue::as_enum)
-                .unwrap_or("T")
-                == "T";
+            let same_sense = segment.get_bool(1).unwrap_or(true);
             let pieces: Vec<_> = if same_sense {
                 pieces
             } else {
@@ -270,11 +261,7 @@ impl CurveWalk {
             if segment.ifc_type != IfcType::IfcCompositeCurveSegment {
                 return Ok(None);
             }
-            let same_sense = segment
-                .get(1)
-                .and_then(AttributeValue::as_enum)
-                .unwrap_or("T")
-                == "T";
+            let same_sense = segment.get_bool(1).unwrap_or(true);
             let parent = resolve(segment.get(2), decoder)?;
             let Some(mut pieces) = self.extract(&parent, decoder)? else {
                 return Ok(None);

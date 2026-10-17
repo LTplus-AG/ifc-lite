@@ -239,17 +239,6 @@ fn log_scan_census(all_entities: &[EntityJob]) {
     }
 }
 
-/// Read an `IfcLogical` / `IfcBoolean` attribute as a tri-state `Option<bool>`
-/// (`.U.` / absent → `None`).
-pub(super) fn read_logical(entity: &DecodedEntity, index: usize) -> Option<bool> {
-    let token = entity.get(index)?.as_enum()?;
-    match token {
-        "T" | "TRUE" | "true" => Some(true),
-        "F" | "FALSE" | "false" => Some(false),
-        _ => None,
-    }
-}
-
 /// Collect the `RelatedObjects` (attribute 4) entity ids of an `IfcRelAssociates*`.
 pub(super) fn related_object_ids(rel: &DecodedEntity) -> Vec<u32> {
     rel.get_list(4)

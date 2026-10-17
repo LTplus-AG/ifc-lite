@@ -6,7 +6,7 @@ use ifc_lite_core::{AttributeValue as A, IfcType};
 use serde_json::{json, Value};
 
 // Rendering SELECT slots are scalar: never recursively materialize a hostile
-// nested list. Core's typed measure representation is [type-name, value].
+// nested list. Core's typed measure representation is `AttributeValue::Typed`.
 fn scalar(value: &A) -> Result<Value, String> {
     match value {
         A::EntityRef(id) => Ok(reference(*id)),
@@ -14,12 +14,11 @@ fn scalar(value: &A) -> Result<Value, String> {
         A::Float(n) if n.is_finite() => Ok(json!(n)),
         A::Integer(n) => Ok(json!(n)),
         A::Enum(name) if name.len() <= 64 => Ok(json!(format!(".{name}."))),
-        A::List(values) if values.len() == 2 => {
-            let name = values[0].as_string().ok_or("Invalid rendering measure type")?;
-            if !matches!(name, "IFCNORMALISEDRATIOMEASURE" | "IFCSPECULARROUGHNESS" | "IFCSPECULAREXPONENT") {
+        A::Typed { name, value } => {
+            if !matches!(&**name, "IFCNORMALISEDRATIOMEASURE" | "IFCSPECULARROUGHNESS" | "IFCSPECULAREXPONENT") {
                 return Err("Unsupported rendering SELECT measure".into());
             }
-            let number = match &values[1] { A::Float(n) if n.is_finite() => *n, A::Integer(n) => *n as f64,
+            let number = match &**value { A::Float(n) if n.is_finite() => *n, A::Integer(n) => *n as f64,
                 _ => return Err("Invalid rendering measure value".into()) };
             Ok(json!({"typed": {"type": name, "value": number}}))
         }

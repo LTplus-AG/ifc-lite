@@ -118,13 +118,8 @@ fn attribute_value_to_string(value: &AttributeValue) -> Option<String> {
         AttributeValue::Integer(number) => Some(number.to_string()),
         AttributeValue::Float(number) => Some(number.to_string()),
         AttributeValue::EntityRef(id) => Some(format!("#{id}")),
-        AttributeValue::List(values) => {
-            if values.len() >= 2 && matches!(values.first(), Some(AttributeValue::String(_))) {
-                return values.get(1).and_then(attribute_value_to_string);
-            }
-
-            attribute_list_to_string(values)
-        }
+        AttributeValue::Typed { value, .. } => attribute_value_to_string(value),
+        AttributeValue::List(values) => attribute_list_to_string(values),
     }
 }
 

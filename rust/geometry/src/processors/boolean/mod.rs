@@ -121,14 +121,7 @@ impl BooleanClippingProcessor {
             .ok_or_else(|| Error::geometry("Failed to resolve BaseSurface".to_string()))?;
 
         // Get agreement flag - defaults to true
-        let agreement = half_space
-            .get(1)
-            .map(|v| match v {
-                // Parser strips dots, so enum value is "T" or "F", not ".T." or ".F."
-                ifc_lite_core::AttributeValue::Enum(e) => e != "F" && e != ".F.",
-                _ => true,
-            })
-            .unwrap_or(true);
+        let agreement = half_space.get_bool(1).unwrap_or(true);
 
         // Parse IfcPlane
         if surface.ifc_type != IfcType::IfcPlane {

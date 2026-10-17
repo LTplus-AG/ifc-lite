@@ -83,13 +83,19 @@ impl PositionAlongDirectrix {
         if basis.id != directrix.id {
             return Err(Error::geometry("CrossSectionPosition BasisCurve differs from Directrix".to_string()));
         }
-        let is_parameter = matches!(location.get(0), Some(AttributeValue::List(items))
-            if matches!(items.first(), Some(AttributeValue::String(name)) if name.eq_ignore_ascii_case("IFCPARAMETERVALUE")));
+        let is_parameter =
+            location.get(0).is_some_and(|v| v.typed_value("IFCPARAMETERVALUE").is_some());
         let distance_along = if is_parameter {
             match basis.ifc_type {
-                IfcType::IfcCircle => distance_along * basis.get_float(1).ok_or_else(|| {
-                    Error::geometry("IfcCircle missing Radius".to_string())
-                })?,
+                // The parameter of a circle is a plane angle in the file's
+                // PLANEANGLEUNIT, as `IfcTrimmedCurve` reads it (PROC-AL-15).
+                IfcType::IfcCircle => {
+                    distance_along
+                        * decoder.plane_angle_to_radians()
+                        * basis.get_float(1).ok_or_else(|| {
+                            Error::geometry("IfcCircle missing Radius".to_string())
+                        })?
+                }
                 IfcType::IfcLine => {
                     let vector = decoder.decode_by_id(basis.get_ref(1).ok_or_else(|| {
                         Error::geometry("IfcLine missing Dir".to_string())
@@ -128,11 +134,7 @@ impl PositionAlongDirectrix {
         let offset_vertical = entity.get_float(2).unwrap_or(0.0);
         let offset_longitudinal = entity.get_float(3).unwrap_or(0.0);
         // AlongHorizontal defaults to TRUE per IFC4x1 if omitted.
-        let along_horizontal = entity
-            .get(4)
-            .and_then(|v| v.as_enum())
-            .map(|s| s == "T")
-            .unwrap_or(true);
+        let along_horizontal = entity.get_bool(4).unwrap_or(true);
         Ok(Self {
             distance_along,
             offset_lateral,
@@ -173,3 +175,7 @@ fn read_direction(entity: &DecodedEntity, index: usize, decoder: &mut EntityDeco
         Error::geometry("IfcAxis2PlacementLinear direction has zero length".to_string())
     })
 }
+
+#[cfg(test)]
+#[path = "sectioned_positions_tests.rs"]
+mod tests;

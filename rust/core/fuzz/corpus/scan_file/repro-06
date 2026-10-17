@@ -1,0 +1,5 @@
+HEADER;
+ENDSEC;
+DATA;
+/* #5=IFCWALL($); */
+#1=IFCWALL('a',$);

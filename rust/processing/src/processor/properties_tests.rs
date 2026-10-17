@@ -152,3 +152,14 @@ fn direct_assignment_applies_every_grouped_property_set() {
         Some("value-b")
     );
 }
+
+/// CORE-4 (#7776): a list of two strings is both its members, not the second
+/// one. `IfcPerson.MiddleNames ('Anne','Marie')` read as `Marie`.
+#[test]
+fn a_two_string_list_joins_both_members_core_4_7776() {
+    let s = |text: &str| AttributeValue::String(text.to_owned());
+    let pair = AttributeValue::List(vec![s("Anne"), s("Marie")]);
+    assert_eq!(attribute_value_to_string(&pair).as_deref(), Some("Anne; Marie"));
+    let typed = AttributeValue::Typed { name: "IFCLABEL".into(), value: Box::new(s("Marie")) };
+    assert_eq!(attribute_value_to_string(&typed).as_deref(), Some("Marie"));
+}

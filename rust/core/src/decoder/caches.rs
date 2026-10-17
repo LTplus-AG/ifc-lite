@@ -34,13 +34,12 @@ impl EntityDecoder<'_> {
         if let Some(entity) = self.cache.get(&parsed_id) {
             return Ok(entity.get_string(attribute).map(str::to_owned));
         }
+        // A literal string, or a typed one (`IFCLABEL('x')`) that `get_string`
+        // sees through (F3c); every other token is no string, unbuilt.
         Ok(match tokens.get(attribute) {
-            Some(token @ crate::parser::Token::String(_)) => {
-                match crate::AttributeValue::from_token(token) {
-                    crate::AttributeValue::String(value) => Some(value),
-                    _ => None,
-                }
-            }
+            Some(
+                token @ (crate::parser::Token::String(_) | crate::parser::Token::TypedValue(..)),
+            ) => crate::AttributeValue::from_token(token).as_string().map(str::to_owned),
             _ => None,
         })
     }

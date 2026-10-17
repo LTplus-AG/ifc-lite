@@ -1108,6 +1108,15 @@ jobs:
           # fixtures.rs is on main, ordinary whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/testkit/src/fixtures.rs | grep -Fxq 'rust/testkit/src/fixtures.rs'; then
             oracle_args+=(--mutation tests/evidence/testkit-7696/gate.oracle.patch)
+          # #7780: F3e-0a adds `SchemaVersion::attribute` and exports
+          # `SchemaVersion`/`AttrSlot`, which the changed tests import, so a
+          # whole-change revert cannot compile them (REVERT-BROKE-BUILD). Keep the
+          # API and disable ONLY pinned behaviour: the AGGREGATE and OPTIONAL flag
+          # decode, ASCII case-folding of attribute names and the non-ASCII entity
+          # guard. Once rust/core/src/attribute_slot.rs is on main, ordinary
+          # whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/core/src/attribute_slot.rs | grep -Fxq 'rust/core/src/attribute_slot.rs'; then
+            oracle_args+=(--mutation tests/evidence/slot-lookup-7780/behaviour.oracle.patch)
           fi
           node scripts/check-test-revert-oracle.mjs "${oracle_args[@]}"
           # #7512: observe cleanup independently of scoped admission/schema.

@@ -26,7 +26,9 @@ export function checkCanonicalRustCodegen({ root, tmp, runCodegenCli }) {
     },
   );
 
-  return ['schema.rs', 'type_ids.rs'].map((file) => {
+  // mod.rs is emitted unformatted by the same canonical run (its re-exports
+  // are public API, e.g. `SchemaVersion` since #7780), so it is compared too.
+  return ['schema.rs', 'type_ids.rs', 'mod.rs'].map((file) => {
     const fresh = join(canonicalOut, file);
     const committed = join(root, 'rust/core/src/generated', file);
     const bothExist = existsSync(fresh) && existsSync(committed);

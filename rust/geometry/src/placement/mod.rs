@@ -23,6 +23,8 @@ pub(crate) mod linear;
 mod validate;
 
 #[cfg(test)]
+mod chain_policy_tests;
+#[cfg(test)]
 mod chain_tests;
 #[cfg(test)]
 mod grid_tests;
@@ -124,7 +126,7 @@ impl Axis2Placement {
         match &placement.ifc_type {
             IfcType::IfcAxis2Placement3D => Self::read_3d(placement, decoder),
             IfcType::IfcAxis2Placement2D => Self::read_2d(placement, decoder),
-            found => Err(PlacementError::Unsupported { at: placement.id, found: found.clone() }),
+            found => Err(unsupported(decoder, placement.id, found.clone())),
         }
     }
 
@@ -155,7 +157,7 @@ pub struct Axis1Placement {
 impl Axis1Placement {
     pub fn read(placement: &DecodedEntity, decoder: &mut EntityDecoder) -> PlacementResult<Self> {
         if placement.ifc_type != IfcType::IfcAxis1Placement {
-            return Err(PlacementError::Unsupported { at: placement.id, found: placement.ifc_type.clone() });
+            return Err(unsupported(decoder, placement.id, placement.ifc_type.clone()));
         }
         Ok(Self { location: location(placement, decoder)?, axis: decoder.direction3_at(placement, 1)? })
     }
@@ -171,7 +173,21 @@ impl Axis1Placement {
 fn location(placement: &DecodedEntity, decoder: &mut EntityDecoder) -> PlacementResult<[f64; 3]> {
     decoder
         .point3_at(placement, 0)?
-        .ok_or(PlacementError::Missing { at: placement.id, attr: "Location" })
+        .ok_or_else(|| missing(decoder, placement.id, "Location"))
+}
+
+/// A refused mandatory attribute (`$` or absent), counted once per record
+/// (D3, D30). Everything that refuses a placement goes through here or
+/// [`unsupported`], so the counter and the error cannot drift apart.
+pub(super) fn missing(decoder: &EntityDecoder, at: u32, attr: &'static str) -> PlacementError {
+    let _counted = decoder.refuse_malformed(at);
+    PlacementError::Missing { at, attr }
+}
+
+/// A refused record of the wrong type in a placement slot, counted (D30).
+pub(super) fn unsupported(decoder: &EntityDecoder, at: u32, found: IfcType) -> PlacementError {
+    let _counted = decoder.refuse_malformed(at);
+    PlacementError::Unsupported { at, found }
 }
 
 /// Orthonormalize a placement's raw axes + location into a column-major 4×4

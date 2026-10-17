@@ -35,11 +35,11 @@
 //!
 //! Coordinate handling matches the wasm pipeline:
 //!
-//! - Per-product `ObjectPlacement` is resolved through the
-//!   `IfcLocalPlacement` chain; symbolic uses a 2D
-//!   translation-plus-rotation accumulation that intentionally diverges
-//!   from the 3D geometry router so floor-plan annotations aren't
-//!   distorted by parent rotations.
+//! - Per-product `ObjectPlacement` is resolved through the shared 3D chain
+//!   (`ifc_lite_geometry::placement::resolve_chain`: `IfcLocalPlacement`,
+//!   `IfcLinearPlacement` and `IfcGridPlacement`, no depth cap, memoised on
+//!   the decoder) and projected to XY. A symbol therefore lands where the mesh
+//!   of the same product does; under a tilted parent it is foreshortened.
 //! - Per-representation `ContextOfItems.WorldCoordinateSystem` is
 //!   composed in when present (Plan reps occasionally use a different
 //!   WCS than Body).

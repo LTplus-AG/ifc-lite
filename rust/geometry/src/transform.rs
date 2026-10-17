@@ -7,12 +7,13 @@
 //! Provides unified implementations for parsing IFC placement and direction entities,
 //! eliminating code duplication across processors.
 
-use crate::math::tol;
 use crate::error::{Error, Result};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
+use crate::placement::Axis2Placement;
 use nalgebra::{Matrix4, Point3, Vector3};
 
 mod placement_2d;
+pub(crate) use crate::placement::build_axis2_matrix;
 pub(crate) use placement_2d::parse_axis2_placement_2d;
 
 /// Parse IfcAxis2Placement3D into transformation matrix
@@ -23,98 +24,12 @@ pub(crate) use placement_2d::parse_axis2_placement_2d;
 /// - 2: RefDirection (IfcDirection, optional)
 ///
 /// Returns a 4x4 transformation matrix that transforms from local coordinates
-/// to parent coordinates.
+/// to parent coordinates. The reader is [`crate::placement::Axis2Placement`].
 pub fn parse_axis2_placement_3d(
     placement: &DecodedEntity,
     decoder: &mut EntityDecoder,
 ) -> Result<Matrix4<f64>> {
-    // Get location (attribute 0)
-    let location = parse_cartesian_point(placement, decoder, 0)?;
-
-    // Get Z axis (attribute 1) - defaults to (0, 0, 1)
-    let z_axis = if let Some(axis_attr) = placement.get(1) {
-        if !axis_attr.is_null() {
-            if let Some(axis_entity) = decoder.resolve_ref(axis_attr)? {
-                parse_direction(&axis_entity)?
-            } else {
-                Vector3::new(0.0, 0.0, 1.0)
-            }
-        } else {
-            Vector3::new(0.0, 0.0, 1.0)
-        }
-    } else {
-        Vector3::new(0.0, 0.0, 1.0)
-    };
-
-    // Get X axis (attribute 2: RefDirection) - defaults to (1, 0, 0)
-    let x_axis = if let Some(ref_dir_attr) = placement.get(2) {
-        if !ref_dir_attr.is_null() {
-            if let Some(ref_dir_entity) = decoder.resolve_ref(ref_dir_attr)? {
-                parse_direction(&ref_dir_entity)?
-            } else {
-                Vector3::new(1.0, 0.0, 0.0)
-            }
-        } else {
-            Vector3::new(1.0, 0.0, 0.0)
-        }
-    } else {
-        Vector3::new(1.0, 0.0, 0.0)
-    };
-
-    Ok(build_axis2_matrix(location, z_axis, x_axis))
-}
-
-/// Orthonormalize a placement's raw axes + location into a column-major 4×4
-/// transform (columns = world-space local X, Y, Z, then translation).
-///
-/// `z_axis` is the raw Axis (local +Z), `x_axis` the raw RefDirection (local
-/// +X); both are normalized here. This is the single home for the
-/// degenerate-axis fallback: when RefDirection is parallel to Axis the projected
-/// X collapses, so instead of normalizing a zero vector (which yields a NaN
-/// matrix) we pick a deterministic perpendicular direction. The math is the
-/// canonical Gram–Schmidt (normalize Z, project RefDirection onto the plane ⟂ Z,
-/// then Y = Z × X). Every `IfcAxis2Placement3D` parser in the crate keeps its
-/// own attribute extraction / default-axis choices and shares only this
-/// orthonormalization + assembly, so the guard can never drift out of a fork.
-pub(crate) fn build_axis2_matrix(
-    location: Point3<f64>,
-    z_axis: Vector3<f64>,
-    x_axis: Vector3<f64>,
-) -> Matrix4<f64> {
-    // Normalize axes. A malformed IfcDirection((0,0,0)) as Axis/RefDirection would
-    // make a bare normalize() emit NaN (0/0) and poison the whole placement matrix
-    // (this helper is the shared home for every IfcAxis2Placement3D parser, so the
-    // guard lives here once). A zero Axis falls back to +Z; a zero RefDirection
-    // routes into the parallel-axis fallback below.
-    let z_axis_final = z_axis
-        .try_normalize(tol::AXIS_MIN_LEN)
-        .unwrap_or_else(|| Vector3::new(0.0, 0.0, 1.0));
-    let x_axis_normalized = x_axis
-        .try_normalize(tol::AXIS_MIN_LEN)
-        .unwrap_or_else(|| Vector3::new(1.0, 0.0, 0.0));
-
-    let x_axis_final = crate::axis_projection::perpendicular_x_axis(z_axis_final, x_axis_normalized);
-
-    // Y axis is cross product of Z and X (right-hand rule: Y = Z × X)
-    let y_axis = z_axis_final.cross(&x_axis_final).normalize();
-
-    // Build transformation matrix
-    // Columns represent world-space directions of local axes
-    let mut transform = Matrix4::identity();
-    transform[(0, 0)] = x_axis_final.x;
-    transform[(1, 0)] = x_axis_final.y;
-    transform[(2, 0)] = x_axis_final.z;
-    transform[(0, 1)] = y_axis.x;
-    transform[(1, 1)] = y_axis.y;
-    transform[(2, 1)] = y_axis.z;
-    transform[(0, 2)] = z_axis_final.x;
-    transform[(1, 2)] = z_axis_final.y;
-    transform[(2, 2)] = z_axis_final.z;
-    transform[(0, 3)] = location.x;
-    transform[(1, 3)] = location.y;
-    transform[(2, 3)] = location.z;
-
-    transform
+    Ok(Axis2Placement::read_3d(placement, decoder)?.matrix())
 }
 
 /// Parse IfcCartesianPoint from an entity attribute
@@ -496,17 +411,5 @@ mod tests {
 
         // Degenerate (zero-length) projected X-axis → None.
         assert!(rotation_angle_about_z(&[0.0f64; 16]).is_none());
-    }
-
-    // A malformed IfcDirection((0,0,0)) as Axis must not NaN-poison the matrix;
-    // build_axis2_matrix is the shared home for every IfcAxis2Placement3D parser.
-    #[test]
-    fn build_axis2_matrix_zero_axis_stays_finite() {
-        let m = build_axis2_matrix(
-            Point3::new(0.0, 0.0, 0.0),
-            Vector3::new(0.0, 0.0, 0.0),
-            Vector3::new(1.0, 0.0, 0.0),
-        );
-        assert!(m.iter().all(|v| v.is_finite()), "NaN in matrix: {m:?}");
     }
 }

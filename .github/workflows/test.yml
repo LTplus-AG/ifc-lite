@@ -1151,6 +1151,15 @@ jobs:
           # ordinary whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/processing/src/data_model/mod.rs | grep -Fxq 'rust/processing/src/data_model/mod.rs'; then
             oracle_args+=(--mutation tests/evidence/data-model-move-7783/behaviour.oracle.patch)
+          # #7779: F3b-R1 moves `build_axis2_matrix`, the chain walk and the
+          # Linear/Grid resolvers into the new `placement` module, which the
+          # changed tests import, so a whole-change revert cannot compile them
+          # (REVERT-BROKE-BUILD). Keep the module and restore ONLY pinned
+          # behaviour: the pre-D27 depth cap, a silent cycle, an unmemoised
+          # walk, no zero-axis repair and an ignored `ChainPolicy`. Once
+          # placement/chain.rs is on main, ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/placement/chain.rs | grep -Fxq 'rust/geometry/src/placement/chain.rs'; then
+            oracle_args+=(--mutation tests/evidence/placement-7779/behaviour.oracle.patch)
           fi
           node scripts/check-test-revert-oracle.mjs "${oracle_args[@]}"
           # #7512: observe cleanup independently of scoped admission/schema.

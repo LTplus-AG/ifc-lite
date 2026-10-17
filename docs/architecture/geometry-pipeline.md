@@ -384,24 +384,21 @@ flowchart TB
 ### Matrix Operations
 
 ```rust
-use nalgebra::{Matrix4, Point3, Vector3};
+use ifc_lite_geometry::placement::{resolve_chain, resolve_object_placement};
 
-fn compute_transform(placements: &[Placement]) -> Matrix4<f64> {
-    let mut result = Matrix4::identity();
-
-    for placement in placements {
-        let local = Matrix4::new_translation(&placement.location)
-            * Matrix4::from_axis_angle(&placement.axis, placement.angle);
-        result = result * local;
-    }
-
-    result
-}
-
-fn transform_point(point: Point3<f64>, matrix: &Matrix4<f64>) -> Point3<f64> {
-    matrix.transform_point(&point)
-}
+// The unscaled world transform of a placement (file units), walked up
+// `PlacementRelTo` iteratively with a visited set and no depth cap.
+let world = resolve_chain(&placement, &mut decoder)?;
+// Or from a product's `ObjectPlacement` (`None` when it is `$`).
+let world = resolve_object_placement(&product, &mut decoder)?;
 ```
+
+`resolve_chain` is the one placement walk: the router, the 2D profile
+extractor and the export preflights all go through
+`ifc_lite_geometry::placement`. A cyclic chain is refused and counted
+(`EntityDecoder::refused_records`); a chain of any length resolves in full.
+The result is memoised on the decoder, **unscaled** and column-major, so
+readers with different unit contexts share entries; the caller scales.
 
 ### Large Coordinate Handling
 

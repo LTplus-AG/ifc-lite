@@ -10,16 +10,29 @@ impl Parser<'_> {
     pub(super) fn text(&mut self, bytes: &[u8]) -> Result<()> {
         let raw = self.utf8_text(bytes)?;
         // quick-xml 0.42 never puts a reference in a text event: each
-        // `&name;` is its own `Event::GeneralRef`, which `consume_event`
-        // routes back here in source form (`xml::general_ref_source`), so
-        // `raw` is literal text or exactly one reference.  Charge it and
-        // check the root before expansion: outside the document element XML
-        // permits only literal XML S bytes, so `&#32;` cannot pass as padding.
-        self.check_character_references(character_references(raw))?;
+        // `&name;` is its own `Event::GeneralRef` (see `reference`).
+        // Outside the document element XML permits only literal XML S bytes.
         if self.frames.is_empty() {
             return crate::xml::outside_root_text(self.root_closed, raw, false);
         }
-        self.capture_text(&crate::xml::unescape(raw)?)
+        let text = decode_text(raw, &mut self.character_references)?;
+        self.capture_text(&text)
+    }
+
+    /// A `&name;` in element content: resolved by `xml::refs`, never through
+    /// its source form.
+    pub(super) fn reference(&mut self, reference: &BytesRef<'_>) -> Result<()> {
+        let source = source_len(reference);
+        if source > self.limits.max_text_bytes {
+            return Err(error(Code::LimitExceeded, "text limit exceeded"));
+        }
+        self.check_cancel_and_work(source)?;
+        // `&#32;` cannot pass for padding outside the document element.
+        if self.frames.is_empty() {
+            return crate::xml::outside_root_text(self.root_closed, "&", false);
+        }
+        let character = decode_ref(reference, &mut self.character_references)?;
+        self.capture_text(character.encode_utf8(&mut [0; 4]))
     }
 
     pub(super) fn cdata(&mut self, bytes: &[u8]) -> Result<()> {

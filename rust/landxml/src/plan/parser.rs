@@ -13,7 +13,8 @@ use super::{
 use crate::{
     semantics::units,
     xml::{
-        attr, attributes, character_references, error, normalize_encoding, read_events, split_name, unescape,
+        attr, attributes, decode_ref, decode_text, error, normalize_encoding, read_events, source_len,
+        split_name,
         Attributes, Budget, Meter, Result,
     },
     LandXmlCancellation, LandXmlCapabilityDiagnostic, LandXmlDiagnosticCode as Code, LandXmlLimits,
@@ -186,9 +187,7 @@ impl<'a> Parser<'a> {
             Event::End(value) => self.end(Some(value.name().as_ref().as_bytes())),
             Event::Text(value) => self.text(value.as_ref().as_bytes()),
             // #7680: a reference in text arrives as its own event.
-            Event::GeneralRef(reference) => {
-                self.text(crate::xml::general_ref_source(&reference).as_bytes())
-            }
+            Event::GeneralRef(reference) => self.reference(&reference),
             Event::CData(value) => self.cdata(value.as_ref().as_bytes()),
             Event::DocType(_) => Err(error(Code::DtdForbidden, "DOCTYPE is not allowed")),
             _ => Ok(()),

@@ -4,7 +4,7 @@
 
 use std::collections::HashMap;
 
-use quick_xml::events::BytesStart;
+use quick_xml::events::{BytesRef, BytesStart};
 
 use super::{
     actions::superelevation_event,
@@ -14,7 +14,7 @@ use super::{
 use crate::{
     semantics::units,
     xml::{
-        attr, attributes, character_references, error, split_name, unescape, Attributes, Result,
+        attr, attributes, decode_ref, decode_text, error, source_len, split_name, Attributes, Result,
     },
     LandXmlDiagnosticCode as Code,
 };
@@ -32,9 +32,6 @@ impl Parser<'_> {
         self.capability_diagnostics.push(diagnostic);
         Ok(())
     }
-    fn check_character_references(&mut self, added: usize) -> Result<()> {
-        self.character_references.reserve(added)
-    }
     pub(super) fn reserve_alignment_points(&mut self, added: usize) -> Result<()> {
         self.alignment_points_seen.reserve(added)
     }
@@ -44,9 +41,8 @@ impl Parser<'_> {
         }
         let name = start.name();
         let (_, local, prefix) = split_name(name.as_ref().as_bytes(), self.limits.xml.max_name_bytes)?;
-        let (attrs, namespaces, refs) = attributes(start, &self.limits.xml)?;
+        let (attrs, namespaces) = attributes(start, &self.limits.xml, &mut self.character_references)?;
         self.check(attrs.len())?;
-        self.check_character_references(refs)?;
         let mut inherited = self
             .frames
             .last()
@@ -228,11 +224,24 @@ impl Parser<'_> {
         self.check(bytes.len())?;
         let text =
             std::str::from_utf8(bytes).map_err(|_| error(Code::InvalidXml, "text is not UTF-8"))?;
-        self.check_character_references(character_references(text))?;
         if self.frames.is_empty() {
             return crate::xml::outside_root_text(self.root_closed, text, false);
         }
-        let text = unescape(text)?;
+        let text = decode_text(text, &mut self.character_references)?;
+        self.capture_decoded(&text)
+    }
+
+    /// A `&name;` in element content, resolved by `xml::refs`.
+    pub(super) fn reference(&mut self, reference: &BytesRef<'_>) -> Result<()> {
+        self.check(source_len(reference))?;
+        if self.frames.is_empty() {
+            return crate::xml::outside_root_text(self.root_closed, "&", false);
+        }
+        let character = decode_ref(reference, &mut self.character_references)?;
+        self.capture_decoded(character.encode_utf8(&mut [0; 4]))
+    }
+
+    fn capture_decoded(&mut self, text: &str) -> Result<()> {
         if let Some(capture) = &mut self.capture {
             let target = match capture {
                 Capture::Point { text, .. }
@@ -242,7 +251,7 @@ impl Parser<'_> {
             if target.len().saturating_add(text.len()) > self.limits.xml.max_text_bytes {
                 return Err(limit("captured text limit exceeded"));
             }
-            target.push_str(&text);
+            target.push_str(text);
         }
         Ok(())
     }
@@ -253,20 +262,9 @@ impl Parser<'_> {
         if self.frames.is_empty() {
             return crate::xml::outside_root_text(self.root_closed, text, true);
         }
-        if let Some(capture) = &mut self.capture {
-            let target = match capture {
-                Capture::Point { text, .. }
-                | Capture::PointList { text, .. }
-                | Capture::Superelevation { text, .. } => text,
-            };
-            if target.len().saturating_add(text.len()) > self.limits.xml.max_text_bytes {
-                return Err(limit("captured text limit exceeded"));
-            }
-            // CDATA is literal text. In particular, `&amp;` must reach the
-            // numeric parser unchanged rather than being entity-decoded.
-            target.push_str(text);
-        }
-        Ok(())
+        // CDATA is literal text. In particular, `&amp;` must reach the
+        // numeric parser unchanged rather than being entity-decoded.
+        self.capture_decoded(text)
     }
     pub(crate) fn finish(self) -> Result<super::super::LandXmlAlignmentDocument> {
         if !self.root_seen {

@@ -27,10 +27,6 @@ impl Parser<'_> {
         self.meter.charge(added)
     }
 
-    pub(super) fn check_character_references(&mut self, added: usize) -> Result<()> {
-        self.character_references.reserve(added)
-    }
-
     /// Account for every retained source reference before allocating its
     /// strings. Faces, roadway associations, and cross-section reference
     /// attributes all share the same adversarial-input budget.

@@ -6,14 +6,14 @@ use crate::{
     capture::{Capture, PairListTarget, PolylineCategory, ProfileCurveCapture},
     semantics::{positive_id, references, triple, units},
     xml::{
-        attr, attributes, character_references, error, normalize_encoding, read_events, required, split_name,
-        Result,
+        attr, attributes, decode_ref, decode_text, error, normalize_encoding, read_events,
+        required, source_len, split_name, Result,
     },
     LandXmlCancellation, LandXmlCapabilities, LandXmlCoordinateSystem,
     LandXmlDiagnosticCode as Code, LandXmlExtension, LandXmlLimits, LandXmlPoint, LandXmlPolyline,
     LandXmlRenderState, LandXmlSourceId, LandXmlSurface, LandXmlSurfaceKind, LandXmlTinDocument,
 };
-use quick_xml::events::{BytesStart, Event};
+use quick_xml::events::{BytesRef, BytesStart, Event};
 mod capture;
 mod document;
 mod finalize;
@@ -73,9 +73,7 @@ impl Parser<'_> {
             Event::End(end) => self.end(Some(end.name().as_ref().as_bytes())),
             Event::Text(text) => self.text(text.as_ref().as_bytes()),
             // #7680: a reference in text arrives as its own event.
-            Event::GeneralRef(reference) => {
-                self.text(crate::xml::general_ref_source(&reference).as_bytes())
-            }
+            Event::GeneralRef(reference) => self.reference(&reference),
             Event::CData(text) => self.cdata(text.as_ref().as_bytes()),
             Event::DocType(_) => Err(error(Code::DtdForbidden, "DOCTYPE is not allowed")),
             _ => Ok(()),
@@ -95,9 +93,8 @@ impl Parser<'_> {
         }
         let name = start.name();
         let (_, local, prefix) = split_name(name.as_ref().as_bytes(), self.limits.max_name_bytes)?;
-        let (attributes, namespaces, references) = attributes(start, &self.limits)?;
+        let (attributes, namespaces) = attributes(start, &self.limits, &mut self.character_references)?;
         self.check_cancel_and_work(attributes.len())?;
-        self.check_character_references(references)?;
         let mut inherited = self
             .frames
             .last()

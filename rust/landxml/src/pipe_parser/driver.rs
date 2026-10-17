@@ -3,9 +3,11 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use crate::{
-    xml::{character_references, error, split_name, unescape, Result},
+    xml::{decode_ref, decode_text, error, source_len, split_name, Result},
     LandXmlDiagnosticCode as Code,
 };
+
+use quick_xml::events::BytesRef;
 
 use super::PipeParser;
 
@@ -90,13 +92,30 @@ impl PipeParser<'_> {
         self.check_cancel_and_work(bytes.len())?;
         let text =
             std::str::from_utf8(bytes).map_err(|_| error(Code::InvalidXml, "text is not UTF-8"))?;
-        self.check_character_references(character_references(text))?;
         if self.frames.is_empty() {
             return crate::xml::outside_root_text(self.root_closed, text, false);
         }
         // Resolve before the capture check: an undeclared entity is refused
         // wherever it appears, as in an attribute value (#7680).
-        let text = unescape(text)?;
+        let text = decode_text(text, &mut self.character_references)?;
+        self.capture_decoded(&text)
+    }
+
+    /// A `&name;` in element content, resolved by `xml::refs`.
+    pub(super) fn reference(&mut self, reference: &BytesRef<'_>) -> Result<()> {
+        let source = source_len(reference);
+        if source > self.limits.max_text_bytes {
+            return Err(error(Code::LimitExceeded, "text limit exceeded"));
+        }
+        self.check_cancel_and_work(source)?;
+        if self.frames.is_empty() {
+            return crate::xml::outside_root_text(self.root_closed, "&", false);
+        }
+        let character = decode_ref(reference, &mut self.character_references)?;
+        self.capture_decoded(character.encode_utf8(&mut [0; 4]))
+    }
+
+    fn capture_decoded(&mut self, text: &str) -> Result<()> {
         if let Some(capture) = &mut self.capture {
             if self.frames.len() != capture.depth {
                 return Ok(());
@@ -104,7 +123,7 @@ impl PipeParser<'_> {
             if capture.input.text.len() + text.len() > self.limits.max_text_bytes {
                 return Err(error(Code::LimitExceeded, "captured text limit exceeded"));
             }
-            capture.input.text.push_str(&text);
+            capture.input.text.push_str(text);
         }
         Ok(())
     }
@@ -119,15 +138,7 @@ impl PipeParser<'_> {
         if self.frames.is_empty() {
             return crate::xml::outside_root_text(self.root_closed, text, true);
         }
-        if let Some(capture) = &mut self.capture {
-            if self.frames.len() == capture.depth {
-                if capture.input.text.len() + text.len() > self.limits.max_text_bytes {
-                    return Err(error(Code::LimitExceeded, "captured text limit exceeded"));
-                }
-                // CDATA is literal source text: reference syntax is data here.
-                capture.input.text.push_str(text);
-            }
-        }
-        Ok(())
+        // CDATA is literal source text: reference syntax is data here.
+        self.capture_decoded(text)
     }
 }

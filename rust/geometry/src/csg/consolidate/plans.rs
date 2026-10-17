@@ -5,6 +5,8 @@
 //! Build ordered plane plans and retain certified cells as seam sources.
 use super::{
     buckets::{BucketKey, Buckets},
+    plane_merge::PlaneTri,
+    tri_is_needle,
     conform::{PlanBucket, PlanRegion},
     supported_cells,
 };
@@ -110,6 +112,16 @@ pub(super) fn build(
             plans.push(plan);
             continue;
         }
+        // A healthy two-cell fold is not one planar region. Projection can
+        // replace its shared boundary chain with a chord, opening the adjacent
+        // source cells before f32 unit/world rounding amplifies it (#7292).
+        if keep_healthy_folded_pair(tris) {
+            // Raw conformance must not flatten this fold onto the first plane.
+            supported_bids.insert(bid);
+            plan.raw.extend(tris.iter().map(|t| t.v));
+            plans.push(plan);
+            continue;
+        }
         if tris.len() == 1 {
             // Single triangle — skip the union round-trip entirely. Its three
             // corners are hard corners by definition, so they are valid
@@ -160,3 +172,28 @@ pub(super) fn build(
     }
     Planned { plans, supported_bids, retained_cells }
 }
+
+/// Retain only two healthy, noncoplanar cells sharing one opposed exact edge.
+/// Tagged source planes, exact coplanar pairs and needles keep the union path.
+fn keep_healthy_folded_pair(tris: &[PlaneTri]) -> bool {
+    if tris.len() != 2 || tris.iter().any(|t| t.tag.is_some() || tri_is_needle(&t.v)
+        || t.v.iter().flat_map(|p| p.iter()).any(|v| !v.is_finite())) {
+        return false;
+    }
+    let (a, b) = (&tris[0].v, &tris[1].v);
+    for i in 0..3 {
+        for j in 0..3 {
+            if a[i] == b[(j + 1) % 3] && a[(i + 1) % 3] == b[j] {
+                let [p, q, r] = a.map(|v| [v.x, v.y, v.z]);
+                let s = b[(j + 2) % 3];
+                return crate::kernel::predicates::orient3d_explicit(p, q, r, [s.x, s.y, s.z])
+                    != crate::kernel::Sign::Zero;
+            }
+        }
+    }
+    false
+}
+
+#[cfg(test)]
+#[path = "plans_tests.rs"]
+mod tests;

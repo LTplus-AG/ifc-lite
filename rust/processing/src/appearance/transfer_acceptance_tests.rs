@@ -70,7 +70,7 @@ pub(in crate::appearance) fn control(
             frame_key: "controlled-scan".into(),
         },
         target_frame: RegistrationFrame {
-            asset_sha256: format!("{:x}", Sha256::digest(THIN_WALL_IFC.as_bytes())),
+            asset_sha256: crate::fingerprint::sha256_hex(THIN_WALL_IFC.as_bytes()),
             frame_key: "controlled-wall".into(),
         },
         fit: [[0., 0., 0.], [1., 0., 0.], [0., 1., 0.], [0., 0., 1.]]

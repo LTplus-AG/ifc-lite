@@ -1051,6 +1051,14 @@ jobs:
             oracle_args+=(--mutation tests/evidence/math-home-7772/behaviour.oracle.patch)
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/python/src/finite_json.rs | grep -Fxq 'rust/python/src/finite_json.rs'; then
             oracle_args+=(--mutation tests/evidence/export-nonfinite-7679/behaviour.oracle.patch)
+          # #7777: the micro-homes PR adds ifc_lite_core::{guid, hash, fmt_num}, which
+          # its changed tests import, so a whole-change revert cannot compile them
+          # (INCONCLUSIVE). Keep the modules and disable ONLY pinned behaviour: the
+          # GlobalId first-char rule and leading window, the placeholder offset, the
+          # FNV-1a prime, ContentHash framing and the word-wise mix step. Once
+          # rust/core/src/guid.rs is on main, ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/core/src/guid.rs | grep -Fxq 'rust/core/src/guid.rs'; then
+            oracle_args+=(--mutation tests/evidence/micro-homes-7777/behaviour.oracle.patch)
           # #7686: the planar-face triangulation adds `quad_split_3d` and
           # `triangulate_planar_face`, which the changed unit tests call, so a
           # whole-change revert cannot compile them (INCONCLUSIVE). Keep every

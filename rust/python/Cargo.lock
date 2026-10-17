@@ -292,6 +292,7 @@ checksum = "1e9d4a992a9fe83130f41ceacceac3bb116a4355dfc9c8d6ecea4f1e4b4c6caf"
 name = "ifc-lite-core"
 version = "21.4.0"
 dependencies = [
+ "bytemuck",
  "fast-float2",
  "futures-core",
  "futures-util",
@@ -300,6 +301,7 @@ dependencies = [
  "nom",
  "rustc-hash",
  "thiserror",
+ "twox-hash",
 ]
 
 [[package]]
@@ -314,7 +316,6 @@ dependencies = [
  "rustc-hash",
  "serde",
  "serde_json",
- "twox-hash",
 ]
 
 [[package]]

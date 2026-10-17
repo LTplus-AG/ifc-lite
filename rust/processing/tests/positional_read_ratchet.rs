@@ -51,11 +51,6 @@ const EXEMPT_PREFIX: &str = "rust/landxml/";
 /// Walk floor: production files seen (roughly two thirds of the measured
 /// count, as in the other source-walking gates).
 const FILE_FLOOR: usize = 240;
-/// Scan floor: the scanner must find at least this many reads at seed time
-/// (1,329 measured by the throwaway scan; a scanner that stops recognising
-/// calls finds a handful).
-const READ_FLOOR: usize = 1000;
-
 type Allowlist = BTreeMap<String, usize>;
 
 fn parse_allowlist() -> Allowlist {
@@ -158,13 +153,8 @@ fn evaluate(files: &[(String, Reads)], allowlist: &Allowlist) -> (Vec<String>, V
 
 #[test]
 fn no_new_literal_attribute_reads_and_no_stale_rows() {
+    common::positional_canary::assert_scanner_canary(scan);
     let Some(files) = scan_tree() else { return };
-    let total: usize = files.iter().map(|(_, r)| r.counted.len()).sum();
-    assert!(
-        total >= READ_FLOOR,
-        "{GATE}: the scanner found {total} literal reads, below the floor of {READ_FLOOR}. The \
-         scanner has gone blind; it is not proof that the tree is clean."
-    );
     let marked: Vec<String> = files
         .iter()
         .flat_map(|(path, r)| r.marked.iter().map(move |m| format!("  {path}:{} {}", m.line, m.text)))
@@ -272,6 +262,38 @@ fn a_zero_row_is_a_hard_error() {
 #[should_panic(expected = "malformed")]
 fn a_malformed_row_is_a_hard_error() {
     parse_allowlist_text("12\n");
+}
+
+#[test]
+fn fixed_scanner_corpus_matches_all_expected_sites() {
+    common::positional_canary::assert_scanner_canary(scan);
+}
+
+#[test]
+fn empty_reads_fail_the_scanner_canary() {
+    let error = common::positional_canary::validate(&Reads::default()).expect_err("an empty scan must fail");
+    assert!(error.contains("scanner canary"), "{error}");
+}
+
+#[test]
+fn partial_binary_accessor_blindness_fails_the_scanner_canary() {
+    let changed = common::positional_canary::CORPUS
+        .replace("binary_at(16)", "binary_at(slot::IfcWall::NAME.index())");
+    assert_ne!(changed, common::positional_canary::CORPUS, "the mutation must target the fixed binary site");
+    let error = common::positional_canary::validate(&scan(&changed)).expect_err("losing one site must fail");
+    assert!(error.contains("scanner canary"), "{error}");
+}
+
+#[test]
+fn typed_named_and_computed_reads_allow_zero_debt() {
+    let source = "fn only_slots(entity: &Entity, i: usize) {\n\
+        entity.get(slot::IfcWall::NAME.index());\n\
+        entity.attr(SLOT);\n\
+        entity.get(i + 1);\n\
+    }\n";
+    let files = [("synthetic.rs".to_string(), scan(source))];
+    assert_eq!(files[0].1.counted.len(), 0);
+    assert_eq!(evaluate(&files, &Allowlist::new()), (vec![], vec![], vec![]));
 }
 
 /// The scanner on synthetic source: what counts, what does not.

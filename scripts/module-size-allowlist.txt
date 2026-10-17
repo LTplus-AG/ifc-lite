@@ -72,7 +72,7 @@
    535 apps/viewer/src/components/viewer/DrawingSettingsPanel.tsx
    644 apps/viewer/src/components/viewer/ExportDialog.tsx
    468 apps/viewer/src/components/viewer/GLBExportDialog.tsx
-  1357 apps/viewer/src/components/viewer/hierarchy/treeDataBuilder.ts
+  1117 apps/viewer/src/components/viewer/hierarchy/treeDataBuilder.ts
    740 apps/viewer/src/components/viewer/HierarchyPanel.tsx
    533 apps/viewer/src/components/viewer/layers/LayerMergeSection.tsx
    659 apps/viewer/src/components/viewer/LensPanel.tsx

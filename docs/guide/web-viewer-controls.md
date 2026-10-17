@@ -147,8 +147,9 @@ between `RefLatitude`/`RefLongitude` and that site's placement origin transforme
 through `IfcMapConversion`. It allows five metres plus the rounding uncertainty
 of the authored angles; whole-second angles therefore have a larger tolerance
 than angles with millionths of a second. Neutral map conversions, zero-coordinate
-placeholders, ambiguous sites and unresolved placements are skipped. Check the
-source coordinates and datum when this warning appears.
+placeholders, ambiguous sites and unresolved placements are skipped. Omitted
+optional directions use IFC defaults; explicit unreadable or invalid directions
+make the comparison unavailable. Check the source coordinates and datum when this warning appears.
 
 The georeferencing field **Model rotation in map coordinates** is the
 counterclockwise angle from map East to the model's local X-axis, viewed from

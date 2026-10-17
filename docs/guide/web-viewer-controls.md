@@ -142,6 +142,14 @@ centre at least 100 km from the origin raises a distance message; check the
 source model's placements before treating a correct origin pin as evidence
 that the geometry itself is correctly georeferenced.
 
+For a model with one usable `IfcSite`, a Location warning reports disagreement
+between `RefLatitude`/`RefLongitude` and that site's placement origin transformed
+through `IfcMapConversion`. It allows five metres plus the rounding uncertainty
+of the authored angles; whole-second angles therefore have a larger tolerance
+than angles with millionths of a second. Neutral map conversions, zero-coordinate
+placeholders, ambiguous sites and unresolved placements are skipped. Check the
+source coordinates and datum when this warning appears.
+
 The georeferencing field **Model rotation in map coordinates** is the
 counterclockwise angle from map East to the model's local X-axis, viewed from
 above in IFC's Z-up coordinates. Positive values rotate counterclockwise;

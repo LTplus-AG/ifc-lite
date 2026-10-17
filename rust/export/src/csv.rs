@@ -83,8 +83,8 @@ fn spatial_csv(content: &[u8], model: &ExportModel, opts: &CsvOptions) -> String
     let (mut proj_gid, mut proj_name) = (String::new(), String::new());
     if let Some(pid) = project {
         if let Some(e) = crate::ifc5::decode_one(content, pid) {
-            proj_gid = e.get(0).and_then(|a| a.as_string()).unwrap_or("").to_string();
-            proj_name = e.get(2).and_then(|a| a.as_string()).unwrap_or("").to_string();
+            proj_gid = e.string_at(ifc_lite_core::slot::IfcProject::GLOBAL_ID).unwrap_or("").to_string();
+            proj_name = e.string_at(ifc_lite_core::slot::IfcProject::NAME).unwrap_or("").to_string();
         }
     }
 

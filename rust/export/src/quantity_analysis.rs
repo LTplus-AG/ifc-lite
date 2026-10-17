@@ -5,7 +5,7 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 
-use ifc_lite_core::{AttributeValue, EntityDecoder, EntityIndex, EntityScanner, IfcType, ProjectUnits};
+use ifc_lite_core::{slot, AttributeValue, EntityDecoder, EntityIndex, EntityScanner, IfcType, ProjectUnits};
 use serde::Serialize;
 
 use ifc_lite_processing::data_model::quantity::{decode_quantity_records, QuantityDecodeMode};
@@ -142,12 +142,12 @@ fn add_sets(
             continue;
         };
         if set.ifc_type != IfcType::IfcElementQuantity { continue; }
-        let Some(leaf_count) = set.get(5).and_then(AttributeValue::as_list).map(|items| items.len()) else {
+        let Some(leaf_count) = set.attr(slot::IfcElementQuantity::QUANTITIES).and_then(AttributeValue::as_list).map(|items| items.len()) else {
             diagnostics.push(format!("quantity set #{set_id}: malformed quantity list"));
             continue;
         };
         budget.leaf_counts.insert(set_id, leaf_count);
-        let refs = set.get(5).and_then(AttributeValue::as_list).expect("checked quantity list");
+        let refs = set.attr(slot::IfcElementQuantity::QUANTITIES).and_then(AttributeValue::as_list).expect("checked quantity list");
         if let Err(error) = budget.charge_leaf_refs(refs, index) {
             match error {
                 LeafBudgetError::Visits => report_once(diagnostics, "quantity leaf visits exceed work budget"),
@@ -312,7 +312,7 @@ fn analyze_with_limits(
                     diagnostics.push(format!("type #{type_id}: not IfcTypeObject"));
                     return Vec::new();
                 }
-                let Some(value) = type_entity.get(5) else {
+                let Some(value) = type_entity.attr(slot::IfcTypeObject::HAS_PROPERTY_SETS) else {
                     diagnostics.push(format!("type #{type_id}: missing HasPropertySets"));
                     return Vec::new();
                 };

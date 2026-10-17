@@ -22,7 +22,7 @@
    "volume": 1.616351
   }
  ],
- "engine": "ifcopenshell 0.8.2",
+ "engine": "ifcopenshell 0.9.0.post1",
  "fixture": "1019-column.ifc",
  "settings": {
   "use_world_coords": true,

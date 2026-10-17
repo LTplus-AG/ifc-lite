@@ -103,7 +103,7 @@
    "status": "ok",
    "tri_count": 60,
    "vertex_count": 32,
-   "volume": 114.950038
+   "volume": null
   },
   {
    "bbox": {
@@ -271,7 +271,7 @@
    "status": "ok",
    "tri_count": 60,
    "vertex_count": 32,
-   "volume": 71.776646
+   "volume": null
   },
   {
    "bbox": {
@@ -901,7 +901,7 @@
    "status": "ok",
    "tri_count": 76,
    "vertex_count": 40,
-   "volume": 122.873944
+   "volume": null
   },
   {
    "bbox": {
@@ -1342,7 +1342,7 @@
    "status": "ok",
    "tri_count": 12,
    "vertex_count": 8,
-   "volume": 1.047713
+   "volume": 1.047712
   },
   {
    "bbox": {
@@ -2455,7 +2455,7 @@
    "status": "ok",
    "tri_count": 152,
    "vertex_count": 94,
-   "volume": 10.871246
+   "volume": null
   },
   {
    "bbox": {
@@ -2476,7 +2476,7 @@
    "status": "ok",
    "tri_count": 152,
    "vertex_count": 94,
-   "volume": 13.135874
+   "volume": null
   },
   {
    "bbox": {
@@ -2665,7 +2665,7 @@
    "status": "ok",
    "tri_count": 152,
    "vertex_count": 94,
-   "volume": 10.879133
+   "volume": null
   },
   {
    "bbox": {
@@ -2686,7 +2686,7 @@
    "status": "ok",
    "tri_count": 152,
    "vertex_count": 94,
-   "volume": 10.893013
+   "volume": null
   },
   {
    "bbox": {
@@ -2770,7 +2770,7 @@
    "status": "ok",
    "tri_count": 152,
    "vertex_count": 94,
-   "volume": 8.232624
+   "volume": null
   },
   {
    "bbox": {
@@ -2812,7 +2812,7 @@
    "status": "ok",
    "tri_count": 152,
    "vertex_count": 94,
-   "volume": 8.224738
+   "volume": null
   },
   {
    "bbox": {
@@ -2833,7 +2833,7 @@
    "status": "ok",
    "tri_count": 152,
    "vertex_count": 94,
-   "volume": 8.216852
+   "volume": null
   },
   {
    "bbox": {
@@ -2854,7 +2854,7 @@
    "status": "ok",
    "tri_count": 152,
    "vertex_count": 94,
-   "volume": 8.208965
+   "volume": null
   },
   {
    "bbox": {
@@ -2875,7 +2875,7 @@
    "status": "ok",
    "tri_count": 152,
    "vertex_count": 94,
-   "volume": 16.082265
+   "volume": null
   },
   {
    "bbox": {
@@ -2896,7 +2896,7 @@
    "status": "ok",
    "tri_count": 152,
    "vertex_count": 94,
-   "volume": 16.96371
+   "volume": null
   },
   {
    "bbox": {
@@ -2917,7 +2917,7 @@
    "status": "ok",
    "tri_count": 152,
    "vertex_count": 94,
-   "volume": 16.074379
+   "volume": null
   },
   {
    "bbox": {
@@ -2938,7 +2938,7 @@
    "status": "ok",
    "tri_count": 152,
    "vertex_count": 94,
-   "volume": 16.060499
+   "volume": null
   },
   {
    "bbox": {
@@ -3022,7 +3022,7 @@
    "status": "ok",
    "tri_count": 152,
    "vertex_count": 94,
-   "volume": 18.720887
+   "volume": null
   },
   {
    "bbox": {
@@ -3064,7 +3064,7 @@
    "status": "ok",
    "tri_count": 152,
    "vertex_count": 94,
-   "volume": 18.728774
+   "volume": null
   },
   {
    "bbox": {
@@ -3085,7 +3085,7 @@
    "status": "ok",
    "tri_count": 152,
    "vertex_count": 94,
-   "volume": 18.73666
+   "volume": null
   },
   {
    "bbox": {
@@ -3106,7 +3106,7 @@
    "status": "ok",
    "tri_count": 152,
    "vertex_count": 94,
-   "volume": 18.744546
+   "volume": null
   },
   {
    "bbox": {
@@ -4408,7 +4408,7 @@
    "status": "ok",
    "tri_count": 140,
    "vertex_count": 72,
-   "volume": 6.545904
+   "volume": null
   },
   {
    "bbox": {
@@ -4429,7 +4429,7 @@
    "status": "ok",
    "tri_count": 140,
    "vertex_count": 72,
-   "volume": 4.401741
+   "volume": null
   },
   {
    "bbox": {
@@ -4597,7 +4597,7 @@
    "status": "ok",
    "tri_count": 52,
    "vertex_count": 28,
-   "volume": 4.08931
+   "volume": null
   },
   {
    "bbox": {
@@ -4618,7 +4618,7 @@
    "status": "ok",
    "tri_count": 12,
    "vertex_count": 8,
-   "volume": 6.339687
+   "volume": null
   },
   {
    "bbox": {
@@ -4639,7 +4639,7 @@
    "status": "ok",
    "tri_count": 12,
    "vertex_count": 8,
-   "volume": 6.339687
+   "volume": null
   },
   {
    "bbox": {
@@ -4660,7 +4660,7 @@
    "status": "ok",
    "tri_count": 12,
    "vertex_count": 8,
-   "volume": 6.89005
+   "volume": null
   },
   {
    "bbox": {
@@ -4681,7 +4681,7 @@
    "status": "ok",
    "tri_count": 52,
    "vertex_count": 28,
-   "volume": 7.947491
+   "volume": null
   },
   {
    "bbox": {
@@ -4702,7 +4702,7 @@
    "status": "ok",
    "tri_count": 20,
    "vertex_count": 12,
-   "volume": 85.221391
+   "volume": null
   },
   {
    "bbox": {
@@ -4723,7 +4723,7 @@
    "status": "ok",
    "tri_count": 20,
    "vertex_count": 12,
-   "volume": 1.587713
+   "volume": null
   },
   {
    "bbox": {
@@ -4744,7 +4744,7 @@
    "status": "ok",
    "tri_count": 12,
    "vertex_count": 8,
-   "volume": 27.133808
+   "volume": null
   },
   {
    "bbox": {
@@ -4765,7 +4765,7 @@
    "status": "ok",
    "tri_count": 32,
    "vertex_count": 16,
-   "volume": 38.262527
+   "volume": null
   },
   {
    "bbox": {
@@ -4786,7 +4786,7 @@
    "status": "ok",
    "tri_count": 12,
    "vertex_count": 8,
-   "volume": 26.794623
+   "volume": null
   },
   {
    "bbox": {
@@ -4807,7 +4807,7 @@
    "status": "ok",
    "tri_count": 32,
    "vertex_count": 16,
-   "volume": 36.944123
+   "volume": null
   },
   {
    "bbox": {
@@ -4828,7 +4828,7 @@
    "status": "ok",
    "tri_count": 20,
    "vertex_count": 12,
-   "volume": 2.172401
+   "volume": null
   },
   {
    "bbox": {
@@ -4849,7 +4849,7 @@
    "status": "ok",
    "tri_count": 20,
    "vertex_count": 12,
-   "volume": 87.742572
+   "volume": null
   },
   {
    "bbox": {
@@ -5458,7 +5458,7 @@
    "status": "ok",
    "tri_count": 116,
    "vertex_count": 70,
-   "volume": 2.471245
+   "volume": null
   },
   {
    "bbox": {
@@ -5479,7 +5479,7 @@
    "status": "ok",
    "tri_count": 116,
    "vertex_count": 70,
-   "volume": 2.466783
+   "volume": null
   },
   {
    "bbox": {
@@ -5500,7 +5500,7 @@
    "status": "ok",
    "tri_count": 116,
    "vertex_count": 70,
-   "volume": 3.579727
+   "volume": null
   },
   {
    "bbox": {
@@ -5521,7 +5521,7 @@
    "status": "ok",
    "tri_count": 116,
    "vertex_count": 70,
-   "volume": 3.742572
+   "volume": null
   },
   {
    "bbox": {
@@ -5542,7 +5542,7 @@
    "status": "ok",
    "tri_count": 116,
    "vertex_count": 70,
-   "volume": 3.163308
+   "volume": null
   },
   {
    "bbox": {
@@ -6007,7 +6007,7 @@
    "volume": 0.017653
   }
  ],
- "engine": "ifcopenshell 0.8.2",
+ "engine": "ifcopenshell 0.9.0.post1",
  "fixture": "duplex.ifc",
  "settings": {
   "use_world_coords": true,

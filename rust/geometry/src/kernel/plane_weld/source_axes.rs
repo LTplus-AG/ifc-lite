@@ -14,10 +14,12 @@ use crate::kernel::{
     arrangement::Tri,
     coplanar::contains_projected_point,
     near_band::vertex_bits,
-    predicates::{orient2d_any, orient3d},
+    predicates::{orient2d_any, orient3d_explicit},
     retriangulate::projection_axis,
     DropAxis, ImplicitPoint, Sign,
 };
+#[cfg(test)]
+use crate::kernel::predicates::orient3d;
 use nalgebra::Point3;
 use rustc_hash::FxHashMap;
 use std::collections::HashSet;
@@ -92,12 +94,7 @@ impl SourceAxes {
         }
         if vertex_bits(&candidate) == vertex_bits(&primary)
             || !on_existing_vertex_grid(candidate)
-            || orient3d(
-                &e(candidate),
-                &e(selected[0]),
-                &e(selected[1]),
-                &e(selected[2]),
-            ) != Sign::Zero
+            || orient3d_explicit(candidate, selected[0], selected[1], selected[2]) != Sign::Zero
         {
             return None;
         }
@@ -114,8 +111,7 @@ pub(super) fn retains_finite_contacts(
     host: &[Tri],
 ) -> bool {
     let on = |point, triangle: &Tri| {
-        let e = ImplicitPoint::Explicit;
-        orient3d(&e(point), &e(triangle[0]), &e(triangle[1]), &e(triangle[2])) == Sign::Zero
+        orient3d_explicit(point, triangle[0], triangle[1], triangle[2]) == Sign::Zero
             && contains_projected_point(triangle, point)
     };
     host.iter()

@@ -8,8 +8,8 @@
 use rustc_hash::FxHashMap;
 use std::collections::HashSet;
 use super::{selection::Face, NearBand, Tri};
-use crate::kernel::{budget, near_band::vertex_bits, predicates::orient3d,
-    tritri::{tri_tri_intersection_with_band, TriTri}, ImplicitPoint, Sign};
+use crate::kernel::{budget, near_band::vertex_bits, predicates::orient3d_explicit,
+    tritri::{tri_tri_intersection_with_band, TriTri}, Sign};
 
 type Key = [u64; 3];
 pub(super) struct Proposal<'a> {
@@ -25,8 +25,7 @@ pub(super) struct Proposal<'a> {
 }
 fn finite(p: [f64; 3]) -> bool { p.into_iter().all(f64::is_finite) }
 fn side(p: [f64; 3], t: &Tri) -> Sign {
-    orient3d(&ImplicitPoint::Explicit(p), &ImplicitPoint::Explicit(t[0]),
-        &ImplicitPoint::Explicit(t[1]), &ImplicitPoint::Explicit(t[2]))
+    orient3d_explicit(p, t[0], t[1], t[2])
 }
 fn certificate(source: &Tri, initial_foot: [f64; 3], face: &Face, band: &NearBand) -> bool {
     if budget::tripped() || !finite(initial_foot)

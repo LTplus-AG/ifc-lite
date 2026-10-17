@@ -14,7 +14,7 @@
 use crate::kernel::{
     arrangement::Tri,
     broadphase::{tri_aabb, Bvh},
-    predicates::{orient2d_any, orient3d},
+    predicates::{orient2d_any, orient3d_explicit},
     retriangulate::projection_axis,
     ImplicitPoint, Sign,
 };
@@ -26,8 +26,7 @@ pub(super) fn point_key(point: [f64; 3]) -> [u64; 3] {
 }
 
 fn on_plane(point: [f64; 3], plane: &Tri) -> bool {
-    let e = ImplicitPoint::Explicit;
-    orient3d(&e(point), &e(plane[0]), &e(plane[1]), &e(plane[2])) == Sign::Zero
+    orient3d_explicit(point, plane[0], plane[1], plane[2]) == Sign::Zero
 }
 
 fn positive_overlap(a: &Tri, b: &Tri) -> bool {

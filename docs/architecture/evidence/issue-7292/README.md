@@ -318,8 +318,13 @@ whole-production revert removes new Rust APIs and cannot compile the changed
 tests. The harness reverse-applies this forward fix to restore the exact
 pre-fix SourceAxes registration/lookup behavior while retaining modules, types
 and every test. The existing caller regression fails behaviorally before the
-fix and passes on `80bc`. All changed tests still execute on both sides, with
-unchanged runner selection, timeout, classification and restoration checks.
-The future hosted aggregate verdict is pending; this one seam witness does not
-establish exhaustive mutation coverage of the entire change. Whole-change
+fix and passes on `80bc`. At `b858a01`, hosted CI completed all 34 derived
+runnable plans on both sides ([CI run](https://github.com/LTplus-AG/ifc-lite/actions/runs/38983590104)).
+There were 300/300 baseline passes, and the reverted
+side had 299 passes and the expected signed-zero failure. Selection, timeout,
+classification and restoration checks were unchanged; one helper collected no
+tests and six golden capability gaps were disclosed. The retained JSON log
+prefix is truncated, so it is not a complete machine ledger. The human verdict,
+phase counts and successful source restoration are retained. This seam witness
+does not establish exhaustive mutation coverage of the entire change. Whole-change
 reversion resumes once the module is on main.

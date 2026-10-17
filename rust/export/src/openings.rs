@@ -18,10 +18,11 @@ use crate::geom::{
     OPENING_WALL_EDGE_MARGIN_M, OPENING_WALL_MAX_DISTANCE_M,
 };
 
-fn sub(a: [f64; 3], b: [f64; 3]) -> [f64; 3] { [a[0] - b[0], a[1] - b[1], a[2] - b[2]] }
+use ifc_lite_geometry::math::v3::{normalize, sub};
+
+/// Unit vector, or zero for a zero or non-finite one.
 fn norm(a: [f64; 3]) -> [f64; 3] {
-    let l = (a[0] * a[0] + a[1] * a[1] + a[2] * a[2]).sqrt();
-    if l > 0.0 { [a[0] / l, a[1] / l, a[2] / l] } else { [0.0, 0.0, 0.0] }
+    normalize(a, 0.0).unwrap_or([0.0; 3])
 }
 
 /// All corner points of an occurrence's profile prisms (base + extruded), Z-up, rebased.

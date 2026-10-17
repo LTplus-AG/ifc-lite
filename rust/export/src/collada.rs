@@ -23,12 +23,7 @@ use std::collections::HashMap;
 use crate::collada_document::write_dae;
 use crate::color_space::material_key as color_key;
 use crate::error::ExportError;
-
-/// Convert a Y-up vector back to the IFC-native Z-up frame: `(x, y, z) -> (x, -z, y)`.
-#[inline]
-fn to_zup(x: f64, y: f64, z: f64) -> [f64; 3] {
-    [x, -z, y]
-}
+use ifc_lite_geometry::math::frame::yup_to_zup;
 
 /// Vertex dedup key: position quantised to 0.1 mm + normal to ~1e-3 (the emitted
 /// precision), so vertices that serialise identically collapse to one. Quantises in
@@ -165,15 +160,15 @@ pub fn try_export_collada_from_meshes(
         let mut l2g = vec![0u32; vc];
         for vi in 0..vc {
             let p = &pslice[vi * 3..vi * 3 + 3];
-            let zp = to_zup(
+            let zp = yup_to_zup([
                 p[0] as f64 + origin[0],
                 p[1] as f64 + origin[1],
                 p[2] as f64 + origin[2],
-            );
+            ]);
             // Normals are unit-scale direction vectors; f32 carries them losslessly.
             let zn = if has_normals {
                 let nv = &nslice[vi * 3..vi * 3 + 3];
-                let z = to_zup(nv[0] as f64, nv[1] as f64, nv[2] as f64);
+                let z = yup_to_zup([nv[0] as f64, nv[1] as f64, nv[2] as f64]);
                 [z[0] as f32, z[1] as f32, z[2] as f32]
             } else {
                 [0.0, 0.0, 1.0]

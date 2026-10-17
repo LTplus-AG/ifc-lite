@@ -7,7 +7,7 @@
 //! `module_size_ratchet` budget; `_tests.rs` files are exempt from that
 //! ratchet (see `module_size_ratchet.rs`'s `is_exempt`).
 
-use crate::simplify_math::invert_affine_row_major;
+use ifc_lite_geometry::math::mat4::affine_inverse;
 use ifc_lite_geometry::math::frame::{
     conjugate_yup_to_zup, zup_to_yup, YUP_TO_ZUP, ZUP_TO_YUP,
 };
@@ -212,10 +212,10 @@ fn conjugate_yup_to_zup_recovers_a_non_identity_matrix() {
 }
 
 #[test]
-fn invert_affine_row_major_inverts_a_rotated_placement() {
+fn affine_inverse_inverts_a_rotated_placement() {
     // Every existing `local_to_world` fixture in this file uses an identity
     // (diagonal) linear block, so the cofactor cross terms in
-    // `invert_affine_row_major`'s determinant (e.g. `a[3] * a[7] - a[4] *
+    // `affine_inverse`'s determinant (e.g. `a[3] * a[7] - a[4] *
     // a[6]`) are always `0 * 0`, and a sign flip there is invisible —
     // worse, even a pure axis-aligned 90-degree rotation keeps one row a
     // unit vector and re-zeroes the same cross term. Use a fully generic
@@ -230,7 +230,7 @@ fn invert_affine_row_major_inverts_a_rotated_placement() {
         2.0, 3.0, 6.0, 9.0,
         0.0, 0.0, 0.0, 1.0,
     ];
-    let inv = invert_affine_row_major(&m).expect("rotation matrix is non-singular");
+    let inv = affine_inverse(&m).expect("rotation matrix is non-singular");
     let round_trip = matmul_row_major(&m, &inv);
     #[rustfmt::skip]
     let identity: [f64; 16] = [
@@ -406,4 +406,18 @@ fn assert_outward_faces(positions: &[f32], normals: &[f32], indices: &[u32]) {
         checked += 1;
     }
     assert!(checked >= 12, "non-vacuous closed-shell orientation witness");
+}
+
+#[test]
+fn issue_7772_x2_det_between_1e24_and_1e18_is_singular() {
+    // D22: one affine-inverse threshold (1e-18) in export and processing.
+    // The demesher used 1e-24, so a placement with det 1e-21 was inverted.
+    #[rustfmt::skip]
+    let m: [f64; 16] = [
+        1e-7, 0.0, 0.0, 0.0,
+        0.0, 1e-7, 0.0, 0.0,
+        0.0, 0.0, 1e-7, 0.0,
+        0.0, 0.0, 0.0, 1.0,
+    ];
+    assert!(affine_inverse(&m).is_none());
 }

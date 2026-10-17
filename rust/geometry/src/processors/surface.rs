@@ -85,8 +85,13 @@ impl GeometryProcessor for SurfaceOfLinearExtrusionProcessor {
             return Ok(Mesh::new());
         }
 
-        // Extrude the curve to create a surface (quad strip)
-        let extrusion = direction.normalize() * depth;
+        // Extrude the curve to create a surface (quad strip). A zero
+        // ExtrudedDirection (`IFCDIRECTION((0.,0.,0.))`) has no unit vector:
+        // `normalize` divided 0/0 into NaN positions (#7678, PROC-S23), so it
+        // is refused like any other unusable attribute.
+        let extrusion = direction.try_normalize(0.0).ok_or_else(|| {
+            Error::geometry("SurfaceOfLinearExtrusion ExtrudedDirection has zero length".to_string())
+        })? * depth;
 
         let mut positions = Vec::with_capacity(curve_points.len() * 2 * 3);
         let mut indices = Vec::with_capacity((curve_points.len() - 1) * 6);

@@ -107,7 +107,7 @@ fn conforming_disjoint_group_does_not_repeat_single_subtractions_6516() {
         assert_eq!(counts.batch_conforming_misses, 1);
         assert_eq!(counts.single_subtract_calls, 0, "proven miss must not repeat work");
     }
-    assert!(super::super::prism_cut::closure_checks::closed_enough_to_emit(&result));
+    assert!(crate::mesh_check::closed_enough_to_emit(&result));
     assert!((super::super::geom::mesh_signed_volume(&result).abs() - 1.0 / 6.0).abs() < 1e-8,
         "consolidating the miss preserves the tetrahedron's solid");
     assert!(super::super::geom::point_inside_mesh(&result, Point3::new(0.1, 0.1, 0.1)));
@@ -118,7 +118,7 @@ fn conforming_disjoint_group_does_not_repeat_single_subtractions_6516() {
 fn retained_group_retessellation_preserves_a_later_real_cut_6516() {
     use crate::csg::{ClippingProcessor, GroupCut};
     use super::super::geom::{mesh_signed_volume, point_inside_mesh};
-    use super::super::prism_cut::closure_checks::{closed_enough_to_emit, edge_multiplicity_defects};
+    use crate::mesh_check::{closed_enough_to_emit, edge_multiplicity_defects};
     // One subdivision permits consolidation under the router's existing
     // quarter-triangle retention floor. Deeper simplification keeps fallback.
     let host = tetra_host().subdivided(1);

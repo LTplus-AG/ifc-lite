@@ -402,3 +402,54 @@ fn plus_is_a_legal_sign_on_integer_and_real() {
     let (_, _, args) = parse_entity("#2=IFCINTEGER(+7);").expect("a '+'-signed INTEGER too");
     assert_eq!(args, vec![Token::Integer(7)]);
 }
+
+/// #7678 (S6a): the nom tokenizer applies the same admission rule as
+/// `parse_step_numeric`. An overflowing REAL no longer decodes to an infinity:
+/// it becomes a typed `UnrepresentableReal` carrying its raw text, so the
+/// decoder can refuse it for geometry and keep it for the data model. The
+/// record itself still tokenizes; an overflowing INTEGER still does not.
+#[test]
+fn an_overflowing_real_is_a_typed_token_carrying_its_raw_text() {
+    for (record, raw) in [
+        ("#1=IFCCARTESIANPOINT((1.E400,0.,0.));", &b"1.E400"[..]),
+        ("#1=IFCCARTESIANPOINT((0.,-1.0E400,0.));", b"-1.0E400"),
+        ("#1=IFCPROPERTYSINGLEVALUE('Eastings',$,IFCLENGTHMEASURE(1.E309),$);", b"1.E309"),
+        ("#1=IFCEXTRUDEDAREASOLID(#2,#3,#4,9.E999);", b"9.E999"),
+    ] {
+        let (_, _, args) = parse_entity(record).unwrap_or_else(|e| panic!("{record}: {e}"));
+        fn find<'a>(tokens: &'a [Token<'a>]) -> Option<&'a [u8]> {
+            tokens.iter().find_map(|t| match t {
+                Token::UnrepresentableReal(raw) => Some(*raw),
+                Token::List(items) | Token::TypedValue(_, items) => find(items),
+                _ => None,
+            })
+        }
+        assert_eq!(find(&args), Some(raw), "{record}");
+        assert!(
+            !format!("{args:?}").contains("inf"),
+            "{record}: no Float(inf) token may remain: {args:?}"
+        );
+    }
+    assert_eq!(float(b"1.E400"), Ok((&b""[..], Token::UnrepresentableReal(b"1.E400"))));
+    // The pre-existing precedent: an INTEGER lexical_core cannot hold.
+    assert!(parse_entity("#1=IFCINTEGERCOUNTRATEMEASURE(99999999999999999999);").is_err());
+}
+
+/// The admission rule refuses only overflow: `-0.` decodes to `-0.0` with its
+/// sign bit, an underflowing literal to zero, and `f64::MAX` to itself.
+#[test]
+fn negative_zero_underflow_and_max_reals_still_decode() {
+    let (_, _, args) = parse_entity("#1=IFCCARTESIANPOINT((-0.,1.E-400,1.7976931348623157E308));")
+        .expect("finite reals decode");
+    let Token::List(coords) = &args[0] else { panic!("{args:?}") };
+    let values: Vec<f64> = coords
+        .iter()
+        .map(|t| match t {
+            Token::Float(f) => *f,
+            other => panic!("{other:?}"),
+        })
+        .collect();
+    assert!(values[0] == 0.0 && values[0].is_sign_negative(), "{values:?}");
+    assert_eq!(values[1], 0.0);
+    assert_eq!(values[2], f64::MAX);
+}

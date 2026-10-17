@@ -177,7 +177,10 @@ pub fn split_mesh_by_zones_js(
         .chunks_exact(3)
         .filter_map(|c| {
             let vertex = |i: u32| -> Option<[f64; 3]> {
-                let b = (i as usize) * 3;
+                // Checked: `usize` is 32 bits on wasm32, so `i * 3` wrapped
+                // for an index past 2^32 / 3 and read a wrong in-range vertex
+                // instead of dropping the triangle (#7678, EDGE-WASM-32).
+                let b = (i as usize).checked_mul(3)?;
                 let p = [
                     *positions.get(b)?,
                     *positions.get(b + 1)?,

@@ -528,6 +528,28 @@ impl Mesh {
 
 Related mesh types: `SubMesh`, `SubMeshCollection`, `InstanceMeta`.
 
+#### mesh_check (test-support)
+
+`ifc_lite_geometry::mesh_check` is the one home for closure, edge-pairing and
+signed-volume checks over triangle soups. It is `pub` only under the
+`test-support` feature (the shared test oracles delegate to it) and
+`pub(crate)` otherwise.
+
+```rust
+pub enum VertexKey { Bits, BitsZeroFolded, GridDiv(f64), GridMul(f64), Index }
+pub enum Degenerate { SkipTriangle, SkipEdge, Reject }
+impl EdgeLedger {
+    pub fn build(mesh: &Mesh, key: VertexKey, degenerate: Degenerate) -> Self;
+    pub fn directed_closed(&self) -> bool;
+    pub fn strictly_paired(&self) -> bool;
+    pub fn undirected_defects(&self) -> usize;
+}
+/// The documented "watertight": 0.1 mm grid, collapsed triangles skipped,
+/// every edge used once each way, non-empty.
+pub fn is_watertight(mesh: &Mesh) -> bool;
+pub fn signed_volume(mesh: &Mesh) -> f64;
+```
+
 #### Profiles and extrusion
 
 ```rust

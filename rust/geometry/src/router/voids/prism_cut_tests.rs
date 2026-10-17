@@ -1042,7 +1042,7 @@ fn unreferenced_far_cut_vertex_cannot_inflate_weld_tolerance_4754() {
     );
 }
 
-// --- `directed_closed` (closure_checks.rs) ---
+// --- `directed_closed` (`mesh_check`) ---
 //
 // Unlike `dedup_cut_vertices`, this predicate has no hand-tuned numeric
 // boundary of its own — it is a fixed 0.1mm-grid edge-cancellation audit with

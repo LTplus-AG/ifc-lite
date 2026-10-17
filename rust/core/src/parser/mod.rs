@@ -40,6 +40,7 @@ pub use lexical::skip_step_comment;
 pub use lexical::{is_step_space, skip_step_trivia};
 // The one STEP numeric-literal grammar for every raw-byte reader (#5266).
 pub(crate) use numeric_literal::parse_step_numeric;
+pub use numeric_literal::parse_step_real;
 pub use malformed_records::report_malformed_records;
 pub use oversized_ids::{oversized_id_report, report_oversized_ids, set_report_sink};
 pub use scanner::{entity_count, nth_attribute_is_present, EntityScanner, StepListItems};

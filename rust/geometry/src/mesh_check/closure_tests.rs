@@ -295,3 +295,18 @@ fn a_slab_thinner_than_the_snap_cell_carries_no_defect() {
         "a 0.05 mm-thick closed slab is manifold, got {d:?}"
     );
 }
+
+#[test]
+fn is_watertight_is_the_strict_grid_definition() {
+    let tet = tetrahedron();
+    assert!(super::is_watertight(&tet));
+    // One face short: open.
+    let mut open = tet.clone();
+    open.indices.truncate(9);
+    assert!(!super::is_watertight(&open));
+    // One face flipped: two edges run the same way, so not strictly paired.
+    let mut flipped = tet;
+    flipped.indices.swap(1, 2);
+    assert!(!super::is_watertight(&flipped));
+    assert!(!super::is_watertight(&Mesh::new()), "empty is not watertight");
+}

@@ -173,10 +173,40 @@ pub(super) fn read_loop_points_by_id(
 
     let mut points = Vec::with_capacity(point_ids.len());
     for point_id in point_ids {
-        let (x, y, z) = decoder.get_cartesian_point_fast(point_id)?;
+        let (x, y, z) = match decoder.get_cartesian_point_fast(point_id) {
+            Some(point) => point,
+            None => refused_point_as_before(point_id, decoder)?,
+        };
         points.push(Point3::new(x, y, z));
     }
     Some(points)
+}
+
+/// D14 seam (#7678): a loop point refused by input admission (`1.E400`) is
+/// read losslessly, as the signed infinity it decoded to before, instead of
+/// failing the whole loop.
+///
+/// Both callers (`advanced_face::bounds`, `brep::surface_model`) SKIP a loop
+/// they cannot read, so a refused hole loop would be dropped and the face
+/// drawn filled in, where the infinity made its triangulation fail the face.
+/// Until those readers fail the face on an unreadable loop (D14, the B6c and
+/// B6b lanes), this keeps main's behaviour for exactly this case; the refusal
+/// is still counted. Any other unreadable point stays `None`, as before.
+fn refused_point_as_before(point_id: u32, decoder: &mut EntityDecoder) -> Option<(f64, f64, f64)> {
+    let point = decoder.decode_by_id_lossless(point_id).ok()?;
+    let coords = point.get(0)?.as_list()?;
+    let x = coords.first()?.as_float()?;
+    let y = coords.get(1)?.as_float()?;
+    let z = coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0);
+    // Only an overflowing literal reads as non-finite here; a point the fast
+    // path refused for any other reason stays unreadable, as before.
+    if [x, y, z].iter().all(|v| v.is_finite()) {
+        return None;
+    }
+    if decoder.strict_reals() {
+        let _counted = decoder.refuse_record(point_id);
+    }
+    Some((x, y, z))
 }
 
 /// Get transform from IfcAxis2Placement3D by entity ID.

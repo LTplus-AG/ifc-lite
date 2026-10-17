@@ -11,7 +11,7 @@
 import { IfcTypeEnumFromString, isSpatialStructureType } from '@ifc-lite/data';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
-import { ownedAggregationRelationships } from '@/utils/aggregation-ownership';
+import { ownedAggregationRelationships } from '@/utils/entity-ownership';
 import { useViewerStore, type FederatedModel } from '@/store';
 import {
   collectAggregatedDescendants,

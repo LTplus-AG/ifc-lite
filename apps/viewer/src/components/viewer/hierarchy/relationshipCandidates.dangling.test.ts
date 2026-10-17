@@ -1,0 +1,241 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import '@/test/setup-dom.js';
+import assert from 'node:assert/strict';
+import { afterEach, beforeEach, test } from 'node:test';
+import { RelationshipType } from '@ifc-lite/data';
+import { MutablePropertyView } from '@ifc-lite/mutations';
+import { buildMaterialUsageIndex, IfcParser } from '@ifc-lite/parser';
+import { federationRegistry } from '@ifc-lite/renderer';
+import { getMaxExpressId } from '@/hooks/ingest/viewerModelIngest.js';
+import { useViewerStore, type FederatedModel } from '@/store';
+import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
+import {
+  buildIfcTypeTree, buildMaterialTree, buildTreeData,
+  buildUnifiedStoreys, getUnifiedStoreyElements,
+} from './treeDataBuilder.js';
+import type { TreeNode } from './types.js';
+
+// #7890: relationship candidates are file supplied, whereas federation
+// publication requires an actual source or live authored entity. Wall #8 is
+// real but not yet meshed; #2035 has no row in any of these relationships.
+const IFC = `ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('0GUID000000000000000001',$,'Project',$,$,$,$,$,$);
+#2=IFCSITE('0GUID000000000000000002',$,'Site',$,$,$,$,$,.ELEMENT.,$,$,$,$,$);
+#3=IFCBUILDING('0GUID000000000000000003',$,'Building',$,$,$,$,$,.ELEMENT.,$,$,$);
+#4=IFCBUILDINGSTOREY('0GUID000000000000000004',$,'Storey',$,$,$,$,$,.ELEMENT.,0.);
+#5=IFCWALL('0GUID000000000000000005',$,'Rendered wall',$,$,$,$,$,$);
+#6=IFCWALLTYPE('0GUID000000000000000006',$,'Type',$,$,$,$,$,$,.NOTDEFINED.);
+#7=IFCMATERIAL('Concrete',$,$);
+#8=IFCWALL('0GUID000000000000000008',$,'Later wall',$,$,$,$,$,$);
+#10=IFCRELAGGREGATES('0GUID000000000000000010',$,$,$,#1,(#2));
+#11=IFCRELAGGREGATES('0GUID000000000000000011',$,$,$,#2,(#3));
+#12=IFCRELAGGREGATES('0GUID000000000000000012',$,$,$,#3,(#4));
+#13=IFCRELCONTAINEDINSPATIALSTRUCTURE('0GUID000000000000000013',$,$,$,(#5,#8,#2035),#4);
+#14=IFCRELDEFINESBYTYPE('0GUID000000000000000014',$,$,$,(#5,#8,#2035),#6);
+#15=IFCRELASSOCIATESMATERIAL('0GUID000000000000000015',$,$,$,(#5,#8,#2035),#7);
+ENDSEC;
+END-ISO-10303-21;`;
+
+const expanded = { has: () => true };
+
+function resetModels(): void {
+  useViewerStore.getState().clearAllModels();
+  useViewerStore.setState({ mutationViews: new Map(), storeEditors: new Map() });
+}
+
+beforeEach(resetModels);
+afterEach(resetModels);
+
+async function installModels(count: number, complete = false): Promise<Map<string, FederatedModel>> {
+  const entries: FederatedModel[] = [];
+  for (let index = 0; index < count; index++) {
+    const store = await new IfcParser().parseColumnar(
+      new TextEncoder().encode(IFC).buffer, { disableWorkerScan: true },
+    );
+    assert.deepEqual(store.relationships.getRelated(6, RelationshipType.DefinesByType, 'forward'),
+      [5, 8, 2035], 'the real parser preserves all type relationship candidates');
+    assert.deepEqual(store.onDemandMaterialMap?.get(2035), [7],
+      'the raw material association preserves the missing endpoint');
+    assert.deepEqual(buildMaterialUsageIndex(store).get(7)?.entries.map(entry => entry.entityId),
+      [5, 8, 2035], 'raw usage is not evidence that an entity exists');
+    assert.deepEqual(store.spatialHierarchy?.byStorey.get(4), [5, 8, 2035],
+      'the parsed spatial lookup retains the malformed relationship');
+    assert.equal(store.entityIndex.byId.has(2035), false);
+    const id = `dangling-candidates-${index}`;
+    const maxExpressId = getMaxExpressId(store, []);
+    const idOffset = useViewerStore.getState().registerModelOffset(id, maxExpressId);
+    entries.push({
+      ...fixtureModel(id), ifcDataStore: store, idOffset, maxExpressId,
+      loadState: complete ? 'complete' : 'streaming-geometry',
+    });
+  }
+  const state = fixtureModels(...entries);
+  useViewerStore.setState(state);
+  return state.models;
+}
+
+function globalIds(models: Map<string, FederatedModel>, ids: number[]): number[] {
+  return [...models.keys()].flatMap(modelId =>
+    ids.map(id => useViewerStore.getState().toGlobalId(modelId, id)));
+}
+
+function assertMissingUnpublished(models: Map<string, FederatedModel>, nodes: TreeNode[] = []): void {
+  assert.equal(nodes.some(node => node.expressIds.includes(2035)), false,
+    'no visible row or action list admits the missing relationship endpoint');
+  for (const modelId of models.keys()) {
+    assert.throws(() => federationRegistry.toGlobalId(modelId, 2035),
+      /Local ID 2035 is not published/,
+      'tree construction cannot grant federation ownership to a candidate');
+  }
+}
+
+function assertTypedMembers(
+  models: Map<string, FederatedModel>, nodes: TreeNode[], ids: number[],
+): void {
+  const group = nodes.find(node => node.id === 'typeclass-IfcWallType');
+  assert.ok(group);
+  assert.equal(group.elementCount, models.size * ids.length);
+  assert.deepEqual(group.globalIds, globalIds(models, ids),
+    'the class action keeps the actual owning model when local IDs overlap');
+  for (const modelId of models.keys()) {
+    const row = nodes.find(node => node.id === `ifctype-${modelId}-6`);
+    assert.ok(row);
+    assert.deepEqual(row.expressIds, ids);
+    assert.deepEqual(row.globalIds, ids.map(id => useViewerStore.getState().toGlobalId(modelId, id)));
+    const children = nodes.filter(node => node.modelId === modelId
+      && node.type === 'element' && node.depth === 2);
+    assert.deepEqual(children.flatMap(node => node.expressIds).sort((a, b) => a - b), ids,
+      'the expanded type row exposes exactly its live admitted occurrences');
+  }
+  assertMissingUnpublished(models, nodes);
+}
+
+for (const count of [1, 2]) {
+  for (const complete of [false, true]) {
+    const phase = complete ? 'complete' : 'streaming';
+    test(`#7890 By Type rejects missing candidates with ${count} ${phase} model(s)`, async () => {
+      const models = await installModels(count, complete);
+      const nodes = buildIfcTypeTree(models, null, expanded, count > 1,
+        new Set(globalIds(models, [5])), complete ? new Set(models.keys()) : new Set());
+      assertTypedMembers(models, nodes, complete ? [5] : [5, 8]);
+      if (complete) {
+        const other = nodes.find(node => node.id === 'typeclass-other');
+        assert.ok(other);
+        assert.deepEqual(other.globalIds, globalIds(models, [8]),
+          'the real unmeshed occurrence remains browsable in Other after completion');
+      }
+      for (const model of models.values()) {
+        assert.deepEqual(model.ifcDataStore?.relationships
+          .getRelated(6, RelationshipType.DefinesByType, 'forward'), [5, 8, 2035],
+        'consumer filtering leaves the raw relationship evidence intact');
+      }
+    });
+
+    test(`#7890 materials reject missing candidates with ${count} ${phase} model(s)`, async () => {
+      const models = await installModels(count, complete);
+      const nodes = buildMaterialTree(models, null, expanded, count > 1,
+        new Set(globalIds(models, [5])), complete ? new Set(models.keys()) : new Set());
+      assert.equal(nodes.length, count);
+      const expected = complete ? [5] : [5, 8];
+      for (const modelId of models.keys()) {
+        const material = nodes.find(node => node.modelId === modelId);
+        assert.ok(material);
+        assert.equal(material.name, 'Concrete');
+        assert.equal(material.entityExpressId, 7);
+        assert.deepEqual(material.expressIds, expected);
+        assert.deepEqual(material.globalIds,
+          expected.map(id => useViewerStore.getState().toGlobalId(modelId, id)));
+        assert.equal(material.elementCount, expected.length);
+        const store = models.get(modelId)?.ifcDataStore;
+        assert.ok(store);
+        assert.deepEqual(store.onDemandMaterialMap?.get(2035), [7]);
+        assert.deepEqual(buildMaterialUsageIndex(store).get(7)?.entries.map(entry => entry.entityId),
+          [5, 8, 2035], 'building the action list preserves raw material usage evidence');
+      }
+      assertMissingUnpublished(models, nodes);
+    });
+  }
+
+  test(`#7890 spatial rows retain real unmeshed members with ${count} model(s)`, async () => {
+    const models = await installModels(count);
+    const geometry = new Set(globalIds(models, [5]));
+    const unified = buildUnifiedStoreys(models, 'elevation-desc', geometry, new Set());
+    const nodes = buildTreeData(models, null, expanded, count > 1, unified,
+      'elevation-desc', geometry, new Set());
+    for (const modelId of models.keys()) {
+      const rows = nodes.filter(node => node.type === 'element' && node.modelId === modelId);
+      assert.deepEqual([...new Set(rows.flatMap(node => node.expressIds))].sort((a, b) => a - b), [5, 8],
+        'expanded containment includes the real late wall without admitting a missing row');
+      for (const row of rows) {
+        assert.deepEqual(row.globalIds,
+          row.expressIds.map(id => useViewerStore.getState().toGlobalId(modelId, id)));
+      }
+      assert.deepEqual(models.get(modelId)?.ifcDataStore?.spatialHierarchy?.byStorey.get(4),
+        [5, 8, 2035], 'the spatial consumer does not rewrite raw containment evidence');
+    }
+    if (count > 1) {
+      assert.equal(unified.length, 1);
+      assert.equal(unified[0].totalElements, count * 2);
+      assert.deepEqual(unified[0].storeys.map(storey => storey.elements), [[5, 8], [5, 8]]);
+      assert.deepEqual(getUnifiedStoreyElements(unified[0], models), globalIds(models, [5, 8]),
+        'unified hide/isolate actions preserve the unmeshed wall in each model');
+    }
+    assertMissingUnpublished(models, nodes);
+  });
+
+  test(`#7890 By Type admits live queued endpoints with ${count} model overlay(s)`, async () => {
+    const models = await installModels(count);
+    const views = new Map<string, MutablePropertyView>();
+    for (const modelId of models.keys()) {
+      const view = new MutablePropertyView(null, modelId);
+      view.setExpressIdWatermark(15);
+      const wall = view.createEntity('IfcWall', ['0GUID000000000000000016', null, 'Authored wall']);
+      assert.equal(wall.expressId, 16);
+      const relation = view.createEntity('IfcRelDefinesByType',
+        ['0GUID000000000000000017', null, null, null, [16, 2035], 6]);
+      assert.equal(relation.expressId, 17);
+      view.deleteEntity(5);
+      views.set(modelId, view);
+    }
+    // The same real views back canonical publication and tree admission.
+    useViewerStore.setState({ mutationViews: views });
+    const nodes = buildIfcTypeTree(models, null, expanded, count > 1,
+      new Set(), new Set(), modelId => views.get(modelId));
+    assertTypedMembers(models, nodes, [8, 16]);
+    assert.equal(nodes.some(node => node.expressIds.includes(5)), false,
+      'a source occurrence tombstone removes its original type binding');
+    for (const modelId of models.keys()) {
+      assert.ok(nodes.some(node => node.type === 'element' && node.modelId === modelId
+        && node.name === 'Authored wall' && node.expressIds[0] === 16));
+    }
+  });
+}
+
+test('#7890 unified byStorey fallback excludes missing candidates without a project tree', async () => {
+  const models = await installModels(2);
+  for (const [modelId, model] of models) {
+    assert.ok(model.ifcDataStore?.spatialHierarchy);
+    const hierarchy = { ...model.ifcDataStore.spatialHierarchy };
+    // Native/partial sources can supply lookup maps before the project tree.
+    // Keep the actual parser's maps and entity rows while exercising that shape.
+    Object.defineProperty(hierarchy, 'project', { value: undefined });
+    models.set(modelId, { ...model, ifcDataStore: { ...model.ifcDataStore, spatialHierarchy: hierarchy } });
+  }
+  useViewerStore.setState({ models });
+  const unified = buildUnifiedStoreys(models);
+  assert.equal(unified.length, 1);
+  assert.equal(unified[0].totalElements, 4);
+  assert.deepEqual(unified[0].storeys.map(storey => storey.elements), [[5, 8], [5, 8]]);
+  assert.deepEqual(getUnifiedStoreyElements(unified[0], models), globalIds(models, [5, 8]));
+  for (const model of models.values()) {
+    assert.deepEqual(model.ifcDataStore?.spatialHierarchy?.byStorey.get(4), [5, 8, 2035]);
+  }
+  assertMissingUnpublished(models);
+});

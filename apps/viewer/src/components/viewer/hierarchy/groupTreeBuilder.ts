@@ -5,7 +5,7 @@
 import { RelationshipType } from '@ifc-lite/data';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
-import { ownedAggregationRelationships } from '@/utils/aggregation-ownership';
+import { entityOwnership, ownedAggregationRelationships } from '@/utils/entity-ownership';
 import type { FederatedModel } from '@/store';
 import { effectiveGroupAssignments, effectiveGroupIds, effectiveGroupMembers, effectiveGroupName } from './effectiveGroupEntities.js';
 import { GROUP_ENTITY_TYPES, groupMatchesSubFilter, type GroupSubFilter } from './groupEntityTypes.js';
@@ -40,6 +40,7 @@ export function resolveMemberGeometry(
   geometricIds: Set<number>,
   view?: MutablePropertyView | null,
 ): ResolvedMemberGeometry[] {
+  if (!entityOwnership(dataStore, view)(memberExpressId)) return [];
   const ownGlobal = toGlobal(memberExpressId);
   if (geometricIds.has(ownGlobal)) {
     return [{ expressId: memberExpressId, globalId: ownGlobal }];

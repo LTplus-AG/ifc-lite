@@ -15,7 +15,7 @@ import { emitElementSubtree } from './elementSubtree.js';
 import { makeAssemblyGeometry } from './productTree.js';
 import { resolveMemberGeometry } from './groupTreeBuilder.js';
 import { buildTypeTree } from './treeDataBuilder.js';
-import { ownedAggregationRelationships } from '@/utils/aggregation-ownership.js';
+import { ownedAggregationRelationships } from '@/utils/entity-ownership.js';
 import type { TreeNode } from './types.js';
 
 // #7890: a real parsed relationship may name a missing entity. Its valid,

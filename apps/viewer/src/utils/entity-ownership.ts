@@ -24,25 +24,28 @@ function tableOwns(store: IfcDataStore, id: number): boolean {
   return domain.ids.has(id);
 }
 
-/**
- * File-authored decomposition edges do not establish entity ownership.
- * Keep missing/deleted endpoints out of renderer-ID conversion, while
- * retaining real entities whose geometry has not streamed in yet (#7890).
- */
+/** File-authored references do not establish entity ownership (#7890). */
+export function entityOwnership(
+  store: IfcDataStore | null | undefined,
+  view?: Pick<MutablePropertyView, 'getNewEntity' | 'isDeleted'> | null,
+): (id: number) => boolean {
+  return (id: number): boolean => {
+    if (!store || !Number.isSafeInteger(id) || id <= 0 || view?.isDeleted(id)) return false;
+    if (view?.getNewEntity(id)) return true;
+    // @raw-entity-enumeration-ok source-index availability check before the shared membership primitive; table-backed stores may omit the byte index
+    if (store.entityIndex?.byId && storeHasSourceEntity(store, id)) return true;
+    return tableOwns(store, id);
+  };
+}
+
+/** Retain live unmeshed descendants while excluding missing/deleted endpoints. */
 export function ownedAggregationRelationships(
   store: IfcDataStore | null | undefined,
   view?: Pick<MutablePropertyView, 'getNewEntity' | 'isDeleted'> | null,
 ): AggregationRelationships | undefined {
   if (!store?.relationships) return undefined;
   const relationships = store.relationships;
-
-  const owns = (id: number): boolean => {
-    if (!Number.isSafeInteger(id) || id <= 0 || view?.isDeleted(id)) return false;
-    if (view?.getNewEntity(id)) return true;
-    // @raw-entity-enumeration-ok source-index availability check before the shared membership primitive; table-backed stores may omit the byte index
-    if (store.entityIndex?.byId && storeHasSourceEntity(store, id)) return true;
-    return tableOwns(store, id);
-  };
+  const owns = entityOwnership(store, view);
 
   return {
     getRelated(id, type, direction) {

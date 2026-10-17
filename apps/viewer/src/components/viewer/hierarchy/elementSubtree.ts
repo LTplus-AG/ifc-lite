@@ -16,7 +16,7 @@
  */
 
 import { getAggregatedChildren, collectAggregatedDescendants } from '@/utils/aggregation';
-import { ownedAggregationRelationships } from '@/utils/aggregation-ownership';
+import { entityOwnership, ownedAggregationRelationships } from '@/utils/entity-ownership';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { FederatedModel } from '@/store';
@@ -141,6 +141,7 @@ export function emitElementSubtree(
   sortMode: HierarchySortMode,
   noGeometry = false,
 ): void {
+  if (!entityOwnership(dataStore, view)(elementId)) return;
   const relationships = ownedAggregationRelationships(dataStore, view);
   const globalId = resolveTreeGlobalId(modelId, elementId, models);
   const entityType = elementRowType(dataStore, view, elementId);
@@ -234,7 +235,7 @@ export function emitElementsWithOtherBucket(
   hasShape: ((id: number) => boolean) | null,
   otherNodeId: string,
 ): void {
-  const ordered = orderElementIdsByName(elementIds as number[], dataStore, view, sortMode);
+  const ordered = orderElementIdsByName(elementIds.filter(entityOwnership(dataStore, view)), dataStore, view, sortMode);
 
   if (!hasShape) {
     for (const elementId of ordered) {

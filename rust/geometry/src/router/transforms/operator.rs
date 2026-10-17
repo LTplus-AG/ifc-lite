@@ -6,15 +6,17 @@
 //! `IfcMappedItem` MappingTarget operator, parsed into a 4x4.
 
 use crate::math::tol;
+#[cfg(test)]
 use super::super::GeometryRouter;
 use crate::{Point3, Result, Vector3};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use nalgebra::Matrix4;
 
+#[cfg(test)]
 impl GeometryRouter {
     /// Parse IfcCartesianTransformationOperator (2D or 3D)
     /// Used for MappedItem MappingTarget transformation
-    #[inline]
+    #[cfg(test)]
     pub(crate) fn parse_cartesian_transformation_operator(
         &self,
         entity: &DecodedEntity,

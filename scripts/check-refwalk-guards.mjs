@@ -203,7 +203,11 @@ const SCAN_ROOTS = [
 // non-`try` `sample_curve_polyline` wrapper: the walk is the same guarded
 // `sample_curve_polyline_guarded` self-recursion, one cycle member fewer.
 // Set to 32 to restore a margin of one.
-const CANDIDATE_FLOOR = 32;
+// Re-measured at 31 when C2-3 replaced the recursive mapped-item walks in
+// `router/{processing,mapped_item}.rs` with the iterative-by-policy
+// `RepresentationWalk` (depth cap, path-scoped set and work budget). Set to 30
+// to keep a margin of one.
+const CANDIDATE_FLOOR = 30;
 
 /**
  * Allowlist for candidates that are genuinely unguarded and must stay that

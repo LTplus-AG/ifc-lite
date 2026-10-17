@@ -157,7 +157,7 @@ impl WalkVisitor for MergeSink<'_> {
         let source_id = level.map.id;
         // MappingTarget (attr 1) composed over the map's MappingOrigin (attr 0),
         // which applies innermost. #1985
-        let mapping_transform = match router.mapped_item_transform(&level.item, &level.map, decoder) {
+        let mapping_transform = match level.local_transform(decoder) {
             Ok(transform) => transform,
             Err(error) => {
                 self.level_failed(&level.item, error, at.path.is_empty());

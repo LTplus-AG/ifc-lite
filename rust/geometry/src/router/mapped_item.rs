@@ -10,7 +10,7 @@
 use super::frame_parts::{single_frame_source, SourceParts};
 use super::item::ItemFrame;
 use super::mapped_sink::MergeSink;
-use crate::representation::{NestedMaps, RepresentationWalk, Select};
+use crate::representation::{NestedMaps, RepresentationWalk, Select, MAX_WALK_LEVELS};
 use super::GeometryRouter;
 use crate::{Mesh, Result};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
@@ -48,7 +48,7 @@ impl GeometryRouter {
         let mut sink = MergeSink::new(self);
         let walk = RepresentationWalk {
             select: Select::Any,
-            nested: NestedMaps::Expand { max_depth: MAX_MAPPED_ITEM_DEPTH },
+            nested: NestedMaps::Expand { max_depth: MAX_MAPPED_ITEM_DEPTH, max_levels: MAX_WALK_LEVELS },
         };
         walk.mapped_item(item, decoder, &mut sink);
         match sink.error {

@@ -13,7 +13,7 @@ use super::GeometryRouter;
 use super::diagnostics::UnsupportedSourceScope;
 use crate::math::mat4;
 use crate::representation::{
-    Flow, MappedLevel, NestedMaps, RepresentationWalk, Select, WalkCtx, WalkRefusal, WalkVisitor,
+    Flow, MappedLevel, NestedMaps, RepresentationWalk, Select, MAX_WALK_LEVELS, WalkCtx, WalkRefusal, WalkVisitor,
 };
 use crate::{Error, InstanceMeta, Mesh, Result, SubMesh, SubMeshCollection};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType, MAX_MAPPED_ITEM_DEPTH};
@@ -48,7 +48,7 @@ impl GeometryRouter {
         };
         let walk = RepresentationWalk {
             select: Select::Any,
-            nested: NestedMaps::Expand { max_depth: MAX_MAPPED_ITEM_DEPTH },
+            nested: NestedMaps::Expand { max_depth: MAX_MAPPED_ITEM_DEPTH, max_levels: MAX_WALK_LEVELS },
         };
         walk.mapped_item(item, decoder, &mut sink);
         sink.error.map_or(Ok(()), Err)
@@ -149,7 +149,7 @@ impl WalkVisitor for SubMeshSink<'_> {
         let router = self.router;
         let top = at.path.is_empty();
         // MappingTarget · MappingOrigin (#1985: the origin used to be dropped).
-        let mapping_transform = match router.mapped_item_transform(&level.item, &level.map, decoder) {
+        let mapping_transform = match level.local_transform(decoder) {
             Ok(transform) => transform,
             Err(error) => {
                 self.level_failed(&level.item, error, top);

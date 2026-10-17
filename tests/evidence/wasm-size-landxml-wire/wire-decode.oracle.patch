@@ -1,0 +1,13 @@
+diff --git a/rust/landxml/src/stream/record_wire.rs b/rust/landxml/src/stream/record_wire.rs
+index 22d8f4bd0d..6171bb1625 100644
+--- a/rust/landxml/src/stream/record_wire.rs
++++ b/rust/landxml/src/stream/record_wire.rs
+@@ -35,7 +35,7 @@ macro_rules! wire_records {
+             ) -> Result<Self, serde_json::Error> {
+                 match name {
+                     $($name => serde_json::from_value(value).map(Self::$variant),)+
+-                    other => Err(serde::de::Error::unknown_variant(other, &[$($name),+])),
++                    other => Err(serde::de::Error::custom(other)),
+                 }
+             }
+         }

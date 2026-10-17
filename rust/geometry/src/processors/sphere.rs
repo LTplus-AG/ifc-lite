@@ -58,15 +58,12 @@ impl GeometryProcessor for SphereProcessor {
         let stacks = scale_segments(16, 4, 64, quality);
         let mut mesh = build_uv_sphere(radius, slices, stacks);
 
-        if let Some(pos_attr) = entity.get(0) {
-            if !pos_attr.is_null() {
-                if let Some(pos_entity) = decoder.resolve_ref(pos_attr)? {
-                    if pos_entity.ifc_type == IfcType::IfcAxis2Placement3D {
-                        let transform = parse_axis2_placement_3d(&pos_entity, decoder)?;
-                        apply_transform(&mut mesh, &transform);
-                    }
-                }
-            }
+        // A Position that is present must be an `IfcAxis2Placement3D` that
+        // reads: a record of another type used to be ignored, leaving the
+        // primitive at the origin (D30).
+        if let Some(pos_entity) = decoder.resolve_optional(entity, 0)? {
+            let transform = parse_axis2_placement_3d(&pos_entity, decoder)?;
+            apply_transform(&mut mesh, &transform);
         }
 
         Ok(mesh)

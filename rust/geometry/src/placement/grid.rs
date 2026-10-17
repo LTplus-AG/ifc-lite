@@ -156,8 +156,8 @@ fn grid_ref_direction_vector(
     let entity = decoder.resolve_ref(dir_attr).ok().flatten()?;
     let x = match entity.ifc_type {
         IfcType::IfcDirection => {
-            let d = crate::transform::parse_direction(&entity).ok()?;
-            Vector2::new(d.x, d.y)
+            let d = decoder.direction3(entity.id).ok()?;
+            Vector2::new(d[0], d[1])
         }
         IfcType::IfcVirtualGridIntersection => {
             let q = grid_intersection_point(&entity, decoder)?;

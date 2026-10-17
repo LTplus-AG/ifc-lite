@@ -98,8 +98,12 @@ pub struct Axis2Placement {
 
 impl Axis2Placement {
     /// Read the attribute layout of an `IfcAxis2Placement3D`: Location (0),
-    /// Axis (1), RefDirection (2). The caller selected the type.
+    /// Axis (1), RefDirection (2). Any other record type is refused and
+    /// counted: it would be read at the wrong attribute positions.
     pub fn read_3d(placement: &DecodedEntity, decoder: &mut EntityDecoder) -> PlacementResult<Self> {
+        if placement.ifc_type != IfcType::IfcAxis2Placement3D {
+            return Err(unsupported(decoder, placement.id, placement.ifc_type.clone()));
+        }
         Ok(Self {
             location: location(placement, decoder)?,
             axis: decoder.direction3_at(placement, 1)?,
@@ -110,8 +114,11 @@ impl Axis2Placement {
 
     /// Read the attribute layout of an `IfcAxis2Placement2D`: Location (0),
     /// RefDirection (1). The Axis is +Z, so [`Self::matrix`] is the XY frame
-    /// of [`build_axis2_matrix`]. The caller selected the type.
+    /// of [`build_axis2_matrix`]. Any other record type is refused and counted.
     pub fn read_2d(placement: &DecodedEntity, decoder: &mut EntityDecoder) -> PlacementResult<Self> {
+        if placement.ifc_type != IfcType::IfcAxis2Placement2D {
+            return Err(unsupported(decoder, placement.id, placement.ifc_type.clone()));
+        }
         Ok(Self {
             location: location(placement, decoder)?,
             axis: Some(Z),

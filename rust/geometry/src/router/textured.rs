@@ -175,21 +175,17 @@ impl GeometryRouter {
             self.merge_source_item(&item, decoder, &mut untextured, "representation-map");
         }
 
-        // attr 0: MappingOrigin (IfcAxis2Placement3D) — the only 3D transform;
-        // UVs are 2D and unaffected. Parse once, bake into every part.
-        let origin_transform: Option<nalgebra::Matrix4<f64>> = match rep_map.get(0) {
-            Some(origin_attr) if !origin_attr.is_null() => {
-                match decoder.resolve_ref(origin_attr)? {
-                Some(origin) if origin.ifc_type == IfcType::IfcAxis2Placement3D => {
-                    let mut t = self.parse_axis2_placement_3d(&origin, decoder)?;
-                    self.scale_transform(&mut t);
-                    Some(t)
-                }
-                _ => None,
-                }
-            }
-            _ => None,
-        };
+        // attr 0: MappingOrigin (an `IfcAxis2Placement`): the only 3D transform;
+        // UVs are 2D and unaffected. Read once, baked into every part, by the
+        // same reader the mapped-item path uses. A 2D origin is honoured and
+        // one that is not a placement is an error; both were silently
+        // dropped here (GEOM-2).
+        let origin_transform: Option<nalgebra::Matrix4<f64>> = self
+            .mapping_origin_frame(rep_map, decoder)?
+            .map(|mut t| {
+                self.scale_transform(&mut t);
+                t
+            });
 
         let mut out: Vec<(
             Mesh,

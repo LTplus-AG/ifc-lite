@@ -324,6 +324,23 @@ impl ClippingProcessor {
     /// `csg_topology_gate` feature (off by default; no downstream crate turns
     /// it on), rejects a torn result the same way `KernelOutputInvalid` does.
     pub fn subtract_mesh(&self, host_mesh: &Mesh, opening_mesh: &Mesh) -> GroupCut {
+        self.subtract_single(host_mesh, opening_mesh, true)
+    }
+
+    /// [`Self::subtract_mesh`] for the second operand of an `IfcBooleanResult`
+    /// DIFFERENCE rather than an opening: the same cut, validation, gates and
+    /// failure records, with the cutter welded onto the host as it was before
+    /// #6940. The guarded weld is for cutters the void router extends through
+    /// their host. With the guard on operands too, measured over the fixture
+    /// corpus (121 models), 21 elements in two models changed: 11 lost open
+    /// edges, 7 gained some and 3 kept their count. Twenty of them have no
+    /// openings, so the watertightness census does not see them. That is not
+    /// a fix, so operands keep the weld they had.
+    pub fn subtract_operand(&self, base_mesh: &Mesh, operand_mesh: &Mesh) -> GroupCut {
+        self.subtract_single(base_mesh, operand_mesh, false)
+    }
+
+    fn subtract_single(&self, host_mesh: &Mesh, opening_mesh: &Mesh, opening: bool) -> GroupCut {
         #[cfg(feature = "opening-perf-trace")]
         crate::opening_perf_trace::record(|c| c.single_subtract_calls = c.single_subtract_calls.saturating_add(1));
         record_csg_op(0, host_mesh.triangle_count(), opening_mesh.triangle_count());
@@ -353,7 +370,7 @@ impl ClippingProcessor {
         // seam-preserving consolidation is the remaining follow-up.
         crate::kernel::budget::begin();
         let (raw, changed, conforming) =
-            crate::kernel::mesh_bridge::subtract_with_change(host_mesh, opening_mesh);
+            crate::kernel::mesh_bridge::subtract_with_change(host_mesh, opening_mesh, opening);
         // Deterministic escalation guardrail (#1109): if the exact predicate
         // cascade escalated past the per-boolean budget, the cut bailed mid-
         // arrangement. Discard the partial result (its `changed` bit too) and

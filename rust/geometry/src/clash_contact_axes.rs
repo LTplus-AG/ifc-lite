@@ -17,6 +17,7 @@
 //! takes the MINIMUM extent over the set, adding an axis can only tighten
 //! it.
 
+use crate::math::v3;
 use crate::mesh::Mesh;
 
 /// Tolerance for "these three families are mutually perpendicular".
@@ -30,36 +31,6 @@ use crate::mesh::Mesh;
 /// to measure an extent along*, where a 0.006 rad error is worth ~2e-5 of the
 /// extent.
 const ORTHO_EPS: f64 = 1.0e-4;
-
-/// Flip `n` so its largest-magnitude component is positive, collapsing a face
-/// and its antipodal opposite onto one canonical direction. Ties break x, y, z.
-/// Same rule as the sibling OBB kernel's `canonical`.
-pub(crate) fn canonical(n: [f64; 3]) -> [f64; 3] {
-    let (ax, ay, az) = (n[0].abs(), n[1].abs(), n[2].abs());
-    let mut idx = 0usize;
-    if ay > ax && ay >= az {
-        idx = 1;
-    } else if az > ax && az > ay {
-        idx = 2;
-    }
-    if n[idx] < 0.0 {
-        [-n[0], -n[1], -n[2]]
-    } else {
-        n
-    }
-}
-
-pub(crate) fn dot3(a: [f64; 3], b: [f64; 3]) -> f64 {
-    a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
-}
-
-fn cross3(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
-    [
-        a[1] * b[2] - a[2] * b[1],
-        a[2] * b[0] - a[0] * b[2],
-        a[0] * b[1] - a[1] * b[0],
-    ]
-}
 
 /// Reject only a truly degenerate (zero-length or non-finite) vector — not a
 /// scale-dependent magnitude threshold. `v` is a cross product of edge
@@ -79,11 +50,7 @@ fn cross3(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
 /// directly only where the input is already scale-free (e.g. crossing two
 /// unit face-normal candidates in [`gate_axes`]).
 fn normalize3(v: [f64; 3]) -> Option<[f64; 3]> {
-    let len = dot3(v, v).sqrt();
-    if !(len.is_finite()) || len == 0.0 {
-        return None;
-    }
-    Some([v[0] / len, v[1] / len, v[2] / len])
+    v3::normalize(v, 0.0)
 }
 
 /// Minimum `sin(θ)` between a triangle's two edges at the vertex the normal
@@ -121,15 +88,14 @@ const MIN_SIN_THETA: f64 = 1.0e-3;
 /// is degenerate (zero-length edge, non-finite input) or a sliver relative to
 /// its own edge lengths (see [`MIN_SIN_THETA`]).
 fn face_normal(a: [f64; 3], b: [f64; 3], c: [f64; 3]) -> Option<[f64; 3]> {
-    let e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
-    let e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
-    let e1_len = dot3(e1, e1).sqrt();
-    let e2_len = dot3(e2, e2).sqrt();
+    let (e1, e2) = (v3::sub(b, a), v3::sub(c, a));
+    let e1_len = v3::dot(e1, e1).sqrt();
+    let e2_len = v3::dot(e2, e2).sqrt();
     if !(e1_len.is_finite() && e2_len.is_finite()) || e1_len == 0.0 || e2_len == 0.0 {
         return None;
     }
-    let cross = cross3(e1, e2);
-    let cross_len = dot3(cross, cross).sqrt();
+    let cross = v3::cross(e1, e2);
+    let cross_len = v3::dot(cross, cross).sqrt();
     if !cross_len.is_finite() || cross_len == 0.0 {
         return None;
     }
@@ -200,8 +166,8 @@ fn face_axis_families(m: &Mesh) -> Vec<[f64; 3]> {
             // either way.
             None => continue,
         };
-        let cn = canonical(n);
-        if groups.iter().any(|g| dot3(*g, cn) > 1.0 - ORTHO_EPS) {
+        let cn = v3::canonical(n);
+        if groups.iter().any(|g| v3::dot(*g, cn) > 1.0 - ORTHO_EPS) {
             continue;
         }
         groups.push(cn);
@@ -223,7 +189,7 @@ fn orthogonal_face_axes(m: &Mesh) -> Option<[[f64; 3]; 3]> {
     }
     for i in 0..3 {
         for j in (i + 1)..3 {
-            if dot3(groups[i], groups[j]).abs() > ORTHO_EPS {
+            if v3::dot(groups[i], groups[j]).abs() > ORTHO_EPS {
                 return None;
             }
         }
@@ -270,7 +236,7 @@ pub(crate) fn gate_axes(a: &Mesh, b: &Mesh) -> Vec<[f64; 3]> {
     for u in &fa {
         for v in &fb {
             // Parallel axes cross to zero — not a separating-axis candidate.
-            if let Some(n) = normalize3(cross3(*u, *v)) {
+            if let Some(n) = normalize3(v3::cross(*u, *v)) {
                 axes.push(n);
             }
         }

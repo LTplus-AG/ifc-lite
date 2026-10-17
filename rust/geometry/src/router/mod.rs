@@ -703,9 +703,7 @@ impl GeometryRouter {
         self.admit_placement_scale()?;
         let mut transform = self.get_placement_transform_from_element(entity, decoder)?;
         self.scale_transform(&mut transform);
-        let mut result = [0.0f64; 16];
-        result.copy_from_slice(transform.as_slice());
-        Ok(result)
+        Ok(crate::math::mat4::col_major_array(&transform))
     }
 
     /// Get schema reference

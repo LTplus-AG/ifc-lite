@@ -5,7 +5,8 @@
 //! Core element processing: resolving representations, processing items, and caching.
 
 use super::frame_parts::{frames_mergeable, mesh_bounds, single_frame, union_bounds, FrameParts};
-use super::transforms::{instancing_enabled, mat4_to_row_major};
+use super::transforms::instancing_enabled;
+use crate::math::mat4;
 use super::{GeometryProcessor, GeometryRouter};
 use crate::{Error, InstanceMeta, Mesh, Result, SubMeshCollection};
 
@@ -16,14 +17,6 @@ use crate::{Error, InstanceMeta, Mesh, Result, SubMeshCollection};
 /// bit (127 effective), still content-addressing grade.
 const DIRECT_SOLID_TAG: u128 = 1u128 << 127;
 
-/// Row-major 4x4 identity; placeholder `InstanceMeta::transform` before the
-/// element's world placement is folded in by `apply_placement`.
-pub(crate) const IDENTITY_ROW_MAJOR: [f64; 16] = [
-    1.0, 0.0, 0.0, 0.0, //
-    0.0, 1.0, 0.0, 0.0, //
-    0.0, 0.0, 1.0, 0.0, //
-    0.0, 0.0, 0.0, 1.0, //
-];
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use rustc_hash::FxHashSet;
 use std::rc::Rc;
@@ -572,11 +565,11 @@ impl GeometryRouter {
                     self.ensure_shared_mapped_source(&mapped_repr, source_id, decoder);
                     let local_rm = mapping_transform.map(|mut t| {
                         self.scale_transform(&mut t);
-                        mat4_to_row_major(&t)
+                        mat4::from_na(&t)
                     });
                     let mut placeholder = Mesh::new();
                     placeholder.instance_meta = Some(InstanceMeta {
-                        transform: IDENTITY_ROW_MAJOR,
+                        transform: mat4::IDENTITY,
                         local_transform: local_rm,
                         canonical_transform: None,
                         rep_identity: source_id as u128,
@@ -658,10 +651,10 @@ impl GeometryRouter {
                                 {
                                     im.local_transform = Some(match im.local_transform {
                                         // Nested map: outer target ∘ inner, bake order.
-                                        Some(inner) => mat4_to_row_major(
+                                        Some(inner) => mat4::from_na(
                                             &(transform * nalgebra::Matrix4::from_row_slice(&inner)),
                                         ),
-                                        None => mat4_to_row_major(&transform),
+                                        None => mat4::from_na(&transform),
                                     });
                                 }
                             }
@@ -683,7 +676,7 @@ impl GeometryRouter {
             if instance_solid_id.is_some() && is_template {
                 let local_rm = mapping_transform.map(|mut t| {
                     self.scale_transform(&mut t);
-                    mat4_to_row_major(&t)
+                    mat4::from_na(&t)
                 });
                 for sub in &mut sub_meshes.sub_meshes[mapped_items_start..] {
                     if let Some(im) = sub.mesh.instance_meta.as_mut() {
@@ -1068,7 +1061,7 @@ impl GeometryRouter {
     fn stamp_direct_instance(&self, mut mesh: Mesh, rep: Option<u128>) -> Mesh {
         if let Some(exact_rep) = rep {
             mesh.instance_meta = Some(InstanceMeta {
-                transform: IDENTITY_ROW_MAJOR,
+                transform: mat4::IDENTITY,
                 local_transform: None,
                 canonical_transform: None,
                 rep_identity: exact_rep,

@@ -1040,6 +1040,15 @@ jobs:
           # every number an INTEGER, any KMZ placement accepted, the Python
           # probe passing NaN, and the TS twin's toStepReal / toStepInteger.
           # Once finite_json.rs is on main, ordinary whole-change revert resumes.
+          # #7772: the new `math` home carries its own tests, and the changed
+          # clash tests name `math::v3`, so a whole-change revert cannot load
+          # them (INCONCLUSIVE). Keep the module and break ONLY the contracts
+          # the tests pin: the `canonical` tie rule (clash parity), the
+          # `normalize` threshold, the conjugation's `+ 0.0` sign-of-zero fold
+          # and the affine-inverse finiteness refusal. Once math/mod.rs is on
+          # main, ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/math/mod.rs | grep -Fxq 'rust/geometry/src/math/mod.rs'; then
+            oracle_args+=(--mutation tests/evidence/math-home-7772/behaviour.oracle.patch)
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/python/src/finite_json.rs | grep -Fxq 'rust/python/src/finite_json.rs'; then
             oracle_args+=(--mutation tests/evidence/export-nonfinite-7679/behaviour.oracle.patch)
           # #7696: the new ifc-lite-testkit crate is what every migrated test now

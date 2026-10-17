@@ -6,7 +6,7 @@
 //! world transform, bounded by a depth cap and memoised per decoder.
 
 use super::super::GeometryRouter;
-use super::mat4_to_col_array;
+use crate::math::mat4;
 use crate::Result;
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use nalgebra::Matrix4;
@@ -117,7 +117,7 @@ impl GeometryRouter {
             let walk = self.resolve_linear_placement_with_depth(placement, decoder, depth)?;
             if !walk.truncated {
                 decoder
-                    .cache_placement_transform(placement.id, mat4_to_col_array(&walk.transform));
+                    .cache_placement_transform(placement.id, mat4::col_major_array(&walk.transform));
             }
             return Ok(walk);
         }
@@ -131,7 +131,7 @@ impl GeometryRouter {
             let walk = self.resolve_grid_placement_with_depth(placement, decoder, depth)?;
             if !walk.truncated {
                 decoder
-                    .cache_placement_transform(placement.id, mat4_to_col_array(&walk.transform));
+                    .cache_placement_transform(placement.id, mat4::col_major_array(&walk.transform));
             }
             return Ok(walk);
         }
@@ -173,7 +173,7 @@ impl GeometryRouter {
         // Compose: parent * local
         let result = parent.transform * local_transform;
         if !parent.truncated {
-            decoder.cache_placement_transform(placement.id, mat4_to_col_array(&result));
+            decoder.cache_placement_transform(placement.id, mat4::col_major_array(&result));
         }
         Ok(PlacementWalk { transform: result, truncated: parent.truncated })
     }

@@ -73,6 +73,8 @@ Both legs call the same `compute_mesh_manifest()` in
 `rust/processing/src/determinism.rs`, so fixture and hashing cannot drift
 between targets.
 
+`ifc_lite_geometry::math::{v3, mat4}` is FMA-free with a pinned operation order (`a0*b0 + a1*b1 + a2*b2`, left to right; the 4x4 product accumulates from `0.0`). Kernel and processing callers rely on that for the pinned manifests, so do not introduce `mul_add` there.
+
 ## Known gap: libm trig ULP (wasm32 vs native)
 
 Circle tessellation computes profile points with `sin`/`cos`. Platform libms

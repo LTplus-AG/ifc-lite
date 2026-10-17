@@ -24,6 +24,23 @@ use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 pub(super) const MAX_BOUNDARY_VERTICES: usize = 256;
 
 impl BooleanClippingProcessor {
+    /// The `PolygonalBoundary` (attribute 3) of `half_space`, read by
+    /// [`Self::parse_polygonal_boundary_2d`] (same `Ok(None)` contract).
+    pub(super) fn bounded_half_space_contour(
+        &self,
+        half_space: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        quality: TessellationQuality,
+    ) -> Result<Option<Vec<Point2<f64>>>> {
+        let boundary_attr = half_space.get(3).ok_or_else(|| {
+            Error::geometry("PolygonalBoundedHalfSpace missing PolygonalBoundary".to_string())
+        })?;
+        let boundary = decoder
+            .resolve_ref(boundary_attr)?
+            .ok_or_else(|| Error::geometry("Failed to resolve PolygonalBoundary".to_string()))?;
+        self.parse_polygonal_boundary_2d(&boundary, decoder, quality)
+    }
+
     /// The boundary as a 2D contour in Position's XY plane. Any
     /// `IfcBoundedCurve` the profile curve sampler reads (`IfcPolyline`,
     /// `IfcIndexedPolyCurve`, composite and trimmed curves): an
@@ -33,7 +50,7 @@ impl BooleanClippingProcessor {
     ///
     /// `Ok(None)`: the boundary is over [`MAX_BOUNDARY_VERTICES`]; the refusal
     /// is already on record and the caller leaves the host uncut.
-    pub(super) fn parse_polygonal_boundary_2d(
+    fn parse_polygonal_boundary_2d(
         &self,
         boundary: &DecodedEntity,
         decoder: &mut EntityDecoder,

@@ -42,14 +42,7 @@ impl BooleanClippingProcessor {
         })?;
         let transform = parse_axis2_placement_3d(&position, decoder)?;
 
-        let boundary_attr = half_space.get(3).ok_or_else(|| {
-            Error::geometry("PolygonalBoundedHalfSpace missing PolygonalBoundary".to_string())
-        })?;
-        let boundary = decoder
-            .resolve_ref(boundary_attr)?
-            .ok_or_else(|| Error::geometry("Failed to resolve PolygonalBoundary".to_string()))?;
-
-        let Some(contour_2d) = self.parse_polygonal_boundary_2d(&boundary, decoder, quality)? else {
+        let Some(contour_2d) = self.bounded_half_space_contour(half_space, decoder, quality)? else {
             return Ok(None);
         };
 

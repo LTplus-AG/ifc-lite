@@ -4,6 +4,7 @@
 
 //! Pure B-spline / NURBS surface and curve math, plus B-spline attribute parsing.
 
+use crate::math::tol;
 use super::bspline_budget::MAX_BSPLINE_DEGREE;
 use crate::Point3;
 
@@ -39,13 +40,13 @@ fn bspline_basis_table(degree: usize, u: f64, knots: &[f64], count: usize) -> Ve
         for (i, slot) in next.iter_mut().enumerate() {
             let left = if i + k < knots.len() {
                 let denom = knots[i + k] - knots[i];
-                if denom.abs() < 1e-10 { 0.0 } else { (u - knots[i]) / denom * cur[i] }
+                if denom.abs() < tol::BASIS_EPS { 0.0 } else { (u - knots[i]) / denom * cur[i] }
             } else {
                 0.0
             };
             let right = if i + k + 1 < knots.len() && i + 1 < cur.len() {
                 let denom = knots[i + k + 1] - knots[i + 1];
-                if denom.abs() < 1e-10 {
+                if denom.abs() < tol::BASIS_EPS {
                     0.0
                 } else {
                     (knots[i + k + 1] - u) / denom * cur[i + 1]
@@ -118,7 +119,7 @@ fn evaluate_bspline_surface(
         for &(j, n_j) in v_basis {
             let Some(cp) = row.get(j) else { continue };
             let basis = n_i * n_j;
-            if basis.abs() > 1e-10 {
+            if basis.abs() > tol::BASIS_EPS {
                 let w = weights
                     .and_then(|ws| ws.get(i))
                     .and_then(|row_w| row_w.get(j))
@@ -132,7 +133,7 @@ fn evaluate_bspline_surface(
             }
         }
     }
-    if weights.is_some() && weight_sum.abs() > 1e-10 {
+    if weights.is_some() && weight_sum.abs() > tol::BASIS_EPS {
         result.x /= weight_sum;
         result.y /= weight_sum;
         result.z /= weight_sum;
@@ -193,7 +194,7 @@ pub(super) fn tessellate_bspline_surface(
     let v_bases: Vec<_> = (0..=v_segments)
         .map(|j| {
             let v = v_min + (v_max - v_min) * (j as f64 / v_segments as f64);
-            let v = v.min(v_max - 1e-6).max(v_min);
+            let v = v.min(v_max - tol::PARAM_END_MARGIN).max(v_min);
             let basis = surface_basis(v_degree, v, v_knots, n_v_max);
             let cached = if basis.len() <= remaining {
                 remaining -= basis.len();
@@ -206,7 +207,7 @@ pub(super) fn tessellate_bspline_surface(
         .collect();
     for i in 0..=u_segments {
         let u = u_min + (u_max - u_min) * (i as f64 / u_segments as f64);
-        let u = u.min(u_max - 1e-6).max(u_min);
+        let u = u.min(u_max - tol::PARAM_END_MARGIN).max(u_min);
         let u_basis = surface_basis(u_degree, u, u_knots, n_u);
         for (j, (v, cached)) in v_bases.iter().enumerate() {
             let scratch;
@@ -262,7 +263,7 @@ pub(super) fn evaluate_bspline_curve(
     let table = bspline_basis_table(degree, t, knots, control_points.len());
     for (i, cp) in control_points.iter().enumerate() {
         let basis = table.get(i).copied().unwrap_or(0.0);
-        if basis.abs() > 1e-10 {
+        if basis.abs() > tol::BASIS_EPS {
             let weighted = basis * weights.and_then(|ws| ws.get(i)).copied().unwrap_or(1.0);
             result.x += weighted * cp.x;
             result.y += weighted * cp.y;

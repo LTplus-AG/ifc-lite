@@ -1,0 +1,74 @@
+{
+  "about": [
+    "Shared cross-language vectors for READING the ISO 10303-21 HEADER of a source file (F4-2, #7778).",
+    "Read by rust/core/tests/step_header_read_vectors.rs (parser::header) and by",
+    "packages/parser/test/source-header-read-vectors.test.ts (parseSourceHeader).",
+    "",
+    "`text` is the whole file. `padBefore` inserts that many spaces before the FILE_SCHEMA record,",
+    "which moves it past the scan window without a megabyte of fixture. The window is 256 KiB on both",
+    "sides. `schemas` is FILE_SCHEMA's identifiers and `description` is FILE_DESCRIPTION's item list;",
+    "a row that omits one does not pin it.",
+    "",
+    "The expectations are written from ISO 10303-21, not from either implementation: Part 21 has no",
+    "square brackets outside a string literal, a comment cannot be left open, and a keyword is a",
+    "whole identifier."
+  ],
+  "cases": [
+    {
+      "name": "plain header",
+      "text": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('a'),'2;1');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\nENDSEC;\n",
+      "description": ["a"],
+      "schemas": ["IFC4"]
+    },
+    {
+      "name": "square brackets are ordinary text, not nesting",
+      "text": "HEADER;\nFILE_DESCRIPTION(([x,y]),'2;1');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\n",
+      "description": ["[x", "y]"],
+      "schemas": ["IFC4"]
+    },
+    {
+      "name": "a comment that never closes hides every later record",
+      "text": "HEADER;\nFILE_DESCRIPTION(('a'),'2;1');\n/* never closes\nFILE_SCHEMA(('IFC4'));\nENDSEC;\n",
+      "description": ["a"],
+      "schemas": []
+    },
+    {
+      "name": "a record before an unclosed comment is kept",
+      "text": "HEADER;\nFILE_SCHEMA(('IFC4'));\n/* oops\n",
+      "schemas": ["IFC4"]
+    },
+    {
+      "name": "a keyword is a whole identifier",
+      "text": "HEADER;\nXFILE_SCHEMA(('IFC2X3'));\nFILE_SCHEMA_X(('IFC2X3'));\nFILE_SCHEMA(('IFC4'));\nENDSEC;\n",
+      "schemas": ["IFC4"]
+    },
+    {
+      "name": "a keyword not followed by a parenthesis is not the record",
+      "text": "HEADER;\nFILE_SCHEMA ;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\n",
+      "schemas": ["IFC4"]
+    },
+    {
+      "name": "ENDSEC inside a literal does not end the header",
+      "text": "HEADER;\nFILE_DESCRIPTION(('ENDSEC;'),'2;1');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\n",
+      "description": ["ENDSEC;"],
+      "schemas": ["IFC4"]
+    },
+    {
+      "name": "a comment between the keyword and its parenthesis",
+      "text": "HEADER;\nfile_schema /* x */ (('IFC2X3'));\nENDSEC;\n",
+      "schemas": ["IFC2X3"]
+    },
+    {
+      "name": "a record 100000 bytes into the header is inside the window",
+      "text": "HEADER;\n{pad}FILE_SCHEMA(('IFC4'));\nENDSEC;\n",
+      "padBefore": 100000,
+      "schemas": ["IFC4"]
+    },
+    {
+      "name": "a record 300000 bytes into the header is past the window",
+      "text": "HEADER;\n{pad}FILE_SCHEMA(('IFC4'));\nENDSEC;\n",
+      "padBefore": 300000,
+      "schemas": []
+    }
+  ]
+}

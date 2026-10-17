@@ -512,6 +512,8 @@ impl GeometryRouter {
                 };
                 let Ok(item_parts) = item_parts else { continue };
                 for mut mesh in item_parts.into_iter().filter(|mesh| !mesh.is_empty()) {
+                    super::SourceHygiene::BooleanOperand.for_router(self).apply(&mut mesh);
+                    if mesh.indices.is_empty() { continue; }
                     // Keep ordinary opening cutters in the world/RTC frame. A large
                     // mapped origin, or a cutter far from the RTC origin (#6478),
                     // would lose its fractional translation when the world point is

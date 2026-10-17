@@ -9,6 +9,28 @@ use std::collections::HashMap;
 /// Minimum face area (m²) below which a face — and its room — is treated as degenerate.
 const AREA_EPS: f64 = 1.0e-4;
 
+// Thresholds of the HBJSON exporter (F2c, #7774). Everything here is in metres: the
+// exporter works on geometry already scaled to metres, so these are physical distances.
+
+/// An opening whose centre is farther than this from a wall's plane is not in that wall.
+pub(crate) const OPENING_WALL_MAX_DISTANCE_M: f64 = 0.7;
+/// An opening centre may lie this far outside a wall's in-plane extent and still belong
+/// to it (reveals and corner openings sit just past the wall's footprint).
+pub(crate) const OPENING_WALL_EDGE_MARGIN_M: f64 = 0.5;
+/// An aperture is inset this far from the wall's edges, so it never touches the border.
+pub(crate) const APERTURE_EDGE_INSET_M: f64 = 0.05;
+/// An aperture narrower or shorter than this (after the inset) is dropped.
+pub(crate) const APERTURE_MIN_SPAN_M: f64 = 0.1;
+/// A shade ring is cleaned of vertices closer than this (0.1 mm).
+pub(crate) const SHADE_RING_CLEAN_M: f64 = 1.0e-4;
+/// A construction layer is never thinner than this (1 mm), so Honeybee accepts it.
+pub(crate) const MIN_LAYER_THICKNESS_M: f64 = 0.001;
+/// A polygon segment shorter than this has no direction (1 nm).
+const DEGENERATE_SEGMENT_M: f64 = 1e-9;
+/// The watertightness vertex-snap grid is never finer than this (1 µm), whatever the
+/// caller's tolerance.
+const WATERTIGHT_GRID_FLOOR_M: f64 = 1e-6;
+
 /// Convert a WebGL Y-up point/direction to IFC/Honeybee Z-up: `(x, y, z) -> (x, -z, y)`.
 pub(crate) use ifc_lite_geometry::math::frame::yup_to_zup as zup;
 
@@ -117,7 +139,7 @@ fn collinear_overlap(a1: (f64, f64), a2: (f64, f64), b1: (f64, f64), b2: (f64, f
     let dx = a2.0 - a1.0;
     let dy = a2.1 - a1.1;
     let len = (dx * dx + dy * dy).sqrt();
-    if len < 1e-9 {
+    if len < DEGENERATE_SEGMENT_M {
         return false;
     }
     let dev = tol * len; // |orient2d| ≤ dev ⇔ point within `tol` of the line a1a2
@@ -191,7 +213,7 @@ pub(crate) fn is_simple_polygon(ring: &[[f64; 3]], tol: f64) -> bool {
 // the naked-edge bookkeeping.
 #[allow(clippy::type_complexity)]
 pub(crate) fn is_watertight(faces: &[(Vec<[f64; 3]>, &'static str)], tol: f64) -> bool {
-    let grid = tol.max(1e-6);
+    let grid = tol.max(WATERTIGHT_GRID_FLOOR_M);
     let key = |p: &[f64; 3]| {
         (
             (p[0] / grid).round() as i64,

@@ -10,9 +10,9 @@ use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 
 use crate::router::GeometryProcessor;
 
-/// Two directrix samples closer than this (model units) are one point for
-/// tangent purposes: their difference has no usable direction (#5191).
-const TUBE_DEDUPE_EPS: f64 = 1e-9;
+// Two directrix samples closer than this (model units) are one point for
+// tangent purposes: their difference has no usable direction (#5191).
+use crate::math::tol::POINT_COINCIDENT_EPS as TUBE_DEDUPE_EPS;
 
 /// Gate every directrix before `build_tube_rmf` (#5191). A non-finite sample
 /// is a load error: it would put NaN into every frame the RMF propagates to.

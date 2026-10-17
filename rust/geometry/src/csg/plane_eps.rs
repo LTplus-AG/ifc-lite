@@ -86,14 +86,14 @@ use nalgebra::Vector3;
 
 use super::{ClipResult, Plane, Triangle};
 
-/// f32-ULP scale factor for a "worst-case" single-precision coordinate: for a
-/// value with magnitude in `[2, 4)` the true float32 ULP is `2^-22`, and for
-/// larger magnitudes the ULP only grows. Same `2^-22` term (and reasoning) as
-/// `NearBand` in `kernel/near_band.rs` and `F32_ULP_SCALE` in
-/// `packages/clash/src/contact/narrow-phase.ts` — kept local rather than
-/// shared because plane-distance tolerance and penetration-depth tolerance are
-/// different jobs, even though both derive from the same f32 ingestion floor.
-const F32_ULP_SCALE: f64 = 1.0 / 4_194_304.0;
+// f32-ULP scale factor for a "worst-case" single-precision coordinate: for a
+// value with magnitude in `[2, 4)` the true float32 ULP is `2^-22`, and for
+// larger magnitudes the ULP only grows. Same `2^-22` term (and reasoning) as
+// `NearBand` in `kernel/near_band.rs` and `F32_ULP_SCALE` in
+// `packages/clash/src/contact/narrow-phase.ts` — kept local rather than
+// shared because plane-distance tolerance and penetration-depth tolerance are
+// different jobs, even though both derive from the same f32 ingestion floor.
+use crate::math::tol::F32_ULP_SCALE;
 
 /// Per-axis f32 rounding-noise amplitudes plus a floor, resolved into a scalar
 /// tolerance per plane by [`PlaneEps::for_normal`].

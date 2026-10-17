@@ -141,7 +141,7 @@ The scanner also yields the entity's type name during the same walk, so callers 
 
 The real scanner (`EntityScanner` in `rust/core/src/parser/scanner.rs`) is more careful than a naive `#` hunt:
 
-- Skips the STEP HEADER section first, so a stray `#` inside a header string cannot corrupt quote parity for the rest of the file.
+- Skips the STEP HEADER section first, so a stray `#` inside a header string cannot corrupt quote parity for the rest of the file. The marker is found by `parser::header::find_keyword_then`, the same keyword finder the header reader uses, over one shared 256 KiB window (`MAX_HEADER_BYTES`): `DATA`, case-insensitive, on identifier boundaries, trivia allowed before the `;`, and the ed.3 `DATA('name',(...));` form. A `/*` that never closes hides everything after it.
 - Hunts for `#` with memchr (SIMD-accelerated), then parses `#id = TYPE(...)` in place.
 - Tracks quoted strings and `/* ... */` comments so `;` inside strings never terminates a record.
 - Returns `(id, type_name, start, end)` per entity; `build_entity_index` inserts spans with last-wins semantics on duplicate IDs.

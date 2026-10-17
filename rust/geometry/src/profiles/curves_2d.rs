@@ -140,7 +140,7 @@ impl ProfileProcessor {
         let arc_angle = (end_angle - start_angle).abs();
         let by_angle = (arc_angle / std::f64::consts::FRAC_PI_2 * 8.0).ceil() as usize;
         let by_chord = {
-            const CHORD_TOL_M: f64 = 5.0e-4; // 0.5 mm absolute deviation budget
+            use crate::math::tol::CHORD_TOL_M;
             let r_eff = radius.abs().max(radius2.abs());
             let radius_m = r_eff * decoder.length_unit_scale();
             if radius_m > CHORD_TOL_M {

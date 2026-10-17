@@ -6,6 +6,7 @@
 //! authorize geometry. The explicit annotation planner separately composes
 //! qualified fills and bounded solid straight stroke outlines.
 pub(crate) mod fills;
+mod limits;
 mod fill_paths;
 mod curve_hulls;
 mod dashes;
@@ -93,16 +94,16 @@ fn validate_page(page: &PdfVectorPage) -> Result<(), String> {
         return Err("PDF calibration identity is missing or too long".into());
     }
     for x in page.view_box {
-        scalar(x, -1e9, 1e9)?;
+        scalar(x, -limits::PAGE_COORD_LIMIT, limits::PAGE_COORD_LIMIT)?;
     }
     if page.view_box[0] >= page.view_box[2] || page.view_box[1] >= page.view_box[3] {
         return Err("Invalid PDF CropBox".into());
     }
-    scalar(page.user_unit, f64::MIN_POSITIVE, 75000.)?;
+    scalar(page.user_unit, f64::MIN_POSITIVE, limits::MAX_USER_UNIT)?;
     if ![0, 90, 180, 270].contains(&page.intrinsic_rotation) {
         return Err("Invalid PDF rotation".into());
     }
-    scalar(page.tolerance_metres, 1e-9, 1.)?;
+    scalar(page.tolerance_metres, limits::MIN_TOLERANCE_M, limits::MAX_TOLERANCE_M)?;
     validate_matrix(&page.model_metres_from_pdf)
 }
 
@@ -111,7 +112,7 @@ fn validate_conversion_clip(
     conversion_clip_pdf: Option<[f64; 4]>,
 ) -> Result<(), String> {
     if let Some(clip) = conversion_clip_pdf {
-        for x in clip { scalar(x, -1e9, 1e9)?; }
+        for x in clip { scalar(x, -limits::PAGE_COORD_LIMIT, limits::PAGE_COORD_LIMIT)?; }
         if clip[0] >= clip[2] || clip[1] >= clip[3]
             || clip[0] < page.view_box[0] || clip[1] < page.view_box[1]
             || clip[2] > page.view_box[2] || clip[3] > page.view_box[3]
@@ -137,7 +138,7 @@ fn validate_rgb(rgb: &[f64; 3]) -> Result<(), String> {
 }
 fn validate_matrix(m: &[f64; 6]) -> Result<(), String> {
     for x in m {
-        scalar(*x, -1e12, 1e12)?;
+        scalar(*x, -limits::MATRIX_ENTRY_LIMIT, limits::MATRIX_ENTRY_LIMIT)?;
     }
     let determinant = m[0] * m[3] - m[1] * m[2];
     if !determinant.is_finite() || determinant == 0. {
@@ -178,7 +179,7 @@ fn validate_path(commands: &[f64]) -> Result<(), String> {
             .get(cursor..cursor + arity)
             .ok_or("Truncated PDF path command")?;
         for x in values {
-            scalar(*x, -1e9, 1e9)?;
+            scalar(*x, -limits::PAGE_COORD_LIMIT, limits::PAGE_COORD_LIMIT)?;
         }
         cursor += arity;
     }

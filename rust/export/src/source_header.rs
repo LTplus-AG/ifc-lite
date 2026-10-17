@@ -15,11 +15,9 @@
 //! to quote state mis-splits.
 
 use ifc_lite_core::parser::header::{decode_opt_string, decode_opt_string_list,
-    decode_string_list, extract_record_args, find_section_marker, split_top_level,
+    decode_string_list, extract_record_args, find_keyword_then, split_top_level, Then,
     MAX_HEADER_BYTES};
 pub(crate) use ifc_lite_core::parser::header::{declared_schema, declared_schemas};
-#[cfg(test)]
-use ifc_lite_core::parser::header::Lex;
 
 /// The `HEADER` records a source file carried, decoded to Unicode.
 ///
@@ -66,8 +64,8 @@ pub fn parse_source_header(content: &[u8]) -> Option<SourceHeader> {
     // the terminator — it would cut the header short and drop every record
     // after it. The offset comes from the string itself, so it is already a
     // char boundary.
-    let text = match find_section_marker(raw.as_bytes(), b"ENDSEC") {
-        Some(end) => raw[..end].to_string(),
+    let text = match find_keyword_then(raw.as_bytes(), b"ENDSEC", Then::Semicolon) {
+        Some(hit) => raw[..hit.start].to_string(),
         None => raw.to_string(),
     };
 
@@ -112,7 +110,3 @@ pub fn parse_source_header(content: &[u8]) -> Option<SourceHeader> {
 
     Some(header)
 }
-
-#[cfg(test)]
-#[path = "source_header_tests.rs"]
-mod tests;

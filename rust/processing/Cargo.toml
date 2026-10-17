@@ -47,7 +47,6 @@ ifc-lite-geometry.workspace = true
 rayon.workspace = true
 serde = { workspace = true, features = ["rc"] }
 serde_json.workspace = true
-memchr.workspace = true
 png.workspace = true
 rustc-hash.workspace = true
 tracing = { workspace = true, features = ["std", "attributes"] }

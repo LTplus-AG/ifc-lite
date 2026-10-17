@@ -45,7 +45,7 @@ pub fn build_shades(profiles: &[ExtractedProfile], origin: [f64; 3]) -> Vec<Shad
                     [w[0] - origin[0], w[1] - origin[1], w[2] - origin[2]]
                 })
                 .collect();
-            let ring = clean_ring(ring, 1.0e-4);
+            let ring = clean_ring(ring, crate::geom::SHADE_RING_CLEAN_M);
             let m = ring.len();
             if m < 3 {
                 continue;

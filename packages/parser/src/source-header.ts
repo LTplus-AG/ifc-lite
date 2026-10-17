@@ -19,16 +19,38 @@ import { decodeStepStringLiteral } from '@ifc-lite/encoding';
 import { asSourceBytes, type IfcSourceBytes } from './source-bytes.js';
 
 import { matchesKeywordAt, StepTextScan } from './step-lexing.js';
-/** Headers are tiny; cap the decode so a huge file's body is never scanned. */
-const MAX_HEADER_BYTES = 64 * 1024;
+/**
+ * Headers are tiny; cap the decode so a huge file's body is never scanned.
+ * One window with the Rust header reader and its scanner's `DATA;` search
+ * (`MAX_HEADER_BYTES` in `rust/core/src/parser/header.rs`, F4-2).
+ */
+const MAX_HEADER_BYTES = 256 * 1024;
+
+/** Where a literal or comment starting at `i` ends; `stop` when a comment never closes. */
+function skipLexical(
+  scan: StepTextScan,
+  text: string,
+  i: number,
+): { next: number; stop: boolean } | undefined {
+  const next = scan.skipLexicalAt(i);
+  if (next >= 0) return { next, stop: false };
+  // `skipLexicalAt` answers -1 for an unclosed `/*` as for "no comment here".
+  // Part 21 comments cannot be left open: everything after the opener is inside
+  // it, and nothing there can be found (rust `skip_step_comment`, F4-2).
+  if (text[i] === '/' && text[i + 1] === '*') return { next: text.length, stop: true };
+  return undefined;
+}
 
 /**
- * Split STEP record arguments at top-level commas, respecting paren/bracket
+ * Split STEP record arguments at top-level commas, respecting parenthesis
  * nesting, single-quoted strings (with `''` escapes) and comments. Returns the
  * raw, still-escaped argument substrings (trimmed).
  *
  * A comment is dropped rather than copied through: it is not part of the
- * argument's value, and its commas are not separators.
+ * argument's value, and its commas are not separators. Square brackets are
+ * ordinary text: Part 21 has none outside a literal, and the Rust twin
+ * (`split_top_level_args`) does not nest on them. A comment that never closes
+ * ends the scan.
  */
 function splitTopLevel(inner: string): string[] {
   const args: string[] = [];
@@ -36,18 +58,19 @@ function splitTopLevel(inner: string): string[] {
   let current = '';
   const scan = new StepTextScan(inner);
   for (let i = 0; i < inner.length; i++) {
-    const skip = scan.skipLexicalAt(i);
-    if (skip >= 0) {
+    const skip = skipLexical(scan, inner, i);
+    if (skip !== undefined) {
       // A literal is part of the argument's text; a comment is not.
-      if (inner[i] === "'") current += inner.slice(i, skip);
-      i = skip - 1;
+      if (inner[i] === "'") current += inner.slice(i, skip.next);
+      if (skip.stop) break;
+      i = skip.next - 1;
       continue;
     }
     const ch = inner[i];
-    if (ch === '(' || ch === '[') {
+    if (ch === '(') {
       depth++;
       current += ch;
-    } else if (ch === ')' || ch === ']') {
+    } else if (ch === ')') {
       depth--;
       current += ch;
     } else if (ch === ',' && depth === 0) {
@@ -131,9 +154,14 @@ function decodeOptStringList(arg: string): string[] | undefined {
 }
 
 
+function isIdent(c: string | undefined): boolean {
+  return c !== undefined && /[A-Za-z0-9_]/.test(c);
+}
+
 /**
- * Index of `keyword` occurring as a RECORD, outside any string or comment, or
- * -1.
+ * Offsets of `keyword` as a whole identifier outside any string or comment,
+ * followed (after trivia) by `(` or, for `then === ';'`, by `;`. `keyword` at
+ * the first element, the `(` / `;` at the second; `undefined` when absent.
  *
  * A plain `indexOf` is not enough here and the reason is the same one #3278 is
  * about, one level down: header FREE TEXT is not a declaration. STEP strings
@@ -143,16 +171,45 @@ function decodeOptStringList(arg: string): string[] | undefined {
  * tool that quotes what it read. `indexOf` would take that quoted copy as the
  * declaration and answer IFC2X3 for an IFC4X3 file. The same applies to
  * `ENDSEC`: a quoted one would truncate the header before the real
- * `FILE_SCHEMA` record, losing the declaration entirely.
+ * `FILE_SCHEMA` record, losing the declaration entirely. A keyword that is
+ * only part of a longer identifier, or that is not followed by what a record
+ * or section marker needs, is not the declaration either.
+ *
+ * The twin of `find_keyword_then` in `rust/core/src/parser/header_scan.rs`,
+ * pinned by `rust/core/tests/fixtures/step_header_read_vectors.json`.
  */
-function indexOfRecord(text: string, keyword: string): number {
+function findKeywordThen(
+  text: string,
+  keyword: string,
+  then: '(' | ';',
+): { start: number; then: number } | undefined {
   const scan = new StepTextScan(text);
-  for (let i = 0; i < text.length; i++) {
-    const skip = scan.skipLexicalAt(i);
-    if (skip >= 0) { i = skip - 1; continue; }
-    if (matchesKeywordAt(text, i, keyword)) return i;
+  for (let i = 0; i + keyword.length <= text.length; i++) {
+    const skip = skipLexical(scan, text, i);
+    if (skip !== undefined) {
+      if (skip.stop) return undefined;
+      i = skip.next - 1;
+      continue;
+    }
+    const end = i + keyword.length;
+    if (
+      matchesKeywordAt(text, i, keyword) &&
+      !isIdent(text[i - 1]) &&
+      !isIdent(text[end])
+    ) {
+      // Trivia between the keyword and what follows it.
+      let at = end;
+      for (;;) {
+        while (at < text.length && /[ \t\n\r\f\v]/.test(text[at])) at++;
+        if (text[at] !== '/' || text[at + 1] !== '*') break;
+        const comment = skipLexical(scan, text, at);
+        if (comment === undefined || comment.stop) return undefined;
+        at = comment.next;
+      }
+      if (text[at] === then) return { start: i, then: at };
+    }
   }
-  return -1;
+  return undefined;
 }
 
 /**
@@ -162,16 +219,18 @@ function indexOfRecord(text: string, keyword: string): number {
  * for the record itself. Returns `null` if not found.
  */
 function extractRecordArgs(text: string, keyword: string): string | null {
-  const at = indexOfRecord(text, keyword);
-  if (at < 0) return null;
+  const hit = findKeywordThen(text, keyword, '(');
+  if (hit === undefined) return null;
   const scan = new StepTextScan(text);
-  let i = scan.skipTrivia(at + keyword.length);
-  if (text[i] !== '(') return null;
-  const start = i;
+  const start = hit.then;
   let depth = 0;
-  for (; i < text.length; i++) {
-    const skip = scan.skipLexicalAt(i);
-    if (skip >= 0) { i = skip - 1; continue; }
+  for (let i = start; i < text.length; i++) {
+    const skip = skipLexical(scan, text, i);
+    if (skip !== undefined) {
+      if (skip.stop) return null;
+      i = skip.next - 1;
+      continue;
+    }
     const ch = text[i];
     if (ch === '(') {
       depth++;
@@ -195,8 +254,8 @@ export function parseSourceHeader(
   const src = asSourceBytes(buffer);
   const cap = Math.min(src.byteLength, MAX_HEADER_BYTES);
   let text = src.decodeUtf8(0, cap);
-  const endSec = indexOfRecord(text, 'ENDSEC');
-  if (endSec >= 0) text = text.slice(0, endSec);
+  const endSec = findKeywordThen(text, 'ENDSEC', ';');
+  if (endSec !== undefined) text = text.slice(0, endSec.start);
 
   const descRecord = extractRecordArgs(text, 'FILE_DESCRIPTION');
   const nameRecord = extractRecordArgs(text, 'FILE_NAME');

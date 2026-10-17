@@ -12,7 +12,8 @@ mod plane_merge;
 mod ring_ops;
 mod preservation;
 mod supported_cells;
-mod source_lift;
+mod source_boundary;
+mod source_boundary_graph;
 
 use super::ClippingProcessor;
 use conform::count_open_boundary_edges_at;

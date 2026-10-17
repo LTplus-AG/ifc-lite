@@ -9,7 +9,6 @@
 
 use super::PlanBucket;
 use crate::csg::consolidate::{emit_triangle, tri_is_needle};
-use crate::csg::consolidate::source_lift::{CornerLifts, SourceLifts, point_key};
 use crate::mesh::Mesh;
 use nalgebra::{Point3, Vector3};
 
@@ -26,22 +25,10 @@ pub(in crate::csg::consolidate) fn emit_plans(
     plans: &mut [PlanBucket],
     conformed: bool,
 ) -> (Mesh, bool) {
-    emit_with_lifts(plans, conformed, None)
-}
-
-pub(in crate::csg::consolidate) fn emit_plans_with_lifts(
-    plans: &mut [PlanBucket], lifts: &SourceLifts,
-) -> (Mesh, bool) {
-    emit_with_lifts(plans, true, Some(lifts))
-}
-
-fn emit_with_lifts(
-    plans: &mut [PlanBucket], conformed: bool, lifts: Option<&SourceLifts>,
-) -> (Mesh, bool) {
     let mut complete = true;
     use crate::triangulation::triangulate_polygon_with_holes_refined;
     let mut output = Mesh::new();
-    for (plan_index, plan) in plans.iter_mut().enumerate() {
+    for plan in plans.iter_mut() {
         let raw = if conformed {
             plan.raw_conformed.as_ref().unwrap_or(&plan.raw)
         } else {
@@ -51,9 +38,7 @@ fn emit_with_lifts(
             emit_triangle(&mut output, t, &plan.normal);
         }
         let basis = (plan.origin, plan.u_axis, plan.v_axis, plan.normal);
-        for (region_index, region) in plan.regions.iter_mut().enumerate() {
-            let corners = lifts.and_then(|maps| maps.get(plan_index))
-                .and_then(|regions| regions.get(region_index));
+        for region in plan.regions.iter_mut() {
             crate::progress::tick();
             let (outer, holes) = if conformed {
                 (&region.outer_conformed, &region.holes_conformed)
@@ -78,7 +63,7 @@ fn emit_with_lifts(
             if conformed && !region.changed {
                 match &region.cached {
                     Some((pts, idx)) => {
-                        emit_region(&mut output, basis, pts, idx, corners);
+                        emit_region(&mut output, basis, pts, idx);
                         continue;
                     }
                     None => {
@@ -97,10 +82,10 @@ fn emit_with_lifts(
             if !conformed {
                 region.cached = Some((all_2d, indices));
                 let (pts, idx) = region.cached.as_ref().expect("just stored");
-                emit_region(&mut output, basis, pts, idx, corners);
+                emit_region(&mut output, basis, pts, idx);
                 continue;
             }
-            emit_region(&mut output, basis, &all_2d, &indices, corners);
+            emit_region(&mut output, basis, &all_2d, &indices);
         }
     }
     (output, complete)
@@ -113,13 +98,11 @@ fn emit_region(
     basis: (Point3<f64>, Vector3<f64>, Vector3<f64>, Vector3<f64>),
     all_2d: &[nalgebra::Point2<f64>],
     indices: &[usize],
-    corners: Option<&CornerLifts>,
 ) {
     let (origin, u_axis, v_axis, normal) = basis;
     let verts_3d: Vec<Point3<f64>> = all_2d
         .iter()
-        .map(|p| corners.and_then(|map| map.get(&point_key(p))).copied()
-            .unwrap_or_else(|| origin + u_axis * p.x + v_axis * p.y))
+        .map(|p| origin + u_axis * p.x + v_axis * p.y)
         .collect();
     let base = output.vertex_count() as u32;
     for vp in &verts_3d {

@@ -3,7 +3,8 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 //! #7292 actual selected RVT01 #26832 ALT first cut, before consolidation.
 //! Passive input48 contains60 exactly closed triangles; projected emission51
-//! separates an originally paired edge by1.8985um at one endpoint.
+//! separates an originally paired edge by1.8985um and removes eight true
+//! source-boundary corners. Reconstruct the original finite boundary graph.
 //! Exact captured f32 positions/face normals and original triangle order.
 use super::*;
 use crate::csg::ClippingProcessor;
@@ -186,7 +187,7 @@ fn captured_source(positions: &[[u32; 3]], triangles: &[[usize; 3]], normals: &[
 }
 
 #[test]
-fn issue_7292_source_lift_preserves_actual_selected_alt_boundary() {
+fn issue_7292_source_boundary_preserves_actual_selected_alt_boundary() {
     let raw = captured_source(&ALT60_POSITIONS, &ALT60_TRIANGLES, &ALT60_NORMALS);
     let supported = super::super::supported_cells::find(&super::super::buckets::build(&raw));
     assert!(crate::exact_topology::strict_closed_mesh(&raw), "captured source is exactly closed");
@@ -199,49 +200,109 @@ fn issue_7292_source_lift_preserves_actual_selected_alt_boundary() {
     assert!(!super::super::supported_cells::has_uncertified_needle(&output, &supported));
 }
 
-fn projected_patch(depths: &[f64]) -> (Vec<PlanBucket>, Buckets) {
-    use super::super::{conform::PlanRegion, plane_merge::PlaneTri};
-    let ring = vec![Point2::new(0.,0.), Point2::new(1.,0.), Point2::new(0.,1.)];
-    let faces = depths.iter().map(|&z| PlaneTri {
-        v: [Point3::new(0.,0.,z), Point3::new(1.,0.,z), Point3::new(0.,1.,z)],
-        normal: Vector3::z(), tag: None,
-    }).collect();
+
+fn patch(points: &[[f64; 3]], faces: &[[usize; 3]]) -> (Vec<PlanBucket>, Buckets) {
+    use super::super::plane_merge::PlaneTri;
     let mut buckets = Buckets::new();
-    buckets.insert((0,0,1000,0), faces);
+    buckets.insert((0,0,1000,0), faces.iter().map(|t| PlaneTri {
+        v: t.map(|i| Point3::from(points[i])), normal: Vector3::z(), tag: None,
+    }).collect());
     let plan = PlanBucket {
         bid: 0, normal: Vector3::z(), origin: Point3::origin(),
-        u_axis: Vector3::x(), v_axis: Vector3::y(), raw: Vec::new(), raw_conformed: None,
-        regions: vec![PlanRegion { outer: ring.clone(), holes: Vec::new(),
-            outer_conformed: ring, holes_conformed: Vec::new(), changed: false, cached: None }],
+        u_axis: Vector3::x(), v_axis: Vector3::y(), raw: Vec::new(),
+        raw_conformed: None, regions: Vec::new(),
     };
     (vec![plan], buckets)
 }
 
-#[test]
-fn issue_7292_source_lift_refuses_ambiguous_depth_and_excess_displacement() {
-    let (plans, buckets) = projected_patch(&[0., 0.00001, 0.]);
-    assert!(build(&plans, &buckets).is_none(),
-        "repeating the first3Dpoint cannot resolve two depths at one overlay key");
-    let (plans, buckets) = projected_patch(&[2. * CONFORM_TOL]);
-    assert!(build(&plans, &buckets).is_none(),
-        "an exact projected match cannot authorize an arbitrary normal displacement");
+fn boundary(mesh: &Mesh) -> std::collections::BTreeSet<([u32;3],[u32;3])> {
+    let mut uses = BTreeMap::<_,usize>::new();
+    let point = |id: u32| std::array::from_fn(|axis| {
+        let x = mesh.positions[id as usize*3+axis];
+        if x == 0.0 { 0 } else { x.to_bits() }
+    });
+    for t in mesh.indices.chunks_exact(3) {
+        for i in 0..3 { *uses.entry((point(t[i]),point(t[(i+1)%3]))).or_default() += 1; }
+    }
+    let mut result = std::collections::BTreeSet::new();
+    for (&(a,b),&count) in &uses {
+        assert_eq!(count,1,"no duplicate directed edges");
+        if !uses.contains_key(&(b,a)) { result.insert((a,b)); }
+    }
+    result
 }
 
 #[test]
-fn issue_7292_source_lift_recovers_direct_and_overlay_corner_coordinates() {
-    let (mut plans, mut buckets) = projected_patch(&[0.00001]);
-    buckets.values_mut().next().unwrap()[0].v[1].x = 0.7;
-    let region = &mut plans[0].regions[0];
-    region.outer[1].x = 0.7;
-    region.outer_conformed[1].x = 0.7;
-    let xy = [[0.,0.], [0.7,0.], [0.,1.]];
-    let adapter = FloatPointAdapter::<[f64;2], i32>::with_iter(xy.iter());
-    let canonical = adapter.int_to_float(&adapter.float_to_int(&xy[1]));
-    assert_ne!(canonical, xy[1], "control: this corner changes on the overlay grid");
-    for endpoint in [Point2::new(0.7,0.), Point2::new(canonical[0],canonical[1])] {
-        plans[0].regions[0].outer_conformed[1] = endpoint;
-        let lifts = build(&plans, &buckets).expect("unique source corner within conform displacement");
-        assert_eq!(lifts[0][0][&point_key(&endpoint)], Point3::new(0.7,0.,0.00001),
-            "both exact representations restore the original third coordinate");
+fn issue_7292_source_boundary_keeps_collinear_constraints_and_removes_interior_point() {
+    let points = [[0.,0.,0.],[1.,0.,0.],[2.,0.,0.],[2.,1.,0.],[0.,1.,0.],[1.,0.5,0.]];
+    let faces = [[0,1,5],[1,2,5],[2,3,5],[3,4,5],[4,0,5]];
+    let (plans,buckets) = patch(&points,&faces);
+    let output = build(&plans,&buckets).expect("nonoverlapping fan has one simple boundary");
+    let key = |i: usize| points[i].map(|x| (x as f32).to_bits());
+    let expected: std::collections::BTreeSet<_> = (0..5).map(|i| (key(i),key((i+1)%5))).collect();
+    assert_eq!(boundary(&output),expected,"each original boundary segment survives CDT");
+    assert!(!output.positions.chunks_exact(3).any(|p| p == [1.,0.5,0.]),
+        "an interior partition vertex is not a boundary constraint");
+    // Merely retaining the middle vertex in a vertex array cannot certify a
+    // triangulation that replaced its two boundary segments with one chord.
+    assert!(!constraints_preserved(&[vec![0,1,2,3,4]], &[0,1,2,3,4], &[0,2,3,0,3,4]));
+}
+
+#[test]
+fn issue_7292_source_boundary_preserves_hole_and_vertex_touching_components() {
+    let points = [[0.,0.,0.],[4.,0.,0.],[4.,4.,0.],[0.,4.,0.],
+        [1.,1.,0.],[3.,1.,0.],[3.,3.,0.],[1.,3.,0.]];
+    let faces = [[0,1,5],[0,5,4],[1,2,6],[1,6,5],
+        [2,3,7],[2,7,6],[3,0,4],[3,4,7]];
+    let (plans,buckets) = patch(&points,&faces);
+    let output = build(&plans,&buckets).expect("annular partition has outer and hole constraints");
+    let mut area = 0.;
+    for t in output.indices.chunks_exact(3) {
+        let p = t.iter().map(|&i| {
+            let i = i as usize*3; [f64::from(output.positions[i]),f64::from(output.positions[i+1])]
+        }).collect::<Vec<_>>();
+        area += ((p[1][0]-p[0][0])*(p[2][1]-p[0][1])
+            -(p[1][1]-p[0][1])*(p[2][0]-p[0][0]))/2.;
     }
+    assert_eq!(area,12.,"outer16 minus hole4, with no filled hole");
+    assert_eq!(boundary(&output).len(),8,"four outer and four hole segments");
+    let points = [[0.,0.,0.],[1.,0.,0.],[0.,1.,0.],[-1.,0.,0.],[0.,-1.,0.]];
+    let (plans,buckets) = patch(&points,&[[0,1,2],[0,3,4]]);
+    let output = build(&plans,&buckets).expect("a shared vertex must not join two edge components");
+    assert_eq!(boundary(&output).len(),6,"both independent triangular boundaries survive");
+}
+
+#[test]
+fn issue_7292_source_boundary_refuses_overlap_ambiguous_projection_and_large_movement() {
+    let points = [[0.,0.,0.],[1.,0.,0.],[0.,1.,0.]];
+    let (plans,buckets) = patch(&points,&[[0,1,2],[0,1,2]]);
+    assert!(build(&plans,&buckets).is_none(),"overlapping duplicate cells are not a partition");
+    let points = [[0.,0.,0.],[1.,0.,0.],[0.,1.,0.],
+        [0.,0.,0.00001],[-1.,0.,0.00001],[0.,-1.,0.00001]];
+    let (plans,buckets) = patch(&points,&[[0,1,2],[3,4,5]]);
+    assert!(build(&plans,&buckets).is_none(),"one projected corner cannot choose between two depths");
+    let points = [[0.,0.,2.*CONFORM_TOL],[1.,0.,2.*CONFORM_TOL],[0.,1.,2.*CONFORM_TOL]];
+    let (plans,buckets) = patch(&points,&[[0,1,2]]);
+    assert!(build(&plans,&buckets).is_none(),"source lift may not move farther than CONFORM_TOL");
+    let points = [[0.,0.,0.],[0.,0.,0.00001],[1.,1.,0.]];
+    let (plans,buckets) = patch(&points,&[[0,1,2]]);
+    assert!(build(&plans,&buckets).is_none(),"a singular projected triangle cannot certify a domain");
+    let xy = [[0.,0.],[1.,1.],[0.,1.],[1.,0.]];
+    assert!(!simple(&[vec![0,1,2,3]], &xy),"self-crossing boundaries refuse before CDT");
+}
+
+#[test]
+fn issue_7292_source_boundary_bounds_whole_surface_height_span_not_two_point_bounds() {
+    let mut points = [[0.,0.,0.],[1.,0.,0.],[2.,1.,0.],
+        [1.,2.,0.25*CONFORM_TOL],[0.,1.,-0.25*CONFORM_TOL]];
+    let faces = [[0,1,2],[0,2,3],[0,3,4]];
+    let (plans,buckets) = patch(&points,&faces);
+    assert!(build(&plans,&buckets).is_some(),"half-tolerance residual span is admissible");
+    points[3][2] = 0.75*CONFORM_TOL;
+    points[4][2] = -0.75*CONFORM_TOL;
+    assert!(points.iter().all(|p| p[2].abs() < CONFORM_TOL),
+        "every source vertex individually passes the original first-plane bound");
+    let (plans,buckets) = patch(&points,&faces);
+    assert!(build(&plans,&buckets).is_none(),
+        "1.5tol full residual span cannot certify a tol surface displacement");
 }

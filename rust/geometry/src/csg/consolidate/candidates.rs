@@ -9,7 +9,7 @@ use super::{
     conform::{build_seam_map, conform_plans, count_open_boundary_edges_at, emit_plans},
     count_open_boundary_edges, count_spike_triangles,
     plans::Planned,
-    source_lift,
+    source_boundary,
     supported_cells,
 };
 use crate::mesh::Mesh;
@@ -85,14 +85,15 @@ pub(super) fn emit(planned: &mut Planned, buckets: &Buckets, supported: &support
             }
         }
         // The established retries keep their output. Only a failed conform
-        // tries restoring retained corners to their unambiguous source points.
+        // tries the certified original source-boundary partition.
         if !accepted {
-            if let Some(lifts) = source_lift::build(plans, buckets) {
-                let (mut candidate, complete) =
-                    super::conform::emit_plans_with_lifts(plans, &lifts);
-                supported_cells::append_mesh(&mut candidate, retained_cells);
-                if let Some(candidate) = complete_conformed_candidate(candidate, complete, true) {
-                    if crate::exact_topology::strict_closed_mesh(&candidate)
+            if let Some(candidate) = source_boundary::build(plans, buckets) {
+                let source_indices = candidate.indices.len();
+                if let Some(candidate) = complete_conformed_candidate(candidate, true, true) {
+                    // Cleanup must not erase a certified boundary or a whole
+                    // closed component while leaving the remainder paired.
+                    if candidate.indices.len() == source_indices
+                        && crate::exact_topology::strict_closed_mesh(&candidate)
                         && super::preservation::public_weld_closed(&candidate)
                         && !supported_cells::has_uncertified_needle(&candidate, supported)
                     {

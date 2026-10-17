@@ -4,7 +4,8 @@
 
 //! Bounded candidate selection for the 3D opening-union consumer (#3925).
 
-use super::{accept_cut, mesh_is_closed_exact, UnionCand};
+use super::{mesh_is_closed_exact, UnionCand};
+use super::super::admission::accept_cut;
 use super::super::sweep::mesh_to_keep;
 use crate::{ClippingProcessor, GeometryRouter, Mesh};
 

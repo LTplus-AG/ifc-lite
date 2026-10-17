@@ -61,6 +61,7 @@
 
 use std::sync::OnceLock;
 
+use super::admission::{aabb_engulfs, min_opening_volume, ENGULF_TOLERANCE};
 use super::geom::opening_mesh_thinnest_axis_dir;
 use super::{cutter_is_closed_manifold, GeometryRouter, CutterKind, VoidContext};
 use crate::cdt::triangulate_pslg;
@@ -2806,7 +2807,7 @@ impl GeometryRouter {
             defer(0);
             return None;
         }
-        let min_vol = Self::min_opening_volume(self.tessellation_quality());
+        let min_vol = min_opening_volume(self.tessellation_quality());
 
         // ── Candidate prisms ────────────────────────────────────────────────
         // Extract a prism per opening, then MERGE prisms whose union is one
@@ -2918,11 +2919,7 @@ impl GeometryRouter {
                     extend_profile_edges(&mut pf, &tris, &aabbs);
                     let plo = [pf.bb.0[0], pf.bb.0[1], pf.d0()];
                     let phi = [pf.bb.1[0], pf.bb.1[1], pf.d1()];
-                    let engulfs = (0..3).all(|k| {
-                        let slack =
-                            (hhi[k] - hlo[k]).abs().max(1.0e-9) * super::ENGULF_TOLERANCE;
-                        plo[k] <= hlo[k] + slack && phi[k] >= hhi[k] - slack
-                    });
+                    let engulfs = aabb_engulfs(plo, phi, hlo, hhi, ENGULF_TOLERANCE);
                     if engulfs {
                         defer(5);
                     } else {

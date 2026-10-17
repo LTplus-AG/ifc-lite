@@ -8,12 +8,13 @@ use super::processing::SourceHygiene;
 use super::GeometryRouter;
 use crate::csg::{ClippingProcessor, GroupCut};
 use crate::mesh::{SubMesh, SubMeshCollection};
-use crate::{Mesh, Point3, Result, TessellationQuality, Vector3};
+use crate::{Mesh, Point3, Result, Vector3};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use nalgebra::Matrix3;
 use rustc_hash::FxHashMap;
 
 mod aabb_clip;
+mod admission;
 mod batch_cutter;
 mod bool2d_path;
 mod coaxial_union;
@@ -32,6 +33,10 @@ pub use prism_cut::{take_prism_defers, take_prism_stats};
 #[cfg(test)]
 mod reveal_tests;
 
+use admission::{
+    aabb_engulfs, admit_cutter, cut_retains_triangles, min_opening_volume, ENGULF_TOLERANCE,
+    ENGULF_TOLERANCE_F32,
+};
 use cutter::{CutterKind, OpeningFrame};
 use geom::*;
 use malformed_opening_repair::{
@@ -47,15 +52,6 @@ const NORMALIZE_EPSILON: f64 = 1e-12;
 /// |cos| above which an authored cutter depth counts as the wall normal itself
 /// (matches the vertical selector's 0.98 axis tolerance in `local_frame.rs`).
 const WALL_NORMAL_DEPTH_COS: f64 = 0.98;
-/// Minimum opening volume (m³) below which CSG is skipped (degenerate-void filter).
-/// 0.0001 m³ ≈ 0.1 litre — filters artefacts while allowing small real openings (e.g. sleeves).
-const MIN_OPENING_VOLUME: f64 = 0.0001;
-/// Fraction of pre-CSG triangles the result must retain. CSG outputs with fewer
-/// triangles than `pre_count / CSG_TRIANGLE_RETENTION_DIVISOR` are rejected as
-/// kernel blowups.
-const CSG_TRIANGLE_RETENTION_DIVISOR: usize = 4;
-/// Minimum triangle count for a valid CSG result.
-const MIN_VALID_TRIANGLES: usize = 4;
 /// A mixed 2D + residual composition may inherit a small number of imperfect
 /// IFC seams, but a large absolute increase signals that the second route tore
 /// the re-extruded host. Below this floor the relative comparison still rules.
@@ -63,11 +59,6 @@ const MIXED_ROUTE_DEFECT_FLOOR: usize = 64;
 const MIXED_ROUTE_DEFECT_GROWTH: usize = 4;
 /// Maximum wrapper depth when drilling through mapped/boolean items to find an extrusion.
 const MAX_EXTRUSION_EXTRACT_DEPTH: usize = 32;
-/// Per-axis AABB engulf slack shared by the batched, host-consumed, and
-/// rectangular-fallback engulf checks below, so the three guards can't drift
-/// apart on what counts as "engulfs the host".
-const ENGULF_TOLERANCE: f64 = 0.03;
-const ENGULF_TOLERANCE_F32: f32 = 0.03;
 
 /// Pre-computed per-element void subtraction data.
 ///
@@ -186,20 +177,6 @@ struct ParamRectCut {
 }
 
 impl GeometryRouter {
-    /// Tier-conditional minimum opening volume (m³) floor. Shared by the batch
-    /// admission gate and the sequential CSG path so the two can never diverge
-    /// (B11 / issue #976): the 0.1 L default filters legacy-BSP CSG artefacts,
-    /// but at High/Highest quality it relaxes to ~1e-9 m³ so genuine small
-    /// openings (bolt holes / sleeves in thin plates) still get cut instead of
-    /// being silently skipped.
-    #[inline]
-    fn min_opening_volume(quality: TessellationQuality) -> f64 {
-        match quality {
-            TessellationQuality::High | TessellationQuality::Highest => 1e-9,
-            _ => MIN_OPENING_VOLUME,
-        }
-    }
-
     /// Process element with void subtraction (openings)
     /// Process element with voids using optimized plane clipping
     ///
@@ -1171,27 +1148,13 @@ impl GeometryRouter {
                 }
                 let Some((opening_mesh, extrusion_dir)) = opening.cutter().mesh_cutter() else { continue };
                 // Same admission guards as the sequential loop.
-                let opening_valid = !opening_mesh.is_empty()
-                    && opening_mesh.positions.iter().all(|&v| v.is_finite())
-                    && opening_mesh.positions.len() >= 9;
-                if !opening_valid {
-                    continue;
-                }
-                let (result_min, result_max) = result.bounds();
-                let (omn, omx) = opening_mesh.bounds();
-                let no_overlap = omx.x < result_min.x
-                    || omn.x > result_max.x
-                    || omx.y < result_min.y
-                    || omn.y > result_max.y
-                    || omx.z < result_min.z
-                    || omn.z > result_max.z;
-                if no_overlap {
-                    continue;
-                }
-                let open_vol = (omx.x - omn.x) as f64
-                    * (omx.y - omn.y) as f64
-                    * (omx.z - omn.z) as f64;
-                if open_vol < Self::min_opening_volume(self.tessellation_quality()) {
+                if admit_cutter(
+                    opening_mesh,
+                    result.bounds(),
+                    min_opening_volume(self.tessellation_quality()),
+                )
+                .is_none()
+                {
                     continue;
                 }
                 let Some(ext) = Self::batch_cutter(opening_mesh, extrusion_dir, &result) else {
@@ -1203,16 +1166,13 @@ impl GeometryRouter {
                 // engulf test) stays on the sequential path, where the
                 // near-engulf and redundant-void guards live — batched it can
                 // shave the host's outer shell (the #559171-family residual).
-                let engulfs = {
-                    let tol = ENGULF_TOLERANCE;
-                    let covers = |omin: f64, omax: f64, wmin: f64, wmax: f64| {
-                        let slack = (wmax - wmin).abs().max(1.0e-9) * tol;
-                        omin <= wmin + slack && omax >= wmax - slack
-                    };
-                    covers(lo.x as f64, hi.x as f64, wall_min.x, wall_max.x)
-                        && covers(lo.y as f64, hi.y as f64, wall_min.y, wall_max.y)
-                        && covers(lo.z as f64, hi.z as f64, wall_min.z, wall_max.z)
-                };
+                let engulfs = aabb_engulfs(
+                    [lo.x as f64, lo.y as f64, lo.z as f64],
+                    [hi.x as f64, hi.y as f64, hi.z as f64],
+                    [wall_min.x, wall_min.y, wall_min.z],
+                    [wall_max.x, wall_max.y, wall_max.z],
+                    ENGULF_TOLERANCE,
+                );
                 if engulfs {
                     continue;
                 }
@@ -1312,9 +1272,7 @@ impl GeometryRouter {
                         // a conforming miss; keeping the original host instead
                         // can discard useful seam repairs made by the singles.
                         if let GroupCut::Cut(csg_result) | GroupCut::Retessellated(csg_result) = outcome {
-                            let min_tris = (tri_before / CSG_TRIANGLE_RETENTION_DIVISOR)
-                                .max(MIN_VALID_TRIANGLES);
-                            if !csg_result.is_empty() && csg_result.triangle_count() >= min_tris {
+                            if cut_retains_triangles(tri_before, &csg_result) {
                                 result = csg_result;
                                 host_mutated = true;
                                 for &(m_idx, _) in &extended {
@@ -1344,38 +1302,19 @@ impl GeometryRouter {
                 let open_min_pt = &open_min_pt;
                 let open_max_pt = &open_max_pt;
                 {
-                    let opening_valid = !opening_mesh.is_empty()
-                        && opening_mesh.positions.iter().all(|&v| v.is_finite())
-                        && opening_mesh.positions.len() >= 9;
-
-                    if !opening_valid {
-                        continue;
-                    }
-
-                    let (result_min, result_max) = result.bounds();
-                    let (open_min_f32, open_max_f32) = opening_mesh.bounds();
-                    let no_overlap = open_max_f32.x < result_min.x
-                        || open_min_f32.x > result_max.x
-                        || open_max_f32.y < result_min.y
-                        || open_min_f32.y > result_max.y
-                        || open_max_f32.z < result_min.z
-                        || open_min_f32.z > result_max.z;
-                    if no_overlap {
-                        continue;
-                    }
-
-                    let open_vol = (open_max_f32.x - open_min_f32.x)
-                        * (open_max_f32.y - open_min_f32.y)
-                        * (open_max_f32.z - open_min_f32.z);
                     // The 0.1 L volume floor filtered legacy-BSP CSG artefacts but
                     // also drops genuine small openings — bolt holes / sleeves in
                     // thin plates. At the two highest quality levels keep those
                     // holes (the exact kernel is stable on small cutters); only
                     // reject numerically degenerate cutters there. (issue #976)
-                    let min_open_vol = Self::min_opening_volume(self.tessellation_quality()) as f32;
-                    if open_vol < min_open_vol {
+                    // This path compares in f32, the precision of the bounds.
+                    let (result_min, result_max) = result.bounds();
+                    let min_open_vol = min_opening_volume(self.tessellation_quality()) as f32;
+                    let Some((open_min_f32, open_max_f32)) =
+                        admit_cutter(opening_mesh, (result_min, result_max), min_open_vol)
+                    else {
                         continue;
-                    }
+                    };
 
                     // ENGULFING-SOLID VOID: when this opening's real solid
                     // CONTAINS the whole host, the exact subtract no-ops on the
@@ -1387,17 +1326,14 @@ impl GeometryRouter {
                     // TRUE solid containment — so a void whose AABB engulfs the
                     // host while its real profile excludes it is not affected.
                     // On a hit the host is fully consumed.
-                    let aabb_engulfs = {
-                        let tol = ENGULF_TOLERANCE_F32;
-                        let covers = |omin: f32, omax: f32, hmin: f32, hmax: f32| {
-                            let slack = (hmax - hmin).abs().max(1.0e-9) * tol;
-                            omin <= hmin + slack && omax >= hmax - slack
-                        };
-                        covers(open_min_f32.x, open_max_f32.x, result_min.x, result_max.x)
-                            && covers(open_min_f32.y, open_max_f32.y, result_min.y, result_max.y)
-                            && covers(open_min_f32.z, open_max_f32.z, result_min.z, result_max.z)
-                    };
-                    if aabb_engulfs && opening_engulfs_host_solid(&result, opening_mesh) {
+                    let host_aabb_engulfed = aabb_engulfs(
+                        [open_min_f32.x, open_min_f32.y, open_min_f32.z],
+                        [open_max_f32.x, open_max_f32.y, open_max_f32.z],
+                        [result_min.x, result_min.y, result_min.z],
+                        [result_max.x, result_max.y, result_max.z],
+                        ENGULF_TOLERANCE_F32,
+                    );
+                    if host_aabb_engulfed && opening_engulfs_host_solid(&result, opening_mesh) {
                         // Mark the host consumed so the element pipeline keeps
                         // the empty result instead of falling back to the un-cut
                         // host.
@@ -1430,9 +1366,7 @@ impl GeometryRouter {
                     // intersection, or bailed on a grazing/coplanar cutter.
                     let csg_unchanged = kept.is_none();
                     if let Some(csg_result) = kept {
-                        let min_tris = (tri_before / CSG_TRIANGLE_RETENTION_DIVISOR)
-                            .max(MIN_VALID_TRIANGLES);
-                        if !csg_result.is_empty() && csg_result.triangle_count() >= min_tris {
+                        if cut_retains_triangles(tri_before, &csg_result) {
                             result = csg_result;
                             host_mutated = true;
                             csg_succeeded = true;
@@ -1480,16 +1414,13 @@ impl GeometryRouter {
                         // wall and never engulf it, so they still take the fallback.
                         // The 3% per-axis tolerance absorbs an opening that reaches
                         // ~flush with a wall face (its near plane).
-                        let engulfs_host = {
-                            let tol = ENGULF_TOLERANCE;
-                            let covers = |omin: f64, omax: f64, wmin: f64, wmax: f64| {
-                                let slack = (wmax - wmin).abs().max(1.0e-9) * tol;
-                                omin <= wmin + slack && omax >= wmax - slack
-                            };
-                            covers(final_min.x, final_max.x, wall_min.x, wall_max.x)
-                                && covers(final_min.y, final_max.y, wall_min.y, wall_max.y)
-                                && covers(final_min.z, final_max.z, wall_min.z, wall_max.z)
-                        };
+                        let engulfs_host = aabb_engulfs(
+                            [final_min.x, final_min.y, final_min.z],
+                            [final_max.x, final_max.y, final_max.z],
+                            [wall_min.x, wall_min.y, wall_min.z],
+                            [wall_max.x, wall_max.y, wall_max.z],
+                            ENGULF_TOLERANCE,
+                        );
                         // `capped` keys on the `OperandTooLarge` rejection: the
                         // #1109 per-boolean/-element escalation budget records it
                         // when a cut trips mid-arrangement and bails to the un-cut

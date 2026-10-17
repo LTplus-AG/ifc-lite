@@ -50,10 +50,8 @@ mod union3d;
 
 use nalgebra::{Matrix4, Point2, Vector3};
 
-use super::geom::{
-    mesh_is_closed_exact, mesh_signed_volume, mesh_signed_volume_about, opening_mesh_thinnest_axis_dir,
-    volume_reference,
-};
+use super::admission::{accept_cut, admit_cutter, min_opening_volume};
+use super::geom::{mesh_is_closed_exact, mesh_signed_volume, opening_mesh_thinnest_axis_dir};
 use super::sweep::mesh_to_keep;
 use super::{CutterKind, NORMALIZE_EPSILON};
 use crate::bool2d::union_contours_to_shapes;
@@ -143,33 +141,15 @@ impl GeometryRouter {
         // Admit candidates with the same light guards the sequential loop applies
         // (valid mesh, overlaps the host, above the volume floor). The footprint /
         // watertight validation happens per cluster below.
-        let (hmn, hmx) = result.bounds();
-        let min_vol = Self::min_opening_volume(self.tessellation_quality());
+        let host_bounds = result.bounds();
+        let min_vol = min_opening_volume(self.tessellation_quality());
         let mut cands: Vec<UnionCand> = Vec::new();
         for (idx, opening) in all_openings.iter().enumerate() {
             if consumed[idx] {
                 continue;
             }
             let Some((mesh, dir_hint)) = opening.cutter().mesh_cutter() else { continue };
-            let valid = !mesh.is_empty()
-                && mesh.positions.iter().all(|&v| v.is_finite())
-                && mesh.positions.len() >= 9;
-            if !valid {
-                continue;
-            }
-            let (omn, omx) = mesh.bounds();
-            let overlaps_host = !(omx.x < hmn.x
-                || omn.x > hmx.x
-                || omx.y < hmn.y
-                || omn.y > hmx.y
-                || omx.z < hmn.z
-                || omn.z > hmx.z);
-            if !overlaps_host {
-                continue;
-            }
-            let open_vol =
-                (omx.x - omn.x) as f64 * (omy_span(omn.y, omx.y)) * (omx.z - omn.z) as f64;
-            if open_vol < min_vol {
+            if admit_cutter(mesh, host_bounds, min_vol).is_none() {
                 continue;
             }
             let dir = dir_hint
@@ -481,42 +461,6 @@ impl GeometryRouter {
     }
 
 
-}
-
-/// f64 Y-span of two f32 bounds (kept out of the volume expression for clarity).
-#[inline]
-fn omy_span(lo: f32, hi: f32) -> f64 {
-    (hi - lo) as f64
-}
-
-/// Accept `cut` as the new `result` iff it is non-empty and retained enough
-/// triangles — the SAME acceptance the disjoint batching applies to its
-/// `subtract_mesh_many` output (the watertightness of the cut is guaranteed
-/// upstream: each cutter is `mesh_is_closed_exact`, and the kernel's conformity
-/// gate rejects a non-conforming arrangement). A blanket `param_cut_watertight`
-/// scan here is far too slow on the hot path. Whether the cut CHANGED the host
-/// is the caller's: [`mesh_to_keep`] reads it from the subtract's outcome.
-///
-/// `max_removed` is an OVER-CUT guard: the cut is rejected if it removed more host
-/// volume than the caller's provable upper bound (Σ contributing-cutter footprint
-/// volumes for the coaxial prism path; `f64::INFINITY` for the exact 3D union, which
-/// cannot over-cut). This catches an approximate union reconstruction — a bridged
-/// depth band, a residual projection inflation — before it is committed and consumed
-/// as if it were an exact cut, so the cluster instead defers to the exact path.
-pub(super) fn accept_cut(result: &mut Mesh, cut: Mesh, max_removed: f64) -> bool {
-    use super::{CSG_TRIANGLE_RETENTION_DIVISOR, MIN_VALID_TRIANGLES};
-    let min_tris = (result.triangle_count() / CSG_TRIANGLE_RETENTION_DIVISOR).max(MIN_VALID_TRIANGLES);
-    // Removed volume = host solid before − after (both same orientation). A cut that
-    // removed MORE than the caller's upper bound is an over-cut → reject (defer).
-    // Both readings are summed about the host's one reference point (#4632).
-    let reference = volume_reference(result);
-    let removed = mesh_signed_volume_about(result, &reference) - mesh_signed_volume_about(&cut, &reference);
-    if !cut.is_empty() && cut.triangle_count() >= min_tris && removed <= max_removed {
-        *result = cut;
-        true
-    } else {
-        false
-    }
 }
 
 /// AABB overlap on all three axes (half-open, matching the batching's disjoint

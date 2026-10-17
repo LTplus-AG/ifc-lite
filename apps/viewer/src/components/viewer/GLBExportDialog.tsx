@@ -298,7 +298,9 @@ export function GLBExportDialog({ surface, trigger }: GLBExportDialogProps) {
       });
       return { success: true, message: msg };
     } catch (err) {
-      console.error('Export failed:', err);
+      // A typed NO_RENDER_GEOMETRY refusal is the expected verdict on the
+      // user's selection, not a failure to log (#7766).
+      if (!isNoRenderGeometryError(err)) console.error('Export failed:', err);
       const kind = classifyLoadError(err);
       // The Rust boundary fails closed on an empty visible set; translate the
       // typed error into the operator-friendly message.

@@ -124,7 +124,9 @@ export function UsdExportDialog({ surface, trigger }: UsdExportDialogProps) {
       toast.success(msg);
       return { success: true, message: msg };
     } catch (err) {
-      console.error('USD export failed:', err);
+      // A typed NO_RENDER_GEOMETRY refusal is the expected verdict on the
+      // user's selection, not a failure to log (#7766).
+      if (!isNoRenderGeometryError(err)) console.error('USD export failed:', err);
       // The Rust boundary refuses a model with nothing to draw (#7695); say
       // so rather than forwarding the engine's error code.
       const errMsg = isNoRenderGeometryError(err)

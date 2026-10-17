@@ -29,14 +29,9 @@ impl ProfileProcessor {
         let mut point: Option<Point2<f64>> = None;
 
         for item in list {
-            // IFCPARAMETERVALUE(value) is stored as List(["IFCPARAMETERVALUE", value]).
-            if let Some(inner_list) = item.as_list() {
-                if let Some(type_name) = inner_list.first().and_then(|v| v.as_string()) {
-                    if type_name == "IFCPARAMETERVALUE" {
-                        param = inner_list.get(1).and_then(|v| v.as_float());
-                        continue;
-                    }
-                }
+            if let Some(value) = item.typed_value("IFCPARAMETERVALUE") {
+                param = value.as_float();
+                continue;
             }
             // A reference to an IfcCartesianPoint.
             if item.as_entity_ref().is_some() {
@@ -337,33 +332,7 @@ impl ProfileProcessor {
         let mut result_points = Vec::new();
 
         for segment in segments {
-            // Each segment is either IFCLINEINDEX((i1,i2,...)) or IFCARCINDEX((i1,i2,i3))
-            // Typed values are stored as List([String("IFCLINEINDEX"), List([indices...])])
-            // So we need to extract the inner list AND check the type name
-            let (is_arc, indices) = if let Some(segment_list) = segment.as_list() {
-                // Check if this is a typed value: List([String(type_name), List([indices...])])
-                // Typed values like IFCLINEINDEX((1,2)) are stored as:
-                // List([String("IFCLINEINDEX"), List([Integer(1), Integer(2)])])
-                if segment_list.len() >= 2 {
-                    // First element is type name (String), second is the actual indices list
-                    let type_name = segment_list
-                        .first()
-                        .and_then(|v| v.as_string())
-                        .unwrap_or("");
-                    let is_arc_type = type_name.to_uppercase().contains("ARC");
-                    if let Some(AttributeValue::List(indices_list)) = segment_list.get(1) {
-                        (is_arc_type, Some(indices_list.as_slice()))
-                    } else {
-                        // Fallback: maybe it's a direct list of indices (not typed)
-                        (false, Some(segment_list))
-                    }
-                } else {
-                    // Single element or empty - treat as direct list (line)
-                    (false, Some(segment_list))
-                }
-            } else {
-                (false, None)
-            };
+            let (is_arc, indices) = indexed_segment(segment);
 
             if let Some(indices) = indices {
                 let idx_values: Vec<usize> = indices
@@ -528,5 +497,21 @@ impl ProfileProcessor {
         }
 
         points
+    }
+}
+
+/// One `IfcIndexedPolyCurve` segment, `IFCLINEINDEX((i1,i2,...))` or
+/// `IFCARCINDEX((i1,i2,i3))`: whether it is an arc and its index list. A bare
+/// index list reads as a line; anything else has no indices.
+pub(super) fn indexed_segment(
+    segment: &AttributeValue,
+) -> (bool, Option<&[AttributeValue]>) {
+    match segment {
+        AttributeValue::Typed { name, value } => match &**value {
+            AttributeValue::List(indices) => (name.contains("ARC"), Some(indices)),
+            other => (false, Some(std::slice::from_ref(other))),
+        },
+        AttributeValue::List(indices) => (false, Some(indices)),
+        _ => (false, None),
     }
 }

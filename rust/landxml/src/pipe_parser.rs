@@ -3,15 +3,11 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use crate::{
-    preflight::preflight_xml_tokens,
-    xml::{attr, attributes, error, normalize_encoding, split_name, Budget, Meter, Result},
+    xml::{attr, attributes, error, normalize_encoding, read_events, split_name, Budget, Meter, Result},
     LandXmlCancellation, LandXmlDiagnosticCode as Code, LandXmlLimits, LandXmlPipeNetworkDocument,
     LandXmlSourceId,
 };
-use quick_xml::{
-    events::{BytesStart, Event},
-    Reader,
-};
+use quick_xml::events::{BytesStart, Event};
 pub(crate) use state::PipeParser;
 use state::{properties, FeatureBuilder, Frame, NetworkBuilder};
 use std::collections::{HashMap, HashSet};
@@ -44,21 +40,8 @@ pub fn parse_landxml_pipe_networks_with_cancel(
     // root units are resolved (`effective_root_units`).
     crate::semantics::resolve_assumed_units(limits)?;
     let input = normalize_encoding(input, limits, cancelled)?;
-    preflight_xml_tokens(&input, limits, cancelled)?;
     let mut parser = PipeParser::new(limits, cancelled, true);
-    let mut reader = Reader::from_reader(input.as_slice());
-    reader.config_mut().trim_text(false);
-    let mut buffer = Vec::new();
-    loop {
-        let event = reader
-            .read_event_into(&mut buffer)
-            .map_err(|_| error(Code::InvalidXml, "malformed XML"))?;
-        if matches!(event, Event::Eof) {
-            break;
-        }
-        parser.consume_event(event)?;
-        buffer.clear();
-    }
+    read_events(&input, limits, cancelled, |event| parser.consume_event(event))?;
     if !parser.root_seen {
         return Err(error(Code::InvalidXml, "LandXML document is empty"));
     }
@@ -126,9 +109,7 @@ impl<'a> PipeParser<'a> {
             Event::End(end) => self.end(Some(end.name().as_ref().as_bytes())),
             Event::Text(text) => self.text(text.as_ref().as_bytes()),
             // #7680: a reference in text arrives as its own event.
-            Event::GeneralRef(reference) => {
-                self.text(crate::xml::general_ref_source(&reference).as_bytes())
-            }
+            Event::GeneralRef(reference) => self.reference(&reference),
             Event::CData(text) => self.cdata(text.as_ref().as_bytes()),
             Event::DocType(_) => Err(error(Code::DtdForbidden, "DOCTYPE is not allowed")),
             _ => Ok(()),
@@ -145,9 +126,8 @@ impl<'a> PipeParser<'a> {
         }
         let name = start.name();
         let (_, local, prefix) = split_name(name.as_ref().as_bytes(), self.limits.max_name_bytes)?;
-        let (attributes, namespaces, references) = attributes(start, &self.limits)?;
+        let (attributes, namespaces) = attributes(start, &self.limits, &mut self.character_references)?;
         self.check_cancel_and_work(attributes.len())?;
-        self.check_character_references(references)?;
         let mut inherited = self
             .frames
             .last()

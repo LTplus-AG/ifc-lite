@@ -1,0 +1,13 @@
+ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('a','',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCA('a',b');
+#2=IFCB(',x');
+#3=IFCC(',c',d');
+#4=IFCD('ok');
+ENDSEC;
+END-ISO-10303-21;

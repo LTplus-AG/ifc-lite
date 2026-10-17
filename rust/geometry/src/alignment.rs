@@ -26,7 +26,7 @@
 //! vertical), +Y along travel. Used by `SectionedSolidHorizontalProcessor`
 //! to place each cross-section in 3D space.
 
-use ifc_lite_core::{AttributeValue, DecodedEntity, EntityDecoder, IfcType};
+use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use nalgebra::{Point3, Vector3};
 use std::sync::OnceLock;
 
@@ -118,12 +118,6 @@ impl TransitionKind {
             }
         }
     }
-}
-
-/// `True` if the attribute is an IFC boolean enum `.T.`. Anything else
-/// (including `.F.`, `.U.`, missing, or wrong shape) reads as `false`.
-fn read_bool(attr: Option<&AttributeValue>) -> bool {
-    attr.and_then(|v| v.as_enum()).map(|s| s == "T").unwrap_or(false)
 }
 
 /// Cumulative-station-keyed horizontal directrix segment.
@@ -694,7 +688,7 @@ fn parse_horizontal(
                     curve_id, radius,
                 )));
             }
-            let ccw = read_bool(curve.get(4));
+            let ccw = curve.get_bool(4).unwrap_or(false);
             HSeg::Arc {
                 sx,
                 sy,
@@ -716,8 +710,8 @@ fn parse_horizontal(
             }
             let start_radius = curve.get_float(3);
             let end_radius = curve.get_float(4);
-            let start_ccw = read_bool(curve.get(5));
-            let end_ccw = read_bool(curve.get(6));
+            let start_ccw = curve.get_bool(5).unwrap_or(false);
+            let end_ccw = curve.get_bool(6).unwrap_or(false);
             let start_curv = match start_radius {
                 Some(r) if r.abs() > 1e-12 => (if start_ccw { 1.0 } else { -1.0 }) / r,
                 _ => 0.0,
@@ -846,7 +840,7 @@ fn parse_vertical(
                     "ParabolicVerSeg #{} has invalid ParabolaConstant", seg_id
                 )));
             }
-            let is_convex = read_bool(seg.get(8));
+            let is_convex = seg.get_bool(8).unwrap_or(false);
             VSeg::Parabolic {
                 start,
                 length,
@@ -865,7 +859,7 @@ fn parse_vertical(
                     "CircularVerSeg #{} has invalid Radius", seg_id
                 )));
             }
-            let is_convex = read_bool(seg.get(8));
+            let is_convex = seg.get_bool(8).unwrap_or(false);
             VSeg::CircularArc {
                 start,
                 length,

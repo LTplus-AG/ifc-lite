@@ -32,9 +32,13 @@ use ifc_lite_landxml::{
 use ifc_lite_landxml::LandXmlSurfaceComponent;
 
 /// Which part of the contract broke. The fuzz target fails on `Outcome` and
-/// `Output`; `Code` is also pinned by the replay tests, but a fuzzer finds a
-/// new double-fault input every run until the scanner owns one rule order
-/// (C9a-3b), so it does not fail a scheduled run on it.
+/// `Output`; `Code` is also pinned by the replay tests, but two classes of
+/// double-fault input still differ in code and a fuzzer finds them every
+/// run: bytes that are not valid UTF-8 or UTF-16 (pull refuses the whole
+/// input first, the stream the chunk holding them) and a numeric TIN surface
+/// without `<Units>` (pull checks at the end, the stream when it completes).
+/// The scanner's own order (content outside the root, limits, DOCTYPE, an
+/// unterminated token) agrees since C9a-3b.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DivergenceKind {
     Outcome,

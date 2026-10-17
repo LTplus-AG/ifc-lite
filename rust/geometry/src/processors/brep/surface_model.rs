@@ -31,6 +31,7 @@ fn trace_capped_face(face_id: u32, error: &Error) {
 /// not read: that refuses the face (D14, under D3), as in
 /// `FacetedBrepProcessor`, and the refusal is counted here.
 fn read_simple_face_bounds(
+    face_type: &IfcType,
     bound_ids: Vec<u32>,
     decoder: &mut EntityDecoder,
 ) -> Option<(Option<Vec<Point3<f64>>>, Vec<Vec<Point3<f64>>>)> {
@@ -80,7 +81,7 @@ fn read_simple_face_bounds(
     // D3), as in `FacetedBrepProcessor`.
     let read = hole_points.len() + usize::from(outer_points.is_some()) + degenerate;
     if read < bound_count {
-        note_face_refused();
+        note_face_refused(face_type);
         return None;
     }
 
@@ -162,7 +163,7 @@ fn mesh_face_collections(
                 };
 
                 let Some((outer_points, hole_points)) =
-                    read_simple_face_bounds(bound_ids, decoder)
+                    read_simple_face_bounds(&face.ifc_type, bound_ids, decoder)
                 else {
                     continue;
                 };
@@ -187,7 +188,7 @@ fn mesh_face_collections(
                             rtc_file_units.unwrap_or((0.0, 0.0, 0.0)),
                         );
                         if result.refused {
-                            note_face_refused();
+                            note_face_refused(&face.ifc_type);
                         }
                         let base_idx = (all_positions.len() / 3) as u32;
                         all_positions.extend(result.positions);

@@ -124,13 +124,13 @@ pub(super) fn process_advanced_face(
         // a malformed grid, knot vector or weights), counted (D3).
         apply_same_sense(
             face,
-            bounds::noting_refusal(process_bspline_face(&surface, decoder, None, quality, rtc)),
+            bounds::noting_refusal(face, process_bspline_face(&surface, decoder, None, quality, rtc)),
         )
     } else if surface_type == "IFCRATIONALBSPLINESURFACEWITHKNOTS" {
         note_untrimmed_bspline_face(face);
         apply_same_sense(
             face,
-            bounds::noting_refusal(parse_rational_weights(&surface).and_then(|weights| {
+            bounds::noting_refusal(face, parse_rational_weights(&surface).and_then(|weights| {
                 process_bspline_face(&surface, decoder, Some(&weights), quality, rtc)
             })),
         )

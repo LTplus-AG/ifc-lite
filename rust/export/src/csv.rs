@@ -6,6 +6,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::csv_cell::{escape_csv_cell, CsvCellOptions};
+use ifc_lite_processing::data_model::spatial_walk;
 use crate::model::{build_export_model, fmt_num, EntityRow, ExportModel};
 
 /// Which CSV view to emit.
@@ -104,33 +105,17 @@ fn spatial_csv(content: &[u8], model: &ExportModel, opts: &CsvOptions) -> String
     let headers = ["expressId", "globalId", "name", "type", "parentId", "level"];
     let mut lines = vec![join(&headers.iter().map(|h| escape(h, d)).collect::<Vec<_>>(), d)];
 
-    let mut visited = HashSet::new();
-    let mut stack: Vec<(u32, Option<u32>, usize)> = Vec::new();
-    if let Some(pid) = project {
-        stack.push((pid, None, 0));
-    }
-    while let Some((id, parent, level)) = stack.pop() {
-        if !visited.insert(id) {
-            continue;
-        }
-        let (gid, name, ty) = info(id);
+    for visit in project.map(|pid| spatial_walk::walk(&children, pid)).unwrap_or_default() {
+        let (gid, name, ty) = info(visit.id);
         let row = vec![
-            escape(&id.to_string(), d),
+            escape(&visit.id.to_string(), d),
             escape(&gid, d),
             escape(&name, d),
             escape(&ty, d),
-            escape(&parent.map(|p| p.to_string()).unwrap_or_default(), d),
-            escape(&level.to_string(), d),
+            escape(&visit.parent.map(|p| p.to_string()).unwrap_or_default(), d),
+            escape(&visit.level.to_string(), d),
         ];
         lines.push(join(&row, d));
-        if let Some(kids) = children.get(&id) {
-            // Push reversed so siblings emit in source order.
-            for &k in kids.iter().rev() {
-                if !visited.contains(&k) {
-                    stack.push((k, Some(id), level + 1));
-                }
-            }
-        }
     }
     lines.join("\n")
 }

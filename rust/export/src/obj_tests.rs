@@ -334,3 +334,25 @@ fn a_mesh_without_normals_does_not_shift_later_normal_indices() {
         }
     }
 }
+
+/// #7734: OBJ puts a georeferenced model where the pipeline says it is, in
+/// the Y-up frame its header declares (the OBJ twin of the GLB parity test).
+#[test]
+fn obj_lands_where_the_model_is() {
+    use crate::frame_fixtures::{assert_aabb_close, frame_fixtures, reference_world_aabb};
+    for (label, content, tier) in frame_fixtures() {
+        let want = reference_world_aabb(content, tier);
+        let obj = export_obj(content.as_bytes(), &ObjOptions::default()).expect("has geometry");
+        let (mut lo, mut hi) = ([f64::INFINITY; 3], [f64::NEG_INFINITY; 3]);
+        for line in obj.lines().filter_map(|l| l.strip_prefix("v ")) {
+            let v: Vec<f64> = line.split_whitespace().map(|t| t.parse().unwrap()).collect();
+            // Y-up -> IFC Z-up
+            let z = [v[0], -v[2], v[1]];
+            for k in 0..3 {
+                lo[k] = lo[k].min(z[k]);
+                hi[k] = hi[k].max(z[k]);
+            }
+        }
+        assert_aabb_close(&format!("OBJ, {label}"), (lo, hi), want, 1e-2);
+    }
+}

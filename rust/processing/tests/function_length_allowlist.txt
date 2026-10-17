@@ -33,8 +33,8 @@
    260 rust/export/src/merged/mod.rs export_merged_models
    328 rust/export/src/model.rs stream_export_model_with_options
    269 rust/export/src/rebar_schedule_build.rs build_rebar_schedule_impl
-   243 rust/export/src/step.rs emit
-   181 rust/export/src/step_log/write.rs emit
+   238 rust/export/src/step.rs emit
+   178 rust/export/src/step_log/write.rs emit
    178 rust/export/src/step_map_rigid.rs plan
    155 rust/export/src/step_map_rigid_contexts.rs representation_contexts
    186 rust/export/src/usd.rs export_usd

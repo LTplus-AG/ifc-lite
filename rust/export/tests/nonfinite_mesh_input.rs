@@ -43,7 +43,7 @@ fn glb_parts(poison: f32) -> (String, Vec<f32>) {
         &[42],
         false,
         true,
-        false,
+        false, None,
     )
     .expect("the counts are valid");
     // Anti-vacuity: the mesh must actually have been emitted, not silently dropped.
@@ -175,7 +175,7 @@ fn finite_meshes_are_untouched() {
         &[7],
         false,
         true,
-        false,
+        false, None,
     )
     .expect("the counts are valid");
     assert_eq!(stats.vertices, 3);
@@ -237,7 +237,7 @@ fn nonfinite_colours_do_not_reach_the_material() {
             &[1],
             false,
             true,
-            false,
+            false, None,
         )
         .expect("the counts are valid");
         let jlen = u32::from_le_bytes(glb[12..16].try_into().unwrap()) as usize;
@@ -272,7 +272,7 @@ fn nonfinite_origin_does_not_reach_the_bytes() {
             &[1],
             false,
             true,
-            false,
+            false, None,
         )
         .expect("the counts are valid");
         assert_eq!(stats.vertices, 3, "anti-vacuity: mesh dropped");

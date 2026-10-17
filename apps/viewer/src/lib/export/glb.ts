@@ -9,6 +9,7 @@
  */
 
 import { GeometryProcessor, type GeometryResult, type MeshData } from '@ifc-lite/geometry';
+import { renderFrameWorldMatrix } from '@ifc-lite/geometry/world-frame';
 
 export interface GlbFromGeometryOptions {
   includeMetadata?: boolean;
@@ -49,7 +50,15 @@ export async function exportGlbFromGeometry(
   const gp = createProcessor();
   await gp.init();
   try {
-    const glb = gp.exportGlbFromMeshes(meshes, opts.includeMetadata ?? false, opts.lit ?? true, opts.emissive ?? false);
+    // The meshes are in the viewer's shifted render frame; hand the exporter the
+    // frame so the GLB root puts them back at their IFC world position (#7734).
+    const glb = gp.exportGlbFromMeshes(
+      meshes,
+      opts.includeMetadata ?? false,
+      opts.lit ?? true,
+      opts.emissive ?? false,
+      renderFrameWorldMatrix(geometryResult.coordinateInfo),
+    );
     if (!glb) throw new Error('GLB assembly returned no data');
     return glb;
   } finally {

@@ -140,3 +140,32 @@ describe('generateLod1 WASM disposal (#1959 P1 leak)', () => {
     expect(disposeSpy).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('generateLod1 frame (#7734)', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('hands the GLB assembler the frame the meshes were produced in', async () => {
+    vi.spyOn(GeometryProcessor.prototype, 'init').mockResolvedValue(undefined);
+    vi.spyOn(GeometryProcessor.prototype, 'dispose').mockReturnValue(undefined);
+    const rtc = { x: 2_600_000.5, y: 1_200_000.25, z: 500 };
+    vi.spyOn(GeometryProcessor.prototype, 'processAdaptive').mockImplementation(async function* () {
+      yield {
+        type: 'complete',
+        coordinateInfo: {
+          originShift: { x: 0, y: 0, z: 0 },
+          originalBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 0, z: 0 } },
+          shiftedBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 0, z: 0 } },
+          hasLargeCoordinates: false,
+          wasmRtcOffset: rtc,
+        },
+      } as never;
+    });
+    const exportSpy = vi.spyOn(GeometryProcessor.prototype, 'exportGlbFromMeshes').mockReturnValue(fakeGlb());
+
+    await generateLod1(input());
+
+    expect(Array.from(exportSpy.mock.calls[0][4] ?? [])).toEqual([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, rtc.x, rtc.y, rtc.z, 1]);
+  });
+});

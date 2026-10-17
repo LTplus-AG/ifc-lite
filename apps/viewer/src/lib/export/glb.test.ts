@@ -12,14 +12,26 @@ function makeStub(result: Uint8Array | null | (() => never)) {
   const calls = {
     init: 0,
     dispose: 0,
-    exportArgs: [] as Array<{ meshes: MeshData[]; includeMetadata: boolean; lit: boolean; emissive: boolean }>,
+    exportArgs: [] as Array<{
+      meshes: MeshData[];
+      includeMetadata: boolean;
+      lit: boolean;
+      emissive: boolean;
+      worldMatrix?: ArrayLike<number>;
+    }>,
   };
   const gp: GlbProcessor = {
     async init() {
       calls.init++;
     },
-    exportGlbFromMeshes(meshes: MeshData[], includeMetadata = false, lit = true, emissive = false) {
-      calls.exportArgs.push({ meshes, includeMetadata, lit, emissive });
+    exportGlbFromMeshes(
+      meshes: MeshData[],
+      includeMetadata = false,
+      lit = true,
+      emissive = false,
+      worldMatrix?: ArrayLike<number>,
+    ) {
+      calls.exportArgs.push({ meshes, includeMetadata, lit, emissive, worldMatrix });
       if (typeof result === 'function') result();
       return result as Uint8Array | null;
     },
@@ -48,6 +60,21 @@ describe('exportGlbFromGeometry', () => {
     assert.deepEqual(calls.exportArgs[0].meshes, meshes, 'uses geometryResult.meshes by default');
     assert.equal(calls.exportArgs[0].includeMetadata, false, 'includeMetadata defaults to false');
     assert.equal(calls.exportArgs[0].emissive, false, 'emissive defaults to off');
+  });
+
+  it('hands the assembler the frame the meshes sit in so the GLB lands at its world position (#7734)', async () => {
+    const { gp, calls } = makeStub(new Uint8Array([1]));
+    const shifted = {
+      meshes: [mesh(1)],
+      coordinateInfo: { originShift: { x: 0, y: 0, z: 0 }, wasmRtcOffset: { x: 2_600_000.5, y: 1_200_000.25, z: 500 } },
+    } as unknown as GeometryResult;
+
+    await exportGlbFromGeometry(shifted, {}, () => gp);
+    assert.deepEqual(calls.exportArgs[0].worldMatrix, [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 2_600_000.5, 1_200_000.25, 500, 1]);
+
+    // An unshifted model has nothing to restore.
+    await exportGlbFromGeometry(geometry([mesh(1)]), {}, () => gp);
+    assert.equal(calls.exportArgs[1].worldMatrix, undefined);
   });
 
   it('forwards the emissive flag to the assembler (self-illuminated GLB option)', async () => {

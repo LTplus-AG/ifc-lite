@@ -308,7 +308,7 @@ fn glb_from_meshes() {
         let b = mesh_buffers(bytes);
         let glb = try_export_glb_from_meshes(
             &b.positions, &b.normals, &b.indices, &b.vertex_counts, &b.index_counts, &b.colors, &b.origins,
-            &b.express_ids, true, true, false,
+            &b.express_ids, true, true, false, None,
         );
         bytes_or_refusal(glb.map(|(glb, _)| glb))
     });

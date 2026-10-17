@@ -165,6 +165,52 @@ impl MeshFrame {
         }
     }
 
+    /// The frame whose [`MeshFrame::world_matrix`] is `world` (column-major
+    /// 4x4, IFC Z-up metres): the inverse a consumer that was HANDED a restore
+    /// matrix (the viewer's meshes, which carry no `ProcessingResult`) needs to
+    /// get a frame back, so every writer restores through the one
+    /// [`MeshFrame::world_matrix`] / [`MeshFrame::to_world`] arithmetic
+    /// (#7734). A non-identity rotation block is the site tier, a bare
+    /// translation is a model anchor, and neither is raw.
+    ///
+    /// `world` must hold at least 16 elements; the caller vets finiteness.
+    pub fn from_world_matrix(world: &[f64]) -> Self {
+        debug_assert!(world.len() >= 16);
+        if world.len() < 16 {
+            return Self::RawIfc;
+        }
+        let anchor = (world[12], world[13], world[14]);
+        if restoring_rotation(Some(world)).is_some() {
+            let mut placement = [0.0; 16];
+            placement.copy_from_slice(&world[..16]);
+            Self::SiteLocal { placement }
+        } else if translation_is_nonidentity(anchor) {
+            Self::ModelRtc { anchor }
+        } else {
+            Self::RawIfc
+        }
+    }
+
+    /// The frame described by its parts: the wire tag, the subtracted
+    /// translation and the site placement (read only in the site tier), the
+    /// way the glTF assembler carries them. Only [`MeshFrame::world_matrix`]
+    /// of the result is meaningful: a `SiteLocal` tag with no placement, or
+    /// the other tiers, restore a translation alone.
+    pub fn from_parts(space: MeshCoordinateSpace, rtc: [f64; 3], site: Option<&[f64]>) -> Self {
+        let site = site.filter(|m| m.len() >= 16 && space == MeshCoordinateSpace::SiteLocal);
+        let mut world = [0.0; 16];
+        match site {
+            Some(m) => world.copy_from_slice(&m[..16]),
+            None => {
+                for i in 0..4 {
+                    world[i * 5] = 1.0;
+                }
+            }
+        }
+        world[12..15].copy_from_slice(&rtc);
+        Self::from_world_matrix(&world)
+    }
+
     /// Frame for file-parsing consumers: grid/alignment overlays and the
     /// browser symbolic stream (#4665). It uses the same file-scoped sample
     /// window as the browser meshes, so their anchors agree (#4611).

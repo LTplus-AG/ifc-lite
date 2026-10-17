@@ -102,14 +102,14 @@ fn adjusted_type_universe() -> std::collections::BTreeMap<(&'static str, &'stati
                 let Some(src) = super::schema_attribute_names(from, &name) else { continue };
                 let new_type = super::convert_entity_type(&name, from, to);
                 if super::should_skip_entity(&new_type, to)
-                    || !crate::schema_unrepresented::has_representation(&new_type, to)
+                    || !crate::schema_unrepresented::has_representation(true, &new_type, to)
                 {
                     continue;
                 }
                 let Some(tgt) = super::schema_attribute_names(to, &new_type) else { continue };
-                let adjust = if super::is_strict_attr_prefix(tgt, src) {
+                let adjust = if crate::schema_renames::is_strict_attr_prefix(&name, tgt, src) {
                     Adjust::Trim
-                } else if super::is_strict_attr_prefix(src, tgt) {
+                } else if crate::schema_renames::is_strict_attr_prefix(&name, src, tgt) {
                     Adjust::Pad
                 } else {
                     continue;

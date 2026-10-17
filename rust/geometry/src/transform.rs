@@ -92,19 +92,7 @@ pub(crate) fn build_axis2_matrix(
         .try_normalize(1e-9)
         .unwrap_or_else(|| Vector3::new(1.0, 0.0, 0.0));
 
-    // Ensure X is orthogonal to Z (project X onto plane perpendicular to Z)
-    let dot_product = x_axis_normalized.dot(&z_axis_final);
-    let x_axis_orthogonal = x_axis_normalized - z_axis_final * dot_product;
-    let x_axis_final = if x_axis_orthogonal.norm() > 1e-6 {
-        x_axis_orthogonal.normalize()
-    } else {
-        // X and Z are parallel or nearly parallel - use a default perpendicular direction
-        if z_axis_final.z.abs() < 0.9 {
-            Vector3::new(0.0, 0.0, 1.0).cross(&z_axis_final).normalize()
-        } else {
-            Vector3::new(1.0, 0.0, 0.0).cross(&z_axis_final).normalize()
-        }
-    };
+    let x_axis_final = crate::axis_projection::perpendicular_x_axis(z_axis_final, x_axis_normalized);
 
     // Y axis is cross product of Z and X (right-hand rule: Y = Z × X)
     let y_axis = z_axis_final.cross(&x_axis_final).normalize();

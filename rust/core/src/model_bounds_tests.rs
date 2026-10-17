@@ -64,22 +64,22 @@ fn test_small_coordinates_no_shift() {
 
 #[test]
 fn test_extract_point_coordinates_3d() {
-    let text = "IFCCARTESIANPOINT((2679012.123,1247892.456,432.789))";
+    let text = "#1=IFCCARTESIANPOINT((2679012.123,1247892.456,432.789));";
     let coords = extract_point_coordinates(text).unwrap();
 
     assert!((coords.0 - 2679012.123).abs() < 0.001);
     assert!((coords.1 - 1247892.456).abs() < 0.001);
-    assert!((coords.2.unwrap() - 432.789).abs() < 0.001);
+    assert!((coords.2 - 432.789).abs() < 0.001);
 }
 
 #[test]
 fn test_extract_point_coordinates_2d() {
-    let text = "IFCCARTESIANPOINT((100.5,200.5))";
+    let text = "#1=IFCCARTESIANPOINT((100.5,200.5));";
     let coords = extract_point_coordinates(text).unwrap();
 
     assert_eq!(coords.0, 100.5);
     assert_eq!(coords.1, 200.5);
-    assert!(coords.2.is_none());
+    assert_eq!(coords.2, 0.0);
 }
 
 #[test]

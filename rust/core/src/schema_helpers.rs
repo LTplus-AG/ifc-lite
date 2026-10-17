@@ -297,8 +297,8 @@ pub fn ifc_type_from_record(decoded: IfcType, record: &[u8]) -> IfcType {
     if !matches!(decoded, IfcType::Unknown(_)) {
         return decoded;
     }
-    match crate::fast_parse::extract_entity_type_name(record) {
-        Some(name) => ifc_type_from_keyword(name),
+    match crate::parser::StepRecord::parse(record).and_then(|head| head.keyword()) {
+        Some(keyword) => ifc_type_from_keyword(keyword),
         None => decoded,
     }
 }

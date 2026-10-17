@@ -23,6 +23,20 @@ use crate::parser::lexical::{is_step_space, skip_step_comment, skip_step_trivia}
 use std::ops::Range;
 use crate::step_encoding::step_string_literal_end;
 
+/// The bytes that end a plain run inside an item: the separators and
+/// brackets the item loop acts on, a quote or a possible comment opener, and
+/// STEP whitespace (which the item's end must not include).
+const SPECIAL: [bool; 256] = {
+    let mut table = [false; 256];
+    let specials = b",()'/ \t\n\r\x0b\x0c";
+    let mut i = 0;
+    while i < specials.len() {
+        table[specials[i] as usize] = true;
+        i += 1;
+    }
+    table
+};
+
 /// The top-level items of one parenthesized STEP list, each trimmed of
 /// trivia (STEP whitespace and `/* ... */` comments) at both ends. Nested
 /// parentheses and quoted strings are respected, so a `,` inside `('a,b')`
@@ -65,6 +79,11 @@ impl<'a> StepListItems<'a> {
         Self { bytes, pos, first: true, state: ListState::Open }
     }
 
+    /// The items of the list whose `(` sits just before `pos`.
+    pub(crate) fn at(bytes: &'a [u8], pos: usize) -> Self {
+        Self::after_open(bytes, pos)
+    }
+
     /// Whether iteration has reached the list's own `)`.
     pub fn closed(&self) -> bool {
         self.state == ListState::Closed
@@ -74,25 +93,35 @@ impl<'a> StepListItems<'a> {
 impl<'a> Iterator for StepListItems<'a> {
     type Item = &'a [u8];
 
+    #[inline]
     fn next(&mut self) -> Option<&'a [u8]> {
         if self.state != ListState::Open {
             return None;
         }
         let bytes = self.bytes;
+        let len = bytes.len();
         let mut pos = self.pos;
         // The item's non-trivia span, once a value byte has been seen.
         let (mut start, mut end) = (None, pos);
         let mut depth = 0usize;
         loop {
-            let Some(next) = skip_step_trivia(bytes, pos) else {
-                break;
-            };
-            pos = next;
+            // Trivia, inline: the whitespace run is the common case, and only
+            // a `/*` leaves it.
+            while pos < len && is_step_space(bytes[pos]) {
+                pos += 1;
+            }
             let Some(&b) = bytes.get(pos) else {
                 break;
             };
             let value_start = pos;
             match b {
+                b'/' if bytes.get(pos + 1) == Some(&b'*') => match skip_step_comment(bytes, pos) {
+                    Some(next) => {
+                        pos = next;
+                        continue;
+                    }
+                    None => break,
+                },
                 b',' | b')' if depth == 0 => {
                     let first = std::mem::replace(&mut self.first, false);
                     self.pos = pos + 1;
@@ -119,6 +148,11 @@ impl<'a> Iterator for StepListItems<'a> {
                 _ => {}
             }
             pos += 1;
+            // A run of bytes that act on nothing and are no trivia is one
+            // value stretch: jump it (F4-3).
+            while pos < len && !SPECIAL[bytes[pos] as usize] {
+                pos += 1;
+            }
             start.get_or_insert(value_start);
             end = pos;
         }
@@ -219,9 +253,12 @@ pub fn split_top_level_args_str(inner: &str) -> Vec<&str> {
 /// container exceptionally carries geometry (#1910), companion to
 /// `is_representationless_spatial_container_by_name`.
 pub fn nth_attribute_is_present(record: &[u8], index: usize) -> bool {
-    let Some(mut attributes) = StepListItems::of_record(record) else {
-        return false;
-    };
+    StepListItems::of_record(record).is_some_and(|attributes| attribute_is_present(attributes, index))
+}
+
+/// The one "does attribute `index` hold a value" rule over a record's
+/// attributes; [`nth_attribute_is_present`] and `StepRecord::is_present`.
+pub(crate) fn attribute_is_present(mut attributes: StepListItems<'_>, index: usize) -> bool {
     let holds_a_value = attributes
         .nth(index)
         .is_some_and(|value| !matches!(value.first(), None | Some(b'$')));

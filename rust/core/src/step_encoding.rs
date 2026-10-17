@@ -60,6 +60,7 @@ pub fn is_page_quote_operand(bytes: &[u8], pos: usize) -> bool {
 /// the literal at the operand misreads every later comma, paren and
 /// reference in the record. The TypeScript twin is `stepStringLiteralEnd` in
 /// `@ifc-lite/encoding`.
+#[inline(always)]
 pub fn step_string_literal_end(bytes: &[u8], open: usize) -> Option<usize> {
     let mut p = open + 1;
     loop {

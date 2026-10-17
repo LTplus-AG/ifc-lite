@@ -53,6 +53,16 @@ the same window the scanner searches for `DATA;`). Keywords are found by
 `step_encoding::decode_step_literal`, and `parser::split_top_level_args` splits
 top-level arguments, all ignoring comments and quoted decoys.
 
+`ifc_lite_core::parser::StepRecord::parse(record)` is the zero-copy view of one
+`#id = KEYWORD ( ... )` record that every raw-byte reader goes through: it
+locates the attribute list (trivia and comments allowed wherever STEP allows
+them), and `attr`, `ref_at`, `ref_list_at`, `real_at`, `point_at`, `string_at`
+and `enum_at` read one attribute each, borrowing from the record. A list whose
+items are not all plain `#n` references is refused whole (`ref_list_at`), and
+`parse_ref` accepts `#` and digits only. `fast_parse::extract_entity_type_name`,
+`extract_first_entity_ref`, `extract_entity_refs_from_list` and
+`EntityDecoder::get_first_entity_ref_fast` are removed in favour of it.
+
 #### Token
 
 ```rust

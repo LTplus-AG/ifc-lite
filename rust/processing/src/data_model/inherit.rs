@@ -7,11 +7,11 @@
 //! issue #1913 made on the TS side: replacing a whole same-named set with the
 //! occurrence's version drops the type-only properties inside it, and those
 //! then become invisible to IDS and to schedules. Keep the two implementations
-//! in step; `model_inherit_tests.rs` mirrors the TS test cases.
+//! in step; `inherit_tests.rs` mirrors the TS test cases.
 //!
-//! Split from `model.rs` under the house rule (AGENTS.md).
+//! Moved from `rust/export/src/model_inherit.rs` (C6-8, #7783).
 
-use crate::model::{PropValue, PropertySet, QuantitySet, QuantityValue};
+use super::rows::{PropValue, PropertySet, QuantitySet, QuantityValue};
 use std::collections::HashMap;
 
 /// A named set of named things, so one merge serves both property sets and
@@ -122,5 +122,5 @@ pub(super) fn merge_inherited<T: NamedSet>(mut own: Vec<T>, inherited: Vec<T>) -
 }
 
 #[cfg(test)]
-#[path = "model_inherit_tests.rs"]
+#[path = "inherit_tests.rs"]
 mod tests;

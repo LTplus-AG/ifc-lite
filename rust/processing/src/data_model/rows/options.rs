@@ -41,7 +41,7 @@ impl Placement {
 /// What the export should resolve beyond the attributes it always reads.
 ///
 /// ```
-/// # use ifc_lite_export::ModelOptions;
+/// # use ifc_lite_processing::data_model::rows::ModelOptions;
 /// let opts = ModelOptions::default().with_placements(true);
 /// ```
 ///
@@ -77,8 +77,8 @@ pub struct ModelOptions {
     /// It costs one extra `IfcRelDefinesByType` map in pass 1 (`O(typed
     /// occurrences)`) and one resolve per distinct type, memoized.
     ///
-    /// [`EntityRow::property_sets`]: crate::model::EntityRow::property_sets
-    /// [`EntityRow::quantity_sets`]: crate::model::EntityRow::quantity_sets
+    /// [`EntityRow::property_sets`]: super::EntityRow::property_sets
+    /// [`EntityRow::quantity_sets`]: super::EntityRow::quantity_sets
     pub inherit_type_properties: bool,
     /// Render the attributes each entity's own IFC class declares, into
     /// [`EntityRow::attributes`].
@@ -87,7 +87,7 @@ pub struct ModelOptions {
     /// every flattened export. It is cheap when on, though, since the row's
     /// entity is already decoded and this only formats fields already in hand.
     ///
-    /// [`EntityRow::attributes`]: crate::model::EntityRow::attributes
+    /// [`EntityRow::attributes`]: super::EntityRow::attributes
     pub attributes: bool,
 }
 

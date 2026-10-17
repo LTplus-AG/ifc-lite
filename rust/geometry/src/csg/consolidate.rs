@@ -149,17 +149,18 @@ impl ClippingProcessor {
     }
 
     fn consolidate_coplanar_with_unit_scale(mesh: Mesh, length_unit_scale: f64) -> Mesh {
-        Self::consolidate_with_supported_cells(mesh, length_unit_scale, true)
+        Self::consolidate_with_supported_cells(mesh, length_unit_scale, true, true)
     }
 
-    fn consolidate_with_supported_cells(mesh: Mesh, length_unit_scale: f64, preserve_supported: bool) -> Mesh {
+    fn consolidate_with_supported_cells(mesh: Mesh, length_unit_scale: f64, preserve_supported: bool, preserve_folds: bool) -> Mesh {
         if mesh.indices.len() < 6 {
             return mesh;
         }
         let mut buckets = buckets::build(&mesh);
         // Stitch only the adjacent rounding splits certified by the kernel tags.
         let merged_bucket_keys = plane_merge::merge_rounding_split_buckets(&mut buckets);
-        let mut supported = supported_cells::find(&buckets);
+        let mut supported = if preserve_folds { supported_cells::find(&buckets) }
+            else { supported_cells::find_with_folds(&buckets, false) };
         if !preserve_supported {
             // Healthy folds have a separate exact source-topology certificate.
             // Keep their finite surface in the ordinary baseline while still
@@ -177,11 +178,27 @@ impl ClippingProcessor {
             return mesh;
         }
         let mut output = candidates::prefer_raw_if_cleaner(&mesh, output, &buckets, &supported);
+        // A local healthy fold cannot reopen a boundary ordinary cleanup
+        // already closes. Only an open candidate pays for this comparison;
+        // the no-fold call retains the original thin-cell policy.
+        if !supported.folded_buckets.is_empty() {
+            let exact = crate::exact_topology::strict_closed_mesh(&output);
+            let public = preservation::public_weld_closed(&output);
+            if !exact || !public {
+                let ordinary = Self::consolidate_with_supported_cells(
+                    mesh.clone(), length_unit_scale, preserve_supported, false);
+                if ((!exact && crate::exact_topology::strict_closed_mesh(&ordinary))
+                    || (!public && preservation::public_weld_closed(&ordinary)))
+                    && !supported_cells::has_uncertified_needle(&ordinary, &supported) {
+                    return ordinary;
+                }
+            }
+        }
         // Retention may not restore unrelated needles through the whole-raw
         // fallback (#1007, #5739). Preserve the established exact/public closure
         // and signed boundary bars, including partially conforming source meshes.
         if !supported.cells.is_empty() {
-            let baseline = Self::consolidate_with_supported_cells(mesh.clone(), length_unit_scale, false);
+            let baseline = Self::consolidate_with_supported_cells(mesh.clone(), length_unit_scale, false, preserve_folds);
             // An already closed ordinary boundary needs no source-cell rescue.
             if crate::exact_topology::strict_closed_mesh(&baseline) { return baseline; }
             let exact = crate::exact_topology::strict_closed_mesh(&output);
@@ -269,3 +286,7 @@ mod issue_3977_tests;
 #[cfg(test)]
 #[path = "consolidate_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "consolidate/healthy_fold_adoption_tests.rs"]
+mod healthy_fold_adoption_tests;

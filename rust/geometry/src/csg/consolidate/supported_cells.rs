@@ -27,11 +27,14 @@ pub(super) struct Supported {
     pub fold_support_buckets: Vec<Bucket>,
 }
 pub(super) fn find(buckets: &BTreeMap<Bucket, Vec<PlaneTri>>) -> Supported {
+    find_with_folds(buckets, true)
+}
+pub(super) fn find_with_folds(buckets: &BTreeMap<Bucket, Vec<PlaneTri>>, preserve_folds: bool) -> Supported {
     // Ordinary healthy partitions need no certificate tables. A later cut
     // can keep a finite fold after the original thin seed has been cleaned.
     let has_needle = buckets.values().flatten().any(|t| tri_is_needle(&t.v));
-    if !has_needle && !buckets.values().any(|ts| ts.len() == 2
-        && healthy_fold_boundary(&[&ts[0], &ts[1]]).is_some()) {
+    if !has_needle && (!preserve_folds || !buckets.values().any(|ts| ts.len() == 2
+        && healthy_fold_boundary(&[&ts[0], &ts[1]]).is_some())) {
         return Supported::default();
     }
     let faces = buckets
@@ -87,7 +90,7 @@ pub(super) fn find(buckets: &BTreeMap<Bucket, Vec<PlaneTri>>) -> Supported {
     // repeated uses in either direction. A nonmanifold source cannot certify
     // that retaining these buckets preserves the ordinary cleanup's surface.
     // Thin-cell certificates above remain local and keep their existing policy.
-    if !edges.values().all(|uses| uses.len() == 1
+    if !preserve_folds || !edges.values().all(|uses| uses.len() == 1
         || (uses.len() == 2 && uses[0].1 != uses[1].1)) {
         return out;
     }

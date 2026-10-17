@@ -9,12 +9,6 @@ use crate::bool2d::compute_signed_area;
 use crate::profile::Profile2D;
 use nalgebra::{Matrix4, Point2, Point3, Vector3};
 
-/// Shoelace area magnitude of a 2D contour.
-#[inline]
-fn area_abs(poly: &[Point2<f64>]) -> f64 {
-    compute_signed_area(poly).abs()
-}
-
 /// True iff `fp` lies strictly interior to `profile`: every vertex is inside the
 /// outer boundary and outside every existing hole. A conservative interiority
 /// test — a footprint that touches or crosses a boundary edge (a boundary notch)
@@ -73,7 +67,7 @@ pub(super) fn opening_solid_footprint(
     if zmin > hz_min + z_tol || zmax < hz_max - z_tol {
         return None;
     }
-    if area_abs(&fp) <= 0.0 {
+    if compute_signed_area(&fp).abs() <= 0.0 {
         return None;
     }
     Some(fp)

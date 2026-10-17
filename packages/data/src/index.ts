@@ -50,6 +50,9 @@ export {
 } from './storey-elevation.js';
 // The absent-RefDirection fill, one definition shared with the renderer (#5922).
 export { firstProjAxis } from './axis2-placement.js';
+// The one PlacementRelTo chain walker (#7791): iterative, visited set, no depth cap.
+export { walkPlacementChain } from './placement-chain.js';
+export type { PlacementChain, PlacementChainEnd, PlacementChainOptions } from './placement-chain.js';
 export type { IfcStoreBase, IfcSourceHeader } from './data-store.js';
 export { getAggregatedChildren, collectAggregatedDescendants } from './decomposition.js';
 export type { DecompositionRelationships } from './decomposition.js';

@@ -200,17 +200,17 @@ impl LandXmlTinStreamSession {
         let terrain = self.parser.take().expect("open parser").finish()?;
         let plan = self.plan.take().expect("open plan parser");
         if plan.has_open_frames() {
-            return Err(error(Code::InvalidXml, "unclosed plan XML element"));
+            return Err(error(Code::InvalidXml, "unclosed XML element"));
         }
         let plan = plan.document();
         let alignment = self.alignment.take().expect("open alignment parser");
         if alignment.has_open_frames() {
-            return Err(error(Code::InvalidXml, "unclosed alignment XML element"));
+            return Err(error(Code::InvalidXml, "unclosed XML element"));
         }
         let alignment = alignment.finish()?;
         let pipe = self.pipe.take().expect("open pipe parser");
         if pipe.has_open_frames() {
-            return Err(error(Code::InvalidXml, "unclosed pipe XML element"));
+            return Err(error(Code::InvalidXml, "unclosed XML element"));
         }
         let (pipe, preflight_refusal_batches, has_pipe_networks) =
             pipe.finish_stream_with_preflight()?;
@@ -284,7 +284,9 @@ impl LandXmlTinStreamSession {
                     return Err(error(Code::DtdForbidden, "DOCTYPE is not allowed"));
                 }
                 let complete = if self.token.starts_with(b"<!--") {
-                    self.token.ends_with(b"-->")
+                    // `<!-->` and `<!--->` are not complete: the terminator is
+                    // searched after the opener, which they would overlap.
+                    self.token.len() >= b"<!---->".len() && self.token.ends_with(b"-->")
                 } else if self.token.starts_with(b"<![CDATA[") {
                     self.token.ends_with(b"]]>")
                 } else if self.token.starts_with(b"<?") {

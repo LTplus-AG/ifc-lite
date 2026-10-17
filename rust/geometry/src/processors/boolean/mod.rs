@@ -797,13 +797,8 @@ impl BooleanClippingProcessor {
             if polygonal {
                 let Some((plane_point, plane_normal, agreement)) =
                     self.half_space_plane_or_record(&second_operand, decoder) else { return Ok((mesh, false)) };
-                if let Ok(built) = self.build_polygonal_bounded_half_space_mesh(
-                    &second_operand,
-                    decoder,
-                    &mesh,
-                    (plane_point, plane_normal, agreement),
-                    quality,
-                ) {
+                if polygonal_prism::host_stays_on_kept_side(&mesh, plane_point, plane_normal, agreement) { return Ok((mesh, false)); }
+                if let Ok(built) = self.build_polygonal_bounded_half_space_mesh(&second_operand, decoder, &mesh, (plane_point, plane_normal, agreement), quality) {
                     // `None`: boundary over the vertex cap, refused on record (#7786).
                     let Some(bound_mesh) = built else { return Ok((mesh, false)) };
                     // `single_cutter_gate.rs`: the #3919/#3923 gate and `solo_step`.

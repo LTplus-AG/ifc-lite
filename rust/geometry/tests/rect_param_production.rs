@@ -74,7 +74,7 @@ fn analytic_cut_volume(
     Some(((host_vol - opening_vol).abs(), nb))
 }
 
-const DEFAULT_FIXTURE: &str = "../../tests/models/buildingsmart/wall-with-opening-and-window.ifc";
+mod support;
 
 fn mesh_volume(mesh: &Mesh) -> f64 {
     mesh.indices
@@ -136,12 +136,9 @@ fn build_void_index(content: &str, decoder: &mut EntityDecoder) -> FxHashMap<u32
 #[test]
 #[ignore = "production wiring test -- run explicitly with MEASURE_FIXTURE"]
 fn param_fast_path_fires_in_production_and_is_watertight() {
-    let fixture = std::env::var("MEASURE_FIXTURE").unwrap_or_else(|_| DEFAULT_FIXTURE.to_string());
-    if !std::path::Path::new(&fixture).exists() {
-        eprintln!("skipping: fixture {fixture} not present");
+    let Some((fixture, content)) = support::measure_fixture() else {
         return;
-    }
-    let content = std::fs::read_to_string(&fixture).expect("read fixture");
+    };
     let entity_index = build_entity_index(&content);
     let mut decoder = EntityDecoder::with_index(&content, entity_index);
     let router = GeometryRouter::with_units(&content, &mut decoder);

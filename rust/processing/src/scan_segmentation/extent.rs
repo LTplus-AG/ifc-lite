@@ -11,11 +11,12 @@
 //! hull): PCA axes would turn a square room's box by an arbitrary angle.
 use super::normals::{canonical_sign, cross, dot, sub, unit, Vec3};
 use super::refit::plane_basis;
+use ifc_lite_geometry::math::v2;
 
 type P2 = [f64; 2];
 
 fn turn(o: P2, a: P2, b: P2) -> f64 {
-    (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+    v2::cross(v2::sub(a, o), v2::sub(b, o))
 }
 
 /// Andrew's monotone chain; counter-clockwise, collinear points dropped.

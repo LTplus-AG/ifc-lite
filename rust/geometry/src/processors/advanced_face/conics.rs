@@ -5,6 +5,7 @@
 //! Conic edge samplers: axis placement reading plus circle and ellipse arc
 //! discretization for advanced-face edge loops.
 
+use crate::math::tol;
 use crate::{scale_segments, Point3, TessellationQuality};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 
@@ -81,8 +82,8 @@ pub(super) fn sample_circle_edge_curve(
     let mut cw_delta = (a_start - a_end).rem_euclid(TAU);
 
     // Treat coincident endpoints as a full 360° arc (full circle in topology).
-    let coincident = (start - end).norm() < 1e-6 * radius.max(1.0);
-    if coincident || ccw_delta < 1e-9 {
+    let coincident = (start - end).norm() < tol::ARC_COINCIDENT_REL * radius.max(1.0);
+    if coincident || ccw_delta < tol::ARC_SWEEP_MIN {
         ccw_delta = TAU;
         cw_delta = TAU;
     }
@@ -155,8 +156,8 @@ pub(super) fn sample_ellipse_edge_curve(
     let mut ccw_delta = (a_end - a_start).rem_euclid(TAU);
     let mut cw_delta = (a_start - a_end).rem_euclid(TAU);
 
-    let coincident = (start - end).norm() < 1e-6 * r1.max(r2).max(1.0);
-    if coincident || ccw_delta < 1e-9 {
+    let coincident = (start - end).norm() < tol::ARC_COINCIDENT_REL * r1.max(r2).max(1.0);
+    if coincident || ccw_delta < tol::ARC_SWEEP_MIN {
         ccw_delta = TAU;
         cw_delta = TAU;
     }

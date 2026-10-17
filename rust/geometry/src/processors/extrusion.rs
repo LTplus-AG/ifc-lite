@@ -4,6 +4,7 @@
 
 //! ExtrudedAreaSolid processor - extrusion of 2D profiles.
 
+use crate::math::tol;
 use crate::{
     extrusion::{apply_transform, extrude_regions},
     profiles::ProfileProcessor,
@@ -50,7 +51,8 @@ pub(crate) fn extrusion_local_transform<S: GeomScalar>(
     // before the Position transform is applied. What the direction becomes in world
     // space is irrelevant to the extrusion operation.
     let is_local_z_aligned =
-        local_direction.x.abs().value() < 0.001 && local_direction.y.abs().value() < 0.001;
+        local_direction.x.abs().value() < tol::EXTRUSION_AXIS_COMPONENT_EPS
+            && local_direction.y.abs().value() < tol::EXTRUSION_AXIS_COMPONENT_EPS;
 
     if is_local_z_aligned {
         // Local direction is along Z - no extra rotation needed.

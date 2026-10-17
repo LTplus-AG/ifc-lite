@@ -26,11 +26,9 @@ fn detected_offset(
         .map_or((0.0, 0.0, 0.0), RtcVerdict::offset)
 }
 
-const LOCAL_MODELS_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../tests/models/local");
-
+/// Private local models (not in the manifest): `local_fixture_text` never gates.
 fn load_file(name: &str) -> Option<String> {
-    let path = format!("{}/{}", LOCAL_MODELS_DIR, name);
-    std::fs::read_to_string(&path).ok()
+    ifc_lite_testkit::local_fixture_text(&format!("local/{name}"))
 }
 
 /// Test RTC detection on real infrastructure IFC files.

@@ -10,6 +10,7 @@ use super::property_value::{
 };
 use ifc_lite_core::limits::{complex_property_listing_bytes, ComplexPropertyBudget};
 use ifc_lite_core::IfcType;
+use super::jobs::SplitDecoder;
 use super::types::{EntityJob, Property, PropertySet};
 use ifc_lite_core::{DecodedEntity, EntityDecoder};
 use rayon::prelude::*;
@@ -18,7 +19,7 @@ use std::sync::Arc;
 
 /// Extract all property sets and their properties.
 pub(super) fn extract_properties(
-    jobs: &[EntityJob],
+    jobs: &[&EntityJob],
     content: &[u8],
     entity_index: &Arc<ifc_lite_core::EntityIndex>,
 ) -> Vec<PropertySet> {
@@ -31,7 +32,6 @@ pub(super) fn extract_properties(
     // budget twice (#7675).
     let pset_jobs: Vec<_> = jobs
         .iter()
-        .filter(|job| job.type_name.eq_ignore_ascii_case("IFCPROPERTYSET"))
         .filter(|job| entity_index.get(&job.id).is_some_and(|&(start, _)| start == job.start))
         .collect();
 
@@ -39,67 +39,70 @@ pub(super) fn extract_properties(
 
     let mut sets: Vec<(PropertySet, Vec<(usize, u32)>)> = pset_jobs
         .par_iter()
-        .filter_map(|job| {
-            let mut local_decoder =
-                EntityDecoder::with_arc_index(content, entity_index.clone());
-            let entity = local_decoder.decode_at(job.start, job.end).ok()?;
+        .map_init(
+            || SplitDecoder::new(content, entity_index),
+            |split, job| {
+                let local_decoder = split.next_job(job);
+                let entity = local_decoder.decode_at(job.start, job.end).ok()?;
 
-            // IfcPropertySet: [0]=GlobalId, [1]=OwnerHistory, [2]=Name, [3]=Description, [4]=HasProperties
-            // `Name` is OPTIONAL per the schema (inherited from `IfcRoot`) —
-            // bailing the whole closure with `?` on a null/non-string Name
-            // would drop a pset with genuinely resolvable properties before
-            // the keep condition below ever runs, breaking the exact parity
-            // with the browser/WASM path's `typeof psetAttrs[2] === 'string'
-            // ? psetAttrs[2] : ''` (`columnar-parser.ts`), which always
-            // normalizes a missing Name to `''` rather than discarding the
-            // pset. Mirror that here instead of using `?`.
-            let pset_name = entity.get_string(2).unwrap_or_default().to_string();
-            // `HasProperties` is a mandatory, non-empty SET per the schema, so
-            // a `$`/malformed value here means the file itself is invalid —
-            // but the browser path still tolerates it (`Array.isArray` check,
-            // falling through with an empty `properties`) rather than
-            // discarding the pset outright. Match that: treat a missing/
-            // malformed list as empty rather than bailing on `?`.
-            let has_properties = entity.get_list(4).unwrap_or(&[]);
+                // IfcPropertySet: [0]=GlobalId, [1]=OwnerHistory, [2]=Name, [3]=Description, [4]=HasProperties
+                // `Name` is OPTIONAL per the schema (inherited from `IfcRoot`) —
+                // bailing the whole closure with `?` on a null/non-string Name
+                // would drop a pset with genuinely resolvable properties before
+                // the keep condition below ever runs, breaking the exact parity
+                // with the browser/WASM path's `typeof psetAttrs[2] === 'string'
+                // ? psetAttrs[2] : ''` (`columnar-parser.ts`), which always
+                // normalizes a missing Name to `''` rather than discarding the
+                // pset. Mirror that here instead of using `?`.
+                let pset_name = entity.get_string(2).unwrap_or_default().to_string();
+                // `HasProperties` is a mandatory, non-empty SET per the schema, so
+                // a `$`/malformed value here means the file itself is invalid —
+                // but the browser path still tolerates it (`Array.isArray` check,
+                // falling through with an empty `properties`) rather than
+                // discarding the pset outright. Match that: treat a missing/
+                // malformed list as empty rather than bailing on `?`.
+                let has_properties = entity.get_list(4).unwrap_or(&[]);
 
-            let mut properties = Vec::new();
-            let mut complex = Vec::new();
+                let mut properties = Vec::new();
+                let mut complex = Vec::new();
 
-            // Extract properties from HasProperties list
-            for prop_ref in has_properties.iter() {
-                if let Some(prop_id) = prop_ref.as_entity_ref() {
-                    if let Ok(prop_entity) = local_decoder.decode_by_id(prop_id) {
-                        if let Some(prop) = extract_property(&prop_entity, &mut local_decoder) {
-                            if prop_entity.ifc_type == IfcType::IfcComplexProperty {
-                                complex.push((properties.len(), prop_id));
+                // Extract properties from HasProperties list
+                for prop_ref in has_properties.iter() {
+                    if let Some(prop_id) = prop_ref.as_entity_ref() {
+                        if let Ok(prop_entity) = local_decoder.decode_by_id(prop_id) {
+                            if let Some(prop) = extract_property(&prop_entity, local_decoder) {
+                                if prop_entity.ifc_type == IfcType::IfcComplexProperty {
+                                    complex.push((properties.len(), prop_id));
+                                }
+                                properties.push(prop);
                             }
-                            properties.push(prop);
                         }
                     }
                 }
-            }
 
-            // A PropertySet with a real Name is real evidence the file links
-            // this element to it, even when every member failed to resolve
-            // (issue #3963): dropping it wholesale is indistinguishable from
-            // "this element was never linked to any pset via
-            // IfcRelDefinesByProperties" in the first place. Mirrors the
-            // browser/WASM path's keep condition (`columnar-parser.ts`:
-            // `properties.length > 0 || psetName`) — only an unnamed,
-            // fully-unresolved set is dropped.
-            if properties.is_empty() && pset_name.is_empty() {
-                return None;
-            }
+                // A PropertySet with a real Name is real evidence the file links
+                // this element to it, even when every member failed to resolve
+                // (issue #3963): dropping it wholesale is indistinguishable from
+                // "this element was never linked to any pset via
+                // IfcRelDefinesByProperties" in the first place. Mirrors the
+                // browser/WASM path's keep condition (`columnar-parser.ts`:
+                // `properties.length > 0 || psetName`) — only an unnamed,
+                // fully-unresolved set is dropped.
+                if properties.is_empty() && pset_name.is_empty() {
+                    return None;
+                }
 
-            Some((
-                PropertySet {
-                    pset_id: job.id,
-                    pset_name,
-                    properties,
-                },
-                complex,
-            ))
-        })
+                Some((
+                    PropertySet {
+                        pset_id: job.id,
+                        pset_name,
+                        properties,
+                    },
+                    complex,
+                ))
+            },
+        )
+        .flatten()
         .collect();
     resolve_complex_properties(&mut sets, content, entity_index);
     sets.into_iter().map(|(set, _)| set).collect()

@@ -97,3 +97,11 @@ fn env_gate_on_fails_a_test_whose_fixture_is_missing() {
     let text = String::from_utf8_lossy(&out.stdout).into_owned() + &String::from_utf8_lossy(&out.stderr);
     assert!(text.contains("IFC_LITE_REQUIRE_FIXTURES=1"), "failure must name the gate: {text}");
 }
+
+#[test]
+fn a_local_fixture_is_never_gated() {
+    // Private, un-manifested models can only ever skip: absent is `None` with
+    // or without IFC_LITE_REQUIRE_FIXTURES (no env mutation here, the gate is
+    // simply not consulted).
+    assert_eq!(ifc_lite_testkit::local_fixture_text("nonexistent-dir/none.ifc"), None);
+}

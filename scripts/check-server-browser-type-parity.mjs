@@ -6,7 +6,7 @@
 /**
  * Lint: for each of several concepts (relationships, spatial types,
  * properties, quantities, materials), the set of IFC type names the Rust
- * server (`apps/server/src/services/data_model/*.rs`) switches on must match
+ * server (`rust/processing/src/data_model/*.rs`) switches on must match
  * the set the TypeScript/browser parser (`packages/parser/src/*.ts`,
  * `packages/data/src/*.ts`) switches on — with an explicit, documented
  * allowlist for divergences that are intentional or already being fixed.
@@ -146,14 +146,14 @@ function read(rel) {
 
 const RUST_REL = 'apps/server/tests/golden/relationship-slots.json';
 const TS_REL_INDEXES = 'packages/parser/src/columnar-parser-indexes.ts';
-const RUST_SPATIAL = 'apps/server/src/services/data_model/spatial.rs';
+const RUST_SPATIAL = 'rust/processing/src/data_model/spatial.rs';
 const TS_SPATIAL = 'packages/data/src/spatial-types.ts';
-const RUST_PROPS = 'apps/server/src/services/data_model/properties.rs';
+const RUST_PROPS = 'rust/processing/src/data_model/properties.rs';
 const TS_PROPS = 'packages/parser/src/property-value-parser.ts';
-const RUST_QTY = 'apps/server/src/services/data_model/quantities.rs';
+const RUST_QTY = 'rust/processing/src/data_model/quantities.rs';
 const TS_QTY_MAP = 'packages/parser/src/columnar-parser-indexes.ts';
 const TS_QTY_COLLECT = 'packages/parser/src/quantity-collect.ts';
-const RUST_MATERIALS = 'apps/server/src/services/data_model/materials.rs';
+const RUST_MATERIALS = 'rust/processing/src/data_model/materials.rs';
 const TS_MATERIALS = 'packages/parser/src/material-resolver.ts';
 const HIERARCHY_SCHEMA_DIST = 'packages/parser/dist/relationship-schema-slots.js';
 

@@ -53,6 +53,7 @@
 //!   positive `OffsetLateral` = right of travel)
 //! - IfcAlignmentCurve: IFC4x1 §8.7.3.10
 
+use crate::math::tol;
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 use nalgebra::{Point3, Vector3};
 
@@ -330,7 +331,7 @@ fn compute_frame(
         // plane (the projection of world-Z onto the perpendicular).
         let world_z = Vector3::new(0.0, 0.0, 1.0);
         let right_candidate = base.tangent.cross(&world_z);
-        let right_3d = match right_candidate.try_normalize(1e-9) {
+        let right_3d = match right_candidate.try_normalize(tol::AXIS_MIN_LEN) {
             Some(r) => r,
             // Tangent nearly vertical — fall back to world +X.
             None => Vector3::new(1.0, 0.0, 0.0),
@@ -365,19 +366,18 @@ fn compute_frame(
     if pos.linear && (pos.axis.is_some() || pos.ref_direction.is_some()) {
         // IFC4x3 placement directions are given in the curve frame:
         // X along tangent, Y left of travel, Z vertical normal.
-        let to_world = |v: Vector3<f64>| {
-            base.tangent * v.x - base.right * v.y + vertical_normal * v.z
-        };
-        let axis = pos.axis.map(to_world).unwrap_or(vertical_normal);
-        let x = pos.ref_direction.map(to_world).unwrap_or(base.tangent);
-        let x = (x - axis * x.dot(&axis)).try_normalize(1e-12).unwrap_or(base.tangent);
-        // Profile +X is the placement's local +Y = Axis × RefDirection.
-        // Parallel Axis and RefDirection (or tangent) leave it undefined.
-        right = axis.cross(&x).try_normalize(1e-12).ok_or_else(|| {
+        let [_, y, axis] = crate::axis_projection::linear_placement_axes(
+            [base.tangent, -base.right, vertical_normal],
+            pos.axis,
+            pos.ref_direction,
+        )
+        .ok_or_else(|| {
             Error::geometry(
                 "IfcAxis2PlacementLinear Axis is parallel to its RefDirection".to_string(),
             )
         })?;
+        // Profile +X is the placement's local +Y = Axis × RefDirection.
+        right = y;
         up = axis;
     } else if pos.linear {
         // IFC4x3 positions the profile in the placement's YZ plane: profile
@@ -468,7 +468,7 @@ fn lerp_position(
 
 fn lerp_direction(a: Option<Vector3<f64>>, b: Option<Vector3<f64>>, t: f64) -> Option<Vector3<f64>> {
     match (a, b) {
-        (Some(a), Some(b)) => (a * (1.0 - t) + b * t).try_normalize(1e-12).or(Some(a)),
+        (Some(a), Some(b)) => (a * (1.0 - t) + b * t).try_normalize(tol::DIRECTION_MIN_LEN).or(Some(a)),
         (Some(a), None) => Some(a),
         (None, Some(b)) => Some(b),
         (None, None) => None,

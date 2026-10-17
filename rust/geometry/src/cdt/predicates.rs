@@ -6,14 +6,9 @@
 //!
 //! Split out of `cdt.rs` to keep it under the module-size ratchet.
 
-use super::{ekey, orient, P2};
+use super::{ekey, P2};
 
-#[inline]
-pub(super) fn dist2(a: P2, b: P2) -> f64 {
-    let dx = a[0] - b[0];
-    let dy = a[1] - b[1];
-    dx * dx + dy * dy
-}
+pub(super) use crate::math::v2::dist2;
 
 /// For `p` known EXACTLY collinear with `a`-`b` (exact `orient == 0`): does it
 /// lie strictly between them? Pure lexicographic comparison — no arithmetic,
@@ -24,15 +19,7 @@ pub(super) fn strictly_between(a: P2, b: P2, p: P2) -> bool {
     (lt(a, p) && lt(p, b)) || (lt(b, p) && lt(p, a))
 }
 
-/// Do open segments `p1-p2` and `p3-p4` strictly cross (proper intersection,
-/// not merely touching at an endpoint)? Exact via `orient`.
-pub(super) fn segments_properly_cross(p1: P2, p2: P2, p3: P2, p4: P2) -> bool {
-    let d1 = orient(p3, p4, p1);
-    let d2 = orient(p3, p4, p2);
-    let d3 = orient(p1, p2, p3);
-    let d4 = orient(p1, p2, p4);
-    (d1 > 0 && d2 < 0 || d1 < 0 && d2 > 0) && (d3 > 0 && d4 < 0 || d3 < 0 && d4 > 0)
-}
+pub(super) use crate::math::geom2d::segments_properly_cross;
 
 /// Build the initial (Steiner-free) constraint set + point list from rings.
 /// `rings[0]` = outer, `rings[1..]` = holes. Returns `(points, segments)`.

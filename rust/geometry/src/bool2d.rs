@@ -9,6 +9,7 @@
 //! more efficient and reliable than performing 3D CSG operations on finished geometry.
 
 use crate::error::{Error, Result};
+use crate::math::v2::{point_in_ring_by, signed_area_by};
 use crate::profile::Profile2D;
 use i_overlay::core::fill_rule::FillRule;
 use i_overlay::core::overlay_rule::OverlayRule;
@@ -199,20 +200,7 @@ pub fn is_valid_contour(contour: &[Point2<f64>]) -> bool {
 /// Compute the signed area of a 2D contour
 /// Positive = counter-clockwise, Negative = clockwise
 pub fn compute_signed_area(contour: &[Point2<f64>]) -> f64 {
-    if contour.len() < 3 {
-        return 0.0;
-    }
-
-    let mut area = 0.0;
-    let n = contour.len();
-
-    for i in 0..n {
-        let j = (i + 1) % n;
-        area += contour[i].x * contour[j].y;
-        area -= contour[j].x * contour[i].y;
-    }
-
-    area * 0.5
+    signed_area_by(contour.len(), |i| [contour[i].x, contour[i].y])
 }
 
 /// Ensure contour has counter-clockwise winding (positive area)
@@ -239,27 +227,7 @@ pub fn ensure_cw(contour: &[Point2<f64>]) -> Vec<Point2<f64>> {
 
 /// Check if a point is inside a contour using ray casting
 pub fn point_in_contour(point: &Point2<f64>, contour: &[Point2<f64>]) -> bool {
-    if contour.len() < 3 {
-        return false;
-    }
-
-    let mut inside = false;
-    let n = contour.len();
-
-    let mut j = n - 1;
-    for i in 0..n {
-        let pi = &contour[i];
-        let pj = &contour[j];
-
-        if ((pi.y > point.y) != (pj.y > point.y))
-            && (point.x < (pj.x - pi.x) * (point.y - pi.y) / (pj.y - pi.y) + pi.x)
-        {
-            inside = !inside;
-        }
-        j = i;
-    }
-
-    inside
+    point_in_ring_by([point.x, point.y], contour.len(), |i| [contour[i].x, contour[i].y])
 }
 
 // `contour_inside_contour` and `contour_bounds` were deleted here: the C3.2

@@ -11,7 +11,8 @@
 //! boundary rather than an arbitrary cut through the builder.
 
 use super::*;
-use super::plates::{signed_area_2d, Plate};
+use super::plates::Plate;
+use ifc_lite_geometry::math::v2::polygon_area;
 
 /// A 4x5 m `IfcSpace` floor plate extruded 3 m up, at world height `elevation_y`.
 /// Mirrors what `extract_profiles` emits: the profile's local (x, y) lies in the
@@ -62,7 +63,7 @@ fn single_space_becomes_one_room2d() {
         .iter()
         .map(|p| [p[0].as_f64().unwrap(), p[1].as_f64().unwrap()])
         .collect();
-    assert!(signed_area_2d(&pts) > 0.0, "boundary must be counterclockwise");
+    assert!(polygon_area(&pts) > 0.0, "boundary must be counterclockwise");
 }
 
 #[test]

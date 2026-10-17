@@ -266,6 +266,7 @@ pub struct SpatialHierarchyData {
 }
 
 /// Job for processing an entity during data extraction.
+#[derive(Clone, Copy)]
 pub(crate) struct EntityJob<'a> {
     pub(crate) id: u32,
     /// Borrowed from the scanned content (#7676, SERVER-11): one `String`

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Validate reachable shape/aspect engineering contexts without changing geometry.
 use super::{preflight, Record};
-use ifc_lite_core::{EntityDecoder, IfcType, MAX_PLACEMENT_DEPTH};
+use ifc_lite_core::{EntityDecoder, IfcType, MAX_CONTEXT_DEPTH};
 use std::collections::{HashMap, HashSet};
 
 /// All representation identifiers remain local to their product. Follow only
@@ -97,7 +97,7 @@ pub(super) fn representation_contexts(
             .ok_or("representation has no ContextOfItems")?;
         let mut contexts = HashSet::new();
         while !validated.contains(&current) {
-            if contexts.len() >= MAX_PLACEMENT_DEPTH || !contexts.insert(current) {
+            if contexts.len() >= MAX_CONTEXT_DEPTH || !contexts.insert(current) {
                 return Err("representation context chain is cyclic or exceeds its bound".into());
             }
             let node = decoder

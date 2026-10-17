@@ -131,9 +131,6 @@ pub(crate) mod geom_hash;
 /// geometry pass (single-sourced so independently-evolving passes can't drift
 /// apart on the same tolerance).
 pub(crate) mod grid;
-/// Shared `[f64; 2]` plane primitives (area, point-in-polygon, exact segment
-/// intersection) used by `space_dcel`, `terrain_cdt` and `scan_outline`.
-pub(crate) mod geom2d;
 pub(crate) mod extrusion;
 pub(crate) mod instancing;
 /// Pure-Rust exact mesh-arrangement CSG kernel — the only CSG kernel, on

@@ -9,7 +9,7 @@
 //! fallback. Keeping that policy outside the geometry crate avoids coupling
 //! the IFC kernel to LandXML (or another source format).
 
-use crate::geom2d::{on_segment, orientation, segments_intersect};
+use crate::math::geom2d::{on_segment, orientation, segments_intersect};
 use crate::Point2;
 use rustc_hash::FxHashSet;
 

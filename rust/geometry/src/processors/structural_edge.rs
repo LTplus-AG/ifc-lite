@@ -23,13 +23,13 @@ use super::advanced_face::edge_loop::sample_edge_curve_points;
 /// visibly thinner 0.1.
 const RIBBON_HALF_WIDTH_FILE_UNITS: f64 = 0.1;
 
-/// Below this magnitude a normalized direction vector's cross product with
-/// a candidate "up" vector is treated as parallel (degenerate cross
-/// product), so the fallback axis is used instead. Both vectors involved
-/// are already unit-length, so this is a fixed, scale-invariant bound
-/// (the sine of the angle between them), not a tolerance that must be
-/// re-checked against coordinate magnitude.
-const PARALLEL_EPSILON: f64 = 1e-9;
+// Below this magnitude a normalized direction vector's cross product with
+// a candidate "up" vector is treated as parallel (degenerate cross
+// product), so the fallback axis is used instead. Both vectors involved
+// are already unit-length, so this is a fixed, scale-invariant bound
+// (the sine of the angle between them), not a tolerance that must be
+// re-checked against coordinate magnitude.
+use crate::math::tol::PARALLEL_EPS as PARALLEL_EPSILON;
 
 /// Invalid IFC can chain `IfcOrientedEdge.EdgeElement` cyclically. Bound and
 /// cycle-check that file-authored reference walk rather than recursing forever.

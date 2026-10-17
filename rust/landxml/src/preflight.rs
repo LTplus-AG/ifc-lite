@@ -39,6 +39,7 @@ pub(crate) fn preflight_xml_tokens(
             scan_terminated(
                 input,
                 &mut index,
+                b"<!--".len(),
                 b"-->",
                 limits.max_text_bytes,
                 &mut poller,
@@ -47,6 +48,7 @@ pub(crate) fn preflight_xml_tokens(
             scan_terminated(
                 input,
                 &mut index,
+                b"<![CDATA[".len(),
                 b"]]>",
                 limits.max_text_bytes,
                 &mut poller,
@@ -58,7 +60,7 @@ pub(crate) fn preflight_xml_tokens(
                 ));
             }
         } else if input[index..].starts_with(b"<?") {
-            scan_terminated(input, &mut index, b"?>", markup_limit, &mut poller)?;
+            scan_terminated(input, &mut index, 0, b"?>", markup_limit, &mut poller)?;
         } else if input[index..].starts_with(b"<!DOCTYPE") {
             // XML declarations are case-sensitive; only the uppercase token
             // is a DOCTYPE declaration. Lowercase spellings remain malformed
@@ -122,14 +124,28 @@ fn scan_text(
     Ok(())
 }
 
+/// Scan one token that ends at `terminator`. The search starts after the
+/// `opener` bytes, so a terminator that overlaps its opener (`<!-->`) is not
+/// mistaken for the end of a comment that has no content yet.
 fn scan_terminated(
     input: &[u8],
     index: &mut usize,
+    opener: usize,
     terminator: &[u8],
     limit: usize,
     poller: &mut CancellationPoller<'_>,
 ) -> Result<()> {
     let start = *index;
+    for _ in 0..opener {
+        advance(
+            input,
+            index,
+            start,
+            limit,
+            poller,
+            "XML token limit exceeded",
+        )?;
+    }
     loop {
         if input[*index..].starts_with(terminator) {
             for _ in terminator {

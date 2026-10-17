@@ -4,10 +4,12 @@
 
 //! IfcLinearPlacement resolution (#859): sample the basis curve at the authored distance.
 
+use crate::math::tol;
 use super::super::GeometryRouter;
 use super::walk::PlacementWalk;
 use crate::alignment::AlignmentCurve;
 use crate::alignment_arc_length::ArcLengthMap;
+use crate::axis_projection::linear_placement_axes;
 use crate::profiles::ProfileProcessor;
 use crate::{Point3, Result, TessellationQuality, Vector3};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
@@ -176,6 +178,20 @@ impl GeometryRouter {
             + y_axis * offset_lateral
             + z_axis * offset_vertical;
 
+        // IFC4X3 `IfcAxis2PlacementLinear.Axis` / `RefDirection` (attrs 1, 2)
+        // orient the frame, expressed in the curve frame above (#7791). The
+        // offsets already used the unrotated curve frame. Unreadable or
+        // degenerate directions leave the placement unresolvable.
+        let (axis, ref_direction) = (
+            self.read_linear_direction(&rel, 1, decoder)?,
+            self.read_linear_direction(&rel, 2, decoder)?,
+        );
+        let [x_axis, y_axis, z_axis] = if axis.is_some() || ref_direction.is_some() {
+            linear_placement_axes([x_axis, y_axis, z_axis], axis, ref_direction)?
+        } else {
+            [x_axis, y_axis, z_axis]
+        };
+
         let mut m = Matrix4::<f64>::identity();
         m.fixed_view_mut::<3, 1>(0, 0).copy_from(&x_axis);
         m.fixed_view_mut::<3, 1>(0, 1).copy_from(&y_axis);
@@ -184,6 +200,24 @@ impl GeometryRouter {
         m[(1, 3)] = position.y;
         m[(2, 3)] = position.z;
         Some(m)
+    }
+
+    /// An optional `IfcAxis2PlacementLinear` direction (`Axis`, `RefDirection`):
+    /// `Some(None)` when absent or `$`, `Some(Some(unit))` when authored, and
+    /// `None` (unresolvable) when it is not a readable non-zero `IfcDirection`.
+    fn read_linear_direction(
+        &self,
+        rel: &DecodedEntity,
+        slot: usize,
+        decoder: &mut EntityDecoder,
+    ) -> Option<Option<Vector3<f64>>> {
+        let attr = match rel.get(slot) {
+            Some(attr) if !attr.is_null() => attr,
+            _ => return Some(None),
+        };
+        let direction = decoder.resolve_ref(attr).ok().flatten()?;
+        let v = self.parse_direction(&direction).ok()?;
+        v.try_normalize(tol::DIRECTION_MIN_LEN).map(Some)
     }
 
     /// `IfcLinearPlacement.CartesianPosition` (attr 2) is an optional
@@ -229,7 +263,7 @@ fn sample_polyline_at_distance(
 
     if distance <= 0.0 {
         let tangent = (samples[1] - samples[0])
-            .try_normalize(1e-12)
+            .try_normalize(tol::DIRECTION_MIN_LEN)
             .unwrap_or_else(|| Vector3::new(1.0, 0.0, 0.0));
         return Some((samples[0], tangent));
     }
@@ -247,7 +281,7 @@ fn sample_polyline_at_distance(
             let t = ((distance - acc) / len).clamp(0.0, 1.0);
             let position = a + seg * t;
             let tangent = (seg / len)
-                .try_normalize(1e-12)
+                .try_normalize(tol::DIRECTION_MIN_LEN)
                 .unwrap_or_else(|| Vector3::new(1.0, 0.0, 0.0));
             return Some((position, tangent));
         }
@@ -258,7 +292,7 @@ fn sample_polyline_at_distance(
     let last = samples[samples.len() - 1];
     let prev = samples[samples.len() - 2];
     let tangent = (last - prev)
-        .try_normalize(1e-12)
+        .try_normalize(tol::DIRECTION_MIN_LEN)
         .unwrap_or_else(|| Vector3::new(1.0, 0.0, 0.0));
     Some((last, tangent))
 }

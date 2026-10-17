@@ -2,7 +2,9 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
+use ifc_lite_core::{DecodedEntity, EntityDecoder};
+use ifc_lite_geometry::placement::{self, Axis2Placement, PlacementError};
+use nalgebra::Matrix4;
 
 #[path = "operator.rs"]
 mod operator;
@@ -103,6 +105,31 @@ impl Transform2D {
         if is_refused(error) { Self::refused() } else { Self::unresolved() }
     }
 
+    /// The XY block of a world frame (file units, the chain's unscaled
+    /// matrix), with the translation scaled to metres. The memo stays unscaled
+    /// so readers with different unit contexts share it (F3b §4), which makes
+    /// this scale the composed translation once instead of each level's.
+    pub(super) fn from_matrix_xy(m: &Matrix4<f64>, unit_scale: f64) -> Self {
+        Self {
+            tx: m[(0, 3)] * unit_scale,
+            ty: m[(1, 3)] * unit_scale,
+            tz: m[(2, 3)] * unit_scale,
+            m00: m[(0, 0)],
+            m01: m[(0, 1)],
+            m10: m[(1, 0)],
+            m11: m[(1, 1)],
+        }
+    }
+
+    /// The transform for a placement that could not be read (D30): input
+    /// admission, a malformed leaf or a missing mandatory attribute drops the
+    /// symbol ([`Self::refused`], D15); every other error (dangling, wrong
+    /// type, cycle) keeps it at the origin as [`Self::unresolved`] (#2256,
+    /// until C5 decides).
+    pub(super) fn from_placement_error(error: &PlacementError) -> Self {
+        if error.is_admission_refusal() { Self::refused() } else { Self::unresolved() }
+    }
+
     /// Scale factor carried by the linear block, as `sqrt(|det|)`. For the
     /// similarity transforms this codebase actually authors (pure rotation,
     /// uniform scale, or both) `|det| = scale^2` exactly, so this returns the
@@ -113,10 +140,14 @@ impl Transform2D {
     /// is not representable as a scalar. 1.0 for a pure rotation.
     ///
     /// PRECONDITION: the linear block is orthogonal times a UNIFORM scale.
-    /// Every constructor here guarantees that — `parse_axis2_placement_2d`
-    /// builds a pure rotation, and `parse_cartesian_transformation_operator`
-    /// builds unit, mutually perpendicular columns scaled by one factor — and
-    /// the property is closed under composition. If `Scale2` (non-uniform)
+    /// The constructors guarantee that for the placements plan symbols sit
+    /// under — `parse_axis2_placement_2d` projects a Z-up frame, a pure
+    /// rotation, and `parse_cartesian_transformation_operator` builds unit,
+    /// mutually perpendicular columns scaled by one factor — and the property
+    /// is closed under composition. A TILTED parent placement is projected
+    /// foreshortened instead (its XY block is not orthogonal): `scale()` is
+    /// then the geometric mean of the two in-plane scales, which is the
+    /// right answer for a symbol seen at that tilt. If `Scale2` (non-uniform)
     /// is ever wired into this now-capable 2x2, `sqrt(|det|)` silently becomes
     /// the GEOMETRIC MEAN of the two axis scales and every scalar consumer
     /// below goes subtly wrong. Split the accessor before doing that. An
@@ -155,7 +186,9 @@ pub(super) fn compose_transforms(a: &Transform2D, b: &Transform2D) -> Transform2
     }
 }
 
-/// Resolve a product's `ObjectPlacement` (attribute 5) into a 2D transform.
+/// Resolve a product's `ObjectPlacement` (attribute 5) into a 2D transform:
+/// the shared 3D chain (`placement::resolve_chain`, memoised on the decoder and
+/// walked without a depth cap), projected to XY and scaled to metres.
 pub(super) fn resolve_object_placement(
     entity: &DecodedEntity,
     decoder: &mut EntityDecoder,
@@ -167,147 +200,29 @@ pub(super) fn resolve_object_placement(
     if attr.is_null() {
         return Transform2D::identity();
     }
-    let Ok(Some(placement)) = decoder.resolve_ref(attr) else {
-        return Transform2D::unresolved(); // dangling ref: unresolvable, not zero (#2256)
+    let placement = match decoder.resolve_ref(attr) {
+        Ok(Some(placement)) => placement,
+        Ok(None) => return Transform2D::unresolved(),
+        Err(e) => return Transform2D::undecodable(&e), // refused, or dangling (#2256)
     };
-    resolve_placement_for_symbolic(&placement, decoder, unit_scale, 0)
-}
-
-/// Recursively resolve `IfcLocalPlacement` for 2D symbolic representations.
-/// Mirrors the wasm pipeline's accumulation rule exactly.
-fn resolve_placement_for_symbolic(
-    placement: &DecodedEntity,
-    decoder: &mut EntityDecoder,
-    unit_scale: f64,
-    depth: usize,
-) -> Transform2D {
-    // The shared placement bound, not a private 50 (SYM-16): the mesh path and
-    // the 2D drawing path walk this same `PlacementRelTo` chain, and a chain of
-    // 51..=100 links drew its symbols at the origin here while its mesh sat in
-    // place.
-    if depth > ifc_lite_core::MAX_PLACEMENT_DEPTH || placement.ifc_type != IfcType::IfcLocalPlacement {
-        return Transform2D::unresolved(); // cycle guard/unsupported type (#2256)
+    match placement::resolve_chain(&placement, decoder) {
+        Ok(world) => Transform2D::from_matrix_xy(&world, unit_scale),
+        Err(error) => Transform2D::from_placement_error(&error),
     }
-
-    let parent_transform = match placement.get(0) {
-        Some(parent_attr) if !parent_attr.is_null() => match decoder.resolve_ref(parent_attr) {
-            Ok(Some(parent)) => {
-                resolve_placement_for_symbolic(&parent, decoder, unit_scale, depth + 1)
-            }
-            _ => Transform2D::unresolved(), // dangling/malformed (#2256)
-        },
-        _ => Transform2D::identity(), // absent/null: legitimate top of chain
-    };
-
-    let local_transform = match placement.get(1) {
-        Some(rel_attr) if !rel_attr.is_null() => match decoder.resolve_ref(rel_attr) {
-            Ok(Some(rel))
-                if rel.ifc_type == IfcType::IfcAxis2Placement3D
-                    || rel.ifc_type == IfcType::IfcAxis2Placement2D =>
-            {
-                parse_axis2_placement_2d(&rel, decoder, unit_scale)
-            }
-            _ => Transform2D::unresolved(), // dangling ref/wrong type (#2256)
-        },
-        _ => Transform2D::unresolved(), // mandatory attr absent (#2256)
-    };
-
-    // Same composition `compose_transforms` performs (parent applied after
-    // local); kept as a direct call rather than a hand-inlined duplicate so
-    // the two never drift on the linear-block representation again.
-    compose_transforms(&parent_transform, &local_transform)
 }
 
-/// Parse `IfcAxis2Placement3D` / `IfcAxis2Placement2D` to a 2D transform.
+/// Parse `IfcAxis2Placement3D` / `IfcAxis2Placement2D` to a 2D transform: the
+/// canonical frame (`Axis2Placement`, so Axis is honoured and the degenerate
+/// repair is the one `build_axis2_matrix` applies), projected to XY.
 /// Floor-plan uses X-Y (Z is up) to match the section-cut coord system.
 pub(super) fn parse_axis2_placement_2d(
     placement: &DecodedEntity,
     decoder: &mut EntityDecoder,
     unit_scale: f64,
 ) -> Transform2D {
-    if placement.ifc_type != IfcType::IfcAxis2Placement3D
-        && placement.ifc_type != IfcType::IfcAxis2Placement2D
-    {
-        // Wrong entity type wired into a placement slot (malformed data or
-        // a dangling ref that happened to resolve to something else): the
-        // 2D/3D branches below key attribute INDICES off `is_3d`, so
-        // reading them on an unrelated entity type would silently produce
-        // a fabricated transform rather than surface the mismatch. Treat
-        // it as unresolved, matching every other malformed-data path in
-        // this file (#2256's convention).
-        return Transform2D::unresolved();
-    }
-    let is_3d = placement.ifc_type == IfcType::IfcAxis2Placement3D;
-
-    let (tx, ty, tz) = match placement.get_ref(0) {
-        Some(loc_ref) => match decoder.decode_by_id(loc_ref) {
-            Ok(loc) if loc.ifc_type == IfcType::IfcCartesianPoint => {
-                let coords = loc
-                    .get(0)
-                    .and_then(|a| a.as_list())
-                    .map(|l| l.to_vec())
-                    .unwrap_or_default();
-                let raw_x = coords.first().and_then(|v| v.as_float()).unwrap_or(0.0);
-                let raw_y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0);
-                let raw_z = coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0);
-                (raw_x * unit_scale, raw_y * unit_scale, raw_z * unit_scale)
-            }
-            Err(e) => return Transform2D::undecodable(&e), // refused, or dangling (#2355)
-            _ => return Transform2D::unresolved(), // wrong type: mandatory Location (#2355)
-        },
-        None => return Transform2D::unresolved(), // mandatory Location absent (#2355)
-    };
-
-    // RefDirection lives at attr 2 for 3D, attr 1 for 2D.
-    let ref_dir_attr = if is_3d {
-        placement.get(2)
-    } else {
-        placement.get(1)
-    };
-    let (dx, dy) = match ref_dir_attr {
-        Some(attr) if !attr.is_null() => match attr.as_entity_ref() {
-            Some(ref_dir_id) => match decoder.decode_by_id(ref_dir_id) {
-                Ok(ref_dir) if ref_dir.ifc_type == IfcType::IfcDirection => {
-                    let ratios = ref_dir
-                        .get(0)
-                        .and_then(|a| a.as_list())
-                        .map(|l| l.to_vec())
-                        .unwrap_or_default();
-                    let dx = ratios.first().and_then(|v| v.as_float()).unwrap_or(1.0);
-                    let dy = ratios.get(1).and_then(|v| v.as_float()).unwrap_or(0.0);
-                    let dz = ratios.get(2).and_then(|v| v.as_float()).unwrap_or(0.0);
-                    let len = (dx * dx + dy * dy).sqrt();
-                    if len > 0.0001 {
-                        (dx / len, dy / len)
-                    } else if is_3d && dz.abs() > 0.0001 {
-                        // RefDirection purely in Z (vertical) — local X
-                        // points up/down, rotation is 0° in floor plan.
-                        (1.0, 0.0)
-                    } else {
-                        (1.0, 0.0)
-                    }
-                }
-                Err(e) if is_refused(&e) => return Transform2D::refused(),
-                _ => (1.0, 0.0),
-            },
-            None => (1.0, 0.0),
-        },
-        _ => (1.0, 0.0),
-    };
-
-    // `IfcAxis2Placement2D` / `…3D` carry only ONE in-plane direction
-    // (RefDirection); the Y axis is always the right-handed perpendicular —
-    // there is no second direction attribute here that could disagree and
-    // introduce a reflection, unlike `IfcCartesianTransformationOperator`'s
-    // Axis1/Axis2 pair below.
-    Transform2D {
-        tx,
-        ty,
-        tz,
-        m00: dx,
-        m01: -dy,
-        m10: dy,
-        m11: dx,
+    match Axis2Placement::read(placement, decoder) {
+        Ok(frame) => Transform2D::from_matrix_xy(&frame.matrix(), unit_scale),
+        Err(error) => Transform2D::from_placement_error(&error),
     }
 }
 

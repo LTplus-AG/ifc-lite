@@ -225,19 +225,14 @@ pub fn unify_spatial(
     }
 }
 
-/// Parse a single `#N` reference token (`"#4"` → `4`).
-fn parse_single_ref(arg: &str) -> Option<u32> {
-    arg.trim().strip_prefix('#')?.parse().ok()
-}
-
-/// Parse a `(#a,#b,…)` list of references into ids.
+/// Parse a `(#a,#b,...)` list of references into ids, skipping an item that is
+/// not exactly one reference. Items are core's `StepListItems`, so a comment is
+/// trivia (`#5 /* c */` is `5`).
 pub(super) fn parse_ref_list(arg: &str) -> Vec<u32> {
-    arg.trim()
-        .trim_start_matches('(')
-        .trim_end_matches(')')
-        .split(',')
-        .filter_map(parse_single_ref)
-        .collect()
+    match ifc_lite_core::StepListItems::of_list(arg.as_bytes()) {
+        Some(items) => items.filter_map(ifc_lite_core::parser::parse_ref).collect(),
+        None => Vec::new(),
+    }
 }
 
 /// The plan state built for one model before it is emitted.

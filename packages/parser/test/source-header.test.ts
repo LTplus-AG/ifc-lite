@@ -267,7 +267,7 @@ describe('parseSourceHeader', () => {
 
 /**
  * The header is read on every parse and every STEP export. If it materialised
- * the source to find its first 64 KiB, a 342 MB model would allocate 342 MB to
+ * the source to find its first 256 KiB, a 342 MB model would allocate 342 MB to
  * read a few hundred bytes — exactly the pin #2183 is about.
  *
  * These assert the RANGE contract, not just that the widened overload
@@ -298,7 +298,7 @@ describe('parseSourceHeader reads a RANGE, never the whole source (#2183)', () =
    * Refusing `materialize` is NOT enough on its own. `decodeUtf8(0, byteLength)`
    * reads the whole file just as surely — a 342 MB string on a 342 MB model,
    * which is the allocation #2183 exists to remove — and an implementation that
-   * decoded everything and then trimmed the result to 64 KiB would still return
+   * decoded everything and then trimmed the result to 256 KiB would still return
    * the right header. So bound the READ as well as the materialise: any range
    * ending past the cap throws.
    */
@@ -330,7 +330,7 @@ describe('parseSourceHeader reads a RANGE, never the whole source (#2183)', () =
 
   /**
    * A DATA section past the cap, so "read everything" is distinguishable from
-   * "read the header". With a body smaller than 64 KiB, decoding the whole
+   * "read the header". With a body smaller than 256 KiB, decoding the whole
    * source IS a bounded read and the gate below would have no teeth.
    */
   const BODY = Array.from({ length: 20000 }, (_, i) => `#${i + 1}=IFCWALL($);`).join('\n');

@@ -74,7 +74,7 @@ pub fn decode_opt_string_list(arg: &str) -> Option<Vec<String>> {
 ///
 /// This is the uncapped schema-detection entry point. It shares this module's
 /// lexical and record parser, but does not widen the export writer's
-/// public 64 KiB allocation contract. If a malformed header omits its own
+/// public 256 KiB allocation contract. If a malformed header omits its own
 /// `ENDSEC;`, `DATA;` still stops the window before the model body. With no
 /// recognisable section boundary at all, the allocation remains capped.
 pub fn declared_schemas(content: &[u8]) -> Vec<String> {

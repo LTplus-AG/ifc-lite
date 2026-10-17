@@ -58,9 +58,7 @@ impl Parser<'_> {
         if !matches!(local, "Line" | "IrregularLine" | "Curve" | "Spiral") {
             return Ok(());
         }
-        if self.segments_seen >= self.limits.max_alignment_segments {
-            return Err(limit("alignment segment limit exceeded"));
-        }
+        self.segments_seen.reserve(1)?;
         let alignment = self
             .alignment
             .as_mut()
@@ -68,7 +66,6 @@ impl Parser<'_> {
         if alignment.segment.is_some() {
             return Err(invalid("nested CoordGeom primitive is not valid"));
         }
-        self.segments_seen += 1;
         alignment.segment = Some(match local {
             "Line" => SegmentBuilder::Line {
                 start: None,
@@ -106,14 +103,11 @@ impl Parser<'_> {
     }
 
     pub(super) fn push_equation(&mut self, attrs: &Attributes) -> Result<()> {
-        if self.station_equations_seen >= self.limits.max_station_equations {
-            return Err(limit("station equation limit exceeded"));
-        }
+        self.station_equations_seen.reserve(1)?;
         let alignment = self
             .alignment
             .as_mut()
             .ok_or_else(|| invalid("StaEquation outside Alignment"))?;
-        self.station_equations_seen += 1;
         let ordinal = alignment.alignment.station_equations.len() + 1;
         let source_id = LandXmlSourceId(format!(
             "{}:station-equation:{ordinal}",
@@ -163,9 +157,7 @@ impl Parser<'_> {
     }
 
     pub(super) fn push_cant_station(&mut self, attrs: &Attributes) -> Result<()> {
-        if self.cant_stations_seen >= self.limits.max_cant_stations {
-            return Err(limit("CantStation limit exceeded"));
-        }
+        self.cant_stations_seen.reserve(1)?;
         let alignment = self
             .alignment
             .as_mut()
@@ -174,7 +166,6 @@ impl Parser<'_> {
             .cant
             .as_mut()
             .ok_or_else(|| invalid("CantStation outside Cant"))?;
-        self.cant_stations_seen += 1;
         let ordinal = cant.cant.stations.len() + 1;
         let source_id = LandXmlSourceId(format!("{}:station:{ordinal}", cant.cant.source_id.0));
         cant.push_station(LandXmlCantStation {
@@ -214,9 +205,8 @@ impl Parser<'_> {
     }
 
     pub(super) fn push_speed_station(&mut self, attrs: &Attributes) -> Result<()> {
-        if self.cant_stations_seen >= self.limits.max_cant_stations {
-            return Err(limit("CantStation and SpeedStation limit exceeded"));
-        }
+        self.cant_stations_seen
+            .reserve_labelled(1, "CantStation and SpeedStation")?;
         let cant = self
             .alignment
             .as_mut()
@@ -224,7 +214,6 @@ impl Parser<'_> {
             .cant
             .as_mut()
             .ok_or_else(|| invalid("SpeedStation outside Cant"))?;
-        self.cant_stations_seen += 1;
         let ordinal = cant.cant.speed_stations.len() + 1;
         cant.cant.speed_stations.push(LandXmlSpeedStation {
             source_id: LandXmlSourceId(format!("{}:speed:{ordinal}", cant.cant.source_id.0)),
@@ -356,10 +345,7 @@ impl Parser<'_> {
                     .superelevation
                     .as_mut()
                     .ok_or_else(|| invalid("superelevation event outside Superelevation"))?;
-                if self.superelevation_events_seen >= self.limits.max_superelevation_events {
-                    return Err(limit("superelevation event limit exceeded"));
-                }
-                self.superelevation_events_seen += 1;
+                self.superelevation_events_seen.reserve(1)?;
                 let value = text.trim();
                 super_elevation.push_event(kind, (!value.is_empty()).then(|| value.to_owned()));
                 Ok(())

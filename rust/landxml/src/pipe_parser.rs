@@ -4,7 +4,7 @@
 
 use crate::{
     preflight::preflight_xml_tokens,
-    xml::{attr, attributes, error, normalize_encoding, split_name, Result},
+    xml::{attr, attributes, error, normalize_encoding, split_name, Budget, Meter, Result},
     LandXmlCancellation, LandXmlDiagnosticCode as Code, LandXmlLimits, LandXmlPipeNetworkDocument,
     LandXmlSourceId,
 };
@@ -76,10 +76,10 @@ impl<'a> PipeParser<'a> {
     ) -> Self {
         Self {
             limits: limits.clone(),
-            cancelled,
             require_pipe_networks,
-            work: 0,
-            character_references: 0,
+            meter: Meter::new(limits.max_work, cancelled),
+            character_references: Budget::new(limits.max_character_references, "character reference"),
+            capability_diagnostics_seen: Budget::new(limits.max_capability_diagnostics, "capability diagnostic"),
             frames: Vec::new(),
             root_units: None,
             schema: String::new(),
@@ -100,13 +100,13 @@ impl<'a> PipeParser<'a> {
             refusals: Vec::new(),
             preflight_refusal_batches: Vec::new(),
             refusal_keys: HashSet::new(),
-            pipe_networks_seen: 0,
-            structures_seen: 0,
-            pipes_seen: 0,
-            inverts_seen: 0,
-            flows_seen: 0,
-            points_seen: 0,
-            references_seen: 0,
+            pipe_networks_seen: Budget::new(limits.max_pipe_networks, "pipe network"),
+            structures_seen: Budget::new(limits.max_pipe_structures, "pipe structure"),
+            pipes_seen: Budget::new(limits.max_pipes, "pipe"),
+            inverts_seen: Budget::new(limits.max_pipe_inverts, "pipe invert"),
+            flows_seen: Budget::new(limits.max_pipe_flows, "pipe flow"),
+            points_seen: Budget::new(limits.max_points, "pipe Center point"),
+            references_seen: Budget::new(limits.max_references, "pipe reference"),
             pipe_network_collections: 0,
             network_ordinal: 0,
             feature_ordinals: HashMap::new(),
@@ -195,11 +195,7 @@ impl<'a> PipeParser<'a> {
                 });
             }
             "PipeNetwork" if self.is_path(&["LandXML", "PipeNetworks", "PipeNetwork"]) => {
-                Self::reserve(
-                    &mut self.pipe_networks_seen,
-                    self.limits.max_pipe_networks,
-                    "pipe network",
-                )?;
+                self.pipe_networks_seen.reserve(1)?;
                 self.network_ordinal += 1;
                 if !matches!(
                     attr(&attributes, "pipeNetType"),

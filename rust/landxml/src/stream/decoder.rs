@@ -5,7 +5,7 @@
 //! Encoding normalization owned by the incremental transport boundary.
 
 use crate::{
-    xml::{check_declared_encoding, error, Encoding},
+    xml::{check_declared_encoding, error, Budget, Encoding},
     LandXmlDiagnosticCode as Code, LandXmlError, LandXmlLimits,
 };
 
@@ -19,10 +19,8 @@ pub(super) struct Decoder {
     utf16_tail: Option<u8>,
     high_surrogate: Option<u16>,
     declaration: Vec<u8>,
-    raw_seen: usize,
-    normalized_seen: usize,
-    max_raw: usize,
-    max_normalized: usize,
+    raw: Budget,
+    normalized: Budget,
 }
 
 impl Decoder {
@@ -38,21 +36,13 @@ impl Decoder {
             utf16_tail: None,
             high_surrogate: None,
             declaration: Vec::new(),
-            raw_seen: 0,
-            normalized_seen: 0,
-            max_raw: limits.max_bytes,
-            max_normalized,
+            raw: Budget::input_bytes(limits.max_bytes),
+            normalized: Budget::new(max_normalized, "normalized byte"),
         })
     }
 
     pub(super) fn push(&mut self, chunk: &[u8]) -> Result<Vec<u8>, LandXmlError> {
-        self.raw_seen = self
-            .raw_seen
-            .checked_add(chunk.len())
-            .ok_or_else(|| error(Code::InputTooLarge, "input exceeds byte limit"))?;
-        if self.raw_seen > self.max_raw {
-            return Err(error(Code::InputTooLarge, "input exceeds byte limit"));
-        }
+        self.raw.reserve(chunk.len())?;
         self.undecided.extend_from_slice(chunk);
         self.detect()?;
         let Some(encoding) = self.encoding else {
@@ -153,13 +143,7 @@ impl Decoder {
     }
 
     fn account(&mut self, output: &[u8]) -> Result<(), LandXmlError> {
-        self.normalized_seen = self
-            .normalized_seen
-            .checked_add(output.len())
-            .ok_or_else(|| error(Code::LimitExceeded, "normalized byte limit exceeded"))?;
-        if self.normalized_seen > self.max_normalized {
-            return Err(error(Code::LimitExceeded, "normalized byte limit exceeded"));
-        }
+        self.normalized.reserve(output.len())?;
         if self.declaration.len() < DECLARATION_BYTES {
             let remaining = DECLARATION_BYTES - self.declaration.len();
             self.declaration

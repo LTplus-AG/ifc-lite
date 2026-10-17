@@ -6,7 +6,9 @@ use std::{collections::HashMap, str};
 
 use quick_xml::events::BytesStart;
 
+mod budget;
 mod refs;
+pub(crate) use budget::{poll, Budget, Meter};
 pub(crate) use refs::{character_references, general_ref_source, unescape};
 
 use crate::{LandXmlCancellation, LandXmlDiagnosticCode as Code, LandXmlError, LandXmlLimits};
@@ -36,12 +38,7 @@ impl<'a> CancellationPoller<'a> {
     }
 
     pub(crate) fn check(&mut self) -> Result<()> {
-        if self
-            .cancelled
-            .is_some_and(LandXmlCancellation::is_cancelled)
-        {
-            return Err(error(Code::Cancelled, "ingestion cancelled"));
-        }
+        poll(self.cancelled)?;
         self.since_check = 0;
         Ok(())
     }
@@ -67,11 +64,10 @@ pub(crate) fn attributes(
     let mut values = Vec::new();
     let mut namespaces = HashMap::new();
     let mut references = 0;
+    let mut count = Budget::new(limits.max_attributes, "attribute");
     for attribute in start.attributes().with_checks(true) {
         let attribute = attribute.map_err(|_| error(Code::InvalidXml, "invalid XML attribute"))?;
-        if values.len() >= limits.max_attributes {
-            return Err(error(Code::LimitExceeded, "attribute limit exceeded"));
-        }
+        count.reserve(1)?;
         let key = utf8(
             attribute.key.as_ref().as_bytes(),
             limits.max_name_bytes,
@@ -180,9 +176,7 @@ pub(crate) fn normalize_encoding(
         .checked_mul(3)
         .and_then(|value| value.checked_div(2))
         .ok_or_else(|| error(Code::LimitExceeded, "normalized byte limit overflow"))?;
-    if normalized.len() > max_normalized {
-        return Err(error(Code::LimitExceeded, "normalized byte limit exceeded"));
-    }
+    Budget::new(max_normalized, "normalized byte").reserve(normalized.len())?;
     check_declared_encoding(&normalized, encoding)?;
     Ok(normalized)
 }

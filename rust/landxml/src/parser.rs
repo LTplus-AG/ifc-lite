@@ -220,10 +220,7 @@ impl Parser<'_> {
                 });
             }
             "Surface" if self.is_path(&["LandXML", "Surfaces", "Surface"]) => {
-                if self.surfaces_seen >= self.limits.max_surfaces {
-                    return Err(error(Code::LimitExceeded, "surface limit exceeded"));
-                }
-                self.surfaces_seen += 1;
+                self.surfaces_seen.reserve(1)?;
                 self.surface = Some(SurfaceBuilder {
                     name: required(&attributes, "name", "Surface")?.to_owned(),
                     kind: LandXmlSurfaceKind::Other,

@@ -16,56 +16,27 @@ use crate::{
     xml::{
         attr, attributes, character_references, error, split_name, unescape, Attributes, Result,
     },
-    LandXmlCancellation, LandXmlDiagnosticCode as Code,
+    LandXmlDiagnosticCode as Code,
 };
 
 impl Parser<'_> {
     pub(super) fn check(&mut self, added: usize) -> Result<()> {
-        if self
-            .cancelled
-            .is_some_and(LandXmlCancellation::is_cancelled)
-        {
-            return Err(error(Code::Cancelled, "ingestion cancelled"));
-        }
-        self.work = self
-            .work
-            .checked_add(added)
-            .ok_or_else(|| limit("work limit exceeded"))?;
-        if self.work > self.limits.xml.max_work {
-            return Err(limit("work limit exceeded"));
-        }
-        Ok(())
+        self.meter.charge(added)
     }
     /// A diagnostic is source output too: bounded like every other record.
     fn record_capability_diagnostic(
         &mut self,
         diagnostic: crate::LandXmlCapabilityDiagnostic,
     ) -> Result<()> {
-        if self.capability_diagnostics.len() >= self.limits.xml.max_capability_diagnostics {
-            return Err(limit("capability diagnostic limit exceeded"));
-        }
+        self.capability_diagnostics_seen.reserve(1)?;
         self.capability_diagnostics.push(diagnostic);
         Ok(())
     }
     fn check_character_references(&mut self, added: usize) -> Result<()> {
-        self.character_references = self
-            .character_references
-            .checked_add(added)
-            .ok_or_else(|| limit("character reference limit exceeded"))?;
-        if self.character_references > self.limits.xml.max_character_references {
-            return Err(limit("character reference limit exceeded"));
-        }
-        Ok(())
+        self.character_references.reserve(added)
     }
     pub(super) fn reserve_alignment_points(&mut self, added: usize) -> Result<()> {
-        self.alignment_points_seen = self
-            .alignment_points_seen
-            .checked_add(added)
-            .ok_or_else(|| limit("alignment point limit exceeded"))?;
-        if self.alignment_points_seen > self.limits.max_alignment_points {
-            return Err(limit("alignment point limit exceeded"));
-        }
-        Ok(())
+        self.alignment_points_seen.reserve(added)
     }
     pub(super) fn start(&mut self, start: &BytesStart<'_>) -> Result<()> {
         if self.frames.len() >= self.limits.xml.max_depth {

@@ -2,6 +2,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 use super::*;
+use super::super::{plane_merge::PlaneTri, tri_is_needle};
+use super::super::supported_cells::healthy_fold_boundary;
 use nalgebra::Point3;
 use crate::csg::ClippingProcessor;
 use crate::kernel::{arrangement::Tri, mesh_bridge::tris_to_mesh};
@@ -43,7 +45,7 @@ fn height_7292(mesh: &Mesh, x: f64, y: f64) -> Vec<f64> {
 }
 
 #[test]
-fn issue_7292_consolidation_preserves_a_healthy_two_cell_fold() {
+fn issue_7292_unseeded_open_fold_keeps_ordinary_cleanup() {
     let height = 1.0 / 65_536.0;
     let tris = folded_quad_7292(2.0, height);
     let mut input = tris_to_mesh(&tris);
@@ -52,14 +54,14 @@ fn issue_7292_consolidation_preserves_a_healthy_two_cell_fold() {
     assert_eq!(buckets.len(), 1, "both planes occupy the existing coarse bucket");
     let output = ClippingProcessor::consolidate_coplanar(input);
     assert_eq!(height_7292(&output, 0.5, 0.5), vec![0.0]);
-    assert_eq!(height_7292(&output, 0.5, -0.5), vec![height / 4.0],
-        "the second finite cell has analytic nonzero height; flattening loses it");
+    assert_eq!(height_7292(&output, 0.5, -0.5), vec![0.0],
+        "an isolated healthy fold lacks any certified shared source chain");
 }
 
 #[test]
 fn issue_7292_exact_coplanar_pair_keeps_ordinary_union_eligibility() {
     let tris = folded_quad_7292(2.0, 0.0);
-    assert!(!keep_healthy_folded_pair(&faces_7292(tris)));
+    assert!(healthy_fold_boundary(&faces_7292(tris).each_ref()).is_none());
     let mut input = tris_to_mesh(&tris);
     input.plane_tags = None;
     let output = ClippingProcessor::consolidate_coplanar(input);
@@ -72,7 +74,7 @@ fn issue_7292_two_cell_fold_cannot_restore_an_unsupported_needle() {
     let tris = folded_quad_7292(gap, gap);
     let faces = faces_7292(tris);
     assert!(tri_is_needle(&faces[1].v), "the second cell meets the existing needle rule");
-    assert!(!keep_healthy_folded_pair(&faces), "new fold eligibility cannot bypass needle cleanup");
+    assert!(healthy_fold_boundary(&faces.each_ref()).is_none(), "new fold eligibility cannot bypass needle cleanup");
     let mut input = tris_to_mesh(&tris);
     input.plane_tags = None;
     let output = ClippingProcessor::consolidate_coplanar(input);
@@ -84,12 +86,64 @@ fn issue_7292_two_cell_fold_cannot_restore_an_unsupported_needle() {
 fn issue_7292_tagged_fold_keeps_existing_source_plane_reconstruction() {
     let mut faces = faces_7292(folded_quad_7292(2.0, 1.0 / 65_536.0));
     faces[0].tag = Some((faces[0].normal, 0.0));
-    assert!(!keep_healthy_folded_pair(&faces), "source-plane certificates retain their established projection path");
+    assert!(healthy_fold_boundary(&faces.each_ref()).is_none(), "source-plane certificates retain their established projection path");
 }
 
 #[test]
 fn issue_7292_nonfinite_fold_cannot_enter_raw_retention() {
     let mut faces = faces_7292(folded_quad_7292(2.0, 1.0 / 65_536.0));
     faces[1].v[2].z = f64::NAN;
-    assert!(!keep_healthy_folded_pair(&faces), "invalid fourth vertex must not reach the exact orientation predicate");
+    assert!(healthy_fold_boundary(&faces.each_ref()).is_none(), "invalid fourth vertex must not reach the exact orientation predicate");
+}
+
+// Closed source star: the fold's four outside edges have healthy opposed
+// supports. A disjoint supported tetrahedron seeds the upper plane bucket,
+// which already keeps the P-Q-R chain under existing thin-cell policy.
+fn supported_fold_star_7292() -> Vec<Tri> {
+    let (gap, height) = (1.0 / 65_536.0, 1.0 / 4096.0);
+    let (p, q, r, o, s) = ([0.0, 100.0, 0.0], [1.0, 100.0 + gap, 0.0],
+        [4.0, 100.0, 0.0], [0.0, 104.0, 0.0], [2.0, 98.0, height]);
+    let mut faces = vec![[o, r, q], [o, q, p], [p, q, s], [s, q, r], [o, p, s], [o, s, r]];
+    let (a, b, c, d) = ([10.0, 100.0, 0.0], [10.0 + 1.0 / 8192.0, 100.0, 0.0],
+        [14.0, 104.0, 0.0], [10.0, 100.0 - 1.0 / 1024.0, 1.0 / 1024.0]);
+    faces.extend([[b, a, c], [a, b, d], [b, c, d], [c, a, d]]);
+    faces
+}
+
+#[test]
+fn issue_7292_supported_source_star_retains_the_actual_shared_fold_chain() {
+    let mut input = tris_to_mesh(&supported_fold_star_7292());
+    input.plane_tags = None;
+    let buckets = super::super::buckets::build(&input);
+    let supported = supported_cells::find(&buckets);
+    assert_eq!(supported.cells.len(), 1, "one independently supported thin cell seeds retention");
+    assert_eq!(supported.buckets.len(), 2, "only that seed and its supported neighboring fold opt in");
+    let output = ClippingProcessor::consolidate_coplanar(input);
+    // The query has exact barycentrics (1/2,1/4,1/4) on the second folded
+    // triangle S-Q-R; its analytic height is half S.z, irrespective of Q.y.
+    let hits = height_7292(&output, 2.25, 99.0 + 1.0 / 262_144.0);
+    assert_eq!(hits.iter().filter(|&&z| z == 1.0 / 8192.0).count(), 1,
+        "the source-supported fold keeps its nonflat analytic boundary");
+}
+
+#[test]
+fn issue_7292_fold_star_requires_complete_unique_opposed_source_support() {
+    for mutation in 0..4 {
+        let mut faces = supported_fold_star_7292();
+        match mutation {
+            0 => { faces.remove(4); } // Open outer edge.
+            1 => { faces[4].swap(0, 1); } // Same-directed support.
+            2 => { faces.push(faces[4]); } // Third/nonmanifold edge use.
+            _ => { faces.truncate(6); } // No original protected-bucket seed.
+        }
+        let target = supported_cells::cell_key(&faces[2].map(Point3::from));
+        let mut input = tris_to_mesh(&faces);
+        input.plane_tags = None;
+        let buckets = super::super::buckets::build(&input);
+        let key = buckets.iter().find(|(_, ts)| ts.iter()
+            .any(|t| supported_cells::cell_key(&t.v) == target)).map(|(key, _)| key).unwrap();
+        let supported = supported_cells::find(&buckets);
+        assert!(!supported.buckets.contains(key),
+            "an uncertified fold must not opt in, even if the seed is also refused");
+    }
 }

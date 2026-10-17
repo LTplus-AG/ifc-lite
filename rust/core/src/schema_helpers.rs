@@ -241,8 +241,10 @@ pub fn is_simple_geometry_type(type_name: &str) -> bool {
 /// must use this helper rather than reimplementing keyword normalization
 /// (#4203).
 pub fn ifc_type_from_keyword(type_name: &str) -> IfcType {
-    let upper = normalise_uppercase(type_name);
-    IfcType::from_str(upper.as_ref())
+    // `from_str` is the one normaliser: a canonical spelling needs no fold, and
+    // the rest are upper-cased once with Unicode rules for TS CRC parity. A
+    // second ASCII fold in front of it was a copy of that rule (CORE-10).
+    IfcType::from_str(type_name)
 }
 
 /// The `IfcTypeProduct` subtype a STEP keyword names, or `None` when it is

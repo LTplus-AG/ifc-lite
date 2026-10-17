@@ -74,6 +74,36 @@ pub fn step_string_literal_end(bytes: &[u8], open: usize) -> Option<usize> {
     }
 }
 
+/// Decode one STEP string literal, quotes included (`'O''Brien'`), to its
+/// text: strip the quotes, un-double `''`, then resolve the backslash escapes
+/// (F4-2, CORE-16). The one funnel for "literal bytes to text": the token
+/// converter, the header reader and every raw-byte reader go through it.
+///
+/// The order is load-bearing: un-doubling FIRST, because decoding first would
+/// let two separately escaped apostrophes (`\X\27\X\27`) become `''` and
+/// collapse into one. The TypeScript twin is `decodeStepStringLiteral` in
+/// `@ifc-lite/encoding`.
+///
+/// Borrowed from `raw` when there is nothing to undo (no `''`, no `\`).
+/// Bytes that are not UTF-8 decode lossily. `None` when `raw` is not
+/// wrapped in a pair of apostrophes.
+pub fn decode_step_literal(raw: &[u8]) -> Option<Cow<'_, str>> {
+    let inner = raw.strip_prefix(b"'")?.strip_suffix(b"'")?;
+    Some(decode_step_literal_inner(inner))
+}
+
+/// [`decode_step_literal`] for the bytes between the quotes, which is what
+/// the tokenizer's `Token::String` holds.
+pub(crate) fn decode_step_literal_inner(inner: &[u8]) -> Cow<'_, str> {
+    let text = String::from_utf8_lossy(inner);
+    match text {
+        Cow::Borrowed(t) if !t.contains("''") => decode_ifc_string(t),
+        Cow::Borrowed(t) => Cow::Owned(decode_ifc_string(&t.replace("''", "'")).into_owned()),
+        Cow::Owned(t) if !t.contains("''") => Cow::Owned(decode_ifc_string(&t).into_owned()),
+        Cow::Owned(t) => Cow::Owned(decode_ifc_string(&t.replace("''", "'")).into_owned()),
+    }
+}
+
 /// Decode IFC STEP string escapes to UTF-8.
 ///
 /// Returns the input borrowed and untouched when it contains no backslash, so
@@ -93,6 +123,7 @@ pub fn decode_ifc_string(s: &str) -> Cow<'_, str> {
     let mut out = String::with_capacity(n);
     let mut i = 0;
     let mut codepage: u8 = 1;
+    let mut terminator = X0Search::default();
 
     while i < n {
         if bytes[i] != b'\\' {
@@ -142,7 +173,7 @@ pub fn decode_ifc_string(s: &str) -> Cow<'_, str> {
         // `\X2\HHHH..\X0\`: UTF-16 code units (decoded as a unit, so surrogate
         // pairs spanning two groups combine correctly).
         if starts_with(bytes, i, b"\\X2\\") {
-            if let Some(end) = find(bytes, i + 4, b"\\X0\\") {
+            if let Some(end) = terminator.next_from(bytes, i + 4) {
                 let hex = &s[i + 4..end];
                 if !hex.is_empty()
                     && hex.len().is_multiple_of(4)
@@ -161,7 +192,7 @@ pub fn decode_ifc_string(s: &str) -> Cow<'_, str> {
 
         // `\X4\HHHHHHHH..\X0\`: Unicode scalar values.
         if starts_with(bytes, i, b"\\X4\\") {
-            if let Some(end) = find(bytes, i + 4, b"\\X0\\") {
+            if let Some(end) = terminator.next_from(bytes, i + 4) {
                 let hex = &s[i + 4..end];
                 if !hex.is_empty()
                     && hex.len().is_multiple_of(8)
@@ -236,14 +267,34 @@ fn starts_with(bytes: &[u8], at: usize, pat: &[u8]) -> bool {
     bytes.len() >= at + pat.len() && &bytes[at..at + pat.len()] == pat
 }
 
-fn find(bytes: &[u8], from: usize, pat: &[u8]) -> Option<usize> {
-    if pat.is_empty() || from + pat.len() > bytes.len() {
-        return None;
+/// The next `\X0\` terminator at or after a position, memoised (CORE-28).
+///
+/// The decoder's cursor only moves forward, so one search answers every later
+/// one: a miss means no terminator exists past any later position either, and
+/// a hit at `p` is still the first terminator for every position up to `p`.
+/// Without it, N unterminated `\X2\` / `\X4\` openers each searched to the
+/// end of the input, which is quadratic in a hostile attribute value.
+#[derive(Default)]
+struct X0Search {
+    /// `Some(None)`: no terminator remains. `Some(Some(p))`: the first one at
+    /// or after the position it was searched from sits at `p`.
+    last: Option<Option<usize>>,
+}
+
+impl X0Search {
+    fn next_from(&mut self, bytes: &[u8], from: usize) -> Option<usize> {
+        match self.last {
+            Some(None) => return None,
+            Some(Some(p)) if p >= from => return Some(p),
+            _ => {}
+        }
+        let found = bytes
+            .get(from..)
+            .and_then(|rest| memchr::memmem::find(rest, b"\\X0\\"))
+            .map(|off| from + off);
+        self.last = Some(found);
+        found
     }
-    bytes[from..]
-        .windows(pat.len())
-        .position(|w| w == pat)
-        .map(|p| from + p)
 }
 
 #[cfg(test)]
@@ -357,5 +408,41 @@ mod tests {
         for refused in [&b""[..], b"\"\"", b"1FF", b"3F0", b"4FF", b"0F", b"0FG0", b"0FF "] {
             assert_eq!(decode_step_binary(refused), None, "{refused:?}");
         }
+    }
+
+    /// CORE-16: one funnel for "literal bytes to text". Quotes off, `''`
+    /// undoubled, THEN the backslash directives; borrowed when there is
+    /// nothing to undo.
+    #[test]
+    fn decode_step_literal_is_the_one_literal_funnel() {
+        assert_eq!(decode_step_literal(b"'O''Brien'").as_deref(), Some("O'Brien"));
+        assert_eq!(decode_step_literal(br"'Br\X2\00FC\X0\cke'").as_deref(), Some("Br\u{FC}cke"));
+        assert_eq!(decode_step_literal(b"''").as_deref(), Some(""));
+        // The order is load-bearing: two escaped apostrophes stay two.
+        assert_eq!(decode_step_literal(br"'\X\27\X\27'").as_deref(), Some("''"));
+        assert!(matches!(decode_step_literal(b"'plain'"), Some(Cow::Borrowed("plain"))));
+        for not_a_literal in [&b"'"[..], b"", b"abc", b"'abc", b"abc'", b"\"abc\""] {
+            assert_eq!(decode_step_literal(not_a_literal), None, "{not_a_literal:?}");
+        }
+        // Not UTF-8: lossy, as the token converter always was.
+        assert_eq!(decode_step_literal(b"'a\xFFb'").as_deref(), Some("a\u{FFFD}b"));
+    }
+
+    /// CORE-28: every unterminated `\X2\` / `\X4\` opener searched to the end of
+    /// the input for its `\X0\`, so N openers cost N times the input. The
+    /// 240 KB input below took seconds on the old search and takes
+    /// milliseconds on the memoised one; the bound is 100x the fixed cost.
+    #[test]
+    fn unterminated_x2_openers_do_not_rescan_the_input_28() {
+        for opener in ["\\X2\\", "\\X4\\"] {
+            let hostile = format!("{opener} ").repeat(60_000);
+            let started = std::time::Instant::now();
+            assert_eq!(decode_ifc_string(&hostile), hostile.as_str());
+            assert!(hostile.len() > 240_000);
+            assert!(started.elapsed().as_secs() < 2, "{opener}: {:?}", started.elapsed());
+        }
+        // A terminator past many failed openers is still found for the one
+        // that pairs with it, and the openers before it stay text.
+        assert_eq!(decode_ifc_string("\\X2\\zz\\X2\\00FC\\X0\\"), "\\X2\\zz\u{FC}");
     }
 }

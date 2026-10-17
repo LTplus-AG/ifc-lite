@@ -17,14 +17,9 @@
 //! to hand-roll this and disagreed with each other on exactly this case
 //! (issue #3303); both now call this one function.
 //!
-//! The shared STEP HEADER prescan (`header::Lex`) answers the
-//! same question differently, on purpose, and that is not the divergence
-//! #3303 is about: a header prescan that swallows every later record has
-//! lost the schema, so it treats an unterminated `/*` as ordinary text
-//! instead of refusing. See the doc comment on `Lex::skip_comment_at` for
-//! why that call site needs its own answer. It still calls this function to
-//! find where a *closed* comment ends — only the unterminated case is
-//! handled differently, and only at that one call site.
+//! The STEP HEADER keyword finder (`header::find_keyword_then`) gives the
+//! same answer: an unterminated `/*` leaves nothing after it to find. Until
+//! F4-2 the header had its own copy that read it as ordinary text.
 
 pub(crate) use crate::step_encoding::is_page_quote_operand;
 

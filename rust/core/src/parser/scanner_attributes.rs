@@ -19,7 +19,8 @@
 //! as a separator and an apostrophe in one as a string (#4687). The rule
 //! lives here.
 
-use crate::parser::lexical::skip_step_trivia;
+use crate::parser::lexical::{is_step_space, skip_step_comment, skip_step_trivia};
+use std::ops::Range;
 use crate::step_encoding::step_string_literal_end;
 
 /// The top-level items of one parenthesized STEP list, each trimmed of
@@ -124,6 +125,80 @@ impl<'a> Iterator for StepListItems<'a> {
         self.state = ListState::Unreadable;
         None
     }
+}
+
+/// The top-level items of a list's inner text (what sits between its
+/// parentheses), as byte ranges: split at commas outside nesting, literals
+/// and comments, each trimmed of STEP trivia at both ends. A comment inside
+/// an item stays in its text, since the item is a slice of the input.
+///
+/// The tolerant splitter, for text that may be cut short or malformed (the
+/// source header). Unlike [`StepListItems`] it never refuses: a literal that
+/// never closes runs to the end, and a comment that never closes ends the
+/// scan (everything after its `/*` is inside it). The last item is yielded
+/// even though no `)` closes it, a blank last item only after a comma. A
+/// stray `)` at depth 0 is not a separator, and neither is a comma after it.
+/// Square brackets are ordinary text: Part 21 has no brackets outside
+/// literals.
+fn split_top_level_ranges(inner: &[u8]) -> Vec<Range<usize>> {
+    let len = inner.len();
+    let mut items = Vec::new();
+    let mut span: Option<(usize, usize)> = None;
+    let mut depth = 0i32;
+    let mut i = 0;
+    let take = |span: &mut Option<(usize, usize)>| {
+        span.take().map_or(0..0, |(start, end)| start..end)
+    };
+    while i < len {
+        let b = inner[i];
+        if is_step_space(b) {
+            i += 1;
+            continue;
+        }
+        if b == b'/' && inner.get(i + 1) == Some(&b'*') {
+            match skip_step_comment(inner, i) {
+                Some(next) => {
+                    i = next;
+                    continue;
+                }
+                None => break,
+            }
+        }
+        if b == b',' && depth == 0 {
+            items.push(take(&mut span));
+            i += 1;
+            continue;
+        }
+        let start = i;
+        match b {
+            b'\'' => i = step_string_literal_end(inner, i).unwrap_or(len),
+            b'(' => {
+                depth += 1;
+                i += 1;
+            }
+            b')' => {
+                depth -= 1;
+                i += 1;
+            }
+            _ => i += 1,
+        }
+        span = Some((span.map_or(start, |(first, _)| first), i));
+    }
+    if span.is_some() || !items.is_empty() {
+        items.push(take(&mut span));
+    }
+    items
+}
+
+/// [`split_top_level_ranges`] over bytes, as slices of `inner`.
+pub fn split_top_level_args(inner: &[u8]) -> Vec<&[u8]> {
+    split_top_level_ranges(inner).into_iter().map(|r| &inner[r]).collect()
+}
+
+/// [`split_top_level_args`] over text. Every delimiter is ASCII, so the byte
+/// ranges fall on character boundaries.
+pub fn split_top_level_args_str(inner: &str) -> Vec<&str> {
+    split_top_level_ranges(inner.as_bytes()).into_iter().map(|r| &inner[r]).collect()
 }
 
 /// Whether the top-level attribute at `index` (0-based, first attribute

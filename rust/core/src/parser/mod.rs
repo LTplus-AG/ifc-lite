@@ -43,7 +43,10 @@ pub(crate) use numeric_literal::parse_step_numeric;
 pub use numeric_literal::{parse_step_real, read_step_number, StepNumber};
 pub use malformed_records::report_malformed_records;
 pub use oversized_ids::{oversized_id_report, report_oversized_ids, set_report_sink};
-pub use scanner::{entity_count, nth_attribute_is_present, EntityScanner, StepListItems};
+pub use scanner::{
+    entity_count, nth_attribute_is_present, split_top_level_args, split_top_level_args_str,
+    EntityScanner, StepListItems,
+};
 pub(crate) use scanner::argument_list_start;
 pub use tokenizer::{parse_entity, Token};
 pub(crate) use tokenizer::is_decodable_number;

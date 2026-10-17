@@ -1,0 +1,97 @@
+diff --git b/rust/geometry/src/cdt.rs a/rust/geometry/src/cdt.rs
+index 1afb20860d..948517e8d7 100644
+--- b/rust/geometry/src/cdt.rs
++++ a/rust/geometry/src/cdt.rs
+@@ -131,7 +131,7 @@ fn build_with_budget(
+     let mut step = || {
+         crate::progress::tick_strided(&mut calls, 0xFFF);
+         spent += 1;
+-        if false && spent > budget {
++        if spent > budget {
+             return Err(crate::terrain_cdt::TerrainCdtError::WorkLimitExceeded);
+         }
+         Ok(())
+diff --git b/rust/geometry/src/mesh_orient_nesting.rs a/rust/geometry/src/mesh_orient_nesting.rs
+index c5aeb68b5c..24865ebbe4 100644
+--- b/rust/geometry/src/mesh_orient_nesting.rs
++++ a/rust/geometry/src/mesh_orient_nesting.rs
+@@ -91,7 +91,7 @@ pub(super) fn face_closed_components(
+ /// ran out.
+ fn cavities(spans: &[ClosedSpan], tris: &[usize], tri: &dyn Fn(usize) -> Tri) -> Option<Vec<bool>> {
+     let has = |s: i8| spans.iter().any(|c| c.authored == s);
+-    if spans.len() < 2 || !has(1) || !has(-1) || true {
++    if spans.len() < 2 || !has(1) || !has(-1) {
+         return None;
+     }
+     let members = |c: &ClosedSpan| &tris[c.start..c.end];
+diff --git b/rust/geometry/src/processors/advanced_face/bounds.rs a/rust/geometry/src/processors/advanced_face/bounds.rs
+index 7ac3fdb514..302f04381d 100644
+--- b/rust/geometry/src/processors/advanced_face/bounds.rs
++++ a/rust/geometry/src/processors/advanced_face/bounds.rs
+@@ -40,7 +40,7 @@ pub(in crate::processors) fn note_face_refused(face_type: &IfcType) {
+     FACE_REFUSED.with(|c| {
+         let mut types = c.borrow_mut();
+         if !types.contains(face_type) {
+-            types.push(IfcType::IfcAdvancedFace);
++            types.push(face_type.clone());
+         }
+     });
+ }
+diff --git b/rust/geometry/src/processors/tessellated/triangulate.rs a/rust/geometry/src/processors/tessellated/triangulate.rs
+index 90796bb5bd..a8629066ce 100644
+--- b/rust/geometry/src/processors/tessellated/triangulate.rs
++++ a/rust/geometry/src/processors/tessellated/triangulate.rs
+@@ -49,6 +49,7 @@ impl PolygonalFaceSetProcessor {
+         // A dangling corner drops the whole face (a fan would include bad
+         // vertices); it used to vanish silently, now it is counted (D3).
+         if outer_indices.iter().chain(inner_indices.iter().flatten()).any(|&i| get_pos(i).is_none()) {
++            super::super::advanced_face::note_face_refused(face_type);
+             return;
+         }
+ 
+@@ -159,7 +160,7 @@ impl PolygonalFaceSetProcessor {
+         // fixed `0-2` fan covered the convex hull twice for a reflex vertex
+         // 1 or 3 (#7795, GEOM-3 / PROC-S10).
+         if hole_points.is_empty() && outer_points.len() == 4 {
+-            for tri in [0u32, 1, 2, 0, 2, 3].chunks_exact(3) {
++            for tri in crate::triangulation::quad_split_3d(&outer_points).chunks_exact(3) {
+                 push_oriented_triangle(
+                     flattened_indices[tri[0] as usize],
+                     flattened_indices[tri[1] as usize],
+@@ -182,9 +183,7 @@ impl PolygonalFaceSetProcessor {
+             // refused and counted. It used to fan the outer loop, rendering the
+             // face filled over its authored openings (#7795, PROC-S5).
+             Err(_) => {
+-                for i in 1..outer_points.len().saturating_sub(1) {
+-                    push_oriented_triangle(flattened_indices[0], flattened_indices[i], flattened_indices[i + 1]);
+-                }
++                super::super::advanced_face::note_face_refused(face_type);
+             }
+         }
+     }
+diff --git b/rust/geometry/src/triangulation.rs a/rust/geometry/src/triangulation.rs
+index 99f36fa4ec..39b8984be7 100644
+--- b/rust/geometry/src/triangulation.rs
++++ a/rust/geometry/src/triangulation.rs
+@@ -168,7 +168,7 @@ pub(crate) fn safe_earcut(
+     {
+         let ring_slices: Vec<&[f64]> = rings.iter().map(|(c, _)| c.as_slice()).collect();
+         let hole_vertices = real_holes.iter().map(|&h| ring_slices[h].len() / 2).sum();
+-        let _ = (&ring_slices, hole_overlap::hole_work_budget(hole_vertices));
++        hole_overlap::settle_holes(&ring_slices, &mut real_holes, hole_overlap::hole_work_budget(hole_vertices))?;
+     }
+ 
+     let mut out: Vec<usize> = Vec::new();
+diff --git b/rust/geometry/src/triangulation/hole_overlap.rs a/rust/geometry/src/triangulation/hole_overlap.rs
+index 4061f6789a..966b5745f3 100644
+--- b/rust/geometry/src/triangulation/hole_overlap.rs
++++ a/rust/geometry/src/triangulation/hole_overlap.rs
+@@ -40,7 +40,7 @@ pub(super) const HOLE_PAIR_WORK_BASE: u64 = 1 << 22;
+ /// or vertex, authored in floating point) are not overlapping; authored
+ /// coordinates often round-trip through f32 (~6e-8 relative), so a shared
+ /// edge can overlap by that much and must still count as touching.
+-const TOUCH_TOLERANCE: f64 = 1e-9;
++const TOUCH_TOLERANCE: f64 = 1e-6;
+ 
+ /// Drop duplicate rings from `holes` (indices into `rings`) and refuse the
+ /// set if two remaining rings overlap or the work `budget` runs out.

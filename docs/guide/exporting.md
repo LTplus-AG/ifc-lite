@@ -1264,3 +1264,53 @@ Default-history `MutablePropertyView.setQuantity` edits on an `IfcTypeObject` su
 Type-owned quantity edits preserve an existing explicit native unit when no replacement or removal is requested. A change of quantity dimension refuses export when that retained unit is incompatible with the new IFC measure type. Explicit unit removal remains intentional; compatible same-dimension edits preserve the native unit.
 
 New type-owned scalar quantity members with explicit unit intent must resolve a native unit reference before export. The new-member resolver currently supports assigned Length units; an unassigned requested Length unit or an explicit unit of another quantity dimension refuses instead of saving the value in implicit project units. This applies both to new type-owned sets and members copied into existing type-owned sets; ordinary occurrence serialization retains its existing contract. Adding the first scalar member to a native complex-only set is associated with that set through its source GlobalId, and its opaque members remain unchanged. Like every edited type-owned quantity set, the saved copy receives a fresh GlobalId, so look up the edited set on the type's `HasPropertySets` rather than by the source GlobalId. An edited native definition without a readable GlobalId is unavailable to the current reader and refuses export; an unchanged source definition is not made unreadable merely by lacking export identity.
+
+### Export a section crop
+
+In the viewer's IFC export dialog, enable **Export Visible Only** while sections
+are enabled. **Trim geometry at sections** cuts crossing elements at all enabled
+planes, including the six faces of a section box. Turn trimming off to keep
+crossing elements whole. Elements entirely outside the combined crop are omitted
+in either mode. Spatial containers retain their metadata without excluded bodies.
+The option applies to STEP IFC exports with geometry, for both a
+single model and a merged federation.
+
+The export works on a temporary copy after applying the selected edits and
+visibility filters. Fully inside elements keep their original representations.
+Trimmed products keep their exact IFC type, GlobalId, property sets, material and
+classification associations, and spatial containment. Type identities remain;
+unused representation-map templates are omitted from cropped files. Geometry is reconstructed
+from the canonical mesher, including existing openings. Logical void and fill
+relationships remain; superseded cutter representations are detached to avoid
+applying baked opening cuts twice.
+Opening records referenced by fills keep their identity and metadata; their
+superseded cutter geometry is omitted after the host cut is baked.
+Closed solids receive cut faces; source surface models remain surfaces. IFC2X3
+uses faceted boundary representations rather than IFC4-only tessellations.
+Palette fragments share the source solid's cut topology. Retained faces keep
+their colours; new cut faces use the source representation item's first colour.
+A failed geometry intersection refuses the export instead of handing over an
+uncut product. Schema conversion retains its existing conversion limitations.
+
+Programs can crop an already exported, mutation-resolved STEP buffer with the
+same Rust implementation. Planes are IFC world coordinates (Z-up), in metres;
+the kept side satisfies `normal · world <= offset`:
+
+```typescript
+import { exportSectionedStep } from '@ifc-lite/export';
+
+const bytes = new Uint8Array(await file.arrayBuffer());
+const cropped = await exportSectionedStep(bytes, {
+  planes: [
+    { normal: [1, 0, 0], offset: 20 },
+    { normal: [-1, 0, 0], offset: -10 },
+  ],
+  mode: 'trim', // 'whole' keeps crossing elements complete
+});
+console.log(cropped.trimmed, cropped.outside);
+```
+
+Crop each federation source before merging when sources use different project
+length units. The viewer follows this order automatically. Section export needs
+the built WASM runtime; it is deliberately opt-in and does not run during normal
+model loading or ordinary IFC export.

@@ -187,3 +187,10 @@ optional `textureSources` containing original PNG/JPEG bytes. Unresolved images
 fail explicitly. This preserves IFClite roundtrips; third-party readers must
 implement the extension to recover textures. See
 [IFCX texture portability](../../docs/guide/exporting.md#ifcx-texture-portability).
+
+`exportSectionedStep(bytes, { planes, mode: 'trim' })` crops a completed STEP
+export at one or more IFC-world half-spaces (`normal · world <= offset`, Z-up,
+metres). It preserves product type, GlobalId and semantic associations, replaces
+crossing representations, and omits outside elements. `mode: 'whole'` retains
+crossing elements in full. The operation requires the WASM runtime and leaves its
+input bytes untouched. See the [export guide](../../docs/guide/exporting.md).

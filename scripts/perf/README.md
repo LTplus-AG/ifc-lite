@@ -4038,3 +4038,20 @@ now uses the reviewed first-frame clock contract in both cadence and markers,
 and reads finalized sidecars at their actual case paths. Lesson: verify final
 checker contracts and receipt discovery against retained real captures before
 spending another capture window. This integration fix grants no timing verdict.
+
+## Section-clipped IFC export (#7711)
+
+Section clipping is an opt-in export operation after the normal mutation-resolved
+STEP serialization. It reuses canonical meshing and the exact intersection kernel;
+ordinary loading and ordinary STEP export do not invoke it. The WASM and geometry
+bridge changes expose that operation without changing the load pipeline.
+Palette fragments are rejoined by source representation item before choosing
+solid clipping; appearance partitioning cannot decide whether a cut is capped.
+Retained face colours use bounded BVH attribution after the exact topology cut.
+
+Performance qualification is pending. Concurrent owned work on the shared host
+prevents an otherwise-idle, interleaved worker-pool cohort; a successful source
+build, functional export/reopen, or native test is not a browser performance
+verdict. No speed or neutral-performance claim is made. The lesson is to charge
+remeshing and intersection to the requested export operation and measure that
+operation separately from normal loading before interpreting timing changes.

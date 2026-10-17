@@ -1080,6 +1080,10 @@ export class IfcAPI {
      */
     planPointTransfer(content: Uint8Array, request_json: string, rgba: Uint8Array, positions: Float64Array, colors: Uint8Array, normals: Float32Array, stations: Uint32Array): Uint8Array;
     /**
+     * Export-only exact section intersections in IFC world metres.
+     */
+    planSectionExport(content: Uint8Array, planes_json: string, trim: boolean): string;
+    /**
      * Prepare bounded ordered PDF vector graphics states and the page fidelity
      * report (convertible paths, omissions with extent, exact/raster-only).
      */
@@ -2728,6 +2732,7 @@ export interface InitOutput {
     readonly ifcapi_planPageAppearance: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => void;
     readonly ifcapi_planPdfFillAnnotation: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
     readonly ifcapi_planPointTransfer: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number) => void;
+    readonly ifcapi_planSectionExport: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
     readonly ifcapi_preparePdfVectorPage: (a: number, b: number, c: number, d: number) => void;
     readonly ifcapi_probeLandXmlAlignmentAtDistance: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => void;
     readonly ifcapi_probeLandXmlAlignmentAtStation: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => void;

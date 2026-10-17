@@ -6,6 +6,7 @@ import type { ExportFormat, ExportSurface } from '@/lib/analytics-export-events'
 import { modelDisplayLabels } from '@/lib/model-labels.js';
 import { stepExportProgress } from '@/lib/export/step-progress.js';
 import { exportModelStep } from '@/lib/export/model-step-export';
+import { useSectionExport, sectionMergeInputs } from '@/lib/export/section-export';
 import { packagePortableIfcAsync, assertPortableMergeSupported } from '@/lib/export/portable-ifc';
 import { lostPropertyCollisionsNote, unrepresentedPsetsNote } from '@/lib/export/changed-model-export';
 import { modelAppearanceAssets } from '@/lib/appearance/model-assets';
@@ -128,6 +129,7 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
 
   // Derived: is this an IFC5/IFCX export?
   const isIfc5 = schema === 'IFC5';
+  const sectionExport = useSectionExport(visibleOnly && includeGeometry && !changesOnly && !isIfc5);
 
   const exportModelLabels = useMemo(() => modelDisplayLabels(models, 32), [models]);
   const modelList = useMemo(
@@ -324,7 +326,7 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
           model,
           dataStore: await ensureModelExportReady(model.id),
         })));
-        const mergeInputs: MergeModelInput[] = [];
+        let mergeInputs: MergeModelInput[] = [];
         const portableByModel = new Map<string, NonNullable<ReturnType<typeof roomStepExportSource>>>();
         for (const entry of hydratedModels) {
           if (!entry.dataStore) {
@@ -338,12 +340,12 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
           mergeInputs.push(input);
         }
 
-        const mergedExporter = new MergedExporter(mergeInputs);
-
         const visibility = visibleOnly
           ? roomMergeVisibility(models.keys(), portableByModel, getLocalHiddenIds, getLocalIsolatedIds)
           : { hidden: new Map<string, Set<number>>(), isolated: new Map<string, Set<number> | null>() };
 
+        mergeInputs = await sectionMergeInputs(mergeInputs, visibility, schema, sectionExport.options);
+        const mergedExporter = new MergedExporter(mergeInputs);
         // Assemble the merged download off-heap so it does not materialise as
         // one contiguous Uint8Array on the JS heap.
         const result = await mergedExporter.exportBlobAsync({
@@ -489,6 +491,7 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
         const state = useViewerStore.getState();
         const result = await exportModelStep({
           modelId: selectedModelId,
+          section: sectionExport.options(selectedModelId),
           dataStore: exportDataStore,
           mutationView: mutationView ?? undefined,
           options: {
@@ -537,7 +540,7 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
         });
       }
     }
-  }, [selectedModel, selectedModelId, schema, isIfc5, exportScope, includeGeometry, applyMutations, changesOnly, visibleOnly, unitReconciliation, onlyKnownProperties, getMutationView, getLocalHiddenIds, getLocalIsolatedIds, modifiedCount, models, extensionHost, outputInfo, exportAllowed, landXmlSource, t, surface]);
+  }, [selectedModel, selectedModelId, schema, isIfc5, exportScope, includeGeometry, applyMutations, changesOnly, visibleOnly, unitReconciliation, onlyKnownProperties, getMutationView, getLocalHiddenIds, getLocalIsolatedIds, modifiedCount, models, extensionHost, outputInfo, exportAllowed, landXmlSource, t, surface, sectionExport]);
 
   return (
     <ExportDialogShell
@@ -606,6 +609,7 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
         modifiedCount={modifiedCount}
       />
 
+      {sectionExport.control}
       {/* Export Progress */}
       {isExporting && exportProgress && (
         <div className="space-y-2">

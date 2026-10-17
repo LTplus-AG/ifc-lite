@@ -576,6 +576,24 @@ impl Mesh {
 
 Related mesh types: `SubMesh`, `SubMeshCollection`, `InstanceMeta`.
 
+#### representation
+
+`ifc_lite_geometry::representation` is the decoder-only home of a product's
+representation chain (`Representation(6)` to `IfcProductDefinitionShape.Representations(2)`
+to `Items(3)`, and `IfcMappedItem` to `MappingSource` to `MappedRepresentation`).
+It meshes nothing and owns no cache.
+
+```rust
+pub fn product_shape(element: &DecodedEntity, d: &mut EntityDecoder) -> Result<Option<ProductShape>, ShapeError>;
+pub fn rep_items(rep: &DecodedEntity, d: &mut EntityDecoder) -> Result<Vec<DecodedEntity>, ShapeError>;
+impl ProductShape { pub fn select(&self, element: &DecodedEntity, s: Select) -> impl Iterator<Item = &DecodedEntity>; }
+pub enum Select { Meshed, Body, RtcVotable, Any, Where(fn(..) -> bool) } // Meshed = what renders
+pub struct RepresentationWalk { pub select: Select, pub nested: NestedMaps }
+// product / map / mapped_item drive a WalkVisitor in DFS pre-order; nesting is
+// capped by depth and a path-scoped visited set.
+pub fn meshed_representations(element, representations) -> impl Iterator; // = Select::Meshed
+```
+
 #### mesh_check (test-support)
 
 `ifc_lite_geometry::mesh_check` is the one home for closure, edge-pairing and

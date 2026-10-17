@@ -134,6 +134,13 @@ impl<K> SchemaSlot<K> {
         }
     }
 
+    /// Whether `schema` declares the entity this slot belongs to at all,
+    /// whether or not the entity has this attribute there (`IfcLinearPlacement`
+    /// is declared from IFC4X1 on; `IfcAlignment` too).
+    pub fn entity_declared_in(self, schema: SchemaVersion) -> bool {
+        IfcType::from_id(self.owner).is_some_and(|owner| schema.attribute_names(owner.as_str()).is_some())
+    }
+
     /// The slot as `schema` lays it out, or `None` when that schema has no
     /// such attribute (for example `IfcSpace.InteriorOrExteriorSpace` after
     /// IFC2X3). Pin a schema explicitly only where the entity exists in

@@ -169,5 +169,67 @@ fn split_top_level_args_keeps_page_operands_inside_their_strings_7589() {
     }
     let parts = split_top_level_args(r"'g',#2,'Para \S\' 5','Art \S\' 7',#4").expect("a well-formed argument list");
     assert_eq!(parts.len(), 5);
-    assert!(is_well_formed_step_slot(r"IFCLABEL('Art \S\' 7')"));
+    assert!(is_step_value(r"IFCLABEL('Art \S\' 7')"));
+}
+
+/// F4 M-export-a (EXPORT-STEP-15, CORE-6, CORE-32): the writer's split is
+/// core's, held to the vectors the TypeScript twin reads too. The slots are
+/// slices of the input (no `Vec<char>`, no ASCII projection).
+#[test]
+fn split_top_level_args_agrees_with_the_shared_slot_vectors() {
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("../../core/tests/fixtures/step_slot_vectors.json")).unwrap();
+    for row in fixture["splits"].as_array().unwrap() {
+        let inner = row["inner"].as_str().unwrap();
+        let expected: Option<Vec<&str>> = row["slots"]
+            .as_array()
+            .map(|slots| slots.iter().map(|slot| slot.as_str().unwrap()).collect());
+        assert_eq!(slots_of(inner), expected, "{}", row["name"]);
+        let owned: Option<Vec<String>> = expected.map(|slots| slots.into_iter().map(str::to_owned).collect());
+        assert_eq!(split_top_level_args(inner), owned, "{}", row["name"]);
+    }
+    for row in fixture["values"].as_array().unwrap() {
+        let text = row["text"].as_str().unwrap();
+        let expected = row["valid"].as_bool().unwrap() && !text.contains("/*");
+        assert_eq!(is_step_value(text), expected, "{}", row["name"]);
+    }
+}
+
+/// The slot grammar used Unicode `char::is_whitespace`, so a no-break space
+/// was padding to the writer and not to the tokenizer; the STEP set (with the
+/// vertical tab and form feed) is the one rule.
+#[test]
+fn whitespace_is_the_step_set_not_unicode() {
+    assert!(split_top_level_args("'a',\u{b}$\u{c},'b'").is_some());
+    assert_eq!(split_top_level_args("'a',\u{a0},'b'"), None);
+    assert_eq!(split_top_level_args("\u{a0}"), None);
+    assert!(!is_step_value("\u{a0}$"));
+}
+
+/// A binary literal is held to `"[0-3]hex*"` by EVERY entry point now: the
+/// split used to check only that it closed, and `is_step_value` alone checked
+/// the hex (and only uppercase).
+#[test]
+fn a_binary_literal_is_held_to_hex_everywhere() {
+    assert!(split_top_level_args("\"0f3A\",$").is_some());
+    assert!(is_step_value("\"0f3A\""));
+    assert_eq!(split_top_level_args("\"0G\",$"), None);
+    assert_eq!(split_top_level_args("\"4F\",$"), None);
+    assert_eq!(split_top_level_args("'g',\"01,23\""), None);
+}
+
+/// Numbers are core's one grammar: `1..2` is no number, `.5`/`+1`/`1.E5` are.
+#[test]
+fn numbers_are_the_core_grammar() {
+    assert_eq!(split_top_level_args("1..2,$"), None);
+    assert!(split_top_level_args(".5,+1,1.E5,-0.,$").is_some());
+    assert!(is_step_value("1.E5") && !is_step_value("1.E") && !is_step_value("1,2"));
+}
+
+/// A comment that never closes is not trivia: the list is refused. The old
+/// split carried it to the end and accepted it in trailing position.
+#[test]
+fn an_unterminated_comment_is_refused() {
+    assert_eq!(split_top_level_args("'a',$ /* open"), None);
+    assert_eq!(split_top_level_args("'a',$ /* ( ' */ /* open"), None);
 }

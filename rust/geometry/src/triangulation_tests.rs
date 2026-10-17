@@ -565,3 +565,42 @@ fn planar_face_collinear_convex_ring_has_no_degenerate_triangle() {
     };
     assert!(n(&idx, &ring).dot(&n(&idx_rev, &rev)) < 0.0);
 }
+
+/// Review of #7826: the duplex IfcSpace floor ring (#2412) ear-clips on the
+/// dominant-axis projection through zero-area ears at its collinear corners,
+/// which the hygiene pass drops, tearing a closed space open (0 -> 24 open
+/// edges). The Newell result has fewer such ears and must be kept; the
+/// triangles cover the ring once and every non-degenerate one winds with it.
+#[test]
+fn planar_face_keeps_the_projection_with_fewer_zero_area_ears() {
+    let ring = [
+        (0.0, 0.0), (0.0, 1.825000000000012), (1.014399999999986, 1.825000000000008),
+        (1.014400000000014, 5.299999999999996), (1.066299999999995, 5.299999999999996),
+        (1.930299999999996, 5.299999999999993), (1.965000000000001, 5.299999999999993),
+        (1.965, 4.791999999999999), (1.964999999999996, 2.543948821489413),
+        (1.964999999999995, 1.679948821489415), (1.964999999999994, 1.517948821489415),
+        (1.964999999999993, 0.4780000000000061), (1.964999999999992, 0.0),
+        (1.864999999999993, 0.0), (1.000999999999994, 0.0),
+    ]
+    .map(|(x, y)| Point3::new(x, y, 0.0));
+    let n = ring.len();
+    let normal = (0..n).fold(Vector3::zeros(), |acc, i| acc + ring[i].coords.cross(&ring[(i + 1) % n].coords));
+    let idx = triangulate_planar_face(&ring, &[]).unwrap();
+    let held: Vec<usize> = idx.iter().map(|&i| i as usize).collect();
+    let axis = axis_earcut(&ring, &calculate_polygon_normal(&ring)).unwrap();
+    assert!(
+        zero_area_triangles(&ring, &held) < zero_area_triangles(&ring, &axis),
+        "kept {} zero-area ears, the axis ear-clip has {}",
+        zero_area_triangles(&ring, &held),
+        zero_area_triangles(&ring, &axis)
+    );
+    let mut signed = 0.0;
+    for t in idx.chunks_exact(3) {
+        let (a, b, c) = (ring[t[0] as usize], ring[t[1] as usize], ring[t[2] as usize]);
+        let cross = (b - a).cross(&(c - a));
+        let degenerate = cross.norm() <= 1e-9 * normal.norm();
+        assert!(degenerate || cross.dot(&normal) > 0.0, "triangle {t:?} winds against the ring");
+        signed += cross.dot(&normal) / normal.norm();
+    }
+    assert!((signed - normal.norm()).abs() < 1e-9, "covers {signed} of {}", normal.norm());
+}

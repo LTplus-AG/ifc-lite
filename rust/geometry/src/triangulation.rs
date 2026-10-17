@@ -475,8 +475,17 @@ pub fn triangulate_planar_face(
     // rounding, and a convex ring with a collinear corner is never fanned
     // through a degenerate zero-area triangle (which opens the edges its
     // neighbour shares through that corner).
+    // Ear-clipping on either projection can still cut a zero-area ear at a
+    // collinear corner; the Newell result is kept where it has strictly fewer
+    // of them (duplex IfcSpace surface models tore on the axis ears).
     let held = if holes_2d.is_empty() && outer.len() >= 5 {
-        axis_earcut(outer, &normal)
+        match axis_earcut(outer, &normal) {
+            Ok(axis) if zero_area_triangles(outer, &axis) > 0 => match triangulate_polygon(&outer_2d) {
+                Ok(newell) if zero_area_triangles(outer, &newell) < zero_area_triangles(outer, &axis) => Ok(newell),
+                _ => Ok(axis),
+            },
+            held => held,
+        }
     } else {
         triangulate_polygon_with_holes(&outer_2d, &holes_2d)
     };
@@ -493,6 +502,18 @@ pub fn triangulate_planar_face(
             "planar face triangulation with holes failed: {error}"
         ))),
     }
+}
+
+/// Triangles of `idx` over the planar `ring` whose area is zero relative to
+/// the ring's own (`1e-9`): the ears a collinear corner yields.
+fn zero_area_triangles(ring: &[Point3<f64>], idx: &[usize]) -> usize {
+    let n = ring.len();
+    let twice_area = (0..n)
+        .fold(Vector3::zeros(), |acc, i| acc + ring[i].coords.cross(&ring[(i + 1) % n].coords))
+        .norm();
+    idx.chunks_exact(3)
+        .filter(|t| (ring[t[1]] - ring[t[0]]).cross(&(ring[t[2]] - ring[t[0]])).norm() <= 1e-9 * twice_area)
+        .count()
 }
 
 /// Earcut a hole-free planar ring on the plane its dominant normal axis drops,

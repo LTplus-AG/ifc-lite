@@ -1,0 +1,21 @@
+{
+  "kind": "derivative-reconciliation-draft",
+  "createdAt": "2026-10-17T22:09:01.713072+00:00",
+  "immutableArchiveCommit": "7a44f548f67a7e57f510ecf0e79150267a4a7971",
+  "originalFindingCount": 622,
+  "originalStatusesChanged": false,
+  "acceptanceDecisionsAdded": false,
+  "supplementalReviewFindingsIncludedInOriginalCount": false,
+  "sourceHashes": {
+    "summary.json": "fceb892b9cf8b10032f26ad504f50ef43b5aa01b19a45d720448d03850a2e35f",
+    "findings.csv": "7e24672df2c0ec6c6e63aa354b7a9418e87a35a851d4b0ca8df63f44be316d73",
+    "evidence-index.json": "34dcd5d66d1307645ca6ad6069f8b7b11049ad9ce05cf309ee42ea744a43ca59",
+    "README.md": "220f2425de716cd4ab0affa3e1cd9e4590a365b39b36a26d943f2b69f090b573"
+  },
+  "publishedFileHashes": {
+    "summary.json": "fceb892b9cf8b10032f26ad504f50ef43b5aa01b19a45d720448d03850a2e35f",
+    "findings.csv": "feee2266d6051cbf344eb5a700fafaa575cabc046921770ae7d011b03df36a78",
+    "evidence-index.json": "2fba5200bda347139bbfd7decbff7d93e3253725ccfbf5557d589d0a81531594",
+    "README.md": "6a9cdc48d37a7429f2e530d2b43d362e8723c07f079e26de46e81e834f537ad8"
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "formatVersion": 1,
+  "artifactRole": "DERIVATIVE RECONCILIATION DRAFT; not a new authoritative ledger; no dispositions or GitHub state changed",
+  "preparedAt": "2026-10-17T21:59:58.993820+00:00",
+  "immutableArchiveCommit": "7a44f548f67a7e57f510ecf0e79150267a4a7971",
+  "rows": 622,
+  "uniqueCanonicalIds": 622,
+  "classificationCounts": {
+    "required-pending": 427,
+    "optional-by-exact-decision": 154,
+    "unknown": 6,
+    "archived-fixed-with-proof": 30,
+    "explicit-prose-closure-needs-verification": 5
+  },
+  "explicitProseClosureIds": [
+    "PROCESSING-5",
+    "PROCESSING-APP-2",
+    "EXPORT-DATA-6",
+    "SERVER-18",
+    "SERVER-26"
+  ],
+  "unresolvedIssueAliases": [
+    {
+      "id": "EXPORT-DATA-6",
+      "archivedIssue": "7684",
+      "primaryWpIssue": "https://github.com/LTplus-AG/ifc-lite/issues/7690"
+    },
+    {
+      "id": "EDGE-WASM-25",
+      "archivedIssue": "7691",
+      "primaryWpIssue": "https://github.com/LTplus-AG/ifc-lite/issues/7782"
+    }
+  ],
+  "proofLimit": "All claims derived from immutable local archive only; no new source, runtime, CI, merge or GitHub verification.",
+  "optionalLimit": "Optional-by-exact-decision means primary-WP eligibility under D8 only; no actual final deferral or whole split-finding completion is asserted.",
+  "requiredPendingLimit": "Required-pending means reconciliation/acceptance verification pending; does not assert defect remains in implementation.",
+  "supplementalReviews": "Existing supplemental PR reviews (including D47#7895comment6241523952) remain outside original622 and are not assigned originalIDs by this artifact."
+}

@@ -9,6 +9,17 @@ in the processing crate), whether it runs through the browser WASM build, the
 worker pool, or a native host. Every consumer therefore gets identical
 per-element meshes, and fixes to the mesher land once for all paths.
 
+Rust callers can inspect `EntityDecoder::uniform_context_precision()` for a
+restricted source-precision certificate: one project, one owned 3D context,
+complete direct subcontexts and an explicit SI length unit. It verifies all
+representation context references and unit mapped scales. Missing or conflicting
+provenance returns `None`, without inferring a default `Precision`.
+Compact source indexes share a lazy certificate cache across fresh decoders,
+retaining success and decline. Custom hash-index callers can share one
+`decoder::UniformContextPrecisionCache` through
+`EntityDecoder::set_uniform_context_precision_cache`; it belongs to exactly one
+immutable source and separates strict geometry admission from permissive reads.
+
 IFClite processes IFC geometry through a streaming pipeline:
 
 ```mermaid

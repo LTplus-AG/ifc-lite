@@ -57,12 +57,12 @@ const ALLOWLIST: &str = include_str!("module_size_allowlist.txt");
 /// explicitly NOT guaranteed stable across Rust releases - a toolchain bump
 /// would rewrite the digest and fail CI for no reason.
 const ALLOWLIST_DIGESTS: &[(&str, u64)] = &[
-    ("apps/server", 4114979320796990468),
+    ("apps/server", 4104424009168246343),
     ("rust/core", 15539757744700452344),
     ("rust/export", 3881316072366205854),
-    ("rust/geometry", 8589636128549169219),
+    ("rust/geometry", 6874578928475344830),
     ("rust/processing", 7633784028779437211),
-    ("rust/wasm-bindings", 11372642225568989008),
+    ("rust/wasm-bindings", 6355378406566007704),
 ];
 
 /// Lower bound on how many non-exempt `.rs` files the walk must reach before

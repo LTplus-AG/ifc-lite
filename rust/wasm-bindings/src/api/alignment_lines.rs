@@ -23,9 +23,7 @@
 //! override.
 
 use super::IfcAPI;
-use ifc_lite_core::{
-    build_entity_index, extract_length_unit_scale, EntityDecoder, EntityScanner,
-};
+use ifc_lite_core::{build_entity_index, EntityDecoder, EntityScanner};
 use ifc_lite_geometry::{locate_axis_curve, AlignmentCurve, GeometryRouter};
 use ifc_lite_processing::MeshFrame;
 use wasm_bindgen::prelude::*;
@@ -75,22 +73,17 @@ pub(crate) fn extract_alignment_line_vertices(
     let mut decoder = EntityDecoder::with_index(content, entity_index);
 
     // Unit scale (file units → metres) resolved the same way the mesh
-    // pipeline does, so the alignment shares the model's scale.
-    let mut project_scanner = EntityScanner::new(content);
-    let mut unit_scale = 1.0_f64;
-    while let Some((id, type_name, _, _)) = project_scanner.next_entity() {
-        if ifc_lite_core::keyword_eq(type_name, "IFCPROJECT") {
-            if let Ok(s) = extract_length_unit_scale(&mut decoder, id) {
-                unit_scale = s;
-            }
-            break;
-        }
+    // pipeline does, so the alignment shares the model's scale; a refused
+    // length unit draws nothing (#7678), like the grid and symbolic overlays.
+    // Not drained: meshes nothing. Pinned by rust/geometry/tests/issue_3821_auxiliary_routers_mesh_nothing.rs.
+    let router = GeometryRouter::with_units(content, &mut decoder);
+    if router.length_unit_refused() {
+        return Vec::new();
     }
+    let unit_scale = router.unit_scale();
 
     // RTC offset (metres): exact when supplied by the browser mesh pre-pass;
     // otherwise the standalone whole-source choice (#4665, #4799).
-    // Not drained: meshes nothing. Pinned by rust/geometry/tests/issue_3821_auxiliary_routers_mesh_nothing.rs.
-    let router = GeometryRouter::with_scale(unit_scale);
     let rtc = frame
         .unwrap_or_else(|| MeshFrame::for_overlay(&router, content.as_bytes(), &mut decoder))
         .rtc_offset();

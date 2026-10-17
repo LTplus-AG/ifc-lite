@@ -17,12 +17,12 @@
    199 apps/server/src/services/data_model/mod.rs extract_data_model
    299 apps/server/src/services/data_model/spatial.rs build_spatial_hierarchy
    200 apps/server/src/services/parquet_mesh_tables.rs build_mesh_tables
-   314 apps/server/src/services/parquet_optimized.rs serialize_to_parquet_optimized
+   308 apps/server/src/services/parquet_optimized.rs serialize_to_parquet_optimized
    324 rust/clash/src/narrow.rs test_pair
    167 rust/clash/src/obb_detect.rs detect_obb
    195 rust/core/src/parser/scanner.rs EntityScanner::next_entity
    269 rust/core/src/project_units/measure.rs measure_unit
-   199 rust/core/src/units.rs extract_length_unit_scale
+   187 rust/core/src/units.rs extract_length_unit_scale
    184 rust/export/src/collada.rs try_export_collada_from_meshes
    186 rust/export/src/collada_document.rs write_dae
    373 rust/export/src/gltf.rs build_gltf
@@ -55,7 +55,7 @@
    162 rust/geometry/src/processors/boolean/polygonal_prism.rs BooleanClippingProcessor::build_polygonal_bounded_half_space_mesh
    174 rust/geometry/src/processors/sectioned.rs SectionedSolidHorizontalProcessor@GeometryProcessor::process
    164 rust/geometry/src/processors/swept/revolved.rs RevolvedAreaSolidProcessor@GeometryProcessor::process
-   218 rust/geometry/src/processors/tessellated/triangulate.rs PolygonalFaceSetProcessor::triangulate_polygon
+   181 rust/geometry/src/processors/tessellated/triangulate.rs PolygonalFaceSetProcessor::triangulate_polygon
    182 rust/geometry/src/profiles/simplify.rs simplify_smooth_curve_polyline
    213 rust/geometry/src/router/mapped_item.rs GeometryRouter::process_mapped_item_cached_body
    291 rust/geometry/src/router/processing.rs GeometryRouter::collect_submeshes_from_item_inner
@@ -68,7 +68,6 @@
    161 rust/geometry/src/router/voids/prism_cut.rs build_face_cap
    233 rust/geometry/src/router/voids/prism_cut.rs cut_prism
    193 rust/geometry/src/router/voids/prism_cut.rs detect_prism
-   157 rust/geometry/src/router/voids/prism_cut/closure_checks.rs hairline_closed
    155 rust/geometry/src/router/voids/probe.rs GeometryRouter::get_opening_item_bounds_with_direction
    247 rust/geometry/src/router/voids/synthesis.rs GeometryRouter::classify_openings_impl
    215 rust/geometry/src/router/voids/synthesis.rs GeometryRouter::extend_opening_along_direction
@@ -91,7 +90,7 @@
    156 rust/processing/src/element.rs emit_sub_meshes
    181 rust/processing/src/pdf_vector/interpret_ops.rs Interpreter::operation
    259 rust/processing/src/processor/jobs.rs process_entity_job
-  1166 rust/processing/src/processor/mod.rs process_geometry_streaming_filtered_with_options_and_ids
+  1162 rust/processing/src/processor/mod.rs process_geometry_streaming_filtered_with_options_and_ids
    165 rust/processing/src/simplify_session.rs simplify_element
    312 rust/processing/src/symbolic/items.rs extract_symbolic_item_inner
    183 rust/processing/src/symbolic/mod.rs extract_symbolic_data_into_frame

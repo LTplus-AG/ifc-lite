@@ -221,3 +221,32 @@ fn over_budget_is_reported_as_over_budget_not_as_empty() {
     let out = mesh_outline_2d(&pos, at_cap, ProjectionAxis::Y, false).expect("at cap");
     assert_eq!(bbox_2d(&out.contours), (0.0, 0.0, 1.0, 1.0));
 }
+
+/// #7678 (GEOM-39): a triangle with a NaN or infinite position is skipped like
+/// an out-of-range index, so it neither reaches i_overlay nor stretches the
+/// cut-axis extent. Appended to a finite box it changes nothing; on its own it
+/// leaves no outline. A `-0.0` coordinate is an ordinary finite one.
+#[test]
+fn non_finite_triangles_are_skipped_and_negative_zero_is_kept() {
+    let (pos, idx) = box_mesh(1.0, 4.0, 0.0, 2.0, -1.0, 1.0, false);
+    let clean = mesh_outline_2d(&pos, &idx, ProjectionAxis::Y, false).expect("clean");
+    for bad in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+        for slot in 0..3 {
+            let mut p = pos.clone();
+            let mut i = idx.clone();
+            let base = (p.len() / 3) as u32;
+            let mut tri = [0.0f32, 0.0, 0.0, 9.0, 0.0, 0.0, 0.0, 0.0, 9.0];
+            tri[slot] = bad;
+            p.extend_from_slice(&tri);
+            i.extend_from_slice(&[base, base + 1, base + 2]);
+            let out = mesh_outline_2d(&p, &i, ProjectionAxis::Y, false).expect("box survives");
+            assert_eq!(out.contours, clean.contours, "{bad} at slot {slot}");
+            assert_eq!((out.axis_min, out.axis_max), (clean.axis_min, clean.axis_max), "{bad} at slot {slot}");
+            let alone = mesh_outline_2d(&tri, &[0, 1, 2], ProjectionAxis::Y, false);
+            assert!(matches!(alone, Err(NoOutline::Empty)), "{bad} at slot {slot}");
+        }
+    }
+    let (pos, idx) = box_mesh(-0.0, 4.0, -0.0, 2.0, -0.0, 1.0, false);
+    let out = mesh_outline_2d(&pos, &idx, ProjectionAxis::Y, false).expect("-0.0 box");
+    assert_eq!(out.axis_min, 0.0);
+}

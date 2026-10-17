@@ -376,7 +376,7 @@ pub(super) fn resolve_space_zone_properties_lazy(
                 if property_values_by_id.contains_key(&property_id) {
                     continue;
                 }
-                if let Ok(property_entity) = decoder.decode_by_id(property_id) {
+                if let Ok(property_entity) = decoder.decode_by_id_lossless(property_id) { // #7678
                     if let Some((name, value)) = extract_property_name_and_value(&property_entity)
                     {
                         property_values_by_id.insert(property_id, (name, value));

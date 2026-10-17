@@ -36,7 +36,7 @@ fn faceted(body: &str) -> (Mesh, bool) {
     let mesh = FacetedBrepProcessor::new()
         .process(&entity, &mut decoder, &IfcSchema::new(), TessellationQuality::Medium)
         .expect("a faceted brep never fails as a whole for a refused face");
-    (mesh, crate::processors::take_face_refused())
+    (mesh, !crate::processors::take_face_refused().is_empty())
 }
 
 /// The dart `[(0,0),(2,2),(4,0),(2,10)]`: CCW, signed area +16, reflex at
@@ -146,7 +146,7 @@ fn surface_model_hole_that_cannot_triangulate_refuses_the_face() {
         .process(&entity, &mut decoder, &IfcSchema::new(), TessellationQuality::Medium)
         .unwrap();
     assert!(mesh.is_empty());
-    assert!(crate::processors::take_face_refused());
+    assert!(!crate::processors::take_face_refused().is_empty());
 }
 
 const SQUARE_WITH_UNREADABLE_HOLE: &str = "\
@@ -178,7 +178,7 @@ fn surface_model_unreadable_hole_loop_refuses_the_face() {
         .process(&entity, &mut decoder, &IfcSchema::new(), TessellationQuality::Medium)
         .unwrap();
     assert!(mesh.is_empty());
-    assert!(crate::processors::take_face_refused());
+    assert!(!crate::processors::take_face_refused().is_empty());
 }
 
 /// A hole loop under three points is degenerate, not unread: the face still

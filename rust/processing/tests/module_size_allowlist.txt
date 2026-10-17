@@ -13,7 +13,7 @@
 # file's measured count and fails a hand-picked number; a duplicate row fails
 # in module_size_ratchet.rs (#4388).
      756 apps/server/src/services/parquet_data_model.rs
-     581 apps/server/src/services/parquet_optimized.rs
+     531 apps/server/src/services/parquet_optimized.rs
 # +8: add set_entity_index setter so the processor can install its inline-built index (perf/single-scan).
 # +50: add the per-worker placement-transform memo (field + take/set/get/cache methods), mirroring point_cache (perf/placement-cache).
     1064 rust/core/src/decoder.rs
@@ -269,7 +269,8 @@
 # collapsing thin cut geometry far from the project origin, and the correct
 # behaviour already existed next to it as `rotate_mesh_from_frame`, which now
 # also composes the input's own origin instead of assigning over it.
-     882 rust/geometry/src/router/voids/geom.rs
+     757 rust/geometry/src/router/voids/geom.rs
+# -125: the closure, pairing and signed-volume checks moved to `mesh_check` (C2-1, #7793); 882 -> 757.
 # +10: extract min_opening_volume(quality) tier->floor helper shared by the batch
 # admission gate and the sequential CSG path so they can't diverge on the
 # High/Highest small-opening floor (B11 regression, issue #976).
@@ -439,7 +440,7 @@
 # has never run in CI (`--exclude ifc-lite-wasm`), which is how it drifted.
 # +37: geometry_item_id/material_id cross the boundary -- 2 fields, 2 getters, a paired setter, and propagation at all THREE MeshDataJs clone sites (defaulting them there would have made the field inert at collection.get(i)) (#3199).
 # -14: the three hand-written 21-field MeshDataJs copies collapsed to a derived Clone; a hand-written Default (which must agree with new) costs some of it back (#3199 follow-up).
-     754 rust/wasm-bindings/src/zero_copy/mesh.rs
+     743 rust/wasm-bindings/src/zero_copy/mesh.rs
 # symbolic.rs +14 (743 -> 757): carries SymbolicData::truncated across the WASM
 # boundary as `truncatedAt` (#2938). A raise rather than a split because the
 # addition is one field, one assignment in `from_data` and one getter -- the

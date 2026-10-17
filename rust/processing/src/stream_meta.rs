@@ -75,6 +75,12 @@ pub struct StreamMeta {
     pub frame: MeshFrame,
     /// Z-rotation of the `IfcSite` placement, if any.
     pub building_rotation: Option<f64>,
+    /// The declared length-unit factor geometry must refuse (#7678, see
+    /// `UnitScales::length_unit_refused`). `length_unit_scale` is then `1.0`,
+    /// a placeholder no mesh may use: every router built from this meta must
+    /// call `GeometryRouter::refuse_length_unit`, and the wasm wire sends
+    /// `unitScale: NaN` with `unitRefused: true` so batch routers refuse too.
+    pub length_unit_refused: Option<u32>,
 }
 
 /// Resolve the full [`StreamMeta`] bundle for one pre-pass emission point.
@@ -97,11 +103,14 @@ pub fn resolve_stream_meta(
     // Unit scales via the shared resolver (handles a missing project-id hint
     // and partial-index chains internally), then seed the decoder.
     let unit_scales = crate::prepass::resolve_unit_scales(content, project_id, decoder);
-    let length_unit_scale = unit_scales.length_unit_scale;
+    let length_unit_scale = unit_scales.geometry_length_scale();
     decoder.seed_unit_scales(length_unit_scale, unit_scales.plane_angle_to_radians);
 
     // Not drained: meshes nothing. Pinned by rust/geometry/tests/issue_3821_auxiliary_routers_mesh_nothing.rs.
-    let router = GeometryRouter::with_scale(length_unit_scale);
+    let mut router = GeometryRouter::with_scale(length_unit_scale);
+    if unit_scales.length_unit_refused.is_some() {
+        router.refuse_length_unit();
+    }
 
     let detected = match mode {
         MetaMode::StreamingPartial { scanned_through } => {
@@ -123,6 +132,7 @@ pub fn resolve_stream_meta(
         plane_angle_to_radians: unit_scales.plane_angle_to_radians,
         frame,
         building_rotation,
+        length_unit_refused: unit_scales.length_unit_refused,
     }
 }
 

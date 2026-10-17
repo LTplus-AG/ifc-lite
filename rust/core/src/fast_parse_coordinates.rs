@@ -24,7 +24,7 @@ use crate::parser::{is_step_space, parse_step_numeric, skip_step_trivia};
 /// comment check at all (#4720 / #4735): callers dispatch to the `true`
 /// instantiation only after `may_contain_step_comment` finds a `/`.
 #[inline(always)]
-pub(super) fn read_coordinate_list<T: fast_float2::FastFloat, const COMMENTS: bool>(
+pub(super) fn read_coordinate_list<T: fast_float2::FastFloat + Into<f64>, const COMMENTS: bool>(
     bytes: &[u8],
 ) -> Option<Vec<T>> {
     let mut result = Vec::with_capacity(estimate_float_count(bytes));

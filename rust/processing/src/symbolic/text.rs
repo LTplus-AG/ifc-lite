@@ -40,7 +40,7 @@ pub(super) fn extract_text_literal(
     let placement_transform = match item.get_ref(1) {
         Some(p_ref) => match decoder.decode_by_id(p_ref) {
             Ok(p) => parse_axis2_placement_2d(&p, decoder, unit_scale),
-            Err(_) => Transform2D::unresolved(), // dangling ref (#2256)
+            Err(e) => Transform2D::undecodable(&e), // refused (#7678), or dangling (#2256)
         },
         None => Transform2D::unresolved(), // mandatory attr absent (#2256)
     };

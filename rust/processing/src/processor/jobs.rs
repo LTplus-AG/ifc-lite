@@ -157,7 +157,7 @@ pub(super) fn process_entity_job(
         return Vec::new();
     }
 
-    let mut local_decoder = entity_index_arc.decoder(content);
+    let mut local_decoder = entity_index_arc.decoder(content).with_strict_reals(); // #7678
     // Adopt this worker's persistent point cache so faceted-brep polyloop points
     // shared across elements are served from memory instead of re-parsed per element.
     local_decoder.set_point_cache(std::mem::take(worker_point_cache));
@@ -179,7 +179,7 @@ pub(super) fn process_entity_job(
 
     let entity = match decoder.decode_at(job.start, job.end) {
         Ok(entity) => entity,
-        Err(_) => return Vec::new(),
+        Err(_) => { diag.note_refused_input(&decoder); return Vec::new() }
     };
 
     let mut local_router = GeometryRouter::with_scale_and_quality(unit_scale, tessellation_quality);
@@ -342,7 +342,7 @@ pub(super) fn process_entity_job(
             acc.defer_no_openings += rf.defer_no_openings;
         }
     }
-    super::diagnostics::drain_unsupported_items(&local_router, &diag.unsupported_items);
+    diag.drain_job(&local_router, &decoder);
 
     // #1623 Phase 2: hand this element's don't-bake occurrences to the shared
     // collector (resolved into InstanceRecords later; empty on the flat path).
@@ -360,8 +360,9 @@ pub(super) fn build_color_updates_for_jobs(
     geometry_styles: &FxHashMap<u32, GeometryStyleInfo>,
     content: &[u8],
     entity_index: &ProcessingIndex,
+    refused: &mut Vec<u32>,
 ) -> Vec<(u32, [f32; 4])> {
-    let mut decoder = entity_index.decoder(content);
+    let mut decoder = entity_index.decoder(content).with_strict_reals();
     let mut updates: Vec<(u32, [f32; 4])> = Vec::new();
 
     for job in jobs {
@@ -399,6 +400,6 @@ pub(super) fn build_color_updates_for_jobs(
             updates.push((job.id, color));
         }
     }
-
+    refused.extend(decoder.refused_record_ids()); // counted once, in `refused_prepass_records`
     updates
 }

@@ -3,6 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use crate::mesh_frame::MeshCoordinateSpace;
+use ifc_lite_geometry::math::mat4;
 use crate::types::mesh::MeshData;
 /// The rotation-removal condition, spelled once beside the frame it belongs
 /// to. Re-exported here because this module's converter and `element.rs`'s
@@ -74,19 +75,21 @@ pub fn native_to_baked(
     // Linear part: `Rᵀ` in the site_local tier — the ROWS of the row-major
     // result are the COLUMNS of the column-major site matrix — identity
     // everywhere else.
-    let rot = site_transform
+    let site = site_transform
         .filter(|_| mesh_coordinate_space == MeshCoordinateSpace::SiteLocal)
         .filter(|m| m.len() >= 16 && !rotation_is_identity(m))
-        .map(|m| [m[0], m[1], m[2], m[4], m[5], m[6], m[8], m[9], m[10]])
-        .unwrap_or([1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]);
+        .and_then(|m| <&[f64; 16]>::try_from(&m[..16]).ok())
+        .unwrap_or(&mat4::IDENTITY);
     let t = [-origin_shift[0], -origin_shift[1], -origin_shift[2]];
-    // `Rᵀ · T(-rtc)`: linear block `Rᵀ`, translation `Rᵀ · (-rtc)`.
+    // `Rᵀ · T(-rtc)`: linear block `Rᵀ`, translation `Rᵀ · (-rtc)`, which is
+    // `transform_vector` on the column-major site array.
+    let rt = mat4::transform_vector(site, t);
     #[rustfmt::skip]
     let m = [
-        rot[0], rot[1], rot[2], rot[0] * t[0] + rot[1] * t[1] + rot[2] * t[2],
-        rot[3], rot[4], rot[5], rot[3] * t[0] + rot[4] * t[1] + rot[5] * t[2],
-        rot[6], rot[7], rot[8], rot[6] * t[0] + rot[7] * t[1] + rot[8] * t[2],
-        0.0,    0.0,    0.0,    1.0,
+        site[0], site[1], site[2], rt[0],
+        site[4], site[5], site[6], rt[1],
+        site[8], site[9], site[10], rt[2],
+        0.0,     0.0,     0.0,     1.0,
     ];
     m
 }
@@ -117,23 +120,14 @@ fn apply_inverse_rotation_in_place(values: &mut [f32], column_major_matrix: &[f6
         return;
     }
 
-    let r00 = column_major_matrix[0];
-    let r10 = column_major_matrix[1];
-    let r20 = column_major_matrix[2];
-    let r01 = column_major_matrix[4];
-    let r11 = column_major_matrix[5];
-    let r21 = column_major_matrix[6];
-    let r02 = column_major_matrix[8];
-    let r12 = column_major_matrix[9];
-    let r22 = column_major_matrix[10];
-
+    let Ok(m) = <&[f64; 16]>::try_from(&column_major_matrix[..16]) else {
+        return;
+    };
     for chunk in values.chunks_exact_mut(3) {
-        let x = chunk[0] as f64;
-        let y = chunk[1] as f64;
-        let z = chunk[2] as f64;
-        chunk[0] = (r00 * x + r10 * y + r20 * z) as f32;
-        chunk[1] = (r01 * x + r11 * y + r21 * z) as f32;
-        chunk[2] = (r02 * x + r12 * y + r22 * z) as f32;
+        let p = mat4::transform_vector(m, [chunk[0] as f64, chunk[1] as f64, chunk[2] as f64]);
+        chunk[0] = p[0] as f32;
+        chunk[1] = p[1] as f32;
+        chunk[2] = p[2] as f32;
     }
 }
 
@@ -169,25 +163,9 @@ fn apply_inverse_rotation_point_f64(p: &mut [f64; 3], column_major_matrix: &[f64
     {
         return;
     }
-    let (r00, r10, r20) = (
-        column_major_matrix[0],
-        column_major_matrix[1],
-        column_major_matrix[2],
-    );
-    let (r01, r11, r21) = (
-        column_major_matrix[4],
-        column_major_matrix[5],
-        column_major_matrix[6],
-    );
-    let (r02, r12, r22) = (
-        column_major_matrix[8],
-        column_major_matrix[9],
-        column_major_matrix[10],
-    );
-    let (x, y, z) = (p[0], p[1], p[2]);
-    p[0] = r00 * x + r10 * y + r20 * z;
-    p[1] = r01 * x + r11 * y + r21 * z;
-    p[2] = r02 * x + r12 * y + r22 * z;
+    if let Ok(m) = <&[f64; 16]>::try_from(&column_major_matrix[..16]) {
+        *p = mat4::transform_vector(m, *p);
+    }
 }
 
 #[cfg(test)]

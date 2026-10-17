@@ -958,6 +958,14 @@ jobs:
           # cache_entry.rs is on main, ordinary whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- apps/server/src/services/cache_entry.rs | grep -Fxq 'apps/server/src/services/cache_entry.rs'; then
             oracle_args+=(--mutation tests/evidence/cache-policy-7676/behaviour.oracle.patch)
+          # engine-wasm-brotli: decoding fragmented LandXML metadata records
+          # moves to record_wire.rs (new module + new test), so a whole-change
+          # revert cannot compile its test (INCONCLUSIVE). Keep the module and
+          # break ONLY the decode: an unknown record name stops reporting the
+          # serde `unknown variant` refusal. Once record_wire.rs is on main,
+          # ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/landxml/src/stream/record_wire.rs | grep -Fxq 'rust/landxml/src/stream/record_wire.rs'; then
+            oracle_args+=(--mutation tests/evidence/wasm-size-landxml-wire/wire-decode.oracle.patch)
           # #7689: the tessellated index rule adds two modules (core's
           # fast_parse_indices.rs, geometry's tessellated/indices.rs) that the
           # changed tests import, so a whole-file revert does not compile
@@ -1003,6 +1011,18 @@ jobs:
           # Once schema_plan.rs is on main, ordinary whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/export/src/schema_plan.rs | grep -Fxq 'rust/export/src/schema_plan.rs'; then
             oracle_args+=(--mutation tests/evidence/schema-convert-7683/schema-convert.oracle.patch)
+          # #7678: the input-admission tests name the new typed token, the
+          # lossless decode and the refused-element counter, so a whole-change
+          # revert cannot compile them. Keep that API and disable ONLY the
+          # behaviour: admit every overflowing REAL, accept an unusable unit
+          # factor, keep an overflowing ePSet offset, pass non-finite outline
+          # triangles, normalise a zero extrusion direction, pass a point list
+          # that narrows to infinity, read merged storey elevations with
+          # str::parse, mesh against an unusable length unit and never count
+          # a refused element; their tests turn RED. Once the test file is on
+          # main, ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/processing/tests/issue_7678_nonfinite_input.rs | grep -Fxq 'rust/processing/tests/issue_7678_nonfinite_input.rs'; then
+            oracle_args+=(--mutation tests/evidence/input-admission-7678/admission.oracle.patch)
           # #7695: the empty-export rule changes five public return types to
           # Result (export_obj, export_usd, export_gltf_streaming...), so a
           # whole-change revert stops the changed Rust tests compiling
@@ -1058,6 +1078,19 @@ jobs:
           # ordinary whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/processors/brep/planar_tests.rs | grep -Fxq 'rust/geometry/src/processors/brep/planar_tests.rs'; then
             oracle_args+=(--mutation tests/evidence/geometry-planar-7686/behaviour.oracle.patch)
+          # #7787 #7795 #7755: the cap triangulator's hole hygiene and the
+          # orienter's nesting test are new modules the changed unit tests
+          # call, so a whole-change revert cannot compile them (INCONCLUSIVE).
+          # Keep every module and restore ONLY the old behaviour: holes handed
+          # to earcut unchecked (no dedupe, no overlap refusal; the old touch
+          # tolerance), every closed shell wound outward, a hard-coded 0-2 quad
+          # fan, an outer-loop fan over failed holes and an uncounted dangling
+          # corner in the tessellated polygon path, every refused face counted
+          # as IfcAdvancedFace, and an unbudgeted refined CDT build. Once
+          # hole_overlap.rs is on main,
+          # ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/triangulation/hole_overlap.rs | grep -Fxq 'rust/geometry/src/triangulation/hole_overlap.rs'; then
+            oracle_args+=(--mutation tests/evidence/geometry-planar-7795/behaviour.oracle.patch)
           # #7696: the new ifc-lite-testkit crate is what every migrated test now
           # calls, so a whole-change revert deletes it and none of them compile
           # (INCONCLUSIVE). Keep the crate and disable ONLY the

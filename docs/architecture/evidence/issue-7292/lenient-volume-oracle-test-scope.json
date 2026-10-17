@@ -1,0 +1,138 @@
+{
+  "issue": 7292,
+  "reviewComment": "https://github.com/LTplus-AG/ifc-lite/pull/7731#discussion_r4304331437",
+  "testedHead": "b643a28a2b53d304f6703e2eb4a1d3bf9ed6928c",
+  "parent": "e574414b002bae842eb3163838b15ad053e257d7",
+  "change": "One cfg(test)-only sibling test; rename to actual volume-oracle invariant and remove fixed false/None assertions. Real-cut, uncertain-recut Nonconforming and public sequential-fallback assertions retained.",
+  "productionApplicability": "All production files unchanged from parent; mesh_bridge_tests.rs is included under cfg(test). Prior runtime receipts retain their original heads, not fresh execution claims.",
+  "coverageLimit": "No stable negative fixture proving public lenient-conformity routing is added or claimed.",
+  "independentSourceReview": {
+    "sha256": "40f743ddab2404aa1e8c2e9957b34ae8209a87b0d0e882c89845246c9e6c0eaa",
+    "receipt": {
+      "status": "PASS_BOUNDED_COMMITTED_TEST_SCOPE_CORRECTION_REVIEW",
+      "reviewer": "/root/engine_size_diagnosis",
+      "commit": "b643a28a2b53d304f6703e2eb4a1d3bf9ed6928c",
+      "parent": "e574414b002bae842eb3163838b15ad053e257d7",
+      "changedPaths": [
+        "rust/geometry/src/kernel/mesh_bridge_tests.rs"
+      ],
+      "insertions": 6,
+      "deletions": 8,
+      "priorBlob": "6e804f2b5a434303eb1e4618a71fbe5fba3c8801",
+      "newBlob": "67b6f16ead911244184eab6972054500f4e2910b",
+      "priorFileSHA256": "926f8a75eae9fcb8b2e5f4975dfc4c29ec60836d4e46e5114b143588a8dde348",
+      "newFileSHA256": "0dafb0b212ad007ac627cf3e51ff767195ea3415a1c2e759c784fe3d749c43ed",
+      "scope": "One cfg(test)-only sibling; production and WASM compiled implementation inputs unchanged. No test/build execution by reviewer; parent-owned targeted lenient/Clippy run remains authoritative.",
+      "findings": [
+        "validate_lenient_batch returns false/None for provenance fields on every outcome, so all three removed assertions were tautologies and did not observe public routing",
+        "Renamed test accurately exercises real difference_all_lenient output plus production volume validation on captured geometry",
+        "Actual expect_cut positivity, uncertain-recut BatchSubtract::Nonconforming, and public ClippingProcessor !found_no_overlap assertions retained byte-for-byte",
+        "No tolerance/budget/acceptance/production changes; explicit comment admits strict recovery can pass and fixture does not certify public lenient routing"
+      ],
+      "coverageLimit": "This correction makes test claims honest; it does not add a stable public lenient nonconforming-routing negative or prove broader conformity-provenance policy.",
+      "performanceDisposition": "Restored O3 performance remains NO_VERDICT; no merge acceptance inferred.",
+      "finishedNs": 1792271192992066917
+    }
+  },
+  "localValidation": {
+    "receiptSHA256": "3b259b0dc95ef53c4860ecb2faebe37474d2a809c95860b5195a80f04508fb57",
+    "receipt": {
+      "status": "TARGETED_LENIENT_VOLUME_TESTS_AND_EXACT_WORKSPACE_CLIPPY_PASS",
+      "head": "b643a28a2b53d304f6703e2eb4a1d3bf9ed6928c",
+      "root": "/home/louistrue/wt/7292-4fbe-main592-merge-preparation-v1",
+      "target": "/tmp/7292-ac02-local-census-target-v1",
+      "sourceManifestPath": "/tmp/7292-b643-test-scope-native-validation-v1/source-manifest.json",
+      "sourceManifestSHA256": "e4e0fe1084e6cc8f77feb83d5d4891509a68b5654872c7562cb922a116653a58",
+      "sourceGitBlobVerified": true,
+      "targetOwners": {
+        "/tmp/7292-ac02-local-census-target-v1/.ifclite-owned-repo.json": "a858334803bf65411caf7faa5e9c8826dc05d2c32bf82a7c919bd79ffd3f957f",
+        "/tmp/7292-ac02-local-census-target-v1/.7292-ba457-measured-metadata-validation.json": "09f217b62c55e2794be8a5101c90af25107260ccd4b3955cba3921fb60415765"
+      },
+      "steps": [
+        {
+          "stage": "lenient-volume-tests",
+          "argv": [
+            "nice",
+            "-n",
+            "19",
+            "cargo",
+            "test",
+            "--locked",
+            "-p",
+            "ifc-lite-geometry",
+            "--lib",
+            "kernel::mesh_bridge::tests::lenient_",
+            "--",
+            "--test-threads=1"
+          ],
+          "startedNs": 1792271237750560767,
+          "logPath": "/tmp/7292-b643-test-scope-native-validation-v2/lenient-volume-tests.log",
+          "holdAbsentAtSpawn": true,
+          "jobs": 1,
+          "ownedPID": 84550,
+          "exitCode": 0,
+          "reaped": true,
+          "ownedPIDAbsent": true,
+          "finishedNs": 1792271456312624681,
+          "logSHA256": "82e63275a541ad64faf784eaf1c7b48abb5ddbe246604164bd31d99b2004a573",
+          "testSummaries": [
+            [
+              "ok",
+              "2",
+              "0"
+            ]
+          ]
+        },
+        {
+          "stage": "workspace-clippy",
+          "argv": [
+            "nice",
+            "-n",
+            "19",
+            "cargo",
+            "clippy",
+            "--workspace",
+            "--all-targets",
+            "--",
+            "-D",
+            "warnings"
+          ],
+          "startedNs": 1792271456621337149,
+          "logPath": "/tmp/7292-b643-test-scope-native-validation-v2/workspace-clippy.log",
+          "holdAbsentAtSpawn": true,
+          "jobs": 1,
+          "ownedPID": 99631,
+          "exitCode": 0,
+          "reaped": true,
+          "ownedPIDAbsent": true,
+          "finishedNs": 1792271544331491756,
+          "logSHA256": "70af33aca942c4689397043d2e53336ab2f75184475f6af86e96a6cfea5d7c05",
+          "testSummaries": []
+        }
+      ],
+      "preservedPriorFailure": {
+        "receipt": "/tmp/7292-b643-test-scope-native-validation-v1/receipt.json",
+        "sha256": "b2680647d2e2511ab17458756f1595e506a0b67519f2762e96e2f96d8bf0176c",
+        "reason": "Cargo not in inherited PATH; no compiler or test started"
+      },
+      "helperSHA256": "f3bb9b04e555260474f4552d4869e49d1fb5f981aab939d43a8af84c9fa76a50",
+      "scope": "Test-only follow-up; no fresh WASM, browser, complete workspace test or performance claim",
+      "sourceUnchanged": true,
+      "ownersUnchanged": true,
+      "allChildrenReaped": true,
+      "finishedNs": 1792271554054621591
+    },
+    "logs": {
+      "lenient-volume-tests": {
+        "sha256": "82e63275a541ad64faf784eaf1c7b48abb5ddbe246604164bd31d99b2004a573",
+        "text": "   Compiling ifc-lite-core v21.4.0 (/home/louistrue/wt/7292-4fbe-main592-merge-preparation-v1/rust/core)\n   Compiling ifc-lite-geometry v21.4.0 (/home/louistrue/wt/7292-4fbe-main592-merge-preparation-v1/rust/geometry)\n   Compiling ifc-lite-testkit v21.4.0 (/home/louistrue/wt/7292-4fbe-main592-merge-preparation-v1/rust/testkit)\n   Compiling ifc-lite-clash v21.4.0 (/home/louistrue/wt/7292-4fbe-main592-merge-preparation-v1/rust/clash)\n    Finished `test` profile [unoptimized] target(s) in 3m 38s\n     Running unittests src/lib.rs (/tmp/7292-ac02-local-census-target-v1/debug/deps/ifc_lite_geometry-814be669f3748a13)\n\nrunning 2 tests\ntest kernel::mesh_bridge::tests::lenient_batch_on_an_open_host_reads_both_volumes_about_one_point_4693 ... ok\ntest kernel::mesh_bridge::tests::lenient_volume_oracle_accepts_real_cut_and_rejects_uncertain_recut_6516 ... ok\n\ntest result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 1518 filtered out; finished in 0.04s\n\n"
+      },
+      "workspace-clippy": {
+        "sha256": "70af33aca942c4689397043d2e53336ab2f75184475f6af86e96a6cfea5d7c05",
+        "text": "    Checking ifc-lite-core v21.4.0 (/home/louistrue/wt/7292-4fbe-main592-merge-preparation-v1/rust/core)\n    Checking ifc-lite-geometry v21.4.0 (/home/louistrue/wt/7292-4fbe-main592-merge-preparation-v1/rust/geometry)\n    Checking ifc-lite-testkit v21.4.0 (/home/louistrue/wt/7292-4fbe-main592-merge-preparation-v1/rust/testkit)\n    Checking ifc-lite-processing v21.4.0 (/home/louistrue/wt/7292-4fbe-main592-merge-preparation-v1/rust/processing)\n    Checking ifc-lite-clash v21.4.0 (/home/louistrue/wt/7292-4fbe-main592-merge-preparation-v1/rust/clash)\n    Checking ifc-lite-landxml v21.4.0 (/home/louistrue/wt/7292-4fbe-main592-merge-preparation-v1/rust/landxml)\n    Checking ifc-lite-export v21.4.0 (/home/louistrue/wt/7292-4fbe-main592-merge-preparation-v1/rust/export)\n    Checking ifc-lite-wasm v21.4.0 (/home/louistrue/wt/7292-4fbe-main592-merge-preparation-v1/rust/wasm-bindings)\n    Checking ifc-lite-cloud-import v21.4.0 (/home/louistrue/wt/7292-4fbe-main592-merge-preparation-v1/rust/cloud-import)\n    Checking ifc-lite-server v21.4.0 (/home/louistrue/wt/7292-4fbe-main592-merge-preparation-v1/apps/server)\n    Checking ifc-lite-ffi v21.4.0 (/home/louistrue/wt/7292-4fbe-main592-merge-preparation-v1/rust/ffi)\n    Finished `dev` profile [unoptimized] target(s) in 1m 27s\n"
+      }
+    }
+  },
+  "performance": "Restored O3 remains NO_VERDICT; no candidate timing row or completed pair. Conditional size approval remains unfulfilled; integration is not merge ready.",
+  "historicalEvidence": "Parent archive remains unchanged. Original PATH infrastructure failure preserved at the receipt/hash recorded in localValidation; no compiler or test ran in that failed attempt."
+}

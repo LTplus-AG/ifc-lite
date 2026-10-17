@@ -43,7 +43,7 @@ pub(super) fn extract_relationships(
         .map_init(
             || SplitDecoder::new(content, entity_index),
             |split, (job, slots)| {
-                    let entity = split.next_job().decode_at(job.start, job.end).ok()?;
+                    let entity = split.next_job(job).decode_at(job.start, job.end).ok()?;
                     extract_relationship(&entity, job.type_name, job.id, *slots)
             },
         )
@@ -91,7 +91,7 @@ fn extract_type_property_links(
         .map_init(
             || SplitDecoder::new(content, entity_index),
             |split, &type_id| {
-                let decoder = split.next_job();
+                let decoder = split.next_lookup();
                 let mut out = Vec::new();
                 if let Ok(entity) = decoder.decode_by_id(type_id) {
                     // IfcTypeObject.HasPropertySets is at index 5 across IFC2X3/4/4X3.

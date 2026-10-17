@@ -340,7 +340,7 @@ pub(super) fn extract_materials(
         .map_init(
             || SplitDecoder::new(content, entity_index),
             |split, job| {
-                let decoder = split.next_job();
+                let decoder = split.next_job(job);
                 let Ok(rel) = decoder.decode_at(job.start, job.end) else {
                     return Ok(Vec::new());
                 };

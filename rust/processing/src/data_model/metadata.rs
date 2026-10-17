@@ -44,7 +44,7 @@ pub(super) fn extract_entity_metadata(
         .map_init(
             || (SplitDecoder::new(content, entity_index), FxHashMap::<&str, RootSlots>::default()),
             |(decoders, memo), job| {
-                let entity = decoders.next_job().decode_at(job.start, job.end).ok()?;
+                let entity = decoders.next_job(job).decode_at(job.start, job.end).ok()?;
                 let has_geometry = ifc_lite_core::has_geometry_by_name(job.type_name);
 
                 // Root attributes at the SAME schema-registry positions the WASM

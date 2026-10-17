@@ -58,21 +58,42 @@ impl<'j, 'a> JobBuckets<'j, 'a> {
 const CACHE_JOBS: u32 = 1024;
 
 /// One decoder for the jobs of one rayon split (`map_init`).
+///
+/// The entity cache is keyed by id, while a job is a byte span. A file may
+/// declare an id twice (the index keeps the last, #7682): a shared cache would
+/// then hand one span's record to the other span's job, depending on which
+/// split the two landed in. So only a job at the span the index resolves its
+/// id to reads through the shared cache; any other job gets a fresh decoder,
+/// exactly as every job did before.
 pub(super) struct SplitDecoder<'a> {
+    content: &'a [u8],
+    index: Arc<EntityIndex>,
     decoder: EntityDecoder<'a>,
+    shadowed: Option<EntityDecoder<'a>>,
     served: u32,
 }
 
 impl<'a> SplitDecoder<'a> {
     pub(super) fn new(content: &'a [u8], index: &Arc<EntityIndex>) -> Self {
         Self {
+            content,
+            index: index.clone(),
             decoder: EntityDecoder::with_arc_index(content, index.clone()),
+            shadowed: None,
             served: 0,
         }
     }
 
-    /// The decoder for the next job.
-    pub(super) fn next_job(&mut self) -> &mut EntityDecoder<'a> {
+    /// The decoder for `job`'s record and the references it follows.
+    pub(super) fn next_job(&mut self, job: &EntityJob) -> &mut EntityDecoder<'a> {
+        if self.index.get(&job.id).is_some_and(|&(start, _)| start == job.start) {
+            return self.next_lookup();
+        }
+        self.shadowed.insert(EntityDecoder::with_arc_index(self.content, self.index.clone()))
+    }
+
+    /// The decoder for a pass that only resolves ids through the index.
+    pub(super) fn next_lookup(&mut self) -> &mut EntityDecoder<'a> {
         if self.served == CACHE_JOBS {
             self.decoder.clear_entity_cache();
             self.served = 0;
@@ -124,10 +145,33 @@ mod tests {
         let index = Arc::new(ifc_lite_core::build_entity_index(&content[..]));
         let &(start, end) = index.get(&1).expect("indexed");
         let mut split = SplitDecoder::new(&content[..], &index);
-        let first = split.next_job().decode_at(start, end).expect("decodes");
+        let first = split.next_lookup().decode_at(start, end).expect("decodes");
         for _ in 0..(CACHE_JOBS * 2 + 1) {
-            let again = split.next_job().decode_at(start, end).expect("decodes");
+            let again = split.next_lookup().decode_at(start, end).expect("decodes");
             assert_eq!(again.get_string(2), first.get_string(2));
+        }
+    }
+
+    /// A record whose id the file declares twice decodes as its own span, not
+    /// as the other declaration a previous job of the split cached.
+    #[test]
+    fn a_duplicate_id_job_reads_its_own_span() {
+        let content = b"ISO-10303-21;\nDATA;\n#1=IFCWALL('a',$,'First',$,$,$,$,$,$);\n#1=IFCWALL('b',$,'Last',$,$,$,$,$,$);\nENDSEC;\nEND-ISO-10303-21;\n";
+        let index = Arc::new(ifc_lite_core::build_entity_index(&content[..]));
+        let mut scanner = ifc_lite_core::EntityScanner::new(&content[..]);
+        let mut jobs = Vec::new();
+        while let Some((id, type_name, start, end)) = scanner.next_entity() {
+            jobs.push(EntityJob { id, type_name, start, end });
+        }
+        assert_eq!(jobs.len(), 2);
+        let mut split = SplitDecoder::new(&content[..], &index);
+        for (job, name) in jobs.iter().rev().zip(["Last", "First"]) {
+            let decoder = split.next_job(job);
+            let entity = decoder.decode_at(job.start, job.end).expect("decodes");
+            assert_eq!(entity.get_string(2), Some(name));
+            // Within the job, its own id resolves to its own record, as with
+            // the fresh per-job decoder this replaced.
+            assert_eq!(decoder.decode_by_id(1).expect("resolves").get_string(2), Some(name));
         }
     }
 }

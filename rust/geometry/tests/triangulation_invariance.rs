@@ -1519,7 +1519,8 @@ fn issue_4627_candidate_failures_preserve_prior_analytic_cuts() {
                 // shared planar-face home (Newell basis, convex fans), so the
                 // cut hosts' triangle counts moved; open edges never rose, and
                 // #11477 closed (9 open -> 0).
-                (11477, 0, 0, 158, 18),
+                // #7795 also closes ALT; confirmed on exact main be93 and #7292.
+                (11477, 0, 0, 158, 0),
                 // #5410: 19 open / 139 tris until a plan-rotated host whose
                 // cutters author no depth took the wall-local frame; now closed
                 // (enclosed volume 0.01972 -> 0.01967 m3, IfcOpenShell 0.01752).
@@ -1527,14 +1528,17 @@ fn issue_4627_candidate_failures_preserve_prior_analytic_cuts() {
                 (31156, 0, 0, 196, 0),
                 (17553, 0, 2, 214, 0),
                 (17615, 0, 0, 244, 0),
-                (25914, 28, 31, 84, 28),
+                (25914, 25, 28, 87, 25),
                 (26610, 0, 0, 84, 0),
                 // rvt01 wall hosts the #3977 local-frame selector must leave
                 // closed (pinned after 0e8a42175 tore #10191 open via a -Z cutter depth).
                 // #7292: preserve the ordinary exactly closed boundary; the
                 // stronger exact fixture below checks both triangulators.
                 (10191, 0, 0, 172, 0),
-                (26681, 32, 32, 192, 33),
+                // #7292 retains all 192 main triangles and adds one quad closing
+                // four exact edges. The 1mm grid aliases a parallel face 61um
+                // away; see evidence/issue-7292/be93-rvt01-26681-adjudication.json.
+                (26681, 36, 37, 194, 17),
             ][..],
         ),
         (

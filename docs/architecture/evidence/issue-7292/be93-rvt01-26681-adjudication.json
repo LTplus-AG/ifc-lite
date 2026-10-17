@@ -1,0 +1,130 @@
+{
+  "issue": 7292,
+  "scope": "Measured rvt01/26681 DEFAULT pin adjudication; not independent Boolean correctness, solidness, performance, or merge acceptance",
+  "base": "be93cb4269b3001475ec794d19bf6701b1b45a84",
+  "candidateProductionSource": "b2deb471888dd1373c4551de2ef7c565f8033330",
+  "fixtureSHA256": "a83e9aacb43c7f82955ee3ba650ec66dc24af552924ec058e1b0c49a76180ee6",
+  "reproduce": "cargo test --locked -p ifc-lite-geometry --features triangulation-alt --test triangulation_invariance issue_4627_candidate_failures_preserve_prior_analytic_cuts -- --nocapture",
+  "originalInputOutcomesPreserved": {
+    "base": {
+      "sourceHead": "be93cb4269b3001475ec794d19bf6701b1b45a84",
+      "originalStatusPreserved": "FAILED_OR_UNRESOLVED_NOT_QUALIFIED",
+      "originalTestExitPreserved": 101,
+      "originalExpectedExitPreserved": 0,
+      "originalErrorPreserved": "RuntimeError('Unexpected original aggregate outcome; preserve actual exit')",
+      "originalFailureLinesPreserved": [
+        "regressed hosts: [(11477, true, 0, 0, 158)]"
+      ],
+      "savedFailureDataObservationOnly": true
+    },
+    "candidate": {
+      "sourceHead": "b2deb471888dd1373c4551de2ef7c565f8033330",
+      "originalStatusPreserved": "ACTUAL_AGGREGATE_CAPTURE_COMPLETE_ORIGINAL_ASSERTIONS_UNCHANGED_NOT_GEOMETRY_QUALIFIED",
+      "originalTestExitPreserved": 101,
+      "originalExpectedExitPreserved": 101,
+      "originalErrorPreserved": null,
+      "originalFailureLinesPreserved": [
+        "regressed hosts: [(25914, false, 25, 28, 87), (26681, false, 36, 37, 194), (11477, true, 0, 0, 158), (25914, true, 25, 28, 87), (26681, true, 17, 17, 256)]"
+      ],
+      "savedFailureDataObservationOnly": false
+    }
+  },
+  "all192BaselineOrientedTrianglesPreserved": true,
+  "removedOrMovedOrRewoundBaselineTriangles": 0,
+  "addedTriangles": [
+    {
+      "triangle": 179,
+      "positionsF32": [
+        [
+          -1.6115925312042236,
+          -1.779695987701416,
+          0.1049957275390625
+        ],
+        [
+          -1.60268235206604,
+          -1.787724256515503,
+          0.1049957275390625
+        ],
+        [
+          -1.6115925312042236,
+          -1.779695987701416,
+          0.125
+        ]
+      ]
+    },
+    {
+      "triangle": 178,
+      "positionsF32": [
+        [
+          -1.6115925312042236,
+          -1.779695987701416,
+          0.125
+        ],
+        [
+          -1.60268235206604,
+          -1.787724256515503,
+          0.1049957275390625
+        ],
+        [
+          -1.60268235206604,
+          -1.787724256515503,
+          0.125
+        ]
+      ]
+    }
+  ],
+  "localIncidence": "Two added triangles form one consistently oriented planar quad. Its diagonal has 1f/1r; each outer edge pairs 1f/1r with preserved triangles 104,143,40,78. No other candidate face is exactly coplanar. No new exact atomic bad edge; four existing ones close.",
+  "quantizedIncidence": "At 1mm this quad aliases the preserved parallel quad roughly 61 micrometres away: four outer edges become unbalanced and the diagonal becomes 2f/2r. No existing vertex moved; both collapsed triangles are geometrically unchanged. This explains signed 32->36 and strict 32->37 without claiming closure.",
+  "metrics": {
+    "triangles": [
+      192,
+      194
+    ],
+    "oneMillimetreSigned": [
+      32,
+      36
+    ],
+    "oneMillimetreStrict": [
+      32,
+      37
+    ],
+    "tenthMillimetreSigned": [
+      41,
+      39
+    ],
+    "exactAtomicSignedAndStrict": [
+      44,
+      40
+    ]
+  },
+  "finiteComparison": {
+    "version": "finite-coverage-v3",
+    "toleranceMetres": 0.0001,
+    "maxWorkUnits": 2000000,
+    "actualWorkUnits": 451338,
+    "planes": 14,
+    "summary": {
+      "unresolved_missing_cells": 0,
+      "unresolved_extra_cells": 0,
+      "missing_beyond_tolerance_area_m2": 0.0,
+      "extra_beyond_tolerance_area_m2": 0.0
+    },
+    "boundsEqual": true,
+    "status": "PAIR_SURFACE_COVERAGE_CERTIFIED_WITHIN_TOLERANCE_ONLY",
+    "baselineRole": "Comparative saved output, not independent ground truth"
+  },
+  "limits": [
+    "40 exact atomic defects remain; no global watertightness claim.",
+    "Canonical noVoid uses different hygiene from the actual IndexOnly operand; no authored-face or input-operand equality claim.",
+    "Original base aggregate failed only on inherited stale11477 ALT pin18 versus actual0; failed receipt retained, not relabelled.",
+    "ALT26681 pin17 and25914 pin25 are actual aggregate measurements; this DEFAULT finite certificate is not transferred to ALT."
+  ],
+  "artifactSHA256": {
+    "/tmp/7292-final-26681-base-v1/receipt.json": "60e8fe9dbaa5e2203aff44a57d3cc55322882090ce0fc4f2882f9ba60a66be41",
+    "/tmp/7292-final-26681-candidate-v1/receipt.json": "bafe671b5ac17ba0bf8bf4007825d76ff62e31cb5849e1105f01264515e14a3f",
+    "/tmp/7292-final-26681-pair-analysis-v1/receipt.json": "875bb14d97e43fd6c92c1abf68088a1130fdec5060f3967b043d4f20abbdd535",
+    "/tmp/7292-final-26681-default-pair-finite-v1/receipt.json": "2d4b9e9fafadb51c5cbb1b760500ae5c065c5258db4faed61b69cf035c1744d6",
+    "/tmp/7292-final-26681-changed-edges-v1/receipt.json": "d76d5f980d77d5c167e52a4486c3669786c80deb76dfa34011b0250d9dc5d919",
+    "/tmp/7292-final-26681-changed-edges-v1/local-quad-support.json": "f8d4040debfabfed16bec1285289eadabe662b291c5869a57452e2a354ed9c64"
+  }
+}

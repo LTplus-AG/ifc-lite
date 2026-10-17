@@ -97,7 +97,7 @@ export function storeyPlanFrame(
   const storey = readEntity(store, extractor, overlay, storeyExpressId);
   if (!storey || (view && storey.type?.toUpperCase() !== 'IFCBUILDINGSTOREY')) return null;
   if (numericAttr(storey.attributes[5]) === null) return IDENTITY_FRAME; // ObjectPlacement
-  const chain = storeyPlacementChain(store, extractor, overlay, storeyExpressId, view ? 256 : undefined);
+  const chain = storeyPlacementChain(store, extractor, overlay, storeyExpressId);
   if (!chain || chain.size === 0) return null;
   for (const placementId of chain.keys()) {
     if (!placementIsInPlan(store, extractor, placementId, overlay)) return null;

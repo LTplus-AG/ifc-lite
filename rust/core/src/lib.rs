@@ -108,7 +108,7 @@ pub use generated::{
     SchemaEntityInfo, SchemaVersion, UnknownIfcType, IFC_TYPES,
 };
 pub use georef::{GeoRefExtractor, GeoRefSource, GeoReference};
-pub use limits::{RtcVerdict, MAX_MAPPED_ITEM_DEPTH, MAX_PLACEMENT_DEPTH};
+pub use limits::{RtcVerdict, MAX_CONTEXT_DEPTH, MAX_MAPPED_ITEM_DEPTH, MAX_PLACEMENT_DEPTH};
 pub use model_bounds::{scan_model_bounds, scan_placement_bounds, ModelBounds};
 pub use parser::{
     declared_schema_bounded, entity_count, find_keyword, keyword_ends_with, keyword_eq, keyword_starts_with,

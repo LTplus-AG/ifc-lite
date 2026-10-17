@@ -365,19 +365,18 @@ fn compute_frame(
     if pos.linear && (pos.axis.is_some() || pos.ref_direction.is_some()) {
         // IFC4x3 placement directions are given in the curve frame:
         // X along tangent, Y left of travel, Z vertical normal.
-        let to_world = |v: Vector3<f64>| {
-            base.tangent * v.x - base.right * v.y + vertical_normal * v.z
-        };
-        let axis = pos.axis.map(to_world).unwrap_or(vertical_normal);
-        let x = pos.ref_direction.map(to_world).unwrap_or(base.tangent);
-        let x = (x - axis * x.dot(&axis)).try_normalize(1e-12).unwrap_or(base.tangent);
-        // Profile +X is the placement's local +Y = Axis × RefDirection.
-        // Parallel Axis and RefDirection (or tangent) leave it undefined.
-        right = axis.cross(&x).try_normalize(1e-12).ok_or_else(|| {
+        let [_, y, axis] = crate::axis_projection::linear_placement_axes(
+            [base.tangent, -base.right, vertical_normal],
+            pos.axis,
+            pos.ref_direction,
+        )
+        .ok_or_else(|| {
             Error::geometry(
                 "IfcAxis2PlacementLinear Axis is parallel to its RefDirection".to_string(),
             )
         })?;
+        // Profile +X is the placement's local +Y = Axis × RefDirection.
+        right = y;
         up = axis;
     } else if pos.linear {
         // IFC4x3 positions the profile in the placement's YZ plane: profile

@@ -26,7 +26,7 @@ impl GeometryRouter {
 /// The router-free form of [`GeometryRouter::parse_cartesian_transformation_operator`].
 ///
 /// This is the SINGLE definition of the operator's attribute layout and frame
-/// derivation. `profile_extractor` (2D drawing profiles) calls it too: it used to
+/// derivation. `profiles` (`IfcDerivedProfileDef`'s 2D operator) calls it too: it used to
 /// carry its own copy, which drifted — it missed the non-uniform per-axis scales,
 /// the 2D attribute layout, and `Axis2`, so the same `MappingTarget` produced a
 /// different transform for a drawing than for the mesh. #1985

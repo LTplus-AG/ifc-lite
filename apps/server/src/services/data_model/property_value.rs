@@ -171,7 +171,7 @@ fn stringify_member(v: &AttributeValue) -> Option<String> {
 
 fn stringify_scalar(v: &AttributeValue) -> Option<String> {
     match v {
-        AttributeValue::String(s) => Some(s.clone()),
+        AttributeValue::String(s) | AttributeValue::Binary(s) => Some(s.clone()),
         AttributeValue::Enum(e) => Some(e.clone()),
         AttributeValue::Integer(i) => Some(i.to_string()),
         AttributeValue::Float(f) => Some(fmt_number(*f)),
@@ -288,7 +288,7 @@ pub(super) fn resolve_single_value(nominal: &AttributeValue) -> (String, String,
             let kind = if f.fract() == 0.0 { "integer" } else { "real" };
             (fmt_number(*f), kind.into(), None)
         }
-        AttributeValue::String(s) => (s.clone(), "string".into(), None),
+        AttributeValue::String(s) | AttributeValue::Binary(s) => (s.clone(), "string".into(), None),
         // Bare enum tokens some authoring tools emit directly in the value slot.
         AttributeValue::Enum(e) => match e.trim_matches('.') {
             "T" => ("true".into(), "boolean".into(), None),

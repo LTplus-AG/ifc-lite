@@ -2,7 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-const STEP_NUMBER = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:E[+-]?\d+)?$/i;
 const TYPED_VALUE = /^[A-Z][A-Z0-9_]*\s*\(([\s\S]*)\)$/i;
 const STEP_REFERENCE = /^#(0|[1-9]\d*)$/;
 const STEP_ZERO = /^[+-]?(?:0+(?:\.0*)?|\.0+)(?:E[+-]?\d+)?$/i;
@@ -92,7 +91,7 @@ export function costNumericLexeme(token: string | undefined): string | undefined
   let candidate = withoutComments(token);
   const typed = TYPED_VALUE.exec(candidate);
   if (typed) candidate = typed[1].trim();
-  return STEP_NUMBER.test(candidate) ? candidate : undefined;
+  return isCompleteStepNumericLiteral(candidate) ? candidate : undefined;
 }
 
 /** Return the EXPRESS wrapper around an exact numeric token, if one was supplied. */
@@ -124,4 +123,5 @@ export function costReferenceListLexeme(token: string | undefined): number[] | u
   const refs = entries.map(entry => costReferenceLexeme(entry));
   return refs.every((ref): ref is number => ref !== undefined) ? refs : undefined;
 }
+import { isCompleteStepNumericLiteral } from '@ifc-lite/data';
 import { StepTextScan } from './step-lexing.js';

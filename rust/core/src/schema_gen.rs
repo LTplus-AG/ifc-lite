@@ -43,6 +43,10 @@ pub enum AttributeValue {
     Integer(i64),
     /// Float value
     Float(f64),
+    /// STEP binary literal `"0FF"`: the raw content between the quotes
+    /// (unused-bits digit, then hex), undecoded. Decode it with
+    /// [`crate::step_encoding::decode_step_binary`].
+    Binary(String),
     /// Enum value
     Enum(String),
     /// List of values
@@ -96,6 +100,9 @@ impl AttributeValue {
                     crate::step_encoding::decode_ifc_string(&undoubled).into_owned(),
                 )
             }
+            Token::Binary(hex) => {
+                AttributeValue::Binary(String::from_utf8_lossy(hex).into_owned())
+            }
             Token::Integer(i) => AttributeValue::Integer(*i),
             Token::Float(f) => AttributeValue::Float(*f),
             Token::UnrepresentableReal(raw) => {
@@ -144,6 +151,16 @@ impl AttributeValue {
     pub fn as_string(&self) -> Option<&str> {
         match self {
             AttributeValue::String(s) => Some(s),
+            _ => None,
+        }
+    }
+
+    /// The raw hex of a binary literal (`"0FF"` gives `0FF`), undecoded.
+    /// `None` for every other value, a string included.
+    #[inline]
+    pub fn as_binary_hex(&self) -> Option<&str> {
+        match self {
+            AttributeValue::Binary(hex) => Some(hex),
             _ => None,
         }
     }

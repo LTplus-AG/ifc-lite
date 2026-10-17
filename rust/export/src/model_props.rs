@@ -35,7 +35,7 @@ pub(super) struct Rendered {
 pub(super) fn render_value(v: &AttributeValue) -> Option<Rendered> {
     let rendered = |value: String, tag: &str, kind| Rendered { value, value_type: tag.to_string(), kind };
     match v {
-        AttributeValue::String(s) => Some(rendered(s.clone(), "IFCTEXT", ValueKind::Text)),
+        AttributeValue::String(s) | AttributeValue::Binary(s) => Some(rendered(s.clone(), "IFCTEXT", ValueKind::Text)),
         AttributeValue::Integer(i) => Some(rendered(i.to_string(), "IFCINTEGER", ValueKind::Number)),
         AttributeValue::Float(f) => Some(rendered(fmt_num(*f), "IFCREAL", ValueKind::Number)),
         AttributeValue::Enum(e) => {

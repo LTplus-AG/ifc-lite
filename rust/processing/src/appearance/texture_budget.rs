@@ -40,7 +40,7 @@ pub(super) fn preflight(source: &mut Source<'_>) -> Result<(), String> {
                 Some((dimension(5)?, dimension(6)?))
             }
             IfcType::IfcBlobTexture => {
-                let encoded = texture.get(6).and_then(A::as_string).ok_or("Invalid embedded raster texture")?;
+                let encoded = texture.get(6).and_then(A::as_binary_hex).ok_or("Invalid embedded raster texture")?;
                 Some(ifc_lite_geometry::embedded_raster_dimensions(encoded).ok_or("Cannot budget embedded image header; re-export it as valid PNG or JPEG")?)
             }
             _ => None,

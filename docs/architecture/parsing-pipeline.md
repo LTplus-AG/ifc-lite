@@ -93,14 +93,11 @@ flowchart LR
 ```rust
 // Entity reference: #123 (rust/core/src/parser/tokenizer.rs)
 fn entity_ref(input: &[u8]) -> IResult<&[u8], Token<'_>> {
-    map(
-        preceded(char('#'), map_res(digit1, lexical_core::parse::<u32>)),
-        Token::EntityRef,
-    )(input)
+    map(preceded(char('#'), express_id), Token::EntityRef)(input)
 }
 ```
 
-String literals use memchr to find the closing quote (with `''` escape handling), and numbers are parsed with `lexical-core`.
+String literals use memchr to find the closing quote (with `''` escape handling), `"..."` binary literals are their own token, and numbers go through the one shared reader `read_step_number` (`fast-float2`), the same one every raw-byte reader uses.
 
 ### Performance Optimizations
 
@@ -108,7 +105,7 @@ String literals use memchr to find the closing quote (with `''` escape handling)
 |--------------|-----------|---------|
 | Zero-copy | Store byte slices | No allocation |
 | SIMD search | memchr crate | 10x faster search |
-| Fast numbers | lexical-core | 5x faster parsing |
+| Fast numbers | fast-float2 behind one literal grammar | Single pass |
 | Branch prediction | Ordered alternatives | Better CPU prediction |
 
 ## Entity Scanning

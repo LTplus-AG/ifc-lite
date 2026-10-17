@@ -159,6 +159,16 @@ const AUTHORED_SLIVER: f64 = 0.25 * (1.2 + 0.8) * 0.5 * 1.5 * G;
 
 #[test]
 fn issue_6940_an_opening_one_grid_step_off_its_hole_leaves_the_slab_closed() {
+    // Independent authored solid: outer 8 x 8 area minus the actual snapped
+    // hole's shoelace area, extruded through the authored 0.25 m thickness.
+    // Comparing cut to uncut alone would accept both meshes collapsing empty.
+    let hole = hole();
+    let twice_hole_area: f64 = (0..hole.len()).map(|i| {
+        let a = hole[i];
+        let b = hole[(i + 1) % hole.len()];
+        a[0] * b[1] - b[0] * a[1]
+    }).sum();
+    let authored_volume = (8.0 * 8.0 - 0.5 * twice_hole_area.abs()) * 0.25;
     let offsets = [
         [1.0, 0.0],
         [-1.0, 0.0],
@@ -173,6 +183,10 @@ fn issue_6940_an_opening_one_grid_step_off_its_hole_leaves_the_slab_closed() {
                 let what =
                     format!("local_frame={local_frame}, corner {corner} moved ({dx}, {dy}) steps");
                 let (uncut, cut) = slab(&slab_ifc(corner, dx, dy), local_frame);
+                assert!(!uncut.is_empty(), "{what}: the authored slab must produce a mesh");
+                let uncut_volume = mesh_volume(&uncut);
+                assert!((uncut_volume - authored_volume).abs() <= AUTHORED_SLIVER,
+                    "{what}: uncut volume {uncut_volume} must preserve authored {authored_volume} m^3");
                 assert_eq!(open_edges(&uncut), 0, "{what}: the slab arrives closed");
                 assert_eq!(
                     open_edges(&cut),

@@ -338,3 +338,25 @@ fn the_guard_does_not_depend_on_the_order_of_the_host_faces() {
         );
     }
 }
+
+/// #7024: a star of N faces must not rescan the centre's N-entry adjacency
+/// list for every face. Count actual entries read, without a timing threshold.
+#[test]
+fn high_valence_joined_walk_expands_each_vertex_adjacency_once_7024() {
+    for count in [32_usize, 256] {
+        let mut host: Vec<Tri> = (0..count).map(|i| {
+            [[0.0, 0.0, 0.0], [1.0, (i + 1) as f64, 0.0],
+                [1.0, (i + 2) as f64, 0.0]]
+        }).collect();
+        // Coplanar, but with no shared vertex: the entire star must be walked
+        // to establish that its surface is separate from this face.
+        host.push([[3.0, 0.0, 0.0], [4.0, 0.0, 0.0], [3.0, 1.0, 0.0]]);
+        let f = faces(&host);
+        let mut guard = Guard::new(&f);
+        for _ in 0..2 {
+            assert!(!guard.joined(0, &[count]));
+            assert_eq!(guard.adjacency_entries, 3 * count,
+                "each face contributes three adjacency entries, read once per call");
+        }
+    }
+}

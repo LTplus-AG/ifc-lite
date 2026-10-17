@@ -111,6 +111,9 @@ pub(super) struct Guard<'a> {
     /// The last question asked, `(target, faces left)`, and its answer.
     /// Consecutive cutter vertices usually repeat it.
     last: Option<(usize, Vec<usize>, bool)>,
+    /// Actual adjacency entries visited by the last joined traversal.
+    #[cfg(test)]
+    adjacency_entries: usize,
 }
 
 impl<'a> Guard<'a> {
@@ -119,6 +122,8 @@ impl<'a> Guard<'a> {
             faces,
             at: None,
             last: None,
+            #[cfg(test)]
+            adjacency_entries: 0,
         }
     }
 
@@ -127,9 +132,12 @@ impl<'a> Guard<'a> {
     /// of the plane of `target` or of a face of `left`?
     ///
     /// Walks outward from `target` and stops at the first face of `left`, so
-    /// the cost is the faces of `target`'s surface (and those bordering it)
-    /// times the band tests of one face, at most `1 + left.len()`.
+    /// each vertex adjacency list expands once, including at high-valence
+    /// vertices. Face band tests run at most once per encountered face,
+    /// each against at most `1 + left.len()` planes.
     fn joined(&mut self, target: usize, left: &[usize]) -> bool {
+        #[cfg(test)]
+        { self.adjacency_entries = 0; }
         let faces = self.faces;
         let at = self.at.get_or_insert_with(|| {
             let mut at: FxHashMap<Key, Vec<usize>> = FxHashMap::default();
@@ -144,10 +152,17 @@ impl<'a> Guard<'a> {
                 || left.iter().any(|&g| in_band_of(&faces[h], &faces[g]))
         };
         let mut seen: FxHashSet<usize> = [target].into_iter().collect();
+        let mut expanded_vertices: FxHashSet<Key> = FxHashSet::default();
         let mut stack = vec![target];
         while let Some(a) = stack.pop() {
             for p in &faces[a].t {
-                for &b in at.get(&key(p)).map_or(&[][..], Vec::as_slice) {
+                let k = key(p);
+                if !expanded_vertices.insert(k) {
+                    continue;
+                }
+                for &b in at.get(&k).map_or(&[][..], Vec::as_slice) {
+                    #[cfg(test)]
+                    { self.adjacency_entries += 1; }
                     if !seen.insert(b) {
                         continue;
                     }

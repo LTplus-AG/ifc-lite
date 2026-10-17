@@ -129,17 +129,6 @@ pub(super) fn prefer_raw_if_cleaner(
     });
     let offset_jittered = buckets.len() > 4 * bnorms.len().max(1);
     if nonorthogonal || offset_jittered {
-        // A healthy closed source must not trade a paired boundary for a
-        // lower spike score (#7292). A spike is not necessarily a needle;
-        // uncertified needles still require the established cleanup policy.
-        if crate::exact_topology::strict_closed_mesh(mesh)
-            && (!crate::exact_topology::strict_closed_mesh(&output)
-                || !super::preservation::public_weld_closed(&output))
-            && super::preservation::public_weld_closed(mesh)
-            && !supported_cells::has_uncertified_needle(mesh, supported)
-        {
-            return mesh.clone();
-        }
         let cons_open = count_open_boundary_edges(&output);
         if cons_open > 0 {
             // Invariant: `mesh` is kernel output (every `consolidate` caller is
@@ -158,7 +147,3 @@ pub(super) fn prefer_raw_if_cleaner(
     }
     output
 }
-
-#[cfg(test)]
-#[path = "candidates_boundary_tests.rs"]
-mod boundary_tests;

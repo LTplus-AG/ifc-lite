@@ -170,14 +170,7 @@ pub(crate) fn parse_transformation_operator(
     let x_norm = x_axis_raw
         .try_normalize(1e-9)
         .unwrap_or_else(|| Vector3::new(1.0, 0.0, 0.0));
-    let x_ortho = x_norm - z_axis * x_norm.dot(&z_axis);
-    let x_axis = x_ortho.try_normalize(1e-6).unwrap_or_else(|| {
-        if z_axis.z.abs() < 0.9 {
-            Vector3::new(0.0, 0.0, 1.0).cross(&z_axis).normalize()
-        } else {
-            Vector3::new(1.0, 0.0, 0.0).cross(&z_axis).normalize()
-        }
-    });
+    let x_axis = crate::axis_projection::perpendicular_x_axis(z_axis, x_norm);
     // Y = Z × X (IfcSecondProjAxis' result whenever Axis2 agrees with the
     // right-handed frame, which is every well-formed operator). A supplied
     // Axis2 that DISAGREES — the mirroring/left-handed frames some exporters

@@ -8,7 +8,7 @@
 //! `IfcPhysicalComplexQuantity` is skipped by every consumer, on purpose.
 
 use super::rows::{QuantitySet, QuantityValue};
-use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
+use ifc_lite_core::{slot, DecodedEntity, EntityDecoder, IfcType};
 
 /// The seven simple quantity classes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -107,6 +107,20 @@ impl QuantityKind {
 
 /// The kinds a consumer reads: `Number` only in the opt-in analysis view
 /// (flat exports drop it until C6-14).
+/// Where every simple quantity (`IfcQuantityLength`, `Area`, `Volume`, `Count`,
+/// `Number`, `Weight`, `Time`) keeps its value. The seven classes share no
+/// supertype that declares it, so the position is named once here and the
+/// assertions below fail the build if any class disagrees.
+const QUANTITY_VALUE: usize = slot::IfcQuantityLength::LENGTH_VALUE.index();
+const _: () = {
+    assert!(slot::IfcQuantityArea::AREA_VALUE.index() == QUANTITY_VALUE);
+    assert!(slot::IfcQuantityVolume::VOLUME_VALUE.index() == QUANTITY_VALUE);
+    assert!(slot::IfcQuantityCount::COUNT_VALUE.index() == QUANTITY_VALUE);
+    assert!(slot::IfcQuantityNumber::NUMBER_VALUE.index() == QUANTITY_VALUE);
+    assert!(slot::IfcQuantityWeight::WEIGHT_VALUE.index() == QUANTITY_VALUE);
+    assert!(slot::IfcQuantityTime::TIME_VALUE.index() == QUANTITY_VALUE);
+};
+
 fn quantity_kind(ty: &IfcType, mode: QuantityDecodeMode) -> Option<QuantityKind> {
     QuantityKind::of(ty).filter(|k| *k != QuantityKind::Number || matches!(mode, QuantityDecodeMode::AuthoredAnalysis))
 }
@@ -147,8 +161,8 @@ pub fn decode_quantity_records(
     decoder: &mut EntityDecoder, def: &DecodedEntity, max_members: Option<usize>,
     mode: QuantityDecodeMode,
 ) -> Option<QuantityRecordDecode> {
-    let name = def.get(2).and_then(|a| a.as_string()).unwrap_or("").to_string();
-    let quantities_attr = def.get(5)?;
+    let name = def.string_at(slot::IfcElementQuantity::NAME).unwrap_or("").to_string();
+    let quantities_attr = def.attr(slot::IfcElementQuantity::QUANTITIES)?;
     if max_members.is_some_and(|max| quantities_attr.as_list().is_none_or(|items| items.len() > max)) {
         return None;
     }
@@ -157,20 +171,22 @@ pub fn decode_quantity_records(
     let mut rejected_members = 0;
     let mut first_rejected_id = None;
     for q in &quants {
-        let (Some(kind), Some(qname), Some(value)) = (
-            quantity_kind(&q.ifc_type, mode),
-            q.get(0).and_then(|a| a.as_string()).filter(|name| !name.is_empty()),
+        // The slots are read only for a class that has them: a leaf that is not
+        // a quantity (an `IfcPropertySingleValue`) is a rejected member.
+        let parsed = quantity_kind(&q.ifc_type, mode).and_then(|kind| {
+            let qname = q.string_at(slot::IfcPhysicalQuantity::NAME).filter(|name| !name.is_empty())?;
             // as_float already accepts STEP integers, including authored Count.
-            q.get(3).and_then(|a| a.as_float()),
-        ) else {
+            Some((kind, qname, q.real_at(QUANTITY_VALUE)?))
+        });
+        let Some((kind, qname, value)) = parsed else {
             rejected_members += 1;
             first_rejected_id.get_or_insert(q.id);
             continue;
         };
         records.push(QuantityRecord {
             id: q.id,
-            unit_id: q.get_ref(2),
-            invalid_unit_ref: q.get(2).is_some_and(|unit| !unit.is_null() && unit.as_entity_ref().is_none()),
+            unit_id: q.ref_at(slot::IfcPhysicalSimpleQuantity::UNIT),
+            invalid_unit_ref: q.attr(slot::IfcPhysicalSimpleQuantity::UNIT).is_some_and(|unit| !unit.is_null() && unit.as_entity_ref().is_none()),
             value: QuantityValue { name: qname.to_string(), value, kind: kind.as_str() },
         });
     }

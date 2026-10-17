@@ -90,8 +90,11 @@ fn run_entity_export(
 ///
 /// Remaining limit, inherited from the shared export model: only
 /// `IfcPropertySingleValue` properties are decoded. Enumerated, list, bounded,
-/// table and reference properties are skipped silently, and the pset still
-/// appears with those entries missing.
+/// table, reference and complex properties are skipped silently, and the pset
+/// still appears with those entries missing. The shared decoder
+/// (`ifc_lite_processing::data_model::property`) reads all seven kinds; the
+/// export's `EXPORT_PROPERTY_SCOPE` keeps it to single values until the
+/// user-visible change (EXPORT-DATA-2, D47) is approved.
 ///
 /// **Schema-declared entity attributes** arrive in their own `attributes` list,
 /// on by default. These are unrelated to the `IfcTypeObject` inheritance above,

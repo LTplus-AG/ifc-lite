@@ -28,7 +28,7 @@ pub use options::{ModelOptions, Placement};
 #[path = "model_props.rs"]
 pub(crate) mod props;
 pub use props::fmt_num;
-use props::{opt_string, ref_list, render_attributes, resolve_pset_defs};
+use props::{new_property_decoder, opt_string, ref_list, render_attributes, resolve_pset_defs};
 
 #[path = "model_inherit.rs"]
 mod inherit;
@@ -151,7 +151,7 @@ pub fn stream_export_model_with_options(
     const PSET_CACHE_CAP: usize = 1 << 18; // 262_144 entries
 
     let mut decoder = EntityDecoder::with_arc_index(content, entity_index.clone());
-
+    let mut props = new_property_decoder(content.len());
     // Pass 1 — one scan that collects, uncached (each entity visited once here):
     //   • object → attached property/quantity definitions (IfcRelDefinesByProperties),
     //   • the #957/#1518 type-product orphan-geometry bookkeeping, mirroring the
@@ -342,7 +342,7 @@ pub fn stream_export_model_with_options(
             let mut seen = FxHashSet::default();
             def_ids.retain(|d| seen.insert(*d));
         }
-        let (mut property_sets, mut quantity_sets) = resolve_pset_defs(&mut decoder, &def_ids);
+        let (mut property_sets, mut quantity_sets) = resolve_pset_defs(&mut props, &mut decoder, &def_ids);
 
         // Fold in whatever this occurrence inherits from its type. Resolution is
         // memoized per type id, not per occurrence: a Revit export types
@@ -361,7 +361,7 @@ pub fn stream_export_model_with_options(
                         .ok()
                         .map(|t| ref_list(t.get(5)))
                         .unwrap_or_default();
-                    resolve_pset_defs(&mut decoder, &def_ids)
+                    resolve_pset_defs(&mut props, &mut decoder, &def_ids)
                 });
                 property_sets = merge_inherited(property_sets, inherited.0.clone());
                 quantity_sets = merge_inherited(quantity_sets, inherited.1.clone());
@@ -424,7 +424,7 @@ pub fn stream_export_model_with_options(
 
         // Types attach their sets via HasPropertySets (attr 5), not
         // IfcRelDefinesByProperties.
-        let (property_sets, quantity_sets) = resolve_pset_defs(&mut decoder, &cand.pset_def_ids);
+        let (property_sets, quantity_sets) = resolve_pset_defs(&mut props, &mut decoder, &cand.pset_def_ids);
 
         f(
             EntityRow {

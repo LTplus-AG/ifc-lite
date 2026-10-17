@@ -25,7 +25,7 @@
 9 rust/export/src/landxml_terrain_tin.rs
 2 rust/export/src/merged/spatial.rs
 17 rust/export/src/model.rs
-10 rust/export/src/model_props.rs
+6 rust/export/src/model_props.rs
 3 rust/export/src/quantity_analysis.rs
 3 rust/export/src/quantity_analysis_relations.rs
 5 rust/export/src/rebar_schedule_build.rs

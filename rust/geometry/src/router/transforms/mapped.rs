@@ -5,6 +5,7 @@
 //! `IfcMappedItem` placement: the map's `MappingOrigin` composed under the
 //! item's `MappingTarget`.
 
+use crate::math::tol;
 use super::super::GeometryRouter;
 use crate::{Error, Result};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
@@ -126,7 +127,7 @@ impl GeometryRouter {
                 )))
             }
         };
-        Ok(if m.is_identity(1e-12) { None } else { Some(m) })
+        Ok(if m.is_identity(tol::IDENTITY_EPS_STRICT) { None } else { Some(m) })
     }
 
     /// Parse IfcAxis2Placement2D (Location, RefDirection) into a 4x4 acting in

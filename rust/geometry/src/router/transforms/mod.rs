@@ -4,9 +4,6 @@
 
 //! Placement and transformation: axis placement parsing, coordinate transforms, RTC offset.
 
-mod grid;
-mod grid_frame;
-mod linear;
 pub(crate) mod mapped;
 mod mesh_world;
 pub(crate) use mesh_world::LARGE_MAPPED_ORIGIN_M;
@@ -15,12 +12,9 @@ pub(crate) mod operator;
 mod parsers;
 mod walk;
 
-#[cfg(test)]
-#[path = "placement_depth_tests.rs"]
-mod placement_depth_tests;
-
 use super::GeometryRouter;
 use crate::math::mat4;
+use crate::placement;
 use crate::{Mesh, Result, SubMeshCollection};
 use ifc_lite_core::{DecodedEntity, EntityDecoder};
 use nalgebra::Matrix4;
@@ -212,34 +206,11 @@ impl GeometryRouter {
         element: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Result<Matrix4<f64>> {
-        Ok(self.get_placement_transform_from_element_with_status(element, decoder)?.0)
-    }
-
-    /// Return the placement and whether the shared depth guard truncated its
-    /// parent chain. Exact geometry descriptions must not report the partial
-    /// transform as a complete world placement.
-    pub(super) fn get_placement_transform_from_element_with_status(
-        &self,
-        element: &DecodedEntity,
-        decoder: &mut EntityDecoder,
-    ) -> Result<(Matrix4<f64>, bool)> {
-        // Get ObjectPlacement (attribute 5)
-        let placement_attr = match element.get(5) {
-            Some(attr) if !attr.is_null() => attr,
-            _ => return Ok((Matrix4::identity(), false)), // No placement
-        };
-
-        let placement = match decoder.resolve_ref(placement_attr)? {
-            Some(p) => p,
-            None => return Ok((Matrix4::identity(), false)),
-        };
-
-        let walk = self.get_placement_transform_with_depth(&placement, decoder, 0)?;
-        Ok((walk.transform, walk.truncated))
+        Ok(placement::resolve_object_placement(element, decoder)?.unwrap_or_else(Matrix4::identity))
     }
 
     /// Exact counterpart to `resolve_scaled_placement`: refuses a world
-    /// placement when the shared reference-walk guard truncated its chain.
+    /// placement whose `ObjectPlacement` is present but cannot be resolved.
     pub fn resolve_scaled_placement_strict(
         &self,
         element: &DecodedEntity,
@@ -254,16 +225,20 @@ impl GeometryRouter {
                 )));
             }
         }
-        let (mut transform, truncated) =
-            self.get_placement_transform_from_element_with_status(element, decoder)?;
-        if truncated {
-            return Err(crate::Error::geometry(format!(
-                "placement chain for #{} exceeded maximum depth",
-                element.id
-            )));
-        }
+        let mut transform = self.get_placement_transform_from_element(element, decoder)?;
         self.scale_transform(&mut transform);
         Ok(mat4::col_major_array(&transform))
     }
 
+    /// Strict column-major local frame of an `IfcLinearPlacement` relative to
+    /// its `PlacementRelTo`, in file units, with no identity fallback: a
+    /// writer baking this frame must refuse a placement it cannot resolve
+    /// (#7335). The sampling lives in [`crate::placement`].
+    pub fn resolve_linear_placement_local_strict(
+        &self,
+        placement: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+    ) -> Result<[f64; 16]> {
+        placement::linear::local_strict(placement, decoder)
+    }
 }

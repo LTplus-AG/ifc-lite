@@ -4,6 +4,7 @@
 
 //! SurfaceOfLinearExtrusion processor - surface sweep geometry.
 
+use crate::math::tol;
 use crate::{Error, Mesh, Point2, Point3, Result, TessellationQuality, Vector3};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 use nalgebra::Matrix4;
@@ -134,7 +135,7 @@ impl SurfaceOfLinearExtrusionProcessor {
         // Position frame, as for `IfcExtrudedAreaSolid`; added in the world
         // frame, a rotated Position swept along the wrong axis (#7688 review;
         // FM_ARC_DigitalHub's advanced faces confirm the frame).
-        let unit = direction.try_normalize(0.0).ok_or_else(|| {
+        let unit = direction.try_normalize(tol::NORMALIZE_NONZERO).ok_or_else(|| {
             Error::geometry("SurfaceOfLinearExtrusion ExtrudedDirection has zero length".to_string())
         })?;
         let extrusion = position_transform.transform_vector(&(unit * depth));

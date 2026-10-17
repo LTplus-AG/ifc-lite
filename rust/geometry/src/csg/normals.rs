@@ -2,6 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+use crate::math::tol;
 use crate::mesh::Mesh;
 use nalgebra::{Point3, Vector3};
 
@@ -79,7 +80,7 @@ pub fn calculate_normals(mesh: &mut Mesh) {
 
     for normal in normals {
         let normalized = normal
-            .try_normalize(1e-6)
+            .try_normalize(tol::COARSE_DIRECTION_MIN_LEN)
             .unwrap_or_else(|| Vector3::new(0.0, 0.0, 1.0));
         mesh.normals.push(normalized.x as f32);
         mesh.normals.push(normalized.y as f32);

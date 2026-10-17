@@ -34,7 +34,7 @@ pub(super) fn prepare(
         .iter()
         .fold(1_f64, |m, v| m.max(f64::from(*v).abs()));
     let world_magnitude = world.iter().flatten().fold(1_f64, |m, v| m.max(v.abs()));
-    let tolerance = 4. * f64::from(f32::EPSILON) * local_magnitude
+    let tolerance = 4. * ifc_lite_geometry::math::tol::F32_ULP_REL * local_magnitude
         + 16. * f64::EPSILON * world_magnitude
         + 1e-10;
     let mut output = Vec::with_capacity(triangles.len());

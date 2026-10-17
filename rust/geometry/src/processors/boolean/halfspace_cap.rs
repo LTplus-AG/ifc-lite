@@ -4,6 +4,7 @@
 
 use crate::bool2d::{compute_signed_area, point_in_contour};
 use crate::{Mesh, Point2, Point3, Vector3};
+use crate::math::tol;
 
 // Test-only seam for the `outer_filled == outer_count` accounting
 // (`cap_half_space_clip`, below): forces `triangulate_polygon_with_holes_refined`
@@ -76,7 +77,7 @@ pub(crate) fn cap_half_space_clip(
     if tri_n == 0 || vcount < 3 {
         return false;
     }
-    let n = match clip_normal.try_normalize(1e-12) {
+    let n = match clip_normal.try_normalize(tol::DIRECTION_MIN_LEN) {
         Some(v) => v,
         None => return false,
     };

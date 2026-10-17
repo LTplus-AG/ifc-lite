@@ -6,6 +6,7 @@ use crate::math::geom2d::{perp_distance, segments_intersect};
 use crate::math::v2::{bbox, shoelace2_by};
 use crate::profile::Profile2D;
 use crate::Point2;
+use crate::math::tol;
 
 /// Issue #635 — when an `IfcArbitraryClosedProfileDef` is actually a smooth
 /// curve approximated by a many-vertex polyline (e.g. a 127-vertex circle
@@ -273,8 +274,8 @@ pub(super) fn simplify_smooth_curve_polyline(
     // end. Strip the duplicate for the analysis and add it back at the
     // end if the input had it.
     let closed = raw_len >= 2
-        && (points[0].x - points[raw_len - 1].x).abs() < 1e-9
-        && (points[0].y - points[raw_len - 1].y).abs() < 1e-9;
+        && (points[0].x - points[raw_len - 1].x).abs() < tol::POINT_COINCIDENT_EPS
+        && (points[0].y - points[raw_len - 1].y).abs() < tol::POINT_COINCIDENT_EPS;
     let core: &[Point2<f64>] = if closed {
         &points[..raw_len - 1]
     } else {
@@ -392,8 +393,8 @@ pub(super) fn simplify_smooth_curve_polyline(
     let mut simplified_core = simplified;
     if simplified_core.len() >= 2 {
         let last = simplified_core.len() - 1;
-        if (simplified_core[0].x - simplified_core[last].x).abs() < 1e-9
-            && (simplified_core[0].y - simplified_core[last].y).abs() < 1e-9
+        if (simplified_core[0].x - simplified_core[last].x).abs() < tol::POINT_COINCIDENT_EPS
+            && (simplified_core[0].y - simplified_core[last].y).abs() < tol::POINT_COINCIDENT_EPS
         {
             simplified_core.pop();
         }

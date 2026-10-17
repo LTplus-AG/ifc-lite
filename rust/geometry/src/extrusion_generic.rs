@@ -11,6 +11,7 @@
 //! `extrusion_byte_identity_tests` asserts it bit-for-bit against verbatim
 //! copies of the pre-generic implementations.
 
+use crate::math::tol;
 use crate::error::{Error, Result};
 use crate::profile::TriangulationOf;
 use crate::scalar::{magnitude_squared3, transform_point4, try_normalize3, GeomScalar, MeshSink};
@@ -136,7 +137,7 @@ pub(crate) fn profile_has_extreme_aspect_ratio<S: GeomScalar>(outer: &[Point2<S>
     let height = max_y - min_y;
 
     // Skip if dimensions are too small to measure
-    if width.value() < 0.001 || height.value() < 0.001 {
+    if width.value() < tol::MIN_PROFILE_DIMENSION || height.value() < tol::MIN_PROFILE_DIMENSION {
         return false;
     }
 
@@ -237,7 +238,7 @@ pub(crate) fn create_side_walls<S: GeomScalar, M: MeshSink<S>>(
             .map(|p| {
                 try_normalize3(
                     &Vector3::new((p.x - cx) * radial_sign, (p.y - cy) * radial_sign, S::from_f64(0.0)),
-                    1e-10,
+                    tol::EDGE_CROSS_MIN_LEN,
                 )
                 .unwrap_or(Vector3::new(
                     S::from_f64(0.0),
@@ -274,7 +275,7 @@ pub(crate) fn create_side_walls<S: GeomScalar, M: MeshSink<S>>(
         // outer loop (and a CW hole); `winding_sign` corrects the other two.
         let flat_normal = try_normalize3(
             &Vector3::new(edge.y, -edge.x, S::from_f64(0.0)),
-            1e-10,
+            tol::EDGE_CROSS_MIN_LEN,
         )
         .map(|v| Vector3::new(v.x * winding_sign, v.y * winding_sign, v.z * winding_sign))
         .unwrap_or(Vector3::new(

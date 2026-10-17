@@ -1065,8 +1065,8 @@ fn scene_root(
         world[1] * c[0] + world[5] * c[1] + world[9] * c[2] + world[13],
         world[2] * c[0] + world[6] * c[1] + world[10] * c[2] + world[14],
     ];
-    let center_nonzero = c.iter().any(|v| v.abs() > 1e-9);
-    let translation = (center_nonzero || out.iter().any(|v| v.abs() > 1e-9)).then_some(out);
+    let center_nonzero = c.iter().any(|v| v.abs() > ifc_lite_geometry::math::tol::IDENTITY_EPS);
+    let translation = (center_nonzero || out.iter().any(|v| v.abs() > ifc_lite_geometry::math::tol::IDENTITY_EPS)).then_some(out);
     (translation, rotation)
 }
 
@@ -1315,7 +1315,7 @@ fn build_gltf(
                 (mi, [0.0; 3], [0.0; 3])
             });
             mesh_idx = mi;
-            translation = placement.iter().any(|c| c.abs() > 1e-9).then_some(placement);
+            translation = placement.iter().any(|c| c.abs() > ifc_lite_geometry::math::tol::IDENTITY_EPS).then_some(placement);
             scale = None;
         } else {
             // Singleton: bake world-minus-center into the vertices, identity node.
@@ -2631,7 +2631,7 @@ fn plan_bounded_glb(
             )
         } else if shared {
             (
-                placement.iter().any(|c| c.abs() > 1e-9).then_some(placement),
+                placement.iter().any(|c| c.abs() > ifc_lite_geometry::math::tol::IDENTITY_EPS).then_some(placement),
                 None,
             )
         } else {

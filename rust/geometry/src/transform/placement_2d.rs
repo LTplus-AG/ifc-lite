@@ -4,6 +4,7 @@
 
 //! Canonical router-free `IfcAxis2Placement2D` transform.
 
+use crate::math::tol;
 use super::{parse_decoded_cartesian_point, parse_direction};
 use crate::{Error, Result};
 use ifc_lite_core::{DecodedEntity, EntityDecoder};
@@ -28,7 +29,7 @@ pub(crate) fn parse_axis2_placement_2d(
     let ref_dir = match placement.get(1) {
         Some(attr) if !attr.is_null() => match decoder.resolve_ref(attr)? {
             Some(direction) => parse_direction(&direction)?
-                .try_normalize(1e-9)
+                .try_normalize(tol::AXIS_MIN_LEN)
                 .unwrap_or_else(|| Vector3::new(1.0, 0.0, 0.0)),
             None => Vector3::new(1.0, 0.0, 0.0),
         },

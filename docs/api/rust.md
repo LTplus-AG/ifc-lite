@@ -45,9 +45,23 @@ pub mod error;           // Error types
 ### Parser Module
 
 `ifc_lite_core::declared_schema_bounded(ifc_bytes)` reads the first actual
-`FILE_SCHEMA` identifier in the first 64 KiB of the STEP header. It skips
+`FILE_SCHEMA` identifier in the first 256 KiB of the STEP header. It skips
 comments and quoted decoys and stops at the header section boundary, returning
-`None` when no declaration is found in that window.
+`None` when no declaration is found in that window (`parser::header::MAX_HEADER_BYTES`,
+the same window the scanner searches for `DATA;`). Keywords are found by
+`parser::header::find_keyword_then`, a literal's text is
+`step_encoding::decode_step_literal`, and `parser::split_top_level_args` splits
+top-level arguments, all ignoring comments and quoted decoys.
+
+`ifc_lite_core::parser::StepRecord::parse(record)` is the zero-copy view of one
+`#id = KEYWORD ( ... )` record that every raw-byte reader goes through: it
+locates the attribute list (trivia and comments allowed wherever STEP allows
+them), and `attr`, `ref_at`, `ref_list_at`, `real_at`, `point_at`, `string_at`
+and `enum_at` read one attribute each, borrowing from the record. A list whose
+items are not all plain `#n` references is refused whole (`ref_list_at`), and
+`parse_ref` accepts `#` and digits only. `fast_parse::extract_entity_type_name`,
+`extract_first_entity_ref`, `extract_entity_refs_from_list` and
+`EntityDecoder::get_first_entity_ref_fast` are removed in favour of it.
 
 #### Token
 

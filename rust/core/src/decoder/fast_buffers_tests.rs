@@ -17,6 +17,7 @@ const SOURCE: &str = "\
 #20=IFCFACE((#10,#11,#10,#4294967296,#12));
 #21=IFCFACE(());
 #22=IFCFACE($);
+#23=IFCFACE((#10,#11,#10,#12));
 ";
 
 #[test]
@@ -48,15 +49,15 @@ fn issue_3988_polyloop_scratch_preserves_order_failures_and_point_cache() {
 }
 
 #[test]
-fn issue_3988_ref_scratch_retains_duplicates_and_drops_oversized_refs() {
+fn issue_3988_ref_scratch_retains_duplicates_and_refuses_oversized_refs() {
     let mut decoder = EntityDecoder::new(SOURCE);
     let mut ids = Vec::with_capacity(32);
     let ptr = ids.as_ptr();
-    for id in [20, 21, 20, 22, 99, 20] {
+    for id in [23, 20, 21, 23, 22, 99, 23] {
         let result = decoder.get_entity_ref_list_fast_into(id, &mut ids);
-        assert_eq!(result.is_some(), id == 20);
+        assert_eq!(result.is_some(), id == 23);
         assert_eq!(ids.as_ptr(), ptr);
-        if id == 20 {
+        if id == 23 {
             assert_eq!(ids, [10, 11, 10, 12]);
             assert_eq!(decoder.get_entity_ref_list_fast(id), Some(ids.clone()));
         } else {

@@ -5,6 +5,7 @@
 //! `IfcSurfaceCurveSweptAreaSolid` / `IfcFixedReferenceSweptAreaSolid` — a 2D
 //! `SweptArea` profile swept along a `Directrix` curve.
 
+use crate::math::tol;
 use crate::{
     profile::Profile2D, profiles::ProfileProcessor, Error, Mesh, Point3, Result,
     TessellationQuality, Vector3,
@@ -114,7 +115,7 @@ impl GeometryProcessor for SurfaceCurveSweptAreaSolidProcessor {
         for p in curve_points {
             if points
                 .last()
-                .is_none_or(|last: &Point3<f64>| (p - *last).norm() > 1e-9)
+                .is_none_or(|last: &Point3<f64>| (p - *last).norm() > tol::POINT_COINCIDENT_EPS)
             {
                 points.push(p);
             }

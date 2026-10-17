@@ -15,11 +15,11 @@ use ifc_lite_core::{EntityDecoder, RtcVerdict};
 use ifc_lite_geometry::GeometryRouter;
 use serde::{Deserialize, Serialize};
 
-/// Epsilon (metres) below which a placement translation is treated as identity.
-/// Avoids overriding a detected RTC anchor when `IfcSite` sits at the origin
-/// while the geometry itself carries large world coordinates.
-/// [`rotation_is_identity`] below uses the same epsilon on the rotation block.
-pub(crate) const PLACEMENT_IDENTITY_EPSILON: f64 = 1e-9;
+// Epsilon (metres) below which a placement translation is treated as identity.
+// Avoids overriding a detected RTC anchor when `IfcSite` sits at the origin
+// while the geometry itself carries large world coordinates.
+// [`rotation_is_identity`] below uses the same epsilon on the rotation block.
+pub(crate) use ifc_lite_geometry::math::tol::IDENTITY_EPS as PLACEMENT_IDENTITY_EPSILON;
 
 /// True when a column-major 4x4 matrix's 3x3 rotation block is (within
 /// [`PLACEMENT_IDENTITY_EPSILON`]) the identity — i.e. the placement it came

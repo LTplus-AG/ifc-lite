@@ -4,6 +4,7 @@
 
 //! Surface-type tessellators: planar/boundary, B-spline, and cylindrical faces.
 
+use crate::math::tol;
 use crate::triangulation::triangulate_planar_face;
 use crate::{scale_segments, Error, Point3, Result, TessellationQuality};
 use ifc_lite_core::{DecodedEntity, EntityDecoder};
@@ -235,7 +236,7 @@ pub(super) fn process_cylindrical_face(
         })
         .collect();
     angles.sort_by(|a, b| crate::cmp_f64_nan_last(*a, *b)); // #7674
-    angles.dedup_by(|a, b| (*a - *b).abs() < 1e-6);
+    angles.dedup_by(|a, b| (*a - *b).abs() < tol::ANGLE_EPS);
 
     let (min_angle, max_angle) = if angles.len() < 2 {
         (0.0, std::f64::consts::TAU)
@@ -263,7 +264,7 @@ pub(super) fn process_cylindrical_face(
             end_raw
         };
         let span = end - start;
-        if span < 1e-6 || span > std::f64::consts::TAU - 1e-6 {
+        if span < tol::ANGLE_EPS || span > std::f64::consts::TAU - tol::ANGLE_EPS {
             (0.0, std::f64::consts::TAU)
         } else {
             (start, end)

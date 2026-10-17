@@ -1,0 +1,62 @@
+diff --git a/rust/geometry/src/placement/chain.rs b/rust/geometry/src/placement/chain.rs
+index 9e285aeaaa..702abe55b1 100644
+--- a/rust/geometry/src/placement/chain.rs
++++ b/rust/geometry/src/placement/chain.rs
+@@ -59,6 +59,7 @@ pub fn resolve_chain(placement: &DecodedEntity, decoder: &mut EntityDecoder) ->
+             decoder.cache_placement_transform(axis_id, mat4::col_major_array(&acc));
+         }
+         acc *= frame_matrix(frame, decoder)?;
++        decoder.cache_placement_transform(frame.entity.id, mat4::col_major_array(&acc));
+     }
+     Ok(acc)
+ }
+diff --git a/rust/geometry/src/placement/chain_walk.rs b/rust/geometry/src/placement/chain_walk.rs
+index 976463f1ec..6c2bccfb6b 100644
+--- a/rust/geometry/src/placement/chain_walk.rs
++++ b/rust/geometry/src/placement/chain_walk.rs
+@@ -115,7 +115,7 @@ pub(super) fn climb(
+             break;
+         };
+         if !seen.first_visit(current.id, &out.frames) {
+-            break; // oracle mutation: a cycle composes and ends silently
++            return Err(cyclic(decoder, current.id));
+         }
+         let mut grid = None;
+         let mut alias = None;
+@@ -149,9 +149,6 @@ pub(super) fn climb(
+             }
+         };
+         out.frames.push(Frame { entity: current, kind, grid, alias });
+-        if out.frames.len() > 100 {
+-            break; // oracle mutation: the pre-D27 depth cap
+-        }
+         match parent {
+             Some(p) => current = p,
+             None => break,
+diff --git a/rust/geometry/src/placement/mod.rs b/rust/geometry/src/placement/mod.rs
+index deda75847b..bacd5f8826 100644
+--- a/rust/geometry/src/placement/mod.rs
++++ b/rust/geometry/src/placement/mod.rs
+@@ -166,7 +166,8 @@ pub(crate) fn build_axis2_matrix(
+     // Axis falls back to +Z; a zero RefDirection routes into the
+     // parallel-axis fallback below.
+     let z_axis_final = z_axis
+-        .normalize(); // oracle mutation: no zero-axis repair
++        .try_normalize(tol::AXIS_MIN_LEN)
++        .unwrap_or_else(|| Vector3::new(0.0, 0.0, 1.0));
+     let x_axis_normalized = x_axis
+         .try_normalize(tol::AXIS_MIN_LEN)
+         .unwrap_or_else(|| Vector3::new(1.0, 0.0, 0.0));
+diff --git a/rust/geometry/src/placement/validate.rs b/rust/geometry/src/placement/validate.rs
+index cb4f7333b9..0df06d8ad6 100644
+--- a/rust/geometry/src/placement/validate.rs
++++ b/rust/geometry/src/placement/validate.rs
+@@ -45,7 +45,7 @@ pub fn validate_chain(
+         let at = frame.entity.id;
+         match frame.kind {
+             LinkKind::Local => check_relative(frame, decoder, policy)?,
+-            LinkKind::Linear => {} // oracle mutation: the policy is ignored
++            LinkKind::Linear if policy.linear => {}
+             LinkKind::Grid if policy.grid => {}
+             LinkKind::Linear => return Err(PlacementError::Policy { at, rule: "IfcLinearPlacement is not accepted" }),
+             LinkKind::Grid => return Err(PlacementError::Policy { at, rule: "IfcGridPlacement is not accepted" }),

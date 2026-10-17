@@ -65,7 +65,8 @@ impl LandXmlTinStreamSession {
         self.metadata_cursor.take();
         self.pending_input.clear();
         self.pending_start = 0;
-        self.parser.take();
+        self.tin.take();
+        self.driver.take();
         self.plan.take();
         self.alignment.take();
         self.pipe.take();
@@ -85,7 +86,7 @@ impl LandXmlTinStreamSession {
     }
 
     pub fn header(&self) -> Option<LandXmlStreamHeader> {
-        self.parser
+        self.tin
             .as_ref()?
             .header()
             .map(|(version, units)| LandXmlStreamHeader { version, units })

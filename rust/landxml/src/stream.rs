@@ -13,7 +13,8 @@ mod record_wire;
 pub use lifecycle::LandXmlMetadataStreamAssembler;
 
 use crate::{
-    parser::Parser, xml::{error, Decoder, TokenKind, TokenScanner}, LandXmlDiagnosticCode as Code,
+    parser::TinHandler, xml::{error, Decoder, Driver, FamilyHandler, Meter, TokenKind, TokenScanner},
+    LandXmlDiagnosticCode as Code,
     LandXmlError, LandXmlLimits,
 };
 pub use event::{
@@ -43,7 +44,9 @@ struct QueuedEvent {
 }
 
 pub struct LandXmlTinStreamSession {
-    parser: Option<Parser<'static>>,
+    tin: Option<TinHandler<'static>>,
+    /// The one XML driver; the TIN family is the first handler it feeds.
+    driver: Option<Driver<'static>>,
     plan: Option<crate::plan::parser::Parser<'static>>,
     alignment: Option<crate::alignment::parser::Parser<'static>>,
     pipe: Option<crate::pipe_parser::PipeParser<'static>>,
@@ -74,6 +77,7 @@ impl LandXmlTinStreamSession {
         // at session construction rather than partway through a stream.
         let assumed_units = crate::semantics::resolve_assumed_units(&limits)?;
         let feed = TokenFeed::new();
+        let meter = Meter::new(limits.max_work, None);
         let mut reader = Reader::from_reader(BufReader::new(feed.clone()));
         reader.config_mut().trim_text(false);
         Ok(Self {
@@ -91,7 +95,8 @@ impl LandXmlTinStreamSession {
                 },
                 assumed_units.clone(),
             )),
-            parser: Some(Parser::new(&limits, None, assumed_units)),
+            tin: Some(TinHandler::new(&limits, meter.clone(), None, assumed_units)),
+            driver: Some(Driver::new(&limits, meter)),
             pipe: Some(crate::pipe_parser::PipeParser::new_stream(limits.clone())),
             reader,
             feed,
@@ -182,9 +187,7 @@ impl LandXmlTinStreamSession {
         if let Some(kind) = self.scanner.finish()? {
             self.emit_token(kind)?;
         }
-        if self.parser().has_open_frames() {
-            return Err(error(Code::InvalidXml, "unclosed XML element"));
-        }
+        self.driver.take().expect("open driver").finish()?;
         let header = self
             .header()
             .ok_or_else(|| error(Code::InvalidXml, "LandXML document is empty"))?;
@@ -193,7 +196,7 @@ impl LandXmlTinStreamSession {
             self.header_emitted = true;
         }
         self.closed = true;
-        let terrain = self.parser.take().expect("open parser").finish()?;
+        let terrain = self.tin.take().expect("open TIN handler").finish()?;
         let plan = self.plan.take().expect("open plan parser");
         if plan.has_open_frames() {
             return Err(error(Code::InvalidXml, "unclosed XML element"));
@@ -246,8 +249,8 @@ impl LandXmlTinStreamSession {
         self.flush_pending_metadata()
     }
 
-    fn parser(&mut self) -> &mut Parser<'static> {
-        self.parser.as_mut().expect("open stream parser")
+    fn tin(&mut self) -> &mut TinHandler<'static> {
+        self.tin.as_mut().expect("open TIN handler")
     }
 
     fn feed_input(&mut self, bytes: Vec<u8>) {
@@ -330,7 +333,8 @@ impl LandXmlTinStreamSession {
 
     /// Every family parser sees every event of the one canonical reader.
     fn dispatch_event(&mut self, event: Event<'_>) -> Result<(), LandXmlError> {
-        self.parser().consume_event(event.clone())?;
+        let tin: &mut dyn FamilyHandler = self.tin.as_mut().expect("open TIN handler");
+        self.driver.as_mut().expect("open driver").event(event.clone(), &mut [tin])?;
         let plan = self.plan.as_mut().expect("open plan parser");
         plan.consume_event(event.clone())?;
         let alignment = self.alignment.as_mut().expect("open alignment parser");

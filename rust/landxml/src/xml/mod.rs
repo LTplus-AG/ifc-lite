@@ -7,12 +7,15 @@ use std::collections::HashMap;
 use quick_xml::events::BytesStart;
 
 mod budget;
+mod driver;
+mod element;
 mod encoding;
 mod pull;
 mod refs;
 mod scan;
 pub(crate) use budget::{poll, Budget, Meter};
 pub(crate) use encoding::{normalize_encoding, Decoder};
+pub(crate) use driver::{drive, path_is_of, Cx, Driver, Element, FamilyHandler};
 pub(crate) use pull::read_events;
 pub(crate) use scan::{TokenKind, TokenScanner};
 pub(crate) use refs::{decode_ref, decode_text, source_len};

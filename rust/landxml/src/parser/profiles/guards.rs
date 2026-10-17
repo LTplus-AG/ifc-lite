@@ -9,9 +9,9 @@ use crate::{
     LandXmlCapabilityDiagnostic, LandXmlCapabilityDiagnosticCode, LandXmlSourceId,
 };
 
-use super::super::Parser;
+use super::super::TinHandler;
 
-impl Parser<'_> {
+impl TinHandler<'_> {
     pub(super) fn record_discontinuity(
         &mut self,
         discontinuous: bool,

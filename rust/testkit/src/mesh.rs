@@ -9,7 +9,8 @@
 //! another purely because of the oracle. The keying is now an explicit
 //! argument ([`Key`]).
 
-use std::collections::HashMap;
+use ifc_lite_geometry::mesh::Mesh;
+use ifc_lite_geometry::mesh_check::{self, Degenerate, EdgeLedger, VertexKey};
 
 /// How vertices are identified when counting shared edges.
 #[derive(Clone, Copy, Debug)]
@@ -21,17 +22,12 @@ pub enum Key {
 }
 
 impl Key {
-    fn of(self, p: [f32; 3]) -> [i64; 3] {
+    fn vertex_key(self) -> VertexKey {
         match self {
-            Key::Bits => p.map(|c| i64::from(c.to_bits())),
-            Key::Grid(pitch) => p.map(|c| (f64::from(c) / pitch).round() as i64),
+            Key::Bits => VertexKey::Bits,
+            Key::Grid(pitch) => VertexKey::GridDiv(pitch),
         }
     }
-}
-
-fn vertex(positions: &[f32], i: u32) -> [f32; 3] {
-    let o = i as usize * 3;
-    [positions[o], positions[o + 1], positions[o + 2]]
 }
 
 /// Axis-aligned bounds `(min, max)`; `([inf;3], [-inf;3])` when empty.
@@ -48,48 +44,21 @@ pub fn bbox(positions: &[f32]) -> ([f32; 3], [f32; 3]) {
 }
 
 /// Signed volume by the divergence theorem, accumulated in `f64` about the
-/// bounding-box centre. Referencing the centre (not the world origin) keeps
-/// the result translation-stable for open meshes and far-from-origin
-/// operands. Positive for outward (CCW) winding.
+/// bounding-box centre ([`mesh_check::signed_volume`]). Referencing the centre
+/// (not the world origin) keeps the result translation-stable for open meshes
+/// and far-from-origin operands. Positive for outward (CCW) winding.
 pub fn signed_volume(positions: &[f32], indices: &[u32]) -> f64 {
-    let (min, max) = bbox(positions);
-    if min[0] > max[0] {
-        return 0.0;
-    }
-    let c = [0, 1, 2].map(|a| (f64::from(min[a]) + f64::from(max[a])) * 0.5);
-    let rel = |i: u32| {
-        let p = vertex(positions, i);
-        [0, 1, 2].map(|a| f64::from(p[a]) - c[a])
-    };
-    indices
-        .chunks_exact(3)
-        .map(|t| {
-            let (a, b, d) = (rel(t[0]), rel(t[1]), rel(t[2]));
-            let cross = [
-                b[1] * d[2] - b[2] * d[1],
-                b[2] * d[0] - b[0] * d[2],
-                b[0] * d[1] - b[1] * d[0],
-            ];
-            (a[0] * cross[0] + a[1] * cross[1] + a[2] * cross[2]) / 6.0
-        })
-        .sum()
+    let mut mesh = Mesh::new();
+    mesh.positions = positions.to_vec();
+    mesh.indices = indices.to_vec();
+    mesh_check::signed_volume(&mesh)
 }
 
 /// Number of undirected edges whose incidence count is not exactly 2
 /// (boundary edges plus non-manifold edges). Zero for a closed 2-manifold.
+/// Zero-length edges (both ends on one key) are ignored.
 pub fn open_edges(positions: &[f32], indices: &[u32], key: Key) -> usize {
-    let mut incidence: HashMap<([i64; 3], [i64; 3]), u32> = HashMap::new();
-    for t in indices.chunks_exact(3) {
-        let k = [0, 1, 2].map(|i| key.of(vertex(positions, t[i])));
-        for (a, b) in [(k[0], k[1]), (k[1], k[2]), (k[2], k[0])] {
-            if a == b {
-                continue;
-            }
-            let edge = if a <= b { (a, b) } else { (b, a) };
-            *incidence.entry(edge).or_insert(0) += 1;
-        }
-    }
-    incidence.values().filter(|&&n| n != 2).count()
+    EdgeLedger::build_raw(positions, indices, key.vertex_key(), Degenerate::SkipEdge).undirected_defects()
 }
 
 #[cfg(test)]

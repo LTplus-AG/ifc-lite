@@ -23,6 +23,7 @@
 //! #5905).
 
 use super::OpeningType;
+use crate::mesh_check::strictly_paired_at;
 use crate::router::diagnostics::HostOpeningDiagnostic;
 use crate::router::GeometryRouter;
 use crate::{BoolFailure, Mesh, Point3};
@@ -160,30 +161,6 @@ pub(super) fn closed_as_emitted(mesh: &Mesh) -> bool {
     let mut probe = mesh.clone();
     probe.clean_degenerate();
     closed_and_consistently_wound(&probe)
-}
-
-fn strictly_paired_at(mesh: &Mesh, per_unit: f64) -> bool {
-    let key = |i: u32| {
-        let b = i as usize * 3;
-        [0, 1, 2].map(|k| (mesh.positions[b + k] as f64 * per_unit).round() as i64)
-    };
-    let mut uses: rustc_hash::FxHashMap<([i64; 3], [i64; 3]), (u32, u32)> =
-        rustc_hash::FxHashMap::default();
-    for t in mesh.indices.chunks_exact(3) {
-        let (ka, kb, kc) = (key(t[0]), key(t[1]), key(t[2]));
-        if ka == kb || kb == kc || kc == ka {
-            continue;
-        }
-        for (x, y) in [(ka, kb), (kb, kc), (kc, ka)] {
-            let e = uses.entry((x.min(y), x.max(y))).or_insert((0, 0));
-            if x < y {
-                e.0 += 1;
-            } else {
-                e.1 += 1;
-            }
-        }
-    }
-    !uses.is_empty() && uses.values().all(|&u| u == (1, 1))
 }
 
 /// Enclosed volume of a closed mesh about its bounds centre (m³).

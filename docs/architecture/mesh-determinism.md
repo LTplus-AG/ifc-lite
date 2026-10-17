@@ -35,6 +35,9 @@ Running `process_geometry` over the synthetic fixture in
     (`voids_hash`, `material_colors_hash`, `styles_hash`), so a drift report
     names the wire surface that diverged.
 
+The `mesh_check` edge keys (`rust/geometry/src/mesh_check`) are exact or grid-quantised and
+order-independent: a closure verdict does not depend on triangle order or hash iteration order.
+
 The fingerprint (FNV-1a 64, same scheme as the kernel manifest) is pinned in
 `rust/processing/tests/manifests/mesh_determinism.json` together with mesh,
 vertex and triangle counts and per-mesh hashes, so a failure identifies WHICH

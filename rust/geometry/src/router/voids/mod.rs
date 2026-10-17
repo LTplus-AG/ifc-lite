@@ -21,6 +21,7 @@ pub(crate) mod geom;
 mod malformed_opening_repair;
 mod local_frame;
 mod frame_snap;
+mod hygiene;
 pub(crate) mod prism_cut;
 mod probe;
 mod representation;
@@ -336,7 +337,7 @@ impl GeometryRouter {
         };
 
         let parts =
-            self.process_element_parts_with_hygiene(element, decoder, SourceHygiene::IndexOnly)?;
+            self.process_element_parts_with_hygiene(element, decoder, SourceHygiene::BooleanOperand)?;
         // Opening and clip geometry are resolved in world coordinates, the
         // frame every part is in once placement has been applied.
         let ctx = self.build_void_context(element, opening_ids, decoder);
@@ -345,8 +346,8 @@ impl GeometryRouter {
             .map(|part| {
                 let mut voided = self.apply_void_context(part, &ctx, element.id);
                 // Clean slivers the CSG cut can introduce at opening seams — same
-                // hygiene as the tessellation chokepoints (Mesh::clean_degenerate).
-                voided.clean_degenerate();
+                // closure-preserving hygiene as the untextured source chokepoints (#7292).
+                hygiene::clean_void_output(&mut voided);
                 // Instancing: a void-cut mesh no longer reproduces its representation's
                 // canonical geometry, so it can never be shared. Drop any metadata that
                 // rode along from the (pre-cut) mapped item.
@@ -610,7 +611,7 @@ impl GeometryRouter {
         // hygiene the production output applies — in the small frame, where it is
         // precise — so the self-check sees exactly what downstream will keep.
         let mut out = rotate_mesh_from_frame(&merged, &host.r, &host.center);
-        out.clean_degenerate();
+        hygiene::clean_void_output(&mut out);
 
         // Self-check: never emit a non-watertight cut; defer to the exact kernel.
         if !param_cut_watertight(&out) {
@@ -1818,7 +1819,7 @@ impl GeometryRouter {
             decoder,
             false,
             None,
-            SourceHygiene::IndexOnly,
+            SourceHygiene::BooleanOperand,
         )?;
         if sub_meshes.is_empty() {
             return Ok(SubMeshCollection::new());
@@ -1843,8 +1844,8 @@ impl GeometryRouter {
         for sub in sub_meshes.sub_meshes {
             let geometry_id = sub.geometry_id;
             let mut voided_mesh = self.apply_void_context(sub.mesh, &ctx, element.id);
-            // Same CSG-seam hygiene as the single-mesh void path.
-            voided_mesh.clean_degenerate();
+            // Same closure-preserving CSG-seam hygiene as the single-mesh path (#7292).
+            hygiene::clean_void_output(&mut voided_mesh);
             if !voided_mesh.is_empty() {
                 voided
                     .sub_meshes

@@ -97,7 +97,10 @@ echo "🟢 Building single-thread bundle → $OUT_DIR"
 # NEVER on CI: a real build failure there must stay a failure, so the fallback
 # is gated on $CI being unset. Anything that ships an artifact -- the release
 # and docker workflows, Vercel -- sets it.
-if ! rustup run nightly-2025-11-15 "$WASM_PACK" build rust/wasm-bindings \
+# Keep the shipping bundle inside its transfer-size budget with LLVM's size
+# optimization. Scope this to the single-thread WASM invocation: native and
+# opt-in bundles retain the workspace release profile. No Binaryen pass runs.
+if ! CARGO_PROFILE_RELEASE_OPT_LEVEL=s rustup run nightly-2025-11-15 "$WASM_PACK" build rust/wasm-bindings \
   --target web \
   --out-dir "$OUT_DIR" \
   --out-name ifc-lite \
@@ -124,11 +127,11 @@ then
 fi
 
 # NOTE: wasm-opt is disabled. The bundle is single-threaded (SIMD128 only,
-# no atomics/shared-memory), and the Rust compiler's LLVM -O3 (release
-# profile) already provides sufficient optimization. wasm-opt also has a
+# no atomics/shared-memory), and the Rust compiler's LLVM (release
+# profile) already provides the optimization. wasm-opt also has a
 # history of miscompiling the wasm-bindgen closure/async machinery
 # (RuntimeError: unreachable in production), so it stays off.
-echo "ℹ️  wasm-opt disabled — using LLVM -O3 only"
+echo "ℹ️  wasm-opt disabled — using LLVM only"
 
 # Strip wasm-bindgen's internal trampoline indices from the committed type
 # surface (#952). The `__wasm_bindgen_func_elem_<N>` members of `InitOutput`

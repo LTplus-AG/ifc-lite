@@ -100,7 +100,7 @@ impl GeometryRouter {
             // #6349: an opening whose items lie in frames >= 1 km apart comes back as
             // several frame parts; each stays its own cutter instead of being rounded
             // into one f32 mesh. An ordinary opening has exactly one part.
-            let opening_parts: Vec<Mesh> = match self.process_element_parts_with_hygiene(&opening_entity, decoder, SourceHygiene::IndexOnly) {
+            let opening_parts: Vec<Mesh> = match self.process_element_parts_with_hygiene(&opening_entity, decoder, SourceHygiene::BooleanOperand) {
                 Ok(parts) => parts.into_iter().filter(|m| !m.is_empty()).collect(),
                 Err(_) => continue,
             };

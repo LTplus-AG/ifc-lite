@@ -74,17 +74,5 @@ wire_records! {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::LandXmlMetadataRecord;
-
-    #[test]
-    fn wire_round_trip_and_unknown_name() {
-        let record = LandXmlMetadataRecord::PlanWarning("w".to_owned());
-        let bytes = record.serialize_value().unwrap();
-        let value = serde_json::from_slice(&bytes).unwrap();
-        let back = LandXmlMetadataRecord::from_wire(record.wire_name(), value).unwrap();
-        assert!(matches!(back, LandXmlMetadataRecord::PlanWarning(w) if w == "w"));
-        let err = LandXmlMetadataRecord::from_wire("nope", serde_json::Value::Null).unwrap_err();
-        assert!(err.to_string().contains("unknown variant `nope`"), "{err}");
-    }
-}
+#[path = "record_wire_tests.rs"]
+mod tests;

@@ -79,6 +79,7 @@
     "keyword_starts_with": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "measure_unit": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "nth_attribute_is_present": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
+    "optional_text": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "oversized_id_report": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "parse_coordinates_direct": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "parse_entity": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",

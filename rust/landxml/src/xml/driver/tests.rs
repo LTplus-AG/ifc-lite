@@ -153,6 +153,12 @@ fn text_outside_the_root_and_dtds_are_refused() {
     assert_eq!(driver.text(b"x", none).unwrap_err().code, Code::InvalidXml);
     assert_eq!(driver.cdata(b" ", none).unwrap_err().code, Code::InvalidXml);
     driver.text(b" \n", none).unwrap();
+    // U+00A0 and U+2003 are Unicode whitespace, not XML `S` (C9a-1 drift 6).
+    for not_padding in ["\u{a0}", "\u{2003}", " x "] {
+        let refusal = driver.text(not_padding.as_bytes(), none).unwrap_err();
+        assert_eq!(refusal.message, "LandXML document has non-whitespace content before its root element");
+    }
+    assert_eq!(driver.cdata(b" ", none).unwrap_err().message, "LandXML document has CDATA before its root element");
     assert_eq!(
         driver.event(Event::DocType(quick_xml::events::BytesText::new("x")), none).unwrap_err().code,
         Code::DtdForbidden

@@ -15,6 +15,7 @@ pub use lifecycle::LandXmlMetadataStreamAssembler;
 use crate::{
     alignment::parser::AlignmentHandler,
     parser::TinHandler,
+    pipe_parser::PipeHandler,
     plan::parser::PlanHandler,
     xml::{error, Decoder, Driver, FamilyHandler, Meter, TokenKind, TokenScanner},
     LandXmlDiagnosticCode as Code,
@@ -52,7 +53,7 @@ pub struct LandXmlTinStreamSession {
     driver: Option<Driver<'static>>,
     plan: Option<PlanHandler>,
     alignment: Option<AlignmentHandler>,
-    pipe: Option<crate::pipe_parser::PipeParser<'static>>,
+    pipe: Option<PipeHandler<'static>>,
     reader: Reader<BufReader<TokenFeed>>,
     feed: TokenFeed,
     decoder: Decoder,
@@ -94,8 +95,8 @@ impl LandXmlTinStreamSession {
                 assumed_units.clone(),
             )),
             tin: Some(TinHandler::new(&limits, meter.clone(), None, assumed_units)),
+            pipe: Some(PipeHandler::new(&limits, meter.clone(), false)),
             driver: Some(Driver::new(&limits, meter)),
-            pipe: Some(crate::pipe_parser::PipeParser::new_stream(limits.clone())),
             reader,
             feed,
             decoder: Decoder::new(&limits)?,
@@ -197,12 +198,8 @@ impl LandXmlTinStreamSession {
         let terrain = self.tin.take().expect("open TIN handler").finish()?;
         let plan = self.plan.take().expect("open plan handler").document();
         let alignment = self.alignment.take().expect("open alignment handler").finish()?;
-        let pipe = self.pipe.take().expect("open pipe parser");
-        if pipe.has_open_frames() {
-            return Err(error(Code::InvalidXml, "unclosed XML element"));
-        }
         let (pipe, preflight_refusal_batches, has_pipe_networks) =
-            pipe.finish_stream_with_preflight()?;
+            self.pipe.take().expect("open pipe handler").finish_stream_with_preflight()?;
         let pipe_networks = pipe.networks.len();
         let pipe_structures = pipe
             .networks
@@ -321,15 +318,13 @@ impl LandXmlTinStreamSession {
         self.emit_header_and_surfaces()
     }
 
-    /// Every family parser sees every event of the one canonical reader.
+    /// Every family handler sees every event of the one canonical reader,
+    /// through the one driver: one decode, one work charge, no event clone.
     fn dispatch_event(&mut self, event: Event<'_>) -> Result<(), LandXmlError> {
         let tin: &mut dyn FamilyHandler = self.tin.as_mut().expect("open TIN handler");
         let plan: &mut dyn FamilyHandler = self.plan.as_mut().expect("open plan handler");
         let alignment: &mut dyn FamilyHandler = self.alignment.as_mut().expect("open alignment handler");
-        self.driver.as_mut().expect("open driver").event(event.clone(), &mut [tin, plan, alignment])?;
-        self.pipe
-            .as_mut()
-            .expect("open pipe parser")
-            .consume_event(event)
+        let pipe: &mut dyn FamilyHandler = self.pipe.as_mut().expect("open pipe handler");
+        self.driver.as_mut().expect("open driver").event(event, &mut [tin, plan, alignment, pipe])
     }
 }

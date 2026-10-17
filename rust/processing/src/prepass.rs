@@ -323,6 +323,15 @@ pub struct UnitScales {
     pub plane_angle_to_radians: f64,
     /// The `IFCPROJECT` express id the scales were resolved from, when found.
     pub project_id: Option<u32>,
+    /// The unusable length-unit factor geometry must refuse (#7678); `length_unit_scale` is then data-only.
+    pub length_unit_refused: Option<u32>,
+}
+
+impl UnitScales {
+    /// The geometry scale: 1.0 for a refused unit, a finite placeholder no mesh uses (#7678).
+    pub fn geometry_length_scale(&self) -> f64 {
+        if self.length_unit_refused.is_some() { 1.0 } else { self.length_unit_scale }
+    }
 }
 
 impl Default for UnitScales {
@@ -331,6 +340,7 @@ impl Default for UnitScales {
             length_unit_scale: 1.0,
             plane_angle_to_radians: 1.0,
             project_id: None,
+            length_unit_refused: None,
         }
     }
 }
@@ -372,17 +382,19 @@ pub fn resolve_unit_scales(
             length_unit_scale,
             plane_angle_to_radians,
             project_id,
+            length_unit_refused: None,
         };
     }
 
     // Chain incomplete (partial index) — resolve against a full index.
     let full_index = ifc_lite_core::build_entity_index(content);
     let mut full_decoder = EntityDecoder::with_index(content, full_index);
+    // The one unit policy (#7678): an unusable factor is a refusal, not metres.
+    let unit = length.map(|scale| ifc_lite_core::LengthUnit { scale, unusable_factor: None })
+        .or_else(|| ifc_lite_core::resolve_length_unit(&mut full_decoder, pid).ok());
     UnitScales {
-        length_unit_scale: length.or_else(|| {
-            ifc_lite_core::extract_length_unit_scale(&mut full_decoder, pid).ok()
-        })
-        .unwrap_or(1.0),
+        length_unit_scale: unit.map_or(1.0, |unit| unit.scale),
+        length_unit_refused: unit.and_then(|unit| unit.unusable_factor),
         plane_angle_to_radians: angle
             .or_else(|| {
                 ifc_lite_core::extract_plane_angle_to_radians(&mut full_decoder, pid).ok()

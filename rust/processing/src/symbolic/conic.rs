@@ -29,7 +29,7 @@ pub(super) fn conic_basis(
     match decoder.decode_by_id(pos_ref) {
         // Wrong type is refused inside `parse_axis2_placement_2d`.
         Ok(position) => parse_axis2_placement_2d(&position, decoder, unit_scale),
-        Err(_) => Transform2D::unresolved(), // dangling Position
+        Err(e) => Transform2D::undecodable(&e), // refused (#7678), or dangling Position
     }
 }
 

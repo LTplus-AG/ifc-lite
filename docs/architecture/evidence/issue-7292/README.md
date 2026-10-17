@@ -113,7 +113,7 @@ for row in manifest['files']:
     data = (pathlib.Path(sys.argv[1])/row['path']).read_bytes()
     assert len(data) == row['bytes']
     assert hashlib.sha256(data).hexdigest() == row['sha256']
-print(pathlib.Path(sys.argv[1])/root)
+print(pathlib.Path(sys.argv[1]))
 PYVERIFY
 ```
 

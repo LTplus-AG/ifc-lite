@@ -7,7 +7,7 @@ use crate::types::response::{
     QuickMetadataSpatialNode,
 };
 use ifc_lite_core::limits::LARGE_COORD_THRESHOLD_METERS;
-use ifc_lite_core::{keyword_eq, IfcType, StepListItems, IFC_TYPES};
+use ifc_lite_core::{keyword_eq, parse_step_real, IfcType, StepListItems, IFC_TYPES};
 use std::collections::{HashMap, HashSet};
 use std::sync::LazyLock;
 
@@ -120,12 +120,10 @@ pub(super) fn extract_name_from_args(args: &[&[u8]], fallback: &str) -> String {
 }
 
 pub(super) fn extract_storey_elevation_from_args(args: &[&[u8]]) -> Option<f64> {
+    // Through the core STEP literal reader, not `str::parse::<f64>`, which
+    // read `inf`, `NaN` and an overflowing `1.E400` as elevations (#7678).
     for index in [9usize, 8usize] {
-        if let Some(value) = args
-            .get(index)
-            .and_then(|token| std::str::from_utf8(token.trim_ascii()).ok())
-            .and_then(|token| token.parse::<f64>().ok())
-        {
+        if let Some(value) = args.get(index).and_then(|token| parse_step_real(token)) {
             return Some(value);
         }
     }
@@ -133,8 +131,7 @@ pub(super) fn extract_storey_elevation_from_args(args: &[&[u8]]) -> Option<f64> 
     // inside the large-coordinate threshold is taken, anything beyond it is a
     // world coordinate (a georeferenced placement, not an elevation).
     args.iter()
-        .filter_map(|token| std::str::from_utf8(token.trim_ascii()).ok())
-        .filter_map(|token| token.parse::<f64>().ok())
+        .filter_map(|token| parse_step_real(token))
         .find(|value| value.abs() < LARGE_COORD_THRESHOLD_METERS)
 }
 

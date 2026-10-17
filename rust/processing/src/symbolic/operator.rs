@@ -4,6 +4,7 @@
 
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 
+use super::is_refused;
 use super::Transform2D;
 
 /// Parse `IfcCartesianTransformationOperator2D` / `…3D` for `IfcMappedItem`
@@ -66,6 +67,9 @@ pub(in super::super) fn parse_cartesian_transformation_operator(
                 let z = coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0);
                 (x * unit_scale, y * unit_scale, z * unit_scale)
             }
+            // Refused by input admission (#7678): drop the symbol, as the
+            // infinity it decoded to before did.
+            Err(e) if is_refused(&e) => return Transform2D::refused(),
             _ => (0.0, 0.0, 0.0),
         },
         None => (0.0, 0.0, 0.0),
@@ -98,6 +102,7 @@ pub(in super::super) fn parse_cartesian_transformation_operator(
                     (1.0, 0.0)
                 }
             }
+            Err(e) if is_refused(&e) => return Transform2D::refused(),
             _ => (1.0, 0.0),
         },
         None => (1.0, 0.0),
@@ -136,6 +141,7 @@ pub(in super::super) fn parse_cartesian_transformation_operator(
                     default_y
                 }
             }
+            Err(e) if is_refused(&e) => return Transform2D::refused(),
             _ => default_y,
         },
         None => default_y,

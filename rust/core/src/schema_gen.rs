@@ -55,7 +55,18 @@ pub enum AttributeValue {
 
 impl AttributeValue {
     /// Convert from Token
+    ///
+    /// A [`Token::UnrepresentableReal`] converts to the signed infinity it
+    /// overflowed to, the value it decoded to before #7678. The decoder uses
+    /// [`Self::from_token_noting`] instead, to learn that the record held one.
     pub fn from_token(token: &Token) -> Self {
+        Self::from_token_noting(token, &mut false)
+    }
+
+    /// [`Self::from_token`] that sets `unrepresentable` when any value in the
+    /// token is a [`Token::UnrepresentableReal`], so the decoder can apply the
+    /// input-admission rule without a second walk (#7678).
+    pub(crate) fn from_token_noting(token: &Token, unrepresentable: &mut bool) -> Self {
         match token {
             Token::EntityRef(id) => AttributeValue::EntityRef(*id),
             Token::String(s) => {
@@ -87,9 +98,16 @@ impl AttributeValue {
             }
             Token::Integer(i) => AttributeValue::Integer(*i),
             Token::Float(f) => AttributeValue::Float(*f),
+            Token::UnrepresentableReal(raw) => {
+                *unrepresentable = true;
+                let negative = raw.first() == Some(&b'-');
+                AttributeValue::Float(if negative { f64::NEG_INFINITY } else { f64::INFINITY })
+            }
             Token::Enum(e) => AttributeValue::Enum(String::from_utf8_lossy(e).into_owned()),
             Token::List(items) => {
-                AttributeValue::List(items.iter().map(Self::from_token).collect())
+                AttributeValue::List(
+                    items.iter().map(|t| Self::from_token_noting(t, unrepresentable)).collect(),
+                )
             }
             Token::TypedValue(type_name, args) => {
                 // For typed values like IFCPARAMETERVALUE(0.), extract the inner value
@@ -104,7 +122,7 @@ impl AttributeValue {
                 let mut values = vec![AttributeValue::String(
                     crate::schema_helpers::normalise_uppercase(&name).into_owned(),
                 )];
-                values.extend(args.iter().map(Self::from_token));
+                values.extend(args.iter().map(|t| Self::from_token_noting(t, unrepresentable)));
                 AttributeValue::List(values)
             }
             Token::Null => AttributeValue::Null,

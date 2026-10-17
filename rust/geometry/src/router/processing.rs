@@ -790,7 +790,7 @@ impl GeometryRouter {
         {
             return Ok(None);
         }
-        if self.processors.get(&item.ifc_type, self.schema).is_none() {
+        if self.processor_for(&item.ifc_type).is_none() {
             return Ok(None);
         }
         let Some(offset) = self.element_frame_rtc(element, decoder)? else {
@@ -1001,7 +1001,7 @@ impl GeometryRouter {
         if let (Some(key), Some(before), Some(cache)) =
             (dedup_key, failure_mark, self.item_dedup_cache.as_ref())
         {
-            if let Some(processor) = self.processors.get(&item.ifc_type, self.schema) {
+            if let Some(processor) = self.processor_for(&item.ifc_type) {
                 if processor.bool_failure_count() > before && !cache.claim_diagnostic(key) {
                     processor.truncate_bool_failures_to(before);
                 }
@@ -1082,7 +1082,7 @@ impl GeometryRouter {
         // Raw-coordinate items rebase in the model frame here; element
         // walkers take `process_raw_item_for_element` first for their own
         // items, so this frame matters for mapped and opening items.
-        if let Some(processor) = self.processors.get(&item.ifc_type, self.schema) {
+        if let Some(processor) = self.processor_for(&item.ifc_type) {
             let mesh =
                 self.process_item_in_rtc_frame(processor.as_ref(), item, decoder, offset_meters)?;
 
@@ -1115,7 +1115,7 @@ impl GeometryRouter {
         element: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Result<Option<Mesh>> {
-        let processor = match self.processors.get(&IfcType::IfcAlignment, self.schema) {
+        let processor = match self.processor_for(&IfcType::IfcAlignment) {
             Some(p) => Rc::clone(p),
             None => return Ok(None),
         };

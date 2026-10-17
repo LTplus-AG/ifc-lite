@@ -11,8 +11,8 @@ use super::ClippingProcessor;
 use crate::diagnostics::{BoolFailureReason, BoolOp};
 use crate::mesh::Mesh;
 #[cfg(feature = "csg_manifold_gate")]
-use crate::router::voids::prism_cut::closure_checks::edge_multiplicity_defects;
-use crate::router::voids::prism_cut::closure_checks::{closed_or_hairline, directed_closed};
+use crate::mesh_check::edge_multiplicity_defects;
+use crate::mesh_check::{closed_or_hairline, directed_closed};
 
 /// Message carried by the [`BoolFailureReason::KernelError`] record this
 /// module emits.

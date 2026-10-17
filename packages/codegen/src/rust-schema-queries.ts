@@ -13,6 +13,7 @@
 import type { IfcEntityInfo } from '@ifc-lite/data';
 import type { EntityDefinition, ExpressSchema } from './express-parser.js';
 import { getAllAttributes } from './express-parser.js';
+import { AttributeKindResolver } from './rust-attribute-flags.js';
 
 /** Adapt class-shaped IFC catalog rows into a name-only EXPRESS supplement. */
 export function entityCatalogSchema(
@@ -65,6 +66,7 @@ export function generateSchemaQueries(
   visibility = 'pub',
 ): string {
   const canonicalNames = new Set(schema.entities.map((entity) => entity.name));
+  const resolver = new AttributeKindResolver(schema);
   return `    /// This entity's attributes, in STEP declaration order.
     ///
     /// Supertype attributes come FIRST, which is what makes the position here
@@ -85,12 +87,18 @@ ${typeUniverse.map((e) => canonicalNames.has(e.name)
         }
     }
 
-    /// The position of a named attribute, for DecodedEntity::get.
+    /// One flag byte per attribute, parallel to \`attribute_names()\`.
     ///
-    /// Case-sensitive: EXPRESS attribute names are PascalCase and the schema's
-    /// spelling is the only one that resolves.
-    pub fn attribute_index(&self, name: &str) -> Option<usize> {
-        self.attribute_names().iter().position(|n| *n == name)
+    /// Bits 0-3 are the value kind (\`AttrKind\`), bit 4 is AGGREGATE (the
+    /// value may be a STEP list) and bit 5 is OPTIONAL. Decode with
+    /// \`SchemaVersion::attribute\`, never by hand.
+    pub fn attribute_flags(&self) -> &'static [u8] {
+        match self {
+${typeUniverse.map((e) => canonicalNames.has(e.name)
+    ? `            Self::${e.name} => &[${getAllAttributes(e, schema).map((a) => resolver.flagByte(a)).join(', ')}],`
+    : `            Self::${e.name} => &[],`).join('\n')}
+            Self::Unknown(_) => &[],
+        }
     }
 
     /// Whether ${schema.name} itself declares this class.

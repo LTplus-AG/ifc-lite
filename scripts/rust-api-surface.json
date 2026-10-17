@@ -1,5 +1,7 @@
 {
   "ifc-lite-core": {
+    "AttrKind": "enum (non_exhaustive)",
+    "AttrSlot": "struct (non_exhaustive)",
     "AttributeValue": "enum { Binary(String); Derived; EntityRef(u32); Enum(String); Float(f64); Integer(i64); List(Vec<AttributeValue>); Null; String(String) }",
     "ColumnLengthMismatch": "struct { ids: usize; lengths: usize; starts: usize }",
     "ColumnarEntityIndex": "struct {  }",
@@ -32,6 +34,7 @@
     "Result": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "RtcVerdict": "enum { Large { anchor: (f64, f64, f64) }; Small }",
     "SchemaEntityInfo": "struct { is_abstract: bool; name: &'static str; parent: Option<&'static str> }",
+    "SchemaVersion": "enum (non_exhaustive)",
     "SpanBeyondU32": "struct { end: usize; id: u32; start: usize }",
     "StepListItems": "struct {  }",
     "StepNumber": "enum { Integer(i64); Real(f64); Unrepresentable(&'a [u8]) }",

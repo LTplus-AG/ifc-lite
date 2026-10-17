@@ -1028,8 +1028,45 @@ jobs:
           # every number an INTEGER, any KMZ placement accepted, the Python
           # probe passing NaN, and the TS twin's toStepReal / toStepInteger.
           # Once finite_json.rs is on main, ordinary whole-change revert resumes.
+          # #7772: the new `math` home carries its own tests, and the changed
+          # clash tests name `math::v3`, so a whole-change revert cannot load
+          # them (INCONCLUSIVE). Keep the module and break ONLY the contracts
+          # the tests pin: the `canonical` tie rule (clash parity), the
+          # `normalize` threshold, the conjugation's `+ 0.0` sign-of-zero fold
+          # and the affine-inverse finiteness refusal. Once math/mod.rs is on
+          # main, ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/math/mod.rs | grep -Fxq 'rust/geometry/src/math/mod.rs'; then
+            oracle_args+=(--mutation tests/evidence/math-home-7772/behaviour.oracle.patch)
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/python/src/finite_json.rs | grep -Fxq 'rust/python/src/finite_json.rs'; then
             oracle_args+=(--mutation tests/evidence/export-nonfinite-7679/behaviour.oracle.patch)
+          # #7777: the micro-homes PR adds ifc_lite_core::{guid, hash, fmt_num}, which
+          # its changed tests import, so a whole-change revert cannot compile them
+          # (INCONCLUSIVE). Keep the modules and disable ONLY pinned behaviour: the
+          # GlobalId first-char rule and leading window, the placeholder offset, the
+          # FNV-1a prime, ContentHash framing and the word-wise mix step. Once
+          # rust/core/src/guid.rs is on main, ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/core/src/guid.rs | grep -Fxq 'rust/core/src/guid.rs'; then
+            oracle_args+=(--mutation tests/evidence/micro-homes-7777/behaviour.oracle.patch)
+          # #7686: the planar-face triangulation adds `quad_split_3d` and
+          # `triangulate_planar_face`, which the changed unit tests call, so a
+          # whole-change revert cannot compile them (INCONCLUSIVE). Keep every
+          # item and restore ONLY the old behaviour: the 0-2 quad diagonal and
+          # first-edges quad normal, the outer-fan fallback over failed holes,
+          # unreadable bounds dropped instead of refusing the face, and
+          # SameSense flipping planar faces (brep and structural). Once
+          # planar_tests.rs is on main,
+          # ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/processors/brep/planar_tests.rs | grep -Fxq 'rust/geometry/src/processors/brep/planar_tests.rs'; then
+            oracle_args+=(--mutation tests/evidence/geometry-planar-7686/behaviour.oracle.patch)
+          # #7696: the new ifc-lite-testkit crate is what every migrated test now
+          # calls, so a whole-change revert deletes it and none of them compile
+          # (INCONCLUSIVE). Keep the crate and disable ONLY the
+          # IFC_LITE_REQUIRE_FIXTURES gate: a missing or LFS-pointer fixture
+          # skips even when CI demands it, which is the #2802 failure mode; the
+          # gate tests (including the env-wiring child run) turn RED. Once
+          # fixtures.rs is on main, ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/testkit/src/fixtures.rs | grep -Fxq 'rust/testkit/src/fixtures.rs'; then
+            oracle_args+=(--mutation tests/evidence/testkit-7696/gate.oracle.patch)
           fi
           node scripts/check-test-revert-oracle.mjs "${oracle_args[@]}"
           # #7512: observe cleanup independently of scoped admission/schema.

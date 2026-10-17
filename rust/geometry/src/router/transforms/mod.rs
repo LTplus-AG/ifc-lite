@@ -20,6 +20,7 @@ mod walk;
 mod placement_depth_tests;
 
 use super::GeometryRouter;
+use crate::math::mat4;
 use crate::{Mesh, Result, SubMeshCollection};
 use ifc_lite_core::{DecodedEntity, EntityDecoder};
 use nalgebra::Matrix4;
@@ -90,30 +91,6 @@ pub(crate) fn instancing_enabled() -> bool {
     true
 }
 
-/// Flatten a nalgebra `Matrix4<f64>` into a **column-major** `[f64; 16]` for the
-/// [`EntityDecoder`] placement-transform memo. `Matrix4::as_slice` is already
-/// column-major length 16, and [`Matrix4::from_column_slice`] reconstructs it
-/// bit-for-bit (an f64 round-trip is exact), so the memo is byte-identical to
-/// recomputing the transform. Distinct from [`mat4_to_row_major`], which is the
-/// row-major GPU-instancing convention.
-#[inline]
-fn mat4_to_col_array(m: &Matrix4<f64>) -> [f64; 16] {
-    *m.as_slice()
-        .first_chunk::<16>()
-        .expect("Matrix4<f64> as_slice is exactly 16 elements")
-}
-
-/// Flatten a column-major nalgebra `Matrix4<f64>` into a row-major `[f64; 16]`
-/// (the [`crate::mesh::InstanceMeta`] convention; matches a GPU mat4 fed row-by-row).
-pub(crate) fn mat4_to_row_major(m: &Matrix4<f64>) -> [f64; 16] {
-    [
-        m[(0, 0)], m[(0, 1)], m[(0, 2)], m[(0, 3)],
-        m[(1, 0)], m[(1, 1)], m[(1, 2)], m[(1, 3)],
-        m[(2, 0)], m[(2, 1)], m[(2, 2)], m[(2, 3)],
-        m[(3, 0)], m[(3, 1)], m[(3, 2)], m[(3, 3)],
-    ]
-}
-
 impl GeometryRouter {
     pub(super) fn local_frame_enabled(&self) -> bool {
         self.local_frame_enabled.unwrap_or_else(local_frame_enabled)
@@ -163,7 +140,7 @@ impl GeometryRouter {
         // Only fires when processing already marked this mesh instanceable (so the
         // metadata exists); a no-op otherwise, keeping the flat path untouched.
         if let Some(im) = mesh.instance_meta.as_mut() {
-            im.transform = mat4_to_row_major(&transform);
+            im.transform = mat4::from_na(&transform);
         }
         self.transform_mesh_world(mesh, &transform);
         Ok(())
@@ -205,7 +182,7 @@ impl GeometryRouter {
                     // always correct (placement IS baked into the vertices below), so the
                     // dedup made it look like repeated geometry was "missing".
                     if instancing_enabled() {
-                        let row_major = mat4_to_row_major(&transform);
+                        let row_major = mat4::from_na(&transform);
                         for sub in &mut sub_meshes.sub_meshes {
                             if let Some(im) = sub.mesh.instance_meta.as_mut() {
                                 im.transform = row_major;
@@ -285,9 +262,7 @@ impl GeometryRouter {
             )));
         }
         self.scale_transform(&mut transform);
-        let mut result = [0.0; 16];
-        result.copy_from_slice(transform.as_slice());
-        Ok(result)
+        Ok(mat4::col_major_array(&transform))
     }
 
 }

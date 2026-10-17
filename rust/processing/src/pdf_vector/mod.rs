@@ -16,7 +16,7 @@ mod report;
 mod strokes;
 mod stroke_topology;
 mod types;
-use sha2::{Digest, Sha256};
+use crate::fingerprint::Sha256Writer;
 pub use report::{FidelityReport, Omission, OmissionSummary, FIDELITY_ALGORITHM, MAX_LISTED_OMISSIONS};
 pub use types::*;
 
@@ -41,14 +41,14 @@ pub fn prepare_pdf_vector_page_with_clip(
     validate_page(page)?;
     validate_conversion_clip(page, conversion_clip_pdf)?;
     let interpreted = interpret::run(page, conversion_clip_pdf)?;
-    let mut hash = Sha256::new();
-    hash.update(ALGORITHM.as_bytes());
-    hash.update(serde_json::to_vec(page).map_err(|e| format!("Cannot bind PDF request: {e}"))?);
+    let mut hash = Sha256Writer::new();
+    hash.bytes(ALGORITHM.as_bytes());
+    hash.bytes(serde_json::to_vec(page).map_err(|e| format!("Cannot bind PDF request: {e}"))?);
     if let Some(clip) = conversion_clip_pdf {
-        hash.update(b"conversion-clip-pdf\0");
-        hash.update(serde_json::to_vec(&clip).map_err(|e| format!("Cannot bind PDF clip: {e}"))?);
+        hash.bytes(b"conversion-clip-pdf\0");
+        hash.bytes(serde_json::to_vec(&clip).map_err(|e| format!("Cannot bind PDF clip: {e}"))?);
     }
-    let request_sha256 = format!("{:x}", hash.finalize());
+    let request_sha256 = hash.finish_hex();
     let fidelity = interpreted.report.finish(&request_sha256, interpreted.paths.len());
     Ok(PreparedPdfVectorPage {
         request_sha256,

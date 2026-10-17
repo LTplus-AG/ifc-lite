@@ -1,0 +1,53 @@
+diff --git a/rust/geometry/src/math/frame.rs b/rust/geometry/src/math/frame.rs
+--- a/rust/geometry/src/math/frame.rs
++++ b/rust/geometry/src/math/frame.rs
+@@ -90,7 +90,7 @@
+     let (p, s) = ([0usize, 2, 1], [1.0, 1.0, -1.0]);
+     std::array::from_fn(|i| {
+         let (r, c) = (i / 3, i % 3);
+-        s[r] * s[c] * m[p[r] * 3 + p[c]]
++        s[r] * s[c] * m[p[r] * 3 + p[c]] + 0.0
+     })
+ }
+ 
+@@ -98,6 +98,6 @@
+ fn conjugate4(m: &M4, p: [usize; 4], s: [f64; 4]) -> M4 {
+     std::array::from_fn(|i| {
+         let (r, c) = (i / 4, i % 4);
+-        s[r] * s[c] * m[p[r] * 4 + p[c]]
++        s[r] * s[c] * m[p[r] * 4 + p[c]] + 0.0
+     })
+ }
+diff --git a/rust/geometry/src/math/mat4.rs b/rust/geometry/src/math/mat4.rs
+--- a/rust/geometry/src/math/mat4.rs
++++ b/rust/geometry/src/math/mat4.rs
+@@ -111,7 +111,7 @@
+     let d = m[4]; let e = m[5]; let f = m[6];
+     let g = m[8]; let h = m[9]; let i = m[10];
+     let det = a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g);
+-    if det.abs() < SINGULAR_DET_EPS {
++    if !det.is_finite() || det.abs() < SINGULAR_DET_EPS {
+         return None;
+     }
+     let inv_det = 1.0 / det;
+diff --git a/rust/geometry/src/math/v3.rs b/rust/geometry/src/math/v3.rs
+--- a/rust/geometry/src/math/v3.rs
++++ b/rust/geometry/src/math/v3.rs
+@@ -63,7 +63,7 @@
+ #[inline]
+ pub fn normalize(v: V3, min_len: f64) -> Option<V3> {
+     let len = norm(v);
+-    if !len.is_finite() || len < min_len {
++    if !len.is_finite() || len <= min_len {
+         return None;
+     }
+     Some([v[0] / len, v[1] / len, v[2] / len])
+@@ -88,7 +88,7 @@
+ pub fn canonical(n: V3) -> V3 {
+     let (ax, ay, az) = (n[0].abs(), n[1].abs(), n[2].abs());
+     let mut idx = 0usize;
+-    if ay > ax && ay > az {
++    if ay > ax && ay >= az {
+         idx = 1;
+     } else if az > ax && az > ay {
+         idx = 2;

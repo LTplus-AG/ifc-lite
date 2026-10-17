@@ -335,14 +335,7 @@ pub(super) fn write_header(out: &mut String, opts: &UsdOptions, content: &[u8]) 
 /// platform and toolchain and the export stays byte-deterministic. Not cryptographic;
 /// a change-detection / lineage handle, not a tamper-proof digest.
 pub(super) fn source_fingerprint(content: &[u8]) -> String {
-    const FNV_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
-    const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
-    let mut h = FNV_OFFSET;
-    for &b in content {
-        h ^= b as u64;
-        h = h.wrapping_mul(FNV_PRIME);
-    }
-    format!("{h:016x}")
+    format!("{:016x}", ifc_lite_core::hash::fnv1a64(content))
 }
 
 /// USD `purpose` for an IFC type: void-cut and spatial-volume elements (openings, spaces)

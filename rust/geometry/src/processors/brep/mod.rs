@@ -10,5 +10,8 @@
 mod faceted;
 mod surface_model;
 
+#[cfg(test)]
+mod planar_tests;
+
 pub use faceted::FacetedBrepProcessor;
 pub use surface_model::{FaceBasedSurfaceModelProcessor, ShellBasedSurfaceModelProcessor};

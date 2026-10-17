@@ -34,14 +34,13 @@ impl ManifestRng {
 }
 
 #[inline]
-fn mix(h: &mut u64, s: Sign) {
+fn mix(h: &mut ifc_lite_core::hash::Fnv1a64, s: Sign) {
     let code: u8 = match s {
         Sign::Negative => 0,
         Sign::Zero => 1,
         Sign::Positive => 2,
     };
-    *h ^= code as u64;
-    *h = h.wrapping_mul(0x0000_0100_0000_01b3); // FNV-1a prime
+    h.mix_word(code as u64);
 }
 
 /// FNV-1a hash over the signs of a fixed battery of predicate calls across all
@@ -49,7 +48,7 @@ fn mix(h: &mut u64, s: Sign) {
 /// determinism argument above.
 pub fn indirect_sign_manifest() -> u64 {
     let mut rng = ManifestRng(0x9e37_79b9_7f4a_7c15);
-    let mut h: u64 = 0xcbf2_9ce4_8422_2325; // FNV-1a offset basis
+    let mut h = ifc_lite_core::hash::Fnv1a64::new();
     for _ in 0..1000 {
         let l = Lpi { p: rng.p(), q: rng.p(), r: rng.p(), s: rng.p(), t: rng.p() };
         let t = Tpi {
@@ -82,7 +81,7 @@ pub fn indirect_sign_manifest() -> u64 {
         mix(&mut h, cmp_lex(&il, &il2));
         mix(&mut h, cmp_lex(&it, &ImplicitPoint::Explicit(l.p)));
     }
-    h
+    h.finish()
 }
 
 #[cfg(test)]

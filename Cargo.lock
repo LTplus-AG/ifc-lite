@@ -1501,6 +1501,7 @@ dependencies = [
 name = "ifc-lite-core"
 version = "21.4.0"
 dependencies = [
+ "bytemuck",
  "fast-float2",
  "futures-core",
  "futures-util",
@@ -1512,6 +1513,7 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.21",
  "tokio",
+ "twox-hash",
 ]
 
 [[package]]
@@ -1524,13 +1526,13 @@ dependencies = [
  "ifc-lite-geometry",
  "ifc-lite-landxml",
  "ifc-lite-processing",
+ "ifc-lite-testkit",
  "nalgebra",
  "parquet",
  "rustc-hash",
  "serde",
  "serde_json",
  "sha2",
- "twox-hash",
  "zip",
 ]
 
@@ -1556,6 +1558,7 @@ dependencies = [
  "i_overlay",
  "ifc-lite-clash",
  "ifc-lite-core",
+ "ifc-lite-testkit",
  "insta",
  "jpeg-decoder",
  "nalgebra",
@@ -1579,6 +1582,7 @@ version = "21.4.0"
 dependencies = [
  "geometry-predicates",
  "ifc-lite-geometry",
+ "ifc-lite-testkit",
  "quick-xml",
  "serde",
  "serde_json",
@@ -1590,6 +1594,7 @@ version = "21.4.0"
 dependencies = [
  "ifc-lite-core",
  "ifc-lite-geometry",
+ "ifc-lite-testkit",
  "memchr",
  "nalgebra",
  "png",
@@ -1619,6 +1624,7 @@ dependencies = [
  "ifc-lite-core",
  "ifc-lite-geometry",
  "ifc-lite-processing",
+ "ifc-lite-testkit",
  "mimalloc",
  "num_cpus",
  "parquet",
@@ -1637,6 +1643,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "ifc-lite-testkit"
+version = "21.4.0"
+
+[[package]]
 name = "ifc-lite-wasm"
 version = "21.4.0"
 dependencies = [
@@ -1647,6 +1657,7 @@ dependencies = [
  "ifc-lite-geometry",
  "ifc-lite-landxml",
  "ifc-lite-processing",
+ "ifc-lite-testkit",
  "js-sys",
  "rayon-core",
  "rustc-hash",

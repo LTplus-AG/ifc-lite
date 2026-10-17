@@ -16,7 +16,6 @@ use crate::types::MeshData;
 use ifc_lite_geometry::{collate_refs_in_basis, InstanceMeshRef, Matrix4};
 use rustc_hash::FxHashMap;
 use std::borrow::Borrow;
-use std::hash::{Hash, Hasher};
 
 /// Content-hash fallback used by BOTH writers: `collate_rotation_aware_placements`
 /// runs first, this catches what it did not place. Two meshes with bit-identical
@@ -28,42 +27,19 @@ use std::hash::{Hash, Hasher};
 /// (normals derive from positions/indices) — no `/optimized` behaviour change.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) struct MeshGeometryKey {
-    /// Hash of the quantized positions.
-    positions_hash: u64,
-    /// Hash of the indices.
-    indices_hash: u64,
-    /// Hash of the normals.
-    normals_hash: u64,
-}
-
-/// Compute a fast hash of a u32 slice.
-fn hash_u32_slice(data: &[u32]) -> u64 {
-    use std::collections::hash_map::DefaultHasher;
-    let mut hasher = DefaultHasher::new();
-    for item in data {
-        item.hash(&mut hasher);
-    }
-    hasher.finish()
-}
-
-/// Compute a fast hash of a f32 slice (using bit representation).
-fn hash_f32_slice(data: &[f32]) -> u64 {
-    use std::collections::hash_map::DefaultHasher;
-    let mut hasher = DefaultHasher::new();
-    for item in data {
-        // Convert f32 to bits for hashing (handles NaN consistently)
-        item.to_bits().hash(&mut hasher);
-    }
-    hasher.finish()
+    /// One xxh3-128 over the length-framed positions, indices and normals
+    /// (`ifc_lite_core::hash::ContentHash`). In-memory grouping only: it is
+    /// never written to a table or a cache key, so the algorithm is free to
+    /// change without moving any output byte (it replaced `DefaultHasher`,
+    /// whose algorithm is not stable across Rust releases).
+    content: u128,
 }
 
 /// Build the content-hash key for one mesh's (origin-relative) geometry.
 pub(crate) fn mesh_geometry_key(mesh: &MeshData) -> MeshGeometryKey {
-    MeshGeometryKey {
-        positions_hash: hash_f32_slice(&mesh.positions),
-        indices_hash: hash_u32_slice(&mesh.indices),
-        normals_hash: hash_f32_slice(&mesh.normals),
-    }
+    let mut h = ifc_lite_core::hash::ContentHash::new();
+    h.write_f32s(&mesh.positions).write_u32s(&mesh.indices).write_f32s(&mesh.normals);
+    MeshGeometryKey { content: h.finish() }
 }
 
 /// The frame this route's baked vertices are in, relative to the native frame

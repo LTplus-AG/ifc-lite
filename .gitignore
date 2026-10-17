@@ -172,6 +172,7 @@ tests/ai-eval/results/
 
 # Python bytecode caches
 __pycache__/
+# Spelled out: scripts/lib/ci-path-coverage.mjs's glob matcher has no [..] classes.
 *.pyc
 *.pyo
 *.pyd

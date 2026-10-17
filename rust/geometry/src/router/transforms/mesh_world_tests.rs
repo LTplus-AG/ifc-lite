@@ -6,7 +6,7 @@
 //! object-space extent and the exact placement `apply_placement` resolved,
 //! independent of `origin` (a world-space AABB-centre translation captured
 //! by this same function for an unrelated reason — f32 precision).
-use super::super::mat4_to_row_major;
+use crate::math::mat4::from_na as mat4_to_row_major;
 use super::*;
 use crate::Mesh;
 use nalgebra::{Rotation3, Translation3};

@@ -26,42 +26,14 @@
 //!       thickness axis hit ZERO wall triangles — i.e. the void cut
 //!       reached the post-clip mesh.
 
-mod support;
-
 use ifc_lite_core::{build_entity_index, EntityDecoder, EntityScanner};
 use ifc_lite_geometry::{propagate_voids_to_parts, GeometryRouter, Mesh};
 use rustc_hash::FxHashMap;
-use std::fs;
-use std::path::PathBuf;
 
-fn fixture_path(relative: &str) -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..")
-        .join(relative)
-}
-
-/// Load a fixture, distinguishing a genuinely absent file from a broken
-/// read. `NotFound` is the fresh-clone case (`pnpm fixtures` not run yet):
-/// skip unless `IFC_LITE_REQUIRE_FIXTURES=1`, in which case panic naming
-/// the path, matching every other skip-on-missing test in this crate. Any
-/// other `io::Error` (permission denied, corrupt read, ...) means the
-/// environment is broken rather than merely missing an optional download,
-/// so it panics unconditionally regardless of the flag.
+/// Catalogued fixture or `None` (skip); a missing one panics under
+/// `IFC_LITE_REQUIRE_FIXTURES=1` (`ifc_lite_testkit`).
 fn load_fixture(relative: &str) -> Option<String> {
-    let p = fixture_path(relative);
-    match fs::read_to_string(&p) {
-        Ok(content) => Some(content),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            assert!(
-                !support::require_fixtures(),
-                "fixture {} not present and IFC_LITE_REQUIRE_FIXTURES=1 -- run `pnpm fixtures` to download (sha256 in tests/models/manifest.json)",
-                p.display()
-            );
-            None
-        }
-        Err(e) => panic!("fixture {} exists but could not be read: {e}", p.display()),
-    }
+    ifc_lite_testkit::fixture_text(relative)
 }
 
 /// Build the void index the same way production does.
@@ -455,7 +427,7 @@ fn max_z_silhouette(mesh: &Mesh, bins: usize) -> Vec<f32> {
     max_per_bin
 }
 
-const FIXTURE: &str = "tests/models/ara3d/AC20-FZK-Haus.ifc";
+const FIXTURE: &str = "ara3d/AC20-FZK-Haus.ifc";
 
 // Wall #60012 = Wand-Ext-OG-1 (10m, gable wall, 2 chained PolygonalBoundedHalfSpace clips,
 // has round window opening #60579 via IfcRelVoidsElement #60582).

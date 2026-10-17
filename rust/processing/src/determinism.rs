@@ -144,14 +144,10 @@ ENDSEC;
 END-ISO-10303-21;
 "#;
 
-const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
-const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
+const FNV_OFFSET_BASIS: u64 = ifc_lite_core::hash::FNV64_OFFSET;
 
 fn fnv1a_bytes(h: &mut u64, bytes: &[u8]) {
-    for &b in bytes {
-        *h ^= b as u64;
-        *h = h.wrapping_mul(FNV_PRIME);
-    }
+    *h = ifc_lite_core::hash::fnv1a64_extend(*h, bytes);
 }
 
 fn fnv1a_u32s(h: &mut u64, vals: &[u32]) {

@@ -18,24 +18,10 @@ use ifc_lite_processing::style::SpecularMaterial;
 use ifc_lite_processing::{process_geometry, MeshData};
 use rustc_hash::FxHashMap;
 
-const FIXTURE: &str = "tests/models/ara3d/AC20-FZK-Haus.ifc";
-
-fn fixture_path(relative: &str) -> std::path::PathBuf {
-    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..")
-        .join(relative)
-}
+const FIXTURE: &str = "ara3d/AC20-FZK-Haus.ifc";
 
 fn load_fixture() -> Option<String> {
-    let path = fixture_path(FIXTURE);
-    match std::fs::read_to_string(&path) {
-        Ok(c) => Some(c),
-        Err(_) => {
-            eprintln!("{FIXTURE} missing — run `pnpm fixtures`. Skipping #5582 fixture test.");
-            None
-        }
-    }
+    ifc_lite_testkit::fixture_text(FIXTURE)
 }
 
 /// The finish index the WASM prepass ships as `styleFinishes`.

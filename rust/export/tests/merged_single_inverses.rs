@@ -15,10 +15,7 @@ fn guid(label: &str) -> String {
 }
 
 fn model(schema: &str, lines: &[String]) -> String {
-    format!(
-        "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_SCHEMA(('{schema}'));\nENDSEC;\nDATA;\n{}\nENDSEC;\nEND-ISO-10303-21;\n",
-        lines.join("\n")
-    )
+    ifc_lite_testkit::step_file(schema, lines)
 }
 
 /// A project, proxies `objects` (ids from 10), and one property set (GlobalId

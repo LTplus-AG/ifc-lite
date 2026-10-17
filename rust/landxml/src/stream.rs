@@ -2,7 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-mod decoder;
 mod derived;
 mod event;
 mod fragments;
@@ -14,10 +13,9 @@ mod token;
 pub use lifecycle::LandXmlMetadataStreamAssembler;
 
 use crate::{
-    parser::Parser, preflight::max_markup_bytes, xml::error, LandXmlDiagnosticCode as Code,
+    parser::Parser, preflight::max_markup_bytes, xml::{error, Decoder}, LandXmlDiagnosticCode as Code,
     LandXmlError, LandXmlLimits,
 };
-use decoder::Decoder;
 pub use event::{
     LandXmlMetadataRecord, LandXmlMetadataRecordFragment, LandXmlMetadataStreamEnd,
     LandXmlMetadataStreamEvent, LandXmlMetadataStreamHeader, LandXmlStreamEvent,
@@ -172,7 +170,8 @@ impl LandXmlTinStreamSession {
         if self.closed {
             return Err(error(Code::InvalidSemantic, "LandXML stream session is closed"));
         }
-        let decoded = self.decoder.finish();
+        let decoded = self.decoder.finish().map(|tail| self.pending_input.extend(tail));
+        let decoded = decoded.and_then(|()| self.consume_pending_input());
         self.close_on_error(decoded)?;
         // Undrained output is recoverable (drain, then retry); other errors close.
         if self.output_pending() || !self.pending_input.is_empty() {

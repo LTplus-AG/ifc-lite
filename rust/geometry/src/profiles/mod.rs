@@ -8,7 +8,7 @@
 
 use crate::profile::Profile2D;
 use crate::tessellation::TessellationQuality;
-use crate::{Error, Point2, Point3, Result};
+use crate::{math::tol, Error, Point2, Point3, Result};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType, ProfileCategory};
 use std::cell::Cell;
 
@@ -520,7 +520,7 @@ impl ProfileProcessor {
             if segment.ifc_type == IfcType::IfcCurveSegment {
                 if let Some(points) = crate::curve_segment::sample_curve_segment(&segment, decoder) {
                     for p in points {
-                        if result.last().is_none_or(|last: &Point3<f64>| (last - p).norm() > 1e-9) {
+                        if result.last().is_none_or(|last: &Point3<f64>| (last - p).norm() > tol::POINT_COINCIDENT_EPS) {
                             result.push(p);
                         }
                     }
@@ -534,7 +534,7 @@ impl ProfileProcessor {
                                 axis2_placement_location_and_x_axis_3d(&placement, decoder)
                             {
                                 if result.last().is_none_or(|last: &Point3<f64>| {
-                                    (last - origin).norm() > 1e-9
+                                    (last - origin).norm() > tol::POINT_COINCIDENT_EPS
                                 }) {
                                     result.push(origin);
                                 }
@@ -547,7 +547,7 @@ impl ProfileProcessor {
                                     .get(3)
                                     .and_then(|a| a.as_float())
                                     .unwrap_or(0.0);
-                                if segment_length > 1e-9 {
+                                if segment_length > tol::LENGTH_ZERO_EPS {
                                     last_curve_segment_terminal =
                                         Some(origin + x_axis * segment_length);
                                 } else {
@@ -605,7 +605,7 @@ impl ProfileProcessor {
         // segments, tangent approximation for curves) — see above.
         if let Some(terminal) = last_curve_segment_terminal {
             if result.last().is_none_or(|last: &Point3<f64>| {
-                (last - terminal).norm() > 1e-9
+                (last - terminal).norm() > tol::POINT_COINCIDENT_EPS
             }) {
                 result.push(terminal);
             }

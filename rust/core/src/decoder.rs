@@ -8,8 +8,9 @@
 
 use crate::columnar_index::EntityIndexStore;
 use crate::error::{Error, Result};
+use crate::parser::StepRecord;
 use crate::parser::{
-    is_step_space, parse_entity, parse_step_numeric, report_scan_diagnostics, skip_step_trivia,
+    parse_entity, parse_step_numeric, report_scan_diagnostics, skip_step_trivia,
     EntityScanner,
 };
 use crate::schema_gen::{AttributeValue, DecodedEntity};
@@ -589,52 +590,6 @@ impl<'a> EntityDecoder<'a> {
         self.content.get(start..end)
     }
 
-    /// Fast extraction of first entity ref from raw bytes
-    /// Useful for BREP -> shell ID, Face -> FaceBound, etc.
-    /// Returns the first entity reference ID found in the entity
-    #[inline]
-    pub fn get_first_entity_ref_fast(&mut self, entity_id: u32) -> Option<u32> {
-        let bytes = self.get_raw_bytes(entity_id)?;
-        let len = bytes.len();
-        let mut i = 0;
-
-        // Skip to first '(' after '='
-        while i < len && bytes[i] != b'(' {
-            i += 1;
-        }
-        if i >= len {
-            return None;
-        }
-        i += 1; // Skip first '('
-
-        // Find first '#' which is the entity ref
-        while i < len {
-            // Skip whitespace
-            while i < len && is_step_space(bytes[i]) {
-                i += 1;
-            }
-
-            if i >= len {
-                return None;
-            }
-
-            if bytes[i] == b'#' {
-                i += 1;
-                let start = i;
-                while i < len && bytes[i].is_ascii_digit() {
-                    i += 1;
-                }
-                if i > start {
-                    // Shared checked accumulator (#3421): refuses rather than wraps.
-                    return crate::express_id::parse_express_id(&bytes[start..i]);
-                }
-            }
-            i += 1;
-        }
-
-        None
-    }
-
     /// Fast extraction of PolyLoop point IDs directly from raw bytes
     /// Bypasses full entity decoding for BREP optimization
     /// Returns list of entity IDs for CartesianPoints
@@ -655,66 +610,11 @@ impl<'a> EntityDecoder<'a> {
     /// because it resolves the points too.
     #[inline]
     pub fn get_polyloop_point_ids_fast(&mut self, entity_id: u32) -> Option<Vec<u32>> {
-        let bytes = self.get_raw_bytes(entity_id)?;
-
-        // IFCPOLYLOOP((#id1,#id2,#id3,...));
-        let mut i = 0;
-        let len = bytes.len();
-
-        // Skip to first '(' after '='
-        while i < len && bytes[i] != b'(' {
-            i += 1;
-        }
-        if i >= len {
-            return None;
-        }
-        i += 1; // Skip first '('
-
-        // Skip to second '(' for the point list
-        while i < len && bytes[i] != b'(' {
-            i += 1;
-        }
-        if i >= len {
-            return None;
-        }
-        i += 1; // Skip second '('
-
-        // Parse point IDs
+        // IFCPOLYLOOP((#id1,#id2,#id3,...)); every item one reference, or the
+        // whole loop is refused (D3).
         let mut point_ids = Vec::with_capacity(8); // Most faces have 3-8 vertices
-
-        while i < len {
-            // Skip whitespace and commas
-            while i < len
-                && (bytes[i] == b',' || is_step_space(bytes[i]))
-            {
-                i += 1;
-            }
-
-            if i >= len || bytes[i] == b')' {
-                break;
-            }
-
-            // Expect '#' followed by number
-            if bytes[i] == b'#' {
-                i += 1;
-                // One digit walk, shared with the scanner (#3395). A ref that
-                // was met but does not resolve refuses the whole loop (#3421):
-                // a shorter polygon is a different face, not a smaller error.
-                let (digits, id) = crate::express_id::parse_express_id_prefix(&bytes[i..]);
-                i += digits;
-                if digits > 0 {
-                    point_ids.push(id?);
-                }
-            } else {
-                i += 1; // Skip unknown character
-            }
-        }
-
-        if point_ids.is_empty() {
-            None
-        } else {
-            Some(point_ids)
-        }
+        StepRecord::parse(self.get_raw_bytes(entity_id)?)?.ref_list_at(0, &mut point_ids)?;
+        (!point_ids.is_empty()).then_some(point_ids)
     }
 
     /// Fast extraction of CartesianPoint coordinates directly from raw bytes
@@ -730,126 +630,26 @@ impl<'a> EntityDecoder<'a> {
     /// Bypasses full entity decoding for BREP optimization
     #[inline]
     pub fn get_face_bound_fast(&mut self, entity_id: u32) -> Option<(u32, bool, bool)> {
-        let bytes = self.get_raw_bytes(entity_id)?;
-        let len = bytes.len();
-
-        // Find '=' to locate start of type name, and '(' for end
-        let mut eq_pos = 0;
-        while eq_pos < len && bytes[eq_pos] != b'=' {
-            eq_pos += 1;
-        }
-        if eq_pos >= len {
-            return None;
-        }
-
+        let record = StepRecord::parse(self.get_raw_bytes(entity_id)?)?;
         // IFCFACEOUTERBOUND vs IFCFACEBOUND, under STEP's case-insensitive
         // keyword rule (#4497): a CamelCase `IfcFaceOuterBound` is an outer
-        // bound too (#7689, CORE-11). Trivia (whitespace and `/* ... */`)
-        // may sit on either side of the keyword (#3789), so it is skipped,
-        // not sliced into the name.
-        let start = skip_step_trivia(bytes, eq_pos + 1)?;
-        let (is_outer, end) = face_bound_keyword(bytes, start);
-        let mut i = skip_step_trivia(bytes, end)?;
-        if bytes.get(i) != Some(&b'(') {
-            return None;
-        }
-
-        i += 1; // Skip first '('
-
-        // Skip whitespace
-        while i < len && is_step_space(bytes[i]) {
-            i += 1;
-        }
-
-        // Expect '#' for loop entity ref
-        if i >= len || bytes[i] != b'#' {
-            return None;
-        }
-        i += 1;
-
-        // Parse loop ID
-        let start = i;
-        while i < len && bytes[i].is_ascii_digit() {
-            i += 1;
-        }
-        if i <= start {
-            return None;
-        }
-        // Shared checked accumulator (#3421): an oversized loop ref fails
-        // this lookup outright, like any other unresolvable reference,
-        // instead of resolving to the wrong loop.
-        let loop_id = crate::express_id::parse_express_id(&bytes[start..i])?;
-
-        // Find orientation after comma - default to true (.T.)
-        // Skip to comma
-        while i < len && bytes[i] != b',' {
-            i += 1;
-        }
-        i += 1; // Skip comma
-
-        // Skip whitespace
-        while i < len && is_step_space(bytes[i]) {
-            i += 1;
-        }
-
-        // Check for .F. (false) or .T. (true)
-        let orientation = if i + 2 < len && bytes[i] == b'.' && bytes[i + 2] == b'.' {
-            bytes[i + 1] != b'F'
-        } else {
-            true // Default to true
-        };
-
+        // bound too (#7689, CORE-11).
+        let is_outer = record.keyword_is(b"IFCFACEOUTERBOUND");
+        // An oversized or malformed loop ref fails this lookup outright, like
+        // any other unresolvable reference (#3421). Orientation defaults to
+        // true (.T.) when it is absent, `$` or not an enumeration; only `.F.`
+        // flips it.
+        let (loop_id, orientation) = record.ref_and_enum()?;
+        let orientation = orientation.is_none_or(|e| !e.eq_ignore_ascii_case(b"F"));
         Some((loop_id, orientation, is_outer))
     }
-}
-
-/// Whether the keyword at `bytes[start..]` is `IFCFACEOUTERBOUND` under
-/// `keyword_eq`'s rule (ASCII case fold), and where it ends.
-///
-/// This runs once per face bound of every faceted brep, so the uppercase
-/// spellings every exporter writes are matched with one prefix compare; any
-/// other spelling falls back to scanning the keyword and folding its case.
-#[inline]
-fn face_bound_keyword(bytes: &[u8], start: usize) -> (bool, usize) {
-    const OUTER: &[u8] = b"IFCFACEOUTERBOUND";
-    const INNER: &[u8] = b"IFCFACEBOUND";
-    let rest = &bytes[start..];
-    let is_ident = |b: &u8| b.is_ascii_alphanumeric() || *b == b'_';
-    for (spelling, outer) in [(OUTER, true), (INNER, false)] {
-        if rest.starts_with(spelling) && !rest.get(spelling.len()).is_some_and(is_ident) {
-            return (outer, start + spelling.len());
-        }
-    }
-    let len = rest.iter().position(|b| !is_ident(b)).unwrap_or(rest.len());
-    (rest[..len].eq_ignore_ascii_case(OUTER), start + len)
 }
 
 /// Parse cartesian point coordinates inline from raw bytes
 /// Used by the cached polyloop coordinate readers for maximum performance
 #[inline]
 fn parse_cartesian_point_inline(bytes: &[u8]) -> Option<(f64, f64, f64)> {
-    let len = bytes.len();
-    let mut i = 0;
-
-    // Skip to first '(' after '='
-    while i < len && bytes[i] != b'(' {
-        i += 1;
-    }
-    if i >= len {
-        return None;
-    }
-    i += 1; // Skip first '('
-
-    // Skip to second '(' for the coordinate list
-    while i < len && bytes[i] != b'(' {
-        i += 1;
-    }
-    if i >= len {
-        return None;
-    }
-    i += 1; // Skip second '('
-
-    parse_point_coordinates(&bytes[i..])
+    StepRecord::parse(bytes)?.point_at(0)
 }
 
 /// `x,y)` or `x,y,z)`, starting just inside the coordinate list's `(`. Every
@@ -860,16 +660,11 @@ fn parse_cartesian_point_inline(bytes: &[u8]) -> Option<(f64, f64, f64)> {
 /// tokenizer does with the same record (#5266). Comments are trivia here as
 /// everywhere else (`3./* c */)` is a legal z). z defaults to 0 only for a
 /// genuine 2D point, whose list closes right after y.
-#[inline]
-fn parse_point_coordinates(bytes: &[u8]) -> Option<(f64, f64, f64)> {
-    parse_point_coordinates_end(bytes, |_| true).map(|(point, _)| point)
-}
-
-/// [`parse_point_coordinates`] that also returns the index just past the
+/// The same, also returning the index just past the
 /// closing `)`, for a reader that checks what follows the list, and refuses
 /// the point when `accept` refuses a literal's bytes.
 #[inline]
-fn parse_point_coordinates_end(
+pub(crate) fn parse_point_coordinates_end(
     bytes: &[u8], accept: impl Fn(&[u8]) -> bool,
 ) -> Option<((f64, f64, f64), usize)> {
     let value_at = |i: usize| -> Option<(f64, usize)> {

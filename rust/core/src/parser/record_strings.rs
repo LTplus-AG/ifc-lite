@@ -25,6 +25,7 @@
 //! the Blob worker's copies in `scan-worker-lexing.ts`; change them together.
 
 use super::lexical::skip_step_trivia;
+use crate::step_encoding::step_string_literal_end;
 
 /// What the quote at `quote` is, called only where it would close a string:
 /// after the PAGE operand (#7540) and doubled-quote tests.
@@ -35,6 +36,32 @@ pub(super) enum QuoteEnd {
     Stray,
     /// A comment opened after it never closes, so nothing after is readable.
     Unreadable,
+}
+
+/// Where a string literal that opens at `open` ends, as a record scan reads
+/// it: the one quote step of [`close_step_record`](super::lexical::close_step_record)
+/// and the scanner's record-end walk (F4-3, CORE-8). It was open-coded in both:
+/// [`step_string_literal_end`] (the `''` and `\S\` operand rule) followed by
+/// [`string_parameter_end`] (the #7541 rule).
+pub(super) enum LiteralEnd {
+    /// Offset just past the closing quote.
+    Closes(usize),
+    /// A quote at this offset cannot close a parameter: an unescaped apostrophe.
+    Stray(usize),
+    /// The literal never closes, or a comment after its last quote does not.
+    Unreadable,
+}
+
+#[inline(always)]
+pub(super) fn literal_end_framed(bytes: &[u8], open: usize) -> LiteralEnd {
+    let Some(past) = step_string_literal_end(bytes, open) else {
+        return LiteralEnd::Unreadable;
+    };
+    match string_parameter_end(bytes, past - 1) {
+        QuoteEnd::Closes => LiteralEnd::Closes(past),
+        QuoteEnd::Stray => LiteralEnd::Stray(past - 1),
+        QuoteEnd::Unreadable => LiteralEnd::Unreadable,
+    }
 }
 
 /// One compare settles a real file: every closing quote in the tracked corpus

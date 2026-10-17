@@ -236,6 +236,7 @@ in `@ifc-lite/geometry`. (The old `GLTFExporter` class was retired.)
 
 ```typescript
 import { GeometryProcessor } from '@ifc-lite/geometry';
+import { renderFrameWorldMatrix } from '@ifc-lite/geometry/world-frame';
 
 const gp = new GeometryProcessor();
 await gp.init();
@@ -259,7 +260,7 @@ const glb2 = gp.exportGlbFromMeshes(
   /* lit */ true,
   /* emissive */ false,
   // The frame the meshes sit in, so a georeferenced model lands at its world position.
-  renderFrameWorldMatrix(result.coordinateInfo), // from '@ifc-lite/geometry/world-frame'
+  renderFrameWorldMatrix(result.coordinateInfo),
 );
 ```
 

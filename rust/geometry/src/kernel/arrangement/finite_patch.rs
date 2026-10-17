@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use super::{Tri, dot3, drop_axis_of, coincident_planes, e, orient2d_any, Sign};
-use super::surface::{near_shared_surface_tri, near_plane_normal, whole_cell_band};
+use super::surface::{near_shared_surface_tri, near_plane_normal, whole_cell_band, local_band_or_parallel};
 use crate::kernel::{budget, ImplicitPoint, near_band::NearBand};
 use rustc_hash::FxHashMap;
 use std::cell::OnceCell;
@@ -75,7 +75,8 @@ pub(super) fn near_shared_patch(
     // pair lookup. Its plane test is shared with the single-face primitive.
     let n = near_plane_normal(c,t,band)?;
     if !coincident_planes(n_own,n) || !whole_cell_band(own,t,n,band)
-        || !super::surface::symbolic_point_in_tri_proj(&e(c),t,n) || budget::tripped() { return None; }
+        || !super::surface::symbolic_point_in_tri_proj(&e(c),t,n) || budget::tripped()
+        || !local_band_or_parallel(c,own,exact,t,n) { return None; }
     if dot3(n_own,n) == 0.0 { return None; }
     let axis = drop_axis_of(n);
     let adjacent = adjacency.get_or_init(|| AdjacentFaces::new(others));
@@ -86,7 +87,7 @@ pub(super) fn near_shared_patch(
         let Some(m) = near_plane_normal(c,u,band) else { continue };
         if dot3(n_own,m) == 0.0 || drop_axis_of(m) != axis || !coincident_planes(n_own,m)
             || (dot3(n_own,n) > 0.0) != (dot3(n_own,m) > 0.0)
-            || !whole_cell_band(own,u,m,band) { continue; }
+            || !whole_cell_band(own,u,m,band) || !local_band_or_parallel(c,own,exact,u,m) { continue; }
         if pair_contains(exact,t,u,k,axis) { return Some(n); }
     }
     None

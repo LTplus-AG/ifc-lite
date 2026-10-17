@@ -6,6 +6,8 @@
 //! and polyline sampling.
 
 use super::*;
+use crate::{GeometryRouter, Point3, Vector3};
+use super::linear::sample_polyline_at_distance;
 
 mod cartesian_position_tests {
     use super::*;
@@ -35,11 +37,7 @@ ENDSEC;\nEND-ISO-10303-21;\n";
     fn authored_cartesian_position_wins_over_curve_sampling() {
         let mut decoder = EntityDecoder::new(AUTHORED_IFC);
         let placement = decoder.decode_by_id(8).expect("decode #8");
-        let router = GeometryRouter::new();
-        let m = router
-            .resolve_linear_placement_with_depth(&placement, &mut decoder, 0)
-            .expect("resolve linear placement")
-            .transform;
+        let m = resolve_chain(&placement, &mut decoder).expect("resolve linear placement");
         assert!(
             (m[(0, 3)] - 10.0).abs() < 1e-9
                 && (m[(1, 3)] - 20.0).abs() < 1e-9
@@ -69,10 +67,7 @@ ENDSEC;\nEND-ISO-10303-21;\n";
             (gradient.replace("#8=IFCLINEARPLACEMENT($,#5,#7);", "#8=IFCLINEARPLACEMENT($,#5,$);"), (station, 0.0, 50.0 + station * 0.1))] {
             let mut decoder = EntityDecoder::new(&content);
             let placement = decoder.decode_by_id(8).expect("decode #8");
-            let m = GeometryRouter::new()
-                .resolve_linear_placement_with_depth(&placement, &mut decoder, 0)
-                .expect("resolve linear placement")
-                .transform;
+            let m = resolve_chain(&placement, &mut decoder).expect("resolve linear placement");
             let got = (m[(0, 3)], m[(1, 3)], m[(2, 3)]);
             assert!((got.0 - want.0).abs() < 1e-6 && (got.1 - want.1).abs() < 1e-6 && (got.2 - want.2).abs() < 1e-6,
                 "expected {want:?}, got {got:?}");
@@ -95,9 +90,7 @@ ENDSEC;\nEND-ISO-10303-21;\n";
         ).replace("#8=IFCLINEARPLACEMENT($,#5,#7);", "#8=IFCLINEARPLACEMENT($,#5,$);");
         let mut decoder = EntityDecoder::new(&content);
         let placement = decoder.decode_by_id(8).expect("decode placement");
-        let m = GeometryRouter::new()
-            .resolve_linear_placement_with_depth(&placement, &mut decoder, 0)
-            .expect("resolve placement").transform;
+        let m = resolve_chain(&placement, &mut decoder).expect("resolve placement");
         let station = 5.0 / (1.0_f64 + 0.1_f64 * 0.1_f64).sqrt();
         assert!((m[(0, 3)] - station).abs() < 1e-3, "horizontal station = {}", m[(0, 3)]);
         assert!((m[(2, 3)] - (50.0 + 0.1 * station)).abs() < 1e-3,
@@ -111,11 +104,7 @@ ENDSEC;\nEND-ISO-10303-21;\n";
         let content = AUTHORED_IFC.replace("#8=IFCLINEARPLACEMENT($,#5,#7);", "#8=IFCLINEARPLACEMENT($,#5,$);");
         let mut decoder = EntityDecoder::new(&content);
         let placement = decoder.decode_by_id(8).expect("decode #8");
-        let router = GeometryRouter::new();
-        let m = router
-            .resolve_linear_placement_with_depth(&placement, &mut decoder, 0)
-            .expect("resolve linear placement")
-            .transform;
+        let m = resolve_chain(&placement, &mut decoder).expect("resolve linear placement");
         assert!(
             (m[(0, 3)] - 5.0).abs() < 1e-9 && m[(1, 3)].abs() < 1e-9 && m[(2, 3)].abs() < 1e-9,
             "sampling a straight +X polyline at 5 m must give (5, 0, 0); got \

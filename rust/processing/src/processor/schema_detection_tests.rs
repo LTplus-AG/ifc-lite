@@ -11,7 +11,7 @@ const VECTORS: &str = include_str!("../../../core/tests/fixtures/schema_version_
 /// PROCESSING-5 / SERVER-18 (#7691): every shared vector classifies to the
 /// answer the TS parser's `detectSchemaVersion` gives. Covers first-recognised
 /// wins, the IFC5 family, GUID/DATA/header-string decoys, case, comments, BOM,
-/// absent/empty/unset declarations, malformed headers and the 64 KiB window.
+/// absent/empty/unset declarations, malformed headers and the 256 KiB window.
 #[test]
 fn shared_vectors_match_the_ts_parser_7691() {
     let doc: serde_json::Value = serde_json::from_str(VECTORS).unwrap();

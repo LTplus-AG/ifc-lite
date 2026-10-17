@@ -267,7 +267,7 @@ describe('parseSourceHeader', () => {
 
 /**
  * The header is read on every parse and every STEP export. If it materialised
- * the source to find its first 64 KiB, a 342 MB model would allocate 342 MB to
+ * the source to find its first 256 KiB, a 342 MB model would allocate 342 MB to
  * read a few hundred bytes — exactly the pin #2183 is about.
  *
  * These assert the RANGE contract, not just that the widened overload
@@ -275,7 +275,7 @@ describe('parseSourceHeader', () => {
  */
 describe('parseSourceHeader reads a RANGE, never the whole source (#2183)', () => {
   /** Mirrors MAX_HEADER_BYTES in src/source-header.ts. */
-  const MAX_HEADER_BYTES = 64 * 1024;
+  const MAX_HEADER_BYTES = 256 * 1024;
 
   const HEADER = [
     'ISO-10303-21;',
@@ -298,7 +298,7 @@ describe('parseSourceHeader reads a RANGE, never the whole source (#2183)', () =
    * Refusing `materialize` is NOT enough on its own. `decodeUtf8(0, byteLength)`
    * reads the whole file just as surely — a 342 MB string on a 342 MB model,
    * which is the allocation #2183 exists to remove — and an implementation that
-   * decoded everything and then trimmed the result to 64 KiB would still return
+   * decoded everything and then trimmed the result to 256 KiB would still return
    * the right header. So bound the READ as well as the materialise: any range
    * ending past the cap throws.
    */
@@ -330,10 +330,10 @@ describe('parseSourceHeader reads a RANGE, never the whole source (#2183)', () =
 
   /**
    * A DATA section past the cap, so "read everything" is distinguishable from
-   * "read the header". With a body smaller than 64 KiB, decoding the whole
+   * "read the header". With a body smaller than 256 KiB, decoding the whole
    * source IS a bounded read and the gate below would have no teeth.
    */
-  const BODY = Array.from({ length: 6000 }, (_, i) => `#${i + 1}=IFCWALL($);`).join('\n');
+  const BODY = Array.from({ length: 20000 }, (_, i) => `#${i + 1}=IFCWALL($);`).join('\n');
 
   it('parses from an IfcSourceBytes without materialising it', () => {
     const h = parseSourceHeader(rangeOnly(`${HEADER}\n${BODY}\n`));
@@ -351,10 +351,10 @@ describe('parseSourceHeader reads a RANGE, never the whole source (#2183)', () =
     expect(viaBytes?.schemaIdentifiers).toEqual(['IFC4']);
   });
 
-  it('still caps the decode: a header pushed past 64 KiB is not found', () => {
+  it('still caps the decode: a header pushed past 256 KiB is not found', () => {
     // Proves the cap is applied to the SOURCE length, not silently dropped
     // when the input is an accessor.
-    const padded = `${' '.repeat(64 * 1024)}${HEADER}`;
+    const padded = `${' '.repeat(256 * 1024)}${HEADER}`;
     expect(parseSourceHeader(rangeOnly(padded))).toBeUndefined();
     expect(parseSourceHeader(rangeOnly(HEADER))).toBeDefined();
   });
@@ -488,16 +488,21 @@ describe('the quote-aware scan does not lose the header to its own state (#3284)
     expect(h?.name).toBe('a.ifc');
   });
 
-  it('an unterminated comment does not swallow the records after it', () => {
-    // An unterminated `/*` is not a comment, so it costs one stray character
-    // and nothing else. Treating it as one that runs to end-of-text would lose
-    // every record below it, which is a worse answer than the older
-    // comment-blind scan gave for the same input.
+  it('an unterminated comment runs to the end: nothing after it is a record', () => {
+    // ISO 10303-21 comments cannot be left open, so everything after the `/*`
+    // is inside the comment. Rust's `find_keyword_then` answers the same
+    // (F4-2, vector "a comment that never closes hides every later record").
+    // Before it, this half and the Rust half read the opener as text, which
+    // found records the file never wrote outside a comment.
     const h = parseSourceHeader(
       header(`/* never closed\nFILE_DESCRIPTION(('d'),'2;1');\n${NAME_AND_SCHEMA}`),
     );
-    expect(h?.name).toBe('a.ifc');
-    expect(h?.schemaIdentifiers).toEqual(['IFC4']);
+    expect(h).toBeUndefined();
+    // A record BEFORE the opener is still read.
+    const before = parseSourceHeader(
+      header(`FILE_DESCRIPTION(('d'),'2;1');\n${NAME_AND_SCHEMA}\n/* never closed`),
+    );
+    expect(before?.schemaIdentifiers).toEqual(['IFC4']);
   });
 
   it('the accepted whitespace set is exactly the ASCII one', () => {

@@ -14,7 +14,7 @@ pub(super) fn point(m: [f64; 6], p: [f64; 2]) -> Result<[f64; 2], String> {
         m[0] * p[0] + m[2] * p[1] + m[4],
         m[1] * p[0] + m[3] * p[1] + m[5],
     ];
-    if q.iter().any(|v| !v.is_finite() || v.abs() > 1e8) {
+    if q.iter().any(|v| !v.is_finite() || v.abs() > super::limits::MODEL_COORD_LIMIT_M) {
         return Err("PDF fill coordinate exceeds finite metric range".into());
     }
     Ok(q)
@@ -147,7 +147,7 @@ pub(super) fn qualify(
         .iter()
         .flat_map(|(r, _)| r.iter().flatten())
         .fold(1_f64, |m, x| m.max(x.abs()));
-    if 128. * f64::EPSILON * magnitude >= error {
+    if super::limits::COORD_ROUNDOFF_ULPS * f64::EPSILON * magnitude >= error {
         return Err("PDF curved boundary separation is below model-coordinate precision".into());
     }
     let total: usize = rings.iter().map(|(r, _)| r.len()).sum();

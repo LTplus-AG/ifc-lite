@@ -8,6 +8,9 @@
 //! is self-contained (one function, no scanner state) and has no reason to
 //! live inline.
 
+use crate::parser::header::{close_paren, find_keyword_then, Then, MAX_HEADER_BYTES};
+use crate::parser::lexical::skip_step_trivia;
+
 /// Locate the byte offset of the first character after `DATA;` (skipping the
 /// STEP HEADER section). Returns 0 if the marker isn't found — partial files
 /// without a HEADER still scan from the top.
@@ -23,6 +26,11 @@
 /// HEADER field could legally contain the literal text `DATA;` in a
 /// description or filename. Escaped single quotes (`''`) are treated as a
 /// pair of in-string characters per ISO 10303-21.
+///
+/// The keyword is read by [`find_keyword_then`], the header reader's finder:
+/// case-insensitive, on identifier boundaries (the `DATA` in `METADATA;` is
+/// not the marker), with trivia allowed before the `;` (`DATA ;`), and the
+/// ed.3 `DATA('name',(...));` form (CORE-9).
 ///
 /// Comment-aware for the same reason: ISO 10303-21 allows a `/* … */`
 /// comment wherever whitespace is allowed, the HEADER included, so a
@@ -40,56 +48,22 @@
 /// also what a headerless partial file needs: `#1=IFCWALL($); /* oops` has
 /// real records BEFORE the bad comment, and they still scan.
 pub(super) fn data_section_start(bytes: &[u8]) -> usize {
-    const MARKER: &[u8] = b"DATA;";
-    let len = bytes.len();
-    if len < MARKER.len() {
-        return 0;
-    }
     // Cap the header scan. Real-world headers are <2 KB; an unbounded scan
     // here would defeat the point of an O(1)-up-front fix on giant files
-    // that legitimately lack a HEADER section.
-    let limit = len.min(1 << 18); // 256 KB
-    let mut pos = 0;
-    let mut in_string = false;
-    while pos < limit {
-        let b = bytes[pos];
-        if in_string {
-            if b == b'\'' {
-                if crate::parser::lexical::is_page_quote_operand(bytes, pos) {
-                    pos += 1;
-                    continue;
-                }
-                if pos + 1 < limit && bytes[pos + 1] == b'\'' {
-                    pos += 2; // escaped quote
-                    continue;
-                }
-                in_string = false;
-            }
-            pos += 1;
-            continue;
-        }
-        if b == b'/' && bytes.get(pos + 1) == Some(&b'*') {
-            // Bounded to the same cap as the marker search: a `*/` past the
-            // cap could not change the answer (pos would leave the loop at 0)
-            // and the unterminated arm already answers 0.
-            match super::super::lexical::skip_step_comment(&bytes[..limit], pos) {
-                Some(next) => {
-                    pos = next;
-                    continue;
-                }
-                // Unterminated: nothing after this is outside the comment.
-                None => return 0,
-            }
-        }
-        if b == b'\'' {
-            in_string = true;
-            pos += 1;
-            continue;
-        }
-        if b == b'D' && pos + MARKER.len() <= len && &bytes[pos..pos + MARKER.len()] == MARKER {
-            return pos + MARKER.len();
-        }
-        pos += 1;
+    // that legitimately lack a HEADER section. One cap, shared with the
+    // header reader.
+    let window = &bytes[..bytes.len().min(MAX_HEADER_BYTES)];
+    let Some(hit) = find_keyword_then(window, b"DATA", Then::ParenOrSemicolon) else {
+        return 0;
+    };
+    if window[hit.then] == b';' {
+        return hit.then + 1;
     }
-    0
+    // ISO 10303-21 ed.3: `DATA('name',(schema, ...));`. The marker is the
+    // balanced list and the `;` after it.
+    let after = close_paren(window, hit.then).and_then(|close| skip_step_trivia(window, close + 1));
+    match after {
+        Some(semicolon) if window.get(semicolon) == Some(&b';') => semicolon + 1,
+        _ => 0,
+    }
 }

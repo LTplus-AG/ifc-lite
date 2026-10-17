@@ -122,7 +122,7 @@ fn build_one(
         let ident = material_identifier(&name, (thickness * 1000.0).round() as i64, owners);
         if owners.len() > known {
             let (k, rho, cp) = thermal_props(&name);
-            materials.push(EnergyMaterial::new(ident.clone(), thickness.max(0.001), k, rho, cp));
+            materials.push(EnergyMaterial::new(ident.clone(), thickness.max(crate::geom::MIN_LAYER_THICKNESS_M), k, rho, cp));
         }
         refs.push(ident);
     }

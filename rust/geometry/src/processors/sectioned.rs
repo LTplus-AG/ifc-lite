@@ -53,6 +53,7 @@
 //!   positive `OffsetLateral` = right of travel)
 //! - IfcAlignmentCurve: IFC4x1 §8.7.3.10
 
+use crate::math::tol;
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 use nalgebra::{Point3, Vector3};
 
@@ -330,7 +331,7 @@ fn compute_frame(
         // plane (the projection of world-Z onto the perpendicular).
         let world_z = Vector3::new(0.0, 0.0, 1.0);
         let right_candidate = base.tangent.cross(&world_z);
-        let right_3d = match right_candidate.try_normalize(1e-9) {
+        let right_3d = match right_candidate.try_normalize(tol::AXIS_MIN_LEN) {
             Some(r) => r,
             // Tangent nearly vertical — fall back to world +X.
             None => Vector3::new(1.0, 0.0, 0.0),
@@ -467,7 +468,7 @@ fn lerp_position(
 
 fn lerp_direction(a: Option<Vector3<f64>>, b: Option<Vector3<f64>>, t: f64) -> Option<Vector3<f64>> {
     match (a, b) {
-        (Some(a), Some(b)) => (a * (1.0 - t) + b * t).try_normalize(1e-12).or(Some(a)),
+        (Some(a), Some(b)) => (a * (1.0 - t) + b * t).try_normalize(tol::DIRECTION_MIN_LEN).or(Some(a)),
         (Some(a), None) => Some(a),
         (None, Some(b)) => Some(b),
         (None, None) => None,

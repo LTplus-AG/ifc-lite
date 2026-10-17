@@ -13,13 +13,9 @@ pub type M4 = [f64; 16];
 /// A row-major 3x3 matrix.
 pub type M3 = [f64; 9];
 
-/// The determinant magnitude under which [`affine_inverse`] refuses a matrix.
-/// Dimensionless: placement chains carry the unit scale in the translation
-/// only (`GeometryRouter::scale_transform`), so the linear block is rotation
-/// times `IfcCartesianTransformationOperator` scale and `1e-18` is a uniform
-/// operator scale of `1e-6` (the corpus minimum is `1e-3`, det `1e-9`).
-/// F2c moves this to `math::tol`.
-pub const SINGULAR_DET_EPS: f64 = 1e-18;
+/// The determinant magnitude under which [`affine_inverse`] refuses a matrix;
+/// the unit and rationale live with the catalogue in [`super::tol`].
+pub use super::tol::SINGULAR_DET_EPS;
 
 /// The identity.
 pub const IDENTITY: M4 = [

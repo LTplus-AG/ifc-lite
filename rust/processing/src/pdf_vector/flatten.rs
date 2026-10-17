@@ -30,7 +30,7 @@ pub(super) fn bezier<const N: usize>(
         || controls
             .iter()
             .flatten()
-            .any(|x| !x.is_finite() || x.abs() > 1e8)
+            .any(|x| !x.is_finite() || x.abs() > super::limits::MODEL_COORD_LIMIT_M)
     {
         return Err("PDF curve requires finite quadratic/cubic controls and tolerance".into());
     }
@@ -40,7 +40,7 @@ pub(super) fn bezier<const N: usize>(
         let a = points[0];
         let b = points[N - 1];
         let magnitude = points.iter().flatten().fold(1_f64, |m, x| m.max(x.abs()));
-        let roundoff = 128. * f64::EPSILON * magnitude;
+        let roundoff = super::limits::COORD_ROUNDOFF_ULPS * f64::EPSILON * magnitude;
         if roundoff >= tolerance {
             return Err("PDF curve tolerance is below model-coordinate numerical precision".into());
         }

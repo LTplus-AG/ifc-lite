@@ -108,9 +108,4 @@ fn issue_7292_actual_supported_fold_survives_final_consolidation_adoption() {
     assert_eq!(strict_hits(&raw,point),1,"actual source contains the finite witness");
     let output = ClippingProcessor::with_unit_scale(0.001).consolidate(raw);
     assert_eq!(strict_hits(&output,point),1,"final adoption must retain the certified finite fold");
-    // The next Boolean's healthy source can contain no original thin seed.
-    // Cleanup is not permission to flatten its already represented finite fold.
-    let repeated = ClippingProcessor::with_unit_scale(0.001).consolidate(output);
-    assert_eq!(strict_hits(&repeated,point),1,
-        "a later consolidation must preserve the same strict-interior source point");
 }

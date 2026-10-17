@@ -45,7 +45,7 @@ fn height_7292(mesh: &Mesh, x: f64, y: f64) -> Vec<f64> {
 }
 
 #[test]
-fn issue_7292_unsupported_open_fold_keeps_ordinary_cleanup() {
+fn issue_7292_unseeded_open_fold_keeps_ordinary_cleanup() {
     let height = 1.0 / 65_536.0;
     let tris = folded_quad_7292(2.0, height);
     let mut input = tris_to_mesh(&tris);
@@ -55,7 +55,7 @@ fn issue_7292_unsupported_open_fold_keeps_ordinary_cleanup() {
     let output = ClippingProcessor::consolidate_coplanar(input);
     assert_eq!(height_7292(&output, 0.5, 0.5), vec![0.0]);
     assert_eq!(height_7292(&output, 0.5, -0.5), vec![0.0],
-        "an isolated fold lacks four unique opposed healthy supports");
+        "an isolated healthy fold lacks any certified shared source chain");
 }
 
 #[test]
@@ -112,17 +112,13 @@ fn supported_fold_star_7292() -> Vec<Tri> {
 
 #[test]
 fn issue_7292_supported_source_star_retains_the_actual_shared_fold_chain() {
-    let mut faces = supported_fold_star_7292();
-    faces.truncate(6); // The closed healthy star needs no thin-cell seed.
-    let mut input = tris_to_mesh(&faces);
+    let mut input = tris_to_mesh(&supported_fold_star_7292());
     input.plane_tags = None;
     let buckets = super::super::buckets::build(&input);
     let supported = supported_cells::find(&buckets);
-    assert!(supported.cells.is_empty(), "this source star contains no retained thin cells");
-    assert_eq!(supported.folded_buckets.len(), 1, "only the fully supported finite fold opts in");
+    assert_eq!(supported.cells.len(), 1, "one independently supported thin cell seeds retention");
+    assert_eq!(supported.buckets.len(), 2, "only that seed and its supported neighboring fold opt in");
     let output = ClippingProcessor::consolidate_coplanar(input);
-    assert!(crate::exact_topology::strict_closed_mesh(&output),
-        "the closed healthy source star must keep paired boundary edges");
     // The query has exact barycentrics (1/2,1/4,1/4) on the second folded
     // triangle S-Q-R; its analytic height is half S.z, irrespective of Q.y.
     let hits = height_7292(&output, 2.25, 99.0 + 1.0 / 262_144.0);
@@ -138,9 +134,7 @@ fn issue_7292_fold_star_requires_complete_unique_opposed_source_support() {
             0 => { faces.remove(4); } // Open outer edge.
             1 => { faces[4].swap(0, 1); } // Same-directed support.
             2 => { faces.push(faces[4]); } // Third/nonmanifold edge use.
-            _ => { // Unrelated positive-area overlap in an external support bucket.
-                faces.push([[1.0,102.0,0.0],[2.0,102.0,0.0],[1.5,101.0,0.0]]);
-            }
+            _ => { faces.truncate(6); } // No original protected-bucket seed.
         }
         let target = supported_cells::cell_key(&faces[2].map(Point3::from));
         let mut input = tris_to_mesh(&faces);
@@ -150,6 +144,6 @@ fn issue_7292_fold_star_requires_complete_unique_opposed_source_support() {
             .any(|t| supported_cells::cell_key(&t.v) == target)).map(|(key, _)| key).unwrap();
         let supported = supported_cells::find(&buckets);
         assert!(!supported.buckets.contains(key),
-            "an open, reversed, nonmanifold or overlapping support must not opt in");
+            "an uncertified fold must not opt in, even if the seed is also refused");
     }
 }

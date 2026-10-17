@@ -2661,7 +2661,7 @@ fn run_child(test_name: &str, env_var: &str) -> std::process::Output {
         std::thread::sleep(std::time::Duration::from_millis(50));
     }
     let output = child.wait_with_output().expect("collect child output");
-    assert_child_ran_one_test(&output);
+    super::assert_child_ran_one_test(&output);
     output
 }
 

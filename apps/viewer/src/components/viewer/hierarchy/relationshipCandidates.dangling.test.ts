@@ -5,7 +5,7 @@
 import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, test } from 'node:test';
-import { RelationshipType } from '@ifc-lite/data';
+import { entityTableFromColumns, IfcTypeEnum, RelationshipType } from '@ifc-lite/data';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { buildMaterialUsageIndex, IfcParser } from '@ifc-lite/parser';
 import { federationRegistry } from '@ifc-lite/renderer';
@@ -17,6 +17,7 @@ import {
   buildUnifiedStoreys, getUnifiedStoreyElements,
 } from './treeDataBuilder.js';
 import type { TreeNode } from './types.js';
+import { buildGroupTree } from './groupTreeBuilder.js';
 
 // #7890: relationship candidates are file supplied, whereas federation
 // publication requires an actual source or live authored entity. Wall #8 is
@@ -53,11 +54,12 @@ function resetModels(): void {
 beforeEach(resetModels);
 afterEach(resetModels);
 
-async function installModels(count: number, complete = false): Promise<Map<string, FederatedModel>> {
+async function installModels(count: number, complete = false, extraEntities = ''): Promise<Map<string, FederatedModel>> {
   const entries: FederatedModel[] = [];
   for (let index = 0; index < count; index++) {
     const store = await new IfcParser().parseColumnar(
-      new TextEncoder().encode(IFC).buffer, { disableWorkerScan: true },
+      new TextEncoder().encode(IFC.replace('ENDSEC;\nEND-ISO', `${extraEntities}\nENDSEC;\nEND-ISO`)).buffer,
+      { disableWorkerScan: true },
     );
     assert.deepEqual(store.relationships.getRelated(6, RelationshipType.DefinesByType, 'forward'),
       [5, 8, 2035], 'the real parser preserves all type relationship candidates');
@@ -239,3 +241,87 @@ test('#7890 unified byStorey fallback excludes missing candidates without a proj
   }
   assertMissingUnpublished(models);
 });
+
+// Direct group members convert before any nested geometry traversal. Display
+// metadata is not publication evidence, even when it supplies a known class.
+const GROUP_ENTITIES = `
+#16=IFCGROUP('0GUID000000000000000016',$,'Mixed group',$,$);
+#17=IFCRELASSIGNSTOGROUP('0GUID000000000000000017',$,$,$,(#5,#8,#2035),$,#16);
+#18=IFCGROUP('0GUID000000000000000018',$,'Missing-only group',$,$);
+#19=IFCRELASSIGNSTOGROUP('0GUID000000000000000019',$,$,$,(#2035),$,#18);`;
+
+for (const count of [1, 2]) {
+  for (const tableBacked of [false, true]) {
+    test(`#7890 direct group actions reject display-only endpoints with ${count} ${tableBacked ? 'table-backed' : 'indexed'} model(s)`, async () => {
+      const models = await installModels(count, false, GROUP_ENTITIES);
+      for (const [modelId, model] of models) {
+        assert.ok(model.ifcDataStore);
+        const store = model.ifcDataStore;
+        const entities = tableBacked ? entityTableFromColumns({
+          ...store.entities, rawTypeName: undefined,
+          typeEnum: Uint16Array.from(store.entities.typeEnum, (type, row) =>
+            store.entities.expressId[row] === 8 ? IfcTypeEnum.Unknown : type),
+        }, store.strings) : store.entities;
+        entities.setTypeOverride(2035, 'IfcWall');
+        assert.equal(entities.getTypeName(2035), 'IfcWall',
+          'the real table permits display metadata for an absent ID');
+        if (tableBacked) {
+          assert.equal(entities.getTypeName(8), 'Unknown');
+          models.set(modelId, { ...model, ifcDataStore: {
+            ...store, entities, entityIndex: { ...store.entityIndex, byId: new Map() },
+          } });
+        }
+      }
+      useViewerStore.setState({ models });
+      const nodes = buildGroupTree(models, null, expanded, count > 1,
+        new Set(globalIds(models, [5])));
+      for (const modelId of models.keys()) {
+        const group = nodes.find(node => node.modelId === modelId && node.entityExpressId === 16);
+        assert.ok(group);
+        assert.equal(group.elementCount, 2);
+        assert.deepEqual(group.memberGlobalIds,
+          [5, 8].map(id => useViewerStore.getState().toGlobalId(modelId, id)),
+          'direct actions retain every real member, including an unmeshed unknown-class row');
+        assert.deepEqual(group.globalIds, [useViewerStore.getState().toGlobalId(modelId, 5)]);
+        const rows = nodes.filter(node => node.modelId === modelId && node.type === 'group-member');
+        assert.deepEqual(rows.flatMap(node => node.expressIds).sort((a, b) => a - b), [5, 8]);
+        if (tableBacked) assert.equal(rows.find(node => node.expressIds[0] === 8)?.ifcType, 'Unknown');
+        assert.equal(nodes.some(node => node.modelId === modelId && node.entityExpressId === 18), false,
+          'a group containing only absent endpoints has no selectable member');
+        assert.deepEqual(models.get(modelId)?.ifcDataStore?.relationships
+          .getRelated(16, RelationshipType.AssignsToGroup, 'forward'), [5, 8, 2035],
+        'admission leaves the raw group relationship intact');
+      }
+      assertMissingUnpublished(models, nodes);
+    });
+  }
+
+  test(`#7890 direct group actions honor created and deleted endpoints in ${count} model overlay(s)`, async () => {
+    const models = await installModels(count, false, GROUP_ENTITIES);
+    const views = new Map<string, MutablePropertyView>();
+    for (const modelId of models.keys()) {
+      const view = new MutablePropertyView(null, modelId);
+      view.setExpressIdWatermark(19);
+      const wall = view.createEntity('IfcWall', ['0GUID000000000000000020', null, 'Authored group wall']);
+      assert.equal(wall.expressId, 20);
+      view.createEntity('IfcRelAssignsToGroup',
+        ['0GUID000000000000000021', null, null, null, [20, 2035], null, 16]);
+      view.deleteEntity(5);
+      views.set(modelId, view);
+    }
+    useViewerStore.setState({ mutationViews: views });
+    const nodes = buildGroupTree(models, null, expanded, count > 1,
+      new Set(globalIds(models, [20])), 'all', modelId => views.get(modelId));
+    for (const modelId of models.keys()) {
+      const group = nodes.find(node => node.modelId === modelId && node.entityExpressId === 16);
+      assert.ok(group);
+      assert.deepEqual(group.memberGlobalIds,
+        [8, 20].map(id => useViewerStore.getState().toGlobalId(modelId, id)));
+      assert.deepEqual(group.globalIds, [useViewerStore.getState().toGlobalId(modelId, 20)]);
+      assert.ok(nodes.some(node => node.modelId === modelId && node.type === 'group-member'
+        && node.name === 'Authored group wall' && node.expressIds[0] === 20));
+      assert.equal(nodes.some(node => node.modelId === modelId && node.expressIds.includes(5)), false);
+    }
+    assertMissingUnpublished(models, nodes);
+  });
+}

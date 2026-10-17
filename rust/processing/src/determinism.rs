@@ -29,7 +29,7 @@ use crate::prepass::{
     flat_material_colors, flat_styles_rgba8, flat_voids, resolve_prepass, PrepassSpans,
     ResolveOptions,
 };
-use crate::processor::{process_geometry_filtered_with_quality, OpeningFilterMode};
+use crate::processor::{process, ProcessingRequest};
 use ifc_lite_core::{build_entity_index, EntityDecoder, EntityScanner};
 use ifc_lite_geometry::TessellationQuality;
 use serde::{Deserialize, Serialize};
@@ -283,10 +283,10 @@ fn resolve_fixture_wires(content: &[u8]) -> FixtureWires {
 pub fn compute_mesh_manifest() -> MeshManifest {
     ifc_lite_geometry::local_frame_set_enabled_override(Some(true));
 
-    let result = process_geometry_filtered_with_quality(
-        FIXTURE_IFC,
-        OpeningFilterMode::Default,
-        TessellationQuality::Medium,
+    let result = process(
+        FIXTURE_IFC.as_bytes(),
+        &ProcessingRequest::full_pass().quality(TessellationQuality::Medium),
+        &mut (),
     );
 
     let wires = resolve_fixture_wires(FIXTURE_IFC.as_bytes());

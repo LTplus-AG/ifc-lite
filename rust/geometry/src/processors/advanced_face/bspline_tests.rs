@@ -246,8 +246,8 @@ fn clamped_curve_end_parameter_is_last_control_point_proc_s2_7687() {
         Point3::new(5.0, 2.0, 7.0),
     ];
     let knots = [0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0];
-    assert_eq!(evaluate_bspline_curve(0.0, 3, &cps, &knots), cps[0]);
-    assert_eq!(evaluate_bspline_curve(1.0, 3, &cps, &knots), cps[3]);
+    assert_eq!(evaluate_bspline_curve(0.0, 3, &cps, None, &knots), cps[0]);
+    assert_eq!(evaluate_bspline_curve(1.0, 3, &cps, None, &knots), cps[3]);
     // The quadratic partition above, at its end parameter 3.0.
     let knots = [0.0, 0.0, 0.0, 1.0, 2.0, 3.0, 3.0, 3.0];
     assert_eq!(bspline_basis_table(2, 3.0, &knots, 5), [0.0, 0.0, 0.0, 0.0, 1.0]);
@@ -267,8 +267,8 @@ fn unclamped_end_parameter_keeps_partition_of_unity_proc_s2_7687() {
 // plus A3.1 de Boor, written apart from `bspline_basis_table`. It checks the
 // evaluator at 4001 parameters, including exactly `t_max`, over 18 knot
 // vectors: clamped, interior multiplicity near the end, unclamped, mixed and
-// offset. Weights are not covered: rational curves are sampled unweighted
-// (follow-up issue).
+// offset. Each runs unweighted and rational (weights 0.5-2.0, #7750), the
+// oracle running de Boor on homogeneous control points `(w x, w y, w z, w)`.
 fn oracle_find_span(n: usize, p: usize, u: f64, k: &[f64]) -> usize {
     if u >= k[n + 1] {
         // Find the last non-empty span ending at or before u (A2.1 special case,
@@ -312,11 +312,11 @@ fn oracle_de_boor(p: usize, k: &[f64], cps: &[[f64; 4]], u: f64) -> Point3<f64> 
     Point3::new(d[p][0] / w, d[p][1] / w, d[p][2] / w)
 }
 
-fn oracle_control_points(n: usize) -> Vec<[f64; 4]> {
+fn oracle_control_points(n: usize, rational: bool) -> Vec<[f64; 4]> {
     (0..n).map(|i| {
         let t = i as f64;
-        [10.0 + t * 1.3 + (t * 0.7).sin(), 20.0 + (t * 1.1).cos() * 3.0, 30.0 + t * t * 0.2,
-         1.0]
+        let w = if rational { 0.5 + 1.5 * ((t * 0.37 + 0.11) % 1.0) } else { 1.0 };
+        [10.0 + t * 1.3 + (t * 0.7).sin(), 20.0 + (t * 1.1).cos() * 3.0, 30.0 + t * t * 0.2, w]
     }).collect()
 }
 
@@ -345,18 +345,20 @@ fn de_boor_oracle_agrees_on_every_knot_vector_7687() {
     let mut worst = 0.0f64;
     for (label, p, knots) in &cases {
         let n_cp = knots.len() - p - 1;
-        {
-            let cps = oracle_control_points(n_cp);
+        for rational in [false, true] {
+            let cps = oracle_control_points(n_cp, rational);
             let pts: Vec<Point3<f64>> = cps.iter().map(|c| Point3::new(c[0], c[1], c[2])).collect();
+            let weights: Vec<f64> = cps.iter().map(|c| c[3]).collect();
+            let weights = rational.then_some(weights.as_slice());
             let t0 = knots[*p];
             let t1 = knots[knots.len() - p - 1];
             for s in 0..=4000 {
                 let u = if s == 4000 { t1 } else { t0 + (t1 - t0) * (s as f64) / 4000.0 };
-                let got = evaluate_bspline_curve(u, *p, &pts, knots);
+                let got = evaluate_bspline_curve(u, *p, &pts, weights, knots);
                 let want = oracle_de_boor(*p, knots, &cps, u);
                 let err = (got - want).norm();
                 worst = worst.max(err);
-                assert!(err < 1e-7, "{label}: u={u} got {got:?} want {want:?}");
+                assert!(err < 1e-7, "{label} rational={rational}: u={u} got {got:?} want {want:?}");
                 assert!(got.coords.norm() > 1.0, "{label}: origin at u={u}");
             }
         }

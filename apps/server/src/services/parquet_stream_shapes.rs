@@ -14,7 +14,7 @@
 //!
 //! BOUNDED MEMORY. No occurrence outlives the batch that produced it. What
 //! grows across batches is, per DISTINCT shape emitted so far, one
-//! [`EmittedShape`] (16 bytes) plus its `MeshGeometryKey` (24 bytes), whatever
+//! [`EmittedShape`] (16 bytes) plus its `MeshGeometryKey` (16 bytes), whatever
 //! the size of that shape's geometry; and, per instanced representation, the
 //! ONE template mesh its later occurrences are verified against, capped in
 //! total at [`RETAINED_TEMPLATE_BUDGET_BYTES`]. Past the cap a representation

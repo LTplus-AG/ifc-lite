@@ -82,7 +82,7 @@ import { runAgainstTagBaseline, runWithReproducibleBaseline } from './lib/semver
 // Re-exported through this pre-existing module so the revert oracle can still
 // load the changed tests after its mutation removes the new adapter module.
 export { executedCheckCount, interpretRun, outputExcerpt, semverChecksArgv } from './lib/cargo-semver-checks.mjs';
-export { diffPackagedSources, heuristicFeatures, isUnresolvableRegistryBaseline } from './lib/semver-baseline.mjs';
+export { diffPackagedSources, heuristicFeatures, vcsInfoMismatches, isUnresolvableRegistryBaseline } from './lib/semver-baseline.mjs';
 export { releaseTagCandidates, runWithReproducibleBaseline, tagPublishes } from './lib/semver-baseline.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');

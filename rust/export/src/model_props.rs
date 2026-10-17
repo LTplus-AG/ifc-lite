@@ -10,20 +10,7 @@ use ifc_lite_core::{AttributeValue, DecodedEntity, EntityDecoder, IfcType};
 
 use super::{PropValue, PropertySet, QuantitySet, QuantityValue, ValueKind};
 
-/// Format an f64 without noisy trailing zeros (`1.0` → `1`, `1.50` → `1.5`),
-/// and otherwise with the shortest digits that parse back to the same value.
-///
-/// Every property value and schema-declared attribute reaching CSV, JSON,
-/// JSON-LD, IFCX and Parquet goes through here, and `json::typed_value`
-/// re-parses the string as the JSON number, so the digits must round-trip: no
-/// fixed decimal count (a small nonzero must never read as `0`).
-pub fn fmt_num(v: f64) -> String {
-    if v.fract() == 0.0 && v.abs() < 1e15 {
-        format!("{}", v as i64)
-    } else {
-        format!("{v}")
-    }
-}
+pub use ifc_lite_core::fmt_num::fmt_num;
 
 /// Map an IFC boolean/logical enum token to a friendly string.
 pub(super) fn map_enum(e: &str) -> String {

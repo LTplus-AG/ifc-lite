@@ -128,8 +128,8 @@ impl ProfileProcessor {
         // canonical repair. Other cases take the repaired frame's heading,
         // matching parameterized profiles (#7779 / #7880).
         let rotation = match read.ref_direction.filter(|r| {
-            read.planar && r[2] == 0.0
-                && crate::Vector3::from(*r).norm() > tol::AXIS_MIN_LEN
+            let norm = crate::Vector3::from(*r).norm();
+            read.planar && r[2] == 0.0 && norm.is_finite() && norm > tol::AXIS_MIN_LEN
         }) {
             Some(r) => r[1].atan2(r[0]),
             None => frame[(1, 0)].atan2(frame[(0, 0)]),

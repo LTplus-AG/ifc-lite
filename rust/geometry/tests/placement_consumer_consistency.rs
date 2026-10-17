@@ -15,6 +15,10 @@ fn issue_7779_ellipse_and_rectangle_share_repaired_planar_axes() {
         ("0.,1.0001E-9", 0.0, 1.0),
         ("0.,2.E-9", 0.0, 1.0),
         ("3.,4.", 0.6, 0.8),
+        ("1.E150,1.E150", std::f64::consts::FRAC_1_SQRT_2, std::f64::consts::FRAC_1_SQRT_2),
+        // Finite components can overflow norm(): retain the canonical repair,
+        // including its -Y perpendicular fallback, without changing its policy.
+        ("1.E308,1.E308", 0.0, -1.0),
     ] {
         let content = format!(
             "#1=IFCCARTESIANPOINT((10.,20.));\n#2=IFCDIRECTION(({ratios}));\n\
@@ -24,6 +28,9 @@ fn issue_7779_ellipse_and_rectangle_share_repaired_planar_axes() {
         );
         let mut decoder = EntityDecoder::new(&content);
         let processor = ProfileProcessor::new(IfcSchema::new());
+        let frame = placement::Axis2Placement::read_id(3, &mut decoder).unwrap().matrix();
+        assert!((frame[(0, 0)] - x).abs() < 1e-12 && (frame[(1, 0)] - y).abs() < 1e-12,
+            "{ratios}: canonical frame differs from the stated repair/control");
         let ellipse = decoder.decode_by_id(5).unwrap();
         let rectangle = decoder.decode_by_id(6).unwrap();
         let ellipse = processor.process(&ellipse, &mut decoder, TessellationQuality::Medium).unwrap();
@@ -80,7 +87,6 @@ fn issue_7779_grid_direction_refusal_cannot_become_an_axis_aligned_success() {
 fn issue_7779_derived_profiles_refuse_a_missing_operator_origin() {
     for (kind, tail) in [
         ("2D", ""), ("2DNONUNIFORM", ",$"),
-        ("3D", ",$"), ("3DNONUNIFORM", ",$,$,$"),
     ] {
         for origin in ["$", "*", "#1"] {
             let content = format!("#1=IFCCARTESIANPOINT((10.,20.));\n\
@@ -93,10 +99,45 @@ fn issue_7779_derived_profiles_refuse_a_missing_operator_origin() {
                 .process(&profile, &mut decoder, TessellationQuality::Medium);
             if origin == "#1" {
                 let profile = result.unwrap();
+                assert_eq!(profile.outer.len(), 4);
                 assert!(profile.outer.iter().all(|p| (8.0..=12.0).contains(&p.x) && (19.0..=21.0).contains(&p.y)));
                 assert_eq!(decoder.refused_records(), 0);
             } else {
                 assert!(result.is_err(), "{kind} {origin}: invented origin");
+                assert_eq!(decoder.refused_records(), 1);
+            }
+        }
+    }
+}
+
+// The 3D variants are exercised in their valid mapped-item context, rather
+// than as the 2D-only Operator of an IfcDerivedProfileDef (#7896).
+#[test]
+fn issue_7779_mapped_items_refuse_a_missing_operator_origin() {
+    for (kind, tail) in [("3D", ",$"), ("3DNONUNIFORM", ",$,$,$")] {
+        for origin in ["$", "*", "#1"] {
+            let content = format!("#1=IFCCARTESIANPOINT((10.,20.,30.));\n\
+                #2=IFCCARTESIANPOINT((0.,0.,0.));\n#3=IFCAXIS2PLACEMENT3D(#2,$,$);\n\
+                #4=IFCBLOCK(#3,4.,2.,1.);\n#5=IFCSHAPEREPRESENTATION($,'Body','CSG',(#4));\n\
+                #6=IFCREPRESENTATIONMAP(#3,#5);\n\
+                #7=IFCCARTESIANTRANSFORMATIONOPERATOR{kind}($,$,{origin},${tail});\n\
+                #8=IFCMAPPEDITEM(#6,#7);\n#9=IFCSHAPEREPRESENTATION($,'Body','MappedRepresentation',(#8));\n\
+                #10=IFCPRODUCTDEFINITIONSHAPE($,$,(#9));\n\
+                #11=IFCBUILDINGELEMENTPROXY('test',$,$,$,$,$,#10,$,$);");
+            let mut decoder = EntityDecoder::new(&content);
+            let product = decoder.decode_by_id(11).unwrap();
+            let result = ifc_lite_geometry::GeometryRouter::with_scale_and_local_frame(1.0, false)
+                .process_element(&product, &mut decoder);
+            if origin == "#1" {
+                let mesh = result.unwrap();
+                assert!(!mesh.is_empty());
+                let (min, max) = mesh.bounds();
+                assert!((min.x - 10.0).abs() < 1e-5 && (max.x - 14.0).abs() < 1e-5, "{min:?} {max:?}");
+                assert!((min.y - 20.0).abs() < 1e-5 && (max.y - 22.0).abs() < 1e-5, "{min:?} {max:?}");
+                assert!((min.z - 30.0).abs() < 1e-5 && (max.z - 31.0).abs() < 1e-5, "{min:?} {max:?}");
+                assert_eq!(decoder.refused_records(), 0);
+            } else {
+                assert!(result.as_ref().is_err_or(|mesh| mesh.is_empty()), "{kind} {origin}: invented origin");
                 assert_eq!(decoder.refused_records(), 1);
             }
         }

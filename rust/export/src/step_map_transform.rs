@@ -66,8 +66,8 @@ pub fn plan_map_conversion_normalization(content: &[u8]) -> Result<MapConversion
     let attempt = || -> Result<MapConversionNormalizationPlan, String> {
         let schema = crate::source_header::declared_schema(content)
             .ok_or("map normalization requires a declared source schema")?.to_ascii_uppercase();
-        if schema != "IFC4" && !schema.starts_with("IFC4_ADD")
-            && schema != "IFC4X3" && !schema.starts_with("IFC4X3_ADD") {
+        if !matches!(ifc_lite_core::SchemaVersion::from_file_schema(&schema),
+            Some(ifc_lite_core::SchemaVersion::Ifc4 | ifc_lite_core::SchemaVersion::Ifc4x3)) {
             return Err(format!("source schema {schema} is not supported by map normalization"));
         }
         if maps.len() != 1 { return Err("multiple map conversions are not supported atomically".into()); }

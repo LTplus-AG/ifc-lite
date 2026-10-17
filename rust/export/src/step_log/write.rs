@@ -182,7 +182,7 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
     let target = opts.schema.clone().unwrap_or_else(|| source_label.clone());
     let converting = opts.schema.is_some() && crate::schema_convert::needs_conversion(&source_label, &target);
 
-    let target_is_ifc2x3 = target.trim().to_ascii_uppercase().starts_with("IFC2X3");
+    let target_is_ifc2x3 = crate::schema_convert::targets_ifc2x3(&target);
     if target_is_ifc2x3 && log.georef_mutations.as_ref().is_some_and(super::georef::requests_anything) {
         return Err(invalid(format!("export_step_with_log: {}", super::georef::IFC2X3_REFUSAL)));
     }

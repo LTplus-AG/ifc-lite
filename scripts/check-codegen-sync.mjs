@@ -15,7 +15,7 @@
  * `packages/data/src/ifc-schema/generated/*.ts`. Nothing in CI regenerates
  * any of these and diffs the result against what's committed —
  * `scripts/check-generated.mjs`'s own header documents this gap by name (it
- * lists `check:bim-globals`, `check:server-attr-indices`,
+ * lists `check:bim-globals`,
  * `docs:check-generated`, `check:api-surface`, `cargo metadata --locked`,
  * and the opt-in Plato/wasm gates as the freshness gates that exist; codegen
  * output is not among them). A hand-edit that patches the generated file

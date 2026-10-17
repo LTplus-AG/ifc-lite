@@ -367,3 +367,24 @@ fn a_disabled_type_is_skipped_in_any_keyword_case() {
     }
     assert!(!is_disabled(&rustc_hash::FxHashSet::default(), "ifcspace"), "empty set skips nothing");
 }
+
+/// PROCESSING-15 (F4 M-wasm): the keyword is read through core's `StepRecord`,
+/// so trivia between the `=` and the keyword is skipped. `keyword_at` sliced
+/// `=` to `(` and returned `"/*c*/ IFCWALL"` for the first record, which no
+/// job, type candidate or disabled-type test then matched.
+#[test]
+fn keyword_at_skips_trivia_between_the_equals_and_the_keyword() {
+    for (record, keyword) in [
+        (&b"#1= /*c*/ IFCWALL('g',$,$,$,$,$,$,$,$);"[..], "IFCWALL"),
+        (b"#1=/* ( */IFCWALL('g');", "IFCWALL"),
+        (b"#1 = IFCWALL /* c */ ('g');", "IFCWALL"),
+        (b"#1=IFCWALL('g');", "IFCWALL"),
+        (b"#1=ifcwall('g');", "ifcwall"),
+        // Not a record head: no keyword, no panic.
+        (b"#1=(IFCA() IFCB());", ""),
+        (b"IFCWALL('g');", ""),
+        (b"", ""),
+    ] {
+        assert_eq!(keyword_at(record, 0, record.len()), keyword, "{}", String::from_utf8_lossy(record));
+    }
+}

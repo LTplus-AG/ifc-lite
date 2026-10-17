@@ -12,6 +12,7 @@ use serde_json::{json, Map, Value};
 
 use crate::json::typed_value;
 use crate::model::{build_export_model, EntityRow};
+use ifc_lite_processing::data_model::spatial_walk;
 
 /// IFC5 schema-package import URIs (ifcx.dev v5a).
 /// The value every IFCX writer in this repo puts in `header.ifcxVersion`.
@@ -178,19 +179,10 @@ pub fn export_ifc5(content: &[u8], opts: &Ifc5Options) -> String {
         name_of
             .entry(pid)
             .or_insert_with(|| (project_name(content, pid), "IfcProject".to_string()));
-        let mut stack = vec![pid];
-        while let Some(id) = stack.pop() {
-            if !seen.insert(id) {
-                continue;
-            }
-            emit.push(id);
-            if let Some(ch) = children.get(&id) {
-                for &c in ch {
-                    if !seen.contains(&c) {
-                        stack.push(c);
-                    }
-                }
-            }
+        // D48: the one walk the other formats use, in source order.
+        for visit in spatial_walk::walk(&children, pid) {
+            seen.insert(visit.id);
+            emit.push(visit.id);
         }
     } else {
         // No project — emit every product as a flat list.

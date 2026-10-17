@@ -70,8 +70,8 @@ use color_layer::{
 use opening_filter::apply_opening_filter;
 use properties::resolve_space_zone_properties_lazy;
 use quick_metadata::{
-    build_quick_spatial_tree_node, extract_name_from_args, read_storey_elevation,
-    parse_step_arguments, parse_step_ref, parse_step_ref_list, QuickSpatialNodeEntry,
+    build_quick_spatial_tree_node, record_ref_at, record_refs_at, rel_links, spatial_node_entry,
+    QuickSpatialNodeEntry,
 };
 use crate::mesh_frame::{MeshCoordinateSpace, MeshFrame};
 
@@ -312,11 +312,7 @@ fn populate_entity_job_metadata(
 use crate::style::GeometryStyleInfo;
 
 pub(super) fn normalize_optional_string(raw: Option<&str>) -> Option<String> {
-    let value = raw?.trim();
-    if value.is_empty() || value == "$" {
-        return None;
-    }
-    Some(value.to_string())
+    ifc_lite_core::optional_text(raw).map(str::to_owned)
 }
 
 fn geometry_priority_score(ifc_type: &IfcType) -> u8 {
@@ -475,48 +471,20 @@ pub fn process(
         if let Some(spatial_nodes) = quick_spatial_nodes.as_mut() {
             // Case-insensitive check without allocating a new uppercase string.
             if is_quick_spatial_type_ci(type_name) {
-                let args = parse_step_arguments(&content[start..end]);
-                let fallback = format!("{type_name} #{id}");
-                spatial_nodes.entry(id).or_insert(QuickSpatialNodeEntry {
-                    express_id: id,
-                    type_name: type_name.to_string(),
-                    name: extract_name_from_args(&args, &fallback),
-                    elevation: None,
-                    raw_elevation: keyword_eq(type_name, "IFCBUILDINGSTOREY").then(|| read_storey_elevation(&args)),
-                    children: Vec::new(),
-                    contained: Vec::new(),
-                    elements: Vec::new(),
-                    named_as_child: false,
-                });
+                spatial_nodes
+                    .entry(id)
+                    .or_insert_with(|| spatial_node_entry(&content[start..end], type_name, id));
             } else if keyword_eq(type_name, "IFCRELAGGREGATES") {
-                let args = parse_step_arguments(&content[start..end]);
-                if let Some(parent_id) = args.get(4).and_then(|token| parse_step_ref(token)) {
-                    quick_aggregate_links.push((
-                        parent_id,
-                        args.get(5)
-                            .map(|token| parse_step_ref_list(token))
-                            .unwrap_or_default(),
-                    ));
+                if let Some(link) = rel_links(&content[start..end], 4, 5) {
+                    quick_aggregate_links.push(link);
                 }
             } else if keyword_eq(type_name, "IFCRELCONTAINEDINSPATIALSTRUCTURE") {
-                let args = parse_step_arguments(&content[start..end]);
-                if let Some(parent_id) = args.get(5).and_then(|token| parse_step_ref(token)) {
-                    quick_containment_links.push((
-                        parent_id,
-                        args.get(4)
-                            .map(|token| parse_step_ref_list(token))
-                            .unwrap_or_default(),
-                    ));
+                if let Some(link) = rel_links(&content[start..end], 5, 4) {
+                    quick_containment_links.push(link);
                 }
             } else if keyword_eq(type_name, "IFCRELREFERENCEDINSPATIALSTRUCTURE") {
-                let args = parse_step_arguments(&content[start..end]);
-                if let Some(parent_id) = args.get(5).and_then(|token| parse_step_ref(token)) {
-                    quick_referenced_links.push((
-                        parent_id,
-                        args.get(4)
-                            .map(|token| parse_step_ref_list(token))
-                            .unwrap_or_default(),
-                    ));
+                if let Some(link) = rel_links(&content[start..end], 5, 4) {
+                    quick_referenced_links.push(link);
                 }
             }
         }
@@ -652,8 +620,7 @@ pub fn process(
         // pre-filter keeps the is_subtype_of check off the hot path for the
         // ~all-non-type majority of entities.
         else if keyword_eq(type_name, "IFCMAPPEDITEM") {
-            let args = parse_step_arguments(&content[start..end]);
-            if let Some(source_id) = args.first().and_then(|token| parse_step_ref(token)) {
+            if let Some(source_id) = record_ref_at(&content[start..end], 0) {
                 referenced_representation_maps.insert(source_id);
                 // #1623 Phase 2: tally occurrences per source + track the min-id
                 // (deterministic template) occurrence. `id` is this IfcMappedItem's
@@ -673,19 +640,14 @@ pub fn process(
         } else if keyword_eq(type_name, "IFCRELDEFINESBYTYPE") {
             // IfcRelDefinesByType.RelatingType is the last attribute (index 5);
             // record it so its type-only geometry is suppressed (it has occurrences).
-            let args = parse_step_arguments(&content[start..end]);
-            if let Some(type_id) = args.get(5).and_then(|token| parse_step_ref(token)) {
+            if let Some(type_id) = record_ref_at(&content[start..end], 5) {
                 instantiated_type_ids.insert(type_id);
             }
             // Also feed the shared resolver's type-material fallback.
             prepass_spans.defines_by_type.push((id, start, end));
         } else if let Some(type_ty) = ifc_lite_core::type_product_ifc_type(type_name) {
-            let args = parse_step_arguments(&content[start..end]);
             // IfcTypeProduct.RepresentationMaps is attribute index 6.
-            let rep_map_ids = args
-                .get(6)
-                .map(|token| parse_step_ref_list(token))
-                .unwrap_or_default();
+            let rep_map_ids = record_refs_at(&content[start..end], 6);
             if !rep_map_ids.is_empty() {
                 type_product_geometry.push((id, start, end, type_ty, rep_map_ids));
             }

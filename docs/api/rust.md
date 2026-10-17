@@ -63,6 +63,10 @@ items are not all plain `#n` references is refused whole (`ref_list_at`), and
 `extract_first_entity_ref`, `extract_entity_refs_from_list` and
 `EntityDecoder::get_first_entity_ref_fast` are removed in favour of it.
 
+`ifc_lite_core::optional_text(Option<&str>)` is the one "no value" rule for a decoded
+name or label: trimmed of STEP whitespace, and an empty result or a bare `$` is
+`None`. `get_string()` is already decoded, so never call `decode_ifc_string` on it.
+
 #### Token
 
 ```rust

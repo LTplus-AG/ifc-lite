@@ -303,7 +303,7 @@ pub fn subtract_rect_openings(
     }
 
     // Per-axis grid lines: host bounds + every clamped opening edge, snapped,
-    // sorted, deduplicated; near-coincident-but-distinct lines (< near_eps) →
+    // sorted, deduplicated; near-coincident-but-distinct lines (<= near_eps) →
     // defer (f32-collapse risk).
     let mut grid: [Vec<f64>; 3] = [Vec::new(), Vec::new(), Vec::new()];
     for k in 0..3 {
@@ -336,8 +336,8 @@ pub fn subtract_rect_openings(
     Some(cut)
 }
 
-/// Sort + dedup grid lines on one axis; `None` if two DISTINCT lines are closer
-/// than `near_eps` (an f32-collapse risk → defer). Identical snapped values
+/// Sort + dedup grid lines on one axis; `None` if two DISTINCT lines are at most
+/// `near_eps` apart (an f32-collapse risk → defer). Identical snapped values
 /// (e.g. a door edge coinciding with the host edge) collapse to one line.
 fn dedup_axis(mut edges: Vec<f64>, near_eps: f64) -> Option<Vec<f64>> {
     // A non-finite coord (NaN/Inf from a corrupt mesh) would panic the sort under
@@ -353,7 +353,7 @@ fn dedup_axis(mut edges: Vec<f64>, near_eps: f64) -> Option<Vec<f64>> {
                 let d = (c - last).abs();
                 if d == 0.0 {
                     // same line — keep one
-                } else if d < near_eps {
+                } else if d <= near_eps {
                     return None; // distinct but too close → collapse risk
                 } else {
                     out.push(c);
@@ -738,6 +738,43 @@ mod tests {
             subtract_rect_openings(&wall(base), &[tight], &mut st).is_none(),
             "near-edge at building scale must defer, not crack"
         );
+    }
+
+    #[test]
+    fn issue_7292_one_grid_flush_head_gap_defers() {
+        // ISSUE_129 #58297: these captured local cap heights differ by exactly
+        // one grid step. The fast path must not turn import scatter into a lid.
+        let top = 2.1500091552734375;
+        let opening_top = 2.149993896484375;
+        assert_eq!(top - opening_top, SNAP_GRID);
+        let host = box_mesh([-4.0, -0.125, -2.0], [4.0, 0.125, top]);
+        let cut = ([-3.5, -1.0, 0.0], [-2.5, 1.0, opening_top]);
+        let mut stats = RectFastStats::default();
+        assert!(
+            subtract_rect_openings(&host, &[cut], &mut stats).is_none(),
+            "a one-grid flush-head gap must defer instead of emitting a ghost cap"
+        );
+        assert_eq!(stats.defer_near_edge, 1);
+        assert_eq!(stats.fired, 0);
+    }
+
+    #[test]
+    fn issue_7292_next_larger_head_grid_interval_and_exact_flush_stay_eligible() {
+        let top = 2.1500091552734375;
+        let host = box_mesh([-4.0, -0.125, -2.0], [4.0, 0.125, top]);
+        // Snapped coordinates advance in whole grid steps: two steps are the
+        // next distinct interval above the refused one-step boundary. Exact
+        // equality still deduplicates, rather than refusing a genuine notch.
+        for gap in [0.0, 2.0 * SNAP_GRID] {
+            let cut = ([-3.5, -1.0, 0.0], [-2.5, 1.0, top - gap]);
+            let mut stats = RectFastStats::default();
+            let result = subtract_rect_openings(&host, &[cut], &mut stats)
+                .expect("exact flush and the next larger grid interval stay eligible");
+            assert_eq!(stats.defer_near_edge, 0);
+            assert_eq!(stats.fired, 1);
+            assert_eq!(open_edges(&result), 0);
+            assert_eq!(degenerate(&result), 0);
+        }
     }
 
     #[test]

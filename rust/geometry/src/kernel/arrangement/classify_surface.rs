@@ -227,7 +227,7 @@ impl<'a> BoundaryCentroid<'a> {
     }
 
     pub(super) fn on_surface(&self, others: &[Tri]) -> bool {
-        use crate::kernel::rational::{orient2d_pts, orient3d_pts, vec};
+        use crate::kernel::rational::{orient2d_exact_pt, orient3d_exact_pt};
         for t in others {
             if budget::tripped() { return false; }
             // A definite nonzero interval sign proves the exact centroid is
@@ -237,8 +237,7 @@ impl<'a> BoundaryCentroid<'a> {
             let Some(point) = self.exact_point() else { return false; };
             budget::note_escalation();
             if budget::tripped() { return false; }
-            let exact_triangle = t.map(vec);
-            if orient3d_pts(point, &exact_triangle[0], &exact_triangle[1], &exact_triangle[2]) != Sign::Zero { continue; }
+            if orient3d_exact_pt(point, t[0], t[1], t[2]) != Sign::Zero { continue; }
             let n = cross3(sub_f64(t[1], t[0]), sub_f64(t[2], t[0]));
             let axis = drop_axis_of(n);
             let winding = orient2d_any(&e(t[0]), &e(t[1]), &e(t[2]), axis);
@@ -247,7 +246,7 @@ impl<'a> BoundaryCentroid<'a> {
             for i in 0..3 {
                 budget::note_escalation();
                 if budget::tripped() { return false; }
-                if orient2d_pts(point, &exact_triangle[i], &exact_triangle[(i + 1) % 3], axis) == winding.flip() {
+                if orient2d_exact_pt(point, t[i], t[(i + 1) % 3], axis) == winding.flip() {
                     inside = false;
                     break;
                 }

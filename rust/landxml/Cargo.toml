@@ -20,5 +20,9 @@ serde_json.workspace = true
 ifc-lite-geometry.workspace = true
 geometry-predicates.workspace = true
 
+[dev-dependencies]
+# Test-only (publish = false). Path-only: cargo strips it when packaging.
+ifc-lite-testkit = { path = "../testkit" }
+
 [lints]
 workspace = true

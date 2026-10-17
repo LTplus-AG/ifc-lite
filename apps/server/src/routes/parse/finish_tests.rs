@@ -105,11 +105,7 @@ async fn an_unauthored_mesh_keeps_its_old_wire_shape() {
 /// (present, not dropped as falsy), 'Kiefer, glänzend' 0.25, 'Kiefer' 0.9.
 #[tokio::test]
 async fn fzk_haus_finishes_over_the_json_route() {
-    let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/models/ara3d/AC20-FZK-Haus.ifc");
-    let Ok(content) = std::fs::read(&path) else {
-        eprintln!("AC20-FZK-Haus.ifc missing — run `pnpm fixtures`. Skipping #5984 fixture test.");
-        return;
-    };
+    let content = ifc_lite_testkit::fixture_bytes_or_skip!("ara3d/AC20-FZK-Haus.ifc");
     let meshes = mesh_objects(&post("finish-fzk", "/api/v1/parse", &content).await, false);
     for (name, expected) in [("Glas", 0.0), ("Kiefer, gl\u{e4}nzend", 0.25), ("Kiefer", 0.9)] {
         let named: Vec<&Value> = meshes.iter().filter(|m| m["material_name"] == name).collect();

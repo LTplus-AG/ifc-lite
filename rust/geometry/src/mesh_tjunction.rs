@@ -13,6 +13,7 @@
 //! splits the kept triangle across AC at M.
 
 use super::Mesh;
+use crate::math::v3;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 type Key = [u32; 3];
@@ -32,20 +33,14 @@ pub(super) fn pos_of(mesh: &Mesh, i: u32) -> [f64; 3] {
     [mesh.positions[b] as f64, mesh.positions[b + 1] as f64, mesh.positions[b + 2] as f64]
 }
 
-fn dist(a: [f64; 3], b: [f64; 3]) -> f64 {
-    ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2)).sqrt()
-}
-
 /// Height of triangle (a, b, c) over its longest edge (= 2·area / longest),
 /// the measure a sliver is judged by. `None` when all three points coincide.
 pub(super) fn height(a: [f64; 3], b: [f64; 3], c: [f64; 3]) -> Option<f64> {
-    let longest = dist(a, b).max(dist(b, c)).max(dist(c, a));
+    let longest = v3::dist(a, b).max(v3::dist(b, c)).max(v3::dist(c, a));
     if longest <= 0.0 {
         return None;
     }
-    let (u, v) = ([b[0] - a[0], b[1] - a[1], b[2] - a[2]], [c[0] - a[0], c[1] - a[1], c[2] - a[2]]);
-    let cr = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
-    Some((cr[0] * cr[0] + cr[1] * cr[1] + cr[2] * cr[2]).sqrt() / longest)
+    Some(v3::norm(v3::tri_normal(a, b, c)) / longest)
 }
 
 /// One dropped sliver's apex on its long edge.
@@ -96,11 +91,11 @@ pub(super) fn split_across_dropped_slivers(
     let mut index_of: FxHashMap<(Key, Key), usize> = FxHashMap::default();
     for tri in slivers {
         let p = tri.map(|i| pos_of(mesh, i));
-        let len = [dist(p[0], p[1]), dist(p[1], p[2]), dist(p[2], p[0])];
+        let len = [v3::dist(p[0], p[1]), v3::dist(p[1], p[2]), v3::dist(p[2], p[0])];
         let i = (0..3).fold(0, |m, e| if len[e] > len[m] { e } else { m });
         let (a, c, m) = (tri[i], tri[(i + 1) % 3], tri[(i + 2) % 3]);
         let (pa, pc, pm) = (p[i], p[(i + 1) % 3], p[(i + 2) % 3]);
-        if dist(pa, pm) < h_eps || dist(pc, pm) < h_eps {
+        if v3::dist(pa, pm) < h_eps || v3::dist(pc, pm) < h_eps {
             continue;
         }
         let (ka, kc) = (key_of(mesh, a), key_of(mesh, c));

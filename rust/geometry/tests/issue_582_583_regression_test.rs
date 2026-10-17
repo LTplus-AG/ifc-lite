@@ -21,36 +21,8 @@ use ifc_lite_core::IfcType;
 use ifc_lite_geometry::{GeometryRouter, VoidIndex};
 use rustc_hash::FxHashMap;
 
-mod support;
-
 fn read_fixture(rel: &str) -> Option<String> {
-    let path = format!("../../tests/models/{}", rel);
-    match std::fs::read_to_string(&path) {
-        Ok(s) if s.starts_with("version https://git-lfs.github.com/spec/") => {
-            assert!(
-                !support::require_fixtures(),
-                "fixture is an LFS pointer and IFC_LITE_REQUIRE_FIXTURES=1 -- \
-                 run `pnpm fixtures` to download real bytes"
-            );
-            eprintln!(
-                "skipping: fixture {path} is a Git LFS pointer; run `pnpm fixtures` from the repo root"
-            );
-            None
-        }
-        Ok(s) => Some(s),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            assert!(
-                !support::require_fixtures(),
-                "fixture missing and IFC_LITE_REQUIRE_FIXTURES=1 -- \
-                 run `pnpm fixtures` to download (sha256 in tests/models/manifest.json)"
-            );
-            eprintln!(
-                "skipping: fixture {path} not present; run `pnpm fixtures` to download (manifest at tests/models/manifest.json)"
-            );
-            None
-        }
-        Err(e) => panic!("failed to read fixture {path}: {e}"),
-    }
+    ifc_lite_testkit::fixture_text(rel)
 }
 
 #[derive(Default, Debug, Clone, Copy)]

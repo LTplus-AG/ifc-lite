@@ -172,9 +172,7 @@ fn a_cross_batch_stream_ships_no_more_vertices_than_the_buffered_route() {
         "ara3d/S_Office_Integrated Design Archi.ifc",
         "ara3d/FM_ARC_DigitalHub.ifc",
     ] {
-        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/models").join(fixture);
-        let Ok(content) = std::fs::read(&path) else {
-            eprintln!("skipping cross-batch parity on {fixture}: fixture missing — run `pnpm fixtures`");
+        let Some(content) = ifc_lite_testkit::fixture_bytes(fixture) else {
             continue;
         };
         let basis_slot = std::sync::OnceLock::new();

@@ -174,12 +174,7 @@ fn issue_6034_query_values() {
 /// absent (`pnpm fixtures`).
 #[test]
 fn issue_6034_rooted_resolves_every_relation_on_a_real_model() {
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../tests/models/ara3d/AC20-FZK-Haus.ifc");
-    let Ok(content) = std::fs::read(&path) else {
-        eprintln!("skipping: {} absent; run `pnpm fixtures`", path.display());
-        return;
-    };
+    let content = ifc_lite_testkit::fixture_bytes_or_skip!("ara3d/AC20-FZK-Haus.ifc");
     let full = extract_data_model(&content);
     let mut rooted = full.clone();
     DataModelEntities::Rooted.apply(&mut rooted);

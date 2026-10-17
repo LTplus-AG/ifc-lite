@@ -23,20 +23,11 @@ use ifc_lite_geometry::test_support::recv_or_diagnose;
 use std::sync::mpsc;
 use std::time::Duration;
 
-const FIXTURE: &str = concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../tests/models/ara3d/schependomlaan.ifc"
-);
+const FIXTURE: &str = "ara3d/schependomlaan.ifc";
 
 #[test]
 fn multithreaded_faceted_brep_pipeline_does_not_deadlock() {
-    let Ok(content) = std::fs::read(FIXTURE) else {
-        eprintln!(
-            "skipping: fixture {FIXTURE} not present — run `pnpm fixtures` \
-             (sha256 in tests/models/manifest.json)"
-        );
-        return;
-    };
+    let content = ifc_lite_testkit::fixture_bytes_or_skip!(FIXTURE);
 
     let (tx, rx) = mpsc::channel();
     let worker = std::thread::spawn(move || {

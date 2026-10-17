@@ -9,26 +9,13 @@
 
 use ifc_lite_processing::process_geometry;
 
-const FIXTURE: &str = "tests/models/ara3d/AC20-FZK-Haus.ifc";
-
-fn fixture_path(relative: &str) -> std::path::PathBuf {
-    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..")
-        .join(relative)
-}
+const FIXTURE: &str = "ara3d/AC20-FZK-Haus.ifc";
 
 #[test]
 fn native_pass_surfaces_geometry_diagnostics() {
     // ara3d fixtures are not committed; skip cleanly when absent (AGENTS.md test
     // convention, matching issue_1320_wall_67828_round_window).
-    let bytes = match std::fs::read(fixture_path(FIXTURE)) {
-        Ok(b) => b,
-        Err(_) => {
-            eprintln!("{FIXTURE} missing - skipping");
-            return;
-        }
-    };
+    let bytes = ifc_lite_testkit::fixture_bytes_or_skip!(FIXTURE);
     let result = process_geometry(&bytes);
 
     let diag = result

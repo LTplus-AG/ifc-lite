@@ -68,27 +68,13 @@ use std::collections::HashMap;
 // Integration tests do not reach into crate-private implementation constants.
 const KERNEL_GRID: f64 = 1.0 / 65536.0;
 
-const FIXTURE: &str = "tests/models/georeferencer/MiniBIM-3.1-DO_01_VORM.ifc";
+const FIXTURE: &str = "georeferencer/MiniBIM-3.1-DO_01_VORM.ifc";
 
 /// The slabs every one of whose openings fills a hole of its own profile.
 // Host 150890 has the same authored coincidence: its three openings match
 // profile holes 150876/150878/150880 within exporter arithmetic noise (<1e-13 m),
 // including the common depth [-0.25, 0]; the fourth profile hole has no opening.
 const SLABS: [u32; 8] = [137627, 139545, 141434, 143323, 145212, 151760, 154626, 150890];
-
-/// `IFC_LITE_REQUIRE_FIXTURES`, read as `rust/export/src/test_support.rs`
-/// documents it: unset, empty or `"0"` skips a missing fixture, `"1"` (CI)
-/// makes it a failure, anything else panics.
-fn require_fixtures() -> bool {
-    match std::env::var("IFC_LITE_REQUIRE_FIXTURES") {
-        Err(std::env::VarError::NotPresent) => false,
-        Ok(v) if v.is_empty() || v == "0" => false,
-        Ok(v) if v == "1" => true,
-        other => {
-            panic!("IFC_LITE_REQUIRE_FIXTURES must be unset, \"\", \"0\" or \"1\"; got {other:?}")
-        }
-    }
-}
 
 /// Undirected edges not used exactly once in each direction, vertices welded
 /// at the 1/65536 m kernel grid. `assert_closed` separately rejects collapsed
@@ -109,26 +95,6 @@ fn open_edges(triangles: &[[[i64; 3]; 3]]) -> usize {
         }
     }
     edges.values().filter(|&&(f, r)| f != 1 || r != 1).count()
-}
-
-/// The fixture's bytes, or `None` (after the `IFC_LITE_REQUIRE_FIXTURES`
-/// check) when it has not been fetched.
-fn fixture() -> Option<Vec<u8>> {
-    let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..")
-        .join(FIXTURE);
-    match std::fs::read(&path) {
-        Ok(bytes) => Some(bytes),
-        Err(e) => {
-            assert!(
-                !require_fixtures(),
-                "{FIXTURE} is missing ({e}) and IFC_LITE_REQUIRE_FIXTURES=1"
-            );
-            eprintln!("{FIXTURE} missing, skipping; fetch it with `pnpm fixtures`");
-            None
-        }
-    }
 }
 
 /// One element's triangles on the 1/65536 m kernel grid of WORLD positions (the per-mesh
@@ -248,7 +214,7 @@ fn assert_shape_retained(id: u32, uncut: &[MeshData], cut: &[MeshData], frame: &
 
 #[test]
 fn issue_6940_openings_filling_profile_holes_leave_the_slabs_closed() {
-    let Some(bytes) = fixture() else { return };
+    let Some(bytes) = ifc_lite_testkit::fixture_bytes(FIXTURE) else { return };
     let result = process_geometry(&bytes);
     for id in SLABS {
         let triangles = world_triangles(result.meshes.iter().filter(|m| m.express_id == id));
@@ -299,7 +265,7 @@ fn void_index(content: &[u8], decoder: &mut EntityDecoder) -> FxHashMap<u32, Vec
 /// process-global switch, so this cannot disturb another test.
 #[test]
 fn issue_6940_the_slabs_are_closed_in_every_vertex_frame() {
-    let Some(bytes) = fixture() else { return };
+    let Some(bytes) = ifc_lite_testkit::fixture_bytes(FIXTURE) else { return };
     let index = std::sync::Arc::new(build_entity_index(&bytes));
     let mut decoder = EntityDecoder::with_arc_index(&bytes, index);
     let units = GeometryRouter::with_units(&bytes, &mut decoder);

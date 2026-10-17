@@ -149,55 +149,62 @@ pub(super) fn prepare_prism(op: &OpeningType, host: &Mesh) -> Option<PrismFrame>
                 );
             reconciled.origin = origin;
             let m = if changed { &reconciled } else { m };
-            // Host-local f64 verts (cutter origin folded, host origin removed).
-            let o = m.origin;
-            let vc = m.positions.len() / 3;
-            let mut raw: Vec<V3> = Vec::with_capacity(vc);
-            for c in m.positions.chunks_exact(3) {
-                let p = [
-                    c[0] as f64 + o[0] - origin[0],
-                    c[1] as f64 + o[1] - origin[1],
-                    c[2] as f64 + o[2] - origin[2],
-                ];
-                if p.iter().any(|x| !x.is_finite()) {
-                    return None;
-                }
-                raw.push(p);
-            }
-            // Enclosed volume from the raw (per-face-vertex) soup.
-            let mut vol6 = 0.0;
-            for t in m.indices.chunks_exact(3) {
-                if t.iter().any(|&i| i as usize >= vc) {
-                    return None;
-                }
-                let (a, b, c) = (raw[t[0] as usize], raw[t[1] as usize], raw[t[2] as usize]);
-                vol6 += dot(a, cross(b, c));
-            }
-            // Weld by position for exact edge stitching of the cap boundary.
-            let mut wverts: Vec<V3> = Vec::new();
-            let mut wmap: FxHashMap<(i64, i64, i64), usize> = FxHashMap::default();
-            let q = |x: f64| (x / 1.0e-6).round() as i64;
-            let mut idx_of = vec![0usize; raw.len()];
-            for (i, p) in raw.iter().enumerate() {
-                let key = (q(p[0]), q(p[1]), q(p[2]));
-                let id = *wmap.entry(key).or_insert_with(|| {
-                    wverts.push(*p);
-                    wverts.len() - 1
-                });
-                idx_of[i] = id;
-            }
-            let mut wtris: Vec<[usize; 3]> = Vec::with_capacity(m.indices.len() / 3);
-            for t in m.indices.chunks_exact(3) {
-                let a = idx_of[t[0] as usize];
-                let b = idx_of[t[1] as usize];
-                let c = idx_of[t[2] as usize];
-                if a != b && b != c && c != a {
-                    wtris.push([a, b, c]);
-                }
-            }
-            detect_prism(&wverts, &wtris, vol6 / 6.0)
+            detect_mesh_prism_in_host_frame(m, origin)
         }
     }
+}
+
+/// Detect the reconciled cutter's prism from host-local vertices, signed
+/// volume and welded cap-boundary topology. Invalid coordinates/indices
+/// keep the existing exact-kernel fallback.
+fn detect_mesh_prism_in_host_frame(m: &Mesh, origin: V3) -> Option<PrismFrame> {
+    // Host-local f64 verts (cutter origin folded, host origin removed).
+    let o = m.origin;
+    let vc = m.positions.len() / 3;
+    let mut raw: Vec<V3> = Vec::with_capacity(vc);
+    for c in m.positions.chunks_exact(3) {
+        let p = [
+            c[0] as f64 + o[0] - origin[0],
+            c[1] as f64 + o[1] - origin[1],
+            c[2] as f64 + o[2] - origin[2],
+        ];
+        if p.iter().any(|x| !x.is_finite()) {
+            return None;
+        }
+        raw.push(p);
+    }
+    // Enclosed volume from the raw (per-face-vertex) soup.
+    let mut vol6 = 0.0;
+    for t in m.indices.chunks_exact(3) {
+        if t.iter().any(|&i| i as usize >= vc) {
+            return None;
+        }
+        let (a, b, c) = (raw[t[0] as usize], raw[t[1] as usize], raw[t[2] as usize]);
+        vol6 += dot(a, cross(b, c));
+    }
+    // Weld by position for exact edge stitching of the cap boundary.
+    let mut wverts: Vec<V3> = Vec::new();
+    let mut wmap: FxHashMap<(i64, i64, i64), usize> = FxHashMap::default();
+    let q = |x: f64| (x / 1.0e-6).round() as i64;
+    let mut idx_of = vec![0usize; raw.len()];
+    for (i, p) in raw.iter().enumerate() {
+        let key = (q(p[0]), q(p[1]), q(p[2]));
+        let id = *wmap.entry(key).or_insert_with(|| {
+            wverts.push(*p);
+            wverts.len() - 1
+        });
+        idx_of[i] = id;
+    }
+    let mut wtris: Vec<[usize; 3]> = Vec::with_capacity(m.indices.len() / 3);
+    for t in m.indices.chunks_exact(3) {
+        let a = idx_of[t[0] as usize];
+        let b = idx_of[t[1] as usize];
+        let c = idx_of[t[2] as usize];
+        if a != b && b != c && c != a {
+            wtris.push([a, b, c]);
+        }
+    }
+    detect_prism(&wverts, &wtris, vol6 / 6.0)
 }
 
 #[cfg(test)]

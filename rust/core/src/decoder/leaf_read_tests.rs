@@ -127,3 +127,20 @@ fn the_fast_path_never_reads_what_the_full_decode_does_not() {
         }
     }
 }
+
+/// F4-1 (#7778): the forms the tokenizer now reads (`.5`, `1E5`, `+1`) are
+/// fast-path hits that equal the full decode, not silent misses.
+#[test]
+fn the_fast_path_reads_the_f4_1_number_forms_as_the_full_decode_does() {
+    use super::{fast_leaf, slow_leaf, POINT_KEYWORD};
+    use crate::IfcType;
+    let content = "#1=IFCCARTESIANPOINT((.5,-.5,+.5));\n#2=IFCCARTESIANPOINT((1E5,1e-5,+1));\n";
+    let mut d = EntityDecoder::new(content);
+    for (id, want) in [(1, [0.5, -0.5, 0.5]), (2, [1e5, 1e-5, 1.0])] {
+        let fast = d.get_raw_bytes(id).and_then(|bytes| fast_leaf(bytes, POINT_KEYWORD));
+        assert_eq!(fast, Some(want), "#{id} must be a fast-path hit");
+        let slow = d.decode_by_id(id).ok().and_then(|e| slow_leaf(&e, IfcType::IfcCartesianPoint));
+        assert_eq!(slow, Some(want), "#{id} full decode");
+        assert_eq!(d.point3(id).unwrap(), want);
+    }
+}

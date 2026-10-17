@@ -224,9 +224,27 @@ function curl(url, args = []) {
   return must(sh('curl', ['-fsSL', '--retry', '3', '-A', USER_AGENT, ...args, url]), `curl ${url}`);
 }
 
+/** Problems with a published crate's `.cargo_vcs_info.json` against the tag.
+ *  The crate files are diffed one by one, but the workspace root (Cargo.toml,
+ *  Cargo.lock, .cargo) is not packaged: only the recorded commit vouches for
+ *  it. A missing or different sha1 therefore fails closed. */
+export function vcsInfoMismatches(vcs, inVcs, tagCommit) {
+  const out = [];
+  if (vcs.path_in_vcs !== undefined && vcs.path_in_vcs !== inVcs) {
+    out.push(`.cargo_vcs_info.json: packaged from ${vcs.path_in_vcs}, the tag has the crate at ${inVcs}`);
+  }
+  const sha1 = vcs.git?.sha1;
+  if (typeof sha1 !== 'string' || sha1.length === 0) {
+    out.push('.cargo_vcs_info.json: records no git commit, so the tag cannot be tied to the published source');
+  } else if (sha1.toLowerCase() !== String(tagCommit).toLowerCase()) {
+    out.push(`.cargo_vcs_info.json: published from commit ${sha1}, the tag is commit ${tagCommit}`);
+  }
+  return out;
+}
+
 /** Download crate@version, check its sha256 against the sparse index, and
  *  compare its files with the tag's copy. Returns the vcs commit it names. */
-function verifyPublished(pkg, treeRoot, workDir) {
+function verifyPublished(pkg, treeRoot, workDir, tagCommit) {
   const { name, version } = pkg;
   const index = curl(`https://index.crates.io/${sparseIndexPath(name)}`).toString('utf8');
   const entry = index.split('\n').filter(Boolean).map((l) => JSON.parse(l)).find((e) => e.vers === version);
@@ -253,9 +271,7 @@ function verifyPublished(pkg, treeRoot, workDir) {
   const diffs = diffPackagedSources(packaged, tagged);
   const vcs = JSON.parse(packaged.get('.cargo_vcs_info.json')?.toString('utf8') ?? '{}');
   const inVcs = relative(treeRoot, crateDir).split('\\').join('/');
-  if (vcs.path_in_vcs !== undefined && vcs.path_in_vcs !== inVcs) {
-    diffs.push(`.cargo_vcs_info.json: packaged from ${vcs.path_in_vcs}, the tag has the crate at ${inVcs}`);
-  }
+  diffs.push(...vcsInfoMismatches(vcs, inVcs, tagCommit));
   if (diffs.length > 0) {
     throw new Error(
       `BASELINE_SOURCE_MISMATCH: the tag is not the published ${name} ${version} ` +
@@ -328,7 +344,7 @@ export function buildTagBaselineRustdoc(crate, version, toolchain) {
   if (!pkg) throw new Error(`BASELINE_TAG_NOT_FOUND: ${s.tag} has no workspace crate ${crate} ${version}.`);
   const closure = workspaceClosure(s.meta, pkg);
   for (const dep of closure) {
-    if (!s.verified.has(dep.name)) s.verified.set(dep.name, verifyPublished(dep, s.treeRoot, s.workDir));
+    if (!s.verified.has(dep.name)) s.verified.set(dep.name, verifyPublished(dep, s.treeRoot, s.workDir, s.commit));
   }
   const commits = new Set(closure.map((p) => s.verified.get(p.name)).filter(Boolean));
   const features = heuristicFeatures(pkg);

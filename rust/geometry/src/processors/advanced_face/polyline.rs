@@ -8,7 +8,10 @@ use crate::{scale_segments, Point3, TessellationQuality};
 use ifc_lite_core::{DecodedEntity, EntityDecoder};
 
 use super::conics::{read_axis2_placement_frame, sample_circle_edge_curve};
-use super::curves::{resolve_present, sample_bspline_curve_polyline, sample_bspline_edge_curve, Refused};
+use super::curves::{
+    resolve_present, sample_bspline_curve_polyline,
+    sample_bspline_edge_curve_range, trim_parameter_range, Refused,
+};
 
 /// Sample points along a curve in 3D. Currently handles `IfcLine`, `IfcCircle`,
 /// `IfcEllipse`, `IfcPolyline`, `IfcTrimmedCurve` and `IfcBSplineCurveWithKnots`.
@@ -70,8 +73,8 @@ fn sample_curve_polyline_guarded(
     }
     use std::f64::consts::TAU;
     let kind = curve.ifc_type.as_str().to_uppercase();
-    // The rational variant shares attributes 0-7 with the plain one; sampling
-    // it unweighted beats dropping the curve entirely.
+    // The rational variant shares attributes 0-7 with the plain one and adds
+    // WeightsData, which `parse_bspline_curve` reads (#7750).
     if kind == "IFCBSPLINECURVEWITHKNOTS" || kind == "IFCRATIONALBSPLINECURVEWITHKNOTS" {
         return sample_bspline_curve_polyline(curve, decoder, quality);
     }
@@ -202,14 +205,12 @@ fn sample_curve_polyline_guarded(
                 return Ok(pts);
             }
         }
-        if basis_kind == "IFCBSPLINECURVEWITHKNOTS" {
-            if let (Some(p_start), Some(p_end)) = (p1, p2) {
-                let mut pts = sample_bspline_edge_curve(&basis, &p_start, sense, decoder, quality)?;
-                pts.push(p_end);
-                return Ok(pts);
-            }
+        if basis_kind == "IFCBSPLINECURVEWITHKNOTS" || basis_kind == "IFCRATIONALBSPLINECURVEWITHKNOTS" {
             if let Some(p_start) = p1 {
-                return sample_bspline_edge_curve(&basis, &p_start, sense, decoder, quality);
+                let range = trim_parameter_range(curve); // Parameter trims bound it, as in `edge_loop`.
+                let mut pts = sample_bspline_edge_curve_range(&basis, &p_start, sense, range, decoder, quality)?;
+                pts.extend(p2);
+                return Ok(pts);
             }
         }
         if basis_kind == "IFCLINE" {

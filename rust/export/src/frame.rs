@@ -91,7 +91,34 @@ pub(crate) fn mesh_frame_from_world_matrix(
             ),
         });
     }
+    // The root carries the matrix as glTF TRS, which has no spelling for a
+    // projective row, a shear or a mirror, and a frame never is one: a bake
+    // only ever subtracts a translation and a site's proper rotation. Anything
+    // else would come out as a root whose rotation disagrees with the matrix.
+    if !is_rigid(m) {
+        return Err(crate::error::ExportError::MalformedMeshInput {
+            detail: "`world_matrix` must be a rigid transform (an orthonormal rotation with \
+                     determinant +1, a translation, bottom row 0 0 0 1)"
+                .to_owned(),
+        });
+    }
     Ok(MeshFrame::from_world_matrix(m))
+}
+
+/// `m` (column-major, 16 finite numbers) is a proper rotation plus a
+/// translation, within a tolerance well above f64 placement noise.
+fn is_rigid(m: &[f64]) -> bool {
+    const TOL: f64 = 1e-6;
+    let col = |c: usize| [m[c * 4], m[c * 4 + 1], m[c * 4 + 2]];
+    let dot = |a: [f64; 3], b: [f64; 3]| a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+    let (x, y, z) = (col(0), col(1), col(2));
+    let cross = [x[1] * y[2] - x[2] * y[1], x[2] * y[0] - x[0] * y[2], x[0] * y[1] - x[1] * y[0]];
+    let bottom = [m[3], m[7], m[11], m[15] - 1.0];
+    bottom.iter().all(|v| v.abs() <= TOL)
+        && [(x, x, 1.0), (y, y, 1.0), (z, z, 1.0), (x, y, 0.0), (x, z, 0.0), (y, z, 0.0)]
+            .iter()
+            .all(|&(a, b, want)| (dot(a, b) - want).abs() <= TOL)
+        && dot(cross, z) > 0.0
 }
 
 /// Reusable owned buffers for the streaming Y-up conversion. The streaming/bounded

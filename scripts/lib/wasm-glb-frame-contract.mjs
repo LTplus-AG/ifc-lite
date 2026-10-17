@@ -54,5 +54,10 @@ export function runGlbFrameContract(api, test) {
       (e) => e instanceof Error && e.message.startsWith('MALFORMED_MESH_INPUT'),
       'a world matrix that is not 16 numbers must throw MALFORMED_MESH_INPUT',
     );
+    assert.throws(
+      () => call(new Float64Array([2, 0, 0, 0, 0, 2, 0, 0, 0, 0, 2, 0, 0, 0, 0, 1])),
+      (e) => e instanceof Error && e.message.startsWith('MALFORMED_MESH_INPUT'),
+      'a non-rigid world matrix (the root TRS cannot carry it) must throw MALFORMED_MESH_INPUT',
+    );
   });
 }

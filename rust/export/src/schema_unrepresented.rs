@@ -16,25 +16,38 @@
 use std::borrow::Cow;
 
 use crate::rooted_type::is_rooted_type;
-use crate::schema_convert::placeholder_guid;
+use crate::schema_convert::{placeholder_guid, schema_attribute_names};
 
-/// True when `type_name` has no representation at all in `to` — distinct
-/// from a renamed or attribute-count-adjusted counterpart, which
-/// `schema_convert.rs`'s rename tables already resolve before this runs.
+/// True when `type_name` (the record's possibly renamed type) can be written
+/// into `to` as it is. Twin of the check in the TypeScript `convertRecord`,
+/// pinned for both by `tests/fixtures/schema_unrepresented_vectors.json`
+/// (#7742).
 ///
-/// Only checked for an IFC2X3 target today, against core's IFC2X3 EXPRESS
-/// registry (#7683; it replaced a generated name table that listed the same
-/// entities plus the defined types, which never head a record). Every other
-/// target answers `true` (representable): unlike the TypeScript
-/// `attrNameTable` check, which also runs for IFC4/IFC4X3 targets, this crate
-/// has no port of the `WITHHOLDABLE_UNROOTED_TYPES` omission, so widening the
-/// check would turn an IFC4X3 -> IFC4 export with any IFC4X3-only resource
-/// type into an error rather than a pass-through.
-pub(crate) fn has_representation(type_name: &str, to: &str) -> bool {
-    if to != "IFC2X3" {
-        return true;
+/// An IFC2X3 target requires the target registry to declare the type, for
+/// every source (as before). An IFC4 target requires it only when the SOURCE is
+/// IFC4X3 and declares the type (`declared_in_source`): that is the #7742
+/// direction, IFC4X3-only resources that readers drop. IFC2X3 and IFC4 sources
+/// keep main's behaviour for IFC4/IFC4X3 targets (D59): their IFC2X3-only or
+/// IFC4-only non-rooted records (`IfcCalendarDate` on an `IfcClassification`,
+/// `IfcGeneralMaterialProperties`) are written as they are, because refusing
+/// them failed real files that export on main. IFC5 has no registry and
+/// accepts everything. A name neither schema knows passes through.
+///
+/// Until #7742 an IFC4 target was never checked here, so an IFC4X3 -> IFC4
+/// export wrote every IFC4X3-only resource record (`IfcCurveSegment`,
+/// `IfcClothoid`, ...) under its IFC4X3 name into a file headed `IFC4`; the
+/// TypeScript twin refused it.
+///
+/// This crate still has no port of the TypeScript
+/// `WITHHOLDABLE_UNROOTED_TYPES` omission, so every non-rooted type that fails
+/// this check is refused (D3, fail closed).
+pub(crate) fn has_representation(declared_in_source: bool, type_name: &str, to: &str) -> bool {
+    match to {
+        "IFC2X3" => {}
+        "IFC4" if declared_in_source => {}
+        _ => return true,
     }
-    ifc_lite_core::entity_info_for_schema("IFC2X3", type_name).is_some()
+    schema_attribute_names(to, type_name).is_some()
 }
 
 /// An entity type with no representation in the target schema that is
@@ -146,19 +159,24 @@ mod tests {
 
     #[test]
     fn ifc2x3_has_no_triangulated_face_set() {
-        assert!(!has_representation("IFCTRIANGULATEDFACESET", "IFC2X3"));
+        assert!(!has_representation(true, "IFCTRIANGULATEDFACESET", "IFC2X3"));
     }
 
     #[test]
     fn ifc2x3_has_wall() {
-        assert!(has_representation("IFCWALL", "IFC2X3"));
+        assert!(has_representation(true, "IFCWALL", "IFC2X3"));
     }
 
     #[test]
-    fn non_ifc2x3_targets_are_not_checked() {
-        assert!(has_representation("IFCTRIANGULATEDFACESET", "IFC4"));
-        assert!(has_representation("IFCTRIANGULATEDFACESET", "IFC4X3"));
-        assert!(has_representation("IFCTRIANGULATEDFACESET", "IFC5"));
+    fn an_ifc4_target_checks_only_types_an_ifc4x3_source_declares_7742() {
+        assert!(!has_representation(true, "IFCCURVESEGMENT", "IFC4"));
+        // IFC4X3 is never checked as a target (an IFC2X3/IFC4 source keeps main's behaviour, D59).
+        assert!(has_representation(true, "IFCPRESENTATIONSTYLEASSIGNMENT", "IFC4X3"));
+        // A name the source does not declare is not judged.
+        assert!(has_representation(false, "IFCCURVESEGMENT", "IFC4"));
+        assert!(has_representation(true, "IFCTRIANGULATEDFACESET", "IFC4"));
+        // IFC5 has no registry.
+        assert!(has_representation(true, "IFCTRIANGULATEDFACESET", "IFC5"));
     }
 
     #[test]

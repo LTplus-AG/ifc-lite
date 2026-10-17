@@ -22,7 +22,10 @@ const FALLBACK_SCAN_BYTES: usize = 2000;
 ///    and comment-aware, so text in DATA, header strings or comments does not
 ///    count.
 /// 2. If none does (no, empty or unparseable declaration), the first 2000
-///    bytes are searched for a schema token, ASCII case-insensitively.
+///    bytes are searched for a schema token, ASCII case-insensitively. This
+///    is a loose last resort: with no declaration it can match `ifc4` inside
+///    a GUID in those bytes, exactly as the TS twin does (pinned by a shared
+///    vector, #7740).
 /// 3. Otherwise `"IFC4"`.
 pub fn detect_schema_version(content: &[u8]) -> &'static str {
     ifc_lite_core::parser::header::first_declared_schema(content, schema_of_identifier)

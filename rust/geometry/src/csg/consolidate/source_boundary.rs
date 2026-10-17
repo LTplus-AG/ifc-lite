@@ -6,7 +6,7 @@
 //! No overlay, snapping, simplification, raw fallback or new boundary points.
 use super::{buckets::Buckets, conform::{PlanBucket, CONFORM_TOL}, supported_cells};
 use super::source_boundary_graph::{partition, rings, Partition};
-use crate::{geom2d::{orientation, segments_intersect}, mesh::Mesh};
+use crate::{math::geom2d::{orientation, segments_intersect}, mesh::Mesh};
 use nalgebra::{Point2, Point3};
 use num_rational::BigRational;
 use num_traits::{Signed, Zero};
@@ -116,8 +116,8 @@ fn simple(loops: &[Vec<usize>], xy: &[XY]) -> bool {
             let adjacent = r == s && ((k+1)%loops[r].len() == l || (l+1)%loops[r].len() == k);
             if adjacent {
                 let (before,corner,after) = if b == c { (a,b,d) } else { (c,d,b) };
-                if crate::geom2d::on_segment(xy[before],xy[corner],xy[after])
-                    || crate::geom2d::on_segment(xy[corner],xy[after],xy[before]) { return false; }
+                if crate::math::geom2d::on_segment(xy[before],xy[corner],xy[after])
+                    || crate::math::geom2d::on_segment(xy[corner],xy[after],xy[before]) { return false; }
             } else if segments_intersect(xy[a],xy[b],xy[c],xy[d]) { return false; }
         }
     }

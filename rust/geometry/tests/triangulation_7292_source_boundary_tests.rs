@@ -5,14 +5,12 @@ use super::*;
 
 #[test]
 fn issue_7292_actual_26832_selected_void_output_has_paired_exact_edges() {
-    let path = crate_dir().join("../../tests/models/various/rvt01.ifc");
-    if !path.is_file() {
+    let Some(content) = ifc_lite_testkit::fixture_text("various/rvt01.ifc") else {
         eprintln!("Skipping actual RVT01 #26832: run pnpm fixtures");
         return;
-    }
+    };
     let _serial = CENSUS_SWEEP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let _reset = AltTriangulatorReset;
-    let content = std::fs::read_to_string(path).expect("read RVT01 fixture");
     let frame = ModelFrame::new(&content);
     let voids = void_index(&content);
     #[cfg(feature = "triangulation-alt")]

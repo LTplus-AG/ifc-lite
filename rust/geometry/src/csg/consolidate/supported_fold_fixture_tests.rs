@@ -150,8 +150,8 @@ fn strict_hits(mesh: &Mesh, point: [f64; 3]) -> usize {
         let (x,y) = if n.x >= n.y && n.x >= n.z { (1,2) }
             else if n.y >= n.z { (2,0) } else { (0,1) };
         let p = t.map(|p| [p[x],p[y]]);
-        let w = crate::geom2d::orientation(p[0],p[1],p[2]);
-        w != 0 && (0..3).all(|i| crate::geom2d::orientation(p[i],p[(i+1)%3],
+        let w = crate::math::geom2d::orientation(p[0],p[1],p[2]);
+        w != 0 && (0..3).all(|i| crate::math::geom2d::orientation(p[i],p[(i+1)%3],
             [point[x],point[y]]) == w)
     }).count()
 }
@@ -183,7 +183,7 @@ fn issue_7292_actual_supported_fold_survives_final_consolidation_adoption() {
 fn source_segment_paired(mesh: &Mesh, p: [f64; 3], q: [f64; 3]) -> bool {
     let mut ranges: [Vec<(f64,f64)>;2] = Default::default();
     let on_line = |v: [f64;3]| [(0,1),(0,2),(1,2)].into_iter().all(|(x,y)|
-        crate::geom2d::orientation([p[x],p[y]],[q[x],q[y]],[v[x],v[y]]) == 0);
+        crate::math::geom2d::orientation([p[x],p[y]],[q[x],q[y]],[v[x],v[y]]) == 0);
     for tri in mesh.indices.chunks_exact(3) {
         let t = [tri[0],tri[1],tri[2]].map(|i| [0,1,2]
             .map(|k| f64::from(mesh.positions[i as usize * 3 + k])));

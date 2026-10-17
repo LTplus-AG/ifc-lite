@@ -2417,12 +2417,10 @@ fn repaired_office_covering_matches_independent_solid_3925() {
 fn issue_7292_rvt_void_cut_hygiene_preserves_exact_closed_boundaries() {
     let _serial = CENSUS_SWEEP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let _reset = AltTriangulatorReset;
-    let path = crate_dir().join("../../tests/models/various/rvt01.ifc");
-    if !oracle_fixture_present(&path) {
+    let Some(content) = ifc_lite_testkit::fixture_text("various/rvt01.ifc") else {
         eprintln!("Skipping #7292 void hygiene: run pnpm fixtures");
         return;
-    }
-    let content = std::fs::read_to_string(path).expect("read actual rvt fixture");
+    };
     let frame = ModelFrame::new(&content);
     let voids = void_index(&content);
     #[cfg(feature = "triangulation-alt")]

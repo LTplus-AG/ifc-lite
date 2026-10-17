@@ -268,7 +268,7 @@ pub(super) fn nonoverlapping(tris: &[PlaneTri]) -> bool {
         (0, 1)
     };
     let project = |t: &PlaneTri| t.v.map(|p| [p[x], p[y]]);
-    let orient = crate::geom2d::orientation;
+    let orient = crate::math::geom2d::orientation;
     for (i, a) in tris.iter().enumerate() {
         let a = project(a);
         let wa = orient(a[0], a[1], a[2]);

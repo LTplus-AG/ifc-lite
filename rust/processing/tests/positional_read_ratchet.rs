@@ -34,9 +34,10 @@
 //! Row format: `<count> <path>`. To re-seed after a deliberate change, run
 //! `cargo test -p ifc-lite-processing --test positional_read_ratchet -- --ignored --nocapture print_current_counts`.
 //!
-//! ANTI-VACUITY (#3200): the walk and the scan each have a floor, a missing
-//! or unreadable root is a hard error, and the no-repo-root skip is refused
-//! under CI.
+//! ANTI-VACUITY (#3200): the production-file walk has a floor, and an
+//! independent fixed scanner canary remains active regardless of how much
+//! positional-read debt remains. A missing or unreadable root is a hard error,
+//! and the no-repo-root skip is refused under CI.
 
 mod common;
 use common::read_scan::{scan, Reads};

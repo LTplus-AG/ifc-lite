@@ -5,7 +5,7 @@
 //! Box recognition far from the origin (#5474). Mirrored by the `detectObb`
 //! world-frame block in `packages/clash/src/engine-ts/obb.test.ts`.
 
-use super::{detect_obb, MeshLike};
+use super::{detect_obb, normal_angle_error, MeshLike, MIN_SIN_THETA};
 use crate::vec3::{dot, Vec3};
 use crate::world_frame_corpus::ulp32;
 
@@ -181,3 +181,83 @@ fn a_millimetre_l_prism_is_still_not_a_box_edge_clash_4() {
     ];
     assert!(detect_obb(&mesh(&l, &idx, 0.3, [0.0; 3])).is_none());
 }
+
+
+/// `BOX_IDX` with each face's 2nd triangle re-started at its other diagonal
+/// corner: the same triangles and winding, but now BOTH triangles of every
+/// face start at an acute corner. Mirrored as `ACUTE_START_IDX` in
+/// `obb.test.ts`.
+const ACUTE_START_IDX: [usize; 36] = [
+    0, 1, 2, 2, 3, 0, 4, 6, 5, 6, 4, 7, 0, 5, 1, 5, 0, 4, 3, 2, 6, 6, 7, 3, 0, 3, 7, 7, 4, 0, 1,
+    5, 6, 6, 2, 1,
+];
+
+/// Long thin members (shared parity vectors with `obb.test.ts`): a 10 m x
+/// 1 m x 5 mm plate, a 12 m bar of 8 mm square section, and a 1 m x 2 cm x
+/// 0.2 mm shim. Their long faces' halves have `sin` < `MIN_SIN_THETA` at an
+/// acute corner.
+const THIN_BOX_HALVES: [Vec3; 3] = [[5.0, 0.5, 0.0025], [6.0, 0.004, 0.004], [0.0001, 0.01, 0.5]];
+
+#[test]
+fn a_long_thin_member_is_a_box_whatever_vertex_its_triangles_start_at() {
+    // Review of #7813: a `sin` measured at vertex `a` dropped BOTH triangles
+    // of a 10 m x 5 mm face when each started at an acute corner, so the plate
+    // lost a whole face family and fell to the AABB estimate. The rule now
+    // measures the triangle's largest angle (`short_edges`).
+    for idx in [&BOX_IDX, &ACUTE_START_IDX] {
+        for h in THIN_BOX_HALVES {
+            for t in [[0.0, 0.0, 0.0], [12.5, -3.25, 1.0]] {
+                let o = detect_obb(&mesh(&box_corners(h), idx, 0.3, t))
+                    .unwrap_or_else(|| panic!("half {h:?} offset {t:?}: a thin plate is a box"));
+                let (mut got, mut want) = (o.half, h);
+                got.sort_by(f64::total_cmp);
+                want.sort_by(f64::total_cmp);
+                let tol = 8.0 * ulp32(t[0].abs().max(t[1].abs()).max(t[2].abs()) + 6.0);
+                for k in 0..3 {
+                    assert!((got[k] - want[k]).abs() <= tol, "half {h:?} offset {t:?}: {got:?}");
+                }
+            }
+        }
+    }
+}
+
+/// The three rotations of a triangle's vertex order.
+fn rotations(a: Vec3, b: Vec3, c: Vec3) -> [[Vec3; 3]; 3] {
+    [[a, b, c], [b, c, a], [c, a, b]]
+}
+
+#[test]
+fn the_normal_noise_bound_is_scale_free_and_vertex_order_free() {
+    // A dyadic right triangle (every product exact): legs 1 and 2^-8, all
+    // coordinates <= 1 so the coordinate error is the 2^-22 floor. At its
+    // right angle `sin = 1`, so the bound is `2^-22 * (1/l0 + 1/l1)`, from
+    // whichever vertex the triangle is listed. (The `a`-relative bound gave
+    // `2^-22 * 2 / 2^-8` from either acute corner.)
+    let unit_err = 2f64.powi(-22);
+    for s in [1.0, 0.5, 0.25] {
+        let (a, b, c) = ([0.0, 0.0, 0.0], [s, 0.0, 0.0], [0.0, s / 256.0, 0.0]);
+        for [p, q, r] in rotations(a, b, c) {
+            let (err, coord_err) = normal_angle_error(p, q, r);
+            assert_eq!(coord_err, unit_err);
+            assert_eq!(err, unit_err * 257.0 / s, "scale {s}");
+        }
+    }
+}
+
+/// Needle triangles `(0,0,0), (1,0,0), (2,h,0)` (largest angle at `(1,0,0)`,
+/// `sin = h / sqrt(1 + h^2)`) on either side of `MIN_SIN_THETA`, with the
+/// expected keep decision. Shared with `obb.test.ts` (`NEEDLE_CASES`).
+const NEEDLE_CASES: [(f64, bool); 5] =
+    [(0.0, false), (1.0e-6, false), (0.9999e-3, false), (1.0001e-3, true), (0.01, true)];
+
+#[test]
+fn a_needle_has_no_noise_bound_and_a_kept_triangle_has_a_finite_one() {
+    for (h, keep) in NEEDLE_CASES {
+        assert_eq!(h / (1.0 + h * h).sqrt() >= MIN_SIN_THETA, keep, "fixture h {h}");
+        for [p, q, r] in rotations([0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [2.0, h, 0.0]) {
+            let (err, _) = normal_angle_error(p, q, r);
+            assert_eq!(err.is_finite(), keep, "h {h} start {p:?}: err {err}");
+        }
+    }
+}
+

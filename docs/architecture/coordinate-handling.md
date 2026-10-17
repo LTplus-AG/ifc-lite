@@ -226,6 +226,10 @@ origin?: [number, number, number];
 
 The framed transform path (`mesh_world.rs`) transforms every vertex in f64, tracks the AABB, and then stores positions relative to an AABB-derived origin so the f32 payload stays small. `origin` is `[f64; 3]` on the Rust side (`MeshData.origin`). Every world-space consumer (raycasting, measurement, export, snapping) must fold `origin` back in; normals are translation-invariant and unaffected. The renderer relativizes all batches against a shared scene-level origin and expresses it as a translation in the model matrix, so the GPU only ever sees small local coordinates.
 
+## The Z-up to Y-up frame in Rust
+
+`ifc_lite_geometry::math::frame` is the one definition of the IFC Z-up to WebGL Y-up conversion `(x, y, z) -> (x, z, -y)`: point and vertex swaps (`zup_to_yup`, `yup_to_zup`, `zup_to_yup_in_place`), the AABB min/max reversal on the negated axis (`aabb_zup_to_yup`), and matrix conjugation `S·M·Sᵀ` (`conjugate_zup_to_yup`, an exact signed permutation that folds the sign of zero to `+0.0`). Point swaps never fold `-0.0`.
+
 ## TypeScript Layer (Fallback)
 
 ### CoordinateHandler

@@ -130,9 +130,7 @@ fn parse_profile_position(
     if matrix.iter().any(|value| !value.is_finite()) {
         return Err(format!("Position #{id} has non-finite coordinates"));
     }
-    let mut values = [0.0; 16];
-    values.copy_from_slice(matrix.as_slice());
-    result.profile_position = Some(values);
+    result.profile_position = Some(crate::math::mat4::col_major_array(&matrix));
     Ok(())
 }
 

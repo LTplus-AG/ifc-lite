@@ -393,10 +393,9 @@ let world = resolve_chain(&placement, &mut decoder)?;
 let world = resolve_object_placement(&product, &mut decoder)?;
 ```
 
-`resolve_chain` is the placement walk of the router and the 2D profile
-extractor. The symbolic, analytic-export and export-preflight walks still
-carry their own depth caps until they move onto `ifc_lite_geometry::placement`
-(#7779). Nothing in the chain is defaulted: a cyclic chain, a `$`
+`resolve_chain` is the placement walk of the router, the 2D profile extractor
+and symbolic extraction. Analytic-export and export-preflight walks still
+carry their own bounds until their next shared-placement stage (#7779). Nothing in the chain is defaulted: a cyclic chain, a `$`
 `RelativePlacement`, a record that is not a placement (as `PlacementRelTo` or as
 `RelativePlacement`) and a linear or grid frame that cannot be sampled are each
 refused and counted (`EntityDecoder::refused_records`), so the element is lost
@@ -405,6 +404,15 @@ honoured. A `$` `ObjectPlacement` is the only identity ("genuinely missing"), an
 a chain of any length resolves in full.
 The result is memoised on the decoder, **unscaled** and column-major, so
 readers with different unit contexts share entries; the caller scales.
+
+Symbolic extraction retains the full 3D product and conic frames through
+composition, then projects to XY. Opposing product and conic tilts can cancel;
+projecting each input separately loses that geometry. The length scale applies
+to the composed product translation once. Circles keep their exact
+circle primitive under similarities. Under a foreshortening projection they
+use the bounded sampled-polyline representation already used for ellipses,
+including an edge-on circle whose projection is a line. Trimmed circular
+arcs likewise transform sampled points rather than multiplying a scalar radius.
 
 ### Large Coordinate Handling
 

@@ -219,45 +219,35 @@ pub(super) fn extract_symbolic_item_inner(
                 });
             }
         }
-        IfcType::IfcCircle => {
+        IfcType::IfcCircle | IfcType::IfcEllipse => {
             let Some(conic) = Conic::read(item, decoder, unit_scale) else { return };
-            // × scale(): a scalar radius never passes through transform_point (#1985).
-            let radius = conic.semi_a * transform.scale();
-            if !(radius.is_finite() && radius > 0.0) {
+            let basis = compose_transforms(transform, &conic.basis);
+            // Only a similarity maps a circle to a circle. A tilted frame can
+            // project to an ellipse or even a nontrivial line (#7779 P2).
+            if item.ifc_type == IfcType::IfcCircle && basis.is_similarity() {
+                let radius = conic.semi_a * basis.scale();
+                if !(radius.is_finite() && radius > 0.0) { return; }
+                let (px, py) = rebase.plan(basis.tx, basis.ty);
+                out.push_circle(SymbolicCircle::full(
+                    express_id, ifc_type.to_string(), px, py, radius as f32,
+                    rebase.elevation(basis.tz), rep_identifier.to_string(),
+                ));
                 return;
             }
-            let (wx, wy) = transform.transform_point(conic.basis.tx, conic.basis.ty);
-            let (px, py) = rebase.plan(wx, wy);
-            out.push_circle(SymbolicCircle::full(
-                express_id,
-                ifc_type.to_string(),
-                px,
-                py,
-                radius as f32,
-                rebase.elevation(conic.basis.tz + transform.tz),
-                rep_identifier.to_string(),
-            ));
-        }
-        IfcType::IfcEllipse => {
-            // NOT × scale() (unlike IfcCircle): sampled points go through transform_point.
-            let Some(conic) = Conic::read(item, decoder, unit_scale) else { return };
+            // The existing bounded ellipse representation preserves both axis
+            // images and survives rank-one projection. Include all quadrants.
             const SEGMENTS: usize = 64;
-            let mut points: Vec<f32> = Vec::with_capacity((SEGMENTS + 1) * 2);
+            let mut points = Vec::with_capacity((SEGMENTS + 1) * 2);
             for i in 0..=SEGMENTS {
                 let t = (i as f64) * std::f64::consts::TAU / (SEGMENTS as f64);
-                let (lx, ly) = conic.point_at(t);
-                let (wx, wy) = transform.transform_point(lx, ly);
+                let (wx, wy) = basis.transform_point(conic.semi_a * t.cos(), conic.semi_b * t.sin());
                 let (x, y) = rebase.plan(wx, wy);
                 push_finite_point(&mut points, x, y);
             }
             if points.len() >= 4 {
                 out.push_polyline(SymbolicPolyline {
-                    express_id,
-                    ifc_type: ifc_type.to_string(),
-                    points,
-                    closed: true,
-                    world_y: rebase.elevation(conic.basis.tz + transform.tz),
-                    representation: rep_identifier.to_string(),
+                    express_id, ifc_type: ifc_type.to_string(), points, closed: true,
+                    world_y: rebase.elevation(basis.tz), representation: rep_identifier.to_string(),
                 });
             }
         }

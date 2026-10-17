@@ -11,7 +11,7 @@ use ifc_lite_core::{AttributeValue, DecodedEntity, EntityDecoder, IfcType};
 
 use super::primitives::{SymbolicPolyline};
 use super::conic::Conic;
-use super::transform::{push_finite_point, Transform2D};
+use super::transform::{compose_transforms, push_finite_point, Transform2D};
 
 /// Tessellate an `IfcTrimmedCurve` whose `BasisCurve` is an `IfcCircle`.
 /// Honours `PLANEANGLEUNIT` scaling, `SenseAgreement`, and wrap-around so
@@ -45,9 +45,8 @@ pub(super) fn extract_trimmed_curve(
     // angles run from there. `Conic::read` is the same reader the circle and
     // ellipse items use, so a dangling or absent `Position` gives the arc an
     // unresolved elevation (`null`), not a finite 0.0.
-    let Some(circle) = Conic::read(&basis_curve, decoder, unit_scale) else { return };
+    let Some(mut circle) = Conic::read(&basis_curve, decoder, unit_scale) else { return };
     let (basis, radius) = (&circle.basis, circle.semi_a);
-    let world_y = rebase.elevation(basis.tz + transform.tz);
 
     let angle_scale = decoder.plane_angle_to_radians();
     // MasterRepresentation (attr 4) picks the form when the SET carries both.
@@ -84,6 +83,10 @@ pub(super) fn extract_trimmed_curve(
         return;
     }
 
+    // Trims are read in the authored curve frame; only then compose its
+    // complete 3D Position with the product frame before projecting (#7779).
+    circle.basis = compose_transforms(transform, &circle.basis);
+    let world_y = rebase.elevation(circle.basis.tz);
     let (start_x, start_y) = circle.point_at(start_angle);
     let (end_x, end_y) = circle.point_at(end_angle);
     let chord_dx = end_x - start_x;
@@ -111,16 +114,10 @@ pub(super) fn extract_trimmed_curve(
     };
 
     if is_near_collinear {
-        let (wsx, wsy) = transform.transform_point(start_x, start_y);
-        let (wex, wey) = transform.transform_point(end_x, end_y);
-        let (sx, sy) = rebase.plan(wsx, wsy);
-        let (ex, ey) = rebase.plan(wex, wey);
-        // Same hazard as the arc-tessellation branch below (a poisoned
-        // AMBIENT `transform` — not `basis`, already checked above — makes
-        // an otherwise-finite local chord non-finite post-transform); that
-        // branch routes every point through `push_finite_point`, this one
-        // must reject the whole two-point chord the same way rather than
-        // push a partly-finite pair.
+        let (sx, sy) = rebase.plan(start_x, start_y);
+        let (ex, ey) = rebase.plan(end_x, end_y);
+        // The fully composed basis can be refused by ambient placement
+        // admission too; reject the whole chord just like the sampled branch.
         if !sx.is_finite() || !sy.is_finite() || !ex.is_finite() || !ey.is_finite() {
             return;
         }
@@ -140,8 +137,7 @@ pub(super) fn extract_trimmed_curve(
         for i in 0..=num_segments {
             let t = i as f64 / num_segments as f64;
             let angle = start_angle + t * (end_angle - start_angle);
-            let (local_x, local_y) = circle.point_at(angle);
-            let (wx, wy) = transform.transform_point(local_x, local_y);
+            let (wx, wy) = circle.point_at(angle);
             let (x, y) = rebase.plan(wx, wy);
             push_finite_point(&mut points, x, y);
         }
@@ -212,19 +208,14 @@ fn cartesian_trim_angle(
     basis: &Transform2D,
     unit_scale: f64,
 ) -> Option<f64> {
-    let point = decoder.decode_by_id(point_id).ok()?;
-    if point.ifc_type != IfcType::IfcCartesianPoint {
-        return None;
-    }
-    let coords = point.get(0).and_then(|a| a.as_list())?;
-    let px = coords.first().and_then(|v| v.as_float()).unwrap_or(0.0) * unit_scale;
-    let py = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0) * unit_scale;
-    let dx = px - basis.tx;
-    let dy = py - basis.ty;
-    // The linear block is a pure rotation (`parse_axis2_placement_2d`), so its
-    // inverse is its transpose — no determinant needed.
-    let local_x = basis.m00 * dx + basis.m10 * dy;
-    let local_y = basis.m01 * dx + basis.m11 * dy;
+    let [px, py, pz] = decoder.point3(point_id).ok()?;
+    let dx = px * unit_scale - basis.tx;
+    let dy = py * unit_scale - basis.ty;
+    let dz = pz * unit_scale - if basis.tz.is_nan() { 0.0 } else { basis.tz };
+    // Position is an orthonormal IFC frame. Invert its FULL 3D basis, not
+    // the already foreshortened XY block, when reading Cartesian trims.
+    let local_x = basis.m00 * dx + basis.m10 * dy + basis.m20 * dz;
+    let local_y = basis.m01 * dx + basis.m11 * dy + basis.m21 * dz;
     if !local_x.is_finite() || !local_y.is_finite() || (local_x == 0.0 && local_y == 0.0) {
         return None;
     }

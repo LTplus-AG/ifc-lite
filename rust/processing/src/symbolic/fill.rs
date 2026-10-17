@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use super::color::resolve_color_via_styles;
 use super::primitives::{SymbolicFillArea};
 use super::conic::{conic_basis, Conic};
-use super::transform::{push_finite_point, Transform2D};
+use super::transform::{compose_transforms, push_finite_point, Transform2D};
 
 // ────────────────────────────────────────────────────────────────────────────
 // Fill area extraction (IfcAnnotationFillArea).
@@ -52,7 +52,7 @@ pub(super) fn extract_annotation_fill_area(
 
     let fill_color = resolve_color_via_styles(item.id, styled_items, decoder)
         .unwrap_or([0.0, 0.0, 0.0, 1.0]);
-    let world_y = rebase.elevation(sample_curve_world_y(outer_ref, decoder, unit_scale) + transform.tz);
+    let world_y = rebase.elevation(sample_curve_world_y(outer_ref, decoder, unit_scale, transform));
 
     out.push_fill_with_provenance(SymbolicFillArea {
         express_id,
@@ -119,13 +119,13 @@ fn extract_curve_ring(
             out
         }
         IfcType::IfcCircle | IfcType::IfcEllipse => {
-            let Some(conic) = Conic::read(&curve, decoder, unit_scale) else { return Vec::new() };
+            let Some(mut conic) = Conic::read(&curve, decoder, unit_scale) else { return Vec::new() };
+            conic.basis = compose_transforms(transform, &conic.basis);
             let segments = if curve.ifc_type == IfcType::IfcCircle && conic.semi_a < 0.05 { 32 } else { 64 };
             let mut out = Vec::with_capacity(segments * 2);
             for i in 0..segments {
                 let theta = (i as f64) * std::f64::consts::TAU / (segments as f64);
-                let (lx, ly) = conic.point_at(theta);
-                let (wx, wy) = transform.transform_point(lx, ly);
+                let (wx, wy) = conic.point_at(theta);
                 let (px, py) = rebase.plan(wx, wy);
                 push_finite_point(&mut out, px, py);
             }
@@ -136,36 +136,40 @@ fn extract_curve_ring(
 }
 
 /// Peek at the boundary curve's first 3D point Z so a fill / line can carry
-/// its elevation forward. Returns 0.0 for 2D-only curves and NaN (unresolved,
+/// its elevation forward. Conic centers use the full composed 3D frame.
+/// Returns the ambient elevation for 2D-only curves and NaN (unresolved,
 /// serialised as `null`) for a conic whose mandatory `Position` is missing.
-fn sample_curve_world_y(curve_id: u32, decoder: &mut EntityDecoder, unit_scale: f64) -> f64 {
-    let Ok(curve) = decoder.decode_by_id(curve_id) else { return 0.0 };
-    match curve.ifc_type {
+fn sample_curve_world_y(curve_id: u32, decoder: &mut EntityDecoder, unit_scale: f64, transform: &Transform2D) -> f64 {
+    let Ok(curve) = decoder.decode_by_id(curve_id) else { return transform.tz };
+    if matches!(curve.ifc_type, IfcType::IfcCircle | IfcType::IfcEllipse) {
+        return compose_transforms(transform, &conic_basis(&curve, decoder, unit_scale)).tz;
+    }
+    let local_z = match curve.ifc_type {
         IfcType::IfcPolyline => {
-            let Some(points_attr) = curve.get(0) else { return 0.0 };
-            let Ok(point_entities) = decoder.resolve_ref_list(points_attr) else { return 0.0 };
+            let Some(points_attr) = curve.get(0) else { return transform.tz };
+            let Ok(point_entities) = decoder.resolve_ref_list(points_attr) else { return transform.tz };
             for pe in point_entities {
                 if pe.ifc_type != IfcType::IfcCartesianPoint {
                     continue;
                 }
                 if let Some(coords) = pe.get(0).and_then(|a| a.as_list()) {
                     let z = coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0) * unit_scale;
-                    return z;
+                    return z + transform.tz;
                 }
             }
             0.0
         }
-        IfcType::IfcCircle | IfcType::IfcEllipse => conic_basis(&curve, decoder, unit_scale).tz,
         IfcType::IfcIndexedPolyCurve => {
-            let Some(points_ref) = curve.get_ref(0) else { return 0.0 };
-            let Ok(points_entity) = decoder.decode_by_id(points_ref) else { return 0.0 };
-            let Some(coord_list_attr) = points_entity.get(0) else { return 0.0 };
-            let Some(coord_list) = coord_list_attr.as_list() else { return 0.0 };
+            let Some(points_ref) = curve.get_ref(0) else { return transform.tz };
+            let Ok(points_entity) = decoder.decode_by_id(points_ref) else { return transform.tz };
+            let Some(coord_list_attr) = points_entity.get(0) else { return transform.tz };
+            let Some(coord_list) = coord_list_attr.as_list() else { return transform.tz };
             if let Some(first) = coord_list.first().and_then(|v| v.as_list()) {
-                return first.get(2).and_then(|v| v.as_float()).unwrap_or(0.0) * unit_scale;
+                return first.get(2).and_then(|v| v.as_float()).unwrap_or(0.0) * unit_scale + transform.tz;
             }
             0.0
         }
         _ => 0.0,
-    }
+    };
+    local_z + transform.tz
 }

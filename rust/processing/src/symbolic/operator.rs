@@ -21,16 +21,9 @@ use super::Transform2D;
 /// not read here (only the uniform `Scale`); that gap is unchanged from
 /// before and is a separate concern from the mirroring this fixes.
 ///
-/// Axis3 (attr 4 on `IfcCartesianTransformationOperator3D`) is deliberately
-/// NOT consulted, and cannot matter here. A 3D operator's matrix has Axis1,
-/// Axis2 and Axis3 as its columns, so the plan projection — rows x,y of the
-/// first two columns — is a function of Axis1 and Axis2 alone; Axis3 lives
-/// entirely in the discarded third column. Concretely, a reflection through
-/// the XY plane (Axis3 = −Z, default Axis1/Axis2) has 3D `det = −1` while its
-/// plan submatrix is the identity with `det = +1`: mirroring an object
-/// vertically does not mirror its footprint, and leaving the plan symbol
-/// unmirrored is the correct answer, not an oversight. A tilted, non-axis
-/// aligned Axis3 is outside what a plan projection represents at all.
+/// This mapped-operator reader retains its historical 2D interpretation.
+/// Product/context and conic Position frames retain 3D through composition;
+/// tilted 3D mapping operators and nonUniform scales remain a separate gap.
 pub(in super::super) fn parse_cartesian_transformation_operator(
     operator: &DecodedEntity,
     decoder: &mut EntityDecoder,
@@ -155,5 +148,6 @@ pub(in super::super) fn parse_cartesian_transformation_operator(
         m10: x_axis.1 * scale,
         m01: y_axis.0 * scale,
         m11: y_axis.1 * scale,
+        ..Transform2D::identity()
     }
 }

@@ -87,6 +87,8 @@ mod output_cap_validate;
 mod items_cycle_tests;
 #[cfg(test)]
 mod output_cap_tests;
+#[cfg(test)]
+mod projected_conic_tests;
 mod primitives;
 mod rebase;
 mod text;
@@ -312,19 +314,10 @@ where
                 },
                 None => Transform2D::unresolved(),
             };
-            let combined_transform = if context_transform.tx.abs() > 0.001
-                || context_transform.ty.abs() > 0.001
-                || context_transform.tz.abs() > 0.001
-                || (context_transform.m00 - 1.0).abs() > 0.0001
-                || context_transform.m01.abs() > 0.0001
-                || context_transform.m10.abs() > 0.0001
-                || (context_transform.m11 - 1.0).abs() > 0.0001
-                || context_transform.tz.is_nan()
-            {
-                compose_transforms(&context_transform, &placement_transform)
-            } else {
-                placement_transform
-            };
+            // A small 3D WCS rotation can couple a large local Z into plan
+            // XY. Compose before projection without an approximate identity
+            // shortcut, even when its XY block appears unchanged (#7779).
+            let combined_transform = compose_transforms(&context_transform, &placement_transform);
 
             let Some(items_attr) = shape_rep.get(3) else {
                 continue;

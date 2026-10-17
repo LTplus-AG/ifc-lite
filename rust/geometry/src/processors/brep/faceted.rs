@@ -5,7 +5,8 @@
 use crate::{Error, Mesh, Point3, Result, TessellationQuality};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 
-use super::super::helpers::{FaceData, FaceResult};
+use super::super::advanced_face::note_face_refused;
+use super::super::helpers::{push_rebased, read_loop_points_by_id, FaceData, FaceResult};
 use crate::router::GeometryProcessor;
 
 /// Minimum face count at which parallel (rayon) triangulation pays off. Below
@@ -33,6 +34,9 @@ impl FacetedBrepProcessor {
     /// Extract polygon points using ultra-fast path from loop entity ID
     /// Uses cached coordinate extraction - points are cached across faces
     /// This is the fastest path for files with shared cartesian points
+    ///
+    /// `None` means the loop does not read; a loop of under three points
+    /// reads and is returned as is, for the caller to skip (#7686, D14).
     #[inline]
     fn extract_loop_points_fast(
         &self,
@@ -42,7 +46,12 @@ impl FacetedBrepProcessor {
         // ULTRA-FAST PATH with CACHING: Get coordinates with point cache
         // Many faces share the same cartesian points, so caching avoids
         // re-parsing the same point data multiple times
-        let coords = decoder.get_polyloop_coords_cached(loop_entity_id)?;
+        let Some(coords) = decoder.get_polyloop_coords_cached(loop_entity_id) else {
+            // The cached reader also returns `None` for a loop of under three
+            // points. Re-read on this failure path only, so a degenerate loop
+            // is told apart from one that does not read (#7686, D14).
+            return read_loop_points_by_id(loop_entity_id, decoder).filter(|p| p.len() < 3);
+        };
 
         // Convert to Point3 - pre-allocated in get_polyloop_coords_cached
         let polygon_points: Vec<Point3<f64>> = coords
@@ -50,11 +59,7 @@ impl FacetedBrepProcessor {
             .map(|(x, y, z)| Point3::new(x, y, z))
             .collect();
 
-        if polygon_points.len() >= 3 {
-            Some(polygon_points)
-        } else {
-            None
-        }
+        Some(polygon_points)
     }
 
     /// Triangulate a single face (can be called in parallel)
@@ -66,149 +71,59 @@ impl FacetedBrepProcessor {
     /// values near origin where f32 has sub-mm precision, eliminating jitter.
     #[inline]
     pub(super) fn triangulate_face(face: &FaceData, rtc: (f64, f64, f64)) -> FaceResult {
+        use crate::triangulation::{calculate_polygon_normal, quad_split_3d, triangulate_planar_face};
         let n = face.outer_points.len();
+        let mut positions = Vec::with_capacity(n * 3);
 
-        // FAST PATH: Triangle without holes - no triangulation needed
-        if n == 3 && face.hole_points.is_empty() {
-            let mut positions = Vec::with_capacity(9);
-            for point in &face.outer_points {
-                positions.push((point.x - rtc.0) as f32);
-                positions.push((point.y - rtc.1) as f32);
-                positions.push((point.z - rtc.2) as f32);
-            }
-            return FaceResult {
-                positions,
-                indices: vec![0, 1, 2],
+        // FAST PATH: triangle, or convex polygon of up to 8 corners, without
+        // holes: a fan, no triangulation needed. A quad takes the interior
+        // diagonal (a concave quad's `0-2` split lies outside the ring,
+        // #7686 GEOM-3 / PROC-S10).
+        if face.hole_points.is_empty() && (3..=8).contains(&n) {
+            let fan = |n: usize| -> Vec<u32> {
+                (1..n as u32 - 1).flat_map(|i| [0, i, i + 1]).collect()
             };
-        }
-
-        // FAST PATH: Quad without holes - simple fan
-        if n == 4 && face.hole_points.is_empty() {
-            let mut positions = Vec::with_capacity(12);
-            for point in &face.outer_points {
-                positions.push((point.x - rtc.0) as f32);
-                positions.push((point.y - rtc.1) as f32);
-                positions.push((point.z - rtc.2) as f32);
-            }
-            return FaceResult {
-                positions,
-                indices: vec![0, 1, 2, 0, 2, 3],
+            let indices = match n {
+                3 => Some(vec![0, 1, 2]),
+                4 => Some(quad_split_3d(&face.outer_points).to_vec()),
+                _ => Self::is_convex_3d(&face.outer_points, &calculate_polygon_normal(&face.outer_points))
+                    .then(|| fan(n)),
             };
-        }
-
-        // FAST PATH: Simple convex polygon without holes
-        if face.hole_points.is_empty() && n <= 8 {
-            // Check if convex by testing cross products in 3D
-            let mut is_convex = true;
-            if n > 4 {
-                use crate::triangulation::calculate_polygon_normal;
-                let normal = calculate_polygon_normal(&face.outer_points);
-                let mut sign = 0i8;
-
-                for i in 0..n {
-                    let p0 = &face.outer_points[i];
-                    let p1 = &face.outer_points[(i + 1) % n];
-                    let p2 = &face.outer_points[(i + 2) % n];
-
-                    let v1 = p1 - p0;
-                    let v2 = p2 - p1;
-                    let cross = v1.cross(&v2);
-                    let dot = cross.dot(&normal);
-
-                    if dot.abs() > 1e-10 {
-                        let current_sign = if dot > 0.0 { 1i8 } else { -1i8 };
-                        if sign == 0 {
-                            sign = current_sign;
-                        } else if sign != current_sign {
-                            is_convex = false;
-                            break;
-                        }
-                    }
-                }
-            }
-
-            if is_convex {
-                let mut positions = Vec::with_capacity(n * 3);
-                for point in &face.outer_points {
-                    positions.push((point.x - rtc.0) as f32);
-                    positions.push((point.y - rtc.1) as f32);
-                    positions.push((point.z - rtc.2) as f32);
-                }
-                let mut indices = Vec::with_capacity((n - 2) * 3);
-                for i in 1..n - 1 {
-                    indices.push(0);
-                    indices.push(i as u32);
-                    indices.push(i as u32 + 1);
-                }
-                return FaceResult { positions, indices };
+            if let Some(indices) = indices {
+                push_rebased(&mut positions, &face.outer_points, rtc);
+                return FaceResult { positions, indices, refused: false };
             }
         }
 
-        // SLOW PATH: Complex polygon or polygon with holes
-        use crate::triangulation::{
-            calculate_polygon_normal, project_to_2d, project_to_2d_with_basis,
-            triangulate_polygon_with_holes,
+        // SLOW PATH: complex polygon or polygon with holes. A failed holed
+        // triangulation refuses the face; it is never filled over its
+        // authored openings (#7686 PROC-S5).
+        let Ok(indices) = triangulate_planar_face(&face.outer_points, &face.hole_points) else {
+            return FaceResult { positions: Vec::new(), indices: Vec::new(), refused: true };
         };
+        let all_points = face.outer_points.iter().chain(face.hole_points.iter().flatten());
+        push_rebased(&mut positions, all_points, rtc);
+        FaceResult { positions, indices, refused: false }
+    }
 
-        let mut positions = Vec::new();
-        let mut indices = Vec::new();
-
-        // Calculate face normal from outer boundary
-        let normal = calculate_polygon_normal(&face.outer_points);
-
-        // Project outer boundary to 2D and get the coordinate system
-        let (outer_2d, u_axis, v_axis, origin) = project_to_2d(&face.outer_points, &normal);
-
-        // Project holes to 2D using the SAME coordinate system as the outer boundary
-        let holes_2d: Vec<Vec<nalgebra::Point2<f64>>> = face
-            .hole_points
-            .iter()
-            .map(|hole| project_to_2d_with_basis(hole, &u_axis, &v_axis, &origin))
-            .collect();
-
-        // Triangulate with holes
-        let tri_indices = match triangulate_polygon_with_holes(&outer_2d, &holes_2d) {
-            Ok(idx) => idx,
-            Err(_) => {
-                // Fallback to simple fan triangulation without holes
-                for point in &face.outer_points {
-                    positions.push((point.x - rtc.0) as f32);
-                    positions.push((point.y - rtc.1) as f32);
-                    positions.push((point.z - rtc.2) as f32);
+    /// Whether every corner of the ring turns the same way about `normal`.
+    #[inline]
+    fn is_convex_3d(ring: &[Point3<f64>], normal: &nalgebra::Vector3<f64>) -> bool {
+        let n = ring.len();
+        let mut sign = 0i8;
+        for i in 0..n {
+            let (p0, p1, p2) = (&ring[i], &ring[(i + 1) % n], &ring[(i + 2) % n]);
+            let dot = (p1 - p0).cross(&(p2 - p1)).dot(normal);
+            if dot.abs() > 1e-10 {
+                let current_sign = if dot > 0.0 { 1i8 } else { -1i8 };
+                if sign == 0 {
+                    sign = current_sign;
+                } else if sign != current_sign {
+                    return false;
                 }
-                for i in 1..face.outer_points.len() - 1 {
-                    indices.push(0);
-                    indices.push(i as u32);
-                    indices.push(i as u32 + 1);
-                }
-                return FaceResult { positions, indices };
             }
-        };
-
-        // Combine all 3D points (outer + holes) in the same order as 2D
-        let mut all_points_3d: Vec<&Point3<f64>> = face.outer_points.iter().collect();
-        for hole in &face.hole_points {
-            all_points_3d.extend(hole.iter());
         }
-
-        // Add vertices (with RTC subtraction in f64 for full precision)
-        for point in &all_points_3d {
-            positions.push((point.x - rtc.0) as f32);
-            positions.push((point.y - rtc.1) as f32);
-            positions.push((point.z - rtc.2) as f32);
-        }
-
-        // Add triangle indices
-        for i in (0..tri_indices.len()).step_by(3) {
-            if i + 2 >= tri_indices.len() {
-                break;
-            }
-            indices.push(tri_indices[i] as u32);
-            indices.push(tri_indices[i + 1] as u32);
-            indices.push(tri_indices[i + 2] as u32);
-        }
-
-        FaceResult { positions, indices }
+        true
     }
 }
 
@@ -248,6 +163,8 @@ impl FacetedBrepProcessor {
             };
 
             // Separate outer bound from inner bounds (holes)
+            let bound_count = bound_ids.len();
+            let mut degenerate = 0usize;
             let mut outer_bound_points: Option<Vec<Point3<f64>>> = None;
             let mut hole_points: Vec<Vec<Point3<f64>>> = Vec::new();
             for bound_id in bound_ids {
@@ -266,6 +183,11 @@ impl FacetedBrepProcessor {
                         None => continue,
                     },
                 };
+                // Readable but under three points: degenerate, skipped.
+                if points.len() < 3 {
+                    degenerate += 1;
+                    continue;
+                }
                 if !orientation {
                     points.reverse();
                 }
@@ -279,6 +201,15 @@ impl FacetedBrepProcessor {
                 } else {
                     hole_points.push(points);
                 }
+            }
+            // A bound that does not read (D14, under D3) refuses the face:
+            // dropping a hole drew it filled, dropping the outer bound let a
+            // hole become the outline. Read bounds are the outer one, the
+            // holes (a demoted outer is among them) and the degenerate ones.
+            let read = hole_points.len() + usize::from(outer_bound_points.is_some()) + degenerate;
+            if read < bound_count {
+                note_face_refused();
+                continue;
             }
             if let Some(outer_points) = outer_bound_points {
                 face_data_list.push(FaceData {
@@ -309,6 +240,9 @@ impl FacetedBrepProcessor {
         let mut positions = Vec::with_capacity(total_positions);
         let mut indices = Vec::with_capacity(total_indices);
         for result in face_results {
+            if result.refused {
+                note_face_refused();
+            }
             let base_idx = (positions.len() / 3) as u32;
             positions.extend(result.positions);
             for idx in result.indices {

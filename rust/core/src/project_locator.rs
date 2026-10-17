@@ -51,6 +51,21 @@ pub fn find_project_id(content: &[u8]) -> Option<u32> {
     first
 }
 
+/// The first `IFCPROJECT` an entity scan meets: the fallback of
+/// [`crate::EntityDecoder::project_id`] for what the byte search cannot see
+/// (trivia between the keyword and `(`, a comment around `=`) or accepts
+/// wrongly (a record-shaped decoy inside a string). Runs only when the search
+/// finds no confirmed project, so the common path never pays for it.
+pub(crate) fn scan_for_project_id(content: &[u8]) -> Option<u32> {
+    let mut scanner = crate::parser::EntityScanner::new(content);
+    while let Some((id, kind, _, _)) = scanner.next_entity() {
+        if crate::parser::keyword_eq(kind, "IFCPROJECT") {
+            return Some(id);
+        }
+    }
+    None
+}
+
 /// Case-insensitive search for the literal keyword `IFCPROJECT(` at or after
 /// `from` (issue #4497: STEP keyword case is not significant, so a lowercase
 /// or CamelCase exporter's `ifcproject(`/`IfcProject(` must resolve exactly

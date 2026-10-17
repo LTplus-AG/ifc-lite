@@ -231,3 +231,27 @@ fn find_project_ids_is_empty_without_a_project_and_skips_oversized_ids() {
     let ifc = b"DATA;\n#4294967297=IFCPROJECT('a',$);\n#8=IFCPROJECT('b',$);\n";
     assert_eq!(find_project_ids(ifc), vec![8], "an oversized id is refused, not wrapped, and the search goes on");
 }
+
+/// F3a review (#7775): `EntityDecoder::project_id` replaced the entity scan the
+/// unit resolvers, the router and alignment sampling used. The byte search
+/// misses legal layouts the scan reads (trivia between the keyword and `(`, a
+/// comment around `=`) and stops on a decoy inside a string, which turned a
+/// millimetre model into metres (1000x). The scan stays as the fallback.
+#[test]
+fn decoder_project_id_falls_back_to_the_entity_scan() {
+    let units = "#2=IFCUNITASSIGNMENT((#3));\n#3=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);\n";
+    let cases = [
+        "#1=IFCPROJECT('g',$,$,$,$,$,$,$,#2);\n",
+        "#1=IFCPROJECT ('g',$,$,$,$,$,$,$,#2);\n",
+        "#1 /* c */ =IFCPROJECT('g',$,$,$,$,$,$,$,#2);\n",
+        "#1= /* c */ IFCPROJECT('g',$,$,$,$,$,$,$,#2);\n",
+        "#9=IFCWALL('a;#7=IFCPROJECT(',$);\n#1=IFCPROJECT('g',$,$,$,$,$,$,$,#2);\n",
+        "#9=IFCWALL('a;#3=IFCPROJECT(',$);\n#1=IFCPROJECT('g',$,$,$,$,$,$,$,#2);\n",
+    ];
+    for case in cases {
+        let content = format!("ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\n{case}{units}ENDSEC;\nEND-ISO-10303-21;\n");
+        let mut decoder = crate::EntityDecoder::new(content.as_bytes());
+        assert_eq!(decoder.project_id(), Some(1), "{case}");
+        assert_eq!(decoder.length_unit_scale(), 0.001, "{case}");
+    }
+}

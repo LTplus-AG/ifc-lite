@@ -62,7 +62,7 @@ impl UnitScales {
     ///
     /// 1. `project_id_hint` (recorded by the scan) — O(1) decode via the index.
     /// 2. No hint? Locate `IFCPROJECT` with the one locator
-    ///    ([`EntityDecoder::project_id`], a SIMD substring search: it is a
+    ///    ([`crate::find_project_id`], a SIMD substring search: it is a
     ///    singleton and many exporters — IfcOpenShell, Revit — emit it near
     ///    the END of the file, after the scan's early-meta point).
     /// 3. Resolution chain incomplete on a PARTIAL index (streaming early-meta:
@@ -74,7 +74,9 @@ impl UnitScales {
     /// ([`EntityDecoder::seed_unit_scales`]) so the historic
     /// O(file)-scan-per-decoder stall class stays dead.
     pub fn resolve(content: &[u8], project_id_hint: Option<u32>, decoder: &mut EntityDecoder) -> Self {
-        let project_id = project_id_hint.or_else(|| decoder.project_id());
+        // The bare locator, not `decoder.project_id()`: the decoder's index may
+        // be partial here, and an unconfirmed candidate is still the answer.
+        let project_id = project_id_hint.or_else(|| crate::find_project_id(content));
         let Some(pid) = project_id else {
             return Self::default();
         };

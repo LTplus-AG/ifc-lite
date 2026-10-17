@@ -402,12 +402,26 @@ impl<'a> EntityDecoder<'a> {
 
     /// The model's `IFCPROJECT` express id: the first in file order, `None`
     /// when the file has none. Located once per decoder by the one locator
-    /// ([`crate::find_project_id`], a SIMD keyword search, not an entity
-    /// scan) and cached, so both scale resolvers below share it.
+    /// ([`crate::find_project_id`], a SIMD keyword search) and cached, so
+    /// both scale resolvers below share it.
+    ///
+    /// The byte search misses a legal `IFCPROJECT (` or `#1 /* c */ =` and
+    /// can accept a record-shaped decoy in a string; the entity scan these
+    /// resolvers used before does neither. So a candidate is kept only when
+    /// the index holds it as an `IFCPROJECT`, else that scan decides
+    /// ([`crate::project_locator::scan_for_project_id`]).
     pub fn project_id(&mut self) -> Option<u32> {
-        *self
-            .project_id_cache
-            .get_or_insert_with(|| crate::project_locator::find_project_id(self.content))
+        if let Some(cached) = self.project_id_cache {
+            return cached;
+        }
+        let located = crate::project_locator::find_project_id(self.content).filter(|&id| {
+            self.get_raw_bytes(id)
+                .and_then(|raw| crate::parser::EntityScanner::new(raw).next_entity())
+                .is_some_and(|(_, kind, _, _)| crate::parser::keyword_eq(kind, "IFCPROJECT"))
+        });
+        let id = located.or_else(|| crate::project_locator::scan_for_project_id(self.content));
+        self.project_id_cache = Some(id);
+        id
     }
 
     /// Multiplier that converts file plane-angle units to radians.

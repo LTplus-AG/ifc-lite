@@ -576,6 +576,15 @@ impl Mesh {
 
 Related mesh types: `SubMesh`, `SubMeshCollection`, `InstanceMeta`.
 
+#### RouterConfig
+
+`RouterConfig` is the value type of everything a caller decides before geometry
+is produced: `unit_scale`, `rtc_offset`, `tessellation_quality`, `local_frame`,
+`skip_small_cuts`, `instancing_batch_local`. `GeometryRouter::from_config(config)`
+builds a router from one (arming no caches) and `GeometryRouter::config()` reads
+the effective values back; the `with_*` constructors and `set_*` methods remain
+as delegates.
+
 #### representation
 
 `ifc_lite_geometry::representation` is the decoder-only home of a product's

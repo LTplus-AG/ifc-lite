@@ -86,7 +86,7 @@ pub(crate) fn instancing_enabled() -> bool {
 
 impl GeometryRouter {
     pub(super) fn local_frame_enabled(&self) -> bool {
-        self.local_frame_enabled.unwrap_or_else(local_frame_enabled)
+        self.config.local_frame.unwrap_or_else(local_frame_enabled)
     }
 
     /// Apply local placement transformation to mesh

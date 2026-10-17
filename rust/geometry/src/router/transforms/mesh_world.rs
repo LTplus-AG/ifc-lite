@@ -125,7 +125,7 @@ impl GeometryRouter {
     #[inline]
     fn pending_rtc_offset(&self, mesh: &Mesh) -> (f64, f64, f64) {
         if self.has_rtc_offset() && !mesh.rtc_applied {
-            self.rtc_offset
+            self.rtc_offset()
         } else {
             (0.0, 0.0, 0.0)
         }
@@ -257,7 +257,7 @@ impl GeometryRouter {
         });
         mesh.local_to_world = Some(crate::math::mat4::from_na(transform));
 
-        let rtc = self.rtc_offset;
+        let rtc = self.rtc_offset();
         let needs_rtc = self.has_rtc_offset() && !mesh.rtc_applied;
         let (rx, ry, rz) = if needs_rtc {
             (rtc.0, rtc.1, rtc.2)

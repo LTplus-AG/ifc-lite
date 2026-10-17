@@ -158,7 +158,7 @@ impl GeometryRouter {
         // geometry work so cutting planes never sit on degenerate
         // interfaces. When everything collapses to one visual layer there
         // is nothing to slice.
-        let visual_layers = merge_thin_layers(layers, self.unit_scale);
+        let visual_layers = merge_thin_layers(layers, self.unit_scale());
         if visual_layers.len() < 2 {
             self.push_layer_slice_diag(element.id, "skip:thin-layers-collapsed-to-1");
             return Ok(None);
@@ -228,8 +228,8 @@ impl GeometryRouter {
         let mut placement = self.get_placement_transform_from_element(element, decoder).ok()?;
         self.scale_transform(&mut placement);
 
-        let scale = self.unit_scale;
-        let rtc = self.rtc_offset;
+        let scale = self.unit_scale();
+        let rtc = self.rtc_offset();
 
         // Axis unit vector in local coordinates.
         let axis_local = {

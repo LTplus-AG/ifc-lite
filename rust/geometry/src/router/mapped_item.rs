@@ -113,7 +113,7 @@ impl GeometryRouter {
     pub(super) fn keep_rebase_in_origin(&self, mesh: &mut Mesh) {
         if mesh.rtc_applied {
             mesh.rtc_applied = false;
-            let rtc = [self.rtc_offset.0, self.rtc_offset.1, self.rtc_offset.2];
+            let rtc = [self.rtc_offset().0, self.rtc_offset().1, self.rtc_offset().2];
             for (origin, offset) in mesh.origin.iter_mut().zip(rtc) {
                 *origin += offset;
             }

@@ -391,8 +391,8 @@ impl GeometryRouter {
         }
         let center_local = Point3::new(off_x, off_y, 0.0) + w * (depth * 0.5);
         let center_native = m.transform_point(&center_local);
-        let s = self.unit_scale;
-        let (rx, ry, rz) = self.rtc_offset;
+        let s = self.unit_scale();
+        let (rx, ry, rz) = self.rtc_offset();
         Some(RectParam {
             r: Matrix3::from_columns(&[uu, vv, ww]),
             center: Point3::new(
@@ -666,7 +666,7 @@ impl GeometryRouter {
 
                     // Apply RTC offset to opening bounds so they match wall mesh coordinate system
                     // Wall mesh positions have RTC subtracted during transform_mesh, so opening bounds must match
-                    let rtc = self.rtc_offset;
+                    let rtc = self.rtc_offset();
                     let rtc_min = Point3::new(
                         world_min.x - rtc.0,
                         world_min.y - rtc.1,
@@ -740,7 +740,7 @@ impl GeometryRouter {
         // several disjoint areas (#7685) defers to the 3D path.
         let [profile] = <[_; 1]>::try_from(
             ProfileProcessor::new(self.schema.clone())
-                .process_regions(&profile_entity, decoder, self.tessellation_quality)
+                .process_regions(&profile_entity, decoder, self.tessellation_quality())
                 .ok()?,
         )
         .ok()?;

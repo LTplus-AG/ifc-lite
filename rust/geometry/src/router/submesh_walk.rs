@@ -71,7 +71,7 @@ impl GeometryRouter {
         // (mapped) item rebases by the model RTC (#5698) into its origin,
         // since its mapping targets and placement still apply (#7690).
         if let Some(map) = texture_index.and_then(|ti| ti.get(&item.id)) {
-            let textured = self.textured_face_set(item, decoder, map, Some(self.rtc_offset));
+            let textured = self.textured_face_set(item, decoder, map, Some(self.rtc_offset()));
             if let Some((mut mesh, uvs)) = textured {
                 if depth > 0 {
                     self.keep_rebase_in_origin(&mut mesh);

@@ -98,7 +98,7 @@ impl GeometryRouter {
                     processor.as_ref(),
                     item,
                     decoder,
-                    self.rtc_offset,
+                    self.rtc_offset(),
                 )?;
                 self.keep_rebase_in_origin(&mut mesh);
                 Ok(mesh)
@@ -122,7 +122,7 @@ impl GeometryRouter {
     ) -> Result<Mesh> {
         // The curve-capped flag (#4901) is drained where the processor runs,
         // in `process_item_in_rtc_frame`, so every walk reports it once.
-        self.process_representation_item_in_frame(item, decoder, self.rtc_offset)
+        self.process_representation_item_in_frame(item, decoder, self.rtc_offset())
     }
 
     /// [`Self::process_representation_item`] with the model RTC offset
@@ -185,7 +185,7 @@ impl GeometryRouter {
         let linear = placement.fixed_view::<3, 3>(0, 0).into_owned();
         Ok(linear.try_inverse().map(|inverse| {
             let rtc = inverse
-                * nalgebra::Vector3::new(self.rtc_offset.0, self.rtc_offset.1, self.rtc_offset.2);
+                * nalgebra::Vector3::new(self.rtc_offset().0, self.rtc_offset().1, self.rtc_offset().2);
             (rtc.x, rtc.y, rtc.z)
         }))
     }
@@ -261,14 +261,14 @@ impl GeometryRouter {
                     item,
                     decoder,
                     self.schema,
-                    self.tessellation_quality,
+                    self.tessellation_quality(),
                     rtc_file_units,
                 )
             });
         let rtc_applied = rebased.is_some();
         let result = match rebased {
             Some(result) => result,
-            None => processor.process(item, decoder, self.schema, self.tessellation_quality),
+            None => processor.process(item, decoder, self.schema, self.tessellation_quality()),
         };
         if crate::processors::take_curve_capped() {
             self.record_unsupported_item(IfcType::IfcBSplineCurveWithKnots);
@@ -302,9 +302,9 @@ impl GeometryRouter {
             && self.representation_item_benefits_from_rtc(item, decoder, offset_meters))
         .then(|| {
             (
-                offset_meters.0 / self.unit_scale,
-                offset_meters.1 / self.unit_scale,
-                offset_meters.2 / self.unit_scale,
+                offset_meters.0 / self.unit_scale(),
+                offset_meters.1 / self.unit_scale(),
+                offset_meters.2 / self.unit_scale(),
             )
         })
     }

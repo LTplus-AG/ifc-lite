@@ -1,7 +1,8 @@
 diff --git b/rust/core/src/attribute_slot.rs a/rust/core/src/attribute_slot.rs
+index 893d939671..8eec79983e 100644
 --- b/rust/core/src/attribute_slot.rs
 +++ a/rust/core/src/attribute_slot.rs
-@@ -93,8 +93,8 @@ fn decode(index: usize, flags: u8) -> AttrSlot {
+@@ -95,8 +95,8 @@ fn decode(index: usize, flags: u8) -> AttrSlot {
          // every schema in the tests); Select is the conservative reading of
          // a code from a newer generator.
          kind: AttrKind::from_code(flags & KIND_MASK).unwrap_or(AttrKind::Select),
@@ -12,22 +13,26 @@ diff --git b/rust/core/src/attribute_slot.rs a/rust/core/src/attribute_slot.rs
      }
  }
  
-@@ -106,7 +106,7 @@ impl SchemaVersion {
+@@ -108,7 +108,7 @@ impl SchemaVersion {
      /// `globalid`). A name with non-ASCII characters never matches.
      pub fn attribute(self, entity: &str, name: &str) -> Option<AttrSlot> {
-         let (names, flags) = self.layout_of(entity)?;
+         let (names, flags) = self.attribute_layout(entity)?;
 -        let index = names.iter().position(|n| *n == name)?;
 +        let index = names.iter().position(|n| n.eq_ignore_ascii_case(name))?;
          Some(decode(index, flags[index]))
      }
  
-@@ -129,6 +129,9 @@ impl SchemaVersion {
-     ) -> Option<crate::generated::schema_registry::AttributeLayout> {
-         // The registry resolves through Unicode uppercasing, which would let
-         // `ıfcwall` (dotless i) reach IFCWALL; this API promises ASCII.
-+        if !entity.is_ascii() {
+diff --git b/rust/core/src/generated/schema_registry.rs a/rust/core/src/generated/schema_registry.rs
+index a0f770e944..bf3264399d 100644
+--- b/rust/core/src/generated/schema_registry.rs
++++ a/rust/core/src/generated/schema_registry.rs
+@@ -75,6 +75,9 @@ impl SchemaVersion {
+         // `IfcType::from_str` keeps Unicode uppercasing for the parser's
+         // unknown-type CRC, which would let `ıfcwall` (dotless i) reach
+         // IFCWALL. Schema entity names are ASCII, so this lookup is too.
++        if !entity_name.is_ascii() {
 +            return None;
 +        }
-         self.attribute_layout(entity)
-     }
- }
+         match self {
+             Self::Ifc2x3 => layout_ifc2x3(entity_name),
+             Self::Ifc4 => layout_ifc4(entity_name),

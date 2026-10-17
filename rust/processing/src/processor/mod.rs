@@ -1602,9 +1602,8 @@ fn process_geometry_streaming_filtered_with_options_and_ids(
                 origin_shift: [rtc_offset.0, rtc_offset.1, rtc_offset.2],
                 is_geo_referenced: has_rtc_offset,
             },
-            length_unit_scale: unit_scales.length_unit_refused.is_none().then_some(unit_scale),
-            length_unit_refused: unit_scales.length_unit_refused,
             georeferencing,
+            ..diagnostics::unit_metadata(&unit_scales, unit_scale)
         },
         stats: ProcessingStats {
             total_meshes,

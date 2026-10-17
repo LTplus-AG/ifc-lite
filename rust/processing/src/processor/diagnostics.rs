@@ -91,6 +91,17 @@ pub(super) fn refuse_jobs_for_unit(units: &crate::prepass::UnitScales, jobs: &mu
     refused
 }
 
+/// The unit fields of `ModelMetadata` (#7678): a refused length unit reports
+/// the refusal (`length_unit_refused`) and no `length_unit_scale`, never an
+/// invented `1.0`.
+pub(super) fn unit_metadata(units: &crate::prepass::UnitScales, unit_scale: f64) -> super::ModelMetadata {
+    super::ModelMetadata {
+        length_unit_scale: units.length_unit_refused.is_none().then_some(unit_scale),
+        length_unit_refused: units.length_unit_refused,
+        ..Default::default()
+    }
+}
+
 /// The pass router at the geometry scale, refused with the length unit, so no
 /// site or building placement it resolves reads file units as metres (#7678).
 pub(super) fn unit_router(units: &crate::prepass::UnitScales) -> ifc_lite_geometry::GeometryRouter {

@@ -16,7 +16,6 @@
 
 use super::{product_shape, rep_items, Select, ShapeError};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
-use rustc_hash::FxHashSet;
 
 /// What an `IfcMappedItem` among the items means to the walk.
 #[derive(Clone, Copy)]
@@ -46,17 +45,50 @@ pub enum Flow {
     Stop,
 }
 
-/// Why the walk declined to enter or continue past a mapped item.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+/// Why the walk declined to enter, or to continue past, a mapped item. All
+/// but the items of an entered level are refused before `enter_map`.
+#[derive(Debug)]
 pub enum WalkRefusal {
-    /// A reference does not resolve (or the item has no `MappingSource`).
-    Dangling,
     /// The mapped item is already on the path.
     Cyclic,
     /// The depth cap, or a nested map under [`NestedMaps::Refuse`].
-    TooDeep,
-    /// The map has no `MappedRepresentation`, or its `Items` cannot be read.
-    Malformed,
+    TooDeep { max_depth: u32 },
+    /// The `IfcMappedItem` has no `MappingSource` attribute.
+    MissingSource,
+    /// `MappingSource` does not resolve.
+    UnresolvedSource,
+    /// The map has no `MappedRepresentation` attribute.
+    MissingMappedRepresentation,
+    /// `MappedRepresentation` does not resolve.
+    UnresolvedMappedRepresentation,
+    /// The mapped representation has no `Items` attribute.
+    MissingItems,
+    /// The decoder failed on one of the references.
+    Decode(ifc_lite_core::Error),
+}
+
+impl WalkRefusal {
+    /// The error the strict callers have always reported for this refusal,
+    /// with its exact message text; `item` is the refused `IfcMappedItem`'s id.
+    pub fn into_error(self, item: u32) -> crate::Error {
+        let msg = match self {
+            WalkRefusal::Cyclic => format!("Detected cyclic IfcMappedItem reference at #{item}"),
+            WalkRefusal::TooDeep { max_depth } => format!(
+                "MappedItem nesting exceeded maximum depth of {max_depth} at #{item}"
+            ),
+            WalkRefusal::MissingSource => "MappedItem missing MappingSource".to_string(),
+            WalkRefusal::UnresolvedSource => "Failed to resolve MappingSource".to_string(),
+            WalkRefusal::MissingMappedRepresentation => {
+                "RepresentationMap missing MappedRepresentation".to_string()
+            }
+            WalkRefusal::UnresolvedMappedRepresentation => {
+                "Failed to resolve MappedRepresentation".to_string()
+            }
+            WalkRefusal::MissingItems => "Representation missing Items".to_string(),
+            WalkRefusal::Decode(error) => return crate::Error::CoreError(error),
+        };
+        crate::Error::geometry(msg)
+    }
 }
 
 /// One `IfcMappedItem → IfcRepresentationMap → MappedRepresentation` level.
@@ -100,8 +132,10 @@ pub trait WalkVisitor {
     /// Pairs every `enter_map`, whatever it answered and however the level's
     /// items ended.
     fn leave_map(&mut self, _level: &MappedLevel) {}
-    /// A mapped item at `at` (its id) was not entered.
-    fn refused(&mut self, _at: u32, _why: WalkRefusal, _ctx: &WalkCtx<'_>) {}
+    /// `item`, an `IfcMappedItem` at `ctx` (whose path excludes it), was refused.
+    /// Unless the refusal is of its `Items` (`MissingItems` or `Decode`, after
+    /// `enter_map`), it has no `enter_map`/`leave_map` pair.
+    fn refused(&mut self, _item: &DecodedEntity, _why: WalkRefusal, _ctx: &WalkCtx<'_>) {}
 }
 
 /// The walk: which representations ([`Select`]) and how mapped items nest.
@@ -113,8 +147,9 @@ pub struct RepresentationWalk {
 struct Run<'a, V> {
     visitor: &'a mut V,
     element: Option<&'a DecodedEntity>,
+    /// The levels entered, outermost first: also the path-scoped visited set
+    /// (at most `max_depth` entries, so a scan is the cheapest set).
     path: Vec<MappedLevel>,
-    on_path: FxHashSet<u32>,
 }
 
 impl RepresentationWalk {
@@ -128,7 +163,7 @@ impl RepresentationWalk {
         let Some(shape) = product_shape(element, decoder)? else {
             return Ok(());
         };
-        let mut run = Run { visitor, element: Some(element), path: Vec::new(), on_path: FxHashSet::default() };
+        let mut run = Run { visitor, element: Some(element), path: Vec::new() };
         for rep in shape.select(element, self.select) {
             if run.visitor.shape_rep(rep) == Flow::Stop {
                 break;
@@ -153,9 +188,22 @@ impl RepresentationWalk {
             return Err(ShapeError::MissingItems);
         };
         let items = rep_items(&rep, decoder)?;
-        let mut run = Run { visitor, element: None, path: Vec::new(), on_path: FxHashSet::default() };
+        let mut run = Run { visitor, element: None, path: Vec::new() };
         self.items(&mut run, Some(&rep), &items, decoder);
         Ok(())
+    }
+
+    /// Walk `items` already resolved from `rep` (a caller that needed the
+    /// representation itself first).
+    pub fn items_of<V: WalkVisitor>(
+        &self,
+        rep: &DecodedEntity,
+        items: &[DecodedEntity],
+        decoder: &mut EntityDecoder,
+        visitor: &mut V,
+    ) {
+        let mut run = Run { visitor, element: None, path: Vec::new() };
+        self.items(&mut run, Some(rep), items, decoder);
     }
 
     /// Walk from one `IfcMappedItem` (the item's own level is the first entered).
@@ -165,7 +213,7 @@ impl RepresentationWalk {
         decoder: &mut EntityDecoder,
         visitor: &mut V,
     ) {
-        let mut run = Run { visitor, element: None, path: Vec::new(), on_path: FxHashSet::default() };
+        let mut run = Run { visitor, element: None, path: Vec::new() };
         self.enter(&mut run, item, decoder);
     }
 
@@ -213,39 +261,69 @@ impl RepresentationWalk {
         let bail = matches!(self.nested, NestedMaps::Refuse);
         let refuse = |run: &mut Run<'_, V>, why| {
             let at = WalkCtx { element: run.element, shape_rep: None, path: &run.path };
-            run.visitor.refused(item.id, why, &at);
+            run.visitor.refused(item, why, &at);
             if bail { Flow::Stop } else { Flow::Continue }
         };
         if run.path.len() >= max_depth as usize {
-            return refuse(run, WalkRefusal::TooDeep);
+            return refuse(run, WalkRefusal::TooDeep { max_depth });
         }
-        if run.on_path.contains(&item.id) {
+        if run.path.iter().any(|level| level.item.id == item.id) {
             return refuse(run, WalkRefusal::Cyclic);
         }
-        let Some(source) = item.get(0).map(|a| decoder.resolve_ref(a)) else {
-            return refuse(run, WalkRefusal::Dangling);
-        };
-        let Ok(Some(map)) = source else {
-            return refuse(run, WalkRefusal::Dangling);
-        };
-        let mapped_rep = match map.get(1).map(|a| decoder.resolve_ref(a)) {
-            Some(Ok(Some(rep))) => rep,
-            _ => return refuse(run, WalkRefusal::Malformed),
-        };
-        let Ok(items) = rep_items(&mapped_rep, decoder) else {
-            return refuse(run, WalkRefusal::Malformed);
+        let (map, mapped_rep) = match Self::resolve_level(item, decoder) {
+            Ok(resolved) => resolved,
+            Err(why) => return refuse(run, why),
         };
         let level = MappedLevel { item: item.clone(), map, mapped_rep };
         let at = WalkCtx { element: run.element, shape_rep: None, path: &run.path };
         let mut flow = run.visitor.enter_map(&level, &at, decoder);
-        run.path.push(level.clone());
-        run.on_path.insert(item.id);
+        run.path.push(level);
         if flow == Flow::Continue {
-            flow = self.items(run, Some(&level.mapped_rep), &items, decoder);
+            // Resolved only for a level that runs: a source-cache hit never
+            // decodes its items. A failure here is reported while the level is
+            // still entered, with `ctx.path` excluding it, so a visitor can tell
+            // it from a refusal that had no level.
+            let rep = run.path[run.path.len() - 1].mapped_rep.clone();
+            match Self::level_items(&rep, decoder) {
+                Ok(items) => flow = self.items(run, Some(&rep), &items, decoder),
+                Err(why) => {
+                    let last = run.path.len() - 1;
+                    let at = WalkCtx { element: run.element, shape_rep: None, path: &run.path[..last] };
+                    run.visitor.refused(item, why, &at);
+                    if bail { flow = Flow::Stop }
+                }
+            }
         }
-        run.on_path.remove(&item.id);
-        run.path.pop();
-        run.visitor.leave_map(&level);
+        if let Some(level) = run.path.pop() {
+            run.visitor.leave_map(&level);
+        }
         if flow == Flow::Stop { Flow::Stop } else { Flow::Continue }
+    }
+
+    /// `MappingSource` and its `MappedRepresentation`, resolved in the order
+    /// every walk reports its errors in.
+    fn resolve_level(
+        item: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+    ) -> Result<(DecodedEntity, DecodedEntity), WalkRefusal> {
+        let source = item.get(0).ok_or(WalkRefusal::MissingSource)?;
+        let map = decoder
+            .resolve_ref(source)
+            .map_err(WalkRefusal::Decode)?
+            .ok_or(WalkRefusal::UnresolvedSource)?;
+        let rep = map.get(1).ok_or(WalkRefusal::MissingMappedRepresentation)?;
+        let mapped_rep = decoder
+            .resolve_ref(rep)
+            .map_err(WalkRefusal::Decode)?
+            .ok_or(WalkRefusal::UnresolvedMappedRepresentation)?;
+        Ok((map, mapped_rep))
+    }
+
+    fn level_items(
+        mapped_rep: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+    ) -> Result<Vec<DecodedEntity>, WalkRefusal> {
+        let list = mapped_rep.get(3).ok_or(WalkRefusal::MissingItems)?;
+        decoder.resolve_ref_list(list).map_err(WalkRefusal::Decode)
     }
 }

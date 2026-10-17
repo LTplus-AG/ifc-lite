@@ -63,6 +63,18 @@ impl EntityDecoder<'_> {
         slot.at(self.schema_version().unwrap_or(SchemaVersion::Ifc4x3))
     }
 
+    /// [`Self::slot`] for a reader that must keep working on a file whose
+    /// declared schema predates the entity: an `IFC4`-labelled export that
+    /// carries `IfcAlignment` (the IFC4X1 draft) or `IfcLinearPlacement` (IFC4X3)
+    /// has no declared layout to follow. When the declared schema does not
+    /// declare the slot's entity at all, the slot is resolved as `fallback`
+    /// lays it out; otherwise this is exactly [`Self::slot`]. The caller names
+    /// the layout such files have always been read with.
+    pub fn slot_or<K>(&mut self, slot: SchemaSlot<K>, fallback: SchemaVersion) -> Option<Slot<K>> {
+        let declared = self.schema_version().unwrap_or(SchemaVersion::Ifc4x3);
+        slot.at(if slot.entity_declared_in(declared) { declared } else { fallback })
+    }
+
     /// The `IfcGrid` that lists `axis_id` among its `UAxes`/`VAxes`/`WAxes`
     /// (the inverse `PartOfU`/`PartOfV`/`PartOfW`). An axis claimed by more
     /// than one grid resolves to the first in file order.

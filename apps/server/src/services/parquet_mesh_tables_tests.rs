@@ -278,10 +278,10 @@ fn the_streaming_writer_follows_the_layout_signal() {
 fn v6_is_at_most_40_percent_of_v5_on_a_real_model() {
     let content = ifc_lite_testkit::fixture_text_or_skip!("ara3d/S_Office_Integrated Design Archi.ifc");
 
-    let result = ifc_lite_processing::process_geometry_filtered_with_quality(
-        &content,
-        crate::services::OpeningFilterMode::default(),
-        ifc_lite_processing::TessellationQuality::default(),
+    let result = ifc_lite_processing::process(
+        content.as_bytes(),
+        &ifc_lite_processing::ProcessingRequest::full_pass(),
+        &mut (),
     );
     assert!(
         !result.meshes.is_empty(),

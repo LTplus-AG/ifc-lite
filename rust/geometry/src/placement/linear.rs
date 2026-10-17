@@ -11,7 +11,7 @@ use crate::alignment_arc_length::ArcLengthMap;
 use crate::axis_projection::linear_placement_axes;
 use crate::profiles::ProfileProcessor;
 use crate::{Point3, TessellationQuality, Vector3};
-use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
+use ifc_lite_core::{slot, DecodedEntity, EntityDecoder, IfcSchema, IfcType, SchemaVersion};
 use nalgebra::Matrix4;
 
 // Output transform of a sampled placement: the origin is the curve sample plus
@@ -19,7 +19,7 @@ use nalgebra::Matrix4;
 // (tangent, right, up) with `up = (0, 0, 1)` and `right = up cross tangent`.
 // When the tangent is (nearly) vertical the frame degenerates and falls back
 // to identity rotation about the sampled origin. The authored
-// `CartesianPosition` (attr 2) wins when the exporter supplied one: it is the
+// `CartesianPosition` wins when the exporter supplied one: it is the
 // exact pre-computed placement; an `IfcGradientCurve` is evaluated with its
 // vertical profile otherwise (see `gradient.rs`).
 
@@ -63,7 +63,13 @@ fn try_resolve_axis2_placement_linear(
     placement: &DecodedEntity,
     decoder: &mut EntityDecoder,
 ) -> Option<Matrix4<f64>> {
-    let rel_attr = placement.get(1)?;
+    // IFC4X3 position of RelativePlacement; IFC4X1/4X2 have no such
+    // attribute (their slot 1 is `Distance`), so those placements are
+    // resolved from `CartesianPosition` alone. A file whose declared schema
+    // predates `IfcLinearPlacement` (IFC2X3, IFC4) is a mislabelled IFC4X3
+    // export and keeps being read with the IFC4X3 layout.
+    let slot = decoder.slot_or(slot::IfcLinearPlacement::RELATIVE_PLACEMENT, SchemaVersion::Ifc4x3)?;
+    let rel_attr = placement.get(slot.index())?;
     if rel_attr.is_null() {
         return None;
     }
@@ -183,7 +189,8 @@ fn read_linear_direction(
     v.try_normalize(tol::DIRECTION_MIN_LEN).map(Some)
 }
 
-/// `IfcLinearPlacement.CartesianPosition` (attr 2) is an optional
+/// `IfcLinearPlacement.CartesianPosition` (IFC4X3 attr 2, IFC4X1 attr 3,
+/// IFC4X2 attr 4: the position follows the file's schema) is an optional
 /// pre-baked `IfcAxis2Placement3D` carrying the exporter's own answer
 /// to the linear sampling. `None` when absent, null, or unparseable —
 /// the caller then samples the curve itself.
@@ -191,7 +198,8 @@ fn try_resolve_cartesian_position(
     placement: &DecodedEntity,
     decoder: &mut EntityDecoder,
 ) -> Option<Matrix4<f64>> {
-    let cart_attr = placement.get(2)?;
+    let slot = decoder.slot_or(slot::IfcLinearPlacement::CARTESIAN_POSITION, SchemaVersion::Ifc4x3)?;
+    let cart_attr = placement.get(slot.index())?;
     if cart_attr.is_null() {
         return None;
     }

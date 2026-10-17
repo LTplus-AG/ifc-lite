@@ -83,7 +83,7 @@
    156 rust/processing/src/element.rs emit_sub_meshes
    181 rust/processing/src/pdf_vector/interpret_ops.rs Interpreter::operation
    259 rust/processing/src/processor/jobs.rs process_entity_job
-  1161 rust/processing/src/processor/mod.rs process
+   749 rust/processing/src/processor/mod.rs process
    165 rust/processing/src/simplify_session.rs simplify_element
    312 rust/processing/src/symbolic/items.rs extract_symbolic_item_inner
    183 rust/processing/src/symbolic/mod.rs extract_symbolic_data_into_frame

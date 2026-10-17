@@ -6,7 +6,7 @@
 
 use std::collections::HashSet;
 
-use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType, MAX_PLACEMENT_DEPTH};
+use ifc_lite_core::{slot, DecodedEntity, EntityDecoder, IfcType, SchemaVersion, MAX_PLACEMENT_DEPTH};
 
 pub(super) fn validate_placement_chain(
     element: &DecodedEntity,
@@ -60,19 +60,28 @@ pub(super) fn validate_placement_chain(
                 }
             }
             IfcType::IfcLinearPlacement => {
-                let relative = node.get(1).filter(|attr| !attr.is_null());
-                let cartesian = node.get(2).filter(|attr| !attr.is_null());
+                // Positions follow the declared schema: IFC4X1/4X2 have no
+                // RelativePlacement (their slot 1 is `Distance`) and carry
+                // CartesianPosition at 3 / 4 (X1, #7780). An IFC2X3/IFC4 label
+                // on a file with linear placements is a mislabelled IFC4X3
+                // export, read with the IFC4X3 layout as it always was.
+                let relative_slot = decoder.slot_or(slot::IfcLinearPlacement::RELATIVE_PLACEMENT, SchemaVersion::Ifc4x3);
+                let cartesian_slot = decoder.slot_or(slot::IfcLinearPlacement::CARTESIAN_POSITION, SchemaVersion::Ifc4x3);
+                let present = |slot: Option<slot::Slot<slot::kind::Ref>>| {
+                    slot.map(|slot| slot.index()).filter(|&index| node.get(index).is_some_and(|attr| !attr.is_null()))
+                };
+                let (relative, cartesian) = (present(relative_slot), present(cartesian_slot));
                 if relative.is_none() && cartesian.is_none() {
                     return Err(format!("IfcLinearPlacement #{current} has no RelativePlacement or CartesianPosition"));
                 }
-                if relative.is_some() {
-                    let value = resolve_required(&node, 1, "RelativePlacement", decoder)?;
+                if let Some(index) = relative {
+                    let value = resolve_required(&node, index, "RelativePlacement", decoder)?;
                     if value.ifc_type != IfcType::IfcAxis2PlacementLinear {
                         return Err(format!("IfcLinearPlacement #{current} has invalid RelativePlacement #{}", value.id));
                     }
                 }
-                if cartesian.is_some() {
-                    let value = resolve_required(&node, 2, "CartesianPosition", decoder)?;
+                if let Some(index) = cartesian {
+                    let value = resolve_required(&node, index, "CartesianPosition", decoder)?;
                     if value.ifc_type != IfcType::IfcAxis2Placement3D {
                         return Err(format!("IfcLinearPlacement #{current} has invalid CartesianPosition #{}", value.id));
                     }
@@ -197,3 +206,64 @@ ENDSEC;\nEND-ISO-10303-21;\n"
         assert!(err.contains("#20"), "{err}");
     }
 }
+
+#[cfg(test)]
+mod linear_layout_tests {
+    use super::validate_placement_chain;
+    use ifc_lite_core::EntityDecoder;
+
+    /// X1 (#7780): `IfcLinearPlacement` is (PlacementRelTo, RelativePlacement,
+    /// CartesianPosition) in IFC4X3, (PlacementRelTo, Distance, Orientation,
+    /// CartesianPosition) in IFC4X1 and (PlacementRelTo, PlacementMeasuredAlong,
+    /// Distance, Orientation, CartesianPosition) in IFC4X2. The validator read
+    /// the IFC4X3 positions whatever the file declared, so every IFC4X1/4X2
+    /// linear placement was refused as having an invalid RelativePlacement.
+    fn source(schema: &str, linear: &str) -> String {
+        format!(
+            "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('{schema}'));\nENDSEC;\nDATA;\n\
+#21=IFCCARTESIANPOINT((100.,200.,0.));\n#23=IFCAXIS2PLACEMENT3D(#21,$,$);\n\
+#70={linear};\n#90=IFCCOLUMN('1kTvXnbbzCWw8lcMd1dR4o',$,'C1',$,$,#70,$,$,$);\n\
+ENDSEC;\nEND-ISO-10303-21;\n"
+        )
+    }
+
+    fn validate(content: &str) -> Result<(), String> {
+        let mut decoder = EntityDecoder::new(content);
+        let column = decoder.decode_by_id(90).expect("column");
+        validate_placement_chain(&column, &mut decoder)
+    }
+
+    #[test]
+    fn cartesian_position_validates_at_each_schemas_own_position() {
+        assert_eq!(validate(&source("IFC4X1", "IFCLINEARPLACEMENT($,$,$,#23)")), Ok(()));
+        assert_eq!(validate(&source("IFC4X2", "IFCLINEARPLACEMENT($,$,$,$,#23)")), Ok(()));
+        assert_eq!(validate(&source("IFC4X3_ADD2", "IFCLINEARPLACEMENT($,$,#23)")), Ok(()));
+    }
+
+    #[test]
+    fn a_mislabelled_ifc4_file_keeps_the_ifc4x3_layout() {
+        for schema in ["IFC2X3", "IFC4"] {
+            assert_eq!(validate(&source(schema, "IFCLINEARPLACEMENT($,$,#23)")), Ok(()), "{schema}");
+        }
+    }
+
+    #[test]
+    fn a_linear_placement_with_nothing_to_resolve_is_refused_in_every_schema() {
+        for (schema, linear) in [
+            ("IFC4X1", "IFCLINEARPLACEMENT($,$,$,$)"),
+            ("IFC4X2", "IFCLINEARPLACEMENT($,$,$,$,$)"),
+            ("IFC4X3_ADD2", "IFCLINEARPLACEMENT($,$,$)"),
+        ] {
+            let err = validate(&source(schema, linear)).expect_err(schema);
+            assert!(err.contains("no RelativePlacement or CartesianPosition"), "{schema}: {err}");
+        }
+    }
+
+    #[test]
+    fn a_frame_in_the_wrong_slot_of_the_declared_schema_is_not_a_cartesian_position() {
+        // Slot 2 of IFC4X2 is `Distance`, not CartesianPosition (4).
+        let err = validate(&source("IFC4X2", "IFCLINEARPLACEMENT($,$,#23,$,$)")).expect_err("misplaced");
+        assert!(err.contains("no RelativePlacement or CartesianPosition"), "{err}");
+    }
+}
+

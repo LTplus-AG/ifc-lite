@@ -93,18 +93,7 @@ impl ContourSet {
     /// occluder that does not overlap the next element's outline needs no
     /// boolean at all.
     pub fn bounds(&self) -> Option<[f64; 4]> {
-        let mut b = [
-            f64::INFINITY,
-            f64::INFINITY,
-            f64::NEG_INFINITY,
-            f64::NEG_INFINITY,
-        ];
-        for p in self.rings.iter().flatten() {
-            b[0] = b[0].min(p[0]);
-            b[1] = b[1].min(p[1]);
-            b[2] = b[2].max(p[0]);
-            b[3] = b[3].max(p[1]);
-        }
+        let b = crate::math::v2::bbox(self.rings.iter().flatten().copied());
         (b[0] <= b[2]).then_some(b)
     }
 }

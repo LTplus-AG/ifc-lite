@@ -48,7 +48,7 @@ impl DataModelEntities {
     /// The data-model cache-key infix naming this variant. Empty for
     /// [`Self::All`], so a default request keeps hitting the entries already
     /// on disk.
-    pub(crate) fn cache_infix(self) -> &'static str {
+    pub fn cache_infix(self) -> &'static str {
         match self {
             Self::All => "",
             Self::Rooted => "-rooted",
@@ -57,7 +57,7 @@ impl DataModelEntities {
 
     /// Narrow `data_model`'s entities table to this variant. A no-op for
     /// [`Self::All`]; every other table is left untouched either way.
-    pub(crate) fn apply(self, data_model: &mut DataModel) {
+    pub fn apply(self, data_model: &mut DataModel) {
         if self == Self::Rooted {
             retain_rooted_entities(data_model);
         }

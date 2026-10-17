@@ -7,7 +7,7 @@
 //!
 //! The walk has three copies that must write the same value for the same
 //! file: the server's data model
-//! (`apps/server/src/services/data_model/property_value.rs`), the Rust STEP
+//! (`rust/processing/src/data_model/property_value.rs`), the Rust STEP
 //! exporter's property base (`ifc_lite_export` `step_log/base_complex.rs`)
 //! and the browser's store pass (`packages/parser/src/complex-property-store.ts`
 //! over `property-complex-value.ts`). The two Rust copies take every bound,

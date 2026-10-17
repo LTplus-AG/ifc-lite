@@ -21,6 +21,7 @@
 use super::fit::{cap_position, edge_line, fit_edge, intersect, Line};
 use super::grid::PointIndex;
 use super::ScanOutlineOptions;
+use crate::math::v2::dist;
 
 /// Rounds of fit → merge.
 const PASSES: usize = 4;
@@ -279,10 +280,5 @@ fn collinear(verts: &[[f64; 2]], n: usize, line: Line, line_len: f64, e: usize, 
 fn project(p: [f64; 2], l: Line) -> [f64; 2] {
     let t = (p[0] - l.point[0]) * l.dir[0] + (p[1] - l.point[1]) * l.dir[1];
     [l.point[0] + t * l.dir[0], l.point[1] + t * l.dir[1]]
-}
-
-#[inline]
-fn dist(a: [f64; 2], b: [f64; 2]) -> f64 {
-    (a[0] - b[0]).hypot(a[1] - b[1])
 }
 

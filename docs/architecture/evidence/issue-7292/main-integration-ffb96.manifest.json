@@ -1,0 +1,20 @@
+{
+  "scope": "Merge main ffb96 into branch176. Only manual resolution: composed geometry allowlist digest1119183501680359181; limits only tighten. All16 targeted tests and exact workspace Clippy PASS on frozen merged source. No WASM/browser/performance verdict for this integration; earlier proofs keep their source scopes.",
+  "parents": [
+    "1761202310643fb6fb967e8afb91f20f6c622bfb",
+    "ffb96cc3932e44c1d89e56270144c6693f6c1c49"
+  ],
+  "validatedTree": "5881391845f82c5cdfc92e84cb8ddb349bcab701",
+  "archive": {
+    "path": "docs/architecture/evidence/issue-7292/main-integration-ffb96.tar.gz",
+    "bytes": 237189,
+    "sha256": "c1ac53f0f88ed462d0479df73635802b47f506573d911d1c3f894c7547f8aabb"
+  },
+  "filesIndex": {
+    "path": "m/files.json",
+    "bytes": 2945,
+    "sha256": "8c7a898c13ae8b03fde1fb9dd2b6c9750d4a40aa70ca2a1751cdc16831331134"
+  },
+  "decodedFiles": 19,
+  "decodedBytes": 594217
+}

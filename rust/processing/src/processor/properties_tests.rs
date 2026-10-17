@@ -13,7 +13,7 @@
 //! for the grouped form, so the `?` silently dropped the WHOLE relationship —
 //! every related space/zone lost every property/quantity set in the group.
 //! This is the same root cause as issue #4772 / PR #4773
-//! (`apps/server/src/services/data_model/relationships.rs::extract_relationship`),
+//! (`rust/processing/src/data_model/relationships.rs::extract_relationship`),
 //! an independent second site in `rust/processing`.
 
 use super::*;

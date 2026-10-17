@@ -15,3 +15,22 @@
 
 #[allow(unused_imports)]
 pub use ifc_lite_testkit::require_fixtures;
+
+/// The fixture for the `rect_param_*` measurement tools: `MEASURE_FIXTURE=<path>`
+/// (an explicit user-supplied file, absent means skip) or else the catalogued
+/// `wall-with-opening-and-window.ifc` through the gate. Returns `(label, text)`.
+#[allow(dead_code)]
+pub fn measure_fixture() -> Option<(String, String)> {
+    const DEFAULT: &str = "buildingsmart/wall-with-opening-and-window.ifc";
+    match std::env::var("MEASURE_FIXTURE") {
+        Ok(path) => match std::fs::read_to_string(&path) {
+            Ok(text) => Some((path, text)),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                eprintln!("skipping: fixture {path} not present");
+                None
+            }
+            Err(e) => panic!("fixture {path} could not be read: {e}"),
+        },
+        Err(_) => ifc_lite_testkit::fixture_text(DEFAULT).map(|t| (DEFAULT.to_string(), t)),
+    }
+}

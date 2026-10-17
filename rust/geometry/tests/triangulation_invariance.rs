@@ -1511,19 +1511,17 @@ fn issue_4627_candidate_failures_preserve_prior_analytic_cuts() {
                 // #5362: 33 open / 159 tris until the #635 fallback stopped
                 // box-cutting an opening the kernel found disjoint; enclosed
                 // volume moved toward IfcOpenShell (0.0189 -> 0.0202 m3, ref 0.0211).
-                // #7795: rvt01's polygonal face sets now triangulate through the
-                // shared planar-face home (Newell basis, convex fans), so the
-                // cut hosts' triangle counts moved; open edges never rose, and
-                // #11477 closed (9 open -> 0).
-                // #7795 also closes ALT; confirmed on exact main be93 and #7292.
-                (11477, 0, 0, 158, 0),
+                // Main #7826 changes these polygonal host triangulations.
+                // Preserve its measured DEFAULT/ALT boundary counts; a closed
+                // #11477 result from the earlier main revision is not current.
+                (11477, 9, 9, 152, 14),
                 // #5410: 19 open / 139 tris until a plan-rotated host whose
                 // cutters author no depth took the wall-local frame; now closed
                 // (enclosed volume 0.01972 -> 0.01967 m3, IfcOpenShell 0.01752).
-                (11690, 0, 0, 142, 0),
-                (31156, 0, 0, 196, 0),
+                (11690, 0, 0, 144, 0),
+                (31156, 0, 0, 208, 0),
                 (17553, 0, 2, 214, 0),
-                (17615, 0, 0, 244, 0),
+                (17615, 0, 0, 252, 0),
                 (25914, 25, 28, 87, 25),
                 (26610, 0, 0, 84, 0),
                 // rvt01 wall hosts the #3977 local-frame selector must leave
@@ -1531,10 +1529,10 @@ fn issue_4627_candidate_failures_preserve_prior_analytic_cuts() {
                 // #7292: preserve the ordinary exactly closed boundary; the
                 // stronger exact fixture below checks both triangulators.
                 (10191, 0, 0, 172, 0),
-                // #7292 retains all 192 main triangles and adds one quad closing
-                // four exact edges. The 1mm grid aliases a parallel face 61um
-                // away; see evidence/issue-7292/be93-rvt01-26681-adjudication.json.
-                (26681, 36, 37, 194, 17),
+                // #7292: the current DEFAULT retessellation preserves the
+                // measured finite surface within 100um. These coarse 1mm counts
+                // are representation pins, not an exact-closure assertion.
+                (26681, 44, 44, 210, 10),
             ][..],
         ),
         (

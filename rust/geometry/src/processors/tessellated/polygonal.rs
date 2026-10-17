@@ -136,7 +136,13 @@ impl PolygonalFaceSetProcessor {
                 })
                 .collect()
         };
-        let mut corners = StraightCorners::default();
+        // Positions this close may weld downstream; see `StraightCorners::weld`.
+        let extent = positions
+            .chunks_exact(3)
+            .fold([f32::INFINITY, f32::NEG_INFINITY], |[lo, hi], p| {
+                [p.iter().fold(lo, |a, &v| a.min(v)), p.iter().fold(hi, |a, &v| a.max(v))]
+            });
+        let mut corners = StraightCorners::with_weld(1e-5 * f64::from(extent[1] - extent[0]));
         for (_, outer, inner) in &parsed {
             let holed = inner.iter().any(|l| l.len() >= 3);
             for (loop_indices, keep_all) in
@@ -147,6 +153,13 @@ impl PolygonalFaceSetProcessor {
                 }
             }
         }
+
+        let hole_free: Vec<Vec<Point3<f64>>> = parsed
+            .iter()
+            .filter(|(_, _, inner)| inner.iter().all(|l| l.len() < 3))
+            .filter_map(|(_, outer, _)| ring_points(outer))
+            .collect();
+        corners.settle(&hole_free);
 
         for (face_type, outer, inner) in &parsed {
             // Straight corners every face agrees on leave the face, so no

@@ -18,7 +18,7 @@ mod scanner_attributes;
 pub use scanner_attributes::{
     nth_attribute_is_present, split_top_level_args, split_top_level_args_str, StepListItems,
 };
-pub(crate) use scanner_attributes::argument_list_start;
+pub(crate) use scanner_attributes::{argument_list_start, attribute_is_present};
 
 // The refusal/drop reporting surface, likewise (see its doc comment).
 #[path = "scanner_diagnostics.rs"]

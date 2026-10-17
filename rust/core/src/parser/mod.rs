@@ -33,6 +33,7 @@ mod lexical;
 mod malformed_records;
 mod numeric_literal;
 mod oversized_ids;
+mod record;
 mod record_strings;
 mod report_sink;
 mod scanner;
@@ -40,6 +41,7 @@ mod tokenizer;
 
 pub use keyword::{find_keyword, keyword_ends_with, keyword_eq, keyword_starts_with};
 pub use header::declared_schema_bounded;
+pub use record::{parse_ref, StepRecord};
 pub use lexical::skip_step_comment;
 // The one STEP whitespace set and trivia rule, for the raw-byte readers in
 // `decoder` (#3733) and for the export crate's record-frame reader (#7682), so

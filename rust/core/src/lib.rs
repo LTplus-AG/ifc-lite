@@ -62,6 +62,7 @@
 //! - **Entity scanning**: ~650 MB/s with SIMD acceleration
 //! - **Number parsing**: 10x faster than std using [lexical-core](https://docs.rs/lexical-core)
 
+pub mod attribute_slot;
 pub mod columnar_index;
 pub mod compatibility;
 pub mod decoder;
@@ -90,6 +91,7 @@ pub mod units;
 #[path = "schema_registry_tests.rs"]
 mod schema_registry_tests;
 
+pub use attribute_slot::{AttrKind, AttrSlot};
 pub use columnar_index::{ColumnLengthMismatch, ColumnarEntityIndex, SpanBeyondU32};
 pub use compatibility::{is_exporter_stratum_alias, EXPORTER_STRATUM_ALIASES};
 pub use decoder::{build_entity_index, EntityDecoder, EntityIndex, GridAxisIndex};
@@ -104,7 +106,7 @@ pub use fast_parse::{
 };
 pub use generated::{
     attribute_names_for_schema, entity_info_for_schema, is_subtype_of_for_schema, IfcType,
-    SchemaEntityInfo, UnknownIfcType, IFC_TYPES,
+    SchemaEntityInfo, SchemaVersion, UnknownIfcType, IFC_TYPES,
 };
 pub use georef::{GeoRefExtractor, GeoRefSource, GeoReference};
 pub use limits::{RtcVerdict, MAX_MAPPED_ITEM_DEPTH, MAX_PLACEMENT_DEPTH};

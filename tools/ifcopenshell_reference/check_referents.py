@@ -10,7 +10,7 @@ parser cannot evaluate an IFC4X3 alignment curve, so a position read back
 through it would be ifc-lite grading itself. Here IfcOpenShell reads them:
 
 1. STRUCTURE. Through IfcOpenShell's alignment API: the alignment's referent
-   nest (`get_referent_nest`) holds the start referent, then one referent per
+   nest (`get_stationing_nest`) holds the start referent, then one referent per
    authored station equation, in order ALONG the alignment; each is
    `IfcReferent/.STATION.`; `get_alignment_start_station` returns the
    authored start station.
@@ -128,15 +128,16 @@ def check(path: str, expectations: dict) -> tuple[list[str], int]:
         start = A.get_alignment_start_station(model, alignment)
         if not _close(start, expected["startStation"]):
             problems.append(f"{name}: IfcOpenShell reads start station {start}, authored {expected['startStation']}")
-        # IfcOpenShell's own lookup; it returns a new, EMPTY nest when the
-        # alignment has none, which the count below then fails.
-        referents = list(A.get_referent_nest(model, alignment).RelatedObjects)
+        # IfcOpenShell 0.9 returns None when stationing is absent. Keep the
+        # missing-nest case in the same nonvacuous referent-count check.
+        nest = A.get_stationing_nest(model, alignment)
+        referents = list(nest.RelatedObjects) if nest is not None else []
         wanted = [{"distanceAlong": 0.0, "station": expected["startStation"]}, *expected["equations"]]
         if len(referents) != len(wanted):
             problems.append(f"{name}: {len(referents)} nested referents for {len(wanted)} authored (start + equations)")
             continue
         basis_curve = A.get_basis_curve(alignment)
-        evaluator = W.function_item_evaluator(settings, W.map_shape(settings, basis_curve.wrapped_data))
+        evaluator = W.function_item_evaluator(settings, W.map_shape(settings, basis_curve))
         for index, (referent, want) in enumerate(zip(referents, wanted)):
             label = f"{name} referent {index + 1} ({'start' if index == 0 else f'station equation {index}'})"
             if index == 0:

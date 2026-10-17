@@ -45,9 +45,13 @@ pub mod error;           // Error types
 ### Parser Module
 
 `ifc_lite_core::declared_schema_bounded(ifc_bytes)` reads the first actual
-`FILE_SCHEMA` identifier in the first 64 KiB of the STEP header. It skips
+`FILE_SCHEMA` identifier in the first 256 KiB of the STEP header. It skips
 comments and quoted decoys and stops at the header section boundary, returning
-`None` when no declaration is found in that window.
+`None` when no declaration is found in that window (`parser::header::MAX_HEADER_BYTES`,
+the same window the scanner searches for `DATA;`). Keywords are found by
+`parser::header::find_keyword_then`, a literal's text is
+`step_encoding::decode_step_literal`, and `parser::split_top_level_args` splits
+top-level arguments, all ignoring comments and quoted decoys.
 
 #### Token
 

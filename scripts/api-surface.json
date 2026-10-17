@@ -6581,7 +6581,10 @@
     "federationFrameInfo: function",
     "ifcToViewerAxes: function",
     "realRtcAnchorOf: function",
+    "renderFrameCoordinateSpace: function",
+    "renderFrameWorldMatrix: function",
     "renderFrameWorldOffset: function",
+    "renderFrameYupToWorldMatrix: function",
     "totalYupOffset: function",
     "viewerToIfcAxes: function"
   ],

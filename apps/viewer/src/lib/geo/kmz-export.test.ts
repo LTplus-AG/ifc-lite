@@ -110,6 +110,12 @@ describe('computeKmzAltitude', () => {
     assert.strictEqual(computeKmzAltitude(100, undefined, 1, coordinateInfo), 517);
   });
 
+  it('folds a Y-up originShift back in too (server-loaded RTC models, #7734)', () => {
+    // The server's Z-up origin_shift (x, y, 417) arrives as Y-up originShift.y = 417.
+    const coordinateInfo = { originShift: { x: 2_600_000, y: 417, z: -1_200_000 } } as CoordinateInfo;
+    assert.strictEqual(computeKmzAltitude(100, undefined, 1, coordinateInfo), 517);
+  });
+
   it('defaults to 0 with no OrthogonalHeight, CRS, or coordinate info', () => {
     assert.strictEqual(computeKmzAltitude(undefined, undefined, 1, undefined), 0);
   });

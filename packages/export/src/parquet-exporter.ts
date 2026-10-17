@@ -6,6 +6,7 @@
 
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { GeometryResult } from '@ifc-lite/geometry';
+import { renderFrameCoordinateSpace, renderFrameYupToWorldMatrix } from '@ifc-lite/geometry/world-frame';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { IfcTypeEnum, EntityFlags, IFC_ENTITY_NAMES, exactTypeName } from '@ifc-lite/data';
 import { getEffectiveEntityIndex, type EffectiveEntityIndex } from './effective-index.js';
@@ -93,7 +94,7 @@ export class ParquetExporter {
         }
 
         // Metadata
-        files.set('Metadata.json', this.writeMetadata(new Set(relationshipRows.RelId).size, propertyCount));
+        files.set('Metadata.json', this.writeMetadata(new Set(relationshipRows.RelId).size, propertyCount, options.includeGeometry !== false));
 
         return this.createZipArchive(files);
     }
@@ -501,8 +502,8 @@ export class ParquetExporter {
         });
     }
 
-    private writeMetadata(relationshipCount: number, propertyCount: number): Uint8Array {
-        const metadata = {
+    private writeMetadata(relationshipCount: number, propertyCount: number, geometryWritten: boolean): Uint8Array {
+        const metadata: Record<string, unknown> = {
             version: '2.0.0',
             generator: 'IFC-Lite',
             sourceFile: {
@@ -522,6 +523,18 @@ export class ParquetExporter {
                 relationshipCount, // distinct exported IfcRel records, not raw edges (#3760/#4205)
             },
         };
+
+        if (geometryWritten && this.geometryResult) {
+            // The vertex columns are the viewer's render-frame meshes (Y-up,
+            // RTC-shifted), not IFC world. Say so, with the way back, in the
+            // same keys the Rust BOS writer uses (`parquet_bos.rs`): `world =
+            // M * [x, y, z, 1]`, M column-major f64 in IFC Z-up metres. The
+            // basis swap is folded into M, so `vertexAxes` is informational (#7734).
+            const frame = this.geometryResult.coordinateInfo;
+            metadata.meshCoordinateSpace = renderFrameCoordinateSpace(frame);
+            metadata.vertexAxes = 'y_up';
+            metadata.worldTransform = renderFrameYupToWorldMatrix(frame);
+        }
 
         return new TextEncoder().encode(JSON.stringify(metadata, null, 2));
     }

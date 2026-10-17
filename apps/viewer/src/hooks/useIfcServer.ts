@@ -37,6 +37,7 @@ import {
 // Server data model conversion
 import { convertServerDataModel, type ServerParseResult } from '../utils/serverDataModel.js';
 import { convertServerMesh } from '../utils/serverMesh.js';
+import { serverOriginShift } from '../utils/serverOriginShift.js';
 
 /** Server parse result type - union of streaming and non-streaming responses */
 type ServerParseResultType = ParquetParseResponse | ParquetStreamResult | ParseResponse;
@@ -262,9 +263,8 @@ export function useIfcServer() {
         // Final geometry set with complete bounds
         // Server already applies RTC shift to mesh positions, so bounds are shifted
         // Reconstruct originalBounds by adding originShift back to shifted bounds
-        const originShift = streamMetadata?.coordinate_info?.origin_shift
-          ? { x: streamMetadata.coordinate_info.origin_shift[0], y: streamMetadata.coordinate_info.origin_shift[1], z: streamMetadata.coordinate_info.origin_shift[2] }
-          : { x: 0, y: 0, z: 0 };
+        // (Y-up like the meshes: the server leaves the shift in IFC Z-up.)
+        const originShift = serverOriginShift(streamMetadata?.coordinate_info?.origin_shift);
         const finalCoordinateInfo = {
           originShift,
           // Original bounds = shifted bounds + originShift (reconstruct world coordinates)
@@ -334,9 +334,8 @@ export function useIfcServer() {
         // - shiftedBounds = bounds (already shifted by server)
         // - originalBounds = bounds + originShift (reconstruct original world coordinates)
         const serverCoordInfo = result.metadata.coordinate_info;
-        const originShift = serverCoordInfo?.origin_shift
-          ? { x: serverCoordInfo.origin_shift[0], y: serverCoordInfo.origin_shift[1], z: serverCoordInfo.origin_shift[2] }
-          : { x: 0, y: 0, z: 0 };
+        // (Y-up like the meshes: the server leaves the shift in IFC Z-up.)
+        const originShift = serverOriginShift(serverCoordInfo?.origin_shift);
 
         // When server already shifted meshes, shiftedBounds IS the calculated bounds
         // (don't use createCoordinateInfo which would subtract originShift again)

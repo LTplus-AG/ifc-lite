@@ -253,7 +253,14 @@ await saveFile('model.glb', glb);
 
 // Or, if you already meshed the model, skip the re-mesh:
 const result = await gp.process(bytes);
-const glb2 = gp.exportGlbFromMeshes(result.meshes, /* includeMetadata */ true);
+const glb2 = gp.exportGlbFromMeshes(
+  result.meshes,
+  /* includeMetadata */ true,
+  /* lit */ true,
+  /* emissive */ false,
+  // The frame the meshes sit in, so a georeferenced model lands at its world position.
+  renderFrameWorldMatrix(result.coordinateInfo), // from '@ifc-lite/geometry/world-frame'
+);
 ```
 
 `exportGlb` always emits a single binary **GLB** (`model/gltf-binary`). Per-element

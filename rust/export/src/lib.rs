@@ -26,6 +26,8 @@ mod dfjson;
 mod error;
 mod file_schema;
 mod frame;
+#[cfg(test)]
+mod frame_fixtures;
 mod generated;
 mod geom;
 mod gltf;

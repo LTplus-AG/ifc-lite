@@ -112,14 +112,6 @@ export const CANONICAL_CALL_EXPRESSIONS = [
       '  ).y;',
     ].join('\n'),
   },
-  {
-    file: 'apps/viewer/src/lib/geo/kmz-export.ts',
-    text: [
-      'const rtcYupY = ifcToViewerAxes(',
-      '    coordinateInfo?.wasmRtcOffset ?? { x: 0, y: 0, z: 0 },',
-      '  ).y;',
-    ].join('\n'),
-  },
 ];
 
 /** Comments that name the conversion contract; registered by exact line. */

@@ -5,7 +5,7 @@
 //! else needs the host to show this report and the user to accept it.
 use super::extent::{self, Rect};
 use serde::Serialize;
-use sha2::{Digest, Sha256};
+use crate::fingerprint::Sha256Writer;
 use std::collections::BTreeMap;
 
 pub const FIDELITY_ALGORITHM: &str = "ifclite-pdf-fidelity-v1";
@@ -126,13 +126,13 @@ impl ReportBuilder {
             omitted_paints: self.omitted_paints,
             summary: &summary,
         };
-        let mut hash = Sha256::new();
-        hash.update(FIDELITY_ALGORITHM.as_bytes());
-        hash.update(b"\0");
-        hash.update(request_sha256.as_bytes());
-        hash.update(serde_json::to_vec(&verdict).unwrap_or_default());
+        let mut hash = Sha256Writer::new();
+        hash.bytes(FIDELITY_ALGORITHM.as_bytes());
+        hash.bytes(b"\0");
+        hash.bytes(request_sha256.as_bytes());
+        hash.bytes(serde_json::to_vec(&verdict).unwrap_or_default());
         FidelityReport {
-            sha256: format!("{:x}", hash.finalize()),
+            sha256: hash.finish_hex(),
             algorithm: FIDELITY_ALGORITHM,
             exact,
             raster_only,

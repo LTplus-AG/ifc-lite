@@ -208,16 +208,7 @@ pub(crate) fn rename_type(u: &str, from: &str, to: &str) -> Option<&'static str>
 /// Deterministic 22-char IFC-GUID-shaped placeholder derived from an express id
 /// (used for proxy fallbacks + synthesized pset/rel entities; avoids a clock/RNG in wasm).
 pub(crate) fn placeholder_guid(id: u32) -> String {
-    const A: &[u8] = b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_$";
-    let mut n = id as u64 + 0x1000_0000;
-    let mut s = [b'0'; 22];
-    let mut i = 22;
-    while i > 0 && n > 0 {
-        i -= 1;
-        s[i] = A[(n % 64) as usize];
-        n /= 64;
-    }
-    String::from_utf8(s.to_vec()).unwrap()
+    ifc_lite_core::guid::placeholder(id)
 }
 
 /// Convert one STEP entity line `#id=TYPE(attrs);` from `from` to `to`.

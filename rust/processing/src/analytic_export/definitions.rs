@@ -7,7 +7,7 @@
 use std::collections::BTreeMap;
 use ifc_lite_geometry::analytic::{AnalyticCurveSegment, AnalyticStatus, AnalyticSweptDisk};
 use serde::Serialize;
-use sha2::{Digest, Sha256};
+
 use nalgebra::Matrix4;
 
 /// A context is a top-level representation for a direct solid, or the ordered
@@ -105,7 +105,7 @@ impl SweptDiskDefinition {
 }
 
 pub(super) fn model_sha256(content: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(content))
+    crate::fingerprint::sha256_hex(content)
 }
 
 pub(super) fn source_key(

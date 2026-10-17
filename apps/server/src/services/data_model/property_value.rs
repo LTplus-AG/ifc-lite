@@ -302,12 +302,6 @@ pub(super) fn resolve_single_value(nominal: &AttributeValue) -> (String, String,
     }
 }
 
-/// Render a number the way JS `String(n)` would for the canonical value string
-/// (integers without a trailing `.0`, so `200.0` -> "200").
-pub(super) fn fmt_number(n: f64) -> String {
-    if n.fract() == 0.0 && n.abs() < 1e15 {
-        format!("{}", n as i64)
-    } else {
-        format!("{}", n)
-    }
-}
+/// The canonical value string for a number (`200.0` -> "200"): the shared
+/// formatter, so the server and the exporters cannot disagree.
+pub(super) use ifc_lite_core::fmt_num::fmt_num as fmt_number;

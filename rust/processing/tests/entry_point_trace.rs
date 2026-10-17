@@ -18,16 +18,17 @@
 //! * `processed` never goes backwards and never passes `total`.
 //!
 //! C4-1 puts `process(content, &ProcessingRequest, &mut sink)` behind all of
-//! them and extends this file to compare each variant with it. The browser
+//! them; the last tests here drive it directly and pin the request builder
+//! and the sink events against the same contract. The browser
 //! leg of C4-0 (native `process` against `IfcAPI::produce_batch`) is not here:
 //! `produce_batch` reads `js_sys::Date::now` and the pre-pass hands its jobs to
 //! JS, so neither runs natively until C4-10b/11b make them callable.
 
 mod common;
 
-use common::entry_trace::{assert_ordering_contract, result_digest, Event};
+use common::entry_trace::{assert_ordering_contract, result_digest, Event, Recorder};
 use ifc_lite_processing::{
-    native_to_baked, process_geometry, process_geometry_filtered,
+    native_to_baked, process, process_geometry, Batching, Features, ProcessingRequest, process_geometry_filtered,
     process_geometry_filtered_with_quality, process_geometry_filtered_with_quality_and_ids,
     process_geometry_streaming, process_geometry_streaming_filtered,
     process_geometry_streaming_filtered_with_baked_basis,
@@ -292,4 +293,152 @@ fn observing_events_does_not_change_the_result() {
         let (observed, _, _) = traced(&content, options, OpeningFilterMode::Default);
         assert_eq!(result_digest(&silent), result_digest(&observed), "{name}");
     }
+}
+
+/// The builder and the old option struct describe the same request, field for
+/// field: a delegate that went through `from_streaming` and a caller that
+/// spells the builder cannot disagree.
+#[test]
+fn builder_and_streaming_options_build_the_same_request() {
+    let options = StreamingOptions {
+        initial_batch_size: 3,
+        throughput_batch_size: 9,
+        fast_first_batch: true,
+        include_properties: false,
+        include_presentation_layers: false,
+        emit_quick_metadata_bootstrap: true,
+        retain_emitted_meshes: false,
+        tessellation_quality: TessellationQuality::High,
+        enable_instancing: true,
+        ..StreamingOptions::default()
+    };
+    let from_options = ProcessingRequest::from_streaming(OpeningFilterMode::IgnoreAll, options);
+    let from_builder = ProcessingRequest::default()
+        .opening_filter(OpeningFilterMode::IgnoreAll)
+        .quality(TessellationQuality::High)
+        .batching(Batching::new(3, 9).fast_first(true))
+        .features(Features::default().properties(false).presentation_layers(false).quick_metadata_bootstrap(true))
+        .retain_meshes(false)
+        .instancing(true);
+    assert_eq!(format!("{from_options:?}"), format!("{from_builder:?}"));
+
+    // The two named shapes differ in chunking and nothing else.
+    let full = ProcessingRequest::full_pass();
+    assert_eq!(full.batching, Batching::new(usize::MAX, usize::MAX));
+    assert_eq!(
+        format!("{:?}", full.clone().batching(ProcessingRequest::default().batching)),
+        format!("{:?}", ProcessingRequest::default()),
+    );
+}
+
+/// `process` with a recording sink: the whole contract, the frame event's
+/// payload, and the same result as the closure-based entry point.
+#[test]
+fn process_raises_its_events_in_contract_order() {
+    for (name, content) in all_inputs() {
+        let request = ProcessingRequest::default()
+            .batching(Batching::new(1, 2).fast_first(true))
+            .features(Features::default().quick_metadata_bootstrap(true).presentation_layers(false));
+        let mut rec = Recorder::default();
+        let result = process(&content, &request, &mut rec);
+        assert_ordering_contract(&rec.events, &name);
+
+        let frame = rec.frame.unwrap_or_else(|| panic!("{name}: on_frame must fire, also with zero jobs"));
+        assert_eq!(frame.frame, result.frame, "{name}: the event carries the result's frame");
+        let (x, y, z) = result.frame.rtc_offset();
+        assert_eq!(
+            frame.baked_basis,
+            native_to_baked(result.mesh_coordinate_space, result.site_transform.as_deref(), [x, y, z]),
+            "{name}: baked basis"
+        );
+        assert!(
+            rec.events.iter().any(|e| matches!(e, Event::Bootstrap { .. })),
+            "{name}: the bootstrap was requested"
+        );
+
+        // Same request through the deprecated entry point: same result.
+        let legacy = process_geometry_streaming_filtered_with_options(
+            &content,
+            OpeningFilterMode::Default,
+            StreamingOptions {
+                initial_batch_size: 1,
+                throughput_batch_size: 2,
+                fast_first_batch: true,
+                include_presentation_layers: false,
+                emit_quick_metadata_bootstrap: true,
+                ..StreamingOptions::default()
+            },
+            |_, _, _| {},
+            |_| {},
+            |_| {},
+        );
+        assert_eq!(result_digest(&result), result_digest(&legacy), "{name}");
+
+        // A sink that listens to nothing changes nothing.
+        let silent = process(&content, &request, &mut ());
+        assert_eq!(result_digest(&silent), result_digest(&result), "{name}: () sink");
+    }
+}
+
+/// A cancel flag raised before the pass starts stops it between chunks: no
+/// batch is emitted, the frame still arrives once, and the result is partial.
+#[test]
+fn a_raised_cancel_flag_emits_no_batches() {
+    for (name, content) in all_inputs() {
+        let cancel = Arc::new(std::sync::atomic::AtomicBool::new(true));
+        let request = ProcessingRequest::full_pass().cancel(cancel);
+        let mut rec = Recorder::default();
+        let result = process(&content, &request, &mut rec);
+        assert!(result.meshes.is_empty(), "{name}: partial result holds no meshes");
+        assert!(!rec.events.iter().any(|e| matches!(e, Event::Batch { .. })), "{name}: no batch");
+        assert!(rec.frame.is_some(), "{name}: the frame is chosen before the first chunk check");
+    }
+}
+
+/// The set of `process_geometry*` entry points is closed. A new pass input is a
+/// `ProcessingRequest` field and a new output stream a `ProcessingSink` event;
+/// a twelfth variant is the shape this refactor removed (C4, #7782).
+#[test]
+fn no_new_process_geometry_variant() {
+    const ALLOWED: &[&str] = &[
+        "process_geometry",
+        "process_geometry_filtered",
+        "process_geometry_filtered_with_quality",
+        "process_geometry_filtered_with_quality_and_ids",
+        "process_geometry_streaming",
+        "process_geometry_streaming_filtered",
+        "process_geometry_streaming_filtered_with_baked_basis",
+        "process_geometry_streaming_filtered_with_options",
+        "process_geometry_streaming_with_options",
+        "process_geometry_streaming_with_options_and_bootstrap",
+        "process_geometry_with_index",
+    ];
+    let mut found = Vec::new();
+    let mut stack = vec![std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src")];
+    while let Some(dir) = stack.pop() {
+        for entry in std::fs::read_dir(&dir).expect("read src") {
+            let path = entry.expect("dir entry").path();
+            if path.is_dir() {
+                stack.push(path);
+            } else if path.extension().is_some_and(|e| e == "rs") {
+                let text = std::fs::read_to_string(&path).expect("read source");
+                for line in text.lines() {
+                    if let Some(rest) = line.trim_start().strip_prefix("pub fn process_geometry") {
+                        let tail: String =
+                            rest.chars().take_while(|c| c.is_alphanumeric() || *c == '_').collect();
+                        found.push(format!("process_geometry{tail}"));
+                    }
+                }
+            }
+        }
+    }
+    found.sort();
+    found.dedup();
+    let unexpected: Vec<&String> = found.iter().filter(|f| !ALLOWED.contains(&f.as_str())).collect();
+    assert!(
+        unexpected.is_empty(),
+        "new public entry point(s) {unexpected:?}: add a `ProcessingRequest` field or a \
+         `ProcessingSink` event and call `process`, instead of another `process_geometry_*`"
+    );
+    assert_eq!(found.len(), ALLOWED.len(), "fixture rot: an allowed entry point is gone or this scan missed it");
 }

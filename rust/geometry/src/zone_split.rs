@@ -37,6 +37,7 @@ use crate::kernel::arrangement::{
 };
 use crate::kernel::mesh_bridge::orient_outward;
 use crate::kernel::signed_volume::signed_volume_of;
+use crate::math::aabb::Aabb3;
 
 /// A zone as the viewer authors it: an oriented box that rotates about the
 /// VERTICAL axis only. Coordinates are the caller's frame; the viewer passes
@@ -256,7 +257,8 @@ pub fn split_mesh_by_zones(host: &[Tri], zones: &[ZoneShape]) -> Option<ZoneSpli
         return None;
     }
     let whole_volume = signed_volume_of(&host);
-    let (host_lo, host_hi) = tris_aabb(&host);
+    let host_box = Aabb3::from_points(host.iter().flatten().copied());
+    let (host_lo, host_hi) = (host_box.min, host_box.max);
     let diagonal = (0..3).map(|k| (host_hi[k] - host_lo[k]).powi(2)).sum::<f64>().sqrt();
     // A NaN volume fails `<=` and falls through to `sum_error_rel` as NaN.
     if whole_volume.abs() <= diagonal.powi(3) * NO_VOLUME_REL {
@@ -331,20 +333,6 @@ pub fn split_mesh_by_zones(host: &[Tri], zones: &[ZoneShape]) -> Option<ZoneSpli
     }
 
     Some(ZoneSplit { pieces, whole_volume, remainder_failed })
-}
-
-fn tris_aabb(tris: &[Tri]) -> ([f64; 3], [f64; 3]) {
-    let mut lo = [f64::INFINITY; 3];
-    let mut hi = [f64::NEG_INFINITY; 3];
-    for t in tris {
-        for p in t {
-            for k in 0..3 {
-                lo[k] = lo[k].min(p[k]);
-                hi[k] = hi[k].max(p[k]);
-            }
-        }
-    }
-    (lo, hi)
 }
 
 #[cfg(test)]

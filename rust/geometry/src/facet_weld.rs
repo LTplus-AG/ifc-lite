@@ -82,6 +82,7 @@ use crate::kernel::mesh_bridge::SNAP_GRID;
 /// real roof pitch / dormer has a distinct normal bucket and never clusters
 /// with the slope.
 use crate::grid::NORMAL_QUANT_F64 as NORMAL_QUANT;
+use crate::math::v3;
 
 /// Max plane-offset jitter (metres) for two same-normal facets to weld into one
 /// plane cluster. 50 µm comfortably spans the ~15 µm f32 offset jitter but is
@@ -121,14 +122,10 @@ fn qnorm(c: f64) -> i64 {
 /// Returns `None` for a degenerate (zero-area) triangle.
 #[inline]
 fn tri_normal(a: [f64; 3], b: [f64; 3], c: [f64; 3]) -> Option<([f64; 3], f64)> {
-    let e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
-    let e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
-    let n = [
-        e1[1] * e2[2] - e1[2] * e2[1],
-        e1[2] * e2[0] - e1[0] * e2[2],
-        e1[0] * e2[1] - e1[1] * e2[0],
-    ];
-    let len = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
+    let n = v3::tri_normal(a, b, c);
+    let len = v3::norm(n);
+    // Not `v3::normalize(n, 0.0)`: that also refuses a non-finite length, and
+    // this weld has always passed one through (`NaN <= 0.0` is false).
     if len <= 0.0 {
         return None;
     }

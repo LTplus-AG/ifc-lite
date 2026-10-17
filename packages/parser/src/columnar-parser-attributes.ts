@@ -210,19 +210,29 @@ export function readRefId(buffer: Uint8Array, pos: number, end: number): [number
 
 /** Read a list of entity refs (#id1,#id2,...) or a single #id. Returns [ids, newPos]. */
 export function readRefList(buffer: Uint8Array, pos: number, end: number): [number[], number] {
-    // Kept in sync with isSpaceByte in step-lexing.ts (#3733).
-    while (pos < end && (buffer[pos] === 0x20 || buffer[pos] === 0x09 || buffer[pos] === 0x0A || buffer[pos] === 0x0D || buffer[pos] === 0x0C || buffer[pos] === 0x0B)) pos++;
+    // Trivia is whitespace AND `/* ... */` comments (#7785): a `#` or `)` inside
+    // a comment is not structure. A comment that never closes runs to `end`.
+    pos = skipTrivia(buffer, pos, end).next;
     const ids: number[] = [];
 
     if (pos < end && buffer[pos] === 0x28) {
         pos++;
         while (pos < end && buffer[pos] !== 0x29) {
-            while (pos < end && (buffer[pos] === 0x20 || buffer[pos] === 0x09 || buffer[pos] === 0x0A || buffer[pos] === 0x0D || buffer[pos] === 0x0C || buffer[pos] === 0x0B || buffer[pos] === 0x2C)) pos++;
-            if (pos < end && buffer[pos] === 0x23) {
+            const gap = skipTrivia(buffer, pos, end);
+            pos = gap.next;
+            if (gap.stop) break;
+            if (pos >= end || buffer[pos] === 0x29) break;
+            const b = buffer[pos];
+            if (b === 0x2C) {
+                pos++;
+            } else if (b === 0x23) {
                 const [id, np] = readRefId(buffer, pos, end);
                 if (id >= 0) ids.push(id);
                 pos = np;
-            } else if (pos < end && buffer[pos] !== 0x29) {
+            } else if (b === 0x27) {
+                const next = skipStringLiteral(buffer, pos, end);
+                pos = next < 0 ? end : next;
+            } else {
                 pos++;
             }
         }

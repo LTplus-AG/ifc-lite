@@ -86,9 +86,7 @@ impl GeometryRouter {
                 placement.id
             ))
         })?;
-        let mut result = [0.0; 16];
-        result.copy_from_slice(local.as_slice());
-        Ok(result)
+        Ok(crate::math::mat4::col_major_array(&local))
     }
 
     /// Decode `IfcLinearPlacement.RelativePlacement` → sample the basis

@@ -151,7 +151,8 @@ fn append_alignment_segments(
         let mz = m[2] * lx + m[6] * ly + m[10] * lz + m[14] - rtc.2;
         // IFC Z-up → WebGL Y-up: (x, z, -y). Matches MeshDataJs::new so the
         // line lands on the same ground as the terrain meshes.
-        pts.push([mx as f32, mz as f32, -my as f32]);
+        // `+ 0.0` folds the -0.0 a zero northing negates to (grid_lines parity, D24).
+        pts.push([mx as f32, mz as f32, -my as f32 + 0.0]);
     }
 
     // Emit as a line-list: each adjacent pair is one segment.

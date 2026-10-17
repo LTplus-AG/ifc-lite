@@ -87,19 +87,38 @@ const MIN_SIN_THETA: f64 = 1.0e-3;
 /// The unit normal of the triangle `(a, b, c)`, or `None` when the triangle
 /// is degenerate (zero-length edge, non-finite input) or a sliver relative to
 /// its own edge lengths (see [`MIN_SIN_THETA`]).
+///
+/// `sin θ` is measured at the triangle's LARGEST angle (the vertex between its
+/// two shortest edges), so the verdict is a property of the triangle and not
+/// of which vertex the index buffer lists first: a 10 m x 5 mm plate face
+/// has `sin` ~5e-4 at an acute corner and 1 at the right-angle one, and an
+/// `a`-relative test dropped it depending on winding start (same fix as
+/// `ifc-lite-clash` `obb_detect::face_normal`, #7813).
 fn face_normal(a: [f64; 3], b: [f64; 3], c: [f64; 3]) -> Option<[f64; 3]> {
-    let (e1, e2) = (v3::sub(b, a), v3::sub(c, a));
-    let e1_len = v3::dot(e1, e1).sqrt();
-    let e2_len = v3::dot(e2, e2).sqrt();
-    if !(e1_len.is_finite() && e2_len.is_finite()) || e1_len == 0.0 || e2_len == 0.0 {
+    let len = |p: [f64; 3], q: [f64; 3]| {
+        let d = v3::sub(q, p);
+        v3::dot(d, d).sqrt()
+    };
+    let (ab, bc, ca) = (len(a, b), len(b, c), len(c, a));
+    if !(ab.is_finite() && bc.is_finite() && ca.is_finite()) || ab == 0.0 || bc == 0.0 || ca == 0.0
+    {
         return None;
     }
-    let cross = v3::cross(e1, e2);
+    // The two shortest edges meet at the largest angle.
+    let longest = ab.max(bc).max(ca);
+    let (l0, l1) = if longest == ab {
+        (bc, ca)
+    } else if longest == bc {
+        (ab, ca)
+    } else {
+        (ab, bc)
+    };
+    let cross = v3::cross(v3::sub(b, a), v3::sub(c, a));
     let cross_len = v3::dot(cross, cross).sqrt();
     if !cross_len.is_finite() || cross_len == 0.0 {
         return None;
     }
-    let sin_theta = cross_len / (e1_len * e2_len);
+    let sin_theta = cross_len / (l0 * l1);
     if !sin_theta.is_finite() || sin_theta < MIN_SIN_THETA {
         return None;
     }

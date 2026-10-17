@@ -3,15 +3,14 @@
 //! adjacency): coordinate conversion, polygon normals/area, ring cleanup, footprint
 //! simplicity / watertightness checks. No IFC or Honeybee types — just `[f64; 3]` math.
 
+use ifc_lite_geometry::math::v3;
 use std::collections::HashMap;
 
 /// Minimum face area (m²) below which a face — and its room — is treated as degenerate.
 const AREA_EPS: f64 = 1.0e-4;
 
 /// Convert a WebGL Y-up point/direction to IFC/Honeybee Z-up: `(x, y, z) -> (x, -z, y)`.
-pub(crate) fn zup(p: [f64; 3]) -> [f64; 3] {
-    [p[0], -p[2], p[1]]
-}
+pub(crate) use ifc_lite_geometry::math::frame::yup_to_zup as zup;
 
 /// Transform a 2D profile point by the entity's column-major 4×4, then convert to Z-up.
 /// All in f64: the translation is a survey-grid world position (#7684).
@@ -24,21 +23,17 @@ pub(crate) fn xf(t: &[f64; 16], px: f64, py: f64) -> [f64; 3] {
     ])
 }
 
-fn dist(a: &[f64; 3], b: &[f64; 3]) -> f64 {
-    ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2)).sqrt()
-}
-
 /// Merge vertices closer than `merge` (Euclidean), including a duplicate closing vertex.
 /// `merge` carries a margin above the model tolerance so no kept edge lands in Honeybee's
 /// degenerate band (which would collapse to a non-manifold edge).
 pub(crate) fn clean_ring(ring: Vec<[f64; 3]>, merge: f64) -> Vec<[f64; 3]> {
     let mut out: Vec<[f64; 3]> = Vec::with_capacity(ring.len());
     for p in ring {
-        if out.last().is_none_or(|q| dist(&p, q) > merge) {
+        if out.last().is_none_or(|q| v3::dist(p, *q) > merge) {
             out.push(p);
         }
     }
-    if out.len() > 1 && dist(&out[0], out.last().unwrap()) <= merge {
+    if out.len() > 1 && v3::dist(out[0], *out.last().unwrap()) <= merge {
         out.pop();
     }
     out
@@ -229,9 +224,7 @@ pub(crate) fn center(b: &[[f64; 3]]) -> [f64; 3] {
     [c[0] / m, c[1] / m, c[2] / m]
 }
 
-pub(crate) fn dot(a: [f64; 3], b: [f64; 3]) -> f64 {
-    a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
-}
+pub(crate) use ifc_lite_geometry::math::v3::dot;
 
 #[cfg(test)]
 #[path = "geom_tests.rs"]

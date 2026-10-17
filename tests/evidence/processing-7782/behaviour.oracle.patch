@@ -1,0 +1,52 @@
+diff --git b/rust/processing/src/processor/entry_points.rs a/rust/processing/src/processor/entry_points.rs
+index aa29378e16..686951ce78 100644
+--- b/rust/processing/src/processor/entry_points.rs
++++ a/rust/processing/src/processor/entry_points.rs
+@@ -137,7 +137,7 @@ where
+     let request = ProcessingRequest::full_pass()
+         .opening_filter(opening_filter)
+         .quality(tessellation_quality)
+-        .ids(entity_ids.map(|ids| Arc::new(ids.clone())).filter(|_| false));
++        .ids(entity_ids.map(|ids| Arc::new(ids.clone())));
+     process(content.as_ref(), &request, &mut ())
+ }
+ 
+diff --git b/rust/processing/src/processor/mod.rs a/rust/processing/src/processor/mod.rs
+index 52e3a91888..59cc8a038d 100644
+--- b/rust/processing/src/processor/mod.rs
++++ a/rust/processing/src/processor/mod.rs
+@@ -974,7 +974,7 @@ pub fn process(
+     // Basis and frame come from one value, so they cannot disagree; fires before any batch.
+     let (rx, ry, rz) = frame.rtc_offset();
+     let baked_basis = native_to_baked(coord_space, site_transform.as_deref(), [rx, ry, rz]);
+-    let _ = (&frame, &baked_basis); // mutated: no on_frame event
++    sink.on_frame(&FrameEvent { frame, baked_basis });
+     let preprocess_time = mark(Mark::PreprocessEnd, preprocess_start.elapsed());
+     preprocess_span.record("phase_ms", preprocess_time.as_millis() as u64);
+     drop(preprocess_span);
+diff --git b/rust/processing/src/processor/request.rs a/rust/processing/src/processor/request.rs
+index c112062cfd..650574a683 100644
+--- b/rust/processing/src/processor/request.rs
++++ a/rust/processing/src/processor/request.rs
+@@ -184,7 +184,7 @@ impl ProcessingRequest {
+             batching: Batching {
+                 initial: options.initial_batch_size,
+                 throughput: options.throughput_batch_size,
+-                fast_first: false,
++                fast_first: options.fast_first_batch,
+             },
+             features: Features {
+                 properties: options.include_properties,
+diff --git b/rust/processing/src/processor/sink.rs a/rust/processing/src/processor/sink.rs
+index bd14f6ed3d..8abb12c57d 100644
+--- b/rust/processing/src/processor/sink.rs
++++ a/rust/processing/src/processor/sink.rs
+@@ -73,7 +73,7 @@ where
+     fn on_frame(&mut self, frame: &FrameEvent) {
+         if let Some(out) = self.baked_basis_out {
+             // `set` fails only if already set: one pass publishes one frame.
+-            let _ = (out, frame);
++            let _ = out.set(frame.baked_basis);
+         }
+     }
+ 

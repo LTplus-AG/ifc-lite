@@ -252,8 +252,7 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
 
     let mut slot_fill = crate::schema_ifc2x3_slots::Ifc2x3SlotFill::new(pass.fallback_owner_history());
     let mut checks = crate::schema_enum::ConversionChecks::new();
-    let mut flatten = crate::schema_style_flatten::StyleFlatten::for_export(content, &source_label, &target); // D57
-    flatten.note_all(pass.generated.iter().chain(&pass.rewritten_lines).chain(&pass.georef_lines).chain(&pass.created_lines));
+    let mut flatten = crate::schema_style_flatten::StyleFlatten::for_export(content, &source_label, &target); flatten.note_all(pass.generated.iter().chain(&pass.rewritten_lines).chain(&pass.georef_lines).chain(&pass.created_lines));
     let mut written = 0usize;
     for &id in &src.order {
         if pass.skip.contains(&id) || pass.rewritten.contains(&id) || pass.is_deleted(id) || flatten.drops(id) {

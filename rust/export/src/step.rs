@@ -191,8 +191,7 @@ fn emit<W: std::io::Write>(
     let mut ids = crate::step_ids::IdAllocator::after(max_id);
     let resolved = crate::step_cow::resolve(&opts.copy_on_write, content, line_of, &included, &muts_by_id, &mut ids);
     let copies_refused = resolved.refused;
-    let copies = resolved.copies;
-    flatten.note_edits(&copies, &muts_by_id);
+    let copies = resolved.copies; flatten.note_edits(&copies, &muts_by_id);
     let repointed = resolved.repointed;
 
     // 3. Emit header + filtered entities (source order) + footer.

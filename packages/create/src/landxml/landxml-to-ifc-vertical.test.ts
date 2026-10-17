@@ -19,6 +19,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { landXmlGlobalId, landXmlToIfc } from './landxml-to-ifc.js';
+import { CIRCULAR_LENGTH_RELATIVE_TOLERANCE } from './profile-geometry.js';
 import { collectRefusals } from './refusals.js';
 import { IfcCreator } from '../ifc-creator.js';
 import { polynomialLength } from '../ifc-creator-alignment-vertical.js';
@@ -332,6 +333,29 @@ describe('landXmlToIfc — refused profiles are named with their reason (§12.2,
     const segments = verticalLayouts(parseStep(exported(source))).get('P')!;
     expect(segments.map((s) => s.type)).toEqual(['CONSTANTGRADIENT', 'CIRCULARARC', 'CONSTANTGRADIENT', 'CONSTANTGRADIENT']);
     expect(segments[1].R).toBe(-2000); // a crest
+  });
+
+  // #7754: the declared-length policy is shared with rust/landxml.
+  describe('CircCurve declared-length vectors shared with rust/landxml (#7754)', () => {
+    const doc = JSON.parse(readFileSync(
+      resolve(__dirname, '../../../../rust/landxml/tests/fixtures/circ-curve-length-vectors.json'), 'utf8',
+    )) as {
+      relativeTolerance: number;
+      vectors: Array<{ label: string; gradeIn: number; gradeOut: number; radius: number; length: number; accepted: boolean }>;
+    };
+    it('uses the same tolerance constant', () => {
+      expect(CIRCULAR_LENGTH_RELATIVE_TOLERANCE).toBe(doc.relativeTolerance);
+    });
+    it.each(doc.vectors.map((v) => [v.label, v] as const))('%s', (_label, v) => {
+      // PVIs 200 m apart carrying the vector's two grades.
+      const pvis: Array<[number, number]> = [[1000, 20], [1200, 20 + 200 * v.gradeIn], [1400, 20 + 200 * v.gradeIn + 200 * v.gradeOut]];
+      const source: LandXmlIfcSource = {
+        schema: 'LandXML-1.2', version: '1.2', units: METRES, surfaces: [], alignments: [lineAlignment()],
+        profiles: [designProfile(pvis, [{ at: 1, kind: 'circular', radius: v.radius, length: v.length }])],
+      };
+      const refused = collectRefusals(source).find((refusal) => refusal.family === 'profiles');
+      expect(refused === undefined).toBe(v.accepted);
+    });
   });
 
   // 3D-Win's M3 road profile signs its CircCurve radii (negative for a crest)

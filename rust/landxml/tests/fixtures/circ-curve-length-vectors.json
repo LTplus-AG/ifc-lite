@@ -1,0 +1,102 @@
+{
+  "_doc": "Shared CircCurve declared-length vectors (#7754). Policy: |declared - computed| <= max(2e-4 * max(declared, computed), 32 ULP) against the arc length or the horizontal length. Read by rust/landxml/src/profile_circular.rs and packages/create/src/landxml/landxml-to-ifc-vertical.test.ts.",
+  "relativeTolerance": 0.0002,
+  "vectors": [
+    {
+      "label": "sag R1500: arc length at 3 decimals",
+      "gradeIn": 0.02,
+      "gradeOut": -0.01,
+      "radius": 1500,
+      "length": 44.996,
+      "accepted": true
+    },
+    {
+      "label": "sag R1500: horizontal length at 3 decimals",
+      "gradeIn": 0.02,
+      "gradeOut": -0.01,
+      "radius": 1500,
+      "length": 44.993,
+      "accepted": true
+    },
+    {
+      "label": "R3000: arc length at 3 decimals",
+      "gradeIn": 0.01,
+      "gradeOut": 0.03,
+      "radius": 3000,
+      "length": 59.974,
+      "accepted": true
+    },
+    {
+      "label": "R3000: horizontal length at 3 decimals",
+      "gradeIn": 0.01,
+      "gradeOut": 0.03,
+      "radius": 3000,
+      "length": 59.961,
+      "accepted": true
+    },
+    {
+      "label": "R200: arc length at 3 decimals",
+      "gradeIn": -0.02,
+      "gradeOut": 0.015,
+      "radius": 200,
+      "length": 6.999,
+      "accepted": true
+    },
+    {
+      "label": "R200: horizontal length at 3 decimals",
+      "gradeIn": -0.02,
+      "gradeOut": 0.015,
+      "radius": 200,
+      "length": 6.999,
+      "accepted": true
+    },
+    {
+      "label": "R50 short: arc length at 3 decimals",
+      "gradeIn": 0.03,
+      "gradeOut": -0.02,
+      "radius": 50,
+      "length": 2.499,
+      "accepted": true
+    },
+    {
+      "label": "R50 short: horizontal length at 3 decimals",
+      "gradeIn": 0.03,
+      "gradeOut": -0.02,
+      "radius": 50,
+      "length": 2.499,
+      "accepted": true
+    },
+    {
+      "label": "R1500: arc length 1 cm off is refused",
+      "gradeIn": 0.02,
+      "gradeOut": -0.01,
+      "radius": 1500,
+      "length": 45.005501,
+      "accepted": false
+    },
+    {
+      "label": "R1500: horizontal length 1 cm off is refused",
+      "gradeIn": 0.02,
+      "gradeOut": -0.01,
+      "radius": 1500,
+      "length": 44.983252,
+      "accepted": false
+    },
+    {
+      "label": "R50 short: 1 mm off is refused (relative 2e-4 of 2.5 m is 0.5 mm)",
+      "gradeIn": 0.03,
+      "gradeOut": -0.02,
+      "radius": 50,
+      "length": 2.500417,
+      "accepted": false
+    },
+    {
+      "label": "R1500: a length of neither kind is refused",
+      "gradeIn": 0.02,
+      "gradeOut": -0.01,
+      "radius": 1500,
+      "length": 90,
+      "accepted": false
+    }
+  ]
+}

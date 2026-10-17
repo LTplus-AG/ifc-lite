@@ -7,7 +7,7 @@
 
 use std::collections::HashSet;
 
-use ifc_lite_core::{AttributeValue, DecodedEntity, EntityDecoder, IfcType};
+use ifc_lite_core::{slot, AttributeValue, DecodedEntity, EntityDecoder, IfcType};
 use ifc_lite_geometry::GeometryRouter;
 
 use super::georef::{decode, text, Crs, ModelFacts};
@@ -59,22 +59,22 @@ pub(super) fn read_terrain(
             return Err(format!("face {} of #{id} is degenerate in map coordinates", number + 1));
         }
     }
-    let global_id = text(&product, 0);
-    let name = text(&product, 2).or_else(|| global_id.clone()).unwrap_or_else(|| format!("#{id}"));
+    let global_id = text(&product, slot::IfcRoot::GLOBAL_ID);
+    let name = text(&product, slot::IfcRoot::NAME).or_else(|| global_id.clone()).unwrap_or_else(|| format!("#{id}"));
     Ok(Terrain { product_id: id, global_id, name, points, faces, crs: frame.crs })
 }
 
 /// The product's single `IfcTriangulatedFaceSet` and the context it is authored in.
 fn face_set(product: &DecodedEntity, decoder: &mut EntityDecoder) -> Result<(DecodedEntity, u32), String> {
     let id = product.id;
-    let shape = product.get_ref(6).ok_or_else(|| format!("#{id} has no Representation"))?;
+    let shape = product.ref_at(slot::IfcProduct::REPRESENTATION).ok_or_else(|| format!("#{id} has no Representation"))?;
     let mut found = Vec::new();
-    for representation in decode(decoder, shape)?.get_refs(2).unwrap_or_default() {
+    for representation in decode(decoder, shape)?.ref_list_at(slot::IfcProductRepresentation::REPRESENTATIONS).unwrap_or_default() {
         let representation = decode(decoder, representation)?;
-        for item in representation.get_refs(3).unwrap_or_default() {
+        for item in representation.ref_list_at(slot::IfcRepresentation::ITEMS).unwrap_or_default() {
             let item = decode(decoder, item)?;
             if item.ifc_type.is_subtype_of(IfcType::IfcTriangulatedFaceSet) {
-                let context = representation.get_ref(0)
+                let context = representation.ref_at(slot::IfcRepresentation::CONTEXT_OF_ITEMS)
                     .ok_or_else(|| format!("representation #{} has no ContextOfItems", representation.id))?;
                 found.push((item, context));
             }
@@ -89,7 +89,7 @@ fn face_set(product: &DecodedEntity, decoder: &mut EntityDecoder) -> Result<(Dec
     // whose every flag is 0 (no flag set, ifc-lite's own LandXML→IFC output)
     // says nothing a plain face list loses.
     if face_set.ifc_type == IfcType::IfcTriangulatedIrregularNetwork {
-        let plain = face_set.get_list(5).is_some_and(|flags| flags.iter().all(|flag| matches!(flag, AttributeValue::Integer(0))));
+        let plain = face_set.list_at(slot::IfcTriangulatedIrregularNetwork::FLAGS).is_some_and(|flags| flags.iter().all(|flag| matches!(flag, AttributeValue::Integer(0))));
         if !plain {
             return Err(format!("IfcTriangulatedIrregularNetwork #{} sets Flags, which LandXML faces cannot carry; hidden or void faces are not published", face_set.id));
         }
@@ -99,13 +99,13 @@ fn face_set(product: &DecodedEntity, decoder: &mut EntityDecoder) -> Result<(Dec
 
 /// Authored vertices in project units, with `PnIndex` resolved.
 fn vertices(face_set: &DecodedEntity, decoder: &mut EntityDecoder) -> Result<Vec<[f64; 3]>, String> {
-    let list = face_set.get_ref(0).ok_or_else(|| format!("#{} has no Coordinates", face_set.id))?;
+    let list = face_set.ref_at(slot::IfcTessellatedFaceSet::COORDINATES).ok_or_else(|| format!("#{} has no Coordinates", face_set.id))?;
     let list = decode(decoder, list)?;
     if list.ifc_type != IfcType::IfcCartesianPointList3D {
         return Err(format!("Coordinates #{} is not an IfcCartesianPointList3D", list.id));
     }
     let mut coordinates = Vec::new();
-    for (index, point) in list.get_list(0).unwrap_or_default().iter().enumerate() {
+    for (index, point) in list.list_at(slot::IfcCartesianPointList3D::COORD_LIST).unwrap_or_default().iter().enumerate() {
         let values: Option<Vec<f64>> = point.as_list().filter(|values| values.len() == 3)
             .and_then(|values| values.iter().map(AttributeValue::as_float).collect());
         match values.as_deref() {
@@ -113,7 +113,7 @@ fn vertices(face_set: &DecodedEntity, decoder: &mut EntityDecoder) -> Result<Vec
             _ => return Err(format!("coordinate {} of #{} is not a finite 3D point", index + 1, list.id)),
         }
     }
-    let Some(pn_index) = face_set.get(4).filter(|attr| !attr.is_null()) else { return Ok(coordinates) };
+    let Some(pn_index) = face_set.attr(slot::IfcTriangulatedFaceSet::PN_INDEX).filter(|attr| !attr.is_null()) else { return Ok(coordinates) };
     let pn_index = pn_index.as_list().filter(|items| !items.is_empty())
         .ok_or_else(|| format!("PnIndex of #{} is empty", face_set.id))?;
     pn_index.iter().map(|item| one_based(item, coordinates.len()).map(|index| coordinates[index - 1]))
@@ -126,7 +126,7 @@ fn faces(face_set: &DecodedEntity, vertex_count: usize) -> Result<Vec<[usize; 3]
     if vertex_count < 3 {
         return Err(format!("#{} has {vertex_count} vertices; a surface needs at least three", face_set.id));
     }
-    let triangles = face_set.get_list(3).filter(|triangles| !triangles.is_empty())
+    let triangles = face_set.list_at(slot::IfcTriangulatedFaceSet::COORD_INDEX).filter(|triangles| !triangles.is_empty())
         .ok_or_else(|| format!("#{} has no CoordIndex faces", face_set.id))?;
     triangles.iter().enumerate().map(|(number, triangle)| {
         let indices: Option<Vec<usize>> = triangle.as_list().filter(|items| items.len() == 3)

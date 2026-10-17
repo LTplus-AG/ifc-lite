@@ -15,7 +15,7 @@
 
 use std::collections::HashMap;
 
-use ifc_lite_core::{keyword_eq, EntityDecoder, EntityScanner};
+use ifc_lite_core::{keyword_eq, slot, EntityDecoder, EntityScanner};
 
 /// Relationships resolved from one pass over the file.
 #[derive(Debug, Clone, Default)]
@@ -61,8 +61,8 @@ pub fn relationships(content: &[u8]) -> Relationships {
         } else if keyword_eq(type_name, "IFCRELAGGREGATES") {
             // IfcRelAggregates: RelatingObject(4), RelatedObjects(5, list)
             if let Ok(rel) = decoder.decode_at_with_id(id, start, end) {
-                if let Some(parent) = rel.get(4).and_then(|a| a.as_entity_ref()) {
-                    if let Some(list) = rel.get(5).and_then(|a| a.as_list()) {
+                if let Some(parent) = rel.ref_at(slot::IfcRelAggregates::RELATING_OBJECT) {
+                    if let Some(list) = rel.attr(slot::IfcRelAggregates::RELATED_OBJECTS).and_then(|a| a.as_list()) {
                         for c in list {
                             if let Some(cid) = c.as_entity_ref() {
                                 out.spatial_children.entry(parent).or_default().push(cid);
@@ -74,8 +74,8 @@ pub fn relationships(content: &[u8]) -> Relationships {
         } else if keyword_eq(type_name, "IFCRELCONTAINEDINSPATIALSTRUCTURE") {
             // IfcRelContainedInSpatialStructure: RelatedElements(4, list), RelatingStructure(5)
             if let Ok(rel) = decoder.decode_at_with_id(id, start, end) {
-                if let Some(parent) = rel.get(5).and_then(|a| a.as_entity_ref()) {
-                    if let Some(list) = rel.get(4).and_then(|a| a.as_list()) {
+                if let Some(parent) = rel.ref_at(slot::IfcRelContainedInSpatialStructure::RELATING_STRUCTURE) {
+                    if let Some(list) = rel.attr(slot::IfcRelContainedInSpatialStructure::RELATED_ELEMENTS).and_then(|a| a.as_list()) {
                         for c in list {
                             if let Some(cid) = c.as_entity_ref() {
                                 out.spatial_children.entry(parent).or_default().push(cid);
@@ -87,8 +87,8 @@ pub fn relationships(content: &[u8]) -> Relationships {
         } else if keyword_eq(type_name, "IFCRELDEFINESBYTYPE") {
             // IfcRelDefinesByType: RelatedObjects(4, list), RelatingType(5)
             if let Ok(rel) = decoder.decode_at_with_id(id, start, end) {
-                if let Some(ty) = rel.get(5).and_then(|a| a.as_entity_ref()) {
-                    if let Some(list) = rel.get(4).and_then(|a| a.as_list()) {
+                if let Some(ty) = rel.ref_at(slot::IfcRelDefinesByType::RELATING_TYPE) {
+                    if let Some(list) = rel.attr(slot::IfcRelDefinesByType::RELATED_OBJECTS).and_then(|a| a.as_list()) {
                         for o in list {
                             if let Some(oid) = o.as_entity_ref() {
                                 out.type_of.insert(oid, ty);

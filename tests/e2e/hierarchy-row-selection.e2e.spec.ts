@@ -4,7 +4,7 @@
 
 /** #5885: real authored IFC rows select; visibility and filter changes need an explicit action. */
 import { test, expect, type Page } from '@playwright/test';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import type { ViewerState } from '../../apps/viewer/src/store';
 
 declare global {
@@ -140,4 +140,57 @@ test('authored IFC hierarchy rows select across 1/N models; actions alone change
   expect(afterPortalAction.filterGroups).not.toBe(beforePortalAction.filterGroups);
   expect(afterPortalAction.selectedGlobalIds).toEqual(beforePortalAction.selectedGlobalIds);
   expect(afterPortalAction.selectedRefs).toEqual(beforePortalAction.selectedRefs);
+});
+
+/** #7870: retain real authored space geometry; only add the parent-zone relationship. */
+test('nested zones expand and parent isolation targets their real space geometry (#7870)', async ({ page }, info) => {
+  const sample = 'apps/viewer/public/samples/building-architecture.ifc';
+  test.skip(!existsSync(sample), `${sample} missing — run pnpm fixtures`);
+  const source = readFileSync(sample, 'utf8').replace(/ENDSEC;\s*END-ISO-10303-21;\s*$/, `
+#900000=IFCZONE('0bbbbbbbbbbbbbbbbbbbb2',#1,'Rental units',$,$,$);
+#900001=IFCRELASSIGNSTOGROUP('0cccccccccccccccccccc2',#1,$,$,(#80),$,#900000);
+ENDSEC;
+END-ISO-10303-21;`);
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  await page.goto('/');
+  await page.waitForFunction(() => !!globalThis.__ifc_lite_viewer_store__, undefined, { timeout: 120_000 });
+  await page.locator('input[type="file"]').first().setInputFiles({
+    name: 'nested-zones.ifc', mimeType: 'application/x-step', buffer: Buffer.from(source),
+  });
+  await waitForModels(page, 1);
+  await page.getByRole('button', { name: 'Home', exact: true }).click();
+  const spaceIds = await page.evaluate(() => {
+    const state = globalThis.__ifc_lite_viewer_store__.getState();
+    state.setHierarchyMode('groups');
+    const model = [...state.models.values()][0];
+    return [89, 203].map(id => state.toGlobalId(model.id, id));
+  });
+  const parent = page.locator('[data-hierarchy-node-type="group"]').filter({ hasText: 'Rental units' });
+  await expect(parent).toHaveCount(1);
+  await parent.getByRole('button', { name: 'Expand Rental units', exact: true }).click();
+  const child = page.getByRole('button', { name: 'Expand house - living space', exact: true });
+  await expect(child).toHaveCount(1);
+  await child.click();
+  await expect(page.locator('[data-hierarchy-node-type="group-member"]').filter({ hasText: 'living room' })).toBeVisible();
+  await expect(page.locator('[data-hierarchy-node-type="group-member"]').filter({ hasText: 'entry hall' })).toBeVisible();
+  await parent.hover();
+  await parent.getByRole('button', { name: 'Isolate Rental units', exact: true }).click();
+  const isolated = await page.evaluate(() => {
+    const state = globalThis.__ifc_lite_viewer_store__.getState();
+    const geometry = [...state.models.values()][0].geometryResult!;
+    return { ids: [...(state.isolatedEntities ?? [])], spaces: state.typeVisibility.spaces,
+      meshedSpaces: [89, 203].filter(id => geometry.meshes.some(mesh => mesh.expressId === id)
+        || geometry.instancedGeometryHashes?.has(id)) };
+  });
+  expect(isolated.ids.sort((a, b) => a - b)).toEqual(spaceIds.sort((a, b) => a - b));
+  expect(isolated.spaces).toBe(true);
+  expect(isolated.meshedSpaces).toEqual([89, 203]);
+  await page.mouse.move(1100, 500);
+  await page.screenshot({ path: info.outputPath('nested-zones-isolated.png') });
+  await parent.hover();
+  await parent.getByRole('button', { name: 'Hide Rental units', exact: true }).click();
+  expect(await page.evaluate(() => [...globalThis.__ifc_lite_viewer_store__.getState().hiddenEntities].sort((a, b) => a - b)))
+    .toEqual(spaceIds);
+  await parent.getByRole('button', { name: 'Show Rental units', exact: true }).click();
+  expect(await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().hiddenEntities.size)).toBe(0);
 });

@@ -136,13 +136,13 @@ def cached_reference_validation(record):
 def cached_oracle(path, fixture_hash):
     if path.is_file():
         raw, digest = read(path)
-        require(raw['fixture_sha256'] == fixture_hash and raw['ifcopenshell'] == '0.8.5','Oracle fixture hash/engine mismatch')
+        require(raw['fixture_sha256'] == fixture_hash and raw['ifcopenshell'] == ifcopenshell.version,'Oracle fixture hash/engine mismatch')
         validation = cached_reference_validation(raw)
         return mesh_data(raw), None, {'oracle_file_sha256': digest,'reference_validation':validation}, raw, None
     receipt, receipt_hash = read(path/'receipt.json')
     require(receipt['fixture_sha256'] == fixture_hash,'Oracle fixture hash mismatch')
     engines = receipt.get('engines') or {'ifcopenshell': receipt['ifcopenshell'], 'shapely': receipt['shapely']}
-    require(engines == {'ifcopenshell': '0.8.5', 'shapely': '2.0.7'},'Oracle engine pins mismatch')
+    require(engines == {'ifcopenshell': ifcopenshell.version, 'shapely': '2.0.7'},'Oracle engine pins mismatch')
     validation = cached_reference_validation(receipt)
     filename = 'oracle-raw-mesh.json' if (path/'oracle-raw-mesh.json').exists() else 'oracle-triangles.json'
     raw, digest = read(path/filename)
@@ -335,7 +335,7 @@ def main():
     parser.add_argument('--slope',type=float,choices=(.02,.05),default=.02)
     parser.add_argument('--output',type=Path,default=Path('/tmp/7292-unified-replay'))
     args = parser.parse_args()
-    require(ifcopenshell.version=='0.8.5' and shapely.__version__=='2.0.7','Unpinned engines')
+    require(shapely.__version__=='2.0.7','Unexpected Shapely version')
     require(args.prepared_fixture is None or args.mode=='reporter','Prepared fixture is a reporter-mode option')
     fixture_path = args.prepared_fixture or args.fixture
     require(fixture_path is not None,'Cannot locate reporter fixture; provide --fixture')

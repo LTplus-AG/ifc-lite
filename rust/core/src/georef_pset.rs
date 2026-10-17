@@ -15,13 +15,14 @@ use crate::decoder::EntityDecoder;
 use crate::error::Result;
 use crate::generated::IfcType;
 use crate::schema_gen::DecodedEntity;
+use crate::slot;
 
 /// Read an `IfcPropertySingleValue.NominalValue` (index 2) as a string,
 /// seeing through the typed-value wrapper `IFCLABEL('…')` / `IFCIDENTIFIER('…')`.
 /// Property values in the IFC2x3 ePSets are always typed, so without this the
 /// CRS `Name`/`TargetCRS` labels came back empty.
 fn pset_value_string(prop: &DecodedEntity) -> Option<String> {
-    prop.get_string(2).map(str::to_owned)
+    prop.string_at(slot::IfcPropertySingleValue::NOMINAL_VALUE).map(str::to_owned)
 }
 
 /// The ePSet_MapConversion members that place the model, mirroring the TS
@@ -88,14 +89,14 @@ impl GeoRefExtractor {
         let mut placement_refused = false;
 
         // HasProperties is typically at index 4
-        if let Some(props_list) = pset.get_list(4) {
+        if let Some(props_list) = pset.attr(slot::IfcPropertySet::HAS_PROPERTIES).and_then(|attr| attr.as_list()) {
             for prop_attr in props_list {
                 if let Some(prop_id) = prop_attr.as_entity_ref() {
                     // Lossless, so the refusal below sees the component's name.
                     let prop = decoder.decode_by_id_lossless(prop_id)?;
                     // IfcPropertySingleValue: Name (0), Description (1), NominalValue (2)
-                    if let Some(name) = prop.get_string(0) {
-                        let value = prop.get_float(2);
+                    if let Some(name) = prop.string_at(slot::IfcPropertySingleValue::NAME) {
+                        let value = prop.real_at(slot::IfcPropertySingleValue::NOMINAL_VALUE);
                         if EPSET_PLACEMENT_FIELDS.contains(&name)
                             && value.is_some_and(|v| !v.is_finite())
                         {
@@ -192,7 +193,7 @@ impl GeoRefExtractor {
         pset: &DecodedEntity,
         georef: &mut GeoReference,
     ) {
-        let Some(props_list) = pset.get_list(4) else {
+        let Some(props_list) = pset.attr(slot::IfcPropertySet::HAS_PROPERTIES).and_then(|attr| attr.as_list()) else {
             return;
         };
         for prop_attr in props_list {
@@ -202,7 +203,7 @@ impl GeoRefExtractor {
             let Ok(prop) = decoder.decode_by_id(prop_id) else {
                 continue;
             };
-            let Some(name) = prop.get_string(0) else {
+            let Some(name) = prop.string_at(slot::IfcPropertySingleValue::NAME) else {
                 continue;
             };
             let value = pset_value_string(&prop);

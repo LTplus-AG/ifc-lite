@@ -19,10 +19,10 @@
    "status": "ok",
    "tri_count": 100,
    "vertex_count": 52,
-   "volume": null
+   "volume": 0.001799
   }
  ],
- "engine": "ifcopenshell 0.8.5",
+ "engine": "ifcopenshell 0.9.0.post1",
  "fixture": "swept_disk_trimmed_line.ifc",
  "settings": {
   "use_world_coords": true,

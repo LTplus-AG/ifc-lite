@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use ifc_lite_core::{
-    keyword_eq, DecodedEntity, EntityDecoder, EntityIndex, EntityScanner, IfcType,
+    keyword_eq, slot, DecodedEntity, EntityDecoder, EntityIndex, EntityScanner, IfcType,
     EXPORTER_STRATUM_ALIASES,
 };
 use ifc_lite_geometry::GeometryRouter;
@@ -188,8 +188,8 @@ pub fn stream_export_model_with_options(
                 };
                 // A single definition or an IfcPropertySetDefinitionSet, bare
                 // or typed (#7681): `get_refs` reads every spelling.
-                let Some(def_ids) = rel.get_refs(5) else { continue };
-                if let Some(objs) = rel.get(4).and_then(|a| a.as_list()) {
+                let Some(def_ids) = rel.ref_list_at(slot::IfcRelDefinesByProperties::RELATING_PROPERTY_DEFINITION) else { continue };
+                if let Some(objs) = rel.attr(slot::IfcRelDefinesByProperties::RELATED_OBJECTS).and_then(|a| a.as_list()) {
                     for o in objs {
                         if let Some(oid) = o.as_entity_ref() {
                             defs_by_object.entry(oid).or_default().extend_from_slice(&def_ids);
@@ -201,7 +201,7 @@ pub fn stream_export_model_with_options(
                 // occurrence instances; such maps draw through the occurrence, so
                 // they are NOT orphan type geometry.
                 if let Ok(mi) = decoder.decode_at_uncached(start, end) {
-                    if let Some(src) = mi.get(0).and_then(|a| a.as_entity_ref()) {
+                    if let Some(src) = mi.ref_at(slot::IfcMappedItem::MAPPING_SOURCE) {
                         referenced_representation_maps.insert(src);
                     }
                 }
@@ -216,10 +216,10 @@ pub fn stream_export_model_with_options(
                 // map costs an allocation per typed occurrence that the geometry
                 // bookkeeping above has no use for.
                 if let Ok(rel) = decoder.decode_at_uncached(start, end) {
-                    if let Some(tid) = rel.get(5).and_then(|a| a.as_entity_ref()) {
+                    if let Some(tid) = rel.ref_at(slot::IfcRelDefinesByType::RELATING_TYPE) {
                         instantiated_type_ids.insert(tid);
                         if opts.inherit_type_properties {
-                            if let Some(objs) = rel.get(4).and_then(|a| a.as_list()) {
+                            if let Some(objs) = rel.attr(slot::IfcRelDefinesByType::RELATED_OBJECTS).and_then(|a| a.as_list()) {
                                 for o in objs {
                                     if let Some(oid) = o.as_entity_ref() {
                                         // FIRST relationship wins if a file
@@ -256,7 +256,7 @@ pub fn stream_export_model_with_options(
                     Ok(e) => e,
                     Err(_) => continue,
                 };
-                let rep_map_ids = ref_list(t.get(6));
+                let rep_map_ids = ref_list(t.attr(slot::IfcTypeProduct::REPRESENTATION_MAPS));
                 if rep_map_ids.is_empty() {
                     continue;
                 }
@@ -264,11 +264,11 @@ pub fn stream_export_model_with_options(
                     express_id: id,
                     ifc_type: type_ty,
                     type_name: type_name.to_string(),
-                    global_id: opt_string(t.get(0)),
-                    name: opt_string(t.get(2)),
-                    description: opt_string(t.get(3)),
+                    global_id: opt_string(t.attr(slot::IfcTypeProduct::GLOBAL_ID)),
+                    name: opt_string(t.attr(slot::IfcTypeProduct::NAME)),
+                    description: opt_string(t.attr(slot::IfcTypeProduct::DESCRIPTION)),
                     rep_map_ids,
-                    pset_def_ids: ref_list(t.get(5)),
+                    pset_def_ids: ref_list(t.attr(slot::IfcTypeProduct::HAS_PROPERTY_SETS)),
                 });
             }
         }
@@ -318,18 +318,18 @@ pub fn stream_export_model_with_options(
         // An owned unknown compatibility alias intentionally retains its exact
         // upper-case STEP spelling, matching the geometry label.
         let ifc_type = ty.name().to_string();
-        let global_id = opt_string(entity.get(0));
-        let name = opt_string(entity.get(2));
-        let description = opt_string(entity.get(3));
-        let object_type = opt_string(entity.get(4));
-        let has_geometry = entity.get(6).is_some_and(|a| !a.is_null());
+        let global_id = opt_string(entity.attr(slot::IfcProduct::GLOBAL_ID));
+        let name = opt_string(entity.attr(slot::IfcProduct::NAME));
+        let description = opt_string(entity.attr(slot::IfcProduct::DESCRIPTION));
+        let object_type = opt_string(entity.attr(slot::IfcProduct::OBJECT_TYPE));
+        let has_geometry = entity.attr(slot::IfcProduct::REPRESENTATION).is_some_and(|a| !a.is_null());
 
         // `None` is decided from attribute 5, not from the resolver's `Result`:
         // the resolver answers `Ok(identity)` for an absent placement as well as
         // for a broken one, so asking it would report every unplaced product as
         // sitting at the origin.
         let placement = router.as_ref().and_then(|r| {
-            entity.get(5).filter(|a| !a.is_null())?;
+            entity.attr(slot::IfcProduct::OBJECT_PLACEMENT).filter(|a| !a.is_null())?;
             r.resolve_scaled_placement(&entity, &mut decoder)
                 .ok()
                 .map(|matrix| Placement { matrix })
@@ -359,7 +359,7 @@ pub fn stream_export_model_with_options(
                     let def_ids = decoder
                         .decode_by_id(tid)
                         .ok()
-                        .map(|t| ref_list(t.get(5)))
+                        .map(|t| ref_list(t.attr(slot::IfcTypeObject::HAS_PROPERTY_SETS)))
                         .unwrap_or_default();
                     resolve_pset_defs(&mut props, &mut decoder, &def_ids)
                 });

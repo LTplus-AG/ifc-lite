@@ -1,0 +1,14 @@
+diff --git a/rust/core/src/parser/record.rs b/rust/core/src/parser/record.rs
+index fa247909b5..ed2fc7c649 100644
+--- a/rust/core/src/parser/record.rs
++++ b/rust/core/src/parser/record.rs
+@@ -314,8 +314,7 @@ impl<'a> StepRecord<'a> {
+         // The coordinate reader stops at the list's own `)`, so attribute 0
+         // is read in place.
+         let value = if i == 0 { &self.bytes[self.open + 1..] } else { self.attr(i)? };
+-        // Oracle mutation: the point reader stops skipping trivia before its list.
+-        let open = 0;
++        let open = skip_step_trivia(value, 0)?;
+         (value.get(open) == Some(&b'(')).then_some(())?;
+         let list = &value[open + 1..];
+         let (point, used) = crate::decoder::parse_point_coordinates_end(list, |_| true)?;

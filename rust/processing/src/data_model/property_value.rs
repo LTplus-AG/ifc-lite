@@ -9,7 +9,7 @@
 //! `properties.rs` to keep entity-shape extraction (which pset/property to
 //! walk) separate from value-shape resolution (how to stringify one).
 
-use ifc_lite_core::{AttributeValue, DecodedEntity, EntityDecoder, SchemaVersion};
+use ifc_lite_core::{AttributeValue, DecodedEntity, EntityDecoder, Logical, SchemaVersion};
 use ifc_lite_core::limits::{
     complex_property_depth_marker, ComplexPropertyBudget, COMPLEX_PROPERTY_BUDGET_MARKER,
     MAX_COMPLEX_PROPERTY_DEPTH,
@@ -161,14 +161,11 @@ pub(super) fn spent_listing() -> (String, String, Option<String>, Option<Vec<Str
 }
 
 /// Stringify one member of an enumerated / list value, mirroring the WASM
-/// `String(v)` / `String(v[1])`: a typed wrapper `List([type, inner])` yields
-/// the inner, a scalar yields itself. `None` for nulls (dropped, like the TS
+/// `String(v)` / `String(v[1])`: a typed wrapper yields its value, a scalar
+/// yields itself. `None` for nulls (dropped, like the TS
 /// `.filter(v => v !== 'null')`).
 fn stringify_member(v: &AttributeValue) -> Option<String> {
-    match v {
-        AttributeValue::List(items) if items.len() == 2 => stringify_scalar(&items[1]),
-        other => stringify_scalar(other),
-    }
+    stringify_scalar(v.unwrap_typed())
 }
 
 fn stringify_scalar(v: &AttributeValue) -> Option<String> {
@@ -217,69 +214,61 @@ pub(super) fn shared_member_type(attr: Option<&AttributeValue>) -> Option<String
     shared
 }
 
-/// The IFC type tag of a typed-wrapper attribute (`List([String(type), _])`),
+/// The IFC type tag of a typed-wrapper attribute (`IFCLABEL('x')`),
 /// upper-cased — mirrors the WASM `inferDataType`.
 pub(super) fn infer_data_type(attr: Option<&AttributeValue>) -> Option<String> {
-    match attr {
-        Some(AttributeValue::List(items)) if items.len() == 2 => match &items[0] {
-            AttributeValue::String(s) => Some(s.to_uppercase()),
-            _ => None,
-        },
-        _ => None,
-    }
+    attr?.as_typed().map(|(name, _)| name.to_uppercase())
 }
 
-/// Normalise an `.ENUM.`-style logical/boolean token (dots already stripped to
-/// the inner letter by the tokenizer, e.g. `Enum("T")`; or a bare `String`).
-fn logical_token(v: &AttributeValue) -> Option<&str> {
-    v.as_enum()
-        .or_else(|| v.as_string())
-        .map(|s| s.trim_matches('.'))
+/// A logical/boolean value: an enumeration (`Enum("T")`, the tokenizer strips
+/// the dots) or, as some authoring tools write it, a bare string (`'T'`,
+/// `'.U.'`). Core owns the table (`.U.` and `.X.` are unknown).
+fn logical_of(v: &AttributeValue) -> Option<Logical> {
+    v.as_logical().or_else(|| {
+        let text = v.as_string()?.trim_matches('.');
+        AttributeValue::Enum(text.to_owned()).as_logical()
+    })
 }
 
 /// Resolve an `IfcPropertySingleValue` NominalValue → (value string, kind, data_type),
 /// matching `parsePropertyValue`'s single-value branch exactly.
 pub(super) fn resolve_single_value(nominal: &AttributeValue) -> (String, String, Option<String>) {
-    // Typed wrapper: List([String(typeName), inner]) — the common conformant case.
-    if let AttributeValue::List(items) = nominal {
-        if items.len() == 2 {
-            if let AttributeValue::String(type_name) = &items[0] {
-                let ty = type_name.to_uppercase();
-                let inner = &items[1];
+    // Typed wrapper, `IFCLABEL('x')` — the common conformant case.
+    if let AttributeValue::Typed { name: type_name, value: inner } = nominal {
+        let ty = type_name.to_uppercase();
+        let inner = &**inner;
 
-                if ty.contains("BOOLEAN") {
-                    let b = logical_token(inner) == Some("T");
-                    return (b.to_string(), "boolean".into(), Some(ty));
-                }
-                if ty.contains("LOGICAL") {
-                    return match logical_token(inner) {
-                        Some("U") | Some("X") => (String::new(), "logical".into(), Some(ty)),
-                        Some("T") => ("true".into(), "logical".into(), Some(ty)),
-                        _ => ("false".into(), "logical".into(), Some(ty)),
-                    };
-                }
-                if let Some(n) = inner.as_float() {
-                    // Preserve the IFC-declared numeric kind rather than
-                    // re-inferring from the JS/Rust number-ness.
-                    let kind = if ty == "IFCINTEGER" || ty == "IFCCOUNTMEASURE" {
-                        "integer"
-                    } else if ty == "IFCREAL" || ty.ends_with("MEASURE") || ty.ends_with("RATIO") {
-                        "real"
-                    } else if n.fract() == 0.0 {
-                        "integer"
-                    } else {
-                        "real"
-                    };
-                    return (fmt_number(n), kind.into(), Some(ty));
-                }
-                // String inner (IFCLABEL/IFCTEXT/IFCIDENTIFIER/...).
-                if let Some(s) = inner.as_string() {
-                    return (s.to_string(), "string".into(), Some(ty));
-                }
-                if let Some(e) = inner.as_enum() {
-                    return (e.to_string(), "string".into(), Some(ty));
-                }
-            }
+        if ty.contains("BOOLEAN") {
+            let b = logical_of(inner) == Some(Logical::True);
+            return (b.to_string(), "boolean".into(), Some(ty));
+        }
+        if ty.contains("LOGICAL") {
+            return match logical_of(inner) {
+                Some(Logical::Unknown) => (String::new(), "logical".into(), Some(ty)),
+                Some(Logical::True) => ("true".into(), "logical".into(), Some(ty)),
+                _ => ("false".into(), "logical".into(), Some(ty)),
+            };
+        }
+        if let Some(n) = inner.as_float() {
+            // Preserve the IFC-declared numeric kind rather than
+            // re-inferring from the JS/Rust number-ness.
+            let kind = if ty == "IFCINTEGER" || ty == "IFCCOUNTMEASURE" {
+                "integer"
+            } else if ty == "IFCREAL" || ty.ends_with("MEASURE") || ty.ends_with("RATIO") {
+                "real"
+            } else if n.fract() == 0.0 {
+                "integer"
+            } else {
+                "real"
+            };
+            return (fmt_number(n), kind.into(), Some(ty));
+        }
+        // String inner (IFCLABEL/IFCTEXT/IFCIDENTIFIER/...).
+        if let Some(s) = inner.as_string() {
+            return (s.to_string(), "string".into(), Some(ty));
+        }
+        if let Some(e) = inner.as_enum() {
+            return (e.to_string(), "string".into(), Some(ty));
         }
     }
 
@@ -292,11 +281,11 @@ pub(super) fn resolve_single_value(nominal: &AttributeValue) -> (String, String,
         }
         AttributeValue::String(s) | AttributeValue::Binary(s) => (s.clone(), "string".into(), None),
         // Bare enum tokens some authoring tools emit directly in the value slot.
-        AttributeValue::Enum(e) => match e.trim_matches('.') {
-            "T" => ("true".into(), "boolean".into(), None),
-            "F" => ("false".into(), "boolean".into(), None),
-            "U" | "X" => (String::new(), "logical".into(), None),
-            other => (other.to_string(), "string".into(), None),
+        AttributeValue::Enum(e) => match nominal.as_logical() {
+            Some(Logical::True) => ("true".into(), "boolean".into(), None),
+            Some(Logical::False) => ("false".into(), "boolean".into(), None),
+            Some(Logical::Unknown) => (String::new(), "logical".into(), None),
+            None => (e.trim_matches('.').to_string(), "string".into(), None),
         },
         AttributeValue::Null | AttributeValue::Derived => (String::new(), "null".into(), None),
         // Anything else (nested list, ref) — stringify defensively.
@@ -307,3 +296,7 @@ pub(super) fn resolve_single_value(nominal: &AttributeValue) -> (String, String,
 /// The canonical value string for a number (`200.0` -> "200"): the shared
 /// formatter, so the server and the exporters cannot disagree.
 pub(super) use ifc_lite_core::fmt_num::fmt_num as fmt_number;
+
+#[cfg(test)]
+#[path = "property_value_tests.rs"]
+mod tests;

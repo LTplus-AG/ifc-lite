@@ -71,13 +71,7 @@ pub(super) fn extract_trimmed_curve(
         angle_scale,
         prefer_cartesian,
     );
-    let sense = item
-        .get(3)
-        .and_then(|v| match v {
-            AttributeValue::Enum(s) => Some(s == "T" || s == "TRUE" || s == ".T."),
-            _ => None,
-        })
-        .unwrap_or(true);
+    let sense = item.get_bool(3).unwrap_or(true);
 
     let start_angle = raw_trim1.unwrap_or(0.0);
     let mut end_angle = raw_trim2.unwrap_or(std::f64::consts::TAU);
@@ -168,7 +162,7 @@ pub(super) fn extract_trimmed_curve(
 ///
 /// `IfcTrimmingSelect` is `IfcParameterValue | IfcCartesianPoint`, and the
 /// SET may carry one of each (`SET [1:2]`). The parser hands a typed value
-/// `IFCPARAMETERVALUE(1.57)` back as `List([String(type), Float(v)])` and a
+/// `IFCPARAMETERVALUE(1.57)` back as `AttributeValue::Typed` and a
 /// point as an `EntityRef`, so both members have to be inspected by shape —
 /// looking only at `.first()` silently dropped point-first sets and
 /// point-only sets alike, leaving the caller with its full-circle default.
@@ -196,7 +190,7 @@ fn resolve_trim(
                 }
             }
             other => {
-                // A typed `IFCPARAMETERVALUE(..)` decodes to List([name, value]);
+                // A typed `IFCPARAMETERVALUE(..)` is read through by `as_float`;
                 // a bare number is accepted too, since exporters emit both.
                 if from_parameter.is_none() {
                     from_parameter = other.as_float().map(|v| v * angle_scale);

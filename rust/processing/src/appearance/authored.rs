@@ -49,9 +49,9 @@ pub(super) struct Authoring<'a> {
 // Our fixed authored schema rows reach this conversion, plus the shallow
 // attribute copies of an evaluated Body or layer clone, so it is total over
 // `AttributeValue` (#7677): a file-supplied `*` is written back as `*`.
-// Core spells a type-qualified value `IFCTEXT('x')` as the two-element list
-// [type-name, value]; the host writer takes the explicit `typed` marker and
-// resolves the type's EXPRESS base from its registry spelling (`IfcText`).
+// Core spells a type-qualified value `IFCTEXT('x')` as `AttributeValue::Typed`;
+// the host writer takes the explicit `typed` marker and resolves the type's
+// EXPRESS base from its registry spelling (`IfcText`).
 pub(super) fn wire(value: &A) -> Value {
     match value {
         A::EntityRef(id) => reference(*id),
@@ -61,20 +61,13 @@ pub(super) fn wire(value: &A) -> Value {
         A::String(s) | A::Binary(s) => json!(s),
         A::Integer(n) => json!(n),
         A::Float(n) => json!(n),
-        A::List(v) => match v.as_slice() {
-            [A::String(name), inner]
-                if name.get(..3).is_some_and(|prefix| prefix.eq_ignore_ascii_case("IFC"))
-                    && !matches!(inner, A::List(_)) =>
-            {
-                json!({"typed": {"type": name, "value": wire(inner)}})
-            }
-            _ => json!(v.iter().map(wire).collect::<Vec<_>>()),
-        },
+        A::Typed { name, value } => json!({"typed": {"type": name, "value": wire(value)}}),
+        A::List(v) => json!(v.iter().map(wire).collect::<Vec<_>>()),
     }
 }
 /// Build a type-qualified attribute value in core's representation.
 pub(super) fn typed(name: &str, value: A) -> A {
-    A::List(vec![A::String(name.into()), value])
+    A::Typed { name: name.into(), value: Box::new(value) }
 }
 pub(super) struct Author {
     pub plan: AppearancePlan,

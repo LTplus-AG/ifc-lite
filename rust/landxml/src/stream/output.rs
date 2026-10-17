@@ -19,15 +19,15 @@ impl LandXmlTinStreamSession {
         // without buffering the whole document). A declared `<Units>` that
         // arrives after the header committed to the caller's assumed unit
         // would contradict surfaces already scaled by it, so it is refused.
-        if self.header_assumed && self.parser().declares_units() {
+        if self.header_assumed && self.tin().declares_units() {
             return Err(error(
                 Code::InvalidSemantic,
                 "LandXML/Units is declared after streamed surfaces were scaled by the assumed linear unit",
             ));
         }
-        let surfaces = self.parser().take_surfaces();
+        let surfaces = self.tin().take_surfaces();
         let needs_units = surfaces.iter().any(crate::parser::surface_draws_to_scale);
-        if !self.header_emitted && (self.parser().declares_units() || needs_units) {
+        if !self.header_emitted && (self.tin().declares_units() || needs_units) {
             if let Some(header) = self.header() {
                 // Unit-less preserved-only documents get their one header
                 // during `finish_cursor` instead.

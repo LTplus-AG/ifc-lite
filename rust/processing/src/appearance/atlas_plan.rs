@@ -40,7 +40,7 @@ pub(super) fn plan_sampled_appearance(bytes: &[u8], spec: &AppearanceRequest, so
     let spec=normalization.as_ref().map_or(spec,|n|n.request());
     let mut plan = plan_with_source(bytes,spec,&mut source)?;
     texture_budget::preflight(&mut source)?;
-    let textures = ifc_lite_geometry::build_texture_index(bytes, &mut source.decoder);
+    let textures = source.texture_index(bytes);
     let mut styles = page_source::appearance(bytes, &mut source);
     if let Some(normalized)=&normalization { normalized.patch_styles(&mut source,&mut styles)?; }
     let scale = source.decoder.length_unit_scale();

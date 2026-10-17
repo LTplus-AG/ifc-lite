@@ -6,7 +6,7 @@ use super::{AttrKind, AttrSlot};
 use crate::generated::schema_registry::SchemaVersion;
 use crate::generated::{ifc2x3, ifc4, ifc4x1, ifc4x2, IFC_TYPES};
 
-const ALL_SCHEMAS: [SchemaVersion; 5] = [
+pub(crate) const ALL_SCHEMAS: [SchemaVersion; 5] = [
     SchemaVersion::Ifc2x3,
     SchemaVersion::Ifc4,
     SchemaVersion::Ifc4x1,
@@ -18,7 +18,7 @@ const ALL_SCHEMAS: [SchemaVersion; 5] = [
 /// (not from the lookup under test). The canonical universe lacks entities
 /// IFC4X3 dropped (IfcDoorStyle, IfcBuildingElement), so the older schemas
 /// enumerate their own.
-fn declared(schema: SchemaVersion) -> Vec<&'static str> {
+pub(crate) fn declared(schema: SchemaVersion) -> Vec<&'static str> {
     fn names(all: &'static [impl NamedType]) -> Vec<&'static str> {
         all.iter().filter_map(NamedType::known).collect()
     }

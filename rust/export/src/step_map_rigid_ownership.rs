@@ -36,6 +36,7 @@ pub(super) fn validate(
                     AttributeValue::List(values) => {
                         pending.extend(values.iter().map(|value| (value, false)))
                     }
+                    AttributeValue::Typed { value, .. } => pending.push((value, false)),
                     AttributeValue::EntityRef(id) if placements.contains_key(id) => {
                         let allowed = direct
                             && ((record.kind.is_subtype_of(IfcType::IfcProduct) && slot == 5)

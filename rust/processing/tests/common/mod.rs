@@ -12,6 +12,8 @@
 //! loosen one of them and not the other.
 
 #[allow(dead_code)]
+pub mod entry_trace;
+#[allow(dead_code)]
 pub mod fn_scan;
 #[allow(dead_code)]
 pub mod quick_metadata;

@@ -2,10 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-use super::Parser;
+use super::TinHandler;
 use crate::{xml::Result, LandXmlCapabilityDiagnostic};
 
-impl Parser<'_> {
+impl TinHandler<'_> {
     /// Reserve source-coordinate records before allocating semantic output.
     /// Definition points, SourceData lists and overlay vertices all count: a
     /// document must not bypass `max_points` merely by moving coordinates out
@@ -25,10 +25,6 @@ impl Parser<'_> {
     /// Spend `added` work: one cancellation poll and the `work` budget.
     pub(super) fn check_cancel_and_work(&mut self, added: usize) -> Result<()> {
         self.meter.charge(added)
-    }
-
-    pub(super) fn check_character_references(&mut self, added: usize) -> Result<()> {
-        self.character_references.reserve(added)
     }
 
     /// Account for every retained source reference before allocating its

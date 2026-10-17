@@ -68,7 +68,7 @@ pub(super) fn prepare(bytes: &[u8], request: &AppearanceRequest, source: &mut So
         return Err("Stale allocator watermark overlaps effective IFC source".into());
     }
     let mut styles = page_source::appearance(bytes,source);
-    let textures = ifc_lite_geometry::build_texture_index(bytes,&mut source.decoder);
+    let textures = source.texture_index(bytes);
     let mut consumers=BTreeMap::<u32,BTreeSet<u32>>::new();
     for (&host,openings) in &styles.void_index {
         for &opening in openings {consumers.entry(opening).or_default().insert(host);}

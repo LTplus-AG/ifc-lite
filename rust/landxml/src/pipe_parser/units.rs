@@ -4,31 +4,28 @@
 
 use crate::{xml::Result, LandXmlDiagnosticCode as Code, LandXmlPipeProperties};
 
-use super::{state::RawUnits, PipeParser};
+use super::{state::RawUnits, PipeHandler};
+use crate::xml::Cx;
 
-impl PipeParser<'_> {
-    pub(super) fn record_units(&mut self, properties: LandXmlPipeProperties) -> Result<()> {
+impl PipeHandler<'_> {
+    pub(super) fn record_units(&mut self, cx: &Cx<'_>, properties: LandXmlPipeProperties) -> Result<()> {
         let units = RawUnits {
             properties,
             assumed: false,
         };
-        if self.is_path(&["LandXML", "Units", "Metric"])
-            || self.is_path(&["LandXML", "Units", "Imperial"])
+        if cx.path_is(&["LandXML", "Units", "Metric"])
+            || cx.path_is(&["LandXML", "Units", "Imperial"])
         {
-            if self.root_units.replace(units).is_some() {
-                return Err(crate::xml::error(
-                    Code::InvalidSemantic,
-                    "LandXML may declare root units only once",
-                ));
-            }
-        } else if self.is_path(&[
+            // The driver has already refused a second declaration.
+            self.root_units = Some(units);
+        } else if cx.path_is(&[
             "LandXML",
             "PipeNetworks",
             "PipeNetwork",
             "Structs",
             "Units",
             "Metric",
-        ]) || self.is_path(&[
+        ]) || cx.path_is(&[
             "LandXML",
             "PipeNetworks",
             "PipeNetwork",
@@ -43,14 +40,14 @@ impl PipeParser<'_> {
                     "Structs may declare units only once",
                 ));
             }
-        } else if self.is_path(&[
+        } else if cx.path_is(&[
             "LandXML",
             "PipeNetworks",
             "PipeNetwork",
             "Pipes",
             "Units",
             "Metric",
-        ]) || self.is_path(&[
+        ]) || cx.path_is(&[
             "LandXML",
             "PipeNetworks",
             "PipeNetwork",

@@ -11,23 +11,19 @@ use crate::{
     LandXmlSourceId,
 };
 
-/// Shared pipe-family semantic state. Both complete input and the resumable
-/// driver deliver quick-xml events to this one machine.
-pub(crate) struct PipeParser<'a> {
+/// The pipe family's records (a [`crate::xml::FamilyHandler`]); pull and the
+/// stream drive this one handler through the one driver.
+pub(crate) struct PipeHandler<'a> {
     pub(super) limits: LandXmlLimits,
     pub(super) require_pipe_networks: bool,
-    /// The `work` budget; charged per event in `consume_event` (D73).
+    /// The document's `work` budget, shared with the driver; finalization
+    /// charges it per record (D73).
     pub(super) meter: Meter<'a>,
-    pub(super) character_references: Budget,
     pub(super) capability_diagnostics_seen: Budget,
-    pub(super) frames: Vec<Frame>,
     pub(super) root_units: Option<RawUnits>,
     pub(super) schema: String,
     pub(super) version: String,
     pub(super) capability_diagnostics: Vec<LandXmlCapabilityDiagnostic>,
-    pub(super) target_namespace: Option<String>,
-    pub(super) root_seen: bool,
-    pub(super) root_closed: bool,
     pub(super) network: Option<NetworkBuilder>,
     pub(super) structure: Option<StructureBuilder>,
     pub(super) pipe: Option<PipeBuilder>,
@@ -53,13 +49,6 @@ pub(crate) struct PipeParser<'a> {
     pub(super) pipe_network_collections: usize,
     pub(super) network_ordinal: usize,
     pub(super) feature_ordinals: HashMap<LandXmlSourceId, usize>,
-}
-
-#[derive(Clone)]
-pub(super) struct Frame {
-    pub(super) local: String,
-    pub(super) target: bool,
-    pub(super) namespaces: HashMap<String, String>,
 }
 
 /// Record properties are the element's attributes without namespace

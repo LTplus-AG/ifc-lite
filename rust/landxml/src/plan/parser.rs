@@ -4,18 +4,15 @@
 
 //! Bounded pull parsing for exact LandXML 1.2 COGO and plan element names.
 
-use quick_xml::{events::Event, Reader};
-
 use super::{
     model::LandXmlPlanReferenceIndex, LandXmlCgPoint, LandXmlMonument, LandXmlParcel,
     LandXmlPlanDocument, LandXmlPlanFeature,
 };
 use crate::{
-    preflight::preflight_xml_tokens,
     semantics::units,
     xml::{
-        attr, attributes, character_references, error, normalize_encoding, split_name, unescape,
-        Attributes, Budget, Meter, Result,
+        attr, drive, error, normalize_encoding, Attributes, Budget, Cx, Element, FamilyHandler, Frame,
+        Meter, Result,
     },
     LandXmlCancellation, LandXmlCapabilityDiagnostic, LandXmlDiagnosticCode as Code, LandXmlLimits,
     LandXmlSourceId, LandXmlUnits,
@@ -25,7 +22,7 @@ mod actions;
 mod driver;
 mod state;
 mod value;
-use state::{Active, Capture, Frame, GeometryBuilder};
+use state::{Active, Capture, GeometryBuilder};
 pub(super) use value::area_scale;
 /// Plan-record bounds layered over the shared hostile-XML limits.
 #[derive(Clone, Debug)]
@@ -69,85 +66,56 @@ pub fn parse_landxml_plan_with_cancel(
     // any XML is read, exactly as the TIN entry point does.
     let assumed_units = crate::semantics::resolve_assumed_units(&limits.xml)?;
     let input = normalize_encoding(input, &limits.xml, cancelled)?;
-    preflight_xml_tokens(&input, &limits.xml, cancelled)?;
-    let mut parser = Parser::new(limits, cancelled, assumed_units);
-    let mut reader = Reader::from_reader(input.as_slice());
-    reader.config_mut().trim_text(false);
-    let mut buffer = Vec::new();
-    loop {
-        let event = reader
-            .read_event_into(&mut buffer)
-            .map_err(|_| error(Code::InvalidXml, "malformed XML"))?;
-        if matches!(event, Event::Eof) {
-            break;
-        }
-        parser.consume_event(event)?;
-        buffer.clear();
-    }
-    if !parser.root_seen {
-        return Err(error(Code::InvalidXml, "LandXML document is empty"));
-    }
-    if !parser.frames.is_empty() {
-        return Err(error(Code::InvalidXml, "unclosed XML element"));
-    }
-    Ok(parser.document())
+    let meter = Meter::new(limits.xml.max_work, cancelled);
+    let mut handler = PlanHandler::new(limits, assumed_units);
+    drive(&input, &limits.xml, cancelled, meter, &mut [&mut handler])?;
+    Ok(handler.document())
 }
 
-// Child action modules need the builders while the one-pass driver needs only
-// the opaque parser type and its methods.
-#[allow(private_interfaces)]
-pub(crate) struct Parser<'a> {
-    pub(super) limits: LandXmlPlanLimits,
-    /// The `work` budget; charged per event in `consume_event` (D73).
-    pub(super) meter: Meter<'a>,
-    pub(super) characters: Budget,
-    pub(super) references: Budget,
-    pub(super) capability_diagnostics_seen: Budget,
-    pub(super) vertices: Budget,
-    pub(super) geometry_seen: Budget,
-    pub(super) frames: Vec<Frame>,
-    pub(super) units: Option<LandXmlUnits>,
+/// The plan family's records (a [`FamilyHandler`]); pull and the stream drive
+/// this one handler through the one driver.
+pub(crate) struct PlanHandler {
+    limits: LandXmlPlanLimits,
+    references: Budget,
+    capability_diagnostics_seen: Budget,
+    vertices: Budget,
+    geometry_seen: Budget,
+    units: Option<LandXmlUnits>,
     /// Effective only when the source declares no `LandXML/Units` (#5175).
-    pub(super) assumed_units: Option<LandXmlUnits>,
-    pub(super) area_unit: Option<String>,
-    pub(super) area_scale_to_square_meters: Option<f64>,
-    pub(super) schema: String,
-    pub(super) version: String,
-    pub(super) capability_diagnostics: Vec<LandXmlCapabilityDiagnostic>,
-    pub(super) target_namespace: Option<String>,
-    pub(super) root_seen: bool,
-    pub(super) cogo_points: Vec<LandXmlCgPoint>,
-    pub(super) reference_index: LandXmlPlanReferenceIndex,
-    pub(super) monuments: Vec<LandXmlMonument>,
-    pub(super) features: Vec<LandXmlPlanFeature>,
-    pub(super) parcels: Vec<LandXmlParcel>,
-    pub(super) active: Vec<Active>,
-    pub(super) active_depths: Vec<usize>,
-    pub(super) geometry: Option<GeometryBuilder>,
-    pub(super) capture: Option<Capture>,
-    pub(super) scope_stack: Vec<(usize, LandXmlSourceId)>,
-    pub(super) reference_scope: Option<LandXmlSourceId>,
-    pub(super) scope_ordinal: usize,
-    pub(super) cogo_ordinal: usize,
-    pub(super) monument_ordinal: usize,
-    pub(super) feature_ordinal: usize,
-    pub(super) parcel_ordinal: usize,
+    assumed_units: Option<LandXmlUnits>,
+    area_unit: Option<String>,
+    area_scale_to_square_meters: Option<f64>,
+    schema: String,
+    version: String,
+    capability_diagnostics: Vec<LandXmlCapabilityDiagnostic>,
+    cogo_points: Vec<LandXmlCgPoint>,
+    reference_index: LandXmlPlanReferenceIndex,
+    monuments: Vec<LandXmlMonument>,
+    features: Vec<LandXmlPlanFeature>,
+    parcels: Vec<LandXmlParcel>,
+    active: Vec<Active>,
+    active_depths: Vec<usize>,
+    geometry: Option<GeometryBuilder>,
+    capture: Option<Capture>,
+    scope_stack: Vec<(usize, LandXmlSourceId)>,
+    reference_scope: Option<LandXmlSourceId>,
+    scope_ordinal: usize,
+    cogo_ordinal: usize,
+    monument_ordinal: usize,
+    feature_ordinal: usize,
+    parcel_ordinal: usize,
 }
-impl<'a> Parser<'a> {
-    fn new(
+impl PlanHandler {
+    pub(crate) fn new(
         limits: &LandXmlPlanLimits,
-        cancelled: Option<&'a dyn LandXmlCancellation>,
         assumed_units: Option<LandXmlUnits>,
     ) -> Self {
         Self {
             limits: limits.clone(),
-            meter: Meter::new(limits.xml.max_work, cancelled),
-            characters: Budget::new(limits.xml.max_character_references, "character reference"),
             references: Budget::new(limits.xml.max_references, "reference"),
             capability_diagnostics_seen: Budget::new(limits.xml.max_capability_diagnostics, "capability diagnostic"),
             vertices: Budget::new(limits.max_vertices, "plan vertex"),
             geometry_seen: Budget::new(limits.max_geometry, "CoordGeom primitive"),
-            frames: Vec::new(),
             units: None,
             assumed_units,
             area_unit: None,
@@ -155,8 +123,6 @@ impl<'a> Parser<'a> {
             schema: String::new(),
             version: String::new(),
             capability_diagnostics: Vec::new(),
-            target_namespace: None,
-            root_seen: false,
             cogo_points: Vec::new(),
             reference_index: LandXmlPlanReferenceIndex::default(),
             monuments: Vec::new(),
@@ -175,10 +141,6 @@ impl<'a> Parser<'a> {
             parcel_ordinal: 0,
         }
     }
-    pub(super) fn check(&mut self, added: usize) -> Result<()> {
-        self.meter.charge(added)
-    }
-
     /// A diagnostic is source output too: bounded like every other record.
     pub(super) fn record_capability_diagnostic(
         &mut self,
@@ -187,38 +149,5 @@ impl<'a> Parser<'a> {
         self.capability_diagnostics_seen.reserve(1)?;
         self.capability_diagnostics.push(diagnostic);
         Ok(())
-    }
-
-    pub(crate) fn consume_event(&mut self, event: Event<'_>) -> Result<()> {
-        self.check(1)?;
-        match event {
-            Event::Start(value) => self.start(&value),
-            Event::Empty(value) => {
-                self.start(&value)?;
-                self.end(None)
-            }
-            Event::End(value) => self.end(Some(value.name().as_ref().as_bytes())),
-            Event::Text(value) => self.text(value.as_ref().as_bytes()),
-            // #7680: a reference in text arrives as its own event.
-            Event::GeneralRef(reference) => {
-                self.text(crate::xml::general_ref_source(&reference).as_bytes())
-            }
-            Event::CData(value) => self.cdata(value.as_ref().as_bytes()),
-            Event::DocType(_) => Err(error(Code::DtdForbidden, "DOCTYPE is not allowed")),
-            _ => Ok(()),
-        }
-    }
-
-    pub(crate) fn has_open_frames(&self) -> bool {
-        !self.frames.is_empty()
-    }
-}
-
-impl Parser<'static> {
-    pub(crate) fn new_stream(
-        limits: LandXmlPlanLimits,
-        assumed_units: Option<LandXmlUnits>,
-    ) -> Self {
-        Self::new(&limits, None, assumed_units)
     }
 }

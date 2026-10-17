@@ -2,78 +2,128 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-//! Entity and character-reference handling for text runs and attribute values.
+//! The one entity and character-reference decoder (C9a-4, #7784).
+//!
+//! quick-xml 0.42 ends a text event at `&` and reports each `&name;` as its
+//! own `Event::GeneralRef`. Four family parsers used to rebuild `"&name;"`
+//! from it and send it back through the text path, which charged
+//! `max_character_references`, called `unescape` and appended the result,
+//! each in its own copy. Text runs, attribute values and `GeneralRef` events
+//! now all resolve here, and every reference is charged once.
+//!
+//! The rules:
+//! - the five predefined entities, and numeric references (`&#46;`,
+//!   `&#x2E;`);
+//! - a numeric reference must name an XML `Char` (XML 1.0 production [2]):
+//!   `&#0;`, `&#xB;` and `&#xFFFE;` are `InvalidXml` wherever they appear
+//!   (D76), and win over an unknown entity in the same run;
+//! - anything else (`&other;`, `&#xZZ;`, an unterminated `&`) is
+//!   `EntityForbidden`: no DTD, so no other entity can be declared;
+//! - CDATA is never decoded; its callers pass it through literally.
 
+use std::borrow::Cow;
+
+use memchr::memchr_iter;
 use quick_xml::events::BytesRef;
 
-use super::{error, Result};
-use crate::LandXmlDiagnosticCode as Code;
+use super::{error, Budget, Result};
+use crate::{LandXmlDiagnosticCode as Code, LandXmlError};
 
-pub(crate) fn character_references(value: &str) -> usize {
-    value.bytes().filter(|byte| *byte == b'&').count()
+/// Source length of a reference event (`&` + name + `;`), the bytes charged
+/// as work and measured against the text cap.
+pub(crate) fn source_len(reference: &BytesRef<'_>) -> usize {
+    reference.len() + 2
 }
 
-/// Source text of a reference in element content (#7680 EDGE-LXPARSE-2).
-///
-/// quick-xml 0.42 ends a text event at `&` and reports each `&name;` as its
-/// own `Event::GeneralRef`, so a family parser's text path never sees one.
-/// Every `consume_event` hands this back to that text path instead, which
-/// then applies the same rules as for any other text: one charge against
-/// `max_character_references`, the outside-the-root refusal (so `&#32;`
-/// cannot pass for padding), [`unescape`] (an undeclared entity is
-/// `EntityForbidden`, exactly as in an attribute value), and the capture.
-pub(crate) fn general_ref_source(reference: &BytesRef<'_>) -> String {
-    format!("&{};", &**reference)
-}
-
-/// Resolve the predefined entities and numeric character references of one
-/// attribute value or text run.
-///
-/// A numeric reference must name an XML `Char` (XML 1.0 production [2]):
-/// `&#0;`, `&#xB;` and `&#xFFFE;` are malformed XML wherever they appear, so
-/// they are `InvalidXml` rather than a character no consumer expects (D76).
-/// A reference this does not recognise (`&#xZZ;`, `&other;`) is left for
-/// quick-xml and reported as `EntityForbidden`.
-pub(crate) fn unescape(value: &str) -> Result<std::borrow::Cow<'_, str>> {
-    match quick_xml::escape::unescape(value) {
-        // No reference in it, which is nearly every text run and attribute
-        // value: nothing to check, and no second scan.
-        Ok(std::borrow::Cow::Borrowed(text)) => Ok(std::borrow::Cow::Borrowed(text)),
-        Ok(text) => check_character_references_are_xml_chars(value).map(|()| text),
-        // quick-xml may refuse `&#0;` itself; name that for what it is.
-        Err(_) => {
-            check_character_references_are_xml_chars(value)?;
-            Err(error(Code::EntityForbidden, "unknown XML entity reference"))
-        }
+/// Resolve every reference in one text run or attribute value, charging
+/// `char_refs` once per `&` first.
+pub(crate) fn decode_text<'a>(raw: &'a str, char_refs: &mut Budget) -> Result<Cow<'a, str>> {
+    let references = memchr_iter(b'&', raw.as_bytes()).count();
+    if references == 0 {
+        return Ok(Cow::Borrowed(raw));
     }
-}
-
-fn check_character_references_are_xml_chars(value: &str) -> Result<()> {
-    // Hot path: nearly every run of text and attribute value has no `&`, and
-    // `find(char)` is a memchr.
-    let mut rest = value;
-    while let Some(start) = rest.find('&') {
-        rest = &rest[start + 1..];
-        let Some(digits) = rest.strip_prefix('#') else { continue };
-        let Some(end) = digits.find(';') else { break };
-        let digits = &digits[..end];
-        let code = match digits.strip_prefix('x') {
-            Some(hex) if hex.bytes().all(|byte| byte.is_ascii_hexdigit()) => u32::from_str_radix(hex, 16).ok(),
-            Some(_) => None,
-            None if digits.bytes().all(|byte| byte.is_ascii_digit()) => digits.parse::<u32>().ok(),
-            None => None,
+    char_refs.reserve(references)?;
+    let mut decoded = String::with_capacity(raw.len());
+    let mut rest = raw;
+    while let Some(at) = rest.find('&') {
+        decoded.push_str(&rest[..at]);
+        let after = &rest[at + 1..];
+        // A `&` before the `;` leaves the first reference unterminated.
+        let Some(end) = after.find([';', '&']).filter(|end| after.as_bytes()[*end] == b';') else {
+            return Err(forbidden(raw));
         };
-        if code.is_some_and(|code| !is_xml_char(code)) {
-            return Err(error(
-                Code::InvalidXml,
-                "character reference does not name an XML character",
-            ));
+        decoded.push(match resolve(&after[..end]) {
+            Ok(character) => character,
+            Err(Fault::Illegal) => return Err(illegal()),
+            Err(Fault::Unknown) => return Err(forbidden(raw)),
+        });
+        rest = &after[end + 1..];
+    }
+    decoded.push_str(rest);
+    Ok(Cow::Owned(decoded))
+}
+
+/// Resolve one `GeneralRef` event, charging `char_refs` once. Every
+/// reference names one character.
+pub(crate) fn decode_ref(reference: &BytesRef<'_>, char_refs: &mut Budget) -> Result<char> {
+    char_refs.reserve(1)?;
+    resolve(reference).map_err(|fault| match fault {
+        Fault::Illegal => illegal(),
+        Fault::Unknown => forbidden(&format!("&{};", &**reference)),
+    })
+}
+
+enum Fault {
+    /// A numeric reference to something that is not an XML `Char`.
+    Illegal,
+    /// Not a predefined entity, or not a well-formed numeric reference.
+    Unknown,
+}
+
+fn resolve(name: &str) -> std::result::Result<char, Fault> {
+    let Some(number) = name.strip_prefix('#') else {
+        return match name {
+            "lt" => Ok('<'),
+            "gt" => Ok('>'),
+            "amp" => Ok('&'),
+            "apos" => Ok('\''),
+            "quot" => Ok('"'),
+            _ => Err(Fault::Unknown),
+        };
+    };
+    let code = match number.strip_prefix('x') {
+        Some(hex) if !hex.is_empty() && hex.bytes().all(|byte| byte.is_ascii_hexdigit()) => {
+            u32::from_str_radix(hex, 16).ok()
+        }
+        None if !number.is_empty() && number.bytes().all(|byte| byte.is_ascii_digit()) => number.parse().ok(),
+        _ => None,
+    };
+    let code = code.ok_or(Fault::Unknown)?;
+    if is_xml_char(code) { char::from_u32(code).ok_or(Fault::Illegal) } else { Err(Fault::Illegal) }
+}
+
+fn illegal() -> LandXmlError {
+    error(Code::InvalidXml, "character reference does not name an XML character")
+}
+
+/// An unknown entity, unless the run also holds an illegal numeric reference
+/// (which is the more specific fault, wherever it sits).
+fn forbidden(run: &str) -> LandXmlError {
+    let mut rest = run;
+    while let Some(at) = rest.find("&#") {
+        rest = &rest[at + 2..];
+        let Some(end) = rest.find(';') else { break };
+        if matches!(resolve(&format!("#{}", &rest[..end])), Err(Fault::Illegal)) {
+            return illegal();
         }
     }
-    Ok(())
+    error(Code::EntityForbidden, "unknown XML entity reference")
 }
 
 /// XML 1.0 production [2] `Char`.
 fn is_xml_char(code: u32) -> bool {
     matches!(code, 0x9 | 0xA | 0xD | 0x20..=0xD7FF | 0xE000..=0xFFFD | 0x1_0000..=0x10_FFFF)
 }
+
+#[cfg(test)]
+mod tests;

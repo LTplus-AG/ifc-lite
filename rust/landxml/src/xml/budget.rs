@@ -9,6 +9,8 @@
 //! code. A [`Budget`] is that sequence once: reserve, and past the cap refuse
 //! with `LimitExceeded` and `"<label> limit exceeded"`.
 
+use std::{cell::RefCell, rc::Rc};
+
 use super::{error, Result};
 use crate::{LandXmlCancellation, LandXmlDiagnosticCode as Code};
 
@@ -91,26 +93,36 @@ pub(crate) fn poll(cancelled: Option<&dyn LandXmlCancellation>) -> Result<()> {
 }
 
 /// The `work` budget of one parse, charged with a cancellation poll. Work is
-/// events + attributes + text bytes, spent where an event enters a family
-/// (`consume_event`, `start`, `text`) and nowhere in its record handlers.
+/// events + attributes + text bytes, spent where an event enters the driver,
+/// plus the record-level charges of finalization.
+///
+/// A `Meter` is a handle: cloning it shares the one budget, so the driver and
+/// every family handler of a document spend from the same counter (D73).
+#[derive(Clone)]
 pub(crate) struct Meter<'a> {
-    work: Budget,
+    work: Rc<RefCell<Budget>>,
     cancelled: Option<&'a dyn LandXmlCancellation>,
 }
 
 impl<'a> Meter<'a> {
     pub(crate) fn new(max_work: usize, cancelled: Option<&'a dyn LandXmlCancellation>) -> Self {
-        Self { work: Budget::new(max_work, "work"), cancelled }
+        Self { work: Rc::new(RefCell::new(Budget::new(max_work, "work"))), cancelled }
     }
 
-    pub(crate) fn charge(&mut self, amount: usize) -> Result<()> {
+    pub(crate) fn charge(&self, amount: usize) -> Result<()> {
         poll(self.cancelled)?;
-        self.work.reserve(amount)
+        self.work.borrow_mut().reserve(amount)
     }
 
-    /// See [`Budget::used_mut`].
-    pub(crate) fn used_mut(&mut self) -> &mut usize {
-        self.work.used_mut()
+    /// Lend the spent count to a callee that predates `Budget` and takes a
+    /// `&mut usize` (`terrain.rs`, C9d's).
+    pub(crate) fn lend<R>(&self, callee: impl FnOnce(&mut usize) -> R) -> R {
+        callee(self.work.borrow_mut().used_mut())
+    }
+
+    #[cfg(test)]
+    pub(crate) fn used(&self) -> usize {
+        self.work.borrow().used()
     }
 }
 
@@ -153,8 +165,20 @@ mod tests {
                 true
             }
         }
-        let mut meter = Meter::new(10, Some(&Cancelled));
+        let meter = Meter::new(10, Some(&Cancelled));
         assert_eq!(meter.charge(1).unwrap_err().code, Code::Cancelled);
-        assert_eq!(*meter.used_mut(), 0);
+        assert_eq!(meter.used(), 0);
+    }
+
+    #[test]
+    fn clones_of_a_meter_spend_one_budget() {
+        let meter = Meter::new(3, None);
+        let handler = meter.clone();
+        meter.charge(2).unwrap();
+        assert_eq!(handler.charge(2).unwrap_err().message, "work limit exceeded");
+        handler.charge(1).unwrap();
+        assert_eq!(meter.used(), 3);
+        assert_eq!(meter.lend(|used| std::mem::replace(used, 0)), 3);
+        assert_eq!(handler.used(), 0);
     }
 }

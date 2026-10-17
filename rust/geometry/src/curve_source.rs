@@ -181,11 +181,9 @@ pub(crate) fn trim_point(
     for value in values {
         if value.as_entity_ref().is_some() {
             point = trim_cartesian_point(value, decoder, ignore_bad_cartesian)?.or(point);
-        } else if let Some(typed) = value.as_list() {
-            if typed.first().and_then(AttributeValue::as_string) == Some("IFCPARAMETERVALUE") {
-                param = typed.get(1).and_then(AttributeValue::as_float);
-            }
-        } else {
+        } else if let Some(typed) = value.typed_value("IFCPARAMETERVALUE") {
+            param = typed.as_float();
+        } else if value.as_typed().is_none() && value.as_list().is_none() {
             param = value.as_float().or(param);
         }
     }
@@ -253,11 +251,9 @@ pub(crate) fn trim_angle(
     for value in values {
         if value.as_entity_ref().is_some() {
             point = trim_cartesian_point(value, decoder, ignore_bad_cartesian)?.or(point);
-        } else if let Some(typed) = value.as_list() {
-            if typed.first().and_then(AttributeValue::as_string) == Some("IFCPARAMETERVALUE") {
-                param = typed.get(1).and_then(AttributeValue::as_float);
-            }
-        } else {
+        } else if let Some(typed) = value.typed_value("IFCPARAMETERVALUE") {
+            param = typed.as_float();
+        } else if value.as_typed().is_none() && value.as_list().is_none() {
             param = value.as_float().or(param);
         }
     }

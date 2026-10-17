@@ -99,14 +99,14 @@ fn typed_value_name_decodes_to_the_express_spelling_4707() {
     for spelling in [&b"IFCPARAMETERVALUE"[..], b"ifcparametervalue", b"IfcParameterValue"] {
         let token = Token::TypedValue(spelling, vec![Token::Float(0.5)]);
         let attr = AttributeValue::from_token(&token);
-        let items = attr.as_list().expect("typed value decodes to a list");
-        assert_eq!(items[0].as_string(), Some("IFCPARAMETERVALUE"), "{}", String::from_utf8_lossy(spelling));
-        assert_eq!(items[1].as_float(), Some(0.5));
+        let (name, value) = attr.as_typed().expect("typed value decodes to a typed value");
+        assert_eq!(name, "IFCPARAMETERVALUE", "{}", String::from_utf8_lossy(spelling));
+        assert_eq!(value.as_float(), Some(0.5));
     }
     // The payload is not a keyword: a typed string keeps its case.
     let token = Token::TypedValue(b"ifclabel", vec![Token::String(b"Mixed Case")]);
     let attr = AttributeValue::from_token(&token);
-    assert_eq!(attr.as_list().unwrap()[1].as_string(), Some("Mixed Case"));
+    assert_eq!(attr.as_typed().unwrap().1.as_string(), Some("Mixed Case"));
 }
 
 #[test]
@@ -189,19 +189,25 @@ fn test_as_float_with_typed_value() {
     assert_eq!(integer.as_float(), Some(42.0));
 
     // Test TypedValue wrapper like IFCNORMALISEDRATIOMEASURE(0.5)
-    // This is stored as List([String("IFCNORMALISEDRATIOMEASURE"), Float(0.5)])
-    let typed_value = AttributeValue::List(vec![
-        AttributeValue::String("IFCNORMALISEDRATIOMEASURE".to_string()),
-        AttributeValue::Float(0.5),
-    ]);
+    let typed_value = AttributeValue::Typed {
+        name: "IFCNORMALISEDRATIOMEASURE".into(),
+        value: Box::new(AttributeValue::Float(0.5)),
+    };
     assert_eq!(typed_value.as_float(), Some(0.5));
 
     // Test TypedValue with integer
-    let typed_int = AttributeValue::List(vec![
-        AttributeValue::String("IFCINTEGER".to_string()),
-        AttributeValue::Integer(100),
-    ]);
+    let typed_int = AttributeValue::Typed {
+        name: "IFCINTEGER".into(),
+        value: Box::new(AttributeValue::Integer(100)),
+    };
     assert_eq!(typed_int.as_float(), Some(100.0));
+
+    // A list shaped like the old encoding is a list, not a typed value (CORE-4).
+    let lookalike = AttributeValue::List(vec![
+        AttributeValue::String("IFCNORMALISEDRATIOMEASURE".to_string()),
+        AttributeValue::Float(0.5),
+    ]);
+    assert_eq!(lookalike.as_float(), None);
 
     // Test that non-typed lists return None
     let regular_list =

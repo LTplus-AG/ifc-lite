@@ -1559,15 +1559,16 @@ END-ISO-10303-21;
     }
 
     let exe = std::env::current_exe().expect("current test exe");
-    // NOT `module_path!()` - it is crate-qualified (`ifc_lite_server::...`),
+    // NOT `module_path!()` - it is crate-qualified (`ifc_lite_processing::...`),
     // while libtest's own `--exact` names are not (confirmed via `--list`).
     let test_name =
-        "services::data_model::tests::cyclic_aggregate_and_containment_edges_do_not_abort_the_process";
+        "data_model::tests::cyclic_aggregate_and_containment_edges_do_not_abort_the_process";
     let output = std::process::Command::new(&exe)
         .args([test_name, "--exact", "--nocapture"])
         .env(REPRO_ENV_VAR, "1")
         .output()
         .expect("failed to spawn child test process");
+    assert_child_ran_one_test(&output);
 
     assert!(
         output.status.success(),
@@ -2581,7 +2582,7 @@ fn self_and_mutually_referencing_material_usages_do_not_abort_server_5() {
     }
 
     let output = run_child(
-        "services::data_model::tests::server_5_material_usages::self_and_mutually_referencing_material_usages_do_not_abort_server_5",
+        "data_model::tests::server_5_material_usages::self_and_mutually_referencing_material_usages_do_not_abort_server_5",
         REPRO_ENV_VAR,
     );
     assert!(
@@ -2664,7 +2665,9 @@ fn run_child(test_name: &str, env_var: &str) -> std::process::Output {
         }
         std::thread::sleep(std::time::Duration::from_millis(50));
     }
-    child.wait_with_output().expect("collect child output")
+    let output = child.wait_with_output().expect("collect child output");
+    assert_child_ran_one_test(&output);
+    output
 }
 
 /// Breadth (#7673 review): `FAN_IN` associations all naming the head of one
@@ -2706,7 +2709,7 @@ fn many_associations_over_one_long_usage_chain_finish_server_5() {
     }
 
     let output = run_child(
-        "services::data_model::tests::server_5_material_usages::many_associations_over_one_long_usage_chain_finish_server_5",
+        "data_model::tests::server_5_material_usages::many_associations_over_one_long_usage_chain_finish_server_5",
         REPRO_ENV_VAR,
     );
     assert!(
@@ -2956,4 +2959,15 @@ ENDSEC;\nEND-ISO-10303-21;\n"
     assert_eq!(storeys.len(), 2, "anti-vacuity: {storeys:?}");
     assert_eq!(materials.len(), 1, "anti-vacuity: {materials:?}");
     assert_eq!(shape(&overflow), shape(&finite));
+}
+
+/// A child spawned with `--exact` and a name libtest does not know runs zero
+/// tests and exits 0, so a stale name (after a module move) would pass
+/// vacuously. Require that the child selected exactly one test.
+fn assert_child_ran_one_test(output: &std::process::Output) {
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("running 1 test"),
+        "the child must select exactly one test (stale libtest name?); stdout:\n{stdout}"
+    );
 }

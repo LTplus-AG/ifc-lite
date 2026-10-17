@@ -60,7 +60,7 @@
 //!
 //! - **Tokenization**: ~1,259 MB/s throughput
 //! - **Entity scanning**: ~650 MB/s with SIMD acceleration
-//! - **Number parsing**: 10x faster than std using [lexical-core](https://docs.rs/lexical-core)
+//! - **Number parsing**: one shared reader ([`read_step_number`]) over `fast-float2`
 
 pub mod attribute_slot;
 pub mod columnar_index;
@@ -78,12 +78,14 @@ pub mod georef;
 pub mod limits;
 pub mod model_bounds;
 pub mod parser;
+pub mod project_locator;
 pub mod project_units;
+pub mod schema_family;
 pub mod schema_gen;
 pub(crate) mod schema_helpers;
 pub mod step_encoding;
 pub mod streaming;
-pub(crate) mod unit_labels;
+pub mod unit_labels;
 pub mod units;
 
 #[cfg(test)]
@@ -112,21 +114,26 @@ pub use limits::{RtcVerdict, MAX_MAPPED_ITEM_DEPTH, MAX_PLACEMENT_DEPTH};
 pub use model_bounds::{scan_model_bounds, scan_placement_bounds, ModelBounds};
 pub use parser::{
     declared_schema_bounded, entity_count, find_keyword, keyword_ends_with, keyword_eq, keyword_starts_with,
-    nth_attribute_is_present, oversized_id_report, parse_entity, parse_step_real, report_malformed_records,
+    nth_attribute_is_present, oversized_id_report, parse_entity, parse_step_real, read_step_number, report_malformed_records,
     report_oversized_ids, report_scan_diagnostics, set_report_sink, skip_step_comment,
-    EntityScanner, StepListItems, Token,
+    EntityScanner, StepListItems, StepNumber, Token,
 };
+pub use project_locator::{find_project_id, find_project_ids};
 pub use project_units::{
     measure::{measure_unit, MeasureUnit},
-    resolve_unit_by_ref, ProjectUnits, ResolvedUnit,
+    resolve_unit_by_ref, ProjectUnits, ResolvedUnit, UnitScales,
 };
+pub use schema_family::SchemaFamily;
 pub use schema_gen::{AttributeValue, DecodedEntity, GeometryCategory, IfcSchema, ProfileCategory};
 pub use schema_helpers::{
     geometry_flags_by_name, has_geometry_by_name, is_representationless_spatial_container_by_name,
     ifc_type_from_keyword, ifc_type_from_record, is_simple_geometry_type, type_product_ifc_type,
 };
-pub use step_encoding::decode_ifc_string;
+pub use step_encoding::{decode_ifc_string, decode_step_binary};
 pub use streaming::{parse_stream, ParseEvent, StreamConfig};
+pub use unit_labels::{
+    is_us_survey_foot_key, is_us_survey_foot_tokens, si_prefix, SiPrefix, SI_PREFIXES, US_SURVEY_FOOT_M,
+};
 pub use units::{
     extract_length_unit_scale, extract_plane_angle_to_radians, get_si_prefix_multiplier,
     resolve_length_unit, LengthUnit,

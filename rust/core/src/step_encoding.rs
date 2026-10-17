@@ -206,6 +206,31 @@ pub fn hex_val(b: u8) -> Option<u8> {
     }
 }
 
+/// Decode a STEP binary literal (`"0FF"`) to its bytes: the one home for
+/// byte decoding of `BINARY` values (F4-1).
+///
+/// `raw` is the literal's content, as [`crate::AttributeValue::Binary`]
+/// holds it, or the literal with its surrounding quotes. The first hex digit
+/// is the number of unused bits in the last byte; the rest is whole bytes,
+/// two hex digits each, either case.
+///
+/// Refuses (`None`) what it cannot decode exactly, instead of the old
+/// "skip the indicator and stop at the first bad digit": a non-zero
+/// indicator (D18: the bytes are not byte-aligned, so no whole-byte reader
+/// can use them), an indicator above `3`, an odd count of hex digits and a
+/// non-hex byte. `"0"` is the empty binary.
+pub fn decode_step_binary(raw: &[u8]) -> Option<Vec<u8>> {
+    let raw = raw.strip_prefix(b"\"").unwrap_or(raw);
+    let raw = raw.strip_suffix(b"\"").unwrap_or(raw);
+    let (&indicator, hex) = raw.split_first()?;
+    if indicator != b'0' || !hex.len().is_multiple_of(2) {
+        return None;
+    }
+    hex.chunks_exact(2)
+        .map(|pair| Some((hex_val(pair[0])? << 4) | hex_val(pair[1])?))
+        .collect()
+}
+
 #[inline]
 fn starts_with(bytes: &[u8], at: usize, pat: &[u8]) -> bool {
     bytes.len() >= at + pat.len() && &bytes[at..at + pat.len()] == pat
@@ -319,5 +344,18 @@ mod tests {
         // A byte position ISO 8859-6 (Arabic, \PF\) itself leaves unassigned
         // falls back to the raw code point rather than U+FFFD.
         assert_eq!(decode_ifc_string(r"\PF\\S\0"), "\u{00B0}");
+    }
+
+    /// D18 (F4-1): one byte decoder for STEP binaries, with or without the
+    /// quotes, both hex cases. A non-zero unused-bits indicator, an odd digit
+    /// count and a non-hex byte are refused, not read as a prefix.
+    #[test]
+    fn decode_step_binary_refuses_what_it_cannot_decode_exactly() {
+        assert_eq!(decode_step_binary(b"0FF000a"), Some(vec![0xFF, 0x00, 0x0A]));
+        assert_eq!(decode_step_binary(b"\"0Ff00\""), Some(vec![0xFF, 0x00]));
+        assert_eq!(decode_step_binary(b"0"), Some(vec![]));
+        for refused in [&b""[..], b"\"\"", b"1FF", b"3F0", b"4FF", b"0F", b"0FG0", b"0FF "] {
+            assert_eq!(decode_step_binary(refused), None, "{refused:?}");
+        }
     }
 }

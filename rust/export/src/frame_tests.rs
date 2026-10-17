@@ -23,8 +23,8 @@ fn cube_corner_positions() -> Vec<f32> {
 fn yup_swaps_and_negates_the_expected_axes() {
     // `(x, y, z) -> (x, z, -y)`. Distinct non-zero components in every slot,
     // so neither a dropped negation nor a wrong axis pair can hide.
-    assert_eq!(yup_f32([1.0, 2.0, 3.0]), [1.0, 3.0, -2.0]);
-    assert_eq!(yup_f64([1.0, 2.0, 3.0]), [1.0, 3.0, -2.0]);
+    assert_eq!(zup_to_yup([1.0, 2.0, 3.0]), [1.0, 3.0, -2.0]);
+    assert_eq!(zup_to_yup([1.0, 2.0, 3.0]), [1.0, 3.0, -2.0]);
 }
 
 // #4056: an independent geometric invariant catches an incorrect reversal in

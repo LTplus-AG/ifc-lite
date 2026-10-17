@@ -1506,7 +1506,6 @@ dependencies = [
  "futures-core",
  "futures-util",
  "ifc-lite-geometry",
- "lexical-core",
  "memchr",
  "nom",
  "rustc-hash",

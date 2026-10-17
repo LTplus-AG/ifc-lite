@@ -39,6 +39,8 @@ fn emits_line_list_for_polyline_alignment() {
     assert!(verts[0].abs() < 1e-4, "start x≈0, got {}", verts[0]);
     assert!(verts[1].abs() < 1e-4, "start y(elev)≈0, got {}", verts[1]);
     assert!(verts[2].abs() < 1e-4, "start z≈0, got {}", verts[2]);
+    // A zero northing emits +0.0, not -0.0 (X3, D24: same sign as the grid overlay).
+    assert!(verts[2].is_sign_positive(), "zero northing must emit +0.0, got {:?}", verts[2]);
 
     // The 20 m polyline lies in the plan (z_ifc = 0) so every renderer-Y
     // (elevation) must stay 0, and the path must span ~10 m in renderer X

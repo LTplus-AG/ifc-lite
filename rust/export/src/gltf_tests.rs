@@ -2880,16 +2880,16 @@ fn viewer_arrays(
         (Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new());
     for m in meshes {
         for c in m.positions.chunks_exact(3) {
-            p.extend_from_slice(&crate::frame::yup_f32([c[0], c[1], c[2]]));
+            p.extend_from_slice(&ifc_lite_geometry::math::frame::zup_to_yup([c[0], c[1], c[2]]));
         }
         for c in m.normals.chunks_exact(3) {
-            n.extend_from_slice(&crate::frame::yup_f32([c[0], c[1], c[2]]));
+            n.extend_from_slice(&ifc_lite_geometry::math::frame::zup_to_yup([c[0], c[1], c[2]]));
         }
         i.extend_from_slice(&m.indices);
         vc.push((m.positions.len() / 3) as u32);
         ic.push(m.indices.len() as u32);
         colors.extend_from_slice(&m.color);
-        origins.extend_from_slice(&crate::frame::yup_f64(m.origin));
+        origins.extend_from_slice(&ifc_lite_geometry::math::frame::zup_to_yup(m.origin));
         ids.push(m.express_id);
     }
     (p, n, i, vc, ic, colors, origins, ids)

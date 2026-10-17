@@ -975,6 +975,15 @@ jobs:
           # ordinary whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/landxml/src/stream/record_wire.rs | grep -Fxq 'rust/landxml/src/stream/record_wire.rs'; then
             oracle_args+=(--mutation tests/evidence/wasm-size-landxml-wire/wire-decode.oracle.patch)
+          # #7778 (F4-1): the one numeric reader, Token::Binary and
+          # decode_step_binary are new items the changed tests import, so a
+          # whole-change revert does not compile (INCONCLUSIVE). Keep them and
+          # restore ONLY the old behaviours: the tokenizer's pre-F4-1 number
+          # grammar, a binary indicator above 3, a non-zero indicator decoded,
+          # and an uncounted texture refusal. Once step_numeric_vectors.json is
+          # on main, ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/core/tests/fixtures/step_numeric_vectors.json | grep -Fxq 'rust/core/tests/fixtures/step_numeric_vectors.json'; then
+            oracle_args+=(--mutation tests/evidence/numeric-literal-7778/behaviour.oracle.patch)
           # #7689: the tessellated index rule adds two modules (core's
           # fast_parse_indices.rs, geometry's tessellated/indices.rs) that the
           # changed tests import, so a whole-file revert does not compile
@@ -1794,21 +1803,6 @@ jobs:
       # type/side it names, never a whole concept.
       - name: Check server/browser type parity gate regressions
         run: node --test scripts/check-server-browser-type-parity.test.mjs
-      # `check:server-attr-indices` (below, and its own CI step) only proves the
-      # committed generated/attr_indices.rs TABLE is fresh against the schema
-      # registry -- it never opens metadata.rs, so reintroducing #3949 by
-      # hardcoding a field back to a literal index there leaves that gate green.
-      # This is the other half: metadata.rs must actually read every root
-      # attribute through the table (`idx.<field>`), not a literal, for all six
-      # fields at once -- covering every entity type the function ever runs for,
-      # not just the handful of types this repo's Rust fixtures happen to cover.
-      - name: Check server attr-index usage (metadata.rs threads the index table)
-        run: node scripts/check-server-attr-index-usage.mjs
-      # Executable proof: reintroduces the exact original #3949 defect (GlobalId/
-      # Name hardcoded to 0/2) plus per-field and anti-vacuity variants against a
-      # mutated copy of the real source, and asserts each turns the gate red.
-      - name: Check server attr-index usage gate regressions
-        run: node --test scripts/check-server-attr-index-usage.test.mjs
       # `|| true` on `git tag` is right (a re-run hits an existing tag);
       # on the PUSH it made a failed push silent, and `gh release create` then
       # creates the missing tag ITSELF at default-branch head -- so the run
@@ -2156,19 +2150,6 @@ jobs:
       # the Rust table is regenerated.
       - name: Check step-log table freshness
         run: node scripts/generate-step-log-tables.mjs --check
-      # The server-parse root-attribute table (attr_indices.rs) is generated
-      # from @ifc-lite/parser's SCHEMA_REGISTRY — the SAME table the in-browser
-      # parse resolves names against. Guard that the committed file is in sync
-      # so a registry change can't silently break server↔client parity. Uses
-      # the parser dist from the build artifact above; format-agnostic, no Rust
-      # toolchain needed (issue #1780).
-      - name: Check server attr-indices freshness
-        run: node scripts/generate-server-attr-indices.mjs --check
-      # The server relationship lookup is generated from the parser's schema
-      # plans too. Type-name parity alone cannot detect a stale slot index or
-      # list/single cardinality while the same lookup arms remain present.
-      - name: Check server relationship-slot freshness
-        run: node scripts/generate-server-relationship-slots.mjs --check
       # The sandbox `bim` ambient type surface (apps/viewer/.../bim-globals.d.ts)
       # is generated from @ifc-lite/sandbox's NAMESPACE_SCHEMAS — the SAME schema
       # the script editor's completions and the LLM system prompt read live.

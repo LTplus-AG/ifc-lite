@@ -30,12 +30,13 @@
 //! functions of the content: the entity index (id -> byte span) and the RTC
 //! offset.
 //!
-//! That leaves ONE per-host walk in place, and this note does not claim
-//! otherwise: [`ModelFrame::router`] calls `GeometryRouter::with_units`, whose
-//! `scan_unit_scale` (`rust/geometry/src/router/mod.rs`) scans entities from the
-//! start of the file until it hits `IFCPROJECT`. On most models that stops in
-//! the first few KB and costs nothing measurable. On some it does not, because
-//! the exporter emitted `IFCPROJECT` last; measured on this corpus:
+//! That left ONE per-host walk in place: [`ModelFrame::router`] calls
+//! `GeometryRouter::with_units`, whose unit-scale lookup used to scan entities
+//! from the start of the file until it hit `IFCPROJECT`. It now asks the
+//! decoder's SIMD locator (`EntityDecoder::project_id`, F3a #7775), a keyword
+//! search with no entity scan. The table records what the scan cost: on most
+//! models it stopped in the first few KB, but some exporters emit `IFCPROJECT`
+//! last; measured on this corpus:
 //!
 //! | fixture | first `IFCPROJECT` | file size |
 //! |---|---|---|
@@ -44,8 +45,7 @@
 //! | `various/01_BIMcollab_Example_ARC.ifc` | byte 6,252,152 (line 100819) | 18,230,149 |
 //!
 //! All three are in `manifest.json` under `MAX_FIXTURE_BYTES`, so the default
-//! sweep walks them, and on those the per-host cost is still effectively
-//! O(file).
+//! sweep walks them.
 //!
 //! The unit scale is NOT hoisted here, deliberately. It could only be reused by
 //! building the per-host router from `GeometryRouter::with_scale_and_rtc`, which

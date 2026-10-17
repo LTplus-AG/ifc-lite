@@ -276,7 +276,10 @@ impl<'s, 'a> BaseSets<'s, 'a> {
                 if qname.is_empty() {
                     continue;
                 }
-                let value = qattrs.get(3).and_then(JsVal::as_num).unwrap_or(0.0);
+                // `QuantityExtractor` drops a quantity whose value is not a
+                // number (unset, or an overflow kept as raw text); writing
+                // `0.` instead fabricates a measurement (#7770, D13).
+                let Some(value) = qattrs.get(3).and_then(JsVal::as_num) else { continue };
                 quantities.push(Quantity { name: qname.to_string(), ty: quantity_type_of(&qty_type), value });
             }
         }

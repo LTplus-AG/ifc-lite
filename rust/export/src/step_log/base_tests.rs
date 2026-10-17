@@ -139,3 +139,24 @@ fn assert_complex_budget_case(case: &serde_json::Value, input_bytes: usize, sets
         }
     }
 }
+
+/// #7770: a regenerated quantity set was written from `unwrap_or(0.0)`, so an
+/// overflow quantity (`1.E400`, kept as raw text by the tokenizer) or an unset
+/// one came back as a fabricated `0.`. The TS `QuantityExtractor` drops a
+/// quantity whose value is not a number; so does this base (D13).
+#[test]
+fn a_non_numeric_quantity_value_is_dropped_not_zeroed() {
+    let text = "ISO-10303-21;\nHEADER;FILE_SCHEMA(('IFC4'));ENDSEC;\nDATA;\n\
+#10=IFCWALL('0WallA0000000000000010A',$,'Wall',$,$,$,$,$,$);\n\
+#11=IFCQUANTITYLENGTH('Over',$,$,1.E400,$);\n\
+#12=IFCQUANTITYLENGTH('Unset',$,$,$,$);\n\
+#13=IFCQUANTITYLENGTH('Ok',$,$,2.5,$);\n\
+#14=IFCELEMENTQUANTITY('0Qto0000000000000014A',$,'Qto_Wall',$,$,(#11,#12,#13));\n\
+#15=IFCRELDEFINESBYPROPERTIES('0Rel00000000000000015A',$,$,$,(#10),#14);\n\
+ENDSEC;\nEND-ISO-10303-21;\n";
+    let src = Source::index(text.as_bytes());
+    let mut base = BaseSets::new(&src, &HashSet::from([10]));
+    let sets = base.qsets(10);
+    let got: Vec<(String, f64)> = sets[0].quantities.iter().map(|q| (q.name.clone(), q.value)).collect();
+    assert_eq!(got, vec![("Ok".to_string(), 2.5)]);
+}

@@ -26,8 +26,11 @@ pub(super) struct Supported {
     pub folded_buckets: Vec<Bucket>,
 }
 pub(super) fn find(buckets: &BTreeMap<Bucket, Vec<PlaneTri>>) -> Supported {
-    // Healthy source partitions need no face, edge or certificate tables.
-    if !buckets.values().flatten().any(|t| tri_is_needle(&t.v)) {
+    // Ordinary healthy partitions need no certificate tables. A later cut
+    // can keep a finite fold after the original thin seed has been cleaned.
+    let has_needle = buckets.values().flatten().any(|t| tri_is_needle(&t.v));
+    if !has_needle && !buckets.values().any(|ts| ts.len() == 2
+        && healthy_fold_boundary(&[&ts[0], &ts[1]]).is_some()) {
         return Supported::default();
     }
     let faces = buckets
@@ -42,9 +45,6 @@ pub(super) fn find(buckets: &BTreeMap<Bucket, Vec<PlaneTri>>) -> Supported {
     // These tables only answer lookups; source/output traversal keeps the
     // caller's ordered bucket map and the original triangle/edge order.
     let mut disjoint = FxHashMap::default();
-    if !needles.iter().any(|&n| n) {
-        return out;
-    }
     let mut edges = FxHashMap::<(Point, Point), Vec<(usize, bool)>>::default();
     for (i, (_, t)) in faces.iter().enumerate() {
         let p = cell_key(&t.v);
@@ -82,23 +82,21 @@ pub(super) fn find(buckets: &BTreeMap<Bucket, Vec<PlaneTri>>) -> Supported {
             out.buckets.insert(*key);
         }
     }
-    // Fold retention only preserves a chain that an ORIGINAL certified raw
-    // bucket already keeps. Do not let newly added folds seed another fold.
+    // A healthy finite fold has its own closed source-star certificate,
+    // independent of thin-cell retention or a previous operation's seeds.
     let mut folded = Vec::new();
-    if !out.buckets.is_empty() {
-        for (first, pair) in faces.windows(2).enumerate() {
-            let key = pair[0].0;
-            if pair[1].0 != key || buckets[&key].len() != 2 {
-                continue;
-            }
-            let Some(neighbors) = supported_fold_neighbors(first, &faces, &needles, &edges, &out.buckets) else {
-                continue;
-            };
-            if std::iter::once(key).chain(neighbors.map(|j| faces[j].0)).all(|key| {
-                *disjoint.entry(key).or_insert_with(|| nonoverlapping(&buckets[&key]))
-            }) {
-                folded.push(key);
-            }
+    for (first, pair) in faces.windows(2).enumerate() {
+        let key = pair[0].0;
+        if pair[1].0 != key || buckets[&key].len() != 2 {
+            continue;
+        }
+        let Some(neighbors) = supported_fold_neighbors(first, &faces, &needles, &edges) else {
+            continue;
+        };
+        if std::iter::once(key).chain(neighbors.map(|j| faces[j].0)).all(|key| {
+            *disjoint.entry(key).or_insert_with(|| nonoverlapping(&buckets[&key]))
+        }) {
+            folded.push(key);
         }
     }
     out.buckets.extend(folded.iter().copied());
@@ -148,7 +146,6 @@ fn supported_fold_neighbors(
     faces: &[(Bucket, &PlaneTri)],
     needles: &[bool],
     edges: &FxHashMap<(Point, Point), Vec<(usize, bool)>>,
-    seeds: &FxHashSet<Bucket>,
 ) -> Option<[usize; 4]> {
     let key = faces[first].0;
     let boundary = healthy_fold_boundary(&[faces[first].1, faces[first + 1].1])?;
@@ -172,11 +169,11 @@ fn supported_fold_neighbors(
         }
         neighbors[k] = j;
     }
-    // Adjacent outer edges must meet at the same kept source point and have
-    // distinct healthy opposite faces in ONE already-protected source bucket.
+    // Four distinct external cells must support the complete boundary. Two
+    // adjacent supports must also preserve its source chain in one bucket.
+    if (0..4).any(|k| neighbors[..k].contains(&neighbors[k])) { return None; }
     let anchored = (0..4).any(|k| {
-        let (a, b) = (neighbors[k], neighbors[(k + 1) % 4]);
-        a != b && faces[a].0 == faces[b].0 && seeds.contains(&faces[a].0)
+        faces[neighbors[k]].0 == faces[neighbors[(k + 1) % 4]].0
     });
     anchored.then_some(neighbors)
 }

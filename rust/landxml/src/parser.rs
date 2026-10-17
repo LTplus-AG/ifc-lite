@@ -4,20 +4,16 @@
 
 use crate::{
     capture::{Capture, PairListTarget, PolylineCategory, ProfileCurveCapture},
-    preflight::preflight_xml_tokens,
     semantics::{positive_id, references, triple, units},
     xml::{
-        attr, attributes, character_references, error, normalize_encoding, required, split_name,
+        attr, attributes, character_references, error, normalize_encoding, read_events, required, split_name,
         Result,
     },
     LandXmlCancellation, LandXmlCapabilities, LandXmlCoordinateSystem,
     LandXmlDiagnosticCode as Code, LandXmlExtension, LandXmlLimits, LandXmlPoint, LandXmlPolyline,
     LandXmlRenderState, LandXmlSourceId, LandXmlSurface, LandXmlSurfaceKind, LandXmlTinDocument,
 };
-use quick_xml::{
-    events::{BytesStart, Event},
-    Reader,
-};
+use quick_xml::events::{BytesStart, Event};
 mod capture;
 mod document;
 mod finalize;
@@ -53,21 +49,8 @@ pub fn parse_landxml_tin_with_cancel(
     // through a parse.
     let assumed_units = crate::semantics::resolve_assumed_units(limits)?;
     let input = normalize_encoding(input, limits, cancelled)?;
-    preflight_xml_tokens(&input, limits, cancelled)?;
     let mut parser = Parser::new(limits, cancelled, assumed_units);
-    let mut reader = Reader::from_reader(input.as_slice());
-    reader.config_mut().trim_text(false);
-    let mut buffer = Vec::new();
-    loop {
-        let event = reader
-            .read_event_into(&mut buffer)
-            .map_err(|_| error(Code::InvalidXml, "malformed XML"))?;
-        if matches!(event, Event::Eof) {
-            break;
-        }
-        parser.consume_event(event)?;
-        buffer.clear();
-    }
+    read_events(&input, limits, cancelled, |event| parser.consume_event(event))?;
     if !parser.frames.is_empty() {
         return Err(error(Code::InvalidXml, "unclosed XML element"));
     }

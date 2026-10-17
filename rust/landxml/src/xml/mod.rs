@@ -8,9 +8,13 @@ use quick_xml::events::BytesStart;
 
 mod budget;
 mod encoding;
+mod pull;
 mod refs;
+mod scan;
 pub(crate) use budget::{poll, Budget, Meter};
 pub(crate) use encoding::{normalize_encoding, Decoder};
+pub(crate) use pull::read_events;
+pub(crate) use scan::{TokenKind, TokenScanner};
 pub(crate) use refs::{character_references, general_ref_source, unescape};
 
 use crate::{LandXmlCancellation, LandXmlDiagnosticCode as Code, LandXmlError, LandXmlLimits};
@@ -142,12 +146,16 @@ pub(crate) fn outside_root_text(root_closed: bool, text: &str, cdata: bool) -> R
     if !cdata && text.bytes().all(is_xml_s) {
         return Ok(());
     }
+    Err(outside_root_error(root_closed, cdata))
+}
+
+pub(crate) fn outside_root_error(root_closed: bool, cdata: bool) -> LandXmlError {
     let location = if root_closed { "after" } else { "before" };
     let kind = if cdata { "CDATA" } else { "non-whitespace content" };
-    Err(error(
+    error(
         Code::InvalidXml,
         format!("LandXML document has {kind} {location} its root element"),
-    ))
+    )
 }
 
 pub(crate) fn error(code: Code, message: impl Into<String>) -> LandXmlError {

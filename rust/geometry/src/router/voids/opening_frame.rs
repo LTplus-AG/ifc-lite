@@ -33,17 +33,19 @@ pub(super) enum Merge {
 }
 
 /// The facets of `mesh` in index order: unit normal (`NORMALIZE_EPSILON`
-/// floor), weight `|cross|` (twice the area) and first vertex. Triangles with
+/// floor), weight `|cross|` (twice the area; 0 unless `merge` is weighted) and
+/// first vertex. Triangles with
 /// an out-of-range index or a degenerate normal are skipped.
-pub(super) fn mesh_facets(mesh: &Mesh) -> impl Iterator<Item = Facet> + '_ {
-    mesh.indices.chunks_exact(3).filter_map(|tri| {
+pub(super) fn mesh_facets(mesh: &Mesh, merge: Merge) -> impl Iterator<Item = Facet> + '_ {
+    mesh.indices.chunks_exact(3).filter_map(move |tri| {
         let (p0, p1, p2) = (
             mesh_point(mesh, tri[0])?,
             mesh_point(mesh, tri[1])?,
             mesh_point(mesh, tri[2])?,
         );
         let raw = (p1 - p0).cross(&(p2 - p0));
-        let weight = raw.norm();
+        // Only the weighted merge reads the weight.
+        let weight = if let Merge::Weighted = merge { raw.norm() } else { 0.0 };
         let normal = raw.try_normalize(NORMALIZE_EPSILON)?;
         Some(Facet { normal, weight, anchor: p0 })
     })
@@ -113,7 +115,7 @@ pub(super) fn is_rectangular_box_mesh(mesh: &Mesh) -> bool {
     // along the merged axis is taken against the first normal seen for that
     // cluster, so opposite faces produce offsets of opposite sign.
     let Some(clusters) = cluster_face_normals(
-        mesh_facets(mesh),
+        mesh_facets(mesh, Merge::FirstSeen),
         FACE_COS,
         Merge::FirstSeen,
         3,
@@ -121,10 +123,10 @@ pub(super) fn is_rectangular_box_mesh(mesh: &Mesh) -> bool {
     ) else {
         return false;
     };
-    let axes: Vec<Vector3<f64>> = clusters.into_iter().map(|(axis, _)| axis).collect();
-    if axes.len() != 3 {
-        return false;
-    }
+    let axes: [Vector3<f64>; 3] = match clusters.as_slice() {
+        [(a, _), (b, _), (c, _)] => [*a, *b, *c],
+        _ => return false,
+    };
 
     // The 3 distinct face normals must be mutually orthogonal — otherwise a
     // shape like a trapezoid extrusion (front/back + top/bottom + two slanted
@@ -169,7 +171,7 @@ pub(super) fn is_rectangular_box_mesh(mesh: &Mesh) -> bool {
 
 pub(super) fn infer_opening_frame(mesh: &Mesh, extrusion_dir: Option<&Vector3<f64>>) -> Option<OpeningFrame> {
     let axes = cluster_face_normals(
-        mesh_facets(mesh),
+        mesh_facets(mesh, Merge::Weighted),
         FACE_COS,
         Merge::Weighted,
         usize::MAX,

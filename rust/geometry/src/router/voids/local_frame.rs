@@ -108,7 +108,7 @@ pub(super) fn host_thickness_wall_frame(
 /// Deterministic: triangles are visited in index order.
 fn dominant_horizontal_normal(host: &Mesh) -> Option<Vector3<f64>> {
     cluster_face_normals(
-        mesh_facets(host).filter(|facet| !(facet.normal.z.abs() > 0.2)),
+        mesh_facets(host, Merge::Weighted).filter(|facet| !(facet.normal.z.abs() > 0.2)),
         FACE_COS,
         Merge::Weighted,
         usize::MAX,

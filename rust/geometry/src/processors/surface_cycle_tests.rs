@@ -14,10 +14,21 @@ FILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n{data}ENDSEC;\nEND-ISO-10303-21;\n"
 }
 
 fn profile_points(data: &str, id: u32) -> Vec<Point2<f64>> {
+    try_profile_points(data, id).expect("profile points")
+}
+
+fn try_profile_points(data: &str, id: u32) -> Result<Vec<Point2<f64>>> {
     let content = wrap(data);
     let mut decoder = EntityDecoder::new(&content);
     SurfaceOfLinearExtrusionProcessor::get_profile_curve_points(id, &mut decoder)
-        .expect("profile points")
+}
+
+/// A cyclic or over-deep curve TERMINATES, and since #7688 it is refused
+/// rather than read as `Ok(empty)`: the composite caller accumulates, so an
+/// empty branch was a silently shorter curve.
+fn assert_refused(data: &str, id: u32) {
+    let result = try_profile_points(data, id);
+    assert!(result.is_err(), "must be refused, got {:?}", result.map(|p| p.len()));
 }
 
 /// A well-formed composite-curve profile: one segment whose ParentCurve is a
@@ -79,7 +90,7 @@ fn self_referential_composite_curve_terminates() {
     let data = "#10=IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,#20);\n\
 #20=IFCCOMPOSITECURVE((#21),.F.);\n\
 #21=IFCCOMPOSITECURVESEGMENT(.CONTINUOUS.,.T.,#20);\n";
-    assert!(profile_points(data, 10).is_empty());
+    assert_refused(data, 10);
 }
 
 /// A two-node curve cycle: `#20`'s segment parents `#30`, whose segment
@@ -92,7 +103,7 @@ fn two_node_composite_curve_cycle_terminates() {
 #21=IFCCOMPOSITECURVESEGMENT(.CONTINUOUS.,.T.,#30);\n\
 #30=IFCCOMPOSITECURVE((#31),.F.);\n\
 #31=IFCCOMPOSITECURVESEGMENT(.CONTINUOUS.,.T.,#20);\n";
-    assert!(profile_points(data, 10).is_empty());
+    assert_refused(data, 10);
 }
 
 /// Fan-out: four segments each re-entering the same composite curve. A depth
@@ -106,7 +117,7 @@ fn cyclic_composite_curve_with_fan_out_terminates() {
 #22=IFCCOMPOSITECURVESEGMENT(.CONTINUOUS.,.T.,#20);\n\
 #23=IFCCOMPOSITECURVESEGMENT(.CONTINUOUS.,.T.,#20);\n\
 #24=IFCCOMPOSITECURVESEGMENT(.CONTINUOUS.,.T.,#20);\n";
-    assert!(profile_points(data, 10).is_empty());
+    assert_refused(data, 10);
 }
 
 /// And the original shape kept as a regression on the SPLIT: a ParentCurve
@@ -116,7 +127,7 @@ fn parent_curve_pointing_at_a_profile_terminates() {
     let data = "#10=IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,#20);\n\
 #20=IFCCOMPOSITECURVE((#21),.F.);\n\
 #21=IFCCOMPOSITECURVESEGMENT(.CONTINUOUS.,.T.,#10);\n";
-    assert!(profile_points(data, 10).is_empty());
+    assert_refused(data, 10);
 }
 
 /// A long ACYCLIC nesting chain: each composite curve's segment parents the
@@ -140,10 +151,11 @@ fn a_long_acyclic_curve_chain_terminates() {
     data.push_str("#90001=IFCCARTESIANPOINT((0.,0.));\n");
     data.push_str("#90002=IFCCARTESIANPOINT((1.,0.));\n");
     // Asserting the RESULT, not merely that it returned: the polyline sits
-    // 3,000 links down, well past the cap, so nothing survives from beyond it.
-    // "it did not crash" would also be satisfied by a guard that broke the
-    // well-formed case, which the tests above cover in the other direction.
-    assert!(profile_points(&data, 1).is_empty());
+    // 3,000 links down, well past the cap, so the curve is refused rather
+    // than read short. "it did not crash" would also be satisfied by a guard
+    // that broke the well-formed case, which the tests above cover in the
+    // other direction.
+    assert_refused(&data, 1);
 }
 
 /// A ParentCurve legitimately REUSED by two segments must be sampled both
@@ -257,7 +269,7 @@ fn a_wide_acyclic_dag_is_bounded_by_the_node_budget() {
 /// The budget's boundary, both sides. `budget == 0` is true after the last
 /// PERMITTED visit as well as after a refused one, so re-raising on it would
 /// fail a traversal that used exactly `MAX_CURVE_NODES` visits and exceeded
-/// nothing. `exhausted` is set only by an attempted charge with nothing left.
+/// nothing. Only an attempted charge with nothing left is refused.
 /// (CodeRabbit, #2874 review — a valid-but-boundary false positive.)
 #[test]
 fn exactly_max_curve_nodes_visits_is_not_exhaustion() {
@@ -267,14 +279,9 @@ fn exactly_max_curve_nodes_visits_is_not_exhaustion() {
             .unwrap_or_else(|e| panic!("visit {i} of {MAX_CURVE_NODES} must be permitted: {e}"));
     }
     assert_eq!(walk.budget, 0, "the budget is spent to the last unit");
-    assert!(
-        !walk.exhausted,
-        "spending the budget exactly is not exhaustion"
-    );
 
-    // One past is.
+    // One past is refused.
     assert!(walk.spend().is_err(), "the next visit must be refused");
-    assert!(walk.exhausted, "and it must record that it refused one");
 }
 
 /// The same boundary through the CALLER, which is where the off-by-one lived.

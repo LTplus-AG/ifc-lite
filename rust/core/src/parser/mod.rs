@@ -37,6 +37,7 @@ mod record;
 mod record_strings;
 mod report_sink;
 mod scanner;
+mod slots;
 mod tokenizer;
 
 pub use keyword::{find_keyword, keyword_ends_with, keyword_eq, keyword_starts_with};
@@ -49,7 +50,7 @@ pub use lexical::skip_step_comment;
 pub use lexical::{is_step_space, skip_step_trivia};
 // The one STEP numeric-literal grammar for every raw-byte reader (#5266).
 pub(crate) use numeric_literal::parse_step_numeric;
-pub use numeric_literal::{parse_step_real, read_step_number, StepNumber};
+pub use numeric_literal::{parse_step_real, read_step_number, step_numeric_literal_len, StepNumber};
 pub use malformed_records::report_malformed_records;
 pub use oversized_ids::{oversized_id_report, report_oversized_ids, set_report_sink};
 pub use scanner::{
@@ -57,6 +58,7 @@ pub use scanner::{
     EntityScanner, StepListItems,
 };
 pub(crate) use scanner::argument_list_start;
+pub use slots::{is_step_value, split_step_slots};
 pub use tokenizer::{parse_entity, Token};
 
 /// [`report_oversized_ids`] + [`report_malformed_records`] in one call — the

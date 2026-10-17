@@ -25,7 +25,7 @@ use ifc_lite_core::express_id::parse_express_id;
 use ifc_lite_core::step_encoding::step_string_literal_end;
 
 use crate::step_record_frame::{record_frame, record_head};
-use crate::step_slot::split_top_level_args;
+use crate::step_slot::slots_of;
 
 /// The edits that apply to one record, where a caller's attribute mutation and
 /// a copy-on-write repointing can both land on it. The repointing wins: it was
@@ -172,9 +172,9 @@ pub(crate) fn apply_attr_mutations_counted(
     refused: &mut usize,
 ) -> String {
     let edited = record_frame(line).and_then(|frame| {
-        let mut args = split_top_level_args(frame.args(line))?;
+        let mut args = slots_of(frame.args(line))?;
         for (idx, val) in muts.range(..args.len()) {
-            args[*idx] = val.clone();
+            args[*idx] = val;
         }
         if muts.range(args.len()..).next().is_some() {
             *refused += 1;
@@ -219,7 +219,7 @@ pub(crate) fn renumber(line: &str, new_id: u32) -> String {
 /// attribute's text, and a copy built from it would carry the wrong value.
 pub(crate) fn attribute_of(line: &str, index: usize) -> Option<String> {
     let frame = record_frame(line)?;
-    split_top_level_args(frame.args(line))?.into_iter().nth(index)
+    slots_of(frame.args(line))?.into_iter().nth(index).map(str::to_owned)
 }
 
 /// Replace references inside one attribute, leaving its neighbours alone.

@@ -291,6 +291,9 @@ fn emit(
             let ordered: Vec<Apex> =
                 if forward { list.clone() } else { list.iter().rev().copied().collect() };
             let pw = pos_of(mesh, w);
+            if repair == Repair::ExactIndexed && !pw.iter().all(|v| v.is_finite()) {
+                continue; // invalid geometry keeps the legacy index-only path
+            }
             let mut points = vec![pos_of(mesh, u)];
             points.extend(ordered.iter().map(|a| a.key.map(|c| f32::from_bits(c) as f64)));
             points.push(pos_of(mesh, v));

@@ -7,16 +7,17 @@
 //!
 //! When triangle `tb` is coplanar with `ta`, each of `tb`'s edges is clipped to
 //! `ta` and the portion inside becomes a constraint for `ta` (and symmetrically).
-//! A clipped endpoint is either an `Explicit` vertex (inside `ta`) or a coplanar
-//! edge×edge crossing — represented EXACTLY as an auxiliary-plane LPI: the line
-//! `q0q1` ∩ the plane through ta-edge `(e0,e1)` extruded perpendicular to the
-//! shared plane (`e0 + n`). Within the shared plane that plane reads as the line
-//! `e0e1`, so the LPI is exactly the 2D crossing — and it lies on the shared
-//! plane, keeping everything exact and conforming.
+//! An endpoint already on `ta` stays `Explicit`; otherwise it is lifted exactly
+//! onto `ta`. An edge×edge crossing is an auxiliary-plane LPI: the line
+//! through ta-edge `(e0,e1)` ∩ the plane through `q0q1` extruded along the
+//! dropped axis. In that projection the auxiliary plane reads as the line
+//! `q0q1`, so the LPI is exactly the 2D crossing and lies on the host edge.
+//! Contained endpoints are lifted onto the same host plane along the dropped
+//! axis. This keeps every constraint planar even for nearly coplanar inputs;
+//! it does not assert that distinct operand planes share exact 3D endpoints.
 
-use super::predicates::orient2d_any;
+use super::predicates::{orient2d_any, orient3d};
 use super::retriangulate::projection_axis;
-use super::tritri::plane_normal;
 use super::{DropAxis, ImplicitPoint, Lpi, Sign};
 
 type Tri = [[f64; 3]; 3];
@@ -46,42 +47,33 @@ fn seg_seg_cross(q0: [f64; 3], q1: [f64; 3], e0: [f64; 3], e1: [f64; 3], axis: D
     s1 != Sign::Zero && s2 != Sign::Zero && s1 != s2 && s3 != Sign::Zero && s4 != Sign::Zero && s3 != s4
 }
 
-/// Auxiliary-plane LPI for the coplanar crossing of `q0q1` with ta-edge `(e0,e1)`:
-/// `line(q0,q1) ∩ plane(e0, e1, e0+n)`, `n` = shared-plane normal.
-///
-/// PERF (off-grid aux fix): the raw `n` is the UN-normalised cross product of two
-/// on-grid (`k/2^16`) edge vectors, so its components land on the `1/2^32` grid —
-/// OFF the `1/2^16` snap grid. `aux = e0 + n` is then off-grid, every predicate on
-/// the resulting LPI fails the fixed-width tier's on-grid `gi` and falls to the
-/// ~3 ms BigRational path (the dominant flush-cap/near-coplanar cut cost: 841 had
-/// ~2000 BigRational λ-rebuilds per slow opening). The aux point only needs to make
-/// the plane `(e0,e1,aux)` read as the LINE `e0e1` in-plane and stay perpendicular
-/// to the shared plane — its exact offset along `n` is irrelevant. So we ROUND `n`
-/// to a grid-aligned integer direction (scale the max component to ~2^10, round),
-/// like `tritri::line_direction` does: `aux` then lands on-grid and the fixed
-/// tier resolves the LPI. The SIGN of every predicate is unchanged — `n` still
-/// points off the shared plane along the same perpendicular, and the in-plane
-/// reading of the plane is still the exact line `e0e1` (which only uses `e0,e1`).
-/// Deterministic (FMA-free f64 round) ⇒ byte-identical native==wasm.
-///
-/// SCALE 2^10, not the original 2^20 (crack-family fix): when `e0` is a WELDED
-/// seam vertex on the fine `k/2^36` grid (|coord| < 2^13 ⇒ ≤49 bits), adding an
-/// integer component up to 2^20 needs up to 56 bits — `e0 + ng` then ROUNDS and
-/// the aux point lands off every grid, kicking every predicate on the LPI to the
-/// BigRational tier (~200k residual exact-rational calls on a tunnel corpus).
-/// At 2^10 the sum stays ≤50 bits ⇒ exact f64 ⇒ on-grid. The LPI's VALUE is
-/// aux-invariant (any off-plane aux reads as the line `e0e1` in-plane), so
-/// signs, topology and the pinned manifests are unchanged.
-fn crossing_lpi(q0: [f64; 3], q1: [f64; 3], e0: [f64; 3], e1: [f64; 3], n: [f64; 3]) -> ImplicitPoint {
-    let m = n[0].abs().max(n[1].abs()).max(n[2].abs());
-    let ng = if m > 0.0 && m.is_finite() {
-        let s = 1024.0 / m; // normalise the max component to ~2^10, then round
-        [(n[0] * s).round(), (n[1] * s).round(), (n[2] * s).round()]
-    } else {
-        n
-    };
-    let aux = [e0[0] + ng[0], e0[1] + ng[1], e0[2] + ng[2]];
-    ImplicitPoint::Lpi(Lpi { p: q0, q: q1, r: e0, s: e1, t: aux })
+/// A representable nonzero displacement along the dropped axis.
+fn axis_offset(mut point: [f64; 3], axis: DropAxis) -> [f64; 3] {
+    let k = match axis { DropAxis::X => 0, DropAxis::Y => 1, DropAxis::Z => 2 };
+    let original = point[k];
+    point[k] += if original >= 0.0 { -1.0 } else { 1.0 };
+    if point[k] == original {
+        point[k] = if original >= 0.0 { original.next_down() } else { original.next_up() };
+    }
+    point
+}
+
+/// Exact crossing in the same dropped-axis projection as the clipping tests.
+/// Extruding along a rounded normal instead changes the projected crossing
+/// for nearly coplanar inputs (#7292); the dropped-axis extrusion does not.
+fn crossing_lpi(q0: [f64; 3], q1: [f64; 3], e0: [f64; 3], e1: [f64; 3], axis: DropAxis) -> ImplicitPoint {
+    // Keep the crossing on the host edge. The source segment can sit on a
+    // nearby plane; its height must not bend the host's retriangulation.
+    ImplicitPoint::Lpi(Lpi { p: e0, q: e1, r: q0, s: q1, t: axis_offset(q0, axis) })
+}
+
+fn on_host_plane(q: [f64; 3], ta: &Tri, axis: DropAxis) -> ImplicitPoint {
+    if orient3d(&e(q), &e(ta[0]), &e(ta[1]), &e(ta[2])) == Sign::Zero {
+        return e(q);
+    }
+    // Projection is unchanged, and projection_axis guarantees that the
+    // dropped-axis line intersects the host plane in one exact point.
+    ImplicitPoint::Lpi(Lpi { p: q, q: axis_offset(q, axis), r: ta[0], s: ta[1], t: ta[2] })
 }
 
 /// Clip segment `(q0,q1)` to triangle `ta` (2D). Returns the in-`ta` portion as a
@@ -92,7 +84,6 @@ fn clip_seg(
     ta: &Tri,
     axis: DropAxis,
     w0: Sign,
-    n: [f64; 3],
 ) -> Option<(ImplicitPoint, ImplicitPoint)> {
     let in0 = point_in_tri(&e(q0), ta, axis, w0);
     let in1 = point_in_tri(&e(q1), ta, axis, w0);
@@ -100,12 +91,12 @@ fn clip_seg(
     let crossings: Vec<ImplicitPoint> = edges
         .iter()
         .filter(|&&(e0, e1)| seg_seg_cross(q0, q1, e0, e1, axis))
-        .map(|&(e0, e1)| crossing_lpi(q0, q1, e0, e1, n))
+        .map(|&(e0, e1)| crossing_lpi(q0, q1, e0, e1, axis))
         .collect();
     match (in0, in1) {
-        (true, true) => Some((e(q0), e(q1))),
-        (true, false) => crossings.into_iter().next().map(|c| (e(q0), c)),
-        (false, true) => crossings.into_iter().next().map(|c| (c, e(q1))),
+        (true, true) => Some((on_host_plane(q0, ta, axis), on_host_plane(q1, ta, axis))),
+        (true, false) => crossings.into_iter().next().map(|c| (on_host_plane(q0, ta, axis), c)),
+        (false, true) => crossings.into_iter().next().map(|c| (c, on_host_plane(q1, ta, axis))),
         (false, false) => {
             if crossings.len() >= 2 {
                 Some((crossings[0].clone(), crossings[1].clone()))
@@ -119,15 +110,26 @@ fn clip_seg(
 /// Constraints `tb` (coplanar with `ta`) imposes on `ta`: each `tb` edge clipped
 /// to `ta`. Empty if `ta` is degenerate or the triangles don't overlap.
 pub fn coplanar_clip(ta: &Tri, tb: &Tri) -> Vec<(ImplicitPoint, ImplicitPoint)> {
+    clip_supported(ta, tb).into_iter().map(|s| (s.a, s.b)).collect()
+}
+
+/// Original source-edge extrusion; never reconstructed from implicit endpoints.
+pub(super) struct SupportedClip {
+    pub a: ImplicitPoint,
+    pub b: ImplicitPoint,
+    pub support: Tri,
+}
+
+pub(super) fn clip_supported(ta: &Tri, tb: &Tri) -> Vec<SupportedClip> {
     let (axis, w0) = match projection_axis(ta) {
         Some(x) => x,
         None => return Vec::new(),
     };
-    let n = plane_normal(ta);
-    let tb_edges = [(tb[0], tb[1]), (tb[1], tb[2]), (tb[2], tb[0])];
-    tb_edges
-        .iter()
-        .filter_map(|&(q0, q1)| clip_seg(q0, q1, ta, axis, w0, n))
+    [(tb[0], tb[1]), (tb[1], tb[2]), (tb[2], tb[0])]
+        .into_iter()
+        .filter_map(|(q0, q1)| clip_seg(q0, q1, ta, axis, w0).map(|(a, b)| SupportedClip {
+            a, b, support: [q0, q1, axis_offset(q0, axis)],
+        }))
         .collect()
 }
 
@@ -174,5 +176,116 @@ mod tests {
             }
         }
         assert!(saw_lpi, "an overhanging edge must yield an auxiliary-plane LPI crossing");
+    }
+
+    #[test]
+    fn issue_7292_near_coplanar_crossings_match_exact_projected_edges_on_all_axes() {
+        use super::super::rational::lpi_point;
+        use num_rational::BigRational;
+
+        // In projected coordinates, ta's boundary is u+v=4. The two
+        // overhanging tb edges cross it at (3,1) and (1,3), regardless of
+        // tb's tiny offset from the shared slope w=v/64. A normal-extruded
+        // auxiliary plane instead perturbs these projected crossings.
+        for axis in [DropAxis::X, DropAxis::Y, DropAxis::Z] {
+            let map = |u, v, w| match axis {
+                DropAxis::X => [w, u, v],
+                DropAxis::Y => [u, w, v],
+                DropAxis::Z => [u, v, w],
+            };
+            let ta = [map(0.0, 0.0, 0.0), map(4.0, 0.0, 0.0), map(0.0, 4.0, 4.0 / 64.0)];
+            // Zero is the exact-coplanar control; either sign exercises
+            // nearly coplanar faces without changing the projected geometry.
+            for offset in [0.0, 1.0 / 65_536.0, -1.0 / 65_536.0] {
+                let tb = [map(1.0, 1.0, 1.0 / 64.0 + offset),
+                    map(5.0, 1.0, 1.0 / 64.0 + offset),
+                    map(1.0, 5.0, 5.0 / 64.0 + offset)];
+                let expected = [map(3.0, 1.0, 1.0 / 64.0),
+                    map(1.0, 3.0, 3.0 / 64.0)]
+                    .map(|point| point.map(|value| BigRational::from_float(value).expect("finite dyadic oracle")));
+                let mut crossings = Vec::new();
+                let constraints = coplanar_clip(&ta, &tb);
+                assert_eq!(constraints.len(), 2, "two clipped source edges: {axis:?}, {offset}");
+                for (a, b) in constraints {
+                    for point in [a, b] {
+                        assert_eq!(orient3d(&point, &e(ta[0]), &e(ta[1]), &e(ta[2])), Sign::Zero,
+                            "#7292: a projected constraint must remain on its own host plane");
+                        if let ImplicitPoint::Lpi(lpi) = point {
+                            crossings.push(lpi_point(&lpi));
+                        }
+                    }
+                }
+                // The offset cases also lift the contained source endpoint
+                // on each of the two edges; exact-coplanar endpoints stay Explicit.
+                assert_eq!(crossings.len(), if offset == 0.0 { 2 } else { 4 },
+                    "projected crossings and contained lifts: {axis:?}, {offset}");
+                for point in &expected {
+                    assert!(crossings.contains(point),
+                        "#7292: missing exact projected crossing {point:?} for {axis:?}, offset {offset}; got {crossings:?}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn issue_7292_contained_constraints_lift_to_host_plane_on_all_axes() {
+        use super::super::rational::point_of;
+        use num_rational::BigRational;
+        for axis in [DropAxis::X, DropAxis::Y, DropAxis::Z] {
+            let map = |u, v, w| match axis {
+                DropAxis::X => [w, u, v], DropAxis::Y => [u, w, v], DropAxis::Z => [u, v, w],
+            };
+            let host = [map(0., 0., 0.), map(4., 0., 0.), map(0., 4., 4. / 64.)];
+            let expected = [map(1., 1., 1. / 64.), map(2., 1., 1. / 64.), map(1., 2., 2. / 64.)]
+                .map(|p| p.map(|v| BigRational::from_float(v).expect("finite dyadic oracle")));
+            for offset in [1. / 65_536., -1. / 65_536.] {
+                let source = [map(1., 1., 1. / 64. + offset),
+                    map(2., 1., 1. / 64. + offset), map(1., 2., 2. / 64. + offset)];
+                for ta in [host, [host[0], host[2], host[1]]] {
+                    let constraints = coplanar_clip(&ta, &source);
+                    assert_eq!(constraints.len(), 3, "#7292: contained face retains every edge");
+                    for (i, (a, b)) in constraints.iter().enumerate() {
+                        assert_eq!(point_of(a), expected[i], "#7292: preserve projected source start");
+                        assert_eq!(point_of(b), expected[(i + 1) % 3], "#7292: preserve projected source end");
+                        for point in [a, b] {
+                            assert_eq!(orient3d(point, &e(ta[0]), &e(ta[1]), &e(ta[2])), Sign::Zero,
+                                "#7292: contained constraint lies on its own host plane");
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn issue_7292_exact_coplanar_reciprocal_crossings_share_interner_vertices() {
+        use super::super::{interner::Interner, rational::point_of};
+        use num_rational::BigRational;
+        for axis in [DropAxis::X, DropAxis::Y, DropAxis::Z] {
+            let map = |u, v, w| match axis {
+                DropAxis::X => [w, u, v], DropAxis::Y => [u, w, v], DropAxis::Z => [u, v, w],
+            };
+            let ta = [map(0., 0., 0.), map(4., 0., 0.), map(0., 4., 4. / 64.)];
+            let tb = [map(1., 1., 1. / 64.), map(5., 1., 1. / 64.), map(1., 5., 5. / 64.)];
+            let expected = [map(3., 1., 1. / 64.), map(1., 3., 3. / 64.)]
+                .map(|p| p.map(|v| BigRational::from_float(v).expect("finite dyadic oracle")));
+            let mut interner = Interner::new();
+            let mut ids = Vec::new();
+            for (host, source) in [(&ta, &tb), (&tb, &ta)] {
+                let mut crossings = Vec::new();
+                for (a, b) in coplanar_clip(host, source) {
+                    for point in [a, b] {
+                        if expected.contains(&point_of(&point)) {
+                            crossings.push(interner.intern(point));
+                        }
+                    }
+                }
+                assert_eq!(crossings.len(), 2, "#7292: both exact projected crossings are present");
+                crossings.sort_unstable();
+                assert_ne!(crossings[0], crossings[1], "#7292: crossings remain distinct");
+                ids.push(crossings);
+            }
+            assert_eq!(ids[0], ids[1], "#7292: reciprocal exact seam points share global Vids");
+        }
     }
 }

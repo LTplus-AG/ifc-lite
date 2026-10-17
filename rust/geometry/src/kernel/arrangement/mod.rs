@@ -21,15 +21,16 @@
 //! separately via `coplanar_clip` and accumulated alongside the segment
 //! constraints before re-triangulation.
 
-use super::coplanar::coplanar_clip;
+use super::coplanar::{clip_supported, SupportedClip};
 use super::interner::{Interner, Vid};
 use super::predicates::{cmp_lex, orient2d_any};
 use super::retriangulate::{projection_axis, triangulate, Constraint, RetriInput};
-use super::tritri::{tri_tri_intersection, TriTri};
+use super::tritri::{tri_tri_intersection_with_band, TriTri};
 use super::{ImplicitPoint, Sign, Tpi};
-use std::cmp::Ordering;
 
 mod admission;
+mod binary;
+mod mixed;
 mod boolean;
 mod classify;
 mod coincident;
@@ -63,6 +64,10 @@ pub struct Arrangement {
     pub tris_a: Vec<[Vid; 3]>,
     /// Operand B's conforming sub-triangles.
     pub tris_b: Vec<[Vid; 3]>,
+    /// Source cutter component, repeated over each original parent's children.
+    component_b: Vec<usize>,
+    /// Identical per(A,Bk) scatter context for construction and classification.
+    bands: Vec<super::near_band::NearBand>,
     /// Total constraint sub-segments the per-triangle re-triangulations could
     /// not force as edges (`Mesh2d::unrecovered`). Non-zero ⇒ the operands do
     /// not fully conform along their intersection; centroid classification of
@@ -117,10 +122,13 @@ fn orient2d_end(a: EndLam, b: EndLam, c: EndLam, axis: super::DropAxis) -> Sign 
 /// cached variant of the classic four-orientation test.
 fn segments_cross(a1: EndLam, b1: EndLam, a2: EndLam, b2: EndLam, axis: super::DropAxis) -> bool {
     let s1 = orient2d_end(a1, b1, a2, axis);
+    if s1 == Sign::Zero { return false; }
     let s2 = orient2d_end(a1, b1, b2, axis);
+    if s2 == Sign::Zero || s1 == s2 { return false; }
     let s3 = orient2d_end(a2, b2, a1, axis);
+    if s3 == Sign::Zero { return false; }
     let s4 = orient2d_end(a2, b2, b1, axis);
-    s1 != Sign::Zero && s2 != Sign::Zero && s1 != s2 && s3 != Sign::Zero && s4 != Sign::Zero && s3 != s4
+    s4 != Sign::Zero && s3 != s4
 }
 
 /// seg×seg pre-pass for one triangle `t`: split every pair of crossing
@@ -128,7 +136,7 @@ fn segments_cross(a1: EndLam, b1: EndLam, a2: EndLam, b2: EndLam, axis: super::D
 /// cutter_j.plane)` (a valid triple point: crossing ⇒ the two cutter lines are
 /// non-parallel in `t`'s plane ⇒ the three planes meet at a point). The result
 /// is a crossing-free constraint set the re-triangulation can handle directly.
-fn split_crossings(t: &Tri, raws: &[RawSeg]) -> Vec<Constraint> {
+fn split_crossings(t: &Tri, raws: &[RawSeg]) -> Vec<mixed::Supported> {
     let axis = match projection_axis(t) {
         Some((a, _)) => a,
         None => return Vec::new(),
@@ -162,14 +170,13 @@ fn split_crossings(t: &Tri, raws: &[RawSeg]) -> Vec<Constraint> {
         chain.append(&mut splits[k]);
         chain.push(raws[k].b.clone());
         // order along the segment (collinear ⇒ lex order = line order) + dedup coincident
-        chain.sort_by(|p, q| match cmp_lex(p, q) {
-            Sign::Negative => Ordering::Less,
-            Sign::Positive => Ordering::Greater,
-            Sign::Zero => Ordering::Equal,
-        });
+        chain.sort_by(mixed::order);
         chain.dedup_by(|p, q| cmp_lex(p, q) == Sign::Zero);
         for w in chain.windows(2) {
-            out.push(Constraint { a: w[0].clone(), b: w[1].clone() });
+            out.push(mixed::Supported {
+                constraint: Constraint { a: w[0].clone(), b: w[1].clone() },
+                support: raws[k].cutter,
+            });
         }
     }
     out
@@ -177,80 +184,7 @@ fn split_crossings(t: &Tri, raws: &[RawSeg]) -> Vec<Constraint> {
 
 /// Conforming arrangement of `a` and `b`; refused past [`MAX_OPERAND_COORD`].
 pub fn arrange(a: &[Tri], b: &[Tri]) -> Arrangement {
-    if !operands_admitted(&[a, b]) { return admission::refused(); } // #7677
-    // 1. accumulate raw intersection segments (Segment pairs) + coplanar overlaps
-    let mut raw_a: Vec<Vec<RawSeg>> = (0..a.len()).map(|_| Vec::new()).collect();
-    let mut raw_b: Vec<Vec<RawSeg>> = (0..b.len()).map(|_| Vec::new()).collect();
-    let mut cop_a: Vec<Vec<Constraint>> = (0..a.len()).map(|_| Vec::new()).collect();
-    let mut cop_b: Vec<Vec<Constraint>> = (0..b.len()).map(|_| Vec::new()).collect();
-    let mut pt_a: Vec<Vec<ImplicitPoint>> = (0..a.len()).map(|_| Vec::new()).collect();
-    let mut pt_b: Vec<Vec<ImplicitPoint>> = (0..b.len()).map(|_| Vec::new()).collect();
-    let pairs = super::broadphase::candidate_pairs(a, b);
-    for (i, j) in pairs {
-        // Deterministic escalation guardrail (#1109): stop accumulating
-        // intersections once this boolean has blown its BigRational budget. The
-        // partial arrangement is discarded by the caller (csg.rs checks
-        // `budget::tripped()` and falls back), so an early break is safe; it just
-        // bounds the wasted work to ~one more triangle pair.
-        if super::budget::tripped() {
-            break;
-        }
-        let (ta, tb) = (&a[i], &b[j]);
-        match tri_tri_intersection(ta, tb) {
-            TriTri::Segment([s, t]) => {
-                raw_a[i].push(RawSeg { a: s.clone(), b: t.clone(), cutter: *tb });
-                raw_b[j].push(RawSeg { a: s, b: t, cutter: *ta });
-            }
-            TriTri::Coplanar => {
-                cop_a[i].extend(coplanar_clip(ta, tb).into_iter().map(|(a, b)| Constraint { a, b }));
-                cop_b[j].extend(coplanar_clip(tb, ta).into_iter().map(|(a, b)| Constraint { a, b }));
-            }
-            TriTri::Point(p) => {
-                // Tangential touch: BOTH triangles must intern the touch point
-                // as a conformity vertex. The triangle on whose EDGE the point
-                // lies otherwise never splits that edge, while its neighbor
-                // (which sees a full crossing segment ending there) does — a
-                // T-junction that opens the surface (the flush-corner-on-
-                // diagonal family; see `RetriInput::points`).
-                pt_a[i].push(p.clone());
-                pt_b[j].push(p);
-            }
-            TriTri::None => {}
-        }
-    }
-    // 2. seg×seg pre-pass on the segment constraints, then append the coplanar ones
-    let build = |tris: &[Tri], raw: &[Vec<RawSeg>], cop: &mut [Vec<Constraint>]| -> Vec<Vec<Constraint>> {
-        (0..tris.len())
-            .map(|i| {
-                let mut c = split_crossings(&tris[i], &raw[i]);
-                c.append(&mut cop[i]);
-                c
-            })
-            .collect()
-    };
-    // Per-ORIGINAL-triangle "had a coplanar overlap with the other operand" flag,
-    // captured BEFORE `build` drains the coplanar-constraint accumulators.
-    let cop_parent_a: Vec<bool> = cop_a.iter().map(|c| !c.is_empty()).collect();
-    let cop_parent_b: Vec<bool> = cop_b.iter().map(|c| !c.is_empty()).collect();
-    let ca = build(a, &raw_a, &mut cop_a);
-    let cb = build(b, &raw_b, &mut cop_b);
-    // 3. re-triangulate each operand over the SHARED interner ⇒ conforming surfaces
-    let mut interner = Interner::new();
-    let mut unrecovered = 0usize;
-    let (tris_a, coplanar_a) =
-        retriangulate_each(a, &ca, &pt_a, &cop_parent_a, &mut interner, &mut unrecovered);
-    let (tris_b, coplanar_b) =
-        retriangulate_each(b, &cb, &pt_b, &cop_parent_b, &mut interner, &mut unrecovered);
-    let n_pts = interner.len();
-    Arrangement {
-        interner,
-        tris_a,
-        tris_b,
-        coplanar_a,
-        coplanar_b,
-        unrecovered,
-        f64_cache: std::cell::RefCell::new(vec![None; n_pts]),
-    }
+    binary::arrange(a, b)
 }
 
 /// The conforming arrangement of `n` operand meshes over one shared interner.
@@ -286,7 +220,7 @@ pub fn arrange_many(meshes: &[&[Tri]]) -> MultiArrangement {
     // per-mesh, per-triangle constraint accumulators
     let mut raw: Vec<Vec<Vec<RawSeg>>> =
         meshes.iter().map(|m| (0..m.len()).map(|_| Vec::new()).collect()).collect();
-    let mut cop: Vec<Vec<Vec<Constraint>>> =
+    let mut cop: Vec<Vec<Vec<SupportedClip>>> =
         meshes.iter().map(|m| (0..m.len()).map(|_| Vec::new()).collect()).collect();
     let mut pts: Vec<Vec<Vec<ImplicitPoint>>> =
         meshes.iter().map(|m| (0..m.len()).map(|_| Vec::new()).collect()).collect();
@@ -296,6 +230,7 @@ pub fn arrange_many(meshes: &[&[Tri]]) -> MultiArrangement {
             break;
         }
         for j in (i + 1)..n {
+            let band = super::near_band::NearBand::from_operands(meshes[i], meshes[j]);
             let pairs = super::broadphase::candidate_pairs(meshes[i], meshes[j]);
             for (ti, tj) in pairs {
                 // Escalation guardrail (#1109) — see `arrange`.
@@ -303,17 +238,17 @@ pub fn arrange_many(meshes: &[&[Tri]]) -> MultiArrangement {
                     break;
                 }
                 let (ta, tb) = (&meshes[i][ti], &meshes[j][tj]);
-                match tri_tri_intersection(ta, tb) {
+                match tri_tri_intersection_with_band(ta, tb, &band) {
                     TriTri::Segment([s, t]) => {
                         raw[i][ti].push(RawSeg { a: s.clone(), b: t.clone(), cutter: *tb });
                         raw[j][tj].push(RawSeg { a: s, b: t, cutter: *ta });
                     }
                     TriTri::Coplanar => {
                         cop[i][ti].extend(
-                            coplanar_clip(ta, tb).into_iter().map(|(a, b)| Constraint { a, b }),
+                            clip_supported(ta, tb),
                         );
                         cop[j][tj].extend(
-                            coplanar_clip(tb, ta).into_iter().map(|(a, b)| Constraint { a, b }),
+                            clip_supported(tb, ta),
                         );
                     }
                     TriTri::Point(p) => {
@@ -326,6 +261,15 @@ pub fn arrange_many(meshes: &[&[Tri]]) -> MultiArrangement {
             }
         }
     }
+    // Build every carrier before propagating newly constructed exact crossings.
+    let has_coplanar = cop.iter().flatten().any(|clips| !clips.is_empty());
+    let mut generated = Vec::new();
+    let mut cons: Vec<mixed::Built> = (0..n).map(|k| {
+        mixed::build(meshes[k], &raw[k], &cop[k], &mut generated, has_coplanar)
+    }).collect();
+    for k in 0..n {
+        mixed::propagate(meshes[k], &mut cons[k], &generated, &mut pts[k]);
+    }
     let mut interner = Interner::new();
     let mut subtris = Vec::with_capacity(n);
     // Accumulate unrecovered constraints across EVERY mesh's re-triangulation
@@ -335,17 +279,10 @@ pub fn arrange_many(meshes: &[&[Tri]]) -> MultiArrangement {
     let mut unrecovered = 0usize;
     for k in 0..n {
         let cop_parent: Vec<bool> = cop[k].iter().map(|c| !c.is_empty()).collect();
-        let cons: Vec<Vec<Constraint>> = (0..meshes[k].len())
-            .map(|t| {
-                let mut c = split_crossings(&meshes[k][t], &raw[k][t]);
-                c.append(&mut cop[k][t]);
-                c
-            })
-            .collect();
         // `union_all` classifies every sub-triangle against each other mesh via the
         // off-plane `solid_side` probe, so it needs no per-sub coplanar flag here.
-        let (tris, _coplanar) =
-            retriangulate_each(meshes[k], &cons, &pts[k], &cop_parent, &mut interner, &mut unrecovered);
+        let (tris, _coplanar, _) =
+            retriangulate_each(meshes[k], &cons[k].constraints, &pts[k], &cop_parent, &mut interner, &mut unrecovered, None);
         subtris.push(tris);
     }
     MultiArrangement { interner, subtris, unrecovered }
@@ -363,9 +300,11 @@ fn retriangulate_each(
     cop_parent: &[bool],
     it: &mut Interner,
     unrecovered: &mut usize,
-) -> (Vec<[Vid; 3]>, Vec<bool>) {
+    parent_components: Option<&[usize]>,
+) -> (Vec<[Vid; 3]>, Vec<bool>, Vec<usize>) {
     let mut out = Vec::new();
     let mut coplanar = Vec::new();
+    let mut components = Vec::new();
     for (i, t) in tris.iter().enumerate() {
         // Escalation guardrail (#1109): the seam retriangulation runs exact
         // orient2d per ear and is the other heavy escalation site. Stop once the
@@ -395,7 +334,10 @@ fn retriangulate_each(
             out.push(passthrough(it)); // degenerate triangle — pass through
         }
         coplanar.resize(out.len(), parent_cop);
+        if let Some(owners) = parent_components {
+            components.resize(out.len(), owners[i]);
+        }
         debug_assert!(coplanar.len() == out.len() && before <= out.len());
     }
-    (out, coplanar)
+    (out, coplanar, components)
 }

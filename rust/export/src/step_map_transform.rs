@@ -3,7 +3,7 @@
 //! logical product placements and mapped body geometry, preserving map points.
 
 use std::collections::{BTreeMap, HashMap};
-use ifc_lite_core::{EntityDecoder, EntityScanner, GeoRefExtractor, IfcType};
+use ifc_lite_core::{slot, EntityDecoder, EntityScanner, GeoRefExtractor, IfcType};
 use ifc_lite_geometry::GeometryRouter;
 use nalgebra::Matrix4;
 use serde::Serialize;
@@ -75,7 +75,7 @@ pub fn plan_map_conversion_normalization(content: &[u8]) -> Result<MapConversion
         let mut decoder = EntityDecoder::new(&content);
         let operation = decoder.decode_by_id(map.id).map_err(|error| error.to_string())?;
         preflight::operation(&operation)?;
-        let target_id = operation.get_ref(1).ok_or("map TargetCRS is missing")?;
+        let target_id = operation.ref_at(slot::IfcMapConversion::TARGET_CRS).ok_or("map TargetCRS is missing")?;
         let target = decoder.decode_by_id(target_id).map_err(|error| error.to_string())?;
         if target.ifc_type != IfcType::IfcProjectedCRS { return Err("map TargetCRS is not an IfcProjectedCRS".into()); }
         // Select the operation's actual target, not the first unrelated CRS in
@@ -110,7 +110,7 @@ pub fn plan_map_conversion_normalization(content: &[u8]) -> Result<MapConversion
         if scale == 1.0 && geo.x_axis_abscissa == 1.0 && geo.x_axis_ordinate.abs() <= f64::EPSILON {
             return Ok(MapConversionNormalizationPlan::default());
         }
-        let context = operation.get_ref(0).ok_or("map SourceCRS is missing")?;
+        let context = operation.ref_at(slot::IfcMapConversion::SOURCE_CRS).ok_or("map SourceCRS is missing")?;
         if scale == 1.0 {
             return rigid::plan(&records, &ids, map, context, unit, &affine, &mut decoder);
         }
@@ -132,11 +132,11 @@ pub fn plan_map_conversion_normalization(content: &[u8]) -> Result<MapConversion
             preflight::rigid_frame(&normalized, record.id)?;
             let new_placement = output.placement(&normalized)?;
             plan.replacements.push(writer::replace(record, &[(5, format!("#{new_placement}"))])?);
-            if let Some(shape) = product.get_ref(6) { shapes.insert(shape, ()); }
+            if let Some(shape) = product.ref_at(slot::IfcProduct::REPRESENTATION) { shapes.insert(shape, ()); }
         }
         for shape_id in shapes.keys() {
             let shape = decoder.decode_by_id(*shape_id).map_err(|error| error.to_string())?;
-            let reps = shape.get_refs(2).ok_or("ProductDefinitionShape has no Representations")?;
+            let reps = shape.ref_list_at(slot::IfcProductRepresentation::REPRESENTATIONS).ok_or("ProductDefinitionShape has no Representations")?;
             let mut mapped = Vec::new();
             for rep_id in reps {
                 let record = &records[*ids.get(&rep_id).ok_or("representation record is absent")?];
@@ -152,7 +152,7 @@ pub fn plan_map_conversion_normalization(content: &[u8]) -> Result<MapConversion
         for map_id in type_maps {
             let record = &records[*ids.get(&map_id).ok_or("type map record is absent")?];
             let origin = crate::step_text::attribute_of(record.line, 0).ok_or("type map MappingOrigin is invalid")?.trim().to_string();
-            let rep_id = decoder.decode_by_id(map_id).map_err(|error| error.to_string())?.get_ref(1).ok_or("type map has no MappedRepresentation")?;
+            let rep_id = decoder.decode_by_id(map_id).map_err(|error| error.to_string())?.ref_at(slot::IfcRepresentationMap::MAPPED_REPRESENTATION).ok_or("type map has no MappedRepresentation")?;
             let rep = &records[*ids.get(&rep_id).ok_or("type map representation record is absent")?];
             let wrapped = output.scaled_wrapper(rep, &origin, scale)?;
             let identity = output.identity_frame()?;

@@ -29,7 +29,7 @@ const _: () = assert!(
     "ifc-lite-export assumes a little-endian target (GLB is LE; cast_slice byte reinterpretation)",
 );
 
-use crate::color_space::srgba_to_linear;
+use crate::color_space::{material_key as color_key, srgba_to_linear};
 use crate::error::ExportError;
 use ifc_lite_core::EntityIndex;
 use ifc_lite_geometry::{
@@ -443,11 +443,6 @@ fn mesh_visible(mesh: &MeshData, opts: &GltfOptions) -> bool {
     VisibilityFilter::new(opts).visible(mesh)
 }
 
-/// Material dedup key: RGBA rounded to 2 decimals (matches the TS exporter's key).
-fn color_key(c: [f32; 4]) -> (i32, i32, i32, i32) {
-    let r = |v: f32| (v * 100.0).round() as i32;
-    (r(c[0]), r(c[1]), r(c[2]), r(c[3]))
-}
 
 /// One material for a mesh colour: the single source of the lit / unlit / emissive
 /// rules, shared by every assembler so the paths cannot drift. `emissive` takes
@@ -489,23 +484,14 @@ fn make_material(color: [f32; 4], lit: bool, emissive: bool) -> Material {
 /// ~20-50x less hashing on large models (xxh3 bulk vs element-wise SipHash-1-3).
 ///
 /// Because the digest never leaves this function, the IMPLEMENTATION is free: any
-/// sound 128-bit hash groups the same meshes. That is what makes `twox-hash` (MIT)
-/// substitutable for `xxhash-rust` (BSL-1.0) without touching a single output byte.
+/// sound 128-bit hash groups the same meshes. The algorithm lives in
+/// `ifc_lite_core::hash::ContentHash` (MIT `twox-hash`).
 fn geom_color_key(positions: &[f32], normals: &[f32], indices: &[u32], color: [f32; 4]) -> u128 {
-    use twox_hash::XxHash3_128;
-    let mut h = XxHash3_128::new();
-    h.write(&(positions.len() as u64).to_le_bytes());
-    h.write(bytemuck::cast_slice::<f32, u8>(positions));
-    h.write(&(normals.len() as u64).to_le_bytes());
-    h.write(bytemuck::cast_slice::<f32, u8>(normals));
-    h.write(&(indices.len() as u64).to_le_bytes());
-    h.write(bytemuck::cast_slice::<u32, u8>(indices));
     let (r, g, b, a) = color_key(color);
-    h.write(&r.to_le_bytes());
-    h.write(&g.to_le_bytes());
-    h.write(&b.to_le_bytes());
-    h.write(&a.to_le_bytes());
-    h.finish_128()
+    let mut h = ifc_lite_core::hash::ContentHash::new();
+    h.write_f32s(positions).write_f32s(normals).write_u32s(indices);
+    h.write(&r.to_le_bytes()).write(&g.to_le_bytes()).write(&b.to_le_bytes()).write(&a.to_le_bytes());
+    h.finish()
 }
 
 /// Streams geometry into one or more glTF buffers. Each buffer holds three bufferViews

@@ -9,62 +9,16 @@ use std::collections::HashSet;
 
 use crate::rooted_type::is_rooted_type;
 
-/// buildingSMART base64 alphabet (64 chars) used by IfcGloballyUniqueId.
-const GLOBAL_ID_CHARS: &[u8; 64] =
-    b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_$";
-
-/// Deterministic 22-char GlobalId from an arbitrary seed. A faithful port of
-/// `@ifc-lite/parser`'s `deterministicGlobalId` (four independent 32-bit rolling
-/// hashes cross-mixed into a 128-bit state, stamped MSB-first as `2 + 21*6` bits)
-/// so a merged file re-stamped natively carries the same ids the JS path would.
-///
-/// The input is iterated as UTF-16 code units to match JavaScript's `charCodeAt`
-/// semantics exactly (seeds are ASCII in practice, but this keeps parity if a
-/// non-ASCII model id ever reaches the mint salt).
+/// Deterministic 22-char GlobalId from a seed, byte-identical to
+/// `@ifc-lite/parser`'s `deterministicGlobalId`. See [`ifc_lite_core::guid::deterministic`].
 pub fn deterministic_global_id(seed: &str) -> String {
-    let mut h0: u32 = 0x811c_9dc5;
-    let mut h1: u32 = 0x9e37_79b9;
-    let mut h2: u32 = 0x6c07_8965;
-    let mut h3: u32 = 0xb529_7a4d;
-    for unit in seed.encode_utf16() {
-        let c = unit as u32;
-        h0 = (h0 ^ c).wrapping_mul(0x0100_0193);
-        h1 = (h1 ^ c ^ (h1 >> 11)).wrapping_mul(0x85eb_ca6b);
-        h2 = h2.wrapping_add(c).wrapping_add(h2 >> 7).wrapping_mul(0xc2b2_ae35);
-        h3 = (h3 ^ ((c << 3) | (c >> 5)) ^ (h3 >> 13)).wrapping_mul(0x27d4_eb2f);
-    }
-    let mix = |x: u32, y: u32| -> u32 {
-        ((x ^ y).wrapping_add((x >> 7) | (y << 25))).wrapping_mul(0x85eb_ca6b)
-    };
-    let m0 = mix(h0, h2);
-    let m1 = mix(h1, h3);
-    let m2 = mix(h2, m1);
-    let m3 = mix(h3, m0);
-    let words = [m0, m1, m2, m3];
-
-    // Read the 128-bit state as a plain MSB-first bit string.
-    let bit = |idx: usize| -> u32 {
-        let word = words[idx / 32];
-        let shift = 31 - (idx % 32);
-        (word >> shift) & 1
-    };
-    let mut out = String::with_capacity(22);
-    out.push(GLOBAL_ID_CHARS[((bit(0) << 1) | bit(1)) as usize] as char);
-    for i in 0..21 {
-        let mut v = 0u32;
-        for b in 0..6 {
-            v = (v << 1) | bit(2 + i * 6 + b);
-        }
-        out.push(GLOBAL_ID_CHARS[v as usize] as char);
-    }
-    out
+    ifc_lite_core::guid::deterministic(seed)
 }
 
-/// True for a 22-char IfcGloballyUniqueId (`^[0-9A-Za-z_$]{22}$`).
+/// True for a 22-char IfcGloballyUniqueId (`^[0-9A-Za-z_$]{22}$`); the merge's
+/// long-standing shape check. See [`ifc_lite_core::guid::is_global_id_shaped`].
 pub fn is_global_id(s: &str) -> bool {
-    s.len() == 22
-        && s.bytes()
-            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'$')
+    ifc_lite_core::guid::is_global_id_shaped(s)
 }
 
 /// True for IfcRelationship subtypes (objectified relationships): a shared GUID
@@ -95,19 +49,7 @@ pub fn extract_global_id_fast(type_upper: &str, line: &[u8]) -> Option<String> {
     if !is_rooted_entity_type(type_upper) {
         return None;
     }
-    let window = &line[..line.len().min(128)];
-    let open = window.iter().position(|&b| b == b'(')?;
-    let mut i = open + 1;
-    while i < window.len() && window[i].is_ascii_whitespace() {
-        i += 1;
-    }
-    if i >= window.len() || window[i] != b'\'' {
-        return None;
-    }
-    let start = i + 1;
-    let close = window[start..].iter().position(|&b| b == b'\'')? + start;
-    let inner = std::str::from_utf8(&window[start..close]).ok()?;
-    is_global_id(inner).then(|| inner.to_string())
+    ifc_lite_core::guid::leading_global_id(line).map(str::to_string)
 }
 
 /// The uppercase entity type token of a `#id=TYPE(...)` line, tolerating

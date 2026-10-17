@@ -209,12 +209,7 @@ pub(crate) fn export_glb_from_meshes_in_frame(
         let pslice = &positions[vbase * 3..pend];
         let nslice: &[f32] = normals.get(vbase * 3..pend).unwrap_or(&[]);
         let islice = &indices[ibase..iend];
-        let color = [
-            colors.get(i * 4).copied().unwrap_or(0.8),
-            colors.get(i * 4 + 1).copied().unwrap_or(0.8),
-            colors.get(i * 4 + 2).copied().unwrap_or(0.8),
-            colors.get(i * 4 + 3).copied().unwrap_or(1.0),
-        ];
+        let color = crate::color_space::rgba_at(colors, i);
         let origin = [
             origins.get(i * 3).copied().unwrap_or(0.0),
             origins.get(i * 3 + 1).copied().unwrap_or(0.0),

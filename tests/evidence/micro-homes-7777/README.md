@@ -1,0 +1,3 @@
+# Core micro-homes (#7777, F3d)
+
+`behaviour.oracle.patch` is the revert-oracle mutation for the micro-homes PR. The PR adds `core::guid`, `core::hash` and `core::fmt_num`; a whole-change revert deletes them under the changed tests (`guid_tests.rs`, `hash_tests.rs`), which is INCONCLUSIVE. The patch keeps every item and disables ONLY behaviour the tests pin: the first-character GlobalId rule, the 128-byte leading-id window, the `placeholder` offset, the FNV-1a 32-bit prime, `ContentHash` length framing and the word-wise `mix_word` step. Once `rust/core/src/guid.rs` is on `main` the ordinary whole-change revert resumes.

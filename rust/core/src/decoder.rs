@@ -81,6 +81,8 @@ pub struct EntityDecoder<'a> {
     /// default (and Renga-style files) is 1.0 (RADIAN); degree-unit files
     /// resolve to π/180.
     plane_angle_to_radians_cache: Option<f64>,
+    /// The model's `IFCPROJECT` id, located once ([`Self::project_id`]).
+    project_id_cache: Option<Option<u32>>,
     /// Lazy-cached multiplier converting file length units to metres.
     /// Populated on first call to [`Self::length_unit_scale`]. 1.0 for metre
     /// files, 0.001 for millimetre files, etc. Used to express absolute
@@ -134,6 +136,7 @@ impl<'a> EntityDecoder<'a> {
             point_cache_hits: 0,
             point_cache_misses: 0,
             plane_angle_to_radians_cache: None,
+            project_id_cache: None,
             length_unit_scale_cache: None,
             geometric_precision_cache: None,
             placement_transform_cache: FxHashMap::default(),
@@ -159,6 +162,7 @@ impl<'a> EntityDecoder<'a> {
             point_cache_hits: 0,
             point_cache_misses: 0,
             plane_angle_to_radians_cache: None,
+            project_id_cache: None,
             length_unit_scale_cache: None,
             geometric_precision_cache: None,
             placement_transform_cache: FxHashMap::default(),
@@ -184,6 +188,7 @@ impl<'a> EntityDecoder<'a> {
             point_cache_hits: 0,
             point_cache_misses: 0,
             plane_angle_to_radians_cache: None,
+            project_id_cache: None,
             length_unit_scale_cache: None,
             geometric_precision_cache: None,
             placement_transform_cache: FxHashMap::default(),
@@ -395,9 +400,19 @@ impl<'a> EntityDecoder<'a> {
         self.decode_at(start, end)
     }
 
+    /// The model's `IFCPROJECT` express id: the first in file order, `None`
+    /// when the file has none. Located once per decoder by the one locator
+    /// ([`crate::find_project_id`], a SIMD keyword search, not an entity
+    /// scan) and cached, so both scale resolvers below share it.
+    pub fn project_id(&mut self) -> Option<u32> {
+        *self
+            .project_id_cache
+            .get_or_insert_with(|| crate::project_locator::find_project_id(self.content))
+    }
+
     /// Multiplier that converts file plane-angle units to radians.
     ///
-    /// Lazy-resolved on first call by scanning for IFCPROJECT and reading
+    /// Lazy-resolved on first call by locating IFCPROJECT and reading
     /// its IFCUNITASSIGNMENT. Cached for subsequent calls. Returns `1.0`
     /// when no plane-angle unit is declared (IFC spec default = RADIAN).
     ///
@@ -410,15 +425,7 @@ impl<'a> EntityDecoder<'a> {
             return cached;
         }
 
-        let mut scanner = crate::parser::EntityScanner::new(self.content);
-        let mut project_id: Option<u32> = None;
-        while let Some((id, type_name, _, _)) = scanner.next_entity() {
-            // #4497: the keyword is the raw scanner slice; see `parser::keyword`.
-            if crate::parser::keyword_eq(type_name, "IFCPROJECT") {
-                project_id = Some(id);
-                break;
-            }
-        }
+        let project_id = self.project_id();
 
         let scale = match project_id {
             Some(pid) => crate::units::extract_plane_angle_to_radians(self, pid).unwrap_or(1.0),
@@ -430,7 +437,7 @@ impl<'a> EntityDecoder<'a> {
 
     /// Multiplier that converts file length units to metres (1.0 for metre
     /// files, 0.001 for millimetre files, …). Lazy-resolved on first call by
-    /// scanning for IFCPROJECT and reading its IFCUNITASSIGNMENT, then cached.
+    /// locating IFCPROJECT and reading its IFCUNITASSIGNMENT, then cached.
     /// Returns `1.0` when no length unit is declared.
     ///
     /// Use this to express an *absolute* metric tolerance in file units —
@@ -441,14 +448,7 @@ impl<'a> EntityDecoder<'a> {
             return cached;
         }
 
-        let mut scanner = crate::parser::EntityScanner::new(self.content);
-        let mut project_id: Option<u32> = None;
-        while let Some((id, type_name, _, _)) = scanner.next_entity() {
-            if crate::parser::keyword_eq(type_name, "IFCPROJECT") {
-                project_id = Some(id);
-                break;
-            }
-        }
+        let project_id = self.project_id();
 
         // #7678: a lossless (data) decoder keeps main's value; a strict
         // (geometry) one counts an unusable declared factor and returns 1.0
@@ -472,8 +472,8 @@ impl<'a> EntityDecoder<'a> {
     /// [`Self::plane_angle_to_radians`] return immediately without the full-file
     /// `IFCPROJECT` scan.
     ///
-    /// Both lazy resolvers walk the whole DATA section to locate the (singleton)
-    /// `IFCPROJECT`. That scan is `O(file size)` and `IFCPROJECT` legally sits
+    /// Both lazy resolvers search the whole DATA section for the (singleton)
+    /// `IFCPROJECT`. That search is `O(file size)` and `IFCPROJECT` legally sits
     /// anywhere — IfcOpenShell emits it near the *end*, so on a large model the
     /// scan touches tens of MB. The cache is per-decoder, and the parallel
     /// geometry pipeline builds a fresh decoder per element, so without seeding

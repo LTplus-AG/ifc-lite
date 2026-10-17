@@ -15,10 +15,49 @@ import type { Vec3 } from '../types.js';
 import { sub, cross, dot, scale } from '../math/vec3.js';
 import { OBB_EPS, type MeshLike, type Obb } from './obb.js';
 
-function normalize(v: Vec3): Vec3 | null {
+/**
+ * A triangle whose `sin` of its LARGEST angle (or a Gram-Schmidt residual whose
+ * `sin` against its own operand) is below this carries no direction evidence.
+ * Scale-free; the same value as the Rust `MIN_SIN_THETA` (F2a X5,
+ * EDGE-CLASH-4). It replaces a fixed `|cross| <= OBB_EPS` (1e-6 m^2) that
+ * dropped every face of a box with sides under ~1.4 mm, so a perfect small box
+ * fell to the AABB `Estimate` depth.
+ */
+const MIN_SIN_THETA = 1e-3;
+
+/** `v / |v|`, or null when `|v|` is not finite or below `minSin * reference`. */
+function unit(v: Vec3, reference: number, minSin: number): Vec3 | null {
   const len = Math.sqrt(dot(v, v));
-  if (!(len > OBB_EPS)) return null;
+  if (!Number.isFinite(len) || !Number.isFinite(reference) || !(len > 0) || len < minSin * reference) return null;
   return [v[0] / len, v[1] / len, v[2] / len];
+}
+
+/**
+ * The two shortest edge lengths of triangle `(a, b, c)`, shortest first: the
+ * edges that meet at its LARGEST angle, so the sliver test and the noise bound
+ * do not depend on which vertex the index buffer lists first (a 10 m x 5 mm
+ * face's half has `sin` ~5e-4 at an acute corner, 1 at the right angle).
+ * Same compare-and-swap order as the Rust `short_edges`.
+ */
+function shortEdges(a: Vec3, b: Vec3, c: Vec3): [number, number] {
+  const len = (p: Vec3, q: Vec3): number => {
+    const d = sub(q, p);
+    return Math.sqrt(dot(d, d));
+  };
+  let x = len(a, b);
+  let y = len(b, c);
+  const z = len(c, a);
+  if (x > y) [x, y] = [y, x];
+  if (y > z) y = z; // the longest edge is dropped
+  if (x > y) [x, y] = [y, x];
+  return [x, y];
+}
+
+/** The unit normal of `(a, b, c)` from `raw`, or null for a degenerate or
+ * needle triangle (`sin` of its largest angle under `MIN_SIN_THETA`). */
+function faceNormal(a: Vec3, b: Vec3, c: Vec3, raw: Vec3): Vec3 | null {
+  const [l0, l1] = shortEdges(a, b, c);
+  return unit(raw, l0 * l1, MIN_SIN_THETA);
 }
 
 /** Flip `n` so its largest-magnitude component is positive, so a face and its
@@ -52,12 +91,15 @@ const F32_ULP_SCALE = 1 / 4_194_304; // 2^-22
  *
  * The vertices carry an absolute coordinate error of about
  * `max|coord| * 2^-22` (`F32_ULP_SCALE`, the same f32-ULP bound the
- * penetration floor uses), so each edge does too. `|cross| = |e1||e2|sin t`,
- * and perturbing the edges by `d` tilts the normal by at most
- * `d * (|e1| + |e2|) / |cross|`. The denominator makes this a property of the
- * TRIANGLE's conditioning rather than a constant: a sliver, or a face with
- * one very short edge, resolves its normal far less sharply than a
- * well-shaped one at the same distance from the origin.
+ * penetration floor uses), so each edge does too. Perturbing the two edges at
+ * a vertex by `d` tilts the normal by at most `d * (1/|e1| + 1/|e2|) / sin t`:
+ * each edge's RELATIVE error over the `sin` of the angle between them, so the
+ * bound is scale-free in the triangle's shape. Any vertex gives a valid bound;
+ * it is taken at the largest angle (`shortEdges`), the vertex the sliver test
+ * uses, so it does not depend on vertex order. A sliver, or a face with one
+ * very short edge, still resolves its normal far less sharply than a
+ * well-shaped one at the same distance from the origin. A triangle the sliver
+ * test rejects has no bound (`Infinity`).
  *
  * This is the quantity an absolute `OBB_EPS` was standing in for, and a fixed
  * bound is simultaneously too loose near the origin and far too tight away
@@ -66,9 +108,7 @@ const F32_ULP_SCALE = 1 / 4_194_304; // 2^-22
  * box stopped being recognised as a box purely because it had been
  * translated (#5355).
  */
-function normalAngleError(a: Vec3, b: Vec3, c: Vec3): [number, number] {
-  const e1 = sub(b, a);
-  const e2 = sub(c, a);
+export function normalAngleError(a: Vec3, b: Vec3, c: Vec3): [number, number] {
   let maxAbs = 0;
   for (const v of [a, b, c]) {
     for (const k of v) {
@@ -77,12 +117,11 @@ function normalAngleError(a: Vec3, b: Vec3, c: Vec3): [number, number] {
     }
   }
   const coordErr = Math.max(maxAbs, 1) * F32_ULP_SCALE;
-  const n = cross(e1, e2);
-  const nLen = Math.sqrt(dot(n, n));
-  if (!(nLen > 0)) return [Infinity, coordErr];
-  const e1Len = Math.sqrt(dot(e1, e1));
-  const e2Len = Math.sqrt(dot(e2, e2));
-  return [(coordErr * (e1Len + e2Len)) / nLen, coordErr];
+  const n = cross(sub(b, a), sub(c, a));
+  const [l0, l1] = shortEdges(a, b, c);
+  const sin = Math.sqrt(dot(n, n)) / (l0 * l1);
+  if (!Number.isFinite(sin) || !(sin >= MIN_SIN_THETA)) return [Infinity, coordErr];
+  return [(coordErr * (1 / l0 + 1 / l1)) / sin, coordErr];
 }
 
 /**
@@ -143,7 +182,7 @@ export function detectObb(mesh: MeshLike): Obb | null {
       if (r > reach) reach = r;
     }
     const raw = cross(sub(b, a), sub(c, a));
-    const n = normalize(raw);
+    const n = faceNormal(a, b, c, raw);
     if (!n) continue; // degenerate triangle: contributes no face-normal evidence
     const cn = canonical(n);
     const [err, triCoordErr] = normalAngleError(a, b, c);
@@ -274,9 +313,9 @@ function familyAxes(sums: Vec3[], errNum: number[]): [Vec3[], number[]] | null {
     }
   }
   const [f0, f1, f2] = order;
-  const a0 = normalize(sums[f0]);
+  const a0 = unit(sums[f0], 0, 0);
   if (!a0) return null;
-  const a1 = normalize(sub(sums[f1], scale(a0, dot(sums[f1], a0))));
+  const a1 = unit(sub(sums[f1], scale(a0, dot(sums[f1], a0))), Math.sqrt(dot(sums[f1], sums[f1])), MIN_SIN_THETA);
   if (!a1) return null;
   let a2 = cross(a0, a1);
   if (dot(a2, sums[f2]) < 0) a2 = scale(a2, -1);

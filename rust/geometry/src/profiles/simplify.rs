@@ -2,6 +2,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+use crate::math::geom2d::{perp_distance, segments_intersect};
+use crate::math::v2::{bbox, shoelace2_by};
 use crate::profile::Profile2D;
 use crate::Point2;
 
@@ -103,22 +105,6 @@ pub(super) fn mirror_profile_about_y_axis(profile: &mut Profile2D) {
     }
 }
 
-/// Perpendicular distance from `p` to the line through `a` and `b`.
-#[inline]
-fn perpendicular_distance(p: Point2<f64>, a: Point2<f64>, b: Point2<f64>) -> f64 {
-    let dx = b.x - a.x;
-    let dy = b.y - a.y;
-    let len_sq = dx * dx + dy * dy;
-    if len_sq < f64::EPSILON {
-        let ex = p.x - a.x;
-        let ey = p.y - a.y;
-        return (ex * ex + ey * ey).sqrt();
-    }
-    // |(p - a) × (b - a)| / |b - a|
-    let cross = (p.x - a.x) * dy - (p.y - a.y) * dx;
-    cross.abs() / len_sq.sqrt()
-}
-
 /// Ramer-Douglas-Peucker simplification of an open polyline.
 /// Iterative implementation (no recursion) to keep stack usage small —
 /// arbitrary IFC profiles can run into the thousands of vertices.
@@ -142,7 +128,7 @@ fn rdp_simplify_open(points: &[Point2<f64>], epsilon: f64) -> Vec<Point2<f64>> {
         let mut max_dist = 0.0;
         let mut max_idx = start;
         for (i, p) in points.iter().enumerate().take(end).skip(start + 1) {
-            let d = perpendicular_distance(*p, a, b);
+            let d = perp_distance([p.x, p.y], [a.x, a.y], [b.x, b.y]);
             if d > max_dist {
                 max_dist = d;
                 max_idx = i;
@@ -171,40 +157,22 @@ const SELF_INTERSECT_SCAN_MAX_VERTICES: usize = 1024;
 
 /// Whether the closed polygon described by `loop_` (open form — the closing
 /// edge from the last vertex back to the first is implied) has any pair of
-/// non-adjacent edges that properly cross. Used to reject a simplification
-/// that turned a simple profile loop into a self-intersecting one.
+/// non-adjacent edges that meet (cross, touch or overlap), decided with the
+/// exact orientation predicate. Used to reject a simplification that turned a
+/// simple profile loop into a self-intersecting one.
 ///
 /// Brute-force O(n²), so only meaningful up to `SELF_INTERSECT_SCAN_MAX_VERTICES`
 /// vertices; above that it returns `false` without scanning and callers must
 /// apply their own size cap (see `simplify_smooth_curve_polyline`). Adjacent
-/// edges (which legitimately share a vertex) are skipped, and only *proper*
-/// crossings count, so the shared endpoints of consecutive segments never
-/// register as intersections.
+/// edges (which legitimately share a vertex) are skipped, so the shared
+/// endpoints of consecutive segments never register as intersections; any
+/// contact between two NON-adjacent edges does (#7773: the float orientation
+/// this used to compute misjudged near-collinear crossings, and counted a
+/// collinear overlap as clear).
 fn closed_loop_self_intersects(loop_: &[Point2<f64>]) -> bool {
     let n = loop_.len();
     if !(4..=SELF_INTERSECT_SCAN_MAX_VERTICES).contains(&n) {
         return false;
-    }
-    // Orientation of the triplet (a, b, c): >0 CCW, <0 CW, 0 collinear.
-    #[inline]
-    fn orient(a: Point2<f64>, b: Point2<f64>, c: Point2<f64>) -> f64 {
-        (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)
-    }
-    // Proper crossing of segment ab and segment cd (interiors intersect at a
-    // single point). Collinear/touching-endpoint cases return false — those
-    // are how consecutive boundary edges legitimately meet.
-    #[inline]
-    fn segments_properly_cross(
-        a: Point2<f64>,
-        b: Point2<f64>,
-        c: Point2<f64>,
-        d: Point2<f64>,
-    ) -> bool {
-        let d1 = orient(c, d, a);
-        let d2 = orient(c, d, b);
-        let d3 = orient(a, b, c);
-        let d4 = orient(a, b, d);
-        ((d1 > 0.0) != (d2 > 0.0)) && ((d3 > 0.0) != (d4 > 0.0))
     }
     for i in 0..n {
         let a = loop_[i];
@@ -219,7 +187,7 @@ fn closed_loop_self_intersects(loop_: &[Point2<f64>]) -> bool {
             }
             let c = loop_[j];
             let d = loop_[(j + 1) % n];
-            if segments_properly_cross(a, b, c, d) {
+            if segments_intersect([a.x, a.y], [b.x, b.y], [c.x, c.y], [d.x, d.y]) {
                 return true;
             }
         }
@@ -254,12 +222,7 @@ fn loop_doubles_back(loop_: &[Point2<f64>]) -> bool {
     if n < 4 {
         return false;
     }
-    let mut signed_area2 = 0.0;
-    for i in 0..n {
-        let a = loop_[i];
-        let b = loop_[(i + 1) % n];
-        signed_area2 += a.x * b.y - b.x * a.y;
-    }
+    let signed_area2 = shoelace2_by(n, |i| [loop_[i].x, loop_[i].y]);
     if signed_area2 == 0.0 {
         return false;
     }
@@ -323,24 +286,7 @@ pub(super) fn simplify_smooth_curve_polyline(
     }
 
     // Bounding box + diagonal (proxy for "size of profile").
-    let mut min_x = f64::INFINITY;
-    let mut min_y = f64::INFINITY;
-    let mut max_x = f64::NEG_INFINITY;
-    let mut max_y = f64::NEG_INFINITY;
-    for p in core {
-        if p.x < min_x {
-            min_x = p.x;
-        }
-        if p.y < min_y {
-            min_y = p.y;
-        }
-        if p.x > max_x {
-            max_x = p.x;
-        }
-        if p.y > max_y {
-            max_y = p.y;
-        }
-    }
+    let [min_x, min_y, max_x, max_y] = bbox(core.iter().map(|p| [p.x, p.y]));
     let dx = max_x - min_x;
     let dy = max_y - min_y;
     let diag = (dx * dx + dy * dy).sqrt();

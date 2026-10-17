@@ -7,7 +7,7 @@
 //! consolidation runs after that budget's caller check. Scans are over finite
 //! supplied contours; the added worst-case work is not a performance claim.
 use nalgebra::Point2;
-use crate::geom2d::{orientation, on_segment, segments_intersect};
+use crate::math::geom2d::{orientation, on_segment, segments_intersect};
 type P = Point2<f64>;
 fn xy(p:P)->[f64;2] {[p.x,p.y]}
 fn finite(p:P)->bool {p.x.is_finite()&&p.y.is_finite()}

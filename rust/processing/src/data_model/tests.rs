@@ -827,18 +827,8 @@ fn resolves_a_direct_material_association_including_its_category() {
 
 #[test]
 fn forwards_revit_duplex_material_associations_with_identity_5296() {
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../tests/models/ara3d/duplex.ifc");
-    let Ok(source) = std::fs::read(path) else {
-        eprintln!("skip: Revit duplex fixture absent; run pnpm fixtures");
-        return;
-    };
+    let source = ifc_lite_testkit::fixture_bytes_or_skip!("ara3d/duplex.ifc");
     let dm = extract_data_model_checked(&source);
-    // Optional manual end-to-end parity run through the TS decoder/viewer.
-    if let Ok(path) = std::env::var("IFCLITE_MATERIAL_PARQUET_OUT") {
-        let payload = crate::services::serialize_data_model_to_parquet(&dm).expect("serialize Revit data model");
-        std::fs::write(path, payload).expect("write Revit data model for cross-runtime parity check");
-    }
     assert!(dm.materials.iter().any(|m| m.material_name == "Masonry - Brick"),
         "Revit material assignment must survive server extraction");
     assert!(dm.materials.iter().all(|m| m.association_id > 0 && m.definition_id > 0 && !m.kind.is_empty()),
@@ -1564,15 +1554,16 @@ END-ISO-10303-21;
     }
 
     let exe = std::env::current_exe().expect("current test exe");
-    // NOT `module_path!()` - it is crate-qualified (`ifc_lite_server::...`),
+    // NOT `module_path!()` - it is crate-qualified (`ifc_lite_processing::...`),
     // while libtest's own `--exact` names are not (confirmed via `--list`).
     let test_name =
-        "services::data_model::tests::cyclic_aggregate_and_containment_edges_do_not_abort_the_process";
+        "data_model::tests::cyclic_aggregate_and_containment_edges_do_not_abort_the_process";
     let output = std::process::Command::new(&exe)
         .args([test_name, "--exact", "--nocapture"])
         .env(REPRO_ENV_VAR, "1")
         .output()
         .expect("failed to spawn child test process");
+    assert_child_ran_one_test(&output);
 
     assert!(
         output.status.success(),
@@ -2442,27 +2433,6 @@ fn material_layer_thickness_uses_owning_project_units_5296() {
     let same_unit_type = dm.materials.iter().find(|m| m.element_id == 210)
         .expect("same-unit shared type stays resolved");
     assert!((same_unit_type.thickness.unwrap() - 0.2).abs() < 1e-9);
-
-    // The manual cross-runtime oracle supplies MergedExporter output from two
-    // catalogued real IFC fixtures. Keep the synthetic test runnable in CI
-    // without those optional files; when supplied, assert the server's real
-    // model result before writing Parquet for the TS decoder/viewer check.
-    if let Ok(input) = std::env::var("IFCLITE_MATERIAL_MERGED_IN") {
-        let source = std::fs::read(input).expect("read merged IFC oracle input");
-        let merged = extract_data_model_checked(&source);
-        let wall_id = merged.entities.iter()
-            .find(|e| e.global_id.as_deref() == Some("3ZYW59sxj8lei475l7EhLU"))
-            .expect("millimetre wall in merged IFC").entity_id;
-        let wall_layer = merged.materials.iter().find(|m| m.element_id == wall_id)
-            .expect("material layer on millimetre wall");
-        assert!((wall_layer.thickness.unwrap() - 0.3).abs() < 1e-9,
-            "server must convert the real merged wall's 300 mm layer to 0.3 m");
-        let output = std::env::var("IFCLITE_MATERIAL_PARQUET_OUT")
-            .expect("set IFCLITE_MATERIAL_PARQUET_OUT for merged IFC oracle");
-        let payload = crate::services::serialize_data_model_to_parquet(&merged)
-            .expect("serialize merged IFC data model");
-        std::fs::write(output, payload).expect("write merged IFC Parquet oracle payload");
-    }
 }
 
 /// Issue #5475: an `IfcPropertyReferenceValue` reads as the referenced
@@ -2607,7 +2577,7 @@ fn self_and_mutually_referencing_material_usages_do_not_abort_server_5() {
     }
 
     let output = run_child(
-        "services::data_model::tests::server_5_material_usages::self_and_mutually_referencing_material_usages_do_not_abort_server_5",
+        "data_model::tests::server_5_material_usages::self_and_mutually_referencing_material_usages_do_not_abort_server_5",
         REPRO_ENV_VAR,
     );
     assert!(
@@ -2690,7 +2660,9 @@ fn run_child(test_name: &str, env_var: &str) -> std::process::Output {
         }
         std::thread::sleep(std::time::Duration::from_millis(50));
     }
-    child.wait_with_output().expect("collect child output")
+    let output = child.wait_with_output().expect("collect child output");
+    super::assert_child_ran_one_test(&output);
+    output
 }
 
 /// Breadth (#7673 review): `FAN_IN` associations all naming the head of one
@@ -2732,7 +2704,7 @@ fn many_associations_over_one_long_usage_chain_finish_server_5() {
     }
 
     let output = run_child(
-        "services::data_model::tests::server_5_material_usages::many_associations_over_one_long_usage_chain_finish_server_5",
+        "data_model::tests::server_5_material_usages::many_associations_over_one_long_usage_chain_finish_server_5",
         REPRO_ENV_VAR,
     );
     assert!(
@@ -2754,7 +2726,7 @@ fn many_associations_over_one_long_usage_chain_finish_server_5() {
 #[test]
 fn complex_property_walk_budget_matches_the_shared_vector() {
     let vector: serde_json::Value = serde_json::from_str(include_str!(
-        "../../../../../packages/parser/test/fixtures/complex-property-budget-7675.json"
+        "../../../../packages/parser/test/fixtures/complex-property-budget-7675.json"
     ))
     .expect("vector parses");
     let failed: Vec<String> = vector["cases"]
@@ -2911,8 +2883,6 @@ fn server_26_material_rows_are_budgeted_not_elements_times_layers() {
         dm.materials.len(),
         ifc.len()
     );
-    let refused = crate::services::serialize_data_model_to_parquet(&dm).expect_err("a truncated table was served");
-    assert!(refused.to_string().contains("material"), "{refused}");
 }
 
 /// The budget is relative to the input and binds hostile products, not real
@@ -2927,7 +2897,6 @@ fn server_26_ordinary_layer_sets_keep_every_row() {
         ENDSEC;\nEND-ISO-10303-21;\n";
     let dm = extract_data_model(ifc);
     assert_eq!(dm.materials.len(), 12);
-    crate::services::serialize_data_model_to_parquet(&dm).expect("served");
 }
 
 /// #7678 review finding 1: the data model reads a record holding a REAL the
@@ -2985,4 +2954,15 @@ ENDSEC;\nEND-ISO-10303-21;\n"
     assert_eq!(storeys.len(), 2, "anti-vacuity: {storeys:?}");
     assert_eq!(materials.len(), 1, "anti-vacuity: {materials:?}");
     assert_eq!(shape(&overflow), shape(&finite));
+}
+
+/// A child spawned with `--exact` and a name libtest does not know runs zero
+/// tests and exits 0, so a stale name (after a module move) would pass
+/// vacuously. Require that the child selected exactly one test.
+fn assert_child_ran_one_test(output: &std::process::Output) {
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("running 1 test"),
+        "the child must select exactly one test (stale libtest name?); stdout:\n{stdout}"
+    );
 }

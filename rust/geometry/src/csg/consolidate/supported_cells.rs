@@ -245,7 +245,7 @@ pub(super) fn has_uncertified_needle(mesh: &Mesh, supported: &Supported) -> bool
 // partition has no positive-area projected overlap. Exact SAT permits shared
 // vertices/edges, rejects duplicates and opposite-wound overlaps. Bound this
 // optional certificate's pair work; a large bucket retains ordinary cleanup.
-fn nonoverlapping(tris: &[PlaneTri]) -> bool {
+pub(super) fn nonoverlapping(tris: &[PlaneTri]) -> bool {
     if tris.len().saturating_mul(tris.len().saturating_sub(1)) / 2 > 4096 {
         return false;
     }
@@ -268,7 +268,7 @@ fn nonoverlapping(tris: &[PlaneTri]) -> bool {
         (0, 1)
     };
     let project = |t: &PlaneTri| t.v.map(|p| [p[x], p[y]]);
-    let orient = crate::geom2d::orientation;
+    let orient = crate::math::geom2d::orientation;
     for (i, a) in tris.iter().enumerate() {
         let a = project(a);
         let wa = orient(a[0], a[1], a[2]);

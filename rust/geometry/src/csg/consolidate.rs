@@ -12,6 +12,8 @@ mod plane_merge;
 mod ring_ops;
 mod preservation;
 mod supported_cells;
+mod source_boundary;
+mod source_boundary_graph;
 
 use super::ClippingProcessor;
 use conform::count_open_boundary_edges_at;
@@ -171,7 +173,7 @@ impl ClippingProcessor {
             supported.buckets.extend(supported.fold_support_buckets.iter().copied());
         }
         let mut planned = plans::build(&buckets, &merged_bucket_keys, &supported, length_unit_scale);
-        let Some(output) = candidates::emit(&mut planned) else {
+        let Some(output) = candidates::emit(&mut planned, &buckets, &supported) else {
             return mesh;
         };
         if output.is_empty() {

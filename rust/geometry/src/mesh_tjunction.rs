@@ -67,7 +67,7 @@ fn exact_collinear(points: [[f64; 3]; 3]) -> bool {
     points.iter().flatten().all(|v| v.is_finite())
         && [(0, 1), (1, 2), (2, 0)].into_iter().all(|(x, y)| {
             let p = points.map(|p| [p[x], p[y]]);
-            crate::geom2d::orientation(p[0], p[1], p[2]) == 0
+            crate::math::geom2d::orientation(p[0], p[1], p[2]) == 0
         })
 }
 

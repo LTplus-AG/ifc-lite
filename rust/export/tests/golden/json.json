@@ -18,6 +18,10 @@
       "fnv1a64": "d6a5c234143ac70a",
       "bytes": 329
     },
+    "c6_data_model_synthetic": {
+      "fnv1a64": "ab6b847189978ff4",
+      "bytes": 1585
+    },
     "duplex": {
       "fnv1a64": "eeafb93fa5aa52c8",
       "bytes": 1071206

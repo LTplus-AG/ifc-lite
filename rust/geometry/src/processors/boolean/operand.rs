@@ -220,6 +220,17 @@ impl BooleanClippingProcessor {
                 // Recursive case with depth tracking
                 self.process_with_depth(operand, decoder, &self.schema, depth + 1, quality, visited)
             }
+            // An open swept surface bounds no volume and is not an
+            // `IfcBooleanOperand`. Main refused it here (the type had no
+            // built-in); since #7688 registered it, meshing it would cut the
+            // host open along the strip. It stays an unsupported operand.
+            IfcType::IfcSurfaceOfLinearExtrusion => {
+                self.record_failure(
+                    op,
+                    BoolFailureReason::UnsupportedOperand(operand.ifc_type.to_string()),
+                );
+                Ok((Mesh::new(), true))
+            }
             other => match builtin_processor(other.clone(), &self.schema) {
                 Some(processor) => {
                     let outer = processor.process(operand, decoder, &self.schema, quality)?;

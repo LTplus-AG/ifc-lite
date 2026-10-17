@@ -413,3 +413,35 @@ fn baked_basis_reads_the_coordinate_space_tag_not_the_site_placement() {
         "site_local must fold the site rotation in; the two tiers cannot share a basis"
     );
 }
+
+#[test]
+fn issue_7772_x2_a_non_finite_placement_is_refused_not_inverted_to_nan() {
+    // EXPORT-GEOM-3: `abs(NaN) < eps` is false, so a NaN placement used to
+    // return `Some(NaN)` and ship NaN node matrices. It must be refused so the
+    // caller falls back to flat, exactly like a singular placement.
+    for bad in [f64::NAN, f64::INFINITY] {
+        let mut m = [0.0f64; 16];
+        m[0] = 1.0;
+        m[5] = bad;
+        m[10] = 1.0;
+        m[15] = 1.0;
+        assert!(super::affine_inverse(&m).is_none(), "{bad} placement must be refused");
+        // A non-finite TRANSLATION leaves det finite; it must be refused too,
+        // not inverted to a NaN node matrix.
+        let mut t = [0.0f64; 16];
+        (t[0], t[5], t[10], t[15], t[3]) = (1.0, 1.0, 1.0, 1.0, bad);
+        assert!(super::affine_inverse(&t).is_none(), "{bad} translation must be refused");
+    }
+}
+
+#[test]
+fn issue_7772_x2_det_between_1e24_and_1e18_is_singular_in_export_too() {
+    // One threshold everywhere (D22): 1e-18.
+    let m = [
+        1e-7, 0.0, 0.0, 0.0, //
+        0.0, 1e-7, 0.0, 0.0, //
+        0.0, 0.0, 1e-7, 0.0, //
+        0.0, 0.0, 0.0, 1.0,
+    ];
+    assert!(super::affine_inverse(&m).is_none(), "det 1e-21 is below 1e-18");
+}

@@ -11,7 +11,7 @@
     "EntityDecoder": "struct {  }",
     "EntityIndex": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "EntityScanner": "struct {  }",
-    "Error": "enum { InvalidEntityRef(u32); InvalidIfcType(String); Io(std::io::Error); ParseError { message: String; position: usize }; UnexpectedToken { expected: String; got: String; position: usize }; UnrepresentableReal(u32); UnusableUnitFactor { factor: u32; overflowed: bool }; Utf8(std::str::Utf8Error) }",
+    "Error": "enum { InvalidEntityRef(u32); InvalidIfcType(String); Io(std::io::Error); MalformedRecord(u32); ParseError { message: String; position: usize }; UnexpectedToken { expected: String; got: String; position: usize }; UnrepresentableReal(u32); UnusableUnitFactor { factor: u32; overflowed: bool }; Utf8(std::str::Utf8Error) }",
     "FastMeshData": "struct { indices: Vec<u32>; positions: Vec<f32> }",
     "GeoRefExtractor": "struct (unit)",
     "GeoRefSource": "enum { EPSetMapConversion; MapConversion; SiteLocation }",

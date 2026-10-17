@@ -246,13 +246,8 @@ fn line_intersection_2d(
     p2: Point2<f64>,
     d2: Vector2<f64>,
 ) -> Option<Point2<f64>> {
-    let denom = d1.x * d2.y - d1.y * d2.x;
-    if denom.abs() < 1e-9 {
-        return None;
-    }
-    let dp = p2 - p1;
-    let t = (dp.x * d2.y - dp.y * d2.x) / denom;
-    Some(p1 + d1 * t)
+    crate::math::geom2d::line_intersection_dir([p1.x, p1.y], [d1.x, d1.y], [p2.x, p2.y], [d2.x, d2.y])
+        .map(|p| Point2::new(p[0], p[1]))
 }
 
 #[cfg(test)]

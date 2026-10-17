@@ -1024,14 +1024,7 @@
     }
 
     fn bbox(ring: &[[f64; 2]]) -> (f64, f64, f64, f64) {
-        let (mut nx, mut ny) = (f64::INFINITY, f64::INFINITY);
-        let (mut xx, mut xy) = (f64::NEG_INFINITY, f64::NEG_INFINITY);
-        for p in ring {
-            nx = nx.min(p[0]);
-            ny = ny.min(p[1]);
-            xx = xx.max(p[0]);
-            xy = xy.max(p[1]);
-        }
+        let [nx, ny, xx, xy] = crate::math::v2::bbox(ring.iter().copied());
         (nx, ny, xx, xy)
     }
 
@@ -1245,7 +1238,7 @@
         // regression it exists for could come back unnoticed.
         let avg = corner_average(&plate.face_outline(room));
         assert!(
-            rects.iter().any(|r| point_in_quad(avg, r)),
+            rects.iter().any(|r| point_in_polygon(avg, r)),
             "fixture no longer exercises the defect: corner average {avg:?} is in no wall",
         );
     }
@@ -1258,7 +1251,7 @@
         let room = plate.rooms().next().unwrap();
         let avg = corner_average(&plate.face_outline(room));
         assert!(
-            rects.iter().any(|r| point_in_quad(avg, r)),
+            rects.iter().any(|r| point_in_polygon(avg, r)),
             "fixture no longer exercises the defect: corner average {avg:?} is in no wall",
         );
     }

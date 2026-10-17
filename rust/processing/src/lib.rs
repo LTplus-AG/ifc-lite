@@ -8,6 +8,7 @@
 //! the HTTP server and the native FFI library.
 
 pub mod appearance;
+pub mod data_model;
 pub mod analytic_export;
 pub mod pdf_vector;
 pub mod determinism;

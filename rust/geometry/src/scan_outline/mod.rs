@@ -56,7 +56,7 @@ mod synth_tests;
 #[path = "scan_outline_tests.rs"]
 mod tests;
 
-use crate::geom2d::polygon_area;
+use crate::math::v2::polygon_area;
 pub use options::{
     ScanOutlineDiagnostics, ScanOutlineOptions, MAX_CELLS_LIMIT, MAX_SNAP_DISTANCE_CELLS, MAX_VERTEX_MOVE_CELLS,
     MIN_CELL_SIZE_LIMIT,

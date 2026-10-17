@@ -20,13 +20,7 @@ fn rect_cw(x0: f64, y0: f64, x1: f64, y1: f64) -> Ring2D {
 }
 
 fn signed_area(ring: &Ring2D) -> f64 {
-    let n = ring.len();
-    let mut a = 0.0;
-    for i in 0..n {
-        let j = (i + 1) % n;
-        a += ring[i][0] * ring[j][1] - ring[j][0] * ring[i][1];
-    }
-    a * 0.5
+    crate::math::v2::polygon_area(ring)
 }
 
 /// Total covered area: outer rings add, hole rings subtract, which is exactly

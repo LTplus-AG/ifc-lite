@@ -60,7 +60,7 @@ fn issue_4406_arc_chords_bound_metric_error_for_both_sweeps_and_affine_signs() {
                 let b = transformed(matrix, points[i + 1]);
                 for sample in 0..=32 {
                     let t = f64::from(sample) / 32.;
-                    let chord = add(mul(a, 1. - t), mul(b, t));
+                    let chord = add(scale(a, 1. - t), scale(b, t));
                     let angle = start_angle + sweep * (i as f64 + t) / (points.len() - 1) as f64;
                     let exact = transformed(matrix, add(centre, [1.25 * angle.cos(), 1.25 * angle.sin()]));
                     assert!(sub(chord, exact)[0].hypot(sub(chord, exact)[1]) <= tolerance);

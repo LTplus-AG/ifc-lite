@@ -120,12 +120,7 @@ fn issue_6600_scaled_rotated_placement_is_absolute_ifc_z_up() {
 
 #[test]
 fn issue_6600_real_infrastructure_axes_have_distinct_identity_and_bounded_endpoints() {
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../tests/models/issues/844_terrain_and_alignment.ifc");
-    let Ok(content) = std::fs::read_to_string(path) else {
-        eprintln!("SKIP: run pnpm fixtures for infrastructure model844");
-        return;
-    };
+    let content = ifc_lite_testkit::fixture_text_or_skip!("issues/844_terrain_and_alignment.ifc");
     let report = sample_alignment_axes(
         &content,
         AlignmentSamplingOptions {
@@ -165,12 +160,7 @@ fn issue_6600_authored_chainage_does_not_change_geometric_distance() {
 
 #[test]
 fn issue_6600_real_circle_matches_analytic_heading_and_radius_oracle() {
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../tests/models/issues/844_terrain_and_alignment.ifc");
-    let Ok(content) = std::fs::read_to_string(path) else {
-        eprintln!("SKIP: run pnpm fixtures for infrastructure model844");
-        return;
-    };
+    let content = ifc_lite_testkit::fixture_text_or_skip!("issues/844_terrain_and_alignment.ifc");
     // OIP2017 authoring fixture #43: CCW radius15.00004036907433,
     // start(0,0), heading5.246193083124705. A circular integration oracle
     // independent of the alignment evaluator, sampled inside the first segment.

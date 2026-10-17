@@ -11,7 +11,8 @@
 //! with Gaussian noise, plus optional uniform clutter and far outliers.
 
 use super::ScanOutline;
-use crate::geom2d::{point_in_polygon, polygon_area, segments_intersect};
+use crate::math::geom2d::segments_intersect;
+use crate::math::v2::{point_in_polygon, polygon_area};
 
 /// Seeded splitmix-based generator; portable and dependency-free.
 pub(super) struct Rng(u64);

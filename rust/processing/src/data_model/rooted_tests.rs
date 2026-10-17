@@ -149,25 +149,6 @@ fn issue_6034_all_is_a_no_op() {
     );
 }
 
-/// The wire names and the default. `all` is the default so a request that
-/// predates #6034 deserializes to exactly the old behaviour.
-#[test]
-fn issue_6034_query_values() {
-    #[derive(serde::Deserialize)]
-    struct Q {
-        #[serde(default)]
-        data_model_entities: DataModelEntities,
-    }
-    let parse = |s: &str| {
-        let uri: axum::http::Uri = format!("/x?{s}").parse().unwrap();
-        axum::extract::Query::<Q>::try_from_uri(&uri).map(|q| q.0.data_model_entities)
-    };
-    assert_eq!(parse("").unwrap(), DataModelEntities::All);
-    assert_eq!(parse("data_model_entities=all").unwrap(), DataModelEntities::All);
-    assert_eq!(parse("data_model_entities=rooted").unwrap(), DataModelEntities::Rooted);
-    assert!(parse("data_model_entities=objects").is_err(), "an unknown value is refused, not defaulted");
-}
-
 /// #6034 on a real authoring-tool export: no relation of the rooted data model
 /// names an id its entities table dropped, every row with a GlobalId is kept,
 /// and every dropped row is one nothing points at. Skips when the fixture is

@@ -11,7 +11,7 @@ use serde_json::Value;
 use std::collections::BTreeSet;
 
 fn vector() -> Value {
-    serde_json::from_str(include_str!("../../../tests/golden/relationship-slots.json")).unwrap()
+    serde_json::from_str(include_str!("../../../../apps/server/tests/golden/relationship-slots.json")).unwrap()
 }
 
 fn row(v: &Value) -> RelSlots {

@@ -4,7 +4,7 @@
 
 use std::collections::HashMap;
 
-use quick_xml::events::BytesStart;
+use quick_xml::events::{BytesRef, BytesStart};
 
 use super::*;
 
@@ -26,12 +26,11 @@ impl Parser<'_> {
         let name = start.name();
         let (_, local, prefix) =
             split_name(name.as_ref().as_bytes(), self.limits.xml.max_name_bytes)?;
-        let (attributes, namespaces, references) = attributes(start, &self.limits.xml)?;
+        let (attributes, namespaces) = attributes(start, &self.limits.xml, &mut self.characters)?;
         if attr(&attributes, "pntRef").is_some() {
             self.references.reserve(1)?;
         }
         self.check(attributes.len())?;
-        self.characters.reserve(references)?;
         let mut inherited = self
             .frames
             .last()
@@ -267,30 +266,27 @@ impl Parser<'_> {
         self.check(bytes.len())?;
         let value =
             std::str::from_utf8(bytes).map_err(|_| error(Code::InvalidXml, "text is not UTF-8"))?;
-        self.characters.reserve(character_references(value))?;
         if self.frames.is_empty() {
             return crate::xml::outside_root_text(self.root_seen, value, false);
         }
         // Resolve before the capture check: an undeclared entity is refused
         // wherever it appears, as in an attribute value (#7680).
-        let text = unescape(value)?;
-        if let Some(capture) = &mut self.capture {
-            if capture.depth() != self.frames.len() {
-                return Ok(());
-            }
-            let target = match capture {
-                Capture::CgPoint { text, .. }
-                | Capture::Monument { text, .. }
-                | Capture::Point { text, .. }
-                | Capture::PointList { text, .. }
-                | Capture::Title { text, .. } => text,
-            };
-            if target.len() + text.len() > self.limits.xml.max_text_bytes {
-                return Err(error(Code::LimitExceeded, "captured text limit exceeded"));
-            }
-            target.push_str(&text);
+        let text = decode_text(value, &mut self.characters)?;
+        self.capture_literal_text(&text)
+    }
+
+    /// A `&name;` in element content, resolved by `xml::refs`.
+    pub(super) fn reference(&mut self, reference: &BytesRef<'_>) -> Result<()> {
+        let source = source_len(reference);
+        if source > self.limits.xml.max_text_bytes {
+            return Err(error(Code::LimitExceeded, "text limit exceeded"));
         }
-        Ok(())
+        self.check(source)?;
+        if self.frames.is_empty() {
+            return crate::xml::outside_root_text(self.root_seen, "&", false);
+        }
+        let character = decode_ref(reference, &mut self.characters)?;
+        self.capture_literal_text(character.encode_utf8(&mut [0; 4]))
     }
 
     pub(super) fn cdata(&mut self, bytes: &[u8]) -> Result<()> {

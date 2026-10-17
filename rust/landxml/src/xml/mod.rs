@@ -15,7 +15,7 @@ pub(crate) use budget::{poll, Budget, Meter};
 pub(crate) use encoding::{normalize_encoding, Decoder};
 pub(crate) use pull::read_events;
 pub(crate) use scan::{TokenKind, TokenScanner};
-pub(crate) use refs::{character_references, general_ref_source, unescape};
+pub(crate) use refs::{decode_ref, decode_text, source_len};
 
 use crate::{LandXmlCancellation, LandXmlDiagnosticCode as Code, LandXmlError, LandXmlLimits};
 
@@ -66,10 +66,10 @@ impl<'a> CancellationPoller<'a> {
 pub(crate) fn attributes(
     start: &BytesStart<'_>,
     limits: &LandXmlLimits,
-) -> Result<(Attributes, Namespaces, usize)> {
+    char_refs: &mut Budget,
+) -> Result<(Attributes, Namespaces)> {
     let mut values = Vec::new();
     let mut namespaces = HashMap::new();
-    let mut references = 0;
     let mut count = Budget::new(limits.max_attributes, "attribute");
     for attribute in start.attributes().with_checks(true) {
         let attribute = attribute.map_err(|_| error(Code::InvalidXml, "invalid XML attribute"))?;
@@ -85,8 +85,7 @@ pub(crate) fn attributes(
             limits.max_attribute_bytes,
             "attribute value",
         )?;
-        references += character_references(raw_value);
-        let value = unescape(raw_value)?.into_owned();
+        let value = decode_text(raw_value, char_refs)?.into_owned();
         if key == "xmlns" {
             namespaces.insert(String::new(), value.clone());
         } else if let Some(prefix) = key.strip_prefix("xmlns:") {
@@ -94,7 +93,7 @@ pub(crate) fn attributes(
         }
         values.push((key, value));
     }
-    Ok((values, namespaces, references))
+    Ok((values, namespaces))
 }
 
 pub(crate) fn attr<'a>(attributes: &'a Attributes, key: &str) -> Option<&'a str> {

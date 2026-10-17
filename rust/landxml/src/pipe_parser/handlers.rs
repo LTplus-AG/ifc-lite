@@ -31,9 +31,6 @@ impl PipeParser<'_> {
         Ok(())
     }
 
-    pub(super) fn check_character_references(&mut self, added: usize) -> Result<()> {
-        self.character_references.reserve(added)
-    }
 
     pub(super) fn start_structure(
         &mut self,

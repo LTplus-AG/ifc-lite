@@ -109,9 +109,7 @@ impl<'a> PipeParser<'a> {
             Event::End(end) => self.end(Some(end.name().as_ref().as_bytes())),
             Event::Text(text) => self.text(text.as_ref().as_bytes()),
             // #7680: a reference in text arrives as its own event.
-            Event::GeneralRef(reference) => {
-                self.text(crate::xml::general_ref_source(&reference).as_bytes())
-            }
+            Event::GeneralRef(reference) => self.reference(&reference),
             Event::CData(text) => self.cdata(text.as_ref().as_bytes()),
             Event::DocType(_) => Err(error(Code::DtdForbidden, "DOCTYPE is not allowed")),
             _ => Ok(()),
@@ -128,9 +126,8 @@ impl<'a> PipeParser<'a> {
         }
         let name = start.name();
         let (_, local, prefix) = split_name(name.as_ref().as_bytes(), self.limits.max_name_bytes)?;
-        let (attributes, namespaces, references) = attributes(start, &self.limits)?;
+        let (attributes, namespaces) = attributes(start, &self.limits, &mut self.character_references)?;
         self.check_cancel_and_work(attributes.len())?;
-        self.check_character_references(references)?;
         let mut inherited = self
             .frames
             .last()

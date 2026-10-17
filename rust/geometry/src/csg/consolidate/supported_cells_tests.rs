@@ -68,3 +68,6 @@ fn issue_7292_bypassed_bucket_cannot_preserve_overlapping_or_reversed_interior_f
     let mixed = signed.into_values().flatten().collect::<Vec<_>>();
     assert!(!nonoverlapping(&mixed));
 }
+
+#[path = "supported_fold_fixture_tests.rs"]
+mod actual_fold;

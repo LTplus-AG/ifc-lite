@@ -22,6 +22,8 @@ pub(super) fn cell_key(t: &[Point3<f64>; 3]) -> Cell {
 pub(super) struct Supported {
     pub buckets: FxHashSet<Bucket>,
     pub cells: FxHashSet<Cell>,
+    // Healthy finite folds remain independent of thin-cell rescue/adoption.
+    pub folded_buckets: Vec<Bucket>,
 }
 pub(super) fn find(buckets: &BTreeMap<Bucket, Vec<PlaneTri>>) -> Supported {
     // Healthy source partitions need no face, edge or certificate tables.
@@ -99,7 +101,8 @@ pub(super) fn find(buckets: &BTreeMap<Bucket, Vec<PlaneTri>>) -> Supported {
             }
         }
     }
-    out.buckets.extend(folded);
+    out.buckets.extend(folded.iter().copied());
+    out.folded_buckets = folded;
     out
 }
 

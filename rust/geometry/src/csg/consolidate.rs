@@ -159,7 +159,15 @@ impl ClippingProcessor {
         let mut buckets = buckets::build(&mesh);
         // Stitch only the adjacent rounding splits certified by the kernel tags.
         let merged_bucket_keys = plane_merge::merge_rounding_split_buckets(&mut buckets);
-        let supported = if preserve_supported { supported_cells::find(&buckets) } else { Default::default() };
+        let mut supported = supported_cells::find(&buckets);
+        if !preserve_supported {
+            // Healthy folds have a separate exact source-topology certificate.
+            // Keep their finite surface in the ordinary baseline while still
+            // dropping thin cells and applying the unchanged adoption guards.
+            supported.cells.clear();
+            supported.buckets.clear();
+            supported.buckets.extend(supported.folded_buckets.iter().copied());
+        }
         let mut planned = plans::build(&buckets, &merged_bucket_keys, &supported, length_unit_scale);
         let Some(output) = candidates::emit(&mut planned) else {
             return mesh;

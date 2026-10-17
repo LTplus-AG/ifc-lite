@@ -17,13 +17,13 @@ use ifc_lite_geometry::{calculate_normals, csg::ClippingProcessor, GeometryRoute
 use rustc_hash::FxHashMap;
 use std::fs;
 
-const AR_FILE_PATH: &str = "../../tests/models/local/AR.ifc";
+/// Private local model (not in the manifest): `local_fixture_text` never gates.
+const AR_FIXTURE: &str = "local/AR.ifc";
 const TARGET_GUID: &str = "1NmE6Wndr2xhGbWU4qRRfr";
 
 /// Load AR file content
 fn load_ar_file() -> Option<String> {
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(AR_FILE_PATH);
-    fs::read_to_string(&path).ok()
+    ifc_lite_testkit::local_fixture_text(AR_FIXTURE)
 }
 
 /// Find entity ID by GUID

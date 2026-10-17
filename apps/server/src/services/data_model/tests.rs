@@ -827,12 +827,7 @@ fn resolves_a_direct_material_association_including_its_category() {
 
 #[test]
 fn forwards_revit_duplex_material_associations_with_identity_5296() {
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../tests/models/ara3d/duplex.ifc");
-    let Ok(source) = std::fs::read(path) else {
-        eprintln!("skip: Revit duplex fixture absent; run pnpm fixtures");
-        return;
-    };
+    let source = ifc_lite_testkit::fixture_bytes_or_skip!("ara3d/duplex.ifc");
     let dm = extract_data_model_checked(&source);
     // Optional manual end-to-end parity run through the TS decoder/viewer.
     if let Ok(path) = std::env::var("IFCLITE_MATERIAL_PARQUET_OUT") {

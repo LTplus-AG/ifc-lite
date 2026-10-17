@@ -28,7 +28,7 @@ fn row<'a>(props: &'a [PropValue], name: &str) -> (&'a str, &'a str, ValueKind) 
 /// `Pset_AllKinds` (#400), the four single values first and unchanged.
 #[test]
 fn the_export_scope_is_every_kind_d47() {
-    assert_eq!(EXPORT_PROPERTY_SCOPE, PropertyScope::AllKinds);
+    assert_eq!(EXPORT_PROPERTY_SCOPE, PropertyScope::Flat);
     let props = flat(EXPORT_PROPERTY_SCOPE, 400);
     assert_eq!(props.len(), 10);
     assert_eq!(row(&props, "Flag"), ("true", "IFCBOOLEAN", ValueKind::Bool));
@@ -52,4 +52,7 @@ fn all_kinds_render_the_columnar_display_string_as_text_d47() {
     assert_eq!(row(&props, "Complex"), ("Inner1: a, Inner2: 2.5", "IFCCOMPLEXPROPERTY", ValueKind::Text));
     // The single values are unchanged by the wider scope.
     assert_eq!(props[..4], flat(PropertyScope::SingleValueOnly, 400)[..]);
+    // The export's `Flat` scope skips the single values' display form only:
+    // it writes exactly what `AllKinds` renders.
+    assert_eq!(flat(PropertyScope::Flat, 400), props);
 }

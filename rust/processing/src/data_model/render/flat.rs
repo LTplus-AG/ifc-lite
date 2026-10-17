@@ -143,7 +143,7 @@ pub fn ref_list(av: Option<&AttributeValue>) -> Vec<u32> {
 /// keyword ([`flat_property`]). Complex properties are walked under the
 /// model's one complex-property budget (#7675), charged in the order the
 /// stream decodes the sets.
-pub const EXPORT_PROPERTY_SCOPE: PropertyScope = PropertyScope::AllKinds;
+pub const EXPORT_PROPERTY_SCOPE: PropertyScope = PropertyScope::Flat;
 
 /// The model's property decoder: one per export, so one complex-property
 /// budget per model (#7675).

@@ -14,7 +14,7 @@ off the viewer's own telemetry (below).
 
 ## Sloped coincident-sided differences (#7292)
 
-**Unmerged: worker-pool qualification incomplete; engine transfer ceiling fails.**
+**Unmerged: final-source review corrections and worker-pool qualification pending.**
 Source-plane preservation, finite coplanar classification and certified thin-cell
 retention correct the reporter cases in native Rust and source-built Chrome.
 Lookup-only hash maps and shared projected containment preserve existing output
@@ -22,8 +22,9 @@ ordering. Short-circuiting proper-crossing tests once an exact zero or same-side
 orientation proves rejection brings the native instruction gate inside its
 ceiling at `8ae04cf8b8`. A matching-main instruction comparison also improves with identical
 mesh, vertex and triangle counts; this is not an end-to-end timing verdict or
-full byte-identity proof. The source-built engine still exceeds its transfer
-ceiling. No ceiling or acceptance tolerance was raised.
+full byte-identity proof. That historical source-built engine exceeded its transfer ceiling. The official
+`5cd6a4b6b6` build passes the unchanged transfer gate; this qualifies its size,
+not end-to-end worker-pool cost. No ceiling or acceptance tolerance was raised.
 
 Replacing supported-cell hash collections with wide sorted records increased
 the actual compressed engine despite removing hash specializations: new sort
@@ -33,7 +34,7 @@ source-built transfer measurement. Lazy support validation retains conservative
 candidate bounds and validates support before constructing an exact point.
 
 Reusing already-read triangle coordinates preserves the classifier's arithmetic
-and ordering, but the subsequent source-built engine still exceeds the transfer
+and ordering, but that subsequent historical engine exceeded the transfer
 gate. Final artifacts lack usable function names, so a read-only inspection did
 not establish that consolidation replay clones large functions. Do not repeat
 that attribution or add outlining attributes without evidence. Current-source

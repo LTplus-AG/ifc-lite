@@ -62,6 +62,17 @@ pub(super) fn whole_cell_band(own: &Tri, other: &Tri, n: [f64; 3], band: &NearBa
     })
 }
 
+/// Preserve the local face-pair slab. Only an operand-wide enlargement
+/// requires exact parallel source planes; remote vertices cannot supply tilt.
+pub(super) fn local_band_or_parallel(
+    c: [f64; 3], own: &Tri, exact: [&ImplicitPoint; 3], other: &Tri, n: [f64; 3],
+) -> bool {
+    let mut local = NearBand::from_operands(&[*own], &[*other]);
+    local.observe_point(&c);
+    (near_plane_normal(c, other, &local).is_some() && whole_cell_band(own, other, n, &local))
+        || crate::kernel::tritri::exactly_parallel_symbolic_plane(exact, other)
+}
+
 /// First triangle of `others` that carries `c` on its face AND is near-parallel
 /// to the sub-triangle whose raw normal is `n_own` ([`coincident_planes`]).
 pub(super) fn on_surface_normal(c: [f64; 3], n_own: [f64; 3], others: &[Tri]) -> Option<[f64; 3]> {
@@ -187,7 +198,7 @@ pub(super) fn near_shared_surface_tri(c: [f64; 3], own: &Tri, own_exact: [&Impli
     near_on_surface_tri(c, other, band).filter(|&n| {
         whole_cell_band(own, other, n, band) && own_exact.into_iter().all(|point| {
             !budget::tripped() && symbolic_point_in_tri_proj(point, other, n)
-        })
+        }) && !budget::tripped() && local_band_or_parallel(c, own, own_exact, other, n)
     })
 }
 

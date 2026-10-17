@@ -4,7 +4,7 @@
 
 use super::*;
 
-impl Parser<'_> {
+impl TinHandler<'_> {
     pub(super) fn finish_surface(&mut self) -> Result<()> {
         let mut surface = self.surface.take().expect("surface closing");
         self.surface_ordinal += 1;
@@ -43,14 +43,11 @@ impl Parser<'_> {
         // authored TIN cannot enter synthesis, so it never needs this second
         // complete surface allocation on the streamed handoff path.
         let source_surface = (!authored_faces).then(|| surface.clone());
-        let terrain_diagnostic = crate::terrain::adapt_faceless_tin(
-            &mut surface,
-            &self.limits,
-            self.cancelled,
-            self.faces_seen.used_mut(),
-            self.references.used_mut(),
-            self.meter.used_mut(),
-        )?;
+        let faces = self.faces_seen.used_mut();
+        let references = self.references.used_mut();
+        let terrain_diagnostic = self.meter.lend(|work| {
+            crate::terrain::adapt_faceless_tin(&mut surface, &self.limits, self.cancelled, faces, references, work)
+        })?;
         if terrain_diagnostic.is_some() {
             surface = source_surface.expect("only faceless TIN synthesis can refuse");
         }
@@ -251,14 +248,14 @@ pub(crate) fn surface_draws_to_scale(surface: &LandXmlSurface) -> bool {
 /// stay inspectable — only `render_state == Rendered` triggers this.
 ///
 /// Both parse paths call this instead of keeping their own copy of the rule:
-/// [`Parser::finish`] (shared by the non-streaming entry point and by
+/// [`TinHandler::finish`] (shared by the non-streaming entry point and by
 /// [`crate::stream::LandXmlTinStreamSession::finish_cursor`]) and the
 /// streaming session's per-surface drain in `stream::output`, which calls it
 /// early so a surface never leaves the parser before units are known to be
 /// missing.
 ///
 /// #5175: `units` is the caller's *effective* units
-/// ([`Parser::effective_units`]) — a declared `<Units>` element when present,
+/// ([`TinHandler::effective_units`]) — a declared `<Units>` element when present,
 /// else a caller-supplied assumed unit
 /// (`LandXmlLimits::assumed_linear_unit`), else `None`. This function does
 /// not know or care which of the two it received; that distinction lives on

@@ -11,10 +11,10 @@ use crate::{
     LandXmlProfilePoint, LandXmlSourceId, LandXmlVerticalCurve,
 };
 
-use super::super::{Code, PairListTarget, Parser, ProfileCurveCapture};
+use super::super::{Code, PairListTarget, TinHandler, ProfileCurveCapture};
 use super::values::{station_elevation, station_elevation_count, station_elevations};
 
-impl Parser<'_> {
+impl TinHandler<'_> {
     pub(super) fn finish_profile_point(
         &mut self,
         text: &str,

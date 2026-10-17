@@ -72,9 +72,8 @@
    168 rust/geometry/src/router/voids/synthesis/membrane.rs GeometryRouter::remove_internal_membrane
    269 rust/geometry/src/simplify/cavities.rs drop_enclosed_cavities
    159 rust/geometry/src/space_dcel/arrangement.rs Arrangement::resolve
-   257 rust/landxml/src/parser.rs Parser::start
-   164 rust/landxml/src/parser/capture.rs Parser::finish_capture
-   154 rust/landxml/src/parser/finalize.rs Parser::finish_surface
+   164 rust/landxml/src/parser/capture.rs TinHandler::finish_capture
+   154 rust/landxml/src/parser/finalize.rs TinHandler::finish_surface
    238 rust/landxml/src/pipe_parser.rs PipeParser::start
    243 rust/landxml/src/plan/parser/driver.rs Parser::start
    263 rust/landxml/src/terrain.rs adapt_faceless_tin

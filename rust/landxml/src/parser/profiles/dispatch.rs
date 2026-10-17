@@ -11,12 +11,12 @@ use crate::{
     LandXmlSourceId,
 };
 
-use super::super::{Capture, Code, PairListTarget, Parser};
+use super::super::{Capture, Code, PairListTarget, TinHandler};
 use super::references::{
     ambiguous_reference, missing_reference, unique_reference, ReferenceResolution,
 };
 
-impl Parser<'_> {
+impl TinHandler<'_> {
     pub(in super::super) fn start_road_semantics(
         &mut self,
         local: &str,

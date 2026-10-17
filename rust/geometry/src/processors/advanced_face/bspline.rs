@@ -244,23 +244,38 @@ pub(super) fn tessellate_bspline_surface(
 }
 
 /// Evaluate a B-spline CURVE at parameter t (1D, not surface).
+///
+/// With `weights` (one per control point) the curve is rational (NURBS): the
+/// de Boor sum runs in homogeneous coordinates, `sum(N_i w_i P_i) / sum(N_i
+/// w_i)` (Piegl & Tiller eq. 4.9), as `evaluate_bspline_surface` does (#7750).
 pub(super) fn evaluate_bspline_curve(
     t: f64,
     degree: usize,
     control_points: &[Point3<f64>],
+    weights: Option<&[f64]>,
     knots: &[f64],
 ) -> Point3<f64> {
     let mut result = Point3::new(0.0, 0.0, 0.0);
+    let mut weight_sum = 0.0;
     // One table build for the whole curve point, not one per control point
     // (see `evaluate_bspline_surface` — same reasoning, #4901).
     let table = bspline_basis_table(degree, t, knots, control_points.len());
     for (i, cp) in control_points.iter().enumerate() {
         let basis = table.get(i).copied().unwrap_or(0.0);
         if basis.abs() > 1e-10 {
-            result.x += basis * cp.x;
-            result.y += basis * cp.y;
-            result.z += basis * cp.z;
+            let weighted = basis * weights.and_then(|ws| ws.get(i)).copied().unwrap_or(1.0);
+            result.x += weighted * cp.x;
+            result.y += weighted * cp.y;
+            result.z += weighted * cp.z;
+            weight_sum += weighted;
         }
+    }
+    // Weights are validated > 0, so any positive sum is a real denominator:
+    // a fixed floor collapsed a NURBS whose weights are all uniformly tiny.
+    if weights.is_some() && weight_sum > 0.0 {
+        result.x /= weight_sum;
+        result.y /= weight_sum;
+        result.z /= weight_sum;
     }
     result
 }

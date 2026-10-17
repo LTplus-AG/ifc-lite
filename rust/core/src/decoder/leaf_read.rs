@@ -16,14 +16,31 @@
 //! `get_cartesian_point_fast` is not a leaf reader: it stays the
 //! type-agnostic probe for callers that must not count refusals.
 
-use super::{parse_point_coordinates_end, EntityDecoder};
+use super::EntityDecoder;
 use crate::error::{Error, Result};
-use crate::parser::{is_decodable_number, skip_step_trivia};
+use crate::parser::{read_step_number, skip_step_trivia, StepNumber};
 use crate::schema_gen::{AttributeValue, DecodedEntity};
 use crate::IfcType;
 
 const POINT_KEYWORD: &[u8] = b"IFCCARTESIANPOINT";
 const DIRECTION_KEYWORD: &[u8] = b"IFCDIRECTION";
+
+/// One coordinate at `i` (trivia skipped before and after), read once by the
+/// shared STEP number reader the tokenizer uses, so the byte path and the full
+/// decode cannot disagree about a literal. An `INTEGER` is `v as f64`, as
+/// [`slow_leaf`] reads it; an out-of-`i64` integer or a `REAL` `f64` cannot
+/// hold is a miss.
+#[inline]
+fn coordinate(bytes: &[u8], i: usize) -> Option<(f64, usize)> {
+    let start = skip_step_trivia(bytes, i)?;
+    let (number, len) = read_step_number(&bytes[start..])?;
+    let value = match number {
+        StepNumber::Integer(v) => v as f64,
+        StepNumber::Real(v) => v,
+        StepNumber::Unrepresentable(_) => return None,
+    };
+    Some((value, skip_step_trivia(bytes, start + len)?))
+}
 
 /// `#id = KEYWORD ( ( x, y[, z] ) ) ;` with `keyword` matched case-insensitively.
 /// Never more lenient than the full decode: every literal must be a number
@@ -43,8 +60,16 @@ fn fast_leaf(bytes: &[u8], keyword: &[u8]) -> Option<[f64; 3]> {
         (*bytes.get(i)? == b'(').then_some(())?;
         i = skip_step_trivia(bytes, i + 1)?;
     }
-    let ((x, y, z), used) = parse_point_coordinates_end(&bytes[i..], is_decodable_number)?;
-    let i = skip_step_trivia(bytes, i + used)?;
+    let (x, i) = coordinate(bytes, i)?;
+    (*bytes.get(i)? == b',').then_some(())?;
+    let (y, i) = coordinate(bytes, i + 1)?;
+    let (z, i) = match *bytes.get(i)? {
+        b')' => (0.0, i),
+        b',' => coordinate(bytes, i + 1)?,
+        _ => return None,
+    };
+    (*bytes.get(i)? == b')').then_some(())?;
+    let i = skip_step_trivia(bytes, i + 1)?;
     (*bytes.get(i)? == b')').then_some(())?;
     let i = skip_step_trivia(bytes, i + 1)?;
     let closed = matches!(bytes.get(i), None | Some(b';'));

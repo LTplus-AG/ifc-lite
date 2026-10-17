@@ -1,0 +1,7 @@
+ISO-10303-21;
+HEADER;
+/* #99=IFCWALL($); */
+ENDSEC;
+DATA ;
+#1=IFCWALL('a',$);
+ENDSEC;

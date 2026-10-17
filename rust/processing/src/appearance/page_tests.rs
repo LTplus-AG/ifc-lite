@@ -219,7 +219,7 @@ fn page_preserves_rendering(rendering: &str) {
             .map(|id| decoded.entity(id).unwrap()).find(|e| e.ifc_type == IfcType::IfcSurfaceStyleRendering).unwrap();
         assert_eq!(rendering.get_float(6), Some(0.2));
         assert_eq!(rendering.get_float(7), Some(0.35));
-        assert_eq!(rendering.get_list(7).unwrap()[0].as_string(), Some("IFCSPECULARROUGHNESS"));
+        assert_eq!(rendering.get(7).and_then(A::as_typed).map(|(name, _)| name), Some("IFCSPECULARROUGHNESS"));
         assert_eq!(rendering.get_ref(3), Some(27));
         assert_eq!(rendering.get_ref(5), Some(27));
         assert!(matches!(rendering.get(8), Some(A::Enum(name)) if name == "PHONG"));

@@ -259,6 +259,40 @@ declare, or an attribute the entity does not have. `attribute` replaces the
 removed `IfcType::attribute_index`; `SchemaVersion::Ifc4x3.attribute(..)` is
 its canonical-IFC4X3 reading.
 
+#### Typed attribute slots
+
+A literal attribute index (`entity.get_ref(5)`) names nothing and cannot say which
+schema it assumes. `ifc_lite_core::slot` names the attribute instead, from the same
+registries as `attribute_names()`:
+
+```rust
+use ifc_lite_core::slot;
+
+let units = project.ref_at(slot::IfcProject::UNITS_IN_CONTEXT);   // Option<u32>
+let placement = wall.ref_at(slot::IfcWall::OBJECT_PLACEMENT);      // inherited attrs are flattened in
+```
+
+* One zero-sized struct per entity (all 1,021 the bundled schemas declare), one const per
+  attribute, named by its IFC4X3 spelling in SCREAMING_SNAKE. A same-position rename
+  between releases shares one const (`attribute-renames.json` in `@ifc-lite/codegen`);
+  a semantic replacement does not (`IfcSpace.PredefinedType` is absent in IFC2X3).
+* `Slot<K>` has the same position in every bundled schema that declares the entity, so it
+  folds to the same immediate as the literal. `SchemaSlot<K>` moves between schemas and
+  has no `index()`: resolve it with `SchemaSlot::at(SchemaVersion)` (an explicit pin) or
+  `EntityDecoder::slot(..)` (the source's `FILE_SCHEMA`, IFC4X3 when undeclared or
+  unknown), once, outside any per-entity loop.
+* `K` is the value kind: `Ref`, `RefList`, `List`, `Real`, `Int`, `Text`, `Enum`,
+  `Logical`, `Binary` or `Select` (a mixed select, or a kind that differs between
+  schemas; it fits every accessor).
+* `DecodedEntity::{attr, ref_at, ref_list_at, real_at, int_at, string_at, enum_at,
+  logical_at, binary_at, list_at}` take `impl Into<SlotIx<K>>`: a `Slot` of the matching
+  kind, or a computed `usize` for generic walkers. A bare integer literal also
+  compiles (it infers `usize`), so the positional-read ratchet
+  (`rust/processing/tests/positional_read_ratchet.rs`) counts `*_at(<literal>)` too.
+* Debug builds assert the entity is the slot's owner or a subtype of it.
+
+The old `get`, `get_ref`, `get_float`, `get_string`, `get_list` and `get_refs` keep working.
+
 #### has_geometry_by_name
 
 ```rust
@@ -541,6 +575,24 @@ impl Mesh {
 ```
 
 Related mesh types: `SubMesh`, `SubMeshCollection`, `InstanceMeta`.
+
+#### representation
+
+`ifc_lite_geometry::representation` is the decoder-only home of a product's
+representation chain (`Representation(6)` to `IfcProductDefinitionShape.Representations(2)`
+to `Items(3)`, and `IfcMappedItem` to `MappingSource` to `MappedRepresentation`).
+It meshes nothing and owns no cache.
+
+```rust
+pub fn product_shape(element: &DecodedEntity, d: &mut EntityDecoder) -> Result<Option<ProductShape>, ShapeError>;
+pub fn rep_items(rep: &DecodedEntity, d: &mut EntityDecoder) -> Result<Vec<DecodedEntity>, ShapeError>;
+impl ProductShape { pub fn select(&self, element: &DecodedEntity, s: Select) -> impl Iterator<Item = &DecodedEntity>; }
+pub enum Select { Meshed, Body, RtcVotable, Any, Where(fn(..) -> bool) } // Meshed = what renders
+pub struct RepresentationWalk { pub select: Select, pub nested: NestedMaps }
+// product / map / mapped_item drive a WalkVisitor in DFS pre-order; nesting is
+// capped by depth and a path-scoped visited set.
+pub fn meshed_representations(element, representations) -> impl Iterator; // = Select::Meshed
+```
 
 #### mesh_check (test-support)
 

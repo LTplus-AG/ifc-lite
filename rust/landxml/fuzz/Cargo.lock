@@ -313,6 +313,7 @@ version = "21.4.0"
 dependencies = [
  "geometry-predicates",
  "ifc-lite-geometry",
+ "memchr",
  "quick-xml",
  "serde",
  "serde_json",

@@ -1,0 +1,3 @@
+# STEP grammar fuzz targets and corpus replay (#7778, G7)
+
+`trivia.oracle.patch` is the revert-oracle mutation for the G7 PR. G7 adds test files, fuzz-crate files and corpus seeds only. A whole-change revert has no core production change to undo, and the shared `tests/support/grammar_oracle.rs` cannot be attributed to a single cargo target, so the oracle reports INCONCLUSIVE. The patch instead makes `StepRecord::point_at` stop skipping trivia before its coordinate list. The replay test `rust/core/tests/fuzz_regressions.rs` must observe that change through the committed corpus. Once `fuzz_regressions.rs` is on `main`, the ordinary whole-change revert resumes.

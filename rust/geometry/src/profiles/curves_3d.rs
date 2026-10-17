@@ -177,13 +177,7 @@ impl ProfileProcessor {
             .map(|m| m == "CARTESIAN")
             .unwrap_or(false);
 
-        let sense = trimmed
-            .get(3)
-            .and_then(|v| match v {
-                AttributeValue::Enum(s) => Some(s == "T"),
-                _ => None,
-            })
-            .unwrap_or(true);
+        let sense = trimmed.get_bool(3).unwrap_or(true);
 
         let angle_scale = decoder.plane_angle_to_radians();
         let start_angle = self
@@ -254,14 +248,9 @@ impl ProfileProcessor {
         let mut point: Option<Point3<f64>> = None;
 
         for item in list {
-            // IFCPARAMETERVALUE(value) is stored as List(["IFCPARAMETERVALUE", value]).
-            if let Some(inner_list) = item.as_list() {
-                if let Some(type_name) = inner_list.first().and_then(|v| v.as_string()) {
-                    if type_name == "IFCPARAMETERVALUE" {
-                        param = inner_list.get(1).and_then(|v| v.as_float());
-                        continue;
-                    }
-                }
+            if let Some(value) = item.typed_value("IFCPARAMETERVALUE") {
+                param = value.as_float();
+                continue;
             }
             // A reference to an IfcCartesianPoint (kept in full 3D).
             if item.as_entity_ref().is_some() {
@@ -411,26 +400,7 @@ impl ProfileProcessor {
 
         let mut result: Vec<Point3<f64>> = Vec::new();
         for segment in segments {
-            // Each segment is IFCLINEINDEX((i1,i2,...)) or IFCARCINDEX((i1,i2,i3)).
-            // Typed values arrive as List([String("IFCLINEINDEX"), List([indices...])]).
-            let (is_arc, indices) = if let Some(segment_list) = segment.as_list() {
-                if segment_list.len() >= 2 {
-                    let type_name = segment_list
-                        .first()
-                        .and_then(|v| v.as_string())
-                        .unwrap_or("");
-                    let is_arc_type = type_name.to_uppercase().contains("ARC");
-                    if let Some(AttributeValue::List(indices_list)) = segment_list.get(1) {
-                        (is_arc_type, Some(indices_list.as_slice()))
-                    } else {
-                        (false, Some(segment_list))
-                    }
-                } else {
-                    (false, Some(segment_list))
-                }
-            } else {
-                (false, None)
-            };
+            let (is_arc, indices) = super::curves_2d::indexed_segment(segment);
 
             let Some(indices) = indices else { continue };
             let idx_values: Vec<usize> = indices

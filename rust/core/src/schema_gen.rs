@@ -50,6 +50,14 @@ pub enum AttributeValue {
     Enum(String),
     /// List of values
     List(Vec<AttributeValue>),
+    /// A typed parameter, `IFCLABEL('x')` or `IFCPARAMETERVALUE(0.5)`: the
+    /// upper-case type name and its value. A genuine two-item list is a
+    /// [`AttributeValue::List`], never this. One argument is `value`; none
+    /// is `Null`; several (not valid for an IFC defined type) are a `List`.
+    /// Read it with [`Self::as_typed`], [`Self::unwrap_typed`] and
+    /// [`Self::typed_value`]; `as_float`, `as_int`, `as_string` and
+    /// `as_enum` see through it.
+    Typed { name: Box<str>, value: Box<AttributeValue> },
     /// Null/undefined
     Null,
     /// Derived value (*)
@@ -97,20 +105,23 @@ impl AttributeValue {
                 )
             }
             Token::TypedValue(type_name, args) => {
-                // For typed values like IFCPARAMETERVALUE(0.), extract the inner value
-                // Store as a list with the type name first, followed by args
-                //
                 // The name is a STEP keyword, so its case is not significant
                 // (ISO 10303-21). Fold it to the EXPRESS spelling here, once, so
                 // every consumer can match uppercase literals and every exporter
                 // emits the canonical name (#4707). Still one allocation: an
                 // uppercase name is borrowed until `into_owned`.
                 let name = String::from_utf8_lossy(type_name);
-                let mut values = vec![AttributeValue::String(
-                    crate::schema_helpers::normalise_uppercase(&name).into_owned(),
-                )];
-                values.extend(args.iter().map(|t| Self::from_token_noting(t, unrepresentable)));
-                AttributeValue::List(values)
+                let mut values: Vec<_> =
+                    args.iter().map(|t| Self::from_token_noting(t, unrepresentable)).collect();
+                let value = match values.len() {
+                    0 => AttributeValue::Null,
+                    1 => values.remove(0),
+                    _ => AttributeValue::List(values),
+                };
+                AttributeValue::Typed {
+                    name: crate::schema_helpers::normalise_uppercase(&name).into_owned().into_boxed_str(),
+                    value: Box::new(value),
+                }
             }
             Token::Null => AttributeValue::Null,
             Token::Derived => AttributeValue::Derived,
@@ -126,11 +137,12 @@ impl AttributeValue {
         }
     }
 
-    /// Get as string
+    /// Get as string, seeing through a typed wrapper (`IFCLABEL('x')`).
     #[inline]
     pub fn as_string(&self) -> Option<&str> {
         match self {
             AttributeValue::String(s) => Some(s),
+            AttributeValue::Typed { value, .. } => value.as_string(),
             _ => None,
         }
     }
@@ -145,47 +157,44 @@ impl AttributeValue {
         }
     }
 
-    /// Get as enum value (strips the dots from .ENUM.)
+    /// Get as enum value (strips the dots from .ENUM.), seeing through a
+    /// typed wrapper (`IFCBOOLEAN(.T.)`).
     #[inline]
     pub fn as_enum(&self) -> Option<&str> {
         match self {
             AttributeValue::Enum(s) => Some(s),
+            AttributeValue::Typed { value, .. } => value.as_enum(),
             _ => None,
         }
     }
 
-    /// Get as float
-    /// Also handles TypedValue wrappers like IFCNORMALISEDRATIOMEASURE(0.5)
-    /// which are stored as List([String("typename"), Float(value)])
+    /// Get as float, reading an integer too and seeing through a typed
+    /// wrapper like `IFCNORMALISEDRATIOMEASURE(0.5)`.
     #[inline]
     pub fn as_float(&self) -> Option<f64> {
         match self {
             AttributeValue::Float(f) => Some(*f),
             AttributeValue::Integer(i) => Some(*i as f64),
-            // Handle TypedValue wrappers (stored as List with type name + value)
-            AttributeValue::List(items) if items.len() >= 2 => {
-                // Check if first item is a string (type name) and second is numeric
-                if matches!(items.first(), Some(AttributeValue::String(_))) {
-                    // Try to get the numeric value from the second element
-                    match items.get(1) {
-                        Some(AttributeValue::Float(f)) => Some(*f),
-                        Some(AttributeValue::Integer(i)) => Some(*i as f64),
-                        _ => None,
-                    }
-                } else {
-                    None
-                }
-            }
+            AttributeValue::Typed { value, .. } => value.as_float(),
             _ => None,
         }
     }
 
-    /// Get as integer (more efficient than as_float for indices)
+    /// Get as integer (more efficient than as_float for indices), seeing
+    /// through a typed wrapper (`IFCINTEGER(5)`). A REAL reads only when it
+    /// is integral and in range (`3.` is 3; `3.7`, NaN and infinity are
+    /// `None`, where this used to truncate them).
     #[inline]
     pub fn as_int(&self) -> Option<i64> {
         match self {
             AttributeValue::Integer(i) => Some(*i),
-            AttributeValue::Float(f) => Some(*f as i64),
+            // `i64::MAX as f64` is 2^63, which does not fit, hence `<`.
+            AttributeValue::Float(f)
+                if f.fract() == 0.0 && *f >= i64::MIN as f64 && *f < i64::MAX as f64 =>
+            {
+                Some(*f as i64)
+            }
+            AttributeValue::Typed { value, .. } => value.as_int(),
             _ => None,
         }
     }
@@ -215,13 +224,12 @@ impl AttributeValue {
     pub fn as_ref_members(&self) -> Option<&[AttributeValue]> {
         match self {
             AttributeValue::EntityRef(_) => Some(std::slice::from_ref(self)),
-            AttributeValue::List(items) => match items.as_slice() {
-                [AttributeValue::String(name), AttributeValue::List(set)]
-                    if name == "IFCPROPERTYSETDEFINITIONSET" =>
-                {
-                    Some(set)
-                }
-                _ => Some(items),
+            AttributeValue::List(items) => Some(items),
+            AttributeValue::Typed { name, value } => match &**value {
+                AttributeValue::List(set) if &**name == "IFCPROPERTYSETDEFINITIONSET" => Some(set),
+                // `IFCPROPERTYSETDEFINITIONSET(#1)`: a wrapper round one reference.
+                AttributeValue::EntityRef(_) => Some(std::slice::from_ref(&**value)),
+                _ => None,
             },
             _ => None,
         }

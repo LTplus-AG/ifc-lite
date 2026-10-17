@@ -1,0 +1,4 @@
+HEADER;
+ENDSEC;
+DATA('model',('IFC4'));
+#1=IFCWALL('a',$);

@@ -8,26 +8,18 @@
 
 use std::borrow::Cow;
 
+use ifc_lite_core::SchemaFamily;
+
 use crate::schema_ifc2x3_slots::Ifc2x3SlotFill;
 use crate::schema_enum::ConversionChecks;
 use crate::schema_plan::{plan_for, Adjust, Plan};
 use crate::schema_unrepresented::{product_proxy, resolve_unrepresented_entity, UnrepresentedEntityError};
 use crate::step_slot::split_top_level_args;
 
-/// Canonicalize a FILE_SCHEMA label to one of the four families we convert between.
+/// Canonicalize a FILE_SCHEMA label to one of the four families we convert
+/// between. Re-export's default for a label naming no family is IFC4.
 pub(crate) fn canon(s: &str) -> &'static str {
-    let u = s.to_uppercase();
-    if u.starts_with("IFC2X3") {
-        "IFC2X3"
-    } else if u.starts_with("IFC4X3") {
-        "IFC4X3"
-    } else if u.starts_with("IFC4") {
-        "IFC4"
-    } else if u.starts_with("IFC5") || u.starts_with("IFCX") {
-        "IFC5"
-    } else {
-        "IFC4"
-    }
+    SchemaFamily::from_label(s).unwrap_or(SchemaFamily::Ifc4).as_str()
 }
 
 fn map_2x3_to_4(t: &str) -> Option<&'static str> {
@@ -347,7 +339,7 @@ fn convert_record(
 
 /// True when `to` names IFC2X3, the one target whose `OwnerHistory` is mandatory.
 pub(crate) fn targets_ifc2x3(to: &str) -> bool {
-    canon(to) == "IFC2X3"
+    SchemaFamily::from_label(to) == Some(SchemaFamily::Ifc2x3)
 }
 
 /// True when converting between these schemas changes entity types/attributes.

@@ -7,7 +7,7 @@
  * `@ifc-lite/parser`, `@ifc-lite/data`) from their `dist/`.
  *
  * The root package does not depend on workspace packages, so scripts reach
- * them by path, the same way `scripts/generate-server-attr-indices.mjs` does.
+ * them by path, the same way `scripts/generate-bim-globals.mjs` does.
  * A missing `dist/` throws with the build command. It never skips: a skipped
  * scorer would report nothing and look the same as a passing one. CI's
  * node-tests job downloads the build output before it runs these tests.

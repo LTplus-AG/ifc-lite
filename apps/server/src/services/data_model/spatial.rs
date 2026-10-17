@@ -183,12 +183,8 @@ pub(super) fn build_spatial_hierarchy(
         }
     }
 
-    // Find project (root)
-    let project_id = entities
-        .iter()
-        .find(|e| e.type_name.to_uppercase() == "IFCPROJECT")
-        .map(|e| e.entity_id)
-        .unwrap_or(0);
+    // Find project (root): the one locator's first project, 0 for none.
+    let project_id = decoder.project_id().unwrap_or(0);
 
     // Build all spatial nodes with full information
     let mut nodes_map: FxHashMap<u32, SpatialNode> = FxHashMap::default();

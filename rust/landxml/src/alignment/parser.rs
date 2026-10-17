@@ -15,7 +15,7 @@ use quick_xml::{events::Event, Reader};
 use super::{LandXmlAlignment, LandXmlAlignmentDocument, LandXmlSuperelevationEventKind};
 use crate::{
     preflight::preflight_xml_tokens,
-    xml::{error, normalize_encoding, Result},
+    xml::{error, normalize_encoding, Budget, Meter, Result},
     LandXmlCancellation, LandXmlCapabilityDiagnostic, LandXmlDiagnosticCode as Code, LandXmlLimits,
     LandXmlUnits,
 };
@@ -91,7 +91,6 @@ fn parse_landxml_alignments_inner(
     reader.config_mut().trim_text(false);
     let mut buffer = Vec::new();
     loop {
-        parser.check(1)?;
         let event = reader
             .read_event_into(&mut buffer)
             .map_err(|_| error(Code::InvalidXml, "malformed XML"))?;
@@ -141,19 +140,20 @@ impl Capture {
 }
 pub(crate) struct Parser<'a> {
     pub(super) limits: LandXmlAlignmentLimits,
-    pub(super) cancelled: Option<&'a dyn LandXmlCancellation>,
-    pub(super) work: usize,
-    pub(super) character_references: usize,
+    /// The `work` budget; charged per event in `consume_event` (D73).
+    pub(super) meter: Meter<'a>,
+    pub(super) character_references: Budget,
+    pub(super) capability_diagnostics_seen: Budget,
     pub(super) frames: Vec<Frame>,
     pub(super) units: Option<LandXmlUnits>,
     /// Effective only when the source declares no `LandXML/Units` (#5175).
     pub(super) assumed_units: Option<LandXmlUnits>,
     pub(super) alignments: Vec<LandXmlAlignment>,
-    pub(super) segments_seen: usize,
-    pub(super) alignment_points_seen: usize,
-    pub(super) station_equations_seen: usize,
-    pub(super) cant_stations_seen: usize,
-    pub(super) superelevation_events_seen: usize,
+    pub(super) segments_seen: Budget,
+    pub(super) alignment_points_seen: Budget,
+    pub(super) station_equations_seen: Budget,
+    pub(super) cant_stations_seen: Budget,
+    pub(super) superelevation_events_seen: Budget,
     pub(super) alignment: Option<state::AlignmentBuilder>,
     pub(super) capture: Option<Capture>,
     pub(super) warnings: Vec<String>,
@@ -174,18 +174,18 @@ impl<'a> Parser<'a> {
     ) -> Self {
         Self {
             limits: limits.clone(),
-            cancelled,
-            work: 0,
-            character_references: 0,
+            meter: Meter::new(limits.xml.max_work, cancelled),
+            character_references: Budget::new(limits.xml.max_character_references, "character reference"),
+            capability_diagnostics_seen: Budget::new(limits.xml.max_capability_diagnostics, "capability diagnostic"),
             frames: Vec::new(),
             units: None,
             assumed_units,
             alignments: Vec::new(),
-            segments_seen: 0,
-            alignment_points_seen: 0,
-            station_equations_seen: 0,
-            cant_stations_seen: 0,
-            superelevation_events_seen: 0,
+            segments_seen: Budget::new(limits.max_alignment_segments, "alignment segment"),
+            alignment_points_seen: Budget::new(limits.max_alignment_points, "alignment point"),
+            station_equations_seen: Budget::new(limits.max_station_equations, "station equation"),
+            cant_stations_seen: Budget::new(limits.max_cant_stations, "CantStation"),
+            superelevation_events_seen: Budget::new(limits.max_superelevation_events, "superelevation event"),
             alignment: None,
             capture: None,
             warnings: Vec::new(),
@@ -200,6 +200,7 @@ impl<'a> Parser<'a> {
     }
 
     pub(crate) fn consume_event(&mut self, event: Event<'_>) -> Result<()> {
+        self.check(1)?;
         match event {
             Event::Start(value) => self.start(&value),
             Event::Empty(value) => {

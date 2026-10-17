@@ -58,7 +58,7 @@ pub(super) fn wire(value: &A) -> Value {
         A::Null => Value::Null,
         A::Derived => json!("*"),
         A::Enum(s) => json!(format!(".{s}.")),
-        A::String(s) => json!(s),
+        A::String(s) | A::Binary(s) => json!(s),
         A::Integer(n) => json!(n),
         A::Float(n) => json!(n),
         A::List(v) => match v.as_slice() {

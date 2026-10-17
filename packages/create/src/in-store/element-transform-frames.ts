@@ -16,6 +16,7 @@
  * edits), through the canonical current `readPlacementAttributes`.
  */
 
+import { walkPlacementChain } from '@ifc-lite/data';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { asCoordinateTriple, asDirectionRatios, asExpressIdRef, readPlacementAttributes } from './edit/placement-core.js';
@@ -123,11 +124,14 @@ export function applyFrame(frame: PlanFrame, p: readonly [number, number]): Vec2
  * cycle) or a link cannot be read.
  */
 export function frameInStorey(r: PlacementReader, placementId: number, storeyPlacementId: number): PlanFrame | null {
+  const walked = walkPlacementChain(placementId, (id) => parentPlacementOf(r, id), {
+    stopAt: (id) => id === storeyPlacementId,
+  });
+  // A root or a cycle before the storey's placement: no frame in the storey.
+  if (walked.end !== 'stopped') return null;
   let frame = IDENTITY_FRAME;
-  const seen = new Set<number>();
-  for (let id: number | null = placementId; id !== storeyPlacementId; id = parentPlacementOf(r, id)) {
-    if (id === null || seen.has(id)) return null;
-    seen.add(id);
+  // Every hop strictly below the storey's own placement, which is the last id.
+  for (const id of walked.ids.slice(0, -1)) {
     const own = uprightFrame(r, id);
     if (!own) return null;
     frame = composeFrames(own, frame);
@@ -137,11 +141,5 @@ export function frameInStorey(r: PlacementReader, placementId: number, storeyPla
 
 /** Every placement above `placementId` (its parent first), stopping at a root or a cycle. */
 export function placementAncestors(r: PlacementReader, placementId: number): number[] {
-  const out: number[] = [];
-  const seen = new Set<number>([placementId]);
-  for (let id = parentPlacementOf(r, placementId); id !== null && !seen.has(id); id = parentPlacementOf(r, id)) {
-    out.push(id);
-    seen.add(id);
-  }
-  return out;
+  return walkPlacementChain(placementId, (id) => parentPlacementOf(r, id)).ids.slice(1);
 }

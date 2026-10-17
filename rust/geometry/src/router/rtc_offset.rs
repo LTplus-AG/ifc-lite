@@ -427,7 +427,7 @@ impl GeometryRouter {
     pub fn detect_rtc_offset_for_file(&self, content: &[u8], decoder: &mut EntityDecoder) -> Option<RtcVerdict> {
         self.detect_rtc_anchor_for_file(content, decoder)
             .map(RtcVerdict::of_anchor)
-            .or_else(|| ifc_lite_core::scan_placement_bounds(content).rtc_offset(self.unit_scale))
+            .or_else(|| ifc_lite_core::scan_placement_bounds(content, self.unit_scale).rtc_offset(self.unit_scale))
     }
 }
 

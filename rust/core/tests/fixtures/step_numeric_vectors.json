@@ -1,0 +1,268 @@
+[
+ {
+  "text": "0",
+  "kind": "integer",
+  "value": "0"
+ },
+ {
+  "text": "42",
+  "kind": "integer",
+  "value": "42"
+ },
+ {
+  "text": "-42",
+  "kind": "integer",
+  "value": "-42"
+ },
+ {
+  "text": "+7",
+  "kind": "integer",
+  "value": "7"
+ },
+ {
+  "text": "-0",
+  "kind": "integer",
+  "value": "0"
+ },
+ {
+  "text": "007",
+  "kind": "integer",
+  "value": "7"
+ },
+ {
+  "text": "9223372036854775807",
+  "kind": "integer",
+  "value": "9223372036854775807"
+ },
+ {
+  "text": "-9223372036854775808",
+  "kind": "integer",
+  "value": "-9223372036854775808"
+ },
+ {
+  "text": "9223372036854775808",
+  "kind": "refused",
+  "grammar": true
+ },
+ {
+  "text": "-9223372036854775809",
+  "kind": "refused",
+  "grammar": true
+ },
+ {
+  "text": "99999999999999999999",
+  "kind": "refused",
+  "grammar": true
+ },
+ {
+  "text": "1.",
+  "kind": "real",
+  "bits": "0x3ff0000000000000"
+ },
+ {
+  "text": ".5",
+  "kind": "real",
+  "bits": "0x3fe0000000000000"
+ },
+ {
+  "text": "-.5",
+  "kind": "real",
+  "bits": "0xbfe0000000000000"
+ },
+ {
+  "text": "+.5",
+  "kind": "real",
+  "bits": "0x3fe0000000000000"
+ },
+ {
+  "text": "1E5",
+  "kind": "real",
+  "bits": "0x40f86a0000000000"
+ },
+ {
+  "text": "1e5",
+  "kind": "real",
+  "bits": "0x40f86a0000000000"
+ },
+ {
+  "text": "1E+5",
+  "kind": "real",
+  "bits": "0x40f86a0000000000"
+ },
+ {
+  "text": "1.E3",
+  "kind": "real",
+  "bits": "0x408f400000000000"
+ },
+ {
+  "text": "+1.5",
+  "kind": "real",
+  "bits": "0x3ff8000000000000"
+ },
+ {
+  "text": "+1.",
+  "kind": "real",
+  "bits": "0x3ff0000000000000"
+ },
+ {
+  "text": "-0.",
+  "kind": "real",
+  "bits": "0x8000000000000000"
+ },
+ {
+  "text": "0.",
+  "kind": "real",
+  "bits": "0x0000000000000000"
+ },
+ {
+  "text": "3.14",
+  "kind": "real",
+  "bits": "0x40091eb851eb851f"
+ },
+ {
+  "text": "-3.14",
+  "kind": "real",
+  "bits": "0xc0091eb851eb851f"
+ },
+ {
+  "text": "1.5E-10",
+  "kind": "real",
+  "bits": "0x3de49da7e361ce4c"
+ },
+ {
+  "text": "1.5e-2",
+  "kind": "real",
+  "bits": "0x3f8eb851eb851eb8"
+ },
+ {
+  "text": "1.7976931348623157E308",
+  "kind": "real",
+  "bits": "0x7fefffffffffffff"
+ },
+ {
+  "text": "1.E-400",
+  "kind": "real",
+  "bits": "0x0000000000000000"
+ },
+ {
+  "text": "2.5E-3",
+  "kind": "real",
+  "bits": "0x3f647ae147ae147b"
+ },
+ {
+  "text": "1.E400",
+  "kind": "unrepresentable"
+ },
+ {
+  "text": "-1.0E400",
+  "kind": "unrepresentable"
+ },
+ {
+  "text": "9.E999",
+  "kind": "unrepresentable"
+ },
+ {
+  "text": "1E999",
+  "kind": "unrepresentable"
+ },
+ {
+  "text": "",
+  "kind": "refused",
+  "grammar": false
+ },
+ {
+  "text": "+",
+  "kind": "refused",
+  "grammar": false
+ },
+ {
+  "text": "-",
+  "kind": "refused",
+  "grammar": false
+ },
+ {
+  "text": ".",
+  "kind": "refused",
+  "grammar": false
+ },
+ {
+  "text": "+.",
+  "kind": "refused",
+  "grammar": false
+ },
+ {
+  "text": "1.E",
+  "kind": "refused",
+  "grammar": false
+ },
+ {
+  "text": "1.E+",
+  "kind": "refused",
+  "grammar": false
+ },
+ {
+  "text": "1.52.3",
+  "kind": "refused",
+  "grammar": false
+ },
+ {
+  "text": "1.5abc",
+  "kind": "refused",
+  "grammar": false
+ },
+ {
+  "text": "1..2",
+  "kind": "refused",
+  "grammar": false
+ },
+ {
+  "text": "nan",
+  "kind": "refused",
+  "grammar": false
+ },
+ {
+  "text": "NaN",
+  "kind": "refused",
+  "grammar": false
+ },
+ {
+  "text": "inf",
+  "kind": "refused",
+  "grammar": false
+ },
+ {
+  "text": "-inf",
+  "kind": "refused",
+  "grammar": false
+ },
+ {
+  "text": "infinity",
+  "kind": "refused",
+  "grammar": false
+ },
+ {
+  "text": "1e",
+  "kind": "refused",
+  "grammar": false
+ },
+ {
+  "text": "E5",
+  "kind": "refused",
+  "grammar": false
+ },
+ {
+  "text": "--1",
+  "kind": "refused",
+  "grammar": false
+ },
+ {
+  "text": "+-1",
+  "kind": "refused",
+  "grammar": false
+ },
+ {
+  "text": "0x10",
+  "kind": "refused",
+  "grammar": false
+ }
+]

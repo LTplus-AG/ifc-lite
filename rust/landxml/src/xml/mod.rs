@@ -4,7 +4,12 @@
 
 use std::{collections::HashMap, str};
 
-use quick_xml::events::{BytesRef, BytesStart};
+use quick_xml::events::BytesStart;
+
+mod budget;
+mod refs;
+pub(crate) use budget::{poll, Budget, Meter};
+pub(crate) use refs::{character_references, general_ref_source, unescape};
 
 use crate::{LandXmlCancellation, LandXmlDiagnosticCode as Code, LandXmlError, LandXmlLimits};
 
@@ -33,12 +38,7 @@ impl<'a> CancellationPoller<'a> {
     }
 
     pub(crate) fn check(&mut self) -> Result<()> {
-        if self
-            .cancelled
-            .is_some_and(LandXmlCancellation::is_cancelled)
-        {
-            return Err(error(Code::Cancelled, "ingestion cancelled"));
-        }
+        poll(self.cancelled)?;
         self.since_check = 0;
         Ok(())
     }
@@ -64,11 +64,10 @@ pub(crate) fn attributes(
     let mut values = Vec::new();
     let mut namespaces = HashMap::new();
     let mut references = 0;
+    let mut count = Budget::new(limits.max_attributes, "attribute");
     for attribute in start.attributes().with_checks(true) {
         let attribute = attribute.map_err(|_| error(Code::InvalidXml, "invalid XML attribute"))?;
-        if values.len() >= limits.max_attributes {
-            return Err(error(Code::LimitExceeded, "attribute limit exceeded"));
-        }
+        count.reserve(1)?;
         let key = utf8(
             attribute.key.as_ref().as_bytes(),
             limits.max_name_bytes,
@@ -128,26 +127,25 @@ pub(crate) fn utf8<'a>(bytes: &'a [u8], max: usize, context: &str) -> Result<&'a
         .map_err(|_| error(Code::InvalidXml, format!("invalid UTF-8 {context}")))
 }
 
-pub(crate) fn character_references(value: &str) -> usize {
-    value.bytes().filter(|byte| *byte == b'&').count()
+/// XML production [3] `S`: the only bytes allowed between markup outside the
+/// document element.
+pub(crate) fn is_xml_s(byte: u8) -> bool {
+    matches!(byte, b' ' | b'\t' | b'\r' | b'\n')
 }
 
-/// Source text of a reference in element content (#7680 EDGE-LXPARSE-2).
-///
-/// quick-xml 0.42 ends a text event at `&` and reports each `&name;` as its
-/// own `Event::GeneralRef`, so a family parser's text path never sees one.
-/// Every `consume_event` hands this back to that text path instead, which
-/// then applies the same rules as for any other text: one charge against
-/// `max_character_references`, the outside-the-root refusal (so `&#32;`
-/// cannot pass for padding), [`unescape`] (an undeclared entity is
-/// `EntityForbidden`, exactly as in an attribute value), and the capture.
-pub(crate) fn general_ref_source(reference: &BytesRef<'_>) -> String {
-    format!("&{};", &**reference)
-}
-
-pub(crate) fn unescape(value: &str) -> Result<std::borrow::Cow<'_, str>> {
-    quick_xml::escape::unescape(value)
-        .map_err(|_| error(Code::EntityForbidden, "unknown XML entity reference"))
+/// The one rule for character data outside the document element: XML `S`
+/// bytes only, never CDATA, and never a reference (`&#32;` cannot pass for
+/// padding), so every family and the stream refuse the same bytes.
+pub(crate) fn outside_root_text(root_closed: bool, text: &str, cdata: bool) -> Result<()> {
+    if !cdata && text.bytes().all(is_xml_s) {
+        return Ok(());
+    }
+    let location = if root_closed { "after" } else { "before" };
+    let kind = if cdata { "CDATA" } else { "non-whitespace content" };
+    Err(error(
+        Code::InvalidXml,
+        format!("LandXML document has {kind} {location} its root element"),
+    ))
 }
 
 /// Normalize the XML's supported encodings before its pull parser sees bytes.
@@ -178,9 +176,7 @@ pub(crate) fn normalize_encoding(
         .checked_mul(3)
         .and_then(|value| value.checked_div(2))
         .ok_or_else(|| error(Code::LimitExceeded, "normalized byte limit overflow"))?;
-    if normalized.len() > max_normalized {
-        return Err(error(Code::LimitExceeded, "normalized byte limit exceeded"));
-    }
+    Budget::new(max_normalized, "normalized byte").reserve(normalized.len())?;
     check_declared_encoding(&normalized, encoding)?;
     Ok(normalized)
 }

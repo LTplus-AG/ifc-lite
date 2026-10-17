@@ -113,7 +113,7 @@ fn attribute_list_to_string(values: &[AttributeValue]) -> Option<String> {
 fn attribute_value_to_string(value: &AttributeValue) -> Option<String> {
     match value {
         AttributeValue::Null | AttributeValue::Derived => None,
-        AttributeValue::String(text) => normalize_optional_string(Some(text)),
+        AttributeValue::String(text) | AttributeValue::Binary(text) => normalize_optional_string(Some(text)),
         AttributeValue::Enum(text) => normalize_optional_string(Some(text.trim_matches('.'))),
         AttributeValue::Integer(number) => Some(number.to_string()),
         AttributeValue::Float(number) => Some(number.to_string()),

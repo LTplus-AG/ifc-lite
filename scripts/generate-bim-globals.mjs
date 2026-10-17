@@ -21,7 +21,7 @@
  * while the schema already had both. Hence the `--check` gate.
  *
  * Reads the BUILT sandbox bundle, not the TypeScript source, for the same
- * reason `generate-server-attr-indices.mjs` does: an absolute-path import of
+ * reason the retired server attr-index generator did: an absolute-path import of
  * `dist/index.js` runs on plain node with no loader and no tsconfig `paths`
  * rewriting in the middle of the import graph.
  *
@@ -34,7 +34,7 @@
  * (#2422). Because they are derived, a change upstream turns the `--check`
  * gate red exactly as a schema change does.
  *
- * Modes (mirrors scripts/generate-server-attr-indices.mjs UX):
+ * Modes (the generator UX):
  *   node scripts/generate-bim-globals.mjs           # rewrite  (pnpm generate:bim-globals)
  *   node scripts/generate-bim-globals.mjs --check   # verify, diff + exit 1 if stale
  *

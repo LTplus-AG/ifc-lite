@@ -21,9 +21,9 @@ export function curtainWallFrameAvailable(store: IfcDataStore, view: MutableProp
     // Match the canonical storeyPlanFrame adapter: native fields are STEP values.
     return record ? { type: record.type, attributes: record.attributes as IfcAttributeValue[] } : null;
   } };
-  const chain = storeyPlacementChain(store, new EntityExtractor(store.source), overlay, storey, 256);
+  const chain = storeyPlacementChain(store, new EntityExtractor(store.source), overlay, storey);
   if (!chain) return false;
-  const sourceChain = storeyPlacementChain(store, new EntityExtractor(store.source), undefined, storey, 256);
+  const sourceChain = storeyPlacementChain(store, new EntityExtractor(store.source), undefined, storey);
   if (!sourceChain) return false;
   const placement = asExpressIdRef(reader.entity(storey)?.attributes[5]);
   const sourcePlacement = asExpressIdRef(source.entity(storey)?.attributes[5]);

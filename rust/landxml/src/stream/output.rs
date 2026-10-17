@@ -13,19 +13,32 @@ use crate::{xml::error, LandXmlDiagnosticCode as Code, LandXmlError, LandXmlSurf
 
 impl LandXmlTinStreamSession {
     pub(super) fn emit_header_and_surfaces(&mut self) -> Result<(), LandXmlError> {
-        if !self.header_emitted {
+        // #7753: the header is the geometry contract, so it commits to a unit
+        // only once the unit is known: when `<Units>` is read, or when the
+        // first surface that draws to scale completes (it cannot be held
+        // without buffering the whole document). A declared `<Units>` that
+        // arrives after the header committed to the caller's assumed unit
+        // would contradict surfaces already scaled by it, so it is refused.
+        if self.header_assumed && self.parser().declares_units() {
+            return Err(error(
+                Code::InvalidSemantic,
+                "LandXML/Units is declared after streamed surfaces were scaled by the assumed linear unit",
+            ));
+        }
+        let surfaces = self.parser().take_surfaces();
+        let needs_units = surfaces.iter().any(crate::parser::surface_draws_to_scale);
+        if !self.header_emitted && (self.parser().declares_units() || needs_units) {
             if let Some(header) = self.header() {
-                // A numeric surface cannot leave the parser without Units;
-                // wait for them so the transport header remains the complete
-                // geometry contract. Unit-less preserved-only documents get
-                // their one header during `finish_cursor` instead.
-                if header.units.is_some() {
+                // Unit-less preserved-only documents get their one header
+                // during `finish_cursor` instead.
+                if let Some(units) = &header.units {
+                    self.header_assumed = units.assumed;
                     self.push_event(LandXmlStreamEvent::Header(header))?;
                     self.header_emitted = true;
                 }
             }
         }
-        for surface in self.parser().take_surfaces() {
+        for surface in surfaces {
             let units = self.header().and_then(|header| header.units);
             crate::parser::require_units_for_renderable_tin(
                 crate::parser::surface_draws_to_scale(&surface),

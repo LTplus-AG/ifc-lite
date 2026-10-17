@@ -133,18 +133,17 @@ pub fn ref_list(av: Option<&AttributeValue>) -> Vec<u32> {
         .unwrap_or_default()
 }
 
-/// The property kinds the flat exports write.
+/// The property kinds the flat exports write: all seven (EXPORT-DATA-2, D47).
 ///
-/// **Single values only, on purpose (EXPORT-DATA-2, D47 pending).** The
-/// shared decoder reads all seven kinds, but CSV, JSON, JSON-LD, IFCX, USD,
-/// BOS and the Python `entity_data` have only ever carried
-/// `IfcPropertySingleValue`; an enumerated, list, bounded, table, reference or
-/// complex property is absent from them, and the set still appears with those
-/// entries missing. Writing them is user-visible (new rows in every format and
-/// in the goldens), so it waits for a maintainer decision. It is one change
-/// here: `PropertyScope::AllKinds`. [`flat_property`] already renders them
-/// (D47: the columnar display string, `kind = Text`).
-pub const EXPORT_PROPERTY_SCOPE: PropertyScope = PropertyScope::SingleValueOnly;
+/// CSV, JSON, JSON-LD, IFCX, USD, BOS and the Python `entity_data` carry an
+/// `IfcPropertySingleValue` as its raw nominal value, and every other kind
+/// (enumerated, list, bounded, table, reference, complex) as the columnar
+/// display string the server and the viewer show, typed `kind = Text` with
+/// `value_type` = the members' shared type tag, else the property class
+/// keyword ([`flat_property`]). Complex properties are walked under the
+/// model's one complex-property budget (#7675), charged in the order the
+/// stream decodes the sets.
+pub const EXPORT_PROPERTY_SCOPE: PropertyScope = PropertyScope::Flat;
 
 /// The model's property decoder: one per export, so one complex-property
 /// budget per model (#7675).

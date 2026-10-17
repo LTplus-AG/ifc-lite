@@ -6,6 +6,7 @@
 //! tritri.rs so that file stays under the module-size rule.
 
 use super::*;
+use crate::kernel::predicates::orient3d;
 
 const ZPLANE: [[f64; 3]; 3] = [[0., 0., 0.], [2., 0., 0.], [0., 2., 0.]]; // z = 0
 

@@ -230,3 +230,27 @@ describe('escapeStepString (re-exported from @ifc-lite/data, #3300)', () => {
     expect(escapeStepString('\u00C4')).toBe('\\X2\\00C4\\X0\\');
   });
 });
+
+/**
+ * F4 M-export-a (CORE-6): numbers are recognised by core's one grammar, in the
+ * value AND in the token being replaced. The same rows, with the same expected
+ * text, are `attribute_value_reads_numbers_by_the_core_grammar` in
+ * `rust/export/src/step_log/attrs_tests.rs`.
+ */
+describe('serializeAttributeValue (the shared number grammar)', () => {
+  it.each([
+    ['3', '.5', '3.'],
+    ['.5', '1', '0.5'],
+    ['+1', '2', '1'],
+    ['1.E5', '2.', '100000.'],
+    ['2.5', '+1.', '2.5'],
+    ['7', '1.E3', '7.'],
+    ['1E400', '2', '$'],
+    ['1..2', '2', "'1..2'"],
+    ['12abc', '2', "'12abc'"],
+    ['5', "'x'", "'5'"],
+    ['5', '$', "'5'"],
+  ])('%j over %j is %j', (value, current, expected) => {
+    expect(serializeAttributeValue(value, current)).toBe(expected);
+  });
+});

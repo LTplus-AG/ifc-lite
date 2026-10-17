@@ -6,31 +6,12 @@
 //! and first geometry vertices to decide whether a model needs re-basing.
 
 use super::GeometryRouter;
+use crate::representation::{product_shape, Select};
 use crate::coord_is_large;
 use ifc_lite_core::{geometry_flags_by_name, DecodedEntity, EntityDecoder, IfcType, RtcVerdict};
 
 mod mapped_vote;
 mod raw_coordinate;
-
-/// Whether a near-origin element with this `RepresentationType` may cast a
-/// "no-shift" `(0,0,0)` RTC vote when the vertex probe can't cheaply read a
-/// coordinate. This is [`is_body_representation`](super::is_body_representation)
-/// MINUS `"Surface3D"` — meshable does NOT imply RTC-votable.
-///
-/// A `Surface3D` rep (`IfcBSplineSurfaceWithKnots`, `IfcSectionedSurface`,
-/// trimmed/curve-bounded surfaces) keeps its geometry in absolute model-space
-/// control points that `sample_first_geometry_vertex` cannot navigate, so a
-/// near-origin identity-placed Surface3D element would fall through to voting
-/// its placement `(0,0,0)` even though its real geometry can sit on a national
-/// grid hundreds of km away. On IFC4X3 corridor models with many such surfaces
-/// ahead of a few large-coordinate solids, those origin votes drag the median
-/// to zero and/or exhaust the 50-sample budget, suppressing a legitimate
-/// rebase — the #1526 curve-only pollution rebuilt via Surface3D. So Surface3D
-/// must ABSTAIN here, like a curve/axis rep. Scoped to RTC voting only: the
-/// meshing / void / layer paths still treat Surface3D as body geometry.
-fn is_rtc_votable_representation(rep_type: &str) -> bool {
-    rep_type != "Surface3D" && super::is_body_representation(rep_type)
-}
 
 impl GeometryRouter {
     /// Compute median-based RTC offset from sampled translations.
@@ -146,42 +127,20 @@ impl GeometryRouter {
     /// whether an origin-placed element with no cheaply-samplable vertex may
     /// still cast a "no shift" (0,0,0) vote during RTC detection.
     ///
-    /// NOTE: this uses [`is_rtc_votable_representation`], NOT
+    /// NOTE: this selects [`Select::RtcVotable`], NOT
     /// [`is_body_representation`](super::is_body_representation) — the two
     /// differ only in `Surface3D`, which is meshable but not RTC-votable (see
-    /// the predicate's doc; #1526).
+    /// `is_rtc_votable_representation`; #1526).
     fn element_has_body_representation(
         &self,
         entity: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> bool {
-        let Some(rep_attr) = entity.get(6) else {
+        let Ok(Some(shape)) = product_shape(entity, decoder) else {
             return false;
         };
-        if rep_attr.is_null() {
-            return false;
-        }
-        let Ok(Some(rep)) = decoder.resolve_ref(rep_attr) else {
-            return false;
-        };
-        if rep.ifc_type != IfcType::IfcProductDefinitionShape {
-            return false;
-        }
-        let Some(reps_attr) = rep.get(2) else {
-            return false;
-        };
-        let Ok(reps) = decoder.resolve_ref_list(reps_attr) else {
-            return false;
-        };
-        reps.iter().any(|sr| {
-            super::effective_element_rep_type(entity, sr).is_some_and(|rep_type| {
-                (sr.ifc_type == IfcType::IfcShapeRepresentation
-                    && is_rtc_votable_representation(rep_type))
-                    || (sr.ifc_type == IfcType::IfcTopologyRepresentation
-                        && rep_type == "Face"
-                        && super::structural::accepts(entity, rep_type))
-            })
-        })
+        let votable = shape.select(entity, Select::RtcVotable).next().is_some();
+        votable
     }
 
     /// Read the first geometry vertex (f64) from an element's representation.
@@ -202,21 +161,9 @@ impl GeometryRouter {
         entity: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Option<(f64, f64, f64)> {
-        // element attr 6 = Representation (IfcProductDefinitionShape)
-        let rep_attr = entity.get(6)?;
-        if rep_attr.is_null() {
-            return None;
-        }
-        let rep = decoder.resolve_ref(rep_attr).ok()??;
-        if rep.ifc_type != IfcType::IfcProductDefinitionShape {
-            return None;
-        }
+        let shape = product_shape(entity, decoder).ok()??;
 
-        // attr 2 = Representations (list of IfcShapeRepresentation)
-        let reps_attr = rep.get(2)?;
-        let reps = decoder.resolve_ref_list(reps_attr).ok()?;
-
-        for shape_rep in super::meshed_representations(entity, &reps) {
+        for shape_rep in shape.select(entity, Select::Meshed) {
             // attr 3 = Items (list of geometry items)
             let items = match shape_rep.get(3).and_then(|a| a.as_list()) {
                 Some(list) => list,

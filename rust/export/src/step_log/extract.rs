@@ -59,6 +59,26 @@ fn parse_float(token: &str) -> f64 {
     normalised.parse::<f64>().unwrap_or(f64::NAN)
 }
 
+/// `isUnrepresentableNumericValue` (`attribute-helpers.ts`) over the shape
+/// [`extract_entity`] yields: a raw token kept as text because it is a
+/// malformed numeric literal (`1.52.3`) or one `parseFloat` reads as an
+/// infinity (`1.E400`, `Infinity`). `$`, enumerations and labels are not.
+pub(crate) fn is_unrepresentable_numeric(value: &JsVal) -> bool {
+    let s = match value {
+        JsVal::Num(n) => return !n.is_finite(),
+        JsVal::Str(s) => s.trim_matches(|c: char| c.is_whitespace() || c == '\u{feff}'),
+        _ => return false,
+    };
+    let unsigned = s.strip_prefix(['+', '-']).unwrap_or(s);
+    let b = unsigned.as_bytes();
+    let numeric_attempt = b.first().is_some_and(u8::is_ascii_digit)
+        || (b.first() == Some(&b'.') && b.get(1).is_some_and(u8::is_ascii_digit));
+    if numeric_attempt {
+        return !is_complete_numeric(s) || parse_float(s).is_infinite();
+    }
+    unsigned.starts_with("Infinity")
+}
+
 /// One record as `EntityExtractor.extractEntity` reads it:
 /// `(express id, UPPERCASE type, attributes)`.
 pub(crate) fn extract_entity(line: &str) -> Option<(u32, String, Vec<JsVal>)> {

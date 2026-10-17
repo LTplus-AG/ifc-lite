@@ -304,3 +304,24 @@ fn welded_color_finalization_preserves_fallback_semantics_6601() {
         }
     }
 }
+
+/// #7770: `serde_json` writes a non-finite coordinate as `null`; the JSON
+/// writers refuse the document instead, as the Python surface does.
+#[test]
+fn json_refuses_a_non_finite_coordinate_7770() {
+    let mut export = build_geometry_data_export(&process_geometry(CUBE_IFC).meshes, [0.; 3], None);
+    assert!(export.to_json().is_ok());
+    export.elements.values_mut().next().unwrap().vertices[0][1] = f64::NAN;
+    assert!(export.to_json().unwrap_err().to_string().contains("non-finite vertex 0"));
+    assert!(export.to_json_pretty().is_err());
+
+    let mut offset = build_geometry_data_export(&process_geometry(CUBE_IFC).meshes, [0.; 3], None);
+    offset.rtc_offset[2] = f64::INFINITY;
+    assert!(offset.to_json().is_err());
+
+    let source = process_geometry(CUBE_IFC).meshes.remove(0);
+    let mut colored = build_colored_geometry_data_export(&[source], [0.; 3], None);
+    assert!(colored.to_json().is_ok());
+    colored.elements.values_mut().next().unwrap().geometry.vertices[0][0] = f64::NEG_INFINITY;
+    assert!(colored.to_json().is_err());
+}

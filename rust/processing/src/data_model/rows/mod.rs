@@ -29,6 +29,7 @@ pub use options::{ModelOptions, Placement};
 
 pub use ifc_lite_core::fmt_num::fmt_num;
 use super::inherit::merge_inherited;
+use super::type_assignments::TypeAssignments;
 use super::render::flat::{new_property_decoder, opt_string, ref_list, render_attributes, resolve_pset_defs};
 
 mod support;
@@ -146,7 +147,7 @@ pub fn stream_export_model_with_options(
     let mut type_product_candidates: Vec<TypeProductCandidate> = Vec::new();
     // Occurrence → its `IfcTypeObject`, from `IfcRelDefinesByType.RelatedObjects`.
     // Populated only when `opts.inherit_type_properties` asks for it.
-    let mut type_by_object: HashMap<u32, u32> = HashMap::new();
+    let mut type_by_object = TypeAssignments::new();
     // Type id → its resolved sets, so one IfcWallType typing 5000 walls is
     // decoded once. Bounded by the file's distinct types, which is orders of
     // magnitude below its occurrences.
@@ -195,15 +196,8 @@ pub fn stream_export_model_with_options(
                             if let Some(objs) = rel.attr(slot::IfcRelDefinesByType::RELATED_OBJECTS).and_then(|a| a.as_list()) {
                                 for o in objs {
                                     if let Some(oid) = o.as_entity_ref() {
-                                        // FIRST relationship wins if a file
-                                        // types one object twice (a schema
-                                        // violation, but exports do it).
-                                        // `typeIds[0]` is what the TS
-                                        // extractor takes, and scan order
-                                        // here is file order, so the two
-                                        // pick the same type rather than
-                                        // disagreeing per engine.
-                                        type_by_object.entry(oid).or_insert(tid);
+                                        // FIRST relationship wins, conflicts recorded (D42).
+                                        type_by_object.record(oid, tid);
                                     }
                                 }
                             }
@@ -322,7 +316,7 @@ pub fn stream_export_model_with_options(
         // thousands of walls off one IfcWallType, and re-decoding its sets for
         // each would turn a constant cost into a linear one.
         if opts.inherit_type_properties {
-            if let Some(&type_id) = type_by_object.get(&id) {
+            if let Some(type_id) = type_by_object.type_of(id) {
                 let inherited = type_pset_cache.entry(type_id).or_insert_with_key(|&tid| {
                     // `HasPropertySets` is attr 5 on IfcTypeObject. Resolved
                     // from the type entity itself rather than the pass-1

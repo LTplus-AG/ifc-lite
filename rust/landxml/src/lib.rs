@@ -7,6 +7,15 @@
 //! This crate intentionally stops at durable LandXML semantic records. It
 //! neither fabricates IFC nor creates renderer meshes; later adapters own
 //! coordinate systems, mesh partitioning, and presentation.
+//!
+//! Every parse path is the same pipeline: `xml::Decoder` (UTF-8 and UTF-16),
+//! `xml::TokenScanner` (lexical bounds), quick-xml (the XML grammar),
+//! `xml::Driver` (the one front end: work, depth, names, attributes,
+//! namespaces, the document element, text) and one `xml::FamilyHandler` per
+//! family (terrain, plan, alignment, pipe). The stream feeds the same driver
+//! one token at a time, so pull and stream share every semantic transition;
+//! the differential tests pin the one documented exception (a `<Units>` that
+//! arrives after the stream has committed to an assumed unit).
 
 pub mod alignment;
 mod capture;

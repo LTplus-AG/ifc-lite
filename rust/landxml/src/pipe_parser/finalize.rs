@@ -13,7 +13,7 @@ use crate::{
 use super::{
     convert,
     state::{InvertInput, PipeBuilder, StructureBuilder},
-    PipeParser,
+    PipeHandler,
 };
 
 mod document;
@@ -24,7 +24,7 @@ type StructureConversion = (
     Vec<(Vec<InvertInput>, LandXmlPipeUnits)>,
 );
 
-impl PipeParser<'_> {
+impl PipeHandler<'_> {
     pub(super) fn finish_network(&mut self, network: super::state::NetworkBuilder) -> Result<()> {
         let refusal_start = self.refusals.len();
         let source_id = network.source_id.clone();

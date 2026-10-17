@@ -59,8 +59,12 @@ LXML009: a numeric, renderable TIN surface requires a LandXML/Units element
          with a linearUnit attribute
 ```
 
-The rule is applied identically on every parse path, streaming and non-streaming, so a file
-cannot render on one path and be refused on another.
+The rule is applied identically on every parse path, streaming and non-streaming (all of them run
+one XML driver), so a file cannot render on one path and be refused on another. The one difference:
+a streaming parse that already emitted its header with an assumed unit, because a surface that draws
+to scale completed before `<Units>`, refuses a `<Units>` that arrives afterwards (the surfaces it
+already drained were scaled by the assumption); a non-streaming parse has read the whole document
+and uses the declared units, with a warning.
 
 A unitless file is **not** rejected outright: surfaces that would only ever be preserved-only
 remain inspectable. Only a numeric surface that would be drawn to scale needs a declared unit,

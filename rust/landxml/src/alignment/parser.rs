@@ -8,13 +8,9 @@ mod actions;
 mod driver;
 mod state;
 
-use std::collections::HashMap;
-
-use quick_xml::events::Event;
-
 use super::{LandXmlAlignment, LandXmlAlignmentDocument, LandXmlSuperelevationEventKind};
 use crate::{
-    xml::{error, normalize_encoding, read_events, Budget, Meter, Result},
+    xml::{drive, error, normalize_encoding, Budget, Meter, Result},
     LandXmlCancellation, LandXmlCapabilityDiagnostic, LandXmlDiagnosticCode as Code, LandXmlLimits,
     LandXmlUnits,
 };
@@ -84,22 +80,23 @@ fn parse_landxml_alignments_inner(
     // any XML is read, exactly as the TIN entry point does.
     let assumed_units = crate::semantics::resolve_assumed_units(&limits.xml)?;
     let input = normalize_encoding(input, &limits.xml, cancelled)?;
-    let mut parser = Parser::new(limits, cancelled, require_alignment, assumed_units);
-    read_events(&input, &limits.xml, cancelled, |event| parser.consume_event(event))?;
-    if !parser.frames.is_empty() {
-        return Err(error(Code::InvalidXml, "unclosed XML element"));
-    }
-    parser.finish()
+    let meter = Meter::new(limits.xml.max_work, cancelled);
+    let mut handler = AlignmentHandler::new(limits, require_alignment, assumed_units);
+    drive(&input, &limits.xml, cancelled, meter, &mut [&mut handler])?;
+    handler.finish()
 }
-#[derive(Clone)]
-pub(super) struct Frame {
-    pub(super) local: String,
-    pub(super) target: bool,
-    pub(super) namespaces: HashMap<String, String>,
+/// Which point a captured coordinate list names.
+pub(super) enum PointRole {
+    /// The `Start` of the alignment itself.
+    AlignmentStart,
+    /// One `AlignPI`.
+    AlignPi,
+    /// `Start`, `End`, `Center` or `PI` of the open primitive.
+    Primitive(&'static str),
 }
 pub(super) enum Capture {
     Point {
-        local: String,
+        role: PointRole,
         depth: usize,
         pnt_ref: Option<String>,
         text: String,
@@ -124,46 +121,37 @@ impl Capture {
         }
     }
 }
-pub(crate) struct Parser<'a> {
-    pub(super) limits: LandXmlAlignmentLimits,
-    /// The `work` budget; charged per event in `consume_event` (D73).
-    pub(super) meter: Meter<'a>,
-    pub(super) character_references: Budget,
-    pub(super) capability_diagnostics_seen: Budget,
-    pub(super) frames: Vec<Frame>,
-    pub(super) units: Option<LandXmlUnits>,
+/// The alignment family's records (a [`FamilyHandler`]); pull and the stream
+/// drive this one handler through the one driver.
+pub(crate) struct AlignmentHandler {
+    limits: LandXmlAlignmentLimits,
+    capability_diagnostics_seen: Budget,
+    units: Option<LandXmlUnits>,
     /// Effective only when the source declares no `LandXML/Units` (#5175).
-    pub(super) assumed_units: Option<LandXmlUnits>,
-    pub(super) alignments: Vec<LandXmlAlignment>,
-    pub(super) segments_seen: Budget,
-    pub(super) alignment_points_seen: Budget,
-    pub(super) station_equations_seen: Budget,
-    pub(super) cant_stations_seen: Budget,
-    pub(super) superelevation_events_seen: Budget,
-    pub(super) alignment: Option<state::AlignmentBuilder>,
-    pub(super) capture: Option<Capture>,
-    pub(super) warnings: Vec<String>,
-    pub(super) schema: String,
-    pub(super) version: String,
-    pub(super) capability_diagnostics: Vec<LandXmlCapabilityDiagnostic>,
-    pub(super) target_namespace: Option<String>,
-    pub(super) root_seen: bool,
-    pub(super) root_closed: bool,
-    pub(super) require_alignment: bool,
+    assumed_units: Option<LandXmlUnits>,
+    alignments: Vec<LandXmlAlignment>,
+    segments_seen: Budget,
+    alignment_points_seen: Budget,
+    station_equations_seen: Budget,
+    cant_stations_seen: Budget,
+    superelevation_events_seen: Budget,
+    alignment: Option<state::AlignmentBuilder>,
+    capture: Option<Capture>,
+    warnings: Vec<String>,
+    schema: String,
+    version: String,
+    capability_diagnostics: Vec<LandXmlCapabilityDiagnostic>,
+    require_alignment: bool,
 }
-impl<'a> Parser<'a> {
-    fn new(
+impl AlignmentHandler {
+    pub(crate) fn new(
         limits: &LandXmlAlignmentLimits,
-        cancelled: Option<&'a dyn LandXmlCancellation>,
         require_alignment: bool,
         assumed_units: Option<LandXmlUnits>,
     ) -> Self {
         Self {
             limits: limits.clone(),
-            meter: Meter::new(limits.xml.max_work, cancelled),
-            character_references: Budget::new(limits.xml.max_character_references, "character reference"),
             capability_diagnostics_seen: Budget::new(limits.xml.max_capability_diagnostics, "capability diagnostic"),
-            frames: Vec::new(),
             units: None,
             assumed_units,
             alignments: Vec::new(),
@@ -178,41 +166,7 @@ impl<'a> Parser<'a> {
             schema: String::new(),
             version: String::new(),
             capability_diagnostics: Vec::new(),
-            target_namespace: None,
-            root_seen: false,
-            root_closed: false,
             require_alignment,
         }
-    }
-
-    pub(crate) fn consume_event(&mut self, event: Event<'_>) -> Result<()> {
-        self.check(1)?;
-        match event {
-            Event::Start(value) => self.start(&value),
-            Event::Empty(value) => {
-                self.start(&value)?;
-                self.end(None)
-            }
-            Event::End(value) => self.end(Some(value.name().as_ref().as_bytes())),
-            Event::Text(value) => self.text(value.as_ref().as_bytes()),
-            // #7680: a reference in text arrives as its own event.
-            Event::GeneralRef(reference) => self.reference(&reference),
-            Event::CData(value) => self.cdata(value.as_ref().as_bytes()),
-            Event::DocType(_) => Err(error(Code::DtdForbidden, "DOCTYPE is not allowed")),
-            _ => Ok(()),
-        }
-    }
-
-    pub(crate) fn has_open_frames(&self) -> bool {
-        !self.frames.is_empty()
-    }
-}
-
-impl Parser<'static> {
-    pub(crate) fn new_stream(
-        limits: LandXmlAlignmentLimits,
-        assumed_units: Option<LandXmlUnits>,
-    ) -> Self {
-        Self::new(&limits, None, false, assumed_units)
     }
 }

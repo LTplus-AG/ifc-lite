@@ -8,9 +8,9 @@ use crate::{
     xml::Result, LandXmlPipeConnectivity, LandXmlPipeInvert, LandXmlPipeUnits, LandXmlSourceId,
 };
 
-use super::{convert, finalize::helpers, state::InvertInput, PipeParser};
+use super::{convert, finalize::helpers, state::InvertInput, PipeHandler};
 
-impl PipeParser<'_> {
+impl PipeHandler<'_> {
     pub(super) fn convert_inverts(
         &mut self,
         inputs: Vec<InvertInput>,

@@ -298,9 +298,8 @@
 
     #[test]
     fn test_color_to_byte() {
-        assert_eq!(color_to_byte(0.0), 0);
-        assert_eq!(color_to_byte(1.0), 255);
-        assert_eq!(color_to_byte(0.5), 128);
+        let key = MaterialKey::from_color(&[0.0, 1.0, 0.5, 2.0]);
+        assert_eq!((key.r, key.g, key.b, key.a), (0, 255, 128, 255));
     }
 
     /// Regression test for #586: meshes with positions but no normals

@@ -46,14 +46,6 @@ pub(super) struct Authoring<'a> {
     pub scale: f64,
     pub rtc_offset: [f64; 3],
 }
-fn valid_guid(value: &str) -> bool {
-    value.len() == 22
-        && value.as_bytes()[0] <= b'3'
-        && value.as_bytes()[0] >= b'0'
-        && value
-            .bytes()
-            .all(|c| c.is_ascii_alphanumeric() || c == b'_' || c == b'$')
-}
 // Our fixed authored schema rows reach this conversion, plus the shallow
 // attribute copies of an evaluated Body or layer clone, so it is total over
 // `AttributeValue` (#7677): a file-supplied `*` is written back as `*`.
@@ -112,7 +104,7 @@ pub(super) fn validate_metadata(r: &Metadata<'_>) -> Result<(),String> {
     if !matches!(r.schema, "IFC4" | "IFC4X3")
         || r.source_revision.len() > 4096
         || r.name.len() > 1024
-        || !ids.iter().all(|id| valid_guid(id))
+        || !ids.iter().all(|id| ifc_lite_core::guid::is_valid_global_id(id))
         || !distinct
     {
         return Err(

@@ -93,9 +93,7 @@ fn parse_extrusion(
         if matrix.iter().any(|value| !value.is_finite()) {
             return Err(format!("Position #{id} has non-finite coordinates"));
         }
-        let mut values = [0.0; 16];
-        values.copy_from_slice(matrix.as_slice());
-        result.position_matrix = Some(values);
+        result.position_matrix = Some(crate::math::mat4::col_major_array(&matrix));
     }
 
     let direction_id = solid.get_ref(2).ok_or("missing ExtrudedDirection")?;

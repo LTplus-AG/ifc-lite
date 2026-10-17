@@ -68,10 +68,10 @@
 //! - **Complex Breps**: ~200 entities/sec
 //! - **Boolean operations**: ~20 entities/sec
 
-// Module visibility: only 8 modules below are reached externally by sibling
+// Module visibility: only 9 modules below are reached externally by sibling
 // crates via a direct submodule path (`ifc_lite_geometry::<module>::...`) and
-// must stay `pub`: csg, csg_capture, kernel, material_layer_index, mesh,
-// projection_outline, rect_fast, space_dcel. Everything else is internal
+// must stay `pub`: csg, csg_capture, kernel, material_layer_index, math,
+// mesh, projection_outline, rect_fast, space_dcel. Everything else is internal
 // wiring; external consumers reach its types through the root-level `pub use`
 // re-exports below, so those modules are `pub(crate)` (see #C3.2).
 pub(crate) mod alignment;
@@ -139,6 +139,10 @@ pub(crate) mod instancing;
 /// every target (see docs/architecture/geometry-pipeline.md).
 pub mod kernel;
 pub mod material_layer_index;
+/// Vector, matrix, frame and AABB math over arrays: the one cross-crate home
+/// (`nalgebra` stays geometry's interior type). See the module docs for the
+/// op-order and FMA contract.
+pub mod math;
 pub mod mesh;
 /// Cooperative heartbeat from long geometry work to a host that must tell a
 /// slow call from a hung one (see the module docs).

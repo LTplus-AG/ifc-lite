@@ -133,10 +133,7 @@ pub(super) fn extract_face_bounds(
         if points.len() < 3 {
             continue;
         }
-        let orientation = bound_entity
-            .get(1)
-            .and_then(|attr| attr.as_enum())
-            .is_none_or(|value| value == "T" || value == "TRUE");
+        let orientation = bound_entity.get_bool(1).unwrap_or(true);
         if !orientation {
             points.reverse();
         }

@@ -137,6 +137,7 @@ pub(super) fn validate_style_tree(source:&mut Source<'_>, body:&DecodedEntity, l
             match value {
                 ifc_lite_core::AttributeValue::EntityRef(id)=>pending.push(*id),
                 ifc_lite_core::AttributeValue::List(items)=>values.extend(items),
+                ifc_lite_core::AttributeValue::Typed{value,..}=>values.push(value),
                 _=>{},
             }
         }

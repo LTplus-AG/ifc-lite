@@ -19,6 +19,13 @@
 //! written and STEP keyword case is not significant, so every comparison
 //! against a literal goes through [`keyword_eq`] and its siblings.
 //! [`header`] reads ISO 10303-21 header records for exporters and source views.
+//!
+//! One STEP grammar (F4, #7778): a raw read of STEP text goes through
+//! [`lexical`] (trivia, framing), [`numeric_literal`], `scanner_attributes`
+//! (the top-level split) and [`header::find_keyword_then`] (keywords), or
+//! `step_encoding` (literals). Do not write a new splitter, quote walker,
+//! number parser or keyword finder. `AttributeValue::String` and `get_string()`
+//! are already decoded, so never call `decode_ifc_string` on them again.
 
 pub mod header;
 mod keyword;

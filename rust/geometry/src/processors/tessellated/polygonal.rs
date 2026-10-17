@@ -2,7 +2,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use crate::{Error, Mesh, Result, TessellationQuality};
+use crate::triangulation::straight_corners::StraightCorners;
+use crate::{Error, Mesh, Point3, Result, TessellationQuality};
 use ifc_lite_core::{AttributeValue, DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 
 use crate::router::GeometryProcessor;
@@ -94,7 +95,9 @@ impl PolygonalFaceSetProcessor {
         // Pre-allocate indices - estimate 2 triangles per face average
         let mut indices = Vec::with_capacity(face_refs.len() * 6);
 
-        // Process each face
+        // Parse every face first: which corners are straight is a property of the
+        // whole set (see `StraightCorners`), not of any one face.
+        let mut parsed = Vec::with_capacity(face_refs.len());
         for face_ref in face_refs {
             let face_id = face_ref
                 .as_entity_ref()
@@ -120,9 +123,54 @@ impl PolygonalFaceSetProcessor {
 
             // Parse optional inner loops for IfcIndexedPolygonalFaceWithVoids.
             let inner_indices = Self::parse_face_inner_indices(&face_entity, pn_index.as_deref());
+            parsed.push((face_entity.ifc_type.clone(), face_indices, inner_indices));
+        }
 
-            // Triangulate the polygon face (including holes when present).
-            Self::triangulate_polygon(&face_entity.ifc_type, &face_indices, &inner_indices, &positions, &mut indices);
+        let ring_points = |loop_indices: &[u32]| -> Option<Vec<Point3<f64>>> {
+            loop_indices
+                .iter()
+                .map(|&idx| {
+                    let base = idx.checked_sub(1)?.checked_mul(3)? as usize;
+                    let p = positions.get(base..base.checked_add(3)?)?;
+                    Some(Point3::new(p[0] as f64, p[1] as f64, p[2] as f64))
+                })
+                .collect()
+        };
+        // Positions this close may weld downstream; see `StraightCorners::weld`.
+        let extent = positions
+            .chunks_exact(3)
+            .fold([f32::INFINITY, f32::NEG_INFINITY], |[lo, hi], p| {
+                [p.iter().fold(lo, |a, &v| a.min(v)), p.iter().fold(hi, |a, &v| a.max(v))]
+            });
+        let mut corners = StraightCorners::with_weld(1e-5 * f64::from(extent[1] - extent[0]));
+        for (_, outer, inner) in &parsed {
+            let holed = inner.iter().any(|l| l.len() >= 3);
+            for (loop_indices, keep_all) in
+                std::iter::once((outer, holed)).chain(inner.iter().map(|l| (l, true)))
+            {
+                if let Some(ring) = ring_points(loop_indices) {
+                    corners.note_ring(&ring, keep_all);
+                }
+            }
+        }
+
+        let hole_free: Vec<Vec<Point3<f64>>> = parsed
+            .iter()
+            .filter(|(_, _, inner)| inner.iter().all(|l| l.len() < 3))
+            .filter_map(|(_, outer, _)| ring_points(outer))
+            .collect();
+        corners.settle(&hole_free);
+
+        for (face_type, outer, inner) in &parsed {
+            // Straight corners every face agrees on leave the face, so no
+            // ear-clipper can keep them on one side of an edge and cut them on
+            // the other.
+            let dissolved: Option<Vec<u32>> = ring_points(outer)
+                .filter(|_| inner.iter().all(|l| l.len() < 3))
+                .and_then(|ring| corners.kept_corners(&ring))
+                .map(|kept| kept.into_iter().map(|i| outer[i]).collect());
+            let outer = dissolved.as_ref().unwrap_or(outer);
+            Self::triangulate_polygon(face_type, outer, inner, &positions, &mut indices);
         }
 
         // Closed shells from some exporters may be consistently inward.

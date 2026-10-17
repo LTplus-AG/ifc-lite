@@ -36,6 +36,15 @@ use crate::parity_tests::{get, post_content, test_state, FIXTURE};
 const FIXTURES: &[(&str, Option<&str>)] = &[
     ("parity-fixture", None),
     ("IfcOpenHouse_IFC4", Some("ara3d/IfcOpenHouse_IFC4.ifc")),
+    // C6-0 (#7783): the data-model routes over every schema family and every
+    // data kind, so a data-model refactor is judged on more than two files.
+    ("AC20-FZK-Haus", Some("ara3d/AC20-FZK-Haus.ifc")), // IFC4: properties, quantities, materials, spatial
+    ("BIMcollab_STR_IFC2X3", Some("various/02_BIMcollab_Example_STR_random_C_ebkp.ifc")), // IFC2X3: quantities, classifications
+    ("AB22_IFC4X3", Some("AB22.ifc")),                                  // IFC4X3_RC4: alignment, 336 single values
+    ("signal_IFC4X3_ADD2", Some("issues/859_linear_placement_of_signal.ifc")), // IFC4X3_ADD2: typed occurrence
+    // In-tree synthetic: lowercase keywords, a repeated #id, every property,
+    // quantity and material shape, a double-typed occurrence, `1.E400` values.
+    ("c6-synthetic", Some("rust/export/tests/fixtures/c6_data_model_synthetic.ifc")),
 ];
 
 /// Every route whose body is a function of the uploaded file. Health, cache
@@ -48,17 +57,28 @@ fn fixtures() -> Vec<(&'static str, Vec<u8>)> {
         .iter()
         .filter_map(|(key, path)| match path {
             None => Some((*key, FIXTURE.as_bytes().to_vec())),
+            Some(path) if path.starts_with("rust/") => {
+                let abs = format!("{}/../../{path}", env!("CARGO_MANIFEST_DIR"));
+                Some((*key, std::fs::read(&abs).unwrap_or_else(|e| panic!("in-tree fixture {abs}: {e}"))))
+            }
             Some(path) => test_support::fixture_opt(path).map(|b| (*key, b)),
         })
         .collect()
 }
 
-/// Zero every `*_ms` number, recursively: timings, not output.
+/// The per-thread point-cache counters in `stats`: how often a worker found a
+/// point already cached depends on how rayon split the entities, so they differ
+/// by a few between runs of the same input (seen on the 458 KB IFC2X3 corpus
+/// file, 4568 vs 4566 hits). Like the timings, they are not a function of the
+/// model.
+const SCHEDULING_COUNTERS: [&str; 2] = ["point_cache_hits", "point_cache_misses"];
+
+/// Zero every `*_ms` number and scheduling counter, recursively: not output.
 fn zero_timings(value: &mut Value) {
     match value {
         Value::Object(map) => {
             for (key, v) in map.iter_mut() {
-                if key.ends_with("_ms") && v.is_number() {
+                if (key.ends_with("_ms") || SCHEDULING_COUNTERS.contains(&key.as_str())) && v.is_number() {
                     *v = Value::from(0);
                 } else {
                     zero_timings(v);
@@ -172,4 +192,127 @@ async fn route_bodies_match_their_pins() {
     // Every route that moved is named, not only the first.
     let report: String = goldens.into_iter().map(|golden| golden.check(&expected)).collect();
     assert!(report.is_empty(), "{report}");
+}
+
+/// The in-tree synthetic file's bytes.
+fn synthetic() -> Vec<u8> {
+    let abs = format!("{}/../../rust/export/tests/fixtures/c6_data_model_synthetic.ifc", env!("CARGO_MANIFEST_DIR"));
+    std::fs::read(&abs).unwrap_or_else(|e| panic!("in-tree fixture {abs}: {e}"))
+}
+
+/// What the server's extractor does with the synthetic file today (C6-0,
+/// #7783), line by line, for the C6 PRs that move it to the shared data model
+/// (C6-5, C6-6). The bytes of every route over this file are pinned above;
+/// these are the readable half of that pin, and where an `X` PR changes a
+/// line it says why.
+#[test]
+fn synthetic_extraction_keeps_todays_tokens() {
+    let dm = crate::services::data_model::extract_data_model(&synthetic());
+    assert_eq!(dm.refused, None);
+    let prop = |pset: &str, name: &str| {
+        let set = dm.property_sets.iter().find(|p| p.pset_name == pset).unwrap_or_else(|| panic!("{pset}"));
+        set.properties.iter().find(|p| p.property_name == name).unwrap_or_else(|| panic!("{pset}.{name}"))
+    };
+
+    // Non-finite (D13/D19/D45): `inf` text, kind `real`; the quantity stays an f64.
+    assert_eq!((prop("Pset_NonFinite", "HugeReal").property_value.as_str(), prop("Pset_NonFinite", "HugeReal").property_type.as_str()), ("inf", "real"));
+    assert_eq!(prop("Pset_NonFinite", "HugeNegativeLength").property_value, "-inf");
+    assert_eq!(prop("Pset_NonFinite", "HugeNegativeLength").data_type.as_deref(), Some("IFCLENGTHMEASURE"));
+    let huge = &dm.quantity_sets.iter().find(|q| q.qset_name == "Qto_NonFinite").unwrap().quantities[0];
+    assert!(huge.quantity_value == f64::INFINITY && huge.quantity_type == "length");
+
+    // All ten property kinds, as the server renders them (TS `parsePropertyValue` parity).
+    let kinds: Vec<_> = ["Text", "Flag", "Unknown", "Thickness", "Status", "Range", "Sizes", "Curve", "Ref", "Complex"]
+        .iter()
+        .map(|n| prop("Pset_AllKinds", n).property_value.as_str())
+        .collect();
+    assert_eq!(kinds, ["Fire \u{e4} proof", "true", "", "0.2", "NEW, EXISTING", "2 [1 \u{2013} 5]", "1, 2, 3", "Table (2 rows)", "Target", "Inner1: a, Inner2: 2.5"]);
+    assert_eq!(prop("Pset_AllKinds", "Unknown").property_type, "logical");
+    assert!(prop("Pset_AllKinds", "Curve").data_type_mixed);
+    // A repeated `#50`: the later record wins.
+    assert_eq!(prop("Pset_Duplicate", "Dup").property_value, "second #50");
+
+    // Quantities keep `Number`; the flat export drops it (C6-14).
+    let qto = dm.quantity_sets.iter().find(|q| q.qset_name == "Qto_AllKinds").unwrap();
+    let types: Vec<_> = qto.quantities.iter().map(|q| q.quantity_type.as_str()).collect();
+    assert_eq!(types, ["length", "area", "volume", "count", "weight", "time", "number"]);
+
+    // Relationships are edges as authored: both `IfcRelDefinesByType` rows of the
+    // double-typed #310, a lowercase keyword kept verbatim, and the synthetic
+    // type-set links (`rel_id 0`) in type-id order.
+    let edges = |ty: &str| -> Vec<(u32, u32, u32)> {
+        dm.relationships.iter().filter(|r| r.rel_type == ty).map(|r| (r.rel_id, r.relating_id, r.related_id)).collect()
+    };
+    assert_eq!(edges("IFCRELDEFINESBYTYPE"), [(352, 350, 310), (352, 350, 320), (353, 351, 310)]);
+    assert_eq!(edges("ifcreldefinesbyproperties"), [(604, 400, 330)]);
+    assert_eq!(edges("TYPEHASPROPERTYSETS"), [(0, 400, 350), (0, 420, 350), (0, 401, 351)]);
+
+    // Materials: one row per member, every set shape.
+    let kinds: Vec<_> = dm.materials.iter().map(|m| (m.element_id, m.kind.as_str(), m.layer_index)).collect();
+    assert_eq!(
+        kinds,
+        [
+            (310, "IfcMaterialLayerSet", 0),
+            (310, "IfcMaterialLayerSet", 1),
+            (320, "IfcMaterialProfileSet", 0),
+            (330, "IfcMaterialConstituentSet", 0),
+            (350, "IfcMaterialList", 0),
+            (350, "IfcMaterialList", 1),
+        ]
+    );
+    assert_eq!(dm.materials[0].thickness, Some(0.15));
+    assert_eq!(dm.materials[3].fraction, Some(0.3));
+
+    // Classifications: one row per classified element.
+    let classified: Vec<_> = dm.classifications.iter().map(|c| (c.element_id, c.identification.as_deref())).collect();
+    assert_eq!(classified, [(310, Some("C 2.1")), (330, Some("C 2.1"))]);
+}
+
+/// Peak resident set size of this process in KiB (`VmHWM`), or 0 off Linux.
+fn peak_rss_kib() -> u64 {
+    std::fs::read_to_string("/proc/self/status")
+        .ok()
+        .and_then(|s| s.lines().find_map(|l| l.strip_prefix("VmHWM:")?.trim().trim_end_matches("kB").trim().parse().ok()))
+        .unwrap_or(0)
+}
+
+/// Wall time and peak RSS of the server's data-model path (extract, then
+/// serialise to the Parquet bundle every route sends), for the C6 PRs that
+/// must be neutral within +-2% wall and not raise RSS (C6-0, #7783).
+///
+/// `apps/server` is a binary crate, so this is an ignored test rather than an
+/// example. Run it in release, once per process (RSS is a process high-water
+/// mark), three times interleaved base vs branch:
+///
+/// `DATA_MODEL_PROBE_FILE=<path.ifc> DATA_MODEL_PROBE_ITERS=3 cargo test --release -p ifc-lite-server data_model_probe -- --ignored --nocapture`
+///
+/// One JSON line: `{"file","bytes","iters","extract_ms","serialize_ms","parquet_bytes","peak_rss_kib"}`
+/// with the per-iteration minimum of each phase. Without `DATA_MODEL_PROBE_FILE`
+/// it reads the in-tree synthetic file.
+#[test]
+#[ignore = "timing probe: run explicitly, see the doc comment"]
+fn data_model_probe() {
+    let path = std::env::var("DATA_MODEL_PROBE_FILE").ok();
+    let content = path.as_ref().map_or_else(synthetic, |p| std::fs::read(p).unwrap_or_else(|e| panic!("{p}: {e}")));
+    let iters: usize = std::env::var("DATA_MODEL_PROBE_ITERS").ok().and_then(|v| v.parse().ok()).unwrap_or(3).max(1);
+    let (mut extract_ms, mut serialize_ms, mut parquet_bytes) = (f64::MAX, f64::MAX, 0);
+    for _ in 0..iters {
+        let t = std::time::Instant::now();
+        let dm = crate::services::data_model::extract_data_model(&content);
+        extract_ms = extract_ms.min(t.elapsed().as_secs_f64() * 1e3);
+        let t = std::time::Instant::now();
+        let bytes = crate::services::parquet_data_model::serialize_data_model_to_parquet(&dm).expect("serialises");
+        serialize_ms = serialize_ms.min(t.elapsed().as_secs_f64() * 1e3);
+        parquet_bytes = bytes.len();
+    }
+    println!(
+        "{}",
+        serde_json::json!({
+            "file": path.unwrap_or_else(|| "c6_data_model_synthetic.ifc".into()),
+            "bytes": content.len(), "iters": iters,
+            "extract_ms": (extract_ms * 10.0).round() / 10.0,
+            "serialize_ms": (serialize_ms * 10.0).round() / 10.0,
+            "parquet_bytes": parquet_bytes, "peak_rss_kib": peak_rss_kib(),
+        })
+    );
 }

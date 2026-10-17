@@ -154,7 +154,7 @@ export function curveSegments(
       // them. Producers differ on which length they mean (§12.4), so either
       // agreeing is agreement, and neither is a contradiction.
       const declared = positive(curve.length, scale, `${label}'s length`);
-      if (!declaresCircularLength(declared, horizontal) && !declaresCircularLength(declared, arc)) {
+      if (!declaresCircularLength(declared, horizontal, scale) && !declaresCircularLength(declared, arc, scale)) {
         refuseProfile(
           `${label} declares a length of ${declared.toFixed(3)} m, but its radius and grades give an arc length of `
           + `${arc.toFixed(3)} m (horizontal length ${horizontal.toFixed(3)} m)`,
@@ -172,16 +172,20 @@ export function curveSegments(
 }
 
 /**
- * Relative agreement between a `CircCurve`'s declared length and the arc or
- * horizontal length its radius and grades give (#7754). One policy with
- * `rust/landxml`'s `CIRCULAR_LENGTH_RELATIVE_TOLERANCE`, pinned by the shared
- * `circ-curve-length-vectors.json`: 2e-4 accepts a length rounded to the
- * millimetre from 2.5 m up, yet refuses a centimetre on a 50 m curve.
+ * Policy for a `CircCurve`'s declared length against the arc or horizontal
+ * length its radius and grades give (#7754), shared with `rust/landxml`'s
+ * `declares_length` and pinned by `circ-curve-length-vectors.json`:
+ * `max(1e-6 * S, min(floor, cap * S))` with S the larger length. The floor is
+ * 5e-4 source units (a length written to three decimals), here scaled to
+ * metres; the cap keeps short curves checked at their own scale.
  */
-export const CIRCULAR_LENGTH_RELATIVE_TOLERANCE = 2e-4;
+export const CIRCULAR_LENGTH_ROUNDING_FLOOR = 5e-4;
+export const CIRCULAR_LENGTH_ROUNDING_CAP = 2e-4;
 
-function declaresCircularLength(declared: number, computed: number): boolean {
-  return Math.abs(declared - computed) <= Math.max(declared, computed) * CIRCULAR_LENGTH_RELATIVE_TOLERANCE;
+function declaresCircularLength(declared: number, computed: number, unitScale: number): boolean {
+  const scale = Math.max(declared, computed);
+  const tolerance = Math.max(1e-6 * scale, Math.min(CIRCULAR_LENGTH_ROUNDING_FLOOR * unitScale, CIRCULAR_LENGTH_ROUNDING_CAP * scale));
+  return Math.abs(declared - computed) <= tolerance;
 }
 
 function grade(sourceId: string, from: number, to: number, a: ProfileVertex, b: ProfileVertex): VerticalSegment {

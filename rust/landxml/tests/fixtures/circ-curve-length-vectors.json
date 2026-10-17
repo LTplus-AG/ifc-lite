@@ -1,6 +1,7 @@
 {
-  "_doc": "Shared CircCurve declared-length vectors (#7754). Policy: |declared - computed| <= max(2e-4 * max(declared, computed), 32 ULP) against the arc length or the horizontal length. Read by rust/landxml/src/profile_circular.rs and packages/create/src/landxml/landxml-to-ifc-vertical.test.ts.",
-  "relativeTolerance": 0.0002,
+  "_doc": "Shared CircCurve declared-length vectors (#7754). Policy: |declared - computed| <= max(1e-6*S, min(roundingFloor source units, roundingCap*S), 32 ULP) with S = max(declared, computed), against the arc length or the horizontal length. Read by rust/landxml/src/profile_circular.rs and packages/create/src/landxml/landxml-to-ifc-vertical.test.ts.",
+  "roundingFloor": 0.0005,
+  "roundingCap": 0.0002,
   "vectors": [
     {
       "label": "sag R1500: arc length at 3 decimals",
@@ -83,7 +84,7 @@
       "accepted": false
     },
     {
-      "label": "R50 short: 1 mm off is refused (relative 2e-4 of 2.5 m is 0.5 mm)",
+      "label": "R50 short: 1 mm off is refused (floor is 0.5 mm)",
       "gradeIn": 0.03,
       "gradeOut": -0.02,
       "radius": 50,

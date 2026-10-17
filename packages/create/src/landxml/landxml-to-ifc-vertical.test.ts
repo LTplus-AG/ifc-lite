@@ -19,7 +19,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { landXmlGlobalId, landXmlToIfc } from './landxml-to-ifc.js';
-import { CIRCULAR_LENGTH_RELATIVE_TOLERANCE } from './profile-geometry.js';
+import { CIRCULAR_LENGTH_ROUNDING_CAP, CIRCULAR_LENGTH_ROUNDING_FLOOR } from './profile-geometry.js';
 import { collectRefusals } from './refusals.js';
 import { IfcCreator } from '../ifc-creator.js';
 import { polynomialLength } from '../ifc-creator-alignment-vertical.js';
@@ -340,11 +340,13 @@ describe('landXmlToIfc — refused profiles are named with their reason (§12.2,
     const doc = JSON.parse(readFileSync(
       resolve(__dirname, '../../../../rust/landxml/tests/fixtures/circ-curve-length-vectors.json'), 'utf8',
     )) as {
-      relativeTolerance: number;
+      roundingFloor: number;
+      roundingCap: number;
       vectors: Array<{ label: string; gradeIn: number; gradeOut: number; radius: number; length: number; accepted: boolean }>;
     };
-    it('uses the same tolerance constant', () => {
-      expect(CIRCULAR_LENGTH_RELATIVE_TOLERANCE).toBe(doc.relativeTolerance);
+    it('uses the same tolerance constants', () => {
+      expect(CIRCULAR_LENGTH_ROUNDING_FLOOR).toBe(doc.roundingFloor);
+      expect(CIRCULAR_LENGTH_ROUNDING_CAP).toBe(doc.roundingCap);
     });
     it.each(doc.vectors.map((v) => [v.label, v] as const))('%s', (_label, v) => {
       // PVIs 200 m apart carrying the vector's two grades.

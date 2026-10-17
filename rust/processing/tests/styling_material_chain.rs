@@ -14,9 +14,7 @@
 //!
 //! Pre-fix the proxy rendered as the default gray; now it must be blue.
 
-use ifc_lite_processing::{
-    process_geometry, process_geometry_streaming_with_options, StreamingOptions,
-};
+use ifc_lite_processing::{process, process_geometry, Batching, Features, ProcessingRequest};
 
 const MATERIAL_BLUE: [f32; 4] = [0.2, 0.3, 0.8, 1.0];
 const PROXY_DEFAULT: [f32; 4] = [0.6, 0.6, 0.6, 1.0];
@@ -81,20 +79,13 @@ fn proxy_inherits_material_appearance_in_fast_first_batch_streaming() {
     // resolved up front for the material chain — so they must NOT be deferred.
     // Pre-fix the deferred path collected no orphan styled items and this proxy
     // rendered the default gray; now it must be the material blue.
-    let result = process_geometry_streaming_with_options(
-        MATERIAL_IFC.as_bytes(),
-        // `defer_style_updates` = fast_first_batch && Default opening filter &&
-        // !include_presentation_layers — all three required to hit the deferred
-        // branch this test guards.
-        StreamingOptions {
-            fast_first_batch: true,
-            include_presentation_layers: false,
-            initial_batch_size: 1,
-            ..StreamingOptions::default()
-        },
-        |_, _, _| {},
-        |_| {},
-    );
+    // `defer_style_updates` = fast_first && Default opening filter &&
+    // !presentation_layers: all three required to hit the deferred branch this
+    // test guards.
+    let request = ProcessingRequest::default()
+        .batching(Batching::new(1, 50).fast_first(true))
+        .features(Features::default().presentation_layers(false));
+    let result = process(MATERIAL_IFC.as_bytes(), &request, &mut ());
 
     let proxy = result
         .meshes

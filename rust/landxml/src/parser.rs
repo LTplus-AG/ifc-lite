@@ -16,7 +16,6 @@ use crate::{
     LandXmlRenderState, LandXmlSourceId, LandXmlSurface, LandXmlSurfaceKind, LandXmlTinDocument,
 };
 mod capture;
-mod document;
 mod finalize;
 mod limits;
 mod path;
@@ -25,7 +24,6 @@ pub(crate) mod state;
 mod text;
 mod version;
 
-pub(crate) use document::parse_landxml_document;
 pub(crate) use finalize::{require_units_for_renderable_tin, surface_draws_to_scale};
 pub(crate) use state::TinHandler;
 use state::{retained_properties, Frame, SurfaceBuilder};

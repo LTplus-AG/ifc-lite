@@ -21,7 +21,7 @@
 use super::properties::{extract_property, resolve_complex_into, ComplexMemo};
 use super::types::Property;
 use ifc_lite_core::limits::ComplexPropertyBudget;
-use ifc_lite_core::{AttributeValue, DecodedEntity, EntityDecoder, IfcType};
+use ifc_lite_core::{slot, AttributeValue, DecodedEntity, EntityDecoder, IfcType};
 
 /// The seven `IfcProperty` subtypes a property set lists.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -135,8 +135,8 @@ impl PropertyDecoder {
     /// are decoded, so the property a budget cuts is the same on every run
     /// for one decoding order.
     pub fn decode_set(&mut self, decoder: &mut EntityDecoder, def: &DecodedEntity) -> Option<PropertySetRow> {
-        let name = def.get(2).and_then(|a| a.as_string()).map(str::to_string);
-        let members = decoder.resolve_ref_list(def.get(4)?).ok()?;
+        let name = def.string_at(slot::IfcPropertySet::NAME).map(str::to_string);
+        let members = decoder.resolve_ref_list(def.attr(slot::IfcPropertySet::HAS_PROPERTIES)?).ok()?;
         let mut properties = Vec::new();
         for member in &members {
             let Some(kind) = PropertyKind::of(&member.ifc_type) else { continue };
@@ -153,14 +153,14 @@ impl PropertyDecoder {
         &mut self, decoder: &mut EntityDecoder, entity: &DecodedEntity, kind: PropertyKind,
     ) -> Option<PropertyRow> {
         if self.scope == PropertyScope::SingleValueOnly {
-            let name = entity.get(0).and_then(|a| a.as_string())?.to_string();
-            return Some(PropertyRow { name, kind, nominal: entity.get(2).cloned(), display: None });
+            let name = entity.string_at(slot::IfcPropertySingleValue::NAME)?.to_string();
+            return Some(PropertyRow { name, kind, nominal: entity.attr(slot::IfcPropertySingleValue::NOMINAL_VALUE).cloned(), display: None });
         }
         let mut display = extract_property(entity, decoder)?;
         if kind == PropertyKind::Complex {
             resolve_complex_into(&mut display, entity.id, decoder, &mut self.budget, &mut self.memo);
         }
-        let nominal = if kind == PropertyKind::Single { entity.get(2).cloned() } else { None };
+        let nominal = if kind == PropertyKind::Single { entity.attr(slot::IfcPropertySingleValue::NOMINAL_VALUE).cloned() } else { None };
         Some(PropertyRow { name: display.property_name.clone(), kind, nominal, display: Some(display) })
     }
 }

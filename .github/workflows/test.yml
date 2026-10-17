@@ -1016,6 +1016,15 @@ jobs:
           # Once step_ids.rs is on main, ordinary whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/export/src/step_ids.rs | grep -Fxq 'rust/export/src/step_ids.rs'; then
             oracle_args+=(--mutation tests/evidence/step-writer-7682/appended-record-guards.oracle.patch)
+          # #7784 (C9a-10): the one-read source API (`parse_landxml_source*`,
+          # `LandXmlSourceLimits`) is new and its tests import it, so a
+          # whole-change revert does not compile them (INCONCLUSIVE). Keep the
+          # API and break ONLY the behaviour: the document's pipe networks are
+          # dropped, which the equality with the single-family entry points and
+          # the options endpoint's pipe contract observe. Once source.rs is on
+          # main, ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/landxml/src/source.rs | grep -Fxq 'rust/landxml/src/source.rs'; then
+            oracle_args+=(--mutation tests/evidence/landxml-source-7784/pipes.oracle.patch)
           # #7675: the material-row budget travels as DataModel.refused and
           # the complex-property walks share ifc_lite_core::limits'
           # ComplexPropertyBudget, which the changed tests construct, so a
@@ -1176,12 +1185,30 @@ jobs:
           # placement/chain.rs is on main, ordinary whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/placement/chain.rs | grep -Fxq 'rust/geometry/src/placement/chain.rs'; then
             oracle_args+=(--mutation tests/evidence/placement-7779/behaviour.oracle.patch)
+          # #7782 (C4-1): `process`, `ProcessingRequest`, `ProcessingSink` and
+          # `FrameEvent` are new items the changed tests import, so a
+          # whole-change revert cannot compile them (INCONCLUSIVE). Keep them
+          # and restore ONLY behaviour the tests pin: no `on_frame` event, the
+          # baked-basis slot never filled, `fast_first` dropped by
+          # `from_streaming`, and the id allow-list ignored by the
+          # `_and_ids` delegate. Once request.rs is on main, ordinary
+          # whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/processing/src/processor/request.rs | grep -Fxq 'rust/processing/src/processor/request.rs'; then
+            oracle_args+=(--mutation tests/evidence/processing-7782/behaviour.oracle.patch)
           # #7783: C6-7 adds data_model/property.rs, which the changed export and
           # processing tests import, so a whole-change revert cannot compile
           # them. Keep the module and break ONLY its behaviour: the list/
           # enumerated kind split, the single-value scope and complex resolution.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/processing/src/data_model/property.rs | grep -Fxq 'rust/processing/src/data_model/property.rs'; then
             oracle_args+=(--mutation tests/evidence/data-model-property-7783/behaviour.oracle.patch)
+          # #7782 (C4-5): `ScanClass` is a new module its own tests import, so a
+          # whole-change revert cannot compile them (INCONCLUSIVE). Keep it and
+          # restore ONLY the table: mapped items unclassified, the fills code
+          # shared with voids, `IFCPROPERTY...` records unclassified and
+          # aggregates stashed with voids. Once scan.rs is on main, ordinary
+          # whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/processing/src/scan.rs | grep -Fxq 'rust/processing/src/scan.rs'; then
+            oracle_args+=(--mutation tests/evidence/processing-7782/scan-class.oracle.patch)
           # #7783: C6-8 moves the export model into data_model::{rows,inherit,
           # render::flat} and adds QuantityKind, so the moved tests do not exist
           # on the base. Keep the move; break ONLY QuantityKind's spellings and

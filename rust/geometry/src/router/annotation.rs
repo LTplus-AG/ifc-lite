@@ -12,7 +12,7 @@ use nalgebra::Point3;
 const MAX_VERTICES: usize = 2048;
 const MAX_RINGS: usize = 64;
 
-pub(super) fn accepts(product: &DecodedEntity, rep_type: &str) -> bool {
+pub(crate) fn accepts(product: &DecodedEntity, rep_type: &str) -> bool {
     product.ifc_type == IfcType::IfcAnnotation && matches!(rep_type, "Annotation2D" | "Surface2D")
 }
 
@@ -23,7 +23,7 @@ pub(super) fn accepts(product: &DecodedEntity, rep_type: &str) -> bool {
 /// no mesh processor exists for them, so walking them only counted each one as
 /// a dropped item and warned "missing or incomplete" on a clean model (#5389).
 pub(super) fn is_fill_only_representation(product: &DecodedEntity, shape_rep: &DecodedEntity) -> bool {
-    super::rep_filter::effective_element_rep_type(product, shape_rep)
+    crate::representation::effective_element_rep_type(product, shape_rep)
         .is_some_and(|rep_type| accepts(product, rep_type))
 }
 

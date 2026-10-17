@@ -1330,6 +1330,29 @@ and OS cache; timings are evidence, not a comparison baseline):
 | many surfaces | 52.13 KiB | 3.206 / 5.975 | 15.88 / 8.52 | 256 / 1,024 / 512 | 0 / 0 / 0 / 32 | 3.36 KiB (4 events) | 954 B / 8.00 KiB / 246.09 KiB |
 | boundary/breakline/contour | 5.48 KiB | 0.280 / 0.472 | 19.09 / 11.34 | 1 / 4 / 2 | 1 / 24 / 24 / 32 | 5.92 KiB (4 events) | 19.71 KiB / 8.00 KiB / 28.21 KiB |
 
+### One XML driver (C9a, #7784)
+
+Pull and stream used to be four parsers (terrain, plan, alignment, pipe), each
+with its own copy of the loop, the prologue, the text rules and the namespace
+and attribute handling; `parse_landxml_document` read the bytes three times and
+the wasm `parseLandXmlSourceBytes` four. They are now handlers on one
+`xml::Driver` and the source is read once. Measured base (main before the
+series) against the series head, interleaved, release, on a loaded shared host
+(wall time varied by +-10% run to run, so the verdict uses callgrind instruction
+counts, which are deterministic; wall medians of 5 runs agree):
+
+| | pull: `parse_landxml_document` over the 10 golden fixtures | `landxml_streaming_bench_5050` (whole + stream, 4 cases) |
+|---|---:|---:|
+| base | 72.9M instr, 117 ms | 19.13G instr, whole 523 ms / stream 876 ms (large TIN) |
+| series head | 25.3M instr (-65%), 51 ms | 11.37G instr (-41%), whole 189 ms / stream 532 ms |
+
+Lessons: (1) the stream cost was the per-token `VecDeque` traffic, the
+per-event attribute decode and the namespace-map clone, each done once per
+family (four times); the driver does them once. (2) The memchr-driven scanner
+removed the byte-at-a-time preflight. (3) Measure instruction counts for a
+refactor of this size; the first wall-clock runs differed by more than the
+effect of the small steps.
+
 ## Schema-specific crate-private registries (#4203, #4996)
 
 Selecting generated per-schema attribute tables by the source file's schema
@@ -1575,7 +1598,7 @@ Two lessons, both found by measuring rather than by design:
 - **The stream needs the baked basis before its first batch.** Without it,
   site-rotated models (skolebygg, advanced_model, DigitalHub) matched only the
   buffered route run with no basis, 2-5x worse. The frame is chosen before
-  meshing, so `process_geometry_streaming_filtered_with_baked_basis` publishes it then.
+  meshing, so `process` announces it through the sink's `on_frame` event then.
 
 ## The native probe (`perf_probe`)
 

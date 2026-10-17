@@ -13,6 +13,9 @@ export function runLandXmlUnitContracts(api, test) {
     const source = api.parseLandXmlSourceBytesWithOptions(unitless, { assumedLinearUnit: 'foot' });
     assert.equal(source.tin.plan.area_scale_to_square_meters, 0.3048 * 0.3048);
     assert.equal(source.alignments.units.assumed, true);
+    // C9a-10: one read of the bytes, and the options endpoint returns the pipe networks too.
+    assert.equal(source.tin.pipe_networks.root_units.assumed, true);
+    assert.ok(source.tin.pipe_networks.networks.length > 0);
     // Pipe networks reach the viewer through the stream session.
     const session = api.createLandXmlTinStreamSession(unitless.byteLength, { assumedLinearUnit: 'foot' });
     const events = [];
@@ -35,5 +38,11 @@ export function runLandXmlUnitContracts(api, test) {
     const network = records.find((event) => event.record === 'pipe_network');
     assert.equal(network.value.structure_units.assumed, true, 'the network inherits the assumed root units');
     assert.ok(!records.some((event) => event.record === 'pipe_refusal'), 'a unitless pipe network is not refused under an assumed unit');
+  });
+
+  test('parseLandXmlSourceBytesWithOptions returns what parseLandXmlSourceBytes returns (C9a-10)', () => {
+    const bytes = new TextEncoder().encode(PIPE_XML);
+    assert.deepEqual(api.parseLandXmlSourceBytesWithOptions(bytes, {}), api.parseLandXmlSourceBytes(bytes));
+    assert.ok(api.parseLandXmlSourceBytesWithOptions(bytes, {}).tin.pipe_networks.networks.length > 0);
   });
 }

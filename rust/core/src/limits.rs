@@ -38,17 +38,17 @@
 /// sufficient (see the module docs above for which kind).
 pub const MAX_MAPPED_ITEM_DEPTH: u32 = 32;
 
-/// Maximum `IfcLocalPlacement.PlacementRelTo` chain any walk in this workspace
-/// will follow. A chain longer than this composes only its first
-/// `MAX_PLACEMENT_DEPTH + 1` placements and the rest is dropped — silently, on
-/// every site that uses it.
+/// Maximum `IfcLocalPlacement.PlacementRelTo` chain the export ParentContext
+/// walks follow. It no longer bounds placement resolution: since F3b (D27)
+/// `ifc_lite_geometry::placement::resolve_chain` walks the chain iteratively
+/// with a visited set and **no cap**, so a chain of any length resolves in full
+/// and a cycle is refused and counted. A cap there would make a memoised
+/// answer depend on which product warmed an ancestor first (#3012).
 ///
-/// Shared because two walks follow the SAME attribute of the SAME entity and
-/// their bounds must agree: `ifc_lite_geometry::router::transforms` (the mesh
-/// path) and `ifc_lite_geometry::profile_extractor` (the 2D drawing path).
-/// They disagreed — 32 against 100 — and because both exceed-branches return
-/// the IDENTITY rather than an error, an element on a 33-to-101-link chain was
-/// drawn in two different places by the two paths with nothing reported. #2873
+/// The text below records why the cap was 100 when it bounded the recursive
+/// walks (the mesh path and the 2D drawing path, which disagreed, 32 against
+/// 100, and drew an element on a 33-to-101-link chain in two places, #2873).
+/// L-export renames the remaining bound and deletes this constant.
 ///
 /// ## Why 100 and not 32
 ///

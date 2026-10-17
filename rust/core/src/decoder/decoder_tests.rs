@@ -466,31 +466,19 @@ fn get_polyloop_point_ids_fast_refuses_a_loop_with_an_oversized_ref() {
     );
 }
 
-/// `get_entity_ref_list_fast` (issue #3421): same contract as
-/// `get_polyloop_point_ids_fast`, different accessor and record shape.
+/// `get_entity_ref_list_fast` (issue #3421, F4-3): same contract as
+/// `get_polyloop_point_ids_fast`. An oversized id refuses the WHOLE list. It
+/// used to be dropped, which returned an open shell with a face missing as if
+/// it were the file's shell (D3).
 #[test]
-fn get_entity_ref_list_fast_drops_oversized_ref() {
+fn get_entity_ref_list_fast_refuses_a_list_holding_an_oversized_ref() {
     let content = "#1=IFCCLOSEDSHELL((#2,#4294967297,#4294967295));\n";
     let mut decoder = EntityDecoder::new(content);
-    assert_eq!(
-        decoder.get_entity_ref_list_fast(1),
-        Some(vec![2, u32::MAX])
-    );
-}
-
-/// `get_first_entity_ref_fast` (issue #3421): an oversized first reference
-/// must refuse (`None`), not resolve to `#1`.
-#[test]
-fn get_first_entity_ref_fast_refuses_oversized_ref() {
-    let content = "#1=IFCMAPPEDITEM(#4294967297,$);\n";
+    assert_eq!(decoder.get_entity_ref_list_fast(1), None);
+    // The inclusive boundary still resolves, and the list is authored order.
+    let content = "#1=IFCCLOSEDSHELL((#2,#4294967295));\n";
     let mut decoder = EntityDecoder::new(content);
-    assert_eq!(decoder.get_first_entity_ref_fast(1), None);
-
-    // Control: the same accessor resolves an ordinary reference, and the
-    // inclusive boundary (u32::MAX) still resolves too.
-    let content = "#1=IFCMAPPEDITEM(#4294967295,$);\n";
-    let mut decoder = EntityDecoder::new(content);
-    assert_eq!(decoder.get_first_entity_ref_fast(1), Some(u32::MAX));
+    assert_eq!(decoder.get_entity_ref_list_fast(1), Some(vec![2, u32::MAX]));
 }
 
 /// `get_face_bound_fast` (issue #3421): an oversized loop reference must
@@ -631,11 +619,9 @@ END-ISO-10303-21;
 ///     `fast_float2` does not skip leading whitespace, so `\t1.` refused the
 ///     point.
 ///
-/// The other four sites (the two list readers, `get_first_entity_ref_fast`,
-/// `get_polyloop_coords_cached_into`'s own loop) already stepped past an
-/// unknown byte one at a time, so they never refused; they share the
-/// predicate now so the set cannot drift apart again, and their lines here
-/// are the control, not a regression.
+/// The other sites (the two list readers, `get_polyloop_coords_cached_into`'s
+/// own loop) are `StepRecord` readers since F4-3, which skip trivia with the
+/// same predicate; their lines here are the control, not a regression.
 #[test]
 fn fast_readers_accept_every_step_whitespace_byte_3733() {
     for ws in ["\t", "\x0b", "\x0c", " "] {
@@ -657,7 +643,6 @@ fn fast_readers_accept_every_step_whitespace_byte_3733() {
         // Control: never refused, now on the shared predicate.
         assert_eq!(decoder.get_polyloop_point_ids_fast(4), Some(vec![1, 2, 3]), "ws {ws:?}");
         assert_eq!(decoder.get_entity_ref_list_fast(4), Some(vec![1, 2, 3]), "ws {ws:?}");
-        assert_eq!(decoder.get_first_entity_ref_fast(5), Some(4), "ws {ws:?}");
     }
 }
 

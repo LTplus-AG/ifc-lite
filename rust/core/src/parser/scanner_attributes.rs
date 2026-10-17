@@ -19,8 +19,23 @@
 //! as a separator and an apostrophe in one as a string (#4687). The rule
 //! lives here.
 
-use crate::parser::lexical::skip_step_trivia;
+use crate::parser::lexical::{is_step_space, skip_step_comment, skip_step_trivia};
+use std::ops::Range;
 use crate::step_encoding::step_string_literal_end;
+
+/// The bytes that end a plain run inside an item: the separators and
+/// brackets the item loop acts on, a quote or a possible comment opener, and
+/// STEP whitespace (which the item's end must not include).
+const SPECIAL: [bool; 256] = {
+    let mut table = [false; 256];
+    let specials = b",()'/ \t\n\r\x0b\x0c";
+    let mut i = 0;
+    while i < specials.len() {
+        table[specials[i] as usize] = true;
+        i += 1;
+    }
+    table
+};
 
 /// The top-level items of one parenthesized STEP list, each trimmed of
 /// trivia (STEP whitespace and `/* ... */` comments) at both ends. Nested
@@ -64,6 +79,11 @@ impl<'a> StepListItems<'a> {
         Self { bytes, pos, first: true, state: ListState::Open }
     }
 
+    /// The items of the list whose `(` sits just before `pos`.
+    pub(crate) fn at(bytes: &'a [u8], pos: usize) -> Self {
+        Self::after_open(bytes, pos)
+    }
+
     /// Whether iteration has reached the list's own `)`.
     pub fn closed(&self) -> bool {
         self.state == ListState::Closed
@@ -73,25 +93,35 @@ impl<'a> StepListItems<'a> {
 impl<'a> Iterator for StepListItems<'a> {
     type Item = &'a [u8];
 
+    #[inline]
     fn next(&mut self) -> Option<&'a [u8]> {
         if self.state != ListState::Open {
             return None;
         }
         let bytes = self.bytes;
+        let len = bytes.len();
         let mut pos = self.pos;
         // The item's non-trivia span, once a value byte has been seen.
         let (mut start, mut end) = (None, pos);
         let mut depth = 0usize;
         loop {
-            let Some(next) = skip_step_trivia(bytes, pos) else {
-                break;
-            };
-            pos = next;
+            // Trivia, inline: the whitespace run is the common case, and only
+            // a `/*` leaves it.
+            while pos < len && is_step_space(bytes[pos]) {
+                pos += 1;
+            }
             let Some(&b) = bytes.get(pos) else {
                 break;
             };
             let value_start = pos;
             match b {
+                b'/' if bytes.get(pos + 1) == Some(&b'*') => match skip_step_comment(bytes, pos) {
+                    Some(next) => {
+                        pos = next;
+                        continue;
+                    }
+                    None => break,
+                },
                 b',' | b')' if depth == 0 => {
                     let first = std::mem::replace(&mut self.first, false);
                     self.pos = pos + 1;
@@ -118,12 +148,91 @@ impl<'a> Iterator for StepListItems<'a> {
                 _ => {}
             }
             pos += 1;
+            // A run of bytes that act on nothing and are no trivia is one
+            // value stretch: jump it (F4-3).
+            while pos < len && !SPECIAL[bytes[pos] as usize] {
+                pos += 1;
+            }
             start.get_or_insert(value_start);
             end = pos;
         }
         self.state = ListState::Unreadable;
         None
     }
+}
+
+/// The top-level items of a list's inner text (what sits between its
+/// parentheses), as byte ranges: split at commas outside nesting, literals
+/// and comments, each trimmed of STEP trivia at both ends. A comment inside
+/// an item stays in its text, since the item is a slice of the input.
+///
+/// The tolerant splitter, for text that may be cut short or malformed (the
+/// source header). Unlike [`StepListItems`] it never refuses: a literal that
+/// never closes runs to the end, and a comment that never closes ends the
+/// scan (everything after its `/*` is inside it). The last item is yielded
+/// even though no `)` closes it, a blank last item only after a comma. A
+/// stray `)` at depth 0 is not a separator, and neither is a comma after it.
+/// Square brackets are ordinary text: Part 21 has no brackets outside
+/// literals.
+fn split_top_level_ranges(inner: &[u8]) -> Vec<Range<usize>> {
+    let len = inner.len();
+    let mut items = Vec::new();
+    let mut span: Option<(usize, usize)> = None;
+    let mut depth = 0i32;
+    let mut i = 0;
+    let take = |span: &mut Option<(usize, usize)>| {
+        span.take().map_or(0..0, |(start, end)| start..end)
+    };
+    while i < len {
+        let b = inner[i];
+        if is_step_space(b) {
+            i += 1;
+            continue;
+        }
+        if b == b'/' && inner.get(i + 1) == Some(&b'*') {
+            match skip_step_comment(inner, i) {
+                Some(next) => {
+                    i = next;
+                    continue;
+                }
+                None => break,
+            }
+        }
+        if b == b',' && depth == 0 {
+            items.push(take(&mut span));
+            i += 1;
+            continue;
+        }
+        let start = i;
+        match b {
+            b'\'' => i = step_string_literal_end(inner, i).unwrap_or(len),
+            b'(' => {
+                depth += 1;
+                i += 1;
+            }
+            b')' => {
+                depth -= 1;
+                i += 1;
+            }
+            _ => i += 1,
+        }
+        span = Some((span.map_or(start, |(first, _)| first), i));
+    }
+    if span.is_some() || !items.is_empty() {
+        items.push(take(&mut span));
+    }
+    items
+}
+
+/// [`split_top_level_ranges`] over bytes, as slices of `inner`.
+pub fn split_top_level_args(inner: &[u8]) -> Vec<&[u8]> {
+    split_top_level_ranges(inner).into_iter().map(|r| &inner[r]).collect()
+}
+
+/// [`split_top_level_args`] over text. Every delimiter is ASCII, so the byte
+/// ranges fall on character boundaries.
+pub fn split_top_level_args_str(inner: &str) -> Vec<&str> {
+    split_top_level_ranges(inner.as_bytes()).into_iter().map(|r| &inner[r]).collect()
 }
 
 /// Whether the top-level attribute at `index` (0-based, first attribute
@@ -144,9 +253,12 @@ impl<'a> Iterator for StepListItems<'a> {
 /// container exceptionally carries geometry (#1910), companion to
 /// `is_representationless_spatial_container_by_name`.
 pub fn nth_attribute_is_present(record: &[u8], index: usize) -> bool {
-    let Some(mut attributes) = StepListItems::of_record(record) else {
-        return false;
-    };
+    StepListItems::of_record(record).is_some_and(|attributes| attribute_is_present(attributes, index))
+}
+
+/// The one "does attribute `index` hold a value" rule over a record's
+/// attributes; [`nth_attribute_is_present`] and `StepRecord::is_present`.
+pub(crate) fn attribute_is_present(mut attributes: StepListItems<'_>, index: usize) -> bool {
     let holds_a_value = attributes
         .nth(index)
         .is_some_and(|value| !matches!(value.first(), None | Some(b'$')));

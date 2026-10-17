@@ -310,7 +310,8 @@ fn detect_schema_un_doubles_backslash_before_escape_re_doubles_it() {
 fn build_model(tag: &str, mm: bool, site_name: &str, storey_name: &str) -> String {
     let prefix = if mm { ".MILLI." } else { "$" };
     let g = |base: &str| -> String {
-        let mut s = format!("{base}{tag}");
+        // First char must be 0..=3 (valid GlobalId, #7777): swap the leading letter.
+        let mut s = format!("1{}{tag}", &base[1..]);
         while s.len() < 22 {
             s.push('0');
         }
@@ -512,10 +513,10 @@ fn within_model_duplicate_globalids_are_restamped() {
     // — a defective source. The cross-model map cannot see this (nothing is
     // registered until emit time), so reconciliation must track within-model
     // duplicates and re-stamp the second occurrence (CR #2952).
-    let dup = "SAMEGUID00000000000000"; // 22 charset chars
+    let dup = "3AMEGUID00000000000000"; // 22 charset chars
     let model = format!(
         "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n\
-#1=IFCPROJECT('PROJ000000000000000000',$,$,$,$,$,$,$,$);\n\
+#1=IFCPROJECT('1ROJ000000000000000000',$,$,$,$,$,$,$,$);\n\
 #20=IFCWALL('{dup}',$,'Wall A',$,$,$,$,$);\n\
 #21=IFCWALL('{dup}',$,'Wall B',$,$,$,$,$);\n\
 ENDSEC;\nEND-ISO-10303-21;\n"
@@ -591,8 +592,8 @@ fn excluded_high_id_does_not_block_a_fitting_later_model() {
     // the largest id in the file — otherwise a later model that would comfortably fit is
     // wrongly omitted as an overflow (CR #2952).
     let big_excluded = "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n\
-#1=IFCWALL('WALLLOW00000000000000A',$,'Low',$,$,$,$,$);\n\
-#4294967295=IFCWALL('WALLMAX00000000000000A',$,'Max',$,$,$,$,$);\n\
+#1=IFCWALL('1ALLLOW00000000000000A',$,'Low',$,$,$,$,$);\n\
+#4294967295=IFCWALL('1ALLMAX00000000000000A',$,'Max',$,$,$,$,$);\n\
 ENDSEC;\nEND-ISO-10303-21;\n";
     let second = build_model("S", true, "Terrain", "Level 1");
     let models = [
@@ -695,8 +696,8 @@ fn converted_rooted_entity_keeps_source_globalid_for_later_unify() {
 ENDSEC;\nEND-ISO-10303-21;\n"
         )
     };
-    let a = model("PROJA000000000000000AA");
-    let b = model("PROJB000000000000000BB");
+    let a = model("1ROJA000000000000000AA");
+    let b = model("2ROJB000000000000000BB");
     let opts = MergedOptions { schema: Some("IFC4".to_string()), ..Default::default() };
     let (merged, _) = export_merged_with_stats(&[a.as_bytes(), b.as_bytes()], &opts);
 

@@ -15,10 +15,10 @@ pub fn deterministic_global_id(seed: &str) -> String {
     ifc_lite_core::guid::deterministic(seed)
 }
 
-/// True for a 22-char IfcGloballyUniqueId (`^[0-9A-Za-z_$]{22}$`); the merge's
-/// long-standing shape check. See [`ifc_lite_core::guid::is_global_id_shaped`].
+/// True for a valid 22-char IfcGloballyUniqueId (first char `0..=3`). See
+/// [`ifc_lite_core::guid::is_valid_global_id`].
 pub fn is_global_id(s: &str) -> bool {
-    ifc_lite_core::guid::is_global_id_shaped(s)
+    ifc_lite_core::guid::is_valid_global_id(s)
 }
 
 /// True for IfcRelationship subtypes (objectified relationships): a shared GUID
@@ -81,41 +81,18 @@ pub fn leading_rooted_global_id(line: &[u8]) -> Option<String> {
     extract_global_id_fast(&type_upper, line)
 }
 
-/// Read the GlobalId of an already-rendered STEP line (first `'…'` after the
-/// first `(`). Used to register the *actually emitted* GUID after remap /
-/// re-stamp / schema conversion. Returns `None` when the first string is not a
-/// GlobalId (safe — the caller then falls back to the known local GUID).
+/// Read the GlobalId of an already-rendered STEP line. Used to register the
+/// *actually emitted* GUID after remap / re-stamp / schema conversion. Returns
+/// `None` when the first string is not a GlobalId (safe — the caller then falls
+/// back to the known local GUID). Same scan as [`extract_global_id_fast`].
 pub fn read_leading_guid(text: &str) -> Option<String> {
-    let b = text.as_bytes();
-    let open = b.iter().position(|&c| c == b'(')?;
-    let q1 = b[open..].iter().position(|&c| c == b'\'')? + open;
-    let q2 = b[q1 + 1..].iter().position(|&c| c == b'\'')? + q1 + 1;
-    let inner = &text[q1 + 1..q2];
-    is_global_id(inner).then(|| inner.to_string())
+    ifc_lite_core::guid::leading_global_id(text.as_bytes()).map(str::to_string)
 }
 
-/// Rewrite the leading 22-char GlobalId field of a STEP line with `new_guid`.
-/// Safe because the GUID charset excludes the apostrophe, so the first `'…'`
-/// after `(` is exactly the GlobalId slot. Returns the input unchanged if no
-/// quoted first attribute is found.
+/// Rewrite the leading GlobalId field of a STEP line with `new_guid`. Returns
+/// the input unchanged if the line has no valid leading GlobalId.
 pub fn replace_global_id(text: &str, new_guid: &str) -> String {
-    let b = text.as_bytes();
-    let Some(open) = b.iter().position(|&c| c == b'(') else {
-        return text.to_string();
-    };
-    let Some(q1rel) = b[open..].iter().position(|&c| c == b'\'') else {
-        return text.to_string();
-    };
-    let q1 = open + q1rel;
-    let Some(q2rel) = b[q1 + 1..].iter().position(|&c| c == b'\'') else {
-        return text.to_string();
-    };
-    let q2 = q1 + 1 + q2rel;
-    let mut out = String::with_capacity(text.len() + new_guid.len());
-    out.push_str(&text[..q1 + 1]);
-    out.push_str(new_guid);
-    out.push_str(&text[q2..]);
-    out
+    ifc_lite_core::guid::replace_leading_global_id(text, new_guid)
 }
 
 /// Mints deterministic replacement GlobalIds that avoid collisions with both the

@@ -38,6 +38,7 @@ fn is_global_id_rejects_wrong_length_and_charset() {
     assert!(!is_global_id("tooshort"));
     assert!(!is_global_id("has a space in it here!")); // 22 chars but space
     assert!(!is_global_id("2O2Fr$t4X7Zf8NOew3FLOHx")); // 23 chars
+    assert!(!is_global_id("zzzzzzzzzzzzzzzzzzzzzz")); // first char outside 0..=3 (#7777)
 }
 
 #[test]
@@ -52,9 +53,19 @@ fn extract_and_replace_round_trip_the_guid_slot() {
 }
 
 #[test]
+fn merge_and_appearance_agree_on_a_first_char_outside_0_to_3() {
+    let line = b"#5=IFCWALL('zzzzzzzzzzzzzzzzzzzzzz',#6,'Wall',$,$,#7,#8,'tag');";
+    assert_eq!(extract_global_id_fast("IFCWALL", line), None);
+    let text = std::str::from_utf8(line).unwrap();
+    assert_eq!(read_leading_guid(text), None);
+    assert_eq!(replace_global_id(text, "10JRGA7NqHOtqjXClEkHK8"), text);
+    assert!(!ifc_lite_core::guid::is_valid_global_id("zzzzzzzzzzzzzzzzzzzzzz"));
+}
+
+#[test]
 fn non_rooted_string_type_is_not_read_as_a_guid() {
     // A property whose Name is 22 charset chars must not be mistaken for a root.
-    let line = b"#9=IFCPROPERTYSINGLEVALUE('AAAAAAAAAAAAAAAAAAAAAA',$,IFCLABEL('x'),$);";
+    let line = b"#9=IFCPROPERTYSINGLEVALUE('0AAAAAAAAAAAAAAAAAAAAA',$,IFCLABEL('x'),$);";
     assert_eq!(extract_global_id_fast("IFCPROPERTYSINGLEVALUE", line), None);
 }
 
@@ -62,7 +73,7 @@ fn non_rooted_string_type_is_not_read_as_a_guid() {
 fn non_rooted_colour_and_material_types_are_not_guids() {
     // IfcColourRgb leads with an optional Name that can be 22 charset chars;
     // it must not be classified as a rooted GlobalId (CR regression #2952).
-    let colour = b"#12=IFCCOLOURRGB('AAAAAAAAAAAAAAAAAAAAAA',0.5,0.5,0.5);";
+    let colour = b"#12=IFCCOLOURRGB('0AAAAAAAAAAAAAAAAAAAAA',0.5,0.5,0.5);";
     assert_eq!(extract_global_id_fast("IFCCOLOURRGB", colour), None);
     assert_eq!(leading_rooted_global_id(colour), None);
     // A real rooted entity with the same-shaped leading string IS read.
@@ -82,10 +93,10 @@ fn schema_check_rejects_non_rooted_name_carrying_types() {
     // its first inherited attribute is `Name`, while `IfcRoot` leads with
     // `GlobalId`.
     let cases: [(&str, &[u8]); 4] = [
-        ("IFCREGULARTIMESERIES", b"#1=IFCREGULARTIMESERIES('AAAAAAAAAAAAAAAAAAAAAA',$,$,$,$,$,$,(#2));"),
-        ("IFCPROPERTYSINGLEVALUE", b"#2=IFCPROPERTYSINGLEVALUE('AAAAAAAAAAAAAAAAAAAAAA',$,IFCLABEL('x'),$);"),
-        ("IFCCOLOURSPECIFICATION", b"#3=IFCCOLOURSPECIFICATION('AAAAAAAAAAAAAAAAAAAAAA');"),
-        ("IFCMATERIAL", b"#4=IFCMATERIAL('AAAAAAAAAAAAAAAAAAAAAA',$,$);"),
+        ("IFCREGULARTIMESERIES", b"#1=IFCREGULARTIMESERIES('0AAAAAAAAAAAAAAAAAAAAA',$,$,$,$,$,$,(#2));"),
+        ("IFCPROPERTYSINGLEVALUE", b"#2=IFCPROPERTYSINGLEVALUE('0AAAAAAAAAAAAAAAAAAAAA',$,IFCLABEL('x'),$);"),
+        ("IFCCOLOURSPECIFICATION", b"#3=IFCCOLOURSPECIFICATION('0AAAAAAAAAAAAAAAAAAAAA');"),
+        ("IFCMATERIAL", b"#4=IFCMATERIAL('0AAAAAAAAAAAAAAAAAAAAA',$,$);"),
     ];
     for (ty, line) in cases {
         assert!(!is_rooted_entity_type(ty), "{ty} is not rooted");

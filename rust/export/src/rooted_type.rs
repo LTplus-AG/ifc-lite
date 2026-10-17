@@ -91,10 +91,10 @@ mod tests {
         assert_eq!(IfcType::from_str("IFCDOORSTYLE"), IfcType::IfcDoorStyle);
         assert!(is_rooted_type("IFCDOORSTYLE"));
 
-        let line = b"#30=IFCDOORSTYLE('9zY8xW7vU6tS5rQ4pO3nM2',#2,'DoorStyle',$,$,$,$,$,.DOOR.,.SINGLE_SWING_LEFT.,.T.,.T.);";
+        let line = b"#30=IFCDOORSTYLE('0zY8xW7vU6tS5rQ4pO3nM2',#2,'DoorStyle',$,$,$,$,$,.DOOR.,.SINGLE_SWING_LEFT.,.T.,.T.);";
         assert_eq!(
             extract_leading_guid("IFCDOORSTYLE", line),
-            Some("9zY8xW7vU6tS5rQ4pO3nM2".to_string())
+            Some("0zY8xW7vU6tS5rQ4pO3nM2".to_string())
         );
     }
 

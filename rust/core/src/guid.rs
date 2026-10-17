@@ -2,12 +2,10 @@
 //! The IfcGloballyUniqueId (22-char GlobalId) home: alphabet, validators, the
 //! leading-GlobalId reader and the two deterministic minters.
 //!
-//! Two validators exist on purpose and are NOT interchangeable:
-//! [`is_global_id_shaped`] checks only length and alphabet (what the merged
-//! exporter has always accepted), while [`is_valid_global_id`] also enforces
-//! the 128-bit packing rule that the first character encodes 2 bits (`0..=3`),
-//! as the appearance writer does. Unifying them changes which tokens the merge
-//! treats as ids and is a behaviour decision tracked separately (#7777).
+//! One validity rule everywhere: [`is_valid_global_id`] (22 chars of
+//! [`ALPHABET`] whose first character is `0..=3`, since 22 chars hold
+//! `2 + 21 * 6 = 128` bits). The length+alphabet half is private; the merged
+//! exporter and the appearance writer both use the strict rule (#7777).
 
 /// buildingSMART base64 alphabet (64 chars) used by IfcGloballyUniqueId.
 pub const ALPHABET: &[u8; 64] =
@@ -17,22 +15,21 @@ pub const ALPHABET: &[u8; 64] =
 /// bytes of a STEP line; the scan never looks further.
 const LEADING_WINDOW: usize = 128;
 
-/// True for a 22-char token drawn entirely from [`ALPHABET`]
-/// (`^[0-9A-Za-z_$]{22}$`). Does not check the first-character range.
-pub fn is_global_id_shaped(s: &str) -> bool {
+/// Length and alphabet only (`^[0-9A-Za-z_$]{22}$`); private so nothing can
+/// opt out of the first-character rule.
+fn is_global_id_shaped(s: &str) -> bool {
     s.len() == 22 && s.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'$')
 }
 
-/// [`is_global_id_shaped`] plus the spec rule that the first character carries
-/// only 2 bits (`'0'..='3'`), since 22 chars hold `2 + 21 * 6 = 128` bits.
+/// The one GlobalId validity rule: [`is_global_id_shaped`] plus the spec rule
+/// that the first character carries only 2 bits (`'0'..='3'`).
 pub fn is_valid_global_id(s: &str) -> bool {
     is_global_id_shaped(s) && (b'0'..=b'3').contains(&s.as_bytes()[0])
 }
 
-/// The first `'...'` string of a STEP entity line, when it is GlobalId-shaped.
-/// Only the first 128 bytes are inspected. Rootedness (whether the entity type
-/// has a GlobalId at all) is the caller's decision.
-pub fn leading_global_id(line: &[u8]) -> Option<&str> {
+/// Byte range of the GlobalId inside the first `'...'` string of a STEP entity
+/// line, when it is a valid GlobalId. Only the first 128 bytes are inspected.
+fn leading_global_id_span(line: &[u8]) -> Option<std::ops::Range<usize>> {
     let window = &line[..line.len().min(LEADING_WINDOW)];
     let open = window.iter().position(|&b| b == b'(')?;
     let mut i = open + 1;
@@ -45,7 +42,28 @@ pub fn leading_global_id(line: &[u8]) -> Option<&str> {
     let start = i + 1;
     let close = window[start..].iter().position(|&b| b == b'\'')? + start;
     let inner = std::str::from_utf8(&window[start..close]).ok()?;
-    is_global_id_shaped(inner).then_some(inner)
+    is_valid_global_id(inner).then_some(start..close)
+}
+
+/// The first `'...'` string of a STEP entity line, when it is a valid
+/// GlobalId. Only the first 128 bytes are inspected. Rootedness (whether the
+/// entity type has a GlobalId at all) is the caller's decision.
+pub fn leading_global_id(line: &[u8]) -> Option<&str> {
+    let span = leading_global_id_span(line)?;
+    std::str::from_utf8(&line[span]).ok()
+}
+
+/// `text` with its leading GlobalId (see [`leading_global_id`]) replaced by
+/// `new_guid`; unchanged when the line has no valid leading GlobalId.
+pub fn replace_leading_global_id(text: &str, new_guid: &str) -> String {
+    let Some(span) = leading_global_id_span(text.as_bytes()) else {
+        return text.to_string();
+    };
+    let mut out = String::with_capacity(text.len() + new_guid.len());
+    out.push_str(&text[..span.start]);
+    out.push_str(new_guid);
+    out.push_str(&text[span.end..]);
+    out
 }
 
 /// Deterministic 22-char GlobalId from an arbitrary seed. A faithful port of

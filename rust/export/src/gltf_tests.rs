@@ -1528,6 +1528,20 @@ fn opaque_material_omits_alpha_mode() {
     assert!(json["materials"][0].get("alphaMode").is_none(), "opaque omits alphaMode");
 }
 
+/// #7777: one colour-key rule across glTF/COLLADA/USD (clamped, non-finite -> 0).
+#[test]
+fn out_of_gamut_colours_share_one_material() {
+    let positions: Vec<f32> = vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0];
+    let normals: Vec<f32> = std::iter::repeat_n([0.0f32, 0.0, 1.0], 6).flatten().collect();
+    let (glb, _) = export_glb_from_meshes(
+        &positions, &normals, &[0, 1, 2, 0, 1, 2], &[3, 3], &[3, 3],
+        &[1.5, 0.5, 0.5, 1.0, 1.0, 0.5, 0.5, 1.0],
+        &[0.0, 0.0, 0.0, 0.0, 0.0, 0.0], &[10, 11], false, true, false,
+    );
+    let (json, _) = parse_glb(&glb);
+    assert_eq!(json["materials"].as_array().unwrap().len(), 1, "{json}");
+}
+
 #[test]
 fn metadata_and_isolation() {
     let with_meta = try_export_glb_with_stats(

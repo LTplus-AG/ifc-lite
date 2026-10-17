@@ -141,7 +141,7 @@
      563 rust/geometry/src/material_layer_index.rs
 # +14: SubMeshCollection gains `ids_are_materials` + `of_materials()` so a material-layer id can never be read as a representation item (#3199).
 # -531: the 535-line `#[cfg(test)] mod tests` moved to the sibling mesh_tests.rs, which the ratchet exempts. Production code is unchanged (#3199 follow-up).
-    1012 rust/geometry/src/mesh.rs
+    1002 rust/geometry/src/mesh.rs
 # +86: #2866 — Boolean and CSG are mutually recursive over file references
 # (IfcBooleanResult operand -> IfcCsgSolid -> TreeRootExpression -> that same
 # IfcBooleanResult). CsgSolidProcessor built a FRESH BooleanClippingProcessor,
@@ -257,7 +257,6 @@
 # collapsing thin cut geometry far from the project origin, and the correct
 # behaviour already existed next to it as `rotate_mesh_from_frame`, which now
 # also composes the input's own origin instead of assigning over it.
-     757 rust/geometry/src/router/voids/geom.rs
 # -125: the closure, pairing and signed-volume checks moved to `mesh_check` (C2-1, #7793); 882 -> 757.
 # +10: extract min_opening_volume(quality) tier->floor helper shared by the batch
 # admission gate and the sequential CSG path so they can't diverge on the
@@ -274,7 +273,7 @@
 # `Mesh::origin`) instead of a centre-baking transform, and the relativizing
 # branch now COMPOSES the inner cut's origin rather than assigning over it.
 # `voids/geom.rs` sheds 27 in the same change.
-    2058 rust/geometry/src/router/voids/mod.rs
+    1694 rust/geometry/src/router/voids/mod.rs
 # NEW: analytic prism (stepped-extrusion) subtraction on the host mesh — the
 # CSG-heavy-corpus lever (ISSUE_098/129: exact void booleans are ~75-82% of
 # geometry time; rebated masonry openings on brep/clipped hosts had no fast
@@ -313,7 +312,7 @@
 # post-cut sliver refinement REGION-SCOPED (refine_high_aspect_slivers_within) so
 # only rim slivers the cut created are bisected, not the host's authored
 # long-thin faces; skip the probe/audit tail when the fixpoint was a no-op.
-    3160 rust/geometry/src/router/voids/prism_cut.rs
+    3077 rust/geometry/src/router/voids/prism_cut.rs
 # NEW: #129 coaxial footprint-union for OVERLAPPING opening clusters. One cohesive
 # algorithm: extended-AABB overlap clustering (union-find), coaxial detection, 2.5D
 # depth-slicing with per-slab i_overlay footprint union + watertight re-extrude to
@@ -326,7 +325,7 @@
 # commits, while a through-cut of a host thicker than the opening is not mistaken for one.
 # +9 (#2616): doc-only comments recording the z_tol coalescing rationale at the
 # depth-guard call sites; no code change.
-     704 rust/geometry/src/router/voids/coaxial_union.rs
+     614 rust/geometry/src/router/voids/coaxial_union.rs
 # probe.rs +134: the 2D bool-path host/opening extraction — `extruded_solid_from_item`
 # (unwrap IfcMappedItem chains to a single IfcExtrudedAreaSolid + composed transform),
 # `host_extruded_solid` and `opening_extruded_solids` (single-body eligibility gates).
@@ -348,7 +347,7 @@
 # that decides jamb from exit (#3219) is new there. An earlier revision added a
 # facing vote and a footprint restriction; both were measured to decline pushes
 # the pre-fix code made, and both were deleted.
-     955 rust/geometry/src/router/voids/synthesis.rs
+     796 rust/geometry/src/router/voids/synthesis.rs
     1472 rust/geometry/src/space_dcel/mod.rs
      782 rust/geometry/src/triangulation.rs
      745 rust/geometry/src/void_index.rs

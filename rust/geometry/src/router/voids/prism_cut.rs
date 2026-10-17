@@ -928,6 +928,19 @@ fn cross_section_ring(
     )
 }
 
+/// The distinct facet directions (|cos| above 0.999 merges) that can be the
+/// depth axis of a stepped extrusion. More than 65 is way past any stepped
+/// extrusion: `None`, bail early.
+fn depth_candidates(normals: &[Option<V3>]) -> Option<Vec<V3>> {
+    let facets = normals.iter().flatten().map(|n| Facet {
+        normal: Vector3::new(n[0], n[1], n[2]),
+        weight: 0.0,
+        anchor: Point3::origin(),
+    });
+    let clusters = cluster_face_normals(facets, 0.999, Merge::FirstSeen, 65, |_, _, _| {})?;
+    Some(clusters.into_iter().map(|(axis, _)| [axis.x, axis.y, axis.z]).collect())
+}
+
 /// Detect that the (welded) cutter is a stepped extrusion and extract its
 /// stack. `verts`/`tris` are the welded cutter in host-local coordinates;
 /// `mesh_vol` is the enclosed volume of the (unwelded) cutter. Conservative:
@@ -942,18 +955,7 @@ fn detect_prism(verts: &[V3], tris: &[[usize; 3]], mesh_vol: f64) -> Option<Pris
         let (a, b, c) = (verts[t[0]], verts[t[1]], verts[t[2]]);
         normals.push(normalize(cross(sub(b, a), sub(c, a))));
     }
-    // More than 65 distinct directions is way past any stepped extrusion:
-    // bail early.
-    let facets = normals.iter().flatten().map(|n| Facet {
-        normal: Vector3::new(n[0], n[1], n[2]),
-        weight: 0.0,
-        anchor: Point3::origin(),
-    });
-    let clusters: Vec<V3> =
-        cluster_face_normals(facets, 0.999, Merge::FirstSeen, 65, |_, _, _| {})?
-            .into_iter()
-            .map(|(axis, _)| [axis.x, axis.y, axis.z])
-            .collect();
+    let clusters = depth_candidates(&normals)?;
     let mut mag = 0.0f64;
     for v in verts {
         for c in v {

@@ -614,8 +614,7 @@ fn process_geometry_streaming_filtered_with_options_and_ids(
                     type_name: type_name.to_string(),
                     name: extract_name_from_args(&args, &fallback),
                     elevation: None,
-                    raw_elevation: keyword_eq(type_name, "IFCBUILDINGSTOREY")
-                        .then(|| read_storey_elevation(&args)),
+                    raw_elevation: keyword_eq(type_name, "IFCBUILDINGSTOREY").then(|| read_storey_elevation(&args)),
                     children: Vec::new(),
                     contained: Vec::new(),
                     elements: Vec::new(),
@@ -951,8 +950,7 @@ fn process_geometry_streaming_filtered_with_options_and_ids(
 
     // Resolve BOTH unit scales once via the shared resolver, before the quick
     // bootstrap so its storey elevations come out in metres (PROCESSING-18)
-    // (the scan recorded
-    // IFCPROJECT's id, so this is an O(1) decode — no more full-file hunts:
+    // (the scan recorded IFCPROJECT's id, so this is an O(1) decode — no more full-file hunts:
     // the historic `with_units` + `plane_angle_to_radians` pair each re-walked
     // the whole DATA section). Seed the shared decoder so every later consumer
     // (opening filter, metadata phase, deferred-style replay) inherits them.
@@ -966,8 +964,7 @@ fn process_geometry_streaming_filtered_with_options_and_ids(
     decoder.seed_unit_scales(unit_scales.geometry_length_scale(), unit_scales.plane_angle_to_radians);
     if let Some(mut spatial_nodes) = quick_spatial_nodes.take() {
         // A refused unit has no metre scale; its elevation stays in file units.
-        let elevation_scale = unit_scales.geometry_length_scale();
-        spatial_nodes.values_mut().for_each(|node| node.finish_elevation(elevation_scale));
+        spatial_nodes.values_mut().for_each(|n| n.finish_elevation(unit_scales.geometry_length_scale()));
         for (parent_id, child_ids) in quick_aggregate_links {
             if !spatial_nodes.contains_key(&parent_id) {
                 continue;

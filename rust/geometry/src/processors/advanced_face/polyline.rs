@@ -165,11 +165,7 @@ fn sample_curve_polyline_guarded(
             return Ok(Vec::new());
         };
         let basis_kind = basis.ifc_type.as_str().to_uppercase();
-        let sense = curve
-            .get(3)
-            .and_then(|a| a.as_enum())
-            .map(|e| e == "T" || e == "TRUE")
-            .unwrap_or(true);
+        let sense = curve.get_bool(3).unwrap_or(true);
 
         let mut read_trim_point = |idx: usize| -> Option<Point3<f64>> {
             let list = curve.get(idx)?.as_list()?;

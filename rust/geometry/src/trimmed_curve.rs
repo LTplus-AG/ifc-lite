@@ -45,11 +45,7 @@ pub(crate) fn decode_trimmed_primitive(
     recovery: TrimRecovery,
 ) -> Result<Option<TrimmedPrimitive>> {
     let cartesian = trimmed.get(4).and_then(AttributeValue::as_enum) == Some("CARTESIAN");
-    let sense = trimmed
-        .get(3)
-        .and_then(AttributeValue::as_enum)
-        .unwrap_or("T")
-        == "T";
+    let sense = trimmed.get_bool(3).unwrap_or(true);
     let ignore_bad_cartesian = matches!(recovery, TrimRecovery::BasisDefaults);
     match basis.ifc_type {
         IfcType::IfcLine => {

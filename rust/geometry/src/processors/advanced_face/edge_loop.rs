@@ -63,8 +63,7 @@ fn sample_edge_curve_points_or_refuse(
     let (Some(start), Some(end)) = (walk_start, walk_end) else {
         return Ok(None);
     };
-    let same_sense = edge_curve.get(3).and_then(|attribute| attribute.as_enum())
-        .map(|value| value == "T" || value == "TRUE").unwrap_or(true);
+    let same_sense = edge_curve.get_bool(3).unwrap_or(true);
     let curve_forward = orientation == same_sense;
     // An absent EdgeGeometry is a straight edge (the chord); a dangling one
     // is refused (#7687).
@@ -115,11 +114,7 @@ fn edge_loop_points(
         let oriented_edge = decoder.decode_by_id(edge_id).map_err(|_| Refused)?;
 
         // IfcOrientedEdge: EdgeStart(0), EdgeEnd(1), EdgeElement(2), Orientation(3)
-        let orientation = oriented_edge
-            .get(3)
-            .and_then(|a| a.as_enum())
-            .map(|e| e == "T" || e == "TRUE")
-            .unwrap_or(true);
+        let orientation = oriented_edge.get_bool(3).unwrap_or(true);
 
         // Get the EdgeElement (IfcEdgeCurve)
         let edge_curve = oriented_edge
@@ -186,11 +181,7 @@ fn sample_edge_geometry(
             let Some(basis) = resolve_present(geom.get(0), decoder)? else {
                 return Ok(None);
             };
-            let sense = geom
-                .get(3)
-                .and_then(|a| a.as_enum())
-                .map(|e| e == "T" || e == "TRUE")
-                .unwrap_or(true);
+            let sense = geom.get_bool(3).unwrap_or(true);
             let basis_forward = curve_forward == sense;
             let basis_type = basis.ifc_type.as_str().to_uppercase();
             match basis_type.as_str() {
@@ -252,11 +243,7 @@ fn sample_composite_curve_edge(
         let seg_id = seg_ref.as_entity_ref().ok_or(Refused)?;
         let segment = decoder.decode_by_id(seg_id).map_err(|_| Refused)?;
         // IfcCompositeCurveSegment: 0=Transition, 1=SameSense, 2=ParentCurve
-        let same_sense = segment
-            .get(1)
-            .and_then(|a| a.as_enum())
-            .map(|e| e == "T" || e == "TRUE")
-            .unwrap_or(true);
+        let same_sense = segment.get_bool(1).unwrap_or(true);
         let parent = segment
             .get(2)
             .and_then(|a| decoder.resolve_ref(a).ok().flatten())

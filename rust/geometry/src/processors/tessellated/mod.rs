@@ -43,7 +43,7 @@ use ifc_lite_core::{
 /// IfcOpenShell reorients none of the three. Before #7689 the triangulated
 /// processor oriented `$` and the polygonal one did not.
 fn orients_outward(closed: Option<&AttributeValue>) -> bool {
-    closed.and_then(AttributeValue::as_enum) == Some("T")
+    closed.and_then(AttributeValue::as_bool) == Some(true)
 }
 
 /// Read an `IfcCartesianPointList3D` as flat `[x, y, z, ...]` f32 positions.

@@ -164,7 +164,7 @@ fn resolve_complex_properties(
 /// (`packages/parser/src/on-demand-extractors.ts`) so server-parsed properties
 /// carry the SAME resolved value + kind + measure tag as the in-browser parse.
 /// STEP wraps values as typed tokens (`IFCLABEL('X')`, `IFCBOOLEAN(.T.)`), which
-/// the decoder stores as `AttributeValue::List([String(type), inner])`; the old
+/// the decoder stores as `AttributeValue::Typed { name, value }`; the old
 /// code only matched bare `String`/`Float` and emitted `format!("{:?}")` Debug
 /// garbage for every text/boolean value — this resolves them properly.
 pub(super) fn extract_property(

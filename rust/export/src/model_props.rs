@@ -31,7 +31,9 @@ pub(super) struct Rendered {
 
 /// Render an `AttributeValue` (single property value) to its display string,
 /// type tag and primitive kind. Typed values like `IFCLABEL('x')` decode to
-/// `List([String("IFCLABEL"), inner])`; the kind comes from `inner`.
+/// [`AttributeValue::Typed`]; the kind comes from its value. A list is not a
+/// single value and renders nothing (it used to render its second item under
+/// its first item's name when the first was a string, F3c).
 pub(super) fn render_value(v: &AttributeValue) -> Option<Rendered> {
     let rendered = |value: String, tag: &str, kind| Rendered { value, value_type: tag.to_string(), kind };
     match v {
@@ -42,17 +44,15 @@ pub(super) fn render_value(v: &AttributeValue) -> Option<Rendered> {
             let kind = if matches!(e.as_str(), "T" | "F") { ValueKind::Bool } else { ValueKind::Text };
             Some(rendered(map_enum(e), "IFCBOOLEAN", kind))
         }
-        AttributeValue::List(items) => {
-            // Typed value wrapper: first element is the type name string.
-            if let Some(AttributeValue::String(tn)) = items.first() {
-                let inner = render_value(items.get(1)?)?;
-                Some(Rendered { value_type: tn.clone(), ..inner })
-            } else {
-                None
-            }
+        AttributeValue::Typed { name, value } => {
+            let inner = render_value(value)?;
+            Some(Rendered { value_type: name.to_string(), ..inner })
         }
         // Entity-ref-valued properties (rare for NominalValue) aren't rendered inline.
-        AttributeValue::EntityRef(_) | AttributeValue::Null | AttributeValue::Derived => None,
+        AttributeValue::List(_)
+        | AttributeValue::EntityRef(_)
+        | AttributeValue::Null
+        | AttributeValue::Derived => None,
     }
 }
 
@@ -269,4 +269,23 @@ pub(super) fn resolve_pset_defs(
         }
     }
     (property_sets, quantity_sets)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn s(text: &str) -> AttributeValue {
+        AttributeValue::String(text.to_owned())
+    }
+
+    /// CORE-4 (#7776): `IfcPerson.MiddleNames ('Anne','Marie')` is a list of
+    /// two strings. It rendered as the value `Marie` tagged `Anne`.
+    #[test]
+    fn a_two_string_list_is_not_a_typed_value_core_4_7776() {
+        assert!(render_value(&AttributeValue::List(vec![s("Anne"), s("Marie")])).is_none());
+        let typed = AttributeValue::Typed { name: "IFCLABEL".into(), value: Box::new(s("Marie")) };
+        let rendered = render_value(&typed).expect("a typed value renders");
+        assert_eq!((rendered.value.as_str(), rendered.value_type.as_str()), ("Marie", "IFCLABEL"));
+    }
 }

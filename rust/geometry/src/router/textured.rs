@@ -12,6 +12,7 @@ use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 
 use super::frame_parts::{single_frame_source, SourceParts};
 use super::GeometryRouter;
+use crate::representation::{Flow, NestedMaps, RepresentationWalk, Select, WalkCtx, WalkVisitor};
 use crate::{Error, Mesh, Result, SubMeshCollection};
 
 impl GeometryRouter {
@@ -128,41 +129,17 @@ impl GeometryRouter {
         // `GeometryRouter::enter_unsupported_source`.
         let _drop_scope = self.enter_unsupported_source(rep_map.id, &mapped_rep);
 
-        let mut untextured = SourceParts::default();
-        // One entry per textured item — keeps each item with its own image.
-        let mut textured: Vec<(
-            Mesh,
-            Vec<f32>,
-            crate::processors::texture::TextureAttachment,
-        )> = Vec::new();
-        for item in items {
-            // A nested IfcMappedItem inside a type's own representation: process
-            // it (applies its MappingTarget) rather than dropping its geometry.
-            if item.ifc_type == IfcType::IfcMappedItem {
-                match self.process_mapped_item_parts(&item, decoder) {
-                    // already scaled inside the cached path
-                    Ok(sub_parts) => sub_parts.iter().for_each(|part| untextured.merge(part)),
-                    Err(e) => {
-                        self.drop_item(&item, &e, "nested IfcMappedItem in representation map");
-                    }
-                }
-                continue;
-            }
-
-            // Textured tessellated face set → its own part with per-vertex UVs (#961),
-            // rebased like the plain items below (#5698, #7690).
-            if let Some(map) = texture_index.get(&item.id) {
-                if let Some((mut sub_mesh, sub_uvs)) =
-                    self.textured_face_set(&item, decoder, map, Some(self.rtc_offset))
-                {
-                    self.keep_rebase_in_origin(&mut sub_mesh);
-                    textured.push((sub_mesh, sub_uvs, map.attachment()));
-                    continue;
-                }
-            }
-
-            self.merge_source_item(&item, decoder, &mut untextured, "representation-map");
-        }
+        // A nested `IfcMappedItem` is handed to `process_mapped_item_parts`
+        // (`NestedMaps::Leaf`), which bounds it with a fresh depth count.
+        let mut sink = TypeMapSink {
+            router: self,
+            texture_index,
+            untextured: SourceParts::default(),
+            textured: Vec::new(),
+        };
+        let walk = RepresentationWalk { select: Select::Any, nested: NestedMaps::Leaf };
+        walk.items_of(&mapped_rep, &items, decoder, &mut sink);
+        let TypeMapSink { untextured, textured, .. } = sink;
 
         // attr 0: MappingOrigin (IfcAxis2Placement3D) — the only 3D transform;
         // UVs are 2D and unaffected. Parse once, bake into every part.
@@ -205,5 +182,44 @@ impl GeometryRouter {
         }
 
         Ok(out)
+    }
+}
+
+/// The type-geometry walk of a map's own items: textured face sets become their
+/// own parts, everything else merges.
+struct TypeMapSink<'a> {
+    router: &'a GeometryRouter,
+    texture_index: &'a rustc_hash::FxHashMap<u32, crate::processors::texture::ResolvedTextureMap>,
+    untextured: SourceParts,
+    /// One entry per textured item — keeps each item with its own image.
+    textured: Vec<(Mesh, Vec<f32>, crate::processors::texture::TextureAttachment)>,
+}
+
+impl WalkVisitor for TypeMapSink<'_> {
+    fn item(&mut self, item: &DecodedEntity, _at: &WalkCtx<'_>, decoder: &mut EntityDecoder) -> Flow {
+        let router = self.router;
+        // A nested IfcMappedItem inside a type's own representation: process
+        // it (applies its MappingTarget) rather than dropping its geometry.
+        if item.ifc_type == IfcType::IfcMappedItem {
+            match router.process_mapped_item_parts(item, decoder) {
+                // already scaled inside the cached path
+                Ok(sub_parts) => sub_parts.iter().for_each(|part| self.untextured.merge(part)),
+                Err(e) => router.drop_item(item, &e, "nested IfcMappedItem in representation map"),
+            }
+            return Flow::Continue;
+        }
+        // Textured tessellated face set → its own part with per-vertex UVs (#961),
+        // rebased like the plain items below (#5698, #7690).
+        if let Some(map) = self.texture_index.get(&item.id) {
+            if let Some((mut sub_mesh, sub_uvs)) =
+                router.textured_face_set(item, decoder, map, Some(router.rtc_offset))
+            {
+                router.keep_rebase_in_origin(&mut sub_mesh);
+                self.textured.push((sub_mesh, sub_uvs, map.attachment()));
+                return Flow::Continue;
+            }
+        }
+        router.merge_source_item(item, decoder, &mut self.untextured, "representation-map");
+        Flow::Continue
     }
 }

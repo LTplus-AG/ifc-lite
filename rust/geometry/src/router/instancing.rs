@@ -9,6 +9,7 @@
 
 use super::frame_parts::SourceParts;
 use super::GeometryRouter;
+use crate::representation::{Flow, NestedMaps, RepresentationWalk, Select, WalkCtx, WalkRefusal, WalkVisitor};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use std::sync::Arc;
 
@@ -79,38 +80,36 @@ impl GeometryRouter {
         // total-loss (empty) source and every later occurrence lands here again.
         // See `GeometryRouter::enter_unsupported_source`.
         let _drop_scope = self.enter_unsupported_source(source_id, mapped_repr);
-        let mut source = SourceParts::default();
-        if let Some(items_attr) = mapped_repr.get(3) {
-            if let Ok(items) = decoder.resolve_ref_list(items_attr) {
-                for sub_item in items {
-                    if sub_item.ifc_type == IfcType::IfcMappedItem {
-                        // Unreachable via the only caller (see the doc above).
-                        // Skipping it would leave `mesh` short of the source's real
-                        // geometry, and the insert below would publish that model-wide.
-                        //
-                        // If it ever becomes reachable, note the second cost: the
-                        // scope above has already CLAIMED `source_id` in
-                        // `sources_recorded`, so a later, complete walk of the same
-                        // source through `mapped_item.rs` would find it claimed and
-                        // record nothing — losing its drops rather than duplicating
-                        // them. Releasing the claim belongs with whatever makes this
-                        // branch reachable.
-                        return;
-                    }
-                    // A missing processor or a failing one leaves the mesh short of
-                    // the source's real geometry, and the insert below publishes
-                    // that to EVERY instance of this source model-wide. The partial
-                    // mesh itself is consistent with the per-occurrence path
-                    // (`mapped_item.rs` also keeps going past a failed sub-item), so
-                    // the drop is recorded rather than the source withheld — but it
-                    // MUST be recorded, or the one place the loss is visible at all
-                    // is the one place instancing removed. `mapped_item.rs` writes
-                    // this same cache entry, so both mesh the item through the one
-                    // per-item step (RTC rebase, curve-cap drain; #7690).
-                    self.merge_source_item(&sub_item, decoder, &mut source, "shared-source");
-                }
-            }
+        // A nested map bails the walk (`NestedMaps::Refuse`): the only caller
+        // reaches here having passed `mapped_source_single_item`, so the source
+        // is exactly ONE non-mapped item and a nested one cannot occur. Skipping
+        // it would leave `mesh` short of the source's real geometry, and the
+        // insert below would publish that model-wide.
+        //
+        // If it ever becomes reachable, note the second cost: the scope above has
+        // already CLAIMED `source_id` in `sources_recorded`, so a later, complete
+        // walk of the same source through `mapped_item.rs` would find it claimed
+        // and record nothing — losing its drops rather than duplicating them.
+        // Releasing the claim belongs with whatever makes this branch reachable.
+        //
+        // A missing processor or a failing item leaves the mesh short of the
+        // source's real geometry, and the insert below publishes that to EVERY
+        // instance of this source model-wide. The partial mesh itself is
+        // consistent with the per-occurrence path (`mapped_item.rs` also keeps
+        // going past a failed sub-item), so the drop is recorded rather than the
+        // source withheld — but it MUST be recorded, or the one place the loss is
+        // visible at all is the one place instancing removed. `mapped_item.rs`
+        // writes this same cache entry, so both mesh the item through the one
+        // per-item step (RTC rebase, curve-cap drain; #7690).
+        let mut sink = SharedSourceSink { router: self, source: SourceParts::default(), bailed: false };
+        if let Some(items) = mapped_repr.get(3).and_then(|attr| decoder.resolve_ref_list(attr).ok()) {
+            let walk = RepresentationWalk { select: Select::Any, nested: NestedMaps::Refuse };
+            walk.items_of(mapped_repr, &items, decoder, &mut sink);
         }
+        if sink.bailed {
+            return;
+        }
+        let source = sink.source;
         let mut parts = source.into_parts();
         if parts.len() == 1
             && !parts[0].positions.is_empty()
@@ -122,6 +121,25 @@ impl GeometryRouter {
                 .unwrap_or_else(|e| e.into_inner())
                 .insert(source_id, Arc::new(mesh));
         }
+    }
+}
+
+/// The don't-bake shared-source walk: a flat merge of the source's items that
+/// gives up, publishing nothing, on a nested map.
+struct SharedSourceSink<'a> {
+    router: &'a GeometryRouter,
+    source: SourceParts,
+    bailed: bool,
+}
+
+impl WalkVisitor for SharedSourceSink<'_> {
+    fn item(&mut self, item: &DecodedEntity, _at: &WalkCtx<'_>, decoder: &mut EntityDecoder) -> Flow {
+        self.router.merge_source_item(item, decoder, &mut self.source, "shared-source");
+        Flow::Continue
+    }
+
+    fn refused(&mut self, _item: &DecodedEntity, _why: WalkRefusal, _at: &WalkCtx<'_>) {
+        self.bailed = true;
     }
 }
 

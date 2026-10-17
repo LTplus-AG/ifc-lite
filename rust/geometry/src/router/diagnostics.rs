@@ -345,7 +345,7 @@ mod attribution;
 mod processor_failures;
 mod unsupported_items;
 pub use unsupported_items::format_unsupported_breakdown;
-pub(crate) use unsupported_items::UnsupportedItemState;
+pub(crate) use unsupported_items::{UnsupportedItemState, UnsupportedSourceScope};
 
 #[cfg(test)]
 mod unsupported_items_tests;

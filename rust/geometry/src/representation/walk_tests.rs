@@ -29,13 +29,15 @@ const MODEL: &str = "#1=IFCCARTESIANPOINT((0.,0.,0.));\
     #73=IFCMAPPEDITEM(#62,$);\
     #80=IFCMAPPEDITEM(#81,$);#81=IFCREPRESENTATIONMAP($,#82);\
     #82=IFCSHAPEREPRESENTATION($,'Body','Brep',(#80));\
+    #100=IFCMAPPEDITEM($,$);#101=IFCMAPPEDITEM(#102,$);#102=IFCREPRESENTATIONMAP($,$);\
+    #103=IFCMAPPEDITEM(#104,$);#104=IFCREPRESENTATIONMAP($,#105);#105=IFCSHAPEREPRESENTATION($,'Body','Brep',$);\
     #90=IFCOPENINGELEMENT('g',$,$,$,$,$,#91,$);#91=IFCPRODUCTDEFINITIONSHAPE($,$,());\
     #95=IFCWALL('g',$,$,$,$,$,$,$);#96=IFCWALL('g',$,$,$,$,$,#1,$);";
 
 #[derive(Default)]
 struct Trace {
     events: Vec<String>,
-    refused: Vec<(u32, WalkRefusal)>,
+    refused: Vec<(u32, String)>,
     stop_at: Option<u32>,
 }
 
@@ -51,8 +53,8 @@ impl WalkVisitor for Trace {
     fn leave_map(&mut self, l: &MappedLevel) {
         self.events.push(format!("leave {}", l.item.id));
     }
-    fn refused(&mut self, at: u32, why: WalkRefusal, _ctx: &WalkCtx<'_>) {
-        self.refused.push((at, why));
+    fn refused(&mut self, item: &DecodedEntity, why: WalkRefusal, _ctx: &WalkCtx<'_>) {
+        self.refused.push((item.id, why.into_error(item.id).to_string()));
     }
 }
 
@@ -102,7 +104,7 @@ fn expand_visits_in_preorder_with_a_path_scoped_set() {
     let mut d = EntityDecoder::new(MODEL);
     let wall = d.decode_by_id(10).unwrap();
     let mut trace = Trace::default();
-    let walk = RepresentationWalk { select: Select::Body, nested: NestedMaps::Expand { max_depth: 32 } };
+    let walk = RepresentationWalk { select: Select::Body, nested: NestedMaps::Expand { max_depth: 32, max_levels: MAX_WALK_LEVELS } };
     walk.product(&wall, &mut d, &mut trace).unwrap();
     // #71 and #73 both re-enter map #62: a DAG, not a cycle.
     let expected = [
@@ -126,16 +128,20 @@ fn expand_visits_in_preorder_with_a_path_scoped_set() {
 fn expand_refuses_a_cycle_and_the_depth_cap() {
     let mut d = EntityDecoder::new(MODEL);
     let cycle = d.decode_by_id(80).unwrap();
-    let walk = RepresentationWalk { select: Select::Any, nested: NestedMaps::Expand { max_depth: 32 } };
+    let walk = RepresentationWalk { select: Select::Any, nested: NestedMaps::Expand { max_depth: 32, max_levels: MAX_WALK_LEVELS } };
     let mut trace = Trace::default();
     walk.mapped_item(&cycle, &mut d, &mut trace);
-    assert_eq!(trace.refused, [(80, WalkRefusal::Cyclic)]);
+    assert_eq!(
+        trace.refused,
+        [(80, "Geometry processing error: Detected cyclic IfcMappedItem reference at #80".to_string())]
+    );
 
     let nested = d.decode_by_id(30).unwrap();
-    let shallow = RepresentationWalk { select: Select::Any, nested: NestedMaps::Expand { max_depth: 1 } };
+    let shallow = RepresentationWalk { select: Select::Any, nested: NestedMaps::Expand { max_depth: 1, max_levels: MAX_WALK_LEVELS } };
     let mut trace = Trace::default();
     shallow.mapped_item(&nested, &mut d, &mut trace);
-    assert_eq!(trace.refused, [(71, WalkRefusal::TooDeep), (73, WalkRefusal::TooDeep)]);
+    let deep = |id: u32| (id, "Geometry processing error: MappedItem nesting exceeded maximum depth of 1 at #".to_string() + &id.to_string());
+    assert_eq!(trace.refused, [deep(71), deep(73)]);
 }
 
 #[test]
@@ -164,10 +170,87 @@ fn refuse_stops_at_a_nested_map_and_leaf_hands_it_over() {
     let mut trace = Trace::default();
     refuse.map(&map, &mut d, &mut trace).unwrap();
     assert_eq!(trace.events, ["item 70 depth 0"]);
-    assert_eq!(trace.refused, [(71, WalkRefusal::TooDeep)]);
+    assert_eq!(trace.refused.len(), 1);
+    assert!(trace.refused[0].1.contains("exceeded maximum depth of 0 at #71"));
 
     let leaf = RepresentationWalk { select: Select::Any, nested: NestedMaps::Leaf };
     let mut trace = Trace::default();
     leaf.map(&map, &mut d, &mut trace).unwrap();
     assert_eq!(trace.events, ["item 70 depth 0", "item 71 depth 0", "item 73 depth 0"]);
+}
+
+#[test]
+fn refusals_carry_the_strict_walks_message_text() {
+    let mut d = EntityDecoder::new(MODEL);
+    let walk = RepresentationWalk { select: Select::Any, nested: NestedMaps::Expand { max_depth: 32, max_levels: MAX_WALK_LEVELS } };
+    for (id, text) in [
+        (100, "Failed to resolve MappingSource"),
+        (101, "Failed to resolve MappedRepresentation"),
+        (103, "Expected list"),
+    ] {
+        let item = d.decode_by_id(id).unwrap();
+        let mut trace = Trace::default();
+        walk.mapped_item(&item, &mut d, &mut trace);
+        // Only a refusal of the level's own items comes after `enter_map`.
+        let entered = if id == 103 { vec!["enter 103 map 104".to_string(), "leave 103".to_string()] } else { vec![] };
+        assert_eq!(trace.events, entered, "#{id}");
+        assert_eq!(trace.refused.len(), 1, "#{id}");
+        assert!(trace.refused[0].1.ends_with(text), "#{id}: {}", trace.refused[0].1);
+    }
+}
+
+/// A DAG where every level maps the next one twice never repeats a path id and
+/// never errors; only the work budget bounds its `2^levels` expansion.
+#[test]
+fn a_branching_dag_exhausts_the_work_budget_and_ends_the_walk() {
+    use std::fmt::Write;
+    let mut model = String::from("#1=IFCCARTESIANPOINT((0.,0.,0.));");
+    // Level k: map #(1000+k) over rep #(2000+k) holding two mapped items onto level k+1.
+    let depth = 20;
+    for k in 0..depth {
+        write!(
+            model,
+            "#{m}=IFCREPRESENTATIONMAP($,#{r});#{r}=IFCSHAPEREPRESENTATION($,'Body','Brep',(#{a},#{b}));\
+             #{a}=IFCMAPPEDITEM(#{next},$);#{b}=IFCMAPPEDITEM(#{next},$);",
+            m = 1000 + k, r = 2000 + k, a = 3000 + 2 * k, b = 3001 + 2 * k, next = 1001 + k
+        )
+        .unwrap();
+    }
+    write!(model, "#{m}=IFCREPRESENTATIONMAP($,#{r});#{r}=IFCSHAPEREPRESENTATION($,'Body','Brep',(#1));#900=IFCMAPPEDITEM(#1000,$);", m = 1000 + depth, r = 2000 + depth).unwrap();
+    let mut d = EntityDecoder::new(&model);
+    let top = d.decode_by_id(900).unwrap();
+    let walk = RepresentationWalk { select: Select::Any, nested: NestedMaps::Expand { max_depth: 32, max_levels: 100 } };
+    let mut trace = Trace::default();
+    walk.mapped_item(&top, &mut d, &mut trace);
+    let entered = trace.events.iter().filter(|e| e.starts_with("enter")).count();
+    let left = trace.events.iter().filter(|e| e.starts_with("leave")).count();
+    assert_eq!((entered, left), (100, 100), "every entered level is left");
+    assert_eq!(trace.refused.len(), 1, "reported once");
+    assert!(trace.refused[0].1.contains("work budget of 100 levels"), "{:?}", trace.refused);
+}
+
+/// `MappedLevel::local_transform` is `MappingTarget · MappingOrigin` unscaled:
+/// Target(100, 0) · Scale(2) · Origin(10, 20) = (120, 40) file units (#5786).
+#[test]
+fn local_transform_composes_target_over_origin_in_file_units() {
+    struct Grab(Option<Option<nalgebra::Matrix4<f64>>>);
+    impl WalkVisitor for Grab {
+        fn item(&mut self, _: &DecodedEntity, _: &WalkCtx<'_>, _: &mut EntityDecoder) -> Flow { Flow::Continue }
+        fn enter_map(&mut self, l: &MappedLevel, _: &WalkCtx<'_>, d: &mut EntityDecoder) -> Flow {
+            self.0 = Some(l.local_transform(d).unwrap());
+            Flow::SkipChildren
+        }
+    }
+    let model = "#1=IFCCARTESIANPOINT((10.,20.,0.));#2=IFCAXIS2PLACEMENT3D(#1,$,$);\
+        #3=IFCREPRESENTATIONMAP(#2,#9);#9=IFCSHAPEREPRESENTATION($,'Body','Brep',());\
+        #4=IFCCARTESIANPOINT((100.,0.,0.));\
+        #5=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#4,2.,$);#6=IFCMAPPEDITEM(#3,#5);";
+    let mut d = EntityDecoder::new(model);
+    let item = d.decode_by_id(6).unwrap();
+    let mut grab = Grab(None);
+    // Leaf never enters a map; the first-chain policy does.
+    RepresentationWalk { select: Select::Any, nested: NestedMaps::FirstChain { max_depth: 4 } }
+        .mapped_item(&item, &mut d, &mut grab);
+    let m = grab.0.expect("level entered").expect("a transform");
+    assert_eq!((m[(0, 0)], m[(0, 3)], m[(1, 3)]), (2.0, 120.0, 40.0));
 }

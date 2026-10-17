@@ -57,7 +57,7 @@ struct FirstVertex<'a> {
 
 impl WalkVisitor for FirstVertex<'_> {
     fn enter_map(&mut self, level: &MappedLevel, _at: &WalkCtx<'_>, decoder: &mut EntityDecoder) -> Flow {
-        match self.router.mapped_item_transform(&level.item, &level.map, decoder) {
+        match level.local_transform(decoder) {
             Ok(Some(local)) => self.transform *= local,
             Ok(None) => {}
             Err(_) => {

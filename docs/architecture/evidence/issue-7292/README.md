@@ -1,5 +1,8 @@
 # Filled finite-surface comparison
 
+Validation sections below retain their named historical source scope. The current
+disposition is recorded in the final D1A5 addendum at the end of this document.
+
 `compare_surface.py` compares recorded meshes in metres against pinned
 IfcOpenShell geometry. Its `finite-coverage-v3` contract is unoriented filled
 surface coverage at the existing binary64 `0.0001` metre tolerance. It does not
@@ -329,3 +332,43 @@ prefix is truncated, so it is not a complete machine ledger. The human verdict,
 phase counts and successful source restoration are retained. This seam witness
 does not establish exhaustive mutation coverage of the entire change. Whole-change
 reversion resumes once the module is on main.
+
+## Final D1A5 disposition: performance NO_VERDICT, not merge ready
+
+`final-ba457-validation.json`, its member manifest and archive bind current
+`d1a5a415a9a97a1254cf92b381414b8521ca3311` against main
+`592d84c9709a10360b788af021965ee38d5bba86`. The artifact name retains the
+original native qualification head; actual producer source labels are preserved.
+Native/full-workspace/Clippy and own-lock Python proofs remain at ba457 and apply
+only through the exact three-transition input witness: O3 build-script restoration,
+actual generated InitOutput declaration reordering, and explicitly approved engine
+budget/provenance. All other mode/type/OID entries are identical.
+
+The current official O3 build, committed generated types, approved size check and
+six root consumer stages pass. FZK and five-case functional captures pass. Four
+whole raw files and ordered consumed inputs exactly match prior passed finite
+proofs at the unchanged 100µm/2M contract; no fresh oracle runs. Six SOffice
+payloads are structural/render evidence only, and root viewed six screenshots.
+Original cleanup errors remain preserved before strict second-attempt success.
+
+Fresh restored-O3 performance is **NO_VERDICT; not merge ready**. Two attempts
+accept zero rows before Chrome. The final attempt accepts one base FZK row,
+then refuses the next branch before Chrome under unchanged CPU admission. It
+provides no candidate row, completed pair or comparison. Authorities were revoked
+and the window released; no further campaign or optimization is claimed. The
+user-approved measured engine ceiling keeps the same relative tolerance and is
+conditional on runtime performance qualification, which remains unfulfilled.
+
+The earlier completed ba457 Os shipping comparison remains an actual regression;
+its Os/O3 policy difference confounds attribution without erasing the observation.
+The original E2009 size and generated-types guard failures also remain failures;
+current D1A5 types/size passes do not retroactively relabel them. Incomplete native
+attribution remains NO_VERDICT. The loose end remains #7292; no new issue is added.
+
+The public archive includes selected original receipts/logs, reporter inputs,
+screenshots and explicit refusal projections. Complete original body/timing
+records remain locally retained under recorded hashes; private Windows process
+inventories/full command lines, huge raw timing records, runtime binaries and
+duplicate fixtures are excluded. Hashes alone do not make omitted data publicly
+replayable. No universal solid, volume/topology/winding/multiplicity, manylinux
+identity, performance acceptance or merge-authorization claim is made.

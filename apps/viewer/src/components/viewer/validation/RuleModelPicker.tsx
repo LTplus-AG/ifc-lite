@@ -18,6 +18,8 @@
 import { Check } from 'lucide-react';
 import { useTranslation } from '@/i18n';
 
+const UNSELECTED_MODEL_CLASSES = 'border-zinc-200 text-muted-foreground hover:bg-zinc-100 dark:border-zinc-800 dark:hover:bg-zinc-800';
+
 export interface RuleModelPickerModel {
   id: string;
   name: string;
@@ -58,7 +60,7 @@ export function RuleModelPicker({ models, value, onChange }: RuleModelPickerProp
           className={`inline-flex items-center gap-1 rounded border px-2 py-1 text-xs ${
             allModels
               ? 'border-primary bg-primary/10 font-medium text-foreground'
-              : 'border-zinc-200 text-muted-foreground hover:bg-zinc-100 dark:border-zinc-800 dark:hover:bg-zinc-800'
+              : UNSELECTED_MODEL_CLASSES
           }`}
         >
           {allModels && <Check className="h-3 w-3" />}
@@ -78,7 +80,7 @@ export function RuleModelPicker({ models, value, onChange }: RuleModelPickerProp
               className={`inline-flex items-center gap-1 rounded border px-2 py-1 text-xs disabled:cursor-not-allowed disabled:opacity-50 ${
                 isSelected
                   ? 'border-primary bg-primary/10 font-medium text-foreground'
-                  : 'border-zinc-200 text-muted-foreground hover:bg-zinc-100 dark:border-zinc-800 dark:hover:bg-zinc-800'
+                  : UNSELECTED_MODEL_CLASSES
               }`}
             >
               {isSelected && <Check className="h-3 w-3" />}

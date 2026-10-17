@@ -31,7 +31,7 @@ thread_local! {
 }
 
 /// Record that a face was refused because its data does not read (#7687).
-pub(super) fn note_face_refused() {
+pub(in crate::processors) fn note_face_refused() {
     FACE_REFUSED.with(|c| c.set(true));
 }
 

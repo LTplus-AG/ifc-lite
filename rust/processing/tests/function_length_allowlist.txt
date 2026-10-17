@@ -52,7 +52,7 @@
    300 rust/geometry/src/processors/boolean/halfspace_cap.rs cap_half_space_clip
    192 rust/geometry/src/processors/boolean/mod.rs BooleanClippingProcessor::apply_boolean_step
    172 rust/geometry/src/processors/boolean/mod.rs BooleanClippingProcessor::try_union_polygonal_chain
-   167 rust/geometry/src/processors/boolean/polygonal_prism.rs BooleanClippingProcessor::build_polygonal_bounded_half_space_mesh
+   162 rust/geometry/src/processors/boolean/polygonal_prism.rs BooleanClippingProcessor::build_polygonal_bounded_half_space_mesh
    174 rust/geometry/src/processors/sectioned.rs SectionedSolidHorizontalProcessor@GeometryProcessor::process
    164 rust/geometry/src/processors/swept/revolved.rs RevolvedAreaSolidProcessor@GeometryProcessor::process
    218 rust/geometry/src/processors/tessellated/triangulate.rs PolygonalFaceSetProcessor::triangulate_polygon

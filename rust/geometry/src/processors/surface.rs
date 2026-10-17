@@ -353,13 +353,7 @@ impl SurfaceOfLinearExtrusionProcessor {
             // before because no segment ever produced points to orient -- the
             // dispatch bug above meant every one came back empty, so a
             // reversed segment and a forward one were indistinguishable.
-            let same_sense = segment
-                .get(1)
-                .map(|v| match v {
-                    ifc_lite_core::AttributeValue::Enum(e) => e != "F" && e != ".F.",
-                    _ => true,
-                })
-                .unwrap_or(true);
+            let same_sense = segment.get_bool(1).unwrap_or(true);
 
             // The ParentCurve is a CURVE, not a profile. Routing it through the
             // profile entry point read its attribute 2 as "the curve" and

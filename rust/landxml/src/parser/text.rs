@@ -2,51 +2,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-//! Text-node isolation and bounded capture for the native LandXML parser.
+//! Bounded capture of element text for the TIN family.
 
 use super::*;
 
-impl Parser<'_> {
-    pub(super) fn text(&mut self, bytes: &[u8]) -> Result<()> {
-        let raw = self.utf8_text(bytes)?;
-        // quick-xml 0.42 never puts a reference in a text event: each
-        // `&name;` is its own `Event::GeneralRef`, which `consume_event`
-        // routes back here in source form (`xml::general_ref_source`), so
-        // `raw` is literal text or exactly one reference.  Charge it and
-        // check the root before expansion: outside the document element XML
-        // permits only literal XML S bytes, so `&#32;` cannot pass as padding.
-        self.check_character_references(character_references(raw))?;
-        if self.frames.is_empty() {
-            return crate::xml::outside_root_text(self.root_closed, raw, false);
-        }
-        self.capture_text(&crate::xml::unescape(raw)?)
-    }
-
-    pub(super) fn cdata(&mut self, bytes: &[u8]) -> Result<()> {
-        let literal = self.utf8_text(bytes)?;
-        // CDATA is literal character data: entity-looking sequences must not
-        // be expanded before the numeric capture parser sees them.
-        if self.frames.is_empty() {
-            return crate::xml::outside_root_text(self.root_closed, literal, true);
-        }
-        self.capture_text(literal)
-    }
-
-    fn utf8_text<'text>(&mut self, bytes: &'text [u8]) -> Result<&'text str> {
-        if bytes.len() > self.limits.max_text_bytes {
-            return Err(error(Code::LimitExceeded, "text limit exceeded"));
-        }
-        self.check_cancel_and_work(bytes.len())?;
-        std::str::from_utf8(bytes).map_err(|_| error(Code::InvalidXml, "text is not UTF-8"))
-    }
-
-    fn capture_text(&mut self, text: &str) -> Result<()> {
-        if self
-            .capture
-            .as_ref()
-            .is_some_and(|capture| capture.depth() == self.frames.len())
-        {
-            let capture = self.capture.as_mut().expect("capture checked");
+impl TinHandler<'_> {
+    /// Append decoded element text to the numeric capture of the open element
+    /// (the driver only calls this while that capture is open).
+    pub(super) fn capture_text(&mut self, text: &str) -> Result<()> {
+        if let Some(capture) = self.capture.as_mut() {
             let target = match capture {
                 Capture::Point { text, .. }
                 | Capture::Face { text, .. }

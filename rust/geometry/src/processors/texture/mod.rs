@@ -41,9 +41,15 @@ pub fn binary_textures_refused() -> u64 {
 }
 
 /// The bytes of a texture attribute that holds a STEP binary, or `None` and
-/// one count when it holds a binary that does not decode exactly.
+/// one count when it holds a binary that does not decode exactly, or holds
+/// anything else but `$`/`*`: a single-quoted `'0FF0000'` is a string, no
+/// binary, and was dropped uncounted (F4-1 follow-up, #7776).
 fn texture_binary(attr: &ifc_lite_core::AttributeValue) -> Option<Vec<u8>> {
-    let decoded = ifc_lite_core::decode_step_binary(attr.as_binary_hex()?.as_bytes());
+    let decoded = match attr.as_binary_hex() {
+        Some(hex) => ifc_lite_core::decode_step_binary(hex.as_bytes()),
+        None if attr.is_null() => return None,
+        None => None,
+    };
     if decoded.is_none() {
         REFUSED_BINARIES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
@@ -143,8 +149,8 @@ fn decode_blob_texture(entity: &DecodedEntity) -> Option<MeshTexture> {
         rgba: Arc::new(rgba),
         width,
         height,
-        repeat_s: read_bool(entity, 0).unwrap_or(true),
-        repeat_t: read_bool(entity, 1).unwrap_or(true),
+        repeat_s: entity.get_bool(0).unwrap_or(true),
+        repeat_t: entity.get_bool(1).unwrap_or(true),
     })
 }
 
@@ -200,13 +206,9 @@ fn decode_pixel_texture(entity: &DecodedEntity) -> Option<MeshTexture> {
         rgba: Arc::new(rgba),
         width,
         height,
-        repeat_s: read_bool(entity, 0).unwrap_or(true),
-        repeat_t: read_bool(entity, 1).unwrap_or(true),
+        repeat_s: entity.get_bool(0).unwrap_or(true),
+        repeat_t: entity.get_bool(1).unwrap_or(true),
     })
-}
-
-fn read_bool(entity: &DecodedEntity, idx: usize) -> Option<bool> {
-    entity.get(idx).and_then(|a| a.as_enum()).map(|v| v == "T")
 }
 
 /// Read `IfcImageTexture` → an [`ImageTextureRef`] (#1781). Attributes (IFC4):
@@ -221,8 +223,8 @@ fn read_image_texture(entity: &DecodedEntity) -> Option<ImageTextureRef> {
     }
     Some(ImageTextureRef {
         url,
-        repeat_s: read_bool(entity, 0).unwrap_or(true),
-        repeat_t: read_bool(entity, 1).unwrap_or(true),
+        repeat_s: entity.get_bool(0).unwrap_or(true),
+        repeat_t: entity.get_bool(1).unwrap_or(true),
     })
 }
 

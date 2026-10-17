@@ -11,9 +11,11 @@
 //! survey magnitude: a 12 mm feature collapses onto the ~0.25 m f32 grid.
 
 use super::GeometryRouter;
-use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType, MAX_MAPPED_ITEM_DEPTH};
+use crate::representation::{
+    Flow, MappedLevel, NestedMaps, RepresentationWalk, Select, WalkCtx, WalkVisitor,
+};
+use ifc_lite_core::{DecodedEntity, EntityDecoder, MAX_MAPPED_ITEM_DEPTH};
 use nalgebra::{Matrix4, Point3};
-use rustc_hash::FxHashSet;
 
 impl GeometryRouter {
     /// First vertex of a mapped item's source, in the frame of the
@@ -34,32 +36,44 @@ impl GeometryRouter {
         item: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Option<(f64, f64, f64)> {
-        let mut transform = Matrix4::<f64>::identity();
-        let mut cursor = item.clone();
-        let mut visited = FxHashSet::default();
-        for _ in 0..MAX_MAPPED_ITEM_DEPTH {
-            if !visited.insert(cursor.id) {
-                return None;
+        let mut vote = FirstVertex { router: self, transform: Matrix4::identity(), vertex: None, abstain: false };
+        let walk = RepresentationWalk {
+            select: Select::Any,
+            nested: NestedMaps::FirstChain { max_depth: MAX_MAPPED_ITEM_DEPTH },
+        };
+        walk.mapped_item(item, decoder, &mut vote);
+        vote.vertex.filter(|_| !vote.abstain)
+    }
+}
+
+/// Composes each level's `mapped_item_transform` along the chain and takes the
+/// first item that yields a vertex. A level whose transform fails abstains.
+struct FirstVertex<'a> {
+    router: &'a GeometryRouter,
+    transform: Matrix4<f64>,
+    vertex: Option<(f64, f64, f64)>,
+    abstain: bool,
+}
+
+impl WalkVisitor for FirstVertex<'_> {
+    fn enter_map(&mut self, level: &MappedLevel, _at: &WalkCtx<'_>, decoder: &mut EntityDecoder) -> Flow {
+        match self.router.mapped_item_transform(&level.item, &level.map, decoder) {
+            Ok(Some(local)) => self.transform *= local,
+            Ok(None) => {}
+            Err(_) => {
+                self.abstain = true;
+                return Flow::Stop;
             }
-            // attr 0 = MappingSource (IfcRepresentationMap)
-            let source = decoder.resolve_ref(cursor.get(0)?).ok()??;
-            if let Some(level) = self.mapped_item_transform(&cursor, &source, decoder).ok()? {
-                transform *= level;
-            }
-            // IfcRepresentationMap attr 1 = MappedRepresentation; its attr 3 = Items
-            let representation = decoder.resolve_ref(source.get(1)?).ok()??;
-            let items = decoder.resolve_ref_list(representation.get(3)?).ok()?;
-            let mut nested = None;
-            for inner in items {
-                if inner.ifc_type == IfcType::IfcMappedItem {
-                    nested = nested.or(Some(inner));
-                } else if let Some((x, y, z)) = self.item_first_vertex(&inner, decoder) {
-                    let p = transform.transform_point(&Point3::new(x, y, z));
-                    return Some((p.x, p.y, p.z));
-                }
-            }
-            cursor = nested?;
         }
-        None
+        Flow::Continue
+    }
+
+    fn item(&mut self, item: &DecodedEntity, _at: &WalkCtx<'_>, decoder: &mut EntityDecoder) -> Flow {
+        let Some((x, y, z)) = self.router.item_first_vertex(item, decoder) else {
+            return Flow::Continue;
+        };
+        let p = self.transform.transform_point(&Point3::new(x, y, z));
+        self.vertex = Some((p.x, p.y, p.z));
+        Flow::Stop
     }
 }

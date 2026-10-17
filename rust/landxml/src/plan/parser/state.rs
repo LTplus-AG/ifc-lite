@@ -2,20 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-use std::collections::HashMap;
-
 use super::super::{
     LandXmlGeometryKind, LandXmlParcel, LandXmlPlanFeature, LandXmlPlanPoint,
     LandXmlPlanPointLocation,
 };
 use crate::xml::Attributes;
-
-#[derive(Clone)]
-pub(super) struct Frame {
-    pub(super) local: String,
-    pub(super) target: bool,
-    pub(super) namespaces: HashMap<String, String>,
-}
 
 pub(super) enum Capture {
     CgPoint {

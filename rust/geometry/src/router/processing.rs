@@ -9,6 +9,7 @@ use super::transforms::instancing_enabled;
 use crate::math::mat4;
 use super::{GeometryProcessor, GeometryRouter};
 use crate::{Error, InstanceMeta, Mesh, Result, SubMeshCollection};
+use crate::representation::{product_shape, rep_items, Select};
 
 /// High tag bit distinguishing direct-solid rep_identity (a 128-bit local-mesh
 /// content hash) from mapped-item rep_identity (a RepresentationMap entity id,
@@ -138,37 +139,9 @@ impl GeometryRouter {
             }
         }
 
-        // Get representation (attribute 6 for most building elements)
-        // IfcProduct: GlobalId, OwnerHistory, Name, Description, ObjectType, ObjectPlacement, Representation, Tag
-        let representation_attr = element.get(6).ok_or_else(|| {
-            Error::geometry(format!(
-                "Element #{} has no representation attribute",
-                element.id
-            ))
-        })?;
-
-        if representation_attr.is_null() {
+        let Some(shape) = product_shape(element, decoder)? else {
             return Ok(vec![Mesh::new()]); // No geometry
-        }
-
-        let representation = decoder
-            .resolve_ref(representation_attr)?
-            .ok_or_else(|| Error::geometry("Failed to resolve representation".to_string()))?;
-
-        // IfcProductDefinitionShape has Representations attribute (list of IfcRepresentation)
-        if representation.ifc_type != IfcType::IfcProductDefinitionShape {
-            return Err(Error::geometry(format!(
-                "Expected IfcProductDefinitionShape, got {}",
-                representation.ifc_type
-            )));
-        }
-
-        // Get representations list (attribute 2)
-        let representations_attr = representation.get(2).ok_or_else(|| {
-            Error::geometry("IfcProductDefinitionShape missing Representations".to_string())
-        })?;
-
-        let representations = decoder.resolve_ref_list(representations_attr)?;
+        };
 
         // Process all representations and merge meshes
         let mut combined_mesh = Mesh::new();
@@ -187,13 +160,8 @@ impl GeometryRouter {
 
         // Body representations only ('Axis', 'FootPrint', 'Box' are skipped), and
         // a MappedRepresentation is skipped when direct geometry duplicates it.
-        for shape_rep in super::meshed_representations(element, &representations) {
-            // Get items list (attribute 3)
-            let items_attr = shape_rep.get(3).ok_or_else(|| {
-                Error::geometry("IfcShapeRepresentation missing Items".to_string())
-            })?;
-
-            let items = decoder.resolve_ref_list(items_attr)?;
+        for shape_rep in shape.select(element, Select::Meshed) {
+            let items = rep_items(shape_rep, decoder)?;
             let fill_only = super::annotation::is_fill_only_representation(element, shape_rep);
 
             // Process each representation item
@@ -314,45 +282,14 @@ impl GeometryRouter {
             return Ok(layered);
         }
 
-        // Get representation (attribute 6 for most building elements)
-        let representation_attr = element.get(6).ok_or_else(|| {
-            Error::geometry(format!(
-                "Element #{} has no representation attribute",
-                element.id
-            ))
-        })?;
-
-        if representation_attr.is_null() {
+        let Some(shape) = product_shape(element, decoder)? else {
             return Ok(SubMeshCollection::new()); // No geometry
-        }
-
-        let representation = decoder
-            .resolve_ref(representation_attr)?
-            .ok_or_else(|| Error::geometry("Failed to resolve representation".to_string()))?;
-
-        if representation.ifc_type != IfcType::IfcProductDefinitionShape {
-            return Err(Error::geometry(format!(
-                "Expected IfcProductDefinitionShape, got {}",
-                representation.ifc_type
-            )));
-        }
-
-        // Get representations list (attribute 2)
-        let representations_attr = representation.get(2).ok_or_else(|| {
-            Error::geometry("IfcProductDefinitionShape missing Representations".to_string())
-        })?;
-
-        let representations = decoder.resolve_ref_list(representations_attr)?;
+        };
 
         let mut sub_meshes = SubMeshCollection::new();
 
-        for shape_rep in super::meshed_representations(element, &representations) {
-            // Get items list (attribute 3)
-            let items_attr = shape_rep.get(3).ok_or_else(|| {
-                Error::geometry("IfcShapeRepresentation missing Items".to_string())
-            })?;
-
-            let items = decoder.resolve_ref_list(items_attr)?;
+        for shape_rep in shape.select(element, Select::Meshed) {
+            let items = rep_items(shape_rep, decoder)?;
             let fill_only = super::annotation::is_fill_only_representation(element, shape_rep);
 
             // Process each representation item, preserving geometry IDs

@@ -398,10 +398,10 @@ fn reversed_sense_sweeps_the_complementary_arc() {
 
 /// PINS: a review sub-finding on #2356 claimed the typed-parameter form
 /// `IFCPARAMETERVALUE(1.57)` — which the tokenizer hands back as
-/// `List([String("IFCPARAMETERVALUE"), Float(v)])`, not a bare `Float` —
+/// `AttributeValue::Typed { name: "IFCPARAMETERVALUE", value: Float(v) }`, not a bare `Float` —
 /// needed an extra unwrap in `resolve_trim`. It does not: `resolve_trim`
 /// calls `other.as_float()` on every non-`EntityRef` set member, and
-/// `AttributeValue::as_float()` already unwraps a `List([String, Float])`
+/// `AttributeValue::as_float()` already sees through a `Typed` value
 /// generically (`rust/core/src/schema_gen.rs`). This exercises the REAL
 /// tokenizer → decoder → `resolve_trim` path end to end, not the unit-level
 /// `as_float()` check in `schema_gen_tests.rs`.
@@ -425,8 +425,8 @@ fn typed_float_parameter_value_trim_resolves_correctly() {
 
 /// Same claim, for the INTEGER-valued typed form: `IFCPARAMETERVALUE(2)`
 /// (no decimal point) tokenizes its argument as `Token::Integer(2)`, so the
-/// wrapper is `List([String, Integer(2)])`. `as_float()` has a distinct
-/// match arm for `Integer` inside the `List` case (schema_gen.rs ~129) —
+/// wrapper is a `Typed` of `Integer(2)`. `as_float()` has a distinct
+/// match arm for `Integer` after `unwrap_typed` (schema_gen.rs) —
 /// an unwrap that handled `Float` but not `Integer` would be a real gap,
 /// so this is checked independently of the float case above.
 #[test]

@@ -32,161 +32,62 @@ pub fn parse_axis2_placement_3d(
     Ok(Axis2Placement::read_3d(placement, decoder)?.matrix())
 }
 
-/// Parse IfcCartesianPoint from an entity attribute
+/// Parse IfcCartesianPoint from an entity attribute.
 ///
-/// Attempts fast-path extraction first, falls back to full decode if needed.
+/// Read under the one leaf rule ([`EntityDecoder::point3`]): the right IFC
+/// type holding 2 or 3 finite numbers (2D promotes to z = 0). Anything else
+/// is a counted [`ifc_lite_core::Error::MalformedRecord`], never a 0.
 pub fn parse_cartesian_point(
     parent: &DecodedEntity,
     decoder: &mut EntityDecoder,
     attr_index: usize,
 ) -> Result<Point3<f64>> {
-    let point_attr = parent
-        .get(attr_index)
-        .ok_or_else(|| Error::geometry("Missing cartesian point".to_string()))?;
-
-    // Try fast path first
-    if let Some(point_id) = point_attr.as_entity_ref() {
-        if let Some((x, y, z)) = decoder.get_cartesian_point_fast(point_id) {
-            return Ok(Point3::new(x, y, z));
-        }
-    }
-
-    // Fallback to full decode
-    let point_entity = decoder
-        .resolve_ref(point_attr)?
-        .ok_or_else(|| Error::geometry("Failed to resolve cartesian point".to_string()))?;
-
-    parse_decoded_cartesian_point(&point_entity)
+    decoder
+        .point3_at(parent, attr_index)?
+        .map(Point3::from)
+        .ok_or_else(|| Error::geometry("Missing cartesian point".to_string()))
 }
 
-/// Parse a point already decoded by a caller that must verify its IFC type.
-pub(crate) fn parse_decoded_cartesian_point(point_entity: &DecodedEntity) -> Result<Point3<f64>> {
-    if point_entity.ifc_type != IfcType::IfcCartesianPoint {
-        return Err(Error::geometry(format!(
-            "Expected IfcCartesianPoint, got {}",
-            point_entity.ifc_type
-        )));
-    }
-
-    // Get coordinates list (attribute 0)
-    let coords_attr = point_entity
-        .get(0)
-        .ok_or_else(|| Error::geometry("IfcCartesianPoint missing coordinates".to_string()))?;
-
-    let coords = coords_attr
-        .as_list()
-        .ok_or_else(|| Error::geometry("Expected coordinate list".to_string()))?;
-
-    let x = coords.first().and_then(|v| v.as_float()).unwrap_or(0.0);
-    let y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0);
-    let z = coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0);
-
-    Ok(Point3::new(x, y, z))
-}
-
-/// Parse IfcCartesianPoint from entity ID (fast-path variant)
-///
-/// Uses fast-path extraction when available.
+/// Parse IfcCartesianPoint from entity ID (fast-path variant), under the same
+/// leaf rule as [`parse_cartesian_point`].
 pub fn parse_cartesian_point_from_id(
     point_id: u32,
     decoder: &mut EntityDecoder,
 ) -> Result<Point3<f64>> {
-    // Try fast path first
-    if let Some((x, y, z)) = decoder.get_cartesian_point_fast(point_id) {
-        return Ok(Point3::new(x, y, z));
-    }
-
-    // Fallback to full decode
-    let point_entity = decoder.decode_by_id(point_id)?;
-
-    if point_entity.ifc_type != IfcType::IfcCartesianPoint {
-        return Err(Error::geometry(format!(
-            "Expected IfcCartesianPoint, got {}",
-            point_entity.ifc_type
-        )));
-    }
-
-    // Get coordinates list (attribute 0)
-    let coords_attr = point_entity
-        .get(0)
-        .ok_or_else(|| Error::geometry("IfcCartesianPoint missing coordinates".to_string()))?;
-
-    let coords = coords_attr
-        .as_list()
-        .ok_or_else(|| Error::geometry("Expected coordinate list".to_string()))?;
-
-    let x = coords.first().and_then(|v| v.as_float()).unwrap_or(0.0);
-    let y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0);
-    let z = coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0);
-
-    Ok(Point3::new(x, y, z))
+    Ok(Point3::from(decoder.point3(point_id)?))
 }
 
-/// Parse IfcDirection from entity ID.
-///
-/// Plain decode-by-id + parse; unlike [`parse_cartesian_point_from_id`], there
-/// is no fast-path extraction for `IfcDirection`.
+/// Parse IfcDirection from entity ID, under the leaf rule
+/// ([`EntityDecoder::direction3`]): raw ratios, not normalised, zero allowed.
 pub fn parse_direction_from_id(dir_id: u32, decoder: &mut EntityDecoder) -> Result<Vector3<f64>> {
-    let dir = decoder.decode_by_id(dir_id)?;
-    parse_direction(&dir)
+    Ok(Vector3::from(decoder.direction3(dir_id)?))
 }
 
 /// Parse IfcAxis2Placement3D from entity ID (fast-path variant)
 ///
-/// Uses fast-path extraction when available for location and directions.
+/// Values are read under the leaf rule. A `$` Location is still the origin
+/// here (D-§3.4: X3a makes it a refusal with the other `helpers` forks).
 pub fn parse_axis2_placement_3d_from_id(
     placement_id: u32,
     decoder: &mut EntityDecoder,
 ) -> Result<Matrix4<f64>> {
     let placement = decoder.decode_by_id(placement_id)?;
-
-    // Get location using fast path if available
-    let location = if let Some(loc_attr) = placement.get(0) {
-        if let Some(loc_id) = loc_attr.as_entity_ref() {
-            parse_cartesian_point_from_id(loc_id, decoder)?
-        } else {
-            Point3::new(0.0, 0.0, 0.0)
-        }
-    } else {
-        Point3::new(0.0, 0.0, 0.0)
-    };
-
-    // Get Z axis (attribute 1)
-    let z_axis = if let Some(axis_attr) = placement.get(1) {
-        if !axis_attr.is_null() {
-            if let Some(axis_id) = axis_attr.as_entity_ref() {
-                parse_direction_from_id(axis_id, decoder)?
-            } else {
-                Vector3::new(0.0, 0.0, 1.0)
-            }
-        } else {
-            Vector3::new(0.0, 0.0, 1.0)
-        }
-    } else {
-        Vector3::new(0.0, 0.0, 1.0)
-    };
-
-    // Get X axis (attribute 2: RefDirection)
-    let x_axis = if let Some(ref_dir_attr) = placement.get(2) {
-        if !ref_dir_attr.is_null() {
-            if let Some(ref_dir_id) = ref_dir_attr.as_entity_ref() {
-                parse_direction_from_id(ref_dir_id, decoder)?
-            } else {
-                Vector3::new(1.0, 0.0, 0.0)
-            }
-        } else {
-            Vector3::new(1.0, 0.0, 0.0)
-        }
-    } else {
-        Vector3::new(1.0, 0.0, 0.0)
-    };
-
-    Ok(build_axis2_matrix(location, z_axis, x_axis))
+    Ok(Axis2Placement {
+        location: decoder.point3_at(&placement, 0)?.unwrap_or([0.0; 3]),
+        axis: decoder.direction3_at(&placement, 1)?,
+        ref_direction: decoder.direction3_at(&placement, 2)?,
+        planar: false,
+    }
+    .matrix())
 }
 
 /// Parse IfcDirection entity
 ///
-/// Extracts direction ratios from IfcDirection (attribute 0).
+/// Extracts direction ratios from IfcDirection (attribute 0). This one takes
+/// no decoder, so it can neither count a refusal nor use the byte fast path:
+/// it keeps reading a missing component as 0 until its callers in
+/// `processors/helpers.rs` move to `EntityDecoder::direction3` (X3a) and R2a
+/// deletes it.
 pub fn parse_direction(direction_entity: &DecodedEntity) -> Result<Vector3<f64>> {
     if direction_entity.ifc_type != IfcType::IfcDirection {
         return Err(Error::geometry(format!(

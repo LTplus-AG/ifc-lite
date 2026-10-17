@@ -19,6 +19,7 @@ serde.workspace = true
 serde_json.workspace = true
 ifc-lite-geometry.workspace = true
 geometry-predicates.workspace = true
+memchr.workspace = true
 
 [dev-dependencies]
 # Test-only (publish = false). Path-only: cargo strips it when packaging.

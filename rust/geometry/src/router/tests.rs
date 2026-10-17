@@ -7,8 +7,9 @@ use crate::diagnostics::{BoolFailure, BoolFailureReason, BoolOp};
 use ifc_lite_core::EntityDecoder;
 
 /// #6263: a mapping origin's Location must be an IfcCartesianPoint. The raw
-/// point fast path can read `IFCDIRECTION((1.,2.))` as coordinates, but the
-/// mapped-item contract rejects that structurally invalid reference.
+/// byte grammar alone would read `IFCDIRECTION((1.,2.))` as coordinates; the
+/// leaf reader checks the type, and (F3b X1, D3) the structurally invalid
+/// reference is a counted refusal rather than an anonymous error.
 #[test]
 fn mapped_2d_origin_rejects_non_point_location() {
     let content = r#"
@@ -27,7 +28,11 @@ fn mapped_2d_origin_rejects_non_point_location() {
     let bad_map = decoder.decode_by_id(3).unwrap();
     let bad_item = decoder.decode_by_id(4).unwrap();
     let error = router.mapped_item_transform(&bad_item, &bad_map, &mut decoder).unwrap_err();
-    assert!(error.to_string().contains("Expected IfcCartesianPoint"), "{error}");
+    assert!(
+        matches!(error, crate::Error::CoreError(ifc_lite_core::Error::MalformedRecord(1))),
+        "{error}"
+    );
+    assert_eq!(decoder.refused_records(), 1);
 
     let good_map = decoder.decode_by_id(7).unwrap();
     let good_item = decoder.decode_by_id(8).unwrap();
@@ -142,12 +147,9 @@ fn test_parse_cartesian_point() {
 "#;
 
     let mut decoder = EntityDecoder::new(content);
-    let router = GeometryRouter::new();
 
     let wall = decoder.decode_by_id(2).unwrap();
-    let point = router
-        .parse_cartesian_point(&wall, &mut decoder, 6)
-        .unwrap();
+    let point = crate::transform::parse_cartesian_point(&wall, &mut decoder, 6).unwrap();
 
     assert_eq!(point.x, 100.0);
     assert_eq!(point.y, 200.0);

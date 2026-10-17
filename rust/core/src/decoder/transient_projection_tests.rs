@@ -24,7 +24,8 @@ fn transient_string_projection_preserves_name_semantics_3987() {
         ("*", None),
         ("42", None),
         (".TRUE.", None),
-        ("IFCLABEL('ePSet_MapConversion')", None),
+        ("IFCLABEL('ePSet_MapConversion')", Some("ePSet_MapConversion")),
+        ("IFCLABEL(42)", None),
         ("('ePSet_MapConversion')", None),
     ] {
         let source = format!("#1=IFCPROPERTYSET('g',$,{name},'unused',(#2,#3,#2));");

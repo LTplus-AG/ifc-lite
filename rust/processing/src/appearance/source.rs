@@ -2,7 +2,10 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 use ifc_lite_core::{keyword_eq, AttributeValue as A, DecodedEntity, EntityDecoder, EntityScanner, IfcType};
+use ifc_lite_geometry::ResolvedTextureMap;
+use rustc_hash::FxHashMap;
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::Arc;
 
 pub(super) const MAX_VALUES: usize = 8_000_000;
 /// A face-masked evaluated Body: only `textured` receives the appearance while
@@ -23,8 +26,23 @@ pub(super) struct Source<'a> {
     pub style_assignments: BTreeSet<u32>,
     /// Private normalization state keyed by product; empty outside conversions.
     pub evaluated_splits: BTreeMap<u32, SplitBody>,
+    /// The surface-texture index, built once per session (see
+    /// [`Self::texture_index`]).
+    texture_index: Option<Arc<FxHashMap<u32, ResolvedTextureMap>>>,
 }
 impl<'a> Source<'a> {
+    /// The model's surface-texture index, built on first use and shared by
+    /// every later caller of this session. Each build decodes every texture
+    /// and counts each refused binary, so building it per planning stage
+    /// decoded a shared image up to three times and counted one bad texture
+    /// as many (F4-1 follow-up, #7776).
+    pub fn texture_index(&mut self, bytes: &[u8]) -> Arc<FxHashMap<u32, ResolvedTextureMap>> {
+        let decoder = &mut self.decoder;
+        Arc::clone(self.texture_index.get_or_insert_with(|| {
+            Arc::new(ifc_lite_geometry::build_texture_index(bytes, decoder))
+        }))
+    }
+
     pub fn new(bytes: &'a [u8]) -> Result<Self, String> {
         if bytes.len() > 128 * 1024 * 1024 {
             return Err("Appearance source exceeds 128 MiB budget".into());
@@ -39,6 +57,7 @@ impl<'a> Source<'a> {
             voided: BTreeSet::new(),
             style_assignments: BTreeSet::new(),
             evaluated_splits: BTreeMap::new(),
+            texture_index: None,
         };
         let mut scanner = EntityScanner::new(bytes);
         let mut work = 0;
@@ -65,6 +84,7 @@ impl<'a> Source<'a> {
                         source.incoming.entry(*target).or_default().insert(id);
                     }
                     A::List(values) => stack.extend(values.iter()),
+                    A::Typed { value, .. } => stack.push(value),
                     _ => {}
                 }
             }
@@ -269,4 +289,27 @@ pub(super) fn numbers<const N: usize>(value: &A) -> Result<[f64; N], String> {
             .ok_or("Non-finite coordinate")?;
     }
     Ok(out)
+}
+
+#[cfg(test)]
+mod texture_index_tests {
+    use super::Source;
+    use std::sync::Arc;
+
+    /// A textured model with one bad (not byte-aligned) pixel binary.
+    const MODEL: &str = "ISO-10303-21;\nDATA;\n\
+        #1=IFCPIXELTEXTURE(.T.,.T.,'MODULATE',$,$,1,1,3,(\"1FF0000\"));\n\
+        #2=IFCTEXTUREVERTEXLIST(((0.,0.),(1.,0.),(0.,1.)));\n\
+        #5=IFCINDEXEDTRIANGLETEXTUREMAP((#1),#4,#2,((1,2,3)));\n\
+        ENDSEC;\nEND-ISO-10303-21;\n";
+
+    /// F4-1 follow-up (#7776): one session builds the texture index once, so a
+    /// shared image is decoded once and a bad texture is counted once.
+    #[test]
+    fn a_session_builds_the_texture_index_once_7776() {
+        let mut source = Source::new(MODEL.as_bytes()).unwrap();
+        let first = source.texture_index(MODEL.as_bytes());
+        let second = source.texture_index(MODEL.as_bytes());
+        assert!(Arc::ptr_eq(&first, &second));
+    }
 }

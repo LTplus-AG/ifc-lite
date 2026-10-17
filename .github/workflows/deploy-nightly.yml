@@ -42,8 +42,8 @@ on:
         default: true
 
 permissions:
-  # Moving refs/heads/production. Nothing else.
-  contents: write
+  # Ref/ancestry reads. The ref write uses DEPLOY_PAT below (#7830).
+  contents: read
   # Declaring ANY `permissions:` block sets every scope not listed to `none`,
   # and the known-good walk below rests entirely on reading check runs. Without
   # this the very first `gh api .../check-runs` 403s and, under `set -e`, every
@@ -78,6 +78,10 @@ jobs:
         id: advance
         env:
           GH_TOKEN: ${{ github.token }}
+          # Contents + Workflows write, scoped to this repository. GITHUB_TOKEN
+          # cannot move production across workflow-file changes (#7830).
+          # Keep RELEASE_PAT's account/quota dedicated to releases (#5693).
+          DEPLOY_TOKEN: ${{ secrets.DEPLOY_PAT }}
           REPO: ${{ github.repository }}
           REQUESTED_REF: ${{ inputs.ref || 'main' }}
           # Scheduled runs have no inputs, and the nightly is exactly the case
@@ -90,6 +94,17 @@ jobs:
           CI_GATE: 'Build + WASM + Rust + Node'
         run: |
           set -euo pipefail
+
+          write_production_ref() {
+            if [ -z "$DEPLOY_TOKEN" ]; then
+              echo "::error::Set repository secret DEPLOY_PAT with Contents and Workflows write permission for $REPO." >&2
+              echo "::error::GITHUB_TOKEN cannot advance production across workflow-file changes (#7830)." >&2
+              return 1
+            fi
+            # Only the mutation spends the deploy credential's quota. All reads
+            # and issue reporting continue to use the job's GITHUB_TOKEN.
+            GH_TOKEN="$DEPLOY_TOKEN" gh api "$@"
+          }
 
           # ── Resolve the requested ref ────────────────────────────────────────
           # Resolves a branch, a tag or a raw SHA uniformly, and 404s on anything
@@ -236,7 +251,7 @@ jobs:
 
           if [ -z "$CURRENT" ]; then
             echo "production does not exist yet — creating it at $SHA"
-            gh api -X POST "repos/$REPO/git/refs" \
+            write_production_ref -X POST "repos/$REPO/git/refs" \
               -f ref=refs/heads/production -f sha="$SHA" >/dev/null
             echo "sha=$SHA" >> "$GITHUB_OUTPUT"
             exit 0
@@ -275,7 +290,7 @@ jobs:
               gh api "repos/$REPO/compare/$CURRENT...$SHA" \
                 --jq '.commits[] | "  \(.sha[0:9]) \(.commit.message | split("\n")[0])"'
               # force=false is the second, server-side fast-forward guarantee.
-              gh api -X PATCH "repos/$REPO/git/refs/heads/production" \
+              write_production_ref -X PATCH "repos/$REPO/git/refs/heads/production" \
                 -f sha="$SHA" -F force=false >/dev/null
               echo "Advanced production: $CURRENT -> $SHA"
               ;;
@@ -530,7 +545,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          body="$(printf 'The nightly Vercel deploy did not complete at %s (job status: %s).\n\nRun: %s/%s/actions/runs/%s\n\nNothing has deployed since it last succeeded, and every further nightly will behave the same way until this is resolved — the production sites are frozen at whatever `production` currently points to.\n\nUsual causes, in order:\n\n1. `main` has been red for 40 commits on its first-parent line, so no known-good commit was found. Check the `Build + WASM + Rust + Node` gate on recent commits — and that it still carries that name.\n2. Someone pushed to `production` directly, or `main` was rewritten, so `production` holds commits `main` does not. Reconcile the two branches by hand.\n3. A Vercel project no longer deploys from `production` (check its Production Branch and Ignored Build Step).\n4. The job timed out or was cancelled.\n\nThen re-run this workflow. This issue is updated in place by each failing run, and it closes itself on the next successful run.\n' \
+          body="$(printf 'The nightly Vercel deploy did not complete at %s (job status: %s).\n\nRun: %s/%s/actions/runs/%s\n\nNothing has deployed since it last succeeded, and every further nightly will behave the same way until this is resolved — the production sites are frozen at whatever `production` currently points to.\n\nUsual causes, in order:\n\n1. `main` has been red for 40 commits on its first-parent line, so no known-good commit was found. Check the `Build + WASM + Rust + Node` gate on recent commits — and that it still carries that name.\n2. Someone pushed to `production` directly, or `main` was rewritten, so `production` holds commits `main` does not. Reconcile the two branches by hand.\n3. A Vercel project no longer deploys from `production` (check its Production Branch and Ignored Build Step).\n4. The ref write returned HTTP 403: check that DEPLOY_PAT is configured, unexpired, organization-approved, and has Contents and Workflows write permission. GITHUB_TOKEN cannot move production across workflow-file changes.\n5. The job timed out or was cancelled.\n\nThen re-run this workflow. This issue is updated in place by each failing run, and it closes itself on the next successful run.\n' \
             "$(date -u +%FT%TZ)" "${{ job.status }}" "${GITHUB_SERVER_URL}" "${GITHUB_REPOSITORY}" "${GITHUB_RUN_ID}")"
           existing="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open \
             --label production-branch-stuck --limit 1 --json number --jq '.[0].number // empty')"

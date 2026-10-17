@@ -190,7 +190,7 @@ pub(crate) fn parquet_metadata_cache_key(
 /// `v1` is the ara3d BOS payload as it stands after #3595 (rotation-aware
 /// instancing). Bump on EVERY change to the optimized payload's columns, to
 /// what one of them means, OR to the geometry pipeline behind them -- this key
-/// covers `process_geometry_filtered_with_quality` output just as
+/// covers `process` output just as
 /// [`parquet_cache_key`] does, and that key's own `v3` -> `v4` bump was a
 /// pipeline change with no column change at all. In practice: a bump of
 /// `-parquet-v9` almost always needs a bump here too. Otherwise a warm cache

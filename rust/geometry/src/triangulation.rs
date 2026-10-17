@@ -15,6 +15,7 @@
 pub(crate) mod alt_oracle;
 mod hole_overlap;
 mod ring_geom;
+pub(crate) mod straight_corners;
 use ring_geom::{point_in_ring, ring_bbox};
 
 use crate::{Error, Point2, Point3, Result, Vector3};
@@ -502,6 +503,46 @@ pub fn triangulate_planar_face(
             "planar face triangulation with holes failed: {error}"
         ))),
     }
+}
+
+/// Corners of a hole-free planar `ring` at which the exact-axis ear-clip of
+/// [`triangulate_planar_face`] loses a ring edge: no triangle of real area
+/// (`> 1e-9` of the ring's own) carries the edge, which is what downstream
+/// hygiene keeps, because the clipper filtered a collinear corner out or cut it
+/// as a zero-area ear. Rings under five corners are not ear-clipped.
+pub(crate) fn corners_losing_an_edge(ring: &[Point3<f64>]) -> Vec<bool> {
+    let n = ring.len();
+    let mut lost = vec![false; n];
+    if n < 5 {
+        return lost;
+    }
+    let Ok(idx) = axis_earcut(ring, &calculate_polygon_normal(ring)) else {
+        return lost;
+    };
+    let twice_area = (0..n)
+        .fold(Vector3::zeros(), |acc, i| acc + ring[i].coords.cross(&ring[(i + 1) % n].coords))
+        .norm();
+    let mut carried = vec![false; n];
+    for t in idx.chunks_exact(3) {
+        if (ring[t[1]] - ring[t[0]]).cross(&(ring[t[2]] - ring[t[0]])).norm() <= 1e-9 * twice_area {
+            continue;
+        }
+        for k in 0..3 {
+            let (a, b) = (t[k], t[(k + 1) % 3]);
+            if (a + 1) % n == b {
+                carried[a] = true;
+            } else if (b + 1) % n == a {
+                carried[b] = true;
+            }
+        }
+    }
+    for i in 0..n {
+        if !carried[i] {
+            lost[i] = true;
+            lost[(i + 1) % n] = true;
+        }
+    }
+    lost
 }
 
 /// Triangles of `idx` over the planar `ring` whose area is zero relative to

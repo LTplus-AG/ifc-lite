@@ -8,7 +8,7 @@ use nalgebra::Matrix4;
 
 #[path = "operator.rs"]
 mod operator;
-pub(super) use operator::parse_cartesian_transformation_operator;
+pub(super) use operator::resolve_mapping_target;
 
 // ────────────────────────────────────────────────────────────────────────────
 // Symbolic transforms retain the full 3D affine frame until a primitive is

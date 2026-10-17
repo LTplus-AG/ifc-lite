@@ -812,16 +812,29 @@ impl Mesh {
         self.drop_thin_triangles(crate::kernel::mesh_bridge::SNAP_GRID);
     }
 
-    /// [`clean_degenerate`](Self::clean_degenerate) for SOURCE geometry that
-    /// must stay closed: drops the same slivers, then splits the triangle
+    /// Cheap probe for the canonical cleanup, so void outputs without slivers
+    /// avoid topology hashing and rollback snapshots.
+    pub(crate) fn needs_degenerate_cleanup(&self) -> bool {
+        if !self.indices.len().is_multiple_of(3) { return true; }
+        let count = self.positions.len() / 3;
+        self.indices.chunks_exact(3).any(|t| {
+            if t.iter().any(|&i| i as usize >= count) { return true; }
+            let [a,b,c] = [t[0],t[1],t[2]].map(|i| tjunction::pos_of(self,i));
+            tjunction::height(a,b,c).is_none_or(|h| h < crate::kernel::mesh_bridge::SNAP_GRID)
+        })
+    }
+
+    /// [`clean_degenerate`](Self::clean_degenerate) for source geometry and
+    /// untextured void-cut output: drops the same slivers, then splits the triangle
     /// across each dropped sliver's long edge at the sliver's apex whenever a
-    /// kept triangle still uses that apex, so the drop cannot open a
-    /// T-junction (#5313). May append vertices (an apex copy carrying the
+    /// kept triangle still uses that apex and the split is representable
+    /// (#5313). Void outputs additionally check exact closure before adopting
+    /// cleanup (#7292). May append vertices (an apex copy carrying the
     /// split face's normal), so it is only for meshes with no parallel
     /// per-vertex array outside `Mesh` (the textured channel's UVs rule it out
-    /// there). The router's source-hygiene chokepoints use it; the void/CSG
-    /// paths keep `clean_degenerate`, whose output their own closure gates and
-    /// census judge.
+    /// there). The router's source-hygiene chokepoints and untextured void-cut
+    /// outputs use it (#7292); consumers with parallel buffers retain index-only
+    /// cleanup and judge the result through their own closure gates.
     pub fn clean_degenerate_watertight(&mut self) {
         self.drop_thin_triangles_inner(crate::kernel::mesh_bridge::SNAP_GRID, true);
     }

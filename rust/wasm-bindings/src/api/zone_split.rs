@@ -147,6 +147,10 @@ impl ZoneSplitJs {
 /// or zone corner lies past ±2^128, the exact kernel's coordinate bound
 /// (#7677): such a split is refused rather than answered wrongly.
 ///
+/// Returns `undefined` if an intersection, zone union or remainder exhausts
+/// the exact kernel's work budget. Completed pieces are not returned as a
+/// successful partial split, and a failed empty piece is not treated as disjoint.
+///
 /// Returns `undefined` when the mesh encloses no volume (no triangles survive
 /// the filter above, or the shell is degenerate): there is nothing to split,
 /// and a result for it would report `pieceCount` 1, `sumErrorRel` 0 and
@@ -157,7 +161,7 @@ impl ZoneSplitJs {
 /// const split = splitMeshByZones(positions, indices, new Float64Array([
 ///   0, 0, 0, 10, 10, 10, 0,
 /// ]));
-/// if (!split) return; // the mesh encloses no volume
+/// if (!split) return; // no usable complete split
 /// for (let i = 0; i < split.pieceCount; i++) {
 ///   const piece = split.piece(i);
 ///   // piece.zoneIndex, piece.positions, piece.indices, piece.volume

@@ -12,7 +12,6 @@
 
 use std::collections::HashSet;
 
-use ifc_lite_core::express_id::parse_express_id;
 use ifc_lite_core::step_encoding::step_string_literal_end;
 
 /// Rewrite every `#N` reference in a STEP entity line. `remap(n)` returns
@@ -30,38 +29,17 @@ use ifc_lite_core::step_encoding::step_string_literal_end;
 /// collects it (#3740).
 pub fn rewrite_refs(line: &[u8], offset: u32, remap: &impl Fn(u32) -> Option<u32>) -> String {
     let mut out: Vec<u8> = Vec::with_capacity(line.len() + 8);
-    let mut i = 0;
-    while i < line.len() {
-        let b = line[i];
-        if b == b'\'' {
-            // The whole literal is copied verbatim; where it ends is the shared
-            // rule, so a `\S\'` operand does not end it early (#7589).
-            let end = step_string_literal_end(line, i).unwrap_or(line.len());
-            out.extend_from_slice(&line[i..end]);
-            i = end;
-            continue;
-        }
-        if b == b'#' {
-            let mut j = i + 1;
-            while j < line.len() && line[j].is_ascii_digit() {
-                j += 1;
-            }
-            if j > i + 1 {
-                match parse_express_id(&line[i + 1..j]) {
-                    Some(n) => {
-                        let target = remap(n).unwrap_or_else(|| n.saturating_add(offset));
-                        out.push(b'#');
-                        out.extend_from_slice(target.to_string().as_bytes());
-                    }
-                    None => out.extend_from_slice(&line[i..j]),
-                }
-                i = j;
-                continue;
-            }
-        }
-        out.push(b);
-        i += 1;
+    let mut copied = 0;
+    for span in crate::step_text::ref_spans(line) {
+        // An unrepresentable id stays as authored.
+        let Some(n) = span.id else { continue };
+        out.extend_from_slice(&line[copied..span.start]);
+        let target = remap(n).unwrap_or_else(|| n.saturating_add(offset));
+        out.push(b'#');
+        out.extend_from_slice(target.to_string().as_bytes());
+        copied = span.end;
     }
+    out.extend_from_slice(&line[copied..]);
     String::from_utf8_lossy(&out).into_owned()
 }
 
@@ -108,6 +86,10 @@ fn arg_span(line: &str) -> Option<(usize, usize)> {
                 i = step_string_literal_end(bytes, i)?;
                 continue;
             }
+            b'/' if bytes.get(i + 1) == Some(&b'*') => {
+                i = ifc_lite_core::skip_step_comment(bytes, i)?;
+                continue;
+            }
             b'(' => depth += 1,
             b')' => {
                 depth -= 1;
@@ -136,8 +118,12 @@ fn split_args(args: &str) -> Vec<&str> {
                 i = step_string_literal_end(bytes, i).unwrap_or(bytes.len());
                 continue;
             }
+            b'/' if bytes.get(i + 1) == Some(&b'*') => {
+                i = ifc_lite_core::skip_step_comment(bytes, i).unwrap_or(bytes.len());
+                continue;
+            }
             b'(' => depth += 1,
-            b')' => depth -= 1,
+            b')' => depth = (depth - 1).max(0),
             b',' if depth == 0 => {
                 out.push(&args[start..i]);
                 start = i + 1;
@@ -161,12 +147,7 @@ fn split_args(args: &str) -> Vec<&str> {
 /// against `str::parse` and are deliberately left alone: they are correct at
 /// the bound, so folding them in would be a pure refactor riding on a fix.
 fn parse_ref(arg: &str) -> Option<u32> {
-    let t = arg.trim();
-    let digits = t.strip_prefix('#')?;
-    if digits.is_empty() || !digits.bytes().all(|b| b.is_ascii_digit()) {
-        return None;
-    }
-    parse_express_id(digits.as_bytes())
+    ifc_lite_core::parser::parse_ref(arg.trim().as_bytes())
 }
 
 /// True when `arg` is a list literal (`(…)`).

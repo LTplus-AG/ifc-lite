@@ -107,14 +107,7 @@ impl AlignmentAxis {
         T: AsRef<[u8]> + ?Sized,
     {
         let mut decoder = EntityDecoder::with_index(content, build_entity_index(content)).with_strict_reals();
-        let mut scanner = EntityScanner::new(content);
-        let mut project = None;
-        while let Some((id, name, _, _)) = scanner.next_entity() {
-            if keyword_eq(name, "IFCPROJECT") {
-                project = Some(id);
-                break;
-            }
-        }
+        let project = decoder.project_id();
         let scale = resolve_scale(&mut decoder, project).ok_or_else(|| {
             Error::geometry(
                 "No declared, resolvable LENGTHUNIT matching the canonical geometry scale",
@@ -241,12 +234,8 @@ where
         diagnostics_omitted: 0,
     };
     let mut scanner = EntityScanner::new(content);
-    let mut project = None;
     let mut ids = Vec::new();
     while let Some((id, name, _, _)) = scanner.next_entity() {
-        if keyword_eq(name, "IFCPROJECT") && project.is_none() {
-            project = Some(id);
-        }
         if keyword_eq(name, "IFCALIGNMENT") {
             ids.push(id);
         }
@@ -255,6 +244,7 @@ where
         return Ok(report);
     }
     let mut decoder = EntityDecoder::with_index(content, build_entity_index(content)).with_strict_reals(); // #7678
+    let project = decoder.project_id();
     let scale = resolve_scale(&mut decoder, project);
     let Some(unit_scale) = scale else {
         report.diagnostic(

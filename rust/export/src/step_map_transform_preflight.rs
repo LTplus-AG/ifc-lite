@@ -61,9 +61,8 @@ pub(super) fn project_units(project: u32, decoder: &mut EntityDecoder) -> Result
         return Err("map geometry normalization currently requires an SI metre project length unit".into());
     }
     if let Some(prefix) = unit.get(2).filter(|attr| !attr.is_null()) {
-        // EXPRESS enumeration validation, not a second unit multiplier table.
-        if !matches!(prefix.as_enum(), Some("EXA" | "PETA" | "TERA" | "GIGA" | "MEGA" | "KILO" |
-            "HECTO" | "DECA" | "DECI" | "CENTI" | "MILLI" | "MICRO" | "NANO" | "PICO" | "FEMTO" | "ATTO")) {
+        // EXPRESS enumeration validation against the one `IfcSIPrefix` table.
+        if !prefix.as_enum().is_some_and(|token| ifc_lite_core::si_prefix(token).is_some()) {
             return Err("project SI prefix is invalid".into());
         }
     }

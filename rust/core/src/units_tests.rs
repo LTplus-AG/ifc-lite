@@ -484,3 +484,56 @@ fn conversion_based_length_unit_with_an_unusable_factor_is_an_error() {
     let unit = resolve_length_unit(&mut EntityDecoder::new(&content), 1).unwrap();
     assert_eq!((unit.scale, unit.unusable_factor), (0.201168, None));
 }
+
+// ---- F3a (#7775): one SI-prefix table, an exact US survey foot -----------------
+
+/// CORE-26: the multiplier reader, the display-symbol reader and the exporters'
+/// prefix checks all derive from the one table; no prefix is in one and not
+/// another.
+#[test]
+fn the_si_prefix_table_is_the_single_source() {
+    use crate::project_units::symbols::si_prefix_symbol;
+    assert_eq!(crate::SI_PREFIXES.len(), 16, "the IfcSIPrefix enumeration");
+    for row in crate::SI_PREFIXES {
+        assert_eq!(try_si_prefix_multiplier(row.name), Some(row.factor), "{}", row.name);
+        assert_eq!(get_si_prefix_multiplier(row.name), row.factor, "{}", row.name);
+        assert_eq!(si_prefix_symbol(row.name), row.symbol, "{}", row.name);
+        assert_eq!(si_prefix_symbol(&format!(" {} ", row.name.to_lowercase())), row.symbol);
+    }
+    assert_eq!(try_si_prefix_multiplier("BANANA"), None);
+    assert_eq!(get_si_prefix_multiplier("BANANA"), 1.0);
+    assert_eq!(si_prefix_symbol("BANANA"), "");
+    assert_eq!(try_si_prefix_multiplier("milli"), None, "the enum token is exact, upper case");
+}
+
+/// EXPORT-STEP-20 / CORE-26: the US survey foot is 1200/3937 m EXACTLY on every
+/// path; the former core constant was the truncated 0.3048006096.
+#[test]
+fn the_us_survey_foot_is_exactly_1200_over_3937() {
+    assert_eq!(crate::US_SURVEY_FOOT_M, 1200.0 / 3937.0);
+    assert_ne!(crate::US_SURVEY_FOOT_M, 0.3048006096, "the truncated constant is gone");
+    for label in ["US survey foot", "USSURVEYFEET", "ftUS", "survey feet (US)"] {
+        assert_eq!(crate::unit_labels::infer_map_unit_scale(label), Some(1200.0 / 3937.0), "{label}");
+    }
+}
+
+/// EXPORT-STEP-20: the conversion-unit symbol strips every quote, as the TS
+/// twin does; core used to trim only the outer pair.
+#[test]
+fn conversion_unit_symbol_strips_every_quote() {
+    use crate::project_units::symbols::conversion_unit_symbol;
+    assert_eq!(conversion_unit_symbol("O''CLOCK"), "OCLOCK");
+    assert_eq!(conversion_unit_symbol("'FOOT'"), "ft");
+    assert_eq!(conversion_unit_symbol(" degree "), "\u{00B0}");
+    assert_eq!(conversion_unit_symbol(""), "");
+}
+
+/// F3a: the decoder locates the project once, as the first in file order.
+#[test]
+fn the_decoder_caches_the_first_project_in_file_order() {
+    let ifc = "ISO-10303-21;\nDATA;\n#9=IFCPROJECT('b',$,'B',$,$,$,$,$,$);\n#2=IFCPROJECT('a',$,'A',$,$,$,$,$,$);\nENDSEC;\n";
+    let mut decoder = crate::EntityDecoder::new(ifc);
+    assert_eq!(decoder.project_id(), Some(9));
+    assert_eq!(decoder.project_id(), Some(9));
+    assert_eq!(crate::EntityDecoder::new("DATA;\n").project_id(), None);
+}

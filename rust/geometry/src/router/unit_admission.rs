@@ -65,29 +65,25 @@ impl GeometryRouter {
         self.processors.get(ifc_type, self.schema)
     }
 
-    /// Scan to the first `IFCPROJECT` and resolve its length-unit scale (e.g.
-    /// `0.001` for millimetres → metres); `1.0` if none is found. An unusable
+    /// Resolve the first `IFCPROJECT`'s length-unit scale (e.g. `0.001` for
+    /// millimetres → metres); `1.0` if none is found. The project comes from
+    /// the decoder's cached locator, not a scan of `content`. An unusable
     /// declared factor answers `NaN`, which [`Self::set_unit_scale`] refuses,
     /// and a strict (geometry) decoder counts it.
-    pub(super) fn scan_unit_scale(content: &[u8], decoder: &mut EntityDecoder) -> f64 {
-        let mut scanner = ifc_lite_core::EntityScanner::new(content);
-        while let Some((id, type_name, _, _)) = scanner.next_entity() {
-            if ifc_lite_core::keyword_eq(type_name, "IFCPROJECT") {
-                if let Ok(unit) = ifc_lite_core::resolve_length_unit(decoder, id) {
-                    return match unit.unusable_factor {
-                        Some(factor) => {
-                            if decoder.strict_reals() {
-                                let _counted = decoder.refuse_record(factor);
-                            }
-                            f64::NAN
+    pub(super) fn project_unit_scale(decoder: &mut EntityDecoder) -> f64 {
+        if let Some(id) = decoder.project_id() {
+            if let Ok(unit) = ifc_lite_core::resolve_length_unit(decoder, id) {
+                return match unit.unusable_factor {
+                    Some(factor) => {
+                        if decoder.strict_reals() {
+                            let _counted = decoder.refuse_record(factor);
                         }
-                        None => unit.scale,
-                    };
-                }
-                break;
+                        f64::NAN
+                    }
+                    None => unit.scale,
+                };
             }
         }
         1.0
     }
 }
-

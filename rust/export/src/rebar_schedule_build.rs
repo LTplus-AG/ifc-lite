@@ -16,7 +16,6 @@ pub(super) fn build_rebar_schedule_impl(
     // undeclared or unrecognised schema (#7681).
     let schema = attribute_schema(content);
     let mut decoder = EntityDecoder::new(content);
-    let scale = decoder.length_unit_scale();
     let mut bars = BTreeMap::new();
     let mut types = HashMap::new();
     let mut unreadable_types = HashSet::new();
@@ -85,6 +84,16 @@ pub(super) fn build_rebar_schedule_impl(
     // a millimetre model may declare square metres for IfcAreaMeasure.
     let project_units = project_id.map(|id| ProjectUnits::resolve(&mut decoder, id))
         .unwrap_or_default();
+    // The length scale comes from the same resolution as the area scale below
+    // (EXPORT-DATA-9): one `ProjectUnits`, one scan for the project. A length
+    // unit whose declared factor is unusable keeps main's value (data path),
+    // but no longer silently: the bar lengths are then not in metres.
+    let scale = project_units.length_unit_scale();
+    if let Some(factor) = project_units.length_unit().unusable_factor {
+        diagnostics.push(format!(
+            "project length unit unresolved: ConversionFactor #{factor} is not a positive finite number; bar lengths are not in metres"
+        ));
+    }
     let area_scale = project_units.unit_for_measure("IfcAreaMeasure").map(|unit| unit.si_scale);
     let (descriptions, definitions) = extract_swept_disk_views(
         content,

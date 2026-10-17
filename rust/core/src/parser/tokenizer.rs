@@ -153,6 +153,15 @@ fn float(input: &[u8]) -> IResult<&[u8], Token<'_>> {
     )(input)
 }
 
+/// Whether `literal` is exactly one number token this tokenizer reads
+/// ([`float`] or [`integer`]). Stricter than the shared raw-byte grammar
+/// (`numeric_literal`): no bare-dot fraction (`.5`), no exponent without a
+/// `.` (`1E5`), no `INTEGER` past `i64`. A raw-byte reader that must agree
+/// with the full decode (`decoder::leaf_read`) checks its literals here.
+pub(crate) fn is_decodable_number(literal: &[u8]) -> bool {
+    matches!(alt((float, integer))(literal), Ok((rest, _)) if rest.is_empty())
+}
+
 /// Parse enum: .TRUE., .FALSE., .UNKNOWN., .ELEMENT.
 fn enum_value(input: &[u8]) -> IResult<&[u8], Token<'_>> {
     map(

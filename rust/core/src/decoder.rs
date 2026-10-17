@@ -20,6 +20,8 @@ use std::sync::Arc;
 mod caches;
 #[path = "decoder/fast_buffers.rs"]
 mod fast_buffers;
+#[path = "decoder/leaf_read.rs"]
+mod leaf_read;
 #[path = "decoder/precision.rs"]
 mod precision;
 #[path = "decoder/schema_layout.rs"]
@@ -116,7 +118,7 @@ pub struct EntityDecoder<'a> {
     /// it twice. A `Mutex` (touched only on a refusal) so the `&self`
     /// [`Self::decode_at_uncached`] can record too while the decoder stays
     /// `Sync` and `RefUnwindSafe`.
-    refused_reals: std::sync::Mutex<rustc_hash::FxHashSet<u32>>,
+    refused_records: std::sync::Mutex<rustc_hash::FxHashSet<u32>>,
 }
 
 impl<'a> EntityDecoder<'a> {
@@ -141,7 +143,7 @@ impl<'a> EntityDecoder<'a> {
             schema_version_cache: None,
             grid_axis_index: Arc::default(),
             strict_reals: false,
-            refused_reals: std::sync::Mutex::default(),
+            refused_records: std::sync::Mutex::default(),
         }
     }
 
@@ -166,7 +168,7 @@ impl<'a> EntityDecoder<'a> {
             schema_version_cache: None,
             grid_axis_index: Arc::default(),
             strict_reals: false,
-            refused_reals: std::sync::Mutex::default(),
+            refused_records: std::sync::Mutex::default(),
         }
     }
 
@@ -191,7 +193,7 @@ impl<'a> EntityDecoder<'a> {
             schema_version_cache: None,
             grid_axis_index: Arc::default(),
             strict_reals: false,
-            refused_reals: std::sync::Mutex::default(),
+            refused_records: std::sync::Mutex::default(),
         }
     }
 
@@ -298,20 +300,22 @@ impl<'a> EntityDecoder<'a> {
     /// coordinate-list fast path or a value that narrows to infinity, so the
     /// refusal reaches the refused-element counter like a decode refusal.
     pub fn refuse_record(&self, id: u32) -> Error {
-        self.refused_reals.lock().unwrap_or_else(std::sync::PoisonError::into_inner).insert(id);
+        self.refused_records.lock().unwrap_or_else(std::sync::PoisonError::into_inner).insert(id);
         Error::UnrepresentableReal(id)
     }
 
-    /// How many records this decoder has refused under input admission
-    /// (#7678). A geometry job that sees this move refused input.
-    pub fn refused_real_records(&self) -> u64 {
+    /// How many records this decoder has refused under input admission: an
+    /// unrepresentable REAL (#7678) or a malformed point/direction leaf
+    /// (`leaf_read`, F3b, D29). One counter, so a geometry job that sees it
+    /// move refused input.
+    pub fn refused_records(&self) -> u64 {
         self.refused_record_ids().len() as u64
     }
 
     /// The distinct record ids this decoder has refused (#7678), so callers
     /// that combine several decoders count each record once.
     pub fn refused_record_ids(&self) -> Vec<u32> {
-        let ids = self.refused_reals.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let ids = self.refused_records.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         ids.iter().copied().collect()
     }
 
@@ -844,6 +848,13 @@ fn parse_cartesian_point_inline(bytes: &[u8]) -> Option<(f64, f64, f64)> {
 /// genuine 2D point, whose list closes right after y.
 #[inline]
 fn parse_point_coordinates(bytes: &[u8]) -> Option<(f64, f64, f64)> {
+    parse_point_coordinates_end(bytes).map(|(point, _)| point)
+}
+
+/// [`parse_point_coordinates`] that also returns the index just past the
+/// closing `)`, for a reader that checks what follows the list.
+#[inline]
+fn parse_point_coordinates_end(bytes: &[u8]) -> Option<((f64, f64, f64), usize)> {
     let value_at = |i: usize| -> Option<(f64, usize)> {
         let start = skip_step_trivia(bytes, i)?;
         let (value, len) = parse_step_numeric::<f64>(&bytes[start..])?;
@@ -855,12 +866,12 @@ fn parse_point_coordinates(bytes: &[u8]) -> Option<(f64, f64, f64)> {
     }
     let (y, i) = value_at(i + 1)?;
     match bytes.get(i)? {
-        b')' => return Some((x, y, 0.0)),
+        b')' => return Some(((x, y, 0.0), i + 1)),
         b',' => {}
         _ => return None,
     }
     let (z, i) = value_at(i + 1)?;
-    (bytes.get(i) == Some(&b')')).then_some((x, y, z))
+    (bytes.get(i) == Some(&b')')).then_some(((x, y, z), i + 1))
 }
 
 #[cfg(test)]

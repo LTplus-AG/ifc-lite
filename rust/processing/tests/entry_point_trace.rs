@@ -24,6 +24,9 @@
 //! `produce_batch` reads `js_sys::Date::now` and the pre-pass hands its jobs to
 //! JS, so neither runs natively until C4-10b/11b make them callable.
 
+// This file exists to hold the deprecated entry points to `process`.
+#![allow(deprecated)]
+
 mod common;
 
 use common::entry_trace::{assert_ordering_contract, result_digest, Event, Recorder};

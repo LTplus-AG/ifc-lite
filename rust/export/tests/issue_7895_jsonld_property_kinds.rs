@@ -54,7 +54,7 @@ DATA;
 #13=IFCPROPERTYSINGLEVALUE('Absent',$,$,$);
 #14=IFCPROPERTYSINGLEVALUE('',$,IFCLABEL('unused'),$);
 #20=IFCPROPERTYSET('empty',$,'Empty',$,(#13,#14,#999));
-#21=IFCPROPERTYSET('set',$,'Repeated',$,(#13,#10,#999,#11,#14,#12));
+#21=IFCPROPERTYSET('set',$,'Repeated',$,(#13,#10,#11,#14,#12));
 #22=IFCELEMENTQUANTITY('quantity',$,'Qto',$,$,(#23));
 #23=IFCQUANTITYLENGTH('Length',$,$,3.,$);
 #30=IFCRELDEFINESBYPROPERTIES('rel',$,$,$,(#1,#2),(#20,#22,#21,#21));

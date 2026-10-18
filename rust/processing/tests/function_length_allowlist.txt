@@ -29,7 +29,7 @@
    159 rust/export/src/gltf.rs push_mesh_quantized
    158 rust/export/src/gltf.rs write_bounded_glb
    260 rust/export/src/merged/mod.rs export_merged_models
-   328 rust/processing/src/data_model/rows/mod.rs stream_export_model_with_options
+   328 rust/processing/src/data_model/rows/mod.rs stream_rows
    269 rust/export/src/rebar_schedule_build.rs build_rebar_schedule_impl
    238 rust/export/src/step.rs emit
    178 rust/export/src/step_log/write.rs emit
@@ -37,12 +37,10 @@
    155 rust/export/src/step_map_rigid_contexts.rs representation_contexts
    186 rust/export/src/usd.rs export_usd
    161 rust/geometry/src/alignment.rs parse_horizontal
-   368 rust/geometry/src/csg/consolidate.rs ClippingProcessor::consolidate_coplanar_with_unit_scale
    341 rust/geometry/src/facet_weld.rs refine_high_aspect_slivers_impl
    332 rust/geometry/src/facet_weld.rs weld_near_coplanar_facets
    231 rust/geometry/src/instancing/group.rs collate_refs_impl
    166 rust/geometry/src/instancing/wire.rs encode_refs_with_finishes
-   218 rust/geometry/src/kernel/retriangulate_recover.rs recover_subsegment
    185 rust/geometry/src/mesh_orient.rs orient_mesh_outward_verdict
    175 rust/geometry/src/processors/advanced_face/polyline.rs sample_curve_polyline_guarded
    229 rust/geometry/src/processors/advanced_face/revolution.rs process_surface_of_revolution_face

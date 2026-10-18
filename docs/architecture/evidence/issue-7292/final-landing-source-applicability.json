@@ -1,0 +1,195 @@
+{
+  "fromValidatedComposition": "ced41577dc4898bc257148889cee284d3da754dd",
+  "finalLandingComposition": "17a271904ada165e8e90998234dd102ee8ed9937",
+  "latestMain": "1bd0505602e0d650971d5cdc590bf780c56f8d5f",
+  "exactSubtreesUnchanged": {
+    "rust": {
+      "before": "93773e9a54db14ff636c4c74a632ff4af2a9aaf0",
+      "after": "93773e9a54db14ff636c4c74a632ff4af2a9aaf0"
+    },
+    "scripts/build-wasm.sh": {
+      "before": "f24b540bb5a58917a287f214f766e5f1c01cf69b",
+      "after": "f24b540bb5a58917a287f214f766e5f1c01cf69b"
+    },
+    "packages/wasm": {
+      "before": "82d6a5d5785dde8d54fbdf6fc70a93899b9ef024",
+      "after": "82d6a5d5785dde8d54fbdf6fc70a93899b9ef024"
+    },
+    "tools/ifcopenshell_reference": {
+      "before": "33c00e7af3544e287b524aaadd405708b153bd41",
+      "after": "33c00e7af3544e287b524aaadd405708b153bd41"
+    },
+    "rust/python/tests/golden/geometry-data-json.json": {
+      "before": "7edfddfee23f6016846211240a4d0b5c0f6bc7af",
+      "after": "7edfddfee23f6016846211240a4d0b5c0f6bc7af"
+    }
+  },
+  "onlyLatestMainChanges": [
+    {
+      "sha": "8acd0715a5ad266cd57808b9889f6549fbf93631",
+      "node_id": "C_kwDOQ3UF-9oAKDhhY2QwNzE1YTVhZDI2NmNkNTc4MDhiOTg4OWY2NTQ5ZmJmOTM2MzE",
+      "commit": {
+        "author": {
+          "name": "Louis Tr\u00fcmpler",
+          "email": "78563314+louistrue@users.noreply.github.com",
+          "date": "2026-10-18T10:43:20Z"
+        },
+        "committer": {
+          "name": "GitHub",
+          "email": "noreply@github.com",
+          "date": "2026-10-18T10:43:20Z"
+        },
+        "message": "fix(renderer): fence quantization admission by GPU lifetime (#7898)",
+        "tree": {
+          "sha": "fcbbfe6a76b89560289cb3b83b885d951d9b5212",
+          "url": "https://api.github.com/repos/LTplus-AG/ifc-lite/git/trees/fcbbfe6a76b89560289cb3b83b885d951d9b5212"
+        },
+        "url": "https://api.github.com/repos/LTplus-AG/ifc-lite/git/commits/8acd0715a5ad266cd57808b9889f6549fbf93631",
+        "comment_count": 0,
+        "verification": {
+          "verified": true,
+          "reason": "valid",
+          "signature": "-----BEGIN PGP SIGNATURE-----\n\nwsFcBAABCAAQBQJq1KLICRC1aQ7uu5UhlAAAumMQAG6HlkHm4Hi6GzzK/7sUlaha\naQvOecFEb+6bxNlibmSQZWCXf4IY8M6me54TJTcqIjU4GZ9SvJrdvV3nV20t1krm\n5A/2i2/V361F3r0Ad1wK0e7wgFHKf76NtZ7QQ5Bq7mfg7biDE2ixc5RYfAvDl5ez\n8/JTUz16q2CS2dRZtvFcYi2Bf2HDi/iNmt9InyjP0KTiDVodVd32WanoFG1LXE46\n2naJmtsqrtuIXuVCiQC+ngVT23fToxZg8MUXxG94sJZvfsnYHdwWSkNnNa4xB136\nS3/qeruipfZhjgSWU14VfuQQ0dp5+TdTTqsPmaEeU0YPTRcE/YQYvcr1agoDwReY\nxT0fE5G7IA2lhaBE+07z3c+6UGuS2cgedb5OdOILR3Q5SohS8d7Q/klO7UiW1d7w\nF/p7OAOYnMSksZ26nmQQvBsNreet6memryQKKukE8DAy9AQEmapPIguIog+sz1O5\n32RNoO8ldzYUrrt/YNRvd+++h24JD8wLb7o4QlcYnvTvA5Uhp0L6nX7dYAia2j+l\n4nGQdzvq/ResgLWPG3a9UUzXkegodG97a5jIZaFjuljhnP891l07F8fqus9eFfd2\n7xQjUa8vmvytk1SZM5o0LrdVEwHuXaKmJHFb6Efl22v7dAnl28cQGBIXrZ5DQ2rj\nXS5oYyhYBF+CyjqBgb1A\n=dkmQ\n-----END PGP SIGNATURE-----\n",
+          "payload": "tree fcbbfe6a76b89560289cb3b83b885d951d9b5212\nparent db45d717226ddaac682121dbf39289ba53bcda0e\nauthor Louis Tr\u00fcmpler <78563314+louistrue@users.noreply.github.com> 1792320200 +0200\ncommitter GitHub <noreply@github.com> 1792320200 +0200\n\nfix(renderer): fence quantization admission by GPU lifetime (#7898)",
+          "verified_at": "2026-10-18T10:43:20Z"
+        }
+      },
+      "url": "https://api.github.com/repos/LTplus-AG/ifc-lite/commits/8acd0715a5ad266cd57808b9889f6549fbf93631",
+      "html_url": "https://github.com/LTplus-AG/ifc-lite/commit/8acd0715a5ad266cd57808b9889f6549fbf93631",
+      "comments_url": "https://api.github.com/repos/LTplus-AG/ifc-lite/commits/8acd0715a5ad266cd57808b9889f6549fbf93631/comments",
+      "author": {
+        "login": "louistrue",
+        "id": 78563314,
+        "node_id": "MDQ6VXNlcjc4NTYzMzE0",
+        "avatar_url": "https://avatars.githubusercontent.com/u/78563314?v=4",
+        "gravatar_id": "",
+        "url": "https://api.github.com/users/louistrue",
+        "html_url": "https://github.com/louistrue",
+        "followers_url": "https://api.github.com/users/louistrue/followers",
+        "following_url": "https://api.github.com/users/louistrue/following{/other_user}",
+        "gists_url": "https://api.github.com/users/louistrue/gists{/gist_id}",
+        "starred_url": "https://api.github.com/users/louistrue/starred{/owner}{/repo}",
+        "subscriptions_url": "https://api.github.com/users/louistrue/subscriptions",
+        "organizations_url": "https://api.github.com/users/louistrue/orgs",
+        "repos_url": "https://api.github.com/users/louistrue/repos",
+        "events_url": "https://api.github.com/users/louistrue/events{/privacy}",
+        "received_events_url": "https://api.github.com/users/louistrue/received_events",
+        "type": "User",
+        "user_view_type": "public",
+        "site_admin": false
+      },
+      "committer": {
+        "login": "web-flow",
+        "id": 19864447,
+        "node_id": "MDQ6VXNlcjE5ODY0NDQ3",
+        "avatar_url": "https://avatars.githubusercontent.com/u/19864447?v=4",
+        "gravatar_id": "",
+        "url": "https://api.github.com/users/web-flow",
+        "html_url": "https://github.com/web-flow",
+        "followers_url": "https://api.github.com/users/web-flow/followers",
+        "following_url": "https://api.github.com/users/web-flow/following{/other_user}",
+        "gists_url": "https://api.github.com/users/web-flow/gists{/gist_id}",
+        "starred_url": "https://api.github.com/users/web-flow/starred{/owner}{/repo}",
+        "subscriptions_url": "https://api.github.com/users/web-flow/subscriptions",
+        "organizations_url": "https://api.github.com/users/web-flow/orgs",
+        "repos_url": "https://api.github.com/users/web-flow/repos",
+        "events_url": "https://api.github.com/users/web-flow/events{/privacy}",
+        "received_events_url": "https://api.github.com/users/web-flow/received_events",
+        "type": "User",
+        "user_view_type": "public",
+        "site_admin": false
+      },
+      "parents": [
+        {
+          "sha": "db45d717226ddaac682121dbf39289ba53bcda0e",
+          "url": "https://api.github.com/repos/LTplus-AG/ifc-lite/commits/db45d717226ddaac682121dbf39289ba53bcda0e",
+          "html_url": "https://github.com/LTplus-AG/ifc-lite/commit/db45d717226ddaac682121dbf39289ba53bcda0e"
+        }
+      ]
+    },
+    {
+      "sha": "1bd0505602e0d650971d5cdc590bf780c56f8d5f",
+      "node_id": "C_kwDOQ3UF-9oAKDFiZDA1MDU2MDJlMGQ2NTA5NzFkNWNkYzU5MGJmNzgwYzU2ZjhkNWY",
+      "commit": {
+        "author": {
+          "name": "Louis Tr\u00fcmpler",
+          "email": "78563314+louistrue@users.noreply.github.com",
+          "date": "2026-10-18T11:06:11Z"
+        },
+        "committer": {
+          "name": "GitHub",
+          "email": "noreply@github.com",
+          "date": "2026-10-18T11:06:11Z"
+        },
+        "message": "test: refresh assistant evidence before check authoring (#7922)\n\n* test: refresh captured evidence before assistant check drafts\n\n* test: assert refresh clears prior assistant messages",
+        "tree": {
+          "sha": "0f664118c967422fd131dc02755b308c3be6e7ab",
+          "url": "https://api.github.com/repos/LTplus-AG/ifc-lite/git/trees/0f664118c967422fd131dc02755b308c3be6e7ab"
+        },
+        "url": "https://api.github.com/repos/LTplus-AG/ifc-lite/git/commits/1bd0505602e0d650971d5cdc590bf780c56f8d5f",
+        "comment_count": 0,
+        "verification": {
+          "verified": true,
+          "reason": "valid",
+          "signature": "-----BEGIN PGP SIGNATURE-----\n\nwsFcBAABCAAQBQJq1KgjCRC1aQ7uu5UhlAAAYmQQABARf+gpgVcAmiO186RxuVVK\nL/omvoicoMEhkUnZGYIK+nBHpU3ap6+6D+OBrWJVw0SVfi8LnkhG85JosBZWqsZQ\nLsqxpI4uQrjGXYxPx4g+0P3io+iHGwtMWqi6hNxeAleMUsN430bnYkZFqwInWNax\n8lgeTUY+STvgmiOKxq6DR8+TuIb4P6hUuNO72cSJGWLleeSWoMqfjN1zwFWJ8R7i\n5kG/JfnGp5NhakOwLt0yIa+/I723/blWORgenlVwLVzLd0Dg8oQB5O+wW+t8Dq6e\n8bgKq3h7PD6jL0PTzHBu0RGgD4RzD0gElFnhaK5+R0LrvMKgKBXfV/2AgKJsxY4R\n1bt8GVrZBMcnUyWybpqEaposQ2UAl073MMPkg42n2FOH6mDQM3L9SUXm9jWf/odw\nIIaVL72w2c/njiPgk4dKzBXtzsHFUqaq/ZOjsydpxMbhRHsUOCX26CFHCaonLtJ1\nwPzsaoBM+Z3J5ohVYaaXXyrEWUqnQXTUrWfkMmToQMyoc7LIapUn8YDsEpaGwewM\nlJqFKx8RgVSykfwNl3dsXQGhf76Xxqj04dsMcKPZEtHE7xPQ+TgQe+8fLJ6xWUAt\nPdqDcoNQTwUXcrFHLEzWj105IIFRwK+/jgVtTT4Bx2C7YQjYL9zOpWzwqiyxy3Az\n6SVvgKIwTvmiiTy+wUJh\n=55ti\n-----END PGP SIGNATURE-----\n",
+          "payload": "tree 0f664118c967422fd131dc02755b308c3be6e7ab\nparent 8acd0715a5ad266cd57808b9889f6549fbf93631\nauthor Louis Tr\u00fcmpler <78563314+louistrue@users.noreply.github.com> 1792321571 +0200\ncommitter GitHub <noreply@github.com> 1792321571 +0200\n\ntest: refresh assistant evidence before check authoring (#7922)\n\n* test: refresh captured evidence before assistant check drafts\n\n* test: assert refresh clears prior assistant messages",
+          "verified_at": "2026-10-18T11:06:12Z"
+        }
+      },
+      "url": "https://api.github.com/repos/LTplus-AG/ifc-lite/commits/1bd0505602e0d650971d5cdc590bf780c56f8d5f",
+      "html_url": "https://github.com/LTplus-AG/ifc-lite/commit/1bd0505602e0d650971d5cdc590bf780c56f8d5f",
+      "comments_url": "https://api.github.com/repos/LTplus-AG/ifc-lite/commits/1bd0505602e0d650971d5cdc590bf780c56f8d5f/comments",
+      "author": {
+        "login": "louistrue",
+        "id": 78563314,
+        "node_id": "MDQ6VXNlcjc4NTYzMzE0",
+        "avatar_url": "https://avatars.githubusercontent.com/u/78563314?v=4",
+        "gravatar_id": "",
+        "url": "https://api.github.com/users/louistrue",
+        "html_url": "https://github.com/louistrue",
+        "followers_url": "https://api.github.com/users/louistrue/followers",
+        "following_url": "https://api.github.com/users/louistrue/following{/other_user}",
+        "gists_url": "https://api.github.com/users/louistrue/gists{/gist_id}",
+        "starred_url": "https://api.github.com/users/louistrue/starred{/owner}{/repo}",
+        "subscriptions_url": "https://api.github.com/users/louistrue/subscriptions",
+        "organizations_url": "https://api.github.com/users/louistrue/orgs",
+        "repos_url": "https://api.github.com/users/louistrue/repos",
+        "events_url": "https://api.github.com/users/louistrue/events{/privacy}",
+        "received_events_url": "https://api.github.com/users/louistrue/received_events",
+        "type": "User",
+        "user_view_type": "public",
+        "site_admin": false
+      },
+      "committer": {
+        "login": "web-flow",
+        "id": 19864447,
+        "node_id": "MDQ6VXNlcjE5ODY0NDQ3",
+        "avatar_url": "https://avatars.githubusercontent.com/u/19864447?v=4",
+        "gravatar_id": "",
+        "url": "https://api.github.com/users/web-flow",
+        "html_url": "https://github.com/web-flow",
+        "followers_url": "https://api.github.com/users/web-flow/followers",
+        "following_url": "https://api.github.com/users/web-flow/following{/other_user}",
+        "gists_url": "https://api.github.com/users/web-flow/gists{/gist_id}",
+        "starred_url": "https://api.github.com/users/web-flow/starred{/owner}{/repo}",
+        "subscriptions_url": "https://api.github.com/users/web-flow/subscriptions",
+        "organizations_url": "https://api.github.com/users/web-flow/orgs",
+        "repos_url": "https://api.github.com/users/web-flow/repos",
+        "events_url": "https://api.github.com/users/web-flow/events{/privacy}",
+        "received_events_url": "https://api.github.com/users/web-flow/received_events",
+        "type": "User",
+        "user_view_type": "public",
+        "site_admin": false
+      },
+      "parents": [
+        {
+          "sha": "8acd0715a5ad266cd57808b9889f6549fbf93631",
+          "url": "https://api.github.com/repos/LTplus-AG/ifc-lite/commits/8acd0715a5ad266cd57808b9889f6549fbf93631",
+          "html_url": "https://github.com/LTplus-AG/ifc-lite/commit/8acd0715a5ad266cd57808b9889f6549fbf93631"
+        }
+      ]
+    }
+  ],
+  "sourcePairOfBrowserBenchmarkUnchanged": true,
+  "noRuntimeRelabel": true
+}

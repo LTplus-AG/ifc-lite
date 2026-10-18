@@ -5,11 +5,11 @@
 /** Memory allocation boundary only. Renderer.init/recoverDevice, pipelines,
  * loss subscriptions and Scene restoration remain their production methods.
  * This does not simulate a driver, shader execution or submitted frames. */
-export function recoveryAllocationDevice(options: { extraRecoveryAttempt?: boolean; replacementMaxBufferSize?: number } = {}) {
+export function recoveryAllocationDevice(options: { extraRecoveryAttempt?: boolean; replacementMaxBufferSize?: number; deferQuantizedPipelines?: boolean } = {}) {
   function deferred<T>() {
-    let resolve!: (value: T) => void;
-    const promise = new Promise<T>(done => { resolve = done; });
-    return { promise, resolve };
+    let resolve!: (value: T) => void, reject!: (error: Error) => void;
+    const promise = new Promise<T>((done, fail) => { resolve = done; reject = fail; });
+    return { promise, resolve, reject };
   }
   Object.assign(globalThis, {
     GPUBufferUsage: { MAP_READ: 1, MAP_WRITE: 2, COPY_SRC: 4, COPY_DST: 8, INDEX: 16, VERTEX: 32, UNIFORM: 64, STORAGE: 128, INDIRECT: 256, QUERY_RESOLVE: 512 },
@@ -23,6 +23,10 @@ export function recoveryAllocationDevice(options: { extraRecoveryAttempt?: boole
   const stagedVertices: GPUBuffer[] = [];
   const live = new Set<GPUBuffer>();
   const contents = new WeakMap<GPUBuffer, ArrayBuffer>();
+  const owners = new WeakMap<GPUBuffer, number>();
+  const allocations: Array<{ buffer: GPUBuffer; deviceIndex: number }> = [];
+  const quantizedRequests: Array<{ deviceIndex: number; descriptor: GPURenderPipelineDescriptor;
+    pipeline: GPURenderPipeline; resolve(): void; reject(error: Error): void }> = [];
   const limits = { maxBufferSize: 1 << 30, maxStorageBufferBindingSize: 1 << 30,
     maxTextureDimension2D: 4096, maxSampleCount: 1 };
   const pipeline = () => ({ getBindGroupLayout() { return {}; } });
@@ -71,6 +75,8 @@ export function recoveryAllocationDevice(options: { extraRecoveryAttempt?: boole
         getMappedRange() { return bytes; }, unmap() {}, destroy() { live.delete(buffer as unknown as GPUBuffer); } };
       live.add(buffer as unknown as GPUBuffer);
       contents.set(buffer as unknown as GPUBuffer, bytes);
+      owners.set(buffer as unknown as GPUBuffer, deviceIndex);
+      allocations.push({ buffer: buffer as unknown as GPUBuffer, deviceIndex });
       if (staged) stagedVertices.push(buffer as unknown as GPUBuffer);
       return buffer;
     },
@@ -79,9 +85,16 @@ export function recoveryAllocationDevice(options: { extraRecoveryAttempt?: boole
     createBindGroupLayout() { return {}; }, createPipelineLayout() { return {}; },
     createShaderModule() { return { getCompilationInfo: async () => ({ messages: [] }) }; },
     createRenderPipeline: pipeline, createComputePipeline: pipeline,
-    createRenderPipelineAsync: async () => {
+    createRenderPipelineAsync: async (descriptor: GPURenderPipelineDescriptor) => {
+      const value = pipeline() as unknown as GPURenderPipeline;
+      if (descriptor.vertex.entryPoint === 'vs_main_quantized') {
+        const completion = deferred<GPURenderPipeline>();
+        quantizedRequests.push({ deviceIndex, descriptor, pipeline: value,
+          resolve() { completion.resolve(value); }, reject: completion.reject });
+        if (options.deferQuantizedPipelines) return completion.promise;
+      }
       if (deviceIndex > 0 && holdPipelines) { pipelineRequested.resolve(); await pipelineReleased.promise; }
-      return pipeline();
+      return value;
     },
     createCommandEncoder: commandEncoder,
     pushErrorScope() {}, popErrorScope: async () => null,
@@ -138,7 +151,9 @@ export function recoveryAllocationDevice(options: { extraRecoveryAttempt?: boole
     if (kind !== 'webgpu') throw new Error('Only the production WebGPU context is supported at this boundary');
     return context;
   } });
-  return { canvas, devices, live, encoding,
+  return { canvas, devices, live, encoding, quantizedRequests, allocations,
+    bufferDeviceIndex: (buffer: GPUBuffer) => owners.get(buffer),
+    loseDevice(index: number, message: string) { losses[index].resolve({ reason: 'unknown', message }); },
     bufferBytes(buffer: GPUBuffer) {
       const bytes = contents.get(buffer);
       if (!bytes || !live.has(buffer)) throw new Error('Allocation read has no live buffer owner');

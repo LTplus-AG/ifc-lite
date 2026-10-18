@@ -183,8 +183,19 @@ mod props_tests;
 pub fn decode_property_set(
     props: &mut PropertyDecoder, decoder: &mut EntityDecoder, def: &DecodedEntity,
 ) -> Option<PropertySet> {
+    decode_property_set_with_kinds(props, decoder, def, None)
+}
+
+fn decode_property_set_with_kinds(
+    props: &mut PropertyDecoder, decoder: &mut EntityDecoder, def: &DecodedEntity,
+    mut kinds: Option<&mut Vec<PropertyKind>>,
+) -> Option<PropertySet> {
     let row = props.decode_set(decoder, def)?;
-    let properties = row.properties.iter().filter_map(flat_property).collect();
+    let properties = row.properties.iter().filter_map(|row| {
+        let value = flat_property(row)?;
+        if let Some(kinds) = kinds.as_deref_mut() { kinds.push(row.kind); }
+        Some(value)
+    }).collect();
     Some(PropertySet { name: row.name.unwrap_or_default(), properties })
 }
 
@@ -198,6 +209,15 @@ pub fn resolve_pset_defs(
     decoder: &mut EntityDecoder,
     def_ids: &[u32],
 ) -> (Vec<PropertySet>, Vec<QuantitySet>) {
+    resolve_pset_defs_with_kinds(props, decoder, def_ids, None)
+}
+
+pub(crate) fn resolve_pset_defs_with_kinds(
+    props: &mut PropertyDecoder,
+    decoder: &mut EntityDecoder,
+    def_ids: &[u32],
+    mut kinds: Option<&mut Vec<Vec<PropertyKind>>>,
+) -> (Vec<PropertySet>, Vec<QuantitySet>) {
     let mut property_sets = Vec::new();
     let mut quantity_sets = Vec::new();
     for &def_id in def_ids {
@@ -207,8 +227,11 @@ pub fn resolve_pset_defs(
         };
         match def.ifc_type {
             IfcType::IfcPropertySet => {
-                if let Some(ps) = decode_property_set(props, decoder, &def) {
+                let mut set_kinds = Vec::new();
+                let capture = kinds.as_ref().map(|_| &mut set_kinds);
+                if let Some(ps) = decode_property_set_with_kinds(props, decoder, &def, capture) {
                     if !ps.properties.is_empty() {
+                        if let Some(kinds) = kinds.as_deref_mut() { kinds.push(set_kinds); }
                         property_sets.push(ps);
                     }
                 }

@@ -30,8 +30,11 @@ pub use options::{ModelOptions, Placement};
 pub use ifc_lite_core::fmt_num::fmt_num;
 use super::inherit::merge_inherited;
 use super::type_assignments::TypeAssignments;
-use super::render::flat::{new_property_decoder, opt_string, ref_list, render_attributes, resolve_pset_defs};
+use super::render::flat::{new_property_decoder, opt_string, ref_list, render_attributes, resolve_pset_defs, resolve_pset_defs_with_kinds};
+use super::property::PropertyKind;
 
+mod classified;
+pub use classified::{stream_export_model_with_options, stream_export_model_with_property_kinds};
 mod support;
 mod types;
 use support::TypeProductCandidate;
@@ -93,26 +96,12 @@ pub fn stream_export_model_with_index(
     })
 }
 
-/// [`stream_export_model_with_index`], plus the decoded entity behind each row
-/// and whatever [`ModelOptions`] asked to resolve.
-///
-/// The second callback argument is the `DecodedEntity` the row was built from,
-/// **borrowed**: a caller that wants an attribute this crate does not surface
-/// reads it here, without this crate having to guess which attributes matter
-/// and without anything being retained. It is `None` for the type-product rows emitted in
-/// pass 3, which are assembled from the pass-1 scan and have no occurrence
-/// entity behind them.
-///
-/// Storing the attributes on [`EntityRow`] instead would be the obvious shape
-/// and is the wrong one twice over: `AttributeValue` is not `PartialEq`, so it
-/// would break the derive that `stream == build` equality rests on, and
-/// [`build_export_model`] collects, so every product's attribute vector would
-/// stay resident — which is the exact bound this function exists to keep.
-pub fn stream_export_model_with_options(
+fn stream_rows(
     content: &[u8],
     entity_index: &Arc<EntityIndex>,
     opts: &ModelOptions,
-    mut f: impl FnMut(EntityRow, Option<&DecodedEntity>),
+    capture_kinds: bool,
+    mut f: impl FnMut(EntityRow, Option<&DecodedEntity>, &[Vec<PropertyKind>]),
 ) -> UnitScales {
     // Attribute positions are schema-specific. Unlike STEP re-export, where
     // IFC4 is an established fallback for a missing declaration, attribute
@@ -309,7 +298,10 @@ pub fn stream_export_model_with_options(
             let mut seen = FxHashSet::default();
             def_ids.retain(|d| seen.insert(*d));
         }
-        let (mut property_sets, mut quantity_sets) = resolve_pset_defs(&mut props, &mut decoder, &def_ids);
+        let mut kinds = Vec::new();
+        let (mut property_sets, mut quantity_sets) = resolve_pset_defs_with_kinds(
+            &mut props, &mut decoder, &def_ids, capture_kinds.then_some(&mut kinds),
+        );
 
         // Fold in whatever this occurrence inherits from its type. Resolution is
         // memoized per type id, not per occurrence: a Revit export types
@@ -353,16 +345,10 @@ pub fn stream_export_model_with_options(
                     Vec::new()
                 },
             },
-            Some(&entity),
+            Some(&entity), &kinds,
         );
 
-        // Keep the property-resolution cache bounded across the whole file.
-        // `clear_entity_cache`, not `clear_cache`: the latter also drops the
-        // placement memo, and resolving placements is what makes this trigger
-        // fire in the first place. Dropping the memo here would re-resolve the
-        // site/building/storey chain that every product under it shares — the
-        // output stays correct and the run gets slower the larger the file,
-        // which is the opposite of what the cap is for.
+        // Bound decoded-entity retention without invalidating placement memoization.
         if decoder.cache_size() > PSET_CACHE_CAP {
             decoder.clear_entity_cache();
         }
@@ -391,7 +377,10 @@ pub fn stream_export_model_with_options(
 
         // Types attach their sets via HasPropertySets (attr 5), not
         // IfcRelDefinesByProperties.
-        let (property_sets, quantity_sets) = resolve_pset_defs(&mut props, &mut decoder, &cand.pset_def_ids);
+        let mut kinds = Vec::new();
+        let (property_sets, quantity_sets) = resolve_pset_defs_with_kinds(
+            &mut props, &mut decoder, &cand.pset_def_ids, capture_kinds.then_some(&mut kinds),
+        );
 
         f(
             EntityRow {
@@ -420,7 +409,7 @@ pub fn stream_export_model_with_options(
                     Vec::new()
                 },
             },
-            None,
+            None, &kinds,
         );
         if decoder.cache_size() > PSET_CACHE_CAP {
             decoder.clear_entity_cache();

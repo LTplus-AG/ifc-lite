@@ -1,0 +1,90 @@
+{
+  "scope": "Stopped correctness attempts: actual refusal/terminal/quiescence plus unexecuted command source, no runtime proof",
+  "files": [
+    {
+      "path": "RESULT.md",
+      "size": 2593,
+      "sha256": "e330a3a4f0c6141b621be880daaf1fad4b156e5679aaf288afc17fbc384634a0"
+    },
+    {
+      "path": "browser-import-smoke.mjs",
+      "size": 4793,
+      "sha256": "b4815ae1d7dba0fad94119d976279412aeebdf021a2e7f28dae83b4c144edd50"
+    },
+    {
+      "path": "original-controller-terminals.json",
+      "size": 2250,
+      "sha256": "8b85b2420d62933b2db8364c3d842257b62932703c46adc0a13704d640a77a2b"
+    },
+    {
+      "path": "original-handles.json",
+      "size": 11269,
+      "sha256": "7d9879e41ddb6388bfcd5bdb73fa2a012612187637d5573652582881b096e155"
+    },
+    {
+      "path": "r2-controller.log",
+      "size": 225,
+      "sha256": "6f558b5d1ed720d148288c34561952b6c54b5318e7b5a3146e0737d7f01dd98c"
+    },
+    {
+      "path": "r2-quiescence.json",
+      "size": 708,
+      "sha256": "314885899feadaf7126725fa019c571395e48ea39cf2be596e8cf4336453facc"
+    },
+    {
+      "path": "r2-worker-terminal.json",
+      "size": 2974,
+      "sha256": "adea5c2196751064646e35633fb613b257231335800d9b7476029fc908a6cc2a"
+    },
+    {
+      "path": "r3-controller.log",
+      "size": 225,
+      "sha256": "42bcaabd0a17b6ad394cc761411e0492902269123ac38f34055f42446a007066"
+    },
+    {
+      "path": "r3-quiescence.json",
+      "size": 708,
+      "sha256": "6e6b5e603b00968fcfec5878c4f41c1eba971b7943f08599b2f446e7d29e569d"
+    },
+    {
+      "path": "r3-worker-terminal.json",
+      "size": 2973,
+      "sha256": "5c340fe56743ccc527de042da7ff64c61e5a366fa55717c11d24112061bf27d0"
+    },
+    {
+      "path": "r4-controller.log",
+      "size": 225,
+      "sha256": "ae5d52ba7726390090380a98bad3bebfd459e33223d04d3e677a55d77974330a"
+    },
+    {
+      "path": "r4-quiescence.json",
+      "size": 708,
+      "sha256": "567d9ca1a98f7cd501565f68a3210dc7033a0b33950c1cad418d519f2bdac1a3"
+    },
+    {
+      "path": "r4-worker-terminal.json",
+      "size": 2973,
+      "sha256": "680783cd691cd0cc47439ec7ce371f0cfa7d619812004d2c89bd16b65374acfa"
+    },
+    {
+      "path": "result-index.json",
+      "size": 5107,
+      "sha256": "be663704c16ec44fe8abc374d12d134c52c05d1bdef8f0f95cfea16034e38b78"
+    },
+    {
+      "path": "run-one.py",
+      "size": 9923,
+      "sha256": "ec78c37564d652126040ada86847fb5b1aca57bbbea5b3e427444be91f278a8b"
+    },
+    {
+      "path": "shared-typescript-input-identity.json",
+      "size": 986,
+      "sha256": "ac6e996800fbae11f1ee833bbb8afff9abae4bc49847bfc97fada3ae12589789"
+    },
+    {
+      "path": "stage5-preservation.json",
+      "size": 268,
+      "sha256": "b785f18f6edc1fa4744af3e4460538a8dc8074f93e2f71d7cafac6a9785b98a8"
+    }
+  ]
+}

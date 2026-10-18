@@ -1,0 +1,14 @@
+{
+  "observedAt": "2026-10-18T14:55:26.625458+00:00",
+  "artifactBuild": "Three original jobs COMPLETE0, six native/nineWASMtypes/twelvebrowserassets, no runtime acceptance",
+  "consumerTests": "All3 thermal-refused before any correctness command; UNRUN, no retry",
+  "evidence": {
+    "rust-review/handoff/successor-reconciliation/evidence/c4-artifacts-consumers-2026-10-18T145526Z/correctness-stage6-v1-result-index.json": "be663704c16ec44fe8abc374d12d134c52c05d1bdef8f0f95cfea16034e38b78",
+    "rust-review/handoff/successor-reconciliation/evidence/c4-artifacts-consumers-2026-10-18T145526Z/correctness-stage6-v1-result-manifest.json": "2c2bfe3b732ff7eee2bf896550b3fce65593bfc1e806b16b1d65568723c7a6fc",
+    "rust-review/handoff/successor-reconciliation/evidence/c4-artifacts-consumers-2026-10-18T145526Z/corrected-artifacts-stage5-v1-build-result-index.json": "ffc4783501db9c0b60ad68059cca957ca5b0b272da057565dbad58bfa6893f8d",
+    "rust-review/handoff/successor-reconciliation/evidence/c4-artifacts-consumers-2026-10-18T145526Z/corrected-artifacts-stage5-v1-result-manifest.json": "5dc92b2b635bfc724b429d3015fc33def156cc7b6255da3be3d209a05cc9b993"
+  },
+  "nativeQualificationPreserved": "All3 corrected prefixes workspace+exactclippy+five source gates+56-case corpus identity PASS. Scoped allocation-ownership inverse assertionRED/restored2parsedPASS. Consumers/artifacts/crossplatform/performance/current-main integration remain pending.",
+  "remaining": "Missing consumer checks await legitimate cooled ordinary capacity; no hot retry or source/build repetition. PC default storage remains below60GiB last observation. #7911 timed comparison blocked by actual foreign service/build ownership. Original performance failures remain binding.",
+  "acceptedProgramConditions": 0
+}

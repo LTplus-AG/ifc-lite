@@ -27,6 +27,17 @@ pub(crate) fn strict_closed(tris:impl IntoIterator<Item=[[f64;3];3]>)->bool{
     any&&edges.values().all(|&counts|counts==(1,1))
 }
 
+/// Actual indexed local f32 positions; placement/origin never enter the keys.
+pub(crate) fn strict_closed_mesh(mesh:&crate::mesh::Mesh)->bool{
+    if !mesh.positions.len().is_multiple_of(3) || !mesh.indices.len().is_multiple_of(3) { return false; }
+    let count=mesh.positions.len()/3;
+    if mesh.indices.iter().any(|&i|i as usize>=count){return false;}
+    strict_closed(mesh.indices.chunks_exact(3).map(|t|std::array::from_fn(|k|{
+        let i=t[k]as usize*3;
+        [f64::from(mesh.positions[i]),f64::from(mesh.positions[i+1]),f64::from(mesh.positions[i+2])]
+    })))
+}
+
 #[cfg(test)]
 #[path="exact_topology_tests.rs"]
 mod tests;

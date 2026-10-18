@@ -31,3 +31,10 @@ fn issue_7292_strict_reader_conservatively_declines_unsplit_tjunction(){
  tris.push([t[0],mid,t[2]]);tris.push([mid,t[1],t[2]]);
  assert!(!strict_closed(tris),"exactatomicclosure mayhold but strict1f1r doesnot");
 }
+#[test]
+fn issue_7292_mesh_reader_uses_indexed_local_f32_and_rejects_bad_indices(){
+ let mut mesh=crate::mesh::Mesh::new();
+ for t in tetra(){let b=mesh.vertex_count()as u32;for p in t{mesh.add_vertex(nalgebra::Point3::from(p),nalgebra::Vector3::z());}mesh.add_triangle(b,b+1,b+2);}
+ assert!(strict_closed_mesh(&mesh));mesh.origin=[1e12,-1e12,1e12];assert!(strict_closed_mesh(&mesh));
+ mesh.indices[0]=u32::MAX;assert!(!strict_closed_mesh(&mesh));
+}

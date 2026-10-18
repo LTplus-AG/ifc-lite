@@ -1,0 +1,35 @@
+{
+  "subject": "Hosted pre-repair findings; not new repair runtime qualification",
+  "core_before_repair": "5c9157c05c5418b6d38658662d18faee3f131a18",
+  "core_repair": "4be23c0dd8ab52a6b3779ff697f901fbe0cca8a1",
+  "certificate_oracle": {
+    "job": 117548414557,
+    "baseline_passed": 10,
+    "reverted_collected": 0,
+    "verdict": "INCONCLUSIVE; no-tests attribution gap, not assertion RED",
+    "repair": "Keep module/APIs/tests; reverse only shared-cache reuse; explicitly execute restored positive after oracle success",
+    "new_workflow_actual_red_and_restored_positive": "pending hosted; historical mutation is not current wiring qualification"
+  },
+  "coverage_ledger": {
+    "job": 117548414628,
+    "failure": "Generated ledger stale",
+    "repair": "Regenerated with existing generator; only new IfcWall fixture reference; --check passes"
+  },
+  "bundle_ratchet": {
+    "job": 117548414729,
+    "measured_synthetic_merge": "7feca3ff8ad594ccad06ccfd4bbfa7b071c78396",
+    "viewer_entry_measured_bytes": 3120673,
+    "allowed_bytes": 3119506,
+    "verdict": "FAIL, acceptance barrier; no ceiling change; attribution handled separately by parent"
+  },
+  "upper_review_signal": {
+    "jobs": [
+      117539995303,
+      117539997836
+    ],
+    "failure": "MISSING_LANES 43/43 on feature bases",
+    "disposition": "Parent owns ordered gate-safe landing; keep existing feature bases and required lanes unchanged"
+  },
+  "kernel_sensitive_cross_arch_dispatch": "Required before merge; not performed as part of local CPU cohort",
+  "acceptance": "OPEN; drafts, no merge or issue closure"
+}

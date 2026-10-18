@@ -1,0 +1,52 @@
+{
+  "measured_source": "f66a8d07648e354b8d488f760fce712257ff2759",
+  "measured_base": "c53cfaa3a2034638f4c4ab40f7674b29e0528fed",
+  "measured_context": "5c9157c05c5418b6d38658662d18faee3f131a18",
+  "restacked_pins": {
+    "core": "4be23c0dd8ab52a6b3779ff697f901fbe0cca8a1",
+    "implementation": "724d44e97a0ffa3efb9aef9729ce01520ca77618",
+    "top": "89aad5e6c90e46a5275f0f94f4f691d2ebebf2fd"
+  },
+  "runtime_paths_byte_identical": [
+    "rust",
+    "apps",
+    "packages",
+    "tools",
+    "scripts/lib",
+    "Cargo.toml",
+    "Cargo.lock",
+    "rust-toolchain.toml",
+    "pnpm-lock.yaml",
+    "package.json"
+  ],
+  "only_changed_files": [
+    ".github/workflows/test.yml",
+    "docs/architecture/coverage-ledger.md",
+    "docs/architecture/evidence/planar-carrier-7714/README.md",
+    "docs/architecture/evidence/planar-carrier-7714/frozen-source-f66a8d076.json",
+    "docs/architecture/evidence/planar-carrier-7714/functional-raw.ndjson",
+    "docs/architecture/evidence/planar-carrier-7714/initial-96d018a66-cohort.ndjson",
+    "docs/architecture/evidence/planar-carrier-7714/initial-96d018a66-raw.ndjson",
+    "docs/architecture/evidence/planar-carrier-7714/initial-96d018a66-summary.json",
+    "docs/architecture/evidence/planar-carrier-7714/performance-cohort.ndjson",
+    "docs/architecture/evidence/planar-carrier-7714/performance-raw.ndjson",
+    "docs/architecture/evidence/planar-carrier-7714/performance-summary.json",
+    "docs/architecture/evidence/planar-carrier-7714/performance-verdict.json",
+    "docs/architecture/evidence/planar-carrier-7714/qualification.json",
+    "docs/architecture/evidence/planar-carrier-7714/regression-controls.json",
+    "docs/architecture/evidence/planar-carrier-7714/regression-raw.ndjson",
+    "scripts/perf/README.md",
+    "tests/evidence/planar-carrier-7714/source-cache.oracle.patch"
+  ],
+  "core_ci_diff_sha256": "8c1b9c64f51e1ea798876824dd86ba450d6f06a5c9e51a65be3f4cc444056b6d",
+  "workflow_sha256": "3511ffebd3ed11b654a7c3f6dc24c4631b4461cc63decc2698101a08d1618045",
+  "mutation_sha256": "0bd7c152610e969ab9cacbd88470b4d9f24ce5e921b60281363e308b40a16def",
+  "status_clean": true,
+  "new_mutation_runtime_qualification": "pending; no Pop heavy job submitted",
+  "hosted_plan": "unchanged baseline10, behavior-only shared-cache bypass assertion RED, oracle source restoration, explicit restored positive10 command",
+  "measured_binaries_unchanged": {
+    "base": "52b712139c758b8ac5a56fc22263ad15896a2d0d4c636138981396f9160479ef",
+    "context": "8526244b40bdbe8c90f0ec41740f3a71896b5f164775210a281e9b07fb1b9af6",
+    "branch": "93bc3272b01d99c2ce32bccd8b0907879129d6b4d67d9bffa5028e8ad12c4180"
+  }
+}

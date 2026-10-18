@@ -74,6 +74,6 @@ export async function runTextureDepthWitness() {
       rows.push({ reverseDrawOrder, cutoutOwner: owner(20), opaqueOwner: owner(44) }); read.unmap();
     }
     await device.queue.onSubmittedWorkDone();
-    return { frontId, rearId, rows, errors, adapter: adapter.info.toJSON() };
+    return { frontId, rearId, rows, errors, adapter: { vendor: adapter.info.vendor, architecture: adapter.info.architecture, device: adapter.info.device, description: adapter.info.description } };
   } finally { pipeline.destroy(); for (const resource of resources) resource.destroy(); device.destroy(); }
 }

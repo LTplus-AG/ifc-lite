@@ -2,7 +2,7 @@
 
 Observed at 2026-10-18T03:38:02.400463+00:00. The live issue snapshot contains **18 open issues**. The campaign is not complete.
 
-This supplements the historical 622-finding ledger and D1–D80 decisions; it does not rewrite their dispositions. [Long-running programs](https://github.com/LTplus-AG/ifc-lite/discussions/7897) remain separate from bounded defects. Issues closed during tracking migration were moved, not declared implemented.
+This supplements the historical [622-finding ledger](../../ledger.csv), [D1–D80 decisions](../../ledger.md), and [original handoff](../HANDOFF.md); it does not rewrite their dispositions. [Long-running programs](https://github.com/LTplus-AG/ifc-lite/discussions/7897) remain separate from bounded defects. Issues closed during tracking migration were moved, not declared implemented.
 
 ## Open requirements
 
@@ -46,3 +46,14 @@ The machine-readable checkpoint beside this file contains exact source/worker id
 ## Shared CI landing
 
 The separate storey-frame and entry-literal PRs (#7901 and #7910) remain preserved. Their combined local candidate passed its scoped root gates, but publishing a combined replacement still awaits the explicit one-defect-class-per-PR exception. This checkpoint does not grant that exception, publish the combined patch, merge a PR, or close an issue.
+
+## Cross-cutting supporting followups
+
+- [#7905](https://github.com/LTplus-AG/ifc-lite/pull/7905): JSON-LD exact property class labels. Local source qualification retained; hosted acceptance pending.
+- Private source `897e3a67a704cae3e64de9a060cd7447beed021a`: D47 canonical source-order complex-budget admission. Independent source clear. New baseline/candidate Rust/Python validation authorized, not claimed complete. Old 525 proof covers a narrower same-set fix.
+- [#7907](https://github.com/LTplus-AG/ifc-lite/pull/7907): Positional scanner fixed canaries. Local guard/test/inverse/clippy evidence retained; hosted acceptance pending.
+- [#7909](https://github.com/LTplus-AG/ifc-lite/pull/7909): STEP head trivia and incomplete-list handling. Local source-pinned qualification retained; hosted acceptance pending.
+- [#7911](https://github.com/LTplus-AG/ifc-lite/pull/7911): Dangling polygonal face refusal. Supporting draft; focused admitted tests/clippy verified. Historical unadmitted full-workspace claim is not accepted evidence.
+- [#7912](https://github.com/LTplus-AG/ifc-lite/pull/7912): Empty and malformed performance-report rejection. CLI negative/positive evidence retained; reporter correctness is not a performance measurement.
+
+These obligations remain explicit even where an older sweep tracker is closed. This checkpoint does not reopen, waive, or silently disposition them.

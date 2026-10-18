@@ -189,8 +189,8 @@
   ],
   "tracking": {
     "longPrograms": "https://github.com/LTplus-AG/ifc-lite/discussions/7897",
-    "historicalFindings": "../ledger.csv",
-    "decisions": "../ledger.md",
+    "historicalFindings": "../../ledger.csv",
+    "decisions": "../../ledger.md",
     "warning": "Historical ledger dispositions and migrated long-program closures are not a claim that current acceptance is complete. No issue is closed by this checkpoint."
   },
   "runtime": {
@@ -231,5 +231,37 @@
     "localQualification": "Actual root Turbo build, focused storey tests, viewer typecheck and existing bundle gates passed.",
     "publication": "Combined replacement remains unpublished pending explicit one-defect-class-per-PR policy exception. Required checks are not bypassed or weakened."
   },
-  "rawEvidence": "Large lossless raw receipts/bundles/logs are retained under the coordinator artifact directory and linked from published PR evidence where available. This checkpoint does not publish private proposals or substitute for exact-head execution."
+  "rawEvidence": "Large lossless raw receipts/bundles/logs are retained under the coordinator artifact directory and linked from published PR evidence where available. This checkpoint does not publish private proposals or substitute for exact-head execution.",
+  "supportingFollowups": [
+    {
+      "pr": 7905,
+      "scope": "JSON-LD exact property class labels",
+      "state": "Local source qualification retained; hosted acceptance pending."
+    },
+    {
+      "privateSource": "897e3a67a704cae3e64de9a060cd7447beed021a",
+      "scope": "D47 canonical source-order complex-budget admission",
+      "state": "Independent source clear. New baseline/candidate Rust/Python validation authorized, not claimed complete. Old 525 proof covers a narrower same-set fix."
+    },
+    {
+      "pr": 7907,
+      "scope": "Positional scanner fixed canaries",
+      "state": "Local guard/test/inverse/clippy evidence retained; hosted acceptance pending."
+    },
+    {
+      "pr": 7909,
+      "scope": "STEP head trivia and incomplete-list handling",
+      "state": "Local source-pinned qualification retained; hosted acceptance pending."
+    },
+    {
+      "pr": 7911,
+      "scope": "Dangling polygonal face refusal",
+      "state": "Supporting draft; focused admitted tests/clippy verified. Historical unadmitted full-workspace claim is not accepted evidence."
+    },
+    {
+      "pr": 7912,
+      "scope": "Empty and malformed performance-report rejection",
+      "state": "CLI negative/positive evidence retained; reporter correctness is not a performance measurement."
+    }
+  ]
 }

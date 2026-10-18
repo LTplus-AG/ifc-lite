@@ -7,10 +7,8 @@ import { defineConfig } from '@playwright/test';
 // the spec; never borrow another checkout's preview or run the default suite.
 export default defineConfig({
   testDir: '.', testMatch: 'reporter-6729.e2e.spec.ts',
-  // #6729: the hosted traced SwiftShader run completed 23/36 frames at
-  // five minutes with no GPU errors or device loss. Budget the full cohort;
-  // preserve every frame and assertion rather than accepting a partial run.
-  timeout: 720_000, workers: 1, fullyParallel: false, retries: 0,
+  // The reporter spec owns its full-cohort timeout for every entry point.
+  workers: 1, fullyParallel: false, retries: 0,
   outputDir: '../../test-results/reporter-6729',
   reporter: [['list'], ['json', { outputFile: '../../test-results/reporter-6729-results.json' }]],
   use: {

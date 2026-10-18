@@ -16,6 +16,10 @@ import type { CameraViewpoint } from '../../apps/viewer/src/store/types.js';
 
 // Retain the reporter recorder's established framing in combined suites.
 test.use({ viewport: { width: 1600, height: 1000 } });
+// #6729: traced hosted SwiftShader completed 23/36 frames in five minutes,
+// with no GPU errors or device loss. Own the complete-cohort budget here so
+// dedicated, combined and standard viewer configurations cannot diverge.
+test.describe.configure({ timeout: 720_000 });
 
 const FIXTURE_SHA = 'cc6fbbf632c2779891e485c3297d437b1d8555448934b8c8b5a3cce5326553a2';
 const FIXTURE_BYTES = 22701;

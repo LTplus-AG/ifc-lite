@@ -1,0 +1,835 @@
+{
+  "scope": "Read-only diagnostic isolation of ordered public mesh getter payloads from saved raw receipts; original full-raw comparisons remain unresolved. No normalization, no output sorting and no acceptance assertion.",
+  "rows": [
+    {
+      "fixture": "revit-wall",
+      "variant": "plain",
+      "left": "serial",
+      "right": "columns",
+      "orderedAllMeshGettersExact": true,
+      "meshCount": [
+        40,
+        40
+      ],
+      "differingMeshes": 0,
+      "firstDifferences": []
+    },
+    {
+      "fixture": "revit-wall",
+      "variant": "plain",
+      "left": "once",
+      "right": "serial",
+      "orderedAllMeshGettersExact": true,
+      "meshCount": [
+        40,
+        40
+      ],
+      "differingMeshes": 0,
+      "firstDifferences": []
+    },
+    {
+      "fixture": "revit-wall",
+      "variant": "plain",
+      "left": "once",
+      "right": "columns",
+      "orderedAllMeshGettersExact": true,
+      "meshCount": [
+        40,
+        40
+      ],
+      "differingMeshes": 0,
+      "firstDifferences": []
+    },
+    {
+      "fixture": "revit-wall",
+      "variant": "observed",
+      "left": "serial",
+      "right": "columns",
+      "orderedAllMeshGettersExact": true,
+      "meshCount": [
+        40,
+        40
+      ],
+      "differingMeshes": 0,
+      "firstDifferences": []
+    },
+    {
+      "fixture": "revit-wall",
+      "variant": "observed",
+      "left": "once",
+      "right": "serial",
+      "orderedAllMeshGettersExact": true,
+      "meshCount": [
+        40,
+        40
+      ],
+      "differingMeshes": 0,
+      "firstDifferences": []
+    },
+    {
+      "fixture": "revit-wall",
+      "variant": "observed",
+      "left": "once",
+      "right": "columns",
+      "orderedAllMeshGettersExact": true,
+      "meshCount": [
+        40,
+        40
+      ],
+      "differingMeshes": 0,
+      "firstDifferences": []
+    },
+    {
+      "fixture": "multicolor",
+      "variant": "plain",
+      "left": "serial",
+      "right": "columns",
+      "orderedAllMeshGettersExact": true,
+      "meshCount": [
+        2,
+        2
+      ],
+      "differingMeshes": 0,
+      "firstDifferences": []
+    },
+    {
+      "fixture": "multicolor",
+      "variant": "plain",
+      "left": "once",
+      "right": "serial",
+      "orderedAllMeshGettersExact": true,
+      "meshCount": [
+        2,
+        2
+      ],
+      "differingMeshes": 0,
+      "firstDifferences": []
+    },
+    {
+      "fixture": "multicolor",
+      "variant": "plain",
+      "left": "once",
+      "right": "columns",
+      "orderedAllMeshGettersExact": true,
+      "meshCount": [
+        2,
+        2
+      ],
+      "differingMeshes": 0,
+      "firstDifferences": []
+    },
+    {
+      "fixture": "multicolor",
+      "variant": "observed",
+      "left": "serial",
+      "right": "columns",
+      "orderedAllMeshGettersExact": true,
+      "meshCount": [
+        2,
+        2
+      ],
+      "differingMeshes": 0,
+      "firstDifferences": []
+    },
+    {
+      "fixture": "multicolor",
+      "variant": "observed",
+      "left": "once",
+      "right": "serial",
+      "orderedAllMeshGettersExact": true,
+      "meshCount": [
+        2,
+        2
+      ],
+      "differingMeshes": 0,
+      "firstDifferences": []
+    },
+    {
+      "fixture": "multicolor",
+      "variant": "observed",
+      "left": "once",
+      "right": "columns",
+      "orderedAllMeshGettersExact": true,
+      "meshCount": [
+        2,
+        2
+      ],
+      "differingMeshes": 0,
+      "firstDifferences": []
+    },
+    {
+      "fixture": "voided-wall",
+      "variant": "plain",
+      "left": "serial",
+      "right": "columns",
+      "orderedAllMeshGettersExact": true,
+      "meshCount": [
+        4,
+        4
+      ],
+      "differingMeshes": 0,
+      "firstDifferences": []
+    },
+    {
+      "fixture": "voided-wall",
+      "variant": "plain",
+      "left": "once",
+      "right": "serial",
+      "orderedAllMeshGettersExact": true,
+      "meshCount": [
+        4,
+        4
+      ],
+      "differingMeshes": 0,
+      "firstDifferences": []
+    },
+    {
+      "fixture": "voided-wall",
+      "variant": "plain",
+      "left": "once",
+      "right": "columns",
+      "orderedAllMeshGettersExact": true,
+      "meshCount": [
+        4,
+        4
+      ],
+      "differingMeshes": 0,
+      "firstDifferences": []
+    },
+    {
+      "fixture": "voided-wall",
+      "variant": "observed",
+      "left": "serial",
+      "right": "columns",
+      "orderedAllMeshGettersExact": true,
+      "meshCount": [
+        4,
+        4
+      ],
+      "differingMeshes": 0,
+      "firstDifferences": []
+    },
+    {
+      "fixture": "voided-wall",
+      "variant": "observed",
+      "left": "once",
+      "right": "serial",
+      "orderedAllMeshGettersExact": true,
+      "meshCount": [
+        4,
+        4
+      ],
+      "differingMeshes": 0,
+      "firstDifferences": []
+    },
+    {
+      "fixture": "voided-wall",
+      "variant": "observed",
+      "left": "once",
+      "right": "columns",
+      "orderedAllMeshGettersExact": true,
+      "meshCount": [
+        4,
+        4
+      ],
+      "differingMeshes": 0,
+      "firstDifferences": []
+    },
+    {
+      "fixture": "mapped-instances",
+      "variant": "plain",
+      "left": "serial",
+      "right": "columns",
+      "orderedAllMeshGettersExact": true,
+      "meshCount": [
+        64,
+        64
+      ],
+      "differingMeshes": 0,
+      "firstDifferences": []
+    },
+    {
+      "fixture": "mapped-instances",
+      "variant": "plain",
+      "left": "once",
+      "right": "serial",
+      "orderedAllMeshGettersExact": true,
+      "meshCount": [
+        64,
+        64
+      ],
+      "differingMeshes": 0,
+      "firstDifferences": []
+    },
+    {
+      "fixture": "mapped-instances",
+      "variant": "plain",
+      "left": "once",
+      "right": "columns",
+      "orderedAllMeshGettersExact": true,
+      "meshCount": [
+        64,
+        64
+      ],
+      "differingMeshes": 0,
+      "firstDifferences": []
+    },
+    {
+      "fixture": "mapped-instances",
+      "variant": "observed",
+      "left": "serial",
+      "right": "columns",
+      "orderedAllMeshGettersExact": true,
+      "meshCount": [
+        64,
+        64
+      ],
+      "differingMeshes": 0,
+      "firstDifferences": []
+    },
+    {
+      "fixture": "mapped-instances",
+      "variant": "observed",
+      "left": "once",
+      "right": "serial",
+      "orderedAllMeshGettersExact": true,
+      "meshCount": [
+        64,
+        64
+      ],
+      "differingMeshes": 0,
+      "firstDifferences": []
+    },
+    {
+      "fixture": "mapped-instances",
+      "variant": "observed",
+      "left": "once",
+      "right": "columns",
+      "orderedAllMeshGettersExact": true,
+      "meshCount": [
+        64,
+        64
+      ],
+      "differingMeshes": 0,
+      "firstDifferences": []
+    },
+    {
+      "fixture": "orphan-type",
+      "variant": "plain",
+      "left": "serial",
+      "right": "columns",
+      "orderedAllMeshGettersExact": true,
+      "meshCount": [
+        1,
+        1
+      ],
+      "differingMeshes": 0,
+      "firstDifferences": []
+    },
+    {
+      "fixture": "orphan-type",
+      "variant": "plain",
+      "left": "once",
+      "right": "serial",
+      "orderedAllMeshGettersExact": true,
+      "meshCount": [
+        1,
+        1
+      ],
+      "differingMeshes": 0,
+      "firstDifferences": []
+    },
+    {
+      "fixture": "orphan-type",
+      "variant": "plain",
+      "left": "once",
+      "right": "columns",
+      "orderedAllMeshGettersExact": true,
+      "meshCount": [
+        1,
+        1
+      ],
+      "differingMeshes": 0,
+      "firstDifferences": []
+    },
+    {
+      "fixture": "orphan-type",
+      "variant": "observed",
+      "left": "serial",
+      "right": "columns",
+      "orderedAllMeshGettersExact": true,
+      "meshCount": [
+        1,
+        1
+      ],
+      "differingMeshes": 0,
+      "firstDifferences": []
+    },
+    {
+      "fixture": "orphan-type",
+      "variant": "observed",
+      "left": "once",
+      "right": "serial",
+      "orderedAllMeshGettersExact": true,
+      "meshCount": [
+        1,
+        1
+      ],
+      "differingMeshes": 0,
+      "firstDifferences": []
+    },
+    {
+      "fixture": "orphan-type",
+      "variant": "observed",
+      "left": "once",
+      "right": "columns",
+      "orderedAllMeshGettersExact": true,
+      "meshCount": [
+        1,
+        1
+      ],
+      "differingMeshes": 0,
+      "firstDifferences": []
+    },
+    {
+      "fixture": "bare-type-map",
+      "variant": "plain",
+      "left": "serial",
+      "right": "columns",
+      "orderedAllMeshGettersExact": true,
+      "meshCount": [
+        0,
+        0
+      ],
+      "differingMeshes": 0,
+      "firstDifferences": []
+    },
+    {
+      "fixture": "bare-type-map",
+      "variant": "plain",
+      "left": "once",
+      "right": "serial",
+      "orderedAllMeshGettersExact": true,
+      "meshCount": [
+        0,
+        0
+      ],
+      "differingMeshes": 0,
+      "firstDifferences": []
+    },
+    {
+      "fixture": "bare-type-map",
+      "variant": "plain",
+      "left": "once",
+      "right": "columns",
+      "orderedAllMeshGettersExact": true,
+      "meshCount": [
+        0,
+        0
+      ],
+      "differingMeshes": 0,
+      "firstDifferences": []
+    },
+    {
+      "fixture": "bare-type-map",
+      "variant": "observed",
+      "left": "serial",
+      "right": "columns",
+      "orderedAllMeshGettersExact": true,
+      "meshCount": [
+        0,
+        0
+      ],
+      "differingMeshes": 0,
+      "firstDifferences": []
+    },
+    {
+      "fixture": "bare-type-map",
+      "variant": "observed",
+      "left": "once",
+      "right": "serial",
+      "orderedAllMeshGettersExact": true,
+      "meshCount": [
+        0,
+        0
+      ],
+      "differingMeshes": 0,
+      "firstDifferences": []
+    },
+    {
+      "fixture": "bare-type-map",
+      "variant": "observed",
+      "left": "once",
+      "right": "columns",
+      "orderedAllMeshGettersExact": true,
+      "meshCount": [
+        0,
+        0
+      ],
+      "differingMeshes": 0,
+      "firstDifferences": []
+    },
+    {
+      "fixture": "nonfinite-depth-neighbor",
+      "variant": "plain",
+      "left": "serial",
+      "right": "columns",
+      "orderedAllMeshGettersExact": true,
+      "meshCount": [
+        1,
+        1
+      ],
+      "differingMeshes": 0,
+      "firstDifferences": []
+    },
+    {
+      "fixture": "nonfinite-depth-neighbor",
+      "variant": "plain",
+      "left": "once",
+      "right": "serial",
+      "orderedAllMeshGettersExact": true,
+      "meshCount": [
+        1,
+        1
+      ],
+      "differingMeshes": 0,
+      "firstDifferences": []
+    },
+    {
+      "fixture": "nonfinite-depth-neighbor",
+      "variant": "plain",
+      "left": "once",
+      "right": "columns",
+      "orderedAllMeshGettersExact": true,
+      "meshCount": [
+        1,
+        1
+      ],
+      "differingMeshes": 0,
+      "firstDifferences": []
+    },
+    {
+      "fixture": "nonfinite-depth-neighbor",
+      "variant": "observed",
+      "left": "serial",
+      "right": "columns",
+      "orderedAllMeshGettersExact": true,
+      "meshCount": [
+        1,
+        1
+      ],
+      "differingMeshes": 0,
+      "firstDifferences": []
+    },
+    {
+      "fixture": "nonfinite-depth-neighbor",
+      "variant": "observed",
+      "left": "once",
+      "right": "serial",
+      "orderedAllMeshGettersExact": true,
+      "meshCount": [
+        1,
+        1
+      ],
+      "differingMeshes": 0,
+      "firstDifferences": []
+    },
+    {
+      "fixture": "nonfinite-depth-neighbor",
+      "variant": "observed",
+      "left": "once",
+      "right": "columns",
+      "orderedAllMeshGettersExact": true,
+      "meshCount": [
+        1,
+        1
+      ],
+      "differingMeshes": 0,
+      "firstDifferences": []
+    },
+    {
+      "fixture": "haus",
+      "variant": "plain",
+      "left": "serial",
+      "right": "columns",
+      "orderedAllMeshGettersExact": true,
+      "meshCount": [
+        317,
+        317
+      ],
+      "differingMeshes": 0,
+      "firstDifferences": []
+    },
+    {
+      "fixture": "haus",
+      "variant": "plain",
+      "left": "once",
+      "right": "serial",
+      "orderedAllMeshGettersExact": false,
+      "meshCount": [
+        317,
+        317
+      ],
+      "differingMeshes": 284,
+      "firstDifferences": [
+        {
+          "index": 0,
+          "leftId": 14502,
+          "rightId": 389,
+          "fields": [
+            "origin",
+            "triangleCount",
+            "localBounds",
+            "localToWorld",
+            "positions",
+            "geometryItemId",
+            "color",
+            "ifcType",
+            "normals",
+            "vertexCount",
+            "indices",
+            "expressId"
+          ]
+        },
+        {
+          "index": 1,
+          "leftId": 14502,
+          "rightId": 389,
+          "fields": [
+            "origin",
+            "triangleCount",
+            "localBounds",
+            "localToWorld",
+            "positions",
+            "geometryItemId",
+            "color",
+            "ifcType",
+            "normals",
+            "vertexCount",
+            "indices",
+            "expressId"
+          ]
+        }
+      ]
+    },
+    {
+      "fixture": "haus",
+      "variant": "plain",
+      "left": "once",
+      "right": "columns",
+      "orderedAllMeshGettersExact": false,
+      "meshCount": [
+        317,
+        317
+      ],
+      "differingMeshes": 284,
+      "firstDifferences": [
+        {
+          "index": 0,
+          "leftId": 14502,
+          "rightId": 389,
+          "fields": [
+            "origin",
+            "triangleCount",
+            "localBounds",
+            "localToWorld",
+            "positions",
+            "geometryItemId",
+            "color",
+            "ifcType",
+            "normals",
+            "vertexCount",
+            "indices",
+            "expressId"
+          ]
+        },
+        {
+          "index": 1,
+          "leftId": 14502,
+          "rightId": 389,
+          "fields": [
+            "origin",
+            "triangleCount",
+            "localBounds",
+            "localToWorld",
+            "positions",
+            "geometryItemId",
+            "color",
+            "ifcType",
+            "normals",
+            "vertexCount",
+            "indices",
+            "expressId"
+          ]
+        }
+      ]
+    },
+    {
+      "fixture": "haus",
+      "variant": "observed",
+      "left": "serial",
+      "right": "columns",
+      "orderedAllMeshGettersExact": true,
+      "meshCount": [
+        317,
+        317
+      ],
+      "differingMeshes": 0,
+      "firstDifferences": []
+    },
+    {
+      "fixture": "haus",
+      "variant": "observed",
+      "left": "once",
+      "right": "serial",
+      "orderedAllMeshGettersExact": false,
+      "meshCount": [
+        317,
+        317
+      ],
+      "differingMeshes": 284,
+      "firstDifferences": [
+        {
+          "index": 0,
+          "leftId": 14502,
+          "rightId": 389,
+          "fields": [
+            "origin",
+            "triangleCount",
+            "localBounds",
+            "localToWorld",
+            "positions",
+            "geometryItemId",
+            "color",
+            "ifcType",
+            "normals",
+            "vertexCount",
+            "indices",
+            "expressId"
+          ]
+        },
+        {
+          "index": 1,
+          "leftId": 14502,
+          "rightId": 389,
+          "fields": [
+            "origin",
+            "triangleCount",
+            "localBounds",
+            "localToWorld",
+            "positions",
+            "geometryItemId",
+            "color",
+            "ifcType",
+            "normals",
+            "vertexCount",
+            "indices",
+            "expressId"
+          ]
+        }
+      ]
+    },
+    {
+      "fixture": "haus",
+      "variant": "observed",
+      "left": "once",
+      "right": "columns",
+      "orderedAllMeshGettersExact": false,
+      "meshCount": [
+        317,
+        317
+      ],
+      "differingMeshes": 284,
+      "firstDifferences": [
+        {
+          "index": 0,
+          "leftId": 14502,
+          "rightId": 389,
+          "fields": [
+            "origin",
+            "triangleCount",
+            "localBounds",
+            "localToWorld",
+            "positions",
+            "geometryItemId",
+            "color",
+            "ifcType",
+            "normals",
+            "vertexCount",
+            "indices",
+            "expressId"
+          ]
+        },
+        {
+          "index": 1,
+          "leftId": 14502,
+          "rightId": 389,
+          "fields": [
+            "origin",
+            "triangleCount",
+            "localBounds",
+            "localToWorld",
+            "positions",
+            "geometryItemId",
+            "color",
+            "ifcType",
+            "normals",
+            "vertexCount",
+            "indices",
+            "expressId"
+          ]
+        }
+      ]
+    }
+  ],
+  "inputPins": {
+    "revit-wall--serial--plain": "aff70d3ef8702fa5201c9d0a275849c9c492304676dc7c194cb268767a2ffa58",
+    "revit-wall--serial--observed": "66c95010ca21fb0c3f58bc923bbf719de5c086d1f138b87e7a8b565b4921bcac",
+    "revit-wall--columns--plain": "226f3630e04a5a9a09ed4e5e49462ff834535a0354ca5dcdbc9687501c27d834",
+    "revit-wall--columns--observed": "b39e8aac0eededf57bcf8506ad39b0f19e79961d57c7a089079d3180082a1d58",
+    "revit-wall--once--plain": "097f9c2fb717a6dfb306f664f8ec87da853df88c5abe13d41e2e85205080dc54",
+    "revit-wall--once--observed": "918b7a760c5e520e0b70a2337e8712730c92fee7a996b1d233c40bde3229c1a4",
+    "multicolor--serial--plain": "5b60f7db3a5dfe4b28086d80aa9c9d24111979c33136b1350aaf9931268f9d42",
+    "multicolor--serial--observed": "bea27ccf36c4c6370b8d1f2d2cbab313f3b50d362d6b08922f947ee26cdc1351",
+    "multicolor--columns--plain": "6b702e5195d6fc8f2e78c3bb255b2423b32efc9fb08add1de32d382b9e2e0ab1",
+    "multicolor--columns--observed": "2fc48884a95e7b58829a16e39bd4975c33227ae515cf99b4f7e187cd992db394",
+    "multicolor--once--plain": "74521d8f0a362f26be85971e220911eb11e9891851794681d70bc3b247bafecd",
+    "multicolor--once--observed": "489aa4a7e9648f80f406dc0b39767948e0d4e0e48f183fda5646f3316ab11f97",
+    "voided-wall--serial--plain": "5b2fd76eb988682bce357eb14ccb86cfc042487eacecfa4a0d4ed18c4fcea181",
+    "voided-wall--serial--observed": "a46de3885d2eba6d0d505c87e9387966ef44a75e00e4ae547fa6d69072fd9bfe",
+    "voided-wall--columns--plain": "a00b1c4afe683012139afb7d1c3d8188d6fc9e11f2dc827c6367841aaf2e6845",
+    "voided-wall--columns--observed": "8613caf06e18221fba0a2e6a94617f569244bd8bbfae4ab1811c356c0ab59bbd",
+    "voided-wall--once--plain": "c589fa60cdf5d42d5ea19f0da804361db120cdd32efff6c6a478f44f5cfa5533",
+    "voided-wall--once--observed": "0d0c5e5506efd5e10ae8f564195940263aec1653979a5bd3374ce532f85505b7",
+    "mapped-instances--serial--plain": "99861563f83556690c309e9a05391f6f170dae95c0de9debefadb19a09c5ab74",
+    "mapped-instances--serial--observed": "ecb9f9ff7425602b3ab7f4b0c62130f7d0a9189ae9e330426647435e47f884e8",
+    "mapped-instances--columns--plain": "e07ff66aeb8251da7bf7b60832a2969a365d7e026a4b275434af821d4c937cdf",
+    "mapped-instances--columns--observed": "e061c71ab0b8f916c2b71a80e3ad01711a4fc33f1cc99ef73774d41a5468f62f",
+    "mapped-instances--once--plain": "29c451417cd77dee4a1c9875412d571a44158324f293c556134427ab8cd38d48",
+    "mapped-instances--once--observed": "41d05b19857031ec3426db64565beabff9f531658f6a6e4a1cd6d00163a6de64",
+    "orphan-type--serial--plain": "c92d90d2e91b3dd306756bac830b349644e02b727709ef98ccd840f9dbb44fc5",
+    "orphan-type--serial--observed": "dd0a2a67f9edb089fc6585d37e800b9a927fb6cc7366e567e00bb8e4595382eb",
+    "orphan-type--columns--plain": "1f0dd3112fc3e3483a2a0e86ccd38422e321eb51000db21c0a2a4ac33591d54f",
+    "orphan-type--columns--observed": "1793e4c876cecefd76409251be30cf2f643091b1de776b1448cd7a35e6859361",
+    "orphan-type--once--plain": "cf7c72c22f77d8b77d50c3d99a7d518f13aa631c68e0b168c1c493e0a310990f",
+    "orphan-type--once--observed": "75b7dbafc757e51772c981c91f569ddf4391c7bae8b71e6b0d9dbff601d13006",
+    "bare-type-map--serial--plain": "b92c9afe0b9e44f45f6e34cc8d65d716258070b413fd149d4fb952152b29152e",
+    "bare-type-map--serial--observed": "07a340cac6412d59ca25d349be79ff9420b421d3d663ae43a8e6abc23fa097e5",
+    "bare-type-map--columns--plain": "c00c4ae109450080f466eb0655c08c7b31b1c59f804a76ea2a33d2bd2c8a0c5b",
+    "bare-type-map--columns--observed": "0584bdf95b36a02dd7f645c1ae23ca5bc90d807d3e95d778f7802af773544b47",
+    "bare-type-map--once--plain": "8115f67b72cd4b4b81d87b2b910b7e1c83caabb2eee008ee9792445fdf495712",
+    "bare-type-map--once--observed": "8e2f447d69097e29b984fefe3df63f050f570ffa5736f5dd9d7e4d31514e020e",
+    "nonfinite-depth-neighbor--serial--plain": "d5140f735bd282e71d21274842782d502083f94db569b308ea726f65c2541a02",
+    "nonfinite-depth-neighbor--serial--observed": "d82fe8b0726b42d78e829e321e81d96211ace1a9b9baf745649d9e4d95f6d52c",
+    "nonfinite-depth-neighbor--columns--plain": "45f86f4fae52710e56d6d939e8b2c54cba66d6ef01cfa54624819fb22f60ec3a",
+    "nonfinite-depth-neighbor--columns--observed": "6674643ff8b9d92761485c7eb841af9805fe9ddb576d545967cb600682865262",
+    "nonfinite-depth-neighbor--once--plain": "c6304a60e53802e3efe6d22ce9d82041d2f9fdc85d6efa393ba964c5b55ac4ba",
+    "nonfinite-depth-neighbor--once--observed": "c560311c856b7d1b87df1bdee1baf033876d60229719bae394b4313421380c7f",
+    "haus--serial--plain": "928eea083d67c09e2cf82d48eba43ea07641425a73c7a8bc4262c693999f1c2f",
+    "haus--serial--observed": "4cd58bf22f64ed7f31556fb7e666983b89b7e13ee22c553cb9fd2aff4ebfefcd",
+    "haus--columns--plain": "3a3db781c0b288f37fd07fa2f03df61c08a69256d181d1696502aa69dfc9b244",
+    "haus--columns--observed": "524e126999b7c710dd8b3abf769f30a76e3b49dea051a0e8a43e6ed41e0a1813",
+    "haus--once--plain": "3493849069053b66dc661eb5758c9c9f038dd9c004f577e268143d2bcd578d9b",
+    "haus--once--observed": "ae9d54f99a67affb698c69cbf78f45643bf90f29cb5d9e3664173c36bea26326"
+  }
+}

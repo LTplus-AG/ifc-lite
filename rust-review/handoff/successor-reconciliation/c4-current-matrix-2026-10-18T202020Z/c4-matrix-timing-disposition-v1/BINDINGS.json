@@ -1,0 +1,338 @@
+{
+  "proposalSha256": "b4e643e486036a82f4bb2b0362612f0f74bfe261a692990e393ca1bd7513ba84",
+  "files": {
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/revit-wall--serial--plain.json": {
+      "size": 1086081,
+      "sha256": "aff70d3ef8702fa5201c9d0a275849c9c492304676dc7c194cb268767a2ffa58"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/revit-wall--serial--observed.json": {
+      "size": 1099670,
+      "sha256": "66c95010ca21fb0c3f58bc923bbf719de5c086d1f138b87e7a8b565b4921bcac"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/compare-revit-wall-serial-noninterference.log": {
+      "size": 291,
+      "sha256": "ea4a7634153424eab14b0c5da855a34e3d7f7fc46f0e8bea989149fda3764040"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/revit-wall--columns--plain.json": {
+      "size": 1119314,
+      "sha256": "226f3630e04a5a9a09ed4e5e49462ff834535a0354ca5dcdbc9687501c27d834"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/revit-wall--columns--observed.json": {
+      "size": 1132903,
+      "sha256": "b39e8aac0eededf57bcf8506ad39b0f19e79961d57c7a089079d3180082a1d58"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/compare-revit-wall-columns-noninterference.log": {
+      "size": 291,
+      "sha256": "ee52d580089ca526082e166451d0a6b952b263f40998f977f129a534eb5de68b"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/revit-wall--native--plain.json": {
+      "size": 806620,
+      "sha256": "9205bc3613b3cb28617512c337aa441057f2b752749728a0754c38ff5e460605"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/revit-wall--native--observed.json": {
+      "size": 855593,
+      "sha256": "5dc69512f411fffc0efe0704e8b7a11f3e16474d62e600842c0686ca2bced499"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/compare-revit-wall-native-noninterference.log": {
+      "size": 275,
+      "sha256": "cbb2f6820772520bd3d084787c8274977fc3cdaa640d4074850001b526347722"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/multicolor--serial--plain.json": {
+      "size": 41255,
+      "sha256": "5b60f7db3a5dfe4b28086d80aa9c9d24111979c33136b1350aaf9931268f9d42"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/multicolor--serial--observed.json": {
+      "size": 42999,
+      "sha256": "bea27ccf36c4c6370b8d1f2d2cbab313f3b50d362d6b08922f947ee26cdc1351"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/compare-multicolor-serial-noninterference.log": {
+      "size": 287,
+      "sha256": "844b90dbf20e2ca39e64d97862e4024a7c85e5d11f5343a9d36ef79999be65c6"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/multicolor--columns--plain.json": {
+      "size": 53328,
+      "sha256": "6b702e5195d6fc8f2e78c3bb255b2423b32efc9fb08add1de32d382b9e2e0ab1"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/multicolor--columns--observed.json": {
+      "size": 55072,
+      "sha256": "2fc48884a95e7b58829a16e39bd4975c33227ae515cf99b4f7e187cd992db394"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/compare-multicolor-columns-noninterference.log": {
+      "size": 287,
+      "sha256": "d424a2129ab84f50d5fd39203b09869d39b389069fc294ec0ec358bd57cd9fdc"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/multicolor--once--plain.json": {
+      "size": 29577,
+      "sha256": "74521d8f0a362f26be85971e220911eb11e9891851794681d70bc3b247bafecd"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/multicolor--once--observed.json": {
+      "size": 31321,
+      "sha256": "489aa4a7e9648f80f406dc0b39767948e0d4e0e48f183fda5646f3316ab11f97"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/compare-multicolor-once-noninterference.log": {
+      "size": 287,
+      "sha256": "3f7b22a446d85019267fd848f27808a239de99ad598ab53b3c786fddd56dc348"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/voided-wall--columns--plain.json": {
+      "size": 115529,
+      "sha256": "a00b1c4afe683012139afb7d1c3d8188d6fc9e11f2dc827c6367841aaf2e6845"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/voided-wall--columns--observed.json": {
+      "size": 119287,
+      "sha256": "8613caf06e18221fba0a2e6a94617f569244bd8bbfae4ab1811c356c0ab59bbd"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/compare-voided-wall-columns-noninterference.log": {
+      "size": 291,
+      "sha256": "3f8b6d4042e372f7714a0f171fda128cd380ce92b66489a140306b4381d735a2"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/voided-wall--native--plain.json": {
+      "size": 69430,
+      "sha256": "68bc5b1ab54876a2e051cff6368624e8d145fdc87790972e3d8a881d30955681"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/voided-wall--native--observed.json": {
+      "size": 81200,
+      "sha256": "9c8f511f10bccc7a7278d08b12b9b49944bf2e2d8afe5c321271b9d0c8c0efab"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/compare-voided-wall-native-noninterference.log": {
+      "size": 184,
+      "sha256": "a11e2077f6259435443a9f7d18ad7c12ba82aa3c527038f1c575adaf7a8a5ae0"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/mapped-instances--serial--plain.json": {
+      "size": 695260,
+      "sha256": "99861563f83556690c309e9a05391f6f170dae95c0de9debefadb19a09c5ab74"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/mapped-instances--serial--observed.json": {
+      "size": 744834,
+      "sha256": "ecb9f9ff7425602b3ab7f4b0c62130f7d0a9189ae9e330426647435e47f884e8"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/compare-mapped-instances-serial-noninterference.log": {
+      "size": 287,
+      "sha256": "005aa7ea00d8a38a09b5c75dbc62056f3711fbf36d018598e812ca9a17d80201"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/mapped-instances--columns--plain.json": {
+      "size": 716508,
+      "sha256": "e07ff66aeb8251da7bf7b60832a2969a365d7e026a4b275434af821d4c937cdf"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/mapped-instances--columns--observed.json": {
+      "size": 766082,
+      "sha256": "e061c71ab0b8f916c2b71a80e3ad01711a4fc33f1cc99ef73774d41a5468f62f"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/compare-mapped-instances-columns-noninterference.log": {
+      "size": 287,
+      "sha256": "005aa7ea00d8a38a09b5c75dbc62056f3711fbf36d018598e812ca9a17d80201"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/mapped-instances--once--plain.json": {
+      "size": 624722,
+      "sha256": "29c451417cd77dee4a1c9875412d571a44158324f293c556134427ab8cd38d48"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/mapped-instances--once--observed.json": {
+      "size": 674296,
+      "sha256": "41d05b19857031ec3426db64565beabff9f531658f6a6e4a1cd6d00163a6de64"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/compare-mapped-instances-once-noninterference.log": {
+      "size": 287,
+      "sha256": "005aa7ea00d8a38a09b5c75dbc62056f3711fbf36d018598e812ca9a17d80201"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/mapped-instances--native--plain.json": {
+      "size": 432863,
+      "sha256": "dcee3102c57c310640d91751c64e1114e4ad8abe80a1fb180aceefc197f260a8"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/mapped-instances--native--observed.json": {
+      "size": 618559,
+      "sha256": "4ed7b62f4f161828af56b31081c28f3920e5cb98a108e6250c0bad52316d5523"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/compare-mapped-instances-native-noninterference.log": {
+      "size": 352,
+      "sha256": "20ad0170136202bbb6e92a0cfedbbad2e1182ffaa863ece021aec917307eb7e9"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/orphan-type--serial--plain.json": {
+      "size": 26249,
+      "sha256": "c92d90d2e91b3dd306756bac830b349644e02b727709ef98ccd840f9dbb44fc5"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/orphan-type--serial--observed.json": {
+      "size": 27885,
+      "sha256": "dd0a2a67f9edb089fc6585d37e800b9a927fb6cc7366e567e00bb8e4595382eb"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/compare-orphan-type-serial-noninterference.log": {
+      "size": 287,
+      "sha256": "1a68205e72017a787b9692c0622d7984ed7a9ad74e68554bd0bcafed125bf002"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/orphan-type--columns--plain.json": {
+      "size": 37328,
+      "sha256": "1f0dd3112fc3e3483a2a0e86ccd38422e321eb51000db21c0a2a4ac33591d54f"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/orphan-type--columns--observed.json": {
+      "size": 38964,
+      "sha256": "1793e4c876cecefd76409251be30cf2f643091b1de776b1448cd7a35e6859361"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/compare-orphan-type-columns-noninterference.log": {
+      "size": 287,
+      "sha256": "1a68205e72017a787b9692c0622d7984ed7a9ad74e68554bd0bcafed125bf002"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/bare-type-map--once--plain.json": {
+      "size": 10072,
+      "sha256": "8115f67b72cd4b4b81d87b2b910b7e1c83caabb2eee008ee9792445fdf495712"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/bare-type-map--once--observed.json": {
+      "size": 10927,
+      "sha256": "8e2f447d69097e29b984fefe3df63f050f570ffa5736f5dd9d7e4d31514e020e"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/compare-bare-type-map-once-noninterference.log": {
+      "size": 287,
+      "sha256": "c48489466bc8f6d05d659ac44c72d381e940afbd07a2f2d6b7cb5d13a82fb2d0"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/nonfinite-depth-neighbor--serial--plain.json": {
+      "size": 30866,
+      "sha256": "d5140f735bd282e71d21274842782d502083f94db569b308ea726f65c2541a02"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/nonfinite-depth-neighbor--serial--observed.json": {
+      "size": 33161,
+      "sha256": "d82fe8b0726b42d78e829e321e81d96211ace1a9b9baf745649d9e4d95f6d52c"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/compare-nonfinite-depth-neighbor-serial-noninterference.log": {
+      "size": 287,
+      "sha256": "d424a2129ab84f50d5fd39203b09869d39b389069fc294ec0ec358bd57cd9fdc"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/nonfinite-depth-neighbor--native--plain.json": {
+      "size": 9802,
+      "sha256": "9f9e264792e1aead1cc16e7548668e9dd20911f08af36707247f87b089023454"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/nonfinite-depth-neighbor--native--observed.json": {
+      "size": 15999,
+      "sha256": "3bb3fe4d32badc15a095325a652010da79b78caa3e70a19252a2c8d81cd03191"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/compare-nonfinite-depth-neighbor-native-noninterference.log": {
+      "size": 179,
+      "sha256": "b5990c43637bfcd76be7eb4e509f3246f815a1445e280561780708e0d3c16dcb"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/haus--serial--plain.json": {
+      "size": 23437925,
+      "sha256": "928eea083d67c09e2cf82d48eba43ea07641425a73c7a8bc4262c693999f1c2f"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/haus--serial--observed.json": {
+      "size": 23567338,
+      "sha256": "4cd58bf22f64ed7f31556fb7e666983b89b7e13ee22c553cb9fd2aff4ebfefcd"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/compare-haus-serial-noninterference.log": {
+      "size": 488,
+      "sha256": "b57e96567325eaba32c1b1a3f1f68d381a2b8a34095a8ee5bba78efbd9d2d347"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/haus--columns--plain.json": {
+      "size": 24569039,
+      "sha256": "3a3db781c0b288f37fd07fa2f03df61c08a69256d181d1696502aa69dfc9b244"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/haus--columns--observed.json": {
+      "size": 24698452,
+      "sha256": "524e126999b7c710dd8b3abf769f30a76e3b49dea051a0e8a43e6ed41e0a1813"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/compare-haus-columns-noninterference.log": {
+      "size": 488,
+      "sha256": "5d30e2a0d672848c4befc97f76396e6366a664879c662006be6dfd3e4ef0fff2"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/haus--once--plain.json": {
+      "size": 17340543,
+      "sha256": "3493849069053b66dc661eb5758c9c9f038dd9c004f577e268143d2bcd578d9b"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/haus--once--observed.json": {
+      "size": 17469318,
+      "sha256": "ae9d54f99a67affb698c69cbf78f45643bf90f29cb5d9e3664173c36bea26326"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/compare-haus-once-noninterference.log": {
+      "size": 291,
+      "sha256": "2f7f49ef9d4dbd22d9bb31750f7bf1febb3446532d7f2924bd2177978bf504b9"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/haus--native--plain.json": {
+      "size": 10113676,
+      "sha256": "3f68cca69089bf9ad85947b9af6e338821079481f508743f46d32379a2670c0c"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/haus--native--observed.json": {
+      "size": 10631349,
+      "sha256": "a26cc5a5e093651c1bcee0f2086f43c520a6bb3a7802bc72aedd00cded24dab1"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/compare-haus-native-noninterference.log": {
+      "size": 446,
+      "sha256": "1ac3c8a5f9fe33a30fea557e8740bcc6525909bb48caaf2c1ceccf546173daf3"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-required-qualification-v1/source/rust/wasm-bindings/src/api/gpu_meshes/batch.rs": {
+      "size": 50166,
+      "sha256": "ecf7ba5d2bc0ff0647cb80b7cb5291abd0b91f30b6d7fadabc641f4e99867ee4"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-required-qualification-v1/source/rust/wasm-bindings/src/api/pipeline_diagnostics.rs": {
+      "size": 3376,
+      "sha256": "9c995f826e411808428234138dc7f6725028ab88182cba5448eadfe0d63ecac2"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-required-qualification-v1/source/rust/processing/src/pipeline_diagnostics.rs": {
+      "size": 14315,
+      "sha256": "44634eae23e66c23a32996c7ce5eeaed082c28f1a7da3b8dbf5cac45952358a5"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-required-qualification-v1/source/rust/processing/src/processor/finalize.rs": {
+      "size": 7230,
+      "sha256": "1b517a8480a93865c97b212829dc17a91d583ed93b52fb551d673ba6aa251964"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-required-qualification-v1/source/rust/processing/src/processor/resolve.rs": {
+      "size": 14811,
+      "sha256": "f9051f20be0b89198458b01776a3ff8d61ce5eb099cda531e750ad2b09333536"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-required-qualification-v1/source/rust/processing/src/processor/mod.rs": {
+      "size": 6607,
+      "sha256": "b803684644adcd88157fe7fcb0aac5eb5d9cb7eee5e7ab8be409e2ae411f8b03"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-required-qualification-v1/source/rust/processing/src/processor/jobs.rs": {
+      "size": 15013,
+      "sha256": "c2e28360b41081c7d5daab8733c61159dfade2859e0a92d68f2cc28afbf615b8"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-required-qualification-v1/source/rust/processing/src/types/response.rs": {
+      "size": 10727,
+      "sha256": "fe59f0ab03e45b5ca0f5595dbe5d12c67cf3d04faef47f800d77e9b2033acf99"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/verified-result.json": {
+      "size": 4721,
+      "sha256": "3a3fae4a3a7fdc8b9ace92b4c4f0e570a1af2f3e567c019395bcec49ff26e53d"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/worker-terminal.json": {
+      "size": 4045,
+      "sha256": "1ade71acf630d5806e60b6d183260aae982211e1e2dc99ffaefc4369eb5a6c86"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/matrix-index.json": {
+      "size": 276857,
+      "sha256": "846bfdc17fa7f68217c009247240f98bd3f6927809eca58bea5e5956125c5f9e"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/unresolved-batch.json": {
+      "size": 126016,
+      "sha256": "0fc733c55f652ddb3c74034a824b51605285e9cd32aae894c3cbd5eadedf8b30"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-parity-harness-source-v5/EXPECTED_DIFF.json": {
+      "size": 4551,
+      "sha256": "7bbbb5045ff3c62b8af6e233d56e19b045ce5eaf53bd0e501a8ca029fcfbb448"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-combined-timing-leaf-disposition-v1/independent-review/REVIEW.md": {
+      "size": 7816,
+      "sha256": "82ed13bdf5a7c65f504feb8e90c5500000c6e3c90279acb4811172f74457a786"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/inputs/adapter/capture-wasm.mjs": {
+      "size": 19825,
+      "sha256": "2223eb6fc6f1b0ed627fa8b6f2c524a8e5a78004f5aa721e4dbb03bc7dffe219"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/inputs/adapter/compare.mjs": {
+      "size": 11670,
+      "sha256": "5e660df5173fc211ee3b9ed677a29299f9902fbacdd49e3562ebb3164ab81f65"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/inputs/adapter/exact-wire.mjs": {
+      "size": 3804,
+      "sha256": "b96c196a81f7b7ec3506edae7a4cbb4c8e058f3a3fbe2eccf3fc2d6cd5c7ad11"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/inputs/adapter/output-reservation.mjs": {
+      "size": 423,
+      "sha256": "5f4fddfe16ce22cae5288161da5397162bc2bcd36211007fb756b8c402d23ad7"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/inputs/adapter/public-contract.mjs": {
+      "size": 3663,
+      "sha256": "75836e62b87a3b5025cef82c9bed6e647335d72bdbef27ed640ac4831b9871a8"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/inputs/adapter/schema.mjs": {
+      "size": 16084,
+      "sha256": "090d5429704d98605aa5db5d990d3d3adaf40caeb8af08c94e9be7306c7a4b43"
+    }
+  },
+  "enforcement": "Each savedpair receipt byteSHA mustmatch before invoking originalpure comparator with ONLY its explicitly reviewed policy; policies are never merged across routes. Before/finally pins required. Originalworker andall72cross-route/native-public unknowns stayuntouched."
+}

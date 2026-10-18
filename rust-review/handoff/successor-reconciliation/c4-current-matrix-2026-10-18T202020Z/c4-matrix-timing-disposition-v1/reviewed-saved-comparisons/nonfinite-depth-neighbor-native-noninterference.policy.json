@@ -1,0 +1,24 @@
+{
+  "schema": "c4-0-expected-diff-v1",
+  "state": "INDEPENDENTLY_REVIEWED_EXACT_SAVED_PAIR_ONLY",
+  "entries": [
+    {
+      "id": "nonfinite-depth-neighbor-native-noninterference-elapsed-0",
+      "state": "BOUND_EXACT_VALUES",
+      "fixtureSha256": "961ac6967d559896bb14dd3488d6d697a07bdc4eaa132f9787a9aa60c555960f",
+      "source": "fc3635ae78665e95ea72328b88fc7b28ead148d2",
+      "arm": "observation-noninterference-native",
+      "path": "/stats/total_time_ms",
+      "leftSha256": "5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9",
+      "rightSha256": "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b",
+      "authority": "Native ProcessingStats elapsed Duration fields: processor/finalize.rs:139-144, facts.times and totals geometry/total Instant boundaries in resolve.rs, mod.rs, jobs.rs and finalize.rs. Existing EXACT_TIMING_LEAF_NONDETERMINISM template only. Sources bound in BINDINGS.json.",
+      "condition": "Only this exact saved left/right capture pair 9f9e264792e1aead1cc16e7548668e9dd20911f08af36707247f87b089023454 -> 3bb3fe4d32badc15a095325a652010da79b78caa3e70a19252a2c8d81cd03191 and scalar 0 -> 1. Recognizes named elapsed timing nondeterminism only; no causal instrumentation-overhead, speed, noise, regression or performance acceptance. All non-timing raw fields stay strict; zero-time values never imply noise.",
+      "removeWhen": "Retire on any capture/source/fixture/runtime/instrumentation/settings/binding change or witness retirement. No future-run reuse, wildcard or automatic live exception generation."
+    }
+  ],
+  "independentReviewSha256": "09bc931e6e1e5cbf9bb2e4bbb650d55abc4e12be143fef8d85ee144f084841c9",
+  "captureFilePins": {
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/nonfinite-depth-neighbor--native--plain.json": "9f9e264792e1aead1cc16e7548668e9dd20911f08af36707247f87b089023454",
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/nonfinite-depth-neighbor--native--observed.json": "3bb3fe4d32badc15a095325a652010da79b78caa3e70a19252a2c8d81cd03191"
+  }
+}

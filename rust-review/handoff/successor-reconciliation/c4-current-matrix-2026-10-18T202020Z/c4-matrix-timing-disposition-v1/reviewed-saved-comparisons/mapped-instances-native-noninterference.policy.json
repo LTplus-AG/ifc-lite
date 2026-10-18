@@ -1,0 +1,50 @@
+{
+  "schema": "c4-0-expected-diff-v1",
+  "state": "INDEPENDENTLY_REVIEWED_EXACT_SAVED_PAIR_ONLY",
+  "entries": [
+    {
+      "id": "mapped-instances-native-noninterference-elapsed-0",
+      "state": "BOUND_EXACT_VALUES",
+      "fixtureSha256": "3069997f0b7d555232180c88bea27d0f6ca4d9c309a9cf4b1c3a8c68bba166ad",
+      "source": "fc3635ae78665e95ea72328b88fc7b28ead148d2",
+      "arm": "observation-noninterference-native",
+      "path": "/stats/geometry_time_ms",
+      "leftSha256": "5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9",
+      "rightSha256": "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b",
+      "authority": "Native ProcessingStats elapsed Duration fields: processor/finalize.rs:139-144, facts.times and totals geometry/total Instant boundaries in resolve.rs, mod.rs, jobs.rs and finalize.rs. Existing EXACT_TIMING_LEAF_NONDETERMINISM template only. Sources bound in BINDINGS.json.",
+      "condition": "Only this exact saved left/right capture pair dcee3102c57c310640d91751c64e1114e4ad8abe80a1fb180aceefc197f260a8 -> 4ed7b62f4f161828af56b31081c28f3920e5cb98a108e6250c0bad52316d5523 and scalar 0 -> 1. Recognizes named elapsed timing nondeterminism only; no causal instrumentation-overhead, speed, noise, regression or performance acceptance. All non-timing raw fields stay strict; zero-time values never imply noise.",
+      "removeWhen": "Retire on any capture/source/fixture/runtime/instrumentation/settings/binding change or witness retirement. No future-run reuse, wildcard or automatic live exception generation."
+    },
+    {
+      "id": "mapped-instances-native-noninterference-elapsed-1",
+      "state": "BOUND_EXACT_VALUES",
+      "fixtureSha256": "3069997f0b7d555232180c88bea27d0f6ca4d9c309a9cf4b1c3a8c68bba166ad",
+      "source": "fc3635ae78665e95ea72328b88fc7b28ead148d2",
+      "arm": "observation-noninterference-native",
+      "path": "/stats/parse_time_ms",
+      "leftSha256": "5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9",
+      "rightSha256": "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b",
+      "authority": "Native ProcessingStats elapsed Duration fields: processor/finalize.rs:139-144, facts.times and totals geometry/total Instant boundaries in resolve.rs, mod.rs, jobs.rs and finalize.rs. Existing EXACT_TIMING_LEAF_NONDETERMINISM template only. Sources bound in BINDINGS.json.",
+      "condition": "Only this exact saved left/right capture pair dcee3102c57c310640d91751c64e1114e4ad8abe80a1fb180aceefc197f260a8 -> 4ed7b62f4f161828af56b31081c28f3920e5cb98a108e6250c0bad52316d5523 and scalar 0 -> 1. Recognizes named elapsed timing nondeterminism only; no causal instrumentation-overhead, speed, noise, regression or performance acceptance. All non-timing raw fields stay strict; zero-time values never imply noise.",
+      "removeWhen": "Retire on any capture/source/fixture/runtime/instrumentation/settings/binding change or witness retirement. No future-run reuse, wildcard or automatic live exception generation."
+    },
+    {
+      "id": "mapped-instances-native-noninterference-elapsed-2",
+      "state": "BOUND_EXACT_VALUES",
+      "fixtureSha256": "3069997f0b7d555232180c88bea27d0f6ca4d9c309a9cf4b1c3a8c68bba166ad",
+      "source": "fc3635ae78665e95ea72328b88fc7b28ead148d2",
+      "arm": "observation-noninterference-native",
+      "path": "/stats/total_time_ms",
+      "leftSha256": "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b",
+      "rightSha256": "d4735e3a265e16eee03f59718b9b5d03019c07d8b6c51f90da3a666eec13ab35",
+      "authority": "Native ProcessingStats elapsed Duration fields: processor/finalize.rs:139-144, facts.times and totals geometry/total Instant boundaries in resolve.rs, mod.rs, jobs.rs and finalize.rs. Existing EXACT_TIMING_LEAF_NONDETERMINISM template only. Sources bound in BINDINGS.json.",
+      "condition": "Only this exact saved left/right capture pair dcee3102c57c310640d91751c64e1114e4ad8abe80a1fb180aceefc197f260a8 -> 4ed7b62f4f161828af56b31081c28f3920e5cb98a108e6250c0bad52316d5523 and scalar 1 -> 2. Recognizes named elapsed timing nondeterminism only; no causal instrumentation-overhead, speed, noise, regression or performance acceptance. All non-timing raw fields stay strict; zero-time values never imply noise.",
+      "removeWhen": "Retire on any capture/source/fixture/runtime/instrumentation/settings/binding change or witness retirement. No future-run reuse, wildcard or automatic live exception generation."
+    }
+  ],
+  "independentReviewSha256": "09bc931e6e1e5cbf9bb2e4bbb650d55abc4e12be143fef8d85ee144f084841c9",
+  "captureFilePins": {
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/mapped-instances--native--plain.json": "dcee3102c57c310640d91751c64e1114e4ad8abe80a1fb180aceefc197f260a8",
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/mapped-instances--native--observed.json": "4ed7b62f4f161828af56b31081c28f3920e5cb98a108e6250c0bad52316d5523"
+  }
+}

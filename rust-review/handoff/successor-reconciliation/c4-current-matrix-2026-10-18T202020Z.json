@@ -1,0 +1,427 @@
+{
+  "at": "2026-10-18T20:20:20.526472+00:00",
+  "source": "fc3635ae78665e95ea72328b88fc7b28ead148d2",
+  "tree": "4b3c4fd5a98faec9f74c70a2b2d9e2f4d03f0fe5",
+  "actual": {
+    "captureCells": 64,
+    "newCaptures": 62,
+    "reusedCaptures": 2,
+    "captureContracts": "ALL PASS",
+    "originalComparisons": 103,
+    "originalStrictMatches": 10,
+    "reviewedSavedTimingPairsPassed": 21,
+    "exactReviewedTimerLeaves": 47,
+    "remainingUnwaivedRouteNativeComparisons": 72,
+    "originalWorker": "a837e385-a04a-4ad7-8ffe-a440911ec5a0 FAILED1 unchanged",
+    "sourceFinallyGuards": "PASS,182 fixture identities and source/tool/runtime pins",
+    "rawRetention": "392 files/682312666 bytes retained locally and PC original, entire original manifest included; raw payloads not duplicated into this compact archive"
+  },
+  "diagnosis": {
+    "publicRoutePairsOrderedExact": "44/48",
+    "otherFour": "Haus once vs serial/columns differ in order; full getter payload multiset identical, diagnostic only; original order preserved; no acceptance",
+    "nativePublicDifferences": "Unwaived, baseline61 matching-route captures allocated to existing C4 owner v21; no duplicate current capture"
+  },
+  "pending": [
+    "Broader C4-0 requirements and later required phases",
+    "Performance, current-main integration, publication and closure",
+    "7911 timed comparison unrun/unqueued; latest Pop observation foreign ordinary build and62C"
+  ],
+  "acceptance": {
+    "programsAccepted": 0,
+    "conditionsUnchecked": 33,
+    "newProductionMerges": 0,
+    "newIssueClosures": 0
+  },
+  "files": [
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-0-current-fc-matrix-v1/RESULT.md",
+      "size": 5648,
+      "sha256": "be2c776096fd7ab18aafb8912cd2ee197deab292149b6c753041fd223df52883"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-0-current-fc-matrix-v1/verified-result.json",
+      "size": 4721,
+      "sha256": "3a3fae4a3a7fdc8b9ace92b4c4f0e570a1af2f3e567c019395bcec49ff26e53d"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-0-current-fc-matrix-v1/matrix-index.json",
+      "size": 276857,
+      "sha256": "846bfdc17fa7f68217c009247240f98bd3f6927809eca58bea5e5956125c5f9e"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-0-current-fc-matrix-v1/unresolved-batch.json",
+      "size": 126016,
+      "sha256": "0fc733c55f652ddb3c74034a824b51605285e9cd32aae894c3cbd5eadedf8b30"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-0-current-fc-matrix-v1/original-result-hashes.json",
+      "size": 64522,
+      "sha256": "7ac6e71ed20adb3bc617f86a2e516527cc2170e23d30cfb6688ef383449a7068"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-0-current-fc-matrix-v1/worker-terminal.json",
+      "size": 4045,
+      "sha256": "1ade71acf630d5806e60b6d183260aae982211e1e2dc99ffaefc4369eb5a6c86"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-0-current-fc-matrix-v1/terminal-quiescence.json",
+      "size": 1153,
+      "sha256": "e03ec4d786b0f823b5a33c95887130469b10b825dbaf8fb17e0bf8000bcdc6b1"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-0-current-fc-matrix-v1/parent-ordered-public-payload-analysis.json",
+      "size": 21887,
+      "sha256": "7d5d2529355759abd403f3dd6492f302bbabb8262efd16c120dd0dbec221e2c5"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-0-current-fc-matrix-v1/parent-haus-order-isolation.json",
+      "size": 39346,
+      "sha256": "70d5e20323490baf1c74a45393a042194c0866110d78f85b8bbc036d12fdce41"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-0-current-fc-matrix-v1/execution-authorization.json",
+      "size": 2072,
+      "sha256": "4ecdd82873e91ec4c1002746dd93088ae2e600d9c605c81f53813228a33a5bd3"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-matrix-timing-disposition-v1/BINDINGS.json",
+      "size": 21631,
+      "sha256": "5480e8b806b87b3e12dd513d9c9b40fab2e605b58413e96c20dc557dacd6600e"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-matrix-timing-disposition-v1/EXECUTION-RECEIPT.json",
+      "size": 38913,
+      "sha256": "270b3b115f1137c7ab49fd0df212e0d1812ded4d905240c6fca4a8a9805f3c37"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-matrix-timing-disposition-v1/PROPOSED-TIMING-WITNESSES.json",
+      "size": 104064,
+      "sha256": "b4e643e486036a82f4bb2b0362612f0f74bfe261a692990e393ca1bd7513ba84"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-matrix-timing-disposition-v1/run-reviewed-comparisons.py",
+      "size": 4495,
+      "sha256": "ea7fb56b24b60a316e1dadb47ad443e3ad2e18f782a39231b56bc9c2948abba1"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-matrix-timing-disposition-v1/independent-review/REVIEW.md",
+      "size": 7072,
+      "sha256": "09bc931e6e1e5cbf9bb2e4bbb650d55abc4e12be143fef8d85ee144f084841c9"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/multicolor-once-noninterference.policy.json",
+      "size": 3792,
+      "sha256": "25abc0ff821e37d48db4e2d0c08e3d10c50b39137c0be83101d8388279853a0c"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/haus-columns-noninterference.policy.json",
+      "size": 6915,
+      "sha256": "176597fb15b8c81b0b87d51027dd7a765f2b24f71d315b9480a1884d4361a49e"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/mapped-instances-native-noninterference.stderr",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/bare-type-map-once-noninterference.result.json",
+      "size": 416,
+      "sha256": "7433d1964a810712d448a23c5a484b586b71124b8239155fceff0e2491a2eb32"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/revit-wall-serial-noninterference.result.json",
+      "size": 418,
+      "sha256": "77db5eddfced4e34689aca63c7c78888fe69869bb513951d328f1d695799bceb"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/voided-wall-columns-noninterference.policy.json",
+      "size": 3812,
+      "sha256": "8d9880d02dd086a8057286499bb0a8da3192edbaeb07f49850a28fd923468df4"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/mapped-instances-once-noninterference.result.json",
+      "size": 422,
+      "sha256": "6194b7dfd64c539555566b05e5c17be24db47d2b0db2ca8625cf9a2e940809ce"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/revit-wall-native-noninterference.policy.json",
+      "size": 3588,
+      "sha256": "fb60b17052924394cd959ceae6c3aab1db38d3d54f81e2d5c3b6cf6c6097295a"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/haus-native-noninterference.result.json",
+      "size": 671,
+      "sha256": "1aefe693f4542a10b8c04b4a7af5a3ab03b58f2148c4048739c8beab932c79db"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/orphan-type-columns-noninterference.stderr",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/voided-wall-native-noninterference.policy.json",
+      "size": 2128,
+      "sha256": "71f077edb5fe661621e04ea3d38c4c6c69e2d6ad6bd1b385000a77523c9e81e8"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/multicolor-columns-noninterference.result.json",
+      "size": 416,
+      "sha256": "d5a675a38f1c737d74749194e4feef1ce8cdc784eb0300e67a393356b66a4bc4"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/haus-columns-noninterference.stderr",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/haus-once-noninterference.policy.json",
+      "size": 3772,
+      "sha256": "94ca292c9ea4ff2d907bf17abeadaa099b91127c9e6c6ff991f9c8c63736afeb"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/haus-serial-noninterference.stderr",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/revit-wall-columns-noninterference.stderr",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/mapped-instances-serial-noninterference.stderr",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/revit-wall-native-noninterference.stderr",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/haus-once-noninterference.stderr",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/mapped-instances-native-noninterference.policy.json",
+      "size": 5067,
+      "sha256": "41868ceeb242fa74b28e8bd2621f49af736d5a6f21d7322dda631ed6b129a8f1"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/mapped-instances-columns-noninterference.policy.json",
+      "size": 3828,
+      "sha256": "f6cd7b437e5f51f2964643421d9599975317b32b4c7369fbc2b97990cc955909"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/multicolor-once-noninterference.stderr",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/haus-serial-noninterference.result.json",
+      "size": 713,
+      "sha256": "d642ba94df73a0e086534cde430f3d93e1324f1f5b5a77b7943f29efbcac683e"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/mapped-instances-serial-noninterference.result.json",
+      "size": 426,
+      "sha256": "de75e33dc935752c6eaba839d9e31924595483ca9c93d76f0e38a788541e57e8"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/mapped-instances-columns-noninterference.result.json",
+      "size": 428,
+      "sha256": "6fe0d6fae8c63f32bd52d36ddfa89ae580a9de340feb741f3b96fcaa63ea8ed8"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/nonfinite-depth-neighbor-serial-noninterference.policy.json",
+      "size": 3856,
+      "sha256": "676934dbf74ad4ae9d9a96845c379b393a6efc3fe13cfdd07ed389de08767b02"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/voided-wall-columns-noninterference.result.json",
+      "size": 422,
+      "sha256": "d21596c630b00ca4b03a997ba484ec59a74f025e75ec0db5add2d314fd437d16"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/haus-native-noninterference.stderr",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/multicolor-columns-noninterference.stderr",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/revit-wall-columns-noninterference.result.json",
+      "size": 420,
+      "sha256": "f9eb31a3312818625fcebb9cfc4ec604a63681c2c7b63517797a3b8af93d7282"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/voided-wall-columns-noninterference.stderr",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/orphan-type-columns-noninterference.policy.json",
+      "size": 3808,
+      "sha256": "bee4799cc28ff6d62346f5386d875cdaebe9933183220b2f9d60b447a8a43c34"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/nonfinite-depth-neighbor-serial-noninterference.result.json",
+      "size": 442,
+      "sha256": "dabb6eec4f20aac3d8ce053185c8fd1b491ee891ebd7789af499fa611f44cb26"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/haus-once-noninterference.result.json",
+      "size": 402,
+      "sha256": "6d3138afaa67dda085eafc31e90bfc7f0d100b280edb15456e06e444cdcce328"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/nonfinite-depth-neighbor-native-noninterference.stderr",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/mapped-instances-serial-noninterference.policy.json",
+      "size": 3824,
+      "sha256": "97c77d2eca85ef42129ade8716cb76f4352805ac71cbb2785c27ce0b68e6f7d7"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/orphan-type-columns-noninterference.result.json",
+      "size": 418,
+      "sha256": "2a7395a24531f50eea02bf88ad0ce330213111cb04ef8618b1aa9acbeac92a64"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/haus-native-noninterference.policy.json",
+      "size": 6467,
+      "sha256": "3a5417713fbf2b057ecd81fcaf8eab454ae4fd6d1b260011e848e58258117fa7"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/revit-wall-native-noninterference.result.json",
+      "size": 402,
+      "sha256": "a634d7ca8b87bc9a9b16560014307d7a7ef39b4b649cbeddbb83f4e7c34c05ce"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/multicolor-columns-noninterference.policy.json",
+      "size": 3804,
+      "sha256": "99a0f5ab75f063b7ee82a9d010b97b183a3596bb46eb35f48a9342882f2ad7fb"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/voided-wall-native-noninterference.stderr",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/nonfinite-depth-neighbor-native-noninterference.policy.json",
+      "size": 2162,
+      "sha256": "d995e9ed4f4df05789ae6b891da92fbcc3266c894df28a72ad2d3ee23983ebdc"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/orphan-type-serial-noninterference.stderr",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/orphan-type-serial-noninterference.result.json",
+      "size": 416,
+      "sha256": "e4a3ba70fb6ed3ce1aaf3f2dca4ae1e944ed60ed5698612debb1a1c216f90ba7"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/mapped-instances-columns-noninterference.stderr",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/mapped-instances-native-noninterference.result.json",
+      "size": 558,
+      "sha256": "2ec0c7048c5e14284ffab529585c7c36984055b1d002c094ef3f71dbb95380e7"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/nonfinite-depth-neighbor-serial-noninterference.stderr",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/multicolor-serial-noninterference.policy.json",
+      "size": 3800,
+      "sha256": "b7e601cf2cf98739f43aef9dbeba86c08b017dc5950c0ad8cec8bbc0a7f368c5"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/mapped-instances-once-noninterference.policy.json",
+      "size": 3816,
+      "sha256": "3c622905f78b8098c3f89c5532f69ae389a55534e3bb71020211b09a7b627ffc"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/orphan-type-serial-noninterference.policy.json",
+      "size": 3804,
+      "sha256": "90a9ab0bc7f1f3382303195130f5f3fe6cf8e0006c55326bdeaa1e6bf1b58ddb"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/multicolor-once-noninterference.result.json",
+      "size": 410,
+      "sha256": "8013564678d1114fc6dd22d542bb2216d467e629e142221c2a0bb26b42994577"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/nonfinite-depth-neighbor-native-noninterference.result.json",
+      "size": 259,
+      "sha256": "571775b1dbfc3736ff8a51e843f6b8e7c6bd2c77e88a11b5757c570163aa8d53"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/revit-wall-serial-noninterference.stderr",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/revit-wall-serial-noninterference.policy.json",
+      "size": 3804,
+      "sha256": "fda5b59b7d87dca6aa373807036fcbf7673841e0d8ad4476d7e2dcb5c546e872"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/multicolor-serial-noninterference.result.json",
+      "size": 414,
+      "sha256": "f3d5202a3753e4b94d63240da02917a93ac96f4b0a8fae38eda7dbdb16211279"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/haus-serial-noninterference.policy.json",
+      "size": 6909,
+      "sha256": "9e74d6c64b04f300e6b3e28e47f779389cf78dfc523fae2843d8dcb574081844"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/mapped-instances-once-noninterference.stderr",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/revit-wall-columns-noninterference.policy.json",
+      "size": 3808,
+      "sha256": "f62a3ab0dca50a8a93b281638081e7908b653ee652ae5fa6de36bc1fc1a80483"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/voided-wall-native-noninterference.result.json",
+      "size": 251,
+      "sha256": "967c043f00d458a99a136f6d6c7a77e95c618401004a1ca5582e868961264efd"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/bare-type-map-once-noninterference.policy.json",
+      "size": 3804,
+      "sha256": "12b9cd47c8e3fc282cf8109dbd8885467b3b466f6b36825dadcad352a0737f27"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/multicolor-serial-noninterference.stderr",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/haus-columns-noninterference.result.json",
+      "size": 717,
+      "sha256": "2e98b45df39e62bd17f5087a407dd0c10c8b5629b7389d5f5499308841056e9e"
+    },
+    {
+      "path": "rust-review/handoff/successor-reconciliation/c4-current-matrix-2026-10-18T202020Z/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/bare-type-map-once-noninterference.stderr",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ]
+}

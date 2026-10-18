@@ -1,0 +1,37 @@
+{
+  "schema": "c4-0-expected-diff-v1",
+  "state": "INDEPENDENTLY_REVIEWED_EXACT_SAVED_PAIR_ONLY",
+  "entries": [
+    {
+      "id": "orphan-type-columns-noninterference-elapsed-0",
+      "state": "BOUND_EXACT_VALUES",
+      "fixtureSha256": "b0de96d6d113d8eed0745b439aec3c1f544a44429f60b592545f2f90774bd4ee",
+      "source": "fc3635ae78665e95ea72328b88fc7b28ead148d2",
+      "arm": "observation-noninterference-wasm",
+      "path": "/diagnostics/0/phaseMs/geometryMs",
+      "leftSha256": "4e07408562bedb8b60ce05c1decfe3ad16b72230967de01f640b7e4729b49fce",
+      "rightSha256": "4b227777d4dd1fc61c6f884f48641d02b4d121d3fd328cb08b5531fcacdabf8a",
+      "authority": "WASM Date::now wallclock batch boundary api/gpu_meshes/batch.rs:118/642, api/pipeline_diagnostics.rs forwards geometry_ms; processing PipelineDiagnostics::record_batch adds elapsed to both phase_ms.geometry_ms/total_ms; diagnostics row0 or row1 is actual batch snapshot, not a counter. Existing EXACT_TIMING_LEAF_NONDETERMINISM template only. Sources bound in BINDINGS.json.",
+      "condition": "Only this exact saved left/right capture pair 1f0dd3112fc3e3483a2a0e86ccd38422e321eb51000db21c0a2a4ac33591d54f -> 1793e4c876cecefd76409251be30cf2f643091b1de776b1448cd7a35e6859361 and scalar 3 -> 4. Recognizes named elapsed timing nondeterminism only; no causal instrumentation-overhead, speed, noise, regression or performance acceptance. All non-timing raw fields stay strict; zero-time values never imply noise.",
+      "removeWhen": "Retire on any capture/source/fixture/runtime/instrumentation/settings/binding change or witness retirement. No future-run reuse, wildcard or automatic live exception generation."
+    },
+    {
+      "id": "orphan-type-columns-noninterference-elapsed-1",
+      "state": "BOUND_EXACT_VALUES",
+      "fixtureSha256": "b0de96d6d113d8eed0745b439aec3c1f544a44429f60b592545f2f90774bd4ee",
+      "source": "fc3635ae78665e95ea72328b88fc7b28ead148d2",
+      "arm": "observation-noninterference-wasm",
+      "path": "/diagnostics/0/phaseMs/totalMs",
+      "leftSha256": "4e07408562bedb8b60ce05c1decfe3ad16b72230967de01f640b7e4729b49fce",
+      "rightSha256": "4b227777d4dd1fc61c6f884f48641d02b4d121d3fd328cb08b5531fcacdabf8a",
+      "authority": "WASM Date::now wallclock batch boundary api/gpu_meshes/batch.rs:118/642, api/pipeline_diagnostics.rs forwards geometry_ms; processing PipelineDiagnostics::record_batch adds elapsed to both phase_ms.geometry_ms/total_ms; diagnostics row0 or row1 is actual batch snapshot, not a counter. Existing EXACT_TIMING_LEAF_NONDETERMINISM template only. Sources bound in BINDINGS.json.",
+      "condition": "Only this exact saved left/right capture pair 1f0dd3112fc3e3483a2a0e86ccd38422e321eb51000db21c0a2a4ac33591d54f -> 1793e4c876cecefd76409251be30cf2f643091b1de776b1448cd7a35e6859361 and scalar 3 -> 4. Recognizes named elapsed timing nondeterminism only; no causal instrumentation-overhead, speed, noise, regression or performance acceptance. All non-timing raw fields stay strict; zero-time values never imply noise.",
+      "removeWhen": "Retire on any capture/source/fixture/runtime/instrumentation/settings/binding change or witness retirement. No future-run reuse, wildcard or automatic live exception generation."
+    }
+  ],
+  "independentReviewSha256": "09bc931e6e1e5cbf9bb2e4bbb650d55abc4e12be143fef8d85ee144f084841c9",
+  "captureFilePins": {
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/orphan-type--columns--plain.json": "1f0dd3112fc3e3483a2a0e86ccd38422e321eb51000db21c0a2a4ac33591d54f",
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/orphan-type--columns--observed.json": "1793e4c876cecefd76409251be30cf2f643091b1de776b1448cd7a35e6859361"
+  }
+}

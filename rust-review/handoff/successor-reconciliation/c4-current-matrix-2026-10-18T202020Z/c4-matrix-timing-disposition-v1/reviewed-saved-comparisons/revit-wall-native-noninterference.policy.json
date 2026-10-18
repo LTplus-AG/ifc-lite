@@ -1,0 +1,37 @@
+{
+  "schema": "c4-0-expected-diff-v1",
+  "state": "INDEPENDENTLY_REVIEWED_EXACT_SAVED_PAIR_ONLY",
+  "entries": [
+    {
+      "id": "revit-wall-native-noninterference-elapsed-0",
+      "state": "BOUND_EXACT_VALUES",
+      "fixtureSha256": "65b04e28e8f2d06ac8bcf3bf0d57264f168456d09865c3353fb802a5e66ee0c0",
+      "source": "fc3635ae78665e95ea72328b88fc7b28ead148d2",
+      "arm": "observation-noninterference-native",
+      "path": "/stats/geometry_time_ms",
+      "leftSha256": "0f8ef3377b30fc47f96b48247f463a726a802f62f3faa03d56403751d2f66c67",
+      "rightSha256": "d6a4031733610bb080d0bfa794fcc9dbdcff74834aeaab7c6b927e21e9754037",
+      "authority": "Native ProcessingStats elapsed Duration fields: processor/finalize.rs:139-144, facts.times and totals geometry/total Instant boundaries in resolve.rs, mod.rs, jobs.rs and finalize.rs. Existing EXACT_TIMING_LEAF_NONDETERMINISM template only. Sources bound in BINDINGS.json.",
+      "condition": "Only this exact saved left/right capture pair 9205bc3613b3cb28617512c337aa441057f2b752749728a0754c38ff5e460605 -> 5dc69512f411fffc0efe0704e8b7a11f3e16474d62e600842c0686ca2bced499 and scalar 125 -> 138. Recognizes named elapsed timing nondeterminism only; no causal instrumentation-overhead, speed, noise, regression or performance acceptance. All non-timing raw fields stay strict; zero-time values never imply noise.",
+      "removeWhen": "Retire on any capture/source/fixture/runtime/instrumentation/settings/binding change or witness retirement. No future-run reuse, wildcard or automatic live exception generation."
+    },
+    {
+      "id": "revit-wall-native-noninterference-elapsed-1",
+      "state": "BOUND_EXACT_VALUES",
+      "fixtureSha256": "65b04e28e8f2d06ac8bcf3bf0d57264f168456d09865c3353fb802a5e66ee0c0",
+      "source": "fc3635ae78665e95ea72328b88fc7b28ead148d2",
+      "arm": "observation-noninterference-native",
+      "path": "/stats/total_time_ms",
+      "leftSha256": "65a699905c02619370bcf9207f5a477c3d67130ca71ec6f750e07fe8d510b084",
+      "rightSha256": "8d27ba37c5d810106b55f3fd6cdb35842007e88754184bfc0e6035f9bcede633",
+      "authority": "Native ProcessingStats elapsed Duration fields: processor/finalize.rs:139-144, facts.times and totals geometry/total Instant boundaries in resolve.rs, mod.rs, jobs.rs and finalize.rs. Existing EXACT_TIMING_LEAF_NONDETERMINISM template only. Sources bound in BINDINGS.json.",
+      "condition": "Only this exact saved left/right capture pair 9205bc3613b3cb28617512c337aa441057f2b752749728a0754c38ff5e460605 -> 5dc69512f411fffc0efe0704e8b7a11f3e16474d62e600842c0686ca2bced499 and scalar 126 -> 139. Recognizes named elapsed timing nondeterminism only; no causal instrumentation-overhead, speed, noise, regression or performance acceptance. All non-timing raw fields stay strict; zero-time values never imply noise.",
+      "removeWhen": "Retire on any capture/source/fixture/runtime/instrumentation/settings/binding change or witness retirement. No future-run reuse, wildcard or automatic live exception generation."
+    }
+  ],
+  "independentReviewSha256": "09bc931e6e1e5cbf9bb2e4bbb650d55abc4e12be143fef8d85ee144f084841c9",
+  "captureFilePins": {
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/revit-wall--native--plain.json": "9205bc3613b3cb28617512c337aa441057f2b752749728a0754c38ff5e460605",
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/revit-wall--native--observed.json": "5dc69512f411fffc0efe0704e8b7a11f3e16474d62e600842c0686ca2bced499"
+  }
+}

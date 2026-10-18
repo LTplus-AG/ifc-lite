@@ -1,0 +1,63 @@
+{
+  "schema": "c4-0-expected-diff-v1",
+  "state": "INDEPENDENTLY_REVIEWED_EXACT_SAVED_PAIR_ONLY",
+  "entries": [
+    {
+      "id": "haus-native-noninterference-elapsed-0",
+      "state": "BOUND_EXACT_VALUES",
+      "fixtureSha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+      "source": "fc3635ae78665e95ea72328b88fc7b28ead148d2",
+      "arm": "observation-noninterference-native",
+      "path": "/stats/geometry_time_ms",
+      "leftSha256": "e629fa6598d732768f7c726b4b621285f9c3b85303900aa912017db7617d8bdb",
+      "rightSha256": "b17ef6d19c7a5b1ee83b907c595526dcb1eb06db8227d650d5dda0a9f4ce8cd9",
+      "authority": "Native ProcessingStats elapsed Duration fields: processor/finalize.rs:139-144, facts.times and totals geometry/total Instant boundaries in resolve.rs, mod.rs, jobs.rs and finalize.rs. Existing EXACT_TIMING_LEAF_NONDETERMINISM template only. Sources bound in BINDINGS.json.",
+      "condition": "Only this exact saved left/right capture pair 3f68cca69089bf9ad85947b9af6e338821079481f508743f46d32379a2670c0c -> a26cc5a5e093651c1bcee0f2086f43c520a6bb3a7802bc72aedd00cded24dab1 and scalar 15 -> 16. Recognizes named elapsed timing nondeterminism only; no causal instrumentation-overhead, speed, noise, regression or performance acceptance. All non-timing raw fields stay strict; zero-time values never imply noise.",
+      "removeWhen": "Retire on any capture/source/fixture/runtime/instrumentation/settings/binding change or witness retirement. No future-run reuse, wildcard or automatic live exception generation."
+    },
+    {
+      "id": "haus-native-noninterference-elapsed-1",
+      "state": "BOUND_EXACT_VALUES",
+      "fixtureSha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+      "source": "fc3635ae78665e95ea72328b88fc7b28ead148d2",
+      "arm": "observation-noninterference-native",
+      "path": "/stats/parse_time_ms",
+      "leftSha256": "e7f6c011776e8db7cd330b54174fd76f7d0216b612387a5ffcfb81e6f0919683",
+      "rightSha256": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+      "authority": "Native ProcessingStats elapsed Duration fields: processor/finalize.rs:139-144, facts.times and totals geometry/total Instant boundaries in resolve.rs, mod.rs, jobs.rs and finalize.rs. Existing EXACT_TIMING_LEAF_NONDETERMINISM template only. Sources bound in BINDINGS.json.",
+      "condition": "Only this exact saved left/right capture pair 3f68cca69089bf9ad85947b9af6e338821079481f508743f46d32379a2670c0c -> a26cc5a5e093651c1bcee0f2086f43c520a6bb3a7802bc72aedd00cded24dab1 and scalar 6 -> 7. Recognizes named elapsed timing nondeterminism only; no causal instrumentation-overhead, speed, noise, regression or performance acceptance. All non-timing raw fields stay strict; zero-time values never imply noise.",
+      "removeWhen": "Retire on any capture/source/fixture/runtime/instrumentation/settings/binding change or witness retirement. No future-run reuse, wildcard or automatic live exception generation."
+    },
+    {
+      "id": "haus-native-noninterference-elapsed-2",
+      "state": "BOUND_EXACT_VALUES",
+      "fixtureSha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+      "source": "fc3635ae78665e95ea72328b88fc7b28ead148d2",
+      "arm": "observation-noninterference-native",
+      "path": "/stats/preprocess_time_ms",
+      "leftSha256": "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b",
+      "rightSha256": "d4735e3a265e16eee03f59718b9b5d03019c07d8b6c51f90da3a666eec13ab35",
+      "authority": "Native ProcessingStats elapsed Duration fields: processor/finalize.rs:139-144, facts.times and totals geometry/total Instant boundaries in resolve.rs, mod.rs, jobs.rs and finalize.rs. Existing EXACT_TIMING_LEAF_NONDETERMINISM template only. Sources bound in BINDINGS.json.",
+      "condition": "Only this exact saved left/right capture pair 3f68cca69089bf9ad85947b9af6e338821079481f508743f46d32379a2670c0c -> a26cc5a5e093651c1bcee0f2086f43c520a6bb3a7802bc72aedd00cded24dab1 and scalar 1 -> 2. Recognizes named elapsed timing nondeterminism only; no causal instrumentation-overhead, speed, noise, regression or performance acceptance. All non-timing raw fields stay strict; zero-time values never imply noise.",
+      "removeWhen": "Retire on any capture/source/fixture/runtime/instrumentation/settings/binding change or witness retirement. No future-run reuse, wildcard or automatic live exception generation."
+    },
+    {
+      "id": "haus-native-noninterference-elapsed-3",
+      "state": "BOUND_EXACT_VALUES",
+      "fixtureSha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+      "source": "fc3635ae78665e95ea72328b88fc7b28ead148d2",
+      "arm": "observation-noninterference-native",
+      "path": "/stats/total_time_ms",
+      "leftSha256": "785f3ec7eb32f30b90cd0fcf3657d388b5ff4297f2f9716ff66e9b69c05ddd09",
+      "rightSha256": "c2356069e9d1e79ca924378153cfbbfb4d4416b1f99d41a2940bfdb66c5319db",
+      "authority": "Native ProcessingStats elapsed Duration fields: processor/finalize.rs:139-144, facts.times and totals geometry/total Instant boundaries in resolve.rs, mod.rs, jobs.rs and finalize.rs. Existing EXACT_TIMING_LEAF_NONDETERMINISM template only. Sources bound in BINDINGS.json.",
+      "condition": "Only this exact saved left/right capture pair 3f68cca69089bf9ad85947b9af6e338821079481f508743f46d32379a2670c0c -> a26cc5a5e093651c1bcee0f2086f43c520a6bb3a7802bc72aedd00cded24dab1 and scalar 22 -> 24. Recognizes named elapsed timing nondeterminism only; no causal instrumentation-overhead, speed, noise, regression or performance acceptance. All non-timing raw fields stay strict; zero-time values never imply noise.",
+      "removeWhen": "Retire on any capture/source/fixture/runtime/instrumentation/settings/binding change or witness retirement. No future-run reuse, wildcard or automatic live exception generation."
+    }
+  ],
+  "independentReviewSha256": "09bc931e6e1e5cbf9bb2e4bbb650d55abc4e12be143fef8d85ee144f084841c9",
+  "captureFilePins": {
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/haus--native--plain.json": "3f68cca69089bf9ad85947b9af6e338821079481f508743f46d32379a2670c0c",
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/haus--native--observed.json": "a26cc5a5e093651c1bcee0f2086f43c520a6bb3a7802bc72aedd00cded24dab1"
+  }
+}

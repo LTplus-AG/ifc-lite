@@ -1,0 +1,102 @@
+{
+  "scope": "CURRENT fc only:8fixtures x native/serial/columns/once x plain/observed; reuse original2 Revitonce cells; no baseline or performance acceptance",
+  "source": {
+    "head": "fc3635ae78665e95ea72328b88fc7b28ead148d2",
+    "tree": "4b3c4fd5a98faec9f74c70a2b2d9e2f4d03f0fe5",
+    "status": ""
+  },
+  "worker": "a837e385-a04a-4ad7-8ffe-a440911ec5a0",
+  "originalSession": 50362,
+  "workerState": "failed",
+  "exitCode": 1,
+  "sourceUnchanged": true,
+  "collectionComplete": true,
+  "newCaptures": 62,
+  "reusedOriginalCaptures": 2,
+  "allCaptureCells": 64,
+  "captureOrContractFailures": 0,
+  "nativeSupportBuilds": 2,
+  "nativeNamedTest": "processor::c4_parity_native::capture_one",
+  "actualNativeTests": {
+    "passed": 16,
+    "failed": 0,
+    "ignored": 0,
+    "note": "one exact ignored-test entry deliberately executed in each dedicated native producer process; no full suite rerun"
+  },
+  "newComparisons": {
+    "total": 103,
+    "strictMatch": 10,
+    "incompleteUnknownDifference": 93,
+    "timingOnlyNoninterferenceWitnesses": 21,
+    "crossRouteOrNativePublicUnresolved": 72,
+    "unknownLeaves": 1207016
+  },
+  "reusedAcceptedRevitOnceComparison": "Original exact2file pair and approved2leaves only; not applied to any new comparison",
+  "guards": {
+    "perCommand": 187,
+    "all182ActualFixturesBeforeAfterMatch": true,
+    "recordedToolsBeforeAfterMatch": true,
+    "bothWasmRuntimesAndHelpersBeforeAfterMatch": true,
+    "inputsBeforeAfterMatch": true,
+    "ordinaryAndOldObservedSourceBeforeAfterMatch": true,
+    "minWritableFreeBytes": 126895038464,
+    "minWritableFreeInodes": 50523282,
+    "maxOutputBytesAtStageGuard": 570473077,
+    "finallyErrors": []
+  },
+  "ownedQuiescent": true,
+  "resourcesReleased": true,
+  "originalEvidenceCopy": {
+    "files": 392,
+    "bytes": 682312666,
+    "allSourceCopyHashesMatch": true
+  },
+  "nativeProducedBinariesFinalHashesMatch": true,
+  "contextLimits": "Current PC tool/executable identities pinned; original lower61/Pop compiler full-byte history UNKNOWN, no performance/same-host/ABI closure claim; current-only captures.",
+  "sourceAndArtifacts": {
+    "plainNative": {
+      "head": "fc3635ae78665e95ea72328b88fc7b28ead148d2",
+      "indexTree": "54b11e0816e18dedfe1c319a5890fccf1b4d7318",
+      "diffSha256": "5dae48822c41ed7aaff46e300b4ae46016d4f2f832912c154afe8642e1f3ad74",
+      "unstaged": "",
+      "untracked": ""
+    },
+    "observedNative": {
+      "head": "fc3635ae78665e95ea72328b88fc7b28ead148d2",
+      "indexTree": "5157e4080c774195bfc08d359ad49b8d32500721",
+      "diffSha256": "0d4b47ed71d19230bfa75921c41c5868de0f0a4b48e4e59ba5c9d8a2e3a0bae4",
+      "unstaged": "",
+      "untracked": ""
+    },
+    "binaries": {
+      "plain": {
+        "/home/louistrue/build-workers/worker-state/targets/c4-0-current-fc-matrix-v1/native-plain/server-release/deps/ifc_lite_processing-876b5f2bf098be18": {
+          "sha256": "0806e1d3517437be322da2b5e98619649827d989a5998d74b5fefca306e7ef90",
+          "bytes": 11426344,
+          "realpath": "/home/louistrue/build-workers/worker-state/targets/c4-0-current-fc-matrix-v1/native-plain/server-release/deps/ifc_lite_processing-876b5f2bf098be18"
+        }
+      },
+      "observed": {
+        "/home/louistrue/build-workers/worker-state/targets/c4-0-current-fc-matrix-v1/native-observed/server-release/deps/ifc_lite_processing-876b5f2bf098be18": {
+          "sha256": "346034d41c02fe810a130e4d9776794151677ca18bd4fe498656c579fffaa148",
+          "bytes": 11442896,
+          "realpath": "/home/louistrue/build-workers/worker-state/targets/c4-0-current-fc-matrix-v1/native-observed/server-release/deps/ifc_lite_processing-876b5f2bf098be18"
+        }
+      }
+    }
+  },
+  "proofs": {
+    "worker-terminal.json": "1ade71acf630d5806e60b6d183260aae982211e1e2dc99ffaefc4369eb5a6c86",
+    "terminal-quiescence.json": "e03ec4d786b0f823b5a33c95887130469b10b825dbaf8fb17e0bf8000bcdc6b1",
+    "original-exec-terminal.json": "ef181d2e17379fc0ba5fa531360b4886e6a186386dccb7cb578565f9d2213940",
+    "original-result-hashes.json": "7ac6e71ed20adb3bc617f86a2e516527cc2170e23d30cfb6688ef383449a7068",
+    "worker-output.log": "843cdad9b929afd0913935abf0a55a8a066904429d7d7debe98e7ff8aeedfd8d",
+    "matrix-index.json": "846bfdc17fa7f68217c009247240f98bd3f6927809eca58bea5e5956125c5f9e",
+    "unresolved-batch.json": "0fc733c55f652ddb3c74034a824b51605285e9cd32aae894c3cbd5eadedf8b30",
+    "pc-results/report.json": "5668ff64de8848c08134c3894a555ace0beb991fe1a16505d85856cac5909b1c"
+  },
+  "accepted": false,
+  "ready": false,
+  "performance": false,
+  "next": "ONE parent disposition of saved exact witnesses; no retry, new policy, source correction, capture, build or benchmark authorized by this result"
+}

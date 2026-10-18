@@ -1,0 +1,13 @@
+{
+  "result": "MATCH_OR_EXACT_EXPECTED_DIFF",
+  "expected": [
+    {
+      "path": "/stats/geometry_time_ms",
+      "left": 23,
+      "right": 22,
+      "rule": "voided-wall-native-noninterference-elapsed-0"
+    }
+  ],
+  "unknown": [],
+  "stale": []
+}

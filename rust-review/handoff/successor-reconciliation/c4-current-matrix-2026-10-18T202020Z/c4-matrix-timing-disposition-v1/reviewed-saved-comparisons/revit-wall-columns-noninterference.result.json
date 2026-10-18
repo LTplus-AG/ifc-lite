@@ -1,0 +1,19 @@
+{
+  "result": "MATCH_OR_EXACT_EXPECTED_DIFF",
+  "expected": [
+    {
+      "path": "/diagnostics/0/phaseMs/geometryMs",
+      "left": 41,
+      "right": 42,
+      "rule": "revit-wall-columns-noninterference-elapsed-0"
+    },
+    {
+      "path": "/diagnostics/0/phaseMs/totalMs",
+      "left": 41,
+      "right": 42,
+      "rule": "revit-wall-columns-noninterference-elapsed-1"
+    }
+  ],
+  "unknown": [],
+  "stale": []
+}

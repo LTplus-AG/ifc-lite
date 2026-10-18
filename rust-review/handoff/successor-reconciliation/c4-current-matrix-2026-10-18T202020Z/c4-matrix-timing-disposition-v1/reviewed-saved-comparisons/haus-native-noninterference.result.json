@@ -1,0 +1,31 @@
+{
+  "result": "MATCH_OR_EXACT_EXPECTED_DIFF",
+  "expected": [
+    {
+      "path": "/stats/geometry_time_ms",
+      "left": 15,
+      "right": 16,
+      "rule": "haus-native-noninterference-elapsed-0"
+    },
+    {
+      "path": "/stats/parse_time_ms",
+      "left": 6,
+      "right": 7,
+      "rule": "haus-native-noninterference-elapsed-1"
+    },
+    {
+      "path": "/stats/preprocess_time_ms",
+      "left": 1,
+      "right": 2,
+      "rule": "haus-native-noninterference-elapsed-2"
+    },
+    {
+      "path": "/stats/total_time_ms",
+      "left": 22,
+      "right": 24,
+      "rule": "haus-native-noninterference-elapsed-3"
+    }
+  ],
+  "unknown": [],
+  "stale": []
+}

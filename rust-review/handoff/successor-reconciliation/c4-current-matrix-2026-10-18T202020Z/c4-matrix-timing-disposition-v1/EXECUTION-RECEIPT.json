@@ -1,0 +1,825 @@
+{
+  "startedAt": "2026-10-18T20:19:40.267666+00:00",
+  "before": {
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-matrix-timing-disposition-v1/PROPOSED-TIMING-WITNESSES.json": {
+      "size": 104064,
+      "sha256": "b4e643e486036a82f4bb2b0362612f0f74bfe261a692990e393ca1bd7513ba84"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-matrix-timing-disposition-v1/BINDINGS.json": {
+      "size": 21631,
+      "sha256": "5480e8b806b87b3e12dd513d9c9b40fab2e605b58413e96c20dc557dacd6600e"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-matrix-timing-disposition-v1/independent-review/REVIEW.md": {
+      "size": 7072,
+      "sha256": "09bc931e6e1e5cbf9bb2e4bbb650d55abc4e12be143fef8d85ee144f084841c9"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-matrix-timing-disposition-v1/run-reviewed-comparisons.py": {
+      "size": 4495,
+      "sha256": "ea7fb56b24b60a316e1dadb47ad443e3ad2e18f782a39231b56bc9c2948abba1"
+    },
+    "/home/louistrue/build-workers/toolchains/node-v24.22.0-linux-x64/bin/node": {
+      "size": 126816376,
+      "sha256": "67ca5783febb8bf85736c79fcdd92c8d6d465a0eb2a082672bcdfa76a506751c"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-combined-observed-runtime-v1/inputs/adapter/capture-wasm.mjs": {
+      "size": 19825,
+      "sha256": "2223eb6fc6f1b0ed627fa8b6f2c524a8e5a78004f5aa721e4dbb03bc7dffe219"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-combined-observed-runtime-v1/inputs/adapter/compare.mjs": {
+      "size": 11670,
+      "sha256": "5e660df5173fc211ee3b9ed677a29299f9902fbacdd49e3562ebb3164ab81f65"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-combined-observed-runtime-v1/inputs/adapter/exact-wire.mjs": {
+      "size": 3804,
+      "sha256": "b96c196a81f7b7ec3506edae7a4cbb4c8e058f3a3fbe2eccf3fc2d6cd5c7ad11"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-combined-observed-runtime-v1/inputs/adapter/output-reservation.mjs": {
+      "size": 423,
+      "sha256": "5f4fddfe16ce22cae5288161da5397162bc2bcd36211007fb756b8c402d23ad7"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-combined-observed-runtime-v1/inputs/adapter/public-contract.mjs": {
+      "size": 3663,
+      "sha256": "75836e62b87a3b5025cef82c9bed6e647335d72bdbef27ed640ac4831b9871a8"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-combined-observed-runtime-v1/inputs/adapter/schema.mjs": {
+      "size": 16084,
+      "sha256": "090d5429704d98605aa5db5d990d3d3adaf40caeb8af08c94e9be7306c7a4b43"
+    }
+  },
+  "results": [
+    {
+      "name": "revit-wall-serial-noninterference",
+      "argv": [
+        "/home/louistrue/build-workers/toolchains/node-v24.22.0-linux-x64/bin/node",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-combined-observed-runtime-v1/inputs/adapter/compare.mjs",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/revit-wall--serial--plain.json",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/revit-wall--serial--observed.json",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/revit-wall-serial-noninterference.policy.json",
+        "pair:wasm"
+      ],
+      "exitCode": 0,
+      "policySha256": "fda5b59b7d87dca6aa373807036fcbf7673841e0d8ad4476d7e2dcb5c546e872",
+      "resultSha256": "77db5eddfced4e34689aca63c7c78888fe69869bb513951d328f1d695799bceb",
+      "result": {
+        "result": "MATCH_OR_EXACT_EXPECTED_DIFF",
+        "expected": [
+          {
+            "path": "/diagnostics/0/phaseMs/geometryMs",
+            "left": 42,
+            "right": 41,
+            "rule": "revit-wall-serial-noninterference-elapsed-0"
+          },
+          {
+            "path": "/diagnostics/0/phaseMs/totalMs",
+            "left": 42,
+            "right": 41,
+            "rule": "revit-wall-serial-noninterference-elapsed-1"
+          }
+        ],
+        "unknown": [],
+        "stale": []
+      }
+    },
+    {
+      "name": "revit-wall-columns-noninterference",
+      "argv": [
+        "/home/louistrue/build-workers/toolchains/node-v24.22.0-linux-x64/bin/node",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-combined-observed-runtime-v1/inputs/adapter/compare.mjs",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/revit-wall--columns--plain.json",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/revit-wall--columns--observed.json",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/revit-wall-columns-noninterference.policy.json",
+        "pair:wasm"
+      ],
+      "exitCode": 0,
+      "policySha256": "f62a3ab0dca50a8a93b281638081e7908b653ee652ae5fa6de36bc1fc1a80483",
+      "resultSha256": "f9eb31a3312818625fcebb9cfc4ec604a63681c2c7b63517797a3b8af93d7282",
+      "result": {
+        "result": "MATCH_OR_EXACT_EXPECTED_DIFF",
+        "expected": [
+          {
+            "path": "/diagnostics/0/phaseMs/geometryMs",
+            "left": 41,
+            "right": 42,
+            "rule": "revit-wall-columns-noninterference-elapsed-0"
+          },
+          {
+            "path": "/diagnostics/0/phaseMs/totalMs",
+            "left": 41,
+            "right": 42,
+            "rule": "revit-wall-columns-noninterference-elapsed-1"
+          }
+        ],
+        "unknown": [],
+        "stale": []
+      }
+    },
+    {
+      "name": "revit-wall-native-noninterference",
+      "argv": [
+        "/home/louistrue/build-workers/toolchains/node-v24.22.0-linux-x64/bin/node",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-combined-observed-runtime-v1/inputs/adapter/compare.mjs",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/revit-wall--native--plain.json",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/revit-wall--native--observed.json",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/revit-wall-native-noninterference.policy.json",
+        "pair:native"
+      ],
+      "exitCode": 0,
+      "policySha256": "fb60b17052924394cd959ceae6c3aab1db38d3d54f81e2d5c3b6cf6c6097295a",
+      "resultSha256": "a634d7ca8b87bc9a9b16560014307d7a7ef39b4b649cbeddbb83f4e7c34c05ce",
+      "result": {
+        "result": "MATCH_OR_EXACT_EXPECTED_DIFF",
+        "expected": [
+          {
+            "path": "/stats/geometry_time_ms",
+            "left": 125,
+            "right": 138,
+            "rule": "revit-wall-native-noninterference-elapsed-0"
+          },
+          {
+            "path": "/stats/total_time_ms",
+            "left": 126,
+            "right": 139,
+            "rule": "revit-wall-native-noninterference-elapsed-1"
+          }
+        ],
+        "unknown": [],
+        "stale": []
+      }
+    },
+    {
+      "name": "multicolor-serial-noninterference",
+      "argv": [
+        "/home/louistrue/build-workers/toolchains/node-v24.22.0-linux-x64/bin/node",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-combined-observed-runtime-v1/inputs/adapter/compare.mjs",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/multicolor--serial--plain.json",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/multicolor--serial--observed.json",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/multicolor-serial-noninterference.policy.json",
+        "pair:wasm"
+      ],
+      "exitCode": 0,
+      "policySha256": "b7e601cf2cf98739f43aef9dbeba86c08b017dc5950c0ad8cec8bbc0a7f368c5",
+      "resultSha256": "f3d5202a3753e4b94d63240da02917a93ac96f4b0a8fae38eda7dbdb16211279",
+      "result": {
+        "result": "MATCH_OR_EXACT_EXPECTED_DIFF",
+        "expected": [
+          {
+            "path": "/diagnostics/0/phaseMs/geometryMs",
+            "left": 4,
+            "right": 5,
+            "rule": "multicolor-serial-noninterference-elapsed-0"
+          },
+          {
+            "path": "/diagnostics/0/phaseMs/totalMs",
+            "left": 4,
+            "right": 5,
+            "rule": "multicolor-serial-noninterference-elapsed-1"
+          }
+        ],
+        "unknown": [],
+        "stale": []
+      }
+    },
+    {
+      "name": "multicolor-columns-noninterference",
+      "argv": [
+        "/home/louistrue/build-workers/toolchains/node-v24.22.0-linux-x64/bin/node",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-combined-observed-runtime-v1/inputs/adapter/compare.mjs",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/multicolor--columns--plain.json",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/multicolor--columns--observed.json",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/multicolor-columns-noninterference.policy.json",
+        "pair:wasm"
+      ],
+      "exitCode": 0,
+      "policySha256": "99a0f5ab75f063b7ee82a9d010b97b183a3596bb46eb35f48a9342882f2ad7fb",
+      "resultSha256": "d5a675a38f1c737d74749194e4feef1ce8cdc784eb0300e67a393356b66a4bc4",
+      "result": {
+        "result": "MATCH_OR_EXACT_EXPECTED_DIFF",
+        "expected": [
+          {
+            "path": "/diagnostics/0/phaseMs/geometryMs",
+            "left": 5,
+            "right": 6,
+            "rule": "multicolor-columns-noninterference-elapsed-0"
+          },
+          {
+            "path": "/diagnostics/0/phaseMs/totalMs",
+            "left": 5,
+            "right": 6,
+            "rule": "multicolor-columns-noninterference-elapsed-1"
+          }
+        ],
+        "unknown": [],
+        "stale": []
+      }
+    },
+    {
+      "name": "multicolor-once-noninterference",
+      "argv": [
+        "/home/louistrue/build-workers/toolchains/node-v24.22.0-linux-x64/bin/node",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-combined-observed-runtime-v1/inputs/adapter/compare.mjs",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/multicolor--once--plain.json",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/multicolor--once--observed.json",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/multicolor-once-noninterference.policy.json",
+        "pair:wasm"
+      ],
+      "exitCode": 0,
+      "policySha256": "25abc0ff821e37d48db4e2d0c08e3d10c50b39137c0be83101d8388279853a0c",
+      "resultSha256": "8013564678d1114fc6dd22d542bb2216d467e629e142221c2a0bb26b42994577",
+      "result": {
+        "result": "MATCH_OR_EXACT_EXPECTED_DIFF",
+        "expected": [
+          {
+            "path": "/diagnostics/0/phaseMs/geometryMs",
+            "left": 4,
+            "right": 6,
+            "rule": "multicolor-once-noninterference-elapsed-0"
+          },
+          {
+            "path": "/diagnostics/0/phaseMs/totalMs",
+            "left": 4,
+            "right": 6,
+            "rule": "multicolor-once-noninterference-elapsed-1"
+          }
+        ],
+        "unknown": [],
+        "stale": []
+      }
+    },
+    {
+      "name": "voided-wall-columns-noninterference",
+      "argv": [
+        "/home/louistrue/build-workers/toolchains/node-v24.22.0-linux-x64/bin/node",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-combined-observed-runtime-v1/inputs/adapter/compare.mjs",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/voided-wall--columns--plain.json",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/voided-wall--columns--observed.json",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/voided-wall-columns-noninterference.policy.json",
+        "pair:wasm"
+      ],
+      "exitCode": 0,
+      "policySha256": "8d9880d02dd086a8057286499bb0a8da3192edbaeb07f49850a28fd923468df4",
+      "resultSha256": "d21596c630b00ca4b03a997ba484ec59a74f025e75ec0db5add2d314fd437d16",
+      "result": {
+        "result": "MATCH_OR_EXACT_EXPECTED_DIFF",
+        "expected": [
+          {
+            "path": "/diagnostics/0/phaseMs/geometryMs",
+            "left": 73,
+            "right": 77,
+            "rule": "voided-wall-columns-noninterference-elapsed-0"
+          },
+          {
+            "path": "/diagnostics/0/phaseMs/totalMs",
+            "left": 73,
+            "right": 77,
+            "rule": "voided-wall-columns-noninterference-elapsed-1"
+          }
+        ],
+        "unknown": [],
+        "stale": []
+      }
+    },
+    {
+      "name": "voided-wall-native-noninterference",
+      "argv": [
+        "/home/louistrue/build-workers/toolchains/node-v24.22.0-linux-x64/bin/node",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-combined-observed-runtime-v1/inputs/adapter/compare.mjs",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/voided-wall--native--plain.json",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/voided-wall--native--observed.json",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/voided-wall-native-noninterference.policy.json",
+        "pair:native"
+      ],
+      "exitCode": 0,
+      "policySha256": "71f077edb5fe661621e04ea3d38c4c6c69e2d6ad6bd1b385000a77523c9e81e8",
+      "resultSha256": "967c043f00d458a99a136f6d6c7a77e95c618401004a1ca5582e868961264efd",
+      "result": {
+        "result": "MATCH_OR_EXACT_EXPECTED_DIFF",
+        "expected": [
+          {
+            "path": "/stats/geometry_time_ms",
+            "left": 23,
+            "right": 22,
+            "rule": "voided-wall-native-noninterference-elapsed-0"
+          }
+        ],
+        "unknown": [],
+        "stale": []
+      }
+    },
+    {
+      "name": "mapped-instances-serial-noninterference",
+      "argv": [
+        "/home/louistrue/build-workers/toolchains/node-v24.22.0-linux-x64/bin/node",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-combined-observed-runtime-v1/inputs/adapter/compare.mjs",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/mapped-instances--serial--plain.json",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/mapped-instances--serial--observed.json",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/mapped-instances-serial-noninterference.policy.json",
+        "pair:wasm"
+      ],
+      "exitCode": 0,
+      "policySha256": "97c77d2eca85ef42129ade8716cb76f4352805ac71cbb2785c27ce0b68e6f7d7",
+      "resultSha256": "de75e33dc935752c6eaba839d9e31924595483ca9c93d76f0e38a788541e57e8",
+      "result": {
+        "result": "MATCH_OR_EXACT_EXPECTED_DIFF",
+        "expected": [
+          {
+            "path": "/diagnostics/0/phaseMs/geometryMs",
+            "left": 6,
+            "right": 7,
+            "rule": "mapped-instances-serial-noninterference-elapsed-0"
+          },
+          {
+            "path": "/diagnostics/0/phaseMs/totalMs",
+            "left": 6,
+            "right": 7,
+            "rule": "mapped-instances-serial-noninterference-elapsed-1"
+          }
+        ],
+        "unknown": [],
+        "stale": []
+      }
+    },
+    {
+      "name": "mapped-instances-columns-noninterference",
+      "argv": [
+        "/home/louistrue/build-workers/toolchains/node-v24.22.0-linux-x64/bin/node",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-combined-observed-runtime-v1/inputs/adapter/compare.mjs",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/mapped-instances--columns--plain.json",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/mapped-instances--columns--observed.json",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/mapped-instances-columns-noninterference.policy.json",
+        "pair:wasm"
+      ],
+      "exitCode": 0,
+      "policySha256": "f6cd7b437e5f51f2964643421d9599975317b32b4c7369fbc2b97990cc955909",
+      "resultSha256": "6fe0d6fae8c63f32bd52d36ddfa89ae580a9de340feb741f3b96fcaa63ea8ed8",
+      "result": {
+        "result": "MATCH_OR_EXACT_EXPECTED_DIFF",
+        "expected": [
+          {
+            "path": "/diagnostics/0/phaseMs/geometryMs",
+            "left": 6,
+            "right": 7,
+            "rule": "mapped-instances-columns-noninterference-elapsed-0"
+          },
+          {
+            "path": "/diagnostics/0/phaseMs/totalMs",
+            "left": 6,
+            "right": 7,
+            "rule": "mapped-instances-columns-noninterference-elapsed-1"
+          }
+        ],
+        "unknown": [],
+        "stale": []
+      }
+    },
+    {
+      "name": "mapped-instances-once-noninterference",
+      "argv": [
+        "/home/louistrue/build-workers/toolchains/node-v24.22.0-linux-x64/bin/node",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-combined-observed-runtime-v1/inputs/adapter/compare.mjs",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/mapped-instances--once--plain.json",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/mapped-instances--once--observed.json",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/mapped-instances-once-noninterference.policy.json",
+        "pair:wasm"
+      ],
+      "exitCode": 0,
+      "policySha256": "3c622905f78b8098c3f89c5532f69ae389a55534e3bb71020211b09a7b627ffc",
+      "resultSha256": "6194b7dfd64c539555566b05e5c17be24db47d2b0db2ca8625cf9a2e940809ce",
+      "result": {
+        "result": "MATCH_OR_EXACT_EXPECTED_DIFF",
+        "expected": [
+          {
+            "path": "/diagnostics/0/phaseMs/geometryMs",
+            "left": 6,
+            "right": 7,
+            "rule": "mapped-instances-once-noninterference-elapsed-0"
+          },
+          {
+            "path": "/diagnostics/0/phaseMs/totalMs",
+            "left": 6,
+            "right": 7,
+            "rule": "mapped-instances-once-noninterference-elapsed-1"
+          }
+        ],
+        "unknown": [],
+        "stale": []
+      }
+    },
+    {
+      "name": "mapped-instances-native-noninterference",
+      "argv": [
+        "/home/louistrue/build-workers/toolchains/node-v24.22.0-linux-x64/bin/node",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-combined-observed-runtime-v1/inputs/adapter/compare.mjs",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/mapped-instances--native--plain.json",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/mapped-instances--native--observed.json",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/mapped-instances-native-noninterference.policy.json",
+        "pair:native"
+      ],
+      "exitCode": 0,
+      "policySha256": "41868ceeb242fa74b28e8bd2621f49af736d5a6f21d7322dda631ed6b129a8f1",
+      "resultSha256": "2ec0c7048c5e14284ffab529585c7c36984055b1d002c094ef3f71dbb95380e7",
+      "result": {
+        "result": "MATCH_OR_EXACT_EXPECTED_DIFF",
+        "expected": [
+          {
+            "path": "/stats/geometry_time_ms",
+            "left": 0,
+            "right": 1,
+            "rule": "mapped-instances-native-noninterference-elapsed-0"
+          },
+          {
+            "path": "/stats/parse_time_ms",
+            "left": 0,
+            "right": 1,
+            "rule": "mapped-instances-native-noninterference-elapsed-1"
+          },
+          {
+            "path": "/stats/total_time_ms",
+            "left": 1,
+            "right": 2,
+            "rule": "mapped-instances-native-noninterference-elapsed-2"
+          }
+        ],
+        "unknown": [],
+        "stale": []
+      }
+    },
+    {
+      "name": "orphan-type-serial-noninterference",
+      "argv": [
+        "/home/louistrue/build-workers/toolchains/node-v24.22.0-linux-x64/bin/node",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-combined-observed-runtime-v1/inputs/adapter/compare.mjs",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/orphan-type--serial--plain.json",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/orphan-type--serial--observed.json",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/orphan-type-serial-noninterference.policy.json",
+        "pair:wasm"
+      ],
+      "exitCode": 0,
+      "policySha256": "90a9ab0bc7f1f3382303195130f5f3fe6cf8e0006c55326bdeaa1e6bf1b58ddb",
+      "resultSha256": "e4a3ba70fb6ed3ce1aaf3f2dca4ae1e944ed60ed5698612debb1a1c216f90ba7",
+      "result": {
+        "result": "MATCH_OR_EXACT_EXPECTED_DIFF",
+        "expected": [
+          {
+            "path": "/diagnostics/0/phaseMs/geometryMs",
+            "left": 3,
+            "right": 4,
+            "rule": "orphan-type-serial-noninterference-elapsed-0"
+          },
+          {
+            "path": "/diagnostics/0/phaseMs/totalMs",
+            "left": 3,
+            "right": 4,
+            "rule": "orphan-type-serial-noninterference-elapsed-1"
+          }
+        ],
+        "unknown": [],
+        "stale": []
+      }
+    },
+    {
+      "name": "orphan-type-columns-noninterference",
+      "argv": [
+        "/home/louistrue/build-workers/toolchains/node-v24.22.0-linux-x64/bin/node",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-combined-observed-runtime-v1/inputs/adapter/compare.mjs",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/orphan-type--columns--plain.json",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/orphan-type--columns--observed.json",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/orphan-type-columns-noninterference.policy.json",
+        "pair:wasm"
+      ],
+      "exitCode": 0,
+      "policySha256": "bee4799cc28ff6d62346f5386d875cdaebe9933183220b2f9d60b447a8a43c34",
+      "resultSha256": "2a7395a24531f50eea02bf88ad0ce330213111cb04ef8618b1aa9acbeac92a64",
+      "result": {
+        "result": "MATCH_OR_EXACT_EXPECTED_DIFF",
+        "expected": [
+          {
+            "path": "/diagnostics/0/phaseMs/geometryMs",
+            "left": 3,
+            "right": 4,
+            "rule": "orphan-type-columns-noninterference-elapsed-0"
+          },
+          {
+            "path": "/diagnostics/0/phaseMs/totalMs",
+            "left": 3,
+            "right": 4,
+            "rule": "orphan-type-columns-noninterference-elapsed-1"
+          }
+        ],
+        "unknown": [],
+        "stale": []
+      }
+    },
+    {
+      "name": "bare-type-map-once-noninterference",
+      "argv": [
+        "/home/louistrue/build-workers/toolchains/node-v24.22.0-linux-x64/bin/node",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-combined-observed-runtime-v1/inputs/adapter/compare.mjs",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/bare-type-map--once--plain.json",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/bare-type-map--once--observed.json",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/bare-type-map-once-noninterference.policy.json",
+        "pair:wasm"
+      ],
+      "exitCode": 0,
+      "policySha256": "12b9cd47c8e3fc282cf8109dbd8885467b3b466f6b36825dadcad352a0737f27",
+      "resultSha256": "7433d1964a810712d448a23c5a484b586b71124b8239155fceff0e2491a2eb32",
+      "result": {
+        "result": "MATCH_OR_EXACT_EXPECTED_DIFF",
+        "expected": [
+          {
+            "path": "/diagnostics/0/phaseMs/geometryMs",
+            "left": 1,
+            "right": 2,
+            "rule": "bare-type-map-once-noninterference-elapsed-0"
+          },
+          {
+            "path": "/diagnostics/0/phaseMs/totalMs",
+            "left": 1,
+            "right": 2,
+            "rule": "bare-type-map-once-noninterference-elapsed-1"
+          }
+        ],
+        "unknown": [],
+        "stale": []
+      }
+    },
+    {
+      "name": "nonfinite-depth-neighbor-serial-noninterference",
+      "argv": [
+        "/home/louistrue/build-workers/toolchains/node-v24.22.0-linux-x64/bin/node",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-combined-observed-runtime-v1/inputs/adapter/compare.mjs",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/nonfinite-depth-neighbor--serial--plain.json",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/nonfinite-depth-neighbor--serial--observed.json",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/nonfinite-depth-neighbor-serial-noninterference.policy.json",
+        "pair:wasm"
+      ],
+      "exitCode": 0,
+      "policySha256": "676934dbf74ad4ae9d9a96845c379b393a6efc3fe13cfdd07ed389de08767b02",
+      "resultSha256": "dabb6eec4f20aac3d8ce053185c8fd1b491ee891ebd7789af499fa611f44cb26",
+      "result": {
+        "result": "MATCH_OR_EXACT_EXPECTED_DIFF",
+        "expected": [
+          {
+            "path": "/diagnostics/0/phaseMs/geometryMs",
+            "left": 5,
+            "right": 6,
+            "rule": "nonfinite-depth-neighbor-serial-noninterference-elapsed-0"
+          },
+          {
+            "path": "/diagnostics/0/phaseMs/totalMs",
+            "left": 5,
+            "right": 6,
+            "rule": "nonfinite-depth-neighbor-serial-noninterference-elapsed-1"
+          }
+        ],
+        "unknown": [],
+        "stale": []
+      }
+    },
+    {
+      "name": "nonfinite-depth-neighbor-native-noninterference",
+      "argv": [
+        "/home/louistrue/build-workers/toolchains/node-v24.22.0-linux-x64/bin/node",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-combined-observed-runtime-v1/inputs/adapter/compare.mjs",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/nonfinite-depth-neighbor--native--plain.json",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/nonfinite-depth-neighbor--native--observed.json",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/nonfinite-depth-neighbor-native-noninterference.policy.json",
+        "pair:native"
+      ],
+      "exitCode": 0,
+      "policySha256": "d995e9ed4f4df05789ae6b891da92fbcc3266c894df28a72ad2d3ee23983ebdc",
+      "resultSha256": "571775b1dbfc3736ff8a51e843f6b8e7c6bd2c77e88a11b5757c570163aa8d53",
+      "result": {
+        "result": "MATCH_OR_EXACT_EXPECTED_DIFF",
+        "expected": [
+          {
+            "path": "/stats/total_time_ms",
+            "left": 0,
+            "right": 1,
+            "rule": "nonfinite-depth-neighbor-native-noninterference-elapsed-0"
+          }
+        ],
+        "unknown": [],
+        "stale": []
+      }
+    },
+    {
+      "name": "haus-serial-noninterference",
+      "argv": [
+        "/home/louistrue/build-workers/toolchains/node-v24.22.0-linux-x64/bin/node",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-combined-observed-runtime-v1/inputs/adapter/compare.mjs",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/haus--serial--plain.json",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/haus--serial--observed.json",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/haus-serial-noninterference.policy.json",
+        "pair:wasm"
+      ],
+      "exitCode": 0,
+      "policySha256": "9e74d6c64b04f300e6b3e28e47f779389cf78dfc523fae2843d8dcb574081844",
+      "resultSha256": "d642ba94df73a0e086534cde430f3d93e1324f1f5b5a77b7943f29efbcac683e",
+      "result": {
+        "result": "MATCH_OR_EXACT_EXPECTED_DIFF",
+        "expected": [
+          {
+            "path": "/diagnostics/0/phaseMs/geometryMs",
+            "left": 79,
+            "right": 82,
+            "rule": "haus-serial-noninterference-elapsed-0"
+          },
+          {
+            "path": "/diagnostics/0/phaseMs/totalMs",
+            "left": 79,
+            "right": 82,
+            "rule": "haus-serial-noninterference-elapsed-1"
+          },
+          {
+            "path": "/diagnostics/1/phaseMs/geometryMs",
+            "left": 96,
+            "right": 98,
+            "rule": "haus-serial-noninterference-elapsed-2"
+          },
+          {
+            "path": "/diagnostics/1/phaseMs/totalMs",
+            "left": 96,
+            "right": 98,
+            "rule": "haus-serial-noninterference-elapsed-3"
+          }
+        ],
+        "unknown": [],
+        "stale": []
+      }
+    },
+    {
+      "name": "haus-columns-noninterference",
+      "argv": [
+        "/home/louistrue/build-workers/toolchains/node-v24.22.0-linux-x64/bin/node",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-combined-observed-runtime-v1/inputs/adapter/compare.mjs",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/haus--columns--plain.json",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/haus--columns--observed.json",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/haus-columns-noninterference.policy.json",
+        "pair:wasm"
+      ],
+      "exitCode": 0,
+      "policySha256": "176597fb15b8c81b0b87d51027dd7a765f2b24f71d315b9480a1884d4361a49e",
+      "resultSha256": "2e98b45df39e62bd17f5087a407dd0c10c8b5629b7389d5f5499308841056e9e",
+      "result": {
+        "result": "MATCH_OR_EXACT_EXPECTED_DIFF",
+        "expected": [
+          {
+            "path": "/diagnostics/0/phaseMs/geometryMs",
+            "left": 80,
+            "right": 81,
+            "rule": "haus-columns-noninterference-elapsed-0"
+          },
+          {
+            "path": "/diagnostics/0/phaseMs/totalMs",
+            "left": 80,
+            "right": 81,
+            "rule": "haus-columns-noninterference-elapsed-1"
+          },
+          {
+            "path": "/diagnostics/1/phaseMs/geometryMs",
+            "left": 96,
+            "right": 97,
+            "rule": "haus-columns-noninterference-elapsed-2"
+          },
+          {
+            "path": "/diagnostics/1/phaseMs/totalMs",
+            "left": 96,
+            "right": 97,
+            "rule": "haus-columns-noninterference-elapsed-3"
+          }
+        ],
+        "unknown": [],
+        "stale": []
+      }
+    },
+    {
+      "name": "haus-once-noninterference",
+      "argv": [
+        "/home/louistrue/build-workers/toolchains/node-v24.22.0-linux-x64/bin/node",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-combined-observed-runtime-v1/inputs/adapter/compare.mjs",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/haus--once--plain.json",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/haus--once--observed.json",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/haus-once-noninterference.policy.json",
+        "pair:wasm"
+      ],
+      "exitCode": 0,
+      "policySha256": "94ca292c9ea4ff2d907bf17abeadaa099b91127c9e6c6ff991f9c8c63736afeb",
+      "resultSha256": "6d3138afaa67dda085eafc31e90bfc7f0d100b280edb15456e06e444cdcce328",
+      "result": {
+        "result": "MATCH_OR_EXACT_EXPECTED_DIFF",
+        "expected": [
+          {
+            "path": "/diagnostics/0/phaseMs/geometryMs",
+            "left": 95,
+            "right": 98,
+            "rule": "haus-once-noninterference-elapsed-0"
+          },
+          {
+            "path": "/diagnostics/0/phaseMs/totalMs",
+            "left": 95,
+            "right": 98,
+            "rule": "haus-once-noninterference-elapsed-1"
+          }
+        ],
+        "unknown": [],
+        "stale": []
+      }
+    },
+    {
+      "name": "haus-native-noninterference",
+      "argv": [
+        "/home/louistrue/build-workers/toolchains/node-v24.22.0-linux-x64/bin/node",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-combined-observed-runtime-v1/inputs/adapter/compare.mjs",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/haus--native--plain.json",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-0-current-fc-matrix-v1/pc-results/cases/haus--native--observed.json",
+        "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-matrix-timing-disposition-v1/reviewed-saved-comparisons/haus-native-noninterference.policy.json",
+        "pair:native"
+      ],
+      "exitCode": 0,
+      "policySha256": "3a5417713fbf2b057ecd81fcaf8eab454ae4fd6d1b260011e848e58258117fa7",
+      "resultSha256": "1aefe693f4542a10b8c04b4a7af5a3ab03b58f2148c4048739c8beab932c79db",
+      "result": {
+        "result": "MATCH_OR_EXACT_EXPECTED_DIFF",
+        "expected": [
+          {
+            "path": "/stats/geometry_time_ms",
+            "left": 15,
+            "right": 16,
+            "rule": "haus-native-noninterference-elapsed-0"
+          },
+          {
+            "path": "/stats/parse_time_ms",
+            "left": 6,
+            "right": 7,
+            "rule": "haus-native-noninterference-elapsed-1"
+          },
+          {
+            "path": "/stats/preprocess_time_ms",
+            "left": 1,
+            "right": 2,
+            "rule": "haus-native-noninterference-elapsed-2"
+          },
+          {
+            "path": "/stats/total_time_ms",
+            "left": 22,
+            "right": 24,
+            "rule": "haus-native-noninterference-elapsed-3"
+          }
+        ],
+        "unknown": [],
+        "stale": []
+      }
+    }
+  ],
+  "primaryError": null,
+  "finallyErrors": [],
+  "scope": "Exact 21 saved witnesses only. No producer/runtime rerun or performance acceptance; original worker FAILED1 and 72 route/native comparisons remain unresolved.",
+  "after": {
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-matrix-timing-disposition-v1/PROPOSED-TIMING-WITNESSES.json": {
+      "size": 104064,
+      "sha256": "b4e643e486036a82f4bb2b0362612f0f74bfe261a692990e393ca1bd7513ba84"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-matrix-timing-disposition-v1/BINDINGS.json": {
+      "size": 21631,
+      "sha256": "5480e8b806b87b3e12dd513d9c9b40fab2e605b58413e96c20dc557dacd6600e"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-matrix-timing-disposition-v1/independent-review/REVIEW.md": {
+      "size": 7072,
+      "sha256": "09bc931e6e1e5cbf9bb2e4bbb650d55abc4e12be143fef8d85ee144f084841c9"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-matrix-timing-disposition-v1/run-reviewed-comparisons.py": {
+      "size": 4495,
+      "sha256": "ea7fb56b24b60a316e1dadb47ad443e3ad2e18f782a39231b56bc9c2948abba1"
+    },
+    "/home/louistrue/build-workers/toolchains/node-v24.22.0-linux-x64/bin/node": {
+      "size": 126816376,
+      "sha256": "67ca5783febb8bf85736c79fcdd92c8d6d465a0eb2a082672bcdfa76a506751c"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-combined-observed-runtime-v1/inputs/adapter/capture-wasm.mjs": {
+      "size": 19825,
+      "sha256": "2223eb6fc6f1b0ed627fa8b6f2c524a8e5a78004f5aa721e4dbb03bc7dffe219"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-combined-observed-runtime-v1/inputs/adapter/compare.mjs": {
+      "size": 11670,
+      "sha256": "5e660df5173fc211ee3b9ed677a29299f9902fbacdd49e3562ebb3164ab81f65"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-combined-observed-runtime-v1/inputs/adapter/exact-wire.mjs": {
+      "size": 3804,
+      "sha256": "b96c196a81f7b7ec3506edae7a4cbb4c8e058f3a3fbe2eccf3fc2d6cd5c7ad11"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-combined-observed-runtime-v1/inputs/adapter/output-reservation.mjs": {
+      "size": 423,
+      "sha256": "5f4fddfe16ce22cae5288161da5397162bc2bcd36211007fb756b8c402d23ad7"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-combined-observed-runtime-v1/inputs/adapter/public-contract.mjs": {
+      "size": 3663,
+      "sha256": "75836e62b87a3b5025cef82c9bed6e647335d72bdbef27ed640ac4831b9871a8"
+    },
+    "/home/louistrue/.t3/artifacts/ifc-issue-resolution-bc9e57fa/c4-5-combined-observed-runtime-v1/inputs/adapter/schema.mjs": {
+      "size": 16084,
+      "sha256": "090d5429704d98605aa5db5d990d3d3adaf40caeb8af08c94e9be7306c7a4b43"
+    }
+  },
+  "complete": true,
+  "finishedAt": "2026-10-18T20:19:53.272039+00:00"
+}

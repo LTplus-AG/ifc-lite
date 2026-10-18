@@ -1,0 +1,23 @@
+{
+  "worker": "a837e385-a04a-4ad7-8ffe-a440911ec5a0",
+  "ownedQueueRows": [],
+  "ownedProcesses": [],
+  "nativeBinariesAfter": {
+    "plain": {
+      "path": "/home/louistrue/build-workers/worker-state/targets/c4-0-current-fc-matrix-v1/native-plain/server-release/deps/ifc_lite_processing-876b5f2bf098be18",
+      "sha256": "0806e1d3517437be322da2b5e98619649827d989a5998d74b5fefca306e7ef90",
+      "bytes": 11426344,
+      "matchesProduced": true
+    },
+    "observed": {
+      "path": "/home/louistrue/build-workers/worker-state/targets/c4-0-current-fc-matrix-v1/native-observed/server-release/deps/ifc_lite_processing-876b5f2bf098be18",
+      "sha256": "346034d41c02fe810a130e4d9776794151677ca18bd4fe498656c579fffaa148",
+      "bytes": 11442896,
+      "matchesProduced": true
+    }
+  },
+  "resultFiles": 392,
+  "resultBytes": 682312666,
+  "runnerSourceSha256": "5ddb5b867d31aae64d78d78e4e7d1407b28df4f06b0ab7db9ad40d0020df2657",
+  "scopeNote": "stock worker authoritative terminal after owned group cleanup; no systemd scope on PC; exact owned command/source/target namespace census empty. Original live PGID/starttoken was not separately sampled."
+}

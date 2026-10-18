@@ -1,0 +1,19 @@
+{
+  "result": "MATCH_OR_EXACT_EXPECTED_DIFF",
+  "expected": [
+    {
+      "path": "/stats/geometry_time_ms",
+      "left": 125,
+      "right": 138,
+      "rule": "revit-wall-native-noninterference-elapsed-0"
+    },
+    {
+      "path": "/stats/total_time_ms",
+      "left": 126,
+      "right": 139,
+      "rule": "revit-wall-native-noninterference-elapsed-1"
+    }
+  ],
+  "unknown": [],
+  "stale": []
+}

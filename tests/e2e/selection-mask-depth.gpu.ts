@@ -107,6 +107,7 @@ export async function runMaskDepthWitness(sampledDepthView = false): Promise<Mas
           depthStencil: { format: 'depth24plus-stencil8', depthWriteEnabled: writes, depthCompare: 'greater' }, multisample: { count: samples },
         }, sceneSource);
         const opaque = scenePipeline(true), transparent = scenePipeline(false);
+        await visibility.prepare();
         const mask = new SelectionMaskPass({ getDevice: () => device } as WebGPUDevice, meshLayout, samples);
         try {
           for (const kind of ['same-source', 'occluded-1mm', 'transparent-front', 'transparent-selected', 'transparent-occluded'] as const) {

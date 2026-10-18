@@ -47,7 +47,7 @@ function entityForHash(hash: number, family: Family): { id: number; lane: number
 
 export interface ProjectionDepthRow {
   family: Family; samples: number; projection: Projection; mode: Mode;
-  range: number; gap: number; angle: number; reverseDrawOrder: boolean;
+  range: number | null; gap: number; angle: number; reverseDrawOrder: boolean;
   renderedGap: number;
   frontId: number; rearId: number; frontLane: number; rearLane: number;
   frontPixels: number; rearPixels: number; otherPixels: number;
@@ -105,14 +105,16 @@ export async function runProjectionDepthWitness(): Promise<ProjectionDepthReport
         };
         const pipeline = mode === 'production' ? await visibility.createAsync(descriptor, source) : await device.createRenderPipelineAsync(descriptor);
         try {
-        for (const gap of DEPTH_GAPS) for (const angle of ORBIT_ANGLES) for (const range of DEPTH_RANGES)
-          for (const projection of ['perspective', 'orthographic'] as const) for (const reverseDrawOrder of [false, true]) {
+        for (const gap of DEPTH_GAPS) for (const angle of ORBIT_ANGLES)
+          for (const projection of ['perspective', 'orthographic'] as const)
+          for (const range of projection === 'orthographic' ? DEPTH_RANGES : [null])
+          for (const reverseDrawOrder of [false, true]) {
             const mark = owned.length;
             try {
               const eye = orbitEye(angle);
               const view = MathUtils.lookAt({ x: eye[0], y: eye[1], z: eye[2] }, { x: 0, y: 0, z: 0 }, { x: 0, y: 1, z: 0 });
               const proj = projection === 'orthographic'
-                ? MathUtils.orthographicReverseZ(-HALF_HEIGHT, HALF_HEIGHT, -HALF_HEIGHT, HALF_HEIGHT, EYE_DISTANCE - range / 2, EYE_DISTANCE + range / 2)
+                ? MathUtils.orthographicReverseZ(-HALF_HEIGHT, HALF_HEIGHT, -HALF_HEIGHT, HALF_HEIGHT, EYE_DISTANCE - range! / 2, EYE_DISTANCE + range! / 2)
                 : MathUtils.perspectiveReverseZ(FOV, 1, 0.01, 1000);
               const vp = MathUtils.multiply(proj, view);
               const rotation = { m: view.m.slice() }; rotation.m[12] = 0; rotation.m[13] = 0; rotation.m[14] = 0;

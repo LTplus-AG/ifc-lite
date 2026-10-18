@@ -32,7 +32,7 @@ test.beforeAll(async ({ browser }, info) => {
     }, null, 2), contentType: 'application/json' });
     expect(pageErrors).toEqual([]);
     expect(report.errors).toEqual([]);
-    expect(report.rows).toHaveLength(2160);
+    expect(report.rows).toHaveLength(1440);
     for (const row of report.rows) {
       expect(row.otherPixels, `probe must be covered: ${JSON.stringify(row)}`).toBe(0);
       expect(row.frontPixels + row.rearPixels).toBe(64);
@@ -62,5 +62,5 @@ test('orthographic 30mm and reduced-range controls preserve visibility (#6729)',
 
 // Independent geometry must win over entity rank throughout the orbit.
 test('orthographic keeps 1mm and 4mm surfaces hidden while orbiting larger scenes (#6729)', () => {
-  requireFront(report.rows.filter(row => row.projection === 'orthographic' && row.mode === 'production' && row.gap <= 0.004 && row.range > 5.201668158));
+  requireFront(report.rows.filter(row => row.projection === 'orthographic' && row.mode === 'production' && row.gap <= 0.004 && row.range !== null && row.range > 5.201668158));
 });

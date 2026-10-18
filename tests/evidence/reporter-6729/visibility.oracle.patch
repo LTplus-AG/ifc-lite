@@ -8,4 +8,4 @@ diff --git a/packages/renderer/src/opaque-visibility-pass.ts b/packages/renderer
 -    orthographic = false;
      this.active = orthographic;
      const main = encoder.beginRenderPass(descriptor);
-     if (!orthographic) return main;
+     if (!orthographic) { this.releaseTexture(); return main; }

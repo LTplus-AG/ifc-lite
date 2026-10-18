@@ -51,6 +51,7 @@ export async function runTextureDepthWitness() {
   });
   const rows: { reverseDrawOrder: boolean; cutoutOwner: number; opaqueOwner: number }[] = [];
   try {
+    await pipeline.visibility.prepare();
     for (const reverseDrawOrder of [false, true]) {
       const image = device.createTexture({ size: [64, 64], format: 'rgba8unorm', usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC }); resources.push(image);
       const encoder = device.createCommandEncoder();

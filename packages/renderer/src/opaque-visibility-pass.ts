@@ -22,6 +22,9 @@ export function opaqueVisibilityLayout(device: GPUDevice, samples: number): GPUB
 
 interface Registration { descriptor: GPURenderPipelineDescriptor; source: string }
 interface Variants { colour: GPURenderPipeline; depth: GPURenderPipeline | null }
+class PendingVisibility extends Error {
+  constructor(readonly ready: Promise<void>) { super('Orthographic pipelines are compiling'); }
+}
 
 /**
  * Orthographic only: replay the SAME submitted opaque draws into unbiased
@@ -31,6 +34,9 @@ interface Variants { colour: GPURenderPipeline; depth: GPURenderPipeline | null 
 export class OpaqueVisibilityPass {
   private readonly registrations = new Map<GPURenderPipeline, Registration>();
   private readonly variants = new Map<GPURenderPipeline, Variants>();
+  private readonly pending = new Map<GPURenderPipeline, Promise<void>>();
+  private readonly failures = new Map<GPURenderPipeline, unknown>();
+  private destroyed = false;
   private texture: GPUTexture | null = null;
   private binding: GPUBindGroup | null = null;
   private width = 0;
@@ -44,7 +50,8 @@ export class OpaqueVisibilityPass {
   }
 
   async createAsync(descriptor: GPURenderPipelineDescriptor, source = mainShaderSource): Promise<GPURenderPipeline> {
-    return this.register(await this.device.createRenderPipelineAsync(descriptor), descriptor, source);
+    const base = this.register(await this.device.createRenderPipelineAsync(descriptor), descriptor, source);
+    await this.prepare(base); return base;
   }
 
   register(pipeline: GPURenderPipeline, descriptor: GPURenderPipelineDescriptor, source: string): GPURenderPipeline {
@@ -62,32 +69,59 @@ export class OpaqueVisibilityPass {
       entries: [{ binding: 0, resource: this.texture.createView() }] });
   }
 
+  /** Explicit setup for async consumers; the render path requests only used variants. */
+  async prepare(base?: GPURenderPipeline): Promise<void> {
+    if (!base) { await Promise.all([...this.registrations.keys()].map(pipeline => this.prepare(pipeline))); return; }
+    if (this.variants.has(base)) return;
+    let ready = this.pending.get(base);
+    if (!ready) {
+      const registration = this.registrations.get(base);
+      if (!registration) return;
+      ready = this.buildVariants(base, registration).then(variants => {
+        if (!this.destroyed && variants) this.variants.set(base, variants);
+      }, error => { this.failures.set(base, error); throw error; });
+      this.pending.set(base, ready);
+    }
+    await ready;
+  }
+
+  /** A compiling frame is discarded before submit; completion requests its replacement. */
+  deferFrame(error: unknown, requestRender: () => void): boolean {
+    if (!(error instanceof PendingVisibility)) return false;
+    const wake = () => { if (!this.destroyed) requestRender(); };
+    void error.ready.then(wake, wake); // Rejection is retained and thrown on the next draw.
+    return true;
+  }
+
   private forPipeline(base: GPURenderPipeline): Variants | undefined {
-    const registration = this.registrations.get(base);
-    if (!registration) return undefined;
-    let variants = this.variants.get(base);
-    if (variants) return variants;
+    if (this.failures.has(base)) throw this.failures.get(base);
+    const variants = this.variants.get(base);
+    if (variants || !this.registrations.get(base)?.descriptor.fragment) return variants;
+    throw new PendingVisibility(this.prepare(base));
+  }
+
+  private async buildVariants(base: GPURenderPipeline, registration: Registration): Promise<Variants | undefined> {
     const { descriptor: d, source } = registration;
     const fragment = d.fragment;
     if (!fragment) return undefined;
     const module = this.device.createShaderModule({ code: guardedMeshShader(source, this.samples, fragment.entryPoint ?? 'fs_main') });
-    const colour = this.device.createRenderPipeline({ ...d,
+    const colour = await this.device.createRenderPipelineAsync({ ...d,
       layout: this.device.createPipelineLayout({ bindGroupLayouts: [base.getBindGroupLayout(0), base.getBindGroupLayout(1), opaqueVisibilityLayout(this.device, this.samples)] }),
       vertex: { ...d.vertex, module }, fragment: { ...fragment, module } });
     let depth: GPURenderPipeline | null = null;
     if (d.depthStencil?.depthWriteEnabled) {
       const unbiased = this.device.createShaderModule({ code: unbiasedMeshShader(source, this.samples, fragment.entryPoint ?? 'fs_main') });
-      depth = this.device.createRenderPipeline({ ...d, vertex: { ...d.vertex, module: unbiased },
+      depth = await this.device.createRenderPipelineAsync({ ...d, vertex: { ...d.vertex, module: unbiased },
         fragment: { module: unbiased, entryPoint: 'fs_geometric_depth', targets: [] },
         depthStencil: { format: 'depth32float', depthWriteEnabled: true, depthCompare: 'greater' } });
     }
-    variants = { colour, depth }; this.variants.set(base, variants); return variants;
+    return { colour, depth };
   }
 
   begin(encoder: GPUCommandEncoder, descriptor: GPURenderPassDescriptor, orthographic: boolean, width: number, height: number): GPURenderPassEncoder {
     this.active = orthographic;
     const main = encoder.beginRenderPass(descriptor);
-    if (!orthographic) return main;
+    if (!orthographic) { this.releaseTexture(); return main; }
     this.ensureSize(width, height);
     const before = this.device.createCommandEncoder({ label: 'opaque-visibility-before-main' });
     const depthPass = before.beginRenderPass({
@@ -137,5 +171,11 @@ export class OpaqueVisibilityPass {
     } });
   }
 
-  destroy(): void { this.texture?.destroy(); this.texture = null; this.binding = null; this.variants.clear(); this.registrations.clear(); }
+  private releaseTexture(): void {
+    this.texture?.destroy(); this.texture = null; this.binding = null; this.width = 0; this.height = 0;
+  }
+
+  destroy(): void {
+    this.destroyed = true; this.releaseTexture(); this.variants.clear(); this.registrations.clear(); this.failures.clear(); this.pending.clear();
+  }
 }

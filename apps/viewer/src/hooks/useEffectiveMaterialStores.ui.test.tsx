@@ -5,11 +5,11 @@
 import '@/test/setup-dom.js';
 import { afterEach, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { act } from 'react';
+import { act, useState } from 'react';
 import { IfcParser, buildMaterialUsageIndex, type IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { federationRegistry } from '@ifc-lite/renderer';
-import { render, advance, cleanup } from '@/test/render';
+import { render, advance, cleanup, click } from '@/test/render';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { useHierarchyTree } from '@/components/viewer/hierarchy/useHierarchyTree.js';
@@ -47,17 +47,23 @@ async function waitForUsage(read: () => string | null | undefined, expected: str
   assert.equal(read(), expected);
 }
 
-function Probe({ source, models = EMPTY_MODELS }: {
+function Probe({ source, models = EMPTY_MODELS, revealId }: {
   source: IfcDataStore;
   models?: Map<string, FederatedModel>;
+  revealId?: number;
 }) {
-  const { treeData } = useHierarchyTree({
+  const { treeData, revealGlobalId } = useHierarchyTree({
     models,
     ifcDataStore: models.size ? null : source,
     isMultiModel: models.size > 1,
   });
+  const [revealed, setRevealed] = useState<string | null>(null);
   const usage = treeData.filter((node) => node.name === 'Concrete').flatMap((node) => node.globalIds);
-  return <span data-testid="usage">{usage.join(',')}</span>;
+  return <>
+    <span data-testid="usage">{usage.join(',')}</span>
+    <button type="button" onClick={() => setRevealed(revealId === undefined ? null : revealGlobalId(revealId))}>Reveal</button>
+    <output data-testid="revealed">{revealed ?? 'missing'}</output>
+  </>;
 }
 
 const originalState = useViewerStore.getState();
@@ -171,13 +177,21 @@ it('material tree includes a new wall and material association before save (#789
     ['0RelMat000000000000032', null, null, null, [`#${wall.expressId}`], '#20']);
   useViewerStore.setState({ hierarchyMode: 'material',
     mutationViews: new Map([['__legacy__', view]]), mutationVersion: 1 });
-  const ui = render(<Probe source={source} />);
+  const ui = render(<Probe source={source} revealId={wall.expressId} />);
   const shown = () => ui.querySelector('[data-testid="usage"]')?.textContent;
   await waitForUsage(shown, `10,11,${wall.expressId}`);
+  const reveal = ui.querySelector('button');
+  assert.ok(reveal);
+  click(reveal);
+  assert.equal(ui.querySelector('[data-testid="revealed"]')?.textContent, 'material-legacy-20',
+    'revealing the unsaved wall resolves the same edited material row as the visible tree');
   assert.deepEqual(users(source), [10, 11], 'unsaved membership does not rewrite the source');
   act(() => {
     view.deleteEntity(relation.expressId);
     useViewerStore.setState({ mutationVersion: 2 });
   });
   await waitForUsage(shown, '10,11');
+  click(reveal);
+  assert.equal(ui.querySelector('[data-testid="revealed"]')?.textContent, 'missing',
+    'reveal must not retain the previous edited material membership');
 });

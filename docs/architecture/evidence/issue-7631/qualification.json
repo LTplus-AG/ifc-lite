@@ -197,5 +197,12 @@
     "prototypePhysicalEvidence": "Three actual ISSUE_126 hosts, DEFAULT and ALT: all six complete indexed surfaces conform to the independent 0.8.5 reference at 100um; fresh shipping capture remains required.",
     "runtimeApproval": false,
     "conditionalCeilingApplied": false
+  },
+  "kernelCellQualification": {
+    "status": "PENDING_CURRENT_SOURCE_VALIDATION",
+    "lowerBase": "6dfe2fcfef",
+    "previousCombinedSource": "3b8ce05496f66406a63977310a3a189279d68787",
+    "scope": "The lower coaxial depth repair now reconciles only source limits in the same existing kernel snap cell. This closes the dental167/207 nanometre-slab regression while retaining the distinct recess-depth repair. Prior build, contract, full surface and MiniBIM receipts retain their exact execution sources; no performance or final merge approval is transferred. Fresh current-source validation is required."
   }
+
 }

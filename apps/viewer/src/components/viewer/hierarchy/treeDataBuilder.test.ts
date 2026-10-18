@@ -41,6 +41,17 @@ import type { HierarchySortMode } from './types';
 // loadable under that revert so the missing projection fails an assertion.
 const projection = await import('./treeProjection').catch(() => null);
 
+// #7890: fixture relationships must point to real source rows, just as loaded
+// models do. Display-name getters alone cannot establish entity membership.
+function createEntityTable(rows: ReadonlyArray<readonly [number, string, string?]>) {
+  const strings = new StringTable();
+  const builder = new EntityTableBuilder(rows.length, strings);
+  for (const [id, type, name = ''] of rows) {
+    builder.add(id, type, `fixture-${id}`, name, '', '', false, false);
+  }
+  return builder.build();
+}
+
 function createSpatialNode(
   expressId: number,
   type: IfcTypeEnum,
@@ -82,20 +93,10 @@ function createDataStore(): IfcDataStore {
 
   return {
     spatialHierarchy,
-    entities: {
-      count: 0,
-      getName: (id: number) => {
-        if (id === 6) return 'Wall';
-        if (id === 7) return '';
-        return '';
-      },
-      getTypeName: (id: number) => {
-        if (id === 6) return 'IfcWall';
-        if (id === 7) return 'IfcWindow';
-        if (id === 5) return 'IfcSpace';
-        return 'Unknown';
-      },
-    },
+    entities: createEntityTable([
+      [1, 'IfcProject'], [2, 'IfcSite'], [3, 'IfcBuilding'],
+      [4, 'IfcBuildingStorey'], [5, 'IfcSpace'], [6, 'IfcWall', 'Wall'], [7, 'IfcWindow'],
+    ]),
   } as unknown as IfcDataStore;
 }
 
@@ -122,10 +123,11 @@ function createSearchDataStore(): IfcDataStore {
       getContainingSpace: () => null,
       getPath: () => [],
     },
-    entities: {
-      getName: (id: number) => id === 7 ? 'Target Wall' : 'Other Wall',
-      getTypeName: () => 'IfcWall',
-    },
+    entities: createEntityTable([
+      [1, 'IfcProject'], [2, 'IfcSite'], [3, 'IfcBuilding'],
+      [4, 'IfcBuildingStorey'], [5, 'IfcBuildingStorey'],
+      [6, 'IfcWall', 'Other Wall'], [7, 'IfcWall', 'Target Wall'],
+    ]),
   } as unknown as IfcDataStore;
 }
 
@@ -152,14 +154,9 @@ function createFacilityDataStore(): IfcDataStore {
 
   return {
     spatialHierarchy,
-    entities: {
-      count: 0,
-      getName: (id: number) => (id === 4 ? 'Barrier' : ''),
-      getTypeName: (id: number) => {
-        if (id === 4) return 'IfcWall';
-        return 'Unknown';
-      },
-    },
+    entities: createEntityTable([
+      [1, 'IfcProject'], [2, 'IfcBridge'], [3, 'IfcBridgePart'], [4, 'IfcWall', 'Barrier'],
+    ]),
   } as unknown as IfcDataStore;
 }
 
@@ -196,11 +193,10 @@ function createAssemblyDataStore(): IfcDataStore {
 
   return {
     spatialHierarchy,
-    entities: {
-      count: 0,
-      getName: (id: number) => names[id] ?? '',
-      getTypeName: (id: number) => types[id] ?? 'Unknown',
-    },
+    entities: createEntityTable([
+      [1, 'IfcProject'], [2, 'IfcSite'], [3, 'IfcBuilding'], [4, 'IfcBuildingStorey'],
+      ...[10, 11, 12].map((id): [number, string, string] => [id, types[id], names[id]]),
+    ]),
     relationships: {
       getRelated: (id: number, relType: RelationshipType, direction: 'forward' | 'inverse') => {
         if (relType === RelationshipType.Aggregates && direction === 'forward' && id === 10) {
@@ -232,7 +228,7 @@ describe('buildTypeTree — authored (overlay) products', () => {
   // entities.count === 0 so the columnar scan is empty; only the authored
   // fold-in produces nodes — isolating the new path.
   it('folds an authored IfcSpace into its class group and dedups by globalId', () => {
-    const ds = createDataStore();
+    const ds = { ...createDataStore(), entities: createEntityTable([]) };
     const authored: AuthoredProduct[] = [
       { modelId: 'legacy', expressId: 900, globalId: 900, name: 'Space 1', ifcType: 'IfcSpace' },
       { modelId: 'legacy', expressId: 900, globalId: 900, name: 'dup', ifcType: 'IfcSpace' },
@@ -247,7 +243,7 @@ describe('buildTypeTree — authored (overlay) products', () => {
   });
 
   it('does nothing when there are no authored products', () => {
-    const ds = createDataStore();
+    const ds = { ...createDataStore(), entities: createEntityTable([]) };
     const nodes = buildTypeTree(new Map(), ds, new Set(), false, new Set(), []);
     assert.strictEqual(nodes.length, 0);
   });
@@ -650,11 +646,10 @@ function createStoreyElementsDataStore(): IfcDataStore {
   const names: Record<number, string> = { 7: 'Wall 10', 8: 'Wall 2', 9: 'Wall 1' };
   return {
     spatialHierarchy,
-    entities: {
-      count: 0,
-      getName: (id: number) => names[id] ?? '',
-      getTypeName: () => 'IfcWall',
-    },
+    entities: createEntityTable([
+      [1, 'IfcProject'], [2, 'IfcSite'], [3, 'IfcBuilding'], [4, 'IfcBuildingStorey'],
+      ...[7, 8, 9].map((id): [number, string, string] => [id, 'IfcWall', names[id]]),
+    ]),
   } as unknown as IfcDataStore;
 }
 
@@ -690,11 +685,10 @@ function createSortAssemblyDataStore(): IfcDataStore {
 
   return {
     spatialHierarchy,
-    entities: {
-      count: 0,
-      getName: (id: number) => names[id] ?? '',
-      getTypeName: (id: number) => types[id] ?? 'Unknown',
-    },
+    entities: createEntityTable([
+      [1, 'IfcProject'], [2, 'IfcSite'], [3, 'IfcBuilding'], [4, 'IfcBuildingStorey'],
+      ...[10, 11, 12, 13].map((id): [number, string, string] => [id, types[id], names[id]]),
+    ]),
     relationships: {
       getRelated: (id: number, relType: RelationshipType, direction: 'forward' | 'inverse') =>
         relType === RelationshipType.Aggregates && direction === 'forward' && id === 10
@@ -733,11 +727,10 @@ function createSortStoreyModelDataStore(
 
   return {
     spatialHierarchy,
-    entities: {
-      count: 0,
-      getName: (id: number) => names[id] ?? '',
-      getTypeName: () => 'IfcWall',
-    },
+    entities: createEntityTable([
+      [1, 'IfcProject'], [2, 'IfcSite'], [3, 'IfcBuilding'], [4, 'IfcBuildingStorey'],
+      ...elements.map((id): [number, string, string] => [id, 'IfcWall', names[id] ?? '']),
+    ]),
   } as unknown as IfcDataStore;
 }
 
